@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Checkers</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;500;600;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+<style>
+  :root { --bg: #0b0f19; --panel: #131a2a; --panel2: #182136; --line: #26324c; --text: #e8eefc; --muted: #8796b5; --accent: #39d0ff; --accent2: #7c5cff; --light: #e6d6b8; --dark: #2c3a52; --danger: #ff5a6a; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #eef2f8; --panel: #ffffff; --panel2: #f4f6fb; --line: #d3dae8; --text: #121826; --muted: #5d6b86; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+  .app { display: grid; grid-template-columns: minmax(0, auto) 320px; gap: 20px; padding: 18px; justify-content: center; align-items: start; }
+  .boardwrap { --size: min(calc(100vh - 140px), calc(100vw - 380px), 640px); width: var(--size); }
+  .player { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 4px; font-weight: 600; }
+  .player .dot { width: 16px; height: 16px; border-radius: 50%; }
+  .player .count { margin-left: auto; color: var(--muted); font-weight: 500; font-size: 13px; }
+  .player.turn .name::after { content: "  ● to move"; color: var(--accent); font-size: 12px; font-weight: 500; }
+  .board { position: relative; width: var(--size); height: var(--size); display: grid; grid-template-columns: repeat(8, 1fr); border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line); touch-action: none; user-select: none; }
+  .sq { position: relative; display: grid; place-items: center; }
+  .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
+  .sq.last::before { content: ""; position: absolute; inset: 0; background: rgba(255, 210, 60, 0.22); }
+  .sq.target::after { content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%; background: rgba(57, 208, 255, 0.75); box-shadow: 0 0 14px rgba(57, 208, 255, 0.8); z-index: 3; }
+  .pc { position: relative; z-index: 2; width: 78%; height: 78%; border-radius: 50%; cursor: pointer; transition: transform .12s; box-shadow: 0 5px 0 rgba(0, 0, 0, 0.35), inset 0 -4px 0 rgba(0, 0, 0, 0.25), inset 0 3px 0 rgba(255, 255, 255, 0.18); display: grid; place-items: center; }
+  .pc::before { content: ""; width: 64%; height: 64%; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); }
+  .pc.r { background: radial-gradient(circle at 35% 30%, #ff7a7a, #d2283a 60%, #8e1020); }
+  .pc.b { background: radial-gradient(circle at 35% 30%, #5d6782, #20263a 60%, #0c0f18); }
+  .pc.k::after { content: "♛\FE0E"; position: absolute; font-size: calc(var(--size) / 8 * 0.36); color: #ffd23b; text-shadow: 0 1px 2px #000; font-family: "DejaVu Sans", "Segoe UI Symbol", sans-serif; }
+  .pc.sel { transform: scale(1.08); outline: 3px solid var(--accent); outline-offset: 2px; }
+  .pc.must { animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 5px 0 rgba(0, 0, 0, 0.35), 0 0 0 5px rgba(57, 208, 255, 0.5); } }
+  .side { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  h1 { margin: 0; font: 700 32px Rajdhani, sans-serif; letter-spacing: 1px; } h1 span { color: var(--accent); }
+  .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  button, select, input { font: 600 13px Inter, sans-serif; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 9px 10px; }
+  button { cursor: pointer; } button:hover:not(:disabled) { border-color: var(--accent); } button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button[aria-pressed="true"] { border-color: var(--accent); background: rgba(57, 208, 255, 0.12); }
+  button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #06101f; border: 0; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; } .row > * { flex: 1; }
+  .status { padding: 10px 12px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); font-weight: 600; min-height: 42px; }
+  .status.alert { border-color: var(--danger); color: var(--danger); }
+  .code { font: 700 30px Rajdhani, sans-serif; letter-spacing: 8px; text-align: center; padding: 6px; border: 1px dashed var(--accent); border-radius: 10px; }
+  .muted { color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .netdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); margin-right: 6px; } .netdot.on { background: #3bff8c; }
+  .online { display: grid; gap: 8px; }
+  .emotes { display: flex; gap: 6px; } .emotes button { flex: 1; font-size: 12px; }
+  .bubble { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); background: var(--panel); border: 1px solid var(--accent); padding: 10px 16px; border-radius: 12px; font-weight: 700; z-index: 70; animation: fade 2.2s forwards; pointer-events: none; }
+  @keyframes fade { 0%, 80% { opacity: 1; } 100% { opacity: 0; } }
+  .rules { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  @media (max-width: 900px) { .app { grid-template-columns: 1fr; } .boardwrap { --size: min(calc(100vw - 36px), 640px); margin: 0 auto; } }
+  @media (prefers-reduced-motion: reduce) { .pc.must { animation: none; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="boardwrap">
+    <div class="player" id="topPlayer"><span class="dot"></span><span class="name">Black</span><span class="count"></span></div>
+    <div class="board" id="board" role="grid" aria-label="Checkers board"></div>
+    <div class="player" id="botPlayer"><span class="dot"></span><span class="name">Red</span><span class="count"></span></div>
+  </div>
+  <aside class="side">
+    <h1>CHECKERS<span>.</span></h1>
+    <div class="tabs"><button data-mode="cpu" aria-pressed="true">vs CPU</button><button data-mode="local" aria-pressed="false">2 Players</button><button data-mode="online" aria-pressed="false">Online</button></div>
+    <div id="cpuOpts" class="row"><select id="level" aria-label="CPU level"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select><select id="color" aria-label="Your color"><option value="r">Play Red (first)</option><option value="b">Play Black</option></select></div>
+    <div id="onlineOpts" class="online" hidden>
+      <div class="row"><button id="hostBtn">Host game</button><input id="joinCode" maxlength="6" placeholder="CODE" aria-label="Room code" style="text-transform:uppercase;letter-spacing:3px;text-align:center"><button id="joinBtn">Join</button></div>
+      <div id="codeBox" class="code" hidden></div>
+      <div class="muted" id="netStatus"><span class="netdot"></span>Not connected. Host to get a code, or enter a friend's code.</div>
+      <div class="emotes"><button data-emote="gg">GG</button><button>Nice jump!</button><button>King me!</button><button>Oops</button></div>
+    </div>
+    <div class="status" id="status">Red to move</div>
+    <div class="row"><button id="newBtn" class="primary">New game</button><button id="undoBtn">Undo</button><button id="flipBtn">Flip</button></div>
+    <div class="row"><button id="resignBtn">Resign</button><button id="drawBtn">Offer draw</button></div>
+    <p class="rules">Men move diagonally forward. Jumps are mandatory and chain together. Reach the far row to become a King, which moves both ways. Take every piece, or leave your opponent with no moves, to win.</p>
+  </aside>
+</div>
+<script>
+'use strict';
+/* ===================== RULES ENGINE (American checkers) ===================== */
+const Draughts = (() => {
+  const dark = (r, c) => (r + c) % 2 === 1;
+  const inB = (r, c) => r >= 0 && r < 8 && c >= 0 && c < 8;
+  function start() { const b = Array(64).fill(''); for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) if (dark(r, c)) { if (r < 3) b[r * 8 + c] = 'b'; if (r > 4) b[r * 8 + c] = 'r'; } return { b, turn: 'r', quiet: 0 }; }
+  const own = (p, side) => p && p.toLowerCase() === side;
+  const dirsFor = p => p === 'r' ? [[-1, -1], [-1, 1]] : p === 'b' ? [[1, -1], [1, 1]] : [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+  function jumpsFrom(b, sq, p, path, caps, out) {
+    const r = sq >> 3, c = sq & 7; let found = false;
+    for (const [dr, dc] of dirsFor(p)) {
+      const mr = r + dr, mc = c + dc, lr = r + 2 * dr, lc = c + 2 * dc; if (!inB(lr, lc)) continue;
+      const mid = mr * 8 + mc, land = lr * 8 + lc;
+      if (b[mid] && b[mid].toLowerCase() !== p.toLowerCase() && !caps.includes(mid) && !b[land]) {
+        found = true;
+        const promotes = (p === 'r' && lr === 0) || (p === 'b' && lr === 7);
+        const nb = b.slice(); nb[land] = p; nb[sq] = '';
+        if (promotes) out.push({ path: [...path, land], caps: [...caps, mid], promote: true });
+        else jumpsFrom(nb, land, p, [...path, land], [...caps, mid], out);
+      }
+    }
+    if (!found && caps.length) out.push({ path, caps, promote: false });
+  }
+  function moves(st) {
+    const out = [], b = st.b, side = st.turn;
+    for (let sq = 0; sq < 64; sq++) if (own(b[sq], side)) { const tmp = b.slice(); const p = tmp[sq]; tmp[sq] = ''; jumpsFrom(tmp, sq, p, [sq], [], out); }
+    if (out.length) return out;
+    for (let sq = 0; sq < 64; sq++) if (own(b[sq], side)) { const p = b[sq], r = sq >> 3, c = sq & 7; for (const [dr, dc] of dirsFor(p)) { const nr = r + dr, nc = c + dc; if (inB(nr, nc) && !b[nr * 8 + nc]) out.push({ path: [sq, nr * 8 + nc], caps: [], promote: (p === 'r' && nr === 0) || (p === 'b' && nr === 7) }); } }
+    return out;
+  }
+  function apply(st, m) {
+    const b = st.b.slice(), from = m.path[0], to = m.path[m.path.length - 1]; let p = b[from]; b[from] = '';
+    for (const c of m.caps) b[c] = '';
+    if (m.promote) p = p.toUpperCase();
+    b[to] = p;
+    return { b, turn: st.turn === 'r' ? 'b' : 'r', quiet: m.caps.length || p === 'r' || p === 'b' ? 0 : st.quiet + 1 };
+  }
+  function evaluate(st, side) {
+    let s = 0;
+    for (let i = 0; i < 64; i++) { const p = st.b[i]; if (!p) continue; const r = i >> 3, c = i & 7; const mine = p.toLowerCase() === side; let v = p === p.toUpperCase() ? 165 : 100; if (p === 'r') v += (7 - r) * 4 + (r === 7 ? 8 : 0); if (p === 'b') v += r * 4 + (r === 0 ? 8 : 0); if (c >= 2 && c <= 5 && r >= 2 && r <= 5) v += 6; if (c === 0 || c === 7) v -= 3; s += mine ? v : -v; }
+    return s;
+  }
+  let deadline = 0, aborted = false;
+  function search(st, depth, alpha, beta, side) {
+    if (Date.now() > deadline) { aborted = true; return 0; }
+    const ms = moves(st); if (!ms.length) return st.turn === side ? -10000 - depth : 10000 + depth;
+    if (depth <= 0 && !ms[0].caps.length) return evaluate(st, side);
+    if (depth <= -6) return evaluate(st, side);
+    const maxing = st.turn === side; let best = maxing ? -Infinity : Infinity;
+    for (const m of ms) { const v = search(apply(st, m), depth - 1, alpha, beta, side); if (aborted) return 0; if (maxing) { best = Math.max(best, v); alpha = Math.max(alpha, v); } else { best = Math.min(best, v); beta = Math.min(beta, v); } if (beta <= alpha) break; }
+    return best;
+  }
+  function best(st, level) {
+    const ms = moves(st); if (!ms.length) return null; if (ms.length === 1) return ms[0];
+    const maxDepth = level >= 3 ? 12 : level === 2 ? 5 : 2, noise = level === 1 ? 60 : level === 2 ? 8 : 0;
+    deadline = Date.now() + (level >= 3 ? 1500 : 500); let bestM = ms[Math.floor(Math.random() * ms.length)];
+    for (let d = 1; d <= maxDepth; d++) {
+      aborted = false; let bv = -Infinity, bm = null;
+      for (const m of ms) { const v = search(apply(st, m), d - 1, -Infinity, Infinity, st.turn) + Math.random() * noise; if (aborted) break; if (v > bv) { bv = v; bm = m; } }
+      if (aborted) break; if (bm) bestM = bm;
+    }
+    return bestM;
+  }
+  return { start, moves, apply, best };
+})();
+
+/* ===================== UI ===================== */
+const $ = s => document.querySelector(s);
+const boardEl = $('#board'), params = new URLSearchParams(location.search);
+const myName = (params.get('name') || '').replace(/[^\w-]/g, '').slice(0, 20) || 'You';
+let st, hist = [], mode = 'cpu', you = 'r', flipped = false, sel = -1, partial = [], over = null, lastPath = null, names = { r: 'Red', b: 'Black' }, aiTimer = 0;
+let ac = null;
+function tone(f, d, type = 'triangle', v = 0.14) { try { ac = ac || new (window.AudioContext || window.webkitAudioContext)(); const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f; g.gain.setValueAtTime(v, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + d); o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + d); } catch (e) { /* audio unavailable */ } }
+function newGame() {
+  clearTimeout(aiTimer); st = Draughts.start(); hist = []; over = null; sel = -1; partial = []; lastPath = null;
+  if (mode === 'cpu') { you = $('#color').value; flipped = you === 'b'; const lv = $('#level').selectedOptions[0].text; names = you === 'r' ? { r: myName, b: 'CPU · ' + lv } : { r: 'CPU · ' + lv, b: myName }; }
+  else if (mode === 'local') { you = null; names = { r: 'Red', b: 'Black' }; }
+  render(); maybeAI();
+}
+function canAct() { if (over) return false; if (mode === 'local') return true; if (mode === 'cpu') return st.turn === you; return net.connected && net.started && st.turn === you; }
+function commit(m, fromNet) {
+  hist.push(st); st = Draughts.apply(st, m); lastPath = m.path; sel = -1; partial = [];
+  if (m.caps.length) { tone(260, 0.1, 'square', 0.08); setTimeout(() => tone(200, 0.12), 60); } else tone(440, 0.07);
+  if (m.promote) setTimeout(() => [660, 880].forEach((f, i) => setTimeout(() => tone(f, 0.12), i * 90)), 80);
+  if (!Draughts.moves(st).length) { over = { winner: st.turn === 'r' ? 'b' : 'r', reason: 'no moves left' }; [523, 659, 784].forEach((f, i) => setTimeout(() => tone(f, 0.2), i * 120)); }
+  else if (st.quiet >= 80) over = { winner: null, reason: '40 moves without a capture' };
+  if (mode === 'online' && !fromNet) net.send({ t: 'move', path: m.path });
+  render(); maybeAI();
+}
+function maybeAI() {
+  if (mode !== 'cpu' || over || st.turn === you) return;
+  setStatus('CPU is thinking…');
+  aiTimer = setTimeout(() => { const m = Draughts.best(st, +$('#level').value); if (m) commit(m); }, 420);
+}
+function undo() { if (mode === 'online' || !hist.length) return; clearTimeout(aiTimer); const n = mode === 'cpu' ? (st.turn === you ? 2 : 1) : 1; for (let i = 0; i < n && hist.length; i++) st = hist.pop(); over = null; sel = -1; partial = []; lastPath = null; render(); maybeAI(); }
+function candidates() { const ms = Draughts.moves(st); if (sel < 0) return { ms, targets: [] }; const pref = partial.length ? partial : [sel]; const match = ms.filter(m => pref.every((s, i) => m.path[i] === s)); return { ms, targets: [...new Set(match.map(m => m.path[pref.length]).filter(x => x != null))], match }; }
+function clickSq(i) {
+  if (!canAct()) return;
+  const { ms, targets, match } = candidates();
+  if (sel >= 0 && targets.includes(i)) {
+    partial = (partial.length ? partial : [sel]).concat(i);
+    const done = match.filter(m => m.path.length === partial.length && m.path.every((s, k) => s === partial[k]));
+    const longer = match.filter(m => m.path.length > partial.length && partial.every((s, k) => m.path[k] === s));
+    if (done.length && !longer.length) { commit(done[0]); return; }
+    render(); return;
+  }
+  if (partial.length > 1) return;
+  if (ms.some(m => m.path[0] === i)) { sel = i; partial = []; render(); }
+  else if (st.b[i] && st.b[i].toLowerCase() === st.turn) { sel = -1; render(); setStatus('That piece can\'t move — a jump is mandatory!'); }
+}
+function render() {
+  boardEl.innerHTML = '';
+  const { ms, targets } = candidates(), movable = new Set(ms.map(m => m.path[0])), mustJump = ms.length && ms[0].caps.length;
+  const cur = partial.length ? partial[partial.length - 1] : sel;
+  for (let vi = 0; vi < 64; vi++) {
+    const i = flipped ? 63 - vi : vi, r = i >> 3, c = i & 7;
+    const d = document.createElement('div'); d.className = 'sq ' + ((r + c) % 2 ? 'd' : 'l'); d.dataset.i = i;
+    if (lastPath && lastPath.includes(i)) d.classList.add('last');
+    if (targets.includes(i)) d.classList.add('target');
+    let p = st.b[i]; if (partial.length && i === sel) p = ''; if (partial.length && i === cur) p = st.b[sel];
+    if (p) { const s = document.createElement('div'); s.className = 'pc ' + p.toLowerCase() + (p === p.toUpperCase() ? ' k' : ''); if (i === cur) s.classList.add('sel'); if (mustJump && movable.has(i) && canAct() && sel < 0) s.classList.add('must'); d.appendChild(s); }
+    d.addEventListener('pointerdown', () => clickSq(i));
+    boardEl.appendChild(d);
+  }
+  const top = flipped ? 'r' : 'b', bot = flipped ? 'b' : 'r';
+  for (const [el, side] of [[$('#topPlayer'), top], [$('#botPlayer'), bot]]) {
+    el.querySelector('.dot').style.background = side === 'r' ? '#d2283a' : '#20263a'; el.querySelector('.name').textContent = names[side];
+    const n = st.b.filter(p => p && p.toLowerCase() === side).length, k = st.b.filter(p => p === side.toUpperCase()).length;
+    el.querySelector('.count').textContent = `${n} piece${n === 1 ? '' : 's'}${k ? ` · ${k} king${k === 1 ? '' : 's'}` : ''}`;
+    el.classList.toggle('turn', !over && st.turn === side);
+  }
+  $('#undoBtn').disabled = mode === 'online' || !hist.length; $('#drawBtn').disabled = mode !== 'online' || !net.started || !!over; $('#resignBtn').disabled = !!over;
+  setStatus();
+}
+function setStatus(text) {
+  const el = $('#status'); el.classList.toggle('alert', !!over);
+  if (text) { el.textContent = text; return; }
+  if (over) { el.textContent = over.winner ? `${over.winner === 'r' ? 'Red' : 'Black'} wins · ${over.reason}` : `Draw · ${over.reason}`; return; }
+  if (mode === 'online' && !net.started) { el.textContent = net.connected ? 'Connected. Starting…' : 'Host or join a game to play online.'; return; }
+  const ms = Draughts.moves(st);
+  el.textContent = `${st.turn === 'r' ? 'Red' : 'Black'} to move${ms.length && ms[0].caps.length ? ' · must jump!' : ''}${you && st.turn === you && mode !== 'local' ? ' (you)' : ''}`;
+}
+document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
+function setMode(m) { if (mode === 'online' && m !== 'online') net.close(); mode = m; document.querySelectorAll('[data-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === m))); $('#cpuOpts').hidden = m !== 'cpu'; $('#onlineOpts').hidden = m !== 'online'; flipped = false; newGame(); }
+$('#newBtn').onclick = () => { if (mode === 'online') { if (net.connected) { net.send({ t: 'rematch' }); net.rematch(true); } } else newGame(); };
+$('#undoBtn').onclick = undo; $('#flipBtn').onclick = () => { flipped = !flipped; render(); };
+$('#resignBtn').onclick = () => { if (over) return; const loser = mode === 'local' ? st.turn : you; over = { winner: loser === 'r' ? 'b' : 'r', reason: 'resignation' }; clearTimeout(aiTimer); if (mode === 'online') net.send({ t: 'resign' }); render(); };
+$('#drawBtn').onclick = () => { net.send({ t: 'draw', k: 'offer' }); setStatus('Draw offered…'); };
+$('#level').onchange = $('#color').onchange = () => { if (mode === 'cpu') newGame(); };
+document.querySelectorAll('.emotes button').forEach(b => b.addEventListener('click', () => { bubble('You: ' + b.textContent); net.send({ t: 'emote', text: b.textContent }); }));
+function bubble(text) { const d = document.createElement('div'); d.className = 'bubble'; d.textContent = text; boardEl.appendChild(d); setTimeout(() => d.remove(), 2300); }
+
+/* ===================== ONLINE (PeerJS; both sides validate) ===================== */
+const net = {
+  peer: null, conn: null, connected: false, started: false, host: false, code: '', retry: null, oppName: 'Opponent',
+  status(text, on) { $('#netStatus').innerHTML = `<span class="netdot ${on ? 'on' : ''}"></span>${text}`; },
+  close() { clearInterval(this.retry); try { this.conn && this.conn.close(); } catch (e) { /* ignore */ } try { this.peer && this.peer.destroy(); } catch (e) { /* ignore */ } Object.assign(this, { peer: null, conn: null, connected: false, started: false }); $('#codeBox').hidden = true; this.status('Not connected.', false); },
+  ensure() { if (!window.Peer) { this.status('Online play needs an internet connection (PeerJS did not load).', false); return false; } return true; },
+  hostGame() { if (!this.ensure()) return; this.close(); this.host = true; const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; this.code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); this.peer = new window.Peer('tl-checkers-' + this.code.toLowerCase()); this.peer.on('open', () => { $('#codeBox').hidden = false; $('#codeBox').textContent = this.code; this.status('Share this code. Waiting for your friend…', false); }); this.peer.on('connection', c => { if (this.conn && this.conn.open) { c.on('open', () => c.close()); return; } this.attach(c); }); this.peer.on('error', e => { if (e.type === 'unavailable-id') this.hostGame(); else this.status('Network error: ' + e.type, false); }); },
+  joinGame(code) { if (!this.ensure()) return; this.close(); this.host = false; this.code = code.toUpperCase(); this.peer = new window.Peer(); this.peer.on('open', () => this.attach(this.peer.connect('tl-checkers-' + this.code.toLowerCase(), { reliable: true }))); this.peer.on('error', e => this.status(e.type === 'peer-unavailable' ? 'No game with that code.' : 'Network error: ' + e.type, false)); this.status('Connecting…', false); },
+  attach(c) {
+    this.conn = c;
+    c.on('open', () => { this.connected = true; clearInterval(this.retry); this.status('Connected!', true); this.send({ t: 'hello', name: myName }); if (this.host && !this.started) this.rematch(false); else if (this.host) this.send({ t: 'sync', hist: hist.concat([st]), hostColor: you, over }); });
+    c.on('data', d => this.onData(d));
+    c.on('close', () => { this.connected = false; this.status('Opponent disconnected. Waiting for them to come back…', false); render(); if (!this.host && this.peer) { clearInterval(this.retry); this.retry = setInterval(() => { if (this.connected || !this.peer) return clearInterval(this.retry); this.attach(this.peer.connect('tl-checkers-' + this.code.toLowerCase(), { reliable: true })); }, 4000); } });
+  },
+  send(m) { try { if (this.conn && this.conn.open) this.conn.send(m); } catch (e) { /* dropped */ } },
+  rematch(swap) { if (!this.host) return; const color = swap ? (you === 'r' ? 'b' : 'r') : (Math.random() < 0.5 ? 'r' : 'b'); this.startAs(color); this.send({ t: 'start', hostColor: color }); },
+  startAs(color) { you = color; flipped = you === 'b'; this.started = true; st = Draughts.start(); hist = []; over = null; sel = -1; partial = []; lastPath = null; names[you] = myName; names[you === 'r' ? 'b' : 'r'] = this.oppName; render(); bubble(`You play ${you === 'r' ? 'Red' : 'Black'}`); },
+  onData(m) {
+    if (!m || typeof m.t !== 'string') return;
+    if (m.t === 'hello') { this.oppName = String(m.name || 'Opponent').replace(/[^\w-]/g, '').slice(0, 20) || 'Opponent'; if (you) names[you === 'r' ? 'b' : 'r'] = this.oppName; render(); }
+    if (m.t === 'start' && !this.host) this.startAs(m.hostColor === 'r' ? 'b' : 'r');
+    if (m.t === 'rematch' && this.host) this.rematch(true);
+    if (m.t === 'sync' && !this.host && Array.isArray(m.hist)) { this.startAs(m.hostColor === 'r' ? 'b' : 'r'); const states = m.hist; st = states.pop(); hist = states; over = m.over; render(); }
+    if (m.t === 'move' && Array.isArray(m.path)) { const mv = Draughts.moves(st).find(x => x.path.length === m.path.length && x.path.every((s, k) => s === m.path[k])); if (mv && st.turn !== you) commit(mv, true); else this.status('Ignored an invalid move from the opponent.', true); }
+    if (m.t === 'resign' && !over) { over = { winner: you, reason: 'opponent resigned' }; render(); }
+    if (m.t === 'draw') { if (m.k === 'offer' && !over) { const ok = window.confirm('Your opponent offers a draw. Accept?'); this.send({ t: 'draw', k: ok ? 'accept' : 'decline' }); if (ok) { over = { winner: null, reason: 'agreed' }; render(); } } if (m.k === 'accept') { over = { winner: null, reason: 'agreed' }; render(); } if (m.k === 'decline') setStatus('Draw declined.'); }
+    if (m.t === 'emote') bubble('Opponent: ' + String(m.text || '').slice(0, 30));
+  },
+};
+$('#hostBtn').onclick = () => net.hostGame();
+$('#joinBtn').onclick = () => { const c = $('#joinCode').value.trim().toUpperCase(); if (c.length === 6) net.joinGame(c); else net.status('Codes are 6 characters.', false); };
+$('#joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
+window.addEventListener('pagehide', () => net.close());
+if (params.get('room')) { setMode('online'); $('#joinCode').value = params.get('room'); setTimeout(() => $('#joinBtn').click(), 600); } else newGame();
+window.__checkers = { get st() { return st; }, Draughts, clickSq, get over() { return over; } };
+</script>
+</body>
+</html>

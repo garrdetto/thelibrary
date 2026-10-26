@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Chopper Cave</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #070a12; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Chopper Cave: hold to climb, move left and right to fly forward and back"></canvas>
+<script>
+'use strict';
+/* Chopper Cave — hold the mouse (or Space / touch) to climb, release to drop.
+   Move the mouse left and right (or A/D, arrow keys) to fly back and forward. */
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+function resize() { dpr = Math.min(2, window.devicePixelRatio || 1); W = window.innerWidth; H = window.innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+window.addEventListener('resize', resize); resize();
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* unavailable */ } } };
+let best = +(store.get('chopper-best') || 0);
+const SEG = 24;
+let state, input = { hold: false, targetX: null, left: false, right: false };
+let audio = null;
+function initAudio() {
+  if (audio) { if (audio.ctx.state === 'suspended') audio.ctx.resume(); return; }
+  try { const c = new (window.AudioContext || window.webkitAudioContext)(); const o = c.createOscillator(), g = c.createGain(), f = c.createBiquadFilter(); o.type = 'sawtooth'; o.frequency.value = 38; f.type = 'lowpass'; f.frequency.value = 340; g.gain.value = 0; o.connect(f).connect(g).connect(c.destination); o.start(); audio = { ctx: c, o, g }; } catch (e) { audio = null; }
+}
+function boom() { if (!audio) return; const c = audio.ctx, len = c.sampleRate; const b = c.createBuffer(1, len, len), d = b.getChannelData(0); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 2); const s = c.createBufferSource(), f = c.createBiquadFilter(), g = c.createGain(); s.buffer = b; f.type = 'lowpass'; f.frequency.value = 600; g.gain.value = 0.8; s.connect(f).connect(g).connect(c.destination); s.start(); }
+function reset() {
+  const cave = [];
+  let top = H * 0.16, bot = H * 0.84;
+  for (let x = 0; x <= W + SEG * 4; x += SEG) cave.push({ x, top, bot });
+  state = { mode: 'ready', t: 0, dist: 0, speed: 260, heli: { x: W * 0.28, y: H * 0.5, vy: 0, tilt: 0 }, cave, blocks: [], particles: [], gap: H * 0.68, drift: 0, nextBlock: 600, shake: 0 };
+}
+function caveStep(prev) {
+  const s = state, minGap = Math.max(H * 0.3, s.gap);
+  s.drift += (Math.random() - 0.5) * 18; s.drift = Math.max(-26, Math.min(26, s.drift * 0.92));
+  let center = (prev.top + prev.bot) / 2 + s.drift;
+  center = Math.max(minGap / 2 + 20, Math.min(H - minGap / 2 - 20, center));
+  return { x: prev.x + SEG, top: center - minGap / 2 + (Math.random() - 0.5) * 6, bot: center + minGap / 2 + (Math.random() - 0.5) * 6 };
+}
+function caveAt(x) { const c = state.cave; for (let i = 0; i < c.length - 1; i++) if (c[i].x <= x && c[i + 1].x > x) { const k = (x - c[i].x) / SEG; return { top: c[i].top + (c[i + 1].top - c[i].top) * k, bot: c[i].bot + (c[i + 1].bot - c[i].bot) * k }; } return { top: 0, bot: H }; }
+function crash() {
+  const s = state; s.mode = 'dead'; s.shake = 14; boom();
+  for (let i = 0; i < 90; i++) { const a = Math.random() * 6.283, v = 60 + Math.random() * 380; s.particles.push({ x: s.heli.x, y: s.heli.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.9, max: 1.5, r: 2 + Math.random() * 5, fire: Math.random() < 0.7 }); }
+  const score = Math.floor(s.dist / 10);
+  if (score > best) { best = score; store.set('chopper-best', String(best)); s.newBest = true; }
+  if (audio) audio.g.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.1);
+}
+function update(dt) {
+  const s = state, h = s.heli;
+  s.t += dt;
+  for (const p of s.particles) { p.x += p.vx * dt - (s.mode === 'fly' ? s.speed * dt : 0); p.y += p.vy * dt; p.vy += (p.fire ? 260 : -20) * dt; p.vx *= 0.98; p.life -= dt; }
+  s.particles = s.particles.filter(p => p.life > 0);
+  s.shake = Math.max(0, s.shake - dt * 30);
+  if (s.mode !== 'fly') { if (s.mode === 'ready') h.y = H * 0.5 + Math.sin(s.t * 2.2) * 12; return; }
+  s.speed = Math.min(620, 260 + s.dist * 0.018);
+  s.gap = Math.max(H * 0.3, H * 0.68 - s.dist * 0.012);
+  const move = s.speed * dt; s.dist += move;
+  for (const c of s.cave) c.x -= move;
+  while (s.cave[0].x < -SEG * 2) s.cave.shift();
+  while (s.cave[s.cave.length - 1].x < W + SEG * 2) s.cave.push(caveStep(s.cave[s.cave.length - 1]));
+  for (const b of s.blocks) b.x -= move;
+  s.blocks = s.blocks.filter(b => b.x > -80);
+  s.nextBlock -= move;
+  if (s.nextBlock <= 0) { const cav = caveAt(W + 40), bh = Math.min(170, (cav.bot - cav.top) * 0.36); s.blocks.push({ x: W + 40, y: cav.top + 20 + Math.random() * Math.max(10, cav.bot - cav.top - bh - 40), w: 34, h: bh }); s.nextBlock = 420 + Math.random() * 520 - Math.min(200, s.dist * 0.01); }
+  // controls: vertical
+  h.vy += (input.hold ? -1050 : 900) * dt; h.vy = Math.max(-420, Math.min(520, h.vy)); h.y += h.vy * dt;
+  // horizontal: forward/back
+  const minX = W * 0.12, maxX = W * 0.62;
+  let tx = input.targetX;
+  if (input.left || input.right) { tx = h.x + (input.right ? 1 : -1) * 400 * dt; input.targetX = null; }
+  if (tx != null) { const want = Math.max(minX, Math.min(maxX, tx)); const dx = want - h.x; const vx = Math.max(-420, Math.min(420, dx * 6)); h.x += vx * dt; h.tilt += ((vx / 420) * 0.35 + h.vy / 2600 - h.tilt) * Math.min(1, dt * 8); }
+  else h.tilt += (h.vy / 2600 - h.tilt) * Math.min(1, dt * 8);
+  // trail
+  if (Math.random() < 0.7) s.particles.push({ x: h.x - 30, y: h.y + 4, vx: -40 - Math.random() * 40, vy: -10 + Math.random() * 20, life: 0.8, max: 0.8, r: 3 + Math.random() * 3, fire: false });
+  // collisions
+  const pts = [[h.x + 26, h.y], [h.x - 30, h.y - 2], [h.x, h.y - 12], [h.x, h.y + 12], [h.x + 14, h.y + 9], [h.x - 18, h.y + 8]];
+  for (const [px, py] of pts) {
+    const cav = caveAt(px); if (py < cav.top || py > cav.bot) return crash();
+    for (const b of s.blocks) if (px > b.x && px < b.x + b.w && py > b.y && py < b.y + b.h) return crash();
+  }
+  if (audio) { audio.o.frequency.setTargetAtTime(input.hold ? 52 : 38, audio.ctx.currentTime, 0.08); audio.g.gain.setTargetAtTime(input.hold ? 0.06 : 0.035, audio.ctx.currentTime, 0.1); }
+}
+function drawHeli(h, t) {
+  ctx.save(); ctx.translate(h.x, h.y); ctx.rotate(h.tilt);
+  const body = ctx.createLinearGradient(0, -14, 0, 14); body.addColorStop(0, '#5ce1ff'); body.addColorStop(1, '#1b6fd1');
+  ctx.fillStyle = '#16233d'; ctx.fillRect(-46, -3, 30, 6); ctx.beginPath(); ctx.moveTo(-50, -12); ctx.lineTo(-44, -12); ctx.lineTo(-40, 2); ctx.lineTo(-48, 2); ctx.fill();
+  ctx.save(); ctx.translate(-47, -6); ctx.rotate(t * 40); ctx.fillStyle = 'rgba(220,240,255,0.7)'; ctx.fillRect(-1.5, -9, 3, 18); ctx.restore();
+  ctx.fillStyle = body; ctx.beginPath(); ctx.ellipse(0, 0, 26, 13, 0, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = '#0b1b33'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = 'rgba(200,245,255,0.85)'; ctx.beginPath(); ctx.ellipse(12, -3, 11, 7, -0.2, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#0b1b33'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-14, 14); ctx.lineTo(-16, 19); ctx.moveTo(12, 13); ctx.lineTo(14, 19); ctx.moveTo(-24, 19); ctx.lineTo(24, 19); ctx.stroke();
+  ctx.fillStyle = '#0b1b33'; ctx.fillRect(-2, -19, 4, 7);
+  const blade = Math.abs(Math.sin(t * 30)) * 46 + 8; ctx.fillStyle = 'rgba(230,245,255,0.75)'; ctx.fillRect(-blade, -21, blade * 2, 3);
+  ctx.restore();
+}
+function draw() {
+  const s = state, t = s.t;
+  ctx.save();
+  if (s.shake) ctx.translate((Math.random() - 0.5) * s.shake, (Math.random() - 0.5) * s.shake);
+  const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0d1428'); bg.addColorStop(1, '#141030'); ctx.fillStyle = bg; ctx.fillRect(-20, -20, W + 40, H + 40);
+  ctx.fillStyle = 'rgba(124,92,255,0.06)'; for (let i = 0; i < 6; i++) { const x = ((i * 280 - s.dist * 0.15) % (W + 300) + W + 300) % (W + 300) - 150; ctx.beginPath(); ctx.arc(x, H * (0.3 + (i % 3) * 0.2), 120, 0, 6.283); ctx.fill(); }
+  // cave walls
+  const rock = ctx.createLinearGradient(0, 0, 0, H); rock.addColorStop(0, '#2b6b4a'); rock.addColorStop(0.5, '#1c4a3a'); rock.addColorStop(1, '#2b6b4a');
+  ctx.fillStyle = rock;
+  ctx.beginPath(); ctx.moveTo(-20, -20); for (const c of s.cave) ctx.lineTo(c.x, c.top); ctx.lineTo(W + 40, -20); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(-20, H + 20); for (const c of s.cave) ctx.lineTo(c.x, c.bot); ctx.lineTo(W + 40, H + 20); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = '#5cffb0'; ctx.lineWidth = 2; ctx.shadowColor = '#5cffb0'; ctx.shadowBlur = 10;
+  ctx.beginPath(); s.cave.forEach((c, i) => i ? ctx.lineTo(c.x, c.top) : ctx.moveTo(c.x, c.top)); ctx.stroke();
+  ctx.beginPath(); s.cave.forEach((c, i) => i ? ctx.lineTo(c.x, c.bot) : ctx.moveTo(c.x, c.bot)); ctx.stroke();
+  ctx.shadowBlur = 0;
+  for (const b of s.blocks) { const g = ctx.createLinearGradient(b.x, 0, b.x + b.w, 0); g.addColorStop(0, '#ff5a7a'); g.addColorStop(1, '#b0204a'); ctx.fillStyle = g; ctx.shadowColor = '#ff5a7a'; ctx.shadowBlur = 14; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(b.x + 4, b.y + 4, 5, b.h - 8); }
+  for (const p of s.particles) { const k = p.life / p.max; ctx.fillStyle = p.fire ? `hsla(${20 + k * 30},100%,${50 + k * 20}%,${k})` : `rgba(180,200,230,${k * 0.35})`; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (p.fire ? 1 : 2 - k), 0, 6.283); ctx.fill(); }
+  if (s.mode !== 'dead') drawHeli(s.heli, t);
+  ctx.restore();
+  // HUD
+  ctx.fillStyle = '#e8eefc'; ctx.font = '700 28px Rajdhani, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(`${Math.floor(s.dist / 10)} m`, 22, 40);
+  ctx.fillStyle = '#8796b5'; ctx.font = '600 14px Inter, sans-serif'; ctx.fillText(`BEST ${best} m`, 22, 62);
+  if (s.mode !== 'fly') {
+    ctx.fillStyle = 'rgba(7,10,18,0.6)'; ctx.fillRect(0, H / 2 - 90, W, 180);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = '700 52px Rajdhani, sans-serif';
+    ctx.fillText(s.mode === 'ready' ? 'CHOPPER CAVE' : (s.newBest ? 'NEW BEST!' : 'CRASHED'), W / 2, H / 2 - 22);
+    ctx.font = '600 16px Inter, sans-serif'; ctx.fillStyle = '#b9c6e4';
+    ctx.fillText(s.mode === 'ready' ? 'Hold the mouse button to climb, let go to drop. Move the mouse left/right to fly back and forward.' : `${Math.floor(s.dist / 10)} m — click to fly again`, W / 2, H / 2 + 16);
+    ctx.fillText('Space and arrow keys work too. Touch: hold to climb, drag sideways.', W / 2, H / 2 + 44);
+  }
+}
+let last = performance.now();
+function loop(now) { const dt = Math.min(0.033, (now - last) / 1000); last = now; update(dt); draw(); requestAnimationFrame(loop); }
+function press(x) { initAudio(); if (state.mode === 'ready') state.mode = 'fly'; else if (state.mode === 'dead') { if (state.t > 0.5 || state.particles.length < 10) { reset(); state.mode = 'fly'; } } input.hold = true; if (x != null) input.targetX = x; }
+cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture?.(e.pointerId); press(e.clientX); });
+cv.addEventListener('pointermove', e => { input.targetX = e.clientX; });
+window.addEventListener('pointerup', () => { input.hold = false; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); if (!input.hold) press(null); }
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') { input.left = true; e.preventDefault(); }
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') { input.right = true; e.preventDefault(); }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') input.hold = false;
+  if (e.code === 'ArrowLeft' || e.code === 'KeyA') input.left = false;
+  if (e.code === 'ArrowRight' || e.code === 'KeyD') input.right = false;
+});
+window.addEventListener('blur', () => { input.hold = false; input.left = input.right = false; });
+reset(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
