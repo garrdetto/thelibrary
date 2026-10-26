@@ -1,0 +1,12 @@
+name = "claude-proxy"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+workers_dev = true
+
+# Secrets (set with `npx wrangler secret put <NAME>`, never committed):
+#   ANTHROPIC_API_KEY  - your Claude API key
+#   ACCESS_TOKEN       - any long random string; the page asks for it before chatting
+
+# Optional: route through Cloudflare AI Gateway instead of calling Anthropic directly.
+# [vars]
+# GATEWAY_URL = "https://gateway.ai.cloudflare.com/v1/<ACCOUNT_ID>/<GATEWAY_ID>/anthropic"
