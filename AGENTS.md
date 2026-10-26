@@ -72,7 +72,7 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 - `server/racing-engine.mjs` is shared by browser and server. Any change to it, or to server lobby/race code, requires redeploying the multiplayer service; bump the `/version` string in `server/index.mjs` and note it in `server/README.md`.
 - Keep single-player and multiplayer physics identical by changing the shared engine rather than duplicating logic in `Racing.tsx`.
-- Lap records are stored per track and mode.
+- Lap records are stored per track and mode. Short Track Showdown (`public/modules/shorttrack.html`) posts to `/api/racing` with track `shorttrack` and modes `time-attack`, `race` (solo vs AI) and `multiplayer`; only clean green-flag laps by the signed-in driver are sent.
 
 ## Development
 
