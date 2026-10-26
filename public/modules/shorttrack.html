@@ -105,7 +105,7 @@ input[type=color]{padding:2px;height:38px}
   </div>
   <div id="scrGarage" class="scr panel hidden">
     <h2>Garage</h2>
-    <label class="f">Driver name</label><input id="gName" maxlength="16">
+    <label class="f">Driver name</label><input id="gName" maxlength="20">
     <div class="row2"><div><label class="f">Number</label><input id="gNum" maxlength="2" inputmode="numeric"></div><div><label class="f">Number style</label><select id="gStyle"></select></div></div>
     <label class="f">Paint scheme</label><select id="gPat"></select>
     <div class="row2"><div><label class="f">Primary</label><input type="color" id="gP1"></div><div><label class="f">Secondary</label><input type="color" id="gP2"></div><div><label class="f">Accent</label><input type="color" id="gP3"></div></div>
@@ -558,7 +558,7 @@ const PACE_LV={name:'Pace Car',number:'',primary:'#f4f4f4',secondary:'#141414',a
 function hexLum(h){const n=parseInt(h.slice(1),16);return(0.299*(n>>16&255)+0.587*(n>>8&255)+0.114*(n&255))/255;}
 function cleanLv(l){
   l=l||{};const d=DEFAULT_LV,col=(v,f)=>HEX.test(v||'')?v:f;
-  return {name:(String(l.name||'').replace(/[<>]/g,'').slice(0,16).trim()||'Driver'),number:String(l.number??'').replace(/\D/g,'').slice(0,2),
+  return {name:(String(l.name||'').replace(/[<>]/g,'').slice(0,20).trim()||'Driver'),number:String(l.number??'').replace(/\D/g,'').slice(0,2),
     primary:col(l.primary,d.primary),secondary:col(l.secondary,d.secondary),accent:col(l.accent,d.accent),
     pattern:PATTERNS.includes(l.pattern)?l.pattern:'solid',numStyle:NUMSTYLES.includes(l.numStyle)?l.numStyle:'block',
     numColor:col(l.numColor,'#ffffff'),numOutline:col(l.numOutline,'#111111')};
@@ -1376,7 +1376,7 @@ $('gStyle').innerHTML=NUMSTYLES.map(s=>`<option value="${s}">${NUMSTYLE_NAMES[s]
 $('gPat').innerHTML=PATTERNS.map(s=>`<option value="${s}">${PATTERN_NAMES[s]}</option>`).join('');
 function fillGarage(){for(const k in G)$(G[k]).value=myLv[k];}
 let gT=0;
-function readGarage(){const l={};for(const k in G)l[k]=$(G[k]).value;myLv=cleanLv(l);if(!myLv.number)myLv.number='0';store.set('sts_livery',myLv);clearTimeout(gT);gT=setTimeout(rebuildMenuCar,120);}
+function readGarage(){const l={};for(const k in G)l[k]=$(G[k]).value;if(REC.me)l.name=REC.me;myLv=cleanLv(l);if(!myLv.number)myLv.number='0';store.set('sts_livery',myLv);clearTimeout(gT);gT=setTimeout(rebuildMenuCar,120);}
 function rebuildMenuCar(){if(menuCar)menuCar.dispose();menuCar=new Car('menu',myLv,{player:true});menuCar.place(S_LINE+6,-2);menuCar.m.root.visible=!player;}
 for(const k in G)$(G[k]).addEventListener('input',readGarage);
 ['sLaps','sAI','sTime','sDiff'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();setNight(settings.night);broadcastLobby();}));
@@ -1404,7 +1404,9 @@ function act(a){
 }
 wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;audioInit();act(b.dataset.act);});
 wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)return;const box=t.closest('.recbox');if(box)showRecords(box.id,t.dataset.rec);});
-fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username)REC.me=d.username;}).catch(()=>{});
+function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)};const gn=$('gName');gn.value=myLv.name;gn.disabled=true;gn.title='Your library username is your driver name';
+  const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(!player)rebuildMenuCar();}
+fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();}}).catch(()=>{});
 
 // ===================== INPUT =====================
 const keys={};
