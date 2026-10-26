@@ -182,9 +182,10 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
 const TRACKS={
   bullring:{name:'Showdown Bullring',miles:'0.5 mi',rec:'shorttrack',L:180,R:62,W:16,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000},
-  dells:{name:'Dells Short Track',miles:'0.35 mi',rec:'dells',L:162,R:38,W:14,APRON:6,turnBank:9,straightBank:6,bankIn:55,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:9000}};
+  dells:{name:'Dells Short Track',miles:'0.3 mi',rec:'dells',L:122,R:38,W:14,APRON:6,turnBank:27,straightBank:18,bankIn:50,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.25,smooth:1.33}};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
+CFG.steerLow*=TRACK.steer||1;CFG.steerRampIn/=TRACK.smooth||1;CFG.steerRampOut/=TRACK.smooth||1;CFG.steerDamp=14/(TRACK.smooth||1);
 const L=CFG.L,R=CFG.R,W=CFG.W,AP=CFG.APRON,HW=W/2;
 const TURN=Math.PI*R, P=2*L+2*TURN, S_LINE=L/2, T1=L, T2=2*L+TURN;
 function center(s){
@@ -470,10 +471,10 @@ const SMALL_INFIELD=R<50,PIT0=-HW-AP-0.4,PIT1=-HW-AP-(SMALL_INFIELD?10:13.5);
 // press box / suites on top of the front-stretch grandstand
 const glassMat=new THREE.MeshStandardMaterial({color:0x1b2a3a,roughness:.08,metalness:.9,emissive:0xffe6b0,emissiveIntensity:0});
 {const lat=backLat+3.5,c=center(S_LINE),y0=sY(ROWS-1)(S_LINE)+3;
- const box=new THREE.Mesh(new THREE.BoxGeometry(150,9,7),[new THREE.MeshStandardMaterial({color:0xcfd4da}),new THREE.MeshStandardMaterial({color:0xcfd4da}),new THREE.MeshStandardMaterial({color:0x8a9099}),new THREE.MeshStandardMaterial({color:0x666b73}),new THREE.MeshStandardMaterial({color:0xcfd4da}),glassMat]);
+ const box=new THREE.Mesh(new THREE.BoxGeometry(Math.min(150,L-12),9,7),[new THREE.MeshStandardMaterial({color:0xcfd4da}),new THREE.MeshStandardMaterial({color:0xcfd4da}),new THREE.MeshStandardMaterial({color:0x8a9099}),new THREE.MeshStandardMaterial({color:0x666b73}),new THREE.MeshStandardMaterial({color:0xcfd4da}),glassMat]);
  box.position.set(c.x+c.nx*lat,y0+4.5,c.z+c.nz*lat);box.castShadow=true;scene.add(box);
- const roof=new THREE.Mesh(new THREE.BoxGeometry(156,0.6,10),new THREE.MeshStandardMaterial({color:0x1d3557}));roof.position.set(box.position.x,y0+9.3,box.position.z-1);scene.add(roof);
- for(let i=-6;i<=6;i++){const col=new THREE.Mesh(new THREE.BoxGeometry(0.6,y0,0.6),new THREE.MeshStandardMaterial({color:0x7d838b}));col.position.set(box.position.x+i*12,y0/2,box.position.z+2.5);scene.add(col);}}
+ const roof=new THREE.Mesh(new THREE.BoxGeometry(Math.min(156,L-6),0.6,10),new THREE.MeshStandardMaterial({color:0x1d3557}));roof.position.set(box.position.x,y0+9.3,box.position.z-1);scene.add(roof);
+ for(let i=-6;i<=6;i++){if(Math.abs(i*12)>(Math.min(150,L-12))/2-2)continue;const col=new THREE.Mesh(new THREE.BoxGeometry(0.6,y0,0.6),new THREE.MeshStandardMaterial({color:0x7d838b}));col.position.set(box.position.x+i*12,y0/2,box.position.z+2.5);scene.add(col);}}
 // scoring pylon in the infield
 const pylonCanvas=document.createElement('canvas');pylonCanvas.width=256;pylonCanvas.height=1024;
 const pylonTex=new THREE.CanvasTexture(pylonCanvas);pylonTex.colorSpace=THREE.SRGBColorSpace;pylonTex.anisotropy=8;
@@ -838,7 +839,7 @@ class Car{
 function stepCar(c,dt,ctl,cap){
   const tgt=clamp(ctl.steer,-1,1);
   const growing=Math.abs(tgt)>Math.abs(c.steer)&&(Math.sign(tgt)===Math.sign(c.steer)||c.steer===0);
-  c.steerV=(c.steerV||0)+((tgt-c.steer)*(growing?CFG.steerRampIn:CFG.steerRampOut)-(c.steerV||0))*Math.min(1,dt*14);
+  c.steerV=(c.steerV||0)+((tgt-c.steer)*(growing?CFG.steerRampIn:CFG.steerRampOut)-(c.steerV||0))*Math.min(1,dt*CFG.steerDamp);
   c.steer=clamp(c.steer+c.steerV*dt,-1,1);
   c.thr=ctl.thr?1:0;c.brk=ctl.brk?1:0;
   let sh=Math.sin(c.h),ch=Math.cos(c.h),vf=c.vx*sh+c.vz*ch;
