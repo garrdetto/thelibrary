@@ -204,7 +204,7 @@ function bankAt(s){
   const k=smooth(clamp((x+CFG.bankIn)/(CFG.bankIn+CFG.bankOut),0,1));
   return (CFG.straightBank+(CFG.turnBank-CFG.straightBank)*k)*Math.PI/180;
 }
-const GROOVE_HIGH=5.0,GROOVE_LOW=-5.2;
+const GROOVE_HIGH=5.0,GROOVE_LOW=-5.2;let GROOVE_MAT=null;
 function grooveLat(s){const d1=Math.abs(mod(s-(T1+TURN/2)+P/2,P)-P/2),d2=Math.abs(mod(s-(T2+TURN/2)+P/2,P)-P/2),d=Math.min(d1,d2);
   const w=0.5+0.5*Math.cos(Math.PI*clamp(d/150,0,1));return lerp(GROOVE_HIGH,GROOVE_LOW,w);}
 function heightAt(s,lat){ if(lat<-HW) return 0; return (Math.min(lat,HW)+HW)*Math.tan(bankAt(s)); }
@@ -375,10 +375,11 @@ function trackTube(lat,yf,r,mat){const pts=[];for(let i=0;i<480;i++){const s2=i/
 {const GW=256,GH=1024,c=document.createElement('canvas');c.width=GW;c.height=GH;const g=c.getContext('2d'),im=g.createImageData(GW,GH),d=im.data;
  const nz=tileNoise(GW,GH,61,[[64,0.4],[8,0.3],[2,0.3]]),col=tileNoise(GW,1,62,[[4,0.6],[1,0.4]]);
  for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){const u=x/GW,base=band(u,0.04,0.96,0.2),lane=Math.max(band(u,0.22,0.39,0.06),band(u,0.61,0.78,0.06));
-   const a=(base*0.28+lane*0.5)*(0.65+0.35*nz[y*GW+x])*(0.8+0.4*col[x]),i=(y*GW+x)*4;d[i]=12;d[i+1]=12;d[i+2]=14;d[i+3]=Math.min(255,a*255);}
+   const e=Math.abs(u-0.5)*2,fade=1-smooth(clamp((e-0.25)/0.75,0,1)),edgeN=0.85+0.3*nz[((y*7)%GH)*GW+x];
+   const a=(fade*fade*0.5*edgeN+lane*fade*0.12)*(0.75+0.25*nz[y*GW+x])*(0.9+0.2*col[x]),i=(y*GW+x)*4;d[i]=12;d[i+1]=12;d[i+2]=14;d[i+3]=Math.min(255,a*255);}
  g.putImageData(im,0,0);const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=16;t.colorSpace=THREE.SRGBColorSpace;
  const gm=new THREE.MeshStandardMaterial({map:t,transparent:true,depthWrite:false,roughness:0.55,metalness:0,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
- addMesh(ribbon(s2=>pt(grooveLat(s2)-2.1,0.008)(s2),s2=>pt(grooveLat(s2)+2.1,0.008)(s2),0,P,SEG,14,'across'),gm);}
+ addMesh(ribbon(s2=>pt(Math.max(-HW,grooveLat(s2)-3.3),0.008)(s2),s2=>pt(Math.min(HW-0.2,grooveLat(s2)+3.3),0.008)(s2),0,P,SEG,14,'across'),gm);GROOVE_MAT=gm;}
 // grandstands wrap the whole bowl
 const ROWS=16;
 const sY=k=>s=>wallTop(s)+0.75*(k+1);
@@ -1076,6 +1077,7 @@ function beginRace(msg){
     cars.set(e.id,c);if(isMe)player=c;
   });
   if(!attack){const pace=new Car('pace',PACE_LV,{local:NET.host,ai:true,pace:true});pace.place(S_LINE+8,-1.6);cars.set('pace',pace);}
+  setNight(!!settings.night);
   camH=player.h;camSnap=true;camMode='chase';
   mode='race';showScreen(null);$('hud').classList.remove('hidden');onPhase(race.ph);
   if(attack)bigMsg('TIME ATTACK','The clock starts when you cross the line',4);else bigMsg('PACE LAP','Hold your spot. Green flag next time by.',4);
@@ -1227,10 +1229,10 @@ function audioUpdate(){
 function setNight(n){
   settings.night=n;sky.visible=n;skyDay.visible=!n;clouds.visible=!n;scene.fog.color.set(n?0x0a0f1e:0xc4d4e4);
   scene.environment=n?null:envDay;envTex=n?envNight:envDay;
-  hemi.intensity=n?0.4:0.45;hemi.color.set(n?0x8899cc:0xcfe3ff);sun.intensity=n?2.2:2.8;sun.color.set(n?0xeef3ff:0xfff1dc);SUN_OFF.set(n?10:60,n?130:110,n?5:40);
-  towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.45:1.0;glassMat.emissiveIntensity=n?0.6:0;
-  bloom.enabled=n;bloom.strength=0.85;bloom.threshold=0.7;scene.fog.near=n?500:1800;scene.fog.far=n?1800:6000;
-  const upd=c=>c&&c.m.paints.forEach(m=>{m.envMap=envTex;m.envMapIntensity=ENVK;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?1.1:0.9;
+  hemi.intensity=n?0.4:0.45;hemi.color.set(n?0x8899cc:0xcfe3ff);sun.intensity=n?1.7:2.8;sun.color.set(n?0xeef3ff:0xfff1dc);SUN_OFF.set(n?10:60,n?130:110,n?5:40);
+  towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.12:1.0;if(GROOVE_MAT)GROOVE_MAT.roughness=n?0.8:0.55;glassMat.emissiveIntensity=n?0.6:0;
+  bloom.enabled=n;bloom.strength=0.45;bloom.threshold=0.85;scene.fog.near=n?500:1800;scene.fog.far=n?1800:6000;
+  const upd=c=>c&&c.m.paints.forEach(m=>{if(m.userData.r0==null){m.userData.r0=m.roughness;m.userData.cc0=m.clearcoat||0;}m.envMap=envTex;m.envMapIntensity=ENVK;m.roughness=n?Math.max(0.5,m.userData.r0):m.userData.r0;m.clearcoat=n?m.userData.cc0*0.3:m.userData.cc0;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?1.1:0.9;
 }
 function applyQuality(){
   const q=quality,dpr=window.devicePixelRatio||1;
