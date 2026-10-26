@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: vision-pool
+    runtime: node
+    rootDir: server
+    buildCommand: npm ci --ignore-scripts
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: FRONTEND_ORIGIN
+        sync: false

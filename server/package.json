@@ -1,0 +1,1 @@
+{"name":"vision-pool-server","private":true,"type":"module","scripts":{"start":"node index.mjs"},"engines":{"node":">=22"},"dependencies":{"socket.io":"^4.8.4","zod":"^4.3.6"}}
