@@ -1050,11 +1050,11 @@ function standings(){
 const nowS=()=>performance.now()/1000;
 function setPhase(ph){race.ph=ph;const n=nowS();if(ph==='green'){race.greenT=n;race.gn=false;}if(ph==='caution')race.cT=n;if(ph==='checkered')race.ckT=n;}
 function startCaution(){
-  if(race.ph!=='green')return;setPhase('caution');
+  return;setPhase('caution');
   const lead=standings()[0],pace=cars.get('pace');
   if(lead&&pace){pace.vis=true;pace.pitting=false;pace.place(lead.tp.s+45,-1.6);pace.vx=Math.sin(pace.h)*(CFG.cautionSpeed-1);pace.vz=Math.cos(pace.h)*(CFG.cautionSpeed-1);}
 }
-function cautionHit(a){if(race.ph==='green'&&a>28&&nowS()-race.greenT>5)startCaution();}
+function cautionHit(){}
 function raceControl(dt){
   const n=nowS(),st=standings(),lead=st[0];if(!lead)return;const pace=cars.get('pace');
   for(const c of st)if(c.fin&&!race.fo.includes(c.id))race.fo.push(c.id);
