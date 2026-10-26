@@ -117,7 +117,6 @@ input[type=color]{padding:2px;height:38px}
     <h2 id="lobTitle">Race lobby</h2>
     <div id="codeBox"><p style="margin:0">Room code &mdash; share it with friends</p><div class="code" id="codeTxt"></div></div>
     <label class="f" id="plabel">Drivers</label><div id="plist"></div>
-    <label class="f">Fastest laps</label><div class="recbox" id="recLobby"></div>
     <div id="hostSet">
       <div class="row2"><div><label class="f">Laps</label><select id="sLaps"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></div>
       <div><label class="f">AI cars</label><input id="sAI" type="number" min="0" max="19" value="11"></div></div>
@@ -132,7 +131,7 @@ input[type=color]{padding:2px;height:38px}
   <div id="scrRecords" class="scr panel hidden"><h2>Fastest laps</h2>
 <div class="recbox" id="recMain"></div><button class="btn" data-act="menu">Back</button></div>
   <div id="scrPause" class="scr panel hidden"><h2>Paused</h2><p id="pauseNote"></p><button class="btn pri" data-act="resume">Resume</button><button class="btn hidden" id="endAttackBtn" data-act="endattack">End session &amp; see lap records</button><button class="btn" data-act="leave">Leave race</button></div>
-  <div id="scrResults" class="scr panel hidden"><h2>Results</h2><table id="resTable"></table><h2 style="margin-top:18px;font-size:17px">Fastest laps</h2><div class="recbox" id="recResults"></div>
+  <div id="scrResults" class="scr panel hidden"><h2>Results</h2><table id="resTable"></table>
     <button class="btn pri hidden" data-act="again" id="againBtn">Race again</button><p id="againWait" class="hidden" style="margin-top:10px">Waiting for the host&hellip;</p>
     <button class="btn" data-act="leave">Back to menu</button></div>
 </div>
@@ -928,7 +927,7 @@ function submitLap(ms){
       if(!r.ok)return;
       if(!best||ms<best.milliseconds)bigMsg('NEW TRACK RECORD',`${MODE_NAMES[mode]} \u00b7 ${fmtLap(ms)}`,3);
       else if((REC.lists[mode]||[]).length<10||ms<REC.lists[mode][REC.lists[mode].length-1].milliseconds)toast(`Top 10 lap: ${fmtLap(ms)}`);
-      fetchRecords(mode);
+      fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:'shorttrack',mode},location.origin);}catch(e){}
     }).catch(()=>{});
 }
 function capFor(c){if(c.isPace)return null;if(race.ph==='pace')return c.ai?CFG.paceSpeed-1.34:CFG.paceSpeed;if(race.ph==='caution')return CFG.cautionSpeed;if(c.fin)return 24;return null;}
@@ -1267,7 +1266,7 @@ function showResults(){
   $('resTable').innerHTML='<tr><th>Pos</th><th>#</th><th>Driver</th><th>Laps</th><th>Best</th><th></th></tr>'+st.map((c,i)=>`<tr${c===player?' style="background:rgba(255,204,0,.15)"':''}><td>${i+1}</td><td><b style="display:inline-block;min-width:26px;text-align:center;border-radius:3px;background:${c.lv.primary};color:${c.lv.numColor}">${esc(c.lv.number)}</b></td><td>${esc(c.lv.name)}</td><td>${clamp(c.cross-2,0,race.laps)}</td><td>${fmt(c.bestLap)}</td><td>${c.fin||race.ph==='attack'?'':'DNF'}</td></tr>`).join('');
   $('againBtn').classList.toggle('hidden',!NET.host);$('againWait').classList.toggle('hidden',NET.host);$('againBtn').textContent=race.ph==='attack'?'New Time Attack session':'Race again';
   E.hud.classList.add('hidden');mode='results';showScreen('scrResults');
-  showRecords('recResults',race.mode||'race');
+
 }
 function renderLobby(){
   $('lobTitle').textContent=NET.online?'Online lobby':'Solo race';$('codeBox').classList.toggle('hidden',!NET.online);$('codeTxt').textContent=NET.code;
@@ -1276,7 +1275,7 @@ function renderLobby(){
   $('waitTxt').textContent=NET.racing&&mode==='lobby'?'A race is already running. You will be on the grid for the next one.':`Waiting for the host to start... (${settings.laps} laps, ${settings.night?'night':'day'})`;
   $('plabel').textContent=NET.online?`Drivers (${NET.players.size}/${CFG.maxCars}) \u2014 invite as many friends as you like`:'Driver';
 }
-function goLobby(){mode='lobby';showRecords('recLobby',NET.online?'multiplayer':'race');$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';renderLobby();showScreen('scrLobby');}
+function goLobby(){mode='lobby';$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';renderLobby();showScreen('scrLobby');}
 function backToLobby(){if(NET.host){NET.racing=false;}clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;goLobby();}
 function leaveAll(){resetNet();clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;mode='menu';showScreen('scrMain');}
 function togglePause(){

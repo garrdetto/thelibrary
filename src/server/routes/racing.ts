@@ -39,14 +39,14 @@ export async function racing(request: Request, env: Env) {
     const scheme = await loadScheme(env, ticket.user_id)
     return json({ id: ticket.user_id, username: ticket.username, scheme: displayScheme(scheme ?? presets[0]) })
   }
-  const user = await requireUser(request, env, 'Sign in with your account to enter Racing.')
   if (request.method === 'GET' && url.searchParams.has('records')) {
     const mode = raceModes.parse(url.searchParams.get('mode') ?? 'practice')
     const track = trackIds.parse(url.searchParams.get('track') ?? 'circuit')
-    const rows = await env.DB.prepare('SELECT username, milliseconds, created_at, mode, track FROM racing_laps WHERE track = ? AND mode = ? ORDER BY milliseconds ASC, created_at ASC, id ASC LIMIT 10')
+    const rows = await env.DB.prepare('SELECT username, milliseconds, created_at, mode, track FROM racing_laps WHERE track = ? AND mode = ? ORDER BY milliseconds ASC, created_at ASC, id ASC LIMIT 20')
       .bind(track, mode).all<{ username: string; milliseconds: number; created_at: number; mode: string; track: string }>()
     return json({ records: rows.results.map(row => ({ username: row.username, milliseconds: row.milliseconds, date: new Date(row.created_at).toISOString(), mode: row.mode, track: row.track })) })
   }
+  const user = await requireUser(request, env, 'Sign in with your account to enter Racing.')
   const profile = await loadScheme(env, user.id)
   if (request.method === 'GET') {
     const asset = url.searchParams.get('asset')
