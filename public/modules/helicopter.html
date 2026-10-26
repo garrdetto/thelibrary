@@ -12,6 +12,7 @@
 </head>
 <body>
 <canvas id="c" aria-label="Chopper Cave: hold to climb, move left and right to fly forward and back"></canvas>
+<script src="module-scores.js"></script>
 <script>
 'use strict';
 /* Chopper Cave — hold the mouse (or Space / touch) to climb, release to drop.
@@ -49,6 +50,7 @@ function crash() {
   for (let i = 0; i < 90; i++) { const a = Math.random() * 6.283, v = 60 + Math.random() * 380; s.particles.push({ x: s.heli.x, y: s.heli.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6 + Math.random() * 0.9, max: 1.5, r: 2 + Math.random() * 5, fire: Math.random() < 0.7 }); }
   const score = Math.floor(s.dist / 10);
   if (score > best) { best = score; store.set('chopper-best', String(best)); s.newBest = true; }
+  if (window.tlScores) tlScores.submit('helicopter', score);
   if (audio) audio.g.gain.setTargetAtTime(0, audio.ctx.currentTime, 0.1);
 }
 function update(dt) {

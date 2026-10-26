@@ -692,3 +692,135 @@ body{background:var(--paper);color:var(--tone-0)}
 .signin-spotlight form>button{padding:12px 22px;border:0;background:linear-gradient(135deg,var(--lib-accent),#8b5cff);color:var(--lib-on-accent);font-weight:700;font-size:14px}
 @media(max-width:1150px){.signin-ribbon{padding:10px 30px}}
 @media(max-width:650px){.signin-ribbon{padding:9px 16px;font-size:12px}.signin-ribbon button{padding:6px 10px}.pool-account.signin-spotlight{padding:18px}.signin-spotlight h2{font-size:22px}}
+.racing-content .racing-app{--module-accent:var(--lib-accent);--race-ink:var(--lib-text);--race-paper:var(--lib-panel);--race-gold:var(--module-accent);background:transparent;color:var(--lib-text);padding:6px 0 48px;border-radius:0;display:grid;gap:18px;animation:arrive .45s ease-out}
+.racing-content .racing-app>*{margin-top:0;margin-bottom:0}
+.racing-content .race-eyebrow{display:inline-flex;align-items:center;gap:7px;width:fit-content;padding:6px 11px;border-radius:999px;border:1px solid color-mix(in srgb,var(--module-accent) 35%,transparent);background:color-mix(in srgb,var(--module-accent) 9%,transparent);color:var(--module-ink);font-weight:600;font-size:10px;line-height:1;font-family:inherit;letter-spacing:1.6px;opacity:1}
+.racing-content .race-heading{position:relative;display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:28px;align-items:center;padding:32px 36px;border:1px solid var(--lib-line);border-radius:22px;overflow:hidden;background:var(--lib-hero);box-shadow:0 30px 80px -30px var(--lib-shadow)}
+.racing-content .race-heading::before{content:'';position:absolute;inset:0;background-image:linear-gradient(color-mix(in srgb,var(--module-accent) 7%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--module-accent) 7%,transparent) 1px,transparent 1px);background-size:38px 38px;mask-image:linear-gradient(180deg,transparent,#000 30%,#000 70%,transparent);pointer-events:none}
+.racing-content .race-heading::after{content:'';position:absolute;width:460px;height:460px;right:-120px;top:-220px;border-radius:50%;background:radial-gradient(circle,color-mix(in srgb,var(--module-accent) 28%,transparent),transparent 65%);pointer-events:none}
+.racing-content .race-heading>*{position:relative;z-index:1}
+.racing-content .race-heading h1,.racing-content .racing-login>h1{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:clamp(36px,4.2vw,60px);line-height:1;letter-spacing:.3px;text-transform:uppercase;margin:16px 0 12px;color:var(--lib-strong)}
+.racing-content .race-heading h1 em,.racing-content .racing-login>h1 em{font-style:normal;font-weight:700;background:linear-gradient(90deg,var(--module-accent),#8b5cff 70%);-webkit-background-clip:text;background-clip:text;color:transparent}
+.racing-content .race-heading p{max-width:520px;margin:0 0 16px;font-size:14px;line-height:1.7;color:var(--lib-muted);opacity:1}
+.race-heading-tags{display:flex;flex-wrap:wrap;gap:6px}
+.race-heading-tags i{font-style:normal;font-size:11px;font-weight:600;padding:5px 10px;border-radius:8px;background:var(--lib-chip);border:1px solid var(--lib-line);color:var(--lib-soft)}
+.race-heading-side{display:grid;gap:12px;justify-items:stretch}
+.race-heading-side img{display:block;width:100%;height:auto;aspect-ratio:16/10;object-fit:cover;border-radius:16px;border:1px solid rgba(255,255,255,.12);box-shadow:0 24px 50px -20px rgba(0,0,0,.7),0 0 0 5px color-mix(in srgb,var(--module-accent) 8%,transparent)}
+.racing-content .driver-badge{display:flex;align-items:center;gap:12px;padding:12px 16px;border:1px solid var(--lib-line);border-radius:14px;background:color-mix(in srgb,var(--lib-panel) 82%,transparent);backdrop-filter:blur(6px);color:var(--lib-muted);font-weight:600;font-size:10px;line-height:1;font-family:inherit;letter-spacing:1.4px}
+.racing-content .driver-badge>svg{color:var(--module-ink);flex:none}
+.racing-content .driver-badge strong{font-family:'Rajdhani',sans-serif;font-size:20px;letter-spacing:.3px;color:var(--lib-text)}
+.racing-content .driver-badge small{font-size:11px;letter-spacing:0;color:var(--lib-muted);opacity:1}
+.racing-content .race-error,.racing-content .race-notice{margin:0;padding:12px 16px;border-radius:12px;font-size:13px;border:1px solid color-mix(in srgb,#ff5a7a 45%,transparent);background:color-mix(in srgb,#ff5a7a 10%,var(--lib-panel));color:var(--lib-text)}
+.racing-content .race-notice{border-color:color-mix(in srgb,var(--module-accent) 40%,transparent);background:color-mix(in srgb,var(--module-accent) 9%,var(--lib-panel))}
+.racing-content .site-online{margin:0;padding:12px 16px;border:1px solid var(--lib-line);border-radius:14px;background:var(--lib-panel);color:var(--lib-soft)}
+.racing-content .site-online-title{font-family:inherit;font-weight:600;letter-spacing:1.2px;color:var(--lib-muted)}
+.racing-content .racing-lobby,.racing-content .race-live-standings,.racing-content .race-garage,.racing-content .race-records{margin:0;padding:22px 24px;border:1px solid var(--lib-line);border-radius:16px;background:var(--lib-panel);color:var(--lib-text)}
+.racing-content .racing-lobby p,.racing-content .race-garage p,.racing-content .race-records p{color:var(--lib-muted);opacity:1;font-size:13px}
+.racing-content .race-garage h2,.racing-content .race-records h2{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:28px;letter-spacing:.5px;text-transform:uppercase;margin:12px 0 6px;color:var(--lib-text)}
+.racing-content .race-garage h2>span,.racing-content .race-records h2 span{font-weight:600;font-size:11px;line-height:1;font-family:inherit;letter-spacing:1.2px;margin-left:8px;color:var(--lib-dim)}
+.racing-content .race-stock-car h3{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:22px;letter-spacing:.4px;text-transform:uppercase}
+.racing-content .race-stock-car,.racing-content .race-paint-controls{border-top-color:var(--lib-line)}
+.racing-content .garage-current{padding:10px 14px;border:1px solid var(--lib-line);border-radius:12px;background:var(--lib-panel2);color:var(--lib-muted);font-family:inherit}
+.racing-content .garage-current small{font-weight:600;font-size:10px;line-height:1.2;font-family:inherit;letter-spacing:1.2px}
+.racing-content .garage-current strong{font-family:'Rajdhani',sans-serif;font-size:17px;color:var(--lib-text)}
+.racing-content .race-body-styles button{border:1px solid var(--lib-line);border-radius:14px;background:var(--lib-panel2);color:var(--lib-text);transition:border-color .15s,transform .15s,background .15s}
+.racing-content .race-body-styles button:hover:not(:disabled){border-color:var(--module-accent);transform:translateY(-2px)}
+.racing-content .race-body-styles button[aria-pressed=true]{outline:2px solid var(--module-accent);outline-offset:-2px;background:color-mix(in srgb,var(--module-accent) 12%,var(--lib-panel2))}
+.racing-content .race-body-styles strong{font-weight:600}
+.racing-content .race-paint-controls label,.racing-content .race-field-size,.racing-content .race-difficulty{color:inherit}
+.racing-content .race-paint-controls input[type=color],.racing-content .race-paint-controls input[type=number],.racing-content .race-paint-controls select,.racing-content .race-field-size select,.racing-content .race-field-size input{border:1px solid var(--lib-line);border-radius:9px;background:var(--lib-input);color:var(--lib-text)}
+.racing-content .race-paint-controls button,.racing-content .race-records>button,.racing-content .online-drivers button,.racing-content .race-room button,.racing-content .race-hud>button:not(.race-primary),.racing-content .race-reset-button,.racing-content .race-ready-dialog button:not(.race-primary){padding:10px 15px;border:1px solid var(--lib-line);border-radius:10px;background:var(--lib-panel2);color:var(--lib-text);font-size:12px;font-weight:600}
+.racing-content .race-paint-controls button:hover:not(:disabled),.racing-content .race-records>button:hover,.racing-content .online-drivers button:hover,.racing-content .race-room button:hover,.racing-content .race-hud>button:not(.race-primary):hover,.racing-content .race-reset-button:hover:not(:disabled),.racing-content .race-ready-dialog button:not(.race-primary):hover{border-color:var(--module-accent);color:var(--module-ink);background:var(--lib-panel2)}
+.racing-content .race-primary,.racing-content .race-hud>.race-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:12px 20px;border:0;border-radius:12px;background:linear-gradient(135deg,var(--module-accent),#8b5cff);color:var(--lib-on-accent);font-family:'Rajdhani',sans-serif;font-size:16px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;box-shadow:0 10px 26px -10px color-mix(in srgb,var(--module-accent) 70%,transparent)}
+.racing-content .race-primary:hover:not(:disabled),.racing-content .race-hud>.race-primary:hover:not(:disabled){background:linear-gradient(135deg,var(--module-accent),#8b5cff);transform:translateY(-1px);box-shadow:0 14px 30px -10px rgba(139,92,255,.7)}
+.racing-content .racing-app button:focus-visible,.racing-content .racing-app input:focus-visible,.racing-content .racing-app select:focus-visible,.racing-content .race-track-toggle button:focus-visible{outline:2px solid var(--module-accent);outline-offset:3px}
+.racing-content .race-stage{border:1px solid var(--lib-line);border-radius:18px;background:#05070d;box-shadow:0 26px 60px -28px var(--lib-shadow)}
+.racing-content .race-hud{gap:24px;padding:16px 22px;background:var(--lib-panel);color:var(--lib-text);border-bottom:1px solid var(--lib-line)}
+.racing-content .race-hud-controls{border-bottom-color:var(--lib-line)}
+.racing-content .race-hud small{font-weight:600;font-size:10px;line-height:1;font-family:inherit;letter-spacing:1.6px;color:var(--lib-dim)}
+.racing-content .race-hud strong{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:28px;line-height:1;margin-top:6px;color:var(--lib-strong)}
+.racing-content .race-hud strong span{font-family:inherit;font-size:12px;color:var(--lib-muted)}
+.racing-content .race-hud-controls .race-difficulty output,.racing-content .race-difficulty output,.racing-content .race-field-size small,.racing-content .race-difficulty small,.racing-content .race-hud-controls .race-connection,.racing-content .race-connection{font-family:inherit;color:var(--lib-muted)}
+.racing-content .race-hud-controls .race-difficulty input,.racing-content .race-difficulty input{accent-color:var(--module-accent)}
+.racing-content .race-modes{padding:4px;gap:4px;border:1px solid var(--lib-line);border-radius:999px;background:var(--lib-input)}
+.racing-content .race-modes button,.racing-content .race-hud-controls .race-modes button{border-radius:999px;color:var(--lib-muted);font-size:13px;font-weight:600;padding:10px 16px}
+.racing-content .race-modes button:hover:not(:disabled){color:var(--lib-text);background:var(--lib-chip)}
+.racing-content .race-modes button[aria-pressed=true]{background:linear-gradient(135deg,var(--module-accent),#8b5cff);color:var(--lib-on-accent);box-shadow:none}
+.racing-content .circuit-label{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:15px;letter-spacing:1px;color:var(--module-ink)}
+.racing-content .circuit-label small{display:block;font-family:inherit;font-weight:600;font-size:10px;letter-spacing:1.2px;color:var(--lib-muted)}
+.racing-content .race-track-footer{padding:12px 20px;background:var(--lib-panel);color:var(--lib-muted);border-top:1px solid var(--lib-line);font-weight:600;font-size:11px;line-height:1.4;font-family:inherit;letter-spacing:.4px}
+.racing-content .race-track-footer kbd{border:1px solid var(--lib-line);border-radius:6px;background:var(--lib-input);color:var(--lib-text);padding:2px 6px;font-family:inherit}
+.racing-content .race-touch button{border:1px solid var(--lib-line);border-radius:12px;background:var(--lib-panel);color:var(--lib-text)}
+.racing-content .race-brief{padding:0;color:var(--lib-muted);font-size:12px;line-height:1.75}
+.racing-content .race-brief strong{font:700 15px/1 'Rajdhani',sans-serif;letter-spacing:.8px;color:var(--lib-text);margin-bottom:8px}
+.racing-content .race-brief ol{padding:14px 14px 14px 32px;border:1px solid var(--lib-line);border-radius:14px;background:var(--lib-panel)}
+.racing-content .race-penalty{color:#ff7a95}
+.racing-content .race-live-standings li{border-bottom-color:var(--lib-line);font-family:inherit;font-size:13px}
+.racing-content .race-position{font-family:'Rajdhani',sans-serif;font-size:16px;color:var(--module-ink)}
+.racing-content .race-live-standings .race-current-driver{background:color-mix(in srgb,var(--module-accent) 16%,transparent);color:var(--lib-text);border-radius:8px}
+.racing-content .race-standings-heading small{font-family:inherit;color:var(--lib-muted)}
+.racing-content .race-room span{font-family:inherit;font-size:12px;padding:6px 10px;border-radius:8px;background:var(--lib-chip);border:1px solid var(--lib-line)}
+.racing-content .race-track-toggle button{border:1px solid var(--lib-line);border-radius:14px;background:var(--lib-input);color:var(--lib-text);font-family:'Rajdhani',sans-serif}
+.racing-content .race-switch{background:linear-gradient(135deg,var(--module-accent),#8b5cff)}
+.racing-content .race-switch>span{background:var(--lib-strong)}
+.racing-content .race-records table{font-size:13px}
+.racing-content .race-records thead{font-weight:600;font-size:11px;line-height:1;font-family:inherit;letter-spacing:1.2px;color:var(--lib-dim)}
+.racing-content .race-records th,.racing-content .race-records td{border-bottom-color:var(--lib-line);color:var(--lib-text)}
+.racing-content .race-records td:first-child{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:16px;color:var(--lib-muted)}
+.racing-content .race-records td:nth-child(4){font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;color:var(--module-ink)}
+.racing-content .race-records tbody tr:first-child{background:color-mix(in srgb,var(--module-accent) 10%,transparent)}
+.racing-content .race-records tbody tr:first-child td:first-child{color:var(--module-ink)}
+.racing-content .race-reset-footer{padding-top:0}
+.racing-content .race-ready-dialog,.module-scores .race-ready-dialog{border:1px solid var(--lib-line);border-radius:18px;background:var(--lib-panel);color:var(--lib-text);box-shadow:0 30px 80px var(--lib-shadow)}
+.racing-content .race-ready-dialog h2,.module-scores .race-ready-dialog h2{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:28px;text-transform:uppercase;letter-spacing:.5px}
+.racing-content .race-ready-dialog p,.module-scores .race-ready-dialog p{color:var(--lib-muted)}
+.racing-content .race-ready-dialog ul{border-color:var(--lib-line)}
+.racing-content .race-ready-dialog li strong{font-family:inherit;color:var(--module-ink)}
+.racing-content .race-reset-dialog input,.module-scores .race-reset-dialog input{border:1px solid var(--lib-line);border-radius:10px;background:var(--lib-input);color:var(--lib-text)}
+.racing-content .racing-login{max-width:760px;margin:0 auto;padding:36px;border:1px solid var(--lib-line);border-radius:22px;background:var(--lib-hero);justify-items:start}
+.racing-content .racing-login>p{color:var(--lib-muted);margin:0}
+.racing-content .racing-login .pool-account{margin:8px 0 0;width:100%;color:var(--lib-text);background:var(--lib-panel)}
+.racing-content .racing-login .pool-account input{color:var(--lib-text);background:var(--lib-input)}
+.racing-content .racing-login .pool-account h2,.racing-content .racing-login .pool-account p,.racing-content .racing-login .pool-account label,.racing-content .racing-login .pool-account small{color:var(--lib-muted)}
+@media(max-width:900px){.racing-content .race-heading{grid-template-columns:1fr;padding:26px 22px}.race-heading-side{grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center}}
+@media(max-width:640px){.racing-content .race-heading{padding:22px 18px;border-radius:16px}.racing-content .race-heading h1,.racing-content .racing-login>h1{font-size:34px}.race-heading-side{grid-template-columns:1fr}.race-heading-side img{display:none}.racing-content .racing-lobby,.racing-content .race-live-standings,.racing-content .race-garage,.racing-content .race-records{padding:16px}.racing-content .racing-login{padding:22px 16px}.racing-content .race-hud{gap:16px;padding:14px}}
+@media(prefers-reduced-motion:reduce){.racing-content .racing-app{animation:none}.racing-content .race-primary,.racing-content .race-body-styles button{transition:none}.racing-content .race-primary:hover:not(:disabled),.racing-content .race-body-styles button:hover:not(:disabled){transform:none}}
+.module-scores{--module-accent:var(--lib-accent);margin-top:16px;padding:22px 24px;border:1px solid var(--lib-line);border-radius:16px;background:var(--lib-panel);color:var(--lib-text)}
+.module-scores-head{display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:16px 24px;margin-bottom:14px}
+.module-scores-head>div:first-child{flex:1 1 320px;min-width:0}
+.module-scores-eyebrow{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;border:1px solid color-mix(in srgb,var(--module-accent) 35%,transparent);background:color-mix(in srgb,var(--module-accent) 9%,transparent);color:var(--module-ink);font-size:10px;font-weight:600;letter-spacing:1.6px}
+.module-scores h2{margin:12px 0 4px;font-family:'Rajdhani',sans-serif;font-weight:700;font-size:28px;letter-spacing:.5px;text-transform:uppercase;color:var(--lib-text)}
+.module-scores h2 small{margin-left:8px;font-family:inherit;font-size:11px;font-weight:600;letter-spacing:1.2px;color:var(--lib-dim)}
+.module-scores-head p{margin:0;font-size:13px;line-height:1.6;color:var(--lib-muted)}
+.module-scores-side{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.module-scores-best{display:grid;gap:3px;padding:10px 16px;border:1px solid color-mix(in srgb,var(--module-accent) 35%,transparent);border-radius:12px;background:color-mix(in srgb,var(--module-accent) 8%,var(--lib-panel2))}
+.module-scores-best small{font-size:10px;font-weight:600;letter-spacing:1.4px;color:var(--lib-dim)}
+.module-scores-best strong{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:24px;line-height:1;color:var(--module-ink)}
+.module-scores-best span{font-size:11px;color:var(--lib-muted)}
+.module-scores-signin{max-width:260px;margin:0;font-size:12px;line-height:1.5;color:var(--lib-muted)}
+.module-scores-refresh,.module-scores .race-reset-button,.module-scores .race-ready-dialog button:not(.race-primary),.module-scores-status button{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border:1px solid var(--lib-line);border-radius:10px;background:var(--lib-panel2);color:var(--lib-text);font-size:12px;font-weight:600;cursor:pointer}
+.module-scores-refresh:hover:not(:disabled),.module-scores .race-reset-button:hover:not(:disabled),.module-scores .race-ready-dialog button:not(.race-primary):hover,.module-scores-status button:hover{border-color:var(--module-accent);color:var(--module-ink);background:var(--lib-panel2)}
+.module-scores-refresh:disabled{opacity:.55;cursor:default}
+.module-scores .race-primary{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border:0;border-radius:12px;background:linear-gradient(135deg,var(--module-accent),#8b5cff);color:var(--lib-on-accent);font-family:'Rajdhani',sans-serif;font-size:15px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+.module-scores button:focus-visible,.module-scores input:focus-visible{outline:2px solid var(--module-accent);outline-offset:3px}
+.module-scores-status{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:6px 0 0;padding:14px 16px;border:1px dashed var(--lib-line);border-radius:12px;color:var(--lib-muted);font-size:13px}
+.module-scores-status.is-error{border-style:solid;border-color:color-mix(in srgb,#ff5a7a 45%,transparent);background:color-mix(in srgb,#ff5a7a 8%,var(--lib-panel))}
+.module-scores-scroll{overflow-x:auto}
+.module-scores table{width:100%;border-collapse:collapse;text-align:left;font-size:13px}
+.module-scores th,.module-scores td{padding:11px 12px;border-bottom:1px solid var(--lib-line);white-space:nowrap;color:var(--lib-text)}
+.module-scores thead th{font-size:11px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:var(--lib-dim)}
+.module-scores tbody th{font-weight:600}
+.module-scores td:first-child{font-family:'Rajdhani',sans-serif;font-weight:700;font-size:16px;color:var(--lib-muted)}
+.module-scores td:nth-child(3){font-family:'Rajdhani',sans-serif;font-weight:700;font-size:18px;color:var(--module-ink)}
+.module-scores td:last-child{color:var(--lib-muted)}
+.module-scores tbody tr:first-child{background:color-mix(in srgb,var(--module-accent) 10%,transparent)}
+.module-scores tbody tr:first-child td:first-child{color:var(--module-ink)}
+.module-scores tbody tr.is-mine{box-shadow:inset 3px 0 0 var(--module-accent)}
+.module-scores .race-reset-footer{display:flex;justify-content:flex-end;padding-top:16px}
+.module-scores .race-reset-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:12px;margin-top:20px}
+.module-scores .race-reset-dialog label{display:block;margin:20px 0 8px;font-size:12px;color:var(--lib-muted)}
+.module-scores .race-reset-dialog input{width:100%;min-width:0;padding:12px}
+.module-scores .race-error{padding:10px 14px;border-radius:10px;border:1px solid color-mix(in srgb,#ff5a7a 45%,transparent);background:color-mix(in srgb,#ff5a7a 10%,var(--lib-panel));color:var(--lib-text);font-size:12px}
+@media(max-width:650px){.module-scores{margin-top:10px;padding:16px}.module-scores h2{font-size:24px}.module-scores th,.module-scores td{padding:9px 8px}.module-scores-side{width:100%}.module-scores-best{flex:1}}
+.racing-content .racing-app,.module-scores{--module-ink:var(--module-accent)}
+:root[data-theme="light"] .racing-content .racing-app,:root[data-theme="light"] .module-scores{--module-ink:color-mix(in srgb,var(--module-accent) 55%,#0b1424)}

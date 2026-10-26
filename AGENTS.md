@@ -17,6 +17,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/server/routes/account.ts`: `/api/pool-account` (login, logout, multiplayer tickets, ticket redeem), `/api/workspace-access`, `/api/account-settings`, `/api/workspace-admin`.
 - `src/server/routes/pool.ts`: `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay`.
 - `src/server/routes/racing.ts`: `/api/racing` tickets, lap records, paint profiles, AI skins.
+- `src/server/routes/scores.ts`: `/api/module-scores` leaderboards for embedded modules (GET `?module=`, POST `score` / `reset-records`). Board settings live in `src/lib/module-scores.ts`.
 - `src/server/routes/studio.ts` + `src/server/lyrics.ts`: `/api/studio`, `/api/library?id=` (version history only), `/api/asset`, `/api/learning`, `/api/lyric-presets`.
 - `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret.
 - `src/lib/studio-types.ts`: browser-safe studio types.
@@ -26,13 +27,14 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/lib/modules.ts`: module catalog (titles, subjects, thumbnails in `public/images/modules/`). `src/components/ModuleHub.tsx`: the homepage library.
 - `public/modules/*.html`: standalone modules (Sandlot Sluggers, BotWreck 3D, chess, checkers, 2048, Chopper Cave, Short Track Showdown) embedded in an iframe at `#module-<id>`. Online play in these uses PeerJS room codes, not the `server/` service.
 - `src/components/PoolTable.tsx`, `PoolLobby.tsx`, `CueArtwork.tsx`, `src/lib/pool-*.ts`, `src/lib/cue-design.ts`: pool.
-- `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing. Max Secure Circuit (`#racing`) and Oval Speedway (`#oval`) are separate modules; each mounts `Racing` with `fixedTrack`.
+- `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing. Max Secure Circuit (`#racing`) and Oval Speedway (`#oval`) are separate modules; each mounts `Racing` with `fixedTrack`. Their page styling uses the `--lib-*` site tokens (scoped under `.racing-content`) and the module accent from `modules.ts`.
+- Leaderboards: 2048, Chopper Cave and BotWreck 3D load `public/modules/module-scores.js` and call `tlScores.submit(module, value)`; it posts to `/api/module-scores` and messages the parent `{type:'tl-score-saved'}` so `ModuleScoreboard.tsx` (shown under the module frame) refreshes. Boards show each player's best, top 10. Short Track Showdown uses the racing lap records (`LapRecordBoard`) instead.
 
 ### Accounts and admin UI
 - `src/components/PoolAccount.tsx`: sign-in form. Signed-out visitors see `src/components/SignInRibbon.tsx` pinned at the top of the main panel and a highlighted sign-in form (`signin-spotlight`) at the top of every view except pool and racing, which show their own. `src/components/WorkspaceAdmin.tsx`: admin panel.
 
 ### Data
-- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, creations, lyric_corrections, lyric_presets.
+- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets.
 - Workers KV `thelibrary-files` (binding `FILES`) for binary files: `cue/<userId>`, `skin/<userId>/<asset>`, `image/<userId>/<creationId>`.
 - Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`. Config in `wrangler.jsonc`.
 

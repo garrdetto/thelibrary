@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import type { CSSProperties, KeyboardEvent } from 'react'
 import { Flag, RotateCcw, Wrench } from 'lucide-react'
 import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
@@ -11,6 +11,7 @@ import { presets, vehicles, vehicleImage, stockCarImage, defaultStockCar, displa
 import type { Car, Controls, Scheme, StockCarPaint, RaceRoom, VehicleId, TrackId, RaceTrack } from '../lib/racing'
 import type { PoolPlayer } from '../lib/pool-network'
 import { LapRecordBoard } from './LapRecordBoard'
+import { learningModules } from '../lib/modules'
 
 type LapRecord = {username:string;milliseconds:number;date:string;mode:string;track?:TrackId}
 type Player = {id:string;name:string;busy:boolean}
@@ -643,12 +644,15 @@ export function Racing({players:sitePlayers,playerName,joinRequest,onJoinHandled
   }
   function key(event:KeyboardEvent<HTMLCanvasElement>,pressed:boolean){const bindings={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right'} as const;const control=bindings[event.key as keyof typeof bindings];if(control){event.preventDefault();input.current[control]=pressed}}
   function changeMode(next:RaceMode){canSave.current=false;socket.current?.disconnect();socket.current=null;setRoom(null);active.current=false;setRunning(false);setMode(next);setRecordMode(next);recordModeRef.current=next;setRecords([]);setRecordStatus('Loading lap records…');void loadRecords();multiplayer.current=next==='multiplayer';cars.current=[trackRef.current.makeCar('local',username??'Driver',0,scheme)];elapsed.current=0;setNotice('')}
-  if(!loaded)return <section className="racing-app"><p role="status">Verifying workspace clearance…</p></section>
-  if(!username)return <section className="racing-app racing-login"><Flag size={36}/><span className="race-eyebrow">OVERDRIVE RACING</span><h1>Your next session starts here.</h1><p>Sign in with your workspace username and password to open Racing and your Garage.</p>{authError?<><p role="alert">{error}</p><button onClick={()=>window.location.reload()}>Retry account connection</button></>:<PoolAccount username={null} ready disabled={false} beforeChange={async()=>{window.location.hash='racing'}} onFailure={()=>{}}/>}</section>
+  const trackModule=learningModules.find(item=>item.id===(track==='oval'?'oval':'racing'))
+  const trackStyle={'--module-accent':trackModule?.accent??'var(--lib-accent)'} as CSSProperties
+  const titleWords=trackInfo.name.split(' '),titleLead=titleWords.slice(0,-1).join(' '),titleEnd=titleWords[titleWords.length-1]
+  if(!loaded)return <section className="racing-app" style={trackStyle}><p role="status">Verifying workspace clearance…</p></section>
+  if(!username)return <section className="racing-app racing-login" style={trackStyle} data-track={track}><span className="race-eyebrow"><Flag size={13}/> {(trackModule?.subject??'Motion').toUpperCase()} · PHYSICS</span><h1>{titleLead} <em>{titleEnd}</em></h1><p>Sign in with your library username and password to open {trackInfo.name}, your garage and the record books.</p>{authError?<><p role="alert">{error}</p><button className="race-primary" onClick={()=>window.location.reload()}>Retry account connection</button></>:<PoolAccount username={null} ready disabled={false} beforeChange={async()=>{window.location.hash=track==='oval'?'oval':'racing'}} onFailure={()=>{}}/>}</section>
   const locked=busy||running||Boolean(room)
   const shownLaps=running?activeLaps:room?(trackFor(room.track).id==='oval'?room.laps??DEFAULT_LAPS:DEFAULT_LAPS):track==='oval'?ovalLaps:DEFAULT_LAPS
-  return <section className="racing-app">
-    <header className="race-heading"><div><span className="race-eyebrow"><Flag size={15}/> MOTORSPORT / EST. 2026</span><h1>Overdrive <em>Racing</em><span>03</span></h1><p>Precision driving. Personal expression. Shared competition.</p></div><div className="driver-badge"><Flag size={26}/><div>DRIVER PROFILE<strong>{username}</strong><small>{scheme.name}</small></div></div></header>
+  return <section className="racing-app" style={trackStyle} data-track={track}>
+    <header className="race-heading"><div className="race-heading-copy"><span className="race-eyebrow"><Flag size={13}/> {(trackModule?.subject??'Motion').toUpperCase()} · PHYSICS</span><h1>{titleLead} <em>{titleEnd}</em></h1><p>{trackModule?.summary}</p><div className="race-heading-tags">{trackModule?.modes.map(item=><i key={item}>{item}</i>)}</div></div><div className="race-heading-side">{trackModule&&<img src={trackModule.image} alt="" width={320} height={200}/>}<div className="driver-badge"><Flag size={22}/><div>DRIVER<strong>{username}</strong><small>{track==='oval'?'Stock car':scheme.name}</small></div></div></div></header>
     {error&&<p className="race-error" role="alert">{error}</p>}{notice&&<p className="race-notice" role="status">{notice}</p>}
     {mode==='time-attack'&&<p className="race-notice">Solo time attack · unlimited laps · Best: {hud.best?`${(hud.best/1000).toFixed(3)}s`:'—'} · Last lap: {hud.lastLap?`${(hud.lastLap/1000).toFixed(3)}s`:'—'}</p>}
     <OnlinePlayers players={sitePlayers} name={playerName}/>

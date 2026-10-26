@@ -184,6 +184,7 @@ export async function workspaceAdmin(request: Request, env: Env) {
     'DELETE FROM pool_practice_records WHERE user_id = ?',
     'DELETE FROM racing_profiles WHERE user_id = ?',
     'DELETE FROM racing_laps WHERE user_id = ?',
+    'DELETE FROM module_scores WHERE user_id = ?',
     'DELETE FROM creations WHERE user_id = ?',
     'DELETE FROM lyric_corrections WHERE user_id = ?',
     'DELETE FROM lyric_presets WHERE user_id = ?',
