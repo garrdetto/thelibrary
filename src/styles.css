@@ -522,3 +522,31 @@ body{background:var(--paper);color:var(--tone-0)}
 @media(max-width:650px){.hub-hero{padding:22px 18px;border-radius:16px}.hub-hero h1{font-size:36px}.hub-grid{grid-template-columns:1fr}.workspace-content.hub-content{padding-top:12px}}
 @media(prefers-reduced-motion:reduce){.hub-hero-art,.module-card,.module-art img{transition:none;transform:none!important}}
 .hub-side .pool-account{grid-template-columns:1fr;gap:14px;padding:20px}
+.studio-shell .sidebar{background:linear-gradient(180deg,#101a33 0%,#0b1122 55%,#080c18 100%);border-right:1px solid rgba(120,170,255,.16);color:#e9effc;scrollbar-color:rgba(120,170,255,.25) transparent;box-shadow:inset -1px 0 0 rgba(57,208,255,.05)}
+.studio-shell .sidebar .brand-mark{background:linear-gradient(135deg,#39d0ff,#8b5cff);color:#06101f;box-shadow:0 6px 18px -6px rgba(57,208,255,.6)}
+.studio-shell .sidebar .brand-name{color:#e9effc;letter-spacing:.6px}
+.studio-shell .sidebar .brand em{color:#39d0ff}
+.studio-shell .sidebar .brand small{color:#8d9bba}
+.studio-shell .sidebar .nav-caption{color:#5f6f93}
+.studio-shell .sidebar .nav-item{color:#aab6d3;border:1px solid transparent}
+.studio-shell .sidebar .nav-item svg{color:#7d8db1}
+.studio-shell .sidebar .nav-item:hover:not(:disabled){background:rgba(57,208,255,.07);color:#e9effc}
+.studio-shell .sidebar .nav-item:hover:not(:disabled) svg{color:#39d0ff}
+.studio-shell .sidebar .nav-item.active{background:linear-gradient(90deg,rgba(57,208,255,.16),rgba(139,92,255,.08));border-color:rgba(57,208,255,.3);color:#fff;box-shadow:inset 3px 0 0 #39d0ff}
+.studio-shell .sidebar .nav-item.active svg{color:#39d0ff}
+.studio-shell .sidebar .active-dot{background:#39d0ff;box-shadow:0 0 8px #39d0ff}
+.studio-shell .sidebar .new-tag{background:#8b5cff;color:#fff}
+.studio-shell .sidebar .nav-divider{background:rgba(120,170,255,.14)}
+.studio-shell .sidebar .new-session{background:rgba(57,208,255,.08);border-color:rgba(57,208,255,.3);color:#e9effc;box-shadow:none}
+.studio-shell .sidebar .new-session:hover{background:rgba(57,208,255,.15)}
+.studio-shell .sidebar .new-session>span{color:#39d0ff}
+.studio-shell .sidebar .creative-note{background:linear-gradient(135deg,rgba(57,208,255,.08),rgba(139,92,255,.1));border-color:rgba(120,170,255,.2)}
+.studio-shell .sidebar .tiny-star{color:#39d0ff}
+.studio-shell .sidebar .creative-note strong{color:#e9effc}
+.studio-shell .sidebar .creative-note p{color:#8d9bba}
+.studio-shell .sidebar .help-link{color:#8d9bba}
+.studio-shell .sidebar .help-link:hover{color:#39d0ff}
+.studio-shell .sidebar .workspace-profile{border-top-color:rgba(120,170,255,.14);color:#e9effc}
+.studio-shell .sidebar .profile-icon{background:rgba(57,208,255,.12);color:#39d0ff}
+.studio-shell .sidebar .workspace-profile small{color:#8d9bba}
+.studio-shell .sidebar button:focus-visible{outline-color:#39d0ff}

@@ -22,11 +22,11 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/lib/studio-types.ts`: browser-safe studio types.
 
 ### Learning modules
-- Site-facing copy calls everything "Learning Modules" on a site named The Library. Never use the words game(s), gaming or entertainment in visible text, titles or metadata.
+- Site-facing copy calls everything "Learning Modules" on a site named "the library" (always lowercase). Never use the words game(s), gaming or entertainment in visible text, titles or metadata.
 - `src/lib/modules.ts`: module catalog (titles, subjects, thumbnails in `public/images/modules/`). `src/components/ModuleHub.tsx`: the homepage library.
 - `public/modules/*.html`: standalone modules (Sandlot Sluggers, BotWreck 3D, chess, checkers, 2048, Chopper Cave) embedded in an iframe at `#module-<id>`. Online play in these uses PeerJS room codes, not the `server/` service.
 - `src/components/PoolTable.tsx`, `PoolLobby.tsx`, `CueArtwork.tsx`, `src/lib/pool-*.ts`, `src/lib/cue-design.ts`: pool.
-- `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing.
+- `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing. Max Secure Circuit (`#racing`) and Oval Speedway (`#oval`) are separate modules; each mounts `Racing` with `fixedTrack`.
 
 ### Accounts and admin UI
 - `src/components/PoolAccount.tsx`: sign-in form. `src/components/WorkspaceAdmin.tsx`: admin panel.
