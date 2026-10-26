@@ -13,6 +13,7 @@ type LapRecordBoardProps<Mode extends string> = {
   refreshKey?: string | number
   status?: string
   onRetry?: () => void
+  trackOptions?: readonly { id: string; name: string }[]
 }
 
 function formatLap(milliseconds: number) {
@@ -21,21 +22,26 @@ function formatLap(milliseconds: number) {
   return minutes ? `${minutes}:${(seconds % 60).toFixed(3).padStart(6, '0')}` : `${seconds.toFixed(3)} s`
 }
 
-export function LapRecordBoard<Mode extends string>({ track, trackName, modes, modeNames, initialMode, refreshKey, status, onRetry }: LapRecordBoardProps<Mode>) {
+export function LapRecordBoard<Mode extends string>({ track: defaultTrack, trackName: defaultTrackName, modes, modeNames, initialMode, refreshKey, status, onRetry, trackOptions }: LapRecordBoardProps<Mode>) {
+  const [track, setTrack] = useState(defaultTrack)
+  const trackName = trackOptions?.find(option => option.id === track)?.name ?? defaultTrackName
   const [mode, setMode] = useState<Mode>(initialMode ?? modes[0])
   const [rows, setRows] = useState<LapRecordRow[] | null>(null)
   const [error, setError] = useState('')
   const [lapVersion, setLapVersion] = useState(0)
 
   useEffect(() => { if (initialMode) setMode(initialMode) }, [initialMode])
+  useEffect(() => { setTrack(defaultTrack) }, [defaultTrack])
 
   useEffect(() => {
     const listen = (event: MessageEvent) => {
-      if (event.origin === window.location.origin && event.data?.type === 'tl-lap' && event.data?.track === track) setLapVersion(value => value + 1)
+      if (event.origin !== window.location.origin || event.data?.type !== 'tl-lap' || typeof event.data?.track !== 'string') return
+      if (event.data.track === track) setLapVersion(value => value + 1)
+      else if (trackOptions?.some(option => option.id === event.data.track)) setTrack(event.data.track)
     }
     window.addEventListener('message', listen)
     return () => window.removeEventListener('message', listen)
-  }, [track])
+  }, [track, trackOptions])
 
   useEffect(() => {
     let live = true
@@ -67,14 +73,15 @@ export function LapRecordBoard<Mode extends string>({ track, trackName, modes, m
     event.currentTarget.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus()
   }
 
-  const titleId = `lap-board-${track}`
+  const titleId = `lap-board-${defaultTrack}`
   return (
     <section className="lap-board" aria-labelledby={titleId}>
       <div className="lap-board-head">
         <div>
           <span className="lap-board-eyebrow">All-time record book</span>
           <h2 id={titleId}>{trackName} fastest laps</h2>
-          <p>The 20 fastest laps ever recorded on this track. Each mode keeps its own book.</p>
+          <p>The 20 fastest laps ever recorded on this track. Each track and mode keeps its own book.</p>
+          {trackOptions && trackOptions.length > 1 && <label className="lap-board-track"><span>Track</span><select value={track} onChange={event => setTrack(event.target.value)}>{trackOptions.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}</select></label>}
         </div>
         {onRetry && <button type="button" className="lap-board-retry" onClick={onRetry}>Refresh / retry saving</button>}
       </div>

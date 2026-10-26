@@ -99,6 +99,8 @@ input[type=color]{padding:2px;height:38px}
     <div class="row2"><input id="joinCode" placeholder="ROOM CODE" maxlength="5" style="text-transform:uppercase"><button class="btn" data-act="join" style="margin:0;flex:0 0 90px">Join</button></div>
     <button class="btn" data-act="garage">Garage &middot; paint your car</button>
     <button class="btn" data-act="records">Fastest lap records</button>
+    <label class="f">Track</label>
+    <select id="trackSel"></select>
     <label class="f">Graphics quality</label>
     <select id="quality"><option value="low">Low</option><option value="med">Medium</option><option value="high">High</option></select>
     <button class="btn" data-act="fs">Toggle fullscreen</button>
@@ -178,6 +180,11 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
+const TRACKS={
+  bullring:{name:'Showdown Bullring',miles:'0.5 mi',rec:'shorttrack',L:180,R:62,W:16,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000},
+  dells:{name:'Dells Short Track',miles:'0.35 mi',rec:'dells',L:162,R:38,W:14,APRON:6,turnBank:9,straightBank:6,bankIn:55,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:9000}};
+const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
+for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
 const L=CFG.L,R=CFG.R,W=CFG.W,AP=CFG.APRON,HW=W/2;
 const TURN=Math.PI*R, P=2*L+2*TURN, S_LINE=L/2, T1=L, T2=2*L+TURN;
 function center(s){
@@ -204,9 +211,9 @@ function bankAt(s){
   const k=smooth(clamp((x+CFG.bankIn)/(CFG.bankIn+CFG.bankOut),0,1));
   return (CFG.straightBank+(CFG.turnBank-CFG.straightBank)*k)*Math.PI/180;
 }
-const GROOVE_HIGH=5.0,GROOVE_LOW=-5.2;let GROOVE_MAT=null;
+const GROOVE_HIGH=TRACK.grooveHigh,GROOVE_LOW=TRACK.grooveLow,GROOVE_SPAN=0.8*(L/2+TURN/2),LINE_MIN=-HW+1.6,LINE_MAX=HW-2.2;let GROOVE_MAT=null;
 function grooveLat(s){const d1=Math.abs(mod(s-(T1+TURN/2)+P/2,P)-P/2),d2=Math.abs(mod(s-(T2+TURN/2)+P/2,P)-P/2),d=Math.min(d1,d2);
-  const w=0.5+0.5*Math.cos(Math.PI*clamp(d/150,0,1));return lerp(GROOVE_HIGH,GROOVE_LOW,w);}
+  const w=0.5+0.5*Math.cos(Math.PI*clamp(d/GROOVE_SPAN,0,1));return lerp(GROOVE_HIGH,GROOVE_LOW,w);}
 function heightAt(s,lat){ if(lat<-HW) return 0; return (Math.min(lat,HW)+HW)*Math.tan(bankAt(s)); }
 function normalAt(s,lat,out){
   // true surface normal from the height field, so cars pitch smoothly through the banking transition
@@ -439,7 +446,7 @@ function buildCrowd(n){
   // inner pit-wall cap
   addMesh(ribbon(ptY(-HW-AP-0.35,()=>1.0),ptY(-HW-AP+0.05,()=>1.0),0,P,SEG,6,'across'),new THREE.MeshStandardMaterial({color:0xd8dadc,roughness:.8,side:DS}));
 }
-const PIT0=-HW-AP-0.4,PIT1=-HW-AP-13.5;
+const SMALL_INFIELD=R<50,PIT0=-HW-AP-0.4,PIT1=-HW-AP-(SMALL_INFIELD?10:13.5);
 { // pit road on the front stretch, with stall lines and a team wall
   const pitMat=new THREE.MeshStandardMaterial({map:TEX.asphaltPlain,normalMap:TEX.asphaltNormal,normalScale:new THREE.Vector2(0.7,0.7),roughness:.92});
   addMesh(ribbon(ptY(PIT1,()=>0.01),ptY(PIT0,()=>0.01),-20,L+20,80,10,'across'),pitMat);
@@ -449,14 +456,14 @@ const PIT0=-HW-AP-0.4,PIT1=-HW-AP-13.5;
   addMesh(ribbon(ptY(PIT1-0.2,()=>0),ptY(PIT1-0.2,()=>0.9),-20,L+20,20,24,'along'),new THREE.MeshStandardMaterial({color:0xcfd2d6,roughness:.8,side:DS}));
   // garages
   const garMat=new THREE.MeshStandardMaterial({color:0xb9bec5,roughness:.7}),doorMat=new THREE.MeshStandardMaterial({color:0x3a3f47,roughness:.5,metalness:.4});
-  for(let i=0;i<9;i++){const s=10+i*18,c=center(s),lat=PIT1-9;const b=new THREE.Mesh(new THREE.BoxGeometry(16,4.5,9),garMat);b.position.set(c.x+c.nx*lat,2.25,c.z+c.nz*lat);b.castShadow=b.receiveShadow=true;scene.add(b);
+  for(let i=0;i<(SMALL_INFIELD?0:9);i++){const s=10+i*18,c=center(s),lat=PIT1-9;const b=new THREE.Mesh(new THREE.BoxGeometry(16,4.5,9),garMat);b.position.set(c.x+c.nx*lat,2.25,c.z+c.nz*lat);b.castShadow=b.receiveShadow=true;scene.add(b);
     for(let d=-1;d<=1;d++){const door=new THREE.Mesh(new THREE.PlaneGeometry(4,3.2),doorMat);door.position.set(c.x+c.nx*(lat+4.51)+d*5,1.6,c.z+c.nz*(lat+4.51));door.rotation.y=Math.atan2(c.nx,c.nz);scene.add(door);}}
   // team haulers
   const PALX=['#d7263d','#1b998b','#2e86de','#f9c80e','#f86624','#662e9b','#141414','#f4f4f4','#43bccd','#0b6e4f','#ff6f91','#1d3557'];
-  const hr=rng(42),nh=40,trl=new THREE.InstancedMesh(new THREE.BoxGeometry(2.6,4,15).translate(0,2.4,0),new THREE.MeshStandardMaterial({roughness:.4,metalness:.3}),nh),
+  const hr=rng(42),nh=SMALL_INFIELD?7:40,trl=new THREE.InstancedMesh(new THREE.BoxGeometry(2.6,4,15).translate(0,2.4,0),new THREE.MeshStandardMaterial({roughness:.4,metalness:.3}),nh),
     cab=new THREE.InstancedMesh(new THREE.BoxGeometry(2.5,3.2,3).translate(0,1.9,9.3),new THREE.MeshStandardMaterial({roughness:.35,metalness:.5}),nh),
     whl=new THREE.InstancedMesh(new THREE.BoxGeometry(2.7,1,13).translate(0,0.5,1.5),new THREE.MeshStandardMaterial({color:0x151515}),nh),tc=new THREE.Color();
-  for(let i=0;i<nh;i++){const x=-78+(i%20)*8.2,z=i<20?-12:12;_o.position.set(x,0,z);_o.rotation.set(0,i<20?0:Math.PI,0);_o.scale.set(1,1,1);_o.updateMatrix();
+  for(let i=0;i<nh;i++){const x=SMALL_INFIELD?-54+i*18:-78+(i%20)*8.2,z=SMALL_INFIELD?-6:i<20?-12:12;_o.position.set(x,0,z);_o.rotation.set(0,SMALL_INFIELD?Math.PI/2:i<20?0:Math.PI,0);_o.scale.set(1,1,1);_o.updateMatrix();
     for(const m of [trl,cab,whl])m.setMatrixAt(i,_o.matrix);tc.set(PALX[Math.floor(hr()*PALX.length)]);trl.setColorAt(i,tc);cab.setColorAt(i,tc.multiplyScalar(0.7));}
   for(const m of [trl,cab,whl]){m.castShadow=true;m.receiveShadow=true;m.frustumCulled=false;scene.add(m);}
 }
@@ -523,7 +530,7 @@ function addMark(c){
 }
 function resetMarks(){markIdx=0;markTotal=0;markMesh.count=0;seedMarks(420);}
 function seedMarks(n){const r=rng(77);
-  for(let i=0;i<n;i++){const turn=r()<0.5?T1:T2,s2=turn-20+r()*(TURN+40),lat=clamp(grooveLat(s2)+(r()-0.5)*3.4,-7,6.5),c=center(s2),nrm=normalAt(s2,lat,_n),len=0.6+r()*2.4;
+  for(let i=0;i<n;i++){const turn=r()<0.5?T1:T2,s2=turn-20+r()*(TURN+40),lat=clamp(grooveLat(s2)+(r()-0.5)*3.4,-HW+1,HW-1.5),c=center(s2),nrm=normalAt(s2,lat,_n),len=0.6+r()*2.4;
     _f.set(c.tx,0,c.tz);const yaw=(r()-0.5)*0.35;_f.applyAxisAngle(_v.set(0,1,0),yaw);_f.addScaledVector(nrm,-_f.dot(nrm)).normalize();_x.crossVectors(nrm,_f);_m.makeBasis(_x,nrm,_f);
     _o.quaternion.setFromRotationMatrix(_m);_o.position.set(c.x+c.nx*lat,heightAt(s2,lat)+0.02,c.z+c.nz*lat);_o.scale.set(0.8+r()*0.6,1,len);_o.updateMatrix();
     markMesh.setMatrixAt(markIdx,_o.matrix);markIdx=(markIdx+1)%MARKS;markTotal=Math.min(MARKS,markTotal+1);}
@@ -945,7 +952,7 @@ function aiCtl(c,dt){
   if(c.isPace){lane=c.pitting?-HW-3.5:-1.6;target=c.pitting?32:(ph==='pace'?CFG.paceSpeed-0.5:CFG.cautionSpeed-1);}
   else{
     const slow=ph==='pace'||ph==='caution'||c.fin;c.laneT-=dt;
-    const gl=grooveLat(s),onLine=o=>clamp(o,-6.4,5.8),cur=slow?c.fileLane:onLine(gl+c.passOff);let ahead=null,aheadD=1e9;
+    const gl=grooveLat(s),onLine=o=>clamp(o,LINE_MIN,LINE_MAX),cur=slow?c.fileLane:onLine(gl+c.passOff);let ahead=null,aheadD=1e9;
     for(const o of cars.values()){if(o===c||!o.vis)continue;const ds=mod(o.tp.s-s,P);if(ds<40&&Math.abs(o.tp.lat-cur)<2.3&&ds<aheadD){aheadD=ds;ahead=o;}}
     if(!slow&&c.laneT<=0){
       if(c.passOff===0&&ahead&&aheadD<20&&ahead.vf<v+1){const off=gl>0?-3.6:3.6;if(laneClear(c,onLine(gl+off))){c.passOff=off;c.laneT=3;}}
@@ -964,7 +971,7 @@ function aiCtl(c,dt){
     if(c.speed<1.5||(mis>1.3&&c.speed<6)){c.stuckT+=dt;if(c.stuckT>3){resetCar(c);c.stuckT=0;}}else c.stuckT=0;
   }
   const Ld=8+Math.abs(v)*0.45,tg=center(s+Ld);
-  if(!c.isPace&&!(ph==='pace'||ph==='caution'||c.fin))lane=clamp(grooveLat(s+Ld)+c.passOff,-6.4,5.8);
+  if(!c.isPace&&!(ph==='pace'||ph==='caution'||c.fin))lane=clamp(grooveLat(s+Ld)+c.passOff,LINE_MIN,LINE_MAX);
   const tx=tg.x+tg.nx*lane,tz=tg.z+tg.nz*lane;
   const dx=tx-c.x,dz=tz-c.z,dist=Math.hypot(dx,dz)||1,alpha=wrapA(Math.atan2(dx,dz)-c.h);
   const delta=Math.atan(2*Math.sin(alpha)/dist*CFG.wheelbase),sm=CFG.steerLow/(1+Math.abs(v)*CFG.steerSpeed);
@@ -991,7 +998,7 @@ const MODE_NAMES={'time-attack':'Time Attack','race':'Solo vs AI','multiplayer':
 const RUN_ID=(crypto.randomUUID&&crypto.randomUUID())||'00000000-0000-4000-8000-'+String(Date.now()).slice(-12).padStart(12,'0');
 const REC={lists:{},me:null,warned:false};let runLap=0;
 async function fetchRecords(mode){
-  try{const r=await fetch(`/api/racing?records=1&mode=${mode}&track=shorttrack`,{credentials:'same-origin'});
+  try{const r=await fetch(`/api/racing?records=1&mode=${mode}&track=${TRACK.rec}`,{credentials:'same-origin'});
     if(r.status===401||r.status===403)return {error:'Sign in on the library to see and set lap records.'};
     if(!r.ok)return {error:'Lap records are unavailable right now.'};const d=await r.json();REC.lists[mode]=d.records||[];return {records:REC.lists[mode]};}
   catch(e){return {error:'Lap records are saved when this module runs on the library.'};}
@@ -1003,17 +1010,17 @@ async function showRecords(boxId,mode){
   box.innerHTML='<div class="rectabs" role="tablist">'+Object.keys(MODE_NAMES).map(m=>`<button role="tab" aria-selected="${m===mode}" class="${m===mode?'on':''}" data-rec="${m}">${MODE_NAMES[m]}</button>`).join('')+'</div><table class="rec"></table><p>Loading...</p>';
   const res=await fetchRecords(mode);if(box.dataset.mode!==mode)return;
   box.querySelector('table').innerHTML=res.records?recRows(res.records,REC.me):'';
-  box.querySelector('p').textContent=res.error||`Top 10 ${MODE_NAMES[mode]} laps`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
+  box.querySelector('p').textContent=res.error||`Top 10 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
-  if(ms<12000)return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
-  fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:'shorttrack'})})
+  if(ms<TRACK.minLap)return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
+  fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:TRACK.rec})})
     .then(async r=>{
       if(r.status===401||r.status===403){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
       if(!r.ok)return;
       if(!best||ms<best.milliseconds)bigMsg('NEW TRACK RECORD',`${MODE_NAMES[mode]} \u00b7 ${fmtLap(ms)}`,3);
       else if((REC.lists[mode]||[]).length<10||ms<REC.lists[mode][REC.lists[mode].length-1].milliseconds)toast(`Top 10 lap: ${fmtLap(ms)}`);
-      fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:'shorttrack',mode},location.origin);}catch(e){}
+      fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:TRACK.rec,mode},location.origin);}catch(e){}
     }).catch(()=>{});
 }
 function capFor(c){if(c.isPace)return null;if(race.ph==='pace')return c.ai?CFG.paceSpeed-1.34:CFG.paceSpeed;if(race.ph==='caution')return CFG.cautionSpeed;if(c.fin)return 24;return null;}
@@ -1080,7 +1087,7 @@ function beginRace(msg){
   setNight(!!settings.night);
   camH=player.h;camSnap=true;camMode='chase';
   mode='race';showScreen(null);$('hud').classList.remove('hidden');onPhase(race.ph);
-  if(attack)bigMsg('TIME ATTACK','The clock starts when you cross the line',4);else bigMsg('PACE LAP','Hold your spot. Green flag next time by.',4);
+  if(attack)bigMsg('TIME ATTACK',`${TRACK.name} \u00b7 the clock starts when you cross the line`,4);else bigMsg('PACE LAP',`${TRACK.name} \u00b7 hold your spot, green flag next time by`,4);
 }
 function hostStart(){
   readHostSettings();
@@ -1098,7 +1105,7 @@ const NET={peer:null,online:false,host:false,myId:'host',code:'',conns:new Map()
 function resetNet(){try{NET.peer&&NET.peer.destroy();}catch(e){}Object.assign(NET,{peer:null,online:false,host:false,myId:'host',code:'',conns:new Map(),hc:null,players:new Map()});}
 function sendAll(msg,except){if(!NET.online||!NET.host)return;for(const [id,c] of NET.conns)if(id!==except&&c.open)try{c.send(msg);}catch(e){}}
 function sendHost(msg){if(NET.hc&&NET.hc.open)try{NET.hc.send(msg);}catch(e){}}
-function broadcastLobby(){sendAll({t:'lobby',players:[...NET.players.values()],set:settings,racing:race.ph!=='idle'});renderLobby();}
+function broadcastLobby(){sendAll({t:'lobby',players:[...NET.players.values()],set:settings,racing:race.ph!=='idle',track:TRACK_ID});renderLobby();}
 function makeCode(){const A='ABCDEFGHJKLMNPQRSTUVWXYZ';let s='';for(let i=0;i<5;i++)s+=A[Math.floor(Math.random()*A.length)];return s;}
 function startTimeAttack(){
   resetNet();NET.host=true;NET.online=false;NET.myId='host';NET.players.set('host',{id:'host',lv:myLv});
@@ -1147,7 +1154,7 @@ function dropPlayer(id){
 function clientRecv(d){
   if(!d||typeof d!=='object')return;
   switch(d.t){
-    case 'lobby':NET.racing=!!d.racing;NET.players=new Map((d.players||[]).map(p=>[p.id,{id:p.id,lv:cleanLv(p.lv)}]));settings=d.set||settings;setNight(!!settings.night);
+    case 'lobby':if(d.track&&TRACKS[d.track]&&d.track!==TRACK_ID){const q=new URLSearchParams(location.search);q.set('track',d.track);q.set('room',NET.code);location.search=q.toString();return;}NET.racing=!!d.racing;NET.players=new Map((d.players||[]).map(p=>[p.id,{id:p.id,lv:cleanLv(p.lv)}]));settings=d.set||settings;setNight(!!settings.night);
       if(mode==='menu'||mode==='garage')goLobby();else if(mode==='lobby')renderLobby();break;
     case 'start':beginRace(d);break;
     case 'w':if(Array.isArray(d.c))d.c.forEach(applyState);if(d.r){race.ph=d.r.ph;race.laps=d.r.laps;race.fo=d.r.fo||[];race.gn=!!d.r.gn;}break;
@@ -1356,7 +1363,7 @@ function showResults(){
 
 }
 function renderLobby(){
-  $('lobTitle').textContent=NET.online?'Online lobby':'Solo race';$('codeBox').classList.toggle('hidden',!NET.online);$('codeTxt').textContent=NET.code;
+  $('lobTitle').textContent=(NET.online?'Online lobby':'Solo race')+` \u00b7 ${TRACK.name}`;$('codeBox').classList.toggle('hidden',!NET.online);$('codeTxt').textContent=NET.code;
   $('plist').innerHTML=[...NET.players.values()].map(p=>`<div><b style="display:inline-block;min-width:30px;padding:0 4px;margin-right:6px;border-radius:3px;text-align:center;background:${p.lv.primary};color:${p.lv.numColor}">${esc(p.lv.number)}</b>${esc(p.lv.name)}${p.id==='host'&&NET.online?' <span style="color:var(--dim)">(host)</span>':''}</div>`).join('');
   $('hostSet').classList.toggle('hidden',!NET.host);$('waitTxt').classList.toggle('hidden',NET.host);$('chatBox').classList.toggle('hidden',!NET.online);
   $('waitTxt').textContent=NET.racing&&mode==='lobby'?'A race is already running. You will be on the grid for the next one.':`Waiting for the host to start... (${settings.laps} laps, ${settings.night?'night':'day'}, ${settings.diff||'medium'} AI)`;
@@ -1382,6 +1389,8 @@ function readGarage(){const l={};for(const k in G)l[k]=$(G[k]).value;if(REC.me)l
 function rebuildMenuCar(){if(menuCar)menuCar.dispose();menuCar=new Car('menu',myLv,{player:true});menuCar.place(S_LINE+6,-2);menuCar.m.root.visible=!player;}
 for(const k in G)$(G[k]).addEventListener('input',readGarage);
 ['sLaps','sAI','sTime','sDiff'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();setNight(settings.night);broadcastLobby();}));
+$('trackSel').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<option value="${id}">${t.name} (${t.miles})</option>`).join('');$('trackSel').value=TRACK_ID;
+$('trackSel').addEventListener('change',e=>{const q=new URLSearchParams(location.search);q.set('track',e.target.value);q.delete('room');location.search=q.toString();});
 $('quality').value=quality;$('quality').addEventListener('change',e=>{quality=e.target.value;store.set('sts_q',quality);applyQuality();});
 
 function act(a){

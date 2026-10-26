@@ -8,9 +8,9 @@ import { issueTicket, redeemTicket } from './account'
 import type { Scheme } from '../../lib/racing'
 import { displayScheme, presets } from '../../lib/racing'
 
-const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000 }
+const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, dells: 9000 }
 const raceModes = z.enum(['practice', 'multiplayer', 'time-attack', 'race'])
-const trackIds = z.enum(['circuit', 'oval', 'shorttrack'])
+const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells'])
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const vehicleIds = z.enum(['challenger', 'escalade', 'lamborghini', 'ram', 'muscle-red'])
 const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])

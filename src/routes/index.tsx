@@ -42,6 +42,7 @@ type View = StudioMode | 'home' | 'admin' | ModuleId
 const isPlayId = isEmbeddedModuleId
 const shortTrackModes = ['time-attack', 'race', 'multiplayer'] as const
 const shortTrackModeNames = { 'time-attack': 'Time Attack', race: 'Solo vs AI', multiplayer: 'Online' }
+const shortTrackTracks = [{ id: 'shorttrack', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells', name: 'Dells Short Track (0.35 mi)' }] as const
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']
 
@@ -438,7 +439,7 @@ function Studio() {
 
         {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
-        {activePlay?.id === 'shorttrack' && <LapRecordBoard track="shorttrack" trackName="Short Track Showdown" modes={shortTrackModes} modeNames={shortTrackModeNames}/>}
+        {activePlay?.id === 'shorttrack' && <LapRecordBoard track="shorttrack" trackName="Showdown Bullring (0.5 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {view === 'admin' && access.isAdmin && <WorkspaceAdmin/>}
         {view === 'pool' && <PoolTable lobby={lobby}/>}
