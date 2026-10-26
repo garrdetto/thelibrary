@@ -67,7 +67,7 @@ input[type=color]{padding:2px;height:38px}
 #chatLog{height:110px;overflow:auto;background:#0e131b;border-radius:7px;padding:6px;font-size:13px;margin-top:6px}
 #resTable{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
 #resTable td,#resTable th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left}
-#recTabs .btn{margin:0 0 10px;text-align:center;font-size:13px;padding:10px 6px}#recTabs .btn.on{background:var(--acc);color:#111}
+.rectabs{display:flex;gap:6px;margin:4px 0 8px}.rectabs button{flex:1;padding:8px 4px;border:0;border-radius:7px;background:#232b38;color:var(--txt);font:800 12.5px system-ui;cursor:pointer}.rectabs button.on{background:var(--acc);color:#111}.recbox p{font-size:12.5px;margin:6px 0 0}
 .rec{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}.rec td,.rec th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left}.rec tr.me{background:rgba(255,204,0,.15)}
 #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);padding:10px 16px;font-weight:700;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
 @media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}}
@@ -117,6 +117,7 @@ input[type=color]{padding:2px;height:38px}
     <h2 id="lobTitle">Race lobby</h2>
     <div id="codeBox"><p style="margin:0">Room code &mdash; share it with friends</p><div class="code" id="codeTxt"></div></div>
     <label class="f" id="plabel">Drivers</label><div id="plist"></div>
+    <label class="f">Fastest laps</label><div class="recbox" id="recLobby"></div>
     <div id="hostSet">
       <div class="row2"><div><label class="f">Laps</label><select id="sLaps"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></div>
       <div><label class="f">AI cars</label><input id="sAI" type="number" min="0" max="19" value="11"></div></div>
@@ -129,10 +130,9 @@ input[type=color]{padding:2px;height:38px}
     <button class="btn" data-act="leave">Leave</button>
   </div>
   <div id="scrRecords" class="scr panel hidden"><h2>Fastest laps</h2>
-    <div class="row2" id="recTabs"><button class="btn" data-act="rec:time-attack">Time Attack</button><button class="btn" data-act="rec:race">Solo vs AI</button><button class="btn" data-act="rec:multiplayer">Online</button></div>
-    <table id="recTable" class="rec"></table><p id="recNote" style="margin-top:10px"></p><button class="btn" data-act="menu">Back</button></div>
-  <div id="scrPause" class="scr panel hidden"><h2>Paused</h2><p id="pauseNote"></p><button class="btn pri" data-act="resume">Resume</button><button class="btn" data-act="leave">Leave race</button></div>
-  <div id="scrResults" class="scr panel hidden"><h2>Results</h2><table id="resTable"></table><h2 style="margin-top:18px;font-size:17px" id="resRecTitle">Fastest laps</h2><table id="resRec" class="rec"></table><p id="resRecNote"></p>
+<div class="recbox" id="recMain"></div><button class="btn" data-act="menu">Back</button></div>
+  <div id="scrPause" class="scr panel hidden"><h2>Paused</h2><p id="pauseNote"></p><button class="btn pri" data-act="resume">Resume</button><button class="btn hidden" id="endAttackBtn" data-act="endattack">End session &amp; see lap records</button><button class="btn" data-act="leave">Leave race</button></div>
+  <div id="scrResults" class="scr panel hidden"><h2>Results</h2><table id="resTable"></table><h2 style="margin-top:18px;font-size:17px">Fastest laps</h2><div class="recbox" id="recResults"></div>
     <button class="btn pri hidden" data-act="again" id="againBtn">Race again</button><p id="againWait" class="hidden" style="margin-top:10px">Waiting for the host&hellip;</p>
     <button class="btn" data-act="leave">Back to menu</button></div>
 </div>
@@ -913,11 +913,12 @@ async function fetchRecords(mode){
 }
 function recRows(list,mine){return '<tr><th>#</th><th>Driver</th><th>Lap</th><th>Date</th></tr>'+(list.length?list.map((r,i)=>`<tr${mine&&r.username===mine?' class="me"':''}><td>${i+1}</td><td>${esc(r.username)}</td><td>${fmtLap(r.milliseconds)}</td><td>${esc(new Date(r.date).toLocaleDateString())}</td></tr>`).join(''):'<tr><td colspan="4">No laps yet. Set the first one.</td></tr>');}
 const fmtLap=ms=>{const t=ms/1000,m=Math.floor(t/60);return (m?m+':'+String((t%60).toFixed(3)).padStart(6,'0'):(t).toFixed(3));};
-async function showRecords(mode){
-  for(const b of document.querySelectorAll('#recTabs .btn'))b.classList.toggle('on',b.dataset.act==='rec:'+mode);
-  $('recNote').textContent='Loading...';$('recTable').innerHTML='';
-  const res=await fetchRecords(mode);$('recNote').textContent=res.error||`Top 10 ${MODE_NAMES[mode]} laps on Short Track Showdown.`;
-  $('recTable').innerHTML=res.records?recRows(res.records,REC.me):'';
+async function showRecords(boxId,mode){
+  const box=$(boxId);if(!box)return;box.dataset.mode=mode;
+  box.innerHTML='<div class="rectabs" role="tablist">'+Object.keys(MODE_NAMES).map(m=>`<button role="tab" aria-selected="${m===mode}" class="${m===mode?'on':''}" data-rec="${m}">${MODE_NAMES[m]}</button>`).join('')+'</div><table class="rec"></table><p>Loading...</p>';
+  const res=await fetchRecords(mode);if(box.dataset.mode!==mode)return;
+  box.querySelector('table').innerHTML=res.records?recRows(res.records,REC.me):'';
+  box.querySelector('p').textContent=res.error||`Top 10 ${MODE_NAMES[mode]} laps`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
   if(ms<12000)return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
@@ -1263,11 +1264,10 @@ function spotter(dt){
 function showScreen(id){for(const s of document.querySelectorAll('.scr'))s.classList.toggle('hidden',s.id!==id);}
 function showResults(){
   const st=standings();
-  $('resTable').innerHTML='<tr><th>Pos</th><th>#</th><th>Driver</th><th>Laps</th><th>Best</th><th></th></tr>'+st.map((c,i)=>`<tr${c===player?' style="background:rgba(255,204,0,.15)"':''}><td>${i+1}</td><td><b style="display:inline-block;min-width:26px;text-align:center;border-radius:3px;background:${c.lv.primary};color:${c.lv.numColor}">${esc(c.lv.number)}</b></td><td>${esc(c.lv.name)}</td><td>${clamp(c.cross-2,0,race.laps)}</td><td>${fmt(c.bestLap)}</td><td>${c.fin?'':'DNF'}</td></tr>`).join('');
-  $('againBtn').classList.toggle('hidden',!NET.host);$('againWait').classList.toggle('hidden',NET.host);
+  $('resTable').innerHTML='<tr><th>Pos</th><th>#</th><th>Driver</th><th>Laps</th><th>Best</th><th></th></tr>'+st.map((c,i)=>`<tr${c===player?' style="background:rgba(255,204,0,.15)"':''}><td>${i+1}</td><td><b style="display:inline-block;min-width:26px;text-align:center;border-radius:3px;background:${c.lv.primary};color:${c.lv.numColor}">${esc(c.lv.number)}</b></td><td>${esc(c.lv.name)}</td><td>${clamp(c.cross-2,0,race.laps)}</td><td>${fmt(c.bestLap)}</td><td>${c.fin||race.ph==='attack'?'':'DNF'}</td></tr>`).join('');
+  $('againBtn').classList.toggle('hidden',!NET.host);$('againWait').classList.toggle('hidden',NET.host);$('againBtn').textContent=race.ph==='attack'?'New Time Attack session':'Race again';
   E.hud.classList.add('hidden');mode='results';showScreen('scrResults');
-  $('resRecTitle').textContent=`Fastest laps \u00b7 ${MODE_NAMES[race.mode]||''}`;$('resRec').innerHTML='';$('resRecNote').textContent='Loading...';
-  fetchRecords(race.mode).then(res=>{$('resRecNote').textContent=res.error||'';$('resRec').innerHTML=res.records?recRows(res.records,REC.me):'';});
+  showRecords('recResults',race.mode||'race');
 }
 function renderLobby(){
   $('lobTitle').textContent=NET.online?'Online lobby':'Solo race';$('codeBox').classList.toggle('hidden',!NET.online);$('codeTxt').textContent=NET.code;
@@ -1276,11 +1276,11 @@ function renderLobby(){
   $('waitTxt').textContent=NET.racing&&mode==='lobby'?'A race is already running. You will be on the grid for the next one.':`Waiting for the host to start... (${settings.laps} laps, ${settings.night?'night':'day'})`;
   $('plabel').textContent=NET.online?`Drivers (${NET.players.size}/${CFG.maxCars}) \u2014 invite as many friends as you like`:'Driver';
 }
-function goLobby(){mode='lobby';$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';renderLobby();showScreen('scrLobby');}
+function goLobby(){mode='lobby';showRecords('recLobby',NET.online?'multiplayer':'race');$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';renderLobby();showScreen('scrLobby');}
 function backToLobby(){if(NET.host){NET.racing=false;}clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;goLobby();}
 function leaveAll(){resetNet();clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;mode='menu';showScreen('scrMain');}
 function togglePause(){
-  if(mode==='race'){mode='paused';$('pauseNote').textContent=NET.online?'The online race keeps running while this menu is open.':'';showScreen('scrPause');}
+  if(mode==='race'){$('endAttackBtn').classList.toggle('hidden',race.ph!=='attack');mode='paused';$('pauseNote').textContent=NET.online?'The online race keeps running while this menu is open.':'';showScreen('scrPause');}
   else if(mode==='paused'){mode='race';showScreen(null);}
 }
 function chatLine(n,m){const d=document.createElement('div');d.innerHTML=n?`<b>${esc(n)}:</b> ${esc(m)}`:`<i style="color:var(--dim)">${esc(m)}</i>`;$('chatLog').appendChild(d);$('chatLog').scrollTop=1e6;}
@@ -1302,7 +1302,8 @@ function act(a){
   switch(a){
     case 'solo':startHost(false);break;
     case 'attack':startTimeAttack();break;
-    case 'records':mode='records';showScreen('scrRecords');showRecords('time-attack');break;
+    case 'records':mode='records';showScreen('scrRecords');showRecords('recMain','time-attack');break;
+    case 'endattack':showResults();break;
     case 'menu':mode='menu';showScreen('scrMain');break;
     case 'host':startHost(true);break;
     case 'join':doJoin();break;
@@ -1314,10 +1315,11 @@ function act(a){
     case 'chat':sendChat();break;
     case 'leave':leaveAll();break;
     case 'resume':togglePause();break;
-    case 'again':sendAll({t:'back'});backToLobby();break;
+    case 'again':if(race.ph==='attack'){startTimeAttack();break;}sendAll({t:'back'});backToLobby();break;
   }
 }
-wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;audioInit();const a=b.dataset.act;if(a.startsWith('rec:'))showRecords(a.slice(4));else act(a);});
+wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;audioInit();act(b.dataset.act);});
+wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)return;const box=t.closest('.recbox');if(box)showRecords(box.id,t.dataset.rec);});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username)REC.me=d.username;}).catch(()=>{});
 
 // ===================== INPUT =====================
