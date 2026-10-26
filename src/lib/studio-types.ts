@@ -11,6 +11,7 @@ export type SongSettings = {
   style: string
   instruments: string
   structure: string
+  instructions?: string
 }
 export type LyricCorrection = { id: string; original: string; replacement: string }
 export type Creation = {
@@ -27,3 +28,4 @@ export type Creation = {
   stylePrompt: string | null
   createdAt: string
 }
+export type LyricPreset = { id: string; name: string; settings: SongSettings }

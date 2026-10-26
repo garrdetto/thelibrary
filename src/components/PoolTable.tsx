@@ -1,6 +1,5 @@
 import { defaultPoolEffects, poolEffectOptions } from '../lib/pool-effects'
 import type { PoolEffects } from '../lib/pool-effects'
-import { getUser, hydrateSession, onAuthChange } from '@netlify/identity'
 import { PoolAccount } from './PoolAccount'
 import { CueArtwork } from './CueArtwork'
 import { RecordResetDialog } from './RecordResetDialog'
@@ -461,28 +460,32 @@ export function PoolTable({ lobby }: { lobby: Lobby }) {
   const accountChangeRef = useRef(false)
   useEffect(() => {
     let active = true
-    let unsubscribe: (() => void) | undefined
+    let knownName: string | null = null
     async function loadAccount() {
       try {
-        await getUser()
-        await hydrateSession()
         const response = await fetch('/api/pool-account')
         if (!response.ok) throw new Error()
         const result = await response.json()
-        if (active) {
-          setAccountName(result.username)
-          unsubscribe = onAuthChange((event, user) => {
-            if (!accountChangeRef.current && (event === 'login' || event === 'logout') && (user?.email?.split('@')[0] ?? null) !== result.username) window.location.reload()
-          })
-        }
+        knownName = result.username
+        if (active) setAccountName(result.username)
       } catch {
         if (active) setAccountName(null)
       } finally {
         if (active) setAccountReady(true)
       }
     }
+    async function checkAccount() {
+      if (accountChangeRef.current) return
+      try {
+        const response = await fetch('/api/pool-account')
+        if (!response.ok) return
+        const result = await response.json()
+        if (active && result.username !== knownName) window.location.reload()
+      } catch { return }
+    }
     void loadAccount()
-    return () => { active = false; unsubscribe?.() }
+    window.addEventListener('focus', checkAccount)
+    return () => { active = false; window.removeEventListener('focus', checkAccount) }
   }, [])
   const network = lobby.bridge
   const [soloMode, setSoloMode] = useState<SoloMode>('practice')

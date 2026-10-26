@@ -136,6 +136,13 @@ export function usePoolLobby(accountName: string | null = null, accountReady = t
     preferences.current = { savedName: stored, soundOn: sound, dismissed: false }
     setSavedName(stored)
     setSoundOn(sound)
+    void fetch('/api/account-settings').then(response => response.ok ? response.json() : null).then(result => {
+      const saved = result?.settings?.lobbySound
+      if (typeof saved !== 'boolean') return
+      preferences.current.soundOn = saved
+      writeStorage(soundStorageKey, saved ? 'on' : 'off')
+      setSoundOn(saved)
+    }).catch(() => undefined)
     const url = import.meta.env.VITE_POOL_SERVER_URL || defaultPoolServerUrl
     const client = io(url, { autoConnect: true, reconnectionAttempts: 10, auth: callback => {
       void fetch('/api/pool-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'ticket' }) })
@@ -293,6 +300,7 @@ export function usePoolLobby(accountName: string | null = null, accountReady = t
     writeStorage(soundStorageKey, next ? 'on' : 'off')
     setSoundOn(next)
     if (next) chime()
+    void fetch('/api/account-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lobbySound: next }) }).catch(() => undefined)
   }
   const sendChat = (value: string) => {
     const text = value.trim().slice(0, chatMaxLength)

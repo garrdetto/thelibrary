@@ -444,3 +444,14 @@ body{background:var(--paper);color:var(--tone-0)}
 .site-online-dot{width:7px;height:7px;border-radius:50%;background:#59966c}.site-online li.is-away .site-online-dot{background:#c1a359}.site-online li.is-playing .site-online-dot,.site-online li.is-in-game .site-online-dot{background:#e08a2e}
 @media(max-width:650px){.site-invites{right:12px;bottom:12px;width:calc(100vw - 24px)}}
 @media(prefers-reduced-motion:reduce){.site-invite,.site-invite-timer{animation:none}}
+.saved-styles { border: 1px dashed var(--tone-36); border-radius: 8px; padding: 2px 12px 12px; margin-top: 16px; }
+.preset-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.preset-chip { display: inline-flex; align-items: center; border: 1px solid var(--tone-36); border-radius: 20px; overflow: hidden; }
+.preset-chip > button { display: inline-flex; gap: 5px; align-items: center; padding: 6px 9px; font-size: 9px; color: var(--tone-150); }
+.preset-chip > button:last-child { padding: 6px 8px; border-left: 1px solid var(--tone-36); }
+.preset-chip > button:hover:not(:disabled) { background: var(--tone-151); }
+.preset-save { display: flex; gap: 8px; align-items: stretch; }
+.preset-save .text-field { flex: 1; min-width: 0; }
+.preset-save .secondary-button { white-space: nowrap; }
+.admin-account-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.admin-account-actions small { width: 100%; opacity: .75; }

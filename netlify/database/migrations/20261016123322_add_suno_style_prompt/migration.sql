@@ -1,1 +1,0 @@
-ALTER TABLE "creations" ADD COLUMN "style_prompt" text;

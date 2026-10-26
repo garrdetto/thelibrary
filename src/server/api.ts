@@ -1,0 +1,38 @@
+import { z } from 'zod'
+import type { Env } from './env'
+import { HttpError, json } from './http'
+import { accountSettings, poolAccount, workspaceAccess, workspaceAdmin } from './routes/account'
+import { poolCueOverlay, poolPractice, poolPreferences } from './routes/pool'
+import { racing } from './routes/racing'
+import { asset, learning, library, lyricPresets, studio } from './routes/studio'
+
+const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
+  '/api/pool-account': poolAccount,
+  '/api/workspace-access': workspaceAccess,
+  '/api/workspace-admin': workspaceAdmin,
+  '/api/account-settings': accountSettings,
+  '/api/pool-practice': poolPractice,
+  '/api/pool-preferences': poolPreferences,
+  '/api/pool-cue-overlay': poolCueOverlay,
+  '/api/racing': racing,
+  '/api/studio': studio,
+  '/api/library': library,
+  '/api/asset': asset,
+  '/api/learning': learning,
+  '/api/lyric-presets': lyricPresets,
+}
+
+export async function handleApi(request: Request, env: Env) {
+  const route = routes[new URL(request.url).pathname]
+  if (!route) return json({ error: 'Not found.' }, 404)
+  try {
+    return await route(request, env)
+  } catch (error) {
+    if (error instanceof HttpError) return json({ error: error.message }, error.status)
+    if (error instanceof z.ZodError || error instanceof SyntaxError) return json({ error: 'Please check your input and try again.' }, 400)
+    const status = typeof error === 'object' && error && 'status' in error ? Number(error.status) : 0
+    if (status === 429) return json({ error: 'The service is receiving too many requests. Please wait a moment and retry.' }, 429)
+    console.error('API failure', new URL(request.url).pathname, error)
+    return json({ error: 'The service is unavailable right now. Please try again shortly.' }, 503)
+  }
+}

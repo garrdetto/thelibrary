@@ -1,53 +1,40 @@
 # myWorkHelper
 
-TanStack Start / React 19 site on Netlify with four areas: a creative studio (AI chat, images, lyrics), an 8-ball/9-ball pool game, a racing game with two tracks, and accounts/admin. Live multiplayer for pool and racing runs on a separate Node service in `server/`. The initial route must render this product, never a starter demo.
+TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative studio (AI chat, images, lyrics), an 8-ball/9-ball pool game, a racing game with two tracks, and accounts/admin. Live multiplayer for pool and racing runs on a separate Node service in `server/` (Railway). The initial route must render this product, never a starter demo.
 
 ## File map
 
 ### Shell and shared UI
 - `src/routes/__root.tsx`: document shell, metadata, favicon.
-- `src/routes/index.tsx`: top-level navigation, studio tabs (chat, image, lyrics), library, browser exports; mounts the pool table, account, admin, and lazy-loads racing.
-- `src/styles.css`: all styling, CSS tokens, site themes, CSS illustrations, responsive layouts, reduced-motion and focus states.
-- `src/lib/site-themes.ts`: site theme list.
-- `public/favicon.svg`: brand mark. `public/images/`: track art, pool backdrops, cue and vehicle sprites.
+- `src/routes/index.tsx`: navigation, studio tabs (chat, image, lyrics), saved lyric styles, theme picker; mounts pool, account, admin, and lazy-loads racing.
+- `src/styles.css`: all styling, CSS tokens, site themes, responsive layouts, reduced-motion and focus states.
+- `src/lib/site-themes.ts`: site theme list. `public/`: favicon and images.
 
-### Studio
-- `netlify/functions/studio.mts`: `/api/studio`, `/api/library`, `/api/asset`, `/api/learning`, plus pool `/api/pool-preferences` and `/api/pool-cue-overlay`.
-- `src/lib/studio-types.ts`: browser-safe studio types, no server dependencies.
+### Worker backend (`src/server.ts`, `src/server/`)
+- `src/server.ts`: Worker entry. `/api/*` goes to `src/server/api.ts`; everything else to TanStack Start.
+- `src/server/api.ts`: route table and error handling.
+- `src/server/auth.ts`: PIN hashing (PBKDF2), sessions (`tl_session` cookie), lockouts, admin constant.
+- `src/server/routes/account.ts`: `/api/pool-account` (login, logout, multiplayer tickets, ticket redeem), `/api/workspace-access`, `/api/account-settings`, `/api/workspace-admin`.
+- `src/server/routes/pool.ts`: `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay`.
+- `src/server/routes/racing.ts`: `/api/racing` tickets, lap records, paint profiles, AI skins.
+- `src/server/routes/studio.ts` + `src/server/lyrics.ts`: `/api/studio`, `/api/library?id=` (version history only), `/api/asset`, `/api/learning`, `/api/lyric-presets`.
+- `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret.
+- `src/lib/studio-types.ts`: browser-safe studio types.
 
-### Pool
-- `src/components/PoolTable.tsx`: table, physics (matter-js), rules, practice modes, room/cue customization.
-- `src/components/PoolLobby.tsx`: multiplayer lobby and invites over Socket.io.
-- `src/components/CueArtwork.tsx`, `src/lib/cue-design.ts`, `src/lib/pool-effects.ts`: cue art and effects.
-- `src/lib/pool-computer.ts`: computer opponent. `src/lib/pool-network.ts`: client networking helpers.
-- `netlify/functions/pool-practice.mts`: `/api/pool-practice` practice-time records.
+### Games
+- `src/components/PoolTable.tsx`, `PoolLobby.tsx`, `CueArtwork.tsx`, `src/lib/pool-*.ts`, `src/lib/cue-design.ts`: pool.
+- `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing.
 
-### Racing
-- `src/components/Racing.tsx`: race UI, rendering, garage, single player and multiplayer client.
-- `src/lib/racing.ts`: tracks (`circuit` = Max Secure Circuit, `oval` = Oval Speedway), vehicles, paint presets, stock-car paint.
-- `server/racing-engine.mjs` (+ `.d.mts`): shared physics and AI driver, imported by both the browser and the multiplayer server.
-- `netlify/functions/racing.mts`: `/api/racing` tickets, lap records, profiles/paint, AI paint generation.
-
-### Accounts and admin
-- `src/components/PoolAccount.tsx`: sign-in/sign-up UI. `src/lib/account-password.ts`: password derivation.
-- `netlify/functions/pool-account.mts`: `/api/pool-account` connect and multiplayer tickets.
-- `netlify/functions/lib/game-account.ts`: current user, tester account, account reset.
-- `netlify/functions/lib/workspace-access.ts`: admin check and per-user studio page permissions.
-- `netlify/functions/workspace-admin.mts`: `/api/workspace-access`, `/api/workspace-admin`.
-- `src/components/WorkspaceAdmin.tsx`: admin UI for granting studio pages.
-- `netlify/functions/lib/pool-owner.ts`: signed-in owner ID for pool data.
-- `netlify/functions/identity.mts`: Identity signup validation hook.
+### Accounts and admin UI
+- `src/components/PoolAccount.tsx`: sign-in form. `src/components/WorkspaceAdmin.tsx`: admin panel.
 
 ### Data
-- `db/schema.ts`: Drizzle tables: `creations`, `lyric_corrections`, `pool_preferences`, `pool_practice_records`, `racing_profiles`, `racing_tickets`, `racing_laps`, `account_resets`.
-- `db/index.ts`: lazy Netlify Database adapter.
-- `netlify/database/migrations/`: generated migrations, applied by Netlify at deploy.
-- Blobs stores: `studio-images`, `pool-cue-overlays`, `racing-skins`.
+- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, creations, lyric_corrections, lyric_presets.
+- Workers KV `thelibrary-files` (binding `FILES`) for binary files: `cue/<userId>`, `skin/<userId>/<asset>`, `image/<userId>/<creationId>`.
+- Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`. Config in `wrangler.jsonc`.
 
 ### Multiplayer server (`server/`)
-- `server/index.mjs`: Socket.io pool lobby, invites, rooms, matches; verifies players through `/api/pool-account`.
-- `server/racing.mjs`: racing rooms; verifies through `/api/racing`; uses `racing-engine.mjs`.
-- `server/README.md`, `server/render.yaml`: deployment docs. Deployed separately (Render/Railway), not by Netlify.
+- `server/index.mjs` and `server/racing.mjs` verify players by redeeming tickets at `<site>/api/pool-account?action=redeem` and `<site>/api/racing?action=redeem`. `FRONTEND_ORIGIN` must list the site origin.
 
 ## Conventions
 
@@ -55,29 +42,28 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 ## Platform rules
 
-- All AI runs server-side through Netlify AI Gateway. Read the `netlify-ai-gateway` skill before choosing another model. Text uses `gemini-3-flash-preview`; images use `gemini-3.1-flash-image`. Build the Gemini client inside the handler from the injected gateway configuration. Never expose environment values or provider errors.
-- Use Netlify Database for structured records and Netlify Blobs for binary data. Never use local files, browser storage, external databases, or in-memory persistence for data that must persist.
-- Drizzle packages stay on the beta release required by the Netlify adapter. Generate a migration after changing `db/schema.ts`; never apply migrations manually or edit applied ones.
-- Function endpoints use same-origin checks and platform rate rules.
+- All AI runs server-side with the Gemini API key secret. Text uses `gemini-3-flash-preview`; images use `gemini-3.1-flash-image`. Never expose environment values or provider errors.
+- Use D1 for structured records and KV for binary data. Never use local files, browser storage, or in-memory persistence for data that must persist.
+- Schema changes go in a new numbered file in `migrations/` and are applied with `wrangler d1 migrations apply thelibrary-db --remote`.
+- Non-GET endpoints check same origin. Ticket redeem endpoints are server-to-server and skip it.
 
 ## Accounts and access
 
-- Accounts are username/password Netlify Identity users (`<username>@players.invalid`). There is no email recovery.
-- The shared tester account `test` / `garrett2341` exists on every deploy, including production; the account endpoint creates it or resets its password on demand, even when signup is disabled.
-- Studio pages (chat, image, lyrics) require sign-in and a per-user grant from the workspace admin; the admin has all pages.
-- Pool preferences and cue overlays use the verified account ID when signed in and the guest cookie otherwise. Racing and pool records require sign-in.
-- Studio creations and lyric corrections are scoped to the opaque HTTP-only browser cookie. Never include the `owner` field in API responses.
+- Accounts are a username (3–20 letters, numbers, `_`, `-`, stored lowercase) and an exactly 3-digit password, hashed with a per-user salt. No registration page, email or recovery: an unknown username creates the account; a known username with the wrong digits returns "Invalid password."
+- Wrong passwords lock the username after 5 attempts (15 minutes, doubling each time up to 24 hours) and the network after 25. Each network can create 10 accounts per day.
+- The administrator is `stoegbauer`, whose password is the `ADMIN_PASSWORD` secret (not 3 digits). The admin can rename accounts, grant studio pages, reset a password (next sign-in sets new digits) and delete accounts.
+- Studio pages (chat, image, lyrics) require a grant from the admin. Pool and Racing require sign-in for saved data.
+- Pool appearance, cue overlay, racing paint, lobby sound, site theme, saved lyric styles and lyric corrections are stored per account. There is no creation library; creations are kept only so revisions and version history work. Never include `user_id` in API responses.
 
 ## Studio rules
 
 - Never claim chat includes live browsing or personal document retrieval.
-- New lyrics, fine-tunes (`revise`), full rewrites (`revamp`), and manual edits are distinct. Fine-tunes are surgical, accumulate in `tuning`, and keep untouched lines. Revamps rewrite every line with current settings and keep the topic. Every derived version stores `parentId`; preserve the original topic.
+- New lyrics, fine-tunes (`revise`), full rewrites (`revamp`), and manual edits are distinct. Fine-tunes are surgical, accumulate in `tuning`, and keep untouched lines. Revamps rewrite every line with current settings and keep the topic. Every derived version stores `parent_id`.
+- Saved lyric styles store the full song settings including `instructions`, the user's standing writing directions, which the model follows as preferences under the mandatory rules.
 - Explicit mode (default on) allows profanity but never slurs against protected groups.
-- Artist influence and custom genres are researched server-side (Search grounding, model-knowledge fallback) and cached in `research`, which is never public.
-- Prompt text is ideas only: lyrics copying 4–5 word runs of prompts are regenerated once, then rejected. New songs use previous lyrics only as a negative reference. The validator requires bracketed sections and forbids intro lyrics; repeated titles or exact substantial lines trigger one retry.
-- The `style` action writes a Suno "Style of Music" prompt (comma-separated tags, no real artist names, max 1000 characters) in place to `style_prompt`.
-- Teach-AI corrections persist per owner; "Forget previous prompts" clears client state only.
-- Image downloads are re-encoded through canvas to PNG, JPEG, or WebP. Serve stored images through the ownership-checked endpoint, never a public Image CDN or object URL.
+- Artist influence and custom genres are researched server-side and cached in `research`, which is never public.
+- Prompt text and instructions are ideas only: lyrics copying 4–5 word runs are regenerated once, then rejected. The validator requires bracketed sections and forbids intro lyrics.
+- Image downloads are re-encoded through canvas. Serve stored images only through the ownership-checked `/api/asset`.
 
 ## Games rules
 
@@ -87,4 +73,4 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 ## Development
 
-Install with `pnpm install`; develop with `netlify dev --port 8889`. The platform installs, builds, and applies migrations at deploy. In the hosted build workflow, do not run builds, tests, type-checks, or dev servers unless the user's request permits them. Never inspect `.git` or create commits.
+Install with `pnpm install`; develop with `pnpm dev`. Pushes to `main` build and deploy automatically through Workers Builds.
