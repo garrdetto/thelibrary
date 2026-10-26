@@ -8,7 +8,10 @@ import { isSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { PoolTable } from '@/components/PoolTable'
 import { usePoolLobby } from '@/components/PoolLobby'
-import { InvitePopups } from '@/components/SitePresence'
+import { InvitePopups, OnlinePlayers } from '@/components/SitePresence'
+import { ModuleHub } from '@/components/ModuleHub'
+import { embeddedModules, isEmbeddedModuleId, learningModules } from '@/lib/modules'
+import type { EmbeddedModuleId, ModuleId } from '@/lib/modules'
 import { Streamdown } from 'streamdown'
 import type { Creation, LyricCorrection, LyricPreset, Message, SongSettings, StudioMode } from '@/lib/studio-types'
 
@@ -21,20 +24,13 @@ const navigation = [
   { id: 'chat', label: 'AI chat', icon: MessageCircle },
   { id: 'image', label: 'Image studio', icon: Image },
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
-  { id: 'pool', label: '8BallPool', icon: CircleDot },
-  { id: 'racing', label: 'Racing', icon: Flag },
 ] as const
-const playLinks = [
-  { id: 'sandlot', label: 'Sandlot Sluggers', src: '/play/sandlot.html', icon: Trophy },
-  { id: 'botwreck', label: 'BotWreck 3D', src: '/play/botwreck.html', icon: Bot },
-  { id: 'chess', label: 'Chess', src: '/play/chess.html', icon: Crown },
-  { id: 'checkers', label: 'Checkers', src: '/play/checkers.html', icon: Disc },
-  { id: '2048', label: '2048', src: '/play/2048.html', icon: Hash },
-  { id: 'helicopter', label: 'Chopper Cave', src: '/play/helicopter.html', icon: Plane },
-] as const
-type PlayId = typeof playLinks[number]['id']
-type View = StudioMode | 'pool' | 'racing' | 'home' | 'admin' | PlayId
-const isPlayId = (value: string): value is PlayId => playLinks.some(item => item.id === value)
+const moduleIcons: Record<ModuleId, typeof Trophy> = { sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane }
+const moduleNav = learningModules.map(item => ({ id: item.id, label: item.title, icon: moduleIcons[item.id] }))
+const playLinks = embeddedModules.map(item => ({ id: item.id, label: item.title, src: item.src }))
+type PlayId = EmbeddedModuleId
+type View = StudioMode | 'home' | 'admin' | ModuleId
+const isPlayId = isEmbeddedModuleId
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']
 
@@ -46,7 +42,7 @@ async function requestApi(url: string, body?: unknown, method = body ? 'POST' : 
 }
 
 function BrandMark({ small = false }: { small?: boolean }) {
-  return <span className={`brand-mark ${small ? 'small' : ''}`} aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><path d="M6.5 28v-8.5M6.5 21.5c0-3.2 5-3.2 5 0V28M11.5 21.5c0-3.2 5-3.2 5 0V28" stroke="currentColor" strokeOpacity=".55" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/><path d="M19.5 12 23 28l3.5-11L30 28l3.5-16" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
+  return <span className={`brand-mark ${small ? 'small' : ''}`} aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><path d="M8 11.5c4.2-1.6 8.3-1.2 12 1.6v16.4c-3.7-2.8-7.8-3.2-12-1.6V11.5Z" stroke="currentColor" strokeOpacity=".55" strokeWidth="2.1" strokeLinejoin="round"/><path d="M32 11.5c-4.2-1.6-8.3-1.2-12 1.6v16.4c3.7-2.8 7.8-3.2 12-1.6V11.5Z" stroke="currentColor" strokeWidth="2.3" strokeLinejoin="round"/><path d="M24 17v7h4" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round"/></svg></span>
 }
 
 function Studio() {
@@ -68,7 +64,7 @@ function Studio() {
   const [copied, setCopied] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
-  const [theme, setTheme] = useState<SiteTheme>('gray')
+  const [theme, setTheme] = useState<SiteTheme>('midnight')
   const [selection, setSelection] = useState<{ start: number; end: number; original: string } | null>(null)
   const [replacement, setReplacement] = useState('')
   const [teach, setTeach] = useState(false)
@@ -368,29 +364,30 @@ function Studio() {
   }
 
   const activePlay = playLinks.find(item => item.id === view)
-  const activeLabel = view === 'home' ? 'Your account' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : navigation.find((item) => item.id === view)?.label
+  const activeLabel = view === 'home' ? 'Module library' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : moduleNav.find(item => item.id === view)?.label ?? navigation.find((item) => item.id === view)?.label
 
   return <div className="studio-shell">
     {mobileOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`}>
-      <a className="brand" href="/" aria-label="myWorkHelper home"><BrandMark /><span><span className="brand-name"><em>my</em>WorkHelper</span><small>A SPACE FOR YOUR IDEAS</small></span></a>
+      <a className="brand" href="/" aria-label="The Library home"><BrandMark /><span><span className="brand-name"><em>The</em> Library</span><small>LEARNING MODULES</small></span></a>
       {access.pages.length > 0 && <button className="new-session" onClick={() => switchView(access.pages[0] as StudioMode)} disabled={busy}><Plus size={17} /> New creation <span>↗</span></button>}
-      <p className="nav-caption">YOUR WORKSPACE</p>
-      <nav aria-label="Studio navigation">
-        {navigation.filter(item => item.id === 'pool' || item.id === 'racing' || access.pages.includes(item.id)).map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}{id === 'lyrics' && <span className="new-tag">NEW</span>}</button>)}
-        <p className="nav-caption nav-caption-play">PLAY</p>
-        {playLinks.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}</button>)}
-        <div className="nav-divider" /><button className={`nav-item ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')}>Account / Login</button>
+      <nav aria-label="Site navigation">
+        <button className={`nav-item nav-home ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')} disabled={busy}><Sparkles size={19} strokeWidth={1.7}/><span>Module library</span>{view === 'home' && <span className="active-dot" />}</button>
+        {access.pages.length > 0 && <p className="nav-caption nav-caption-play">YOUR WORKSPACE</p>}
+        {navigation.filter(item => access.pages.includes(item.id)).map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}{id === 'lyrics' && <span className="new-tag">NEW</span>}</button>)}
+        <p className="nav-caption nav-caption-play">LEARNING MODULES</p>
+        {moduleNav.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}</button>)}
+        <div className="nav-divider" /><button className={`nav-item ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')}>{access.username ? `Signed in as ${access.username}` : 'Sign in'}</button>
       </nav>
-      <div className="sidebar-bottom"><div className="creative-note"><span className="tiny-star">✳</span><strong>Made for your imagination.</strong><p>A thought, a picture, a melody.<br/>See where it takes you.</p></div><button className="help-link" onClick={() => setHelpOpen(true)}><Info size={16}/> About your studio <ArrowRight size={14}/></button><div className="workspace-profile"><span className="profile-icon"><Feather size={18}/></span><div>Personal workspace<small>Your own creative corner</small></div></div></div>
+      <div className="sidebar-bottom"><div className="creative-note"><span className="tiny-star">✳</span><strong>Learn by doing.</strong><p>Strategy, physics, math<br/>and precision modules.</p></div><button className="help-link" onClick={() => setHelpOpen(true)}><Info size={16}/> About The Library <ArrowRight size={14}/></button><div className="workspace-profile"><span className="profile-icon"><Feather size={18}/></span><div>{access.username ?? 'Guest'}<small>{access.username ? 'Progress saves to your account' : 'Sign in to save progress'}</small></div></div></div>
     </aside>
 
     <main className="main-panel">
-      <header className="topbar"><div className="breadcrumb"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}</header>
-      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' ? 'racing-content' : view === 'pool' ? 'pool-content' : activePlay ? 'play-content' : ''}`}>
+      <header className="topbar"><div className="breadcrumb"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><span>The Library</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}</header>
+      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' ? 'racing-content' : view === 'pool' ? 'pool-content' : activePlay ? 'play-content' : view === 'home' ? 'hub-content' : ''}`}>
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
-        {view === 'home' && <section className="account-home"><div className="home-confetti" aria-hidden="true"><span/><span/><span/><span/><span/><span/></div><PoolAccount intro="Sign in or create an account with any username and a 3-digit password. No email needed. Your settings and customizations follow your account." username={access.username} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/><span className="section-eyebrow home-eyebrow"><Sparkles size={14}/> WELCOME TO MYWORKHELPER</span><h1>Rack 'em up.<br/><em>Rev it up. Have fun.</em></h1><div className="account-game-links"><button className="game-launch game-launch-pool" onClick={() => switchView('pool')}><span className="game-launch-art" aria-hidden="true"><i className="launch-ball launch-ball-eight">8</i><i className="launch-ball launch-ball-one">1</i><i className="launch-ball launch-ball-cue"/></span><span className="game-launch-text"><small>8-ball · 9-ball · multiplayer</small><strong>Play Pool</strong></span><ArrowRight className="game-launch-arrow" size={30}/></button><button className="game-launch game-launch-racing" onClick={() => switchView('racing')}><span className="game-launch-art" aria-hidden="true"><i className="launch-flag"/><i className="launch-car"><b/></i><i className="launch-speed"/></span><span className="game-launch-text"><small>Laps · records · speed</small><strong>Play Racing</strong></span><ArrowRight className="game-launch-arrow" size={30}/></button></div></section>}
+        {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={<PoolAccount intro="Sign in or create an account with any username and a 3-digit password. No email needed. Your progress and settings follow your account." username={access.username} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>} online={access.username ? <OnlinePlayers players={lobby.players} name={lobby.name}/> : null}/>}
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe key={activePlay.id} src={activePlay.src} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {view === 'admin' && access.isAdmin && <WorkspaceAdmin/>}
         {view === 'pool' && <PoolTable lobby={lobby}/>}
@@ -406,7 +403,7 @@ function Studio() {
               {access.pages.includes('lyrics') && <button className="suggestion-card card-song" onClick={() => suggest('lyrics', 'A bittersweet song about outgrowing your hometown but still feeling its pull.')}><div className="card-art song-art"><span className="music-staff"/><span className="note note-one">♪</span><span className="note note-two">♫</span><span className="note note-three">♪</span><span className="song-spark">✳</span></div><div className="card-label"><Music2 size={16}/><span>Find your next verse</span><ArrowRight size={16}/></div><p>Real feelings. Words that sound like you.</p></button>}
             </div>
             <div className="starter-hint"><Sparkles size={14}/><span>No perfect prompt needed. Just start with what’s on your mind.</span></div>
-          </div> : <div className="conversation" aria-live="polite">{messages.map((message, index) => <div key={index} className={`message ${message.role}`}><div className="message-avatar">{message.role === 'assistant' ? <BrandMark small/> : <Feather size={18}/>}</div><div className="message-body"><span className="message-author">{message.role === 'assistant' ? 'myWorkHelper' : 'You'}</span><Streamdown>{message.content}</Streamdown></div></div>)}{busy && <div className="thinking"><BrandMark small/><span className="thinking-dots"><i/><i/><i/></span><span>Connecting the dots…</span></div>}<div ref={bottomRef}/></div>}
+          </div> : <div className="conversation" aria-live="polite">{messages.map((message, index) => <div key={index} className={`message ${message.role}`}><div className="message-avatar">{message.role === 'assistant' ? <BrandMark small/> : <Feather size={18}/>}</div><div className="message-body"><span className="message-author">{message.role === 'assistant' ? 'The Library' : 'You'}</span><Streamdown>{message.content}</Streamdown></div></div>)}{busy && <div className="thinking"><BrandMark small/><span className="thinking-dots"><i/><i/><i/></span><span>Connecting the dots…</span></div>}<div ref={bottomRef}/></div>}
           <div className="composer-zone"><form className="chat-composer" onSubmit={generate}><textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder="What’s on your mind? Let’s make something of it." aria-label="Chat message" rows={2} maxLength={4000} disabled={busy} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void generate() } }}/><div className="composer-toolbar"><div className="composer-tools"><span className="composer-mode"><MessageCircle size={14}/> Chat</span>{access.pages.includes('image') && <button type="button" onClick={() => suggest('image', input)} disabled={busy}><Image size={15}/> Create image</button>}{access.pages.includes('lyrics') && <button type="button" onClick={() => suggest('lyrics', input)} disabled={busy}><Music2 size={15}/> Write lyrics</button>}</div><button className="send-button" type="submit" aria-label="Send message" disabled={!input.trim() || busy}>{busy ? <LoaderCircle className="spin" size={18}/> : <ArrowUp size={20}/>}</button></div></form><div className="composer-footnote"><span><Cloud size={12}/> Your ideas, powered by the cloud.</span><span>AI can make mistakes. Keep your own perspective.</span></div></div>
         </>}
 
@@ -417,7 +414,7 @@ function Studio() {
       </div>
     </main>
     <InvitePopups lobby={lobby} onJoinRace={joinRaceInvite}/>
-    {helpOpen && <div className="modal-backdrop" onClick={() => setHelpOpen(false)}><section className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onClick={(event) => event.stopPropagation()}><button autoFocus className="modal-close" aria-label="Close about" onClick={() => setHelpOpen(false)}><X size={20}/></button><BrandMark/><h2 id="about-title">Your own creative corner.</h2><p>myWorkHelper brings chat, image generation, and original songwriting into one cloud-powered studio.</p><p>AI requests run on the server, so you never need to visit an AI provider’s website. Chat uses model knowledge, not live web search or your cloud documents.</p><p>Sign in with a username and a 3-digit password to keep your game settings, records, saved lyric styles and studio access on any device. Creations aren’t kept in a library; download anything you want to keep.</p><p>Lyrics are guided toward plain, natural language and coherent storytelling, with bracketed sections and instrumental-only intros. Your prompts are treated as ideas, not lines to copy. Artist and custom-genre styles are researched with web search when available, otherwise from model knowledge, and real lyrics are never reused. AI quality can vary; review and refine the result. Vocal pitch is a writing direction, not generated audio.</p><button className="primary-button" onClick={() => setHelpOpen(false)}>Back to creating <ArrowRight size={16}/></button></section></div>}
+    {helpOpen && <div className="modal-backdrop" onClick={() => setHelpOpen(false)}><section className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onClick={(event) => event.stopPropagation()}><button autoFocus className="modal-close" aria-label="Close about" onClick={() => setHelpOpen(false)}><X size={20}/></button><BrandMark/><h2 id="about-title">Welcome to The Library.</h2><p>The Library is a collection of hands-on learning modules covering strategy, physics, math and precision. Open any module from the library page or the sidebar; most run right in your browser with nothing to install.</p><p>Sign in with a username and a 3-digit password to keep your progress, records and settings on any device. Some modules support live head-to-head sessions with anyone who is online, or a private room code you can share.</p><p>Members with studio access also get AI chat, image creation and a lyric studio. AI requests run on the server; chat uses model knowledge, not live web search or your documents.</p><button className="primary-button" onClick={() => setHelpOpen(false)}>Back to the library <ArrowRight size={16}/></button></section></div>}
   </div>
 }
 

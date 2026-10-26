@@ -53,7 +53,7 @@
   <div class="board" id="board" aria-label="2048 board" role="application" tabindex="0">
     <div class="grid" aria-hidden="true"></div>
     <div class="tiles" id="tiles"></div>
-    <div class="overlay" id="overlay"><h2 id="ovTitle">Game over</h2><p id="ovText"></p><div><button id="keepGoing">Keep going</button><button id="tryAgain">Try again</button></div></div>
+    <div class="overlay" id="overlay"><h2 id="ovTitle">Round over</h2><p id="ovText"></p><div><button id="keepGoing">Keep going</button><button id="tryAgain">Try again</button></div></div>
   </div>
   <footer>Arrow keys or WASD to move. Swipe on touch screens. <kbd>U</kbd> undoes one move.</footer>
 </main>
@@ -124,7 +124,7 @@ function move(dir) {
   setTimeout(() => {
     const nid = addRandom(); render(new Set([nid]), mergedIds); busy = false; save();
     if (!won && tiles.some(t => t.v >= 2048)) { won = true; showOverlay('You made 2048!', 'Keep going for a bigger tile?', true); }
-    else if (!canMove()) { over = true; showOverlay('Game over', `Final score ${score}`, false); }
+    else if (!canMove()) { over = true; showOverlay('Round over', `Final score ${score}`, false); }
   }, 115);
 }
 function undo() { if (!history || busy) return; const h = JSON.parse(history); tiles = h.tiles; score = h.score; over = false; history = null; tilesEl.innerHTML = ''; hideOverlay(); render(); save(); }
@@ -139,7 +139,7 @@ const board = document.getElementById('board');
 board.addEventListener('pointerdown', e => { touch = { x: e.clientX, y: e.clientY }; });
 board.addEventListener('pointerup', e => { if (!touch) return; const dx = e.clientX - touch.x, dy = e.clientY - touch.y; touch = null; if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return; move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up')); });
 window.addEventListener('resize', () => render());
-try { const s = JSON.parse(store.get('2048-state') || 'null'); if (s && Array.isArray(s.tiles) && s.tiles.length) { tiles = s.tiles.map(t => ({ ...t, id: idSeq++ })); score = s.score || 0; won = !!s.won; keepPlaying = !!s.keepPlaying; render(); if (!canMove()) { over = true; showOverlay('Game over', `Final score ${score}`, false); } } else newGame(); } catch (e) { newGame(); }
+try { const s = JSON.parse(store.get('2048-state') || 'null'); if (s && Array.isArray(s.tiles) && s.tiles.length) { tiles = s.tiles.map(t => ({ ...t, id: idSeq++ })); score = s.score || 0; won = !!s.won; keepPlaying = !!s.keepPlaying; render(); if (!canMove()) { over = true; showOverlay('Round over', `Final score ${score}`, false); } } else newGame(); } catch (e) { newGame(); }
 board.focus();
 </script>
 </body>

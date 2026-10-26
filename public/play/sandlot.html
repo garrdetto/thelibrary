@@ -187,7 +187,7 @@ const ROSTER = [
     look: { skin: '#fde7d7', hair: 'braidsingle', hairColor: '#f2d16b', body: 'average', shirt: '#7f8fa6', trim: '#273c75', pants: '#353b48', shoes: '#000000', acc: ['frown', 'crossed'] },
     s: [7, 7, 4, 6, 7, 7], pitches: ['FB', 'SL', 'CH'], quirk: 'sigh', stance: 'closed',
     blurb: 'Hates baseball. Says so constantly. Is annoyingly great at it.',
-    q: { hr: 'Great. Can I go home now?', k: 'Told you I hate this game.', c: 'Ugh. Fine. Out.' } },
+    q: { hr: 'Great. Can I go home now?', k: 'Told you I hate baseball.', c: 'Ugh. Fine. Out.' } },
   { id: 26, first: 'Moe', last: 'Banks', nick: 'Noodle', age: 10, bats: 'R', throws: 'R',
     look: { skin: '#7b4b2a', hair: 'twists', hairColor: '#160d07', body: 'lanky', shirt: '#e1b12c', trim: '#c23616', pants: '#40739e', shoes: '#ffffff', acc: ['longarms'] },
     s: [4, 5, 5, 7, 6, 7], pitches: ['FB', 'CH', 'SL'], sig: 'NOODLE', quirk: 'armflop', stance: 'wiggle',
@@ -270,7 +270,7 @@ const TEAM_COLORS = [['#e74c3c', '#ffffff'], ['#2e86de', '#ffffff'], ['#8e44ad',
    {t} batting team, {d} defense team, {s} score line, {r} runs, {i} inning. */
 const ANNOUNCERS = { C: 'CHIP', D: 'DALE' };
 const LINES = {
-  gameStart: [['C', 'Welcome to {field}! It\'s a beautiful day for some neighborhood baseball!'], ['D', 'Somebody\'s mom said be home by dinner. So we have a deadline.'], ['C', 'The kids are here, the snacks are here, LET\'S PLAY BALL!'], ['D', 'Chip, you say that every game.']],
+  gameStart: [['C', 'Welcome to {field}! It\'s a beautiful day for some neighborhood baseball!'], ['D', 'Somebody\'s mom said be home by dinner. So we have a deadline.'], ['C', 'The kids are here, the snacks are here, LET\'S PLAY BALL!'], ['D', 'Chip, you say that every single time.']],
   inning: [['C', 'Top of the {i}! {t} coming up to bat!'], ['D', '{t} batting now. The ice cream truck has not yet been spotted.'], ['C', 'Here we go, inning {i}! Anything can happen!'], ['D', 'Inning {i}. Statistically, something will happen.']],
   homer: [['C', 'THAT BALL IS GONE! {b} just sent it to another zip code!'], ['C', 'OH MY GOODNESS! {b} with a HOME RUN!'], ['D', 'That one\'s gone. Someone will have to go knock on a neighbor\'s door.'], ['C', 'SEE YA! {b} launches one into orbit!'], ['D', 'Home run, {b}. I\'ll alert the window insurance people.'], ['C', 'TOUCH \'EM ALL, {b}! TOUCH \'EM ALL!']],
   strikeout: [['C', 'STRIKE THREE! {p} gets {b} swinging!'], ['D', '{b} struck out. Happens to the best of us. Mostly to the rest of us.'], ['C', 'Sit down, {b}! {p} is DEALING!'], ['D', 'Strike three. {b} will be thinking about that one during math class.'], ['C', 'K! K! K! {p} is on fire!'], ['D', 'That\'s a strikeout. Write it down, Chip. Use a pencil.']],
@@ -291,10 +291,10 @@ const LINES = {
   foul: [['D', 'Foul ball. Into the bushes. Somebody go get that.'], ['C', 'Fouled away! Still alive!'], ['D', 'Foul. That one hit the Hendersons\' fence again.']],
   perfect: [['C', 'PERFECT timing on that swing!'], ['D', 'Square contact. You could hear it from the swing set.']],
   threeOuts: [['D', 'Three outs. Teams switch. Somebody remembered their glove this time.'], ['C', 'That\'s the side! Grab your gloves!'], ['D', 'Side retired. Juice box intermission.']],
-  closeGame: [['C', 'This one is going down to the wire, folks!'], ['D', 'Close game. Even I\'m slightly interested.']],
+  closeGame: [['C', 'This one is going down to the wire, folks!'], ['D', 'Close one. Even I\'m slightly interested.']],
   blowout: [['D', 'This score is getting lopsided. Like my lawn chair.'], ['C', '{t} is running away with this one!']],
-  gameOver: [['C', 'THAT\'S THE BALLGAME! {t} WINS IT!'], ['D', 'Game over. {t} wins. Everyone go wash your hands.'], ['C', 'What a game! {t} takes it home!']],
-  idle: [['D', 'Fun fact, Chip: this field used to be a parking lot.'], ['C', 'I can smell hot dogs from here!'], ['D', 'Someone\'s dog has wandered into left field. Again.'], ['C', 'The energy here is ELECTRIC!'], ['D', 'There\'s a cloud that looks like a baseball. Or a potato.'], ['C', 'I love this game, Dale! I LOVE IT!'], ['D', 'I am contractually obligated to say this is exciting.'], ['D', 'The sprinklers are scheduled for 5 p.m. Let\'s hurry it up.'], ['C', 'Look at that pitcher focus!'], ['D', '{p} has thrown a lot of pitches. I\'ve lost count. I never counted.']],
+  gameOver: [['C', 'AND THAT\'S IT! {t} WINS IT!'], ['D', 'That\'s a wrap. {t} wins. Everyone go wash your hands.'], ['C', 'What a match! {t} takes it home!']],
+  idle: [['D', 'Fun fact, Chip: this field used to be a parking lot.'], ['C', 'I can smell hot dogs from here!'], ['D', 'Someone\'s dog has wandered into left field. Again.'], ['C', 'The energy here is ELECTRIC!'], ['D', 'There\'s a cloud that looks like a baseball. Or a potato.'], ['C', 'I love baseball, Dale! I LOVE IT!'], ['D', 'I am contractually obligated to say this is exciting.'], ['D', 'The sprinklers are scheduled for 5 p.m. Let\'s hurry it up.'], ['C', 'Look at that pitcher focus!'], ['D', '{p} has thrown a lot of pitches. I\'ve lost count. I never counted.']],
   pitcherTired: [['D', '{p} is looking tired. Arms are not infinite.'], ['C', '{p} is running on fumes out there!']],
   powerup: [['C', '{t} activates {pw}! Uh-oh!'], ['D', '{pw}. That seems unfair, but I don\'t make the rules.']],
   rundown: [['C', 'They\'ve got {b} in a PICKLE!'], ['D', 'A rundown. Like tag, but with consequences.']],
@@ -2008,8 +2008,8 @@ function drawTitle(t) {
   c.restore();
   outlinedText(c, 'Neighborhood pickup baseball', W / 2, 202, 17, '#fff');
   const bx = W / 2 - 150; let y = 224;
-  button(bx, y, 300, 52, 'Pickup Game', () => { SETUP.mode = 'pickup'; screen = 'setup'; }, { color: '#ff6b6b', sub: 'you vs. the CPU' }); y += 62;
-  button(bx, y, 300, 52, 'Season', () => openSeason(), { color: '#1dd1a1', sub: '8 teams · 14 games · playoffs' }); y += 62;
+  button(bx, y, 300, 52, 'Pickup Match', () => { SETUP.mode = 'pickup'; screen = 'setup'; }, { color: '#ff6b6b', sub: 'you vs. the CPU' }); y += 62;
+  button(bx, y, 300, 52, 'Season', () => openSeason(), { color: '#1dd1a1', sub: '8 teams · 14 matches · playoffs' }); y += 62;
   button(bx, y, 300, 52, 'Online Match', () => { screen = 'online'; NET.status = ''; }, { color: '#54a0ff', sub: 'play a friend with a room code' }); y += 62;
   button(bx, y, 300, 52, 'Local 2-Player', () => { SETUP.mode = 'local'; screen = 'setup'; }, { color: '#a55eea', sub: 'hot-seat on one computer' });
   button(20, H - 64, 130, 44, 'How to Play', () => { screen = 'help'; }, { color: '#576574', size: 15 });
@@ -2017,7 +2017,7 @@ function drawTitle(t) {
 }
 function drawSetup(t) {
   const c = ctx; menuBackdrop(t); panel(40, 30, W - 80, H - 60);
-  outlinedText(c, SETUP.mode === 'local' ? 'LOCAL 2-PLAYER' : SETUP.mode === 'season' ? 'NEW SEASON' : SETUP.mode === 'online' ? 'ONLINE MATCH SETUP' : 'PICKUP GAME', W / 2, 70, 34, '#ffd32a');
+  outlinedText(c, SETUP.mode === 'local' ? 'LOCAL 2-PLAYER' : SETUP.mode === 'season' ? 'NEW SEASON' : SETUP.mode === 'online' ? 'ONLINE MATCH SETUP' : 'PICKUP MATCH', W / 2, 70, 34, '#ffd32a');
   c.fillStyle = '#fff'; c.font = `bold 16px ${FONT}`; c.textAlign = 'left'; c.fillText(SETUP.mode === 'season' ? 'Home field' : 'Choose a field', 70, 116);
   FIELDS.forEach((f, i) => {
     const x = 70 + i * 166, y = 128;
@@ -2261,7 +2261,7 @@ function drawBox(t) {
   }
   if (G.mvp) {
     const k = kidById(G.mvp), b = G.box[G.mvp]; panel(640, 56, 300, 416, '#f7f1e3', OUTLINE);
-    outlinedText(c, 'GAME MVP', 790, 84, 26, '#ffd32a');
+    outlinedText(c, 'MATCH MVP', 790, 84, 26, '#ffd32a');
     drawPortrait(c, k, 715, 104, 150, 170);
     c.fillStyle = '#2d3436'; c.font = `900 17px ${FONT}`; c.textAlign = 'center'; c.fillText(`${k.first} "${k.nick}" ${k.last}`, 790, 298);
     c.font = `bold 13px ${FONT}`; const line = [b.h + '-' + b.ab, b.hr ? b.hr + ' HR' : '', b.rbi ? b.rbi + ' RBI' : '', b.pk ? b.pk + ' K' : '', b.sb ? b.sb + ' SB' : '', b.gc ? 'Web gem!' : ''].filter(Boolean).join(' · '); c.fillText(line, 790, 320);
@@ -2499,7 +2499,7 @@ function finishVsCpu() {
   NET.role = 'local'; NET.conn = null; NET.peer = null; NET.paused = false; NET.connected = false;
   if (G) { G.teams.forEach((tm, i) => tm.controller = i === mySide ? 'p1' : 'cpu'); G.mode = 'pickup'; P = null; if (!G.over && G.phase !== 'halfStart' && G.phase !== 'halfOver') beginPrePitch(); }
   if (screen === 'pregame' && !PENDING) screen = 'title';
-  notice('Finishing the game against the CPU.');
+  notice('Finishing the match against the CPU.');
 }
 function onNetMessage(m) {
   if (!m || typeof m !== 'object' || typeof m.t !== 'string') return;
@@ -2616,7 +2616,7 @@ function drawOnline(t) {
     button(W / 2 - 90, H - 120, 180, 46, 'Cancel', () => { netClose(); screen = 'title'; ui.typing = false; }, { color: '#576574' });
     return;
   }
-  button(W / 2 - 250, 130, 230, 120, 'Host a game', () => { ui.typing = false; netHost(); }, { color: '#ff6b6b', size: 22, sub: 'get a room code' });
+  button(W / 2 - 250, 130, 230, 120, 'Host a match', () => { ui.typing = false; netHost(); }, { color: '#ff6b6b', size: 22, sub: 'get a room code' });
   c.fillStyle = 'rgba(255,255,255,0.12)'; rrect(c, W / 2 + 20, 130, 230, 120, 12); c.fill();
   c.fillStyle = '#fff'; c.font = `900 18px ${FONT}`; c.fillText('Join with a code', W / 2 + 135, 158);
   const code = (ui.joinCode || '').padEnd(6, '_');
@@ -2719,7 +2719,7 @@ function drawSeason(t) {
   const c = ctx; const g = c.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#0b8457'); g.addColorStop(1, '#10ac84'); c.fillStyle = g; c.fillRect(0, 0, W, H);
   if (!SEASON) { screen = 'title'; return; }
   outlinedText(c, 'SEASON', 100, 34, 32, '#ffd32a');
-  const stage = SEASON.phase === 'regular' ? `Game ${Math.min(SEASON.round + 1, 14)} of 14` : SEASON.phase === 'playoffs' ? (SEASON.playoff.stage === 'semis' ? 'Playoffs: Semifinals' : 'Playoffs: Championship') : 'Season complete';
+  const stage = SEASON.phase === 'regular' ? `Match ${Math.min(SEASON.round + 1, 14)} of 14` : SEASON.phase === 'playoffs' ? (SEASON.playoff.stage === 'semis' ? 'Playoffs: Semifinals' : 'Playoffs: Championship') : 'Season complete';
   c.fillStyle = '#fff'; c.font = `bold 15px ${FONT}`; c.textAlign = 'left'; c.fillText(stage, 190, 40);
   ['standings', 'leaders', 'schedule'].forEach((tab, i) => button(420 + i * 130, 14, 120, 36, tab[0].toUpperCase() + tab.slice(1), () => { ui.tab = tab; }, { color: '#576574', selected: ui.tab === tab, size: 14, r: 8 }));
   panel(16, 62, 600, 470, 'rgba(10,30,24,0.75)');
@@ -2728,7 +2728,7 @@ function drawSeason(t) {
     c.fillStyle = '#ffd32a'; c.font = `bold 12px ${FONT}`; ['TEAM', 'W', 'L', 'T', 'PCT', 'GB', 'RS', 'RA'].forEach((h2, i) => c.fillText(h2, i ? 300 + (i - 1) * 42 : 40, 90));
     st.forEach((s, r) => { const tm = SEASON.teams[s.i], y = 120 + r * 48; c.fillStyle = tm.user ? 'rgba(255,211,42,0.18)' : 'rgba(255,255,255,0.05)'; rrect(c, 28, y - 26, 576, 42, 8); c.fill(); c.fillStyle = tm.colors[0]; rrect(c, 36, y - 18, 16, 26, 4); c.fill(); c.fillStyle = '#fff'; c.font = `bold 14px ${FONT}`; c.textAlign = 'left'; c.fillText(`${r + 1}. ${tm.name}${tm.user ? ' (you)' : ''}`, 60, y); const gb = ((lead.w - s.w) + (s.l - lead.l)) / 2; [s.w, s.l, s.t, s.pct.toFixed(3).replace(/^0/, ''), gb ? gb.toFixed(1) : '-', s.rs, s.ra].forEach((v, i) => c.fillText(String(v), 300 + i * 42, y)); if (r === 3) { c.strokeStyle = '#ffd32a'; c.setLineDash([5, 4]); c.beginPath(); c.moveTo(30, y + 21); c.lineTo(602, y + 21); c.stroke(); c.setLineDash([]); } });
   } else if (ui.tab === 'leaders') {
-    seasonLeaders().forEach(([title, list, fmt], i) => { const x = 36 + (i % 2) * 290, y = 92 + Math.floor(i / 2) * 146; c.fillStyle = '#ffd32a'; c.font = `900 14px ${FONT}`; c.textAlign = 'left'; c.fillText(title, x, y); list.forEach((r, j) => { c.fillStyle = SEASON.teams[r.team].user ? '#ffeaa7' : '#fff'; c.font = `bold 12px ${FONT}`; c.fillText(`${j + 1}. ${kidById(r.id).nick} (${SEASON.teams[r.team].name.split(' ').slice(-1)[0]})`, x, y + 20 + j * 20); c.textAlign = 'right'; c.fillText(String(fmt(r.v)), x + 260, y + 20 + j * 20); c.textAlign = 'left'; }); if (!list.length) { c.fillStyle = '#ccc'; c.fillText('No games yet.', x, y + 20); } });
+    seasonLeaders().forEach(([title, list, fmt], i) => { const x = 36 + (i % 2) * 290, y = 92 + Math.floor(i / 2) * 146; c.fillStyle = '#ffd32a'; c.font = `900 14px ${FONT}`; c.textAlign = 'left'; c.fillText(title, x, y); list.forEach((r, j) => { c.fillStyle = SEASON.teams[r.team].user ? '#ffeaa7' : '#fff'; c.font = `bold 12px ${FONT}`; c.fillText(`${j + 1}. ${kidById(r.id).nick} (${SEASON.teams[r.team].name.split(' ').slice(-1)[0]})`, x, y + 20 + j * 20); c.textAlign = 'right'; c.fillText(String(fmt(r.v)), x + 260, y + 20 + j * 20); c.textAlign = 'left'; }); if (!list.length) { c.fillStyle = '#ccc'; c.fillText('No matches yet.', x, y + 20); } });
   } else {
     const mine = SEASON.results.filter(r => r.teams.includes(0)); c.font = `bold 13px ${FONT}`; c.textAlign = 'left';
     SEASON.schedule.forEach((pairs, i) => { const p = pairs.find(q => q.includes(0)), opp = p[0] === 0 ? p[1] : p[0], res = mine.find(r => r.round === i && !r.playoff), y = 88 + i * 31; c.fillStyle = i === SEASON.round && SEASON.phase === 'regular' ? '#ffd32a' : '#fff'; c.fillText(`${i + 1}. ${p[0] === 0 ? 'vs' : '@'} ${SEASON.teams[opp].name}`, 36, y); if (res) { const us = res.teams[0] === 0 ? res.score[0] : res.score[1], them = res.teams[0] === 0 ? res.score[1] : res.score[0]; c.fillStyle = us > them ? '#7bed9f' : us < them ? '#ff7675' : '#dfe6e9'; c.fillText(`${us > them ? 'W' : us < them ? 'L' : 'T'} ${us}-${them}`, 420, y); } });
@@ -2740,12 +2740,12 @@ function drawSeason(t) {
     c.fillStyle = '#fff'; c.font = `14px ${FONT}`; c.fillText(champ.user ? 'You won the whole thing!' : 'Better luck next season!', 788, 330);
   } else {
     const pair = currentUserGame();
-    c.fillStyle = '#ffd32a'; c.font = `900 16px ${FONT}`; c.textAlign = 'center'; c.fillText(pair ? 'NEXT GAME' : 'YOUR TEAM IS OUT', 788, 96);
+    c.fillStyle = '#ffd32a'; c.font = `900 16px ${FONT}`; c.textAlign = 'center'; c.fillText(pair ? 'NEXT MATCH' : 'YOUR TEAM IS OUT', 788, 96);
     if (pair) { const opp = pair[0] === 0 ? pair[1] : pair[0], home = pair[0] === 0; c.fillStyle = '#fff'; c.font = `bold 15px ${FONT}`; c.fillText(`${home ? 'vs.' : 'at'} ${SEASON.teams[opp].name}`, 788, 124); c.font = `13px ${FONT}`; c.fillStyle = '#dfe6e9'; c.fillText(FIELDS[SEASON.teams[pair[0]].field].name, 788, 146); SEASON.teams[opp].kids.slice(0, 5).forEach((id, i) => drawKid(c, kidById(id), 690 + i * 48, 236, 13, { t: t + i * 400 })); }
     else c.fillText('Watch the rest of the playoffs.', 788, 124);
     if (SEASON.phase === 'playoffs') { const pl = SEASON.playoff; c.fillStyle = '#fff'; c.font = `bold 12px ${FONT}`; c.textAlign = 'left'; pl.semis.forEach((s, i) => c.fillText(`Semi ${i + 1}: ${SEASON.teams[s[0]].name} vs ${SEASON.teams[s[1]].name}${pl.winners[i] != null ? ' → ' + SEASON.teams[pl.winners[i]].name.split(' ').slice(-1)[0] : ''}`, 650, 280 + i * 20)); if (pl.final) c.fillText(`Final: ${SEASON.teams[pl.final[0]].name} vs ${SEASON.teams[pl.final[1]].name}`, 650, 322); }
-    if (pair) button(660, 350, 256, 52, 'Play Game', () => seasonPlayNext(), { color: '#ff6b6b', size: 20 });
-    button(660, pair ? 412 : 350, 256, 44, pair ? 'Simulate Game' : 'Simulate next', () => seasonSimNext(), { color: '#576574', size: 15 });
+    if (pair) button(660, 350, 256, 52, 'Play Match', () => seasonPlayNext(), { color: '#ff6b6b', size: 20 });
+    button(660, pair ? 412 : 350, 256, 44, pair ? 'Simulate Match' : 'Simulate next', () => seasonSimNext(), { color: '#576574', size: 15 });
   }
   button(660, 470, 120, 44, 'Menu', () => { screen = 'title'; }, { color: '#576574', size: 15 });
   button(796, 470, 120, 44, 'New Season', () => { if (window.confirm ? true : true) { storageDel(SEASON_KEY); SEASON = null; SETUP.mode = 'season'; screen = 'setup'; } }, { color: '#e17055', size: 13 });

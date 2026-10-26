@@ -1123,7 +1123,7 @@ export function PoolTable({ lobby }: { lobby: Lobby }) {
           if (game.shotPots.includes(8)) {
             const won = !foul && match.group !== null && match.targets.length === 0
             match.winner = won ? shooter : shooter === 'player' ? 'computer' : 'player'
-            setStatus(match.winner === 'player' ? 'You win! Reset Table to play again.' : 'Computer wins. Reset Table for another game.')
+            setStatus(match.winner === 'player' ? 'You win! Reset Table to play again.' : 'Computer wins. Reset Table for another rack.')
           } else {
             if (match.shotCount > 1 && !match.group && !foul && game.shotPots.length) {
               const assigned = game.shotPots[0] < 8 ? 'solids' : 'stripes'
@@ -1346,7 +1346,7 @@ export function PoolTable({ lobby }: { lobby: Lobby }) {
     <PoolTopBar lobby={lobby}/>
     <PoolLobby lobby={lobby}/>
     <div className="pool-main">
-    <div className="pool-game-modes" role="group" aria-label="Game mode">
+    <div className="pool-game-modes" role="group" aria-label="Table mode">
       {([
         { mode: 'practice', label: 'Practice Mode', game: '(8-Ball)' },
         { mode: 'computer', label: 'Player vs. Computer', game: '(8-Ball)' },
@@ -1408,7 +1408,7 @@ export function PoolTable({ lobby }: { lobby: Lobby }) {
       {!canvasError && <svg className="pool-cue-overlay" viewBox="0 0 1000 580" aria-hidden="true">
         <g ref={cueOverlayRef} style={{ display: 'none' }}><CueArtwork design={displayedCue} id="live-cue"/></g>
       </svg>}
-      {resultMessage && <div className="pool-result-overlay" role="status" aria-live="polite"><strong>{resultMessage}</strong><span>{lobby.match ? 'Leave this table to start another game.' : 'Reset Table to play again.'}</span></div>}
+      {resultMessage && <div className="pool-result-overlay" role="status" aria-live="polite"><strong>{resultMessage}</strong><span>{lobby.match ? 'Leave this table to start another rack.' : 'Reset Table to play again.'}</span></div>}
       </div>
       <div className="pool-deck">
         <PoolChat lobby={lobby}/>

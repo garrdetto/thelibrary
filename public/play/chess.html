@@ -80,13 +80,13 @@
     </div>
     <div id="cpuOpts" class="row"><select id="level" aria-label="CPU level"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select><select id="color" aria-label="Your color"><option value="w">Play White</option><option value="b">Play Black</option><option value="r">Random</option></select></div>
     <div id="onlineOpts" class="online" hidden>
-      <div class="row"><button id="hostBtn">Host game</button><input id="joinCode" maxlength="6" placeholder="CODE" aria-label="Room code" style="text-transform:uppercase;letter-spacing:3px;text-align:center"><button id="joinBtn">Join</button></div>
+      <div class="row"><button id="hostBtn">Host match</button><input id="joinCode" maxlength="6" placeholder="CODE" aria-label="Room code" style="text-transform:uppercase;letter-spacing:3px;text-align:center"><button id="joinBtn">Join</button></div>
       <div id="codeBox" class="code" hidden></div>
       <div class="muted" id="netStatus"><span class="netdot"></span>Not connected. Host to get a code, or enter a friend's code.</div>
       <div class="emotes"><button data-emote="gg">GG</button><button data-emote="nice">Nice move!</button><button data-emote="hmm">Hmm…</button><button data-emote="oops">Oops</button></div>
     </div>
     <div class="status" id="status">White to move</div>
-    <div class="row"><button id="newBtn" class="primary">New game</button><button id="undoBtn">Undo</button><button id="flipBtn">Flip</button></div>
+    <div class="row"><button id="newBtn" class="primary">New match</button><button id="undoBtn">Undo</button><button id="flipBtn">Flip</button></div>
     <div class="row"><button id="resignBtn">Resign</button><button id="drawBtn">Offer draw</button></div>
     <div class="moves" id="moves" aria-label="Move list"></div>
   </aside>
@@ -355,7 +355,7 @@ function setStatus(extra) {
   if (extra) { el.textContent = extra; return; }
   if (over) { el.textContent = `${over.reason} · ${over.result}`; return; }
   const who = st.turn === 'w' ? 'White' : 'Black';
-  if (mode === 'online' && !net.started) { el.textContent = net.connected ? 'Connected. Starting…' : 'Host or join a game to play online.'; return; }
+  if (mode === 'online' && !net.started) { el.textContent = net.connected ? 'Connected. Starting…' : 'Host or join a match to play online.'; return; }
   el.textContent = aiBusy ? 'CPU is thinking…' : `${who} to move${Chess.inCheck(st) ? ' · Check!' : ''}${mode !== 'local' && you && st.turn === you ? ' (you)' : ''}`;
 }
 /* ---------- input: click or drag ---------- */
@@ -422,7 +422,7 @@ const net = {
     if (!this.ensure()) return; this.close(); this.host = false; this.code = code.toUpperCase();
     this.peer = new window.Peer();
     this.peer.on('open', () => this.attach(this.peer.connect('tl-chess-' + this.code.toLowerCase(), { reliable: true })));
-    this.peer.on('error', err => this.status(err.type === 'peer-unavailable' ? 'No game with that code.' : 'Network error: ' + err.type, false));
+    this.peer.on('error', err => this.status(err.type === 'peer-unavailable' ? 'No match with that code.' : 'Network error: ' + err.type, false));
     this.status('Connecting…', false);
   },
   attach(c) {

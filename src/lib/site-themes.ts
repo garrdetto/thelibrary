@@ -17,4 +17,4 @@ export function isSiteTheme(value: unknown): value is SiteTheme {
   return siteThemes.some(theme => theme.id === value)
 }
 
-export const initializeSiteTheme = `try{var saved=document.cookie.match(/(?:^|; )vv_theme=([^;]*)(?:;|$)/);var theme=saved?saved[1]:'gray';document.documentElement.dataset.theme=${JSON.stringify(siteThemes.map(theme => theme.id))}.includes(theme)?theme:'gray'}catch{document.documentElement.dataset.theme='gray'}`
+export const initializeSiteTheme = `try{var saved=document.cookie.match(/(?:^|; )vv_theme=([^;]*)(?:;|$)/);var theme=saved?saved[1]:'midnight';document.documentElement.dataset.theme=${JSON.stringify(siteThemes.map(theme => theme.id))}.includes(theme)?theme:'midnight'}catch{document.documentElement.dataset.theme='midnight'}`

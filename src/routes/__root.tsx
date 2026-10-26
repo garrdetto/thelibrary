@@ -4,8 +4,8 @@ import { initializeSiteTheme } from '@/lib/site-themes'
 
 import '../styles.css'
 
-const siteName = 'myWorkHelper — Your creative studio'
-const siteDescription = 'Find your next idea with cloud-powered chat, create original images, and write natural, thoughtfully structured lyrics in one creative studio.'
+const siteName = 'The Library — Learning Modules'
+const siteDescription = 'Hands-on learning modules in strategy, physics, math and precision, with live head-to-head sessions and saved progress.'
 
 export const Route = createRootRoute({
   head: () => ({

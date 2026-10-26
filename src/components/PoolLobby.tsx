@@ -11,12 +11,12 @@ const soundStorageKey = 'pool-sound'
 const idleTimeout = 5 * 60 * 1000
 const toastDuration = 4500
 const joinTimeout = 8000
-const joinTimeoutMessage = 'The game server didn’t respond. It may be running an outdated version. Please try again shortly.'
+const joinTimeoutMessage = 'The live server didn’t respond. It may be running an outdated version. Please try again shortly.'
 const usernamePattern = /^[a-zA-Z0-9_-]{3,20}$/
 const chatLimit = 120
 export const ballColors = ['#f8f4df', '#edbc18', '#1957b9', '#c52c30', '#753698', '#ed7923', '#16744a', '#862c35', '#151b20']
 const chatMaxLength = 280
-const statusLabels: Record<PoolStatus, string> = { available: 'Available', 'in-game': 'In game', away: 'Away' }
+const statusLabels: Record<PoolStatus, string> = { available: 'Available', 'in-game': 'In a match', away: 'Away' }
 type Connection = 'Connecting' | 'Connected' | 'Reconnecting' | 'Connection failed' | 'Signed in elsewhere'
 
 function readStorage(key: string) {
@@ -174,7 +174,7 @@ export function usePoolLobby(accountName: string | null = null, accountReady = t
       if (wasJoined) toast('Connection lost. Reconnecting to the lobby…', 'warning')
     })
     client.on('connect_error', () => setConnection('Connection failed'))
-    client.io.on('reconnect_failed', () => { setConnection('Connection failed'); toast('Cannot reach the game server right now. Solo practice is still available.', 'warning') })
+    client.io.on('reconnect_failed', () => { setConnection('Connection failed'); toast('Cannot reach the live server right now. Solo practice is still available.', 'warning') })
     client.on('session-replaced', (message: string) => { setConnection('Signed in elsewhere'); toast(message, 'warning') })
     client.on('username-accepted', ({ username }: { username: string }) => {
       stopJoinTimer()
@@ -219,7 +219,7 @@ export function usePoolLobby(accountName: string | null = null, accountReady = t
       const next = { id: value.id, players: value.players, turn: value.turn }
       state.current.match = next; state.current.game = value.state ?? null; state.current.pending = false; state.current.authority = false
       setMatch(next); setGameState(value.state ?? null); setInvitations([]); setPendingInvites({}); setMessages([]); bridge.current.reset?.()
-      toast(`Game on: ${value.players.join(' vs ')}. ${value.turn} breaks.`, 'success')
+      toast(`Match on: ${value.players.join(' vs ')}. ${value.turn} breaks.`, 'success')
     })
     client.on('cue-design', (design: CueDesign) => setOpponentCue(design))
     client.on('cue-aim', (aim: { aim: number; pull: number; cuePosition?: PoolPoint }) => {
@@ -327,7 +327,7 @@ function StatusDot({ status }: { status: PoolStatus }) {
 
 export function PoolLobby({ lobby }: { lobby: Lobby }) {
   return <div className={`pool-lobby ${lobby.match || lobby.joinError ? '' : 'is-empty'}`}>
-    {lobby.match && <button className="pool-lobby-button" onClick={lobby.leave}>Leave game</button>}
+    {lobby.match && <button className="pool-lobby-button" onClick={lobby.leave}>Leave match</button>}
     {lobby.joinError && <p className="pool-join-error" role="alert">{lobby.joinError}</p>}
     <div className="pool-toasts" role="status" aria-live="polite">
       {lobby.toasts.map(item => <div key={item.id} className={`pool-toast is-${item.tone}`}><span>{item.message}</span><button aria-label="Dismiss notification" onClick={() => lobby.dismissToast(item.id)}><X size={13}/></button></div>)}
@@ -346,7 +346,7 @@ function HudBall({ number, potted }: { number: number; potted?: boolean }) {
 function PoolHud({ lobby }: { lobby: Lobby }) {
   const game = lobby.gameState
   if (!lobby.match || !game) return null
-  return <div className="pool-hud" aria-label="Game scoreboard">
+  return <div className="pool-hud" aria-label="Match scoreboard">
     {game.players.map(seat => {
       const active = game.activeTurnPlayerID === seat.id
       const mine = seat.id === lobby.socketId
@@ -373,7 +373,7 @@ export function PoolTopBar({ lobby }: { lobby: Lobby }) {
   const others = lobby.players.filter(player => player.username !== lobby.name)
   const order: Record<PoolStatus, number> = { available: 0, away: 1, 'in-game': 2 }
   const sorted = [...others].sort((a, b) => order[a.status] - order[b.status])
-  const hint = !connected ? 'The lobby is offline. Solo practice still works.' : !lobby.name ? 'Join the lobby to see who is around and send challenges.' : lobby.match ? 'You are at a table. Challenges open again when the game ends.' : !sorted.length ? 'The room is quiet. Share this page with a friend to play.' : ''
+  const hint = !connected ? 'The lobby is offline. Solo practice still works.' : !lobby.name ? 'Join the lobby to see who is around and send challenges.' : lobby.match ? 'You are at a table. Challenges open again when the match ends.' : !sorted.length ? 'The room is quiet. Share this page with a friend to play.' : ''
   return <nav className="pool-topbar" aria-label="Online players">
     <div className="pool-topbar-row">
       <div className="pool-topbar-title"><span className="pool-control-label"><Users size={13}/> ONLINE</span><b>{lobby.name ? lobby.players.length : 0}</b></div>
@@ -384,7 +384,7 @@ export function PoolTopBar({ lobby }: { lobby: Lobby }) {
           return <li key={player.username} className={`is-${player.status}`}>
             <span className="pool-online-avatar" aria-hidden="true">{player.username.slice(0, 1).toUpperCase()}<StatusDot status={player.status}/></span>
             <div><strong>{player.username}</strong><small>{presenceLabel(player)}</small></div>
-            <button className={pending ? 'is-pending' : ''} disabled={disabled} onClick={() => lobby.invite(player.username)} aria-label={pending ? `Challenge to ${player.username} pending` : player.status === 'in-game' ? `${player.username} is in a game` : `Challenge ${player.username}`}>{pending ? 'Pending…' : player.status === 'in-game' ? 'Playing' : 'Challenge'}</button>
+            <button className={pending ? 'is-pending' : ''} disabled={disabled} onClick={() => lobby.invite(player.username)} aria-label={pending ? `Challenge to ${player.username} pending` : player.status === 'in-game' ? `${player.username} is in a match` : `Challenge ${player.username}`}>{pending ? 'Pending…' : player.status === 'in-game' ? 'Playing' : 'Challenge'}</button>
           </li>
         })}
         {hint && <li className="pool-topbar-hint">{hint}</li>}

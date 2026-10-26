@@ -9,7 +9,7 @@ const trackNames = { circuit: 'Max Secure Circuit', oval: 'Oval Speedway' } as c
 
 export function InvitePopups({ lobby, onJoinRace }: { lobby: Lobby; onJoinRace: () => void }) {
   if (!lobby.invitations.length && !lobby.raceInvites.length) return null
-  return <aside className="site-invites" aria-label="Game invitations" aria-live="polite">
+  return <aside className="site-invites" aria-label="Live invitations" aria-live="polite">
     {lobby.invitations.map(invitation => <div key={invitation.id} className="site-invite is-pool" role="status" style={{ '--challenge-duration': `${invitation.expiresIn}ms` } as CSSProperties}>
       <span className="site-invite-icon" aria-hidden="true"><CircleDot size={15}/></span>
       <p><strong>{invitation.from}</strong> invites you to play pool!</p>
