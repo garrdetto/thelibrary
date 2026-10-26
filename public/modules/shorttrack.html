@@ -120,6 +120,7 @@ input[type=color]{padding:2px;height:38px}
     <div id="hostSet">
       <div class="row2"><div><label class="f">Laps</label><select id="sLaps"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></div>
       <div><label class="f">AI cars</label><input id="sAI" type="number" min="0" max="19" value="11"></div></div>
+      <label class="f">AI difficulty</label><select id="sDiff"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
       <label class="f">Time of day</label><select id="sTime"><option value="day">Day</option><option value="night">Night (under the lights)</option></select>
       <button class="btn pri" data-act="start">Start race</button>
     </div>
@@ -203,6 +204,9 @@ function bankAt(s){
   const k=smooth(clamp((x+CFG.bankIn)/(CFG.bankIn+CFG.bankOut),0,1));
   return (CFG.straightBank+(CFG.turnBank-CFG.straightBank)*k)*Math.PI/180;
 }
+const GROOVE_HIGH=5.0,GROOVE_LOW=-5.2;
+function grooveLat(s){const d1=Math.abs(mod(s-(T1+TURN/2)+P/2,P)-P/2),d2=Math.abs(mod(s-(T2+TURN/2)+P/2,P)-P/2),d=Math.min(d1,d2);
+  const w=0.5+0.5*Math.cos(Math.PI*clamp(d/150,0,1));return lerp(GROOVE_HIGH,GROOVE_LOW,w);}
 function heightAt(s,lat){ if(lat<-HW) return 0; return (Math.min(lat,HW)+HW)*Math.tan(bankAt(s)); }
 function normalAt(s,lat,out){
   // true surface normal from the height field, so cars pitch smoothly through the banking transition
@@ -318,12 +322,12 @@ const band=(u,a,b,f)=>clamp(Math.min((u-a)/f,(b-u)/f),0,1);
   const N=1024,agg=tileNoise(N,N,11,[[128,0.3],[32,0.25],[8,0.25],[2,0.2]]),hr=rng(5),stones=new Float32Array(N*N);for(let i=0;i<N*N;i++)stones[i]=hr();
   const streak=tileNoise(N,1,23,[[6,0.6],[2,0.4]]),patch=tileNoise(N,N,31,[[256,1]]);
   const asphalt=(x,y,groove)=>{const u=x/N;let v=52+agg[y*N+x]*30;const st=stones[y*N+x];if(st>0.982)v+=30*(st-0.982)/0.018;else if(st<0.01)v-=14;
-    if(groove){const gm=band(u,0.08,0.46,0.07);v-=gm*(16+streak[x]*16);v-=band(u,0.52,0.74,0.06)*7;if(u>0.9&&st>0.6&&st<0.66)v-=22;
+    if(groove){if(u>0.9&&st>0.6&&st<0.66)v-=22;
       if(Math.abs(u-0.5)<0.0018)v-=14;v+=(patch[y*N+x]>0.72?5:patch[y*N+x]<0.22?-4:0);}
     return [v-2,v-1,v+1];};
   TEX.asphalt=pixelTex(N,N,(x,y)=>asphalt(x,y,true),true);
   TEX.asphaltPlain=pixelTex(512,512,(x,y)=>asphalt(x*2,y*2,false),true);
-  TEX.asphaltRough=pixelTex(N,N,(x,y)=>{const u=x/N,g=235-band(u,0.08,0.46,0.07)*95-band(u,0.52,0.74,0.06)*35-(stones[y*N+x]>0.982?40:0);return [0,g,0];},false);
+  TEX.asphaltRough=pixelTex(N,N,(x,y)=>{const g=235-(stones[y*N+x]>0.982?40:0);return [0,g,0];},false);
   const M=512,bump=tileNoise(M,M,17,[[16,0.35],[4,0.35],[1,0.3]]);
   TEX.asphaltNormal=normalTex(bump,M,M,2.2);
   const cAgg=tileNoise(512,512,41,[[64,0.4],[8,0.3],[2,0.3]]),cr=rng(3);
@@ -368,6 +372,13 @@ function trackTube(lat,yf,r,mat){const pts=[];for(let i=0;i<480;i++){const s2=i/
  for(const dy of [0.35,0.7,1.05])trackTube(HW+0.08,s2=>heightAt(s2,HW)+dy,0.07,steel);
  const cable=new THREE.MeshStandardMaterial({color:0x6d7278,metalness:.8,roughness:.4});
  for(const dy of [1.6,2.9,4.3])trackTube(HW+0.32,s2=>wallTop(s2)+dy,0.012,cable);}
+{const GW=256,GH=1024,c=document.createElement('canvas');c.width=GW;c.height=GH;const g=c.getContext('2d'),im=g.createImageData(GW,GH),d=im.data;
+ const nz=tileNoise(GW,GH,61,[[64,0.4],[8,0.3],[2,0.3]]),col=tileNoise(GW,1,62,[[4,0.6],[1,0.4]]);
+ for(let y=0;y<GH;y++)for(let x=0;x<GW;x++){const u=x/GW,base=band(u,0.04,0.96,0.2),lane=Math.max(band(u,0.22,0.39,0.06),band(u,0.61,0.78,0.06));
+   const a=(base*0.28+lane*0.5)*(0.65+0.35*nz[y*GW+x])*(0.8+0.4*col[x]),i=(y*GW+x)*4;d[i]=12;d[i+1]=12;d[i+2]=14;d[i+3]=Math.min(255,a*255);}
+ g.putImageData(im,0,0);const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.anisotropy=16;t.colorSpace=THREE.SRGBColorSpace;
+ const gm=new THREE.MeshStandardMaterial({map:t,transparent:true,depthWrite:false,roughness:0.55,metalness:0,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+ addMesh(ribbon(s2=>pt(grooveLat(s2)-2.1,0.008)(s2),s2=>pt(grooveLat(s2)+2.1,0.008)(s2),0,P,SEG,14,'across'),gm);}
 // grandstands wrap the whole bowl
 const ROWS=16;
 const sY=k=>s=>wallTop(s)+0.75*(k+1);
@@ -511,7 +522,7 @@ function addMark(c){
 }
 function resetMarks(){markIdx=0;markTotal=0;markMesh.count=0;seedMarks(420);}
 function seedMarks(n){const r=rng(77);
-  for(let i=0;i<n;i++){const turn=r()<0.5?T1:T2,s2=turn-20+r()*(TURN+40),lat=-6+r()*9,c=center(s2),nrm=normalAt(s2,lat,_n),len=0.6+r()*2.4;
+  for(let i=0;i<n;i++){const turn=r()<0.5?T1:T2,s2=turn-20+r()*(TURN+40),lat=clamp(grooveLat(s2)+(r()-0.5)*3.4,-7,6.5),c=center(s2),nrm=normalAt(s2,lat,_n),len=0.6+r()*2.4;
     _f.set(c.tx,0,c.tz);const yaw=(r()-0.5)*0.35;_f.applyAxisAngle(_v.set(0,1,0),yaw);_f.addScaledVector(nrm,-_f.dot(nrm)).normalize();_x.crossVectors(nrm,_f);_m.makeBasis(_x,nrm,_f);
     _o.quaternion.setFromRotationMatrix(_m);_o.position.set(c.x+c.nx*lat,heightAt(s2,lat)+0.02,c.z+c.nz*lat);_o.scale.set(0.8+r()*0.6,1,len);_o.updateMatrix();
     markMesh.setMatrixAt(markIdx,_o.matrix);markIdx=(markIdx+1)%MARKS;markTotal=Math.min(MARKS,markTotal+1);}
@@ -804,7 +815,7 @@ class Car{
     this.m=buildCar(lv);this.m.root.scale.setScalar(CFG.carScale);scene.add(this.m.root);
     if(!this.isPlayer){this.tag=makeTag(lv);this.m.root.add(this.tag);}
     Object.assign(this,{x:0,z:0,h:0,vx:0,vz:0,vf:0,steer:0,av:0,thr:0,brk:0,slip:0,dmg:{f:0,r:0,l:0,rt:0},cross:0,sp:0,lapStart:null,lastLap:null,bestLap:null,
-      fin:false,stopT:0,stuckT:0,cautioned:false,buf:[],vis:true,wheelRot:0,aLat:0,aLong:0,prevVf:0,prevH:0,lane:-3.6,fileLane:-3.6,laneT:0,skill:0.97,
+      fin:false,stopT:0,stuckT:0,cautioned:false,buf:[],vis:true,wheelRot:0,aLat:0,aLong:0,prevVf:0,prevH:0,lane:-3.6,passOff:0,aiDecel:0,fileLane:-3.6,laneT:0,skill:0.97,
       markT:0,smokeT:0,boost:1,boostRate:0,boostTgt:1,sndT:0,lastSeen:performance.now(),pitting:false,lastState:null});
     this.tp={s:0,lat:0};
   }
@@ -933,25 +944,27 @@ function aiCtl(c,dt){
   if(c.isPace){lane=c.pitting?-HW-3.5:-1.6;target=c.pitting?32:(ph==='pace'?CFG.paceSpeed-0.5:CFG.cautionSpeed-1);}
   else{
     const slow=ph==='pace'||ph==='caution'||c.fin;c.laneT-=dt;
-    const cur=slow?c.fileLane:c.lane;let ahead=null,aheadD=1e9;
+    const gl=grooveLat(s),onLine=o=>clamp(o,-6.4,5.8),cur=slow?c.fileLane:onLine(gl+c.passOff);let ahead=null,aheadD=1e9;
     for(const o of cars.values()){if(o===c||!o.vis)continue;const ds=mod(o.tp.s-s,P);if(ds<40&&Math.abs(o.tp.lat-cur)<2.3&&ds<aheadD){aheadD=ds;ahead=o;}}
     if(!slow&&c.laneT<=0){
-      if(ahead&&aheadD<20&&ahead.vf<v+1){const alt=c.lane<-1?0.8:-3.6;if(laneClear(c,alt)){c.lane=alt;c.laneT=3;}}
-      else if(c.lane>-1&&laneClear(c,-3.6)&&(!ahead||aheadD>25)){c.lane=-3.6;c.laneT=2;}
+      if(c.passOff===0&&ahead&&aheadD<20&&ahead.vf<v+1){const off=gl>0?-3.6:3.6;if(laneClear(c,onLine(gl+off))){c.passOff=off;c.laneT=3;}}
+      else if(c.passOff!==0&&laneClear(c,gl)&&(!ahead||aheadD>25)){c.passOff=0;c.laneT=2;}
     }
-    lane=slow?c.fileLane:c.lane;
+    lane=slow?c.fileLane:onLine(GROOVE_LOW+c.passOff);
     const mu=CFG.grip*Math.max(0.8,1-0.0012*(c.dmg.l+c.dmg.rt));
     const vAt=b=>{const t=Math.tan(b);return Math.sqrt(CFG.g*(mu+t)/(1-mu*t)*(R+lane))*0.95*c.skill;};
     const vE=vAt(bankAt(T1)),vM=vAt(CFG.turnBank*Math.PI/180);
     const inT1=s>=T1&&s<T1+TURN,inT2=s>=T2;
     if(inT1||inT2){const into=(inT1?s-T1:s-T2)/TURN;target=into<0.2?vE:into>0.55?vM*1.04:vM;}
-    else{const dT=(s<T1?T1:T2)-s;target=Math.sqrt(vE*vE+2*CFG.aiDecel*Math.max(0,dT-6));}
+    else{const dT=(s<T1?T1:T2)-s;target=Math.sqrt(vE*vE+2*(c.aiDecel||CFG.aiDecel)*Math.max(0,dT-6));}
     if(ahead){const gap=aheadD-5.5*CFG.carScale,safe=slow?7:3+v*0.12;if(gap<safe)target=Math.min(target,ahead.vf-(safe-gap)*0.6);}
     const cap=capFor(c);if(cap)target=Math.min(target,cap-0.3);
     const tc=center(s),mis=Math.abs(wrapA(Math.atan2(tc.tx,tc.tz)-c.h));
     if(c.speed<1.5||(mis>1.3&&c.speed<6)){c.stuckT+=dt;if(c.stuckT>3){resetCar(c);c.stuckT=0;}}else c.stuckT=0;
   }
-  const Ld=8+Math.abs(v)*0.45,tg=center(s+Ld),tx=tg.x+tg.nx*lane,tz=tg.z+tg.nz*lane;
+  const Ld=8+Math.abs(v)*0.45,tg=center(s+Ld);
+  if(!c.isPace&&!(ph==='pace'||ph==='caution'||c.fin))lane=clamp(grooveLat(s+Ld)+c.passOff,-6.4,5.8);
+  const tx=tg.x+tg.nx*lane,tz=tg.z+tg.nz*lane;
   const dx=tx-c.x,dz=tz-c.z,dist=Math.hypot(dx,dz)||1,alpha=wrapA(Math.atan2(dx,dz)-c.h);
   const delta=Math.atan(2*Math.sin(alpha)/dist*CFG.wheelbase),sm=CFG.steerLow/(1+Math.abs(v)*CFG.steerSpeed);
   return {thr:v<target-0.2,brk:v>target+2.5,steer:clamp(delta/sm,-1,1)};
@@ -961,7 +974,8 @@ function aiCtl(c,dt){
 const cars=new Map();
 let player=null,menuCar=null,mode='menu',camMode='chase',camH=0,camSnap=true,lastPhase='idle';
 const race={ph:'idle',laps:25,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false};
-let settings={laps:25,ai:11,night:false};
+let settings={laps:25,ai:11,night:false,diff:'medium'};
+const AI_LEVELS={easy:{sk:[0.85,0.04],dc:4.6},medium:{sk:[0.93,0.04],dc:5.5},hard:{sk:[0.985,0.035],dc:6.3}};
 let myLv=cleanLv(store.get('sts_livery',DEFAULT_LV));if(!myLv.number)myLv.number='7';
 let quality=store.get('sts_q','med');
 
@@ -1056,7 +1070,7 @@ function beginRace(msg){
   Object.assign(race,{ph:attack?'attack':'pace',mode:attack?'time-attack':NET.online?'multiplayer':'race',laps:attack?9999:settings.laps,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false});lastPhase=race.ph;resetMarks();runLap=0;fetchRecords(race.mode);
   msg.grid.forEach((e,i)=>{
     const isMe=e.id===NET.myId,local=isMe||(NET.host&&e.ai);
-    const c=new Car(e.id,cleanLv(e.lv),{local,ai:e.ai,player:isMe});c.skill=e.sk||0.97;
+    const c=new Car(e.id,cleanLv(e.lv),{local,ai:e.ai,player:isMe});c.skill=e.sk||0.97;c.aiDecel=e.dc||0;
     const row=Math.floor(i/2);c.fileLane=i%2?0.6:-3.6;c.lane=-3.6;c.lapDirty=true;
     if(attack){c.place(S_LINE-70,-2);c.cross=1;}else c.place(S_LINE-12-row*9,c.fileLane);
     cars.set(e.id,c);if(isMe)player=c;
@@ -1070,11 +1084,11 @@ function hostStart(){
   readHostSettings();
   const ents=[...NET.players.values()].map(p=>({id:p.id,lv:p.lv,ai:false}));
   const r=rng((Math.random()*1e9)|0),used=new Set(ents.map(e=>e.lv.number)),nAI=Math.min(settings.ai,CFG.maxCars-ents.length);
-  for(let i=0;i<nAI;i++){const lv=randomLivery(r,i);while(used.has(lv.number))lv.number=String(1+Math.floor(r()*98));used.add(lv.number);ents.push({id:'ai'+i,lv,ai:true,sk:+(0.94+r()*0.05).toFixed(3)});}
+  for(let i=0;i<nAI;i++){const lv=randomLivery(r,i);while(used.has(lv.number))lv.number=String(1+Math.floor(r()*98));used.add(lv.number);ents.push({id:'ai'+i,lv,ai:true,sk:+(AI_LEVELS[settings.diff||'medium'].sk[0]+r()*AI_LEVELS[settings.diff||'medium'].sk[1]).toFixed(3),dc:AI_LEVELS[settings.diff||'medium'].dc});}
   for(let i=ents.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[ents[i],ents[j]]=[ents[j],ents[i]];}
   const msg={t:'start',set:{...settings},grid:ents};sendAll(msg);beginRace(msg);
 }
-function readHostSettings(){settings.laps=+$('sLaps').value||25;settings.ai=clamp(parseInt($('sAI').value)||0,0,19);settings.night=$('sTime').value==='night';}
+function readHostSettings(){settings.laps=+$('sLaps').value||25;settings.ai=clamp(parseInt($('sAI').value)||0,0,19);settings.night=$('sTime').value==='night';settings.diff=AI_LEVELS[$('sDiff').value]?$('sDiff').value:'medium';}
 
 // ===================== NETWORK (PeerJS, host-authoritative race control) =====================
 const PREFIX='sts-oval-race-';
@@ -1343,10 +1357,10 @@ function renderLobby(){
   $('lobTitle').textContent=NET.online?'Online lobby':'Solo race';$('codeBox').classList.toggle('hidden',!NET.online);$('codeTxt').textContent=NET.code;
   $('plist').innerHTML=[...NET.players.values()].map(p=>`<div><b style="display:inline-block;min-width:30px;padding:0 4px;margin-right:6px;border-radius:3px;text-align:center;background:${p.lv.primary};color:${p.lv.numColor}">${esc(p.lv.number)}</b>${esc(p.lv.name)}${p.id==='host'&&NET.online?' <span style="color:var(--dim)">(host)</span>':''}</div>`).join('');
   $('hostSet').classList.toggle('hidden',!NET.host);$('waitTxt').classList.toggle('hidden',NET.host);$('chatBox').classList.toggle('hidden',!NET.online);
-  $('waitTxt').textContent=NET.racing&&mode==='lobby'?'A race is already running. You will be on the grid for the next one.':`Waiting for the host to start... (${settings.laps} laps, ${settings.night?'night':'day'})`;
+  $('waitTxt').textContent=NET.racing&&mode==='lobby'?'A race is already running. You will be on the grid for the next one.':`Waiting for the host to start... (${settings.laps} laps, ${settings.night?'night':'day'}, ${settings.diff||'medium'} AI)`;
   $('plabel').textContent=NET.online?`Drivers (${NET.players.size}/${CFG.maxCars}) \u2014 invite as many friends as you like`:'Driver';
 }
-function goLobby(){mode='lobby';$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';renderLobby();showScreen('scrLobby');}
+function goLobby(){mode='lobby';$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';$('sDiff').value=settings.diff||'medium';renderLobby();showScreen('scrLobby');}
 function backToLobby(){if(NET.host){NET.racing=false;}clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;goLobby();}
 function leaveAll(){resetNet();clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;mode='menu';showScreen('scrMain');}
 function togglePause(){
@@ -1365,7 +1379,7 @@ let gT=0;
 function readGarage(){const l={};for(const k in G)l[k]=$(G[k]).value;myLv=cleanLv(l);if(!myLv.number)myLv.number='0';store.set('sts_livery',myLv);clearTimeout(gT);gT=setTimeout(rebuildMenuCar,120);}
 function rebuildMenuCar(){if(menuCar)menuCar.dispose();menuCar=new Car('menu',myLv,{player:true});menuCar.place(S_LINE+6,-2);menuCar.m.root.visible=!player;}
 for(const k in G)$(G[k]).addEventListener('input',readGarage);
-['sLaps','sAI','sTime'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();setNight(settings.night);broadcastLobby();}));
+['sLaps','sAI','sTime','sDiff'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();setNight(settings.night);broadcastLobby();}));
 $('quality').value=quality;$('quality').addEventListener('change',e=>{quality=e.target.value;store.set('sts_q',quality);applyQuality();});
 
 function act(a){
