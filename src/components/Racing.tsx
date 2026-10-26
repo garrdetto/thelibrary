@@ -603,7 +603,7 @@ export function Racing({players:sitePlayers,playerName,joinRequest,onJoinHandled
     try{
       const {ticket}=await api({action:'ticket'})
       socket.current?.disconnect()
-      const base=import.meta.env.VITE_POOL_SERVER_URL||'https://myworkhelper-production-0164.up.railway.app'
+      const base=import.meta.env.VITE_POOL_SERVER_URL||'https://thelibrary-production.up.railway.app'
       const client=io(`${base.replace(/\/$/,'')}/racing`,{auth:{ticket},reconnection:false,timeout:10000,transports:['websocket','polling']});socket.current=client
       client.on('connect',()=>{setConnection('Connected');setConnecting(false)})
       client.on('connect_error',()=>{autoJoin.current=false;setConnection('Unavailable');setConnecting(false);setError('The Racing service is unavailable. Reconnect after the game server is updated.')})

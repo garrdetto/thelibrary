@@ -6,7 +6,7 @@ import type { Socket } from 'socket.io-client'
 import { Bell, BellOff, ChevronDown, MessageCircle, SendHorizontal, Trophy, Users, X } from 'lucide-react'
 import type { PoolActivity, PoolBridge, PoolChatMessage, PoolGameState, PoolInvite, PoolMatch, PoolPlayer, PoolPoint, PoolSeat, PoolShot, PoolSnapshot, PoolStatus, PoolToast, RaceInvite } from '../lib/pool-network'
 
-const defaultPoolServerUrl = 'https://myworkhelper-production-0164.up.railway.app'
+const defaultPoolServerUrl = 'https://thelibrary-production.up.railway.app'
 const soundStorageKey = 'pool-sound'
 const idleTimeout = 5 * 60 * 1000
 const toastDuration = 4500
