@@ -152,8 +152,8 @@ const CFG = {
   brake:11, reverseMax:6,
   scrub:0.0045,      // speed lost per unit of steering: decel = scrub * |steer| * v^2
   slideScrub:0.45,   // extra decel while sliding sideways
-  wheelbase:2.8, steerLow:0.55, steerSpeed:0.17, steerRampIn:6.5, steerRampOut:9,
-  spinThreshold:1.2, spinRate:2.4,                               // throttle-on oversteer
+  wheelbase:2.8, steerLow:0.4, steerSpeed:0.12, steerRampIn:4.2, steerRampOut:7,
+  spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
   wallRest:0.22, carRest:0.15, damageScale:1,
   paceSpeed:26, cautionSpeed:29, cautionTime:25, aiDecel:5.5, maxCars:20
 };
@@ -211,13 +211,13 @@ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'h
 renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
 const scene=new THREE.Scene();
-scene.fog=new THREE.Fog(0xc9d9ea,300,1100);
+scene.fog=new THREE.Fog(0xc9d9ea,700,2400);
 const camera=new THREE.PerspectiveCamera(60,1,0.1,2500);
 const pmrem=new THREE.PMREMGenerator(renderer);
 const SUN_OFF=new THREE.Vector3(60,110,40);
 // physically based daytime sky (also used to build the reflection map for paint)
 function makeSky(scale){const sk=new Sky();sk.scale.setScalar(scale);const u=sk.material.uniforms;
-  u.turbidity.value=5.5;u.rayleigh.value=1.5;u.mieCoefficient.value=0.004;u.mieDirectionalG.value=0.82;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;}
+  u.turbidity.value=2.2;u.rayleigh.value=1.2;u.mieCoefficient.value=0.004;u.mieDirectionalG.value=0.82;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;}
 const skyDay=makeSky(2200);scene.add(skyDay);
 const envNight=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
 const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new THREE.Mesh(new THREE.CircleGeometry(800,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x4a5a44}));gnd.position.y=-5;es.add(gnd);
@@ -283,11 +283,11 @@ const SKY_NIGHT=canvasTex(2048,1024,(g,w,h)=>{const gr=g.createLinearGradient(0,
 const sky=new THREE.Mesh(new THREE.SphereGeometry(1400,48,24),new THREE.MeshBasicMaterial({map:SKY_NIGHT,side:THREE.BackSide,fog:false,depthWrite:false}));
 sky.visible=false;scene.add(sky);
 // cloud deck
-const cloudTex=canvasTex(1024,1024,(g,w,h)=>{g.clearRect(0,0,w,h);for(let i=0;i<260;i++){const x=Math.random()*w,y=Math.random()*h,r=20+Math.random()*90;
+const cloudTex=canvasTex(1024,1024,(g,w,h)=>{g.clearRect(0,0,w,h);for(let i=0;i<70;i++){const x=Math.random()*w,y=Math.random()*h,r=20+Math.random()*90;
   for(let k=0;k<5;k++){const cx=x+(Math.random()-0.5)*r*1.6,cy=y+(Math.random()-0.5)*r*0.6,rr2=r*(0.5+Math.random()*0.6);const gr=g.createRadialGradient(cx,cy,0,cx,cy,rr2);
     gr.addColorStop(0,'rgba(255,255,255,.22)');gr.addColorStop(1,'rgba(255,255,255,0)');g.fillStyle=gr;g.fillRect(cx-rr2,cy-rr2,rr2*2,rr2*2);}}},true);
 cloudTex.repeat.set(3,3);
-const clouds=new THREE.Mesh(new THREE.PlaneGeometry(5000,5000).rotateX(Math.PI/2),new THREE.MeshBasicMaterial({map:cloudTex,transparent:true,depthWrite:false,fog:false,opacity:0.85}));
+const clouds=new THREE.Mesh(new THREE.PlaneGeometry(5000,5000).rotateX(Math.PI/2),new THREE.MeshBasicMaterial({map:cloudTex,transparent:true,depthWrite:false,fog:false,opacity:0.4}));
 clouds.position.y=420;scene.add(clouds);
 TEX.asphaltBump=canvasTex(512,512,(g,w,h)=>noiseFill(g,w,h,'#808080',0.9,60000),true);
 
@@ -568,15 +568,19 @@ function buildCar(lv){
     // fender flares over each wheel
     for(const wz of [1.48,-1.42]){const dz=Math.abs(z-wz);if(dz<0.62&&y>-0.2&&y<0.3)x*=1+0.035*Math.cos(dz/0.62*Math.PI/2)**2;}
     if(y>0){x*=0.94;if(z>1.5)y-=(z-1.5)*0.16;if(z<-2.1)y-=(-2.1-z)*0.1;}
-    if(y>0.15)x*=1-(y-0.15)*0.22;                       // rolled shoulder line
-    if(Math.abs(z)>2.3&&Math.abs(x)>0.75)z-=Math.sign(z)*(Math.abs(x)-0.75)*0.35; // rounded nose and tail corners
+    if(y>0.0)x*=1-((y/0.36)**2)*0.14;                   // rolled shoulder line
+    if(y>0.2)y+=0.035*(1-(x/0.92)**2);                   // crowned hood, roof line and deck
+    if(y<-0.25)x*=1-((-y-0.25)/0.11)*0.05;               // tucked rocker
+    if(Math.abs(x)>0.55){const wz=clamp((Math.abs(z)-1.9)/0.55,0,1);z-=Math.sign(z)*((Math.abs(x)-0.55)**1.6)*0.9*wz*wz;} // rounded nose and tail corners
     if(y<0&&Math.abs(z)>2.2)y+=(Math.abs(z)-2.2)*0.15;p.setXYZ(i,x,y,z);}
   g.computeVertexNormals();g.setAttribute('color',new THREE.BufferAttribute(new Float32Array(p.count*3).fill(1),3));
   const bodyMesh=new THREE.Mesh(g,[paint(sideTex(lv,true),0,1),paint(sideTex(lv,false),0,1),paint(null,lv.primary,1),dark,paint(frontTex(lv),0,1),paint(rearTex(lv),0,1)]);
   bodyMesh.position.y=0.55;bodyMesh.castShadow=true;body.add(bodyMesh);
   const orig=Float32Array.from(p.array);
-  const cg=new THREE.BoxGeometry(1.62,0.5,2.3),cp=cg.attributes.position;
-  for(let i=0;i<cp.count;i++)if(cp.getY(i)>0){cp.setX(i,cp.getX(i)*0.82);cp.setZ(i,cp.getZ(i)>0?cp.getZ(i)-0.55:cp.getZ(i)+0.2);}
+  const cg=new THREE.BoxGeometry(1.62,0.5,2.3,8,3,8),cp=cg.attributes.position;
+  for(let i=0;i<cp.count;i++){let x=cp.getX(i),y=cp.getY(i),z=cp.getZ(i);const t=(y+0.25)/0.5;
+    x*=1-0.18*t-0.06*t*t;z*=1-0.12*t;if(z>0)z-=0.5*t;else z+=0.15*t;
+    if(t>0.99)y+=0.06*(1-(x/0.62)**2);cp.setXYZ(i,x,y,z);}
   cg.computeVertexNormals();
   const glass=new THREE.MeshPhysicalMaterial({color:0x0b1016,metalness:0.2,roughness:0.06,clearcoat:1,envMap:envTex,envMapIntensity:ENVK});paints.push(glass);
   const cab=new THREE.Mesh(cg,[paint(cabinTex(lv,true)),paint(cabinTex(lv,false)),paint(roofTex(lv)),dark,glass,glass]);
@@ -663,7 +667,7 @@ function stepCar(c,dt,ctl,cap){
   const lon=Math.abs(ax)*0.85,latAvail=Math.sqrt(Math.max(aMax*aMax*0.2,aMax*aMax-lon*lon));
   const ratio=Math.abs(vf*yaw)/latAvail;
   if(ratio>1){yaw*=Math.min(1,1.06/ratio);if(c.thr&&ratio>CFG.spinThreshold&&vf>12)c.av+=Math.sign(yaw)*CFG.spinRate*(ratio-CFG.spinThreshold)*dt*8;}
-  c.h+=(yaw+c.av)*dt;c.av*=Math.exp(-dt*(ratio>1.1?0.7:3.2));
+  c.h+=(yaw+c.av)*dt;c.av*=Math.exp(-dt*(ratio>1.1?2.2:4.5));
   sh=Math.sin(c.h);ch=Math.cos(c.h);vf=c.vx*sh+c.vz*ch;let vl=-c.vx*ch+c.vz*sh;
   vl+=clamp(-vl/dt,-latAvail,latAvail)*dt;     // tires pull velocity toward heading, limited by grip
   c.slip=Math.abs(vl)+Math.max(0,ratio-1)*10+(c.brk&&vf>20?2:0);
@@ -696,7 +700,7 @@ function walls(c){
   if(vn>0){
     const jx=-(1+CFG.wallRest)*vn*nx,jz=-(1+CFG.wallRest)*vn*nz;c.vx+=jx;c.vz+=jz;
     const fr=1-Math.min(0.3,vn*0.02);c.vx*=fr;c.vz*=fr;
-    c.av+=0.32*((worst.pz-c.z)*jx-(worst.px-c.x)*jz);
+    c.av+=0.14*((worst.pz-c.z)*jx-(worst.px-c.x)*jz);
     if(vn>1.2)impact(c,worst.px,worst.pz,-nx,-nz,vn,'wall');
   }else if(c.speed>12&&Math.random()<0.25)spawnSparks(worst.px,heightAt(worst.s,HW)+0.4,worst.pz,2,c.vx,c.vz);
 }
@@ -715,8 +719,8 @@ function collidePair(a,b){
   const vn=(a.vx-b.vx)*best.nx+(a.vz-b.vz)*best.nz;
   if(vn<0){
     const j=-(1+CFG.carRest)*vn/w,jx=j*best.nx,jz=j*best.nz;
-    if(am){a.vx+=jx;a.vz+=jz;a.av+=0.3*((best.pz-a.z)*jx-(best.px-a.x)*jz);}
-    if(bm){b.vx-=jx;b.vz-=jz;b.av+=0.3*(-(best.pz-b.z)*jx+(best.px-b.x)*jz);}
+    if(am){a.vx+=jx;a.vz+=jz;a.av+=0.15*((best.pz-a.z)*jx-(best.px-a.x)*jz);}
+    if(bm){b.vx-=jx;b.vz-=jz;b.av+=0.15*(-(best.pz-b.z)*jx+(best.px-b.x)*jz);}
     const hit=-vn,loss=1-Math.min(0.08,hit*0.012);
     if(am){a.vx*=loss;a.vz*=loss;}if(bm){b.vx*=loss;b.vz*=loss;}
     if(hit>2.2){impact(a,best.px,best.pz,best.nx,best.nz,hit,'car');impact(b,best.px,best.pz,-best.nx,-best.nz,hit,'car');}
