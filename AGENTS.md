@@ -24,7 +24,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 ### Learning modules
 - Site-facing copy calls everything "Learning Modules" on a site named "the library" (always lowercase). Never use the words game(s), gaming or entertainment in visible text, titles or metadata.
 - `src/lib/modules.ts`: module catalog (titles, subjects, thumbnails in `public/images/modules/`). `src/components/ModuleHub.tsx`: the homepage library.
-- `public/modules/*.html`: standalone modules (Sandlot Sluggers, BotWreck 3D, chess, checkers, 2048, Chopper Cave) embedded in an iframe at `#module-<id>`. Online play in these uses PeerJS room codes, not the `server/` service.
+- `public/modules/*.html`: standalone modules (Sandlot Sluggers, BotWreck 3D, chess, checkers, 2048, Chopper Cave, Short Track Showdown) embedded in an iframe at `#module-<id>`. Online play in these uses PeerJS room codes, not the `server/` service.
 - `src/components/PoolTable.tsx`, `PoolLobby.tsx`, `CueArtwork.tsx`, `src/lib/pool-*.ts`, `src/lib/cue-design.ts`: pool.
 - `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing. Max Secure Circuit (`#racing`) and Oval Speedway (`#oval`) are separate modules; each mounts `Racing` with `fixedTrack`.
 
@@ -78,5 +78,5 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 Install with `pnpm install`; develop with `pnpm dev`. Pushes to `main` build and deploy automatically through Workers Builds.
 
-- Chat: floating `GroupChat` component (src/components/GroupChat.tsx) polls `/api/group-chat` (D1 `chat_messages` + `chat_presence`, migrations 0002–0003). `thread` NULL = everyone; otherwise the sorted comma list of member usernames (private chat, up to 8). Presence (who's online) comes from these polls, not Railway. Invites: `meta.invite` {module,label,code}. Embedded modules with online rooms (sandlot, chess, checkers) answer `postMessage({type:'tl-host'})` with `{type:'tl-room', code}` and auto-join from `?room=`. No popups or sounds: unread only lights the chat button.
+- Chat: floating `GroupChat` component (src/components/GroupChat.tsx) polls `/api/group-chat` (D1 `chat_messages` + `chat_presence`, migrations 0002–0003). `thread` NULL = everyone; otherwise the sorted comma list of member usernames (private chat, up to 8). Presence (who's online) comes from these polls, not Railway. Invites: `meta.invite` {module,label,code}. Embedded modules with online rooms (sandlot, chess, checkers, shorttrack) answer `postMessage({type:'tl-host'})` with `{type:'tl-room', code}` and auto-join from `?room=`. No popups or sounds: unread only lights the chat button.
 - Themes: midnight / slate (label Gray) / light. Hub, sidebar and chat colors come from `--lib-*` variables per theme in styles.css; old theme ids map to these in site-themes.ts.
