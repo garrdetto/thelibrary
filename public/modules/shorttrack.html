@@ -69,6 +69,20 @@ input[type=color]{padding:2px;height:38px}
 #resTable td,#resTable th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left}
 .rectabs{display:flex;gap:6px;margin:4px 0 8px}.rectabs button{flex:1;padding:8px 4px;border:0;border-radius:7px;background:#232b38;color:var(--txt);font:800 12.5px system-ui;cursor:pointer}.rectabs button.on{background:var(--acc);color:#111}.recbox p{font-size:12.5px;margin:6px 0 0}
 .rec{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}.rec td,.rec th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left}.rec tr.me{background:rgba(255,204,0,.15)}
+.scr{width:min(440px,calc(100% - 48px))}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:6px 0 12px}
+.tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:18px 14px;min-height:96px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(160deg,#25303f,#161d28);color:var(--txt);cursor:pointer;text-align:left;transition:transform .12s,border-color .12s}
+.tile b{font:900 17px "Arial Black",Impact,sans-serif;letter-spacing:.5px}.tile span{font-size:12px;color:var(--dim)}
+.tile:hover,.tile:focus-visible{transform:translateY(-2px);border-color:var(--acc);outline:none}
+.tile.wide{width:100%;min-height:76px;margin:4px 0 6px}
+.subrow{display:flex;gap:8px}.subrow .btn{flex:1;text-align:center}.btn.slim{padding:10px 12px;font-size:13px}
+.steps{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}.steps span{font-size:11px;font-weight:800;letter-spacing:.4px;padding:4px 9px;border-radius:999px;background:#1a2230;color:var(--dim)}
+.steps span.on{background:var(--acc);color:#111}.steps span.done{color:var(--txt)}
+.tcards{display:grid;gap:8px}
+.tcard{display:flex;flex-direction:column;gap:3px;padding:14px;border-radius:11px;border:2px solid var(--line);background:#161d28;color:var(--txt);text-align:left;cursor:pointer}
+.tcard b{font:900 15px "Arial Black",sans-serif}.tcard span{font-size:12px;color:var(--dim)}.tcard.on{border-color:var(--acc);background:#2a2614}
+.nav{display:flex;justify-content:space-between;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
+.nav .navb{width:auto;margin:0;min-width:120px;text-align:center;letter-spacing:.5px}
 #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);padding:10px 16px;font-weight:700;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
 @media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}}
 </style>
@@ -92,18 +106,42 @@ input[type=color]{padding:2px;height:38px}
 <div id="menus">
   <div id="scrMain" class="scr panel">
     <h1>SHORT TRACK <em>SHOWDOWN</em></h1>
-    <p>Half-mile, high banks, no room to breathe. Lift before the corner, roll it in, drive off.</p>
-    <button class="btn pri" data-act="solo">Solo race vs AI</button>
-    <button class="btn" data-act="attack">Time Attack &middot; solo against the clock</button>
-    <button class="btn" data-act="host">Host online race</button>
-    <div class="row2"><input id="joinCode" placeholder="ROOM CODE" maxlength="5" style="text-transform:uppercase"><button class="btn" data-act="join" style="margin:0;flex:0 0 90px">Join</button></div>
-    <button class="btn" data-act="garage">Garage &middot; paint your car</button>
-    <button class="btn" data-act="records">Fastest lap records</button>
-    <label class="f">Track</label>
-    <select id="trackSel"></select>
+    <p>Short-track truck racing. Lift before the corner, roll it in, drive off.</p>
+    <div class="tiles">
+      <button class="tile" data-act="flow:attack"><b>TIME ATTACK</b><span>Solo against the clock</span></button>
+      <button class="tile" data-act="flow:solo"><b>SOLO RACE</b><span>You against the AI field</span></button>
+      <button class="tile" data-act="flow:multi"><b>MULTIPLAYER</b><span>Host or join an online room</span></button>
+      <button class="tile" data-act="garage"><b>GARAGE</b><span>Paint and number your truck</span></button>
+    </div>
+    <div class="subrow"><button class="btn slim" data-act="records">Lap records</button><button class="btn slim" data-act="fs">Fullscreen</button></div>
     <label class="f">Graphics quality</label>
     <select id="quality"><option value="low">Low</option><option value="med">Medium</option><option value="high">High</option></select>
-    <button class="btn" data-act="fs">Toggle fullscreen</button>
+  </div>
+  <div id="scrMulti" class="scr panel hidden">
+    <div class="steps" data-steps="multi"></div>
+    <h2>Multiplayer</h2>
+    <button class="tile wide" data-act="multi-host"><b>HOST A RACE</b><span>Pick the track and settings, then share a room code</span></button>
+    <label class="f">Join a friend's room</label>
+    <div class="row2"><input id="joinCode" placeholder="ROOM CODE" maxlength="5" style="text-transform:uppercase"><button class="btn pri" data-act="join" style="margin:0;flex:0 0 96px;text-align:center">JOIN</button></div>
+    <div class="nav"><button class="btn navb" data-act="menu">&larr; BACK</button><span></span></div>
+  </div>
+  <div id="scrTrack" class="scr panel hidden">
+    <div class="steps" id="trackSteps"></div>
+    <h2>Choose a track</h2>
+    <div id="trackCards" class="tcards"></div>
+    <div class="nav"><button class="btn navb" data-act="track-back">&larr; BACK</button><button class="btn pri navb" data-act="track-next">NEXT &rarr;</button></div>
+  </div>
+  <div id="scrSetup" class="scr panel hidden">
+    <div class="steps" id="setupSteps"></div>
+    <h2 id="setupTitle">Race setup</h2>
+    <p id="setupTrack"></p>
+    <div id="raceFields">
+      <div class="row2"><div><label class="f">Laps</label><select id="sLaps"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></div>
+      <div><label class="f">AI trucks</label><input id="sAI" type="number" min="0" max="19" value="11"></div></div>
+      <label class="f">AI difficulty</label><select id="sDiff"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
+    </div>
+    <label class="f">Time of day</label><select id="sTime"><option value="day">Day</option><option value="night">Night (under the lights)</option></select>
+    <div class="nav"><button class="btn navb" data-act="setup-back">&larr; BACK</button><button class="btn pri navb" data-act="setup-next" id="setupNext">START &rarr;</button></div>
   </div>
   <div id="scrGarage" class="scr panel hidden">
     <h2>Garage</h2>
@@ -113,30 +151,28 @@ input[type=color]{padding:2px;height:38px}
     <div class="row2"><div><label class="f">Primary</label><input type="color" id="gP1"></div><div><label class="f">Secondary</label><input type="color" id="gP2"></div><div><label class="f">Accent</label><input type="color" id="gP3"></div></div>
     <div class="row2"><div><label class="f">Number color</label><input type="color" id="gNC"></div><div><label class="f">Number outline</label><input type="color" id="gNO"></div></div>
     <button class="btn" data-act="rand">Randomize</button>
-    <button class="btn pri" data-act="back">Save &amp; back</button>
+    <div class="nav"><button class="btn navb" data-act="back">&larr; BACK</button><button class="btn pri navb" data-act="back">SAVE &#10003;</button></div>
   </div>
   <div id="scrLobby" class="scr panel hidden">
+    <div class="steps" data-steps="lobby"></div>
     <h2 id="lobTitle">Race lobby</h2>
     <div id="codeBox"><p style="margin:0">Room code &mdash; share it with friends</p><div class="code" id="codeTxt"></div></div>
     <label class="f" id="plabel">Drivers</label><div id="plist"></div>
-    <div id="hostSet">
-      <div class="row2"><div><label class="f">Laps</label><select id="sLaps"><option>10</option><option selected>25</option><option>50</option><option>100</option></select></div>
-      <div><label class="f">AI cars</label><input id="sAI" type="number" min="0" max="19" value="11"></div></div>
-      <label class="f">AI difficulty</label><select id="sDiff"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
-      <label class="f">Time of day</label><select id="sTime"><option value="day">Day</option><option value="night">Night (under the lights)</option></select>
-      <button class="btn pri" data-act="start">Start race</button>
-    </div>
+    <div id="hostSet"><p id="hostSum" style="margin-top:12px"></p></div>
     <p id="waitTxt" class="hidden" style="margin-top:12px"></p>
     <div id="chatBox"><label class="f">Chat</label><div id="chatLog"></div>
       <div class="row2" style="margin-top:6px"><input id="chatIn" maxlength="120" placeholder="Say something"><button class="btn" data-act="chat" style="margin:0;flex:0 0 74px">Send</button></div></div>
-    <button class="btn" data-act="leave">Leave</button>
+    <div class="nav"><button class="btn navb" data-act="leave">&larr; LEAVE</button><button class="btn pri navb" data-act="start" id="lobbyStart">START RACE &rarr;</button></div>
   </div>
   <div id="scrRecords" class="scr panel hidden"><h2>Fastest laps</h2>
-<div class="recbox" id="recMain"></div><button class="btn" data-act="menu">Back</button></div>
-  <div id="scrPause" class="scr panel hidden"><h2>Paused</h2><p id="pauseNote"></p><button class="btn pri" data-act="resume">Resume</button><button class="btn hidden" id="endAttackBtn" data-act="endattack">End session &amp; see lap records</button><button class="btn" data-act="leave">Leave race</button></div>
+    <div class="recbox" id="recMain"></div>
+    <div class="nav"><button class="btn navb" data-act="menu">&larr; BACK</button><span></span></div></div>
+  <div id="scrPause" class="scr panel hidden"><h2>Paused</h2><p id="pauseNote"></p>
+    <button class="btn hidden" id="endAttackBtn" data-act="endattack">End session &amp; see results</button>
+    <div class="nav"><button class="btn navb" data-act="leave">&larr; QUIT</button><button class="btn pri navb" data-act="resume">RESUME &rarr;</button></div></div>
   <div id="scrResults" class="scr panel hidden"><h2>Results</h2><table id="resTable"></table>
-    <button class="btn pri hidden" data-act="again" id="againBtn">Race again</button><p id="againWait" class="hidden" style="margin-top:10px">Waiting for the host&hellip;</p>
-    <button class="btn" data-act="leave">Back to menu</button></div>
+    <p id="againWait" class="hidden" style="margin-top:10px">Waiting for the host&hellip;</p>
+    <div class="nav"><button class="btn navb" data-act="leave">&larr; MENU</button><button class="btn pri navb hidden" data-act="again" id="againBtn">RACE AGAIN &rarr;</button></div></div>
 </div>
 <div id="toast" class="panel"></div>
 </div>
@@ -1183,7 +1219,7 @@ function clientRecv(d){
   if(!d||typeof d!=='object')return;
   switch(d.t){
     case 'lobby':if(d.track&&TRACKS[d.track]&&d.track!==TRACK_ID){const q=new URLSearchParams(location.search);q.set('track',d.track);q.set('room',NET.code);location.search=q.toString();return;}NET.racing=!!d.racing;NET.players=new Map((d.players||[]).map(p=>[p.id,{id:p.id,lv:cleanLv(p.lv)}]));settings=d.set||settings;setNight(!!settings.night);
-      if(mode==='menu'||mode==='garage')goLobby();else if(mode==='lobby')renderLobby();break;
+      if(['menu','garage','multi','track','setup','records'].includes(mode))goLobby();else if(mode==='lobby')renderLobby();break;
     case 'start':beginRace(d);break;
     case 'w':if(Array.isArray(d.c))d.c.forEach(applyState);if(d.r){race.ph=d.r.ph;race.laps=d.r.laps;race.fo=d.r.fo||[];race.gn=!!d.r.gn;}break;
     case 'd':applyDamageMsg(d);break;
@@ -1395,6 +1431,9 @@ function showResults(){
 function renderLobby(){
   $('lobTitle').textContent=(NET.online?'Online lobby':'Solo race')+` \u00b7 ${TRACK.name}`;$('codeBox').classList.toggle('hidden',!NET.online);$('codeTxt').textContent=NET.code;
   $('plist').innerHTML=[...NET.players.values()].map(p=>`<div><b style="display:inline-block;min-width:30px;padding:0 4px;margin-right:6px;border-radius:3px;text-align:center;background:${p.lv.primary};color:${p.lv.numColor}">${esc(p.lv.number)}</b>${esc(p.lv.name)}${p.id==='host'&&NET.online?' <span style="color:var(--dim)">(host)</span>':''}</div>`).join('');
+  document.querySelector('[data-steps="lobby"]').innerHTML=NET.host?stepsHtml('multi',4):'';
+  $('hostSum').textContent=`${TRACK.name} \u00b7 ${settings.laps} laps \u00b7 ${settings.ai} AI trucks (${settings.diff||'medium'}) \u00b7 ${settings.night?'night':'day'}`;
+  $('lobbyStart').classList.toggle('hidden',!NET.host);
   $('hostSet').classList.toggle('hidden',!NET.host);$('waitTxt').classList.toggle('hidden',NET.host);$('chatBox').classList.toggle('hidden',!NET.online);
   $('waitTxt').textContent=NET.racing&&mode==='lobby'?'A race is already running. You will be on the grid for the next one.':`Waiting for the host to start... (${settings.laps} laps, ${settings.night?'night':'day'}, ${settings.diff||'medium'} AI)`;
   $('plabel').textContent=NET.online?`Drivers (${NET.players.size}/${CFG.maxCars}) \u2014 invite as many friends as you like`:'Driver';
@@ -1419,8 +1458,21 @@ function readGarage(){const l={};for(const k in G)l[k]=$(G[k]).value;if(REC.me)l
 function rebuildMenuCar(){if(menuCar)menuCar.dispose();menuCar=new Car('menu',myLv,{player:true});menuCar.place(S_LINE+6,-2);menuCar.m.root.visible=!player;}
 for(const k in G)$(G[k]).addEventListener('input',readGarage);
 ['sLaps','sAI','sTime','sDiff'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();setNight(settings.night);broadcastLobby();}));
-$('trackSel').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<option value="${id}">${t.name} (${t.miles})</option>`).join('');$('trackSel').value=TRACK_ID;
-$('trackSel').addEventListener('change',e=>{const q=new URLSearchParams(location.search);q.set('track',e.target.value);q.delete('room');location.search=q.toString();});
+const WIZ={flow:'solo',track:TRACK_ID};
+const FLOW_STEPS={attack:['Mode','Track','Setup'],solo:['Mode','Track','Setup'],multi:['Mode','Host or join','Track','Setup','Lobby']};
+const stepsHtml=(flow,idx)=>FLOW_STEPS[flow].map((n,i)=>`<span class="${i<idx?'done':i===idx?'on':''}">${i+1}. ${n}</span>`).join('');
+function goFlow(f){WIZ.flow=f;WIZ.track=TRACK_ID;if(f==='multi'){mode='multi';document.querySelector('[data-steps="multi"]').innerHTML=stepsHtml('multi',1);showScreen('scrMulti');return;}showTrack();}
+function renderTrackCards(){$('trackCards').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<button class="tcard${id===WIZ.track?' on':''}" data-track="${id}" aria-pressed="${id===WIZ.track}"><b>${t.name}</b><span>${t.miles} \u00b7 ${t.surface==='dirt'?'Dirt':'Asphalt'} \u00b7 ${t.turnBank}\u00b0 banked turns</span></button>`).join('');}
+function showTrack(){mode='track';$('trackSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?2:1);renderTrackCards();showScreen('scrTrack');}
+function showSetup(){mode='setup';const att=WIZ.flow==='attack';$('setupSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?3:2);
+  $('setupTitle').textContent=att?'Time Attack setup':WIZ.flow==='multi'?'Room setup':'Race setup';$('setupTrack').textContent=`${TRACK.name} \u00b7 ${TRACK.miles} \u00b7 ${DIRT?'dirt':'asphalt'}`;
+  $('raceFields').classList.toggle('hidden',att);$('setupNext').innerHTML=att?'START &rarr;':WIZ.flow==='multi'?'OPEN ROOM &rarr;':'START RACE &rarr;';
+  $('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';$('sDiff').value=settings.diff||'medium';showScreen('scrSetup');}
+function wizardNext(){readHostSettings();
+  if(WIZ.flow==='attack')startTimeAttack();
+  else if(WIZ.flow==='solo'){resetNet();NET.host=true;NET.online=false;NET.myId='host';NET.players.set('host',{id:'host',lv:myLv});hostStart();}
+  else startHost(true);}
+wrap.addEventListener('click',e=>{const t=e.target.closest('[data-track]');if(!t)return;WIZ.track=t.dataset.track;renderTrackCards();});
 $('quality').value=quality;$('quality').addEventListener('change',e=>{quality=e.target.value;store.set('sts_q',quality);applyQuality();});
 
 function act(a){
@@ -1430,6 +1482,11 @@ function act(a){
     case 'records':mode='records';showScreen('scrRecords');showRecords('recMain','time-attack');break;
     case 'endattack':showResults();break;
     case 'menu':mode='menu';showScreen('scrMain');break;
+    case 'multi-host':WIZ.flow='multi';showTrack();break;
+    case 'track-back':if(WIZ.flow==='multi')goFlow('multi');else act('menu');break;
+    case 'track-next':if(WIZ.track!==TRACK_ID){const q=new URLSearchParams(location.search);q.set('track',WIZ.track);q.set('flow',WIZ.flow);q.delete('room');location.search=q.toString();}else showSetup();break;
+    case 'setup-back':showTrack();break;
+    case 'setup-next':wizardNext();break;
     case 'host':startHost(true);break;
     case 'join':doJoin();break;
     case 'garage':mode='garage';fillGarage();showScreen('scrGarage');break;
@@ -1440,10 +1497,10 @@ function act(a){
     case 'chat':sendChat();break;
     case 'leave':leaveAll();break;
     case 'resume':togglePause();break;
-    case 'again':if(race.ph==='attack'){startTimeAttack();break;}sendAll({t:'back'});backToLobby();break;
+    case 'again':if(race.ph==='attack'){startTimeAttack();break;}if(!NET.online){hostStart();break;}sendAll({t:'back'});backToLobby();break;
   }
 }
-wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;audioInit();act(b.dataset.act);});
+wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;audioInit();const a=b.dataset.act;if(a.startsWith('flow:'))goFlow(a.slice(5));else act(a);});
 wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)return;const box=t.closest('.recbox');if(box)showRecords(box.id,t.dataset.rec);});
 function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)};const gn=$('gName');gn.value=myLv.name;gn.disabled=true;gn.title='Your library username is your driver name';
   const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(!player)rebuildMenuCar();}
@@ -1507,12 +1564,13 @@ function tlPostRoom(code){try{if(window.parent!==window)window.parent.postMessag
 addEventListener('message',e=>{
   if(e.origin!==location.origin||!e.data||e.data.type!=='tl-host')return;
   if(NET.host&&NET.online&&NET.code&&NET.peer&&NET.peer.open){tlPostRoom(NET.code);return;}
-  if(mode==='menu'||mode==='garage'||mode==='lobby')startHost(true);
+  if(['menu','garage','lobby','multi','track','setup','records'].includes(mode))startHost(true);
 });
 
 // ===================== INIT =====================
 {const room=new URLSearchParams(location.search).get('room');if(room){$('joinCode').value=room.toUpperCase().replace(/[^A-Z]/g,'').slice(0,5);setTimeout(doJoin,300);}}
 rebuildMenuCar();applyQuality();setNight(false);showScreen('scrMain');requestAnimationFrame(frame);
+{const q=new URLSearchParams(location.search),fl=q.get('flow');if(FLOW_STEPS[fl]&&!q.get('room')){WIZ.flow=fl;WIZ.track=TRACK_ID;q.delete('flow');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:''));showSetup();}}
 </script>
 </body>
 </html>
