@@ -1,10 +1,10 @@
 export const embeddedModules = [
-  { id: 'sandlot', title: 'Sandlot Sluggers', src: '/play/sandlot.html' },
-  { id: 'botwreck', title: 'BotWreck 3D', src: '/play/botwreck.html' },
-  { id: 'chess', title: 'Chess', src: '/play/chess.html' },
-  { id: 'checkers', title: 'Checkers', src: '/play/checkers.html' },
-  { id: '2048', title: '2048', src: '/play/2048.html' },
-  { id: 'helicopter', title: 'Chopper Cave', src: '/play/helicopter.html' },
+  { id: 'sandlot', title: 'Sandlot Sluggers', src: '/modules/sandlot.html' },
+  { id: 'botwreck', title: 'BotWreck 3D', src: '/modules/botwreck.html' },
+  { id: 'chess', title: 'Chess', src: '/modules/chess.html' },
+  { id: 'checkers', title: 'Checkers', src: '/modules/checkers.html' },
+  { id: '2048', title: '2048', src: '/modules/2048.html' },
+  { id: 'helicopter', title: 'Chopper Cave', src: '/modules/helicopter.html' },
 ] as const
 
 export type EmbeddedModuleId = typeof embeddedModules[number]['id']

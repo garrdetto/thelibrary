@@ -102,8 +102,8 @@ function Studio() {
     const savedTheme = document.documentElement.dataset.theme
     if (isSiteTheme(savedTheme)) setTheme(savedTheme)
     if (window.location.hash === '#racing') setView('racing')
-    const playHash = window.location.hash.replace(/^#play-/, '')
-    if (window.location.hash.startsWith('#play-') && isPlayId(playHash)) setView(playHash)
+    const playHash = window.location.hash.replace(/^#module-/, '')
+    if (window.location.hash.startsWith('#module-') && isPlayId(playHash)) setView(playHash)
   }, [])
 
   useEffect(() => {
@@ -165,7 +165,7 @@ function Studio() {
     if (lobby.match && next !== 'pool') lobby.leave()
     setSelection(null)
     setView(next)
-    window.history.replaceState(null, '', next === 'racing' ? '#racing' : isPlayId(next) ? `#play-${next}` : window.location.pathname)
+    window.history.replaceState(null, '', next === 'racing' ? '#racing' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
     setCurrent(null)
     setMessages([])
     setInput('')

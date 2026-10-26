@@ -65,13 +65,13 @@
     <div class="tabs"><button data-mode="cpu" aria-pressed="true">vs CPU</button><button data-mode="local" aria-pressed="false">2 Players</button><button data-mode="online" aria-pressed="false">Online</button></div>
     <div id="cpuOpts" class="row"><select id="level" aria-label="CPU level"><option value="1">Easy</option><option value="2" selected>Medium</option><option value="3">Hard</option></select><select id="color" aria-label="Your color"><option value="r">Play Red (first)</option><option value="b">Play Black</option></select></div>
     <div id="onlineOpts" class="online" hidden>
-      <div class="row"><button id="hostBtn">Host match</button><input id="joinCode" maxlength="6" placeholder="CODE" aria-label="Room code" style="text-transform:uppercase;letter-spacing:3px;text-align:center"><button id="joinBtn">Join</button></div>
+      <div class="row"><button id="hostBtn">Host game</button><input id="joinCode" maxlength="6" placeholder="CODE" aria-label="Room code" style="text-transform:uppercase;letter-spacing:3px;text-align:center"><button id="joinBtn">Join</button></div>
       <div id="codeBox" class="code" hidden></div>
       <div class="muted" id="netStatus"><span class="netdot"></span>Not connected. Host to get a code, or enter a friend's code.</div>
       <div class="emotes"><button data-emote="gg">GG</button><button>Nice jump!</button><button>King me!</button><button>Oops</button></div>
     </div>
     <div class="status" id="status">Red to move</div>
-    <div class="row"><button id="newBtn" class="primary">New match</button><button id="undoBtn">Undo</button><button id="flipBtn">Flip</button></div>
+    <div class="row"><button id="newBtn" class="primary">New game</button><button id="undoBtn">Undo</button><button id="flipBtn">Flip</button></div>
     <div class="row"><button id="resignBtn">Resign</button><button id="drawBtn">Offer draw</button></div>
     <p class="rules">Men move diagonally forward. Jumps are mandatory and chain together. Reach the far row to become a King, which moves both ways. Take every piece, or leave your opponent with no moves, to win.</p>
   </aside>
@@ -215,7 +215,7 @@ function setStatus(text) {
   const el = $('#status'); el.classList.toggle('alert', !!over);
   if (text) { el.textContent = text; return; }
   if (over) { el.textContent = over.winner ? `${over.winner === 'r' ? 'Red' : 'Black'} wins · ${over.reason}` : `Draw · ${over.reason}`; return; }
-  if (mode === 'online' && !net.started) { el.textContent = net.connected ? 'Connected. Starting…' : 'Host or join a match to play online.'; return; }
+  if (mode === 'online' && !net.started) { el.textContent = net.connected ? 'Connected. Starting…' : 'Host or join a game to play online.'; return; }
   const ms = Draughts.moves(st);
   el.textContent = `${st.turn === 'r' ? 'Red' : 'Black'} to move${ms.length && ms[0].caps.length ? ' · must jump!' : ''}${you && st.turn === you && mode !== 'local' ? ' (you)' : ''}`;
 }
@@ -236,7 +236,7 @@ const net = {
   close() { clearInterval(this.retry); try { this.conn && this.conn.close(); } catch (e) { /* ignore */ } try { this.peer && this.peer.destroy(); } catch (e) { /* ignore */ } Object.assign(this, { peer: null, conn: null, connected: false, started: false }); $('#codeBox').hidden = true; this.status('Not connected.', false); },
   ensure() { if (!window.Peer) { this.status('Online play needs an internet connection (PeerJS did not load).', false); return false; } return true; },
   hostGame() { if (!this.ensure()) return; this.close(); this.host = true; const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; this.code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); this.peer = new window.Peer('tl-checkers-' + this.code.toLowerCase()); this.peer.on('open', () => { $('#codeBox').hidden = false; $('#codeBox').textContent = this.code; this.status('Share this code. Waiting for your friend…', false); }); this.peer.on('connection', c => { if (this.conn && this.conn.open) { c.on('open', () => c.close()); return; } this.attach(c); }); this.peer.on('error', e => { if (e.type === 'unavailable-id') this.hostGame(); else this.status('Network error: ' + e.type, false); }); },
-  joinGame(code) { if (!this.ensure()) return; this.close(); this.host = false; this.code = code.toUpperCase(); this.peer = new window.Peer(); this.peer.on('open', () => this.attach(this.peer.connect('tl-checkers-' + this.code.toLowerCase(), { reliable: true }))); this.peer.on('error', e => this.status(e.type === 'peer-unavailable' ? 'No match with that code.' : 'Network error: ' + e.type, false)); this.status('Connecting…', false); },
+  joinGame(code) { if (!this.ensure()) return; this.close(); this.host = false; this.code = code.toUpperCase(); this.peer = new window.Peer(); this.peer.on('open', () => this.attach(this.peer.connect('tl-checkers-' + this.code.toLowerCase(), { reliable: true }))); this.peer.on('error', e => this.status(e.type === 'peer-unavailable' ? 'No game with that code.' : 'Network error: ' + e.type, false)); this.status('Connecting…', false); },
   attach(c) {
     this.conn = c;
     c.on('open', () => { this.connected = true; clearInterval(this.retry); this.status('Connected!', true); this.send({ t: 'hello', name: myName }); if (this.host && !this.started) this.rematch(false); else if (this.host) this.send({ t: 'sync', hist: hist.concat([st]), hostColor: you, over }); });
