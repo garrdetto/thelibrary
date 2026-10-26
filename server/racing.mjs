@@ -11,7 +11,7 @@ export function attachRacing(io, origins, hooks = {}) {
   racing.use(async(socket,next)=>{
     try {
       const origin=socket.handshake.headers.origin
-      const trusted=origins.length?origins:['https://myworkhelper.netlify.app']
+      const trusted=origins.length?origins:['https://thelibrary.garrdetto.workers.dev']
       if(!trusted.includes(origin))return next(new Error('This site is not authorized.'))
       const ticket=z.string().regex(/^[a-f0-9]{64}$/).parse(socket.handshake.auth.ticket)
       const response=await fetch(`${origin}/api/racing?action=redeem`,{method:'POST',headers:{Authorization:`Bearer ${ticket}`},signal:AbortSignal.timeout(8000)})

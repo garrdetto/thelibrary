@@ -5,8 +5,8 @@ import { z } from 'zod'
 import { attachRacing } from './racing.mjs'
 
 const origins = (process.env.FRONTEND_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean)
-const trustedOrigins = origins.length ? origins : ['https://myworkhelper.netlify.app']
-const version = 'pool-lobby 8-ball v38'
+const trustedOrigins = origins.length ? origins : ['https://thelibrary.garrdetto.workers.dev']
+const version = 'pool-lobby 8-ball v39'
 const routes = { '/': 'Pool lobby server is running.', '/health': 'ok', '/version': version }
 const http = createServer((req, res) => { const body = routes[req.url]; res.writeHead(body ? 200 : 404); res.end(body ?? 'Not found') })
 const io = new Server(http, { cors: { origin: trustedOrigins }, allowRequest: (req, done) => done(null, trustedOrigins.includes(req.headers.origin)), maxHttpBufferSize: 196608 })
