@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { LoaderCircle, RefreshCw, Trophy } from 'lucide-react'
-import { RecordResetDialog } from './RecordResetDialog'
+import { postReset, useRecordResetTarget } from './AdminRecordReset'
 import { learningModules } from '@/lib/modules'
 import { formatScore, scoredModules } from '@/lib/module-scores'
 import type { ModuleScoreBoard, ScoredModuleId } from '@/lib/module-scores'
@@ -41,12 +41,13 @@ export function ModuleScoreboard({ module, username }: { module: ScoredModuleId;
     return () => window.removeEventListener('message', onMessage)
   }, [load, module])
 
-  async function resetRecords(password: string) {
-    const response = await fetch('/api/module-scores', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'reset-records', module, password }) })
-    const result = await response.json().catch(() => ({})) as { error?: string }
-    if (!response.ok) throw new Error(result.error ?? 'Could not clear the leaderboard. Try again.')
-    await load(true)
-  }
+  useRecordResetTarget({
+    key: `scores:${module}`,
+    label: `${info?.title ?? 'module'} leaderboard`,
+    description: `Every saved ${info?.title ?? ''} result will be deleted for all players.`,
+    reset: async () => { await postReset('/api/module-scores', 'POST', { action: 'reset-records', module }); await load(true) },
+  })
+
 
   const records = board?.records ?? []
   const mine = username?.toLowerCase()
@@ -74,6 +75,5 @@ export function ModuleScoreboard({ module, username }: { module: ScoredModuleId;
           <tbody>{records.map((record, index) => <tr key={`${record.username}:${record.date}`} className={index === myRank ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{formatScore(module, record.value)}</td><td>{record.date.slice(0, 10)}</td></tr>)}</tbody>
         </table></div>
       : <p className="module-scores-status">No results on the board yet. {username ? 'Yours could be the first.' : 'Sign in and set the first one.'}</p>)}
-    <RecordResetDialog buttonLabel="Reset leaderboard" title="Reset this leaderboard?" description={`This permanently clears every saved ${info?.title ?? ''} result for all players. Enter the reset password to confirm.`} confirmLabel="Clear the leaderboard" onReset={resetRecords}/>
   </section>
 }

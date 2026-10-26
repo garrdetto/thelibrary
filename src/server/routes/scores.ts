@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { json, readJson, requireSameOrigin } from '../http'
 import { currentUser, requireUser } from '../auth'
-import { isRecordResetPassword } from '../records'
+import { canResetRecords } from '../records'
 import { scoredModules } from '../../lib/module-scores'
 import type { ScoredModuleId } from '../../lib/module-scores'
 
@@ -11,7 +11,7 @@ const moduleIds = z.enum(Object.keys(scoredModules) as [ScoredModuleId, ...Score
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('score'), module: moduleIds, value: z.number().int(), run: z.string().uuid() })
     .refine(input => input.value >= scoredModules[input.module].min && input.value <= scoredModules[input.module].max),
-  z.object({ action: z.literal('reset-records'), module: moduleIds, password: z.string().min(1).max(128) }),
+  z.object({ action: z.literal('reset-records'), module: moduleIds, password: z.string().min(1).max(128).optional() }),
 ])
 
 function leaderboardQuery(module: ScoredModuleId) {
@@ -38,7 +38,7 @@ export async function moduleScores(request: Request, env: Env) {
   const user = await requireUser(request, env, 'Sign in to save your scores to the leaderboard.')
   const input = actions.parse(await readJson(request, 500))
   if (input.action === 'reset-records') {
-    if (!await isRecordResetPassword(input.password)) return json({ error: 'Incorrect reset password.' }, 403)
+    if (!await canResetRecords(user, input.password)) return json({ error: 'Only the administrator can reset records.' }, 403)
     await env.DB.prepare('DELETE FROM module_scores WHERE module = ?').bind(input.module).run()
     return json({ reset: true })
   }

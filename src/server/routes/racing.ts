@@ -3,7 +3,7 @@ import type { Env } from '../env'
 import { binary, json, parseStored, readJson, requireSameOrigin } from '../http'
 import { requireUser } from '../auth'
 import { IMAGE_MODEL, base64ToBytes, gemini, imageTypes } from '../gemini'
-import { isRecordResetPassword } from '../records'
+import { canResetRecords } from '../records'
 import { issueTicket, redeemTicket } from './account'
 import type { Scheme } from '../../lib/racing'
 import { displayScheme, presets } from '../../lib/racing'
@@ -17,7 +17,7 @@ const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])
 
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ticket') }),
-  z.object({ action: z.literal('reset-records'), password: z.string().min(1).max(128), mode: raceModes, track: trackIds }),
+  z.object({ action: z.literal('reset-records'), password: z.string().min(1).max(128).optional(), mode: raceModes, track: trackIds }),
   z.object({ action: z.literal('lap'), run: z.string().uuid(), lap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), milliseconds: z.number().int().min(4000).max(600000), mode: raceModes, track: trackIds.default('circuit') }).refine(lap => lap.milliseconds >= minimumLapMilliseconds[lap.track]),
   z.object({ action: z.literal('preset'), name: z.string().max(40), bodyStyle: bodyStyles.optional() }),
   z.object({ action: z.literal('body'), bodyStyle: bodyStyles }),
@@ -62,7 +62,7 @@ export async function racing(request: Request, env: Env) {
   requireSameOrigin(request)
   const input = actions.parse(await readJson(request, 1500))
   if (input.action === 'reset-records') {
-    if (!await isRecordResetPassword(input.password)) return json({ error: 'Incorrect reset password.' }, 403)
+    if (!await canResetRecords(user, input.password)) return json({ error: 'Only the administrator can reset records.' }, 403)
     await env.DB.prepare('DELETE FROM racing_laps WHERE track = ? AND mode = ?').bind(input.track, input.mode).run()
     return json({ reset: true })
   }

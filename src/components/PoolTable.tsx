@@ -2,7 +2,7 @@ import { defaultPoolEffects, poolEffectOptions } from '../lib/pool-effects'
 import type { PoolEffects } from '../lib/pool-effects'
 import { PoolAccount } from './PoolAccount'
 import { CueArtwork } from './CueArtwork'
-import { RecordResetDialog } from './RecordResetDialog'
+import { postReset, useRecordResetTarget } from './AdminRecordReset'
 import { cuePresets, defaultCueDesign } from '../lib/cue-design'
 import type { CuePreset } from '../lib/cue-design'
 import { useEffect, useRef, useState } from 'react'
@@ -497,14 +497,19 @@ export function PoolTable({ lobby }: { lobby: Lobby }) {
   const [practiceRefresh, setPracticeRefresh] = useState(0)
   const [practiceResetStatus, setPracticeResetStatus] = useState('')
   useEffect(() => setPracticeResetStatus(''), [soloMode])
-  async function resetPracticeRecords(password: string) {
+  async function resetPracticeRecords() {
     const mode = soloMode === 'nine-practice' ? 'nine-practice' : 'practice'
-    const response = await fetch('/api/pool-practice', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, password }) })
-    const result = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(result.error ?? 'High scores could not be reset. Try again.')
+    await postReset('/api/pool-practice', 'DELETE', { mode })
     setPracticeResetStatus(`${mode === 'nine-practice' ? '9' : '8'}-ball practice high scores have been cleared.`)
     setPracticeRefresh(value => value + 1)
   }
+  const practiceBoardBalls = soloMode === 'nine-practice' ? '9' : '8'
+  useRecordResetTarget(!lobby.match && !isComputerMode(soloMode) ? {
+    key: `pool:${soloMode}`,
+    label: `${practiceBoardBalls}-ball practice high scores`,
+    description: `Every saved ${practiceBoardBalls}-ball practice time will be deleted for all players. The other practice mode keeps its high scores.`,
+    reset: resetPracticeRecords,
+  } : null)
   const pendingPracticeResult = useRef<{ id: string; mode: 'practice' | 'nine-practice'; milliseconds: number } | null>(null)
   async function savePracticeResult() {
     const result = pendingPracticeResult.current
@@ -1490,7 +1495,6 @@ export function PoolTable({ lobby }: { lobby: Lobby }) {
       {practiceResetStatus && <p role="status">{practiceResetStatus}</p>}
       {practiceSaveStatus && <p role="status">{practiceSaveStatus} {practiceSaveStatus.includes('could not') && <button type="button" onClick={() => void savePracticeResult()}>Retry saving</button>}</p>}
     </section>
-    <RecordResetDialog buttonLabel={`Reset ${nineBall ? '9' : '8'}-ball practice scores`} title="Reset these high scores?" description={`This permanently clears every saved ${nineBall ? '9' : '8'}-ball practice time for all players. The other practice mode keeps its high scores. Enter the reset password to confirm.`} confirmLabel="Clear these scores" onReset={resetPracticeRecords}/>
     </>}
     </div>
   </section>

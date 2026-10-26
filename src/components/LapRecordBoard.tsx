@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { KeyboardEvent } from 'react'
+import { postReset, useRecordResetTarget } from './AdminRecordReset'
 
 type LapRecordRow = { username: string; milliseconds: number; date: string; mode: string }
 
@@ -49,6 +50,13 @@ export function LapRecordBoard<Mode extends string>({ track, trackName, modes, m
       .catch(() => { if (live) { setRows([]); setError('Lap records are unavailable right now. Try again in a moment.') } })
     return () => { live = false }
   }, [mode, track, refreshKey, lapVersion])
+
+  useRecordResetTarget({
+    key: `laps:${track}:${mode}`,
+    label: `${modeNames[mode]} lap records`,
+    description: `Every saved ${modeNames[mode]} lap on ${trackName} will be deleted for all drivers. Other modes keep their records.`,
+    reset: async () => { await postReset('/api/racing', 'POST', { action: 'reset-records', mode, track }); setLapVersion(value => value + 1) },
+  })
 
   function moveTab(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return

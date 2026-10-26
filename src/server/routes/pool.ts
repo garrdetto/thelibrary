@@ -3,7 +3,7 @@ import type { Env } from '../env'
 import { binary, json, parseStored, readJson, requireSameOrigin } from '../http'
 import { requireUser } from '../auth'
 import { IMAGE_MODEL, base64ToBytes, gemini, imageTypes } from '../gemini'
-import { isRecordResetPassword } from '../records'
+import { canResetRecords } from '../records'
 
 const practiceModes = z.enum(['practice', 'nine-practice'])
 
@@ -18,8 +18,8 @@ export async function poolPractice(request: Request, env: Env) {
   }
   if (request.method === 'DELETE') {
     requireSameOrigin(request)
-    const input = z.object({ mode: practiceModes, password: z.string().min(1).max(128) }).parse(await readJson(request, 500))
-    if (!await isRecordResetPassword(input.password)) return json({ error: 'Incorrect reset password.' }, 403)
+    const input = z.object({ mode: practiceModes, password: z.string().min(1).max(128).optional() }).parse(await readJson(request, 500))
+    if (!await canResetRecords(user, input.password)) return json({ error: 'Only the administrator can reset records.' }, 403)
     await env.DB.prepare('DELETE FROM pool_practice_records WHERE mode = ?').bind(input.mode).run()
     return json({ reset: true })
   }
