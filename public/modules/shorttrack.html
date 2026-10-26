@@ -183,7 +183,7 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 const TRACKS={
   bullring:{name:'Showdown Bullring',miles:'0.5 mi',rec:'shorttrack',L:180,R:62,W:16,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,smooth:1.35},
   dells:{name:'Dells Short Track',miles:'0.3 mi',rec:'dells',L:122,R:38,W:14,APRON:6,turnBank:27,straightBank:18,bankIn:50,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.25,smooth:1.75},
-  dirt:{name:'Dells Dirt Oval',miles:'0.3 mi',rec:'dirt',L:122,R:38,W:14,APRON:6,turnBank:13.5,straightBank:9,bankIn:50,bankOut:25,grooveHigh:3.6,grooveLow:-4.0,minLap:8000,steer:1.35,smooth:1.6,surface:'dirt',grip:0.72,apronGrip:0.6}};
+  dirt:{name:'Dells Dirt Oval',miles:'0.3 mi',rec:'dirt',L:109,R:42,W:17,APRON:6,turnBank:17,straightBank:10,bankIn:45,bankOut:25,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.5,smooth:1.25,surface:'dirt',grip:0.72,apronGrip:0.6}};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
 const DIRT=TRACK.surface==='dirt';if(TRACK.grip)CFG.grip=TRACK.grip;if(TRACK.apronGrip)CFG.apronGrip=TRACK.apronGrip;if(DIRT){CFG.scrub*=0.55;CFG.slideScrub=0.22;}
