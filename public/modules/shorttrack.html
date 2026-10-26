@@ -530,17 +530,27 @@ const flagMat=new THREE.MeshBasicMaterial({color:0xffcc00,side:DS});
  const flag=new THREE.Mesh(new THREE.PlaneGeometry(1.5,1.0),flagMat);flag.position.set(bx-c.nx*2.2,fy+6.4,bz-c.nz*2.2);flag.rotation.y=Math.PI/2;scene.add(flag);}
 
 // ===================== EFFECTS =====================
-const MARKS=1800;
-const markMesh=new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3,0.9).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x080808,transparent:true,opacity:0.3,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3}),MARKS);
+const MARKS=DIRT?14000:1800;
+const markMesh=new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3,0.9).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:DIRT?0x2a1a10:0x080808,transparent:true,opacity:DIRT?0.42:0.3,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3}),MARKS);
 markMesh.count=0;markMesh.frustumCulled=false;scene.add(markMesh);let markIdx=0,markTotal=0;setTimeout(()=>{if(!DIRT)seedMarks(420);},0);
-function addMark(c){
+function addMark(c,len=0.9){
   for(const sx of [0.86,-0.86]){
-    _v.set(sx,0.02,-1.42).applyMatrix4(c.m.root.matrixWorld);_o.position.copy(_v);_o.quaternion.copy(c.m.root.quaternion);_o.scale.set(1,1,1);_o.updateMatrix();
+    _v.set(sx,0.02,-1.42).applyMatrix4(c.m.root.matrixWorld);_o.position.copy(_v);_o.quaternion.copy(c.m.root.quaternion);_o.scale.set(1,1,len/0.9);_o.updateMatrix();
     markMesh.setMatrixAt(markIdx,_o.matrix);markIdx=(markIdx+1)%MARKS;markTotal=Math.min(MARKS,markTotal+1);
   }
   markMesh.count=markTotal;markMesh.instanceMatrix.needsUpdate=true;
 }
-function resetMarks(){markIdx=0;markTotal=0;markMesh.count=0;if(!DIRT)seedMarks(420);}
+const WEAR={c:document.createElement('canvas'),t:0,up:0,dirty:false};WEAR.c.width=128;WEAR.c.height=4096;WEAR.g=WEAR.c.getContext('2d');
+WEAR.tex=new THREE.CanvasTexture(WEAR.c);WEAR.tex.colorSpace=THREE.SRGBColorSpace;WEAR.tex.anisotropy=8;
+if(!DIRT)addMesh(ribbon(pt(-HW,0.006),pt(HW,0.006),0,P,SEG,P,'across'),new THREE.MeshStandardMaterial({map:WEAR.tex,transparent:true,depthWrite:false,roughness:0.6,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
+function clearWear(){WEAR.g.clearRect(0,0,WEAR.c.width,WEAR.c.height);WEAR.tex.needsUpdate=true;}
+function stampWear(c){const g=WEAR.g,cw=WEAR.c.width,ch=WEAR.c.height,y=(1-mod(c.tp.s,P)/P)*ch,a=Math.min(0.05,0.012+c.slip*0.004);
+  g.fillStyle=`rgba(12,12,14,${a})`;for(const off of [-0.84,0.84]){const lat=c.tp.lat+off*CFG.carScale;if(lat<-HW||lat>HW)continue;g.fillRect((lat+HW)/W*cw-1.6,y-3.5,3.2,7);}
+  WEAR.dirty=true;}
+function updateWear(dt){if(DIRT)return;WEAR.t+=dt;WEAR.up+=dt;
+  if(WEAR.t>=0.05){WEAR.t=0;cars.forEach(c=>{if(c.vis&&!c.isPace&&c.speed>3)stampWear(c);});}
+  if(WEAR.dirty&&WEAR.up>=0.5){WEAR.up=0;WEAR.dirty=false;WEAR.tex.needsUpdate=true;}}
+function resetMarks(){markIdx=0;markTotal=0;markMesh.count=0;clearWear();if(!DIRT)seedMarks(420);}
 function seedMarks(n){const r=rng(77);
   for(let i=0;i<n;i++){const turn=r()<0.5?T1:T2,s2=turn-20+r()*(TURN+40),lat=clamp(grooveLat(s2)+(r()-0.5)*3.4,-HW+1,HW-1.5),c=center(s2),nrm=normalAt(s2,lat,_n),len=0.6+r()*2.4;
     _f.set(c.tx,0,c.tz);const yaw=(r()-0.5)*0.35;_f.applyAxisAngle(_v.set(0,1,0),yaw);_f.addScaledVector(nrm,-_f.dot(nrm)).normalize();_x.crossVectors(nrm,_f);_m.makeBasis(_x,nrm,_f);
@@ -1321,6 +1331,7 @@ function carVisual(c,dt){
   if(m.light)m.light.material.emissiveIntensity=(performance.now()%600<300)?3:0.3;
   const cd=camera.position.distanceTo(m.root.position);
   if(c.tag)c.tag.visible=cd<90&&cd>4;
+  if(DIRT&&(mode==='race'||mode==='paused'||mode==='results')){c.markT-=dt;if(c.markT<=0&&c.speed>2.5){addMark(c,Math.min(4,c.speed*0.12+0.3));c.markT=0.12;}}
   if(cd>160||mode==='menu'||mode==='garage'||mode==='lobby')return;
   const sp=c.speed;
   if(DIRT){if(sp>8&&(c.slip>1.5||c.thr)){c.smokeT-=dt;if(c.smokeT<=0){_v.set((Math.random()-0.5)*1.6,0.25,-2.2).applyMatrix4(m.root.matrixWorld);spawnSmoke(_v.x,_v.y,_v.z,c.vx*0.2,c.vz*0.2,false,1.1+Math.min(2,c.slip*0.25),0x9a7656);c.smokeT=c.slip>3?0.03:0.07;}}}
@@ -1473,6 +1484,7 @@ function frame(now){
     acc+=dt;let n=0;while(acc>=STEP&&n<24){simulate(STEP);acc-=STEP;n++;}if(n>=24)acc=0;
     cars.forEach(c=>{if(!c.local)interp(c,now);});
     if(NET.host)raceControl(dt);
+    updateWear(dt);
     updateBoosts(dt);
     if(race.ph!==lastPhase){lastPhase=race.ph;onPhase(race.ph);}
   }
