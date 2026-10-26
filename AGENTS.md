@@ -29,7 +29,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing. Max Secure Circuit (`#racing`) and Oval Speedway (`#oval`) are separate modules; each mounts `Racing` with `fixedTrack`.
 
 ### Accounts and admin UI
-- `src/components/PoolAccount.tsx`: sign-in form. `src/components/WorkspaceAdmin.tsx`: admin panel.
+- `src/components/PoolAccount.tsx`: sign-in form. Signed-out visitors see `src/components/SignInRibbon.tsx` pinned at the top of the main panel and a highlighted sign-in form (`signin-spotlight`) at the top of every view except pool and racing, which show their own. `src/components/WorkspaceAdmin.tsx`: admin panel.
 
 ### Data
 - Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, creations, lyric_corrections, lyric_presets.
@@ -52,9 +52,9 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 ## Accounts and access
 
-- Accounts are a username (3–20 letters, numbers, `_`, `-`, stored lowercase) and an exactly 3-digit password, hashed with a per-user salt. No registration page, email or recovery: an unknown username creates the account; a known username with the wrong digits returns "Invalid password."
+- Accounts are a username (3–20 letters, numbers, `_`, `-`, stored lowercase) and a password of 3 or more characters (up to 128), hashed with a per-user salt. Older accounts created with 3 digits keep working. No registration page, email or recovery: an unknown username creates the account; a known username with the wrong digits returns "Invalid password."
 - Wrong passwords lock the username after 5 attempts (15 minutes, doubling each time up to 24 hours) and the network after 25. Each network can create 10 accounts per day.
-- The administrator is `stoegbauer`, whose password is the `ADMIN_PASSWORD` secret (not 3 digits). The admin can rename accounts, grant studio pages, reset a password (next sign-in sets new digits) and delete accounts.
+- The administrator is `stoegbauer`, whose password is the `ADMIN_PASSWORD` secret . The admin can rename accounts, grant studio pages, reset a password (next sign-in sets the new password) and delete accounts.
 - Studio pages (chat, image, lyrics) require a grant from the admin. Pool and Racing require sign-in for saved data.
 - Pool appearance, cue overlay, racing paint, lobby sound, site theme, saved lyric styles and lyric corrections are stored per account. There is no creation library; creations are kept only so revisions and version history work. Never include `user_id` in API responses.
 

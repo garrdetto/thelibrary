@@ -1,8 +1,6 @@
 import { useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 
-const adminUsername = 'stoegbauer'
-
 async function accountRequest(body: unknown) {
   const response = await fetch('/api/pool-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const result = await response.json().catch(() => ({}))
@@ -10,12 +8,11 @@ async function accountRequest(body: unknown) {
   return result
 }
 
-export function PoolAccount({ username, ready, disabled, beforeChange, onFailure, actions, intro }: { username: string | null; ready: boolean; disabled: boolean; beforeChange: () => Promise<void>; onFailure: () => void; actions?: ReactNode; intro?: string }) {
+export function PoolAccount({ username, ready, disabled, beforeChange, onFailure, actions, intro, className, heading }: { username: string | null; ready: boolean; disabled: boolean; beforeChange: () => Promise<void>; onFailure: () => void; actions?: ReactNode; intro?: string; className?: string; heading?: string }) {
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const isAdminName = name.trim().toLowerCase() === adminUsername
 
   async function submit(event?: FormEvent) {
     event?.preventDefault()
@@ -33,13 +30,13 @@ export function PoolAccount({ username, ready, disabled, beforeChange, onFailure
     }
   }
 
-  return <section className="pool-account" aria-label="Account" aria-busy={busy}>
-    {intro ? <div>{username ? <h2>Welcome, {username}</h2> : <p className="pool-account-intro">{intro}</p>}</div> : <div><span className="section-eyebrow">YOUR ACCOUNT</span><h2>{username ? `Welcome, ${username}` : 'Your workspace, wherever you are.'}</h2><p>{username ? 'Your saved personalization follows your account.' : 'Enter a username and a 3-digit password. A new username creates your account; an existing one signs you back in.'}</p></div>}
+  return <section className={`pool-account${className ? ` ${className}` : ''}`} aria-label="Account" aria-busy={busy}>
+    {intro ? <div>{username ? <h2>Welcome, {username}</h2> : <>{heading && <h2>{heading}</h2>}<p className="pool-account-intro">{intro}</p></>}</div> : <div><span className="section-eyebrow">YOUR ACCOUNT</span><h2>{username ? `Welcome, ${username}` : 'Your workspace, wherever you are.'}</h2><p>{username ? 'Your saved personalization follows your account.' : 'Enter any username and a password of 3 or more characters. A new username creates your account; an existing one signs you back in.'}</p></div>}
     {!ready ? <p role="status">Checking your account…</p> : username ? <div className="pool-account-actions">{actions}<button type="button" disabled={busy || disabled} onClick={() => void submit()}>{busy ? 'Signing out…' : 'Sign out'}</button></div> : <form onSubmit={event => void submit(event)}>
       <label>Username<input name="username" autoComplete="username" minLength={3} maxLength={20} pattern="[a-zA-Z0-9_-]{3,20}" title="3–20 letters, numbers, underscores or hyphens" value={name} onChange={event => setName(event.target.value)} disabled={busy || disabled} required/></label>
-      <label>Password<input name="password" type="password" autoComplete="current-password" {...(isAdminName ? { maxLength: 128 } : { inputMode: 'numeric' as const, pattern: '[0-9]{3}', maxLength: 3, title: 'Exactly 3 digits' })} value={password} onChange={event => setPassword(isAdminName ? event.target.value : event.target.value.replace(/\D/g, '').slice(0, 3))} disabled={busy || disabled} required/></label>
+      <label>Password<input name="password" type="password" autoComplete="current-password" minLength={3} maxLength={128} title="3 or more characters" value={password} onChange={event => setPassword(event.target.value)} disabled={busy || disabled} required/></label>
       <button type="submit" disabled={busy || disabled}>{busy ? 'Connecting…' : 'Continue'}</button>
-      <small>Your password is any 3 digits. There's no email and no recovery, so remember it. If you forget it, ask the administrator to reset it.</small>
+      <small>Your password can be anything 3 characters or longer. There's no email and no recovery, so remember it. If you forget it, ask the administrator to reset it.</small>
     </form>}
     {error && <p className="pool-account-error" role="alert">{error}</p>}
   </section>

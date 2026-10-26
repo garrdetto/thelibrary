@@ -676,3 +676,19 @@ body{background:var(--paper);color:var(--tone-0)}
 .lap-board tbody th{font-weight:700;color:var(--lib-strong)}
 .lap-board tr.podium-1 td:first-child{color:#f5c542;font-weight:800}.lap-board tr.podium-2 td:first-child{color:#c9d1dc;font-weight:800}.lap-board tr.podium-3 td:first-child{color:#d08a4e;font-weight:800}
 @media(max-width:650px){.lap-board{padding:16px}.play-content.has-board .play-frame iframe{height:72dvh}}
+.signin-ribbon{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:10px 43px;background:linear-gradient(90deg,var(--lib-accent),#8b5cff);color:var(--lib-on-accent);font-size:13px;font-weight:600;line-height:1.4;box-shadow:0 6px 18px -8px var(--lib-shadow)}
+.signin-ribbon p{margin:0;flex:1;min-width:0}
+.signin-ribbon svg{flex-shrink:0}
+.signin-ribbon button{display:inline-flex;align-items:center;gap:6px;flex-shrink:0;padding:7px 13px;border:1px solid color-mix(in srgb,var(--lib-on-accent) 45%,transparent);border-radius:999px;background:color-mix(in srgb,var(--lib-on-accent) 14%,transparent);color:inherit;font:inherit;font-size:12px;cursor:pointer;transition:background .2s}
+.signin-ribbon button:hover{background:color-mix(in srgb,var(--lib-on-accent) 26%,transparent)}
+.signin-ribbon button:focus-visible{outline:2px solid var(--lib-on-accent);outline-offset:2px}
+.pool-account.signin-spotlight{margin:0 0 22px;padding:24px 26px;border:2px solid var(--lib-accent);border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,var(--lib-accent) 12%,var(--lib-panel)),color-mix(in srgb,#8b5cff 10%,var(--lib-panel)));color:var(--lib-text);box-shadow:0 0 0 6px color-mix(in srgb,var(--lib-accent) 14%,transparent),0 14px 34px -14px var(--lib-shadow)}
+.signin-spotlight h2{margin:0 0 8px;font:600 26px Georgia,serif;color:var(--lib-strong)}
+.signin-spotlight .pool-account-intro{font-size:14px;line-height:1.6;color:var(--lib-soft)}
+.signin-spotlight label{color:var(--lib-text)}
+.signin-spotlight input{border-color:var(--lib-line);background:var(--lib-panel);color:var(--lib-text)}
+.signin-spotlight input:focus-visible{outline-color:var(--lib-accent)}
+.signin-spotlight small{color:var(--lib-muted)}
+.signin-spotlight form>button{padding:12px 22px;border:0;background:linear-gradient(135deg,var(--lib-accent),#8b5cff);color:var(--lib-on-accent);font-weight:700;font-size:14px}
+@media(max-width:1150px){.signin-ribbon{padding:10px 30px}}
+@media(max-width:650px){.signin-ribbon{padding:9px 16px;font-size:12px}.signin-ribbon button{padding:6px 10px}.pool-account.signin-spotlight{padding:18px}.signin-spotlight h2{font-size:22px}}

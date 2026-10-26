@@ -60,7 +60,7 @@ async function signIn(request: Request, env: Env, input: { username: string; pas
     return json({ username: ADMIN_USERNAME }, 200, { 'Set-Cookie': await startSession(request, env, id) })
   }
 
-  if (!/^\d{3}$/.test(input.password)) return json({ error: 'Your password must be exactly 3 digits.' }, 400)
+  if (input.password.length < 3) return json({ error: 'Your password must be at least 3 characters.' }, 400)
 
   if (existing) {
     if (existing.pin_hash && existing.pin_salt) {

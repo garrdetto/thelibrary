@@ -40,7 +40,7 @@ export function WorkspaceAdmin() {
     finally { setBusy(null) }
   }
   function resetPassword(account: Account) {
-    if (!window.confirm(`Reset the password for ${account.originalUsername}? They'll be signed out, and the next 3 digits they sign in with become their new password.`)) return
+    if (!window.confirm(`Reset the password for ${account.originalUsername}? They'll be signed out, and the next password they sign in with becomes their new password.`)) return
     void run(account, { action: 'reset-password', id: account.id }, `Password reset for ${account.originalUsername}.`, true)
   }
   function remove(account: Account) {

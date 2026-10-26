@@ -4,7 +4,7 @@ A creative workspace with AI chat, image generation, a lyric studio, 8-ball/9-ba
 
 ## Accounts
 
-Sign in with any username (3–20 letters, numbers, `_` or `-`) and a 3-digit password. A new username creates the account; an existing one signs back in, and wrong digits show "Invalid password." There is no email or recovery. Repeated wrong passwords lock the username for a while. The administrator account `stoegbauer` uses the `ADMIN_PASSWORD` secret and can grant studio access, rename, reset passwords and delete accounts.
+Sign in with any username (3–20 letters, numbers, `_` or `-`) and a password of 3 or more characters. A new username creates the account; an existing one signs back in, and a wrong password shows "Invalid password." There is no email or recovery. Repeated wrong passwords lock the username for a while. The administrator account `stoegbauer` uses the `ADMIN_PASSWORD` secret and can grant studio access, rename, reset passwords and delete accounts.
 
 Game appearance, cue art, car paint, lobby sound, site theme, saved lyric styles and lyric corrections follow the account. There is no saved creation library.
 

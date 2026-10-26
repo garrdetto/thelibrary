@@ -1,4 +1,5 @@
 import { PoolAccount } from '@/components/PoolAccount'
+import { SignInRibbon } from '@/components/SignInRibbon'
 import { WorkspaceAdmin } from '@/components/WorkspaceAdmin'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
@@ -426,11 +427,13 @@ function Studio() {
     </aside>
 
     <main className="main-panel">
+      {accountReady && !access.username && <SignInRibbon/>}
       <header className="topbar"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><div className="top-welcome"><h1>{access.username ? <>Welcome back, <em>{access.username}</em></> : <>Welcome to <em>the library</em></>}</h1><div className="breadcrumb"><span>the library</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}{accountReady && (access.username ? <button type="button" className="top-account" onClick={() => void signOut()}><LogOut size={14}/> Sign out</button> : view !== 'home' && <button type="button" className="top-account is-signin" onClick={() => switchView('home')}>Sign in</button>)}</header>
       <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' || view === 'oval' ? 'racing-content' : view === 'pool' ? 'pool-content' : activePlay ? `play-content${activePlay.id === 'shorttrack' ? ' has-board' : ''}` : view === 'home' ? 'hub-content' : ''}`}>
+        {accountReady && !access.username && view !== 'pool' && view !== 'racing' && view !== 'oval' && <PoolAccount className="signin-spotlight" heading="Sign in or register" intro="Use any username and a password of 3 or more characters. A new username creates your account; an existing one signs you back in. No email needed, and your progress and settings follow your account." username={null} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>}
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
-        {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={access.username ? null : <PoolAccount intro="Sign in or create an account with any username and a 3-digit password. No email needed. Your progress and settings follow your account." username={access.username} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>} online={null}/>}
+        {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="shorttrack" trackName="Short Track Showdown" modes={shortTrackModes} modeNames={shortTrackModeNames}/>}
         {view === 'admin' && access.isAdmin && <WorkspaceAdmin/>}
