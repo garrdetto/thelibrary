@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { ArrowLeft, Check, Gamepad2, Lock, MessageCircle, Plus, Send, Trash2, Users, X } from 'lucide-react'
+import { useBlinkingFavicon } from '@/lib/use-blinking-favicon'
 
 export type ChatInvite = { module: string; label: string; code: string | null }
 export type InviteKind = 'room' | 'pool' | 'link'
@@ -156,6 +157,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   useEffect(() => { setError(''); setNotice(''); stickBottom.current = true }, [pane])
 
   const unreadTotal = threads.reduce((sum, item) => sum + item.unread, 0)
+  useBlinkingFavicon(unreadTotal > 0)
   const others = online.filter(item => item.username !== username)
   const label = (name: string | null) => !name || name === 'home' ? 'Browsing' : activityLabels[name] ?? 'Browsing'
   const titleFor = (key: string) => key === GROUP ? 'Everyone' : othersIn(key, username ?? '').join(', ') || 'Just you'
@@ -312,7 +314,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
         </>}
       </>}
     </section>}
-    <button type="button" className={`group-chat-toggle${unreadTotal ? ' has-unread' : ''}`} aria-label={unreadTotal ? `Chat, ${unreadTotal} unread` : 'Chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+    <button type="button" className={`group-chat-toggle${unreadTotal ? ' has-unread' : ''}${unreadTotal && !open ? ' is-blinking' : ''}`} aria-label={unreadTotal ? `Chat, ${unreadTotal} unread` : 'Chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
       {open ? <X size={20}/> : <MessageCircle size={21}/>}
       {!open && unreadTotal > 0 && <i aria-hidden="true"/>}
       {!open && username && others.length > 0 && <em className="gc-online-count" aria-hidden="true">{others.length}</em>}
