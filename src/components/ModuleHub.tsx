@@ -14,8 +14,8 @@ export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (
     <div className="hub-hero">
       <div className="hub-hero-copy">
         <span className="hub-eyebrow"><Sparkles size={13}/> the library · learning modules</span>
-        <h1>{username ? <>Welcome back, <em>{username}.</em></> : <>Learn by doing.<br/><em>Master every module.</em></>}</h1>
-        <p>Strategy, physics, math and precision modules in one place. Sign in to save your progress and go head-to-head with classmates live.</p>
+        <h1>Learn by doing.<br/><em>Master every module.</em></h1>
+        <p>Strategy, physics, math and precision modules in one place. {username ? 'Open the chat bubble to see who is online and invite classmates head-to-head.' : 'Sign in to save your progress and go head-to-head with classmates live.'}</p>
         <div className="hub-stats">
           <span><Layers size={15}/><b>{learningModules.length}</b> modules</span>
           <span><Radio size={15}/><b>Live</b> head-to-head</span>
@@ -32,7 +32,7 @@ export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (
         <span className="hub-hero-caption"><strong>{featured.title}</strong><small>{featured.subject} · {featured.modes.join(' · ')}</small></span>
       </button>
     </div>
-    <div className="hub-body">
+    <div className={`hub-body${account || online ? '' : ' is-solo'}`}>
       <div className="hub-main" id="modules">
         <div className="hub-section-head">
           <h2>Module Library</h2>
@@ -52,10 +52,10 @@ export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (
           </button>)}
         </div>
       </div>
-      <aside className="hub-side">
+      {(account || online) && <aside className="hub-side">
         {account}
         {online}
-      </aside>
+      </aside>}
     </div>
   </section>
 }

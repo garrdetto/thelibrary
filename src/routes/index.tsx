@@ -3,13 +3,14 @@ import { WorkspaceAdmin } from '@/components/WorkspaceAdmin'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, ArrowRight, ArrowUp, Bookmark, Bot, Crown, Disc, Gauge, Hash, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, X } from 'lucide-react'
-import { isSiteTheme, siteThemes } from '@/lib/site-themes'
+import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bookmark, Bot, Crown, Disc, Gauge, Hash, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, X } from 'lucide-react'
+import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { PoolTable } from '@/components/PoolTable'
 import { usePoolLobby } from '@/components/PoolLobby'
-import { InvitePopups, OnlinePlayers } from '@/components/SitePresence'
+import { InvitePopups } from '@/components/SitePresence'
 import { GroupChat } from '@/components/GroupChat'
+import type { ChatInvite, ChatModule, InviteKind } from '@/components/GroupChat'
 import { ModuleHub } from '@/components/ModuleHub'
 import { embeddedModules, isEmbeddedModuleId, learningModules } from '@/lib/modules'
 import type { EmbeddedModuleId, ModuleId } from '@/lib/modules'
@@ -27,6 +28,8 @@ const navigation = [
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
 ] as const
 const moduleIcons: Record<ModuleId, typeof Trophy> = { sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane }
+const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link' }
+const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const moduleNav = learningModules.map(item => ({ id: item.id, label: item.title, icon: moduleIcons[item.id] }))
 const playLinks = embeddedModules.map(item => ({ id: item.id, label: item.title, src: item.src }))
 type PlayId = EmbeddedModuleId
@@ -50,6 +53,8 @@ function Studio() {
   const [view, setView] = useState<View>('home')
   const [access, setAccess] = useState<{ username: string | null; isAdmin: boolean; pages: string[]; settings: { theme?: string } }>({ username: null, isAdmin: false, pages: [], settings: {} })
   const [accountReady, setAccountReady] = useState(false)
+  const [playRoom, setPlayRoom] = useState<string | null>(null)
+  const playFrame = useRef<HTMLIFrameElement>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -115,8 +120,8 @@ function Studio() {
         const result = await requestApi('/api/workspace-access')
         if (active) {
           setAccess(result); setAccountReady(true)
-          const savedTheme = result.settings?.theme
-          if (isSiteTheme(savedTheme) && savedTheme !== document.documentElement.dataset.theme) applyTheme(savedTheme, false)
+          const savedTheme = toSiteTheme(result.settings?.theme)
+          if (savedTheme && savedTheme !== document.documentElement.dataset.theme) applyTheme(savedTheme, false)
         }
       } catch (failure) {
         if (active) { setAccess({ username: null, isAdmin: false, pages: [], settings: {} }); setAccountReady(true); setError(failure instanceof Error ? failure.message : 'Account access is unavailable.') }
@@ -162,10 +167,42 @@ function Studio() {
     if (save && access.username) void fetch('/api/account-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: next }) }).catch(() => undefined)
   }
 
+  const chatModule: ChatModule | null = (() => {
+    const item = learningModules.find(entry => entry.id === view)
+    return item ? { id: item.id, label: item.title, invite: inviteKinds[item.id] ?? null } : null
+  })()
+
+  function requestRoom() {
+    return new Promise<string | null>(resolve => {
+      const target = playFrame.current?.contentWindow
+      if (!target) { resolve(null); return }
+      const finish = (code: string | null) => { window.removeEventListener('message', listen); clearTimeout(timer); resolve(code) }
+      const listen = (event: MessageEvent) => {
+        if (event.origin === window.location.origin && event.source === target && event.data?.type === 'tl-room' && typeof event.data.code === 'string') finish(event.data.code)
+      }
+      window.addEventListener('message', listen)
+      const timer = setTimeout(() => finish(null), 15000)
+      target.postMessage({ type: 'tl-host' }, window.location.origin)
+    })
+  }
+
+  async function signOut() {
+    await fetch('/api/pool-account', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'logout' }) }).catch(() => undefined)
+    window.location.reload()
+  }
+
+  function joinChatInvite(invite: ChatInvite) {
+    const id = invite.module
+    if (!learningModules.some(item => item.id === id)) return
+    switchView(id as ModuleId)
+    if (invite.code && isPlayId(id)) setPlayRoom(invite.code)
+  }
+
   function switchView(next: View) {
     if (busy || ['chat', 'image', 'lyrics'].includes(next) && !access.pages.includes(next) || next === 'admin' && !access.isAdmin) return
     if (lobby.match && next !== 'pool') lobby.leave()
     setSelection(null)
+    setPlayRoom(null)
     setView(next)
     window.history.replaceState(null, '', next === 'racing' ? '#racing' : next === 'oval' ? '#oval' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
     setCurrent(null)
@@ -366,6 +403,7 @@ function Studio() {
   }
 
   const activePlay = playLinks.find(item => item.id === view)
+  const playSrc = activePlay ? `${activePlay.src}?${new URLSearchParams({ ...(access.username ? { name: access.username } : {}), ...(playRoom ? { room: playRoom } : {}) })}`.replace(/\?$/, '') : ''
   const activeLabel = view === 'home' ? 'Module Library' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : moduleNav.find(item => item.id === view)?.label ?? navigation.find((item) => item.id === view)?.label
 
   return <div className="studio-shell">
@@ -385,12 +423,12 @@ function Studio() {
     </aside>
 
     <main className="main-panel">
-      <header className="topbar"><div className="breadcrumb"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><span>the library</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}</header>
+      <header className="topbar"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><div className="top-welcome"><h1>{access.username ? <>Welcome back, <em>{access.username}</em></> : <>Welcome to <em>the library</em></>}</h1><div className="breadcrumb"><span>the library</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}{accountReady && (access.username ? <button type="button" className="top-account" onClick={() => void signOut()}><LogOut size={14}/> Sign out</button> : view !== 'home' && <button type="button" className="top-account is-signin" onClick={() => switchView('home')}>Sign in</button>)}</header>
       <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' || view === 'oval' ? 'racing-content' : view === 'pool' ? 'pool-content' : activePlay ? 'play-content' : view === 'home' ? 'hub-content' : ''}`}>
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
-        {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={<PoolAccount intro="Sign in or create an account with any username and a 3-digit password. No email needed. Your progress and settings follow your account." username={access.username} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>} online={access.username ? <OnlinePlayers players={lobby.players} name={lobby.name}/> : null}/>}
-        {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe key={activePlay.id} src={activePlay.src} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
+        {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={access.username ? null : <PoolAccount intro="Sign in or create an account with any username and a 3-digit password. No email needed. Your progress and settings follow your account." username={access.username} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>} online={null}/>}
+        {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {view === 'admin' && access.isAdmin && <WorkspaceAdmin/>}
         {view === 'pool' && <PoolTable lobby={lobby}/>}
         {(view === 'racing' || view === 'oval') && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the race track…</p>}><Racing key={view} fixedTrack={view === 'oval' ? 'oval' : 'circuit'} players={lobby.players} playerName={lobby.name} joinRequest={raceJoinRequest} onJoinHandled={() => setRaceJoinRequest(0)}/></Suspense>}
@@ -416,7 +454,7 @@ function Studio() {
       </div>
     </main>
     <InvitePopups lobby={lobby} onJoinRace={joinRaceInvite}/>
-    {accountReady && <GroupChat username={access.username} onSignIn={() => switchView('home')}/>}
+    {accountReady && <GroupChat username={access.username} onSignIn={() => switchView('home')} module={chatModule} activityLabels={activityLabels} requestRoom={requestRoom} onPoolInvite={name => lobby.invite(name)} onJoinInvite={joinChatInvite}/>}
     {helpOpen && <div className="modal-backdrop" onClick={() => setHelpOpen(false)}><section className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onClick={(event) => event.stopPropagation()}><button autoFocus className="modal-close" aria-label="Close about" onClick={() => setHelpOpen(false)}><X size={20}/></button><BrandMark/><h2 id="about-title">Welcome to the library.</h2><p>the library is a collection of hands-on learning modules covering strategy, physics, math and precision. Open any module from the library page or the sidebar; most run right in your browser with nothing to install.</p><p>Sign in with a username and a 3-digit password to keep your progress, records and settings on any device. Some modules support live head-to-head sessions with anyone who is online, or a private room code you can share.</p><p>Members with studio access also get AI chat, image creation and a lyric studio. AI requests run on the server; chat uses model knowledge, not live web search or your documents.</p><button className="primary-button" onClick={() => setHelpOpen(false)}>Back to the library <ArrowRight size={16}/></button></section></div>}
   </div>
 }

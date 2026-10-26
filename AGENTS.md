@@ -78,4 +78,5 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 Install with `pnpm install`; develop with `pnpm dev`. Pushes to `main` build and deploy automatically through Workers Builds.
 
-- Group chat: floating `GroupChat` component (src/components/GroupChat.tsx) polls `/api/group-chat` (D1 table `chat_messages`, migration 0002). No popups or sounds: unread only lights the chat button. Admin can delete messages.
+- Chat: floating `GroupChat` component (src/components/GroupChat.tsx) polls `/api/group-chat` (D1 `chat_messages` + `chat_presence`, migrations 0002–0003). `thread` NULL = everyone; otherwise the sorted comma list of member usernames (private chat, up to 8). Presence (who's online) comes from these polls, not Railway. Invites: `meta.invite` {module,label,code}. Embedded modules with online rooms (sandlot, chess, checkers) answer `postMessage({type:'tl-host'})` with `{type:'tl-room', code}` and auto-join from `?room=`. No popups or sounds: unread only lights the chat button.
+- Themes: midnight / slate (label Gray) / light. Hub, sidebar and chat colors come from `--lib-*` variables per theme in styles.css; old theme ids map to these in site-themes.ts.

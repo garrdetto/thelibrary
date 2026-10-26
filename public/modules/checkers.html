@@ -235,7 +235,7 @@ const net = {
   status(text, on) { $('#netStatus').innerHTML = `<span class="netdot ${on ? 'on' : ''}"></span>${text}`; },
   close() { clearInterval(this.retry); try { this.conn && this.conn.close(); } catch (e) { /* ignore */ } try { this.peer && this.peer.destroy(); } catch (e) { /* ignore */ } Object.assign(this, { peer: null, conn: null, connected: false, started: false }); $('#codeBox').hidden = true; this.status('Not connected.', false); },
   ensure() { if (!window.Peer) { this.status('Online play needs an internet connection (PeerJS did not load).', false); return false; } return true; },
-  hostGame() { if (!this.ensure()) return; this.close(); this.host = true; const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; this.code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); this.peer = new window.Peer('tl-checkers-' + this.code.toLowerCase()); this.peer.on('open', () => { $('#codeBox').hidden = false; $('#codeBox').textContent = this.code; this.status('Share this code. Waiting for your friend…', false); }); this.peer.on('connection', c => { if (this.conn && this.conn.open) { c.on('open', () => c.close()); return; } this.attach(c); }); this.peer.on('error', e => { if (e.type === 'unavailable-id') this.hostGame(); else this.status('Network error: ' + e.type, false); }); },
+  hostGame() { if (!this.ensure()) return; this.close(); this.host = true; const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; this.code = Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join(''); this.peer = new window.Peer('tl-checkers-' + this.code.toLowerCase()); this.peer.on('open', () => { $('#codeBox').hidden = false; $('#codeBox').textContent = this.code; tlPostRoom(this.code); this.status('Share this code. Waiting for your friend…', false); }); this.peer.on('connection', c => { if (this.conn && this.conn.open) { c.on('open', () => c.close()); return; } this.attach(c); }); this.peer.on('error', e => { if (e.type === 'unavailable-id') this.hostGame(); else this.status('Network error: ' + e.type, false); }); },
   joinGame(code) { if (!this.ensure()) return; this.close(); this.host = false; this.code = code.toUpperCase(); this.peer = new window.Peer(); this.peer.on('open', () => this.attach(this.peer.connect('tl-checkers-' + this.code.toLowerCase(), { reliable: true }))); this.peer.on('error', e => this.status(e.type === 'peer-unavailable' ? 'No game with that code.' : 'Network error: ' + e.type, false)); this.status('Connecting…', false); },
   attach(c) {
     this.conn = c;
@@ -262,6 +262,10 @@ $('#hostBtn').onclick = () => net.hostGame();
 $('#joinBtn').onclick = () => { const c = $('#joinCode').value.trim().toUpperCase(); if (c.length === 6) net.joinGame(c); else net.status('Codes are 6 characters.', false); };
 $('#joinCode').addEventListener('keydown', e => { if (e.key === 'Enter') $('#joinBtn').click(); });
 window.addEventListener('pagehide', () => net.close());
+
+/* the library bridge: the site chat can ask this module to open an online room and invite people */
+function tlPostRoom(code) { try { if (window.parent !== window) window.parent.postMessage({ type: 'tl-room', code }, location.origin); } catch (e) { /* standalone */ } }
+window.addEventListener('message', e => { if (e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return; setMode('online'); if (net.host && net.code && net.peer && net.peer.open) tlPostRoom(net.code); else net.hostGame(); });
 if (params.get('room')) { setMode('online'); $('#joinCode').value = params.get('room'); setTimeout(() => $('#joinBtn').click(), 600); } else newGame();
 window.__checkers = { get st() { return st; }, Draughts, clickSq, get over() { return over; } };
 </script>

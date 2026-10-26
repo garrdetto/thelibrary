@@ -2711,7 +2711,7 @@ function netHost() {
   if (!window.Peer) { NET.status = 'Online play needs an internet connection (the PeerJS library did not load).'; return; }
   NET.role = 'host'; NET.localSide = 0; NET.code = randomCode(6); NET.status = 'Creating a room…'; NET.connected = false;
   const peer = new window.Peer('sandlot-' + NET.code.toLowerCase(), { debug: 0 }); NET.peer = peer;
-  peer.on('open', () => { NET.status = 'Room ready! Tell your friend the code.'; });
+  peer.on('open', () => { NET.status = 'Room ready! Tell your friend the code.'; tlPostRoom(NET.code); });
   peer.on('connection', conn => { if (NET.conn && NET.conn.open) { conn.on('open', () => { conn.send({ t: 'full' }); setTimeout(() => conn.close(), 300); }); return; } attachConn(conn); });
   peer.on('error', err => { if (err && err.type === 'unavailable-id') { netHost(); } else NET.status = 'Network error: ' + (err && err.type || 'unknown'); });
   peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) { /* ignore */ } });
@@ -3012,12 +3012,16 @@ function drawSeason(t) {
   c.fillStyle = 'rgba(255,255,255,0.7)'; c.font = `11px ${FONT}`; c.textAlign = 'left'; c.fillText('Season progress saves on this device.', 20, H - 12);
 }
 
+
+/* the library bridge: the site chat can ask this module to open an online room and invite people */
+function tlPostRoom(code) { try { if (window.parent !== window) window.parent.postMessage({ type: 'tl-room', code }, location.origin); } catch (e) { /* standalone */ } }
+window.addEventListener('message', e => { if (e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return; if (NET.role === 'host' && NET.code && NET.peer && NET.peer.open) { tlPostRoom(NET.code); return; } screen = 'online'; netHost(); });
 /* =====================================================================
    BOOT
    ===================================================================== */
 (function boot() {
   const params = new URLSearchParams(location.search);
-  if (params.get('room')) { ui.joinCode = params.get('room').toUpperCase().slice(0, 6); screen = 'online'; }
+  if (params.get('room')) { ui.joinCode = params.get('room').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6); screen = 'online'; if (ui.joinCode.length === 6) setTimeout(() => netJoin(ui.joinCode), 300); }
   if (params.get('autoplay')) {
     const ids = shuffle(ROSTER.map(k => k.id));
     SETUP.field = (+params.get('field') || 0) % FIELDS.length;
