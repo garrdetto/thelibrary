@@ -4,7 +4,7 @@ import { initializeSiteTheme } from '@/lib/site-themes'
 
 import '../styles.css'
 
-const siteName = 'The Library — Learning Modules'
+const siteName = 'the library — Learning Modules'
 const siteDescription = 'Hands-on learning modules in strategy, physics, math and precision, with live head-to-head sessions and saved progress.'
 
 export const Route = createRootRoute({

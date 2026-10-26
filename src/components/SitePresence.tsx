@@ -7,7 +7,7 @@ import type { PoolPlayer } from '../lib/pool-network'
 const keepFocus = (event: MouseEvent) => event.preventDefault()
 const trackNames = { circuit: 'Max Secure Circuit', oval: 'Oval Speedway' } as const
 
-export function InvitePopups({ lobby, onJoinRace }: { lobby: Lobby; onJoinRace: () => void }) {
+export function InvitePopups({ lobby, onJoinRace }: { lobby: Lobby; onJoinRace: (track: 'circuit' | 'oval') => void }) {
   if (!lobby.invitations.length && !lobby.raceInvites.length) return null
   return <aside className="site-invites" aria-label="Live invitations" aria-live="polite">
     {lobby.invitations.map(invitation => <div key={invitation.id} className="site-invite is-pool" role="status" style={{ '--challenge-duration': `${invitation.expiresIn}ms` } as CSSProperties}>
@@ -23,7 +23,7 @@ export function InvitePopups({ lobby, onJoinRace }: { lobby: Lobby; onJoinRace: 
       <span className="site-invite-icon" aria-hidden="true"><Flag size={15}/></span>
       <p><strong>{invitation.from}</strong> invites you to race on {trackNames[invitation.track]}!</p>
       <div className="site-invite-actions">
-        <button type="button" className="is-accept" onMouseDown={keepFocus} onClick={() => { lobby.dismissRaceInvite(invitation.id); onJoinRace() }}>Join race</button>
+        <button type="button" className="is-accept" onMouseDown={keepFocus} onClick={() => { lobby.dismissRaceInvite(invitation.id); onJoinRace(invitation.track) }}>Join race</button>
         <button type="button" aria-label={`Dismiss ${invitation.from}'s race invitation`} onMouseDown={keepFocus} onClick={() => lobby.dismissRaceInvite(invitation.id)}><X size={13}/></button>
       </div>
       <i className="site-invite-timer" aria-hidden="true"/>

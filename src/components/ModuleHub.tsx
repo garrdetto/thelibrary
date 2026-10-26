@@ -13,7 +13,7 @@ export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (
   return <section className="hub" aria-label="Learning modules">
     <div className="hub-hero">
       <div className="hub-hero-copy">
-        <span className="hub-eyebrow"><Sparkles size={13}/> THE LIBRARY · LEARNING MODULES</span>
+        <span className="hub-eyebrow"><Sparkles size={13}/> the library · learning modules</span>
         <h1>{username ? <>Welcome back, <em>{username}.</em></> : <>Learn by doing.<br/><em>Master every module.</em></>}</h1>
         <p>Strategy, physics, math and precision modules in one place. Sign in to save your progress and go head-to-head with classmates live.</p>
         <div className="hub-stats">
@@ -35,7 +35,7 @@ export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (
     <div className="hub-body">
       <div className="hub-main" id="modules">
         <div className="hub-section-head">
-          <h2>Module library</h2>
+          <h2>Module Library</h2>
           <div className="hub-filters" role="tablist" aria-label="Filter modules">
             {(['All', ...moduleGroups] as Filter[]).map(item => <button type="button" role="tab" key={item} aria-selected={filter === item} className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item}</button>)}
           </div>
