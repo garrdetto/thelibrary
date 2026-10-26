@@ -3,7 +3,7 @@ import { WorkspaceAdmin } from '@/components/WorkspaceAdmin'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, ArrowRight, ArrowUp, Bookmark, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, X } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, Bookmark, Bot, Crown, Disc, Hash, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, X } from 'lucide-react'
 import { isSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { PoolTable } from '@/components/PoolTable'
@@ -24,6 +24,17 @@ const navigation = [
   { id: 'pool', label: '8BallPool', icon: CircleDot },
   { id: 'racing', label: 'Racing', icon: Flag },
 ] as const
+const playLinks = [
+  { id: 'sandlot', label: 'Sandlot Sluggers', src: '/play/sandlot.html', icon: Trophy },
+  { id: 'botwreck', label: 'BotWreck 3D', src: '/play/botwreck.html', icon: Bot },
+  { id: 'chess', label: 'Chess', src: '/play/chess.html', icon: Crown },
+  { id: 'checkers', label: 'Checkers', src: '/play/checkers.html', icon: Disc },
+  { id: '2048', label: '2048', src: '/play/2048.html', icon: Hash },
+  { id: 'helicopter', label: 'Chopper Cave', src: '/play/helicopter.html', icon: Plane },
+] as const
+type PlayId = typeof playLinks[number]['id']
+type View = StudioMode | 'pool' | 'racing' | 'home' | 'admin' | PlayId
+const isPlayId = (value: string): value is PlayId => playLinks.some(item => item.id === value)
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']
 
@@ -39,7 +50,7 @@ function BrandMark({ small = false }: { small?: boolean }) {
 }
 
 function Studio() {
-  const [view, setView] = useState<StudioMode | 'pool' | 'racing' | 'home' | 'admin'>('home')
+  const [view, setView] = useState<View>('home')
   const [access, setAccess] = useState<{ username: string | null; isAdmin: boolean; pages: string[]; settings: { theme?: string } }>({ username: null, isAdmin: false, pages: [], settings: {} })
   const [accountReady, setAccountReady] = useState(false)
   const [input, setInput] = useState('')
@@ -95,6 +106,8 @@ function Studio() {
     const savedTheme = document.documentElement.dataset.theme
     if (isSiteTheme(savedTheme)) setTheme(savedTheme)
     if (window.location.hash === '#racing') setView('racing')
+    const playHash = window.location.hash.replace(/^#play-/, '')
+    if (window.location.hash.startsWith('#play-') && isPlayId(playHash)) setView(playHash)
   }, [])
 
   useEffect(() => {
@@ -151,12 +164,12 @@ function Studio() {
     if (save && access.username) void fetch('/api/account-settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme: next }) }).catch(() => undefined)
   }
 
-  function switchView(next: StudioMode | 'pool' | 'racing' | 'home' | 'admin') {
+  function switchView(next: View) {
     if (busy || ['chat', 'image', 'lyrics'].includes(next) && !access.pages.includes(next) || next === 'admin' && !access.isAdmin) return
     if (lobby.match && next !== 'pool') lobby.leave()
     setSelection(null)
     setView(next)
-    window.history.replaceState(null, '', next === 'racing' ? '#racing' : window.location.pathname)
+    window.history.replaceState(null, '', next === 'racing' ? '#racing' : isPlayId(next) ? `#play-${next}` : window.location.pathname)
     setCurrent(null)
     setMessages([])
     setInput('')
@@ -171,7 +184,7 @@ function Studio() {
   async function generate(event?: FormEvent, action: 'new' | 'revise' | 'revamp' = 'new') {
     event?.preventDefault()
     const prompt = action === 'revise' ? revision.trim() : action === 'revamp' ? revamp.trim() || 'A fresh take that fits the current settings.' : input.trim()
-    if (!prompt || busy || view === 'pool' || view === 'racing' || view === 'home' || view === 'admin') return
+    if (!prompt || busy || view === 'pool' || view === 'racing' || view === 'home' || view === 'admin' || isPlayId(view)) return
     setBusy(true)
     setBusyAction(action)
     setError('')
@@ -354,7 +367,8 @@ function Studio() {
     finally { setDownloading(false) }
   }
 
-  const activeLabel = view === 'home' ? 'Your account' : view === 'admin' ? 'Admin' : navigation.find((item) => item.id === view)?.label
+  const activePlay = playLinks.find(item => item.id === view)
+  const activeLabel = view === 'home' ? 'Your account' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : navigation.find((item) => item.id === view)?.label
 
   return <div className="studio-shell">
     {mobileOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
@@ -364,6 +378,8 @@ function Studio() {
       <p className="nav-caption">YOUR WORKSPACE</p>
       <nav aria-label="Studio navigation">
         {navigation.filter(item => item.id === 'pool' || item.id === 'racing' || access.pages.includes(item.id)).map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}{id === 'lyrics' && <span className="new-tag">NEW</span>}</button>)}
+        <p className="nav-caption nav-caption-play">PLAY</p>
+        {playLinks.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}</button>)}
         <div className="nav-divider" /><button className={`nav-item ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')}>Account / Login</button>
       </nav>
       <div className="sidebar-bottom"><div className="creative-note"><span className="tiny-star">✳</span><strong>Made for your imagination.</strong><p>A thought, a picture, a melody.<br/>See where it takes you.</p></div><button className="help-link" onClick={() => setHelpOpen(true)}><Info size={16}/> About your studio <ArrowRight size={14}/></button><div className="workspace-profile"><span className="profile-icon"><Feather size={18}/></span><div>Personal workspace<small>Your own creative corner</small></div></div></div>
@@ -371,10 +387,11 @@ function Studio() {
 
     <main className="main-panel">
       <header className="topbar"><div className="breadcrumb"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><span>Workspace</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}</header>
-      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' ? 'racing-content' : view === 'pool' ? 'pool-content' : ''}`}>
+      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' ? 'racing-content' : view === 'pool' ? 'pool-content' : activePlay ? 'play-content' : ''}`}>
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
         {view === 'home' && <section className="account-home"><div className="home-confetti" aria-hidden="true"><span/><span/><span/><span/><span/><span/></div><PoolAccount intro="Sign in or create an account with any username and a 3-digit password. No email needed. Your settings and customizations follow your account." username={access.username} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/><span className="section-eyebrow home-eyebrow"><Sparkles size={14}/> WELCOME TO MYWORKHELPER</span><h1>Rack 'em up.<br/><em>Rev it up. Have fun.</em></h1><div className="account-game-links"><button className="game-launch game-launch-pool" onClick={() => switchView('pool')}><span className="game-launch-art" aria-hidden="true"><i className="launch-ball launch-ball-eight">8</i><i className="launch-ball launch-ball-one">1</i><i className="launch-ball launch-ball-cue"/></span><span className="game-launch-text"><small>8-ball · 9-ball · multiplayer</small><strong>Play Pool</strong></span><ArrowRight className="game-launch-arrow" size={30}/></button><button className="game-launch game-launch-racing" onClick={() => switchView('racing')}><span className="game-launch-art" aria-hidden="true"><i className="launch-flag"/><i className="launch-car"><b/></i><i className="launch-speed"/></span><span className="game-launch-text"><small>Laps · records · speed</small><strong>Play Racing</strong></span><ArrowRight className="game-launch-arrow" size={30}/></button></div></section>}
+        {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe key={activePlay.id} src={activePlay.src} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {view === 'admin' && access.isAdmin && <WorkspaceAdmin/>}
         {view === 'pool' && <PoolTable lobby={lobby}/>}
         {view === 'racing' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the race track…</p>}><Racing players={lobby.players} playerName={lobby.name} joinRequest={raceJoinRequest} onJoinHandled={() => setRaceJoinRequest(0)}/></Suspense>}

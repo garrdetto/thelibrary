@@ -455,3 +455,11 @@ body{background:var(--paper);color:var(--tone-0)}
 .preset-save .secondary-button { white-space: nowrap; }
 .admin-account-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .admin-account-actions small { width: 100%; opacity: .75; }
+.nav-caption-play{margin-top:18px}
+.workspace-content.play-content{padding:16px 20px;display:flex;flex-direction:column;min-height:calc(100dvh - 79px)}
+.play-frame{flex:1;display:flex;flex-direction:column;min-height:0;border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#0b0f19}
+.play-frame-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;background:var(--sidebar);border-bottom:1px solid var(--border);font-size:12px}
+.play-frame-bar a{display:inline-flex;align-items:center;gap:6px;color:var(--green)}
+.play-frame-bar a:hover{text-decoration:underline}
+.play-frame iframe{flex:1;width:100%;min-height:560px;border:0;display:block;background:#0b0f19}
+@media(max-width:650px){.workspace-content.play-content{padding:8px}.play-frame iframe{min-height:72dvh}}
