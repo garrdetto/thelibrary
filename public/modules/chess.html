@@ -12,15 +12,15 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
   .app { display: grid; grid-template-columns: minmax(0, auto) 330px; gap: 20px; padding: 18px; justify-content: center; align-items: start; }
-  .boardwrap { --size: min(calc(100vh - 140px), calc(100vw - 390px), 640px); width: var(--size); }
+  .boardwrap { --size: max(260px, min(calc(100vh - 140px), calc(100vw - 390px), 640px)); width: var(--size); }
   .player { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 4px; }
   .player .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); }
   .player .name { font-weight: 600; }
   .player .caps { margin-left: auto; font-size: 18px; letter-spacing: -2px; color: var(--muted); font-family: "DejaVu Sans", "Segoe UI Symbol", "Noto Sans Symbols 2", sans-serif; }
   .player .adv { font-size: 12px; color: var(--muted); margin-left: 6px; letter-spacing: 0; }
   .player.turn .name::after { content: "  ● to move"; color: var(--accent); font-size: 12px; font-weight: 500; }
-  .board { position: relative; width: var(--size); height: var(--size); display: grid; grid-template-columns: repeat(8, 1fr); border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line); touch-action: none; user-select: none; }
-  .sq { position: relative; display: grid; place-items: center; }
+  .board { position: relative; width: var(--size); height: var(--size); display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); aspect-ratio: 1; border-radius: 10px; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--line); touch-action: none; user-select: none; }
+  .sq { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; overflow: hidden; aspect-ratio: 1; }
   .sq.l { background: var(--light); } .sq.d { background: var(--dark); }
   .sq.last::before { content: ""; position: absolute; inset: 0; background: var(--last); }
   .sq.sel::before { content: ""; position: absolute; inset: 0; background: var(--hl); }

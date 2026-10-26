@@ -9,6 +9,7 @@ import type { SiteTheme } from '@/lib/site-themes'
 import { PoolTable } from '@/components/PoolTable'
 import { usePoolLobby } from '@/components/PoolLobby'
 import { InvitePopups, OnlinePlayers } from '@/components/SitePresence'
+import { GroupChat } from '@/components/GroupChat'
 import { ModuleHub } from '@/components/ModuleHub'
 import { embeddedModules, isEmbeddedModuleId, learningModules } from '@/lib/modules'
 import type { EmbeddedModuleId, ModuleId } from '@/lib/modules'
@@ -415,6 +416,7 @@ function Studio() {
       </div>
     </main>
     <InvitePopups lobby={lobby} onJoinRace={joinRaceInvite}/>
+    {accountReady && <GroupChat username={access.username} onSignIn={() => switchView('home')}/>}
     {helpOpen && <div className="modal-backdrop" onClick={() => setHelpOpen(false)}><section className="about-modal" role="dialog" aria-modal="true" aria-labelledby="about-title" onClick={(event) => event.stopPropagation()}><button autoFocus className="modal-close" aria-label="Close about" onClick={() => setHelpOpen(false)}><X size={20}/></button><BrandMark/><h2 id="about-title">Welcome to the library.</h2><p>the library is a collection of hands-on learning modules covering strategy, physics, math and precision. Open any module from the library page or the sidebar; most run right in your browser with nothing to install.</p><p>Sign in with a username and a 3-digit password to keep your progress, records and settings on any device. Some modules support live head-to-head sessions with anyone who is online, or a private room code you can share.</p><p>Members with studio access also get AI chat, image creation and a lyric studio. AI requests run on the server; chat uses model knowledge, not live web search or your documents.</p><button className="primary-button" onClick={() => setHelpOpen(false)}>Back to the library <ArrowRight size={16}/></button></section></div>}
   </div>
 }

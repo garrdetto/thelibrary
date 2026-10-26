@@ -77,3 +77,5 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 ## Development
 
 Install with `pnpm install`; develop with `pnpm dev`. Pushes to `main` build and deploy automatically through Workers Builds.
+
+- Group chat: floating `GroupChat` component (src/components/GroupChat.tsx) polls `/api/group-chat` (D1 table `chat_messages`, migration 0002). No popups or sounds: unread only lights the chat button. Admin can delete messages.
