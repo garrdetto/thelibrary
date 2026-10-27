@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { ArrowLeft, Check, Gamepad2, Lock, MessageCircle, Plus, Send, Trash2, Users, X } from 'lucide-react'
+import { ArrowLeft, Check, CheckCheck, Gamepad2, Lock, MessageCircle, Plus, Send, Trash2, Users, X } from 'lucide-react'
 import { useBlinkingFavicon } from '@/lib/use-blinking-favicon'
 
 export type ChatInvite = { module: string; label: string; code: string | null }
@@ -9,6 +9,7 @@ export type ChatModule = { id: string; label: string; invite: InviteKind | null 
 
 type ChatMessage = { id: number; username: string; text: string; at: number; thread: string | null; meta: { invite?: ChatInvite } | null }
 type OnlineUser = { username: string; activity: string | null }
+type ReadMark = { username: string; thread: string | null; id: number }
 type Pane = { kind: 'list' } | { kind: 'online' } | { kind: 'new' } | { kind: 'thread'; key: string }
 
 const GROUP = ''
@@ -50,6 +51,9 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const [online, setOnline] = useState<OnlineUser[]>([])
   const [onlineLoaded, setOnlineLoaded] = useState(false)
   const [guestCount, setGuestCount] = useState<number | null>(null)
+  const [reads, setReads] = useState<ReadMark[]>([])
+  const [visible, setVisible] = useState(true)
+  const reported = useRef<Record<string, number>>({})
   const [seen, setSeen] = useState<Record<string, number>>({})
   const [drafts, setDrafts] = useState<string[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
@@ -87,7 +91,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
       if (lastId.current) params.set('after', String(lastId.current))
       const response = await fetch(`/api/group-chat?${params}`, { cache: 'no-store' })
       if (!response.ok) return
-      const data = await response.json() as { messages: ChatMessage[]; isAdmin: boolean; online: OnlineUser[] }
+      const data = await response.json() as { messages: ChatMessage[]; isAdmin: boolean; online: OnlineUser[]; reads?: ReadMark[] }
       if (!loaded.current) {
         loaded.current = true
         const stored = loadSeen(username)
@@ -102,12 +106,13 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
       merge(data.messages)
       setOnline(data.online)
       setOnlineLoaded(true)
+      setReads(data.reads ?? [])
       setIsAdmin(data.isAdmin)
     } catch { /* offline: try again next tick */ }
   }, [username, merge])
 
   useEffect(() => {
-    setMessages([]); setOnline([]); setOnlineLoaded(false); setSeen({}); lastId.current = 0; loaded.current = false
+    setMessages([]); setOnline([]); setOnlineLoaded(false); setReads([]); setSeen({}); lastId.current = 0; loaded.current = false; reported.current = {}
     if (!username) return
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
@@ -164,13 +169,27 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const shown = activeKey === null ? [] : messages.filter(item => (item.thread ?? GROUP) === activeKey)
 
   useEffect(() => {
-    if (!open || activeKey === null || !username || !shown.length) return
+    const update = () => setVisible(!document.hidden)
+    update()
+    document.addEventListener('visibilitychange', update)
+    return () => document.removeEventListener('visibilitychange', update)
+  }, [])
+
+  useEffect(() => {
+    if (!open || activeKey === null || !username || !shown.length || !visible) return
     const top = shown[shown.length - 1].id
+    if ((reported.current[activeKey] ?? 0) < top) {
+      const key = activeKey
+      reported.current[key] = top
+      void fetch('/api/group-chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'read', thread: key === GROUP ? null : key, id: top }) })
+        .then(response => { if (!response.ok) reported.current[key] = 0 })
+        .catch(() => { reported.current[key] = 0 })
+    }
     if ((seen[activeKey] ?? 0) >= top) return
     const next = { ...seen, [activeKey]: top }
     setSeen(next)
     saveSeen(username, next)
-  }, [open, activeKey, shown, seen, username])
+  }, [open, activeKey, shown, seen, username, visible])
 
   useEffect(() => {
     const list = listRef.current
@@ -186,6 +205,13 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const onlineText = onlineCount === null ? '' : `${onlineCount} ${onlineCount === 1 ? 'player' : 'players'} online`
   const label = (name: string | null) => !name || name === 'home' ? 'Browsing' : activityLabels[name] ?? 'Browsing'
   const titleFor = (key: string) => key === GROUP ? 'Everyone' : othersIn(key, username ?? '').join(', ') || 'Just you'
+  const lastMine = [...shown].reverse().find(item => item.username === username) ?? null
+  const seenBy = lastMine && activeKey !== null ? [...new Set(reads.filter(mark => (mark.thread ?? GROUP) === activeKey && mark.id >= lastMine.id && mark.username !== username).map(mark => mark.username))].sort() : []
+  const members = activeKey && activeKey !== GROUP ? othersIn(activeKey, username ?? '') : []
+  const receipt = !seenBy.length ? 'Sent'
+    : members.length === 1 ? 'Seen'
+      : members.length > 1 && members.every(name => seenBy.includes(name)) ? 'Seen by everyone'
+        : `Seen by ${seenBy.slice(0, 3).join(', ')}${seenBy.length > 3 ? ` +${seenBy.length - 3}` : ''}`
 
   function openThread(members: string[]) {
     if (!username) return
@@ -326,6 +352,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
                   {card.code && <small>Room {card.code}</small>}
                   {!mine && <button type="button" onClick={() => { onJoinInvite(card); setOpen(false) }}>Join</button>}
                 </div> : <p>{item.text}</p>}
+                {lastMine?.id === item.id && <small className={`gc-receipt${seenBy.length ? ' is-seen' : ''}`} title={seenBy.length ? `Seen by ${seenBy.join(', ')}` : 'Not seen yet'}>{seenBy.length ? <CheckCheck size={13} aria-hidden="true"/> : <Check size={13} aria-hidden="true"/>}{receipt}</small>}
                 {(isAdmin || mine) && <button type="button" className="group-chat-del" aria-label="Remove message" title="Remove message" onClick={() => void remove(item.id)}><Trash2 size={12}/></button>}
               </div>
             })}

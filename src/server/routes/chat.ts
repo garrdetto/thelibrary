@@ -10,13 +10,16 @@ const MIN_GAP = 1000
 const PER_MINUTE = 24
 const ONLINE_WINDOW = 45000
 const MAX_MEMBERS = 8
+const READS_WINDOW = 7 * 24 * 60 * 60 * 1000
 
 const username = z.string().trim().toLowerCase().regex(/^[a-z0-9_-]{3,20}$/)
 const activity = z.string().regex(/^[a-z0-9-]{1,24}$/)
+const threadKey = z.string().max(200).regex(/^[a-z0-9_-]{3,20}(,[a-z0-9_-]{3,20}){1,8}$/)
 const post = z.discriminatedUnion('action', [
   z.object({ action: z.literal('send'), text: z.string().max(2000), to: z.array(username).max(MAX_MEMBERS).optional() }),
   z.object({ action: z.literal('invite'), to: z.array(username).min(1).max(MAX_MEMBERS), module: activity, label: z.string().trim().min(1).max(40), code: z.string().regex(/^[A-Z0-9]{4,8}$/).optional() }),
   z.object({ action: z.literal('delete'), id: z.number().int().positive() }),
+  z.object({ action: z.literal('read'), thread: threadKey.nullable(), id: z.number().int().positive() }),
 ])
 
 type Row = { id: number; username: string; body: string; created_at: number; thread: string | null; meta: string | null }
@@ -32,6 +35,24 @@ async function threadFor(env: Env, me: string, to: string[] | undefined) {
   const missing = others.filter(name => !found.results.some(row => row.username === name))
   if (missing.length) throw new HttpError(404, `No account named ${missing.join(', ')}.`)
   return [me, ...others].sort().join(',')
+}
+
+let readsReady = false
+async function ensureReads(env: Env) {
+  if (readsReady) return
+  await env.DB.batch([
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS chat_reads (user_id TEXT NOT NULL, username TEXT NOT NULL, thread_key TEXT NOT NULL, last_read_id INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, thread_key))'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS chat_reads_thread_idx ON chat_reads (thread_key, updated_at)'),
+  ])
+  readsReady = true
+}
+
+async function readsFor(env: Env, userId: string, me: string, now: number) {
+  await ensureReads(env)
+  const rows = await env.DB.prepare(`SELECT u.username AS username, r.thread_key, r.last_read_id FROM chat_reads r JOIN users u ON u.id = r.user_id
+    WHERE r.user_id != ? AND ((r.thread_key = '' AND r.updated_at > ?) OR instr(',' || r.thread_key || ',', ',' || ? || ',') > 0)
+    ORDER BY r.updated_at DESC LIMIT 400`).bind(userId, now - READS_WINDOW, me).all<{ username: string; thread_key: string; last_read_id: number }>()
+  return rows.results.map(row => ({ username: row.username, thread: row.thread_key || null, id: row.last_read_id }))
 }
 
 async function rateLimit(env: Env, userId: string, now: number) {
@@ -72,7 +93,8 @@ export async function groupChat(request: Request, env: Env) {
         .bind(user.id, me, doing.success ? doing.data : 'home', now),
       env.DB.prepare('SELECT username, activity FROM chat_presence WHERE last_seen > ? ORDER BY username ASC LIMIT 200').bind(now - ONLINE_WINDOW),
     ]) as [unknown, { results: { username: string; activity: string | null }[] }]
-    return json({ messages: rows.map(shape), me, isAdmin: user.isAdmin, online: online.results })
+    const reads = await readsFor(env, user.id, me, now)
+    return json({ messages: rows.map(shape), me, isAdmin: user.isAdmin, online: online.results, reads })
   }
   if (request.method !== 'POST') throw new HttpError(405, 'This request is not allowed.')
   requireSameOrigin(request)
@@ -82,6 +104,15 @@ export async function groupChat(request: Request, env: Env) {
     if (!row) return json({ ok: true })
     if (!user.isAdmin && row.username !== me) throw new HttpError(403, 'You can only remove your own messages.')
     await env.DB.prepare('DELETE FROM chat_messages WHERE id = ?').bind(input.id).run()
+    return json({ ok: true })
+  }
+  if (input.action === 'read') {
+    const key = input.thread ?? ''
+    if (key && !key.split(',').includes(me)) throw new HttpError(403, 'You are not in that chat.')
+    await ensureReads(env)
+    await env.DB.prepare(`INSERT INTO chat_reads (user_id, username, thread_key, last_read_id, updated_at) VALUES (?, ?, ?, MIN(?, (SELECT COALESCE(MAX(id), 0) FROM chat_messages)), ?)
+      ON CONFLICT(user_id, thread_key) DO UPDATE SET username = excluded.username, last_read_id = MAX(chat_reads.last_read_id, excluded.last_read_id), updated_at = excluded.updated_at`)
+      .bind(user.id, me, key, input.id, now).run()
     return json({ ok: true })
   }
   await rateLimit(env, user.id, now)

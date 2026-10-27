@@ -652,6 +652,9 @@ body{background:var(--paper);color:var(--tone-0)}
 .group-chat-msg.is-mine p{background:color-mix(in srgb,var(--lib-accent) 16%,var(--lib-panel));border-color:color-mix(in srgb,var(--lib-accent) 30%,transparent)}
 .group-chat-del{position:absolute;top:50%;right:-22px;transform:translateY(-50%);background:none;border:0;color:var(--lib-muted);cursor:pointer;opacity:0;padding:3px}
 .group-chat-msg.is-mine .group-chat-del{right:auto;left:-22px}
+.gc-receipt{display:flex;align-items:center;justify-content:flex-end;gap:4px;margin:3px 2px 0;font-size:11px;color:var(--lib-muted)}
+.gc-receipt.is-seen{color:var(--lib-text)}
+.gc-receipt.is-seen svg{color:#22c77a}
 .group-chat-msg:hover .group-chat-del,.group-chat-del:focus-visible{opacity:1}
 .group-chat-del:hover{color:#ff6b8a}
 .group-chat-form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--lib-line);background:var(--lib-panel)}
