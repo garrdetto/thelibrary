@@ -15,14 +15,13 @@ export function useBlinkingFavicon(active: boolean) {
     link.type = 'image/svg+xml'
     link.href = alertIcon
     document.head.appendChild(link)
-    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
     let showingAlert = true
-    const timer = reducedMotion ? undefined : window.setInterval(() => {
+    const timer = window.setInterval(() => {
       showingAlert = !showingAlert
       link.href = showingAlert ? alertIcon : plainIcon
     }, blinkIntervalMs)
     return () => {
-      if (timer !== undefined) window.clearInterval(timer)
+      window.clearInterval(timer)
       link.remove()
     }
   }, [active])
