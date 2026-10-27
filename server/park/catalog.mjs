@@ -7,6 +7,9 @@ export const FLAT_RIDES = {
   ship: { name: 'Swinging Ship', category: 'thrill', size: [5, 3], cost: 3600, upkeep: 70, capacity: 20, rideTime: 30, loadTime: 10, price: 1.6, stats: { e: 3.24, i: 3.84, n: 3.42 }, height: 14, description: 'A galleon that swings higher with every pass.' },
   dropTower: { name: 'Drop Tower', category: 'thrill', size: [3, 3], cost: 6500, upkeep: 110, capacity: 12, rideTime: 26, loadTime: 10, price: 2.2, stats: { e: 4.38, i: 6.42, n: 3.05 }, height: 38, description: 'A slow climb and a sudden plunge.' },
   topSpin: { name: 'Twister Arm', category: 'thrill', size: [4, 3], cost: 5200, upkeep: 95, capacity: 16, rideTime: 30, loadTime: 10, price: 2, stats: { e: 4.05, i: 6.1, n: 5.7 }, height: 14, description: 'A gondola flips end over end between two arms.' },
+  karts: { name: 'Go-Karts', category: 'thrill', size: [6, 4], cost: 4200, upkeep: 80, capacity: 8, rideTime: 45, loadTime: 10, price: 2, stats: { e: 3.4, i: 2.9, n: 0.9 }, height: 3, description: 'A twisting kart circuit. Guests race each other for bragging rights.' },
+  pool: { name: 'Swimming Pool', category: 'water', size: [5, 4], cost: 3400, upkeep: 60, capacity: 24, rideTime: 70, loadTime: 10, price: 1.5, stats: { e: 2.3, i: 0.6, n: 0.2 }, height: 2, description: 'A sparkling pool with loungers. Very popular on hot days.' },
+  waterslide: { name: 'Waterslide', category: 'water', size: [4, 4], cost: 5600, upkeep: 90, capacity: 10, rideTime: 30, loadTime: 8, price: 2.2, stats: { e: 3.9, i: 3.3, n: 1.8 }, height: 14, description: 'Spiral tubes from a tall tower splash down into a plunge pool.' },
 }
 
 export const COASTER_STYLES = {
@@ -14,6 +17,13 @@ export const COASTER_STYLES = {
   wooden: { name: 'Wooden Coaster', cost: 2000, pieceCost: 75, upkeep: 140, maxHeight: 64, loops: false, steep: true, seats: 4, excitementBonus: 0.45, intensityBonus: 0.5, track: '#8a6a4a', support: '#b48a5e', train: '#c83c2e', description: 'Classic lattice structure with a rattling ride.' },
   junior: { name: 'Junior Coaster', cost: 1200, pieceCost: 45, upkeep: 70, maxHeight: 28, loops: false, steep: false, seats: 2, excitementBonus: 0.2, intensityBonus: -0.6, track: '#f2b632', support: '#3c78c8', train: '#3fb06b', description: 'Low and gentle. Families love it.' },
   inverted: { name: 'Suspended Looper', cost: 2800, pieceCost: 110, upkeep: 180, maxHeight: 84, loops: true, steep: true, seats: 4, excitementBonus: 0.35, intensityBonus: 0.45, track: '#2e2e36', support: '#3a8f87', train: '#f2c94c', description: 'Riders hang beneath the rail, feet dangling.' },
+}
+
+export const COASTER_PRESETS = {
+  zephyr: { name: 'Little Zephyr', style: 'junior', station: 3, description: 'A gentle family coaster with two small hills.', pieces: [{ c: 0, s: 0 }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 0, sp: 'chain' }, { c: 1, s: 0 }, { c: 0, s: -1 }, { c: 0, s: -1 }, { c: 0, s: 0 }, { c: 1, s: 0 }, { c: 0, s: 0 }, { c: 0, s: 1 }, { c: 0, s: 0 }, { c: 0, s: -1 }, { c: 0, s: 0 }] },
+  ridge: { name: 'Thunder Ridge', style: 'steel', station: 3, description: 'One huge chain hill, a screaming drop and a floating camelback.', pieces: [{ c: 0, s: 0 }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 0, sp: 'chain' }, { c: 2, s: 0 }, { c: 0, s: -1 }, { c: 0, s: -2 }, { c: 0, s: -2 }, { c: 0, s: -2 }, { c: 0, s: -1 }, { c: 0, s: 0 }, { c: 0, s: 0 }, { c: 0, s: 1 }, { c: 0, s: 1 }, { c: 0, s: 0 }, { c: 0, s: -1 }, { c: 0, s: -1 }, { c: 0, s: 0 }, { c: 0, s: 0, sp: 'brakes' }, { c: 2, s: 0 }] },
+  comet: { name: 'Loop Comet', style: 'steel', station: 3, description: 'A tall drop feeds a full vertical loop.', pieces: [{ c: 0, s: 0 }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 0, sp: 'chain' }, { c: 2, s: 0 }, { c: 0, s: -1 }, { c: 0, s: -2 }, { c: 0, s: -2 }, { c: 0, s: -2 }, { c: 0, s: -1 }, { c: 0, s: 0 }, { c: 0, s: 0, sp: 'loop' }, { c: 0, s: 0 }, { c: 0, s: 1 }, { c: 0, s: 1 }, { c: 0, s: 0 }, { c: 0, s: 0, sp: 'brakes' }, { c: 2, s: 0 }] },
+  rattler: { name: 'Timber Rattler', style: 'wooden', station: 3, description: 'A wooden out-and-back with bouncy camelback hills.', pieces: [{ c: 0, s: 0 }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 2, sp: 'chain' }, { c: 0, s: 1, sp: 'chain' }, { c: 0, s: 0, sp: 'chain' }, { c: 0, s: -1 }, { c: 0, s: -2 }, { c: 0, s: -2 }, { c: 0, s: -1 }, { c: 0, s: 0 }, { c: 0, s: 1 }, { c: 0, s: 0 }, { c: 0, s: -1 }, { c: 0, s: 0 }, { c: 2, s: 0 }, { c: 0, s: 0 }, { c: 2, s: 0 }] },
 }
 
 export const STALLS = {

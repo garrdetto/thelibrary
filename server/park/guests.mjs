@@ -268,9 +268,12 @@ function chooseTarget(state, guest) {
       const wait = (e.queue.length / Math.max(1, rideCapacity(e))) * rideCycleSeconds(e)
       if (wait > guest.patience * 1.3) continue
       if (!reachable(`ride:${e.id}`)) continue
+      const water = e.kind === 'flat' && FLAT_RIDES[e.ride].category === 'water'
+      if (water && state.weather.kind === 'rain') continue
       const recent = guest.ridden.includes(e.id) ? 0.25 : 1
+      const weather = water ? (state.weather.temp >= 24 ? 2.2 : state.weather.temp < 16 ? 0.35 : 1) : 1
       const fit = e.stats.i < guest.minI ? 0.5 : 1
-      choices.push([e, (0.6 + e.stats.e) * recent * fit])
+      choices.push([e, (0.6 + e.stats.e) * recent * fit * weather])
     }
     if (choices.length) {
       let total = choices.reduce((sum, [, w]) => sum + w, 0), pick = rnd() * total

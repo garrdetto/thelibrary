@@ -1,4 +1,5 @@
-import { FLAT_RIDES, COASTER_STYLES, STALLS, SCENERY, STAFF, COSTS, PATH_ADDITIONS } from './catalog.mjs'
+import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, COSTS, PATH_ADDITIONS } from './catalog.mjs'
+import { autoComplete } from './autotrack.mjs'
 import { DIRS, clamp } from './util.mjs'
 import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners } from './terrain.mjs'
 import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles } from './track.mjs'
@@ -132,9 +133,52 @@ export function stationTiles(state, ride) {
   ride.pieces.forEach((piece, index) => {
     if (piece.sp !== 'station') return
     const pose = poses[index], [dx, dy] = DIRS[pose.dir]
-    tiles.push([Math.floor(pose.x + dx * 0.5), Math.floor(pose.y + dy * 0.5)])
+    tiles.push([Math.floor(pose.x + dx * 0.5), Math.floor(pose.y + dy * 0.5), pose.dir])
   })
   return tiles
+}
+
+function uniqueName(state, base, self) {
+  const names = new Set(Object.values(state.entities).filter(e => e.type === 'ride' && e.id !== self).map(e => e.name))
+  if (!names.has(base)) return base
+  let n = 2
+  while (names.has(`${base} ${n}`)) n++
+  return `${base} ${n}`
+}
+
+function markStations(state, ride) {
+  const map = state.map
+  for (let i = 0; i < map.obj.length; i++) if (map.obj[i] === ride.id) map.obj[i] = 0
+  for (const [x, y] of stationTiles(state, ride)) if (inMap(map, x, y)) map.obj[tileIndex(map, x, y)] = ride.id
+}
+
+function leadingStations(ride) {
+  let k = 0
+  while (k < ride.pieces.length && ride.pieces[k].sp === 'station') k++
+  return k
+}
+
+function addPieces(state, ride, park, pieces) {
+  let total = 0
+  const checked = []
+  for (const piece of pieces) {
+    const result = validatePiece(state, ride, piece)
+    if (!result.ok) { ride.pieces.length -= checked.length; return { error: result.error } }
+    ride.pieces.push({ ...piece, k: result.cost })
+    checked.push(result)
+    total += result.cost
+  }
+  ride.pieces.length -= checked.length
+  if (!canAfford(state, park, total)) return { error: `You need $${total.toLocaleString('en-US')} to build that much track.` }
+  pieces.forEach((piece, i) => ride.pieces.push({ ...piece, k: checked[i].cost }))
+  removeRideCells(state, ride.id)
+  addRideCells(state, ride)
+  ride.spent = (ride.spent ?? 0) + total
+  spend(state, park, total, 'construction')
+  markStations(state, ride)
+  if (checked[checked.length - 1]?.closes) finishCoaster(state, ride)
+  pathsChanged(state)
+  return { cost: total }
 }
 
 function rideTiles(state, ride) {
@@ -158,7 +202,7 @@ function finishCoaster(state, ride) {
 export function applyCommand(state, cmd, park = 0) {
   if (!cmd || typeof cmd !== 'object' || typeof cmd.t !== 'string') return fail('Unknown action.')
   if (!state.parks[park]) return fail('You are not managing a park.')
-  if (state.ended && !['speed', 'rideSet', 'stallSet', 'park'].includes(cmd.t)) return fail('This game has ended.')
+  if (state.ended && !['speed', 'rideSet', 'stallSet', 'park'].includes(cmd.t)) return fail('This match has ended.')
   const handler = HANDLERS[cmd.t]
   if (!handler) return fail('Unknown action.')
   return handler(state, cmd, park)
@@ -390,17 +434,15 @@ const HANDLERS = {
     if (lowTrack(state, i, 3)) return fail('Coaster track is in the way.')
     if (ride.kind === 'coaster' && !ride.pieces.some(p => p.sp === 'station')) return fail('Build the station first.')
     let dir = -1
-    for (const [tx, ty] of rideTiles(state, ride)) {
+    for (const [tx, ty, stationDir] of rideTiles(state, ride)) {
       for (let d = 0; d < 4; d++) {
         const [dx, dy] = DIRS[d]
-        if (tx + dx === cmd.x && ty + dy === cmd.y) dir = d
+        if (tx + dx !== cmd.x || ty + dy !== cmd.y) continue
+        if (ride.kind === 'coaster' && d % 2 === stationDir % 2) continue
+        dir = d
       }
     }
-    if (dir < 0) return fail(ride.kind === 'coaster' ? 'Place it beside the station platform.' : 'Place it on a tile touching the ride.')
-    if (ride.kind === 'coaster') {
-      const stationDir = ride.start.dir
-      if (dir % 2 === stationDir % 2) return fail('Place it along the side of the station platform.')
-    }
+    if (dir < 0) return fail(ride.kind === 'coaster' ? 'Place it along the side of a station platform.' : 'Place it on a tile touching the ride.')
     const other = state.entities[role === 'entrance' ? ride.exit : ride.entrance]
     if (other && other.x === cmd.x && other.y === cmd.y) return fail(`The ${role === 'entrance' ? 'exit' : 'entrance'} is already here.`)
     const cost = 60
@@ -466,25 +508,16 @@ const HANDLERS = {
     const ride = state.entities[cmd.ride]
     if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your coasters.')
     const piece = { c: cmd.c | 0, s: cmd.s | 0 }
-    if (['chain', 'brakes', 'booster', 'loop'].includes(cmd.sp)) piece.sp = cmd.sp
-    const result = validatePiece(state, ride, piece)
-    if (!result.ok) return fail(result.error)
-    if (!canAfford(state, park, result.cost)) return fail(`You need $${result.cost} for this piece.`)
-    ride.pieces.push({ ...piece, k: result.cost })
-    removeRideCells(state, ride.id)
-    addRideCells(state, ride)
-    ride.spent = (ride.spent ?? 0) + result.cost
-    spend(state, park, result.cost, 'construction')
-    if (result.closes) finishCoaster(state, ride)
-    structural(state)
+    if (['chain', 'brakes', 'booster', 'loop', 'station'].includes(cmd.sp)) piece.sp = cmd.sp
+    const result = addPieces(state, ride, park, [piece])
+    if (result.error) return fail(result.error)
     return ok({ cost: result.cost, complete: ride.complete })
   },
 
   unpiece(state, cmd, park) {
     const ride = state.entities[cmd.ride]
     if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your coasters.')
-    const stations = ride.pieces.filter(p => p.sp === 'station').length
-    if (ride.pieces.length <= stations) return fail('Only the station is left. Demolish the ride to remove it.')
+    if (ride.pieces.length <= leadingStations(ride)) return fail('Only the station is left. Demolish the ride to remove it.')
     if (ride.complete) {
       ejectRide(state, ride)
       ride.complete = false; ride.trains = []; ride.status = 'closed'; ride.stats = null; ride.rev = (ride.rev ?? 0) + 1
@@ -496,9 +529,49 @@ const HANDLERS = {
     ride.spent = Math.max(0, (ride.spent ?? 0) - (removed.k ?? 0))
     removeRideCells(state, ride.id)
     addRideCells(state, ride)
-    structural(state)
+    if (removed.sp === 'station') {
+      markStations(state, ride)
+      for (const role of ['entrance', 'exit']) {
+        const gate = state.entities[ride[role]]
+        if (gate && !stationTiles(state, ride).some(([x, y]) => Math.abs(x - gate.x) + Math.abs(y - gate.y) === 1)) { removeEntity(state, gate); ride[role] = 0 }
+      }
+      pathsChanged(state)
+    } else structural(state)
     return ok({ refund })
   },
+
+  finish(state, cmd, park) {
+    const ride = state.entities[cmd.ride]
+    if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your coasters.')
+    if (ride.complete) return fail('The circuit is already complete.')
+    const route = autoComplete(state, ride)
+    if (route.error) return fail(route.error)
+    const result = addPieces(state, ride, park, route.pieces)
+    if (result.error) return fail(result.error)
+    return ok({ cost: result.cost, complete: ride.complete, pieces: route.pieces.length })
+  },
+
+  preset(state, cmd, park) {
+    const design = COASTER_PRESETS[cmd.preset]
+    if (!design) return fail('Choose a coaster design.')
+    const p = state.parks[park]
+    const before = { cash: p.cash, construction: p.month.construction }
+    const made = HANDLERS.coaster(state, { style: design.style, x: cmd.x, y: cmd.y, dir: cmd.dir, length: design.station }, park)
+    if (!made.ok) return made
+    const ride = state.entities[made.id]
+    ride.name = uniqueName(state, design.name, ride.id)
+    const undo = error => { HANDLERS.demolish(state, { id: ride.id }, park); p.cash = before.cash; p.month.construction = before.construction; return fail(`${design.name} does not fit here: ${error}`) }
+    const body = addPieces(state, ride, park, design.pieces)
+    if (body.error) return undo(body.error)
+    if (!ride.complete) {
+      const route = autoComplete(state, ride)
+      if (route.error) return undo('there is not enough clear space to bring the track back to the station.')
+      const tail = addPieces(state, ride, park, route.pieces)
+      if (tail.error) return undo(tail.error)
+    }
+    return ok({ id: ride.id, cost: Math.round(before.cash - p.cash), complete: ride.complete })
+  },
+
 
   rideSet(state, cmd, park) {
     const ride = state.entities[cmd.id]
@@ -630,7 +703,7 @@ const HANDLERS = {
   },
 
   speed(state, cmd) {
-    if (![0, 1, 2, 4].includes(cmd.speed)) return fail('Choose a game speed.')
+    if (![0, 1, 2, 4].includes(cmd.speed)) return fail('Choose a speed.')
     state.speed = cmd.speed
     return ok()
   },

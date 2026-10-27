@@ -303,6 +303,86 @@ export function flatRideModel(kind: string, w: number, h: number): RideModel {
     for (let k = 0; k < 6; k++) gondola.sphere(null, 0.3, -2.2 + k * 0.88, 0.9, 0.2, C.skin)
     parts.push({ builder: arm, anim: t => mat4.chain(T(0, 0, 7.6), mat4.rotY(t.running ? Math.sin(t.spin * 0.6) * 2.6 + t.spin * 0.3 : 0)) })
     parts.push({ builder: gondola, anim: t => { const a = t.running ? Math.sin(t.spin * 0.6) * 2.6 + t.spin * 0.3 : 0; return mat4.chain(T(0, 0, 7.6), mat4.rotY(a), T(0, 0, -5), mat4.rotY(t.running ? Math.sin(t.spin * 1.4) * 3 : -a)) } })
+  } else if (kind === 'karts') {
+    const W = w * 2 - 0.3, H = h * 2 - 0.3
+    base.box(null, 0, 0, 0, W * 2, H * 2, 0.15, hexColor('#5f9f45'))
+    const lane = (rx: number, ry: number, z: number, col: Vec3, width: number) => {
+      for (let i = 0; i < 40; i++) {
+        const a0 = i / 40 * Math.PI * 2, a1 = (i + 1) / 40 * Math.PI * 2
+        const p = (a: number, r: number): Vec3 => [Math.cos(a) * (rx + r), Math.sin(a) * (ry + r), z]
+        base.quad(null, p(a0, -width), p(a1, -width), p(a1, width), p(a0, width), col)
+      }
+    }
+    lane(W - 3.2, H - 3.2, 0.16, hexColor('#3b3e44'), 1.6)
+    lane(W - 3.2, H - 3.2, 0.18, C.white, 0.06)
+    for (let i = 0; i < 40; i++) {
+      const a = (i + 0.5) / 40 * Math.PI * 2
+      for (const r of [-1.75, 1.75]) base.box(null, Math.cos(a) * (W - 3.2 + r), Math.sin(a) * (H - 3.2 + r), 0.15, 0.5, 0.5, 0.25, i % 2 ? C.red : C.white)
+    }
+    for (const [x, y, sx, sy] of [[0, -H, W * 2, 0.15], [0, H, W * 2, 0.15], [-W, 0, 0.15, H * 2], [W, 0, 0.15, H * 2]] as const) base.box(null, x, y, 0.15, sx, sy, 0.9, C.white, 1)
+    base.box(null, 0, -0.2, 0.15, 3.5, 1.6, 2.4, C.cream)
+    base.box(null, 0, -0.2, 2.55, 4, 2, 0.2, C.white, 1)
+    for (let k = 0; k < 6; k++) {
+      const kart = new MeshBuilder()
+      const col = [C.red, C.blue, C.green, C.gold, hexColor('#9b51e0'), hexColor('#f08a24')][k]
+      kart.box(null, 0, 0, 0.12, 1.5, 0.9, 0.35, col)
+      kart.box(null, 0.55, 0, 0.12, 0.4, 1.0, 0.2, C.dark)
+      for (const x of [-0.5, 0.5]) for (const y of [-0.5, 0.5]) kart.cylinder(mat4.chain(T(x, y, 0.18), mat4.rotX(Math.PI / 2)), 0, 0, -0.08, 0.18, 0.18, 0.16, 8, C.black)
+      kart.sphere(null, -0.15, 0, 0.75, 0.22, col)
+      const speed = 0.55 + k * 0.035, offset = k * 1.05
+      parts.push({ builder: kart, anim: t => { const a = offset + (t.running ? t.spin * speed : 0); const rx = W - 3.2 + (k % 2 ? 0.6 : -0.6), ry = H - 3.2 + (k % 2 ? 0.6 : -0.6); return mat4.chain(T(Math.cos(a) * rx, Math.sin(a) * ry, 0.16), mat4.rotZ(Math.atan2(Math.cos(a) * ry, -Math.sin(a) * rx))) } })
+    }
+  } else if (kind === 'pool') {
+    const W = w * 2 - 0.3, H = h * 2 - 0.3
+    base.box(null, 0, 0, 0, W * 2, H * 2, 0.3, C.cream)
+    const pw = W - 2.4, ph = H - 2.6
+    base.quad(null, [-pw, -ph, 0.1], [pw, -ph, 0.1], [pw, ph, 0.1], [-pw, ph, 0.1], hexColor('#36a3e0'))
+    base.quad(null, [-pw, -ph, 0.32], [pw, -ph, 0.32], [pw, ph, 0.32], [-pw, ph, 0.32], hexColor('#6ccaf5'))
+    for (const [x, y, sx, sy] of [[0, -ph, pw * 2 + 0.6, 0.3], [0, ph, pw * 2 + 0.6, 0.3], [-pw, 0, 0.3, ph * 2], [pw, 0, 0.3, ph * 2]] as const) base.box(null, x, y, 0.3, sx, sy, 0.12, C.white)
+    base.box(null, pw - 0.6, 0, 0.42, 0.08, 1.6, 0.9, C.steel)
+    for (let k = 0; k < 4; k++) {
+      const x = -W + 2.5 + k * ((W * 2 - 5) / 3)
+      base.box(null, x, H - 1.1, 0.3, 0.8, 1.8, 0.25, C.white)
+      base.cylinder(null, x + 0.9, H - 1.1, 0.3, 0.05, 0.05, 2.2, 5, C.dark)
+      base.cylinder(null, x + 0.9, H - 1.1, 2.3, 1.2, 0, 0.5, 8, k % 2 ? C.red : C.white, k % 2 ? 0 : 1)
+    }
+    for (let k = 0; k < 8; k++) {
+      const swimmer = new MeshBuilder()
+      swimmer.sphere(null, 0, 0, 0.42, 0.22, C.skin, 0, 3, 6)
+      swimmer.box(null, -0.35, 0, 0.32, 0.6, 0.3, 0.05, SHIRTS[(k * 5) % SHIRTS.length])
+      const cx = (k % 4 - 1.5) * pw * 0.45, cy = (Math.floor(k / 4) - 0.5) * ph * 0.8, r = 0.8 + (k % 3) * 0.3
+      parts.push({ builder: swimmer, anim: t => { const a = t.spin * 0.5 + k * 0.9; return mat4.chain(T(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.7, Math.sin(t.spin * 2 + k) * 0.06), mat4.rotZ(a + Math.PI / 2)) } })
+    }
+  } else if (kind === 'waterslide') {
+    const S = w * 2 - 0.3
+    base.box(null, 0, 0, 0, S * 2, S * 2, 0.3, C.cream)
+    base.quad(null, [-S + 1, 1, 0.34], [S - 1, 1, 0.34], [S - 1, S - 1, 0.34], [-S + 1, S - 1, 0.34], hexColor('#6ccaf5'))
+    for (const [x, y, sx, sy] of [[0, 1, S * 2 - 2, 0.3], [0, S - 1, S * 2 - 2, 0.3], [-S + 1, (S) / 2, 0.3, S - 2], [S - 1, S / 2, 0.3, S - 2]] as const) base.box(null, x, y, 0.3, sx, sy, 0.15, C.white)
+    const tx = -S + 2.4, ty = -S + 2.4
+    for (const dx of [-1.1, 1.1]) for (const dy of [-1.1, 1.1]) base.box(null, tx + dx, ty + dy, 0.3, 0.3, 0.3, 12.5, C.white, 1)
+    base.box(null, tx, ty, 12.5, 3, 3, 0.25, C.wood)
+    base.box(null, tx, ty, 12.75, 3, 0.1, 1, C.white, 1)
+    for (let z = 1.5; z < 12; z += 1.6) base.box(null, tx + 1.4, ty, z, 0.2, 2.6, 0.12, C.wood)
+    const helix: Vec3[] = []
+    const hx = 1.5, hy = -1.5, R = 4.2, turns = 2.25
+    for (let i = 0; i <= 90; i++) { const u = i / 90, a = Math.PI * 1.25 + u * turns * Math.PI * 2; helix.push([hx + Math.cos(a) * R, hy + Math.sin(a) * R, 12.3 - u * 11.4]) }
+    helix.unshift([tx + 1.2, ty + 0.3, 12.6])
+    base.tube(helix, 0.75, C.white, 8, 1)
+    base.cylinder(null, hx, hy, 0.3, 0.35, 0.35, 12, 6, C.white)
+    const straight: Vec3[] = [[tx, ty + 1.5, 12.6], [tx + 1, 3, 8], [tx + 2, S - 3, 2.2], [tx + 2.4, S - 2, 0.8]]
+    base.tube(straight, 0.6, hexColor('#f2c94c'), 8)
+    for (let k = 0; k < 4; k++) {
+      const rider = new MeshBuilder()
+      rider.sphere(null, 0, 0, 0.75, 0.25, C.skin, 0, 3, 6)
+      rider.box(null, 0, 0, 0.4, 0.5, 0.35, 0.35, SHIRTS[(k * 3 + 1) % SHIRTS.length])
+      parts.push({ builder: rider, anim: t => {
+        if (!t.running) return T(tx, ty, 12.8 + k * 0.01)
+        const u = ((t.spin * 0.12 + k / 4) % 1)
+        if (k % 2) { const i = u * (straight.length - 1), j = Math.min(straight.length - 2, Math.floor(i)), f = i - j, a = straight[j], b = straight[j + 1]; return T(a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f - 0.3) }
+        const p = helix[Math.min(helix.length - 1, Math.floor(u * (helix.length - 1)))]
+        return T(p[0], p[1], p[2] - 0.45)
+      } })
+    }
   }
   return { base, parts }
 }
