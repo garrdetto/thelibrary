@@ -48,6 +48,8 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const [pane, setPane] = useState<Pane>({ kind: 'list' })
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [online, setOnline] = useState<OnlineUser[]>([])
+  const [onlineLoaded, setOnlineLoaded] = useState(false)
+  const [guestCount, setGuestCount] = useState<number | null>(null)
   const [seen, setSeen] = useState<Record<string, number>>({})
   const [drafts, setDrafts] = useState<string[]>([])
   const [isAdmin, setIsAdmin] = useState(false)
@@ -99,12 +101,13 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
       }
       merge(data.messages)
       setOnline(data.online)
+      setOnlineLoaded(true)
       setIsAdmin(data.isAdmin)
     } catch { /* offline: try again next tick */ }
   }, [username, merge])
 
   useEffect(() => {
-    setMessages([]); setOnline([]); setSeen({}); lastId.current = 0; loaded.current = false
+    setMessages([]); setOnline([]); setOnlineLoaded(false); setSeen({}); lastId.current = 0; loaded.current = false
     if (!username) return
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
@@ -118,6 +121,26 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
     document.addEventListener('visibilitychange', wake)
     return () => { stopped = true; clearTimeout(timer); document.removeEventListener('visibilitychange', wake) }
   }, [username, poll])
+
+  useEffect(() => {
+    if (username) return
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout>
+    const tick = async () => {
+      try {
+        const response = await fetch('/api/group-chat?count', { cache: 'no-store' })
+        if (response.ok) {
+          const data = await response.json() as { count: number }
+          if (!stopped) setGuestCount(data.count)
+        }
+      } catch { /* offline: try again next tick */ }
+      if (!stopped) timer = setTimeout(() => void tick(), document.hidden ? 60000 : 30000)
+    }
+    void tick()
+    const wake = () => { if (!document.hidden) { clearTimeout(timer); void tick() } }
+    document.addEventListener('visibilitychange', wake)
+    return () => { stopped = true; clearTimeout(timer); document.removeEventListener('visibilitychange', wake) }
+  }, [username])
 
   useEffect(() => { if (open && username) void poll() }, [open, username, poll])
   useEffect(() => { if (username) void poll() }, [activity, username, poll])
@@ -159,6 +182,8 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
   const unreadTotal = threads.reduce((sum, item) => sum + item.unread, 0)
   useBlinkingFavicon(unreadTotal > 0)
   const others = online.filter(item => item.username !== username)
+  const onlineCount = username ? (onlineLoaded ? online.length : null) : guestCount
+  const onlineText = onlineCount === null ? '' : `${onlineCount} ${onlineCount === 1 ? 'player' : 'players'} online`
   const label = (name: string | null) => !name || name === 'home' ? 'Browsing' : activityLabels[name] ?? 'Browsing'
   const titleFor = (key: string) => key === GROUP ? 'Everyone' : othersIn(key, username ?? '').join(', ') || 'Just you'
 
@@ -314,10 +339,14 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
         </>}
       </>}
     </section>}
-    <button type="button" className={`group-chat-toggle${unreadTotal ? ' has-unread' : ''}${unreadTotal && !open ? ' is-blinking' : ''}`} aria-label={unreadTotal ? `Chat, ${unreadTotal} unread` : 'Chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-      {open ? <X size={20}/> : <MessageCircle size={21}/>}
-      {!open && unreadTotal > 0 && <i aria-hidden="true"/>}
-      {!open && username && others.length > 0 && <em className="gc-online-count" aria-hidden="true">{others.length}</em>}
-    </button>
+    <div className="gc-dock">
+      <button type="button" className={`group-chat-toggle${unreadTotal ? ' has-unread' : ''}${unreadTotal && !open ? ' is-blinking' : ''}`} aria-label={unreadTotal ? `Chat, ${unreadTotal} unread` : 'Chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
+        {open ? <X size={20}/> : <MessageCircle size={21}/>}
+        {!open && unreadTotal > 0 && <i aria-hidden="true"/>}
+      </button>
+      {onlineCount !== null && <button type="button" className="gc-online-bar" aria-label={`${onlineText}. Open chat.`} onClick={() => { setOpen(true); if (username) setPane({ kind: 'online' }) }}>
+        <span className="gc-live" aria-hidden="true"/><span><b>{onlineCount}</b> {onlineCount === 1 ? 'player' : 'players'} online</span>
+      </button>}
+    </div>
   </div>
 }

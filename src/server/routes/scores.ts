@@ -16,11 +16,9 @@ const actions = z.discriminatedUnion('action', [
 
 function leaderboardQuery(module: ScoredModuleId) {
   const direction = scoredModules[module].order === 'asc' ? 'ASC' : 'DESC'
-  return `SELECT COALESCE(u.username, ranked.username) AS username, ranked.value, ranked.created_at FROM (
-    SELECT user_id, username, value, created_at, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY value ${direction}, created_at ASC, id ASC) AS place
-    FROM module_scores WHERE module = ?
-  ) AS ranked LEFT JOIN users u ON u.id = ranked.user_id
-  WHERE ranked.place = 1 ORDER BY ranked.value ${direction}, ranked.created_at ASC LIMIT 10`
+  return `SELECT COALESCE(u.username, s.username) AS username, s.value, s.created_at FROM module_scores s
+  LEFT JOIN users u ON u.id = s.user_id
+  WHERE s.module = ? ORDER BY s.value ${direction}, s.created_at ASC, s.id ASC LIMIT 10`
 }
 
 export async function moduleScores(request: Request, env: Env) {

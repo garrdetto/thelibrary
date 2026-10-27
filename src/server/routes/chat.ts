@@ -48,6 +48,10 @@ async function insert(env: Env, user: { id: string; username: string }, body: st
 }
 
 export async function groupChat(request: Request, env: Env) {
+  if (request.method === 'GET' && new URL(request.url).searchParams.has('count')) {
+    const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM chat_presence WHERE last_seen > ?').bind(Date.now() - ONLINE_WINDOW).first<{ n: number }>()
+    return json({ count: row?.n ?? 0 })
+  }
   const user = await requireUser(request, env, 'Sign in to join the chat.')
   const me = user.username
   const now = Date.now()

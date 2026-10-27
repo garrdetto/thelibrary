@@ -1666,7 +1666,7 @@ function lineCross(c){
   else if(c.cross>2&&c.lapStart!=null){const lt=now-c.lapStart;c.lastLap=lt;if(!c.bestLap||lt<c.bestLap)c.bestLap=lt;c.lapStart=now;
     if(c.isPlayer&&!c.fin&&!c.lapDirty)submitLap(lt*1000);
     if(!c.fin&&(c.cross-2>=race.laps||race.ph==='checkered'||race.ph==='done'))c.fin=true;}
-  c.lapDirty=!['green','attack','checkered'].includes(race.ph)||c.fin;
+  c.lapDirty=c.fin;
 }
 const CORNERS=[[1,1],[1,-1],[-1,1],[-1,-1]];
 function walls(c){
@@ -1777,7 +1777,7 @@ let quality=store.get('sts_q','med');
 
 function updateBoosts(dt){
   const on=race.ph==='green'||race.ph==='checkered';
-  standings().forEach((c,i)=>{if(!c.local)return;if(!['green','attack','checkered'].includes(race.ph))c.lapDirty=true;const tgt=on&&!c.fin?1+CFG.packBoost*i:1;
+  standings().forEach((c,i)=>{if(!c.local)return;const tgt=on&&!c.fin?1+CFG.packBoost*i:1;
     if(tgt>=c.boost){c.boost=tgt;c.boostRate=0;}
     else{if(tgt!==c.boostTgt)c.boostRate=(c.boost-tgt)/2;c.boost=Math.max(tgt,c.boost-c.boostRate*dt);}
     c.boostTgt=tgt;});
@@ -1798,7 +1798,7 @@ async function showRecords(boxId,mode){
   box.innerHTML='<div class="rectabs" role="tablist">'+Object.keys(MODE_NAMES).map(m=>`<button role="tab" aria-selected="${m===mode}" class="${m===mode?'on':''}" data-rec="${m}">${MODE_NAMES[m]}</button>`).join('')+'</div><table class="rec"></table><p>Loading...</p>';
   const res=await fetchRecords(mode);if(box.dataset.mode!==mode)return;
   box.querySelector('table').innerHTML=res.records?recRows(res.records,REC.me):'';
-  box.querySelector('p').textContent=res.error||`Top 10 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
+  box.querySelector('p').textContent=res.error||`Top 20 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
   if(ms<TRACK.minLap)return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
@@ -1807,7 +1807,7 @@ function submitLap(ms){
       if(r.status===401||r.status===403){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
       if(!r.ok)return;
       if(!best||ms<best.milliseconds)bigMsg('NEW TRACK RECORD',`${MODE_NAMES[mode]} \u00b7 ${fmtLap(ms)}`,3);
-      else if((REC.lists[mode]||[]).length<10||ms<REC.lists[mode][REC.lists[mode].length-1].milliseconds)toast(`Top 10 lap: ${fmtLap(ms)}`);
+      else if((REC.lists[mode]||[]).length<20||ms<REC.lists[mode][REC.lists[mode].length-1].milliseconds)toast(`Top 20 lap: ${fmtLap(ms)}`);
       fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:TRACK.rec,mode},location.origin);}catch(e){}
     }).catch(()=>{});
 }

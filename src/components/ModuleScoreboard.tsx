@@ -57,7 +57,7 @@ export function ModuleScoreboard({ module, username }: { module: ScoredModuleId;
     <header className="module-scores-head">
       <div>
         <span className="module-scores-eyebrow"><Trophy size={13}/> {info?.title.toUpperCase()} LEADERBOARD</span>
-        <h2 id={`scores-${module}-title`}>{config.title} <small>Top 10 · best per person</small></h2>
+        <h2 id={`scores-${module}-title`}>{config.title} <small>Top 10 · every result counts</small></h2>
         <p>{config.note}{config.order === 'asc' ? ' Lower is better.' : ''}</p>
       </div>
       <div className="module-scores-side">
@@ -72,7 +72,7 @@ export function ModuleScoreboard({ module, username }: { module: ScoredModuleId;
     {state === 'ready' && (records.length
       ? <div className="module-scores-scroll"><table>
           <thead><tr><th scope="col">Rank</th><th scope="col">Username</th><th scope="col">{config.metric}</th><th scope="col">Date (UTC)</th></tr></thead>
-          <tbody>{records.map((record, index) => <tr key={`${record.username}:${record.date}`} className={index === myRank ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{formatScore(module, record.value)}</td><td>{record.date.slice(0, 10)}</td></tr>)}</tbody>
+          <tbody>{records.map((record, index) => <tr key={`${record.username}:${record.date}:${index}`} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{formatScore(module, record.value)}</td><td>{record.date.slice(0, 10)}</td></tr>)}</tbody>
         </table></div>
       : <p className="module-scores-status">No results on the board yet. {username ? 'Yours could be the first.' : 'Sign in and set the first one.'}</p>)}
   </section>
