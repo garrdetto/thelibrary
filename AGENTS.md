@@ -17,7 +17,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/server/routes/account.ts`: `/api/pool-account` (login, logout, multiplayer tickets, ticket redeem), `/api/workspace-access`, `/api/account-settings`, `/api/workspace-admin`.
 - `src/server/routes/pool.ts`: `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay`.
 - `src/server/routes/racing.ts`: `/api/racing` tickets, lap records, paint profiles, AI skins.
-- `src/server/routes/park.ts`: `/api/park` multiplayer tickets (prefix `park:`), ticket redeem, and six gzip-compressed save slots per account.
+- `src/server/routes/park.ts`: `/api/park` multiplayer tickets (prefix `park:`), ticket redeem, gzip-compressed saves (slot 0 is the 5-minute autosave, slots 1–6 are manual), and per-map net-worth leaderboards (`?scores=<scenario>`, POST `score` keeps each player's best, admin `reset-scores`). The board is `src/components/park/ParkScoreboard.tsx`.
 - `src/server/routes/scores.ts`: `/api/module-scores` leaderboards for embedded modules (GET `?module=`, POST `score` / `reset-records`). Board settings live in `src/lib/module-scores.ts`.
 - `src/server/routes/studio.ts` + `src/server/lyrics.ts`: `/api/studio`, `/api/library?id=` (version history only), `/api/asset`, `/api/learning`, `/api/lyric-presets`.
 - `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret.
@@ -36,7 +36,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/components/PoolAccount.tsx`: sign-in form. Signed-out visitors see `src/components/SignInRibbon.tsx` pinned at the top of the main panel and a highlighted sign-in form (`signin-spotlight`) at the top of every view except pool and racing, which show their own. `src/components/WorkspaceAdmin.tsx`: admin panel.
 
 ### Data
-- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets, park_saves.
+- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets, park_saves, park_scores.
 - Workers KV `thelibrary-files` (binding `FILES`) for binary files: `cue/<userId>`, `skin/<userId>/<asset>`, `image/<userId>/<creationId>`.
 - Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`. Config in `wrangler.jsonc`.
 

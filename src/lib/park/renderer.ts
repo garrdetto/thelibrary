@@ -9,7 +9,7 @@ const TILE = 4
 const SURFACE_COLORS: Vec3[] = ['#6eab4c', '#d8c384', '#8d6c4a', '#8f8e88', '#eef1f2'].map(hexColor)
 const PATH_COLOR = hexColor('#cdbb93'), PATH_EDGE = hexColor('#8f7d5c'), QUEUE_COLOR = hexColor('#9fb3c9'), QUEUE_EDGE = hexColor('#556a84')
 const SCENERY_KINDS = ['oak', 'pine', 'birch', 'palm', 'bush', 'flowers', 'hedge', 'rock', 'fountain', 'statue', 'topiary']
-const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a' }
+const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', waterslide: '#1fb5b0' }
 
 export type Pick = { kind: 'guest' | 'staff' | 'entity'; id: number } | null
 export type TileHit = { x: number; y: number; wx: number; wy: number; wz: number; fx: number; fy: number }
@@ -310,12 +310,12 @@ export class ParkRenderer {
     const sunDir: Vec3 = [Math.cos(az) * 0.7, Math.sin(az) * 0.5, Math.max(0.12, elev)]
     const l = Math.hypot(...sunDir); sunDir[0] /= l; sunDir[1] /= l; sunDir[2] /= l
     const dim = rain ? 0.6 : cloudy ? 0.8 : 1
-    const night: Vec3 = [0.24, 0.28, 0.44]
-    const sunColor = lerp3([0.16, 0.18, 0.3], lerp3([1.05, 0.98, 0.88], [1.1, 0.62, 0.35], dusk), daylight).map(v => v * dim) as Vec3
+    const night: Vec3 = [0.46, 0.5, 0.64]
+    const sunColor = lerp3([0.42, 0.45, 0.6], lerp3([1.05, 0.98, 0.88], [1.1, 0.62, 0.35], dusk), daylight).map(v => v * dim) as Vec3
     const sky = lerp3(night, [0.6, 0.68, 0.78], daylight).map(v => v * (rain ? 0.85 : 1)) as Vec3
-    const skyTop = lerp3([0.03, 0.05, 0.14], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
-    const skyBottom = lerp3(lerp3([0.08, 0.1, 0.2], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
-    return { sunDir, sunColor, sky, ground: lerp3([0.12, 0.12, 0.18], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom }
+    const skyTop = lerp3([0.1, 0.15, 0.32], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
+    const skyBottom = lerp3(lerp3([0.22, 0.27, 0.42], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
+    return { sunDir, sunColor, sky, ground: lerp3([0.26, 0.26, 0.32], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom }
   }
 
   isNight() { const f = this.state?.time.dayFraction ?? 0.4; return f > 0.84 || f < 0.22 }
@@ -339,10 +339,22 @@ export class ParkRenderer {
       }
       this.rideCam = null
     }
-    const eye: Vec3 = [c.tx + Math.cos(c.pitch) * Math.cos(c.yaw) * c.dist, c.ty + Math.cos(c.pitch) * Math.sin(c.yaw) * c.dist, c.tz + Math.sin(c.pitch) * c.dist]
-    if (s) { const gz = groundHeightAt(s.map, Math.max(0, Math.min(s.map.w * TILE, eye[0])), Math.max(0, Math.min(s.map.h * TILE, eye[1])), TILE); if (eye[2] < gz + 2) eye[2] = gz + 2 }
+    const eye = this.orbitEye()
     this.view = mat4.lookAt(eye, [c.tx, c.ty, c.tz], [0, 0, 1])
     return eye
+  }
+
+  private orbitEye(): Vec3 {
+    const s = this.state, c = this.cam
+    const eye: Vec3 = [c.tx + Math.cos(c.pitch) * Math.cos(c.yaw) * c.dist, c.ty + Math.cos(c.pitch) * Math.sin(c.yaw) * c.dist, c.tz + Math.sin(c.pitch) * c.dist]
+    if (s) { const gz = groundHeightAt(s.map, Math.max(0, Math.min(s.map.w * TILE, eye[0])), Math.max(0, Math.min(s.map.h * TILE, eye[1])), TILE); if (eye[2] < gz + 2) eye[2] = gz + 2 }
+    return eye
+  }
+
+  private cameraView(): Mat4 {
+    if (this.rideCam) return this.view
+    const c = this.cam
+    return mat4.lookAt(this.orbitEye(), [c.tx, c.ty, c.tz], [0, 0, 1])
   }
 
   frame(now: number) {
@@ -543,6 +555,15 @@ export class ParkRenderer {
     const a = mat4.transformPoint(inv, [nx, ny, -1]), b = mat4.transformPoint(inv, [nx, ny, 1])
     const d: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], l = Math.hypot(...d)
     return { o: a, d: [d[0] / l, d[1] / l, d[2] / l] as Vec3 }
+  }
+
+  rayPlane(clientX: number, clientY: number, z: number) {
+    this.view = this.cameraView()
+    const r = this.ray(clientX, clientY)
+    if (!r || Math.abs(r.d[2]) < 1e-4) return null
+    const t = (z - r.o[2]) / r.d[2]
+    if (t <= 0) return null
+    return { x: r.o[0] + r.d[0] * t, y: r.o[1] + r.d[1] * t }
   }
 
   pickTile(clientX: number, clientY: number): TileHit | null {

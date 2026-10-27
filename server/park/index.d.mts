@@ -25,7 +25,7 @@ export type ParkState = {
   trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number }[]>; fields: Map<string, Int16Array>
 }
 export type Command = { t: string; [key: string]: unknown }
-export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean }
+export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number }
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[] }
 export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string }
 export type CoasterStyle = { name: string; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; seats: number; excitementBonus: number; intensityBonus: number; track: string; support: string; train: string; description: string }
@@ -45,6 +45,7 @@ export const MAX_GUESTS: number
 export const CAR_GAP: number
 export const FLAT_RIDES: Record<string, FlatRideDef>
 export const COASTER_STYLES: Record<string, CoasterStyle>
+export const COASTER_PRESETS: Record<string, { name: string; style: string; station: number; description: string; pieces: Piece[] }>
 export const STALLS: Record<string, StallDef>
 export const SCENERY: Record<string, { name: string; cost: number; height: number }>
 export const PATH_ADDITIONS: Record<number, { id: string; name: string; cost: number }>

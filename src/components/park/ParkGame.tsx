@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { LoaderCircle, Play, RefreshCcw, Trash2, Users, Zap } from 'lucide-react'
 import { ParkHud } from './ParkHud'
+import { ParkScoreboard } from './ParkScoreboard'
 import { LocalSession, NetSession, Lobby, compressSave, decompressSave } from '@/lib/park/session'
 import type { ParkSession, RoomInfo, Player, ChatLine } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
@@ -23,6 +24,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
   const [fromSlot, setFromSlot] = useState(0)
   const [waiting, setWaiting] = useState<RoomInfo | null>(null)
   const lobbyRef = useRef<Lobby | null>(null)
+  const [scoreKey, setScoreKey] = useState(0)
   const signedIn = Boolean(username)
 
   useEffect(() => () => { lobbyRef.current?.close() }, [])
@@ -103,7 +105,10 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     setSession(null)
   }
 
-  if (session) return <div className="pk-root pk-root-game"><ParkHud session={session} onQuit={quit} signedIn={signedIn} /></div>
+  if (session) return <>
+    <div className="pk-root pk-root-game"><ParkHud session={session} onQuit={quit} signedIn={signedIn} onScore={() => setScoreKey(k => k + 1)} /></div>
+    {session.state.mode === 'solo' && session.state.scenario !== 'sandbox' && <div className="pk-scores-wrap"><ParkScoreboard username={username} initial={session.state.scenario} refreshKey={scoreKey} /></div>}
+  </>
 
   return <div className="pk-root">
     <section className="pk-menu">
@@ -132,7 +137,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
       </article>)}</div>}
 
       {tab === 'load' && (!signedIn ? <p className="pk-menu-note">{accountReady ? 'Sign in on the home page to save and load parks.' : 'Checking your account…'}</p> : saves === null ? <p className="pk-menu-note"><LoaderCircle className="spin" size={15} /> Loading your saves…</p> : !saves.length ? <p className="pk-menu-note">No saved parks yet. Use the save button in a game to keep your progress.</p> :
-        <ul className="pk-save-list">{saves.map(s => <li key={s.slot}><div><strong>{s.name}</strong><small>Slot {s.slot} · {SCENARIOS[s.scenario]?.name ?? s.scenario} · {s.summary.date} · {s.summary.guests} guests · {formatMoney(s.summary.cash)} · saved {new Date(s.updated).toLocaleString()}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy)} onClick={() => void loadSlot(s.slot)}>{busy === `load${s.slot}` ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />} Load</button><button className="pk-btn pk-btn-danger" aria-label={`Delete slot ${s.slot}`} disabled={Boolean(busy)} onClick={() => void removeSlot(s.slot)}><Trash2 size={14} /></button></li>)}</ul>)}
+        <ul className="pk-save-list">{saves.map(s => <li key={s.slot}><div><strong>{s.name}</strong><small>{s.slot === 0 ? 'Autosave' : `Slot ${s.slot}`} · {SCENARIOS[s.scenario]?.name ?? s.scenario} · {s.summary.date} · {s.summary.guests} guests · {formatMoney(s.summary.cash)} · saved {new Date(s.updated).toLocaleString()}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy)} onClick={() => void loadSlot(s.slot)}>{busy === `load${s.slot}` ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />} Load</button><button className="pk-btn pk-btn-danger" aria-label={`Delete slot ${s.slot}`} disabled={Boolean(busy)} onClick={() => void removeSlot(s.slot)}><Trash2 size={14} /></button></li>)}</ul>)}
 
       {tab === 'online' && (!signedIn ? <p className="pk-menu-note">{accountReady ? 'Sign in on the home page to play online.' : 'Checking your account…'}</p> : !lobby || lobby.status === 'closed' ? <div className="pk-online-intro">
         <p><strong>Co-op</strong> — up to four tycoons share one park, building and managing together. Anyone can drop in while it runs.</p>
@@ -161,6 +166,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
           {!lobby.rooms.length ? <p className="pk-menu-note">No parks are open. Host one and invite friends to this page.</p> : <ul>{lobby.rooms.map(r => <li key={r.id}><div><strong>{r.name}</strong><small>{r.mode === 'coop' ? 'Co-op' : 'Versus'} · {SCENARIOS[r.scenario]?.name ?? r.scenario} · {r.players.length}/{r.max} · {r.players.map(p => p.name).join(', ')}{r.started && r.mode === 'versus' ? ' · in progress' : ''}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy) || r.players.length >= r.max || (r.mode === 'versus' && r.started)} onClick={() => void joinRoom(r.id)}>Join</button></li>)}</ul>}
         </div>
       </div>)}
+      <ParkScoreboard username={username} refreshKey={scoreKey} />
       <p className="pk-controls-help"><strong>Controls</strong> Drag to pan · right-drag to rotate · scroll or pinch to zoom · WASD/arrows move · Q/E rotate · R rotates what you are placing · G grid · Space pauses · Esc cancels.</p>
     </section>
   </div>

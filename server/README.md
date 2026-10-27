@@ -1,6 +1,6 @@
 # Pool real-time server
 
-Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v40`; if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
+Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v41`; if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
 
 Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin, currently `https://thelibrary.garrdetto.workers.dev`. Multiple trusted production or preview origins can be comma-separated. When configured, requests from other origins are rejected. When unset or empty, only `https://thelibrary.garrdetto.workers.dev` is accepted (v39 default). Configure explicit origins in production. In the site's Cloudflare build variables, set `VITE_POOL_SERVER_URL` to this service's public HTTPS URL, then redeploy the frontend. This public URL is compiled into the client; it is not a secret. When unset, the frontend uses its existing default service URL; signed-in solo practice remains available if multiplayer is offline.
 
@@ -125,3 +125,11 @@ Players connect with a one-use ticket from `/api/park` (action `ticket`), which 
 - **Versus** rooms wait for two to four players. The host starts the match on the Twin Valleys map, each player gets their own park, and the highest company value at the end of year two wins. Only the host can change speed.
 
 The server is authoritative. It steps the simulation at 20 Hz (scaled by game speed). Every accepted command is broadcast as `cmd` with the resulting `nextId` and `structVersion`, so clients replay structural changes in the same order. A `dyn` snapshot goes out every 250 ms: time, finances, rides, stalls, staff, litter, new news, and guests packed as an `Int32Array` (three integers per guest). A client whose replay drifts sends `resync` and receives a fresh `init`. Other events: `create`, `join`, `start`, `command`, `guest` (guest detail), `export` (full park for saving to the player's own account), `chat` (one message per 0.7 s, 200 characters) and `leave-room`. Commands are limited to 25 per second and 2 KB each. Parks are transient: restarting the server ends them, and players keep progress by saving to their account.
+
+### Thrill Park v41
+
+Redeploy this service with the frontend so online parks run the same rules as solo play:
+- Right turns now curve clockwise and bank into the turn. The loop radius is 6.5 m.
+- Coasters can have extra stations, where trains stop for 4 seconds and drive tires launch them back out.
+- New `finish` (auto-route the track back to the station) and `preset` (place a ready-made design) commands.
+- New flat rides: go-karts, a swimming pool and a waterslide. Guests favour water rides on hot days and avoid them in rain.
