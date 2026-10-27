@@ -4,6 +4,7 @@ import { HttpError, json } from './http'
 import { accountSettings, poolAccount, workspaceAccess, workspaceAdmin } from './routes/account'
 import { poolCueOverlay, poolPractice, poolPreferences } from './routes/pool'
 import { racing } from './routes/racing'
+import { park } from './routes/park'
 import { asset, learning, library, lyricPresets, studio } from './routes/studio'
 
 const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
@@ -15,6 +16,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/pool-preferences': poolPreferences,
   '/api/pool-cue-overlay': poolCueOverlay,
   '/api/racing': racing,
+  '/api/park': park,
   '/api/studio': studio,
   '/api/library': library,
   '/api/asset': asset,

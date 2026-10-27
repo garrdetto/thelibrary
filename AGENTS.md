@@ -1,6 +1,6 @@
 # myWorkHelper
 
-TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative studio (AI chat, images, lyrics), an 8-ball/9-ball pool game, a racing game with two tracks, and accounts/admin. Live multiplayer for pool and racing runs on a separate Node service in `server/` (Railway). The initial route must render this product, never a starter demo.
+TanStack Start / React 19 site on Cloudflare Workers with five areas: a creative studio (AI chat, images, lyrics), an 8-ball/9-ball pool game, a racing game with two tracks, Thrill Park (a 3D theme-park builder), and accounts/admin. Live multiplayer for pool, racing and Thrill Park runs on a separate Node service in `server/` (Railway). The initial route must render this product, never a starter demo.
 
 ## File map
 
@@ -17,6 +17,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/server/routes/account.ts`: `/api/pool-account` (login, logout, multiplayer tickets, ticket redeem), `/api/workspace-access`, `/api/account-settings`, `/api/workspace-admin`.
 - `src/server/routes/pool.ts`: `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay`.
 - `src/server/routes/racing.ts`: `/api/racing` tickets, lap records, paint profiles, AI skins.
+- `src/server/routes/park.ts`: `/api/park` multiplayer tickets (prefix `park:`), ticket redeem, and six gzip-compressed save slots per account.
 - `src/server/routes/studio.ts` + `src/server/lyrics.ts`: `/api/studio`, `/api/library?id=` (version history only), `/api/asset`, `/api/learning`, `/api/lyric-presets`.
 - `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret.
 - `src/lib/studio-types.ts`: browser-safe studio types.
@@ -24,17 +25,18 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 ### Games
 - `src/components/PoolTable.tsx`, `PoolLobby.tsx`, `CueArtwork.tsx`, `src/lib/pool-*.ts`, `src/lib/cue-design.ts`: pool.
 - `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing.
+- Thrill Park: `server/park/` is the shared simulation (terrain, catalog, coaster track physics, commands, guests and staff AI, finances, snapshots; types in `index.d.mts`). `src/lib/park/` holds the dependency-free WebGL2 renderer (`gl.ts`, `models.ts`, `renderer.ts`), the local and online sessions (`session.ts`) and the saves client (`api.ts`). `src/components/park/ParkGame.tsx` is the menu and lobby, and `ParkHud.tsx` is the in-game interface.
 
 ### Accounts and admin UI
 - `src/components/PoolAccount.tsx`: sign-in form. `src/components/WorkspaceAdmin.tsx`: admin panel.
 
 ### Data
-- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, creations, lyric_corrections, lyric_presets.
+- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, creations, lyric_corrections, lyric_presets, park_saves.
 - Workers KV `thelibrary-files` (binding `FILES`) for binary files: `cue/<userId>`, `skin/<userId>/<asset>`, `image/<userId>/<creationId>`.
 - Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`. Config in `wrangler.jsonc`.
 
 ### Multiplayer server (`server/`)
-- `server/index.mjs` and `server/racing.mjs` verify players by redeeming tickets at `<site>/api/pool-account?action=redeem` and `<site>/api/racing?action=redeem`. `FRONTEND_ORIGIN` must list the site origin.
+- `server/index.mjs`, `server/racing.mjs` and `server/park.mjs` verify players by redeeming tickets at `<site>/api/pool-account?action=redeem`, `<site>/api/racing?action=redeem` and `<site>/api/park?action=redeem`. `FRONTEND_ORIGIN` must list the site origin.
 
 ## Conventions
 
@@ -70,6 +72,8 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 - `server/racing-engine.mjs` is shared by browser and server. Any change to it, or to server lobby/race code, requires redeploying the multiplayer service; bump the `/version` string in `server/index.mjs` and note it in `server/README.md`.
 - Keep single-player and multiplayer physics identical by changing the shared engine rather than duplicating logic in `Racing.tsx`.
 - Lap records are stored per track and mode.
+- `server/park/` is shared by browser and server in the same way: change rules there, never in the UI, and redeploy the multiplayer service afterwards. Online parks are server-authoritative: structural commands are replayed by clients in server order, and dynamic state arrives in snapshots. Keep commands free of randomness so the replay stays identical.
+- Thrill Park is an original game. Keep its names, rides, scenarios and art original; do not copy assets, names or branding from commercial games.
 
 ## Development
 
