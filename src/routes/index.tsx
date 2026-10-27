@@ -25,6 +25,7 @@ import type { Creation, LyricCorrection, LyricPreset, Message, SongSettings, Stu
 export const Route = createFileRoute('/')({ component: Studio })
 
 const Racing = lazy(() => import('@/components/Racing').then(module => ({ default: module.Racing })))
+const ParkGame = lazy(() => import('@/components/park/ParkGame').then(module => ({ default: module.ParkGame })))
 
 const defaultSettings: SongSettings = { genre: 'Indie pop', customGenre: '', artist: '', explicit: true, vibe: 'Dreamy & atmospheric', mood: 'Bittersweet', pitch: 'Mid-range', style: 'Conversational & intimate', instruments: 'Soft piano, warm bass, brushed drums', structure: 'Verse / Chorus / Verse / Chorus / Bridge / Chorus', instructions: '' }
 const navigation = [
@@ -32,7 +33,7 @@ const navigation = [
   { id: 'image', label: 'Image studio', icon: Image },
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
 ] as const
-const moduleIcons: Record<ModuleId, typeof Trophy> = { sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge }
+const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge }
 const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const moduleNav = learningModules.map(item => ({ id: item.id, label: item.title, icon: moduleIcons[item.id] }))
@@ -117,6 +118,7 @@ function Studio() {
     if (isSiteTheme(savedTheme)) setTheme(savedTheme)
     if (window.location.hash === '#racing') setView('racing')
     if (window.location.hash === '#oval') setView('oval')
+    if (window.location.hash === '#park') setView('park')
     const playHash = window.location.hash.replace(/^#module-/, '')
     if (window.location.hash.startsWith('#module-') && isPlayId(playHash)) setView(playHash)
   }, [])
@@ -212,7 +214,7 @@ function Studio() {
     setSelection(null)
     setPlayRoom(null)
     setView(next)
-    window.history.replaceState(null, '', next === 'racing' ? '#racing' : next === 'oval' ? '#oval' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
+    window.history.replaceState(null, '', next === 'racing' ? '#racing' : next === 'oval' ? '#oval' : next === 'park' ? '#park' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
     setCurrent(null)
     setMessages([])
     setInput('')
@@ -227,7 +229,7 @@ function Studio() {
   async function generate(event?: FormEvent, action: 'new' | 'revise' | 'revamp' = 'new') {
     event?.preventDefault()
     const prompt = action === 'revise' ? revision.trim() : action === 'revamp' ? revamp.trim() || 'A fresh take that fits the current settings.' : input.trim()
-    if (!prompt || busy || view === 'pool' || view === 'racing' || view === 'oval' || view === 'home' || view === 'admin' || isPlayId(view)) return
+    if (!prompt || busy || view === 'pool' || view === 'racing' || view === 'oval' || view === 'park' || view === 'home' || view === 'admin' || isPlayId(view)) return
     setBusy(true)
     setBusyAction(action)
     setError('')
@@ -433,7 +435,7 @@ function Studio() {
     <main className="main-panel"><RecordResetProvider>
       {accountReady && !access.username && <SignInRibbon/>}
       <header className="topbar"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><div className="top-welcome"><h1>{access.username ? <>Welcome back, <em>{access.username}</em></> : <>Welcome to <em>the library</em></>}</h1><div className="breadcrumb"><span>the library</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}{accountReady && (access.username ? <button type="button" className="top-account" onClick={() => void signOut()}><LogOut size={14}/> Sign out</button> : view !== 'home' && <button type="button" className="top-account is-signin" onClick={() => switchView('home')}>Sign in</button>)}</header>
-      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' || view === 'oval' ? 'racing-content' : view === 'pool' ? 'pool-content' : activePlay ? `play-content${activePlay.id === 'shorttrack' || isScoredModule(activePlay.id) ? ' has-board' : ''}` : view === 'home' ? 'hub-content' : ''}`}>
+      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' || view === 'oval' ? 'racing-content' : view === 'park' ? 'park-content' : view === 'pool' ? 'pool-content' : activePlay ? `play-content${activePlay.id === 'shorttrack' || isScoredModule(activePlay.id) ? ' has-board' : ''}` : view === 'home' ? 'hub-content' : ''}`}>
         {accountReady && !access.username && view !== 'pool' && view !== 'racing' && view !== 'oval' && <PoolAccount className="signin-spotlight" heading="Sign in or register" intro="Use any username and a password of 3 or more characters. A new username creates your account; an existing one signs you back in. No email needed, and your progress and settings follow your account." username={null} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>}
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
@@ -443,6 +445,7 @@ function Studio() {
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {view === 'admin' && access.isAdmin && <WorkspaceAdmin/>}
         {view === 'pool' && <PoolTable lobby={lobby}/>}
+        {view === 'park' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame username={access.username} accountReady={accountReady}/></Suspense>}
         {(view === 'racing' || view === 'oval') && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the race track…</p>}><Racing key={view} fixedTrack={view === 'oval' ? 'oval' : 'circuit'} players={lobby.players} playerName={lobby.name} joinRequest={raceJoinRequest} onJoinHandled={() => setRaceJoinRequest(0)}/></Suspense>}
         {view === 'chat' && <>
           {!messages.length ? <div className="welcome">

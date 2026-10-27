@@ -1,6 +1,6 @@
 # myWorkHelper
 
-TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative studio (AI chat, images, lyrics), an 8-ball/9-ball pool game, a racing game with two tracks, and accounts/admin. Live multiplayer for pool and racing runs on a separate Node service in `server/` (Railway). The initial route must render this product, never a starter demo.
+TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative studio (AI chat, images, lyrics), an 8-ball/9-ball pool game, a racing game with two tracks, Thrill Park (an original 3D theme-park builder), and accounts/admin. Live multiplayer for pool, racing and Thrill Park runs on a separate Node service in `server/` (Railway). The initial route must render this product, never a starter demo.
 
 ## File map
 
@@ -17,6 +17,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/server/routes/account.ts`: `/api/pool-account` (login, logout, multiplayer tickets, ticket redeem), `/api/workspace-access`, `/api/account-settings`, `/api/workspace-admin`.
 - `src/server/routes/pool.ts`: `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay`.
 - `src/server/routes/racing.ts`: `/api/racing` tickets, lap records, paint profiles, AI skins.
+- `src/server/routes/park.ts`: `/api/park` multiplayer tickets (prefix `park:`), ticket redeem, and six gzip-compressed save slots per account.
 - `src/server/routes/scores.ts`: `/api/module-scores` leaderboards for embedded modules (GET `?module=`, POST `score` / `reset-records`). Board settings live in `src/lib/module-scores.ts`.
 - `src/server/routes/studio.ts` + `src/server/lyrics.ts`: `/api/studio`, `/api/library?id=` (version history only), `/api/asset`, `/api/learning`, `/api/lyric-presets`.
 - `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret.
@@ -28,18 +29,19 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `public/modules/*.html`: standalone modules (Sandlot Sluggers 3D, Sandlot Sluggers, BotWreck 3D, chess, checkers, 2048, Chopper Cave, Short Track Showdown) embedded in an iframe at `#module-<id>`. Sandlot Sluggers 3D (`sandlot3d.html`) loads three.js r128 from cdnjs and its character art from `public/modules/sprites/` and `public/modules/faces.png`. Online play in these uses PeerJS room codes, not the `server/` service.
 - `src/components/PoolTable.tsx`, `PoolLobby.tsx`, `CueArtwork.tsx`, `src/lib/pool-*.ts`, `src/lib/cue-design.ts`: pool.
 - `src/components/Racing.tsx`, `src/lib/racing.ts`, `server/racing-engine.mjs`: racing. Max Secure Circuit (`#racing`) and Oval Speedway (`#oval`) are separate modules; each mounts `Racing` with `fixedTrack`. Their page styling uses the `--lib-*` site tokens (scoped under `.racing-content`) and the module accent from `modules.ts`.
+- Thrill Park (`#park`, module id `park`): `server/park/` is the shared simulation (terrain, catalog, coaster track physics, commands, guest and staff AI, finances, snapshots; types in `index.d.mts`). `src/lib/park/` holds the dependency-free WebGL2 renderer (`gl.ts`, `models.ts`, `renderer.ts`), the local and online sessions (`session.ts`) and the saves client (`api.ts`). `src/components/park/ParkGame.tsx` is the menu and lobby, and `ParkHud.tsx` is the in-game interface. Thumbnail: `public/images/modules/park.webp`.
 - Leaderboards: 2048, Chopper Cave and BotWreck 3D load `public/modules/module-scores.js` and call `tlScores.submit(module, value)`; it posts to `/api/module-scores` and messages the parent `{type:'tl-score-saved'}` so `ModuleScoreboard.tsx` (shown under the module frame) refreshes. Boards list every saved result, top 10, so one player can hold several places. Short Track Showdown uses the racing lap records (`LapRecordBoard`) instead.
 
 ### Accounts and admin UI
 - `src/components/PoolAccount.tsx`: sign-in form. Signed-out visitors see `src/components/SignInRibbon.tsx` pinned at the top of the main panel and a highlighted sign-in form (`signin-spotlight`) at the top of every view except pool and racing, which show their own. `src/components/WorkspaceAdmin.tsx`: admin panel.
 
 ### Data
-- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets.
+- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets, park_saves.
 - Workers KV `thelibrary-files` (binding `FILES`) for binary files: `cue/<userId>`, `skin/<userId>/<asset>`, `image/<userId>/<creationId>`.
 - Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`. Config in `wrangler.jsonc`.
 
 ### Multiplayer server (`server/`)
-- `server/index.mjs` and `server/racing.mjs` verify players by redeeming tickets at `<site>/api/pool-account?action=redeem` and `<site>/api/racing?action=redeem`. `FRONTEND_ORIGIN` must list the site origin.
+- `server/index.mjs`, `server/racing.mjs` and `server/park.mjs` verify players by redeeming tickets at `<site>/api/pool-account?action=redeem`, `<site>/api/racing?action=redeem` and `<site>/api/park?action=redeem`. `FRONTEND_ORIGIN` must list the site origin.
 
 ## Conventions
 
@@ -75,6 +77,8 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 - `server/racing-engine.mjs` is shared by browser and server. Any change to it, or to server lobby/race code, requires redeploying the multiplayer service; bump the `/version` string in `server/index.mjs` and note it in `server/README.md`.
 - Keep single-player and multiplayer physics identical by changing the shared engine rather than duplicating logic in `Racing.tsx`.
 - Lap records are stored per track and mode. Short Track Showdown (`public/modules/shorttrack.html`) posts to `/api/racing` with track `shorttrack` (Showdown Bullring) `dells` (Dells Short Track) or `dirt` (Dells Dirt Oval, dirt handling; picked in the module menu via `?track=`) and modes `time-attack`, `race` (solo vs AI) and `multiplayer`; every completed lap by the signed-in driver is sent (every time attack lap, and every race lap until that driver takes the checkered flag), and boards list every lap, so one driver can hold several places. The truck body is the owner's race-truck model (lofted body, greenhouse, roll cage, fascia, bed wing), embedded in the module as `TM` and scaled to the physics size; liveries are conforming decal meshes on the sides, hood and roof. `src/components/LapRecordBoard.tsx` shows the all-time top 20 per mode (tabs) under each racing module page: Max Secure Circuit and Oval Speedway via `Racing.tsx`, Short Track Showdown under its iframe. `GET /api/racing?records` is public; the module posts `{type:'tl-lap',track}` to the parent after a saved lap so the board refreshes.
+- `server/park/` is shared by browser and server in the same way: change park rules there, never in the UI, and redeploy the multiplayer service afterwards. Online parks are server-authoritative: clients replay structural commands in server order, and dynamic state arrives in snapshots. Keep commands free of randomness so the replay stays identical.
+- Thrill Park is an original game. Keep its names, rides, scenarios and art original; do not copy assets, names or branding from commercial games.
 
 ## Development
 
