@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Short Track Showdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" data-num-fonts href="https://fonts.googleapis.com/css2?family=Racing+Sans+One&amp;family=Bebas+Neue&amp;family=Russo+One&amp;family=Bungee&amp;family=Bungee+Inline&amp;family=Black+Ops+One&amp;family=Orbitron:wght@900&amp;family=Graduate&amp;family=Alfa+Slab+One&amp;family=Faster+One&amp;family=Michroma&amp;family=Kanit:ital,wght@1,900&amp;family=Permanent+Marker&amp;family=Teko:wght@600&amp;family=Audiowide&amp;family=Anton&amp;family=Press+Start+2P&amp;family=Rye&amp;family=Fredoka:wght@700&amp;text=0123456789&amp;display=swap">
 <!--
   Short Track Showdown - single-file 3D stock race-truck short-track module for the library.
   Multiplayer is peer-to-peer over WebRTC (PeerJS public broker). One player hosts and shares
@@ -59,7 +62,7 @@ canvas#c{display:block;width:100%;height:100%}
 .btn.pri{background:var(--acc);color:#111}
 .row2{display:flex;gap:8px;align-items:flex-end}
 .row2>*{flex:1;min-width:0}
-label.f{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.6px}
+label.f,div.f{display:block;font-size:12px;color:var(--dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.6px}
 input,select{width:100%;padding:9px 10px;border-radius:7px;border:1px solid var(--line);background:#141a24;color:var(--txt);font:600 14px system-ui}
 input[type=color]{padding:2px;height:38px}
 .code{font:900 40px "Arial Black",monospace;letter-spacing:6px;color:var(--acc);margin:4px 0 10px}
@@ -84,7 +87,37 @@ input[type=color]{padding:2px;height:38px}
 .nav{display:flex;justify-content:space-between;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .nav .navb{width:auto;margin:0;min-width:120px;text-align:center;letter-spacing:.5px}
 #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);padding:10px 16px;font-weight:700;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
-@media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}}
+#scrGarage{width:min(460px,calc(100% - 48px))}
+.gview,.gplace{display:flex;gap:6px}
+.gview{margin:0 0 4px}
+.gview button,.gplace button,.numrow button{flex:1;padding:8px 6px;border:1px solid var(--line);border-radius:7px;background:#1a2230;color:var(--txt);font:800 12.5px system-ui;cursor:pointer}
+.gview button:hover,.gplace button:hover,.numrow button:hover{border-color:#5a6577}
+.gview button[aria-pressed="true"],.gplace button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:#111}
+.gsec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line);font:900 17px "Arial Black",Impact,sans-serif}
+.gsec b{color:var(--acc);font-variant-numeric:tabular-nums}
+.numrow{display:flex;gap:6px;align-items:stretch}
+.numrow input{flex:0 0 100px;font:900 26px/1 "Arial Black",Impact,sans-serif;text-align:center;padding:6px;letter-spacing:1px}
+.numrow button{flex:0 0 42px;font-size:18px}
+.numrow button.wide{flex:1;font-size:12.5px}
+.gsize{display:flex;align-items:center;gap:12px}
+.gsize input{flex:1;width:auto;padding:0;border:0;background:none;accent-color:var(--acc)}
+.gsize output{min-width:46px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+.scr p.gnote{font-size:12px;line-height:1.45;margin:6px 0 0}
+.gtiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.gtile{display:flex;flex-direction:column;align-items:stretch;gap:3px;min-width:0;padding:5px;border:1px solid var(--line);border-radius:8px;background:#161d28;color:var(--txt);cursor:pointer}
+.gtile:hover{border-color:#5a6577}
+.gtile[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:#2a2614}
+.gtile .gl{height:34px;display:grid;place-items:center;font-size:24px;line-height:1;overflow:hidden;white-space:nowrap}
+.gtile canvas{display:block;width:100%;height:34px;border-radius:4px}
+.gtile .nm{font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--dim);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gtile[aria-pressed="true"] .nm{color:var(--txt)}
+.gpresets{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.gpreset{height:30px;padding:3px;display:flex;gap:2px;border:1px solid var(--line);border-radius:7px;background:#161d28;cursor:pointer}
+.gpreset span{flex:1;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
+.gpreset[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+#scrGarage button:focus-visible,#scrGarage input:focus-visible,#scrGarage select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}
+  #scrGarage{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%;padding:16px}}
 </style>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
@@ -145,12 +178,25 @@ input[type=color]{padding:2px;height:38px}
   </div>
   <div id="scrGarage" class="scr panel hidden">
     <h2>Garage</h2>
-    <label class="f">Driver name</label><input id="gName" maxlength="20">
-    <div class="row2"><div><label class="f">Number</label><input id="gNum" maxlength="2" inputmode="numeric"></div><div><label class="f">Number style</label><select id="gStyle"></select></div></div>
-    <label class="f">Paint scheme</label><select id="gPat"></select>
-    <div class="row2"><div><label class="f">Primary</label><input type="color" id="gP1"></div><div><label class="f">Secondary</label><input type="color" id="gP2"></div><div><label class="f">Accent</label><input type="color" id="gP3"></div></div>
-    <div class="row2"><div><label class="f">Number color</label><input type="color" id="gNC"></div><div><label class="f">Number outline</label><input type="color" id="gNO"></div></div>
-    <button class="btn" data-act="rand">Randomize</button>
+    <div class="gview" role="group" aria-label="Camera"><button type="button" data-gview="door" aria-pressed="true">Door</button><button type="button" data-gview="roof" aria-pressed="false">Roof</button><button type="button" data-gview="rear" aria-pressed="false">Rear</button><button type="button" data-gview="spin" aria-pressed="false">Spin</button></div>
+    <label class="f" for="gName">Driver name</label><input id="gName" maxlength="20">
+    <label class="f" for="gPat">Paint scheme</label><select id="gPat"></select>
+    <div class="row2"><div><label class="f" for="gP1">Primary</label><input type="color" id="gP1"></div><div><label class="f" for="gP2">Secondary</label><input type="color" id="gP2"></div><div><label class="f" for="gP3">Accent</label><input type="color" id="gP3"></div></div>
+    <div class="gsec">Race number <b id="gNumShow"></b></div>
+    <label class="f" for="gNum">Number</label>
+    <div class="numrow"><input id="gNum" maxlength="3" inputmode="numeric" autocomplete="off" aria-describedby="gNumHelp"><button type="button" data-gnum="-1" aria-label="Number down one">&minus;</button><button type="button" data-gnum="1" aria-label="Number up one">+</button><button type="button" class="wide" data-gnum="rand">Random</button></div>
+    <p class="gnote" id="gNumHelp">Up to three digits. Leading zeros are kept, so 07 stays 07.</p>
+    <label class="f" for="gSize">Size</label>
+    <div class="gsize"><input type="range" id="gSize" min="60" max="150" step="5" aria-describedby="gSizeNote"><output id="gSizeOut" for="gSize"></output></div>
+    <p class="gnote" id="gSizeNote"></p>
+    <div class="f" id="gFontL">Font</div><div class="gtiles" id="gFonts" role="group" aria-labelledby="gFontL"></div>
+    <div class="f" id="gStyleL">Style</div><div class="gtiles" id="gStyles" role="group" aria-labelledby="gStyleL"></div>
+    <div class="f" id="gColL">Number colors</div><div class="gpresets" id="gPresets" role="group" aria-labelledby="gColL"></div>
+    <div class="row2"><div><label class="f" for="gNC">Fill</label><input type="color" id="gNC"></div><div><label class="f" for="gNO">Outline</label><input type="color" id="gNO"></div><div><label class="f" for="gNA">Accent</label><input type="color" id="gNA"></div></div>
+    <p class="gnote" id="gColorNote"></p>
+    <div class="f" id="gPlaceL">Placement</div>
+    <div class="gplace" role="group" aria-labelledby="gPlaceL"><button type="button" data-gplace="numDoors" aria-pressed="true">Doors</button><button type="button" data-gplace="numRoof" aria-pressed="true">Roof</button><button type="button" data-gplace="numTail" aria-pressed="true">Tailgate</button></div>
+    <button class="btn" data-act="rand">Randomize everything</button>
     <div class="nav"><button class="btn navb" data-act="back">&larr; BACK</button><button class="btn pri navb" data-act="back">SAVE &#10003;</button></div>
   </div>
   <div id="scrLobby" class="scr panel hidden">
@@ -185,6 +231,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from './shorttrack-numbers.js?v=1';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -614,26 +661,32 @@ function updSmoke(dt){for(const p of smoke){if(p.life<=0){p.s.visible=false;cont
 // ===================== LIVERIES =====================
 const PATTERNS=['solid','stripes','twotone','flames','panels','fade'];
 const PATTERN_NAMES={solid:'Solid',stripes:'Racing stripes',twotone:'Two-tone split',flames:'Flames',panels:'Door panels',fade:'Gradient fade'};
-const NUMSTYLES=['block','italic','outline','shadow'];
-const NUMSTYLE_NAMES={block:'Bold block',italic:'Italic',outline:'Heavy outline',shadow:'Drop shadow'};
 const NAMES=['Rusty Vance','Cole Hargrove','Dale Brenner','Jimmy Ashcroft','Tony Kessler','Bobby Lorne','Ricky Dalton','Cal Whitaker','Ward Pruitt','Ned Calloway','Sonny Reyes','Hank Tolliver','Jody Marsh','Kyle Benning','Luke Garrity','Marty Fenn','Dusty Shaw','Ray Corwin','Wes Halloran','Tate Morrow'];
 const PAL=['#d7263d','#1b998b','#2e86de','#f9c80e','#f86624','#662e9b','#141414','#f4f4f4','#43bccd','#0b6e4f','#ff6f91','#c0c0c0','#1d3557','#e9c46a','#8ac926','#ff9f1c'];
 const HEX=/^#[0-9a-f]{6}$/i;
-const DEFAULT_LV={name:'Player',number:'7',primary:'#d7263d',secondary:'#141414',accent:'#f9c80e',pattern:'stripes',numStyle:'italic',numColor:'#ffffff',numOutline:'#141414'};
+const DEFAULT_LV={name:'Player',number:'7',primary:'#d7263d',secondary:'#141414',accent:'#f9c80e',pattern:'stripes',numStyle:'block',numFont:'classic',numSlant:true,numSize:125,numColor:'#ffffff',numOutline:'#141414',numAccent:'#f9c80e',numDoors:true,numRoof:true,numTail:true};
 const PACE_LV={name:'Pace Car',number:'',primary:'#f4f4f4',secondary:'#141414',accent:'#ffb000',pattern:'stripes',numStyle:'block',numColor:'#111111',numOutline:'#ffffff',pace:true};
 function hexLum(h){const n=parseInt(h.slice(1),16);return(0.299*(n>>16&255)+0.587*(n>>8&255)+0.114*(n&255))/255;}
 function cleanLv(l){
-  l=l||{};const d=DEFAULT_LV,col=(v,f)=>HEX.test(v||'')?v:f;
-  return {name:(String(l.name||'').replace(/[<>]/g,'').slice(0,20).trim()||'Driver'),number:String(l.number??'').replace(/\D/g,'').slice(0,2),
+  l=l||{};const d=DEFAULT_LV,col=(v,f)=>HEX.test(v||'')?v:f,bool=(v,f)=>typeof v==='boolean'?v:f;
+  const italic=l.numStyle==='italic',size=parseFloat(l.numSize);
+  return {name:(String(l.name||'').replace(/[<>]/g,'').slice(0,20).trim()||'Driver'),number:String(l.number??'').replace(/\D/g,'').slice(0,3),
     primary:col(l.primary,d.primary),secondary:col(l.secondary,d.secondary),accent:col(l.accent,d.accent),
-    pattern:PATTERNS.includes(l.pattern)?l.pattern:'solid',numStyle:NUMSTYLES.includes(l.numStyle)?l.numStyle:'block',
-    numColor:col(l.numColor,'#ffffff'),numOutline:col(l.numOutline,'#111111')};
+    pattern:PATTERNS.includes(l.pattern)?l.pattern:'solid',
+    numStyle:!italic&&NUM_STYLE_IDS.includes(l.numStyle)?l.numStyle:'block',numFont:NUM_FONT_IDS.includes(l.numFont)?l.numFont:'classic',
+    numSlant:bool(l.numSlant,italic),numSize:Number.isFinite(size)?clamp(Math.round(size/5)*5,60,150):125,
+    numColor:col(l.numColor,'#ffffff'),numOutline:col(l.numOutline,'#111111'),numAccent:col(l.numAccent,col(l.accent,d.accent)),
+    numDoors:bool(l.numDoors,true),numRoof:bool(l.numRoof,true),numTail:bool(l.numTail,true)};
 }
 function randomLivery(r=Math.random,i=0){
   const pick=a=>a[Math.floor(r()*a.length)];const p=pick(PAL);let s=pick(PAL);while(s===p)s=pick(PAL);
   const dark=hexLum(p)>0.55;
-  return {name:NAMES[i%NAMES.length],number:String(1+Math.floor(r()*98)),primary:p,secondary:s,accent:pick(PAL),pattern:pick(PATTERNS),numStyle:pick(NUMSTYLES),numColor:dark?'#111111':'#ffffff',numOutline:dark?'#ffffff':'#111111'};
+  return {name:NAMES[i%NAMES.length],number:String(1+Math.floor(r()*98)),primary:p,secondary:s,accent:pick(PAL),pattern:pick(PATTERNS),
+    numStyle:pick(NUM_STYLE_IDS),numFont:pick(NUM_FONT_IDS),numSlant:r()<0.35,numSize:125,
+    numColor:dark?'#111111':'#ffffff',numOutline:dark?'#ffffff':'#111111',numAccent:pick(PAL),numDoors:true,numRoof:true,numTail:true};
 }
+const numArtOpts=lv=>({text:lv.number,font:lv.numFont,style:lv.numStyle,slant:lv.numSlant,fill:lv.numColor,outline:lv.numOutline,accent:lv.numAccent});
+const chipFont=lv=>{const f=numFontOf(lv.numFont);return `font-family:'${f.family}','Arial Black',sans-serif;font-weight:${f.weight};font-style:${f.italic?'italic':'normal'}`;};
 function drawPattern(g,w,h,lv,fl){
   const p1=lv.primary,p2=lv.secondary,a=lv.accent;g.fillStyle=p1;g.fillRect(0,0,w,h);
   const fx=fl?0:w,dir=fl?1:-1;
@@ -1532,7 +1585,6 @@ function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);retu
   }
   if(lv.pace){g.font=`900 ${0.32*pm}px Arial Black,Impact,sans-serif`;g.fillStyle='#111';g.fillText('PACE TRUCK',u(-0.4),vy(0.66),w*0.5);}
   else{
-    drawNumber(g,lv.number,u(0.15),vy(0.68),0.46*pm,lv,0.95*pm);
     drawSponsor(g,u(-2.38),vy(0.7),0.66*pm,0.26*pm,sponsorOf(lv));
     const cols=['#ffd60a','#ffffff','#111111','#2e86de','#ffffff','#d62828','#ffffff','#0b6e4f'],txt=['#111','#d62828','#fff','#fff','#1d3557','#fff','#111','#fff'];
     for(let i=0;i<8;i++){const cx=u(1.05)+(i%2?1:-1)*0.035*pm,cy=vy(0.62)+Math.floor(i/2)*0.075*pm;g.fillStyle=cols[i];g.fillRect(cx-0.03*pm,cy-0.03*pm,0.06*pm,0.06*pm);
@@ -1548,15 +1600,28 @@ function tmHoodTex(lv){return canvasTex(512,456,(g,w,h)=>{const pz=w/1.6,vx=x=>(
   if(lv.pattern==='stripes'||lv.pattern==='panels'){g.fillStyle=lv.secondary;g.fillRect(w/2-0.17*pz,0,0.34*pz,h);g.fillStyle=lv.accent;g.fillRect(w/2-0.2*pz,0,0.025*pz,h);g.fillRect(w/2+0.175*pz,0,0.025*pz,h);}
   if(lv.pace){g.font='900 90px Arial Black';g.fillStyle='#111';g.fillText('PACE',w/2,vx(1.8));}
   else drawSponsor(g,w/2,vx(1.75),1.05*pz,0.3*pz,sponsorOf(lv));});}
-function tmRoofTex(lv){return canvasTex(512,328,(g,w,h)=>{const pz=w/1.2;g.textAlign='center';g.textBaseline='middle';
-  if(lv.pace){g.font='900 120px Arial Black';g.fillStyle='#111';g.fillText('PACE',w/2,h/2);return;}
-  drawNumber(g,lv.number,w/2,h*0.52,0.55*pz,lv,w*0.8);});}
+function tmRoofTex(){return canvasTex(512,328,(g,w,h)=>{g.textAlign='center';g.textBaseline='middle';
+  g.font='900 120px Arial Black';g.fillStyle='#111';g.fillText('PACE',w/2,h/2);});}
+const NUM_PX={low:160,med:208,high:256};
+function mountNumbers(m,lv){
+  const N=m.numbers;
+  if(N){for(const d of N.meshes){m.tmg.remove(d);d.geometry.dispose();}N.mat.dispose();N.tex.dispose();
+    m.deform=m.deform.filter(p=>!N.meshes.some(d=>d.geometry===p.geo));m.paints=m.paints.filter(p=>p!==N.mat);m.numbers=null;}
+  if(lv.pace||!lv.number)return;
+  const cv=document.createElement('canvas'),art=drawNumberArt(cv,numArtOpts(lv),m.crisp?320:NUM_PX[quality]||208);if(!art)return;
+  const tex=makeNumberTexture(THREE,cv),mat=makeNumberMaterial(THREE,tex);
+  mat.userData.r0=mat.roughness;mat.userData.cc0=mat.clearcoat;mat.envMap=envTex;mat.envMapIntensity=ENVK;
+  if(envTex===envNight){mat.roughness=Math.max(0.5,mat.roughness);mat.clearcoat*=0.3;}
+  const meshes=buildNumberMeshes(THREE,TM,{material:mat,art,scale:lv.numSize/100,doors:lv.numDoors,roof:lv.numRoof,tail:lv.numTail});
+  for(const d of meshes){d.receiveShadow=true;m.tmg.add(d);m.deform.push({geo:d.geometry,orig:Float32Array.from(d.geometry.attributes.position.array)});}
+  m.paints.push(mat);m.numbers={meshes,mat,tex,art,fontOk:numFontReady(lv.numFont)};
+}
 function tmGrid(nu,nv,fn){const pos=[],uv=[],idx=[];
   for(let j=0;j<=nv;j++)for(let i=0;i<=nu;i++){const p=fn(i/nu,j/nv);pos.push(p[0],p[1],p[2]);uv.push(p[3],p[4]);}
   for(let j=0;j<nv;j++)for(let i=0;i<nu;i++){const a=j*(nu+1)+i,b=a+1,c=a+nu+1,d=c+1;idx.push(a,b,c,b,d,c);}
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();return geo;}
 function tmCabY(x,z){const h=TM.cabTop(x)-TM.CAB.yb;let y=TM.cabTop(x);for(let i=0;i<5;i++){const zw=TM.CAB.wb*(1-TM.CAB.tb*(y-TM.CAB.yb)/0.5),r=Math.min(1,Math.abs(z)/zw);y=TM.CAB.yb+h*Math.pow(Math.max(0,1-r**TM.CAB.n),1/TM.CAB.n);}return y;}
-function buildCar(lv){
+function buildCar(lv,o={}){
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);
   const {group:g,materials:M}=TM.buildTruck(THREE,{grilleTexture:TM_GRILLE});
   g.rotation.y=-Math.PI/2;g.scale.setScalar(TM_S);body.add(g);
@@ -1571,7 +1636,7 @@ function buildCar(lv){
       return [x,y,s*(TM.sideZ(x,y)+0.006),left?a:1-a,b];});
     decals.push(new THREE.Mesh(geo,decalMat(tmSideTex(lv,left))));}
   decals.push(new THREE.Mesh(tmGrid(24,30,(a,b)=>{const z=-0.8+a*1.6,x=1.08+b*1.42;return [x,TM.topY(x,z)+0.005,z,a,b];}),decalMat(tmHoodTex(lv))));
-  decals.push(new THREE.Mesh(tmGrid(24,16,(a,b)=>{const z=-0.6+a*1.2,x=-0.55+b*0.77;return [x,tmCabY(x,z)+0.006,z,a,b];}),decalMat(tmRoofTex(lv))));
+  if(lv.pace)decals.push(new THREE.Mesh(tmGrid(24,16,(a,b)=>{const z=-0.6+a*1.2,x=-0.55+b*0.77;return [x,tmCabY(x,z)+0.006,z,a,b];}),decalMat(tmRoofTex())));
   for(const d of decals){d.receiveShadow=true;g.add(d);}
   const deform=[{geo:bodyMesh.geometry,orig:Float32Array.from(bodyMesh.geometry.attributes.position.array),scuff:true},...decals.map(d=>({geo:d.geometry,orig:Float32Array.from(d.geometry.attributes.position.array)}))];
   const wheels=[];
@@ -1581,7 +1646,13 @@ function buildCar(lv){
   let light=null;
   if(lv.pace){light=new THREE.Mesh(new THREE.CapsuleGeometry(0.07,1.0,4,8).rotateZ(Math.PI/2),new THREE.MeshStandardMaterial({color:0x332200,emissive:0xffa000,emissiveIntensity:2}));light.position.set(0,1.5,-0.1);body.add(light);}
   const bumperF=new THREE.Group(),bumperR=new THREE.Group();body.add(bumperF,bumperR);
-  return {root,body,bodyMesh,orig:deform[0].orig,deform,wheels,bumperF,bumperR,paints,light,brakeMat:M.tail,tm:true};
+  const m={root,body,bodyMesh,orig:deform[0].orig,deform,wheels,bumperF,bumperR,paints,light,brakeMat:M.tail,tm:true,tmg:g,crisp:!!o.crisp,numbers:null};
+  mountNumbers(m,lv);
+  return m;
+}
+function refreshNumberFonts(){
+  const upd=c=>{if(!c)return;const N=c.m.numbers;if(N&&!N.fontOk&&numFontReady(c.lv.numFont))mountNumbers(c.m,c.lv);};
+  cars.forEach(upd);upd(menuCar);if(mode==='garage')renderGarage();
 }
 function deformCar(c,lp,dir,amt){
   const s=TM_S,L=[lp[2]/s,lp[1]/s,-lp[0]/s],D=[dir[2],dir[1],-dir[0]];
@@ -1602,7 +1673,7 @@ function deformCar(c,lp,dir,amt){
 class Car{
   constructor(id,lv,o={}){
     this.id=id;this.lv=lv;this.local=!!o.local;this.ai=!!o.ai;this.isPace=!!o.pace;this.isPlayer=!!o.player;
-    this.m=buildCar(lv);this.m.root.scale.setScalar(CFG.carScale);scene.add(this.m.root);
+    this.m=buildCar(lv,{crisp:this.isPlayer});this.m.root.scale.setScalar(CFG.carScale);scene.add(this.m.root);
     if(!this.isPlayer){this.tag=makeTag(lv);this.m.root.add(this.tag);}
     Object.assign(this,{x:0,z:0,h:0,vx:0,vz:0,vf:0,steer:0,av:0,thr:0,brk:0,slip:0,dmg:{f:0,r:0,l:0,rt:0},cross:0,sp:0,lapStart:null,lastLap:null,bestLap:null,
       fin:false,stopT:0,stuckT:0,cautioned:false,buf:[],vis:true,wheelRot:0,aLat:0,aLong:0,prevVf:0,prevH:0,lane:-3.6,passOff:0,aiDecel:0,fileLane:-3.6,laneT:0,skill:0.97,
@@ -2052,10 +2123,29 @@ function resize(){
   const f=$('mirrorFrame');f.style.width=MW+6+'px';f.style.height=MH+6+'px';
 }
 function setFov(f){if(Math.abs(camera.fov-f)>0.05){camera.fov=lerp(camera.fov,f,0.12);camera.updateProjectionMatrix();}}
+const CAM_ZOOM=0.8,_gp=new THREE.Vector3(),_gl=new THREE.Vector3(),menuLook=new THREE.Vector3();
+const GVIEWS={door:{p:[0.2,6.0,1.25],l:[0.1,0,0.75],fit:6.8},roof:{p:[-2.7,0,4.6],l:[-0.15,0,1.35],fit:2.4},rear:{p:[-8.0,1.0,1.45],l:[-2.4,0,0.8],fit:2.6}};
+let gView='door',viewShift='',viewAvail=1;
+function applyViewShift(){
+  let x=0,y=0;const w=wrap.clientWidth,h=wrap.clientHeight;
+  if(mode==='garage'){const r=$('scrGarage').getBoundingClientRect(),wr=wrap.getBoundingClientRect();
+    if(w>700)x=Math.round(Math.max(0,r.right-wr.left)/2);else y=Math.round(Math.max(0,wr.bottom-r.top)/2);}
+  viewAvail=Math.max(0.3,(w-2*x)/w);
+  const key=x+','+y+','+w+','+h;if(key===viewShift)return;viewShift=key;
+  if(x||y)camera.setViewOffset(w,h,-x,y,w,h);else camera.clearViewOffset();
+}
 function updCamera(dt){
   const inRace=player&&(mode==='race'||mode==='paused'||mode==='results');
-  if(!inRace){const c=menuCar;if(!c)return;const t=performance.now()/1000*0.22,y=heightAt(c.tp.s,c.tp.lat);
-    camera.up.set(0,1,0);camera.position.set(c.x+Math.sin(t)*7.5,y+2.2,c.z+Math.cos(t)*7.5);camera.lookAt(c.x,y+0.7,c.z);setFov(45);return;}
+  applyViewShift();
+  if(!inRace){const c=menuCar;if(!c)return;const y=heightAt(c.tp.s,c.tp.lat),v=mode==='garage'?GVIEWS[gView]:null;
+    if(v){const fx=Math.sin(c.h),fz=Math.cos(c.h),sx=Math.cos(c.h),sz=-Math.sin(c.h);
+      _gp.set(c.x+fx*v.p[0]+sx*v.p[1],y+v.p[2],c.z+fz*v.p[0]+sz*v.p[1]);_gl.set(c.x+fx*v.l[0]+sx*v.l[1],y+v.l[2],c.z+fz*v.l[0]+sz*v.l[1]);
+      const d=_gp.distanceTo(_gl),need=v.fit/(0.86*viewAvail*2*Math.tan(22.5*Math.PI/180)*camera.aspect);
+      if(need>d)_gp.sub(_gl).multiplyScalar(need/d).add(_gl);}
+    else{const t=performance.now()/1000*0.22,r=7.5*CAM_ZOOM;_gp.set(c.x+Math.sin(t)*r,y+0.7+1.5*CAM_ZOOM,c.z+Math.cos(t)*r);_gl.set(c.x,y+0.7,c.z);}
+    if(camera.position.distanceToSquared(_gp)>900){camera.position.copy(_gp);menuLook.copy(_gl);}
+    else{const k=1-Math.exp(-dt*4.5);camera.position.lerp(_gp,k);menuLook.lerp(_gl,k);}
+    camera.up.set(0,1,0);camera.lookAt(menuLook);setFov(45);return;}
   const c=player,pos=c.m.root.position;camH+=wrapA(c.h-camH)*(1-Math.exp(-dt*5));
   const fx=Math.sin(camH),fz=Math.cos(camH),spd=Math.abs(c.vf);
   _n.set(0,1,0).applyQuaternion(c.m.root.quaternion);
@@ -2064,7 +2154,7 @@ function updCamera(dt){
     camera.position.copy(pos).addScaledVector(_f,0.4*CFG.carScale).addScaledVector(_n,1.3*CFG.carScale);camera.up.copy(_n);
     _v.copy(camera.position).addScaledVector(_f,30).addScaledVector(_n,-0.6);camera.lookAt(_v);setFov(68+spd*0.2);
   }else{
-    const dist=(camMode==='far'?13.5:8.2)*CFG.carScale,hgt=(camMode==='far'?4.8:2.9)*CFG.carScale;
+    const dist=(camMode==='far'?13.5:8.2)*CFG.carScale*CAM_ZOOM,hgt=(camMode==='far'?4.8:2.9)*CFG.carScale*CAM_ZOOM;
     _v.set(pos.x-fx*dist,pos.y+hgt,pos.z-fz*dist);
     if(camSnap){camera.position.copy(_v);camSnap=false;}else camera.position.lerp(_v,1-Math.exp(-dt*8));
     camera.up.set(0,1,0);camera.lookAt(pos.x+fx*5,pos.y+1.0,pos.z+fz*5);setFov(60+spd*0.28);
@@ -2127,7 +2217,7 @@ function hudUpdate(){
   const ah=st[i-1],bh=st[i+1],ref=Math.max(15,Math.abs(me.vf));
   E.gaps.innerHTML=(ah?`&#9650; ${gapStr(ah.prog-me.prog,ref)} to #${esc(ah.lv.number)}`:'Leading')+'<br>'+(bh?`&#9660; ${gapStr(me.prog-bh.prog,ref)} to #${esc(bh.lv.number)}`:'');
   if(race.ph==='attack'){const L2=REC.lists['time-attack'];E.board.innerHTML='<div class="row"><b>Fastest laps</b></div>'+(L2?L2.length?L2.map((r,k)=>`<div class="row"><span class="p">${k+1}</span><span class="nm">${esc(r.username)}</span><span class="gp">${fmtLap(r.milliseconds)}</span></div>`).join(''):'<div class="row">No laps yet</div>':'<div class="row">Sign in on the library to save laps</div>');}
-  else E.board.innerHTML=st.map((c,k)=>`<div class="row${c===me?' me':''}"><span class="p">${k+1}</span><span class="num" style="background:${c.lv.primary};color:${c.lv.numColor}">${esc(c.lv.number)}</span><span class="nm">${esc(c.lv.name)}</span><span class="gp">${k===0?'Leader':gapStr(st[0].prog-c.prog,30)}</span></div>`).join('');
+  else E.board.innerHTML=st.map((c,k)=>`<div class="row${c===me?' me':''}"><span class="p">${k+1}</span><span class="num" style="background:${c.lv.primary};color:${c.lv.numColor};${chipFont(c.lv)}">${esc(c.lv.number)}</span><span class="nm">${esc(c.lv.name)}</span><span class="gp">${k===0?'Leader':gapStr(st[0].prog-c.prog,30)}</span></div>`).join('');
   const [txt,bg,fg]=flagState();E.flag.textContent=txt;E.flag.style.background=bg==='checker'?'repeating-conic-gradient(#111 0 25%,#eee 0 50%) 0 0/14px 14px':bg;E.flag.style.color=fg;
   if(txt==='WHITE FLAG'&&!race.white){race.white=true;bigMsg('WHITE FLAG','One to go',2);flagMat.color.set(0xffffff);}
   let tot=0;for(const z in DZ){const v=me.dmg[z];tot+=v;DZ[z].style.background=v<8?'#2a3a2f':v<35?'#8a8a2a':v<65?'#d9a400':'#d62828';}
@@ -2147,14 +2237,14 @@ function spotter(dt){
 function showScreen(id){for(const s of document.querySelectorAll('.scr'))s.classList.toggle('hidden',s.id!==id);}
 function showResults(){
   const st=standings();
-  $('resTable').innerHTML='<tr><th>Pos</th><th>#</th><th>Driver</th><th>Laps</th><th>Best</th><th></th></tr>'+st.map((c,i)=>`<tr${c===player?' style="background:rgba(255,204,0,.15)"':''}><td>${i+1}</td><td><b style="display:inline-block;min-width:26px;text-align:center;border-radius:3px;background:${c.lv.primary};color:${c.lv.numColor}">${esc(c.lv.number)}</b></td><td>${esc(c.lv.name)}</td><td>${clamp(c.cross-2,0,race.laps)}</td><td>${fmt(c.bestLap)}</td><td>${c.fin||race.ph==='attack'?'':'DNF'}</td></tr>`).join('');
+  $('resTable').innerHTML='<tr><th>Pos</th><th>#</th><th>Driver</th><th>Laps</th><th>Best</th><th></th></tr>'+st.map((c,i)=>`<tr${c===player?' style="background:rgba(255,204,0,.15)"':''}><td>${i+1}</td><td><b style="display:inline-block;min-width:26px;padding:0 3px;text-align:center;border-radius:3px;background:${c.lv.primary};color:${c.lv.numColor};${chipFont(c.lv)}">${esc(c.lv.number)}</b></td><td>${esc(c.lv.name)}</td><td>${clamp(c.cross-2,0,race.laps)}</td><td>${fmt(c.bestLap)}</td><td>${c.fin||race.ph==='attack'?'':'DNF'}</td></tr>`).join('');
   $('againBtn').classList.toggle('hidden',!NET.host);$('againWait').classList.toggle('hidden',NET.host);$('againBtn').textContent=race.ph==='attack'?'New Time Attack session':'Race again';
   E.hud.classList.add('hidden');mode='results';showScreen('scrResults');
 
 }
 function renderLobby(){
   $('lobTitle').textContent=(NET.online?'Online lobby':'Solo race')+` \u00b7 ${TRACK.name}`;$('codeBox').classList.toggle('hidden',!NET.online);$('codeTxt').textContent=NET.code;
-  $('plist').innerHTML=[...NET.players.values()].map(p=>`<div><b style="display:inline-block;min-width:30px;padding:0 4px;margin-right:6px;border-radius:3px;text-align:center;background:${p.lv.primary};color:${p.lv.numColor}">${esc(p.lv.number)}</b>${esc(p.lv.name)}${p.id==='host'&&NET.online?' <span style="color:var(--dim)">(host)</span>':''}</div>`).join('');
+  $('plist').innerHTML=[...NET.players.values()].map(p=>`<div><b style="display:inline-block;min-width:30px;padding:0 4px;margin-right:6px;border-radius:3px;text-align:center;background:${p.lv.primary};color:${p.lv.numColor};${chipFont(p.lv)}">${esc(p.lv.number)}</b>${esc(p.lv.name)}${p.id==='host'&&NET.online?' <span style="color:var(--dim)">(host)</span>':''}</div>`).join('');
   document.querySelector('[data-steps="lobby"]').innerHTML=NET.host?stepsHtml('multi',4):'';
   $('hostSum').textContent=`${TRACK.name} \u00b7 ${settings.laps} laps \u00b7 ${settings.ai} AI trucks (${settings.diff||'medium'}) \u00b7 ${settings.night?'night':'day'}`;
   $('lobbyStart').classList.toggle('hidden',!NET.host);
@@ -2173,14 +2263,59 @@ function chatLine(n,m){const d=document.createElement('div');d.innerHTML=n?`<b>$
 function sendChat(){const m=$('chatIn').value.trim();if(!m)return;$('chatIn').value='';if(NET.host){const msg={t:'chat',n:myLv.name,m};sendAll(msg);chatLine(msg.n,m);}else sendHost({t:'chat',m});}
 
 // garage
-const G={name:'gName',number:'gNum',numStyle:'gStyle',pattern:'gPat',primary:'gP1',secondary:'gP2',accent:'gP3',numColor:'gNC',numOutline:'gNO'};
-$('gStyle').innerHTML=NUMSTYLES.map(s=>`<option value="${s}">${NUMSTYLE_NAMES[s]}</option>`).join('');
+const G={name:'gName',number:'gNum',pattern:'gPat',primary:'gP1',secondary:'gP2',accent:'gP3',numColor:'gNC',numOutline:'gNO',numAccent:'gNA',numSize:'gSize'};
+const PAINT_KEYS=['name','pattern','primary','secondary','accent'];
 $('gPat').innerHTML=PATTERNS.map(s=>`<option value="${s}">${PATTERN_NAMES[s]}</option>`).join('');
-function fillGarage(){for(const k in G)$(G[k]).value=myLv[k];}
-let gT=0;
-function readGarage(){const l={};for(const k in G)l[k]=$(G[k]).value;if(REC.me)l.name=REC.me;myLv=cleanLv(l);if(!myLv.number)myLv.number='0';store.set('sts_livery',myLv);clearTimeout(gT);gT=setTimeout(rebuildMenuCar,120);}
+const gTile=(cls,label)=>{const b=document.createElement('button');b.type='button';b.className='gtile';const top=document.createElement(cls==='gl'?'span':'canvas');
+  if(cls==='gl')top.className='gl';else top.setAttribute('aria-hidden','true');const n=document.createElement('span');n.className='nm';n.textContent=label;b.append(top,n);return b;};
+for(const f of NUM_FONTS){const b=gTile('gl',f.name);b.dataset.gfont=f.id;b.setAttribute('aria-label',`${f.name} font`);
+  Object.assign(b.firstChild.style,{fontFamily:`'${f.family}','Arial Black',sans-serif`,fontWeight:String(f.weight),fontStyle:f.italic?'italic':'normal'});$('gFonts').append(b);}
+for(const s of NUM_STYLES){const b=gTile('cv',s.name);b.dataset.gstyle=s.id;b.setAttribute('aria-label',`${s.name} style`);$('gStyles').append(b);}
+{const b=gTile('cv','Slant');b.dataset.gslant='1';b.setAttribute('aria-label','Slant the number');$('gStyles').append(b);}
+for(const p of NUM_PRESETS){const b=document.createElement('button');b.type='button';b.className='gpreset';b.dataset.gpreset=p.id;b.title=p.name;b.setAttribute('aria-label',p.name);
+  for(const c of [p.fill,p.outline,p.accent]){const s=document.createElement('span');s.style.background=c;b.append(s);}$('gPresets').append(b);}
+const sizeArt=document.createElement('canvas');
+function renderGarage(){
+  const n=myLv;$('gNumShow').textContent=n.number?'#'+n.number:'';
+  for(const k in G){const el=$(G[k]);if(document.activeElement!==el&&String(el.value)!==String(n[k]))el.value=n[k];}
+  $('gSizeOut').textContent=n.numSize+'%';
+  for(const b of document.querySelectorAll('[data-gfont]')){b.setAttribute('aria-pressed',b.dataset.gfont===n.numFont);b.firstChild.textContent=n.number||'00';}
+  for(const b of document.querySelectorAll('[data-gstyle]'))b.setAttribute('aria-pressed',b.dataset.gstyle===n.numStyle);
+  $('gStyles').querySelector('[data-gslant]').setAttribute('aria-pressed',n.numSlant);
+  for(const b of document.querySelectorAll('[data-gpreset]')){const p=NUM_PRESETS.find(x=>x.id===b.dataset.gpreset);b.setAttribute('aria-pressed',p.fill===n.numColor&&p.outline===n.numOutline&&p.accent===n.numAccent);}
+  for(const b of document.querySelectorAll('[data-gplace]'))b.setAttribute('aria-pressed',!!n[b.dataset.gplace]);
+  for(const b of document.querySelectorAll('[data-gview]'))b.setAttribute('aria-pressed',b.dataset.gview===gView);
+  $('gColorNote').textContent=(NUM_STYLES.find(s=>s.id===n.numStyle)||NUM_STYLES[0]).roles;
+  const opts=numArtOpts({...n,number:n.number||'00'});
+  for(const b of document.querySelectorAll('[data-gstyle]'))drawNumberPreview(b.firstChild,{...opts,style:b.dataset.gstyle},n.primary);
+  drawNumberPreview($('gStyles').querySelector('[data-gslant]').firstChild,{...opts,slant:true},n.primary);
+  const art=drawNumberArt(sizeArt,opts,120),spots=[['numDoors','door','The doors'],['numRoof','roof','The roof'],['numTail','tail','The tailgate']].filter(([k])=>n[k]);
+  const capped=spots.filter(([,s])=>numberCapped(NUM_SPOTS[s],art,n.numSize/100)).map(([,,name])=>name);
+  $('gSizeNote').textContent=!spots.length?'Turn on a placement below to show the number on the truck.'
+    :capped.length?`${capped.join(' and ')} ${capped.length>1?'are':'is'} as full as ${capped.length>1?'they get':'it gets'}, so the number stops growing there past this size.`
+    :'100% is the original number size; 125% is 25% larger.';
+}
+function fillGarage(){renderGarage();}
+let gT=0,gNumT=0;
+function commitGarage(l){
+  myLv=cleanLv(l);if(!myLv.number)myLv.number='0';store.set('sts_livery',myLv);renderGarage();
+  if(menuCar&&PAINT_KEYS.every(k=>menuCar.lv[k]===myLv[k])){menuCar.lv=myLv;cancelAnimationFrame(gNumT);gNumT=requestAnimationFrame(()=>mountNumbers(menuCar.m,menuCar.lv));return;}
+  clearTimeout(gT);gT=setTimeout(rebuildMenuCar,120);
+}
+function readGarage(){const l={...myLv};for(const k in G)l[k]=$(G[k]).value;if(REC.me)l.name=REC.me;commitGarage(l);}
 function rebuildMenuCar(){if(menuCar)menuCar.dispose();menuCar=new Car('menu',myLv,{player:true});menuCar.place(S_LINE+6,-2);menuCar.m.root.visible=!player;}
 for(const k in G)$(G[k]).addEventListener('input',readGarage);
+$('scrGarage').addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  if(d.gview){gView=d.gview;renderGarage();}
+  else if(d.gfont){commitGarage({...myLv,numFont:d.gfont});loadNumFont(d.gfont).then(refreshNumberFonts);}
+  else if(d.gstyle)commitGarage({...myLv,numStyle:d.gstyle});
+  else if(d.gslant)commitGarage({...myLv,numSlant:!myLv.numSlant});
+  else if(d.gpreset){const p=NUM_PRESETS.find(x=>x.id===d.gpreset);commitGarage({...myLv,numColor:p.fill,numOutline:p.outline,numAccent:p.accent});}
+  else if(d.gplace)commitGarage({...myLv,[d.gplace]:!myLv[d.gplace]});
+  else if(d.gnum==='rand'){let v;do{v=String(1+Math.floor(Math.random()*99));}while(v===myLv.number);commitGarage({...myLv,number:v});}
+  else if(d.gnum){const t=myLv.number,v=((parseInt(t||'0',10)+Number(d.gnum))%1000+1000)%1000;let s=String(v);if(t.length>s.length)s=s.padStart(t.length,'0');commitGarage({...myLv,number:s.slice(-3)});}
+});
 ['sLaps','sAI','sTime','sDiff'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();setNight(settings.night);broadcastLobby();}));
 const WIZ={flow:'solo',track:TRACK_ID};
 const FLOW_STEPS={attack:['Mode','Track','Setup'],solo:['Mode','Track','Setup'],multi:['Mode','Host or join','Track','Setup','Lobby']};
@@ -2213,7 +2348,7 @@ function act(a){
     case 'setup-next':wizardNext();break;
     case 'host':startHost(true);break;
     case 'join':doJoin();break;
-    case 'garage':mode='garage';fillGarage();showScreen('scrGarage');break;
+    case 'garage':mode='garage';showScreen('scrGarage');fillGarage();break;
     case 'back':readGarage();mode='menu';showScreen('scrMain');break;
     case 'rand':{const nm=myLv.name;myLv=cleanLv({...randomLivery(Math.random,0),name:nm});fillGarage();readGarage();}break;
     case 'fs':if(document.fullscreenElement)document.exitFullscreen();else wrap.requestFullscreen&&wrap.requestFullscreen().catch(()=>{});break;
@@ -2294,6 +2429,7 @@ addEventListener('message',e=>{
 // ===================== INIT =====================
 {const room=new URLSearchParams(location.search).get('room');if(room){$('joinCode').value=room.toUpperCase().replace(/[^A-Z]/g,'').slice(0,5);setTimeout(doJoin,300);}}
 rebuildMenuCar();applyQuality();setNight(false);showScreen('scrMain');requestAnimationFrame(frame);
+NUM_FONTS.forEach(f=>loadNumFont(f.id).then(refreshNumberFonts));
 {const q=new URLSearchParams(location.search),fl=q.get('flow');if(FLOW_STEPS[fl]&&!q.get('room')){WIZ.flow=fl;WIZ.track=TRACK_ID;q.delete('flow');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:''));showSetup();}}
 </script>
 </body>
