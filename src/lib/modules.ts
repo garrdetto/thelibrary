@@ -1,4 +1,5 @@
 export const embeddedModules = [
+  { id: 'sandlot3d', title: 'Sandlot Sluggers 3D', src: '/modules/sandlot3d.html' },
   { id: 'sandlot', title: 'Sandlot Sluggers', src: '/modules/sandlot.html' },
   { id: 'botwreck', title: 'BotWreck 3D', src: '/modules/botwreck.html' },
   { id: 'chess', title: 'Chess', src: '/modules/chess.html' },
@@ -31,6 +32,7 @@ export type LearningModule = {
 export const moduleGroups: ModuleSubject[] = ['Strategy', 'Physics', 'Math', 'Precision']
 
 export const learningModules: LearningModule[] = [
+  { id: 'sandlot3d', title: 'Sandlot Sluggers 3D', subject: 'Sports science', group: 'Physics', summary: 'Bat timing, launch angles and baserunning in full 3D. Draft nine, read the pitch, steal and bunt across four ballparks, including a dome modeled on American Family Field.', modes: ['Solo', '3D'], image: '/images/modules/sandlot3d.webp', accent: '#f4bf3a' },
   { id: 'sandlot', title: 'Sandlot Sluggers', subject: 'Sports science', group: 'Physics', summary: 'Timing windows, launch angles and team strategy on a neighborhood diamond. Draft a roster and run a full season.', modes: ['Solo', '2 on 1 screen', 'Online room'], image: '/images/modules/sandlot.webp', accent: '#ffb547' },
   { id: 'botwreck', title: 'BotWreck 3D', subject: 'Engineering', group: 'Physics', summary: 'Pick a robot vehicle frame, then test momentum, impact force and structural failure in a 3D crash lab.', modes: ['Solo', '3D'], image: '/images/modules/botwreck.webp', accent: '#ff5a36' },
   { id: 'pool', title: '8-Ball Pool', subject: 'Geometry', group: 'Math', summary: 'Angles, spin and shot planning across 8-ball and 9-ball. Challenge anyone who is online.', modes: ['Practice', 'Live 1v1'], image: '/images/modules/pool.webp', accent: '#2fd6a3' },
