@@ -341,7 +341,7 @@ export function GroupChat({ username, onSignIn, module, activityLabels, requestR
     </section>}
     <div className="gc-dock">
       <button type="button" className={`group-chat-toggle${unreadTotal ? ' has-unread' : ''}${unreadTotal && !open ? ' is-blinking' : ''}`} aria-label={unreadTotal ? `Chat, ${unreadTotal} unread` : 'Chat'} aria-expanded={open} onClick={() => setOpen(value => !value)}>
-        {open ? <X size={20}/> : <MessageCircle size={21}/>}
+        {open ? <X size={40}/> : <MessageCircle size={42}/>}
         {!open && unreadTotal > 0 && <i aria-hidden="true"/>}
       </button>
       {onlineCount !== null && <button type="button" className="gc-online-bar" aria-label={`${onlineText}. Open chat.`} onClick={() => { setOpen(true); if (username) setPane({ kind: 'online' }) }}>
