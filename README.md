@@ -1,6 +1,6 @@
 # myWorkHelper
 
-A creative workspace with AI chat, image generation, a lyric studio, 8-ball/9-ball pool and racing, running on Cloudflare Workers.
+A creative workspace with AI chat, image generation, a lyric studio, 8-ball/9-ball pool, racing, Thrill Park (a 3D theme-park builder) and more, running on Cloudflare Workers.
 
 ## Accounts
 
@@ -31,6 +31,12 @@ Local development:
 pnpm install
 pnpm dev
 ```
+
+## Thrill Park
+
+A 3D theme-park builder and management game. Sculpt land and water, lay footpaths and queue lines, build eight kinds of flat rides, design roller coasters piece by piece (four track styles with chain lifts, boosters, brakes and loops, physics-based test runs with excitement, intensity and nausea ratings), and run shops and stalls. You also hire handymen, mechanics and entertainers, set prices, take out loans, run marketing campaigns, and ride your coasters with an on-ride camera. Guests have needs, preferences and thoughts. There are six solo scenarios with objectives, plus a sandbox.
+
+Multiplayer runs on the same Node service: co-op parks for up to four players (start fresh or from a save), and versus matches for two to four players on mirrored valleys. Signed-in players get six cloud save slots. Saving needs the `park_saves` table from `migrations/0006_park_saves.sql`.
 
 ## Multiplayer
 
