@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Maple Street — Neighborhood Builder</title>
+  <meta name="description" content="Buy a lot, build and furnish a house, mow lawns, run deliveries and manage a capped bank loan in a shared 3D neighborhood." />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.172.0/build/three.webgpu.min.js",
+      "three/webgpu": "https://unpkg.com/three@0.172.0/build/three.webgpu.min.js",
+      "three/tsl": "https://unpkg.com/three@0.172.0/build/three.tsl.min.js",
+      "three/addons/": "https://unpkg.com/three@0.172.0/examples/jsm/",
+      "@dimforge/rapier3d-compat": "https://unpkg.com/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
+    }
+  }
+  </script>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
+  <script src="https://unpkg.com/colyseus.js@0.15.28/dist/colyseus.js" defer></script>
+  <style>
+    :root {
+      --panel: rgba(18, 21, 26, 0.78);
+      --line: rgba(255, 255, 255, 0.09);
+      --ink: #eef0f2;
+      --mute: #9aa3ad;
+      --accent: #f2b544;
+      --good: #5cd17a;
+      --bad: #ef5b4c;
+      --r: 10px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1014; color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app canvas { display: block; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    .ui { position: fixed; z-index: 10; }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+    /* ---------- start screen */
+    #start { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: radial-gradient(1200px 600px at 30% 20%, #2b3a2a 0%, #12171c 60%); }
+    #start .card { width: min(420px, calc(100vw - 32px)); padding: 28px; }
+    #start h1 { margin: 0 0 4px; font: 600 30px/1.1 Georgia, serif; letter-spacing: 0.2px; }
+    #start p { margin: 0 0 20px; color: var(--mute); }
+    #start label { display: block; margin: 12px 0 6px; color: var(--mute); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+    #start input[type=text] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.05); color: var(--ink); font: inherit; }
+    #start input[type=color] { width: 48px; height: 36px; border: none; background: none; padding: 0; }
+    #start .row { display: flex; gap: 12px; align-items: end; }
+    #start .row > div:first-child { flex: 1; }
+    #start .primary { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--accent); color: #1b1406; font-weight: 700; font-size: 15px; }
+    #start .join { align-items: stretch; gap: 8px; }
+    #start .join .btn { padding: 9px 12px; white-space: nowrap; }
+    #start .join input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 3px; text-align: center; }
+    #start details { margin-top: 14px; color: var(--mute); }
+    #start summary { cursor: pointer; font-size: 12px; }
+    #start.loading button { opacity: 0.6; pointer-events: none; }
+    #start small { display: block; margin-top: 8px; color: var(--mute); }
+    #startStatus { margin-top: 14px; min-height: 18px; color: var(--accent); }
+    #start .card { max-height: calc(100vh - 32px); overflow-y: auto; }
+    button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #roomBox { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-radius: 8px; background: rgba(242,181,68,0.12); border: 1px solid rgba(242,181,68,0.4); }
+    #roomBox[hidden] { display: none; }
+    #roomCode { font: 700 18px ui-monospace, monospace; letter-spacing: 3px; color: var(--accent); }
+    #roomLabel { color: var(--mute); font-size: 11px; }
+    @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
+
+    body:not(.playing) .hud { display: none !important; }
+
+    /* ---------- status bar */
+    #status { top: 12px; left: 12px; display: flex; align-items: stretch; gap: 1px; padding: 0; overflow: hidden; }
+    #status > div { padding: 8px 14px; background: rgba(255,255,255,0.02); }
+    #modeLabel { font-weight: 800; letter-spacing: 0.12em; color: var(--accent); }
+    #money { font-weight: 700; color: var(--good); font-variant-numeric: tabular-nums; }
+    #debt, #net, #perf { color: var(--mute); }
+    #status .sep { width: 1px; background: var(--line); padding: 0 !important; }
+
+    /* ---------- hints / prompts / toasts */
+    #hint { bottom: 168px; left: 50%; transform: translateX(-50%); padding: 7px 14px; display: none; white-space: nowrap; }
+    body[data-mode=build] #hint { display: block; }
+    #hint.bad { color: #ffb3aa; border-color: rgba(239,91,76,0.4); }
+    #prompt { bottom: 90px; left: 50%; transform: translateX(-50%); padding: 10px 18px; font-weight: 600; display: none; }
+    #toast { top: 64px; left: 50%; transform: translate(-50%, -8px); padding: 10px 16px; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; max-width: calc(100vw - 32px); }
+    #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    /* ---------- build palette */
+    #palette { left: 12px; right: 12px; bottom: 12px; display: none; gap: 12px; padding: 10px; align-items: stretch; }
+    body[data-mode=build] #palette { display: flex; }
+    #palette section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    #palette h3 { margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mute); font-weight: 600; }
+    #tools { display: grid; grid-template-columns: repeat(5, 62px); gap: 4px; }
+    .tool { background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 8px; padding: 6px 2px; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 10px; }
+    .tool .ico { font-size: 17px; line-height: 1; }
+    .tool.on, .item.on { border-color: var(--accent); background: rgba(242,181,68,0.14); }
+    .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+    .swatch { width: 28px; height: 28px; border-radius: 6px; border: 2px solid transparent; }
+    .swatch.on { border-color: var(--accent); }
+    #catalog { flex: 1; display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 1fr); gap: 4px; overflow-x: auto; min-width: 0; }
+    .item { text-align: left; background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; min-width: 150px; }
+    .item b { display: block; font-weight: 600; font-size: 12px; }
+    .item small { color: var(--mute); font-size: 10px; text-transform: capitalize; }
+    #levels { display: flex; align-items: center; gap: 6px; }
+    #levels button, .btn { background: rgba(255,255,255,0.06); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; }
+    select, input[type=range] { accent-color: var(--accent); }
+    select { background: #1c2026; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 4px; }
+
+    /* ---------- live side panel */
+    #side { top: 12px; right: 12px; width: 250px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+    body[data-mode=build] #side { display: none; }
+    #side h3 { margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mute); }
+    #garage { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    #jobText { color: var(--mute); }
+    .keys { color: var(--mute); font-size: 11px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+    .keys b { color: var(--ink); font-weight: 600; }
+
+    /* ---------- bank */
+    #bank { inset: 0; display: none; place-items: center; align-items: center; justify-content: center; background: rgba(0,0,0,0.45); z-index: 30; }
+    #bank .card { width: min(380px, calc(100vw - 32px)); padding: 22px; }
+    #bank h2 { margin: 0 0 12px; font: 600 22px Georgia, serif; }
+    #bankInfo div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--line); }
+    #bankInfo p { color: var(--mute); font-size: 12px; }
+    #bank .actions { display: flex; gap: 8px; margin-top: 12px; }
+    #bank input { flex: 1; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.05); color: var(--ink); font: inherit; min-width: 0; }
+    #bankBorrow { background: var(--accent); color: #1b1406; border: none; font-weight: 700; }
+
+    @media (max-width: 900px) {
+      #side { display: none; }
+      #palette { flex-direction: column; max-height: 55vh; overflow-y: auto; }
+      #tools { grid-template-columns: repeat(5, 1fr); }
+      #status { flex-wrap: wrap; right: 12px; }
+      #perf, #net { display: none; }
+    }
+  </style>
+</head>
+<body data-mode="live">
+  <div id="app"></div>
+
+  <div id="start">
+    <div class="card panel">
+      <h1>Maple Street</h1>
+      <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank — alone or with neighbors online.</p>
+      <div class="row">
+        <div><label for="pName">Your name</label><input id="pName" type="text" maxlength="20" placeholder="Neighbor" autocomplete="nickname" /></div>
+        <div><label for="pColor">Shirt</label><input id="pColor" type="color" value="#3a7bd5" /></div>
+      </div>
+      <button id="playSolo" class="primary">Explore solo</button>
+      <small>Runs entirely on this device with simulated neighbors. Progress is saved in this browser when storage is allowed.</small>
+      <label>Online room</label>
+      <div class="row join">
+        <button id="playHost" class="btn">Host a room</button>
+        <input id="pCode" type="text" maxlength="6" placeholder="CODE" aria-label="Room code" />
+        <button id="playJoin" class="btn">Join</button>
+      </div>
+      <small id="onlineNote">Hosting gives you a 6-letter code for up to 8 neighbors. Your browser runs the neighborhood.</small>
+      <details>
+        <summary>More connection options</summary>
+        <div class="row join">
+          <button id="playTabs" class="btn">Same-device tabs</button>
+        </div>
+        <label for="pServer">Colyseus server</label>
+        <div class="row join">
+          <input id="pServer" type="text" placeholder="wss://your-server:2567" />
+          <button id="playServer" class="btn">Connect</button>
+        </div>
+      </details>
+      <div id="startStatus" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div id="status" class="ui panel hud">
+    <div id="modeLabel">LIVE</div><div class="sep"></div>
+    <div id="clock">Day 1 · 8:30 AM</div><div class="sep"></div>
+    <div id="money">$0</div><div id="debt">Debt-free</div><div class="sep"></div>
+    <div id="net">connecting</div><div id="perf"></div>
+  </div>
+
+  <div id="side" class="ui panel hud">
+    <h3>Neighborhood</h3>
+    <div id="roomLabel">Connecting…</div>
+    <div id="roomBox" hidden><span>Room code</span><span id="roomCode"></span></div>
+    <h3>Garage</h3>
+    <div id="garage">
+      <button class="btn" data-spawn="truck">Recall truck</button>
+      <button class="btn" data-spawn="mower">Riding mower</button>
+      <button class="btn" data-spawn="golfcart">Golf cart</button>
+      <button class="btn" data-spawn="atv">Four-wheeler</button>
+      <button class="btn" data-spawn="sedan">Sedan</button>
+    </div>
+    <h3>Work</h3>
+    <div id="jobText">No active delivery.</div>
+    <button class="btn" id="jobBtn">Get delivery job (J)</button>
+    <div class="keys">
+      <b>WASD</b><span>walk / drive</span>
+      <b>Shift</b><span>run / brake</span>
+      <b>Space</b><span>jump / handbrake</span>
+      <b>E</b><span>enter · exit · bank</span>
+      <b>T</b><span>hitch / unhitch trailer</span>
+      <b>R</b><span>flip vehicle upright</span>
+      <b>B</b><span>build mode</span>
+      <b>Right-drag</b><span>look around</span>
+    </div>
+  </div>
+
+  <div id="hint" class="ui panel hud"></div>
+  <div id="prompt" class="ui panel hud"></div>
+  <div id="toast" class="ui panel hud"></div>
+
+  <div id="palette" class="ui panel hud">
+    <section><h3>Tools</h3><div id="tools"></div></section>
+    <section>
+      <h3>Exterior</h3><div class="swatches" id="wallStyles"></div>
+      <h3>Floor</h3><div class="swatches" id="floorMats"></div>
+      <h3>Roof</h3>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="roofStyle"><option value="gable_x">Gable ⟷</option><option value="gable_z">Gable ↕</option><option value="flat">Flat</option></select>
+        <input id="roofPitch" type="range" min="10" max="50" value="30" style="width:80px" /><span id="pitchVal">30°</span>
+      </div>
+      <div id="levels"><button id="lvlDown">▼</button><span id="lvl">Level 1</span><button id="lvlUp">▲</button></div>
+    </section>
+    <section style="flex:1"><h3>Furnish (R rotates)</h3><div id="catalog"></div></section>
+  </div>
+
+  <div id="bank" class="ui hud">
+    <div class="card panel">
+      <h2>First Neighbors Savings &amp; Loan</h2>
+      <div id="bankInfo"></div>
+      <div class="actions">
+        <input id="bankAmount" type="number" min="0" step="500" value="5000" />
+        <button class="btn" id="bankBorrow">Borrow</button>
+        <button class="btn" id="bankRepay">Repay</button>
+      </div>
+      <div class="actions"><button class="btn" id="bankClose" style="flex:1">Close (E)</button></div>
+    </div>
+  </div>
+
+  <script type="module">
+/*__BUNDLE__*/
+  </script>
+</body>
+</html>
