@@ -338,6 +338,22 @@ const glowTex=(()=>{const[c,g]=mk(128,128);const r=g.createRadialGradient(64,64,
 const ballTex=(()=>{const[c,g]=mk(128,64);g.fillStyle='#fbfaf4';g.fillRect(0,0,128,64);g.strokeStyle='#c8322a';g.lineWidth=2.4;
   for(const o of[0,64]){g.beginPath();for(let x=0;x<=64;x+=2){const y=32+Math.sin((x/64)*PI*2)*16*(o?1:-1);x?g.lineTo(o+x,y):g.moveTo(o+x,y)}g.stroke()}return ctex(c)})();
 
+/* soft studio/sky reflection map so skin, fabric and leather pick up real highlights */
+const ENV=(()=>{try{const pm=new THREE.PMREMGenerator(renderer),s=new THREE.Scene();
+  const g=new THREE.SphereGeometry(50,32,16),cols=[],c=new THREE.Color(),top=new THREE.Color(0x9cc4ff),hor=new THREE.Color(0xf4ead8),gr=new THREE.Color(0x4a5a3a);
+  const p=g.attributes.position;for(let k=0;k<p.count;k++){const y=p.getY(k)/50;if(y>0)c.copy(hor).lerp(top,Math.pow(y,.6));else c.copy(hor).lerp(gr,Math.min(1,-y*3));cols.push(c.r,c.g,c.b)}
+  g.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));s.add(new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide})));
+  const key=new THREE.Mesh(new THREE.PlaneGeometry(26,16),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide}));key.position.set(-20,34,24);key.lookAt(0,0,0);s.add(key);
+  const t=pm.fromScene(s,.04).texture;pm.dispose();return t}catch(e){return null}})();
+/* procedural normal maps: woven fabric and fine skin texture */
+function normalTex(n,hf,rep,str){const[c,g]=mk(n,n),h=new Float32Array(n*n);for(let y=0;y<n;y++)for(let x=0;x<n;x++)h[y*n+x]=hf(x,y);
+  const im=g.createImageData(n,n);for(let y=0;y<n;y++)for(let x=0;x<n;x++){const dx=(h[y*n+(x+1)%n]-h[y*n+(x+n-1)%n])*str,dy=(h[((y+1)%n)*n+x]-h[((y+n-1)%n)*n+x])*str,l=Math.hypot(dx,dy,1),o=(y*n+x)*4;
+    im.data[o]=(-dx/l*.5+.5)*255;im.data[o+1]=(-dy/l*.5+.5)*255;im.data[o+2]=(1/l*.5+.5)*255;im.data[o+3]=255}g.putImageData(im,0,0);const t=ctex(c,true);t.repeat.set(rep,rep);return t}
+const NZ=(()=>{const a=new Float32Array(4096);for(let k=0;k<4096;k++)a[k]=Math.random();return(x,y)=>a[((y&63)*64+(x&63))]})();
+const CLOTH_N=normalTex(128,(x,y)=>{const u=x%8,v=y%8,warp=Math.sin(u/8*PI),weft=Math.sin(v/8*PI);return((x>>3)+(y>>3))%2?warp*.8+weft*.3:weft*.8+warp*.3+NZ(x,y)*.15},5,1.6);
+const SKIN_N=normalTex(128,(x,y)=>NZ(x,y)*.5+NZ(x>>1,y>>1)*.5,3,.9);
+const HAIR_N=normalTex(128,(x,y)=>Math.sin(x*1.9+NZ(x>>2,0)*6)*.6+NZ(x,y>>3)*.4,4,2.2);
+
 const ringGeo=new THREE.RingGeometry(1.05,1.45,28);ringGeo.rotateX(-PI/2);
 const blobGeo=new THREE.PlaneGeometry(1,1);blobGeo.rotateX(-PI/2);
 /* ================= 3D CHARACTERS: LOOKS ================= */
@@ -379,8 +395,8 @@ const LOOKS=[
 ['#e3a585','#5a3a26','short','hardhat','#f2c230','#4a7ab0','#ff7a1a','#44607a','#6a4528','safety',''],
 ['#f0b8a0','#4a2a1e','long','witch','#3a2a5a','#3a2a5a','#7a5aa0','#3a2a5a','#2a2030','','r']];
 const LEFTY=new Set([2,8,14,18,25,29,33]);
-const faceImg=new Image();let faceReady=false;
-faceImg.onload=()=>{faceReady=true;Object.values(rigs).forEach(r=>r.paintHead())};faceImg.src='faces.png';
+// 3D faces are now sculpted (eyes, brows, nose, lips); faces.png stays for reference only
+const EYES=['#4a2e1c','#5a3a22','#2f5a7a','#3d6a4a','#6a4a2a','#3a2a1e','#4a6a8a'];
 
 /* ================= RIG MATH ================= */
 const V3=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z),UP=V3(0,1,0);
@@ -450,13 +466,26 @@ const seqLen=n=>SEQ[n][SEQ[n].length-1][0];
 
 /* ================= TEXTURES ================= */
 function headTexture(L,i){
-  const[c,g]=mk(256,128);g.fillStyle=L[0];g.fillRect(0,0,256,128);
+  // equirect skin map, 512x256: face centred at x=128 (u=.25), eyes ~row 124, mouth ~row 170
+  const[c,g]=mk(512,256),sk=new THREE.Color(L[0]);g.fillStyle=L[0];g.fillRect(0,0,512,256);
+  const rgba=(col,a)=>`rgba(${col.r*255|0},${col.g*255|0},${col.b*255|0},${a})`,blob=(x,y,rx,ry,col,a)=>{const r=g.createRadialGradient(x,y,0,x,y,Math.max(rx,ry));r.addColorStop(0,rgba(col,a));r.addColorStop(1,rgba(col,0));g.save();g.translate(x,y);g.scale(rx/Math.max(rx,ry),ry/Math.max(rx,ry));g.translate(-x,-y);g.fillStyle=r;g.fillRect(x-Math.max(rx,ry),y-Math.max(rx,ry),Math.max(rx,ry)*2,Math.max(rx,ry)*2);g.restore()};
+  // pores / mottling
+  for(let k=0;k<2600;k++){const d=Math.random()<.5;g.fillStyle=d?'rgba(80,40,30,.05)':'rgba(255,230,210,.05)';g.fillRect(Math.random()*512,Math.random()*256,2,2)}
+  const warm=sk.clone().lerp(new THREE.Color('#c0443a'),.55),shade=sk.clone().multiplyScalar(.72),lip=sk.clone().lerp(new THREE.Color('#9a3a3a'),.45).multiplyScalar(.92);
+  blob(100,146,22,14,warm,.22);blob(156,146,22,14,warm,.22);blob(128,150,10,10,warm,.15);   // cheeks + nose tip
+  blob(108,122,16,8,shade,.35);blob(148,122,16,8,shade,.35);                                 // eye sockets
+  blob(128,192,30,10,shade,.18);                                                               // under-lip / chin crease
+  g.fillStyle=rgba(lip,.9);g.beginPath();g.ellipse(128,174,15,4.5,0,0,PI*2);g.fill();
+  g.strokeStyle=rgba(shade.clone().multiplyScalar(.6),.6);g.lineWidth=1.4;g.beginPath();g.moveTo(113,174);g.quadraticCurveTo(128,176,143,174);g.stroke();
   // hair: crown + back of head
   g.fillStyle=L[1];const st=L[2];
-  if(st!=='bald'){g.fillRect(0,0,256,st==='buzz'?30:38);g.beginPath();g.ellipse(192,40,st==='long'||st==='bob'||st==='wild'?92:66,st==='long'?90:st==='buzz'?30:52,0,0,7);g.fill()}
-  if(faceReady){const fx=(i%8)*128,fy=Math.floor(i/8)*128;g.drawImage(faceImg,fx,fy,128,128,64-38,64-46,76,82)}
-  else{g.fillStyle='#2a1a14';g.beginPath();g.arc(52,62,4,0,7);g.arc(76,62,4,0,7);g.fill();g.strokeStyle='#7a3a2a';g.lineWidth=2;g.beginPath();g.arc(64,74,9,.3,PI-.3);g.stroke()}
-  if(L[10].includes('b')){g.fillStyle=L[1];g.globalAlpha=.85;g.beginPath();g.ellipse(64,98,30,16,0,0,PI);g.fill();g.globalAlpha=1}
+  if(st!=='bald'){g.fillRect(0,0,512,st==='buzz'?62:74);g.beginPath();g.ellipse(384,80,st==='long'||st==='bob'||st==='wild'?184:132,st==='long'?180:st==='buzz'?60:104,0,0,7);g.fill();
+    // soft hairline + sideburns
+    const hc=new THREE.Color(L[1]);for(let k=0;k<500;k++){const x=Math.random()*512,y=(st==='buzz'?62:74)+Math.random()*10;g.fillStyle=rgba(hc,.5);g.fillRect(x,y,1.5,3)}
+    g.fillStyle=L[1];g.fillRect(50,70,12,58);g.fillRect(194,70,12,58)}
+  if(L[10].includes('b')){const hc=new THREE.Color(L[1]);g.fillStyle=rgba(hc,.88);g.beginPath();g.moveTo(50,118);g.quadraticCurveTo(58,205,128,218);g.quadraticCurveTo(198,205,206,118);g.lineTo(190,118);g.quadraticCurveTo(178,172,150,178);g.lineTo(106,178);g.quadraticCurveTo(78,172,66,118);g.fill();
+    g.beginPath();g.ellipse(128,166,20,5,0,0,PI*2);g.fill();g.fillStyle=rgba(lip,.9);g.beginPath();g.ellipse(128,174,13,3.5,0,0,PI*2);g.fill();
+    for(let k=0;k<900;k++){g.fillStyle=rgba(hc.clone().multiplyScalar(.6),.5);g.fillRect(54+Math.random()*148,120+Math.random()*96,1,2)}}
   return ctex(c)}
 function torsoTexture(L){
   const[c,g]=mk(256,128),pat=L[9];g.fillStyle=L[5];g.fillRect(0,0,256,128);
@@ -519,12 +548,12 @@ function addKit(rg){
   const k=KITS[rg.i]||{},M=(g,c,o)=>{const m=new THREE.Mesh(g,typeof c==='string'?STD(c,o):c);m.castShadow=true;m.receiveShadow=true;return m};
   const box=(w,h,d)=>new THREE.BoxGeometry(w,h,d),cylG=(a,b,h,s=12)=>new THREE.CylinderGeometry(a,b,h,s);
   rg.bh=k.h||1;rg.bw=k.w||1;rg.lb=k.lb||1;rg.head.scale.multiplyScalar(k.hd||1);
-  rg.torso.scale.set(rg.bw,1,.8*rg.bw);rg.shoulders.forEach((s,i)=>{s.position.x=(i?-1:1)*.56*rg.bw;s.scale.setScalar(.2*rg.lb)});
-  const ch=rg.chest,hp=rg.hips,skin=rg.mats.skin;
+  rg.torso.scale.set(rg.bw,1,.7*rg.bw);rg.shoulders.forEach((s,i)=>{s.position.x=(i?-1:1)*.55*rg.bw;s.scale.set(.17*rg.lb,.16*rg.lb,.17*rg.lb)});
+  const ch=rg.chest,hp=rg.hips,skin=rg.mats.skin,ch0=ch.children.length;
   if(k.n){rg.ua.forEach(m=>m.material=skin);rg.fa.forEach(m=>m.material=skin);rg.el.forEach(m=>m.material=skin);rg.shoulders.forEach(m=>m.material=skin)}
-  if(k.boots){const bm=STD(k.boots,{roughness:.55});rg.ft.forEach(m=>m.material=bm);if(!k.bootsLow){rg.sh.forEach(m=>m.material=bm);rg.kn.forEach(m=>m.material=bm)}}
+  if(k.boots){const bm=STD(k.boots,{roughness:.55});rg.soleMat.color.set('#2a2420');rg.ft.forEach(m=>m.material=bm);if(!k.bootsLow){rg.sh.forEach(m=>m.material=bm);rg.kn.forEach(m=>m.material=bm)}}
   if(k.socks){const sm=STD(k.socks);rg.sh.forEach(m=>m.material=sm)}
-  const gl=k.boxing||k.gloves;if(gl){const gm=STD(gl,{roughness:.5});rg.hand.forEach(h=>{h.material=gm;h.userData.s=k.boxing?.27:.17})}
+  const gl=k.boxing||k.gloves;if(gl){const gm=STD(gl,{roughness:.5});rg.hand.forEach(h=>{h.material=gm;h.userData.s=k.boxing?.27:.16;h.userData.parts.forEach(f=>{f.material=gm;if(k.boxing)f.visible=false})})}
   if(k.wrist){const wm=STD(k.wrist);rg.wrist=[0,1].map(()=>{const m=M(cylG(.15,.15,.18),wm);rg.root.add(m);return m})}
   if(k.kneepads){const km=STD(k.kneepads,{roughness:.5});rg.kn.forEach(m=>{m.material=km;m.userData.s=.27})}
   if(k.coat){const c=k.coat,cm=STD(c.c);rg.ua.forEach(m=>m.material=cm);if(!k.n)rg.fa.forEach(m=>m.material=cm);rg.shoulders.forEach(m=>m.material=cm);
@@ -574,20 +603,56 @@ function addKit(rg){
   if(k.spray){const s=M(cylG(.07,.07,.32),STD('#3aa0e0',{metalness:.4}));inHand(s)}
   if(k.cane){const c=M(cylG(.04,.04,2.1),STD('#5a3a24'));inHand(c)}
   if(k.briefcase){const b=M(box(.55,.4,.14),STD('#3a2416',{roughness:.4}));inHand(b)}
-  if(k.bare){rg.torsoMat.map.dispose();rg.torsoMat.map=bareTorso(rg.L)}}
+  for(let c=ch0;c<ch.children.length;c++){const m=ch.children[c];if(Math.abs(m.position.z)>.2)m.position.z*=.88} // flatter chest: pull gear in
+  if(k.bare){rg.torsoMat.map.dispose();rg.torsoMat.map=bareTorso(rg.L);rg.torsoMat.normalMap=SKIN_N;rg.torsoMat.normalScale.set(.25,.25);rg.torsoMat.roughness=.6}}
 function bareTorso(L){const[c,g]=mk(256,128);g.fillStyle=L[5];g.fillRect(0,0,256,128);g.fillStyle=L[0];g.fillRect(0,0,30,128);g.fillRect(226,0,30,128);
   g.strokeStyle='rgba(0,0,0,.18)';g.lineWidth=2;g.beginPath();g.moveTo(0,40);g.lineTo(26,48);g.moveTo(256,40);g.lineTo(230,48);g.stroke();g.fillStyle=L[6];g.fillRect(30,0,6,128);g.fillRect(220,0,6,128);return ctex(c)}
 
 /* ================= RIG ================= */
 const TOON_GRAD=(()=>{const d=new Uint8Array([70,70,70,255,150,150,150,255,215,215,215,255,255,255,255,255]);const t=new THREE.DataTexture(d,4,1,THREE.RGBAFormat);t.minFilter=t.magFilter=THREE.NearestFilter;t.generateMipmaps=false;t.needsUpdate=true;return t})();
-const STD=(c,o)=>{o=Object.assign({},o||{});delete o.roughness;delete o.metalness;return new THREE.MeshToonMaterial(Object.assign({color:c,gradientMap:TOON_GRAD},o))};
+// physically based materials: fabric gets a weave normal map, metal and leather keep their sheen
+const STD=(c,o)=>{o=Object.assign({},o||{});const r=o.roughness??.86,m=o.metalness??0;delete o.roughness;delete o.metalness;
+  const mat=new THREE.MeshStandardMaterial(Object.assign({color:c,roughness:r,metalness:m,envMap:ENV,envMapIntensity:m>.3?1:.35},o));
+  if(r>.6&&m<.3&&!o.emissive){mat.normalMap=CLOTH_N;mat.normalScale.set(.45,.45)}return mat};
+const SKIN=(c,o)=>{const col=new THREE.Color(c);return new THREE.MeshStandardMaterial(Object.assign({color:col,roughness:.6,metalness:0,envMap:ENV,envMapIntensity:.3,normalMap:SKIN_N,normalScale:new THREE.Vector2(.25,.25),
+  emissive:col.clone().lerp(new THREE.Color('#ff6a50'),.5),emissiveIntensity:.07},o||{}))}; // faint warm glow fakes light scattering under skin
+const HAIR=c=>new THREE.MeshStandardMaterial({color:c,roughness:.55,metalness:0,envMap:ENV,envMapIntensity:.45,normalMap:HAIR_N,normalScale:new THREE.Vector2(.8,.8)});
 const OUTLINE=new THREE.MeshBasicMaterial({color:0x1d1510,side:THREE.BackSide});
 const lathe=(pts,n=26)=>new THREE.LatheGeometry(pts.map(([r,y])=>new THREE.Vector2(r,y)),n);
-const GEO={cyl:new THREE.CylinderGeometry(1,1,1,12,1),limb:new THREE.CylinderGeometry(.86,1.12,1,14,1),sph:new THREE.SphereGeometry(1,18,14),head:new THREE.SphereGeometry(1,30,22),
-  torso:lathe([[0,0],[.4,.02],[.43,.18],[.41,.45],[.45,.75],[.53,1.0],[.56,1.13],[.5,1.26],[.32,1.35],[0,1.37]]),
-  pelvis:lathe([[0,-.27],[.34,-.24],[.45,-.08],[.47,.08],[.43,.22],[0,.24]],22),
-  hand:(()=>{const g=new THREE.SphereGeometry(1,14,10);g.scale(1,1.2,.72);return g})(),
-  foot:(()=>{const g=new THREE.SphereGeometry(1,18,10,0,PI*2,0,PI*.55);g.scale(.22,.3,.42);g.translate(0,0,.13);return g})(),
+// muscle-shaped limb profiles (y=-.5 is the joint nearest the body, +.5 the far joint)
+// skull shape shared by the head and the hair caps that sit on it
+function headDeform(g,face){const p=g.attributes.position;
+  for(let k=0;k<p.count;k++){let x=p.getX(k),y=p.getY(k),z=p.getZ(k);
+    if(y<0){const t=-y;x*=1-.3*Math.pow(t,1.4);z*=z>0?1-.06*t:1-.38*t;if(y<-.55)y*=1+.1*(t-.55)}   // jaw tapers to a chin, neck tucks in behind
+    if(z<0&&y>-.3)z*=1.1;                                                                           // back of skull
+    if(y>0)x*=1-.06*y;x*=.9;                                                                         // narrower than deep
+    if(face){
+      if(z>.5&&Math.abs(y+.06)<.24&&Math.abs(x)<.62)z-=.06*Math.cos((y+.06)/.24*PI/2)*Math.cos(Math.min(1,Math.abs(Math.abs(x)-.34)/.28)*PI/2); // eye sockets
+      if(z>.6&&y>-.2&&y<.05&&Math.abs(x)>.38)z+=.035;                                                // cheekbones
+      if(z>.6&&y<-.6&&Math.abs(x)<.3)z+=.05*(1-Math.abs(x)/.3)}                                       // chin
+    p.setXYZ(k,x,y,z)}g.computeVertexNormals()}
+// hair cap: a shell over the skull, trimmed to a hairline (high at the forehead, above the ears, low at the nape)
+function hairCap(lift,low){const g=new THREE.SphereGeometry(1,48,26,0,PI*2,0,PI*.66),p=g.attributes.position;
+  const HL=[[0,.56],[.55,.5],[.95,.2],[1.6,.24],[2.25,-.05],[PI,low??-.36]],hl=a=>{for(let k=1;k<HL.length;k++)if(a<=HL[k][0]){const[a0,y0]=HL[k-1],[a1,y1]=HL[k];return lerp(y0,y1,(a-a0)/(a1-a0))}return HL[HL.length-1][1]};
+  for(let k=0;k<p.count;k++){const x=p.getX(k),y=p.getY(k),z=p.getZ(k),h=hl(Math.abs(Math.atan2(x,z)));
+    if(y<h){const r=Math.sqrt(Math.max(0,1-h*h)),q=Math.hypot(x,z)||1;p.setXYZ(k,x/q*r,h,z/q*r)}}
+  headDeform(g,false);g.scale(lift,lift,lift);return g}
+const limbLathe=pts=>{const g=lathe([[0,-.5],...pts,[0,.5]],18);g.computeVertexNormals();return g};
+const GEO={cyl:new THREE.CylinderGeometry(1,1,1,16,1),sph:new THREE.SphereGeometry(1,22,16),
+  limb:new THREE.CylinderGeometry(.86,1.12,1,14,1),
+  uarm:limbLathe([[1.0,-.5],[1.12,-.32],[1.1,-.08],[.94,.2],[.82,.42],[.8,.5]]),          // deltoid -> biceps -> elbow
+  farm:limbLathe([[.95,-.5],[1.12,-.3],[1.06,-.08],[.86,.22],[.68,.44],[.66,.5]]),         // forearm muscle -> slim wrist
+  thigh:limbLathe([[1.0,-.5],[1.1,-.32],[1.06,-.05],[.92,.22],[.76,.44],[.74,.5]]),        // quads -> knee
+  shin:limbLathe([[.8,-.5],[.98,-.32],[1.04,-.14],[.88,.12],[.66,.36],[.56,.5]]),          // calf -> ankle
+  head:(()=>{const g=new THREE.SphereGeometry(1,48,36);headDeform(g,true);return g})(),
+  torso:lathe([[0,0],[.37,.01],[.4,.14],[.37,.4],[.41,.62],[.48,.86],[.53,1.04],[.55,1.15],[.46,1.27],[.22,1.35],[0,1.36]],30),
+  pelvis:lathe([[0,-.27],[.34,-.24],[.45,-.08],[.47,.08],[.43,.22],[0,.24]],24),
+  hand:(()=>{const g=new THREE.SphereGeometry(1,18,12);g.scale(1,1.05,.5);g.translate(0,.25,0);return g})(),
+  finger:(()=>{const g=new THREE.CylinderGeometry(1,.9,1,8,1);g.translate(0,.5,0);return g})(),
+  foot:(()=>{const g=new THREE.SphereGeometry(1,28,14,0,PI*2,0,PI*.5),p=g.attributes.position;
+    for(let k=0;k<p.count;k++){const z=p.getZ(k);p.setY(k,p.getY(k)*(z>0?1-.5*z:1))}  // toe box slopes down
+    g.scale(.2,.24,.46);g.translate(0,.03,.14);g.computeVertexNormals();return g})(),
+  sole:(()=>{const g=new THREE.CylinderGeometry(1,1,1,24);g.scale(.21,.06,.47);g.translate(0,.02,.14);return g})(),
   bat:(()=>{const g=new THREE.CylinderGeometry(.13,.045,3.1,14);g.translate(0,1.55,0);return g})(),robe:new THREE.CylinderGeometry(.5,.64,.95,20,1,true)};
 const rigs={};
 const LA=[.74,.68],LL=[.92,.9]; // arm / leg segment lengths
@@ -595,31 +660,32 @@ class Rig{
   constructor(i,team){
     const L=LOOKS[i];this.i=i;this.L=L;this.team=team;this.lefty=LEFTY.has(i);
     const root=this.root=new THREE.Group();scene.add(root);
-    const skin=STD(L[0]),shirt=STD(L[5]),pants=STD(L[7]),shoes=STD(L[8],{roughness:.6}),hat=L[3]?STD(L[4]||'#ffffff',{roughness:.6}):null;
+    const skin=SKIN(L[0]),shirt=STD(L[5]),pants=STD(L[7]),shoes=STD(L[8],{roughness:.45}),hat=L[3]?STD(L[4]||'#ffffff',{roughness:.6}):null;
     this.mats={skin,shirt,pants,shoes};
     const M=(g,m,cast=true)=>{const x=new THREE.Mesh(g,m);x.castShadow=cast;x.receiveShadow=true;return x};
     this.hips=new THREE.Group();root.add(this.hips);
     const pel=M(GEO.pelvis,pants);pel.position.y=-.06;pel.scale.z=.8;this.hips.add(pel);this.pelvis=pel;
     this.chest=new THREE.Group();this.chest.position.y=.1;this.hips.add(this.chest);
     this.torsoMat=STD('#ffffff',{map:torsoTexture(L)});
-    const tor=M(GEO.torso,this.torsoMat);tor.position.y=-.03;tor.scale.z=.78;this.chest.add(tor);this.torso=tor;this.shoulders=[];
-    for(const s of[1,-1]){const sh=M(GEO.sph,shirt);sh.scale.setScalar(.21);sh.position.set(s*.56,1.13,0);this.chest.add(sh);this.shoulders.push(sh)}
+    const tor=M(GEO.torso,this.torsoMat);tor.position.y=-.03;tor.scale.z=.7;this.chest.add(tor);this.torso=tor;this.shoulders=[];
+    for(const s of[1,-1]){const sh=M(GEO.sph,shirt);sh.scale.set(.17,.16,.17);sh.position.set(s*.56,1.13,0);this.chest.add(sh);this.shoulders.push(sh)}
     if(L[10].includes('r')){const robe=M(GEO.robe,shirt);robe.position.y=-.55;robe.scale.z=.85;this.hips.add(robe)}
     this.neck=new THREE.Group();this.neck.position.y=1.32;this.chest.add(this.neck);
-    const nk=M(GEO.cyl,skin);nk.scale.set(.15,.3,.14);nk.position.y=.08;this.neck.add(nk);
-    this.headMat=STD('#ffffff',{map:headTexture(L,i),roughness:.75});
-    this.head=M(GEO.head,this.headMat);this.head.scale.set(.64,.69,.62);this.head.position.y=.68;this.neck.add(this.head);
-    for(const s of[1,-1]){const e=M(GEO.sph,skin);e.scale.set(.13,.2,.09);e.position.set(s*.97,-.04,-.04);this.head.add(e)}
+    const nk=M(GEO.cyl,skin);nk.scale.set(.125,.36,.125);nk.position.y=.12;nk.rotation.x=-.12;this.neck.add(nk);const trap=M(GEO.sph,shirt);trap.scale.set(.34,.1,.22);trap.position.set(0,-.04,-.02);this.neck.add(trap);
+    {const ht=headTexture(L,i);this.headMat=SKIN('#ffffff',{map:ht,emissiveMap:ht});}
+    this.head=M(GEO.head,this.headMat);this.head.scale.set(.27,.31,.29);this.head.position.y=.46;this.neck.add(this.head);
+    for(const s of[1,-1]){const e=M(GEO.sph,skin);e.scale.set(.09,.26,.16);e.position.set(s*.86,-.06,-.06);e.rotation.y=s*.25;this.head.add(e);const lobe=M(GEO.sph,skin,false);lobe.scale.set(.6,.35,.5);lobe.position.set(0,-.75,.1);e.add(lobe)}
+    this.face(L,i);
     this.hair(L);if(L[3])this.hat(L[3],hat);
     if(L[10].includes('c')){const ch=M(new THREE.TorusGeometry(.42,.035,6,24),STD('#f4c542',{metalness:.7,roughness:.3}),false);ch.rotation.x=PI/2+.35;ch.position.set(0,1.18,.1);this.chest.add(ch)}
     // limbs
     const sleeve=L[10].includes('k')?skin:shirt,lowLeg=L[10].includes('s')?skin:pants;
-    this.ua=[M(GEO.limb,shirt),M(GEO.limb,shirt)];this.fa=[M(GEO.limb,sleeve),M(GEO.limb,sleeve)];this.hand=[M(GEO.hand,skin),M(GEO.hand,skin)];
-    this.hand.forEach((h,k)=>{const th=M(GEO.sph,skin);th.scale.set(.38,.45,.36);th.position.set(k?-.7:.7,.25,.35);h.add(th)});
-    this.el=[M(GEO.sph,sleeve,false),M(GEO.sph,sleeve,false)];this.th=[M(GEO.limb,pants),M(GEO.limb,pants)];this.sh=[M(GEO.limb,lowLeg),M(GEO.limb,lowLeg)];
-    this.kn=[M(GEO.sph,lowLeg,false),M(GEO.sph,lowLeg,false)];this.ft=[M(GEO.foot,shoes),M(GEO.foot,shoes)];
+    this.ua=[M(GEO.uarm,shirt),M(GEO.uarm,shirt)];this.fa=[M(GEO.farm,sleeve),M(GEO.farm,sleeve)];this.hand=[M(GEO.hand,skin),M(GEO.hand,skin)];
+    this.hand.forEach((h,k)=>{const sg=k?-1:1;h.userData.parts=[];const th=M(GEO.finger,skin);th.scale.set(.2,.75,.2);th.position.set(sg*.78,.05,.18);th.rotation.set(.35,0,sg*-.75);h.add(th);h.userData.parts.push(th);for(let f=0;f<4;f++){const fg=M(GEO.finger,skin,false);const fx=(f-1.5)*.42;fg.scale.set(.17,[.78,.92,.86,.68][f],.17);fg.position.set(fx*sg,1.12,0);fg.rotation.set(.55,0,-fx*sg*.08);h.add(fg);h.userData.parts.push(fg)}});
+    this.el=[M(GEO.sph,sleeve,false),M(GEO.sph,sleeve,false)];this.th=[M(GEO.thigh,pants),M(GEO.thigh,pants)];this.sh=[M(GEO.shin,lowLeg),M(GEO.shin,lowLeg)];
+    this.kn=[M(GEO.sph,lowLeg,false),M(GEO.sph,lowLeg,false)];this.ft=[M(GEO.foot,shoes),M(GEO.foot,shoes)];this.soleMat=STD('#ece8e0',{roughness:.7});this.ft.forEach(f=>{const so=M(GEO.sole,this.soleMat);f.add(so);const lace=M(GEO.sph,STD('#f4f2ec'),false);lace.scale.set(.07,.03,.16);lace.position.set(0,.2,.2);lace.rotation.x=.5;f.add(lace)});
     [...this.ua,...this.fa,...this.hand,...this.el,...this.th,...this.sh,...this.kn,...this.ft].forEach(m=>root.add(m));
-    this.hand.forEach(h=>h.scale.setScalar(.15));this.el.forEach(h=>h.scale.setScalar(.145));this.kn.forEach(h=>h.scale.setScalar(.2));
+    this.hand.forEach(h=>h.scale.setScalar(.15));this.el.forEach(h=>h.scale.setScalar(.11));this.kn.forEach(h=>h.scale.setScalar(.15));
     this.glove=M(GEO.sph,STD('#7a4a24',{roughness:.6}));this.glove.scale.set(.3,.34,.18);root.add(this.glove);this.glove.visible=false;
     this.bat=M(GEO.bat,STD('#c99a5e',{roughness:.45}));root.add(this.bat);this.bat.visible=false;
     // contact shadow + team ring
@@ -627,9 +693,35 @@ class Rig{
     this.ring=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:team==='you'?0xe0482f:0x3d7be0,transparent:true,opacity:.75,depthWrite:false}));this.ring.position.y=.07;root.add(this.ring);
     this.state='idle';this.snap=null;this.fadeT=0;this.fade=.2;this.t0=0;this.one=null;this.yaw=0;this.phase=0;this.speed=0;this.prev=null;this.last=null;
     this.pos=V3();this.reach=null;this.reachW=0;this.lookW=0;this.lookT=V3();this.mirror=false;this.freeBat=null;this.hasGlove=false;
-    this.bh=1;this.bw=1;this.lb=1;addKit(this);this.outline();
+    this.bh=1;this.bw=1;this.lb=1;addKit(this);
     root.visible=false;rigs[i]=this}
-  hair(L){const st=L[2],m=STD(L[1],{roughness:.9}),add=(g,x,y,z,sx,sy,sz)=>{const h=new THREE.Mesh(g,m);h.position.set(x,y,z);h.scale.set(sx,sy,sz);h.castShadow=true;this.head.add(h);return h};
+  face(L,i){ // sculpted features in head space (head is scaled .27 x .31 x .29, so divide world sizes by those)
+    const H=this.head,sk=this.mats.skin,W=(x,y,z)=>[x/.27,y/.31,z/.29];
+    const add=(g,m,pos,sc,rot,par=H)=>{const o=new THREE.Mesh(g,m);o.position.set(...pos);o.scale.set(...sc);if(rot)o.rotation.set(...rot);o.castShadow=false;o.receiveShadow=true;par.add(o);return o};
+    const sclera=STD('#efe9e0',{roughness:.3}),iris=new THREE.MeshStandardMaterial({color:EYES[(i*5+3)%EYES.length],roughness:.15,envMap:ENV,envMapIntensity:1.2}),
+      pupil=new THREE.MeshStandardMaterial({color:'#070504',roughness:.05,envMap:ENV,envMapIntensity:1.5}),lash=new THREE.MeshStandardMaterial({color:'#1a120e',roughness:.8}),
+      brow=HAIR(L[1]),lipC=new THREE.Color(L[0]).lerp(new THREE.Color('#a8404a'),.38).multiplyScalar(.9),lip=SKIN(lipC,{roughness:.42,normalScale:new THREE.Vector2(.1,.1)});
+    const lidTop=new THREE.SphereGeometry(1,20,8,0,PI*2,0,PI*.5),lidBot=new THREE.SphereGeometry(1,20,8,0,PI*2,PI*.5,PI*.5),lashG=new THREE.TorusGeometry(1,.06,4,18,PI);
+    const er=.034;
+    for(const sd of[1,-1]){
+      const eye=new THREE.Group();eye.position.set(sd*.34,-.05,.8);eye.scale.set(...W(er,er,er));H.add(eye);
+      add(GEO.sph,sclera,[0,0,0],[1,1,1],null,eye);
+      add(GEO.sph,iris,[0,0,.95],[.5,.5,.12],null,eye);add(GEO.sph,pupil,[0,0,1.02],[.22,.22,.06],null,eye);
+      add(lidTop,sk,[0,0,0],[1.1,1.1,1.1],[-.2,0,0],eye);add(lidBot,sk,[0,0,0],[1.08,1.08,1.08],[.5,0,0],eye);
+      add(lashG,lash,[0,0,0],[1.12,1.12,1.12],[PI/2-.2,0,0],eye);
+      add(GEO.sph,brow,[sd*.35,.2,.9],W(.05,.008,.014),[0,sd*.35,sd*-.12]);
+    }
+    // nose: bridge, tip, wings
+    add(GEO.sph,sk,[0,-.1,.95],W(.02,.06,.03),[-.22,0,0]);
+    add(GEO.sph,sk,[0,-.27,1.0],W(.026,.024,.03));
+    for(const sd of[1,-1])add(GEO.sph,sk,[sd*.1,-.3,.93],W(.019,.016,.02));
+    // lips
+    add(GEO.sph,lip,[0,-.5,.84],W(.042,.009,.015));add(GEO.sph,lip,[0,-.565,.82],W(.036,.012,.016));
+    add(GEO.sph,lash,[0,-.532,.845],W(.04,.002,.012));
+  }
+  hair(L){const st=L[2],m=HAIR(L[1]),add=(g,x,y,z,sx,sy,sz)=>{const h=new THREE.Mesh(g,m);h.position.set(x,y,z);h.scale.set(sx,sy,sz);h.castShadow=true;this.head.add(h);return h};
+    const capLift={short:1.035,buzz:1.012,messy:1.04,curly:1.04,wild:1.04,long:1.04,bob:1.04,bun:1.03,dreads:1.03}[st];
+    if(capLift){const g=hairCap(capLift,st==='long'||st==='bob'?-.6:undefined);const c=new THREE.Mesh(g,m);c.castShadow=true;c.receiveShadow=true;this.head.add(c)}
     if(st==='bun')add(GEO.sph,0,.7,-.55,.38,.38,.38);
     if(st==='curly'||st==='wild')for(let k=0;k<14;k++){const a=k/14*PI*2;add(GEO.sph,Math.cos(a)*.72,.45+.25*Math.sin(k*1.7),Math.sin(a)*.62-.15,.3,.28,.3)}
     if(st==='curly'||st==='wild')add(GEO.sph,0,.62,-.05,.85,.5,.85);
@@ -714,13 +806,13 @@ class Rig{
     if(o.reach){this.reachW=lerp(this.reachW,1,.25);_d.copy(o.reach);r.worldToLocal(_d);HL.lerp(_d,this.reachW)}else this.reachW=lerp(this.reachW,0,.2);
     for(const s of[0,1]){const sg=s?-1:1,S=V3(sg*.56*this.bw,1.15,0).applyMatrix4(_m),T=s?HR:HL;
       const pole=V3(sg*.7,-1,-.7).transformDirection(_m),E=V3(),Te=V3();ik(S,T,LA[0],LA[1],pole,E,Te);
-      placeSeg(this.ua[s],S,E,.15*this.lb);placeSeg(this.fa[s],E,Te,.13*this.lb);this.el[s].position.copy(E);this.el[s].scale.setScalar(.145*this.lb);this.hand[s].position.copy(Te);this.hand[s].quaternion.copy(this.fa[s].quaternion);this.hand[s].scale.setScalar(this.hand[s].userData.s||.15);
+      placeSeg(this.ua[s],S,E,.125*this.lb);placeSeg(this.fa[s],E,Te,.11*this.lb);this.el[s].position.copy(E);this.el[s].scale.setScalar(.105*this.lb);this.hand[s].position.copy(Te);this.hand[s].quaternion.copy(this.fa[s].quaternion);this.hand[s].scale.setScalar(this.hand[s].userData.s||.15);
       if(this.wrist){const w=this.wrist[s];w.position.copy(E).lerp(Te,.86);w.quaternion.copy(this.fa[s].quaternion);if(w.geometry.type==='TorusGeometry')w.rotateX(PI/2)}
       const pr=s?this.handProp:this.leftProp;if(pr){pr.position.copy(Te);pr.quaternion.copy(this.fa[s].quaternion);if(!s&&pr===this.leftProp){pr.position.y+=.05}}}
     // legs
     _e.set(0,p.hr[1],0);_q.setFromEuler(_e);const fwd=V3(0,.2,1).applyQuaternion(_q);
     for(const s of[0,1]){const sg=s?-1:1,Hj=V3(sg*.25*this.bw,-.12,0).applyMatrix4(this.hips.matrix),F=s?p.fr:p.fl,T=V3(F[0],F[1]+.2,F[2]);
-      const Kn=V3(),Te=V3();ik(Hj,T,LL[0],LL[1],fwd,Kn,Te);placeSeg(this.th[s],Hj,Kn,.21*this.lb);placeSeg(this.sh[s],Kn,Te,.17*this.lb);this.kn[s].scale.setScalar(this.kn[s].userData.s||.2*this.lb);this.kn[s].position.copy(Kn);
+      const Kn=V3(),Te=V3();ik(Hj,T,LL[0],LL[1],fwd,Kn,Te);placeSeg(this.th[s],Hj,Kn,.2*this.lb);placeSeg(this.sh[s],Kn,Te,.155*this.lb);this.kn[s].scale.setScalar(this.kn[s].userData.s||.15*this.lb);this.kn[s].position.copy(Kn);
       const f=this.ft[s];f.position.set(Te.x,Math.max(0,Te.y-.19),Te.z);f.rotation.set(F[1]>.15?-.35:0,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ')}
     // bat & glove
     this.bat.visible=p.bat>.5&&!o.noBat;
@@ -1719,7 +1811,7 @@ function hudTick(now){
 function drawTags(now){
   if(!S||camMode==='bat'||!(phase==='field'||phase==='steal'))return;
   hx.font='800 11px "Barlow Semi Condensed",sans-serif';hx.textAlign='center';
-  const tag=(c,col,txt)=>{const p=rigs[c];if(!p||!p.root.visible)return;p.head.getWorldPosition(_w);const[x,y,z]=proj(_w.x,_w.y+1.6*p.root.scale.y,_w.z);if(z>1)return;
+  const tag=(c,col,txt)=>{const p=rigs[c];if(!p||!p.root.visible)return;p.head.getWorldPosition(_w);const[x,y,z]=proj(_w.x,_w.y+1.05*p.root.scale.y,_w.z);if(z>1)return;
     const w=hx.measureText(txt).width+10;hx.fillStyle=col;hx.beginPath();hx.roundRect?hx.roundRect(x-w/2,y-14,w,15,7):hx.rect(x-w/2,y-14,w,15);hx.fill();hx.fillStyle='#fff';hx.fillText(txt,x,y-3)};
   if(PS){for(const r of PS.runners)if(r.state!=='out')tag(r.id,userBats()?'rgba(224,72,47,.92)':'rgba(61,123,224,.92)',CH[r.id].n);
     if(PS.userFields){const f=PS.fielders;const h=PS.holder!=null?PS.holder:PS.chaser;if(h!=null)tag(fieldTeam()[h],'rgba(244,191,58,.95)',POS[h]+' '+CH[fieldTeam()[h]].n)}}}

@@ -1,12 +1,14 @@
 import { Gl, MeshBuilder, InstanceList, mat4, hexColor } from './gl'
 import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
-import { C, SHIRTS, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
+import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
 import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
 const TILE = 4
-const SURFACE_COLORS: Vec3[] = ['#6eab4c', '#d8c384', '#8d6c4a', '#8f8e88', '#eef1f2'].map(hexColor)
+const PERSON_DETAIL_DIST = 55
+const SURFACE_COLORS: Vec3[] = ['#5b8f3c', '#cdb57a', '#7f6044', '#8a8780', '#e8ecee'].map(hexColor)
+const WATER_SHALLOW = hexColor('#7cc9cf'), WATER_DEEP = hexColor('#256f9e')
 const PATH_COLOR = hexColor('#cdbb93'), PATH_EDGE = hexColor('#8f7d5c'), QUEUE_COLOR = hexColor('#9fb3c9'), QUEUE_EDGE = hexColor('#556a84')
 const SCENERY_KINDS = ['oak', 'pine', 'birch', 'palm', 'bush', 'flowers', 'hedge', 'rock', 'fountain', 'statue', 'topiary']
 const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', waterslide: '#1fb5b0' }
@@ -56,6 +58,8 @@ export class ParkRenderer {
   private overlay: GpuMesh | null = null
   private overlayKey = ''
   private time = 0
+  private peopleReady = false
+  private eyePos: Vec3 = [0, 0, 0]
   private lastFrame = 0
 
   constructor(canvas: HTMLCanvasElement) {
@@ -63,7 +67,13 @@ export class ParkRenderer {
     this.g = new Gl(canvas)
     const inst = (key: string, builder: MeshBuilder) => this.kindMeshes.set(key, this.g.upload(builder, null, true))
     for (const kind of SCENERY_KINDS) inst(`tree:${kind}`, treeModel(kind))
-    inst('person', personModel(false)); inst('staff', personModel(true)); inst('balloon', balloonModel()); inst('umbrella', umbrellaModel())
+    for (let f = 0; f <= WALK_FRAMES; f++) {
+      for (const lod of [0, 1]) {
+        GUEST_LOOKS.forEach((look, v) => inst(`person:${v}:${f}:${lod}`, personModel(look, f, false, 1 - lod)))
+        inst(`staff:${f}:${lod}`, personModel(STAFF_LOOK, f, true, 1 - lod))
+      }
+    }
+    inst('balloon', balloonModel()); inst('umbrella', umbrellaModel())
     inst('stall', stallModel('booth')); inst('stall:toilet', stallModel('toilet')); inst('gate', gateModel())
     inst('bench', benchModel()); inst('bin', binModel()); inst('lampPost', lampPostModel()); inst('lampHead', lampHeadModel()); inst('litter', litterModel())
     const rain = new MeshBuilder(); rain.box(null, 0, 0, 0, 0.03, 0.03, 0.9, hexColor('#b8d4ee')); inst('rain', rain)
@@ -98,20 +108,67 @@ export class ParkRenderer {
     const map = s.map
     const terrain = new MeshBuilder(), water = new MeshBuilder(), paths = new MeshBuilder(), grid = new MeshBuilder()
     const P = (x: number, y: number, z: number): Vec3 => [x * TILE, y * TILE, z]
+    const CW = map.w + 1
+    const cornerH = (x: number, y: number) => map.corners[Math.max(0, Math.min(map.h, y)) * CW + Math.max(0, Math.min(map.w, x))]
+    const tileColor = (x: number, y: number): Vec3 => {
+      const i = tileIndex(map, Math.max(0, Math.min(map.w - 1, x)), Math.max(0, Math.min(map.h - 1, y)))
+      let col = SURFACE_COLORS[map.surface[i]] ?? SURFACE_COLORS[0]
+      const owner = map.owner[i]
+      if (owner === 255) col = [col[0] * 0.8 + 0.035, col[1] * 0.8 + 0.04, col[2] * 0.8 + 0.03]
+      else if (s.parks.length > 1 && owner !== this.myPark) col = [col[0] * 0.92, col[1] * 0.9, col[2] * 0.92]
+      return col
+    }
+    const waterLevel = new Float32Array(map.w * map.h).fill(-1e9)
+    for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+      const i = tileIndex(map, x, y), wl = map.water[i]
+      if (wl < 0 || wl <= Math.min(...tileCorners(map, x, y))) continue
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy
+        if (!inMap(map, nx, ny)) continue
+        const j = tileIndex(map, nx, ny)
+        if (j === i || Math.min(...tileCorners(map, nx, ny)) < wl - 0.2) waterLevel[j] = Math.max(waterLevel[j], wl)
+      }
+    }
+    const cornerWet = (x: number, y: number) => {
+      let w = -1e9
+      for (const [tx, ty] of [[x - 1, y - 1], [x, y - 1], [x - 1, y], [x, y]]) if (inMap(map, tx, ty)) w = Math.max(w, waterLevel[tileIndex(map, tx, ty)])
+      return w
+    }
+    const cornerNormal: Vec3[] = [], cornerColor: Vec3[] = []
+    for (let y = 0; y <= map.h; y++) for (let x = 0; x <= map.w; x++) {
+      const hx = (cornerH(x + 1, y) - cornerH(x - 1, y)) / (2 * TILE), hy = (cornerH(x, y + 1) - cornerH(x, y - 1)) / (2 * TILE)
+      const l = Math.hypot(hx, hy, 1)
+      cornerNormal.push([-hx / l, -hy / l, 1 / l])
+      const h0 = cornerH(x, y), avg = (cornerH(x + 1, y) + cornerH(x - 1, y) + cornerH(x, y + 1) + cornerH(x, y - 1)) / 4
+      const ao = Math.max(0.78, Math.min(1.06, 1 + (h0 - avg) * 0.09))
+      const a = tileColor(x - 1, y - 1), b = tileColor(x, y - 1), c = tileColor(x - 1, y), d = tileColor(x, y)
+      const steep = Math.min(1, Math.max(0, (1 - 1 / l) * 3.2))
+      const rock: Vec3 = [0.5, 0.46, 0.4]
+      const wet = cornerWet(x, y), level = wet - 0.2
+      const under = wet > -1e9 ? Math.max(0, Math.min(1, (level - h0) / 0.8)) : 0
+      const shore = wet > -1e9 && h0 >= level - 0.01 ? Math.max(0, 1 - (h0 - level) / 1.1) : 0
+      const bed: Vec3 = [0.3, 0.33, 0.25], sand: Vec3 = [0.72, 0.64, 0.46]
+      cornerColor.push([0, 1, 2].map(k => { const land = (a[k] + b[k] + c[k] + d[k]) / 4 * (1 - steep * 0.55) + rock[k] * steep * 0.55; const wetLand = land * (1 - shore * 0.6) + sand[k] * shore * 0.6; return (wetLand * (1 - under) + bed[k] * under) * ao }) as Vec3)
+    }
     for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
       const i = tileIndex(map, x, y)
       const [a, b, c, d] = tileCorners(map, x, y)
-      const n = hash(i * 13 + 7) * 0.06 - 0.03
-      let col = SURFACE_COLORS[map.surface[i]] ?? SURFACE_COLORS[0]
-      col = [col[0] + n, col[1] + n * 1.2, col[2] + n]
-      const owner = map.owner[i]
-      if (owner === 255) col = [col[0] * 0.78 + 0.04, col[1] * 0.78 + 0.05, col[2] * 0.78 + 0.03]
-      else if (s.parks.length > 1 && owner !== this.myPark) col = [col[0] * 0.92, col[1] * 0.9, col[2] * 0.92]
       const pa = P(x, y, a), pb = P(x + 1, y, b), pc = P(x + 1, y + 1, c), pd = P(x, y + 1, d)
-      if (Math.abs(a - c) <= Math.abs(b - d)) { terrain.tri(null, pa, pb, pc, col); terrain.tri(null, pa, pc, pd, col) }
-      else { terrain.tri(null, pa, pb, pd, col); terrain.tri(null, pb, pc, pd, col) }
-      const wl = map.water[i]
-      if (wl >= 0 && wl > Math.min(a, b, c, d)) water.quad(null, P(x, y, wl - 0.2), P(x + 1, y, wl - 0.2), P(x + 1, y + 1, wl - 0.2), P(x, y + 1, wl - 0.2), C.water)
+      const ia = y * CW + x, ib = y * CW + x + 1, ic = (y + 1) * CW + x + 1, id = (y + 1) * CW + x
+      const smoothA = Math.abs(a - cornerH(x, y)) < 0.01, smoothB = Math.abs(b - cornerH(x + 1, y)) < 0.01, smoothC = Math.abs(c - cornerH(x + 1, y + 1)) < 0.01, smoothD = Math.abs(d - cornerH(x, y + 1)) < 0.01
+      const flatN = (p: Vec3, q: Vec3, r: Vec3): Vec3 => { const ux = q[0] - p[0], uy = q[1] - p[1], uz = q[2] - p[2], vx = r[0] - p[0], vy = r[1] - p[1], vz = r[2] - p[2]; const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, l = Math.hypot(nx, ny, nz) || 1; return [nx / l, ny / l, nz / l] }
+      const fn = flatN(pa, pb, pc)
+      const na = smoothA ? cornerNormal[ia] : fn, nb = smoothB ? cornerNormal[ib] : fn, nc = smoothC ? cornerNormal[ic] : fn, nd = smoothD ? cornerNormal[id] : fn
+      const ca = cornerColor[ia], cb = cornerColor[ib], cc = cornerColor[ic], cd = cornerColor[id]
+      if (Math.abs(a - c) <= Math.abs(b - d)) { terrain.smoothTri(null, null, pa, pb, pc, na, nb, nc, ca, cb, cc); terrain.smoothTri(null, null, pa, pc, pd, na, nc, nd, ca, cc, cd) }
+      else { terrain.smoothTri(null, null, pa, pb, pd, na, nb, nd, ca, cb, cd); terrain.smoothTri(null, null, pb, pc, pd, nb, nc, nd, cb, cc, cd) }
+      const wl = waterLevel[i]
+      if (wl > -1e9 && wl - 0.2 > Math.min(a, b, c, d)) {
+        const lv = wl - 0.2, up: Vec3 = [0, 0, 1]
+        const wc = (h: number): Vec3 => { const depth = Math.max(0, Math.min(1, (lv - h) / 1.6)); return lerp3(WATER_SHALLOW, WATER_DEEP, depth) }
+        const qa = P(x, y, lv), qb = P(x + 1, y, lv), qc = P(x + 1, y + 1, lv), qd = P(x, y + 1, lv)
+        water.smoothTri(null, null, qa, qb, qc, up, up, up, wc(a), wc(b), wc(c)); water.smoothTri(null, null, qa, qc, qd, up, up, up, wc(a), wc(c), wc(d))
+      }
       const kind = map.path[i]
       if (kind) {
         const lift = 0.07
@@ -140,7 +197,7 @@ export class ParkRenderer {
     const h = (x: number, y: number) => map.corners[y * (map.w + 1) + x]
     for (let x = 0; x < map.w; x++) { skirt(x + 1, 0, x, 0, h(x + 1, 0), h(x, 0)); skirt(x, map.h, x + 1, map.h, h(x, map.h), h(x + 1, map.h)) }
     for (let y = 0; y < map.h; y++) { skirt(0, y, 0, y + 1, h(0, y), h(0, y + 1)); skirt(map.w, y + 1, map.w, y, h(map.w, y + 1), h(map.w, y)) }
-    terrain.quad(null, [-200, -200, -3.2], [map.w * TILE + 200, -200, -3.2], [map.w * TILE + 200, map.h * TILE + 200, -3.2], [-200, map.h * TILE + 200, -3.2], hexColor('#4f7d3a'))
+    terrain.quad(null, [-200, -200, -3.2], [map.w * TILE + 200, -200, -3.2], [map.w * TILE + 200, map.h * TILE + 200, -3.2], [-200, map.h * TILE + 200, -3.2], hexColor('#4a7434'))
     this.terrain = this.g.upload(terrain, this.terrain)
     this.water = this.g.upload(water, this.water)
     this.paths = this.g.upload(paths, this.paths)
@@ -240,9 +297,9 @@ export class ParkRenderer {
       spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32])
     }
     if ((path.count - 1) % step) { const { p, u, r } = at(path.count - 1); left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55]); spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32]) }
-    b.tube(left, wooden ? 0.12 : 0.1, trackColor, 5, 1)
-    b.tube(right, wooden ? 0.12 : 0.1, trackColor, 5, 1)
-    if (!wooden) b.tube(spine, 0.17, trackColor, 6, 1)
+    b.tube(left, wooden ? 0.12 : 0.1, trackColor, 8, 1)
+    b.tube(right, wooden ? 0.12 : 0.1, trackColor, 8, 1)
+    if (!wooden) b.tube(spine, 0.17, trackColor, 10, 1)
     const specialColor: Record<string, Vec3> = { chain: hexColor('#2b2b2b'), booster: hexColor('#f2c94c'), brakes: hexColor('#c0c4cc'), station: hexColor('#666a70') }
     const tieEvery = Math.max(1, Math.round(1.0 / path.ds))
     for (let i = 0; i < path.count; i += tieEvery) {
@@ -264,8 +321,8 @@ export class ParkRenderer {
         for (const o of [-0.8, 0.8]) b.box(null, p[0] + o * 0.7, p[1] - o * 0.4, ground, 0.22, 0.22, top - ground, supportColor)
         for (let z = ground + 1.5; z < top - 0.5; z += 2.2) b.box(null, p[0], p[1], z, 1.6, 0.15, 0.15, supportColor)
       } else {
-        b.cylinder(null, p[0], p[1], ground, 0.2, 0.17, top - ground, 6, supportColor, 0, false)
-        b.cylinder(null, p[0], p[1], ground, 0.45, 0.45, 0.25, 6, hexColor('#9b9b95'))
+        b.cylinder(null, p[0], p[1], ground, 0.2, 0.17, top - ground, 10, supportColor, 0, false)
+        b.cylinder(null, p[0], p[1], ground - 0.1, 0.48, 0.42, 0.35, 12, hexColor('#9b9b95'))
         if (inverted) b.tube([[p[0], p[1], top], [p[0] - u[0] * 0.2, p[1] - u[1] * 0.2, p[2] + 0.2]], 0.15, supportColor, 5)
       }
     }
@@ -315,7 +372,8 @@ export class ParkRenderer {
     const sky = lerp3(night, [0.6, 0.68, 0.78], daylight).map(v => v * (rain ? 0.85 : 1)) as Vec3
     const skyTop = lerp3([0.1, 0.15, 0.32], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
     const skyBottom = lerp3(lerp3([0.22, 0.27, 0.42], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
-    return { sunDir, sunColor, sky, ground: lerp3([0.26, 0.26, 0.32], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom }
+    const shadow = Math.max(0, Math.min(1, (elev - 0.06) * 4)) * (rain ? 0.35 : cloudy ? 0.55 : 0.82)
+    return { sunDir, sunColor, sky, ground: lerp3([0.26, 0.26, 0.32], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom, shadow }
   }
 
   isNight() { const f = this.state?.time.dayFraction ?? 0.4; return f > 0.84 || f < 0.22 }
@@ -357,6 +415,19 @@ export class ParkRenderer {
     return mat4.lookAt(this.orbitEye(), [c.tx, c.ty, c.tz], [0, 0, 1])
   }
 
+  private lightMatrix(light: Lighting, eye: Vec3): { m: Mat4; extent: number } {
+    const c = this.cam
+    const focus: Vec3 = this.rideCam ? eye : [c.tx, c.ty, c.tz]
+    const extent = this.rideCam ? 70 : Math.max(28, Math.min(230, c.dist * 1.15))
+    const d = light.sunDir, far = extent * 3 + 120
+    const pos: Vec3 = [focus[0] + d[0] * far * 0.5, focus[1] + d[1] * far * 0.5, focus[2] + d[2] * far * 0.5]
+    const up: Vec3 = Math.abs(d[2]) > 0.98 ? [0, 1, 0] : [0, 0, 1]
+    const view = mat4.lookAt(pos, focus, up)
+    const texel = extent * 2 / 2048
+    view[12] = Math.round(view[12] / texel) * texel; view[13] = Math.round(view[13] / texel) * texel
+    return { m: mat4.multiply(mat4.ortho(-extent, extent, -extent, extent, 1, far), view), extent }
+  }
+
   frame(now: number) {
     const s = this.state
     const dt = this.lastFrame ? Math.min(0.1, (now - this.lastFrame) / 1000) : 0.016
@@ -367,13 +438,29 @@ export class ParkRenderer {
     const litterKey = s.time.tick + ':' + Math.floor(this.time * 2)
     if (litterKey !== this.builtLitter && Math.floor(this.time * 2) !== Math.floor((this.time - dt) * 2) || this.builtLitter === '') { this.builtLitter = litterKey; this.rebuildLitter() }
     const eye = this.updateCamera()
+    this.eyePos = eye
     const light = this.lighting()
     const g = this.g
-    g.begin(this.width, this.height, this.view, this.proj, eye, light, this.time)
-    g.draw(this.terrain)
-    g.draw(this.paths)
+    const shadowStrength = light.shadow ?? 0
+    let first = true
+    if (shadowStrength > 0.02 && g.shadowsAvailable) {
+      const { m, extent } = this.lightMatrix(light, eye)
+      if (g.beginShadow(m, extent)) { this.drawWorld(dt); g.endShadow(); first = false }
+    }
+    g.begin(this.width, this.height, this.view, this.proj, eye, light, this.time, first ? 0 : shadowStrength)
+    this.drawWorld(first ? dt : 0)
+    this.drawPreview()
+    if (this.showGrid) g.draw(this.grid, undefined, { alpha: 0.18, unlit: true })
+    g.draw(this.water, undefined, { alpha: 0.78, wave: 0.08 })
+    if (s.weather.kind === 'rain') this.drawRain(eye)
+  }
+
+  private drawWorld(dt: number) {
+    const s = this.state!, g = this.g
+    g.draw(this.terrain, undefined, { ground: 1, specular: 0.04 })
+    g.draw(this.paths, undefined, { ground: 0.55, specular: 0.06 })
     const night = this.isNight()
-    for (const kind of SCENERY_KINDS) g.drawInstanced(this.kindMeshes.get(`tree:${kind}`) ?? null)
+    for (const kind of SCENERY_KINDS) g.drawInstanced(this.kindMeshes.get(`tree:${kind}`) ?? null, { specular: kind === 'rock' || kind === 'statue' || kind === 'fountain' ? 0.35 : 0.06 })
     for (const key of ['stall', 'stall:toilet', 'gate', 'bench', 'bin', 'lampPost', 'litter']) g.drawInstanced(this.kindMeshes.get(key) ?? null)
     g.drawInstanced(this.kindMeshes.get('lampHead') ?? null, { emissive: night ? 2.5 : 0.2 })
     for (const e of Object.values(s.entities)) {
@@ -388,10 +475,6 @@ export class ParkRenderer {
       else this.drawCoaster(e, dt, highlight)
     }
     this.drawPeople(dt)
-    this.drawPreview()
-    if (this.showGrid) g.draw(this.grid, undefined, { alpha: 0.18, unlit: true })
-    g.draw(this.water, undefined, { alpha: 0.72, wave: 0.08 })
-    if (s.weather.kind === 'rain') this.drawRain(eye)
   }
 
   private clock(e: Entity, dt: number): Clock {
@@ -447,40 +530,53 @@ export class ParkRenderer {
 
   private drawPeople(dt: number) {
     const s = this.state!, map = s.map
-    const people = this.list('people'), staff = this.list('staffPeople'), balloons = this.list('balloons'), umbrellas = this.list('umbrellas')
-    people.clear(); staff.clear(); balloons.clear(); umbrellas.clear()
-    const k = Math.min(1, dt * 9)
-    const seen = new Set<number>()
-    for (const gst of s.guests) {
-      if (gst.hidden || gst.state === 'ride') continue
-      seen.add(gst.id)
-      let d = this.display.get(gst.id)
-      if (!d) { d = { x: gst.x, y: gst.y, yaw: 0 }; this.display.set(gst.id, d) }
-      const dx = gst.x - d.x, dy = gst.y - d.y
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = gst.x; d.y = gst.y }
-      else { d.x += dx * k; d.y += dy * k }
-      if (dx * dx + dy * dy > 0.0004) { const target = Math.atan2(dy, dx); let diff = target - d.yaw; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); d.yaw += diff * Math.min(1, dt * 8) }
-      const wx = d.x * TILE, wy = d.y * TILE, z = groundHeightAt(map, wx, wy, TILE) + 0.08
-      const shirt = SHIRTS[gst.shirt & 15], scale = gst.kid ? 0.72 : 1
-      const bob = gst.state === 'walk' ? Math.abs(Math.sin(this.time * 9 + gst.id)) * 0.06 : 0
-      people.push(wx, wy, z + bob, d.yaw, shirt[0], shirt[1], shirt[2], scale)
-      if (gst.items.includes('balloon')) { const bc = SHIRTS[(gst.id * 7) & 15]; balloons.push(wx, wy, z, d.yaw + Math.sin(this.time + gst.id) * 0.2, bc[0], bc[1], bc[2], scale) }
-      if (gst.items.includes('umbrella') && s.weather.kind === 'rain') { const uc = SHIRTS[(gst.id * 3) & 15]; umbrellas.push(wx, wy, z, d.yaw, uc[0], uc[1], uc[2], scale) }
+    const balloons = this.list('balloons'), umbrellas = this.list('umbrellas')
+    const keys: string[] = []
+    for (let f = 0; f <= WALK_FRAMES; f++) for (const lod of [0, 1]) { for (let v = 0; v < GUEST_LOOKS.length; v++) keys.push(`person:${v}:${f}:${lod}`); keys.push(`staff:${f}:${lod}`) }
+    const eye = this.eyePos, lodOf = (wx: number, wy: number, wz: number) => (wx - eye[0]) ** 2 + (wy - eye[1]) ** 2 + (wz - eye[2]) ** 2 > PERSON_DETAIL_DIST ** 2 ? 1 : 0
+    if (dt > 0 || !this.peopleReady) {
+      this.peopleReady = true
+      for (const key of keys) this.list(key).clear()
+      balloons.clear(); umbrellas.clear()
+      const k = Math.min(1, dt * 9)
+      const seen = new Set<number>()
+      const frameOf = (id: number, moving: boolean, rate = 1.85) => moving ? Math.floor((this.time * rate + hash(id * 11) * 4) * WALK_FRAMES) % WALK_FRAMES : WALK_FRAMES
+      for (const gst of s.guests) {
+        if (gst.hidden || gst.state === 'ride') continue
+        seen.add(gst.id)
+        let d = this.display.get(gst.id)
+        if (!d) { d = { x: gst.x, y: gst.y, yaw: 0 }; this.display.set(gst.id, d) }
+        const dx = gst.x - d.x, dy = gst.y - d.y
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = gst.x; d.y = gst.y }
+        else { d.x += dx * k; d.y += dy * k }
+        if (dx * dx + dy * dy > 0.0004) { const target = Math.atan2(dy, dx); let diff = target - d.yaw; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); d.yaw += diff * Math.min(1, dt * 8) }
+        const wx = d.x * TILE, wy = d.y * TILE, z = groundHeightAt(map, wx, wy, TILE) + 0.06
+        const shirt = SHIRTS[gst.shirt & 15], scale = gst.kid ? 0.72 : 1
+        const look = Math.floor(hash(gst.id * 7 + 3) * GUEST_LOOKS.length) % GUEST_LOOKS.length
+        this.list(`person:${look}:${frameOf(gst.id, gst.state === 'walk', gst.kid ? 2.3 : 1.85)}:${lodOf(wx, wy, z)}`).push(wx, wy, z, d.yaw, shirt[0], shirt[1], shirt[2], scale)
+        if (gst.items.includes('balloon')) { const bc = SHIRTS[(gst.id * 7) & 15]; balloons.push(wx, wy, z, d.yaw + Math.sin(this.time + gst.id) * 0.2, bc[0], bc[1], bc[2], scale) }
+        if (gst.items.includes('umbrella') && s.weather.kind === 'rain') { const uc = SHIRTS[(gst.id * 3) & 15]; umbrellas.push(wx, wy, z, d.yaw, uc[0], uc[1], uc[2], scale) }
+      }
+      if (this.display.size > seen.size + 200) for (const id of this.display.keys()) if (!seen.has(id)) this.display.delete(id)
+      for (const st of s.staff) {
+        const id = -st.id
+        let d = this.display.get(id)
+        if (!d) { d = { x: st.x, y: st.y, yaw: 0 }; this.display.set(id, d) }
+        const dx = st.x - d.x, dy = st.y - d.y
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = st.x; d.y = st.y } else { d.x += dx * k; d.y += dy * k }
+        const moving = dx * dx + dy * dy > 0.0004
+        if (moving) d.yaw = Math.atan2(dy, dx)
+        const wx = d.x * TILE, wy = d.y * TILE, z = groundHeightAt(map, wx, wy, TILE) + 0.06
+        const col = hexColor(STAFF[st.role].color)
+        this.list(`staff:${frameOf(id, moving || st.role === 'entertainer')}:${lodOf(wx, wy, z)}`).push(wx, wy, z + (st.role === 'entertainer' ? Math.abs(Math.sin(this.time * 5 + st.id)) * 0.3 : 0), d.yaw + (st.state === 'sweep' ? Math.sin(this.time * 8) * 0.5 : 0), col[0], col[1], col[2], st.role === 'entertainer' ? 1.25 : 1)
+      }
+      const upload = (key: string, l: InstanceList) => this.g.setInstances(this.kindMeshes.get(key) ?? null, l.data, l.count)
+      for (const key of keys) upload(key, this.list(key))
+      upload('balloon', balloons); upload('umbrella', umbrellas)
     }
-    if (this.display.size > seen.size + 200) for (const id of this.display.keys()) if (!seen.has(id)) this.display.delete(id)
-    for (const st of s.staff) {
-      const id = -st.id
-      let d = this.display.get(id)
-      if (!d) { d = { x: st.x, y: st.y, yaw: 0 }; this.display.set(id, d) }
-      const dx = st.x - d.x, dy = st.y - d.y
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = st.x; d.y = st.y } else { d.x += dx * k; d.y += dy * k }
-      if (dx * dx + dy * dy > 0.0004) d.yaw = Math.atan2(dy, dx)
-      const wx = d.x * TILE, wy = d.y * TILE, z = groundHeightAt(map, wx, wy, TILE) + 0.08
-      const col = hexColor(STAFF[st.role].color)
-      staff.push(wx, wy, z + (st.role === 'entertainer' ? Math.abs(Math.sin(this.time * 5 + st.id)) * 0.3 : 0), d.yaw + (st.state === 'sweep' ? Math.sin(this.time * 8) * 0.5 : 0), col[0], col[1], col[2], st.role === 'entertainer' ? 1.25 : 1)
-    }
-    const set = (key: string, l: InstanceList) => { const m = this.kindMeshes.get(key) ?? null; this.g.setInstances(m, l.data, l.count); this.g.drawInstanced(m) }
-    set('person', people); set('staff', staff); set('balloon', balloons); set('umbrella', umbrellas)
+    for (const key of keys) if (!this.g.shadowPass || key.endsWith(':0')) this.g.drawInstanced(this.kindMeshes.get(key) ?? null, { specular: 0.12 })
+    this.g.drawInstanced(this.kindMeshes.get('balloon') ?? null, { specular: 0.6 })
+    this.g.drawInstanced(this.kindMeshes.get('umbrella') ?? null)
   }
 
   private drawRain(eye: Vec3) {
