@@ -25,10 +25,19 @@ export class CameraRig {
       this.pitch = THREE.MathUtils.clamp(this.pitch + p.dy * 0.0025, -0.15, 1.2);
       if (p.dx || p.dy) this.idle = 0;
     }
+    // Arrow keys: ← / → orbit around the player, ↑ / ↓ tilt the view
+    // up over the top or down toward the horizon. Holding a key keeps turning.
+    const orbit = this.input.axis(['ArrowRight'], ['ArrowLeft']);
+    const tilt = this.input.axis(['ArrowDown'], ['ArrowUp']);
+    if (orbit || tilt) {
+      this.yaw += orbit * 1.9 * dt;
+      this.pitch = THREE.MathUtils.clamp(this.pitch + tilt * 1.1 * dt, -0.15, 1.25);
+      this.idle = 0;
+    }
     this.idle += dt;
     this.dist = THREE.MathUtils.clamp(this.dist + p.wheel * 0.8, 2.5, 30);
 
-    if (opts.chaseYaw !== undefined && this.idle > 1.2) {
+    if (opts.chaseYaw !== undefined && this.idle > 2.5) {
       const want = opts.chaseYaw + Math.PI;
       const d = Math.atan2(Math.sin(want - this.yaw), Math.cos(want - this.yaw));
       this.yaw += d * Math.min(1, dt * 2.5);

@@ -16,6 +16,10 @@
   "kv_namespaces": [
     { "binding": "FILES", "id": "dd2a555458e249009207869d12fc90e9" }
   ],
+  "durable_objects": {
+    "bindings": [{ "name": "MAPLE_WORLD", "class_name": "MapleStreetWorld" }]
+  },
+  "migrations": [{ "tag": "maplestreet-v1", "new_sqlite_classes": ["MapleStreetWorld"] }],
   "previews": {
     "d1_databases": [
       {

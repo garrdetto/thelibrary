@@ -3,7 +3,7 @@
  * colliders in sync with it. Only the lot touched by an op is rebuilt.
  */
 import * as THREE from 'three/webgpu';
-import { applyOp, BuildOp, WorldState } from '../../shared/BuildRules';
+import { applyOp, BuildOp, normalizeBuild, WorldState } from '../../shared/BuildRules';
 import { Physics } from '../physics/Physics';
 import { MeshOptions, StructureMesher } from './Mesher';
 
@@ -17,6 +17,7 @@ export class HouseManager {
 
   setWorld(world: WorldState) {
     this.world = world;
+    for (const id in world.builds) normalizeBuild(world.builds[id]);
     for (const id in world.lots) this.rebuildLot(id);
   }
 

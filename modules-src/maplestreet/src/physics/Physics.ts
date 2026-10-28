@@ -37,6 +37,7 @@ export const MASK = {
   remote: groups(CG.REMOTE, CG.VEHICLE | CG.CHARACTER),
   wheelRay: groups(CG.VEHICLE, CG.GROUND | CG.STATIC | CG.VEHICLE | CG.REMOTE | CG.PROP),
   cameraRay: groups(CG.CHARACTER, CG.GROUND | CG.STATIC),
+  pick: groups(CG.CHARACTER, CG.GROUND | CG.STATIC | CG.PROP),
 };
 
 export interface StaticBox { cx: number; cy: number; cz: number; hx: number; hy: number; hz: number; rotY?: number; prop?: boolean }

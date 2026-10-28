@@ -19,9 +19,15 @@ export interface KVNamespace {
   list(options: { prefix: string; cursor?: string }): Promise<{ keys: { name: string }[]; list_complete: boolean; cursor?: string }>
 }
 
+export interface DurableObjectNamespace {
+  idFromName(name: string): unknown
+  get(id: unknown): { fetch(request: Request): Promise<Response> }
+}
+
 export type Env = {
   DB: D1Database
   FILES: KVNamespace
+  MAPLE_WORLD?: DurableObjectNamespace
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
 }

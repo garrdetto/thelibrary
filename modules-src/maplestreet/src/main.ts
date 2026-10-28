@@ -16,6 +16,7 @@ if (!peerAvailable()) $('onlineNote').textContent = 'Online rooms need an intern
 
 let game: Game | null = null;
 let starting = false;
+let inviteRequested = false;
 
 /** the library bridge: tell the parent page which room code to invite people to. */
 function postRoom(code: string) {
@@ -30,17 +31,18 @@ async function start(mode: NetMode) {
   store.set('maplestreet/color', colorIn.value);
   store.set('maplestreet/server', serverIn.value.trim());
   $('start').classList.add('loading');
-  $('startStatus').textContent = mode === 'host' ? 'Opening your online room…' : mode === 'join' ? `Joining room ${codeIn.value.toUpperCase()}…` : 'Loading the neighborhood…';
+  $('startStatus').textContent = mode === 'world' ? 'Walking over to Maple Street…' : mode === 'host' ? 'Opening your private room…' : mode === 'join' ? `Joining room ${codeIn.value.toUpperCase()}…` : 'Loading the neighborhood…';
   try {
     game = new Game({
       name, color: colorIn.value, mode,
       code: codeIn.value.trim().toUpperCase(),
       serverUrl: serverIn.value.trim(),
       onRoom: (code, label) => {
-        $('roomLabel').textContent = label;
+        $('roomLabel').textContent = code === null && /shared world/.test(label) ? 'Shared world — everything you build saves automatically' : label;
         $('roomCode').textContent = code ?? '';
         $('roomBox').hidden = !code;
         if (code) postRoom(code);
+        else if (inviteRequested && game?.roomCode) postRoom(game.roomCode);
       },
     });
     await game.start($('app'));
@@ -55,6 +57,7 @@ async function start(mode: NetMode) {
   }
 }
 
+$('playWorld').onclick = () => start('world');
 $('playSolo').onclick = () => start('offline');
 $('playHost').onclick = () => start('host');
 $('playJoin').onclick = () => { if (codeIn.value.trim().length >= 4) start('join'); else codeIn.focus(); };
@@ -66,11 +69,14 @@ addEventListener('message', e => {
   if (e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return;
   const code = game?.roomCode;
   if (code) postRoom(code);
-  else if (!game) start('host');
+  else if (!game) { inviteRequested = true; start('world'); }
   else { const u = new URL(location.href); u.searchParams.set('host', '1'); location.href = u.toString(); }
 });
 
-if (params.get('room')) { codeIn.value = params.get('room')!; setTimeout(() => start('join'), 300); }
+const room = params.get('room');
+if (room && room.toUpperCase() === 'WORLD') setTimeout(() => start('world'), 300);
+else if (room) { codeIn.value = room; setTimeout(() => start('join'), 300); }
+else if (params.get('world')) setTimeout(() => start('world'), 300);
 else if (params.get('host')) setTimeout(() => start('host'), 300);
 else if (params.get('server')) setTimeout(() => start('server'), 300);
 else if (params.get('solo')) setTimeout(() => start('offline'), 300);

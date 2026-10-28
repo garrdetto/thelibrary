@@ -6,16 +6,18 @@
 import { applyOp, BuildOp, FloorMat, Opening, RoofStyle, validateOp, WallStyle, wallKey, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
 
-interface HouseSpec { lotId: string; owner: string; name: string; style: WallStyle; roof: RoofStyle; floor: FloorMat; stories: 1 | 2 }
+interface HouseSpec { lotId: string; owner: string; name: string; style: WallStyle; roof: RoofStyle; floor: FloorMat; stories: 1 | 2; extras?: ('pool' | 'hoop' | 'court' | 'swings')[] }
 
 export const NEIGHBOR_HOUSES: HouseSpec[] = [
-  { lotId: 'N2', owner: 'npc-hendricks', name: 'Hendricks', style: 'siding_white', roof: 'gable_x', floor: 'oak', stories: 1 },
-  { lotId: 'N4', owner: 'npc-alvarez', name: 'Alvarez', style: 'brick_red', roof: 'gable_z', floor: 'walnut', stories: 2 },
-  { lotId: 'S2', owner: 'npc-okafor', name: 'Okafor', style: 'siding_sage', roof: 'gable_x', floor: 'oak', stories: 1 },
-  { lotId: 'S5', owner: 'npc-lindqvist', name: 'Lindqvist', style: 'stucco_sand', roof: 'flat', floor: 'slate', stories: 1 },
+  { lotId: 'N2', owner: 'npc-hendricks', name: 'Hendricks', style: 'siding_white', roof: 'gable_x', floor: 'oak', stories: 1, extras: ['hoop', 'pool'] },
+  { lotId: 'N4', owner: 'npc-alvarez', name: 'Alvarez', style: 'brick_red', roof: 'hip', floor: 'herringbone', stories: 2, extras: ['court'] },
+  { lotId: 'S2', owner: 'npc-okafor', name: 'Okafor', style: 'siding_sage', roof: 'gable_x', floor: 'oak', stories: 1, extras: ['swings', 'hoop'] },
+  { lotId: 'S5', owner: 'npc-lindqvist', name: 'Lindqvist', style: 'stucco_sand', roof: 'flat', floor: 'marble', stories: 1, extras: ['pool'] },
+  { lotId: 'N8', owner: 'npc-brennan', name: 'Brennan', style: 'stone', roof: 'gable_x', floor: 'walnut', stories: 2 },
+  { lotId: 'S7', owner: 'npc-nakamura', name: 'Nakamura', style: 'board_batten', roof: 'gable_z', floor: 'oak', stories: 1, extras: ['hoop'] },
 ];
 
-const W = 12, D = 10, SETBACK = 9, X_OFF = 7;
+const W = 12, D = 10, SETBACK = 12, X_OFF = 10;
 
 export function seedNeighborhood(world: WorldState) {
   for (const spec of NEIGHBOR_HOUSES) {
@@ -113,7 +115,28 @@ function houseOps(world: WorldState, s: HouseSpec): BuildOp[] {
   obj('grill', 1, D + 2, 0);
   obj('patioSet', 4, D + 2, 0);
   const backV = flip ? lot.z + lot.d - 1 - zF : zF - lot.z - 1;   // last cell row of the lot
-  for (let u = -X_OFF; u < lot.w - X_OFF; u++) obj('fence', u, backV, 0);
+  // Picket fence along the back and both sides of the back yard (a fence-type wall run).
+  const backLine = flip ? lot.z + lot.d : lot.z;
+  ops.push({ op: 'walls', lotId, level: 0, style: s.style, kind: 'picket', segs: Array.from({ length: lot.w }, (_, i) => ({ gx: lot.x + i, gz: backLine, dir: 'x' as const })) });
+  const sideFrom = Math.min(vz(D + 1), backLine), sideTo = Math.max(vz(D + 1), backLine);
+  for (const gx of [lot.x, lot.x + lot.w]) ops.push({ op: 'walls', lotId, level: 0, style: s.style, kind: 'picket', segs: Array.from({ length: sideTo - sideFrom }, (_, i) => ({ gx, gz: sideFrom + i, dir: 'z' as const })) });
+  void backV;
   obj('plant', -1, 0, 0);
+  obj('flowerBed', 7, -2, 0);
+  obj('rugLarge', 4, 1, 0);
+  obj('painting', 5, 4, 0);
+  obj('ceilingLight', 5, 2, 0);
+  obj('chandelier', 3, 7, 0);
+
+  for (const extra of s.extras ?? []) {
+    if (extra === 'hoop') obj('hoop', -X_OFF + 3, -2, 0);
+    if (extra === 'swings') obj('swingSet', 7, D + 6, 0);
+    if (extra === 'court') obj('court', 3, D + 5, 2);
+    if (extra === 'pool') {
+      const z0 = Math.min(vz(D + 5), vz(D + 10)), z1 = Math.max(vz(D + 5), vz(D + 10));
+      ops.push({ op: 'pool', lotId, pool: { id: id(), x0: x0 + 2, x1: x0 + 11, z0, z1 } });
+      obj('lounger', 12, D + 5, 0); obj('lounger', 12, D + 8, 0);
+    }
+  }
   return ops;
 }

@@ -188,6 +188,99 @@ const leaves: Draw = (g, s, rnd) => {
   }
 };
 
+const paint = (base: string): Draw => (g, s, rnd) => { g.fillStyle = base; g.fillRect(0, 0, s, s); noise(g, s, rnd, 5000, 0.03, false); noise(g, s, rnd, 3000, 0.03, true); };
+
+const stripes = (a: string, b: string): Draw => (g, s, rnd) => {
+  g.fillStyle = a; g.fillRect(0, 0, s, s);
+  for (let x = 0; x < s; x += s / 8) { g.fillStyle = b; g.fillRect(x, 0, s / 16, s); g.fillStyle = 'rgba(255,255,255,0.15)'; g.fillRect(x + s / 16, 0, 2, s); }
+  noise(g, s, rnd, 3000, 0.03, false);
+};
+
+const damask = (a: string, b: string): Draw => (g, s, rnd) => {
+  g.fillStyle = a; g.fillRect(0, 0, s, s);
+  g.fillStyle = b;
+  for (let y = 0; y <= s; y += s / 4) for (let x = (y / (s / 4)) % 2 ? s / 8 : 0; x <= s; x += s / 4) {
+    g.beginPath(); g.ellipse(x, y, s / 22, s / 12, 0, 0, Math.PI * 2); g.fill();
+    g.beginPath(); g.ellipse(x, y, s / 12, s / 40, 0, 0, Math.PI * 2); g.fill();
+  }
+  noise(g, s, rnd, 3000, 0.03, false);
+};
+
+const subway: Draw = (g, s, rnd) => {
+  g.fillStyle = '#bdbab3'; g.fillRect(0, 0, s, s);
+  const rows = 16, cols = 4;
+  for (let r = 0; r < rows; r++) for (let c = -1; c < cols; c++) {
+    const x = c * (s / cols) + (r % 2 ? s / cols / 2 : 0);
+    g.fillStyle = `hsl(40, 10%, ${92 + rnd() * 5}%)`; g.fillRect(x + 2, r * (s / rows) + 2, s / cols - 4, s / rows - 4);
+  }
+};
+
+const panel: Draw = (g, s, rnd) => {
+  g.fillStyle = '#7a5a3e'; g.fillRect(0, 0, s, s);
+  for (let x = 0; x < s; x += s / 6) {
+    g.fillStyle = `hsl(28, 40%, ${30 + rnd() * 8}%)`; g.fillRect(x + 2, 0, s / 6 - 4, s);
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(x, 0, 2, s);
+  }
+  noise(g, s, rnd, 8000, 0.08, false);
+};
+
+const herringbone: Draw = (g, s, rnd) => {
+  g.fillStyle = '#5a3a20'; g.fillRect(0, 0, s, s);
+  const bw = s / 16, bl = s / 4;
+  for (let y = -bl; y < s + bl; y += bw * 2) for (let x = -bl; x < s + bl; x += bl) {
+    for (const flip of [0, 1]) {
+      g.save(); g.translate(x + (flip ? bl / 2 : 0), y + (flip ? bw : 0)); g.rotate(flip ? -Math.PI / 4 : Math.PI / 4);
+      g.fillStyle = `hsl(${28 + rnd() * 8}, ${45 + rnd() * 10}%, ${40 + rnd() * 10}%)`; g.fillRect(0, 0, bl, bw - 2); g.restore();
+    }
+  }
+};
+
+const marble: Draw = (g, s, rnd) => {
+  g.fillStyle = '#eceae6'; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 26; i++) {
+    g.strokeStyle = `rgba(90,90,100,${0.08 + rnd() * 0.15})`; g.lineWidth = 0.5 + rnd() * 2;
+    g.beginPath(); let x = rnd() * s, y = rnd() * s; g.moveTo(x, y);
+    for (let k = 0; k < 8; k++) { x += (rnd() - 0.3) * 90; y += (rnd() - 0.5) * 90; g.lineTo(x, y); }
+    g.stroke();
+  }
+  g.fillStyle = 'rgba(0,0,0,0.25)'; for (const v of [0, s / 2]) { g.fillRect(v, 0, 2, s); g.fillRect(0, v, s, 2); }
+};
+
+const deckBoards: Draw = (g, s, rnd) => {
+  for (let r = 0; r < 10; r++) {
+    g.fillStyle = `hsl(${24 + rnd() * 6}, ${35 + rnd() * 10}%, ${42 + rnd() * 8}%)`; g.fillRect(0, (r * s) / 10, s, s / 10);
+    g.fillStyle = 'rgba(0,0,0,0.55)'; g.fillRect(0, (r * s) / 10, s, 3);
+    for (let k = 0; k < 8; k++) { g.fillStyle = 'rgba(0,0,0,0.5)'; g.fillRect(rnd() * s, (r * s) / 10 + s / 20, 3, 3); }
+  }
+  noise(g, s, rnd, 9000, 0.1, false);
+};
+
+const pavers: Draw = (g, s, rnd) => {
+  g.fillStyle = '#8f8a80'; g.fillRect(0, 0, s, s);
+  for (let r = 0; r < 6; r++) for (let c = -1; c < 4; c++) {
+    const x = c * (s / 3) + (r % 2 ? s / 6 : 0);
+    g.fillStyle = `hsl(35, ${10 + rnd() * 8}%, ${55 + rnd() * 12}%)`; g.fillRect(x + 3, r * (s / 6) + 3, s / 3 - 6, s / 6 - 6);
+  }
+  noise(g, s, rnd, 9000, 0.08, false);
+};
+
+const fenceWood: Draw = (g, s, rnd) => {
+  g.fillStyle = '#8b6a4a'; g.fillRect(0, 0, s, s);
+  for (let i = 0; i < 300; i++) { g.strokeStyle = `rgba(50,30,15,${0.05 + rnd() * 0.1})`; g.beginPath(); const x = rnd() * s; g.moveTo(x, 0); g.lineTo(x + (rnd() - 0.5) * 6, s); g.stroke(); }
+};
+
+const poolTile: Draw = (g, s, rnd) => {
+  const grd = g.createRadialGradient(s / 2, s / 2, s * 0.1, s / 2, s / 2, s * 0.75);
+  grd.addColorStop(0, '#1f8fbf'); grd.addColorStop(1, '#46b6d8');
+  g.fillStyle = grd; g.fillRect(0, 0, s, s);
+  g.strokeStyle = 'rgba(255,255,255,0.08)'; g.lineWidth = 1;
+  for (let i = 0; i <= 8; i++) { g.beginPath(); g.moveTo((i * s) / 8, 0); g.lineTo((i * s) / 8, s); g.stroke(); g.beginPath(); g.moveTo(0, (i * s) / 8); g.lineTo(s, (i * s) / 8); g.stroke(); }
+  for (let i = 0; i < 220; i++) {                                  // caustic web
+    g.strokeStyle = `rgba(220,250,255,${0.12 + rnd() * 0.22})`; g.lineWidth = 1 + rnd() * 2;
+    g.beginPath(); const x = rnd() * s, y = rnd() * s; g.moveTo(x, y); g.quadraticCurveTo(x + (rnd() - 0.5) * 60, y + (rnd() - 0.5) * 60, x + (rnd() - 0.5) * 80, y + (rnd() - 0.5) * 80); g.stroke();
+  }
+};
+
 const grassBump: Draw = (g, s, rnd) => {
   g.fillStyle = '#808080'; g.fillRect(0, 0, s, s);
   for (let i = 0; i < 30000; i++) {
@@ -202,6 +295,9 @@ const grassBump: Draw = (g, s, rnd) => {
 export class MaterialLibrary {
   private cache = new Map<string, MatEntry>();
   readonly grassDetail: THREE.CanvasTexture;
+  /** Textures that drift each frame (pool caustics). */
+  readonly animated: THREE.Texture[] = [];
+  tick(dt: number) { for (const t of this.animated) { t.offset.x += dt * 0.02; t.offset.y += dt * 0.013; } }
 
   constructor() {
     this.grassDetail = canvasTex(512, 77, grassBump, false);
@@ -224,10 +320,37 @@ export class MaterialLibrary {
     switch (name) {
       case 'siding_white': return { material: this.std(T(1, siding('#e9e6df')), 0.75), tile: 1.2 };
       case 'siding_sage':  return { material: this.std(T(2, siding('#8f9d84')), 0.75), tile: 1.2 };
+      case 'siding_navy':  return { material: this.std(T(20, siding('#2f3e57')), 0.75), tile: 1.2 };
+      case 'brick_white':  return { material: this.std(T(21, brick), 0.9, { color: 0xf3efe8 }), tile: 1.2 };
+      case 'board_batten': return { material: this.std(T(22, (g, s, rnd) => { g.fillStyle = '#efece6'; g.fillRect(0, 0, s, s); for (let x = 0; x < s; x += s / 4) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(x, 0, 6, s); g.fillStyle = 'rgba(255,255,255,0.4)'; g.fillRect(x + 6, 0, 3, s); } noise(g, s, rnd, 3000, 0.04, false); }), 0.7), tile: 1.6 };
+      case 'paint_white':  return { material: this.std(T(23, paint('#ece8e1')), 0.9), tile: 2 };
+      case 'paint_greige': return { material: this.std(T(24, paint('#cfc5b4')), 0.9), tile: 2 };
+      case 'paint_sage':   return { material: this.std(T(25, paint('#a9b8a0')), 0.9), tile: 2 };
+      case 'paint_navy':   return { material: this.std(T(26, paint('#2e3d58')), 0.85), tile: 2 };
+      case 'paint_blush':  return { material: this.std(T(27, paint('#e3c2bb')), 0.9), tile: 2 };
+      case 'paint_charcoal': return { material: this.std(T(28, paint('#3b3d40')), 0.85), tile: 2 };
+      case 'wallpaper_stripe': return { material: this.std(T(29, stripes('#e8e2d2', '#b9c7c0')), 0.9), tile: 1.2 };
+      case 'wallpaper_damask': return { material: this.std(T(30, damask('#2f4a43', '#c9b27a')), 0.85), tile: 1.0 };
+      case 'tile_subway':  return { material: this.std(T(31, subway), 0.3), tile: 1.2 };
+      case 'panel_wood':   return { material: this.std(T(32, panel), 0.65), tile: 1.5 };
+      case 'herringbone':  return { material: this.std(T(33, herringbone), 0.5), tile: 1.6 };
+      case 'marble':       return { material: this.std(T(34, marble), 0.2), tile: 1.2 };
+      case 'deck':         return { material: this.std(T(35, deckBoards), 0.8), tile: 1.6 };
+      case 'patio':        return { material: this.std(T(36, pavers), 0.9), tile: 1.8 };
+      case 'fence_wood':   return { material: this.std(T(37, fenceWood), 0.85), tile: 1.0 };
+      case 'coping':       return { material: this.std(T(38, pavers), 0.8, { color: 0xe8e2d6 }), tile: 1.0 };
+      case 'metal_dark':   return { material: new THREE.MeshStandardMaterial({ color: 0x24272b, roughness: 0.35, metalness: 0.8 }), tile: 1 };
+      case 'pool_water': {
+        const map = T(39, poolTile);
+        const m = new THREE.MeshStandardMaterial({ map, roughness: 0.05, metalness: 0.15, emissive: 0x0a3a50, emissiveIntensity: 0.25 });
+        this.animated.push(map);
+        return { material: m, tile: 4 };
+      }
       case 'brick_red':    return { material: this.std(T(3, brick), 0.9), tile: 1.2 };
       case 'stucco_sand':  return { material: this.std(T(4, stucco), 0.95), tile: 1.5 };
       case 'stone':        return { material: this.std(T(5, stone), 0.9), tile: 1.6 };
-      case 'interior':     return { material: this.std(T(6, drywall), 0.9), tile: 2.0 };
+      case 'interior':
+      case 'drywall':      return { material: this.std(T(6, drywall), 0.9), tile: 2.0 };
       case 'oak':          return { material: this.std(T(7, planks(32, 52)), 0.55), tile: 2.0 };
       case 'walnut':       return { material: this.std(T(8, planks(22, 28)), 0.5), tile: 2.0 };
       case 'tile':         return { material: this.std(T(9, tile), 0.35), tile: 1.2 };

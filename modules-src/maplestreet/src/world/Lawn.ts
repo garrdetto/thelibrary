@@ -74,7 +74,7 @@ export class Lawn {
     g.restore();
     let fresh = 0;
     for (const idx of strokeCells(this.lot, s)) { if (!this.coverage[idx]) fresh++; this.coverage[idx] = shade; }
-    this.dirty = true;
+    this.dirty = true; this.pixelsStale = true; this.revision++;
     return fresh;
   }
 
@@ -87,10 +87,28 @@ export class Lawn {
       this.g.fillStyle = SHADE_COLORS[c[i] as Exclude<Shade, 0>];
       this.g.fillRect((i % this.lot.w) * PPM, Math.floor(i / this.lot.w) * PPM, PPM, PPM);
     }
-    this.dirty = true;
+    this.dirty = true; this.pixelsStale = true; this.revision++;
   }
 
-  regrow() { this.coverage.fill(0); this.paintUncut(); this.dirty = true; }
+  regrow() { this.coverage.fill(0); this.paintUncut(); this.dirty = true; this.pixelsStale = true; this.revision++; }
+
+  private pixels: Uint8ClampedArray | null = null;
+  private pixelsStale = true;
+  /** Lawn color + whether it's cut at a world point (grass blades follow the stripes). */
+  sample(x: number, z: number, out: [number, number, number]): boolean {
+    if (this.pixelsStale || !this.pixels) {
+      this.pixels = this.g.getImageData(0, 0, this.canvas.width, this.canvas.height).data;
+      this.pixelsStale = false;
+    }
+    const px = Math.min(this.canvas.width - 1, Math.max(0, Math.floor((x - this.lot.x) * PPM)));
+    const py = Math.min(this.canvas.height - 1, Math.max(0, Math.floor((z - this.lot.z) * PPM)));
+    const i = (py * this.canvas.width + px) * 4;
+    out[0] = this.pixels[i] / 255; out[1] = this.pixels[i + 1] / 255; out[2] = this.pixels[i + 2] / 255;
+    const cx = Math.floor(x - this.lot.x), cz = Math.floor(z - this.lot.z);
+    return this.coverage[cz * this.lot.w + cx] > 0;
+  }
+  /** Bumped whenever the mow map changes, so dependents can refresh. */
+  revision = 0;
 
   get percentMowed() { let n = 0; for (const v of this.coverage) if (v) n++; return n / this.coverage.length; }
 

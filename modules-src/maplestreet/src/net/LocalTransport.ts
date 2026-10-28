@@ -16,7 +16,7 @@ type Wire =
   | { k: 'hostChanged' };
 
 const CHANNEL = 'maplestreet-tabs';
-const SAVE_KEY = 'maplestreet/tabs/v1';
+const SAVE_KEY = 'maplestreet/tabs/v2';
 
 export class LocalTransport implements Transport {
   readonly label = 'Same-device tabs';
