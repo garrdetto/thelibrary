@@ -38,6 +38,10 @@ A 3D theme-park builder and management game. Sculpt land and water, lay footpath
 
 Multiplayer runs on the same Node service: co-op parks for up to four players (start fresh or from a save), and versus matches for two to four players on mirrored valleys. Signed-in players get six cloud save slots. Saving needs the `park_saves` table from `migrations/0006_park_saves.sql`.
 
+## Maple Street
+
+A 3D neighborhood builder. Buy a lot and build on a 1 m grid: walls, rooms, floors, doors, windows, roofs and furniture across three levels. You can also drive a pickup with a trailer, a sedan, a golf cart, a four-wheeler and a riding mower, mow striped lawns, haul deliveries and borrow from a bank with a $50,000 loan cap. Other players can never change your lot. Play solo in a fully offline simulation, or host an online room with a code (PeerJS, no backend). The page is generated from `modules-src/maplestreet/`; rebuild it with `bun modules-src/maplestreet/build.mjs`.
+
 ## Multiplayer
 
 Live pool and racing run on the Node service in `server/` (deployed on Railway). Set its `FRONTEND_ORIGIN` to this site's origin, for example `https://thelibrary.garrdetto.workers.dev`. The site's `VITE_POOL_SERVER_URL` build variable points at the Railway URL.
