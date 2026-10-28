@@ -239,6 +239,7 @@ const CFG = {
   bankIn:85, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
   g:9.81, grip:1.0, apronGrip:0.85,                             // tire grip (mu)
   offTrack:0.25,     // how much of the apron penalty applies (0.25 = 75% less than full)
+  concreteTurn:0.8, concreteSpeed:0.9, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
   contactSlow:0.4,
   packBoost:0.02,    // +2% top speed per position behind the leader; tapers over 2 s after a pass   // speed fraction lost per second while rubbing another car
   power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:3.6, // engine & coast-down
@@ -1688,6 +1689,12 @@ class Car{
 }
 
 // ===================== PHYSICS =====================
+function concreteContact(c){
+  const sh=Math.sin(c.h),ch=Math.cos(c.h),tm=c.m&&c.m.tm,k=tm?0.98:CFG.carScale,half=(tm?0.83:0.84)*k;
+  for(const lg of [(tm?TM.DIM.FA:1.48)*k,(tm?TM.DIM.RA:-1.42)*k])for(const b of [1,-1]){
+    if(toTrack(c.x+sh*lg-ch*half*b,c.z+ch*lg+sh*half*b).lat<-HW)return true;}
+  return false;
+}
 function stepCar(c,dt,ctl,cap){
   const tgt=clamp(ctl.steer,-1,1);
   const growing=Math.abs(tgt)>Math.abs(c.steer)&&(Math.sign(tgt)===Math.sign(c.steer)||c.steer===0);
@@ -1699,7 +1706,9 @@ function stepCar(c,dt,ctl,cap){
   const gripF=Math.max(0.8,1-0.0012*(d.l+d.rt)-0.0006*(d.f+d.r));
   const aOn=aMaxAt(tp.s,Math.max(tp.lat,-HW+0.01),CFG.grip*gripF);
   const aMax=apron?lerp(aOn,aMaxAt(tp.s,tp.lat,CFG.apronGrip*gripF),CFG.offTrack):aOn;
-  const bst=c.boost||1,powF=Math.max(0.55,1-0.0035*d.f-0.0012*(d.l+d.rt+d.r))*bst,dragF=(1+0.005*d.f)/(bst*bst);
+  const onConcrete=concreteContact(c),cs=onConcrete?CFG.concreteSpeed:1;
+  c.ck=(c.ck||0)+((onConcrete?1:0)-(c.ck||0))*Math.min(1,dt/0.15);
+  const bst=c.boost||1,powF=Math.max(0.55,1-0.0035*d.f-0.0012*(d.l+d.rt+d.r))*bst*cs,dragF=(1+0.005*d.f)/(bst*bst)/(cs*cs*cs);
   let ax=0;
   if(c.thr){if(vf>-0.5)ax+=Math.min(CFG.maxAccel,CFG.power*powF/Math.max(vf,1));else ax+=CFG.brake;}
   if(c.brk){if(vf>0.5)ax-=CFG.brake;else if(!c.thr)ax-=4;}
@@ -1709,7 +1718,7 @@ function stepCar(c,dt,ctl,cap){
   if(!c.thr)res+=CFG.engineBrake*Math.min(1,Math.abs(vf)/5);
   const steerMax=CFG.steerLow/(1+Math.abs(vf)*CFG.steerSpeed);
   const pull=clamp((d.l-d.rt)*0.0012,-0.15,0.15)*Math.min(1,Math.abs(vf)/10);
-  let yaw=vf*Math.tan(clamp(c.steer+pull,-1,1)*steerMax)/CFG.wheelbase;
+  let yaw=vf*Math.tan(clamp(c.steer+pull,-1,1)*steerMax)/CFG.wheelbase*lerp(1,CFG.concreteTurn,c.ck);
   const lon=Math.abs(ax)*0.85,latAvail=Math.sqrt(Math.max(aMax*aMax*0.2,aMax*aMax-lon*lon));
   const ratio=Math.abs(vf*yaw)/latAvail;
   if(DIRT){
@@ -1726,6 +1735,9 @@ function stepCar(c,dt,ctl,cap){
   res+=CFG.slideScrub*Math.abs(vl);
   let nv=vf+ax*dt;const sg=Math.sign(nv);if(sg!==0){const after=nv-sg*res*dt;nv=Math.sign(after)!==sg?0:after;}
   if(nv<-CFG.reverseMax)nv=-CFG.reverseMax;
+  if(c.cf===undefined)c.cf=1;
+  if(onConcrete){const nf=Math.max(CFG.concreteSpeed,c.cf-dt*(1-CFG.concreteSpeed)/0.35);if(nv>0)nv*=nf/c.cf;c.cf=nf;}
+  else c.cf=Math.min(1,c.cf+dt*(1-CFG.concreteSpeed)/1.5);
   c.vx=sh*nv-ch*vl;c.vz=ch*nv+sh*vl;c.vf=nv;
   c.x+=c.vx*dt;c.z+=c.vz*dt;c.tp=toTrack(c.x,c.z);
   walls(c);
