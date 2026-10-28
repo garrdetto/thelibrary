@@ -18,6 +18,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/server/routes/pool.ts`: `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay`.
 - `src/server/routes/racing.ts`: `/api/racing` tickets, lap records, paint profiles, AI skins.
 - `src/server/routes/park.ts`: `/api/park` multiplayer tickets (prefix `park:`), ticket redeem, gzip-compressed saves (slot 0 is the 5-minute autosave, slots 1–6 are manual), and per-map net-worth leaderboards (`?scores=<scenario>`, POST `score` keeps each player's best, admin `reset-scores`). The board is `src/components/park/ParkScoreboard.tsx`.
+- `src/server/routes/site-changes.ts`: `/api/site-changes` (admin chat with Claude that edits and publishes the site; see Site changes below).
 - `src/server/routes/scores.ts`: `/api/module-scores` leaderboards for embedded modules (GET `?module=`, POST `score` / `reset-records`). Board settings live in `src/lib/module-scores.ts`.
 - `src/server/routes/studio.ts` + `src/server/lyrics.ts`: `/api/studio`, `/api/library?id=` (version history only), `/api/asset`, `/api/learning`, `/api/lyric-presets`.
 - `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret.
@@ -34,12 +35,18 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - Leaderboards: 2048, Chopper Cave and BotWreck 3D load `public/modules/module-scores.js` and call `tlScores.submit(module, value)`; it posts to `/api/module-scores` and messages the parent `{type:'tl-score-saved'}` so `ModuleScoreboard.tsx` (shown under the module frame) refreshes. Boards list every saved result, top 10, so one player can hold several places. Short Track Showdown uses the racing lap records (`LapRecordBoard`) instead.
 
 ### Accounts and admin UI
-- `src/components/PoolAccount.tsx`: sign-in form. Signed-out visitors see `src/components/SignInRibbon.tsx` pinned at the top of the main panel and a highlighted sign-in form (`signin-spotlight`) at the top of every view except pool and racing, which show their own. `src/components/WorkspaceAdmin.tsx`: admin panel.
+- `src/components/PoolAccount.tsx`: sign-in form. Signed-out visitors see `src/components/SignInRibbon.tsx` pinned at the top of the main panel and a highlighted sign-in form (`signin-spotlight`) at the top of every view except pool and racing, which show their own. `src/components/AdminPanel.tsx`: admin panel tabs — People & permissions (`WorkspaceAdmin.tsx`) and Site changes (`SiteChanges.tsx`).
+
+### Site changes (admin asks Claude to change the site)
+- `src/components/SiteChanges.tsx` is a chat with Claude. Each admin message becomes a row in D1 `site_changes` (migration 0009, also created on first use) and `/api/site-changes` (`src/server/routes/site-changes.ts`) starts `.github/workflows/site-change.yml` through the GitHub API (`workflow_dispatch` with `job_id` and `callback_url`).
+- The workflow runs `.github/site-changes/run.mjs`: it fetches the job and earlier turns from `/api/site-changes?job=` (Bearer `SITE_CHANGES_SECRET`), runs Claude Code headless with the request, reports progress back, then builds (`pnpm build`), commits and pushes to `main` (auto-publish) or opens a pull request (review first). New migrations are applied when Cloudflare secrets exist. Runs are serialized with a concurrency group. Undo runs `git revert` on the change's commit.
+- Credits: Anthropic has no API for a prepaid balance, so the admin enters the balance and the panel subtracts each run's reported `total_cost_usd`. With `ANTHROPIC_ADMIN_KEY` set, it also shows the organization's month-to-date spend from the Admin cost report (cached 5 minutes in `site_change_settings`).
+- Worker secrets: `SITE_CHANGES_GITHUB_TOKEN` (fine-grained token, Actions read/write on the repo), `SITE_CHANGES_SECRET`, optional `ANTHROPIC_ADMIN_KEY`, optional `SITE_CHANGES_REPO` (default `garrdetto/thelibrary`). Repository secrets: `SITE_CHANGES_SECRET`, and `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN`; optional `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` for migrations; optional repository variable `SITE_CHANGES_MODEL`.
 
 ### Data
-- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets, park_saves, park_scores, maplestreet_world (Maple Street's shared world, written by its Durable Object).
+- Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: users, sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets, park_saves, park_scores, maplestreet_world (Maple Street's shared world, written by its Durable Object), site_changes, site_change_settings.
 - Workers KV `thelibrary-files` (binding `FILES`) for binary files: `cue/<userId>`, `skin/<userId>/<asset>`, `image/<userId>/<creationId>`.
-- Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`. Config in `wrangler.jsonc`.
+- Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`, and the site-changes secrets above. Config in `wrangler.jsonc`.
 
 ### Multiplayer server (`server/`)
 - `server/index.mjs`, `server/racing.mjs` and `server/park.mjs` verify players by redeeming tickets at `<site>/api/pool-account?action=redeem`, `<site>/api/racing?action=redeem` and `<site>/api/park?action=redeem`. `FRONTEND_ORIGIN` must list the site origin.

@@ -32,6 +32,27 @@ pnpm install
 pnpm dev
 ```
 
+## Site changes (ask Claude from the admin panel)
+
+Admin → **Site changes** is a chat with Claude. Each message starts a GitHub Actions run. Claude edits the code there and builds the site. Then the change is either published to `main` (it goes live through Workers Builds) or opened as a pull request, if you untick *Publish automatically*. Every change it published has an **Undo** button. The panel also shows how much of your credit balance is left.
+
+One-time setup:
+
+1. **Pick a shared secret.** Use any long random string, for example from `openssl rand -hex 32`.
+2. **GitHub → this repository → Settings → Secrets and variables → Actions:**
+   - `SITE_CHANGES_SECRET`: the shared secret.
+   - `ANTHROPIC_API_KEY`: from platform.claude.com. Runs draw down your API credits. Alternatively, set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) to run on a Claude Pro/Max subscription instead.
+   - Optional: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, so new database migrations are applied automatically.
+   - Optional repository variable `SITE_CHANGES_MODEL`, for example `opus` or `sonnet`.
+3. **Create a GitHub fine-grained personal access token** for this repository only, with *Actions: Read and write*.
+4. **Cloudflare → Workers & Pages → thelibrary → Settings → Variables and Secrets** (type Secret):
+   - `SITE_CHANGES_GITHUB_TOKEN`: the token from step 3.
+   - `SITE_CHANGES_SECRET`: the same shared secret.
+   - Optional `ANTHROPIC_ADMIN_KEY`: an Admin API key (`sk-ant-admin…`) to show your total API spend this month.
+5. **If you want review-first changes as pull requests:** go to GitHub → Settings → Actions → General and turn on *Allow GitHub Actions to create and approve pull requests*. If `main` has branch protection that blocks direct pushes, use review-first mode.
+
+Anthropic doesn't expose your remaining prepaid balance through any API. Enter it once in the panel (and again after you top up), and the panel subtracts the exact cost of each request.
+
 ## Thrill Park
 
 A 3D theme-park builder and management game. Sculpt land and water, lay footpaths and queue lines, build eight kinds of flat rides, design roller coasters piece by piece (four track styles with chain lifts, boosters, brakes and loops, physics-based test runs with excitement, intensity and nausea ratings), and run shops and stalls. You also hire handymen, mechanics and entertainers, set prices, take out loans, run marketing campaigns, and ride your coasters with an on-ride camera. Guests have needs, preferences and thoughts. There are six solo scenarios with objectives, plus a sandbox.
