@@ -30,4 +30,8 @@ export type Env = {
   MAPLE_WORLD?: DurableObjectNamespace
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
+  SITE_CHANGES_GITHUB_TOKEN?: string
+  SITE_CHANGES_SECRET?: string
+  SITE_CHANGES_REPO?: string
+  ANTHROPIC_ADMIN_KEY?: string
 }

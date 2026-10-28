@@ -1,6 +1,6 @@
 import { PoolAccount } from '@/components/PoolAccount'
 import { SignInRibbon } from '@/components/SignInRibbon'
-import { WorkspaceAdmin } from '@/components/WorkspaceAdmin'
+import { AdminPanel } from '@/components/AdminPanel'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
@@ -443,7 +443,7 @@ function Studio() {
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="shorttrack" trackName="Showdown Bullring (0.5 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
-        {view === 'admin' && access.isAdmin && <WorkspaceAdmin/>}
+        {view === 'admin' && access.isAdmin && <AdminPanel/>}
         {view === 'pool' && <PoolTable lobby={lobby}/>}
         {view === 'park' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame username={access.username} accountReady={accountReady}/></Suspense>}
         {(view === 'racing' || view === 'oval') && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the race track…</p>}><Racing key={view} fixedTrack={view === 'oval' ? 'oval' : 'circuit'} players={lobby.players} playerName={lobby.name} joinRequest={raceJoinRequest} onJoinHandled={() => setRaceJoinRequest(0)}/></Suspense>}

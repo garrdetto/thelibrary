@@ -8,12 +8,14 @@ import { park } from './routes/park'
 import { maplestreet } from './routes/maplestreet'
 import { groupChat } from './routes/chat'
 import { moduleScores } from './routes/scores'
+import { siteChanges } from './routes/site-changes'
 import { asset, learning, library, lyricPresets, studio } from './routes/studio'
 
 const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
   '/api/pool-account': poolAccount,
   '/api/workspace-access': workspaceAccess,
   '/api/workspace-admin': workspaceAdmin,
+  '/api/site-changes': siteChanges,
   '/api/account-settings': accountSettings,
   '/api/pool-practice': poolPractice,
   '/api/pool-preferences': poolPreferences,
