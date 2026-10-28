@@ -2,6 +2,8 @@
 export class Input {
   private down = new Set<string>();
   private pressedThisFrame = new Set<string>();
+  /** Keys pressed this frame together with Ctrl/⌘ (and whether Shift was held too). */
+  private chords = new Map<string, { shift: boolean }>();
   readonly pointer = { x: 0, y: 0, ndcX: 0, ndcY: 0, dx: 0, dy: 0, buttons: 0, wheel: 0 };
   private clicked = new Set<number>();
   private released = new Set<number>();
@@ -9,8 +11,10 @@ export class Input {
   constructor(private el: HTMLElement) {
     addEventListener('keydown', e => {
       if (this.isTyping(e)) return;
-      if (['Space', 'Tab', 'ArrowUp', 'ArrowDown'].includes(e.code)) e.preventDefault();
+      if (['Space', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'F2', 'PageUp', 'PageDown', 'Home', 'Backspace'].includes(e.code)) e.preventDefault();
+      if ((e.ctrlKey || e.metaKey) && (e.code === 'KeyZ' || e.code === 'KeyY')) e.preventDefault();
       if (!this.down.has(e.code)) this.pressedThisFrame.add(e.code);
+      if (e.ctrlKey || e.metaKey) this.chords.set(e.code, { shift: e.shiftKey });
       this.down.add(e.code);
     });
     addEventListener('keyup', e => this.down.delete(e.code));
@@ -35,6 +39,7 @@ export class Input {
 
   isDown(code: string) { return this.down.has(code); }
   wasPressed(code: string) { return this.pressedThisFrame.has(code); }
+  chord(code: string) { return this.chords.get(code) ?? null; }
   mouseClicked(button = 0) { return this.clicked.has(button); }
   mouseReleased(button = 0) { return this.released.has(button); }
   mouseHeld(button = 0) { return (this.pointer.buttons & (1 << (button === 1 ? 2 : button === 2 ? 1 : 0))) !== 0; }
@@ -45,6 +50,7 @@ export class Input {
   /** Call once at the end of every rendered frame. */
   endFrame() {
     this.pressedThisFrame.clear();
+    this.chords.clear();
     this.clicked.clear();
     this.released.clear();
     this.pointer.dx = 0; this.pointer.dy = 0; this.pointer.wheel = 0;

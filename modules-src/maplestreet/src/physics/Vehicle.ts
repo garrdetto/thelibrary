@@ -7,6 +7,7 @@
 import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 import type { VehicleSnap } from '../../shared/Protocol';
+import { mergeStatic } from '../core/Merge';
 import { MASK, Physics } from './Physics';
 import { buildWheel, makeLights, makePaint, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
 
@@ -57,18 +58,20 @@ export class Vehicle {
     );
 
     this.ctrl = physics.world.createVehicleController(this.body);
-    // Rapier defaults: up = Y (index 1), forward = X (index 0) — matches our models.
+    // Rapier derives each wheel's rolling direction as up × axle, so with up = +Y
+    // the axle must point along +Z for "forward" to be the model's +X nose.
     P.axles.forEach((a, ai) => {
       for (const side of [1, -1]) {
         const idx = this.wheels.length;
-        this.ctrl.addWheel({ x: a.x, y: P.wheelY, z: a.halfTrack * side }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: -1 }, P.suspension.rest, a.radius);
+        this.ctrl.addWheel({ x: a.x, y: P.wheelY, z: a.halfTrack * side }, { x: 0, y: -1, z: 0 }, { x: 0, y: 0, z: 1 }, P.suspension.rest, a.radius);
         this.ctrl.setWheelSuspensionStiffness(idx, P.suspension.stiffness);
         this.ctrl.setWheelSuspensionCompression(idx, P.suspension.compression);
         this.ctrl.setWheelSuspensionRelaxation(idx, P.suspension.relaxation);
         this.ctrl.setWheelMaxSuspensionTravel(idx, P.suspension.travel);
         this.ctrl.setWheelMaxSuspensionForce(idx, P.mass * 9.81 * 3);
-        this.ctrl.setWheelFrictionSlip(idx, P.frictionSlip);
-        this.ctrl.setWheelSideFrictionStiffness(idx, P.sideStiffness);
+        // Swivel casters (zero-turn fronts) carry weight but offer almost no grip.
+        this.ctrl.setWheelFrictionSlip(idx, a.caster ? 0.15 : P.frictionSlip);
+        this.ctrl.setWheelSideFrictionStiffness(idx, a.caster ? 0.02 : P.sideStiffness);
 
         const steer = new THREE.Group(), spin = buildWheel(a.radius, a.width);
         steer.add(spin);
@@ -80,6 +83,7 @@ export class Vehicle {
 
     this.lights = makeLights();
     const body = P.build(makePaint(color ?? P.paint), this.lights);
+    mergeStatic(body);
     this.root.add(body);
     this.root.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(this.root);
@@ -107,15 +111,28 @@ export class Vehicle {
     }
   }
 
+  /** Gallons (or kWh) in the tank; Infinity for things without an engine. */
+  fuel = Infinity;
+  tank = Infinity;
+  private mpm = 0;                     // fuel per meter of driving
+  setFuel(level: number, tank: number, mpg: number, scale: number) {
+    this.fuel = level; this.tank = tank;
+    this.mpm = mpg > 0 ? scale / (mpg * 1609.34) : 0;
+  }
+  get empty() { return this.fuel <= 0 && this.preset.engineForce > 0; }
+
   private preStep(dt: number) {
     const P = this.preset;
     const speed = this.speed;
-    const inp = this.towedBy ? { throttle: 0, steer: 0, brake: this.towedBy.input.brake, handbrake: false } : this.input;
+    const raw = this.towedBy ? { throttle: 0, steer: 0, brake: this.towedBy.input.brake, handbrake: false } : this.input;
+    const inp = this.empty ? { ...raw, throttle: 0 } : raw;
+    if (this.mpm && Math.abs(inp.throttle) > 0.05) this.fuel = Math.max(0, this.fuel - Math.abs(speed) * dt * this.mpm * (0.6 + 0.4 * Math.abs(inp.throttle)) - dt * this.mpm * 2);
 
     // Speed-sensitive steering with rate limiting (no instant wheel snaps).
     const limit = P.maxSteer / (1 + Math.abs(speed) * 0.045);
     const target = inp.steer * limit;
-    const rate = 2.4 * dt;
+    // Turn in briskly, and self-center even faster when the wheel is released.
+    const rate = (inp.steer === 0 ? 4.2 : 3.0) * dt;
     this.steerAngle += THREE.MathUtils.clamp(target - this.steerAngle, -rate, rate);
 
     // Throttle: forward, brake-to-stop, then reverse at 45% force.
@@ -128,6 +145,29 @@ export class Vehicle {
       else engine = P.engineForce * inp.throttle * 0.45 * Math.max(0, 1 + speed / (P.topSpeed * 0.3));
     } else if (P.engineForce > 0) {
       brake = Math.max(brake, P.brake * 0.04);       // engine braking / rolling resistance
+    }
+
+    // Zero-turn: the two rear motors run at different speeds; we model the
+    // resulting yaw directly so it pivots on the spot like the real thing.
+    if (P.zeroTurn) {
+      const av = this.body.angvel();
+      const wantYaw = inp.steer * (1.9 - Math.min(1, Math.abs(speed) / P.topSpeed) * 0.8);
+      const yaw = av.y + THREE.MathUtils.clamp(wantYaw - av.y, -8 * dt, 8 * dt);
+      this.body.setAngvel({ x: av.x * 0.9, y: yaw, z: av.z * 0.9 }, true);
+      if (inp.throttle === 0 && Math.abs(inp.steer) > 0) brake = Math.min(brake, P.brake * 0.02);
+    }
+
+    // Roll stabilizer (a stand-in for anti-roll bars): damp body roll and
+    // pitch so trucks lean through corners instead of tipping.
+    const r = this.body.rotation();
+    const upY = 1 - 2 * (r.x * r.x + r.z * r.z);
+    if (upY > 0.3) {
+      const av = this.body.angvel();
+      const k = Math.min(1, 6 * dt);
+      const fwd = _v.set(1, 0, 0).applyQuaternion(_q.set(r.x, r.y, r.z, r.w));
+      const pitchRate = av.x * -fwd.z + av.z * fwd.x;
+      const rollRate = av.x * fwd.x + av.z * fwd.z;
+      this.body.setAngvel({ x: av.x - (rollRate * fwd.x - pitchRate * fwd.z) * k * 0.35, y: av.y, z: av.z - (rollRate * fwd.z + pitchRate * fwd.x) * k * 0.35 }, true);
     }
 
     let i = 0;
@@ -157,12 +197,21 @@ export class Vehicle {
     this.wheels.forEach((w, i) => {
       const len = this.ctrl.wheelSuspensionLength(i) ?? P.suspension.rest;
       w.steer.position.y = P.wheelY - len;
-      w.steer.rotation.y = this.ctrl.wheelSteering(i) ?? 0;
+      w.steer.rotation.y = P.axles[w.axle].caster ? this.casterAngle() : this.ctrl.wheelSteering(i) ?? 0;
       w.spin.rotation.z = -(this.ctrl.wheelRotation(i) ?? 0);
     });
     this.lights.head.emissiveIntensity = night > 0.3 ? 3 : 0;
     this.lights.tail.emissiveIntensity = braking ? 4 : night > 0.3 ? 1.2 : 0.15;
     if (this.headlamp) this.headlamp.intensity = night > 0.3 ? 60 : 0;
+  }
+
+  /** Casters trail behind the direction of travel. */
+  private casterYaw = 0;
+  private casterAngle() {
+    const v = this.body.linvel(), r = this.body.rotation();
+    const local = _v.set(v.x, 0, v.z).applyQuaternion(_q.set(r.x, r.y, r.z, r.w).invert());
+    if (local.lengthSq() > 0.04) this.casterYaw = Math.atan2(-local.z, local.x);
+    return this.casterYaw;
   }
 
   forward(out = new THREE.Vector3()) { return out.set(1, 0, 0).applyQuaternion(this.root.quaternion); }

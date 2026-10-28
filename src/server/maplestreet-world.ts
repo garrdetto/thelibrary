@@ -2,17 +2,36 @@ import { WorldServer, type WorldStorage } from '../../modules-src/maplestreet/sh
 import type { Identity } from '../../modules-src/maplestreet/shared/RoomLogic'
 import type { Env } from './env'
 
-type DurableStorage = {
-  get<T>(key: string): Promise<T | undefined>
-  put(entries: Record<string, unknown>): Promise<void>
-  list<T>(options: { prefix: string }): Promise<Map<string, T>>
-}
-type DurableState = { storage: DurableStorage; blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T> }
+type DurableState = { blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T> }
 type ServerSocket = WebSocket & { accept(): void }
 
 declare const WebSocketPair: { new (): { 0: WebSocket; 1: ServerSocket } }
 
-const PUT_BATCH = 100
+const PUT_BATCH = 50
+const TABLE = 'CREATE TABLE IF NOT EXISTS maplestreet_world (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)'
+
+function d1Storage(env: Env): WorldStorage {
+  let ready: Promise<unknown> | null = null
+  const table = () => (ready ??= env.DB.prepare(TABLE).run())
+  return {
+    async get<T>(key: string) {
+      await table()
+      const row = await env.DB.prepare('SELECT value FROM maplestreet_world WHERE key = ?').bind(key).first<{ value: string }>()
+      return row ? (JSON.parse(row.value) as T) : undefined
+    },
+    async list<T>(prefix: string) {
+      await table()
+      const rows = await env.DB.prepare('SELECT key, value FROM maplestreet_world WHERE key >= ? AND key < ?').bind(prefix, `${prefix}\uffff`).all<{ key: string; value: string }>()
+      return new Map(rows.results.map(row => [row.key, JSON.parse(row.value) as T]))
+    },
+    async put(entries) {
+      await table()
+      const now = Date.now()
+      const statements = Object.entries(entries).map(([key, value]) => env.DB.prepare('INSERT INTO maplestreet_world (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at').bind(key, JSON.stringify(value), now))
+      for (let start = 0; start < statements.length; start += PUT_BATCH) await env.DB.batch(statements.slice(start, start + PUT_BATCH))
+    },
+  }
+}
 
 function parseIdentity(header: string | null): Identity | null {
   try {
@@ -26,19 +45,8 @@ function parseIdentity(header: string | null): Identity | null {
 export class MapleStreetWorld {
   private readonly world: WorldServer
 
-  constructor(state: DurableState, _env: Env) {
-    const storage: WorldStorage = {
-      get: key => state.storage.get(key),
-      list: prefix => state.storage.list({ prefix }),
-      async put(entries) {
-        const keys = Object.keys(entries)
-        for (let start = 0; start < keys.length; start += PUT_BATCH) {
-          const batch: Record<string, unknown> = {}
-          for (const key of keys.slice(start, start + PUT_BATCH)) batch[key] = entries[key]
-          await state.storage.put(batch)
-        }
-      },
-    }
+  constructor(state: DurableState, env: Env) {
+    const storage = d1Storage(env)
     this.world = new WorldServer(storage)
     void state.blockConcurrencyWhile(() => this.world.ready())
   }

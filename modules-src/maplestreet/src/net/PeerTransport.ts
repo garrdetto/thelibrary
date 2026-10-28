@@ -71,7 +71,7 @@ export class PeerTransport implements Transport {
       peer.on('open', () => {
         clearTimeout(timer);
         const self = peer.id;
-        this.host = new Host('maplestreet/hosted/v1', (to, msg, except) => {
+        this.host = new Host('maplestreet/hosted/v2', (to, msg, except) => {
           if ((to === '*' || to === self) && except !== self) this.msgCb(msg);
           if (to === '*') { for (const [id, c] of this.conns) if (id !== except && c.open) c.send(msg); }
           else if (to !== self) { const c = this.conns.get(to); if (c?.open) c.send(msg); }

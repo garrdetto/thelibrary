@@ -8,7 +8,7 @@ import type { ClientMsg, JoinOptions, ServerMsg } from '../../shared/Protocol';
 import { Host } from './Host';
 import type { NetStatus, Transport } from './Transport';
 
-export const OFFLINE_SAVE = 'maplestreet/offline/v1';
+export const OFFLINE_SAVE = 'maplestreet/offline/v2';
 
 export class OfflineTransport implements Transport {
   readonly label = 'Offline simulation';

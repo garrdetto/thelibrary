@@ -7,7 +7,7 @@
 import type { PlayerSnap, VehicleKind, VehicleSnap } from './Protocol';
 
 /** Chassis-center height above the road for each kind (matches VehiclePresets at rest). */
-const RIDE_HEIGHT: Record<VehicleKind, number> = { truck: 0.94, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, trailer: 0.59 };
+const RIDE_HEIGHT: Record<VehicleKind, number> = { truck: 0.94, hdtruck: 1.08, coupe: 0.66, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, zeroturn: 0.42, trailer: 0.59 };
 
 type P = [number, number];
 
@@ -33,10 +33,13 @@ function sample(r: Route, s: number) {
   return { x: seg.a[0] + (seg.b[0] - seg.a[0]) * t - fz * r.lane, z: seg.a[1] + (seg.b[1] - seg.a[1]) * t + fx * r.lane, fx, fz };
 }
 
-const RING_A = route([[-67, 0], [67, 0], [67, 44], [-67, 44]], 2.5);
-const RING_B = route([[67, 0], [-67, 0], [-67, -44], [67, -44]], 2.5);
-const WALK_N = route([[-58, -6], [58, -6]], 0.5);
-const WALK_S = route([[58, 6], [-58, 6]], 0.5);
+const RING_A = route([[-87, 0], [87, 0], [87, 54], [-87, 54]], 2.5);
+const RING_B = route([[87, 0], [-87, 0], [-87, -54], [87, -54]], 2.5);
+const DOWNTOWN = route([[87, 0], [260, 0], [260, -54], [87, -54]], 2.5);
+const WALK_N = route([[-78, -6], [78, -6]], 0.5);
+const WALK_S = route([[78, 6], [-78, 6]], 0.5);
+const WALK_DN = route([[108, -7.5], [248, -7.5]], 0.6);
+const WALK_DS = route([[248, 7.5], [108, 7.5]], 0.6);
 
 interface Driver { id: string; name: string; kind: VehicleKind; route: Route; s: number; speed: number; steer: number }
 interface Walker { id: string; name: string; color: string; route: Route; s: number; speed: number }
@@ -44,14 +47,18 @@ interface Walker { id: string; name: string; color: string; route: Route; s: num
 export class NpcTraffic {
   private drivers: Driver[] = [
     { id: 'npc-hendricks', name: 'Mr. Hendricks', kind: 'sedan', route: RING_A, s: 0, speed: 9, steer: 0 },
-    { id: 'npc-alvarez', name: 'Rosa Alvarez', kind: 'truck', route: RING_B, s: 120, speed: 8, steer: 0 },
-    { id: 'npc-okafor', name: 'Dele Okafor', kind: 'golfcart', route: RING_A, s: 200, speed: 6, steer: 0 },
-    { id: 'npc-lindqvist', name: 'Anna Lindqvist', kind: 'sedan', route: RING_B, s: 300, speed: 10, steer: 0 },
+    { id: 'npc-alvarez', name: 'Rosa Alvarez', kind: 'hdtruck', route: RING_B, s: 160, speed: 8, steer: 0 },
+    { id: 'npc-okafor', name: 'Dele Okafor', kind: 'golfcart', route: RING_A, s: 260, speed: 6, steer: 0 },
+    { id: 'npc-lindqvist', name: 'Anna Lindqvist', kind: 'sedan', route: DOWNTOWN, s: 40, speed: 10, steer: 0 },
+    { id: 'npc-brennan', name: 'Sean Brennan', kind: 'coupe', route: DOWNTOWN, s: 300, speed: 12, steer: 0 },
+    { id: 'npc-nakamura', name: 'Kenji Nakamura', kind: 'truck', route: RING_B, s: 420, speed: 9, steer: 0 },
   ];
   private walkers: Walker[] = [
     { id: 'npc-walker-1', name: 'June', color: '#c2564a', route: WALK_N, s: 10, speed: 1.3 },
     { id: 'npc-walker-2', name: 'Theo', color: '#4a8cc2', route: WALK_S, s: 70, speed: 1.5 },
-    { id: 'npc-walker-3', name: 'Priya', color: '#7a4ac2', route: WALK_N, s: 150, speed: 1.2 },
+    { id: 'npc-walker-3', name: 'Priya', color: '#7a4ac2', route: WALK_DN, s: 150, speed: 1.2 },
+    { id: 'npc-walker-4', name: 'Marcus', color: '#3f8f5a', route: WALK_DS, s: 40, speed: 1.4 },
+    { id: 'npc-walker-5', name: 'Lena', color: '#d18a2e', route: WALK_DN, s: 60, speed: 1.1 },
   ];
   /** Hosts call this to keep NPCs from driving through players who stopped on the road. */
   obstacles: { x: number; z: number }[] = [];

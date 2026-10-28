@@ -6,7 +6,7 @@
 import type { BuildOp, WorldState } from './BuildRules';
 import type { Account } from './Economy';
 
-export type VehicleKind = 'truck' | 'sedan' | 'golfcart' | 'atv' | 'mower' | 'trailer';
+export type VehicleKind = 'truck' | 'hdtruck' | 'coupe' | 'sedan' | 'golfcart' | 'atv' | 'mower' | 'zeroturn' | 'trailer';
 
 export interface PlayerSnap {
   id: string;            // session id
@@ -46,11 +46,16 @@ export type ClientMsg =
   | { t: 'hello'; opts: JoinOptions }
   | { t: 'state'; p: PlayerSnap; v: VehicleSnap[] }
   | { t: 'build'; seq: number; op: BuildOp }
+  | { t: 'builds'; seq: number; ops: BuildOp[] }
   | { t: 'loan'; amount: number }
   | { t: 'repay'; amount: number }
   | { t: 'mow'; strokes: MowStroke[] }
   | { t: 'jobRequest' }
   | { t: 'jobProgress'; jobId: string }
+  | { t: 'buy'; shop: string; item: string }
+  | { t: 'refuel'; kind: VehicleKind; gallons: number }
+  | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
+  | { t: 'use'; lotId: string; objectId: string }
   | { t: 'bye' };
 
 export type ServerMsg =

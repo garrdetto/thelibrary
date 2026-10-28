@@ -1,9 +1,10 @@
+import { z } from 'zod'
 import type { Env } from '../env'
 import { HttpError, json } from '../http'
 import { currentUser } from '../auth'
 
 const WORLD_NAME = 'maple-street'
-const guestKey = /^[A-Za-z0-9]{12,64}$/
+const guestParams = z.object({ guest: z.string().regex(/^[A-Za-z0-9]{12,64}$/), name: z.string().max(64).optional() })
 
 function worldStub(env: Env) {
   if (!env.MAPLE_WORLD) throw new HttpError(503, 'Maple Street online is not available right now.')
@@ -26,9 +27,10 @@ export async function maplestreet(request: Request, env: Env) {
   if (user) {
     identity = { key: `member:${user.id}`, name: user.username, member: true }
   } else {
-    const guest = url.searchParams.get('guest') ?? ''
-    if (!guestKey.test(guest)) throw new HttpError(400, 'Please reload the page and try again.')
-    const name = (url.searchParams.get('name') ?? '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 16) || 'Neighbor'
+    const parsed = guestParams.safeParse({ guest: url.searchParams.get('guest') ?? '', name: url.searchParams.get('name') ?? undefined })
+    if (!parsed.success) throw new HttpError(400, 'Please reload the page and try again.')
+    const guest = parsed.data.guest
+    const name = (parsed.data.name ?? '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 16) || 'Neighbor'
     identity = { key: `guest:${guest}`, name: `${name} (guest)`, member: false }
   }
 

@@ -43,13 +43,37 @@ export class Avatar {
     }
   }
 
+  /**
+   * Put the avatar in a vehicle seat (or back on its feet with `parent`).
+   * Seat = hip position in the vehicle's chassis space; vehicles face +X.
+   */
+  sitIn(vehicleRoot: THREE.Object3D, seat: { x: number; y: number; z: number; straddle?: boolean }) {
+    vehicleRoot.add(this.root);
+    this.root.position.set(seat.x, seat.y - 0.9, seat.z);
+    this.root.rotation.set(0, Math.PI / 2, 0);
+    this.straddle = !!seat.straddle;
+    this.seated = true;
+  }
+  standIn(parent: THREE.Object3D, footY: number) {
+    parent.add(this.root);
+    this.root.position.set(0, footY, 0);
+    this.root.rotation.set(0, 0, 0);
+    this.seated = false;
+  }
+  seated = false;
+  private straddle = false;
+
   /** speed in m/s; drives stride length and arm swing. */
-  animate(dt: number, speed: number, seated = false) {
+  animate(dt: number, speed: number, seated = this.seated) {
     if (seated) {
-      this.legL.rotation.x = this.legR.rotation.x = -1.4;
-      this.armL.rotation.x = this.armR.rotation.x = -0.9;
+      // Thighs forward, shins down, hands out on the wheel / handlebars.
+      this.legL.rotation.x = this.legR.rotation.x = this.straddle ? -1.05 : -1.45;
+      this.legL.rotation.z = this.straddle ? 0.28 : 0.04; this.legR.rotation.z = this.straddle ? -0.28 : -0.04;
+      this.armL.rotation.x = this.armR.rotation.x = -1.0;
+      this.armL.rotation.z = 0.12; this.armR.rotation.z = -0.12;
       return;
     }
+    this.legL.rotation.z = this.legR.rotation.z = this.armL.rotation.z = this.armR.rotation.z = 0;
     this.phase += dt * (2 + speed * 2.1);
     const amp = Math.min(0.75, speed * 0.22);
     const s = Math.sin(this.phase) * amp;
@@ -124,7 +148,7 @@ export class Character {
   }
 
   updateVisual(dt: number, seated: boolean) {
-    this.avatar.root.rotation.y = this.yaw;
+    if (!seated) this.avatar.root.rotation.y = this.yaw;
     this.avatar.animate(dt, this.speed, seated);
   }
 

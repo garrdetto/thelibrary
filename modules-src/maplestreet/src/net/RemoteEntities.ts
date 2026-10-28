@@ -8,6 +8,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 import type { PlayerSnap, VehicleSnap } from '../../shared/Protocol';
 import { noNormalsMRT } from '../core/Engine';
+import { mergeStatic } from '../core/Merge';
 import { Avatar } from '../physics/Character';
 import { MASK, Physics } from '../physics/Physics';
 import { buildWheel, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
@@ -40,8 +41,8 @@ class SnapBuffer<T extends { x: number; y: number; z: number }> {
 
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
 
-interface RemotePlayer { avatar: Avatar; label: THREE.Sprite; buf: SnapBuffer<PlayerSnap>; seen: number }
-interface RemoteVehicle { root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
+interface RemotePlayer { avatar: Avatar; label: THREE.Sprite; buf: SnapBuffer<PlayerSnap>; seen: number; seatedIn: RemoteVehicle | null }
+interface RemoteVehicle { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
 
 function nameSprite(name: string, color: string) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
@@ -73,10 +74,10 @@ export class RemoteEntities {
       if (p.id === me) continue;
       let rp = this.players.get(p.id);
       if (!rp) {
-        rp = { avatar: new Avatar(p.color), label: nameSprite(p.name, p.color), buf: new SnapBuffer(), seen: now };
+        rp = { avatar: new Avatar(p.color), label: nameSprite(p.name, p.color), buf: new SnapBuffer(), seen: now, seatedIn: null };
         rp.label.position.y = 2.15;
         rp.avatar.root.add(rp.label);
-        this.scene.add(rp.avatar.root);
+        rp.avatar.standIn(this.scene, 0);
         this.players.set(p.id, rp);
       }
       rp.buf.push(time, p); rp.seen = now;
@@ -96,7 +97,9 @@ export class RemoteEntities {
     const P = PRESETS[v.kind], R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
-    root.add(P.build(makePaint(P.paint), lights));
+    const shell = P.build(makePaint(P.paint), lights);
+    mergeStatic(shell);
+    root.add(shell);
     const wheels: RemoteVehicle['wheels'] = [];
     for (const a of P.axles) for (const side of [1, -1]) {
       const g = new THREE.Group(); const spin = buildWheel(a.radius, a.width);
@@ -107,15 +110,16 @@ export class RemoteEntities {
     this.scene.add(root);
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(v.x, v.y, v.z));
     this.physics.world.createCollider(R.ColliderDesc.cuboid(P.chassis.hx, P.chassis.hy, P.chassis.hz).setCollisionGroups(MASK.remote), body);
-    return { root, wheels, lights, body, buf: new SnapBuffer(), seen: performance.now() };
+    return { kind: v.kind, root, wheels, lights, body, buf: new SnapBuffer(), seen: performance.now() };
   }
 
   removePlayer(id: string) {
     const rp = this.players.get(id); if (!rp) return;
-    this.scene.remove(rp.avatar.root); this.players.delete(id);
+    rp.avatar.root.removeFromParent(); this.players.delete(id);
   }
   removeVehicle(id: string) {
     const rv = this.vehicles.get(id); if (!rv) return;
+    for (const rp of this.players.values()) if (rp.seatedIn === rv) { rp.avatar.standIn(this.scene, 0); rp.seatedIn = null; }
     this.scene.remove(rv.root); this.physics.world.removeRigidBody(rv.body); this.vehicles.delete(id);
   }
   removeOwner(sessionId: string) {
@@ -130,10 +134,19 @@ export class RemoteEntities {
     for (const rp of this.players.values()) {
       const s = rp.buf.sample(t); if (!s) continue;
       const [a, b, k] = s;
+      // Drivers sit in their seat, hands on the wheel, and ride along with the vehicle.
+      const veh = b.vehicleId ? this.vehicles.get(b.vehicleId) ?? null : null;
+      if (veh) {
+        if (rp.seatedIn !== veh) { rp.avatar.sitIn(veh.root, PRESETS[veh.kind].seat); rp.seatedIn = veh; }
+        rp.avatar.root.visible = true;
+        rp.avatar.animate(dt, 0, true);
+        continue;
+      }
+      if (rp.seatedIn) { rp.avatar.standIn(this.scene, 0); rp.seatedIn = null; }
       rp.avatar.root.visible = !b.vehicleId;
       rp.avatar.root.position.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
       rp.avatar.root.rotation.y = lerpAngle(a.yaw, b.yaw, k);
-      rp.avatar.animate(dt, a.speed + (b.speed - a.speed) * k);
+      rp.avatar.animate(dt, a.speed + (b.speed - a.speed) * k, false);
     }
     for (const rv of this.vehicles.values()) {
       const s = rv.buf.sample(t); if (!s) continue;
