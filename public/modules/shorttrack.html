@@ -1934,7 +1934,7 @@ function clearCars(){cars.forEach(c=>c.dispose());cars.clear();player=null;}
 function beginRace(msg){
   clearCars();if(menuCar)menuCar.m.root.visible=false;
   settings=msg.set;setNight(!!settings.night);const attack=!!settings.attack;
-  Object.assign(race,{ph:attack?'attack':'pace',mode:attack?'time-attack':NET.online?'multiplayer':'race',laps:attack?9999:settings.laps,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false});lastPhase=race.ph;resetMarks();runLap=0;fetchRecords(race.mode);
+  Object.assign(race,{ph:attack?'attack':'pace',mode:attack?'time-attack':NET.online?'multiplayer':'race',laps:attack?9999:settings.laps,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false});lastPhase=race.ph;resetMarks();fetchRecords(race.mode);
   msg.grid.forEach((e,i)=>{
     const isMe=e.id===NET.myId,local=isMe||(NET.host&&e.ai);
     const c=new Car(e.id,cleanLv(e.lv),{local,ai:e.ai,player:isMe});c.skill=e.sk||0.97;c.aiDecel=e.dc||0;
