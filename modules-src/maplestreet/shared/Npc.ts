@@ -4,8 +4,10 @@
  * walking the Main Street sidewalks. They are injected into the host's
  * snapshots, so every connected client sees the same traffic.
  */
-import type { PlayerSnap, VehicleKind, VehicleSnap } from '../../shared/Protocol';
-import { PRESETS } from '../physics/VehiclePresets';
+import type { PlayerSnap, VehicleKind, VehicleSnap } from './Protocol';
+
+/** Chassis-center height above the road for each kind (matches VehiclePresets at rest). */
+const RIDE_HEIGHT: Record<VehicleKind, number> = { truck: 0.94, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, trailer: 0.59 };
 
 type P = [number, number];
 
@@ -77,9 +79,7 @@ export class NpcTraffic {
     const vehicles: VehicleSnap[] = [];
     for (const d of this.drivers) {
       const p = sample(d.route, d.s);
-      const P = PRESETS[d.kind];
-      const axle = P.axles[0];
-      const y = axle.radius - (P.wheelY - P.suspension.rest * 0.8);
+      const y = RIDE_HEIGHT[d.kind];
       const yaw = Math.atan2(-p.fz, p.fx);
       const vid = `${d.id}:${d.kind}`;
       vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: p.x, y, z: p.z, qx: 0, qy: Math.sin(yaw / 2), qz: 0, qw: Math.cos(yaw / 2), steer: d.steer, speed: (d as Driver & { v?: number }).v ?? d.speed, hitchedTo: null });

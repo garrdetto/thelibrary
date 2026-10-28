@@ -48,6 +48,7 @@
     #start .row > div:first-child { flex: 1; }
     #start .primary { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--accent); color: #1b1406; font-weight: 700; font-size: 15px; }
     #start .join { align-items: stretch; gap: 8px; }
+    #start .wide { width: 100%; margin-top: 16px; padding: 10px 12px; }
     #start .join .btn { padding: 9px 12px; white-space: nowrap; }
     #start .join input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 3px; text-align: center; }
     #start details { margin-top: 14px; color: var(--mute); }
@@ -136,14 +137,16 @@
   <div id="start">
     <div class="card panel">
       <h1>Maple Street</h1>
-      <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank — alone or with neighbors online.</p>
+      <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank in one shared, always-open neighborhood.</p>
       <div class="row">
         <div><label for="pName">Your name</label><input id="pName" type="text" maxlength="20" placeholder="Neighbor" autocomplete="nickname" /></div>
         <div><label for="pColor">Shirt</label><input id="pColor" type="color" value="#3a7bd5" /></div>
       </div>
-      <button id="playSolo" class="primary">Explore solo</button>
-      <small>Runs entirely on this device with simulated neighbors. Progress is saved in this browser when storage is allowed.</small>
-      <label>Online room</label>
+      <button id="playWorld" class="primary">Enter Maple Street</button>
+      <small>Come and go whenever you like: your lot, house, money and loan stay exactly as you left them, and you start back on your own driveway. Signed in to the library? Your house follows your account to any device; otherwise it's kept in this browser.</small>
+      <button id="playSolo" class="btn wide">Explore solo (offline)</button>
+      <small>A private copy of the neighborhood that runs entirely on this device.</small>
+      <label>Private room</label>
       <div class="row join">
         <button id="playHost" class="btn">Host a room</button>
         <input id="pCode" type="text" maxlength="6" placeholder="CODE" aria-label="Room code" />
@@ -371,6 +374,8 @@ function makeWorld(lots) {
   return w;
 }
 var isInt = (n) => typeof n === "number" && Number.isInteger(n);
+var own = (o, k) => typeof k === "string" && Object.prototype.hasOwnProperty.call(o, k);
+var ID_RE = /^[A-Za-z0-9]{4,40}$/;
 var cellIn = (l, gx, gz) => gx >= l.x && gx < l.x + l.w && gz >= l.z && gz < l.z + l.d;
 var vertexIn = (l, gx, gz) => gx >= l.x && gx <= l.x + l.w && gz >= l.z && gz <= l.z + l.d;
 function wallSides(w) {
@@ -415,9 +420,12 @@ var VALID_FLOORS = ["oak", "walnut", "tile", "carpet", "slate", "concrete"];
 var VALID_OPENINGS = ["none", "door", "window", "picture"];
 var VALID_ROOFS = ["gable_x", "gable_z", "flat"];
 function validateOp(world, op, actor) {
-  const lot = world.lots[op.lotId];
-  if (!lot)
+  if (!op || typeof op !== "object")
+    return "Invalid request";
+  const lotId = op.lotId;
+  if (!own(world.lots, lotId) || !own(world.builds, lotId))
     return "Unknown lot";
+  const lot = world.lots[lotId];
   const b = world.builds[lot.id];
   if (op.op === "buyLot") {
     if (lot.owner)
@@ -438,7 +446,7 @@ function validateOp(world, op, actor) {
       if (!Array.isArray(op.segs) || op.segs.length === 0 || op.segs.length > MAX_SEGMENTS_PER_OP)
         return "Invalid wall run";
       for (const s of op.segs) {
-        if (!isInt(s.gx) || !isInt(s.gz) || s.dir !== "x" && s.dir !== "z")
+        if (!s || typeof s !== "object" || !isInt(s.gx) || !isInt(s.gz) || s.dir !== "x" && s.dir !== "z")
           return "Invalid segment";
         const ex = s.dir === "x" ? s.gx + 1 : s.gx, ez = s.dir === "z" ? s.gz + 1 : s.gz;
         if (!vertexIn(lot, s.gx, s.gz) || !vertexIn(lot, ex, ez))
@@ -461,11 +469,11 @@ function validateOp(world, op, actor) {
       return null;
     }
     case "removeWall":
-      return b.walls[op.key] ? null : "No wall there";
+      return own(b.walls, op.key) ? null : "No wall there";
     case "opening": {
-      const w = b.walls[op.key];
-      if (!w)
+      if (!own(b.walls, op.key))
         return "Place a wall first";
+      const w = b.walls[op.key];
       if (!VALID_OPENINGS.includes(op.opening))
         return "Invalid opening";
       if (w.opening === op.opening)
@@ -495,12 +503,12 @@ function validateOp(world, op, actor) {
     }
     case "object": {
       const o = op.obj;
-      const item = CATALOG[o?.catalogId];
-      if (!item)
+      if (!o || typeof o !== "object" || !own(CATALOG, o.catalogId))
         return "Unknown item";
-      if (typeof o.id !== "string" || o.id.length < 4 || o.id.length > 40)
+      const item = CATALOG[o.catalogId];
+      if (typeof o.id !== "string" || !ID_RE.test(o.id))
         return "Invalid id";
-      if (b.objects[o.id])
+      if (own(b.objects, o.id))
         return "Duplicate id";
       if (!isInt(o.gx) || !isInt(o.gz) || !isInt(o.rot) || o.rot < 0 || o.rot > 3)
         return "Invalid placement";
@@ -523,12 +531,12 @@ function validateOp(world, op, actor) {
       return null;
     }
     case "removeObject":
-      return b.objects[op.id] ? null : "No such item";
+      return own(b.objects, op.id) ? null : "No such item";
     case "roof": {
       const r = op.roof;
-      if (!r || typeof r.id !== "string" || r.id.length < 4 || r.id.length > 40)
+      if (!r || typeof r !== "object" || typeof r.id !== "string" || !ID_RE.test(r.id))
         return "Invalid id";
-      if (b.roofs[r.id])
+      if (own(b.roofs, r.id))
         return "Duplicate id";
       if (!VALID_ROOFS.includes(r.style))
         return "Invalid roof style";
@@ -543,7 +551,7 @@ function validateOp(world, op, actor) {
       return null;
     }
     case "removeRoof":
-      return b.roofs[op.id] ? null : "No such roof";
+      return own(b.roofs, op.id) ? null : "No such roof";
   }
   return "Unknown op";
 }
@@ -643,7 +651,9 @@ var NEIGHBOR_HOUSES = [
   { lotId: "N2", owner: "npc-hendricks", name: "Hendricks", style: "siding_white", roof: "gable_x", floor: "oak", stories: 1 },
   { lotId: "N4", owner: "npc-alvarez", name: "Alvarez", style: "brick_red", roof: "gable_z", floor: "walnut", stories: 2 },
   { lotId: "S2", owner: "npc-okafor", name: "Okafor", style: "siding_sage", roof: "gable_x", floor: "oak", stories: 1 },
-  { lotId: "S5", owner: "npc-lindqvist", name: "Lindqvist", style: "stucco_sand", roof: "flat", floor: "slate", stories: 1 }
+  { lotId: "S5", owner: "npc-lindqvist", name: "Lindqvist", style: "stucco_sand", roof: "flat", floor: "slate", stories: 1 },
+  { lotId: "N8", owner: "npc-brennan", name: "Brennan", style: "stone", roof: "gable_x", floor: "walnut", stories: 2 },
+  { lotId: "S7", owner: "npc-nakamura", name: "Nakamura", style: "siding_white", roof: "gable_z", floor: "oak", stories: 1 }
 ];
 var W = 12;
 var D = 10;
@@ -772,9 +782,12 @@ function makeLots() {
     const x = -60 + i * LOT_W;
     lots.push({ id: `N${i + 1}`, x, z: -7 - LOT_D, w: LOT_W, d: LOT_D, front: "+z" });
     lots.push({ id: `S${i + 1}`, x, z: 7, w: LOT_W, d: LOT_D, front: "-z" });
+    lots.push({ id: `N${i + 6}`, x, z: -49 - LOT_D, w: LOT_W, d: LOT_D, front: "+z" });
+    lots.push({ id: `S${i + 6}`, x, z: 49, w: LOT_W, d: LOT_D, front: "-z" });
   }
   return lots;
 }
+var TOWN_HALF = { x: 74, z: 84 };
 var ROADS = [
   { cx: 0, cz: 0, sx: 230, sz: ROAD_W },
   { cx: -67, cz: 0, sx: ROAD_W, sz: 98 },
@@ -791,6 +804,8 @@ var DEPOT = { x: -100, z: -22, w: 22, d: 14, padX: -100, padZ: -11, zoneR: 6 };
 var SPAWN = { x: -88, z: 9 };
 
 // modules-src/maplestreet/shared/RoomLogic.ts
+var KINDS = ["truck", "sedan", "golfcart", "atv", "mower", "trailer"];
+var num = (v, lo = -1e5, hi = 1e5) => typeof v === "number" && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 0;
 var DAY_LENGTH_SEC = 24 * 60;
 var SNAP_HZ = 15;
 
@@ -800,40 +815,86 @@ class NeighborhoodLogic {
   accounts;
   hours;
   day;
+  epochDay;
   coverage = new Map;
   sessions = new Map;
   snapAcc = 0;
-  constructor(io, saved) {
+  wallClock;
+  dirty = { lots: new Set, accounts: new Set, meta: false };
+  constructor(io, saved, opts = {}) {
     this.io = io;
-    if (saved?.world)
+    if (saved?.world) {
       this.world = saved.world;
-    else {
+      for (const l of makeLots()) {
+        if (this.world.lots[l.id])
+          continue;
+        this.world.lots[l.id] = { ...l, owner: null, ownerName: null };
+        this.world.builds[l.id] = emptyBuild();
+        this.dirty.lots.add(l.id);
+      }
+    } else {
       this.world = makeWorld(makeLots());
       seedNeighborhood(this.world);
+      for (const id in this.world.lots)
+        this.dirty.lots.add(id);
+      this.dirty.meta = true;
     }
+    this.wallClock = opts.clock === "wall";
     this.accounts = saved?.accounts ?? {};
-    this.hours = saved?.hours ?? 8.5;
-    this.day = saved?.day ?? 1;
+    this.epochDay = saved?.epochDay ?? Math.floor(Date.now() / 1000 / DAY_LENGTH_SEC);
+    this.hours = this.wallClock ? this.wallHours() : saved?.hours ?? 8.5;
+    this.day = this.wallClock ? this.wallDay() : saved?.day ?? 1;
     for (const id in this.world.lots) {
       const l = this.world.lots[id];
       const n = l.w * l.d;
       this.coverage.set(id, saved?.coverage?.[id] ? decodeCoverage(saved.coverage[id], n) : new Uint8Array(n));
     }
   }
-  join(sessionId, opts) {
-    const key = String(opts?.key ?? "").slice(0, 64) || sessionId;
-    const name = String(opts?.name ?? "Neighbor").replace(/[<>]/g, "").slice(0, 20) || "Neighbor";
+  wallHours() {
+    return Date.now() / 1000 % DAY_LENGTH_SEC / DAY_LENGTH_SEC * 24;
+  }
+  wallDay() {
+    return Math.floor(Date.now() / 1000 / DAY_LENGTH_SEC) - this.epochDay + 1;
+  }
+  publicAccount(acc) {
+    return { ...acc, key: "" };
+  }
+  sendAccount(sessionId, acc, note) {
+    this.dirty.accounts.add(acc.key);
+    this.io.send(sessionId, { t: "account", account: this.publicAccount(acc), note });
+  }
+  join(sessionId, opts, identity) {
+    const key = identity?.key ?? (String(opts?.key ?? "").slice(0, 96) || sessionId);
+    const name = (identity?.name ?? String(opts?.name ?? "Neighbor")).replace(/[<>&"]/g, "").slice(0, 24) || "Neighbor";
     const color = /^#[0-9a-f]{6}$/i.test(opts?.color ?? "") ? opts.color : "#3a7bd5";
     let acc = this.accounts[key];
+    const returning = !!acc;
     if (!acc)
       acc = this.accounts[key] = { id: Math.random().toString(36).slice(2, 12), key, name, color, money: START_MONEY, debt: 0, earned: 0 };
     acc.name = name;
     acc.color = color;
+    this.dirty.accounts.add(key);
+    for (const id in this.world.lots) {
+      const lot = this.world.lots[id];
+      if (lot.owner === acc.id && lot.ownerName !== name) {
+        lot.ownerName = name;
+        this.dirty.lots.add(id);
+      }
+    }
     this.sessions.set(sessionId, { key, player: null, vehicles: [], job: null, lastSeen: Date.now() });
     const mowed = {};
     this.coverage.forEach((c, id) => mowed[id] = encodeCoverage(c));
-    this.io.send(sessionId, { t: "welcome", you: sessionId, world: this.world, account: acc, hours: this.hours, day: this.day, mowed });
-    this.io.broadcast({ t: "toast", text: `${name} moved into the neighborhood` }, sessionId);
+    this.io.send(sessionId, { t: "welcome", you: sessionId, world: this.world, account: this.publicAccount(acc), hours: this.hours, day: this.day, mowed });
+    this.io.broadcast({ t: "toast", text: returning ? `${name} is back on Maple Street` : `${name} moved into the neighborhood` }, sessionId);
+  }
+  hasAccount(key) {
+    return !!this.accounts[key];
+  }
+  addAccount(acc) {
+    this.accounts[acc.key] = acc;
+  }
+  get sessionCount() {
+    return this.sessions.size;
   }
   leave(sessionId) {
     if (!this.sessions.delete(sessionId))
@@ -857,12 +918,40 @@ class NeighborhoodLogic {
     const acc = this.accounts[s.key];
     switch (msg.t) {
       case "state": {
-        if (msg.p)
-          s.player = { ...msg.p, id: sessionId, name: acc.name, color: acc.color };
-        s.vehicles = (Array.isArray(msg.v) ? msg.v.slice(0, 3) : []).map((v) => ({ ...v, owner: sessionId, id: `${sessionId}:${String(v.id).split(":").pop()}` }));
+        const p = msg.p;
+        if (p && typeof p === "object") {
+          s.player = {
+            id: sessionId,
+            name: acc.name,
+            color: acc.color,
+            x: num(p.x),
+            y: num(p.y, -50, 500),
+            z: num(p.z),
+            yaw: num(p.yaw, -10, 10),
+            speed: num(p.speed, 0, 20),
+            vehicleId: typeof p.vehicleId === "string" ? `${sessionId}:${p.vehicleId.split(":").pop().slice(0, 12)}` : null
+          };
+        }
+        s.vehicles = (Array.isArray(msg.v) ? msg.v.slice(0, 3) : []).filter((v) => v && KINDS.includes(v.kind)).map((v) => ({
+          id: `${sessionId}:${String(v.id).split(":").pop().slice(0, 12)}`,
+          owner: sessionId,
+          kind: v.kind,
+          x: num(v.x),
+          y: num(v.y, -50, 500),
+          z: num(v.z),
+          qx: num(v.qx, -1, 1),
+          qy: num(v.qy, -1, 1),
+          qz: num(v.qz, -1, 1),
+          qw: num(v.qw, -1, 1),
+          steer: num(v.steer, -1, 1),
+          speed: num(v.speed, -100, 100),
+          hitchedTo: typeof v.hitchedTo === "string" ? `${sessionId}:${v.hitchedTo.split(":").pop().slice(0, 12)}` : null
+        }));
         break;
       }
       case "build": {
+        if (!msg.op || typeof msg.op !== "object")
+          return;
         const reason = validateOp(this.world, msg.op, acc.id);
         if (reason)
           return this.io.send(sessionId, { t: "buildRejected", seq: msg.seq, reason });
@@ -871,8 +960,9 @@ class NeighborhoodLogic {
           return this.io.send(sessionId, { t: "buildRejected", seq: msg.seq, reason: `Not enough money ($${cost.toLocaleString()} needed)` });
         applyOp(this.world, msg.op, acc.id, acc.name);
         acc.money -= cost;
+        this.dirty.lots.add(msg.op.lotId);
         this.io.broadcast({ t: "build", seq: msg.seq, by: sessionId, actorId: acc.id, actorName: acc.name, op: msg.op });
-        this.io.send(sessionId, { t: "account", account: acc });
+        this.sendAccount(sessionId, acc);
         break;
       }
       case "loan": {
@@ -881,10 +971,10 @@ class NeighborhoodLogic {
         if (!(amt > 0))
           return;
         if (amt > avail)
-          return this.io.send(sessionId, { t: "account", account: acc, note: `Loan declined — your available credit is $${avail.toLocaleString()}` });
+          return this.sendAccount(sessionId, acc, `Loan declined — your available credit is $${avail.toLocaleString()}`);
         acc.debt += amt;
         acc.money += amt;
-        this.io.send(sessionId, { t: "account", account: acc, note: `Approved: $${amt.toLocaleString()} deposited` });
+        this.sendAccount(sessionId, acc, `Approved: $${amt.toLocaleString()} deposited`);
         break;
       }
       case "repay": {
@@ -893,7 +983,7 @@ class NeighborhoodLogic {
           return;
         acc.debt -= amt;
         acc.money -= amt;
-        this.io.send(sessionId, { t: "account", account: acc, note: `Repaid $${amt.toLocaleString()}` });
+        this.sendAccount(sessionId, acc, `Repaid $${amt.toLocaleString()}`);
         break;
       }
       case "mow":
@@ -919,7 +1009,11 @@ class NeighborhoodLogic {
     const accepted = [];
     let paidCells = 0;
     for (const st of strokes.slice(0, 20)) {
-      const lot = this.world.lots[st?.lotId];
+      if (!st || typeof st !== "object" || ![st.x, st.z, st.hx, st.hz, st.width, st.len].every((v) => typeof v === "number" && Number.isFinite(v)))
+        continue;
+      if (!own(this.world.lots, st.lotId))
+        continue;
+      const lot = this.world.lots[st.lotId];
       if (!lot || !(st.width > 0 && st.width <= 1.5 && st.len > 0 && st.len <= 3))
         continue;
       if (Math.hypot(st.x - mower.x, st.z - mower.z) > 6)
@@ -935,12 +1029,13 @@ class NeighborhoodLogic {
     }
     if (!accepted.length)
       return;
+    this.dirty.meta = true;
     this.io.broadcast({ t: "mow", by: sessionId, strokes: accepted }, sessionId);
     if (paidCells > 0) {
       const pay = Math.round(paidCells * MOW_PAY_PER_M2 * 100) / 100;
       acc.money += pay;
       acc.earned += pay;
-      this.io.send(sessionId, { t: "account", account: acc });
+      this.sendAccount(sessionId, acc);
     }
   }
   issueJob(sessionId, s) {
@@ -978,14 +1073,23 @@ class NeighborhoodLogic {
       acc.earned += job.pay;
       s.job = null;
       this.io.send(sessionId, { t: "job", job: null, note: `Delivery complete: +$${job.pay}` });
-      this.io.send(sessionId, { t: "account", account: acc });
+      this.sendAccount(sessionId, acc);
     }
   }
   tick(dtSec) {
-    const prevHours = this.hours;
-    this.hours = (this.hours + dtSec * 24 / DAY_LENGTH_SEC) % 24;
-    if (this.hours < prevHours)
-      this.newDay();
+    if (this.wallClock) {
+      this.hours = this.wallHours();
+      const d = this.wallDay();
+      if (d !== this.day) {
+        this.day = d - 1;
+        this.newDay();
+      }
+    } else {
+      const prevHours = this.hours;
+      this.hours = (this.hours + dtSec * 24 / DAY_LENGTH_SEC) % 24;
+      if (this.hours < prevHours)
+        this.newDay();
+    }
     this.snapAcc += dtSec;
     if (this.snapAcc < 1 / SNAP_HZ)
       return;
@@ -1001,19 +1105,26 @@ class NeighborhoodLogic {
   }
   newDay() {
     this.day++;
-    for (const key in this.accounts) {
+    const present = new Set([...this.sessions.values()].map((s) => s.key));
+    for (const key of present) {
       const a = this.accounts[key];
-      if (a.debt > 0)
+      if (a && a.debt > 0)
         a.debt = Math.round(a.debt * (1 + LOAN_DAILY_RATE));
     }
     this.coverage.forEach((c) => c.fill(0));
+    this.dirty.meta = true;
     this.io.broadcast({ t: "newDay", day: this.day });
-    this.sessions.forEach((s, id) => this.io.send(id, { t: "account", account: this.accounts[s.key] }));
+    this.sessions.forEach((s, id) => this.sendAccount(id, this.accounts[s.key]));
+  }
+  coverageCodes() {
+    const out = {};
+    this.coverage.forEach((c, id) => out[id] = encodeCoverage(c));
+    return out;
   }
   serialize() {
     const coverage = {};
     this.coverage.forEach((c, id) => coverage[id] = encodeCoverage(c));
-    return { world: this.world, accounts: this.accounts, hours: this.hours, day: this.day, coverage };
+    return { world: this.world, accounts: this.accounts, hours: this.hours, day: this.day, coverage, epochDay: this.epochDay };
   }
 }
 
@@ -2601,358 +2712,8 @@ class ColyseusTransport {
   }
 }
 
-// modules-src/maplestreet/src/physics/VehiclePresets.ts
-import * as THREE6 from "three/webgpu";
-var M = {
-  chrome: new THREE6.MeshStandardMaterial({ color: 14342874, metalness: 1, roughness: 0.12 }),
-  black: new THREE6.MeshStandardMaterial({ color: 1315860, roughness: 0.6 }),
-  plastic: new THREE6.MeshStandardMaterial({ color: 2237222, roughness: 0.75 }),
-  glass: new THREE6.MeshStandardMaterial({ color: 1779248, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.55 }),
-  seat: new THREE6.MeshStandardMaterial({ color: 2761761, roughness: 0.85 }),
-  canvas: new THREE6.MeshStandardMaterial({ color: 15526370, roughness: 0.9 }),
-  deck: new THREE6.MeshStandardMaterial({ color: 4082234, roughness: 0.6, metalness: 0.3 }),
-  wood: new THREE6.MeshStandardMaterial({ color: 8018490, roughness: 0.8 }),
-  rubber: new THREE6.MeshStandardMaterial({ color: 1447446, roughness: 0.92 }),
-  rim: new THREE6.MeshStandardMaterial({ color: 12041410, metalness: 0.9, roughness: 0.25 })
-};
-function makePaint(color) {
-  return new THREE6.MeshPhysicalMaterial({ color, metalness: 0.45, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
-}
-function makeLights() {
-  return {
-    head: new THREE6.MeshStandardMaterial({ color: 15921898, emissive: 16774358, emissiveIntensity: 0, roughness: 0.1 }),
-    tail: new THREE6.MeshStandardMaterial({ color: 7998219, emissive: 16718362, emissiveIntensity: 0.2, roughness: 0.2 })
-  };
-}
-function box2(g, mat, sx, sy, sz, x, y, z, rz = 0) {
-  const m = new THREE6.Mesh(new THREE6.BoxGeometry(sx, sy, sz), mat);
-  m.position.set(x, y, z);
-  m.rotation.z = rz;
-  m.castShadow = true;
-  m.receiveShadow = true;
-  g.add(m);
-  return m;
-}
-function cyl2(g, mat, r, h, x, y, z, axis = "y") {
-  const m = new THREE6.Mesh(new THREE6.CylinderGeometry(r, r, h, 20), mat);
-  m.position.set(x, y, z);
-  if (axis === "x")
-    m.rotation.z = Math.PI / 2;
-  if (axis === "z")
-    m.rotation.x = Math.PI / 2;
-  m.castShadow = true;
-  g.add(m);
-  return m;
-}
-function lampPair(g, mat, x, y, z, sx = 0.05, sy = 0.14, sz = 0.3) {
-  box2(g, mat, sx, sy, sz, x, y, z);
-  box2(g, mat, sx, sy, sz, x, y, -z);
-}
-function profile(g, mat, width, draw, bevel = 0.05) {
-  const sh = new THREE6.Shape;
-  draw(sh);
-  const geo = new THREE6.ExtrudeGeometry(sh, { depth: width - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 4, curveSegments: 18 });
-  geo.translate(0, 0, -(width - bevel * 2) / 2);
-  geo.computeVertexNormals();
-  const m = new THREE6.Mesh(geo, mat);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  g.add(m);
-  return m;
-}
-var arch = (sh, x, y, r) => {
-  sh.lineTo(x - r, y);
-  sh.absarc(x, y, r, Math.PI, 0, true);
-};
-function buildWheel(radius, width) {
-  const g = new THREE6.Group;
-  const tire = new THREE6.Mesh(new THREE6.CylinderGeometry(radius, radius, width, 28, 1), M.rubber);
-  tire.rotation.x = Math.PI / 2;
-  tire.castShadow = true;
-  g.add(tire);
-  const rim = new THREE6.Mesh(new THREE6.CylinderGeometry(radius * 0.62, radius * 0.62, width * 1.02, 24), M.rim);
-  rim.rotation.x = Math.PI / 2;
-  g.add(rim);
-  for (let i = 0;i < 5; i++) {
-    const s = new THREE6.Mesh(new THREE6.BoxGeometry(radius * 1.1, radius * 0.12, width * 1.06), M.plastic);
-    s.rotation.z = i / 5 * Math.PI;
-    g.add(s);
-  }
-  return g;
-}
-var PRESETS = {
-  truck: {
-    kind: "truck",
-    label: "Pickup Truck",
-    chassis: { hx: 2.7, hy: 0.42, hz: 0.95 },
-    mass: 2200,
-    comY: -0.5,
-    axles: [
-      { x: 1.72, radius: 0.42, width: 0.3, halfTrack: 0.86, steer: true, drive: true },
-      { x: -1.72, radius: 0.42, width: 0.3, halfTrack: 0.86, steer: false, drive: true }
-    ],
-    wheelY: -0.18,
-    suspension: { rest: 0.42, travel: 0.28, stiffness: 30, compression: 2.4, relaxation: 3.2 },
-    frictionSlip: 2.3,
-    sideStiffness: 1,
-    engineForce: 2300,
-    topSpeed: 42,
-    brake: 70,
-    maxSteer: 0.6,
-    hitch: { x: -2.95, y: -0.28 },
-    cam: { dist: 9.5, height: 3.3 },
-    paint: 9117214,
-    build(paint, L) {
-      const g = new THREE6.Group;
-      profile(g, paint, 1.86, (sh) => {
-        sh.moveTo(-2.68, -0.35);
-        arch(sh, -1.72, -0.35, 0.52);
-        arch(sh, 1.72, -0.35, 0.52);
-        sh.lineTo(2.72, -0.35);
-        sh.lineTo(2.78, 0.18);
-        sh.lineTo(2.7, 0.5);
-        sh.quadraticCurveTo(2.62, 0.62, 2.4, 0.63);
-        sh.lineTo(1.25, 0.7);
-        sh.lineTo(1.18, 0.64);
-        sh.lineTo(-0.38, 0.64);
-        sh.lineTo(-0.38, 0.12);
-        sh.lineTo(-2.68, 0.12);
-        sh.closePath();
-      }, 0.06);
-      profile(g, M.glass, 1.68, (sh) => {
-        sh.moveTo(-0.32, 0.6);
-        sh.lineTo(-0.28, 1.3);
-        sh.quadraticCurveTo(-0.2, 1.37, 0, 1.37);
-        sh.lineTo(0.7, 1.36);
-        sh.lineTo(1.2, 0.66);
-        sh.closePath();
-      }, 0.04);
-      box2(g, paint, 1.06, 0.06, 1.74, 0.21, 1.38, 0);
-      for (const z of [0.86, -0.86]) {
-        box2(g, paint, 0.07, 0.8, 0.06, 0.96, 1, z, 0.62);
-        box2(g, paint, 0.1, 0.74, 0.06, 0.42, 1, z);
-        box2(g, paint, 0.1, 0.74, 0.06, -0.32, 0.98, z);
-        box2(g, paint, 2.3, 0.5, 0.08, -1.55, 0.37, z * 1.04);
-        box2(g, M.black, 0.18, 0.12, 0.05, 1.1, 0.9, z * 1.18);
-        box2(g, M.chrome, 0.2, 0.03, 0.03, 0.5, 0.48, z * 1.08);
-      }
-      box2(g, paint, 0.08, 0.5, 1.84, -2.66, 0.37, 0);
-      box2(g, M.plastic, 2.25, 0.04, 1.7, -1.55, 0.14, 0);
-      box2(g, M.chrome, 0.16, 0.22, 1.94, 2.8, -0.2, 0);
-      box2(g, M.chrome, 0.16, 0.2, 1.94, -2.74, -0.22, 0);
-      box2(g, M.black, 0.04, 0.32, 1, 2.79, 0.33, 0);
-      for (let i = 0;i < 4; i++)
-        box2(g, M.chrome, 0.03, 0.03, 0.98, 2.81, 0.21 + i * 0.08, 0);
-      lampPair(g, L.head, 2.74, 0.38, 0.72, 0.05, 0.18, 0.26);
-      lampPair(g, L.tail, -2.71, 0.36, 0.86, 0.05, 0.34, 0.1);
-      cyl2(g, M.chrome, 0.04, 0.25, -2.95, -0.18, 0, "y");
-      return g;
-    }
-  },
-  sedan: {
-    kind: "sedan",
-    label: "Sedan",
-    chassis: { hx: 2.35, hy: 0.34, hz: 0.9 },
-    mass: 1450,
-    comY: -0.4,
-    axles: [
-      { x: 1.42, radius: 0.34, width: 0.24, halfTrack: 0.8, steer: true, drive: true },
-      { x: -1.42, radius: 0.34, width: 0.24, halfTrack: 0.8, steer: false, drive: false }
-    ],
-    wheelY: -0.1,
-    suspension: { rest: 0.32, travel: 0.2, stiffness: 34, compression: 2.6, relaxation: 3.4 },
-    frictionSlip: 2.6,
-    sideStiffness: 1,
-    engineForce: 2600,
-    topSpeed: 52,
-    brake: 45,
-    maxSteer: 0.55,
-    cam: { dist: 8, height: 2.6 },
-    paint: 2047854,
-    build(paint, L) {
-      const g = new THREE6.Group;
-      profile(g, paint, 1.8, (sh) => {
-        sh.moveTo(-2.3, -0.28);
-        arch(sh, -1.42, -0.28, 0.43);
-        arch(sh, 1.42, -0.28, 0.43);
-        sh.lineTo(2.25, -0.28);
-        sh.quadraticCurveTo(2.42, -0.2, 2.4, 0.05);
-        sh.quadraticCurveTo(2.35, 0.28, 2.15, 0.32);
-        sh.lineTo(1, 0.44);
-        sh.lineTo(-1.4, 0.44);
-        sh.quadraticCurveTo(-2.15, 0.42, -2.3, 0.3);
-        sh.quadraticCurveTo(-2.42, 0.1, -2.3, -0.28);
-      }, 0.08);
-      profile(g, M.glass, 1.6, (sh) => {
-        sh.moveTo(1.02, 0.42);
-        sh.quadraticCurveTo(0.55, 0.78, 0.2, 0.9);
-        sh.lineTo(-0.7, 0.9);
-        sh.quadraticCurveTo(-1.2, 0.72, -1.48, 0.42);
-        sh.closePath();
-      }, 0.05);
-      box2(g, paint, 0.92, 0.05, 1.62, -0.25, 0.91, 0);
-      for (const z of [0.8, -0.8]) {
-        box2(g, paint, 0.08, 0.46, 0.05, -0.2, 0.66, z);
-        box2(g, M.black, 0.15, 0.1, 0.05, 0.95, 0.6, z * 1.15);
-        box2(g, M.chrome, 0.18, 0.025, 0.03, 0.35, 0.3, z * 1.12);
-        box2(g, M.chrome, 0.18, 0.025, 0.03, -0.75, 0.3, z * 1.12);
-      }
-      box2(g, M.plastic, 0.12, 0.18, 1.82, 2.38, -0.18, 0);
-      box2(g, M.plastic, 0.12, 0.18, 1.82, -2.36, -0.18, 0);
-      box2(g, M.black, 0.03, 0.12, 0.8, 2.41, 0.04, 0);
-      lampPair(g, L.head, 2.3, 0.16, 0.62, 0.06, 0.1, 0.34);
-      lampPair(g, L.tail, -2.33, 0.2, 0.64, 0.05, 0.12, 0.3);
-      return g;
-    }
-  },
-  golfcart: {
-    kind: "golfcart",
-    label: "Golf Cart",
-    chassis: { hx: 1.25, hy: 0.28, hz: 0.65 },
-    mass: 450,
-    comY: -0.25,
-    axles: [
-      { x: 0.84, radius: 0.24, width: 0.2, halfTrack: 0.56, steer: true, drive: false },
-      { x: -0.84, radius: 0.24, width: 0.2, halfTrack: 0.56, steer: false, drive: true }
-    ],
-    wheelY: -0.08,
-    suspension: { rest: 0.24, travel: 0.14, stiffness: 28, compression: 2.2, relaxation: 3 },
-    frictionSlip: 2,
-    sideStiffness: 1,
-    engineForce: 520,
-    topSpeed: 8.5,
-    brake: 16,
-    maxSteer: 0.65,
-    cam: { dist: 6, height: 2.4 },
-    paint: 15987178,
-    build(paint, L) {
-      const g = new THREE6.Group;
-      box2(g, paint, 2.45, 0.4, 1.25, 0, 0.05, 0);
-      box2(g, paint, 0.6, 0.35, 1.2, 1, 0.35, 0);
-      box2(g, M.seat, 0.6, 0.15, 1.1, -0.2, 0.35, 0);
-      box2(g, M.seat, 0.12, 0.55, 1.1, -0.52, 0.65, 0);
-      for (const x of [0.7, -0.75])
-        for (const z of [0.55, -0.55])
-          cyl2(g, M.chrome, 0.025, 1.45, x, 1, z);
-      box2(g, M.canvas, 1.75, 0.06, 1.3, -0.02, 1.74, 0);
-      cyl2(g, M.black, 0.17, 0.03, 0.55, 0.85, 0.28, "x").rotation.y = 0.5;
-      box2(g, M.plastic, 0.6, 0.35, 1, -1, 0.45, 0);
-      lampPair(g, L.head, 1.31, 0.35, 0.42, 0.04, 0.09, 0.14);
-      lampPair(g, L.tail, -1.24, 0.2, 0.55, 0.04, 0.08, 0.1);
-      return g;
-    }
-  },
-  atv: {
-    kind: "atv",
-    label: "Four-Wheeler",
-    chassis: { hx: 1, hy: 0.28, hz: 0.55 },
-    mass: 330,
-    comY: -0.2,
-    axles: [
-      { x: 0.66, radius: 0.31, width: 0.26, halfTrack: 0.5, steer: true, drive: true },
-      { x: -0.66, radius: 0.31, width: 0.28, halfTrack: 0.5, steer: false, drive: true }
-    ],
-    wheelY: -0.02,
-    suspension: { rest: 0.3, travel: 0.25, stiffness: 24, compression: 2, relaxation: 2.6 },
-    frictionSlip: 2.8,
-    sideStiffness: 1.1,
-    engineForce: 420,
-    topSpeed: 21,
-    brake: 13,
-    maxSteer: 0.62,
-    hitch: { x: -1.2, y: -0.05 },
-    cam: { dist: 5.5, height: 2.2 },
-    paint: 3104042,
-    build(paint, L) {
-      const g = new THREE6.Group;
-      box2(g, paint, 1, 0.3, 0.8, 0.55, 0.2, 0);
-      box2(g, paint, 0.9, 0.3, 0.85, -0.6, 0.2, 0);
-      box2(g, M.seat, 0.75, 0.16, 0.36, -0.15, 0.42, 0);
-      box2(g, M.plastic, 0.5, 0.3, 0.42, 0.25, 0.35, 0);
-      cyl2(g, M.black, 0.025, 0.85, 0.5, 0.68, 0, "z");
-      cyl2(g, M.black, 0.03, 0.35, 0.45, 0.5, 0, "y");
-      box2(g, M.black, 0.5, 0.04, 0.85, 0.85, 0.42, 0);
-      box2(g, M.black, 0.6, 0.04, 0.85, -0.85, 0.42, 0);
-      lampPair(g, L.head, 1.02, 0.28, 0.2, 0.04, 0.08, 0.12);
-      lampPair(g, L.tail, -1, 0.25, 0.3, 0.04, 0.06, 0.08);
-      return g;
-    }
-  },
-  mower: {
-    kind: "mower",
-    label: "Riding Mower",
-    chassis: { hx: 0.9, hy: 0.22, hz: 0.48 },
-    mass: 230,
-    comY: -0.18,
-    axles: [
-      { x: 0.6, radius: 0.19, width: 0.15, halfTrack: 0.42, steer: true, drive: false },
-      { x: -0.55, radius: 0.28, width: 0.22, halfTrack: 0.44, steer: false, drive: true }
-    ],
-    wheelY: -0.02,
-    suspension: { rest: 0.2, travel: 0.1, stiffness: 30, compression: 2.4, relaxation: 3 },
-    frictionSlip: 2.2,
-    sideStiffness: 1,
-    engineForce: 260,
-    topSpeed: 4.2,
-    brake: 10,
-    maxSteer: 0.75,
-    mowerDeck: { x: 0.05, width: 1.1 },
-    cam: { dist: 5, height: 2.4 },
-    paint: 2914860,
-    build(paint, L) {
-      const g = new THREE6.Group;
-      box2(g, paint, 0.85, 0.35, 0.75, 0.48, 0.22, 0);
-      box2(g, paint, 0.9, 0.22, 0.8, -0.35, 0.2, 0);
-      box2(g, M.seat, 0.4, 0.12, 0.45, -0.4, 0.42, 0);
-      box2(g, M.seat, 0.08, 0.38, 0.45, -0.62, 0.6, 0);
-      cyl2(g, M.black, 0.15, 0.03, 0.1, 0.72, 0, "y").rotation.z = 0.5;
-      cyl2(g, M.black, 0.02, 0.4, 0.15, 0.55, 0, "y");
-      box2(g, M.deck, 0.75, 0.14, 1.14, 0.05, -0.18, 0);
-      box2(g, M.black, 0.35, 0.1, 0.18, 0.05, -0.15, 0.62);
-      lampPair(g, L.head, 0.92, 0.25, 0.18, 0.03, 0.06, 0.1);
-      return g;
-    }
-  },
-  trailer: {
-    kind: "trailer",
-    label: "Utility Trailer",
-    chassis: { hx: 1.6, hy: 0.16, hz: 0.82 },
-    mass: 420,
-    comY: -0.05,
-    axles: [{ x: -0.25, radius: 0.33, width: 0.2, halfTrack: 0.95, steer: false, drive: false }],
-    wheelY: -0.02,
-    suspension: { rest: 0.3, travel: 0.15, stiffness: 32, compression: 2.4, relaxation: 3.2 },
-    frictionSlip: 2,
-    sideStiffness: 1,
-    engineForce: 0,
-    topSpeed: 0,
-    brake: 6,
-    maxSteer: 0,
-    tongue: { x: 2.5, y: -0.12 },
-    cam: { dist: 8, height: 3 },
-    paint: 5922403,
-    build(paint, L) {
-      const g = new THREE6.Group;
-      box2(g, M.wood, 3.2, 0.06, 1.64, 0, 0.16, 0);
-      box2(g, paint, 3.2, 0.14, 0.06, 0, 0.06, 0.82);
-      box2(g, paint, 3.2, 0.14, 0.06, 0, 0.06, -0.82);
-      for (const x of [-1.5, -0.5, 0.5, 1.5])
-        for (const z of [0.82, -0.82])
-          box2(g, paint, 0.05, 0.45, 0.05, x, 0.4, z);
-      box2(g, paint, 3.2, 0.05, 0.05, 0, 0.62, 0.82);
-      box2(g, paint, 3.2, 0.05, 0.05, 0, 0.62, -0.82);
-      box2(g, paint, 0.9, 0.06, 0.06, 2.05, -0.06, 0.2, 0).rotation.y = 0.4;
-      box2(g, paint, 0.9, 0.06, 0.06, 2.05, -0.06, -0.2, 0).rotation.y = -0.4;
-      box2(g, M.black, 0.2, 0.1, 0.12, 2.5, -0.1, 0);
-      box2(g, M.black, 0.8, 0.06, 0.25, -0.25, 0.25, 0.95);
-      box2(g, M.black, 0.8, 0.06, 0.25, -0.25, 0.25, -0.95);
-      lampPair(g, L.tail, -1.62, 0.1, 0.75, 0.04, 0.08, 0.08);
-      return g;
-    }
-  }
-};
-
-// modules-src/maplestreet/src/net/Npc.ts
+// modules-src/maplestreet/shared/Npc.ts
+var RIDE_HEIGHT = { truck: 0.94, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, trailer: 0.59 };
 function route(pts, lane) {
   const segs = [];
   let start = 0;
@@ -3012,9 +2773,7 @@ class NpcTraffic {
     const vehicles = [];
     for (const d of this.drivers) {
       const p = sample(d.route, d.s);
-      const P = PRESETS[d.kind];
-      const axle = P.axles[0];
-      const y = axle.radius - (P.wheelY - P.suspension.rest * 0.8);
+      const y = RIDE_HEIGHT[d.kind];
       const yaw = Math.atan2(-p.fz, p.fx);
       const vid = `${d.id}:${d.kind}`;
       vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: p.x, y, z: p.z, qx: 0, qy: Math.sin(yaw / 2), qz: 0, qw: Math.cos(yaw / 2), steer: d.steer, speed: d.v ?? d.speed, hitchedTo: null });
@@ -3376,15 +3135,133 @@ class PeerTransport {
   }
 }
 
+// modules-src/maplestreet/src/net/WorldTransport.ts
+var GUEST_KEY = "maplestreet/guest-key";
+function worldEndpoint(name) {
+  if (location.protocol !== "https:" && location.protocol !== "http:")
+    return null;
+  let guest = store.get(GUEST_KEY);
+  if (!guest || !/^[A-Za-z0-9]{12,64}$/.test(guest)) {
+    guest = randomId(24);
+    store.set(GUEST_KEY, guest);
+  }
+  const u = new URL("/api/maplestreet", location.href);
+  u.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  u.searchParams.set("guest", guest);
+  u.searchParams.set("name", name.slice(0, 16));
+  return u.toString();
+}
+
+class WorldTransport {
+  url;
+  label = "Maple Street (shared world)";
+  ws = null;
+  msgCb = () => {};
+  statusCb = () => {};
+  opts = null;
+  closed = false;
+  backoff = 1000;
+  queue = [];
+  constructor(url) {
+    this.url = url;
+  }
+  connect(opts) {
+    this.opts = opts;
+    return new Promise((resolve, reject) => {
+      let welcomed = false;
+      const timer = setTimeout(() => {
+        if (!welcomed) {
+          this.ws?.close();
+          reject(new Error("The shared world did not answer"));
+        }
+      }, 25000);
+      this.open(() => {
+        if (!welcomed) {
+          welcomed = true;
+          clearTimeout(timer);
+          resolve();
+        }
+      }, (err) => {
+        if (!welcomed) {
+          clearTimeout(timer);
+          reject(err);
+        }
+      });
+    });
+  }
+  open(onWelcome, onFail) {
+    this.statusCb("connecting");
+    let ws;
+    try {
+      ws = new WebSocket(this.url);
+    } catch (e) {
+      onFail(e);
+      return;
+    }
+    this.ws = ws;
+    let opened = false;
+    ws.onopen = () => {
+      opened = true;
+      this.backoff = 1000;
+      if (this.opts)
+        ws.send(JSON.stringify({ t: "hello", opts: this.opts }));
+      for (const m of this.queue.splice(0))
+        ws.send(JSON.stringify(m));
+    };
+    ws.onmessage = (e) => {
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (msg.t === "welcome") {
+        this.statusCb("online");
+        onWelcome();
+      }
+      this.msgCb(msg);
+    };
+    ws.onclose = (e) => {
+      this.ws = null;
+      if (this.closed)
+        return;
+      if (!opened) {
+        onFail(new Error(e.reason || "Could not reach the shared world"));
+      }
+      this.statusCb("offline");
+      if (opened || this.backoff > 1000) {
+        setTimeout(() => this.open(() => {}, () => {}), this.backoff);
+        this.backoff = Math.min(this.backoff * 2, 20000);
+      }
+    };
+  }
+  send(msg) {
+    if (this.ws?.readyState === WebSocket.OPEN)
+      this.ws.send(JSON.stringify(msg));
+    else if (msg.t === "build" || msg.t === "loan" || msg.t === "repay")
+      this.queue.push(msg);
+  }
+  onMessage(cb) {
+    this.msgCb = cb;
+  }
+  onStatus(cb) {
+    this.statusCb = cb;
+  }
+  close() {
+    this.closed = true;
+    this.ws?.close(1000, "bye");
+  }
+}
+
 // modules-src/maplestreet/src/net/RemoteEntities.ts
 import * as THREE9 from "three/webgpu";
 
 // modules-src/maplestreet/src/physics/Character.ts
-import * as THREE8 from "three/webgpu";
+import * as THREE7 from "three/webgpu";
 
 // modules-src/maplestreet/src/physics/Physics.ts
 import RAPIER from "@dimforge/rapier3d-compat";
-import * as THREE7 from "three/webgpu";
+import * as THREE6 from "three/webgpu";
 var CG = {
   GROUND: 1 << 0,
   STATIC: 1 << 1,
@@ -3448,7 +3325,7 @@ class Physics {
   }
   track(body, obj) {
     const p = body.translation(), q = body.rotation();
-    const P = new THREE7.Vector3(p.x, p.y, p.z), Q = new THREE7.Quaternion(q.x, q.y, q.z, q.w);
+    const P = new THREE6.Vector3(p.x, p.y, p.z), Q = new THREE6.Quaternion(q.x, q.y, q.z, q.w);
     this.tracked.push({ body, obj, prevP: P.clone(), currP: P, prevQ: Q.clone(), currQ: Q });
   }
   snapTracked(body) {
@@ -3471,7 +3348,7 @@ class Physics {
   addStaticBox(b) {
     const desc = RAPIER.ColliderDesc.cuboid(b.hx, b.hy, b.hz).setTranslation(b.cx, b.cy, b.cz).setFriction(0.8).setCollisionGroups(b.prop ? MASK.prop : MASK.static);
     if (b.rotY) {
-      const q = new THREE7.Quaternion().setFromAxisAngle(new THREE7.Vector3(0, 1, 0), b.rotY);
+      const q = new THREE6.Quaternion().setFromAxisAngle(new THREE6.Vector3(0, 1, 0), b.rotY);
       desc.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
     }
     return this.world.createCollider(desc);
@@ -3500,46 +3377,46 @@ var RADIUS = 0.28;
 var EYE_OFFSET = HALF_H + RADIUS;
 
 class Avatar {
-  root = new THREE8.Group;
+  root = new THREE7.Group;
   legL;
   legR;
   armL;
   armR;
   phase = 0;
   constructor(shirt) {
-    const skin = new THREE8.MeshStandardMaterial({ color: 14264190, roughness: 0.7 });
-    const cloth = new THREE8.MeshStandardMaterial({ color: new THREE8.Color(shirt), roughness: 0.85 });
-    const pants = new THREE8.MeshStandardMaterial({ color: 2962496, roughness: 0.9 });
-    const hair = new THREE8.MeshStandardMaterial({ color: 3876376, roughness: 0.8 });
-    const shoe = new THREE8.MeshStandardMaterial({ color: 1710618, roughness: 0.6 });
+    const skin = new THREE7.MeshStandardMaterial({ color: 14264190, roughness: 0.7 });
+    const cloth = new THREE7.MeshStandardMaterial({ color: new THREE7.Color(shirt), roughness: 0.85 });
+    const pants = new THREE7.MeshStandardMaterial({ color: 2962496, roughness: 0.9 });
+    const hair = new THREE7.MeshStandardMaterial({ color: 3876376, roughness: 0.8 });
+    const shoe = new THREE7.MeshStandardMaterial({ color: 1710618, roughness: 0.6 });
     const add = (parent, geo, mat, x, y, z) => {
-      const m = new THREE8.Mesh(geo, mat);
+      const m = new THREE7.Mesh(geo, mat);
       m.position.set(x, y, z);
       m.castShadow = true;
       parent.add(m);
       return m;
     };
     const limb = (x, y) => {
-      const g = new THREE8.Group;
+      const g = new THREE7.Group;
       g.position.set(x, y, 0);
       this.root.add(g);
       return g;
     };
-    add(this.root, new THREE8.CapsuleGeometry(0.2, 0.42, 6, 12), cloth, 0, 1.22, 0);
-    add(this.root, new THREE8.SphereGeometry(0.13, 20, 16), skin, 0, 1.68, 0);
-    add(this.root, new THREE8.SphereGeometry(0.135, 20, 16, 0, Math.PI * 2, 0, Math.PI / 2), hair, 0, 1.7, -0.01);
-    add(this.root, new THREE8.CylinderGeometry(0.055, 0.06, 0.1, 10), skin, 0, 1.53, 0);
+    add(this.root, new THREE7.CapsuleGeometry(0.2, 0.42, 6, 12), cloth, 0, 1.22, 0);
+    add(this.root, new THREE7.SphereGeometry(0.13, 20, 16), skin, 0, 1.68, 0);
+    add(this.root, new THREE7.SphereGeometry(0.135, 20, 16, 0, Math.PI * 2, 0, Math.PI / 2), hair, 0, 1.7, -0.01);
+    add(this.root, new THREE7.CylinderGeometry(0.055, 0.06, 0.1, 10), skin, 0, 1.53, 0);
     this.legL = limb(-0.1, 0.92);
     this.legR = limb(0.1, 0.92);
     for (const leg of [this.legL, this.legR]) {
-      add(leg, new THREE8.CapsuleGeometry(0.075, 0.68, 4, 10), pants, 0, -0.42, 0);
-      add(leg, new THREE8.BoxGeometry(0.11, 0.07, 0.25), shoe, 0, -0.88, 0.05);
+      add(leg, new THREE7.CapsuleGeometry(0.075, 0.68, 4, 10), pants, 0, -0.42, 0);
+      add(leg, new THREE7.BoxGeometry(0.11, 0.07, 0.25), shoe, 0, -0.88, 0.05);
     }
     this.armL = limb(-0.27, 1.42);
     this.armR = limb(0.27, 1.42);
     for (const arm of [this.armL, this.armR]) {
-      add(arm, new THREE8.CapsuleGeometry(0.06, 0.5, 4, 10), cloth, 0, -0.3, 0);
-      add(arm, new THREE8.SphereGeometry(0.055, 10, 8), skin, 0, -0.62, 0);
+      add(arm, new THREE7.CapsuleGeometry(0.06, 0.5, 4, 10), cloth, 0, -0.3, 0);
+      add(arm, new THREE7.SphereGeometry(0.055, 10, 8), skin, 0, -0.62, 0);
     }
   }
   animate(dt, speed, seated = false) {
@@ -3564,7 +3441,7 @@ class Character {
   collider;
   ctrl;
   avatar;
-  pivot = new THREE8.Group;
+  pivot = new THREE7.Group;
   yaw = 0;
   vy = 0;
   speed = 0;
@@ -3590,7 +3467,7 @@ class Character {
   step(dt, move, run, jump) {
     const maxSpeed = run ? 6 : 2.6;
     const target = move.lengthSq() > 0 ? maxSpeed * Math.min(1, move.length()) : 0;
-    this.speed = THREE8.MathUtils.damp(this.speed, target, 10, dt);
+    this.speed = THREE7.MathUtils.damp(this.speed, target, 10, dt);
     if (move.lengthSq() > 0.0001) {
       const desiredYaw = Math.atan2(move.x, move.y);
       let d = desiredYaw - this.yaw;
@@ -3610,7 +3487,7 @@ class Character {
     const t = this.body.translation();
     this.body.setNextKinematicTranslation({ x: t.x + m.x, y: t.y + m.y, z: t.z + m.z });
     if (t.y < -20)
-      this.teleport(new THREE8.Vector3(t.x, 2, t.z));
+      this.teleport(new THREE7.Vector3(t.x, 2, t.z));
   }
   teleport(p) {
     this.body.setTranslation({ x: p.x, y: p.y + EYE_OFFSET + 0.05, z: p.z }, true);
@@ -3627,9 +3504,360 @@ class Character {
   }
   get position() {
     const t = this.body.translation();
-    return new THREE8.Vector3(t.x, t.y - EYE_OFFSET, t.z);
+    return new THREE7.Vector3(t.x, t.y - EYE_OFFSET, t.z);
   }
 }
+
+// modules-src/maplestreet/src/physics/VehiclePresets.ts
+import * as THREE8 from "three/webgpu";
+var M = {
+  chrome: new THREE8.MeshStandardMaterial({ color: 14342874, metalness: 1, roughness: 0.12 }),
+  black: new THREE8.MeshStandardMaterial({ color: 1315860, roughness: 0.6 }),
+  plastic: new THREE8.MeshStandardMaterial({ color: 2237222, roughness: 0.75 }),
+  glass: new THREE8.MeshStandardMaterial({ color: 1779248, metalness: 0.2, roughness: 0.05, transparent: true, opacity: 0.55 }),
+  seat: new THREE8.MeshStandardMaterial({ color: 2761761, roughness: 0.85 }),
+  canvas: new THREE8.MeshStandardMaterial({ color: 15526370, roughness: 0.9 }),
+  deck: new THREE8.MeshStandardMaterial({ color: 4082234, roughness: 0.6, metalness: 0.3 }),
+  wood: new THREE8.MeshStandardMaterial({ color: 8018490, roughness: 0.8 }),
+  rubber: new THREE8.MeshStandardMaterial({ color: 1447446, roughness: 0.92 }),
+  rim: new THREE8.MeshStandardMaterial({ color: 12041410, metalness: 0.9, roughness: 0.25 })
+};
+function makePaint(color) {
+  return new THREE8.MeshPhysicalMaterial({ color, metalness: 0.45, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
+}
+function makeLights() {
+  return {
+    head: new THREE8.MeshStandardMaterial({ color: 15921898, emissive: 16774358, emissiveIntensity: 0, roughness: 0.1 }),
+    tail: new THREE8.MeshStandardMaterial({ color: 7998219, emissive: 16718362, emissiveIntensity: 0.2, roughness: 0.2 })
+  };
+}
+function box2(g, mat, sx, sy, sz, x, y, z, rz = 0) {
+  const m = new THREE8.Mesh(new THREE8.BoxGeometry(sx, sy, sz), mat);
+  m.position.set(x, y, z);
+  m.rotation.z = rz;
+  m.castShadow = true;
+  m.receiveShadow = true;
+  g.add(m);
+  return m;
+}
+function cyl2(g, mat, r, h, x, y, z, axis = "y") {
+  const m = new THREE8.Mesh(new THREE8.CylinderGeometry(r, r, h, 20), mat);
+  m.position.set(x, y, z);
+  if (axis === "x")
+    m.rotation.z = Math.PI / 2;
+  if (axis === "z")
+    m.rotation.x = Math.PI / 2;
+  m.castShadow = true;
+  g.add(m);
+  return m;
+}
+function lampPair(g, mat, x, y, z, sx = 0.05, sy = 0.14, sz = 0.3) {
+  box2(g, mat, sx, sy, sz, x, y, z);
+  box2(g, mat, sx, sy, sz, x, y, -z);
+}
+function profile(g, mat, width, draw, bevel = 0.05) {
+  const sh = new THREE8.Shape;
+  draw(sh);
+  const geo = new THREE8.ExtrudeGeometry(sh, { depth: width - bevel * 2, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 4, curveSegments: 18 });
+  geo.translate(0, 0, -(width - bevel * 2) / 2);
+  geo.computeVertexNormals();
+  const m = new THREE8.Mesh(geo, mat);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  g.add(m);
+  return m;
+}
+var arch = (sh, x, y, r) => {
+  sh.lineTo(x - r, y);
+  sh.absarc(x, y, r, Math.PI, 0, true);
+};
+function buildWheel(radius, width) {
+  const g = new THREE8.Group;
+  const tire = new THREE8.Mesh(new THREE8.CylinderGeometry(radius, radius, width, 28, 1), M.rubber);
+  tire.rotation.x = Math.PI / 2;
+  tire.castShadow = true;
+  g.add(tire);
+  const rim = new THREE8.Mesh(new THREE8.CylinderGeometry(radius * 0.62, radius * 0.62, width * 1.02, 24), M.rim);
+  rim.rotation.x = Math.PI / 2;
+  g.add(rim);
+  for (let i = 0;i < 5; i++) {
+    const s = new THREE8.Mesh(new THREE8.BoxGeometry(radius * 1.1, radius * 0.12, width * 1.06), M.plastic);
+    s.rotation.z = i / 5 * Math.PI;
+    g.add(s);
+  }
+  return g;
+}
+var PRESETS = {
+  truck: {
+    kind: "truck",
+    label: "Pickup Truck",
+    chassis: { hx: 2.7, hy: 0.42, hz: 0.95 },
+    mass: 2200,
+    comY: -0.5,
+    axles: [
+      { x: 1.72, radius: 0.42, width: 0.3, halfTrack: 0.86, steer: true, drive: true },
+      { x: -1.72, radius: 0.42, width: 0.3, halfTrack: 0.86, steer: false, drive: true }
+    ],
+    wheelY: -0.18,
+    suspension: { rest: 0.42, travel: 0.28, stiffness: 30, compression: 2.4, relaxation: 3.2 },
+    frictionSlip: 2.3,
+    sideStiffness: 1,
+    engineForce: 2300,
+    topSpeed: 42,
+    brake: 70,
+    maxSteer: 0.6,
+    hitch: { x: -2.95, y: -0.28 },
+    cam: { dist: 9.5, height: 3.3 },
+    paint: 9117214,
+    build(paint, L) {
+      const g = new THREE8.Group;
+      profile(g, paint, 1.86, (sh) => {
+        sh.moveTo(-2.68, -0.35);
+        arch(sh, -1.72, -0.35, 0.52);
+        arch(sh, 1.72, -0.35, 0.52);
+        sh.lineTo(2.72, -0.35);
+        sh.lineTo(2.78, 0.18);
+        sh.lineTo(2.7, 0.5);
+        sh.quadraticCurveTo(2.62, 0.62, 2.4, 0.63);
+        sh.lineTo(1.25, 0.7);
+        sh.lineTo(1.18, 0.64);
+        sh.lineTo(-0.38, 0.64);
+        sh.lineTo(-0.38, 0.12);
+        sh.lineTo(-2.68, 0.12);
+        sh.closePath();
+      }, 0.06);
+      profile(g, M.glass, 1.68, (sh) => {
+        sh.moveTo(-0.32, 0.6);
+        sh.lineTo(-0.28, 1.3);
+        sh.quadraticCurveTo(-0.2, 1.37, 0, 1.37);
+        sh.lineTo(0.7, 1.36);
+        sh.lineTo(1.2, 0.66);
+        sh.closePath();
+      }, 0.04);
+      box2(g, paint, 1.06, 0.06, 1.74, 0.21, 1.38, 0);
+      for (const z of [0.86, -0.86]) {
+        box2(g, paint, 0.07, 0.8, 0.06, 0.96, 1, z, 0.62);
+        box2(g, paint, 0.1, 0.74, 0.06, 0.42, 1, z);
+        box2(g, paint, 0.1, 0.74, 0.06, -0.32, 0.98, z);
+        box2(g, paint, 2.3, 0.5, 0.08, -1.55, 0.37, z * 1.04);
+        box2(g, M.black, 0.18, 0.12, 0.05, 1.1, 0.9, z * 1.18);
+        box2(g, M.chrome, 0.2, 0.03, 0.03, 0.5, 0.48, z * 1.08);
+      }
+      box2(g, paint, 0.08, 0.5, 1.84, -2.66, 0.37, 0);
+      box2(g, M.plastic, 2.25, 0.04, 1.7, -1.55, 0.14, 0);
+      box2(g, M.chrome, 0.16, 0.22, 1.94, 2.8, -0.2, 0);
+      box2(g, M.chrome, 0.16, 0.2, 1.94, -2.74, -0.22, 0);
+      box2(g, M.black, 0.04, 0.32, 1, 2.79, 0.33, 0);
+      for (let i = 0;i < 4; i++)
+        box2(g, M.chrome, 0.03, 0.03, 0.98, 2.81, 0.21 + i * 0.08, 0);
+      lampPair(g, L.head, 2.74, 0.38, 0.72, 0.05, 0.18, 0.26);
+      lampPair(g, L.tail, -2.71, 0.36, 0.86, 0.05, 0.34, 0.1);
+      cyl2(g, M.chrome, 0.04, 0.25, -2.95, -0.18, 0, "y");
+      return g;
+    }
+  },
+  sedan: {
+    kind: "sedan",
+    label: "Sedan",
+    chassis: { hx: 2.35, hy: 0.34, hz: 0.9 },
+    mass: 1450,
+    comY: -0.4,
+    axles: [
+      { x: 1.42, radius: 0.34, width: 0.24, halfTrack: 0.8, steer: true, drive: true },
+      { x: -1.42, radius: 0.34, width: 0.24, halfTrack: 0.8, steer: false, drive: false }
+    ],
+    wheelY: -0.1,
+    suspension: { rest: 0.32, travel: 0.2, stiffness: 34, compression: 2.6, relaxation: 3.4 },
+    frictionSlip: 2.6,
+    sideStiffness: 1,
+    engineForce: 2600,
+    topSpeed: 52,
+    brake: 45,
+    maxSteer: 0.55,
+    cam: { dist: 8, height: 2.6 },
+    paint: 2047854,
+    build(paint, L) {
+      const g = new THREE8.Group;
+      profile(g, paint, 1.8, (sh) => {
+        sh.moveTo(-2.3, -0.28);
+        arch(sh, -1.42, -0.28, 0.43);
+        arch(sh, 1.42, -0.28, 0.43);
+        sh.lineTo(2.25, -0.28);
+        sh.quadraticCurveTo(2.42, -0.2, 2.4, 0.05);
+        sh.quadraticCurveTo(2.35, 0.28, 2.15, 0.32);
+        sh.lineTo(1, 0.44);
+        sh.lineTo(-1.4, 0.44);
+        sh.quadraticCurveTo(-2.15, 0.42, -2.3, 0.3);
+        sh.quadraticCurveTo(-2.42, 0.1, -2.3, -0.28);
+      }, 0.08);
+      profile(g, M.glass, 1.6, (sh) => {
+        sh.moveTo(1.02, 0.42);
+        sh.quadraticCurveTo(0.55, 0.78, 0.2, 0.9);
+        sh.lineTo(-0.7, 0.9);
+        sh.quadraticCurveTo(-1.2, 0.72, -1.48, 0.42);
+        sh.closePath();
+      }, 0.05);
+      box2(g, paint, 0.92, 0.05, 1.62, -0.25, 0.91, 0);
+      for (const z of [0.8, -0.8]) {
+        box2(g, paint, 0.08, 0.46, 0.05, -0.2, 0.66, z);
+        box2(g, M.black, 0.15, 0.1, 0.05, 0.95, 0.6, z * 1.15);
+        box2(g, M.chrome, 0.18, 0.025, 0.03, 0.35, 0.3, z * 1.12);
+        box2(g, M.chrome, 0.18, 0.025, 0.03, -0.75, 0.3, z * 1.12);
+      }
+      box2(g, M.plastic, 0.12, 0.18, 1.82, 2.38, -0.18, 0);
+      box2(g, M.plastic, 0.12, 0.18, 1.82, -2.36, -0.18, 0);
+      box2(g, M.black, 0.03, 0.12, 0.8, 2.41, 0.04, 0);
+      lampPair(g, L.head, 2.3, 0.16, 0.62, 0.06, 0.1, 0.34);
+      lampPair(g, L.tail, -2.33, 0.2, 0.64, 0.05, 0.12, 0.3);
+      return g;
+    }
+  },
+  golfcart: {
+    kind: "golfcart",
+    label: "Golf Cart",
+    chassis: { hx: 1.25, hy: 0.28, hz: 0.65 },
+    mass: 450,
+    comY: -0.25,
+    axles: [
+      { x: 0.84, radius: 0.24, width: 0.2, halfTrack: 0.56, steer: true, drive: false },
+      { x: -0.84, radius: 0.24, width: 0.2, halfTrack: 0.56, steer: false, drive: true }
+    ],
+    wheelY: -0.08,
+    suspension: { rest: 0.24, travel: 0.14, stiffness: 28, compression: 2.2, relaxation: 3 },
+    frictionSlip: 2,
+    sideStiffness: 1,
+    engineForce: 520,
+    topSpeed: 8.5,
+    brake: 16,
+    maxSteer: 0.65,
+    cam: { dist: 6, height: 2.4 },
+    paint: 15987178,
+    build(paint, L) {
+      const g = new THREE8.Group;
+      box2(g, paint, 2.45, 0.4, 1.25, 0, 0.05, 0);
+      box2(g, paint, 0.6, 0.35, 1.2, 1, 0.35, 0);
+      box2(g, M.seat, 0.6, 0.15, 1.1, -0.2, 0.35, 0);
+      box2(g, M.seat, 0.12, 0.55, 1.1, -0.52, 0.65, 0);
+      for (const x of [0.7, -0.75])
+        for (const z of [0.55, -0.55])
+          cyl2(g, M.chrome, 0.025, 1.45, x, 1, z);
+      box2(g, M.canvas, 1.75, 0.06, 1.3, -0.02, 1.74, 0);
+      cyl2(g, M.black, 0.17, 0.03, 0.55, 0.85, 0.28, "x").rotation.y = 0.5;
+      box2(g, M.plastic, 0.6, 0.35, 1, -1, 0.45, 0);
+      lampPair(g, L.head, 1.31, 0.35, 0.42, 0.04, 0.09, 0.14);
+      lampPair(g, L.tail, -1.24, 0.2, 0.55, 0.04, 0.08, 0.1);
+      return g;
+    }
+  },
+  atv: {
+    kind: "atv",
+    label: "Four-Wheeler",
+    chassis: { hx: 1, hy: 0.28, hz: 0.55 },
+    mass: 330,
+    comY: -0.2,
+    axles: [
+      { x: 0.66, radius: 0.31, width: 0.26, halfTrack: 0.5, steer: true, drive: true },
+      { x: -0.66, radius: 0.31, width: 0.28, halfTrack: 0.5, steer: false, drive: true }
+    ],
+    wheelY: -0.02,
+    suspension: { rest: 0.3, travel: 0.25, stiffness: 24, compression: 2, relaxation: 2.6 },
+    frictionSlip: 2.8,
+    sideStiffness: 1.1,
+    engineForce: 420,
+    topSpeed: 21,
+    brake: 13,
+    maxSteer: 0.62,
+    hitch: { x: -1.2, y: -0.05 },
+    cam: { dist: 5.5, height: 2.2 },
+    paint: 3104042,
+    build(paint, L) {
+      const g = new THREE8.Group;
+      box2(g, paint, 1, 0.3, 0.8, 0.55, 0.2, 0);
+      box2(g, paint, 0.9, 0.3, 0.85, -0.6, 0.2, 0);
+      box2(g, M.seat, 0.75, 0.16, 0.36, -0.15, 0.42, 0);
+      box2(g, M.plastic, 0.5, 0.3, 0.42, 0.25, 0.35, 0);
+      cyl2(g, M.black, 0.025, 0.85, 0.5, 0.68, 0, "z");
+      cyl2(g, M.black, 0.03, 0.35, 0.45, 0.5, 0, "y");
+      box2(g, M.black, 0.5, 0.04, 0.85, 0.85, 0.42, 0);
+      box2(g, M.black, 0.6, 0.04, 0.85, -0.85, 0.42, 0);
+      lampPair(g, L.head, 1.02, 0.28, 0.2, 0.04, 0.08, 0.12);
+      lampPair(g, L.tail, -1, 0.25, 0.3, 0.04, 0.06, 0.08);
+      return g;
+    }
+  },
+  mower: {
+    kind: "mower",
+    label: "Riding Mower",
+    chassis: { hx: 0.9, hy: 0.22, hz: 0.48 },
+    mass: 230,
+    comY: -0.18,
+    axles: [
+      { x: 0.6, radius: 0.19, width: 0.15, halfTrack: 0.42, steer: true, drive: false },
+      { x: -0.55, radius: 0.28, width: 0.22, halfTrack: 0.44, steer: false, drive: true }
+    ],
+    wheelY: -0.02,
+    suspension: { rest: 0.2, travel: 0.1, stiffness: 30, compression: 2.4, relaxation: 3 },
+    frictionSlip: 2.2,
+    sideStiffness: 1,
+    engineForce: 260,
+    topSpeed: 4.2,
+    brake: 10,
+    maxSteer: 0.75,
+    mowerDeck: { x: 0.05, width: 1.1 },
+    cam: { dist: 5, height: 2.4 },
+    paint: 2914860,
+    build(paint, L) {
+      const g = new THREE8.Group;
+      box2(g, paint, 0.85, 0.35, 0.75, 0.48, 0.22, 0);
+      box2(g, paint, 0.9, 0.22, 0.8, -0.35, 0.2, 0);
+      box2(g, M.seat, 0.4, 0.12, 0.45, -0.4, 0.42, 0);
+      box2(g, M.seat, 0.08, 0.38, 0.45, -0.62, 0.6, 0);
+      cyl2(g, M.black, 0.15, 0.03, 0.1, 0.72, 0, "y").rotation.z = 0.5;
+      cyl2(g, M.black, 0.02, 0.4, 0.15, 0.55, 0, "y");
+      box2(g, M.deck, 0.75, 0.14, 1.14, 0.05, -0.18, 0);
+      box2(g, M.black, 0.35, 0.1, 0.18, 0.05, -0.15, 0.62);
+      lampPair(g, L.head, 0.92, 0.25, 0.18, 0.03, 0.06, 0.1);
+      return g;
+    }
+  },
+  trailer: {
+    kind: "trailer",
+    label: "Utility Trailer",
+    chassis: { hx: 1.6, hy: 0.16, hz: 0.82 },
+    mass: 420,
+    comY: -0.05,
+    axles: [{ x: -0.25, radius: 0.33, width: 0.2, halfTrack: 0.95, steer: false, drive: false }],
+    wheelY: -0.02,
+    suspension: { rest: 0.3, travel: 0.15, stiffness: 32, compression: 2.4, relaxation: 3.2 },
+    frictionSlip: 2,
+    sideStiffness: 1,
+    engineForce: 0,
+    topSpeed: 0,
+    brake: 6,
+    maxSteer: 0,
+    tongue: { x: 2.5, y: -0.12 },
+    cam: { dist: 8, height: 3 },
+    paint: 5922403,
+    build(paint, L) {
+      const g = new THREE8.Group;
+      box2(g, M.wood, 3.2, 0.06, 1.64, 0, 0.16, 0);
+      box2(g, paint, 3.2, 0.14, 0.06, 0, 0.06, 0.82);
+      box2(g, paint, 3.2, 0.14, 0.06, 0, 0.06, -0.82);
+      for (const x of [-1.5, -0.5, 0.5, 1.5])
+        for (const z of [0.82, -0.82])
+          box2(g, paint, 0.05, 0.45, 0.05, x, 0.4, z);
+      box2(g, paint, 3.2, 0.05, 0.05, 0, 0.62, 0.82);
+      box2(g, paint, 3.2, 0.05, 0.05, 0, 0.62, -0.82);
+      box2(g, paint, 0.9, 0.06, 0.06, 2.05, -0.06, 0.2, 0).rotation.y = 0.4;
+      box2(g, paint, 0.9, 0.06, 0.06, 2.05, -0.06, -0.2, 0).rotation.y = -0.4;
+      box2(g, M.black, 0.2, 0.1, 0.12, 2.5, -0.1, 0);
+      box2(g, M.black, 0.8, 0.06, 0.25, -0.25, 0.25, 0.95);
+      box2(g, M.black, 0.8, 0.06, 0.25, -0.25, 0.25, -0.95);
+      lampPair(g, L.tail, -1.62, 0.1, 0.75, 0.04, 0.08, 0.08);
+      return g;
+    }
+  }
+};
 
 // modules-src/maplestreet/src/net/RemoteEntities.ts
 var INTERP_DELAY_MS = 120;
@@ -4501,7 +4729,7 @@ class Neighborhood {
     }
     for (let i = 0;i < 700; i++) {
       const x = (R() * 2 - 1) * (WORLD_HALF - 10), z = (R() * 2 - 1) * (WORLD_HALF - 10);
-      if (Math.abs(x) < 74 && Math.abs(z) < 52)
+      if (Math.abs(x) < TOWN_HALF.x && Math.abs(z) < TOWN_HALF.z)
         continue;
       if (blocked(x, z))
         continue;
@@ -4919,6 +5147,7 @@ class Game {
   mowBuf = [];
   lastDeck = null;
   mowAcc = 0;
+  spawnedHome = false;
   constructor(opts) {
     this.opts = opts;
   }
@@ -4993,7 +5222,12 @@ class Game {
     };
     const { mode } = this.opts;
     try {
-      if (mode === "server" && this.opts.serverUrl)
+      if (mode === "world") {
+        const url = worldEndpoint(this.opts.name);
+        if (!url)
+          throw new Error("The shared world needs this page to be opened from the site");
+        await attempt(new WorldTransport(url));
+      } else if (mode === "server" && this.opts.serverUrl)
         await attempt(new ColyseusTransport(this.opts.serverUrl));
       else if (mode === "tabs")
         await attempt(new LocalTransport);
@@ -5023,6 +5257,8 @@ class Game {
     this.opts.onRoom?.(room, this.net.label);
   }
   get roomCode() {
+    if (this.net instanceof WorldTransport)
+      return "WORLD";
     return this.net instanceof PeerTransport && this.net.role === "host" ? this.net.code : null;
   }
   send(m) {
@@ -5048,7 +5284,13 @@ class Game {
           if (lawn && m.mowed[id])
             lawn.loadCoverage(decodeCoverage(m.mowed[id], lot.w * lot.d));
         }
-        this.hud.toast(`Welcome to the neighborhood, ${m.account.name}!`);
+        const home = Object.values(m.world.lots).find((l) => l.owner === m.account.id) ?? null;
+        if (!this.spawnedHome) {
+          this.spawnedHome = true;
+          if (home)
+            this.goHome(home);
+          this.hud.toast(home ? `Welcome home, ${m.account.name} — lot ${home.id} is right where you left it.` : `Welcome to Maple Street, ${m.account.name}! Press B to buy a lot.`);
+        }
         break;
       }
       case "snap":
@@ -5095,6 +5337,31 @@ class Game {
         this.hud.toast(m.text);
         break;
     }
+  }
+  goHome(lot) {
+    const dir = lot.front === "+z" ? 1 : -1;
+    const frontZ = lot.front === "+z" ? lot.z + lot.d : lot.z;
+    const yaw = dir > 0 ? -Math.PI / 2 : Math.PI / 2;
+    const truck = this.vehicles.get("truck"), trailer = this.vehicles.get("trailer");
+    if (truck) {
+      truck.unhitch();
+      this.placeVehicle(truck, lot.x + 4, frontZ - dir * 4.5, yaw);
+      if (trailer) {
+        this.placeVehicle(trailer, lot.x + 4, frontZ - dir * 10, yaw);
+        truck.hitch(trailer);
+      }
+    }
+    this.character.teleport(new THREE15.Vector3(lot.x + 8, 0, frontZ - dir * 2));
+    this.character.yaw = dir > 0 ? Math.PI : 0;
+    this.cam.yaw = dir > 0 ? 0 : Math.PI;
+  }
+  placeVehicle(v, x, z, yaw) {
+    const q = new THREE15.Quaternion().setFromAxisAngle(new THREE15.Vector3(0, 1, 0), yaw);
+    v.body.setTranslation({ x, y: v.preset.chassis.hy + v.preset.suspension.rest + 0.6, z }, true);
+    v.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+    v.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    v.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.physics.snapTracked(v.body);
   }
   addVehicle(kind, pos, yaw) {
     const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene);
@@ -5374,6 +5641,7 @@ if (!peerAvailable())
   $2("onlineNote").textContent = "Online rooms need an internet connection — solo runs fully offline.";
 var game = null;
 var starting = false;
+var inviteRequested = false;
 function postRoom(code) {
   try {
     if (window.parent !== window)
@@ -5389,7 +5657,7 @@ async function start(mode) {
   store.set("maplestreet/color", colorIn.value);
   store.set("maplestreet/server", serverIn.value.trim());
   $2("start").classList.add("loading");
-  $2("startStatus").textContent = mode === "host" ? "Opening your online room…" : mode === "join" ? `Joining room ${codeIn.value.toUpperCase()}…` : "Loading the neighborhood…";
+  $2("startStatus").textContent = mode === "world" ? "Walking over to Maple Street…" : mode === "host" ? "Opening your private room…" : mode === "join" ? `Joining room ${codeIn.value.toUpperCase()}…` : "Loading the neighborhood…";
   try {
     game = new Game({
       name,
@@ -5398,11 +5666,13 @@ async function start(mode) {
       code: codeIn.value.trim().toUpperCase(),
       serverUrl: serverIn.value.trim(),
       onRoom: (code, label) => {
-        $2("roomLabel").textContent = label;
+        $2("roomLabel").textContent = code === null && /shared world/.test(label) ? "Shared world — everything you build saves automatically" : label;
         $2("roomCode").textContent = code ?? "";
         $2("roomBox").hidden = !code;
         if (code)
           postRoom(code);
+        else if (inviteRequested && game?.roomCode)
+          postRoom(game.roomCode);
       }
     });
     await game.start($2("app"));
@@ -5416,6 +5686,7 @@ async function start(mode) {
     $2("startStatus").textContent = `Could not start: ${e.message}. Your browser may not support WebGL2.`;
   }
 }
+$2("playWorld").onclick = () => start("world");
 $2("playSolo").onclick = () => start("offline");
 $2("playHost").onclick = () => start("host");
 $2("playJoin").onclick = () => {
@@ -5441,18 +5712,24 @@ addEventListener("message", (e) => {
   const code = game?.roomCode;
   if (code)
     postRoom(code);
-  else if (!game)
-    start("host");
-  else {
+  else if (!game) {
+    inviteRequested = true;
+    start("world");
+  } else {
     const u = new URL(location.href);
     u.searchParams.set("host", "1");
     location.href = u.toString();
   }
 });
-if (params.get("room")) {
-  codeIn.value = params.get("room");
+var room = params.get("room");
+if (room && room.toUpperCase() === "WORLD")
+  setTimeout(() => start("world"), 300);
+else if (room) {
+  codeIn.value = room;
   setTimeout(() => start("join"), 300);
-} else if (params.get("host"))
+} else if (params.get("world"))
+  setTimeout(() => start("world"), 300);
+else if (params.get("host"))
   setTimeout(() => start("host"), 300);
 else if (params.get("server"))
   setTimeout(() => start("server"), 300);

@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LOT_PRICE } from '../../shared/Economy';
-import { BANK, DEPOT, LotDef, makeLots, RectXZ, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
+import { BANK, DEPOT, LotDef, makeLots, RectXZ, ROADS, SIDEWALKS, TOWN_HALF, WORLD_HALF } from '../../shared/WorldLayout';
 import { noNormalsMRT } from '../core/Engine';
 import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import { Physics } from '../physics/Physics';
@@ -193,7 +193,7 @@ export class Neighborhood {
     // Woodland outside the ring.
     for (let i = 0; i < 700; i++) {
       const x = (R() * 2 - 1) * (WORLD_HALF - 10), z = (R() * 2 - 1) * (WORLD_HALF - 10);
-      if (Math.abs(x) < 74 && Math.abs(z) < 52) continue;
+      if (Math.abs(x) < TOWN_HALF.x && Math.abs(z) < TOWN_HALF.z) continue;
       if (blocked(x, z)) continue;
       spots.push({ x, z, s: 0.8 + R() * 0.9 });
     }

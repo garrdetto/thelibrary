@@ -7,7 +7,7 @@
 import { NeighborhoodLogic, Persisted } from '../../shared/RoomLogic';
 import type { ClientMsg, ServerMsg } from '../../shared/Protocol';
 import { store } from '../core/Storage';
-import { NpcTraffic } from './Npc';
+import { NpcTraffic } from '../../shared/Npc';
 
 export type Deliver = (to: string | '*', msg: ServerMsg, except?: string) => void;
 

@@ -81,6 +81,9 @@ export function makeWorld(lots: LotDef[]): WorldState {
 // ---------------------------------------------------------------- geometry helpers
 
 const isInt = (n: unknown): n is number => typeof n === 'number' && Number.isInteger(n);
+/** Own-property lookup: user-supplied keys like "__proto__" never reach the prototype. */
+export const own = (o: object, k: unknown): boolean => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
+const ID_RE = /^[A-Za-z0-9]{4,40}$/;
 const cellIn = (l: LotDef, gx: number, gz: number) => gx >= l.x && gx < l.x + l.w && gz >= l.z && gz < l.z + l.d;
 const vertexIn = (l: LotDef, gx: number, gz: number) => gx >= l.x && gx <= l.x + l.w && gz >= l.z && gz <= l.z + l.d;
 
@@ -136,8 +139,10 @@ const VALID_ROOFS: RoofStyle[] = ['gable_x', 'gable_z', 'flat'];
  * is what makes other players' houses indestructible.
  */
 export function validateOp(world: WorldState, op: BuildOp, actor: string): string | null {
-  const lot = world.lots[(op as { lotId: string }).lotId];
-  if (!lot) return 'Unknown lot';
+  if (!op || typeof op !== 'object') return 'Invalid request';
+  const lotId = (op as { lotId: unknown }).lotId;
+  if (!own(world.lots, lotId) || !own(world.builds, lotId)) return 'Unknown lot';
+  const lot = world.lots[lotId as string];
   const b = world.builds[lot.id];
 
   if (op.op === 'buyLot') {
@@ -154,7 +159,7 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
       if (!VALID_STYLES.includes(op.style)) return 'Invalid wall style';
       if (!Array.isArray(op.segs) || op.segs.length === 0 || op.segs.length > MAX_SEGMENTS_PER_OP) return 'Invalid wall run';
       for (const s of op.segs) {
-        if (!isInt(s.gx) || !isInt(s.gz) || (s.dir !== 'x' && s.dir !== 'z')) return 'Invalid segment';
+        if (!s || typeof s !== 'object' || !isInt(s.gx) || !isInt(s.gz) || (s.dir !== 'x' && s.dir !== 'z')) return 'Invalid segment';
         const ex = s.dir === 'x' ? s.gx + 1 : s.gx, ez = s.dir === 'z' ? s.gz + 1 : s.gz;
         if (!vertexIn(lot, s.gx, s.gz) || !vertexIn(lot, ex, ez)) return 'Wall leaves your lot';
         if (b.walls[wallKey(op.level, s.dir, s.gx, s.gz)]) return 'Wall already exists there';
@@ -172,10 +177,10 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
       return null;
     }
     case 'removeWall':
-      return b.walls[op.key] ? null : 'No wall there';
+      return own(b.walls, op.key) ? null : 'No wall there';
     case 'opening': {
+      if (!own(b.walls, op.key)) return 'Place a wall first';
       const w = b.walls[op.key];
-      if (!w) return 'Place a wall first';
       if (!VALID_OPENINGS.includes(op.opening)) return 'Invalid opening';
       if (w.opening === op.opening) return 'Already has that opening';
       return null;
@@ -196,10 +201,10 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
     }
     case 'object': {
       const o = op.obj;
-      const item = CATALOG[o?.catalogId];
-      if (!item) return 'Unknown item';
-      if (typeof o.id !== 'string' || o.id.length < 4 || o.id.length > 40) return 'Invalid id';
-      if (b.objects[o.id]) return 'Duplicate id';
+      if (!o || typeof o !== 'object' || !own(CATALOG, o.catalogId)) return 'Unknown item';
+      const item = CATALOG[o.catalogId];
+      if (typeof o.id !== 'string' || !ID_RE.test(o.id)) return 'Invalid id';
+      if (own(b.objects, o.id)) return 'Duplicate id';
       if (!isInt(o.gx) || !isInt(o.gz) || !isInt(o.rot) || o.rot < 0 || o.rot > 3) return 'Invalid placement';
       if (!isInt(o.level) || o.level < 0 || o.level > MAX_LEVEL) return 'Invalid level';
       const { cells, innerEdges } = objectCells(o);
@@ -214,11 +219,11 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
       return null;
     }
     case 'removeObject':
-      return b.objects[op.id] ? null : 'No such item';
+      return own(b.objects, op.id) ? null : 'No such item';
     case 'roof': {
       const r = op.roof;
-      if (!r || typeof r.id !== 'string' || r.id.length < 4 || r.id.length > 40) return 'Invalid id';
-      if (b.roofs[r.id]) return 'Duplicate id';
+      if (!r || typeof r !== 'object' || typeof r.id !== 'string' || !ID_RE.test(r.id)) return 'Invalid id';
+      if (own(b.roofs, r.id)) return 'Duplicate id';
       if (!VALID_ROOFS.includes(r.style)) return 'Invalid roof style';
       if (![r.x0, r.z0, r.x1, r.z1].every(isInt) || r.x1 <= r.x0 || r.z1 <= r.z0) return 'Invalid roof area';
       if (!vertexIn(lot, r.x0, r.z0) || !vertexIn(lot, r.x1, r.z1)) return 'Roof leaves your lot';
@@ -227,7 +232,7 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
       return null;
     }
     case 'removeRoof':
-      return b.roofs[op.id] ? null : 'No such roof';
+      return own(b.roofs, op.id) ? null : 'No such roof';
   }
   return 'Unknown op';
 }

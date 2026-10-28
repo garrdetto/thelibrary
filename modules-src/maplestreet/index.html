@@ -48,6 +48,7 @@
     #start .row > div:first-child { flex: 1; }
     #start .primary { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--accent); color: #1b1406; font-weight: 700; font-size: 15px; }
     #start .join { align-items: stretch; gap: 8px; }
+    #start .wide { width: 100%; margin-top: 16px; padding: 10px 12px; }
     #start .join .btn { padding: 9px 12px; white-space: nowrap; }
     #start .join input { flex: 1; min-width: 0; text-transform: uppercase; letter-spacing: 3px; text-align: center; }
     #start details { margin-top: 14px; color: var(--mute); }
@@ -136,14 +137,16 @@
   <div id="start">
     <div class="card panel">
       <h1>Maple Street</h1>
-      <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank — alone or with neighbors online.</p>
+      <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank in one shared, always-open neighborhood.</p>
       <div class="row">
         <div><label for="pName">Your name</label><input id="pName" type="text" maxlength="20" placeholder="Neighbor" autocomplete="nickname" /></div>
         <div><label for="pColor">Shirt</label><input id="pColor" type="color" value="#3a7bd5" /></div>
       </div>
-      <button id="playSolo" class="primary">Explore solo</button>
-      <small>Runs entirely on this device with simulated neighbors. Progress is saved in this browser when storage is allowed.</small>
-      <label>Online room</label>
+      <button id="playWorld" class="primary">Enter Maple Street</button>
+      <small>Come and go whenever you like: your lot, house, money and loan stay exactly as you left them, and you start back on your own driveway. Signed in to the library? Your house follows your account to any device; otherwise it's kept in this browser.</small>
+      <button id="playSolo" class="btn wide">Explore solo (offline)</button>
+      <small>A private copy of the neighborhood that runs entirely on this device.</small>
+      <label>Private room</label>
       <div class="row join">
         <button id="playHost" class="btn">Host a room</button>
         <input id="pCode" type="text" maxlength="6" placeholder="CODE" aria-label="Room code" />

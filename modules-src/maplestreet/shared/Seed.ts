@@ -13,6 +13,8 @@ export const NEIGHBOR_HOUSES: HouseSpec[] = [
   { lotId: 'N4', owner: 'npc-alvarez', name: 'Alvarez', style: 'brick_red', roof: 'gable_z', floor: 'walnut', stories: 2 },
   { lotId: 'S2', owner: 'npc-okafor', name: 'Okafor', style: 'siding_sage', roof: 'gable_x', floor: 'oak', stories: 1 },
   { lotId: 'S5', owner: 'npc-lindqvist', name: 'Lindqvist', style: 'stucco_sand', roof: 'flat', floor: 'slate', stories: 1 },
+  { lotId: 'N8', owner: 'npc-brennan', name: 'Brennan', style: 'stone', roof: 'gable_x', floor: 'walnut', stories: 2 },
+  { lotId: 'S7', owner: 'npc-nakamura', name: 'Nakamura', style: 'siding_white', roof: 'gable_z', floor: 'oak', stories: 1 },
 ];
 
 const W = 12, D = 10, SETBACK = 9, X_OFF = 7;

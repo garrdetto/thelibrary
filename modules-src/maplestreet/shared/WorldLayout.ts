@@ -19,15 +19,25 @@ export const ROAD_W = 10;
 export const SIDEWALK_W = 2;
 export const WORLD_HALF = 260;
 
+/**
+ * Twenty lots on two streets: N1–N5 / S1–S5 face Main Street, and N6–N10 /
+ * S6–S10 face the North and South Alleys from the far side, so the open
+ * world has room for many households.
+ */
 export function makeLots(): LotDef[] {
   const lots: LotDef[] = [];
   for (let i = 0; i < LOTS_PER_SIDE; i++) {
     const x = -60 + i * LOT_W;
     lots.push({ id: `N${i + 1}`, x, z: -7 - LOT_D, w: LOT_W, d: LOT_D, front: '+z' });
     lots.push({ id: `S${i + 1}`, x, z: 7, w: LOT_W, d: LOT_D, front: '-z' });
+    lots.push({ id: `N${i + 6}`, x, z: -49 - LOT_D, w: LOT_W, d: LOT_D, front: '+z' });
+    lots.push({ id: `S${i + 6}`, x, z: 49, w: LOT_W, d: LOT_D, front: '-z' });
   }
   return lots;
 }
+
+/** Half-extent of the built-up area (trees are kept out of it). */
+export const TOWN_HALF = { x: 74, z: 84 };
 
 /** Ring road + main street extending to the bank (east) and depot (west). */
 export const ROADS: RectXZ[] = [

@@ -11,7 +11,7 @@ import type { Account } from '../../shared/Economy';
 import { decodeCoverage } from '../../shared/Mowing';
 import type { ClientMsg, Job, MowStroke, PlayerSnap, ServerMsg, VehicleKind } from '../../shared/Protocol';
 import { DAY_LENGTH_SEC } from '../../shared/RoomLogic';
-import { BANK, DEPOT, SPAWN } from '../../shared/WorldLayout';
+import { BANK, DEPOT, LotDef, SPAWN } from '../../shared/WorldLayout';
 import { BuildController, Tool } from '../build/BuildController';
 import { NIGHT_GLOW_MATERIALS } from '../build/Furniture';
 import { HouseManager } from '../build/HouseManager';
@@ -25,6 +25,7 @@ import { ColyseusTransport } from '../net/ColyseusTransport';
 import { LocalTransport } from '../net/LocalTransport';
 import { OfflineTransport } from '../net/OfflineTransport';
 import { newRoomCode, PeerTransport } from '../net/PeerTransport';
+import { worldEndpoint, WorldTransport } from '../net/WorldTransport';
 import { RemoteEntities } from '../net/RemoteEntities';
 import type { NetStatus, Transport } from '../net/Transport';
 import { Character } from '../physics/Character';
@@ -35,7 +36,7 @@ import { Neighborhood } from '../world/Neighborhood';
 import { CameraRig } from './CameraRig';
 import { Hud } from './Hud';
 
-export type NetMode = 'offline' | 'host' | 'join' | 'tabs' | 'server';
+export type NetMode = 'world' | 'offline' | 'host' | 'join' | 'tabs' | 'server';
 export interface StartOptions {
   name: string;
   color: string;
@@ -88,6 +89,7 @@ export class Game {
   private mowBuf: MowStroke[] = [];
   private lastDeck: THREE.Vector3 | null = null;
   private mowAcc = 0;
+  private spawnedHome = false;
 
   constructor(private opts: StartOptions) {}
 
@@ -169,7 +171,11 @@ export class Game {
     };
     const { mode } = this.opts;
     try {
-      if (mode === 'server' && this.opts.serverUrl) await attempt(new ColyseusTransport(this.opts.serverUrl));
+      if (mode === 'world') {
+        const url = worldEndpoint(this.opts.name);
+        if (!url) throw new Error('The shared world needs this page to be opened from the site');
+        await attempt(new WorldTransport(url));
+      } else if (mode === 'server' && this.opts.serverUrl) await attempt(new ColyseusTransport(this.opts.serverUrl));
       else if (mode === 'tabs') await attempt(new LocalTransport());
       else if (mode === 'join' && this.opts.code) await attempt(new PeerTransport('join', this.opts.code));
       else if (mode === 'host') {
@@ -189,7 +195,10 @@ export class Game {
   }
 
   /** The site chat asks embedded modules to open a room; answer with its code. */
-  get roomCode() { return this.net instanceof PeerTransport && this.net.role === 'host' ? this.net.code : null; }
+  get roomCode() {
+    if (this.net instanceof WorldTransport) return 'WORLD';
+    return this.net instanceof PeerTransport && this.net.role === 'host' ? this.net.code : null;
+  }
 
   private send(m: ClientMsg) { this.net?.send(m); }
 
@@ -212,7 +221,12 @@ export class Game {
           const lawn = this.hood.lawns.get(id);
           if (lawn && m.mowed[id]) lawn.loadCoverage(decodeCoverage(m.mowed[id], lot.w * lot.d));
         }
-        this.hud.toast(`Welcome to the neighborhood, ${m.account.name}!`);
+        const home = Object.values(m.world.lots).find(l => l.owner === m.account.id) ?? null;
+        if (!this.spawnedHome) {
+          this.spawnedHome = true;
+          if (home) this.goHome(home);
+          this.hud.toast(home ? `Welcome home, ${m.account.name} — lot ${home.id} is right where you left it.` : `Welcome to Maple Street, ${m.account.name}! Press B to buy a lot.`);
+        }
         break;
       }
       case 'snap':
@@ -251,6 +265,31 @@ export class Game {
   }
 
   // ------------------------------------------------------------ vehicles
+
+  /** Returning neighbors start on their own driveway, truck parked and facing the street. */
+  private goHome(lot: LotDef) {
+    const dir = lot.front === '+z' ? 1 : -1;                 // toward the street
+    const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
+    const yaw = dir > 0 ? -Math.PI / 2 : Math.PI / 2;        // vehicle +X faces the street
+    const truck = this.vehicles.get('truck'), trailer = this.vehicles.get('trailer');
+    if (truck) {
+      truck.unhitch();
+      this.placeVehicle(truck, lot.x + 4, frontZ - dir * 4.5, yaw);
+      if (trailer) { this.placeVehicle(trailer, lot.x + 4, frontZ - dir * 10, yaw); truck.hitch(trailer); }
+    }
+    this.character.teleport(new THREE.Vector3(lot.x + 8, 0, frontZ - dir * 2));
+    this.character.yaw = dir > 0 ? Math.PI : 0;              // face the house
+    this.cam.yaw = dir > 0 ? 0 : Math.PI;
+  }
+
+  private placeVehicle(v: Vehicle, x: number, z: number, yaw: number) {
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+    v.body.setTranslation({ x, y: v.preset.chassis.hy + v.preset.suspension.rest + 0.6, z }, true);
+    v.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
+    v.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    v.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    this.physics.snapTracked(v.body);
+  }
 
   private addVehicle(kind: VehicleKind, pos: THREE.Vector3, yaw: number) {
     const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene);
