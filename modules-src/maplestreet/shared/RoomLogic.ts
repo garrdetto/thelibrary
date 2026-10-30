@@ -141,7 +141,10 @@ export class NeighborhoodLogic {
   get sessionCount() { return this.sessions.size; }
 
   leave(sessionId: string): void {
-    if (!this.sessions.delete(sessionId)) return;
+    const s = this.sessions.get(sessionId);
+    if (!s) return;
+    this.dirty.accounts.add(s.key);
+    this.sessions.delete(sessionId);
     this.io.broadcast({ t: 'left', id: sessionId });
   }
 
@@ -152,6 +155,12 @@ export class NeighborhoodLogic {
   }
 
   hasSession(id: string) { return this.sessions.has(id); }
+
+  /** Marks everyone in town for the next save, so needs that drift while playing are kept too. */
+  touchPresentAccounts(): void {
+    this.sessions.forEach(s => this.dirty.accounts.add(s.key));
+    this.dirty.meta = true;
+  }
 
   // ------------------------------------------------------------ messages
 

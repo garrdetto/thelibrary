@@ -40,6 +40,9 @@ export interface Job {
 
 export interface MowStroke { lotId: string; x: number; z: number; hx: number; hz: number; width: number; len: number }
 
+/** How often every mode writes the neighborhood (lots, houses, money, needs, fuel) to its save. */
+export const AUTOSAVE_EVERY_MS = 5 * 60 * 1000;
+
 export interface JoinOptions { key: string; name: string; color: string }
 
 export type ClientMsg =

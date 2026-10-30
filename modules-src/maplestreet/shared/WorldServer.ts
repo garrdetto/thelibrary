@@ -18,7 +18,7 @@
 import type { LotBuild, LotState } from './BuildRules';
 import type { Account } from './Economy';
 import { NpcTraffic } from './Npc';
-import type { ClientMsg, JoinOptions, ServerMsg } from './Protocol';
+import { AUTOSAVE_EVERY_MS, type ClientMsg, type JoinOptions, type ServerMsg } from './Protocol';
 import { Identity, NeighborhoodLogic, Persisted } from './RoomLogic';
 
 export interface WorldStorage {
@@ -40,7 +40,7 @@ export const WORLD_LIMITS = {
   maxMessageBytes: 32_768,
   messagesPerSecond: 40,
   tickHz: 30,
-  saveEveryMs: 5_000,
+  saveEveryMs: AUTOSAVE_EVERY_MS,
 };
 
 export class WorldServer {
@@ -119,7 +119,8 @@ export class WorldServer {
         if (!this.sockets.delete(id)) return;
         this.budget.delete(id);
         if (joined) logic.leave(id);
-        if (this.sockets.size === 0) { this.stopTimers(); void this.save(); }
+        if (this.sockets.size === 0) this.stopTimers();
+        void this.save();
       },
     };
   }
@@ -166,13 +167,25 @@ export class WorldServer {
       this.npcs.step(dt);
       this.logic?.tick(dt);
     }, 1000 / WORLD_LIMITS.tickHz);
-    this.saveTimer = setInterval(() => void this.save(), WORLD_LIMITS.saveEveryMs);
+    this.saveTimer = setInterval(() => void this.autosave(), WORLD_LIMITS.saveEveryMs);
   }
 
   private stopTimers() {
     if (this.tickTimer) clearInterval(this.tickTimer);
     if (this.saveTimer) clearInterval(this.saveTimer);
     this.tickTimer = this.saveTimer = null;
+  }
+
+  /** The 5-minute checkpoint: saves everyone in town and tells them it happened. */
+  async autosave() {
+    if (!this.logic) return;
+    this.logic.touchPresentAccounts();
+    try {
+      await this.save();
+      this.broadcast({ t: 'toast', text: 'Progress autosaved' });
+    } catch (e) {
+      console.warn('[maplestreet] autosave failed', e);
+    }
   }
 
   /** Writes only what changed: touched lots, touched accounts, and shared state. */
