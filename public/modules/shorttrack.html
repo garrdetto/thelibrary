@@ -234,7 +234,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from './shorttrack-numbers.js?v=1';
+import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from './shorttrack-numbers.js?v=1';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -671,7 +671,7 @@ const HEX=/^#[0-9a-f]{6}$/i;
 const DEFAULT_LV={name:'Player',number:'7',primary:'#d7263d',secondary:'#141414',accent:'#f9c80e',pattern:'stripes',numStyle:'block',numFont:'classic',numSlant:true,numSize:125,numColor:'#ffffff',numOutline:'#141414',numAccent:'#f9c80e',numDoors:true,numRoof:true,numTail:true,veh:'truck'};
 const PACE_LV={name:'Pace Car',number:'',primary:'#f4f4f4',secondary:'#141414',accent:'#ffb000',pattern:'stripes',numStyle:'block',numColor:'#111111',numOutline:'#ffffff',pace:true};
 function hexLum(h){const n=parseInt(h.slice(1),16);return(0.299*(n>>16&255)+0.587*(n>>8&255)+0.114*(n&255))/255;}
-const VEHICLES={truck:{name:'Race Truck',desc:'Short-track pickup with a bed wing'},car:{name:'Super Late Model',desc:'Plain-bodied stock car, painted in your primary color'}};
+const VEHICLES={truck:{name:'Race Truck',desc:'Short-track pickup with a bed wing'},car:{name:'Super Late Model',desc:'Stock car with your paint scheme and numbers'}};
 function cleanLv(l){
   l=l||{};const d=DEFAULT_LV,col=(v,f)=>HEX.test(v||'')?v:f,bool=(v,f)=>typeof v==='boolean'?v:f;
   const italic=l.numStyle==='italic',size=parseFloat(l.numSize);
@@ -1609,7 +1609,7 @@ function tmRoofTex(){return canvasTex(512,328,(g,w,h)=>{g.textAlign='center';g.t
   g.font='900 120px Arial Black';g.fillStyle='#111';g.fillText('PACE',w/2,h/2);});}
 const NUM_PX={low:160,med:208,high:256};
 function mountNumbers(m,lv){
-  if(m.car)return;
+  if(m.car){mountCarLivery(m,lv);return;}
   const N=m.numbers;
   if(N){for(const d of N.meshes){m.tmg.remove(d);d.geometry.dispose();}N.mat.dispose();N.tex.dispose();
     m.deform=m.deform.filter(p=>!N.meshes.some(d=>d.geometry===p.geo));m.paints=m.paints.filter(p=>p!==N.mat);m.numbers=null;}
@@ -1627,24 +1627,67 @@ function tmGrid(nu,nv,fn){const pos=[],uv=[],idx=[];
   for(let j=0;j<nv;j++)for(let i=0;i<nu;i++){const a=j*(nu+1)+i,b=a+1,c=a+nu+1,d=c+1;idx.push(a,b,c,b,d,c);}
   const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));geo.setIndex(idx);geo.computeVertexNormals();return geo;}
 function tmCabY(x,z){const h=TM.cabTop(x)-TM.CAB.yb;let y=TM.cabTop(x);for(let i=0;i<5;i++){const zw=TM.CAB.wb*(1-TM.CAB.tb*(y-TM.CAB.yb)/0.5),r=Math.min(1,Math.abs(z)/zw);y=TM.CAB.yb+h*Math.pow(Math.max(0,1-r**TM.CAB.n),1/TM.CAB.n);}return y;}
-let CAR_ASSET=null;
+let CAR_ASSET=null,CAR_REGIONS=null;
 function parseCarAsset(buf){
   const dv=new DataView(buf);if(buf.byteLength<8||dv.getUint32(0,true)!==0x31435453)throw new Error('car asset');
-  const jl=dv.getUint32(4,true),meta=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,8,jl)));let o=8+jl;
+  const jl=dv.getUint32(4,true),meta=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,8,jl)));let o=8+jl;CAR_REGIONS=meta.regions;
   const take=(T,n)=>{const a=new T(buf,o,n);o+=Math.ceil(n*T.BYTES_PER_ELEMENT/4)*4;return a;};
-  return meta.parts.map(p=>{const q=take(Int16Array,p.v*3),n8=take(Int8Array,p.v*3),c8=take(Uint8Array,p.v),idx=take(p.i32?Uint32Array:Uint16Array,p.i);
+  return meta.parts.map(p=>{const q=take(Int16Array,p.v*3),n8=take(Int8Array,p.v*3),c8=take(Uint8Array,p.v),uv16=meta.uv?take(Uint16Array,p.v*2):null,idx=take(p.i32?Uint32Array:Uint16Array,p.i);
     const pos=new Float32Array(p.v*3),nor=new Float32Array(p.v*3),col=new Float32Array(p.v*3);
     for(let i=0;i<p.v;i++){for(let k=0;k<3;k++){pos[i*3+k]=p.lo[k]+(q[i*3+k]+32768)/65535*(p.hi[k]-p.lo[k]);nor[i*3+k]=n8[i*3+k]/127;}col[i*3]=col[i*3+1]=col[i*3+2]=c8[i]/255;}
     const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(pos,3));geo.setAttribute('normal',new THREE.BufferAttribute(nor,3));
-    geo.setAttribute('color',new THREE.BufferAttribute(col,3));geo.setIndex(new THREE.BufferAttribute(idx.slice(),1));for(const [st,ct,mi] of p.groups)geo.addGroup(st,ct,mi);
+    geo.setAttribute('color',new THREE.BufferAttribute(col,3));
+    if(uv16){const uv=new Float32Array(p.v*2);for(let i=0;i<uv.length;i++)uv[i]=uv16[i]/65535;geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));}
+    geo.setIndex(new THREE.BufferAttribute(idx.slice(),1));for(const [st,ct,mi] of p.groups)geo.addGroup(st,ct,mi);
     geo.computeBoundingSphere();return {center:p.center,geo};});
 }
 const carAssetReady=fetch(new URL('shorttrack-car.bin',location.href)).then(r=>{if(!r.ok)throw new Error('car asset '+r.status);return r.arrayBuffer();})
   .then(b=>{CAR_ASSET=parseCarAsset(b);return true;}).catch(()=>false);
+const CAR_NUM_SPOTS={door:{base:0.3,maxW:1.5,maxH:0.5,x:-0.05,y:0.52},roof:{base:0.36,maxW:1.15,maxH:0.8,x:-0.62},tail:{base:0.17,maxW:0.85,maxH:0.3,y:0.8}};
+function carLiveryTex(lv,size,glyphPx){
+  const t=canvasTex(size,size,(g,w,h)=>{
+    g.fillStyle=lv.primary;g.fillRect(0,0,w,h);if(!CAR_REGIONS)return;
+    const R=Object.fromEntries(CAR_REGIONS.map(r=>[r[0],r]));
+    const region=(nm,fn)=>{const [,[rx,ry,rw,rh],,u0,u1,,v0,v1]=R[nm],a=rw*w/(u1-u0),d=rh*h/(v1-v0);
+      g.save();g.beginPath();g.rect(rx*w,ry*h,rw*w,rh*h);g.clip();g.setTransform(a,0,0,d,rx*w-u0*a,ry*h-v0*d);fn(Math.sign(a),Math.sign(d));g.restore();};
+    const p2=lv.secondary,ac=lv.accent,band=(y0,y1,c)=>{g.fillStyle=c;g.fillRect(-4,y0,8,y1-y0);};
+    const centre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-4,-half,8,half*2);g.fillStyle=ac;g.fillRect(-4,-half-edge,8,edge);g.fillRect(-4,half,8,edge);};
+    const vcentre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-half,-1,half*2,4);g.fillStyle=ac;g.fillRect(-half-edge,-1,edge,4);g.fillRect(half,-1,edge,4);};
+    for(const side of ['L','R'])region(side,()=>{
+      switch(lv.pattern){
+        case 'stripes':band(0.76,0.82,p2);band(0.26,0.32,p2);band(0.72,0.735,ac);band(0.345,0.36,ac);break;
+        case 'twotone':band(-1,0.5,p2);band(0.5,0.525,ac);break;
+        case 'flames':g.fillStyle=p2;g.strokeStyle=ac;g.lineWidth=0.012;
+          for(let i=0;i<5;i++){const y=0.3+i*0.11,len=5.3*(0.25+0.18*Math.abs(Math.sin(i*1.9+1))),f=2.6;g.beginPath();g.moveTo(f,y-0.045);
+            g.bezierCurveTo(f-len*0.4,y-0.08,f-len*0.7,y-0.01,f-len,y);g.bezierCurveTo(f-len*0.6,y+0.02,f-len*0.3,y+0.055,f,y+0.045);g.closePath();g.fill();g.stroke();}break;
+        case 'panels':for(const [x0,x1] of [[-0.85,0.75],[-2.65,-2.05]]){g.fillStyle=p2;rr(g,x0,0.3,x1-x0,0.48,0.07);g.fill();g.strokeStyle=ac;g.lineWidth=0.018;g.stroke();}break;
+        case 'fade':{const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-1,8,4);}break;
+      }});
+    region('T',()=>{
+      if(lv.pattern==='stripes'||lv.pattern==='panels')centre(0.17,0.025);
+      else if(lv.pattern==='fade'){const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-2,8,4);}});
+    for(const end of ['B','F'])region(end,()=>{
+      if(lv.pattern==='stripes'||lv.pattern==='panels')vcentre(0.17,0.025);
+      else if(lv.pattern==='twotone'){band(-1,0.5,p2);band(0.5,0.525,ac);}
+      else if(lv.pattern==='fade'&&end==='B'){g.fillStyle=p2;g.fillRect(-2,-1,4,4);}});
+    if(!lv.number)return;
+    const cv=document.createElement('canvas'),art=drawNumberArt(cv,numArtOpts(lv),glyphPx);if(!art)return;
+    const put=(nm,spot,cx,cy,rot)=>{const [nw,nh]=numberSize(spot,art,lv.numSize/100);region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(cv,-nw/2,-nh/2,nw,nh);});};
+    const S=CAR_NUM_SPOTS;
+    if(lv.numDoors){put('L',S.door,S.door.x,S.door.y);put('R',S.door,S.door.x,S.door.y);}
+    if(lv.numRoof)put('T',S.roof,S.roof.x,0,Math.PI/2);
+    if(lv.numTail)put('B',S.tail,0,S.tail.y);
+  });
+  t.flipY=false;t.needsUpdate=true;return t;
+}
+function mountCarLivery(m,lv){
+  const tex=carLiveryTex(lv,m.crisp||quality==='high'?2048:1024,m.crisp?320:NUM_PX[quality]||208);
+  if(m.liveryTex)m.liveryTex.dispose();m.liveryTex=tex;m.carPaint.map=tex;m.carPaint.needsUpdate=true;m.numbers={fontOk:!lv.number||numFontReady(lv.numFont)};
+}
 function buildStockCar(lv,o={}){
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);
   const g=new THREE.Group();g.rotation.y=-Math.PI/2;g.scale.setScalar(TM_S);body.add(g);
-  const paint=new THREE.MeshPhysicalMaterial({color:lv.primary,vertexColors:true,roughness:0.3,metalness:0.2,clearcoat:1,clearcoatRoughness:0.08});
+  const paint=new THREE.MeshPhysicalMaterial({color:0xffffff,vertexColors:true,roughness:0.3,metalness:0.2,clearcoat:1,clearcoatRoughness:0.08});
   const interior=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.85,metalness:0.2});
   const glass=new THREE.MeshPhysicalMaterial({color:0x1b252c,roughness:0.05,metalness:0.3,clearcoat:1,clearcoatRoughness:0.03});
   const tire=new THREE.MeshStandardMaterial({color:0x161616,roughness:0.92});
@@ -1657,7 +1700,8 @@ function buildStockCar(lv,o={}){
   const paints=[paint,glass];for(const m of paints){m.envMap=envTex;m.envMapIntensity=ENVK;}
   const bumperF=new THREE.Group(),bumperR=new THREE.Group();body.add(bumperF,bumperR);
   const orig=Float32Array.from(bodyMesh.geometry.attributes.position.array);
-  return {root,body,bodyMesh,orig,deform:[{geo:bodyMesh.geometry,orig,scuff:true}],wheels,bumperF,bumperR,paints,light:null,brakeMat:tail,tm:true,tmg:g,car:true,crisp:!!o.crisp,numbers:null};
+  const m={root,body,bodyMesh,orig,deform:[{geo:bodyMesh.geometry,orig,scuff:true}],wheels,bumperF,bumperR,paints,light:null,brakeMat:tail,tm:true,tmg:g,car:true,carPaint:paint,liveryTex:null,crisp:!!o.crisp,numbers:null};
+  mountCarLivery(m,lv);return m;
 }
 function buildCar(lv,o={}){
   if(lv.veh==='car'&&!lv.pace&&CAR_ASSET)return buildStockCar(lv,o);
