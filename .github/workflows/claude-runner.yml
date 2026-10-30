@@ -1,0 +1,81 @@
+name: Claude repository runner
+run-name: "Site Agent ${{ inputs.request_id || github.run_id }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: Site Agent request identifier
+        required: false
+        type: string
+      prompt:
+        description: Describe the changes to make
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: claude-repository-runner
+  cancel-in-progress: false
+
+jobs:
+  edit:
+    if: github.repository == 'garrdetto/thelibrary' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check connection settings
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$ANTHROPIC_API_KEY" || { echo 'Add the ANTHROPIC_API_KEY repository secret.'; exit 1; }
+          test -n "$GH_TOKEN" || { echo 'Add the CLAUDE_GITHUB_TOKEN repository secret.'; exit 1; }
+
+      - name: Install Claude Code
+        run: npm install --global @anthropic-ai/claude-code
+
+      - name: Edit repository using the Claude API
+        env:
+          AGENT_PROMPT: ${{ inputs.prompt }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_TOKEN: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
+        run: bash scripts/claude-edit.sh
+
+      - name: Publish changes and enable automatic merge
+        env:
+          GH_TOKEN: ${{ secrets.CLAUDE_GITHUB_TOKEN }}
+          BASE_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add --all
+          if git diff --cached --quiet; then
+            echo 'Claude completed without file changes.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="claude/run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git switch -c "$branch"
+          git config user.name 'thelibrary Claude runner'
+          git config user.email 'claude-runner@users.noreply.github.com'
+          git commit -m "Apply Claude task ${GITHUB_RUN_ID}"
+          git -c credential.helper= -c 'credential.helper=!gh auth git-credential' push origin "$branch"
+          body_file="$(mktemp)"
+          printf '%s\n' 'Applied a manually dispatched Claude Code task using an API-authenticated GitHub-hosted runner.' '' 'Claude had full tool access to edit any project file, execute shell commands, and run validation. Required repository CI remains authoritative. Automatic merging follows the configured branch protection rules.' > "$body_file"
+          pull_url="$(gh pr create --repo garrdetto/thelibrary --base "$BASE_BRANCH" --head "$branch" --title "Claude task ${GITHUB_RUN_ID}" --body-file "$body_file")"
+          rm -f "$body_file"
+          printf 'Pull request: %s\n' "$pull_url" >> "$GITHUB_STEP_SUMMARY"
+          gh pr merge "$pull_url" --auto --squash --match-head-commit "$(git rev-parse HEAD)"
+          echo 'Automatic merge requested. GitHub applies required checks and review rules.' >> "$GITHUB_STEP_SUMMARY"
