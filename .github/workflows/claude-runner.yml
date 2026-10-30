@@ -47,6 +47,17 @@ jobs:
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code
 
+ - name: Test Anthropic API key
+     env:
+       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+     run: |
+       curl -sS https://api.anthropic.com/v1/messages \
+         -H "x-api-key: $ANTHROPIC_API_KEY" \
+         -H "anthropic-version: 2023-06-01" \
+         -H "content-type: application/json" \
+         -d '{"model":"claude-haiku-5-5","max_tokens":16,"messages":[{"role":"user","content":"Say hi"}]}' \
+         | python3 -c 'import json,sys; r=json.load(sys.stdin); print(r.get("type"), "|", r.get("error",{}).get("message","key and billing OK"))'
+
       - name: Edit repository using the Claude API
         env:
           AGENT_PROMPT: ${{ inputs.prompt }}
