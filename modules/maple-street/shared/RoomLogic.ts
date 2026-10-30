@@ -9,7 +9,7 @@
  */
 import { applyOp, emptyBuild, levelBase, makeWorld, normalizeBuild, opCost, own, validateOp, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
-import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, VEHICLES } from './Economy';
+import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, VEHICLES, formatWait, vehicleCallWait } from './Economy';
 import { seedNeighborhood } from './Seed';
 import { decodeCoverage, encodeCoverage, strokeCells, stripeShade } from './Mowing';
 import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
@@ -216,6 +216,7 @@ export class NeighborhoodLogic {
         break;
       }
       case 'use': this.handleUse(sessionId, s, acc, msg.lotId, msg.objectId); break;
+      case 'callVehicle': this.handleVehicleCall(sessionId, acc, msg.kind); break;
       case 'bye': this.leave(sessionId); break;
     }
   }
@@ -333,6 +334,17 @@ export class NeighborhoodLogic {
     if (item.upgrade) acc.upgrades.push(item.upgrade);
     if (item.vehicle) { acc.garage.push(item.vehicle); acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank; }
     this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : `Bought: ${item.name}`);
+  }
+
+  private handleVehicleCall(sessionId: string, acc: Account, kind: unknown) {
+    const k = kind as VehicleKind;
+    if (!KINDS.includes(k) || !acc.garage.includes(k)) return this.io.send(sessionId, { t: 'vehicleCall', kind: k, ok: false, note: 'That vehicle is not in your garage' });
+    const now = Date.now();
+    const wait = vehicleCallWait(acc, now);
+    if (wait > 0) return this.io.send(sessionId, { t: 'vehicleCall', kind: k, ok: false, note: `You can call a vehicle over again in ${formatWait(wait)}` });
+    acc.vehicleCallAt = now;
+    this.sendAccount(sessionId, acc);
+    this.io.send(sessionId, { t: 'vehicleCall', kind: k, ok: true });
   }
 
   private handleRefuel(sessionId: string, s: Session, acc: Account, kind: VehicleKind, gallons: unknown) {

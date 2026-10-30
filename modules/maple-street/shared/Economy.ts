@@ -48,6 +48,18 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
   trailer:  { kind: 'trailer', name: 'Utility Trailer', price: 0, tank: 0, mpg: 0, fuel: 'none' },
 };
 export const STARTER_GARAGE: VehicleKind[] = ['truck', 'trailer', 'mower'];
+/** Garage "Bring out" / "Call over" places a vehicle next to you at most this often. */
+export const VEHICLE_CALL_COOLDOWN_MS = 20 * 60 * 1000;
+
+/** Milliseconds until the account may call a vehicle over again (0 when ready). */
+export function vehicleCallWait(a: Pick<Account, 'vehicleCallAt'>, now: number): number {
+  return Math.max(0, (a.vehicleCallAt || 0) + VEHICLE_CALL_COOLDOWN_MS - now);
+}
+
+export function formatWait(ms: number): string {
+  const min = Math.ceil(ms / 60_000);
+  return min <= 1 ? 'about a minute' : `${min} minutes`;
+}
 
 // ---------------------------------------------------------------- shops
 
@@ -103,6 +115,8 @@ export interface Account {
   needs: Needs;
   groceries: number;
   upgrades: string[];
+  /** Wall-clock ms of the last garage call (see VEHICLE_CALL_COOLDOWN_MS). */
+  vehicleCallAt: number;
 }
 
 /** Fills fields added after an account was first saved. */
@@ -114,11 +128,12 @@ export function normalizeAccount(a: Account): Account {
   a.needs = a.needs && typeof a.needs === 'object' ? a.needs : { hunger: 80, energy: 85, fun: 70 };
   a.groceries = Number.isFinite(a.groceries) ? a.groceries : 2;
   a.upgrades = Array.isArray(a.upgrades) ? a.upgrades : [];
+  a.vehicleCallAt = Number.isFinite(a.vehicleCallAt) ? a.vehicleCallAt : 0;
   return a;
 }
 
 export function newAccount(id: string, key: string, name: string, color: string): Account {
-  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [] });
+  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [], vehicleCallAt: 0 });
 }
 
 /**

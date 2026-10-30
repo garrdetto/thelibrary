@@ -41,7 +41,17 @@ const WALK_S = route([[78, 6], [-78, 6]], 0.5);
 const WALK_DN = route([[108, -7.5], [248, -7.5]], 0.6);
 const WALK_DS = route([[248, 7.5], [108, 7.5]], 0.6);
 
-interface Driver { id: string; name: string; kind: VehicleKind; route: Route; s: number; speed: number; steer: number }
+interface Driver { id: string; name: string; kind: VehicleKind; route: Route; s: number; speed: number; steer: number; v?: number }
+
+/** Car following: drivers scan their own lane ahead and keep a stopping gap to anything in it. */
+const LANE_HALF = 1.9;
+const STOP_GAP = 6.5;
+const BRAKE = 4;
+const HARD_BRAKE = 9;
+const ACCEL = 3;
+const LOOK_MIN = 10;
+const LOOK_MAX = 40;
+const LOOK_STEP = 0.75;
 interface Walker { id: string; name: string; color: string; route: Route; s: number; speed: number }
 
 export class NpcTraffic {
@@ -64,16 +74,37 @@ export class NpcTraffic {
   obstacles: { x: number; z: number }[] = [];
 
   step(dt: number) {
+    const cars = this.drivers.map(d => ({ d, p: sample(d.route, d.s) }));
+    const things = [
+      ...this.obstacles.map(o => ({ x: o.x, z: o.z, npc: null as Driver | null })),
+      ...cars.map(c => ({ x: c.p.x, z: c.p.z, npc: c.d as Driver | null })),
+    ];
+    const gaps = new Map<Driver, { gap: number; npc: Driver | null }>();
     for (const d of this.drivers) {
-      const ahead = sample(d.route, d.s + 6);
-      const blocked = this.obstacles.some(o => Math.hypot(o.x - ahead.x, o.z - ahead.z) < 4);
-      const target = blocked ? 0 : d.speed;
-      d.steer = 0;
-      const cur = (d as Driver & { v?: number }).v ?? d.speed;
-      const v = cur + Math.max(-6 * dt, Math.min(3 * dt, target - cur));
-      (d as Driver & { v?: number }).v = v;
+      const v = d.v ?? d.speed;
+      const range = Math.min(LOOK_MAX, LOOK_MIN + (v * v) / (2 * BRAKE));
+      let best: { gap: number; npc: Driver | null } = { gap: Infinity, npc: null };
+      for (const t of things) {
+        if (t.npc === d) continue;
+        for (let a = LOOK_STEP; a <= range && a < best.gap; a += LOOK_STEP) {
+          const q = sample(d.route, d.s + a);
+          if (Math.hypot(t.x - q.x, t.z - q.z) < LANE_HALF) { best = { gap: a, npc: t.npc }; break; }
+        }
+      }
+      gaps.set(d, best);
+    }
+    for (const d of this.drivers) {
+      const mine = gaps.get(d)!;
+      let gap = mine.gap;
+      // Two drivers that each see the other ahead (side by side where lanes merge): the lower id goes first.
+      if (mine.npc && gaps.get(mine.npc)?.npc === d && d.id < mine.npc.id) gap = Infinity;
+      const room = Math.max(0, gap - STOP_GAP);
+      const target = Math.min(d.speed, Math.sqrt(2 * BRAKE * room));
+      const cur = d.v ?? d.speed;
+      const v = Math.max(0, cur + Math.max(-HARD_BRAKE * dt, Math.min(ACCEL * dt, target - cur)));
+      d.v = gap <= STOP_GAP ? 0 : v;
       const before = sample(d.route, d.s);
-      d.s += v * dt;
+      d.s += d.v * dt;
       const after = sample(d.route, d.s + 3);
       const turn = Math.atan2(before.fx * after.fz - before.fz * after.fx, before.fx * after.fx + before.fz * after.fz);
       d.steer = -turn * 0.8;
@@ -89,7 +120,7 @@ export class NpcTraffic {
       const y = RIDE_HEIGHT[d.kind];
       const yaw = Math.atan2(-p.fz, p.fx);
       const vid = `${d.id}:${d.kind}`;
-      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: p.x, y, z: p.z, qx: 0, qy: Math.sin(yaw / 2), qz: 0, qw: Math.cos(yaw / 2), steer: d.steer, speed: (d as Driver & { v?: number }).v ?? d.speed, hitchedTo: null });
+      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: p.x, y, z: p.z, qx: 0, qy: Math.sin(yaw / 2), qz: 0, qw: Math.cos(yaw / 2), steer: d.steer, speed: d.v ?? d.speed, hitchedTo: null });
       players.push({ id: d.id, name: d.name, color: '#888888', x: p.x, y, z: p.z, yaw: 0, speed: 0, vehicleId: vid });
     }
     for (const w of this.walkers) {

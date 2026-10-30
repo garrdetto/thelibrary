@@ -134,6 +134,7 @@
     #garage { display: flex; flex-direction: column; gap: 4px; }
     .car { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; padding: 6px 8px; background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 8px; }
     .car b { font-size: 12px; }
+    .garage-wait { margin: 4px 2px 0; font-size: 11px; opacity: 0.75; }
     .car .fuel { grid-column: 1; height: 4px; border-radius: 3px; background: rgba(255,255,255,0.1); overflow: hidden; }
     .car .fuel i { display: block; height: 100%; background: var(--good); }
     .car .fuel.low i { background: var(--bad); }
@@ -370,7 +371,7 @@
 
   <script type="module">
 // Maple Street — generated from modules/maple-street by build.mjs. Edit the TypeScript sources, then rebuild.
-// modules-src/maplestreet/src/core/Storage.ts
+// modules/maple-street/src/core/Storage.ts
 var store = {
   get(key) {
     try {
@@ -406,10 +407,10 @@ function randomId(len = 12) {
   return s.slice(0, len);
 }
 
-// modules-src/maplestreet/src/game/Game.ts
+// modules/maple-street/src/game/Game.ts
 import * as THREE19 from "three/webgpu";
 
-// modules-src/maplestreet/shared/Catalog.ts
+// modules/maple-street/shared/Catalog.ts
 var I = (id, name, room, func, w, d, h, price, o = {}) => ({ id, name, room, func, w, d, h, price, indoor: true, solid: true, layer: "floor", tintable: false, ...o });
 var LIST = [
   I("sofa", "Three-Seat Sofa", "living", "seating", 3, 1, 0.85, 900, { tintable: true }),
@@ -480,7 +481,7 @@ function footprint(item, rot) {
   return rot % 2 === 0 ? { w: item.w, d: item.d } : { w: item.d, d: item.w };
 }
 
-// modules-src/maplestreet/shared/Economy.ts
+// modules/maple-street/shared/Economy.ts
 var START_MONEY = 35000;
 var LOT_PRICE = 20000;
 var LOAN_CAP = 50000;
@@ -518,6 +519,14 @@ var VEHICLES = {
   trailer: { kind: "trailer", name: "Utility Trailer", price: 0, tank: 0, mpg: 0, fuel: "none" }
 };
 var STARTER_GARAGE = ["truck", "trailer", "mower"];
+var VEHICLE_CALL_COOLDOWN_MS = 20 * 60 * 1000;
+function vehicleCallWait(a, now) {
+  return Math.max(0, (a.vehicleCallAt || 0) + VEHICLE_CALL_COOLDOWN_MS - now);
+}
+function formatWait(ms) {
+  const min = Math.ceil(ms / 60000);
+  return min <= 1 ? "about a minute" : `${min} minutes`;
+}
 var UPGRADES = {
   blades: { name: "Sharpened mower blades", blurb: "+25% pay for mowing" },
   license: { name: "Commercial delivery license", blurb: "+20% pay for deliveries" },
@@ -557,10 +566,11 @@ function normalizeAccount(a) {
   a.needs = a.needs && typeof a.needs === "object" ? a.needs : { hunger: 80, energy: 85, fun: 70 };
   a.groceries = Number.isFinite(a.groceries) ? a.groceries : 2;
   a.upgrades = Array.isArray(a.upgrades) ? a.upgrades : [];
+  a.vehicleCallAt = Number.isFinite(a.vehicleCallAt) ? a.vehicleCallAt : 0;
   return a;
 }
 function newAccount(id, key, name, color) {
-  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [] });
+  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [], vehicleCallAt: 0 });
 }
 function availableCredit(a) {
   const limit = Math.min(LOAN_CAP, 1e4 + a.earned * 2);
@@ -568,7 +578,7 @@ function availableCredit(a) {
 }
 var clampNeed = (v) => Math.max(0, Math.min(100, v));
 
-// modules-src/maplestreet/shared/BuildRules.ts
+// modules/maple-street/shared/BuildRules.ts
 var LEVEL_HEIGHT = 3;
 var FOUNDATION_H = 0.25;
 var MAX_LEVEL = 2;
@@ -1069,7 +1079,7 @@ function sideFinish(b, w, side) {
   return b.floors[floorKey(w.level, cell[0], cell[1])] ? "paint_white" : w.style;
 }
 
-// modules-src/maplestreet/shared/Mowing.ts
+// modules/maple-street/shared/Mowing.ts
 function stripeShade(hx, hz) {
   if (Math.abs(hz) >= Math.abs(hx))
     return hz >= 0 ? 1 : 2;
@@ -1098,7 +1108,7 @@ var decodeCoverage = (s, n) => {
   return c;
 };
 
-// modules-src/maplestreet/shared/Seed.ts
+// modules/maple-street/shared/Seed.ts
 var NEIGHBOR_HOUSES = [
   { lotId: "N2", owner: "npc-hendricks", name: "Hendricks", style: "siding_white", roof: "gable_x", floor: "oak", stories: 1, extras: ["hoop", "pool"] },
   { lotId: "N4", owner: "npc-alvarez", name: "Alvarez", style: "brick_red", roof: "hip", floor: "herringbone", stories: 2, extras: ["court"] },
@@ -1243,7 +1253,7 @@ function houseOps(world, s) {
   return ops;
 }
 
-// modules-src/maplestreet/shared/WorldLayout.ts
+// modules/maple-street/shared/WorldLayout.ts
 var LOT_W = 32;
 var LOT_D = 40;
 var LOTS_PER_SIDE = 5;
@@ -1332,7 +1342,7 @@ function drivewayRect(lot) {
   return { cx: lot.x + 4, cz: frontZ + dir * 4, sx: 4, sz: 12 };
 }
 
-// modules-src/maplestreet/shared/RoomLogic.ts
+// modules/maple-street/shared/RoomLogic.ts
 var KINDS = Object.keys(VEHICLES);
 var USE_COOLDOWN_MS = 20000;
 var MAX_OPS_PER_MSG = 240;
@@ -1540,6 +1550,9 @@ class NeighborhoodLogic {
       case "use":
         this.handleUse(sessionId, s, acc, msg.lotId, msg.objectId);
         break;
+      case "callVehicle":
+        this.handleVehicleCall(sessionId, acc, msg.kind);
+        break;
       case "bye":
         this.leave(sessionId);
         break;
@@ -1678,6 +1691,18 @@ class NeighborhoodLogic {
       acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank;
     }
     this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : `Bought: ${item.name}`);
+  }
+  handleVehicleCall(sessionId, acc, kind) {
+    const k = kind;
+    if (!KINDS.includes(k) || !acc.garage.includes(k))
+      return this.io.send(sessionId, { t: "vehicleCall", kind: k, ok: false, note: "That vehicle is not in your garage" });
+    const now = Date.now();
+    const wait = vehicleCallWait(acc, now);
+    if (wait > 0)
+      return this.io.send(sessionId, { t: "vehicleCall", kind: k, ok: false, note: `You can call a vehicle over again in ${formatWait(wait)}` });
+    acc.vehicleCallAt = now;
+    this.sendAccount(sessionId, acc);
+    this.io.send(sessionId, { t: "vehicleCall", kind: k, ok: true });
   }
   handleRefuel(sessionId, s, acc, kind, gallons) {
     if (!acc.garage.includes(kind) || VEHICLES[kind].fuel === "none")
@@ -1825,11 +1850,11 @@ class NeighborhoodLogic {
   }
 }
 
-// modules-src/maplestreet/src/build/BuildController.ts
+// modules/maple-street/src/build/BuildController.ts
 import * as THREE5 from "three/webgpu";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-// modules-src/maplestreet/src/core/Engine.ts
+// modules/maple-street/src/core/Engine.ts
 import * as THREE from "three/webgpu";
 var flatNormalMRT = { node: null };
 function noNormalsMRT(m) {
@@ -1906,7 +1931,7 @@ class Engine {
   }
 }
 
-// modules-src/maplestreet/src/build/Furniture.ts
+// modules/maple-street/src/build/Furniture.ts
 import * as THREE2 from "three/webgpu";
 var cache = new Map;
 var mat = (color, rough = 0.7, metal = 0, extra = {}) => {
@@ -2475,11 +2500,11 @@ function buildFurniture(catalogId, tint = 0) {
   return g;
 }
 
-// modules-src/maplestreet/src/build/Mesher.ts
+// modules/maple-street/src/build/Mesher.ts
 import * as THREE4 from "three/webgpu";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
-// modules-src/maplestreet/src/core/Materials.ts
+// modules/maple-street/src/core/Materials.ts
 import * as THREE3 from "three/webgpu";
 function rng(seed) {
   return () => {
@@ -3028,7 +3053,7 @@ function worldBoxUV(geo, tile) {
   return geo;
 }
 
-// modules-src/maplestreet/src/build/Mesher.ts
+// modules/maple-street/src/build/Mesher.ts
 var WALL_T = 0.16;
 var DOOR = { o0: 0.06, o1: 0.94, head: 2.1 };
 var WINDOW = { o0: 0.12, o1: 0.88, sill: 0.9, head: 2.15 };
@@ -3497,7 +3522,7 @@ function greedyRects(cells) {
   return out;
 }
 
-// modules-src/maplestreet/src/build/BuildController.ts
+// modules/maple-street/src/build/BuildController.ts
 var OK = new THREE5.Color(4575594);
 var BAD = new THREE5.Color(14697786);
 var DEL = new THREE5.Color(16747050);
@@ -3627,7 +3652,7 @@ class BuildController {
       this.controls.target.add(pan);
       this.camera.position.add(pan);
     }
-    const orbit = inp.axis(["ArrowRight"], ["ArrowLeft"]), tilt = inp.axis(["ArrowDown"], ["ArrowUp"]);
+    const orbit = inp.axis(["ArrowLeft"], ["ArrowRight"]), tilt = inp.axis(["ArrowDown"], ["ArrowUp"]);
     if (orbit || tilt) {
       const off = this.camera.position.clone().sub(this.controls.target);
       this.sph.setFromVector3(off);
@@ -4386,7 +4411,7 @@ function inverseOf(b, op) {
   }
 }
 
-// modules-src/maplestreet/src/build/HouseManager.ts
+// modules/maple-street/src/build/HouseManager.ts
 class HouseManager {
   scene;
   physics;
@@ -4449,7 +4474,7 @@ class HouseManager {
   }
 }
 
-// modules-src/maplestreet/src/build/Thumbs.ts
+// modules/maple-street/src/build/Thumbs.ts
 import * as THREE6 from "three/webgpu";
 var SIZE = 256;
 var OUT = 128;
@@ -4547,7 +4572,7 @@ class ThumbnailRenderer {
   }
 }
 
-// modules-src/maplestreet/src/core/Input.ts
+// modules/maple-street/src/core/Input.ts
 class Input {
   el;
   down = new Set;
@@ -4633,7 +4658,7 @@ class Input {
   }
 }
 
-// modules-src/maplestreet/src/core/Loop.ts
+// modules/maple-street/src/core/Loop.ts
 class FixedLoop {
   fixed;
   frame;
@@ -4682,7 +4707,7 @@ class FixedLoop {
   }
 }
 
-// modules-src/maplestreet/src/net/ColyseusTransport.ts
+// modules/maple-street/src/net/ColyseusTransport.ts
 class ColyseusTransport {
   url;
   roomName;
@@ -4743,7 +4768,7 @@ class ColyseusTransport {
   }
 }
 
-// modules-src/maplestreet/shared/Npc.ts
+// modules/maple-street/shared/Npc.ts
 var RIDE_HEIGHT = { truck: 0.94, hdtruck: 1.08, coupe: 0.66, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, zeroturn: 0.42, trailer: 0.59 };
 function route(pts, lane) {
   const segs = [];
@@ -4770,6 +4795,14 @@ var WALK_N = route([[-78, -6], [78, -6]], 0.5);
 var WALK_S = route([[78, 6], [-78, 6]], 0.5);
 var WALK_DN = route([[108, -7.5], [248, -7.5]], 0.6);
 var WALK_DS = route([[248, 7.5], [108, 7.5]], 0.6);
+var LANE_HALF = 1.9;
+var STOP_GAP = 6.5;
+var BRAKE = 4;
+var HARD_BRAKE = 9;
+var ACCEL = 3;
+var LOOK_MIN = 10;
+var LOOK_MAX = 40;
+var LOOK_STEP = 0.75;
 
 class NpcTraffic {
   drivers = [
@@ -4789,16 +4822,41 @@ class NpcTraffic {
   ];
   obstacles = [];
   step(dt) {
+    const cars = this.drivers.map((d) => ({ d, p: sample(d.route, d.s) }));
+    const things = [
+      ...this.obstacles.map((o) => ({ x: o.x, z: o.z, npc: null })),
+      ...cars.map((c) => ({ x: c.p.x, z: c.p.z, npc: c.d }))
+    ];
+    const gaps = new Map;
     for (const d of this.drivers) {
-      const ahead = sample(d.route, d.s + 6);
-      const blocked = this.obstacles.some((o) => Math.hypot(o.x - ahead.x, o.z - ahead.z) < 4);
-      const target = blocked ? 0 : d.speed;
-      d.steer = 0;
+      const v = d.v ?? d.speed;
+      const range = Math.min(LOOK_MAX, LOOK_MIN + v * v / (2 * BRAKE));
+      let best = { gap: Infinity, npc: null };
+      for (const t of things) {
+        if (t.npc === d)
+          continue;
+        for (let a = LOOK_STEP;a <= range && a < best.gap; a += LOOK_STEP) {
+          const q = sample(d.route, d.s + a);
+          if (Math.hypot(t.x - q.x, t.z - q.z) < LANE_HALF) {
+            best = { gap: a, npc: t.npc };
+            break;
+          }
+        }
+      }
+      gaps.set(d, best);
+    }
+    for (const d of this.drivers) {
+      const mine = gaps.get(d);
+      let gap = mine.gap;
+      if (mine.npc && gaps.get(mine.npc)?.npc === d && d.id < mine.npc.id)
+        gap = Infinity;
+      const room = Math.max(0, gap - STOP_GAP);
+      const target = Math.min(d.speed, Math.sqrt(2 * BRAKE * room));
       const cur = d.v ?? d.speed;
-      const v = cur + Math.max(-6 * dt, Math.min(3 * dt, target - cur));
-      d.v = v;
+      const v = Math.max(0, cur + Math.max(-HARD_BRAKE * dt, Math.min(ACCEL * dt, target - cur)));
+      d.v = gap <= STOP_GAP ? 0 : v;
       const before = sample(d.route, d.s);
-      d.s += v * dt;
+      d.s += d.v * dt;
       const after = sample(d.route, d.s + 3);
       const turn = Math.atan2(before.fx * after.fz - before.fz * after.fx, before.fx * after.fx + before.fz * after.fz);
       d.steer = -turn * 0.8;
@@ -4825,7 +4883,7 @@ class NpcTraffic {
   }
 }
 
-// modules-src/maplestreet/src/net/Host.ts
+// modules/maple-street/src/net/Host.ts
 class Host {
   saveKey;
   logic;
@@ -4887,7 +4945,7 @@ class Host {
   }
 }
 
-// modules-src/maplestreet/src/net/LocalTransport.ts
+// modules/maple-street/src/net/LocalTransport.ts
 var CHANNEL = "maplestreet-tabs";
 var SAVE_KEY = "maplestreet/tabs/v2";
 
@@ -4981,7 +5039,7 @@ class LocalTransport {
   }
 }
 
-// modules-src/maplestreet/src/net/OfflineTransport.ts
+// modules/maple-street/src/net/OfflineTransport.ts
 var OFFLINE_SAVE = "maplestreet/offline/v2";
 
 class OfflineTransport {
@@ -5013,7 +5071,7 @@ class OfflineTransport {
   }
 }
 
-// modules-src/maplestreet/src/net/PeerTransport.ts
+// modules/maple-street/src/net/PeerTransport.ts
 var PREFIX = "tl-maplestreet-";
 var MAX_NEIGHBORS = 8;
 var CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -5173,10 +5231,10 @@ class PeerTransport {
   }
 }
 
-// modules-src/maplestreet/src/net/RemoteEntities.ts
+// modules/maple-street/src/net/RemoteEntities.ts
 import * as THREE11 from "three/webgpu";
 
-// modules-src/maplestreet/src/core/Merge.ts
+// modules/maple-street/src/core/Merge.ts
 import * as THREE7 from "three/webgpu";
 import { mergeGeometries as mergeGeometries2 } from "three/addons/utils/BufferGeometryUtils.js";
 function slice(g, start, count) {
@@ -5252,10 +5310,10 @@ function mergeStatic(root) {
     o.removeFromParent();
 }
 
-// modules-src/maplestreet/src/physics/Character.ts
+// modules/maple-street/src/physics/Character.ts
 import * as THREE9 from "three/webgpu";
 
-// modules-src/maplestreet/src/physics/Physics.ts
+// modules/maple-street/src/physics/Physics.ts
 import RAPIER from "@dimforge/rapier3d-compat";
 import * as THREE8 from "three/webgpu";
 var CG = {
@@ -5368,7 +5426,7 @@ class Physics {
   }
 }
 
-// modules-src/maplestreet/src/physics/Character.ts
+// modules/maple-street/src/physics/Character.ts
 var HALF_H = 0.55;
 var RADIUS = 0.28;
 var EYE_OFFSET = HALF_H + RADIUS;
@@ -5526,7 +5584,7 @@ class Character {
   }
 }
 
-// modules-src/maplestreet/src/physics/VehiclePresets.ts
+// modules/maple-street/src/physics/VehiclePresets.ts
 import * as THREE10 from "three/webgpu";
 var M = {
   chrome: new THREE10.MeshStandardMaterial({ color: 14342874, metalness: 1, roughness: 0.12 }),
@@ -6074,7 +6132,7 @@ var PRESETS = {
   }
 };
 
-// modules-src/maplestreet/src/net/RemoteEntities.ts
+// modules/maple-street/src/net/RemoteEntities.ts
 var INTERP_DELAY_MS = 120;
 
 class SnapBuffer {
@@ -6290,7 +6348,7 @@ class RemoteEntities {
   }
 }
 
-// modules-src/maplestreet/src/net/WorldTransport.ts
+// modules/maple-street/src/net/WorldTransport.ts
 var GUEST_KEY = "maplestreet/guest-key";
 function worldEndpoint(name) {
   if (location.protocol !== "https:" && location.protocol !== "http:")
@@ -6408,7 +6466,7 @@ class WorldTransport {
   }
 }
 
-// modules-src/maplestreet/src/physics/Vehicle.ts
+// modules/maple-street/src/physics/Vehicle.ts
 import * as THREE12 from "three/webgpu";
 var _v = new THREE12.Vector3;
 var _q = new THREE12.Quaternion;
@@ -6663,7 +6721,7 @@ class Vehicle {
   }
 }
 
-// modules-src/maplestreet/src/world/DayNight.ts
+// modules/maple-street/src/world/DayNight.ts
 import * as THREE13 from "three/webgpu";
 var DAY = new THREE13.Color(16774114);
 var DUSK = new THREE13.Color(16751186);
@@ -6827,35 +6885,66 @@ class DayNight {
   }
 }
 
-// modules-src/maplestreet/src/world/Grass.ts
+// modules/maple-street/src/world/Grass.ts
 import * as THREE14 from "three/webgpu";
 import { cos, float, instanceIndex, positionLocal, sin, time, uv, vec3 } from "three/tsl";
 var RADIUS2 = 34;
 var SPACING = 0.42;
 var REBUILD_DIST = 3;
+var BLADES = 6;
+var NEAR = 16;
 var COVERS = new Set(["court", "hotTub", "divingBoard", "doghouse", "flowerBed", "patioSet", "grill", "trampoline"]);
 function hash(x, z) {
   let h = x * 374761393 + z * 668265263 | 0;
   h = Math.imul(h ^ h >>> 13, 1274126177);
   return ((h ^ h >>> 16) >>> 0) / 4294967296;
 }
+function patch(x, z, cell, seed) {
+  const fx = x / cell, fz = z / cell, ix = Math.floor(fx), iz = Math.floor(fz);
+  const tx = fx - ix, tz = fz - iz, sx = tx * tx * (3 - 2 * tx), sz = tz * tz * (3 - 2 * tz);
+  const h = (i, j) => hash(i * 31 + seed, j * 17 - seed);
+  const top = h(ix, iz) + (h(ix + 1, iz) - h(ix, iz)) * sx;
+  const bottom = h(ix, iz + 1) + (h(ix + 1, iz + 1) - h(ix, iz + 1)) * sx;
+  return top + (bottom - top) * sz;
+}
 function clumpGeometry() {
   const pos = [], uvs = [], col = [];
-  for (let b = 0;b < 3; b++) {
-    const a = b / 3 * Math.PI + 0.3;
-    const ca = Math.cos(a), sa = Math.sin(a);
-    const lean = 0.08 + b * 0.03;
-    const seg = [[0, 0.055], [0.45, 0.04], [0.8, 0.022], [1, 0]];
-    for (let i = 0;i < seg.length - 1; i++) {
-      const [y0, w0] = seg[i], [y1, w1] = seg[i + 1];
-      const l0 = lean * y0 * y0, l1 = lean * y1 * y1;
-      const p = (y, w, l, s) => [ca * w * s - sa * l, y, sa * w * s + ca * l];
-      const A = p(y0, w0, l0, -1), B = p(y0, w0, l0, 1), C = p(y1, w1, l1, 1), D = p(y1, w1, l1, -1);
-      pos.push(...A, ...B, ...C, ...A, ...C, ...D);
-      uvs.push(0, y0, 1, y0, 1, y1, 0, y0, 1, y1, 0, y1);
-      for (const y of [y0, y0, y1, y0, y1, y1]) {
-        const k = 0.45 + 0.55 * y;
-        col.push(k * 0.85, k, k * 0.7);
+  let seed = 7;
+  const rnd = () => {
+    seed = seed * 16807 % 2147483647;
+    return seed / 2147483647;
+  };
+  const rows = [[0, 1], [0.38, 0.92], [0.72, 0.62]];
+  for (let b = 0;b < BLADES; b++) {
+    const face = rnd() * Math.PI * 2, leanDir = b / BLADES * Math.PI * 2 + rnd() * 0.8;
+    const fc = Math.cos(face), fs = Math.sin(face), lc = Math.cos(leanDir), ls = Math.sin(leanDir);
+    const root = rnd() * 0.035, rx = lc * root, rz = ls * root;
+    const tall = 0.62 + rnd() * 0.38, wide = 0.009 + rnd() * 0.006, lean = 0.025 + rnd() * 0.05;
+    const tone = rnd(), dry = tone > 0.86 ? 0.22 : 0, dark = tone < 0.18 ? 0.16 : 0;
+    const at = (y, w, side) => {
+      const bend = lean * y * y, h = y * tall;
+      return [rx + lc * bend + fc * w * side, h, rz + ls * bend + fs * w * side];
+    };
+    const shade = (y) => {
+      const k = 0.32 + 0.68 * Math.min(1, y * 1.25) - dark;
+      const tip = Math.max(0, y - 0.75) * 0.5;
+      return [k * (0.78 + dry + tip), k * (1 - dry * 0.15), k * (0.62 - dry * 0.5)];
+    };
+    for (let i = 0;i < rows.length; i++) {
+      const [y0, s0] = rows[i];
+      const [y1, s1] = rows[i + 1] ?? [1, 0];
+      const w0 = wide * s0, w1 = wide * s1;
+      const A = at(y0, w0, -1), B = at(y0, w0, 1), C = at(y1, w1, 1), D = at(y1, w1, -1);
+      if (i < rows.length - 1) {
+        pos.push(...A, ...B, ...C, ...A, ...C, ...D);
+        uvs.push(0, y0, 1, y0, 1, y1, 0, y0, 1, y1, 0, y1);
+        for (const y of [y0, y0, y1, y0, y1, y1])
+          col.push(...shade(y));
+      } else {
+        pos.push(...A, ...B, ...C);
+        uvs.push(0, y0, 1, y0, 0.5, 1);
+        for (const y of [y0, y0, 1])
+          col.push(...shade(y));
       }
     }
   }
@@ -6865,8 +6954,10 @@ function clumpGeometry() {
   g.setAttribute("color", new THREE14.Float32BufferAttribute(col, 3));
   g.computeVertexNormals();
   const n = g.getAttribute("normal");
-  for (let i = 0;i < n.count; i++)
-    n.setXYZ(i, n.getX(i) * 0.3, 1, n.getZ(i) * 0.3);
+  for (let i = 0;i < n.count; i++) {
+    const x = n.getX(i) * 0.55, z = n.getZ(i) * 0.55, l = Math.hypot(x, 1, z);
+    n.setXYZ(i, x / l, 1 / l, z / l);
+  }
   return g;
 }
 var inRect = (r, x, z, pad = 0) => Math.abs(x - r.cx) < r.sx / 2 + pad && Math.abs(z - r.cz) < r.sz / 2 + pad;
@@ -6884,10 +6975,10 @@ class Grass {
     this.lawns = lawns;
     this.world = world;
     this.max = Math.round(Math.PI * RADIUS2 * RADIUS2 / (SPACING * SPACING) * quality);
-    const mat = new THREE14.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.85, side: THREE14.DoubleSide });
+    const mat = new THREE14.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.72, side: THREE14.DoubleSide });
     const phase = instanceIndex.toFloat().mul(0.618);
     const bend = uv().y.mul(uv().y);
-    const sway = vec3(sin(time.mul(1.7).add(phase)).mul(0.07).add(sin(time.mul(0.6).add(phase.mul(0.13))).mul(0.05)), float(0), cos(time.mul(1.3).add(phase)).mul(0.04));
+    const sway = vec3(sin(time.mul(1.7).add(phase)).mul(0.06).add(sin(time.mul(0.55).add(phase.mul(0.13))).mul(0.06)), float(0), cos(time.mul(1.3).add(phase)).mul(0.035));
     mat.positionNode = positionLocal.add(sway.mul(bend));
     this.mesh = new THREE14.InstancedMesh(clumpGeometry(), mat, this.max);
     this.mesh.count = 0;
@@ -6945,6 +7036,11 @@ class Grass {
           continue;
         if (this.blocked.some((b) => inRect(b, x, z, 0.15)))
           continue;
+        const dist = Math.hypot(x - this.center.x, z - this.center.y);
+        if (dist > NEAR && hash(gx - 11, gz + 5) > 0.55)
+          continue;
+        const spread = (1 + Math.max(0, dist - 8) * 0.07) * (dist > NEAR ? 1.3 : 1);
+        const lush = patch(x, z, 7, 3), dryness = patch(x, z, 13, 9);
         let height;
         const lawn = lawns.find((l) => l.contains(x, z));
         if (lawn) {
@@ -6957,14 +7053,18 @@ class Grass {
           if (b && (b.floors[floorKey(0, fx, fz)] || Object.values(b.pools).some((pl) => fx >= pl.x0 - 0.3 && fx < pl.x1 + 0.3 && fz >= pl.z0 - 0.3 && fz < pl.z1 + 0.3)))
             continue;
           const mowed = lawn.sample(x, z, rgb);
-          height = mowed ? 0.07 + h1 * 0.03 : 0.2 + h2 * 0.14;
-          col.setRGB(rgb[0] * 1.15, rgb[1] * 1.15, rgb[2] * 1.15);
+          height = mowed ? 0.07 + h1 * 0.03 : (0.2 + h2 * 0.14) * (0.85 + lush * 0.3);
+          const k = 1.08 + (lush - 0.5) * 0.18;
+          col.setRGB(rgb[0] * k, rgb[1] * k, rgb[2] * k);
         } else {
-          height = 0.24 + h1 * 0.22;
-          col.setHSL(0.22 + h2 * 0.06, 0.42 + h1 * 0.15, 0.3 + h2 * 0.1);
+          height = (0.22 + h1 * 0.2) * (0.75 + lush * 0.5);
+          if (h2 > 0.9 - dryness * 0.12)
+            col.setHSL(0.12 + h1 * 0.04, 0.32 + h2 * 0.1, 0.36 + h1 * 0.06);
+          else
+            col.setHSL(0.235 + h2 * 0.04 + (lush - 0.5) * 0.03 - dryness * 0.035, 0.36 + h1 * 0.12, 0.23 + lush * 0.07 + h2 * 0.03);
         }
         q.setFromAxisAngle(up, h1 * Math.PI * 2);
-        const wScale = 0.8 + h2 * 0.5;
+        const wScale = (0.8 + h2 * 0.5) * spread;
         m.compose(p.set(x, 0.01, z), q, s.set(wScale, height, wScale));
         this.mesh.setMatrixAt(n, m);
         this.mesh.setColorAt(n, col);
@@ -6978,11 +7078,11 @@ class Grass {
   }
 }
 
-// modules-src/maplestreet/src/world/Neighborhood.ts
+// modules/maple-street/src/world/Neighborhood.ts
 import * as THREE17 from "three/webgpu";
 import { mergeGeometries as mergeGeometries3 } from "three/addons/utils/BufferGeometryUtils.js";
 
-// modules-src/maplestreet/src/world/Downtown.ts
+// modules/maple-street/src/world/Downtown.ts
 import * as THREE15 from "three/webgpu";
 function rng2(seed) {
   return () => {
@@ -7325,7 +7425,7 @@ class Downtown {
   }
 }
 
-// modules-src/maplestreet/src/world/Lawn.ts
+// modules/maple-street/src/world/Lawn.ts
 import * as THREE16 from "three/webgpu";
 var PPM = 8;
 var SHADE_COLORS = {
@@ -7459,7 +7559,7 @@ class Lawn {
   }
 }
 
-// modules-src/maplestreet/src/world/Neighborhood.ts
+// modules/maple-street/src/world/Neighborhood.ts
 var LIGHT_POOL = 6;
 function rng3(seed) {
   return () => {
@@ -7779,7 +7879,7 @@ class Neighborhood {
   }
 }
 
-// modules-src/maplestreet/src/game/CameraRig.ts
+// modules/maple-street/src/game/CameraRig.ts
 import * as THREE18 from "three/webgpu";
 
 class CameraRig {
@@ -7806,7 +7906,7 @@ class CameraRig {
       if (p.dx || p.dy)
         this.idle = 0;
     }
-    const orbit = this.input.axis(["ArrowRight"], ["ArrowLeft"]);
+    const orbit = this.input.axis(["ArrowLeft"], ["ArrowRight"]);
     const tilt = this.input.axis(["ArrowDown"], ["ArrowUp"]);
     if (orbit || tilt) {
       this.yaw += orbit * 1.9 * dt;
@@ -7839,7 +7939,7 @@ class CameraRig {
   }
 }
 
-// modules-src/maplestreet/src/game/PlotMap.ts
+// modules/maple-street/src/game/PlotMap.ts
 var BOUNDS = { x0: -158, x1: 276, z0: -108, z1: 108 };
 var SHOP_ICON = { dealer: "\uD83D\uDE99", diner: "\uD83C\uDF54", bank: "\uD83C\uDFE6", cafe: "☕", grocery: "\uD83D\uDED2", hardware: "\uD83D\uDD27", gas: "⛽" };
 
@@ -8063,7 +8163,7 @@ class PlotMap {
   }
 }
 
-// modules-src/maplestreet/src/game/Hud.ts
+// modules/maple-street/src/game/Hud.ts
 var $ = (id) => document.getElementById(id);
 var money = (n) => `$${Math.round(n).toLocaleString()}`;
 var esc = (s) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -8485,7 +8585,9 @@ class Hud {
   }
   setGarage(acc, out, fuel) {
     const el = $("garage");
-    const sig = JSON.stringify([acc.garage, [...out], acc.garage.map((k) => Math.round((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k].tank) * 20))]);
+    const wait = vehicleCallWait(acc, Date.now());
+    const waitLabel = wait > 0 ? formatWait(wait) : "";
+    const sig = JSON.stringify([acc.garage, [...out], waitLabel, acc.garage.map((k) => Math.round((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k].tank) * 20))]);
     if (el.dataset.sig === sig)
       return;
     el.dataset.sig = sig;
@@ -8500,9 +8602,19 @@ class Hud {
       const b = document.createElement("button");
       b.className = "btn";
       b.textContent = out.has(k) ? "Call over" : "Bring out";
+      if (waitLabel) {
+        b.disabled = true;
+        b.title = `You can call a vehicle over again in ${waitLabel}`;
+      }
       b.onclick = () => this.ev.bringOut(k);
       row.appendChild(b);
       el.appendChild(row);
+    }
+    if (waitLabel) {
+      const note = document.createElement("p");
+      note.className = "garage-wait";
+      note.textContent = `Vehicles can be called over once every 20 minutes · next in ${waitLabel}`;
+      el.appendChild(note);
     }
   }
   setDash(d) {
@@ -8689,7 +8801,7 @@ class Hud {
   }
 }
 
-// modules-src/maplestreet/src/game/Game.ts
+// modules/maple-street/src/game/Game.ts
 var NET_HZ = 15;
 var FUEL_REPORT_SEC = 5;
 var NO_RENDER = new URLSearchParams(location.search).has("norender");
@@ -8743,6 +8855,7 @@ class Game {
   fuelAcc = 0;
   welcomed = false;
   pendingHome = null;
+  pendingCall = null;
   serverFuel = {};
   warned = { hunger: false, energy: false, fuel: false };
   moveTarget = null;
@@ -9004,6 +9117,17 @@ class Game {
       case "left":
         this.remotes.removeOwner(m.id);
         break;
+      case "vehicleCall": {
+        if (!this.pendingCall || this.pendingCall.kind !== m.kind)
+          break;
+        window.clearTimeout(this.pendingCall.timer);
+        this.pendingCall = null;
+        if (m.ok)
+          this.placeCalledVehicle(m.kind);
+        else if (m.note)
+          this.hud.toast(m.note);
+        break;
+      }
       case "toast":
         this.hud.toast(m.text);
         break;
@@ -9145,6 +9269,25 @@ class Game {
   }
   bringOut(kind, trial = false) {
     if (!this.account || !trial && !this.account.garage.includes(kind))
+      return;
+    if (trial)
+      return this.placeCalledVehicle(kind, true);
+    if (this.vehicles.get(kind) === this.driving && this.driving)
+      return this.hud.toast(`You’re already driving the ${VEHICLES[kind].name}`);
+    if (this.pendingCall)
+      return;
+    const wait = vehicleCallWait(this.account, Date.now());
+    if (wait > 0)
+      return this.hud.toast(`You can call a vehicle over again in ${formatWait(wait)}`);
+    const timer = window.setTimeout(() => {
+      this.pendingCall = null;
+      this.hud.toast("The town didn’t answer — try calling your vehicle again");
+    }, 5000);
+    this.pendingCall = { kind, timer };
+    this.send({ t: "callVehicle", kind });
+  }
+  placeCalledVehicle(kind, trial = false) {
+    if (!this.account)
       return;
     const p = this.driving ? this.driving.root.position.clone() : this.character.position;
     const { fwd, right } = this.cam.basis();
@@ -9739,7 +9882,7 @@ class Game {
   }
 }
 
-// modules-src/maplestreet/src/main.ts
+// modules/maple-street/src/main.ts
 var $2 = (id) => document.getElementById(id);
 var params = new URLSearchParams(location.search);
 var nameIn = $2("pName");

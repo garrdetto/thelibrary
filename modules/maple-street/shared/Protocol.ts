@@ -56,6 +56,7 @@ export type ClientMsg =
   | { t: 'refuel'; kind: VehicleKind; gallons: number }
   | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
   | { t: 'use'; lotId: string; objectId: string }
+  | { t: 'callVehicle'; kind: VehicleKind }
   | { t: 'bye' };
 
 export type ServerMsg =
@@ -68,4 +69,5 @@ export type ServerMsg =
   | { t: 'job'; job: Job | null; note?: string }
   | { t: 'newDay'; day: number }
   | { t: 'left'; id: string }
+  | { t: 'vehicleCall'; kind: VehicleKind; ok: boolean; note?: string }
   | { t: 'toast'; text: string };
