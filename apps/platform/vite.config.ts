@@ -17,7 +17,7 @@ const config = defineConfig({
   resolve: {
     alias: [
       { find: /^@shared\//, replacement: join(repoRoot, 'packages/shared/src') + '/' },
-      { find: /^@games\//, replacement: join(repoRoot, 'games') + '/' },
+      { find: /^@modules\//, replacement: join(repoRoot, 'modules') + '/' },
       { find: /^@\//, replacement: join(platformRoot, 'src') + '/' },
     ],
   },

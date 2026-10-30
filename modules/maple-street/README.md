@@ -1,15 +1,15 @@
 # Maple Street (source)
 
-Source for `games/maple-street/public/maplestreet.html` (served at `/modules/maplestreet.html`), a 3D neighborhood simulation. You pick a plot on the town map, build and furnish a house with Sims-style Build and Buy tools, and drive around town. There are lawns to mow, deliveries to haul, shops and a gas station downtown, and a bank with a capped loan. Everyone shares one persistent world, so you can come and go as you please.
+Source for `modules/maple-street/public/maplestreet.html` (served at `/modules/maplestreet.html`), a 3D neighborhood simulation. You pick a plot on the town map, build and furnish a house with Sims-style Build and Buy tools, and drive around town. There are lawns to mow, deliveries to haul, shops and a gas station downtown, and a bank with a capped loan. Everyone shares one persistent world, so you can come and go as you please.
 
 The published page has no build step at runtime. three.js r172 (WebGPU with automatic WebGL2 fallback), Rapier 0.14 (`@dimforge/rapier3d-compat`, with `await RAPIER.init()` before the loop starts), PeerJS 1.5.4 and colyseus.js 0.15.28 all load from unpkg through the import map and script tags in `index.html`. The TypeScript in this folder is bundled into the page's inline module script.
 
 ## Rebuild
 
 ```sh
-bun games/maple-street/build.mjs
+bun modules/maple-street/build.mjs
 # or, without Bun:
-pnpm add -D esbuild && node games/maple-street/build.mjs
+pnpm add -D esbuild && node modules/maple-street/build.mjs
 ```
 
 Edit the TypeScript and `index.html`, not the generated page. This folder is excluded from the site `tsconfig.json`, so its bare imports (`three/webgpu`, Rapier) don't affect the site's type check.
@@ -84,7 +84,7 @@ URL flags: `?webgl` forces WebGL2, `?noao` turns off GTAO, and `?norender` runs 
 ## Colyseus server (optional)
 
 ```sh
-cd games/maple-street/colyseus-server && npm install && npm run dev   # ws://localhost:2567
+cd modules/maple-street/colyseus-server && npm install && npm run dev   # ws://localhost:2567
 ```
 
 It isn't deployed. The shared world runs on the site's Worker, and online rooms over PeerJS need no backend.

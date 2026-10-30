@@ -7,7 +7,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bookmark, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, X } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
-import { PoolTable } from '@games/pool/src/PoolTable'
+import { PoolTable } from '@modules/pool/src/PoolTable'
 import { usePoolLobby } from '@shared/components/PoolLobby'
 import { InvitePopups } from '@shared/components/SitePresence'
 import { GroupChat } from '@/components/GroupChat'
@@ -24,8 +24,8 @@ import type { Creation, LyricCorrection, LyricPreset, Message, SongSettings, Stu
 
 export const Route = createFileRoute('/')({ component: Studio })
 
-const Racing = lazy(() => import('@games/racing/src/Racing').then(module => ({ default: module.Racing })))
-const ParkGame = lazy(() => import('@games/thrill-park/src/components/ParkGame').then(module => ({ default: module.ParkGame })))
+const Racing = lazy(() => import('@modules/racing/src/Racing').then(module => ({ default: module.Racing })))
+const ParkGame = lazy(() => import('@modules/thrill-park/src/components/ParkGame').then(module => ({ default: module.ParkGame })))
 
 const defaultSettings: SongSettings = { genre: 'Indie pop', customGenre: '', artist: '', explicit: true, vibe: 'Dreamy & atmospheric', mood: 'Bittersweet', pitch: 'Mid-range', style: 'Conversational & intimate', instruments: 'Soft piano, warm bass, brushed drums', structure: 'Verse / Chorus / Verse / Chorus / Bridge / Chorus', instructions: '' }
 const navigation = [

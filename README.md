@@ -69,7 +69,7 @@ A 3D neighborhood simulation in one persistent shared world. New neighbors pick 
 - pools, stairs, and about 60 pieces of furniture and décor, plus basketball courts
 - move, eyedropper, recolor and sledgehammer tools, with undo and redo
 
-Around town you can drive pickups (with a trailer), a heavy-duty crew cab, a muscle coupe, a sedan, a golf cart, a four-wheeler and riding or zero-turn mowers, mow striped lawns, haul deliveries, eat downtown, fill up at the gas station and borrow from a bank with a $50,000 loan cap. Other players can never change your lot. The shared world runs on a Durable Object with its state in D1. Solo play works fully offline, and private rooms use a PeerJS code. The page is generated from `games/maple-street/`; rebuild it with `bun games/maple-street/build.mjs`.
+Around town you can drive pickups (with a trailer), a heavy-duty crew cab, a muscle coupe, a sedan, a golf cart, a four-wheeler and riding or zero-turn mowers, mow striped lawns, haul deliveries, eat downtown, fill up at the gas station and borrow from a bank with a $50,000 loan cap. Other players can never change your lot. The shared world runs on a Durable Object with its state in D1. Solo play works fully offline, and private rooms use a PeerJS code. The page is generated from `modules/maple-street/`; rebuild it with `bun modules/maple-street/build.mjs`.
 
 ## Multiplayer
 

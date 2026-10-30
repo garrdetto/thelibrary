@@ -1,10 +1,10 @@
 // Bundles the TypeScript sources into one self-contained module page:
-//   games/maple-street/public/maplestreet.html (served at /modules/maplestreet.html)
+//   modules/maple-street/public/maplestreet.html (served at /modules/maplestreet.html)
 // three.js, Rapier, PeerJS and colyseus.js stay external and load from unpkg
 // through the import map / script tags in index.html.
 //
-// Run with either:   bun games/maple-street/build.mjs
-//              or:   pnpm dlx esbuild --version && node games/maple-street/build.mjs
+// Run with either:   bun modules/maple-street/build.mjs
+//              or:   pnpm dlx esbuild --version && node modules/maple-street/build.mjs
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,6 @@ const js = await bundle();
 if (js.includes('</script')) throw new Error('bundle contains a closing script tag');
 const html = readFileSync(join(here, 'index.html'), 'utf8');
 if (!html.includes('/*__BUNDLE__*/')) throw new Error('index.html is missing the bundle marker');
-const banner = '// Maple Street — generated from games/maple-street by build.mjs. Edit the TypeScript sources, then rebuild.\n';
+const banner = '// Maple Street — generated from modules/maple-street by build.mjs. Edit the TypeScript sources, then rebuild.\n';
 writeFileSync(out, html.replace('/*__BUNDLE__*/', () => banner + js));
 console.log(`wrote ${out} (${(Buffer.byteLength(html) / 1024 + js.length / 1024).toFixed(0)} KB)`);

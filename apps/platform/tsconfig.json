@@ -6,10 +6,10 @@
     "vite.config.ts",
     "../../packages/shared/src/**/*.ts",
     "../../packages/shared/src/**/*.tsx",
-    "../../games/*/src/**/*.ts",
-    "../../games/*/src/**/*.tsx"
+    "../../modules/*/src/**/*.ts",
+    "../../modules/*/src/**/*.tsx"
   ],
-  "exclude": ["../../node_modules", "../../games/maple-street"],
+  "exclude": ["../../node_modules", "../../modules/maple-street"],
   "compilerOptions": {
     "target": "ES2022",
     "jsx": "react-jsx",
@@ -34,7 +34,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../../packages/shared/src/*"],
-      "@games/*": ["../../games/*"]
+      "@modules/*": ["../../modules/*"]
     }
   }
 }

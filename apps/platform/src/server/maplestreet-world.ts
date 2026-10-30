@@ -1,5 +1,5 @@
-import { WorldServer, type WorldStorage } from '@games/maple-street/shared/WorldServer'
-import type { Identity } from '@games/maple-street/shared/RoomLogic'
+import { WorldServer, type WorldStorage } from '@modules/maple-street/shared/WorldServer'
+import type { Identity } from '@modules/maple-street/shared/RoomLogic'
 import type { Env } from './env'
 
 type DurableState = { blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T> }

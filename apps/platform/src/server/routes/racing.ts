@@ -5,8 +5,8 @@ import { requireUser } from '../auth'
 import { IMAGE_MODEL, base64ToBytes, gemini, imageTypes } from '../gemini'
 import { canResetRecords } from '../records'
 import { issueTicket, redeemTicket } from './account'
-import type { Scheme } from '@games/racing/src/racing'
-import { displayScheme, presets } from '@games/racing/src/racing'
+import type { Scheme } from '@modules/racing/src/racing'
+import { displayScheme, presets } from '@modules/racing/src/racing'
 
 const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dirt: 8000 }
 const raceModes = z.enum(['practice', 'multiplayer', 'time-attack', 'race'])

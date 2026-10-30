@@ -39,9 +39,9 @@ export function collectModuleAssets(sourceDirectories: string[]) {
 }
 
 export function moduleAssetDirectories(repoRoot: string) {
-  const gamesRoot = join(repoRoot, 'games')
-  const games = existsSync(gamesRoot) ? readdirSync(gamesRoot).map(name => join(gamesRoot, name, 'public')) : []
-  return [join(repoRoot, 'packages', 'shared', 'public'), ...games]
+  const modulesRoot = join(repoRoot, 'modules')
+  const moduleFolders = existsSync(modulesRoot) ? readdirSync(modulesRoot).map(name => join(modulesRoot, name, 'public')) : []
+  return [join(repoRoot, 'packages', 'shared', 'public'), ...moduleFolders]
 }
 
 export function moduleAssets({ repoRoot, urlPrefix = '/modules/' }: { repoRoot: string; urlPrefix?: string }): Plugin[] {
