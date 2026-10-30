@@ -6,7 +6,7 @@
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { Client, Room } from 'colyseus';
-import type { ClientMsg, JoinOptions, ServerMsg } from '../shared/Protocol';
+import { AUTOSAVE_EVERY_MS, type ClientMsg, type JoinOptions, type ServerMsg } from '../shared/Protocol';
 import { NeighborhoodLogic, Persisted } from '../shared/RoomLogic';
 
 const SAVE_DIR = process.env.SAVE_DIR ?? './data';
@@ -34,7 +34,7 @@ export class NeighborhoodRoom extends Room {
     });
 
     this.setSimulationInterval(dtMs => this.logic.tick(dtMs / 1000), 1000 / 30);
-    this.saveTimer = setInterval(() => this.save(), 15_000);
+    this.saveTimer = setInterval(() => { this.save(); this.broadcast('m', { t: 'toast', text: 'Progress autosaved' } satisfies ServerMsg); }, AUTOSAVE_EVERY_MS);
   }
 
   onJoin(client: Client, options: JoinOptions) {
@@ -45,6 +45,7 @@ export class NeighborhoodRoom extends Room {
   onLeave(client: Client) {
     this.logic.leave(client.sessionId);
     this.byId.delete(client.sessionId);
+    this.save();
   }
 
   onDispose() {

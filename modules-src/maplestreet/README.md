@@ -75,7 +75,8 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 
 In the shared world:
 
-- Signed-in members are identified by their session, and guests by a random key kept in the browser.
+- Signed-in members are identified by their session, and guests by a random key kept in the browser. When you're signed in to the library, the start screen fills in your username and locks the name field; every mode (shared world, solo, rooms, tabs) uses it, and progress saved in this browser under an earlier typed name moves over to it.
+- Progress autosaves every 5 minutes in every mode (`AUTOSAVE_EVERY_MS` in `shared/Protocol.ts`) and shows a "Progress autosaved" notice. It also saves when you leave: closing the tab or disconnecting from the shared world, or hiding the page in solo, rooms and tabs.
 - New neighbors pick a plot on the overview map. Returning ones start on their own driveway.
 - If anything online can't be reached, the module falls back to the offline simulation and shows a notice.
 

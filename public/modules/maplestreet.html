@@ -1432,8 +1432,11 @@ class NeighborhoodLogic {
     return this.sessions.size;
   }
   leave(sessionId) {
-    if (!this.sessions.delete(sessionId))
+    const s = this.sessions.get(sessionId);
+    if (!s)
       return;
+    this.dirty.accounts.add(s.key);
+    this.sessions.delete(sessionId);
     this.io.broadcast({ t: "left", id: sessionId });
   }
   reap(timeoutMs, keep) {
@@ -1444,6 +1447,10 @@ class NeighborhoodLogic {
   }
   hasSession(id) {
     return this.sessions.has(id);
+  }
+  touchPresentAccounts() {
+    this.sessions.forEach((s) => this.dirty.accounts.add(s.key));
+    this.dirty.meta = true;
   }
   message(sessionId, msg) {
     const s = this.sessions.get(sessionId);
@@ -4743,6 +4750,9 @@ class ColyseusTransport {
   }
 }
 
+// modules-src/maplestreet/shared/Protocol.ts
+var AUTOSAVE_EVERY_MS = 5 * 60 * 1000;
+
 // modules-src/maplestreet/shared/Npc.ts
 var RIDE_HEIGHT = { truck: 0.94, hdtruck: 1.08, coupe: 0.66, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, zeroturn: 0.42, trailer: 0.59 };
 function route(pts, lane) {
@@ -4859,8 +4869,15 @@ class Host {
         this.logic.reap(opts.reapMs, opts.selfId);
     }, 1000 / 30));
     if (saveKey) {
-      this.timers.push(window.setInterval(() => this.save(), 5000));
+      this.timers.push(window.setInterval(() => {
+        this.save();
+        deliver("*", { t: "toast", text: "Progress autosaved" });
+      }, AUTOSAVE_EVERY_MS));
       addEventListener("pagehide", () => this.save());
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden")
+          this.save();
+      });
     }
   }
   receive(from, msg) {
@@ -9747,6 +9764,55 @@ var colorIn = $2("pColor");
 var codeIn = $2("pCode");
 var serverIn = $2("pServer");
 nameIn.value = store.get("maplestreet/name") ?? "";
+var nameLabel = document.querySelector('label[for="pName"]');
+var LOCAL_SAVES = [OFFLINE_SAVE, "maplestreet/hosted/v2", "maplestreet/tabs/v2"];
+function adoptUsername(from, to) {
+  if (!from || from.toLowerCase() === to.toLowerCase())
+    return;
+  const device = persistentKey();
+  const oldKey = `${device}:${from.toLowerCase()}`;
+  const newKey = `${device}:${to.toLowerCase()}`;
+  for (const saveKey of LOCAL_SAVES) {
+    const saved = store.json(saveKey);
+    const acc = saved?.accounts?.[oldKey];
+    if (!saved?.accounts || !acc || saved.accounts[newKey])
+      continue;
+    delete saved.accounts[oldKey];
+    saved.accounts[newKey] = { ...acc, key: newKey, name: to };
+    store.set(saveKey, JSON.stringify(saved));
+  }
+}
+var signedInAs = null;
+async function loadSignedInUser() {
+  if (location.protocol !== "https:" && location.protocol !== "http:")
+    return;
+  try {
+    const res = await fetch("/api/pool-account", { credentials: "same-origin", cache: "no-store" });
+    if (!res.ok)
+      return;
+    const data = await res.json();
+    const username = typeof data.username === "string" && /^[A-Za-z0-9_-]{3,20}$/.test(data.username) ? data.username : null;
+    if (username) {
+      adoptUsername(store.get("maplestreet/name") ?? "", username);
+      nameIn.value = username;
+      nameIn.readOnly = true;
+      nameIn.title = "Your library username";
+      if (nameLabel)
+        nameLabel.textContent = "Signed in as";
+    } else if (signedInAs) {
+      nameIn.readOnly = false;
+      nameIn.removeAttribute("title");
+      if (nameLabel)
+        nameLabel.textContent = "Your name";
+    }
+    signedInAs = username;
+  } catch {}
+}
+var accountReady = loadSignedInUser();
+addEventListener("focus", () => {
+  if (!game && !starting)
+    accountReady = loadSignedInUser();
+});
 colorIn.value = store.get("maplestreet/color") ?? "#3a7bd5";
 serverIn.value = params.get("server") ?? store.get("maplestreet/server") ?? "";
 if (!peerAvailable())
@@ -9764,7 +9830,8 @@ async function start(mode) {
   if (starting)
     return;
   starting = true;
-  const name = nameIn.value.trim() || "Neighbor";
+  await accountReady;
+  const name = signedInAs ?? (nameIn.value.trim() || "Neighbor");
   store.set("maplestreet/name", name);
   store.set("maplestreet/color", colorIn.value);
   store.set("maplestreet/server", serverIn.value.trim());

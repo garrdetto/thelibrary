@@ -59,7 +59,7 @@ const FUEL_REPORT_SEC = 5;
 const NO_RENDER = new URLSearchParams(location.search).has('norender');
 const ENGINE_KINDS = new Set<VehicleKind>(['truck', 'hdtruck', 'coupe', 'sedan', 'golfcart', 'atv', 'mower', 'zeroturn']);
 
-function persistentKey() {
+export function persistentKey() {
   const K = 'maplestreet/identity';
   let k = store.get(K);
   if (!k) { k = randomId(24); store.set(K, k); }

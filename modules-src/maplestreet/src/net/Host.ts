@@ -5,7 +5,7 @@
  * online rooms all host through this class; only the delivery differs.
  */
 import { NeighborhoodLogic, Persisted } from '../../shared/RoomLogic';
-import type { ClientMsg, ServerMsg } from '../../shared/Protocol';
+import { AUTOSAVE_EVERY_MS, type ClientMsg, type ServerMsg } from '../../shared/Protocol';
 import { store } from '../core/Storage';
 import { NpcTraffic } from '../../shared/Npc';
 
@@ -43,8 +43,12 @@ export class Host {
       if (opts.reapMs) this.logic.reap(opts.reapMs, opts.selfId);
     }, 1000 / 30));
     if (saveKey) {
-      this.timers.push(window.setInterval(() => this.save(), 5000));
+      this.timers.push(window.setInterval(() => {
+        this.save();
+        deliver('*', { t: 'toast', text: 'Progress autosaved' });
+      }, AUTOSAVE_EVERY_MS));
       addEventListener('pagehide', () => this.save());
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') this.save(); });
     }
   }
 
