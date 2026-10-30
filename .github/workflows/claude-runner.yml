@@ -46,10 +46,10 @@ jobs:
 
       - name: Install Claude Code
         run: npm install --global @anthropic-ai/claude-code
-       - name: Test Anthropic API key
-         env:
+      - name: Test Anthropic API key
+        env:
            ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-         run: |
+        run: |
            curl -sS https://api.anthropic.com/v1/messages \
              -H "x-api-key: $ANTHROPIC_API_KEY" \
              -H "anthropic-version: 2023-06-01" \
