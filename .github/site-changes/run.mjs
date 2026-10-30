@@ -16,7 +16,7 @@ How to work:
 - If the message is a question, or needs no code change, answer it without editing files.
 - If the request is unclear, or would destroy data (dropping tables, deleting accounts or records, removing secrets), make no edits and ask one short clarifying question instead.
 - Never read, print or change secrets, environment values or .env files.
-- Schema changes go in a new numbered file in migrations/; the workflow applies them.
+- Schema changes go in a new numbered file in apps/platform/migrations/; the workflow applies them.
 
 Your final message is shown to the administrator as your chat reply. Write it in plain language for someone who is not a developer: what you changed (or your answer, or your question), where to see it on the site, and anything they need to do. Keep it short and do not include code unless they asked for it.`
 
@@ -228,7 +228,7 @@ async function publish() {
 
   const added = run('git', ['diff', '--name-only', '--diff-filter=A', 'HEAD~1', 'HEAD']).output.split('\n')
   const changedFiles = run('git', ['diff', '--name-only', 'HEAD~1', 'HEAD']).output.split('\n')
-  const newMigrations = added.some(file => /^migrations\/.+\.sql$/.test(file))
+  const newMigrations = added.some(file => /^apps\/platform\/migrations\/.+\.sql$/.test(file))
   const touchesServer = changedFiles.some(file => file.startsWith('server/'))
   const notes = []
 
@@ -246,10 +246,10 @@ async function publish() {
     }
     if (newMigrations) {
       if (process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID) {
-        const applied = run('pnpm', ['exec', 'wrangler', 'd1', 'migrations', 'apply', 'thelibrary-db', '--remote'])
-        notes.push(applied.ok ? 'I applied the database change too.' : 'The database change still needs applying: run `pnpm exec wrangler d1 migrations apply thelibrary-db --remote`.')
+        const applied = run('pnpm', ['run', 'db:migrate'])
+        notes.push(applied.ok ? 'I applied the database change too.' : 'The database change still needs applying: run `pnpm run db:migrate`.')
       } else {
-        notes.push('This includes a database change. Apply it with `pnpm exec wrangler d1 migrations apply thelibrary-db --remote` (or add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets so I can do it).')
+        notes.push('This includes a database change. Apply it with `pnpm run db:migrate` (or add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets so I can do it).')
       }
     }
     if (touchesServer) notes.push('This touches the multiplayer service, so it goes live after Railway redeploys.')
@@ -265,7 +265,7 @@ async function publish() {
   const created = run('gh', ['pr', 'create', '--base', 'main', '--head', branch, '--title', title, '--body', `${reply}\n\nRequested from the admin panel (job ${JOB_ID}).`])
   const prUrl = created.ok ? created.output.trim().split('\n').pop() : `https://github.com/${GITHUB_REPOSITORY}/compare/main...${branch}?expand=1`
   if (!created.ok) notes.push('GitHub Actions isn\'t allowed to open pull requests here, so use the review link to open it yourself (or turn on "Allow GitHub Actions to create and approve pull requests" in the repository\'s Actions settings).')
-  if (newMigrations) notes.push('After merging, apply the database change with `pnpm exec wrangler d1 migrations apply thelibrary-db --remote`.')
+  if (newMigrations) notes.push('After merging, apply the database change with `pnpm run db:migrate`.')
   notes.push('Nothing is live until you merge it.')
   saveState({ ...state, reported: true })
   await report({ status: 'review', reply: [reply, ...notes].join('\n\n'), prUrl, commit: git('rev-parse', 'HEAD'), ...base })

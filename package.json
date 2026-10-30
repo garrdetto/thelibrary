@@ -3,10 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --port 3000",
-    "build": "vite build",
-    "preview": "vite preview",
-    "deploy": "vite build && wrangler deploy"
+    "dev": "vite dev --config apps/platform/vite.config.ts --port 3000",
+    "build": "vite build --config apps/platform/vite.config.ts",
+    "preview": "vite preview --config apps/platform/vite.config.ts",
+    "deploy": "vite build --config apps/platform/vite.config.ts && wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply thelibrary-db --remote --config apps/platform/wrangler.jsonc"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",

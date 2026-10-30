@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.10.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm build
+      - name: Check build output
+        run: |
+          test -f .wrangler/deploy/config.json || { echo "::error::wrangler deploy redirect missing at the repo root"; exit 1; }
+          cat .wrangler/deploy/config.json
+          for page in $(grep -o "src: '/modules/[^']*'" packages/shared/src/lib/modules.ts | sed "s/src: '\/modules\///; s/'//"); do
+            test -f "dist/client/modules/$page" || { echo "::error::dist/client/modules/$page missing"; exit 1; }
+          done
+          test -f dist/client/modules/module-scores.js
+          test -f dist/client/modules/shorttrack-numbers.js
+          test -f dist/client/modules/sprites/p00.png
+          test -f dist/client/favicon.svg
+          ls dist dist/client/modules
+      - name: Type check
+        continue-on-error: true
+        run: pnpm exec tsc -p apps/platform --noEmit
