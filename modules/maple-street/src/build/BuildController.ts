@@ -158,7 +158,7 @@ export class BuildController {
       pan.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiplyScalar(dt * (12 + dist * 0.6) * (shift ? 2 : 1));
       this.controls.target.add(pan); this.camera.position.add(pan);
     }
-    const orbit = inp.axis(['ArrowRight'], ['ArrowLeft']), tilt = inp.axis(['ArrowDown'], ['ArrowUp']);
+    const orbit = inp.axis(['ArrowLeft'], ['ArrowRight']), tilt = inp.axis(['ArrowDown'], ['ArrowUp']);
     if (orbit || tilt) {
       const off = this.camera.position.clone().sub(this.controls.target);
       this.sph.setFromVector3(off);

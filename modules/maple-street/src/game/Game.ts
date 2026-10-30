@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import { BuildOp, levelBase, LotState } from '../../shared/BuildRules';
 import { CATALOG, footprint } from '../../shared/Catalog';
-import { Account, FUEL_SCALE, VEHICLES } from '../../shared/Economy';
+import { Account, formatWait, FUEL_SCALE, vehicleCallWait, VEHICLES } from '../../shared/Economy';
 import { decodeCoverage } from '../../shared/Mowing';
 import type { ClientMsg, Job, MowStroke, PlayerSnap, ServerMsg, VehicleKind } from '../../shared/Protocol';
 import { DAY_LENGTH_SEC } from '../../shared/RoomLogic';
@@ -110,6 +110,7 @@ export class Game {
   private fuelAcc = 0;
   private welcomed = false;
   private pendingHome: string | null = null;
+  private pendingCall: { kind: VehicleKind; timer: number } | null = null;
   private serverFuel: Partial<Record<VehicleKind, number>> = {};
   private warned = { hunger: false, energy: false, fuel: false };
 
@@ -333,6 +334,14 @@ export class Game {
         this.hud.toast(`Day ${m.day} — lawns have grown back.`);
         break;
       case 'left': this.remotes.removeOwner(m.id); break;
+      case 'vehicleCall': {
+        if (!this.pendingCall || this.pendingCall.kind !== m.kind) break;
+        window.clearTimeout(this.pendingCall.timer);
+        this.pendingCall = null;
+        if (m.ok) this.placeCalledVehicle(m.kind);
+        else if (m.note) this.hud.toast(m.note);
+        break;
+      }
       case 'toast': this.hud.toast(m.text); break;
     }
   }
@@ -463,6 +472,22 @@ export class Game {
    */
   private bringOut(kind: VehicleKind, trial = false) {
     if (!this.account || (!trial && !this.account.garage.includes(kind))) return;
+    if (trial) return this.placeCalledVehicle(kind, true);
+    if (this.vehicles.get(kind) === this.driving && this.driving) return this.hud.toast(`You’re already driving the ${VEHICLES[kind].name}`);
+    if (this.pendingCall) return;
+    const wait = vehicleCallWait(this.account, Date.now());
+    if (wait > 0) return this.hud.toast(`You can call a vehicle over again in ${formatWait(wait)}`);
+    const timer = window.setTimeout(() => {
+      this.pendingCall = null;
+      this.hud.toast('The town didn’t answer — try calling your vehicle again');
+    }, 5000);
+    this.pendingCall = { kind, timer };
+    this.send({ t: 'callVehicle', kind });
+  }
+
+  /** Places a vehicle next to you once the authority has approved the call (or for a dealer test drive). */
+  private placeCalledVehicle(kind: VehicleKind, trial = false) {
+    if (!this.account) return;
     const p = this.driving ? this.driving.root.position.clone() : this.character.position;
     const { fwd, right } = this.cam.basis();
     const at = p.clone().add(new THREE.Vector3(right.x * 4.5, 0, right.y * 4.5));
