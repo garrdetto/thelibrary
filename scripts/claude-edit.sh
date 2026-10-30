@@ -23,7 +23,8 @@ if ! printf '%s\n' "$AGENT_PROMPT" | claude -p \
   --append-system-prompt 'Implement the supplied repository task in garrdetto/thelibrary. The owner authorizes full repository access, shell commands, dependency installation, testing, and editing any project file including workflows and agent configuration. Follow repository guidance. Never print or commit credentials or authentication files. Report validation accurately. Leave committing, pushing, pull request creation, and merging to the surrounding workflow so it can track the result. Do not deploy unless the task explicitly requests deployment.' \
   > "$result_file" 2> "$error_file"; then
   echo 'Claude failed. Check the API key, API billing, and Claude Code installation. Provider output is withheld to protect credentials.' >&2
-  python3 - "$result_file" <<'PY' || true import json, sys try: r = json.load(open(sys.argv[1])) print('subtype:', r.get('subtype'), '| is_error:', r.get('is_error')) print('message:', str(r.get('result', ''))[:300]) except Exception: print('No JSON result was produced.') PY tail -c 500 "$error_file" | sed -E 's/sk-ant-[A-Za-z0-9_-]+/[redacted]/g' >&2
+  python3 -c 'import json,sys; r=json.load(open(sys.argv[1])); print("subtype:", r.get("subtype"), "| is_error:", r.get("is_error")); print("message:", str(r.get("result",""))[:300])' "$result_file" || echo 'No JSON result was produced.'
+  tail -c 500 "$error_file" | sed -E 's/sk-ant-[A-Za-z0-9_-]+/[redacted]/g' >&2
   exit 1
 fi
 
@@ -35,5 +36,6 @@ with open(sys.argv[1]) as result_file:
     result = json.load(result_file)
 if result.get('is_error') or result.get('subtype') != 'success':
     sys.exit('Claude did not finish successfully; no changes will be published.')
+
 
 PY
