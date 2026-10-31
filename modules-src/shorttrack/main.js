@@ -12,12 +12,12 @@ import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_
 const CFG = {
   L:180, R:62, W:16, APRON:7, turnBank:24, straightBank:6,      // track (m, degrees)
   bankIn:85, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
-  g:9.81, grip:1.0, apronGrip:0.85,                             // tire grip (mu)
+  g:9.81, grip:1.0, apronGrip:0.82,                             // tire grip (mu)
   offTrack:0.25,     // how much of the apron penalty applies (0.25 = 75% less than full)
   concreteTurn:0.8, concreteSpeed:0.9, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
   contactSlow:0.4,
   packBoost:0.02,    // +2% top speed per position behind the leader; tapers over 2 s after a pass   // speed fraction lost per second while rubbing another car
-  power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:3.6, // engine & coast-down
+  power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:4.6, // engine & coast-down
   brake:11, reverseMax:6,
   scrub:0.0065,      // speed lost per unit of steering: decel = scrub * |steer| * v^2
   slideScrub:0.45,   // extra decel while sliding sideways
@@ -25,7 +25,7 @@ const CFG = {
   carScale:1.15,     // visual and collision size of every car
   spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
   wallRest:0.22, carRest:0.15, damageScale:1,
-  paceSpeed:31.29, aiPaceSpeed:30.40, cautionSpeed:29, cautionTime:25, aiDecel:5.5, maxCars:20
+  paceSpeed:31.0, aiPaceSpeed:30.50, cautionSpeed:29, cautionTime:25, aiDecel:5.5, maxCars:20
 };
 
 // ===================== UTILS =====================
@@ -40,10 +40,10 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
 const TRACKS={
-  bullring:{name:'Showdown Bullring',miles:'0.5 mi',rec:'shorttrack',L:180,R:62,W:16,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,smooth:1.35,gripUp:1.1},
-  dells:{name:'Dells Short Track',miles:'0.3 mi',rec:'dells',L:122,R:38,W:14,APRON:6,turnBank:27,straightBank:18,bankIn:50,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.25,smooth:1.75,gripUp:1.1},
-  dellswide:{name:'Dells Wide Oval',miles:'0.27 mi',rec:'dellswide',L:122,R:30,W:15.4,APRON:6,turnBank:19,straightBank:10,bankIn:50,bankOut:25,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.25,smooth:1.75,gripUp:1.1,bareInfield:true},
-  dirt:{name:'Dells Dirt Oval',miles:'0.3 mi',rec:'dirt',L:109,R:42,W:17,APRON:6,turnBank:17,straightBank:10,bankIn:45,bankOut:25,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.5,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
+  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:40,W:13,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,smooth:1.05,gripUp:1.1},
+  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:13,APRON:6,turnBank:27,straightBank:8,bankIn:50,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.05,smooth:1.75,gripUp:1.1},
+  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:13,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.25,smooth:1.75,gripUp:1.1,bareInfield:true},
+  dirt:{name:'Beaver Dam Raceway',miles:'0.3 mi',rec:'dirt',L:109,R:50,W:15,APRON:6,turnBank:20,straightBank:10,bankIn:65,bankOut:25,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.6,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
 const DIRT=TRACK.surface==='dirt';if(TRACK.grip)CFG.grip=TRACK.grip;if(TRACK.apronGrip)CFG.apronGrip=TRACK.apronGrip;CFG.aiGrip=CFG.grip;CFG.grip*=TRACK.gripUp||1;CFG.apronGrip*=TRACK.gripUp||1;if(DIRT){CFG.scrub*=0.55;CFG.slideScrub=0.22;}
@@ -93,7 +93,7 @@ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'h
 renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
 const scene=new THREE.Scene();
-scene.fog=new THREE.Fog(0xc9d9ea,1800,6000);
+scene.fog = new THREE.Fog(0xc9d9ea, 4000, 15000);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,2000);
 const pmrem=new THREE.PMREMGenerator(renderer);
 const SUN_OFF=new THREE.Vector3(60,110,40);
@@ -1715,7 +1715,7 @@ const cars=new Map();
 let player=null,menuCar=null,mode='menu',camMode='chase',camH=0,camSnap=true,lastPhase='idle';
 const race={ph:'idle',laps:25,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false};
 let settings={laps:25,ai:11,night:false,diff:'medium'};
-const AI_LEVELS={easy:{sk:[1.01,0.04],dc:8.5,pass:20},medium:{sk:[1.065,0.035],dc:9.5,pass:23},hard:{sk:[1.095,0.03],dc:10.2,pass:26}};
+const AI_LEVELS={easy:{sk:[1.08,0.04],dc:9.5,pass:25},medium:{sk:[1.135,0.035],dc:10.5,pass:28},hard:{sk:[1.165,0.03],dc:11.2,pass:31}};
 let myLv=cleanLv(store.get('sts_livery',DEFAULT_LV));if(!myLv.number)myLv.number='7';
 let quality=store.get('sts_q','med');
 
@@ -1973,7 +1973,7 @@ function setNight(n){
   scene.environment=n?null:envDay;envTex=n?envNight:envDay;
   hemi.intensity=n?0.4:0.45;hemi.color.set(n?0x8899cc:0xcfe3ff);sun.intensity=n?1.7:2.8;sun.color.set(n?0xeef3ff:0xfff1dc);SUN_OFF.set(n?10:60,n?130:110,n?5:40);
   towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.12:1.0;if(GROOVE_MAT)GROOVE_MAT.roughness=DIRT?0.95:n?0.8:0.55;glassMat.emissiveIntensity=n?0.6:0;
-  bloom.enabled=n;bloom.strength=0.45;bloom.threshold=0.85;scene.fog.near=n?500:1800;scene.fog.far=n?1800:6000;
+  bloom.enabled=n;bloom.strength=0.45;bloom.threshold=0.85;scene.fog.near=n?500:1800;scene.fog.far=n?3800:9000;
   const upd=c=>c&&c.m.paints.forEach(m=>{if(m.userData.r0==null){m.userData.r0=m.roughness;m.userData.cc0=m.clearcoat||0;}m.envMap=envTex;m.envMapIntensity=ENVK;m.roughness=n?Math.max(0.5,m.userData.r0):m.userData.r0;m.clearcoat=n?m.userData.cc0*0.3:m.userData.cc0;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?1.1:0.9;
 }
 function applyQuality(){
