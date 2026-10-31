@@ -6,8 +6,9 @@
     "dev": "vite dev --port 3000",
     "assets": "node -e \"console.log('assets: nothing to prepare yet (Phase 2 adds the asset pipeline)')\"",
     "build": "vite build",
-    "test": "node -e \"console.log('test: no suites yet (Phase 8 adds them)')\"",
+    "test": "tsc -p tsconfig.engine.json",
     "gate": "node scripts/module-gate.mjs",
+    "engine:smoke": "node scripts/engine-smoke.mjs",
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy"
   },

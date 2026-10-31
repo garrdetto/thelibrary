@@ -90,7 +90,7 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 ## Development
 
-Read docs/ENGINE-MAP.md before changing any module; keep it current.
+Read docs/ENGINE-MAP.md before changing any module; keep it current. The shared 3D engine is `engine/` (barrel `engine/index.ts`); a new 3D module starts as a copy of `modules-src/_template/` renamed without the `_`, and `pnpm engine:smoke` checks the template in a hub-like iframe.
 
 Install with `pnpm install`; develop with `pnpm dev`. Every change reaches `main` through a pull request: the `modules` workflow (`.github/workflows/modules.yml`) runs `pnpm assets`, `pnpm build` and `pnpm test`, and `main` requires it. `pnpm gate` (`scripts/module-gate.mjs`) loads every embedded module in the hub iframe with Playwright and reports console errors and screenshots. The 3D code index is `docs/ENGINE-MAP.md`; update it whenever a file it lists changes. Pushes to `main` build and deploy automatically through Workers Builds.
 

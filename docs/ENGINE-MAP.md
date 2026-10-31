@@ -24,9 +24,11 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 
 ### Tooling and delivery
 
-- `package.json` — scripts `dev`, `build` (learning modules, then the site), `assets` (no-op until Phase 2), `test` (no-op until Phase 8), `gate`; pins the engine versions below — CI and developers.
+- `package.json` — scripts `dev`, `build` (learning modules, then the site), `assets` (no-op until Phase 2), `test` (engine type-check via `tsconfig.engine.json` until Phase 8 adds suites), `gate`, `engine:smoke`; pins the engine versions below — CI and developers.
 - `vite.config.ts` — site build; runs `learningModules()` first (watch mode under `pnpm dev`) so `pnpm build` stays the single command — Vite.
 - `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
+- `tsconfig.engine.json` — strict type-check of `engine/` and `modules-src/_template/` — `pnpm test`.
+- `scripts/engine-smoke.mjs` — Vite-builds `_template`, embeds it in a hub-like iframe, checks boot, 60 Hz loop, `--lib-*` tokens, same-origin Draco/KTX2 decoders, `dispose()`, console errors and CDN requests; `--out` saves a screenshot — `pnpm engine:smoke`.
 - `.gitignore` — ignores the generated `public/modules/<id>.html` pages and `public/modules/chunks/` — git.
 - `.github/workflows/modules.yml` — required `modules` check: install, `pnpm assets`, `pnpm build`, `pnpm test`, `node scripts/perf-baseline.mjs --check` — pull requests to `main`.
 - `scripts/module-gate.mjs` — Playwright gate: every embedded module in the hub iframe via `vite preview`, console errors, screenshots to `--out` — `pnpm gate`.
@@ -78,9 +80,38 @@ Vendor chunks, each emitted once and cached across modules: `vendor` (three core
 
 - `modules-src/_shared/peer-global.ts` — imports the bundled PeerJS and sets `window.Peer` — sandlot, chess, checkers, shorttrack entries.
 
+Engine code imports three only as `three/webgpu` (addons from `three/addons/*` share its core); modules import the engine through `engine/index.ts`.
+
+- `engine/index.ts` — barrel export of everything below — module `index.ts` files.
+- `engine/config.ts` — typed config shapes (`EngineConfig`, `InputBinding`, `ActionBindings`, `QualityTier`, `LayerName` …) and `ENGINE_DEFAULTS` — module `config.ts`, every engine file.
+- `engine/core/App.ts` — `App.create`: WebGPURenderer with WebGL2 fallback (`?webgl` forces it), 60 Hz fixed step + display-rate render with alpha, ResizeObserver for the iframe, visibility pause, `own()` + `dispose()` freeing every GPU resource — module `index.ts`, `render/Post.ts`.
+- `engine/core/FixedStep.ts` — accumulator returning `{steps, alpha}` with a sub-step cap — `App`.
+- `engine/core/Scene.ts` — `SceneGraph`: layers `world`, `props`, `characters`, `fx`, `ui`; add/remove/clear/find/setVisible — `App`.
+- `engine/core/Input.ts` — `Input<Action>`: keyboard, mouse, touch regions, gamepad buttons/axes through a rebindable action map; `pressed`/`released` latched per fixed step — module `index.ts`.
+- `engine/core/Assets.ts` — `Assets<Manifest>`: GLTF/GLB with Draco + KTX2 + meshopt (decoders emitted by the Vite build), textures, audio, JSON; `progress` events; cache keyed by URL — module `index.ts`.
+- `engine/core/disposeObject.ts` — frees geometries, materials, textures and shadow maps under an object — `App`, `Scene`, `Assets`.
+- `engine/render/Lighting.ts` — `createLighting`: hemisphere + shadow sun with `follow()` (Phase 3 fills in) — module `index.ts`.
+- `engine/render/Environment.ts` — `applyEnvironment`: background and fog (Phase 3 adds IBL) — module `index.ts`.
+- `engine/render/Post.ts` — `createPost`: installs the App render pass (Phase 3 adds passes) — module `index.ts`.
+- `engine/render/Quality.ts` — `resolveQuality`: `auto` tier per backend, `?quality=` override — module `index.ts`.
+- `engine/physics/World.ts` — `PhysicsWorld`: lazy-loaded Rapier, fixed `step(dt)`, `track` + interpolated `syncMesh(body, mesh, alpha)`, `setDebug(parent)` line draw — module `index.ts`.
+- `engine/ui/Hud.ts` — `Hud`: DOM overlay panels, stats, buttons, toasts styled with `--lib-*` tokens mirrored live from the hub page — module `index.ts`.
+- `engine/net/HubBridge.ts` — same-origin `postMessage`: `tl-room`, `tl-score-saved`, `tl-lap` out, `tl-host` in — `Peer`, `Scores`.
+- `engine/net/RoomFormats.ts` — production room-code formats (prefix, alphabet, length, wire case) for sandlot, chess, checkers, maplestreet, shorttrack — `Peer` callers.
+- `engine/net/Peer.ts` — `PeerRoom`: host with retry on taken ids, join, broadcast, guest rejoin, `bridgeHub()` (`tl-host` → `tl-room`), `autoJoinFromQuery()` (`?room=`) — modules with online modes.
+- `engine/net/Scores.ts` — `Scores.submit` (same contract as `tlScores.submit` → `/api/module-scores`, then `tl-score-saved`), `Scores.lapSaved` (`tl-lap`), `installGlobal()` — modules with boards.
+
 ## Models
 
-Empty until models move into `modules-src/<game>/models/` (one factory per file, no game-rule imports).
+One factory per file under `modules-src/<game>/models/`; no game-rule imports.
+
+### _template — copy this folder to start a new module (`_` prefix: not built into `public/modules`, not in `modules.ts`)
+- `modules-src/_template/module.json` — id, title, accent, modes — `config.ts`.
+- `modules-src/_template/config.ts` — every tunable: engine overrides, action bindings, sizes, colors, physics — `index.ts`.
+- `modules-src/_template/index.ts` — boots `App`, lighting, environment, post, `Input`, `Hud`, `PhysicsWorld` and the models; disposes on `pagehide` — `index.html`.
+- `modules-src/_template/index.html` — page shell (`#stage`); drop the `_` when copying so `vite.modules.ts` builds it — `scripts/engine-smoke.mjs`.
+- `modules-src/_template/models/Ground.ts`, `models/Crate.ts` — example model factories — `index.ts`.
+- `modules-src/_template/models/README.md`, `systems/README.md` — rules for the models and systems folders — developers.
 
 ## Games
 
