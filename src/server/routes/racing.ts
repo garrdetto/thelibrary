@@ -8,9 +8,9 @@ import { issueTicket, redeemTicket } from './account'
 import type { Scheme } from '../../lib/racing'
 import { displayScheme, presets } from '../../lib/racing'
 
-const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dellswide: 7000, dirt: 8000 }
+const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, fox: 8000, dellsraceway: 7000, dirt: 8000 }
 const raceModes = z.enum(['practice', 'multiplayer', 'time-attack', 'race'])
-const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells', 'dellswide', 'dirt'])
+const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'fox', 'dellsraceway', 'dirt'])
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const vehicleIds = z.enum(['challenger', 'escalade', 'lamborghini', 'ram', 'muscle-red'])
 const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])
@@ -78,7 +78,7 @@ export async function racing(request: Request, env: Env) {
   if (input.action === 'generate') {
     const result = await gemini(env).models.generateContent({
       model: IMAGE_MODEL,
-      contents: `Create a flat top-down professional motorsport car paint texture. Rectangular image, nose pointing right, car fills the image edge to edge. No background, text, perspective, shadows or wheels. Use racing graphics without police insignia or emergency lights. A bold graphic livery inspired by these ideas: ${input.prompt}`,
+      contents: `Create a flat top-down professional motorsport car paint texture. Rectangular image, nose pointing right, car fills the image edge to edge. No background, text, perspective, shadows or framing. Use realistic matte paint with subtle texture.`,
       config: { responseModalities: ['IMAGE', 'TEXT'] },
     })
     const part = result.candidates?.[0]?.content?.parts?.find(item => item.inlineData?.mimeType?.startsWith('image/'))?.inlineData
