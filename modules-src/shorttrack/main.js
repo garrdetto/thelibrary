@@ -40,9 +40,9 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
 const TRACKS={
-  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:35,W:16,APRON:7,turnBank:24,straightBank:10,bankIn:55,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,steer:1.0,smooth:1.35,gripUp:1},
-  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:16,APRON:6,turnBank:21,straightBank:11,bankIn:50,bankOut:45,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.0,smooth:1.45,gripUp:1.1},
-  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:16,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.15,smooth:1.25,gripUp:1.1,bareInfield:true},
+  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:35,W:16,APRON:7,turnBank:24,straightBank:10,bankIn:55,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,steer:.9,smooth:1.35,gripUp:1},
+  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:16,APRON:6,turnBank:21,straightBank:11,bankIn:50,bankOut:45,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:.85,smooth:1.65,gripUp:1.1},
+  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:16,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1,smooth:1.35,gripUp:1.1,bareInfield:true},
   dirt:{name:'Beaver Dam Raceway',miles:'0.3 mi',rec:'dirt',L:109,R:50,W:15,APRON:6,turnBank:20,straightBank:10,bankIn:65,bankOut:35,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.6,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
@@ -99,7 +99,7 @@ const pmrem=new THREE.PMREMGenerator(renderer);
 const SUN_OFF=new THREE.Vector3(60,110,40);
 // physically based daytime sky (also used to build the reflection map for paint)
 function makeSky(scale){const sk=new Sky();sk.scale.setScalar(scale);const u=sk.material.uniforms;
-  u.turbidity.value=8.0;u.rayleigh.value=4.0;u.mieCoefficient.value=0.040;u.mieDirectionalG.value=0.88;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;} // 2. Heavily jacked up turbidity and rayleigh scattering to force deep azure skies and vibrant golden horizons
+  u.turbidity.value=5.0;u.rayleigh.value=3.0;u.mieCoefficient.value=0.001;u.mieDirectionalG.value=0.88;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;} // 2. Heavily jacked up turbidity and rayleigh scattering to force deep azure skies and vibrant golden horizons
 const skyDay=makeSky(2200);scene.add(skyDay);
 const envNight=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
 const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new THREE.Mesh(new THREE.CircleGeometry(800,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x5e523d}));gnd.position.y=-5;es.add(gnd);
