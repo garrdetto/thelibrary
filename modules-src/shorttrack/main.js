@@ -115,7 +115,7 @@ const composer=new EffectComposer(renderer,new THREE.WebGLRenderTarget(16,16,{ty
 composer.addPass(new RenderPass(scene,camera));
 
 // ⚡ TWEAKED VALUES: Strength dropped from 0.10 to 0.01, Threshold raised from 0.88 to 1.00
-const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.04,0.45,.50);composer.addPass(bloom);composer.addPass(new OutputPass());
+const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.02,0.45,.80);composer.addPass(bloom);composer.addPass(new OutputPass());
 let useComposer=true;
 
 // ===================== TEXTURES =====================
@@ -1975,8 +1975,8 @@ function setNight(n){
   scene.environment=n?null:envDay;envTex=n?envNight:envDay;
   hemi.intensity=n?0.4:0.45;hemi.color.set(n?0x8899cc:0xcfe3ff);sun.intensity=n?1.7:2.8;sun.color.set(n?0xeef3ff:0xfff1dc);SUN_OFF.set(n?10:60,n?130:110,n?5:40);
   towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.12:1.0;if(GROOVE_MAT)GROOVE_MAT.roughness=DIRT?0.95:n?0.8:0.55;glassMat.emissiveIntensity=n?0.6:0;
-  bloom.enabled=n;bloom.strength=0.45;bloom.threshold=0.85;scene.fog.near=n?500:1800;scene.fog.far=n?3800:9000;
-  const upd=c=>c&&c.m.paints.forEach(m=>{if(m.userData.r0==null){m.userData.r0=m.roughness;m.userData.cc0=m.clearcoat||0;}m.envMap=envTex;m.envMapIntensity=ENVK;m.roughness=n?Math.max(0.5,m.userData.r0):m.userData.r0;m.clearcoat=n?m.userData.cc0*0.3:m.userData.cc0;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?1.1:0.9;
+  bloom.enabled=n;bloom.strength=0.25;bloom.threshold=0.85;scene.fog.near=n?500:1800;scene.fog.far=n?3800:9000;
+  const upd=c=>c&&c.m.paints.forEach(m=>{if(m.userData.r0==null){m.userData.r0=m.roughness;m.userData.cc0=m.clearcoat||0;}m.envMap=envTex;m.envMapIntensity=ENVK;m.roughness=n?Math.max(0.5,m.userData.r0):m.userData.r0;m.clearcoat=n?m.userData.cc0*0.3:m.userData.cc0;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?.7:0.3;
 }
 function applyQuality(){
   const q=quality,dpr=window.devicePixelRatio||1;
