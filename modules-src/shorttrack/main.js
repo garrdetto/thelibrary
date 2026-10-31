@@ -1,3 +1,19 @@
+garrdetto
+thelibrary
+Repository navigation
+Code
+Issues
+Pull requests
+Agents
+Actions
+Projects
+Security and quality
+Insights
+Settings
+thelibrary/modules-src/shorttrack
+/main.js
+Go to file
+t
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Sky } from 'three/addons/objects/Sky.js';
@@ -1901,12 +1917,15 @@ function updateBoosts(dt){
 }
 const MODE_NAMES={'time-attack':'Time Attack','race':'Solo Race','multiplayer':'Online'};
 const RUN_ID=(crypto.randomUUID&&crypto.randomUUID())||'00000000-0000-4000-8000-'+String(Date.now()).slice(-12).padStart(12,'0');
-const REC={lists:{},me:null,warned:false};let runLap=0;
+const REC={lists:{},state:{},me:null,warned:false};let runLap=0;
 async function fetchRecords(mode){
+  REC.state[mode]='loading';
   try{const r=await fetch(`/api/racing?records=1&mode=${mode}&track=${TRACK.rec}`,{credentials:'same-origin'});
-    if(r.status===401||r.status===403)return {error:'Sign in on the library to see and set lap records.'};
-    if(!r.ok)return {error:'Lap records are unavailable right now.'};const d=await r.json();REC.lists[mode]=d.records||[];return {records:REC.lists[mode]};}
-  catch(e){return {error:'Lap records are saved when this module runs on the library.'};}
+    if(r.status===401){REC.state[mode]='signedout';return {error:'Sign in on the library to see and set lap records.'};}
+    if(!r.ok){REC.state[mode]='error';console.warn('records',mode,r.status,await r.text().catch(()=>''));
+      return {error:REC.me?`Lap records are unavailable right now (${r.status}).`:'Sign in on the library to see and set lap records.'};}
+    const d=await r.json();REC.lists[mode]=d.records||[];REC.state[mode]='ok';return {records:REC.lists[mode]};}
+  catch(e){REC.state[mode]='error';return {error:'Lap records are saved when this module runs on the library.'};}
 }
 function recRows(list,mine){return '<tr><th>#</th><th>Driver</th><th>Lap</th><th>Date</th></tr>'+(list.length?list.map((r,i)=>`<tr${mine&&r.username===mine?' class="me"':''}><td>${i+1}</td><td>${esc(r.username)}</td><td>${fmtLap(r.milliseconds)}</td><td>${esc(new Date(r.date).toLocaleDateString())}</td></tr>`).join(''):'<tr><td colspan="4">No laps yet. Set the first one.</td></tr>');}
 const fmtLap=ms=>{const t=ms/1000,m=Math.floor(t/60);return (m?m+':'+String((t%60).toFixed(3)).padStart(6,'0'):(t).toFixed(3));};
@@ -1921,8 +1940,8 @@ function submitLap(ms){
   if(ms<TRACK.minLap)return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
   fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:TRACK.rec})})
     .then(async r=>{
-      if(r.status===401||r.status===403){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
-      if(!r.ok)return;
+      if(r.status===401||(r.status===403&&!REC.me)){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
+      if(!r.ok){console.warn('lap submit',r.status);return;}
       if(!best||ms<best.milliseconds)bigMsg('NEW TRACK RECORD',`${MODE_NAMES[mode]} \u00b7 ${fmtLap(ms)}`,3);
       else if((REC.lists[mode]||[]).length<20||ms<REC.lists[mode][REC.lists[mode].length-1].milliseconds)toast(`Top 20 lap: ${fmtLap(ms)}`);
       fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:TRACK.rec,mode},location.origin);}catch(e){}
@@ -2281,7 +2300,7 @@ function hudUpdate(){
   E.times.textContent=`Last ${fmt(me.lastLap)} · Best ${fmt(me.bestLap)}`+(me.lapDirty&&me.cross>=2&&race.ph!=='pace'?' · lap not counted':'');
   const ah=st[i-1],bh=st[i+1],ref=Math.max(15,Math.abs(me.vf));
   E.gaps.innerHTML=(ah?`&#9650; ${gapStr(ah.prog-me.prog,ref)} to #${esc(ah.lv.number)}`:'Leading')+'<br>'+(bh?`&#9660; ${gapStr(me.prog-bh.prog,ref)} to #${esc(bh.lv.number)}`:'');
-  if(race.ph==='attack'){const L2=REC.lists['time-attack'];E.board.innerHTML='<div class="row"><b>Fastest laps</b></div>'+(L2?L2.length?L2.map((r,k)=>`<div class="row"><span class="p">${k+1}</span><span class="nm">${esc(r.username)}</span><span class="gp">${fmtLap(r.milliseconds)}</span></div>`).join(''):'<div class="row">No laps yet</div>':'<div class="row">Sign in on the library to save laps</div>');}
+  if(race.ph==='attack'){const L2=REC.lists['time-attack'];E.board.innerHTML='<div class="row"><b>Fastest laps</b></div>'+(L2?L2.length?L2.map((r,k)=>`<div class="row"><span class="p">${k+1}</span><span class="nm">${esc(r.username)}</span><span class="gp">${fmtLap(r.milliseconds)}</span></div>`).join(''):'<div class="row">No laps yet</div>':(()=>{const s=REC.state['time-attack'];return '<div class="row">'+(s==='loading'||s==null?'Loading laps...':s==='signedout'&&!REC.me?'Sign in on the library to save laps':'Lap records unavailable')+'</div>';})());}
   else E.board.innerHTML=st.map((c,k)=>`<div class="row${c===me?' me':''}"><span class="p">${k+1}</span><span class="num" style="background:${c.lv.primary};color:${c.lv.numColor};${chipFont(c.lv)}">${esc(c.lv.number)}</span><span class="nm">${esc(c.lv.name)}</span><span class="gp">${k===0?'Leader':gapStr(st[0].prog-c.prog,30)}</span></div>`).join('');
   const [txt,bg,fg]=flagState();E.flag.textContent=txt;E.flag.style.background=bg==='checker'?'repeating-conic-gradient(#111 0 25%,#eee 0 50%) 0 0/14px 14px':bg;E.flag.style.color=fg;
   if(txt==='WHITE FLAG'&&!race.white){race.white=true;bigMsg('WHITE FLAG','One to go',2);flagMat.color.set(0xffffff);}
@@ -2437,7 +2456,7 @@ wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)r
 wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)return;const box=t.closest('.recbox');if(box)showRecords(box.id,t.dataset.rec);});
 function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)};const gn=$('gName');gn.value=myLv.name;gn.disabled=true;gn.title='Your library username is your driver name';
   const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(!player)rebuildMenuCar();}
-fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();}}).catch(()=>{});
+fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
 
 // ===================== INPUT =====================
 const keys={};
