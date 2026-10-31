@@ -24,7 +24,10 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 
 ### Tooling and delivery
 
-- `package.json` — scripts `dev`, `build`, `assets` (no-op until Phase 2), `test` (no-op until Phase 8), `gate` — CI and developers.
+- `package.json` — scripts `dev`, `build` (learning modules, then the site), `assets` (no-op until Phase 2), `test` (no-op until Phase 8), `gate`; pins the engine versions below — CI and developers.
+- `vite.config.ts` — site build; runs `learningModules()` first (watch mode under `pnpm dev`) so `pnpm build` stays the single command — Vite.
+- `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
+- `.gitignore` — ignores the generated `public/modules/<id>.html` pages and `public/modules/chunks/` — git.
 - `.github/workflows/modules.yml` — required `modules` check: install, `pnpm assets`, `pnpm build`, `pnpm test`, `node scripts/perf-baseline.mjs --check` — pull requests to `main`.
 - `scripts/module-gate.mjs` — Playwright gate: every embedded module in the hub iframe via `vite preview`, console errors, screenshots to `--out` — `pnpm gate`.
 - `scripts/perf-baseline.mjs` — Playwright Chromium perf run against `pnpm dev`: first frame, avg and 1% low FPS, JS heap, draw calls, bytes; writes `docs/PERF-BASELINE.md`, `--compare` flags regressions, `--check` validates the table — CI (`--check`), each phase.
@@ -59,7 +62,21 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 
 ## Shared engine
 
-Empty until Phase 1 pins one three.js version in `package.json`, served from the Vite build. Every shared renderer, loader, input, loop and quality-tier file goes here.
+Pinned exactly in `package.json`, bundled by Vite, never loaded from a CDN (Phase 1):
+
+| Package | Version | Used by |
+| --- | --- | --- |
+| `three` (+ `three/addons/*`, `three/webgpu`, `three/tsl`) | **0.186.1** | sandlot3d, botwreck, shorttrack, maplestreet |
+| `@types/three` | 0.186.0 | type checking |
+| `@dimforge/rapier3d-compat` | 0.14.0 | maplestreet |
+| `postprocessing` | 6.39.5 | any module (peer range `three >=0.168 <0.187`, hence three 0.186.1, not 0.187.0) |
+| `cannon-es` | 0.20.0 | botwreck |
+| `peerjs` | 1.5.4 | sandlot, chess, checkers, shorttrack, maplestreet |
+| `colyseus.js` | 0.15.28 | maplestreet (loaded on demand) |
+
+Vendor chunks, each emitted once and cached across modules: `vendor` (three core + addons + postprocessing), `vendor-webgpu` (three's WebGPU/TSL build and the addons that need it), `vendor-rapier`, `vendor-net` (PeerJS).
+
+- `modules-src/_shared/peer-global.ts` — imports the bundled PeerJS and sets `window.Peer` — sandlot, chess, checkers, shorttrack entries.
 
 ## Models
 
@@ -67,30 +84,33 @@ Empty until models move into `modules-src/<game>/models/` (one factory per file,
 
 ## Games
 
-Renderers in use at Phase 0 (Phase 1 unifies them):
+Renderers after Phase 1 step 1 (all served from the Vite build):
 
-| Module id | Renderer | Served from |
+| Module id | Renderer | Source |
 | --- | --- | --- |
-| `sandlot3d` | three.js r128, global `THREE` | cdnjs |
-| `botwreck` | three.js 0.160 ESM + cannon-es 0.20 | jsdelivr |
-| `shorttrack` | three.js 0.160 ESM + addons (Sky, RoomEnvironment, bloom) | jsdelivr |
-| `maplestreet` | three.js 0.172 WebGPU build (WebGL2 fallback), Rapier 0.14 | unpkg import map |
-| `park` | hand-written WebGL2 | Vite bundle |
-| `racing`, `oval`, `pool` | 2D canvas | Vite bundle |
-| `sandlot`, `chess`, `checkers`, `2048`, `helicopter` | 2D canvas / DOM | inline in the page |
+| `sandlot3d` | three.js 0.186.1 WebGL behind an r128-compatible global `THREE` | `modules-src/sandlot3d/` |
+| `botwreck` | three.js 0.186.1 ESM + cannon-es 0.20 | `modules-src/botwreck/` |
+| `shorttrack` | three.js 0.186.1 ESM + addons (Sky, RoomEnvironment, bloom) | `modules-src/shorttrack/` |
+| `maplestreet` | three.js 0.186.1 WebGPU build (WebGL2 fallback), Rapier 0.14 | `modules-src/maplestreet/` |
+| `park` | hand-written WebGL2 | `src/lib/park/` |
+| `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
+| `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
+| `2048`, `helicopter` | 2D canvas / DOM | `public/modules/<id>.html` (static) |
 
-Known baseline issues: `maplestreet` throws `Buffer is not defined` in the hub iframe; `shorttrack` is too busy under software WebGL for Playwright screenshots (gate note, not failure).
+Known baseline issues: `shorttrack` is too busy under software WebGL for Playwright screenshots (gate note, not failure). The `maplestreet` `Buffer is not defined` error is gone now that colyseus.js is bundled.
 
 ### sandlot3d — Sandlot Sluggers 3D
-- `public/modules/sandlot3d.html` — whole module: inline three.js r128 scene, `class Rig` athletes (`LimbTube`, `PLAYER_LOOK`, `UNIFORMS`), four ballparks, `window.__ss` — hub iframe.
-- `public/modules/sprites/` (34 files), `public/modules/faces.png` — roster and batter-card art — `sandlot3d.html`.
+- `modules-src/sandlot3d/index.html` — page shell: screens, HUD markup, styles — `vite.modules.ts` (→ `public/modules/sandlot3d.html`).
+- `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE`, then loads `main.js` as a classic script — `index.html`.
+- `modules-src/sandlot3d/three-legacy.ts` — r128-compatible `THREE` over 0.186.1: color management off, linear output, legacy light-intensity scale — `index.ts`.
+- `modules-src/sandlot3d/main.js` — whole module script: scene, `class Rig` athletes (`LimbTube`, `PLAYER_LOOK`, `UNIFORMS`), four ballparks, `window.__ss` — `index.ts` (`?url`).
+- `public/modules/sprites/` (34 files), `public/modules/faces.png` — roster and batter-card art — `main.js` at runtime.
 
-### maplestreet — Maple Street (generated from `modules-src/maplestreet/`)
-- `public/modules/maplestreet.html` — generated bundle; never edit by hand — hub iframe.
-- `modules-src/maplestreet/build.mjs` — bundles `src/main.ts` into the page with `index.html` as shell — run by hand (`bun …/build.mjs`).
-- `modules-src/maplestreet/index.html` — page shell and unpkg import map — `build.mjs`.
+### maplestreet — Maple Street (`modules-src/maplestreet/`)
+- `modules-src/maplestreet/index.html` — page shell (start screen, HUD markup, styles), no CDN scripts — `vite.modules.ts` (→ `public/modules/maplestreet.html`).
+- `modules-src/maplestreet/index.ts` — entry; imports `src/main.ts` — `index.html`.
 - `modules-src/maplestreet/README.md` — module notes — developers.
-- `src/main.ts` — boot, transport choice (shared world, offline, PeerJS, tabs, Colyseus) — `build.mjs` entry.
+- `src/main.ts` — boot, transport choice (shared world, offline, PeerJS, tabs, Colyseus) — `index.ts`.
 - `src/core/Engine.ts` — renderer, scene, camera, resize (WebGPU/WebGL2) — `Game`, `BuildController`, `DayNight`, `Neighborhood`, `RemoteEntities`.
 - `src/core/Loop.ts` — fixed-step update/render loop — `Game`.
 - `src/core/Input.ts` — keyboard, mouse, touch — `Game`, `CameraRig`, `BuildController`.
@@ -110,7 +130,7 @@ Known baseline issues: `maplestreet` throws `Buffer is not defined` in the hub i
 - `src/world/Downtown.ts` — shops and gas station — `Neighborhood`.
 - `src/world/Lawn.ts` — mowable lawns and stripes — `Neighborhood`, `Grass`.
 - `src/world/Grass.ts` — instanced grass — `Game`.
-- `src/world/DayNight.ts` — sun, sky, night lighting — `Game`.
+- `src/world/DayNight.ts` — sun, sky, night lighting, PMREM environment bake (`fromScene` options form) — `Game`.
 - `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
 - `src/physics/Character.ts` — kinematic character controller — `Game`, `RemoteEntities`.
 - `src/physics/Vehicle.ts` — raycast vehicle — `Game`.
@@ -119,8 +139,8 @@ Known baseline issues: `maplestreet` throws `Buffer is not defined` in the hub i
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
 - `src/net/OfflineTransport.ts` — solo play and fallback — `Game`, `main`.
 - `src/net/LocalTransport.ts` — same-device tabs — `Game`.
-- `src/net/PeerTransport.ts` — PeerJS rooms `tl-maplestreet-<code>` — `Game`, `main`.
-- `src/net/ColyseusTransport.ts` — optional Colyseus room — `Game`.
+- `src/net/PeerTransport.ts` — PeerJS rooms `tl-maplestreet-<code>` (imports `peerjs`) — `Game`, `main`.
+- `src/net/ColyseusTransport.ts` — optional Colyseus room (dynamic `import('colyseus.js')`) — `Game`.
 - `src/net/Host.ts` — in-browser authority for offline, tabs and PeerJS hosts — `OfflineTransport`, `LocalTransport`, `PeerTransport`.
 - `src/net/RemoteEntities.ts` — remote player and vehicle interpolation — `Game`.
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
@@ -136,16 +156,21 @@ Known baseline issues: `maplestreet` throws `Buffer is not defined` in the hub i
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.
 
 ### sandlot — Sandlot Sluggers
-- `public/modules/sandlot.html` — whole 2D module, PeerJS rooms `sandlot-<code>` — hub iframe.
+- `modules-src/sandlot/index.html` — whole 2D module, PeerJS rooms `sandlot-<code>` — `vite.modules.ts` (→ `public/modules/sandlot.html`).
+- `modules-src/sandlot/index.ts` — entry; provides `window.Peer` — `index.html`.
 
 ### botwreck — BotWreck 3D
-- `public/modules/botwreck.html` — whole module: three.js 0.160 + cannon-es crash lab, `tlScores.submit` — hub iframe.
+- `modules-src/botwreck/index.html` — page shell, loads `module-scores.js` — `vite.modules.ts` (→ `public/modules/botwreck.html`).
+- `modules-src/botwreck/index.ts` — entry; imports `main.js` — `index.html`.
+- `modules-src/botwreck/main.js` — whole module: three.js + cannon-es crash lab, `tlScores.submit` — `index.ts`.
 
 ### chess — Chess
-- `public/modules/chess.html` — board, CPU worker, PeerJS rooms `tl-chess-<code>` — hub iframe.
+- `modules-src/chess/index.html` — board, CPU worker, PeerJS rooms `tl-chess-<code>` — `vite.modules.ts` (→ `public/modules/chess.html`).
+- `modules-src/chess/index.ts` — entry; provides `window.Peer` — `index.html`.
 
 ### checkers — Checkers
-- `public/modules/checkers.html` — board, CPU, PeerJS rooms `tl-checkers-<code>` — hub iframe.
+- `modules-src/checkers/index.html` — board, CPU, PeerJS rooms `tl-checkers-<code>` — `vite.modules.ts` (→ `public/modules/checkers.html`).
+- `modules-src/checkers/index.ts` — entry; provides `window.Peer` — `index.html`.
 
 ### 2048 — 2048
 - `public/modules/2048.html` — whole module, `tlScores.submit` — hub iframe.
@@ -154,9 +179,11 @@ Known baseline issues: `maplestreet` throws `Buffer is not defined` in the hub i
 - `public/modules/helicopter.html` — whole module, `tlScores.submit` — hub iframe.
 
 ### shorttrack — Short Track Showdown
-- `public/modules/shorttrack.html` — whole module: three.js 0.160 scene, trucks (`TM`), `buildStockCar`, liveries, `?track=`, lap posts, `tl-lap`, PeerJS `sts-oval-race-<code>` — hub iframe.
-- `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — `buildStockCar`.
-- `public/modules/shorttrack-numbers.js` — race-number fonts and styles — `shorttrack.html`.
+- `modules-src/shorttrack/index.html` — page shell: menus, HUD markup, styles — `vite.modules.ts` (→ `public/modules/shorttrack.html`).
+- `modules-src/shorttrack/index.ts` — entry; provides `window.Peer`, imports `main.js` — `index.html`.
+- `modules-src/shorttrack/main.js` — whole module: three.js scene, trucks (`TM`), `buildStockCar`, liveries, `?track=`, lap posts, `tl-lap`, PeerJS `sts-oval-race-<code>` — `index.ts`.
+- `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
+- `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
 
 ### pool — 8-Ball Pool
 - `src/components/PoolTable.tsx` — table, physics, shots, practice and live 1v1 — `index.tsx`.
