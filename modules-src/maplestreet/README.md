@@ -2,15 +2,11 @@
 
 Source for `public/modules/maplestreet.html`, a 3D neighborhood simulation. You pick a plot on the town map, build and furnish a house with Sims-style Build and Buy tools, and drive around town. There are lawns to mow, deliveries to haul, shops and a gas station downtown, and a bank with a capped loan. Everyone shares one persistent world, so you can come and go as you please.
 
-The published page has no build step at runtime. three.js r172 (WebGPU with automatic WebGL2 fallback), Rapier 0.14 (`@dimforge/rapier3d-compat`, with `await RAPIER.init()` before the loop starts), PeerJS 1.5.4 and colyseus.js 0.15.28 all load from unpkg through the import map and script tags in `index.html`. The TypeScript in this folder is bundled into the page's inline module script.
+three.js 0.186.1 (WebGPU with automatic WebGL2 fallback), Rapier 0.14 (`@dimforge/rapier3d-compat`, with `await RAPIER.init()` before the loop starts), PeerJS 1.5.4 and colyseus.js 0.15.28 (loaded on demand) are npm packages pinned in the root `package.json` and bundled by Vite; nothing loads from a CDN.
 
-## Rebuild
+## Build
 
-```sh
-bun modules-src/maplestreet/build.mjs
-# or, without Bun:
-pnpm add -D esbuild && node modules-src/maplestreet/build.mjs
-```
+`pnpm build` (or `pnpm dev`) at the repository root builds this module with every other learning module: `index.html` and `index.ts` here are the Vite entry, and the result is `public/modules/maplestreet.html` plus shared chunks in `public/modules/chunks/` (see `vite.modules.ts` and `docs/ENGINE-MAP.md`).
 
 Edit the TypeScript and `index.html`, not the generated page. This folder is excluded from the site `tsconfig.json`, so its bare imports (`three/webgpu`, Rapier) don't affect the site's type check.
 

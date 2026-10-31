@@ -154,7 +154,7 @@ export class DayNight {
       const theta = ((this.hours - 6) / 24) * Math.PI * 2;
       (this.envSky.sunPosition.value as THREE.Vector3).set(Math.cos(theta), Math.sin(theta), 0.38).normalize();
       this.pmrem ??= new THREE.PMREMGenerator(renderer);
-      this.envTarget = this.pmrem.fromScene(this.envScene, 0, 0.1, 100, this.envTarget);
+      this.envTarget = this.pmrem.fromScene(this.envScene, 0, 0.1, 100, { renderTarget: this.envTarget });
       this.scene.environment = this.envTarget.texture;
     } catch (e) {
       console.warn('[DayNight] environment bake failed', e);
