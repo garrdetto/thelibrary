@@ -15,6 +15,7 @@ is added, moved or removed.
 - Repository settings this pipeline relies on (owner-only; see the Phase 0 pull request): auto-merge allowed, squash merge with the pull request title as the commit message, delete head branches on merge, branch protection on `main` requiring the `modules` status check with no required reviews.
 - Labels: `needs-owner`, `phase-0` … `phase-8`.
 - `docs/screenshots/<phase>-<step>/`: before/after module-gate screenshots committed as pull-request evidence.
+- `docs/AUDIT.md`: Phase 0 audit of every playable module: renderer, model source, physics, multiplayer path, leaderboard hook, CDN loads, every postMessage/query-param contract, and each visual-builder function with line ranges for Phase 2 extraction.
 
 ## Renderers in use today (Phase 1 unifies these)
 
@@ -34,6 +35,14 @@ Four different three.js builds from three CDNs, one bespoke WebGL2 renderer. Rul
 
 - `maplestreet`: `pageerror: Buffer is not defined` when the module loads in the hub iframe (something in the bundle or its unpkg dependencies expects Node's `Buffer`). Tracked for the Maple Street step of Phase 1.
 - `shorttrack`: under software WebGL (CI, no GPU) the page is busy enough that Playwright screenshots time out; the gate records this as a note, not a failure.
+
+## Hub and shared contracts (`src/`)
+
+- `src/lib/modules.ts`: module ids, titles and iframe `src` paths (contract; never rename).
+- `src/components/ModuleHub.tsx`: homepage grid of learning modules.
+- `src/routes/index.tsx`: mounts each module (iframe with `?name=&room=` appended, `#racing`/`#oval`/`#park`/`#pool` views) and runs the `tl-host` → `tl-room` invite handshake.
+- `src/components/ModuleScoreboard.tsx`: board under embedded modules; reloads on `tl-score-saved`.
+- `src/components/LapRecordBoard.tsx`: lap-record board for the racing modules; reloads on `tl-lap`.
 
 ## Standalone module pages (`public/modules/`)
 
@@ -97,6 +106,13 @@ Four different three.js builds from three CDNs, one bespoke WebGL2 renderer. Rul
 - `src/components/Racing.tsx`: Max Secure Circuit and Oval Speedway client (2D canvas sprites, paint profiles), mounts with `fixedTrack`.
 - `src/lib/racing.ts`: tracks, tickets and lap-record client.
 - `server/racing-engine.mjs` (+ `racing-engine.d.mts`): physics shared by browser and the multiplayer service; bump `/version` in `server/index.mjs` after changes.
+
+## Pool (`src/components/PoolTable.tsx`, `src/lib/pool-*.ts`)
+
+- `src/components/PoolTable.tsx`: 2D canvas table, balls and cue with matter-js bodies; practice records and preferences through `/api/pool-*`.
+- `src/components/PoolLobby.tsx`: socket.io lobby, invites and chat against `server/index.mjs`.
+- `src/components/CueArtwork.tsx`, `src/lib/cue-design.ts`: cue design presets and SVG preview.
+- `src/lib/pool-computer.ts`, `pool-effects.ts`, `pool-network.ts`: computer shot planning, effect options, wire types.
 
 ## Contracts that every phase keeps
 
