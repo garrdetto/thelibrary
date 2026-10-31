@@ -115,7 +115,7 @@ const composer=new EffectComposer(renderer,new THREE.WebGLRenderTarget(16,16,{ty
 composer.addPass(new RenderPass(scene,camera));
 
 // ⚡ TWEAKED VALUES: Strength dropped from 0.10 to 0.01, Threshold raised from 0.88 to 1.00
-const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.01,0.45,1.00);composer.addPass(bloom);composer.addPass(new OutputPass());
+const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.04,0.45,.50);composer.addPass(bloom);composer.addPass(new OutputPass());
 let useComposer=true;
 
 // ===================== TEXTURES =====================
