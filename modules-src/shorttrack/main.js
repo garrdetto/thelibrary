@@ -88,48 +88,40 @@ function normalAt(s,lat,out){
 function aMaxAt(s,lat,mu){ const t=lat<-HW?0:Math.tan(bankAt(s)); return CFG.g*(mu+t)/(1-mu*t); }
 
 // ===================== RENDERER / SCENE =====================
+const wrap=$('wrap'), canvas=$('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
+const scene=new THREE.Scene();
+scene.fog = new THREE.Fog(0x5c6f82, 4000, 15000);
+const camera=new THREE.PerspectiveCamera(45,1,0.1,2000);
+const pmrem=new THREE.PMREMGenerator(renderer);
+const SUN_OFF=new THREE.Vector3(60,110,40);
+// physically based daytime sky (also used to build the reflection map for paint)
+function makeSky(scale){const sk=new Sky();sk.scale.setScalar(scale);const u=sk.material.uniforms;
+  u.turbidity.value=2.2;u.rayleigh.value=1.2;u.mieCoefficient.value=0.004;u.mieDirectionalG.value=0.82;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;}
+const skyDay=makeSky(2200);scene.add(skyDay);
+const envNight=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new THREE.Mesh(new THREE.CircleGeometry(800,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x4a5a44}));gnd.position.y=-5;es.add(gnd);
+  const rt=pmrem.fromScene(es,0.02);return rt.texture;})();
+let envTex=envDay,ENVK=1.0;
+scene.environment=envDay;
+const hemi=new THREE.HemisphereLight(0xcfe3ff,0x3a4a2a,0.20); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff1dc,1.0); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+Object.assign(sun.shadow.camera,{left:-55,right:55,top:55,bottom:-55,near:1,far:340}); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
+scene.add(sun,sun.target);
+
 // post-processing: subtle bloom by day, glowing lights at night
-const composer = new EffectComposer(renderer);
-composer.renderTarget.texture.type = THREE.HalfFloatType; // Keep high-precision HDR color grading
+// ⚡ FIX: Remove the fixed 16x16 size from the target so it automatically uses full canvas scale
+const composer=new EffectComposer(renderer);
+composer.renderTarget.texture.type=THREE.HalfFloatType;
+composer.addPass(new RenderPass(scene,camera));
 
-// 1. Initial Render Pass
-const renderPass = new RenderPass(scene, camera);
-composer.addPass(renderPass);
-
-// 2. Bloom Pass 
-const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.10, 0.45, 0.88);
+// ⚡ RESOLUTION TWEAK: Set to full window size, and update settings for high-quality glow
+const bloom=new UnrealBloomPass(new THREE.Vector2(window.innerWidth,window.innerHeight),0.15,0.40,0.85);
 composer.addPass(bloom);
-
-// 3. Final Output Pass
 composer.addPass(new OutputPass());
-
-let useComposer = true;
-
-// ⚡ SAFE INTERCEPTION: Route through composer without causing an infinite black loop
-const originalRender = renderer.render.bind(renderer); 
-renderer.render = function(sc, cam) {
-  if (useComposer) {
-    // Temporarily restore the original renderer so the composer doesn't loop infinitely
-    renderer.render = originalRender; 
-    composer.render();
-    renderer.render = this; // Re-hook it after the composer cycle finishes
-  } else {
-    originalRender(sc, cam);
-  }
-};
-
-// Window resize listener to keep the composer and camera aspect ratio from distorting
-function handleResize() {
-  const w = wrap ? wrap.clientWidth : window.innerWidth;
-  const h = wrap ? wrap.clientHeight : window.innerHeight;
-  camera.aspect = w / h;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w, h);
-  composer.setSize(w, h);
-}
-window.addEventListener('resize', handleResize);
-handleResize(); // Initial sizing run
-
+let useComposer=true;
 
 // ===================== TEXTURES =====================
 function canvasTex(w,h,draw,repeat){
