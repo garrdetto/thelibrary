@@ -517,8 +517,45 @@ function spawnSmoke(x,y,z,vx,vz,dark,size,tint){const p=smoke[smI];smI=(smI+1)%S
 function updSmoke(dt){for(const p of smoke){if(p.life<=0){p.s.visible=false;continue;}p.life-=dt;const k=1-p.life/p.max;p.s.position.x+=p.vx*dt;p.s.position.y+=p.vy*dt;p.s.position.z+=p.vz*dt;const sc=p.size*(1+k*3);p.s.scale.set(sc,sc,1);p.s.material.opacity=p.op*(1-k);}}
 
 // ===================== LIVERIES =====================
-const PATTERNS=['solid','stripes','twotone','flames','panels','fade'];
-const PATTERN_NAMES={solid:'Solid',stripes:'Racing stripes',twotone:'Two-tone split',flames:'Flames',panels:'Door panels',fade:'Gradient fade'};
+const PATTERNS=['solid','stripes','twotone','flames','panels','fade','rainbow'];
+const PATTERN_NAMES={solid:'Solid',stripes:'Racing stripes',twotone:'Two-tone split',flames:'Flames',panels:'Door panels',fade:'Gradient fade',rainbow:'Rainbow'};
+// The AI field: [name, number, primary, secondary, accent, pattern, number fill, number outline, sponsor text, sponsor bg, sponsor text colour]
+const AI_FIELD=[
+  ['Jeff Hair-don','24','#1b3fa8','#e4252b','#ffd400','rainbow','#ffd400','#e4252b','PRISMACOAT','#ffffff','#1b3fa8'],
+  ['Dale Bumphardt','3','#111111','#8a8d91','#c8102e','twotone','#ffffff','#c8102e','WRENCHWORKS','#c8102e','#ffffff'],
+  ['Dale Earnvotes Jr.','8','#d10a11','#ffffff','#111111','stripes','#ffffff','#111111','REDLINE LAGER','#ffffff','#d10a11'],
+  ['Jimmie Yawnson','48','#1c4fa1','#b9bec5','#ffffff','twotone','#ffffff','#0d2a5c','HOMESTEAD SUPPLY','#ffffff','#1c4fa1'],
+  ["Tony Stewin'",'20','#f96302','#ffffff','#111111','panels','#ffffff','#111111','BUILDRITE','#ffffff','#f96302'],
+  ['Rusty Walrus','2','#111111','#c9a227','#ffffff','stripes','#c9a227','#ffffff','GOLDEN PILS','#c9a227','#111111'],
+  ["Mark Marryin'",'6','#ffffff','#0a3d91','#e31837','twotone','#e31837','#0a3d91','V-GUARD OIL','#0a3d91','#ffffff'],
+  ['Dale Deliverett','88','#4b2e1e','#f2b10e','#ffffff','twotone','#f2b10e','#111111','SWIFTPARCEL','#f2b10e','#4b2e1e'],
+  ['Bill Smelliott','94','#da291c','#ffc72c','#ffffff','fade','#ffc72c','#7a0d07','BIG BUN BURGERS','#ffc72c','#da291c'],
+  ['Terry La-Brrr-nte','5','#ffd200','#d71920','#ffffff','twotone','#d71920','#ffffff','CRUNCHY FLAKES','#d71920','#ffffff'],
+  ['Bobby Labattery','18','#00843d','#ffffff','#ffd200','stripes','#ffffff','#003b1b','POWERCELL','#ffffff','#00843d'],
+  ['Darrell Jawtrip','17','#ffffff','#c8102e','#002f87','panels','#002f87','#ffffff','MAIN ST AUTO','#c8102e','#ffffff'],
+  ['Michael Waltripped','15','#003da5','#ffd100','#ffffff','twotone','#ffd100','#001f5b','PARTSPRO','#ffd100','#003da5'],
+  ['Happy Harddick','29','#f5f5f5','#111111','#c8102e','fade','#111111','#c8102e','WRENCHWORKS','#111111','#ffffff'],
+  ['Bratt Kenseth','17','#febd17','#111111','#ffffff','twotone','#111111','#ffffff','TOUGHCUT TOOLS','#111111','#febd17'],
+  ['Kyle Boosch','18','#e21b23','#ffd200','#2b59c3','flames','#ffd200','#2b59c3','CANDY DOTS','#2b59c3','#ffd200'],
+  ['Curse Busch','97','#111111','#ffffff','#ffcc00','fade','#ffffff','#111111','INKMARK','#ffffff','#111111'],
+  ['Carl Backwards','99','#ffffff','#00539b','#f0a500','stripes','#00539b','#ffffff','SAFEHARBOR INS.','#00539b','#ffffff'],
+  ['Denny Hamlost','11','#4d148c','#ff6600','#ffffff','twotone','#ffffff','#ff6600','SKYSHIP EXPRESS','#ffffff','#4d148c'],
+  ['Danica Pat-Wreck','10','#39ff14','#111111','#ff6a00','flames','#111111','#ffffff','WEBNAME','#111111','#39ff14'],
+  ['Jeff Blurton','99','#ffffff','#0b7a3e','#e31b23','stripes','#e31b23','#0b7a3e','MAXCHARGE','#0b7a3e','#ffffff'],
+  ['Ricky Mudd','10','#f47b20','#ffd200','#1f4fa3','fade','#1f4fa3','#ffffff','FRESHSPIN','#1f4fa3','#ffffff'],
+  ["Sterling Mumblin'",'4','#ffcc00','#d10a11','#111111','stripes','#d10a11','#111111','SNAPSHOT FILM','#d10a11','#ffcc00'],
+  ['Ernie Swervan','28','#111111','#d10a11','#ffffff','stripes','#ffffff','#d10a11','STARFUEL','#d10a11','#ffffff'],
+  ['Bad Brad Kegselowski','2','#0b3a8c','#ffffff','#c9a227','panels','#ffffff','#c9a227','GOLDEN PILS','#ffffff','#0b3a8c'],
+  ['Joey Loafano','22','#ffd500','#e0201b','#111111','twotone','#e0201b','#ffffff','COASTLINE OIL','#e0201b','#ffd500'],
+  ['Ryan Nerdman','12','#ffffff','#d4202c','#002b7f','fade','#002b7f','#ffffff','SIGNAL WIRELESS','#d4202c','#ffffff'],
+  ["Kasey Kahn't",'9','#c8102e','#111111','#ffffff','twotone','#ffffff','#111111','RAMRIDGE DEALERS','#111111','#ffffff'],
+  ['Word? Burton','22','#ffcd11','#111111','#ffffff','twotone','#111111','#ffffff','BIGIRON EQUIP','#111111','#ffcd11'],
+  ['Greg Whiffle','16','#e01b22','#ffffff','#111111','stripes','#ffffff','#111111','STICKWELL','#ffffff','#e01b22'],
+].map(([name,number,primary,secondary,accent,pattern,numColor,numOutline,sp,spBg,spFg])=>({name,number,primary,secondary,accent,pattern,
+  numStyle:'block',numFont:'classic',numSlant:false,numSize:125,numColor,numOutline,numAccent:accent,numDoors:true,numRoof:true,numTail:true,sponsor:[sp,spBg,spFg]}));
+const RAINBOW=['#e4252b','#f7931e','#ffd400','#2bb24c','#1b75bc','#7b3fa0'];
+function rainbowBands(g,x0,x1,y0,y1){const dy=(y1-y0)/RAINBOW.length;RAINBOW.forEach((c,i)=>{g.fillStyle=c;g.fillRect(x0,y0+i*dy,x1-x0,dy*1.03);});}
+
 const NAMES=['Rusty Vance','Cole Hargrove','Dale Brenner','Jimmy Ashcroft','Tony Kessler','Bobby Lorne','Ricky Dalton','Cal Whitaker','Ward Pruitt','Ned Calloway','Sonny Reyes','Hank Tolliver','Jody Marsh','Kyle Benning','Luke Garrity','Marty Fenn','Dusty Shaw','Ray Corwin','Wes Halloran','Tate Morrow'];
 const PAL=['#d7263d','#1b998b','#2e86de','#f9c80e','#f86624','#662e9b','#141414','#f4f4f4','#43bccd','#0b6e4f','#ff6f91','#c0c0c0','#1d3557','#e9c46a','#8ac926','#ff9f1c'];
 const HEX=/^#[0-9a-f]{6}$/i;
@@ -535,7 +572,8 @@ function cleanLv(l){
     numStyle:!italic&&NUM_STYLE_IDS.includes(l.numStyle)?l.numStyle:'block',numFont:NUM_FONT_IDS.includes(l.numFont)?l.numFont:'classic',
     numSlant:bool(l.numSlant,italic),numSize:Number.isFinite(size)?clamp(Math.round(size/5)*5,60,150):125,
     numColor:col(l.numColor,'#ffffff'),numOutline:col(l.numOutline,'#111111'),numAccent:col(l.numAccent,col(l.accent,d.accent)),
-    numDoors:bool(l.numDoors,true),numRoof:bool(l.numRoof,true),numTail:bool(l.numTail,true),veh:VEHICLES[l.veh]?l.veh:'truck'};
+    numDoors:bool(l.numDoors,true),numRoof:bool(l.numRoof,true),numTail:bool(l.numTail,true),veh:VEHICLES[l.veh]?l.veh:'truck',
+    ...(Array.isArray(l.sponsor)&&HEX.test(l.sponsor[1]||'')&&HEX.test(l.sponsor[2]||'')?{sponsor:[String(l.sponsor[0]||'').replace(/[<>]/g,'').slice(0,18),l.sponsor[1],l.sponsor[2]]}:{})};
 }
 function hslHex(h,s,l){h=mod(h,1);const f=n=>{const k=(n+h*12)%12,a=s*Math.min(l,1-l);return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0');};return '#'+f(0)+f(8)+f(4);}
 function randomPaint(r){
@@ -563,6 +601,7 @@ function drawPattern(g,w,h,lv,fl){
         g.bezierCurveTo(fx+dir*len*0.4,y-h*0.16,fx+dir*len*0.7,y-h*0.02,fx+dir*len,y);g.bezierCurveTo(fx+dir*len*0.6,y+h*0.03,fx+dir*len*0.3,y+h*0.1,fx,y+h*0.09);g.closePath();g.fill();g.stroke();}
       break;
     case 'panels':for(const x of [0.05,0.71]){g.fillStyle=p2;rr(g,w*x,h*0.12,w*0.24,h*0.76,h*0.12);g.fill();g.strokeStyle=a;g.lineWidth=h*0.03;g.stroke();}break;
+    case 'rainbow':rainbowBands(g,0,w,h*0.22,h*0.7);break;
     case 'fade':{const gr=g.createLinearGradient(fx,0,w-fx,0);gr.addColorStop(0,p1);gr.addColorStop(0.4,p1);gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(0,0,w,h);g.fillStyle=a;g.fillRect(0,h*0.86,w,h*0.05);}break;
   }
 }
@@ -576,7 +615,7 @@ function drawNumber(g,text,cx,cy,size,lv,maxW){
 }
 const SPONSORS=[['TORQUE','#d62828','#ffffff'],['OVAL OIL','#1d3557','#ffd60a'],['FASTLANE','#f77f00','#111111'],['REDLINE','#111111','#ff3b3b'],['BOLT','#ffd60a','#111111'],['APEX','#ffffff','#0b6e4f'],
   ['SUMMIT','#2e86de','#ffffff'],['KESTREL','#5f0f40','#ffffff'],['HAULMARK','#2b2d42','#edf2f4'],['BLAZE','#ff5400','#ffffff'],['NORTHSTAR','#003049','#fcbf49'],['IRONHIDE','#495057','#ffd166']];
-function sponsorOf(lv){let h=7;for(const ch of (lv.name||'')+(lv.number||''))h=(h*31+ch.charCodeAt(0))>>>0;return SPONSORS[h%SPONSORS.length];}
+function sponsorOf(lv){if(lv.sponsor)return lv.sponsor;let h=7;for(const ch of (lv.name||'')+(lv.number||''))h=(h*31+ch.charCodeAt(0))>>>0;return SPONSORS[h%SPONSORS.length];}
 function drawSponsor(g,cx,cy,w,h,sp,rot=0){g.save();g.translate(cx,cy);g.rotate(rot);g.fillStyle=sp[1];rr(g,-w/2,-h/2,w,h,Math.min(w,h)*0.18);g.fill();
   g.strokeStyle='rgba(255,255,255,.85)';g.lineWidth=Math.max(1.5,h*0.05);g.stroke();
   g.fillStyle=sp[2];g.font=`900 italic ${Math.round(h*0.62)}px "Arial Black",Impact,sans-serif`;g.textAlign='center';g.textBaseline='middle';g.fillText(sp[0],0,h*0.03,w*0.9);g.restore();}
@@ -612,7 +651,7 @@ function rearTex(lv){return canvasTex(512,256,(g,w,h)=>{g.fillStyle=lv.primary;g
   const vy=y=>(1-(y-0.17)/0.9)*h;
   g.fillStyle='#ff3040';rr(g,w*0.03,vy(1.0),w*0.07,vy(0.55)-vy(1.0),8);g.fill();rr(g,w*0.9,vy(1.0),w*0.07,vy(0.55)-vy(1.0),8);g.fill();
   g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=3;g.strokeRect(w*0.13,vy(1.0),w*0.74,vy(0.45)-vy(1.0));
-  drawNumber(g,lv.number,w/2,vy(0.82),h*0.24,lv,w*0.3);if(!lv.pace)drawSponsor(g,w/2,vy(0.6),w*0.5,h*0.12,sponsorOf(lv));
+  drawNumber(g,lv.number,w*0.2,vy(0.53),h*0.06,lv,w*0.075);if(!lv.pace)drawSponsor(g,w/2,vy(0.6),w*0.5,h*0.12,sponsorOf(lv));
   g.fillStyle='#0d0d0d';g.fillRect(0,vy(0.38),w,h-vy(0.38));});}
 function roofTex(lv){return canvasTex(512,512,(g,w,h)=>{g.fillStyle=lv.primary;g.fillRect(0,0,w,h);
   if(lv.pattern==='stripes'||lv.pattern==='panels'){g.fillStyle=lv.secondary;g.fillRect(w*0.38,0,w*0.24,h);}
@@ -1446,6 +1485,7 @@ function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);retu
       for(let i=0;i<5;i++){const y=vy(0.4+i*0.13),len=w*(0.25+0.18*Math.abs(Math.sin(i*1.9+1)));g.beginPath();g.moveTo(front,y-0.05*pm);
         g.bezierCurveTo(front+dir*len*0.4,y-0.09*pm,front+dir*len*0.7,y-0.01*pm,front+dir*len,y);g.bezierCurveTo(front+dir*len*0.6,y+0.02*pm,front+dir*len*0.3,y+0.06*pm,front,y+0.05*pm);g.closePath();g.fill();g.stroke();}break;
     case 'panels':for(const [x0,x1] of [[0.9,-0.6],[-2.0,-2.75]]){g.fillStyle=p2;rr(g,Math.min(u(x0),u(x1)),vy(1.08),Math.abs(u(x0)-u(x1)),vy(0.3)-vy(1.08),0.08*pm);g.fill();g.strokeStyle=a;g.lineWidth=4;g.stroke();}break;
+    case 'rainbow':rainbowBands(g,0,w,vy(0.95),vy(0.45));break;
     case 'fade':{const gr=g.createLinearGradient(u(1.0),0,u(-2.8),0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(0,0,w,h);}break;
   }
   if(lv.pace){g.font=`900 ${0.32*pm}px Arial Black,Impact,sans-serif`;g.fillStyle='#111';g.fillText('PACE TRUCK',u(-0.4),vy(0.66),w*0.5);}
@@ -1479,8 +1519,21 @@ function mountNumbers(m,lv){
   mat.userData.r0=mat.roughness;mat.userData.cc0=mat.clearcoat;mat.envMap=envTex;mat.envMapIntensity=ENVK;
   if(envTex===envNight){mat.roughness=Math.max(0.5,mat.roughness);mat.clearcoat*=0.3;}
   const meshes=buildNumberMeshes(THREE,TM,{material:mat,art,scale:lv.numSize/100,doors:lv.numDoors,roof:lv.numRoof,tail:lv.numTail});
+  if(lv.numTail)for(const d of meshes)tailNumberToCorner(d);
   for(const d of meshes){d.receiveShadow=true;m.tmg.add(d);m.deform.push({geo:d.geometry,orig:Float32Array.from(d.geometry.attributes.position.array)});}
   m.paints.push(mat);m.numbers={meshes,mat,tex,art,fontOk:numFontReady(lv.numFont)};
+}
+// Rear number: 75% smaller (scale 0.25), sitting in the bottom-left corner of the rear as seen from behind.
+// Truck model axes: +x forward, +y up, +z = driver's right, so "left" seen from behind is -z.
+const TAIL_NUM={scale:0.25,left:-0.74,bottom:0.44};   // left edge z and bottom edge y, model metres (bumper bar top is y 0.41)
+function tailNumberToCorner(d){
+  d.updateMatrix();const gm=d.geometry;gm.applyMatrix4(d.matrix);d.position.set(0,0,0);d.rotation.set(0,0,0);d.scale.set(1,1,1);
+  gm.computeBoundingBox();const b=gm.boundingBox;
+  if((b.min.x+b.max.x)/2>TM.DIM.xr+0.25||b.max.x-b.min.x>0.25)return;   // not the tail decal (doors/roof)
+  const k=TAIL_NUM.scale,cy=(b.min.y+b.max.y)/2,cz=(b.min.z+b.max.z)/2,hh=(b.max.y-b.min.y)*k/2,hw=(b.max.z-b.min.z)*k/2;
+  const ty=TAIL_NUM.bottom+hh,tz=TAIL_NUM.left+hw,pa=gm.attributes.position;
+  for(let i=0;i<pa.count;i++)pa.setXYZ(i,pa.getX(i),ty+(pa.getY(i)-cy)*k,tz+(pa.getZ(i)-cz)*k);
+  pa.needsUpdate=true;gm.computeBoundingBox();gm.computeBoundingSphere();
 }
 function tmGrid(nu,nv,fn){const pos=[],uv=[],idx=[];
   for(let j=0;j<=nv;j++)for(let i=0;i<=nu;i++){const p=fn(i/nu,j/nv);pos.push(p[0],p[1],p[2]);uv.push(p[3],p[4]);}
@@ -1521,6 +1574,7 @@ function carLiveryTex(lv,size,glyphPx){
           for(let i=0;i<5;i++){const y=0.3+i*0.11,len=5.3*(0.25+0.18*Math.abs(Math.sin(i*1.9+1))),f=2.6;g.beginPath();g.moveTo(f,y-0.045);
             g.bezierCurveTo(f-len*0.4,y-0.08,f-len*0.7,y-0.01,f-len,y);g.bezierCurveTo(f-len*0.6,y+0.02,f-len*0.3,y+0.055,f,y+0.045);g.closePath();g.fill();g.stroke();}break;
         case 'panels':for(const [x0,x1] of [[-0.85,0.75],[-2.65,-2.05]]){g.fillStyle=p2;rr(g,x0,0.3,x1-x0,0.48,0.07);g.fill();g.strokeStyle=ac;g.lineWidth=0.018;g.stroke();}break;
+        case 'rainbow':rainbowBands(g,-4,4,0.78,0.3);break;
         case 'fade':{const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-1,8,4);}break;
       }});
     region('T',()=>{
@@ -1530,13 +1584,19 @@ function carLiveryTex(lv,size,glyphPx){
       if(lv.pattern==='stripes'||lv.pattern==='panels')vcentre(0.17,0.025);
       else if(lv.pattern==='twotone'){band(-1,0.5,p2);band(0.5,0.525,ac);}
       else if(lv.pattern==='fade'&&end==='B'){g.fillStyle=p2;g.fillRect(-2,-1,4,4);}});
+    if(!lv.pace){const sc=document.createElement('canvas');sc.width=512;sc.height=154;drawSponsor(sc.getContext('2d'),256,77,504,146,sponsorOf(lv));
+      const logo=(nm,cx,cy,lw,rot)=>region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(sc,-lw/2,-lw*0.15,lw,lw*0.3);});
+      logo('L',-1.75,0.62,0.95);logo('R',-1.75,0.62,0.95);logo('T',1.65,0,0.9,Math.PI/2);}
     if(!lv.number)return;
     const cv=document.createElement('canvas'),art=drawNumberArt(cv,numArtOpts(lv),glyphPx);if(!art)return;
     const put=(nm,spot,cx,cy,rot)=>{const [nw,nh]=numberSize(spot,art,lv.numSize/100);region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(cv,-nw/2,-nh/2,nw,nh);});};
     const S=CAR_NUM_SPOTS;
     if(lv.numDoors){put('L',S.door,S.door.x,S.door.y);put('R',S.door,S.door.x,S.door.y);}
     if(lv.numRoof)put('T',S.roof,S.roof.x,0,Math.PI/2);
-    if(lv.numTail)put('B',S.tail,0,S.tail.y);
+    if(lv.numTail){const [nw0,nh0]=numberSize(S.tail,art,lv.numSize/100),nw=nw0*TAIL_NUM.scale,nh=nh0*TAIL_NUM.scale,[,,,u0,u1,,v0,v1]=R.B;
+      region('B',(sa,sd)=>{const pad=0.06,lx=sa>0?Math.min(u0,u1):Math.max(u0,u1),by=sd>0?Math.max(v0,v1):Math.min(v0,v1);
+        // in the flipped frame +x is the viewer's right and +y is down, so step in from the left edge and up from the bottom edge
+        g.translate(lx+sa*(pad+nw/2),by-sd*(pad+nh/2));g.scale(sa,sd);g.drawImage(cv,-nw/2,-nh/2,nw,nh);});}
   });
   t.flipY=false;t.needsUpdate=true;return t;
 }
@@ -1945,19 +2005,17 @@ function beginRace(msg){
   mode='race';showScreen(null);$('hud').classList.remove('hidden');onPhase(race.ph);
   if(attack)bigMsg('TIME ATTACK',`${TRACK.name} \u00b7 the clock starts when you cross the line`,4);else bigMsg('ROLLING START',`${TRACK.name} \u00b7 two wide at 70 mph \u00b7 green flag at the line`,4);
 }
-// Every AI driver keeps the same name, number and paint scheme from race to race (saved on first use).
+// The AI field comes from AI_FIELD (named drivers, fixed numbers, paint schemes and sponsor logos).
 function aiRoster(n){
-  let ro=store.get('sts_ai_roster',[]);if(!Array.isArray(ro))ro=[];ro=ro.map(l=>cleanLv(l));
-  if(ro.length<n){const r=rng((Date.now()^0x5f3759df)|0),nums=new Set(ro.map(l=>l.number));
-    for(let i=ro.length;i<n;i++){const lv=cleanLv(randomLivery(r,i));while(nums.has(lv.number))lv.number=String(1+Math.floor(r()*98));nums.add(lv.number);ro.push(lv);}
-    store.set('sts_ai_roster',ro);}
-  return ro;
+  const ro=AI_FIELD.map(l=>cleanLv(l));   // fixed field; a different random set of drivers starts each race
+  for(let i=ro.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[ro[i],ro[j]]=[ro[j],ro[i]];}
+  return ro.slice(0,n);
 }
 function hostStart(){
   readHostSettings();
   const ents=[...NET.players.values()].map(p=>({id:p.id,lv:p.lv,ai:false}));
-  const r=rng((Math.random()*1e9)|0),used=new Set(ents.map(e=>e.lv.number)),nAI=Math.min(settings.ai,CFG.maxCars-ents.length);
-  const roster=aiRoster(CFG.maxCars);for(let i=0;i<nAI;i++){const lv={...roster[i],veh:myLv.veh};while(used.has(lv.number))lv.number=String(1+Math.floor(r()*98));used.add(lv.number);const A=AI_LEVELS[settings.diff||'medium'];ents.push({id:'ai'+i,lv,ai:true,sk:+(A.sk[0]+r()*A.sk[1]).toFixed(3),dc:A.dc,pa:A.pass,gb:A.gb,pb:A.pb,lc:A.lc,ag:A.ag});}
+  const r=rng((Math.random()*1e9)|0),used=new Set(ents.map(e=>e.lv.number)),humanNums=new Set(used),nAI=Math.min(settings.ai,CFG.maxCars-ents.length);
+  const roster=aiRoster(CFG.maxCars);for(let i=0;i<nAI;i++){const lv={...roster[i],veh:myLv.veh};if(humanNums.has(lv.number))while(used.has(lv.number))lv.number=String(1+Math.floor(r()*98));used.add(lv.number);const A=AI_LEVELS[settings.diff||'medium'];ents.push({id:'ai'+i,lv,ai:true,sk:+(A.sk[0]+r()*A.sk[1]).toFixed(3),dc:A.dc,pa:A.pass,gb:A.gb,pb:A.pb,lc:A.lc,ag:A.ag});}
   for(let i=ents.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[ents[i],ents[j]]=[ents[j],ents[i]];}
   const msg={t:'start',set:{...settings},grid:ents};sendAll(msg);beginRace(msg);
 }
