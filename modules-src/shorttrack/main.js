@@ -70,10 +70,10 @@ const TRACKS={
   dellswide:{
     name:'Dells Raceway Park', miles:'0.27 mi', rec:'dellsraceway',
     L:122, R:30, W:16, APRON:6,
-    turnBank:19, straightBank:10, bankIn:60, bankOut:35,
+    turnBank:19, straightBank:10, bankIn:60, bankOut:40,
     grooveHigh:4.4, grooveLow:-4.7,
-    steer:1, smooth:1.35,
-    gripUp:1.1,
+    steer:1, smooth:1.55,
+    gripUp:1.15,
     minLap:7000,
     bareInfield:true,
   },
