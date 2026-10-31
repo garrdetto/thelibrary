@@ -8,9 +8,9 @@ import { issueTicket, redeemTicket } from './account'
 import type { Scheme } from '../../lib/racing'
 import { displayScheme, presets } from '../../lib/racing'
 
-const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, fox: 8000, dellsraceway: 7000, dirt: 8000 }
+const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dellswide: 7000, dirt: 8000 }
 const raceModes = z.enum(['practice', 'multiplayer', 'time-attack', 'race'])
-const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'fox', 'dellsraceway', 'dirt'])
+const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells', 'dellswide', 'dirt'])
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const vehicleIds = z.enum(['challenger', 'escalade', 'lamborghini', 'ram', 'muscle-red'])
 const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])
@@ -18,7 +18,7 @@ const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ticket') }),
   z.object({ action: z.literal('reset-records'), password: z.string().min(1).max(128).optional(), mode: raceModes, track: trackIds }),
-  z.object({ action: z.literal('lap'), run: z.string().uuid(), lap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), milliseconds: z.number().int().min(4000).max(600000), mode: raceModes, track: trackIds.default('circuit') }).refine(lap => lap.milliseconds >= minimumLapMilliseconds[lap.track]),
+  z.object({ action: z.literal('lap'), run: z.string().uuid(), lap: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), milliseconds: z.number().int().min(4000).max(600000), mode: raceModes, track: trackIds }),
   z.object({ action: z.literal('preset'), name: z.string().max(40), bodyStyle: bodyStyles.optional() }),
   z.object({ action: z.literal('body'), bodyStyle: bodyStyles }),
   z.object({ action: z.literal('paint'), vehicle: vehicleIds, body: hex, stripe: hex, pattern: z.enum(['plain', 'stripes', 'flames', 'chevrons', 'checker', 'lightning']) }),
@@ -78,7 +78,7 @@ export async function racing(request: Request, env: Env) {
   if (input.action === 'generate') {
     const result = await gemini(env).models.generateContent({
       model: IMAGE_MODEL,
-      contents: `Create a flat top-down professional motorsport car paint texture. Rectangular image, nose pointing right, car fills the image edge to edge. No background, text, perspective, shadows or framing. Use realistic matte paint with subtle texture.`,
+      contents: `Create a flat top-down professional motorsport car paint texture. Rectangular image, nose pointing right, car fills the image edge to edge. No background, text, perspective, shadows or gradients. Keep it minimal and clean.`,
       config: { responseModalities: ['IMAGE', 'TEXT'] },
     })
     const part = result.candidates?.[0]?.content?.parts?.find(item => item.inlineData?.mimeType?.startsWith('image/'))?.inlineData
