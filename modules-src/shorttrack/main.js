@@ -110,17 +110,12 @@ const hemi=new THREE.HemisphereLight(0xcfe3ff,0x3a4a2a,0.20); scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff1dc,1.0); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
 Object.assign(sun.shadow.camera,{left:-55,right:55,top:55,bottom:-55,near:1,far:340}); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
 scene.add(sun,sun.target);
-
 // post-processing: subtle bloom by day, glowing lights at night
-// ⚡ FIX: Remove the fixed 16x16 size from the target so it automatically uses full canvas scale
-const composer=new EffectComposer(renderer);
-composer.renderTarget.texture.type=THREE.HalfFloatType;
+const composer=new EffectComposer(renderer,new THREE.WebGLRenderTarget(16,16,{type:THREE.HalfFloatType,samples:4}));
 composer.addPass(new RenderPass(scene,camera));
 
-// ⚡ RESOLUTION TWEAK: Set to full window size, and update settings for high-quality glow
-const bloom=new UnrealBloomPass(new THREE.Vector2(window.innerWidth,window.innerHeight),0.15,0.40,0.85);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
+// ⚡ TWEAKED VALUES: Strength dropped from 0.10 to 0.01, Threshold raised from 0.88 to 1.00
+const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.01,0.45,1.00);composer.addPass(bloom);composer.addPass(new OutputPass());
 let useComposer=true;
 
 // ===================== TEXTURES =====================
