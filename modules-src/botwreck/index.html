@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BotWreck 3D</title>
+<style>
+  :root { --bg: #07090f; --panel: rgba(12, 16, 28, 0.88); --line: rgba(120, 200, 255, 0.22); --accent: #39d0ff; --hot: #ff5a36; --text: #e8f1ff; --muted: #8ea3c0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif; }
+  canvas { display: block; }
+  .hidden { display: none !important; }
+  #build { position: absolute; top: 0; left: 0; bottom: 0; width: 340px; padding: 22px 20px; background: var(--panel); border-right: 1px solid var(--line); backdrop-filter: blur(8px); overflow-y: auto; z-index: 5; }
+  #build h1 { margin: 0; font-size: 34px; letter-spacing: 2px; font-weight: 800; }
+  #build h1 span { color: var(--hot); }
+  #build p.sub { margin: 4px 0 18px; color: var(--muted); font-size: 14px; letter-spacing: 1px; text-transform: uppercase; }
+  .cfg { width: 100%; text-align: left; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: inherit; border-radius: 12px; padding: 14px; margin-bottom: 12px; cursor: pointer; font: inherit; transition: border-color .15s, background .15s, transform .15s; }
+  .cfg:hover { border-color: var(--accent); transform: translateX(3px); }
+  .cfg[aria-pressed="true"] { border-color: var(--accent); background: rgba(57, 208, 255, 0.1); box-shadow: 0 0 0 1px var(--accent) inset; }
+  .cfg h2 { margin: 0 0 2px; font-size: 21px; letter-spacing: 1px; }
+  .cfg small { color: var(--muted); font-size: 13px; }
+  .bars { margin-top: 10px; display: grid; grid-template-columns: 62px 1fr; gap: 4px 10px; font-size: 12px; color: var(--muted); align-items: center; }
+  .bar { height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #b388ff); }
+  .paint { display: flex; gap: 8px; margin: 6px 0 18px; flex-wrap: wrap; }
+  .paint button { width: 30px; height: 30px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; }
+  .paint button[aria-pressed="true"] { border-color: #fff; }
+  .label { font-size: 12px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-top: 6px; }
+  #spawn { width: 100%; padding: 14px; font: inherit; font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #fff; border: 0; border-radius: 12px; cursor: pointer; background: linear-gradient(135deg, #ff5a36, #ff2d6f); box-shadow: 0 8px 30px rgba(255, 70, 70, 0.35); }
+  #spawn:hover { filter: brightness(1.1); }
+  .keys { margin-top: 18px; font-size: 13px; color: var(--muted); line-height: 1.8; }
+  kbd { display: inline-block; min-width: 22px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; text-align: center; color: var(--text); background: rgba(255, 255, 255, 0.05); font-family: inherit; }
+  #hud { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+  #speed { position: absolute; right: 26px; bottom: 22px; text-align: right; }
+  #speed b { display: block; font-size: 64px; line-height: 1; font-weight: 800; }
+  #speed span { color: var(--muted); letter-spacing: 3px; font-size: 13px; }
+  .meter { position: absolute; left: 24px; bottom: 26px; width: 280px; }
+  .meter div { margin-bottom: 10px; }
+  .meter label { font-size: 12px; letter-spacing: 3px; color: var(--muted); display: flex; justify-content: space-between; }
+  .meter .bar { height: 10px; border-radius: 5px; margin-top: 4px; }
+  #integrity i { background: linear-gradient(90deg, #ff3b3b, #ffd23b 50%, #3bff8c); background-size: 280px 100%; }
+  #boost i { background: linear-gradient(90deg, #ff9a3b, #ff3bd0); }
+  #score { position: absolute; top: 18px; right: 24px; text-align: right; font-size: 14px; letter-spacing: 2px; color: var(--muted); }
+  #score b { display: block; font-size: 30px; color: var(--text); }
+  #toast { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); font-size: 44px; font-weight: 800; letter-spacing: 4px; color: #fff; text-shadow: 0 0 24px rgba(255, 90, 54, 0.9); opacity: 0; transition: opacity .25s; white-space: nowrap; }
+  #topbar { position: absolute; top: 16px; left: 20px; display: flex; gap: 10px; pointer-events: auto; }
+  #topbar button { font: inherit; font-size: 15px; font-weight: 700; letter-spacing: 2px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
+  #topbar button:hover { border-color: var(--accent); }
+  #help { position: absolute; bottom: 118px; left: 24px; font-size: 13px; color: var(--muted); letter-spacing: 1px; }
+  #touch { position: absolute; left: 0; right: 0; bottom: 90px; display: flex; justify-content: space-between; padding: 0 16px; pointer-events: none; }
+  #touch button { pointer-events: auto; width: 74px; height: 74px; border-radius: 50%; border: 1px solid var(--line); background: rgba(12,16,28,0.6); color: var(--text); font-size: 26px; touch-action: none; }
+  #touch span { flex: 1; }
+  #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 10; font-size: 22px; letter-spacing: 4px; }
+  #loading.err { color: #ff8a8a; text-align: center; padding: 30px; font-size: 18px; letter-spacing: 1px; }
+  @media (max-width: 760px) { #build { width: 100%; height: 56%; top: auto; border-right: 0; border-top: 1px solid var(--line); } .meter { width: 180px; } #speed b { font-size: 44px; } #help { display: none; } }
+</style>
+<script src="module-scores.js"></script>
+</head>
+<body>
+<div id="loading">LOADING ARENA…</div>
+<aside id="build" aria-label="Build mode">
+  <h1>BOT<span>WRECK</span> 3D</h1>
+  <p class="sub">Build mode · pick a frame</p>
+  <div id="configs"></div>
+  <div class="label">Paint</div>
+  <div class="paint" id="paint"></div>
+  <button id="spawn">SPAWN &amp; DRIVE</button>
+  <div class="keys">
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows drive · <kbd>Space</kbd> handbrake<br>
+    <kbd>Shift</kbd> rocket boost · <kbd>R</kbd> respawn · <kbd>F</kbd> flip upright<br>
+    <kbd>C</kbd> camera · <kbd>B</kbd> back to build mode
+  </div>
+</aside>
+<div id="hud" class="hidden">
+  <div id="topbar"><button id="toBuild">◀ BUILD</button><button id="respawn">RESPAWN</button></div>
+  <div id="score">WRECK SCORE<b id="scoreVal">0</b><span id="partsLost">0 parts lost</span></div>
+  <div id="toast"></div>
+  <div id="help">Hit the ramp, ram the wall, blast the red crates.</div>
+  <div class="meter">
+    <div><label>INTEGRITY <span id="intText">100%</span></label><div class="bar" id="integrity"><i style="width:100%"></i></div></div>
+    <div id="boostWrap"><label>BOOST <span id="boostText">100%</span></label><div class="bar" id="boost"><i style="width:100%"></i></div></div>
+  </div>
+  <div id="speed"><b id="speedVal">0</b><span>KM/H</span></div>
+  <div id="touch" class="hidden"><button data-k="ArrowLeft" aria-label="Steer left">◀</button><button data-k="ArrowRight" aria-label="Steer right">▶</button><span></span><button data-k="ShiftLeft" aria-label="Boost">⚡</button><button data-k="ArrowDown" aria-label="Reverse">▼</button><button data-k="ArrowUp" aria-label="Accelerate">▲</button></div>
+</div>
+<script type="module" src="./index.ts"></script>
+</body>
+</html>
