@@ -24,7 +24,7 @@ const CFG = {
   wheelbase:2.8, steerLow:0.47, steerSpeed:0.07, steerRampIn:8, steerRampOut:6,
   carScale:1.15,     // visual and collision size of every car
   spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
-  wallRest:0.22, carRest:0.15, damageScale:1,
+  wallRest:0.22, carRest:0.15, damageScale:0.7,   // 0.7 = cars are 30% tougher (take 30% less damage per hit)
   paceSpeed:31.0, aiPaceSpeed:30.50, cautionSpeed:29, cautionTime:25, aiDecel:5.5, maxCars:20
 };
 
@@ -634,7 +634,7 @@ function makeTag(lv){
   const t=canvasTex(256,64,(g,w,h)=>{g.fillStyle='rgba(8,12,20,.72)';rr(g,2,10,w-4,44,10);g.fill();g.fillStyle=lv.primary;rr(g,8,15,52,34,6);g.fill();
     g.fillStyle=lv.numColor;g.font='900 22px Arial Black,sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText(lv.pace?'PC':lv.number,34,33,46);
     g.fillStyle='#fff';g.font='bold 21px system-ui,sans-serif';g.textAlign='left';g.fillText(lv.name,70,33,178);});
-  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false}));s.scale.set(3.4,0.85,1);s.position.y=2.6;return s;
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,transparent:true,depthWrite:false}));s.scale.set(1.2,0.3,1);s.position.y=2.15;s.renderOrder=-1;return s;
 }
 
 // ===================== CAR MODEL =====================
@@ -1939,7 +1939,7 @@ function beginRace(msg){
     if(attack){c.place(S_LINE-70,-2);c.cross=1;}else{c.place(GRID_S-row*GRID_ROW,c.fileLane);c.cross=1;rollAt(c,CFG.aiPaceSpeed);}
     cars.set(e.id,c);if(isMe)player=c;
   });
-  if(!attack){const pace=new Car('pace',PACE_LV,{local:NET.host,ai:true,pace:true});pace.place(GRID_S+GRID_ROW*1.6,-1.6);rollAt(pace,CFG.aiPaceSpeed);cars.set('pace',pace);}
+  // Pace truck removed: the rolling start is still led by the virtual formation reference (race.formP).
   setNight(!!settings.night);
   camH=player.h;camSnap=true;camMode='chase';
   mode='race';showScreen(null);$('hud').classList.remove('hidden');onPhase(race.ph);
@@ -2187,7 +2187,7 @@ function carVisual(c,dt){
   m.brakeMat.emissiveIntensity=c.brk&&c.vf>0.5?3.5:0.2;
   if(m.light)m.light.material.emissiveIntensity=(performance.now()%600<300)?3:0.3;
   const cd=camera.position.distanceTo(m.root.position);
-  if(c.tag)c.tag.visible=cd<90&&cd>4;
+  if(c.tag)c.tag.visible=cd<70&&cd>16;   // hidden up close so it never covers the view of the car ahead
   if(DIRT&&(mode==='race'||mode==='paused'||mode==='results')){c.markT-=dt;if(c.markT<=0&&c.speed>2.5){addMark(c,Math.min(4,c.speed*0.12+0.3));c.markT=0.12;}}
   if(!DIRT&&(mode==='race'||mode==='paused'||mode==='results')){if(c.slip>4.5&&c.speed>5)skidMark(c);else c.skid=null;}
   if(cd>160||mode==='menu'||mode==='garage'||mode==='lobby')return;
