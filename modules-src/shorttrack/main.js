@@ -11,7 +11,7 @@ import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_
 // ===================== TUNING =====================
 const CFG = {
   L:180, R:62, W:16, APRON:7, turnBank:24, straightBank:6,      // track (m, degrees)
-  bankIn:85, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
+  bankIn:60, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
   g:9.81, grip:1.0, apronGrip:0.82,                             // tire grip (mu)
   offTrack:0.25,     // how much of the apron penalty applies (0.25 = 75% less than full)
   concreteTurn:0.8, concreteSpeed:0.9, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
@@ -21,7 +21,7 @@ const CFG = {
   brake:11, reverseMax:6,
   scrub:0.0065,      // speed lost per unit of steering: decel = scrub * |steer| * v^2
   slideScrub:0.45,   // extra decel while sliding sideways
-  wheelbase:2.8, steerLow:0.47, steerSpeed:0.11, steerRampIn:6, steerRampOut:8,
+  wheelbase:2.8, steerLow:0.47, steerSpeed:0.09, steerRampIn:6, steerRampOut:6,
   carScale:1.15,     // visual and collision size of every car
   spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
   wallRest:0.22, carRest:0.15, damageScale:1,
@@ -40,10 +40,10 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
 const TRACKS={
-  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:40,W:13,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,smooth:1.05,gripUp:1},
-  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:13,APRON:6,turnBank:27,straightBank:8,bankIn:50,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.0,smooth:1.45,gripUp:1.1},
-  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:13,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.25,smooth:1.55,gripUp:1.1,bareInfield:true},
-  dirt:{name:'Beaver Dam Raceway',miles:'0.3 mi',rec:'dirt',L:109,R:50,W:15,APRON:6,turnBank:20,straightBank:10,bankIn:65,bankOut:25,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.6,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
+  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:35,W:13,APRON:7,turnBank:24,straightBank:10,bankIn:55,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,steer:1.0,smooth:1.05,gripUp:1},
+  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:13,APRON:6,turnBank:21,straightBank:11,bankIn:50,bankOut:45,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:.9,smooth:1.45,gripUp:1},
+  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:13,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.15,smooth:1.25,gripUp:1.1,bareInfield:true},
+  dirt:{name:'Beaver Dam Raceway',miles:'0.3 mi',rec:'dirt',L:109,R:50,W:15,APRON:6,turnBank:20,straightBank:10,bankIn:65,bankOut:35,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.6,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
 const DIRT=TRACK.surface==='dirt';if(TRACK.grip)CFG.grip=TRACK.grip;if(TRACK.apronGrip)CFG.apronGrip=TRACK.apronGrip;CFG.aiGrip=CFG.grip;CFG.grip*=TRACK.gripUp||1;CFG.apronGrip*=TRACK.gripUp||1;if(DIRT){CFG.scrub*=0.55;CFG.slideScrub=0.22;}
