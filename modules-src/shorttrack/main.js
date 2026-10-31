@@ -40,9 +40,9 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
 const TRACKS={
-  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:35,W:13,APRON:7,turnBank:24,straightBank:10,bankIn:55,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,steer:1.0,smooth:1.35,gripUp:1},
-  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:13,APRON:6,turnBank:21,straightBank:11,bankIn:50,bankOut:45,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:.9,smooth:1.45,gripUp:1},
-  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:13,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.15,smooth:1.25,gripUp:1.1,bareInfield:true},
+  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:35,W:16,APRON:7,turnBank:24,straightBank:10,bankIn:55,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,steer:1.0,smooth:1.35,gripUp:1},
+  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:16,APRON:6,turnBank:21,straightBank:11,bankIn:50,bankOut:45,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:.9,smooth:1.45,gripUp:1},
+  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:16,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.15,smooth:1.25,gripUp:1.1,bareInfield:true},
   dirt:{name:'Beaver Dam Raceway',miles:'0.3 mi',rec:'dirt',L:109,R:50,W:15,APRON:6,turnBank:20,straightBank:10,bankIn:65,bankOut:35,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.6,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
@@ -104,10 +104,10 @@ const skyDay=makeSky(2200);scene.add(skyDay);
 const envNight=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
 const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new THREE.Mesh(new THREE.CircleGeometry(800,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x5e523d}));gnd.position.y=-5;es.add(gnd);
   const rt=pmrem.fromScene(es,0.02);return rt.texture;})();
-let envTex=envDay,ENVK=.35;
+let envTex=envDay,ENVK=.25;
 scene.environment=envDay;
-const hemi=new THREE.HemisphereLight(0xffe6c4, 0x4a3a25, 0.15); scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xfff1dc,1.0); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+const hemi=new THREE.HemisphereLight(0xff9a29, 0x402f1a, 0.15); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfaba66,.8); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
 Object.assign(sun.shadow.camera,{left:-55,right:55,top:55,bottom:-55,near:1,far:340}); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
 scene.add(sun,sun.target);
 // post-processing: subtle bloom by day, glowing lights at night
