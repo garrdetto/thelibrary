@@ -39,11 +39,55 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
+// ---------------- Track list ----------------
+// Layout (metres): L = straight length, R = turn radius, W = racing surface width, APRON = flat apron width
+// Banking (degrees): turnBank in the turns, straightBank on the straights;
+//   bankIn / bankOut = metres the banking takes to ramp up into a turn and back down out of it
+// Groove (metres from centerline, + = toward the wall): grooveHigh / grooveLow = the high and low racing lines
+// Feel: steer = steering sensitivity (1 = default), smooth = steering smoothing (higher = smoother inputs)
+// Grip: gripUp = player grip multiplier, grip / apronGrip = base tire grip (only set where it differs)
+// Records: rec = lap-record id, minLap = shortest lap (ms) accepted as a record
+// Options: surface:'dirt' = dirt track, bareInfield = no pit road or scoring pylon in the infield
 const TRACKS={
-  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:35,W:16,APRON:7,turnBank:24,straightBank:10,bankIn:55,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,steer:.9,smooth:1.5,gripUp:1.05},
-  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:16,APRON:6,turnBank:21,straightBank:11,bankIn:50,bankOut:45,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:.85,smooth:1.65,gripUp:1.1},
-  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:16,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1,smooth:1.35,gripUp:1.1,bareInfield:true},
-  dirt:{name:'Beaver Dam Raceway',miles:'0.3 mi',rec:'dirt',L:109,R:50,W:15,APRON:6,turnBank:20,straightBank:10,bankIn:65,bankOut:35,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.6,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
+  bullring:{
+    name:'Madison International Raceway', miles:'0.5 mi', rec:'shorttrack',
+    L:150, R:35, W:16, APRON:7,
+    turnBank:24, straightBank:10, bankIn:55, bankOut:40,
+    grooveHigh:5.0, grooveLow:-5.2,
+    steer:0.9, smooth:1.5,
+    gripUp:1.05,
+    minLap:12000,
+  },
+  dells:{
+    name:'Fox Speedway', miles:'0.3 mi', rec:'fox',
+    L:122, R:35, W:16, APRON:6,
+    turnBank:21, straightBank:11, bankIn:50, bankOut:45,
+    grooveHigh:4.0, grooveLow:-4.3,
+    steer:0.85, smooth:1.65,
+    gripUp:1.1,
+    minLap:8000,
+  },
+  dellswide:{
+    name:'Dells Raceway Park', miles:'0.27 mi', rec:'dellsraceway',
+    L:122, R:30, W:16, APRON:6,
+    turnBank:19, straightBank:10, bankIn:60, bankOut:35,
+    grooveHigh:4.4, grooveLow:-4.7,
+    steer:1, smooth:1.35,
+    gripUp:1.1,
+    minLap:7000,
+    bareInfield:true,
+  },
+  dirt:{
+    name:'Beaver Dam Raceway', miles:'0.3 mi', rec:'dirt',
+    L:109, R:50, W:15, APRON:6,
+    turnBank:20, straightBank:10, bankIn:65, bankOut:35,
+    grooveHigh:4.8, grooveLow:-5.2,
+    steer:1.6, smooth:1.04,
+    grip:0.72, apronGrip:0.6, gripUp:1.4,
+    minLap:8000,
+    surface:'dirt',
+  },
+};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
 const DIRT=TRACK.surface==='dirt';if(TRACK.grip)CFG.grip=TRACK.grip;if(TRACK.apronGrip)CFG.apronGrip=TRACK.apronGrip;CFG.aiGrip=CFG.grip;CFG.grip*=TRACK.gripUp||1;CFG.apronGrip*=TRACK.gripUp||1;if(DIRT){CFG.scrub*=0.55;CFG.slideScrub=0.22;}
@@ -403,8 +447,8 @@ const flagMat=new THREE.MeshBasicMaterial({color:0xffcc00,side:DS});
  const flag=new THREE.Mesh(new THREE.PlaneGeometry(1.5,1.0),flagMat);flag.position.set(bx-c.nx*2.2,fy+6.4,bz-c.nz*2.2);flag.rotation.y=Math.PI/2;scene.add(flag);}
 
 // ===================== EFFECTS =====================
-const MARKS=DIRT?14000:1800;
-const markMesh=new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3,0.9).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:DIRT?0x2a1a10:0x080808,transparent:true,opacity:DIRT?0.42:0.3,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3}),MARKS);
+const MARKS=DIRT?14000:7000;
+const markMesh=new THREE.InstancedMesh(new THREE.PlaneGeometry(0.3,0.9).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:DIRT?0x2a1a10:0x080808,transparent:true,opacity:DIRT?0.42:0.255,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3}),MARKS);
 markMesh.count=0;markMesh.frustumCulled=false;scene.add(markMesh);let markIdx=0,markTotal=0;setTimeout(()=>{if(!DIRT)seedMarks(420);},0);
 function addMark(c,len=0.9){
   for(const sx of [TRK_HALF,-TRK_HALF]){
@@ -413,15 +457,39 @@ function addMark(c,len=0.9){
   }
   markMesh.count=markTotal;markMesh.instanceMatrix.needsUpdate=true;
 }
+// Solid skid marks: each rear tire lays a strip joined to where it was last frame, so the mark is unbroken.
+const SKID_SEG=0.5;
+function skidMark(c){
+  if(!c.skid)c.skid=[null,null];
+  [TRK_HALF,-TRK_HALF].forEach((sx,k)=>{
+    _v.set(sx,0.02,TRK_REAR).applyMatrix4(c.m.root.matrixWorld);const prev=c.skid[k];
+    if(!prev){c.skid[k]=_v.clone();return;}
+    const dx=_v.x-prev.x,dz=_v.z-prev.z,dist=Math.hypot(dx,dz);
+    if(dist>6){prev.copy(_v);return;}if(dist<SKID_SEG)return;
+    const mx=(prev.x+_v.x)/2,mz=(prev.z+_v.z)/2,tp=toTrack(mx,mz),nrm=normalAt(tp.s,tp.lat,_n);
+    _f.set(dx,0,dz);_f.addScaledVector(nrm,-_f.dot(nrm)).normalize();_x.crossVectors(nrm,_f);_m.makeBasis(_x,nrm,_f);
+    _o.quaternion.setFromRotationMatrix(_m);_o.position.set(mx,(prev.y+_v.y)/2,mz);_o.scale.set(1,1,(dist+0.04)/0.9);_o.updateMatrix();
+    markMesh.setMatrixAt(markIdx,_o.matrix);markIdx=(markIdx+1)%MARKS;markTotal=Math.min(MARKS,markTotal+1);prev.copy(_v);});
+  markMesh.count=markTotal;markMesh.instanceMatrix.needsUpdate=true;
+}
 const WEAR={c:document.createElement('canvas'),t:0,up:0,dirty:false};WEAR.c.width=128;WEAR.c.height=4096;WEAR.g=WEAR.c.getContext('2d');
 WEAR.tex=new THREE.CanvasTexture(WEAR.c);WEAR.tex.colorSpace=THREE.SRGBColorSpace;WEAR.tex.anisotropy=8;
 if(!DIRT)addMesh(ribbon(pt(-HW,0.006),pt(HW,0.006),0,P,SEG,P,'across'),new THREE.MeshStandardMaterial({map:WEAR.tex,transparent:true,depthWrite:false,roughness:0.6,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
 function clearWear(){WEAR.g.clearRect(0,0,WEAR.c.width,WEAR.c.height);WEAR.tex.needsUpdate=true;}
-function stampWear(c){const g=WEAR.g,cw=WEAR.c.width,ch=WEAR.c.height,y=(1-mod(c.tp.s,P)/P)*ch,a=Math.min(0.05,0.012+c.slip*0.004);
-  g.fillStyle=`rgba(12,12,14,${a})`;for(const off of [-0.84,0.84]){const lat=c.tp.lat+off*CFG.carScale;if(lat<-HW||lat>HW)continue;g.fillRect((lat+HW)/W*cw-1.6,y-3.5,3.2,7);}
+// Rubber build-up: every tire pass darkens the surface under it by WEAR_PASS (1%). Passes stack all race.
+// Purely visual: nothing in the physics reads this layer, so grip and speed are unaffected.
+const WEAR_PASS=0.01,WEAR_TIRE=0.32*CFG.carScale;
+function stampWear(c){const g=WEAR.g,cw=WEAR.c.width,ch=WEAR.c.height,y=(1-mod(c.tp.s,P)/P)*ch;
+  if(!c.wearPt)c.wearPt=[null,null];
+  g.strokeStyle=`rgba(12,12,14,${WEAR_PASS})`;g.lineWidth=Math.max(1,WEAR_TIRE/W*cw);g.lineCap='butt';
+  [-0.84,0.84].forEach((off,k)=>{const lat=c.tp.lat+off*CFG.carScale,x=(lat+HW)/W*cw,p0=c.wearPt[k];
+    if(p0&&Math.abs(y-p0.y)<0.5&&Math.abs(x-p0.x)<0.5)return;           // hasn't moved a pixel yet: wait, so a spot isn't darkened twice
+    c.wearPt[k]={x,y};
+    if(!p0||Math.abs(y-p0.y)>ch/2||lat<-HW||lat>HW)return;              // first point, or wrapped past the start of the texture
+    g.beginPath();g.moveTo(p0.x,p0.y);g.lineTo(x,y);g.stroke();});
   WEAR.dirty=true;}
 function updateWear(dt){if(DIRT)return;WEAR.t+=dt;WEAR.up+=dt;
-  if(WEAR.t>=0.05){WEAR.t=0;cars.forEach(c=>{if(c.vis&&!c.isPace&&c.speed>3)stampWear(c);});}
+  if(WEAR.t>=0.03){WEAR.t=0;cars.forEach(c=>{if(c.vis&&c.speed>3)stampWear(c);else c.wearPt=null;});}
   if(WEAR.dirty&&WEAR.up>=0.5){WEAR.up=0;WEAR.dirty=false;WEAR.tex.needsUpdate=true;}}
 function resetMarks(){markIdx=0;markTotal=0;markMesh.count=0;clearWear();if(!DIRT)seedMarks(420);}
 function seedMarks(n){const r=rng(77);
@@ -2121,10 +2189,10 @@ function carVisual(c,dt){
   const cd=camera.position.distanceTo(m.root.position);
   if(c.tag)c.tag.visible=cd<90&&cd>4;
   if(DIRT&&(mode==='race'||mode==='paused'||mode==='results')){c.markT-=dt;if(c.markT<=0&&c.speed>2.5){addMark(c,Math.min(4,c.speed*0.12+0.3));c.markT=0.12;}}
+  if(!DIRT&&(mode==='race'||mode==='paused'||mode==='results')){if(c.slip>4.5&&c.speed>5)skidMark(c);else c.skid=null;}
   if(cd>160||mode==='menu'||mode==='garage'||mode==='lobby')return;
   const sp=c.speed;
   if(DIRT){if(sp>8&&(c.slip>1.5||c.thr)){c.smokeT-=dt;if(c.smokeT<=0){_v.set((Math.random()-0.5)*1.6,0.25,-2.2).applyMatrix4(m.root.matrixWorld);spawnSmoke(_v.x,_v.y,_v.z,c.vx*0.2,c.vz*0.2,false,1.1+Math.min(2,c.slip*0.25),0x9a7656);c.smokeT=c.slip>3?0.03:0.07;}}}
-  else if(c.slip>4.5&&sp>5){c.markT-=dt;if(c.markT<=0){addMark(c);c.markT=0.05;}}
   if(!DIRT&&c.slip>6&&sp>4){c.smokeT-=dt;if(c.smokeT<=0){_v.set(0,0.3,-1.6).applyMatrix4(m.root.matrixWorld);spawnSmoke(_v.x,_v.y,_v.z,c.vx,c.vz,false,1.3);c.smokeT=0.05;}}
   if(d.f>55||d.f+d.r+d.l+d.rt>200){c.smokeT-=dt;if(c.smokeT<=0){_v.set(0,1.0,1.7).applyMatrix4(m.root.matrixWorld);spawnSmoke(_v.x,_v.y,_v.z,c.vx,c.vz,true,1.0);c.smokeT=0.08;}}
 }
