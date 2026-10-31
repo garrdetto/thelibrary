@@ -93,7 +93,8 @@ const composer = new EffectComposer(renderer);
 composer.renderTarget.texture.type = THREE.HalfFloatType; // Keep high-precision HDR color grading
 
 // 1. Initial Render Pass
-composer.addPass(new RenderPass(scene, camera));
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
 
 // 2. Bloom Pass 
 const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.10, 0.45, 0.88);
@@ -104,11 +105,14 @@ composer.addPass(new OutputPass());
 
 let useComposer = true;
 
-// ⚡ ALTERNATIVE: Hijack renderer.render so you don't have to change your loop
+// ⚡ SAFE INTERCEPTION: Route through composer without causing an infinite black loop
 const originalRender = renderer.render.bind(renderer); 
 renderer.render = function(sc, cam) {
   if (useComposer) {
+    // Temporarily restore the original renderer so the composer doesn't loop infinitely
+    renderer.render = originalRender; 
     composer.render();
+    renderer.render = this; // Re-hook it after the composer cycle finishes
   } else {
     originalRender(sc, cam);
   }
@@ -120,12 +124,12 @@ function handleResize() {
   const h = wrap ? wrap.clientHeight : window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
-  originalRender(scene, camera); // Use original render to size target internal states
   renderer.setSize(w, h);
   composer.setSize(w, h);
 }
 window.addEventListener('resize', handleResize);
 handleResize(); // Initial sizing run
+
 
 // ===================== TEXTURES =====================
 function canvasTex(w,h,draw,repeat){
