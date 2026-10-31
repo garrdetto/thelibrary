@@ -40,9 +40,9 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
 const TRACKS={
-  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:40,W:13,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,smooth:1.05,gripUp:1.1},
-  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:13,APRON:6,turnBank:27,straightBank:8,bankIn:50,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.05,smooth:1.75,gripUp:1.1},
-  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:13,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.25,smooth:1.75,gripUp:1.1,bareInfield:true},
+  bullring:{name:'Madison International Raceway',miles:'0.5 mi',rec:'shorttrack',L:150,R:40,W:13,APRON:7,turnBank:24,straightBank:6,bankIn:85,bankOut:40,grooveHigh:5.0,grooveLow:-5.2,minLap:12000,smooth:1.05,gripUp:1},
+  dells:{name:'Fox Speedway',miles:'0.3 mi',rec:'fox',L:122,R:35,W:13,APRON:6,turnBank:27,straightBank:8,bankIn:50,bankOut:25,grooveHigh:4.0,grooveLow:-4.3,minLap:8000,steer:1.0,smooth:1.45,gripUp:1.1},
+  dellswide:{name:'Dells Raceway Park',miles:'0.27 mi',rec:'dellsraceway',L:122,R:30,W:13,APRON:6,turnBank:19,straightBank:10,bankIn:60,bankOut:35,grooveHigh:4.4,grooveLow:-4.7,minLap:7000,steer:1.25,smooth:1.55,gripUp:1.1,bareInfield:true},
   dirt:{name:'Beaver Dam Raceway',miles:'0.3 mi',rec:'dirt',L:109,R:50,W:15,APRON:6,turnBank:20,straightBank:10,bankIn:65,bankOut:25,grooveHigh:4.8,grooveLow:-5.2,minLap:8000,steer:1.6,smooth:1.04,surface:'dirt',grip:0.72,apronGrip:0.6,gripUp:1.4}};
 const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
@@ -93,7 +93,7 @@ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'h
 renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
 const scene=new THREE.Scene();
-scene.fog = new THREE.Fog(0xc9d9ea, 4000, 15000);
+scene.fog = new THREE.Fog(0x#5c6f82, 4000, 15000);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,2000);
 const pmrem=new THREE.PMREMGenerator(renderer);
 const SUN_OFF=new THREE.Vector3(60,110,40);
@@ -106,14 +106,14 @@ const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new
   const rt=pmrem.fromScene(es,0.02);return rt.texture;})();
 let envTex=envDay,ENVK=1.0;
 scene.environment=envDay;
-const hemi=new THREE.HemisphereLight(0xcfe3ff,0x3a4a2a,0.45); scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xfff1dc,2.8); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+const hemi=new THREE.HemisphereLight(0xcfe3ff,0x3a4a2a,0.35); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff1dc,1.8); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
 Object.assign(sun.shadow.camera,{left:-55,right:55,top:55,bottom:-55,near:1,far:340}); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
 scene.add(sun,sun.target);
 // post-processing: subtle bloom by day, glowing lights at night
 const composer=new EffectComposer(renderer,new THREE.WebGLRenderTarget(16,16,{type:THREE.HalfFloatType,samples:4}));
 composer.addPass(new RenderPass(scene,camera));
-const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.3,0.45,0.88);composer.addPass(bloom);composer.addPass(new OutputPass());
+const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.12,0.45,0.88);composer.addPass(bloom);composer.addPass(new OutputPass());
 let useComposer=true;
 
 // ===================== TEXTURES =====================
@@ -129,9 +129,9 @@ function noiseFill(g,w,h,base,amt,n){
 function rr(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
 const TEX={};
 TEX.asphalt=canvasTex(512,512,(g,w,h)=>{
-  noiseFill(g,w,h,'#3b3d42',0.3,26000);
+  noiseFill(g,w,h,'#2b2b2a',0.3,26000);
   const gr=g.createLinearGradient(0,0,w,0);
-  gr.addColorStop(0.06,'rgba(0,0,0,0)');gr.addColorStop(0.2,'rgba(0,0,0,.3)');gr.addColorStop(0.4,'rgba(0,0,0,.22)');gr.addColorStop(0.58,'rgba(0,0,0,0)');
+  gr.addColorStop(0.06,'rgba(0,0,0,0)');gr.addColorStop(0.1,'rgba(0,0,0,.3)');gr.addColorStop(0.25,'rgba(0,0,0,.22)');gr.addColorStop(0.40,'rgba(0,0,0,0)');
   g.fillStyle=gr;g.fillRect(0,0,w,h);
 },true);
 TEX.concrete=canvasTex(256,256,(g,w,h)=>noiseFill(g,w,h,'#8e9196',0.25,9000),true);
