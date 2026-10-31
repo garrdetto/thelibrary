@@ -14,7 +14,7 @@ const CFG = {
   bankIn:60, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
   g:9.81, grip:1.1, apronGrip:0.82,                             // tire grip (mu)
   offTrack:0.25,     // how much of the apron penalty applies (0.25 = 75% less than full)
-  concreteTurn:0.8, concreteSpeed:0.9, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
+  concreteTurn:0.3, concreteSpeed:0.8, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
   contactSlow:0.4,
   packBoost:0.02,    // +2% top speed per position behind the leader; tapers over 2 s after a pass   // speed fraction lost per second while rubbing another car
   power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:4.6, // engine & coast-down
@@ -93,7 +93,7 @@ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'h
 renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
 const scene=new THREE.Scene();
-scene.fog = new THREE.Fog(0x5c6f82, 4000, 15000);
+scene.fog = new THREE.Fog(0x9a8570, 4000, 15000);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,2000);
 const pmrem=new THREE.PMREMGenerator(renderer);
 const SUN_OFF=new THREE.Vector3(60,110,40);
@@ -102,11 +102,11 @@ function makeSky(scale){const sk=new Sky();sk.scale.setScalar(scale);const u=sk.
   u.turbidity.value=2.2;u.rayleigh.value=1.2;u.mieCoefficient.value=0.004;u.mieDirectionalG.value=0.82;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;}
 const skyDay=makeSky(2200);scene.add(skyDay);
 const envNight=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
-const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new THREE.Mesh(new THREE.CircleGeometry(800,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x4a5a44}));gnd.position.y=-5;es.add(gnd);
+const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new THREE.Mesh(new THREE.CircleGeometry(800,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x5e523d}));gnd.position.y=-5;es.add(gnd);
   const rt=pmrem.fromScene(es,0.02);return rt.texture;})();
-let envTex=envDay,ENVK=.7;
+let envTex=envDay,ENVK=.5;
 scene.environment=envDay;
-const hemi=new THREE.HemisphereLight(0xcfe3ff,0x3a4a2a,0.20); scene.add(hemi);
+const hemi=new THREE.HemisphereLight(0xffe6c4, 0x4a3a25, 0.15); scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff1dc,1.0); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
 Object.assign(sun.shadow.camera,{left:-55,right:55,top:55,bottom:-55,near:1,far:340}); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
 scene.add(sun,sun.target);
