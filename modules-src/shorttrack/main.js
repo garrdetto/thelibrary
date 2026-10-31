@@ -93,21 +93,21 @@ const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'h
 renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
 const scene=new THREE.Scene();
-scene.fog = new THREE.Fog(0x9a8570, 4000, 15000);
+scene.fog = new THREE.Fog(0x9a8570, 8000, 15000);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,2000);
 const pmrem=new THREE.PMREMGenerator(renderer);
 const SUN_OFF=new THREE.Vector3(60,110,40);
 // physically based daytime sky (also used to build the reflection map for paint)
 function makeSky(scale){const sk=new Sky();sk.scale.setScalar(scale);const u=sk.material.uniforms;
-  u.turbidity.value=5.0;u.rayleigh.value=3.0;u.mieCoefficient.value=0.001;u.mieDirectionalG.value=0.88;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;} // 2. Heavily jacked up turbidity and rayleigh scattering to force deep azure skies and vibrant golden horizons
+  u.turbidity.value=3.0;u.rayleigh.value=1.0;u.mieCoefficient.value=0.001;u.mieDirectionalG.value=0.88;u.sunPosition.value.copy(SUN_OFF).normalize();return sk;} // 2. Heavily jacked up turbidity and rayleigh scattering to force deep azure skies and vibrant golden horizons
 const skyDay=makeSky(2200);scene.add(skyDay);
 const envNight=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
 const envDay=(()=>{const es=new THREE.Scene();es.add(makeSky(900));const gnd=new THREE.Mesh(new THREE.CircleGeometry(800,32).rotateX(-Math.PI/2),new THREE.MeshBasicMaterial({color:0x5e523d}));gnd.position.y=-5;es.add(gnd);
   const rt=pmrem.fromScene(es,0.02);return rt.texture;})();
-let envTex=envDay,ENVK=.25;
+let envTex=envDay,ENVK=.15;
 scene.environment=envDay;
 const hemi=new THREE.HemisphereLight(0xff9a29, 0x402f1a, 0.15); scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xfaba66,.8); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
+const sun=new THREE.DirectionalLight(0xfaba66,.8.6); sun.castShadow=true; sun.shadow.mapSize.set(2048,2048);
 Object.assign(sun.shadow.camera,{left:-55,right:55,top:55,bottom:-55,near:1,far:340}); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
 scene.add(sun,sun.target);
 // post-processing: subtle bloom by day, glowing lights at night
