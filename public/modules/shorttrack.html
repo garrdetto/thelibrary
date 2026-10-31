@@ -324,7 +324,7 @@ renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESF
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
 const scene=new THREE.Scene();
 scene.fog=new THREE.Fog(0xc9d9ea,1800,6000);
-const camera=new THREE.PerspectiveCamera(60,1,0.1,2500);
+const camera=new THREE.PerspectiveCamera(45,1,0.1,2000);
 const pmrem=new THREE.PMREMGenerator(renderer);
 const SUN_OFF=new THREE.Vector3(60,110,40);
 // physically based daytime sky (also used to build the reflection map for paint)
