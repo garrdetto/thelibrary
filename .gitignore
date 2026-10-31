@@ -3,3 +3,11 @@ dist/
 .wrangler/
 .dev.vars
 docs/gate/
+public/modules/chunks/
+public/modules/botwreck.html
+public/modules/checkers.html
+public/modules/chess.html
+public/modules/maplestreet.html
+public/modules/sandlot.html
+public/modules/sandlot3d.html
+public/modules/shorttrack.html
