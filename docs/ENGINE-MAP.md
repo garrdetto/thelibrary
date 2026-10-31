@@ -14,6 +14,7 @@ is added, moved or removed.
 - `.github/workflows/claude-runner.yml` + `scripts/claude-edit.sh`: manually dispatched Claude task runner; unchanged, already opens a pull request with auto-merge.
 - Repository settings this pipeline relies on (owner-only; see the Phase 0 pull request): auto-merge allowed, squash merge with the pull request title as the commit message, delete head branches on merge, branch protection on `main` requiring the `modules` status check with no required reviews.
 - Labels: `needs-owner`, `phase-0` … `phase-8`.
+- `docs/screenshots/<phase>-<step>/`: before/after module-gate screenshots committed as pull-request evidence.
 
 ## Renderers in use today (Phase 1 unifies these)
 
