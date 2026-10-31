@@ -1,9 +1,10 @@
 /**
- * Online rooms over WebRTC (PeerJS, loaded from unpkg like the other online
- * modules on the site). The host's browser runs the authority (Host) and
+ * Online rooms over WebRTC (PeerJS, bundled into the module build like the
+ * other online modules on the site). The host's browser runs the authority (Host) and
  * relays to up to 8 neighbors; everyone else joins with a 6-letter code.
  * Works on any static page — no game backend required.
  */
+import { Peer as PeerJs } from 'peerjs';
 import type { ClientMsg, JoinOptions, ServerMsg } from '../../shared/Protocol';
 import { Host } from './Host';
 import type { NetStatus, Transport } from './Transport';
@@ -29,7 +30,7 @@ const PREFIX = 'tl-maplestreet-';
 const MAX_NEIGHBORS = 8;
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
-export const peerAvailable = () => typeof (window as unknown as { Peer?: PeerCtor }).Peer === 'function';
+export const peerAvailable = () => typeof RTCPeerConnection === 'function';
 export const newRoomCode = () => Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
 
 export class PeerTransport implements Transport {
@@ -50,9 +51,7 @@ export class PeerTransport implements Transport {
   }
 
   private get Peer(): PeerCtor {
-    const P = (window as unknown as { Peer?: PeerCtor }).Peer;
-    if (!P) throw new Error('Online rooms need an internet connection (PeerJS did not load)');
-    return P;
+    return PeerJs as unknown as PeerCtor;
   }
 
   async connect(opts: JoinOptions) {

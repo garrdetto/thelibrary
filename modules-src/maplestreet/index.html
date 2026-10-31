@@ -5,19 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Maple Street — Neighborhood Builder</title>
   <meta name="description" content="Buy a lot, build and furnish a house, mow lawns, run deliveries and manage a capped bank loan in a shared 3D neighborhood." />
-  <script type="importmap">
-  {
-    "imports": {
-      "three": "https://unpkg.com/three@0.172.0/build/three.webgpu.min.js",
-      "three/webgpu": "https://unpkg.com/three@0.172.0/build/three.webgpu.min.js",
-      "three/tsl": "https://unpkg.com/three@0.172.0/build/three.tsl.min.js",
-      "three/addons/": "https://unpkg.com/three@0.172.0/examples/jsm/",
-      "@dimforge/rapier3d-compat": "https://unpkg.com/@dimforge/rapier3d-compat@0.14.0/rapier.es.js"
-    }
-  }
-  </script>
-  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js" defer></script>
-  <script src="https://unpkg.com/colyseus.js@0.15.28/dist/colyseus.js" defer></script>
   <style>
     :root {
       --panel: rgba(18, 21, 26, 0.78);
@@ -368,8 +355,6 @@
     </div>
   </div>
 
-  <script type="module">
-/*__BUNDLE__*/
-  </script>
+  <script type="module" src="./index.ts"></script>
 </body>
 </html>

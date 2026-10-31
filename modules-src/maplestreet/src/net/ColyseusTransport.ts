@@ -1,6 +1,6 @@
 /**
- * Colyseus client transport. colyseus.js is loaded as a classic UMD <script>
- * from unpkg and read from `window.Colyseus`, so it runs entirely in the page. All protocol traffic rides one message type
+ * Colyseus client transport. colyseus.js is bundled and loaded on demand the
+ * first time this transport connects, so it runs entirely in the page. All protocol traffic rides one message type
  * ('m') so the server room is a thin wrapper around NeighborhoodLogic.
  * Reconnects with exponential backoff if the socket drops.
  */
@@ -31,8 +31,9 @@ export class ColyseusTransport implements Transport {
   async connect(opts: JoinOptions) {
     this.opts = opts;
     this.statusCb('connecting');
-    const Colyseus = (window as unknown as { Colyseus?: { Client: new (url: string) => { joinOrCreate(name: string, opts: unknown): Promise<unknown> } } }).Colyseus;
-    if (!Colyseus) throw new Error('colyseus.js did not load');
+    type ColyseusLib = { Client: new (url: string) => { joinOrCreate(name: string, opts: unknown): Promise<unknown> } };
+    const lib = (await import('colyseus.js')) as unknown as Partial<ColyseusLib> & { default?: ColyseusLib };
+    const Colyseus = (lib.Client ? lib : lib.default) as ColyseusLib;
     const client = new Colyseus.Client(this.url);
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Colyseus server timed out')), 6000));
     const room = (await Promise.race([client.joinOrCreate(this.roomName, opts), timeout])) as unknown as ColyRoom;
