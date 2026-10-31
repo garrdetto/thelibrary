@@ -11,7 +11,7 @@ const SYSTEM = `You are Claude, working on "the library" website, whose reposito
 
 How to work:
 - Read AGENTS.md first and follow its conventions, platform rules and site rules.
-- Do what the administrator asks completely, in the code. Do not commit, push, or create branches: the workflow publishes your edits after you finish, and pushes to main deploy the site automatically.
+- Do what the administrator asks completely, in the code. Do not commit, push, or create branches: the workflow opens a pull request with your edits after you finish, the "modules" check builds it, and merges to main deploy the site automatically.
 - If you changed code, run \`pnpm build\` and fix every error before you finish.
 - If the message is a question, or needs no code change, answer it without editing files.
 - If the request is unclear, or would destroy data (dropping tables, deleting accounts or records, removing secrets), make no edits and ask one short clarifying question instead.
@@ -232,43 +232,60 @@ async function publish() {
   const touchesServer = changedFiles.some(file => file.startsWith('server/'))
   const notes = []
 
-  if (job.autoMerge) {
-    let pushed = run('git', ['push', 'origin', 'HEAD:main'])
-    if (!pushed.ok) {
-      const rebased = run('git', ['pull', '--rebase', 'origin', 'main'])
-      if (!rebased.ok) {
-        run('git', ['rebase', '--abort'])
-        run('git', ['push', '--force', 'origin', `HEAD:refs/heads/${branch}`])
-        await fail(`${reply}\n\nSomeone else changed the same code on main at the same time, so nothing went live. The work is saved on the branch ${branch}.`, base)
-      }
-      pushed = run('git', ['push', 'origin', 'HEAD:main'])
-      if (!pushed.ok) await fail(`${reply}\n\nGitHub refused the push to main:\n\n${tail(pushed.output, 10)}`, base)
-    }
-    if (newMigrations) {
-      if (process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID) {
-        const applied = run('pnpm', ['exec', 'wrangler', 'd1', 'migrations', 'apply', 'thelibrary-db', '--remote'])
-        notes.push(applied.ok ? 'I applied the database change too.' : 'The database change still needs applying: run `pnpm exec wrangler d1 migrations apply thelibrary-db --remote`.')
-      } else {
-        notes.push('This includes a database change. Apply it with `pnpm exec wrangler d1 migrations apply thelibrary-db --remote` (or add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets so I can do it).')
-      }
-    }
-    if (touchesServer) notes.push('This touches the multiplayer service, so it goes live after Railway redeploys.')
-    notes.push('The site updates as soon as Cloudflare finishes deploying, usually within a couple of minutes.')
-    saveState({ ...state, reported: true })
-    await report({ status: 'merged', reply: [reply, ...notes].join('\n\n'), commit: git('rev-parse', 'HEAD'), ...base })
-    return
-  }
-
   const pushed = run('git', ['push', '--force', 'origin', `HEAD:refs/heads/${branch}`])
   if (!pushed.ok) await fail(`${reply}\n\nGitHub refused the push:\n\n${tail(pushed.output, 10)}`, base)
   const title = job.mode === 'revert' ? `Undo ${String(job.target).slice(0, 7)}` : `Site change: ${job.request.split('\n')[0].slice(0, 64)}`
-  const created = run('gh', ['pr', 'create', '--base', 'main', '--head', branch, '--title', title, '--body', `${reply}\n\nRequested from the admin panel (job ${JOB_ID}).`])
+  const created = run('gh', ['pr', 'create', '--repo', GITHUB_REPOSITORY, '--base', 'main', '--head', branch, '--title', title, '--body', `${reply}\n\nRequested from the admin panel (job ${JOB_ID}).`])
   const prUrl = created.ok ? created.output.trim().split('\n').pop() : `https://github.com/${GITHUB_REPOSITORY}/compare/main...${branch}?expand=1`
   if (!created.ok) notes.push('GitHub Actions isn\'t allowed to open pull requests here, so use the review link to open it yourself (or turn on "Allow GitHub Actions to create and approve pull requests" in the repository\'s Actions settings).')
-  if (newMigrations) notes.push('After merging, apply the database change with `pnpm exec wrangler d1 migrations apply thelibrary-db --remote`.')
-  notes.push('Nothing is live until you merge it.')
+  if (newMigrations) notes.push('After this merges, apply the database change with `pnpm exec wrangler d1 migrations apply thelibrary-db --remote`.')
+  if (touchesServer) notes.push('This touches the multiplayer service, so it goes live after Railway redeploys.')
+
+  if (job.autoMerge && created.ok) {
+    const merged = await mergeWhenGreen(prUrl)
+    if (merged) {
+      if (newMigrations && process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID) {
+        const applied = run('pnpm', ['exec', 'wrangler', 'd1', 'migrations', 'apply', 'thelibrary-db', '--remote'])
+        notes.push(applied.ok ? 'I applied the database change too.' : 'The database change still needs applying: run `pnpm exec wrangler d1 migrations apply thelibrary-db --remote`.')
+      }
+      notes.push('The site updates as soon as Cloudflare finishes deploying, usually within a couple of minutes.')
+      saveState({ ...state, reported: true })
+      await report({ status: 'merged', reply: [reply, ...notes].join('\n\n'), prUrl, commit: merged, ...base })
+      return
+    }
+    notes.push('Automatic merge is switched on: the pull request merges itself as soon as the `modules` check passes. If the check fails, nothing goes live and the pull request shows why.')
+  } else {
+    notes.push('Nothing is live until you merge it.')
+  }
   saveState({ ...state, reported: true })
   await report({ status: 'review', reply: [reply, ...notes].join('\n\n'), prUrl, commit: git('rev-parse', 'HEAD'), ...base })
+}
+
+// Turns on auto-merge (squash) for the pull request and waits for the `modules`
+// check to merge it. Returns the merge commit on main, or null if it is still
+// waiting after MERGE_WAIT_MS (the pull request stays open with auto-merge on).
+const MERGE_WAIT_MS = Number(process.env.SITE_CHANGES_MERGE_WAIT_MS ?? 20 * 60 * 1000)
+
+async function mergeWhenGreen(prUrl) {
+  const enabled = run('gh', ['pr', 'merge', prUrl, '--auto', '--squash'])
+  if (!enabled.ok) {
+    console.log(`Could not enable auto-merge: ${tail(enabled.output, 5)}`)
+    return null
+  }
+  const deadline = Date.now() + MERGE_WAIT_MS
+  while (Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20000))
+    const view = run('gh', ['pr', 'view', prUrl, '--json', 'state,mergeCommit'])
+    if (!view.ok) continue
+    try {
+      const info = JSON.parse(view.output)
+      if (info.state === 'MERGED') return info.mergeCommit?.oid ?? null
+      if (info.state === 'CLOSED') return null
+    } catch {
+      continue
+    }
+  }
+  return null
 }
 
 async function reportFailure() {

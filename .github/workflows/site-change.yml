@@ -59,9 +59,12 @@ jobs:
           SITE_CHANGES_MODEL: ${{ vars.SITE_CHANGES_MODEL }}
         run: node .github/site-changes/run.mjs claude
 
-      - name: Build and publish
+      # A pull request opened with the built-in GITHUB_TOKEN never starts other
+      # workflows, so the `modules` check (and auto-merge) needs a personal token:
+      # the CLAUDE_GITHUB_TOKEN repository secret, when it exists.
+      - name: Build and open a pull request
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CLAUDE_GITHUB_TOKEN || github.token }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: node .github/site-changes/run.mjs publish
