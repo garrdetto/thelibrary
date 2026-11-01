@@ -14,14 +14,14 @@ const CFG = {
   L:180, R:62, W:16, APRON:7, turnBank:24, straightBank:6,      // track (m, degrees)
   bankIn:60, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
   g:9.81, grip:1.05, apronGrip:0.82,                             // tire grip (mu)
-  offTrack:0.25,     // how much of the apron penalty applies (0.25 = 75% less than full)
-  concreteTurn:0.3, concreteSpeed:0.8, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
+  offTrack:0.7,     // how much of the apron penalty applies (0.25 = 75% less than full)
+  concreteTurn:0.10, concreteSpeed:0.8, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
   contactSlow:0.4,
   packBoost:0.02,    // +2% top speed per position behind the leader; tapers over 2 s after a pass   // speed fraction lost per second while rubbing another car
   power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:4.6, // engine & coast-down
-  brake:11, reverseMax:6,
+  brake:7, reverseMax:6,
   scrub:0.0065,      // speed lost per unit of steering: decel = scrub * |steer| * v^2
-  slideScrub:0.45,   // extra decel while sliding sideways
+  slideScrub:0.5,   // extra decel while sliding sideways
   wheelbase:2.8, steerLow:0.47, steerSpeed:0.07, steerRampIn:8, steerRampOut:6,
   carScale:1.15,     // visual and collision size of every car
   spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
@@ -60,7 +60,7 @@ const TRACKS={
     minLap:12000,
   },
   dells:{
-    name:'Fox Speedway', miles:'0.3 mi', rec:'fox',
+    name:'Fox Speedway', miles:'0.3 mi', rec:'dells',
     L:122, R:35, W:16, APRON:6,
     turnBank:21, straightBank:11, bankIn:50, bankOut:45,
     grooveHigh:4.0, grooveLow:-4.3,
@@ -69,12 +69,12 @@ const TRACKS={
     minLap:8000,
   },
   dellswide:{
-    name:'Dells Raceway Park', miles:'0.27 mi', rec:'dellsraceway',
+    name:'Dells Raceway Park', miles:'0.27 mi', rec:'dellswide',
     L:122, R:30, W:16, APRON:6,
     turnBank:19, straightBank:10, bankIn:60, bankOut:40,
     grooveHigh:4.4, grooveLow:-4.7,
-    steer:1, smooth:1.55,
-    gripUp:1.15,
+    steer:1.15, smooth:1.75,
+    gripUp:1.2,
     minLap:7000,
     bareInfield:true,
   },
