@@ -14,8 +14,8 @@ const CFG = {
   L:180, R:62, W:16, APRON:7, turnBank:24, straightBank:6,      // track (m, degrees)
   bankIn:60, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
   g:9.81, grip:1.05, apronGrip:0.82,                             // tire grip (mu)
-  offTrack:0.25,     // how much of the apron penalty applies (0.25 = 75% less than full)
-  concreteTurn:0.3, concreteSpeed:0.8, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
+  offTrack:0.7,     // how much of the apron penalty applies (0.25 = 75% less than full)
+  concreteTurn:0.10, concreteSpeed:0.8, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
   contactSlow:0.4,
   packBoost:0.02,    // +2% top speed per position behind the leader; tapers over 2 s after a pass   // speed fraction lost per second while rubbing another car
   power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:4.6, // engine & coast-down
