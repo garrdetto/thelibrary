@@ -120,7 +120,15 @@ export class ParkRenderer {
       const i = tileIndex(map, Math.max(0, Math.min(map.w - 1, x)), Math.max(0, Math.min(map.h - 1, y)))
       let col = SURFACE_COLORS[map.surface[i]] ?? SURFACE_COLORS[0]
       const owner = map.owner[i]
-      if (owner === 255) col = [col[0] * 0.8 + 0.035, col[1] * 0.8 + 0.04, col[2] * 0.8 + 0.03]
+      if (owner === 255) {
+        const forSale = s.parks.some(park => {
+          const limit = park.land?.limit
+          return limit && x >= limit.x0 && x <= limit.x1 && y >= limit.y0 && y <= limit.y1
+        })
+        col = forSale
+          ? [col[0] * 0.65 + 0.35, col[1] * 0.65 + 0.12, col[2] * 0.65 + 0.12]
+          : [col[0] * 0.8 + 0.035, col[1] * 0.8 + 0.04, col[2] * 0.8 + 0.03]
+      }
       else if (s.parks.length > 1 && owner !== this.myPark) col = [col[0] * 0.92, col[1] * 0.9, col[2] * 0.92]
       return col
     }

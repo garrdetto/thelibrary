@@ -5,7 +5,9 @@ import {
   applyDynamic,
   createPark,
   deserializePark,
+  decodeRle,
   encodeDynamic,
+  encodeRle,
   pathHeightAt,
   pathsConnect,
   rideCapacity,
@@ -37,6 +39,70 @@ function parkFixture() {
 function buildPath(state, kind, x, y, elevation = 0) {
   return applyCommand(state, { t: 'path', kind, elevation, x0: x, y0: y, x1: x, y1: y })
 }
+
+test('parks start with the same land and can buy contiguous expansion squares', () => {
+  const state = createPark('meadowbrook')
+  const land = state.parks[0].land
+  assert.equal(state.map.w, 128)
+  assert.equal(state.map.h, 128)
+  assert.deepEqual(land.initial, { x0: 36, y0: 36, x1: 91, y1: 91 })
+  assert.deepEqual(land.limit, { x0: 8, y0: 8, x1: 119, y1: 119 })
+  const initialArea = (land.initial.x1 - land.initial.x0 + 1) * (land.initial.y1 - land.initial.y0 + 1)
+  const limitArea = (land.limit.x1 - land.limit.x0 + 1) * (land.limit.y1 - land.limit.y0 + 1)
+  assert.equal(limitArea, initialArea * 4)
+  assert.equal(state.map.owner.filter(owner => owner === 0).length, initialArea)
+
+  state.parks[0].named = true
+  const tile = { x: land.initial.x0 - 1, y: land.initial.y0 }
+  const index = tileIndex(state.map, tile.x, tile.y)
+  const before = state.parks[0].cash
+  const result = applyCommand(state, { t: 'buyLand', ...tile })
+  assert.deepEqual(result, { ok: true, cost: 100 })
+  assert.equal(state.map.owner[index], 0)
+  assert.equal(state.parks[0].cash, before - 100)
+  assert.equal(state.parks[0].month.landscaping, -100)
+
+  assert.equal(applyCommand(state, { t: 'buyLand', ...tile }).ok, false)
+  assert.equal(applyCommand(state, { t: 'buyLand', x: land.limit.x0, y: land.limit.y0 }).ok, false)
+  state.parks[0].cash = 99
+  assert.equal(applyCommand(state, { t: 'buyLand', x: tile.x - 1, y: tile.y }).ok, false)
+  assert.equal(state.map.owner[tileIndex(state.map, tile.x - 1, tile.y)], 255)
+})
+
+test('older 64-square saved parks expand into the purchase map without moving their starting park', () => {
+  const state = createPark('meadowbrook')
+  const saved = serializePark(state)
+  const offset = 32
+  const fields = ['corners', 'surface', 'water', 'path', 'pathElevation', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
+  for (const key of fields) {
+    const corners = key === 'corners'
+    const sourceWidth = corners ? state.map.w + 1 : state.map.w
+    const targetWidth = corners ? 65 : 64
+    const source = decodeRle(saved.map[key], sourceWidth * (corners ? state.map.h + 1 : state.map.h))
+    const crop = []
+    for (let y = 0; y < targetWidth; y++) for (let x = 0; x < targetWidth; x++) crop.push(source[(y + offset) * sourceWidth + x + offset])
+    saved.map[key] = encodeRle(crop)
+  }
+  saved.map.w = 64
+  saved.map.h = 64
+  saved.entities = Object.fromEntries(Object.entries(saved.entities)
+    .filter(([, entity]) => entity.x >= offset && entity.x < offset + 64 && entity.y >= offset && entity.y < offset + 64)
+    .map(([id, entity]) => [id, {
+      ...entity,
+      x: entity.x - offset,
+      y: entity.y - offset,
+      ...(entity.start ? { start: { ...entity.start, x: entity.start.x - offset, y: entity.start.y - offset } } : {}),
+    }]))
+  delete saved.parks[0].land
+  const loaded = deserializePark(saved)
+  assert.equal(loaded.map.w, 128)
+  assert.equal(loaded.map.h, 128)
+  assert.deepEqual(loaded.parks[0].land.initial, { x0: 36, y0: 36, x1: 91, y1: 91 })
+  assert.deepEqual(loaded.parks[0].land.limit, { x0: 8, y0: 8, x1: 119, y1: 119 })
+  const originalEntrance = Object.values(state.entities).find(entity => entity.type === 'parkEntrance')
+  const loadedEntrance = Object.values(loaded.entities).find(entity => entity.type === 'parkEntrance')
+  assert.deepEqual([loadedEntrance.x, loadedEntrance.y], [originalEntrance.x, originalEntrance.y])
+})
 
 test('raised paths and stair ramps connect and survive old and new saves', () => {
   const state = parkFixture()
@@ -122,13 +188,13 @@ test('custom kart rides run an independent two-seat fleet and sync each vehicle'
   assert.equal(replica.entities[result.id].trains.length, 14)
 })
 
-test('coaster building prices are doubled and electricity is five dollars per tile daily', () => {
+test('coaster building prices are doubled and electricity is one dollar per tile daily', () => {
   assert.equal(COASTER_STYLES.steel.cost, 4400)
   assert.equal(COASTER_STYLES.steel.pieceCost, 180)
   assert.equal(COASTER_STYLES.wooden.cost, 4000)
   assert.equal(COASTER_STYLES.junior.cost, 2400)
   assert.equal(COASTER_STYLES.inverted.cost, 5600)
-  assert.equal(ELECTRICITY_COST_PER_TILE_PER_DAY, 5)
+  assert.equal(ELECTRICITY_COST_PER_TILE_PER_DAY, 1)
 
   const state = parkFixture()
   state.entities = {
@@ -137,5 +203,5 @@ test('coaster building prices are doubled and electricity is five dollars per ti
     12: { id: 12, type: 'stall', kind: 'burger', x: 20, y: 20, size: [1, 1], rot: 0, park: 1 },
   }
   state.staff = [{ id: 1, park: 0, role: 'security' }]
-  assert.deepEqual(dailyOperatingCosts(state, 0), { wages: 100, electricity: 50, poweredTiles: 10 })
+  assert.deepEqual(dailyOperatingCosts(state, 0), { wages: 100, electricity: 10, poweredTiles: 10 })
 })

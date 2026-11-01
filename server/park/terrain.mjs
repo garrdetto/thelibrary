@@ -202,27 +202,34 @@ export function generateMap(scenario, players = 1) {
   const kind = scenario.terrain
   const rng = makeRng(scenario.seed)
   if (kind === 'versus') return generateVersus(scenario, Math.max(2, players), rng)
-  const size = scenario.size
+  const startSize = scenario.size
+  const size = startSize * 2
+  const offset = Math.floor((size - startSize) / 2)
   const map = blankMap(size, size, 6)
   sculpt(map, kind, scenario.seed)
   enforceSmooth(map)
   const margin = 4
-  for (let y = margin; y < size - margin; y++) for (let x = margin; x < size - margin; x++) map.owner[tileIndex(map, x, y)] = 0
-  const ex = Math.floor(size / 2), ey = size - margin - 1
+  const initial = { x0: offset + margin, y0: offset + margin, x1: offset + startSize - margin - 1, y1: offset + startSize - margin - 1 }
+  const width = initial.x1 - initial.x0 + 1
+  const limitX0 = initial.x0 - Math.ceil(width / 2)
+  const limitY0 = initial.y0 - Math.ceil(width / 2)
+  const landBounds = { initial, limit: { x0: limitX0, y0: limitY0, x1: limitX0 + width * 2 - 1, y1: limitY0 + width * 2 - 1 } }
+  for (let y = initial.y0; y <= initial.y1; y++) for (let x = initial.x0; x <= initial.x1; x++) map.owner[tileIndex(map, x, y)] = 0
+  const ex = offset + Math.floor(startSize / 2), ey = offset + startSize - margin - 1
   const base = Math.max(4, tileMax(map, ex, ey))
-  flattenRect(map, ex - 2, ey - 6, ex + 2, size - 1, base)
+  flattenRect(map, ex - 2, ey - 6, ex + 2, offset + startSize - 1, base)
   enforceSmooth(map)
   if (kind === 'meadow') addWater(map, 4)
   if (kind === 'coast') addWater(map, 4)
   if (kind === 'alpine') addWater(map, 8, (x, y) => Math.hypot(x / size - 0.32, y / size - 0.38) < 0.14)
   paintSurfaces(map, kind, scenario.seed)
-  for (let y = ey + 1; y < size; y++) { map.path[tileIndex(map, ex, y)] = 1; map.water[tileIndex(map, ex, y)] = -1 }
+  for (let y = ey + 1; y < offset + startSize; y++) { map.path[tileIndex(map, ex, y)] = 1; map.water[tileIndex(map, ex, y)] = -1 }
   for (let k = 1; k <= 4; k++) { const i = tileIndex(map, ex, ey - k); map.path[i] = 1; map.water[i] = -1 }
   map.water[tileIndex(map, ex, ey)] = -1
   const scenery = []
   scatter(map, rng, kind, 0, 0, size, size, scenery)
   const clear = scenery.filter(item => !(Math.abs(item.x - ex) <= 2 && item.y >= ey - 6))
-  return { map, scenery: clear, entrances: [{ park: 0, x: ex, y: ey, dir: 3 }] }
+  return { map, scenery: clear, entrances: [{ park: 0, x: ex, y: ey, dir: 3 }], landBounds }
 }
 
 function generateVersus(scenario, players, rng) {

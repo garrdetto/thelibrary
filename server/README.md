@@ -1,6 +1,6 @@
 # Pool real-time server
 
-Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v44` (v44 adds saved elevated paths, 14-car coaster trains, independently driven two-seat go-karts, and a $5 daily electricity charge per occupied ride/shop tile); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
+Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v45` (v45 adds purchasable park expansion land at $100 per square and sets daily electricity to $1 per occupied ride/shop tile); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
 
 Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin, currently `https://thelibrary.garrdetto.workers.dev`. Multiple trusted production or preview origins can be comma-separated. When configured, requests from other origins are rejected. When unset or empty, only `https://thelibrary.garrdetto.workers.dev` is accepted (v39 default). Configure explicit origins in production. In the site's Cloudflare build variables, set `VITE_POOL_SERVER_URL` to this service's public HTTPS URL, then redeploy the frontend. This public URL is compiled into the client; it is not a secret. When unset, the frontend uses its existing default service URL; signed-in solo practice remains available if multiplayer is offline.
 
@@ -139,3 +139,10 @@ Redeploy this service with the frontend so online parks run the same rules as so
 Redeploy this service with the frontend so online parks run the same rules as solo play:
 - Months now last ten days, and standard parks can borrow up to $50,000.
 - Ordinary footpaths can be assigned and repainted to custom colors.
+
+### Thrill Park v45
+
+Redeploy this service with the frontend so online parks run the same rules as solo play:
+- Standard maps start with the same park footprint and can expand to four times its area by buying adjacent squares for $100 each.
+- Unpurchased expansion land is tinted light red. Older 64-square park saves are expanded when loaded.
+- Daily electricity now costs $1 per occupied ride or shop tile.
