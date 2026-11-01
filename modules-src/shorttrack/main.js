@@ -19,9 +19,9 @@ const CFG = {
   contactSlow:0.4,
   packBoost:0.02,    // +2% top speed per position behind the leader; tapers over 2 s after a pass   // speed fraction lost per second while rubbing another car
   power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:4.6, // engine & coast-down
-  brake:11, reverseMax:6,
+  brake:7, reverseMax:6,
   scrub:0.0065,      // speed lost per unit of steering: decel = scrub * |steer| * v^2
-  slideScrub:0.45,   // extra decel while sliding sideways
+  slideScrub:0.5,   // extra decel while sliding sideways
   wheelbase:2.8, steerLow:0.47, steerSpeed:0.07, steerRampIn:8, steerRampOut:6,
   carScale:1.15,     // visual and collision size of every car
   spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
