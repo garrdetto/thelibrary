@@ -367,13 +367,14 @@ export class ParkRenderer {
     const sunDir: Vec3 = [Math.cos(az) * 0.7, Math.sin(az) * 0.5, Math.max(0.12, elev)]
     const l = Math.hypot(...sunDir); sunDir[0] /= l; sunDir[1] /= l; sunDir[2] /= l
     const dim = rain ? 0.6 : cloudy ? 0.8 : 1
-    const night: Vec3 = [0.46, 0.5, 0.64]
-    const sunColor = lerp3([0.42, 0.45, 0.6], lerp3([1.05, 0.98, 0.88], [1.1, 0.62, 0.35], dusk), daylight).map(v => v * dim) as Vec3
+    // Night-end values are 30% brighter than the original palette.
+    const night: Vec3 = [0.6, 0.65, 0.83]
+    const sunColor = lerp3([0.55, 0.59, 0.78], lerp3([1.05, 0.98, 0.88], [1.1, 0.62, 0.35], dusk), daylight).map(v => v * dim) as Vec3
     const sky = lerp3(night, [0.6, 0.68, 0.78], daylight).map(v => v * (rain ? 0.85 : 1)) as Vec3
-    const skyTop = lerp3([0.1, 0.15, 0.32], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
-    const skyBottom = lerp3(lerp3([0.22, 0.27, 0.42], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
+    const skyTop = lerp3([0.13, 0.2, 0.42], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
+    const skyBottom = lerp3(lerp3([0.29, 0.35, 0.55], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
     const shadow = Math.max(0, Math.min(1, (elev - 0.06) * 4)) * (rain ? 0.35 : cloudy ? 0.55 : 0.82)
-    return { sunDir, sunColor, sky, ground: lerp3([0.26, 0.26, 0.32], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom, shadow }
+    return { sunDir, sunColor, sky, ground: lerp3([0.34, 0.34, 0.42], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom, shadow }
   }
 
   isNight() { const f = this.state?.time.dayFraction ?? 0.4; return f > 0.84 || f < 0.22 }
