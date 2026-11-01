@@ -674,7 +674,7 @@ const HANDLERS = {
       p.entryFee = Math.round(cmd.entryFee)
     }
     if (typeof cmd.open === 'boolean') { p.open = cmd.open; addNews(state, park, `${p.name} is now ${cmd.open ? 'open' : 'closed'} to new guests.`, 'info') }
-    if (typeof cmd.name === 'string' && cmd.name.trim().length >= 2) p.name = cmd.name.trim().slice(0, 32)
+    if (typeof cmd.name === 'string' && cmd.name.trim().length >= 2) { p.name = cmd.name.trim().slice(0, 32); p.named = true }
     return ok()
   },
 

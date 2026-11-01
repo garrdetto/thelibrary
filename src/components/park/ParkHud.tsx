@@ -4,6 +4,7 @@ import { Camera, Check, Cloud, CloudRain, Droplets, Eraser, FastForward, Footpri
 import { ParkRenderer } from '@/lib/park/renderer'
 import type { Preview } from '@/lib/park/renderer'
 import { compressSave } from '@/lib/park/session'
+import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
@@ -48,7 +49,9 @@ function Window({ title, onClose, children, wide }: { title: string; onClose: ()
   return <section className={`pk-window ${wide ? 'pk-window-wide' : ''}`} aria-label={title}><header><strong>{title}</strong><button aria-label="Close" onClick={onClose}><X size={16} /></button></header><div className="pk-window-body">{children}</div></section>
 }
 
-export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkSession; onQuit: () => void; signedIn: boolean; onScore?: () => void }) {
+export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }: { session: ParkSession; onQuit: () => void; signedIn: boolean; onScore?: () => void }) {
+  const viewOnly = session instanceof ViewSession
+  const signedIn = accountSignedIn && !viewOnly
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const shellRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<ParkRenderer | null>(null)
@@ -70,6 +73,8 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
   const [finishing, setFinishing] = useState(false)
   const [lastSaved, setLastSaved] = useState<number | null>(null)
   const [newsSeen, setNewsSeen] = useState(0)
+  const [nameDraft, setNameDraft] = useState('')
+  const [naming, setNaming] = useState(false)
   const toolRef = useRef(tool)
   toolRef.current = tool
   const drag = useRef<{ button: number; x: number; y: number; moved: boolean; start?: { x: number; y: number }; cam?: { tx: number; ty: number; yaw: number; pitch: number }; anchor?: { x: number; y: number; z: number }; pointers: Map<number, { x: number; y: number }>; pinch?: number } >({ button: -1, x: 0, y: 0, moved: false, pointers: new Map() })
@@ -395,13 +400,13 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
     const name = label ?? (saveName.trim() || `${p.name} · ${MONTHS[s.time.month]} Y${s.time.year}`)
     await parkApi.save(slot, name.slice(0, 40), data, { cash: Math.round(p.cash), guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
     setLastSaved(Date.now())
-    await submitScore()
+    await submitScore(data)
   }
 
-  async function submitScore() {
+  async function submitScore(data?: string) {
     const s = session.state, p = s.parks[session.park]
     if (!signedIn || s.mode !== 'solo' || s.scenario === 'sandbox' || SCENARIOS[s.scenario]?.versus) return
-    try { await parkApi.submitScore(s.scenario, p.cash - p.loan); onScore?.() } catch { /* score submission is best effort */ }
+    try { await parkApi.submitScore(s.scenario, p.name, p.cash - p.loan, data); onScore?.() } catch { /* score submission is best effort */ }
   }
 
   async function saveTo(slot: number) {
@@ -471,15 +476,17 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
       <div className="pk-top-actions">
         <button onClick={() => setGrid(v => !v)} className={grid ? 'on' : ''} title="Grid (G)" aria-label="Toggle grid"><Grid3x3 size={16} /></button>
         <button onClick={() => void fullscreen()} title="Fullscreen" aria-label="Fullscreen"><Maximize2 size={16} /></button>
-        <button onClick={() => void openSave()} title="Save park" aria-label="Save park"><Save size={16} /></button>
+        {!viewOnly && <button onClick={() => void openSave()} title="Save park" aria-label="Save park"><Save size={16} /></button>}
         {session.online && <button onClick={() => togglePanel('chat')} className={panel === 'chat' ? 'on' : ''} title="Chat" aria-label="Chat"><MessageCircle size={16} /></button>}
-        <button onClick={() => void leave()} title="Save and leave park" aria-label="Save and leave park"><LogOut size={16} /></button>
+        <button onClick={() => void leave()} title={viewOnly ? 'Leave park' : 'Save and leave park'} aria-label={viewOnly ? 'Leave park' : 'Save and leave park'}><LogOut size={16} /></button>
       </div>
     </header>
 
     {session.online && <div className="pk-players">{session.players.map(p => <span key={p.id} style={{ borderColor: state.parks[p.park]?.color }}>{p.name}{p.host ? ' ★' : ''}</span>)}</div>}
 
-    <nav className="pk-toolbar" aria-label="Build tools">
+    {session instanceof ViewSession && <div className="pk-viewonly" role="status"><strong>View only</strong> · {session.owner}'s park as saved {new Date(session.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>}
+
+    {!viewOnly && <nav className="pk-toolbar" aria-label="Build tools">
       <button className={tool.kind === 'select' && !panel ? 'on' : ''} onClick={() => { choose({ kind: 'select' }); setPanel(null) }} title="Select (Esc)"><MousePointer2 size={19} /><span>Select</span></button>
       <button className={panel === 'terrain' ? 'on' : ''} onClick={() => { togglePanel('terrain'); setTool({ kind: 'terrain', op: 'raise', size: 3 }) }}><Mountain size={19} /><span>Land</span></button>
       <button className={panel === 'paths' ? 'on' : ''} onClick={() => { togglePanel('paths'); setTool({ kind: 'path', path: 1 }) }}><Footprints size={19} /><span>Paths</span></button>
@@ -491,7 +498,7 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
       <button className={panel === 'park' ? 'on' : ''} onClick={() => togglePanel('park')}><Landmark size={19} /><span>Park</span></button>
       <button className={panel === 'finance' ? 'on' : ''} onClick={() => togglePanel('finance')}><Gauge size={19} /><span>Money</span></button>
       <button className={tool.kind === 'demolish' ? 'on pk-danger' : 'pk-danger'} onClick={() => { choose({ kind: 'demolish' }); setPanel(null) }}><Trash2 size={19} /><span>Demolish</span></button>
-    </nav>
+    </nav>}
 
     {panel === 'terrain' && <Window title="Landscaping" onClose={() => togglePanel('terrain')}>
       <div className="pk-chips">
@@ -650,6 +657,13 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
     </footer>
 
     {rideCam && <div className="pk-ridecam"><Camera size={14} /> On-ride camera · click or press Esc to exit</div>}
+
+    {!viewOnly && !park.named && <div className="pk-ended pk-naming" role="dialog" aria-modal="true" aria-labelledby="pk-name-title"><form onSubmit={async e => { e.preventDefault(); const name = nameDraft.trim(); if (name.length < 2) return; setNaming(true); const res = await session.command({ t: 'park', name }); setNaming(false); if (!res.ok) toast(res.error ?? 'That name could not be saved.', 'error') }}>
+      <h2 id="pk-name-title">Name your park</h2>
+      <p>Every park needs a name before you start building. It appears on the leaderboard next to your username.</p>
+      <label className="pk-field"><span>Park name</span><input autoFocus value={nameDraft} minLength={2} maxLength={32} required placeholder="Lakeside Thrills" onChange={e => setNameDraft(e.target.value)} /></label>
+      <div className="pk-actions"><button type="submit" className="pk-btn pk-btn-go" disabled={naming || nameDraft.trim().length < 2}>{naming ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />} Open the gates</button><button type="button" className="pk-btn" onClick={onQuit}>Back to menu</button></div>
+    </form></div>}
 
     {state.ended && <div className="pk-ended" role="dialog" aria-label="Match over"><div><h2>Match over</h2><p>{state.ended.text}</p>{state.ended.values && <ul>{state.parks.map((p, i) => <li key={p.id}><span style={{ color: p.color }}>{p.name}</span> {money(state.ended!.values![i])}</li>)}</ul>}<button className="pk-btn pk-btn-go" onClick={onQuit}>Back to menu</button></div></div>}
   </div>
