@@ -2,7 +2,7 @@ import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF } from './catalog.mjs'
 import { clamp, stateRandom, MONTHS, DAY_SECONDS, SIM_STEP } from './util.mjs'
 import { stepTrain } from './track.mjs'
 import { addNews, emptyLedger, entityCost, ridePath, objectiveText } from './state.mjs'
-import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity } from './guests.mjs'
+import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
 import { MAX_GUESTS } from './state.mjs'
 
@@ -37,8 +37,10 @@ function maybeBreak(state, ride) {
   ride.status = 'broken'; ride.brokenAt = state.time.seconds; ride.mechanic = 0
   for (const id of ride.queue) { const g = state.guestIndex.get(id); if (g) { g.state = 'walk'; g.ride = 0; g.happy -= 10; g.thoughts.push(`${ride.name} broke down!`) } }
   ride.queue = []
-  const mechanics = state.staff.some(s => s.role === 'mechanic' && s.park === ride.park)
-  addNews(state, ride.park, `${ride.name} has broken down.${mechanics ? ' A mechanic is on the way.' : ' Hire a mechanic to fix it.'}`, 'warning', ride.id)
+  const mechanics = state.staff.filter(s => s.role === 'mechanic' && s.park === ride.park)
+  const routeAvailable = mechanics.some(s => mechanicJobDistance(state, s, ride) >= 0)
+  const repairNote = routeAvailable ? ' A mechanic is on the way.' : mechanics.length ? ' No mechanic has a connected footpath route.' : ' Hire a mechanic to fix it.'
+  addNews(state, ride.park, `${ride.name} has broken down.${repairNote}`, 'warning', ride.id)
 }
 
 function updateFlat(state, ride, dt) {
@@ -79,7 +81,7 @@ function updateCoaster(state, ride, dt) {
     return
   }
   for (let k = 0; k < 2; k++) {
-    const result = stepTrain(path, train, ride.cars, dt / 2, { stallLimit: 20 })
+    const result = stepTrain(path, train, ride.cars, dt / 2, { stallLimit: 20, style: COASTER_STYLES[ride.style] })
     if (result === 'arrived') { train.timer = 0; break }
     if (result === 'stalled') {
       for (const id of train.riders) { const g = state.guestIndex.get(id); if (g) { finishRide(state, ride, g); g.happy -= 40; g.thoughts.push(`I was stuck on ${ride.name}!`) } }
@@ -98,7 +100,8 @@ function assignMechanics(state) {
     let best = null, bestD = Infinity
     for (const s of state.staff) {
       if (s.role !== 'mechanic' || s.park !== ride.park || s.target || s.state !== 'walk') continue
-      const d = Math.abs(s.x - ride.x) + Math.abs(s.y - ride.y)
+      const d = mechanicJobDistance(state, s, ride)
+      if (d < 0) continue
       if (d < bestD) { bestD = d; best = s }
     }
     if (best) { best.target = { ride: ride.id }; ride.mechanic = best.id }
@@ -109,7 +112,7 @@ export function spawnRate(state, p) {
   let rideScore = 0, openRides = 0, stalls = 0
   for (const e of Object.values(state.entities)) {
     if (e.park !== p.id) continue
-    if (e.type === 'ride' && e.status === 'open' && e.stats?.valid) { rideScore += e.stats.e + (e.kind === 'coaster' ? 1.5 : 0); openRides++ }
+    if (e.type === 'ride' && e.status === 'open' && e.stats?.valid) { rideScore += e.stats.e + (e.kind === 'coaster' && COASTER_STYLES[e.style]?.category !== 'other' ? 1.5 : 0); openRides++ }
     if (e.type === 'stall' && e.open) stalls++
   }
   if (!p.open) return { rate: 0, cap: 0 }
@@ -203,7 +206,7 @@ function objectiveMet(state, p) {
   if (!o || o.type === 'none' || o.type === 'versus') return false
   if (o.type === 'guests') return p.guestsIn >= o.guests && p.rating >= o.rating
   if (o.type === 'value') return parkValue(state, p.id) >= o.value
-  if (o.type === 'coasters') return Object.values(state.entities).filter(e => e.type === 'ride' && e.kind === 'coaster' && e.park === p.id && e.complete && (e.stats?.e ?? 0) >= o.excitement).length >= o.count
+  if (o.type === 'coasters') return Object.values(state.entities).filter(e => e.type === 'ride' && e.kind === 'coaster' && COASTER_STYLES[e.style]?.category !== 'other' && e.park === p.id && e.complete && (e.stats?.e ?? 0) >= o.excitement).length >= o.count
   return false
 }
 
@@ -280,4 +283,3 @@ export function stepPark(state, dt = SIM_STEP) {
   if (whole) { assignMechanics(state); updateRating(state) }
   if (t.tick % 100 === 0) { aggregateThoughts(state); for (const p of state.parks) p.value = parkValue(state, p.id) }
 }
-
