@@ -8,7 +8,8 @@ const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['
 
 export function rideCapacity(ride) {
   if (ride.kind === 'flat') return FLAT_RIDES[ride.ride].capacity
-  return (ride.cars ?? 3) * COASTER_STYLES[ride.style].seats
+  const style = COASTER_STYLES[ride.style]
+  return (ride.cars ?? 3) * style.seats * (style.trackType ? 1 : Math.max(1, ride.trains?.length ?? 2))
 }
 
 export function rideCycleSeconds(ride) {

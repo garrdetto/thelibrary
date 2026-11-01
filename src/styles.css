@@ -891,6 +891,8 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-path-color input{width:44px;height:32px;padding:2px;border:1px solid var(--pk-line);border-radius:8px;background:var(--pk-panel-2)}
 .pk-hint{margin:0;font-size:12px;opacity:.78;line-height:1.45}
 .pk-chips{display:flex;flex-wrap:wrap;gap:5px}
+.pk-path-segments{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+.pk-path-segments button.on{background:var(--pk-accent);color:#1b1b1b}
 .pk-chips button,.pk-btn,.pk-row button,.pk-size button{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;min-height:34px;border-radius:9px;background:var(--pk-panel-2);border:1px solid var(--pk-line);font-size:12px;font-weight:600}
 .pk-chips button:hover,.pk-btn:hover,.pk-row button:hover,.pk-size button:hover{background:#2f3a4b}
 .pk-chips button.on,.pk-btn.on{background:var(--pk-accent);color:#1b1b1b;border-color:transparent}
@@ -934,6 +936,7 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-swatches{display:flex;gap:5px;flex-wrap:wrap}
 .pk-swatches button{width:24px;height:24px;border-radius:7px;border:2px solid #ffffff33}
 .pk-swatches button.on{border-color:#fff;box-shadow:0 0 0 2px var(--pk-accent)}
+.pk-ride-paint{display:flex;align-items:flex-end;gap:8px}.pk-ride-paint .pk-field input[type=color]{width:42px;padding:4px}
 .pk-chart{display:flex;gap:4px;height:120px;align-items:stretch;padding:6px;border-radius:9px;background:#ffffff0a}
 .pk-chart div{flex:1;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:2px;min-width:0}
 .pk-chart i{width:100%;border-radius:3px;min-height:2px}

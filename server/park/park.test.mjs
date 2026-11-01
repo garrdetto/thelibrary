@@ -10,11 +10,15 @@ import {
   encodeRle,
   pathHeightAt,
   pathsConnect,
+  samplePiece,
+  validatePiece,
   rideCapacity,
   serializePark,
   stallPlacementRotation,
   tileIndex,
   COASTER_STYLES,
+  STAFF,
+  STAFF_WAGE_PER_DAY,
   ELECTRICITY_COST_PER_TILE_PER_DAY,
   dailyOperatingCosts,
   queueLine,
@@ -46,10 +50,10 @@ test('parks start with the same land and can buy contiguous expansion squares', 
   assert.equal(state.map.w, 128)
   assert.equal(state.map.h, 128)
   assert.deepEqual(land.initial, { x0: 36, y0: 36, x1: 91, y1: 91 })
-  assert.deepEqual(land.limit, { x0: 8, y0: 8, x1: 119, y1: 119 })
+  assert.deepEqual(land.limit, { x0: 8, y0: 8, x1: 119, y1: 91 })
   const initialArea = (land.initial.x1 - land.initial.x0 + 1) * (land.initial.y1 - land.initial.y0 + 1)
   const limitArea = (land.limit.x1 - land.limit.x0 + 1) * (land.limit.y1 - land.limit.y0 + 1)
-  assert.equal(limitArea, initialArea * 4)
+  assert.equal(limitArea, initialArea * 3)
   assert.equal(state.map.owner.filter(owner => owner === 0).length, initialArea)
 
   state.parks[0].named = true
@@ -64,6 +68,7 @@ test('parks start with the same land and can buy contiguous expansion squares', 
 
   assert.equal(applyCommand(state, { t: 'buyLand', ...tile }).ok, false)
   assert.equal(applyCommand(state, { t: 'buyLand', x: land.limit.x0, y: land.limit.y0 }).ok, false)
+  assert.equal(applyCommand(state, { t: 'buyLand', x: land.initial.x0, y: land.initial.y1 + 1 }).ok, false)
   state.parks[0].cash = 99
   assert.equal(applyCommand(state, { t: 'buyLand', x: tile.x - 1, y: tile.y }).ok, false)
   assert.equal(state.map.owner[tileIndex(state.map, tile.x - 1, tile.y)], 255)
@@ -98,7 +103,7 @@ test('older 64-square saved parks expand into the purchase map without moving th
   assert.equal(loaded.map.w, 128)
   assert.equal(loaded.map.h, 128)
   assert.deepEqual(loaded.parks[0].land.initial, { x0: 36, y0: 36, x1: 91, y1: 91 })
-  assert.deepEqual(loaded.parks[0].land.limit, { x0: 8, y0: 8, x1: 119, y1: 119 })
+  assert.deepEqual(loaded.parks[0].land.limit, { x0: 8, y0: 8, x1: 119, y1: 91 })
   const originalEntrance = Object.values(state.entities).find(entity => entity.type === 'parkEntrance')
   const loadedEntrance = Object.values(loaded.entities).find(entity => entity.type === 'parkEntrance')
   assert.deepEqual([loadedEntrance.x, loadedEntrance.y], [originalEntrance.x, originalEntrance.y])
@@ -188,13 +193,65 @@ test('custom kart rides run an independent two-seat fleet and sync each vehicle'
   assert.equal(replica.entities[result.id].trains.length, 14)
 })
 
+test('coaster slopes soften automatically and bank gradually through turns', () => {
+  const state = parkFixture()
+  const ride = { id: 100, type: 'ride', kind: 'coaster', style: 'steel', park: 0, start: { x: 20, y: 20, dir: 0, h: 20 }, pieces: [], complete: false }
+  const adjusted = validatePiece(state, ride, { c: 0, s: 2 })
+  assert.equal(adjusted.ok, true)
+  assert.deepEqual(adjusted.piece, { c: 0, s: 1 })
+  assert.equal(adjusted.adjusted, true)
+  state.entities[ride.id] = ride
+  assert.equal(applyCommand(state, { t: 'piece', ride: ride.id, c: 0, s: 2 }).ok, true)
+  assert.equal(ride.pieces[0].c, 0)
+  assert.equal(ride.pieces[0].s, 1)
+
+  const extremeRide = { ...ride, id: 101, style: 'extreme', pieces: [], complete: false }
+  const corkscrew = validatePiece(parkFixture(), extremeRide, { c: 0, s: 0, sp: 'corkscrew' })
+  assert.equal(corkscrew.ok, true)
+  assert.equal(corkscrew.piece.sp, 'corkscrew')
+
+  const curve = samplePiece({ x: 0, y: 0, h: 20, dir: 0, slope: 0 }, { c: 1, s: 0 }, 20)
+  assert.ok(Math.max(...curve.map(point => Math.abs(point.bank))) <= 0.2)
+  assert.ok(Math.abs(curve[2].bank) < Math.abs(curve[10].bank))
+  assert.ok(Math.abs(curve[18].bank) < Math.abs(curve[10].bank))
+})
+
+test('roller coasters provide two trains, custom car counts, and independent paint colors', () => {
+  const state = parkFixture()
+  state.map.corners.fill(20)
+  const result = applyCommand(state, { t: 'preset', preset: 'zephyr', x: 60, y: 60, dir: 0 })
+  assert.equal(result.ok, true)
+  const ride = state.entities[result.id]
+  assert.equal(ride.trains.length, 2)
+  assert.equal(ride.trains[1].phase, 'waiting')
+  assert.equal(rideCapacity(ride), ride.cars * COASTER_STYLES[ride.style].seats * 2)
+
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, cars: 10 }).ok, true)
+  assert.equal(ride.cars, 10)
+  assert.equal(rideCapacity(ride), 10 * COASTER_STYLES[ride.style].seats * 2)
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, cars: 11 }).ok, false)
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, trackColor: '#112233', supportColor: '#445566', trainColor: '#778899' }).ok, true)
+
+  const saved = serializePark(state)
+  const loaded = deserializePark(saved)
+  const restored = loaded.entities[ride.id]
+  assert.equal(restored.trains.length, 2)
+  assert.equal(restored.cars, 10)
+  assert.equal(restored.trackColor, '#112233')
+  assert.equal(restored.supportColor, '#445566')
+  assert.equal(restored.trainColor, '#778899')
+})
+
 test('coaster building prices are doubled and electricity is one dollar per tile daily', () => {
   assert.equal(COASTER_STYLES.steel.cost, 4400)
   assert.equal(COASTER_STYLES.steel.pieceCost, 180)
   assert.equal(COASTER_STYLES.wooden.cost, 4000)
   assert.equal(COASTER_STYLES.junior.cost, 2400)
   assert.equal(COASTER_STYLES.inverted.cost, 5600)
+  assert.equal(COASTER_STYLES.extreme.corkscrews, true)
   assert.equal(ELECTRICITY_COST_PER_TILE_PER_DAY, 1)
+  assert.equal(STAFF_WAGE_PER_DAY, 50)
+  assert.ok(Object.values(STAFF).every(member => member.wage === 50))
 
   const state = parkFixture()
   state.entities = {
@@ -203,5 +260,5 @@ test('coaster building prices are doubled and electricity is one dollar per tile
     12: { id: 12, type: 'stall', kind: 'burger', x: 20, y: 20, size: [1, 1], rot: 0, park: 1 },
   }
   state.staff = [{ id: 1, park: 0, role: 'security' }]
-  assert.deepEqual(dailyOperatingCosts(state, 0), { wages: 100, electricity: 10, poweredTiles: 10 })
+  assert.deepEqual(dailyOperatingCosts(state, 0), { wages: 50, electricity: 10, poweredTiles: 10 })
 })

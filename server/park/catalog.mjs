@@ -19,6 +19,8 @@ export const COASTER_STYLES = {
   wooden: { name: 'Wooden Coaster', cost: 4000, pieceCost: 150, upkeep: 140, maxHeight: 64, loops: false, steep: true, seats: 4, excitementBonus: 0.45, intensityBonus: 0.5, track: '#8a6a4a', support: '#b48a5e', train: '#c83c2e', description: 'Classic lattice structure with a rattling ride.' },
   junior: { name: 'Junior Coaster', cost: 2400, pieceCost: 90, upkeep: 70, maxHeight: 28, loops: false, steep: false, seats: 2, excitementBonus: 0.2, intensityBonus: -0.6, track: '#f2b632', support: '#3c78c8', train: '#3fb06b', description: 'Low and gentle. Families love it.' },
   inverted: { name: 'Suspended Looper', cost: 5600, pieceCost: 220, upkeep: 180, maxHeight: 84, loops: true, steep: true, seats: 4, excitementBonus: 0.35, intensityBonus: 0.45, track: '#2e2e36', support: '#3a8f87', train: '#f2c94c', description: 'Riders hang beneath the rail, feet dangling.' },
+  launch: { name: 'Skyline Launch Coaster', cost: 5200, pieceCost: 195, upkeep: 165, maxHeight: 96, loops: false, steep: true, seats: 4, excitementBonus: 0.55, intensityBonus: 0.35, track: '#39a9d0', support: '#d8dce2', train: '#f08a24', maxSpeed: 30, description: 'A fast launch sends trains over taller, steeper hills.' },
+  extreme: { name: 'Tempest Coaster', cost: 6800, pieceCost: 245, upkeep: 205, maxHeight: 104, loops: true, steep: true, corkscrews: true, seats: 4, excitementBonus: 0.8, intensityBonus: 0.65, track: '#8d4ed1', support: '#d8dce2', train: '#25a889', maxSpeed: 32, description: 'A towering drop, vertical loops, and twisting corkscrews.' },
   kart: { name: 'Custom Go-Kart Track', category: 'other', trackType: 'kart', cost: 1600, pieceCost: 42, upkeep: 75, maxHeight: 16, loops: false, steep: false, seats: 2, excitementBonus: 1.2, intensityBonus: 0.1, drive: 8, maxSpeed: 15, track: '#454a50', support: '#e8e4da', train: '#e2513d', description: 'Design a powered kart circuit. Each kart drives independently and seats up to two visitors.' },
   waterSlide: { name: 'Custom Water Slide', category: 'other', trackType: 'slide', cost: 1800, pieceCost: 58, upkeep: 95, maxHeight: 42, loops: false, steep: false, seats: 1, excitementBonus: 1.4, intensityBonus: 0.2, drive: 3, maxSpeed: 18, track: '#48b9d1', support: '#f3f1ea', train: '#f2c94c', description: 'Build your own flume with curves, drops, and a splashdown.' },
   lazyRiver: { name: 'Lazy River', category: 'other', trackType: 'river', cost: 1400, pieceCost: 50, upkeep: 70, maxHeight: 12, loops: false, steep: false, seats: 2, excitementBonus: 0.3, intensityBonus: -0.5, drive: 1.7, maxSpeed: 5, track: '#44aeca', support: '#d8c8a4', train: '#f2c94c', description: 'Build a winding, gently flowing river for floating rafts.' },
@@ -66,12 +68,12 @@ export const PATH_ADDITIONS = {
 }
 
 export const STAFF = {
-  handyman: { name: 'Handyman', wage: 100, color: '#3e9b4f' },
-  mechanic: { name: 'Mechanic', wage: 100, color: '#2f6fc0' },
-  entertainer: { name: 'Entertainer', wage: 100, color: '#e85d9b' },
-  security: { name: 'Security', wage: 100, color: '#35465c' },
-  supervisor: { name: 'Supervisor', wage: 100, color: '#9b6fc0' },
-  ems: { name: 'EMS Worker', wage: 100, color: '#d94a4a' },
+  handyman: { name: 'Handyman', wage: 50, color: '#3e9b4f' },
+  mechanic: { name: 'Mechanic', wage: 50, color: '#2f6fc0' },
+  entertainer: { name: 'Entertainer', wage: 50, color: '#e85d9b' },
+  security: { name: 'Security', wage: 50, color: '#35465c' },
+  supervisor: { name: 'Supervisor', wage: 50, color: '#9b6fc0' },
+  ems: { name: 'EMS Worker', wage: 50, color: '#d94a4a' },
 }
 
 export const SURFACES = ['grass', 'sand', 'dirt', 'rock', 'snow']

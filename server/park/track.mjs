@@ -8,6 +8,7 @@ export const SAMPLE_STEP = 0.25
 const CURVE_RADIUS = { 1: 1.5, 2: 2.5 }
 const LOOP_LENGTH = 3
 const LOOP_RADIUS = 6.5
+const CORKSCREW_LENGTH = 3
 
 export function startPose(ride) {
   const { x, y, dir, h } = ride.start
@@ -18,12 +19,13 @@ export function startPose(ride) {
 
 export function pieceLengthTiles(piece) {
   if (piece.sp === 'loop') return LOOP_LENGTH
+  if (piece.sp === 'corkscrew') return CORKSCREW_LENGTH
   if (piece.c) return CURVE_RADIUS[Math.abs(piece.c)] + 0.5
   return 1
 }
 
 export function pieceRise(slopeIn, piece) {
-  if (piece.sp === 'loop') return 0
+  if (piece.sp === 'loop' || piece.sp === 'corkscrew') return 0
   if (piece.c) return SLOPE_RATE[slopeIn] * (CURVE_RADIUS[Math.abs(piece.c)] + 0.5)
   return (SLOPE_RATE[slopeIn] + SLOPE_RATE[piece.s]) / 2
 }
@@ -31,7 +33,7 @@ export function pieceRise(slopeIn, piece) {
 export function nextPose(pose, piece) {
   const [dx, dy] = DIRS[pose.dir]
   const rise = pieceRise(pose.slope, piece)
-  if (piece.sp === 'loop') return { x: pose.x + dx * LOOP_LENGTH, y: pose.y + dy * LOOP_LENGTH, h: pose.h, dir: pose.dir, slope: 0 }
+  if (piece.sp === 'loop' || piece.sp === 'corkscrew') return { x: pose.x + dx * pieceLengthTiles(piece), y: pose.y + dy * pieceLengthTiles(piece), h: pose.h, dir: pose.dir, slope: 0 }
   if (piece.c) {
     const r = CURVE_RADIUS[Math.abs(piece.c)], turn = piece.c > 0 ? 3 : 1
     const ndir = (pose.dir + turn) % 4, [sx, sy] = DIRS[ndir]
@@ -48,8 +50,8 @@ export function trackPoses(ride) {
 
 function bankFor(piece, t) {
   if (!piece.c) return 0
-  const base = (Math.abs(piece.c) === 1 ? 0.52 : 0.38) * Math.sign(piece.c)
-  const ramp = t < 0.25 ? t / 0.25 : t > 0.75 ? (1 - t) / 0.25 : 1
+  const base = (Math.abs(piece.c) === 1 ? 0.2 : 0.14) * Math.sign(piece.c)
+  const ramp = t < 0.4 ? t / 0.4 : t > 0.6 ? (1 - t) / 0.4 : 1
   const eased = ramp * ramp * (3 - 2 * ramp)
   return base * eased
 }
@@ -57,7 +59,7 @@ function bankFor(piece, t) {
 export function samplePiece(pose, piece, steps) {
   const [dx, dy] = DIRS[pose.dir]
   const L = pieceLengthTiles(piece)
-  const rateIn = SLOPE_RATE[pose.slope], rateOut = SLOPE_RATE[piece.sp === 'loop' ? 0 : piece.c ? pose.slope : piece.s]
+  const rateIn = SLOPE_RATE[pose.slope], rateOut = SLOPE_RATE[piece.sp === 'loop' || piece.sp === 'corkscrew' ? 0 : piece.c ? pose.slope : piece.s]
   const points = []
   const n = steps ?? Math.max(8, Math.ceil(L * 24))
   for (let i = 0; i <= n; i++) {
@@ -74,6 +76,15 @@ export function samplePiece(pose, piece, steps) {
       z = pose.h * UNIT + LOOP_RADIUS * (1 - Math.cos(theta))
       psi = baseAngle
       right = [rx, ry, 0]
+    } else if (piece.sp === 'corkscrew') {
+      const theta = Math.PI * 2 * t
+      const forward = CORKSCREW_LENGTH * TILE * t
+      x = pose.x * TILE + dx * forward
+      y = pose.y * TILE + dy * forward
+      z = (pose.h + 0.35 * Math.sin(theta) ** 2) * UNIT
+      psi = baseAngle
+      const [rx, ry] = DIRS[(pose.dir + 1) % 4]
+      right = [rx * Math.cos(theta), ry * Math.cos(theta), Math.sin(theta)]
     } else if (piece.c) {
       const r = CURVE_RADIUS[Math.abs(piece.c)], sign = piece.c > 0 ? -1 : 1
       const [sx, sy] = DIRS[(pose.dir + (piece.c > 0 ? 3 : 1)) % 4]
@@ -194,8 +205,9 @@ const tmp = {}
 export function stepTrain(path, train, cars, dt, opts = {}) {
   const rest = Math.max(0.5, path.stationEnd - 0.6)
   const trainLength = (cars - 1) * CAR_GAP
-  if (train.phase === 'loading' || train.phase === 'unloading' || train.phase === 'waiting') {
-    train.s = rest; train.v = 0; return null
+  if (train.phase === 'loading' || train.phase === 'unloading' || train.phase === 'waiting' || train.phase === 'holding') {
+    train.s = train.phase === 'waiting' || train.phase === 'holding' ? (train.waitS ?? rest) : rest
+    train.v = 0; return null
   }
   if (train.phase === 'dwell') {
     train.v = 0; train.timer = (train.timer ?? 0) + dt
@@ -299,7 +311,7 @@ export function rideStatsFromRun(path, style, cars) {
     lastZ = p.z
   }
   if (descending && lastZ !== null) { const drop = dropStart - lastZ; if (drop > 1.5) { drops++; highestDrop = Math.max(highestDrop, drop) } }
-  const inversions = path.specials.filter(sp => sp === 'loop').length
+  const inversions = path.specials.filter(sp => sp === 'loop' || sp === 'corkscrew').length
   const kmh = maxSpeed * 3.6
   let e = kmh / 25 + Math.min(drops, 9) * 0.18 + Math.min(highestDrop, 40) * 0.06 + Math.min(path.length, 900) / 400 + Math.min(time, 150) / 120 + Math.min(inversions, 6) * 0.75 + Math.min(airtime, 6) * 0.45 + Math.min(maxLat, 1.8) * 0.4 + style.excitementBonus
   let i = kmh / 40 + Math.max(0, maxPos - 1) * 0.9 + Math.max(0, -maxNeg) * 1.4 + maxLat * 1.3 + inversions * 0.6 + highestDrop / 30 + style.intensityBonus
@@ -354,10 +366,23 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
   const style = COASTER_STYLES[ride.style]
   if (index >= 220) return { error: 'This coaster has reached the maximum track length.' }
   if (![-2, -1, 0, 1, 2].includes(piece.c) || ![-2, -1, 0, 1, 2].includes(piece.s)) return { error: 'Choose a valid track piece.' }
-  if (Math.abs(piece.s - pose.slope) > 1) return { error: 'Change slope one step at a time.' }
-  if (Math.abs(piece.s) === 2 && !style.steep) return { error: `${style.name} track cannot be built this steep.` }
-  if (piece.c && (piece.s !== pose.slope || Math.abs(piece.s) > 1)) return { error: 'Curves need a constant flat or gentle slope.' }
-  if (piece.sp === 'loop' && (!style.loops || pose.slope !== 0 || piece.s !== 0 || piece.c)) return { error: style.loops ? 'Loops need flat track on both sides.' : `${style.name} track cannot loop.` }
+  if (piece.sp === 'corkscrew' && !style.corkscrews) return { error: `${style.name} track cannot build corkscrews.` }
+  if (piece.sp === 'loop' && !style.loops) return { error: `${style.name} track cannot loop.` }
+  const requested = piece
+  piece = { ...piece }
+  if (piece.sp && ['loop', 'corkscrew', 'station', 'brakes', 'booster'].includes(piece.sp) && pose.slope !== 0) {
+    piece = { c: 0, s: pose.slope - Math.sign(pose.slope) }
+  } else if (piece.sp && ['loop', 'corkscrew', 'station', 'brakes', 'booster'].includes(piece.sp)) {
+    piece.c = 0
+    piece.s = 0
+  } else if (piece.c && (Math.abs(pose.slope) > 1 || piece.s !== pose.slope)) {
+    piece = { c: 0, s: pose.slope - Math.sign(pose.slope) }
+  } else {
+    piece.s = clamp(piece.s, pose.slope - 1, pose.slope + 1)
+  }
+  if (Math.abs(piece.s) === 2 && !style.steep) piece.s = Math.sign(piece.s)
+  if (piece.sp === 'loop' && (pose.slope !== 0 || piece.s !== 0 || piece.c)) return { error: 'Loops need flat track on both sides.' }
+  if (piece.sp === 'corkscrew' && (pose.slope !== 0 || piece.s !== 0 || piece.c)) return { error: 'Corkscrews need flat track on both sides.' }
   if (piece.sp === 'station' && (piece.c || piece.s || pose.slope)) return { error: 'Stations must be built on flat, straight track.' }
   if (piece.sp === 'station' && stationRun(pieces, index) >= 13) return { error: 'A station can be up to 13 pieces long.' }
   if ((piece.sp === 'brakes' || piece.sp === 'booster') && (piece.c || piece.s || pose.slope)) return { error: 'Brakes and boosters must be flat and straight.' }
@@ -393,7 +418,7 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
       if (cell.lo < other.hi && other.lo < cell.hi) return { error: 'The track would collide with itself.' }
     }
   }
-  return { ok: true, cells, next, closes, cost: Math.round(style.pieceCost * pieceLengthTiles(piece) * (piece.sp === 'loop' ? 2.2 : piece.sp === 'station' ? 1.6 : piece.sp ? 1.3 : 1) + Math.max(0, next.h - start.h) * 3) }
+  return { ok: true, cells, next, closes, piece, adjusted: piece.c !== requested.c || piece.s !== requested.s || piece.sp !== requested.sp, cost: Math.round(style.pieceCost * pieceLengthTiles(piece) * (piece.sp === 'loop' || piece.sp === 'corkscrew' ? 2.2 : piece.sp === 'station' ? 1.6 : piece.sp ? 1.3 : 1) + Math.max(0, next.h - start.h) * 3) }
 }
 
 export function entityLabel(entity) {

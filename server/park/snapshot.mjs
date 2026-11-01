@@ -38,7 +38,7 @@ export function encodeDynamic(state, sinceNews = 0) {
     if (e.type === 'ride') {
       const activeRiders = e.trains?.reduce((total, train) => total + train.riders.length, 0) ?? e.riders.length
       const trains = e.trains?.map(train => ({ s: train.s, v: train.v, ph: train.phase, n: train.riders.length })) ?? []
-      rides[e.id] = { st: e.status, q: e.queue.length, r: activeRiders, c: e.cycle, rel: Math.round(e.reliability), rev: Math.round(e.revenue * 10) / 10, tr: e.totalRiders, mr: e.monthRiders, p: e.price, n: e.name, col: e.color, m: e.mechanic, ...(trains.length ? { t: trains } : {}) }
+      rides[e.id] = { st: e.status, q: e.queue.length, r: activeRiders, c: e.cycle, rel: Math.round(e.reliability), rev: Math.round(e.revenue * 10) / 10, tr: e.totalRiders, mr: e.monthRiders, p: e.price, n: e.name, col: e.color, tc: e.trackColor, sc: e.supportColor, trc: e.trainColor, m: e.mechanic, ...(trains.length ? { t: trains } : {}) }
     } else if (e.type === 'stall') stalls[e.id] = { s: e.sales, r: Math.round(e.revenue * 10) / 10, p: e.price, o: e.open }
   }
   return {
@@ -56,7 +56,7 @@ export function applyDynamic(state, dyn) {
   for (const [id, r] of Object.entries(dyn.rides ?? {})) {
     const e = state.entities[id]
     if (!e || e.type !== 'ride') continue
-    e.status = r.st; e.queueLength = r.q; e.ridersCount = r.r; e.cycle = r.c; e.reliability = r.rel; e.revenue = r.rev; e.totalRiders = r.tr; e.monthRiders = r.mr; e.price = r.p; e.name = r.n; e.color = r.col; e.mechanic = r.m
+    e.status = r.st; e.queueLength = r.q; e.ridersCount = r.r; e.cycle = r.c; e.reliability = r.rel; e.revenue = r.rev; e.totalRiders = r.tr; e.monthRiders = r.mr; e.price = r.p; e.name = r.n; e.color = r.col; e.trackColor = r.tc; e.supportColor = r.sc; e.trainColor = r.trc; e.mechanic = r.m
     if (r.t && e.trains) {
       const trains = Array.isArray(r.t) ? r.t : [r.t]
       for (const [index, remote] of trains.entries()) {

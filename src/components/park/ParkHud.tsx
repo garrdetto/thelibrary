@@ -8,7 +8,7 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprint, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileSlope, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance } from '../../../server/park/index.mjs'
 import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
 
 type Tool =
@@ -18,6 +18,7 @@ type Tool =
   | { kind: 'surface'; surface: number; size: number }
   | { kind: 'buyLand' }
   | { kind: 'path'; path: 1 | 2 | 3 | 4; elevation: number }
+  | { kind: 'pathBuilder'; path: 1 | 2 | 4; segment: PathSegment }
   | { kind: 'pathPaint' }
   | { kind: 'unpath' }
   | { kind: 'pathAdd'; add: number }
@@ -33,11 +34,12 @@ type Panel = null | 'terrain' | 'paths' | 'rides' | 'coasters' | 'shops' | 'scen
 type RideTab = 'All' | 'Gentle' | 'Thrill' | 'Water' | 'Other'
 type Selection = null | { kind: 'entity' | 'guest' | 'staff'; id: number }
 type Toast = { id: number; text: string; kind: 'error' | 'info' | 'warn' }
+type PathSegment = 'level' | 'up' | 'down' | 'stairs-up' | 'stairs-down'
 
 const SURFACE_NAMES = ['Grass', 'Sand', 'Dirt', 'Rock', 'Snow']
 const CURVES = [{ c: -2, label: 'Wide left' }, { c: -1, label: 'Tight left' }, { c: 0, label: 'Straight' }, { c: 1, label: 'Tight right' }, { c: 2, label: 'Wide right' }]
 const SLOPES = [{ s: -2, label: 'Steep down' }, { s: -1, label: 'Down' }, { s: 0, label: 'Level' }, { s: 1, label: 'Up' }, { s: 2, label: 'Steep up' }]
-const SPECIALS = [{ sp: '', label: 'Track' }, { sp: 'chain', label: 'Chain lift' }, { sp: 'booster', label: 'Booster' }, { sp: 'brakes', label: 'Brakes' }, { sp: 'loop', label: 'Loop' }, { sp: 'station', label: 'Station' }]
+const SPECIALS = [{ sp: '', label: 'Track' }, { sp: 'chain', label: 'Chain lift' }, { sp: 'booster', label: 'Booster' }, { sp: 'brakes', label: 'Brakes' }, { sp: 'loop', label: 'Loop' }, { sp: 'corkscrew', label: 'Corkscrew' }, { sp: 'station', label: 'Station' }]
 const level = (v: number) => v < 2 ? 'Low' : v < 4 ? 'Medium' : v < 6 ? 'High' : v < 8 ? 'Very high' : 'Extreme'
 const money = (v: number) => formatMoney(v)
 const TILE = 4
@@ -79,6 +81,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [grid, setGrid] = useState(false)
   const [pathColor, setPathColor] = useState('#cdbb93')
   const [pathElevation, setPathElevation] = useState(0)
+  const [pathBuild, setPathBuild] = useState<{ x: number; y: number; deck: number } | null>(null)
   const [rideCam, setRideCam] = useState<number | null>(null)
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
   const [chatText, setChatText] = useState('')
@@ -99,7 +102,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const state = session.state
   const park = state.parks[session.park]
   const ownedLand = state.map.owner.filter(owner => owner === session.park).length
-  const maxLand = park.land ? (park.land.initial.x1 - park.land.initial.x0 + 1) * (park.land.initial.y1 - park.land.initial.y0 + 1) * 4 : 0
+  const maxLand = park.land ? (park.land.limit.x1 - park.land.limit.x0 + 1) * (park.land.limit.y1 - park.land.limit.y0 + 1) : 0
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = toastId.current++
@@ -189,7 +192,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   useEffect(() => {
     const r = rendererRef.current
     if (!r) return
-    r.preview.piece = builderRide && builderPiece && !builderRide.complete ? { ride: builderRide, piece: builderPiece, ok: Boolean(builderCheck?.ok) } : undefined
+    r.preview.piece = builderRide && builderPiece && !builderRide.complete ? { ride: builderRide, piece: builderCheck?.piece ?? builderPiece, ok: Boolean(builderCheck?.ok) } : undefined
   })
 
   function placementOk(t: Tool, x: number, y: number) {
@@ -208,6 +211,45 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     return true
   }
 
+  function pathBuilderTarget(t: Extract<Tool, { kind: 'pathBuilder' }>, x: number, y: number) {
+    const map = state.map
+    if (!inMap(map, x, y)) return { elevation: 0, deck: 0, path: t.path, ok: false, anchor: false }
+    const index = tileIndex(map, x, y)
+    if (map.path[index]) {
+      return {
+        elevation: map.pathElevation[index] ?? 0,
+        deck: pathHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE),
+        path: map.path[index] as 1 | 2 | 3 | 4,
+        ok: map.owner[index] === session.park,
+        anchor: true,
+      }
+    }
+    if (map.owner[index] !== session.park || map.obj[index]) return { elevation: 0, deck: 0, path: t.path, ok: false, anchor: false }
+    if (pathBuild && Math.abs(x - pathBuild.x) + Math.abs(y - pathBuild.y) !== 1) return { elevation: 0, deck: 0, path: t.path, ok: false, anchor: false }
+
+    const base = Math.max(tileMax(map, x, y), map.water[index] >= 0 ? map.water[index] + 0.1 : -Infinity)
+    const segmentRise = t.segment === 'up' ? 0.5 : t.segment === 'down' ? -0.5 : t.segment === 'stairs-up' ? 1 : t.segment === 'stairs-down' ? -1 : 0
+    let targetDeck = pathBuild ? pathBuild.deck + segmentRise : groundHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
+
+    if (!pathBuild) {
+      if (map.water[index] >= 0 && t.path !== 4) targetDeck = base + 0.5
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy
+        if (!inMap(map, nx, ny)) continue
+        const ni = tileIndex(map, nx, ny)
+        if (!map.path[ni]) continue
+        targetDeck = pathHeightAt(map, (nx + 0.5) * TILE, (ny + 0.5) * TILE, TILE)
+        break
+      }
+    }
+
+    const elevation = Math.round((targetDeck - base) / 0.5)
+    const path = t.segment.startsWith('stairs') ? 3 : t.path
+    const deck = elevation > 0 || path === 4 ? base + elevation * 0.5 : groundHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
+    const ok = elevation >= 0 && elevation <= 24 && Math.abs(deck - targetDeck) <= 0.3
+    return { elevation: Math.max(0, Math.min(24, elevation)), deck, path, ok, anchor: false }
+  }
+
   function updatePreview(clientX: number, clientY: number) {
     const r = rendererRef.current
     if (!r) return
@@ -218,8 +260,11 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (hit) {
       const d = drag.current
       const brush = 'size' in t ? t.size : 1
-      if (['terrain', 'water', 'surface', 'path', 'pathPaint', 'unpath', 'clear', 'pathAdd', 'demolish'].includes(t.kind)) {
-        if (d.button === 0 && d.start && t.kind !== 'pathAdd' && t.kind !== 'demolish') {
+      if (['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'pathAdd', 'demolish'].includes(t.kind)) {
+        if (t.kind === 'pathBuilder') {
+          const target = pathBuilderTarget(t, hit.x, hit.y)
+          p.rect = { x0: hit.x, y0: hit.y, x1: hit.x, y1: hit.y, elevation: target.elevation, ok: target.ok }
+        } else if (d.button === 0 && d.start && t.kind !== 'pathAdd' && t.kind !== 'demolish') {
           if (t.kind === 'path') {
             const dx = Math.abs(hit.x - d.start.x), dy = Math.abs(hit.y - d.start.y)
             p.rect = dx >= dy ? { x0: d.start.x, y0: d.start.y, x1: hit.x, y1: d.start.y, ok: true } : { x0: d.start.x, y0: d.start.y, x1: d.start.x, y1: hit.y, ok: true }
@@ -277,6 +322,18 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       case 'water': if (rect) await run({ t: 'water', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'surface': if (rect) await run({ t: 'surface', surface: t.surface, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'path': if (rect) await run({ t: 'path', kind: t.path, elevation: t.elevation, color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
+      case 'pathBuilder': {
+        const target = pathBuilderTarget(t, hit.x, hit.y)
+        if (!target.ok) { toast(pathBuild ? 'Choose an adjacent tile at a reachable height.' : 'Choose a clear tile on land your park owns.', 'error'); break }
+        if (target.anchor) {
+          setPathBuild({ x: hit.x, y: hit.y, deck: target.deck })
+          toast(`Path builder anchored at ${hit.x + 1}, ${hit.y + 1}.`)
+          break
+        }
+        const result = await run({ t: 'path', kind: target.path, elevation: target.elevation, color: Number.parseInt(pathColor.slice(1), 16), x0: hit.x, y0: hit.y, x1: hit.x, y1: hit.y })
+        if (result.ok) setPathBuild({ x: hit.x, y: hit.y, deck: target.deck })
+        break
+      }
       case 'pathPaint': if (rect) await run({ t: 'pathPaint', color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'unpath': if (rect) await run({ t: 'unpath', x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'clear': if (rect) await run({ t: 'clear', x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
@@ -341,7 +398,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (d.button >= 0 && Math.hypot(dx, dy) > 5) d.moved = true
     const t = toolRef.current
-    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathPaint', 'unpath', 'clear'].includes(t.kind)))
+    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear'].includes(t.kind)))
     if (d.cam && d.moved && panning) {
       const a = d.anchor
       const p = a ? r.rayPlane(e.clientX, e.clientY, a.z) : null
@@ -361,7 +418,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     d.pointers.delete(e.pointerId)
     if (d.button === 9) { if (!d.pointers.size) d.button = -1; return }
     const t = toolRef.current
-    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathPaint', 'unpath', 'clear'].includes(t.kind)
+    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear'].includes(t.kind)
     if (d.button === 0 && (!d.moved || areaTool)) void applyTool(e.clientX, e.clientY)
     d.button = -1; d.start = undefined
     updatePreview(e.clientX, e.clientY)
@@ -377,12 +434,18 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     setTool(current => current.kind === 'path' ? { ...current, elevation } : current)
   }
 
+  function startPathBuilder(path: 1 | 2 | 4 = 1) {
+    const current = toolRef.current
+    setPathBuild(current.kind === 'pathBuilder' ? pathBuild : null)
+    setTool({ kind: 'pathBuilder', path, segment: current.kind === 'pathBuilder' ? current.segment : 'level' })
+  }
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input, textarea, select')) return
       const key = e.key.toLowerCase()
       if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(key)) { keys.current.add(key); e.preventDefault() }
-      if (key === 'escape') { if (toolRef.current.kind === 'select') { setSelection(null); setPanel(null); setBuilder(null) } setTool({ kind: 'select' }); setRideCam(null); if (rendererRef.current) rendererRef.current.preview = {} }
+      if (key === 'escape') { if (toolRef.current.kind === 'select') { setSelection(null); setPanel(null); setBuilder(null) } setTool({ kind: 'select' }); setPathBuild(null); setRideCam(null); if (rendererRef.current) rendererRef.current.preview = {} }
       if (key === 'r') rotateTool()
       if (key === 'g') setGrid(v => !v)
       if (key === ' ' && !viewOnly) { e.preventDefault(); void session.command({ t: 'speed', speed: session.state.speed ? 0 : 1 }) }
@@ -411,7 +474,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (!builder || !builderPiece) return
     const res = await run({ t: 'piece', ride: builder.ride, ...builderPiece })
     if (res.ok) {
-      setBuilder(b => b && { ...b, sp: b.sp === 'loop' || b.sp === 'brakes' || b.sp === 'booster' ? '' : b.sp, c: builderPiece.c && (b.sp === 'loop') ? 0 : b.c })
+      setBuilder(b => b && { ...b, sp: b.sp === 'loop' || b.sp === 'corkscrew' || b.sp === 'brakes' || b.sp === 'booster' ? '' : b.sp, c: builderPiece.c && (b.sp === 'loop' || b.sp === 'corkscrew') ? 0 : b.c })
       if (res.complete) { toast('Circuit complete! The test run results are in the ride window.'); setBuilder(null) }
     }
   }
@@ -547,7 +610,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     {!viewOnly && <nav className="pk-toolbar" aria-label="Build tools">
       <button className={tool.kind === 'select' && !panel ? 'on' : ''} onClick={() => { choose({ kind: 'select' }); setPanel(null) }} title="Select (Esc)"><MousePointer2 size={19} /><span>Select</span></button>
       <button className={panel === 'terrain' ? 'on' : ''} onClick={() => { togglePanel('terrain'); setTool({ kind: 'terrain', op: 'raise', size: 3 }) }}><Mountain size={19} /><span>Land</span></button>
-      <button className={panel === 'paths' ? 'on' : ''} onClick={() => { togglePanel('paths'); setTool({ kind: 'path', path: 1, elevation: pathElevation }) }}><Footprints size={19} /><span>Paths</span></button>
+      <button className={panel === 'paths' ? 'on' : ''} onClick={() => { togglePanel('paths'); startPathBuilder() }}><Footprints size={19} /><span>Paths</span></button>
       <button className={panel === 'rides' ? 'on' : ''} onClick={() => togglePanel('rides')}><Sparkles size={19} /><span>Rides</span></button>
       <button className={panel === 'coasters' ? 'on' : ''} onClick={() => togglePanel('coasters')}><Zap size={19} /><span>Coasters</span></button>
       <button className={panel === 'shops' ? 'on' : ''} onClick={() => togglePanel('shops')}><Store size={19} /><span>Shops</span></button>
@@ -575,19 +638,41 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </Window>}
 
     {panel === 'paths' && <Window title="Footpaths" onClose={() => togglePanel('paths')}>
+      <p className="pk-label">Path builder</p>
       <div className="pk-chips">
-        <button className={tool.kind === 'path' && tool.path === 1 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 1, elevation: pathElevation })}>Footpath · {money(12)}</button>
-        <button className={tool.kind === 'path' && tool.path === 2 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 2, elevation: pathElevation })}>Queue line · {money(14)}</button>
-        <button className={tool.kind === 'path' && tool.path === 3 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 3, elevation: pathElevation })}>Stairs · {money(18)}</button>
-        <button className={tool.kind === 'path' && tool.path === 4 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 4, elevation: pathElevation })}>Boardwalk · {money(24)}</button>
+        <button className={tool.kind === 'pathBuilder' && tool.path === 1 ? 'on' : ''} onClick={() => startPathBuilder(1)}>Footpath · {money(12)}</button>
+        <button className={tool.kind === 'pathBuilder' && tool.path === 2 ? 'on' : ''} onClick={() => startPathBuilder(2)}>Queue line · {money(14)}</button>
+        <button className={tool.kind === 'pathBuilder' && tool.path === 4 ? 'on' : ''} onClick={() => startPathBuilder(4)}>Boardwalk · {money(24)}</button>
+      </div>
+      {tool.kind === 'pathBuilder' && <>
+        <div className="pk-chips pk-path-segments" role="group" aria-label="Path section">
+          {([
+            ['level', 'Level'],
+            ['up', 'Ramp up · +0.5m'],
+            ['down', 'Ramp down · −0.5m'],
+            ['stairs-up', 'Stairs up · +1m'],
+            ['stairs-down', 'Stairs down · −1m'],
+          ] as const).map(([segment, label]) => <button key={segment} className={tool.segment === segment ? 'on' : ''} onClick={() => setTool({ ...tool, segment })}>{label}</button>)}
+        </div>
+        <p className="pk-hint">{pathBuild ? `Continue from ${pathBuild.x + 1}, ${pathBuild.y + 1} · ${pathBuild.deck.toFixed(1)}m. Click the next adjacent tile; its height is calculated for you.` : 'Click an existing path to continue from it, or click a clear tile to start at ground level. Then place sections on adjacent tiles.'}</p>
+        <button className="pk-btn" onClick={() => { setPathBuild(null); setTool({ kind: 'select' }); if (rendererRef.current) rendererRef.current.preview = {} }}>Done building</button>
+      </>}
+      <div className="pk-chips">
+        <button className={tool.kind === 'path' ? 'on' : ''} onClick={() => { setPathBuild(null); setTool({ kind: 'path', path: 1, elevation: pathElevation }) }}>Quick draw</button>
+        {tool.kind === 'path' && <>
+          <button className={tool.path === 1 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 1 })}>Footpath</button>
+          <button className={tool.path === 2 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 2 })}>Queue line</button>
+          <button className={tool.path === 3 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 3 })}>Stairs</button>
+          <button className={tool.path === 4 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 4 })}>Boardwalk</button>
+        </>}
         <button className={tool.kind === 'unpath' ? 'on' : ''} onClick={() => setTool({ kind: 'unpath' })}><Eraser size={13} /> Remove</button>
       </div>
-      <div className="pk-size"><span>Height</span><button onClick={() => adjustPathElevation(-1)} aria-label="Lower path"><Minus size={14} /></button><strong>{(pathElevation * 0.5).toFixed(1)}m above ground</strong><button onClick={() => adjustPathElevation(1)} aria-label="Raise path"><Plus size={14} /></button></div>
+      {tool.kind === 'path' && <div className="pk-size"><span>Quick draw height</span><button onClick={() => adjustPathElevation(-1)} aria-label="Lower path"><Minus size={14} /></button><strong>{(pathElevation * 0.5).toFixed(1)}m above ground</strong><button onClick={() => adjustPathElevation(1)} aria-label="Raise path"><Plus size={14} /></button></div>}
       <label className="pk-path-color"><span>Footpath color</span><input type="color" value={pathColor} onChange={event => setPathColor(event.target.value)} /></label>
       <div className="pk-chips"><button className={tool.kind === 'pathPaint' ? 'on' : ''} onClick={() => setTool({ kind: 'pathPaint' })}>Recolor existing paths</button></div>
       <p className="pk-label">Path furniture</p>
       <div className="pk-chips">{Object.entries(PATH_ADDITIONS).map(([id, a]) => <button key={id} className={tool.kind === 'pathAdd' && tool.add === Number(id) ? 'on' : ''} onClick={() => setTool({ kind: 'pathAdd', add: Number(id) })}>{a.name} · {money(a.cost)}</button>)}</div>
-      <p className="pk-hint">Choose a height before building. Raised paths can cross scenery, rides, and track when there is enough clearance; use stairs to connect path heights. Boardwalks can also cross water. Drag to lay a straight run. Queue lines connect to ride entrances.</p>
+      <p className="pk-hint">The builder follows the heights of connected path sections, so you do not need to set elevations manually. Raised paths can cross scenery, rides, and track when there is enough clearance. Boardwalks can cross water. Queue lines connect to ride entrances.</p>
     </Window>}
 
     {panel === 'rides' && <Window title="Build a ride" onClose={() => togglePanel('rides')} wide>
@@ -716,17 +801,17 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
     {builder && builderRide && !builderRide.complete && <section className="pk-builder" aria-label="Track builder">
       <header><strong><Wrench size={14} /> {builderRide.name}</strong><button aria-label="Close builder" onClick={() => setBuilder(null)}><X size={16} /></button></header>
-      <div className="pk-builder-row" role="group" aria-label="Direction">{CURVES.map(c => <button key={c.c} className={builder.c === c.c ? 'on' : ''} onClick={() => chooseOrBuild({ c: c.c, s: builder.s, sp: builder.sp === 'loop' || builder.sp === 'station' || builder.sp === 'brakes' || builder.sp === 'booster' ? (c.c === builder.c ? builder.sp : '') : builder.sp })} title={builder.c === c.c ? `${c.label} · click again to build` : c.label}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={c.c === 0 ? 'M12 21V3' : `M12 21 C12 ${c.c > 0 ? 9 : 9} ${12 + Math.sign(c.c) * (Math.abs(c.c) === 1 ? 3 : 1)} ${Math.abs(c.c) === 1 ? 6 : 4} ${12 + Math.sign(c.c) * 9} ${Math.abs(c.c) === 1 ? 6 : 4}`} stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" /></svg><span>{c.label}</span></button>)}</div>
+      <div className="pk-builder-row" role="group" aria-label="Direction">{CURVES.map(c => <button key={c.c} className={builder.c === c.c ? 'on' : ''} onClick={() => chooseOrBuild({ c: c.c, s: builder.s, sp: builder.sp === 'loop' || builder.sp === 'corkscrew' || builder.sp === 'station' || builder.sp === 'brakes' || builder.sp === 'booster' ? (c.c === builder.c ? builder.sp : '') : builder.sp })} title={builder.c === c.c ? `${c.label} · click again to build` : c.label}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={c.c === 0 ? 'M12 21V3' : `M12 21 C12 ${c.c > 0 ? 9 : 9} ${12 + Math.sign(c.c) * (Math.abs(c.c) === 1 ? 3 : 1)} ${Math.abs(c.c) === 1 ? 6 : 4} ${12 + Math.sign(c.c) * 9} ${Math.abs(c.c) === 1 ? 6 : 4}`} stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" /></svg><span>{c.label}</span></button>)}</div>
       <div className="pk-builder-row" role="group" aria-label="Slope">{SLOPES.map(s => <button key={s.s} className={builder.s === s.s ? 'on' : ''} onClick={() => chooseOrBuild({ c: builder.c, s: s.s, sp: builder.sp })} title={builder.s === s.s ? `${s.label} · click again to build` : s.label}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={`M3 ${12 + s.s * 4} L21 ${12 - s.s * 4}`} stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" /></svg><span>{s.label}</span></button>)}</div>
-      <div className="pk-builder-row pk-builder-special" role="group" aria-label="Special piece">{SPECIALS.map(s => <button key={s.sp} className={builder.sp === s.sp ? 'on' : ''} onClick={() => chooseOrBuild({ sp: s.sp, ...(s.sp === 'loop' || s.sp === 'brakes' || s.sp === 'booster' || s.sp === 'station' ? { c: 0, s: 0 } : { c: builder.c, s: builder.s }) })}>{s.label}</button>)}</div>
-      <p className={`pk-builder-status ${builderCheck?.ok ? 'ok' : 'bad'}`}>{builderCheck?.ok ? `${builderCheck.closes ? 'This piece completes the circuit! ' : ''}Cost ${money(builderCheck.cost ?? 0)}` : builderCheck?.error ?? ''}</p>
+      <div className="pk-builder-row pk-builder-special" role="group" aria-label="Special piece">{SPECIALS.map(s => <button key={s.sp} disabled={s.sp === 'corkscrew' && !COASTER_STYLES[builderRide.style!]?.corkscrews || s.sp === 'loop' && !COASTER_STYLES[builderRide.style!]?.loops} className={builder.sp === s.sp ? 'on' : ''} onClick={() => chooseOrBuild({ sp: s.sp, ...(s.sp === 'loop' || s.sp === 'corkscrew' || s.sp === 'brakes' || s.sp === 'booster' || s.sp === 'station' ? { c: 0, s: 0 } : { c: builder.c, s: builder.s }) })}>{s.label}</button>)}</div>
+      <p className={`pk-builder-status ${builderCheck?.ok ? 'ok' : 'bad'}`}>{builderCheck?.ok ? `${builderCheck.adjusted ? 'Adjusted to a gentler section to keep the track smooth. ' : ''}${builderCheck.closes ? 'This piece completes the circuit! ' : ''}Cost ${money(builderCheck.cost ?? 0)}` : builderCheck?.error ?? ''}</p>
       <div className="pk-actions"><button className="pk-btn" onClick={() => void run({ t: 'unpiece', ride: builder.ride })}><Undo2 size={14} /> Remove last</button><button className="pk-btn" disabled={finishing} onClick={() => void autoFinish()}>{finishing ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />} Auto-finish</button><button className="pk-btn pk-btn-go" disabled={!builderCheck?.ok} onClick={() => void buildPiece()}><Check size={14} /> Build piece</button></div>
       <p className="pk-hint">{builderRide.pieces?.length ?? 0} pieces · spent {money(builderRide.spent ?? 0)}. Click a selected button again to build it. Auto-finish routes the track back into the station, adding chain lift on climbs. Station pieces add extra stops where trains pause.</p>
     </section>}
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">
       <strong>{tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
-      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.length + 1}-car train · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
+      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.style === 'kart' ? `${tool.length + 1} karts` : `${Math.min(tool.length + 1, 10)}-car train`} · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
       {(tool.kind === 'flat' || tool.kind === 'stall' || tool.kind === 'scenery' || tool.kind === 'coaster') && <button onClick={rotateTool}><RotateCw size={14} /> Rotate</button>}
       <button onClick={() => { setTool({ kind: 'select' }); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>
     </div>}
@@ -757,6 +842,7 @@ function RideWindow({ ride, session, readOnly, onClose, run, onBuild, onGate, ri
   const st = ride.stats
   const queue = ride.queueLength ?? ride.queue?.length ?? 0
   const coaster = ride.kind === 'coaster'
+  const rollerCoaster = coaster && !COASTER_STYLES[ride.style!].trackType
   const rideName = coaster ? COASTER_STYLES[ride.style!].name : FLAT_RIDES[ride.ride as string].name
   const mechanics = session.state.staff.filter(s => s.role === 'mechanic' && s.park === session.park)
   const reachableMechanic = mechanics.some(s => mechanicJobDistance(session.state, s, ride) >= 0)
@@ -772,7 +858,16 @@ function RideWindow({ ride, session, readOnly, onClose, run, onBuild, onGate, ri
     </dl> : coaster && ride.complete ? <p className="pk-hint pk-neg">The track test failed. Remove pieces and adjust the route before trying again.</p> : coaster ? <p className="pk-hint">Finish the circuit to see its ratings.</p> : null}
     <dl className="pk-dl"><dt>Capacity</dt><dd>{rideCapacity(ride)} riders</dd><dt>Queue</dt><dd>{queue} guests</dd><dt>Riders</dt><dd>{ride.totalRiders ?? 0} total · {ride.monthRiders ?? 0} this month</dd><dt>Income</dt><dd>{money(ride.revenue ?? 0)}</dd><dt>Reliability</dt><dd>{Math.round(ride.reliability ?? 100)}%</dd></dl>
     <div className="pk-row"><span>Ticket</span>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.max(0, (ride.price ?? 0) - 0.1) })}><Minus size={13} /></button>}<strong>{money(ride.price ?? 0)}</strong>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.min(20, (ride.price ?? 0) + 0.1) })}><Plus size={13} /></button>}{value > 0 && <small>Guests think it is worth about {money(Math.round(value * 1.6 * 10) / 10)}</small>}</div>
-    {!readOnly && <div className="pk-swatches">{colors.map(c => <button key={c} style={{ background: c }} aria-label={`Paint ${c}`} className={ride.color === c ? 'on' : ''} onClick={() => void run({ t: 'rideSet', id: ride.id, color: c })} />)}</div>}
+    {!readOnly && rollerCoaster && <p className="pk-hint">Trains: 2 sets · {ride.cars ?? 3} cars each</p>}
+    {!readOnly && rollerCoaster && <div className="pk-row"><span>Cars per train</span><button aria-label="Fewer cars per train" disabled={(ride.cars ?? 3) <= 1} onClick={() => void run({ t: 'rideSet', id: ride.id, cars: Math.max(1, (ride.cars ?? 3) - 1) })}><Minus size={13} /></button><strong>{ride.cars ?? 3} / 10</strong><button aria-label="More cars per train" disabled={(ride.cars ?? 3) >= 10} onClick={() => void run({ t: 'rideSet', id: ride.id, cars: Math.min(10, (ride.cars ?? 3) + 1) })}><Plus size={13} /></button></div>}
+    {!readOnly && coaster ? <div className="pk-ride-colors">
+      <label className="pk-field"><span>Track color</span><input type="color" value={ride.trackColor ?? ride.color ?? COASTER_STYLES[ride.style!].track} onChange={event => void run({ t: 'rideSet', id: ride.id, trackColor: event.target.value })} /></label>
+      <label className="pk-field"><span>Support color</span><input type="color" value={ride.supportColor ?? COASTER_STYLES[ride.style!].support} onChange={event => void run({ t: 'rideSet', id: ride.id, supportColor: event.target.value })} /></label>
+      <label className="pk-field"><span>Train color</span><input type="color" value={ride.trainColor ?? COASTER_STYLES[ride.style!].train} onChange={event => void run({ t: 'rideSet', id: ride.id, trainColor: event.target.value })} /></label>
+    </div> : !readOnly && <div className="pk-ride-paint">
+      <label className="pk-field"><span>Ride color</span><input type="color" value={ride.color ?? colors[0]} onChange={event => void run({ t: 'rideSet', id: ride.id, color: event.target.value })} /></label>
+      <div className="pk-swatches">{colors.map(c => <button key={c} style={{ background: c }} aria-label={`Paint ${c}`} className={ride.color === c ? 'on' : ''} onClick={() => void run({ t: 'rideSet', id: ride.id, color: c })} />)}</div>
+    </div>}
     {!readOnly && <div className="pk-actions">
       {coaster && !ride.complete && <button className="pk-btn pk-btn-go" onClick={onBuild}><Wrench size={13} /> Build track</button>}
       {coaster && !ride.complete && (ride.pieces?.length ?? 0) > 0 && <button className="pk-btn" onClick={() => void run({ t: 'unpiece', ride: ride.id })}><Undo2 size={13} /> Remove last</button>}

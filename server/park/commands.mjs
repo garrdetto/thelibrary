@@ -174,13 +174,13 @@ function addPieces(state, ride, park, pieces) {
   for (const piece of pieces) {
     const result = validatePiece(state, ride, piece)
     if (!result.ok) { ride.pieces.length -= checked.length; return { error: result.error } }
-    ride.pieces.push({ ...piece, k: result.cost })
+    ride.pieces.push({ ...result.piece, k: result.cost })
     checked.push(result)
     total += result.cost
   }
   ride.pieces.length -= checked.length
   if (!canAfford(state, park, total)) return { error: `You need $${total.toLocaleString('en-US')} to build that much track.` }
-  pieces.forEach((piece, i) => ride.pieces.push({ ...piece, k: checked[i].cost }))
+  pieces.forEach((piece, i) => ride.pieces.push({ ...checked[i].piece, k: checked[i].cost }))
   removeRideCells(state, ride.id)
   addRideCells(state, ride)
   ride.spent = (ride.spent ?? 0) + total
@@ -200,7 +200,7 @@ function finishCoaster(state, ride) {
   ride.rev = (ride.rev ?? 0) + 1
   const style = COASTER_STYLES[ride.style]
   const stationLength = ride.pieces.filter(p => p.sp === 'station').length
-  ride.cars = clamp(stationLength + 1, 2, 14)
+  ride.cars = ride.carsSet ? clamp(ride.cars, 1, style.trackType === 'kart' ? 14 : 10) : clamp(stationLength + 1, 2, style.trackType === 'kart' ? 14 : 10)
   const path = ridePath(state, ride)
   const stats = path ? rideStatsFromRun(path, style, style.trackType === 'kart' ? 1 : ride.cars) : { valid: false }
   ride.stats = stats
@@ -211,7 +211,15 @@ function finishCoaster(state, ride) {
       kart.pace = 0.94 + (index % 7) * 0.02
       return kart
     })
-    : [makeTrain()]
+    : Array.from({ length: style.trackType ? 1 : 2 }, (_, index) => {
+      const train = makeTrain()
+      if (path) {
+        const rest = Math.max(0.5, path.stationEnd - 0.6)
+        train.s = index ? rest - (ride.cars - 1) * CAR_GAP - CAR_GAP : rest
+        if (index) { train.phase = 'waiting'; train.waitS = train.s }
+      }
+      return train
+    })
   if (path && style.trackType !== 'kart') ride.trains[0].s = Math.max(0.5, path.stationEnd - 0.6)
   const label = style.category === 'other' ? 'track ride' : 'coaster'
   addNews(state, ride.park, stats.valid ? `${ride.name} passed its test run. Excitement ${stats.e.toFixed(2)}, intensity ${stats.i.toFixed(2)}, nausea ${stats.n.toFixed(2)}.` : `${ride.name} failed its test run: the ${label} could not complete its circuit. Adjust the route and try again.`, stats.valid ? 'ride' : 'warning', ride.id)
@@ -564,7 +572,7 @@ const HANDLERS = {
       id, type: 'ride', kind: 'coaster', style: cmd.style, x: cmd.x, y: cmd.y, park, name: nextName(state, style.name), price: 2.5, status: 'closed',
       start: { x: cmd.x, y: cmd.y, dir: cmd.dir, h: Math.round(ground / 0.5) + 1 }, pieces: [], complete: false, trains: [], cars: 3, spent: 0, rev: 0,
       entrance: 0, exit: 0, queue: [], riders: [], cycle: { phase: 'loading', timer: 0 }, reliability: 100, downtime: 0, revenue: 0, totalRiders: 0, monthRiders: 0,
-      built: state.time.seconds, color: null, stats: null, brokenAt: 0, mechanic: 0, cycles: 0,
+      built: state.time.seconds, color: null, stats: null, carsSet: false, brokenAt: 0, mechanic: 0, cycles: 0,
     }
     state.entities[id] = ride
     let total = cost
@@ -588,7 +596,7 @@ const HANDLERS = {
     const ride = state.entities[cmd.ride]
     if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your track rides.')
     const piece = { c: cmd.c | 0, s: cmd.s | 0 }
-    if (['chain', 'brakes', 'booster', 'loop', 'station'].includes(cmd.sp)) piece.sp = cmd.sp
+    if (['chain', 'brakes', 'booster', 'loop', 'corkscrew', 'station'].includes(cmd.sp)) piece.sp = cmd.sp
     const result = addPieces(state, ride, park, [piece])
     if (result.error) return fail(result.error)
     return ok({ cost: result.cost, complete: ride.complete })
@@ -665,7 +673,27 @@ const HANDLERS = {
       if (name.length < 1) return fail('Give the ride a name.')
       ride.name = name
     }
-    if (typeof cmd.color === 'string' && /^#[0-9a-f]{6}$/i.test(cmd.color)) ride.color = cmd.color
+    for (const field of ['color', 'trackColor', 'supportColor', 'trainColor']) {
+      if (cmd[field] !== undefined) {
+        if (typeof cmd[field] !== 'string' || !/^#[0-9a-f]{6}$/i.test(cmd[field])) return fail('Choose a valid ride color.')
+        ride[field] = cmd[field]
+      }
+    }
+    if (cmd.cars !== undefined) {
+      const style = ride.kind === 'coaster' ? COASTER_STYLES[ride.style] : null
+      if (!style || style.trackType || !isInt(cmd.cars, 1, 10)) return fail('Roller coaster trains can have 1 to 10 cars.')
+      const path = ride.complete ? ridePath(state, ride) : null
+      const stats = path ? rideStatsFromRun(path, style, cmd.cars) : null
+      ride.cars = cmd.cars
+      ride.carsSet = true
+      if (ride.complete) ride.stats = stats
+      ride.rev = (ride.rev ?? 0) + 1
+      if (ride.trains?.[1]) {
+        const rest = path ? Math.max(0.5, path.stationEnd - 0.6) : 0
+        ride.trains[1].waitS = rest - (ride.cars - 1) * CAR_GAP - CAR_GAP
+        ride.trains[1].s = ride.trains[1].waitS
+      }
+    }
     if (cmd.status === 'open') {
       if (ride.status === 'broken') return fail('A mechanic has to fix this ride first.')
       if (ride.kind === 'coaster' && !ride.complete) return fail('Finish the track circuit before opening.')
@@ -835,5 +863,5 @@ const HANDLERS = {
 
 export function pieceCostPreview(state, ride, piece) {
   const result = validatePiece(state, ride, piece)
-  return result.ok ? { ok: true, cost: result.cost, closes: result.closes, length: pieceLengthTiles(piece) } : result
+  return result.ok ? { ok: true, cost: result.cost, closes: result.closes, length: pieceLengthTiles(result.piece), piece: result.piece, adjusted: result.adjusted } : result
 }
