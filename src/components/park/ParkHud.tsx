@@ -119,8 +119,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       if (k.has('s')) { cam.tx -= fx * speed; cam.ty -= fy * speed }
       if (k.has('a')) { cam.tx -= rx * speed; cam.ty -= ry * speed }
       if (k.has('d')) { cam.tx += rx * speed; cam.ty += ry * speed }
-      if (k.has('arrowleft') || k.has('e')) cam.yaw += dt * 1.4
-      if (k.has('arrowright') || k.has('q')) cam.yaw -= dt * 1.4
+      if (k.has('arrowleft') || k.has('q')) cam.yaw -= dt * 1.4
+      if (k.has('arrowright') || k.has('e')) cam.yaw += dt * 1.4
       if (k.has('arrowup')) cam.pitch = Math.min(1.45, cam.pitch + dt * 0.9)
       if (k.has('arrowdown')) cam.pitch = Math.max(0.18, cam.pitch - dt * 0.9)
       const s = session.state
@@ -331,7 +331,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       return
     }
     if (d.cam && d.button === 2) {
-      r.cam.yaw = d.cam.yaw - dx * 0.006
+      r.cam.yaw = d.cam.yaw + dx * 0.006
       r.cam.pitch = Math.max(0.18, Math.min(1.45, d.cam.pitch + dy * 0.005))
       return
     }
@@ -412,37 +412,49 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     try { setSaves((await parkApi.saves()).saves) } catch (error) { toast((error as Error).message, 'error'); setSaves([]) }
   }
 
-  async function writeSave(slot: number, label?: string) {
+  async function writeSave(slot: number, label?: string): Promise<string | null> {
     const data = await compressSave(await session.exportSave())
     const s = session.state, p = s.parks[session.park]
     const name = label ?? (saveName.trim() || `${p.name} · ${MONTHS[s.time.month]} Y${s.time.year}`)
     await parkApi.save(slot, name.slice(0, 40), data, { cash: Math.round(p.cash), netWorth: Math.round(p.cash - p.loan), guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
     setLastSaved(Date.now())
-    await submitScore(data)
+    return submitScore(data)
   }
 
-  async function submitScore(data?: string) {
+  async function submitScore(data?: string): Promise<string | null> {
     const s = session.state, p = s.parks[session.park]
-    if (!signedIn || s.mode !== 'solo' || s.scenario === 'sandbox' || SCENARIOS[s.scenario]?.versus) return
-    try { await parkApi.submitScore(s.scenario, p.name, p.cash - p.loan, data); onScore?.() } catch { /* score submission is best effort */ }
+    if (!signedIn || s.mode !== 'solo' || s.scenario === 'sandbox' || SCENARIOS[s.scenario]?.versus) return null
+    try {
+      await parkApi.submitScore(s.scenario, p.name, p.cash - p.loan, data)
+      onScore?.()
+      return null
+    } catch (error) {
+      return `leaderboard update failed: ${(error as Error).message}`
+    }
   }
 
   async function saveTo(slot: number) {
     setSaveBusy(true)
     try {
-      await writeSave(slot)
-      toast(`Saved to slot ${slot}.`)
+      const scoreError = await writeSave(slot)
+      toast(scoreError ? `Saved to slot ${slot}, but the ${scoreError}.` : `Saved to slot ${slot}.`, scoreError ? 'warn' : 'info')
       setSaves((await parkApi.saves()).saves)
     } catch (error) { toast((error as Error).message, 'error') } finally { setSaveBusy(false) }
   }
 
-  const autosaving = useRef(false)
+  const autosaving = useRef<Promise<void> | null>(null)
   const autosave = useCallback(async (quiet = false) => {
-    if (!signedIn || autosaving.current) return
-    autosaving.current = true
-    try { await writeSave(0, `Autosave · ${session.state.parks[session.park].name}`); if (!quiet) toast('Autosaved.') }
-    catch (error) { if (!quiet) toast(`Autosave failed: ${(error as Error).message}`, 'warn') }
-    finally { autosaving.current = false }
+    if (!signedIn) return
+    if (autosaving.current) return autosaving.current
+    const pending = (async () => {
+      try {
+        const scoreError = await writeSave(0, `Autosave · ${session.state.parks[session.park].name}`)
+        if (scoreError) toast(`Autosaved, but the ${scoreError}.`, 'warn')
+        else if (!quiet) toast('Autosaved.')
+      } catch (error) { toast(`Autosave failed: ${(error as Error).message}`, 'warn') }
+    })()
+    autosaving.current = pending
+    try { await pending } finally { if (autosaving.current === pending) autosaving.current = null }
   }, [signedIn, session])
 
   useEffect(() => {

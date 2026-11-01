@@ -605,42 +605,87 @@ export function flatRideModel(kind: string, w: number, h: number): RideModel {
       } })
     }
   } else if (kind === 'zipper') {
-    floor(8, hexColor('#5b5964'))
-    for (const x of [-4.6, 4.6]) base.tube([[x, 0, 0.3], [0, 0, 7.8]], 0.42, C.steel, 8)
-    base.cylinder(null, 0, 0, 7.65, 0.7, 0.7, 0.9, 12, C.red)
-    const wheel = new MeshBuilder(), radius = 6.1
-    const ring: Vec3[] = []
-    for (let i = 0; i <= 36; i++) { const a = i / 36 * Math.PI * 2; ring.push([Math.cos(a) * radius, 0, Math.sin(a) * radius]) }
-    wheel.tube(ring, 0.22, C.white, 8, 1)
-    for (let i = 0; i < 12; i++) {
-      const a = i / 12 * Math.PI * 2
-      wheel.tube([[0, 0, 0], [Math.cos(a) * radius, 0, Math.sin(a) * radius]], 0.09, C.gold, 6)
+    floor(7.5, hexColor('#5b5964'))
+    base.cylinder(null, 0, 0, 0.35, 5.2, 5.2, 0.35, 24, C.dark)
+    for (const y of [-1.3, 1.3]) {
+      for (const x of [-4.7, 4.7]) base.tube([[x, y, 0.55], [0, y, 8.5]], 0.34, C.steel, 8)
+      base.tube([[-4.7, y, 0.55], [0, y, 4.4], [4.7, y, 0.55]], 0.22, C.dark, 8)
     }
-    parts.push({ builder: wheel, anim: t => mat4.chain(T(0, 0, 8.1), mat4.rotY(t.spin * 0.82 * (t.running ? 1 : 0.35))) })
-    for (let k = 0; k < 8; k++) {
-      const pod = new MeshBuilder(), a = k / 8 * Math.PI * 2
-      pod.box(null, 0, 0, -0.5, 1.65, 1.35, 0.75, k % 2 ? C.red : C.blue, 1)
-      pod.box(null, 0, 0, -0.03, 1.72, 1.42, 0.12, C.gold, 1)
-      for (let seat = -1; seat <= 1; seat += 2) pod.sphere(null, 0.2, seat * 0.3, 0.52, 0.22, C.skin, 0, 3, 6)
-      parts.push({ builder: pod, anim: t => mat4.chain(T(0, 0, 8.1), mat4.rotY(t.spin * 0.82 * (t.running ? 1 : 0.35)), T(Math.cos(a) * radius, 0, Math.sin(a) * radius), mat4.rotY(Math.sin(t.spin * 0.82 + k) * 0.22)) })
+    base.tube([[0, -1.3, 8.5], [0, 1.3, 8.5]], 0.5, C.red, 10)
+    base.cylinder(mat4.chain(T(0, 0, 8.5), mat4.rotX(Math.PI / 2)), 0, 0, -1.65, 0.48, 0.48, 3.3, 12, C.gold)
+    base.box(null, -5.3, 0, 0.55, 1.4, 2.8, 0.55, C.cream)
+    for (const y of [-1.25, 1.25]) base.box(null, -5.3, y, 1.1, 0.08, 0.08, 1.1, C.steel)
+
+    const wheel = new MeshBuilder()
+    const pointOnFrame = (a: number): Vec3 => {
+      const x = Math.cos(a), z = Math.sin(a), exponent = 0.58
+      return [4.1 * Math.sign(x) * Math.abs(x) ** exponent, 0, 5.4 * Math.sign(z) * Math.abs(z) ** exponent]
+    }
+    const frame = Array.from({ length: 49 }, (_, i) => pointOnFrame(i / 48 * Math.PI * 2))
+    for (const y of [-1, 1]) wheel.tube(frame.map(([x, , z]) => [x, y, z]), 0.24, C.white, 8, 1)
+    for (let i = 0; i < 12; i++) {
+      const [x, , z] = pointOnFrame(i / 12 * Math.PI * 2)
+      wheel.tube([[x, -1, z], [x, 1, z]], 0.13, C.gold, 6)
+    }
+    wheel.tube([[0, -1, 0], [0, 1, 0]], 0.32, C.red, 10)
+    const wheelAngle = (t: RideAnim) => t.spin * 0.82 * (t.running ? 1 : 0.35)
+    parts.push({ builder: wheel, anim: t => mat4.chain(T(0, 0, 8.5), mat4.rotY(wheelAngle(t))) })
+    for (let k = 0; k < 12; k++) {
+      const pod = new MeshBuilder(), point = pointOnFrame(k / 12 * Math.PI * 2)
+      pod.box(null, 0, 0, -0.65, 1.45, 1.12, 0.18, C.dark)
+      for (const y of [-0.55, 0.55]) {
+        pod.tube([[-0.72, y, -0.48], [-0.72, y, 0.68], [0.72, y, 0.68], [0.72, y, -0.48]], 0.055, C.steel, 6)
+        pod.tube([[-0.72, y, -0.48], [0.72, y, -0.48]], 0.055, C.steel, 6)
+      }
+      for (const x of [-0.72, 0.72]) pod.tube([[x, -0.55, -0.48], [x, 0.55, -0.48]], 0.055, C.steel, 6)
+      pod.box(null, 0, 0, 0.02, 1.25, 0.12, 0.12, C.gold)
+      for (const x of [-0.32, 0.32]) {
+        pod.box(null, x, 0, -0.05, 0.3, 0.34, 0.62, k % 2 ? C.red : C.blue, 1)
+        pod.sphere(null, x, 0, 0.67, 0.18, C.skin, 0, 4, 7)
+      }
+      parts.push({ builder: pod, anim: t => mat4.chain(T(0, 0, 8.5), mat4.rotY(wheelAngle(t)), T(point[0], 0, point[2]), mat4.rotY(Math.sin(t.spin * 1.2 + k * 2.7) * (t.running ? 1.05 : 0.15))) })
     }
   } else if (kind === 'gravitron') {
-    floor(8, hexColor('#454b5c'))
-    base.cylinder(null, 0, 0, 0.25, 6.7, 6.7, 1.1, 24, C.dark)
-    for (let i = 0; i < 12; i++) {
-      const a = i / 12 * Math.PI * 2
-      base.cylinder(null, Math.cos(a) * 5.2, Math.sin(a) * 5.2, 0.5, 0.22, 0.22, 6.2, 8, C.steel)
+    floor(7.7, hexColor('#454b5c'))
+    base.cylinder(null, 0, 0, 0.35, 6.5, 6.5, 0.4, 28, C.dark)
+    base.box(null, -5.6, 0, 0.4, 1.8, 3.0, 0.65, C.cream)
+    base.box(null, -5.6, 0, 1.05, 1.9, 3.1, 0.12, C.gold)
+    const drum = new MeshBuilder(), segments = 36, bottomRadius = 6.15, topRadius = 5.3, bottom = 0.75, top = 6.9
+    const exterior = [hexColor('#7b51c9'), hexColor('#d84365'), hexColor('#3a77d0'), hexColor('#e5d7c2')]
+    for (let i = 0; i < segments; i++) {
+      const a0 = i / segments * Math.PI * 2, a1 = (i + 1) / segments * Math.PI * 2
+      const p = (a: number, r: number, z: number): Vec3 => [Math.cos(a) * r, Math.sin(a) * r, z]
+      const panelColor = exterior[Math.floor(i / 3) % exterior.length]
+      drum.quad(null, p(a0, bottomRadius, bottom), p(a1, bottomRadius, bottom), p(a1, topRadius, top), p(a0, topRadius, top), panelColor, 1)
+      if (i % 3 === 0) drum.quad(null, p(a0 + 0.035, bottomRadius + 0.015, bottom + 0.4), p(a0 + 0.07, bottomRadius + 0.015, bottom + 0.4), p(a0 + 0.07, topRadius + 0.015, top - 0.4), p(a0 + 0.035, topRadius + 0.015, top - 0.4), C.white, 1)
+      const innerTop = 3.2
+      drum.quad(null, p(a0, innerTop, top + 0.02), p(a0, topRadius, top + 0.02), p(a1, topRadius, top + 0.02), p(a1, innerTop, top + 0.02), i % 2 ? hexColor('#272b38') : C.dark, 1)
     }
-    const saucer = new MeshBuilder()
-    saucer.cylinder(null, 0, 0, 0, 6.4, 6.4, 0.55, 24, hexColor('#7b51c9'))
-    saucer.cylinder(null, 0, 0, 0.45, 5.8, 5.8, 0.12, 24, C.white, 1)
-    saucer.cylinder(null, 0, 0, 0.57, 0.65, 0.65, 0.6, 16, C.gold)
-    for (let k = 0; k < 12; k++) {
-      const a = k / 12 * Math.PI * 2, x = Math.cos(a) * 4.35, y = Math.sin(a) * 4.35
-      saucer.box(null, x, y, 0.85, 1.0, 1.4, 0.35, k % 2 ? C.red : C.blue, 1)
-      saucer.sphere(null, x, y, 1.25, 0.2, C.skin, 0, 3, 6)
+    const rim = (z: number, radius: number, color: Vec3) => {
+      const points: Vec3[] = []
+      for (let i = 0; i <= segments; i++) { const a = i / segments * Math.PI * 2; points.push([Math.cos(a) * radius, Math.sin(a) * radius, z]) }
+      drum.tube(points, 0.22, color, 8, 1)
     }
-    parts.push({ builder: saucer, anim: t => mat4.chain(T(0, 0, 3.2), mat4.rotY(t.running ? 0.32 : 0.08), mat4.rotZ(t.spin * (t.running ? 1.25 : 0.3))) })
+    rim(bottom, bottomRadius, C.steel)
+    rim(top, topRadius, C.white)
+    rim(top + 0.08, 3.2, C.gold)
+    drum.cylinder(null, 0, 0, bottom, 1.0, 0.65, top - bottom, 16, C.dark)
+    drum.cylinder(null, 0, 0, top, 2.6, 2.6, 0.16, 20, hexColor('#252a35'), 1)
+    drum.cylinder(null, 0, 0, top + 0.16, 1.0, 0.25, 0.9, 16, C.gold, 1)
+    for (let k = 0; k < 24; k++) {
+      const a = k / 24 * Math.PI * 2, x = Math.cos(a), y = Math.sin(a)
+      const panel = mat4.chain(T(x * 5.25, y * 5.25, bottom + 0.25), mat4.rotZ(a))
+      drum.box(panel, 0, 0, 0, 0.12, 0.62, 5.3, k % 3 ? hexColor('#d7dbe1') : hexColor('#9fa9ba'), 1)
+      if (k % 2 === 0) {
+        const rider = mat4.chain(T(x * 4.65, y * 4.65, bottom + 0.75), mat4.rotZ(a + Math.PI))
+        drum.box(rider, 0, 0, 0.2, 0.42, 0.36, 0.9, [C.red, C.blue, C.green, C.gold][(k / 2) % 4], 1)
+        drum.sphere(rider, 0, 0, 1.22, 0.2, C.skin, 0, 5, 7)
+        drum.box(rider, 0.02, 0, 0.02, 0.52, 0.42, 0.12, C.dark)
+      }
+      const lightAngle = a
+      drum.sphere(null, Math.cos(lightAngle) * 4.3, Math.sin(lightAngle) * 4.3, top + 0.12, 0.13, k % 2 ? C.gold : hexColor('#f6f2df'), 1, 4, 6)
+    }
+    parts.push({ builder: drum, anim: t => mat4.chain(T(0, 0, 0), mat4.rotZ(t.spin * (t.running ? 1.25 : 0.3))) })
   }
   return { base, parts }
 }

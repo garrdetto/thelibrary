@@ -39,12 +39,12 @@ export function ParkScoreboard({ username, initial, refreshKey, onView, viewBusy
     <header className="module-scores-head">
       <div>
         <span className="module-scores-eyebrow"><Trophy size={13}/> THRILL PARK LEADERBOARD</span>
-        <h2 id="park-scores-title">Current Parks <small>Top 10 per map</small></h2>
-        <p>Each player's park as of their latest save or autosave, ranked by net worth: cash minus everything still owed to the bank.</p>
+        <h2 id="park-scores-title">Richest Tycoons <small>Top 10 per map</small></h2>
+        <p>Each player's best saved solo park on each map is ranked by net worth (cash minus loans). Autosaves record new bests every five minutes.</p>
       </div>
       <div className="module-scores-side">
         {username
-          ? <div className="module-scores-best"><small>YOUR PARK</small><strong>{board?.personalBest != null ? formatMoney(board.personalBest) : '—'}</strong><span>{myRank >= 0 ? `#${myRank + 1} on the board` : board?.personalBest != null ? 'Outside the top 10' : 'Save a park on this map'}</span></div>
+          ? <div className="module-scores-best"><small>YOUR BEST</small><strong>{board?.personalBest != null ? formatMoney(board.personalBest) : '—'}</strong><span>{myRank >= 0 ? `#${myRank + 1} on the board` : board?.personalBest != null ? 'Outside the top 10' : 'Save a park on this map'}</span></div>
           : <p className="module-scores-signin">Sign in to put your parks on the board.</p>}
         <button type="button" className="module-scores-refresh" onClick={() => void load(true)} disabled={state === 'loading' || refreshing} aria-label="Refresh leaderboard"><RefreshCw size={14} className={refreshing ? 'spin' : undefined}/> Refresh</button>
       </div>
