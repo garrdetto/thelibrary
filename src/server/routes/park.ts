@@ -8,7 +8,7 @@ import { issueTicket, redeemTicket } from './account'
 const TICKET_PREFIX = 'park:'
 const slot = z.number().int().min(0).max(6)
 const scenario = z.string().regex(/^[a-zA-Z]{1,32}$/)
-const summary = z.object({ cash: z.number(), guests: z.number().int().min(0).max(100000), rating: z.number().min(0).max(1000), date: z.string().max(40), mode: z.enum(['solo', 'coop', 'versus']) }).strict()
+const summary = z.object({ cash: z.number(), netWorth: z.number().int().min(-1_000_000_000).max(10_000_000_000).optional(), guests: z.number().int().min(0).max(100000), rating: z.number().min(0).max(1000), date: z.string().max(40), mode: z.enum(['solo', 'coop', 'versus']) }).strict()
 
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ticket') }),

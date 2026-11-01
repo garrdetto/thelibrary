@@ -1,4 +1,4 @@
-export type SaveSummary = { slot: number; name: string; scenario: string; updated: string; summary: { cash: number; guests: number; rating: number; date: string; mode: string } }
+export type SaveSummary = { slot: number; name: string; scenario: string; updated: string; summary: { cash: number; netWorth?: number; guests: number; rating: number; date: string; mode: string } }
 
 async function call<T>(init?: RequestInit, query = ''): Promise<T> {
   const response = await fetch(`/api/park${query}`, { credentials: 'same-origin', headers: init?.body ? { 'Content-Type': 'application/json' } : undefined, ...init })

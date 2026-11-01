@@ -40,7 +40,7 @@ export function ParkScoreboard({ username, initial, refreshKey }: { username: st
       <div>
         <span className="module-scores-eyebrow"><Trophy size={13}/> THRILL PARK LEADERBOARD</span>
         <h2 id="park-scores-title">Richest Tycoons <small>Top 10 per map</small></h2>
-        <p>Net worth is your cash minus everything you still owe the bank. Your best is saved with every save and autosave.</p>
+        <p>Each player's best saved solo park on each map is ranked by net worth (cash minus loans). Autosaves record new bests every five minutes.</p>
       </div>
       <div className="module-scores-side">
         {username
