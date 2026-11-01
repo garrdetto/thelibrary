@@ -42,7 +42,7 @@ export function encodeDynamic(state, sinceNews = 0) {
   }
   return {
     time: state.time, weather: state.weather, speed: state.speed, ended: state.ended, parks: state.parks,
-    staff: state.staff.map(s => ({ id: s.id, role: s.role, park: s.park, name: s.name, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, state: s.state, swept: s.swept, fixed: s.fixed, target: s.target })),
+    staff: state.staff.map(s => ({ id: s.id, role: s.role, park: s.park, name: s.name, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, tx: s.tx, ty: s.ty, state: s.state, swept: s.swept, fixed: s.fixed, target: s.target })),
     rides, stalls, litter: encodeRle(state.map.litter), nextId: state.nextId, structVersion: state.structVersion,
     news: state.news.filter(n => n.id > sinceNews),
   }

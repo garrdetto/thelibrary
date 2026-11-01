@@ -1,6 +1,6 @@
 import { TILE, UNIT, DIRS, clamp } from './util.mjs'
-import { COASTER_STYLES } from './catalog.mjs'
-import { tileMax, inMap, tileIndex } from './terrain.mjs'
+import { COASTER_STYLES, FLAT_RIDES, STALLS, SCENERY } from './catalog.mjs'
+import { tileMax, inMap, tileIndex, pathHeightAt } from './terrain.mjs'
 
 export const SLOPE_RATE = { '-2': -8, '-1': -2, '0': 0, '1': 2, '2': 8 }
 export const CAR_GAP = 2.4
@@ -213,8 +213,10 @@ export function stepTrain(path, train, cars, dt, opts = {}) {
   }
   slope /= cars
   let a = -9.81 * slope - Math.sign(train.v) * (0.1 + 0.0011 * train.v * train.v)
+  if (opts.style?.drive) a += opts.style.drive * clamp(1 - Math.abs(train.v) / (opts.style.maxSpeed ?? 20), 0, 1)
   if (onBooster && train.v < 21) a += 14
   if (onBrakes && train.v > 6) a -= 12
+  if (opts.style?.maxSpeed) train.v = clamp(train.v, -opts.style.maxSpeed, opts.style.maxSpeed)
   const prev = train.s
   if (train.phase === 'departing') {
     if (train.v < 3) train.v = Math.min(3, train.v + 3 * dt)
@@ -274,7 +276,7 @@ export function rideStatsFromRun(path, style, cars) {
   const probe = {}
   let ok = false
   for (let step = 0; step < 60 * 420; step++) {
-    const result = stepTrain(path, train, cars, dt, { stallLimit: 12 })
+    const result = stepTrain(path, train, cars, dt, { stallLimit: 12, style })
     time += dt
     if (result === 'stalled') break
     if (result === 'arrived') { ok = true; break }
@@ -373,12 +375,15 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
     const minZ = inverted ? cell.zmin - 3.4 : cell.zmin - 0.05
     if (minZ < ground) return { error: inverted ? 'Not enough room for riders to hang above the ground.' : 'The track would go underground. Raise it or lower the land.' }
     if (cell.zmin - ground > style.maxHeight * UNIT) return { error: `${style.name} track can only rise ${style.maxHeight * UNIT}m above the ground.` }
-    const obj = map.obj[ti]
-    if (obj) {
-      const entity = state.entities[obj]
-      if (entity && !(entity.type === 'scenery' && (entity.kind === 'flowers' || entity.kind === 'bush') && cell.lo > ground + 2.5)) return { error: `Something is in the way: ${entityLabel(entity)}.` }
+    const obj = map.obj[ti], entity = obj ? state.entities[obj] : null
+    if (entity && entity.id !== ride.id && entity.kind !== 'coaster') {
+      const clearance = entity.type === 'scenery' ? SCENERY[entity.kind]?.height ?? 3
+        : entity.type === 'ride' ? (FLAT_RIDES[entity.ride]?.height ?? 6) * 0.4
+          : entity.type === 'stall' ? entity.kind === 'souvenir' ? 5 : entity.kind === 'toilet' ? 3.5 : 3.2
+            : entity.type === 'parkEntrance' ? 4 : 2.8
+      if (cell.lo < ground + clearance + 0.5) return { error: `The track needs more clearance above ${entityLabel(entity)}.` }
     }
-    if (map.path[ti] && cell.lo < ground + 2.6) return { error: 'The track needs to clear the footpath by at least 2.6m.' }
+    if (map.path[ti] && cell.lo < pathHeightAt(map, (cell.x + 0.5) * TILE, (cell.y + 0.5) * TILE, TILE) + 2.6) return { error: 'The track needs to clear the footpath by at least 2.6m.' }
     for (const other of state.trackCells.get(ti) ?? []) {
       if (other.ride === ride.id && (other.piece >= index - 1 || (closes && other.piece === 0))) continue
       if (cell.lo < other.hi && other.lo < cell.hi) return { error: 'The track would collide with other track.' }

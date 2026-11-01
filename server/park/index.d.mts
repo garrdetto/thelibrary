@@ -1,21 +1,22 @@
-export type ParkMap = { w: number; h: number; corners: number[]; surface: number[]; water: number[]; path: number[]; pathAdd: number[]; obj: number[]; owner: number[]; litter: number[] }
+export type ParkMap = { w: number; h: number; corners: number[]; surface: number[]; water: number[]; path: number[]; pathColor: number[]; pathAdd: number[]; obj: number[]; owner: number[]; litter: number[] }
 export type Piece = { c: number; s: number; sp?: 'station' | 'chain' | 'brakes' | 'booster' | 'loop'; k?: number }
 export type Pose = { x: number; y: number; h: number; dir: number; slope: number }
 export type Train = { s: number; v: number; phase: string; timer: number; riders: number[]; ridersCount?: number; lap: number; stalled: number }
 export type RideStats = { valid: boolean; e: number; i: number; n: number; maxSpeed?: number; avgSpeed?: number; rideTime?: number; length?: number; maxG?: number; minG?: number; latG?: number; drops?: number; highestDrop?: number; inversions?: number; airtime?: number }
 export type Entity = {
   id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
+  size?: [number, number]
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
   cycle?: { phase: string; timer: number; spin?: number }; reliability?: number; totalRiders?: number; monthRiders?: number; color?: string | null; stats?: RideStats | null; mechanic?: number
   style?: string; start?: { x: number; y: number; dir: number; h: number }; pieces?: Piece[]; complete?: boolean; trains?: Train[]; cars?: number; spent?: number; rev?: number
 }
 export type Guest = { id: number; park: number; x: number; y: number; tx: number; ty: number; state: string; hidden?: boolean; happy: number; items: string[]; kid: boolean; shirt: number; thoughts: string[]; dir?: number; energy?: number; hunger?: number; thirst?: number; cash?: number }
-export type Staff = { id: number; role: 'handyman' | 'mechanic' | 'entertainer'; park: number; name: string; x: number; y: number; state: string; swept: number; fixed: number; target?: { ride?: number } | null; dir?: number }
+export type Staff = { id: number; role: 'handyman' | 'mechanic' | 'entertainer'; park: number; name: string; x: number; y: number; tx?: number; ty?: number; state: string; swept: number; fixed: number; target?: { ride?: number } | null; dir?: number }
 export type Ledger = { rides: number; shops: number; entry: number; construction: number; upkeep: number; wages: number; marketing: number; interest: number; landscaping: number }
 export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'versus'; guests?: number; rating?: number; year?: number; value?: number; count?: number; excitement?: number }
 export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number }
-export type Park = { id: number; name: string; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: { rate: number; cap: number } }
+export type Park = { id: number; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: { rate: number; cap: number } }
 export type News = { id: number; t: number; park: number; text: string; kind: string; ref: number | null }
 export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
@@ -28,8 +29,8 @@ export type Command = { t: string; [key: string]: unknown }
 export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number }
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[] }
 export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string }
-export type CoasterStyle = { name: string; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; seats: number; excitementBonus: number; intensityBonus: number; track: string; support: string; train: string; description: string }
-export type StallDef = { name: string; cost: number; upkeep: number; price: number; item: string; kind: string; color: string; sign: string; hunger?: number; thirst?: number; happiness?: number }
+export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
+export type StallDef = { name: string; size?: [number, number]; cost: number; upkeep: number; price: number; item: string; kind: string; color: string; sign: string; hunger?: number; thirst?: number; happiness?: number }
 export type ScenarioDef = { name: string; difficulty: string; size: number; seed: number; terrain: string; cash: number; loan: number; maxLoan: number; objective: Objective; description: string; versus?: boolean }
 
 export const TILE: number
@@ -70,6 +71,8 @@ export function tileMin(map: ParkMap, x: number, y: number): number
 export function tileMax(map: ParkMap, x: number, y: number): number
 export function tileSlope(map: ParkMap, x: number, y: number): { flat: boolean; base: number; dir: number }
 export function groundHeightAt(map: ParkMap, wx: number, wy: number, tile?: number): number
+export function pathHeightAt(map: ParkMap, wx: number, wy: number, tile?: number): number
+export function isWalkPath(kind: number): boolean
 export function trackPoses(ride: Entity): Pose[]
 export function samplePiece(pose: Pose, piece: Piece, steps?: number): { x: number; y: number; z: number; psi: number; bank: number }[]
 export function buildTrackPath(ride: Entity): TrackPath | null
@@ -81,8 +84,10 @@ export function footprint(entity: Entity): { x: number; y: number; w: number; h:
 export function footprintTiles(entity: Entity): [number, number][]
 export function stationTiles(state: ParkState, ride: Entity): [number, number][]
 export function frontTile(gate: { x: number; y: number; dir: number }): { x: number; y: number }
+export function stallFrontTile(stall: Entity): { x: number; y: number }
 export function rideCapacity(ride: Entity): number
 export function rideValue(ride: Entity): number
+export function mechanicJobDistance(state: ParkState, mechanic: Staff, ride: Entity): number
 export function objectiveText(objective: Objective): string
 export function parkValue(state: ParkState, park: number): number
 export function companyValue(state: ParkState, park: number): number

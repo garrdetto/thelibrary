@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { LoaderCircle, Play, RefreshCcw, Trash2, Users, Zap } from 'lucide-react'
 import { ParkHud } from './ParkHud'
 import { ParkScoreboard } from './ParkScoreboard'
-import { LocalSession, NetSession, Lobby, compressSave, decompressSave } from '@/lib/park/session'
+import { LocalSession, NetSession, ViewSession, Lobby, compressSave, decompressSave } from '@/lib/park/session'
 import type { ParkSession, RoomInfo, Player, ChatLine } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { SCENARIOS, objectiveText, formatMoney } from '../../../server/park/index.mjs'
+import { SCENARIOS, objectiveText, formatMoney, deserializePark } from '../../../server/park/index.mjs'
 
 type Tab = 'new' | 'load' | 'online'
 const SOLO = Object.entries(SCENARIOS).filter(([, s]) => !s.versus)
@@ -49,6 +49,20 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
       const parsed = await decompressSave(data)
       startLocal(() => LocalSession.load(parsed))
     } catch (failure) { setError((failure as Error).message || 'That save could not be opened.') } finally { setBusy('') }
+  }
+
+  async function viewPark(map: string, player: string) {
+    setBusy(`${map}:${player}`); setError('')
+    try {
+      const view = await parkApi.view(map, player)
+      const parsed = await decompressSave(view.data)
+      if (session && !session.online) session.dispose()
+      const next = new ViewSession(deserializePark(parsed), view.username, view.savedAt)
+      next.state.parks[0].named = true
+      next.state.speed = 1
+      setSession(next)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    } catch (failure) { setError((failure as Error).message || 'That park could not be opened.') } finally { setBusy('') }
   }
 
   async function removeSlot(slot: number) {
@@ -107,7 +121,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
 
   if (session) return <>
     <div className="pk-root pk-root-game"><ParkHud session={session} onQuit={quit} signedIn={signedIn} onScore={() => setScoreKey(k => k + 1)} /></div>
-    {session.state.mode === 'solo' && session.state.scenario !== 'sandbox' && <div className="pk-scores-wrap"><ParkScoreboard username={username} initial={session.state.scenario} refreshKey={scoreKey} /></div>}
+    {session.state.mode === 'solo' && session.state.scenario !== 'sandbox' && <div className="pk-scores-wrap"><ParkScoreboard username={username} initial={session.state.scenario} refreshKey={scoreKey} onView={session.online ? undefined : (m, p) => void viewPark(m, p)} viewBusy={busy} /></div>}
   </>
 
   return <div className="pk-root">
@@ -166,7 +180,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
           {!lobby.rooms.length ? <p className="pk-menu-note">No parks are open. Host one and invite friends to this page.</p> : <ul>{lobby.rooms.map(r => <li key={r.id}><div><strong>{r.name}</strong><small>{r.mode === 'coop' ? 'Co-op' : 'Versus'} · {SCENARIOS[r.scenario]?.name ?? r.scenario} · {r.players.length}/{r.max} · {r.players.map(p => p.name).join(', ')}{r.started && r.mode === 'versus' ? ' · in progress' : ''}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy) || r.players.length >= r.max || (r.mode === 'versus' && r.started)} onClick={() => void joinRoom(r.id)}>Join</button></li>)}</ul>}
         </div>
       </div>)}
-      <ParkScoreboard username={username} refreshKey={scoreKey} />
+      <ParkScoreboard username={username} refreshKey={scoreKey} onView={(m, p) => void viewPark(m, p)} viewBusy={busy} />
       <p className="pk-controls-help"><strong>Controls</strong> Drag to pan · right-drag to rotate · scroll or pinch to zoom · WASD/arrows move · Q/E rotate · R rotates what you are placing · G grid · Space pauses · Esc cancels.</p>
     </section>
   </div>

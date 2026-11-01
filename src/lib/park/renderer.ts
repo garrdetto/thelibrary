@@ -2,7 +2,7 @@ import { Gl, MeshBuilder, InstanceList, mat4, hexColor } from './gl'
 import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
 import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
-import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
 const TILE = 4
@@ -11,7 +11,8 @@ const SURFACE_COLORS: Vec3[] = ['#5b8f3c', '#cdb57a', '#7f6044', '#8a8780', '#e8
 const WATER_SHALLOW = hexColor('#7cc9cf'), WATER_DEEP = hexColor('#256f9e')
 const PATH_COLOR = hexColor('#cdbb93'), PATH_EDGE = hexColor('#8f7d5c'), QUEUE_COLOR = hexColor('#9fb3c9'), QUEUE_EDGE = hexColor('#556a84')
 const SCENERY_KINDS = ['oak', 'pine', 'birch', 'palm', 'bush', 'flowers', 'hedge', 'rock', 'fountain', 'statue', 'topiary']
-const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', waterslide: '#1fb5b0' }
+const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', waterslide: '#1fb5b0', zipper: '#e2513d', gravitron: '#7b51c9' }
+const stallKey = (kind: string, size?: [number, number]) => `stall:${kind}:${(size ?? [1, 1]).join('x')}`
 
 export type Pick = { kind: 'guest' | 'staff' | 'entity'; id: number } | null
 export type TileHit = { x: number; y: number; wx: number; wy: number; wz: number; fx: number; fy: number }
@@ -74,7 +75,12 @@ export class ParkRenderer {
       }
     }
     inst('balloon', balloonModel()); inst('umbrella', umbrellaModel())
-    inst('stall', stallModel('booth')); inst('stall:toilet', stallModel('toilet')); inst('gate', gateModel())
+    for (const [kind, def] of Object.entries(STALLS)) {
+      const size = def.size ?? [1, 1]
+      inst(stallKey(kind, size), stallModel(kind, size))
+      if (kind === 'toilet') inst(stallKey(kind, [1, 1]), stallModel(kind, [1, 1]))
+    }
+    inst('gate', gateModel())
     inst('bench', benchModel()); inst('bin', binModel()); inst('lampPost', lampPostModel()); inst('lampHead', lampHeadModel()); inst('litter', litterModel())
     const rain = new MeshBuilder(); rain.box(null, 0, 0, 0, 0.03, 0.03, 0.9, hexColor('#b8d4ee')); inst('rain', rain)
     const entrance = parkEntranceModel(); this.kindMeshes.set('parkEntrance', this.g.upload(entrance))
@@ -172,9 +178,36 @@ export class ParkRenderer {
       const kind = map.path[i]
       if (kind) {
         const lift = 0.07
-        const fill = kind === 2 ? QUEUE_COLOR : PATH_COLOR, edge = kind === 2 ? QUEUE_EDGE : PATH_EDGE
-        const corner = (u: number, v: number): Vec3 => { const z = a * (1 - u) * (1 - v) + b * u * (1 - v) + c * u * v + d * (1 - u) * v; return [(x + u) * TILE, (y + v) * TILE, z + lift] }
+        const pathColor = map.pathColor[i]
+        const fill = kind === 1 && pathColor >= 0
+          ? [pathColor >> 16 & 255, pathColor >> 8 & 255, pathColor & 255].map(channel => channel / 255) as Vec3
+          : kind === 2 ? QUEUE_COLOR : kind === 3 ? hexColor('#b39a73') : kind === 4 ? hexColor('#8b6038') : PATH_COLOR
+        const edge = kind === 2 ? QUEUE_EDGE : kind === 3 ? hexColor('#786247') : kind === 4 ? hexColor('#563b27') : PATH_EDGE
+        const deck = kind === 4 ? Math.max(a, b, c, d, map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity) : 0
+        const corner = (u: number, v: number): Vec3 => {
+          const z = kind === 4 ? deck : a * (1 - u) * (1 - v) + b * u * (1 - v) + c * u * v + d * (1 - u) * v
+          return [(x + u) * TILE, (y + v) * TILE, z + lift]
+        }
         paths.quad(null, corner(0, 0), corner(1, 0), corner(1, 1), corner(0, 1), fill)
+        if (kind === 3) {
+          const riseX = Math.abs((b - a) + (c - d)), alongX = riseX >= Math.abs((d - a) + (c - b))
+          for (let step = 1; step < 8; step++) {
+            const u = step / 8, half = 0.06
+            const corners: [number, number][] = alongX
+              ? [[u - half, 0], [u + half, 0], [u + half, 1], [u - half, 1]]
+              : [[0, u - half], [0, u + half], [1, u + half], [1, u - half]]
+            const tread = corners.map(([cx, cy]) => {
+              const wx = (x + cx) * TILE, wy = (y + cy) * TILE
+              return [wx, wy, groundHeightAt(map, wx, wy, TILE) + lift + 0.035] as Vec3
+            })
+            paths.quad(null, tread[0], tread[1], tread[2], tread[3], edge)
+          }
+        }
+        if (kind === 4 && deck > Math.max(a, b, c, d) + 0.3) {
+          const wx = (x + 0.5) * TILE, wy = (y + 0.5) * TILE
+          const base = groundHeightAt(map, wx, wy, TILE)
+          paths.cylinder(null, wx, wy, base, 0.18, 0.18, deck - base, 8, hexColor('#68472c'))
+        }
         const e = 0.08
         const sides: [number, number, [number, number, number, number]][] = [[1, 0, [1 - e, 0, 1, 1]], [0, 1, [0, 1 - e, 1, 1]], [-1, 0, [0, 0, e, 1]], [0, -1, [0, 0, 1, e]]]
         for (const [dx, dy, [u0, v0, u1, v1]] of sides) {
@@ -203,7 +236,11 @@ export class ParkRenderer {
     this.paths = this.g.upload(paths, this.paths)
     this.grid = this.g.upload(grid, this.grid)
 
-    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), 'stall', 'stall:toilet', 'gate', 'bench', 'bin', 'lampPost', 'lampHead']) this.list(key).clear()
+    const stallKeys = Object.entries(STALLS).flatMap(([kind, def]) => {
+      const size = def.size ?? [1, 1]
+      return kind === 'toilet' ? [stallKey(kind, [1, 1]), stallKey(kind, size)] : [stallKey(kind, size)]
+    })
+    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'bench', 'bin', 'lampPost', 'lampHead']) this.list(key).clear()
     for (const e of Object.values(s.entities)) {
       const cx = (e.x + 0.5) * TILE, cy = (e.y + 0.5) * TILE, z = groundHeightAt(map, cx, cy, TILE)
       if (e.type === 'scenery') {
@@ -211,7 +248,10 @@ export class ParkRenderer {
         this.list(`tree:${e.kind}`).push(cx + (r - 0.5) * 0.8, cy + (hash(e.id * 17) - 0.5) * 0.8, z, (e.rot ?? 0) * Math.PI / 2 + r * 0.6, 0.85 + r * 0.25, 0.9 + hash(e.id) * 0.2, 0.85 + r * 0.2, 0.85 + hash(e.id * 7) * 0.35)
       } else if (e.type === 'stall') {
         const col = hexColor(STALLS[e.kind!].color)
-        this.list(e.kind === 'toilet' ? 'stall:toilet' : 'stall').push(cx, cy, Math.max(...tileCorners(map, e.x, e.y)), (e.rot ?? 0) * Math.PI / 2, col[0], col[1], col[2], 1)
+        const f = footprint(e)
+        let floor = -Infinity
+        for (let ty = f.y; ty < f.y + f.h; ty++) for (let tx = f.x; tx < f.x + f.w; tx++) floor = Math.max(floor, ...tileCorners(map, tx, ty))
+        this.list(stallKey(e.kind!, e.size)).push((f.x + f.w / 2) * TILE, (f.y + f.h / 2) * TILE, floor, (e.rot ?? 0) * Math.PI / 2, col[0], col[1], col[2], 1)
       } else if (e.type === 'gate') {
         const col = e.role === 'entrance' ? hexColor('#3fae5c') : hexColor('#d8432f')
         this.list('gate').push(cx, cy, Math.max(...tileCorners(map, e.x, e.y)), (e.dir ?? 0) * Math.PI / 2, col[0], col[1], col[2], 1)
@@ -227,7 +267,7 @@ export class ParkRenderer {
       if (add === 2) this.list('bin').push(cx, cy, z, yaw, 1, 1, 1)
       if (add === 3) { this.list('lampPost').push(cx, cy, z, 0, 1, 1, 1); this.list('lampHead').push(cx, cy, z, 0, 1, 1, 1) }
     }
-    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), 'stall', 'stall:toilet', 'gate', 'bench', 'bin', 'lampPost', 'lampHead']) { const l = this.list(key); this.g.setInstances(this.kindMeshes.get(key) ?? null, l.data, l.count) }
+    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'bench', 'bin', 'lampPost', 'lampHead']) { const l = this.list(key); this.g.setInstances(this.kindMeshes.get(key) ?? null, l.data, l.count) }
     this.builtStruct = s.structVersion
     this.builtLitter = ''
   }
@@ -287,9 +327,50 @@ export class ParkRenderer {
       const r: Vec3 = [t[1] * u[2] - t[2] * u[1], t[2] * u[0] - t[0] * u[2], t[0] * u[1] - t[1] * u[0]]
       return { p, t, u, r }
     }
+    const trackType = style.trackType ?? 'coaster'
+    if (trackType !== 'coaster') {
+      const step = 2, left: Vec3[] = [], right: Vec3[] = []
+      const width = trackType === 'kart' ? 1.35 : trackType === 'river' ? 1.15 : 0.72
+      for (let i = 0; i < path.count; i += step) {
+        const { p, r } = at(i)
+        left.push([p[0] + r[0] * width, p[1] + r[1] * width, p[2] + r[2] * width])
+        right.push([p[0] - r[0] * width, p[1] - r[1] * width, p[2] - r[2] * width])
+      }
+      if ((path.count - 1) % step) {
+        const { p, r } = at(path.count - 1)
+        left.push([p[0] + r[0] * width, p[1] + r[1] * width, p[2] + r[2] * width])
+        right.push([p[0] - r[0] * width, p[1] - r[1] * width, p[2] - r[2] * width])
+      }
+      const road = trackType === 'kart' ? hexColor('#454a50') : trackType === 'river' ? hexColor('#48aeca') : hexColor('#39a9d0')
+      for (let i = 0; i < left.length - 1; i++) {
+        if (trackType === 'kart' || trackType === 'river') {
+          b.quad(null, left[i], left[i + 1], right[i + 1], right[i], road)
+        } else {
+          const wl = [left[i][0], left[i][1], left[i][2] - 0.1] as Vec3
+          const wln = [left[i + 1][0], left[i + 1][1], left[i + 1][2] - 0.1] as Vec3
+          const wr = [right[i][0], right[i][1], right[i][2] - 0.1] as Vec3
+          const wrn = [right[i + 1][0], right[i + 1][1], right[i + 1][2] - 0.1] as Vec3
+          b.quad(null, wl, wln, wrn, wr, road)
+        }
+      }
+      const railRadius = trackType === 'kart' ? 0.16 : trackType === 'river' ? 0.24 : 0.2
+      const railColor = trackType === 'slide' ? trackColor : supportColor
+      b.tube(left, railRadius, railColor, 7, 1)
+      b.tube(right, railRadius, railColor, 7, 1)
+      const supportEvery = Math.max(1, Math.round(4 / path.ds))
+      for (let i = Math.floor(supportEvery / 2); i < path.count; i += supportEvery) {
+        const { p } = at(i), ground = groundHeightAt(s.map, p[0], p[1], TILE)
+        const x = Math.floor(p[0] / TILE), y = Math.floor(p[1] / TILE)
+        if (!inMap(s.map, x, y)) continue
+        const tile = tileIndex(s.map, x, y)
+        if (s.map.path[tile] || s.map.obj[tile]) continue
+        const top = trackType === 'slide' ? p[2] - 0.5 : p[2] - 0.25
+        if (top - ground > 0.4) b.cylinder(null, p[0], p[1], ground, 0.16, 0.14, top - ground, 8, supportColor, 0, false)
+      }
+    }
     const step = 2
     const left: Vec3[] = [], right: Vec3[] = [], spine: Vec3[] = []
-    for (let i = 0; i < path.count; i += step) {
+    for (let i = trackType === 'coaster' ? 0 : path.count; i < path.count; i += step) {
       const { p, u, r } = at(i)
       const off = inverted ? 0 : 0
       left.push([p[0] + r[0] * 0.55 + u[0] * off, p[1] + r[1] * 0.55 + u[1] * off, p[2] + r[2] * 0.55 + u[2] * off])
@@ -297,12 +378,14 @@ export class ParkRenderer {
       spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32])
     }
     if ((path.count - 1) % step) { const { p, u, r } = at(path.count - 1); left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55]); spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32]) }
-    b.tube(left, wooden ? 0.12 : 0.1, trackColor, 8, 1)
-    b.tube(right, wooden ? 0.12 : 0.1, trackColor, 8, 1)
-    if (!wooden) b.tube(spine, 0.17, trackColor, 10, 1)
+    if (trackType === 'coaster') {
+      b.tube(left, wooden ? 0.12 : 0.1, trackColor, 8, 1)
+      b.tube(right, wooden ? 0.12 : 0.1, trackColor, 8, 1)
+      if (!wooden) b.tube(spine, 0.17, trackColor, 10, 1)
+    }
     const specialColor: Record<string, Vec3> = { chain: hexColor('#2b2b2b'), booster: hexColor('#f2c94c'), brakes: hexColor('#c0c4cc'), station: hexColor('#666a70') }
     const tieEvery = Math.max(1, Math.round(1.0 / path.ds))
-    for (let i = 0; i < path.count; i += tieEvery) {
+    for (let i = trackType === 'coaster' ? 0 : path.count; i < path.count; i += tieEvery) {
       const { p, t, u, r } = at(i)
       const sp = path.specials[path.piece[i]]
       const m = mat4.basis(p, t, r, u)
@@ -310,11 +393,15 @@ export class ParkRenderer {
       if (sp === 'chain' || sp === 'booster' || sp === 'brakes') b.box(m, 0, 0, -0.26, 0.6, 0.3, 0.1, specialColor[sp])
     }
     const supportEvery = Math.max(1, Math.round(4 / path.ds))
-    for (let i = Math.floor(supportEvery / 2); i < path.count; i += supportEvery) {
+    for (let i = trackType === 'coaster' ? Math.floor(supportEvery / 2) : path.count; i < path.count; i += supportEvery) {
       const { p, u } = at(i)
       if (path.specials[path.piece[i]] === 'station' || path.specials[path.piece[i]] === 'loop') continue
       if (u[2] < 0.35 && !inverted) continue
       const ground = groundHeightAt(s.map, p[0], p[1], TILE)
+      const x = Math.floor(p[0] / TILE), y = Math.floor(p[1] / TILE)
+      if (!inMap(s.map, x, y)) continue
+      const tile = tileIndex(s.map, x, y)
+      if (s.map.path[tile] || s.map.obj[tile]) continue
       const top = inverted ? p[2] + 0.5 : p[2] - 0.45
       if (top - ground < 0.4) continue
       if (wooden) {
@@ -367,13 +454,14 @@ export class ParkRenderer {
     const sunDir: Vec3 = [Math.cos(az) * 0.7, Math.sin(az) * 0.5, Math.max(0.12, elev)]
     const l = Math.hypot(...sunDir); sunDir[0] /= l; sunDir[1] /= l; sunDir[2] /= l
     const dim = rain ? 0.6 : cloudy ? 0.8 : 1
-    const night: Vec3 = [0.46, 0.5, 0.64]
-    const sunColor = lerp3([0.42, 0.45, 0.6], lerp3([1.05, 0.98, 0.88], [1.1, 0.62, 0.35], dusk), daylight).map(v => v * dim) as Vec3
+    // Night-end values are 30% brighter than the original palette.
+    const night: Vec3 = [0.6, 0.65, 0.83]
+    const sunColor = lerp3([0.55, 0.59, 0.78], lerp3([1.05, 0.98, 0.88], [1.1, 0.62, 0.35], dusk), daylight).map(v => v * dim) as Vec3
     const sky = lerp3(night, [0.6, 0.68, 0.78], daylight).map(v => v * (rain ? 0.85 : 1)) as Vec3
-    const skyTop = lerp3([0.1, 0.15, 0.32], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
-    const skyBottom = lerp3(lerp3([0.22, 0.27, 0.42], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
+    const skyTop = lerp3([0.13, 0.2, 0.42], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
+    const skyBottom = lerp3(lerp3([0.29, 0.35, 0.55], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
     const shadow = Math.max(0, Math.min(1, (elev - 0.06) * 4)) * (rain ? 0.35 : cloudy ? 0.55 : 0.82)
-    return { sunDir, sunColor, sky, ground: lerp3([0.26, 0.26, 0.32], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom, shadow }
+    return { sunDir, sunColor, sky, ground: lerp3([0.34, 0.34, 0.42], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom, shadow }
   }
 
   isNight() { const f = this.state?.time.dayFraction ?? 0.4; return f > 0.84 || f < 0.22 }
@@ -461,7 +549,12 @@ export class ParkRenderer {
     g.draw(this.paths, undefined, { ground: 0.55, specular: 0.06 })
     const night = this.isNight()
     for (const kind of SCENERY_KINDS) g.drawInstanced(this.kindMeshes.get(`tree:${kind}`) ?? null, { specular: kind === 'rock' || kind === 'statue' || kind === 'fountain' ? 0.35 : 0.06 })
-    for (const key of ['stall', 'stall:toilet', 'gate', 'bench', 'bin', 'lampPost', 'litter']) g.drawInstanced(this.kindMeshes.get(key) ?? null)
+    for (const [kind, def] of Object.entries(STALLS)) {
+      const size = def.size ?? [1, 1]
+      g.drawInstanced(this.kindMeshes.get(stallKey(kind, size)) ?? null)
+      if (kind === 'toilet') g.drawInstanced(this.kindMeshes.get(stallKey(kind, [1, 1])) ?? null)
+    }
+    for (const key of ['gate', 'bench', 'bin', 'lampPost', 'litter']) g.drawInstanced(this.kindMeshes.get(key) ?? null)
     g.drawInstanced(this.kindMeshes.get('lampHead') ?? null, { emissive: night ? 2.5 : 0.2 })
     for (const e of Object.values(s.entities)) {
       if (e.type === 'parkEntrance') {
@@ -550,7 +643,7 @@ export class ParkRenderer {
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = gst.x; d.y = gst.y }
         else { d.x += dx * k; d.y += dy * k }
         if (dx * dx + dy * dy > 0.0004) { const target = Math.atan2(dy, dx); let diff = target - d.yaw; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); d.yaw += diff * Math.min(1, dt * 8) }
-        const wx = d.x * TILE, wy = d.y * TILE, z = groundHeightAt(map, wx, wy, TILE) + 0.06
+        const wx = d.x * TILE, wy = d.y * TILE, z = pathHeightAt(map, wx, wy, TILE) + 0.06
         const shirt = SHIRTS[gst.shirt & 15], scale = gst.kid ? 0.72 : 1
         const look = Math.floor(hash(gst.id * 7 + 3) * GUEST_LOOKS.length) % GUEST_LOOKS.length
         this.list(`person:${look}:${frameOf(gst.id, gst.state === 'walk', gst.kid ? 2.3 : 1.85)}:${lodOf(wx, wy, z)}`).push(wx, wy, z, d.yaw, shirt[0], shirt[1], shirt[2], scale)
@@ -566,7 +659,7 @@ export class ParkRenderer {
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = st.x; d.y = st.y } else { d.x += dx * k; d.y += dy * k }
         const moving = dx * dx + dy * dy > 0.0004
         if (moving) d.yaw = Math.atan2(dy, dx)
-        const wx = d.x * TILE, wy = d.y * TILE, z = groundHeightAt(map, wx, wy, TILE) + 0.06
+        const wx = d.x * TILE, wy = d.y * TILE, z = pathHeightAt(map, wx, wy, TILE) + 0.06
         const col = hexColor(STAFF[st.role].color)
         this.list(`staff:${frameOf(id, moving || st.role === 'entertainer')}:${lodOf(wx, wy, z)}`).push(wx, wy, z + (st.role === 'entertainer' ? Math.abs(Math.sin(this.time * 5 + st.id)) * 0.3 : 0), d.yaw + (st.state === 'sweep' ? Math.sin(this.time * 8) * 0.5 : 0), col[0], col[1], col[2], st.role === 'entertainer' ? 1.25 : 1)
       }
@@ -636,9 +729,19 @@ export class ParkRenderer {
       return
     }
     if (!inMap(map, gh.x, gh.y)) return
+    if (gh.type === 'stall') {
+      const def = STALLS[gh.kind]
+      if (!def) return
+      const entity = { id: 0, type: 'stall', kind: gh.kind, size: def.size ?? [1, 1], x: gh.x, y: gh.y, rot: gh.rot, park: 0 } as Entity
+      const f = footprint(entity)
+      let floor = -Infinity
+      for (let ty = f.y; ty < f.y + f.h; ty++) for (let tx = f.x; tx < f.x + f.w; tx++) if (inMap(map, tx, ty)) floor = Math.max(floor, ...tileCorners(map, tx, ty))
+      const m = mat4.chain(mat4.translation((f.x + f.w / 2) * TILE, (f.y + f.h / 2) * TILE, floor), mat4.rotZ(gh.rot * Math.PI / 2))
+      g.draw(this.ghostMesh(stallKey(gh.kind, entity.size), () => stallModel(gh.kind, entity.size)), m, { alpha: 0.65, highlight: color, tint: hexColor(def.color) })
+      return
+    }
     const cx = (gh.x + 0.5) * TILE, cy = (gh.y + 0.5) * TILE, z = Math.max(...tileCorners(map, gh.x, gh.y))
     const m = mat4.chain(mat4.translation(cx, cy, z), mat4.rotZ(gh.rot * Math.PI / 2))
-    if (gh.type === 'stall') g.draw(this.ghostMesh(`stall:${gh.kind === 'toilet' ? 'toilet' : 'booth'}`, () => stallModel(gh.kind === 'toilet' ? 'toilet' : 'booth')), m, { alpha: 0.65, highlight: color, tint: hexColor(STALLS[gh.kind]?.color ?? '#ffffff') })
     if (gh.type === 'scenery') g.draw(this.ghostMesh(`tree:${gh.kind}`, () => treeModel(gh.kind)), m, { alpha: 0.65, highlight: color })
     if (gh.type === 'gate') g.draw(this.ghostMesh('gate', gateModel), m, { alpha: 0.65, highlight: color, tint: gh.role === 'exit' ? hexColor('#d8432f') : hexColor('#3fae5c') })
   }
@@ -697,12 +800,12 @@ export class ParkRenderer {
       if (gst.hidden) continue
       const d = this.display.get(gst.id) ?? gst
       const wx = d.x * TILE, wy = d.y * TILE
-      consider(sphere(wx, wy, groundHeightAt(s.map, wx, wy, TILE) + 0.9, 0.75), { kind: 'guest', id: gst.id }, -2)
+      consider(sphere(wx, wy, pathHeightAt(s.map, wx, wy, TILE) + 0.9, 0.75), { kind: 'guest', id: gst.id }, -2)
     }
     for (const st of s.staff) {
       const d = this.display.get(-st.id) ?? st
       const wx = d.x * TILE, wy = d.y * TILE
-      consider(sphere(wx, wy, groundHeightAt(s.map, wx, wy, TILE) + 0.9, 0.8), { kind: 'staff', id: st.id }, -2.5)
+      consider(sphere(wx, wy, pathHeightAt(s.map, wx, wy, TILE) + 0.9, 0.8), { kind: 'staff', id: st.id }, -2.5)
     }
     for (const e of Object.values(s.entities)) {
       if (e.type === 'ride' && e.kind === 'coaster') {
