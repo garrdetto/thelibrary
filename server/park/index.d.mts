@@ -1,15 +1,15 @@
 export type ParkMap = { w: number; h: number; corners: number[]; surface: number[]; water: number[]; path: number[]; pathElevation: number[]; pathColor: number[]; pathAdd: number[]; obj: number[]; owner: number[]; litter: number[] }
-export type Piece = { c: number; s: number; sp?: 'station' | 'chain' | 'brakes' | 'booster' | 'loop'; k?: number }
+export type Piece = { c: number; s: number; sp?: 'station' | 'chain' | 'brakes' | 'booster' | 'loop' | 'corkscrew'; k?: number }
 export type Pose = { x: number; y: number; h: number; dir: number; slope: number }
-export type Train = { s: number; v: number; phase: string; timer: number; riders: number[]; ridersCount?: number; lap: number; stalled: number; pace?: number }
+export type Train = { s: number; v: number; phase: string; timer: number; riders: number[]; ridersCount?: number; lap: number; stalled: number; pace?: number; waitS?: number }
 export type RideStats = { valid: boolean; e: number; i: number; n: number; maxSpeed?: number; avgSpeed?: number; rideTime?: number; length?: number; maxG?: number; minG?: number; latG?: number; drops?: number; highestDrop?: number; inversions?: number; airtime?: number }
 export type Entity = {
   id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
   size?: [number, number]
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
-  cycle?: { phase: string; timer: number; spin?: number }; reliability?: number; totalRiders?: number; monthRiders?: number; color?: string | null; stats?: RideStats | null; mechanic?: number
-  style?: string; start?: { x: number; y: number; dir: number; h: number }; pieces?: Piece[]; complete?: boolean; trains?: Train[]; cars?: number; spent?: number; rev?: number
+  cycle?: { phase: string; timer: number; spin?: number }; reliability?: number; totalRiders?: number; monthRiders?: number; color?: string | null; trackColor?: string | null; supportColor?: string | null; trainColor?: string | null; stats?: RideStats | null; mechanic?: number
+  style?: string; start?: { x: number; y: number; dir: number; h: number }; pieces?: Piece[]; complete?: boolean; trains?: Train[]; cars?: number; carsSet?: boolean; spent?: number; rev?: number
 }
 export type Guest = { id: number; park: number; x: number; y: number; tx: number; ty: number; state: string; hidden?: boolean; happy: number; items: string[]; kid: boolean; shirt: number; thoughts: string[]; dir?: number; energy?: number; hunger?: number; thirst?: number; cash?: number }
 export type Staff = { id: number; role: 'handyman' | 'mechanic' | 'entertainer' | 'security' | 'supervisor' | 'ems'; park: number; name: string; x: number; y: number; tx?: number; ty?: number; state: string; swept: number; fixed: number; target?: { ride?: number } | null; dir?: number }
@@ -31,7 +31,7 @@ export type Command = { t: string; [key: string]: unknown }
 export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number }
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[] }
 export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string }
-export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
+export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; corkscrews?: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
 export type StallDef = { name: string; size?: [number, number]; cost: number; upkeep: number; price: number; item: string; kind: string; color: string; sign: string; hunger?: number; thirst?: number; happiness?: number }
 export type ScenarioDef = { name: string; difficulty: string; size: number; seed: number; terrain: string; cash: number; loan: number; maxLoan: number; objective: Objective; description: string; versus?: boolean }
 
@@ -87,8 +87,8 @@ export function samplePiece(pose: Pose, piece: Piece, steps?: number): { x: numb
 export function buildTrackPath(ride: Entity): TrackPath | null
 export function sampleAt(path: TrackPath, s: number, out?: Record<string, number>): { x: number; y: number; z: number; tx: number; ty: number; tz: number; ux: number; uy: number; uz: number; index: number; piece: number }
 export function ridePath(state: ParkState, ride: Entity): TrackPath | null
-export function validatePiece(state: ParkState, ride: Entity, piece: Piece): { ok?: boolean; error?: string; cost?: number; closes?: boolean; next?: Pose; cells?: { x: number; y: number; lo: number; hi: number }[] }
-export function pieceCostPreview(state: ParkState, ride: Entity, piece: Piece): { ok?: boolean; error?: string; cost?: number; closes?: boolean }
+export function validatePiece(state: ParkState, ride: Entity, piece: Piece): { ok?: boolean; error?: string; cost?: number; closes?: boolean; next?: Pose; piece?: Piece; adjusted?: boolean; cells?: { x: number; y: number; lo: number; hi: number }[] }
+export function pieceCostPreview(state: ParkState, ride: Entity, piece: Piece): { ok?: boolean; error?: string; cost?: number; closes?: boolean; piece?: Piece; adjusted?: boolean }
 export function footprint(entity: Entity): { x: number; y: number; w: number; h: number }
 export function footprintTiles(entity: Entity): [number, number][]
 export function stationTiles(state: ParkState, ride: Entity): [number, number][]

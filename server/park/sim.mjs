@@ -7,7 +7,7 @@ import { ejectRide } from './commands.mjs'
 import { MAX_GUESTS } from './state.mjs'
 
 export const DAYS_PER_MONTH = 10
-export const STAFF_WAGE_PER_DAY = 100
+export const STAFF_WAGE_PER_DAY = 50
 export const ELECTRICITY_COST_PER_TILE_PER_DAY = 1
 
 export function dailyOperatingCosts(state, park) {
@@ -72,33 +72,68 @@ function updateCoaster(state, ride, dt) {
   if (!ride.complete || ride.status === 'broken') return
   const path = ridePath(state, ride)
   if (!path) return
-  const train = ride.trains[0] ?? (ride.trains[0] = { s: Math.max(0.5, path.stationEnd - 0.6), v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0 })
-  const capacity = rideCapacity(ride)
-  if (train.phase === 'loading') {
-    train.timer += dt
-    train.board = (train.board ?? 0) + dt
-    while (train.board > 0.2) { train.board -= 0.2; board(state, ride, train.riders, capacity) }
-    if (train.riders.length && (train.timer >= 8 || (train.riders.length >= capacity && train.timer >= 2.5))) { train.phase = 'departing'; train.timer = 0; train.lap = 0 }
-    if (!train.riders.length) train.timer = Math.min(train.timer, 5)
-    train.v = 0
-    return
+  const rest = Math.max(0.5, path.stationEnd - 0.6)
+  if (!ride.trains.length) ride.trains = [{ s: rest, v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0 }, { s: rest, v: 0, phase: 'waiting', timer: 0, riders: [], lap: 0, stalled: 0, waitS: rest }]
+  const trains = ride.trains
+  const trainLength = (ride.cars - 1) * CAR_GAP
+  const first = trains[0]
+  if (trains[1]?.phase === 'waiting' && trains[1].waitS === 0) {
+    trains[1].waitS = rest - trainLength - CAR_GAP
+    trains[1].s = trains[1].waitS
   }
-  if (train.phase === 'unloading') {
-    train.timer += dt
-    if (train.timer >= 2.5) { unload(state, ride, train.riders); train.phase = 'loading'; train.timer = 0; maybeBreak(state, ride) }
-    return
+  if (trains[1]?.phase === 'waiting' && first.phase === 'running' && first.s - trainLength > path.stationEnd + 0.5) {
+    trains[1].phase = 'loading'
+    trains[1].s = rest
+    trains[1].timer = 0
+    trains[1].waitS = rest
   }
-  for (let k = 0; k < 2; k++) {
-    const result = stepTrain(path, train, ride.cars, dt / 2, { stallLimit: 20, style: COASTER_STYLES[ride.style] })
-    if (result === 'arrived') { train.timer = 0; break }
-    if (result === 'stalled') {
-      for (const id of train.riders) { const g = state.guestIndex.get(id); if (g) { finishRide(state, ride, g); g.happy -= 40; g.thoughts.push(`I was stuck on ${ride.name}!`) } }
-      train.riders = []; train.phase = 'loading'; train.s = Math.max(0.5, path.stationEnd - 0.6); train.v = 0; train.stalled = 0
-      ride.wasOpen = ride.status === 'open'; ride.status = 'broken'; ride.brokenAt = state.time.seconds
-      ejectRide(state, ride)
-      addNews(state, ride.park, `${ride.name}'s train stalled on the track and had to be winched back.`, 'warning', ride.id)
-      break
+  const capacity = ride.cars * COASTER_STYLES[ride.style].seats
+  let stalled = false
+  for (const train of trains) {
+    if (train.phase === 'waiting') continue
+    const stationBusy = trains.some(other => other !== train && ['loading', 'departing', 'arriving', 'unloading'].includes(other.phase))
+    if (train.phase === 'holding') {
+      if (stationBusy) continue
+      train.phase = 'running'
+      train.v = 0
+    } else if (train.phase === 'running' && train.s >= path.length - trainLength - CAR_GAP && stationBusy) {
+      train.phase = 'holding'
+      train.waitS = path.length - trainLength - CAR_GAP
+      train.s = train.waitS
+      train.v = 0
+      continue
     }
+    if (train.phase === 'loading') {
+      train.timer += dt
+      train.board = (train.board ?? 0) + dt
+      while (train.board > 0.2) { train.board -= 0.2; board(state, ride, train.riders, capacity) }
+      if (train.riders.length && (train.timer >= 8 || (train.riders.length >= capacity && train.timer >= 2.5))) { train.phase = 'departing'; train.timer = 0; train.lap = 0 }
+      if (!train.riders.length) train.timer = Math.min(train.timer, 5)
+      train.v = 0
+      continue
+    }
+    if (train.phase === 'unloading') {
+      train.timer += dt
+      if (train.timer >= 2.5) { unload(state, ride, train.riders); train.phase = 'loading'; train.timer = 0; maybeBreak(state, ride) }
+      continue
+    }
+    let result = null
+    for (let k = 0; k < 2; k++) {
+      result = stepTrain(path, train, ride.cars, dt / 2, { stallLimit: 20, style: COASTER_STYLES[ride.style] })
+      if (result) break
+    }
+    if (result === 'arrived') { train.timer = 0; continue }
+    if (result === 'stalled') { stalled = true; break }
+  }
+  ride.riders = trains.flatMap(train => train.riders)
+  if (stalled) {
+    for (const id of ride.riders) {
+      const g = state.guestIndex.get(id)
+      if (g) { finishRide(state, ride, g); g.happy -= 40; g.thoughts.push(`I was stuck on ${ride.name}!`) }
+    }
+    ride.wasOpen = ride.status === 'open'; ride.status = 'broken'; ride.brokenAt = state.time.seconds
+    ejectRide(state, ride)
+    addNews(state, ride.park, `${ride.name}'s train stalled on the track and had to be winched back.`, 'warning', ride.id)
   }
 }
 

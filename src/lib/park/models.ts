@@ -693,13 +693,13 @@ export function flatRideModel(kind: string, w: number, h: number): RideModel {
 export function carModel(style: string, front: boolean, riders: number): MeshBuilder {
   const b = new MeshBuilder()
   if (style === 'kart') {
-    b.box(null, 0, 0, 0.18, 1.8, 1.2, 0.38, front ? C.red : C.blue, 1)
-    b.box(null, 0.42, 0, 0.42, 0.82, 0.72, 0.18, C.dark)
-    b.box(null, 0.68, 0, 0.52, 0.34, 0.9, 0.12, C.gold, 1)
-    for (const x of [-0.62, 0.62]) for (const y of [-0.55, 0.55]) b.cylinder(mat4.chain(T(x, y, 0.16), mat4.rotX(Math.PI / 2)), 0, 0, -0.07, 0.2, 0.2, 0.16, 8, C.dark)
+    b.box(null, 0, 0, 0.14, 1.12, 0.78, 0.28, front ? C.red : C.blue, 1)
+    b.box(null, 0.25, 0, 0.34, 0.54, 0.5, 0.14, C.dark)
+    b.box(null, 0.48, 0, 0.4, 0.22, 0.58, 0.1, C.gold, 1)
+    for (const x of [-0.38, 0.38]) for (const y of [-0.35, 0.35]) b.cylinder(mat4.chain(T(x, y, 0.12), mat4.rotX(Math.PI / 2)), 0, 0, -0.04, 0.13, 0.13, 0.11, 8, C.dark)
     if (riders) {
-      b.box(null, -0.15, 0, 0.58, 0.5, 0.55, 0.12, C.dark)
-      b.sphere(null, -0.12, 0, 0.93, 0.24, C.skin, 0, 3, 6)
+      b.box(null, -0.08, 0, 0.48, 0.34, 0.34, 0.1, C.dark)
+      b.sphere(null, -0.06, 0, 0.7, 0.16, C.skin, 0, 3, 6)
     }
     return b
   }

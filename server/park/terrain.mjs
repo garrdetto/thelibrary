@@ -213,7 +213,7 @@ export function generateMap(scenario, players = 1) {
   const width = initial.x1 - initial.x0 + 1
   const limitX0 = initial.x0 - Math.ceil(width / 2)
   const limitY0 = initial.y0 - Math.ceil(width / 2)
-  const landBounds = { initial, limit: { x0: limitX0, y0: limitY0, x1: limitX0 + width * 2 - 1, y1: limitY0 + width * 2 - 1 } }
+  const landBounds = { initial, limit: { x0: limitX0, y0: limitY0, x1: limitX0 + width * 2 - 1, y1: initial.y1 } }
   for (let y = initial.y0; y <= initial.y1; y++) for (let x = initial.x0; x <= initial.x1; x++) map.owner[tileIndex(map, x, y)] = 0
   const ex = offset + Math.floor(startSize / 2), ey = offset + startSize - margin - 1
   const base = Math.max(4, tileMax(map, ex, ey))

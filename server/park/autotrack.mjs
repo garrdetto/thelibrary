@@ -1,5 +1,5 @@
 import { COASTER_STYLES } from './catalog.mjs'
-import { trackPoses, nextPose, pieceCells, pieceLengthTiles, validatePieceAt } from './track.mjs'
+import { trackPoses, pieceLengthTiles, validatePieceAt } from './track.mjs'
 
 const MAX_EXPANSIONS = 6000
 
@@ -71,17 +71,18 @@ export function autoComplete(state, ride) {
     for (const piece of candidates(node.pose.slope, style)) {
       const result = validatePieceAt(state, ride, node.pose, index, start, piece, ancestors, fullPieces)
       if (!result.ok) continue
-      const g = node.g + pieceLengthTiles(piece) + (piece.s !== node.pose.slope ? 0.3 : 0) + (piece.c ? 0.2 : 0)
-      const cells = pieceCells(node.pose, piece, inverted).map(cell => ({ ...cell, piece: index }))
+      const actualPiece = result.piece
+      const g = node.g + pieceLengthTiles(actualPiece) + (actualPiece.s !== node.pose.slope ? 0.3 : 0) + (actualPiece.c ? 0.2 : 0)
+      const cells = result.cells.map(cell => ({ ...cell, piece: index }))
       if (result.closes) {
-        const pieces = [...chain, piece]
+        const pieces = [...chain, actualPiece]
         return { pieces, expansions }
       }
-      const next = nextPose(node.pose, piece)
+      const next = result.next
       const key = keyOf(next)
       if (seen.has(key) && seen.get(key) <= g) continue
       seen.set(key, g)
-      heap.push({ pose: next, piece, parent: node, g, f: g + heuristic(next) * 1.15, depth: node.depth + 1, cells, seq: seq++ })
+      heap.push({ pose: next, piece: actualPiece, parent: node, g, f: g + heuristic(next) * 1.15, depth: node.depth + 1, cells, seq: seq++ })
     }
   }
   return { error: 'No clear route back to the station was found. Remove a few pieces, clear some space, or steer the track closer to the station first.' }

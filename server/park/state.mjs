@@ -3,7 +3,7 @@ import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath } from './track.mjs'
 
-export const ENGINE_VERSION = 4
+export const ENGINE_VERSION = 5
 export const MAX_GUESTS = 1600
 export const START_MONTH = 0
 
@@ -262,14 +262,19 @@ function rectInMap(rect, map) {
     rect.x0 >= 0 && rect.y0 >= 0 && rect.x1 >= rect.x0 && rect.y1 >= rect.y0 && rect.x1 < map.w && rect.y1 < map.h
 }
 
-function sanitizeLandBounds(land, map) {
+function sanitizeLandBounds(land, map, park) {
   const initial = land?.initial, limit = land?.limit
   if (!rectInMap(initial, map) || !rectInMap(limit, map)) return null
   if (limit.x0 > initial.x0 || limit.y0 > initial.y0 || limit.x1 < initial.x1 || limit.y1 < initial.y1) return null
-  const initialArea = (initial.x1 - initial.x0 + 1) * (initial.y1 - initial.y0 + 1)
-  const limitArea = (limit.x1 - limit.x0 + 1) * (limit.y1 - limit.y0 + 1)
-  if (limitArea > initialArea * 4) return null
-  return { initial: { ...initial }, limit: { ...limit } }
+  const initialWidth = initial.x1 - initial.x0 + 1, initialHeight = initial.y1 - initial.y0 + 1
+  if (limit.x1 - limit.x0 + 1 > initialWidth * 2 || limit.y1 - limit.y0 + 1 > initialHeight * 2) return null
+  let ownedFront = initial.y1
+  for (let y = initial.y1 + 1; y <= limit.y1; y++) {
+    for (let x = 0; x < map.w; x++) {
+      if (map.owner[tileIndex(map, x, y)] === park) { ownedFront = y; break }
+    }
+  }
+  return { initial: { ...initial }, limit: { ...limit, y1: Math.max(initial.y1, ownedFront) } }
 }
 
 function landBoundsForOwner(map, park) {
@@ -281,10 +286,10 @@ function landBoundsForOwner(map, park) {
   if (x1 < x0 || y1 < y0) return null
   const initial = { x0, y0, x1, y1 }
   const width = x1 - x0 + 1, height = y1 - y0 + 1
-  const limitWidth = Math.min(map.w, width * 2), limitHeight = Math.min(map.h, height * 2)
+  const limitWidth = Math.min(map.w, width * 2)
   const limitX0 = Math.max(0, Math.min(map.w - limitWidth, Math.floor((x0 + x1 + 1 - limitWidth) / 2)))
-  const limitY0 = Math.max(0, Math.min(map.h - limitHeight, Math.floor((y0 + y1 + 1 - limitHeight) / 2)))
-  return { initial, limit: { x0: limitX0, y0: limitY0, x1: limitX0 + limitWidth - 1, y1: limitY0 + limitHeight - 1 } }
+  const limitY0 = Math.max(0, y0 - Math.ceil(height / 2))
+  return { initial, limit: { x0: limitX0, y0: limitY0, x1: limitX0 + limitWidth - 1, y1 } }
 }
 
 export function serializePark(state, includeGuests = true) {
@@ -336,7 +341,7 @@ export function deserializePark(data) {
     month: { ...emptyLedger(), ...Object.fromEntries(Object.entries(p?.month ?? {}).map(([k, v]) => [k, num(v)])) },
     history: Array.isArray(p?.history) ? p.history.slice(-24).map(row => Object.fromEntries(Object.entries(row ?? {}).slice(0, 16).map(([k, v]) => [k.slice(0, 16), typeof v === 'number' ? num(v) : String(v).slice(0, 30)]))) : [],
     thoughts: [], objective: SCENARIOS[scenario].objective, status: ['playing', 'won', 'lost'].includes(p?.status) ? p.status : 'playing', spawnDebt: 0, awards: [],
-    land: state.mode === 'versus' ? null : sanitizeLandBounds(p?.land, map) ?? landBoundsForOwner(map, i),
+    land: state.mode === 'versus' ? null : sanitizeLandBounds(p?.land, map, i) ?? landBoundsForOwner(map, i),
   }))
   if (state.parks.some(park => !park.named)) state.speed = 0
   const entities = data.entities && typeof data.entities === 'object' ? Object.values(data.entities).slice(0, 20000) : []
@@ -391,15 +396,20 @@ function sanitizeEntity(raw, state) {
       entrance: raw.entrance ? Math.round(num(raw.entrance, 0, 0)) : 0, exit: raw.exit ? Math.round(num(raw.exit, 0, 0)) : 0, queue: Array.isArray(raw.queue) ? raw.queue.slice(0, 2000).map(v => Math.round(num(v))) : [],
       riders: Array.isArray(raw.riders) ? raw.riders.slice(0, 64).map(v => Math.round(num(v))) : [], cycle: { phase: 'loading', timer: 0 }, reliability: num(raw.reliability, 95, 10, 100), downtime: num(raw.downtime, 0, 0),
       revenue: num(raw.revenue), totalRiders: Math.round(num(raw.totalRiders, 0, 0)), monthRiders: Math.round(num(raw.monthRiders, 0, 0)), built: num(raw.built), color: typeof raw.color === 'string' && /^#[0-9a-f]{6}$/i.test(raw.color) ? raw.color : null,
+      trackColor: typeof raw.trackColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.trackColor) ? raw.trackColor : null,
+      supportColor: typeof raw.supportColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.supportColor) ? raw.supportColor : null,
+      trainColor: typeof raw.trainColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.trainColor) ? raw.trainColor : null,
       stats: raw.stats && typeof raw.stats === 'object' ? Object.fromEntries(Object.entries(raw.stats).slice(0, 24).map(([k, v]) => [k, typeof v === 'boolean' ? v : num(v)])) : null, brokenAt: num(raw.brokenAt), mechanic: 0, cycles: Math.round(num(raw.cycles, 0, 0)),
     }
     if (raw.kind === 'flat' && FLAT_RIDES[raw.ride]) return { ...common, kind: 'flat', ride: raw.ride, rot: Math.round(num(raw.rot, 0, 0, 3)) }
     if (raw.kind === 'coaster' && COASTER_STYLES[raw.style]) {
-      const pieces = Array.isArray(raw.pieces) ? raw.pieces.slice(0, 220).map(p => ({ c: Math.round(num(p?.c, 0, -2, 2)), s: Math.round(num(p?.s, 0, -2, 2)), ...(['station', 'chain', 'brakes', 'booster', 'loop'].includes(p?.sp) ? { sp: p.sp } : {}) })) : []
+      const pieces = Array.isArray(raw.pieces) ? raw.pieces.slice(0, 220).map(p => ({ c: Math.round(num(p?.c, 0, -2, 2)), s: Math.round(num(p?.s, 0, -2, 2)), ...(['station', 'chain', 'brakes', 'booster', 'loop', 'corkscrew'].includes(p?.sp) ? { sp: p.sp } : {}) })) : []
       const start = { x: Math.round(num(raw.start?.x, x, 0, state.map.w - 1)), y: Math.round(num(raw.start?.y, y, 0, state.map.h - 1)), dir: Math.round(num(raw.start?.dir, 0, 0, 3)), h: Math.round(num(raw.start?.h, 0, 0, 200)) }
       const isKart = COASTER_STYLES[raw.style].trackType === 'kart'
-      const trains = Array.isArray(raw.trains) ? raw.trains.slice(0, isKart ? 14 : 1).map(t => ({ s: num(t?.s), v: num(t?.v, 0, -60, 60), phase: ['loading', 'departing', 'running', 'arriving', 'unloading', 'waiting'].includes(t?.phase) ? t.phase : 'loading', timer: num(t?.timer), riders: Array.isArray(t?.riders) ? t.riders.slice(0, isKart ? 2 : 64).map(v => Math.round(num(v))) : [], lap: Math.round(num(t?.lap)), stalled: 0, pace: num(t?.pace, 1, 0.8, 1.2) })) : []
-      return { ...common, kind: 'coaster', style: raw.style, start, pieces, complete: Boolean(raw.complete), trains, cars: Math.round(num(raw.cars, 3, 1, 14)), spent: num(raw.spent, 0, 0), rev: Math.round(num(raw.rev, 0, 0)) }
+      const maxTrains = isKart ? 14 : COASTER_STYLES[raw.style].trackType ? 1 : 2
+      const trains = Array.isArray(raw.trains) ? raw.trains.slice(0, maxTrains).map(t => ({ s: num(t?.s), v: num(t?.v, 0, -60, 60), phase: ['loading', 'departing', 'running', 'arriving', 'unloading', 'waiting', 'holding'].includes(t?.phase) ? t.phase : 'loading', timer: num(t?.timer), riders: Array.isArray(t?.riders) ? t.riders.slice(0, isKart ? 2 : 64).map(v => Math.round(num(v))) : [], lap: Math.round(num(t?.lap)), stalled: 0, pace: num(t?.pace, 1, 0.8, 1.2), waitS: num(t?.waitS) })) : []
+      if (!isKart && !COASTER_STYLES[raw.style].trackType && raw.complete && trains.length === 1) trains.push({ s: 0, v: 0, phase: 'waiting', timer: 0, riders: [], lap: 0, stalled: 0, waitS: 0 })
+      return { ...common, kind: 'coaster', style: raw.style, start, pieces, complete: Boolean(raw.complete), trains, cars: Math.round(num(raw.cars, 3, 1, isKart ? 14 : 10)), carsSet: Boolean(raw.carsSet), spent: num(raw.spent, 0, 0), rev: Math.round(num(raw.rev, 0, 0)) }
     }
   }
   return null

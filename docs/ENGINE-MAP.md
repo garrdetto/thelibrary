@@ -234,15 +234,15 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 
 ### park — Thrill Park
 - `src/components/park/ParkGame.tsx` — menu and lobby — `index.tsx` (lazy).
-- `src/components/park/ParkHud.tsx` — in-game interface, park naming gate, ride-category tabs, staff repair-job selection, daily staff/electricity finances, custom footpath colors, arrow-key camera orbit and canvas — `ParkGame.tsx`.
+- `src/components/park/ParkHud.tsx` — in-game interface, park naming gate, ride-category tabs, staff repair-job selection, daily staff/electricity finances, connected path builder with automatic elevation and ramp/stair sections, custom footpath colors, arrow-key camera orbit and canvas — `ParkGame.tsx`.
 - `src/components/park/ParkScoreboard.tsx` — park-based net-worth board — `ParkGame.tsx`.
 - `src/lib/park/gl.ts` — WebGL2 helpers: mesh builder, shadow map, lighting, ground and water — `models.ts`, `renderer.ts`.
 - `src/lib/park/models.ts` — guests (`addPerson`), scenery, stalls and flat-ride models including the enclosed Gravitron drum and oblong Zipper boom — `renderer.ts`.
-- `src/lib/park/renderer.ts` — terrain, shadow pass, elevated footpaths and stair ramps, boardwalks, smoothed custom kart track, individual kart vehicles, flat rides, and clearance-aware supports — `ParkHud.tsx`.
+- `src/lib/park/renderer.ts` — terrain, shadow pass, elevated footpaths and stair ramps, boardwalks, smoothly banked custom kart tracks, side-by-side compact karts, customizable ride colors, flat rides, and clearance-aware supports — `ParkHud.tsx`.
 - `src/lib/park/session.ts` — local and online sessions — `ParkGame.tsx`, `ParkHud.tsx`.
 - `src/lib/park/api.ts` — saves, tickets, scores client — `ParkGame`, `ParkHud`, `ParkScoreboard`.
 - `server/park/index.mjs` (+ `index.d.mts`) — shared simulation entry — park UI files, `renderer.ts`, `session.ts`, `server/park.mjs`.
-- `server/park/state.mjs`, `terrain.mjs`, `catalog.mjs`, `track.mjs`, `autotrack.mjs`, `commands.mjs`, `guests.mjs`, `sim.mjs`, `snapshot.mjs`, `util.mjs`, `park.test.mjs` — expanded maps and purchasable park land, stable park IDs, saved elevated paths and stair navigation, walkable path types and colors, auto-facing shop placement, catalog, 14-car coasters, independently driven two-seat kart vehicles, coaster and custom-ride physics, mechanic dispatch through footpaths or queue lines, commands, guest/staff AI, daily wages and $1-per-tile electricity, ten-day months, snapshots, regression tests, helpers — `server/park/index.mjs` and each other.
+- `server/park/state.mjs`, `terrain.mjs`, `catalog.mjs`, `track.mjs`, `autotrack.mjs`, `commands.mjs`, `guests.mjs`, `sim.mjs`, `snapshot.mjs`, `util.mjs`, `park.test.mjs` — expanded maps and purchasable park land on the sides and behind the entrance, stable park IDs, saved elevated paths and stair navigation, walkable path types and colors, auto-facing shop placement, customizable coaster catalog with loops and corkscrews, two-train coasters with up to 10 cars each, 14-car side-by-side kart fleets, coaster and custom-ride physics, mechanic dispatch through footpaths or queue lines, commands, guest/staff AI, $50 daily wages and $1-per-tile electricity, ten-day months, snapshots, regression tests, helpers — `server/park/index.mjs` and each other.
 - `migrations/0011_park_scores_by_park.sql` — migrate high scores to one durable record per named park — `/api/park`.
 - `server/park.mjs` — online park rooms — `server/index.mjs`.
 

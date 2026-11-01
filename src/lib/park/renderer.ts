@@ -316,7 +316,7 @@ export class ParkRenderer {
   }
 
   private coasterCache(e: Entity) {
-    const key = `${e.pieces!.length}:${e.rev ?? 0}:${e.complete}:${e.color ?? ''}`
+    const key = `${e.pieces!.length}:${e.rev ?? 0}:${e.complete}:${e.color ?? ''}:${e.trackColor ?? ''}:${e.supportColor ?? ''}`
     let cache = this.rides.get(e.id)
     if (cache && cache.key === key) return cache
     if (cache?.track) this.g.free(cache.track)
@@ -329,7 +329,7 @@ export class ParkRenderer {
   private trackGeometry(e: Entity, path: TrackPath): MeshBuilder {
     const s = this.state!, style = COASTER_STYLES[e.style!]
     const b = new MeshBuilder()
-    const trackColor = hexColor(e.color ?? style.track), supportColor = hexColor(style.support)
+    const trackColor = hexColor(e.trackColor ?? e.color ?? style.track), supportColor = hexColor(e.supportColor ?? style.support)
     const wooden = e.style === 'wooden', inverted = e.style === 'inverted'
     const P = path.pos, T = path.tan, U = path.up
     const at = (i: number) => {
@@ -351,7 +351,7 @@ export class ParkRenderer {
         left.push([p[0] + r[0] * width, p[1] + r[1] * width, p[2] + r[2] * width])
         right.push([p[0] - r[0] * width, p[1] - r[1] * width, p[2] - r[2] * width])
       }
-      const road = trackType === 'kart' ? hexColor('#454a50') : trackType === 'river' ? hexColor('#48aeca') : hexColor('#39a9d0')
+      const road = trackType === 'kart' ? hexColor(e.trackColor ?? e.color ?? '#454a50') : trackType === 'river' ? hexColor(e.trackColor ?? '#48aeca') : hexColor(e.trackColor ?? '#39a9d0')
       for (let i = 0; i < left.length - 1; i++) {
         if (trackType === 'kart' || trackType === 'river') {
           b.quad(null, left[i], left[i + 1], right[i + 1], right[i], road)
@@ -606,13 +606,13 @@ export class ParkRenderer {
   private drawCoaster(e: Entity, dt: number, highlight?: [number, number, number, number]) {
     const cache = this.coasterCache(e)
     const style = COASTER_STYLES[e.style!]
-    this.g.draw(cache.track ?? null, undefined, { highlight, tint: hexColor(e.color ?? style.track) })
+    this.g.draw(cache.track ?? null, undefined, { highlight })
     if (!cache.path || !e.complete) return
     if (style.trackType === 'kart') {
-      const tint = hexColor(style.train)
+      const tint = hexColor(e.trainColor ?? style.train)
       for (const [index, kart] of (e.trains ?? []).entries()) {
         const c = this.clock(e, dt, index)
-        if (kart.phase === 'loading' || kart.phase === 'unloading' || kart.phase === 'waiting') c.trainS = kart.s
+        if (kart.phase === 'loading' || kart.phase === 'unloading' || kart.phase === 'waiting' || kart.phase === 'holding') c.trainS = kart.s
         else {
           c.trainS += kart.v * dt
           let diff = kart.s - c.trainS
@@ -623,31 +623,32 @@ export class ParkRenderer {
         const t: Vec3 = [p.tx, p.ty, p.tz], u: Vec3 = [p.ux, p.uy, p.uz]
         const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
         const riders = kart.ridersCount ?? kart.riders.length
-        this.g.draw(this.carMesh(e.style!, true, riders), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
+        const lane = index % 2 === 0 ? -0.55 : 0.55
+        this.g.draw(this.carMesh(e.style!, true, riders), mat4.basis([p.x + r[0] * lane, p.y + r[1] * lane, p.z + r[2] * lane], t, r, u), { tint, highlight })
       }
       return
     }
-    const train = e.trains?.[0]
-    if (!train) return
-    const c = this.clock(e, dt)
     const L = cache.path.length
-    if (train.phase === 'loading' || train.phase === 'unloading' || train.phase === 'waiting') c.trainS = train.s
-    else {
-      c.trainS += train.v * dt
-      let diff = train.s - c.trainS
-      if (cache.path.closed) diff = ((diff % L) + L * 1.5) % L - L / 2
-      c.trainS += diff * Math.min(1, dt * 6)
-    }
-    const riders = train.ridersCount ?? train.riders.length
-    const cars = e.cars ?? 3, seats = style.seats
-    const tint = hexColor(style.train)
-    for (let k = 0; k < cars; k++) {
-      const p = sampleAt(cache.path, c.trainS - k * CAR_GAP)
-      const t: Vec3 = [p.tx, p.ty, p.tz], u: Vec3 = [p.ux, p.uy, p.uz]
-      const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
-      const inCar = Math.max(0, Math.min(seats, riders - k * seats))
-      const shown = Math.min(4, Math.round(inCar * 4 / seats))
-      this.g.draw(this.carMesh(e.style!, k === 0, shown), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
+    const tint = hexColor(e.trainColor ?? style.train)
+    for (const [trainIndex, train] of (e.trains ?? []).entries()) {
+      const c = this.clock(e, dt, trainIndex)
+      if (train.phase === 'loading' || train.phase === 'unloading' || train.phase === 'waiting' || train.phase === 'holding') c.trainS = train.s
+      else {
+        c.trainS += train.v * dt
+        let diff = train.s - c.trainS
+        if (cache.path.closed) diff = ((diff % L) + L * 1.5) % L - L / 2
+        c.trainS += diff * Math.min(1, dt * 6)
+      }
+      const riders = train.ridersCount ?? train.riders.length
+      const cars = e.cars ?? 3, seats = style.seats
+      for (let k = 0; k < cars; k++) {
+        const p = sampleAt(cache.path, c.trainS - k * CAR_GAP)
+        const t: Vec3 = [p.tx, p.ty, p.tz], u: Vec3 = [p.ux, p.uy, p.uz]
+        const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
+        const inCar = Math.max(0, Math.min(seats, riders - k * seats))
+        const shown = Math.min(4, Math.round(inCar * 4 / seats))
+        this.g.draw(this.carMesh(e.style!, k === 0, shown), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
+      }
     }
   }
 
