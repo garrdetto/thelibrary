@@ -7,12 +7,14 @@ async function call<T>(init?: RequestInit, query = ''): Promise<T> {
   return body
 }
 
-export type ParkScore = { username: string; value: number; date: string }
+export type ParkScore = { username: string; value: number; date: string; savedAt: string; viewable: boolean }
+export type ParkView = { username: string; scenario: string; savedAt: string; data: string }
 export type ParkScoreBoard = { scenario: string; records: ParkScore[]; personalBest: number | null; signedIn: boolean }
 
 export const parkApi = {
   scores: (scenario: string) => call<ParkScoreBoard>(undefined, `?scores=${encodeURIComponent(scenario)}`),
-  submitScore: (scenario: string, value: number) => call<ParkScoreBoard>({ method: 'POST', body: JSON.stringify({ action: 'score', scenario, value: Math.round(value) }) }),
+  submitScore: (scenario: string, value: number, data?: string) => call<ParkScoreBoard>({ method: 'POST', body: JSON.stringify({ action: 'score', scenario, value: Math.round(value), data }) }),
+  view: (scenario: string, player: string) => call<ParkView>(undefined, `?view=${encodeURIComponent(scenario)}&player=${encodeURIComponent(player)}`),
   saves: () => call<{ saves: SaveSummary[] }>(undefined, '?saves=1'),
   load: (slot: number) => call<{ data: string; name: string }>(undefined, `?slot=${slot}`),
   save: (slot: number, name: string, data: string, summary: SaveSummary['summary'], scenario: string) => call<{ saved: boolean }>({ method: 'POST', body: JSON.stringify({ action: 'save', slot, name, data, summary, scenario }) }),
