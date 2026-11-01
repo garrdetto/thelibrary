@@ -204,7 +204,7 @@ export function deserializePark(data) {
   const parks = Array.isArray(data.parks) ? data.parks.slice(0, 4) : []
   if (!parks.length) throw new Error('This park file has no parks.')
   state.parks = parks.map((p, i) => ({
-    id: i, name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), named: p?.named === true, color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: num(p?.maxLoan, 0, 0),
+    id: i, name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), named: p?.named === true, color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: Math.max(SCENARIOS[scenario].maxLoan, num(p?.maxLoan, SCENARIOS[scenario].maxLoan, 0)),
     entryFee: num(p?.entryFee, 10, 0, 100), rating: num(p?.rating, 300, 0, 999), value: num(p?.value), guestsIn: 0, totalGuests: Math.round(num(p?.totalGuests, 0, 0)), open: p?.open !== false,
     marketing: Array.isArray(p?.marketing) ? p.marketing.slice(0, 4).map(m => ({ kind: String(m?.kind ?? 'flyers').slice(0, 12), until: num(m?.until), boost: num(m?.boost, 1, 1, 3) })) : [],
     month: { ...emptyLedger(), ...Object.fromEntries(Object.entries(p?.month ?? {}).map(([k, v]) => [k, num(v)])) },
