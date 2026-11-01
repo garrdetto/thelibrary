@@ -9,7 +9,7 @@ const TRACKS={
     minLap:12000,
   },
   dells:{
-    name:'Fox Speedway', miles:'0.3 mi', rec:'dells',
+    name:'Fox Speedway', miles:'0.3 mi', rec:'fox',
     L:122, R:35, W:16, APRON:6,
     turnBank:21, straightBank:11, bankIn:50, bankOut:45,
     grooveHigh:4.0, grooveLow:-4.3,
@@ -18,7 +18,7 @@ const TRACKS={
     minLap:8000,
   },
   dellswide:{
-    name:'Dells Raceway Park', miles:'0.27 mi', rec:'dellswide',
+    name:'Dells Raceway Park', miles:'0.27 mi', rec:'dellsraceway',
     L:122, R:30, W:16, APRON:6,
     turnBank:19, straightBank:10, bankIn:60, bankOut:40,
     grooveHigh:4.4, grooveLow:-4.7,
