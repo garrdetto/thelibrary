@@ -20,6 +20,22 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reset-scores'), scenario, password: z.string().min(1).max(128).optional() }),
 ])
 
+type ParkScoreSchema = { columns: Set<string>; hasResetTable: boolean }
+
+async function parkScoreSchema(env: Env): Promise<ParkScoreSchema> {
+  const [columns, resetTable] = await Promise.all([
+    env.DB.prepare("SELECT name FROM pragma_table_info('park_scores')").all<{ name: string }>(),
+    env.DB.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = ?").bind('park_scoreboard_resets').first<{ present: number }>(),
+  ])
+  return { columns: new Set(columns.results.map(column => column.name)), hasResetTable: Boolean(resetTable) }
+}
+
+async function scoreboardResetAt(env: Env, schema: ParkScoreSchema, map: string) {
+  if (!schema.hasResetTable) return 0
+  const reset = await env.DB.prepare('SELECT reset_at FROM park_scoreboard_resets WHERE scenario = ?').bind(map).first<{ reset_at: number }>()
+  return reset?.reset_at ?? 0
+}
+
 async function savedNetWorth(env: Env, row: { user_id: string; slot: number; summary: string }) {
   const savedSummary = parseStored<Record<string, unknown>>(row.summary, {})
   if (typeof savedSummary.netWorth === 'number' && Number.isFinite(savedSummary.netWorth)) return Math.round(savedSummary.netWorth)
@@ -38,11 +54,14 @@ async function savedNetWorth(env: Env, row: { user_id: string; slot: number; sum
   }
 }
 
-async function scoreboard(env: Env, map: string, userId: string | null) {
-  const reset = await env.DB.prepare('SELECT reset_at FROM park_scoreboard_resets WHERE scenario = ?').bind(map).first<{ reset_at: number }>()
-  const resetAt = reset?.reset_at ?? 0
+async function scoreboard(env: Env, map: string, userId: string | null, schema: ParkScoreSchema) {
+  if (!schema.columns.size) throw new Error('The park leaderboard table has not been installed.')
+  const resetAt = await scoreboardResetAt(env, schema, map)
+  const parkName = schema.columns.has('park_name') ? 'park_name' : 'NULL AS park_name'
+  const savedAt = schema.columns.has('saved_at') ? 'saved_at' : 'NULL AS saved_at'
+  const viewable = schema.columns.has('snapshot') ? 'snapshot IS NOT NULL AS viewable' : '0 AS viewable'
   const [rows, mine] = await Promise.all([
-    env.DB.prepare('SELECT username, park_name, value, updated_at, saved_at, snapshot IS NOT NULL AS viewable FROM park_scores WHERE scenario = ? AND updated_at > ? ORDER BY value DESC, saved_at DESC LIMIT 10').bind(map, resetAt).all<{ username: string; park_name: string | null; value: number; updated_at: number; saved_at: number | null; viewable: number }>(),
+    env.DB.prepare(`SELECT username, ${parkName}, value, updated_at, ${savedAt}, ${viewable} FROM park_scores WHERE scenario = ? AND updated_at > ? ORDER BY value DESC, updated_at DESC LIMIT 10`).bind(map, resetAt).all<{ username: string; park_name: string | null; value: number; updated_at: number; saved_at: number | null; viewable: number }>(),
     userId ? env.DB.prepare('SELECT value FROM park_scores WHERE scenario = ? AND user_id = ? AND updated_at > ?').bind(map, userId, resetAt).first<{ value: number }>() : Promise.resolve(null),
   ])
   return { scenario: map, records: rows.results.map(row => ({ username: row.username, parkName: row.park_name ?? 'Unnamed park', value: row.value, date: new Date(row.updated_at).toISOString(), savedAt: new Date(row.saved_at ?? row.updated_at).toISOString(), viewable: Boolean(row.viewable) })), personalBest: mine?.value ?? null, signedIn: Boolean(userId) }
@@ -56,13 +75,17 @@ export async function park(request: Request, env: Env) {
   }
   if (request.method === 'GET' && url.searchParams.has('scores')) {
     const user = await currentUser(request, env)
-    return json(await scoreboard(env, scenario.parse(url.searchParams.get('scores')), user?.id ?? null))
+    return json(await scoreboard(env, scenario.parse(url.searchParams.get('scores')), user?.id ?? null, await parkScoreSchema(env)))
   }
   if (request.method === 'GET' && url.searchParams.has('view')) {
     const map = scenario.parse(url.searchParams.get('view'))
     const player = playerName.parse(url.searchParams.get('player'))
-    const reset = await env.DB.prepare('SELECT reset_at FROM park_scoreboard_resets WHERE scenario = ?').bind(map).first<{ reset_at: number }>()
-    const row = await env.DB.prepare('SELECT username, park_name, saved_at, updated_at, snapshot FROM park_scores WHERE scenario = ? AND lower(username) = ? AND updated_at > ?').bind(map, player, reset?.reset_at ?? 0).first<{ username: string; park_name: string | null; saved_at: number | null; updated_at: number; snapshot: string | null }>()
+    const schema = await parkScoreSchema(env)
+    if (!schema.columns.has('snapshot')) return json({ error: 'Park viewing is unavailable until the leaderboard database update is applied.' }, 503)
+    const resetAt = await scoreboardResetAt(env, schema, map)
+    const parkName = schema.columns.has('park_name') ? 'park_name' : 'NULL AS park_name'
+    const savedAt = schema.columns.has('saved_at') ? 'saved_at' : 'NULL AS saved_at'
+    const row = await env.DB.prepare(`SELECT username, ${parkName}, ${savedAt}, updated_at, snapshot FROM park_scores WHERE scenario = ? AND lower(username) = ? AND updated_at > ?`).bind(map, player, resetAt).first<{ username: string; park_name: string | null; saved_at: number | null; updated_at: number; snapshot: string | null }>()
     if (!row?.snapshot) return json({ error: 'That park has no viewable save yet.' }, 404)
     return json({ username: row.username, parkName: row.park_name ?? 'Unnamed park', scenario: map, savedAt: new Date(row.saved_at ?? row.updated_at).toISOString(), data: row.snapshot })
   }
@@ -86,20 +109,32 @@ export async function park(request: Request, env: Env) {
     return json({ deleted: true })
   }
   if (input.action === 'score') {
-    const reset = await env.DB.prepare('SELECT reset_at FROM park_scoreboard_resets WHERE scenario = ?').bind(input.scenario).first<{ reset_at: number }>()
-    const resetAt = reset?.reset_at ?? 0
+    const schema = await parkScoreSchema(env)
+    if (!schema.columns.size) return json({ error: 'The park leaderboard database has not been installed.' }, 503)
+    const resetAt = await scoreboardResetAt(env, schema, input.scenario)
     const savedAt = Math.max(Date.now(), resetAt + 1)
-    await env.DB.prepare(`INSERT INTO park_scores (user_id, scenario, username, park_name, value, updated_at, saved_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(user_id, scenario) DO UPDATE SET username = excluded.username, park_name = excluded.park_name,
-        value = CASE WHEN park_scores.updated_at <= ? THEN excluded.value ELSE MAX(park_scores.value, excluded.value) END,
-        updated_at = excluded.updated_at, saved_at = excluded.saved_at,
-        snapshot = CASE WHEN park_scores.updated_at <= ? THEN excluded.snapshot ELSE COALESCE(excluded.snapshot, park_scores.snapshot) END
-      WHERE park_scores.updated_at <= ? OR excluded.value >= park_scores.value`)
-      .bind(user.id, input.scenario, user.username, input.parkName, input.value, savedAt, savedAt, input.data ?? null, resetAt, resetAt, resetAt).run()
-    return json(await scoreboard(env, input.scenario, user.id))
+    if (['park_name', 'saved_at', 'snapshot'].every(column => schema.columns.has(column))) {
+      await env.DB.prepare(`INSERT INTO park_scores (user_id, scenario, username, park_name, value, updated_at, saved_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, scenario) DO UPDATE SET username = excluded.username, park_name = excluded.park_name,
+          value = CASE WHEN park_scores.updated_at <= ? THEN excluded.value ELSE MAX(park_scores.value, excluded.value) END,
+          updated_at = excluded.updated_at, saved_at = excluded.saved_at,
+          snapshot = CASE WHEN park_scores.updated_at <= ? THEN excluded.snapshot ELSE COALESCE(excluded.snapshot, park_scores.snapshot) END
+        WHERE park_scores.updated_at <= ? OR excluded.value >= park_scores.value`)
+        .bind(user.id, input.scenario, user.username, input.parkName, input.value, savedAt, savedAt, input.data ?? null, resetAt, resetAt, resetAt).run()
+    } else {
+      await env.DB.prepare(`INSERT INTO park_scores (user_id, scenario, username, value, updated_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, scenario) DO UPDATE SET username = excluded.username,
+          value = CASE WHEN park_scores.updated_at <= ? THEN excluded.value ELSE MAX(park_scores.value, excluded.value) END,
+          updated_at = excluded.updated_at
+        WHERE park_scores.updated_at <= ? OR excluded.value >= park_scores.value`)
+        .bind(user.id, input.scenario, user.username, input.value, savedAt, resetAt, resetAt).run()
+    }
+    return json(await scoreboard(env, input.scenario, user.id, schema))
   }
   if (input.action === 'reset-scores') {
     if (!await canResetRecords(user, input.password)) return json({ error: 'Only the administrator can reset records.' }, 403)
+    const schema = await parkScoreSchema(env)
+    if (!schema.hasResetTable) return json({ error: 'Leaderboard resets are unavailable until the database update is applied.' }, 503)
     await env.DB.prepare('INSERT INTO park_scoreboard_resets (scenario, reset_at) VALUES (?, ?) ON CONFLICT(scenario) DO UPDATE SET reset_at = excluded.reset_at').bind(input.scenario, Date.now()).run()
     return json({ reset: true })
   }
