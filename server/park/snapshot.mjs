@@ -36,8 +36,9 @@ export function encodeDynamic(state, sinceNews = 0) {
   const rides = {}, stalls = {}
   for (const e of Object.values(state.entities)) {
     if (e.type === 'ride') {
-      const train = e.trains?.[0]
-      rides[e.id] = { st: e.status, q: e.queue.length, r: e.riders.length, c: e.cycle, rel: Math.round(e.reliability), rev: Math.round(e.revenue * 10) / 10, tr: e.totalRiders, mr: e.monthRiders, p: e.price, n: e.name, col: e.color, m: e.mechanic, ...(train ? { t: { s: train.s, v: train.v, ph: train.phase, n: train.riders.length } } : {}) }
+      const activeRiders = e.trains?.reduce((total, train) => total + train.riders.length, 0) ?? e.riders.length
+      const trains = e.trains?.map(train => ({ s: train.s, v: train.v, ph: train.phase, n: train.riders.length })) ?? []
+      rides[e.id] = { st: e.status, q: e.queue.length, r: activeRiders, c: e.cycle, rel: Math.round(e.reliability), rev: Math.round(e.revenue * 10) / 10, tr: e.totalRiders, mr: e.monthRiders, p: e.price, n: e.name, col: e.color, m: e.mechanic, ...(trains.length ? { t: trains } : {}) }
     } else if (e.type === 'stall') stalls[e.id] = { s: e.sales, r: Math.round(e.revenue * 10) / 10, p: e.price, o: e.open }
   }
   return {
@@ -57,8 +58,11 @@ export function applyDynamic(state, dyn) {
     if (!e || e.type !== 'ride') continue
     e.status = r.st; e.queueLength = r.q; e.ridersCount = r.r; e.cycle = r.c; e.reliability = r.rel; e.revenue = r.rev; e.totalRiders = r.tr; e.monthRiders = r.mr; e.price = r.p; e.name = r.n; e.color = r.col; e.mechanic = r.m
     if (r.t && e.trains) {
-      const train = e.trains[0] ?? (e.trains[0] = { s: 0, v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0 })
-      train.s = r.t.s; train.v = r.t.v; train.phase = r.t.ph; train.ridersCount = r.t.n
+      const trains = Array.isArray(r.t) ? r.t : [r.t]
+      for (const [index, remote] of trains.entries()) {
+        const train = e.trains[index] ?? (e.trains[index] = { s: 0, v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0 })
+        train.s = remote.s; train.v = remote.v; train.phase = remote.ph; train.ridersCount = remote.n
+      }
     }
   }
   for (const [id, s] of Object.entries(dyn.stalls ?? {})) {

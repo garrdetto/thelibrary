@@ -17,7 +17,7 @@ const stallKey = (kind: string, size?: [number, number]) => `stall:${kind}:${(si
 export type Pick = { kind: 'guest' | 'staff' | 'entity'; id: number } | null
 export type TileHit = { x: number; y: number; wx: number; wy: number; wz: number; fx: number; fy: number }
 export type Preview = {
-  rect?: { x0: number; y0: number; x1: number; y1: number; ok: boolean }
+  rect?: { x0: number; y0: number; x1: number; y1: number; ok: boolean; elevation?: number }
   ghost?: { type: 'flat' | 'stall' | 'scenery' | 'gate'; kind: string; x: number; y: number; rot: number; ok: boolean; role?: 'entrance' | 'exit' }
   piece?: { ride: Entity; piece: Piece; ok: boolean }
   station?: { x: number; y: number; dir: number; length: number; ok: boolean }
@@ -54,7 +54,7 @@ export class ParkRenderer {
   private instances = new Map<string, InstanceList>()
   private rideModels = new Map<string, { base: GpuMesh | null; parts: { mesh: GpuMesh | null; anim: RideModel['parts'][number]['anim'] }[] }>()
   private rides = new Map<number, RideCache>()
-  private clocks = new Map<number, Clock>()
+  private clocks = new Map<string, Clock>()
   private display = new Map<number, { x: number; y: number; yaw: number }>()
   private overlay: GpuMesh | null = null
   private overlayKey = ''
@@ -183,14 +183,15 @@ export class ParkRenderer {
           ? [pathColor >> 16 & 255, pathColor >> 8 & 255, pathColor & 255].map(channel => channel / 255) as Vec3
           : kind === 2 ? QUEUE_COLOR : kind === 3 ? hexColor('#b39a73') : kind === 4 ? hexColor('#8b6038') : PATH_COLOR
         const edge = kind === 2 ? QUEUE_EDGE : kind === 3 ? hexColor('#786247') : kind === 4 ? hexColor('#563b27') : PATH_EDGE
-        const deck = kind === 4 ? Math.max(a, b, c, d, map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity) : 0
         const corner = (u: number, v: number): Vec3 => {
-          const z = kind === 4 ? deck : a * (1 - u) * (1 - v) + b * u * (1 - v) + c * u * v + d * (1 - u) * v
-          return [(x + u) * TILE, (y + v) * TILE, z + lift]
+          const wx = (x + u) * TILE + (u === 1 ? -0.001 : 0.001), wy = (y + v) * TILE + (v === 1 ? -0.001 : 0.001)
+          return [wx, wy, pathHeightAt(map, wx, wy, TILE) + lift]
         }
         paths.quad(null, corner(0, 0), corner(1, 0), corner(1, 1), corner(0, 1), fill)
         if (kind === 3) {
-          const riseX = Math.abs((b - a) + (c - d)), alongX = riseX >= Math.abs((d - a) + (c - b))
+          const h = (u: number, v: number) => pathHeightAt(map, (x + u) * TILE + (u === 1 ? -0.001 : 0.001), (y + v) * TILE + (v === 1 ? -0.001 : 0.001), TILE)
+          const h00 = h(0, 0), h10 = h(1, 0), h11 = h(1, 1), h01 = h(0, 1)
+          const riseX = Math.abs((h10 - h00) + (h11 - h01)), alongX = riseX >= Math.abs((h01 - h00) + (h11 - h10))
           for (let step = 1; step < 8; step++) {
             const u = step / 8, half = 0.06
             const corners: [number, number][] = alongX
@@ -198,15 +199,16 @@ export class ParkRenderer {
               : [[0, u - half], [0, u + half], [1, u + half], [1, u - half]]
             const tread = corners.map(([cx, cy]) => {
               const wx = (x + cx) * TILE, wy = (y + cy) * TILE
-              return [wx, wy, groundHeightAt(map, wx, wy, TILE) + lift + 0.035] as Vec3
+              return [wx, wy, pathHeightAt(map, wx, wy, TILE) + lift + 0.035] as Vec3
             })
             paths.quad(null, tread[0], tread[1], tread[2], tread[3], edge)
           }
         }
-        if (kind === 4 && deck > Math.max(a, b, c, d) + 0.3) {
+        const deck = pathHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
+        const ground = groundHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
+        if (deck > ground + 0.3 && !map.obj[i] && !s.trackCells.get(i)?.length) {
           const wx = (x + 0.5) * TILE, wy = (y + 0.5) * TILE
-          const base = groundHeightAt(map, wx, wy, TILE)
-          paths.cylinder(null, wx, wy, base, 0.18, 0.18, deck - base, 8, hexColor('#68472c'))
+          paths.cylinder(null, wx, wy, ground, 0.18, 0.18, deck - ground, 8, hexColor('#68472c'))
         }
         const e = 0.08
         const sides: [number, number, [number, number, number, number]][] = [[1, 0, [1 - e, 0, 1, 1]], [0, 1, [0, 1 - e, 1, 1]], [-1, 0, [0, 0, e, 1]], [0, -1, [0, 0, 1, e]]]
@@ -329,7 +331,7 @@ export class ParkRenderer {
     }
     const trackType = style.trackType ?? 'coaster'
     if (trackType !== 'coaster') {
-      const step = 2, left: Vec3[] = [], right: Vec3[] = []
+      const step = trackType === 'kart' ? 1 : 2, left: Vec3[] = [], right: Vec3[] = []
       const width = trackType === 'kart' ? 1.35 : trackType === 'river' ? 1.15 : 0.72
       for (let i = 0; i < path.count; i += step) {
         const { p, r } = at(i)
@@ -474,7 +476,7 @@ export class ParkRenderer {
     if (this.rideCam && s) {
       const e = s.entities[this.rideCam]
       const cache = e?.type === 'ride' && e.kind === 'coaster' ? this.coasterCache(e) : null
-      const clock = this.clocks.get(this.rideCam)
+      const clock = this.clocks.get(`${this.rideCam}:0`)
       if (cache?.path && clock) {
         const p = sampleAt(cache.path, clock.trainS + 0.6)
         const inv = e!.style === 'inverted' ? -1 : 1
@@ -570,9 +572,10 @@ export class ParkRenderer {
     this.drawPeople(dt)
   }
 
-  private clock(e: Entity, dt: number): Clock {
-    let c = this.clocks.get(e.id)
-    if (!c) { c = { spin: 0, phase: '', trainS: e.trains?.[0]?.s ?? 0, snapS: NaN, timer: 0, speed: 0 }; this.clocks.set(e.id, c) }
+  private clock(e: Entity, dt: number, trainIndex = 0): Clock {
+    const key = `${e.id}:${trainIndex}`
+    let c = this.clocks.get(key)
+    if (!c) { c = { spin: 0, phase: '', trainS: e.trains?.[trainIndex]?.s ?? 0, snapS: NaN, timer: 0, speed: 0 }; this.clocks.set(key, c) }
     const phase = e.cycle?.phase ?? 'loading'
     if (phase !== c.phase) { c.phase = phase; c.timer = e.cycle?.timer ?? 0 }
     const running = phase === 'running' && e.status !== 'broken'
@@ -597,6 +600,25 @@ export class ParkRenderer {
     const style = COASTER_STYLES[e.style!]
     this.g.draw(cache.track ?? null, undefined, { highlight, tint: hexColor(e.color ?? style.track) })
     if (!cache.path || !e.complete) return
+    if (style.trackType === 'kart') {
+      const tint = hexColor(style.train)
+      for (const [index, kart] of (e.trains ?? []).entries()) {
+        const c = this.clock(e, dt, index)
+        if (kart.phase === 'loading' || kart.phase === 'unloading' || kart.phase === 'waiting') c.trainS = kart.s
+        else {
+          c.trainS += kart.v * dt
+          let diff = kart.s - c.trainS
+          if (cache.path.closed) diff = ((diff % cache.path.length) + cache.path.length * 1.5) % cache.path.length - cache.path.length / 2
+          c.trainS += diff * Math.min(1, dt * 6)
+        }
+        const p = sampleAt(cache.path, c.trainS)
+        const t: Vec3 = [p.tx, p.ty, p.tz], u: Vec3 = [p.ux, p.uy, p.uz]
+        const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
+        const riders = kart.ridersCount ?? kart.riders.length
+        this.g.draw(this.carMesh(e.style!, true, riders), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
+      }
+      return
+    }
     const train = e.trains?.[0]
     if (!train) return
     const c = this.clock(e, dt)
@@ -692,14 +714,15 @@ export class ParkRenderer {
     if (key !== this.overlayKey) {
       this.overlayKey = key
       const b = new MeshBuilder()
-      const tile = (x: number, y: number, col: Vec3) => {
+      const tile = (x: number, y: number, col: Vec3, elevation = 0) => {
         if (!inMap(map, x, y)) return
         const [a, bb, c, d] = tileCorners(map, x, y)
-        b.quad(null, [x * TILE, y * TILE, a + 0.15], [(x + 1) * TILE, y * TILE, bb + 0.15], [(x + 1) * TILE, (y + 1) * TILE, c + 0.15], [x * TILE, (y + 1) * TILE, d + 0.15], col)
+        const lift = elevation * 0.5
+        b.quad(null, [x * TILE, y * TILE, a + lift + 0.15], [(x + 1) * TILE, y * TILE, bb + lift + 0.15], [(x + 1) * TILE, (y + 1) * TILE, c + lift + 0.15], [x * TILE, (y + 1) * TILE, d + lift + 0.15], col)
       }
       if (p.rect) {
         const col: Vec3 = p.rect.ok ? [0.35, 0.85, 1] : [1, 0.3, 0.25]
-        for (let y = Math.min(p.rect.y0, p.rect.y1); y <= Math.max(p.rect.y0, p.rect.y1); y++) for (let x = Math.min(p.rect.x0, p.rect.x1); x <= Math.max(p.rect.x0, p.rect.x1); x++) tile(x, y, col)
+        for (let y = Math.min(p.rect.y0, p.rect.y1); y <= Math.max(p.rect.y0, p.rect.y1); y++) for (let x = Math.min(p.rect.x0, p.rect.x1); x <= Math.max(p.rect.x0, p.rect.x1); x++) tile(x, y, col, p.rect.elevation)
       }
       if (p.station) {
         const [dx, dy] = DIRS[p.station.dir]

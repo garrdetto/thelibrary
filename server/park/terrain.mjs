@@ -1,6 +1,8 @@
-import { clamp, makeRng } from './util.mjs'
+import { clamp, makeRng, DIRS, UNIT } from './util.mjs'
 
 export const MAX_LAND = 40
+export const PATH_STEP_LIMIT = 1.25
+export const STAIR_STEP_LIMIT = 2.25
 
 export const cornerIndex = (map, x, y) => y * (map.w + 1) + x
 export const tileIndex = (map, x, y) => y * map.w + x
@@ -34,12 +36,49 @@ export function groundHeightAt(map, wx, wy, tile = 4) {
   return (a * (1 - u) * (1 - v) + b * u * (1 - v) + c * u * v + d * (1 - u) * v)
 }
 
+function pathDeckAtTile(map, x, y) {
+  const i = tileIndex(map, x, y)
+  const ground = tileMax(map, x, y)
+  const base = map.path[i] === 4 || (map.pathElevation?.[i] ?? 0) > 0
+    ? Math.max(ground, map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity)
+    : ground
+  return base + (map.pathElevation?.[i] ?? 0) * UNIT
+}
+
 export function pathHeightAt(map, wx, wy, tile = 4) {
   const ground = groundHeightAt(map, wx, wy, tile)
   const x = Math.floor(wx / tile), y = Math.floor(wy / tile)
   if (!inMap(map, x, y)) return ground
   const i = tileIndex(map, x, y)
-  return map.path[i] === 4 ? Math.max(tileMax(map, x, y), map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity) : ground
+  const kind = map.path[i]
+  if (!kind) return ground
+  if (kind === 3 && (map.pathElevation?.[i] ?? 0) > 0) {
+    let low = null
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy
+      if (!inMap(map, nx, ny)) continue
+      const ni = tileIndex(map, nx, ny)
+      if (!map.path[ni]) continue
+      const height = pathDeckAtTile(map, nx, ny)
+      if (height < pathDeckAtTile(map, x, y) - 0.01 && (!low || height < low.height)) low = { dx, dy, height }
+    }
+    if (low) {
+      const u = wx / tile - x, v = wy / tile - y
+      const progress = low.dx ? (low.dx > 0 ? 1 - u : u) : low.dy > 0 ? 1 - v : v
+      return low.height + (pathDeckAtTile(map, x, y) - low.height) * clamp(progress, 0, 1)
+    }
+  }
+  const elevation = (map.pathElevation?.[i] ?? 0) * UNIT
+  if (kind === 4 || elevation > 0) return pathDeckAtTile(map, x, y)
+  return ground
+}
+
+export function pathsConnect(map, ax, ay, bx, by, tile = 4) {
+  const ai = tileIndex(map, ax, ay), bi = tileIndex(map, bx, by)
+  const ah = pathHeightAt(map, (ax + 0.5) * tile, (ay + 0.5) * tile, tile)
+  const bh = pathHeightAt(map, (bx + 0.5) * tile, (by + 0.5) * tile, tile)
+  const riseLimit = map.path[ai] === 3 || map.path[bi] === 3 ? STAIR_STEP_LIMIT : PATH_STEP_LIMIT
+  return Math.abs(ah - bh) <= riseLimit
 }
 
 function valueNoise(seed) {
@@ -85,6 +124,7 @@ function blankMap(w, h, base) {
     surface: new Array(w * h).fill(0),
     water: new Array(w * h).fill(-1),
     path: new Array(w * h).fill(0),
+    pathElevation: new Array(w * h).fill(0),
     pathColor: new Array(w * h).fill(-1),
     pathAdd: new Array(w * h).fill(0),
     obj: new Array(w * h).fill(0),

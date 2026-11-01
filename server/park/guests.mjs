@@ -1,6 +1,6 @@
 import { STALLS, FLAT_RIDES, COASTER_STYLES } from './catalog.mjs'
 import { DIRS, clamp, stateRandom } from './util.mjs'
-import { tileIndex, inMap, isWalkPath } from './terrain.mjs'
+import { tileIndex, inMap, isWalkPath, pathsConnect } from './terrain.mjs'
 import { frontTile, stallFrontTile, addNews } from './state.mjs'
 
 const WALK_SPEED = 1.05
@@ -68,6 +68,7 @@ export function queueLine(state, ride) {
             const x = cur[0] + dx, y = cur[1] + dy
             if (!inMap(map, x, y)) continue
             const i = tileIndex(map, x, y)
+            if (!pathsConnect(map, cur[0], cur[1], x, y)) continue
             if (isWalkPath(map.path[i]) && !entry) entry = [cur[0], cur[1]]
             if (map.path[i] === 2 && !seen.has(i) && !next) next = [x, y]
           }
@@ -76,7 +77,10 @@ export function queueLine(state, ride) {
         }
         const last = tiles[tiles.length - 1]
         let joins = false
-        for (const [dx, dy] of DIRS) { const x = last[0] + dx, y = last[1] + dy; if (inMap(map, x, y) && isWalkPath(map.path[tileIndex(map, x, y)])) joins = true }
+        for (const [dx, dy] of DIRS) {
+          const x = last[0] + dx, y = last[1] + dy
+          if (inMap(map, x, y) && isWalkPath(map.path[tileIndex(map, x, y)]) && pathsConnect(map, last[0], last[1], x, y)) joins = true
+        }
         result = { key, tiles, entry: joins ? last : entry ? tiles[tiles.findIndex(t => t[0] === entry[0] && t[1] === entry[1])] ?? last : null }
         if (joins) result.entry = last
       }
@@ -126,10 +130,10 @@ export function field(state, key) {
   }
   while (head < tail) {
     const i = queue[head++], x = i % map.w, y = (i - x) / map.w, d = dist[i] + 1
-    if (x > 0) { const j = i - 1; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
-    if (x < map.w - 1) { const j = i + 1; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
-    if (y > 0) { const j = i - map.w; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
-    if (y < map.h - 1) { const j = i + map.w; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
+    if (x > 0) { const j = i - 1; if (dist[j] < 0 && passable(state, j, allowQueue) && pathsConnect(map, x, y, x - 1, y)) { dist[j] = d; queue[tail++] = j } }
+    if (x < map.w - 1) { const j = i + 1; if (dist[j] < 0 && passable(state, j, allowQueue) && pathsConnect(map, x, y, x + 1, y)) { dist[j] = d; queue[tail++] = j } }
+    if (y > 0) { const j = i - map.w; if (dist[j] < 0 && passable(state, j, allowQueue) && pathsConnect(map, x, y, x, y - 1)) { dist[j] = d; queue[tail++] = j } }
+    if (y < map.h - 1) { const j = i + map.w; if (dist[j] < 0 && passable(state, j, allowQueue) && pathsConnect(map, x, y, x, y + 1)) { dist[j] = d; queue[tail++] = j } }
   }
   if (state.fields.size > 400) state.fields.clear()
   state.fields.set(key, dist)
@@ -192,7 +196,7 @@ function neighbors(state, guest, allowOutside) {
     const x = guest.tx + dx, y = guest.ty + dy
     if (!inMap(map, x, y)) continue
     const i = tileIndex(map, x, y)
-    if (!isWalkPath(map.path[i])) continue
+    if (!isWalkPath(map.path[i]) || !pathsConnect(map, guest.tx, guest.ty, x, y)) continue
     if (!allowOutside && map.owner[i] !== guest.park) continue
     out.push([x, y])
   }
@@ -208,7 +212,7 @@ function stepToward(state, walker, key) {
   for (const [dx, dy] of DIRS) {
     const x = walker.tx + dx, y = walker.ty + dy
     if (!inMap(map, x, y)) continue
-    if (dist[tileIndex(map, x, y)] === here - 1) options.push([x, y])
+    if (dist[tileIndex(map, x, y)] === here - 1 && pathsConnect(map, walker.tx, walker.ty, x, y)) options.push([x, y])
   }
   if (!options.length) return 'lost'
   const pick = options[Math.floor(stateRandom(state) * options.length)]
@@ -523,7 +527,7 @@ function nearestLitter(state, s) {
       const nx = x + dx, ny = y + dy
       if (!inMap(map, nx, ny)) continue
       const j = tileIndex(map, nx, ny)
-      if (seen.has(j) || !isWalkPath(map.path[j]) || map.owner[j] !== s.park) continue
+      if (seen.has(j) || !isWalkPath(map.path[j]) || map.owner[j] !== s.park || !pathsConnect(map, x, y, nx, ny)) continue
       seen.set(j, i); queue.push(j)
     }
   }

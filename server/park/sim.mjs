@@ -1,6 +1,6 @@
 import { FLAT_RIDES, COASTER_STYLES, STALLS } from './catalog.mjs'
 import { clamp, stateRandom, MONTHS, DAY_SECONDS, SIM_STEP } from './util.mjs'
-import { stepTrain } from './track.mjs'
+import { CAR_GAP, stepTrain } from './track.mjs'
 import { addNews, emptyLedger, entityCost, electricityTiles, ridePath, objectiveText } from './state.mjs'
 import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
@@ -8,7 +8,7 @@ import { MAX_GUESTS } from './state.mjs'
 
 export const DAYS_PER_MONTH = 10
 export const STAFF_WAGE_PER_DAY = 100
-export const ELECTRICITY_COST_PER_TILE_PER_DAY = 10
+export const ELECTRICITY_COST_PER_TILE_PER_DAY = 5
 
 export function dailyOperatingCosts(state, park) {
   const staffCount = state.staff.filter(member => member.park === park).length
@@ -99,6 +99,54 @@ function updateCoaster(state, ride, dt) {
       addNews(state, ride.park, `${ride.name}'s train stalled on the track and had to be winched back.`, 'warning', ride.id)
       break
     }
+  }
+}
+
+function updateKarts(state, ride, dt) {
+  if (!ride.complete || ride.status === 'broken') return
+  const path = ridePath(state, ride)
+  if (!path) return
+  if (ride.trains.length !== ride.cars) {
+    const rest = Math.max(0.5, path.stationEnd - 0.6)
+    ride.trains = Array.from({ length: ride.cars }, (_, index) => ({
+      s: Math.max(0.5, rest - index * CAR_GAP), v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0, pace: 0.94 + (index % 7) * 0.02,
+    }))
+  }
+  let stalled = false
+  for (const [index, kart] of ride.trains.entries()) {
+    if (kart.phase === 'loading') {
+      kart.timer += dt
+      kart.board = (kart.board ?? 0) + dt
+      while (kart.board > 0.2) { kart.board -= 0.2; board(state, ride, kart.riders, 2) }
+      if (kart.riders.length && (kart.timer >= 8 || kart.riders.length === 2 && kart.timer >= 2.5)) {
+        kart.phase = 'departing'; kart.timer = 0
+      }
+      if (!kart.riders.length) kart.timer = Math.min(kart.timer, 5)
+      kart.v = 0
+      continue
+    }
+    const pace = kart.pace ?? 1
+    const style = COASTER_STYLES[ride.style]
+    const result = stepTrain(path, kart, 1, dt, {
+      stallLimit: 20,
+      style: { ...style, drive: (style.drive ?? 0) * pace, maxSpeed: (style.maxSpeed ?? 20) * pace },
+    })
+    if (result === 'arrived') {
+      unload(state, ride, kart.riders)
+      kart.phase = 'loading'; kart.timer = 0; kart.v = 0; kart.lap = 0; kart.stalled = 0
+      kart.s = Math.max(0.5, path.stationEnd - 0.6 - index * CAR_GAP)
+      maybeBreak(state, ride)
+    } else if (result === 'stalled') { stalled = true; break }
+  }
+  ride.riders = ride.trains.flatMap(kart => kart.riders)
+  if (stalled) {
+    for (const id of ride.riders) {
+      const guest = state.guestIndex.get(id)
+      if (guest) { finishRide(state, ride, guest); guest.happy -= 40; guest.thoughts.push(`I was stuck on ${ride.name}!`) }
+    }
+    ride.wasOpen = ride.status === 'open'; ride.status = 'broken'; ride.brokenAt = state.time.seconds
+    ejectRide(state, ride)
+    addNews(state, ride.park, `${ride.name}'s kart stalled on the track and had to be pushed back.`, 'warning', ride.id)
   }
 }
 
@@ -286,6 +334,7 @@ export function stepPark(state, dt = SIM_STEP) {
   for (const e of Object.values(state.entities)) {
     if (e.type !== 'ride') continue
     if (e.kind === 'flat') updateFlat(state, e, dt)
+    else if (COASTER_STYLES[e.style]?.trackType === 'kart') updateKarts(state, e, dt)
     else updateCoaster(state, e, dt)
   }
   updateGuests(state, dt)
