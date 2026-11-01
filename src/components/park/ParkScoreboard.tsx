@@ -27,7 +27,7 @@ export function ParkScoreboard({ username, initial, refreshKey }: { username: st
   useRecordResetTarget({
     key: `park-scores:${map}`,
     label: `Thrill Park ${name} leaderboard`,
-    description: `Every saved ${name} result will be deleted for all players.`,
+    description: `Current ${name} leaderboard entries will be cleared. Saved parks reappear after the next save or autosave.`,
     reset: async () => { await postReset('/api/park', 'POST', { action: 'reset-scores', scenario: map }); await load(true) },
   })
 
@@ -40,11 +40,11 @@ export function ParkScoreboard({ username, initial, refreshKey }: { username: st
       <div>
         <span className="module-scores-eyebrow"><Trophy size={13}/> THRILL PARK LEADERBOARD</span>
         <h2 id="park-scores-title">Richest Tycoons <small>Top 10 per map</small></h2>
-        <p>Net worth is your cash minus everything you still owe the bank. Your best is saved with every save and autosave.</p>
+        <p>Each player's latest saved park on each map is ranked by net worth (cash minus loans). Autosaves refresh it every five minutes.</p>
       </div>
       <div className="module-scores-side">
         {username
-          ? <div className="module-scores-best"><small>YOUR BEST</small><strong>{board?.personalBest != null ? formatMoney(board.personalBest) : '—'}</strong><span>{myRank >= 0 ? `#${myRank + 1} on the board` : board?.personalBest != null ? 'Outside the top 10' : 'Save a park on this map'}</span></div>
+          ? <div className="module-scores-best"><small>YOUR CURRENT PARK</small><strong>{board?.personalBest != null ? formatMoney(board.personalBest) : '—'}</strong><span>{myRank >= 0 ? `#${myRank + 1} on the board` : board?.personalBest != null ? 'Outside the top 10' : 'Save a park on this map'}</span></div>
           : <p className="module-scores-signin">Sign in to put your parks on the board.</p>}
         <button type="button" className="module-scores-refresh" onClick={() => void load(true)} disabled={state === 'loading' || refreshing} aria-label="Refresh leaderboard"><RefreshCw size={14} className={refreshing ? 'spin' : undefined}/> Refresh</button>
       </div>

@@ -178,7 +178,10 @@ export class ParkRenderer {
       const kind = map.path[i]
       if (kind) {
         const lift = 0.07
-        const fill = kind === 2 ? QUEUE_COLOR : kind === 3 ? hexColor('#b39a73') : kind === 4 ? hexColor('#8b6038') : PATH_COLOR
+        const pathColor = map.pathColor[i]
+        const fill = kind === 1 && pathColor >= 0
+          ? [pathColor >> 16 & 255, pathColor >> 8 & 255, pathColor & 255].map(channel => channel / 255) as Vec3
+          : kind === 2 ? QUEUE_COLOR : kind === 3 ? hexColor('#b39a73') : kind === 4 ? hexColor('#8b6038') : PATH_COLOR
         const edge = kind === 2 ? QUEUE_EDGE : kind === 3 ? hexColor('#786247') : kind === 4 ? hexColor('#563b27') : PATH_EDGE
         const deck = kind === 4 ? Math.max(a, b, c, d, map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity) : 0
         const corner = (u: number, v: number): Vec3 => {

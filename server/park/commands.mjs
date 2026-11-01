@@ -292,7 +292,7 @@ const HANDLERS = {
   path(state, cmd, park) {
     const r = rect(cmd, state.map)
     const kind = [1, 2, 3, 4].includes(cmd.kind) ? cmd.kind : 0
-    if (!r || !kind) return fail('Choose a path type and where to lay it.')
+    if (!r || !kind || cmd.color !== undefined && !isInt(cmd.color, 0, 0xffffff)) return fail('Choose a path type and where to lay it.')
     const map = state.map, tiles = []
     let blocked = null
     for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
@@ -309,10 +309,26 @@ const HANDLERS = {
     if (!tiles.length) return fail(blocked ?? 'There is already a path here.')
     const cost = tiles.length * ({ 1: COSTS.path, 2: COSTS.queue, 3: 18, 4: 24 }[kind])
     if (!canAfford(state, park, cost)) return fail(`You need $${cost} to build that.`)
-    for (const i of tiles) { map.path[i] = kind; if (kind === 2) map.pathAdd[i] = 0 }
+    for (const i of tiles) { map.path[i] = kind; map.pathColor[i] = kind === 1 ? cmd.color ?? -1 : -1; if (kind === 2) map.pathAdd[i] = 0 }
     spend(state, park, cost, 'construction')
     pathsChanged(state)
     return ok({ cost, warning: blocked })
+  },
+
+  pathPaint(state, cmd, park) {
+    const r = rect(cmd, state.map)
+    if (!r || !isInt(cmd.color, 0, 0xffffff)) return fail('Choose a footpath color and area to paint.')
+    const map = state.map
+    let count = 0
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
+      const i = tileIndex(map, x, y)
+      if (map.path[i] !== 1 || map.owner[i] !== park || map.pathColor[i] === cmd.color) continue
+      map.pathColor[i] = cmd.color
+      count++
+    }
+    if (!count) return fail('Choose ordinary footpaths in your park to recolor.')
+    pathsChanged(state)
+    return ok()
   },
 
   unpath(state, cmd, park) {
@@ -323,7 +339,7 @@ const HANDLERS = {
     for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
       const i = tileIndex(map, x, y)
       if (!map.path[i] || map.owner[i] !== park) continue
-      map.path[i] = 0; map.pathAdd[i] = 0; map.litter[i] = 0; count++
+      map.path[i] = 0; map.pathColor[i] = -1; map.pathAdd[i] = 0; map.litter[i] = 0; count++
     }
     if (!count) return fail('There is no footpath of yours here.')
     pathsChanged(state)

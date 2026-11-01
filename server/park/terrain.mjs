@@ -85,6 +85,7 @@ function blankMap(w, h, base) {
     surface: new Array(w * h).fill(0),
     water: new Array(w * h).fill(-1),
     path: new Array(w * h).fill(0),
+    pathColor: new Array(w * h).fill(-1),
     pathAdd: new Array(w * h).fill(0),
     obj: new Array(w * h).fill(0),
     owner: new Array(w * h).fill(255),

@@ -1,4 +1,4 @@
-export type SaveSummary = { slot: number; name: string; scenario: string; updated: string; summary: { cash: number; guests: number; rating: number; date: string; mode: string } }
+export type SaveSummary = { slot: number; name: string; scenario: string; updated: string; summary: { cash: number; netWorth: number; guests: number; rating: number; date: string; mode: string } }
 
 async function call<T>(init?: RequestInit, query = ''): Promise<T> {
   const response = await fetch(`/api/park${query}`, { credentials: 'same-origin', headers: init?.body ? { 'Content-Type': 'application/json' } : undefined, ...init })
@@ -12,7 +12,6 @@ export type ParkScoreBoard = { scenario: string; records: ParkScore[]; personalB
 
 export const parkApi = {
   scores: (scenario: string) => call<ParkScoreBoard>(undefined, `?scores=${encodeURIComponent(scenario)}`),
-  submitScore: (scenario: string, value: number) => call<ParkScoreBoard>({ method: 'POST', body: JSON.stringify({ action: 'score', scenario, value: Math.round(value) }) }),
   saves: () => call<{ saves: SaveSummary[] }>(undefined, '?saves=1'),
   load: (slot: number) => call<{ data: string; name: string }>(undefined, `?slot=${slot}`),
   save: (slot: number, name: string, data: string, summary: SaveSummary['summary'], scenario: string) => call<{ saved: boolean }>({ method: 'POST', body: JSON.stringify({ action: 'save', slot, name, data, summary, scenario }) }),

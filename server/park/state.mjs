@@ -160,7 +160,7 @@ export function rideEntityTiles(state, ride) {
   return tiles
 }
 
-const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathAdd', 'obj', 'owner', 'litter']
+const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
 
 export function serializePark(state, includeGuests = true) {
   const map = { w: state.map.w, h: state.map.h }
@@ -185,9 +185,9 @@ export function deserializePark(data) {
   if (!data || typeof data !== 'object' || !data.map || typeof data.map !== 'object') throw new Error('Invalid park file.')
   const w = Math.round(num(data.map.w, 0, 8, 128)), h = Math.round(num(data.map.h, 0, 8, 128))
   if (!w || !h) throw new Error('Invalid park size.')
-  const sizes = { corners: (w + 1) * (h + 1), surface: w * h, water: w * h, path: w * h, pathAdd: w * h, obj: w * h, owner: w * h, litter: w * h }
+  const sizes = { corners: (w + 1) * (h + 1), surface: w * h, water: w * h, path: w * h, pathColor: w * h, pathAdd: w * h, obj: w * h, owner: w * h, litter: w * h }
   const map = { w, h }
-  for (const key of STRUCT_KEYS) map[key] = decodeRle(data.map[key], sizes[key], key === 'water' ? 0 : key === 'owner' ? 256 : 1).map(v => v - 1)
+  for (const key of STRUCT_KEYS) map[key] = decodeRle(data.map[key], sizes[key], key === 'water' || key === 'pathColor' ? 0 : key === 'owner' ? 256 : 1).map(v => v - 1)
   const scenario = SCENARIOS[data.scenario] ? data.scenario : 'sandbox'
   const state = {
     v: ENGINE_VERSION, scenario, mode: ['solo', 'coop', 'versus'].includes(data.mode) ? data.mode : 'solo', seed: num(data.seed, 1) >>> 0, rng: num(data.rng, 1) >>> 0,
@@ -203,7 +203,7 @@ export function deserializePark(data) {
   const parks = Array.isArray(data.parks) ? data.parks.slice(0, 4) : []
   if (!parks.length) throw new Error('This park file has no parks.')
   state.parks = parks.map((p, i) => ({
-    id: i, name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: num(p?.maxLoan, 0, 0),
+    id: i, name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: 50000,
     entryFee: num(p?.entryFee, 10, 0, 100), rating: num(p?.rating, 300, 0, 999), value: num(p?.value), guestsIn: 0, totalGuests: Math.round(num(p?.totalGuests, 0, 0)), open: p?.open !== false,
     marketing: Array.isArray(p?.marketing) ? p.marketing.slice(0, 4).map(m => ({ kind: String(m?.kind ?? 'flyers').slice(0, 12), until: num(m?.until), boost: num(m?.boost, 1, 1, 3) })) : [],
     month: { ...emptyLedger(), ...Object.fromEntries(Object.entries(p?.month ?? {}).map(([k, v]) => [k, num(v)])) },

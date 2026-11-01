@@ -8,22 +8,55 @@ import { issueTicket, redeemTicket } from './account'
 const TICKET_PREFIX = 'park:'
 const slot = z.number().int().min(0).max(6)
 const scenario = z.string().regex(/^[a-zA-Z]{1,32}$/)
-const summary = z.object({ cash: z.number(), guests: z.number().int().min(0).max(100000), rating: z.number().min(0).max(1000), date: z.string().max(40), mode: z.enum(['solo', 'coop', 'versus']) }).strict()
+const summary = z.object({ cash: z.number(), netWorth: z.number().int().min(-1_000_000_000).max(10_000_000_000), guests: z.number().int().min(0).max(100000), rating: z.number().min(0).max(1000), date: z.string().max(40), mode: z.enum(['solo', 'coop', 'versus']) }).strict()
 
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ticket') }),
   z.object({ action: z.literal('save'), slot, name: z.string().trim().min(1).max(40), scenario, data: z.string().regex(/^[A-Za-z0-9+/=]+$/).min(16).max(1_000_000), summary }),
   z.object({ action: z.literal('delete'), slot }),
-  z.object({ action: z.literal('score'), scenario, value: z.number().int().min(-1_000_000_000).max(10_000_000_000) }),
   z.object({ action: z.literal('reset-scores'), scenario, password: z.string().min(1).max(128).optional() }),
 ])
 
+async function savedNetWorth(env: Env, row: { user_id: string; slot: number; summary: string }) {
+  const savedSummary = parseStored<Record<string, unknown>>(row.summary, {})
+  if (typeof savedSummary.netWorth === 'number' && Number.isFinite(savedSummary.netWorth)) return Math.round(savedSummary.netWorth)
+  const saved = await env.DB.prepare('SELECT data FROM park_saves WHERE user_id = ? AND slot = ?').bind(row.user_id, row.slot).first<{ data: string }>()
+  if (!saved) return null
+  try {
+    const bytes = Uint8Array.from(atob(saved.data), character => character.charCodeAt(0))
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+    const data = await new Response(stream).json() as { parks?: { cash?: unknown; loan?: unknown }[] }
+    const park = data.parks?.[0]
+    if (typeof park?.cash !== 'number' || typeof park.loan !== 'number') throw new Error('Saved park finances are missing.')
+    return Math.round(park.cash - park.loan)
+  } catch (error) {
+    console.error('Unable to read a saved park for its leaderboard value.', error)
+    return null
+  }
+}
+
 async function scoreboard(env: Env, map: string, userId: string | null) {
-  const [rows, mine] = await Promise.all([
-    env.DB.prepare('SELECT username, value, updated_at FROM park_scores WHERE scenario = ? ORDER BY value DESC, updated_at ASC LIMIT 10').bind(map).all<{ username: string; value: number; updated_at: number }>(),
-    userId ? env.DB.prepare('SELECT value FROM park_scores WHERE scenario = ? AND user_id = ?').bind(map, userId).first<{ value: number }>() : Promise.resolve(null),
-  ])
-  return { scenario: map, records: rows.results.map(row => ({ username: row.username, value: row.value, date: new Date(row.updated_at).toISOString() })), personalBest: mine?.value ?? null, signedIn: Boolean(userId) }
+  const reset = await env.DB.prepare('SELECT reset_at FROM park_scoreboard_resets WHERE scenario = ?').bind(map).first<{ reset_at: number }>()
+  const rows = await env.DB.prepare(`SELECT s.user_id, s.slot, s.summary, s.updated_at, u.username
+    FROM park_saves s JOIN users u ON u.id = s.user_id
+    WHERE s.scenario = ? AND s.updated_at > ? AND json_extract(s.summary, '$.mode') = 'solo'
+    ORDER BY s.updated_at DESC, s.slot ASC`).bind(map, reset?.reset_at ?? 0)
+    .all<{ user_id: string; slot: number; summary: string; updated_at: number; username: string }>()
+  const latestParks = new Map<string, (typeof rows.results)[number]>()
+  for (const row of rows.results) if (!latestParks.has(row.user_id)) latestParks.set(row.user_id, row)
+  const currentParks = new Map<string, { username: string; value: number; updated_at: number }>()
+  const savedValues = await Promise.all([...latestParks.values()].map(async row => ({ row, value: await savedNetWorth(env, row) })))
+  for (const { row, value } of savedValues) {
+    if (value === null) continue
+    currentParks.set(row.user_id, { username: row.username, value, updated_at: row.updated_at })
+  }
+  const records = [...currentParks.values()].sort((a, b) => b.value - a.value || b.updated_at - a.updated_at)
+  return {
+    scenario: map,
+    records: records.slice(0, 10).map(row => ({ username: row.username, value: row.value, date: new Date(row.updated_at).toISOString() })),
+    personalBest: userId ? currentParks.get(userId)?.value ?? null : null,
+    signedIn: Boolean(userId),
+  }
 }
 
 export async function park(request: Request, env: Env) {
@@ -55,14 +88,9 @@ export async function park(request: Request, env: Env) {
     await env.DB.prepare('DELETE FROM park_saves WHERE user_id = ? AND slot = ?').bind(user.id, input.slot).run()
     return json({ deleted: true })
   }
-  if (input.action === 'score') {
-    await env.DB.prepare('INSERT INTO park_scores (user_id, scenario, username, value, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(user_id, scenario) DO UPDATE SET username = excluded.username, updated_at = CASE WHEN excluded.value > park_scores.value THEN excluded.updated_at ELSE park_scores.updated_at END, value = MAX(park_scores.value, excluded.value)')
-      .bind(user.id, input.scenario, user.username, input.value, Date.now()).run()
-    return json(await scoreboard(env, input.scenario, user.id))
-  }
   if (input.action === 'reset-scores') {
     if (!await canResetRecords(user, input.password)) return json({ error: 'Only the administrator can reset records.' }, 403)
-    await env.DB.prepare('DELETE FROM park_scores WHERE scenario = ?').bind(input.scenario).run()
+    await env.DB.prepare('INSERT INTO park_scoreboard_resets (scenario, reset_at) VALUES (?, ?) ON CONFLICT(scenario) DO UPDATE SET reset_at = excluded.reset_at').bind(input.scenario, Date.now()).run()
     return json({ reset: true })
   }
   await env.DB.prepare('INSERT INTO park_saves (user_id, slot, name, scenario, summary, data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, slot) DO UPDATE SET name = excluded.name, scenario = excluded.scenario, summary = excluded.summary, data = excluded.data, updated_at = excluded.updated_at')

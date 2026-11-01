@@ -6,7 +6,7 @@ import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide
 import { ejectRide } from './commands.mjs'
 import { MAX_GUESTS } from './state.mjs'
 
-export const DAYS_PER_MONTH = 3
+export const DAYS_PER_MONTH = 10
 
 function board(state, ride, list, capacity) {
   if (ride.status !== 'open' || !ride.queue.length || list.length >= capacity) return

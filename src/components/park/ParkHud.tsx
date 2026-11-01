@@ -16,6 +16,7 @@ type Tool =
   | { kind: 'water'; op: 'raise' | 'lower'; size: number }
   | { kind: 'surface'; surface: number; size: number }
   | { kind: 'path'; path: 1 | 2 | 3 | 4 }
+  | { kind: 'pathPaint' }
   | { kind: 'unpath' }
   | { kind: 'pathAdd'; add: number }
   | { kind: 'flat'; ride: string; rot: number }
@@ -63,6 +64,7 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
   const [toasts, setToasts] = useState<Toast[]>([])
   const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null)
   const [grid, setGrid] = useState(false)
+  const [pathColor, setPathColor] = useState('#cdbb93')
   const [rideCam, setRideCam] = useState<number | null>(null)
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
   const [chatText, setChatText] = useState('')
@@ -108,12 +110,14 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
       session.tick(now)
       const cam = renderer.cam, k = keys.current, speed = cam.dist * 0.9 * dt
       const fx = -Math.cos(cam.yaw), fy = -Math.sin(cam.yaw), rx = -Math.sin(cam.yaw), ry = Math.cos(cam.yaw)
-      if (k.has('w') || k.has('arrowup')) { cam.tx += fx * speed; cam.ty += fy * speed }
-      if (k.has('s') || k.has('arrowdown')) { cam.tx -= fx * speed; cam.ty -= fy * speed }
-      if (k.has('a') || k.has('arrowleft')) { cam.tx -= rx * speed; cam.ty -= ry * speed }
-      if (k.has('d') || k.has('arrowright')) { cam.tx += rx * speed; cam.ty += ry * speed }
-      if (k.has('q')) cam.yaw -= dt * 1.4
-      if (k.has('e')) cam.yaw += dt * 1.4
+      if (k.has('w')) { cam.tx += fx * speed; cam.ty += fy * speed }
+      if (k.has('s')) { cam.tx -= fx * speed; cam.ty -= fy * speed }
+      if (k.has('a')) { cam.tx -= rx * speed; cam.ty -= ry * speed }
+      if (k.has('d')) { cam.tx += rx * speed; cam.ty += ry * speed }
+      if (k.has('arrowleft') || k.has('e')) cam.yaw += dt * 1.4
+      if (k.has('arrowright') || k.has('q')) cam.yaw -= dt * 1.4
+      if (k.has('arrowup')) cam.pitch = Math.min(1.45, cam.pitch + dt * 0.9)
+      if (k.has('arrowdown')) cam.pitch = Math.max(0.18, cam.pitch - dt * 0.9)
       const s = session.state
       cam.tx = Math.max(0, Math.min(s.map.w * TILE, cam.tx)); cam.ty = Math.max(0, Math.min(s.map.h * TILE, cam.ty))
       cam.tz += (groundHeightAt(s.map, cam.tx, cam.ty, TILE) - cam.tz) * Math.min(1, dt * 4)
@@ -196,7 +200,7 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
     if (hit) {
       const d = drag.current
       const brush = 'size' in t ? t.size : 1
-      if (['terrain', 'water', 'surface', 'path', 'unpath', 'clear', 'pathAdd', 'demolish'].includes(t.kind)) {
+      if (['terrain', 'water', 'surface', 'path', 'pathPaint', 'unpath', 'clear', 'pathAdd', 'demolish'].includes(t.kind)) {
         if (d.button === 0 && d.start && t.kind !== 'pathAdd' && t.kind !== 'demolish') {
           if (t.kind === 'path') {
             const dx = Math.abs(hit.x - d.start.x), dy = Math.abs(hit.y - d.start.y)
@@ -249,7 +253,8 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
       case 'terrain': if (rect) await run({ t: 'terrain', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'water': if (rect) await run({ t: 'water', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'surface': if (rect) await run({ t: 'surface', surface: t.surface, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
-      case 'path': if (rect) await run({ t: 'path', kind: t.path, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
+      case 'path': if (rect) await run({ t: 'path', kind: t.path, color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
+      case 'pathPaint': if (rect) await run({ t: 'pathPaint', color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'unpath': if (rect) await run({ t: 'unpath', x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'clear': if (rect) await run({ t: 'clear', x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'pathAdd': await run({ t: 'pathAdd', x: hit.x, y: hit.y, add: t.add }); break
@@ -313,7 +318,7 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (d.button >= 0 && Math.hypot(dx, dy) > 5) d.moved = true
     const t = toolRef.current
-    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'unpath', 'clear'].includes(t.kind)))
+    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathPaint', 'unpath', 'clear'].includes(t.kind)))
     if (d.cam && d.moved && panning) {
       const a = d.anchor
       const p = a ? r.rayPlane(e.clientX, e.clientY, a.z) : null
@@ -333,7 +338,7 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
     d.pointers.delete(e.pointerId)
     if (d.button === 9) { if (!d.pointers.size) d.button = -1; return }
     const t = toolRef.current
-    const areaTool = ['terrain', 'water', 'surface', 'path', 'unpath', 'clear'].includes(t.kind)
+    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathPaint', 'unpath', 'clear'].includes(t.kind)
     if (d.button === 0 && (!d.moved || areaTool)) void applyTool(e.clientX, e.clientY)
     d.button = -1; d.start = undefined
     updatePreview(e.clientX, e.clientY)
@@ -406,15 +411,9 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
     const data = await compressSave(await session.exportSave())
     const s = session.state, p = s.parks[session.park]
     const name = label ?? (saveName.trim() || `${p.name} · ${MONTHS[s.time.month]} Y${s.time.year}`)
-    await parkApi.save(slot, name.slice(0, 40), data, { cash: Math.round(p.cash), guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
+    await parkApi.save(slot, name.slice(0, 40), data, { cash: Math.round(p.cash), netWorth: Math.round(p.cash - p.loan), guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
     setLastSaved(Date.now())
-    await submitScore()
-  }
-
-  async function submitScore() {
-    const s = session.state, p = s.parks[session.park]
-    if (!signedIn || s.mode !== 'solo' || s.scenario === 'sandbox' || SCENARIOS[s.scenario]?.versus) return
-    try { await parkApi.submitScore(s.scenario, p.cash - p.loan); onScore?.() } catch { /* score submission is best effort */ }
+    if (s.mode === 'solo' && s.scenario !== 'sandbox' && !SCENARIOS[s.scenario]?.versus) onScore?.()
   }
 
   async function saveTo(slot: number) {
@@ -474,7 +473,7 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
   if (glError) return <div className="pk-error"><p>{glError}</p><button className="pk-btn" onClick={onQuit}>Back to menu</button></div>
 
   return <div className="pk-shell" ref={shellRef}>
-    <canvas ref={canvasRef} className={`pk-canvas pk-tool-${tool.kind}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => setHover(null)} aria-label="Park view. Drag to move the camera, right-drag to rotate, scroll to zoom." tabIndex={0} />
+    <canvas ref={canvasRef} className={`pk-canvas pk-tool-${tool.kind}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => setHover(null)} aria-label="Park view. Drag to move the camera, right-drag or use the arrow keys to rotate, scroll to zoom." tabIndex={0} />
 
     <header className="pk-topbar">
       <div className="pk-stat pk-park-name" style={{ borderColor: park.color }}><strong>{park.name}</strong><small>{state.mode === 'versus' ? 'Versus' : state.mode === 'coop' ? 'Co-op' : SCENARIOS[state.scenario]?.name}</small></div>
@@ -529,9 +528,11 @@ export function ParkHud({ session, onQuit, signedIn, onScore }: { session: ParkS
         <button className={tool.kind === 'path' && tool.path === 4 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 4 })}>Boardwalk · {money(24)}</button>
         <button className={tool.kind === 'unpath' ? 'on' : ''} onClick={() => setTool({ kind: 'unpath' })}><Eraser size={13} /> Remove</button>
       </div>
+      <label className="pk-path-color"><span>Footpath color</span><input type="color" value={pathColor} onChange={event => setPathColor(event.target.value)} /></label>
+      <div className="pk-chips"><button className={tool.kind === 'pathPaint' ? 'on' : ''} onClick={() => setTool({ kind: 'pathPaint' })}>Recolor existing paths</button></div>
       <p className="pk-label">Path furniture</p>
       <div className="pk-chips">{Object.entries(PATH_ADDITIONS).map(([id, a]) => <button key={id} className={tool.kind === 'pathAdd' && tool.add === Number(id) ? 'on' : ''} onClick={() => setTool({ kind: 'pathAdd', add: Number(id) })}>{a.name} · {money(a.cost)}</button>)}</div>
-      <p className="pk-hint">Drag to lay a straight run. Stairs cross steep ground; boardwalks cross water. Queue lines connect a footpath to a ride entrance; guests waiting fill them up. Benches rest tired guests, bins stop litter, lamps light the way.</p>
+      <p className="pk-hint">Choose a color for new footpaths or select Recolor existing paths and drag over ordinary paths. Drag to lay a straight run. Stairs cross steep ground; boardwalks cross water. Queue lines connect a footpath to a ride entrance; guests waiting fill them up. Benches rest tired guests, bins stop litter, lamps light the way.</p>
     </Window>}
 
     {panel === 'rides' && <Window title="Build a ride" onClose={() => togglePanel('rides')} wide>
