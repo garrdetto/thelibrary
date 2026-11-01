@@ -3,7 +3,7 @@ import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath } from './track.mjs'
 
-export const ENGINE_VERSION = 3
+export const ENGINE_VERSION = 4
 export const MAX_GUESTS = 1600
 export const START_MONTH = 0
 
@@ -40,7 +40,7 @@ export function createPark(scenarioId, options = {}) {
   const scenario = SCENARIOS[scenarioId] ?? SCENARIOS.meadowbrook
   const mode = options.mode ?? (scenario.versus ? 'versus' : 'solo')
   const players = Math.max(1, Math.min(4, options.players ?? 1))
-  const { map, scenery, entrances } = generateMap(scenario, players)
+  const { map, scenery, entrances, landBounds } = generateMap(scenario, players)
   const parkCount = scenario.versus ? entrances.length : 1
   const allParksNamed = Array.from({ length: parkCount }, (_, index) => Boolean(options.parkNames?.[index])).every(Boolean)
   const state = {
@@ -72,6 +72,7 @@ export function createPark(scenarioId, options = {}) {
     state.parks.push({
       id: p,
       parkId: newParkId(),
+      land: landBounds ?? null,
       name: options.parkNames?.[p] ?? parkName(p, mode),
       named: Boolean(options.parkNames?.[p]),
       color: PARK_COLORS[p],
@@ -217,6 +218,74 @@ export function electricityTiles(state, park) {
 }
 
 const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathElevation', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
+const MAP_DEFAULTS = { corners: 6, surface: 0, water: -1, path: 0, pathElevation: 0, pathColor: -1, pathAdd: 0, obj: 0, owner: 255, litter: 0 }
+
+function expandLegacyMap(data) {
+  const oldW = data.map.w, oldH = data.map.h
+  if (data.mode === 'versus' || SCENARIOS[data.scenario]?.versus || oldW !== 64 || oldH !== 64) return data
+  const w = oldW * 2, h = oldH * 2, offsetX = oldW / 2, offsetY = oldH / 2
+  const map = { w, h }
+  for (const key of STRUCT_KEYS) {
+    const cornerField = key === 'corners'
+    const oldLength = cornerField ? (oldW + 1) * (oldH + 1) : oldW * oldH
+    const newLength = cornerField ? (w + 1) * (h + 1) : w * h
+    const values = new Array(newLength).fill(MAP_DEFAULTS[key])
+    const decoded = decodeRle(data.map[key], oldLength, MAP_DEFAULTS[key] + 1).map(value => value - 1)
+    if (cornerField) {
+      for (let y = 0; y <= oldH; y++) for (let x = 0; x <= oldW; x++) values[(y + offsetY) * (w + 1) + x + offsetX] = decoded[y * (oldW + 1) + x]
+    } else {
+      for (let y = 0; y < oldH; y++) for (let x = 0; x < oldW; x++) values[(y + offsetY) * w + x + offsetX] = decoded[y * oldW + x]
+    }
+    map[key] = encodeRle(values.map(value => value + 1))
+  }
+  const shift = (items, withStart = false) => Array.isArray(items) ? items.map(item => ({
+    ...item,
+    ...(typeof item.x === 'number' ? { x: item.x + offsetX } : {}),
+    ...(typeof item.y === 'number' ? { y: item.y + offsetY } : {}),
+    ...(typeof item.tx === 'number' ? { tx: item.tx + offsetX } : {}),
+    ...(typeof item.ty === 'number' ? { ty: item.ty + offsetY } : {}),
+    ...(withStart && item.start ? { start: { ...item.start, x: item.start.x + offsetX, y: item.start.y + offsetY } } : {}),
+  })) : items
+  const entities = data.entities && typeof data.entities === 'object'
+    ? Object.fromEntries(Object.entries(data.entities).map(([id, entity]) => [id, {
+      ...entity,
+      x: entity.x + offsetX,
+      y: entity.y + offsetY,
+      ...(entity.start ? { start: { ...entity.start, x: entity.start.x + offsetX, y: entity.start.y + offsetY } } : {}),
+    }]))
+    : data.entities
+  return { ...data, map, entities, guests: shift(data.guests), staff: shift(data.staff) }
+}
+
+function rectInMap(rect, map) {
+  return rect && ['x0', 'y0', 'x1', 'y1'].every(key => Number.isInteger(rect[key])) &&
+    rect.x0 >= 0 && rect.y0 >= 0 && rect.x1 >= rect.x0 && rect.y1 >= rect.y0 && rect.x1 < map.w && rect.y1 < map.h
+}
+
+function sanitizeLandBounds(land, map) {
+  const initial = land?.initial, limit = land?.limit
+  if (!rectInMap(initial, map) || !rectInMap(limit, map)) return null
+  if (limit.x0 > initial.x0 || limit.y0 > initial.y0 || limit.x1 < initial.x1 || limit.y1 < initial.y1) return null
+  const initialArea = (initial.x1 - initial.x0 + 1) * (initial.y1 - initial.y0 + 1)
+  const limitArea = (limit.x1 - limit.x0 + 1) * (limit.y1 - limit.y0 + 1)
+  if (limitArea > initialArea * 4) return null
+  return { initial: { ...initial }, limit: { ...limit } }
+}
+
+function landBoundsForOwner(map, park) {
+  let x0 = map.w, y0 = map.h, x1 = -1, y1 = -1
+  for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+    if (map.owner[tileIndex(map, x, y)] !== park) continue
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y)
+  }
+  if (x1 < x0 || y1 < y0) return null
+  const initial = { x0, y0, x1, y1 }
+  const width = x1 - x0 + 1, height = y1 - y0 + 1
+  const limitWidth = Math.min(map.w, width * 2), limitHeight = Math.min(map.h, height * 2)
+  const limitX0 = Math.max(0, Math.min(map.w - limitWidth, Math.floor((x0 + x1 + 1 - limitWidth) / 2)))
+  const limitY0 = Math.max(0, Math.min(map.h - limitHeight, Math.floor((y0 + y1 + 1 - limitHeight) / 2)))
+  return { initial, limit: { x0: limitX0, y0: limitY0, x1: limitX0 + limitWidth - 1, y1: limitY0 + limitHeight - 1 } }
+}
 
 export function serializePark(state, includeGuests = true) {
   const map = { w: state.map.w, h: state.map.h }
@@ -239,6 +308,7 @@ const num = (value, fallback = 0, min = -1e12, max = 1e12) => typeof value === '
 
 export function deserializePark(data) {
   if (!data || typeof data !== 'object' || !data.map || typeof data.map !== 'object') throw new Error('Invalid park file.')
+  data = expandLegacyMap(data)
   const w = Math.round(num(data.map.w, 0, 8, 128)), h = Math.round(num(data.map.h, 0, 8, 128))
   if (!w || !h) throw new Error('Invalid park size.')
   const sizes = { corners: (w + 1) * (h + 1), surface: w * h, water: w * h, path: w * h, pathElevation: w * h, pathColor: w * h, pathAdd: w * h, obj: w * h, owner: w * h, litter: w * h }
@@ -266,6 +336,7 @@ export function deserializePark(data) {
     month: { ...emptyLedger(), ...Object.fromEntries(Object.entries(p?.month ?? {}).map(([k, v]) => [k, num(v)])) },
     history: Array.isArray(p?.history) ? p.history.slice(-24).map(row => Object.fromEntries(Object.entries(row ?? {}).slice(0, 16).map(([k, v]) => [k.slice(0, 16), typeof v === 'number' ? num(v) : String(v).slice(0, 30)]))) : [],
     thoughts: [], objective: SCENARIOS[scenario].objective, status: ['playing', 'won', 'lost'].includes(p?.status) ? p.status : 'playing', spawnDebt: 0, awards: [],
+    land: state.mode === 'versus' ? null : sanitizeLandBounds(p?.land, map) ?? landBoundsForOwner(map, i),
   }))
   if (state.parks.some(park => !park.named)) state.speed = 0
   const entities = data.entities && typeof data.entities === 'object' ? Object.values(data.entities).slice(0, 20000) : []

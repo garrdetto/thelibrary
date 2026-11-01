@@ -137,18 +137,17 @@ export async function park(request: Request, env: Env) {
     } else if (['park_name', 'saved_at', 'snapshot'].every(column => schema.columns.has(column))) {
       await env.DB.prepare(`INSERT INTO park_scores (user_id, scenario, username, park_name, value, updated_at, saved_at, snapshot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(user_id, scenario) DO UPDATE SET username = excluded.username, park_name = excluded.park_name,
-          value = CASE WHEN park_scores.updated_at <= ? THEN excluded.value ELSE MAX(park_scores.value, excluded.value) END,
+          value = excluded.value,
           updated_at = excluded.updated_at, saved_at = excluded.saved_at,
-          snapshot = CASE WHEN park_scores.updated_at <= ? THEN excluded.snapshot ELSE COALESCE(excluded.snapshot, park_scores.snapshot) END
-        WHERE park_scores.updated_at <= ? OR excluded.value >= park_scores.value`)
-        .bind(user.id, input.scenario, user.username, input.parkName, input.value, savedAt, savedAt, input.data ?? null, resetAt, resetAt, resetAt).run()
+          snapshot = COALESCE(excluded.snapshot, park_scores.snapshot)`)
+        .bind(user.id, input.scenario, user.username, input.parkName, input.value, savedAt, savedAt, input.data ?? null).run()
     } else {
       await env.DB.prepare(`INSERT INTO park_scores (user_id, scenario, username, value, updated_at) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(user_id, scenario) DO UPDATE SET username = excluded.username,
-          value = CASE WHEN park_scores.updated_at <= ? THEN excluded.value ELSE MAX(park_scores.value, excluded.value) END,
+          value = excluded.value,
           updated_at = excluded.updated_at
-        WHERE park_scores.updated_at <= ? OR excluded.value >= park_scores.value`)
-        .bind(user.id, input.scenario, user.username, input.value, savedAt, resetAt, resetAt).run()
+        `)
+        .bind(user.id, input.scenario, user.username, input.value, savedAt).run()
     }
     return json(await scoreboard(env, input.scenario, user.id, schema))
   }

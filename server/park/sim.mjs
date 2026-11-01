@@ -8,7 +8,7 @@ import { MAX_GUESTS } from './state.mjs'
 
 export const DAYS_PER_MONTH = 10
 export const STAFF_WAGE_PER_DAY = 100
-export const ELECTRICITY_COST_PER_TILE_PER_DAY = 5
+export const ELECTRICITY_COST_PER_TILE_PER_DAY = 1
 
 export function dailyOperatingCosts(state, park) {
   const staffCount = state.staff.filter(member => member.park === park).length

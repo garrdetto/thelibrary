@@ -228,6 +228,26 @@ export function applyCommand(state, cmd, park = 0) {
 }
 
 const HANDLERS = {
+  buyLand(state, cmd, park) {
+    const map = state.map, land = state.parks[park].land
+    if (!land) return fail('Land purchases are unavailable in this park.')
+    if (!isInt(cmd.x, 0, map.w - 1) || !isInt(cmd.y, 0, map.h - 1)) return fail('Choose a square of land to purchase.')
+    const { x, y } = cmd, i = tileIndex(map, x, y), limit = land.limit
+    if (x < limit.x0 || x > limit.x1 || y < limit.y0 || y > limit.y1) return fail('That square is outside the expansion area.')
+    if (map.owner[i] !== 255) return fail('That square is already owned.')
+    const adjacent = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]
+      .some(([nx, ny]) => inMap(map, nx, ny) && map.owner[tileIndex(map, nx, ny)] === park)
+    if (!adjacent) return fail('Purchase land next to your existing park.')
+    if (!canAfford(state, park, 100)) return fail('You need $100 to purchase this square.')
+    const existing = state.entities[map.obj[i]]
+    if (existing && existing.type !== 'scenery') return fail('Something is already built on that square.')
+    if (existing) removeEntity(state, existing)
+    map.owner[i] = park
+    spend(state, park, 100, 'landscaping')
+    pathsChanged(state)
+    return ok({ cost: 100 })
+  },
+
   terrain(state, cmd, park) {
     const r = rect(cmd, state.map)
     if (!r || !['raise', 'lower', 'level'].includes(cmd.op)) return fail('Choose an area of land to reshape.')

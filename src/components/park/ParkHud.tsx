@@ -16,6 +16,7 @@ type Tool =
   | { kind: 'terrain'; op: 'raise' | 'lower' | 'level'; size: number }
   | { kind: 'water'; op: 'raise' | 'lower'; size: number }
   | { kind: 'surface'; surface: number; size: number }
+  | { kind: 'buyLand' }
   | { kind: 'path'; path: 1 | 2 | 3 | 4; elevation: number }
   | { kind: 'pathPaint' }
   | { kind: 'unpath' }
@@ -97,6 +98,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
   const state = session.state
   const park = state.parks[session.park]
+  const ownedLand = state.map.owner.filter(owner => owner === session.park).length
+  const maxLand = park.land ? (park.land.initial.x1 - park.land.initial.x0 + 1) * (park.land.initial.y1 - park.land.initial.y0 + 1) * 4 : 0
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = toastId.current++
@@ -269,6 +272,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (!hit) return
     const rect = r.preview.rect
     switch (t.kind) {
+      case 'buyLand': await run({ t: 'buyLand', x: hit.x, y: hit.y }, 'Land purchased for $100.'); break
       case 'terrain': if (rect) await run({ t: 'terrain', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'water': if (rect) await run({ t: 'water', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'surface': if (rect) await run({ t: 'surface', surface: t.surface, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
@@ -555,6 +559,11 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </nav>}
 
     {panel === 'terrain' && <Window title="Landscaping" onClose={() => togglePanel('terrain')}>
+      {park.land && <div className="pk-land-buy">
+        <p className="pk-label">Purchase land</p>
+        <p className="pk-hint">{ownedLand.toLocaleString()} of {maxLand.toLocaleString()} squares owned. Expansion land is tinted light red.</p>
+        {!viewOnly && <><button className={`pk-btn ${tool.kind === 'buyLand' ? 'on' : ''}`} onClick={() => setTool({ kind: 'buyLand' })}>Buy a square · $100</button><p className="pk-hint">Select this, then click a red square next to your park.</p></>}
+      </div>}
       <div className="pk-chips">
         {(['raise', 'lower', 'level'] as const).map(op => <button key={op} className={tool.kind === 'terrain' && tool.op === op ? 'on' : ''} onClick={() => setTool({ kind: 'terrain', op, size: brushSize })}>{op === 'raise' ? 'Raise land' : op === 'lower' ? 'Lower land' : 'Level land'}</button>)}
         {(['raise', 'lower'] as const).map(op => <button key={`w${op}`} className={tool.kind === 'water' && tool.op === op ? 'on' : ''} onClick={() => setTool({ kind: 'water', op, size: brushSize })}><Droplets size={13} /> {op === 'raise' ? 'Add water' : 'Drain water'}</button>)}
@@ -654,9 +663,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
         <div>
           <p className="pk-label">This month</p>
           <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Electricity: park.month.electricity, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
-          <p className="pk-hint">Electricity costs $5 per occupied ride or shop grid square each day.</p>
+          <p className="pk-hint">Electricity costs $1 per occupied ride or shop grid square each day.</p>
           <p className="pk-label">Bank loan</p>
-          <div className="pk-row"><span>{money(park.loan)} of {money(park.maxLoan)}</span><button onClick={() => void run({ t: 'loan', delta: -1000 })}>Repay $1,000</button><button onClick={() => void run({ t: 'loan', delta: 1000 })}>Borrow $1,000</button></div>
+          <div className="pk-row"><span>{money(park.loan)} of {money(park.maxLoan)}</span>{!viewOnly && <><button onClick={() => void run({ t: 'loan', delta: -1000 })}>Repay $1,000</button><button onClick={() => void run({ t: 'loan', delta: 1000 })}>Borrow $1,000</button></>}</div>
           <p className="pk-hint">Interest is about 1.2% of the loan each month.</p>
         </div>
         <div>
@@ -667,7 +676,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       </div>
     </Window>}
 
-    {panel === 'save' && <Window title="Save park" onClose={() => setPanel(null)}>
+    {!viewOnly && panel === 'save' && <Window title="Save park" onClose={() => setPanel(null)}>
       {!signedIn ? <p className="pk-hint">Sign in on the home page to save parks to your account.</p> : saves === null ? <p className="pk-hint"><LoaderCircle className="spin" size={14} /> Loading save slots…</p> : <>
         <label className="pk-field"><span>Name</span><input value={saveName} maxLength={40} placeholder={`${park.name} · ${MONTHS[state.time.month]} Y${state.time.year}`} onChange={e => setSaveName(e.target.value)} /></label>
         <p className="pk-hint">Your park autosaves every 5 minutes and when you leave{lastSaved ? ` · last saved ${new Date(lastSaved).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}.{session.state.mode === 'solo' && session.state.scenario !== 'sandbox' ? ' Each save also records your net worth on the leaderboard.' : ''}</p>
@@ -682,13 +691,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <form onSubmit={e => { e.preventDefault(); if (chatText.trim()) { session.sendChat(chatText.trim()); setChatText('') } }} className="pk-chat-form"><input value={chatText} maxLength={200} onChange={e => setChatText(e.target.value)} placeholder="Say something…" aria-label="Chat message" /><button className="pk-btn">Send</button></form>
     </Window>}
 
-    {entity?.type === 'ride' && <RideWindow ride={entity} session={session} onClose={() => setSelection(null)} run={run} onBuild={() => setBuilder({ ride: entity.id, c: 0, s: 0, sp: '' })} onGate={role => setTool({ kind: 'gate', ride: entity.id, role })} rideCam={rideCam === entity.id} onRideCam={() => setRideCam(c => c === entity.id ? null : entity.id)} />}
+    {entity?.type === 'ride' && <RideWindow ride={entity} session={session} readOnly={viewOnly} onClose={() => setSelection(null)} run={run} onBuild={() => setBuilder({ ride: entity.id, c: 0, s: 0, sp: '' })} onGate={role => setTool({ kind: 'gate', ride: entity.id, role })} rideCam={rideCam === entity.id} onRideCam={() => setRideCam(c => c === entity.id ? null : entity.id)} />}
     {entity?.type === 'stall' && <Window title={entity.name ?? 'Stall'} onClose={() => setSelection(null)}>
       <dl className="pk-dl"><dt>Sales</dt><dd>{entity.sales}</dd><dt>Revenue</dt><dd>{money(entity.revenue ?? 0)}</dd><dt>Upkeep</dt><dd>{money(STALLS[entity.kind!].upkeep)}/month</dd></dl>
-      {STALLS[entity.kind!].price > 0 && <div className="pk-row"><span>Price</span><button onClick={() => void run({ t: 'stallSet', id: entity.id, price: Math.max(0, (entity.price ?? 0) - 0.1) })}><Minus size={13} /></button><strong>{money(entity.price ?? 0)}</strong><button onClick={() => void run({ t: 'stallSet', id: entity.id, price: Math.min(20, (entity.price ?? 0) + 0.1) })}><Plus size={13} /></button></div>}
-      <div className="pk-actions"><button className="pk-btn" onClick={() => void run({ t: 'stallSet', id: entity.id, open: !entity.open })}>{entity.open ? 'Close' : 'Open'}</button><button className="pk-btn" onClick={() => void run({ t: 'stallSet', id: entity.id, rot: ((entity.rot ?? 0) + 1) % 4 }, 'Shop rotated.')}><RotateCw size={13} /> Rotate</button><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'demolish', id: entity.id }); setSelection(null) }}><Trash2 size={13} /> Demolish</button></div>
+      {STALLS[entity.kind!].price > 0 && <div className="pk-row"><span>Price</span>{!viewOnly && <button onClick={() => void run({ t: 'stallSet', id: entity.id, price: Math.max(0, (entity.price ?? 0) - 0.1) })}><Minus size={13} /></button>}<strong>{money(entity.price ?? 0)}</strong>{!viewOnly && <button onClick={() => void run({ t: 'stallSet', id: entity.id, price: Math.min(20, (entity.price ?? 0) + 0.1) })}><Plus size={13} /></button>}</div>}
+      {!viewOnly && <div className="pk-actions"><button className="pk-btn" onClick={() => void run({ t: 'stallSet', id: entity.id, open: !entity.open })}>{entity.open ? 'Close' : 'Open'}</button><button className="pk-btn" onClick={() => void run({ t: 'stallSet', id: entity.id, rot: ((entity.rot ?? 0) + 1) % 4 }, 'Shop rotated.')}><RotateCw size={13} /> Rotate</button><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'demolish', id: entity.id }); setSelection(null) }}><Trash2 size={13} /> Demolish</button></div>}
     </Window>}
-    {entity?.type === 'scenery' && <Window title={SCENERY[entity.kind!]?.name ?? 'Scenery'} onClose={() => setSelection(null)}><div className="pk-actions"><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'demolish', id: entity.id }); setSelection(null) }}><Trash2 size={13} /> Remove</button></div></Window>}
+    {entity?.type === 'scenery' && <Window title={SCENERY[entity.kind!]?.name ?? 'Scenery'} onClose={() => setSelection(null)}>{!viewOnly && <div className="pk-actions"><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'demolish', id: entity.id }); setSelection(null) }}><Trash2 size={13} /> Remove</button></div>}</Window>}
     {entity?.type === 'parkEntrance' && <Window title={state.parks[entity.park]?.name ?? 'Park entrance'} onClose={() => setSelection(null)}><p className="pk-hint">Guests arrive and leave through here. Entry fee {money(state.parks[entity.park]?.entryFee ?? 0)}.</p></Window>}
     {selection?.kind === 'guest' && guestInfo && <Window title={guestName(guestInfo.id)} onClose={() => setSelection(null)}>
       <p className="pk-hint">{guestInfo.kid ? 'Young visitor' : 'Visitor'} · {guestInfo.state === 'queue' ? 'Queuing' : guestInfo.state === 'ride' ? 'On a ride' : guestInfo.state === 'sit' ? 'Resting' : 'Walking'} · {money(guestInfo.cash)} left · spent {money(guestInfo.spent)}</p>
@@ -700,9 +709,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <p className="pk-hint">{STAFF[staffMember.role].name} · {money(STAFF[staffMember.role].wage)}/day · {staffActivity(staffMember)}</p>
       {staffMember.role === 'mechanic' && <>
         <p className="pk-label">Available repair jobs</p>
-        {brokenRides.length === 0 ? <p className="pk-hint">No rides need repairs right now.</p> : mechanicJobs.length === 0 ? <p className="pk-hint">No unassigned broken rides are reachable from this mechanic’s footpaths or queue lines.</p> : <ul className="pk-list">{mechanicJobs.map(ride => <li key={ride.id}><span>{ride.name}</span><button className="pk-btn" disabled={ride.mechanic === staffMember.id} onClick={() => void run({ t: 'staffJob', id: staffMember.id, ride: ride.id }, 'Repair job assigned.')}>{ride.mechanic === staffMember.id ? 'Assigned' : 'Assign'}</button></li>)}</ul>}
+        {brokenRides.length === 0 ? <p className="pk-hint">No rides need repairs right now.</p> : mechanicJobs.length === 0 ? <p className="pk-hint">No unassigned broken rides are reachable from this mechanic’s footpaths or queue lines.</p> : <ul className="pk-list">{mechanicJobs.map(ride => <li key={ride.id}><span>{ride.name}</span>{!viewOnly && <button className="pk-btn" disabled={ride.mechanic === staffMember.id} onClick={() => void run({ t: 'staffJob', id: staffMember.id, ride: ride.id }, 'Repair job assigned.')}>{ride.mechanic === staffMember.id ? 'Assigned' : 'Assign'}</button>}</li>)}</ul>}
       </>}
-      <div className="pk-actions"><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'fire', id: staffMember.id }, 'Staff member let go.'); setSelection(null) }}>Fire</button></div>
+      {!viewOnly && <div className="pk-actions"><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'fire', id: staffMember.id }, 'Staff member let go.'); setSelection(null) }}>Fire</button></div>}
     </Window>}
 
     {builder && builderRide && !builderRide.complete && <section className="pk-builder" aria-label="Track builder">
@@ -742,7 +751,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   </div>
 }
 
-function RideWindow({ ride, session, onClose, run, onBuild, onGate, rideCam, onRideCam }: { ride: Entity; session: ParkSession; onClose: () => void; run: (cmd: { t: string; [k: string]: unknown }, success?: string) => Promise<{ ok: boolean }>; onBuild: () => void; onGate: (role: 'entrance' | 'exit') => void; rideCam: boolean; onRideCam: () => void }) {
+function RideWindow({ ride, session, readOnly, onClose, run, onBuild, onGate, rideCam, onRideCam }: { ride: Entity; session: ParkSession; readOnly: boolean; onClose: () => void; run: (cmd: { t: string; [k: string]: unknown }, success?: string) => Promise<{ ok: boolean }>; onBuild: () => void; onGate: (role: 'entrance' | 'exit') => void; rideCam: boolean; onRideCam: () => void }) {
   const [name, setName] = useState(ride.name ?? '')
   const [editing, setEditing] = useState(false)
   const st = ride.stats
@@ -754,17 +763,17 @@ function RideWindow({ ride, session, onClose, run, onBuild, onGate, rideCam, onR
   const value = rideValue(ride)
   const colors = ['#d8432f', '#3a77d0', '#3fae5c', '#f2c230', '#9b51e0', '#f08a24', '#1fb5b0', '#e85d9b', '#2e2e36', '#f3f1ea']
   return <Window title={ride.name ?? 'Ride'} onClose={onClose}>
-    {editing ? <form className="pk-chat-form" onSubmit={e => { e.preventDefault(); void run({ t: 'rideSet', id: ride.id, name }); setEditing(false) }}><input value={name} maxLength={32} onChange={e => setName(e.target.value)} aria-label="Ride name" /><button className="pk-btn">Rename</button></form> : <p className="pk-hint">{rideName} · <button className="pk-inline" onClick={() => { setName(ride.name ?? ''); setEditing(true) }}>rename</button></p>}
+    {editing ? <form className="pk-chat-form" onSubmit={e => { e.preventDefault(); void run({ t: 'rideSet', id: ride.id, name }); setEditing(false) }}><input value={name} maxLength={32} onChange={e => setName(e.target.value)} aria-label="Ride name" /><button className="pk-btn">Rename</button></form> : <p className="pk-hint">{rideName}{!readOnly && <> · <button className="pk-inline" onClick={() => { setName(ride.name ?? ''); setEditing(true) }}>rename</button></>}</p>}
     <div className="pk-status-row"><span className={`pk-status pk-${ride.status}`}>{coaster && !ride.complete ? 'Under construction' : ride.status === 'broken' ? 'Broken down' : ride.status === 'open' ? 'Open' : 'Closed'}</span>
-      {ride.status !== 'broken' && (!coaster || ride.complete) && <button className={`pk-btn ${ride.status === 'open' ? '' : 'pk-btn-go'}`} onClick={() => void run({ t: 'rideSet', id: ride.id, status: ride.status === 'open' ? 'closed' : 'open' })}>{ride.status === 'open' ? 'Close ride' : 'Open ride'}</button>}</div>
+      {!readOnly && ride.status !== 'broken' && (!coaster || ride.complete) && <button className={`pk-btn ${ride.status === 'open' ? '' : 'pk-btn-go'}`} onClick={() => void run({ t: 'rideSet', id: ride.id, status: ride.status === 'open' ? 'closed' : 'open' })}>{ride.status === 'open' ? 'Close ride' : 'Open ride'}</button>}</div>
     {st?.valid ? <dl className="pk-dl">
       <dt>Excitement</dt><dd>{st.e.toFixed(2)} ({level(st.e)})</dd><dt>Intensity</dt><dd>{st.i.toFixed(2)} ({level(st.i)})</dd><dt>Nausea</dt><dd>{st.n.toFixed(2)} ({level(st.n)})</dd>
       {coaster && <><dt>Top speed</dt><dd>{st.maxSpeed} km/h</dd><dt>Length</dt><dd>{st.length} m</dd><dt>Ride time</dt><dd>{st.rideTime} s</dd><dt>Drops</dt><dd>{st.drops} (highest {st.highestDrop} m)</dd><dt>Inversions</dt><dd>{st.inversions}</dd><dt>G-forces</dt><dd>+{st.maxG} / {st.minG} · lateral {st.latG}</dd><dt>Air time</dt><dd>{st.airtime} s</dd></>}
     </dl> : coaster && ride.complete ? <p className="pk-hint pk-neg">The track test failed. Remove pieces and adjust the route before trying again.</p> : coaster ? <p className="pk-hint">Finish the circuit to see its ratings.</p> : null}
     <dl className="pk-dl"><dt>Capacity</dt><dd>{rideCapacity(ride)} riders</dd><dt>Queue</dt><dd>{queue} guests</dd><dt>Riders</dt><dd>{ride.totalRiders ?? 0} total · {ride.monthRiders ?? 0} this month</dd><dt>Income</dt><dd>{money(ride.revenue ?? 0)}</dd><dt>Reliability</dt><dd>{Math.round(ride.reliability ?? 100)}%</dd></dl>
-    <div className="pk-row"><span>Ticket</span><button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.max(0, (ride.price ?? 0) - 0.1) })}><Minus size={13} /></button><strong>{money(ride.price ?? 0)}</strong><button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.min(20, (ride.price ?? 0) + 0.1) })}><Plus size={13} /></button>{value > 0 && <small>Guests think it is worth about {money(Math.round(value * 1.6 * 10) / 10)}</small>}</div>
-    <div className="pk-swatches">{colors.map(c => <button key={c} style={{ background: c }} aria-label={`Paint ${c}`} className={ride.color === c ? 'on' : ''} onClick={() => void run({ t: 'rideSet', id: ride.id, color: c })} />)}</div>
-    <div className="pk-actions">
+    <div className="pk-row"><span>Ticket</span>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.max(0, (ride.price ?? 0) - 0.1) })}><Minus size={13} /></button>}<strong>{money(ride.price ?? 0)}</strong>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.min(20, (ride.price ?? 0) + 0.1) })}><Plus size={13} /></button>}{value > 0 && <small>Guests think it is worth about {money(Math.round(value * 1.6 * 10) / 10)}</small>}</div>
+    {!readOnly && <div className="pk-swatches">{colors.map(c => <button key={c} style={{ background: c }} aria-label={`Paint ${c}`} className={ride.color === c ? 'on' : ''} onClick={() => void run({ t: 'rideSet', id: ride.id, color: c })} />)}</div>}
+    {!readOnly && <div className="pk-actions">
       {coaster && !ride.complete && <button className="pk-btn pk-btn-go" onClick={onBuild}><Wrench size={13} /> Build track</button>}
       {coaster && !ride.complete && (ride.pieces?.length ?? 0) > 0 && <button className="pk-btn" onClick={() => void run({ t: 'unpiece', ride: ride.id })}><Undo2 size={13} /> Remove last</button>}
       {coaster && ride.complete && <button className={`pk-btn ${rideCam ? 'on' : ''}`} onClick={onRideCam}><Camera size={13} /> {rideCam ? 'Exit ride camera' : 'Ride camera'}</button>}
@@ -772,7 +781,7 @@ function RideWindow({ ride, session, onClose, run, onBuild, onGate, rideCam, onR
       <button className="pk-btn" onClick={() => onGate('entrance')}>{ride.entrance ? 'Move entrance' : 'Place entrance'}</button>
       <button className="pk-btn" onClick={() => onGate('exit')}>{ride.exit ? 'Move exit' : 'Place exit'}</button>
       <button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'demolish', id: ride.id }); onClose() }}><Trash2 size={13} /> Demolish</button>
-    </div>
+    </div>}
     {ride.status === 'broken' && <p className="pk-hint pk-neg">{ride.mechanic ? 'A mechanic is on the way.' : !mechanics.length ? 'Hire a mechanic to repair this ride.' : reachableMechanic ? 'Waiting for a free mechanic.' : 'No mechanic can reach this ride. Connect a footpath to its entrance or exit.'}</p>}
   </Window>
 }
