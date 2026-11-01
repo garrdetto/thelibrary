@@ -8,7 +8,7 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprint, footprintTiles, stallFrontTile, tileIndex, inMap, tileSlope, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprint, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileSlope, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance } from '../../../server/park/index.mjs'
 import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
 
 type Tool =
@@ -16,7 +16,7 @@ type Tool =
   | { kind: 'terrain'; op: 'raise' | 'lower' | 'level'; size: number }
   | { kind: 'water'; op: 'raise' | 'lower'; size: number }
   | { kind: 'surface'; surface: number; size: number }
-  | { kind: 'path'; path: 1 | 2 | 3 | 4 }
+  | { kind: 'path'; path: 1 | 2 | 3 | 4; elevation: number }
   | { kind: 'pathPaint' }
   | { kind: 'unpath' }
   | { kind: 'pathAdd'; add: number }
@@ -77,6 +77,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null)
   const [grid, setGrid] = useState(false)
   const [pathColor, setPathColor] = useState('#cdbb93')
+  const [pathElevation, setPathElevation] = useState(0)
   const [rideCam, setRideCam] = useState<number | null>(null)
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
   const [chatText, setChatText] = useState('')
@@ -195,9 +196,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (t.kind === 'stall') {
       const def = STALLS[t.stall]
       const shop = { id: 0, type: 'stall', kind: t.stall, size: def.size ?? [1, 1], x, y, rot: t.rot, park: session.park } as Entity
-      const tiles = footprintTiles(shop)
+      if (stallFootprintError(state, session.park, shop, t.rot)) return false
       const front = stallFrontTile(shop)
-      return tiles.every(([tx, ty]) => free(tx, ty) && tileSlope(map, tx, ty).dir !== -2) && inMap(map, front.x, front.y) && isWalkPath(map.path[tileIndex(map, front.x, front.y)])
+      return inMap(map, front.x, front.y) && isWalkPath(map.path[tileIndex(map, front.x, front.y)])
     }
     if (t.kind === 'scenery') return free(x, y)
     if (t.kind === 'gate') return inMap(map, x, y) && !map.obj[tileIndex(map, x, y)] && !map.path[tileIndex(map, x, y)]
@@ -230,7 +231,10 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
         const [baseW, baseH] = STALLS[t.stall].size ?? [1, 1]
         const w = t.rot % 2 ? baseH : baseW, h = t.rot % 2 ? baseW : baseH
         const x = hit.x - Math.floor((w - 1) / 2), y = hit.y - Math.floor((h - 1) / 2)
-        p.ghost = { type: 'stall', kind: t.stall, x, y, rot: t.rot, ok: placementOk(t, x, y) }
+        const shop = { id: 0, type: 'stall', kind: t.stall, size: [baseW, baseH], x, y, rot: t.rot, park: session.park } as Entity
+        const rot = stallPlacementRotation(state, session.park, shop, t.rot)
+        const actualRot = rot ?? t.rot
+        p.ghost = { type: 'stall', kind: t.stall, x, y, rot: actualRot, ok: rot !== null && placementOk({ ...t, rot: actualRot }, x, y) }
       }
       if (t.kind === 'scenery') p.ghost = { type: 'scenery', kind: t.scenery, x: hit.x, y: hit.y, rot: t.rot, ok: placementOk(t, hit.x, hit.y) }
       if (t.kind === 'gate') {
@@ -241,6 +245,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       }
       if (t.kind === 'coaster') p.station = { x: hit.x, y: hit.y, dir: t.dir, length: t.length, ok: [...Array(t.length)].every((_, k) => { const [dx, dy] = DIRS[t.dir]; const tx = hit.x + dx * k, ty = hit.y + dy * k; return inMap(state.map, tx, ty) && state.map.owner[tileIndex(state.map, tx, ty)] === session.park && !state.map.obj[tileIndex(state.map, tx, ty)] && !state.map.path[tileIndex(state.map, tx, ty)] }) }
     }
+    if (p.rect && t.kind === 'path') p.rect.elevation = t.elevation
     r.preview = p
   }
 
@@ -267,13 +272,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       case 'terrain': if (rect) await run({ t: 'terrain', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'water': if (rect) await run({ t: 'water', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'surface': if (rect) await run({ t: 'surface', surface: t.surface, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
-      case 'path': if (rect) await run({ t: 'path', kind: t.path, color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
+      case 'path': if (rect) await run({ t: 'path', kind: t.path, elevation: t.elevation, color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'pathPaint': if (rect) await run({ t: 'pathPaint', color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'unpath': if (rect) await run({ t: 'unpath', x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'clear': if (rect) await run({ t: 'clear', x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'pathAdd': await run({ t: 'pathAdd', x: hit.x, y: hit.y, add: t.add }); break
       case 'scenery': await run({ t: 'scenery', kind: t.scenery, x: hit.x, y: hit.y, rot: t.rot }); break
-      case 'stall': { const ghost = r.preview.ghost; if (!ghost) break; const res = await run({ t: 'stall', kind: t.stall, x: ghost.x, y: ghost.y, rot: t.rot }); if (res.ok && res.id) { setTool({ kind: 'select' }); setSelection({ kind: 'entity', id: res.id }) } break }
+      case 'stall': { const ghost = r.preview.ghost; if (!ghost) break; const res = await run({ t: 'stall', kind: t.stall, x: ghost.x, y: ghost.y, rot: ghost.rot }); if (res.ok && res.id) { setTool({ kind: 'select' }); setSelection({ kind: 'entity', id: res.id }) } break }
       case 'flat': {
         const g = r.preview.ghost
         if (!g) break
@@ -362,6 +367,12 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     setTool(t => 'rot' in t ? { ...t, rot: (t.rot + 1) % 4 } as Tool : t.kind === 'coaster' ? { ...t, dir: (t.dir + 1) % 4 } : t)
   }
 
+  function adjustPathElevation(delta: number) {
+    const elevation = Math.max(0, Math.min(24, pathElevation + delta))
+    setPathElevation(elevation)
+    setTool(current => current.kind === 'path' ? { ...current, elevation } : current)
+  }
+
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input, textarea, select')) return
@@ -370,7 +381,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       if (key === 'escape') { if (toolRef.current.kind === 'select') { setSelection(null); setPanel(null); setBuilder(null) } setTool({ kind: 'select' }); setRideCam(null); if (rendererRef.current) rendererRef.current.preview = {} }
       if (key === 'r') rotateTool()
       if (key === 'g') setGrid(v => !v)
-      if (key === ' ') { e.preventDefault(); void session.command({ t: 'speed', speed: session.state.speed ? 0 : 1 }) }
+      if (key === ' ' && !viewOnly) { e.preventDefault(); void session.command({ t: 'speed', speed: session.state.speed ? 0 : 1 }) }
       if (key === '+' || key === '=') { const r = rendererRef.current; if (r) r.cam.dist = Math.max(12, r.cam.dist * 0.85) }
       if (key === '-') { const r = rendererRef.current; if (r) r.cam.dist = Math.min(420, r.cam.dist * 1.15) }
     }
@@ -513,9 +524,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <div className="pk-stat"><small>Guests</small><strong>{park.guestsIn}</strong></div>
       <div className="pk-stat pk-rating"><small>Rating</small><strong>{park.rating}</strong><i><b style={{ width: `${park.rating / 10}%` }} /></i></div>
       <div className="pk-stat"><small>{weatherIcon} {state.weather.temp}°C</small><strong>{MONTHS[state.time.month]} {state.time.day + 1}, Y{state.time.year}</strong></div>
-      <div className="pk-speed" role="group" aria-label="Simulation speed">
+      {!viewOnly && <div className="pk-speed" role="group" aria-label="Simulation speed">
         {[0, 1, 2, 4].map(sp => <button key={sp} className={state.speed === sp ? 'on' : ''} disabled={session.online && state.mode === 'versus' && !session.isHost} onClick={() => void session.command({ t: 'speed', speed: sp })} aria-label={sp ? `Speed ${sp}x` : 'Pause'} title={sp ? `${sp}x speed` : 'Pause (Space)'}>{sp === 0 ? <Pause size={14} /> : sp === 1 ? <Play size={14} /> : <><FastForward size={14} /><span>{sp}</span></>}</button>)}
-      </div>
+      </div>}
       <div className="pk-top-actions">
         <button onClick={() => setGrid(v => !v)} className={grid ? 'on' : ''} title="Grid (G)" aria-label="Toggle grid"><Grid3x3 size={16} /></button>
         <button onClick={() => void fullscreen()} title="Fullscreen" aria-label="Fullscreen"><Maximize2 size={16} /></button>
@@ -532,7 +543,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     {!viewOnly && <nav className="pk-toolbar" aria-label="Build tools">
       <button className={tool.kind === 'select' && !panel ? 'on' : ''} onClick={() => { choose({ kind: 'select' }); setPanel(null) }} title="Select (Esc)"><MousePointer2 size={19} /><span>Select</span></button>
       <button className={panel === 'terrain' ? 'on' : ''} onClick={() => { togglePanel('terrain'); setTool({ kind: 'terrain', op: 'raise', size: 3 }) }}><Mountain size={19} /><span>Land</span></button>
-      <button className={panel === 'paths' ? 'on' : ''} onClick={() => { togglePanel('paths'); setTool({ kind: 'path', path: 1 }) }}><Footprints size={19} /><span>Paths</span></button>
+      <button className={panel === 'paths' ? 'on' : ''} onClick={() => { togglePanel('paths'); setTool({ kind: 'path', path: 1, elevation: pathElevation }) }}><Footprints size={19} /><span>Paths</span></button>
       <button className={panel === 'rides' ? 'on' : ''} onClick={() => togglePanel('rides')}><Sparkles size={19} /><span>Rides</span></button>
       <button className={panel === 'coasters' ? 'on' : ''} onClick={() => togglePanel('coasters')}><Zap size={19} /><span>Coasters</span></button>
       <button className={panel === 'shops' ? 'on' : ''} onClick={() => togglePanel('shops')}><Store size={19} /><span>Shops</span></button>
@@ -556,17 +567,18 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
     {panel === 'paths' && <Window title="Footpaths" onClose={() => togglePanel('paths')}>
       <div className="pk-chips">
-        <button className={tool.kind === 'path' && tool.path === 1 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 1 })}>Footpath · {money(12)}</button>
-        <button className={tool.kind === 'path' && tool.path === 2 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 2 })}>Queue line · {money(14)}</button>
-        <button className={tool.kind === 'path' && tool.path === 3 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 3 })}>Stairs · {money(18)}</button>
-        <button className={tool.kind === 'path' && tool.path === 4 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 4 })}>Boardwalk · {money(24)}</button>
+        <button className={tool.kind === 'path' && tool.path === 1 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 1, elevation: pathElevation })}>Footpath · {money(12)}</button>
+        <button className={tool.kind === 'path' && tool.path === 2 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 2, elevation: pathElevation })}>Queue line · {money(14)}</button>
+        <button className={tool.kind === 'path' && tool.path === 3 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 3, elevation: pathElevation })}>Stairs · {money(18)}</button>
+        <button className={tool.kind === 'path' && tool.path === 4 ? 'on' : ''} onClick={() => setTool({ kind: 'path', path: 4, elevation: pathElevation })}>Boardwalk · {money(24)}</button>
         <button className={tool.kind === 'unpath' ? 'on' : ''} onClick={() => setTool({ kind: 'unpath' })}><Eraser size={13} /> Remove</button>
       </div>
+      <div className="pk-size"><span>Height</span><button onClick={() => adjustPathElevation(-1)} aria-label="Lower path"><Minus size={14} /></button><strong>{(pathElevation * 0.5).toFixed(1)}m above ground</strong><button onClick={() => adjustPathElevation(1)} aria-label="Raise path"><Plus size={14} /></button></div>
       <label className="pk-path-color"><span>Footpath color</span><input type="color" value={pathColor} onChange={event => setPathColor(event.target.value)} /></label>
       <div className="pk-chips"><button className={tool.kind === 'pathPaint' ? 'on' : ''} onClick={() => setTool({ kind: 'pathPaint' })}>Recolor existing paths</button></div>
       <p className="pk-label">Path furniture</p>
       <div className="pk-chips">{Object.entries(PATH_ADDITIONS).map(([id, a]) => <button key={id} className={tool.kind === 'pathAdd' && tool.add === Number(id) ? 'on' : ''} onClick={() => setTool({ kind: 'pathAdd', add: Number(id) })}>{a.name} · {money(a.cost)}</button>)}</div>
-      <p className="pk-hint">Choose a color for new footpaths or select Recolor existing paths and drag over ordinary paths. Drag to lay a straight run. Stairs cross steep ground; boardwalks cross water. Queue lines connect a footpath to a ride entrance; guests waiting fill them up. Benches rest tired guests, bins stop litter, lamps light the way.</p>
+      <p className="pk-hint">Choose a height before building. Raised paths can cross scenery, rides, and track when there is enough clearance; use stairs to connect path heights. Boardwalks can also cross water. Drag to lay a straight run. Queue lines connect to ride entrances.</p>
     </Window>}
 
     {panel === 'rides' && <Window title="Build a ride" onClose={() => togglePanel('rides')} wide>
@@ -642,7 +654,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
         <div>
           <p className="pk-label">This month</p>
           <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Electricity: park.month.electricity, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
-          <p className="pk-hint">Electricity costs $10 per occupied ride or shop grid square each day.</p>
+          <p className="pk-hint">Electricity costs $5 per occupied ride or shop grid square each day.</p>
           <p className="pk-label">Bank loan</p>
           <div className="pk-row"><span>{money(park.loan)} of {money(park.maxLoan)}</span><button onClick={() => void run({ t: 'loan', delta: -1000 })}>Repay $1,000</button><button onClick={() => void run({ t: 'loan', delta: 1000 })}>Borrow $1,000</button></div>
           <p className="pk-hint">Interest is about 1.2% of the loan each month.</p>
@@ -705,7 +717,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">
       <strong>{tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
-      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(6, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
+      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.length + 1}-car train · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
       {(tool.kind === 'flat' || tool.kind === 'stall' || tool.kind === 'scenery' || tool.kind === 'coaster') && <button onClick={rotateTool}><RotateCw size={14} /> Rotate</button>}
       <button onClick={() => { setTool({ kind: 'select' }); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>
     </div>}

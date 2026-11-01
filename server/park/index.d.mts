@@ -1,7 +1,7 @@
-export type ParkMap = { w: number; h: number; corners: number[]; surface: number[]; water: number[]; path: number[]; pathColor: number[]; pathAdd: number[]; obj: number[]; owner: number[]; litter: number[] }
+export type ParkMap = { w: number; h: number; corners: number[]; surface: number[]; water: number[]; path: number[]; pathElevation: number[]; pathColor: number[]; pathAdd: number[]; obj: number[]; owner: number[]; litter: number[] }
 export type Piece = { c: number; s: number; sp?: 'station' | 'chain' | 'brakes' | 'booster' | 'loop'; k?: number }
 export type Pose = { x: number; y: number; h: number; dir: number; slope: number }
-export type Train = { s: number; v: number; phase: string; timer: number; riders: number[]; ridersCount?: number; lap: number; stalled: number }
+export type Train = { s: number; v: number; phase: string; timer: number; riders: number[]; ridersCount?: number; lap: number; stalled: number; pace?: number }
 export type RideStats = { valid: boolean; e: number; i: number; n: number; maxSpeed?: number; avgSpeed?: number; rideTime?: number; length?: number; maxG?: number; minG?: number; latG?: number; drops?: number; highestDrop?: number; inversions?: number; airtime?: number }
 export type Entity = {
   id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
@@ -46,6 +46,8 @@ export const ELECTRICITY_COST_PER_TILE_PER_DAY: number
 export const ENGINE_VERSION: number
 export const MAX_GUESTS: number
 export const CAR_GAP: number
+export const PATH_STEP_LIMIT: number
+export const STAIR_STEP_LIMIT: number
 export const FLAT_RIDES: Record<string, FlatRideDef>
 export const COASTER_STYLES: Record<string, CoasterStyle>
 export const COASTER_PRESETS: Record<string, { name: string; style: string; station: number; description: string; pieces: Piece[] }>
@@ -76,6 +78,7 @@ export function tileMax(map: ParkMap, x: number, y: number): number
 export function tileSlope(map: ParkMap, x: number, y: number): { flat: boolean; base: number; dir: number }
 export function groundHeightAt(map: ParkMap, wx: number, wy: number, tile?: number): number
 export function pathHeightAt(map: ParkMap, wx: number, wy: number, tile?: number): number
+export function pathsConnect(map: ParkMap, ax: number, ay: number, bx: number, by: number, tile?: number): boolean
 export function isWalkPath(kind: number): boolean
 export function trackPoses(ride: Entity): Pose[]
 export function samplePiece(pose: Pose, piece: Piece, steps?: number): { x: number; y: number; z: number; psi: number; bank: number }[]
@@ -89,6 +92,8 @@ export function footprintTiles(entity: Entity): [number, number][]
 export function stationTiles(state: ParkState, ride: Entity): [number, number][]
 export function frontTile(gate: { x: number; y: number; dir: number }): { x: number; y: number }
 export function stallFrontTile(stall: Entity): { x: number; y: number }
+export function stallFootprintError(state: ParkState, park: number, stall: Entity, rot: number, selfId?: number): string | null
+export function stallPlacementRotation(state: ParkState, park: number, stall: Entity, preferred?: number, selfId?: number): number | null
 export function rideCapacity(ride: Entity): number
 export function rideValue(ride: Entity): number
 export function mechanicJobDistance(state: ParkState, mechanic: Staff, ride: Entity): number

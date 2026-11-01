@@ -74,10 +74,10 @@ export class ViewSession extends LocalSession {
   owner: string
   savedAt: string
   constructor(state: ParkState, owner: string, savedAt: string) { super(state); this.owner = owner; this.savedAt = savedAt }
-  async command(cmd: Command): Promise<CommandResult> {
-    if (cmd.t !== 'speed') return { ok: false, error: 'This park is view only.' }
-    return super.command(cmd)
+  async command(_cmd: Command): Promise<CommandResult> {
+    return { ok: false, error: 'This park is view only.' }
   }
+  tick(_now: number) {}
   async exportSave(): Promise<unknown> { throw new Error('This park is view only.') }
 }
 

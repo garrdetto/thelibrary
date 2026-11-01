@@ -359,7 +359,7 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
   if (piece.c && (piece.s !== pose.slope || Math.abs(piece.s) > 1)) return { error: 'Curves need a constant flat or gentle slope.' }
   if (piece.sp === 'loop' && (!style.loops || pose.slope !== 0 || piece.s !== 0 || piece.c)) return { error: style.loops ? 'Loops need flat track on both sides.' : `${style.name} track cannot loop.` }
   if (piece.sp === 'station' && (piece.c || piece.s || pose.slope)) return { error: 'Stations must be built on flat, straight track.' }
-  if (piece.sp === 'station' && stationRun(pieces, index) >= 6) return { error: 'A station can be up to 6 pieces long.' }
+  if (piece.sp === 'station' && stationRun(pieces, index) >= 13) return { error: 'A station can be up to 13 pieces long.' }
   if ((piece.sp === 'brakes' || piece.sp === 'booster') && (piece.c || piece.s || pose.slope)) return { error: 'Brakes and boosters must be flat and straight.' }
   if (piece.sp === 'chain' && (piece.s < 0 || pose.slope < 0)) return { error: 'Chain lifts only work going up or on the level.' }
   const next = nextPose(pose, piece)

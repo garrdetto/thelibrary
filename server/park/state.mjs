@@ -1,6 +1,6 @@
 import { SCENARIOS, FLAT_RIDES, COASTER_STYLES, STALLS, SCENERY, PARK_COLORS } from './catalog.mjs'
 import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
-import { generateMap, tileIndex, inMap } from './terrain.mjs'
+import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath } from './track.mjs'
 
 export const ENGINE_VERSION = 3
@@ -160,6 +160,39 @@ export function stallFrontTile(stall) {
   }
 }
 
+export function stallFootprintError(state, park, stall, rot, selfId = 0) {
+  const probe = { ...stall, rot }
+  for (const [x, y] of footprintTiles(probe)) {
+    if (!inMap(state.map, x, y)) return 'The shop would not fit on the map.'
+    const i = tileIndex(state.map, x, y)
+    if (state.map.owner[i] !== park) return 'You can only build on land your park owns.'
+    if (state.map.obj[i] && state.map.obj[i] !== selfId) return 'Something is built here.'
+    if (state.map.path[i]) return 'A footpath is in the way.'
+    if (state.map.water[i] >= 0 && state.map.water[i] > tileMin(state.map, x, y)) return 'Shops cannot be built on water.'
+    if (tileSlope(state.map, x, y).dir === -2) return 'The land is too uneven here.'
+    const ground = tileMax(state.map, x, y)
+    if ((state.trackCells.get(i) ?? []).some(cell => cell.lo < ground + 4)) return 'Coaster track is in the way.'
+  }
+  return null
+}
+
+export function stallPlacementRotation(state, park, stall, preferred = 0, selfId = 0) {
+  let best = null
+  for (let rot = 0; rot < 4; rot++) {
+    if (stallFootprintError(state, park, stall, rot, selfId)) continue
+    const front = stallFrontTile({ ...stall, rot })
+    let distance = Infinity
+    for (let i = 0; i < state.map.path.length; i++) {
+      const x = i % state.map.w, y = Math.floor(i / state.map.w)
+      if (state.map.owner[i] !== park || !isWalkPath(state.map.path[i])) continue
+      distance = Math.min(distance, Math.abs(front.x - x) + Math.abs(front.y - y))
+    }
+    const preference = (rot - preferred + 4) % 4
+    if (!best || distance < best.distance || distance === best.distance && preference < best.preference) best = { rot, distance, preference }
+  }
+  return best?.rot ?? null
+}
+
 export function rideEntityTiles(state, ride) {
   if (ride.kind === 'flat') return footprintTiles(ride)
   const indices = new Set()
@@ -183,7 +216,7 @@ export function electricityTiles(state, park) {
   return tiles.size
 }
 
-const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
+const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathElevation', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
 
 export function serializePark(state, includeGuests = true) {
   const map = { w: state.map.w, h: state.map.h }
@@ -208,9 +241,10 @@ export function deserializePark(data) {
   if (!data || typeof data !== 'object' || !data.map || typeof data.map !== 'object') throw new Error('Invalid park file.')
   const w = Math.round(num(data.map.w, 0, 8, 128)), h = Math.round(num(data.map.h, 0, 8, 128))
   if (!w || !h) throw new Error('Invalid park size.')
-  const sizes = { corners: (w + 1) * (h + 1), surface: w * h, water: w * h, path: w * h, pathColor: w * h, pathAdd: w * h, obj: w * h, owner: w * h, litter: w * h }
+  const sizes = { corners: (w + 1) * (h + 1), surface: w * h, water: w * h, path: w * h, pathElevation: w * h, pathColor: w * h, pathAdd: w * h, obj: w * h, owner: w * h, litter: w * h }
   const map = { w, h }
   for (const key of STRUCT_KEYS) map[key] = decodeRle(data.map[key], sizes[key], key === 'water' || key === 'pathColor' ? 0 : key === 'owner' ? 256 : 1).map(v => v - 1)
+  map.pathElevation = map.pathElevation.map(value => Math.max(0, Math.min(24, value)))
   const scenario = SCENARIOS[data.scenario] ? data.scenario : 'sandbox'
   const state = {
     v: ENGINE_VERSION, scenario, mode: ['solo', 'coop', 'versus'].includes(data.mode) ? data.mode : 'solo', seed: num(data.seed, 1) >>> 0, rng: num(data.rng, 1) >>> 0,
@@ -292,8 +326,9 @@ function sanitizeEntity(raw, state) {
     if (raw.kind === 'coaster' && COASTER_STYLES[raw.style]) {
       const pieces = Array.isArray(raw.pieces) ? raw.pieces.slice(0, 220).map(p => ({ c: Math.round(num(p?.c, 0, -2, 2)), s: Math.round(num(p?.s, 0, -2, 2)), ...(['station', 'chain', 'brakes', 'booster', 'loop'].includes(p?.sp) ? { sp: p.sp } : {}) })) : []
       const start = { x: Math.round(num(raw.start?.x, x, 0, state.map.w - 1)), y: Math.round(num(raw.start?.y, y, 0, state.map.h - 1)), dir: Math.round(num(raw.start?.dir, 0, 0, 3)), h: Math.round(num(raw.start?.h, 0, 0, 200)) }
-      const trains = Array.isArray(raw.trains) ? raw.trains.slice(0, 1).map(t => ({ s: num(t?.s), v: num(t?.v, 0, -60, 60), phase: ['loading', 'departing', 'running', 'arriving', 'unloading', 'waiting'].includes(t?.phase) ? t.phase : 'loading', timer: num(t?.timer), riders: Array.isArray(t?.riders) ? t.riders.slice(0, 64).map(v => Math.round(num(v))) : [], lap: Math.round(num(t?.lap)), stalled: 0 })) : []
-      return { ...common, kind: 'coaster', style: raw.style, start, pieces, complete: Boolean(raw.complete), trains, cars: Math.round(num(raw.cars, 3, 1, 8)), spent: num(raw.spent, 0, 0), rev: Math.round(num(raw.rev, 0, 0)) }
+      const isKart = COASTER_STYLES[raw.style].trackType === 'kart'
+      const trains = Array.isArray(raw.trains) ? raw.trains.slice(0, isKart ? 14 : 1).map(t => ({ s: num(t?.s), v: num(t?.v, 0, -60, 60), phase: ['loading', 'departing', 'running', 'arriving', 'unloading', 'waiting'].includes(t?.phase) ? t.phase : 'loading', timer: num(t?.timer), riders: Array.isArray(t?.riders) ? t.riders.slice(0, isKart ? 2 : 64).map(v => Math.round(num(v))) : [], lap: Math.round(num(t?.lap)), stalled: 0, pace: num(t?.pace, 1, 0.8, 1.2) })) : []
+      return { ...common, kind: 'coaster', style: raw.style, start, pieces, complete: Boolean(raw.complete), trains, cars: Math.round(num(raw.cars, 3, 1, 14)), spent: num(raw.spent, 0, 0), rev: Math.round(num(raw.rev, 0, 0)) }
     }
   }
   return null

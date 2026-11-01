@@ -6,7 +6,7 @@
     "dev": "vite dev --port 3000",
     "assets": "node -e \"console.log('assets: nothing to prepare yet (Phase 2 adds the asset pipeline)')\"",
     "build": "vite build",
-    "test": "tsc -p tsconfig.engine.json",
+    "test": "tsc -p tsconfig.engine.json && node --test server/park/park.test.mjs",
     "gate": "node scripts/module-gate.mjs",
     "engine:smoke": "node scripts/engine-smoke.mjs",
     "preview": "vite preview",
