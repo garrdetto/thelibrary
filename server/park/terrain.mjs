@@ -5,6 +5,7 @@ export const MAX_LAND = 40
 export const cornerIndex = (map, x, y) => y * (map.w + 1) + x
 export const tileIndex = (map, x, y) => y * map.w + x
 export const inMap = (map, x, y) => x >= 0 && y >= 0 && x < map.w && y < map.h
+export const isWalkPath = kind => kind === 1 || kind === 3 || kind === 4
 
 export function tileCorners(map, x, y) {
   const c = map.corners, w = map.w + 1
@@ -31,6 +32,14 @@ export function groundHeightAt(map, wx, wy, tile = 4) {
   const x = Math.floor(fx), y = Math.floor(fy), u = fx - x, v = fy - y
   const [a, b, c, d] = tileCorners(map, x, y)
   return (a * (1 - u) * (1 - v) + b * u * (1 - v) + c * u * v + d * (1 - u) * v)
+}
+
+export function pathHeightAt(map, wx, wy, tile = 4) {
+  const ground = groundHeightAt(map, wx, wy, tile)
+  const x = Math.floor(wx / tile), y = Math.floor(wy / tile)
+  if (!inMap(map, x, y)) return ground
+  const i = tileIndex(map, x, y)
+  return map.path[i] === 4 ? Math.max(tileMax(map, x, y), map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity) : ground
 }
 
 function valueNoise(seed) {
@@ -76,6 +85,7 @@ function blankMap(w, h, base) {
     surface: new Array(w * h).fill(0),
     water: new Array(w * h).fill(-1),
     path: new Array(w * h).fill(0),
+    pathColor: new Array(w * h).fill(-1),
     pathAdd: new Array(w * h).fill(0),
     obj: new Array(w * h).fill(0),
     owner: new Array(w * h).fill(255),

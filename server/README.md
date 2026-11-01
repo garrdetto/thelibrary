@@ -133,3 +133,9 @@ Redeploy this service with the frontend so online parks run the same rules as so
 - Coasters can have extra stations, where trains stop for 4 seconds and drive tires launch them back out.
 - New `finish` (auto-route the track back to the station) and `preset` (place a ready-made design) commands.
 - New flat rides: go-karts, a swimming pool and a waterslide. Guests favour water rides on hot days and avoid them in rain.
+
+### Thrill Park v42
+
+Redeploy this service with the frontend so online parks run the same rules as solo play:
+- Months now last ten days, and standard parks can borrow up to $50,000.
+- Ordinary footpaths can be assigned and repainted to custom colors.

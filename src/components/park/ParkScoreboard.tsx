@@ -27,7 +27,7 @@ export function ParkScoreboard({ username, initial, refreshKey, onView, viewBusy
   useRecordResetTarget({
     key: `park-scores:${map}`,
     label: `Thrill Park ${name} leaderboard`,
-    description: `Every saved ${name} result will be deleted for all players.`,
+    description: `Current ${name} leaderboard entries will be cleared. Saved parks reappear after the next save or autosave.`,
     reset: async () => { await postReset('/api/park', 'POST', { action: 'reset-scores', scenario: map }); await load(true) },
   })
 

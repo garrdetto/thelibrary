@@ -2,8 +2,10 @@ import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, CO
 import { autoComplete } from './autotrack.mjs'
 import { DIRS, clamp } from './util.mjs'
 import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners } from './terrain.mjs'
+import { isWalkPath } from './terrain.mjs'
 import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles } from './track.mjs'
-import { footprintTiles, addNews, entityCost, ridePath, frontTile } from './state.mjs'
+import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile } from './state.mjs'
+import { mechanicJobDistance } from './guests.mjs'
 
 const MAX_RECT = 32
 const ok = (extra = {}) => ({ ok: true, ...extra })
@@ -58,6 +60,21 @@ function removeEntity(state, entity) {
     if (state.map.obj[i] === entity.id) state.map.obj[i] = 0
   }
   delete state.entities[entity.id]
+}
+
+function stallFootprintError(state, park, stall, rot, selfId = 0) {
+  const probe = { ...stall, rot }
+  for (const [x, y] of footprintTiles(probe)) {
+    if (!inMap(state.map, x, y)) return 'The shop would not fit on the map.'
+    const i = tileIndex(state.map, x, y)
+    if (state.map.owner[i] !== park) return 'You can only build on land your park owns.'
+    if (state.map.obj[i] && state.map.obj[i] !== selfId) return 'Something is built here.'
+    if (state.map.path[i]) return 'A footpath is in the way.'
+    if (isWater(state.map, i, x, y)) return 'Shops cannot be built on water.'
+    if (tileSlope(state.map, x, y).dir === -2) return 'The land is too uneven here.'
+    if (lowTrack(state, i, 4)) return 'Coaster track is in the way.'
+  }
+  return null
 }
 
 export function terrainPlan(state, park, r, op) {
@@ -196,7 +213,8 @@ function finishCoaster(state, ride) {
   ride.stats = stats
   ride.trains = [makeTrain()]
   if (path) ride.trains[0].s = Math.max(0.5, path.stationEnd - 0.6)
-  addNews(state, ride.park, stats.valid ? `${ride.name} passed its test run. Excitement ${stats.e.toFixed(2)}, intensity ${stats.i.toFixed(2)}, nausea ${stats.n.toFixed(2)}.` : `${ride.name} failed its test run: the train could not make it around the circuit. Make sure the chain lift reaches the top of each climb, and build a big drop before loops so the train has the speed to get round.`, stats.valid ? 'ride' : 'warning', ride.id)
+  const label = style.category === 'other' ? 'track ride' : 'coaster'
+  addNews(state, ride.park, stats.valid ? `${ride.name} passed its test run. Excitement ${stats.e.toFixed(2)}, intensity ${stats.i.toFixed(2)}, nausea ${stats.n.toFixed(2)}.` : `${ride.name} failed its test run: the ${label} could not complete its circuit. Adjust the route and try again.`, stats.valid ? 'ride' : 'warning', ride.id)
 }
 
 export function applyCommand(state, cmd, park = 0) {
@@ -273,27 +291,44 @@ const HANDLERS = {
 
   path(state, cmd, park) {
     const r = rect(cmd, state.map)
-    const kind = cmd.kind === 2 ? 2 : 1
-    if (!r) return fail('Choose where to lay the path.')
+    const kind = [1, 2, 3, 4].includes(cmd.kind) ? cmd.kind : 0
+    if (!r || !kind || cmd.color !== undefined && !isInt(cmd.color, 0, 0xffffff)) return fail('Choose a path type and where to lay it.')
     const map = state.map, tiles = []
     let blocked = null
     for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
       const i = tileIndex(map, x, y)
       if (map.path[i] === kind) continue
       if (map.owner[i] !== park) { blocked = 'You can only build on land your park owns.'; continue }
-      if (isWater(map, i, x, y)) { blocked = 'Footpaths cannot be built on water.'; continue }
+      if (kind !== 4 && isWater(map, i, x, y)) { blocked = 'Only boardwalks can be built over water.'; continue }
       if (map.obj[i]) { const entity = state.entities[map.obj[i]]; blocked = entity?.type === 'scenery' ? 'Scenery is in the way. Use Clear Scenery first.' : 'Something is built here.'; continue }
-      if (tileSlope(map, x, y).dir === -2) { blocked = 'The land is too steep for a footpath. Smooth it first.'; continue }
-      if (lowTrack(state, i, 2.6)) { blocked = 'Coaster track is too low over this tile.'; continue }
+      if (kind !== 3 && tileSlope(map, x, y).dir === -2) { blocked = 'The land is too steep for this path. Use stairs or smooth it first.'; continue }
+      const pathBase = kind === 4 ? Math.max(tileMax(map, x, y), map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity) : tileMax(map, x, y)
+      if ((state.trackCells.get(i) ?? []).some(cell => cell.lo < pathBase + 2.6)) { blocked = 'Coaster track is too low over this tile.'; continue }
       tiles.push(i)
     }
     if (!tiles.length) return fail(blocked ?? 'There is already a path here.')
-    const cost = tiles.length * (kind === 2 ? COSTS.queue : COSTS.path)
+    const cost = tiles.length * ({ 1: COSTS.path, 2: COSTS.queue, 3: 18, 4: 24 }[kind])
     if (!canAfford(state, park, cost)) return fail(`You need $${cost} to build that.`)
-    for (const i of tiles) { map.path[i] = kind; if (kind === 2) map.pathAdd[i] = 0 }
+    for (const i of tiles) { map.path[i] = kind; map.pathColor[i] = kind === 1 ? cmd.color ?? -1 : -1; if (kind === 2) map.pathAdd[i] = 0 }
     spend(state, park, cost, 'construction')
     pathsChanged(state)
     return ok({ cost, warning: blocked })
+  },
+
+  pathPaint(state, cmd, park) {
+    const r = rect(cmd, state.map)
+    if (!r || !isInt(cmd.color, 0, 0xffffff)) return fail('Choose a footpath color and area to paint.')
+    const map = state.map
+    let count = 0
+    for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
+      const i = tileIndex(map, x, y)
+      if (map.path[i] !== 1 || map.owner[i] !== park || map.pathColor[i] === cmd.color) continue
+      map.pathColor[i] = cmd.color
+      count++
+    }
+    if (!count) return fail('Choose ordinary footpaths in your park to recolor.')
+    pathsChanged(state)
+    return ok()
   },
 
   unpath(state, cmd, park) {
@@ -304,7 +339,7 @@ const HANDLERS = {
     for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
       const i = tileIndex(map, x, y)
       if (!map.path[i] || map.owner[i] !== park) continue
-      map.path[i] = 0; map.pathAdd[i] = 0; map.litter[i] = 0; count++
+      map.path[i] = 0; map.pathColor[i] = -1; map.pathAdd[i] = 0; map.litter[i] = 0; count++
     }
     if (!count) return fail('There is no footpath of yours here.')
     pathsChanged(state)
@@ -364,20 +399,17 @@ const HANDLERS = {
     const def = STALLS[cmd.kind]
     const { x, y } = cmd
     if (!def || !isInt(x, 0, state.map.w - 1) || !isInt(y, 0, state.map.h - 1) || !isInt(cmd.rot, 0, 3)) return fail('Choose a stall and a tile.')
-    const i = tileIndex(state.map, x, y)
-    if (state.map.owner[i] !== park) return fail('You can only build on land your park owns.')
-    if (state.map.obj[i] || state.map.path[i]) return fail('This tile is occupied.')
-    if (isWater(state.map, i, x, y)) return fail('Stalls cannot be built on water.')
-    if (tileSlope(state.map, x, y).dir === -2) return fail('The land is too uneven here.')
-    if (lowTrack(state, i, 4)) return fail('Coaster track is in the way.')
+    const stall = { type: 'stall', kind: cmd.kind, x, y, size: def.size ?? [1, 1] }
+    const placementError = stallFootprintError(state, park, stall, cmd.rot)
+    if (placementError) return fail(placementError)
     if (!canAfford(state, park, def.cost)) return fail(`You need $${def.cost}.`)
     const id = state.nextId++
-    state.entities[id] = { id, type: 'stall', kind: cmd.kind, x, y, rot: cmd.rot, park, price: def.price, open: true, sales: 0, revenue: 0, name: def.name, built: state.time.seconds }
-    state.map.obj[i] = id
+    const entity = state.entities[id] = { id, ...stall, rot: cmd.rot, park, price: def.price, open: true, sales: 0, revenue: 0, name: def.name, built: state.time.seconds }
+    for (const [tx, ty] of footprintTiles(entity)) state.map.obj[tileIndex(state.map, tx, ty)] = id
     spend(state, park, def.cost, 'construction')
     pathsChanged(state)
-    const front = frontTile({ x, y, dir: cmd.rot })
-    const facesPath = inMap(state.map, front.x, front.y) && state.map.path[tileIndex(state.map, front.x, front.y)] === 1
+    const front = stallFrontTile(entity)
+    const facesPath = inMap(state.map, front.x, front.y) && isWalkPath(state.map.path[tileIndex(state.map, front.x, front.y)])
     return ok({ id, cost: def.cost, warning: facesPath ? null : 'The counter is not facing a footpath yet. Guests can only buy from the front.' })
   },
 
@@ -456,13 +488,13 @@ const HANDLERS = {
     spend(state, park, cost, 'construction')
     pathsChanged(state)
     const front = frontTile(state.entities[id])
-    const connected = inMap(map, front.x, front.y) && map.path[tileIndex(map, front.x, front.y)] > 0
+    const connected = inMap(map, front.x, front.y) && (isWalkPath(map.path[tileIndex(map, front.x, front.y)]) || map.path[tileIndex(map, front.x, front.y)] === 2)
     return ok({ id, cost, warning: connected ? null : `Connect the ${role} to a ${role === 'entrance' ? 'queue line or footpath' : 'footpath'}.` })
   },
 
   coaster(state, cmd, park) {
     const style = COASTER_STYLES[cmd.style]
-    if (!style || !isInt(cmd.x, 0, state.map.w - 1) || !isInt(cmd.y, 0, state.map.h - 1) || !isInt(cmd.dir, 0, 3)) return fail('Choose a coaster type and a starting tile.')
+    if (!style || !isInt(cmd.x, 0, state.map.w - 1) || !isInt(cmd.y, 0, state.map.h - 1) || !isInt(cmd.dir, 0, 3)) return fail('Choose a track type and a starting tile.')
     const stationLength = isInt(cmd.length, 2, 6) ? cmd.length : 3
     const map = state.map
     const [dx, dy] = DIRS[cmd.dir]
@@ -478,7 +510,7 @@ const HANDLERS = {
       ground = Math.max(ground, tileMax(map, x, y))
     }
     const cost = style.cost
-    if (!canAfford(state, park, cost)) return fail(`You need $${cost} to start this coaster.`)
+    if (!canAfford(state, park, cost)) return fail(`You need $${cost} to start this track ride.`)
     const id = state.nextId++
     const ride = {
       id, type: 'ride', kind: 'coaster', style: cmd.style, x: cmd.x, y: cmd.y, park, name: nextName(state, style.name), price: 2.5, status: 'closed',
@@ -506,7 +538,7 @@ const HANDLERS = {
 
   piece(state, cmd, park) {
     const ride = state.entities[cmd.ride]
-    if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your coasters.')
+    if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your track rides.')
     const piece = { c: cmd.c | 0, s: cmd.s | 0 }
     if (['chain', 'brakes', 'booster', 'loop', 'station'].includes(cmd.sp)) piece.sp = cmd.sp
     const result = addPieces(state, ride, park, [piece])
@@ -516,7 +548,7 @@ const HANDLERS = {
 
   unpiece(state, cmd, park) {
     const ride = state.entities[cmd.ride]
-    if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your coasters.')
+    if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your track rides.')
     if (ride.pieces.length <= leadingStations(ride)) return fail('Only the station is left. Demolish the ride to remove it.')
     if (ride.complete) {
       ejectRide(state, ride)
@@ -542,7 +574,7 @@ const HANDLERS = {
 
   finish(state, cmd, park) {
     const ride = state.entities[cmd.ride]
-    if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your coasters.')
+    if (!ride || ride.kind !== 'coaster' || ride.park !== park) return fail('Choose one of your track rides.')
     if (ride.complete) return fail('The circuit is already complete.')
     const route = autoComplete(state, ride)
     if (route.error) return fail(route.error)
@@ -589,7 +621,7 @@ const HANDLERS = {
     if (cmd.status === 'open') {
       if (ride.status === 'broken') return fail('A mechanic has to fix this ride first.')
       if (ride.kind === 'coaster' && !ride.complete) return fail('Finish the track circuit before opening.')
-      if (ride.kind === 'coaster' && !ride.stats?.valid) return fail('This coaster failed its test run. Adjust the track first.')
+      if (ride.kind === 'coaster' && !ride.stats?.valid) return fail('This track ride failed its test run. Adjust the track first.')
       if (!ride.entrance || !ride.exit) return fail('Place an entrance and an exit first.')
       ride.status = 'open'
       addNews(state, park, `${ride.name} is now open.`, 'ride', ride.id)
@@ -604,12 +636,27 @@ const HANDLERS = {
   stallSet(state, cmd, park) {
     const stall = state.entities[cmd.id]
     if (!stall || stall.type !== 'stall' || stall.park !== park) return fail('Choose one of your stalls.')
+    if (cmd.price !== undefined && (typeof cmd.price !== 'number' || !Number.isFinite(cmd.price) || cmd.price < 0 || cmd.price > 20)) return fail('Prices run from free to $20.')
+    let warning = null
+    if (cmd.rot !== undefined) {
+      if (!isInt(cmd.rot, 0, 3)) return fail('Choose a valid shop direction.')
+      const placementError = stallFootprintError(state, park, stall, cmd.rot, stall.id)
+      if (placementError) return fail(placementError)
+      for (const [x, y] of footprintTiles(stall)) {
+        const i = tileIndex(state.map, x, y)
+        if (state.map.obj[i] === stall.id) state.map.obj[i] = 0
+      }
+      stall.rot = cmd.rot
+      for (const [x, y] of footprintTiles(stall)) state.map.obj[tileIndex(state.map, x, y)] = stall.id
+      pathsChanged(state)
+      const front = stallFrontTile(stall)
+      if (!inMap(state.map, front.x, front.y) || !isWalkPath(state.map.path[tileIndex(state.map, front.x, front.y)])) warning = 'The counter is not facing a footpath yet. Guests can only buy from the front.'
+    }
     if (cmd.price !== undefined) {
-      if (typeof cmd.price !== 'number' || !Number.isFinite(cmd.price) || cmd.price < 0 || cmd.price > 20) return fail('Prices run from free to $20.')
       stall.price = Math.round(cmd.price * 10) / 10
     }
     if (typeof cmd.open === 'boolean') stall.open = cmd.open
-    return ok()
+    return ok({ warning })
   },
 
   demolish(state, cmd, park) {
@@ -664,6 +711,31 @@ const HANDLERS = {
     if (index < 0) return fail('Choose one of your staff members.')
     const [member] = state.staff.splice(index, 1)
     if (member.target?.ride) { const ride = state.entities[member.target.ride]; if (ride?.mechanic === member.id) ride.mechanic = 0 }
+    return ok()
+  },
+
+  staffJob(state, cmd, park) {
+    const member = state.staff.find(s => s.id === cmd.id && s.park === park)
+    if (!member || member.role !== 'mechanic') return fail('Choose one of your mechanics.')
+    if (cmd.ride === 0) {
+      const assigned = state.entities[member.target?.ride]
+      if (assigned?.mechanic === member.id) assigned.mechanic = 0
+      member.target = null
+      member.state = 'walk'
+      member.timer = 0
+      return ok()
+    }
+    if (!isInt(cmd.ride, 1, Number.MAX_SAFE_INTEGER)) return fail('Choose a broken ride.')
+    const ride = state.entities[cmd.ride]
+    if (!ride || ride.type !== 'ride' || ride.park !== park || ride.status !== 'broken') return fail('That ride is not available for repair.')
+    if (ride.mechanic && ride.mechanic !== member.id) return fail('Another mechanic is already assigned to that ride.')
+    if (mechanicJobDistance(state, member, ride) < 0) return fail('There is no connected footpath route to that ride.')
+    const previous = state.entities[member.target?.ride]
+    if (previous?.mechanic === member.id) previous.mechanic = 0
+    member.target = { ride: ride.id }
+    member.state = 'walk'
+    member.timer = 0
+    ride.mechanic = member.id
     return ok()
   },
 

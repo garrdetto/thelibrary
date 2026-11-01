@@ -1471,10 +1471,11 @@ function makeGrilleTexture(THREE) {
 
 return {buildTruck,makeGrilleTexture,archY,sideZ,topY,cabTop,station,DIM,CAB};
 })();
-const TM_S=0.98/CFG.carScale;                 // model metres -> truck root units (root is scaled by carScale)
+const TM_S=0.98/CFG.carScale;                 // model metres -> vehicle root units (root is scaled by carScale)
+const TRUCK_SCALE=0.9;
 const TM_GRILLE=TM.makeGrilleTexture(THREE);TM_GRILLE.userData.shared=true;
 const TM_X0=-2.8,TM_X1=2.38,TM_Y0=0.17,TM_Y1=1.2,TM_L=TM_X1-TM_X0;
-const TRK_REAR=TM.DIM.RA*TM_S,TRK_HALF=0.83*TM_S;
+const TRK_REAR=TM.DIM.RA*TM_S*TRUCK_SCALE,TRK_HALF=0.83*TM_S*TRUCK_SCALE;
 function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);return canvasTex(W,H,(g,w,h)=>{
   const u=x=>left?(TM_X1-x)/TM_L*w:(x-TM_X0)/TM_L*w,vy=y=>(1-(y-TM_Y0)/(TM_Y1-TM_Y0))*h,pm=w/TM_L,front=left?0:w,dir=left?1:-1;
   g.textAlign='center';g.textBaseline='middle';
@@ -1621,12 +1622,13 @@ function buildStockCar(lv,o={}){
   const paints=[paint,glass];for(const m of paints){m.envMap=envTex;m.envMapIntensity=ENVK;}
   const bumperF=new THREE.Group(),bumperR=new THREE.Group();body.add(bumperF,bumperR);
   const orig=Float32Array.from(bodyMesh.geometry.attributes.position.array);
-  const m={root,body,bodyMesh,orig,deform:[{geo:bodyMesh.geometry,orig,scuff:true}],wheels,bumperF,bumperR,paints,light:null,brakeMat:tail,tm:true,tmg:g,car:true,carPaint:paint,liveryTex:null,crisp:!!o.crisp,numbers:null};
+  const m={root,body,bodyMesh,orig,deform:[{geo:bodyMesh.geometry,orig,scuff:true}],wheels,bumperF,bumperR,paints,light:null,brakeMat:tail,tm:true,tmg:g,car:true,carPaint:paint,liveryTex:null,modelScale:TM_S,crisp:!!o.crisp,numbers:null};
   mountCarLivery(m,lv);return m;
 }
 function buildCar(lv,o={}){
   if(lv.veh==='car'&&!lv.pace&&CAR_ASSET)return buildStockCar(lv,o);
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);
+  body.scale.setScalar(TRUCK_SCALE);
   const {group:g,materials:M}=TM.buildTruck(THREE,{grilleTexture:TM_GRILLE});
   g.rotation.y=-Math.PI/2;g.scale.setScalar(TM_S);body.add(g);
   M.paint.color.set(lv.primary);M.bed.color.set(new THREE.Color(lv.primary).multiplyScalar(0.55));
@@ -1650,7 +1652,7 @@ function buildCar(lv,o={}){
   let light=null;
   if(lv.pace){light=new THREE.Mesh(new THREE.CapsuleGeometry(0.07,1.0,4,8).rotateZ(Math.PI/2),new THREE.MeshStandardMaterial({color:0x332200,emissive:0xffa000,emissiveIntensity:2}));light.position.set(0,1.5,-0.1);body.add(light);}
   const bumperF=new THREE.Group(),bumperR=new THREE.Group();body.add(bumperF,bumperR);
-  const m={root,body,bodyMesh,orig:deform[0].orig,deform,wheels,bumperF,bumperR,paints,light,brakeMat:M.tail,tm:true,tmg:g,crisp:!!o.crisp,numbers:null};
+  const m={root,body,bodyMesh,orig:deform[0].orig,deform,wheels,bumperF,bumperR,paints,light,brakeMat:M.tail,tm:true,tmg:g,modelScale:TM_S*TRUCK_SCALE,crisp:!!o.crisp,numbers:null};
   mountNumbers(m,lv);
   return m;
 }
@@ -1659,7 +1661,7 @@ function refreshNumberFonts(){
   cars.forEach(upd);upd(menuCar);if(mode==='garage')renderGarage();
 }
 function deformCar(c,lp,dir,amt){
-  const s=TM_S,L=[lp[2]/s,lp[1]/s,-lp[0]/s],D=[dir[2],dir[1],-dir[0]];
+  const s=c.m.modelScale,L=[lp[2]/s,lp[1]/s,-lp[0]/s],D=[dir[2],dir[1],-dir[0]];
   const r=(0.8+Math.min(0.9,amt*0.035))/s,push=Math.min(0.3,amt*0.015)/s,cap=0.42/s;
   for(const part of c.m.deform){const g=part.geo,pa=g.attributes.position,ca=part.scuff?g.attributes.color:null,o=part.orig;
     for(let i=0;i<pa.count;i++){
@@ -1693,7 +1695,7 @@ class Car{
 
 // ===================== PHYSICS =====================
 function concreteContact(c){
-  const sh=Math.sin(c.h),ch=Math.cos(c.h),tm=c.m&&c.m.tm,k=tm?0.98:CFG.carScale,half=(tm?0.83:0.84)*k;
+  const sh=Math.sin(c.h),ch=Math.cos(c.h),tm=c.m&&c.m.tm,k=tm?(c.m.car?0.98:0.98*TRUCK_SCALE):CFG.carScale,half=(tm?0.83:0.84)*k;
   for(const lg of [(tm?TM.DIM.FA:1.48)*k,(tm?TM.DIM.RA:-1.42)*k])for(const b of [1,-1]){
     if(toTrack(c.x+sh*lg-ch*half*b,c.z+ch*lg+sh*half*b).lat<-HW)return true;}
   return false;

@@ -249,7 +249,16 @@ export function umbrellaModel(): MeshBuilder {
   return b
 }
 
-export function stallModel(kind: string): MeshBuilder {
+function scaleBuilder(builder: MeshBuilder, sx: number, sy: number, sz: number) {
+  for (let i = 0; i < builder.data.length; i += 10) {
+    builder.data[i] *= sx; builder.data[i + 1] *= sy; builder.data[i + 2] *= sz
+    const nx = builder.data[i + 3] / sx, ny = builder.data[i + 4] / sy, nz = builder.data[i + 5] / sz
+    const length = Math.hypot(nx, ny, nz) || 1
+    builder.data[i + 3] = nx / length; builder.data[i + 4] = ny / length; builder.data[i + 5] = nz / length
+  }
+}
+
+export function stallModel(kind: string, size?: [number, number]): MeshBuilder {
   const b = new MeshBuilder()
   if (kind === 'toilet') {
     b.box(null, 0, 0, -0.05, 3.4, 3.4, 0.15, mix3(C.stone, [0.4, 0.38, 0.35], 0.3))
@@ -270,6 +279,27 @@ export function stallModel(kind: string): MeshBuilder {
       b.sphere(null, 1.64, y + 0.26, 1.0, 0.05, C.gold, 0, 4, 6)
       b.cylinder(mat4.chain(mat4.translation(1.62, y, 2.22), mat4.rotY(Math.PI / 2)), 0, 0, 0, 0.16, 0.16, 0.04, 16, col)
     }
+    if ((size?.[0] ?? 1) > 1 || (size?.[1] ?? 1) > 1) scaleBuilder(b, 2.15, 2.15, 1)
+    return b
+  }
+  if (kind === 'souvenir') {
+    const width = 11.4, depth = 23.2
+    b.box(null, 0, 0, -0.08, width, depth, 0.18, mix3(C.stone, [0.4, 0.38, 0.35], 0.3))
+    b.box(null, -width * 0.39, 0, 1.65, width * 0.2, depth - 0.7, 3.2, C.cream)
+    for (const y of [-depth * 0.48, depth * 0.48]) b.box(null, 0, y, 1.55, width, 0.3, 3, C.wood)
+    b.box(null, 0, 0, 3.15, width, depth, 0.18, C.red)
+    b.box(null, width * 0.48, 0, 2.05, 0.32, depth, 2.9, C.wood)
+    b.box(null, width * 0.495, 0, 3.82, 0.22, depth * 0.82, 0.82, C.white, 1)
+    b.box(null, width * 0.505, 0, 4.28, 0.12, depth * 0.74, 0.14, C.gold, 1)
+    b.box(null, width * 0.51, 0, 2.75, 0.14, depth * 0.56, 1.1, C.glass, 1)
+    b.box(null, width * 0.36, 0, 1.05, 1.1, depth * 0.55, 0.3, C.wood)
+    for (let i = 0; i < 7; i++) {
+      const y = -depth * 0.38 + i * depth * 0.12
+      b.box(null, width * 0.42, y, 1.62, 0.62, 1.4, 1.05, [C.red, C.blue, C.green, C.gold, C.water, C.wood, C.red][i], 1)
+    }
+    b.box(null, 0, -depth * 0.45, 4.3, width * 0.72, 0.34, 1.55, C.white, 1)
+    b.box(null, 0, -depth * 0.45, 4.35, width * 0.54, 0.08, 0.82, hexColor('#9b51e0'), 1)
+    for (const x of [-width * 0.46, width * 0.46]) b.cylinder(null, x, 0, 0.06, 0.28, 0.28, 0.32, 10, C.dark)
     return b
   }
   b.box(null, -0.45, 0, 0, 2.3, 2.9, 1.05, C.cream)
@@ -574,12 +604,75 @@ export function flatRideModel(kind: string, w: number, h: number): RideModel {
         return T(p[0], p[1], p[2] - 0.45)
       } })
     }
+  } else if (kind === 'zipper') {
+    floor(8, hexColor('#5b5964'))
+    for (const x of [-4.6, 4.6]) base.tube([[x, 0, 0.3], [0, 0, 7.8]], 0.42, C.steel, 8)
+    base.cylinder(null, 0, 0, 7.65, 0.7, 0.7, 0.9, 12, C.red)
+    const wheel = new MeshBuilder(), radius = 6.1
+    const ring: Vec3[] = []
+    for (let i = 0; i <= 36; i++) { const a = i / 36 * Math.PI * 2; ring.push([Math.cos(a) * radius, 0, Math.sin(a) * radius]) }
+    wheel.tube(ring, 0.22, C.white, 8, 1)
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2
+      wheel.tube([[0, 0, 0], [Math.cos(a) * radius, 0, Math.sin(a) * radius]], 0.09, C.gold, 6)
+    }
+    parts.push({ builder: wheel, anim: t => mat4.chain(T(0, 0, 8.1), mat4.rotY(t.spin * 0.82 * (t.running ? 1 : 0.35))) })
+    for (let k = 0; k < 8; k++) {
+      const pod = new MeshBuilder(), a = k / 8 * Math.PI * 2
+      pod.box(null, 0, 0, -0.5, 1.65, 1.35, 0.75, k % 2 ? C.red : C.blue, 1)
+      pod.box(null, 0, 0, -0.03, 1.72, 1.42, 0.12, C.gold, 1)
+      for (let seat = -1; seat <= 1; seat += 2) pod.sphere(null, 0.2, seat * 0.3, 0.52, 0.22, C.skin, 0, 3, 6)
+      parts.push({ builder: pod, anim: t => mat4.chain(T(0, 0, 8.1), mat4.rotY(t.spin * 0.82 * (t.running ? 1 : 0.35)), T(Math.cos(a) * radius, 0, Math.sin(a) * radius), mat4.rotY(Math.sin(t.spin * 0.82 + k) * 0.22)) })
+    }
+  } else if (kind === 'gravitron') {
+    floor(8, hexColor('#454b5c'))
+    base.cylinder(null, 0, 0, 0.25, 6.7, 6.7, 1.1, 24, C.dark)
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2
+      base.cylinder(null, Math.cos(a) * 5.2, Math.sin(a) * 5.2, 0.5, 0.22, 0.22, 6.2, 8, C.steel)
+    }
+    const saucer = new MeshBuilder()
+    saucer.cylinder(null, 0, 0, 0, 6.4, 6.4, 0.55, 24, hexColor('#7b51c9'))
+    saucer.cylinder(null, 0, 0, 0.45, 5.8, 5.8, 0.12, 24, C.white, 1)
+    saucer.cylinder(null, 0, 0, 0.57, 0.65, 0.65, 0.6, 16, C.gold)
+    for (let k = 0; k < 12; k++) {
+      const a = k / 12 * Math.PI * 2, x = Math.cos(a) * 4.35, y = Math.sin(a) * 4.35
+      saucer.box(null, x, y, 0.85, 1.0, 1.4, 0.35, k % 2 ? C.red : C.blue, 1)
+      saucer.sphere(null, x, y, 1.25, 0.2, C.skin, 0, 3, 6)
+    }
+    parts.push({ builder: saucer, anim: t => mat4.chain(T(0, 0, 3.2), mat4.rotY(t.running ? 0.32 : 0.08), mat4.rotZ(t.spin * (t.running ? 1.25 : 0.3))) })
   }
   return { base, parts }
 }
 
 export function carModel(style: string, front: boolean, riders: number): MeshBuilder {
   const b = new MeshBuilder()
+  if (style === 'kart') {
+    b.box(null, 0, 0, 0.18, 1.8, 1.2, 0.38, front ? C.red : C.blue, 1)
+    b.box(null, 0.42, 0, 0.42, 0.82, 0.72, 0.18, C.dark)
+    b.box(null, 0.68, 0, 0.52, 0.34, 0.9, 0.12, C.gold, 1)
+    for (const x of [-0.62, 0.62]) for (const y of [-0.55, 0.55]) b.cylinder(mat4.chain(T(x, y, 0.16), mat4.rotX(Math.PI / 2)), 0, 0, -0.07, 0.2, 0.2, 0.16, 8, C.dark)
+    if (riders) {
+      b.box(null, -0.15, 0, 0.58, 0.5, 0.55, 0.12, C.dark)
+      b.sphere(null, -0.12, 0, 0.93, 0.24, C.skin, 0, 3, 6)
+    }
+    return b
+  }
+  if (style === 'waterSlide' || style === 'lazyRiver') {
+    const color = style === 'waterSlide' ? hexColor('#f2c94c') : hexColor('#f08a24')
+    const ring: Vec3[] = []
+    for (let i = 0; i <= 16; i++) { const a = i / 16 * Math.PI * 2; ring.push([Math.cos(a) * 0.62, Math.sin(a) * 0.48, 0.14]) }
+    b.tube(ring, style === 'waterSlide' ? 0.14 : 0.2, color, 8, 1)
+    b.box(null, 0, 0, 0.08, 0.82, 0.52, 0.12, color, 1)
+    if (riders) {
+      for (let i = 0; i < Math.min(riders, style === 'lazyRiver' ? 2 : 1); i++) {
+        const y = style === 'lazyRiver' ? (i ? 0.2 : -0.2) : 0
+        b.sphere(null, -0.08, y, 0.72, 0.2, C.skin, 0, 3, 6)
+        b.box(null, 0.03, y, 0.43, 0.48, 0.32, 0.35, SHIRTS[(i * 3 + (style === 'lazyRiver' ? 4 : 1)) % SHIRTS.length])
+      }
+    }
+    return b
+  }
   const inverted = style === 'inverted'
   const z0 = inverted ? -2.1 : 0.15
   b.box(null, 0, 0, z0, 2.0, 1.35, 0.75, C.white, 1)
