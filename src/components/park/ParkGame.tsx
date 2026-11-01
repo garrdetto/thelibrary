@@ -51,10 +51,10 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     } catch (failure) { setError((failure as Error).message || 'That save could not be opened.') } finally { setBusy('') }
   }
 
-  async function viewPark(map: string, player: string) {
-    setBusy(`${map}:${player}`); setError('')
+  async function viewPark(map: string, parkId: string) {
+    setBusy(`${map}:${parkId}`); setError('')
     try {
-      const view = await parkApi.view(map, player)
+      const view = await parkApi.view(map, parkId)
       const parsed = await decompressSave(view.data)
       if (session && !session.online) session.dispose()
       const next = new ViewSession(deserializePark(parsed), view.username, view.savedAt)

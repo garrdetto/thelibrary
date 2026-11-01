@@ -10,6 +10,14 @@ import { mechanicJobDistance } from './guests.mjs'
 const MAX_RECT = 32
 const ok = (extra = {}) => ({ ok: true, ...extra })
 const fail = error => ({ ok: false, error })
+const STAFF_NAMES = {
+  handyman: ['Al', 'Bea', 'Cal', 'Dot', 'Ed', 'Flo', 'Gil', 'Hal'],
+  mechanic: ['Ike', 'Jo', 'Kip', 'Lou', 'Mo', 'Ned', 'Ola', 'Pat'],
+  entertainer: ['Pip', 'Ziggy', 'Bubbles', 'Sparky', 'Twirl', 'Jingles', 'Doodle', 'Wobble'],
+  security: ['Ash', 'Blake', 'Casey', 'Drew', 'Ellis', 'Frankie', 'Gray', 'Harper'],
+  supervisor: ['Alex', 'Bailey', 'Cameron', 'Devon', 'Emery', 'Finley', 'Jordan', 'Kai'],
+  ems: ['Ari', 'Billie', 'Cory', 'Dana', 'Eden', 'Frankie', 'Gale', 'Hayden'],
+}
 
 export const MARKETING = {
   flyers: { name: 'Flyer handout', cost: 500, days: 7, boost: 1.35 },
@@ -220,6 +228,7 @@ function finishCoaster(state, ride) {
 export function applyCommand(state, cmd, park = 0) {
   if (!cmd || typeof cmd !== 'object' || typeof cmd.t !== 'string') return fail('Unknown action.')
   if (!state.parks[park]) return fail('You are not managing a park.')
+  if (!state.parks[park].named && !(cmd.t === 'park' && typeof cmd.name === 'string' && cmd.name.trim().length >= 2)) return fail('Name your park before you start building.')
   if (state.ended && !['speed', 'rideSet', 'stallSet', 'park'].includes(cmd.t)) return fail('This match has ended.')
   const handler = HANDLERS[cmd.t]
   if (!handler) return fail('Unknown action.')
@@ -699,10 +708,9 @@ const HANDLERS = {
     if (!entrance) return fail('This park has no entrance.')
     const [dx, dy] = DIRS[entrance.dir]
     const x = entrance.x + dx, y = entrance.y + dy
-    const names = { handyman: ['Al', 'Bea', 'Cal', 'Dot', 'Ed', 'Flo', 'Gil', 'Hal'], mechanic: ['Ike', 'Jo', 'Kip', 'Lou', 'Mo', 'Ned', 'Ola', 'Pat'], entertainer: ['Pip', 'Ziggy', 'Bubbles', 'Sparky', 'Twirl', 'Jingles', 'Doodle', 'Wobble'] }[cmd.role]
+    const names = STAFF_NAMES[cmd.role]
     const id = state.staffSeq++
     state.staff.push({ id, role: cmd.role, park, name: `${def.name} ${names[id % names.length]}`, x: x + 0.5, y: y + 0.5, tx: x, ty: y, nx: -1, ny: -1, lane: 0, state: 'walk', target: null, timer: 0, swept: 0, fixed: 0, hired: state.time.seconds })
-    spend(state, park, def.wage, 'wages')
     return ok({ id })
   },
 
@@ -729,7 +737,7 @@ const HANDLERS = {
     const ride = state.entities[cmd.ride]
     if (!ride || ride.type !== 'ride' || ride.park !== park || ride.status !== 'broken') return fail('That ride is not available for repair.')
     if (ride.mechanic && ride.mechanic !== member.id) return fail('Another mechanic is already assigned to that ride.')
-    if (mechanicJobDistance(state, member, ride) < 0) return fail('There is no connected footpath route to that ride.')
+    if (mechanicJobDistance(state, member, ride) < 0) return fail('There is no connected footpath or queue-line route to that ride.')
     const previous = state.entities[member.target?.ride]
     if (previous?.mechanic === member.id) previous.mechanic = 0
     member.target = { ride: ride.id }
@@ -746,7 +754,12 @@ const HANDLERS = {
       p.entryFee = Math.round(cmd.entryFee)
     }
     if (typeof cmd.open === 'boolean') { p.open = cmd.open; addNews(state, park, `${p.name} is now ${cmd.open ? 'open' : 'closed'} to new guests.`, 'info') }
-    if (typeof cmd.name === 'string' && cmd.name.trim().length >= 2) { p.name = cmd.name.trim().slice(0, 32); p.named = true }
+    if (typeof cmd.name === 'string' && cmd.name.trim().length >= 2) {
+      const wasNamed = p.named
+      p.name = cmd.name.trim().slice(0, 32)
+      p.named = true
+      if (!wasNamed && state.speed === 0) state.speed = 1
+    }
     return ok()
   },
 

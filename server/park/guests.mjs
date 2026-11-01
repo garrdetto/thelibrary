@@ -42,8 +42,8 @@ function entranceTiles(state) {
 
 export function parkGateways(state) { return entranceTiles(state) }
 
-function passable(state, i) {
-  return isWalkPath(state.map.path[i]) || entranceTiles(state).tiles.has(i)
+function passable(state, i, allowQueue = false) {
+  return isWalkPath(state.map.path[i]) || (allowQueue && state.map.path[i] === 2) || entranceTiles(state).tiles.has(i)
 }
 
 export function queueLine(state, ride) {
@@ -114,6 +114,7 @@ export function field(state, key) {
   const hit = state.fields.get(key)
   if (hit) return hit
   const map = state.map, n = map.w * map.h
+  const allowQueue = key.startsWith('fix:')
   const dist = new Int16Array(n).fill(-1)
   const queue = new Int32Array(n)
   let head = 0, tail = 0
@@ -125,10 +126,10 @@ export function field(state, key) {
   }
   while (head < tail) {
     const i = queue[head++], x = i % map.w, y = (i - x) / map.w, d = dist[i] + 1
-    if (x > 0) { const j = i - 1; if (dist[j] < 0 && passable(state, j)) { dist[j] = d; queue[tail++] = j } }
-    if (x < map.w - 1) { const j = i + 1; if (dist[j] < 0 && passable(state, j)) { dist[j] = d; queue[tail++] = j } }
-    if (y > 0) { const j = i - map.w; if (dist[j] < 0 && passable(state, j)) { dist[j] = d; queue[tail++] = j } }
-    if (y < map.h - 1) { const j = i + map.w; if (dist[j] < 0 && passable(state, j)) { dist[j] = d; queue[tail++] = j } }
+    if (x > 0) { const j = i - 1; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
+    if (x < map.w - 1) { const j = i + 1; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
+    if (y > 0) { const j = i - map.w; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
+    if (y < map.h - 1) { const j = i + map.w; if (dist[j] < 0 && passable(state, j, allowQueue)) { dist[j] = d; queue[tail++] = j } }
   }
   if (state.fields.size > 400) state.fields.clear()
   state.fields.set(key, dist)
@@ -487,7 +488,7 @@ export function updateStaff(state, dt) {
     }
     if (!moveWalker(s, dt, s.role === 'mechanic' && s.target ? 1.5 : 0.9)) continue
     const here = tileIndex(map, s.tx, s.ty)
-    if (!passable(state, here)) { relocate(state, s); continue }
+    if (!passable(state, here, s.role === 'mechanic' && Boolean(s.target?.ride))) { relocate(state, s); continue }
     if (s.role === 'handyman' && map.litter[here]) { s.state = 'sweep'; s.timer = 1.8; continue }
     if (s.role === 'mechanic' && s.target?.ride) {
       const ride = state.entities[s.target.ride]

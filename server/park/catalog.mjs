@@ -66,9 +66,12 @@ export const PATH_ADDITIONS = {
 }
 
 export const STAFF = {
-  handyman: { name: 'Handyman', wage: 50, color: '#3e9b4f' },
-  mechanic: { name: 'Mechanic', wage: 80, color: '#2f6fc0' },
-  entertainer: { name: 'Entertainer', wage: 55, color: '#e85d9b' },
+  handyman: { name: 'Handyman', wage: 100, color: '#3e9b4f' },
+  mechanic: { name: 'Mechanic', wage: 100, color: '#2f6fc0' },
+  entertainer: { name: 'Entertainer', wage: 100, color: '#e85d9b' },
+  security: { name: 'Security', wage: 100, color: '#35465c' },
+  supervisor: { name: 'Supervisor', wage: 100, color: '#9b6fc0' },
+  ems: { name: 'EMS Worker', wage: 100, color: '#d94a4a' },
 }
 
 export const SURFACES = ['grass', 'sand', 'dirt', 'rock', 'snow']

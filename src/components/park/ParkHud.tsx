@@ -9,7 +9,7 @@ import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
 import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprint, footprintTiles, stallFrontTile, tileIndex, inMap, tileSlope, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance } from '../../../server/park/index.mjs'
-import type { Entity, Piece } from '../../../server/park/index.mjs'
+import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
 
 type Tool =
   | { kind: 'select' }
@@ -45,6 +45,15 @@ function Bar({ value, max = 255, invert = false, label }: { value: number; max?:
   const pct = Math.max(0, Math.min(100, value / max * 100))
   const good = invert ? 100 - pct : pct
   return <div className="pk-bar"><span>{label}</span><i><b style={{ width: `${pct}%`, background: good > 60 ? '#4caf62' : good > 30 ? '#e2b33d' : '#d9573f' }} /></i></div>
+}
+
+function staffActivity(staff: Staff) {
+  if (staff.role === 'handyman') return `${staff.swept} swept`
+  if (staff.role === 'mechanic') return `${staff.fixed} fixed${staff.target ? ' · on a job' : ''}`
+  if (staff.role === 'entertainer') return 'Entertaining'
+  if (staff.role === 'security') return 'Patrolling'
+  if (staff.role === 'supervisor') return 'Supervising'
+  return 'On call'
 }
 
 function Window({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
@@ -425,7 +434,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const s = session.state, p = s.parks[session.park]
     if (!signedIn || s.mode !== 'solo' || s.scenario === 'sandbox' || SCENARIOS[s.scenario]?.versus) return null
     try {
-      await parkApi.submitScore(s.scenario, p.name, p.cash - p.loan, data)
+      await parkApi.submitScore(p.parkId, s.scenario, p.name, p.cash - p.loan, data)
       onScore?.()
       return null
     } catch (error) {
@@ -601,9 +610,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </Window>}
 
     {panel === 'staff' && <Window title="Staff" onClose={() => togglePanel('staff')}>
-      <div className="pk-chips">{Object.entries(STAFF).map(([id, s]) => <button key={id} onClick={() => void run({ t: 'hire', role: id }, `${s.name} hired.`)}><Plus size={13} /> Hire {s.name} · {money(s.wage)}/mo</button>)}</div>
-      <p className="pk-hint">Handymen sweep litter, mechanics fix broken rides, and entertainers cheer up nearby guests.</p>
-      <ul className="pk-list">{state.staff.filter(s => s.park === session.park).map(s => <li key={s.id}><button onClick={() => { setSelection({ kind: 'staff', id: s.id }); focusOn(s.x, s.y) }}><i className="pk-swatch" style={{ background: STAFF[s.role].color }} />{s.name}</button><small>{s.role === 'handyman' ? `${s.swept} swept` : s.role === 'mechanic' ? `${s.fixed} fixed${s.target ? ' · on a job' : ''}` : 'Entertaining'}</small></li>)}</ul>
+      <div className="pk-chips">{Object.entries(STAFF).map(([id, s]) => <button key={id} onClick={() => void run({ t: 'hire', role: id }, `${s.name} hired.`)}><Plus size={13} /> Hire {s.name} · {money(s.wage)}/day</button>)}</div>
+      <p className="pk-hint">Hire handymen, mechanics, entertainers, security, supervisors, or EMS workers. All staff are paid $100 per day.</p>
+      <ul className="pk-list">{state.staff.filter(s => s.park === session.park).map(s => <li key={s.id}><button onClick={() => { setSelection({ kind: 'staff', id: s.id }); focusOn(s.x, s.y) }}><i className="pk-swatch" style={{ background: STAFF[s.role].color }} />{s.name}</button><small>{staffActivity(s)}</small></li>)}</ul>
     </Window>}
 
     {panel === 'park' && <Window title={park.name} onClose={() => togglePanel('park')} wide>
@@ -632,7 +641,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <div className="pk-grid2">
         <div>
           <p className="pk-label">This month</p>
-          <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
+          <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Electricity: park.month.electricity, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
+          <p className="pk-hint">Electricity costs $10 per occupied ride or shop grid square each day.</p>
           <p className="pk-label">Bank loan</p>
           <div className="pk-row"><span>{money(park.loan)} of {money(park.maxLoan)}</span><button onClick={() => void run({ t: 'loan', delta: -1000 })}>Repay $1,000</button><button onClick={() => void run({ t: 'loan', delta: 1000 })}>Borrow $1,000</button></div>
           <p className="pk-hint">Interest is about 1.2% of the loan each month.</p>
@@ -675,10 +685,10 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <ul className="pk-thoughts">{[...guestInfo.thoughts].reverse().map((t, i) => <li key={i}><span>“{t}”</span></li>)}</ul>
     </Window>}
     {staffMember && <Window title={staffMember.name} onClose={() => setSelection(null)}>
-      <p className="pk-hint">{STAFF[staffMember.role].name} · {money(STAFF[staffMember.role].wage)}/month · {staffMember.role === 'handyman' ? `${staffMember.swept} tiles swept` : staffMember.role === 'mechanic' ? `${staffMember.fixed} rides fixed` : 'Keeping guests smiling'}</p>
+      <p className="pk-hint">{STAFF[staffMember.role].name} · {money(STAFF[staffMember.role].wage)}/day · {staffActivity(staffMember)}</p>
       {staffMember.role === 'mechanic' && <>
         <p className="pk-label">Available repair jobs</p>
-        {brokenRides.length === 0 ? <p className="pk-hint">No rides need repairs right now.</p> : mechanicJobs.length === 0 ? <p className="pk-hint">No unassigned broken rides are reachable from this mechanic’s paths.</p> : <ul className="pk-list">{mechanicJobs.map(ride => <li key={ride.id}><span>{ride.name}</span><button className="pk-btn" disabled={ride.mechanic === staffMember.id} onClick={() => void run({ t: 'staffJob', id: staffMember.id, ride: ride.id }, 'Repair job assigned.')}>{ride.mechanic === staffMember.id ? 'Assigned' : 'Assign'}</button></li>)}</ul>}
+        {brokenRides.length === 0 ? <p className="pk-hint">No rides need repairs right now.</p> : mechanicJobs.length === 0 ? <p className="pk-hint">No unassigned broken rides are reachable from this mechanic’s footpaths or queue lines.</p> : <ul className="pk-list">{mechanicJobs.map(ride => <li key={ride.id}><span>{ride.name}</span><button className="pk-btn" disabled={ride.mechanic === staffMember.id} onClick={() => void run({ t: 'staffJob', id: staffMember.id, ride: ride.id }, 'Repair job assigned.')}>{ride.mechanic === staffMember.id ? 'Assigned' : 'Assign'}</button></li>)}</ul>}
       </>}
       <div className="pk-actions"><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'fire', id: staffMember.id }, 'Staff member let go.'); setSelection(null) }}>Fire</button></div>
     </Window>}
@@ -711,7 +721,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
     {!viewOnly && !park.named && <div className="pk-ended pk-naming" role="dialog" aria-modal="true" aria-labelledby="pk-name-title"><form onSubmit={async e => { e.preventDefault(); const name = nameDraft.trim(); if (name.length < 2) return; setNaming(true); const res = await session.command({ t: 'park', name }); setNaming(false); if (!res.ok) toast(res.error ?? 'That name could not be saved.', 'error') }}>
       <h2 id="pk-name-title">Name your park</h2>
-      <p>Every park needs a name before you start building. It appears on the leaderboard next to your username.</p>
+      <p>Choose a name before opening the gates. The leaderboard ranks each park separately and shows its name beside your username.</p>
       <label className="pk-field"><span>Park name</span><input autoFocus value={nameDraft} minLength={2} maxLength={32} required placeholder="Lakeside Thrills" onChange={e => setNameDraft(e.target.value)} /></label>
       <div className="pk-actions"><button type="submit" className="pk-btn pk-btn-go" disabled={naming || nameDraft.trim().length < 2}>{naming ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />} Open the gates</button><button type="button" className="pk-btn" onClick={onQuit}>Back to menu</button></div>
     </form></div>}
