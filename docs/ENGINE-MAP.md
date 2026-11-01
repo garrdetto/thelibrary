@@ -234,15 +234,15 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 
 ### park — Thrill Park
 - `src/components/park/ParkGame.tsx` — menu and lobby — `index.tsx` (lazy).
-- `src/components/park/ParkHud.tsx` — in-game interface and canvas — `ParkGame.tsx`.
+- `src/components/park/ParkHud.tsx` — in-game interface, ride-category tabs, staff repair-job selection, custom footpath colors, arrow-key camera orbit and canvas — `ParkGame.tsx`.
 - `src/components/park/ParkScoreboard.tsx` — net-worth board — `ParkGame.tsx`.
 - `src/lib/park/gl.ts` — WebGL2 helpers: mesh builder, shadow map, lighting, ground and water — `models.ts`, `renderer.ts`.
-- `src/lib/park/models.ts` — guests (`addPerson`), scenery — `renderer.ts`.
-- `src/lib/park/renderer.ts` — terrain, shadow pass, `drawWorld` — `ParkHud.tsx`.
+- `src/lib/park/models.ts` — guests (`addPerson`), scenery, stalls and flat-ride models — `renderer.ts`.
+- `src/lib/park/renderer.ts` — terrain, shadow pass, stairs, boardwalks, flat rides, custom track forms and clearance-aware supports — `ParkHud.tsx`.
 - `src/lib/park/session.ts` — local and online sessions — `ParkGame.tsx`, `ParkHud.tsx`.
 - `src/lib/park/api.ts` — saves, tickets, scores client — `ParkGame`, `ParkHud`, `ParkScoreboard`.
 - `server/park/index.mjs` (+ `index.d.mts`) — shared simulation entry — park UI files, `renderer.ts`, `session.ts`, `server/park.mjs`.
-- `server/park/state.mjs`, `terrain.mjs`, `catalog.mjs`, `track.mjs`, `autotrack.mjs`, `commands.mjs`, `guests.mjs`, `sim.mjs`, `snapshot.mjs`, `util.mjs` — state, land, catalog, coaster physics, commands, guest/staff AI, step, snapshots, helpers — `server/park/index.mjs` and each other.
+- `server/park/state.mjs`, `terrain.mjs`, `catalog.mjs`, `track.mjs`, `autotrack.mjs`, `commands.mjs`, `guests.mjs`, `sim.mjs`, `snapshot.mjs`, `util.mjs` — state, land, walkable path types and colors, catalog, coaster and custom-ride track physics, reachable mechanic dispatch, commands, guest/staff AI, ten-day months, snapshots, helpers — `server/park/index.mjs` and each other.
 - `server/park.mjs` — online park rooms — `server/index.mjs`.
 
 ## Contracts

@@ -1,10 +1,10 @@
 import { STALLS, FLAT_RIDES, COASTER_STYLES } from './catalog.mjs'
 import { DIRS, clamp, stateRandom } from './util.mjs'
-import { tileIndex, inMap } from './terrain.mjs'
-import { frontTile, addNews } from './state.mjs'
+import { tileIndex, inMap, isWalkPath } from './terrain.mjs'
+import { frontTile, stallFrontTile, addNews } from './state.mjs'
 
 const WALK_SPEED = 1.05
-const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['drinks', 'coffee'], toilet: ['toilet'], gift: ['balloon', 'umbrella', 'info'] }
+const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['drinks', 'coffee'], toilet: ['toilet'], gift: ['balloon', 'umbrella', 'info', 'souvenir'] }
 
 export function rideCapacity(ride) {
   if (ride.kind === 'flat') return FLAT_RIDES[ride.ride].capacity
@@ -19,7 +19,8 @@ export function rideCycleSeconds(ride) {
 export function rideValue(ride) {
   const s = ride.stats
   if (!s?.valid) return 0
-  return Math.max(0.5, s.e * 1.15 + s.i * 0.25 - s.n * 0.15 + (ride.kind === 'coaster' ? 1 : 0))
+  const bonus = ride.kind === 'coaster' && COASTER_STYLES[ride.style]?.category !== 'other' ? 1 : 0
+  return Math.max(0.5, s.e * 1.15 + s.i * 0.25 - s.n * 0.15 + bonus)
 }
 
 function entranceTiles(state) {
@@ -42,7 +43,7 @@ function entranceTiles(state) {
 export function parkGateways(state) { return entranceTiles(state) }
 
 function passable(state, i) {
-  return state.map.path[i] === 1 || entranceTiles(state).tiles.has(i)
+  return isWalkPath(state.map.path[i]) || entranceTiles(state).tiles.has(i)
 }
 
 export function queueLine(state, ride) {
@@ -57,7 +58,7 @@ export function queueLine(state, ride) {
     const start = frontTile(gate)
     if (inMap(map, start.x, start.y)) {
       const si = tileIndex(map, start.x, start.y)
-      if (map.path[si] === 1) result = { key, tiles: [[start.x, start.y]], entry: [start.x, start.y] }
+      if (isWalkPath(map.path[si])) result = { key, tiles: [[start.x, start.y]], entry: [start.x, start.y] }
       else if (map.path[si] === 2) {
         const tiles = [[start.x, start.y]], seen = new Set([si])
         let cur = [start.x, start.y], entry = null
@@ -67,7 +68,7 @@ export function queueLine(state, ride) {
             const x = cur[0] + dx, y = cur[1] + dy
             if (!inMap(map, x, y)) continue
             const i = tileIndex(map, x, y)
-            if (map.path[i] === 1 && !entry) entry = [cur[0], cur[1]]
+            if (isWalkPath(map.path[i]) && !entry) entry = [cur[0], cur[1]]
             if (map.path[i] === 2 && !seen.has(i) && !next) next = [x, y]
           }
           if (!next) break
@@ -75,7 +76,7 @@ export function queueLine(state, ride) {
         }
         const last = tiles[tiles.length - 1]
         let joins = false
-        for (const [dx, dy] of DIRS) { const x = last[0] + dx, y = last[1] + dy; if (inMap(map, x, y) && map.path[tileIndex(map, x, y)] === 1) joins = true }
+        for (const [dx, dy] of DIRS) { const x = last[0] + dx, y = last[1] + dy; if (inMap(map, x, y) && isWalkPath(map.path[tileIndex(map, x, y)])) joins = true }
         result = { key, tiles, entry: joins ? last : entry ? tiles[tiles.findIndex(t => t[0] === entry[0] && t[1] === entry[1])] ?? last : null }
         if (joins) result.entry = last
       }
@@ -92,10 +93,10 @@ function seedsFor(state, key) {
     const ride = state.entities[arg]
     if (ride) { const line = queueLine(state, ride); if (line.entry) seeds.push(line.entry) }
   } else if (kind in STALL_GROUPS) {
-    for (const e of Object.values(state.entities)) if (e.type === 'stall' && e.park === arg && STALL_GROUPS[kind].includes(e.kind)) { const f = frontTile({ x: e.x, y: e.y, dir: e.rot }); seeds.push([f.x, f.y]) }
+    for (const e of Object.values(state.entities)) if (e.type === 'stall' && e.park === arg && STALL_GROUPS[kind].includes(e.kind)) { const f = stallFrontTile(e); seeds.push([f.x, f.y]) }
   } else if (kind === 'stall') {
     const e = state.entities[arg]
-    if (e) { const f = frontTile({ x: e.x, y: e.y, dir: e.rot }); seeds.push([f.x, f.y]) }
+    if (e) { const f = stallFrontTile(e); seeds.push([f.x, f.y]) }
   } else if (kind === 'bench') {
     for (let i = 0; i < state.map.pathAdd.length; i++) if (state.map.pathAdd[i] === 1 && state.map.owner[i] === arg) seeds.push([i % state.map.w, Math.floor(i / state.map.w)])
   } else if (kind === 'exit') {
@@ -132,6 +133,14 @@ export function field(state, key) {
   if (state.fields.size > 400) state.fields.clear()
   state.fields.set(key, dist)
   return dist
+}
+
+export function mechanicJobDistance(state, mechanic, ride) {
+  if (mechanic.role !== 'mechanic' || mechanic.park !== ride.park || ride.status !== 'broken') return -1
+  const x = Number.isInteger(mechanic.tx) ? mechanic.tx : Math.floor(mechanic.x)
+  const y = Number.isInteger(mechanic.ty) ? mechanic.ty : Math.floor(mechanic.y)
+  if (!inMap(state.map, x, y)) return -1
+  return field(state, `fix:${ride.id}`)[tileIndex(state.map, x, y)]
 }
 
 export function beautyMap(state) {
@@ -182,7 +191,7 @@ function neighbors(state, guest, allowOutside) {
     const x = guest.tx + dx, y = guest.ty + dy
     if (!inMap(map, x, y)) continue
     const i = tileIndex(map, x, y)
-    if (map.path[i] !== 1) continue
+    if (!isWalkPath(map.path[i])) continue
     if (!allowOutside && map.owner[i] !== guest.park) continue
     out.push([x, y])
   }
@@ -292,7 +301,7 @@ function stallAt(state, guest, group) {
   for (const e of Object.values(state.entities)) {
     if (e.type !== 'stall' || e.park !== guest.park) continue
     if (group && !STALL_GROUPS[group]?.includes(e.kind)) continue
-    const f = frontTile({ x: e.x, y: e.y, dir: e.rot })
+    const f = stallFrontTile(e)
     if (f.x === guest.tx && f.y === guest.ty) return e
   }
   return null
@@ -513,7 +522,7 @@ function nearestLitter(state, s) {
       const nx = x + dx, ny = y + dy
       if (!inMap(map, nx, ny)) continue
       const j = tileIndex(map, nx, ny)
-      if (seen.has(j) || map.path[j] !== 1 || map.owner[j] !== s.park) continue
+      if (seen.has(j) || !isWalkPath(map.path[j]) || map.owner[j] !== s.park) continue
       seen.set(j, i); queue.push(j)
     }
   }

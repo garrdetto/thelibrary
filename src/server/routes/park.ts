@@ -20,6 +20,24 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('reset-scores'), scenario, password: z.string().min(1).max(128).optional() }),
 ])
 
+async function savedNetWorth(env: Env, row: { user_id: string; slot: number; summary: string }) {
+  const savedSummary = parseStored<Record<string, unknown>>(row.summary, {})
+  if (typeof savedSummary.netWorth === 'number' && Number.isFinite(savedSummary.netWorth)) return Math.round(savedSummary.netWorth)
+  const saved = await env.DB.prepare('SELECT data FROM park_saves WHERE user_id = ? AND slot = ?').bind(row.user_id, row.slot).first<{ data: string }>()
+  if (!saved) return null
+  try {
+    const bytes = Uint8Array.from(atob(saved.data), character => character.charCodeAt(0))
+    const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))
+    const data = await new Response(stream).json() as { parks?: { cash?: unknown; loan?: unknown }[] }
+    const park = data.parks?.[0]
+    if (typeof park?.cash !== 'number' || typeof park.loan !== 'number') throw new Error('Saved park finances are missing.')
+    return Math.round(park.cash - park.loan)
+  } catch (error) {
+    console.error('Unable to read a saved park for its leaderboard value.', error)
+    return null
+  }
+}
+
 async function scoreboard(env: Env, map: string, userId: string | null) {
   const [rows, mine] = await Promise.all([
     env.DB.prepare('SELECT username, park_name, value, updated_at, saved_at, snapshot IS NOT NULL AS viewable FROM park_scores WHERE scenario = ? ORDER BY value DESC, saved_at DESC LIMIT 10').bind(map).all<{ username: string; park_name: string | null; value: number; updated_at: number; saved_at: number | null; viewable: number }>(),
@@ -71,7 +89,7 @@ export async function park(request: Request, env: Env) {
   }
   if (input.action === 'reset-scores') {
     if (!await canResetRecords(user, input.password)) return json({ error: 'Only the administrator can reset records.' }, 403)
-    await env.DB.prepare('DELETE FROM park_scores WHERE scenario = ?').bind(input.scenario).run()
+    await env.DB.prepare('INSERT INTO park_scoreboard_resets (scenario, reset_at) VALUES (?, ?) ON CONFLICT(scenario) DO UPDATE SET reset_at = excluded.reset_at').bind(input.scenario, Date.now()).run()
     return json({ reset: true })
   }
   await env.DB.prepare('INSERT INTO park_saves (user_id, slot, name, scenario, summary, data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, slot) DO UPDATE SET name = excluded.name, scenario = excluded.scenario, summary = excluded.summary, data = excluded.data, updated_at = excluded.updated_at')

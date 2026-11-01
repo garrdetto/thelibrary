@@ -13,6 +13,11 @@ export function footprint(entity) {
     const swap = entity.rot % 2 === 1
     return { x: entity.x, y: entity.y, w: swap ? h : w, h: swap ? w : h }
   }
+  if (entity.type === 'stall' && entity.size) {
+    const [w, h] = entity.size
+    const swap = entity.rot % 2 === 1
+    return { x: entity.x, y: entity.y, w: swap ? h : w, h: swap ? w : h }
+  }
   return { x: entity.x, y: entity.y, w: 1, h: 1 }
 }
 
@@ -139,6 +144,16 @@ export function frontTile(gate) {
   return { x: gate.x + dx, y: gate.y + dy }
 }
 
+export function stallFrontTile(stall) {
+  const { w, h } = footprint(stall)
+  switch (stall.rot ?? 0) {
+    case 1: return { x: stall.x + Math.floor(w / 2), y: stall.y + h }
+    case 2: return { x: stall.x - 1, y: stall.y + Math.floor(h / 2) }
+    case 3: return { x: stall.x + Math.floor(w / 2), y: stall.y - 1 }
+    default: return { x: stall.x + w, y: stall.y + Math.floor(h / 2) }
+  }
+}
+
 export function rideEntityTiles(state, ride) {
   if (ride.kind === 'flat') return footprintTiles(ride)
   const tiles = []
@@ -146,7 +161,7 @@ export function rideEntityTiles(state, ride) {
   return tiles
 }
 
-const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathAdd', 'obj', 'owner', 'litter']
+const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
 
 export function serializePark(state, includeGuests = true) {
   const map = { w: state.map.w, h: state.map.h }
@@ -171,9 +186,9 @@ export function deserializePark(data) {
   if (!data || typeof data !== 'object' || !data.map || typeof data.map !== 'object') throw new Error('Invalid park file.')
   const w = Math.round(num(data.map.w, 0, 8, 128)), h = Math.round(num(data.map.h, 0, 8, 128))
   if (!w || !h) throw new Error('Invalid park size.')
-  const sizes = { corners: (w + 1) * (h + 1), surface: w * h, water: w * h, path: w * h, pathAdd: w * h, obj: w * h, owner: w * h, litter: w * h }
+  const sizes = { corners: (w + 1) * (h + 1), surface: w * h, water: w * h, path: w * h, pathColor: w * h, pathAdd: w * h, obj: w * h, owner: w * h, litter: w * h }
   const map = { w, h }
-  for (const key of STRUCT_KEYS) map[key] = decodeRle(data.map[key], sizes[key], key === 'water' ? 0 : key === 'owner' ? 256 : 1).map(v => v - 1)
+  for (const key of STRUCT_KEYS) map[key] = decodeRle(data.map[key], sizes[key], key === 'water' || key === 'pathColor' ? 0 : key === 'owner' ? 256 : 1).map(v => v - 1)
   const scenario = SCENARIOS[data.scenario] ? data.scenario : 'sandbox'
   const state = {
     v: ENGINE_VERSION, scenario, mode: ['solo', 'coop', 'versus'].includes(data.mode) ? data.mode : 'solo', seed: num(data.seed, 1) >>> 0, rng: num(data.rng, 1) >>> 0,
@@ -235,7 +250,12 @@ function sanitizeEntity(raw, state) {
   const base = { id, x, y, park }
   if (raw.type === 'parkEntrance') return { ...base, type: 'parkEntrance', dir: Math.round(num(raw.dir, 3, 0, 3)) }
   if (raw.type === 'scenery' && SCENERY[raw.kind]) return { ...base, type: 'scenery', kind: raw.kind, rot: Math.round(num(raw.rot, 0, 0, 3)) }
-  if (raw.type === 'stall' && STALLS[raw.kind]) return { ...base, type: 'stall', kind: raw.kind, rot: Math.round(num(raw.rot, 0, 0, 3)), price: num(raw.price, STALLS[raw.kind].price, 0, 20), open: raw.open !== false, sales: Math.round(num(raw.sales, 0, 0)), revenue: num(raw.revenue, 0), name: String(raw.name ?? STALLS[raw.kind].name).slice(0, 32), built: num(raw.built) }
+  if (raw.type === 'stall' && STALLS[raw.kind]) {
+    const size = Array.isArray(raw.size) && raw.size.length === 2
+      ? [Math.round(num(raw.size[0], 1, 1, 8)), Math.round(num(raw.size[1], 1, 1, 8))]
+      : raw.kind === 'souvenir' ? STALLS[raw.kind].size : [1, 1]
+    return { ...base, type: 'stall', kind: raw.kind, size, rot: Math.round(num(raw.rot, 0, 0, 3)), price: num(raw.price, STALLS[raw.kind].price, 0, 20), open: raw.open !== false, sales: Math.round(num(raw.sales, 0, 0)), revenue: num(raw.revenue, 0), name: String(raw.name ?? STALLS[raw.kind].name).slice(0, 32), built: num(raw.built) }
+  }
   if (raw.type === 'gate') return { ...base, type: 'gate', ride: Math.round(num(raw.ride, 0, 0)), role: raw.role === 'exit' ? 'exit' : 'entrance', dir: Math.round(num(raw.dir, 0, 0, 3)) }
   if (raw.type === 'ride') {
     const common = {

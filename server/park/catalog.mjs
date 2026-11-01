@@ -10,6 +10,8 @@ export const FLAT_RIDES = {
   karts: { name: 'Go-Karts', category: 'thrill', size: [6, 4], cost: 4200, upkeep: 80, capacity: 8, rideTime: 45, loadTime: 10, price: 2, stats: { e: 3.4, i: 2.9, n: 0.9 }, height: 3, description: 'A twisting kart circuit. Guests race each other for bragging rights.' },
   pool: { name: 'Swimming Pool', category: 'water', size: [5, 4], cost: 3400, upkeep: 60, capacity: 24, rideTime: 70, loadTime: 10, price: 1.5, stats: { e: 2.3, i: 0.6, n: 0.2 }, height: 2, description: 'A sparkling pool with loungers. Very popular on hot days.' },
   waterslide: { name: 'Waterslide', category: 'water', size: [4, 4], cost: 5600, upkeep: 90, capacity: 10, rideTime: 30, loadTime: 8, price: 2.2, stats: { e: 3.9, i: 3.3, n: 1.8 }, height: 14, description: 'Spiral tubes from a tall tower splash down into a plunge pool.' },
+  zipper: { name: 'Zipper', category: 'other', size: [5, 5], cost: 4800, upkeep: 90, capacity: 20, rideTime: 34, loadTime: 10, price: 2, stats: { e: 4.7, i: 5.2, n: 4.1 }, height: 18, description: 'A spinning arm carries a ring of swinging cars high above the midway.' },
+  gravitron: { name: 'Gravitron', category: 'other', size: [5, 5], cost: 4400, upkeep: 85, capacity: 24, rideTime: 32, loadTime: 9, price: 2, stats: { e: 4.3, i: 5.6, n: 4.8 }, height: 8, description: 'Riders circle inside a tilted saucer as it spins faster and faster.' },
 }
 
 export const COASTER_STYLES = {
@@ -17,6 +19,9 @@ export const COASTER_STYLES = {
   wooden: { name: 'Wooden Coaster', cost: 2000, pieceCost: 75, upkeep: 140, maxHeight: 64, loops: false, steep: true, seats: 4, excitementBonus: 0.45, intensityBonus: 0.5, track: '#8a6a4a', support: '#b48a5e', train: '#c83c2e', description: 'Classic lattice structure with a rattling ride.' },
   junior: { name: 'Junior Coaster', cost: 1200, pieceCost: 45, upkeep: 70, maxHeight: 28, loops: false, steep: false, seats: 2, excitementBonus: 0.2, intensityBonus: -0.6, track: '#f2b632', support: '#3c78c8', train: '#3fb06b', description: 'Low and gentle. Families love it.' },
   inverted: { name: 'Suspended Looper', cost: 2800, pieceCost: 110, upkeep: 180, maxHeight: 84, loops: true, steep: true, seats: 4, excitementBonus: 0.35, intensityBonus: 0.45, track: '#2e2e36', support: '#3a8f87', train: '#f2c94c', description: 'Riders hang beneath the rail, feet dangling.' },
+  kart: { name: 'Custom Go-Kart Track', category: 'other', trackType: 'kart', cost: 1600, pieceCost: 42, upkeep: 75, maxHeight: 16, loops: false, steep: false, seats: 1, excitementBonus: 1.2, intensityBonus: 0.1, drive: 8, maxSpeed: 15, track: '#454a50', support: '#e8e4da', train: '#e2513d', description: 'Design a powered kart circuit one track piece at a time.' },
+  waterSlide: { name: 'Custom Water Slide', category: 'other', trackType: 'slide', cost: 1800, pieceCost: 58, upkeep: 95, maxHeight: 42, loops: false, steep: false, seats: 1, excitementBonus: 1.4, intensityBonus: 0.2, drive: 3, maxSpeed: 18, track: '#48b9d1', support: '#f3f1ea', train: '#f2c94c', description: 'Build your own flume with curves, drops, and a splashdown.' },
+  lazyRiver: { name: 'Lazy River', category: 'other', trackType: 'river', cost: 1400, pieceCost: 50, upkeep: 70, maxHeight: 12, loops: false, steep: false, seats: 2, excitementBonus: 0.3, intensityBonus: -0.5, drive: 1.7, maxSpeed: 5, track: '#44aeca', support: '#d8c8a4', train: '#f2c94c', description: 'Build a winding, gently flowing river for floating rafts.' },
 }
 
 export const COASTER_PRESETS = {
@@ -35,8 +40,9 @@ export const STALLS = {
   icecream: { name: 'Ice Cream', cost: 480, upkeep: 20, price: 1.8, item: 'icecream', kind: 'food', hunger: -60, thirst: -50, color: '#f08fb3', sign: 'ICE CREAM' },
   balloon: { name: 'Balloon Cart', cost: 380, upkeep: 15, price: 1.5, item: 'balloon', kind: 'gift', happiness: 25, color: '#b04cd6', sign: 'BALLOONS' },
   umbrella: { name: 'Umbrella Stand', cost: 400, upkeep: 15, price: 2, item: 'umbrella', kind: 'gift', happiness: 10, color: '#2e9f8f', sign: 'UMBRELLAS' },
-  toilet: { name: 'Restrooms', cost: 650, upkeep: 30, price: 0, item: 'toilet', kind: 'service', color: '#6f7d8c', sign: 'RESTROOMS' },
+  toilet: { name: 'Restrooms', size: [2, 2], cost: 650, upkeep: 30, price: 0, item: 'toilet', kind: 'service', color: '#6f7d8c', sign: 'RESTROOMS' },
   info: { name: 'Info Kiosk', cost: 500, upkeep: 20, price: 0.8, item: 'map', kind: 'gift', happiness: 5, color: '#4a6fd1', sign: 'INFO' },
+  souvenir: { name: 'Souvenir Shop', size: [3, 6], cost: 1250, upkeep: 35, price: 3.5, item: 'souvenir', kind: 'gift', happiness: 18, color: '#9b51e0', sign: 'SOUVENIRS' },
 }
 
 export const SCENERY = {
@@ -70,13 +76,13 @@ export const SURFACES = ['grass', 'sand', 'dirt', 'rock', 'snow']
 export const COSTS = { path: 12, queue: 14, terrain: 6, water: 12, paint: 1, demolishRefund: 0.5 }
 
 export const SCENARIOS = {
-  meadowbrook: { name: 'Meadowbrook Fields', difficulty: 'Beginner', size: 64, seed: 1101, terrain: 'meadow', cash: 15000, loan: 10000, maxLoan: 30000, objective: { type: 'guests', guests: 250, rating: 600, year: 1 }, description: 'Rolling meadows with a lazy stream. A gentle place to open your first park.' },
-  pineRidge: { name: 'Pine Ridge Hollow', difficulty: 'Intermediate', size: 64, seed: 2207, terrain: 'forest', cash: 12000, loan: 10000, maxLoan: 25000, objective: { type: 'guests', guests: 450, rating: 650, year: 2 }, description: 'A wooded valley between steep ridges. Clear space wisely; guests love the trees.' },
-  harbor: { name: 'Harbor Point', difficulty: 'Intermediate', size: 64, seed: 3319, terrain: 'coast', cash: 14000, loan: 12000, maxLoan: 30000, objective: { type: 'value', value: 60000, year: 2 }, description: 'A sandy headland surrounded by sea. Build a seaside pier park worth showing off.' },
-  redMesa: { name: 'Red Mesa Canyon', difficulty: 'Advanced', size: 64, seed: 4423, terrain: 'canyon', cash: 20000, loan: 15000, maxLoan: 40000, objective: { type: 'coasters', count: 4, excitement: 6, year: 2 }, description: 'Dramatic mesas and dry gulches. Use the drops to build four exciting coasters.' },
-  frostpeak: { name: 'Frostpeak Lodge', difficulty: 'Advanced', size: 64, seed: 5531, terrain: 'alpine', cash: 10000, loan: 10000, maxLoan: 20000, objective: { type: 'guests', guests: 700, rating: 700, year: 3 }, description: 'A snowy alpine plateau with a frozen lake. Short on cash, long on scenery.' },
-  sandbox: { name: 'Open Sandbox', difficulty: 'Sandbox', size: 64, seed: 9001, terrain: 'flat', cash: 500000, loan: 0, maxLoan: 0, objective: { type: 'none' }, description: 'Flat land and deep pockets. Build anything you like.' },
-  twinValleys: { name: 'Twin Valleys', difficulty: 'Versus', size: 96, seed: 7717, terrain: 'versus', cash: 15000, loan: 8000, maxLoan: 25000, objective: { type: 'versus' }, description: 'Each tycoon gets an identical valley. The highest company value when time runs out wins.', versus: true },
+  meadowbrook: { name: 'Meadowbrook Fields', difficulty: 'Beginner', size: 64, seed: 1101, terrain: 'meadow', cash: 15000, loan: 10000, maxLoan: 50000, objective: { type: 'guests', guests: 250, rating: 600, year: 1 }, description: 'Rolling meadows with a lazy stream. A gentle place to open your first park.' },
+  pineRidge: { name: 'Pine Ridge Hollow', difficulty: 'Intermediate', size: 64, seed: 2207, terrain: 'forest', cash: 12000, loan: 10000, maxLoan: 50000, objective: { type: 'guests', guests: 450, rating: 650, year: 2 }, description: 'A wooded valley between steep ridges. Clear space wisely; guests love the trees.' },
+  harbor: { name: 'Harbor Point', difficulty: 'Intermediate', size: 64, seed: 3319, terrain: 'coast', cash: 14000, loan: 12000, maxLoan: 50000, objective: { type: 'value', value: 60000, year: 2 }, description: 'A sandy headland surrounded by sea. Build a seaside pier park worth showing off.' },
+  redMesa: { name: 'Red Mesa Canyon', difficulty: 'Advanced', size: 64, seed: 4423, terrain: 'canyon', cash: 20000, loan: 15000, maxLoan: 50000, objective: { type: 'coasters', count: 4, excitement: 6, year: 2 }, description: 'Dramatic mesas and dry gulches. Use the drops to build four exciting coasters.' },
+  frostpeak: { name: 'Frostpeak Lodge', difficulty: 'Advanced', size: 64, seed: 5531, terrain: 'alpine', cash: 10000, loan: 10000, maxLoan: 50000, objective: { type: 'guests', guests: 700, rating: 700, year: 3 }, description: 'A snowy alpine plateau with a frozen lake. Short on cash, long on scenery.' },
+  sandbox: { name: 'Open Sandbox', difficulty: 'Sandbox', size: 64, seed: 9001, terrain: 'flat', cash: 500000, loan: 0, maxLoan: 50000, objective: { type: 'none' }, description: 'Flat land and deep pockets. Build anything you like.' },
+  twinValleys: { name: 'Twin Valleys', difficulty: 'Versus', size: 96, seed: 7717, terrain: 'versus', cash: 15000, loan: 8000, maxLoan: 50000, objective: { type: 'versus' }, description: 'Each tycoon gets an identical valley. The highest company value when time runs out wins.', versus: true },
 }
 
 export const PARK_COLORS = ['#e2513d', '#3d7fe2', '#3db86b', '#e2b23d']

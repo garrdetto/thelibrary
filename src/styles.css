@@ -887,6 +887,8 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-window header button:hover{background:#ffffff1a}
 .pk-window-body{padding:10px 14px 14px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;font-size:13px}
 .pk-label{margin:4px 0 0;font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:.65}
+.pk-path-color{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px}
+.pk-path-color input{width:44px;height:32px;padding:2px;border:1px solid var(--pk-line);border-radius:8px;background:var(--pk-panel-2)}
 .pk-hint{margin:0;font-size:12px;opacity:.78;line-height:1.45}
 .pk-chips{display:flex;flex-wrap:wrap;gap:5px}
 .pk-chips button,.pk-btn,.pk-row button,.pk-size button{display:inline-flex;align-items:center;gap:5px;padding:7px 11px;min-height:34px;border-radius:9px;background:var(--pk-panel-2);border:1px solid var(--pk-line);font-size:12px;font-weight:600}
