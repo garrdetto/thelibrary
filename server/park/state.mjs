@@ -32,12 +32,17 @@ export function parkName(index, mode) {
   return mode === 'versus' ? `${names[index]} Park` : 'Thrill Park'
 }
 
+function newParkId() {
+  return crypto.randomUUID()
+}
+
 export function createPark(scenarioId, options = {}) {
   const scenario = SCENARIOS[scenarioId] ?? SCENARIOS.meadowbrook
   const mode = options.mode ?? (scenario.versus ? 'versus' : 'solo')
   const players = Math.max(1, Math.min(4, options.players ?? 1))
   const { map, scenery, entrances } = generateMap(scenario, players)
   const parkCount = scenario.versus ? entrances.length : 1
+  const allParksNamed = Array.from({ length: parkCount }, (_, index) => Boolean(options.parkNames?.[index])).every(Boolean)
   const state = {
     v: ENGINE_VERSION,
     scenario: scenarioId in SCENARIOS ? scenarioId : 'meadowbrook',
@@ -56,7 +61,7 @@ export function createPark(scenarioId, options = {}) {
     staff: [],
     time: { tick: 0, seconds: 0, day: 0, month: START_MONTH, year: 1, dayFraction: 0.3 },
     weather: { kind: 'sunny', temp: 22, next: 40 },
-    speed: 1,
+    speed: allParksNamed ? 1 : 0,
     news: [],
     newsSeq: 1,
     ended: null,
@@ -66,6 +71,7 @@ export function createPark(scenarioId, options = {}) {
   for (let p = 0; p < parkCount; p++) {
     state.parks.push({
       id: p,
+      parkId: newParkId(),
       name: options.parkNames?.[p] ?? parkName(p, mode),
       named: Boolean(options.parkNames?.[p]),
       color: PARK_COLORS[p],
@@ -105,7 +111,7 @@ export function createPark(scenarioId, options = {}) {
 }
 
 export function emptyLedger() {
-  return { rides: 0, shops: 0, entry: 0, construction: 0, upkeep: 0, wages: 0, marketing: 0, interest: 0, landscaping: 0 }
+  return { rides: 0, shops: 0, entry: 0, construction: 0, upkeep: 0, wages: 0, electricity: 0, marketing: 0, interest: 0, landscaping: 0 }
 }
 
 export function objectiveText(objective) {
@@ -156,9 +162,25 @@ export function stallFrontTile(stall) {
 
 export function rideEntityTiles(state, ride) {
   if (ride.kind === 'flat') return footprintTiles(ride)
-  const tiles = []
-  for (let i = 0; i < state.map.obj.length; i++) if (state.map.obj[i] === ride.id) tiles.push([i % state.map.w, Math.floor(i / state.map.w)])
+  const indices = new Set()
+  for (const [index, cells] of state.trackCells) if (cells.some(cell => cell.ride === ride.id)) indices.add(index)
+  for (let i = 0; i < state.map.obj.length; i++) if (state.map.obj[i] === ride.id) indices.add(i)
+  const tiles = [...indices].map(index => [index % state.map.w, Math.floor(index / state.map.w)])
   return tiles
+}
+
+export function electricityTiles(state, park) {
+  const tiles = new Set()
+  for (const entity of Object.values(state.entities)) {
+    if (entity.park !== park) continue
+    const footprint = entity.type === 'stall'
+      ? footprintTiles(entity)
+      : entity.type === 'ride'
+        ? rideEntityTiles(state, entity)
+        : []
+    for (const [x, y] of footprint) tiles.add(tileIndex(state.map, x, y))
+  }
+  return tiles.size
 }
 
 const STRUCT_KEYS = ['corners', 'surface', 'water', 'path', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
@@ -204,13 +226,14 @@ export function deserializePark(data) {
   const parks = Array.isArray(data.parks) ? data.parks.slice(0, 4) : []
   if (!parks.length) throw new Error('This park file has no parks.')
   state.parks = parks.map((p, i) => ({
-    id: i, name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), named: p?.named === true, color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: Math.max(SCENARIOS[scenario].maxLoan, num(p?.maxLoan, SCENARIOS[scenario].maxLoan, 0)),
+    id: i, parkId: typeof p?.parkId === 'string' && /^[a-f0-9-]{32,36}$/i.test(p.parkId) ? p.parkId : newParkId(), name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), named: p?.named === true, color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: Math.max(SCENARIOS[scenario].maxLoan, num(p?.maxLoan, SCENARIOS[scenario].maxLoan, 0)),
     entryFee: num(p?.entryFee, 10, 0, 100), rating: num(p?.rating, 300, 0, 999), value: num(p?.value), guestsIn: 0, totalGuests: Math.round(num(p?.totalGuests, 0, 0)), open: p?.open !== false,
     marketing: Array.isArray(p?.marketing) ? p.marketing.slice(0, 4).map(m => ({ kind: String(m?.kind ?? 'flyers').slice(0, 12), until: num(m?.until), boost: num(m?.boost, 1, 1, 3) })) : [],
     month: { ...emptyLedger(), ...Object.fromEntries(Object.entries(p?.month ?? {}).map(([k, v]) => [k, num(v)])) },
     history: Array.isArray(p?.history) ? p.history.slice(-24).map(row => Object.fromEntries(Object.entries(row ?? {}).slice(0, 16).map(([k, v]) => [k.slice(0, 16), typeof v === 'number' ? num(v) : String(v).slice(0, 30)]))) : [],
     thoughts: [], objective: SCENARIOS[scenario].objective, status: ['playing', 'won', 'lost'].includes(p?.status) ? p.status : 'playing', spawnDebt: 0, awards: [],
   }))
+  if (state.parks.some(park => !park.named)) state.speed = 0
   const entities = data.entities && typeof data.entities === 'object' ? Object.values(data.entities).slice(0, 20000) : []
   for (const raw of entities) {
     const entity = sanitizeEntity(raw, state)
@@ -293,7 +316,7 @@ function sanitizeGuest(g, state) {
 
 function sanitizeStaff(s, state) {
   if (!s || typeof s !== 'object') return null
-  const role = ['handyman', 'mechanic', 'entertainer'].includes(s.role) ? s.role : null
+  const role = ['handyman', 'mechanic', 'entertainer', 'security', 'supervisor', 'ems'].includes(s.role) ? s.role : null
   if (!role) return null
   const x = num(s.x, -1, 0, state.map.w), y = num(s.y, -1, 0, state.map.h)
   if (x < 0 || y < 0) return null

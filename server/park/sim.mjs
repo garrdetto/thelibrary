@@ -1,12 +1,20 @@
-import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF } from './catalog.mjs'
+import { FLAT_RIDES, COASTER_STYLES, STALLS } from './catalog.mjs'
 import { clamp, stateRandom, MONTHS, DAY_SECONDS, SIM_STEP } from './util.mjs'
 import { stepTrain } from './track.mjs'
-import { addNews, emptyLedger, entityCost, ridePath, objectiveText } from './state.mjs'
+import { addNews, emptyLedger, entityCost, electricityTiles, ridePath, objectiveText } from './state.mjs'
 import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
 import { MAX_GUESTS } from './state.mjs'
 
 export const DAYS_PER_MONTH = 10
+export const STAFF_WAGE_PER_DAY = 100
+export const ELECTRICITY_COST_PER_TILE_PER_DAY = 10
+
+export function dailyOperatingCosts(state, park) {
+  const staffCount = state.staff.filter(member => member.park === park).length
+  const poweredTiles = electricityTiles(state, park)
+  return { wages: staffCount * STAFF_WAGE_PER_DAY, electricity: poweredTiles * ELECTRICITY_COST_PER_TILE_PER_DAY, poweredTiles }
+}
 
 function board(state, ride, list, capacity) {
   if (ride.status !== 'open' || !ride.queue.length || list.length >= capacity) return
@@ -178,19 +186,18 @@ function aggregateThoughts(state) {
 function endOfMonth(state) {
   const finished = state.time.month, year = state.time.year
   for (const p of state.parks) {
-    let upkeep = 0, wages = 0
+    let upkeep = 0
     for (const e of Object.values(state.entities)) {
       if (e.park !== p.id) continue
       if (e.type === 'ride') upkeep += e.kind === 'flat' ? FLAT_RIDES[e.ride].upkeep : COASTER_STYLES[e.style].upkeep + e.pieces.length * 2
       if (e.type === 'stall') upkeep += STALLS[e.kind].upkeep
       if (e.type === 'ride') e.monthRiders = 0
     }
-    for (const s of state.staff) if (s.park === p.id) wages += STAFF[s.role].wage
     const interest = Math.round(p.loan * 0.012)
-    p.cash -= upkeep + wages + interest
-    p.month.upkeep -= upkeep; p.month.wages -= wages; p.month.interest -= interest
+    p.cash -= upkeep + interest
+    p.month.upkeep -= upkeep; p.month.interest -= interest
     const income = p.month.rides + p.month.shops + p.month.entry
-    const expenses = p.month.construction + p.month.upkeep + p.month.wages + p.month.marketing + p.month.interest + p.month.landscaping
+    const expenses = p.month.construction + p.month.upkeep + p.month.wages + p.month.electricity + p.month.marketing + p.month.interest + p.month.landscaping
     p.value = parkValue(state, p.id)
     p.history.push({ label: `${MONTHS[finished].slice(0, 3)} Y${year}`, income: Math.round(income), expenses: Math.round(expenses), profit: Math.round(income + expenses), guests: p.guestsIn, rating: p.rating, value: p.value, cash: Math.round(p.cash), company: companyValue(state, p.id), ...Object.fromEntries(Object.entries(p.month).map(([k, v]) => [k, Math.round(v)])) })
     if (p.history.length > 24) p.history.shift()
@@ -234,6 +241,12 @@ function checkYearEnd(state, year) {
 }
 
 function newDay(state) {
+  for (const park of state.parks) {
+    const costs = dailyOperatingCosts(state, park.id)
+    park.cash -= costs.wages + costs.electricity
+    park.month.wages -= costs.wages
+    park.month.electricity -= costs.electricity
+  }
   const r = stateRandom(state)
   const kind = r < 0.5 ? 'sunny' : r < 0.8 ? 'cloudy' : 'rain'
   const base = [13, 17, 21, 25, 27, 26, 21, 15][state.time.month] ?? 20

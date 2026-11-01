@@ -12,11 +12,11 @@ export type Entity = {
   style?: string; start?: { x: number; y: number; dir: number; h: number }; pieces?: Piece[]; complete?: boolean; trains?: Train[]; cars?: number; spent?: number; rev?: number
 }
 export type Guest = { id: number; park: number; x: number; y: number; tx: number; ty: number; state: string; hidden?: boolean; happy: number; items: string[]; kid: boolean; shirt: number; thoughts: string[]; dir?: number; energy?: number; hunger?: number; thirst?: number; cash?: number }
-export type Staff = { id: number; role: 'handyman' | 'mechanic' | 'entertainer'; park: number; name: string; x: number; y: number; tx?: number; ty?: number; state: string; swept: number; fixed: number; target?: { ride?: number } | null; dir?: number }
-export type Ledger = { rides: number; shops: number; entry: number; construction: number; upkeep: number; wages: number; marketing: number; interest: number; landscaping: number }
+export type Staff = { id: number; role: 'handyman' | 'mechanic' | 'entertainer' | 'security' | 'supervisor' | 'ems'; park: number; name: string; x: number; y: number; tx?: number; ty?: number; state: string; swept: number; fixed: number; target?: { ride?: number } | null; dir?: number }
+export type Ledger = { rides: number; shops: number; entry: number; construction: number; upkeep: number; wages: number; electricity: number; marketing: number; interest: number; landscaping: number }
 export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'versus'; guests?: number; rating?: number; year?: number; value?: number; count?: number; excitement?: number }
-export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number }
-export type Park = { id: number; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: { rate: number; cap: number } }
+export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number; wages?: number; electricity?: number }
+export type Park = { id: number; parkId: string; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: { rate: number; cap: number } }
 export type News = { id: number; t: number; park: number; text: string; kind: string; ref: number | null }
 export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
@@ -41,6 +41,8 @@ export const DAY_SECONDS: number
 export const MONTHS: string[]
 export const DIRS: [number, number][]
 export const DAYS_PER_MONTH: number
+export const STAFF_WAGE_PER_DAY: number
+export const ELECTRICITY_COST_PER_TILE_PER_DAY: number
 export const ENGINE_VERSION: number
 export const MAX_GUESTS: number
 export const CAR_GAP: number
@@ -64,6 +66,8 @@ export function stepPark(state: ParkState, dt?: number): void
 export function applyCommand(state: ParkState, cmd: Command, park?: number): CommandResult
 export function serializePark(state: ParkState, includeGuests?: boolean): unknown
 export function deserializePark(data: unknown): ParkState
+export function electricityTiles(state: ParkState, park: number): number
+export function dailyOperatingCosts(state: ParkState, park: number): { wages: number; electricity: number; poweredTiles: number }
 export function tileIndex(map: ParkMap, x: number, y: number): number
 export function inMap(map: ParkMap, x: number, y: number): boolean
 export function tileCorners(map: ParkMap, x: number, y: number): [number, number, number, number]
