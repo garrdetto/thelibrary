@@ -73,6 +73,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [finishing, setFinishing] = useState(false)
   const [lastSaved, setLastSaved] = useState<number | null>(null)
   const [newsSeen, setNewsSeen] = useState(0)
+  const [nameDraft, setNameDraft] = useState('')
+  const [naming, setNaming] = useState(false)
   const toolRef = useRef(tool)
   toolRef.current = tool
   const drag = useRef<{ button: number; x: number; y: number; moved: boolean; start?: { x: number; y: number }; cam?: { tx: number; ty: number; yaw: number; pitch: number }; anchor?: { x: number; y: number; z: number }; pointers: Map<number, { x: number; y: number }>; pinch?: number } >({ button: -1, x: 0, y: 0, moved: false, pointers: new Map() })
@@ -404,7 +406,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   async function submitScore(data?: string) {
     const s = session.state, p = s.parks[session.park]
     if (!signedIn || s.mode !== 'solo' || s.scenario === 'sandbox' || SCENARIOS[s.scenario]?.versus) return
-    try { await parkApi.submitScore(s.scenario, p.cash - p.loan, data); onScore?.() } catch { /* score submission is best effort */ }
+    try { await parkApi.submitScore(s.scenario, p.name, p.cash - p.loan, data); onScore?.() } catch { /* score submission is best effort */ }
   }
 
   async function saveTo(slot: number) {
@@ -655,6 +657,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </footer>
 
     {rideCam && <div className="pk-ridecam"><Camera size={14} /> On-ride camera · click or press Esc to exit</div>}
+
+    {!viewOnly && !park.named && <div className="pk-ended pk-naming" role="dialog" aria-modal="true" aria-labelledby="pk-name-title"><form onSubmit={async e => { e.preventDefault(); const name = nameDraft.trim(); if (name.length < 2) return; setNaming(true); const res = await session.command({ t: 'park', name }); setNaming(false); if (!res.ok) toast(res.error ?? 'That name could not be saved.', 'error') }}>
+      <h2 id="pk-name-title">Name your park</h2>
+      <p>Every park needs a name before you start building. It appears on the leaderboard next to your username.</p>
+      <label className="pk-field"><span>Park name</span><input autoFocus value={nameDraft} minLength={2} maxLength={32} required placeholder="Lakeside Thrills" onChange={e => setNameDraft(e.target.value)} /></label>
+      <div className="pk-actions"><button type="submit" className="pk-btn pk-btn-go" disabled={naming || nameDraft.trim().length < 2}>{naming ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />} Open the gates</button><button type="button" className="pk-btn" onClick={onQuit}>Back to menu</button></div>
+    </form></div>}
 
     {state.ended && <div className="pk-ended" role="dialog" aria-label="Match over"><div><h2>Match over</h2><p>{state.ended.text}</p>{state.ended.values && <ul>{state.parks.map((p, i) => <li key={p.id}><span style={{ color: p.color }}>{p.name}</span> {money(state.ended!.values![i])}</li>)}</ul>}<button className="pk-btn pk-btn-go" onClick={onQuit}>Back to menu</button></div></div>}
   </div>

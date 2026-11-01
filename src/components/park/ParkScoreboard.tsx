@@ -39,12 +39,12 @@ export function ParkScoreboard({ username, initial, refreshKey, onView, viewBusy
     <header className="module-scores-head">
       <div>
         <span className="module-scores-eyebrow"><Trophy size={13}/> THRILL PARK LEADERBOARD</span>
-        <h2 id="park-scores-title">Richest Tycoons <small>Top 10 per map</small></h2>
-        <p>Net worth is your cash minus everything you still owe the bank. Your best is saved with every save and autosave.</p>
+        <h2 id="park-scores-title">Current Parks <small>Top 10 per map</small></h2>
+        <p>Each player's park as of their latest save or autosave, ranked by net worth: cash minus everything still owed to the bank.</p>
       </div>
       <div className="module-scores-side">
         {username
-          ? <div className="module-scores-best"><small>YOUR BEST</small><strong>{board?.personalBest != null ? formatMoney(board.personalBest) : '—'}</strong><span>{myRank >= 0 ? `#${myRank + 1} on the board` : board?.personalBest != null ? 'Outside the top 10' : 'Save a park on this map'}</span></div>
+          ? <div className="module-scores-best"><small>YOUR PARK</small><strong>{board?.personalBest != null ? formatMoney(board.personalBest) : '—'}</strong><span>{myRank >= 0 ? `#${myRank + 1} on the board` : board?.personalBest != null ? 'Outside the top 10' : 'Save a park on this map'}</span></div>
           : <p className="module-scores-signin">Sign in to put your parks on the board.</p>}
         <button type="button" className="module-scores-refresh" onClick={() => void load(true)} disabled={state === 'loading' || refreshing} aria-label="Refresh leaderboard"><RefreshCw size={14} className={refreshing ? 'spin' : undefined}/> Refresh</button>
       </div>
@@ -54,9 +54,9 @@ export function ParkScoreboard({ username, initial, refreshKey, onView, viewBusy
     {state === 'error' && <p className="module-scores-status is-error" role="alert">The leaderboard is unavailable right now. <button type="button" onClick={() => void load()}>Try again</button></p>}
     {state === 'ready' && (records.length
       ? <div className="module-scores-scroll"><table>
-          <thead><tr><th scope="col">Rank</th><th scope="col">Username</th><th scope="col">Net worth</th><th scope="col">Best set (UTC)</th><th scope="col">Last saved</th>{onView && <th scope="col" aria-label="View park"></th>}</tr></thead>
-          <tbody>{records.map((record, index) => <tr key={`${record.username}:${index}`} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{formatMoney(record.value)}</td><td>{record.date.slice(0, 10)}</td><td><time dateTime={record.savedAt}>{new Date(record.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time></td>{onView && <td>{record.viewable ? <button type="button" className="pk-score-view" disabled={Boolean(viewBusy)} onClick={() => onView(map, record.username)} aria-label={`View ${record.username}'s park`}>{viewBusy === `${map}:${record.username}` ? <LoaderCircle size={13} className="spin"/> : <Eye size={13}/>} View</button> : <small>—</small>}</td>}</tr>)}</tbody>
+          <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Park</th><th scope="col">Net worth</th><th scope="col">Saved</th>{onView && <th scope="col" aria-label="View park"></th>}</tr></thead>
+          <tbody>{records.map((record, index) => <tr key={`${record.username}:${index}`} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{record.parkName}</td><td>{formatMoney(record.value)}</td><td><time dateTime={record.savedAt}>{new Date(record.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time></td>{onView && <td>{record.viewable ? <button type="button" className="pk-score-view" disabled={Boolean(viewBusy)} onClick={() => onView(map, record.username)} aria-label={`View ${record.username}'s park`}>{viewBusy === `${map}:${record.username}` ? <LoaderCircle size={13} className="spin"/> : <Eye size={13}/>} View</button> : <small>—</small>}</td>}</tr>)}</tbody>
         </table></div>
-      : <p className="module-scores-status">No tycoons on {name} yet. {username ? 'Save a park here to be the first.' : 'Sign in and be the first.'}</p>)}
+      : <p className="module-scores-status">No parks on {name} yet. {username ? 'Save a park here to be the first.' : 'Sign in and be the first.'}</p>)}
   </section>
 }

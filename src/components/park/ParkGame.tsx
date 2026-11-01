@@ -58,6 +58,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
       const parsed = await decompressSave(view.data)
       if (session && !session.online) session.dispose()
       const next = new ViewSession(deserializePark(parsed), view.username, view.savedAt)
+      next.state.parks[0].named = true
       next.state.speed = 1
       setSession(next)
       window.scrollTo({ top: 0, behavior: 'smooth' })
