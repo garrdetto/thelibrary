@@ -5,7 +5,8 @@ import type { RideModel } from './models'
 import { personCuller } from './culling'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel, WATER_RIDE_TINTS } from './waterRides'
-import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint } from '../../../server/park/index.mjs'
+import { hotelModel, hotelLook } from './hotelModels'
+import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
 const TILE = 4
@@ -21,7 +22,7 @@ export type Pick = { kind: 'guest' | 'staff' | 'entity'; id: number } | null
 export type TileHit = { x: number; y: number; wx: number; wy: number; wz: number; fx: number; fy: number }
 export type Preview = {
   rect?: { x0: number; y0: number; x1: number; y1: number; ok: boolean; elevation?: number }
-  ghost?: { type: 'flat' | 'stall' | 'scenery' | 'gate'; kind: string; x: number; y: number; rot: number; ok: boolean; role?: 'entrance' | 'exit'; size?: [number, number]; wave?: string }
+  ghost?: { type: 'flat' | 'stall' | 'scenery' | 'gate' | 'hotel'; floors?: number; kind: string; x: number; y: number; rot: number; ok: boolean; role?: 'entrance' | 'exit'; size?: [number, number]; wave?: string }
   piece?: { ride: Entity; piece: Piece; ok: boolean }
   station?: { x: number; y: number; dir: number; length: number; ok: boolean }
   selected?: number
@@ -55,6 +56,7 @@ export class ParkRenderer {
   private kindMeshes = new Map<string, GpuMesh | null>()
   private ghostMeshes = new Map<string, GpuMesh | null>()
   private instances = new Map<string, InstanceList>()
+  private hotelMeshes = new Map<number | string, { key: string; mesh: GpuMesh | null }>()
   private rideModels = new Map<string, { base: GpuMesh | null; parts: { mesh: GpuMesh | null; anim: RideModel['parts'][number]['anim'] }[] }>()
   private rides = new Map<number, RideCache>()
   private clocks = new Map<string, Clock>()
@@ -613,6 +615,7 @@ export class ParkRenderer {
         const z = Math.max(...tileCorners(s.map, e.x, e.y))
         g.draw(this.kindMeshes.get('parkEntrance') ?? null, mat4.chain(mat4.translation((e.x + 0.5) * TILE, (e.y + 0.5) * TILE, z), mat4.rotZ((e.dir ?? 3) % 2 ? 0 : Math.PI / 2)), { tint: col })
       }
+      if (e.type === 'hotel') { this.drawHotel(e, night); continue }
       if (e.type !== 'ride') continue
       const highlight: [number, number, number, number] | undefined = this.preview.selected === e.id ? [1, 0.9, 0.3, 0.18] : e.status === 'broken' ? [1, 0.2, 0.1, 0.15 + Math.sin(this.time * 6) * 0.1] : undefined
       if (e.kind === 'flat') this.drawFlat(e, dt, highlight)
@@ -632,6 +635,33 @@ export class ParkRenderer {
     else { c.speed = Math.max(0, c.speed - dt * 0.6); c.spin += dt * c.speed }
     if (e.cycle && Math.abs((e.cycle.timer ?? 0) - c.timer) > 1.5) c.timer = e.cycle.timer
     return c
+  }
+
+  private hotelMesh(id: number | string, e: Entity) {
+    const def = HOTELS[e.kind as string]
+    if (!def) return null
+    const look = hotelLook(e as Parameters<typeof hotelLook>[0], def.colors, def.roofs[0])
+    const key = JSON.stringify(look)
+    let entry = this.hotelMeshes.get(id)
+    if (!entry || entry.key !== key) {
+      if (entry?.mesh) this.g.free(entry.mesh)
+      entry = { key, mesh: this.g.upload(hotelModel(look)) }
+      this.hotelMeshes.set(id, entry)
+    }
+    return entry.mesh
+  }
+
+  private hotelMatrix(e: Entity) {
+    const s = this.state!, f = footprint(e)
+    let floor = -Infinity
+    for (let ty = f.y; ty < f.y + f.h; ty++) for (let tx = f.x; tx < f.x + f.w; tx++) if (inMap(s.map, tx, ty)) floor = Math.max(floor, ...tileCorners(s.map, tx, ty))
+    return mat4.translation((f.x + f.w / 2) * TILE, (f.y + f.h / 2) * TILE, Number.isFinite(floor) ? floor : 0)
+  }
+
+  private drawHotel(e: Entity, night: boolean) {
+    const mesh = this.hotelMesh(e.id, e)
+    const highlight: [number, number, number, number] | undefined = this.preview.selected === e.id ? [1, 0.9, 0.3, 0.18] : undefined
+    this.g.draw(mesh, this.hotelMatrix(e), { highlight, emissive: night && e.kind === 'neonNights' ? 0.45 : 0 })
   }
 
   private drawFlat(e: Entity, dt: number, highlight?: [number, number, number, number]) {
@@ -794,6 +824,11 @@ export class ParkRenderer {
     const gh = p.ghost
     if (!gh) return
     const color: [number, number, number, number] = gh.ok ? [0.3, 1, 0.45, 0.35] : [1, 0.25, 0.2, 0.45]
+    if (gh.type === 'hotel' && gh.size) {
+      const ghost = { id: 0, type: 'hotel', kind: gh.kind, x: gh.x, y: gh.y, size: gh.size, floors: gh.floors ?? 1, park: 0 } as Entity
+      g.draw(this.hotelMesh(`ghost:${gh.kind}`, ghost), this.hotelMatrix(ghost), { alpha: 0.55, highlight: color })
+      return
+    }
     if (gh.type === 'flat') {
       const def = FLAT_RIDES[gh.kind]
       if (!def) return
@@ -890,10 +925,10 @@ export class ParkRenderer {
         for (let i = 0; i < cache.path.count; i += 8) consider(sphere(cache.path.pos[i * 3], cache.path.pos[i * 3 + 1], cache.path.pos[i * 3 + 2], 1.6), { kind: 'entity', id: e.id })
         continue
       }
-      const f = e.type === 'ride' ? footprint(e) : { x: e.x, y: e.y, w: 1, h: 1 }
+      const f = e.type === 'ride' || e.type === 'hotel' ? footprint(e) : { x: e.x, y: e.y, w: 1, h: 1 }
       const cx = (f.x + f.w / 2) * TILE, cy = (f.y + f.h / 2) * TILE, z = groundHeightAt(s.map, cx, cy, TILE)
-      const rad = e.type === 'ride' ? Math.max(f.w, f.h) * TILE * 0.55 : e.type === 'parkEntrance' ? 6 : 2.2
-      const height = e.type === 'ride' ? Math.min(8, (FLAT_RIDES[e.ride as string]?.height ?? 6) * 0.4) : e.type === 'scenery' ? 3 : 1.5
+      const rad = e.type === 'ride' || e.type === 'hotel' ? Math.max(f.w, f.h) * TILE * 0.55 : e.type === 'parkEntrance' ? 6 : 2.2
+      const height = e.type === 'hotel' ? Math.min(30, hotelHeight(e) * 0.5) : e.type === 'ride' ? Math.min(8, (FLAT_RIDES[e.ride as string]?.height ?? 6) * 0.4) : e.type === 'scenery' ? 3 : 1.5
       consider(sphere(cx, cy, z + height, rad), { kind: 'entity', id: e.id }, e.type === 'scenery' ? 3 : 0)
     }
     return best

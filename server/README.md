@@ -1,6 +1,6 @@
 # Pool real-time server
 
-Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v52` (v52 adds guest comments on rides); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
+Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v53` (v53 adds the resort and hotel builder); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
 
 Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin, currently `https://thelibrary.garrdetto.workers.dev`. Multiple trusted production or preview origins can be comma-separated. When configured, requests from other origins are rejected. When unset or empty, only `https://thelibrary.garrdetto.workers.dev` is accepted (v39 default). Configure explicit origins in production. In the site's Cloudflare build variables, set `VITE_POOL_SERVER_URL` to this service's public HTTPS URL, then redeploy the frontend. This public URL is compiled into the client; it is not a secret. When unset, the frontend uses its existing default service URL; signed-in solo practice remains available if multiplayer is offline.
 
@@ -194,3 +194,12 @@ Redeploy this service with the frontend so online parks run the same rules as so
 Redeploy this service with the frontend so online parks run the same rules as solo play:
 - Rides keep their last 12 guest comments (`comments`) and running counts by mood (`commentCounts`), recorded after each ride and when guests give up queuing, can't afford a ride, refuse one as too intense or too expensive, get stuck, or are turned away by a breakdown (`server/park/comments.mjs`).
 - New socket request `ride-comments` `{ id }` answers `{ comments }` for the selected ride only; comments are not part of the regular snapshot.
+
+### Thrill Park v53
+
+Redeploy this service with the frontend so online parks run the same rules as solo play:
+- New entity type `hotel` (`server/park/hotels.mjs`) in eight styles (`HOTELS`), placed with the `hotel` command (`kind`, `x`, `y`, `w`, `h`, `floors`) next to a footpath and customized with `hotelSet` (`primary`, `secondary`, `trim` colors as integers, `roof`, `addon` + `on`, `name`).
+- Each hotel adds rooms × 0.5 to the guest cap, earns nightly room income (`p.month.hotels`) and pays daily upkeep (`p.month.hotelUpkeep`); its build cost counts toward park and company value.
+- Some new guests check in from hotel doors instead of the park gate; they pay the entry fee on arrival, stay longer and carry more cash.
+- Two or more hotels beside a pool or wave pool within 10 squares form a resort district (`p.resortHotels`), adding up to 100 rating.
+- Snapshots carry `hotels` (occupancy, income, last night, district).

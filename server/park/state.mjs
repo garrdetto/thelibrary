@@ -3,6 +3,7 @@ import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath } from './track.mjs'
 import { flatRideSize, rideFlatSpec } from './flatspec.mjs'
+import { HOTELS, HOTEL_ADDONS, hotelSpec, hotelOrientedFits } from './hotels.mjs'
 
 export const ENGINE_VERSION = 5
 export const MAX_GUESTS = 6400
@@ -21,6 +22,7 @@ export function footprint(entity) {
     const swap = entity.rot % 2 === 1
     return { x: entity.x, y: entity.y, w: swap ? h : w, h: swap ? w : h }
   }
+  if (entity.type === 'hotel' && entity.size) return { x: entity.x, y: entity.y, w: entity.size[0], h: entity.size[1] }
   if (entity.type === 'stall' && entity.size) {
     const [w, h] = entity.size
     const swap = entity.rot % 2 === 1
@@ -120,7 +122,7 @@ export function createPark(scenarioId, options = {}) {
 }
 
 export function emptyLedger() {
-  return { rides: 0, shops: 0, entry: 0, construction: 0, upkeep: 0, wages: 0, electricity: 0, marketing: 0, interest: 0, landscaping: 0 }
+  return { rides: 0, shops: 0, entry: 0, hotels: 0, construction: 0, upkeep: 0, wages: 0, electricity: 0, marketing: 0, interest: 0, landscaping: 0, hotelUpkeep: 0 }
 }
 
 export function objectiveText(objective) {
@@ -141,6 +143,7 @@ export function entityCost(entity) {
   if (entity.type === 'stall') return STALLS[entity.kind].cost
   if (entity.type === 'scenery') return SCENERY[entity.kind].cost
   if (entity.type === 'ride' && entity.kind === 'flat') return rideFlatSpec(entity)?.cost ?? 0
+  if (entity.type === 'hotel') return hotelSpec(entity.kind, entity.size, entity.floors, entity.addons)?.cost ?? 0
   if (entity.type === 'ride' && entity.kind === 'coaster') return entity.spent ?? COASTER_STYLES[entity.style].cost
   return 0
 }
@@ -396,6 +399,16 @@ function sanitizeEntity(raw, state) {
       ? [Math.round(num(raw.size[0], 1, 1, 8)), Math.round(num(raw.size[1], 1, 1, 8))]
       : raw.kind === 'souvenir' ? STALLS[raw.kind].size : [1, 1]
     return { ...base, type: 'stall', kind: raw.kind, size, rot: Math.round(num(raw.rot, 0, 0, 3)), price: num(raw.price, STALLS[raw.kind].price, 0, 20), open: raw.open !== false, sales: Math.round(num(raw.sales, 0, 0)), revenue: num(raw.revenue, 0), name: String(raw.name ?? STALLS[raw.kind].name).slice(0, 32), built: num(raw.built) }
+  }
+  if (raw.type === 'hotel' && HOTELS[raw.kind]) {
+    const def = HOTELS[raw.kind]
+    const w = Math.round(num(raw.size?.[0], def.min[0], 1, 16)), h = Math.round(num(raw.size?.[1], def.min[1], 1, 16))
+    if (!hotelOrientedFits(def, w, h)) return null
+    const color = (value, fallback) => Number.isInteger(value) && value >= 0 && value <= 0xffffff ? value : fallback
+    const colors = { primary: color(raw.colors?.primary, def.colors.primary), secondary: color(raw.colors?.secondary, def.colors.secondary), trim: color(raw.colors?.trim, def.colors.trim) }
+    const addons = Object.fromEntries(Object.keys(HOTEL_ADDONS).map(id => [id, raw.addons?.[id] === true]))
+    const entrance = raw.entrance && Number.isInteger(raw.entrance.x) && Number.isInteger(raw.entrance.y) && inMap(state.map, raw.entrance.x, raw.entrance.y) ? { x: raw.entrance.x, y: raw.entrance.y } : null
+    return { ...base, type: 'hotel', kind: raw.kind, size: [w, h], floors: Math.round(num(raw.floors, def.floors[0], def.floors[0], def.floors[1])), name: String(raw.name ?? def.name).slice(0, 32), colors, roof: def.roofs.includes(raw.roof) ? raw.roof : def.roofs[0], addons, entrance, occupancy: num(raw.occupancy, 0.5, 0, 1), revenue: num(raw.revenue, 0), lastNight: num(raw.lastNight, 0), district: raw.district === true, built: num(raw.built) }
   }
   if (raw.type === 'gate') return { ...base, type: 'gate', ride: Math.round(num(raw.ride, 0, 0)), role: raw.role === 'exit' ? 'exit' : 'entrance', dir: Math.round(num(raw.dir, 0, 0, 3)) }
   if (raw.type === 'ride') {

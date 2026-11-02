@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
-import { Camera, Check, Cloud, CloudRain, Droplets, Eraser, FastForward, Footprints, Gauge, Grid3x3, Landmark, LoaderCircle, LogOut, Maximize2, MessageCircle, Minus, Mountain, MousePointer2, Paintbrush, Pause, Play, Plus, RotateCw, Save, Sparkles, Store, Sun, Moon, Trash2, Trees, Undo2, Users, Wrench, X, Zap } from 'lucide-react'
+import { Camera, Check, Cloud, CloudRain, Droplets, Eraser, FastForward, Footprints, Gauge, Grid3x3, Hotel, Landmark, LoaderCircle, LogOut, Maximize2, MessageCircle, Minus, Mountain, MousePointer2, Paintbrush, Pause, Play, Plus, RotateCw, Save, Sparkles, Store, Sun, Moon, Trash2, Trees, Undo2, Users, Wrench, X, Zap } from 'lucide-react'
 import { ParkRenderer } from '@/lib/park/renderer'
 import type { Preview } from '@/lib/park/renderer'
 import { compressSave } from '@/lib/park/session'
@@ -8,9 +8,10 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor } from '../../../server/park/index.mjs'
 import { WaveControl } from './WaveControl'
 import { RideComments } from './RideComments'
+import { ResortCards, ResortSummary, HotelWindowBody } from './ResortPanel'
 import { GuestCapacity } from './GuestCapacity'
 import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
 
@@ -32,8 +33,9 @@ type Tool =
   | { kind: 'gate'; ride: number; role: 'entrance' | 'exit' }
   | { kind: 'coaster'; style: string; dir: number; length: number; preset?: string }
   | { kind: 'demolish' }
+  | { kind: 'hotel'; hotel: string; floors: number }
 
-type Panel = null | 'terrain' | 'paths' | 'rides' | 'coasters' | 'shops' | 'scenery' | 'staff' | 'park' | 'finance' | 'save' | 'chat'
+type Panel = null | 'terrain' | 'paths' | 'rides' | 'coasters' | 'shops' | 'resorts' | 'scenery' | 'staff' | 'park' | 'finance' | 'save' | 'chat'
 type RideTab = 'All' | 'Gentle' | 'Thrill' | 'Water' | 'Other'
 type Selection = null | { kind: 'entity' | 'guest' | 'staff'; id: number }
 type Toast = { id: number; text: string; kind: 'error' | 'info' | 'warn' }
@@ -42,6 +44,15 @@ type PathSegment = 'level' | 'up' | 'down' | 'stairs-up' | 'stairs-down'
 const SURFACE_NAMES = ['Grass', 'Sand', 'Dirt', 'Rock', 'Snow']
 
 type LandArea = { x0: number; y0: number; x1: number; y1: number }
+
+function hotelArea(kind: string, start: { x: number; y: number } | null, hit: { x: number; y: number }) {
+  const def = HOTELS[kind]
+  const lo = Math.min(def.min[0], def.min[1]), hi = Math.max(def.max[0], def.max[1])
+  if (!start) return { x: hit.x - Math.floor((def.min[0] - 1) / 2), y: hit.y - Math.floor((def.min[1] - 1) / 2), size: [...def.min] as [number, number] }
+  const span = (a: number, b: number) => { const len = Math.max(lo, Math.min(hi, Math.abs(b - a) + 1)); return b >= a ? [a, len] : [a - len + 1, len] }
+  const [x, w] = span(start.x, hit.x), [y, h] = span(start.y, hit.y)
+  return { x, y, size: [w, h] as [number, number] }
+}
 
 function resizableArea(ride: string, start: { x: number; y: number } | null, hit: { x: number; y: number }) {
   const def = FLAT_RIDES[ride], limits = def.resize!
@@ -135,6 +146,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [pendingLand, setPendingLand] = useState<{ area: LandArea; count: number; cost: number } | null>(null)
   const [landQuote, setLandQuote] = useState<{ count: number; cost: number } | null>(null)
   const [buyingLand, setBuyingLand] = useState(false)
+  const [hotelQuote, setHotelQuote] = useState<{ w: number; h: number; rooms: number; cost: number; bonus: number; fits: boolean } | null>(null)
   const [flatQuote, setFlatQuote] = useState<{ w: number; h: number; cost: number; capacity: number } | null>(null)
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
@@ -317,6 +329,16 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
           p.rect = { x0: hit.x - half, y0: hit.y - half, x1: hit.x - half + brush - 1, y1: hit.y - half + brush - 1, ok: t.kind !== 'demolish' }
         }
       }
+      if (t.kind === 'hotel') {
+        const area = hotelArea(t.hotel, d.button === 0 && d.start ? d.start : null, hit)
+        const def = HOTELS[t.hotel], [w, h] = area.size
+        const fits = hotelOrientedFits(def, w, h)
+        const free = footprintTiles({ id: 0, type: 'hotel', x: area.x, y: area.y, size: area.size, park: 0 } as Entity).every(([tx, ty]) => { if (!inMap(state.map, tx, ty)) return false; const i = tileIndex(state.map, tx, ty); return state.map.owner[i] === session.park && !state.map.obj[i] && !state.map.path[i] && !(state.map.water[i] >= 0 && state.map.water[i] > tileMin(state.map, tx, ty)) })
+        const door = hotelEntranceFor(state, session.park, area.x, area.y, w, h)
+        p.ghost = { type: 'hotel', kind: t.hotel, x: area.x, y: area.y, rot: 0, size: area.size, floors: t.floors, ok: fits && free && Boolean(door) }
+        const spec = hotelSpec(t.hotel, area.size, t.floors)!
+        setHotelQuote(prev => prev && prev.w === w && prev.h === h && prev.cost === spec.cost && prev.fits === fits ? prev : { w, h, rooms: spec.rooms, cost: spec.cost, bonus: spec.guestBonus, fits })
+      }
       if (t.kind === 'flat' && FLAT_RIDES[t.ride].resize) {
         const area = resizableArea(t.ride, d.button === 0 && d.start ? d.start : null, hit)
         const sized = { ...t, rot: 0, area: area.size }
@@ -402,6 +424,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       case 'pathAdd': await run({ t: 'pathAdd', x: hit.x, y: hit.y, add: t.add }); break
       case 'scenery': await run({ t: 'scenery', kind: t.scenery, x: hit.x, y: hit.y, rot: t.rot }); break
       case 'stall': { const ghost = r.preview.ghost; if (!ghost) break; const res = await run({ t: 'stall', kind: t.stall, x: ghost.x, y: ghost.y, rot: ghost.rot }); if (res.ok && res.id) { setTool({ kind: 'select' }); setSelection({ kind: 'entity', id: res.id }) } break }
+      case 'hotel': {
+        const g = r.preview.ghost
+        if (!g?.size) break
+        const res = await run({ t: 'hotel', kind: t.hotel, x: g.x, y: g.y, w: g.size[0], h: g.size[1], floors: t.floors })
+        if (res.ok && res.id) { setTool({ kind: 'select' }); setSelection({ kind: 'entity', id: res.id }); toast(`${HOTELS[t.hotel].name} built for ${money(res.cost ?? 0)}. Pick its colors and add-ons.`) }
+        break
+      }
       case 'flat': {
         const g = r.preview.ghost
         if (!g) break
@@ -460,7 +489,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (d.button >= 0 && Math.hypot(dx, dy) > 5) d.moved = true
     const t = toolRef.current
-    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind) && !(t.kind === 'flat' && FLAT_RIDES[t.ride].resize)))
+    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand', 'hotel'].includes(t.kind) && !(t.kind === 'flat' && FLAT_RIDES[t.ride].resize)))
     if (d.cam && d.moved && panning) {
       const a = d.anchor
       const p = a ? r.rayPlane(e.clientX, e.clientY, a.z) : null
@@ -480,7 +509,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     d.pointers.delete(e.pointerId)
     if (d.button === 9) { if (!d.pointers.size) d.button = -1; return }
     const t = toolRef.current
-    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind) || (t.kind === 'flat' && Boolean(FLAT_RIDES[t.ride].resize))
+    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand', 'hotel'].includes(t.kind) || (t.kind === 'flat' && Boolean(FLAT_RIDES[t.ride].resize))
     if (d.button === 0 && (!d.moved || areaTool)) void applyTool(e.clientX, e.clientY)
     d.button = -1; d.start = undefined
     updatePreview(e.clientX, e.clientY)
@@ -683,6 +712,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <button className={panel === 'rides' ? 'on' : ''} onClick={() => togglePanel('rides')}><Sparkles size={19} /><span>Rides</span></button>
       <button className={panel === 'coasters' ? 'on' : ''} onClick={() => togglePanel('coasters')}><Zap size={19} /><span>Coasters</span></button>
       <button className={panel === 'shops' ? 'on' : ''} onClick={() => togglePanel('shops')}><Store size={19} /><span>Shops</span></button>
+      <button className={panel === 'resorts' ? 'on' : ''} onClick={() => togglePanel('resorts')}><Hotel size={19} /><span>Resorts</span></button>
       <button className={panel === 'scenery' ? 'on' : ''} onClick={() => togglePanel('scenery')}><Trees size={19} /><span>Scenery</span></button>
       <button className={panel === 'staff' ? 'on' : ''} onClick={() => togglePanel('staff')}><Users size={19} /><span>Staff</span></button>
       <button className={panel === 'park' ? 'on' : ''} onClick={() => togglePanel('park')}><Landmark size={19} /><span>Park</span></button>
@@ -771,6 +801,11 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <p className="pk-hint">Click to place the station, then build the circuit piece by piece, or press Auto-finish to close the loop. Designs are built in one go and finished to fit the ground; press R to turn them before placing.</p>
     </Window>}
 
+    {panel === 'resorts' && <Window title="Resorts" onClose={() => togglePanel('resorts')} wide>
+      <ResortCards selected={tool.kind === 'hotel' ? tool.hotel : null} onPick={kind => { setHotelQuote(null); setTool({ kind: 'hotel', hotel: kind, floors: HOTELS[kind].floors[0] }); setPanel(null) }} />
+      <ResortSummary park={park} />
+    </Window>}
+
     {panel === 'shops' && <Window title="Shops and stalls" onClose={() => togglePanel('shops')} wide>
       <div className="pk-cards">{Object.entries(STALLS).map(([id, s]) => <button key={id} className={`pk-card ${tool.kind === 'stall' && tool.stall === id ? 'on' : ''}`} onClick={() => { setTool({ kind: 'stall', stall: id, rot: 0 }); setPanel(null) }}>
         <strong><i className="pk-swatch" style={{ background: s.color }} />{s.name}</strong><span>{money(s.cost)}{s.size ? ` · ${s.size[0]}×${s.size[1]}` : ''}{s.price ? ` · sells for ${money(s.price)}` : ''}</span>
@@ -817,7 +852,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <div className="pk-grid2">
         <div>
           <p className="pk-label">This month</p>
-          <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Electricity: park.month.electricity, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
+          <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, 'Hotel rooms': park.month.hotels ?? 0, 'Hotel upkeep': park.month.hotelUpkeep ?? 0, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Electricity: park.month.electricity, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
           <p className="pk-hint">Electricity costs $1 per occupied ride or shop grid square each day.</p>
           <p className="pk-label">Bank loan</p>
           <div className="pk-row"><span>{money(park.loan)} of {money(park.maxLoan)}</span>{!viewOnly && <><button onClick={() => void run({ t: 'loan', delta: -1000 })}>Repay $1,000</button><button onClick={() => void run({ t: 'loan', delta: 1000 })}>Borrow $1,000</button></>}</div>
@@ -847,6 +882,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </Window>}
 
     {entity?.type === 'ride' && <RideWindow ride={entity} session={session} readOnly={viewOnly} onClose={() => setSelection(null)} run={run} onBuild={() => setBuilder({ ride: entity.id, c: 0, s: 0, sp: '' })} onGate={role => setTool({ kind: 'gate', ride: entity.id, role })} rideCam={rideCam === entity.id} onRideCam={() => setRideCam(c => c === entity.id ? null : entity.id)} />}
+    {entity?.type === 'hotel' && <Window title={entity.name ?? 'Hotel'} onClose={() => setSelection(null)}>
+      <HotelWindowBody hotel={entity} readOnly={viewOnly} run={run} onDemolish={async () => { const res = await run({ t: 'demolish', id: entity.id }); if (res.ok) { setSelection(null); toast('Hotel demolished.') } }} />
+    </Window>}
     {entity?.type === 'stall' && <Window title={entity.name ?? 'Stall'} onClose={() => setSelection(null)}>
       <dl className="pk-dl"><dt>Sales</dt><dd>{entity.sales}</dd><dt>Revenue</dt><dd>{money(entity.revenue ?? 0)}</dd><dt>Upkeep</dt><dd>{money(STALLS[entity.kind!].upkeep)}/month</dd></dl>
       {STALLS[entity.kind!].price > 0 && <div className="pk-row"><span>Price</span>{!viewOnly && <button onClick={() => void run({ t: 'stallSet', id: entity.id, price: Math.max(0, (entity.price ?? 0) - 0.1) })}><Minus size={13} /></button>}<strong>{money(entity.price ?? 0)}</strong>{!viewOnly && <button onClick={() => void run({ t: 'stallSet', id: entity.id, price: Math.min(20, (entity.price ?? 0) + 0.1) })}><Plus size={13} /></button>}</div>}
@@ -888,6 +926,15 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
         <strong>{landQuote ? `${landQuote.count.toLocaleString()} squares · ${money(landQuote.cost)}` : 'Click or drag over red land next to your park'}</strong>
         <button onClick={() => { setTool({ kind: 'select' }); setLandQuote(null); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>
       </>}
+    </div>}
+
+    {tool.kind === 'hotel' && <div className="pk-placebar" role="group" aria-label="Place hotel">
+      <strong>{HOTELS[tool.hotel].name}{hotelQuote ? ` · ${hotelQuote.w}×${hotelQuote.h} · ${hotelQuote.rooms.toLocaleString()} rooms · +${hotelQuote.bonus.toLocaleString()} guests · ${money(hotelQuote.cost)}` : ' · drag out a lot beside a footpath'}</strong>
+      {hotelQuote && !hotelQuote.fits && <span>Size {HOTELS[tool.hotel].min.join('×')} to {HOTELS[tool.hotel].max.join('×')}</span>}
+      <button aria-label="Fewer floors" disabled={tool.floors <= HOTELS[tool.hotel].floors[0]} onClick={() => { setHotelQuote(null); setTool({ ...tool, floors: tool.floors - 1 }) }}><Minus size={14} /></button>
+      <span>{tool.floors} {tool.floors === 1 ? 'floor' : 'floors'}</span>
+      <button aria-label="More floors" disabled={tool.floors >= HOTELS[tool.hotel].floors[1]} onClick={() => { setHotelQuote(null); setTool({ ...tool, floors: tool.floors + 1 }) }}><Plus size={14} /></button>
+      <button onClick={() => { setTool({ kind: 'select' }); setHotelQuote(null); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>
     </div>}
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">

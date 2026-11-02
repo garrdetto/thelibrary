@@ -8,6 +8,7 @@ import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTil
 import { mechanicJobDistance } from './guests.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
 import { flatSpec, validFlatSize } from './flatspec.mjs'
+import { HOTELS, HOTEL_ADDONS, hotelSpec, hotelOrientedFits, hotelEntranceFor, hotelHeight } from './hotels.mjs'
 
 const MAX_RECT = 32
 const INVERTED_STATION_LIFT = 7
@@ -360,7 +361,7 @@ const HANDLERS = {
       if (entity) {
         const clearance = entity.type === 'scenery' ? SCENERY[entity.kind]?.height ?? 3
           : entity.type === 'ride' ? entity.kind === 'flat' ? FLAT_RIDES[entity.ride]?.height ?? 6 : 0
-            : entity.type === 'stall' ? entity.kind === 'souvenir' ? 5 : entity.kind === 'toilet' ? 3.5 : 3.2
+            : entity.type === 'hotel' ? hotelHeight(entity) : entity.type === 'stall' ? entity.kind === 'souvenir' ? 5 : entity.kind === 'toilet' ? 3.5 : 3.2
               : entity.type === 'parkEntrance' ? 7 : 2.8
         let lowestPathHeight = pathBase
         if (kind === 3 && elevation > 0) for (const [dx, dy] of DIRS) {
@@ -536,6 +537,78 @@ const HANDLERS = {
     spend(state, park, spec.cost, 'construction')
     pathsChanged(state)
     return ok({ id, cost })
+  },
+
+  hotel(state, cmd, park) {
+    const def = HOTELS[cmd.kind]
+    const map = state.map
+    if (!def || !isInt(cmd.x, 0, map.w - 1) || !isInt(cmd.y, 0, map.h - 1) || !isInt(cmd.w, 1, 16) || !isInt(cmd.h, 1, 16) || !isInt(cmd.floors, 1, 40)) return fail('Choose a hotel style, size and floors.')
+    if (!hotelOrientedFits(def, cmd.w, cmd.h)) return fail(`${def.name} can be ${def.min.join('×')} to ${def.max.join('×')} squares.`)
+    if (cmd.floors < def.floors[0] || cmd.floors > def.floors[1]) return fail(`${def.name} can have ${def.floors[0]} to ${def.floors[1]} floors.`)
+    const probe = { type: 'hotel', x: cmd.x, y: cmd.y, size: [cmd.w, cmd.h], floors: cmd.floors }
+    const height = hotelHeight(probe)
+    const tiles = footprintTiles(probe)
+    for (const [x, y] of tiles) {
+      if (!inMap(map, x, y)) return fail('The hotel would not fit on the map.')
+      const i = tileIndex(map, x, y)
+      if (map.owner[i] !== park) return fail('You can only build on land your park owns.')
+      if (map.path[i]) return fail('A footpath is in the way.')
+      if (map.obj[i]) return fail(state.entities[map.obj[i]]?.type === 'scenery' ? 'Scenery is in the way. Use Clear Scenery first.' : 'Something is built here.')
+      if (isWater(map, i, x, y)) return fail('Hotels cannot be built on water.')
+      if (lowTrack(state, i, height)) return fail('Coaster track is in the way.')
+    }
+    const entrance = hotelEntranceFor(state, park, cmd.x, cmd.y, cmd.w, cmd.h)
+    if (!entrance) return fail('Hotels need a footpath touching one side for their entrance.')
+    const r = { x0: cmd.x, y0: cmd.y, x1: cmd.x + cmd.w - 1, y1: cmd.y + cmd.h - 1 }
+    let plan = null
+    const heights = new Set(tiles.flatMap(([x, y]) => tileCorners(map, x, y)))
+    if (heights.size > 1) {
+      plan = terrainPlan(state, park, r, 'level')
+      if (plan.error) return fail(`The ground must be level here. ${plan.error}`)
+    }
+    const spec = hotelSpec(cmd.kind, [cmd.w, cmd.h], cmd.floors)
+    const cost = spec.cost + (plan?.cost ?? 0)
+    if (!canAfford(state, park, cost)) return fail(`You need $${cost.toLocaleString('en-US')} to build this hotel.`)
+    if (plan) applyTerrainPlan(state, park, plan)
+    const id = state.nextId++
+    state.entities[id] = {
+      id, type: 'hotel', kind: cmd.kind, x: cmd.x, y: cmd.y, size: [cmd.w, cmd.h], floors: cmd.floors, park, name: nextName(state, def.name),
+      colors: { ...def.colors }, roof: def.roofs[0], addons: Object.fromEntries(Object.keys(HOTEL_ADDONS).map(k => [k, false])), entrance, occupancy: 0.5, revenue: 0, lastNight: 0, district: false, built: state.time.seconds,
+    }
+    for (const [x, y] of tiles) map.obj[tileIndex(map, x, y)] = id
+    spend(state, park, spec.cost, 'construction')
+    pathsChanged(state)
+    return ok({ id, cost })
+  },
+
+  hotelSet(state, cmd, park) {
+    const hotel = state.entities[cmd.id]
+    if (!hotel || hotel.type !== 'hotel' || hotel.park !== park) return fail('Choose one of your hotels.')
+    const def = HOTELS[hotel.kind]
+    if (typeof cmd.name === 'string') {
+      const name = cmd.name.trim().slice(0, 32)
+      if (name.length < 1) return fail('Give the hotel a name.')
+      hotel.name = name
+    }
+    for (const key of ['primary', 'secondary', 'trim']) {
+      if (cmd[key] === undefined) continue
+      if (!isInt(cmd[key], 0, 0xffffff)) return fail('Choose a valid hotel color.')
+      hotel.colors = { ...hotel.colors, [key]: cmd[key] }
+    }
+    if (cmd.roof !== undefined) {
+      if (!def.roofs.includes(cmd.roof)) return fail('That roof does not suit this hotel.')
+      hotel.roof = cmd.roof
+    }
+    if (cmd.addon !== undefined) {
+      const addon = HOTEL_ADDONS[cmd.addon]
+      if (!addon || typeof cmd.on !== 'boolean') return fail('Choose an add-on.')
+      if (cmd.on && !hotel.addons[cmd.addon]) {
+        if (!canAfford(state, park, addon.cost)) return fail(`You need $${addon.cost.toLocaleString('en-US')} for the ${addon.name.toLowerCase()}.`)
+        spend(state, park, addon.cost, 'construction')
+      }
+      hotel.addons = { ...hotel.addons, [cmd.addon]: cmd.on }
+    }
+    return ok()
   },
 
   gate(state, cmd, park) {

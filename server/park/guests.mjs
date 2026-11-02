@@ -177,9 +177,9 @@ function think(guest, text) {
   if (guest.thoughts.length > 5) guest.thoughts.shift()
 }
 
-export function spawnGuest(state, park) {
+export function spawnGuest(state, park, hotel = null) {
   const gw = entranceTiles(state)
-  const at = gw.exits[park]
+  const at = hotel?.entrance ?? gw.exits[park]
   if (!at) return null
   const rnd = () => stateRandom(state)
   const kid = rnd() < 0.3
@@ -189,6 +189,13 @@ export function spawnGuest(state, park) {
     state: 'walk', target: { key: `enter:${park}` }, timer: 0, happy: 150 + rnd() * 60, energy: 180 + rnd() * 70, hunger: 20 + rnd() * 90, thirst: 20 + rnd() * 90, toilet: rnd() * 60, nausea: 0,
     cash: Math.round(kid ? 20 + rnd() * 30 : 40 + rnd() * 80), spent: 0, type: profile.type, minI: profile.minI, maxI: profile.maxI, tolerance: profile.tolerance, warm: 0, shirt: Math.floor(rnd() * 16),
     items: [], eating: 0, rides: 0, ridden: [], thoughts: [], inPark: 0, stay: 300 + rnd() * 600, patience: 60 + rnd() * 120, queueTime: 0, ride: 0, stuck: 0, lastDecide: 0, kid, paid: false,
+  }
+  if (hotel) {
+    const p = state.parks[park]
+    guest.target = null; guest.paid = true; guest.hotel = hotel.id
+    guest.stay *= 1.6; guest.cash = Math.round(guest.cash * 1.5)
+    const fee = Math.min(guest.cash, p.entryFee)
+    guest.cash -= fee; p.cash += fee; p.month.entry += fee; p.totalGuests++
   }
   state.guests.push(guest)
   return guest

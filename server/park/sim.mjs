@@ -7,6 +7,7 @@ import { ejectRide } from './commands.mjs'
 import { rideFlatSpec } from './flatspec.mjs'
 import { updateThrillCrowds } from './thrill.mjs'
 import { recordComment } from './comments.mjs'
+import { hotelGuestBonus, updateHotels, hotelSpawn } from './hotels.mjs'
 import { MAX_GUESTS, ensureGuestIndex } from './state.mjs'
 import { ownedTileCount } from './land.mjs'
 
@@ -216,7 +217,7 @@ export function spawnRate(state, p) {
     if (e.type === 'ride' && e.status === 'open' && e.stats?.valid) { rideScore += e.stats.e + (e.kind === 'coaster' && COASTER_STYLES[e.style]?.category !== 'other' ? 1.5 : 0); openRides++ }
     if (e.type === 'stall' && e.open) stalls++
   }
-  const buildCap = Math.round(BUILD_CAP_MULTIPLIER * (30 + rideScore * 26 + stalls * 8))
+  const buildCap = Math.round(BUILD_CAP_MULTIPLIER * (30 + rideScore * 26 + stalls * 8) + hotelGuestBonus(state, p.id))
   const landCap = Math.round(ownedTileCount(state, p.id) * GUESTS_PER_OWNED_TILE)
   const cap = Math.min(MAX_GUESTS, buildCap, landCap)
   const limit = cap === MAX_GUESTS ? 'max' : cap === landCap ? 'land' : 'rides'
@@ -251,7 +252,7 @@ function updateRating(state) {
     p.guestsIn = s.count
     const avg = s.count ? s.happy / s.count : 140
     p.happiness = Math.round(avg / 255 * 100)
-    const target = clamp(140 + (avg / 255) * 430 + Math.min(open * 20, 220) + Math.min(s.count * 0.12, 120) - Math.min(litter[p.id] * 1.5, 180) - broken * 30 + Math.min(scenery * 0.25, 80), 0, 999)
+    const target = clamp(140 + (avg / 255) * 430 + Math.min(open * 20, 220) + Math.min(s.count * 0.12, 120) - Math.min(litter[p.id] * 1.5, 180) - broken * 30 + Math.min(scenery * 0.25, 80) + Math.min((p.resortHotels ?? 0) * 15, 100), 0, 999)
     p.rating = Math.round(p.rating + (target - p.rating) * 0.08)
     p.litter = litter[p.id]
   }
@@ -259,7 +260,7 @@ function updateRating(state) {
 
 export function parkValue(state, park) {
   let value = 0
-  for (const e of Object.values(state.entities)) if (e.park === park && (e.type === 'ride' || e.type === 'stall')) value += entityCost(e)
+  for (const e of Object.values(state.entities)) if (e.park === park && (e.type === 'ride' || e.type === 'stall' || e.type === 'hotel')) value += entityCost(e)
   return Math.round(value + state.parks[park].guestsIn * 6)
 }
 
@@ -292,8 +293,8 @@ function endOfMonth(state) {
     const interest = Math.round(p.loan * 0.012)
     p.cash -= upkeep + interest
     p.month.upkeep -= upkeep; p.month.interest -= interest
-    const income = p.month.rides + p.month.shops + p.month.entry
-    const expenses = p.month.construction + p.month.upkeep + p.month.wages + p.month.electricity + p.month.marketing + p.month.interest + p.month.landscaping
+    const income = p.month.rides + p.month.shops + p.month.entry + (p.month.hotels ?? 0)
+    const expenses = p.month.construction + p.month.upkeep + p.month.wages + p.month.electricity + p.month.marketing + p.month.interest + p.month.landscaping + (p.month.hotelUpkeep ?? 0)
     p.value = parkValue(state, p.id)
     p.history.push({ label: `${MONTHS[finished].slice(0, 3)} Y${year}`, income: Math.round(income), expenses: Math.round(expenses), profit: Math.round(income + expenses), guests: p.guestsIn, rating: p.rating, value: p.value, cash: Math.round(p.cash), company: companyValue(state, p.id), ...Object.fromEntries(Object.entries(p.month).map(([k, v]) => [k, Math.round(v)])) })
     if (p.history.length > 24) p.history.shift()
@@ -343,6 +344,7 @@ function newDay(state) {
     park.month.wages -= costs.wages
     park.month.electricity -= costs.electricity
   }
+  updateHotels(state)
   const r = stateRandom(state)
   const kind = r < 0.5 ? 'sunny' : r < 0.8 ? 'cloudy' : 'rain'
   const base = [13, 17, 21, 25, 27, 26, 21, 15][state.time.month] ?? 20
@@ -376,7 +378,7 @@ export function stepPark(state, dt = SIM_STEP) {
     p.spawnDebt += rate * dt
     while (p.spawnDebt >= 1) {
       p.spawnDebt -= 1
-      if (p.guestsIn < cap && state.guests.length < MAX_GUESTS * state.parks.length) { const g = spawnGuest(state, p.id); if (g) { p.guestsIn++; state.guestIndex.set(g.id, g) } }
+      if (p.guestsIn < cap && state.guests.length < MAX_GUESTS * state.parks.length) { const hotel = hotelSpawn(state, p.id, () => stateRandom(state), cap); const g = spawnGuest(state, p.id, hotel); if (g) { p.guestsIn++; state.guestIndex.set(g.id, g) } }
     }
   }
   for (const e of Object.values(state.entities)) {
