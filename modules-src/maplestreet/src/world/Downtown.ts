@@ -48,7 +48,7 @@ function awningTexture(a: string, b: string, striped: boolean) {
 
 const SIGN_COLORS: Record<string, [string, string]> = {
   dealer: ['#14365e', '#ffffff'], diner: ['#b8241c', '#fff3d6'], bank: ['#1f2b3a', '#e8d9a8'], cafe: ['#22392f', '#f2e3c6'],
-  grocery: ['#2f6b2f', '#ffffff'], hardware: ['#c25a14', '#ffffff'], gas: ['#0f4c81', '#ffd200'], apartments: ['#3b3b3b', '#e6e6e6'], office: ['#2a3440', '#d6e2ee'],
+  grocery: ['#2f6b2f', '#ffffff'], clothing: ['#5b2a45', '#f6e7d2'], hardware: ['#c25a14', '#ffffff'], gas: ['#0f4c81', '#ffd200'], apartments: ['#3b3b3b', '#e6e6e6'], office: ['#2a3440', '#d6e2ee'],
 };
 
 export class Downtown {

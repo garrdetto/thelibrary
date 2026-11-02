@@ -72,7 +72,7 @@ export const CURB_CUTS: RectXZ[] = [
   { cx: 94, cz: -18, sx: 4, sz: 16 },          // Maple Motors display lot off East Ave
 ];
 
-export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank';
+export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank' | 'clothing';
 
 /** A building on the downtown strip. Shops have a door you walk (or drive) up to. */
 export interface Building {
@@ -95,6 +95,7 @@ export const BUILDINGS: Building[] = [
   bld('apt1', 'Elm Court Apartments', 'apartments', 170, 18, 16, 16, 'n', '#a77a5c'),
   bld('bank', 'First Neighbors Savings & Loan', 'bank', 192, 20, 16, 11, 'n', '#d8d1c2'),
   bld('office1', 'Maple Tower', 'office', 216, 18, 18, 26, 'n', '#7d8b99'),
+  bld('threads', 'Maple Threads', 'clothing', 239, 18, 14, 8, 'n', '#e3d6c4'),
   bld('cafe', 'Bean There Café', 'cafe', 240, 14, 12, 7, 's', '#3f6b5a'),
   bld('grocery', 'Fresh Market', 'grocery', 210, 28, 20, 7, 's', '#e8e3d4'),
   bld('hardware', 'Maple Hardware', 'hardware', 182, 20, 18, 8, 's', '#c96f2c'),

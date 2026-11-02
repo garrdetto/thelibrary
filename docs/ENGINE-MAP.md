@@ -169,8 +169,16 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/world/Grass.ts` — instanced grass — `Game`.
 - `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
 - `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
-- `src/physics/Character.ts` — kinematic character controller — `Game`, `RemoteEntities`.
+- `src/physics/Character.ts` — kinematic character controller and `Avatar` (scanned model, stand-in while loading) — `Game`, `RemoteEntities`.
 - `src/physics/Vehicle.ts` — raycast vehicle: grip-limited, rate-limited steering with Ackermann front wheels, pedal ramps, torque curve, handbrake rear slide — `Game`.
+- `src/avatar/AvatarAssets.ts` — loads `public/modules/maplestreet/{male,female}.glb` + region masks, flattened-hair variant — `Character.ts`.
+- `src/avatar/AvatarMaterial.ts` — TSL wardrobe recolor shader — `AvatarModel`.
+- `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/idle/seated pose — `Character.ts`.
+- `src/avatar/HairAndHats.ts` — long hair, buns, hats on the head bone — `AvatarModel`.
+- `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids).
+- `src/game/WardrobeUI.ts` — wardrobe / character creator and Maple Threads shop panel — `Game`.
+- `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation — `RoomLogic`, `Economy`, `Npc`, client.
+- `tools/build-characters.mjs` — offline scan → rigged avatar + mask pipeline (not part of the build).
 - `src/physics/VehiclePresets.ts` — original pickup, coupe, mower bodies and tuning — `Vehicle`, `Downtown`, `RemoteEntities`.
 - `src/net/Transport.ts` — transport interface — every transport, `Game`.
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.

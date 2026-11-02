@@ -42,11 +42,14 @@ import { Grass } from '../world/Grass';
 import { Neighborhood } from '../world/Neighborhood';
 import { CameraRig } from './CameraRig';
 import { Hud } from './Hud';
+import { WardrobeUI } from './WardrobeUI';
+import { cleanLook, defaultLook, lookKey, type Body, type Look } from '../../shared/Wardrobe';
 
 export type NetMode = 'world' | 'offline' | 'host' | 'join' | 'tabs' | 'server';
 export interface StartOptions {
   name: string;
   color: string;
+  body: Body;
   mode: NetMode;
   code?: string;          // room code for 'join'
   serverUrl?: string;     // Colyseus ws(s):// URL for 'server'
@@ -88,6 +91,9 @@ export class Game {
   private mats!: MaterialLibrary;
   private grass!: Grass;
   private thumbs!: ThumbnailRenderer;
+  private wardrobe!: WardrobeUI;
+  private look!: Look;
+  private camSaved: { dist: number; pitch: number } | null = null;
 
   private mode: 'live' | 'build' = 'live';
   private selfId: string | null = null;
@@ -167,6 +173,7 @@ export class Game {
       buy: (shop, item) => this.send({ t: 'buy', shop, item }),
       testDrive: k => this.bringOut(k, true),
       map: () => this.toggleMap(),
+      wardrobe: () => this.openWardrobe(false),
       mapAction: (a, lot) => this.mapAction(a, lot),
       texture: name => this.texturePreview(name),
     });
@@ -174,6 +181,19 @@ export class Game {
     this.hud.wantThumbs = ids => this.thumbs.request(ids);
     this.hud.setMode('live');
     this.syncBuildHud();
+    this.wardrobe = new WardrobeUI({
+      preview: look => this.character.avatar.setLook(look),
+      save: (look, note) => {
+        this.setLook(look);
+        this.send({ t: 'look', look });
+        store.set(this.createdKey, '1');
+        if (note) this.hud.toast(note);
+      },
+      buy: item => this.send({ t: 'buy', shop: 'threads', item }),
+      closed: () => this.wardrobeClosed(),
+    });
+    this.hud.wardrobeOpen = () => this.wardrobe.isOpen;
+    this.hud.closeWardrobe = () => this.wardrobe.close(false);
 
     this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 40, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x5cff7a, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
     this.beacon.position.y = 20; this.beacon.visible = false;
@@ -185,7 +205,8 @@ export class Game {
     this.addInteractionRings(scene);
 
     // Player + starter truck and trailer (the rest of the garage comes out on request).
-    this.character = new Character(this.physics, new THREE.Vector3(SPAWN.x, 0, SPAWN.z), this.opts.color, scene);
+    this.look = this.savedLook();
+    this.character = new Character(this.physics, new THREE.Vector3(SPAWN.x, 0, SPAWN.z), this.look, scene);
     const truck = this.addVehicle('truck', new THREE.Vector3(SPAWN.x + 4, 0, 1.8), 0);
     const trailer = this.addVehicle('trailer', new THREE.Vector3(SPAWN.x - 2, 0, 1.8), 0);
     truck.hitch(trailer);
@@ -215,7 +236,7 @@ export class Game {
    * Offline Simulation so the neighborhood is always playable.
    */
   private async connect() {
-    const join = { key: `${persistentKey()}:${this.opts.name.toLowerCase()}`, name: this.opts.name, color: this.opts.color };
+    const join = { key: `${persistentKey()}:${this.opts.name.toLowerCase()}`, name: this.opts.name, color: this.opts.color, body: this.opts.body };
     const attempt = async (t: Transport) => {
       t.onStatus(s => (this.netStatus = s));
       t.onMessage(m => this.onServer(m));
@@ -284,9 +305,10 @@ export class Game {
             this.hud.toast(`Welcome home, ${m.account.name} — lot ${home.id} is right where you left it.`);
           } else {
             this.hud.toast(`Welcome to Maple Street, ${m.account.name}! Pick a plot to build on.`);
-            this.hud.showMap(true, true);
             this.build.setTool('buy');
+            if (store.get(this.createdKey)) this.hud.showMap(true, true);
           }
+          if (!store.get(this.createdKey)) this.openWardrobe(false, true);
         }
         this.refreshMap();
         break;
@@ -340,6 +362,8 @@ export class Game {
   /** New account state: money, needs, garage and fuel (a refill shows up as a jump in the tank). */
   private setAccount(acc: Account, fresh = false) {
     this.account = acc;
+    this.wardrobe.updateAccount(acc);
+    if (acc.look && !this.wardrobe.isOpen && lookKey(acc.look) !== lookKey(this.look)) this.setLook(acc.look);
     for (const [kind, v] of this.vehicles) {
       const srv = acc.fuel[kind];
       if (typeof srv !== 'number') continue;
@@ -690,6 +714,12 @@ export class Game {
       focus = this.driving.root.position;
       const f = this.driving.forward();
       this.cam.update(dt, focus, { chaseYaw: Math.atan2(f.x, f.z), dist: this.driving.preset.cam.dist, height: this.driving.preset.cam.height });
+    } else if (this.wardrobe.isOpen) {
+      focus = this.character.pivot.position;
+      this.cam.update(dt, focus, { dist: 2.6, height: 0.75 });
+      // Slide the view so you stand beside the wardrobe panel instead of behind it.
+      const cam = this.engine.camera;
+      if (innerWidth > 720) cam.position.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion), 0.42);
     } else {
       focus = this.character.pivot.position;
       this.cam.update(dt, focus, { dist: 5, height: 2.2 });
@@ -749,6 +779,7 @@ export class Game {
 
     if (I.wasPressed('Escape') && this.hud.modalOpen) return this.hud.closeModals();
     if (I.wasPressed('KeyM')) return this.toggleMap();
+    if (I.wasPressed('KeyC')) return this.wardrobe.isOpen ? this.wardrobe.close(false) : this.openWardrobe(false);
     if (I.wasPressed('KeyE')) {
       if (this.hud.modalOpen) return this.hud.closeModals();
       if (this.driving) return this.exitVehicle();
@@ -787,6 +818,7 @@ export class Game {
 
   private openShop(door: ShopDoor) {
     this.hud.closeModals();
+    if (door.kind === 'clothing') return this.openWardrobe(true);
     if (door.kind === 'bank') this.hud.showBank(true, this.account);
     else this.hud.showShop(door, this.account);
   }
@@ -926,6 +958,47 @@ export class Game {
     if (img && m.color.getHex() !== 0xffffff) { g.globalCompositeOperation = 'multiply'; g.fillStyle = '#' + m.color.getHexString(); g.fillRect(0, 0, 96, 96); }
     return c.toDataURL('image/webp', 0.85);
   }
+
+  // ------------------------------------------------------------ look & wardrobe
+
+  private get createdKey() { return `maplestreet/created/${this.opts.name.toLowerCase()}`; }
+
+  /** The look last worn in this browser (until the account's arrives), for the chosen body. */
+  private savedLook(): Look {
+    const saved = store.json<Look>(`maplestreet/look/${this.opts.name.toLowerCase()}`);
+    const base = saved && saved.body === this.opts.body ? saved : null;
+    return cleanLook(base ?? defaultLook(this.opts.body), [], base ?? defaultLook(this.opts.body));
+  }
+
+  private setLook(look: Look) {
+    this.look = look;
+    this.character.avatar.setLook(look);
+    store.set(`maplestreet/look/${this.opts.name.toLowerCase()}`, JSON.stringify(look));
+  }
+
+  /** Close-up of your character with the wardrobe panel (the clothing shop opens it with prices). */
+  private openWardrobe(shop: boolean, firstTime = false) {
+    if (this.mode !== 'live') return;
+    if (this.driving) this.exitVehicle();
+    this.clearMove();
+    this.hud.closeModals();
+    this.hud.prompt(null);
+    if (!this.camSaved) this.camSaved = { dist: this.cam.dist, pitch: this.cam.pitch };
+    this.cam.dist = 2.6;
+    this.cam.pitch = 0.1;
+    this.cam.yaw = this.character.yaw;
+    this.wardrobe.open(this.look, this.account, shop, firstTime);
+  }
+
+  private wardrobeClosed() {
+    if (this.camSaved) { this.cam.dist = this.camSaved.dist; this.cam.pitch = this.camSaved.pitch; this.camSaved = null; }
+    if (!this.homeLot() && !this.hud.mapOpen && this.welcomed && store.get(this.createdKey) && !this.mapShownAfterCreate) {
+      this.mapShownAfterCreate = true;
+      this.refreshMap();
+      this.hud.showMap(true, true);
+    }
+  }
+  private mapShownAfterCreate = false;
 
   private sendState() {
     const me = this.selfId!;

@@ -12,6 +12,24 @@
  * is deterministic so every host produces the same traffic.
  */
 import type { PlayerSnap, VehicleKind, VehicleSnap } from './Protocol';
+import { CLOTH_COLORS, defaultLook, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, WARDROBE, type Body, type Look } from './Wardrobe';
+
+/** A deterministic outfit per neighbor, so they dress the same for everyone. */
+function npcLook(body: Body, seed: number): Look {
+  let s = seed * 9301 + 49297;
+  const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const pick = <T>(a: T[]) => a[Math.floor(r() * a.length) % a.length];
+  const piece = (slot: string) => pick(WARDROBE.filter(w => w.slot === slot));
+  const top = piece('top'), pants = piece('pants'), shoes = piece('shoes'), hat = r() < 0.35 ? piece('hat') : WARDROBE.find(w => w.id === 'no-hat')!;
+  return {
+    ...defaultLook(body),
+    skin: pick(SKIN_TONES), hair: pick(HAIR_STYLES[body]).id, hairColor: pick(HAIR_COLORS.slice(0, 8)), eyes: pick(EYE_COLORS),
+    top: top.id, topColor: pick(CLOTH_COLORS), topColor2: pick(CLOTH_COLORS), tee: pick(CLOTH_COLORS),
+    pants: pants.id, pantsColor: pants.colors[0], pantsColor2: pants.colors[1],
+    shoes: shoes.id, shoesColor: shoes.colors[0], shoesColor2: shoes.colors[1],
+    hat: hat.id, hatColor: pick(CLOTH_COLORS), hatColor2: pick(CLOTH_COLORS),
+  };
+}
 
 /** Chassis-center height above the road for each kind (matches VehiclePresets at rest). */
 const RIDE_HEIGHT: Record<VehicleKind, number> = { truck: 0.94, hdtruck: 1.08, coupe: 0.66, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, zeroturn: 0.42, trailer: 0.59 };
@@ -117,27 +135,27 @@ const STOP_WAIT = 1.4;        // seconds parked at the line
 const FOLLOW_GAP = 9;         // metres kept to whatever is ahead in the lane
 const LOOKAHEAD = 45;
 
-interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number }
-interface Walker { id: string; name: string; color: string; route: Walk; s: number; speed: number }
+interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look }
+interface Walker { id: string; name: string; color: string; route: Walk; s: number; speed: number; look?: Look }
 
 const driver = (id: string, name: string, kind: VehicleKind, route: Path, s: number, speed: number): Driver =>
   ({ id, name, kind, route, s, speed, steer: 0, v: speed * 0.5, wait: 0, served: -1, x: 0, z: 0, fx: 1, fz: 0, roll: 0 });
 
 export class NpcTraffic {
   private drivers: Driver[] = [
-    driver('npc-hendricks', 'Mr. Hendricks', 'sedan', RING_A, 0, 11),
-    driver('npc-alvarez', 'Rosa Alvarez', 'hdtruck', RING_B, 160, 10),
-    driver('npc-okafor', 'Dele Okafor', 'golfcart', RING_A, 260, 6),
-    driver('npc-lindqvist', 'Anna Lindqvist', 'sedan', DOWNTOWN, 40, 11.5),
-    driver('npc-brennan', 'Sean Brennan', 'coupe', DOWNTOWN, 300, 13),
-    driver('npc-nakamura', 'Kenji Nakamura', 'truck', RING_B, 420, 10),
+    { ...driver('npc-hendricks', 'Mr. Hendricks', 'sedan', RING_A, 0, 11), look: npcLook('male', 3) },
+    { ...driver('npc-alvarez', 'Rosa Alvarez', 'hdtruck', RING_B, 160, 10), look: npcLook('female', 4) },
+    { ...driver('npc-okafor', 'Dele Okafor', 'golfcart', RING_A, 260, 6), look: npcLook('male', 5) },
+    { ...driver('npc-lindqvist', 'Anna Lindqvist', 'sedan', DOWNTOWN, 40, 11.5), look: npcLook('female', 6) },
+    { ...driver('npc-brennan', 'Sean Brennan', 'coupe', DOWNTOWN, 300, 13), look: npcLook('male', 7) },
+    { ...driver('npc-nakamura', 'Kenji Nakamura', 'truck', RING_B, 420, 10), look: npcLook('male', 8) },
   ];
   private walkers: Walker[] = [
-    { id: 'npc-walker-1', name: 'June', color: '#c2564a', route: WALK_N, s: 10, speed: 1.3 },
-    { id: 'npc-walker-2', name: 'Theo', color: '#4a8cc2', route: WALK_S, s: 70, speed: 1.5 },
-    { id: 'npc-walker-3', name: 'Priya', color: '#7a4ac2', route: WALK_DN, s: 150, speed: 1.2 },
-    { id: 'npc-walker-4', name: 'Marcus', color: '#3f8f5a', route: WALK_DS, s: 40, speed: 1.4 },
-    { id: 'npc-walker-5', name: 'Lena', color: '#d18a2e', route: WALK_DN, s: 60, speed: 1.1 },
+    { id: 'npc-walker-1', name: 'June', color: '#c2564a', route: WALK_N, s: 10, speed: 1.3, look: npcLook('female', 9) },
+    { id: 'npc-walker-2', name: 'Theo', color: '#4a8cc2', route: WALK_S, s: 70, speed: 1.5, look: npcLook('male', 10) },
+    { id: 'npc-walker-3', name: 'Priya', color: '#7a4ac2', route: WALK_DN, s: 150, speed: 1.2, look: npcLook('female', 11) },
+    { id: 'npc-walker-4', name: 'Marcus', color: '#3f8f5a', route: WALK_DS, s: 40, speed: 1.4, look: npcLook('male', 12) },
+    { id: 'npc-walker-5', name: 'Lena', color: '#d18a2e', route: WALK_DN, s: 60, speed: 1.1, look: npcLook('female', 13) },
   ];
   /** Hosts call this to keep NPCs from driving through players who stopped on the road. */
   obstacles: { x: number; z: number }[] = [];
@@ -225,11 +243,11 @@ export class NpcTraffic {
       const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2), cr = Math.cos(d.roll / 2), sr = Math.sin(d.roll / 2);
       const vid = `${d.id}:${d.kind}`;
       vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: d.x, y, z: d.z, qx: cy * sr, qy: sy * cr, qz: -sy * sr, qw: cy * cr, steer: d.steer, speed: d.v, hitchedTo: null });
-      players.push({ id: d.id, name: d.name, color: '#888888', x: d.x, y, z: d.z, yaw: 0, speed: 0, vehicleId: vid });
+      players.push({ id: d.id, name: d.name, color: '#888888', x: d.x, y, z: d.z, yaw: 0, speed: 0, vehicleId: vid, look: d.look });
     }
     for (const w of this.walkers) {
       const p = walkAt(w.route, w.s);
-      players.push({ id: w.id, name: w.name, color: w.color, x: p.x, y: 0.14, z: p.z, yaw: Math.atan2(p.fx, p.fz), speed: w.speed, vehicleId: null });
+      players.push({ id: w.id, name: w.name, color: w.color, x: p.x, y: 0.14, z: p.z, yaw: Math.atan2(p.fx, p.fz), speed: w.speed, vehicleId: null, look: w.look });
     }
     return { players, vehicles };
   }

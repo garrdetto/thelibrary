@@ -32,6 +32,12 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
   - Walls up, cutaway or down with Home
 - **Money:** everything refunds 100%.
 
+## Characters and wardrobe
+
+- The start screen asks whether your character is male or female. The two scanned models (`public/modules/maplestreet/{male,female}.glb`) are rebuilt from the raw scans by `tools/build-characters.mjs` (simplified mesh, auto-rigged skeleton, clothing-region mask `*-mask.png`); run it with `@gltf-transform/*`, `meshoptimizer` and `sharp` installed.
+- `src/avatar/`: `AvatarAssets` (loading, hair pressed flat for buzz/long/hats), `AvatarMaterial` (TSL recolor shader: skin, hair, eyes, jacket, tee, pants, shoes, patterns), `HairAndHats` (long hair, buns, beanie/cap/bucket hat), `AvatarModel` (pose: walk, idle, seated). `Character.ts` shows a stand-in until the model loads.
+- Wardrobe (C): `src/game/WardrobeUI.ts`. Catalog and look validation: `shared/Wardrobe.ts`. Hair, eyes and skin are free; clothing is bought at **Maple Threads** downtown and kept in `account.wardrobe`; the worn look is `account.look`, validated by `RoomLogic` (`{t:'look'}`) and sent to everyone in player snapshots.
+
 ## Admin-published items
 
 The site admin can add Buy-mode items without a code change: **Admin → Maple Street items** opens a dev-mode editor (React Three Fiber) where a .glb/.gltf is previewed on a 1 m grid, scaled with drag handles, named, priced and published. `/api/maplestreet-items` stores the model in KV and the record in D1.

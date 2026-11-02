@@ -47,6 +47,7 @@ export interface HudEvents {
   buy(shop: string, item: string): void;
   testDrive(kind: VehicleKind): void;
   map(): void;
+  wardrobe(): void;
   mapAction(action: 'buy' | 'visit' | 'home', lot: LotState): void;
   /** Texture preview (data URL) for a finish or floor material. */
   texture(name: string): string;
@@ -122,6 +123,7 @@ export class Hud {
     $('shopClose').onclick = () => this.showShop(null);
     $('jobBtn').onclick = () => ev.requestJob();
     $('mapBtn').onclick = () => ev.map();
+    $('wardrobeBtn').onclick = () => ev.wardrobe();
     for (const id of ['bank', 'shop', 'mapModal']) $(id).addEventListener('click', e => { if (e.target === $(id)) this.closeModals(); });
 
     this.map = new PlotMap($<HTMLCanvasElement>('mapCanvas'), lot => { this.mapLot = lot; this.renderMapInfo(); });
@@ -380,8 +382,11 @@ export class Hud {
 
   // ------------------------------------------------------------ windows
 
-  get modalOpen() { return this.bankOpen || this.shopOpen || this.mapOpen; }
-  closeModals() { this.showBank(false); this.showShop(null); this.showMap(false); }
+  /** Set by Game: the wardrobe panel counts as a window that pauses walking. */
+  wardrobeOpen: () => boolean = () => false;
+  closeWardrobe: () => void = () => {};
+  get modalOpen() { return this.bankOpen || this.shopOpen || this.mapOpen || this.wardrobeOpen(); }
+  closeModals() { this.showBank(false); this.showShop(null); this.showMap(false); this.closeWardrobe(); }
 
   showBank(on: boolean, acc?: Account | null) {
     $('bank').classList.toggle('show', on);
@@ -415,13 +420,14 @@ export class Hud {
       gas: `Snacks and drinks inside · fuel is $${FUEL_PRICE.toFixed(2)}/gal at the pumps (press F)`,
       diner: 'Hot plates all day', cafe: 'Coffee and fresh pastries', grocery: 'Stock the fridge at home: each meal is cooked with your fridge',
       hardware: 'Permanent upgrades for the work you do', dealer: 'New vehicles go straight to your garage', bank: '',
+      clothing: 'Jackets, bottoms, shoes and hats for your wardrobe',
     };
     $('shopName').textContent = door.name;
     $('shopSub').textContent = `${sub[door.kind] ?? ''} · Balance ${money(acc.money)}`;
     const list = $('shopItems');
     list.innerHTML = '';
     for (const item of SHOP_ITEMS[door.kind] ?? []) {
-      const owned = (item.vehicle && acc.garage.includes(item.vehicle)) || (item.upgrade && acc.upgrades.includes(item.upgrade));
+      const owned = (item.vehicle && acc.garage.includes(item.vehicle)) || (item.upgrade && acc.upgrades.includes(item.upgrade)) || (item.clothing && acc.wardrobe.includes(item.clothing));
       const row = document.createElement('div');
       row.className = 'shopItem';
       row.innerHTML = `<b>${esc(item.name)}</b><span>${esc(item.blurb)}</span>`;
