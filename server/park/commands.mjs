@@ -10,6 +10,7 @@ import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from '
 import { flatSpec, validFlatSize } from './flatspec.mjs'
 
 const MAX_RECT = 32
+const INVERTED_STATION_LIFT = 7
 const ok = (extra = {}) => ({ ok: true, ...extra })
 const fail = error => ({ ok: false, error })
 const STAFF_NAMES = {
@@ -599,7 +600,7 @@ const HANDLERS = {
     const id = state.nextId++
     const ride = {
       id, type: 'ride', kind: 'coaster', style: cmd.style, x: cmd.x, y: cmd.y, park, name: nextName(state, style.name), price: 2.5, status: 'closed',
-      start: { x: cmd.x, y: cmd.y, dir: cmd.dir, h: Math.round(ground / 0.5) + 1 }, pieces: [], complete: false, trains: [], cars: 3, spent: 0, rev: 0,
+      start: { x: cmd.x, y: cmd.y, dir: cmd.dir, h: Math.round(ground / 0.5) + 1 + (cmd.style === 'inverted' ? INVERTED_STATION_LIFT : 0) }, pieces: [], complete: false, trains: [], cars: 3, spent: 0, rev: 0,
       entrance: 0, exit: 0, queue: [], riders: [], cycle: { phase: 'loading', timer: 0 }, reliability: 100, downtime: 0, revenue: 0, totalRiders: 0, monthRiders: 0,
       built: state.time.seconds, color: null, stats: null, carsSet: false, brokenAt: 0, mechanic: 0, cycles: 0,
     }

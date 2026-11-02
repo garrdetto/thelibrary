@@ -32,6 +32,12 @@ import {
   footprintTiles,
   WAVE_SETTINGS,
   FLAT_RIDES,
+  COASTER_PRESETS,
+  guestProfile,
+  intensityLimit,
+  warmUp,
+  THRILL_SEEKER_SHARE,
+  WARM_UP_MAX,
 } from './index.mjs'
 
 function parkFixture() {
@@ -392,4 +398,81 @@ test('every water ride builds with balanced stats and room for riders', () => {
     if (def.stats.i >= 4) assert.ok(def.cost >= 5600, `${id} is a thrill ride priced below the Waterslide`)
     if (def.stats.i < 1) assert.ok(def.cost <= 3000, `${id} is a gentle ride priced like a thrill ride`)
   }
+})
+
+test('compact ready-made coasters close their own circuit inside their stated footprint', () => {
+  const compact = Object.entries(COASTER_PRESETS).filter(([, design]) => design.footprint)
+  assert.ok(compact.length >= 10)
+  const styles = new Set(compact.map(([, design]) => design.style))
+  for (const style of ['junior', 'wooden', 'steel', 'inverted', 'launch', 'extreme', 'kart', 'waterSlide']) assert.ok(styles.has(style), style)
+  for (const [id, design] of compact) {
+    const state = parkFixture()
+    const made = applyCommand(state, { t: 'preset', preset: id, x: 60, y: 60, dir: 0 })
+    assert.equal(made.ok, true, `${id}: ${made.error}`)
+    const ride = state.entities[made.id]
+    assert.equal(ride.complete, true, id)
+    assert.equal(ride.pieces.length, design.station + design.pieces.length, `${id} needed auto-complete`)
+    assert.equal(ride.stats?.valid, true, `${id} failed its test run`)
+    assert.equal(made.cost, design.cost, `${id} price changed`)
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const [index, cells] of state.trackCells) if (cells.some(cell => cell.ride === ride.id)) {
+      const x = index % state.map.w, y = Math.floor(index / state.map.w)
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y)
+    }
+    assert.ok(x1 - x0 + 1 <= design.footprint[0] && y1 - y0 + 1 <= design.footprint[1], `${id} spills past ${design.footprint.join('x')}`)
+    assert.ok(Math.max(...design.footprint) <= 18, id)
+  }
+})
+
+test('suspended coasters raise their station so riders clear the ground', () => {
+  const state = parkFixture()
+  const made = applyCommand(state, { t: 'coaster', style: 'inverted', x: 60, y: 60, dir: 0, length: 3 })
+  assert.equal(made.ok, true, made.error)
+})
+
+test('about a quarter of adult guests are thrill seekers with a higher intensity limit', () => {
+  let seed = 12345
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296 }
+  const adults = Array.from({ length: 4000 }, () => guestProfile(rnd, false))
+  const kids = Array.from({ length: 1000 }, () => guestProfile(rnd, true))
+  const share = adults.filter(g => g.type === 'thrill').length / adults.length
+  assert.ok(Math.abs(share - THRILL_SEEKER_SHARE) < 0.03, `thrill share ${share}`)
+  for (const g of adults) assert.ok(g.type === 'thrill' ? g.maxI >= 8 && g.maxI <= 13 && g.tolerance >= 7 : g.maxI >= 6 && g.maxI <= 11.5)
+  assert.ok(kids.every(g => g.type === 'kid' && g.maxI <= 6.5))
+})
+
+test('guests warm up and follow friends onto intense rides, but kids stay capped', () => {
+  const state = { thrillCrowds: new Map([[7, [10, 10, 11, 10]]]) }
+  const ride = { id: 7, stats: { valid: true, e: 6, i: 9, n: 4 } }
+  const guest = { type: 'casual', minI: 2, maxI: 8, warm: 0, x: 10.5, y: 10.5 }
+  assert.equal(intensityLimit(state, guest, ride), 8 + 1.5)
+  const alone = { ...guest, x: 40, y: 40 }
+  assert.equal(intensityLimit(state, alone, ride), 8)
+  for (let k = 0; k < 20; k++) warmUp(alone, ride, true)
+  assert.equal(alone.warm, WARM_UP_MAX)
+  assert.equal(intensityLimit(state, alone, ride), 8 + WARM_UP_MAX)
+  const kid = { type: 'kid', kid: true, minI: 0, maxI: 5, warm: 0, x: 10.5, y: 10.5 }
+  warmUp(kid, ride, true)
+  assert.equal(kid.warm, 0)
+  assert.equal(intensityLimit(state, kid, ride), 5)
+})
+
+test('a park whose only ride is very intense still gets riders', () => {
+  const state = createPark('sandbox')
+  state.parks[0].named = true
+  state.parks[0].cash = 1_000_000
+  for (const e of Object.values(state.entities)) if (e.type === 'scenery') { state.map.obj[tileIndex(state.map, e.x, e.y)] = 0; delete state.entities[e.id] }
+  const entrance = Object.values(state.entities).find(e => e.type === 'parkEntrance')
+  const x = entrance.x, y = entrance.y
+  assert.equal(applyCommand(state, { t: 'path', kind: 1, elevation: 0, x0: x, y0: y - 13, x1: x, y1: y - 1 }).ok, true)
+  const made = applyCommand(state, { t: 'flat', ride: 'dropTower', x: x + 2, y: y - 11, rot: 0 })
+  assert.equal(made.ok, true, made.error)
+  assert.equal(applyCommand(state, { t: 'gate', ride: made.id, role: 'entrance', x: x + 1, y: y - 11 }).ok, true)
+  assert.equal(applyCommand(state, { t: 'gate', ride: made.id, role: 'exit', x: x + 1, y: y - 9 }).ok, true)
+  const ride = state.entities[made.id]
+  ride.status = 'open'; ride.price = 0
+  ride.stats = { ...ride.stats, e: 6, i: 9.2 }
+  for (let k = 0; k < 4000; k++) stepPark(state)
+  assert.ok(ride.totalRiders > 0, 'nobody rode')
+  assert.ok(state.guests.some(g => g.type === 'thrill'))
 })

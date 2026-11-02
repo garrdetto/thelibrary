@@ -67,7 +67,7 @@ export function flatSpec(rideId: string, size?: [number, number] | null, wave?: 
 export function rideFlatSpec(ride: Entity): FlatSpec | null
 export function validFlatSize(def: FlatRideDef, w: unknown, h: unknown): boolean
 export const COASTER_STYLES: Record<string, CoasterStyle>
-export const COASTER_PRESETS: Record<string, { name: string; style: string; station: number; description: string; pieces: Piece[] }>
+export const COASTER_PRESETS: Record<string, { name: string; style: string; station: number; description: string; pieces: Piece[]; footprint?: [number, number]; height?: number; cost?: number }>
 export const STALLS: Record<string, StallDef>
 export const SCENERY: Record<string, { name: string; cost: number; height: number }>
 export const PATH_ADDITIONS: Record<number, { id: string; name: string; cost: number }>

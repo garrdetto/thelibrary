@@ -765,7 +765,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       </button>)}</div>
       <p className="pk-label">Ready-made designs</p>
       <div className="pk-cards">{Object.entries(COASTER_PRESETS).map(([id, d]) => <button key={id} className={`pk-card ${tool.kind === 'coaster' && tool.preset === id ? 'on' : ''}`} onClick={() => { setTool({ kind: 'coaster', style: d.style, dir: 0, length: d.station, preset: id }); setPanel(null) }}>
-        <strong><i className="pk-swatch" style={{ background: COASTER_STYLES[d.style].track }} />{d.name}</strong><span>{COASTER_STYLES[d.style].name}</span><small>{d.description}</small>
+        <strong><i className="pk-swatch" style={{ background: COASTER_STYLES[d.style].track }} />{d.name}</strong><span>{COASTER_STYLES[d.style].name}</span><small>{d.description}</small>{d.footprint && <em>{d.footprint[0]}×{d.footprint[1]} squares · {d.height} m tall · about {money(d.cost ?? 0)}</em>}
       </button>)}</div>
       <p className="pk-hint">Click to place the station, then build the circuit piece by piece, or press Auto-finish to close the loop. Designs are built in one go and finished to fit the ground; press R to turn them before placing.</p>
     </Window>}
@@ -854,9 +854,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     {entity?.type === 'scenery' && <Window title={SCENERY[entity.kind!]?.name ?? 'Scenery'} onClose={() => setSelection(null)}>{!viewOnly && <div className="pk-actions"><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'demolish', id: entity.id }); setSelection(null) }}><Trash2 size={13} /> Remove</button></div>}</Window>}
     {entity?.type === 'parkEntrance' && <Window title={state.parks[entity.park]?.name ?? 'Park entrance'} onClose={() => setSelection(null)}><p className="pk-hint">Guests arrive and leave through here. Entry fee {money(state.parks[entity.park]?.entryFee ?? 0)}.</p></Window>}
     {selection?.kind === 'guest' && guestInfo && <Window title={guestName(guestInfo.id)} onClose={() => setSelection(null)}>
-      <p className="pk-hint">{guestInfo.kid ? 'Young visitor' : 'Visitor'} · {guestInfo.state === 'queue' ? 'Queuing' : guestInfo.state === 'ride' ? 'On a ride' : guestInfo.state === 'sit' ? 'Resting' : 'Walking'} · {money(guestInfo.cash)} left · spent {money(guestInfo.spent)}</p>
+      <p className="pk-hint">{guestInfo.kid ? 'Young visitor' : guestInfo.type === 'thrill' ? 'Thrill seeker' : 'Visitor'}{guestInfo.warm ? ' · warmed up' : ''} · {guestInfo.state === 'queue' ? 'Queuing' : guestInfo.state === 'ride' ? 'On a ride' : guestInfo.state === 'sit' ? 'Resting' : 'Walking'} · {money(guestInfo.cash)} left · spent {money(guestInfo.spent)}</p>
       <Bar label="Happiness" value={guestInfo.happy} /><Bar label="Energy" value={guestInfo.energy} /><Bar label="Hunger" value={guestInfo.hunger} invert /><Bar label="Thirst" value={guestInfo.thirst} invert /><Bar label="Restroom" value={guestInfo.toilet} invert /><Bar label="Nausea" value={guestInfo.nausea} invert />
-      <p className="pk-hint">Likes intensity {guestInfo.minI.toFixed(1)}–{guestInfo.maxI.toFixed(1)} · {guestInfo.rides} rides so far{guestInfo.items.length ? ` · carrying ${guestInfo.items.join(', ')}` : ''}</p>
+      <p className="pk-hint">Likes intensity {guestInfo.minI.toFixed(1)}–{(guestInfo.maxI + (guestInfo.warm ?? 0)).toFixed(1)} · {guestInfo.rides} rides so far{guestInfo.items.length ? ` · carrying ${guestInfo.items.join(', ')}` : ''}</p>
       <ul className="pk-thoughts">{[...guestInfo.thoughts].reverse().map((t, i) => <li key={i}><span>“{t}”</span></li>)}</ul>
     </Window>}
     {staffMember && <Window title={staffMember.name} onClose={() => setSelection(null)}>
