@@ -1,6 +1,6 @@
 # Pool real-time server
 
-Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v51` (v51 adds thrill-seeking guests and larger extreme ride capacity); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
+Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v50` (v50 adds ten compact ready-made coasters and raises Suspended Looper stations); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
 
 Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin, currently `https://thelibrary.garrdetto.workers.dev`. Multiple trusted production or preview origins can be comma-separated. When configured, requests from other origins are rejected. When unset or empty, only `https://thelibrary.garrdetto.workers.dev` is accepted (v39 default). Configure explicit origins in production. In the site's Cloudflare build variables, set `VITE_POOL_SERVER_URL` to this service's public HTTPS URL, then redeploy the frontend. This public URL is compiled into the client; it is not a secret. When unset, the frontend uses its existing default service URL; signed-in solo practice remains available if multiplayer is offline.
 
@@ -180,11 +180,3 @@ Redeploy this service with the frontend so online parks run the same rules as so
 Redeploy this service with the frontend so online parks run the same rules as solo play:
 - Ten compact ready-made coasters (`COASTER_PRESETS` entries with `footprint`, `height` and `cost`), each at most 16 squares on a side, that close their own circuit without auto-complete.
 - Suspended Looper stations now start 3.5 m above the ground (`INVERTED_STATION_LIFT`), so the style can be built on flat land.
-
-### Thrill Park v51
-
-Redeploy this service with the frontend so online parks run the same rules as solo play:
-- A quarter of adult guests are thrill seekers (`type: 'thrill'`, intensity limit 8–13). Other adults now accept 6–11.5; kids are unchanged.
-- Guests warm up: each ride they enjoy raises their limit by 0.3, up to +2.5 (`warm`). Two or more nearby guests heading to the same intense ride let a hesitant guest join with +1.5 (`thrillCrowds`, refreshed every 20 ticks).
-- Thrill seekers re-ride intense rides they love.
-- Drop Tower 24 riders, Twister Arm 24, Zipper 28, Gravitron 36 (cost and upkeep raised by half the capacity increase). Launch, Tempest and Suspended coasters seat 6 per car.
