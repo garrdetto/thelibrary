@@ -28,6 +28,8 @@ export class Vehicle {
   private wheels: WheelVis[] = [];
   private headlamp: THREE.SpotLight | null = null;
   private steerAngle = 0;
+  private pedal = 0;
+  private readonly wheelbase: number;
   input: DriveInput = { throttle: 0, steer: 0, brake: 0, handbrake: false };
   trailer: Vehicle | null = null;
   towedBy: Vehicle | null = null;
@@ -37,6 +39,8 @@ export class Vehicle {
 
   constructor(private physics: Physics, kind: VehiclePreset['kind'], readonly id: string, pos: THREE.Vector3, yaw: number, scene: THREE.Scene, color?: number) {
     const R = physics.R, P = (this.preset = PRESETS[kind]);
+    const steerX = P.axles.filter(a => a.steer).map(a => a.x), fixedX = P.axles.filter(a => !a.steer).map(a => a.x);
+    this.wheelbase = steerX.length && fixedX.length ? Math.max(0.8, Math.abs(Math.max(...steerX) - Math.min(...fixedX))) : 2.5;
     const c = P.chassis;
     _q.setFromAxisAngle(_v.set(0, 1, 0), yaw);
 
@@ -128,23 +132,36 @@ export class Vehicle {
     const inp = this.empty ? { ...raw, throttle: 0 } : raw;
     if (this.mpm && Math.abs(inp.throttle) > 0.05) this.fuel = Math.max(0, this.fuel - Math.abs(speed) * dt * this.mpm * (0.6 + 0.4 * Math.abs(inp.throttle)) - dt * this.mpm * 2);
 
-    // Speed-sensitive steering with rate limiting (no instant wheel snaps).
-    const limit = P.maxSteer / (1 + Math.abs(speed) * 0.045);
+    // Steering like a real car: the driver can't turn the wheel instantly, quick
+    // hands at parking speed but calm at speed, and the most lock you can use is
+    // what the tyres can hold (bicycle model: tan δ = L·a_lat / v²), so a
+    // highway lane change is a gentle drift instead of a spin. Releasing the key
+    // lets caster self-align the wheel back to center, faster the faster you go.
+    const v = Math.abs(speed);
+    const gripLock = Math.atan((this.wheelbase * 8.5) / Math.max(1, v * v));
+    const limit = Math.min(P.maxSteer, Math.max(P.maxSteer * 0.12, gripLock));
     const target = inp.steer * limit;
-    // Turn in briskly, and self-center even faster when the wheel is released.
-    const rate = (inp.steer === 0 ? 4.2 : 3.0) * dt;
+    const turnRate = P.maxSteer * (2.6 - Math.min(1.5, v * 0.06));
+    const centerRate = P.maxSteer * (1.4 + Math.min(2.4, v * 0.18));
+    const rate = (inp.steer === 0 || Math.sign(inp.steer) !== Math.sign(this.steerAngle) && this.steerAngle !== 0 ? Math.max(turnRate, centerRate) : turnRate) * dt;
     this.steerAngle += THREE.MathUtils.clamp(target - this.steerAngle, -rate, rate);
 
-    // Throttle: forward, brake-to-stop, then reverse at 45% force.
+    // Pedals ramp instead of switching on and off, so launches and stops are progressive.
+    const pedalRate = dt * 3.2;
+    this.pedal += THREE.MathUtils.clamp(inp.throttle - this.pedal, -pedalRate * 1.6, pedalRate);
+    const pedal = Math.abs(inp.throttle) < 0.01 && Math.abs(this.pedal) < 0.05 ? 0 : this.pedal;
+
+    // Engine: strong low-end torque that tapers toward top speed; forward, brake-to-stop, then reverse at 40%.
     let engine = 0, brake = inp.brake * P.brake;
-    if (inp.throttle > 0) {
-      if (speed < -0.6) brake = Math.max(brake, P.brake * inp.throttle);
-      else engine = P.engineForce * inp.throttle * Math.sqrt(Math.max(0, 1 - speed / P.topSpeed));
-    } else if (inp.throttle < 0) {
-      if (speed > 0.6) brake = Math.max(brake, P.brake * -inp.throttle);
-      else engine = P.engineForce * inp.throttle * 0.45 * Math.max(0, 1 + speed / (P.topSpeed * 0.3));
+    const torque = (u: number) => Math.max(0, 1 - u) ** 0.6 * (1 + 0.25 * Math.max(0, 1 - u * 3));
+    if (pedal > 0) {
+      if (speed < -0.6) brake = Math.max(brake, P.brake * pedal);
+      else engine = P.engineForce * pedal * torque(speed / P.topSpeed);
+    } else if (pedal < 0) {
+      if (speed > 0.6) brake = Math.max(brake, P.brake * -pedal * (0.55 + 0.45 * Math.min(1, -pedal * 1.4)));
+      else engine = P.engineForce * pedal * 0.4 * Math.max(0, 1 + speed / (P.topSpeed * 0.22));
     } else if (P.engineForce > 0) {
-      brake = Math.max(brake, P.brake * 0.04);       // engine braking / rolling resistance
+      brake = Math.max(brake, P.brake * (v > 2 ? 0.035 : 0.12));   // engine braking, and the car settles when it's nearly stopped
     }
 
     // Zero-turn: the two rear motors run at different speeds; we model the
@@ -170,13 +187,19 @@ export class Vehicle {
       this.body.setAngvel({ x: av.x - (rollRate * fwd.x - pitchRate * fwd.z) * k * 0.35, y: av.y, z: av.z - (rollRate * fwd.z + pitchRate * fwd.x) * k * 0.35 }, true);
     }
 
+    // Ackermann geometry: the inside front wheel turns tighter than the outside one,
+    // so the fronts don't scrub and the car carves a clean arc.
+    const tanD = Math.tan(this.steerAngle);
     let i = 0;
     for (const a of P.axles) {
       for (let s = 0; s < 2; s++, i++) {
-        this.ctrl.setWheelSteering(i, a.steer ? this.steerAngle : 0);
+        const side = s === 0 ? 1 : -1;                              // +1 = right wheel (+Z)
+        const ack = Math.abs(tanD) < 1e-4 ? 0 : Math.atan(this.wheelbase / (this.wheelbase / tanD + side * a.halfTrack));
+        this.ctrl.setWheelSteering(i, a.steer ? ack : 0);
         this.ctrl.setWheelEngineForce(i, a.drive ? engine : 0);
         const hb = inp.handbrake && !a.steer ? P.brake * 1.5 : 0;
         this.ctrl.setWheelBrake(i, Math.max(brake, hb));
+        if (!a.steer && !a.caster && P.engineForce > 0) this.ctrl.setWheelSideFrictionStiffness(i, inp.handbrake && v > 3 ? P.sideStiffness * 0.45 : P.sideStiffness);
       }
     }
 

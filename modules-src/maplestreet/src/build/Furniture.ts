@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { CATALOG, SWATCHES } from '../../shared/Catalog';
+import { buildCustomModel } from './CustomModels';
 
 const cache = new Map<string, THREE.MeshStandardMaterial>();
 const mat = (color: number | string, rough = 0.7, metal = 0, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) => {
@@ -286,8 +287,9 @@ const BUILDERS: Record<string, B> = {
 };
 
 export function buildFurniture(catalogId: string, tint = 0): THREE.Group {
-  const g = new THREE.Group();
   const item = CATALOG[catalogId];
+  if (item?.custom) return buildCustomModel(item);
+  const g = new THREE.Group();
   const defaults: Record<string, number> = { sofa: 0x6b7b8c, loveseat: 0x6b7b8c, armchair: 0xb89b72, recliner: 0x5a4636, bed: 0x6b7b8c, twinBed: 0x7d8c6b, bunkBed: 0x2e7dd1, rugSmall: 0x8b3a3a, rugLarge: 0x2e3a55, painting: 0x3f5e46, flowerBed: 0x6b4a33, doghouse: 0xb5651d, patioSet: 0xc84a3a, lounger: 0x2e7dd1, toyChest: 0xd9b44a };
   const base = tint > 0 ? SWATCHES[tint] : defaults[catalogId] ?? (item?.func === 'storage' || item?.func === 'surfaces' ? 0x8a5d3b : 0x6b7b8c);
   const P = (catalogId === 'counter' || catalogId === 'sinkCounter' || catalogId === 'island') && tint === 0 ? C.white

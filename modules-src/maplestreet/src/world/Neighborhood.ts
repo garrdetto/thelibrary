@@ -13,6 +13,7 @@ import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import { Physics } from '../physics/Physics';
 import { Downtown } from './Downtown';
 import { Lawn } from './Lawn';
+import { Roads } from './Roads';
 
 const LIGHT_POOL = 6;
 
@@ -100,25 +101,7 @@ export class Neighborhood {
   private buildRoads() {
     this.slab(ROADS, 'asphalt', -0.02, 0.02, false);
     this.slab(SIDEWALKS, 'sidewalk', 0, 0.14, true);
-    // Curbs: thin granite-gray strips on the road side of each sidewalk.
-    this.slab(SIDEWALKS.map(s => ({ cx: s.cx, cz: s.cz + (s.cz > 0 ? -1.02 : 1.02), sx: s.sx, sz: 0.16 })), 'concrete', 0, 0.16, false);
-
-    // Lane markings: double-yellow on Main St, dashed white elsewhere.
-    const paint = (color: number) => new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
-    const yellow: THREE.BufferGeometry[] = [], white: THREE.BufferGeometry[] = [];
-    const strip = (arr: THREE.BufferGeometry[], cx: number, cz: number, sx: number, sz: number) => {
-      const g = new THREE.PlaneGeometry(sx, sz).rotateX(-Math.PI / 2).toNonIndexed();
-      g.translate(cx, 0.025, cz); arr.push(g);
-    };
-    const main = ROADS[0], mainLen = main.sx - 4;
-    strip(yellow, main.cx, -0.12, mainLen, 0.1); strip(yellow, main.cx, 0.12, mainLen, 0.1);
-    for (const r of ROADS.slice(1)) {
-      const alongX = r.sx > r.sz, len = alongX ? r.sx : r.sz;
-      for (let t = -len / 2 + 2; t < len / 2 - 2; t += 6) strip(white, alongX ? r.cx + t + 1.5 : r.cx, alongX ? r.cz : r.cz + t + 1.5, alongX ? 3 : 0.12, alongX ? 0.12 : 3);
-    }
-    // Edge lines on Main St.
-    strip(white, main.cx, -4.6, mainLen, 0.12); strip(white, main.cx, 4.6, mainLen, 0.12);
-    this.group.add(new THREE.Mesh(mergeGeometries(yellow), paint(0xe2b434)), new THREE.Mesh(mergeGeometries(white), paint(0xeeeeee)));
+    new Roads(this.group, this.physics, this.mats, this.lots);
   }
 
   // ---------------------------------------------------------------- lots

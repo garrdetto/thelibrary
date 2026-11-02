@@ -27,7 +27,7 @@ export class CameraRig {
     }
     // Arrow keys: ← / → orbit around the player, ↑ / ↓ tilt the view
     // up over the top or down toward the horizon. Holding a key keeps turning.
-    const orbit = this.input.axis(['ArrowRight'], ['ArrowLeft']);
+    const orbit = this.input.axis(['ArrowLeft'], ['ArrowRight']);
     const tilt = this.input.axis(['ArrowDown'], ['ArrowUp']);
     if (orbit || tilt) {
       this.yaw += orbit * 1.9 * dt;

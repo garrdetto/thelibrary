@@ -16,15 +16,15 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 | --- | --- |
 | WASD | Walk, or drive. S brakes and then reverses, and Space is the handbrake. |
 | Click | Walk to the spot. Clicking a vehicle, shop door or usable item at home walks you there and uses it. |
-| Arrow keys | Orbit (← →) and tilt (↑ ↓) the camera. Right-drag also orbits. |
+| Arrow keys | Orbit (← →: the camera swings left or right around you) and tilt (↑ ↓) the camera. Right-drag also orbits. |
 | E / F / T / R | E gets in or out, shops or uses an item. F fills up at a pump, or calls a tow when the tank is empty. T hitches the trailer, and R flips a vehicle upright. |
 | M / B / J | M opens the town map, B opens Build and Buy mode, and J takes a delivery job. |
 
 **Build mode** follows The Sims 4:
 
-- **Build tab:** rooms; full and half walls; picket, privacy and railing fences; 10 floors; wall finishes (paint one side, or Shift-click to paint the whole room); doors, windows and picture windows; gable, hip and flat roofs plus Auto-roof; pools; stairs; buying a lot.
+- **Build tab:** rooms; full and half walls; picket, privacy and railing fences; 10 floors; wall finishes (paint one side, or Shift-click to paint the whole room); doors (panel door, glass entry door with transom, French doors, sliding patio door, sectional garage door) and windows (double-hung, tall with shutters, picture, clerestory strip, small frosted); sliding doors, garage doors and clerestories placed side by side join into one wide unit; gable, hip and flat roofs plus Auto-roof; pools; stairs; buying a lot.
 - **Buy tab:** about 60 items. Browse by room or by function. Thumbnails are rendered from the real models, and swatches recolor items.
-- **Placing items:** `,` and `.` rotate. Wall décor snaps to the nearest wall.
+- **Placing items:** `,` rotates counter-clockwise and `.` clockwise. Wall décor snaps to the nearest wall.
 - **Tools:**
   - Move (H), Eyedropper (E), Design tool (R) and Sledgehammer (K)
   - Undo/redo with Ctrl+Z / Ctrl+Y
@@ -37,6 +37,16 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 - The start screen asks whether your character is male or female. The two scanned models (`public/modules/maplestreet/{male,female}.glb`) are rebuilt from the raw scans by `tools/build-characters.mjs` (simplified mesh, auto-rigged skeleton, clothing-region mask `*-mask.png`); run it with `@gltf-transform/*`, `meshoptimizer` and `sharp` installed.
 - `src/avatar/`: `AvatarAssets` (loading, hair pressed flat for buzz/long/hats), `AvatarMaterial` (TSL recolor shader: skin, hair, eyes, jacket, tee, pants, shoes, patterns), `HairAndHats` (long hair, buns, beanie/cap/bucket hat), `AvatarModel` (pose: walk, idle, seated). `Character.ts` shows a stand-in until the model loads.
 - Wardrobe (C): `src/game/WardrobeUI.ts`. Catalog and look validation: `shared/Wardrobe.ts`. Hair, eyes and skin are free; clothing is bought at **Maple Threads** downtown and kept in `account.wardrobe`; the worn look is `account.look`, validated by `RoomLogic` (`{t:'look'}`) and sent to everyone in player snapshots.
+
+## Admin-published items
+
+The site admin can add Buy-mode items without a code change: **Admin → Maple Street items** opens a dev-mode editor (React Three Fiber) where a .glb/.gltf is previewed on a 1 m grid, scaled with drag handles, named, priced and published. `/api/maplestreet-items` stores the model in KV and the record in D1.
+
+- `shared/CustomItems.ts` turns each record into a `custom:<uuid>` catalog entry (`registerCustomItems`). The shared-world Durable Object registers them before it loads the world, and `src/build/CustomModels.ts` does the same in the page before any mode starts (the list is cached in `localStorage` for offline solo play), so `RoomLogic` validates and prices them like any other item.
+- A placed copy is drawn as yaw (quarter turns) > the published `{x,y,z}` scale > an offset that centers the model's unscaled bounds and puts its bottom on the floor. The editor preview uses the same layout, so what the admin sees is what spawns.
+- The footprint (cells) and collider height come from the scaled bounds (`footprintFromSize`). Custom items are floor items, never tintable, and have no needs interaction.
+- Retired items leave the Buy catalog but stay valid, so houses that own them keep them (and can still move or sell them).
+- New items appear the next time a player loads the module. The optional Colyseus server does not load published items.
 
 ## World and economy
 

@@ -25,11 +25,14 @@ import {
 import { noNormalsMRT } from '../core/Engine';
 import { Input } from '../core/Input';
 import { randomId } from '../core/Storage';
+import { OPENING_LABEL } from './Openings';
 import { buildFurniture } from './Furniture';
 import { HouseManager } from './HouseManager';
 import { greedyRects, WALL_T } from './Mesher';
 
-export type Tool = 'buy' | 'room' | 'wall' | 'floor' | 'paint' | 'door' | 'window' | 'picture' | 'roof' | 'pool' | 'object' | 'move' | 'eyedropper' | 'design' | 'sledge';
+export type OpeningTool = Exclude<Opening, 'none'>;
+export const OPENING_TOOLS: OpeningTool[] = ['door', 'glassdoor', 'french', 'slider', 'garage', 'window', 'tall', 'picture', 'clerestory', 'frosted'];
+export type Tool = 'buy' | 'room' | 'wall' | 'floor' | 'paint' | OpeningTool | 'roof' | 'pool' | 'object' | 'move' | 'eyedropper' | 'design' | 'sledge';
 export type WallView = 'up' | 'cut' | 'down';
 
 export interface BuildContext {
@@ -158,7 +161,7 @@ export class BuildController {
       pan.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw).multiplyScalar(dt * (12 + dist * 0.6) * (shift ? 2 : 1));
       this.controls.target.add(pan); this.camera.position.add(pan);
     }
-    const orbit = inp.axis(['ArrowRight'], ['ArrowLeft']), tilt = inp.axis(['ArrowDown'], ['ArrowUp']);
+    const orbit = inp.axis(['ArrowLeft'], ['ArrowRight']), tilt = inp.axis(['ArrowDown'], ['ArrowUp']);
     if (orbit || tilt) {
       const off = this.camera.position.clone().sub(this.controls.target);
       this.sph.setFromVector3(off);
@@ -172,8 +175,8 @@ export class BuildController {
     if (inp.wasPressed('PageUp') || inp.wasPressed('BracketRight')) this.setLevel(this.level + 1);
     if (inp.wasPressed('PageDown') || inp.wasPressed('BracketLeft')) this.setLevel(this.level - 1);
     if (inp.wasPressed('Home')) this.cycleWallView();
-    if (inp.wasPressed('Period')) { this.rot = (this.rot + 3) % 4; if (this.holding) this.holding.obj.rot = this.rot; }
-    if (inp.wasPressed('Comma')) { this.rot = (this.rot + 1) % 4; if (this.holding) this.holding.obj.rot = this.rot; }
+    if (inp.wasPressed('Period')) { this.rot = (this.rot + 1) % 4; if (this.holding) this.holding.obj.rot = this.rot; }
+    if (inp.wasPressed('Comma')) { this.rot = (this.rot + 3) % 4; if (this.holding) this.holding.obj.rot = this.rot; }
     const undoKey = inp.chord('KeyZ'), redoKey = inp.chord('KeyY');
     if (undoKey) { if (undoKey.shift) this.redo(); else this.undo(); }
     if (redoKey) this.redo();
@@ -353,12 +356,11 @@ export class BuildController {
         if (!this.dragStart) { this.ctx.hint('Drag out a pool (2×2 m up to 14×14 m)', true); return null; }
         return check([{ op: 'pool', lotId, pool: { id: randomId(16), x0: r.x0, z0: r.z0, x1: r.x1 + 1, z1: r.z1 + 1 } }], `Pool ${r.x1 - r.x0 + 1}×${r.z1 - r.z0 + 1} m`);
       }
-      case 'door': case 'window': case 'picture': {
+      case 'door': case 'window': case 'picture': case 'slider': case 'french': case 'glassdoor': case 'tall': case 'clerestory': case 'frosted': case 'garage': {
         if (!lot) return null;
         const e = this.nearestEdge(x, z);
         this.edgeBox(e.gx, e.gz, e.dir, y, LEVEL_HEIGHT);
-        const label = this.tool === 'picture' ? 'picture window' : this.tool;
-        return check([{ op: 'opening', lotId, key: wallKey(this.level, e.dir, e.gx, e.gz), opening: this.tool as Opening }], `Add ${label}`);
+        return check([{ op: 'opening', lotId, key: wallKey(this.level, e.dir, e.gx, e.gz), opening: this.tool }], `Add ${OPENING_LABEL[this.tool]}`);
       }
       case 'paint': {
         if (!lot || !b) return null;
@@ -473,7 +475,7 @@ export class BuildController {
     const w = b.walls[k];
     if (w && e.dist < 0.3) {
       this.edgeBox(e.gx, e.gz, e.dir, y, WALL_HEIGHT[wallKindOf(w)]);
-      if (w.opening !== 'none') return check([{ op: 'opening', lotId, key: k, opening: 'none' }], `Remove ${w.opening === 'picture' ? 'picture window' : w.opening}`, true);
+      if (w.opening !== 'none') return check([{ op: 'opening', lotId, key: k, opening: 'none' }], `Remove ${OPENING_LABEL[w.opening]}`, true);
       return check([{ op: 'removeWall', lotId, key: k }], wallKindOf(w) === 'full' ? 'Demolish wall' : 'Remove section', true);
     }
     const cx = Math.floor(x), cz = Math.floor(z);
@@ -683,7 +685,9 @@ export class BuildController {
     if (this.objGhostId !== id) {
       if (this.objGhost) this.root.remove(this.objGhost);
       this.objGhost = buildFurniture(id);
-      this.objGhost.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.material = this.ghostMat; m.castShadow = false; } });
+      const ghostly = (g: THREE.Object3D) => g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.material = this.ghostMat; m.castShadow = false; } });
+      ghostly(this.objGhost);
+      this.objGhost.userData.onCustomFill = ghostly;
       this.root.add(this.objGhost);
       this.objGhostId = id;
     }

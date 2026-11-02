@@ -20,7 +20,7 @@ export const MAX_LEVEL = 2;           // levels 0..2 (three storeys)
 export const MAX_SEGMENTS_PER_OP = 240;
 
 export type WallDir = 'x' | 'z';
-export type Opening = 'none' | 'door' | 'window' | 'picture';
+export type Opening = 'none' | 'door' | 'window' | 'picture' | 'slider' | 'french' | 'glassdoor' | 'tall' | 'clerestory' | 'frosted' | 'garage';
 export type WallKind = 'full' | 'half' | 'railing' | 'picket' | 'privacy';
 export type WallStyle = 'siding_white' | 'siding_sage' | 'siding_navy' | 'brick_red' | 'brick_white' | 'stucco_sand' | 'stone' | 'board_batten';
 export type InteriorFinish = 'paint_white' | 'paint_greige' | 'paint_sage' | 'paint_navy' | 'paint_blush' | 'paint_charcoal' | 'wallpaper_stripe' | 'wallpaper_damask' | 'tile_subway' | 'panel_wood';
@@ -33,7 +33,7 @@ export const INTERIOR_FINISHES: InteriorFinish[] = ['paint_white', 'paint_greige
 export const FLOOR_MATS: FloorMat[] = ['oak', 'walnut', 'herringbone', 'tile', 'marble', 'carpet', 'slate', 'concrete', 'deck', 'patio'];
 export const WALL_KINDS: WallKind[] = ['full', 'half', 'railing', 'picket', 'privacy'];
 const ROOF_STYLES: RoofStyle[] = ['gable_x', 'gable_z', 'hip', 'flat'];
-const OPENINGS: Opening[] = ['none', 'door', 'window', 'picture'];
+export const OPENINGS: Opening[] = ['none', 'door', 'window', 'picture', 'slider', 'french', 'glassdoor', 'tall', 'clerestory', 'frosted', 'garage'];
 
 /** Height of each wall kind; only full walls take doors, windows and wall décor. */
 export const WALL_HEIGHT: Record<WallKind, number> = { full: LEVEL_HEIGHT, half: 1.05, railing: 1.0, picket: 1.1, privacy: 1.9 };
@@ -303,6 +303,7 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
     case 'object': {
       const o = op.obj;
       if (!o || typeof o !== 'object' || !own(CATALOG, o.catalogId)) return 'Unknown item';
+      if (CATALOG[o.catalogId].hidden) return 'This item is no longer sold';
       if (typeof o.id !== 'string' || !ID_RE.test(o.id)) return 'Invalid id';
       if (own(b.objects, o.id)) return 'Duplicate id';
       return validatePlacement(lot, b, o);
@@ -359,7 +360,7 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
 // ---------------------------------------------------------------- cost
 
 const WALL_COST: Record<WallKind, number> = { full: COST.wall, half: COST.halfWall, railing: COST.railing, picket: COST.fence, privacy: COST.privacyFence };
-const openingCost = (o: Opening) => (o === 'door' ? COST.door : o === 'window' ? COST.window : o === 'picture' ? COST.picture : 0);
+const openingCost = (o: Opening) => (o === 'none' ? 0 : COST[o]);
 
 /** Positive = charge, negative = refund. */
 export function opCost(world: WorldState, op: BuildOp): number {

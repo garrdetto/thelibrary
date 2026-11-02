@@ -22,12 +22,9 @@ import { FOUNDATION_H, LEVEL_HEIGHT, levelBase, LotBuild, LotState, Pool, Roof, 
 import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import type { StaticBox } from '../physics/Physics';
 import { buildFurniture } from './Furniture';
+import { emitOpening } from './Openings';
 
 export const WALL_T = 0.16;
-const DOOR = { o0: 0.06, o1: 0.94, head: 2.1 };
-const WINDOW = { o0: 0.12, o1: 0.88, sill: 0.9, head: 2.15 };
-const PICTURE = { o0: 0.0, o1: 1.0, sill: 0.45, head: 2.45 };
-const CASING = 0.06;
 
 export interface MeshOptions {
   /** Level whose walls are cut down to `cutHeight`; levels above it are hidden. null = full house. */
@@ -123,17 +120,21 @@ export class StructureMesher {
         const m = buildFurniture(o.catalogId, o.tint ?? 0);
         m.position.set(cx, y, cz);
         m.rotation.y = -o.rot * (Math.PI / 2);
-        m.updateMatrixWorld(true);
-        m.traverse(node => {
-          const mesh = node as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const mat = mesh.material as THREE.Material;
-          let fb = furniture.get(mat.uuid);
-          if (!fb) furniture.set(mat.uuid, (fb = { mat, geos: [] }));
-          const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-          fb.geos.push(g.index ? g.toNonIndexed() : g);
-          mesh.geometry.dispose();
-        });
+        if (item.custom) {
+          group.add(m);
+        } else {
+          m.updateMatrixWorld(true);
+          m.traverse(node => {
+            const mesh = node as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const mat = mesh.material as THREE.Material;
+            let fb = furniture.get(mat.uuid);
+            if (!fb) furniture.set(mat.uuid, (fb = { mat, geos: [] }));
+            const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+            fb.geos.push(g.index ? g.toNonIndexed() : g);
+            mesh.geometry.dispose();
+          });
+        }
       }
       if (o.catalogId === 'stairs') {
         // 12 treads, 0.25 m rise each, climbing toward the item's back (local -Z).
@@ -258,36 +259,10 @@ export class StructureMesher {
       trim(-e0 - 0.02, 1 + e1 + 0.02, H, H + 0.05, h + 0.03);             // cap rail
       return;
     }
-    switch (w.opening) {
-      case 'none':
-        solid(-e0, 1 + e1, 0, H);
-        break;
-      case 'door': {
-        const { o0, o1, head } = DOOR;
-        solid(-e0, o0, 0, H); solid(o1, 1 + e1, 0, H); solid(o0, o1, head, H);
-        trim(o0 - CASING, o0, 0, head + CASING); trim(o1, o1 + CASING, 0, head + CASING); trim(o0, o1, head, head + CASING);
-        if (!isHidden && head < cut) group.add(this.doorLeaf(w, base, o0, o1, head, L));
-        break;
-      }
-      case 'window':
-      case 'picture': {
-        const { o0, o1, sill, head } = w.opening === 'window' ? WINDOW : PICTURE;
-        solid(-e0, o0, 0, H); solid(o1, 1 + e1, 0, H);
-        solid(o0, o1, 0, sill); solid(o0, o1, head, H);
-        visual('glass', o0, o1, sill, head, -0.008, 0.008);
-        const [gx0, gy0, gz0, gx1, gy1, gz1] = toWorld(o0, o1, sill, head, -0.03, 0.03);
-        collide(gx0, gy0, gz0, gx1, gy1, gz1);                                   // can't walk through glass
-        const c = w.opening === 'picture' ? 0.04 : CASING;
-        trim(o0, o0 + c, sill, head, 0.03); trim(o1 - c, o1, sill, head, 0.03);   // frame
-        trim(o0, o1, head - c, head, 0.03); trim(o0, o1, sill, sill + c, 0.03);
-        trim(o0 - 0.04, o1 + 0.04, sill - 0.04, sill, h + 0.05);                  // sill nose
-        if (w.opening === 'window') {
-          trim((o0 + o1) / 2 - 0.015, (o0 + o1) / 2 + 0.015, sill, head, 0.025);  // mullion
-          trim(o0, o1, (sill + head) / 2 - 0.015, (sill + head) / 2 + 0.015, 0.025);
-        }
-        break;
-      }
-    }
+    emitOpening({
+      b, w, H, base, h, e0, e1, isHidden, cut, matA, matB, mats: this.mats, group,
+      solid, visual, toWorld, collide,
+    });
   }
 
   /** Picket fences, privacy fences and railings: posts + rails + pickets/boards. */
@@ -351,22 +326,6 @@ export class StructureMesher {
       group.add(r);
     }
     collide(p.x0, 0, p.z0, p.x1, 0.7, p.z1);
-  }
-
-  /** Doors are their own mesh, shown swung open ~75° so the doorway reads as walkable. */
-  private doorLeaf(w: Wall, base: number, o0: number, o1: number, head: number, level: number): THREE.Object3D {
-    const width = o1 - o0;
-    const pivot = new THREE.Group();
-    const leaf = new THREE.Mesh(new THREE.BoxGeometry(width - 0.01, head - 0.01, 0.045), this.mats.get('door').material);
-    leaf.position.set(width / 2, head / 2, 0);
-    leaf.castShadow = true;
-    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.03, 12, 8), this.mats.get('metal').material);
-    knob.position.set(width - 0.08, 1.0, 0.04);
-    pivot.add(leaf, knob);
-    if (w.dir === 'x') { pivot.position.set(w.gx + o0, base, w.gz); pivot.rotation.y = -1.3; }
-    else { pivot.position.set(w.gx, base, w.gz + o0); pivot.rotation.y = -Math.PI / 2 + 1.3; }
-    pivot.userData.level = level;
-    return pivot;
   }
 
   // ---------------------------------------------------------------- roofs

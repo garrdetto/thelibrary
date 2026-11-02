@@ -58,7 +58,18 @@ export const SIDEWALKS: RectXZ[] = [
   { cx: 0, cz: -6, sx: -ROW_X0 * 2, sz: SIDEWALK_W },
   { cx: 0, cz: 6, sx: -ROW_X0 * 2, sz: SIDEWALK_W },
   { cx: (DOWNTOWN_X0 + DOWNTOWN_X1) / 2, cz: -7, sx: DOWNTOWN_X1 - DOWNTOWN_X0, sz: 4 },  // wide downtown sidewalks
-  { cx: (DOWNTOWN_X0 + DOWNTOWN_X1) / 2, cz: 7, sx: DOWNTOWN_X1 - DOWNTOWN_X0, sz: 4 },
+  // South downtown sidewalk, split by the two curb cuts into the gas station (x 111–119 and 129–137).
+  { cx: (DOWNTOWN_X0 + 111) / 2, cz: 7, sx: 111 - DOWNTOWN_X0, sz: 4 },
+  { cx: 124, cz: 7, sx: 10, sz: 4 },
+  { cx: (137 + DOWNTOWN_X1) / 2, cz: 7, sx: DOWNTOWN_X1 - 137, sz: 4 },
+];
+
+/** Driveway aprons where the curb is dropped so cars can leave the street (beyond the lot driveways). */
+export const CURB_CUTS: RectXZ[] = [
+  { cx: 115, cz: 7, sx: 8, sz: 4 },            // Gas & Go entrance
+  { cx: 133, cz: 7, sx: 8, sz: 4 },            // Gas & Go exit
+  { cx: -128, cz: -7, sx: 20, sz: 4 },         // freight depot yard
+  { cx: 94, cz: -18, sx: 4, sz: 16 },          // Maple Motors display lot off East Ave
 ];
 
 export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank' | 'clothing';

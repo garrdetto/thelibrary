@@ -1,9 +1,12 @@
-import { useState } from 'react'
-import type { KeyboardEvent } from 'react'
+import { Suspense, lazy, useState } from 'react'
+import type { ComponentType, KeyboardEvent } from 'react'
+import { LoaderCircle } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 
-const tabs = [{ id: 'people', label: 'People & permissions' }, { id: 'changes', label: 'Site changes' }] as const
+const MapleStreetItemEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./maplestreet/MapleStreetItemEditor'))
+
+const tabs = [{ id: 'people', label: 'People & permissions' }, { id: 'changes', label: 'Site changes' }, { id: 'maplestreet', label: 'Maple Street items' }] as const
 type Tab = (typeof tabs)[number]['id']
 
 export function AdminPanel() {
@@ -21,7 +24,9 @@ export function AdminPanel() {
       {tabs.map(item => <button key={item.id} id={`admin-tab-${item.id}`} type="button" role="tab" aria-selected={tab === item.id} aria-controls={`admin-pane-${item.id}`} tabIndex={tab === item.id ? 0 : -1} className={tab === item.id ? 'is-active' : ''} onClick={() => setTab(item.id)} onKeyDown={onKey}>{item.label}</button>)}
     </div>
     <div id={`admin-pane-${tab}`} role="tabpanel" aria-labelledby={`admin-tab-${tab}`}>
-      {tab === 'people' ? <WorkspaceAdmin/> : <SiteChanges/>}
+      {tab === 'people' && <WorkspaceAdmin/>}
+      {tab === 'changes' && <SiteChanges/>}
+      {tab === 'maplestreet' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the item editor…</p>}><MapleStreetItemEditor/></Suspense>}
     </div>
   </div>
 }

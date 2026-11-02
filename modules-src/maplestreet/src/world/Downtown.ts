@@ -8,61 +8,41 @@ import * as THREE from 'three/webgpu';
 import { mergeStatic } from '../core/Merge';
 import { BUILDINGS, Building, DEPOT, GAS_STATION } from '../../shared/WorldLayout';
 import type { MaterialLibrary } from '../core/Materials';
+import { buildGasStation } from './GasStation';
+import { facadeLayout, facadeTextures, faceTrim, styleOf } from './Facades';
 import type { Physics } from '../physics/Physics';
 import { buildWheel, makeLights, makePaint, PRESETS } from '../physics/VehiclePresets';
 
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
-/** Facade texture: wall color, per-floor window grid, and (row 0) storefront. Returns albedo + night emissive. */
-function facadeTextures(b: Building, widthM: number, heightM: number, front: boolean) {
-  const ppm = 24;
-  const W = Math.min(2048, Math.round(widthM * ppm)), H = Math.min(2048, Math.round(heightM * ppm));
-  const albedo = document.createElement('canvas'); albedo.width = W; albedo.height = H;
-  const glow = document.createElement('canvas'); glow.width = W; glow.height = H;
-  const g = albedo.getContext('2d')!, e = glow.getContext('2d')!;
-  const R = rng(b.id.length * 977 + Math.round(b.x));
-  g.fillStyle = b.color; g.fillRect(0, 0, W, H);
-  e.fillStyle = '#000'; e.fillRect(0, 0, W, H);
-  // masonry / panel texture
-  for (let i = 0; i < W * H * 0.02; i++) { g.fillStyle = `rgba(0,0,0,${R() * 0.06})`; g.fillRect(R() * W, R() * H, 2, 1); }
-  const floorH = 3.4 * ppm;
-  const groundH = (b.kind === 'apartments' || b.kind === 'office') ? 4 * ppm : H;
-  // Upper floors: regular window grid
-  for (let y = H - groundH - floorH; y > ppm * 0.6; y -= floorH) {
-    for (let x = ppm * 1.2; x < W - ppm * 1.6; x += ppm * 2.4) {
-      const w = ppm * 1.3, h = floorH * 0.55;
-      g.fillStyle = '#d9d4c8'; g.fillRect(x - 3, y + floorH * 0.2 - 3, w + 6, h + 6);   // trim
-      g.fillStyle = `hsl(205, 25%, ${18 + R() * 12}%)`; g.fillRect(x, y + floorH * 0.2, w, h);
-      g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(x, y + floorH * 0.2, w * 0.35, h);
-      if (R() < 0.55) { e.fillStyle = `hsl(${38 + R() * 12}, 90%, ${55 + R() * 20}%)`; e.fillRect(x, y + floorH * 0.2, w, h); }
-    }
-  }
-  if (front) {
-    // Storefront: big glazing, transom and a door on the ground floor
-    const gh = Math.min(groundH, 3.6 * ppm);
-    const gy = H - gh;
-    g.fillStyle = '#2b2f33'; g.fillRect(0, gy, W, gh);                         // bulkhead + frame
-    g.fillStyle = '#3b4a55'; g.fillRect(ppm * 0.6, gy + ppm * 0.6, W - ppm * 1.2, gh - ppm * 1.2);
-    for (let x = ppm * 0.6; x < W - ppm; x += ppm * 2.2) { g.fillStyle = '#2b2f33'; g.fillRect(x, gy + ppm * 0.6, 4, gh); }
-    g.fillStyle = '#1d2226'; g.fillRect(W / 2 - ppm * 0.7, gy + ppm * 0.8, ppm * 1.4, gh - ppm * 0.8);   // door
-    e.fillStyle = '#ffd9a0'; e.fillRect(ppm * 0.6, gy + ppm * 0.6, W - ppm * 1.2, gh - ppm * 1.2);
-    e.fillStyle = '#000'; e.fillRect(W / 2 - ppm * 0.7, gy + ppm * 0.8, ppm * 1.4, gh);
-  } else {
-    for (let x = ppm * 2; x < W - ppm * 2; x += ppm * 4) { g.fillStyle = '#4a5560'; g.fillRect(x, H - 2.6 * ppm, ppm * 1.2, ppm * 1.4); }
-  }
-  const tex = (c: HTMLCanvasElement, srgb: boolean) => { const t = new THREE.CanvasTexture(c); if (srgb) t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t; };
-  return { map: tex(albedo, true), emissive: tex(glow, true) };
-}
-
-function signTexture(text: string, bg: string, fg: string, w = 1024, h = 192) {
+function signTexture(text: string, bg: string, fg: string, w = 1024, h = 192, glowOnly = false) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d')!;
-  g.fillStyle = bg; g.fillRect(0, 0, w, h);
-  g.fillStyle = fg; g.font = `700 ${Math.round(h * 0.5)}px "Trebuchet MS", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-  let size = h * 0.5;
-  while (g.measureText(text).width > w * 0.9 && size > 20) { size -= 4; g.font = `700 ${Math.round(size)}px "Trebuchet MS", system-ui, sans-serif`; }
-  g.fillText(text, w / 2, h / 2 + 4);
+  g.fillStyle = glowOnly ? '#000000' : bg; g.fillRect(0, 0, w, h);
+  if (!glowOnly) {
+    const sheen = g.createLinearGradient(0, 0, 0, h);
+    sheen.addColorStop(0, 'rgba(255,255,255,0.10)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0)'); sheen.addColorStop(1, 'rgba(0,0,0,0.18)');
+    g.fillStyle = sheen; g.fillRect(0, 0, w, h);
+    g.strokeStyle = 'rgba(0,0,0,0.35)'; g.lineWidth = Math.max(4, h * 0.04); g.strokeRect(0, 0, w, h);
+  }
+  let size = h * 0.56;
+  const font = (px: number) => `700 ${Math.round(px)}px "Trebuchet MS", system-ui, sans-serif`;
+  g.font = font(size);
+  while (g.measureText(text).width > w * 0.88 && size > 14) { size -= 3; g.font = font(size); }
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  if (!glowOnly) { g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillText(text, w / 2 + size * 0.04, h / 2 + 4 + size * 0.05); }
+  g.fillStyle = fg; g.fillText(text, w / 2, h / 2 + 4);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return t;
+}
+
+function awningTexture(a: string, b: string, striped: boolean) {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d')!;
+  g.fillStyle = a; g.fillRect(0, 0, 256, 64);
+  if (striped) for (let x = 0; x < 256; x += 32) { g.fillStyle = b; g.fillRect(x, 0, 16, 64); }
+  for (let i = 0; i < 1500; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.05})`; g.fillRect(Math.random() * 256, Math.random() * 64, 2, 1); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; t.anisotropy = 4;
   return t;
 }
 
@@ -75,11 +55,12 @@ export class Downtown {
   readonly group = new THREE.Group();
   /** Night-lit materials (window glow, signs, canopy lights). */
   private glows: THREE.MeshStandardMaterial[] = [];
+  private canopyLight: THREE.PointLight | null = null;
 
   constructor(scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary) {
     scene.add(this.group);
     for (const b of BUILDINGS) this.building(b);
-    this.gasStation();
+    this.gasStation(scene);
     this.depot();
     this.streetscape();
     this.showroomCars();
@@ -89,48 +70,135 @@ export class Downtown {
   private building(b: Building) {
     const g = new THREE.Group();
     const front = b.facing === '+z' ? 1 : -1;
-    const fx = facadeTextures(b, b.w, b.h, true);
-    const sx = facadeTextures(b, b.d, b.h, false);
-    const plain = new THREE.MeshStandardMaterial({ color: new THREE.Color(b.color).multiplyScalar(0.9), roughness: 0.9 });
-    const frontMat = new THREE.MeshStandardMaterial({ map: fx.map, emissiveMap: fx.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.75 });
-    const sideMat = new THREE.MeshStandardMaterial({ map: sx.map, emissiveMap: sx.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.8 });
-    this.glows.push(frontMat, sideMat);
+    const style = styleOf(b);
+    const seed = b.id.length * 977 + Math.round(b.x * 3);
+    const wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(b.color).multiplyScalar(style === 'curtain' ? 0.6 : 0.92), roughness: 0.9 });
+    const trim = style === 'brick' || style === 'stone' ? new THREE.MeshStandardMaterial({ color: 0xe2dbcd, roughness: 0.8 }) : this.mats.get('trim').material;
+    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.4, metalness: 0.6 });
+    const metal = this.mats.get('metal').material;
+    const boxMat = { trim, dark, wall: wallMat, metal };
+
+    // Faces: [normal x, normal z, face width, isFront]
+    const faces: { nx: number; nz: number; w: number; isFront: boolean }[] = [
+      { nx: 0, nz: front, w: b.w, isFront: true },
+      { nx: 0, nz: -front, w: b.w, isFront: false },
+      { nx: 1, nz: 0, w: b.d, isFront: false },
+      { nx: -1, nz: 0, w: b.d, isFront: false },
+    ];
+    const faceMats = new Map<string, THREE.Material>();
+    faces.forEach((f, i) => {
+      const L = facadeLayout(b, f.w, b.h, f.isFront);
+      const tx = facadeTextures(b, L, seed + i * 131);
+      const mat = new THREE.MeshStandardMaterial({ map: tx.map, emissiveMap: tx.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughnessMap: tx.orm, metalnessMap: tx.orm, roughness: 1, metalness: 1 });
+      this.glows.push(mat);
+      faceMats.set(`${f.nx},${f.nz}`, mat);
+      // Face-space trim → world boxes.
+      const planeX = b.x + f.nx * (b.w / 2), planeZ = b.z + f.nz * (b.d / 2);
+      for (const t of faceTrim(L)) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), boxMat[t.mat]);
+        const uc = (t.u0 + t.u1) / 2 - f.w / 2, len = t.u1 - t.u0;
+        const outC = t.out - t.depth / 2;
+        if (f.nz !== 0) { m.scale.set(len, t.v1 - t.v0, t.depth); m.position.set(b.x + uc * f.nz, (t.v0 + t.v1) / 2, planeZ + f.nz * outC); }
+        else { m.scale.set(t.depth, t.v1 - t.v0, len); m.position.set(planeX + f.nx * outC, (t.v0 + t.v1) / 2, b.z - uc * f.nx); }
+        m.castShadow = t.out > 0.08; m.receiveShadow = true;
+        g.add(m);
+      }
+    });
+    const roof = this.mats.get('flatroof').material;
     // BoxGeometry face order: +x, -x, +y, -y, +z, -z
-    const faces = [sideMat, sideMat, plain, plain, front > 0 ? frontMat : plain, front > 0 ? plain : frontMat];
-    const body = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), faces);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(b.w, b.h, b.d), [faceMats.get('1,0')!, faceMats.get('-1,0')!, roof, wallMat, faceMats.get('0,1')!, faceMats.get('0,-1')!]);
     body.position.set(b.x, b.h / 2, b.z);
     body.castShadow = body.receiveShadow = true;
     g.add(body);
 
-    const trim = this.mats.get('trim').material;
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(b.w + 0.5, 0.45, b.d + 0.5), b.kind === 'office' ? this.mats.get('metal').material : trim);
-    cap.position.set(b.x, b.h + 0.22, b.z); cap.castShadow = true; g.add(cap);
-    // Rooftop mechanicals
-    const R = rng(b.id.length * 31);
+    const add = (mat: THREE.Material, sx: number, sy: number, sz: number, x: number, y: number, z: number, shadow = true) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
+      m.position.set(x, y, z); m.castShadow = shadow; m.receiveShadow = true; g.add(m); return m;
+    };
+    // Parapet with coping, and a projecting cornice on the masonry buildings.
+    const pH = style === 'curtain' ? 0.5 : 0.75, pT = 0.25;
+    for (const [sx, sz, x, z] of [[b.w, pT, b.x, b.z + b.d / 2 - pT / 2], [b.w, pT, b.x, b.z - b.d / 2 + pT / 2], [pT, b.d, b.x + b.w / 2 - pT / 2, b.z], [pT, b.d, b.x - b.w / 2 + pT / 2, b.z]] as const) {
+      add(style === 'curtain' ? metal : wallMat, sx, pH, sz, x, b.h + pH / 2, z);
+      add(style === 'curtain' ? metal : trim, sx + (sx > sz ? 0.12 : 0.12), 0.1, sz + 0.12, x, b.h + pH + 0.05, z, false);
+    }
+    // A ring of four boxes around the walls (never a slab, which would cover the roof).
+    const ring = (mat: THREE.Material, out: number, y0: number, y1: number, inset = 0.3) => {
+      const W = b.w + out * 2, D = b.d + out * 2, t = out + inset, y = (y0 + y1) / 2, hh = y1 - y0;
+      add(mat, W, hh, t, b.x, y, b.z + D / 2 - t / 2); add(mat, W, hh, t, b.x, y, b.z - D / 2 + t / 2);
+      add(mat, t, hh, D - t * 2, b.x + W / 2 - t / 2, y, b.z); add(mat, t, hh, D - t * 2, b.x - W / 2 + t / 2, y, b.z);
+    };
+    if (style === 'brick' || style === 'stone' || style === 'stucco') {
+      ring(trim, 0.3, b.h - 0.28, b.h + 0.04);
+      ring(trim, 0.16, b.h - 0.49, b.h - 0.28, 0.1);
+      ring(style === 'stone' ? trim : dark, 0.1, b.h - 0.59, b.h - 0.49, 0.1);
+    } else if (style === 'panel' || style === 'industrial') {
+      ring(metal, 0.06, b.h - 0.22, b.h + 0.02, 0.1);
+    }
+    // Rooftop: HVAC units with grilles, vent stacks, a hatch.
+    const R = rng(seed);
     for (let i = 0; i < 2 + Math.floor(R() * 3); i++) {
-      const u = new THREE.Mesh(new THREE.BoxGeometry(1.4 + R(), 1, 1.2 + R()), this.mats.get('metal').material);
-      u.position.set(b.x + (R() - 0.5) * (b.w - 3), b.h + 0.95, b.z + (R() - 0.5) * (b.d - 3)); u.castShadow = true; g.add(u);
+      const ux = b.x + (R() - 0.5) * (b.w - 4), uz = b.z + (R() - 0.5) * (b.d - 4);
+      const sx = 1.4 + R(), sz = 1.2 + R();
+      add(metal, sx, 1, sz, ux, b.h + 0.55, uz);
+      add(dark, sx * 0.7, 0.05, sz * 0.7, ux, b.h + 1.07, uz, false);
+      add(dark, 0.08, 0.08, sz + 0.2, ux - sx / 2 - 0.2, b.h + 0.1, uz, false);
+    }
+    for (let i = 0; i < 3; i++) {
+      const v = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.8, 10), dark);
+      v.position.set(b.x + (R() - 0.5) * (b.w - 2), b.h + 0.4, b.z + (R() - 0.5) * (b.d - 2)); g.add(v);
+    }
+    add(dark, 0.9, 0.35, 0.9, b.x + b.w * 0.3, b.h + 0.18, b.z - b.d * 0.25);
+    // Downspouts on the back corners.
+    for (const sx of [-1, 1]) {
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, b.h, 8), style === 'brick' ? dark : metal);
+      p.position.set(b.x + sx * (b.w / 2 - 0.3), b.h / 2, b.z - front * (b.d / 2 + 0.07)); p.castShadow = true; g.add(p);
     }
 
     const faceZ = b.z + front * (b.d / 2);
+    const [bg, fg] = SIGN_COLORS[b.kind] ?? ['#333', '#fff'];
     if (b.kind !== 'apartments' && b.kind !== 'office') {
-      // Awning over the storefront
-      const [bg, fg] = SIGN_COLORS[b.kind] ?? ['#333', '#fff'];
-      const awnMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(bg), roughness: 0.8, side: THREE.DoubleSide });
-      const awn = new THREE.Mesh(new THREE.PlaneGeometry(b.w * 0.9, 1.8), awnMat);
-      awn.position.set(b.x, 3.55, faceZ + front * 0.75); awn.rotation.x = front * (-Math.PI / 2 + 0.55); awn.castShadow = true; g.add(awn);
-      // Sign board
-      const signMat = new THREE.MeshStandardMaterial({ map: signTexture(b.name, bg, fg), emissiveMap: signTexture(b.name, '#000000', fg), emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.5 });
+      // Fabric awning: sloped cover, front valance and side cheeks.
+      const striped = b.kind === 'diner' || b.kind === 'cafe';
+      const aw = b.w * 0.86, proj = 1.5, drop = 0.55, top = 3.3;
+      const awTex = awningTexture(bg, '#f1ebdf', striped);
+      awTex.repeat.set(Math.max(1, Math.round(aw / 1.2)), 1);
+      const awMat = new THREE.MeshStandardMaterial({ map: awTex, roughness: 0.85, side: THREE.DoubleSide });
+      const slope = new THREE.Mesh(new THREE.PlaneGeometry(aw, Math.hypot(proj, drop)), awMat);
+      slope.position.set(b.x, top - drop / 2, faceZ + front * proj / 2);
+      slope.rotation.x = front * (-Math.PI / 2 + Math.atan2(drop, proj));
+      slope.castShadow = true; g.add(slope);
+      const val = new THREE.Mesh(new THREE.PlaneGeometry(aw, 0.3), awMat);
+      val.position.set(b.x, top - drop - 0.15, faceZ + front * proj); if (front < 0) val.rotation.y = Math.PI; g.add(val);
+      for (const sx of [-1, 1]) {
+        const tri = new THREE.Shape([new THREE.Vector2(0, 0), new THREE.Vector2(proj, -drop), new THREE.Vector2(proj, -drop - 0.3), new THREE.Vector2(0, -0.4)]);
+        const cheek = new THREE.Mesh(new THREE.ShapeGeometry(tri), awMat);
+        cheek.rotation.y = front > 0 ? -Math.PI / 2 : Math.PI / 2;
+        cheek.position.set(b.x + sx * aw / 2, top, faceZ);
+        g.add(cheek);
+      }
+      // Sign cabinet on the band above the awning.
+      const sw = Math.min(b.w * 0.72, 12), sh = Math.min(1.1, Math.max(0.6, b.h - top - 1.2));
+      const th = Math.max(64, Math.round((1024 * sh) / sw));
+      const signMat = new THREE.MeshStandardMaterial({ map: signTexture(b.name, bg, fg, 1024, th), emissiveMap: signTexture(b.name, bg, fg, 1024, th, true), emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.35 });
       this.glows.push(signMat);
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(b.w * 0.8, 16), Math.min(b.w * 0.8, 16) * 0.19), signMat);
-      sign.position.set(b.x, Math.min(b.h - 1, 5.3), faceZ + front * 0.05);
+      const signY = Math.min(b.h - sh / 2 - 0.65, top + 0.35 + sh / 2);
+      add(dark, sw + 0.12, sh + 0.12, 0.14, b.x, signY, faceZ + front * 0.07);
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), signMat);
+      sign.position.set(b.x, signY, faceZ + front * 0.145);
       if (front < 0) sign.rotation.y = Math.PI;
       g.add(sign);
+      // Gooseneck lamps over the sign.
+      for (let i = -1; i <= 1; i += 2) {
+        const arm = add(dark, 0.04, 0.04, 0.5, b.x + i * sw * 0.3, signY + sh / 2 + 0.25, faceZ + front * 0.25, false);
+        void arm;
+        const shade = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.16, 12, 1, true), dark);
+        shade.position.set(b.x + i * sw * 0.3, signY + sh / 2 + 0.2, faceZ + front * 0.5); g.add(shade);
+      }
     } else {
-      const [bg, fg] = SIGN_COLORS[b.kind];
-      const signMat = new THREE.MeshStandardMaterial({ map: signTexture(b.name, bg, fg, 1024, 160), roughness: 0.5 });
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(8, 1.25), signMat);
-      sign.position.set(b.x, 4.4, faceZ + front * 0.05);
+      const sw = 7, sh = 0.9;
+      const signMat = new THREE.MeshStandardMaterial({ map: signTexture(b.name, bg, fg, 1024, Math.round((1024 * sh) / sw)), roughness: 0.4, metalness: 0.3 });
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), signMat);
+      sign.position.set(b.x, b.kind === 'office' ? 5.0 : 3.45, faceZ + front * (b.kind === 'office' ? 0.2 : 1.66));
       if (front < 0) sign.rotation.y = Math.PI;
       g.add(sign);
     }
@@ -138,68 +206,28 @@ export class Downtown {
       for (let i = 0; i < 6; i++) {
         const c = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 5.6, 20), trim);
         c.position.set(b.x - 6.25 + i * 2.5, 2.8, faceZ + front * 1.4); c.castShadow = true; g.add(c);
+        add(trim, 0.85, 0.2, 0.85, c.position.x, 0.1, c.position.z);
+        add(trim, 0.8, 0.18, 0.8, c.position.x, 5.55, c.position.z);
         this.physics.addStaticCylinder(c.position.x, 2.8, c.position.z, 2.8, 0.38);
       }
-      const ped = new THREE.Mesh(new THREE.BoxGeometry(15.5, 0.8, 3.2), trim);
-      ped.position.set(b.x, 6.0, faceZ + front * 1.4); ped.castShadow = true; g.add(ped);
+      add(trim, 15.5, 0.8, 3.2, b.x, 6.0, faceZ + front * 1.4);
+      // Pediment over the portico.
+      const ped = new THREE.Shape([new THREE.Vector2(-7.9, 0), new THREE.Vector2(7.9, 0), new THREE.Vector2(0, 1.6)]);
+      const pm = new THREE.Mesh(new THREE.ExtrudeGeometry(ped, { depth: 3.0, bevelEnabled: false }), trim);
+      pm.position.set(b.x, 6.4, faceZ + front * (front > 0 ? 0 : 3.0)); pm.castShadow = true; g.add(pm);
+      add(trim, 16, 0.25, 3.6, b.x, 0.12, faceZ + front * 1.6);
     }
     this.group.add(g);
     this.physics.addStaticBox({ cx: b.x, cy: b.h / 2, cz: b.z, hx: b.w / 2, hy: b.h / 2, hz: b.d / 2 });
   }
 
-  private gasStation() {
-    const G = GAS_STATION, g = new THREE.Group();
-    // Concrete apron
-    const apron = new THREE.Mesh(new THREE.BoxGeometry(G.canopy.w + 12, 0.06, 32), this.mats.get('concrete').material);
-    apron.position.set(G.canopy.x, 0.03, 26); apron.receiveShadow = true; g.add(apron);
-    // Canopy on four columns, lit underside
-    const canopyTop = new THREE.Mesh(new THREE.BoxGeometry(G.canopy.w, 0.7, G.canopy.d), new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.5 }));
-    canopyTop.position.set(G.canopy.x, 5.4, G.canopy.z); canopyTop.castShadow = true; g.add(canopyTop);
-    const band = new THREE.Mesh(new THREE.BoxGeometry(G.canopy.w + 0.06, 0.32, G.canopy.d + 0.06), new THREE.MeshStandardMaterial({ color: 0x0f4c81, roughness: 0.4 }));
-    band.position.set(G.canopy.x, 5.35, G.canopy.z); g.add(band);
-    const under = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff6e0, emissiveIntensity: 0, roughness: 0.3 });
-    this.glows.push(under);
-    for (let i = 0; i < 6; i++) {
-      const l = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.04, 0.6), under);
-      l.position.set(G.canopy.x - 7 + (i % 3) * 7, 5.03, G.canopy.z + (i < 3 ? -3 : 3)); g.add(l);
-    }
-    for (const [dx, dz] of [[-8, 0], [8, 0]] as const) {
-      const col = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.1, 0.5), this.mats.get('trim').material);
-      col.position.set(G.canopy.x + dx, 2.55, G.canopy.z + dz); col.castShadow = true; g.add(col);
-      this.physics.addStaticBox({ cx: col.position.x, cy: 2.55, cz: col.position.z, hx: 0.25, hy: 2.55, hz: 0.25 });
-    }
-    // Pump islands
-    const pumpBody = new THREE.MeshStandardMaterial({ color: 0xe9ecef, roughness: 0.4 });
-    const pumpBlue = new THREE.MeshStandardMaterial({ color: 0x0f4c81, roughness: 0.4 });
-    const screen = new THREE.MeshStandardMaterial({ color: 0x0b1a10, emissive: 0x2cff7a, emissiveIntensity: 0.6, roughness: 0.2 });
-    for (const p of G.pumps) {
-      const island = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 3.2), this.mats.get('concrete').material);
-      island.position.set(p.x, 0.1, p.z); g.add(island);
-      const pump = new THREE.Group();
-      const bodyM = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.9, 0.6), pumpBody); bodyM.position.y = 1.15;
-      const top = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.35, 0.65), pumpBlue); top.position.y = 2.2;
-      const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.3), screen); scr.position.set(0, 1.6, 0.31);
-      const scr2 = scr.clone(); scr2.position.z = -0.31; scr2.rotation.y = Math.PI;
-      const hose = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.025, 6, 16, Math.PI), new THREE.MeshStandardMaterial({ color: 0x111111 }));
-      hose.position.set(0.5, 1.0, 0); hose.rotation.z = Math.PI / 2;
-      pump.add(bodyM, top, scr, scr2, hose);
-      pump.position.set(p.x, 0.2, p.z);
-      pump.traverse(o => (o.castShadow = true));
-      g.add(pump);
-      this.physics.addStaticBox({ cx: p.x, cy: 1.1, cz: p.z, hx: 0.5, hy: 1.1, hz: 1.5 });
-    }
-    // Mini-mart
-    const st = G.store;
-    const mart: Building = { id: 'gas-mart', name: G.name, kind: 'gas', x: st.x, z: st.z, w: st.w, d: st.d, h: 4.6, facing: '-z', color: '#e7e2d6' };
-    this.building(mart);
-    // Price sign
-    const priceMat = new THREE.MeshStandardMaterial({ map: signTexture('REGULAR  3.49', '#0f4c81', '#ffd200', 768, 256), roughness: 0.5 });
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 6, 12), this.mats.get('metal').material);
-    pole.position.set(G.canopy.x + 14, 3, 12); g.add(pole);
-    const ps = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 0.2), [pumpBlue, pumpBlue, pumpBlue, pumpBlue, priceMat, priceMat]);
-    ps.position.set(G.canopy.x + 14, 6.2, 12); g.add(ps);
-    this.physics.addStaticCylinder(pole.position.x, 3, pole.position.z, 3, 0.15);
-    this.group.add(g);
+  private gasStation(scene: THREE.Scene) {
+    const parts = buildGasStation(scene, this.physics, this.mats);
+    this.glows.push(...parts.glows);
+    this.canopyLight = parts.light;
+    this.group.add(parts.group);
+    const st = GAS_STATION.store;
+    this.building({ id: 'gas-mart', name: GAS_STATION.name, kind: 'gas', x: st.x, z: st.z, w: st.w, d: st.d, h: 4.6, facing: '-z', color: '#e7e2d6' });
   }
 
   private depot() {
@@ -269,5 +297,6 @@ export class Downtown {
   update(night: number) {
     const k = THREE.MathUtils.smoothstep(night, 0.15, 0.6);
     for (const m of this.glows) m.emissiveIntensity = 1.6 * k;
+    if (this.canopyLight) this.canopyLight.intensity = 140 * k;
   }
 }

@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import { cos, float, instanceIndex, positionLocal, sin, time, uv, vec3 } from 'three/tsl';
 import { floorKey, objectCells, WorldState } from '../../shared/BuildRules';
-import { DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, RectXZ, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
+import { CURB_CUTS, DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, RectXZ, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
 import type { Lawn } from './Lawn';
 
 const RADIUS = 34;
@@ -80,7 +80,7 @@ export class Grass {
     scene.add(this.mesh);
     const g = GAS_STATION;
     this.blocked = [
-      ...ROADS, ...SIDEWALKS,
+      ...ROADS, ...SIDEWALKS, ...CURB_CUTS,
       { cx: (DOWNTOWN.x0 + DOWNTOWN.x1) / 2, cz: (DOWNTOWN.z0 + DOWNTOWN.z1) / 2, sx: DOWNTOWN.x1 - DOWNTOWN.x0 + 6, sz: DOWNTOWN.z1 - DOWNTOWN.z0 + 6 },
       { cx: g.canopy.x, cz: 28, sx: g.canopy.w + 14, sz: 36 },
       { cx: DEPOT.x, cz: DEPOT.z + 6, sx: DEPOT.w + 12, sz: DEPOT.d + 18 },
