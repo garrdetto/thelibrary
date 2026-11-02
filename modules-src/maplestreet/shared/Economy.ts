@@ -16,6 +16,7 @@ export const DELIVERY_PAY_PER_M = 2.2;
 export const COST = {
   wall: 75, halfWall: 45, fence: 30, privacyFence: 55, railing: 40,
   door: 320, window: 260, picture: 540,
+  slider: 1150, french: 980, glassdoor: 460, tall: 340, clerestory: 230, frosted: 190, garage: 1400,
   floorPerCell: 18,
   roofPerM2: 32,
   poolPerM2: 140,

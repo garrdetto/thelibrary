@@ -16,7 +16,7 @@ function rng(seed: number) {
   return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 }
 
-function canvasTex(size: number, seed: number, draw: Draw, srgb = true): THREE.CanvasTexture {
+export function canvasTex(size: number, seed: number, draw: Draw, srgb = true): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d')!;
@@ -141,8 +141,36 @@ const concrete: Draw = (g, s, rnd) => {
 };
 
 const asphalt: Draw = (g, s, rnd) => {
-  g.fillStyle = '#3b3c3e'; g.fillRect(0, 0, s, s);
-  noise(g, s, rnd, 60000, 0.12, true); noise(g, s, rnd, 40000, 0.2, false);
+  g.fillStyle = '#3d3e40'; g.fillRect(0, 0, s, s);
+  // Broad tonal drift so the 8 m tile doesn't read as a repeat.
+  for (let i = 0; i < 40; i++) {
+    const x = rnd() * s, y = rnd() * s, r = s * (0.08 + rnd() * 0.25);
+    const grd = g.createRadialGradient(x, y, 0, x, y, r);
+    const v = rnd() < 0.5 ? '0,0,0' : '255,255,255';
+    grd.addColorStop(0, `rgba(${v},${0.03 + rnd() * 0.05})`); grd.addColorStop(1, `rgba(${v},0)`);
+    g.fillStyle = grd; g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  // Aggregate: pale stones in a dark binder, plus fines.
+  for (let i = 0; i < 90000; i++) {
+    const l = rnd() < 0.55 ? 58 + rnd() * 28 : 12 + rnd() * 16;
+    g.fillStyle = `hsla(${25 + rnd() * 20},${4 + rnd() * 6}%,${l}%,${0.25 + rnd() * 0.45})`;
+    const sz = rnd() < 0.08 ? 2 + rnd() * 2 : 1;
+    g.fillRect(rnd() * s, rnd() * s, sz, sz);
+  }
+  // A patched square and a few sealed cracks (glossy black tar lines).
+  const px = rnd() * s * 0.6, py = rnd() * s * 0.6, pw = s * (0.15 + rnd() * 0.15), ph = s * (0.1 + rnd() * 0.2);
+  g.fillStyle = 'rgba(20,20,22,0.12)'; g.fillRect(px, py, pw, ph);
+  g.strokeStyle = 'rgba(10,10,12,0.3)'; g.lineWidth = 2; g.strokeRect(px, py, pw, ph);
+  for (let c = 0; c < 5; c++) {
+    let x = rnd() * s, y = rnd() * s;
+    const ang = rnd() * Math.PI * 2, wide = rnd() < 0.5;
+    g.strokeStyle = wide ? 'rgba(12,12,14,0.55)' : 'rgba(18,18,20,0.6)';
+    g.lineWidth = wide ? 3 + rnd() * 3 : 1 + rnd();
+    g.beginPath(); g.moveTo(x, y);
+    for (let k = 0; k < 14; k++) { x += Math.cos(ang + (rnd() - 0.5) * 1.4) * s * 0.03; y += Math.sin(ang + (rnd() - 0.5) * 1.4) * s * 0.03; g.lineTo(x, y); }
+    g.stroke();
+  }
+  noise(g, s, rnd, 20000, 0.08, false);
 };
 
 const shingles: Draw = (g, s, rnd) => {
@@ -358,7 +386,7 @@ export class MaterialLibrary {
       case 'slate':        return { material: this.std(T(11, slate), 0.6), tile: 1.8 };
       case 'concrete':     return { material: this.std(T(12, concrete), 0.85), tile: 2.5 };
       case 'foundation':   return { material: this.std(T(13, concrete), 0.9, { color: 0xb8b4ad }), tile: 2.5 };
-      case 'asphalt':      return { material: this.std(T(14, asphalt), 0.92), tile: 4 };
+      case 'asphalt':      return { material: this.std(canvasTex(1024, 14, asphalt), 0.88, { bumpScale: 0.8 }), tile: 8 };
       case 'sidewalk':     return { material: this.std(T(15, concrete), 0.85), tile: 1.5 };
       case 'shingle':      return { material: this.std(T(16, shingles), 0.85), tile: 2.0 };
       case 'grass':        return { material: this.std(T(17, grass), 1.0, { bumpScale: 2 }), tile: 3.0 };
@@ -373,6 +401,11 @@ export class MaterialLibrary {
         material: new THREE.MeshStandardMaterial({ color: 0x9fb9c7, roughness: 0.04, metalness: 0.1, transparent: true, opacity: 0.32, depthWrite: false }),
         tile: 1,
       };
+      case 'glass_frosted': return {
+        material: new THREE.MeshStandardMaterial({ color: 0xe9eef0, roughness: 0.55, metalness: 0, transparent: true, opacity: 0.82, depthWrite: false }),
+        tile: 1,
+      };
+      case 'shutter':      return { material: new THREE.MeshStandardMaterial({ color: 0x23302a, roughness: 0.55 }), tile: 1 };
       default:             return { material: new THREE.MeshStandardMaterial({ color: 0xff00ff }), tile: 1 };
     }
   }

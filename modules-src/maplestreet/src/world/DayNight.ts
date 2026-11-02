@@ -7,9 +7,14 @@
 import * as THREE from 'three/webgpu';
 import { noNormalsMRT } from '../core/Engine';
 
-const DAY = new THREE.Color(0xfff3e2), DUSK = new THREE.Color(0xff9a52), MOON = new THREE.Color(0x9bb4ff);
-const SKY_DAY = new THREE.Color(0xa9c9ef), SKY_DUSK = new THREE.Color(0xe7a27a), SKY_NIGHT = new THREE.Color(0x0a1022);
+const DAY = new THREE.Color(0xfff3e2), DUSK = new THREE.Color(0xff9a52), MOON = new THREE.Color(0xa9bfff);
+const SKY_DAY = new THREE.Color(0xa9c9ef), SKY_DUSK = new THREE.Color(0xe7a27a), SKY_NIGHT = new THREE.Color(0x16234a);
+const HEMI_NIGHT_SKY = new THREE.Color(0x4a5f9a), HEMI_NIGHT_GROUND = new THREE.Color(0x1f2418), HEMI_DAY_GROUND = new THREE.Color(0x3d4a2a);
+/** Moonlit night sky added on top of the physical sky, which goes fully black once the sun sets. */
+const NIGHT_ZENITH = new THREE.Vector3(0.018, 0.03, 0.075), NIGHT_HORIZON = new THREE.Vector3(0.05, 0.065, 0.12);
 const SHADOW_EXTENT = 55;
+/** The physical sky is tuned for about half our exposure; scaling it keeps noon blue instead of washed out. */
+const SKY_GAIN = 0.45;
 const SHADOW_MAP = 4096;
 
 export class DayNight {
@@ -27,7 +32,10 @@ export class DayNight {
   private pmrem: THREE.PMREMGenerator | null = null;
   private envTarget: THREE.RenderTarget | null = null;
   private envHours = -10;
+  private envNight = -1;
   private dayK = 1;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private nightU: any = null;
 
   constructor(private scene: THREE.Scene) {
     const s = this.sun;
@@ -59,11 +67,24 @@ export class DayNight {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { SkyMesh }: any = await import('three/addons/objects/SkyMesh.js');
-      // SkyMesh writes a raw fragmentNode, which bypasses the AO normal buffer;
-      // feeding the same node in as colorNode keeps it on the standard path.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const tsl: any = await import('three/tsl');
+      this.nightU = tsl.uniform(0);
+      const night = this.nightU;
+      // Older SkyMesh builds wrote a raw fragmentNode, which bypasses the AO normal
+      // buffer; current ones already use colorNode. Either way the sky ends up as
+      // colorNode, plus a moonlit blue that fades in after sunset so the night sky
+      // is deep blue with a lighter horizon instead of pure black.
       const asColor = (m: THREE.Mesh) => {
         const mat = m.material as THREE.Material & { colorNode: unknown; fragmentNode: unknown; fog: boolean };
-        mat.colorNode = mat.fragmentNode; mat.fragmentNode = null; mat.fog = false;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sky: any = mat.colorNode ?? mat.fragmentNode;
+        if (!sky) throw new Error('SkyMesh has no color node');
+        const dir = tsl.normalize(tsl.positionWorld.sub(tsl.cameraPosition));
+        const up = tsl.clamp(dir.y, 0, 1);
+        const tint = tsl.mix(tsl.vec3(NIGHT_HORIZON.x, NIGHT_HORIZON.y, NIGHT_HORIZON.z), tsl.vec3(NIGHT_ZENITH.x, NIGHT_ZENITH.y, NIGHT_ZENITH.z), tsl.sqrt(up));
+        mat.colorNode = tsl.vec4(sky.rgb.mul(SKY_GAIN).add(tint.mul(night)), 1);
+        mat.fragmentNode = null; mat.fog = false;
       };
       const sky = new SkyMesh();
       sky.scale.setScalar(4500);
@@ -113,10 +134,11 @@ export class DayNight {
       light.intensity = 3.6 * dayK + 0.05;
     } else {
       this.dir.multiplyScalar(-1);                    // moon opposite the sun
-      this.dir.y = Math.max(this.dir.y, 0.35);
+      this.dir.y = Math.max(this.dir.y, 0.45);
       light.color.copy(MOON);
-      light.intensity = 0.22;
+      light.intensity = 0.25 + 0.6 * THREE.MathUtils.smoothstep(-elev, 0.05, 0.3);
     }
+    if (this.nightU) this.nightU.value = this.night;
 
     // Texel-snapped shadow follow keeps edges from shimmering as you drive.
     const texel = (SHADOW_EXTENT * 2) / SHADOW_MAP;
@@ -124,14 +146,15 @@ export class DayNight {
     light.target.position.set(fx, 0, fz);
     light.position.set(fx + this.dir.x * 160, this.dir.y * 160, fz + this.dir.z * 160);
 
-    if (!this.envSky) this.hemi.intensity = 0.12 + 0.8 * dayK;
-    this.hemi.color.copy(SKY_NIGHT).lerp(SKY_DAY, dayK);
+    if (!this.envSky) this.hemi.intensity = 0.45 + 0.5 * dayK;
+    this.hemi.color.copy(HEMI_NIGHT_SKY).lerp(SKY_DAY, dayK);
+    this.hemi.groundColor.copy(HEMI_NIGHT_GROUND).lerp(HEMI_DAY_GROUND, dayK);
 
     const skyCol = new THREE.Color().copy(SKY_NIGHT).lerp(SKY_DAY, dayK).lerp(SKY_DUSK, duskK * 0.5 * dayK + duskK * 0.25);
     this.fog.color.copy(skyCol);
     if (this.sky) {
       (this.sky.sunPosition.value as THREE.Vector3).set(Math.cos(theta), elev, 0.38).normalize();
-      this.sky.visible = this.night < 0.97;
+      this.sky.visible = true;
       (this.scene.background as THREE.Color | null)?.copy?.(skyCol);
     } else {
       (this.scene.background as THREE.Color).copy(skyCol);
@@ -144,15 +167,20 @@ export class DayNight {
   updateEnvironment(renderer: THREE.WebGPURenderer) {
     if (!this.envSky) return;
     const scene = this.scene as THREE.Scene & { environmentIntensity?: number };
-    scene.environmentIntensity = 0.05 + 0.32 * this.dayK;
-    this.hemi.intensity = 0.04 + 0.22 * this.dayK;          // the sky reflection now carries most of the fill light
+    scene.environmentIntensity = 0.32 - 0.1 * this.dayK;
+    // The sky reflection carries most of the daytime fill; at night the hemisphere
+    // stands in for moonlight bouncing off the sky so streets stay readable.
+    this.hemi.intensity = 0.14 + 0.41 * this.night;
+    // Eye adaptation: open up the exposure after dark, like a camera or your eyes would.
+    renderer.toneMappingExposure = 0.84 + 0.63 * this.night;
     let dh = Math.abs(this.hours - this.envHours);
     if (dh > 12) dh = 24 - dh;
-    if (dh < 0.25) return;
+    if (dh < 0.25 && Math.abs(this.night - this.envNight) < 0.05) return;
     this.envHours = this.hours;
     try {
       const theta = ((this.hours - 6) / 24) * Math.PI * 2;
       (this.envSky.sunPosition.value as THREE.Vector3).set(Math.cos(theta), Math.sin(theta), 0.38).normalize();
+      this.envNight = this.night;
       this.pmrem ??= new THREE.PMREMGenerator(renderer);
       this.envTarget = this.pmrem.fromScene(this.envScene, 0, 0.1, 100, { renderTarget: this.envTarget });
       this.scene.environment = this.envTarget.texture;

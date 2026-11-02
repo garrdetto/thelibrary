@@ -72,7 +72,7 @@ function houseOps(world: WorldState, s: HouseSpec): BuildOp[] {
   openRow(0, 0, 6, 'door');
   for (const u of [2, 3, 9, 10]) openRow(0, 0, u, 'window');
   for (const v of [2, 7]) { openCol(0, 0, v, 'window'); openCol(0, W, v, 'window'); }
-  openRow(0, D, 3, 'door');                      // back door to the patio
+  openRow(0, D, 3, 'french');                    // French doors out to the patio
   for (const u of [8, 9, 10]) openRow(0, D, u, 'picture');
   openRow(0, 5, 3, 'door'); openRow(0, 5, 9, 'door');
 

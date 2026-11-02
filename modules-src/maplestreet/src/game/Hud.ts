@@ -7,10 +7,11 @@
  */
 import { CATALOG, CatalogFunc, CatalogItem, CatalogRoom, SWATCHES } from '../../shared/Catalog';
 import { FLOOR_MATS, FloorMat, INTERIOR_FINISHES, LotState, RoofStyle, WALL_STYLES, WallFinish, WallKind, WallStyle, WorldState } from '../../shared/BuildRules';
-import { Account, availableCredit, FUEL_PRICE, LOAN_CAP, LOAN_DAILY_RATE, LOT_PRICE, SHOP_ITEMS, VEHICLES } from '../../shared/Economy';
+import { Account, availableCredit, COST, FUEL_PRICE, LOAN_CAP, LOAN_DAILY_RATE, LOT_PRICE, SHOP_ITEMS, VEHICLES } from '../../shared/Economy';
 import type { Job, VehicleKind } from '../../shared/Protocol';
 import type { ShopDoor } from '../../shared/WorldLayout';
-import type { Tool, WallView } from '../build/BuildController';
+import { OPENING_TOOLS, type OpeningTool, type Tool, type WallView } from '../build/BuildController';
+import { OPENING_LABEL } from '../build/Openings';
 import { MapMarker, PlotMap } from './PlotMap';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -56,6 +57,8 @@ const BUILD_CATS: [BuildCat, string, string][] = [
   ['lot', '🏷', 'Lot'], ['rooms', '▣', 'Rooms'], ['walls', '▭', 'Walls'], ['fences', '┼', 'Fences & rails'], ['floors', '▦', 'Floors'],
   ['paint', '🖌', 'Wall finishes'], ['openings', '🚪', 'Doors & windows'], ['roofs', '⌂', 'Roofs'], ['pools', '🏊', 'Pools'], ['stairs', '🪜', 'Stairs'],
 ];
+const OPENING_ICON: Record<OpeningTool, string> = { door: '🚪', glassdoor: '🚪', french: '◫', slider: '▥', garage: '▤', window: '🪟', tall: '▯', picture: '⬜', clerestory: '▔', frosted: '▫' };
+const OPENING_TILES: [OpeningTool, string, string][] = OPENING_TOOLS.map(t => [t, OPENING_LABEL[t].replace(/^./, c => c.toUpperCase()), OPENING_ICON[t]]);
 const ROOMS: [CatalogRoom | 'all', string][] = [['all', 'All'], ['living', 'Living'], ['kitchen', 'Kitchen'], ['dining', 'Dining'], ['bath', 'Bathroom'], ['bedroom', 'Bedroom'], ['study', 'Study'], ['kids', 'Kids'], ['outdoor', 'Outdoor']];
 const FUNCS: [CatalogFunc, string][] = [['seating', 'Seating'], ['surfaces', 'Surfaces'], ['beds', 'Beds'], ['appliances', 'Appliances'], ['plumbing', 'Plumbing'], ['electronics', 'Electronics'], ['storage', 'Storage'], ['decor', 'Décor'], ['lighting', 'Lighting'], ['plants', 'Plants'], ['activities', 'Activities']];
 const ICON: Record<string, string> = {
@@ -162,7 +165,8 @@ export class Hud {
     document.querySelectorAll<HTMLElement>('#swatches .swatch').forEach(b => b.classList.toggle('on', Number(b.dataset.i) === s.tint));
     // Utility tools and eyedropper picks can move us between Build and Buy.
     if (s.tool === 'object' && s.catalogId !== 'stairs' && this.tab !== 'buy') { this.tab = 'buy'; document.body.dataset.tab = 'buy'; document.querySelectorAll<HTMLElement>('.bp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === 'buy')); this.renderFilters(); }
-    const catFor: Partial<Record<Tool, BuildCat>> = { buy: 'lot', room: 'rooms', floor: 'floors', paint: 'paint', door: 'openings', window: 'openings', picture: 'openings', roof: 'roofs', pool: 'pools' };
+    const catFor: Partial<Record<Tool, BuildCat>> = { buy: 'lot', room: 'rooms', floor: 'floors', paint: 'paint', roof: 'roofs', pool: 'pools' };
+    for (const t of OPENING_TOOLS) catFor[t] = 'openings';
     if (s.tool === 'wall') this.cat = ['full', 'half'].includes(s.wallKind) ? 'walls' : 'fences';
     else if (catFor[s.tool]) this.cat = catFor[s.tool]!;
     if (catFor[s.tool] || s.tool === 'wall') { if (this.tab !== 'build') { this.tab = 'build'; document.body.dataset.tab = 'build'; document.querySelectorAll<HTMLElement>('.bp-tab').forEach(b => b.classList.toggle('on', b.dataset.tab === 'build')); this.renderFilters(); } }
@@ -189,6 +193,7 @@ export class Hud {
       case 'eyedropper': return 'Click an item, wall or floor to copy it';
       case 'design': return 'Pick a color, then click items to recolor them';
       case 'sledge': return 'Click to sell items or demolish · everything refunds 100%';
+      case 'slider': case 'garage': case 'clerestory': return `Click wall sections side by side to make a wider ${OPENING_LABEL[s.tool]}`;
       default: return 'Click a wall to add it';
     }
   }
@@ -253,9 +258,7 @@ export class Hud {
           for (const f of [...INTERIOR_FINISHES, ...WALL_STYLES] as WallFinish[]) tiles.push({ key: f, name: pretty(f), pic: this.tex(f), on: s.finish === f && s.tool === 'paint', price: 'Free', pick: () => { this.ev.finish(f); this.ev.tool('paint'); } });
           break;
         case 'openings':
-          tiles.push(toolTile('door', 'Door', '🚪', s.tool === 'door', () => this.ev.tool('door'), '$320'));
-          tiles.push(toolTile('window', 'Window', '🪟', s.tool === 'window', () => this.ev.tool('window'), '$260'));
-          tiles.push(toolTile('picture', 'Picture window', '⬜', s.tool === 'picture', () => this.ev.tool('picture'), '$540'));
+          for (const [t, name, icon] of OPENING_TILES) tiles.push(toolTile(t, name, icon, s.tool === t, () => this.ev.tool(t), money(COST[t])));
           break;
         case 'roofs':
           for (const [st, name, icon] of [['gable_x', 'Gable (east-west)', '⌂'], ['gable_z', 'Gable (north-south)', '⏏'], ['hip', 'Hip roof', '◭'], ['flat', 'Flat roof', '▬']] as [RoofStyle, string, string][])
