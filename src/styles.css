@@ -1035,6 +1035,39 @@ body{background:var(--paper);color:var(--tone-0)}
 .admin-tabs button.is-active{background:var(--lib-accent,var(--green));border-color:transparent;color:var(--lib-on-accent,#fff)}
 .admin-tabs button:focus-visible,.site-changes button:focus-visible,.site-changes a:focus-visible,.site-changes textarea:focus-visible,.site-changes input:focus-visible{outline:2px solid var(--lib-accent,var(--green));outline-offset:2px}
 .admin-panel .account-home{margin-top:16px}
+.ms-items h2{margin:36px 0 8px;font-size:18px}
+.ms-items-editor{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:20px;margin-top:20px;align-items:start}
+.ms-items-stage{position:relative;height:460px;border:1px solid var(--lib-line,var(--border));border-radius:16px;overflow:hidden;background:#14181d}
+.ms-items-stage canvas{display:block;touch-action:none}
+.ms-items-drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;width:100%;height:100%;border:2px dashed color-mix(in srgb,var(--lib-accent,#f2b544) 45%,transparent);border-radius:16px;background:transparent;color:#d8dde3;font-weight:600;cursor:pointer}
+.ms-items-drop:hover{border-color:var(--lib-accent,#f2b544)}
+.ms-items-loading{position:absolute;left:14px;bottom:10px;display:flex;align-items:center;gap:8px;margin:0;color:#d8dde3;font-size:13px}
+.ms-items-fields{display:grid;gap:14px}
+.ms-items-fields label{display:grid;gap:6px;font-size:13px;font-weight:600}
+.ms-items-fields input:not([type=checkbox]):not([type=file]),.ms-items-fields select{padding:9px 10px;border:1px solid var(--lib-line,var(--border));border-radius:8px;background:var(--lib-panel,transparent);color:inherit;font:inherit;font-weight:400;min-width:0}
+.ms-items-fields fieldset{display:grid;gap:10px;margin:0;padding:12px 14px;border:1px solid var(--lib-line,var(--border));border-radius:12px}
+.ms-items-fields legend{padding:0 6px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--lib-muted,inherit)}
+.ms-items-scale{grid-template-columns:repeat(4,minmax(0,1fr))}
+.ms-items-scale-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:8px}
+.ms-items-flags label{display:flex;align-items:center;gap:8px;font-weight:400}
+.ms-items-fields button,.ms-items-list button,.ms-items-list a{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 12px;border:1px solid var(--lib-line,var(--border));border-radius:8px;background:var(--lib-panel2,transparent);color:inherit;font:inherit;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
+.ms-items-fields button:disabled,.ms-items-list button:disabled{opacity:.5;cursor:default}
+.ms-items-fields .ms-items-publish{padding:12px 16px;border-color:transparent;background:var(--lib-accent,var(--green));color:var(--lib-on-accent,#fff);font-size:15px}
+.ms-items-readout{display:grid;gap:6px;margin:0;font-size:13px}
+.ms-items-readout div{display:flex;justify-content:space-between;gap:12px}
+.ms-items-readout dt{color:var(--lib-muted,inherit)}
+.ms-items-readout dd{margin:0;font-variant-numeric:tabular-nums;text-align:right}
+.ms-items-error,.ms-items-ok{margin:0;padding:10px 12px;border-radius:10px;font-size:13px;line-height:1.5}
+.ms-items-error{border:1px solid color-mix(in srgb,#ff5a7a 45%,transparent);background:color-mix(in srgb,#ff5a7a 10%,transparent)}
+.ms-items-ok{border:1px solid color-mix(in srgb,#5cd17a 45%,transparent);background:color-mix(in srgb,#5cd17a 10%,transparent)}
+.ms-items-list{display:grid;gap:10px;margin:12px 0 0;padding:0;list-style:none}
+.ms-items-list li{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 16px;border:1px solid var(--lib-line,var(--border));border-radius:12px}
+.ms-items-list li>div{display:grid;gap:4px;flex:1;min-width:220px}
+.ms-items-list li>div span{font-size:12px;color:var(--lib-muted,inherit)}
+.ms-items-list li.is-retired{opacity:.65}
+.ms-items-state{font-size:12px;font-weight:700}
+.ms-items-fields button:focus-visible,.ms-items-list button:focus-visible,.ms-items-list a:focus-visible,.ms-items-drop:focus-visible,.ms-items-fields input:focus-visible,.ms-items-fields select:focus-visible{outline:2px solid var(--lib-accent,var(--green));outline-offset:2px}
+@media(max-width:860px){.ms-items-editor{grid-template-columns:1fr}.ms-items-stage{height:340px}.ms-items-scale{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .site-changes code{font-size:.92em;padding:1px 5px;border-radius:5px;background:var(--lib-chip,rgba(0,0,0,.05))}
 .site-changes button{display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:7px 14px;border-radius:8px;border:1px solid var(--lib-border,var(--border));background:transparent;color:inherit;cursor:pointer;font:inherit}
 .site-changes button:disabled{opacity:.5;cursor:not-allowed}

@@ -123,17 +123,21 @@ export class StructureMesher {
         const m = buildFurniture(o.catalogId, o.tint ?? 0);
         m.position.set(cx, y, cz);
         m.rotation.y = -o.rot * (Math.PI / 2);
-        m.updateMatrixWorld(true);
-        m.traverse(node => {
-          const mesh = node as THREE.Mesh;
-          if (!mesh.isMesh) return;
-          const mat = mesh.material as THREE.Material;
-          let fb = furniture.get(mat.uuid);
-          if (!fb) furniture.set(mat.uuid, (fb = { mat, geos: [] }));
-          const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-          fb.geos.push(g.index ? g.toNonIndexed() : g);
-          mesh.geometry.dispose();
-        });
+        if (item.custom) {
+          group.add(m);
+        } else {
+          m.updateMatrixWorld(true);
+          m.traverse(node => {
+            const mesh = node as THREE.Mesh;
+            if (!mesh.isMesh) return;
+            const mat = mesh.material as THREE.Material;
+            let fb = furniture.get(mat.uuid);
+            if (!fb) furniture.set(mat.uuid, (fb = { mat, geos: [] }));
+            const g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+            fb.geos.push(g.index ? g.toNonIndexed() : g);
+            mesh.geometry.dispose();
+          });
+        }
       }
       if (o.catalogId === 'stairs') {
         // 12 treads, 0.25 m rise each, climbing toward the item's back (local -Z).

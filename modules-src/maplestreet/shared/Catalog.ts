@@ -9,8 +9,10 @@
  *
  * Visual builders live on the client (src/build/Furniture.ts) keyed by id.
  */
-export type CatalogRoom = 'living' | 'kitchen' | 'dining' | 'bath' | 'bedroom' | 'study' | 'kids' | 'outdoor';
-export type CatalogFunc = 'seating' | 'surfaces' | 'appliances' | 'plumbing' | 'beds' | 'storage' | 'electronics' | 'decor' | 'lighting' | 'activities' | 'plants';
+export const CATALOG_ROOMS = ['living', 'kitchen', 'dining', 'bath', 'bedroom', 'study', 'kids', 'outdoor'] as const;
+export const CATALOG_FUNCS = ['seating', 'surfaces', 'appliances', 'plumbing', 'beds', 'storage', 'electronics', 'decor', 'lighting', 'activities', 'plants'] as const;
+export type CatalogRoom = (typeof CATALOG_ROOMS)[number];
+export type CatalogFunc = (typeof CATALOG_FUNCS)[number];
 export type ObjectLayer = 'floor' | 'rug' | 'wall' | 'ceiling';
 /** What a Sim-style interaction does (validated server-side). */
 export type UseAction = 'sleep' | 'eat' | 'fun' | 'refresh';
@@ -29,6 +31,16 @@ export interface CatalogItem {
   layer: ObjectLayer;
   tintable: boolean;
   use?: UseAction;
+  /** Admin-published model (see shared/CustomItems.ts); drawn from a .glb instead of a builder. */
+  custom?: CustomModel;
+  /** Retired items stay valid for houses that already own them but leave the Buy catalog. */
+  hidden?: boolean;
+}
+
+export interface CustomModel {
+  url: string;
+  scale: { x: number; y: number; z: number };
+  yaw: number;
 }
 
 const I = (id: string, name: string, room: CatalogRoom, func: CatalogFunc, w: number, d: number, h: number, price: number, o: Partial<CatalogItem> = {}): CatalogItem =>

@@ -226,7 +226,7 @@ export class Hud {
     if (!s) return;
     const tiles: Tile[] = [];
     if (this.tab === 'buy') {
-      const items = Object.values(CATALOG).filter(i => i.id !== 'stairs' && (this.funcFilter ? i.func === this.funcFilter : this.roomFilter === 'all' || i.room === this.roomFilter));
+      const items = Object.values(CATALOG).filter(i => i.id !== 'stairs' && !i.hidden && (this.funcFilter ? i.func === this.funcFilter : this.roomFilter === 'all' || i.room === this.roomFilter));
       this.wantThumbs(items.map(i => i.id));
       for (const i of items) tiles.push(this.itemTile(i, s));
     } else {

@@ -7,6 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { CATALOG } from '../../shared/Catalog';
 import { buildFurniture } from './Furniture';
+import { whenCustomModelReady } from './CustomModels';
 
 const SIZE = 256;          // rendered size (supersampled)
 const OUT = 128;           // stored thumbnail size
@@ -48,6 +49,7 @@ export class ThumbnailRenderer {
 
   private async renderOne(id: string): Promise<string> {
     const item = CATALOG[id];
+    if (item.custom) await whenCustomModelReady(id);
     const model = buildFurniture(id);
     this.scene.add(model);
     const box = new THREE.Box3().setFromObject(model);
