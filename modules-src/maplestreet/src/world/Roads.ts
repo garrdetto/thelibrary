@@ -8,12 +8,11 @@
  */
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CURB_CUTS, drivewayRect, LotDef, RectXZ, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
+import { CURB_CUTS, drivewayRect, LotDef, RectXZ, ROAD_NAMES, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
 import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import { mergeStatic } from '../core/Merge';
 import { Physics } from '../physics/Physics';
 
-const ROAD_NAMES = ['Main St', 'West Ave', 'East Ave', 'North St', 'South St', 'Commerce St', 'Market Ave'];
 const MAJOR = new Set([0, 5]);
 const ROAD_TOP = 0.02;
 const CROSSWALK = 3;          // depth of the crosswalk band

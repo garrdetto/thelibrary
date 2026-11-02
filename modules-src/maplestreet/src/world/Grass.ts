@@ -1,19 +1,21 @@
 /**
- * Real 3D grass: tens of thousands of instanced blade clumps in a disc around
- * the camera, swaying in the wind (TSL vertex animation). Positions come from
- * a world-anchored jittered grid, so blades never "swim" as you move. Clumps
+ * Real 3D grass: tens of thousands of instanced clumps of thin blades in a
+ * disc around the camera, stirring in the wind (TSL vertex animation).
+ * Positions come from a world-anchored jittered grid, so blades never "swim"
+ * as you move. Heights follow real turf: a mowed lawn is about 4–5 cm, an
+ * uncut lawn about 8–13 cm, and open fields grow to knee-high meadow. Clumps
  * on a lot take their color from the lawn's mow map, so freshly cut stripes
- * show up as short, light-and-dark blades; uncut lawns and open fields grow tall.
+ * show up; slow color noise adds lush and dry patches everywhere.
  * Roads, sidewalks, driveways, floors, pools and downtown stay clear.
  */
 import * as THREE from 'three/webgpu';
 import { cos, float, instanceIndex, positionLocal, sin, time, uv, vec3 } from 'three/tsl';
 import { floorKey, objectCells, WorldState } from '../../shared/BuildRules';
-import { CURB_CUTS, DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, RectXZ, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
+import { CIVIC_BLOCK, CURB_CUTS, DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, RectXZ, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
 import type { Lawn } from './Lawn';
 
-const RADIUS = 34;
-const SPACING = 0.42;               // ~5.7 clumps per m²
+const RADIUS = 30;
+const SPACING = 0.32;               // ~10 clumps (40 blades) per m²
 const REBUILD_DIST = 3;
 /** Yard items with a hard or planted surface: no blades poke through them. */
 const COVERS = new Set(['court', 'hotTub', 'divingBoard', 'doghouse', 'flowerBed', 'patioSet', 'grill', 'trampoline']);
@@ -24,22 +26,33 @@ function hash(x: number, z: number) {
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
+/** Slow, smooth value in 0..1 for lush and dry patches a few meters across. */
+function patch(x: number, z: number) {
+  return 0.5 + 0.22 * Math.sin(x * 0.31 + Math.cos(z * 0.23) * 1.7) + 0.16 * Math.sin(z * 0.47 - x * 0.19) + 0.12 * Math.sin((x - z) * 0.9);
+}
+
 function clumpGeometry() {
-  // Three crossed, tapered, slightly bent blades. uv.y = 0 at the root, 1 at the tip.
+  // Four thin blades fanned around the root, each a tapered two-segment strip
+  // with its own height, lean and tint. uv.y = 0 at the root, 1 at the tip.
   const pos: number[] = [], uvs: number[] = [], col: number[] = [];
-  for (let b = 0; b < 3; b++) {
-    const a = (b / 3) * Math.PI + 0.3;
-    const ca = Math.cos(a), sa = Math.sin(a);
-    const lean = 0.08 + b * 0.03;
-    const seg = [[0, 0.055], [0.45, 0.04], [0.8, 0.022], [1, 0]];
+  const blades = [
+    { a: 0.3, h: 1.0, lean: 0.022, off: [0.01, 0.0], tint: [0.82, 1.0, 0.62] },
+    { a: 1.25, h: 0.82, lean: -0.018, off: [-0.012, 0.008], tint: [0.9, 1.0, 0.58] },
+    { a: 2.15, h: 0.92, lean: 0.026, off: [0.004, -0.013], tint: [0.78, 0.95, 0.6] },
+    { a: 2.85, h: 0.7, lean: -0.012, off: [-0.006, -0.004], tint: [0.95, 1.0, 0.55] },
+  ];
+  for (const bl of blades) {
+    const ca = Math.cos(bl.a), sa = Math.sin(bl.a);
+    const seg = [[0, 0.011], [0.55, 0.008], [1, 0]];
     for (let i = 0; i < seg.length - 1; i++) {
       const [y0, w0] = seg[i], [y1, w1] = seg[i + 1];
-      const l0 = lean * y0 * y0, l1 = lean * y1 * y1;
-      const p = (y: number, w: number, l: number, s: number) => [ca * w * s - sa * l, y, sa * w * s + ca * l];
+      const l0 = bl.lean * y0 * y0, l1 = bl.lean * y1 * y1;
+      const p = (y: number, w: number, l: number, s: number) => [bl.off[0] + ca * w * s - sa * l, y * bl.h, bl.off[1] + sa * w * s + ca * l];
       const A = p(y0, w0, l0, -1), B = p(y0, w0, l0, 1), C = p(y1, w1, l1, 1), D = p(y1, w1, l1, -1);
       pos.push(...A, ...B, ...C, ...A, ...C, ...D);
-      uvs.push(0, y0, 1, y0, 1, y1, 0, y0, 1, y1, 0, y1);
-      for (const y of [y0, y0, y1, y0, y1, y1]) { const k = 0.45 + 0.55 * y; col.push(k * 0.85, k, k * 0.7); }
+      uvs.push(0, y0 * bl.h, 1, y0 * bl.h, 1, y1 * bl.h, 0, y0 * bl.h, 1, y1 * bl.h, 0, y1 * bl.h);
+      // Darker, cooler roots (self-shadowing in the thatch) to lighter, warmer tips.
+      for (const y of [y0, y0, y1, y0, y1, y1]) { const k = 0.38 + 0.62 * y; col.push(k * bl.tint[0], k * bl.tint[1], k * bl.tint[2] * (1.05 - 0.2 * y)); }
     }
   }
   const g = new THREE.BufferGeometry();
@@ -69,7 +82,7 @@ export class Grass {
     // Wind: bend grows with the square of height; each clump has its own phase.
     const phase = instanceIndex.toFloat().mul(0.618);
     const bend = uv().y.mul(uv().y);
-    const sway = vec3(sin(time.mul(1.7).add(phase)).mul(0.07).add(sin(time.mul(0.6).add(phase.mul(0.13))).mul(0.05)), float(0), cos(time.mul(1.3).add(phase)).mul(0.04));
+    const sway = vec3(sin(time.mul(1.9).add(phase)).mul(0.012).add(sin(time.mul(0.55).add(phase.mul(0.13))).mul(0.01)), float(0), cos(time.mul(1.4).add(phase)).mul(0.008));
     mat.positionNode = positionLocal.add(sway.mul(bend));
     this.mesh = new THREE.InstancedMesh(clumpGeometry(), mat, this.max);
     this.mesh.count = 0;
@@ -84,6 +97,7 @@ export class Grass {
       { cx: (DOWNTOWN.x0 + DOWNTOWN.x1) / 2, cz: (DOWNTOWN.z0 + DOWNTOWN.z1) / 2, sx: DOWNTOWN.x1 - DOWNTOWN.x0 + 6, sz: DOWNTOWN.z1 - DOWNTOWN.z0 + 6 },
       { cx: g.canopy.x, cz: 28, sx: g.canopy.w + 14, sz: 36 },
       { cx: DEPOT.x, cz: DEPOT.z + 6, sx: DEPOT.w + 12, sz: DEPOT.d + 18 },
+      CIVIC_BLOCK,
     ];
   }
 
@@ -130,14 +144,17 @@ export class Grass {
           if (covered.has(`${fx}|${fz}`)) continue;
           if (b && (b.floors[floorKey(0, fx, fz)] || Object.values(b.pools).some(pl => fx >= pl.x0 - 0.3 && fx < pl.x1 + 0.3 && fz >= pl.z0 - 0.3 && fz < pl.z1 + 0.3))) continue;
           const mowed = lawn.sample(x, z, rgb);
-          height = mowed ? 0.07 + h1 * 0.03 : 0.2 + h2 * 0.14;
-          col.setRGB(rgb[0] * 1.15, rgb[1] * 1.15, rgb[2] * 1.15);
+          const k = 0.92 + patch(x, z) * 0.18 + (h1 - 0.5) * 0.08;
+          height = mowed ? 0.04 + h1 * 0.015 : 0.08 + h2 * 0.05;
+          col.setRGB(rgb[0] * 1.1 * k, rgb[1] * 1.1 * k, rgb[2] * 1.05 * k);
         } else {
-          height = 0.24 + h1 * 0.22;
-          col.setHSL(0.22 + h2 * 0.06, 0.42 + h1 * 0.15, 0.3 + h2 * 0.1);
+          const pn = patch(x * 0.6, z * 0.6);
+          height = 0.12 + pn * 0.14 + h1 * 0.06;
+          // Lush hollows read deeper green, dry rises drift toward straw.
+          col.setHSL(0.205 + pn * 0.075 + (h2 - 0.5) * 0.015, 0.34 + pn * 0.16, 0.25 + (1 - pn) * 0.07 + h1 * 0.04);
         }
         q.setFromAxisAngle(up, h1 * Math.PI * 2);
-        const wScale = 0.8 + h2 * 0.5;
+        const wScale = 0.85 + h2 * 0.35;
         m.compose(p.set(x, 0.01, z), q, s.set(wScale, height, wScale));
         this.mesh.setMatrixAt(n, m);
         this.mesh.setColorAt(n, col);

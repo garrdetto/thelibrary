@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LOT_PRICE } from '../../shared/Economy';
-import { DEPOT, DOWNTOWN, drivewayRect, LotDef, makeLots, RectXZ, ROADS, SIDEWALKS, STREETS, TOWN_HALF, WORLD_HALF } from '../../shared/WorldLayout';
+import { CIVIC_BLOCK, DEPOT, DOWNTOWN, drivewayRect, LotDef, makeLots, RectXZ, ROADS, SIDEWALKS, STREETS, TOWN_HALF, WORLD_HALF } from '../../shared/WorldLayout';
 import { noNormalsMRT } from '../core/Engine';
 import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import { Physics } from '../physics/Physics';
@@ -60,7 +60,7 @@ export class Neighborhood {
 
   private buildGround() {
     const s = WORLD_HALF * 2;
-    const seg = 160;
+    const seg = 190;
     const geo = new THREE.PlaneGeometry(s, s, seg, seg).rotateX(-Math.PI / 2);
     const e = this.mats.get('grass');
     const p = geo.getAttribute('position'), uv = geo.getAttribute('uv');
@@ -168,6 +168,7 @@ export class Neighborhood {
       for (const r of ROADS) if (Math.abs(x - r.cx) < r.sx / 2 + 2 && Math.abs(z - r.cz) < r.sz / 2 + 2) return true;
       if (x > DOWNTOWN.x0 - 14 && x < DOWNTOWN.x1 + 8 && z > DOWNTOWN.z0 - 4 && z < DOWNTOWN.z1 + 4) return true;
       if (Math.abs(x - DEPOT.x) < DEPOT.w / 2 + 10 && Math.abs(z - DEPOT.z) < DEPOT.d / 2 + 16) return true;
+      if (Math.abs(x - CIVIC_BLOCK.cx) < CIVIC_BLOCK.sx / 2 + 3 && Math.abs(z - CIVIC_BLOCK.cz) < CIVIC_BLOCK.sz / 2 + 3) return true;
       return false;
     };
     // Street trees at lot corners + a couple per backyard edge.
@@ -177,7 +178,7 @@ export class Neighborhood {
       spots.push({ x: lot.x + 1, z: fz, s: 0.9 + R() * 0.3 }, { x: lot.x + 2 + R() * 6, z: bz, s: 1 + R() * 0.4 }, { x: lot.x + 14 + R() * 8, z: bz, s: 0.9 + R() * 0.5 });
     }
     // Woodland outside the ring.
-    for (let i = 0; i < 700; i++) {
+    for (let i = 0; i < 950; i++) {
       const x = (R() * 2 - 1) * (WORLD_HALF - 10), z = (R() * 2 - 1) * (WORLD_HALF - 10);
       if (Math.abs(x) < TOWN_HALF.x && Math.abs(z) < TOWN_HALF.z) continue;
       if (blocked(x, z)) continue;
@@ -235,15 +236,18 @@ export class Neighborhood {
   // ---------------------------------------------------------------- lamps
 
   private buildLamps() {
-    const { AVE_X, ALLEY_Z } = STREETS;
+    const { AVE_X, ALLEY_Z, OUTER_Z, FAR_Z } = STREETS;
+    const streetZs = [0, ALLEY_Z, ...OUTER_Z].flatMap(z => [z, -z]);
     for (const lot of this.lots) {
-      const onMain = Math.abs(lot.z + lot.d / 2) < ALLEY_Z;
       const side = lot.front === '+z' ? -1 : 1;                 // lamps stand on the lot side and reach over the road
-      const streetZ = side * (onMain ? 5.6 : ALLEY_Z + 5.6);
-      this.lampPositions.push(new THREE.Vector3(lot.x + lot.w / 2, 5.6, streetZ));
+      const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
+      const street = streetZs.reduce((best, z) => Math.abs(z - frontZ) < Math.abs(best - frontZ) ? z : best, streetZs[0]);
+      this.lampPositions.push(new THREE.Vector3(lot.x + lot.w / 2, 5.6, street + side * 5.6));
       this.lampReach.push(new THREE.Vector3(0, 0, -side));
     }
-    for (const x of [-AVE_X, AVE_X]) for (const z of [-40, -20, 20, 40]) {
+    const aveZs: number[] = [];
+    for (let z = -FAR_Z + 13; z < FAR_Z - 8; z += 26) if (streetZs.every(sz => Math.abs(z - sz) > 9)) aveZs.push(z);
+    for (const x of [-AVE_X, AVE_X]) for (const z of aveZs) {
       this.lampPositions.push(new THREE.Vector3(x + 5.6 * Math.sign(x), 5.6, z));
       this.lampReach.push(new THREE.Vector3(-Math.sign(x), 0, 0));
     }

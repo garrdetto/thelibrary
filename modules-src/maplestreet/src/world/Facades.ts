@@ -14,7 +14,7 @@ export type FacadeStyle = 'brick' | 'stone' | 'stucco' | 'panel' | 'curtain' | '
 export function styleOf(b: Building): FacadeStyle {
   if (b.id === 'depot') return 'industrial';
   if (b.kind === 'office') return 'curtain';
-  if (b.kind === 'bank') return 'stone';
+  if (b.kind === 'bank' || b.kind === 'police') return 'stone';
   if (b.kind === 'dealer' || b.kind === 'grocery' || b.kind === 'gas') return 'panel';
   if (b.kind === 'cafe') return 'stucco';
   return 'brick';
@@ -27,7 +27,7 @@ export interface Storefront { v0: number; v1: number; top: number; mullions: num
 export interface Bay { u0: number; u1: number; v1: number }
 export interface FacadeLayout { w: number; h: number; style: FacadeStyle; groundH: number; floors: number[]; windows: Win[]; store: Storefront | null; bays: Bay[]; lobby: { u0: number; u1: number; v1: number } | null }
 
-const isShop = (b: Building) => b.kind !== 'office' && b.kind !== 'apartments';
+const isShop = (b: Building) => b.kind !== 'office' && b.kind !== 'apartments' && b.kind !== 'fire' && b.kind !== 'police';
 
 /** Window and storefront positions in metres (u from the face's left edge, v from the ground). Symmetric, so face direction doesn't matter. */
 export function facadeLayout(b: Building, w: number, h: number, front: boolean): FacadeLayout {
@@ -57,7 +57,10 @@ export function facadeLayout(b: Building, w: number, h: number, front: boolean):
   let store: Storefront | null = null;
   const bays: Bay[] = [];
   let lobby: FacadeLayout['lobby'] = null;
-  if (front && shop) {
+  if (front && b.kind === 'fire') {
+    for (const u of [w * 0.2, w * 0.45, w * 0.7]) bays.push({ u0: u - 1.9, u1: u + 1.9, v1: 4.4 });
+    lobby = { u0: w * 0.88 - 0.6, u1: w * 0.88 + 0.6, v1: 2.6 };
+  } else if (front && shop) {
     const top = Math.min(groundH, 3.25);
     const v0 = 0.45, v1 = Math.min(2.85, top - 0.3);
     const mullions: number[] = [];

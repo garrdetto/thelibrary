@@ -5,10 +5,10 @@
  * Clicking a lot selects it; the HUD shows details and actions beside it.
  */
 import { LotState, WorldState } from '../../shared/BuildRules';
-import { BUILDINGS, DEPOT, DOWNTOWN, GAS_STATION, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
+import { BUILDINGS, CIVIC, DEPOT, DOWNTOWN, GAS_STATION, MAP_BOUNDS, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
 
-const BOUNDS = { x0: -158, x1: 276, z0: -108, z1: 108 };
-const SHOP_ICON: Record<string, string> = { dealer: '🚙', diner: '🍔', bank: '🏦', cafe: '☕', grocery: '🛒', hardware: '🔧', gas: '⛽' };
+const BOUNDS = MAP_BOUNDS;
+const SHOP_ICON: Record<string, string> = { dealer: '🚙', diner: '🍔', bank: '🏦', cafe: '☕', grocery: '🛒', hardware: '🔧', gas: '⛽', fire: '🚒', police: '🚓' };
 
 export interface MapMarker { x: number; z: number; yaw: number }
 
@@ -100,7 +100,7 @@ export class PlotMap {
     // Downtown
     g.font = `600 ${Math.max(9, s * 3.2)}px system-ui, sans-serif`;
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (const b of BUILDINGS) {
+    for (const b of [...BUILDINGS, ...CIVIC]) {
       g.fillStyle = b.color; rect(b.x, b.z, b.w, b.d);
       g.strokeStyle = 'rgba(0,0,0,0.35)'; g.strokeRect(this.px(b.x - b.w / 2), this.py(b.z - b.d / 2), b.w * s, b.d * s);
       const icon = SHOP_ICON[b.kind];
