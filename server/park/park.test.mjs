@@ -23,6 +23,11 @@ import {
   dailyOperatingCosts,
   queueLine,
   stepPark,
+  spawnRate,
+  ownedTileCount,
+  landAreaPlan,
+  MAX_GUESTS,
+  GUESTS_PER_OWNED_TILE,
 } from './index.mjs'
 
 function parkFixture() {
@@ -261,4 +266,61 @@ test('coaster building prices are doubled and electricity is one dollar per tile
   }
   state.staff = [{ id: 1, park: 0, role: 'security' }]
   assert.deepEqual(dailyOperatingCosts(state, 0), { wages: 50, electricity: 10, poweredTiles: 10 })
+})
+
+function openRideFixture(state, count) {
+  for (let k = 0; k < count; k++) {
+    const made = applyCommand(state, { t: 'flat', ride: 'dropTower', x: 40 + (k % 8) * 4, y: 40 + Math.floor(k / 8) * 4, rot: 0 })
+    assert.equal(made.ok, true, made.error)
+    state.entities[made.id].status = 'open'
+  }
+}
+
+test('area land purchases buy only connected, eligible squares and charge for each one', () => {
+  const state = createPark('meadowbrook')
+  state.parks[0].named = true
+  state.parks[0].cash = 100_000
+  const land = state.parks[0].land
+  const ownedBefore = ownedTileCount(state, 0)
+  const y0 = land.initial.y0, y1 = land.initial.y0 + 9
+  const x1 = land.initial.x0 - 1, x0 = x1 - 9
+  for (let y = y0; y <= y1; y++) state.map.owner[tileIndex(state.map, x1 - 5, y)] = 1
+  const plan = landAreaPlan(state, 0, { x0, y0, x1, y1 })
+  assert.equal(plan.tiles.length, 5 * 10)
+  const before = state.parks[0].cash
+  const result = applyCommand(state, { t: 'buyLandArea', x0, y0, x1, y1 })
+  assert.deepEqual(result, { ok: true, cost: 5000, count: 50 })
+  assert.equal(state.parks[0].cash, before - 5000)
+  assert.equal(ownedTileCount(state, 0), ownedBefore + 50)
+  assert.equal(state.map.owner[tileIndex(state.map, x0, y0)], 255)
+  assert.equal(state.map.owner[tileIndex(state.map, x1, y1)], 0)
+  assert.equal(applyCommand(state, { t: 'buyLandArea', x0: land.limit.x0, y0: land.initial.y1 + 2, x1: land.limit.x0 + 3, y1: land.initial.y1 + 4 }).ok, false)
+  assert.equal(applyCommand(state, { t: 'buyLandArea', x0: 0, y0: 0, x1: 40, y1: 3 }).ok, false)
+  state.parks[0].cash = 50
+  assert.equal(applyCommand(state, { t: 'buyLandArea', x0: x1 - 4, y0: y1 + 1, x1, y1: y1 + 2 }).ok, false)
+})
+
+test('the guest cap grows with rides and shops and with owned land', () => {
+  const state = parkFixture()
+  state.map.owner.fill(255)
+  for (let y = 36; y < 76; y++) for (let x = 36; x < 76; x++) state.map.owner[tileIndex(state.map, x, y)] = 0
+  state.landVersion = (state.landVersion ?? 0) + 1
+  const empty = spawnRate(state, state.parks[0])
+  openRideFixture(state, 3)
+  const few = spawnRate(state, state.parks[0])
+  assert.ok(few.buildCap > empty.buildCap)
+  assert.ok(few.cap > empty.cap)
+  for (let k = 3; k < 40; k++) {
+    const made = applyCommand(state, { t: 'flat', ride: 'dropTower', x: 40 + (k % 8) * 4, y: 40 + Math.floor(k / 8) * 4, rot: 0 })
+    if (made.ok) state.entities[made.id].status = 'open'
+  }
+  const crowded = spawnRate(state, state.parks[0])
+  assert.equal(crowded.limit, 'land')
+  assert.equal(crowded.landCap, Math.round(40 * 40 * GUESTS_PER_OWNED_TILE))
+  for (let y = 76; y < 116; y++) for (let x = 36; x < 76; x++) state.map.owner[tileIndex(state.map, x, y)] = 0
+  state.landVersion++
+  const bigger = spawnRate(state, state.parks[0])
+  assert.ok(bigger.landCap > crowded.landCap)
+  assert.ok(bigger.cap > crowded.cap)
+  assert.ok(bigger.cap <= MAX_GUESTS)
 })

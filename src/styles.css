@@ -916,6 +916,9 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-bar{display:grid;grid-template-columns:150px 1fr;gap:8px;align-items:center;font-size:12px}
 .pk-bar i{height:8px;border-radius:4px;background:#ffffff1c;overflow:hidden}
 .pk-bar b{display:block;height:100%;border-radius:4px;transition:width .4s}
+.pk-capacity{display:grid;gap:4px;margin:6px 0}
+.pk-capacity .pk-bar{grid-template-columns:1fr;gap:4px}
+.pk-limit-land,.pk-limit-max{color:#e2b33d}
 .pk-dl{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:0;font-size:12.5px}
 .pk-dl dt{opacity:.7}
 .pk-dl dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}

@@ -8,7 +8,8 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX } from '../../../server/park/index.mjs'
+import { GuestCapacity } from './GuestCapacity'
 import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
 
 type Tool =
@@ -37,6 +38,15 @@ type Toast = { id: number; text: string; kind: 'error' | 'info' | 'warn' }
 type PathSegment = 'level' | 'up' | 'down' | 'stairs-up' | 'stairs-down'
 
 const SURFACE_NAMES = ['Grass', 'Sand', 'Dirt', 'Rock', 'Snow']
+
+type LandArea = { x0: number; y0: number; x1: number; y1: number }
+
+function clampLandArea(r: LandArea): LandArea {
+  const span = LAND_AREA_MAX - 1
+  const x1 = r.x1 >= r.x0 ? Math.min(r.x1, r.x0 + span) : Math.max(r.x1, r.x0 - span)
+  const y1 = r.y1 >= r.y0 ? Math.min(r.y1, r.y0 + span) : Math.max(r.y1, r.y0 - span)
+  return { x0: Math.min(r.x0, x1), y0: Math.min(r.y0, y1), x1: Math.max(r.x0, x1), y1: Math.max(r.y0, y1) }
+}
 const CURVES = [{ c: -2, label: 'Wide left' }, { c: -1, label: 'Tight left' }, { c: 0, label: 'Straight' }, { c: 1, label: 'Tight right' }, { c: 2, label: 'Wide right' }]
 const SLOPES = [{ s: -2, label: 'Steep down' }, { s: -1, label: 'Down' }, { s: 0, label: 'Level' }, { s: 1, label: 'Up' }, { s: 2, label: 'Steep up' }]
 const SPECIALS = [{ sp: '', label: 'Track' }, { sp: 'chain', label: 'Chain lift' }, { sp: 'booster', label: 'Booster' }, { sp: 'brakes', label: 'Brakes' }, { sp: 'loop', label: 'Loop' }, { sp: 'corkscrew', label: 'Corkscrew' }, { sp: 'station', label: 'Station' }]
@@ -101,8 +111,12 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
   const state = session.state
   const park = state.parks[session.park]
-  const ownedLand = state.map.owner.filter(owner => owner === session.park).length
+  const ownedLand = ownedTileCount(state, session.park)
   const maxLand = park.land ? (park.land.limit.x1 - park.land.limit.x0 + 1) * (park.land.limit.y1 - park.land.limit.y0 + 1) : 0
+
+  const [pendingLand, setPendingLand] = useState<{ area: LandArea; count: number; cost: number } | null>(null)
+  const [landQuote, setLandQuote] = useState<{ count: number; cost: number } | null>(null)
+  const [buyingLand, setBuyingLand] = useState(false)
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = toastId.current++
@@ -164,6 +178,16 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     else { if (result.warning) toast(result.warning, 'warn'); else if (success) toast(success) }
     return result
   }, [session, toast])
+
+  async function confirmLand() {
+    if (!pendingLand) return
+    setBuyingLand(true)
+    const { area } = pendingLand
+    const res = await run({ t: 'buyLandArea', x0: area.x0, y0: area.y0, x1: area.x1, y1: area.y1 })
+    setBuyingLand(false)
+    setPendingLand(null)
+    if (res.ok) toast(`Bought ${(res.count ?? 0).toLocaleString()} squares for ${money(res.cost ?? 0)}.`)
+  }
 
   const entity = selection?.kind === 'entity' ? state.entities[selection.id] : undefined
   const staffMember = selection?.kind === 'staff' ? state.staff.find(s => s.id === selection.id) : undefined
@@ -260,7 +284,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (hit) {
       const d = drag.current
       const brush = 'size' in t ? t.size : 1
-      if (['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'pathAdd', 'demolish'].includes(t.kind)) {
+      if (['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'pathAdd', 'demolish', 'buyLand'].includes(t.kind)) {
         if (t.kind === 'pathBuilder') {
           const target = pathBuilderTarget(t, hit.x, hit.y)
           p.rect = { x0: hit.x, y0: hit.y, x1: hit.x, y1: hit.y, elevation: target.elevation, ok: target.ok }
@@ -294,6 +318,12 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       if (t.kind === 'coaster') p.station = { x: hit.x, y: hit.y, dir: t.dir, length: t.length, ok: [...Array(t.length)].every((_, k) => { const [dx, dy] = DIRS[t.dir]; const tx = hit.x + dx * k, ty = hit.y + dy * k; return inMap(state.map, tx, ty) && state.map.owner[tileIndex(state.map, tx, ty)] === session.park && !state.map.obj[tileIndex(state.map, tx, ty)] && !state.map.path[tileIndex(state.map, tx, ty)] }) }
     }
     if (p.rect && t.kind === 'path') p.rect.elevation = t.elevation
+    if (p.rect && t.kind === 'buyLand') {
+      const area = clampLandArea(p.rect)
+      const plan = landAreaPlan(state, session.park, area)
+      p.rect = { ...area, ok: plan.tiles.length > 0 }
+      setLandQuote(prev => !plan.tiles.length ? null : prev && prev.count === plan.tiles.length ? prev : { count: plan.tiles.length, cost: plan.cost })
+    }
     r.preview = p
   }
 
@@ -317,7 +347,14 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (!hit) return
     const rect = r.preview.rect
     switch (t.kind) {
-      case 'buyLand': await run({ t: 'buyLand', x: hit.x, y: hit.y }, 'Land purchased for $100.'); break
+      case 'buyLand': {
+        const area = clampLandArea(rect ?? { x0: hit.x, y0: hit.y, x1: hit.x, y1: hit.y })
+        if (area.x0 === area.x1 && area.y0 === area.y1) { await run({ t: 'buyLand', x: hit.x, y: hit.y }, `Land purchased for ${money(LAND_SQUARE_COST)}.`); break }
+        const plan = landAreaPlan(state, session.park, area)
+        if (plan.error) { toast(plan.error, 'error'); break }
+        setPendingLand({ area, count: plan.tiles.length, cost: plan.cost })
+        break
+      }
       case 'terrain': if (rect) await run({ t: 'terrain', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'water': if (rect) await run({ t: 'water', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'surface': if (rect) await run({ t: 'surface', surface: t.surface, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
@@ -398,7 +435,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (d.button >= 0 && Math.hypot(dx, dy) > 5) d.moved = true
     const t = toolRef.current
-    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear'].includes(t.kind)))
+    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind)))
     if (d.cam && d.moved && panning) {
       const a = d.anchor
       const p = a ? r.rayPlane(e.clientX, e.clientY, a.z) : null
@@ -418,7 +455,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     d.pointers.delete(e.pointerId)
     if (d.button === 9) { if (!d.pointers.size) d.button = -1; return }
     const t = toolRef.current
-    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear'].includes(t.kind)
+    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind)
     if (d.button === 0 && (!d.moved || areaTool)) void applyTool(e.clientX, e.clientY)
     d.button = -1; d.start = undefined
     updatePreview(e.clientX, e.clientY)
@@ -632,7 +669,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       {park.land && <div className="pk-land-buy">
         <p className="pk-label">Purchase land</p>
         <p className="pk-hint">{ownedLand.toLocaleString()} of {maxLand.toLocaleString()} squares owned. Expansion land is tinted light red.</p>
-        {!viewOnly && <><button className={`pk-btn ${tool.kind === 'buyLand' ? 'on' : ''}`} onClick={() => setTool({ kind: 'buyLand' })}>Buy a square · $100</button><p className="pk-hint">Select this, then click a red square next to your park.</p></>}
+        {!viewOnly && <><button className={`pk-btn ${tool.kind === 'buyLand' ? 'on' : ''}`} onClick={() => { setPendingLand(null); setTool({ kind: 'buyLand' }) }}>Buy land · {money(LAND_SQUARE_COST)} a square</button><p className="pk-hint">Click a red square next to your park, or drag over up to {LAND_AREA_MAX} by {LAND_AREA_MAX} squares to buy an area. You see the total before you confirm.</p></>}
       </div>}
       <div className="pk-chips">
         {(['raise', 'lower', 'level'] as const).map(op => <button key={op} className={tool.kind === 'terrain' && tool.op === op ? 'on' : ''} onClick={() => setTool({ kind: 'terrain', op, size: brushSize })}>{op === 'raise' ? 'Raise land' : op === 'lower' ? 'Lower land' : 'Level land'}</button>)}
@@ -735,6 +772,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
           <p className={`pk-objective pk-${park.status}`}>{objectiveText(park.objective)}{park.status === 'won' ? ' ✔ Complete!' : park.status === 'lost' ? ' ✘ Failed.' : ''}</p>
           <Bar label={`Guest happiness ${park.happiness ?? 0}%`} value={park.happiness ?? 0} max={100} />
           <Bar label={`Park rating ${park.rating}`} value={park.rating} max={999} />
+          <GuestCapacity park={park} />
           <dl className="pk-dl"><dt>Guests in park</dt><dd>{park.guestsIn}</dd><dt>Total visitors</dt><dd>{park.totalGuests}</dd><dt>Park value</dt><dd>{money(park.value)}</dd><dt>Company value</dt><dd>{money(companyValue(state, session.park))}</dd><dt>Litter</dt><dd>{park.litter ?? 0}</dd></dl>
           <div className="pk-row"><span>Entry fee</span><button onClick={() => void run({ t: 'park', entryFee: Math.max(0, park.entryFee - 1) })}><Minus size={13} /></button><strong>{money(park.entryFee)}</strong><button onClick={() => void run({ t: 'park', entryFee: Math.min(100, park.entryFee + 1) })}><Plus size={13} /></button></div>
           <button className={`pk-btn ${park.open ? '' : 'pk-btn-go'}`} onClick={() => void run({ t: 'park', open: !park.open })}>{park.open ? 'Close park to new guests' : 'Open park'}</button>
@@ -815,6 +853,17 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <div className="pk-actions"><button className="pk-btn" onClick={() => void run({ t: 'unpiece', ride: builder.ride })}><Undo2 size={14} /> Remove last</button><button className="pk-btn" disabled={finishing} onClick={() => void autoFinish()}>{finishing ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />} Auto-finish</button><button className="pk-btn pk-btn-go" disabled={!builderCheck?.ok} onClick={() => void buildPiece()}><Check size={14} /> Build piece</button></div>
       <p className="pk-hint">{builderRide.pieces?.length ?? 0} pieces · spent {money(builderRide.spent ?? 0)}. Click a selected button again to build it. Auto-finish routes the track back into the station, adding chain lift on climbs. Station pieces add extra stops where trains pause.</p>
     </section>}
+
+    {tool.kind === 'buyLand' && <div className="pk-placebar" role="group" aria-label="Buy land">
+      {pendingLand ? <>
+        <strong>Buy {pendingLand.count.toLocaleString()} squares for {money(pendingLand.cost)}?</strong>
+        <button className="pk-btn-go" disabled={buyingLand} onClick={() => void confirmLand()}>{buyingLand ? <LoaderCircle className="spin" size={14} /> : <Check size={14} />} Buy</button>
+        <button onClick={() => setPendingLand(null)}><X size={14} /> Cancel</button>
+      </> : <>
+        <strong>{landQuote ? `${landQuote.count.toLocaleString()} squares · ${money(landQuote.cost)}` : 'Click or drag over red land next to your park'}</strong>
+        <button onClick={() => { setTool({ kind: 'select' }); setLandQuote(null); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>
+      </>}
+    </div>}
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">
       <strong>{tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
