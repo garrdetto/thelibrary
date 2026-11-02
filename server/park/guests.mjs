@@ -287,7 +287,7 @@ function chooseTarget(state, guest) {
       const water = e.kind === 'flat' && FLAT_RIDES[e.ride].category === 'water'
       if (water && state.weather.kind === 'rain') continue
       const recent = guest.ridden.includes(e.id) ? 0.25 : 1
-      const weather = water ? (state.weather.temp >= 24 ? 2.2 : state.weather.temp < 16 ? 0.35 : 1) : 1
+      const weather = water ? (state.weather.temp >= 24 ? 2.2 : state.weather.temp < 16 ? 0.35 : 1) * (state.weather.kind === 'sunny' ? 1.25 : state.weather.kind === 'cloudy' ? 0.85 : 1) : 1
       const fit = e.stats.i < guest.minI ? 0.5 : 1
       choices.push([e, (0.6 + e.stats.e) * recent * fit * weather])
     }

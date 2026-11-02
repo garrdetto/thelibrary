@@ -4,6 +4,7 @@ import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel
 import type { RideModel } from './models'
 import { personCuller } from './culling'
 import { wavePoolModel } from './waterModels'
+import { waterRideModel, WATER_RIDE_TINTS } from './waterRides'
 import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
@@ -13,7 +14,7 @@ const SURFACE_COLORS: Vec3[] = ['#5b8f3c', '#cdb57a', '#7f6044', '#8a8780', '#e8
 const WATER_SHALLOW = hexColor('#7cc9cf'), WATER_DEEP = hexColor('#256f9e')
 const PATH_COLOR = hexColor('#cdbb93'), PATH_EDGE = hexColor('#8f7d5c'), QUEUE_COLOR = hexColor('#9fb3c9'), QUEUE_EDGE = hexColor('#556a84')
 const SCENERY_KINDS = ['oak', 'pine', 'birch', 'palm', 'bush', 'flowers', 'hedge', 'rock', 'fountain', 'statue', 'topiary']
-const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', wavePool: '#2f8fd0', waterslide: '#1fb5b0', zipper: '#e2513d', gravitron: '#7b51c9' }
+const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', wavePool: '#2f8fd0', waterslide: '#1fb5b0', zipper: '#e2513d', gravitron: '#7b51c9', ...WATER_RIDE_TINTS }
 const stallKey = (kind: string, size?: [number, number]) => `stall:${kind}:${(size ?? [1, 1]).join('x')}`
 
 export type Pick = { kind: 'guest' | 'staff' | 'entity'; id: number } | null
@@ -342,7 +343,7 @@ export class ParkRenderer {
     const key = `${kind}:${w}x${h}:${def.waves ? wave ?? def.waves : ''}`
     let m = this.rideModels.get(key)
     if (!m) {
-      const model = kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : flatRideModel(kind, w, h)
+      const model = kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : waterRideModel(kind, w, h) ?? flatRideModel(kind, w, h)
       m = { base: this.g.upload(model.base), parts: model.parts.map(p => ({ mesh: this.g.upload(p.builder), anim: p.anim })) }
       this.rideModels.set(key, m)
     }

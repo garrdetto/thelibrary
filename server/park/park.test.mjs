@@ -31,6 +31,7 @@ import {
   flatSpec,
   footprintTiles,
   WAVE_SETTINGS,
+  FLAT_RIDES,
 } from './index.mjs'
 
 function parkFixture() {
@@ -374,4 +375,21 @@ test('swimming pools resize too, and older pools keep their original footprint',
   delete saved.entities[made.id].size
   const copy = deserializePark(saved)
   assert.deepEqual(copy.entities[made.id].size, [5, 4])
+})
+
+test('every water ride builds with balanced stats and room for riders', () => {
+  const water = Object.entries(FLAT_RIDES).filter(([, def]) => def.category === 'water')
+  assert.ok(water.length >= 15)
+  for (const [id, def] of water) {
+    const state = parkFixture()
+    const made = applyCommand(state, { t: 'flat', ride: id, x: 40, y: 40, rot: 0 })
+    assert.equal(made.ok, true, `${id}: ${made.error}`)
+    const ride = state.entities[made.id]
+    assert.ok(rideCapacity(ride) >= 4, id)
+    if (def.resize) continue
+    assert.ok(def.cost >= 1000 && def.cost <= 15000, id)
+    assert.ok(def.stats.e > 1 && def.stats.e < 7, id)
+    if (def.stats.i >= 4) assert.ok(def.cost >= 5600, `${id} is a thrill ride priced below the Waterslide`)
+    if (def.stats.i < 1) assert.ok(def.cost <= 3000, `${id} is a gentle ride priced like a thrill ride`)
+  }
 })

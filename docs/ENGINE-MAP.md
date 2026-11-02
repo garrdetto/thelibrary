@@ -257,6 +257,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/lib/park/models.ts` — guests (`addPerson`), scenery, stalls and flat-ride models including the enclosed Gravitron drum and oblong Zipper boom — `renderer.ts`.
 - `src/lib/park/renderer.ts` — terrain, shadow pass, elevated footpaths and stair ramps, boardwalks, smoothly banked custom kart tracks, side-by-side compact karts, customizable ride colors, flat rides, and clearance-aware supports, and `captureOverview` (whole-park leaderboard screenshot) — `ParkHud.tsx`.
 - `src/lib/park/waterModels.ts` — Wave Pool model sized to its footprint (wave machine house, beach entry, moving swells set by the wave setting, loungers, lifeguard stand) — `renderer.ts`.
+- `src/lib/park/waterRides.ts` — models for the 15 water park rides (slide towers, tubes, rafts, bowl, funnel, half-pipe, trapdoor, mat racer, loop, surf sheet, splash pad, lagoon, bucket fort, lily pads, cliff jump) and their default tints — `renderer.ts`.
 - `src/components/park/WaveControl.tsx` — wave setting picker in the ride window — `ParkHud.tsx`.
 - `src/lib/park/culling.ts` — view-frustum test that skips off-screen guests before instancing — `renderer.ts`.
 - `src/lib/park/session.ts` — local and online sessions — `ParkGame.tsx`, `ParkHud.tsx`.
