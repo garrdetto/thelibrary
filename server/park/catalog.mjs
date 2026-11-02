@@ -8,10 +8,18 @@ export const FLAT_RIDES = {
   dropTower: { name: 'Drop Tower', category: 'thrill', size: [3, 3], cost: 6500, upkeep: 110, capacity: 12, rideTime: 26, loadTime: 10, price: 2.2, stats: { e: 4.38, i: 6.42, n: 3.05 }, height: 38, description: 'A slow climb and a sudden plunge.' },
   topSpin: { name: 'Twister Arm', category: 'thrill', size: [4, 3], cost: 5200, upkeep: 95, capacity: 16, rideTime: 30, loadTime: 10, price: 2, stats: { e: 4.05, i: 6.1, n: 5.7 }, height: 14, description: 'A gondola flips end over end between two arms.' },
   karts: { name: 'Go-Karts', category: 'thrill', size: [6, 4], cost: 4200, upkeep: 80, capacity: 8, rideTime: 45, loadTime: 10, price: 2, stats: { e: 3.4, i: 2.9, n: 0.9 }, height: 3, description: 'A twisting kart circuit. Guests race each other for bragging rights.' },
-  pool: { name: 'Swimming Pool', category: 'water', size: [5, 4], cost: 3400, upkeep: 60, capacity: 24, rideTime: 70, loadTime: 10, price: 1.5, stats: { e: 2.3, i: 0.6, n: 0.2 }, height: 2, description: 'A sparkling pool with loungers. Very popular on hot days.' },
+  pool: { name: 'Swimming Pool', category: 'water', size: [5, 4], cost: 3400, upkeep: 60, capacity: 24, rideTime: 70, loadTime: 10, price: 1.5, stats: { e: 2.3, i: 0.6, n: 0.2 }, height: 2, description: 'A sparkling pool with loungers. Drag to set its size. Very popular on hot days.', resize: { min: [3, 3], max: [16, 20], costBase: 1000, costPerTile: 120, upkeepBase: 20, upkeepPerTile: 2, capacityPerTile: 1.2, excitementPerTile: 0.003, maxSizeBonus: 0.6 } },
+  wavePool: { name: 'Wave Pool', category: 'water', size: [8, 6], cost: 14980, upkeep: 160, capacity: 58, rideTime: 90, loadTime: 12, price: 2, stats: { e: 3.1, i: 1.3, n: 0.6 }, height: 7, description: 'Drag to size a beach-entry lagoon. A wave machine sends swells from calm ripples to storm surf.', resize: { min: [4, 4], max: [16, 20], costBase: 2500, costPerTile: 260, upkeepBase: 40, upkeepPerTile: 2.5, capacityPerTile: 1.2, excitementPerTile: 0.0028, maxSizeBonus: 0.8 }, waves: 'rolling' },
   waterslide: { name: 'Waterslide', category: 'water', size: [4, 4], cost: 5600, upkeep: 90, capacity: 10, rideTime: 30, loadTime: 8, price: 2.2, stats: { e: 3.9, i: 3.3, n: 1.8 }, height: 14, description: 'Spiral tubes from a tall tower splash down into a plunge pool.' },
   zipper: { name: 'Zipper', category: 'other', size: [5, 5], cost: 4800, upkeep: 90, capacity: 20, rideTime: 34, loadTime: 10, price: 2, stats: { e: 4.7, i: 5.2, n: 4.1 }, height: 18, description: 'A spinning arm carries a ring of swinging cars high above the midway.' },
   gravitron: { name: 'Gravitron', category: 'other', size: [5, 5], cost: 4400, upkeep: 85, capacity: 24, rideTime: 32, loadTime: 9, price: 2, stats: { e: 4.3, i: 5.6, n: 4.8 }, height: 8, description: 'Riders circle inside a tilted saucer as it spins faster and faster.' },
+}
+
+export const WAVE_SETTINGS = {
+  calm: { name: 'Calm', e: -0.6, i: -0.8, n: -0.4, height: 0.25, speed: 0.6 },
+  rolling: { name: 'Rolling', e: 0, i: 0, n: 0, height: 0.6, speed: 1 },
+  surf: { name: 'Surf', e: 0.7, i: 1.3, n: 0.5, height: 1.1, speed: 1.4 },
+  storm: { name: 'Storm', e: 1.2, i: 2.5, n: 1.4, height: 1.7, speed: 1.9 },
 }
 
 export const COASTER_STYLES = {

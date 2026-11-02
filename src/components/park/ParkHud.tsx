@@ -8,7 +8,8 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec } from '../../../server/park/index.mjs'
+import { WaveControl } from './WaveControl'
 import { GuestCapacity } from './GuestCapacity'
 import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
 
@@ -23,7 +24,7 @@ type Tool =
   | { kind: 'pathPaint' }
   | { kind: 'unpath' }
   | { kind: 'pathAdd'; add: number }
-  | { kind: 'flat'; ride: string; rot: number }
+  | { kind: 'flat'; ride: string; rot: number; area?: [number, number] }
   | { kind: 'stall'; stall: string; rot: number }
   | { kind: 'scenery'; scenery: string; rot: number }
   | { kind: 'clear' }
@@ -40,6 +41,22 @@ type PathSegment = 'level' | 'up' | 'down' | 'stairs-up' | 'stairs-down'
 const SURFACE_NAMES = ['Grass', 'Sand', 'Dirt', 'Rock', 'Snow']
 
 type LandArea = { x0: number; y0: number; x1: number; y1: number }
+
+function resizableArea(ride: string, start: { x: number; y: number } | null, hit: { x: number; y: number }) {
+  const def = FLAT_RIDES[ride], limits = def.resize!
+  if (!start) {
+    const [w, h] = def.size
+    return { x: hit.x - Math.floor((w - 1) / 2), y: hit.y - Math.floor((h - 1) / 2), size: [w, h] as [number, number] }
+  }
+  const span = (a: number, b: number, min: number, max: number) => {
+    const dir = b >= a ? 1 : -1
+    const len = Math.max(min, Math.min(max, Math.abs(b - a) + 1))
+    return dir > 0 ? [a, len] : [a - len + 1, len]
+  }
+  const [x, w] = span(start.x, hit.x, limits.min[0], limits.max[0])
+  const [y, h] = span(start.y, hit.y, limits.min[1], limits.max[1])
+  return { x, y, size: [w, h] as [number, number] }
+}
 
 function clampLandArea(r: LandArea): LandArea {
   const span = LAND_AREA_MAX - 1
@@ -117,6 +134,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [pendingLand, setPendingLand] = useState<{ area: LandArea; count: number; cost: number } | null>(null)
   const [landQuote, setLandQuote] = useState<{ count: number; cost: number } | null>(null)
   const [buyingLand, setBuyingLand] = useState(false)
+  const [flatQuote, setFlatQuote] = useState<{ w: number; h: number; cost: number; capacity: number } | null>(null)
 
   const toast = useCallback((text: string, kind: Toast['kind'] = 'info') => {
     const id = toastId.current++
@@ -222,7 +240,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   function placementOk(t: Tool, x: number, y: number) {
     const map = state.map
     const free = (tx: number, ty: number) => { if (!inMap(map, tx, ty)) return false; const i = tileIndex(map, tx, ty); return map.owner[i] === session.park && !map.obj[i] && !map.path[i] && !(map.water[i] >= 0 && map.water[i] > tileMin(map, tx, ty)) }
-    if (t.kind === 'flat') return footprintTiles({ id: 0, type: 'ride', kind: 'flat', ride: t.ride, x, y, rot: t.rot, park: 0 } as Entity).every(([tx, ty]) => free(tx, ty))
+    if (t.kind === 'flat') return footprintTiles({ id: 0, type: 'ride', kind: 'flat', ride: t.ride, x, y, rot: t.rot, park: 0, ...(t.area ? { size: t.area } : {}) } as Entity).every(([tx, ty]) => free(tx, ty))
     if (t.kind === 'stall') {
       const def = STALLS[t.stall]
       const shop = { id: 0, type: 'stall', kind: t.stall, size: def.size ?? [1, 1], x, y, rot: t.rot, park: session.park } as Entity
@@ -298,7 +316,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
           p.rect = { x0: hit.x - half, y0: hit.y - half, x1: hit.x - half + brush - 1, y1: hit.y - half + brush - 1, ok: t.kind !== 'demolish' }
         }
       }
-      if (t.kind === 'flat') { const def = FLAT_RIDES[t.ride]; const w = t.rot % 2 ? def.size[1] : def.size[0], h = t.rot % 2 ? def.size[0] : def.size[1]; const x = hit.x - Math.floor((w - 1) / 2), y = hit.y - Math.floor((h - 1) / 2); p.ghost = { type: 'flat', kind: t.ride, x, y, rot: t.rot, ok: placementOk(t, x, y) } }
+      if (t.kind === 'flat' && FLAT_RIDES[t.ride].resize) {
+        const area = resizableArea(t.ride, d.button === 0 && d.start ? d.start : null, hit)
+        const sized = { ...t, rot: 0, area: area.size }
+        p.ghost = { type: 'flat', kind: t.ride, x: area.x, y: area.y, rot: 0, size: area.size, wave: FLAT_RIDES[t.ride].waves, ok: placementOk(sized, area.x, area.y) }
+        const spec = flatSpec(t.ride, area.size, FLAT_RIDES[t.ride].waves)
+        if (spec) setFlatQuote(prev => prev && prev.w === area.size[0] && prev.h === area.size[1] ? prev : { w: area.size[0], h: area.size[1], cost: spec.cost, capacity: spec.capacity })
+      } else if (t.kind === 'flat') { const def = FLAT_RIDES[t.ride]; const w = t.rot % 2 ? def.size[1] : def.size[0], h = t.rot % 2 ? def.size[0] : def.size[1]; const x = hit.x - Math.floor((w - 1) / 2), y = hit.y - Math.floor((h - 1) / 2); p.ghost = { type: 'flat', kind: t.ride, x, y, rot: t.rot, ok: placementOk(t, x, y) } }
       if (t.kind === 'stall') {
         const [baseW, baseH] = STALLS[t.stall].size ?? [1, 1]
         const w = t.rot % 2 ? baseH : baseW, h = t.rot % 2 ? baseW : baseH
@@ -380,7 +404,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       case 'flat': {
         const g = r.preview.ghost
         if (!g) break
-        const res = await run({ t: 'flat', ride: t.ride, x: g.x, y: g.y, rot: t.rot })
+        const res = await run(g.size ? { t: 'flat', ride: t.ride, x: g.x, y: g.y, rot: 0, w: g.size[0], h: g.size[1] } : { t: 'flat', ride: t.ride, x: g.x, y: g.y, rot: t.rot })
         if (res.ok && res.id) { setSelection({ kind: 'entity', id: res.id }); setTool({ kind: 'gate', ride: res.id, role: 'entrance' }); toast('Ride built. Now place its entrance on a tile beside it.') }
         break
       }
@@ -435,7 +459,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     if (d.button >= 0 && Math.hypot(dx, dy) > 5) d.moved = true
     const t = toolRef.current
-    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind)))
+    const panning = d.button === 1 || (d.button === 0 && (t.kind === 'select' || t.kind === 'demolish' || e.pointerType === 'touch' && !['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind) && !(t.kind === 'flat' && FLAT_RIDES[t.ride].resize)))
     if (d.cam && d.moved && panning) {
       const a = d.anchor
       const p = a ? r.rayPlane(e.clientX, e.clientY, a.z) : null
@@ -455,7 +479,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     d.pointers.delete(e.pointerId)
     if (d.button === 9) { if (!d.pointers.size) d.button = -1; return }
     const t = toolRef.current
-    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind)
+    const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand'].includes(t.kind) || (t.kind === 'flat' && Boolean(FLAT_RIDES[t.ride].resize))
     if (d.button === 0 && (!d.moved || areaTool)) void applyTool(e.clientX, e.clientY)
     d.button = -1; d.start = undefined
     updatePreview(e.clientX, e.clientY)
@@ -723,8 +747,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <div className="pk-tabs" role="tablist" aria-label="Ride categories">
         {(['All', 'Gentle', 'Thrill', 'Water', 'Other'] as const).map(tab => <button key={tab} role="tab" aria-selected={rideTab === tab} className={rideTab === tab ? 'on' : ''} onClick={() => setRideTab(tab)}>{tab}</button>)}
       </div>
-      <div className="pk-cards">{Object.entries(FLAT_RIDES).filter(([, ride]) => rideTab === 'All' || ride.category === rideTab.toLowerCase()).map(([id, r]) => <button key={id} className={`pk-card ${tool.kind === 'flat' && tool.ride === id ? 'on' : ''}`} onClick={() => { setTool({ kind: 'flat', ride: id, rot: 0 }); setPanel(null) }}>
-        <strong>{r.name}</strong><span>{money(r.cost)} · {r.size[0]}×{r.size[1]}</span><small>{r.description}</small><em>Excitement {r.stats.e.toFixed(1)} · Intensity {r.stats.i.toFixed(1)}</em>
+      <div className="pk-cards">{Object.entries(FLAT_RIDES).filter(([, ride]) => rideTab === 'All' || ride.category === rideTab.toLowerCase()).map(([id, r]) => <button key={id} className={`pk-card ${tool.kind === 'flat' && tool.ride === id ? 'on' : ''}`} onClick={() => { setFlatQuote(null); setTool({ kind: 'flat', ride: id, rot: 0 }); setPanel(null) }}>
+        <strong>{r.name}</strong><span>{r.resize ? `from ${money(flatSpec(id, r.resize.min, r.waves)?.cost ?? r.cost)} · drag to size` : `${money(r.cost)} · ${r.size[0]}×${r.size[1]}`}</span><small>{r.description}</small><em>Excitement {r.stats.e.toFixed(1)} · Intensity {r.stats.i.toFixed(1)}</em>
       </button>)}</div>
       {rideTab === 'Other' && <>
         <p className="pk-label">Custom track rides</p>
@@ -866,9 +890,10 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </div>}
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">
-      <strong>{tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
+      <strong>{tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize ? `${FLAT_RIDES[tool.ride].name} · ${flatQuote ? `${flatQuote.w}×${flatQuote.h} · ${money(flatQuote.cost)} · ${flatQuote.capacity} swimmers` : 'Drag to set the size'}` : tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
       {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.style === 'kart' ? `${tool.length + 1} karts` : `${Math.min(tool.length + 1, 10)}-car train`} · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
-      {(tool.kind === 'flat' || tool.kind === 'stall' || tool.kind === 'scenery' || tool.kind === 'coaster') && <button onClick={rotateTool}><RotateCw size={14} /> Rotate</button>}
+      {tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize && <span>Drag from corner to corner, {FLAT_RIDES[tool.ride].resize!.min.join('×')} to {FLAT_RIDES[tool.ride].resize!.max.join('×')}</span>}
+      {((tool.kind === 'flat' && !FLAT_RIDES[tool.ride].resize) || tool.kind === 'stall' || tool.kind === 'scenery' || tool.kind === 'coaster') && <button onClick={rotateTool}><RotateCw size={14} /> Rotate</button>}
       <button onClick={() => { setTool({ kind: 'select' }); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>
     </div>}
 
@@ -914,6 +939,8 @@ function RideWindow({ ride, session, readOnly, onClose, run, onBuild, onGate, ri
     </dl> : coaster && ride.complete ? <p className="pk-hint pk-neg">The track test failed. Remove pieces and adjust the route before trying again.</p> : coaster ? <p className="pk-hint">Finish the circuit to see its ratings.</p> : null}
     <dl className="pk-dl"><dt>Capacity</dt><dd>{rideCapacity(ride)} riders</dd><dt>Queue</dt><dd>{queue} guests</dd><dt>Riders</dt><dd>{ride.totalRiders ?? 0} total · {ride.monthRiders ?? 0} this month</dd><dt>Income</dt><dd>{money(ride.revenue ?? 0)}</dd><dt>Reliability</dt><dd>{Math.round(ride.reliability ?? 100)}%</dd></dl>
     <div className="pk-row"><span>Ticket</span>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.max(0, (ride.price ?? 0) - 0.1) })}><Minus size={13} /></button>}<strong>{money(ride.price ?? 0)}</strong>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.min(20, (ride.price ?? 0) + 0.1) })}><Plus size={13} /></button>}{value > 0 && <small>Guests think it is worth about {money(Math.round(value * 1.6 * 10) / 10)}</small>}</div>
+    {ride.kind === 'flat' && FLAT_RIDES[ride.ride as string]?.waves && <WaveControl ride={ride} readOnly={readOnly} onChange={wave => void run({ t: 'rideSet', id: ride.id, wave })} />}
+    {ride.kind === 'flat' && ride.size && <p className="pk-hint">{ride.size[0]}×{ride.size[1]} squares</p>}
     {!readOnly && rollerCoaster && <p className="pk-hint">Trains: 2 sets · {ride.cars ?? 3} cars each</p>}
     {!readOnly && rollerCoaster && <div className="pk-row"><span>Cars per train</span><button aria-label="Fewer cars per train" disabled={(ride.cars ?? 3) <= 1} onClick={() => void run({ t: 'rideSet', id: ride.id, cars: Math.max(1, (ride.cars ?? 3) - 1) })}><Minus size={13} /></button><strong>{ride.cars ?? 3} / 10</strong><button aria-label="More cars per train" disabled={(ride.cars ?? 3) >= 10} onClick={() => void run({ t: 'rideSet', id: ride.id, cars: Math.min(10, (ride.cars ?? 3) + 1) })}><Plus size={13} /></button></div>}
     {!readOnly && coaster ? <div className="pk-ride-colors">

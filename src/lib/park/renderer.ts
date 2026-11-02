@@ -3,6 +3,7 @@ import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
 import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
 import { personCuller } from './culling'
+import { wavePoolModel } from './waterModels'
 import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
@@ -12,14 +13,14 @@ const SURFACE_COLORS: Vec3[] = ['#5b8f3c', '#cdb57a', '#7f6044', '#8a8780', '#e8
 const WATER_SHALLOW = hexColor('#7cc9cf'), WATER_DEEP = hexColor('#256f9e')
 const PATH_COLOR = hexColor('#cdbb93'), PATH_EDGE = hexColor('#8f7d5c'), QUEUE_COLOR = hexColor('#9fb3c9'), QUEUE_EDGE = hexColor('#556a84')
 const SCENERY_KINDS = ['oak', 'pine', 'birch', 'palm', 'bush', 'flowers', 'hedge', 'rock', 'fountain', 'statue', 'topiary']
-const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', waterslide: '#1fb5b0', zipper: '#e2513d', gravitron: '#7b51c9' }
+const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', wavePool: '#2f8fd0', waterslide: '#1fb5b0', zipper: '#e2513d', gravitron: '#7b51c9' }
 const stallKey = (kind: string, size?: [number, number]) => `stall:${kind}:${(size ?? [1, 1]).join('x')}`
 
 export type Pick = { kind: 'guest' | 'staff' | 'entity'; id: number } | null
 export type TileHit = { x: number; y: number; wx: number; wy: number; wz: number; fx: number; fy: number }
 export type Preview = {
   rect?: { x0: number; y0: number; x1: number; y1: number; ok: boolean; elevation?: number }
-  ghost?: { type: 'flat' | 'stall' | 'scenery' | 'gate'; kind: string; x: number; y: number; rot: number; ok: boolean; role?: 'entrance' | 'exit' }
+  ghost?: { type: 'flat' | 'stall' | 'scenery' | 'gate'; kind: string; x: number; y: number; rot: number; ok: boolean; role?: 'entrance' | 'exit'; size?: [number, number]; wave?: string }
   piece?: { ride: Entity; piece: Piece; ok: boolean }
   station?: { x: number; y: number; dir: number; length: number; ok: boolean }
   selected?: number
@@ -335,13 +336,15 @@ export class ParkRenderer {
     this.g.setInstances(this.kindMeshes.get('litter') ?? null, l.data, l.count)
   }
 
-  private rideModel(kind: string) {
-    let m = this.rideModels.get(kind)
+  private rideModel(kind: string, size?: [number, number], wave?: string) {
+    const def = FLAT_RIDES[kind]
+    const [w, h] = size ?? def.size
+    const key = `${kind}:${w}x${h}:${def.waves ? wave ?? def.waves : ''}`
+    let m = this.rideModels.get(key)
     if (!m) {
-      const def = FLAT_RIDES[kind]
-      const model = flatRideModel(kind, def.size[0], def.size[1])
+      const model = kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : flatRideModel(kind, w, h)
       m = { base: this.g.upload(model.base), parts: model.parts.map(p => ({ mesh: this.g.upload(p.builder), anim: p.anim })) }
-      this.rideModels.set(kind, m)
+      this.rideModels.set(key, m)
     }
     return m
   }
@@ -631,7 +634,7 @@ export class ParkRenderer {
   }
 
   private drawFlat(e: Entity, dt: number, highlight?: [number, number, number, number]) {
-    const model = this.rideModel(e.ride as string)
+    const model = this.rideModel(e.ride as string, e.size, e.wave)
     const base = this.flatMatrix(e)
     const c = this.clock(e, dt)
     const tint = hexColor(e.color ?? FLAT_TINTS[e.ride as string] ?? '#d8432f')
@@ -793,8 +796,8 @@ export class ParkRenderer {
     if (gh.type === 'flat') {
       const def = FLAT_RIDES[gh.kind]
       if (!def) return
-      const model = this.rideModel(gh.kind)
-      const m = this.flatMatrix({ id: 0, type: 'ride', kind: 'flat', ride: gh.kind, x: gh.x, y: gh.y, rot: gh.rot, park: 0 } as Entity)
+      const model = this.rideModel(gh.kind, gh.size, gh.wave)
+      const m = this.flatMatrix({ id: 0, type: 'ride', kind: 'flat', ride: gh.kind, x: gh.x, y: gh.y, rot: gh.rot, park: 0, ...(gh.size ? { size: gh.size } : {}) } as Entity)
       const anim = { spin: 0, phase: 'loading', timer: 0, running: false, speed: 0 }
       g.draw(model.base, m, { alpha: 0.6, highlight: color, tint: hexColor(FLAT_TINTS[gh.kind]) })
       model.parts.forEach((part, i) => g.draw(part.mesh, mat4.multiply(m, part.anim(anim, i)), { alpha: 0.6, highlight: color, tint: hexColor(FLAT_TINTS[gh.kind]) }))

@@ -5,7 +5,7 @@ export type Train = { s: number; v: number; phase: string; timer: number; riders
 export type RideStats = { valid: boolean; e: number; i: number; n: number; maxSpeed?: number; avgSpeed?: number; rideTime?: number; length?: number; maxG?: number; minG?: number; latG?: number; drops?: number; highestDrop?: number; inversions?: number; airtime?: number }
 export type Entity = {
   id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
-  size?: [number, number]
+  size?: [number, number]; wave?: string
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
   cycle?: { phase: string; timer: number; spin?: number }; reliability?: number; totalRiders?: number; monthRiders?: number; color?: string | null; trackColor?: string | null; supportColor?: string | null; trainColor?: string | null; stats?: RideStats | null; mechanic?: number
@@ -31,7 +31,10 @@ export type GuestSpawn = { rate: number; cap: number; buildCap?: number; landCap
 export type Command = { t: string; [key: string]: unknown }
 export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number; count?: number }
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[] }
-export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string }
+export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; resize?: FlatResize; waves?: string }
+export type FlatResize = { min: [number, number]; max: [number, number]; costBase: number; costPerTile: number; upkeepBase: number; upkeepPerTile: number; capacityPerTile: number; excitementPerTile: number; maxSizeBonus: number }
+export type WaveSetting = { name: string; e: number; i: number; n: number; height: number; speed: number }
+export type FlatSpec = { size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; height: number; stats: { e: number; i: number; n: number } }
 export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; corkscrews?: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
 export type StallDef = { name: string; size?: [number, number]; cost: number; upkeep: number; price: number; item: string; kind: string; color: string; sign: string; hunger?: number; thirst?: number; happiness?: number }
 export type ScenarioDef = { name: string; difficulty: string; size: number; seed: number; terrain: string; cash: number; loan: number; maxLoan: number; objective: Objective; description: string; versus?: boolean }
@@ -59,6 +62,10 @@ export const CAR_GAP: number
 export const PATH_STEP_LIMIT: number
 export const STAIR_STEP_LIMIT: number
 export const FLAT_RIDES: Record<string, FlatRideDef>
+export const WAVE_SETTINGS: Record<string, WaveSetting>
+export function flatSpec(rideId: string, size?: [number, number] | null, wave?: string | null): FlatSpec | null
+export function rideFlatSpec(ride: Entity): FlatSpec | null
+export function validFlatSize(def: FlatRideDef, w: unknown, h: unknown): boolean
 export const COASTER_STYLES: Record<string, CoasterStyle>
 export const COASTER_PRESETS: Record<string, { name: string; style: string; station: number; description: string; pieces: Piece[] }>
 export const STALLS: Record<string, StallDef>

@@ -1,4 +1,4 @@
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, COSTS, PATH_ADDITIONS } from './catalog.mjs'
+import { FLAT_RIDES, WAVE_SETTINGS, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, COSTS, PATH_ADDITIONS } from './catalog.mjs'
 import { autoComplete } from './autotrack.mjs'
 import { DIRS, UNIT, clamp } from './util.mjs'
 import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners, pathHeightAt, PATH_STEP_LIMIT, STAIR_STEP_LIMIT } from './terrain.mjs'
@@ -7,6 +7,7 @@ import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromR
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
 import { mechanicJobDistance } from './guests.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
+import { flatSpec, validFlatSize } from './flatspec.mjs'
 
 const MAX_RECT = 32
 const ok = (extra = {}) => ({ ok: true, ...extra })
@@ -492,7 +493,14 @@ const HANDLERS = {
   flat(state, cmd, park) {
     const def = FLAT_RIDES[cmd.ride]
     if (!def || !isInt(cmd.x, 0, state.map.w - 1) || !isInt(cmd.y, 0, state.map.h - 1) || !isInt(cmd.rot, 0, 3)) return fail('Choose a ride and where to place it.')
-    const probe = { type: 'ride', kind: 'flat', ride: cmd.ride, x: cmd.x, y: cmd.y, rot: cmd.rot }
+    const sizing = def.resize && (cmd.w !== undefined || cmd.h !== undefined)
+    if (sizing && !validFlatSize(def, cmd.w, cmd.h)) return fail(`${def.name} can be ${def.resize.min[0]}×${def.resize.min[1]} to ${def.resize.max[0]}×${def.resize.max[1]} squares.`)
+    if (!def.resize && (cmd.w !== undefined || cmd.h !== undefined)) return fail(`${def.name} has a fixed size.`)
+    if (def.waves && cmd.wave !== undefined && !WAVE_SETTINGS[cmd.wave]) return fail('Choose a wave setting.')
+    const size = def.resize ? (sizing ? [cmd.w, cmd.h] : [...def.size]) : null
+    const wave = def.waves ? cmd.wave ?? def.waves : null
+    const spec = flatSpec(cmd.ride, size, wave)
+    const probe = { type: 'ride', kind: 'flat', ride: cmd.ride, x: cmd.x, y: cmd.y, rot: cmd.rot, ...(size ? { size } : {}) }
     const tiles = footprintTiles(probe)
     const map = state.map
     for (const [x, y] of tiles) {
@@ -512,18 +520,19 @@ const HANDLERS = {
       plan = terrainPlan(state, park, r, 'level')
       if (plan.error) return fail(`The ground must be level here. ${plan.error}`)
     }
-    const cost = def.cost + (plan?.cost ?? 0)
-    if (!canAfford(state, park, cost)) return fail(`You need $${cost} to build this ride.`)
+    const cost = spec.cost + (plan?.cost ?? 0)
+    if (!canAfford(state, park, cost)) return fail(`You need $${cost.toLocaleString('en-US')} to build this ride.`)
     if (plan) applyTerrainPlan(state, park, plan)
     const id = state.nextId++
     const ride = {
       id, type: 'ride', kind: 'flat', ride: cmd.ride, x: cmd.x, y: cmd.y, rot: cmd.rot, park, name: nextName(state, def.name), price: def.price, status: 'closed',
       entrance: 0, exit: 0, queue: [], riders: [], cycle: { phase: 'loading', timer: 0 }, reliability: 100, downtime: 0, revenue: 0, totalRiders: 0, monthRiders: 0,
-      built: state.time.seconds, color: null, stats: { valid: true, e: def.stats.e, i: def.stats.i, n: def.stats.n }, brokenAt: 0, mechanic: 0, cycles: 0,
+      built: state.time.seconds, color: null, stats: { valid: true, ...spec.stats }, brokenAt: 0, mechanic: 0, cycles: 0,
+      ...(size ? { size } : {}), ...(wave ? { wave } : {}),
     }
     state.entities[id] = ride
     for (const [x, y] of tiles) map.obj[tileIndex(map, x, y)] = id
-    spend(state, park, def.cost, 'construction')
+    spend(state, park, spec.cost, 'construction')
     pathsChanged(state)
     return ok({ id, cost })
   },
@@ -692,6 +701,12 @@ const HANDLERS = {
       const name = cmd.name.trim().slice(0, 32)
       if (name.length < 1) return fail('Give the ride a name.')
       ride.name = name
+    }
+    if (cmd.wave !== undefined) {
+      const def = ride.kind === 'flat' ? FLAT_RIDES[ride.ride] : null
+      if (!def?.waves || !WAVE_SETTINGS[cmd.wave]) return fail('Choose a wave setting.')
+      ride.wave = cmd.wave
+      ride.stats = { valid: true, ...flatSpec(ride.ride, ride.size, ride.wave).stats }
     }
     for (const field of ['color', 'trackColor', 'supportColor', 'trainColor']) {
       if (cmd[field] !== undefined) {
