@@ -80,5 +80,5 @@ export function applyDynamic(state, dyn) {
 export function guestDetail(state, id) {
   const g = state.guests.find(guest => guest.id === id)
   if (!g) return null
-  return { id: g.id, park: g.park, happy: Math.round(g.happy), energy: Math.round(g.energy), hunger: Math.round(g.hunger), thirst: Math.round(g.thirst), toilet: Math.round(g.toilet), nausea: Math.round(g.nausea), cash: Math.round(g.cash * 100) / 100, spent: Math.round(g.spent * 100) / 100, rides: g.rides, items: g.items, thoughts: g.thoughts, state: g.state, kid: g.kid, inPark: Math.round(g.inPark), minI: g.minI, maxI: g.maxI, tolerance: g.tolerance, ride: g.ride }
+  return { id: g.id, park: g.park, happy: Math.round(g.happy), energy: Math.round(g.energy), hunger: Math.round(g.hunger), thirst: Math.round(g.thirst), toilet: Math.round(g.toilet), nausea: Math.round(g.nausea), cash: Math.round(g.cash * 100) / 100, spent: Math.round(g.spent * 100) / 100, rides: g.rides, items: g.items, thoughts: g.thoughts, state: g.state, kid: g.kid, inPark: Math.round(g.inPark), minI: g.minI, maxI: g.maxI, tolerance: g.tolerance, ride: g.ride, type: g.type ?? (g.kid ? 'kid' : 'casual'), warm: Math.round((g.warm ?? 0) * 10) / 10 }
 }
