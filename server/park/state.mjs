@@ -436,7 +436,7 @@ function sanitizeGuest(g, state) {
     id: Math.round(num(g.id, 1, 1)), park, x, y, tx: Math.floor(Math.min(x, state.map.w - 0.001)), ty: Math.floor(Math.min(y, state.map.h - 0.001)), nx: -1, ny: -1, lane: num(g.lane, 0, -0.35, 0.35),
     state: ['walk', 'queue', 'ride', 'leave', 'sit', 'buy', 'entering'].includes(g.state) ? g.state : 'walk', target: null, timer: num(g.timer), happy: num(g.happy, 180, 0, 255),
     energy: num(g.energy, 200, 0, 255), hunger: num(g.hunger, 60, 0, 255), thirst: num(g.thirst, 60, 0, 255), toilet: num(g.toilet, 30, 0, 255), nausea: num(g.nausea, 0, 0, 255),
-    cash: num(g.cash, 40, 0, 1000), spent: num(g.spent, 0, 0), minI: num(g.minI, 2, 0, 10), maxI: num(g.maxI, 7, 0, 12), tolerance: num(g.tolerance, 5, 0, 12), shirt: Math.round(num(g.shirt, 0, 0, 15)),
+    cash: num(g.cash, 40, 0, 1000), spent: num(g.spent, 0, 0), minI: num(g.minI, 2, 0, 10), type: ['kid', 'thrill', 'casual'].includes(g.type) ? g.type : g.kid ? 'kid' : 'casual', maxI: num(g.maxI, 7, 0, 13), tolerance: num(g.tolerance, 5, 0, 12), warm: num(g.warm, 0, 0, 2.5), shirt: Math.round(num(g.shirt, 0, 0, 15)),
     items: Array.isArray(g.items) ? g.items.filter(item => typeof item === 'string').slice(0, 6) : [], eating: num(g.eating, 0, 0, 60), rides: Math.round(num(g.rides, 0, 0)), ridden: Array.isArray(g.ridden) ? g.ridden.slice(-8).map(v => Math.round(num(v))) : [],
     thoughts: Array.isArray(g.thoughts) ? g.thoughts.slice(-5).filter(t => typeof t === 'string').map(t => t.slice(0, 80)) : [], inPark: num(g.inPark, 0, 0), stay: num(g.stay, 400, 60, 2000), patience: num(g.patience, 90, 20, 400),
     queueTime: 0, ride: Math.round(num(g.ride, 0, 0)), stuck: 0, lastDecide: 0, kid: Boolean(g.kid),

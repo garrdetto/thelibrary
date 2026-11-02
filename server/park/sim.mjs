@@ -5,6 +5,7 @@ import { addNews, emptyLedger, entityCost, electricityTiles, ridePath, objective
 import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
 import { rideFlatSpec } from './flatspec.mjs'
+import { updateThrillCrowds } from './thrill.mjs'
 import { MAX_GUESTS, ensureGuestIndex } from './state.mjs'
 import { ownedTileCount } from './land.mjs'
 
@@ -387,6 +388,6 @@ export function stepPark(state, dt = SIM_STEP) {
   for (const e of Object.values(state.entities)) if (e.type === 'ride' && e.queue.length) e.queue = e.queue.filter(id => state.guestIndex.get(id)?.state === 'queue')
   updateQueuePositions(state)
   updateStaff(state, dt)
-  if (whole) { assignMechanics(state); updateRating(state) }
+  if (whole) { assignMechanics(state); updateRating(state); updateThrillCrowds(state) }
   if (t.tick % 100 === 0) { aggregateThoughts(state); for (const p of state.parks) p.value = parkValue(state, p.id) }
 }

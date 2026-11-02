@@ -3,6 +3,7 @@ import { DIRS, clamp, stateRandom } from './util.mjs'
 import { tileIndex, inMap, isWalkPath, pathsConnect } from './terrain.mjs'
 import { frontTile, stallFrontTile, addNews } from './state.mjs'
 import { rideFlatSpec } from './flatspec.mjs'
+import { guestProfile, intensityLimit, warmUp, lovesRepeats } from './thrill.mjs'
 
 const WALK_SPEED = 1.05
 const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['drinks', 'coffee'], toilet: ['toilet'], gift: ['balloon', 'umbrella', 'info', 'souvenir'] }
@@ -181,11 +182,11 @@ export function spawnGuest(state, park) {
   if (!at) return null
   const rnd = () => stateRandom(state)
   const kid = rnd() < 0.3
-  const minI = kid ? rnd() * 1.5 : 1 + rnd() * 3
+  const profile = guestProfile(rnd, kid)
   const guest = {
     id: state.guestSeq++, park, x: at.x + 0.5, y: at.y + 0.5, tx: at.x, ty: at.y, nx: -1, ny: -1, lane: (rnd() - 0.5) * 0.6,
     state: 'walk', target: { key: `enter:${park}` }, timer: 0, happy: 150 + rnd() * 60, energy: 180 + rnd() * 70, hunger: 20 + rnd() * 90, thirst: 20 + rnd() * 90, toilet: rnd() * 60, nausea: 0,
-    cash: Math.round(kid ? 20 + rnd() * 30 : 40 + rnd() * 80), spent: 0, minI, maxI: kid ? 3.5 + rnd() * 3 : 5 + rnd() * 5.5, tolerance: kid ? 2.5 + rnd() * 3 : 3.5 + rnd() * 5, shirt: Math.floor(rnd() * 16),
+    cash: Math.round(kid ? 20 + rnd() * 30 : 40 + rnd() * 80), spent: 0, type: profile.type, minI: profile.minI, maxI: profile.maxI, tolerance: profile.tolerance, warm: 0, shirt: Math.floor(rnd() * 16),
     items: [], eating: 0, rides: 0, ridden: [], thoughts: [], inPark: 0, stay: 300 + rnd() * 600, patience: 60 + rnd() * 120, queueTime: 0, ride: 0, stuck: 0, lastDecide: 0, kid, paid: false,
   }
   state.guests.push(guest)
@@ -276,7 +277,7 @@ function chooseTarget(state, guest) {
     let tooIntense = null, tooPricey = null
     for (const e of Object.values(state.entities)) {
       if (e.type !== 'ride' || e.park !== park || e.status !== 'open' || !e.stats?.valid) continue
-      if (e.stats.i > guest.maxI) { tooIntense = e; continue }
+      if (e.stats.i > intensityLimit(state, guest, e)) { tooIntense = e; continue }
       if (e.stats.n > guest.tolerance + (guest.nausea > 100 ? -2 : 0)) continue
       if (e.price > guest.cash) continue
       const value = rideValue(e)
@@ -286,7 +287,7 @@ function chooseTarget(state, guest) {
       if (!reachable(`ride:${e.id}`)) continue
       const water = e.kind === 'flat' && FLAT_RIDES[e.ride].category === 'water'
       if (water && state.weather.kind === 'rain') continue
-      const recent = guest.ridden.includes(e.id) ? 0.25 : 1
+      const recent = guest.ridden.includes(e.id) && !lovesRepeats(guest, e) ? 0.25 : 1
       const weather = water ? (state.weather.temp >= 24 ? 2.2 : state.weather.temp < 16 ? 0.35 : 1) * (state.weather.kind === 'sunny' ? 1.25 : state.weather.kind === 'cloudy' ? 0.85 : 1) : 1
       const fit = e.stats.i < guest.minI ? 0.5 : 1
       choices.push([e, (0.6 + e.stats.e) * recent * fit * weather])
@@ -455,7 +456,9 @@ export function finishRide(state, ride, guest) {
   guest.rides++
   guest.ridden.push(ride.id); if (guest.ridden.length > 6) guest.ridden.shift()
   guest.thoughtAt = guest.inPark
-  if (s.e >= 6.5) think(guest, `${ride.name} was incredible!`)
+  warmUp(guest, ride, delta >= 14)
+  if (delta >= 14 && lovesRepeats(guest, ride)) think(guest, `I want to ride ${ride.name} again!`)
+  else if (s.e >= 6.5) think(guest, `${ride.name} was incredible!`)
   else if (s.e >= 4) think(guest, `${ride.name} was great fun.`)
   else if (delta < 8) think(guest, `${ride.name} was a bit dull.`)
   const exit = state.entities[ride.exit]
