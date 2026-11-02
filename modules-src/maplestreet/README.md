@@ -16,15 +16,15 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 | --- | --- |
 | WASD | Walk, or drive. S brakes and then reverses, and Space is the handbrake. |
 | Click | Walk to the spot. Clicking a vehicle, shop door or usable item at home walks you there and uses it. |
-| Arrow keys | Orbit (← →) and tilt (↑ ↓) the camera. Right-drag also orbits. |
+| Arrow keys | Orbit (← →: the camera swings left or right around you) and tilt (↑ ↓) the camera. Right-drag also orbits. |
 | E / F / T / R | E gets in or out, shops or uses an item. F fills up at a pump, or calls a tow when the tank is empty. T hitches the trailer, and R flips a vehicle upright. |
 | M / B / J | M opens the town map, B opens Build and Buy mode, and J takes a delivery job. |
 
 **Build mode** follows The Sims 4:
 
-- **Build tab:** rooms; full and half walls; picket, privacy and railing fences; 10 floors; wall finishes (paint one side, or Shift-click to paint the whole room); doors, windows and picture windows; gable, hip and flat roofs plus Auto-roof; pools; stairs; buying a lot.
+- **Build tab:** rooms; full and half walls; picket, privacy and railing fences; 10 floors; wall finishes (paint one side, or Shift-click to paint the whole room); doors (panel door, glass entry door with transom, French doors, sliding patio door, sectional garage door) and windows (double-hung, tall with shutters, picture, clerestory strip, small frosted); sliding doors, garage doors and clerestories placed side by side join into one wide unit; gable, hip and flat roofs plus Auto-roof; pools; stairs; buying a lot.
 - **Buy tab:** about 60 items. Browse by room or by function. Thumbnails are rendered from the real models, and swatches recolor items.
-- **Placing items:** `,` and `.` rotate. Wall décor snaps to the nearest wall.
+- **Placing items:** `,` rotates counter-clockwise and `.` clockwise. Wall décor snaps to the nearest wall.
 - **Tools:**
   - Move (H), Eyedropper (E), Design tool (R) and Sledgehammer (K)
   - Undo/redo with Ctrl+Z / Ctrl+Y

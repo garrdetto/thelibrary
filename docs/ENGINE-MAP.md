@@ -155,18 +155,22 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/game/PlotMap.ts` — town map overlay — `Hud`.
 - `src/build/BuildController.ts` — build/buy tools, batched `builds` gestures — `Game`, `Hud`.
 - `src/build/Mesher.ts` — walls, floors, roofs, pools to meshes — `Game`, `BuildController`, `HouseManager`.
+- `src/build/Openings.ts` — door and window geometry per wall segment (door, glass entry door, French doors, sliding patio door, garage door, window, tall shuttered window, picture, clerestory, frosted); sliders, garage doors and clerestories join across adjacent segments — `Mesher`, `BuildController`, `Hud`.
 - `src/build/HouseManager.ts` — per-lot house meshes — `Game`, `BuildController`.
 - `src/build/Furniture.ts` — furniture and fixture models; hands `custom:` items to `CustomModels` — `Game`, `BuildController`, `Mesher`, `Thumbs`.
 - `src/build/CustomModels.ts` — admin-published items: fetches `/api/maplestreet-items` (cached for offline), registers them, loads each .glb with `GLTFLoader` and clones it per placement with the published `{x,y,z}` scale; custom items are added to the lot group unmerged — `main`, `Furniture`, `Thumbs`.
 - `src/build/Thumbs.ts` — off-screen catalog thumbnails — `Game`.
-- `src/world/Neighborhood.ts` — roads, lots, trees, street furniture — `Game`.
-- `src/world/Downtown.ts` — shops and gas station — `Neighborhood`.
+- `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps — `Game`.
+- `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear — `Neighborhood`.
+- `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), depot, streetscape, showroom cars — `Neighborhood`.
+- `src/world/Facades.ts` — facade styles and window/storefront layouts shared by the painted textures (albedo, night glow, roughness/metalness) and the 3D trim — `Downtown`.
+- `src/world/GasStation.ts` — Gas & Go forecourt, canopy, islands, dispensers, pylon price sign, canopy light — `Downtown`.
 - `src/world/Lawn.ts` — mowable lawns and stripes — `Neighborhood`, `Grass`.
 - `src/world/Grass.ts` — instanced grass — `Game`.
-- `src/world/DayNight.ts` — sun, sky, night lighting, PMREM environment bake (`fromScene` options form) — `Game`.
+- `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
 - `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
 - `src/physics/Character.ts` — kinematic character controller — `Game`, `RemoteEntities`.
-- `src/physics/Vehicle.ts` — raycast vehicle — `Game`.
+- `src/physics/Vehicle.ts` — raycast vehicle: grip-limited, rate-limited steering with Ackermann front wheels, pedal ramps, torque curve, handbrake rear slide — `Game`.
 - `src/physics/VehiclePresets.ts` — original pickup, coupe, mower bodies and tuning — `Vehicle`, `Downtown`, `RemoteEntities`.
 - `src/net/Transport.ts` — transport interface — every transport, `Game`.
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
@@ -180,7 +184,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `shared/WorldServer.ts` — persistent world loop — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: lots, roads, shops, gas station — `RoomLogic`, `Game`, world files, `PlotMap`.
 - `shared/Seed.ts` — starter houses — `RoomLogic`.
-- `shared/Npc.ts` — simulated neighbors — `Host`, `WorldServer`.
+- `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep following distance and lean in turns — `Host`, `WorldServer`.
 - `shared/Catalog.ts` — build/buy catalog (`custom` and `hidden` fields for published items) — `RoomLogic`, `BuildRules`, `Furniture`, `Mesher`, `Thumbs`, `Hud`.
 - `shared/CustomItems.ts` — published-item records, limits, `footprintFromSize`, `registerCustomItems` (adds `custom:<id>` entries to `CATALOG`) — `CustomModels`, `maplestreet-world.ts`, `src/server/maplestreet-items.ts`, the admin editor.
 - `shared/BuildRules.ts` — build validation — `RoomLogic`, build files, `Hud`, `PlotMap`.
