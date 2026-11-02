@@ -17,7 +17,7 @@ export class Host {
   private timers: number[] = [];
   private last = performance.now();
 
-  constructor(private saveKey: string | null, rawDeliver: Deliver, opts: { npcs?: boolean; reapMs?: number; selfId?: string } = {}) {
+  constructor(private saveKey: string | null, rawDeliver: Deliver, opts: { npcs?: boolean; reapMs?: number; selfId?: string; unlimitedMoney?: boolean } = {}) {
     // Clone on the way out so no client ever shares object identity with authority state.
     const deliver: Deliver = (to, msg, except) => rawDeliver(to, structuredClone(msg), except);
     const saved = saveKey ? store.json<Persisted>(saveKey) : null;
@@ -32,7 +32,7 @@ export class Host {
         }
         deliver('*', msg, except);
       },
-    }, saved);
+    }, saved, { unlimitedMoney: opts.unlimitedMoney });
 
     this.timers.push(window.setInterval(() => {
       const now = performance.now();

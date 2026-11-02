@@ -1,10 +1,10 @@
 /**
  * Shortest drive along the town's streets, for the minimap's objective path.
- * The roads (plus curb cuts and the gas-station and depot yards) are rasterised
+ * The roads (straight and curved, plus curb cuts and the gas-station and depot yards) are rasterised
  * once onto a 2 m grid; A* runs from the road cell nearest the start to the
  * one nearest the goal, and the result is reduced to its corners.
  */
-import { CURB_CUTS, DEPOT, GAS_STATION, MAP_BOUNDS, ROADS, type RectXZ } from '../../shared/WorldLayout';
+import { CURB_CUTS, curveDistance, DEPOT, GAS_STATION, MAP_BOUNDS, ROAD_W, ROADS, type RectXZ } from '../../shared/WorldLayout';
 
 const CELL = 2;
 const X0 = MAP_BOUNDS.x0, Z0 = MAP_BOUNDS.z0;
@@ -25,6 +25,10 @@ function drivable(): Uint8Array {
     const i0 = Math.max(0, Math.floor((r.cx - r.sx / 2 - X0) / CELL)), i1 = Math.min(W - 1, Math.floor((r.cx + r.sx / 2 - X0) / CELL));
     const j0 = Math.max(0, Math.floor((r.cz - r.sz / 2 - Z0) / CELL)), j1 = Math.min(H - 1, Math.floor((r.cz + r.sz / 2 - Z0) / CELL));
     for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) g[j * W + i] = 1;
+  }
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const x = X0 + (i + 0.5) * CELL, z = Z0 + (j + 0.5) * CELL;
+    if (x < -100 && curveDistance(x, z) < ROAD_W / 2 - 0.5) g[j * W + i] = 1;
   }
   return (grid = g);
 }

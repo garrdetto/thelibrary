@@ -7,7 +7,8 @@
  */
 import { CATALOG, CatalogFunc, CatalogItem, CatalogRoom, SWATCHES } from '../../shared/Catalog';
 import { FLOOR_MATS, FloorMat, INTERIOR_FINISHES, LotState, RoofStyle, WALL_STYLES, WallFinish, WallKind, WallStyle, WorldState } from '../../shared/BuildRules';
-import { Account, availableCredit, COST, FUEL_PRICE, LOAN_CAP, LOAN_DAILY_RATE, LOT_PRICE, SHOP_ITEMS, VEHICLES } from '../../shared/Economy';
+import { Account, availableCredit, COST, FUEL_PRICE, LOAN_CAP, LOAN_DAILY_RATE, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from '../../shared/Economy';
+import { lotPrice } from '../../shared/WorldLayout';
 import type { Job, VehicleKind } from '../../shared/Protocol';
 import type { ShopDoor } from '../../shared/WorldLayout';
 import { OPENING_TOOLS, type OpeningTool, type Tool, type WallView } from '../build/BuildController';
@@ -15,7 +16,7 @@ import { OPENING_LABEL } from '../build/Openings';
 import { MapMarker, PlotMap } from './PlotMap';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const money = (n: number) => `$${Math.round(n).toLocaleString()}`;
+const money = (n: number) => (n >= UNLIMITED_MONEY ? 'Unlimited' : `$${Math.round(n).toLocaleString()}`);
 const esc = (s: string) => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 const pretty = (s: string) => s.replace(/^paint_|^siding_|^wallpaper_|^tile_|^panel_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -190,7 +191,7 @@ export class Hud {
       case 'floor': return 'Drag to tile an area · re-tiling an existing floor is free';
       case 'roof': return 'Drag over walls, or Auto-roof every room on this level';
       case 'pool': return 'Drag in the yard · 2×2 up to 14×14 m';
-      case 'buy': return `Lots cost ${money(LOT_PRICE)} · you can own one`;
+      case 'buy': return `Lots cost ${money(lotPrice({ w: 26, d: 36 }))}–${money(lotPrice({ w: 60, d: 60 }))} by size · you can own one`;
       case 'move': return 'Click an item to pick it up, click again to drop · Delete sells';
       case 'eyedropper': return 'Click an item, wall or floor to copy it';
       case 'design': return 'Pick a color, then click items to recolor them';
@@ -239,7 +240,7 @@ export class Hud {
     } else {
       const toolTile = (key: string, name: string, icon: string, on: boolean, pick: () => void, price?: string): Tile => ({ key, name, icon, on, pick, price });
       switch (this.cat) {
-        case 'lot': tiles.push(toolTile('buy', 'Buy a lot', '🏷', s.tool === 'buy', () => this.ev.tool('buy'), money(LOT_PRICE))); break;
+        case 'lot': tiles.push(toolTile('buy', 'Buy a lot', '🏷', s.tool === 'buy', () => this.ev.tool('buy'), 'by size')); break;
         case 'rooms':
           tiles.push(toolTile('room', 'Room tool', '▣', s.tool === 'room', () => this.ev.tool('room')));
           for (const st of WALL_STYLES) tiles.push({ key: st, name: pretty(st), pic: this.tex(st), on: s.wallStyle === st, pick: () => { this.ev.wallStyle(st); this.ev.tool('room'); } });
@@ -495,10 +496,11 @@ export class Hud {
       const items = Object.keys(b.objects).length;
       const status = lot.owner === me ? 'Your home' : lot.owner ? `${esc(lot.ownerName ?? 'A neighbor')}'s home` : 'For sale';
       dl.innerHTML = `<dt>Lot</dt><dd>${lot.id}</dd><dt>Size</dt><dd>${lot.w} × ${lot.d} m</dd><dt>Status</dt><dd>${status}</dd>
-        <dt>Built</dt><dd>${rooms ? `${rooms} m² of floor` : 'Empty land'}</dd><dt>Furnishings</dt><dd>${items}</dd>${lot.owner ? '' : `<dt>Price</dt><dd>${money(LOT_PRICE)}</dd>`}`;
+        <dt>Built</dt><dd>${rooms ? `${rooms} m² of floor` : 'Empty land'}</dd><dt>Furnishings</dt><dd>${items}</dd>${lot.owner ? '' : `<dt>Price</dt><dd>${money(lotPrice(lot))}</dd>`}`;
       if (!lot.owner) {
-        const can = !!account && account.money >= LOT_PRICE && !myHome;
-        btn(myHome ? 'You already own a home' : account && account.money < LOT_PRICE ? 'Not enough money' : `Buy & move in — ${money(LOT_PRICE)}`, 'accent', () => this.ev.mapAction('buy', lot), !can);
+        const price = lotPrice(lot);
+        const can = !!account && account.money >= price && !myHome;
+        btn(myHome ? 'You already own a home' : account && account.money < price ? 'Not enough money' : `Buy & move in — ${money(price)}`, 'accent', () => this.ev.mapAction('buy', lot), !can);
       }
       if (lot.owner === me) btn('Go home', 'accent', () => this.ev.mapAction('home', lot));
       else btn('Visit this lot', '', () => this.ev.mapAction('visit', lot));

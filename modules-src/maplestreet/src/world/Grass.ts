@@ -2,21 +2,28 @@
  * Real 3D grass: tens of thousands of instanced clumps of thin blades in a
  * disc around the camera, stirring in the wind (TSL vertex animation).
  * Positions come from a world-anchored jittered grid, so blades never "swim"
- * as you move. Heights follow real turf: a mowed lawn is about 4–5 cm, an
- * uncut lawn about 8–13 cm, and open fields grow to knee-high meadow. Clumps
- * on a lot take their color from the lawn's mow map, so freshly cut stripes
- * show up; slow color noise adds lush and dry patches everywhere.
- * Roads, sidewalks, driveways, floors, pools and downtown stay clear.
+ * as you move. On a lot every clump follows the lawn: freshly cut it stands
+ * about 4 cm tall and leans the way the mower pushed it, then over five
+ * in-game days it grows back to about 11 cm and straightens up. The lean is
+ * real geometry, and the blades are shaded by how they lean relative to the
+ * camera, so mowing stripes (and crossed diamond patterns) read in 3D and
+ * fade as the grass grows. Open fields grow to knee-high meadow; the public
+ * verges along Willow Bend are kept short. Roads, sidewalks, driveways,
+ * floors, pools and downtown stay clear.
  */
 import * as THREE from 'three/webgpu';
-import { cos, float, instanceIndex, positionLocal, sin, time, uv, vec3 } from 'three/tsl';
+import { cameraPosition, cos, dot, float, instancedDynamicBufferAttribute, instanceIndex, length, max, normalize, normalViewGeometry, positionLocal, positionWorld, sin, time, uv, vec2, vec3, vec4 } from 'three/tsl';
 import { floorKey, objectCells, WorldState } from '../../shared/BuildRules';
-import { CIVIC_BLOCK, CURB_CUTS, DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, RectXZ, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
+import { bladeHeight } from '../../shared/Mowing';
+import { CIVIC_BLOCK, CURB_CUTS, curveDistance, DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, RectXZ, ROAD_W, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
+import type { LawnSample } from './Lawn';
 import type { Lawn } from './Lawn';
 
 const RADIUS = 30;
 const SPACING = 0.32;               // ~10 clumps (40 blades) per m²
 const REBUILD_DIST = 3;
+/** Lawn changes (a cut, growth) re-lay the blades at most this often. */
+const RELAY_MS = 250;
 /** Yard items with a hard or planted surface: no blades poke through them. */
 const COVERS = new Set(['court', 'hotTub', 'divingBoard', 'doghouse', 'flowerBed', 'patioSet', 'grill', 'trampoline']);
 
@@ -75,15 +82,30 @@ export class Grass {
   private worldVersion = -1;
   private readonly blocked: RectXZ[];
   private readonly max: number;
+  /** Per clump: blade lean direction (x, z), stripe strength, lean distance at the tip (m). */
+  private readonly mow: THREE.InstancedBufferAttribute;
+  private lastLayout = 0;
+  private nowDays = 0;
 
   constructor(scene: THREE.Scene, private lawns: Map<string, Lawn>, private world: () => WorldState | null, quality = 1) {
     this.max = Math.round((Math.PI * RADIUS * RADIUS) / (SPACING * SPACING) * quality);
     const mat = new THREE.MeshStandardNodeMaterial({ vertexColors: true, roughness: 0.85, side: THREE.DoubleSide });
+    this.mow = new THREE.InstancedBufferAttribute(new Float32Array(this.max * 4), 4);
+    this.mow.setUsage(THREE.DynamicDrawUsage);
+    const mow = instancedDynamicBufferAttribute(this.mow, 'vec4') as unknown as ReturnType<typeof vec4>;
     // Wind: bend grows with the square of height; each clump has its own phase.
+    // Mowed blades also lean the way the mower pushed them (less the taller they grow).
     const phase = instanceIndex.toFloat().mul(0.618);
     const bend = uv().y.mul(uv().y);
     const sway = vec3(sin(time.mul(1.9).add(phase)).mul(0.012).add(sin(time.mul(0.55).add(phase.mul(0.13))).mul(0.01)), float(0), cos(time.mul(1.4).add(phase)).mul(0.008));
-    mat.positionNode = positionLocal.add(sway.mul(bend));
+    mat.positionNode = positionLocal.add(sway.mul(bend)).add(vec3(mow.x.mul(mow.w), mow.w.mul(mow.w).mul(-8), mow.y.mul(mow.w)).mul(bend));
+    // Stripes: blades leaning away from the camera look light, toward it dark.
+    const toCam = cameraPosition.sub(positionWorld);
+    const flat = vec2(toCam.x, toCam.z);
+    const side = length(flat).div(max(length(toCam), float(1e-3)));
+    // Blades light like the turf they belong to from either side (no flipped, dark back faces).
+    mat.normalNode = normalViewGeometry;
+    mat.colorNode = vec3(float(1).sub(dot(vec2(mow.x, mow.y), normalize(flat)).mul(mow.z).mul(side).mul(0.42)));
     this.mesh = new THREE.InstancedMesh(clumpGeometry(), mat, this.max);
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
@@ -93,7 +115,7 @@ export class Grass {
     scene.add(this.mesh);
     const g = GAS_STATION;
     this.blocked = [
-      ...ROADS, ...SIDEWALKS, ...CURB_CUTS,
+      ...ROADS, ...SIDEWALKS, ...CURB_CUTS, ...[...lawns.values()].map(l => drivewayRect(l.lot)),
       { cx: (DOWNTOWN.x0 + DOWNTOWN.x1) / 2, cz: (DOWNTOWN.z0 + DOWNTOWN.z1) / 2, sx: DOWNTOWN.x1 - DOWNTOWN.x0 + 6, sz: DOWNTOWN.z1 - DOWNTOWN.z0 + 6 },
       { cx: g.canopy.x, cz: 28, sx: g.canopy.w + 14, sz: 36 },
       { cx: DEPOT.x, cz: DEPOT.z + 6, sx: DEPOT.w + 12, sz: DEPOT.d + 18 },
@@ -102,23 +124,35 @@ export class Grass {
   }
 
   /** Re-lays the field when the camera moves or a lawn / house changes. */
-  update(focus: THREE.Vector3) {
-    const revs = [...this.lawns.values()].map(l => l.revision).join(',');
+  update(focus: THREE.Vector3, nowDays: number) {
+    this.nowDays = nowDays;
+    const near = [...this.lawns.values()].filter(l => this.nearLawn(l, focus.x, focus.z, RADIUS + REBUILD_DIST + 2));
+    const revs = near.map(l => `${l.lot.id}:${l.revision}`).join(',');
     const w = this.world();
     const moved = this.center.distanceTo(new THREE.Vector2(focus.x, focus.z)) > REBUILD_DIST;
-    if (!moved && revs === this.lawnRevs && (w?.version ?? -1) === this.worldVersion) return;
+    const changed = revs !== this.lawnRevs || (w?.version ?? -1) !== this.worldVersion;
+    if (!moved && !changed) return;
+    const t = performance.now();
+    if (!moved && t - this.lastLayout < RELAY_MS) return;
+    this.lastLayout = t;
     this.lawnRevs = revs;
     this.worldVersion = w?.version ?? -1;
     this.center.set(focus.x, focus.z);
     this.layout(w);
   }
 
+  private nearLawn(l: Lawn, x: number, z: number, r: number) {
+    const L = l.lot;
+    const dx = Math.max(L.x - x, 0, x - (L.x + L.w)), dz = Math.max(L.z - z, 0, z - (L.z + L.d));
+    return dx * dx + dz * dz < r * r;
+  }
+
   private layout(world: WorldState | null) {
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();
     const col = new THREE.Color(), up = new THREE.Vector3(0, 1, 0);
-    const rgb: [number, number, number] = [0, 0, 0];
-    const lawns = [...this.lawns.values()];
-    const drive = lawns.map(l => drivewayRect(l.lot));
+    const sample: LawnSample = { growth: 1, dx: 0, dz: 0, strength: 0 };
+    const mow = this.mow.array as Float32Array;
+    const lawns = [...this.lawns.values()].filter(l => this.nearLawn(l, this.center.x, this.center.y, RADIUS + 1));
     const covered = new Set<string>();
     if (world) for (const id in world.builds) {
       const objs = world.builds[id].objects;
@@ -135,18 +169,28 @@ export class Grass {
         const x = (gx + h1 - 0.5) * SPACING, z = (gz + h2 - 0.5) * SPACING;
         if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) continue;
         if (this.blocked.some(b => inRect(b, x, z, 0.15))) continue;
+        const toCurve = curveDistance(x, z);
+        if (toCurve < ROAD_W / 2 + 0.25) continue;
         let height: number;
+        let mdx = 0, mdz = 0, mstr = 0, mlean = 0;
         const lawn = lawns.find(l => l.contains(x, z));
         if (lawn) {
-          if (drive.some(d => inRect(d, x, z, 0.1))) continue;
           const b = world?.builds[lawn.lot.id];
           const fx = Math.floor(x), fz = Math.floor(z);
           if (covered.has(`${fx}|${fz}`)) continue;
           if (b && (b.floors[floorKey(0, fx, fz)] || Object.values(b.pools).some(pl => fx >= pl.x0 - 0.3 && fx < pl.x1 + 0.3 && fz >= pl.z0 - 0.3 && fz < pl.z1 + 0.3))) continue;
-          const mowed = lawn.sample(x, z, rgb);
+          const m = lawn.sample(x, z, sample, this.nowDays);
           const k = 0.92 + patch(x, z) * 0.18 + (h1 - 0.5) * 0.08;
-          height = mowed ? 0.04 + h1 * 0.015 : 0.08 + h2 * 0.05;
-          col.setRGB(rgb[0] * 1.1 * k, rgb[1] * 1.1 * k, rgb[2] * 1.05 * k);
+          // Fresh-cut turf is a little lighter and even; grown-out turf is deeper green and shaggier.
+          height = bladeHeight(m.growth) * (0.82 + h1 * 0.36) * (1 - 0.18 * m.strength);
+          const cut = 1 - m.growth;
+          col.setRGB((0.12 + 0.04 * cut) * k, (0.27 + 0.05 * cut) * k, (0.05 + 0.012 * cut) * k);
+          mdx = m.dx; mdz = m.dz; mstr = m.strength; mlean = height * 0.6 * m.strength;
+        } else if (toCurve < ROAD_W / 2 + 18) {
+          // Public verge along the curved streets: the town keeps it short.
+          height = 0.06 + h1 * 0.03;
+          const pn = patch(x, z);
+          col.setHSL(0.24 + pn * 0.03, 0.4 + pn * 0.1, 0.3 + h1 * 0.04);
         } else {
           const pn = patch(x * 0.6, z * 0.6);
           height = 0.12 + pn * 0.14 + h1 * 0.06;
@@ -158,11 +202,13 @@ export class Grass {
         m.compose(p.set(x, 0.01, z), q, s.set(wScale, height, wScale));
         this.mesh.setMatrixAt(n, m);
         this.mesh.setColorAt(n, col);
+        mow[n * 4] = mdx; mow[n * 4 + 1] = mdz; mow[n * 4 + 2] = mstr; mow[n * 4 + 3] = mlean;
         n++;
       }
     }
     this.mesh.count = n;
     this.mesh.instanceMatrix.needsUpdate = true;
+    this.mow.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 }

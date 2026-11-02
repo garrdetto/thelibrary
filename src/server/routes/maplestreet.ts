@@ -30,8 +30,7 @@ export async function maplestreet(request: Request, env: Env) {
     const parsed = guestParams.safeParse({ guest: url.searchParams.get('guest') ?? '', name: url.searchParams.get('name') ?? undefined })
     if (!parsed.success) throw new HttpError(400, 'Please reload the page and try again.')
     const guest = parsed.data.guest
-    const name = (parsed.data.name ?? '').replace(/[^A-Za-z0-9 _-]/g, '').trim().slice(0, 16) || 'Neighbor'
-    identity = { key: `guest:${guest}`, name: `${name} (guest)`, member: false }
+    identity = { key: `guest:${guest}`, name: `Guest-${guest.slice(0, 5)}`, member: false }
   }
 
   const headers = new Headers(request.headers)

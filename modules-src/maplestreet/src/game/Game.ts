@@ -13,7 +13,7 @@ import * as THREE from 'three/webgpu';
 import { BuildOp, levelBase, LotState } from '../../shared/BuildRules';
 import { CATALOG, footprint } from '../../shared/Catalog';
 import { Account, FUEL_SCALE, VEHICLES } from '../../shared/Economy';
-import { decodeCoverage } from '../../shared/Mowing';
+import { decodeCells, gameDays } from '../../shared/Mowing';
 import type { ClientMsg, Job, MowStroke, PlayerSnap, ServerMsg, VehicleKind } from '../../shared/Protocol';
 import { DAY_LENGTH_SEC } from '../../shared/RoomLogic';
 import { DEPOT, GAS_STATION, LotDef, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS, ShopDoor, SPAWN } from '../../shared/WorldLayout';
@@ -27,10 +27,7 @@ import { Input } from '../core/Input';
 import { FixedLoop } from '../core/Loop';
 import { MaterialLibrary } from '../core/Materials';
 import { randomId, store } from '../core/Storage';
-import { ColyseusTransport } from '../net/ColyseusTransport';
-import { LocalTransport } from '../net/LocalTransport';
 import { OfflineTransport } from '../net/OfflineTransport';
-import { newRoomCode, PeerTransport } from '../net/PeerTransport';
 import { RemoteEntities } from '../net/RemoteEntities';
 import type { NetStatus, Transport } from '../net/Transport';
 import { worldEndpoint, WorldTransport } from '../net/WorldTransport';
@@ -44,16 +41,14 @@ import { CameraRig } from './CameraRig';
 import { Hud } from './Hud';
 import { MiniMap, type Objective } from './MiniMap';
 import { WardrobeUI } from './WardrobeUI';
-import { cleanLook, defaultLook, lookKey, type Body, type Look } from '../../shared/Wardrobe';
+import { defaultLook, lookKey, type Look } from '../../shared/Wardrobe';
 
-export type NetMode = 'world' | 'offline' | 'host' | 'join' | 'tabs' | 'server';
+/** The shared open world, or solo with unlimited money. */
+export type NetMode = 'world' | 'offline';
 export interface StartOptions {
   name: string;
   color: string;
-  body: Body;
   mode: NetMode;
-  code?: string;          // room code for 'join'
-  serverUrl?: string;     // Colyseus ws(s):// URL for 'server'
   onRoom?: (code: string | null, label: string) => void;
 }
 
@@ -189,7 +184,6 @@ export class Game {
       save: (look, note) => {
         this.setLook(look);
         this.send({ t: 'look', look });
-        store.set(this.createdKey, '1');
         if (note) this.hud.toast(note);
       },
       buy: item => this.send({ t: 'buy', shop: 'threads', item }),
@@ -208,7 +202,7 @@ export class Game {
     this.addInteractionRings(scene);
 
     // Player + starter truck and trailer (the rest of the garage comes out on request).
-    this.look = this.savedLook();
+    this.look = defaultLook('male');
     this.character = new Character(this.physics, new THREE.Vector3(SPAWN.x, 0, SPAWN.z), this.look, scene);
     const truck = this.addVehicle('truck', new THREE.Vector3(SPAWN.x + 4, 0, 1.8), 0);
     const trailer = this.addVehicle('trailer', new THREE.Vector3(SPAWN.x - 2, 0, 1.8), 0);
@@ -239,7 +233,7 @@ export class Game {
    * Offline Simulation so the neighborhood is always playable.
    */
   private async connect() {
-    const join = { key: `${persistentKey()}:${this.opts.name.toLowerCase()}`, name: this.opts.name, color: this.opts.color, body: this.opts.body };
+    const join = { key: `${persistentKey()}:${this.opts.name.toLowerCase()}`, name: this.opts.name, color: this.opts.color };
     const attempt = async (t: Transport) => {
       t.onStatus(s => (this.netStatus = s));
       t.onMessage(m => this.onServer(m));
@@ -249,32 +243,28 @@ export class Game {
     const { mode } = this.opts;
     try {
       if (mode === 'world') {
-        const url = worldEndpoint(this.opts.name);
+        const url = worldEndpoint();
         if (!url) throw new Error('The shared world needs this page to be opened from the site');
         await attempt(new WorldTransport(url));
-      } else if (mode === 'server' && this.opts.serverUrl) await attempt(new ColyseusTransport(this.opts.serverUrl));
-      else if (mode === 'tabs') await attempt(new LocalTransport());
-      else if (mode === 'join' && this.opts.code) await attempt(new PeerTransport('join', this.opts.code));
-      else if (mode === 'host') {
-        for (let i = 0; ; i++) {
-          try { await attempt(new PeerTransport('host', newRoomCode())); break; }
-          catch (e) { if ((e as Error).message !== 'unavailable-id' || i >= 3) throw e; }
-        }
       } else await attempt(new OfflineTransport());
     } catch (e) {
       console.warn('[net] falling back to offline simulation:', e);
       try { this.net?.close(); } catch { /* already closed */ }
-      this.hud.toast(`${(e as Error).message || 'Connection failed'} — running the Local Offline Simulation instead`);
+      this.hud.toast(`${(e as Error).message || 'Connection failed'} — playing solo on this device instead`);
       await attempt(new OfflineTransport());
     }
-    const room = this.net instanceof PeerTransport ? this.net.code : null;
-    this.opts.onRoom?.(room, this.net.label);
+    this.opts.onRoom?.(this.roomCode, this.net.label);
   }
 
-  /** The site chat asks embedded modules to open a room; answer with its code. */
-  get roomCode() {
-    if (this.net instanceof WorldTransport) return 'WORLD';
-    return this.net instanceof PeerTransport && this.net.role === 'host' ? this.net.code : null;
+  /** The site chat asks embedded modules for a room to invite people to: the shared world. */
+  get roomCode() { return this.net instanceof WorldTransport ? 'WORLD' : null; }
+
+  /** In-game days since day 1 began, never stepping backwards while the day rolls over. */
+  private clockDays = 0;
+  private nowDays() {
+    const t = gameDays(this.dayNum, this.serverHours ?? this.day.hours);
+    this.clockDays = t < this.clockDays && this.clockDays - t < 1.01 ? this.clockDays : t;
+    return this.clockDays;
   }
 
   private send(m: ClientMsg) { this.net?.send(m); }
@@ -291,13 +281,15 @@ export class Game {
         this.selfId = m.you;
         this.dayNum = m.day;
         this.day.hours = m.hours; this.serverHours = m.hours;
+        this.clockDays = 0;
+        const now = this.nowDays();
         this.remotes.clear();
         this.houses.setWorld(m.world);
         for (const id in m.world.lots) {
           const lot = m.world.lots[id];
           this.hood.setLotOwner(id, lot.ownerName, lot.owner === m.account.id);
           const lawn = this.hood.lawns.get(id);
-          if (lawn && m.mowed[id]) lawn.loadCoverage(decodeCoverage(m.mowed[id], lot.w * lot.d));
+          if (lawn) lawn.loadCells(decodeCells(m.mowed[id], lot.w * lot.d), now);
         }
         this.setAccount(m.account, true);
         const home = this.homeLot();
@@ -309,9 +301,9 @@ export class Game {
           } else {
             this.hud.toast(`Welcome to Maple Street, ${m.account.name}! Pick a plot to build on.`);
             this.build.setTool('buy');
-            if (store.get(this.createdKey)) this.hud.showMap(true, true);
+            if (m.account.look) this.hud.showMap(true, true);
           }
-          if (!store.get(this.createdKey)) this.openWardrobe(false, true);
+          if (!m.account.look) this.openWardrobe(false, true);
         }
         this.refreshMap();
         break;
@@ -345,7 +337,7 @@ export class Game {
         if (m.note) this.hud.toast(m.note);
         break;
       case 'mow':
-        for (const s of m.strokes) this.hood.lawns.get(s.lotId)?.mow(s);
+        for (const s of m.strokes) this.hood.lawns.get(s.lotId)?.mow(s, this.nowDays());
         break;
       case 'job':
         this.job = m.job;
@@ -354,8 +346,7 @@ export class Game {
         break;
       case 'newDay':
         this.dayNum = m.day;
-        for (const l of this.hood.lawns.values()) l.regrow();
-        this.hud.toast(`Day ${m.day} — lawns have grown back.`);
+        this.hud.toast(`Day ${m.day} — the grass keeps growing. Lawns cut five days ago are due for a mow.`);
         break;
       case 'left': this.remotes.removeOwner(m.id); break;
       case 'toast': this.hud.toast(m.text); break;
@@ -598,7 +589,7 @@ export class Game {
     const lawn = this.hood.lawnAt(mid.x, mid.z);
     if (lawn) {
       const s: MowStroke = { lotId: lawn.lot.id, x: mid.x, z: mid.z, hx: deck.x - this.lastDeck.x, hz: deck.z - this.lastDeck.z, width: v.preset.mowerDeck.width, len: d + 0.12 };
-      lawn.mow(s);
+      lawn.mow(s, this.nowDays());
       this.mowBuf.push(s);
     }
     this.lastDeck = deck;
@@ -731,8 +722,8 @@ export class Game {
     if (this.serverHours !== undefined) this.serverHours = (this.serverHours + (dt * 24) / DAY_LENGTH_SEC) % 24;
     this.day.update(dt, focus, DAY_LENGTH_SEC, this.serverHours);
     this.day.updateEnvironment(this.engine.renderer);
-    this.hood.update(dt, night, focus);
-    this.grass.update(this.mode === 'build' ? this.build.controls.target : this.engine.camera.position.clone().lerp(focus, 0.6));
+    this.hood.update(dt, night, focus, this.nowDays());
+    this.grass.update(this.mode === 'build' ? this.build.controls.target : this.engine.camera.position.clone().lerp(focus, 0.6), this.nowDays());
     this.remotes.update(dt, night);
     this.updateJob(dt);
     this.updateMarker(dt);
@@ -980,24 +971,15 @@ export class Game {
 
   // ------------------------------------------------------------ look & wardrobe
 
-  private get createdKey() { return `maplestreet/created/${this.opts.name.toLowerCase()}`; }
-
-  /** The look last worn in this browser (until the account's arrives), for the chosen body. */
-  private savedLook(): Look {
-    const saved = store.json<Look>(`maplestreet/look/${this.opts.name.toLowerCase()}`);
-    const base = saved && saved.body === this.opts.body ? saved : null;
-    return cleanLook(base ?? defaultLook(this.opts.body), [], base ?? defaultLook(this.opts.body));
-  }
-
   private setLook(look: Look) {
     this.look = look;
     this.character.avatar.setLook(look);
-    store.set(`maplestreet/look/${this.opts.name.toLowerCase()}`, JSON.stringify(look));
   }
 
   /** Close-up of your character with the wardrobe panel (the clothing shop opens it with prices). */
   private openWardrobe(shop: boolean, firstTime = false) {
     if (this.mode !== 'live') return;
+    if (this.account && !this.account.look) { firstTime = true; shop = false; }
     if (this.driving) this.exitVehicle();
     this.clearMove();
     this.hud.closeModals();
@@ -1011,7 +993,7 @@ export class Game {
 
   private wardrobeClosed() {
     if (this.camSaved) { this.cam.dist = this.camSaved.dist; this.cam.pitch = this.camSaved.pitch; this.camSaved = null; }
-    if (!this.homeLot() && !this.hud.mapOpen && this.welcomed && store.get(this.createdKey) && !this.mapShownAfterCreate) {
+    if (!this.homeLot() && !this.hud.mapOpen && this.welcomed && !this.mapShownAfterCreate) {
       this.mapShownAfterCreate = true;
       this.refreshMap();
       this.hud.showMap(true, true);
