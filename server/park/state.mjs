@@ -407,6 +407,7 @@ function sanitizeEntity(raw, state) {
       trackColor: typeof raw.trackColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.trackColor) ? raw.trackColor : null,
       supportColor: typeof raw.supportColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.supportColor) ? raw.supportColor : null,
       trainColor: typeof raw.trainColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.trainColor) ? raw.trainColor : null,
+      comments: sanitizeComments(raw.comments), commentCounts: { pos: Math.round(num(raw.commentCounts?.pos, 0, 0)), mix: Math.round(num(raw.commentCounts?.mix, 0, 0)), neg: Math.round(num(raw.commentCounts?.neg, 0, 0)) },
       stats: raw.stats && typeof raw.stats === 'object' ? Object.fromEntries(Object.entries(raw.stats).slice(0, 24).map(([k, v]) => [k, typeof v === 'boolean' ? v : num(v)])) : null, brokenAt: num(raw.brokenAt), mechanic: 0, cycles: Math.round(num(raw.cycles, 0, 0)),
     }
     if (raw.kind === 'flat' && FLAT_RIDES[raw.ride]) {
@@ -426,6 +427,11 @@ function sanitizeEntity(raw, state) {
     }
   }
   return null
+}
+
+function sanitizeComments(list) {
+  if (!Array.isArray(list)) return []
+  return list.slice(-12).filter(c => c && typeof c.text === 'string').map(c => ({ t: num(c.t, 0, 0), text: c.text.slice(0, 120), mood: ['pos', 'mix', 'neg'].includes(c.mood) ? c.mood : 'mix', who: String(c.who ?? 'a visitor').slice(0, 24) }))
 }
 
 function sanitizeGuest(g, state) {

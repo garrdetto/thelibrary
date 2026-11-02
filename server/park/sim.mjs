@@ -6,6 +6,7 @@ import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide
 import { ejectRide } from './commands.mjs'
 import { rideFlatSpec } from './flatspec.mjs'
 import { updateThrillCrowds } from './thrill.mjs'
+import { recordComment } from './comments.mjs'
 import { MAX_GUESTS, ensureGuestIndex } from './state.mjs'
 import { ownedTileCount } from './land.mjs'
 
@@ -28,7 +29,7 @@ function board(state, ride, list, capacity) {
   const id = ride.queue.shift()
   const g = state.guestIndex.get(id)
   if (!g || g.state !== 'queue') return
-  if (g.cash < ride.price) { g.state = 'walk'; g.ride = 0; g.thoughts.push('I cannot afford the ride now.'); g.thoughtAt = g.inPark; return }
+  if (g.cash < ride.price) { g.state = 'walk'; g.ride = 0; g.thoughts.push('I cannot afford the ride now.'); g.thoughtAt = g.inPark; recordComment(state, ride, g, 'cantAfford'); return }
   g.cash -= ride.price; g.spent += ride.price
   const p = state.parks[ride.park]
   p.cash += ride.price; p.month.rides += ride.price
@@ -50,7 +51,8 @@ function maybeBreak(state, ride) {
   if (stateRandom(state) >= chance) return
   ride.wasOpen = ride.status === 'open'
   ride.status = 'broken'; ride.brokenAt = state.time.seconds; ride.mechanic = 0
-  for (const id of ride.queue) { const g = state.guestIndex.get(id); if (g) { g.state = 'walk'; g.ride = 0; g.happy -= 10; g.thoughts.push(`${ride.name} broke down!`) } }
+  let complained = false
+  for (const id of ride.queue) { const g = state.guestIndex.get(id); if (g) { g.state = 'walk'; g.ride = 0; g.happy -= 10; g.thoughts.push(`${ride.name} broke down!`); if (!complained) { recordComment(state, ride, g, 'breakdown'); complained = true } } }
   ride.queue = []
   const mechanics = state.staff.filter(s => s.role === 'mechanic' && s.park === ride.park)
   const routeAvailable = mechanics.some(s => mechanicJobDistance(state, s, ride) >= 0)
@@ -137,7 +139,7 @@ function updateCoaster(state, ride, dt) {
   if (stalled) {
     for (const id of ride.riders) {
       const g = state.guestIndex.get(id)
-      if (g) { finishRide(state, ride, g); g.happy -= 40; g.thoughts.push(`I was stuck on ${ride.name}!`) }
+      if (g) { finishRide(state, ride, g); g.happy -= 40; g.thoughts.push(`I was stuck on ${ride.name}!`); recordComment(state, ride, g, 'stuck') }
     }
     ride.wasOpen = ride.status === 'open'; ride.status = 'broken'; ride.brokenAt = state.time.seconds
     ejectRide(state, ride)
@@ -185,7 +187,7 @@ function updateKarts(state, ride, dt) {
   if (stalled) {
     for (const id of ride.riders) {
       const guest = state.guestIndex.get(id)
-      if (guest) { finishRide(state, ride, guest); guest.happy -= 40; guest.thoughts.push(`I was stuck on ${ride.name}!`) }
+      if (guest) { finishRide(state, ride, guest); guest.happy -= 40; guest.thoughts.push(`I was stuck on ${ride.name}!`); recordComment(state, ride, guest, 'stuck') }
     }
     ride.wasOpen = ride.status === 'open'; ride.status = 'broken'; ride.brokenAt = state.time.seconds
     ejectRide(state, ride)

@@ -4,6 +4,7 @@ import { tileIndex, inMap, isWalkPath, pathsConnect } from './terrain.mjs'
 import { frontTile, stallFrontTile, addNews } from './state.mjs'
 import { rideFlatSpec } from './flatspec.mjs'
 import { guestProfile, intensityLimit, warmUp, lovesRepeats } from './thrill.mjs'
+import { recordComment, rideComment } from './comments.mjs'
 
 const WALK_SPEED = 1.05
 const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['drinks', 'coffee'], toilet: ['toilet'], gift: ['balloon', 'umbrella', 'info', 'souvenir'] }
@@ -297,8 +298,8 @@ function chooseTarget(state, guest) {
       for (const [e, w] of choices) { pick -= w; if (pick <= 0) return { key: `ride:${e.id}`, ride: e.id } }
       return { key: `ride:${choices[0][0].id}`, ride: choices[0][0].id }
     }
-    if (tooIntense && rnd() < 0.3) think(guest, `${tooIntense.name} looks too intense for me.`)
-    else if (tooPricey && rnd() < 0.4) think(guest, `I am not paying that much for ${tooPricey.name}.`)
+    if (tooIntense && rnd() < 0.3) { think(guest, `${tooIntense.name} looks too intense for me.`); if (rnd() < 0.25) recordComment(state, tooIntense, guest, 'tooIntense') }
+    else if (tooPricey && rnd() < 0.4) { think(guest, `I am not paying that much for ${tooPricey.name}.`); if (rnd() < 0.25) recordComment(state, tooPricey, guest, 'tooPricey') }
   }
   if (rnd() < 0.12 && guest.cash > 4 && !guest.items.includes('balloon') && reachable(`gift:${park}`)) return { key: `gift:${park}` }
   if (state.weather.kind === 'rain' && !guest.items.includes('umbrella') && rnd() < 0.5 && reachable(`gift:${park}`)) return { key: `gift:${park}` }
@@ -409,6 +410,7 @@ export function updateGuests(state, dt) {
         const ride = state.entities[g.ride]
         if (ride) ride.queue = ride.queue.filter(id => id !== g.id)
         g.state = 'walk'; g.ride = 0; g.happy -= 20; think(g, `I have been queuing for ${ride?.name ?? 'that ride'} for ages.`)
+        if (ride) recordComment(state, ride, g, 'gaveUp')
       }
       continue
     }
@@ -457,6 +459,7 @@ export function finishRide(state, ride, guest) {
   guest.ridden.push(ride.id); if (guest.ridden.length > 6) guest.ridden.shift()
   guest.thoughtAt = guest.inPark
   warmUp(guest, ride, delta >= 14)
+  rideComment(state, ride, guest, { delta, value: rideValue(ride), loves: delta >= 14 && lovesRepeats(guest, ride) })
   if (delta >= 14 && lovesRepeats(guest, ride)) think(guest, `I want to ride ${ride.name} again!`)
   else if (s.e >= 6.5) think(guest, `${ride.name} was incredible!`)
   else if (s.e >= 4) think(guest, `${ride.name} was great fun.`)
