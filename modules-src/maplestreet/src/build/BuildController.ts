@@ -683,7 +683,9 @@ export class BuildController {
     if (this.objGhostId !== id) {
       if (this.objGhost) this.root.remove(this.objGhost);
       this.objGhost = buildFurniture(id);
-      this.objGhost.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.material = this.ghostMat; m.castShadow = false; } });
+      const ghostly = (g: THREE.Object3D) => g.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) { m.material = this.ghostMat; m.castShadow = false; } });
+      ghostly(this.objGhost);
+      this.objGhost.userData.onCustomFill = ghostly;
       this.root.add(this.objGhost);
       this.objGhostId = id;
     }

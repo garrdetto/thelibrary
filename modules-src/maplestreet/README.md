@@ -32,6 +32,16 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
   - Walls up, cutaway or down with Home
 - **Money:** everything refunds 100%.
 
+## Admin-published items
+
+The site admin can add Buy-mode items without a code change: **Admin → Maple Street items** opens a dev-mode editor (React Three Fiber) where a .glb/.gltf is previewed on a 1 m grid, scaled with drag handles, named, priced and published. `/api/maplestreet-items` stores the model in KV and the record in D1.
+
+- `shared/CustomItems.ts` turns each record into a `custom:<uuid>` catalog entry (`registerCustomItems`). The shared-world Durable Object registers them before it loads the world, and `src/build/CustomModels.ts` does the same in the page before any mode starts (the list is cached in `localStorage` for offline solo play), so `RoomLogic` validates and prices them like any other item.
+- A placed copy is drawn as yaw (quarter turns) > the published `{x,y,z}` scale > an offset that centers the model's unscaled bounds and puts its bottom on the floor. The editor preview uses the same layout, so what the admin sees is what spawns.
+- The footprint (cells) and collider height come from the scaled bounds (`footprintFromSize`). Custom items are floor items, never tintable, and have no needs interaction.
+- Retired items leave the Buy catalog but stay valid, so houses that own them keep them (and can still move or sell them).
+- New items appear the next time a player loads the module. The optional Colyseus server does not load published items.
+
 ## World and economy
 
 - **Lots:** 20 lots of 32 × 40 m on a residential ring. Six of them come with furnished starter houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`).

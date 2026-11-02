@@ -303,6 +303,7 @@ export function validateOp(world: WorldState, op: BuildOp, actor: string): strin
     case 'object': {
       const o = op.obj;
       if (!o || typeof o !== 'object' || !own(CATALOG, o.catalogId)) return 'Unknown item';
+      if (CATALOG[o.catalogId].hidden) return 'This item is no longer sold';
       if (typeof o.id !== 'string' || !ID_RE.test(o.id)) return 'Invalid id';
       if (own(b.objects, o.id)) return 'Duplicate id';
       return validatePlacement(lot, b, o);

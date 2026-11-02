@@ -1,6 +1,8 @@
 import { WorldServer, type WorldStorage } from '../../modules-src/maplestreet/shared/WorldServer'
 import type { Identity } from '../../modules-src/maplestreet/shared/RoomLogic'
+import { registerCustomItems } from '../../modules-src/maplestreet/shared/CustomItems'
 import type { Env } from './env'
+import { listStoreItems } from './maplestreet-items'
 
 type DurableState = { blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T> }
 type ServerSocket = WebSocket & { accept(): void }
@@ -45,14 +47,22 @@ function parseIdentity(header: string | null): Identity | null {
 export class MapleStreetWorld {
   private readonly world: WorldServer
 
-  constructor(state: DurableState, env: Env) {
+  constructor(state: DurableState, private readonly env: Env) {
     const storage = d1Storage(env)
     this.world = new WorldServer(storage)
-    void state.blockConcurrencyWhile(() => this.world.ready())
+    void state.blockConcurrencyWhile(async () => {
+      registerCustomItems(await listStoreItems(env))
+      await this.world.ready()
+    })
   }
 
   async fetch(request: Request) {
-    if (new URL(request.url).pathname === '/status') {
+    const path = new URL(request.url).pathname
+    if (path === '/catalog' && request.method === 'POST') {
+      registerCustomItems(await listStoreItems(this.env))
+      return Response.json({ ok: true })
+    }
+    if (path === '/status') {
       await this.world.ready()
       return Response.json(this.world.status(), { headers: { 'cache-control': 'no-store' } })
     }
