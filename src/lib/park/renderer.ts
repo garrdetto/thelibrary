@@ -2,6 +2,7 @@ import { Gl, MeshBuilder, InstanceList, mat4, hexColor } from './gl'
 import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
 import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
+import { personCuller } from './culling'
 import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
@@ -121,7 +122,7 @@ export class ParkRenderer {
     const radius = Math.hypot(spanX, spanY) / 2
     const saved = { cam: { ...this.cam }, rideCam: this.rideCam, preview: this.preview, showGrid: this.showGrid, width: this.width, height: this.height, day: s.time.dayFraction }
     try {
-      this.rideCam = null; this.preview = {}; this.showGrid = false
+      this.rideCam = null; this.preview = {}; this.showGrid = false; this.peopleReady = false
       s.time.dayFraction = 0.5
       Object.assign(this.cam, { tx: cx, ty: cy, tz: groundHeightAt(map, cx, cy, TILE), yaw: Math.PI * 0.75, pitch: 0.98, dist: Math.max(60, radius / Math.tan(0.39) * 0.95) })
       this.width = width; this.height = height
@@ -136,6 +137,7 @@ export class ParkRenderer {
       s.time.dayFraction = saved.day
       this.width = saved.width; this.height = saved.height
       this.canvas.width = saved.width; this.canvas.height = saved.height
+      this.peopleReady = false
       this.frame(this.lastFrame || performance.now())
     }
   }
@@ -700,6 +702,7 @@ export class ParkRenderer {
       const k = Math.min(1, dt * 9)
       const seen = new Set<number>()
       const frameOf = (id: number, moving: boolean, rate = 1.85) => moving ? Math.floor((this.time * rate + hash(id * 11) * 4) * WALK_FRAMES) % WALK_FRAMES : WALK_FRAMES
+      const visible = personCuller(mat4.multiply(this.proj, this.view), this.cam.tz)
       for (const gst of s.guests) {
         if (gst.hidden || gst.state === 'ride') continue
         seen.add(gst.id)
@@ -709,7 +712,9 @@ export class ParkRenderer {
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = gst.x; d.y = gst.y }
         else { d.x += dx * k; d.y += dy * k }
         if (dx * dx + dy * dy > 0.0004) { const target = Math.atan2(dy, dx); let diff = target - d.yaw; diff = Math.atan2(Math.sin(diff), Math.cos(diff)); d.yaw += diff * Math.min(1, dt * 8) }
-        const wx = d.x * TILE, wy = d.y * TILE, z = pathHeightAt(map, wx, wy, TILE) + 0.06
+        const wx = d.x * TILE, wy = d.y * TILE
+        if (!visible(wx, wy)) continue
+        const z = pathHeightAt(map, wx, wy, TILE) + 0.06
         const shirt = SHIRTS[gst.shirt & 15], scale = gst.kid ? 0.72 : 1
         const look = Math.floor(hash(gst.id * 7 + 3) * GUEST_LOOKS.length) % GUEST_LOOKS.length
         this.list(`person:${look}:${frameOf(gst.id, gst.state === 'walk', gst.kid ? 2.3 : 1.85)}:${lodOf(wx, wy, z)}`).push(wx, wy, z, d.yaw, shirt[0], shirt[1], shirt[2], scale)

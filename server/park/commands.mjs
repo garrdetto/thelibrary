@@ -6,6 +6,7 @@ import { isWalkPath } from './terrain.mjs'
 import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP } from './track.mjs'
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
 import { mechanicJobDistance } from './guests.mjs'
+import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
 
 const MAX_RECT = 32
 const ok = (extra = {}) => ({ ok: true, ...extra })
@@ -246,14 +247,33 @@ const HANDLERS = {
     const adjacent = [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]
       .some(([nx, ny]) => inMap(map, nx, ny) && map.owner[tileIndex(map, nx, ny)] === park)
     if (!adjacent) return fail('Purchase land next to your existing park.')
-    if (!canAfford(state, park, 100)) return fail('You need $100 to purchase this square.')
+    if (!canAfford(state, park, LAND_SQUARE_COST)) return fail(`You need $${LAND_SQUARE_COST} to purchase this square.`)
     const existing = state.entities[map.obj[i]]
     if (existing && existing.type !== 'scenery') return fail('Something is already built on that square.')
     if (existing) removeEntity(state, existing)
     map.owner[i] = park
-    spend(state, park, 100, 'landscaping')
+    markLandChanged(state)
+    spend(state, park, LAND_SQUARE_COST, 'landscaping')
     pathsChanged(state)
-    return ok({ cost: 100 })
+    return ok({ cost: LAND_SQUARE_COST })
+  },
+
+  buyLandArea(state, cmd, park) {
+    const map = state.map
+    if (!['x0', 'y0', 'x1', 'y1'].every(key => isInt(cmd[key], 0, Math.max(map.w, map.h) - 1))) return fail('Drag over the land you want to purchase.')
+    if (Math.abs(cmd.x1 - cmd.x0) >= LAND_AREA_MAX || Math.abs(cmd.y1 - cmd.y0) >= LAND_AREA_MAX) return fail(`Buy up to ${LAND_AREA_MAX} by ${LAND_AREA_MAX} squares at a time.`)
+    const plan = landAreaPlan(state, park, cmd)
+    if (plan.error) return fail(plan.error)
+    if (!canAfford(state, park, plan.cost)) return fail(`You need $${plan.cost.toLocaleString('en-US')} to purchase ${plan.tiles.length} squares.`)
+    for (const i of plan.tiles) {
+      const existing = state.entities[map.obj[i]]
+      if (existing) removeEntity(state, existing)
+      map.owner[i] = park
+    }
+    markLandChanged(state)
+    spend(state, park, plan.cost, 'landscaping')
+    pathsChanged(state)
+    return ok({ cost: plan.cost, count: plan.tiles.length })
   },
 
   terrain(state, cmd, park) {

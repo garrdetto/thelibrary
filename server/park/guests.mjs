@@ -435,7 +435,11 @@ export function updateGuests(state, dt) {
       if (!wander(state, g, true)) { g.stuck++; if (g.stuck > 30) g.target = { key: `exit:${g.park}`, leave: true } }
     }
   }
-  if (guests.some(g => g.gone)) state.guests = guests.filter(g => !g.gone)
+  if (guests.some(g => g.gone)) {
+    const index = state.guestIndexOf === guests ? state.guestIndex : null
+    state.guests = guests.filter(g => { if (!g.gone) return true; index?.delete(g.id); return false })
+    if (index) state.guestIndexOf = state.guests
+  }
 }
 
 export { think }

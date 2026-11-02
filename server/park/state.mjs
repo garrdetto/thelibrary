@@ -4,7 +4,14 @@ import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin 
 import { rebuildTrackCells, buildTrackPath } from './track.mjs'
 
 export const ENGINE_VERSION = 5
-export const MAX_GUESTS = 1600
+export const MAX_GUESTS = 6400
+
+export function ensureGuestIndex(state) {
+  if (state.guestIndex && state.guestIndexOf === state.guests && state.guestIndex.size === state.guests.length) return state.guestIndex
+  state.guestIndex = new Map(state.guests.map(g => [g.id, g]))
+  state.guestIndexOf = state.guests
+  return state.guestIndex
+}
 export const START_MONTH = 0
 
 export function footprint(entity) {

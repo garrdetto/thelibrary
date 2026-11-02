@@ -18,7 +18,7 @@ export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'vers
 export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number; wages?: number; electricity?: number }
 export type LandRect = { x0: number; y0: number; x1: number; y1: number }
 export type ParkLand = { initial: LandRect; limit: LandRect }
-export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: { rate: number; cap: number } }
+export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
 export type News = { id: number; t: number; park: number; text: string; kind: string; ref: number | null }
 export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
@@ -27,8 +27,9 @@ export type ParkState = {
   weather: { kind: 'sunny' | 'cloudy' | 'rain'; temp: number; next: number }; speed: number; news: News[]; newsSeq: number; ended: { text: string; winner: number; values?: number[] } | null
   trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number }[]>; fields: Map<string, Int16Array>
 }
+export type GuestSpawn = { rate: number; cap: number; buildCap?: number; landCap?: number; limit?: 'rides' | 'land' | 'max' | 'closed' }
 export type Command = { t: string; [key: string]: unknown }
-export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number }
+export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number; count?: number }
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[] }
 export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string }
 export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; corkscrews?: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
@@ -47,6 +48,13 @@ export const STAFF_WAGE_PER_DAY: number
 export const ELECTRICITY_COST_PER_TILE_PER_DAY: number
 export const ENGINE_VERSION: number
 export const MAX_GUESTS: number
+export const LAND_SQUARE_COST: number
+export const LAND_AREA_MAX: number
+export const GUESTS_PER_OWNED_TILE: number
+export const BUILD_CAP_MULTIPLIER: number
+export function ownedTileCount(state: ParkState, park: number): number
+export function landAreaPlan(state: ParkState, park: number, area: { x0: number; y0: number; x1: number; y1: number }): { error?: string; tiles: number[]; cost: number }
+export function spawnRate(state: ParkState, park: Park): GuestSpawn
 export const CAR_GAP: number
 export const PATH_STEP_LIMIT: number
 export const STAIR_STEP_LIMIT: number

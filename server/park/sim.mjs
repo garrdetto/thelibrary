@@ -4,7 +4,12 @@ import { CAR_GAP, stepTrain } from './track.mjs'
 import { addNews, emptyLedger, entityCost, electricityTiles, ridePath, objectiveText } from './state.mjs'
 import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
-import { MAX_GUESTS } from './state.mjs'
+import { MAX_GUESTS, ensureGuestIndex } from './state.mjs'
+import { ownedTileCount } from './land.mjs'
+
+export const GUESTS_PER_OWNED_TILE = 0.7
+export const BUILD_CAP_MULTIPLIER = 4
+export const RIDE_SCORE_SPAWN_CEILING = 320
 
 export const DAYS_PER_MONTH = 10
 export const STAFF_WAGE_PER_DAY = 50
@@ -206,10 +211,13 @@ export function spawnRate(state, p) {
     if (e.type === 'ride' && e.status === 'open' && e.stats?.valid) { rideScore += e.stats.e + (e.kind === 'coaster' && COASTER_STYLES[e.style]?.category !== 'other' ? 1.5 : 0); openRides++ }
     if (e.type === 'stall' && e.open) stalls++
   }
-  if (!p.open) return { rate: 0, cap: 0 }
-  const cap = Math.min(MAX_GUESTS, Math.round(30 + rideScore * 26 + stalls * 8))
-  if (!openRides) return { rate: 0.03, cap }
-  const base = 0.22 + Math.min(rideScore, 80) * 0.055
+  const buildCap = Math.round(BUILD_CAP_MULTIPLIER * (30 + rideScore * 26 + stalls * 8))
+  const landCap = Math.round(ownedTileCount(state, p.id) * GUESTS_PER_OWNED_TILE)
+  const cap = Math.min(MAX_GUESTS, buildCap, landCap)
+  const limit = cap === MAX_GUESTS ? 'max' : cap === landCap ? 'land' : 'rides'
+  if (!p.open) return { rate: 0, cap: 0, buildCap, landCap, limit: 'closed' }
+  if (!openRides) return { rate: 0.03, cap, buildCap, landCap, limit }
+  const base = 0.22 + Math.min(rideScore, RIDE_SCORE_SPAWN_CEILING) * 0.055
   const ratingF = 0.35 + p.rating / 1000 * 1.2
   const feeF = clamp(1.15 - p.entryFee / (22 + rideScore * 3), 0.12, 1.15)
   const seasonF = [0.7, 0.85, 1, 1.15, 1.2, 1.1, 0.85, 0.7][state.time.month] ?? 1
@@ -218,7 +226,7 @@ export function spawnRate(state, p) {
   const marketF = p.marketing.reduce((m, c) => m * c.boost, 1)
   let rate = base * ratingF * feeF * seasonF * weatherF * nightF * marketF
   if (p.guestsIn >= cap) rate *= 0.04
-  return { rate, cap }
+  return { rate, cap, buildCap, landCap, limit }
 }
 
 function updateRating(state) {
@@ -343,7 +351,7 @@ export function stepPark(state, dt = SIM_STEP) {
   t.tick++
   t.seconds += dt
   t.dayFraction += dt / DAY_SECONDS
-  state.guestIndex = new Map(state.guests.map(g => [g.id, g]))
+  ensureGuestIndex(state)
   if (t.dayFraction >= 1) {
     t.dayFraction -= 1
     t.day++
@@ -373,7 +381,7 @@ export function stepPark(state, dt = SIM_STEP) {
     else updateCoaster(state, e, dt)
   }
   updateGuests(state, dt)
-  state.guestIndex = new Map(state.guests.map(g => [g.id, g]))
+  ensureGuestIndex(state)
   for (const e of Object.values(state.entities)) if (e.type === 'ride' && e.queue.length) e.queue = e.queue.filter(id => state.guestIndex.get(id)?.state === 'queue')
   updateQueuePositions(state)
   updateStaff(state, dt)

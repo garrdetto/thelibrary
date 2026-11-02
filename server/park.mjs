@@ -6,6 +6,7 @@ import { createPark, deserializePark, serializePark, applyCommand, stepPark, enc
 const MAX_ROOMS = 12
 const TICK_MS = 50
 const DYN_EVERY = 5
+const CROWD_GUESTS = 2000
 const CHAT_INTERVAL = 700
 const COMMANDS_PER_SECOND = 25
 
@@ -77,8 +78,10 @@ export function attachPark(io, origins) {
       if (room.tick % DYN_EVERY === 0) {
         const dyn = encodeDynamic(room.state, room.newsSent)
         if (dyn.news.length) room.newsSent = dyn.news[dyn.news.length - 1].id
-        const guests = encodeGuests(room.state.guests)
-        ns.to(room.id).emit('dyn', { ...dyn, guests: Buffer.from(guests.buffer, guests.byteOffset, guests.byteLength) })
+        const crowded = room.state.guests.length > CROWD_GUESTS
+        const sendGuests = !crowded || room.tick % (DYN_EVERY * 2) === 0
+        const guests = sendGuests ? encodeGuests(room.state.guests) : null
+        ns.to(room.id).compress(crowded).emit('dyn', guests ? { ...dyn, guests: Buffer.from(guests.buffer, guests.byteOffset, guests.byteLength) } : dyn)
       }
     } catch (error) {
       console.error('Park simulation failed', error)

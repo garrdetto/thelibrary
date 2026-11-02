@@ -139,10 +139,10 @@ export class NetSession extends BaseSession implements ParkSession {
     const s = lobby.socket
     s.on('init', (payload: InitPayload) => { this.state = deserializePark(payload.full); this.park = payload.park; this.players = payload.players; this.isHost = payload.host; this.resyncing = false; this.emit() })
     s.on('cmd', (msg: { cmd: Command; park: number; nextId: number; structVersion: number }) => this.applyRemote(msg))
-    s.on('dyn', (dyn: { guests: ArrayBuffer } & Record<string, unknown>) => {
+    s.on('dyn', (dyn: { guests?: ArrayBuffer } & Record<string, unknown>) => {
       if (this.resyncing) return
       applyDynamic(this.state, dyn)
-      this.state.guests = decodeGuests(dyn.guests, this.state.guests)
+      if (dyn.guests) this.state.guests = decodeGuests(dyn.guests, this.state.guests)
       if ((dyn.nextId as number) !== this.state.nextId || (dyn.structVersion as number) !== this.state.structVersion) this.resync()
     })
     s.on('players', (players: Player[]) => { this.players = players; this.isHost = players.some(p => p.id === s.id && p.host); this.emit() })
