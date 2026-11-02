@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { CUSTOM_LIMITS } from '../../../modules-src/maplestreet/shared/CustomItems'
 import type { Env } from '../env'
 import { HttpError, json, readJson, requireSameOrigin } from '../http'
-import { requireUser } from '../auth'
+import { refreshWorldCatalog, requireMapleAdmin } from '../maplestreet-admin'
 import { inspectModel } from '../gltf-check'
 import { ITEM_MODEL_KEY, getStoreItem, insertStoreItem, listStoreItems, storeItemSchema, updateStoreItem } from '../maplestreet-items'
 
@@ -14,21 +14,7 @@ const updateSchema = z.object({
   price: storeItemSchema.shape.price.optional(),
 }).strict()
 
-async function requireAdmin(request: Request, env: Env) {
-  const user = await requireUser(request, env, 'Sign in as the administrator to manage Maple Street items.')
-  if (!user.isAdmin) throw new HttpError(403, 'Administrator access required.')
-  return user
-}
-
-async function refreshWorldCatalog(env: Env) {
-  if (!env.MAPLE_WORLD) return
-  try {
-    const stub = env.MAPLE_WORLD.get(env.MAPLE_WORLD.idFromName('maple-street'))
-    await stub.fetch(new Request('https://maple-world/catalog', { method: 'POST' }))
-  } catch (error) {
-    console.error('Maple Street catalog refresh failed', error)
-  }
-}
+const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Maple Street items.')
 
 async function serveModel(env: Env, id: string) {
   const stored = await env.FILES.getWithMetadata<{ mime?: string }>(ITEM_MODEL_KEY(idSchema.parse(id)), 'arrayBuffer')

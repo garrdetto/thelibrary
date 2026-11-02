@@ -55,8 +55,10 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/racing.ts` — `/api/racing` tickets, lap records (incl. Short Track tracks), paint, AI skins — `api.ts`.
 - `src/server/routes/park.ts` — `/api/park` tickets, gzip saves (slots 0–6), company-value boards with park screenshots (`?shot=`) — `api.ts`.
 - `src/server/routes/maplestreet.ts` — `/api/maplestreet` WebSocket upgrade to the shared world — `api.ts`.
-- `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world`; registers published items before loading the world and again on `POST /catalog` — `server.ts`.
+- `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world`; registers published items and vehicles before loading the world and again on `POST /catalog` — `server.ts`.
 - `src/server/routes/maplestreet-items.ts` — `/api/maplestreet-items`: public list, `?model=<id>` serves the .glb from KV, admin multipart publish (POST) and retire/restore (PATCH) — `api.ts`. Helpers in `src/server/maplestreet-items.ts` (D1 `maplestreet_items`) and `src/server/gltf-check.ts`.
+- `src/server/routes/maplestreet-vehicles.ts` — `/api/maplestreet-vehicles`: public list (retired included with `active: false`), `?model=<id>` / `?wheel=<id>` serve KV `maplestreet-vehicle/<id>[/wheel]`, admin multipart publish (`name`, `spec` JSON, `model`, optional `wheel`) and PATCH (`active`, `name`, `spec`) — `api.ts`. Zod `vehicleSpecSchema` and D1 `maplestreet_vehicles` (migration 0014) in `src/server/maplestreet-vehicles.ts`; `requireMapleAdmin` / `refreshWorldCatalog` in `src/server/maplestreet-admin.ts`.
+- `src/server/routes/meshy.ts` — `/api/meshy` (admin only): `?status` (connected, balance, credit table), job list (refreshes unfinished tasks from Meshy), `?model=<job>` (KV `meshy-model/<job>`), POST actions `text`, `image`, `refine`, `remesh`, `retexture`, `cancel`, `hide` — `api.ts`. Meshy client, friendly error mapping and D1 `meshy_jobs` (migration 0015) in `src/server/meshy.ts`; secret `MESHY_API_KEY`, dev-only `MESHY_API_BASE`.
 - `src/server/routes/scores.ts` — `/api/module-scores` GET `?module=`, POST `score` / `reset-records` — `api.ts`.
 - `src/server/routes/chat.ts` — `/api/group-chat` messages, presence, reads, `?count` — `api.ts`.
 - `src/server/routes/studio.ts` — `/api/studio`, `/api/library`, `/api/asset`, `/api/learning`, `/api/lyric-presets` — `api.ts`.
@@ -142,7 +144,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/maplestreet/index.html` — page shell (start screen, HUD markup, styles), no CDN scripts — `vite.modules.ts` (→ `public/modules/maplestreet.html`).
 - `modules-src/maplestreet/index.ts` — entry; imports `src/main.ts` — `index.html`.
 - `modules-src/maplestreet/README.md` — module notes — developers.
-- `src/main.ts` — boot, transport choice (shared world, offline, PeerJS, tabs, Colyseus); waits for the published-item catalog before starting — `index.ts`.
+- `src/main.ts` — boot, transport choice (shared world, offline, PeerJS, tabs, Colyseus); waits for the published-item catalog and published vehicles before starting; `?vehicleTest=1` opens the admin test drive instead — `index.ts`.
 - `src/core/Engine.ts` — renderer, scene, camera, resize (WebGPU/WebGL2) — `Game`, `BuildController`, `DayNight`, `Neighborhood`, `RemoteEntities`.
 - `src/core/Loop.ts` — fixed-step update/render loop — `Game`.
 - `src/core/Input.ts` — keyboard, mouse, touch — `Game`, `CameraRig`, `BuildController`.
@@ -172,7 +174,10 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
 - `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
 - `src/physics/Character.ts` — kinematic character controller and `Avatar` (scanned model, stand-in while loading) — `Game`, `RemoteEntities`.
-- `src/physics/Vehicle.ts` — raycast vehicle: grip-limited, rate-limited steering with Ackermann front wheels, pedal ramps, torque curve, handbrake rear slide — `Game`.
+- `src/physics/Vehicle.ts` — raycast vehicle: grip-limited, rate-limited steering with Ackermann front wheels, pedal ramps, torque curve, handbrake rear slide; built from any `PRESETS` entry, built-in or published — `Game`, `Dyno`, `VehicleTestDrive`.
+- `src/physics/CustomVehicleModels.ts` — published vehicles: fetches `/api/maplestreet-vehicles` (cached for offline), registers them with `shared/CustomVehicles.ts`, adds `PRESETS` entries whose body is the .glb in the chassis frame with game wheels, lamps and paint (material or color-mask recolor) — `main`, `VehicleTestDrive`.
+- `src/physics/Dyno.ts` — full-throttle pull on the real physics (0–target time, top speed) — `VehicleTestDrive`, `tests/vehicles.test.ts`.
+- `src/game/VehicleTestDrive.ts` — `?vehicleTest=1`: the admin editor posts a draft record; runs the dyno, reports `tl-vehicle-test-result`, then lets the admin drive on a flat pad — `main`.
 - `src/avatar/AvatarAssets.ts` — loads `public/modules/maplestreet/{male,female}.glb` + region masks, flattened-hair variant — `Character.ts`.
 - `src/avatar/AvatarMaterial.ts` — TSL wardrobe recolor shader — `AvatarModel`.
 - `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/idle/seated pose — `Character.ts`.
@@ -181,7 +186,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/game/WardrobeUI.ts` — wardrobe / character creator and Maple Threads shop panel — `Game`.
 - `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation — `RoomLogic`, `Economy`, `Npc`, client.
 - `tools/build-characters.mjs` — offline scan → rigged avatar + mask pipeline (not part of the build).
-- `src/physics/VehiclePresets.ts` — original pickup, coupe, mower bodies and tuning — `Vehicle`, `Downtown`, `RemoteEntities`.
+- `src/physics/VehiclePresets.ts` — procedural bodies of the built-in vehicles (tuning comes from `shared/Vehicles.ts`); `PRESETS` also holds published vehicles; `wheelFor` picks a published wheel model or the procedural wheel — `Vehicle`, `Downtown`, `RemoteEntities`, `Hud`.
 - `src/net/Transport.ts` — transport interface — every transport, `Game`.
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
 - `src/net/OfflineTransport.ts` — solo play and fallback — `Game`, `main`.
@@ -194,11 +199,16 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `shared/WorldServer.ts` — persistent world loop — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: 60 lots on ten residential streets, roads and `ROAD_NAMES`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
 - `shared/Seed.ts` — starter houses — `RoomLogic`.
-- `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep following distance and lean in turns — `Host`, `WorldServer`.
+- `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep following distance and lean in turns; published vehicles with traffic on join as extra drivers (`syncCustomTraffic`) — `Host`, `WorldServer`.
 - `shared/Catalog.ts` — build/buy catalog (`custom` and `hidden` fields for published items) — `RoomLogic`, `BuildRules`, `Furniture`, `Mesher`, `Thumbs`, `Hud`.
 - `shared/CustomItems.ts` — published-item records, limits, `footprintFromSize`, `registerCustomItems` (adds `custom:<id>` entries to `CATALOG`) — `CustomModels`, `maplestreet-world.ts`, `src/server/maplestreet-items.ts`, the admin editor.
 - `shared/BuildRules.ts` — build validation — `RoomLogic`, build files, `Hud`, `PlotMap`.
-- `shared/Economy.ts` — prices, loan cap, pay — `RoomLogic`, `WorldServer`, `Game`, `Hud`.
+- `shared/Economy.ts` — prices, loan cap, pay; `VEHICLES` (built-ins + published), `refreshDealer`, `normalizeAccount` keeps `custom:` garage entries — `RoomLogic`, `WorldServer`, `Game`, `Hud`.
+- `shared/Vehicles.ts` — `VehicleKind` (built-ins plus `custom:<uuid>`), built-in tuning as plain data, `TUNING` registry, `rideHeight`, `wheelbaseOf`, `vehicleRole`, `BODY_EXTENTS` (reference outlines) — everything that handles vehicles.
+- `shared/CustomVehicles.ts` — published-vehicle records, limits, `BRAND_PATTERN`, `registerCustomVehicles` (tuning, dealer, traffic) — `CustomVehicleModels`, `Npc`, `maplestreet-world.ts`, `src/server/maplestreet-vehicles.ts`, the vehicle editor.
+- `shared/VehicleDrive.ts` — `predictDrive` / `solveDrive`: top speed and 0–60 targets → engine force and torque cutoff, matching the physics — the vehicle editor, tests.
+- `shared/PaintMask.ts` — color-mask recolor shared by the game and the editor preview.
+- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building layout and minimap routing (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
 - `shared/Mowing.ts` — mowing pay — `RoomLogic`, `Game`, `Lawn`.
 - `shared/Protocol.ts` — message protocol types — every transport, `RoomLogic`, `WorldServer`.
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.
@@ -284,7 +294,7 @@ Every phase keeps these exactly (sources: `AGENTS.md`, `docs/AUDIT.md` §1, veri
 - Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet), `?track=shorttrack|dells|dellswide|dirt` (Short Track Showdown), `?world=`, `?host=`, `?server=` (Colyseus URL), `?solo=` (Maple Street).
 - PeerJS room codes: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (Maple Street also allows `L`), shown upper-case; peer ids lower-case the code: `sandlot-`, `tl-chess-`, `tl-checkers-`, `tl-maplestreet-`. Short Track Showdown: 5 letters A–Z without I/O, peer id `sts-oval-race-<CODE>`.
 - Group-chat invites `meta.invite = {module, label, code}`.
-- `/api/*`: `pool-account`, `workspace-access`, `workspace-admin`, `site-changes`, `account-settings`, `pool-practice`, `pool-preferences`, `pool-cue-overlay`, `racing`, `park`, `maplestreet`, `maplestreet-items`, `group-chat`, `module-scores`, `studio`, `library`, `asset`, `learning`, `lyric-presets`.
+- `/api/*`: `pool-account`, `workspace-access`, `workspace-admin`, `site-changes`, `account-settings`, `pool-practice`, `pool-preferences`, `pool-cue-overlay`, `racing`, `park`, `maplestreet`, `maplestreet-items`, `maplestreet-vehicles`, `meshy`, `group-chat`, `module-scores`, `studio`, `library`, `asset`, `learning`, `lyric-presets`.
 - Railway service: socket.io default namespace (pool), `/racing`, `/park`; tickets from `/api/pool-account?action=ticket`, `/api/racing`, `/api/park`; client URL env `VITE_POOL_SERVER_URL`; pool header `X-Pool-Player`.
 - Ticket redeem: `/api/pool-account?action=redeem`, `/api/racing?action=redeem`, `/api/park?action=redeem` (server-to-server).
 - Server-shared files: `server/racing-engine.mjs`, `server/park/` (deterministic commands); changes redeploy Railway and bump `/version` in `server/index.mjs`.

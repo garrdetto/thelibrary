@@ -34,4 +34,7 @@ export type Env = {
   SITE_CHANGES_SECRET?: string
   SITE_CHANGES_REPO?: string
   ANTHROPIC_ADMIN_KEY?: string
+  MESHY_API_KEY?: string
+  /** Development only: point the Meshy client at a local stand-in. */
+  MESHY_API_BASE?: string
 }

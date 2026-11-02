@@ -11,7 +11,9 @@
  * its lane and leans a little on its suspension through corners. Everything
  * is deterministic so every host produces the same traffic.
  */
+import { CUSTOM_TRAFFIC, customVehiclesVersion, type TrafficRoute } from './CustomVehicles';
 import type { PlayerSnap, VehicleKind, VehicleSnap } from './Protocol';
+import { rideHeight, tuningOf, wheelbaseOf } from './Vehicles';
 import { CLOTH_COLORS, defaultLook, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, WARDROBE, type Body, type Look } from './Wardrobe';
 
 /** A deterministic outfit per neighbor, so they dress the same for everyone. */
@@ -31,10 +33,15 @@ function npcLook(body: Body, seed: number): Look {
   };
 }
 
-/** Chassis-center height above the road for each kind (matches VehiclePresets at rest). */
-const RIDE_HEIGHT: Record<VehicleKind, number> = { truck: 0.94, hdtruck: 1.08, coupe: 0.66, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, zeroturn: 0.42, trailer: 0.59 };
-/** Wheelbase per kind, used to turn path curvature into a believable front-wheel angle. */
-const WHEELBASE: Record<VehicleKind, number> = { truck: 3.4, hdtruck: 3.9, coupe: 2.8, sedan: 2.75, golfcart: 1.65, atv: 1.25, mower: 1.1, zeroturn: 1.2, trailer: 0 };
+/** Chassis-center height above the road for each built-in kind (matches VehiclePresets at rest). */
+const RIDE_HEIGHT: Record<string, number> = { truck: 0.94, hdtruck: 1.08, coupe: 0.66, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, zeroturn: 0.42, trailer: 0.59 };
+/** Wheelbase per built-in kind, used to turn path curvature into a believable front-wheel angle. */
+const WHEELBASE: Record<string, number> = { truck: 3.4, hdtruck: 3.9, coupe: 2.8, sedan: 2.75, golfcart: 1.65, atv: 1.25, mower: 1.1, zeroturn: 1.2, trailer: 0 };
+
+const tuned = (kind: string) => tuningOf(kind);
+/** Published vehicles derive both from their physics tuning. */
+const rideOf = (kind: string) => RIDE_HEIGHT[kind] ?? (tuned(kind) ? rideHeight(tuned(kind)!) : 0.7);
+const wheelbaseFor = (kind: string) => WHEELBASE[kind] ?? (tuned(kind) ? wheelbaseOf(tuned(kind)!) : 2.7);
 
 type P = [number, number];
 
@@ -42,6 +49,12 @@ interface PathPoint { x: number; z: number; fx: number; fz: number; k: number; s
 interface Path { pts: PathPoint[]; len: number; step: number; stops: number[] }
 
 const STEP = 0.5;
+
+function hashSeed(text: string) {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return h >>> 0;
+}
 
 /** Offsets a closed polyline to its right-hand lane, rounds every corner with an arc and samples it evenly. */
 function smoothPath(raw: P[], lane: number, radius: number): Path {
@@ -122,6 +135,7 @@ const TURN_R = 4.5;
 const RING_A = smoothPath([[-87, 0], [87, 0], [87, 54], [-87, 54]], 2.5, TURN_R);
 const RING_B = smoothPath([[87, 0], [-87, 0], [-87, -54], [87, -54]], 2.5, TURN_R);
 const DOWNTOWN = smoothPath([[87, 0], [260, 0], [260, -54], [87, -54]], 2.5, TURN_R);
+const ROUTES: Record<TrafficRoute, Path> = { ringA: RING_A, ringB: RING_B, downtown: DOWNTOWN };
 const WALK_N = walk([[-78, -6], [78, -6]], 0.5);
 const WALK_S = walk([[78, 6], [-78, 6]], 0.5);
 const WALK_DN = walk([[108, -7.5], [248, -7.5]], 0.6);
@@ -157,10 +171,35 @@ export class NpcTraffic {
     { id: 'npc-walker-4', name: 'Marcus', color: '#3f8f5a', route: WALK_DS, s: 40, speed: 1.4, look: npcLook('male', 12) },
     { id: 'npc-walker-5', name: 'Lena', color: '#d18a2e', route: WALK_DN, s: 60, speed: 1.1, look: npcLook('female', 13) },
   ];
+  private readonly builtinDrivers = this.drivers.length;
+  private customVersion = -1;
   /** Hosts call this to keep NPCs from driving through players who stopped on the road. */
   obstacles: { x: number; z: number }[] = [];
 
-  constructor() { for (const d of this.drivers) this.place(d); }
+  constructor() {
+    for (const d of this.drivers) this.place(d);
+    this.syncCustomTraffic();
+  }
+
+  /** Adds, keeps or removes drivers of admin-published vehicles with traffic turned on. */
+  private syncCustomTraffic() {
+    if (this.customVersion === customVehiclesVersion) return;
+    this.customVersion = customVehiclesVersion;
+    const old = new Map(this.drivers.slice(this.builtinDrivers).map(d => [d.id, d]));
+    const next: Driver[] = [];
+    for (const t of CUSTOM_TRAFFIC) {
+      const id = `npc-custom-${t.id.slice(0, 8)}`;
+      const route = ROUTES[t.route];
+      const prev = old.get(id);
+      if (prev && prev.kind === t.kind && prev.route === route) { prev.speed = t.speed; prev.name = t.driver; next.push(prev); continue; }
+      const seed = hashSeed(t.id);
+      const d: Driver = { ...driver(id, t.driver, t.kind, route, (seed % 1000) / 1000 * route.len, t.speed), look: npcLook(seed % 2 ? 'female' : 'male', 20 + (seed % 997)) };
+      this.place(d);
+      next.push(d);
+    }
+    this.drivers.length = this.builtinDrivers;
+    this.drivers.push(...next);
+  }
 
   private place(d: Driver) {
     const p = at(d.route, d.s);
@@ -199,6 +238,7 @@ export class NpcTraffic {
   }
 
   step(dt: number) {
+    this.syncCustomTraffic();
     for (const d of this.drivers) {
       const r = d.route;
       // Arrived at a stop line: hold, then mark it served so we pull through.
@@ -222,8 +262,9 @@ export class NpcTraffic {
       this.place(d);
 
       // Front-wheel angle from path curvature a car length ahead (drivers turn in early).
-      const kAhead = at(r, d.s + WHEELBASE[d.kind] * 0.8).k;
-      const wantSteer = Math.atan(WHEELBASE[d.kind] * kAhead);
+      const wb = wheelbaseFor(d.kind);
+      const kAhead = at(r, d.s + wb * 0.8).k;
+      const wantSteer = Math.atan(wb * kAhead);
       d.steer += Math.max(-1.2 * dt, Math.min(1.2 * dt, wantSteer - d.steer));
       // Body roll: lean out of the turn in proportion to lateral acceleration.
       const lat = d.v * d.v * at(r, d.s).k;
@@ -237,7 +278,7 @@ export class NpcTraffic {
     const players: PlayerSnap[] = [];
     const vehicles: VehicleSnap[] = [];
     for (const d of this.drivers) {
-      const y = RIDE_HEIGHT[d.kind];
+      const y = rideOf(d.kind);
       const yaw = Math.atan2(-d.fz, d.fx);
       // yaw about +Y, then roll about the car's own forward (+X) axis.
       const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2), cr = Math.cos(d.roll / 2), sr = Math.sin(d.roll / 2);
