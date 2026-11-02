@@ -105,6 +105,41 @@ export class ParkRenderer {
     this.cam.yaw = Math.PI / 2 + 0.55; this.cam.pitch = 0.78; this.cam.dist = 90
   }
 
+  captureOverview(width = 1600, height = 1000): { mime: string; data: string } | null {
+    const s = this.state
+    if (!s) return null
+    const map = s.map
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+      if (map.owner[tileIndex(map, x, y)] !== this.myPark) continue
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y
+    }
+    if (!Number.isFinite(x0)) { x0 = 0; y0 = 0; x1 = map.w - 1; y1 = map.h - 1 }
+    x0 = Math.max(0, x0 - 2); y0 = Math.max(0, y0 - 2); x1 = Math.min(map.w - 1, x1 + 2); y1 = Math.min(map.h - 1, y1 + 2)
+    const spanX = (x1 - x0 + 1) * TILE, spanY = (y1 - y0 + 1) * TILE
+    const cx = (x0 + x1 + 1) / 2 * TILE, cy = (y0 + y1 + 1) / 2 * TILE
+    const radius = Math.hypot(spanX, spanY) / 2
+    const saved = { cam: { ...this.cam }, rideCam: this.rideCam, preview: this.preview, showGrid: this.showGrid, width: this.width, height: this.height, day: s.time.dayFraction }
+    try {
+      this.rideCam = null; this.preview = {}; this.showGrid = false
+      s.time.dayFraction = 0.5
+      Object.assign(this.cam, { tx: cx, ty: cy, tz: groundHeightAt(map, cx, cy, TILE), yaw: Math.PI * 0.75, pitch: 0.98, dist: Math.max(60, radius / Math.tan(0.39) * 0.95) })
+      this.width = width; this.height = height
+      this.canvas.width = width; this.canvas.height = height
+      this.frame(this.lastFrame || performance.now())
+      const url = this.canvas.toDataURL('image/jpeg', 0.85)
+      const match = /^data:(image\/[a-z]+);base64,(.+)$/.exec(url)
+      return match ? { mime: match[1], data: match[2] } : null
+    } finally {
+      Object.assign(this.cam, saved.cam)
+      this.rideCam = saved.rideCam; this.preview = saved.preview; this.showGrid = saved.showGrid
+      s.time.dayFraction = saved.day
+      this.width = saved.width; this.height = saved.height
+      this.canvas.width = saved.width; this.canvas.height = saved.height
+      this.frame(this.lastFrame || performance.now())
+    }
+  }
+
   groundZ(wx: number, wy: number) { return this.state ? groundHeightAt(this.state.map, wx, wy, TILE) : 0 }
 
   private list(key: string) { let l = this.instances.get(key); if (!l) { l = new InstanceList(); this.instances.set(key, l) } return l }

@@ -56,7 +56,6 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     try {
       const view = await parkApi.view(map, parkId)
       const parsed = await decompressSave(view.data)
-      if (session && !session.online) session.dispose()
       const next = new ViewSession(deserializePark(parsed), view.username, view.savedAt)
       setSession(next)
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -119,7 +118,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
 
   if (session) return <>
     <div className="pk-root pk-root-game"><ParkHud session={session} onQuit={quit} signedIn={signedIn} onScore={() => setScoreKey(k => k + 1)} /></div>
-    {session.state.mode === 'solo' && session.state.scenario !== 'sandbox' && <div className="pk-scores-wrap"><ParkScoreboard username={username} initial={session.state.scenario} refreshKey={scoreKey} onView={session.online ? undefined : (m, p) => void viewPark(m, p)} viewBusy={busy} /></div>}
+    {session.state.mode === 'solo' && session.state.scenario !== 'sandbox' && <div className="pk-scores-wrap"><ParkScoreboard username={username} initial={session.state.scenario} refreshKey={scoreKey} /></div>}
   </>
 
   return <div className="pk-root">
@@ -178,7 +177,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
           {!lobby.rooms.length ? <p className="pk-menu-note">No parks are open. Host one and invite friends to this page.</p> : <ul>{lobby.rooms.map(r => <li key={r.id}><div><strong>{r.name}</strong><small>{r.mode === 'coop' ? 'Co-op' : 'Versus'} · {SCENARIOS[r.scenario]?.name ?? r.scenario} · {r.players.length}/{r.max} · {r.players.map(p => p.name).join(', ')}{r.started && r.mode === 'versus' ? ' · in progress' : ''}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy) || r.players.length >= r.max || (r.mode === 'versus' && r.started)} onClick={() => void joinRoom(r.id)}>Join</button></li>)}</ul>}
         </div>
       </div>)}
-      <ParkScoreboard username={username} refreshKey={scoreKey} onView={(m, p) => void viewPark(m, p)} viewBusy={busy} />
+      <ParkScoreboard username={username} refreshKey={scoreKey} onExplore={(m, p) => void viewPark(m, p)} exploreBusy={busy} />
       <p className="pk-controls-help"><strong>Controls</strong> Drag to pan · right-drag to rotate · scroll or pinch to zoom · WASD/arrows move · Q/E rotate · R rotates what you are placing · G grid · Space pauses · Esc cancels.</p>
     </section>
   </div>

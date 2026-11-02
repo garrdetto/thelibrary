@@ -53,7 +53,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/account.ts` — `/api/pool-account`, `/api/workspace-access`, `/api/account-settings`, `/api/workspace-admin`, tickets — `api.ts`, `routes/racing.ts`, `routes/park.ts`.
 - `src/server/routes/pool.ts` — `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay` — `api.ts`.
 - `src/server/routes/racing.ts` — `/api/racing` tickets, lap records (incl. Short Track tracks), paint, AI skins — `api.ts`.
-- `src/server/routes/park.ts` — `/api/park` tickets, gzip saves (slots 0–6), net-worth boards — `api.ts`.
+- `src/server/routes/park.ts` — `/api/park` tickets, gzip saves (slots 0–6), company-value boards with park screenshots (`?shot=`) — `api.ts`.
 - `src/server/routes/maplestreet.ts` — `/api/maplestreet` WebSocket upgrade to the shared world — `api.ts`.
 - `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world` — `server.ts`.
 - `src/server/routes/scores.ts` — `/api/module-scores` GET `?module=`, POST `score` / `reset-records` — `api.ts`.
@@ -234,13 +234,14 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 
 ### park — Thrill Park
 - `src/components/park/ParkGame.tsx` — menu and lobby — `index.tsx` (lazy).
+- `src/components/park/ParkScoreboard.tsx` — per-map company-value leaderboard with View buttons — `ParkGame.tsx`.
+- `src/components/park/ParkShotDialog.tsx` — screenshot viewer for a leaderboard park — `ParkScoreboard.tsx`.
 - `src/components/park/ParkHud.tsx` — in-game interface, park naming gate, ride-category tabs, staff repair-job selection, daily staff/electricity finances, connected path builder with automatic elevation and ramp/stair sections, custom footpath colors, arrow-key camera orbit and canvas — `ParkGame.tsx`.
-- `src/components/park/ParkScoreboard.tsx` — park-based net-worth board — `ParkGame.tsx`.
 - `src/lib/park/gl.ts` — WebGL2 helpers: mesh builder, shadow map, lighting, ground and water — `models.ts`, `renderer.ts`.
 - `src/lib/park/models.ts` — guests (`addPerson`), scenery, stalls and flat-ride models including the enclosed Gravitron drum and oblong Zipper boom — `renderer.ts`.
-- `src/lib/park/renderer.ts` — terrain, shadow pass, elevated footpaths and stair ramps, boardwalks, smoothly banked custom kart tracks, side-by-side compact karts, customizable ride colors, flat rides, and clearance-aware supports — `ParkHud.tsx`.
+- `src/lib/park/renderer.ts` — terrain, shadow pass, elevated footpaths and stair ramps, boardwalks, smoothly banked custom kart tracks, side-by-side compact karts, customizable ride colors, flat rides, and clearance-aware supports, and `captureOverview` (whole-park leaderboard screenshot) — `ParkHud.tsx`.
 - `src/lib/park/session.ts` — local and online sessions — `ParkGame.tsx`, `ParkHud.tsx`.
-- `src/lib/park/api.ts` — saves, tickets, scores client — `ParkGame`, `ParkHud`, `ParkScoreboard`.
+- `src/lib/park/api.ts` — saves, tickets, scores and screenshot client — `ParkGame`, `ParkHud`, `ParkScoreboard`.
 - `server/park/index.mjs` (+ `index.d.mts`) — shared simulation entry — park UI files, `renderer.ts`, `session.ts`, `server/park.mjs`.
 - `server/park/state.mjs`, `terrain.mjs`, `catalog.mjs`, `track.mjs`, `autotrack.mjs`, `commands.mjs`, `guests.mjs`, `sim.mjs`, `snapshot.mjs`, `util.mjs`, `park.test.mjs` — expanded maps and purchasable park land on the sides and behind the entrance, stable park IDs, saved elevated paths and stair navigation, walkable path types and colors, auto-facing shop placement, customizable coaster catalog with loops and corkscrews, two-train coasters with up to 10 cars each, 14-car side-by-side kart fleets, coaster and custom-ride physics, mechanic dispatch through footpaths or queue lines, commands, guest/staff AI, $50 daily wages and $1-per-tile electricity, ten-day months, snapshots, regression tests, helpers — `server/park/index.mjs` and each other.
 - `migrations/0011_park_scores_by_park.sql` — migrate high scores to one durable record per named park — `/api/park`.

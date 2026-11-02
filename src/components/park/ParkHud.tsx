@@ -503,21 +503,28 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const data = await compressSave(await session.exportSave())
     const s = session.state, p = s.parks[session.park]
     const name = label ?? (saveName.trim() || `${p.name} · ${MONTHS[s.time.month]} Y${s.time.year}`)
-    await parkApi.save(slot, name.slice(0, 40), data, { cash: Math.round(p.cash), netWorth: Math.round(p.cash - p.loan), guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
+    const value = companyValue(s, session.park)
+    await parkApi.save(slot, name.slice(0, 40), data, { cash: Math.round(p.cash), netWorth: Math.round(p.cash - p.loan), companyValue: value, guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
     setLastSaved(Date.now())
-    return submitScore(data)
+    return submitScore(value, data)
   }
 
-  async function submitScore(data?: string): Promise<string | null> {
+  async function submitScore(value: number, data?: string): Promise<string | null> {
     const s = session.state, p = s.parks[session.park]
     if (!signedIn || s.mode !== 'solo' || s.scenario === 'sandbox' || SCENARIOS[s.scenario]?.versus) return null
     try {
-      await parkApi.submitScore(p.parkId, s.scenario, p.name, p.cash - p.loan, data)
-      onScore?.()
-      return null
+      await parkApi.submitScore(p.parkId, s.scenario, p.name, value, data)
     } catch (error) {
       return `leaderboard update failed: ${(error as Error).message}`
     }
+    onScore?.()
+    try {
+      const shot = rendererRef.current?.captureOverview()
+      if (shot) { await parkApi.submitShot(p.parkId, s.scenario, shot.mime, shot.data); onScore?.() }
+    } catch (error) {
+      console.error('Unable to store the park screenshot.', error)
+    }
+    return null
   }
 
   async function saveTo(slot: number) {
@@ -764,7 +771,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     {!viewOnly && panel === 'save' && <Window title="Save park" onClose={() => setPanel(null)}>
       {!signedIn ? <p className="pk-hint">Sign in on the home page to save parks to your account.</p> : saves === null ? <p className="pk-hint"><LoaderCircle className="spin" size={14} /> Loading save slots…</p> : <>
         <label className="pk-field"><span>Name</span><input value={saveName} maxLength={40} placeholder={`${park.name} · ${MONTHS[state.time.month]} Y${state.time.year}`} onChange={e => setSaveName(e.target.value)} /></label>
-        <p className="pk-hint">Your park autosaves every 5 minutes and when you leave{lastSaved ? ` · last saved ${new Date(lastSaved).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}.{session.state.mode === 'solo' && session.state.scenario !== 'sandbox' ? ' Each save also records your net worth on the leaderboard.' : ''}</p>
+        <p className="pk-hint">Your park autosaves every 5 minutes and when you leave{lastSaved ? ` · last saved ${new Date(lastSaved).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}.{session.state.mode === 'solo' && session.state.scenario !== 'sandbox' ? ' Each save also updates your company value and park screenshot on the leaderboard.' : ''}</p>
         <div className="pk-actions"><button className="pk-btn pk-btn-go" disabled={saveBusy} onClick={() => { setSaveBusy(true); void autosave().finally(async () => { setSaveBusy(false); try { setSaves((await parkApi.saves()).saves) } catch { /* list refresh is optional */ } }) }}><Save size={14} /> Save now</button></div>
         {saves.find(x => x.slot === 0) && <p className="pk-hint">Autosave: {saves.find(x => x.slot === 0)!.summary.date} · {saves.find(x => x.slot === 0)!.summary.guests} guests</p>}
         <ul className="pk-slots">{[1, 2, 3, 4, 5, 6].map(slot => { const s = saves.find(x => x.slot === slot); return <li key={slot}><div><strong>Slot {slot}</strong><small>{s ? `${s.name} · ${s.summary.date} · ${s.summary.guests} guests` : 'Empty'}</small></div><button className="pk-btn" disabled={saveBusy} onClick={() => void saveTo(slot)}>{s ? 'Overwrite' : 'Save'}</button></li> })}</ul>
