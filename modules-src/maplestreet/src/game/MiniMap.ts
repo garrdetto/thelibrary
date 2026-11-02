@@ -28,7 +28,7 @@ export class MiniMap {
 
   /** `heading` is the direction the camera looks, as an xz vector. */
   update(dt: number, me: RoutePoint, heading: { x: number; y: number }, world: WorldState | null, myId: string | null, objective: Objective | null) {
-    if (this.canvas.offsetParent === null) return;
+    if (!this.canvas.getClientRects().length) return;
     this.routeAge += dt;
     const key = objective ? `${Math.round(objective.x)},${Math.round(objective.z)}` : '';
     if (!objective) { this.route = []; this.routeFor = ''; }
