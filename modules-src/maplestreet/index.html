@@ -157,7 +157,9 @@
     #wallView { width: auto; padding: 0 9px; font-size: 11px; font-weight: 600; }
 
     /* ---------- live mode */
-    #side { top: 12px; right: 12px; width: 260px; padding: 12px; display: flex; flex-direction: column; gap: 9px; max-height: calc(100vh - 24px); overflow-y: auto; }
+    #side { top: 12px; right: 12px; width: 260px; padding: 12px; display: flex; flex-direction: column; gap: 9px; max-height: calc(100vh - 236px); overflow-y: auto; }
+    #minimap { position: fixed; right: 12px; bottom: 12px; width: 196px; height: 196px; border-radius: 50%; box-shadow: 0 6px 24px rgba(0,0,0,0.45); pointer-events: none; z-index: 5; }
+    body[data-mode=build] #minimap, body.dressing #minimap { display: none; }
     body[data-mode=build] #side, body[data-mode=build] #needs, body[data-mode=build] #dash { display: none !important; }
     #side h3 { margin: 4px 0 0; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mute); }
     #garage { display: flex; flex-direction: column; gap: 4px; }
@@ -220,6 +222,7 @@
 
     @media (max-width: 900px) {
       #side { display: none; }
+      #minimap { width: 132px; height: 132px; bottom: 76px; }
       #needs { width: 170px; }
       #buildPanel { height: 46vh; }
       .bp-cats { width: 110px; }
@@ -323,6 +326,7 @@
     <div><small>Driving</small><span id="dashName"></span></div>
   </div>
 
+  <canvas id="minimap" class="ui hud" role="img" aria-label="Minimap: you are the blue arrow; a dashed line shows the street route to your objective"></canvas>
   <div id="hint" class="ui panel hud"></div>
   <div id="prompt" class="ui panel hud"></div>
   <div id="toast" class="ui panel hud"></div>
