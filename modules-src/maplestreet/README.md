@@ -32,6 +32,12 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
   - Walls up, cutaway or down with Home
 - **Money:** everything refunds 100%.
 
+## Characters and wardrobe
+
+- The start screen asks whether your character is male or female. The two scanned models (`public/modules/maplestreet/{male,female}.glb`) are rebuilt from the raw scans by `tools/build-characters.mjs` (simplified mesh, auto-rigged skeleton, clothing-region mask `*-mask.png`); run it with `@gltf-transform/*`, `meshoptimizer` and `sharp` installed.
+- `src/avatar/`: `AvatarAssets` (loading, hair pressed flat for buzz/long/hats), `AvatarMaterial` (TSL recolor shader: skin, hair, eyes, jacket, tee, pants, shoes, patterns), `HairAndHats` (long hair, buns, beanie/cap/bucket hat), `AvatarModel` (pose: walk, idle, seated). `Character.ts` shows a stand-in until the model loads.
+- Wardrobe (C): `src/game/WardrobeUI.ts`. Catalog and look validation: `shared/Wardrobe.ts`. Hair, eyes and skin are free; clothing is bought at **Maple Threads** downtown and kept in `account.wardrobe`; the worn look is `account.look`, validated by `RoomLogic` (`{t:'look'}`) and sent to everyone in player snapshots.
+
 ## World and economy
 
 - **Lots:** 20 lots of 32 × 40 m on a residential ring. Six of them come with furnished starter houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`).

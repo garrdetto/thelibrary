@@ -2,6 +2,7 @@ import { store } from './core/Storage';
 import { Game, NetMode, persistentKey } from './game/Game';
 import { OFFLINE_SAVE } from './net/OfflineTransport';
 import { peerAvailable } from './net/PeerTransport';
+import { isBody, type Body } from '../shared/Wardrobe';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
@@ -60,6 +61,31 @@ if (!peerAvailable()) $('onlineNote').textContent = 'Online rooms need an intern
 
 let game: Game | null = null;
 let starting = false;
+let pendingMode: NetMode | null = null;
+
+/** Male or female: asked on the start screen, remembered for next time. */
+let body: Body | null = (() => { const b = store.get('maplestreet/body'); return isBody(b) ? b : null; })();
+const bodyButtons = [...document.querySelectorAll<HTMLButtonElement>('#bodyPick button')];
+function showBody() {
+  for (const b of bodyButtons) b.setAttribute('aria-checked', String(b.dataset.body === body));
+  $('bodyPick').classList.toggle('need', !body && !!pendingMode);
+  $('start').classList.toggle('need-body', !body && !!pendingMode);
+}
+for (const b of bodyButtons) {
+  b.onclick = () => {
+    body = b.dataset.body as Body;
+    store.set('maplestreet/body', body);
+    showBody();
+    if (pendingMode) { const m = pendingMode; pendingMode = null; $('startStatus').textContent = ''; start(m); }
+  };
+  b.onkeydown = e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const other = bodyButtons.find(x => x !== b)!;
+    other.focus(); other.click();
+  };
+}
+showBody();
 let inviteRequested = false;
 
 /** the library bridge: tell the parent page which room code to invite people to. */
@@ -69,6 +95,13 @@ function postRoom(code: string) {
 
 async function start(mode: NetMode) {
   if (starting) return;
+  if (!body) {
+    pendingMode = mode;
+    showBody();
+    $('startStatus').textContent = 'First, is your character male or female?';
+    bodyButtons[0].focus();
+    return;
+  }
   starting = true;
   await accountReady;
   const name = signedInAs ?? (nameIn.value.trim() || 'Neighbor');
@@ -79,7 +112,7 @@ async function start(mode: NetMode) {
   $('startStatus').textContent = mode === 'world' ? 'Walking over to Maple Street…' : mode === 'host' ? 'Opening your private room…' : mode === 'join' ? `Joining room ${codeIn.value.toUpperCase()}…` : 'Loading the neighborhood…';
   try {
     game = new Game({
-      name, color: colorIn.value, mode,
+      name, color: colorIn.value, mode, body: body ?? 'male',
       code: codeIn.value.trim().toUpperCase(),
       serverUrl: serverIn.value.trim(),
       onRoom: (code, label) => {

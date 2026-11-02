@@ -5,6 +5,24 @@
  * snapshots, so every connected client sees the same traffic.
  */
 import type { PlayerSnap, VehicleKind, VehicleSnap } from './Protocol';
+import { CLOTH_COLORS, defaultLook, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, WARDROBE, type Body, type Look } from './Wardrobe';
+
+/** A deterministic outfit per neighbor, so they dress the same for everyone. */
+function npcLook(body: Body, seed: number): Look {
+  let s = seed * 9301 + 49297;
+  const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  const pick = <T>(a: T[]) => a[Math.floor(r() * a.length) % a.length];
+  const piece = (slot: string) => pick(WARDROBE.filter(w => w.slot === slot));
+  const top = piece('top'), pants = piece('pants'), shoes = piece('shoes'), hat = r() < 0.35 ? piece('hat') : WARDROBE.find(w => w.id === 'no-hat')!;
+  return {
+    ...defaultLook(body),
+    skin: pick(SKIN_TONES), hair: pick(HAIR_STYLES[body]).id, hairColor: pick(HAIR_COLORS.slice(0, 8)), eyes: pick(EYE_COLORS),
+    top: top.id, topColor: pick(CLOTH_COLORS), topColor2: pick(CLOTH_COLORS), tee: pick(CLOTH_COLORS),
+    pants: pants.id, pantsColor: pants.colors[0], pantsColor2: pants.colors[1],
+    shoes: shoes.id, shoesColor: shoes.colors[0], shoesColor2: shoes.colors[1],
+    hat: hat.id, hatColor: pick(CLOTH_COLORS), hatColor2: pick(CLOTH_COLORS),
+  };
+}
 
 /** Chassis-center height above the road for each kind (matches VehiclePresets at rest). */
 const RIDE_HEIGHT: Record<VehicleKind, number> = { truck: 0.94, hdtruck: 1.08, coupe: 0.66, sedan: 0.7, golfcart: 0.53, atv: 0.57, mower: 0.37, zeroturn: 0.42, trailer: 0.59 };
@@ -41,24 +59,24 @@ const WALK_S = route([[78, 6], [-78, 6]], 0.5);
 const WALK_DN = route([[108, -7.5], [248, -7.5]], 0.6);
 const WALK_DS = route([[248, 7.5], [108, 7.5]], 0.6);
 
-interface Driver { id: string; name: string; kind: VehicleKind; route: Route; s: number; speed: number; steer: number }
-interface Walker { id: string; name: string; color: string; route: Route; s: number; speed: number }
+interface Driver { id: string; name: string; kind: VehicleKind; route: Route; s: number; speed: number; steer: number; look?: Look }
+interface Walker { id: string; name: string; color: string; route: Route; s: number; speed: number; look?: Look }
 
 export class NpcTraffic {
   private drivers: Driver[] = [
-    { id: 'npc-hendricks', name: 'Mr. Hendricks', kind: 'sedan', route: RING_A, s: 0, speed: 9, steer: 0 },
-    { id: 'npc-alvarez', name: 'Rosa Alvarez', kind: 'hdtruck', route: RING_B, s: 160, speed: 8, steer: 0 },
-    { id: 'npc-okafor', name: 'Dele Okafor', kind: 'golfcart', route: RING_A, s: 260, speed: 6, steer: 0 },
-    { id: 'npc-lindqvist', name: 'Anna Lindqvist', kind: 'sedan', route: DOWNTOWN, s: 40, speed: 10, steer: 0 },
-    { id: 'npc-brennan', name: 'Sean Brennan', kind: 'coupe', route: DOWNTOWN, s: 300, speed: 12, steer: 0 },
-    { id: 'npc-nakamura', name: 'Kenji Nakamura', kind: 'truck', route: RING_B, s: 420, speed: 9, steer: 0 },
+    { id: 'npc-hendricks', name: 'Mr. Hendricks', kind: 'sedan', route: RING_A, s: 0, speed: 9, steer: 0, look: npcLook('male', 3) },
+    { id: 'npc-alvarez', name: 'Rosa Alvarez', kind: 'hdtruck', route: RING_B, s: 160, speed: 8, steer: 0, look: npcLook('female', 4) },
+    { id: 'npc-okafor', name: 'Dele Okafor', kind: 'golfcart', route: RING_A, s: 260, speed: 6, steer: 0, look: npcLook('male', 5) },
+    { id: 'npc-lindqvist', name: 'Anna Lindqvist', kind: 'sedan', route: DOWNTOWN, s: 40, speed: 10, steer: 0, look: npcLook('female', 6) },
+    { id: 'npc-brennan', name: 'Sean Brennan', kind: 'coupe', route: DOWNTOWN, s: 300, speed: 12, steer: 0, look: npcLook('male', 7) },
+    { id: 'npc-nakamura', name: 'Kenji Nakamura', kind: 'truck', route: RING_B, s: 420, speed: 9, steer: 0, look: npcLook('male', 8) },
   ];
   private walkers: Walker[] = [
-    { id: 'npc-walker-1', name: 'June', color: '#c2564a', route: WALK_N, s: 10, speed: 1.3 },
-    { id: 'npc-walker-2', name: 'Theo', color: '#4a8cc2', route: WALK_S, s: 70, speed: 1.5 },
-    { id: 'npc-walker-3', name: 'Priya', color: '#7a4ac2', route: WALK_DN, s: 150, speed: 1.2 },
-    { id: 'npc-walker-4', name: 'Marcus', color: '#3f8f5a', route: WALK_DS, s: 40, speed: 1.4 },
-    { id: 'npc-walker-5', name: 'Lena', color: '#d18a2e', route: WALK_DN, s: 60, speed: 1.1 },
+    { id: 'npc-walker-1', name: 'June', color: '#c2564a', route: WALK_N, s: 10, speed: 1.3, look: npcLook('female', 9) },
+    { id: 'npc-walker-2', name: 'Theo', color: '#4a8cc2', route: WALK_S, s: 70, speed: 1.5, look: npcLook('male', 10) },
+    { id: 'npc-walker-3', name: 'Priya', color: '#7a4ac2', route: WALK_DN, s: 150, speed: 1.2, look: npcLook('female', 11) },
+    { id: 'npc-walker-4', name: 'Marcus', color: '#3f8f5a', route: WALK_DS, s: 40, speed: 1.4, look: npcLook('male', 12) },
+    { id: 'npc-walker-5', name: 'Lena', color: '#d18a2e', route: WALK_DN, s: 60, speed: 1.1, look: npcLook('female', 13) },
   ];
   /** Hosts call this to keep NPCs from driving through players who stopped on the road. */
   obstacles: { x: number; z: number }[] = [];
@@ -90,11 +108,11 @@ export class NpcTraffic {
       const yaw = Math.atan2(-p.fz, p.fx);
       const vid = `${d.id}:${d.kind}`;
       vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: p.x, y, z: p.z, qx: 0, qy: Math.sin(yaw / 2), qz: 0, qw: Math.cos(yaw / 2), steer: d.steer, speed: (d as Driver & { v?: number }).v ?? d.speed, hitchedTo: null });
-      players.push({ id: d.id, name: d.name, color: '#888888', x: p.x, y, z: p.z, yaw: 0, speed: 0, vehicleId: vid });
+      players.push({ id: d.id, name: d.name, color: '#888888', x: p.x, y, z: p.z, yaw: 0, speed: 0, vehicleId: vid, look: d.look });
     }
     for (const w of this.walkers) {
       const p = sample(w.route, w.s);
-      players.push({ id: w.id, name: w.name, color: w.color, x: p.x, y: 0.14, z: p.z, yaw: Math.atan2(p.fx, p.fz), speed: w.speed, vehicleId: null });
+      players.push({ id: w.id, name: w.name, color: w.color, x: p.x, y: 0.14, z: p.z, yaw: Math.atan2(p.fx, p.fz), speed: w.speed, vehicleId: null, look: w.look });
     }
     return { players, vehicles };
   }

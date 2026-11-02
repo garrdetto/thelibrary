@@ -5,6 +5,7 @@
  */
 import type { BuildOp, WorldState } from './BuildRules';
 import type { Account } from './Economy';
+import type { Body, Look } from './Wardrobe';
 
 export type VehicleKind = 'truck' | 'hdtruck' | 'coupe' | 'sedan' | 'golfcart' | 'atv' | 'mower' | 'zeroturn' | 'trailer';
 
@@ -16,6 +17,8 @@ export interface PlayerSnap {
   yaw: number;
   speed: number;         // drives walk-cycle on remotes
   vehicleId: string | null;
+  /** Filled in by the authority from the account, so everyone sees your outfit. */
+  look?: Look | null;
 }
 
 export interface VehicleSnap {
@@ -43,7 +46,7 @@ export interface MowStroke { lotId: string; x: number; z: number; hx: number; hz
 /** How often every mode writes the neighborhood (lots, houses, money, needs, fuel) to its save. */
 export const AUTOSAVE_EVERY_MS = 5 * 60 * 1000;
 
-export interface JoinOptions { key: string; name: string; color: string }
+export interface JoinOptions { key: string; name: string; color: string; body?: Body }
 
 export type ClientMsg =
   | { t: 'hello'; opts: JoinOptions }
@@ -59,6 +62,7 @@ export type ClientMsg =
   | { t: 'refuel'; kind: VehicleKind; gallons: number }
   | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
   | { t: 'use'; lotId: string; objectId: string }
+  | { t: 'look'; look: Look }
   | { t: 'bye' };
 
 export type ServerMsg =

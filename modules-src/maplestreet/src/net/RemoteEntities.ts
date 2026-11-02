@@ -10,6 +10,7 @@ import type { PlayerSnap, VehicleSnap } from '../../shared/Protocol';
 import { noNormalsMRT } from '../core/Engine';
 import { mergeStatic } from '../core/Merge';
 import { Avatar } from '../physics/Character';
+import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
 import { buildWheel, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
 
@@ -41,7 +42,7 @@ class SnapBuffer<T extends { x: number; y: number; z: number }> {
 
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
 
-interface RemotePlayer { avatar: Avatar; label: THREE.Sprite; buf: SnapBuffer<PlayerSnap>; seen: number; seatedIn: RemoteVehicle | null }
+interface RemotePlayer { avatar: Avatar; label: THREE.Sprite; buf: SnapBuffer<PlayerSnap>; seen: number; seatedIn: RemoteVehicle | null; lookKey: string }
 interface RemoteVehicle { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
 
 function nameSprite(name: string, color: string) {
@@ -74,12 +75,14 @@ export class RemoteEntities {
       if (p.id === me) continue;
       let rp = this.players.get(p.id);
       if (!rp) {
-        rp = { avatar: new Avatar(p.color), label: nameSprite(p.name, p.color), buf: new SnapBuffer(), seen: now, seatedIn: null };
+        rp = { avatar: new Avatar(p.look ?? p.color), label: nameSprite(p.name, p.color), buf: new SnapBuffer(), seen: now, seatedIn: null, lookKey: lookKey(p.look) };
         rp.label.position.y = 2.15;
         rp.avatar.root.add(rp.label);
         rp.avatar.standIn(this.scene, 0);
         this.players.set(p.id, rp);
       }
+      const key = lookKey(p.look);
+      if (p.look && key !== rp.lookKey) { rp.lookKey = key; rp.avatar.setLook(p.look); }
       rp.buf.push(time, p); rp.seen = now;
     }
     for (const v of vehicles) {
@@ -115,7 +118,7 @@ export class RemoteEntities {
 
   removePlayer(id: string) {
     const rp = this.players.get(id); if (!rp) return;
-    rp.avatar.root.removeFromParent(); this.players.delete(id);
+    rp.avatar.dispose(); this.players.delete(id);
   }
   removeVehicle(id: string) {
     const rv = this.vehicles.get(id); if (!rv) return;

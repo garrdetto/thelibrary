@@ -13,6 +13,7 @@ import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PE
 import { seedNeighborhood } from './Seed';
 import { decodeCoverage, encodeCoverage, strokeCells, stripeShade } from './Mowing';
 import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
+import { cleanLook, defaultLook, isBody } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
 
 export interface LogicIO {
@@ -119,8 +120,10 @@ export class NeighborhoodLogic {
     const color = /^#[0-9a-f]{6}$/i.test(opts?.color ?? '') ? opts.color : '#3a7bd5';
     let acc = this.accounts[key];
     const returning = !!acc;
-    if (!acc) acc = this.accounts[key] = newAccount(Math.random().toString(36).slice(2, 12), key, name, color);
+    const body = isBody(opts?.body) ? opts.body : null;
+    if (!acc) acc = this.accounts[key] = newAccount(Math.random().toString(36).slice(2, 12), key, name, color, body ?? undefined);
     acc.name = name; acc.color = color;
+    if (body && (!acc.look || acc.look.body !== body)) acc.look = acc.look ? cleanLook({ ...acc.look, body }, acc.wardrobe, acc.look) : defaultLook(body);
     this.dirty.accounts.add(key);
     // Keep the owner name on their lot current (members can be renamed by the admin).
     for (const id in this.world.lots) {
@@ -179,6 +182,7 @@ export class NeighborhoodLogic {
             id: sessionId, name: acc.name, color: acc.color,
             x: num(p.x), y: num(p.y, -50, 500), z: num(p.z), yaw: num(p.yaw, -10, 10), speed: num(p.speed, 0, 20),
             vehicleId: typeof p.vehicleId === 'string' ? `${sessionId}:${p.vehicleId.split(':').pop()!.slice(0, 12)}` : null,
+            look: acc.look,
           };
         }
         s.vehicles = (Array.isArray(msg.v) ? msg.v.slice(0, 3) : [])
@@ -225,6 +229,12 @@ export class NeighborhoodLogic {
         break;
       }
       case 'use': this.handleUse(sessionId, s, acc, msg.lotId, msg.objectId); break;
+      case 'look': {
+        acc.look = cleanLook(msg.look, acc.wardrobe, acc.look);
+        if (s.player) s.player.look = acc.look;
+        this.sendAccount(sessionId, acc);
+        break;
+      }
       case 'bye': this.leave(sessionId); break;
     }
   }
@@ -335,13 +345,15 @@ export class NeighborhoodLogic {
     if (!item) return;
     if (item.vehicle && acc.garage.includes(item.vehicle)) return this.sendAccount(sessionId, acc, `You already own the ${item.name}`);
     if (item.upgrade && acc.upgrades.includes(item.upgrade)) return this.sendAccount(sessionId, acc, 'You already have that');
+    if (item.clothing && acc.wardrobe.includes(item.clothing)) return this.sendAccount(sessionId, acc, `The ${item.name} is already in your wardrobe`);
     if (item.price > acc.money) return this.sendAccount(sessionId, acc, `Not enough money — ${item.name} costs $${item.price.toLocaleString()}`);
     acc.money -= item.price;
     if (item.needs) this.addNeeds(acc, item.needs);
     if (item.groceries) acc.groceries = Math.min(20, acc.groceries + item.groceries);
     if (item.upgrade) acc.upgrades.push(item.upgrade);
     if (item.vehicle) { acc.garage.push(item.vehicle); acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank; }
-    this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : `Bought: ${item.name}`);
+    if (item.clothing) acc.wardrobe.push(item.clothing);
+    this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — press C to wear it` : `Bought: ${item.name}`);
   }
 
   private handleRefuel(sessionId: string, s: Session, acc: Account, kind: VehicleKind, gallons: unknown) {

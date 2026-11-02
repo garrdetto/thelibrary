@@ -1,5 +1,6 @@
 /** Economy, needs, shops and vehicles: shared by the authority and the client UI. */
 import type { VehicleKind } from './Protocol';
+import { Body, defaultLook, isBody, Look, cleanLook, STARTER_WARDROBE, WARDROBE } from './Wardrobe';
 
 export const START_MONEY = 35_000;
 export const LOT_PRICE = 20_000;
@@ -57,6 +58,7 @@ export interface ShopItem {
   groceries?: number;              // adds meals to the fridge at home
   upgrade?: string;                // permanent perk
   vehicle?: VehicleKind;           // dealership
+  clothing?: string;               // Maple Threads: a wardrobe piece
 }
 
 export const UPGRADES: Record<string, { name: string; blurb: string }> = {
@@ -85,6 +87,7 @@ export const SHOP_ITEMS: Record<string, ShopItem[]> = {
     { id: 'deli', name: 'Deli sandwich', price: 9, blurb: 'Hunger +30', needs: { hunger: 30 } },
   ],
   hardware: Object.entries({ blades: 1500, license: 2500, cooler: 400 }).map(([id, price]) => ({ id, name: UPGRADES[id].name, price, blurb: UPGRADES[id].blurb, upgrade: id })),
+  clothing: WARDROBE.filter(w => w.price > 0).map(w => ({ id: w.id, name: w.name, price: w.price, blurb: w.blurb, clothing: w.id })),
   dealer: (Object.values(VEHICLES).filter(v => v.price > 0)).map(v => ({ id: v.kind, name: v.name, price: v.price, blurb: `${v.fuel === 'electric' ? 'Electric' : `${v.mpg} mpg`} · ${v.tank} ${v.fuel === 'electric' ? 'kWh pack' : 'gal tank'}`, vehicle: v.kind })),
 };
 
@@ -103,6 +106,10 @@ export interface Account {
   needs: Needs;
   groceries: number;
   upgrades: string[];
+  /** What the player's character looks like (null until they first pick a body). */
+  look: Look | null;
+  /** Clothing bought at Maple Threads (starter pieces are always available). */
+  wardrobe: string[];
 }
 
 /** Fills fields added after an account was first saved. */
@@ -114,11 +121,14 @@ export function normalizeAccount(a: Account): Account {
   a.needs = a.needs && typeof a.needs === 'object' ? a.needs : { hunger: 80, energy: 85, fun: 70 };
   a.groceries = Number.isFinite(a.groceries) ? a.groceries : 2;
   a.upgrades = Array.isArray(a.upgrades) ? a.upgrades : [];
+  a.wardrobe = Array.isArray(a.wardrobe) ? a.wardrobe.filter(id => WARDROBE.some(w => w.id === id)) : [];
+  for (const id of STARTER_WARDROBE) if (!a.wardrobe.includes(id)) a.wardrobe.push(id);
+  a.look = a.look && typeof a.look === 'object' && isBody(a.look.body) ? cleanLook(a.look, a.wardrobe) : null;
   return a;
 }
 
-export function newAccount(id: string, key: string, name: string, color: string): Account {
-  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [] });
+export function newAccount(id: string, key: string, name: string, color: string, body?: Body): Account {
+  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [], look: body ? defaultLook(body) : null, wardrobe: [] });
 }
 
 /**
