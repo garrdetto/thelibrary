@@ -33,18 +33,19 @@ export function decodeGuests(buffer, previous = []) {
 }
 
 export function encodeDynamic(state, sinceNews = 0) {
-  const rides = {}, stalls = {}
+  const rides = {}, stalls = {}, hotels = {}
   for (const e of Object.values(state.entities)) {
     if (e.type === 'ride') {
       const activeRiders = e.trains?.reduce((total, train) => total + train.riders.length, 0) ?? e.riders.length
       const trains = e.trains?.map(train => ({ s: train.s, v: train.v, ph: train.phase, n: train.riders.length })) ?? []
       rides[e.id] = { st: e.status, q: e.queue.length, r: activeRiders, c: e.cycle, rel: Math.round(e.reliability), rev: Math.round(e.revenue * 10) / 10, tr: e.totalRiders, mr: e.monthRiders, p: e.price, n: e.name, col: e.color, tc: e.trackColor, sc: e.supportColor, trc: e.trainColor, m: e.mechanic, ...(trains.length ? { t: trains } : {}) }
     } else if (e.type === 'stall') stalls[e.id] = { s: e.sales, r: Math.round(e.revenue * 10) / 10, p: e.price, o: e.open }
+    else if (e.type === 'hotel') hotels[e.id] = { o: e.occupancy, r: Math.round(e.revenue ?? 0), l: Math.round(e.lastNight ?? 0), d: Boolean(e.district) }
   }
   return {
     time: state.time, weather: state.weather, speed: state.speed, ended: state.ended, parks: state.parks,
     staff: state.staff.map(s => ({ id: s.id, role: s.role, park: s.park, name: s.name, x: Math.round(s.x * 100) / 100, y: Math.round(s.y * 100) / 100, tx: s.tx, ty: s.ty, state: s.state, swept: s.swept, fixed: s.fixed, target: s.target })),
-    rides, stalls, litter: encodeRle(state.map.litter), nextId: state.nextId, structVersion: state.structVersion,
+    rides, stalls, hotels, litter: encodeRle(state.map.litter), nextId: state.nextId, structVersion: state.structVersion,
     news: state.news.filter(n => n.id > sinceNews),
   }
 }
@@ -69,6 +70,11 @@ export function applyDynamic(state, dyn) {
     const e = state.entities[id]
     if (!e || e.type !== 'stall') continue
     e.sales = s.s; e.revenue = s.r; e.price = s.p; e.open = s.o
+  }
+  for (const [id, h] of Object.entries(dyn.hotels ?? {})) {
+    const e = state.entities[id]
+    if (!e || e.type !== 'hotel') continue
+    e.occupancy = h.o; e.revenue = h.r; e.lastNight = h.l; e.district = h.d
   }
   state.map.litter = decodeRle(dyn.litter, state.map.w * state.map.h, 0)
   const seen = new Set(state.news.map(n => n.id))

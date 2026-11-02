@@ -4,7 +4,8 @@ export type Pose = { x: number; y: number; h: number; dir: number; slope: number
 export type Train = { s: number; v: number; phase: string; timer: number; riders: number[]; ridersCount?: number; lap: number; stalled: number; pace?: number; waitS?: number }
 export type RideStats = { valid: boolean; e: number; i: number; n: number; maxSpeed?: number; avgSpeed?: number; rideTime?: number; length?: number; maxG?: number; minG?: number; latG?: number; drops?: number; highestDrop?: number; inversions?: number; airtime?: number }
 export type Entity = {
-  id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
+  id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance' | 'hotel'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
+  floors?: number; colors?: HotelColors; roof?: string; addons?: Record<string, boolean>; entrance?: { x: number; y: number } | null; occupancy?: number; lastNight?: number; district?: boolean
   size?: [number, number]; wave?: string; comments?: { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }[]; commentCounts?: { pos: number; mix: number; neg: number }
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
@@ -13,12 +14,12 @@ export type Entity = {
 }
 export type Guest = { id: number; park: number; x: number; y: number; tx: number; ty: number; state: string; hidden?: boolean; happy: number; items: string[]; kid: boolean; shirt: number; thoughts: string[]; dir?: number; energy?: number; hunger?: number; thirst?: number; cash?: number }
 export type Staff = { id: number; role: 'handyman' | 'mechanic' | 'entertainer' | 'security' | 'supervisor' | 'ems'; park: number; name: string; x: number; y: number; tx?: number; ty?: number; state: string; swept: number; fixed: number; target?: { ride?: number } | null; dir?: number }
-export type Ledger = { rides: number; shops: number; entry: number; construction: number; upkeep: number; wages: number; electricity: number; marketing: number; interest: number; landscaping: number }
+export type Ledger = { rides: number; shops: number; entry: number; construction: number; upkeep: number; wages: number; electricity: number; marketing: number; interest: number; landscaping: number; hotels?: number; hotelUpkeep?: number }
 export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'versus'; guests?: number; rating?: number; year?: number; value?: number; count?: number; excitement?: number }
 export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number; wages?: number; electricity?: number }
 export type LandRect = { x0: number; y0: number; x1: number; y1: number }
 export type ParkLand = { initial: LandRect; limit: LandRect }
-export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
+export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; resortHotels?: number; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
 export type News = { id: number; t: number; park: number; text: string; kind: string; ref: number | null }
 export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
@@ -27,6 +28,8 @@ export type ParkState = {
   weather: { kind: 'sunny' | 'cloudy' | 'rain'; temp: number; next: number }; speed: number; news: News[]; newsSeq: number; ended: { text: string; winner: number; values?: number[] } | null
   trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number }[]>; fields: Map<string, Int16Array>
 }
+export type HotelColors = { primary: number; secondary: number; trim: number }
+export type HotelDef = { name: string; min: [number, number]; max: [number, number]; floors: [number, number]; base: number; perTileFloor: number; density: number; rate: number; upkeep: number; luxury: number; roofs: string[]; colors: HotelColors; description: string }
 export type GuestSpawn = { rate: number; cap: number; buildCap?: number; landCap?: number; limit?: 'rides' | 'land' | 'max' | 'closed' }
 export type Command = { t: string; [key: string]: unknown }
 export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number; count?: number }
@@ -60,6 +63,14 @@ export function landAreaPlan(state: ParkState, park: number, area: { x0: number;
 export function rideCommentsDetail(state: ParkState, id: number): { id: number; now: number; comments: { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }[]; counts: { pos: number; mix: number; neg: number } } | null
 export function recordComment(state: ParkState, ride: Entity, guest: Guest, kind: string): unknown
 export function guestProfile(rnd: () => number, kid: boolean): { type: 'kid' | 'thrill' | 'casual'; minI: number; maxI: number; tolerance: number }
+export const HOTELS: Record<string, HotelDef>
+export const HOTEL_ADDONS: Record<string, { name: string; cost: number; occupancy: number }>
+export const FLOOR_HEIGHT: number
+export const HOTEL_GUESTS_PER_ROOM: number
+export function hotelSpec(kind: string, size: [number, number], floors: number, addons?: Record<string, boolean>): { rooms: number; cost: number; upkeep: number; rate: number; guestBonus: number } | null
+export function hotelOrientedFits(def: HotelDef, w: number, h: number): boolean
+export function hotelHeight(hotel: { floors?: number }): number
+export function hotelEntranceFor(state: ParkState, park: number, x: number, y: number, w: number, h: number): { x: number; y: number } | null
 export function spawnRate(state: ParkState, park: Park): GuestSpawn
 export const CAR_GAP: number
 export const PATH_STEP_LIMIT: number

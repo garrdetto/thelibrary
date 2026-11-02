@@ -1,6 +1,7 @@
 import { TILE, UNIT, DIRS, clamp } from './util.mjs'
 import { COASTER_STYLES, FLAT_RIDES, STALLS, SCENERY } from './catalog.mjs'
 import { tileMax, inMap, tileIndex, pathHeightAt } from './terrain.mjs'
+import { hotelHeight } from './hotels.mjs'
 
 export const SLOPE_RATE = { '-2': -8, '-1': -2, '0': 0, '1': 2, '2': 8 }
 export const CAR_GAP = 2.4
@@ -404,7 +405,7 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
     if (entity && entity.id !== ride.id && entity.kind !== 'coaster') {
       const clearance = entity.type === 'scenery' ? SCENERY[entity.kind]?.height ?? 3
         : entity.type === 'ride' ? (FLAT_RIDES[entity.ride]?.height ?? 6) * 0.4
-          : entity.type === 'stall' ? entity.kind === 'souvenir' ? 5 : entity.kind === 'toilet' ? 3.5 : 3.2
+          : entity.type === 'hotel' ? hotelHeight(entity) : entity.type === 'stall' ? entity.kind === 'souvenir' ? 5 : entity.kind === 'toilet' ? 3.5 : 3.2
             : entity.type === 'parkEntrance' ? 4 : 2.8
       if (cell.lo < ground + clearance + 0.5) return { error: `The track needs more clearance above ${entityLabel(entity)}.` }
     }
