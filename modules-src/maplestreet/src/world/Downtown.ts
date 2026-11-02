@@ -6,7 +6,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { mergeStatic } from '../core/Merge';
-import { BUILDINGS, Building, DEPOT, GAS_STATION } from '../../shared/WorldLayout';
+import { BUILDINGS, Building, CIVIC, DEPOT, GAS_STATION } from '../../shared/WorldLayout';
 import type { MaterialLibrary } from '../core/Materials';
 import { buildGasStation } from './GasStation';
 import { facadeLayout, facadeTextures, faceTrim, styleOf } from './Facades';
@@ -49,6 +49,7 @@ function awningTexture(a: string, b: string, striped: boolean) {
 const SIGN_COLORS: Record<string, [string, string]> = {
   dealer: ['#14365e', '#ffffff'], diner: ['#b8241c', '#fff3d6'], bank: ['#1f2b3a', '#e8d9a8'], cafe: ['#22392f', '#f2e3c6'],
   grocery: ['#2f6b2f', '#ffffff'], clothing: ['#5b2a45', '#f6e7d2'], hardware: ['#c25a14', '#ffffff'], gas: ['#0f4c81', '#ffd200'], apartments: ['#3b3b3b', '#e6e6e6'], office: ['#2a3440', '#d6e2ee'],
+  fire: ['#8e1b14', '#ffffff'], police: ['#14284a', '#ffffff'],
 };
 
 export class Downtown {
@@ -60,6 +61,7 @@ export class Downtown {
   constructor(scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary) {
     scene.add(this.group);
     for (const b of BUILDINGS) this.building(b);
+    for (const b of CIVIC) { this.building(b); this.civicExtras(b); }
     this.gasStation(scene);
     this.depot();
     this.streetscape();
@@ -156,7 +158,8 @@ export class Downtown {
 
     const faceZ = b.z + front * (b.d / 2);
     const [bg, fg] = SIGN_COLORS[b.kind] ?? ['#333', '#fff'];
-    if (b.kind !== 'apartments' && b.kind !== 'office') {
+    const civic = b.kind === 'fire' || b.kind === 'police';
+    if (b.kind !== 'apartments' && b.kind !== 'office' && !civic) {
       // Fabric awning: sloped cover, front valance and side cheeks.
       const striped = b.kind === 'diner' || b.kind === 'cafe';
       const aw = b.w * 0.86, proj = 1.5, drop = 0.55, top = 3.3;
@@ -195,10 +198,10 @@ export class Downtown {
         shade.position.set(b.x + i * sw * 0.3, signY + sh / 2 + 0.2, faceZ + front * 0.5); g.add(shade);
       }
     } else {
-      const sw = 7, sh = 0.9;
+      const sw = civic ? Math.min(12, b.w * 0.6) : 7, sh = 0.9;
       const signMat = new THREE.MeshStandardMaterial({ map: signTexture(b.name, bg, fg, 1024, Math.round((1024 * sh) / sw)), roughness: 0.4, metalness: 0.3 });
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), signMat);
-      sign.position.set(b.x, b.kind === 'office' ? 5.0 : 3.45, faceZ + front * (b.kind === 'office' ? 0.2 : 1.66));
+      sign.position.set(b.x, b.kind === 'office' || civic ? (civic ? 5.2 : 5.0) : 3.45, faceZ + front * (b.kind === 'office' || civic ? 0.2 : 1.66));
       if (front < 0) sign.rotation.y = Math.PI;
       g.add(sign);
     }
@@ -219,6 +222,36 @@ export class Downtown {
     }
     this.group.add(g);
     this.physics.addStaticBox({ cx: b.x, cy: b.h / 2, cz: b.z, hx: b.w / 2, hy: b.h / 2, hz: b.d / 2 });
+  }
+
+  /** Flagpole, apparatus apron and bay lights for the fire station; flagpole and cruiser lot for the police. */
+  private civicExtras(b: Building) {
+    const front = b.facing === '+z' ? 1 : -1;
+    const faceZ = b.z + front * (b.d / 2);
+    const iron = new THREE.MeshStandardMaterial({ color: 0xd9dcdf, metalness: 0.8, roughness: 0.3 });
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 9, 12), iron);
+    pole.position.set(b.x + b.w / 2 + 2.5, 4.5, faceZ + front * 1.2);
+    pole.castShadow = true;
+    this.group.add(pole);
+    const flag = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.0), new THREE.MeshStandardMaterial({ color: b.kind === 'fire' ? 0xb3261e : 0x1d3a6b, roughness: 0.8, side: THREE.DoubleSide }));
+    flag.position.set(pole.position.x + 0.85, 8.3, pole.position.z);
+    this.group.add(flag);
+    this.physics.addStaticCylinder(pole.position.x, 4.5, pole.position.z, 4.5, 0.12);
+    const concrete = this.mats.get('concrete').material;
+    if (b.kind === 'fire') {
+      const apron = new THREE.Mesh(new THREE.BoxGeometry(b.w * 0.75, 0.04, 4), concrete);
+      apron.position.set(b.x - b.w * 0.07, 0.03, faceZ + front * 1.2); apron.receiveShadow = true; this.group.add(apron);
+      const red = new THREE.MeshStandardMaterial({ color: 0xff2a1a, emissive: 0xff2a1a, emissiveIntensity: 0, roughness: 0.3 });
+      this.glows.push(red);
+      for (const u of [0.2, 0.45, 0.7]) {
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.18, 0.18), red);
+        lamp.position.set(b.x - b.w / 2 + b.w * u, 4.75, faceZ + front * 0.12);
+        this.group.add(lamp);
+      }
+    } else {
+      const lot = new THREE.Mesh(new THREE.BoxGeometry(10, 0.04, 6), this.mats.get('asphalt').material);
+      lot.position.set(b.x + b.w / 2 - 5, 0.03, faceZ + front * 1.1); lot.receiveShadow = true; this.group.add(lot);
+    }
   }
 
   private gasStation(scene: THREE.Scene) {

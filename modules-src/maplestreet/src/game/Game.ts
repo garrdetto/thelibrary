@@ -42,6 +42,7 @@ import { Grass } from '../world/Grass';
 import { Neighborhood } from '../world/Neighborhood';
 import { CameraRig } from './CameraRig';
 import { Hud } from './Hud';
+import { MiniMap, type Objective } from './MiniMap';
 import { WardrobeUI } from './WardrobeUI';
 import { cleanLook, defaultLook, lookKey, type Body, type Look } from '../../shared/Wardrobe';
 
@@ -81,6 +82,8 @@ export class Game {
   private day!: DayNight;
   private hood!: Neighborhood;
   private houses!: HouseManager;
+  private minimap = new MiniMap(document.getElementById('minimap') as HTMLCanvasElement);
+  private minimapAcc = 0;
   private build!: BuildController;
   private cam!: CameraRig;
   private hud!: Hud;
@@ -745,6 +748,13 @@ export class Game {
     }
     this.mapAcc += dt;
     if (this.mapAcc > 0.5 && this.hud.mapOpen) { this.mapAcc = 0; this.refreshMap(); }
+    this.minimapAcc += dt;
+    if (this.minimapAcc > 0.1 && this.mode === 'live') {
+      const me = this.driving ? this.driving.root.position : this.character.position;
+      const { fwd } = this.cam.basis();
+      this.minimap.update(this.minimapAcc, { x: me.x, z: me.z }, { x: fwd.x, y: fwd.y }, this.houses.world, this.account?.id ?? null, this.objective());
+      this.minimapAcc = 0;
+    }
 
     if (!NO_RENDER) this.engine.render();
     if (this.mode === 'build' && !NO_RENDER) this.thumbs.pump();
@@ -908,6 +918,15 @@ export class Game {
     this.markerT += dt;
     const s = 1 + Math.sin(this.markerT * 6) * 0.12;
     this.marker.scale.set(s, 1, s);
+  }
+
+  /** What the minimap routes to: the current delivery stop. */
+  private objective(): Objective | null {
+    const j = this.job;
+    if (!j) return null;
+    return j.stage === 'toPickup'
+      ? { x: j.pickup.x, z: j.pickup.z, label: 'Pick up cargo', color: '#ffc400' }
+      : { x: j.drop.x, z: j.drop.z, label: `Deliver to ${j.drop.lotId}`, color: '#5cff7a' };
   }
 
   private updateJob(dt: number) {

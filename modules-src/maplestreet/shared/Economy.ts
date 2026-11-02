@@ -2,7 +2,7 @@
 import type { VehicleKind } from './Protocol';
 import { Body, defaultLook, isBody, Look, cleanLook, STARTER_WARDROBE, WARDROBE } from './Wardrobe';
 
-export const START_MONEY = 35_000;
+export const START_MONEY = 105_000;
 export const LOT_PRICE = 20_000;
 
 /** Hard ceiling on total outstanding debt per player. */

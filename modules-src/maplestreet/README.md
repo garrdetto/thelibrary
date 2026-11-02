@@ -18,7 +18,7 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 | Click | Walk to the spot. Clicking a vehicle, shop door or usable item at home walks you there and uses it. |
 | Arrow keys | Orbit (← →: the camera swings left or right around you) and tilt (↑ ↓) the camera. Right-drag also orbits. |
 | E / F / T / R | E gets in or out, shops or uses an item. F fills up at a pump, or calls a tow when the tank is empty. T hitches the trailer, and R flips a vehicle upright. |
-| M / B / J | M opens the town map, B opens Build and Buy mode, and J takes a delivery job. |
+| M / B / J | M opens the town map, B opens Build and Buy mode, and J takes a delivery job. The minimap in the bottom-right corner turns with your view and draws the street route to your current delivery stop. |
 
 **Build mode** follows The Sims 4:
 
@@ -50,7 +50,11 @@ The site admin can add Buy-mode items without a code change: **Admin → Maple S
 
 ## World and economy
 
-- **Lots:** 20 lots of 32 × 40 m on a residential ring. Six of them come with furnished starter houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`).
+- **Lots:** 60 lots of 32 × 40 m on ten residential streets between West and East Avenue. The original 20 (N1–N10, S1–S10) face Main Street and North/South Street; N11–N30 and S11–S30 sit one row per street on Birch, Cedar, Elm and Hazel (north) and Aspen, Dogwood, Fir and Juniper (south). Saved worlds pick up the new lots as empty lots. Six lots come with furnished starter houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`).
+- **Civic block** on Commerce St behind downtown: Maple Street Fire Station 1 (three apparatus bays with red bay lights that glow at night) and Maple Street Police, both on the town map and minimap.
+- **Starting cash:** new neighbors start with $105,000 (existing accounts keep their balance).
+- **Grass** (`src/world/Grass.ts`): thin four-blade clumps at realistic heights (mowed lawn about 4–5 cm, uncut lawn 8–13 cm, open fields up to knee-high), dark roots to lighter tips, a gentle breeze and slow lush/dry color patches.
+- **Minimap** (`src/game/MiniMap.ts`, routing in `src/game/RoadRoute.ts`): heading-up, about 200 m across. With a delivery job it routes along the streets (A* on a 2 m road grid) to the pickup or drop-off and shows the distance; an arrow on the rim points to stops off the map.
 - **Downtown** (`src/world/Downtown.ts`):
   - Maple Motors: buy vehicles, or take a free test drive.
   - Corner Diner, Bean There Café and Fresh Market: groceries become home-cooked meals at your fridge.
