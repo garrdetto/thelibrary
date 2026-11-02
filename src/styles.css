@@ -1097,6 +1097,19 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-score-view{display:inline-flex;align-items:center;gap:5px;min-height:32px;padding:5px 11px;border-radius:999px;border:1px solid var(--lib-border,#ffffff2a);background:transparent;color:inherit;font-size:12px;font-weight:600;cursor:pointer}
 .pk-score-view:hover:not(:disabled),.pk-score-view:focus-visible{background:#ffcf4a;color:#1b1b1b;border-color:transparent}
 .pk-score-view:disabled{opacity:.6;cursor:default}
+.pk-shot-backdrop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:20px;background:#000b}
+.pk-shot{width:min(1180px,100%);max-height:calc(100vh - 40px);display:flex;flex-direction:column;gap:12px;padding:18px;border-radius:18px;background:var(--lib-panel,#16181f);color:var(--lib-text,#fff);border:1px solid var(--lib-line,#ffffff22);box-shadow:0 24px 70px #000a}
+.pk-shot header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.pk-shot h2{margin:0;font-family:'Manrope',sans-serif;font-size:22px}
+.pk-shot header p{margin:4px 0 0;font-size:13px;color:var(--lib-muted,#ffffffaa)}
+.pk-shot header strong{color:#ffcf4a}
+.pk-shot-close{flex:none;display:grid;place-items:center;width:38px;height:38px;border-radius:999px;border:1px solid var(--lib-line,#ffffff2a);background:transparent;color:inherit;cursor:pointer}
+.pk-shot-close:hover,.pk-shot-close:focus-visible{background:#ffcf4a;color:#1b1b1b;border-color:transparent}
+.pk-shot-frame{min-height:220px;flex:1 1 auto;display:grid;place-items:center;overflow:hidden;border-radius:12px;background:#0d0f14}
+.pk-shot-frame img{display:block;width:100%;height:100%;max-height:calc(100vh - 190px);object-fit:contain}
+.pk-shot-frame p{display:flex;align-items:center;gap:8px;margin:0;padding:24px;color:#ffffffb0;font-size:14px;text-align:center}
+.pk-shot footer{display:flex;justify-content:flex-end}
+@media(max-width:640px){.pk-shot{padding:12px}.pk-shot h2{font-size:18px}}
 .pk-viewonly{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);padding:8px 16px;border-radius:999px;background:#141414d9;color:#fff;font-size:13px;pointer-events:none;white-space:nowrap;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis}
 .pk-viewonly strong{color:#ffcf4a}
 .pk-naming{z-index:20}
