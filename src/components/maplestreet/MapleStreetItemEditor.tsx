@@ -10,6 +10,8 @@ import type { CustomItemRecord, Vector3Like } from '@/lib/maplestreet-items'
 import { DevModeCanvas } from './DevModeCanvas'
 import type { DevModeState } from './DevModeCanvas'
 import { EditableModel, clampScale } from './EditableModel'
+import { MeshyPanel } from './MeshyPanel'
+import type { MeshySourceOption } from './MeshyPanel'
 
 const UNIT_SCALE: Vector3Like = { x: 1, y: 1, z: 1 }
 const pretty = (value: string) => value.charAt(0).toUpperCase() + value.slice(1)
@@ -67,8 +69,11 @@ export default function MapleStreetItemEditor() {
 
   function onFile(event: ChangeEvent<HTMLInputElement>) {
     const chosen = event.target.files?.[0] ?? null
+    if (chosen) openFile(chosen)
+  }
+
+  function openFile(chosen: File) {
     setStatus(null)
-    if (!chosen) return
     if (!/\.(glb|gltf)$/i.test(chosen.name)) { setStatus({ tone: 'error', text: 'Choose a .glb or .gltf file.' }); return }
     if (chosen.size > CUSTOM_LIMITS.modelBytes) { setStatus({ tone: 'error', text: 'Models must be smaller than 15 MB.' }); return }
     setFile(chosen)
@@ -128,6 +133,8 @@ export default function MapleStreetItemEditor() {
     }
   }
 
+  const meshySources: MeshySourceOption[] = (items ?? []).map(item => ({ label: item.name, source: { itemId: item.id } }))
+
   const ready = !!file && !!footprint && !oversize && name.trim().length >= CUSTOM_LIMITS.nameMin
 
   return <section className="account-home ms-items">
@@ -184,6 +191,8 @@ export default function MapleStreetItemEditor() {
         {status && <p role={status.tone === 'error' ? 'alert' : 'status'} className={status.tone === 'error' ? 'ms-items-error' : 'ms-items-ok'}>{status.text}</p>}
       </div>
     </form>
+
+    <MeshyPanel target="furniture" sources={meshySources} onOpen={opened => openFile(opened)}/>
 
     <h2>Published items</h2>
     <p>Retiring takes an item out of the Buy catalog. Houses that already own it keep it.</p>

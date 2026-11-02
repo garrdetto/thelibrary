@@ -46,7 +46,21 @@ The site admin can add Buy-mode items without a code change: **Admin → Maple S
 - A placed copy is drawn as yaw (quarter turns) > the published `{x,y,z}` scale > an offset that centers the model's unscaled bounds and puts its bottom on the floor. The editor preview uses the same layout, so what the admin sees is what spawns.
 - The footprint (cells) and collider height come from the scaled bounds (`footprintFromSize`). Custom items are floor items, never tintable, and have no needs interaction.
 - Retired items leave the Buy catalog but stay valid, so houses that own them keep them (and can still move or sell them).
-- New items appear the next time a player loads the module. The optional Colyseus server does not load published items.
+- New items appear the next time a player loads the module. The optional Colyseus server does not load published items or vehicles.
+- **Generate with Meshy** (below the item and vehicle editors) creates models with Meshy's API through the admin-only `/api/meshy` route: text → 3D previews, pick one and refine it for textures, remesh to a polygon target, retexture or remesh any published model, then open the result in the editor. Jobs live in D1 `meshy_jobs`, so the list survives reloads. The key is the Worker secret `MESHY_API_KEY`; without it the panel says Meshy isn't connected. For local work, `node scripts/meshy-mock.mjs` is a stand-in API (set `MESHY_API_BASE=http://localhost:8790/openapi` and the test key in `.dev.vars`). `node scripts/maplestreet-vehicles-e2e.mjs` runs the whole pipeline against `pnpm dev` and the stand-in: Meshy jobs, the editor, the test drive, publishing, buying and driving in solo, traffic, and the shared world.
+
+## Admin-published vehicles
+
+**Admin → Maple Street vehicles** publishes vehicles without a code change. A vehicle can be sold at Maple Motors, drive around town as neighbor traffic, or both.
+
+- `shared/Vehicles.ts` is the vehicle registry: built-in tuning is plain data there, and `VehicleKind` is a built-in name or `custom:<uuid>`. `shared/CustomVehicles.ts` registers published records into the tuning registry, `VEHICLES` (dealer, fuel) and the traffic list. The Durable Object registers them before it loads the world (and on every publish), and `src/physics/CustomVehicleModels.ts` does the same in the page before any mode starts (cached in `localStorage` for offline solo play), so every authority prices, sells and validates them like built-ins.
+- Every mode drives a vehicle with the same `Vehicle` class and the same tuning numbers, so single-player and every online mode handle identically.
+- The published model sits in the chassis frame (x forward, y up, z right): rotate by `model.yaw`, scale by `model.scale`, then move by `model.x/y/z`. The game adds its own spinning, steering wheels, lamps (glowing at night, brake lights) and paint. The editor cuts the model's baked-in wheels out before upload.
+- Top speed and 0–60 are what the car actually does. `shared/VehicleDrive.ts` integrates the same longitudinal model as `Vehicle.ts` (pedal ramp, torque curve, aero drag, damping) and solves engine force and the torque cutoff for the targets. `src/physics/Dyno.ts` runs a full-throttle pull on the real physics; `?vehicleTest=1` (`src/game/VehicleTestDrive.ts`) is the editor's test drive.
+- Garages keep `custom:` entries even if the list hasn't loaded, and retired vehicles stay registered, so owners keep them.
+- Vehicles are original designs: names containing real makes or models are refused (`BRAND_PATTERN`).
+
+Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in 16.4 s), sedan 65 mph (17.4 s), muscle coupe 79 mph (9.3 s), heavy-duty 66 mph (13.8 s), golf cart 18 mph, four-wheeler 42 mph. Their `topSpeed` preset values are torque-curve cutoffs, not speeds the cars reach.
 
 ## World and economy
 
@@ -64,7 +78,7 @@ The site admin can add Buy-mode items without a code change: **Admin → Maple S
 - **Needs** (hunger, energy, fun) drop only while you're in town. Your bed, fridge, grill, tub and other items refill them.
 - **Vehicles:**
   - You start with a pickup, a trailer and a riding mower.
-  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower. These are original designs.
+  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, plus any admin-published vehicles marked for sale. These are original designs.
   - Fuel burns as you drive and is saved with your account.
   - Drivers sit visibly in the seat, both your own and other players'.
 

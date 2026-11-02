@@ -5,8 +5,9 @@ import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 
 const MapleStreetItemEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./maplestreet/MapleStreetItemEditor'))
+const MapleStreetVehicleEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./maplestreet/vehicle/VehicleEditor'))
 
-const tabs = [{ id: 'people', label: 'People & permissions' }, { id: 'changes', label: 'Site changes' }, { id: 'maplestreet', label: 'Maple Street items' }] as const
+const tabs = [{ id: 'people', label: 'People & permissions' }, { id: 'changes', label: 'Site changes' }, { id: 'maplestreet', label: 'Maple Street items' }, { id: 'vehicles', label: 'Maple Street vehicles' }] as const
 type Tab = (typeof tabs)[number]['id']
 
 export function AdminPanel() {
@@ -27,6 +28,7 @@ export function AdminPanel() {
       {tab === 'people' && <WorkspaceAdmin/>}
       {tab === 'changes' && <SiteChanges/>}
       {tab === 'maplestreet' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the item editor…</p>}><MapleStreetItemEditor/></Suspense>}
+      {tab === 'vehicles' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the vehicle editor…</p>}><MapleStreetVehicleEditor/></Suspense>}
     </div>
   </div>
 }

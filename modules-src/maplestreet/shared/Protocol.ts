@@ -7,7 +7,8 @@ import type { BuildOp, WorldState } from './BuildRules';
 import type { Account } from './Economy';
 import type { Body, Look } from './Wardrobe';
 
-export type VehicleKind = 'truck' | 'hdtruck' | 'coupe' | 'sedan' | 'golfcart' | 'atv' | 'mower' | 'zeroturn' | 'trailer';
+export type { VehicleKind } from './Vehicles';
+import type { VehicleKind } from './Vehicles';
 
 export interface PlayerSnap {
   id: string;            // session id

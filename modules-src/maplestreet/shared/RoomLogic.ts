@@ -15,6 +15,7 @@ import { decodeCoverage, encodeCoverage, strokeCells, stripeShade } from './Mowi
 import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
 import { cleanLook, defaultLook, isBody } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
+import { vehicleRole } from './Vehicles';
 
 export interface LogicIO {
   send(sessionId: string, msg: ServerMsg): void;
@@ -43,7 +44,6 @@ export interface LogicOptions {
   clock?: 'sim' | 'wall';
 }
 
-const KINDS = Object.keys(VEHICLES) as VehicleKind[];
 const USE_COOLDOWN_MS = 20_000;
 const MAX_OPS_PER_MSG = 240;
 const num = (v: unknown, lo = -1e5, hi = 1e5) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : 0);
@@ -186,7 +186,7 @@ export class NeighborhoodLogic {
           };
         }
         s.vehicles = (Array.isArray(msg.v) ? msg.v.slice(0, 3) : [])
-          .filter(v => v && KINDS.includes(v.kind))
+          .filter(v => v && typeof v.kind === 'string' && v.kind in VEHICLES)
           .map(v => ({
             id: `${sessionId}:${String(v.id).split(':').pop()!.slice(0, 12)}`, owner: sessionId, kind: v.kind,
             x: num(v.x), y: num(v.y, -50, 500), z: num(v.z), qx: num(v.qx, -1, 1), qy: num(v.qy, -1, 1), qz: num(v.qz, -1, 1), qw: num(v.qw, -1, 1),
@@ -263,7 +263,7 @@ export class NeighborhoodLogic {
 
   private handleMow(sessionId: string, s: Session, acc: Account, strokes: unknown) {
     if (!Array.isArray(strokes)) return;
-    const mower = s.vehicles.find(v => (v.kind === 'mower' || v.kind === 'zeroturn') && s.player?.vehicleId === v.id);
+    const mower = s.vehicles.find(v => vehicleRole(v.kind) === 'mower' && s.player?.vehicleId === v.id);
     if (!mower || s.player?.vehicleId !== mower.id) return;     // must be driving a mower
     const accepted: MowStroke[] = [];
     let paidCells = 0;
@@ -309,7 +309,7 @@ export class NeighborhoodLogic {
   private progressJob(sessionId: string, s: Session, acc: Account, jobId: string) {
     const job = s.job;
     if (!job || job.id !== jobId) return;
-    const truck = s.vehicles.find(v => (v.kind === 'truck' || v.kind === 'hdtruck') && s.player?.vehicleId === v.id);
+    const truck = s.vehicles.find(v => vehicleRole(v.kind) === 'hauler' && s.player?.vehicleId === v.id);
     if (!truck) return this.io.send(sessionId, { t: 'toast', text: 'Deliveries need the pickup truck' });
     const target = job.stage === 'toPickup' ? job.pickup : job.drop;
     if (Math.hypot(truck.x - target.x, truck.z - target.z) > 8) return;  // authority checks position
@@ -357,7 +357,7 @@ export class NeighborhoodLogic {
   }
 
   private handleRefuel(sessionId: string, s: Session, acc: Account, kind: VehicleKind, gallons: unknown) {
-    if (!acc.garage.includes(kind) || VEHICLES[kind].fuel === 'none') return;
+    if (!acc.garage.includes(kind) || !VEHICLES[kind] || VEHICLES[kind].fuel === 'none') return;
     const pos = this.position(s);
     if (!pos || !GAS_STATION.pumps.some(p => Math.hypot(p.x - pos.x, p.z - pos.z) < PUMP_RADIUS + 1)) return this.sendAccount(sessionId, acc, 'Pull up to a pump at Gas & Go');
     const want = Math.max(0, Math.min(Number(gallons) || 0, VEHICLES[kind].tank - (acc.fuel[kind] ?? 0)));

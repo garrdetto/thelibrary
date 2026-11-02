@@ -1,41 +1,20 @@
 /**
- * Vehicle tuning + procedural body meshes.
+ * Procedural body meshes for the built-in vehicles. Their tuning (sizes,
+ * axles, suspension, engine) is plain data in shared/Vehicles.ts so every
+ * authority and the admin editor read the same numbers.
  * Convention: chassis local +X = forward, +Y = up, +Z = right.
- * Units are SI (m, kg, N). Brake values are Rapier max brake impulse per wheel per step.
- *
- * The procedural bodies are placeholders with correct proportions; to ship
- * HD vehicles, load a glTF in `build()` and keep the same dimensions.
  */
 import * as THREE from 'three/webgpu';
-import type { VehicleKind } from '../../shared/Protocol';
+import { BUILTIN_TUNING, type BuiltinVehicleKind, type VehicleTuning } from '../../shared/Vehicles';
 import { mergeStatic } from '../core/Merge';
 
-export interface VehiclePreset {
-  kind: VehicleKind;
-  label: string;
-  chassis: { hx: number; hy: number; hz: number };
-  mass: number;
-  comY: number;                       // center-of-mass offset (lower = more stable)
-  axles: { x: number; radius: number; width: number; halfTrack: number; steer: boolean; drive: boolean; caster?: boolean }[];
-  wheelY: number;                     // suspension mount height (chassis space)
-  suspension: { rest: number; travel: number; stiffness: number; compression: number; relaxation: number };
-  frictionSlip: number;
-  sideStiffness: number;
-  engineForce: number;                // per driven wheel
-  topSpeed: number;                   // m/s
-  brake: number;
-  maxSteer: number;                   // rad
-  hitch?: { x: number; y: number };   // tow ball (on towing vehicles)
-  tongue?: { x: number; y: number };  // coupler (on trailers)
-  mowerDeck?: { x: number; width: number };
-  /** Driver's hip position (chassis space): the avatar sits here, visibly driving. */
-  seat: { x: number; y: number; z: number; straddle?: boolean };
-  /** Differential steering: the rear wheels drive the turn, front casters swivel freely. */
-  zeroTurn?: boolean;
-  cam: { dist: number; height: number };
-  paint: number;
+export interface VehiclePreset extends VehicleTuning {
   build(paint: THREE.Material, lights: VehicleLights): THREE.Group;
+  /** Optional wheel model (published vehicles); the procedural wheel otherwise. */
+  wheel?(radius: number, width: number): THREE.Group;
 }
+
+export const wheelFor = (P: VehiclePreset, radius: number, width: number) => P.wheel?.(radius, width) ?? buildWheel(radius, width);
 
 export interface VehicleLights { head: THREE.MeshStandardMaterial; tail: THREE.MeshStandardMaterial }
 
@@ -118,17 +97,9 @@ export function buildWheel(radius: number, width: number): THREE.Group {
 
 // ------------------------------------------------------------------ presets
 
-export const PRESETS: Record<VehicleKind, VehiclePreset> = {
+const BUILTIN_PRESETS: Record<BuiltinVehicleKind, VehiclePreset> = {
   truck: {
-    kind: 'truck', label: 'Pickup Truck',
-    chassis: { hx: 2.7, hy: 0.42, hz: 0.95 }, mass: 2200, comY: -0.5,
-    axles: [
-      { x: 1.72, radius: 0.42, width: 0.3, halfTrack: 0.86, steer: true, drive: true },
-      { x: -1.72, radius: 0.42, width: 0.3, halfTrack: 0.86, steer: false, drive: true },
-    ],
-    wheelY: -0.18, suspension: { rest: 0.42, travel: 0.28, stiffness: 30, compression: 2.4, relaxation: 3.2 },
-    frictionSlip: 2.3, sideStiffness: 1.0, engineForce: 2300, topSpeed: 42, brake: 70, maxSteer: 0.6,
-    hitch: { x: -2.95, y: -0.28 }, seat: { x: 0.3, y: 0.36, z: -0.42 }, cam: { dist: 9.5, height: 3.3 }, paint: 0x8b1e1e,
+    ...BUILTIN_TUNING.truck,
     build(paint, L) {
       const g = new THREE.Group();
       profile(g, paint, 1.86, sh => {                                   // cab, hood and bed floor in one stamping
@@ -161,15 +132,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   sedan: {
-    kind: 'sedan', label: 'Sedan',
-    chassis: { hx: 2.35, hy: 0.34, hz: 0.9 }, mass: 1450, comY: -0.4,
-    axles: [
-      { x: 1.42, radius: 0.34, width: 0.24, halfTrack: 0.8, steer: true, drive: true },
-      { x: -1.42, radius: 0.34, width: 0.24, halfTrack: 0.8, steer: false, drive: false },
-    ],
-    wheelY: -0.1, suspension: { rest: 0.32, travel: 0.2, stiffness: 34, compression: 2.6, relaxation: 3.4 },
-    frictionSlip: 2.6, sideStiffness: 1.0, engineForce: 2600, topSpeed: 52, brake: 45, maxSteer: 0.55,
-    seat: { x: -0.2, y: -0.06, z: -0.4 }, cam: { dist: 8, height: 2.6 }, paint: 0x1f3f6e,
+    ...BUILTIN_TUNING.sedan,
     build(paint, L) {
       const g = new THREE.Group();
       profile(g, paint, 1.8, sh => {
@@ -195,15 +158,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   golfcart: {
-    kind: 'golfcart', label: 'Golf Cart',
-    chassis: { hx: 1.25, hy: 0.28, hz: 0.65 }, mass: 450, comY: -0.25,
-    axles: [
-      { x: 0.84, radius: 0.24, width: 0.2, halfTrack: 0.56, steer: true, drive: false },
-      { x: -0.84, radius: 0.24, width: 0.2, halfTrack: 0.56, steer: false, drive: true },
-    ],
-    wheelY: -0.08, suspension: { rest: 0.24, travel: 0.14, stiffness: 28, compression: 2.2, relaxation: 3.0 },
-    frictionSlip: 2.0, sideStiffness: 1.0, engineForce: 520, topSpeed: 8.5, brake: 16, maxSteer: 0.65,
-    seat: { x: -0.22, y: 0.45, z: -0.28 }, cam: { dist: 6, height: 2.4 }, paint: 0xf3f1ea,
+    ...BUILTIN_TUNING.golfcart,
     build(paint, L) {
       const g = new THREE.Group();
       box(g, paint, 2.45, 0.4, 1.25, 0, 0.05, 0);
@@ -220,15 +175,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   atv: {
-    kind: 'atv', label: 'Four-Wheeler',
-    chassis: { hx: 1.0, hy: 0.28, hz: 0.55 }, mass: 330, comY: -0.2,
-    axles: [
-      { x: 0.66, radius: 0.31, width: 0.26, halfTrack: 0.5, steer: true, drive: true },
-      { x: -0.66, radius: 0.31, width: 0.28, halfTrack: 0.5, steer: false, drive: true },
-    ],
-    wheelY: -0.02, suspension: { rest: 0.3, travel: 0.25, stiffness: 24, compression: 2.0, relaxation: 2.6 },
-    frictionSlip: 2.8, sideStiffness: 1.1, engineForce: 420, topSpeed: 21, brake: 13, maxSteer: 0.62,
-    hitch: { x: -1.2, y: -0.05 }, seat: { x: -0.15, y: 0.55, z: 0, straddle: true }, cam: { dist: 5.5, height: 2.2 }, paint: 0x2f5d2a,
+    ...BUILTIN_TUNING.atv,
     build(paint, L) {
       const g = new THREE.Group();
       box(g, paint, 1.0, 0.3, 0.8, 0.55, 0.2, 0);                       // front fenders
@@ -245,15 +192,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   mower: {
-    kind: 'mower', label: 'Riding Mower',
-    chassis: { hx: 0.9, hy: 0.22, hz: 0.48 }, mass: 230, comY: -0.18,
-    axles: [
-      { x: 0.6, radius: 0.19, width: 0.15, halfTrack: 0.42, steer: true, drive: false },
-      { x: -0.55, radius: 0.28, width: 0.22, halfTrack: 0.44, steer: false, drive: true },
-    ],
-    wheelY: -0.02, suspension: { rest: 0.2, travel: 0.1, stiffness: 30, compression: 2.4, relaxation: 3.0 },
-    frictionSlip: 2.2, sideStiffness: 1.0, engineForce: 260, topSpeed: 4.2, brake: 10, maxSteer: 0.75,
-    mowerDeck: { x: 0.05, width: 1.1 }, seat: { x: -0.4, y: 0.5, z: 0 }, cam: { dist: 5, height: 2.4 }, paint: 0x2c7a2c,
+    ...BUILTIN_TUNING.mower,
     build(paint, L) {
       const g = new THREE.Group();
       box(g, paint, 0.85, 0.35, 0.75, 0.48, 0.22, 0);                   // hood
@@ -269,15 +208,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   hdtruck: {
-    kind: 'hdtruck', label: 'Heavy-Duty Crew Cab',
-    chassis: { hx: 3.05, hy: 0.5, hz: 1.02 }, mass: 2900, comY: -0.6,
-    axles: [
-      { x: 2.0, radius: 0.5, width: 0.36, halfTrack: 0.96, steer: true, drive: true },
-      { x: -2.0, radius: 0.5, width: 0.36, halfTrack: 0.96, steer: false, drive: true },
-    ],
-    wheelY: -0.2, suspension: { rest: 0.45, travel: 0.3, stiffness: 30, compression: 2.5, relaxation: 3.3 },
-    frictionSlip: 2.4, sideStiffness: 1.0, engineForce: 3100, topSpeed: 45, brake: 95, maxSteer: 0.55,
-    hitch: { x: -3.32, y: -0.34 }, seat: { x: 0.55, y: 0.6, z: -0.5 }, cam: { dist: 11, height: 3.8 }, paint: 0x1d2b3a,
+    ...BUILTIN_TUNING.hdtruck,
     build(paint, L) {
       const g = new THREE.Group();
       profile(g, paint, 2.04, sh => {                                   // tall-nosed full-size body
@@ -315,15 +246,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   coupe: {
-    kind: 'coupe', label: 'Muscle Coupe',
-    chassis: { hx: 2.45, hy: 0.32, hz: 0.96 }, mass: 1750, comY: -0.45,
-    axles: [
-      { x: 1.5, radius: 0.36, width: 0.27, halfTrack: 0.84, steer: true, drive: false },
-      { x: -1.45, radius: 0.37, width: 0.31, halfTrack: 0.84, steer: false, drive: true },
-    ],
-    wheelY: -0.1, suspension: { rest: 0.3, travel: 0.18, stiffness: 38, compression: 2.8, relaxation: 3.6 },
-    frictionSlip: 2.7, sideStiffness: 1.05, engineForce: 3900, topSpeed: 68, brake: 62, maxSteer: 0.5,
-    seat: { x: -0.45, y: 0.0, z: -0.42 }, cam: { dist: 8.5, height: 2.4 }, paint: 0xc4400f,
+    ...BUILTIN_TUNING.coupe,
     build(paint, L) {
       const g = new THREE.Group();
       profile(g, paint, 1.94, sh => {                                   // long hood, short deck
@@ -354,15 +277,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   zeroturn: {
-    kind: 'zeroturn', label: 'Zero-Turn Mower',
-    chassis: { hx: 0.95, hy: 0.2, hz: 0.55 }, mass: 340, comY: -0.28,
-    axles: [
-      { x: 0.78, radius: 0.15, width: 0.1, halfTrack: 0.46, steer: false, drive: false, caster: true },
-      { x: -0.45, radius: 0.32, width: 0.26, halfTrack: 0.55, steer: false, drive: true },
-    ],
-    wheelY: 0, suspension: { rest: 0.2, travel: 0.1, stiffness: 34, compression: 2.6, relaxation: 3.2 },
-    frictionSlip: 2.4, sideStiffness: 1.0, engineForce: 430, topSpeed: 5.6, brake: 14, maxSteer: 0,
-    zeroTurn: true, mowerDeck: { x: 0.45, width: 1.4 }, seat: { x: -0.32, y: 0.5, z: 0 }, cam: { dist: 5.5, height: 2.6 }, paint: 0xb01e1e,
+    ...BUILTIN_TUNING.zeroturn,
     build(paint, L) {
       const g = new THREE.Group();
       box(g, paint, 1.2, 0.18, 0.9, -0.2, 0.12, 0);                     // engine pan
@@ -383,12 +298,7 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
   trailer: {
-    kind: 'trailer', label: 'Utility Trailer',
-    chassis: { hx: 1.6, hy: 0.16, hz: 0.82 }, mass: 420, comY: -0.05,
-    axles: [{ x: -0.25, radius: 0.33, width: 0.2, halfTrack: 0.95, steer: false, drive: false }],
-    wheelY: -0.02, suspension: { rest: 0.3, travel: 0.15, stiffness: 32, compression: 2.4, relaxation: 3.2 },
-    frictionSlip: 2.0, sideStiffness: 1.0, engineForce: 0, topSpeed: 0, brake: 6, maxSteer: 0,
-    tongue: { x: 2.5, y: -0.12 }, seat: { x: 0, y: 0, z: 0 }, cam: { dist: 8, height: 3 }, paint: 0x5a5e63,
+    ...BUILTIN_TUNING.trailer,
     build(paint, L) {
       const g = new THREE.Group();
       box(g, M.wood, 3.2, 0.06, 1.64, 0, 0.16, 0);                      // deck boards
@@ -404,3 +314,9 @@ export const PRESETS: Record<VehicleKind, VehiclePreset> = {
     },
   },
 };
+
+/**
+ * Every drivable preset, keyed by kind. Built-ins are listed above;
+ * published vehicles are added by src/physics/CustomVehicleModels.ts.
+ */
+export const PRESETS: Record<string, VehiclePreset> = { ...BUILTIN_PRESETS };

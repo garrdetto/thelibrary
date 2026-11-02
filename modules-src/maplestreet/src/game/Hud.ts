@@ -9,6 +9,7 @@ import { CATALOG, CatalogFunc, CatalogItem, CatalogRoom, SWATCHES } from '../../
 import { FLOOR_MATS, FloorMat, INTERIOR_FINISHES, LotState, RoofStyle, WALL_STYLES, WallFinish, WallKind, WallStyle, WorldState } from '../../shared/BuildRules';
 import { Account, availableCredit, COST, FUEL_PRICE, LOAN_CAP, LOAN_DAILY_RATE, LOT_PRICE, SHOP_ITEMS, VEHICLES } from '../../shared/Economy';
 import type { Job, VehicleKind } from '../../shared/Protocol';
+import { PRESETS } from '../physics/VehiclePresets';
 import type { ShopDoor } from '../../shared/WorldLayout';
 import { OPENING_TOOLS, type OpeningTool, type Tool, type WallView } from '../build/BuildController';
 import { OPENING_LABEL } from '../build/Openings';
@@ -323,12 +324,13 @@ export class Hud {
 
   setGarage(acc: Account, out: Set<VehicleKind>, fuel: Partial<Record<VehicleKind, number>>) {
     const el = $('garage');
-    const sig = JSON.stringify([acc.garage, [...out], acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k].tank)) * 20))]);
+    const sig = JSON.stringify([acc.garage, [...out], acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k]?.tank ?? 1)) * 20))]);
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.innerHTML = '';
     for (const k of acc.garage) {
       const spec = VEHICLES[k];
+      if (!spec || !PRESETS[k]) continue;
       const row = document.createElement('div');
       row.className = 'car';
       const level = fuel[k] ?? acc.fuel[k] ?? 0;

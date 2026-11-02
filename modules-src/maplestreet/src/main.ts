@@ -4,6 +4,7 @@ import { OFFLINE_SAVE } from './net/OfflineTransport';
 import { peerAvailable } from './net/PeerTransport';
 import { isBody, type Body } from '../shared/Wardrobe';
 import { loadCustomCatalog } from './build/CustomModels';
+import { loadCustomVehicles } from './physics/CustomVehicleModels';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
@@ -55,7 +56,10 @@ async function loadSignedInUser() {
   } catch { /* offline or standalone: keep the typed name */ }
 }
 let accountReady = loadSignedInUser();
-const customCatalogReady = loadCustomCatalog().catch(e => console.warn('[maplestreet] custom catalog unavailable:', e));
+const customCatalogReady = Promise.all([
+  loadCustomCatalog().catch(e => console.warn('[maplestreet] custom catalog unavailable:', e)),
+  loadCustomVehicles().catch(e => console.warn('[maplestreet] published vehicles unavailable:', e)),
+]);
 addEventListener('focus', () => { if (!game && !starting) accountReady = loadSignedInUser(); });
 colorIn.value = store.get('maplestreet/color') ?? '#3a7bd5';
 serverIn.value = params.get('server') ?? store.get('maplestreet/server') ?? '';
@@ -154,7 +158,8 @@ addEventListener('message', e => {
 });
 
 const room = params.get('room');
-if (room && room.toUpperCase() === 'WORLD') setTimeout(() => start('world'), 300);
+if (params.get('vehicleTest')) void import('./game/VehicleTestDrive').then(m => m.startVehicleTestDrive($('app')));
+else if (room && room.toUpperCase() === 'WORLD') setTimeout(() => start('world'), 300);
 else if (room) { codeIn.value = room; setTimeout(() => start('join'), 300); }
 else if (params.get('world')) setTimeout(() => start('world'), 300);
 else if (params.get('host')) setTimeout(() => start('host'), 300);

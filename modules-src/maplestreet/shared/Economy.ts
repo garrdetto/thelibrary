@@ -1,5 +1,5 @@
 /** Economy, needs, shops and vehicles: shared by the authority and the client UI. */
-import type { VehicleKind } from './Protocol';
+import { isCustomVehicleKind, type BuiltinVehicleKind, type VehicleKind } from './Vehicles';
 import { Body, defaultLook, isBody, Look, cleanLook, STARTER_WARDROBE, WARDROBE } from './Wardrobe';
 
 export const START_MONEY = 105_000;
@@ -32,13 +32,13 @@ export const NEED_DECAY_PER_MIN: Needs = { hunger: 1.1, energy: 0.75, fun: 0.9 }
 
 // ---------------------------------------------------------------- vehicles
 
-export interface VehicleSpec { kind: VehicleKind; name: string; price: number; tank: number; mpg: number; fuel: 'gas' | 'electric' | 'none' }
+export interface VehicleSpec { kind: VehicleKind; name: string; price: number; tank: number; mpg: number; fuel: 'gas' | 'electric' | 'none'; forSale?: boolean }
 
 /** Fuel use is scaled up ×30 so a tank lasts an evening of driving, not a month. */
 export const FUEL_SCALE = 30;
 export const FUEL_PRICE = 3.49;     // per gallon (or per "charge unit" for electric)
 
-export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
+const BUILTIN_VEHICLES: Record<BuiltinVehicleKind, VehicleSpec> = {
   truck:    { kind: 'truck', name: 'Work Pickup', price: 0, tank: 22, mpg: 19, fuel: 'gas' },
   hdtruck:  { kind: 'hdtruck', name: 'Heavy-Duty Crew Cab', price: 32_000, tank: 32, mpg: 14, fuel: 'gas' },
   coupe:    { kind: 'coupe', name: 'Muscle Coupe', price: 26_000, tank: 18, mpg: 17, fuel: 'gas' },
@@ -49,7 +49,14 @@ export const VEHICLES: Record<VehicleKind, VehicleSpec> = {
   zeroturn: { kind: 'zeroturn', name: 'Zero-Turn Mower', price: 5_600, tank: 3, mpg: 18, fuel: 'gas' },
   trailer:  { kind: 'trailer', name: 'Utility Trailer', price: 0, tank: 0, mpg: 0, fuel: 'none' },
 };
+/** Every registered vehicle: built-ins plus admin-published ones (shared/CustomVehicles.ts). */
+export const VEHICLES: Record<string, VehicleSpec> = { ...BUILTIN_VEHICLES };
 export const STARTER_GARAGE: VehicleKind[] = ['truck', 'trailer', 'mower'];
+
+/** The vehicle's spec, or null for a published vehicle this authority hasn't loaded. */
+export const vehicleSpec = (kind: string): VehicleSpec | null => VEHICLES[kind] ?? null;
+const forSale = (v: VehicleSpec) => v.forSale ?? v.price > 0;
+const dealerItem = (v: VehicleSpec): ShopItem => ({ id: v.kind, name: v.name, price: v.price, blurb: `${v.fuel === 'electric' ? 'Electric' : `${v.mpg} mpg`} · ${v.tank} ${v.fuel === 'electric' ? 'kWh pack' : 'gal tank'}`, vehicle: v.kind });
 
 // ---------------------------------------------------------------- shops
 
@@ -89,8 +96,14 @@ export const SHOP_ITEMS: Record<string, ShopItem[]> = {
   ],
   hardware: Object.entries({ blades: 1500, license: 2500, cooler: 400 }).map(([id, price]) => ({ id, name: UPGRADES[id].name, price, blurb: UPGRADES[id].blurb, upgrade: id })),
   clothing: WARDROBE.filter(w => w.price > 0).map(w => ({ id: w.id, name: w.name, price: w.price, blurb: w.blurb, clothing: w.id })),
-  dealer: (Object.values(VEHICLES).filter(v => v.price > 0)).map(v => ({ id: v.kind, name: v.name, price: v.price, blurb: `${v.fuel === 'electric' ? 'Electric' : `${v.mpg} mpg`} · ${v.tank} ${v.fuel === 'electric' ? 'kWh pack' : 'gal tank'}`, vehicle: v.kind })),
+  dealer: [],
 };
+
+/** Rebuilds Maple Motors' list after published vehicles are registered. */
+export function refreshDealer() {
+  SHOP_ITEMS.dealer = Object.values(VEHICLES).filter(forSale).map(dealerItem);
+}
+refreshDealer();
 
 // ---------------------------------------------------------------- accounts
 
@@ -115,10 +128,13 @@ export interface Account {
 
 /** Fills fields added after an account was first saved. */
 export function normalizeAccount(a: Account): Account {
-  a.garage = Array.isArray(a.garage) && a.garage.length ? a.garage.filter(k => k in VEHICLES) : [...STARTER_GARAGE];
+  // Published vehicles are kept even if this authority hasn't loaded them yet,
+  // so a failed catalog fetch can never take a car out of someone's garage.
+  a.garage = Array.isArray(a.garage) && a.garage.length ? a.garage.filter(k => typeof k === 'string' && (k in VEHICLES || (isCustomVehicleKind(k) && /^custom:[a-z0-9-]{8,64}$/.test(k)))) : [...STARTER_GARAGE];
+  a.garage = [...new Set(a.garage)];
   for (const k of STARTER_GARAGE) if (!a.garage.includes(k)) a.garage.push(k);
   a.fuel = a.fuel && typeof a.fuel === 'object' ? a.fuel : {};
-  for (const k of a.garage) if (typeof a.fuel[k] !== 'number') a.fuel[k] = VEHICLES[k].tank;
+  for (const k of a.garage) if (typeof a.fuel[k] !== 'number' && VEHICLES[k]) a.fuel[k] = VEHICLES[k].tank;
   a.needs = a.needs && typeof a.needs === 'object' ? a.needs : { hunger: 80, energy: 85, fun: 70 };
   a.groceries = Number.isFinite(a.groceries) ? a.groceries : 2;
   a.upgrades = Array.isArray(a.upgrades) ? a.upgrades : [];
