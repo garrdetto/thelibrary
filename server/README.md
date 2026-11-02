@@ -1,6 +1,6 @@
 # Pool real-time server
 
-Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v47` (v47 raises the Thrill Park guest cap with owned land, adds area land purchases and lighter crowd snapshots); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
+Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v48` (v48 adds the drag-to-size Wave Pool and resizable swimming pools); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
 
 Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin, currently `https://thelibrary.garrdetto.workers.dev`. Multiple trusted production or preview origins can be comma-separated. When configured, requests from other origins are rejected. When unset or empty, only `https://thelibrary.garrdetto.workers.dev` is accepted (v39 default). Configure explicit origins in production. In the site's Cloudflare build variables, set `VITE_POOL_SERVER_URL` to this service's public HTTPS URL, then redeploy the frontend. This public URL is compiled into the client; it is not a secret. When unset, the frontend uses its existing default service URL; signed-in solo practice remains available if multiplayer is offline.
 
@@ -161,3 +161,10 @@ Redeploy this service with the frontend so online parks run the same rules as so
 - `buyLandArea` buys every eligible expansion square in a dragged rectangle (up to 32 by 32) that connects to the park, at $100 each.
 - Scenario guest objectives are now 600, 1,000 and 1,500.
 - When a park has more than 2,000 guests, guest positions are sent every other snapshot and large snapshots are compressed (`perMessageDeflate`, 8 KB threshold).
+
+### Thrill Park v48
+
+Redeploy this service with the frontend so online parks run the same rules as solo play:
+- The Wave Pool (`wavePool`) and Swimming Pool take a dragged size (`flat` with `w`/`h`, 4×4 to 16×20 and 3×3 to 16×20). Cost, upkeep, capacity and excitement scale with area (`flatSpec` in `server/park/flatspec.mjs`).
+- Wave settings Calm, Rolling, Surf and Storm (`rideSet` with `wave`) change the wave pool's excitement, intensity and nausea.
+- Older saved pools keep their 5×4 footprint.

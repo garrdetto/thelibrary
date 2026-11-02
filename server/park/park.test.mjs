@@ -28,6 +28,9 @@ import {
   landAreaPlan,
   MAX_GUESTS,
   GUESTS_PER_OWNED_TILE,
+  flatSpec,
+  footprintTiles,
+  WAVE_SETTINGS,
 } from './index.mjs'
 
 function parkFixture() {
@@ -323,4 +326,52 @@ test('the guest cap grows with rides and shops and with owned land', () => {
   assert.ok(bigger.landCap > crowded.landCap)
   assert.ok(bigger.cap > crowded.cap)
   assert.ok(bigger.cap <= MAX_GUESTS)
+})
+
+test('wave pools are sized by dragging and priced by area', () => {
+  const state = parkFixture()
+  const small = flatSpec('wavePool', [4, 4], 'rolling')
+  const big = flatSpec('wavePool', [16, 20], 'rolling')
+  assert.equal(small.cost, 2500 + 260 * 16)
+  assert.equal(big.cost, 2500 + 260 * 320)
+  assert.equal(big.capacity, Math.round(1.2 * 320))
+  assert.ok(big.upkeep > small.upkeep)
+  assert.ok(big.stats.e > small.stats.e)
+  assert.equal(applyCommand(state, { t: 'flat', ride: 'wavePool', x: 40, y: 40, rot: 0, w: 3, h: 8 }).ok, false)
+  assert.equal(applyCommand(state, { t: 'flat', ride: 'wavePool', x: 40, y: 40, rot: 0, w: 17, h: 8 }).ok, false)
+  assert.equal(applyCommand(state, { t: 'flat', ride: 'carousel', x: 40, y: 40, rot: 0, w: 5, h: 5 }).ok, false)
+  const before = state.parks[0].cash
+  const made = applyCommand(state, { t: 'flat', ride: 'wavePool', x: 40, y: 40, rot: 0, w: 10, h: 12 })
+  assert.equal(made.ok, true, made.error)
+  const pool = state.entities[made.id]
+  assert.deepEqual(pool.size, [10, 12])
+  assert.equal(footprintTiles(pool).length, 120)
+  assert.equal(before - state.parks[0].cash, flatSpec('wavePool', [10, 12], 'rolling').cost)
+  assert.equal(rideCapacity(pool), 144)
+  assert.equal(state.map.obj[tileIndex(state.map, 49, 51)], pool.id)
+
+  const calm = { ...pool.stats }
+  assert.equal(applyCommand(state, { t: 'rideSet', id: pool.id, wave: 'storm' }).ok, true)
+  assert.equal(pool.wave, 'storm')
+  assert.ok(pool.stats.i > calm.i + WAVE_SETTINGS.storm.i - 0.01)
+  assert.equal(applyCommand(state, { t: 'rideSet', id: pool.id, wave: 'tsunami' }).ok, false)
+
+  const copy = deserializePark(serializePark(state))
+  assert.deepEqual(copy.entities[pool.id].size, [10, 12])
+  assert.equal(copy.entities[pool.id].wave, 'storm')
+})
+
+test('swimming pools resize too, and older pools keep their original footprint', () => {
+  const state = parkFixture()
+  const made = applyCommand(state, { t: 'flat', ride: 'pool', x: 40, y: 40, rot: 0 })
+  assert.equal(made.ok, true, made.error)
+  assert.deepEqual(state.entities[made.id].size, [5, 4])
+  assert.equal(flatSpec('pool', [5, 4]).cost, 3400)
+  const sized = applyCommand(state, { t: 'flat', ride: 'pool', x: 50, y: 40, rot: 0, w: 8, h: 6 })
+  assert.equal(sized.ok, true, sized.error)
+  assert.equal(footprintTiles(state.entities[sized.id]).length, 48)
+  const saved = serializePark(state)
+  delete saved.entities[made.id].size
+  const copy = deserializePark(saved)
+  assert.deepEqual(copy.entities[made.id].size, [5, 4])
 })

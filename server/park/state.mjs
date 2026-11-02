@@ -1,7 +1,8 @@
-import { SCENARIOS, FLAT_RIDES, COASTER_STYLES, STALLS, SCENERY, PARK_COLORS } from './catalog.mjs'
+import { SCENARIOS, FLAT_RIDES, COASTER_STYLES, STALLS, SCENERY, PARK_COLORS, WAVE_SETTINGS } from './catalog.mjs'
 import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath } from './track.mjs'
+import { flatRideSize, rideFlatSpec } from './flatspec.mjs'
 
 export const ENGINE_VERSION = 5
 export const MAX_GUESTS = 6400
@@ -16,7 +17,7 @@ export const START_MONTH = 0
 
 export function footprint(entity) {
   if (entity.type === 'ride' && entity.kind === 'flat') {
-    const [w, h] = FLAT_RIDES[entity.ride].size
+    const [w, h] = entity.size ?? FLAT_RIDES[entity.ride].size
     const swap = entity.rot % 2 === 1
     return { x: entity.x, y: entity.y, w: swap ? h : w, h: swap ? w : h }
   }
@@ -139,7 +140,7 @@ export function addNews(state, park, text, kind = 'info', ref = null) {
 export function entityCost(entity) {
   if (entity.type === 'stall') return STALLS[entity.kind].cost
   if (entity.type === 'scenery') return SCENERY[entity.kind].cost
-  if (entity.type === 'ride' && entity.kind === 'flat') return FLAT_RIDES[entity.ride].cost
+  if (entity.type === 'ride' && entity.kind === 'flat') return rideFlatSpec(entity)?.cost ?? 0
   if (entity.type === 'ride' && entity.kind === 'coaster') return entity.spent ?? COASTER_STYLES[entity.style].cost
   return 0
 }
@@ -408,7 +409,12 @@ function sanitizeEntity(raw, state) {
       trainColor: typeof raw.trainColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.trainColor) ? raw.trainColor : null,
       stats: raw.stats && typeof raw.stats === 'object' ? Object.fromEntries(Object.entries(raw.stats).slice(0, 24).map(([k, v]) => [k, typeof v === 'boolean' ? v : num(v)])) : null, brokenAt: num(raw.brokenAt), mechanic: 0, cycles: Math.round(num(raw.cycles, 0, 0)),
     }
-    if (raw.kind === 'flat' && FLAT_RIDES[raw.ride]) return { ...common, kind: 'flat', ride: raw.ride, rot: Math.round(num(raw.rot, 0, 0, 3)) }
+    if (raw.kind === 'flat' && FLAT_RIDES[raw.ride]) {
+      const def = FLAT_RIDES[raw.ride]
+      const sized = def.resize ? { size: flatRideSize(def, Array.isArray(raw.size) ? raw.size.map(v => num(v, NaN)) : def.size) } : {}
+      const waved = def.waves ? { wave: WAVE_SETTINGS[raw.wave] ? raw.wave : def.waves } : {}
+      return { ...common, kind: 'flat', ride: raw.ride, rot: Math.round(num(raw.rot, 0, 0, 3)), ...sized, ...waved }
+    }
     if (raw.kind === 'coaster' && COASTER_STYLES[raw.style]) {
       const pieces = Array.isArray(raw.pieces) ? raw.pieces.slice(0, 220).map(p => ({ c: Math.round(num(p?.c, 0, -2, 2)), s: Math.round(num(p?.s, 0, -2, 2)), ...(['station', 'chain', 'brakes', 'booster', 'loop', 'corkscrew'].includes(p?.sp) ? { sp: p.sp } : {}) })) : []
       const start = { x: Math.round(num(raw.start?.x, x, 0, state.map.w - 1)), y: Math.round(num(raw.start?.y, y, 0, state.map.h - 1)), dir: Math.round(num(raw.start?.dir, 0, 0, 3)), h: Math.round(num(raw.start?.h, 0, 0, 200)) }

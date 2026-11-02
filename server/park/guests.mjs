@@ -2,18 +2,19 @@ import { STALLS, FLAT_RIDES, COASTER_STYLES } from './catalog.mjs'
 import { DIRS, clamp, stateRandom } from './util.mjs'
 import { tileIndex, inMap, isWalkPath, pathsConnect } from './terrain.mjs'
 import { frontTile, stallFrontTile, addNews } from './state.mjs'
+import { rideFlatSpec } from './flatspec.mjs'
 
 const WALK_SPEED = 1.05
 const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['drinks', 'coffee'], toilet: ['toilet'], gift: ['balloon', 'umbrella', 'info', 'souvenir'] }
 
 export function rideCapacity(ride) {
-  if (ride.kind === 'flat') return FLAT_RIDES[ride.ride].capacity
+  if (ride.kind === 'flat') return rideFlatSpec(ride)?.capacity ?? 1
   const style = COASTER_STYLES[ride.style]
   return (ride.cars ?? 3) * style.seats * (style.trackType ? 1 : Math.max(1, ride.trains?.length ?? 2))
 }
 
 export function rideCycleSeconds(ride) {
-  if (ride.kind === 'flat') { const def = FLAT_RIDES[ride.ride]; return def.rideTime + def.loadTime + 2 }
+  if (ride.kind === 'flat') { const def = FLAT_RIDES[ride.ride]; return def ? def.rideTime + def.loadTime + 2 : 30 }
   return (ride.stats?.rideTime ?? 40) + 9
 }
 

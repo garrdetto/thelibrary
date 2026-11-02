@@ -4,6 +4,7 @@ import { CAR_GAP, stepTrain } from './track.mjs'
 import { addNews, emptyLedger, entityCost, electricityTiles, ridePath, objectiveText } from './state.mjs'
 import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
+import { rideFlatSpec } from './flatspec.mjs'
 import { MAX_GUESTS, ensureGuestIndex } from './state.mjs'
 import { ownedTileCount } from './land.mjs'
 
@@ -57,8 +58,9 @@ function maybeBreak(state, ride) {
 }
 
 function updateFlat(state, ride, dt) {
-  const def = FLAT_RIDES[ride.ride], c = ride.cycle
+  const c = ride.cycle
   if (ride.status === 'broken') return
+  const def = ride.size ? rideFlatSpec(ride) : FLAT_RIDES[ride.ride]
   c.timer += dt
   if (c.phase === 'loading') {
     c.board = (c.board ?? 0) + dt
@@ -280,7 +282,7 @@ function endOfMonth(state) {
     let upkeep = 0
     for (const e of Object.values(state.entities)) {
       if (e.park !== p.id) continue
-      if (e.type === 'ride') upkeep += e.kind === 'flat' ? FLAT_RIDES[e.ride].upkeep : COASTER_STYLES[e.style].upkeep + e.pieces.length * 2
+      if (e.type === 'ride') upkeep += e.kind === 'flat' ? rideFlatSpec(e).upkeep : COASTER_STYLES[e.style].upkeep + e.pieces.length * 2
       if (e.type === 'stall') upkeep += STALLS[e.kind].upkeep
       if (e.type === 'ride') e.monthRiders = 0
     }
