@@ -152,7 +152,9 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch — `main`.
 - `src/game/CameraRig.ts` — third-person and build cameras — `Game`.
 - `src/game/Hud.ts` — HUD, menus, notifications — `Game`.
-- `src/game/PlotMap.ts` — town map overlay — `Hud`.
+- `src/game/PlotMap.ts` — town map overlay (bounds from `MAP_BOUNDS`, civic buildings included) — `Hud`.
+- `src/game/MiniMap.ts` — heading-up corner minimap with the street route to the current objective — `Game`.
+- `src/game/RoadRoute.ts` — A* street routing on a 2 m road grid — `MiniMap`.
 - `src/build/BuildController.ts` — build/buy tools, batched `builds` gestures — `Game`, `Hud`.
 - `src/build/Mesher.ts` — walls, floors, roofs, pools to meshes — `Game`, `BuildController`, `HouseManager`.
 - `src/build/Openings.ts` — door and window geometry per wall segment (door, glass entry door, French doors, sliding patio door, garage door, window, tall shuttered window, picture, clerestory, frosted); sliders, garage doors and clerestories join across adjacent segments — `Mesher`, `BuildController`, `Hud`.
@@ -162,11 +164,11 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/build/Thumbs.ts` — off-screen catalog thumbnails — `Game`.
 - `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps — `Game`.
 - `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear — `Neighborhood`.
-- `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), depot, streetscape, showroom cars — `Neighborhood`.
+- `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), fire and police stations (apparatus bays, bay lights, flagpoles), depot, streetscape, showroom cars — `Neighborhood`.
 - `src/world/Facades.ts` — facade styles and window/storefront layouts shared by the painted textures (albedo, night glow, roughness/metalness) and the 3D trim — `Downtown`.
 - `src/world/GasStation.ts` — Gas & Go forecourt, canopy, islands, dispensers, pylon price sign, canopy light — `Downtown`.
 - `src/world/Lawn.ts` — mowable lawns and stripes — `Neighborhood`, `Grass`.
-- `src/world/Grass.ts` — instanced grass — `Game`.
+- `src/world/Grass.ts` — instanced grass: thin four-blade clumps at realistic mowed/uncut/meadow heights with color patches — `Game`.
 - `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
 - `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
 - `src/physics/Character.ts` — kinematic character controller and `Avatar` (scanned model, stand-in while loading) — `Game`, `RemoteEntities`.
@@ -190,7 +192,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/net/RemoteEntities.ts` — remote player and vehicle interpolation — `Game`.
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop — `maplestreet-world.ts`.
-- `shared/WorldLayout.ts` — town layout: lots, roads, shops, gas station — `RoomLogic`, `Game`, world files, `PlotMap`.
+- `shared/WorldLayout.ts` — town layout: 60 lots on ten residential streets, roads and `ROAD_NAMES`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
 - `shared/Seed.ts` — starter houses — `RoomLogic`.
 - `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep following distance and lean in turns — `Host`, `WorldServer`.
 - `shared/Catalog.ts` — build/buy catalog (`custom` and `hidden` fields for published items) — `RoomLogic`, `BuildRules`, `Furniture`, `Mesher`, `Thumbs`, `Hud`.

@@ -3,7 +3,11 @@
  * bounds, roads, shops and points of interest. Units: meters, Y up. Grid cell
  * = 1 m, so lot coordinates are integer grid coordinates as well.
  *
- *   West: freight depot ── Residential ring (20 lots on two streets) ── East: downtown
+ *   West: freight depot ── Residential ring (60 lots on ten streets) ── East: downtown
+ *
+ * The original 20 lots (N1–N10, S1–S10) keep their ids and positions; the
+ * outer blocks (N11–N30, S11–S30) were added behind them, one row per new
+ * street, so saved worlds pick them up as empty lots.
  */
 export interface LotDef {
   id: string;
@@ -19,13 +23,18 @@ export const LOT_D = 40;
 export const LOTS_PER_SIDE = 5;
 export const ROAD_W = 10;
 export const SIDEWALK_W = 2;
-export const WORLD_HALF = 330;
+export const WORLD_HALF = 380;
 
 const ROW_X0 = -(LOT_W * LOTS_PER_SIDE) / 2;          // -80
 const MAIN_FRONT = 7;                                 // lots start just past the sidewalk
 const ALLEY_Z = MAIN_FRONT + LOT_D + 7;               // 54: centerline of the back streets
 const BACK_FRONT = ALLEY_Z + 5;                       // 59
 const AVE_X = -ROW_X0 + 7;                            // 87: side avenues
+const BLOCK = LOT_D + 12;                             // 52: from one residential street to the next
+const OUTER_STREETS = 4;                              // new streets on each side beyond North/South St
+/** Centerlines of the outer residential streets (positive side; mirrored for the north). */
+const OUTER_Z = Array.from({ length: OUTER_STREETS }, (_, i) => ALLEY_Z + BLOCK * (i + 1));   // 106, 158, 210, 262
+const FAR_Z = OUTER_Z[OUTER_STREETS - 1];
 const DOWNTOWN_X0 = 104, DOWNTOWN_X1 = 252;
 
 /**
@@ -41,23 +50,39 @@ export function makeLots(): LotDef[] {
     lots.push({ id: `N${i + 6}`, x, z: -BACK_FRONT - LOT_D, w: LOT_W, d: LOT_D, front: '+z' });
     lots.push({ id: `S${i + 6}`, x, z: BACK_FRONT, w: LOT_W, d: LOT_D, front: '-z' });
   }
+  // Outer blocks: each new street has one row of lots on its far side, facing it.
+  OUTER_Z.forEach((streetZ, row) => {
+    for (let i = 0; i < LOTS_PER_SIDE; i++) {
+      const x = ROW_X0 + i * LOT_W, n = 11 + row * LOTS_PER_SIDE + i;
+      lots.push({ id: `N${n}`, x, z: -streetZ - 5 - LOT_D, w: LOT_W, d: LOT_D, front: '+z' });
+      lots.push({ id: `S${n}`, x, z: streetZ + 5, w: LOT_W, d: LOT_D, front: '-z' });
+    }
+  });
   return lots;
 }
 
 export const ROADS: RectXZ[] = [
   { cx: (DOWNTOWN_X1 + 8 - 150) / 2, cz: 0, sx: DOWNTOWN_X1 + 8 + 150, sz: ROAD_W },     // Main Street (depot → downtown)
-  { cx: -AVE_X, cz: 0, sx: ROAD_W, sz: ALLEY_Z * 2 + ROAD_W },                         // West Ave
-  { cx: AVE_X, cz: 0, sx: ROAD_W, sz: ALLEY_Z * 2 + ROAD_W },                          // East Ave
+  { cx: -AVE_X, cz: 0, sx: ROAD_W, sz: FAR_Z * 2 + ROAD_W },                           // West Ave (runs the length of the neighborhood)
+  { cx: AVE_X, cz: 0, sx: ROAD_W, sz: FAR_Z * 2 + ROAD_W },                            // East Ave
   { cx: 0, cz: -ALLEY_Z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },                          // North Street
   { cx: 0, cz: ALLEY_Z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },                           // South Street
   { cx: (AVE_X + DOWNTOWN_X1 + 8) / 2, cz: -ALLEY_Z, sx: DOWNTOWN_X1 + 8 - AVE_X + ROAD_W, sz: ROAD_W }, // Commerce St (downtown back)
   { cx: DOWNTOWN_X1 + 8, cz: -ALLEY_Z / 2, sx: ROAD_W, sz: ALLEY_Z + ROAD_W },          // Market Ave (closes the downtown loop)
+  ...OUTER_Z.flatMap(z => [
+    { cx: 0, cz: -z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },
+    { cx: 0, cz: z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },
+  ]),
 ];
+
+/** Street names, in ROADS order. */
+export const ROAD_NAMES = ['Main St', 'West Ave', 'East Ave', 'North St', 'South St', 'Commerce St', 'Market Ave', 'Birch St', 'Aspen St', 'Cedar St', 'Dogwood St', 'Elm St', 'Fir St', 'Hazel St', 'Juniper St'];
 
 export const SIDEWALKS: RectXZ[] = [
   { cx: 0, cz: -6, sx: -ROW_X0 * 2, sz: SIDEWALK_W },
   { cx: 0, cz: 6, sx: -ROW_X0 * 2, sz: SIDEWALK_W },
   { cx: (DOWNTOWN_X0 + DOWNTOWN_X1) / 2, cz: -7, sx: DOWNTOWN_X1 - DOWNTOWN_X0, sz: 4 },  // wide downtown sidewalks
+  { cx: 136, cz: -60, sx: 64, sz: 2 },                                                   // in front of the fire and police stations
   // South downtown sidewalk, split by the two curb cuts into the gas station (x 111–119 and 129–137).
   { cx: (DOWNTOWN_X0 + 111) / 2, cz: 7, sx: 111 - DOWNTOWN_X0, sz: 4 },
   { cx: 124, cz: 7, sx: 10, sz: 4 },
@@ -70,6 +95,8 @@ export const CURB_CUTS: RectXZ[] = [
   { cx: 133, cz: 7, sx: 8, sz: 4 },            // Gas & Go exit
   { cx: -128, cz: -7, sx: 20, sz: 4 },         // freight depot yard
   { cx: 94, cz: -18, sx: 4, sz: 16 },          // Maple Motors display lot off East Ave
+  { cx: 118, cz: -60, sx: 18, sz: 4 },         // fire station apron onto Commerce St
+  { cx: 154, cz: -60, sx: 8, sz: 4 },          // police station lot
 ];
 
 export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank' | 'clothing';
@@ -78,7 +105,7 @@ export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardwa
 export interface Building {
   id: string;
   name: string;
-  kind: ShopKind | 'office' | 'apartments';
+  kind: ShopKind | 'office' | 'apartments' | 'fire' | 'police';
   x: number; z: number; w: number; d: number;   // footprint center + size
   h: number;                                    // height (m)
   facing: '+z' | '-z';                          // storefront side (toward Main Street)
@@ -102,6 +129,17 @@ export const BUILDINGS: Building[] = [
   bld('apt2', 'Willow Lofts', 'apartments', 160, 16, 14, 13, 's', '#8a6a55'),
 ];
 
+/**
+ * Civic buildings on the north side of Commerce St, just behind downtown:
+ * a fire station with apparatus bays and a police station. Not shops.
+ */
+const CIVIC_FRONT = -ALLEY_Z - 7;            // -61: building line behind Commerce St's north sidewalk
+export const CIVIC: Building[] = [
+  { id: 'fire', name: 'Maple Street Fire Station 1', kind: 'fire', x: 118, w: 24, d: 20, h: 9, facing: '+z', z: CIVIC_FRONT - 10, color: '#9b3b2e' },
+  { id: 'police', name: 'Maple Street Police', kind: 'police', x: 154, w: 26, d: 18, h: 10, facing: '+z', z: CIVIC_FRONT - 9, color: '#c9c3b5' },
+];
+
+
 /** Gas station on the downtown corner: canopy over four pumps plus a mini-mart. */
 export const GAS_STATION = {
   id: 'gas', name: 'Gas & Go',
@@ -115,7 +153,7 @@ export interface ShopDoor { id: string; kind: ShopKind; name: string; x: number;
 
 /** Interaction points: stand (or park) within SHOP_RADIUS of a door to use the shop. */
 export const SHOP_DOORS: ShopDoor[] = [
-  ...BUILDINGS.filter(b => b.kind !== 'office' && b.kind !== 'apartments').map(b => ({
+  ...BUILDINGS.filter(b => b.kind !== 'office' && b.kind !== 'apartments' && b.kind !== 'fire' && b.kind !== 'police').map(b => ({
     id: b.id, kind: b.kind as ShopKind, name: b.name, x: b.x, z: b.facing === '+z' ? b.z + b.d / 2 + 1.5 : b.z - b.d / 2 - 1.5,
   })),
   { id: 'gas', kind: 'gas', name: GAS_STATION.name, x: GAS_STATION.door.x, z: GAS_STATION.door.z },
@@ -128,9 +166,13 @@ export const DEPOT = { x: -128, z: -22, w: 22, d: 14, padX: -128, padZ: -11, zon
 export const SPAWN = { x: -112, z: 9 };
 
 /** Half-extent of the built-up area (forest stays out of it). */
-export const TOWN_HALF = { x: AVE_X + 8, z: BACK_FRONT + LOT_D + 6 };
+export const TOWN_HALF = { x: AVE_X + 8, z: FAR_Z + 5 + LOT_D + 6 };
 export const DOWNTOWN = { x0: DOWNTOWN_X0, x1: DOWNTOWN_X1 + 14, z0: -ALLEY_Z - 6, z1: 52 };
-export const STREETS = { ALLEY_Z, AVE_X, ROW_X0, MAIN_FRONT, BACK_FRONT };
+/** The civic block behind downtown (fire and police), kept clear of trees and grass. */
+export const CIVIC_BLOCK: RectXZ = { cx: 136, cz: -76, sx: 72, sz: 34 };
+/** Everything the town map and minimap should show. */
+export const MAP_BOUNDS = { x0: -158, x1: 276, z0: -TOWN_HALF.z, z1: TOWN_HALF.z };
+export const STREETS = { ALLEY_Z, AVE_X, ROW_X0, MAIN_FRONT, BACK_FRONT, OUTER_Z, FAR_Z };
 
 /** Each lot's concrete driveway: 4 m wide at the left of the frontage, 12 m deep. */
 export function drivewayRect(lot: LotDef): RectXZ {
