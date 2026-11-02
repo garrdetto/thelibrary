@@ -32,6 +32,7 @@ import {
   footprintTiles,
   WAVE_SETTINGS,
   FLAT_RIDES,
+  COASTER_PRESETS,
 } from './index.mjs'
 
 function parkFixture() {
@@ -392,4 +393,34 @@ test('every water ride builds with balanced stats and room for riders', () => {
     if (def.stats.i >= 4) assert.ok(def.cost >= 5600, `${id} is a thrill ride priced below the Waterslide`)
     if (def.stats.i < 1) assert.ok(def.cost <= 3000, `${id} is a gentle ride priced like a thrill ride`)
   }
+})
+
+test('compact ready-made coasters close their own circuit inside their stated footprint', () => {
+  const compact = Object.entries(COASTER_PRESETS).filter(([, design]) => design.footprint)
+  assert.ok(compact.length >= 10)
+  const styles = new Set(compact.map(([, design]) => design.style))
+  for (const style of ['junior', 'wooden', 'steel', 'inverted', 'launch', 'extreme', 'kart', 'waterSlide']) assert.ok(styles.has(style), style)
+  for (const [id, design] of compact) {
+    const state = parkFixture()
+    const made = applyCommand(state, { t: 'preset', preset: id, x: 60, y: 60, dir: 0 })
+    assert.equal(made.ok, true, `${id}: ${made.error}`)
+    const ride = state.entities[made.id]
+    assert.equal(ride.complete, true, id)
+    assert.equal(ride.pieces.length, design.station + design.pieces.length, `${id} needed auto-complete`)
+    assert.equal(ride.stats?.valid, true, `${id} failed its test run`)
+    assert.equal(made.cost, design.cost, `${id} price changed`)
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const [index, cells] of state.trackCells) if (cells.some(cell => cell.ride === ride.id)) {
+      const x = index % state.map.w, y = Math.floor(index / state.map.w)
+      x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y)
+    }
+    assert.ok(x1 - x0 + 1 <= design.footprint[0] && y1 - y0 + 1 <= design.footprint[1], `${id} spills past ${design.footprint.join('x')}`)
+    assert.ok(Math.max(...design.footprint) <= 18, id)
+  }
+})
+
+test('suspended coasters raise their station so riders clear the ground', () => {
+  const state = parkFixture()
+  const made = applyCommand(state, { t: 'coaster', style: 'inverted', x: 60, y: 60, dir: 0, length: 3 })
+  assert.equal(made.ok, true, made.error)
 })

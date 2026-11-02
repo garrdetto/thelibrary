@@ -765,7 +765,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       </button>)}</div>
       <p className="pk-label">Ready-made designs</p>
       <div className="pk-cards">{Object.entries(COASTER_PRESETS).map(([id, d]) => <button key={id} className={`pk-card ${tool.kind === 'coaster' && tool.preset === id ? 'on' : ''}`} onClick={() => { setTool({ kind: 'coaster', style: d.style, dir: 0, length: d.station, preset: id }); setPanel(null) }}>
-        <strong><i className="pk-swatch" style={{ background: COASTER_STYLES[d.style].track }} />{d.name}</strong><span>{COASTER_STYLES[d.style].name}</span><small>{d.description}</small>
+        <strong><i className="pk-swatch" style={{ background: COASTER_STYLES[d.style].track }} />{d.name}</strong><span>{COASTER_STYLES[d.style].name}</span><small>{d.description}</small>{d.footprint && <em>{d.footprint[0]}×{d.footprint[1]} squares · {d.height} m tall · about {money(d.cost ?? 0)}</em>}
       </button>)}</div>
       <p className="pk-hint">Click to place the station, then build the circuit piece by piece, or press Auto-finish to close the loop. Designs are built in one go and finished to fit the ground; press R to turn them before placing.</p>
     </Window>}
