@@ -5,7 +5,7 @@ export type Train = { s: number; v: number; phase: string; timer: number; riders
 export type RideStats = { valid: boolean; e: number; i: number; n: number; maxSpeed?: number; avgSpeed?: number; rideTime?: number; length?: number; maxG?: number; minG?: number; latG?: number; drops?: number; highestDrop?: number; inversions?: number; airtime?: number }
 export type Entity = {
   id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
-  size?: [number, number]; wave?: string
+  size?: [number, number]; wave?: string; comments?: { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }[]; commentCounts?: { pos: number; mix: number; neg: number }
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
   cycle?: { phase: string; timer: number; spin?: number }; reliability?: number; totalRiders?: number; monthRiders?: number; color?: string | null; trackColor?: string | null; supportColor?: string | null; trainColor?: string | null; stats?: RideStats | null; mechanic?: number
@@ -57,6 +57,9 @@ export const GUESTS_PER_OWNED_TILE: number
 export const BUILD_CAP_MULTIPLIER: number
 export function ownedTileCount(state: ParkState, park: number): number
 export function landAreaPlan(state: ParkState, park: number, area: { x0: number; y0: number; x1: number; y1: number }): { error?: string; tiles: number[]; cost: number }
+export function rideCommentsDetail(state: ParkState, id: number): { id: number; now: number; comments: { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }[]; counts: { pos: number; mix: number; neg: number } } | null
+export function recordComment(state: ParkState, ride: Entity, guest: Guest, kind: string): unknown
+export function guestProfile(rnd: () => number, kid: boolean): { type: 'kid' | 'thrill' | 'casual'; minI: number; maxI: number; tolerance: number }
 export function spawnRate(state: ParkState, park: Park): GuestSpawn
 export const CAR_GAP: number
 export const PATH_STEP_LIMIT: number

@@ -38,6 +38,9 @@ import {
   warmUp,
   THRILL_SEEKER_SHARE,
   WARM_UP_MAX,
+  COMMENT_POOLS,
+  recordComment,
+  rideCommentsDetail,
 } from './index.mjs'
 
 function parkFixture() {
@@ -475,4 +478,51 @@ test('a park whose only ride is very intense still gets riders', () => {
   for (let k = 0; k < 4000; k++) stepPark(state)
   assert.ok(ride.totalRiders > 0, 'nobody rode')
   assert.ok(state.guests.some(g => g.type === 'thrill'))
+})
+
+function intenseRidePark() {
+  const state = createPark('sandbox')
+  state.parks[0].named = true
+  state.parks[0].cash = 1_000_000
+  for (const e of Object.values(state.entities)) if (e.type === 'scenery') { state.map.obj[tileIndex(state.map, e.x, e.y)] = 0; delete state.entities[e.id] }
+  const entrance = Object.values(state.entities).find(e => e.type === 'parkEntrance')
+  const x = entrance.x, y = entrance.y
+  applyCommand(state, { t: 'path', kind: 1, elevation: 0, x0: x, y0: y - 13, x1: x, y1: y - 1 })
+  const made = applyCommand(state, { t: 'flat', ride: 'dropTower', x: x + 2, y: y - 11, rot: 0 })
+  applyCommand(state, { t: 'gate', ride: made.id, role: 'entrance', x: x + 1, y: y - 11 })
+  applyCommand(state, { t: 'gate', ride: made.id, role: 'exit', x: x + 1, y: y - 9 })
+  const ride = state.entities[made.id]
+  ride.status = 'open'
+  return { state, ride }
+}
+
+test('guests leave varied, repeatable comments on the rides they use', () => {
+  const lines = Object.values(COMMENT_POOLS).reduce((total, [, list]) => total + list.length, 0)
+  assert.ok(lines >= 40, `${lines} comment lines`)
+  const runs = [intenseRidePark(), intenseRidePark()]
+  for (const { state } of runs) for (let k = 0; k < 4000; k++) stepPark(state)
+  const [a, b] = runs
+  assert.ok(a.ride.comments.length > 0, 'no comments recorded')
+  assert.ok(a.ride.comments.length <= 12)
+  assert.deepEqual(a.ride.comments, b.ride.comments)
+  const counts = a.ride.commentCounts
+  assert.ok(counts.pos + counts.mix + counts.neg >= a.ride.comments.length)
+  const detail = rideCommentsDetail(a.state, a.ride.id)
+  assert.equal(detail.comments[0].t, a.ride.comments[a.ride.comments.length - 1].t)
+  const copy = deserializePark(serializePark(a.state))
+  assert.deepEqual(copy.entities[a.ride.id].comments, a.ride.comments)
+  const saved = serializePark(a.state)
+  delete saved.entities[a.ride.id].comments
+  delete saved.entities[a.ride.id].commentCounts
+  assert.deepEqual(deserializePark(saved).entities[a.ride.id].comments, [])
+})
+
+test('comment lines name the ride and the kind of guest', () => {
+  const { state, ride } = intenseRidePark()
+  ride.name = 'Sky Drop'
+  for (let k = 0; k < 20; k++) recordComment(state, ride, { id: k + 1, type: k % 2 ? 'kid' : 'thrill' }, 'stuck')
+  assert.equal(ride.comments.length, 12)
+  assert.equal(ride.commentCounts.neg, 20)
+  assert.ok(ride.comments.every(c => c.text.includes('Sky Drop')))
+  assert.ok(ride.comments.some(c => c.who === 'a kid') && ride.comments.some(c => c.who === 'a thrill seeker'))
 })

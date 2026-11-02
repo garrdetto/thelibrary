@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
 import { z } from 'zod'
-import { createPark, deserializePark, serializePark, applyCommand, stepPark, encodeDynamic, encodeGuests, guestDetail, SCENARIOS } from './park/index.mjs'
+import { createPark, deserializePark, serializePark, applyCommand, stepPark, encodeDynamic, encodeGuests, guestDetail, rideCommentsDetail, SCENARIOS } from './park/index.mjs'
 
 const MAX_ROOMS = 12
 const TICK_MS = 50
@@ -209,6 +209,14 @@ export function attachPark(io, origins) {
       const id = Number(raw?.id)
       if (!room?.state || !Number.isInteger(id)) return ack({ guest: null })
       ack({ guest: guestDetail(room.state, id) })
+    })
+
+    socket.on('ride-comments', (raw, ack) => {
+      if (typeof ack !== 'function') return
+      const room = rooms.get(members.get(socket.id))
+      const id = Number(raw?.id)
+      if (!room?.state || !Number.isInteger(id)) return ack({ comments: null })
+      ack({ comments: rideCommentsDetail(room.state, id) })
     })
 
     socket.on('export', (_raw, ack) => {

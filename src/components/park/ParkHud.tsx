@@ -10,6 +10,7 @@ import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
 import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, tileMax, pathHeightAt, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec } from '../../../server/park/index.mjs'
 import { WaveControl } from './WaveControl'
+import { RideComments } from './RideComments'
 import { GuestCapacity } from './GuestCapacity'
 import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
 
@@ -938,6 +939,7 @@ function RideWindow({ ride, session, readOnly, onClose, run, onBuild, onGate, ri
       {coaster && <><dt>Top speed</dt><dd>{st.maxSpeed} km/h</dd><dt>Length</dt><dd>{st.length} m</dd><dt>Ride time</dt><dd>{st.rideTime} s</dd><dt>Drops</dt><dd>{st.drops} (highest {st.highestDrop} m)</dd><dt>Inversions</dt><dd>{st.inversions}</dd><dt>G-forces</dt><dd>+{st.maxG} / {st.minG} · lateral {st.latG}</dd><dt>Air time</dt><dd>{st.airtime} s</dd></>}
     </dl> : coaster && ride.complete ? <p className="pk-hint pk-neg">The track test failed. Remove pieces and adjust the route before trying again.</p> : coaster ? <p className="pk-hint">Finish the circuit to see its ratings.</p> : null}
     <dl className="pk-dl"><dt>Capacity</dt><dd>{rideCapacity(ride)} riders</dd><dt>Queue</dt><dd>{queue} guests</dd><dt>Riders</dt><dd>{ride.totalRiders ?? 0} total · {ride.monthRiders ?? 0} this month</dd><dt>Income</dt><dd>{money(ride.revenue ?? 0)}</dd><dt>Reliability</dt><dd>{Math.round(ride.reliability ?? 100)}%</dd></dl>
+    <RideComments session={session} rideId={ride.id} />
     <div className="pk-row"><span>Ticket</span>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.max(0, (ride.price ?? 0) - 0.1) })}><Minus size={13} /></button>}<strong>{money(ride.price ?? 0)}</strong>{!readOnly && <button onClick={() => void run({ t: 'rideSet', id: ride.id, price: Math.min(20, (ride.price ?? 0) + 0.1) })}><Plus size={13} /></button>}{value > 0 && <small>Guests think it is worth about {money(Math.round(value * 1.6 * 10) / 10)}</small>}</div>
     {ride.kind === 'flat' && FLAT_RIDES[ride.ride as string]?.waves && <WaveControl ride={ride} readOnly={readOnly} onChange={wave => void run({ t: 'rideSet', id: ride.id, wave })} />}
     {ride.kind === 'flat' && ride.size && <p className="pk-hint">{ride.size[0]}×{ride.size[1]} squares</p>}

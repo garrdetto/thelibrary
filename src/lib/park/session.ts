@@ -1,11 +1,13 @@
 import { io } from 'socket.io-client'
 import type { Socket } from 'socket.io-client'
-import { applyCommand, stepPark, createPark, deserializePark, serializePark, guestDetail, applyDynamic, decodeGuests, SIM_STEP } from '../../../server/park/index.mjs'
+import { applyCommand, stepPark, createPark, deserializePark, serializePark, guestDetail, rideCommentsDetail, applyDynamic, decodeGuests, SIM_STEP } from '../../../server/park/index.mjs'
 import type { ParkState, Command, CommandResult } from '../../../server/park/index.mjs'
 
 export type Player = { id: string; name: string; park: number; host: boolean }
 export type ChatLine = { id: number; from: string; text: string; system?: boolean }
 export type RoomInfo = { id: string; name: string; mode: 'coop' | 'versus'; scenario: string; host: string; players: Player[]; started: boolean; max: number }
+export type RideComment = { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }
+export type RideComments = { id: number; now: number; comments: RideComment[]; counts: { pos: number; mix: number; neg: number } }
 export type GuestInfo = { id: number; park: number; happy: number; energy: number; hunger: number; thirst: number; toilet: number; nausea: number; cash: number; spent: number; rides: number; items: string[]; thoughts: string[]; state: string; kid: boolean; inPark: number; minI: number; maxI: number; tolerance: number; ride: number; type?: 'kid' | 'thrill' | 'casual'; warm?: number }
 
 export interface ParkSession {
@@ -17,6 +19,7 @@ export interface ParkSession {
   chat: ChatLine[]
   command(cmd: Command): Promise<CommandResult>
   guest(id: number): Promise<GuestInfo | null>
+  rideComments(id: number): Promise<RideComments | null>
   tick(now: number): void
   exportSave(): Promise<unknown>
   sendChat(text: string): void
@@ -54,6 +57,8 @@ export class LocalSession extends BaseSession implements ParkSession {
   }
 
   async guest(id: number) { return guestDetail(this.state, id) as GuestInfo | null }
+
+  async rideComments(id: number) { return rideCommentsDetail(this.state, id) as RideComments | null }
 
   tick(now: number) {
     const dt = this.last ? Math.min(0.25, (now - this.last) / 1000) : 0
@@ -177,6 +182,11 @@ export class NetSession extends BaseSession implements ParkSession {
 
   async guest(id: number) {
     try { return (await this.lobby.request<{ guest: GuestInfo | null }>('guest', { id }, 5000)).guest }
+    catch { return null }
+  }
+
+  async rideComments(id: number) {
+    try { return (await this.lobby.request<{ comments: RideComments | null }>('ride-comments', { id }, 5000)).comments }
     catch { return null }
   }
 
