@@ -30,11 +30,12 @@ const assert = (ok, message) => { if (!ok) throw new Error(`FAILED: ${message}`)
 const launchArgs = { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] }
 const browser = await chromium.launch(launchArgs)
 const admin = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 } })
-const guest = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 } })
+const guest = await browser.newContext({ baseURL: BASE, viewport: { width: 1100, height: 680 } })
 const headers = { Origin: BASE, 'Content-Type': 'application/json' }
 const errors = []
 
-const shot = async (page, name) => { await page.screenshot({ path: join(OUT, `${name}.png`) }); log('screenshot', name) }
+// Software WebGL in CI takes well over 30 s per frame of the whole town.
+const shot = async (page, name) => { await page.screenshot({ path: join(OUT, `${name}.png`), timeout: 300000 }); log('screenshot', name) }
 
 async function view(page, name, eye, at) {
   await page.evaluate(({ eye, at }) => {
@@ -43,7 +44,7 @@ async function view(page, name, eye, at) {
     g.engine.camera.position.set(eye[0], eye[1], eye[2])
     g.engine.camera.lookAt(at[0], at[1], at[2])
   }, { eye, at })
-  await page.waitForTimeout(4000)
+  await page.waitForTimeout(2000)
   await shot(page, name)
 }
 
@@ -118,7 +119,6 @@ try {
   await dev.evaluate(() => window.maple.houses && dispatchEvent(new Event('pagehide')))
   const saves = await dev.evaluate(() => ({ dev: !!localStorage.getItem('maplestreet/dev/v1'), solo: !!localStorage.getItem('maplestreet/offline/v2') }))
   assert(saves.dev && !saves.solo, 'the developer instance keeps its own save')
-  await shot(dev, 'dev-game')
   await dev.close()
 
   // ---------------------------------------------------------------- 3. fresh neighborhood
@@ -136,11 +136,9 @@ try {
   await view(solo, 'street-south', [-30, 10, 42], [-30, 3, 80])
   await view(solo, 'street-south-east', [34, 10, 42], [34, 3, 80])
   await view(solo, 'main-north', [-20, 9, 2], [-20, 3, -30])
-  await view(solo, 'main-north-east', [30, 9, 2], [30, 3, -30])
   await view(solo, 'birch-street', [0, 10, -120], [0, 2, -160])
   await view(solo, 'avenue-sidewalk', [76, 2.2, 32], [84, 0.5, 8])
   await view(solo, 'overview', [0, 180, 150], [0, 0, 0])
-  await view(solo, 'woods', [-85, 8, 120], [-160, 6, 150])
   await solo.close()
 
   // ---------------------------------------------------------------- 4. editor
