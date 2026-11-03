@@ -14,6 +14,7 @@ import { Physics } from '../physics/Physics';
 import { Downtown } from './Downtown';
 import { Lawn } from './Lawn';
 import { Roads } from './Roads';
+import type { WorldChunks } from './WorldChunks';
 
 const LIGHT_POOL = 6;
 
@@ -44,7 +45,12 @@ export class Neighborhood {
   private poolTimer = 0;
   readonly downtown: Downtown;
 
-  constructor(private scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary) {
+  /**
+   * With `chunks`, all neighborhood scenery small enough for a grid cell (lot
+   * props, lawns, the woodland, street lamps) is handed to the distance-based
+   * grid; only town-wide pieces (ground, road and sidewalk slabs) stay in `group`.
+   */
+  constructor(private scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary, chunks: WorldChunks | null = null) {
     scene.add(this.group, this.outlines);
     this.outlines.visible = false;
     physics.addGround(WORLD_HALF);
@@ -54,6 +60,9 @@ export class Neighborhood {
     this.buildTrees();
     this.buildLamps();
     this.downtown = new Downtown(scene, physics, mats);
+    // Downtown stays one town-wide merged batch (≈190k triangles, a few hundred draws): splitting it
+    // per cell measured as more draw calls for little triangle saving, so only the neighborhood is chunked.
+    chunks?.adopt(this.group, { layer: 'hood' });
   }
 
   // ---------------------------------------------------------------- terrain & roads
