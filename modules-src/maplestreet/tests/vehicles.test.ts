@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as THREE from 'three/webgpu';
-import { customVehicleKind, CUSTOM_TRAFFIC, DRIVE_TEMPLATES, isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../shared/CustomVehicles';
+import { BUNDLED_VEHICLES } from '../shared/BundledVehicles';
+import { BRAND_PATTERN, customVehicleKind, CUSTOM_TRAFFIC, DRIVE_TEMPLATES, isValidVehicleRecord, VEHICLE_LIMITS, registerCustomVehicles, type CustomVehicleRecord } from '../shared/CustomVehicles';
 import { newAccount, normalizeAccount, SHOP_ITEMS, VEHICLES } from '../shared/Economy';
 import { NpcTraffic } from '../shared/Npc';
 import { accelTargetMph, predictDrive, solveDrive } from '../shared/VehicleDrive';
@@ -10,6 +11,8 @@ import { dynoKind } from '../src/physics/Dyno';
 import { Physics } from '../src/physics/Physics';
 import { Vehicle } from '../src/physics/Vehicle';
 import { PRESETS } from '../src/physics/VehiclePresets';
+import { statSync } from 'node:fs';
+import { join } from 'node:path';
 
 
 export function sampleRecord(id = 'a1b2c3d4-0000-4000-8000-000000000001', overrides: Partial<CustomVehicleRecord> = {}): CustomVehicleRecord {
@@ -108,4 +111,32 @@ test('garages keep published vehicles, even before the catalog loads', () => {
   assert.ok(!acc.garage.includes('bogus' as never));
   assert.ok(!acc.garage.includes('custom:../x' as never));
   assert.ok(acc.garage.includes('mower'));
+});
+
+test('bundled vehicles are always on the dealer lot, and a published record can replace one', () => {
+  registerCustomVehicles([]);
+  for (const b of BUNDLED_VEHICLES) {
+    assert.ok(isValidVehicleRecord(b), `${b.id} is a valid record`);
+    assert.ok(!BRAND_PATTERN.test(b.name), `${b.name} has no real make or model`);
+    const kind = customVehicleKind(b.id);
+    assert.ok(SHOP_ITEMS.dealer.some(i => i.vehicle === kind && i.price === b.dealer.price), `${b.name} is for sale`);
+    assert.ok(TUNING[kind], `${b.name} has tuning`);
+    const file = join(process.cwd(), 'public', b.modelUrl);
+    assert.ok(statSync(file).size < VEHICLE_LIMITS.modelBytes, `${b.modelUrl} exists and fits the model limit`);
+  }
+  const first = BUNDLED_VEHICLES[0];
+  registerCustomVehicles([{ ...first, active: false }]);
+  assert.ok(!SHOP_ITEMS.dealer.some(i => i.vehicle === customVehicleKind(first.id)), 'a published record with the same id wins');
+  registerCustomVehicles([]);
+});
+
+test('bundled vehicles reach their dyno targets', async () => {
+  registerCustomVehicles([]);
+  for (const b of BUNDLED_VEHICLES) {
+    const kind = customVehicleKind(b.id);
+    PRESETS[kind] = { ...PRESETS[b.template], ...TUNING[kind] };
+    const real = await dynoKind(kind, { targetMph: b.targets.zeroToMph });
+    assert.ok(Math.abs(real.topMph - b.targets.topSpeedMph) < 2, `${b.name} top ${real.topMph}`);
+    assert.ok(real.time !== null && Math.abs(real.time - b.targets.zeroToSeconds) < 0.5, `${b.name} 0-${b.targets.zeroToMph}: ${real.time}`);
+  }
 });
