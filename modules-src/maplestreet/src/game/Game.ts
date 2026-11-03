@@ -881,7 +881,9 @@ export class Game {
       else if (v.preset.engineForce > 0) items.push({ label: 'Drive', run: () => this.walkToDrive(v) });
       else items.push({ label: 'Hitch it from the truck (T)', disabled: true });
       const doors = v.doors;
-      if (doors) items.push({ label: doors.isOpen ? 'Close doors' : 'Open doors', run: () => doors.setAll(!doors.isOpen) });
+      if (doors && (!('hasDoors' in doors) || doors.hasDoors)) items.push({ label: doors.isOpen ? 'Close doors' : 'Open doors', run: () => doors.setAll(!doors.isOpen) });
+      if (doors && 'hasHood' in doors && doors.hasHood) items.push({ label: doors.hoodOpen ? 'Close the hood' : 'Open the hood', run: () => doors.setHood(!doors.hoodOpen) });
+      if (doors && 'hasTrunk' in doors && doors.hasTrunk) items.push({ label: doors.trunkOpen ? 'Close the trunk' : 'Open the trunk', run: () => doors.setTrunk(!doors.trunkOpen) });
       const test = !this.account?.garage.includes(v.kind);
       return this.menu.show(I.pointer.x, I.pointer.y, test ? `Test drive: ${name}` : `Your ${name}`, items);
     }

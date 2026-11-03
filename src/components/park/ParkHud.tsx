@@ -2,6 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Camera, Check, Cloud, CloudRain, Droplets, Eraser, FastForward, Footprints, Gauge, Grid3x3, Hotel, Landmark, LoaderCircle, LogOut, Maximize2, MessageCircle, Minus, Mountain, MousePointer2, Paintbrush, Pause, Play, Plus, RotateCw, Save, Sparkles, Store, Sun, Moon, Trash2, Trees, Undo2, Users, Wrench, X, Zap } from 'lucide-react'
 import { ParkRenderer } from '@/lib/park/renderer'
+import { shotCamera } from '@/lib/park/shotCams'
+import { QUALITY_TIERS } from '@/lib/park/quality'
+import type { ParkQuality } from '@/lib/park/quality'
 import type { Preview } from '@/lib/park/renderer'
 import { compressSave } from '@/lib/park/session'
 import { ViewSession } from '@/lib/park/session'
@@ -108,6 +111,8 @@ function staffActivity(staff: Staff) {
   return 'On call'
 }
 
+const QUALITY_LABEL: Record<ParkQuality, string> = { low: 'Low', medium: 'Medium', high: 'High' }
+
 function Window({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   return <section className={`pk-window ${wide ? 'pk-window-wide' : ''}`} aria-label={title}><header><strong>{title}</strong><button aria-label="Close" onClick={onClose}><X size={16} /></button></header><div className="pk-window-body">{children}</div></section>
 }
@@ -128,6 +133,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [toasts, setToasts] = useState<Toast[]>([])
   const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null)
   const [grid, setGrid] = useState(false)
+  const [quality, setQuality] = useState<{ tier: ParkQuality; auto: boolean }>({ tier: 'medium', auto: true })
   const [pathColor, setPathColor] = useState('#cdbb93')
   const [pathBuild, setPathBuild] = useState<PathBuild | null>(null)
   const [pathHoverSegment, setPathHoverSegment] = useState<PathSegment | null>(null)
@@ -173,9 +179,12 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     let renderer: ParkRenderer
     try { renderer = new ParkRenderer(canvas) } catch (error) { setGlError((error as Error).message); return }
     rendererRef.current = renderer
+    setQuality({ tier: renderer.quality, auto: renderer.qualityReason !== '?quality=' })
     if (import.meta.env.DEV) (window as unknown as { __park?: unknown }).__park = { session, renderer }
     renderer.setState(session.state, session.park)
     renderer.focusPark()
+    const shotName = new URLSearchParams(window.location.search).get('shotCam')
+    if (shotName) { const cam = shotName === 'overview' ? renderer.overviewCam() : shotCamera(session.state, shotName); if (cam) Object.assign(renderer.cam, cam) }
     const resize = () => { const r = canvas.getBoundingClientRect(); renderer.resize(r.width, r.height, Math.min(2, window.devicePixelRatio || 1)) }
     resize()
     const observer = new ResizeObserver(resize)
@@ -207,6 +216,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
   useEffect(() => { const r = rendererRef.current; if (r) { r.showGrid = grid || !['select', 'flat', 'stall', 'scenery'].includes(tool.kind) } }, [grid, tool])
   useEffect(() => { const r = rendererRef.current; if (r) r.rideCam = rideCam }, [rideCam])
+  const cycleQuality = () => {
+    const r = rendererRef.current
+    if (!r) return
+    const next = QUALITY_TIERS[(QUALITY_TIERS.indexOf(r.quality) + 1) % QUALITY_TIERS.length]
+    r.setQuality(next)
+    setQuality({ tier: next, auto: false })
+  }
   useEffect(() => {
     const r = rendererRef.current
     if (r) r.preview = { selected: r.preview.selected, piece: r.preview.piece }
@@ -762,6 +778,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       </div>}
       <div className="pk-top-actions">
         <button onClick={() => setGrid(v => !v)} className={grid ? 'on' : ''} title="Grid (G)" aria-label="Toggle grid"><Grid3x3 size={16} /></button>
+        <button onClick={cycleQuality} title={`Graphics quality: ${QUALITY_LABEL[quality.tier]}${quality.auto ? ' (picked for this device)' : ''}. Click to change.`} aria-label={`Graphics quality ${QUALITY_LABEL[quality.tier]}, change`}><Gauge size={16} /><span>{QUALITY_LABEL[quality.tier]}</span></button>
         <button onClick={() => void fullscreen()} title="Fullscreen" aria-label="Fullscreen"><Maximize2 size={16} /></button>
         {!viewOnly && <button onClick={() => void openSave()} title="Save park" aria-label="Save park"><Save size={16} /></button>}
         {session.online && <button onClick={() => togglePanel('chat')} className={panel === 'chat' ? 'on' : ''} title="Chat" aria-label="Chat"><MessageCircle size={16} /></button>}

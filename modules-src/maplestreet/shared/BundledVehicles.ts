@@ -119,6 +119,11 @@ export const BUNDLED_VEHICLES: readonly CustomVehicleRecord[] = [
       mph: 24
     },
     wheelsRemoved: true,
+    parts: {
+      doors: [{ front: 0.92, back: -0.02, bottom: -0.42, top: 0.66 }, { front: -0.06, back: -1.0, bottom: -0.42, top: 0.64 }],
+      hood: { front: 2.4, back: 1.05, bottom: 0.16, top: 0.56 },
+      trunk: { front: -1.62, back: -2.46, bottom: 0.36, top: 0.62 },
+    },
     modelUrl: '/modules/maplestreet/vehicles/meridian-sedan.glb',
     wheelUrl: null,
     active: true,
@@ -232,6 +237,11 @@ export const BUNDLED_VEHICLES: readonly CustomVehicleRecord[] = [
       mph: 24
     },
     wheelsRemoved: true,
+    parts: {
+      doors: [{ front: 0.86, back: -0.18, bottom: -0.27, top: 1.02 }, { front: -0.24, back: -1.0, bottom: -0.25, top: 1.02 }],
+      hood: { front: 2.32, back: 0.95, bottom: 0.34, top: 0.6 },
+      trunk: { front: -2.12, back: -2.62, bottom: -0.1, top: 1.08 },
+    },
     modelUrl: '/modules/maplestreet/vehicles/bulwark-4x4.glb',
     wheelUrl: null,
     active: true,
@@ -345,6 +355,11 @@ export const BUNDLED_VEHICLES: readonly CustomVehicleRecord[] = [
       mph: 24
     },
     wheelsRemoved: true,
+    parts: {
+      doors: [{ front: 1.25, back: 0.15, bottom: -0.42, top: 1.0 }, { front: 0.1, back: -0.92, bottom: -0.42, top: 1.0 }],
+      hood: { front: 2.88, back: 1.55, bottom: 0.38, top: 0.72 },
+      trunk: { front: -2.7, back: -2.96, bottom: -0.22, top: 0.54, drop: true },
+    },
     modelUrl: '/modules/maplestreet/vehicles/ironhorn-crew-cab.glb',
     wheelUrl: null,
     active: true,

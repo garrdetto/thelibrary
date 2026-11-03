@@ -6,6 +6,7 @@
  * frame, with the game's own wheels, lamps and paint.
  */
 import * as THREE from 'three/webgpu';
+import { cutParts } from './CutParts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -98,6 +99,7 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
     applyPaint(copy, r, paint);
     copy.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.keep = true; } });
     holder.add(copy);
+    g.userData.partRig = cutParts(g, r.parts, r.physics.chassis.hz);
     (g.userData.onFill as (() => void) | undefined)?.();
   };
   if (ready.has(r.modelUrl)) fill(ready.get(r.modelUrl)!);

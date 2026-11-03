@@ -34,7 +34,7 @@ function normalized(src: THREE.BufferGeometry, m: THREE.Matrix4, withColor: bool
     const a = g.getAttribute(name) as THREE.BufferAttribute | undefined;
     if (!a) continue;
     const size = name === 'color' ? 3 : a.itemSize;
-    if (a.array instanceof Float32Array && !a.normalized && size === a.itemSize) continue;
+    if (a.array instanceof Float32Array && !a.normalized && size === a.itemSize && !(a as unknown as { isInterleavedBufferAttribute?: boolean }).isInterleavedBufferAttribute) continue;
     const out = new Float32Array(a.count * size);
     for (let i = 0; i < a.count; i++) for (let c = 0; c < size; c++) out[i * size + c] = a.getComponent(i, c);
     g.setAttribute(name, new THREE.BufferAttribute(out, size));

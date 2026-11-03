@@ -168,3 +168,19 @@ test('bundled vehicles reach their dyno targets', async () => {
     assert.ok(real.time !== null && Math.abs(real.time - b.targets.zeroToSeconds) < 0.5, `${b.name} 0-${b.targets.zeroToMph}: ${real.time}`);
   }
 });
+
+test('merging a compressed (quantized) model keeps its scaled size', async () => {
+  const { mergeStatic } = await import('../src/core/Merge');
+  const geo = new THREE.BufferGeometry();
+  // Two triangles spanning -1..1 stored as normalized Int16, as meshopt/KHR_mesh_quantization models are.
+  geo.setAttribute('position', new THREE.BufferAttribute(new Int16Array([-32767, -32767, 0, 32767, -32767, 0, 32767, 32767, 0, -32767, 32767, 0, -32767, -32767, 0, 32767, 32767, 0]), 3, true));
+  const body = new THREE.Group();
+  const holder = new THREE.Group();
+  holder.scale.setScalar(2.5);
+  holder.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial()));
+  body.add(holder);
+  body.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 0.1), new THREE.MeshStandardMaterial()));
+  mergeStatic(body);
+  const box = new THREE.Box3().setFromObject(body);
+  assert.ok(box.max.x > 2.4 && box.min.x < -2.4 && box.max.y > 2.4, `merged body keeps its 5 m size (${box.min.x.toFixed(2)}..${box.max.x.toFixed(2)})`);
+});

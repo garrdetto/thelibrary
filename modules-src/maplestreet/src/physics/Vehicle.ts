@@ -12,6 +12,7 @@ import { MASK, Physics } from './Physics';
 import { wheelbaseOf } from '../../shared/Vehicles';
 import { wheelFor, wheelForCar, makeLights, paintFor, PRESETS, tintGlass, VehicleLights, VehiclePreset } from './VehiclePresets';
 import { VehicleDoors } from './VehicleDoors';
+import type { PartRig } from './CutParts';
 import { carStyleKey, conditionEffects, CRASH_MIN_DV, tuneEffects, type CarStyle, type OwnedCar } from '../../shared/Cars';
 import { applyDents, impactPoint } from './Dents';
 
@@ -29,8 +30,10 @@ export class Vehicle {
   readonly ctrl: RAPIER.DynamicRayCastVehicleController;
   readonly root = new THREE.Group();
   readonly lights: VehicleLights;
-  /** Opening doors, or null for open-air vehicles. */
-  readonly doors: VehicleDoors | null;
+  /** Built-in opening doors, or null for open-air and published vehicles. */
+  private readonly builtinDoors: VehicleDoors | null;
+  /** What opens: the built-in doors, or a published model's cut-out doors, hood and trunk (once it has loaded). */
+  get doors(): VehicleDoors | PartRig | null { return this.builtinDoors ?? (this.shell.userData.partRig as PartRig | undefined) ?? null; }
   private wheels: WheelVis[] = [];
   private headlamp: THREE.SpotLight | null = null;
   private steerAngle = 0;
@@ -110,8 +113,8 @@ export class Vehicle {
     this.lights = makeLights();
     this.paint = paintFor(P, style);
     this.shell = this.buildShell(style);
-    this.doors = VehicleDoors.for(P.kind, this.paint, P.seat.z);
-    if (this.doors) this.root.add(this.doors.group);
+    this.builtinDoors = VehicleDoors.for(P.kind, this.paint, P.seat.z);
+    if (this.builtinDoors) this.root.add(this.builtinDoors.group);
     this.root.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(this.root);
     physics.track(this.body, this.root);

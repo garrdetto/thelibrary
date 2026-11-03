@@ -1,0 +1,265 @@
+{
+ "kinds": {
+  "tree:oak": {
+   "meshes": 1,
+   "verts": 3276,
+   "maxVerts": 3276,
+   "instances": 131
+  },
+  "tree:pine": {
+   "meshes": 1,
+   "verts": 1974,
+   "maxVerts": 1974,
+   "instances": 6
+  },
+  "tree:birch": {
+   "meshes": 1,
+   "verts": 1998,
+   "maxVerts": 1998,
+   "instances": 5
+  },
+  "tree:palm": {
+   "meshes": 1,
+   "verts": 3924,
+   "maxVerts": 3924,
+   "instances": 6
+  },
+  "tree:bush": {
+   "meshes": 1,
+   "verts": 1080,
+   "maxVerts": 1080,
+   "instances": 149
+  },
+  "tree:flowers": {
+   "meshes": 1,
+   "verts": 4068,
+   "maxVerts": 4068,
+   "instances": 6
+  },
+  "tree:hedge": {
+   "meshes": 1,
+   "verts": 1236,
+   "maxVerts": 1236,
+   "instances": 6
+  },
+  "tree:rock": {
+   "meshes": 1,
+   "verts": 1254,
+   "maxVerts": 1254,
+   "instances": 5
+  },
+  "tree:fountain": {
+   "meshes": 1,
+   "verts": 9744,
+   "maxVerts": 9744,
+   "instances": 0
+  },
+  "tree:statue": {
+   "meshes": 1,
+   "verts": 5946,
+   "maxVerts": 5946,
+   "instances": 0
+  },
+  "tree:topiary": {
+   "meshes": 1,
+   "verts": 2340,
+   "maxVerts": 2340,
+   "instances": 5
+  },
+  "person": {
+   "meshes": 144,
+   "verts": 541026,
+   "maxVerts": 6486,
+   "instances": 347
+  },
+  "staff": {
+   "meshes": 18,
+   "verts": 72252,
+   "maxVerts": 6228,
+   "instances": 0
+  },
+  "balloon": {
+   "meshes": 1,
+   "verts": 876,
+   "maxVerts": 876,
+   "instances": 0
+  },
+  "umbrella": {
+   "meshes": 1,
+   "verts": 396,
+   "maxVerts": 396,
+   "instances": 0
+  },
+  "stall:burger:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:pizza:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:fries:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:drinks:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:coffee:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:icecream:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:balloon:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:umbrella:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:toilet:2x2": {
+   "meshes": 1,
+   "verts": 1776,
+   "maxVerts": 1776,
+   "instances": 0
+  },
+  "stall:toilet:1x1": {
+   "meshes": 1,
+   "verts": 1776,
+   "maxVerts": 1776,
+   "instances": 0
+  },
+  "stall:info:1x1": {
+   "meshes": 1,
+   "verts": 2040,
+   "maxVerts": 2040,
+   "instances": 0
+  },
+  "stall:souvenir:3x6": {
+   "meshes": 1,
+   "verts": 1116,
+   "maxVerts": 1116,
+   "instances": 0
+  },
+  "gate": {
+   "meshes": 1,
+   "verts": 144,
+   "maxVerts": 144,
+   "instances": 0
+  },
+  "queueSign": {
+   "meshes": 1,
+   "verts": 216,
+   "maxVerts": 216,
+   "instances": 0
+  },
+  "bench": {
+   "meshes": 1,
+   "verts": 396,
+   "maxVerts": 396,
+   "instances": 7
+  },
+  "bin": {
+   "meshes": 1,
+   "verts": 756,
+   "maxVerts": 756,
+   "instances": 0
+  },
+  "lampPost": {
+   "meshes": 1,
+   "verts": 936,
+   "maxVerts": 936,
+   "instances": 14
+  },
+  "lampHead": {
+   "meshes": 1,
+   "verts": 504,
+   "maxVerts": 504,
+   "instances": 14
+  },
+  "litter": {
+   "meshes": 1,
+   "verts": 72,
+   "maxVerts": 72,
+   "instances": 0
+  },
+  "rain": {
+   "meshes": 1,
+   "verts": 36,
+   "maxVerts": 36,
+   "instances": 0
+  },
+  "parkEntrance": {
+   "meshes": 1,
+   "verts": 336,
+   "maxVerts": 336,
+   "instances": 0
+  },
+  "car:steel:true": {
+   "meshes": 1,
+   "verts": 402,
+   "maxVerts": 402,
+   "instances": 0
+  },
+  "car:steel:false": {
+   "meshes": 1,
+   "verts": 396,
+   "maxVerts": 396,
+   "instances": 0
+  },
+  "car:wooden:true": {
+   "meshes": 1,
+   "verts": 402,
+   "maxVerts": 402,
+   "instances": 0
+  },
+  "car:wooden:false": {
+   "meshes": 1,
+   "verts": 396,
+   "maxVerts": 396,
+   "instances": 0
+  }
+ },
+ "rides": {
+  "ferris:4x2:": 3780,
+  "carousel:3x3:": 2664,
+  "topSpin:4x3:": 3240,
+  "zipper:5x5:": 15912,
+  "dropTower:3x3:": 1392,
+  "wavePool:9x6:rolling": 7092,
+  "tubeSlides:4x5:": 10086,
+  "aquaLoop:3x4:": 8388
+ },
+ "tracks": {
+  "steel#302": 79200,
+  "wooden#304": 64668
+ },
+ "hotels": {
+  "313": 864,
+  "314": 2754
+ },
+ "terrain": 101382,
+ "water": 396,
+ "paths": 2052
+}

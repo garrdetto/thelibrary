@@ -31,6 +31,7 @@ import { makeLights, paintFor, PRESETS, tintGlass, wheelForCar, type VehicleLigh
 import { carStyleKey, tuneEffects, type CarStyle, type OwnedCar } from '../../shared/Cars';
 import { applyDents } from '../physics/Dents';
 import { VehicleDoors } from '../physics/VehicleDoors';
+import type { PartRig } from '../physics/CutParts';
 
 const INTERP_DELAY_MS = 120;
 /** Vehicles get a 3D view inside this radius (m) and lose it past the despawn radius. */
@@ -282,7 +283,7 @@ export class RemoteEntities {
         w.spin -= (speed * dt) / 0.35;
         w.g.children[0].rotation.z = w.spin;
       }
-      view.doors?.update(dt, speed);
+      this.doorsOf(view)?.update(dt, speed);
       view.lights.head.emissiveIntensity = night > 0.3 ? 3 : 0;
       view.lights.tail.emissiveIntensity = night > 0.3 ? 1.2 : 0.15;
       const p = view.root.position, q = view.root.quaternion;
@@ -304,7 +305,7 @@ export class RemoteEntities {
         if (rp.seatRoot !== veh.view.root) {
           this.ensureAvatar(rp).sitIn(veh.view.root, (PRESETS[veh.kind] ?? PRESETS.sedan).seat);
           rp.seatRoot = veh.view.root; rp.shown = true;
-          veh.view.doors?.pulseDriver();
+          this.doorsOf(veh.view)?.pulseDriver();
         }
         rp.avatar!.root.visible = true;
         rp.avatar!.animate(dt, 0, true);
@@ -314,7 +315,7 @@ export class RemoteEntities {
         const dx = b.x - fx, dz = b.z - fz, d2 = dx * dx + dz * dz;
         if (rp.shown && !rp.seatRoot ? d2 > W_DESPAWN2 : d2 > W_SPAWN2) { if (rp.shown) this.hide(rp); continue; }
       }
-      if (rp.seatRoot) this.viewOf(rp.seatRoot)?.doors?.pulseDriver();
+      if (rp.seatRoot) { const seat = this.viewOf(rp.seatRoot); if (seat) this.doorsOf(seat)?.pulseDriver(); }
       if (!rp.shown || rp.seatRoot) this.showStanding(rp);
       const av = rp.avatar!;
       av.root.visible = !b.vehicleId;
@@ -322,6 +323,11 @@ export class RemoteEntities {
       av.root.rotation.y = lerpAngle(a.yaw, b.yaw, k);
       av.animate(dt, a.speed + (b.speed - a.speed) * k, false);
     }
+  }
+
+  /** The view's built-in doors, or a published model's cut-out parts once it has loaded. */
+  private doorsOf(view: VehicleView): VehicleDoors | PartRig | null {
+    return view.doors ?? (view.shell.userData.partRig as PartRig | undefined) ?? null;
   }
 
   private viewOf(root: THREE.Object3D) {

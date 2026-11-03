@@ -158,6 +158,18 @@ function Marker({ id, position, selected, onSelect, color, children }: { id: Mar
   </group>
 }
 
+function PartBoxes({ draft, width }: { draft: Draft; width: number }) {
+  const half = width / 2
+  const boxes: { key: string; box: { front: number; back: number; bottom: number; top: number }; z0: number; z1: number; color: string }[] = []
+  draft.parts.doors.forEach((box, i) => { for (const side of [1, -1]) boxes.push({ key: `d${i}${side}`, box, z0: side * half * 0.55, z1: side * (half + 0.03), color: '#4aa3ff' }) })
+  if (draft.parts.hood) boxes.push({ key: 'hood', box: draft.parts.hood, z0: -half * 0.97, z1: half * 0.97, color: '#5cd17a' })
+  if (draft.parts.trunk) boxes.push({ key: 'trunk', box: draft.parts.trunk, z0: -half * 0.97, z1: half * 0.97, color: '#f2b544' })
+  return <>{boxes.map(({ key, box, z0, z1, color }) => <mesh key={key} position={[(box.front + box.back) / 2, (box.top + box.bottom) / 2, (z0 + z1) / 2]} renderOrder={5}>
+    <boxGeometry args={[box.front - box.back, box.top - box.bottom, Math.abs(z1 - z0)]}/>
+    <meshBasicMaterial color={color} transparent opacity={0.22} depthWrite={false}/>
+  </mesh>)}</>
+}
+
 function ReferenceOutline({ kind, offsetZ }: { kind: ReferenceKind; offsetZ: number }) {
   const ext = BODY_EXTENTS[kind]
   const t = BUILTIN_TUNING[kind]
@@ -231,6 +243,7 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
       <Marker id="seat" position={pos('seat')} selected={selected === 'seat'} onSelect={props.onSelect} color="#4aa3ff"/>
       <Marker id="head" position={pos('head')} selected={selected === 'head'} onSelect={props.onSelect} color="#fff4a8"/>
       <Marker id="tail" position={pos('tail')} selected={selected === 'tail'} onSelect={props.onSelect} color="#ff6a6a"/>
+      <PartBoxes draft={draft} width={width}/>
       {draft.hitch && <Marker id="hitch" position={pos('hitch')} selected={selected === 'hitch'} onSelect={props.onSelect} color="#c9a0ff"/>}
       {selected && <group ref={setTarget} position={pos(selected)}/>}
       <mesh position={[length / 2 + 0.6, -ride + 0.02, 0]} rotation-z={-Math.PI / 2}>
