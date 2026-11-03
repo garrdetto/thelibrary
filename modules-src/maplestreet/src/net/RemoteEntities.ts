@@ -12,7 +12,8 @@ import { mergeStatic } from '../core/Merge';
 import { Avatar } from '../physics/Character';
 import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
-import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
+import { wheelFor, makeLights, paintFor, PRESETS, VehicleLights } from '../physics/VehiclePresets';
+import { carStyleKey } from '../../shared/Cars';
 
 const INTERP_DELAY_MS = 120;
 
@@ -43,7 +44,7 @@ class SnapBuffer<T extends { x: number; y: number; z: number }> {
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
 
 interface RemotePlayer { avatar: Avatar; label: THREE.Sprite; buf: SnapBuffer<PlayerSnap>; seen: number; seatedIn: RemoteVehicle | null; lookKey: string }
-interface RemoteVehicle { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
+interface RemoteVehicle { kind: VehicleSnap['kind']; root: THREE.Group; shell: THREE.Group; styleKey: string; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
 
 function nameSprite(name: string, color: string) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
@@ -89,6 +90,7 @@ export class RemoteEntities {
       if (v.owner === me) continue;
       let rv = this.vehicles.get(v.id);
       if (!rv) { rv = this.spawnVehicle(v); this.vehicles.set(v.id, rv); }
+      else if (carStyleKey(v.style) !== rv.styleKey) this.restyleVehicle(rv, v);
       rv.buf.push(time, v); rv.seen = now;
     }
     // Despawn anything not seen for 3 s.
@@ -100,7 +102,7 @@ export class RemoteEntities {
     const P = PRESETS[v.kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
-    const shell = P.build(makePaint(P.paint), lights);
+    const shell = P.build(paintFor(P, v.style), lights);
     mergeStatic(shell);
     root.add(shell);
     const wheels: RemoteVehicle['wheels'] = [];
@@ -113,7 +115,17 @@ export class RemoteEntities {
     this.scene.add(root);
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(v.x, v.y, v.z));
     this.physics.world.createCollider(R.ColliderDesc.cuboid(P.chassis.hx, P.chassis.hy, P.chassis.hz).setCollisionGroups(MASK.remote), body);
-    return { kind: v.kind, root, wheels, lights, body, buf: new SnapBuffer(), seen: performance.now() };
+    return { kind: v.kind, root, shell, styleKey: carStyleKey(v.style), wheels, lights, body, buf: new SnapBuffer(), seen: performance.now() };
+  }
+
+  private restyleVehicle(rv: RemoteVehicle, v: VehicleSnap) {
+    const P = PRESETS[rv.kind] ?? PRESETS.sedan;
+    rv.root.remove(rv.shell);
+    rv.shell = P.build(paintFor(P, v.style), rv.lights);
+    mergeStatic(rv.shell);
+    rv.shell.traverse(o => (o.castShadow = true));
+    rv.root.add(rv.shell);
+    rv.styleKey = carStyleKey(v.style);
   }
 
   removePlayer(id: string) {

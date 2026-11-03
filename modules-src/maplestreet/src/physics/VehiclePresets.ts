@@ -7,6 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { BUILTIN_TUNING, type BuiltinVehicleKind, type VehicleTuning } from '../../shared/Vehicles';
 import { mergeStatic } from '../core/Merge';
+import type { CarStyle, PaintFinish } from '../../shared/Cars';
 
 export interface VehiclePreset extends VehicleTuning {
   build(paint: THREE.Material, lights: VehicleLights): THREE.Group;
@@ -34,8 +35,19 @@ const M = {
   amber: new THREE.MeshStandardMaterial({ color: 0xffa21a, emissive: 0xff8a00, emissiveIntensity: 0.6, roughness: 0.3 }),
 };
 
-export function makePaint(color: number) {
-  return new THREE.MeshPhysicalMaterial({ color, metalness: 0.45, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
+const FINISH: Record<PaintFinish, { metalness: number; roughness: number; clearcoat: number; clearcoatRoughness: number }> = {
+  gloss: { metalness: 0.12, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.05 },
+  metallic: { metalness: 0.45, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 },
+  matte: { metalness: 0.08, roughness: 0.78, clearcoat: 0, clearcoatRoughness: 1 },
+};
+
+export function makePaint(color: number, finish: PaintFinish = 'metallic') {
+  return new THREE.MeshPhysicalMaterial({ color, ...FINISH[finish] });
+}
+
+/** Paint for an owned car's style, or the vehicle's factory paint. */
+export function paintFor(P: VehicleTuning, style?: CarStyle | null) {
+  return style ? makePaint(parseInt(style.color.slice(1), 16), style.finish) : makePaint(P.paint);
 }
 
 export function makeLights(): VehicleLights {
