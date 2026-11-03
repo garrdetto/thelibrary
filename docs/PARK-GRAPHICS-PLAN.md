@@ -216,3 +216,60 @@ AO and shadow changes carry most of the visible gain on those rides.
 Measured (SwiftShader, auto tier = `low`): draws 194/frame, frame 908 ms min of 5 (base 919–997), running park 1.22 FPS
 avg (base 0.59–0.81), 1% low 0.63, heap 23.1 MB. `medium` 1,118 ms, `high` 1,335 ms. Screenshots:
 `docs/park-graphics/phase3/`.
+
+### Phase 4 — Optional post effects
+- **FXAA over MSAA, shipped for captures only.** `Gl.beginPost/endPost` render the frame into a 4× multisampled
+  target, resolve it with `blitFramebuffer` and run a single-pass FXAA (5 taps on edges, early-out elsewhere) to the
+  canvas; `freePost` releases the targets right after. `renderShot`/`captureOverview` (always `high`) use it, which
+  cleans thin rails, catwalk railings and spokes in the leaderboard JPEG. It is not used for live frames: on a real GPU
+  the pass is well under 1 ms, but at 1080p the extra MSAA colour + depth targets cost ~60 MB of GPU memory next to the
+  canvas's own MSAA buffer, far over the 8 MB budget, and FXAA without MSAA would be a quality step down from what the
+  canvas already gives.
+- **SSAO / contact shadows: skipped.** A half-resolution SSAO needs a depth pre-pass or depth texture plus a blur, at
+  least two extra full-screen passes and draws; the baked per-vertex AO (Phase 1) and canopy AO (Phase 3) already cover
+  the enclosed areas it would darken, and it could not meet the SwiftShader budget.
+- **Bloom: skipped.** The park has a day/night cycle and lit lamp heads, but bloom needs a bright-pass and a blur chain
+  (3+ passes and render targets) for a small gain on a handful of lamps; the emissive lamps already read at night.
+
+### Phase 5 — Verification
+
+All numbers on the same machine (2 vCPU, SwiftShader through headless Chromium 153, 1280×800, DPR 1), "before" from
+the base commit. SwiftShader timings move ±10% run to run on this machine, so ranges are shown where runs differed.
+
+**Official harness** (`node scripts/perf-baseline.mjs --compare --only park`, against a same-machine baseline of the
+base commit; this row measures the Thrill Park menu, which loads the renderer code but draws no 3D):
+
+| Thrill Park row | Before | After |
+| --- | ---: | ---: |
+| Avg FPS | 60.0 | 60.0 |
+| 1% low FPS | 59.5 (55.0 on an earlier run) | 59.5 (55.0 on an earlier run) |
+| JS heap | 15.8 MB | 16.0 MB (+1.3%) |
+| Transferred | 12,749 KB | 12,948 KB (dev server, unminified) |
+| Result | | no regressions |
+
+**Running park** (`scripts/park-shots.mjs`, test park, default camera, auto tier, which is `low` on SwiftShader):
+
+| | Before | After |
+| --- | ---: | ---: |
+| GPU draws / frame | 262 | 194 |
+| Vertices / frame (shadow + main) | 1.01 M + 1.41 M | 0.44 M + 0.76 M |
+| Frame, GPU-synchronised (min of 5) | 919–997 ms | 856–908 ms |
+| Avg FPS (20 s) | 0.59–0.81 | 0.95–1.22 |
+| 1% low FPS | 0.20–0.50 | 0.58–0.63 |
+| JS heap | 22.4 MB | 23.0 MB |
+| Instance upload / frame | 8.4 KB | 8.4 KB (+ static instances only when the camera moves) |
+| `medium` / `high` frame (same scene, SwiftShader) | — | 1,121 / 1,333 ms |
+
+**Bundle:** park chunk `ParkGame-*.js` 368,866 → 407,547 bytes (+38.7 KB raw, +12.9 KB gzip); whole client build
++38.7 KB. No new dependencies, no image assets.
+
+**GPU memory:** vertex buffers shrink (24 bytes per unique vertex instead of 40 per triangle corner); added: detail
+texture array 2.8 MB. FXAA targets exist only during a capture.
+
+**Checks:** `pnpm test` (type check + park tests) passes; `pnpm build` passes. `captureOverview` produces a 1600×1000
+JPEG with the same framing (`overviewCam` is the original framing code) at `high`. Rendering a state after a
+serialize/deserialize round-trip (the path saves and online joins use) gives a byte-identical image to the local state;
+the renderer reads only `ParkState`, so online (server-authoritative) parks render the same as local ones.
+
+Matched screenshots (station, flat ride, water ride, Wave Pool, hotel, shoreline, overview): `docs/park-graphics/before/`
+and `docs/park-graphics/after/`, side by side in `docs/park-graphics/before-after.jpg`.
