@@ -16,6 +16,8 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/components/ModuleHub.tsx` — homepage library grid and featured module — `index.tsx`.
 - `src/components/ModuleScoreboard.tsx` — top-10 board under scored iframes, refreshes on `tl-score-saved` — `index.tsx`.
 - `src/components/LapRecordBoard.tsx` — lap-record tabs for racing and Short Track Showdown, refreshes on `tl-lap` — `Racing.tsx`, `index.tsx`.
+- `src/components/FairwayRecordBoard.tsx` — Fairway Nine record book (Round / Closest to the pin / Match history tabs, admin reset), refreshes on `tl-fairway` — `index.tsx`.
+- `src/lib/fairway.ts` — browser-safe Fairway Nine board types, limits, formatting and the fetch client (`fetchFairwayBoard`, `saveFairwayRecord`) — `FairwayRecordBoard.tsx`, `routes/fairway.ts`.
 - `src/components/AdminRecordReset.tsx` — admin-only reset of the selected board — boards and `index.tsx`.
 - `src/components/PoolAccount.tsx`, `SignInRibbon.tsx` — sign-in form and ribbon — `index.tsx`, `PoolTable.tsx`, `Racing.tsx`.
 - `src/components/GroupChat.tsx`, `SitePresence.tsx` — floating chat, invites (`meta.invite`), online presence — `index.tsx`, `Racing.tsx`.
@@ -24,10 +26,11 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 
 ### Tooling and delivery
 
-- `package.json` — scripts `dev`, `build` (learning modules, then the site), `assets` (no-op until Phase 2), `test` (engine type-check via `tsconfig.engine.json` until Phase 8 adds suites), `gate`, `engine:smoke`; pins the engine versions below — CI and developers.
+- `package.json` — scripts `dev`, `build` (learning modules, then the site), `assets` (no-op until Phase 2), `test` (engine + fairway type-check via `tsconfig.engine.json`, park, Maple Street and Fairway Nine node suites), `gate`, `engine:smoke`; pins the engine versions below — CI and developers.
 - `vite.config.ts` — site build; runs `learningModules()` first (watch mode under `pnpm dev`) so `pnpm build` stays the single command — Vite.
 - `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
-- `tsconfig.engine.json` — strict type-check of `engine/` and `modules-src/_template/` — `pnpm test`.
+- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/` and `modules-src/fairway/` (tests excluded; they run through esbuild) — `pnpm test`.
+- `scripts/fairway-tests.mjs` — bundles `modules-src/fairway/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
 - `scripts/engine-smoke.mjs` — Vite-builds `_template`, embeds it in a hub-like iframe, checks boot, 60 Hz loop, `--lib-*` tokens, same-origin Draco/KTX2 decoders, `dispose()`, console errors and CDN requests; `--out` saves a screenshot — `pnpm engine:smoke`.
 - `.gitignore` — ignores the generated `public/modules/<id>.html` pages and `public/modules/chunks/` — git.
 - `.github/workflows/modules.yml` — required `modules` check: install, `pnpm assets`, `pnpm build`, `pnpm test`, `node scripts/perf-baseline.mjs --check` — pull requests to `main`.
@@ -53,6 +56,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/account.ts` — `/api/pool-account`, `/api/workspace-access`, `/api/account-settings`, `/api/workspace-admin`, tickets — `api.ts`, `routes/racing.ts`, `routes/park.ts`.
 - `src/server/routes/pool.ts` — `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay` — `api.ts`.
 - `src/server/routes/racing.ts` — `/api/racing` tickets, lap records (incl. Short Track tracks), paint, AI skins — `api.ts`.
+- `src/server/routes/fairway.ts` — `/api/fairway`: GET `?board=round|pin|match` (top 20 ascending plus the caller's best), POST `record` (Zod, same-origin, signed in, id `<user>:<run>`) and `reset-records` (admin); D1 `fairway_records` (migration 0018, also created on first use) — `api.ts`.
 - `src/server/routes/park.ts` — `/api/park` tickets, gzip saves (slots 0–6), company-value boards with park screenshots (`?shot=`) — `api.ts`.
 - `src/server/routes/maplestreet.ts` — `/api/maplestreet` WebSocket upgrade to the shared world — `api.ts`.
 - `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world`; registers published items and vehicles before loading the world and again on `POST /catalog` — `server.ts`.
@@ -65,6 +69,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/studio.ts` — `/api/studio`, `/api/library`, `/api/asset`, `/api/learning`, `/api/lyric-presets` — `api.ts`.
 - `src/server/routes/site-changes.ts` — `/api/site-changes` jobs and workflow dispatch — `api.ts`.
 - `migrations/0001…0009_*.sql` — D1 schema (users … site_changes) — `wrangler d1 migrations apply`.
+- `migrations/0018_fairway_records.sql` — `fairway_records` (board `round`/`pin`/`match`, value, JSON detail) with (board, value) and (board, user_id) indexes — `wrangler d1 migrations apply`.
 
 ## Shared engine
 
@@ -100,8 +105,8 @@ Engine code imports three only as `three/webgpu` (addons from `three/addons/*` s
 - `engine/render/Quality.ts` — `resolveQuality`: `auto` tier per backend, `?quality=` override — module `index.ts`.
 - `engine/physics/World.ts` — `PhysicsWorld`: lazy-loaded Rapier, fixed `step(dt)`, `track` + interpolated `syncMesh(body, mesh, alpha)`, `setDebug(parent)` line draw — module `index.ts`.
 - `engine/ui/Hud.ts` — `Hud`: DOM overlay panels, stats, buttons, toasts styled with `--lib-*` tokens mirrored live from the hub page — module `index.ts`.
-- `engine/net/HubBridge.ts` — same-origin `postMessage`: `tl-room`, `tl-score-saved`, `tl-lap` out, `tl-host` in — `Peer`, `Scores`.
-- `engine/net/RoomFormats.ts` — production room-code formats (prefix, alphabet, length, wire case) for sandlot, chess, checkers, maplestreet, shorttrack — `Peer` callers.
+- `engine/net/HubBridge.ts` — same-origin `postMessage`: `tl-room`, `tl-score-saved`, `tl-lap`, `tl-fairway` out, `tl-host` in — `Peer`, `Scores`, fairway `index.ts`.
+- `engine/net/RoomFormats.ts` — production room-code formats (prefix, alphabet, length, wire case) for sandlot, chess, checkers, maplestreet, fairway, shorttrack — `Peer` callers.
 - `engine/net/Peer.ts` — `PeerRoom`: host with retry on taken ids, join, broadcast, guest rejoin, `bridgeHub()` (`tl-host` → `tl-room`), `autoJoinFromQuery()` (`?room=`) — modules with online modes.
 - `engine/net/Scores.ts` — `Scores.submit` (same contract as `tlScores.submit` → `/api/module-scores`, then `tl-score-saved`), `Scores.lapSaved` (`tl-lap`), `installGlobal()` — modules with boards.
 
@@ -127,6 +132,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `botwreck` | three.js 0.186.1 ESM + cannon-es 0.20 | `modules-src/botwreck/` |
 | `shorttrack` | three.js 0.186.1 ESM + addons (Sky, RoomEnvironment, bloom) | `modules-src/shorttrack/` |
 | `maplestreet` | three.js 0.186.1 WebGPU build (WebGL2 fallback), Rapier 0.14 | `modules-src/maplestreet/` |
+| `fairway` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, TSL node materials | `modules-src/fairway/` |
 | `park` | hand-written WebGL2 | `src/lib/park/` |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
@@ -153,7 +159,8 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/core/Merge.ts` — geometry merge helpers — `Downtown`, `RemoteEntities`, `Vehicle`, `VehiclePresets`.
 - `src/core/DevMode.ts` — developer instance flag (`?dev=1`), its save key and draft counts — `main`, `OfflineTransport`, `CustomModels`, `CustomVehicleModels`.
 - `src/core/Storage.ts` — per-device settings — `main`, `Game`, `BuildController`, `Host`, `WorldTransport`.
-- `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch — `main`.
+- `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch; vehicles are parked at home (never brought to you), Go Home every 15 minutes, the parked-vehicle unstack watchdog and the right-click vehicle menu — `main`.
+- `src/game/ContextMenu.ts` — right-click menu panel (title + actions, Escape/outside click closes, arrow keys) — `Game`.
 - `src/game/CameraRig.ts` — third-person and build cameras — `Game`.
 - `src/game/Hud.ts` — HUD, menus, notifications — `Game`.
 - `src/game/PlotMap.ts` — town map overlay (bounds from `MAP_BOUNDS`, civic buildings included) — `Hud`.
@@ -176,7 +183,9 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/world/Lawn.ts` — mowable lawns: per-lot data texture (blade lean + growth, 4 texels/m) and the view-dependent stripe shader; diamond patterns from crossed passes; grass grows back over five in-game days — `Neighborhood`, `Grass`.
 - `src/world/Grass.ts` — instanced grass: thin four-blade clumps; on lawns they follow the lawn's growth (≈4 → 11 cm) and lean the way they were mowed, shaded by lean vs. camera so stripes read in 3D; short verges along the curves, meadow elsewhere — `Game`.
 - `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
-- `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
+- `src/physics/Physics.ts` — Rapier world and colliders; rounded vehicle colliders (`vehicleShape`); wheel rays hit trailer beds (`CG.DECK`) but never other cars — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
+- `src/physics/Parking.ts` — free-spot search for placing vehicles (buildings, props, every vehicle) and the stacked-vehicle check — `Game`.
+- `src/physics/VehicleDoors.ts` — hinged door leaves for enclosed built-ins (`DOOR_SPECS`), driver-door pulse on getting in/out, open/close all — `Vehicle`, `RemoteEntities`.
 - `src/physics/Character.ts` — kinematic character controller and `Avatar` (scanned model, stand-in while loading) — `Game`, `RemoteEntities`.
 - `src/physics/Vehicle.ts` — raycast vehicle: grip-limited, rate-limited steering with Ackermann front wheels, pedal ramps, torque curve, handbrake rear slide; built from any `PRESETS` entry, built-in or published — `Game`, `Dyno`, `VehicleTestDrive`.
 - `src/physics/CustomVehicleModels.ts` — published vehicles: fetches `/api/maplestreet-vehicles` (cached for offline), registers them with `shared/CustomVehicles.ts`, adds `PRESETS` entries whose body is the .glb in the chassis frame with game wheels, lamps and paint (material or color-mask recolor) — `main`, `VehicleTestDrive`.
@@ -184,40 +193,80 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/game/VehicleTestDrive.ts` — `?vehicleTest=1`: the admin editor posts a draft record; runs the dyno, reports `tl-vehicle-test-result`, then lets the admin drive on a flat pad — `main`.
 - `src/avatar/AvatarAssets.ts` — loads `public/modules/maplestreet/{male,female}.glb` + region masks, flattened-hair variant — `Character.ts`.
 - `src/avatar/AvatarMaterial.ts` — TSL wardrobe recolor shader — `AvatarModel`.
-- `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/idle/seated pose — `Character.ts`.
+- `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/run/idle/seated pose — `Character.ts`.
+- `src/avatar/Gait.ts` — speed-matched walk and run cycles (cadence from stride length so planted feet don't slide; running lean, swing-knee tuck, arm pump) — `AvatarModel`, `Character.ts` stand-in.
 - `src/avatar/HairAndHats.ts` — long hair, buns, hats on the head bone — `AvatarModel`.
 - `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids).
 - `src/game/DevPanel.ts` — developer instance panel (F8): published and draft items and vehicles with Place and Drive — `main` (only with `?dev=1`), `Game.devPlace` / `devDrive`.
 - `src/game/WardrobeUI.ts` — one-time character creator (male/female, hair, face, starter outfit), wardrobe (hair and face only; outfit locked) and the Maple Threads shop panel — `Game`.
 - `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation, `keepOutfit` (clothes only change at Maple Threads) — `RoomLogic`, `Economy`, `Npc`, client.
 - `tools/build-characters.mjs` — offline scan → rigged avatar + mask pipeline (not part of the build).
-- `src/physics/VehiclePresets.ts` — procedural bodies of the built-in vehicles (tuning comes from `shared/Vehicles.ts`); `PRESETS` also holds published vehicles; `wheelFor` picks a published wheel model or the procedural wheel — `Vehicle`, `Downtown`, `RemoteEntities`, `Hud`.
+- `src/physics/VehiclePresets.ts` — procedural bodies of the built-in vehicles (tuning comes from `shared/Vehicles.ts`); `PRESETS` also holds published vehicles; `wheelFor` picks a published wheel model or the procedural wheel; `makePaint`/`paintFor` build the paint for a finish or an owned car's style — `Vehicle`, `Downtown`, `RemoteEntities`, `Hud`.
 - `src/net/Transport.ts` — transport interface — every transport, `Game`.
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
 - `src/net/OfflineTransport.ts` — solo mode (unlimited money, save `maplestreet/solo/v3`) and fallback — `Game`.
 - `src/net/Host.ts` — in-browser authority for solo mode — `OfflineTransport`.
-- `src/net/RemoteEntities.ts` — remote player and vehicle interpolation; vehicles are data (snapshot buffers) with a pooled 3D view + collider only within 200 m (released past 240 m), neighbor walkers likewise within 110 m — `Game`.
-- `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
+- `src/net/RemoteEntities.ts` — remote player and vehicle interpolation; vehicles are data (snapshot buffers) with a pooled 3D view + collider only within 200 m (released past 240 m), neighbor walkers likewise within 110 m; a pooled view is repainted (paint, dents, tint, rims, lift) whenever it shows a car with a different snapshot `style`; remote doors swing when their driver gets in or out; `pickVehicle` for the right-click menu — `Game`.
+- `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs); a newer connection for the same account supersedes the old one so its player and vehicles leave the world — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop; storage keys are prefixed with `WORLD_GENERATION` (bump it to reset everyone) — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — sidewalks (with their road side, `residentialSidewalks()`), `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
 - `shared/DowntownGrid.ts` — the downtown grid east of Market Ave: `GRID_X` / `GRID_Z`, `GRID_BLOCKS`, `TOWN_SQUARE`, `GRID_ROADS`, `GRID_SIDEWALKS`, `GRID_BUILDINGS` (parcels and landmarks) — `WorldLayout`, `Downtown`, `Neighborhood`, `Npc`.
 - `shared/Seed.ts` — simulated neighbors' roster, `seedNeighborhood`, `upgradeSeed` (once per `SEED_VERSION`) — `RoomLogic`.
 - `shared/HousePlans.ts` — seven house plans in lot-local coordinates (`Plot`) emitted as build ops — `Seed`.
 - `shared/Assets.ts` — asset status (`draft`, `published`, `retired`) — `CustomItems`, `CustomVehicles`, `src/server/maplestreet-assets.ts`, the admin editors.
-- `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep following distance and lean in turns; published vehicles with traffic on join as extra drivers (`syncCustomTraffic`) — `Host`, `WorldServer`.
+- `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep a bumper-to-bumper gap to oriented vehicle footprints (`obstaclesFrom`, `pathGap`; junction tie-break) and lean in turns; published vehicles with traffic on join as extra drivers (`syncCustomTraffic`) — `Host`, `WorldServer`.
 - `shared/Catalog.ts` — build/buy catalog (`custom` and `hidden` fields for published items) — `RoomLogic`, `BuildRules`, `Furniture`, `Mesher`, `Thumbs`, `Hud`.
 - `shared/CustomItems.ts` — published-item records, limits, `footprintFromSize`, `registerCustomItems` (adds `custom:<id>` entries to `CATALOG`) — `CustomModels`, `maplestreet-world.ts`, `src/server/maplestreet-items.ts`, the admin editor.
 - `shared/BuildRules.ts` — build validation — `RoomLogic`, build files, `Hud`, `PlotMap`.
-- `shared/Economy.ts` — prices, loan cap, pay; `VEHICLES` (built-ins + published), `refreshDealer`, `normalizeAccount` keeps `custom:` garage entries — `RoomLogic`, `WorldServer`, `Game`, `Hud`.
+- `shared/Economy.ts` — prices, loan cap, pay; `VEHICLES` (built-ins + published, `paintable` false for published vehicles that keep their own colors), `refreshDealer`, `normalizeAccount` keeps `custom:` garage entries and fills `Account.cars` — `RoomLogic`, `WorldServer`, `Game`, `Hud`.
+- `shared/Cars.ts` — each owned car's look (`OwnedCar`: paint color and gloss/metallic/matte finish, crash `damage` 0–1 and up to `MAX_DENTS` dents in chassis space), dealer `PAINT_SWATCHES`, `cleanCar` validation, `crashDamage`/`addCrash` (crashes start at `CRASH_MIN_DV` 4 m/s of horizontal speed change in one step, a ~30 mph wall hit costs about a quarter), `conditionEffects` (up to −35% engine, −20% grip, a slight pull), `carStyleKey` for rebuilds — `Economy`, `RoomLogic` (buy, crash, snapshots), `Vehicle`, `RemoteEntities`, `Hud`.
+- `shared/BodyShop.ts` — Maple Body & Wheel: layout (`BODY_SHOP`, three `BODY_SHOP_BAYS`, `inBay`, `atBodyShop`), the menu (rims, tint, lift, performance parts) and every price (`repairPrice`, `quote`), `cleanOrder`/`applyOrder` — `RoomLogic` (`service`), `BodyShopUI`, `Downtown`, `MiniMap`, `PlotMap`.
+- `src/world/BodyShop.ts` — the three-bay garage building: open bays, dividers, lifts, sign, apron; only walls, dividers and posts collide — `Downtown`.
+- `src/game/BodyShopUI.ts` — the body shop window (repairs, paint, tint, wheels, lift, performance) with a live itemized quote — `Game`.
+- `src/physics/CutParts.ts` — opening doors, hood and trunk for published vehicles: `cutParts` moves the model's triangles inside each `CustomVehicleSpec.parts` box into a hinged leaf (doors at their front edge, mirrored; hood at its back edge; trunk at its front edge, or a `drop` tailgate at its bottom edge), and `PartRig` swings them with the same calls as `VehicleDoors` plus `setHood`/`setTrunk` — `CustomVehicleModels`, `Vehicle`, `RemoteEntities`, `Game` (right-click menu).
+- `src/physics/Dents.ts` — `applyDents` pushes a body's vertices in around each stored dent (geometry cloned first), `impactPoint` finds where a hit landed on the chassis outline — `Vehicle`, `RemoteEntities`.
 - `shared/Vehicles.ts` — `VehicleKind` (built-ins plus `custom:<uuid>`), built-in tuning as plain data, `TUNING` registry, `rideHeight`, `wheelbaseOf`, `vehicleRole`, `BODY_EXTENTS` (reference outlines) — everything that handles vehicles.
 - `shared/CustomVehicles.ts` — published-vehicle records, limits, `BRAND_PATTERN`, `registerCustomVehicles` (tuning, dealer, traffic; always adds the bundled vehicles) — `CustomVehicleModels`, `Npc`, `maplestreet-world.ts`, `src/server/maplestreet-vehicles.ts`, the vehicle editor.
 - `shared/BundledVehicles.ts` — vehicle records that ship with the game (Meridian Sedan, Bulwark 4x4, Ironhorn Crew Cab), models in `public/modules/maplestreet/vehicles/`; a published record with the same id replaces one — `CustomVehicles`.
 - `shared/VehicleDrive.ts` — `predictDrive` / `solveDrive`: top speed and 0–60 targets → engine force and torque cutoff, matching the physics — the vehicle editor, tests.
 - `shared/PaintMask.ts` — color-mask recolor shared by the game and the editor preview.
-- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building/sidewalk layout and minimap routing; `tests/houses.test.ts` — every house plan on both lot orientations, seeding and the seed upgrade; `tests/suggest.test.ts` — the vehicle editor's Suggest points wheel finder (`src/components/maplestreet/vehicle/suggest.ts`) and view-to-metre conversion (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
+- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building/sidewalk layout and minimap routing; `tests/houses.test.ts` — every house plan on both lot orientations, seeding and the seed upgrade; `tests/movement.test.ts` — gait foot speed and knee timing, NPC gaps and no gridlock, reconnect superseding; `tests/suggest.test.ts` — the vehicle editor's Suggest points wheel finder (`src/components/maplestreet/vehicle/suggest.ts`) and view-to-metre conversion; `tests/cars.test.ts` — car paint on accounts, dealer purchases with a color and finish, snapshots carrying the owner's paint, and crash damage (thresholds, dents, which cars the authority will damage); `tests/bodyshop.test.ts` — the body shop's placement and bays, prices, order validation, upgrade effects and paid service only for a car parked in a bay; `tests/parts.test.ts` — cutting part boxes out of a mesh into hinged leaves, how each part swings, and part validation (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
 - `shared/Mowing.ts` — lawn cells (cut time + blade lean per m²), lean blending, growth (`GROW_DAYS` = 5), mowing pay, run-length encoding — `RoomLogic`, `Game`, `Lawn`, `Grass`.
 - `shared/Protocol.ts` — message protocol types — every transport, `RoomLogic`, `WorldServer`.
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.
+
+### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
+- `modules-src/fairway/module.json` — id `fairway`, title, accent `#4fd27a`, modes — `config.ts`.
+- `modules-src/fairway/tuning.ts` — pure tunables shared by systems and tests: air, ball, clubs, surface contact, lies, trees, cup, flight, terrain shape, wind, meter, camera, match rules, timing, hole data — `config.ts`, `systems/*`.
+- `modules-src/fairway/config.ts` — `tuning` plus engine overrides (`net.maxPeers` 3), action bindings, terrain/water/tree/grass/flag/ball/gauge looks, HUD and lobby copy, room format — `index.ts`, `view/*`, `session/*`, `ui/*`.
+- `modules-src/fairway/data/holes.json` — the nine original holes: tee, pin, route, tee box, fairway, green, bunker, water and cart-path polygons in world metres, hills, green tilt, trees, OOB bounds, drop zones — `tuning.ts`.
+- `modules-src/fairway/index.html` — page shell: `#stage`, start screen with mode picker and record-book tabs, lobby, scorecard, pause, meter canvas, turn banner; `--lib-*` tokens only — `vite.modules.ts` (→ `public/modules/fairway.html`).
+- `modules-src/fairway/index.ts` — entry: App, quality, environment, lighting, post, `Input<Action>`, Hud, sky/balls/tracer/aim guide/grass, steps `Play` each fixed step, moves meshes each frame, `__tlModule`, disposes on `pagehide` — `index.html`.
+- `modules-src/fairway/models/Terrain.ts` — heightfield mesh with zone attributes and a TSL grass shader (two-octave noise, mow stripes) — `view/HoleScene.ts`.
+- `modules-src/fairway/models/Water.ts` — pond plane with a TSL Gerstner `positionNode` and fresnel `colorNode` — `view/HoleScene.ts`.
+- `modules-src/fairway/models/Trees.ts` — instanced oak, conifer and birch: bent branching trunks, noise-sculpted foliage clumps, alpha-cut leaf cards, TSL wind sway — `view/HoleScene.ts`.
+- `modules-src/fairway/models/Grass.ts` — instanced tapered grass blades with a colour ramp and TSL sway — `view/GrassField.ts`.
+- `modules-src/fairway/models/Flag.ts` — cup, flagstick and cloth with a sine flutter node and celebration boost — `view/HoleScene.ts`.
+- `modules-src/fairway/models/TeeMarkers.ts`, `models/Ball.ts`, `models/Tracer.ts`, `models/AimGuide.ts`, `models/Sky.ts` — tee posts, ball, shot tracer line, instanced aim dots, gradient sky dome — `view/HoleScene.ts`, `index.ts`.
+- `modules-src/fairway/view/HoleScene.ts` — samples a `Course` into terrain, water, tree, flag and tee-marker specs and disposes them per hole — `index.ts`.
+- `modules-src/fairway/view/GrassField.ts` — plants grass blades on a world-anchored grid around the ball by surface — `index.ts`.
+- `modules-src/fairway/session/Play.ts` — session controller: match and round state, swing launch, solo/host authority, guest replay, records, camera stepping — `index.ts`.
+- `modules-src/fairway/session/OnlineRoom.ts` — `PeerRoom<FairwayMessage>` glue: roster handshake, sender checks, late join, drops, `bridgeHub`, `autoJoinFromQuery` — `Play.ts`.
+- `modules-src/fairway/session/Presenters.ts` — HUD, scorecard and record-book display models — `Play.ts`, `index.ts`.
+- `modules-src/fairway/ui/Screens.ts`, `ui/HudView.ts`, `ui/Gauge.ts` — DOM screens and board tabs, engine-Hud panels with touch buttons, the curved swing gauge and numeric readout — `index.ts`.
+- `modules-src/fairway/systems/BallFlight.ts` — deterministic semi-implicit Euler flight (gravity, drag, Magnus lift, wind), bounce, roll, cup, water and OOB; `simulateShot(params, seed)` — `Match`, `Play`, tests.
+- `modules-src/fairway/systems/Course.ts` — hole heightfield, gradient, normals, surfaces, bounds, tee/forward tee, pin and drops — `BallFlight`, `Match`, `view/*`.
+- `modules-src/fairway/systems/Surfaces.ts` — polygon tests, surface priority, lie power/spin factors, contact properties — `Course`, `BallFlight`.
+- `modules-src/fairway/systems/Wind.ts` — seeded hole wind and its height profile — `BallFlight`, `Match`.
+- `modules-src/fairway/systems/SwingMeter.ts` — three-click meter state machine and accuracy curve — `Round`, `ui/Gauge.ts`.
+- `modules-src/fairway/systems/Camera.ts` — follow/preview/tracking/green camera state machine with the critically damped spring — `Play`.
+- `modules-src/fairway/systems/Match.ts` — match authority: holes, strokes, penalties, farthest-first turns, shot seeds, placements — `Play`, tests.
+- `modules-src/fairway/systems/Round.ts` — `RoundState` union and reducer/ticker for every mode — `Play`.
+- `modules-src/fairway/systems/Protocol.ts` — Zod-validated `FairwayMessage` union (hello, roster, start, shot, state, turn, finish) — `OnlineRoom`.
+- `modules-src/fairway/systems/Records.ts` — `/api/fairway` save/load client with an injected hub notifier — `Play`, `ui/Screens.ts`.
+- `modules-src/fairway/systems/ClubAdvice.ts`, `systems/Random.ts`, `systems/Vector.ts` — club reach table and suggestion, seeded RNG and hashing, vector math — systems, `Play`.
+- `modules-src/fairway/tests/fairway.test.ts` — flight (carry range, wind, spin, curve, bunker, rough, water, OOB, putting), meter, spring, match, protocol and round tests — `scripts/fairway-tests.mjs`.
+- `public/images/modules/fairway.webp` — hub thumbnail rendered from the module — `modules.ts`.
 
 ### sandlot — Sandlot Sluggers
 - `modules-src/sandlot/index.html` — whole 2D module, PeerJS rooms `sandlot-<code>` — `vite.modules.ts` (→ `public/modules/sandlot.html`).
@@ -247,6 +296,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/shorttrack/index.ts` — entry; provides `window.Peer`, imports `main.js` — `index.html`.
 - `modules-src/shorttrack/main.js` — whole module: three.js scene, trucks (`TM`), `buildStockCar`, liveries, `?track=`, lap posts, `tl-lap`, PeerJS `sts-oval-race-<code>` — `index.ts`.
 - `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
+- `modules-src/shorttrack/iconic-schemes.js` — the AI field: iconic NASCAR look-alike schemes per car number (`ICONIC_FIELD`, `ICONIC`), knockoff logos (`LOGOS`, `logoCanvas`) and the side/hood painters (`drawSchemeSide`, `drawSchemeHood`) — `main.js`.
 - `modules-src/shorttrack/prison-speedway.js` — Prison Speedway scenery (`buildPrisonSet`: guard towers, curtain wall, razor wire, searchlights, name board; `buildPrisonInfield`: the walled infield cell house with two three-storey cell blocks, four round towers, a barred front gate, barred windows with inmates (instanced) and a `setNight` hook that lights the cells) and the inmate crowd and stand colors — `main.js`.
 - `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
 
@@ -301,11 +351,12 @@ Every phase keeps these exactly (sources: `AGENTS.md`, `docs/AUDIT.md` §1, veri
 - `tlScores.submit(module, value)` from `public/modules/module-scores.js`.
 - `postMessage` child → parent `{type:'tl-score-saved', module, saved}` — refreshes `ModuleScoreboard`.
 - `postMessage` child → parent `{type:'tl-lap', track, mode}` — refreshes `LapRecordBoard`.
-- `postMessage` parent → child `{type:'tl-host'}`; child answers `{type:'tl-room', code}` — sandlot, chess, checkers, shorttrack, maplestreet.
-- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet), `?track=shorttrack|dells|dellswide|prison|dirt` (Short Track Showdown), `?world=`, `?solo=` (Maple Street).
-- PeerJS room codes: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (Maple Street also allows `L`), shown upper-case; peer ids lower-case the code: `sandlot-`, `tl-chess-`, `tl-checkers-`. Short Track Showdown: 5 letters A–Z without I/O, peer id `sts-oval-race-<CODE>`.
+- `postMessage` child → parent `{type:'tl-fairway', board}` (`round`, `pin`, `match`) — refreshes `FairwayRecordBoard`.
+- `postMessage` parent → child `{type:'tl-host'}`; child answers `{type:'tl-room', code}` — sandlot, chess, checkers, shorttrack, maplestreet, fairway.
+- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet, fairway; fairway falls back to a fixed `Guest-xxxxx` per browser), `?track=shorttrack|dells|dellswide|prison|dirt` (Short Track Showdown), `?world=`, `?solo=` (Maple Street).
+- PeerJS room codes: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (Maple Street also allows `L`), shown upper-case; peer ids lower-case the code: `sandlot-`, `tl-chess-`, `tl-checkers-`, `tl-fairway-` (host plus up to three guests). Short Track Showdown: 5 letters A–Z without I/O, peer id `sts-oval-race-<CODE>`.
 - Group-chat invites `meta.invite = {module, label, code}`.
-- `/api/*`: `pool-account`, `workspace-access`, `workspace-admin`, `site-changes`, `account-settings`, `pool-practice`, `pool-preferences`, `pool-cue-overlay`, `racing`, `park`, `maplestreet`, `maplestreet-items`, `maplestreet-vehicles`, `meshy`, `group-chat`, `module-scores`, `studio`, `library`, `asset`, `learning`, `lyric-presets`.
+- `/api/*`: `pool-account`, `workspace-access`, `workspace-admin`, `site-changes`, `account-settings`, `pool-practice`, `pool-preferences`, `pool-cue-overlay`, `racing`, `fairway`, `park`, `maplestreet`, `maplestreet-items`, `maplestreet-vehicles`, `meshy`, `group-chat`, `module-scores`, `studio`, `library`, `asset`, `learning`, `lyric-presets`.
 - Railway service: socket.io default namespace (pool), `/racing`, `/park`; tickets from `/api/pool-account?action=ticket`, `/api/racing`, `/api/park`; client URL env `VITE_POOL_SERVER_URL`; pool header `X-Pool-Player`.
 - Ticket redeem: `/api/pool-account?action=redeem`, `/api/racing?action=redeem`, `/api/park?action=redeem` (server-to-server).
 - Server-shared files: `server/racing-engine.mjs`, `server/park/` (deterministic commands); changes redeploy Railway and bump `/version` in `server/index.mjs`.

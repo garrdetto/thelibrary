@@ -9,6 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from './shorttrack-numbers.js';
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from './prison-speedway.js';
+import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from './iconic-schemes.js';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -26,7 +27,8 @@ const CFG = {
   wheelbase:2.8, steerLow:0.47, steerSpeed:0.07, steerRampIn:8, steerRampOut:6,
   carScale:1.15,     // visual and collision size of every car
   spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
-  wallRest:0.22, carRest:0.15, damageScale:0.7,   // 0.7 = cars are 30% tougher (take 30% less damage per hit)
+  wallRest:0.22, carRest:0.15, carBounce:0.7, damageScale:0.7,   // carBounce 0.7: car-to-car rebound and spin kick are 30% softer
+    // 0.7 = cars are 30% tougher (take 30% less damage per hit)
   paceSpeed:31.0, aiPaceSpeed:30.50, cautionSpeed:29, cautionTime:25, aiDecel:5.5, maxCars:20
 };
 
@@ -538,40 +540,11 @@ function updSmoke(dt){for(const p of smoke){if(p.life<=0){p.s.visible=false;cont
 // ===================== LIVERIES =====================
 const PATTERNS=['solid','stripes','twotone','flames','panels','fade','rainbow'];
 const PATTERN_NAMES={solid:'Solid',stripes:'Racing stripes',twotone:'Two-tone split',flames:'Flames',panels:'Door panels',fade:'Gradient fade',rainbow:'Rainbow'};
-// The AI field: [name, number, primary, secondary, accent, pattern, number fill, number outline, sponsor text, sponsor bg, sponsor text colour]
-const AI_FIELD=[
-  ['Jeff Hair-don','24','#1b3fa8','#e4252b','#ffd400','rainbow','#ffd400','#e4252b','PRISMACOAT','#ffffff','#1b3fa8'],
-  ['Dale Bumphardt','3','#111111','#8a8d91','#c8102e','twotone','#ffffff','#c8102e','WRENCHWORKS','#c8102e','#ffffff'],
-  ['Dale Earnvotes Jr.','8','#d10a11','#ffffff','#111111','stripes','#ffffff','#111111','REDLINE LAGER','#ffffff','#d10a11'],
-  ['Jimmie Yawnson','48','#1c4fa1','#b9bec5','#ffffff','twotone','#ffffff','#0d2a5c','HOMESTEAD SUPPLY','#ffffff','#1c4fa1'],
-  ["Tony Stewin'",'20','#f96302','#ffffff','#111111','panels','#ffffff','#111111','BUILDRITE','#ffffff','#f96302'],
-  ['Rusty Walrus','2','#111111','#c9a227','#ffffff','stripes','#c9a227','#ffffff','GOLDEN PILS','#c9a227','#111111'],
-  ["Mark Marryin'",'6','#ffffff','#0a3d91','#e31837','twotone','#e31837','#0a3d91','V-GUARD OIL','#0a3d91','#ffffff'],
-  ['Dale Deliverett','88','#4b2e1e','#f2b10e','#ffffff','twotone','#f2b10e','#111111','SWIFTPARCEL','#f2b10e','#4b2e1e'],
-  ['Bill Smelliott','94','#da291c','#ffc72c','#ffffff','fade','#ffc72c','#7a0d07','BIG BUN BURGERS','#ffc72c','#da291c'],
-  ['Terry La-Brrr-nte','5','#ffd200','#d71920','#ffffff','twotone','#d71920','#ffffff','CRUNCHY FLAKES','#d71920','#ffffff'],
-  ['Bobby Labattery','18','#00843d','#ffffff','#ffd200','stripes','#ffffff','#003b1b','POWERCELL','#ffffff','#00843d'],
-  ['Darrell Jawtrip','17','#ffffff','#c8102e','#002f87','panels','#002f87','#ffffff','MAIN ST AUTO','#c8102e','#ffffff'],
-  ['Michael Waltripped','15','#003da5','#ffd100','#ffffff','twotone','#ffd100','#001f5b','PARTSPRO','#ffd100','#003da5'],
-  ['Happy Harddick','29','#f5f5f5','#111111','#c8102e','fade','#111111','#c8102e','WRENCHWORKS','#111111','#ffffff'],
-  ['Bratt Kenseth','17','#febd17','#111111','#ffffff','twotone','#111111','#ffffff','TOUGHCUT TOOLS','#111111','#febd17'],
-  ['Kyle Boosch','18','#e21b23','#ffd200','#2b59c3','flames','#ffd200','#2b59c3','CANDY DOTS','#2b59c3','#ffd200'],
-  ['Curse Busch','97','#111111','#ffffff','#ffcc00','fade','#ffffff','#111111','INKMARK','#ffffff','#111111'],
-  ['Carl Backwards','99','#ffffff','#00539b','#f0a500','stripes','#00539b','#ffffff','SAFEHARBOR INS.','#00539b','#ffffff'],
-  ['Denny Hamlost','11','#4d148c','#ff6600','#ffffff','twotone','#ffffff','#ff6600','SKYSHIP EXPRESS','#ffffff','#4d148c'],
-  ['Danica Pat-Wreck','10','#39ff14','#111111','#ff6a00','flames','#111111','#ffffff','WEBNAME','#111111','#39ff14'],
-  ['Jeff Blurton','99','#ffffff','#0b7a3e','#e31b23','stripes','#e31b23','#0b7a3e','MAXCHARGE','#0b7a3e','#ffffff'],
-  ['Ricky Mudd','10','#f47b20','#ffd200','#1f4fa3','fade','#1f4fa3','#ffffff','FRESHSPIN','#1f4fa3','#ffffff'],
-  ["Sterling Mumblin'",'4','#ffcc00','#d10a11','#111111','stripes','#d10a11','#111111','SNAPSHOT FILM','#d10a11','#ffcc00'],
-  ['Ernie Swervan','28','#111111','#d10a11','#ffffff','stripes','#ffffff','#d10a11','STARFUEL','#d10a11','#ffffff'],
-  ['Bad Brad Kegselowski','2','#0b3a8c','#ffffff','#c9a227','panels','#ffffff','#c9a227','GOLDEN PILS','#ffffff','#0b3a8c'],
-  ['Joey Loafano','22','#ffd500','#e0201b','#111111','twotone','#e0201b','#ffffff','COASTLINE OIL','#e0201b','#ffd500'],
-  ['Ryan Nerdman','12','#ffffff','#d4202c','#002b7f','fade','#002b7f','#ffffff','SIGNAL WIRELESS','#d4202c','#ffffff'],
-  ["Kasey Kahn't",'9','#c8102e','#111111','#ffffff','twotone','#ffffff','#111111','RAMRIDGE DEALERS','#111111','#ffffff'],
-  ['Word? Burton','22','#ffcd11','#111111','#ffffff','twotone','#111111','#ffffff','BIGIRON EQUIP','#111111','#ffcd11'],
-  ['Greg Whiffle','16','#e01b22','#ffffff','#111111','stripes','#ffffff','#111111','STICKWELL','#ffffff','#e01b22'],
-].map(([name,number,primary,secondary,accent,pattern,numColor,numOutline,sp,spBg,spFg])=>({name,number,primary,secondary,accent,pattern,
-  numStyle:'block',numFont:'classic',numSlant:false,numSize:125,numColor,numOutline,numAccent:accent,numDoors:true,numRoof:true,numTail:true,sponsor:[sp,spBg,spFg]}));
+// The AI field: every car runs a look-alike of the iconic NASCAR scheme its number is known for
+// (iconic-schemes.js: parody names, knockoff logos). lv.scheme names the scheme; the side/hood/atlas painters draw it.
+const AI_FIELD=ICONIC_FIELD.map(f=>({name:f.name,number:f.number,primary:f.primary,secondary:f.secondary,accent:f.accent,pattern:'solid',
+  numStyle:'block',numFont:'classic',numSlant:!!f.num.slant,numSize:125,numColor:f.num.fill,numOutline:f.num.outline,numAccent:f.num.accent,
+  numDoors:true,numRoof:true,numTail:true,scheme:f.scheme}));
 const RAINBOW=['#e4252b','#f7931e','#ffd400','#2bb24c','#1b75bc','#7b3fa0'];
 function rainbowBands(g,x0,x1,y0,y1){const dy=(y1-y0)/RAINBOW.length;RAINBOW.forEach((c,i)=>{g.fillStyle=c;g.fillRect(x0,y0+i*dy,x1-x0,dy*1.03);});}
 
@@ -592,7 +565,8 @@ function cleanLv(l){
     numSlant:bool(l.numSlant,italic),numSize:Number.isFinite(size)?clamp(Math.round(size/5)*5,60,150):125,
     numColor:col(l.numColor,'#ffffff'),numOutline:col(l.numOutline,'#111111'),numAccent:col(l.numAccent,col(l.accent,d.accent)),
     numDoors:bool(l.numDoors,true),numRoof:bool(l.numRoof,true),numTail:bool(l.numTail,true),veh:VEHICLES[l.veh]?l.veh:'truck',
-    ...(Array.isArray(l.sponsor)&&HEX.test(l.sponsor[1]||'')&&HEX.test(l.sponsor[2]||'')?{sponsor:[String(l.sponsor[0]||'').replace(/[<>]/g,'').slice(0,18),l.sponsor[1],l.sponsor[2]]}:{})};
+    ...(Array.isArray(l.sponsor)&&HEX.test(l.sponsor[1]||'')&&HEX.test(l.sponsor[2]||'')?{sponsor:[String(l.sponsor[0]||'').replace(/[<>]/g,'').slice(0,18),l.sponsor[1],l.sponsor[2]]}:{}),
+    ...(typeof l.scheme==='string'&&ICONIC[l.scheme]?{scheme:l.scheme}:{})};
 }
 function hslHex(h,s,l){h=mod(h,1);const f=n=>{const k=(n+h*12)%12,a=s*Math.min(l,1-l);return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0');};return '#'+f(0)+f(8)+f(4);}
 function randomPaint(r){
@@ -1497,8 +1471,12 @@ const TRK_REAR=TM.DIM.RA*TM_S*TRUCK_SCALE,TRK_HALF=0.83*TM_S*TRUCK_SCALE;
 function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);return canvasTex(W,H,(g,w,h)=>{
   const u=x=>left?(TM_X1-x)/TM_L*w:(x-TM_X0)/TM_L*w,vy=y=>(1-(y-TM_Y0)/(TM_Y1-TM_Y0))*h,pm=w/TM_L,front=left?0:w,dir=left?1:-1;
   g.textAlign='center';g.textBaseline='middle';
-  const p2=lv.secondary,a=lv.accent;
-  switch(lv.pattern){
+  const p2=lv.secondary,a=lv.accent,sch=!lv.pace&&lv.scheme&&ICONIC[lv.scheme];
+  if(sch){   // metres on this side: x forward, y up (same frame as u()/vy())
+    const ax=(left?-1:1)*w/TM_L,dy=-h/(TM_Y1-TM_Y0);
+    g.save();g.setTransform(ax,0,0,dy,left?TM_X1*w/TM_L:-TM_X0*w/TM_L,h*TM_Y1/(TM_Y1-TM_Y0));
+    drawSchemeSide(g,sch,{xf:TM_X1,xr:TM_X0,yb:0.24,yt:1.04},Math.sign(ax),Math.sign(dy));g.restore();}
+  else switch(lv.pattern){
     case 'stripes':g.fillStyle=p2;g.fillRect(0,vy(1.02),w,0.07*pm);g.fillRect(0,vy(0.4),w,0.07*pm);g.fillStyle=a;g.fillRect(0,vy(0.94),w,0.02*pm);g.fillRect(0,vy(0.31),w,0.02*pm);break;
     case 'twotone':g.fillStyle=p2;g.fillRect(0,vy(0.6),w,h-vy(0.6));g.fillStyle=a;g.fillRect(0,vy(0.62),w,0.025*pm);break;
     case 'flames':g.fillStyle=p2;g.strokeStyle=a;g.lineWidth=3;
@@ -1510,7 +1488,7 @@ function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);retu
   }
   if(lv.pace){g.font=`900 ${0.32*pm}px Arial Black,Impact,sans-serif`;g.fillStyle='#111';g.fillText('PACE TRUCK',u(-0.4),vy(0.66),w*0.5);}
   else{
-    drawSponsor(g,u(-2.38),vy(0.7),0.66*pm,0.26*pm,sponsorOf(lv));
+    if(!sch)drawSponsor(g,u(-2.38),vy(0.7),0.66*pm,0.26*pm,sponsorOf(lv));
     const cols=['#ffd60a','#ffffff','#111111','#2e86de','#ffffff','#d62828','#ffffff','#0b6e4f'],txt=['#111','#d62828','#fff','#fff','#1d3557','#fff','#111','#fff'];
     for(let i=0;i<8;i++){const cx=u(1.05)+(i%2?1:-1)*0.035*pm,cy=vy(0.62)+Math.floor(i/2)*0.075*pm;g.fillStyle=cols[i];g.fillRect(cx-0.03*pm,cy-0.03*pm,0.06*pm,0.06*pm);
       g.fillStyle=txt[i];g.font=`bold ${Math.round(0.02*pm)}px Arial`;g.fillText(['SPEED','TIRES','FUEL','BRAKE','PLUGS','OIL','GEARS','SHOCK'][i],cx,cy,0.055*pm);}
@@ -1522,6 +1500,11 @@ function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);retu
 });}
 function tmHoodTex(lv){return canvasTex(512,456,(g,w,h)=>{const pz=w/1.6,vx=x=>(1-(x-1.08)/1.42)*h;
   g.textAlign='center';g.textBaseline='middle';
+  const sch=!lv.pace&&lv.scheme&&ICONIC[lv.scheme];
+  if(sch){   // (x forward, y lateral) metres -> canvas: lateral across, forward up
+    g.save();g.setTransform(0,-h/1.42,pz,0,w/2,h*(1+1.08/1.42));
+    drawSchemeHood(g,sch,{x0:1.08,xf:2.5,half:0.8},(cv,f,wm)=>{g.save();g.setTransform(1,0,0,1,0,0);const lw=wm*pz,lh=lw*cv.height/cv.width;g.drawImage(cv,w/2-lw/2,vx(f)-lh/2,lw,lh);g.restore();});
+    g.restore();return;}
   if(lv.pattern==='stripes'||lv.pattern==='panels'){g.fillStyle=lv.secondary;g.fillRect(w/2-0.17*pz,0,0.34*pz,h);g.fillStyle=lv.accent;g.fillRect(w/2-0.2*pz,0,0.025*pz,h);g.fillRect(w/2+0.175*pz,0,0.025*pz,h);}
   if(lv.pace){g.font='900 90px Arial Black';g.fillStyle='#111';g.fillText('PACE',w/2,vx(1.8));}
   else drawSponsor(g,w/2,vx(1.75),1.05*pz,0.3*pz,sponsorOf(lv));});}
@@ -1586,7 +1569,19 @@ function carLiveryTex(lv,size,glyphPx){
     const p2=lv.secondary,ac=lv.accent,band=(y0,y1,c)=>{g.fillStyle=c;g.fillRect(-4,y0,8,y1-y0);};
     const centre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-4,-half,8,half*2);g.fillStyle=ac;g.fillRect(-4,-half-edge,8,edge);g.fillRect(-4,half,8,edge);};
     const vcentre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-half,-1,half*2,4);g.fillStyle=ac;g.fillRect(-half-edge,-1,edge,4);g.fillRect(half,-1,edge,4);};
-    for(const side of ['L','R'])region(side,()=>{
+    const sch=!lv.pace&&lv.scheme&&ICONIC[lv.scheme];
+    if(sch){
+      const E={xf:Math.max(R.L[3],R.L[4]),xr:Math.min(R.L[3],R.L[4]),yb:0.24,yt:0.86},Y=s=>E.yb+s*(E.yt-E.yb);
+      for(const side of ['L','R'])region(side,(sa,sd)=>drawSchemeSide(g,sch,E,sa,sd));
+      region('T',(sa,sd)=>{
+        if(sch.roof){g.fillStyle=sch.roof;g.fillRect(-1.6,-2,2.6,4);}
+        if(sch.deck){g.fillStyle=sch.deck;g.fillRect(-4,-2,4-1.6,4);}
+        drawSchemeHood(g,sch,{x0:1.0,xf:E.xf,half:1.1},(cv,f,wm)=>{const hm=wm*cv.height/cv.width;g.save();g.translate(f,0);g.scale(sa,sd);g.rotate(Math.PI/2);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();});});
+      // nose and tail carry the full-length side bands
+      for(const end of ['B','F'])region(end,()=>{for(const op of sch.side)if(op[0]==='band'&&((op[4]??0)<=0.02||(op[5]??1)>=0.98)){
+        const y0=op[1]<=0?-1:Y(op[1]),y1=op[2]>=1.15?3:Y(op[2]);g.fillStyle=op[3];g.fillRect(-2,y0,4,y1-y0);}});
+    }
+    else for(const side of ['L','R'])region(side,()=>{
       switch(lv.pattern){
         case 'stripes':band(0.76,0.82,p2);band(0.26,0.32,p2);band(0.72,0.735,ac);band(0.345,0.36,ac);break;
         case 'twotone':band(-1,0.5,p2);band(0.5,0.525,ac);break;
@@ -1597,14 +1592,14 @@ function carLiveryTex(lv,size,glyphPx){
         case 'rainbow':rainbowBands(g,-4,4,0.78,0.3);break;
         case 'fade':{const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-1,8,4);}break;
       }});
-    region('T',()=>{
+    if(!sch)region('T',()=>{
       if(lv.pattern==='stripes'||lv.pattern==='panels')centre(0.17,0.025);
       else if(lv.pattern==='fade'){const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-2,8,4);}});
-    for(const end of ['B','F'])region(end,()=>{
+    if(!sch)for(const end of ['B','F'])region(end,()=>{
       if(lv.pattern==='stripes'||lv.pattern==='panels')vcentre(0.17,0.025);
       else if(lv.pattern==='twotone'){band(-1,0.5,p2);band(0.5,0.525,ac);}
       else if(lv.pattern==='fade'&&end==='B'){g.fillStyle=p2;g.fillRect(-2,-1,4,4);}});
-    if(!lv.pace){const sc=document.createElement('canvas');sc.width=512;sc.height=154;drawSponsor(sc.getContext('2d'),256,77,504,146,sponsorOf(lv));
+    if(!lv.pace&&!sch){const sc=document.createElement('canvas');sc.width=512;sc.height=154;drawSponsor(sc.getContext('2d'),256,77,504,146,sponsorOf(lv));
       const logo=(nm,cx,cy,lw,rot)=>region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(sc,-lw/2,-lw*0.15,lw,lw*0.3);});
       logo('L',-1.75,0.62,0.95);logo('R',-1.75,0.62,0.95);logo('T',1.65,0,0.9,Math.PI/2);}
     if(!lv.number)return;
@@ -1764,7 +1759,7 @@ function stepCar(c,dt,ctl,cap){
   c.vx=sh*nv-ch*vl;c.vz=ch*nv+sh*vl;c.vf=nv;
   c.x+=c.vx*dt;c.z+=c.vz*dt;c.tp=toTrack(c.x,c.z);
   walls(c);
-  if(!c.isPace){const nsp=mod(c.tp.s-S_LINE,P);if(c.sp>P-60&&nsp<60)lineCross(c);else if(c.sp<60&&nsp>P-60)c.cross--;c.sp=nsp;}
+  if(!c.isPace){const nsp=mod(c.tp.s-S_LINE,P);aiPace(c,c.sp,nsp);if(c.sp>P-60&&nsp<60)lineCross(c);else if(c.sp<60&&nsp>P-60)c.cross--;c.sp=nsp;}
 }
 function lineCross(c){
   c.cross++;const now=performance.now()/1000;
@@ -1807,9 +1802,9 @@ function collidePair(a,b){
   const rub=1-CFG.contactSlow/120;if(am){a.vx*=rub;a.vz*=rub;}if(bm){b.vx*=rub;b.vz*=rub;}
   const vn=(a.vx-b.vx)*best.nx+(a.vz-b.vz)*best.nz;
   if(vn<0){
-    const j=-(1+CFG.carRest)*vn/w,jx=j*best.nx,jz=j*best.nz;
-    if(am){a.vx+=jx;a.vz+=jz;a.av+=0.12*((best.pz-a.z)*jx-(best.px-a.x)*jz);}
-    if(bm){b.vx-=jx;b.vz-=jz;b.av+=0.12*(-(best.pz-b.z)*jx+(best.px-b.x)*jz);}
+    const kb=CFG.carBounce,j=-(1+CFG.carRest*kb)*vn/w,jx=j*best.nx,jz=j*best.nz,yk=0.12*kb;   // rebound and yaw kick scaled by carBounce
+    if(am){a.vx+=jx;a.vz+=jz;a.av+=yk*((best.pz-a.z)*jx-(best.px-a.x)*jz);}
+    if(bm){b.vx-=jx;b.vz-=jz;b.av+=yk*(-(best.pz-b.z)*jx+(best.px-b.x)*jz);}
     const hit=-vn,loss=1-Math.min(0.08,hit*0.012);
     {const ds=sgnDs(a.tp.s,b.tp.s),front=ds>0?a:b;if(front.ai&&Math.abs(a.tp.lat-b.tp.lat)<AI_TOUCH*0.85&&hit<3.5)front.looseT=0.7;} // tapped from behind: the AI gets loose and lifts
     if(am){a.vx*=loss;a.vz*=loss;}if(bm){b.vx*=loss;b.vz*=loss;}
@@ -1922,7 +1917,7 @@ function aiCtl(c,dt){
     lane=slow?c.fileLane:onLine(GROOVE_LOW+c.passOff);
     const mu=CFG.aiGrip*(c.gripB||1)*Math.max(0.8,1-0.0012*(c.dmg.l+c.dmg.rt));
     const muP=CFG.grip*(c.gripB||1)*Math.max(0.8,1-0.0012*(c.dmg.l+c.dmg.rt)-0.0006*(c.dmg.f+c.dmg.r));
-    const vAt=b=>{const t=Math.tan(b),lim=Math.sqrt(CFG.g*(muP+t)/Math.max(0.05,1-muP*t)*(R+lane))*AI_CORNER;return Math.min(lim,Math.sqrt(CFG.g*(mu+t)/(1-mu*t)*(R+lane))*0.95*c.skill);};
+    const vAt=b=>{const t=Math.tan(b),lim=Math.sqrt(CFG.g*(muP+t)/Math.max(0.05,1-muP*t)*(R+lane))*AI_CORNER;return Math.min(lim,Math.sqrt(CFG.g*(mu+t)/(1-mu*t)*(R+lane))*0.95*c.skill*(c.paceK||1));};
     const vE=vAt(bankAt(T1)),vM=vAt(CFG.turnBank*Math.PI/180);
     const inT1=s>=T1&&s<T1+TURN,inT2=s>=T2;
     if(inT1||inT2){const into=(inT1?s-T1:s-T2)/TURN;target=into<0.2?vE:into>0.55?vM*1.04:vM;}
@@ -1983,9 +1978,28 @@ let settings={laps:25,ai:11,night:new URLSearchParams(location.search).get('nigh
 // gb/pb: grip and power edge over stock, lc: seconds between lane-change decisions (lower = more aggressive)
 // Traffic awareness (path scan, wreck avoidance, slide saves, bump-and-run) is the same at every level.
 const AI_LEVELS={
-  easy:  {sk:[1.11,0.04], dc:10.0,pass:28,gb:1.02, pb:1.02, lc:2.4,ag:0.2},
-  medium:{sk:[1.16,0.035],dc:10.8,pass:32,gb:1.04, pb:1.035,lc:2.1,ag:0.5},
-  hard:  {sk:[1.19,0.03], dc:11.3,pass:36,gb:1.065,pb:1.055,lc:1.7,ag:0.85}};
+  easy:  {sk:[1.15,0.03], dc:10.7,pass:33,gb:1.035,pb:1.03, lc:1.9,ag:0.4, pace:1.05, vary:0.010},
+  medium:{sk:[1.18,0.025],dc:11.2,pass:37,gb:1.055,pb:1.05, lc:1.6,ag:0.65,pace:1.025,vary:0.008},
+  hard:  {sk:[1.21,0.02], dc:11.7,pass:41,gb:1.075,pb:1.065,lc:1.3,ag:0.85,pace:1.0,  vary:0.006}};
+// pace/vary: lap-time target as a multiple of the track baseline (the average of its top 20 Time Attack laps),
+// with each car drawn within +/- vary of it, so a Hard field runs right at the record-board average.
+// Track baseline: the average of the top 20 Time Attack laps on this track (seconds), or null with too few laps.
+function aiBaseline(){const l=(REC.lists['time-attack']||[]).slice(0,20).map(r=>r.milliseconds).filter(ms=>ms>=TRACK.minLap);
+  return l.length>=3?l.reduce((a,b)=>a+b,0)/l.length/1000:null;}
+// Lap pacing: each AI car with a target lap time (c.lapTgt) measures a rolling lap at the line and at half
+// distance and trims c.paceK, which scales its corner speed and power (and grip when it needs more), so it
+// settles on its target lap. Only green-flag laps count; the first lap after the green is ignored.
+const PACE_K=[0.82,1.1];
+function aiPace(c,oldSp,nsp){
+  if(!c.ai||!c.local||!c.lapTgt||c.isPace)return;
+  if(race.ph!=='green'||c.fin){c.paceCk=null;return;}
+  const half=P/2,hit=(oldSp>P-60&&nsp<60)?0:(oldSp<half&&nsp>=half&&nsp-oldSp<60)?1:-1;if(hit<0)return;
+  const now=performance.now()/1000;c.paceCk=c.paceCk||[null,null];
+  const prev=c.paceCk[hit];c.paceCk[hit]=now;if(prev==null||now-race.greenT<c.lapTgt*1.2)return;
+  const lt=now-prev,err=clamp(lt/c.lapTgt-1,-0.05,0.05);
+  c.paceK=clamp((c.paceK||1)*(1+0.85*err),PACE_K[0],PACE_K[1]);aiPaceApply(c);
+}
+function aiPaceApply(c){const k=c.paceK||1;c.powB=(c.powB0||1)*(1+(k-1)*1.2);c.gripB=(c.gripB0||1)*(k>1?1+(k-1)*0.7:1);}
 // ag: chance an AI races a car alongside hard (holds its line, door to door) instead of giving it room
 // Each vehicle (truck, Super Late Model) keeps its own saved paint scheme; 'sts_livery' remembers the last one used.
 const lvKey=v=>'sts_livery_'+v;
@@ -2103,7 +2117,7 @@ function beginRace(msg){
   Object.assign(race,{ph:attack?'attack':'pace',mode:attack?'time-attack':NET.online?'multiplayer':'race',laps:attack?9999:settings.laps,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false,formP:-P/2});lastPhase=race.ph;resetMarks();fetchRecords(race.mode);
   msg.grid.forEach((e,i)=>{
     const isMe=e.id===NET.myId,local=isMe||(NET.host&&e.ai);
-    const c=new Car(e.id,cleanLv(e.lv),{local,ai:e.ai,player:isMe});c.skill=e.sk||0.97;c.aiDecel=e.dc||0;c.passD=e.pa||20;c.gripB=e.gb||1;c.powB=e.pb||1;c.laneCD=e.lc||3;c.aggr=e.ag??0.5;c.sideId=null;c.sideMode=null;c.sideT=0;
+    const c=new Car(e.id,cleanLv(e.lv),{local,ai:e.ai,player:isMe});c.skill=e.sk||0.97;c.aiDecel=e.dc||0;c.passD=e.pa||20;c.gripB=e.gb||1;c.powB=e.pb||1;c.laneCD=e.lc||3;c.aggr=e.ag??0.5;c.gripB0=c.gripB;c.powB0=c.powB;c.lapTgt=+e.tl||0;c.paceK=1;c.paceCk=null;c.sideId=null;c.sideMode=null;c.sideT=0;
     const row=Math.floor(i/2);c.gridRow=row;c.fileLane=i%2?0.6:-3.6;c.lane=-3.6;c.lapDirty=true;
     if(attack){c.place(S_LINE-70,-2);c.cross=1;}else{c.place(GRID_S-row*GRID_ROW,c.fileLane);c.cross=1;rollAt(c,FORM_V);}
     cars.set(e.id,c);if(isMe)player=c;
@@ -2123,8 +2137,9 @@ function aiRoster(n){
 function hostStart(){
   readHostSettings();
   const ents=[...NET.players.values()].map(p=>({id:p.id,lv:p.lv,ai:false}));
-  const r=rng((Math.random()*1e9)|0),used=new Set(ents.map(e=>e.lv.number)),humanNums=new Set(used),nAI=Math.min(settings.ai,CFG.maxCars-ents.length);
-  const roster=aiRoster(CFG.maxCars);for(let i=0;i<nAI;i++){const lv={...roster[i],veh:myLv.veh};if(humanNums.has(lv.number))while(used.has(lv.number))lv.number=String(1+Math.floor(r()*98));used.add(lv.number);const A=AI_LEVELS[settings.diff||'medium'];ents.push({id:'ai'+i,lv,ai:true,sk:+(A.sk[0]+r()*A.sk[1]).toFixed(3),dc:A.dc,pa:A.pass,gb:A.gb,pb:A.pb,lc:A.lc,ag:A.ag});}
+  const base=aiBaseline(),r=rng((Math.random()*1e9)|0),used=new Set(ents.map(e=>e.lv.number)),humanNums=new Set(used),nAI=Math.min(settings.ai,CFG.maxCars-ents.length);
+  // AI cars keep their own numbers (each number has its scheme): a car whose number a human is running sits out
+  const roster=aiRoster(CFG.maxCars).filter(l=>!humanNums.has(l.number));for(let i=0;i<Math.min(nAI,roster.length);i++){const lv={...roster[i],veh:myLv.veh};used.add(lv.number);const A=AI_LEVELS[settings.diff||'medium'];ents.push({id:'ai'+i,lv,ai:true,sk:+(A.sk[0]+r()*A.sk[1]).toFixed(3),dc:A.dc,pa:A.pass,gb:A.gb,pb:A.pb,lc:A.lc,ag:A.ag,tl:base?+(base*A.pace*(1+(r()*2-1)*A.vary)).toFixed(3):0});}
   for(let i=ents.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[ents[i],ents[j]]=[ents[j],ents[i]];}
   const set={...settings};delete set.attack;const msg={t:'start',set,grid:ents};sendAll(msg);beginRace(msg);
 }
@@ -2548,6 +2563,7 @@ wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)r
 wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)return;const box=t.closest('.recbox');if(box)showRecords(box.id,t.dataset.rec);});
 function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)};const gn=$('gName');gn.value=myLv.name;gn.disabled=true;gn.title='Your library username is your driver name';
   const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(!player)rebuildMenuCar();}
+fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
 
 // ===================== INPUT =====================

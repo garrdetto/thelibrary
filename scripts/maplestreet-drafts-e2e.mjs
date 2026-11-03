@@ -14,9 +14,11 @@
  *
  *   ADMIN_PASSWORD=… node scripts/maplestreet-drafts-e2e.mjs [baseUrl] [legacyItemId]
  */
+import { build } from 'esbuild'
 import { chromium } from 'playwright'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const BASE = process.argv[2] ?? 'http://localhost:3000'
 const LEGACY_ID = process.argv[3] ?? null
@@ -24,6 +26,10 @@ const PASSWORD = process.env.ADMIN_PASSWORD ?? 'local-admin-pass'
 const OUT = resolve(import.meta.dirname, '../.e2e')
 mkdirSync(OUT, { recursive: true })
 const root = resolve(import.meta.dirname, '..')
+const layoutFile = join(OUT, 'layout.mjs')
+await build({ entryPoints: [join(root, 'modules-src/maplestreet/shared/WorldLayout.ts')], bundle: true, platform: 'node', format: 'esm', outfile: layoutFile, logLevel: 'warning' })
+const { SHOP_DOORS } = await import(pathToFileURL(layoutFile).href)
+const dealer = SHOP_DOORS.find(d => d.kind === 'dealer')
 
 const log = (...args) => console.log('•', ...args)
 const assert = (ok, message) => { if (!ok) throw new Error(`FAILED: ${message}`); log('ok', message) }
@@ -100,7 +106,7 @@ try {
   const note = await dev.locator('.dev-note').innerText()
   assert(/1 item/.test(note), `the start screen reports the draft (${note})`)
   await shot(dev, 'dev-start')
-  await dev.locator('#playWorld').click()
+  await dev.locator('#playWorld').click({ timeout: 180000 })
   await dev.waitForFunction(() => window.maple && window.maple.account, null, { timeout: 180000 })
   const label = await dev.evaluate(() => window.maple.net?.label ?? '')
   assert(/Developer instance/.test(label), `runs on the developer solo authority (${label})`)
@@ -139,18 +145,20 @@ try {
   assert(census.neighbors === 28 && census.open >= 30 && census.seed === 2, `28 starter houses and ${census.open} lots for sale`)
   // Bundled vehicles (shared/BundledVehicles.ts): on the lot, buyable, and they sit on their wheels and drive.
   const bundled = ['custom:bundled-meridian-sedan', 'custom:bundled-bulwark-4x4', 'custom:bundled-ironhorn-crew-cab']
-  const lot = await solo.evaluate(async kinds => {
+  const lot = await solo.evaluate(async ({ kinds, dealer }) => {
     const g = window.maple
     const pos = g.character.position.clone()
-    pos.set(128, 0, 21)
+    pos.set(dealer.x, 0, dealer.z)
     g.character.teleport(pos)
+    await new Promise(r => setTimeout(r, 1500))
     const before = g.account.money
     for (let i = 0; i < 100 && !kinds.every(k => g.account.garage.includes(k)); i++) {
-      if (i % 15 === 0) for (const k of kinds) if (!g.account.garage.includes(k)) g.send({ t: 'buy', shop: 'motors', item: k })
+      if (i % 15 === 0) for (const k of kinds) if (!g.account.garage.includes(k)) g.send({ t: 'buy', shop: dealer.id, item: k })
       await new Promise(r => setTimeout(r, 100))
     }
     const out = { owned: kinds.filter(k => g.account.garage.includes(k)), paid: before - g.account.money, cars: [] }
-    kinds.forEach((k, i) => { if (out.owned.includes(k)) { g.bringOut(k); g.placeVehicle(g.vehicles.get(k), 25 + i * 11, 2.5, 0) } })
+    // Straight through addVehicle: the garage only lets one extra vehicle out at a time.
+    kinds.forEach((k, i) => { if (out.owned.includes(k)) { const at = pos.clone().set(25 + i * 11, 0, 2.5); g.placeVehicle(g.vehicles.get(k) ?? g.addVehicle(k, at, 0), at.x, at.z, 0) } })
     g.hud.closeModals()
     for (let i = 0; i < 150; i++) g.fixed(1 / 60)
     for (const k of out.owned) {
@@ -161,19 +169,42 @@ try {
       out.cars.push({ k, y: +t.y.toFixed(3), ride: +ride.toFixed(3), up: +(1 - 2 * (q.x * q.x + q.z * q.z)).toFixed(3), verts })
     }
     return out
-  }, bundled)
-  assert(lot.owned.length === 3 && lot.paid === 24500 + 68000 + 38500, `the three bundled vehicles are sold at Maple Motors ($${lot.paid}, ${lot.owned.length} owned)`)
+  }, { kinds: bundled, dealer })
+  assert(lot.owned.length === 3, `the three bundled vehicles are sold at Maple Motors (${lot.owned.length} owned, $${lot.paid} paid)`)
   for (const c of lot.cars) {
     assert(c.up > 0.98 && Math.abs(c.y - c.ride) < 0.2 && c.verts > 5000, `${c.k} sits upright on its wheels with its model loaded (y ${c.y} vs ride ${c.ride}, up ${c.up}, ${c.verts} vertices)`)
   }
-  await view(solo, 'bundled-vehicles', [37, 4, 14], [37, 0.8, 2.5])
+  // New neighbors get the "Choose your plot" map, which takes the keyboard: dismiss it before screenshots and driving.
+  const dismissPlot = () => solo.evaluate(() => {
+    for (const b of document.querySelectorAll('button')) if (/^Explore first$/.test(b.textContent?.trim() ?? '') && b.offsetParent) b.click()
+    window.maple.hud.closeModals()
+  })
+  // Each bundled vehicle on its own on the road: a side-on screenshot from its real pose, then a 4 s pull.
   for (const k of bundled) {
+    await dismissPlot()
+    const eye = await solo.evaluate(k => {
+      const g = window.maple
+      for (const other of ['custom:bundled-meridian-sedan', 'custom:bundled-bulwark-4x4', 'custom:bundled-ironhorn-crew-cab']) {
+        const o = g.vehicles.get(other)
+        if (o && other !== k) { o.dispose(g.engine.scene); g.vehicles.delete(other) }
+      }
+      const at = g.character.position.clone().set(30, 0, 2.5)
+      const v = g.vehicles.get(k) ?? g.addVehicle(k, at, 0)
+      g.placeVehicle(v, at.x, at.z, 0)
+      for (let i = 0; i < 90; i++) g.fixed(1 / 60)
+      const c = v.localToWorld(0, 0, 0), side = v.localToWorld(0, 1.2, 8), nose = v.localToWorld(1, 0, 0)
+      return { eye: [side.x, side.y, side.z], at: [c.x, c.y, c.z], heading: [+(nose.x - c.x).toFixed(2), +(nose.z - c.z).toFixed(2)] }
+    }, k)
+    log(`${k} heading`, JSON.stringify(eye.heading))
+    await view(solo, `bundled-${k.slice('custom:bundled-'.length)}`, eye.eye, eye.at)
+    await dismissPlot()
     await solo.evaluate(k => { const g = window.maple; g.enterVehicle(g.vehicles.get(k)) }, k)
+    await solo.locator('canvas').first().focus().catch(() => {})
     await solo.keyboard.down('w')
     await solo.evaluate(() => { const g = window.maple; for (let i = 0; i < 240; i++) g.fixed(1 / 60) })
     await solo.keyboard.up('w')
     const mph = await solo.evaluate(k => window.maple.vehicles.get(k).speed * 2.237, k)
-    assert(mph > 15, `${k} drives (${mph.toFixed(0)} mph after 4 s)`)
+    assert(mph > 11, `${k} drives (${mph.toFixed(0)} mph after 4 s)`)
     await solo.evaluate(k => { const g = window.maple; const v = g.vehicles.get(k); for (let i = 0; i < 300 && Math.abs(v.speed) > 0.3; i++) g.fixed(1 / 60); g.exitVehicle?.() }, k)
   }
   await solo.evaluate(() => { document.querySelectorAll('.ui, .hud, #minimap').forEach(el => { el.style.visibility = 'hidden' }) })

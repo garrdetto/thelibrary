@@ -10,7 +10,11 @@ import type { VehicleSnap } from '../../shared/Protocol';
 import { mergeStatic } from '../core/Merge';
 import { MASK, Physics } from './Physics';
 import { wheelbaseOf } from '../../shared/Vehicles';
-import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { wheelFor, wheelForCar, makeLights, paintFor, PRESETS, tintGlass, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { VehicleDoors } from './VehicleDoors';
+import type { PartRig } from './CutParts';
+import { carStyleKey, conditionEffects, CRASH_MIN_DV, tuneEffects, type CarStyle, type OwnedCar } from '../../shared/Cars';
+import { applyDents, impactPoint } from './Dents';
 
 export interface DriveInput { throttle: number; steer: number; brake: number; handbrake: boolean }
 
@@ -26,6 +30,10 @@ export class Vehicle {
   readonly ctrl: RAPIER.DynamicRayCastVehicleController;
   readonly root = new THREE.Group();
   readonly lights: VehicleLights;
+  /** Built-in opening doors, or null for open-air and published vehicles. */
+  private readonly builtinDoors: VehicleDoors | null;
+  /** What opens: the built-in doors, or a published model's cut-out doors, hood and trunk (once it has loaded). */
+  get doors(): VehicleDoors | PartRig | null { return this.builtinDoors ?? (this.shell.userData.partRig as PartRig | undefined) ?? null; }
   private wheels: WheelVis[] = [];
   private headlamp: THREE.SpotLight | null = null;
   private steerAngle = 0;
@@ -36,13 +44,28 @@ export class Vehicle {
   towedBy: Vehicle | null = null;
   private joint: RAPIER.ImpulseJoint | null = null;
   private unsubscribe: () => void = () => {};
+  private shell: THREE.Group;
+  /** One paint material for the body and its doors, so a repaint reaches both. */
+  private paint: THREE.MeshPhysicalMaterial;
+  styleKey = '';
+  /** What crash damage does to the drive right now (from the owner's account). */
+  private cond = conditionEffects(0);
+  /** What the body shop's upgrades do to the drive. */
+  private tune = tuneEffects(null);
+  private wheelKey = '';
+  private readonly pullSide: number;
+  /** Called when the body takes a hard hit: speed change (m/s) and the chassis point struck. */
+  onImpact: ((dv: number, at: { x: number; y: number; z: number }) => void) | null = null;
+  private lastVel = { x: 0, z: 0 };
+  private quietSteps = 2;
   disposed = false;
 
-  constructor(private physics: Physics, kind: string, readonly id: string, pos: THREE.Vector3, yaw: number, scene: THREE.Scene, color?: number) {
+  constructor(private physics: Physics, kind: string, readonly id: string, pos: THREE.Vector3, yaw: number, scene: THREE.Scene, style?: CarStyle | null) {
     const preset = PRESETS[kind];
     if (!preset) throw new Error(`Unknown vehicle ${kind}`);
     const R = physics.R, P = (this.preset = preset);
     this.wheelbase = wheelbaseOf(P) || 2.5;
+    this.pullSide = [...id].reduce((h, c) => h + c.charCodeAt(0), 0) % 2 ? 1 : -1;
     const c = P.chassis;
     _q.setFromAxisAngle(_v.set(0, 1, 0), yaw);
 
@@ -56,10 +79,10 @@ export class Vehicle {
     // Explicit mass properties: low COM + box inertia = planted handling.
     const sx = c.hx * 2, sy = c.hy * 2, sz = c.hz * 2, m = P.mass;
     this.collider = physics.world.createCollider(
-      R.ColliderDesc.cuboid(c.hx, c.hy, c.hz)
+      physics.vehicleShape(c.hx, c.hy, c.hz)
         .setMassProperties(m, { x: 0, y: P.comY, z: 0 }, { x: (m / 12) * (sy * sy + sz * sz), y: (m / 12) * (sx * sx + sz * sz), z: (m / 12) * (sx * sx + sy * sy) }, { x: 0, y: 0, z: 0, w: 1 })
-        .setFriction(0.4)
-        .setCollisionGroups(MASK.vehicle),
+        .setFriction(0.3)
+        .setCollisionGroups(P.tongue ? MASK.trailer : MASK.vehicle),
       this.body,
     );
 
@@ -88,13 +111,78 @@ export class Vehicle {
     });
 
     this.lights = makeLights();
-    const body = P.build(makePaint(color ?? P.paint), this.lights);
-    mergeStatic(body);
-    this.root.add(body);
+    this.paint = paintFor(P, style);
+    this.shell = this.buildShell(style);
+    this.builtinDoors = VehicleDoors.for(P.kind, this.paint, P.seat.z);
+    if (this.builtinDoors) this.root.add(this.builtinDoors.group);
     this.root.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(this.root);
     physics.track(this.body, this.root);
     this.unsubscribe = physics.onPreStep(dt => this.preStep(dt));
+  }
+
+  private buildShell(style?: CarStyle | null) {
+    this.paint.copy(paintFor(this.preset, style));
+    this.paint.needsUpdate = true;
+    const body = this.preset.build(this.paint, this.lights);
+    tintGlass(body, style?.tint);
+    mergeStatic(body);
+    applyDents(body, style?.dents);
+    body.userData.onFill = () => applyDents(body, style?.dents);
+    body.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    this.root.add(body);
+    this.styleKey = carStyleKey(style);
+    return body;
+  }
+
+  /** Repaints the body in place (a new color or finish from the dealer or body shop). */
+  restyle(style: CarStyle | null) {
+    if (carStyleKey(style) === this.styleKey) return;
+    this.root.remove(this.shell);
+    this.shell = this.buildShell(style);
+  }
+
+  /**
+   * The owner's record for this car: crash damage (less engine and grip, a pull once it's bad)
+   * and body shop work (engine, brakes and tires; lift raises the suspension and can fit
+   * bigger tires; rims swap the wheels). Null for a test drive: stock and undamaged.
+   */
+  setCar(car: OwnedCar | null) {
+    const P = this.preset;
+    this.cond = conditionEffects(car?.damage ?? 0);
+    this.tune = tuneEffects(car);
+    let i = 0;
+    for (const a of P.axles) for (let s = 0; s < 2; s++, i++) {
+      this.ctrl.setWheelFrictionSlip(i, (a.caster ? 0.15 : P.frictionSlip) * this.cond.grip * this.tune.grip);
+      this.ctrl.setWheelRadius(i, a.radius * this.tune.tireScale);
+      this.ctrl.setWheelSuspensionRestLength(i, Math.max(0.05, P.suspension.rest + this.tune.lift));
+    }
+    const key = `${car?.rims ? `${car.rims.style},${car.rims.size},${car.rims.finish}` : ''}|${this.tune.tireScale}|${car?.rims?.finish === 'body' ? car.color : ''}`;
+    if (key === this.wheelKey) return;
+    this.wheelKey = key;
+    for (const w of this.wheels) {
+      const a = P.axles[w.axle];
+      w.steer.remove(w.spin);
+      w.spin = wheelForCar(P, a.radius, a.width, car, this.tune.tireScale);
+      w.spin.traverse(o => { o.castShadow = true; });
+      w.steer.add(w.spin);
+    }
+  }
+
+  /** Ignore the next velocity jumps (teleports, resets, hitching): they aren't crashes. */
+  quiet(steps = 3) { this.quietSteps = Math.max(this.quietSteps, steps); }
+
+  private checkImpact() {
+    const lv = this.body.linvel();
+    const dx = lv.x - this.lastVel.x, dz = lv.z - this.lastVel.z;
+    this.lastVel = { x: lv.x, z: lv.z };
+    if (this.quietSteps > 0) { this.quietSteps--; return; }
+    const dv = Math.hypot(dx, dz);
+    if (dv <= CRASH_MIN_DV || !this.onImpact) return;
+    const r = this.body.rotation();
+    const local = _v.set(dx, 0, dz).applyQuaternion(_q.set(r.x, r.y, r.z, r.w).invert());
+    this.quiet(20);
+    this.onImpact(dv, impactPoint(this.preset.chassis, local.x, local.z));
   }
 
   get kind() { return this.preset.kind; }
@@ -129,6 +217,7 @@ export class Vehicle {
 
   private preStep(dt: number) {
     const P = this.preset;
+    this.checkImpact();
     const speed = this.speed;
     const raw = this.towedBy ? { throttle: 0, steer: 0, brake: this.towedBy.input.brake, handbrake: false } : this.input;
     const inp = this.empty ? { ...raw, throttle: 0 } : raw;
@@ -142,7 +231,7 @@ export class Vehicle {
     const v = Math.abs(speed);
     const gripLock = Math.atan((this.wheelbase * 8.5) / Math.max(1, v * v));
     const limit = Math.min(P.maxSteer, Math.max(P.maxSteer * 0.12, gripLock));
-    const target = inp.steer * limit;
+    const target = (inp.steer + (v > 2 ? this.cond.pull * this.pullSide : 0)) * limit;
     const turnRate = P.maxSteer * (2.6 - Math.min(1.5, v * 0.06));
     const centerRate = P.maxSteer * (1.4 + Math.min(2.4, v * 0.18));
     const rate = (inp.steer === 0 || Math.sign(inp.steer) !== Math.sign(this.steerAngle) && this.steerAngle !== 0 ? Math.max(turnRate, centerRate) : turnRate) * dt;
@@ -154,14 +243,15 @@ export class Vehicle {
     const pedal = Math.abs(inp.throttle) < 0.01 && Math.abs(this.pedal) < 0.05 ? 0 : this.pedal;
 
     // Engine: strong low-end torque that tapers toward top speed; forward, brake-to-stop, then reverse at 40%.
-    let engine = 0, brake = inp.brake * P.brake;
+    const brakeForce = P.brake * this.tune.brake, power = P.engineForce * this.cond.engine * this.tune.engine, top = P.topSpeed * this.tune.topSpeed;
+    let engine = 0, brake = inp.brake * brakeForce;
     const torque = (u: number) => Math.max(0, 1 - u) ** 0.6 * (1 + 0.25 * Math.max(0, 1 - u * 3));
     if (pedal > 0) {
-      if (speed < -0.6) brake = Math.max(brake, P.brake * pedal);
-      else engine = P.engineForce * pedal * torque(speed / P.topSpeed);
+      if (speed < -0.6) brake = Math.max(brake, brakeForce * pedal);
+      else engine = power * pedal * torque(speed / top);
     } else if (pedal < 0) {
-      if (speed > 0.6) brake = Math.max(brake, P.brake * -pedal * (0.55 + 0.45 * Math.min(1, -pedal * 1.4)));
-      else engine = P.engineForce * pedal * 0.4 * Math.max(0, 1 + speed / (P.topSpeed * 0.22));
+      if (speed > 0.6) brake = Math.max(brake, brakeForce * -pedal * (0.55 + 0.45 * Math.min(1, -pedal * 1.4)));
+      else engine = power * pedal * 0.4 * Math.max(0, 1 + speed / (top * 0.22));
     } else if (P.engineForce > 0) {
       brake = Math.max(brake, P.brake * (v > 2 ? 0.035 : 0.12));   // engine braking, and the car settles when it's nearly stopped
     }
@@ -216,9 +306,10 @@ export class Vehicle {
     this.ctrl.updateVehicle(dt, undefined, MASK.wheelRay);
   }
 
-  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night. */
-  updateVisuals(night: number, braking: boolean) {
+  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night; doors swing. */
+  updateVisuals(night: number, braking: boolean, dt = 0) {
     const P = this.preset;
+    this.doors?.update(dt, this.speed);
     this.wheels.forEach((w, i) => {
       const len = this.ctrl.wheelSuspensionLength(i) ?? P.suspension.rest;
       w.steer.position.y = P.wheelY - len;
@@ -249,6 +340,7 @@ export class Vehicle {
 
   /** Flip back onto the wheels (R key). */
   reset() {
+    this.quiet();
     const t = this.body.translation();
     const yaw = Math.atan2(-this.forward().z, this.forward().x);
     _q.setFromAxisAngle(_v.set(0, 1, 0), yaw);
@@ -270,6 +362,7 @@ export class Vehicle {
 
   /** Snap the trailer into line behind the hitch, then join with a ball joint. */
   hitch(tr: Vehicle) {
+    this.quiet(); tr.quiet();
     const R = this.physics.R, h = this.preset.hitch!, tg = tr.preset.tongue!;
     const r = this.body.rotation();
     const rot = _q.set(r.x, r.y, r.z, r.w).clone();

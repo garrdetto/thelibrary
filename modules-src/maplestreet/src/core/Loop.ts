@@ -24,6 +24,7 @@ export class FixedLoop {
       let dt = (now - this.last) / 1000;
       this.last = now;
       if (dt > 0.25) dt = 0.25;               // tab was hidden / debugger pause
+      if (dt < 0) dt = 0;                     // a frame stamped before start() (long first load) must not stall the steps
 
       this.acc += dt;
       let steps = 0;

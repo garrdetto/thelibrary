@@ -24,7 +24,7 @@ const only = option('only', '')
   .filter(Boolean);
 const settleMs = Number(option('settle', '6000'));
 
-const moduleIds = ['sandlot3d', 'maplestreet', 'sandlot', 'botwreck', 'chess', 'checkers', '2048', 'helicopter', 'shorttrack'];
+const moduleIds = ['sandlot3d', 'maplestreet', 'sandlot', 'botwreck', 'chess', 'checkers', '2048', 'helicopter', 'shorttrack', 'fairway'];
 const targets = only.length ? moduleIds.filter((id) => only.includes(id)) : moduleIds;
 const base = `http://localhost:${port}`;
 

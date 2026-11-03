@@ -14,5 +14,6 @@ export const ROOM_FORMATS = {
   chess: { prefix: 'tl-chess-', alphabet: SIX, length: 6, wireCase: 'lower' },
   checkers: { prefix: 'tl-checkers-', alphabet: SIX, length: 6, wireCase: 'lower' },
   maplestreet: { prefix: 'tl-maplestreet-', alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', length: 6, wireCase: 'lower' },
+  fairway: { prefix: 'tl-fairway-', alphabet: SIX, length: 6, wireCase: 'lower' },
   shorttrack: { prefix: 'sts-oval-race-', alphabet: 'ABCDEFGHJKLMNPQRSTUVWXYZ', length: 5, wireCase: 'upper' },
 } as const satisfies Record<string, RoomFormat>
