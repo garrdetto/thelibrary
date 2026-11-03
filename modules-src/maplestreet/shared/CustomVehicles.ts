@@ -65,6 +65,31 @@ export interface CustomVehiclePhysics {
   cam: { dist: number; height: number };
 }
 
+/**
+ * Opening parts of a published model, marked in the editor as boxes in chassis
+ * space (+x forward, +y up, metres). Doors are given for the right side and
+ * mirrored to the left; each is hinged at its front edge. The hood is hinged
+ * at its back edge (by the windshield), the trunk or tailgate at its front edge.
+ * At load the model's triangles inside each box are cut out into a swinging leaf.
+ */
+export interface PartBox {
+  front: number; back: number; bottom: number; top: number;
+  /** Trunk only: a pickup tailgate that folds down from its bottom edge instead of lifting. */
+  drop?: boolean;
+}
+export interface VehicleParts { doors: PartBox[]; hood: PartBox | null; trunk: PartBox | null }
+export const MAX_DOOR_ROWS = 2;
+
+const partBox = (b: unknown): b is PartBox => {
+  const o = b as PartBox;
+  return !!o && typeof o === 'object' && [o.front, o.back, o.bottom, o.top].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 10) && o.front > o.back && o.top > o.bottom && (o.drop === undefined || typeof o.drop === 'boolean');
+};
+export const isValidParts = (p: unknown): p is VehicleParts => {
+  const o = p as VehicleParts;
+  return !!o && typeof o === 'object' && Array.isArray(o.doors) && o.doors.length <= MAX_DOOR_ROWS && o.doors.every(partBox)
+    && (o.hood === null || partBox(o.hood)) && (o.trunk === null || partBox(o.trunk));
+};
+
 export interface CustomVehicleSpec {
   template: DriveTemplate;
   model: { scale: number; yaw: number; x: number; y: number; z: number };
@@ -82,6 +107,8 @@ export interface CustomVehicleSpec {
   traffic: { enabled: boolean; driver: string; route: TrafficRoute; mph: number };
   /** The editor removed the model's baked-in wheels before upload. */
   wheelsRemoved: boolean;
+  /** Doors, hood and trunk that open (missing on vehicles published before they existed). */
+  parts?: VehicleParts;
 }
 
 /** The public shape returned by GET /api/maplestreet-vehicles. */
@@ -200,5 +227,6 @@ export function isValidVehicleRecord(r: unknown): r is CustomVehicleRecord {
     && !!o.lights && Array.isArray(o.lights.head) && Array.isArray(o.lights.tail) && o.lights.head.length <= VEHICLE_LIMITS.lightsMax && o.lights.tail.length <= VEHICLE_LIMITS.lightsMax && [...o.lights.head, ...o.lights.tail].every(l => point(l))
     && !!o.paint && ['none', 'material', 'color'].includes(o.paint.mode) && /^#[0-9a-f]{6}$/i.test(o.paint.color)
     && !!o.dealer && typeof o.dealer.forSale === 'boolean' && finite(o.dealer.price, 0, VEHICLE_LIMITS.priceMax) && ['gas', 'electric'].includes(o.dealer.fuel) && finite(o.dealer.tank, 0.5, 200) && finite(o.dealer.mpg, 1, 500)
-    && !!o.traffic && typeof o.traffic.enabled === 'boolean' && (TRAFFIC_ROUTES as readonly string[]).includes(o.traffic.route) && finite(o.traffic.mph, 3, 60);
+    && !!o.traffic && typeof o.traffic.enabled === 'boolean' && (TRAFFIC_ROUTES as readonly string[]).includes(o.traffic.route) && finite(o.traffic.mph, 3, 60)
+    && (o.parts === undefined || isValidParts(o.parts));
 }

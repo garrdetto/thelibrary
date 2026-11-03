@@ -144,3 +144,14 @@ export function partsFromViews(points: PartPoints, frames: Record<ViewName, View
     hitch: hitchSide ? { x: r3(hitchSide.h), y: r3(hitchSide.v) } : null,
   }
 }
+
+export type ScreenBox = { x0: number; y0: number; x1: number; y1: number } | null
+export type GroundBox = { front: number; back: number; bottom: number; top: number }
+
+/** A box drawn on the side view (0–1000 from the top-left) in ground-frame metres along the length and up. */
+export function boxFromSide(box: ScreenBox, side: ViewFrame): GroundBox | null {
+  if (!box) return null
+  const a = toMetres(side, { x: box.x0, y: box.y0 }), b = toMetres(side, { x: box.x1, y: box.y1 })
+  const front = r3(Math.max(a.h, b.h)), back = r3(Math.min(a.h, b.h)), top = r3(Math.max(a.v, b.v)), bottom = r3(Math.min(a.v, b.v))
+  return front - back > 0.1 && top - bottom > 0.1 ? { front, back, bottom, top } : null
+}
