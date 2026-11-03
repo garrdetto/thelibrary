@@ -7,12 +7,18 @@
  * so glass is glossy and reflects the sky while masonry stays matte.
  */
 import * as THREE from 'three/webgpu';
-import type { Building } from '../../shared/WorldLayout';
+import { isShopKind, type Building } from '../../shared/WorldLayout';
 
 export type FacadeStyle = 'brick' | 'stone' | 'stucco' | 'panel' | 'curtain' | 'industrial';
 
+const RETAIL_STYLES: FacadeStyle[] = ['brick', 'stucco', 'brick', 'stone'];
+
 export function styleOf(b: Building): FacadeStyle {
   if (b.id === 'depot') return 'industrial';
+  if (b.kind === 'retail') return RETAIL_STYLES[[...b.id].reduce((a, c) => a + c.charCodeAt(0), 0) % RETAIL_STYLES.length];
+  if (b.kind === 'hotel' || b.kind === 'townhall') return 'stone';
+  if (b.kind === 'cinema') return 'stucco';
+  if (b.kind === 'library') return 'brick';
   if (b.kind === 'office') return 'curtain';
   if (b.kind === 'bank' || b.kind === 'police') return 'stone';
   if (b.kind === 'dealer' || b.kind === 'grocery' || b.kind === 'gas') return 'panel';
@@ -27,7 +33,8 @@ export interface Storefront { v0: number; v1: number; top: number; mullions: num
 export interface Bay { u0: number; u1: number; v1: number }
 export interface FacadeLayout { w: number; h: number; style: FacadeStyle; groundH: number; floors: number[]; windows: Win[]; store: Storefront | null; bays: Bay[]; lobby: { u0: number; u1: number; v1: number } | null }
 
-const isShop = (b: Building) => b.kind !== 'office' && b.kind !== 'apartments' && b.kind !== 'fire' && b.kind !== 'police';
+/** Storefront glazing on the ground floor: shops, plus the grid's retail, cinema and hotel lobby. */
+const isShop = (b: Building) => isShopKind(b.kind) || b.kind === 'retail' || b.kind === 'cinema' || b.kind === 'hotel';
 
 /** Window and storefront positions in metres (u from the face's left edge, v from the ground). Symmetric, so face direction doesn't matter. */
 export function facadeLayout(b: Building, w: number, h: number, front: boolean): FacadeLayout {
@@ -81,8 +88,8 @@ function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; 
 const shade = (hex: string, k: number) => { const c = new THREE.Color(hex); c.multiplyScalar(k); return `#${c.getHexString()}`; };
 
 /** Albedo, night glow and roughness/metalness canvases for one face. */
-export function facadeTextures(b: Building, L: FacadeLayout, seed: number) {
-  const ppm = Math.min(40, 2048 / Math.max(L.w, L.h));
+export function facadeTextures(b: Building, L: FacadeLayout, seed: number, maxPpm = 40) {
+  const ppm = Math.min(maxPpm, 2048 / Math.max(L.w, L.h));
   const W = Math.max(64, Math.round(L.w * ppm)), H = Math.max(64, Math.round(L.h * ppm));
   const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
   const albedo = mk(), glow = mk(), orm = mk();

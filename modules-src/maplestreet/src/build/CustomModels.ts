@@ -39,6 +39,7 @@ async function fetchList(): Promise<CustomItemRecord[] | null> {
     if (data.drafts === true) devDrafts.allowed = true;
     const list = Array.isArray(data.items) ? data.items.filter(isValidRecord) : null;
     devDrafts.items = list?.filter(r => r.status === 'draft').length ?? 0;
+    for (const r of list ?? []) if (r.status === 'draft') devDrafts.ids.add(r.id);
     return list;
   } catch {
     return null;

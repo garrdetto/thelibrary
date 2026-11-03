@@ -12,4 +12,4 @@ export const DEV_SAVE = 'maplestreet/dev/v1';
 export const assetListUrl = (endpoint: string) => (DEV_MODE ? `${endpoint}?drafts=1` : endpoint);
 
 /** What the server actually sent: drafts come back only for the signed-in administrator. */
-export const devDrafts = { allowed: false, items: 0, vehicles: 0 };
+export const devDrafts = { allowed: false, items: 0, vehicles: 0, ids: new Set<string>() };

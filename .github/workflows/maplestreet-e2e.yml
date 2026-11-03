@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: maplestreet-e2e-${{ github.event.pull_request.number || github.ref }}
@@ -84,3 +84,14 @@ jobs:
           path: .e2e/
           include-hidden-files: true
           retention-days: 7
+
+      - name: Publish screenshots to a branch
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls .e2e/*.png > /dev/null 2>&1 || exit 0
+          cd .e2e
+          git init -q && git checkout -q -b shots
+          git add *.png && git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -q -m "e2e screenshots for #${{ github.event.pull_request.number }}"
+          git push -q -f "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}" shots:refs/heads/e2e-shots/pr-${{ github.event.pull_request.number }}

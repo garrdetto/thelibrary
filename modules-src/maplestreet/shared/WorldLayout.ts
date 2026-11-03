@@ -9,6 +9,8 @@
  * outer blocks (N11–N30, S11–S30) were added behind them, one row per new
  * street, so saved worlds pick them up as empty lots.
  */
+import { GRID_AREA, GRID_BUILDINGS, GRID_EAST, GRID_ROADS, GRID_SIDEWALKS, GRID_Z } from './DowntownGrid';
+
 export interface LotDef {
   id: string;
   x: number; z: number;   // min corner (grid vertex)
@@ -28,7 +30,7 @@ export const LOT_D = 40;
 export const LOTS_PER_SIDE = 5;
 export const ROAD_W = 10;
 export const SIDEWALK_W = 2;
-export const WORLD_HALF = 380;
+export const WORLD_HALF = 640;
 
 const ROW_X0 = -(LOT_W * LOTS_PER_SIDE) / 2;          // -80
 const MAIN_FRONT = 7;                                 // lots start just past the sidewalk
@@ -185,21 +187,22 @@ export function bendCurbZ(lot: LotDef, x: number) {
 }
 
 export const ROADS: RectXZ[] = [
-  { cx: (DOWNTOWN_X1 + 8 + MAIN_WEST_X) / 2, cz: 0, sx: DOWNTOWN_X1 + 8 - MAIN_WEST_X, sz: ROAD_W },     // Main Street (Hollow Bend → depot → downtown)
+  { cx: (GRID_EAST + MAIN_WEST_X) / 2, cz: 0, sx: GRID_EAST - MAIN_WEST_X, sz: ROAD_W },     // Main Street (Hollow Bend → depot → downtown grid)
   { cx: -AVE_X, cz: 0, sx: ROAD_W, sz: FAR_Z * 2 + ROAD_W },                           // West Ave (runs the length of the neighborhood)
   { cx: AVE_X, cz: 0, sx: ROAD_W, sz: FAR_Z * 2 + ROAD_W },                            // East Ave
   { cx: 0, cz: -ALLEY_Z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },                          // North Street
-  { cx: 0, cz: ALLEY_Z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },                           // South Street
-  { cx: (AVE_X + DOWNTOWN_X1 + 8) / 2, cz: -ALLEY_Z, sx: DOWNTOWN_X1 + 8 - AVE_X + ROAD_W, sz: ROAD_W }, // Commerce St (downtown back)
-  { cx: DOWNTOWN_X1 + 8, cz: -ALLEY_Z / 2, sx: ROAD_W, sz: ALLEY_Z + ROAD_W },          // Market Ave (closes the downtown loop)
+  { cx: (GRID_EAST - AVE_X - ROAD_W / 2) / 2, cz: ALLEY_Z, sx: GRID_EAST + AVE_X + ROAD_W / 2, sz: ROAD_W }, // South Street (on through the downtown grid)
+  { cx: (AVE_X - ROAD_W / 2 + GRID_EAST) / 2, cz: -ALLEY_Z, sx: GRID_EAST - AVE_X + ROAD_W / 2, sz: ROAD_W }, // Commerce St (downtown back)
+  { cx: DOWNTOWN_X1 + 8, cz: 0, sx: ROAD_W, sz: GRID_Z[GRID_Z.length - 1] * 2 + ROAD_W }, // Market Ave (west edge of the grid)
   ...OUTER_Z.flatMap(z => [
     { cx: 0, cz: -z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },
     { cx: 0, cz: z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },
   ]),
+  ...GRID_ROADS.map(r => r.rect),
 ];
 
 /** Street names, in ROADS order. */
-export const ROAD_NAMES = ['Main St', 'West Ave', 'East Ave', 'North St', 'South St', 'Commerce St', 'Market Ave', 'Birch St', 'Aspen St', 'Cedar St', 'Dogwood St', 'Elm St', 'Fir St', 'Hazel St', 'Juniper St'];
+export const ROAD_NAMES = ['Main St', 'West Ave', 'East Ave', 'North St', 'South St', 'Commerce St', 'Market Ave', 'Birch St', 'Aspen St', 'Cedar St', 'Dogwood St', 'Elm St', 'Fir St', 'Hazel St', 'Juniper St', ...GRID_ROADS.map(r => r.name)];
 
 /** Which edge of a sidewalk faces its road; without one the road is toward Main Street (z = 0). */
 export type RoadSide = '+x' | '-x' | '+z' | '-z';
@@ -237,6 +240,7 @@ export const SIDEWALKS: Sidewalk[] = [
   { cx: 124, cz: 7, sx: 10, sz: 4 },
   { cx: (137 + DOWNTOWN_X1) / 2, cz: 7, sx: DOWNTOWN_X1 - 137, sz: 4 },
   ...residentialSidewalks(),
+  ...GRID_SIDEWALKS,
 ];
 
 /** Driveway aprons where the curb is dropped so cars can leave the street (beyond the lot driveways). */
@@ -251,15 +255,23 @@ export const CURB_CUTS: RectXZ[] = [
 
 export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank' | 'clothing';
 
-/** A building on the downtown strip. Shops have a door you walk (or drive) up to. */
+/** Buildings that are scenery: no shop door. */
+export const SCENERY_KINDS = ['office', 'apartments', 'fire', 'police', 'retail', 'hotel', 'cinema', 'townhall', 'library'] as const;
+export type SceneryKind = (typeof SCENERY_KINDS)[number];
+export const isShopKind = (kind: Building['kind']): kind is ShopKind => !(SCENERY_KINDS as readonly string[]).includes(kind);
+
+/** A building downtown. Shops have a door you walk (or drive) up to. */
 export interface Building {
   id: string;
   name: string;
-  kind: ShopKind | 'office' | 'apartments' | 'fire' | 'police';
+  kind: ShopKind | SceneryKind;
   x: number; z: number; w: number; d: number;   // footprint center + size
   h: number;                                    // height (m)
   facing: '+z' | '-z';                          // storefront side (toward Main Street)
   color: string;
+  /** Grid buildings: lighter facades, detailed only on the street front and on ends that face an avenue. */
+  lite?: boolean;
+  ends?: { w: boolean; e: boolean };
 }
 
 const N = -9, S = 9;                         // storefront lines just behind the wide sidewalks
@@ -277,6 +289,7 @@ export const BUILDINGS: Building[] = [
   bld('grocery', 'Fresh Market', 'grocery', 210, 28, 20, 7, 's', '#e8e3d4'),
   bld('hardware', 'Maple Hardware', 'hardware', 182, 20, 18, 8, 's', '#c96f2c'),
   bld('apt2', 'Willow Lofts', 'apartments', 160, 16, 14, 13, 's', '#8a6a55'),
+  ...GRID_BUILDINGS,
 ];
 
 /**
@@ -303,7 +316,7 @@ export interface ShopDoor { id: string; kind: ShopKind; name: string; x: number;
 
 /** Interaction points: stand (or park) within SHOP_RADIUS of a door to use the shop. */
 export const SHOP_DOORS: ShopDoor[] = [
-  ...BUILDINGS.filter(b => b.kind !== 'office' && b.kind !== 'apartments' && b.kind !== 'fire' && b.kind !== 'police').map(b => ({
+  ...BUILDINGS.filter(b => isShopKind(b.kind)).map(b => ({
     id: b.id, kind: b.kind as ShopKind, name: b.name, x: b.x, z: b.facing === '+z' ? b.z + b.d / 2 + 1.5 : b.z - b.d / 2 - 1.5,
   })),
   { id: 'gas', kind: 'gas', name: GAS_STATION.name, x: GAS_STATION.door.x, z: GAS_STATION.door.z },
@@ -321,7 +334,8 @@ export const DOWNTOWN = { x0: DOWNTOWN_X0, x1: DOWNTOWN_X1 + 14, z0: -ALLEY_Z - 
 /** The civic block behind downtown (fire and police), kept clear of trees and grass. */
 export const CIVIC_BLOCK: RectXZ = { cx: 136, cz: -76, sx: 72, sz: 34 };
 /** Everything the town map and minimap should show. */
-export const MAP_BOUNDS = { x0: -392, x1: 276, z0: -TOWN_HALF.z, z1: TOWN_HALF.z };
+export const MAP_BOUNDS = { x0: -392, x1: GRID_AREA.x1 + 6, z0: -TOWN_HALF.z, z1: TOWN_HALF.z };
+export { GRID_AREA, GRID_BLOCKS, TOWN_SQUARE, TOWN_SQUARE_RECT } from './DowntownGrid';
 export const STREETS = { ALLEY_Z, AVE_X, ROW_X0, MAIN_FRONT, BACK_FRONT, OUTER_Z, FAR_Z };
 
 /** Each lot's concrete driveway: 4 m wide at the left of the frontage, 12 m deep (plus the run out to a curved street's curb). */

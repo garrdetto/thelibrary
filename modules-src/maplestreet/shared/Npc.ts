@@ -140,6 +140,11 @@ const WALK_N = walk([[-78, -6], [78, -6]], 0.5);
 const WALK_S = walk([[78, 6], [-78, 6]], 0.5);
 const WALK_DN = walk([[108, -7.5], [248, -7.5]], 0.6);
 const WALK_DS = walk([[248, 7.5], [108, 7.5]], 0.6);
+/** Downtown grid: a big loop round its edge and a short one through the middle; strollers in Maple Commons. */
+const GRID_LOOP = smoothPath([[260, 54], [548, 54], [548, -110], [260, -110]], 2.5, TURN_R);
+const GRID_INNER = smoothPath([[356, -54], [452, -54], [452, 110], [356, 110]], 2.5, TURN_R);
+const WALK_SQUARE = walk([[273, 25.8], [298, 25.8], [301, 20], [308, 18.4], [315, 20], [318, 25.8], [343, 25.8], [343, 28.2], [318, 28.2], [315, 34], [308, 35.6], [301, 34], [298, 28.2], [273, 28.2]], 0);
+const WALK_GRID = walk([[366, -7.2], [444, -7.2]], 0.6);
 
 const COMFORT_LAT = 2.6;      // m/s² a relaxed driver allows through a corner
 const ACCEL = 1.9;            // m/s² gentle pull-away
@@ -163,6 +168,9 @@ export class NpcTraffic {
     { ...driver('npc-lindqvist', 'Anna Lindqvist', 'sedan', DOWNTOWN, 40, 11.5), look: npcLook('female', 6) },
     { ...driver('npc-brennan', 'Sean Brennan', 'coupe', DOWNTOWN, 300, 13), look: npcLook('male', 7) },
     { ...driver('npc-nakamura', 'Kenji Nakamura', 'truck', RING_B, 420, 10), look: npcLook('male', 8) },
+    { ...driver('npc-patel', 'Ravi Patel', 'sedan', GRID_LOOP, 0, 11), look: npcLook('male', 14) },
+    { ...driver('npc-moreau', 'Claire Moreau', 'coupe', GRID_LOOP, 520, 12.5), look: npcLook('female', 15) },
+    { ...driver('npc-novak', 'Petra Novak', 'truck', GRID_INNER, 120, 10), look: npcLook('female', 16) },
   ];
   private walkers: Walker[] = [
     { id: 'npc-walker-1', name: 'June', color: '#c2564a', route: WALK_N, s: 10, speed: 1.3, look: npcLook('female', 9) },
@@ -170,6 +178,9 @@ export class NpcTraffic {
     { id: 'npc-walker-3', name: 'Priya', color: '#7a4ac2', route: WALK_DN, s: 150, speed: 1.2, look: npcLook('female', 11) },
     { id: 'npc-walker-4', name: 'Marcus', color: '#3f8f5a', route: WALK_DS, s: 40, speed: 1.4, look: npcLook('male', 12) },
     { id: 'npc-walker-5', name: 'Lena', color: '#d18a2e', route: WALK_DN, s: 60, speed: 1.1, look: npcLook('female', 13) },
+    { id: 'npc-walker-6', name: 'Walt', color: '#8a6a3a', route: WALK_SQUARE, s: 0, speed: 0.9, look: npcLook('male', 17) },
+    { id: 'npc-walker-7', name: 'Rosie', color: '#c25a8a', route: WALK_SQUARE, s: 90, speed: 1.0, look: npcLook('female', 18) },
+    { id: 'npc-walker-8', name: 'Omar', color: '#3a6ac2', route: WALK_GRID, s: 20, speed: 1.3, look: npcLook('male', 19) },
   ];
   private readonly builtinDrivers = this.drivers.length;
   private customVersion = -1;

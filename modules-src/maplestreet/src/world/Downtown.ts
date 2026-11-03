@@ -7,6 +7,8 @@
 import * as THREE from 'three/webgpu';
 import { mergeStatic } from '../core/Merge';
 import { BUILDINGS, Building, CIVIC, DEPOT, GAS_STATION } from '../../shared/WorldLayout';
+import { GRID_X, GRID_Z } from '../../shared/DowntownGrid';
+import { buildTownSquare } from './TownSquare';
 import type { MaterialLibrary } from '../core/Materials';
 import { buildGasStation } from './GasStation';
 import { facadeLayout, facadeTextures, faceTrim, styleOf } from './Facades';
@@ -50,7 +52,12 @@ const SIGN_COLORS: Record<string, [string, string]> = {
   dealer: ['#14365e', '#ffffff'], diner: ['#b8241c', '#fff3d6'], bank: ['#1f2b3a', '#e8d9a8'], cafe: ['#22392f', '#f2e3c6'],
   grocery: ['#2f6b2f', '#ffffff'], clothing: ['#5b2a45', '#f6e7d2'], hardware: ['#c25a14', '#ffffff'], gas: ['#0f4c81', '#ffd200'], apartments: ['#3b3b3b', '#e6e6e6'], office: ['#2a3440', '#d6e2ee'],
   fire: ['#8e1b14', '#ffffff'], police: ['#14284a', '#ffffff'],
+  hotel: ['#1d2b3a', '#e9d9a6'], cinema: ['#5a0f14', '#ffe08a'], townhall: ['#e6ddca', '#1f2b3a'], library: ['#24362c', '#efe4c8'],
 };
+/** Grid retail signs: a stable pick per building so neighbors don't all match. */
+const RETAIL_SIGNS: [string, string][] = [['#1f3b57', '#f3ead6'], ['#6b2737', '#fbeedd'], ['#2d4a2f', '#f1e8cf'], ['#3a2f55', '#efe6ff'], ['#704214', '#fff2dc'], ['#1d1d1d', '#f2c14e'], ['#0f4a4a', '#e7fff7'], ['#8a2d1c', '#ffe9c4']];
+const signColors = (b: Building): [string, string] => b.kind === 'retail' ? RETAIL_SIGNS[[...b.id].reduce((a, c) => a + c.charCodeAt(0), 0) % RETAIL_SIGNS.length] : SIGN_COLORS[b.kind] ?? ['#333', '#fff'];
+const CIVIC_KINDS = new Set<Building['kind']>(['fire', 'police', 'townhall', 'library']);
 
 export class Downtown {
   readonly group = new THREE.Group();
@@ -66,6 +73,9 @@ export class Downtown {
     this.depot();
     this.streetscape();
     this.showroomCars();
+    const square = buildTownSquare(physics, mats);
+    this.group.add(square.group);
+    this.glows.push(...square.glows);
     mergeStatic(this.group);
   }
 
@@ -88,10 +98,16 @@ export class Downtown {
       { nx: -1, nz: 0, w: b.d, isFront: false },
     ];
     const faceMats = new Map<string, THREE.Material>();
+    const lite = !!b.lite;
     faces.forEach((f, i) => {
+      // Grid buildings paint only the street front and ends facing an avenue; party walls and backs stay plain.
+      const shown = !lite || f.isFront || (f.nx < 0 && b.ends?.w) || (f.nx > 0 && b.ends?.e);
+      if (!shown) { faceMats.set(`${f.nx},${f.nz}`, wallMat); return; }
       const L = facadeLayout(b, f.w, b.h, f.isFront);
-      const tx = facadeTextures(b, L, seed + i * 131);
-      const mat = new THREE.MeshStandardMaterial({ map: tx.map, emissiveMap: tx.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughnessMap: tx.orm, metalnessMap: tx.orm, roughness: 1, metalness: 1 });
+      const tx = facadeTextures(b, L, seed + i * 131, lite ? 12 : 40);
+      const mat = lite
+        ? new THREE.MeshStandardMaterial({ map: tx.map, emissiveMap: tx.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughness: 0.8, metalness: 0.05 })
+        : new THREE.MeshStandardMaterial({ map: tx.map, emissiveMap: tx.emissive, emissive: 0xffffff, emissiveIntensity: 0, roughnessMap: tx.orm, metalnessMap: tx.orm, roughness: 1, metalness: 1 });
       this.glows.push(mat);
       faceMats.set(`${f.nx},${f.nz}`, mat);
       // Face-space trim → world boxes.
@@ -157,11 +173,12 @@ export class Downtown {
     }
 
     const faceZ = b.z + front * (b.d / 2);
-    const [bg, fg] = SIGN_COLORS[b.kind] ?? ['#333', '#fff'];
-    const civic = b.kind === 'fire' || b.kind === 'police';
-    if (b.kind !== 'apartments' && b.kind !== 'office' && !civic) {
+    const [bg, fg] = signColors(b);
+    const civic = CIVIC_KINDS.has(b.kind);
+    const tall = b.kind === 'office' || b.kind === 'hotel';
+    if (b.kind !== 'apartments' && !tall && !civic) {
       // Fabric awning: sloped cover, front valance and side cheeks.
-      const striped = b.kind === 'diner' || b.kind === 'cafe';
+      const striped = b.kind === 'diner' || b.kind === 'cafe' || (b.kind === 'retail' && seed % 3 === 0);
       const aw = b.w * 0.86, proj = 1.5, drop = 0.55, top = 3.3;
       const awTex = awningTexture(bg, '#f1ebdf', striped);
       awTex.repeat.set(Math.max(1, Math.round(aw / 1.2)), 1);
@@ -201,11 +218,11 @@ export class Downtown {
       const sw = civic ? Math.min(12, b.w * 0.6) : 7, sh = 0.9;
       const signMat = new THREE.MeshStandardMaterial({ map: signTexture(b.name, bg, fg, 1024, Math.round((1024 * sh) / sw)), roughness: 0.4, metalness: 0.3 });
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), signMat);
-      sign.position.set(b.x, b.kind === 'office' || civic ? (civic ? 5.2 : 5.0) : 3.45, faceZ + front * (b.kind === 'office' || civic ? 0.2 : 1.66));
+      sign.position.set(b.x, tall || civic ? (civic ? 5.2 : 5.0) : 3.45, faceZ + front * (tall || civic ? 0.2 : 1.66));
       if (front < 0) sign.rotation.y = Math.PI;
       g.add(sign);
     }
-    if (b.kind === 'bank') {
+    if (b.kind === 'bank' || b.kind === 'townhall') {
       for (let i = 0; i < 6; i++) {
         const c = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 5.6, 20), trim);
         c.position.set(b.x - 6.25 + i * 2.5, 2.8, faceZ + front * 1.4); c.castShadow = true; g.add(c);
@@ -271,32 +288,39 @@ export class Downtown {
     this.group.add(pad);
   }
 
-  /** Planters with trees, benches, bike racks and bollards along the downtown sidewalks. */
+  /** Planters with trees and benches along the downtown sidewalks, the grid's included. */
   private streetscape() {
     const planter = this.mats.get('concrete').material;
     const leaves = this.mats.get('leaves').material;
     const bark = this.mats.get('bark').material;
     const wood = new THREE.MeshStandardMaterial({ color: 0x7a5534, roughness: 0.7 });
     const iron = new THREE.MeshStandardMaterial({ color: 0x23272b, metalness: 0.6, roughness: 0.4 });
-    for (let x = 110; x <= 248; x += 14) {
-      for (const z of [-8.2, 8.2]) {
-        if (x < 140 && z > 0) continue;                                   // gas station frontage stays open
-        const p = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.4), planter); p.position.set(x, 0.39, z);
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 2.6, 8), bark); trunk.position.set(x, 1.6, z);
-        const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 2), leaves); crown.position.set(x, 3.4, z); crown.scale.y = 1.2;
-        for (const m of [p, trunk, crown]) { m.castShadow = true; this.group.add(m); }
-        this.physics.addStaticBox({ cx: x, cy: 0.4, cz: z, hx: 0.7, hy: 0.4, hz: 0.7 });
-        // bench beside every other planter
-        if ((x / 14) % 2 === 0) {
-          const bench = new THREE.Group();
-          const seat = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.45), wood); seat.position.y = 0.6;
-          const back = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 0.05), wood); back.position.set(0, 0.85, -0.2);
-          bench.add(seat, back);
-          for (const s of [-0.8, 0.8]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.45), iron); leg.position.set(s, 0.43, 0); bench.add(leg); }
-          bench.position.set(x + 3.5, 0.13, z); if (z < 0) bench.rotation.y = Math.PI;
-          bench.traverse(o => (o.castShadow = true));
-          this.group.add(bench);
-        }
+    // Spots: the original strip along Main St, then both sides of every street in the grid.
+    const spots: { x: number; z: number; flip: boolean; bench: boolean }[] = [];
+    for (let x = 110; x <= 248; x += 14) for (const z of [-8.2, 8.2]) {
+      if (x < 140 && z > 0) continue;                                     // gas station frontage stays open
+      spots.push({ x, z, flip: z < 0, bench: (x / 14) % 2 === 0 });
+    }
+    for (const street of GRID_Z) for (let c = 0; c < GRID_X.length - 1; c++) for (const side of [-1, 1]) {
+      let i = 0;
+      for (let x = GRID_X[c] + 12; x <= GRID_X[c + 1] - 12; x += 16) spots.push({ x, z: street + side * 8.2, flip: side < 0, bench: i++ % 2 === 0 });
+    }
+    for (const { x, z, flip, bench: withBench } of spots) {
+      const p = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.4), planter); p.position.set(x, 0.39, z);
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 2.6, 8), bark); trunk.position.set(x, 1.6, z);
+      const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(1.25, 2), leaves); crown.position.set(x, 3.4, z); crown.scale.y = 1.2;
+      for (const m of [p, trunk, crown]) { m.castShadow = true; this.group.add(m); }
+      this.physics.addStaticBox({ cx: x, cy: 0.4, cz: z, hx: 0.7, hy: 0.4, hz: 0.7 });
+      // bench beside every other planter
+      if (withBench) {
+        const bench = new THREE.Group();
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.06, 0.45), wood); seat.position.y = 0.6;
+        const back = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 0.05), wood); back.position.set(0, 0.85, -0.2);
+        bench.add(seat, back);
+        for (const s of [-0.8, 0.8]) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.45), iron); leg.position.set(s, 0.43, 0); bench.add(leg); }
+        bench.position.set(x + 3.5, 0.13, z); if (flip) bench.rotation.y = Math.PI;
+        bench.traverse(o => (o.castShadow = true));
+        this.group.add(bench);
       }
     }
   }

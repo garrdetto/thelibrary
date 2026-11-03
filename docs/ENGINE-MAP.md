@@ -168,6 +168,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/build/Thumbs.ts` — off-screen catalog thumbnails — `Game`.
 - `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps — `Game`.
 - `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear; the curved Willow Bend streets as ribbons with curbs, gutters, center dashes and stop signs — `Neighborhood`.
+- `src/world/TownSquare.ts` — Maple Commons: lawn, paths, gazebo, clock tower, benches, beds, trees, lamps, plaque — `Downtown`.
 - `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), fire and police stations (apparatus bays, bay lights, flagpoles), depot, streetscape, showroom cars — `Neighborhood`.
 - `src/world/Facades.ts` — facade styles and window/storefront layouts shared by the painted textures (albedo, night glow, roughness/metalness) and the 3D trim — `Downtown`.
 - `src/world/GasStation.ts` — Gas & Go forecourt, canopy, islands, dispensers, pylon price sign, canopy light — `Downtown`.
@@ -185,6 +186,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/idle/seated pose — `Character.ts`.
 - `src/avatar/HairAndHats.ts` — long hair, buns, hats on the head bone — `AvatarModel`.
 - `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids).
+- `src/game/DevPanel.ts` — developer instance panel (F8): published and draft items and vehicles with Place and Drive — `main` (only with `?dev=1`), `Game.devPlace` / `devDrive`.
 - `src/game/WardrobeUI.ts` — one-time character creator (male/female, hair, face, starter outfit), wardrobe (hair and face only; outfit locked) and the Maple Threads shop panel — `Game`.
 - `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation, `keepOutfit` (clothes only change at Maple Threads) — `RoomLogic`, `Economy`, `Npc`, client.
 - `tools/build-characters.mjs` — offline scan → rigged avatar + mask pipeline (not part of the build).
@@ -197,6 +199,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop; storage keys are prefixed with `WORLD_GENERATION` (bump it to reset everyone) — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — sidewalks (with their road side, `residentialSidewalks()`), `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
+- `shared/DowntownGrid.ts` — the downtown grid east of Market Ave: `GRID_X` / `GRID_Z`, `GRID_BLOCKS`, `TOWN_SQUARE`, `GRID_ROADS`, `GRID_SIDEWALKS`, `GRID_BUILDINGS` (parcels and landmarks) — `WorldLayout`, `Downtown`, `Neighborhood`, `Npc`.
 - `shared/Seed.ts` — simulated neighbors' roster, `seedNeighborhood`, `upgradeSeed` (once per `SEED_VERSION`) — `RoomLogic`.
 - `shared/HousePlans.ts` — seven house plans in lot-local coordinates (`Plot`) emitted as build ops — `Seed`.
 - `shared/Assets.ts` — asset status (`draft`, `published`, `retired`) — `CustomItems`, `CustomVehicles`, `src/server/maplestreet-assets.ts`, the admin editors.

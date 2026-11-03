@@ -5,7 +5,7 @@
  * Clicking a lot selects it; the HUD shows details and actions beside it.
  */
 import { LotState, WorldState } from '../../shared/BuildRules';
-import { BUILDINGS, CIVIC, CURVES, DEPOT, DOWNTOWN, GAS_STATION, MAP_BOUNDS, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
+import { BUILDINGS, CIVIC, CURVES, DEPOT, DOWNTOWN, GAS_STATION, GRID_AREA, MAP_BOUNDS, ROADS, SIDEWALKS, TOWN_SQUARE_RECT } from '../../shared/WorldLayout';
 
 const BOUNDS = MAP_BOUNDS;
 const SHOP_ICON: Record<string, string> = { dealer: '🚙', diner: '🍔', bank: '🏦', cafe: '☕', grocery: '🛒', hardware: '🔧', gas: '⛽', fire: '🚒', police: '🚓' };
@@ -84,6 +84,9 @@ export class PlotMap {
     const rect = (cx: number, cz: number, sx: number, sz: number) => g.fillRect(this.px(cx - sx / 2), this.py(cz - sz / 2), sx * s, sz * s);
     g.fillStyle = '#8e8c86';
     rect((DOWNTOWN.x0 + DOWNTOWN.x1) / 2, (DOWNTOWN.z0 + DOWNTOWN.z1) / 2, DOWNTOWN.x1 - DOWNTOWN.x0, DOWNTOWN.z1 - DOWNTOWN.z0);
+    rect((GRID_AREA.x0 + GRID_AREA.x1) / 2, (GRID_AREA.z0 + GRID_AREA.z1) / 2, GRID_AREA.x1 - GRID_AREA.x0, GRID_AREA.z1 - GRID_AREA.z0);
+    g.fillStyle = '#4f7d3a';
+    rect(TOWN_SQUARE_RECT.cx, TOWN_SQUARE_RECT.cz, TOWN_SQUARE_RECT.sx, TOWN_SQUARE_RECT.sz);
     g.fillStyle = '#c9c4b8';
     for (const r of SIDEWALKS) rect(r.cx, r.cz, r.sx, r.sz);
     g.fillStyle = '#3a3d42';

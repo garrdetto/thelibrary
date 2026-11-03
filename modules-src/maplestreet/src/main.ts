@@ -93,9 +93,12 @@ async function start(mode: NetMode) {
     $('start').remove();
     document.body.classList.add('playing');
     if (DEV_MODE) {
+      const g = game;
+      const { DevPanel } = await import('./game/DevPanel');
+      new DevPanel({ place: id => g.devPlace(id), drive: kind => g.devDrive(kind as Parameters<Game['devDrive']>[0]), hasLot: () => g.devHasLot() });
       const badge = document.createElement('div');
       badge.id = 'devBadge';
-      badge.textContent = devDrafts.allowed ? 'DEV · drafts on' : 'DEV';
+      badge.textContent = devDrafts.allowed ? 'DEV · drafts on · F8 panel' : 'DEV · F8 panel';
       document.body.append(badge);
     }
   } catch (e) {
