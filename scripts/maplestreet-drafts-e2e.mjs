@@ -157,7 +157,8 @@ try {
       await new Promise(r => setTimeout(r, 100))
     }
     const out = { owned: kinds.filter(k => g.account.garage.includes(k)), paid: before - g.account.money, cars: [] }
-    kinds.forEach((k, i) => { if (out.owned.includes(k)) { g.bringOut(k); g.placeVehicle(g.vehicles.get(k), 25 + i * 11, 2.5, 0) } })
+    // Straight through addVehicle: the garage only lets one extra vehicle out at a time.
+    kinds.forEach((k, i) => { if (out.owned.includes(k)) { const at = pos.clone().set(25 + i * 11, 0, 2.5); g.placeVehicle(g.vehicles.get(k) ?? g.addVehicle(k, at, 0), at.x, at.z, 0) } })
     g.hud.closeModals()
     for (let i = 0; i < 150; i++) g.fixed(1 / 60)
     for (const k of out.owned) {

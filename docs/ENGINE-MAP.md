@@ -153,7 +153,8 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/core/Merge.ts` — geometry merge helpers — `Downtown`, `RemoteEntities`, `Vehicle`, `VehiclePresets`.
 - `src/core/DevMode.ts` — developer instance flag (`?dev=1`), its save key and draft counts — `main`, `OfflineTransport`, `CustomModels`, `CustomVehicleModels`.
 - `src/core/Storage.ts` — per-device settings — `main`, `Game`, `BuildController`, `Host`, `WorldTransport`.
-- `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch — `main`.
+- `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch; vehicles are parked at home (never brought to you), Go Home every 15 minutes, the parked-vehicle unstack watchdog and the right-click vehicle menu — `main`.
+- `src/game/ContextMenu.ts` — right-click menu panel (title + actions, Escape/outside click closes, arrow keys) — `Game`.
 - `src/game/CameraRig.ts` — third-person and build cameras — `Game`.
 - `src/game/Hud.ts` — HUD, menus, notifications — `Game`.
 - `src/game/PlotMap.ts` — town map overlay (bounds from `MAP_BOUNDS`, civic buildings included) — `Hud`.
@@ -176,7 +177,9 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/world/Lawn.ts` — mowable lawns: per-lot data texture (blade lean + growth, 4 texels/m) and the view-dependent stripe shader; diamond patterns from crossed passes; grass grows back over five in-game days — `Neighborhood`, `Grass`.
 - `src/world/Grass.ts` — instanced grass: thin four-blade clumps; on lawns they follow the lawn's growth (≈4 → 11 cm) and lean the way they were mowed, shaded by lean vs. camera so stripes read in 3D; short verges along the curves, meadow elsewhere — `Game`.
 - `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
-- `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
+- `src/physics/Physics.ts` — Rapier world and colliders; rounded vehicle colliders (`vehicleShape`); wheel rays hit trailer beds (`CG.DECK`) but never other cars — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
+- `src/physics/Parking.ts` — free-spot search for placing vehicles (buildings, props, every vehicle) and the stacked-vehicle check — `Game`.
+- `src/physics/VehicleDoors.ts` — hinged door leaves for enclosed built-ins (`DOOR_SPECS`), driver-door pulse on getting in/out, open/close all — `Vehicle`, `RemoteEntities`.
 - `src/physics/Character.ts` — kinematic character controller and `Avatar` (scanned model, stand-in while loading) — `Game`, `RemoteEntities`.
 - `src/physics/Vehicle.ts` — raycast vehicle: grip-limited, rate-limited steering with Ackermann front wheels, pedal ramps, torque curve, handbrake rear slide; built from any `PRESETS` entry, built-in or published — `Game`, `Dyno`, `VehicleTestDrive`.
 - `src/physics/CustomVehicleModels.ts` — published vehicles: fetches `/api/maplestreet-vehicles` (cached for offline), registers them with `shared/CustomVehicles.ts`, adds `PRESETS` entries whose body is the .glb in the chassis frame with game wheels, lamps and paint (material or color-mask recolor) — `main`, `VehicleTestDrive`.
@@ -184,7 +187,8 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/game/VehicleTestDrive.ts` — `?vehicleTest=1`: the admin editor posts a draft record; runs the dyno, reports `tl-vehicle-test-result`, then lets the admin drive on a flat pad — `main`.
 - `src/avatar/AvatarAssets.ts` — loads `public/modules/maplestreet/{male,female}.glb` + region masks, flattened-hair variant — `Character.ts`.
 - `src/avatar/AvatarMaterial.ts` — TSL wardrobe recolor shader — `AvatarModel`.
-- `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/idle/seated pose — `Character.ts`.
+- `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/run/idle/seated pose — `Character.ts`.
+- `src/avatar/Gait.ts` — speed-matched walk and run cycles (cadence from stride length so planted feet don't slide; running lean, swing-knee tuck, arm pump) — `AvatarModel`, `Character.ts` stand-in.
 - `src/avatar/HairAndHats.ts` — long hair, buns, hats on the head bone — `AvatarModel`.
 - `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids).
 - `src/game/DevPanel.ts` — developer instance panel (F8): published and draft items and vehicles with Place and Drive — `main` (only with `?dev=1`), `Game.devPlace` / `devDrive`.
@@ -196,15 +200,15 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
 - `src/net/OfflineTransport.ts` — solo mode (unlimited money, save `maplestreet/solo/v3`) and fallback — `Game`.
 - `src/net/Host.ts` — in-browser authority for solo mode — `OfflineTransport`.
-- `src/net/RemoteEntities.ts` — remote player and vehicle interpolation; vehicles are data (snapshot buffers) with a pooled 3D view + collider only within 200 m (released past 240 m), neighbor walkers likewise within 110 m; a view takes each car's own paint and dents from its snapshot `style` (restyled when reused from the pool or when the style changes) — `Game`.
-- `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
+- `src/net/RemoteEntities.ts` — remote player and vehicle interpolation; vehicles are data (snapshot buffers) with a pooled 3D view + collider only within 200 m (released past 240 m), neighbor walkers likewise within 110 m; a view takes each car's own paint and dents from its snapshot `style` (restyled when reused from the pool or when the style changes); remote doors swing when their driver gets in or out; `pickVehicle` for the right-click menu (vehicles with a view) — `Game`.
+- `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs); a newer connection for the same account supersedes the old one so its player and vehicles leave the world — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop; storage keys are prefixed with `WORLD_GENERATION` (bump it to reset everyone) — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — sidewalks (with their road side, `residentialSidewalks()`), `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
 - `shared/DowntownGrid.ts` — the downtown grid east of Market Ave: `GRID_X` / `GRID_Z`, `GRID_BLOCKS`, `TOWN_SQUARE`, `GRID_ROADS`, `GRID_SIDEWALKS`, `GRID_BUILDINGS` (parcels and landmarks) — `WorldLayout`, `Downtown`, `Neighborhood`, `Npc`.
 - `shared/Seed.ts` — simulated neighbors' roster, `seedNeighborhood`, `upgradeSeed` (once per `SEED_VERSION`) — `RoomLogic`.
 - `shared/HousePlans.ts` — seven house plans in lot-local coordinates (`Plot`) emitted as build ops — `Seed`.
 - `shared/Assets.ts` — asset status (`draft`, `published`, `retired`) — `CustomItems`, `CustomVehicles`, `src/server/maplestreet-assets.ts`, the admin editors.
-- `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep following distance and lean in turns; published vehicles with traffic on join as extra drivers (`syncCustomTraffic`) — `Host`, `WorldServer`.
+- `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep a bumper-to-bumper gap to oriented vehicle footprints (`obstaclesFrom`, `pathGap`; junction tie-break) and lean in turns; published vehicles with traffic on join as extra drivers (`syncCustomTraffic`) — `Host`, `WorldServer`.
 - `shared/Catalog.ts` — build/buy catalog (`custom` and `hidden` fields for published items) — `RoomLogic`, `BuildRules`, `Furniture`, `Mesher`, `Thumbs`, `Hud`.
 - `shared/CustomItems.ts` — published-item records, limits, `footprintFromSize`, `registerCustomItems` (adds `custom:<id>` entries to `CATALOG`) — `CustomModels`, `maplestreet-world.ts`, `src/server/maplestreet-items.ts`, the admin editor.
 - `shared/BuildRules.ts` — build validation — `RoomLogic`, build files, `Hud`, `PlotMap`.
@@ -216,7 +220,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `shared/BundledVehicles.ts` — vehicle records that ship with the game (Meridian Sedan, Bulwark 4x4, Ironhorn Crew Cab), models in `public/modules/maplestreet/vehicles/`; a published record with the same id replaces one — `CustomVehicles`.
 - `shared/VehicleDrive.ts` — `predictDrive` / `solveDrive`: top speed and 0–60 targets → engine force and torque cutoff, matching the physics — the vehicle editor, tests.
 - `shared/PaintMask.ts` — color-mask recolor shared by the game and the editor preview.
-- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building/sidewalk layout and minimap routing; `tests/houses.test.ts` — every house plan on both lot orientations, seeding and the seed upgrade; `tests/suggest.test.ts` — the vehicle editor's Suggest points wheel finder (`src/components/maplestreet/vehicle/suggest.ts`) and view-to-metre conversion; `tests/cars.test.ts` — car paint on accounts, dealer purchases with a color and finish, snapshots carrying the owner's paint, and crash damage (thresholds, dents, which cars the authority will damage) (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
+- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building/sidewalk layout and minimap routing; `tests/houses.test.ts` — every house plan on both lot orientations, seeding and the seed upgrade; `tests/suggest.test.ts` — the vehicle editor's Suggest points wheel finder (`src/components/maplestreet/vehicle/suggest.ts`) and view-to-metre conversion; `tests/cars.test.ts` — car paint on accounts, dealer purchases with a color and finish, snapshots carrying the owner's paint, and crash damage (thresholds, dents, which cars the authority will damage); `tests/movement.test.ts` — gait foot speed and knee timing, NPC gaps and no gridlock, reconnect superseding (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
 - `shared/Mowing.ts` — lawn cells (cut time + blade lean per m²), lean blending, growth (`GROW_DAYS` = 5), mowing pay, run-length encoding — `RoomLogic`, `Game`, `Lawn`, `Grass`.
 - `shared/Protocol.ts` — message protocol types — every transport, `RoomLogic`, `WorldServer`.
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.

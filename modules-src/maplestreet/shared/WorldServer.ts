@@ -17,7 +17,7 @@
  */
 import type { LotBuild, LotState } from './BuildRules';
 import type { Account } from './Economy';
-import { NpcTraffic } from './Npc';
+import { NpcTraffic, obstaclesFrom } from './Npc';
 import { AUTOSAVE_EVERY_MS, type ClientMsg, type JoinOptions, type ServerMsg } from './Protocol';
 import { Identity, NeighborhoodLogic, Persisted } from './RoomLogic';
 
@@ -153,7 +153,7 @@ export class WorldServer {
   private broadcast(msg: ServerMsg, except?: string) {
     if (msg.t === 'snap') {
       const n = this.npcs.snapshot();
-      this.npcs.obstacles = [...msg.players, ...msg.vehicles].map(e => ({ x: e.x, z: e.z }));
+      this.npcs.obstacles = obstaclesFrom(msg.players, msg.vehicles);
       msg = { ...msg, players: [...msg.players, ...n.players], vehicles: [...msg.vehicles, ...n.vehicles] };
     }
     const data = JSON.stringify(msg);

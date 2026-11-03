@@ -13,6 +13,7 @@ import { wheelbaseOf } from '../../shared/Vehicles';
 import { wheelFor, makeLights, paintFor, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
 import { carStyleKey, conditionEffects, CRASH_MIN_DV, type CarStyle } from '../../shared/Cars';
 import { applyDents, impactPoint } from './Dents';
+import { VehicleDoors } from './VehicleDoors';
 
 export interface DriveInput { throttle: number; steer: number; brake: number; handbrake: boolean }
 
@@ -28,6 +29,8 @@ export class Vehicle {
   readonly ctrl: RAPIER.DynamicRayCastVehicleController;
   readonly root = new THREE.Group();
   readonly lights: VehicleLights;
+  /** Opening doors, or null for open-air vehicles. */
+  readonly doors: VehicleDoors | null;
   private wheels: WheelVis[] = [];
   private headlamp: THREE.SpotLight | null = null;
   private steerAngle = 0;
@@ -39,6 +42,8 @@ export class Vehicle {
   private joint: RAPIER.ImpulseJoint | null = null;
   private unsubscribe: () => void = () => {};
   private shell: THREE.Group;
+  /** The body paint, shared with the door panels. */
+  private paint!: THREE.Material;
   styleKey = '';
   /** What crash damage does to the drive right now (from the owner's account). */
   private cond = conditionEffects(0);
@@ -68,10 +73,10 @@ export class Vehicle {
     // Explicit mass properties: low COM + box inertia = planted handling.
     const sx = c.hx * 2, sy = c.hy * 2, sz = c.hz * 2, m = P.mass;
     this.collider = physics.world.createCollider(
-      R.ColliderDesc.cuboid(c.hx, c.hy, c.hz)
+      physics.vehicleShape(c.hx, c.hy, c.hz)
         .setMassProperties(m, { x: 0, y: P.comY, z: 0 }, { x: (m / 12) * (sy * sy + sz * sz), y: (m / 12) * (sx * sx + sz * sz), z: (m / 12) * (sx * sx + sy * sy) }, { x: 0, y: 0, z: 0, w: 1 })
-        .setFriction(0.4)
-        .setCollisionGroups(MASK.vehicle),
+        .setFriction(0.3)
+        .setCollisionGroups(P.tongue ? MASK.trailer : MASK.vehicle),
       this.body,
     );
 
@@ -101,6 +106,8 @@ export class Vehicle {
 
     this.lights = makeLights();
     this.shell = this.buildShell(style);
+    this.doors = VehicleDoors.for(P.kind, this.paint, P.seat.z);
+    if (this.doors) this.root.add(this.doors.group);
     this.root.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(this.root);
     physics.track(this.body, this.root);
@@ -108,7 +115,8 @@ export class Vehicle {
   }
 
   private buildShell(style?: CarStyle | null) {
-    const body = this.preset.build(paintFor(this.preset, style), this.lights);
+    this.paint = paintFor(this.preset, style);
+    const body = this.preset.build(this.paint, this.lights);
     mergeStatic(body);
     applyDents(body, style?.dents);
     body.userData.onFill = () => applyDents(body, style?.dents);
@@ -121,8 +129,11 @@ export class Vehicle {
   /** Repaints the body in place (a new color or finish from the dealer or body shop). */
   restyle(style: CarStyle | null) {
     if (carStyleKey(style) === this.styleKey) return;
+    const before = this.paint;
     this.root.remove(this.shell);
     this.shell = this.buildShell(style);
+    // The doors are painted panels too: hand them the new paint without resetting their swing.
+    this.doors?.group.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh && m.material === before) m.material = this.paint; });
   }
 
   /** Crash damage from the account: less engine and grip, and a slight pull once it's bad. */
@@ -268,9 +279,10 @@ export class Vehicle {
     this.ctrl.updateVehicle(dt, undefined, MASK.wheelRay);
   }
 
-  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night. */
-  updateVisuals(night: number, braking: boolean) {
+  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night; doors swing. */
+  updateVisuals(night: number, braking: boolean, dt = 0) {
     const P = this.preset;
+    this.doors?.update(dt, this.speed);
     this.wheels.forEach((w, i) => {
       const len = this.ctrl.wheelSuspensionLength(i) ?? P.suspension.rest;
       w.steer.position.y = P.wheelY - len;
