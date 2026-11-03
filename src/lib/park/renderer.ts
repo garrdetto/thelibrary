@@ -38,6 +38,8 @@ type Clock = { spin: number; phase: string; trainS: number; snapS: number; timer
 function hash(n: number) { let h = n | 0; h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); return ((h ^ (h >>> 16)) >>> 0) / 4294967296 }
 const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 
+const canvasOwners = new WeakMap<HTMLCanvasElement, ParkRenderer>()
+
 export class ParkRenderer {
   canvas: HTMLCanvasElement
   g: Gl
@@ -47,6 +49,7 @@ export class ParkRenderer {
   rideCam: number | null = null
   showGrid = false
   preview: Preview = {}
+  debug: { noShadow?: boolean } = {}
   private width = 1
   private height = 1
   private view: Mat4 = mat4.identity()
@@ -74,6 +77,7 @@ export class ParkRenderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
+    canvasOwners.set(canvas, this)
     this.g = new Gl(canvas)
     const inst = (key: string, builder: MeshBuilder) => this.kindMeshes.set(key, this.g.upload(builder, null, true))
     for (const kind of SCENERY_KINDS) inst(`tree:${kind}`, treeModel(kind))
@@ -114,7 +118,7 @@ export class ParkRenderer {
     this.cam.yaw = Math.PI / 2 + 0.55; this.cam.pitch = 0.78; this.cam.dist = 90
   }
 
-  captureOverview(width = 1600, height = 1000): { mime: string; data: string } | null {
+  overviewCam() {
     const s = this.state
     if (!s) return null
     const map = s.map
@@ -128,15 +132,26 @@ export class ParkRenderer {
     const spanX = (x1 - x0 + 1) * TILE, spanY = (y1 - y0 + 1) * TILE
     const cx = (x0 + x1 + 1) / 2 * TILE, cy = (y0 + y1 + 1) / 2 * TILE
     const radius = Math.hypot(spanX, spanY) / 2
+    return { tx: cx, ty: cy, tz: groundHeightAt(map, cx, cy, TILE), yaw: Math.PI * 0.75, pitch: 0.98, dist: Math.max(60, radius / Math.tan(0.39) * 0.95) }
+  }
+
+  captureOverview(width = 1600, height = 1000): { mime: string; data: string } | null {
+    const cam = this.overviewCam()
+    return cam ? this.renderShot(cam, width, height, 'image/jpeg', 0.5) : null
+  }
+
+  renderShot(cam: typeof this.cam, width: number, height: number, mime = 'image/jpeg', dayFraction?: number): { mime: string; data: string } | null {
+    const s = this.state
+    if (!s) return null
     const saved = { cam: { ...this.cam }, rideCam: this.rideCam, preview: this.preview, showGrid: this.showGrid, width: this.width, height: this.height, day: s.time.dayFraction }
     try {
       this.rideCam = null; this.preview = {}; this.showGrid = false; this.peopleReady = false
-      s.time.dayFraction = 0.5
-      Object.assign(this.cam, { tx: cx, ty: cy, tz: groundHeightAt(map, cx, cy, TILE), yaw: Math.PI * 0.75, pitch: 0.98, dist: Math.max(60, radius / Math.tan(0.39) * 0.95) })
+      if (dayFraction !== undefined) s.time.dayFraction = dayFraction
+      Object.assign(this.cam, cam)
       this.width = width; this.height = height
       this.canvas.width = width; this.canvas.height = height
       this.frame(this.lastFrame || performance.now())
-      const url = this.canvas.toDataURL('image/jpeg', 0.85)
+      const url = this.canvas.toDataURL(mime, 0.85)
       const match = /^data:(image\/[a-z]+);base64,(.+)$/.exec(url)
       return match ? { mime: match[1], data: match[2] } : null
     } finally {
@@ -585,8 +600,9 @@ export class ParkRenderer {
     this.eyePos = eye
     const light = this.lighting()
     const g = this.g
-    const shadowStrength = light.shadow ?? 0
+    const shadowStrength = this.debug.noShadow ? 0 : light.shadow ?? 0
     let first = true
+    const st = g.stats; st.shadowDraws = 0; st.mainDraws = 0; st.shadowVerts = 0; st.mainVerts = 0; st.instanceBytes = 0
     if (shadowStrength > 0.02 && g.shadowsAvailable) {
       const { m, extent } = this.lightMatrix(light, eye)
       if (g.beginShadow(m, extent)) { this.drawWorld(dt); g.endShadow(); first = false }
@@ -971,7 +987,8 @@ export class ParkRenderer {
   }
 
   dispose() {
-    const gl = this.g.gl
-    gl.getExtension('WEBGL_lose_context')?.loseContext()
+    const gl = this.g.gl, canvas = this.canvas
+    canvasOwners.delete(canvas)
+    setTimeout(() => { if (!canvasOwners.has(canvas)) gl.getExtension('WEBGL_lose_context')?.loseContext() }, 0)
   }
 }
