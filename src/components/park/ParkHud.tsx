@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Camera, Check, Cloud, CloudRain, Droplets, Eraser, FastForward, Footprints, Gauge, Grid3x3, Hotel, Landmark, LoaderCircle, LogOut, Maximize2, MessageCircle, Minus, Mountain, MousePointer2, Paintbrush, Pause, Play, Plus, RotateCw, Save, Sparkles, Store, Sun, Moon, Trash2, Trees, Undo2, Users, Wrench, X, Zap } from 'lucide-react'
 import { ParkRenderer } from '@/lib/park/renderer'
+import { shotCamera } from '@/lib/park/shotCams'
 import type { Preview } from '@/lib/park/renderer'
 import { compressSave } from '@/lib/park/session'
 import { ViewSession } from '@/lib/park/session'
@@ -176,6 +177,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (import.meta.env.DEV) (window as unknown as { __park?: unknown }).__park = { session, renderer }
     renderer.setState(session.state, session.park)
     renderer.focusPark()
+    const shotName = new URLSearchParams(window.location.search).get('shotCam')
+    if (shotName) { const cam = shotName === 'overview' ? renderer.overviewCam() : shotCamera(session.state, shotName); if (cam) Object.assign(renderer.cam, cam) }
     const resize = () => { const r = canvas.getBoundingClientRect(); renderer.resize(r.width, r.height, Math.min(2, window.devicePixelRatio || 1)) }
     resize()
     const observer = new ResizeObserver(resize)

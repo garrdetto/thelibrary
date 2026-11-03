@@ -1,0 +1,14 @@
+{
+ "canvas": [
+  1035,
+  721
+ ],
+ "frameMs": 964.599999999938,
+ "noShadowMs": 684.8666666666977,
+ "shadowPassMs": 279.73333333324024,
+ "shadowDraws": 98,
+ "mainDraws": 162,
+ "shadowVerts": 1011294,
+ "mainVerts": 1410960,
+ "instanceBytes": 8416
+}
