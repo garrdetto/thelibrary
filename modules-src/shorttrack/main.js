@@ -1920,7 +1920,7 @@ function aiCtl(c,dt){
     const vAt=b=>{const t=Math.tan(b),lim=Math.sqrt(CFG.g*(muP+t)/Math.max(0.05,1-muP*t)*(R+lane))*AI_CORNER;return Math.min(lim,Math.sqrt(CFG.g*(mu+t)/(1-mu*t)*(R+lane))*0.95*c.skill*aiCornerK(c));};
     const vE=vAt(bankAt(T1)),vM=vAt(CFG.turnBank*Math.PI/180);
     const inT1=s>=T1&&s<T1+TURN,inT2=s>=T2;
-    if(inT1||inT2){const into=(inT1?s-T1:s-T2)/TURN;target=into<0.2?vE:into>0.55?vM*1.04:vM;}
+    if(inT1||inT2){const into=(inT1?s-T1:s-T2)/TURN;target=into<0.2?lerp(vE,vM,into/0.2):into>0.55?vM*1.04:vM;}
     else{const dT=(s<T1?T1:T2)-s;target=Math.sqrt(vE*vE+2*(c.aiDecel||CFG.aiDecel)*Math.max(0,dT-6));}
     if(ph==='pace'&&race.formP!=null&&!c.fin)target=Math.min(target,formSpeed(c));
     if(ahead){
@@ -1943,10 +1943,13 @@ function aiCtl(c,dt){
       else if(hazD<35)target=Math.min(target,v*0.985);
     }
     if(c.looseT>0)target*=0.95;            // got bumped loose: gather it up before getting back in the gas
-    {const room=HW-1.3*CFG.carScale-c.tp.lat,drift=latVel(c);if(drift>0&&room<drift*(DIRT?0.7:0.9))target=Math.min(target,v-(DIRT?1.0:1.5));} // running out of room at the wall: lift and let it turn
+    {const room=HW-1.3*CFG.carScale-c.tp.lat,drift=latVel(c);if(drift>0&&room<drift*(DIRT?0.7:0.9))target=Math.min(target,v-(DIRT?0.8:0.6));} // running out of room at the wall: lift and let it turn
     const cap=capFor(c);if(cap)target=Math.min(target,cap-0.3);
     const tc=center(s),mis=Math.abs(wrapA(Math.atan2(tc.tx,tc.tz)-c.h));
     if(c.speed<1.5||(mis>1.3&&c.speed<6)){c.stuckT+=dt;if(c.stuckT>3){resetCar(c);c.stuckT=0;}}else c.stuckT=0;
+    // in the turns the AI lifts rather than brakes, so a car following closely is not brake-checked; brakes only
+    // for a wreck ahead, a car it is about to run into, or when far over the target speed
+    c.aiTurn=(inT1||inT2)&&ph!=='pace';c.brkTight=!!(haz&&hazD<35)||!!(ahead&&gap<(DIRT?2.6:1.6)+Math.max(0,v)*0.06);
     c.brkAt=ahead&&gap<14?0.8:2.5;
   }
   const Ld=8+Math.abs(v)*0.45,tg=center(s+Ld);
@@ -1966,7 +1969,8 @@ function aiCtl(c,dt){
   // catch a slide: lift (never brake) while the rear is stepping out, and steer into it
   const sliding=!c.isPace&&(DIRT?Math.abs(c.av)>0.8:Math.abs(c.av)>0.32||c.slip>2.6);
   const steer=clamp(delta/sm-(sliding?clamp(c.av*0.6,-0.5,0.5):0),-1,1);
-  return {thr:!sliding&&v<target-0.2,brk:!sliding&&v>target+(c.brkAt||2.5),steer};
+  const brkAt=!c.isPace&&c.aiTurn&&!c.brkTight?5:(c.brkAt||2.5);
+  return {thr:!sliding&&v<target-0.2,brk:!sliding&&v>target+brkAt,steer};
 }
 
 // ===================== RACE STATE =====================
