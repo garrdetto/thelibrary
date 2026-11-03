@@ -216,3 +216,17 @@ AO and shadow changes carry most of the visible gain on those rides.
 Measured (SwiftShader, auto tier = `low`): draws 194/frame, frame 908 ms min of 5 (base 919–997), running park 1.22 FPS
 avg (base 0.59–0.81), 1% low 0.63, heap 23.1 MB. `medium` 1,118 ms, `high` 1,335 ms. Screenshots:
 `docs/park-graphics/phase3/`.
+
+### Phase 4 — Optional post effects
+- **FXAA over MSAA, shipped for captures only.** `Gl.beginPost/endPost` render the frame into a 4× multisampled
+  target, resolve it with `blitFramebuffer` and run a single-pass FXAA (5 taps on edges, early-out elsewhere) to the
+  canvas; `freePost` releases the targets right after. `renderShot`/`captureOverview` (always `high`) use it, which
+  cleans thin rails, catwalk railings and spokes in the leaderboard JPEG. It is not used for live frames: on a real GPU
+  the pass is well under 1 ms, but at 1080p the extra MSAA colour + depth targets cost ~60 MB of GPU memory next to the
+  canvas's own MSAA buffer, far over the 8 MB budget, and FXAA without MSAA would be a quality step down from what the
+  canvas already gives.
+- **SSAO / contact shadows: skipped.** A half-resolution SSAO needs a depth pre-pass or depth texture plus a blur, at
+  least two extra full-screen passes and draws; the baked per-vertex AO (Phase 1) and canopy AO (Phase 3) already cover
+  the enclosed areas it would darken, and it could not meet the SwiftShader budget.
+- **Bloom: skipped.** The park has a day/night cycle and lit lamp heads, but bloom needs a bright-pass and a blur chain
+  (3+ passes and render targets) for a small gain on a handful of lamps; the emissive lamps already read at night.

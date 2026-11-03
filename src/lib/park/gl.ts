@@ -725,6 +725,26 @@ void main() {
   o = clamp(r, 0.0, 1.0);
 }`
 
+const FXAA_FRAG = `#version 300 es
+precision highp float; in vec2 vNdc; uniform sampler2D uScene; uniform vec2 uTexel; out vec4 o;
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main() {
+  vec2 uv = vNdc * 0.5 + 0.5;
+  vec3 m = texture(uScene, uv).rgb;
+  vec3 nw = texture(uScene, uv + vec2(-1.0, 1.0) * uTexel).rgb, ne = texture(uScene, uv + vec2(1.0, 1.0) * uTexel).rgb;
+  vec3 sw = texture(uScene, uv + vec2(-1.0, -1.0) * uTexel).rgb, se = texture(uScene, uv + vec2(1.0, -1.0) * uTexel).rgb;
+  float lm = luma(m), lnw = luma(nw), lne = luma(ne), lsw = luma(sw), lse = luma(se);
+  float lo = min(lm, min(min(lnw, lne), min(lsw, lse))), hi = max(lm, max(max(lnw, lne), max(lsw, lse)));
+  if (hi - lo < max(0.0312, hi * 0.125)) { o = vec4(m, 1.0); return; }
+  vec2 dir = vec2(-((lnw + lne) - (lsw + lse)), (lnw + lsw) - (lne + lse));
+  float red = max((lnw + lne + lsw + lse) * 0.03125, 0.0078125);
+  dir = clamp(dir / (min(abs(dir.x), abs(dir.y)) + red), -8.0, 8.0) * uTexel;
+  vec3 a = 0.5 * (texture(uScene, uv - dir / 6.0).rgb + texture(uScene, uv + dir / 6.0).rgb);
+  vec3 b = a * 0.5 + 0.25 * (texture(uScene, uv - dir * 0.5).rgb + texture(uScene, uv + dir * 0.5).rgb);
+  float lb = luma(b);
+  o = vec4(lb < lo || lb > hi ? a : b, 1.0);
+}`
+
 const SHADOW_SIZE = 2048
 const UNIFORMS = ['uDetail', 'uDetailOn', 'uViewProj', 'uModel', 'uLightViewProj', 'uInstanced', 'uTint', 'uSunDir', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uHorizonColor', 'uFogColor', 'uSunScatter', 'uCamPos', 'uFogDensity', 'uFogFalloff', 'uExposure', 'uAlpha', 'uEmissive', 'uUnlit', 'uHighlight', 'uTime', 'uWave', 'uWind', 'uGround', 'uSpecular', 'uShadowMap', 'uShadowStrength', 'uShadowTexel', 'uShadowOffset', 'uShadowBias', 'uMatA', 'uMatB']
 const SKY_UNIFORMS = ['uTop', 'uBottom', 'uSunDir', 'uSunColor', 'uSunScatter', 'uInvViewProj', 'uExposure']
@@ -959,9 +979,69 @@ export class Gl {
 
   windLevel = 0
 
+  private post: { fbo: WebGLFramebuffer; color: WebGLRenderbuffer; depth: WebGLRenderbuffer; resolveFbo: WebGLFramebuffer; resolve: WebGLTexture; w: number; h: number } | null = null
+  private postProgram: Program | null = null
+  private postActive = false
+
+  /** Routes the next frame into a multisampled target so `endPost` can resolve it and run FXAA. Returns false if unsupported. */
+  beginPost(width: number, height: number) {
+    const gl = this.gl
+    try {
+      if (!this.post || this.post.w !== width || this.post.h !== height) {
+        if (this.post) { gl.deleteFramebuffer(this.post.fbo); gl.deleteRenderbuffer(this.post.color); gl.deleteRenderbuffer(this.post.depth); gl.deleteFramebuffer(this.post.resolveFbo); gl.deleteTexture(this.post.resolve) }
+        const samples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) as number)
+        const fbo = gl.createFramebuffer()!, color = gl.createRenderbuffer()!, depth = gl.createRenderbuffer()!
+        gl.bindRenderbuffer(gl.RENDERBUFFER, color); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, width, height)
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depth); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, width, height)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color)
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth)
+        const resolve = gl.createTexture()!, resolveFbo = gl.createFramebuffer()!
+        gl.bindTexture(gl.TEXTURE_2D, resolve); gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
+        gl.bindFramebuffer(gl.FRAMEBUFFER, resolveFbo); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, resolve, 0)
+        const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.bindTexture(gl.TEXTURE_2D, null)
+        this.post = { fbo, color, depth, resolveFbo, resolve, w: width, h: height }
+        if (!ok) { this.post = null; return false }
+      }
+      if (!this.postProgram) {
+        const program = this.compile(SKY_VERT, FXAA_FRAG)
+        this.postProgram = { program, u: { uScene: gl.getUniformLocation(program, 'uScene'), uTexel: gl.getUniformLocation(program, 'uTexel') } }
+      }
+      this.postActive = true
+      return true
+    } catch { this.post = null; return false }
+  }
+
+  freePost() {
+    const gl = this.gl, p = this.post
+    if (!p) return
+    gl.deleteFramebuffer(p.fbo); gl.deleteRenderbuffer(p.color); gl.deleteRenderbuffer(p.depth); gl.deleteFramebuffer(p.resolveFbo); gl.deleteTexture(p.resolve)
+    this.post = null
+  }
+
+  endPost() {
+    if (!this.postActive || !this.post || !this.postProgram) return
+    const gl = this.gl, p = this.post
+    this.postActive = false
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, p.fbo); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, p.resolveFbo)
+    gl.blitFramebuffer(0, 0, p.w, p.h, 0, 0, p.w, p.h, gl.COLOR_BUFFER_BIT, gl.NEAREST)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.viewport(0, 0, p.w, p.h)
+    gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true)
+    gl.useProgram(this.postProgram.program)
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, p.resolve)
+    gl.uniform1i(this.postProgram.u.uScene, 2); gl.uniform2f(this.postProgram.u.uTexel, 1 / p.w, 1 / p.h)
+    gl.bindVertexArray(this.skyVao); gl.drawArrays(gl.TRIANGLES, 0, 3); gl.bindVertexArray(null)
+    gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0)
+    gl.enable(gl.DEPTH_TEST)
+  }
+
   begin(width: number, height: number, view: Mat4, proj: Mat4, cam: Vec3, light: Lighting, time: number, shadowStrength = 0) {
     const gl = this.gl
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.postActive && this.post ? this.post.fbo : null)
     gl.viewport(0, 0, width, height)
     gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)

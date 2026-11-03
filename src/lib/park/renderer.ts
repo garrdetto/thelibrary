@@ -54,7 +54,8 @@ export class ParkRenderer {
   rideCam: number | null = null
   showGrid = false
   preview: Preview = {}
-  debug: { noShadow?: boolean } = {}
+  debug: { noShadow?: boolean; noPost?: boolean } = {}
+  private capturing = false
   quality: ParkQuality = 'medium'
   qualityReason = ''
   settings: QualitySettings = QUALITY.medium
@@ -201,6 +202,7 @@ export class ParkRenderer {
     try {
       this.rideCam = null; this.preview = {}; this.showGrid = false; this.peopleReady = false
       if (highQuality) { this.settings = QUALITY.high; this.g.setLevel(QUALITY.high.level) }
+      this.capturing = true
       if (dayFraction !== undefined) s.time.dayFraction = dayFraction
       Object.assign(this.cam, cam)
       this.width = width; this.height = height
@@ -216,6 +218,8 @@ export class ParkRenderer {
       this.width = saved.width; this.height = saved.height
       this.canvas.width = saved.width; this.canvas.height = saved.height
       this.settings = saved.settings; this.g.setLevel(saved.settings.level)
+      this.capturing = false
+      this.g.freePost()
       this.peopleReady = false
       this.frame(this.lastFrame || performance.now())
     }
@@ -777,12 +781,14 @@ export class ParkRenderer {
       if (g.beginShadow(m, texel, this.time)) { this.drawWorld(dt); g.endShadow(); first = false }
       this.cullMargin = 0
     }
+    if (this.settings.fxaa && this.capturing && !this.debug.noPost) g.beginPost(this.width, this.height)
     g.begin(this.width, this.height, this.view, this.proj, eye, light, this.time, first ? 0 : shadowStrength)
     this.drawWorld(first ? dt : 0)
     this.drawPreview()
     if (this.showGrid) g.draw(this.grid, undefined, { alpha: 0.18, unlit: true })
     g.draw(this.water, undefined, { alpha: 0.78, wave: 0.08 })
     if (s.weather.kind === 'rain') this.drawRain(eye)
+    g.endPost()
   }
 
   private drawWorld(dt: number) {
