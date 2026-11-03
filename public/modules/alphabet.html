@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Alphabet Sprint</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="module-base.css">
+<style>
+  main { --width: 820px; }
+  .track { display: grid; grid-template-columns: repeat(13, 1fr); gap: 6px; margin-bottom: 16px; }
+  .key { position: relative; aspect-ratio: 1; display: grid; place-items: center; border-radius: 10px; background: var(--cell); border: 1px solid var(--line); font: 600 clamp(14px, 3vw, 24px) "JetBrains Mono", monospace; text-transform: uppercase; color: var(--muted); transition: transform .08s, background .12s; }
+  .key.done { background: var(--good); color: #04261b; border-color: transparent; }
+  .key.next { color: var(--text); border-color: var(--accent); box-shadow: 0 0 0 3px rgba(57, 208, 255, .25); transform: translateY(-3px); }
+  .key.wrong { background: var(--bad); color: #fff; border-color: transparent; animation: shake .25s; }
+  @keyframes shake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+  .typed { display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 12px 16px; border-radius: 12px; background: var(--cell); border: 1px solid var(--line); font: 600 28px "JetBrains Mono", monospace; letter-spacing: 3px; overflow: hidden; white-space: nowrap; }
+  .typed .caret { display: inline-block; width: 3px; height: 32px; background: var(--accent); animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .typed .err { color: var(--bad); text-decoration: underline wavy; }
+  .typed .ok { color: var(--good); }
+  .typed .hint { color: var(--muted); font: 500 14px Inter, sans-serif; letter-spacing: 0; margin-left: auto; }
+  .clock { font: 700 64px/1 Rajdhani, sans-serif; font-variant-numeric: tabular-nums; text-align: center; margin: 18px 0 8px; }
+  .clock small { font-size: 28px; color: var(--muted); }
+  .status { text-align: center; color: var(--muted); min-height: 20px; font-size: 14px; }
+  .status.ok { color: var(--good); } .status.bad { color: var(--bad); }
+  .splits { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: 13px; color: var(--muted); }
+  .splits b { color: var(--text); font-variant-numeric: tabular-nums; }
+  @media (max-width: 520px) { .track { grid-template-columns: repeat(7, 1fr); } .typed { font-size: 20px; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Alphabet Sprint</h1><div class="stats"><div class="stat"><span>BEST</span><b id="best">—</b></div><div class="stat"><span>RUNS</span><b id="runs">0</b></div></div></header>
+  <div class="bar"><p>Type <b>a</b> through <b>z</b> as fast as you can. The clock starts on your first key.</p><div><button id="reset">Reset <kbd>Esc</kbd></button></div></div>
+  <section class="panel" id="panel" tabindex="0" role="application" aria-label="Alphabet typing track">
+    <div class="track" id="track" aria-hidden="true"></div>
+    <div class="typed" id="typed" aria-live="polite"><span id="text"></span><span class="caret"></span><span class="hint" id="hint">Click here or press any key to begin</span></div>
+    <div class="clock" id="clock">0.000<small> s</small></div>
+    <p class="status" id="status"></p>
+    <div class="splits" id="splits"></div>
+    <div class="overlay" id="overlay"><h2 id="ovTitle">Perfect run</h2><p id="ovText"></p><div><button class="primary" id="again">Go again</button></div></div>
+  </section>
+  <footer>A wrong letter turns red and the clock keeps running: press <kbd>Backspace</kbd> to remove it before you can continue. Only fully correct runs are saved to the leaderboard. Physical keys only; the board works with any keyboard layout that produces a–z.</footer>
+</main>
+<script src="module-scores.js"></script>
+<script>
+'use strict';
+const LETTERS = 'abcdefghijklmnopqrstuvwxyz'.split('');
+const track = document.getElementById('track'), textEl = document.getElementById('text'), clockEl = document.getElementById('clock'), statusEl = document.getElementById('status'), hintEl = document.getElementById('hint'), overlay = document.getElementById('overlay'), splitsEl = document.getElementById('splits');
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
+let best = +(store.get('alphabet-best') || 0), runs = +(store.get('alphabet-runs') || 0);
+let typed = [], startAt = 0, finished = false, raf = 0, errors = 0, splits = [];
+const keys = LETTERS.map(l => { const k = document.createElement('div'); k.className = 'key'; k.textContent = l; track.appendChild(k); return k; });
+function fmt(ms) { return (ms / 1000).toFixed(3); }
+function showBest() { document.getElementById('best').textContent = best ? fmt(best) + ' s' : '—'; document.getElementById('runs').textContent = runs; }
+showBest();
+function correctCount() { let n = 0; while (n < typed.length && typed[n] === LETTERS[n]) n++; return n; }
+function render() {
+  const ok = correctCount(), hasError = ok < typed.length;
+  keys.forEach((k, i) => { k.className = 'key' + (i < ok ? ' done' : i === ok && !hasError ? ' next' : ''); });
+  if (hasError) keys[Math.min(25, ok)].classList.add('wrong');
+  textEl.innerHTML = typed.map((c, i) => `<span class="${i < ok ? 'ok' : 'err'}">${c}</span>`).join('');
+  hintEl.textContent = !typed.length ? 'Click here or press any key to begin' : hasError ? 'Backspace to fix' : '';
+  statusEl.className = 'status' + (hasError ? ' bad' : '');
+  statusEl.textContent = hasError ? 'Wrong letter: press Backspace to remove it.' : finished ? '' : typed.length ? `${ok} / 26 · ${errors} mistake${errors === 1 ? '' : 's'}` : '';
+}
+function tick() { if (!startAt || finished) return; clockEl.innerHTML = fmt(performance.now() - startAt) + '<small> s</small>'; raf = requestAnimationFrame(tick); }
+function reset() { cancelAnimationFrame(raf); typed = []; startAt = 0; finished = false; errors = 0; splits = []; clockEl.innerHTML = '0.000<small> s</small>'; overlay.classList.remove('show'); splitsEl.textContent = ''; render(); document.getElementById('panel').focus(); }
+function finish() {
+  finished = true; cancelAnimationFrame(raf);
+  const ms = Math.round(performance.now() - startAt);
+  clockEl.innerHTML = fmt(ms) + '<small> s</small>';
+  runs++; store.set('alphabet-runs', runs);
+  const record = !best || ms < best; if (record) { best = ms; store.set('alphabet-best', best); }
+  showBest();
+  const slow = splits.map((t, i) => [LETTERS[i], t - (i ? splits[i - 1] : 0)]).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  splitsEl.innerHTML = 'Slowest keys: ' + slow.map(([l, t]) => `<b>${l.toUpperCase()}</b> ${(t / 1000).toFixed(2)}s`).join(' · ');
+  document.getElementById('ovTitle').textContent = record ? 'New best!' : 'Perfect run';
+  document.getElementById('ovText').textContent = `${fmt(ms)} seconds, ${errors} mistake${errors === 1 ? '' : 's'} corrected along the way. ${errors ? 'Mistakes cost time, so the board counts the full elapsed time.' : 'Flawless.'}`;
+  overlay.classList.add('show');
+  if (window.tlScores) window.tlScores.submit('alphabet', ms);
+}
+window.addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape') { reset(); return; }
+  if (finished) { if (e.key === 'Enter' || e.key === ' ') reset(); return; }
+  if (e.key === 'Backspace') { e.preventDefault(); if (typed.length) typed.pop(); render(); return; }
+  if (e.key.length !== 1) return;
+  const c = e.key.toLowerCase();
+  if (c < 'a' || c > 'z') return;
+  e.preventDefault();
+  if (!startAt) { startAt = performance.now(); tick(); }
+  if (correctCount() < typed.length) { errors++; return; }
+  typed.push(c);
+  if (c !== LETTERS[typed.length - 1]) errors++; else splits.push(performance.now() - startAt);
+  render();
+  if (typed.length === 26 && correctCount() === 26) finish();
+});
+document.getElementById('reset').onclick = reset;
+document.getElementById('again').onclick = reset;
+reset();
+</script>
+</body>
+</html>
