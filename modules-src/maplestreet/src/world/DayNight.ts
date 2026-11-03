@@ -9,6 +9,8 @@ import { noNormalsMRT } from '../core/Engine';
 
 const DAY = new THREE.Color(0xfff3e2), DUSK = new THREE.Color(0xff9a52), MOON = new THREE.Color(0xa9bfff);
 const SKY_DAY = new THREE.Color(0xa9c9ef), SKY_DUSK = new THREE.Color(0xe7a27a), SKY_NIGHT = new THREE.Color(0x16234a);
+/** Reused every frame for the sky/fog color. */
+const _sky = new THREE.Color();
 const HEMI_NIGHT_SKY = new THREE.Color(0x4a5f9a), HEMI_NIGHT_GROUND = new THREE.Color(0x1f2418), HEMI_DAY_GROUND = new THREE.Color(0x3d4a2a);
 /** Moonlit night sky added on top of the physical sky, which goes fully black once the sun sets. */
 const NIGHT_ZENITH = new THREE.Vector3(0.018, 0.03, 0.075), NIGHT_HORIZON = new THREE.Vector3(0.05, 0.065, 0.12);
@@ -150,7 +152,7 @@ export class DayNight {
     this.hemi.color.copy(HEMI_NIGHT_SKY).lerp(SKY_DAY, dayK);
     this.hemi.groundColor.copy(HEMI_NIGHT_GROUND).lerp(HEMI_DAY_GROUND, dayK);
 
-    const skyCol = new THREE.Color().copy(SKY_NIGHT).lerp(SKY_DAY, dayK).lerp(SKY_DUSK, duskK * 0.5 * dayK + duskK * 0.25);
+    const skyCol = _sky.copy(SKY_NIGHT).lerp(SKY_DAY, dayK).lerp(SKY_DUSK, duskK * 0.5 * dayK + duskK * 0.25);
     this.fog.color.copy(skyCol);
     if (this.sky) {
       (this.sky.sunPosition.value as THREE.Vector3).set(Math.cos(theta), elev, 0.38).normalize();

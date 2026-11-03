@@ -19,6 +19,8 @@
  * the scene (and out of skeletal animation) while far away or while their car
  * is virtual. Real players on foot are always drawn.
  */
+import { prewarm } from '../core/Prewarm';
+import { lods } from '../core/Lod';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 import type { PlayerSnap, VehicleSnap } from '../../shared/Protocol';
@@ -174,6 +176,7 @@ export class RemoteEntities {
     const P: VehiclePreset = PRESETS[view.kind] ?? PRESETS.sedan;
     view.paint.copy(paintFor(P, style));
     view.paint.needsUpdate = true;
+    lods.removeUnder(view.shell);
     view.root.remove(view.shell);
     const shell = view.shell = P.build(view.paint, view.lights);
     tintGlass(shell, style?.tint);
@@ -195,11 +198,16 @@ export class RemoteEntities {
   }
 
   private acquire(rv: RemoteVehicle) {
-    const view = this.pool.get(rv.kind)?.pop() ?? this.buildView(rv.kind);
-    if (view.styleKey !== carStyleKey(rv.style)) this.restyle(view, rv.style);
+    const pooled = this.pool.get(rv.kind)?.pop();
+    const view = pooled ?? this.buildView(rv.kind);
+    let fresh = !pooled;
+    if (view.styleKey !== carStyleKey(rv.style)) { this.restyle(view, rv.style); fresh = true; }
     view.body.setEnabled(true);
-    this.scene.add(view.root);
     rv.view = view;
+    // A new body or paint means new shaders: compile them in the background (the car is
+    // 200 m out when this happens) instead of stalling the frame it first appears in.
+    if (fresh) void prewarm(view.root).then(() => { if (rv.view === view && !view.root.parent) this.scene.add(view.root); });
+    else this.scene.add(view.root);
     rv.fresh = true;            // teleport the collider on its first pose instead of sweeping it across town
   }
 

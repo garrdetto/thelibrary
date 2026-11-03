@@ -59,7 +59,7 @@ A 3D theme-park builder and management game. Sculpt land and water, lay footpath
 
 Multiplayer runs on the same Node service: co-op parks for up to four players (start fresh or from a save), and versus matches for two to four players on mirrored valleys. Signed-in players get six cloud save slots. Saving needs the `park_saves` table from `migrations/0006_park_saves.sql`.
 
-## Maple Street
+## Fox Plains
 
 A 3D neighborhood simulation in one persistent shared world. New neighbors pick a plot on the town map. They can build and furnish a house with Sims-style Build and Buy tools:
 

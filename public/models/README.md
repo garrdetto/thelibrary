@@ -20,7 +20,7 @@ Modules without 3D models (chess, checkers, 2048, Chopper Cave, the 2D Sandlot S
 - `ballpark_<sandlot|park|dome|stadium>.glb`: each park (field, walls, stands, instanced crowd).
 - Colors were converted from the module's linear-output color workflow to glTF's linear factors so they match the module on screen.
 
-## maplestreet/ — Maple Street (`modules-src/maplestreet`, three.js r172)
+## maplestreet/ — Fox Plains (`modules-src/maplestreet`, three.js r172)
 - `furniture/<catalog id>.glb`: every buy-mode catalog item (`buildFurniture`).
 - `vehicles/<kind>.glb`: every vehicle preset with wheels; nose faces +X as in the module.
 - `characters/resident.glb`: the player avatar.

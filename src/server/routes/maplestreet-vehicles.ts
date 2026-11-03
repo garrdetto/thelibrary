@@ -25,7 +25,7 @@ function check<T>(schema: z.ZodType<T>, value: unknown): T {
   throw new HttpError(400, `${where}${issue?.message ?? 'Please check your input and try again.'}`)
 }
 
-const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Maple Street vehicles.')
+const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Fox Plains vehicles.')
 const isAdmin = async (request: Request, env: Env) => (await currentUser(request, env))?.isAdmin === true
 const publishStatus = z.enum(['draft', 'published']).catch('published')
 

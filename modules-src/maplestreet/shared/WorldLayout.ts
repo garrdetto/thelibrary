@@ -299,8 +299,8 @@ export const BUILDINGS: Building[] = [
  */
 const CIVIC_FRONT = -ALLEY_Z - 7;            // -61: building line behind Commerce St's north sidewalk
 export const CIVIC: Building[] = [
-  { id: 'fire', name: 'Maple Street Fire Station 1', kind: 'fire', x: 118, w: 24, d: 20, h: 9, facing: '+z', z: CIVIC_FRONT - 10, color: '#9b3b2e' },
-  { id: 'police', name: 'Maple Street Police', kind: 'police', x: 154, w: 26, d: 18, h: 10, facing: '+z', z: CIVIC_FRONT - 9, color: '#c9c3b5' },
+  { id: 'fire', name: 'Fox Plains Fire Station 1', kind: 'fire', x: 118, w: 24, d: 20, h: 9, facing: '+z', z: CIVIC_FRONT - 10, color: '#9b3b2e' },
+  { id: 'police', name: 'Fox Plains Police', kind: 'police', x: 154, w: 26, d: 18, h: 10, facing: '+z', z: CIVIC_FRONT - 9, color: '#c9c3b5' },
 ];
 
 

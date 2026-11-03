@@ -4,6 +4,7 @@
  * speed-sensitive steering, brake/handbrake, aero drag, trailer coupling via
  * a spherical (ball) joint, and interpolated wheel visuals.
  */
+import { lods } from '../core/Lod';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 import type { VehicleSnap } from '../../shared/Protocol';
@@ -22,6 +23,10 @@ interface WheelVis { steer: THREE.Group; spin: THREE.Group; axle: number }
 
 const _v = new THREE.Vector3();
 const _q = new THREE.Quaternion();
+// Per-step scratch (Rapier copies vectors it is given, so one object can be reused).
+const _xyz = { x: 0, y: 0, z: 0 };
+const xyz = (x: number, y: number, z: number) => { _xyz.x = x; _xyz.y = y; _xyz.z = z; return _xyz; };
+const _towed: DriveInput = { throttle: 0, steer: 0, brake: 0, handbrake: false };
 
 export class Vehicle {
   readonly preset: VehiclePreset;
@@ -138,6 +143,7 @@ export class Vehicle {
   /** Repaints the body in place (a new color or finish from the dealer or body shop). */
   restyle(style: CarStyle | null) {
     if (carStyleKey(style) === this.styleKey) return;
+    lods.removeUnder(this.shell);
     this.root.remove(this.shell);
     this.shell = this.buildShell(style);
   }
@@ -175,7 +181,7 @@ export class Vehicle {
   private checkImpact() {
     const lv = this.body.linvel();
     const dx = lv.x - this.lastVel.x, dz = lv.z - this.lastVel.z;
-    this.lastVel = { x: lv.x, z: lv.z };
+    this.lastVel.x = lv.x; this.lastVel.z = lv.z;
     if (this.quietSteps > 0) { this.quietSteps--; return; }
     const dv = Math.hypot(dx, dz);
     if (dv <= CRASH_MIN_DV || !this.onImpact) return;
@@ -219,7 +225,7 @@ export class Vehicle {
     const P = this.preset;
     this.checkImpact();
     const speed = this.speed;
-    const raw = this.towedBy ? { throttle: 0, steer: 0, brake: this.towedBy.input.brake, handbrake: false } : this.input;
+    const raw = this.towedBy ? (_towed.brake = this.towedBy.input.brake, _towed) : this.input;
     const inp = this.empty ? { ...raw, throttle: 0 } : raw;
     if (this.mpm && Math.abs(inp.throttle) > 0.05) this.fuel = Math.max(0, this.fuel - Math.abs(speed) * dt * this.mpm * (0.6 + 0.4 * Math.abs(inp.throttle)) - dt * this.mpm * 2);
 
@@ -262,7 +268,7 @@ export class Vehicle {
       const av = this.body.angvel();
       const wantYaw = inp.steer * (1.9 - Math.min(1, Math.abs(speed) / P.topSpeed) * 0.8);
       const yaw = av.y + THREE.MathUtils.clamp(wantYaw - av.y, -8 * dt, 8 * dt);
-      this.body.setAngvel({ x: av.x * 0.9, y: yaw, z: av.z * 0.9 }, true);
+      this.body.setAngvel(xyz(av.x * 0.9, yaw, av.z * 0.9), true);
       if (inp.throttle === 0 && Math.abs(inp.steer) > 0) brake = Math.min(brake, P.brake * 0.02);
     }
 
@@ -276,7 +282,7 @@ export class Vehicle {
       const fwd = _v.set(1, 0, 0).applyQuaternion(_q.set(r.x, r.y, r.z, r.w));
       const pitchRate = av.x * -fwd.z + av.z * fwd.x;
       const rollRate = av.x * fwd.x + av.z * fwd.z;
-      this.body.setAngvel({ x: av.x - (rollRate * fwd.x - pitchRate * fwd.z) * k * 0.35, y: av.y, z: av.z - (rollRate * fwd.z + pitchRate * fwd.x) * k * 0.35 }, true);
+      this.body.setAngvel(xyz(av.x - (rollRate * fwd.x - pitchRate * fwd.z) * k * 0.35, av.y, av.z - (rollRate * fwd.z + pitchRate * fwd.x) * k * 0.35), true);
     }
 
     // Ackermann geometry: the inside front wheel turns tighter than the outside one,
@@ -300,7 +306,7 @@ export class Vehicle {
     const vmag = Math.hypot(lv.x, lv.z);
     if (vmag > 1) {
       const k = 0.0009 * P.mass * vmag * dt;
-      this.body.applyImpulse({ x: -lv.x * k, y: 0, z: -lv.z * k }, true);
+      this.body.applyImpulse(xyz(-lv.x * k, 0, -lv.z * k), true);
     }
 
     this.ctrl.updateVehicle(dt, undefined, MASK.wheelRay);
@@ -398,6 +404,7 @@ export class Vehicle {
   }
 
   dispose(scene: THREE.Scene) {
+    lods.removeUnder(this.root);
     this.unhitch();
     this.towedBy?.unhitch();
     this.setHeadlamp(null);

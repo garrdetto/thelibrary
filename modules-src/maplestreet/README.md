@@ -1,4 +1,4 @@
-# Maple Street (source)
+# Fox Plains (source)
 
 Source for `public/modules/maplestreet.html`, a 3D neighborhood simulation. You pick a plot on the town map, build and furnish a house with Sims-style Build and Buy tools, and drive around town. There are lawns to mow, deliveries to haul, shops and a gas station downtown, and a bank with a capped loan. Everyone shares one persistent world, so you can come and go as you please.
 
@@ -37,7 +37,7 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 
 ## Arriving
 
-Maple Street is one open world, so there is no name prompt or mode picker: the page goes straight into the shared world while a short "Walking over to Maple Street…" card shows. Signed in to the library you play under your username, otherwise under a guest name made once for this browser (`Guest-xxxxx`, also used by the server). If the world can't be reached it falls back to solo, and if the renderer can't start the card offers **Try again**. `?solo=1` still opens the private neighborhood with unlimited money (tests and the developer instance use it).
+Fox Plains is one open world, so there is no name prompt or mode picker: the page goes straight into the shared world while a short "Walking over to Fox Plains…" card shows. Signed in to the library you play under your username, otherwise under a guest name made once for this browser (`Guest-xxxxx`, also used by the server). If the world can't be reached it falls back to solo, and if the renderer can't start the card offers **Try again**. `?solo=1` still opens the private neighborhood with unlimited money (tests and the developer instance use it).
 
 ## Characters and wardrobe
 
@@ -47,7 +47,7 @@ Maple Street is one open world, so there is no name prompt or mode picker: the p
 
 ## Admin-published items
 
-The site admin can add Buy-mode items without a code change: **Admin → Maple Street items** opens a dev-mode editor (React Three Fiber) where a .glb/.gltf is previewed on a 1 m grid, scaled with drag handles, named, priced and published. `/api/maplestreet-items` stores the model in KV and the record in D1.
+The site admin can add Buy-mode items without a code change: **Admin → Fox Plains items** opens a dev-mode editor (React Three Fiber) where a .glb/.gltf is previewed on a 1 m grid, scaled with drag handles, named, priced and published. `/api/maplestreet-items` stores the model in KV and the record in D1.
 
 ## Drafts and the developer instance
 
@@ -67,7 +67,7 @@ Every admin-published asset (Buy items and vehicles today) lives in one D1 table
 
 ## Admin-published vehicles
 
-**Admin → Maple Street vehicles** publishes vehicles without a code change. A vehicle can be sold at Maple Motors, drive around town as neighbor traffic, or both.
+**Admin → Fox Plains vehicles** publishes vehicles without a code change. A vehicle can be sold at Maple Motors, drive around town as neighbor traffic, or both.
 
 - `shared/Vehicles.ts` is the vehicle registry: built-in tuning is plain data there, and `VehicleKind` is a built-in name or `custom:<uuid>`. `shared/CustomVehicles.ts` registers published records into the tuning registry, `VEHICLES` (dealer, fuel) and the traffic list. The Durable Object registers them before it loads the world (and on every publish), and `src/physics/CustomVehicleModels.ts` does the same in the page before any mode starts (cached in `localStorage` for offline solo play), so every authority prices, sells and validates them like built-ins.
 - Every mode drives a vehicle with the same `Vehicle` class and the same tuning numbers, so single-player and every online mode handle identically.
@@ -87,7 +87,7 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 - **Trees:** each street's corner trees share one species (maple or linden), back yards mix in spruce, and the woods outside town are mostly spruce.
 - **Downtown grid** (`shared/DowntownGrid.ts`): east of Market Ave, Second Ave, Third Ave and Shoreline Dr cross Mill St, Commerce St, Main St, South St and Park St, making twelve blocks with 4 m sidewalks, planters, benches and street lamps. Eleven blocks are lined on both street fronts with about 90 generated buildings (shops, apartments and offices, plus the Town Hall, Northwoods Cinema, Public Library, Lakeside Hotel and two office towers). They are scenery for now, and lighter than the original strip: only the street front and ends facing an avenue get detailed facades (12 px/m, no gloss map). The world is 1,280 m across (`WORLD_HALF` 640), and new traffic loops and pedestrians use the grid (`shared/Npc.ts`).
 - **Maple Commons** (`src/world/TownSquare.ts`): the town square south of Main St between Market and Second Ave, with a lawn, cross and diagonal paths, a white gazebo on a round plaza, a brick clock tower on the Main St corner, benches, flower beds, shade trees, globe lamps that glow at night and a name plaque.
-- **Civic block** on Commerce St behind downtown: Maple Street Fire Station 1 (three apparatus bays with red bay lights that glow at night) and Maple Street Police, both on the town map and minimap.
+- **Civic block** on Commerce St behind downtown: Fox Plains Fire Station 1 (three apparatus bays with red bay lights that glow at night) and Fox Plains Police, both on the town map and minimap.
 - **Starting cash:** new neighbors start with $105,000 in the open world. Solo mode has unlimited money (`unlimitedMoney` in `RoomLogic`; the HUD shows "Unlimited", and no loans or mowing pay are needed).
 - **Lawns and mowing** (`shared/Mowing.ts`, `src/world/Lawn.ts`, `src/world/Grass.ts`):
   - Each 1 m cell of a lot stores when it was last cut and which way the mower pushed the blades. Grass grows back over **five in-game days** (`GROW_DAYS`): about 3.5 cm just cut, about 11 cm at full height. Five days after a cut it's due again.
@@ -141,6 +141,10 @@ What a frame costs, and why (measured headless at the spawn point, Nov 2026, bef
 - **Batching** (`src/core/Merge.ts`). Static content is drawn as one mesh per material: houses per 64 m cell (`HouseManager`, re-batched once per burst of edits), the neighborhood's scenery per chunk part, downtown, roads, vehicle bodies and wheels. Plain finishes (no texture, opaque, not glowing) all share one node material that reads color, roughness and metalness from the vertices, so they shade exactly as before but cost one draw. Anything that changes on its own (lawns, custom models that load later, vehicle bodies from .glb files) is marked `userData.keep` and left alone. Quantized glTF data is unpacked before merging (it used to be clamped to ±1, which squashed published vehicles).
 - **Adaptive resolution** (`Engine.adapt`). Full sharpness (device pixel ratio up to 2) whenever the device keeps up; below ~45 fps for two seconds the render resolution steps down by 0.25 (never below 1), and back up after a stretch above ~57 fps.
 - **Fixed-step cap** (`src/core/Loop.ts`, `MAX_STEPS`): a long frame slows the simulation instead of queueing more physics work for the next one.
+- **Culling** (`WorldChunks.update` and `WorldChunks.cull`, called from `Game.frame`). Distance: every chunk part (neighborhood scenery, houses, and now downtown, which is batched per cell too) is detached from the scene graph once the *camera* is farther than its view distance (160–720 m by size, with hysteresis). View: every frame, after the camera and sun have moved, each attached part is tested against the camera frustum; parts outside it are made invisible so three.js never walks their children, except shadow casters inside the sun's shadow box, whose shadows can fall into view from behind you. Avatars have a fixed bounding sphere, so skinned bodies are frustum-culled too (they were always drawn before).
+- **Level of detail** (`src/core/Lod.ts`). One registry, `lods`, updated each frame with the camera; an entry is an anchor, switch distances and a swap. Published and bundled vehicles show the full model (and opening doors) within 35 m, an ~8k-triangle copy to 90 m, a ~1.6k copy to 250 m and a box impostor beyond (`VEHICLE_LOD_DISTANCES`). Avatars swap their skinned geometry for ~6k and ~1.5k triangles past 12 m and 35 m (`AVATAR_LOD_DISTANCES`), keeping skeleton, pose and look. Coarser levels are made at runtime with meshoptimizer from the loaded model and share its vertex buffers (only a smaller index buffer is added, cached per model). Levels switch 12 % past each threshold so nothing flickers.
+- **No garbage in the loop.** The render and physics paths reuse scratch objects (`CameraRig`, `Character`, `Vehicle`, `Game`, `Physics`, `Npc`, `Grass`, `Neighborhood`, `DayNight`): no `new Vector3`, `clone()`, closures or array copies per frame or per step. NPC footprints are updated in place, the camera ray is one reused `RAPIER.Ray`, `Character.position` is one shared vector (copy it to keep it), and the interaction prompt refreshes at 10 Hz. Remote vehicle views are pooled per kind; avatars of a body share one compiled material whose colors are per-object uniforms; the town map caches its static and lot layers.
+- **Shader warm-up** (`src/core/Prewarm.ts`). New avatar models and remote vehicle bodies are compiled with `renderer.compileAsync` before they are shown (the stand-in or the 200 m spawn radius covers the wait), and procedural textures are built without reading a canvas back from the GPU.
 
 ### World chunking and traffic
 
@@ -155,7 +159,7 @@ Two systems share one focus point each frame (the character, the vehicle you dri
 
 | Mode | How | Authority |
 | --- | --- | --- |
-| Open world (default) | "Enter Maple Street", `?world=1` or `?room=WORLD` | Durable Object `MapleStreetWorld` (`src/server/maplestreet-world.ts`), state in D1 `maplestreet_world` |
+| Open world (default) | "Enter Fox Plains", `?world=1` or `?room=WORLD` | Durable Object `MapleStreetWorld` (`src/server/maplestreet-world.ts`), state in D1 `maplestreet_world` |
 | Solo, unlimited money | "Solo mode", `?solo=1` | `src/net/Host.ts` in the page (save `maplestreet/solo/v3`) |
 
 In the shared world:

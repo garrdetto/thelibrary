@@ -156,7 +156,7 @@ export class NeighborhoodLogic {
 
     const mowed = this.coverageCodes();
     this.io.send(sessionId, { t: 'welcome', you: sessionId, world: this.world, account: this.publicAccount(acc), hours: this.hours, day: this.day, mowed });
-    this.io.broadcast({ t: 'toast', text: returning ? `${name} is back on Maple Street` : `${name} moved into the neighborhood` }, sessionId);
+    this.io.broadcast({ t: 'toast', text: returning ? `${name} is back in Fox Plains` : `${name} moved into the neighborhood` }, sessionId);
   }
 
   /** Accounts the persistent world loads lazily from storage before a join. */

@@ -44,7 +44,7 @@ jobs:
       - name: Type check (site)
         run: pnpm exec tsc -p tsconfig.json --noEmit 2>&1 | tee .tsc-site.txt || true
 
-      - name: Type check (Maple Street module)
+      - name: Type check (Fox Plains module)
         run: |
           cat > .tsconfig.maplestreet.json <<'EOF'
           { "extends": "./tsconfig.json", "compilerOptions": { "noEmit": true, "skipLibCheck": true }, "include": ["modules-src/maplestreet/src/**/*.ts", "modules-src/maplestreet/shared/**/*.ts"], "exclude": [] }

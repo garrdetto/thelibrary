@@ -1,11 +1,11 @@
 /**
- * End-to-end check of the Maple Street vehicle pipeline against a local dev
+ * End-to-end check of the Fox Plains vehicle pipeline against a local dev
  * server (pnpm dev) and the Meshy stand-in (node scripts/meshy-mock.mjs):
  *
  *   1. Meshy: text → previews → refine → remesh, cancel, balance and costs.
- *   2. Admin → Maple Street vehicles: open the Meshy model in the editor,
+ *   2. Admin → Fox Plains vehicles: open the Meshy model in the editor,
  *      match it to the sedan, test-drive it on the game physics, publish it.
- *   3. Solo Maple Street: buy it at Maple Motors, drive it, see it in traffic.
+ *   3. Solo Fox Plains: buy it at Maple Motors, drive it, see it in traffic.
  *   4. Shared world (Durable Object): the same vehicle is valid there too.
  *
  *   ADMIN_PASSWORD=… node scripts/maplestreet-vehicles-e2e.mjs [baseUrl]

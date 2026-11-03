@@ -209,14 +209,17 @@ export class Physics {
   stream(points: readonly { x: number; z: number }[], dt: number) {
     if (!points.length) return;
     this.sinceStream += dt;
-    const jumped = points.length !== this.lastFocus.length || points.some((p, i) => Math.hypot(p.x - this.lastFocus[i].x, p.z - this.lastFocus[i].z) > STREAM_JUMP);
+    let jumped = points.length !== this.lastFocus.length;
+    for (let i = 0; !jumped && i < points.length; i++) jumped = Math.hypot(points[i].x - this.lastFocus[i].x, points[i].z - this.lastFocus[i].z) > STREAM_JUMP;
     if (this.streamed && !jumped && !this.fresh.length && this.sinceStream < STREAM_EVERY) return;
     this.sinceStream = 0;
     this.streamed = true;
-    this.lastFocus = points.map(p => ({ x: p.x, z: p.z }));
+    this.lastFocus.length = points.length;
+    for (let i = 0; i < points.length; i++) { const f = this.lastFocus[i] ??= { x: 0, z: 0 }; f.x = points[i].x; f.z = points[i].z; }
     for (const e of this.fresh) if (this.byCollider.has(e.c.handle) && !this.near(e, points, STREAM_RADIUS)) this.setOn(e, false);
     this.fresh.length = 0;
-    for (const e of [...this.active]) if (!this.near(e, points, STREAM_RADIUS + STREAM_HYSTERESIS)) this.setOn(e, false);
+    // Deleting the current entry while iterating a Set is safe and avoids copying ~3,000 entries.
+    for (const e of this.active) if (!this.near(e, points, STREAM_RADIUS + STREAM_HYSTERESIS)) this.setOn(e, false);
     this.enableAround(points, STREAM_RADIUS);
   }
 
@@ -251,8 +254,12 @@ export class Physics {
   }
 
   /** Distance along a ray to the first static hit, or `max`. */
+  private ray: RAPIER.Ray | null = null;
   rayDistance(origin: THREE.Vector3, dir: THREE.Vector3, max: number, mask = MASK.cameraRay): number {
-    const ray = new RAPIER.Ray({ x: origin.x, y: origin.y, z: origin.z }, { x: dir.x, y: dir.y, z: dir.z });
+    // One Ray reused for every query (the camera casts one each frame).
+    const ray = this.ray ??= new RAPIER.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 });
+    ray.origin.x = origin.x; ray.origin.y = origin.y; ray.origin.z = origin.z;
+    ray.dir.x = dir.x; ray.dir.y = dir.y; ray.dir.z = dir.z;
     const hit = this.world.castRay(ray, max, true, undefined, mask);
     if (!hit) return max;
     const h = hit as unknown as { timeOfImpact?: number; toi?: number };

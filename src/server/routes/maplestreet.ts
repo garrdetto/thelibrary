@@ -7,7 +7,7 @@ const WORLD_NAME = 'maple-street'
 const guestParams = z.object({ guest: z.string().regex(/^[A-Za-z0-9]{12,64}$/), name: z.string().max(64).optional() })
 
 function worldStub(env: Env) {
-  if (!env.MAPLE_WORLD) throw new HttpError(503, 'Maple Street online is not available right now.')
+  if (!env.MAPLE_WORLD) throw new HttpError(503, 'Fox Plains online is not available right now.')
   return env.MAPLE_WORLD.get(env.MAPLE_WORLD.idFromName(WORLD_NAME))
 }
 

@@ -1,5 +1,5 @@
 /**
- * The persistent, always-on Maple Street.
+ * The persistent, always-on Fox Plains.
  *
  * One WorldServer owns the shared neighborhood: anyone can connect, leave,
  * and come back later to find their lot, house, money and loan exactly as
@@ -95,7 +95,7 @@ export class WorldServer {
     await this.ready();
     const logic = this.logic!;
     if (this.sockets.size >= WORLD_LIMITS.maxConnections) {
-      socket.close(1013, 'Maple Street is full right now. Try again soon.');
+      socket.close(1013, 'Fox Plains is full right now. Try again soon.');
       return { onMessage() {}, onClose() {} };
     }
     if (!logic.hasAccount(identity.key)) {

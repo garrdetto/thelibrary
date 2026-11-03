@@ -60,6 +60,11 @@ interface ChunkPart {
   readonly leave2: number;
   /** XZ bounds of what the part holds (can reach past its cell). */
   minX: number; minZ: number; maxX: number; maxZ: number;
+  minY: number; maxY: number;
+  /** World-space bounds for frustum tests (kept in sync with the fields above). */
+  readonly box: THREE.Box3;
+  /** Whether anything in the part casts a shadow (only those are kept for the shadow pass). */
+  casts: boolean;
   state: PartState;
   compiled: boolean;
   wanted: boolean;
@@ -80,6 +85,11 @@ const mat = new THREE.Matrix4();
 const pos = new THREE.Vector3();
 const scl = new THREE.Vector3();
 const _col = new THREE.Color();
+const _projView = new THREE.Matrix4();
+const _view = new THREE.Frustum();
+const _grown = new THREE.Box3();
+/** Metres added around a part's bounds before frustum tests. */
+const CULL_MARGIN = 2;
 
 export function tierFor(radius: number): number {
   const want = radius * SCREEN_K;
@@ -231,7 +241,9 @@ export class WorldChunks {
       group.matrixAutoUpdate = false;
       const leave = view + HYSTERESIS;
       p = { key, group, viewDistance: view, enter2: view * view, leave2: leave * leave,
-        minX: cx * cell, minZ: cz * cell, maxX: (cx + 1) * cell, maxZ: (cz + 1) * cell,
+        // Bounds start empty and grow to what the part holds (fitBounds), so view tests are tight.
+        minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity,
+        minY: Infinity, maxY: -Infinity, box: new THREE.Box3(), casts: false,
         state: 'off', compiled: !this.compiler, wanted: false };
       this.parts.set(key, p);
       this.list.push(p);
@@ -246,6 +258,11 @@ export class WorldChunks {
     if (box.isEmpty()) return;
     p.minX = Math.min(p.minX, box.min.x); p.minZ = Math.min(p.minZ, box.min.z);
     p.maxX = Math.max(p.maxX, box.max.x); p.maxZ = Math.max(p.maxZ, box.max.z);
+    p.minY = Math.min(p.minY, box.min.y); p.maxY = Math.max(p.maxY, box.max.y);
+    p.box.min.set(p.minX, p.minY, p.minZ); p.box.max.set(p.maxX, p.maxY, p.maxZ);
+    let casts = false;
+    p.group.traverse(o => { if ((o as THREE.Mesh).isMesh && o.castShadow) casts = true; });
+    p.casts = casts;
   }
 
   // ---------------------------------------------------------------- per frame
@@ -319,11 +336,45 @@ export class WorldChunks {
     }
   }
 
+  // ---------------------------------------------------------------- view culling
+
+  /**
+   * Strict per-part frustum culling, run every frame after the camera moved.
+   * A part that is attached (in range) but neither in the camera's view nor
+   * inside the sun's shadow box is made invisible, so three.js doesn't even
+   * walk its children in the main or the shadow pass. Parts in the shadow box
+   * stay on when they cast shadows, because their shadows can fall into view
+   * from behind the camera. Margins keep edges from popping.
+   */
+  cull(camera: THREE.Camera, sun: THREE.DirectionalLight | null) {
+    camera.updateMatrixWorld();
+    _projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    _view.setFromProjectionMatrix(_projView);
+    let shadow: THREE.Frustum | null = null;
+    if (sun?.castShadow) {
+      sun.updateMatrixWorld(); sun.target.updateMatrixWorld();
+      (sun.shadow as unknown as { updateMatrices(l: THREE.Light): void }).updateMatrices(sun);
+      shadow = sun.shadow.getFrustum() as THREE.Frustum;
+    }
+    let shown = 0, hidden = 0;
+    for (const p of this.list) {
+      if (p.state !== 'on') continue;
+      _grown.copy(p.box).expandByScalar(CULL_MARGIN);
+      const vis = _view.intersectsBox(_grown) || (p.casts && !!shadow && shadow.intersectsBox(_grown));
+      if (p.group.visible !== vis) p.group.visible = vis;
+      if (vis) shown++; else hidden++;
+    }
+    this.culled = hidden;
+    return shown;
+  }
+
+  private culled = 0;
+
   /** Counts for the dev overlay and tests. */
   stats() {
-    let on = 0, objects = 0;
-    for (const p of this.list) if (p.state === 'on') { on++; objects += p.group.children.length; }
-    return { parts: this.list.length, on, queued: this.queue.length, compiling: this.compiling, attachedObjects: objects };
+    let on = 0, objects = 0, visible = 0;
+    for (const p of this.list) if (p.state === 'on') { on++; objects += p.group.children.length; if (p.group.visible) visible++; }
+    return { parts: this.list.length, on, visible, frustumCulled: this.culled, queued: this.queue.length, compiling: this.compiling, attachedObjects: objects };
   }
 }
 

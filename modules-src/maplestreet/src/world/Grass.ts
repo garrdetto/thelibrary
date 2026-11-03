@@ -78,7 +78,7 @@ const inRect = (r: RectXZ, x: number, z: number, pad = 0) => Math.abs(x - r.cx) 
 export class Grass {
   readonly mesh: THREE.InstancedMesh;
   private center = new THREE.Vector2(1e9, 1e9);
-  private lawnRevs = '';
+  private lawnRevs = NaN;
   private worldVersion = -1;
   private readonly blocked: RectXZ[];
   private readonly max: number;
@@ -127,10 +127,14 @@ export class Grass {
   /** Re-lays the field when the camera moves or a lawn / house changes. */
   update(focus: THREE.Vector3, nowDays: number) {
     this.nowDays = nowDays;
-    const near = [...this.lawns.values()].filter(l => this.nearLawn(l, focus.x, focus.z, RADIUS + REBUILD_DIST + 2));
-    const revs = near.map(l => `${l.lot.id}:${l.revision}`).join(',');
+    // Runs every frame: a numeric signature of the nearby lawns' revisions, no arrays or strings.
+    let revs = 0, i = 0;
+    for (const l of this.lawns.values()) {
+      i++;
+      if (this.nearLawn(l, focus.x, focus.z, RADIUS + REBUILD_DIST + 2)) revs = (Math.imul(revs ^ i, 0x9e3779b1) + l.revision) | 0;
+    }
     const w = this.world();
-    const moved = this.center.distanceTo(new THREE.Vector2(focus.x, focus.z)) > REBUILD_DIST;
+    const moved = Math.hypot(this.center.x - focus.x, this.center.y - focus.z) > REBUILD_DIST;
     const changed = revs !== this.lawnRevs || (w?.version ?? -1) !== this.worldVersion;
     if (!moved && !changed) return;
     const t = performance.now();

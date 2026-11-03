@@ -70,7 +70,7 @@ async function start(mode: NetMode) {
   await Promise.all([accountReady, customCatalogReady]);
   store.set('maplestreet/mode', mode);
   $('start').classList.add('loading');
-  $('startStatus').textContent = mode === 'world' ? 'Walking over to Maple Street…' : 'Loading your solo neighborhood…';
+  $('startStatus').textContent = mode === 'world' ? 'Walking over to Fox Plains…' : 'Loading your solo neighborhood…';
   try {
     game = new Game({
       name: playerName, color: tagColor(playerName), mode,
@@ -121,7 +121,7 @@ addEventListener('message', e => {
   else if (!game) { inviteRequested = true; start('world'); }
 });
 
-// Maple Street is one open world: go straight in. ?solo=1 (tests, and the
+// Fox Plains is one open world: go straight in. ?solo=1 (tests, and the
 // developer instance) still runs the private neighborhood; ?vehicleTest=1 is
 // the vehicle editor's test drive.
 if (DEV_MODE) { if (params.get('solo')) setTimeout(() => start('offline'), 300); }

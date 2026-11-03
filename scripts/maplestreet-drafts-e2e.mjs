@@ -1,5 +1,5 @@
 /**
- * End-to-end check of Maple Street drafts and the reseeded neighborhood
+ * End-to-end check of Fox Plains drafts and the reseeded neighborhood
  * against a local dev server (pnpm dev, with ADMIN_PASSWORD in .dev.vars and
  * the local D1 migrated):
  *

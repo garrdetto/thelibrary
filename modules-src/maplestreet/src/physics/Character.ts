@@ -3,6 +3,7 @@
  * (auto-step for porch steps and foundations, slope limits, snap-to-ground,
  * pushes dynamic bodies), plus the player's avatar.
  */
+import { prewarm } from '../core/Prewarm';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 import { MASK, Physics } from './Physics';
@@ -104,11 +105,16 @@ export class Avatar {
     const body = this.wanted;
     loadBody(body).then(asset => {
       if (this.disposed || this.wanted !== body) return;
-      this.model?.dispose();
-      this.model = new AvatarModel(asset, this.look);
-      this.root.add(this.model.root);
-      if (this.stub) { this.stub.root.removeFromParent(); this.stub.dispose(); this.stub = null; }
-      if (this.seat) this.root.position.y = this.seat.y - this.hipY;
+      const model = new AvatarModel(asset, this.look);
+      // Compile its shaders in the background while the stand-in is still showing.
+      return prewarm(model.root).then(() => {
+        if (this.disposed || this.wanted !== body) { model.dispose(); return; }
+        this.model?.dispose();
+        this.model = model;
+        this.root.add(model.root);
+        if (this.stub) { this.stub.root.removeFromParent(); this.stub.dispose(); this.stub = null; }
+        if (this.seat) this.root.position.y = this.seat.y - this.hipY;
+      });
     }).catch(err => console.warn('[avatar] model unavailable, keeping the stand-in:', err));
   }
 
@@ -192,6 +198,7 @@ export class Character {
   }
 
   /** Fixed-step movement. `move` is a world-space XZ wish direction (length ≤ 1). */
+  private _desired = { x: 0, y: 0, z: 0 };
   step(dt: number, move: THREE.Vector2, run: boolean, jump: boolean) {
     const maxSpeed = run ? 6.0 : 2.6;
     const target = move.lengthSq() > 0 ? maxSpeed * Math.min(1, move.length()) : 0;
@@ -204,8 +211,10 @@ export class Character {
     }
     if (this.grounded) { this.vy = jump ? 4.6 : -1; } else { this.vy -= 9.81 * dt; }
 
-    const dir = move.lengthSq() > 0 ? move.clone().normalize() : move;
-    const desired = { x: dir.x * this.speed * dt, y: this.vy * dt, z: dir.y * this.speed * dt };
+    const len = move.length();
+    const dx = len > 0 ? move.x / len : 0, dz = len > 0 ? move.y / len : 0;
+    const desired = this._desired;
+    desired.x = dx * this.speed * dt; desired.y = this.vy * dt; desired.z = dz * this.speed * dt;
     this.ctrl.computeColliderMovement(this.collider, desired, undefined, MASK.character);
     const m = this.ctrl.computedMovement();
     this.grounded = this.ctrl.computedGrounded();
@@ -234,5 +243,7 @@ export class Character {
     this.avatar.animate(dt, this.moveSpeed, seated);
   }
 
-  get position() { const t = this.body.translation(); return new THREE.Vector3(t.x, t.y - EYE_OFFSET, t.z); }
+  private _pos = new THREE.Vector3();
+  /** Feet position. One shared vector, refreshed on every read: copy it if you need to keep it. */
+  get position() { const t = this.body.translation(); return this._pos.set(t.x, t.y - EYE_OFFSET, t.z); }
 }

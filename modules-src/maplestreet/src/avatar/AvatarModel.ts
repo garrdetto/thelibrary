@@ -5,6 +5,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { lods, simplifiedGeometry, swapGeometry, type LodEntry } from '../core/Lod';
 import { WARDROBE_BY_ID, type Body, type Look } from '../../shared/Wardrobe';
 import type { BodyAsset } from './AvatarAssets';
 import { AvatarMaterial } from './AvatarMaterial';
@@ -12,6 +13,9 @@ import { dressHead, type HatKind, type HeadDressing } from './HairAndHats';
 import { gaitFrequency, gaitPose, runBlend } from './Gait';
 
 const SIDES = ['L', 'R'] as const;
+/** Camera distances (m) where an avatar drops to the next level, and the triangle budgets of levels 1 and 2. */
+export const AVATAR_LOD_DISTANCES = [12, 35] as const;
+const AVATAR_LOD_TRIANGLES = [6000, 1500] as const;
 
 export class AvatarModel {
   readonly root: THREE.Object3D;
@@ -36,9 +40,13 @@ export class AvatarModel {
     });
     this.material = new AvatarMaterial(asset);
     this.mesh.material = this.material.material;
+    this.material.attach(this.mesh);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
-    this.mesh.frustumCulled = false;
+    // Strict frustum culling for skinned bodies: three.js would otherwise skin every vertex to
+    // find bounds, so the mesh gets a fixed sphere that holds any pose (standing, walking, seated).
+    this.mesh.frustumCulled = true;
+    this.mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, asset.joints.upperLegL.y, 0), 1.35);
     const J = asset.joints;
     this.hipY = J.upperLegL.y;
     this.headRest = J.head.clone();
@@ -51,9 +59,8 @@ export class AvatarModel {
     this.material.setLook(look);
     const hat = (WARDROBE_BY_ID[look.hat]?.hat ?? null) as HatKind | null;
     const A = this.asset;
-    if (this.body === 'female' || look.hair === 'natural') this.mesh.geometry = A.geometry;
-    else if (look.hair === 'bun' && this.body === 'male' && !hat) this.mesh.geometry = A.geometry;
-    else this.mesh.geometry = A.flatGeometry;
+    const base = this.body === 'female' || look.hair === 'natural' || (look.hair === 'bun' && this.body === 'male' && !hat) ? A.geometry : A.flatGeometry;
+    if (base !== this.levels[0]) this.setBase(base);
 
     const key = `${look.hair}|${hat}`;
     if (key !== this.dressKey) {
@@ -117,7 +124,28 @@ export class AvatarModel {
     B.hips.position.y = this.asset.joints.hips.y + g.hipBob;
   }
 
+  /**
+   * Level of detail: the same skinned mesh, skeleton and material at every
+   * level; farther away it draws a simplified index buffer over the same
+   * vertices (AVATAR_LOD_TRIANGLES), so poses and the wardrobe shader carry over.
+   */
+  private levels: (THREE.BufferGeometry | null)[] = [];
+  private lod: LodEntry | null = null;
+  private setBase(base: THREE.BufferGeometry) {
+    const levels: (THREE.BufferGeometry | null)[] = [base, null, null];
+    this.levels = levels;
+    this.mesh.geometry = base;
+    this.lod ??= lods.add(this.root, AVATAR_LOD_DISTANCES, level => swapGeometry(this.mesh, this.levels)(level));
+    AVATAR_LOD_TRIANGLES.forEach((target, i) => void simplifiedGeometry(base, target).then(g => {
+      if (this.levels !== levels) return;
+      levels[i + 1] = g;
+      if (this.lod && this.lod.level >= 0) swapGeometry(this.mesh, levels)(this.lod.level);
+    }));
+  }
+
   dispose() {
+    lods.remove(this.lod);
+    this.lod = null;
     this.root.removeFromParent();
     this.material.dispose();
     if (this.dressing) for (const m of [this.dressing.hairMat, this.dressing.hatMat, this.dressing.hatAccent]) m.dispose();

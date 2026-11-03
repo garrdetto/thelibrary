@@ -9,6 +9,8 @@
  * somewhere (or to whatever you clicked: a vehicle, a shop door, your bed),
  * E interact, F fuel up, M town map, B build/buy mode.
  */
+import { setPrewarmTarget } from '../core/Prewarm';
+import { lods } from '../core/Lod';
 import * as THREE from 'three/webgpu';
 import { BuildOp, levelBase, LotState } from '../../shared/BuildRules';
 import { CATALOG, footprint } from '../../shared/Catalog';
@@ -81,6 +83,13 @@ export function persistentKey() {
 interface Pending { label: string; reach: number; run: () => void }
 /** The best thing E would do right now. */
 interface Interaction { label: string; run: () => void }
+
+// Scratch objects for the per-frame and per-step paths (no allocations in the loop).
+const _move = new THREE.Vector2();
+const _side = new THREE.Vector3();
+const _grassFocus = new THREE.Vector3();
+const _fwd = new THREE.Vector3();
+const KEYS_FWD = ['KeyW'], KEYS_BACK = ['KeyS'], KEYS_LEFT = ['KeyA'], KEYS_RIGHT = ['KeyD'];
 
 export class Game {
   private engine!: Engine;
@@ -160,6 +169,7 @@ export class Game {
     this.grass = new Grass(scene, this.hood.lawns, () => this.houses.world, this.engine.backendName.includes('WebGPU') ? 1 : 0.7);
     this.cam = new CameraRig(this.engine.camera, this.input, this.physics);
     this.remotes = new RemoteEntities(scene, this.physics, () => this.selfId);
+    setPrewarmTarget({ renderer: this.engine.renderer, camera: this.engine.camera, scene });
     this.build = new BuildController(this.engine.camera, this.input, scene, this.houses, {
       myKey: () => this.account?.id ?? null,
       money: () => this.account?.money ?? 0,
@@ -325,7 +335,7 @@ export class Game {
             this.hud.toast(`Welcome home, ${m.account.name} — lot ${home.id} is right where you left it.`);
           } else {
             this.settleVehicles();
-            this.hud.toast(`Welcome to Maple Street, ${m.account.name}! Pick a plot to build on.`);
+            this.hud.toast(`Welcome to Fox Plains, ${m.account.name}! Pick a plot to build on.`);
             this.build.setTool('buy');
             if (m.account.look) this.hud.showMap(true, true);
           }
@@ -707,13 +717,16 @@ export class Game {
     const live = this.mode === 'live' && !this.hud.modalOpen;
     if (this.driving) {
       // W/S throttle (S brakes, then reverses), A/D steer, Space handbrake.
-      this.driving.input = live
-        ? { throttle: I.axis(['KeyS'], ['KeyW']), steer: I.axis(['KeyD'], ['KeyA']), brake: 0, handbrake: I.isDown('Space') }
-        : { throttle: 0, steer: 0, brake: 1, handbrake: true };
+      // Written in place: a fresh input object 60× a second was steady garbage.
+      const inp = this.driving.input;
+      inp.throttle = live ? I.axis(KEYS_BACK, KEYS_FWD) : 0;
+      inp.steer = live ? I.axis(KEYS_RIGHT, KEYS_LEFT) : 0;
+      inp.brake = live ? 0 : 1;
+      inp.handbrake = live ? I.isDown('Space') : true;
     } else {
       const { fwd, right } = this.cam.basis();
-      const f = live ? I.axis(['KeyS'], ['KeyW']) : 0, r = live ? I.axis(['KeyA'], ['KeyD']) : 0;
-      const move = new THREE.Vector2().addScaledVector(fwd, f).addScaledVector(right, r);
+      const f = live ? I.axis(KEYS_BACK, KEYS_FWD) : 0, r = live ? I.axis(KEYS_LEFT, KEYS_RIGHT) : 0;
+      const move = _move.set(0, 0).addScaledVector(fwd, f).addScaledVector(right, r);
       let run = live && (I.isDown('ShiftLeft') || I.isDown('ShiftRight'));
       if (move.lengthSq() > 0) this.clearMove();
       else if (this.moveTarget) {
@@ -942,14 +955,14 @@ export class Game {
       focus = this.build.controls.target;
     } else if (this.driving) {
       focus = this.driving.root.position;
-      const f = this.driving.forward();
+      const f = this.driving.forward(_fwd);
       this.cam.update(dt, focus, { chaseYaw: Math.atan2(f.x, f.z), dist: this.driving.preset.cam.dist, height: this.driving.preset.cam.height });
     } else if (this.wardrobe.isOpen) {
       focus = this.character.pivot.position;
       this.cam.update(dt, focus, { dist: 2.6, height: 0.75 });
       // Slide the view so you stand beside the wardrobe panel instead of behind it.
       const cam = this.engine.camera;
-      if (innerWidth > 720) cam.position.addScaledVector(new THREE.Vector3(1, 0, 0).applyQuaternion(cam.quaternion), 0.42);
+      if (innerWidth > 720) cam.position.addScaledVector(_side.set(1, 0, 0).applyQuaternion(cam.quaternion), 0.42);
     } else {
       focus = this.character.pivot.position;
       this.cam.update(dt, focus, { dist: 5, height: 2.2 });
@@ -959,13 +972,16 @@ export class Game {
     this.day.update(dt, focus, DAY_LENGTH_SEC, this.serverHours);
     this.day.updateEnvironment(this.engine.renderer);
     this.hood.update(dt, night, focus, this.nowDays());
-    this.grass.update(this.mode === 'build' ? this.build.controls.target : this.engine.camera.position.clone().lerp(focus, 0.6), this.nowDays());
-    // One focus point drives both proximity systems: scenery chunks and remote/neighbor vehicles.
-    this.chunks?.update(focus, dt);
+    this.grass.update(this.mode === 'build' ? this.build.controls.target : _grassFocus.copy(this.engine.camera.position).lerp(focus, 0.6), this.nowDays());
+    // Distance culling runs from the camera (what you see), traffic proximity from the player.
+    this.chunks?.update(this.engine.camera.position, dt);
     this.remotes.update(dt, night, focus);
     this.updateJob(dt);
     this.updateMarker(dt);
-    this.updateInteraction();
+    // The prompt and the E-key action only need refreshing ~10× a second: building their
+    // labels and closures every frame was steady garbage.
+    this.interactAcc += dt;
+    if (this.interactAcc >= 0.1 || this.input.isDown('KeyE')) { this.interactAcc = 0; this.updateInteraction(); }
     this.updateDriving();
 
     this.hudAcc += dt;
@@ -986,7 +1002,13 @@ export class Game {
       this.minimapAcc = 0;
     }
 
-    if (!NO_RENDER) { this.engine.adapt(dt); this.engine.render(); }
+    if (!NO_RENDER) {
+      // Strict view culling last, once the camera and the sun have moved for this frame.
+      this.chunks?.cull(this.engine.camera, this.day.sun);
+      lods.update(this.engine.camera);
+      this.engine.adapt(dt);
+      this.engine.render();
+    }
     if (this.mode === 'build' && !NO_RENDER) this.thumbs.pump();
     this.input.endFrame();
   }
@@ -1087,6 +1109,7 @@ export class Game {
   }
 
   /** Works out what E would do here, for the prompt and the key itself. */
+  private interactAcc = 1;
   private updateInteraction() {
     this.interaction = null;
     if (this.mode !== 'live' || this.hud.modalOpen) { this.hud.prompt(null); return; }

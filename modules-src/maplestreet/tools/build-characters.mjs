@@ -1,4 +1,4 @@
-// Turns the two Meshy character scans into game-ready, skinned Maple Street avatars:
+// Turns the two Meshy character scans into game-ready, skinned Fox Plains avatars:
 // simplified mesh, feet at y=0 facing +Z, a procedural skeleton with automatic skin
 // weights, a ponytail bone, a lossless clothing-region mask texture and region stats.
 //

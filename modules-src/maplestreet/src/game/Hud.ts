@@ -547,7 +547,7 @@ export class Hud {
     $('mapModal').classList.toggle('show', on);
     if (!on) { (document.activeElement as HTMLElement | null)?.blur(); return; }
     this.mapCtx.choosing = choosing;
-    $('mapTitle').textContent = choosing ? 'Choose your plot' : 'Maple Street';
+    $('mapTitle').textContent = choosing ? 'Choose your plot' : 'Fox Plains';
     $('mapSub').textContent = choosing
       ? `Every lot is ${32}×${40} m with room for a house, a pool and a court. Click one to see it, then buy it to move in — or explore first.`
       : 'Click any lot for details. Lots with a dashed outline are for sale.';

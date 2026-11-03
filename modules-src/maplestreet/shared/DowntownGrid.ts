@@ -69,9 +69,9 @@ export const GRID_SIDEWALKS: Sidewalk[] = (() => {
 
 /** Named landmarks: block (col,row), which street front, and what stands there. */
 const LANDMARKS: { col: number; row: number; front: 'low' | 'high'; at: number; b: Pick<Building, 'id' | 'name' | 'kind' | 'w' | 'h' | 'color'> }[] = [
-  { col: 0, row: 3, front: 'low', at: 0.5, b: { id: 'townhall', name: 'Maple Street Town Hall', kind: 'townhall', w: 30, h: 14, color: '#d6cdbb' } },
+  { col: 0, row: 3, front: 'low', at: 0.5, b: { id: 'townhall', name: 'Fox Plains Town Hall', kind: 'townhall', w: 30, h: 14, color: '#d6cdbb' } },
   { col: 1, row: 1, front: 'high', at: 0.35, b: { id: 'cinema', name: 'Northwoods Cinema', kind: 'cinema', w: 24, h: 11, color: '#7a2c2c' } },
-  { col: 1, row: 2, front: 'low', at: 0.6, b: { id: 'library', name: 'Maple Street Public Library', kind: 'library', w: 26, h: 10, color: '#9a6b4f' } },
+  { col: 1, row: 2, front: 'low', at: 0.6, b: { id: 'library', name: 'Fox Plains Public Library', kind: 'library', w: 26, h: 10, color: '#9a6b4f' } },
   { col: 2, row: 1, front: 'high', at: 0.5, b: { id: 'hotel', name: 'Lakeside Hotel', kind: 'hotel', w: 28, h: 24, color: '#c7b9a3' } },
   { col: 2, row: 0, front: 'high', at: 0.3, b: { id: 'tower2', name: 'Harbor Point Tower', kind: 'office', w: 22, h: 34, color: '#6f8193' } },
   { col: 1, row: 0, front: 'high', at: 0.7, b: { id: 'tower3', name: 'Commerce Center', kind: 'office', w: 20, h: 28, color: '#86929e' } },

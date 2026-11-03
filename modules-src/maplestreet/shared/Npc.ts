@@ -14,6 +14,7 @@
 import { CUSTOM_TRAFFIC, customVehiclesVersion, type TrafficRoute } from './CustomVehicles';
 import type { PlayerSnap, VehicleKind, VehicleSnap } from './Protocol';
 import { rideHeight, tuningOf, wheelbaseOf } from './Vehicles';
+import type { CarStyle } from './Cars';
 import { CLOTH_COLORS, defaultLook, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, WARDROBE, type Body, type Look } from './Wardrobe';
 
 /** A deterministic outfit per neighbor, so they dress the same for everyone. */
@@ -123,12 +124,17 @@ function walk(pts: P[], lane: number): Walk {
   }
   return { pts, lane, len: start, segs };
 }
+const _walk = { x: 0, z: 0, fx: 1, fz: 0 };
+/** Point on a walking route. Returns one shared object (read it before the next call). */
 function walkAt(r: Walk, s: number) {
   s = ((s % r.len) + r.len) % r.len;
-  const seg = r.segs.find(g => s >= g.start && s < g.start + g.d) ?? r.segs[0];
+  let seg = r.segs[0];
+  for (const g of r.segs) if (s >= g.start && s < g.start + g.d) { seg = g; break; }
   const t = (s - seg.start) / seg.d;
   const fx = (seg.b[0] - seg.a[0]) / seg.d, fz = (seg.b[1] - seg.a[1]) / seg.d;
-  return { x: seg.a[0] + (seg.b[0] - seg.a[0]) * t - fz * r.lane, z: seg.a[1] + (seg.b[1] - seg.a[1]) * t + fx * r.lane, fx, fz };
+  _walk.x = seg.a[0] + (seg.b[0] - seg.a[0]) * t - fz * r.lane; _walk.z = seg.a[1] + (seg.b[1] - seg.a[1]) * t + fx * r.lane;
+  _walk.fx = fx; _walk.fz = fz;
+  return _walk;
 }
 
 const TURN_R = 4.5;
@@ -154,15 +160,16 @@ const STOP_WAIT = 1.4;        // seconds parked at the line
 const FOLLOW_GAP = 2.6;       // metres kept between bumpers to whatever is ahead in the lane
 const LOOKAHEAD = 45;
 
-interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look; paint?: string }
+interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look; paint?: string; ob?: Obstacle; style?: CarStyle }
 
 /** Something NPC drivers must not drive into: a ground-plane rectangle (half length `hx` along `fx, fz`, half width `hz`). */
 export interface Obstacle { x: number; z: number; hx: number; hz: number; fx: number; fz: number }
 
 /** Half extents of a vehicle kind's body on the ground. */
-function halfSize(kind: string) {
-  const t = tuned(kind);
-  return t ? { hx: t.chassis.hx, hz: t.chassis.hz } : { hx: 2.4, hz: 0.95 };
+const DEFAULT_HALF = { hx: 2.4, hz: 0.95 } as const;
+/** No allocation: the tuning's own chassis half extents (read-only). */
+function halfSize(kind: string): { readonly hx: number; readonly hz: number } {
+  return tuned(kind)?.chassis ?? DEFAULT_HALF;
 }
 
 /** Gap from `me`'s front bumper to `o`'s body when `o` reaches into the lane ahead of `me`, else Infinity. */
@@ -280,9 +287,12 @@ export class NpcTraffic {
     return best;
   }
 
+  /** The driver's footprint, updated in place: this runs for every pair of drivers on every step. */
   private body(d: Driver): Obstacle {
     const h = halfSize(d.kind);
-    return { x: d.x, z: d.z, hx: h.hx, hz: h.hz, fx: d.fx, fz: d.fz };
+    const o = d.ob ?? (d.ob = { x: 0, z: 0, hx: 0, hz: 0, fx: 1, fz: 0 });
+    o.x = d.x; o.z = d.z; o.hx = h.hx; o.hz = h.hz; o.fx = d.fx; o.fz = d.fz;
+    return o;
   }
 
   /** Fastest speed allowed now so the car can still slow for every curve and stop line ahead. */
@@ -306,7 +316,8 @@ export class NpcTraffic {
     for (const d of this.drivers) {
       const r = d.route;
       // Arrived at a stop line: hold, then mark it served so we pull through.
-      const lineIdx = r.stops.findIndex((_, i) => { const dist = toLine(r, d.s, i); return dist > -1.5 && dist < 0.6; });
+      let lineIdx = -1;
+      for (let i = 0; i < r.stops.length; i++) { const dist = toLine(r, d.s, i); if (dist > -1.5 && dist < 0.6) { lineIdx = i; break; } }
       if (lineIdx >= 0 && d.served !== lineIdx && d.v < 1.2) {
         d.wait += dt;
         d.v = 0;
@@ -348,7 +359,7 @@ export class NpcTraffic {
       // yaw about +Y, then roll about the car's own forward (+X) axis.
       const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2), cr = Math.cos(d.roll / 2), sr = Math.sin(d.roll / 2);
       const vid = `${d.id}:${d.kind}`;
-      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: d.x, y, z: d.z, qx: cy * sr, qy: sy * cr, qz: -sy * sr, qw: cy * cr, steer: d.steer, speed: d.v, hitchedTo: null, ...(d.paint ? { style: { color: d.paint, finish: 'metallic' as const } } : {}) });
+      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: d.x, y, z: d.z, qx: cy * sr, qy: sy * cr, qz: -sy * sr, qw: cy * cr, steer: d.steer, speed: d.v, hitchedTo: null, ...(d.paint ? { style: d.style?.color === d.paint ? d.style : (d.style = { color: d.paint, finish: 'metallic' }) } : {}) });
       players.push({ id: d.id, name: d.name, color: '#888888', x: d.x, y, z: d.z, yaw: 0, speed: 0, vehicleId: vid, look: d.look });
     }
     for (const w of this.walkers) {

@@ -1,5 +1,5 @@
 /**
- * Downtown Maple Street: a strip of storefronts and mid-rise buildings with
+ * Downtown Fox Plains: a strip of storefronts and mid-rise buildings with
  * generated facades (storefront glazing, awnings, signage, window grids that
  * light up at night), the Gas & Go station with canopy and pumps, the freight
  * depot, street furniture, and display cars at the dealership.
@@ -66,7 +66,8 @@ export class Downtown {
   private glows: THREE.MeshStandardMaterial[] = [];
   private canopyLight: THREE.PointLight | null = null;
 
-  constructor(scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary) {
+  /** With `merge: false` the caller (WorldChunks) batches downtown per cell instead, so it can be culled by distance and view. */
+  constructor(scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary, merge = true) {
     scene.add(this.group);
     for (const b of BUILDINGS) this.building(b);
     for (const b of CIVIC) { this.building(b); this.civicExtras(b); }
@@ -81,7 +82,7 @@ export class Downtown {
     this.group.add(square.group);
     this.glows.push(...square.glows);
     // Plain finishes share one vertex-colored material; glowing and textured ones stay their own.
-    mergeStatic(this.group, { flatten: () => true });
+    if (merge) mergeStatic(this.group, { flatten: () => true });
   }
 
   private materialCache = new Map<string, THREE.MeshStandardMaterial>();

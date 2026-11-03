@@ -59,10 +59,11 @@ export class Neighborhood {
     this.buildLots();
     this.buildTrees();
     this.buildLamps();
-    this.downtown = new Downtown(scene, physics, mats);
-    // Downtown stays one town-wide merged batch (≈190k triangles, a few hundred draws): splitting it
-    // per cell measured as more draw calls for little triangle saving, so only the neighborhood is chunked.
+    this.downtown = new Downtown(scene, physics, mats, !chunks);
     chunks?.adopt(this.group, { layer: 'hood' });
+    // Downtown joins the grid too: each cell is batched per material (plain finishes share one
+    // material, so a block is a handful of draws) and drops out by distance and view like the rest.
+    chunks?.adopt(this.downtown.group, { layer: 'downtown' });
   }
 
   // ---------------------------------------------------------------- terrain & roads
@@ -340,6 +341,8 @@ export class Neighborhood {
 
   // ---------------------------------------------------------------- per-frame
 
+  private nearLamps: THREE.Vector3[] = [];
+  private nearDist: number[] = [];
   update(dt: number, night: number, focus: THREE.Vector3, nowDays: number) {
     this.downtown.update(night);
     this.bulbMat.emissiveIntensity = night > 0.25 ? 6 : 0;
@@ -350,8 +353,18 @@ export class Neighborhood {
     this.poolTimer -= dt;
     if (this.poolTimer <= 0) {                         // re-assign the N real lights to the nearest lamps
       this.poolTimer = 0.5;
-      const near = [...this.lampPositions].sort((a, b) => a.distanceToSquared(focus) - b.distanceToSquared(focus));
-      this.lightPool.forEach((l, i) => { if (near[i]) l.position.copy(near[i]).setY(5.6); });
+      // Partial selection of the N nearest lamps (N = pool size) without copying or sorting them all.
+      const n = this.lightPool.length, best = this.nearLamps, bestD = this.nearDist;
+      best.length = 0; bestD.length = 0;
+      for (const p of this.lampPositions) {
+        const d = p.distanceToSquared(focus);
+        if (best.length === n && d >= bestD[n - 1]) continue;
+        let i = Math.min(best.length, n - 1);
+        if (best.length < n) { best.push(p); bestD.push(d); i = best.length - 1; }
+        while (i > 0 && bestD[i - 1] > d) { best[i] = best[i - 1]; bestD[i] = bestD[i - 1]; i--; }
+        best[i] = p; bestD[i] = d;
+      }
+      for (let i = 0; i < n; i++) if (best[i]) this.lightPool[i].position.copy(best[i]).setY(5.6);
     }
     for (const l of this.lightPool) l.intensity = night > 0.25 ? 55 * night : 0;
   }
