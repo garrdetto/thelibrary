@@ -5,7 +5,7 @@
  * Clicking a lot selects it; the HUD shows details and actions beside it.
  */
 import { LotState, WorldState } from '../../shared/BuildRules';
-import { BUILDINGS, CIVIC, DEPOT, DOWNTOWN, GAS_STATION, MAP_BOUNDS, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
+import { BUILDINGS, CIVIC, CURVES, DEPOT, DOWNTOWN, GAS_STATION, MAP_BOUNDS, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
 
 const BOUNDS = MAP_BOUNDS;
 const SHOP_ICON: Record<string, string> = { dealer: '🚙', diner: '🍔', bank: '🏦', cafe: '☕', grocery: '🛒', hardware: '🔧', gas: '⛽', fire: '🚒', police: '🚓' };
@@ -96,6 +96,14 @@ export class PlotMap {
       g.stroke();
     }
     g.setLineDash([]);
+    g.lineCap = 'butt'; g.lineJoin = 'round';
+    for (const c of CURVES) {
+      const line = () => { g.beginPath(); c.pts.forEach((p, i) => (i ? g.lineTo(this.px(p.x), this.py(p.z)) : g.moveTo(this.px(p.x), this.py(p.z)))); };
+      g.strokeStyle = '#3a3d42'; g.lineWidth = c.width * s; line(); g.stroke();
+      g.strokeStyle = 'rgba(242,200,80,0.7)'; g.lineWidth = 1; g.setLineDash([4, 4]); line(); g.stroke(); g.setLineDash([]);
+    }
+    g.font = `600 ${Math.max(9, s * 3)}px system-ui, sans-serif`; g.fillStyle = 'rgba(255,255,255,0.75)'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    for (const c of CURVES) { const p = c.pts[Math.floor(c.pts.length * 0.62)]; g.fillText(c.name, this.px(p.x), this.py(p.z)); }
 
     // Downtown
     g.font = `600 ${Math.max(9, s * 3.2)}px system-ui, sans-serif`;

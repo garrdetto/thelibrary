@@ -9,11 +9,11 @@
  */
 import { applyOp, emptyBuild, levelBase, makeWorld, normalizeBuild, opCost, own, validateOp, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
-import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, VEHICLES } from './Economy';
+import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
 import { seedNeighborhood } from './Seed';
-import { decodeCoverage, encodeCoverage, strokeCells, stripeShade } from './Mowing';
+import { decodeCells, encodeCells, gameDays, LawnCells, mowCells, sweepGrown } from './Mowing';
 import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
-import { cleanLook, defaultLook, isBody } from './Wardrobe';
+import { cleanLook, keepOutfit } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
 import { vehicleRole } from './Vehicles';
 
@@ -42,6 +42,8 @@ export interface LogicOptions {
    * sleeps while empty wakes up at the right hour.
    */
   clock?: 'sim' | 'wall';
+  /** Solo play: money never runs out (and nobody needs a loan). */
+  unlimitedMoney?: boolean;
 }
 
 const USE_COOLDOWN_MS = 20_000;
@@ -65,10 +67,11 @@ export class NeighborhoodLogic {
   hours: number;
   day: number;
   epochDay: number;
-  private coverage = new Map<string, Uint8Array>();
+  private coverage = new Map<string, LawnCells>();
   private sessions = new Map<string, Session>();
   private snapAcc = 0;
   private readonly wallClock: boolean;
+  private readonly unlimited: boolean;
   /** Persistence hints for the persistent world: what changed since the last save. */
   readonly dirty = { lots: new Set<string>(), accounts: new Set<string>(), meta: false };
 
@@ -90,6 +93,7 @@ export class NeighborhoodLogic {
       this.dirty.meta = true;
     }
     this.wallClock = opts.clock === 'wall';
+    this.unlimited = !!opts.unlimitedMoney;
     this.accounts = saved?.accounts ?? {};
     for (const k in this.accounts) normalizeAccount(this.accounts[k]);
     this.epochDay = saved?.epochDay ?? Math.floor(Date.now() / 1000 / DAY_LENGTH_SEC);
@@ -98,8 +102,9 @@ export class NeighborhoodLogic {
     for (const id in this.world.lots) {
       const l = this.world.lots[id];
       const n = l.w * l.d;
-      this.coverage.set(id, saved?.coverage?.[id] ? decodeCoverage(saved.coverage[id], n) : new Uint8Array(n));
+      this.coverage.set(id, decodeCells(saved?.coverage?.[id], n));
     }
+    this.sweepLawns();
   }
 
   private wallHours() { return (((Date.now() / 1000) % DAY_LENGTH_SEC) / DAY_LENGTH_SEC) * 24; }
@@ -108,6 +113,7 @@ export class NeighborhoodLogic {
   /** The owner's own view of an account: never includes the identity key. */
   private publicAccount(acc: Account): Account { return { ...acc, key: '' }; }
   private sendAccount(sessionId: string, acc: Account, note?: string) {
+    if (this.unlimited) { acc.money = UNLIMITED_MONEY; acc.debt = 0; }
     this.dirty.accounts.add(acc.key);
     this.io.send(sessionId, { t: 'account', account: this.publicAccount(acc), note });
   }
@@ -120,10 +126,9 @@ export class NeighborhoodLogic {
     const color = /^#[0-9a-f]{6}$/i.test(opts?.color ?? '') ? opts.color : '#3a7bd5';
     let acc = this.accounts[key];
     const returning = !!acc;
-    const body = isBody(opts?.body) ? opts.body : null;
-    if (!acc) acc = this.accounts[key] = newAccount(Math.random().toString(36).slice(2, 12), key, name, color, body ?? undefined);
+    if (!acc) acc = this.accounts[key] = newAccount(Math.random().toString(36).slice(2, 12), key, name, color);
     acc.name = name; acc.color = color;
-    if (body && (!acc.look || acc.look.body !== body)) acc.look = acc.look ? cleanLook({ ...acc.look, body }, acc.wardrobe, acc.look) : defaultLook(body);
+    if (this.unlimited) { acc.money = UNLIMITED_MONEY; acc.debt = 0; }
     this.dirty.accounts.add(key);
     // Keep the owner name on their lot current (members can be renamed by the admin).
     for (const id in this.world.lots) {
@@ -132,8 +137,7 @@ export class NeighborhoodLogic {
     }
     this.sessions.set(sessionId, { key, player: null, vehicles: [], job: null, lastSeen: Date.now() });
 
-    const mowed: Record<string, string> = {};
-    this.coverage.forEach((c, id) => (mowed[id] = encodeCoverage(c)));
+    const mowed = this.coverageCodes();
     this.io.send(sessionId, { t: 'welcome', you: sessionId, world: this.world, account: this.publicAccount(acc), hours: this.hours, day: this.day, mowed });
     this.io.broadcast({ t: 'toast', text: returning ? `${name} is back on Maple Street` : `${name} moved into the neighborhood` }, sessionId);
   }
@@ -198,6 +202,7 @@ export class NeighborhoodLogic {
       case 'build': this.handleBuild(sessionId, acc, msg.seq, [msg.op]); break;
       case 'builds': this.handleBuild(sessionId, acc, msg.seq, msg.ops); break;
       case 'loan': {
+        if (this.unlimited) return this.sendAccount(sessionId, acc, 'Solo mode has unlimited money — no loan needed');
         const amt = Math.floor(Number(msg.amount));
         const avail = availableCredit(acc);
         if (!(amt > 0)) return;
@@ -230,7 +235,11 @@ export class NeighborhoodLogic {
       }
       case 'use': this.handleUse(sessionId, s, acc, msg.lotId, msg.objectId); break;
       case 'look': {
-        acc.look = cleanLook(msg.look, acc.wardrobe, acc.look);
+        // The body is picked once, with the first outfit. After that, clothes only change at Maple Threads.
+        const atThreads = this.nearShop(s, 'clothing');
+        const raw = acc.look && msg.look && typeof msg.look === 'object' ? { ...msg.look, body: acc.look.body } : msg.look;
+        const next = cleanLook(raw, acc.wardrobe, acc.look);
+        acc.look = acc.look && !atThreads ? keepOutfit(next, acc.look) : next;
         if (s.player) s.player.look = acc.look;
         this.sendAccount(sessionId, acc);
         break;
@@ -266,6 +275,7 @@ export class NeighborhoodLogic {
     const mower = s.vehicles.find(v => vehicleRole(v.kind) === 'mower' && s.player?.vehicleId === v.id);
     if (!mower || s.player?.vehicleId !== mower.id) return;     // must be driving a mower
     const accepted: MowStroke[] = [];
+    const now = gameDays(this.day, this.hours);
     let paidCells = 0;
     for (const st of strokes.slice(0, 20)) {
       if (!st || typeof st !== 'object' || ![st.x, st.z, st.hx, st.hz, st.width, st.len].every(v => typeof v === 'number' && Number.isFinite(v))) continue;
@@ -273,18 +283,14 @@ export class NeighborhoodLogic {
       const lot = this.world.lots[st.lotId];
       if (!lot || !(st.width > 0 && st.width <= 1.5 && st.len > 0 && st.len <= 3)) continue;
       if (Math.hypot(st.x - mower.x, st.z - mower.z) > 6) continue;  // anti-teleport
-      const cov = this.coverage.get(lot.id)!;
-      const shade = stripeShade(st.hx, st.hz);
-      for (const idx of strokeCells(lot, st)) {
-        if (cov[idx] === 0 && lot.owner !== acc.id) paidCells++;
-        cov[idx] = shade;
-      }
+      const cut = mowCells(this.coverage.get(lot.id)!, lot, st, now);
+      if (lot.owner !== acc.id) paidCells += cut;
       accepted.push(st);
     }
     if (!accepted.length) return;
     this.dirty.meta = true;
     this.io.broadcast({ t: 'mow', by: sessionId, strokes: accepted }, sessionId);
-    if (paidCells > 0) {
+    if (paidCells > 0 && !this.unlimited) {
       const pay = Math.round(paidCells * MOW_PAY_PER_M2 * (acc.upgrades.includes('blades') ? 1.25 : 1) * 100) / 100;
       acc.money += pay; acc.earned += pay;
       this.sendAccount(sessionId, acc);
@@ -336,6 +342,11 @@ export class NeighborhoodLogic {
     return v ? { x: v.x, z: v.z, y: v.y } : { x: p.x, z: p.z, y: p.y };
   }
 
+  private nearShop(s: Session, kind: string) {
+    const pos = this.position(s);
+    return !!pos && SHOP_DOORS.some(d => d.kind === kind && Math.hypot(pos.x - d.x, pos.z - d.z) <= SHOP_RADIUS + 2);
+  }
+
   private handleBuy(sessionId: string, s: Session, acc: Account, shopId: unknown, itemId: unknown) {
     const door = SHOP_DOORS.find(d => d.id === shopId);
     if (!door) return;
@@ -353,7 +364,7 @@ export class NeighborhoodLogic {
     if (item.upgrade) acc.upgrades.push(item.upgrade);
     if (item.vehicle) { acc.garage.push(item.vehicle); acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank; }
     if (item.clothing) acc.wardrobe.push(item.clothing);
-    this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — press C to wear it` : `Bought: ${item.name}`);
+    this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — wear it from the rack here` : `Bought: ${item.name}`);
   }
 
   private handleRefuel(sessionId: string, s: Session, acc: Account, kind: VehicleKind, gallons: unknown) {
@@ -457,21 +468,26 @@ export class NeighborhoodLogic {
       const a = this.accounts[key];
       if (a && a.debt > 0) a.debt = Math.round(a.debt * (1 + LOAN_DAILY_RATE));
     }
-    this.coverage.forEach(c => c.fill(0));        // grass grows back overnight
+    this.sweepLawns();
     this.dirty.meta = true;
     this.io.broadcast({ t: 'newDay', day: this.day });
     this.sessions.forEach((s, id) => this.sendAccount(id, this.accounts[s.key]));
   }
 
+  /** Lawns that have grown back to full height forget their last cut. */
+  private sweepLawns() {
+    const now = gameDays(this.day, this.hours);
+    this.coverage.forEach(c => { if (sweepGrown(c, now)) this.dirty.meta = true; });
+  }
+
   coverageCodes(): Record<string, string> {
     const out: Record<string, string> = {};
-    this.coverage.forEach((c, id) => (out[id] = encodeCoverage(c)));
+    this.coverage.forEach((c, id) => { const e = encodeCells(c); if (e) out[id] = e; });
     return out;
   }
 
   serialize(): Persisted {
-    const coverage: Record<string, string> = {};
-    this.coverage.forEach((c, id) => (coverage[id] = encodeCoverage(c)));
+    const coverage = this.coverageCodes();
     return { world: this.world, accounts: this.accounts, hours: this.hours, day: this.day, coverage, epochDay: this.epochDay };
   }
 }

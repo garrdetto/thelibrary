@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUILDINGS, CIVIC, DEPOT, drivewayRect, makeLots, ROAD_NAMES, ROADS, SHOP_DOORS, type RectXZ } from '../shared/WorldLayout';
+import { BUILDINGS, CIVIC, curveDistance, DEPOT, drivewayRect, lotPrice, makeLots, ROAD_NAMES, ROAD_W, ROADS, SHOP_DOORS, type RectXZ } from '../shared/WorldLayout';
 import { roadRoute, routeLength } from '../src/game/RoadRoute';
 
 type Box = { id: string; x0: number; x1: number; z0: number; z1: number };
 const overlap = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.z0 < b.z1 && b.z0 < a.z1;
 const fromRect = (id: string, r: RectXZ): Box => ({ id, x0: r.cx - r.sx / 2, x1: r.cx + r.sx / 2, z0: r.cz - r.sz / 2, z1: r.cz + r.sz / 2 });
 
-test('60 lots that never overlap each other, a road or a building', () => {
+test('80 lots that never overlap each other, a road or a building', () => {
   const lots = makeLots();
-  assert.equal(lots.length, 60);
-  assert.equal(new Set(lots.map(l => l.id)).size, 60);
+  assert.equal(lots.length, 80);
+  assert.equal(new Set(lots.map(l => l.id)).size, 80);
   for (const id of ['N1', 'N10', 'S1', 'S10']) assert.ok(lots.some(l => l.id === id), `original lot ${id} kept`);
   const L = lots.map(l => ({ id: l.id, x0: l.x, x1: l.x + l.w, z0: l.z, z1: l.z + l.d }));
   const R = ROADS.map((r, i) => fromRect(`road${i}`, r));
@@ -24,11 +24,27 @@ test('60 lots that never overlap each other, a road or a building', () => {
   assert.equal(ROAD_NAMES.length, ROADS.length);
 });
 
+test('Willow Bend lots stay off the curved streets and come in several sizes', () => {
+  const bend = makeLots().filter(l => l.bend);
+  assert.equal(bend.length, 20);
+  for (const l of bend) {
+    for (let x = l.x; x <= l.x + l.w; x += 1) for (let z = l.z; z <= l.z + l.d; z += 1) {
+      assert.ok(curveDistance(x, z) > ROAD_W / 2, `${l.id} touches the curve at ${x}, ${z}`);
+    }
+  }
+  const areas = new Set(bend.map(l => l.w * l.d));
+  assert.ok(areas.size >= 8, 'mixed lot sizes');
+  assert.ok(bend.some(l => l.w >= 56 && l.d >= 60), 'at least one estate lot');
+  assert.ok(Math.max(...bend.map(lotPrice)) > lotPrice({ w: 32, d: 40 }) * 2, 'bigger lots cost more');
+});
+
 test('every driveway reaches a street', () => {
   for (const lot of makeLots()) {
     const d = drivewayRect(lot);
     const edgeZ = lot.front === '+z' ? d.cz + d.sz / 2 + 1 : d.cz - d.sz / 2 - 1;
-    assert.ok(ROADS.some(r => Math.abs(d.cx - r.cx) < r.sx / 2 && Math.abs(edgeZ - r.cz) < r.sz / 2 + 2), lot.id);
+    const straight = ROADS.some(r => Math.abs(d.cx - r.cx) < r.sx / 2 && Math.abs(edgeZ - r.cz) < r.sz / 2 + 2);
+    const curved = curveDistance(d.cx, edgeZ) < ROAD_W / 2;
+    assert.ok(straight || curved, lot.id);
   }
 });
 
@@ -45,4 +61,15 @@ test('the minimap routes along the streets to the farthest lot', () => {
   const straight = Math.hypot(goal.x - DEPOT.padX, goal.z - DEPOT.padZ);
   const length = routeLength(route);
   assert.ok(length >= straight && length < straight * 2, `route ${length} m vs ${straight} m straight`);
+});
+
+test('the minimap routes along the curved streets to a Willow Bend estate', () => {
+  const far = makeLots().find(l => l.id === 'W20')!;
+  const d = drivewayRect(far);
+  const goal = { x: d.cx, z: d.cz + d.sz / 2 + 1 };
+  const route = roadRoute({ x: DEPOT.padX, z: DEPOT.padZ }, goal);
+  assert.ok(route.length > 3);
+  const straight = Math.hypot(goal.x - DEPOT.padX, goal.z - DEPOT.padZ);
+  const length = routeLength(route);
+  assert.ok(length >= straight && length < straight * 3, `route ${length} m vs ${straight} m straight`);
 });

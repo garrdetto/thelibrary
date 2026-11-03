@@ -2,7 +2,7 @@
 
 Source for `public/modules/maplestreet.html`, a 3D neighborhood simulation. You pick a plot on the town map, build and furnish a house with Sims-style Build and Buy tools, and drive around town. There are lawns to mow, deliveries to haul, shops and a gas station downtown, and a bank with a capped loan. Everyone shares one persistent world, so you can come and go as you please.
 
-three.js 0.186.1 (WebGPU with automatic WebGL2 fallback), Rapier 0.14 (`@dimforge/rapier3d-compat`, with `await RAPIER.init()` before the loop starts), PeerJS 1.5.4 and colyseus.js 0.15.28 (loaded on demand) are npm packages pinned in the root `package.json` and bundled by Vite; nothing loads from a CDN.
+three.js 0.186.1 (WebGPU with automatic WebGL2 fallback), Rapier 0.14 (`@dimforge/rapier3d-compat`, with `await RAPIER.init()` before the loop starts) are npm packages pinned in the root `package.json` and bundled by Vite; nothing loads from a CDN.
 
 ## Build
 
@@ -32,11 +32,15 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
   - Walls up, cutaway or down with Home
 - **Money:** everything refunds 100%.
 
+## Start screen
+
+The start screen shows your name and you can't change it: signed in to the library it's your username, otherwise a guest name made once for this browser (`Guest-xxxxx`, also used by the server). There are two modes, **Enter Maple Street** (the shared open world) and **Solo mode** (a private neighborhood on this device with unlimited money).
+
 ## Characters and wardrobe
 
-- The start screen asks whether your character is male or female. The two scanned models (`public/modules/maplestreet/{male,female}.glb`) are rebuilt from the raw scans by `tools/build-characters.mjs` (simplified mesh, auto-rigged skeleton, clothing-region mask `*-mask.png`); run it with `@gltf-transform/*`, `meshoptimizer` and `sharp` installed.
+- New neighbors make their character once, in the wardrobe panel that opens on arrival: male or female (final), hair, face and a starter outfit. The two scanned models (`public/modules/maplestreet/{male,female}.glb`) are rebuilt from the raw scans by `tools/build-characters.mjs` (simplified mesh, auto-rigged skeleton, clothing-region mask `*-mask.png`); run it with `@gltf-transform/*`, `meshoptimizer` and `sharp` installed.
 - `src/avatar/`: `AvatarAssets` (loading, hair pressed flat for buzz/long/hats), `AvatarMaterial` (TSL recolor shader: skin, hair, eyes, jacket, tee, pants, shoes, patterns), `HairAndHats` (long hair, buns, beanie/cap/bucket hat), `AvatarModel` (pose: walk, idle, seated). `Character.ts` shows a stand-in until the model loads.
-- Wardrobe (C): `src/game/WardrobeUI.ts`. Catalog and look validation: `shared/Wardrobe.ts`. Hair, eyes and skin are free; clothing is bought at **Maple Threads** downtown and kept in `account.wardrobe`; the worn look is `account.look`, validated by `RoomLogic` (`{t:'look'}`) and sent to everyone in player snapshots.
+- Wardrobe (C): `src/game/WardrobeUI.ts`. Catalog and look validation: `shared/Wardrobe.ts`. After creation, hair, eyes and skin stay free to change, but the outfit is locked: clothes only change at **Maple Threads** downtown, where you try pieces on, buy them (kept in `account.wardrobe`) or put owned ones back on. `RoomLogic` enforces this on `{t:'look'}`: the body can only be set while `account.look` is still null, and the clothing fields (`OUTFIT_KEYS`, `keepOutfit`) only change while you stand at the Maple Threads door. The worn look is `account.look`, sent to everyone in player snapshots.
 
 ## Admin-published items
 
@@ -64,10 +68,18 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 
 ## World and economy
 
-- **Lots:** 60 lots of 32 × 40 m on ten residential streets between West and East Avenue. The original 20 (N1–N10, S1–S10) face Main Street and North/South Street; N11–N30 and S11–S30 sit one row per street on Birch, Cedar, Elm and Hazel (north) and Aspen, Dogwood, Fir and Juniper (south). Saved worlds pick up the new lots as empty lots. Six lots come with furnished starter houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`).
+- **Lots:** 80 lots. 60 are 32 × 40 m on ten residential streets between West and East Avenue: N1–N10 and S1–S10 face Main Street and North/South Street; N11–N30 and S11–S30 sit one row per street on Birch, Cedar, Elm and Hazel (north) and Aspen, Dogwood, Fir and Juniper (south). Six come with furnished starter houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`).
+- **Willow Bend:** west of West Ave, two winding streets — Willow Bend (south) and Lakeview Dr (north) — loop around through the sweeping Hollow Bend, which Main Street runs into. Their 20 lots (W1–W20) come in mixed sizes from 26 × 36 m up to 60 × 60 m estates. Each sits just behind the curb at its nearest point, with a lawn strip and a longer driveway where the street curves away. Lot prices scale with area (`lotPrice`: $20,000 for a standard lot, $14,500–$56,500 here). Curves are `CURVES` in `shared/WorldLayout.ts` (centerlines sampled every metre, `curveDistance` for a fast distance lookup), drawn by `Roads.curves()` with curbs, gutters, a dashed center line and stop signs, and rasterised into the minimap's route grid.
 - **Civic block** on Commerce St behind downtown: Maple Street Fire Station 1 (three apparatus bays with red bay lights that glow at night) and Maple Street Police, both on the town map and minimap.
-- **Starting cash:** new neighbors start with $105,000 (existing accounts keep their balance).
-- **Grass** (`src/world/Grass.ts`): thin four-blade clumps at realistic heights (mowed lawn about 4–5 cm, uncut lawn 8–13 cm, open fields up to knee-high), dark roots to lighter tips, a gentle breeze and slow lush/dry color patches.
+- **Starting cash:** new neighbors start with $105,000 in the open world. Solo mode has unlimited money (`unlimitedMoney` in `RoomLogic`; the HUD shows "Unlimited", and no loans or mowing pay are needed).
+- **Lawns and mowing** (`shared/Mowing.ts`, `src/world/Lawn.ts`, `src/world/Grass.ts`):
+  - Each 1 m cell of a lot stores when it was last cut and which way the mower pushed the blades. Grass grows back over **five in-game days** (`GROW_DAYS`): about 3.5 cm just cut, about 11 cm at full height. Five days after a cut it's due again.
+  - Stripes are real lean, not paint. Blades leaning away from the camera look light and blades leaning toward it look dark, so the stripes swap shade as you walk around and soften when you look straight down. The 3D blades lean the same way.
+  - A pass at an angle keeps part of the old lean (`KEEP_OLD_LEAN`), so crossing earlier stripes diagonally leaves a diamond (checkerboard) pattern.
+  - Stripes fade as the grass grows and are gone at full height.
+  - Mowing pay is weighted by how grown each cell was. Grass cut less than a day ago doesn't pay again.
+  - The authority keeps the 1 m cells (run-length encoded, untouched lawns are empty). The client also paints each pass into a 4 texel/m data texture so its own stripes have clean edges.
+  - Blades in open fields grow to meadow height. The public verges along Willow Bend are kept short.
 - **Minimap** (`src/game/MiniMap.ts`, routing in `src/game/RoadRoute.ts`): heading-up, about 200 m across. With a delivery job it routes along the streets (A* on a 2 m road grid) to the pickup or drop-off and shows the distance; an arrow on the rim points to stops off the map.
 - **Downtown** (`src/world/Downtown.ts`):
   - Maple Motors: buy vehicles, or take a free test drive.
@@ -93,22 +105,20 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 - shop, pump and item proximity checks
 - fuel levels, which client reports can only lower
 
-## Connection modes
+## Modes
 
 | Mode | How | Authority |
 | --- | --- | --- |
-| Shared world (default) | "Enter Maple Street", `?world=1` or `?room=WORLD` | Durable Object `MapleStreetWorld` (`src/server/maplestreet-world.ts`), state in D1 `maplestreet_world` |
-| Solo (Local Offline Simulation) | "Explore solo", `?solo=1` | `src/net/Host.ts` in the page |
-| Online room | "Host a room" gives a 6-letter code; others join with it or `?room=CODE` | the host's browser (`PeerTransport`), up to 8 neighbors |
-| Same-device tabs | More options → Same-device tabs | the tab holding the Web Lock (`LocalTransport`) |
-| Colyseus | More options → server URL, or `?server=wss://…` | `colyseus-server/` (Node) |
+| Open world (default) | "Enter Maple Street", `?world=1` or `?room=WORLD` | Durable Object `MapleStreetWorld` (`src/server/maplestreet-world.ts`), state in D1 `maplestreet_world` |
+| Solo, unlimited money | "Solo mode", `?solo=1` | `src/net/Host.ts` in the page (save `maplestreet/solo/v3`) |
 
 In the shared world:
 
-- Signed-in members are identified by their session, and guests by a random key kept in the browser. When you're signed in to the library, the start screen fills in your username and locks the name field; every mode (shared world, solo, rooms, tabs) uses it, and progress saved in this browser under an earlier typed name moves over to it.
-- Progress autosaves every 5 minutes in every mode (`AUTOSAVE_EVERY_MS` in `shared/Protocol.ts`) and shows a "Progress autosaved" notice. It also saves when you leave: closing the tab or disconnecting from the shared world, or hiding the page in solo, rooms and tabs.
+- Signed-in members are identified by their session, and guests by a random key kept in the browser; guests are always named `Guest-` plus the start of that key.
+- **Resetting everyone:** the world's D1 keys are prefixed with `WORLD_GENERATION` in `shared/WorldServer.ts` (currently `g2:`, the November 2026 reset). Bump it to start every lot, house, account and lawn over; older rows are simply never read again.
+- Progress autosaves every 5 minutes (`AUTOSAVE_EVERY_MS` in `shared/Protocol.ts`) and shows a "Progress autosaved" notice. It also saves when you leave: closing the tab or disconnecting from the shared world, or hiding the page in solo.
 - New neighbors pick a plot on the overview map. Returning ones start on their own driveway.
-- If anything online can't be reached, the module falls back to the offline simulation and shows a notice.
+- If the open world can't be reached, the module falls back to solo mode and shows a notice.
 
 URL flags: `?webgl` forces WebGL2, `?noao` turns off GTAO, and `?norender` runs the simulation without drawing (for headless tests).
 
@@ -118,4 +128,4 @@ URL flags: `?webgl` forces WebGL2, `?noao` turns off GTAO, and `?norender` runs 
 cd modules-src/maplestreet/colyseus-server && npm install && npm run dev   # ws://localhost:2567
 ```
 
-It isn't deployed. The shared world runs on the site's Worker, and online rooms over PeerJS need no backend.
+It isn't deployed and the page no longer connects to it (the start screen only offers the open world and solo). It's kept as a reference Node host for `RoomLogic`.
