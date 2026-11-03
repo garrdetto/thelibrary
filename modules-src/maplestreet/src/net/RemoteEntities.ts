@@ -28,6 +28,7 @@ import { Avatar } from '../physics/Character';
 import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
 import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
+import { VehicleDoors } from '../physics/VehicleDoors';
 
 const INTERP_DELAY_MS = 120;
 /** Vehicles get a 3D view inside this radius (m) and lose it past the despawn radius. */
@@ -71,9 +72,12 @@ const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b
 const isNpc = (id: string) => id.startsWith('npc-');
 
 /** Everything that makes a vehicle visible and solid. Pooled per kind and reused across vehicles. */
-interface VehicleView { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody }
+interface VehicleView { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; doors: VehicleDoors | null; body: RAPIER.RigidBody }
 /** A remote vehicle: always its snapshot data, plus a view while it is near. */
-interface RemoteVehicle { kind: VehicleSnap['kind']; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; fresh: boolean }
+interface RemoteVehicle { kind: VehicleSnap['kind']; owner: string; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; fresh: boolean }
+
+/** What a right-click on someone else's vehicle shows. */
+export interface RemoteVehicleInfo { kind: VehicleSnap['kind']; label: string; ownerName: string; distance: number }
 interface RemotePlayer {
   name: string; color: string; npc: boolean; look: PlayerSnap['look'];
   avatar: Avatar | null; label: THREE.Sprite | null; lookKey: string;
@@ -124,6 +128,7 @@ export class RemoteEntities {
         // Real neighbors appear right away; simulated ones only once someone is near them.
         if (!rp.npc) this.showStanding(rp);
       }
+      this.ownerNames.set(p.id, p.name);
       const key = lookKey(p.look);
       if (p.look && key !== rp.lookKey) { rp.lookKey = key; rp.look = p.look; rp.avatar?.setLook(p.look); }
       rp.buf.push(time, p); rp.seen = now;
@@ -131,7 +136,7 @@ export class RemoteEntities {
     for (const v of vehicles) {
       if (v.owner === me) continue;
       let rv = this.vehicles.get(v.id);
-      if (!rv) { rv = { kind: v.kind, buf: new SnapBuffer(), seen: now, view: null, fresh: false }; this.vehicles.set(v.id, rv); }
+      if (!rv) { rv = { kind: v.kind, owner: v.owner, buf: new SnapBuffer(), seen: now, view: null, fresh: false }; this.vehicles.set(v.id, rv); }
       rv.buf.push(time, v); rv.seen = now;
     }
     // Despawn anything not seen for 3 s.
@@ -145,9 +150,12 @@ export class RemoteEntities {
     const P = PRESETS[kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
-    const shell = P.build(makePaint(P.paint), lights);
+    const paint = makePaint(P.paint);
+    const shell = P.build(paint, lights);
     mergeStatic(shell);
     root.add(shell);
+    const doors = VehicleDoors.for(kind, paint, P.seat.z);
+    if (doors) root.add(doors.group);
     const wheels: VehicleView['wheels'] = [];
     for (const a of P.axles) for (const side of [1, -1]) {
       const g = new THREE.Group(); const spin = wheelFor(P, a.radius, a.width);
@@ -156,8 +164,8 @@ export class RemoteEntities {
     }
     root.traverse(o => (o.castShadow = true));
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased());
-    this.physics.world.createCollider(R.ColliderDesc.cuboid(P.chassis.hx, P.chassis.hy, P.chassis.hz).setCollisionGroups(MASK.remote), body);
-    return { kind, root, wheels, lights, body };
+    this.physics.world.createCollider(this.physics.vehicleShape(P.chassis.hx, P.chassis.hy, P.chassis.hz).setFriction(0.3).setCollisionGroups(P.tongue ? MASK.remoteTrailer : MASK.remote), body);
+    return { kind, root, wheels, lights, doors, body };
   }
 
   private acquire(rv: RemoteVehicle) {
@@ -204,6 +212,7 @@ export class RemoteEntities {
   // ---------------------------------------------------------------- removal
 
   removePlayer(id: string) {
+    this.ownerNames.delete(id);
     const rp = this.players.get(id); if (!rp) return;
     rp.avatar?.dispose(); this.players.delete(id);
   }
@@ -247,6 +256,7 @@ export class RemoteEntities {
         w.spin -= (speed * dt) / 0.35;
         w.g.children[0].rotation.z = w.spin;
       }
+      view.doors?.update(dt, speed);
       view.lights.head.emissiveIntensity = night > 0.3 ? 3 : 0;
       view.lights.tail.emissiveIntensity = night > 0.3 ? 1.2 : 0.15;
       const p = view.root.position, q = view.root.quaternion;
@@ -268,6 +278,7 @@ export class RemoteEntities {
         if (rp.seatRoot !== veh.view.root) {
           this.ensureAvatar(rp).sitIn(veh.view.root, (PRESETS[veh.kind] ?? PRESETS.sedan).seat);
           rp.seatRoot = veh.view.root; rp.shown = true;
+          veh.view.doors?.pulseDriver();
         }
         rp.avatar!.root.visible = true;
         rp.avatar!.animate(dt, 0, true);
@@ -277,6 +288,7 @@ export class RemoteEntities {
         const dx = b.x - fx, dz = b.z - fz, d2 = dx * dx + dz * dz;
         if (rp.shown && !rp.seatRoot ? d2 > W_DESPAWN2 : d2 > W_SPAWN2) { if (rp.shown) this.hide(rp); continue; }
       }
+      if (rp.seatRoot) this.viewOf(rp.seatRoot)?.doors?.pulseDriver();
       if (!rp.shown || rp.seatRoot) this.showStanding(rp);
       const av = rp.avatar!;
       av.root.visible = !b.vehicleId;
@@ -285,6 +297,30 @@ export class RemoteEntities {
       av.animate(dt, a.speed + (b.speed - a.speed) * k, false);
     }
   }
+
+  private viewOf(root: THREE.Object3D) {
+    for (const v of this.vehicles.values()) if (v.view?.root === root) return v.view;
+    return null;
+  }
+
+  /** The nearest other player's (or neighbor's) vehicle under a ray, for the right-click menu. */
+  pickVehicle(ray: THREE.Raycaster, maxDistance = 80): RemoteVehicleInfo | null {
+    const near = [...this.vehicles.values()].filter(v => v.view);
+    const roots = near.map(v => v.view!.root);
+    for (const r of roots) r.updateMatrixWorld(true);
+    const hit = ray.intersectObjects(roots, true)[0];
+    if (!hit || hit.distance > maxDistance) return null;
+    for (const v of near) {
+      let o: THREE.Object3D | null = hit.object;
+      while (o && o !== v.view!.root) o = o.parent;
+      if (!o) continue;
+      const P = PRESETS[v.kind] ?? PRESETS.sedan;
+      return { kind: v.kind, label: P.label, ownerName: this.ownerNames.get(v.owner) ?? 'A neighbor', distance: hit.distance };
+    }
+    return null;
+  }
+
+  private ownerNames = new Map<string, string>();
 
   clear() {
     for (const id of [...this.players.keys()]) this.removePlayer(id);

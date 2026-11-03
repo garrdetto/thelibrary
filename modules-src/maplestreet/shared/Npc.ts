@@ -151,10 +151,45 @@ const ACCEL = 1.9;            // m/s² gentle pull-away
 const DECEL = 3.0;            // m/s² normal braking
 const STOP_GAP = 3.2;         // the stop line sits this far before the turn begins
 const STOP_WAIT = 1.4;        // seconds parked at the line
-const FOLLOW_GAP = 9;         // metres kept to whatever is ahead in the lane
+const FOLLOW_GAP = 2.6;       // metres kept between bumpers to whatever is ahead in the lane
 const LOOKAHEAD = 45;
 
 interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look }
+
+/** Something NPC drivers must not drive into: a ground-plane rectangle (half length `hx` along `fx, fz`, half width `hz`). */
+export interface Obstacle { x: number; z: number; hx: number; hz: number; fx: number; fz: number }
+
+/** Half extents of a vehicle kind's body on the ground. */
+function halfSize(kind: string) {
+  const t = tuned(kind);
+  return t ? { hx: t.chassis.hx, hz: t.chassis.hz } : { hx: 2.4, hz: 0.95 };
+}
+
+/** Gap from `me`'s front bumper to `o`'s body when `o` reaches into the lane ahead of `me`, else Infinity. */
+function pathGap(me: Obstacle, o: Obstacle) {
+  const nx = -me.fz, nz = me.fx;
+  const dx = o.x - me.x, dz = o.z - me.z;
+  const along = dx * me.fx + dz * me.fz;
+  if (along <= 0) return Infinity;
+  const halfAlong = o.hx * Math.abs(o.fx * me.fx + o.fz * me.fz) + o.hz * Math.abs(-o.fz * me.fx + o.fx * me.fz);
+  const halfAcross = o.hx * Math.abs(o.fx * nx + o.fz * nz) + o.hz * Math.abs(-o.fz * nx + o.fx * nz);
+  const gap = along - halfAlong - me.hx;
+  if (gap > 30 || Math.abs(dx * nx + dz * nz) >= halfAcross + me.hz + 0.35) return Infinity;
+  return Math.max(0, gap);
+}
+
+/** Players on foot and every player vehicle from a snapshot, as obstacles for the drivers. */
+export function obstaclesFrom(players: readonly PlayerSnap[], vehicles: readonly VehicleSnap[]): Obstacle[] {
+  const out: Obstacle[] = [];
+  for (const p of players) if (!p.vehicleId) out.push({ x: p.x, z: p.z, hx: 0.35, hz: 0.35, fx: 1, fz: 0 });
+  for (const v of vehicles) {
+    const { hx, hz } = halfSize(v.kind);
+    const fx = 1 - 2 * (v.qy * v.qy + v.qz * v.qz), fz = 2 * (v.qx * v.qz - v.qw * v.qy);
+    const n = Math.hypot(fx, fz) || 1;
+    out.push({ x: v.x, z: v.z, hx, hz, fx: fx / n, fz: fz / n });
+  }
+  return out;
+}
 interface Walker { id: string; name: string; color: string; route: Walk; s: number; speed: number; look?: Look }
 
 const driver = (id: string, name: string, kind: VehicleKind, route: Path, s: number, speed: number): Driver =>
@@ -184,8 +219,8 @@ export class NpcTraffic {
   ];
   private readonly builtinDrivers = this.drivers.length;
   private customVersion = -1;
-  /** Hosts call this to keep NPCs from driving through players who stopped on the road. */
-  obstacles: { x: number; z: number }[] = [];
+  /** Hosts call this (see obstaclesFrom) to keep NPCs from driving into players and their vehicles. */
+  obstacles: Obstacle[] = [];
 
   constructor() {
     for (const d of this.drivers) this.place(d);
@@ -217,19 +252,32 @@ export class NpcTraffic {
     d.x = p.x; d.z = p.z; d.fx = p.fx; d.fz = p.fz;
   }
 
-  /** Distance to the nearest thing in this driver's lane ahead, or Infinity. */
+  /**
+   * Bumper-to-bumper distance to the nearest thing whose body reaches into
+   * this driver's path ahead, or Infinity. Bodies are oriented rectangles, so
+   * a truck parked across the lane or a long trailer is seen by its real size.
+   */
   private gapAhead(d: Driver) {
     let best = Infinity;
-    const check = (x: number, z: number) => {
-      const dx = x - d.x, dz = z - d.z;
-      const along = dx * d.fx + dz * d.fz;
-      if (along <= 0.5 || along > 30) return;
-      const across = Math.abs(-dx * d.fz + dz * d.fx);
-      if (across < 2.1) best = Math.min(best, along);
-    };
-    for (const o of this.obstacles) check(o.x, o.z);
-    for (const o of this.drivers) if (o !== d) check(o.x, o.z);
+    const me = this.body(d);
+    for (const o of this.obstacles) best = Math.min(best, pathGap(me, o));
+    for (const o of this.drivers) {
+      if (o === d) continue;
+      const them = this.body(o);
+      const g = pathGap(me, them);
+      if (g === Infinity) continue;
+      // Two drivers nosing into each other at a junction: the one nearer the
+      // other's body goes first, so they never both wait.
+      const back = pathGap(them, me);
+      if (back < Infinity && (g < back || (g === back && d.id < o.id))) continue;
+      best = Math.min(best, g);
+    }
     return best;
+  }
+
+  private body(d: Driver): Obstacle {
+    const h = halfSize(d.kind);
+    return { x: d.x, z: d.z, hx: h.hx, hz: h.hz, fx: d.fx, fz: d.fz };
   }
 
   /** Fastest speed allowed now so the car can still slow for every curve and stop line ahead. */
@@ -265,7 +313,8 @@ export class NpcTraffic {
 
       let target = this.speedLimit(d);
       const gap = this.gapAhead(d);
-      if (gap < Infinity) target = Math.min(target, Math.max(0, (gap - FOLLOW_GAP * 0.55) * 0.9));
+      if (gap < Infinity) target = Math.min(target, Math.max(0, (gap - FOLLOW_GAP) * 0.9));
+      if (gap <= FOLLOW_GAP * 0.5) d.v = 0;
       if (d.wait > 0) target = 0;
       const dv = target - d.v;
       d.v = Math.max(0, d.v + Math.max(-DECEL * 1.6 * dt, Math.min(ACCEL * dt * (1 - d.v / (d.speed * 1.4)), dv)));

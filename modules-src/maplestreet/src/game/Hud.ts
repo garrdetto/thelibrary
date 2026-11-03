@@ -45,7 +45,10 @@ export interface HudEvents {
   borrow(amount: number): void;
   repay(amount: number): void;
   requestJob(): void;
-  bringOut(kind: VehicleKind): void;
+  /** Take a vehicle out (parked at home, never next to you) or put it back in the garage. */
+  garage(kind: VehicleKind): void;
+  /** Go Home: back to your driveway, once every fifteen minutes. */
+  goHome(): void;
   buy(shop: string, item: string): void;
   testDrive(kind: VehicleKind): void;
   map(): void;
@@ -126,6 +129,7 @@ export class Hud {
     $('jobBtn').onclick = () => ev.requestJob();
     $('mapBtn').onclick = () => ev.map();
     $('wardrobeBtn').onclick = () => ev.wardrobe();
+    $('homeBtn').onclick = () => ev.goHome();
     for (const id of ['bank', 'shop', 'mapModal']) $(id).addEventListener('click', e => { if (e.target === $(id)) this.closeModals(); });
 
     this.map = new PlotMap($<HTMLCanvasElement>('mapCanvas'), lot => { this.mapLot = lot; this.renderMapInfo(); });
@@ -323,9 +327,9 @@ export class Hud {
     $('pantry').textContent = `🧊 ${acc.groceries} home meal${acc.groceries === 1 ? '' : 's'} in the fridge${acc.upgrades.length ? ' · ' + acc.upgrades.length + ' upgrade' + (acc.upgrades.length > 1 ? 's' : '') : ''}`;
   }
 
-  setGarage(acc: Account, out: Set<VehicleKind>, fuel: Partial<Record<VehicleKind, number>>) {
+  setGarage(acc: Account, out: Set<VehicleKind>, fuel: Partial<Record<VehicleKind, number>>, hasHome: boolean) {
     const el = $('garage');
-    const sig = JSON.stringify([acc.garage, [...out], acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k]?.tank ?? 1)) * 20))]);
+    const sig = JSON.stringify([acc.garage, [...out], hasHome, acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k]?.tank ?? 1)) * 20))]);
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.innerHTML = '';
@@ -339,11 +343,34 @@ export class Hud {
       row.innerHTML = `<b>${esc(spec.name)}</b><div class="fuel${pct < 20 ? ' low' : ''}" title="${spec.fuel === 'none' ? 'No engine' : pct + '% fuel'}"><i style="width:${pct}%"></i></div>`;
       const b = document.createElement('button');
       b.className = 'btn';
-      b.textContent = out.has(k) ? 'Call over' : 'Bring out';
-      b.onclick = () => this.ev.bringOut(k);
+      if (k === 'truck' || k === 'trailer') {
+        b.textContent = 'Out';
+        b.disabled = true;
+        b.title = 'Always out: wherever you last parked it';
+      } else if (out.has(k)) {
+        b.textContent = 'Put away';
+        b.title = 'Send it back to your garage';
+      } else {
+        b.textContent = hasHome ? 'Take out' : 'Pick up';
+        b.title = hasHome ? 'Parks it on your driveway at home' : 'Waits for you in front of Maple Motors';
+      }
+      b.onclick = () => this.ev.garage(k);
       row.appendChild(b);
       el.appendChild(row);
     }
+  }
+
+  private goHomeState = { home: false, wait: 0 };
+  /** Go Home button state: whether you own a home, and how long until it can be used again (ms). */
+  setGoHome(hasHome: boolean, waitMs: number) {
+    const b = $<HTMLButtonElement>('homeBtn');
+    const secs = Math.ceil(waitMs / 1000);
+    const label = !hasHome ? 'Go home (H) · no home yet' : secs > 0 ? `Go home in ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` : 'Go home (H)';
+    if (b.textContent !== label) b.textContent = label;
+    b.disabled = !hasHome || secs > 0;
+    const was = this.goHomeState;
+    this.goHomeState = { home: hasHome, wait: secs };
+    if (this.mapOpen && (was.home !== hasHome || (was.wait > 0) !== (secs > 0))) this.renderMapInfo();
   }
 
   setDash(d: { name: string; mph: number; gear: string; fuel: number; tank: number; electric: boolean; engine: boolean } | null) {
@@ -422,7 +449,7 @@ export class Hud {
     const sub: Record<string, string> = {
       gas: `Snacks and drinks inside · fuel is $${FUEL_PRICE.toFixed(2)}/gal at the pumps (press F)`,
       diner: 'Hot plates all day', cafe: 'Coffee and fresh pastries', grocery: 'Stock the fridge at home: each meal is cooked with your fridge',
-      hardware: 'Permanent upgrades for the work you do', dealer: 'New vehicles go straight to your garage', bank: '',
+      hardware: 'Permanent upgrades for the work you do', dealer: 'New vehicles go straight to your garage · test drives wait out front', bank: '',
       clothing: 'Jackets, bottoms, shoes and hats for your wardrobe',
     };
     $('shopName').textContent = door.name;
@@ -504,7 +531,10 @@ export class Hud {
         const can = !!account && account.money >= price && !myHome;
         btn(myHome ? 'You already own a home' : account && account.money < price ? 'Not enough money' : `Buy & move in — ${money(price)}`, 'accent', () => this.ev.mapAction('buy', lot), !can);
       }
-      if (lot.owner === me) btn('Go home', 'accent', () => this.ev.mapAction('home', lot));
+      if (lot.owner === me) {
+        const wait = this.goHomeState.wait;
+        btn(wait > 0 ? `Go home in ${Math.floor(wait / 60)}:${String(wait % 60).padStart(2, '0')}` : 'Go home', 'accent', () => this.ev.mapAction('home', lot), wait > 0);
+      }
       else btn('Visit this lot', '', () => this.ev.mapAction('visit', lot));
     }
     btn(choosing ? 'Explore first' : 'Close (M)', '', () => this.showMap(false));
