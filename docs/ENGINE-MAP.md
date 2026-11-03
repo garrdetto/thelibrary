@@ -238,6 +238,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/shorttrack/index.ts` — entry; provides `window.Peer`, imports `main.js` — `index.html`.
 - `modules-src/shorttrack/main.js` — whole module: three.js scene, trucks (`TM`), `buildStockCar`, liveries, `?track=`, lap posts, `tl-lap`, PeerJS `sts-oval-race-<code>` — `index.ts`.
 - `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
+- `modules-src/shorttrack/prison-speedway.js` — Prison Speedway scenery (`buildPrisonSet`: guard towers, curtain wall, razor wire, searchlights, name board) and the inmate crowd and stand colors — `main.js`.
 - `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
 
 ### pool — 8-Ball Pool
@@ -288,7 +289,7 @@ Every phase keeps these exactly (sources: `AGENTS.md`, `docs/AUDIT.md` §1, veri
 - `postMessage` child → parent `{type:'tl-score-saved', module, saved}` — refreshes `ModuleScoreboard`.
 - `postMessage` child → parent `{type:'tl-lap', track, mode}` — refreshes `LapRecordBoard`.
 - `postMessage` parent → child `{type:'tl-host'}`; child answers `{type:'tl-room', code}` — sandlot, chess, checkers, shorttrack, maplestreet.
-- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet), `?track=shorttrack|dells|dellswide|dirt` (Short Track Showdown), `?world=`, `?solo=` (Maple Street).
+- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet), `?track=shorttrack|dells|dellswide|prison|dirt` (Short Track Showdown), `?world=`, `?solo=` (Maple Street).
 - PeerJS room codes: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (Maple Street also allows `L`), shown upper-case; peer ids lower-case the code: `sandlot-`, `tl-chess-`, `tl-checkers-`. Short Track Showdown: 5 letters A–Z without I/O, peer id `sts-oval-race-<CODE>`.
 - Group-chat invites `meta.invite = {module, label, code}`.
 - `/api/*`: `pool-account`, `workspace-access`, `workspace-admin`, `site-changes`, `account-settings`, `pool-practice`, `pool-preferences`, `pool-cue-overlay`, `racing`, `park`, `maplestreet`, `maplestreet-items`, `maplestreet-vehicles`, `meshy`, `group-chat`, `module-scores`, `studio`, `library`, `asset`, `learning`, `lyric-presets`.
