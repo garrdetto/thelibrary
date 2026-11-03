@@ -32,7 +32,7 @@ export interface WorldSocket {
   close(code?: number, reason?: string): void;
 }
 
-interface Meta { version: number; epochDay: number; coverage: Record<string, string> }
+interface Meta { version: number; epochDay: number; coverage: Record<string, string>; seedVersion?: number }
 interface LotRecord { lot: LotState; build: LotBuild }
 
 /**
@@ -74,7 +74,7 @@ export class WorldServer {
     const [meta, lots] = await Promise.all([this.storage.get<Meta>(K.meta), this.storage.list<LotRecord>(K.lot)]);
     let saved: Persisted | null = null;
     if (meta && lots.size) {
-      const world: Persisted['world'] = { lots: {}, builds: {}, version: meta.version };
+      const world: Persisted['world'] = { lots: {}, builds: {}, version: meta.version, seedVersion: meta.seedVersion };
       for (const rec of lots.values()) { world.lots[rec.lot.id] = rec.lot; world.builds[rec.lot.id] = rec.build; }
       saved = { world, accounts: {}, hours: 0, day: 1, coverage: meta.coverage ?? {}, epochDay: meta.epochDay };
     }
@@ -205,7 +205,7 @@ export class WorldServer {
     const entries: Record<string, unknown> = {};
     for (const id of dirty.lots) entries[`${K.lot}${id}`] = { lot: logic.world.lots[id], build: logic.world.builds[id] } satisfies LotRecord;
     for (const key of dirty.accounts) if (logic.accounts[key]) entries[`${K.acct}${key}`] = logic.accounts[key];
-    entries[K.meta] = { version: logic.world.version, epochDay: logic.epochDay, coverage: logic.coverageCodes() } satisfies Meta;
+    entries[K.meta] = { version: logic.world.version, epochDay: logic.epochDay, coverage: logic.coverageCodes(), seedVersion: logic.world.seedVersion } satisfies Meta;
     dirty.lots.clear(); dirty.accounts.clear(); dirty.meta = false;
     await this.storage.put(structuredClone(entries));
   }

@@ -1,7 +1,8 @@
 import type { CatalogFunc, CatalogRoom } from '../../modules-src/maplestreet/shared/Catalog'
+import type { AssetStatus } from '../../modules-src/maplestreet/shared/Assets'
 import type { CustomItemRecord, Vector3Like } from '../../modules-src/maplestreet/shared/CustomItems'
 
-export type { CustomItemRecord, Vector3Like }
+export type { AssetStatus, CustomItemRecord, Vector3Like }
 
 export type PublishInput = {
   model: File
@@ -16,6 +17,7 @@ export type PublishInput = {
   w: number
   d: number
   h: number
+  status: 'draft' | 'published'
 }
 
 const ENDPOINT = '/api/maplestreet-items'
@@ -30,7 +32,7 @@ async function readError(response: Response) {
 }
 
 export async function fetchStoreItems(): Promise<CustomItemRecord[]> {
-  const response = await fetch(ENDPOINT, { credentials: 'same-origin', cache: 'no-store' })
+  const response = await fetch(`${ENDPOINT}?drafts=1`, { credentials: 'same-origin', cache: 'no-store' })
   if (!response.ok) throw new Error(await readError(response))
   return ((await response.json()) as { items: CustomItemRecord[] }).items
 }
@@ -49,12 +51,13 @@ export async function publishStoreItem(input: PublishInput): Promise<CustomItemR
   form.append('w', String(input.w))
   form.append('d', String(input.d))
   form.append('h', String(input.h))
+  form.append('status', input.status)
   const response = await fetch(ENDPOINT, { method: 'POST', body: form, credentials: 'same-origin' })
   if (!response.ok) throw new Error(await readError(response))
   return ((await response.json()) as { item: CustomItemRecord }).item
 }
 
-export async function updateStoreItem(id: string, changes: { active?: boolean; name?: string; price?: number }): Promise<CustomItemRecord> {
+export async function updateStoreItem(id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; price?: number }): Promise<CustomItemRecord> {
   const response = await fetch(ENDPOINT, {
     method: 'PATCH',
     credentials: 'same-origin',

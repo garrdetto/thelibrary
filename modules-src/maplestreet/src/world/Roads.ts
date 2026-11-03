@@ -194,7 +194,13 @@ export class Roads {
     // Sidewalk faces toward the road get a proper curb too.
     const swCurb: THREE.BufferGeometry[] = [];
     for (const s of SIDEWALKS) {
-      const towardRoad = s.cz > 0 ? -1 : 1;
+      if (s.road === '+x' || s.road === '-x') {
+        const towardRoad = s.road === '+x' ? 1 : -1;
+        const edge = s.cx + towardRoad * (s.sx / 2);
+        box(swCurb, Math.min(edge, edge - towardRoad * 0.18), 0, s.cz - s.sz / 2, Math.max(edge, edge - towardRoad * 0.18), 0.16, s.cz + s.sz / 2);
+        continue;
+      }
+      const towardRoad = s.road === '+z' ? 1 : s.road === '-z' ? -1 : s.cz > 0 ? -1 : 1;
       const edge = s.cz + towardRoad * (s.sz / 2);
       box(swCurb, s.cx - s.sx / 2, 0, Math.min(edge, edge - towardRoad * 0.18), s.cx + s.sx / 2, 0.16, Math.max(edge, edge - towardRoad * 0.18));
     }

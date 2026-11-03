@@ -1,0 +1,86 @@
+name: maplestreet-e2e
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'modules-src/maplestreet/**'
+      - 'src/server/maplestreet-*.ts'
+      - 'src/server/routes/maplestreet-*.ts'
+      - 'src/components/maplestreet/**'
+      - 'scripts/maplestreet-drafts-e2e.mjs'
+      - 'migrations/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: maplestreet-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: maplestreet-e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check (site)
+        run: pnpm exec tsc -p tsconfig.json --noEmit 2>&1 | tee .tsc-site.txt || true
+
+      - name: Type check (Maple Street module)
+        run: |
+          cat > .tsconfig.maplestreet.json <<'EOF'
+          { "extends": "./tsconfig.json", "compilerOptions": { "noEmit": true, "skipLibCheck": true }, "include": ["modules-src/maplestreet/src/**/*.ts", "modules-src/maplestreet/shared/**/*.ts"], "exclude": [] }
+          EOF
+          pnpm exec tsc -p .tsconfig.maplestreet.json 2>&1 | tee .tsc-maplestreet.txt || true
+
+      - name: Browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Local database
+        env:
+          CI: 'true'
+        run: |
+          printf 'ADMIN_PASSWORD=local-admin-pass\n' > .dev.vars
+          pnpm exec wrangler d1 migrations apply thelibrary-db --local
+          pnpm exec wrangler d1 execute thelibrary-db --local --command "INSERT INTO maplestreet_items (id, name, price, room, func, indoor, solid, scale_x, scale_y, scale_z, yaw, width, depth, height, model_type, model_bytes, active, created_by, created_at, updated_at) VALUES ('11111111-2222-4333-8444-555555555555', 'Legacy Lamp', 90, 'living', 'lighting', 1, 0, 1, 1, 1, 0, 1, 1, 1.5, 'model/gltf-binary', 100, 1, 'seed', 1, 1)"
+
+      - name: Dev server
+        run: |
+          nohup pnpm dev > .dev-server.log 2>&1 &
+          for i in $(seq 1 120); do curl -sf http://localhost:3000/ > /dev/null && break; sleep 3; done
+          curl -sf http://localhost:3000/modules/maplestreet.html > /dev/null
+
+      - name: Drafts and neighborhood
+        run: ADMIN_PASSWORD=local-admin-pass node scripts/maplestreet-drafts-e2e.mjs http://localhost:3000 11111111-2222-4333-8444-555555555555
+
+      - name: Results
+        if: always()
+        run: |
+          mkdir -p .e2e
+          cp .tsc-site.txt .tsc-maplestreet.txt .dev-server.log .e2e/ 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: maplestreet-e2e
+          path: .e2e/
+          include-hidden-files: true
+          retention-days: 7

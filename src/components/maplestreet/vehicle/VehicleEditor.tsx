@@ -6,6 +6,8 @@ import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/Custo
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
 import { fetchStoreVehicles, publishStoreVehicle, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
+import type { AssetStatus } from '@/lib/maplestreet-vehicles'
+import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from '../AssetStatusActions'
 import { MeshyPanel } from '../MeshyPanel'
 import type { MeshySourceOption } from '../MeshyPanel'
 import { DRIVE_TEMPLATES, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, REFERENCE_KINDS, REFERENCE_LABEL, ROUTE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
@@ -183,19 +185,21 @@ export default function VehicleEditor() {
   async function publish(event: FormEvent) {
     event.preventDefault()
     if (!spec || busy) return
+    const target = submitStatus(event)
     setBusy('publish'); setStatus(null)
     try {
       const bytes = await shrink()
       if (bytes.byteLength > LIMITS.modelBytes) throw new Error(`Even after shrinking, the model is ${kb(bytes.byteLength)}. Lower the triangle or texture limits.`)
-      const vehicle = await publishStoreVehicle({ name: draft.name.trim(), spec, model: new Blob([bytes as BlobPart], { type: 'model/gltf-binary' }), wheel: wheelFile })
+      const vehicle = await publishStoreVehicle({ name: draft.name.trim(), spec, model: new Blob([bytes as BlobPart], { type: 'model/gltf-binary' }), wheel: wheelFile, status: target })
       setVehicles(current => [...(current ?? []), vehicle])
-      setStatus({ tone: 'ok', text: `Published “${vehicle.name}”. ${vehicle.dealer.forSale ? 'It’s for sale at Maple Motors' : 'It isn’t for sale'}${vehicle.traffic.enabled ? ' and drives around town' : ''} the next time players load the module.` })
+      if (target === 'draft') setStatus({ tone: 'ok', text: `Saved “${vehicle.name}” as a draft. Drive it in the developer instance, then publish it from the list below.` })
+      else setStatus({ tone: 'ok', text: `Published “${vehicle.name}”. ${vehicle.dealer.forSale ? 'It’s for sale at Maple Motors' : 'It isn’t for sale'}${vehicle.traffic.enabled ? ' and drives around town' : ''} the next time players load the module.` })
     } catch (error) {
       setStatus({ tone: 'error', text: (error as Error).message })
     } finally { setBusy(null) }
   }
 
-  async function change(vehicle: CustomVehicleRecord, changes: { active?: boolean; spec?: CustomVehicleSpec }) {
+  async function change(vehicle: CustomVehicleRecord, changes: { active?: boolean; status?: AssetStatus; spec?: CustomVehicleSpec }) {
     try {
       const next = await updateStoreVehicle(vehicle.id, changes)
       setVehicles(current => current?.map(v => v.id === next.id ? next : v) ?? null)
@@ -352,7 +356,10 @@ export default function VehicleEditor() {
           {report && <p className="ms-veh-note" role="status">{kb(report.bytesBefore)} → {kb(report.bytesAfter)} · {report.trianglesBefore.toLocaleString()} → {report.trianglesAfter.toLocaleString()} triangles · {report.texturesResized} texture{report.texturesResized === 1 ? '' : 's'} resized{report.wheelTrianglesRemoved ? ` · ${report.wheelTrianglesRemoved.toLocaleString()} baked-in wheel triangles removed` : ''}</p>}
         </fieldset>
 
-        <button type="submit" className="ms-items-publish" disabled={!ready}>{busy === 'publish' ? <><LoaderCircle className="spin" size={16}/> Shrinking and publishing…</> : 'Publish vehicle'}</button>
+        <div className="ms-items-submit">
+          <button type="submit" value="draft" className="ms-items-draft" disabled={!ready}>Save as draft</button>
+          <button type="submit" value="published" className="ms-items-publish" disabled={!ready}>{busy === 'publish' ? <><LoaderCircle className="spin" size={16}/> Shrinking and saving…</> : 'Publish vehicle'}</button>
+        </div>
         {status && <p role={status.tone === 'error' ? 'alert' : 'status'} className={status.tone === 'error' ? 'ms-items-error' : 'ms-items-ok'}>{status.text}</p>}
       </div>
     </form>
@@ -361,22 +368,23 @@ export default function VehicleEditor() {
 
     {drive && <TestDrive record={drive.record} onClose={() => setDrive(null)} onResult={result => setMeasured({ topMph: result.topMph, time: result.time })}/>}
 
-    <h2>Published vehicles</h2>
+    <h2>Your vehicles</h2>
     <p>Retiring takes a vehicle off the dealer lot and out of traffic. Players who already own it keep it in their garage.</p>
+    <DevInstanceNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadVehicles()}>Retry</button></p>}
     {vehicles === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading vehicles…</p>}
     {vehicles?.length === 0 && <p>No vehicles published yet.</p>}
     {!!vehicles?.length && <ul className="ms-items-list">
-      {vehicles.map(v => <li key={v.id} className={v.active ? '' : 'is-retired'}>
+      {vehicles.map(v => <li key={v.id} className={statusOf(v) === 'retired' ? 'is-retired' : statusOf(v) === 'draft' ? 'is-draft' : ''}>
         <div>
           <strong>{v.name}</strong>
           <span>{TEMPLATE_LABEL[v.template]} · {v.targets.topSpeedMph} mph · 0–{v.targets.zeroToMph} in {v.targets.zeroToSeconds} s · {(v.physics.chassis.hx * 2).toFixed(2)} m long · {v.dealer.forSale ? money(v.dealer.price) : 'not for sale'}{v.traffic.enabled ? ` · traffic: ${ROUTE_LABEL[v.traffic.route]}` : ''}</span>
         </div>
-        <span className="ms-items-state">{v.active ? 'Active' : 'Retired'}</span>
+        <AssetStatusBadge status={statusOf(v)}/>
         <label className="ms-veh-inline"><input type="checkbox" checked={v.dealer.forSale} onChange={event => void change(v, { spec: { ...specOf(v), dealer: { ...v.dealer, forSale: event.target.checked } } })}/> For sale</label>
         <label className="ms-veh-inline"><input type="checkbox" checked={v.traffic.enabled} onChange={event => void change(v, { spec: { ...specOf(v), traffic: { ...v.traffic, enabled: event.target.checked } } })}/> In traffic</label>
         <a href={v.modelUrl} download>Model</a>
-        <button type="button" onClick={() => void change(v, { active: !v.active })}>{v.active ? 'Retire' : 'Restore'}</button>
+        <AssetStatusActions status={statusOf(v)} onChange={next => void change(v, { status: next })}/>
       </li>)}
     </ul>}
   </section>

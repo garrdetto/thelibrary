@@ -9,6 +9,7 @@
  * the unscaled bounds' center on the footprint center and its bottom on the
  * floor. Scaling around that origin keeps the model centered and grounded.
  */
+import { isAssetStatus, type AssetStatus } from './Assets';
 import { CATALOG, CATALOG_FUNCS, CATALOG_ROOMS, type CatalogFunc, type CatalogItem, type CatalogRoom } from './Catalog';
 
 export const CUSTOM_PREFIX = 'custom:';
@@ -43,6 +44,8 @@ export interface CustomItemRecord {
   h: number;
   modelUrl: string;
   active: boolean;
+  /** Missing on records cached before drafts existed: those were all published or retired. */
+  status?: AssetStatus;
   updatedAt: number;
 }
 
@@ -114,5 +117,6 @@ export function isValidRecord(r: unknown): r is CustomItemRecord {
     && Number.isInteger(o.d) && o.d >= 1 && o.d <= CUSTOM_LIMITS.footprintMax
     && finite(o.h, 0, CUSTOM_LIMITS.heightMax)
     && ROOMS.has(o.room) && FUNCS.has(o.func)
-    && typeof o.indoor === 'boolean' && typeof o.solid === 'boolean' && typeof o.active === 'boolean';
+    && typeof o.indoor === 'boolean' && typeof o.solid === 'boolean' && typeof o.active === 'boolean'
+    && (o.status === undefined || isAssetStatus(o.status));
 }

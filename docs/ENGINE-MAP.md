@@ -56,7 +56,8 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/park.ts` — `/api/park` tickets, gzip saves (slots 0–6), company-value boards with park screenshots (`?shot=`) — `api.ts`.
 - `src/server/routes/maplestreet.ts` — `/api/maplestreet` WebSocket upgrade to the shared world — `api.ts`.
 - `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world`; registers published items and vehicles before loading the world and again on `POST /catalog` — `server.ts`.
-- `src/server/routes/maplestreet-items.ts` — `/api/maplestreet-items`: public list, `?model=<id>` serves the .glb from KV, admin multipart publish (POST) and retire/restore (PATCH) — `api.ts`. Helpers in `src/server/maplestreet-items.ts` (D1 `maplestreet_items`) and `src/server/gltf-check.ts`.
+- `src/server/routes/maplestreet-items.ts` — `/api/maplestreet-items`: public list (drafts only for the admin with `?drafts=1`), `?model=<id>` serves the .glb from KV, admin multipart publish (POST, `status` draft or published) and status changes (PATCH `status`, or the older `active`) — `api.ts`. Helpers in `src/server/maplestreet-items.ts` and `src/server/gltf-check.ts`.
+- `src/server/maplestreet-assets.ts` — D1 `maplestreet_assets` (migration 0016, also created on first use and back-filled from `maplestreet_items` / `maplestreet_vehicles` with `INSERT OR IGNORE`): one row per published asset with `kind`, `status`, JSON `spec` and `files`; list/get/insert/update and the admin-only draft check — `maplestreet-items.ts`, `maplestreet-vehicles.ts`.
 - `src/server/routes/maplestreet-vehicles.ts` — `/api/maplestreet-vehicles`: public list (retired included with `active: false`), `?model=<id>` / `?wheel=<id>` serve KV `maplestreet-vehicle/<id>[/wheel]`, admin multipart publish (`name`, `spec` JSON, `model`, optional `wheel`) and PATCH (`active`, `name`, `spec`) — `api.ts`. Zod `vehicleSpecSchema` and D1 `maplestreet_vehicles` (migration 0014) in `src/server/maplestreet-vehicles.ts`; `requireMapleAdmin` / `refreshWorldCatalog` in `src/server/maplestreet-admin.ts`.
 - `src/server/routes/meshy.ts` — `/api/meshy` (admin only): `?status` (connected, balance, credit table), job list (refreshes unfinished tasks from Meshy), `?model=<job>` (KV `meshy-model/<job>`), POST actions `text`, `image`, `refine`, `remesh`, `retexture`, `cancel`, `hide` — `api.ts`. Meshy client, friendly error mapping and D1 `meshy_jobs` (migration 0015) in `src/server/meshy.ts`; secret `MESHY_API_KEY`, dev-only `MESHY_API_BASE`.
 - `src/server/routes/scores.ts` — `/api/module-scores` GET `?module=`, POST `score` / `reset-records` — `api.ts`.
@@ -150,6 +151,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/core/Input.ts` — keyboard, mouse, touch — `Game`, `CameraRig`, `BuildController`.
 - `src/core/Materials.ts` — shared PBR materials, procedural textures — `Game`, `Mesher`, `Neighborhood`, `Downtown`.
 - `src/core/Merge.ts` — geometry merge helpers — `Downtown`, `RemoteEntities`, `Vehicle`, `VehiclePresets`.
+- `src/core/DevMode.ts` — developer instance flag (`?dev=1`), its save key and draft counts — `main`, `OfflineTransport`, `CustomModels`, `CustomVehicleModels`.
 - `src/core/Storage.ts` — per-device settings — `main`, `Game`, `BuildController`, `Host`, `WorldTransport`.
 - `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch — `main`.
 - `src/game/CameraRig.ts` — third-person and build cameras — `Game`.
@@ -194,8 +196,10 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/net/RemoteEntities.ts` — remote player and vehicle interpolation — `Game`.
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop; storage keys are prefixed with `WORLD_GENERATION` (bump it to reset everyone) — `maplestreet-world.ts`.
-- `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
-- `shared/Seed.ts` — starter houses — `RoomLogic`.
+- `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — sidewalks (with their road side, `residentialSidewalks()`), `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
+- `shared/Seed.ts` — simulated neighbors' roster, `seedNeighborhood`, `upgradeSeed` (once per `SEED_VERSION`) — `RoomLogic`.
+- `shared/HousePlans.ts` — seven house plans in lot-local coordinates (`Plot`) emitted as build ops — `Seed`.
+- `shared/Assets.ts` — asset status (`draft`, `published`, `retired`) — `CustomItems`, `CustomVehicles`, `src/server/maplestreet-assets.ts`, the admin editors.
 - `shared/Npc.ts` — simulated neighbors; drivers follow arc-smoothed lanes, stop at stop lines, keep following distance and lean in turns; published vehicles with traffic on join as extra drivers (`syncCustomTraffic`) — `Host`, `WorldServer`.
 - `shared/Catalog.ts` — build/buy catalog (`custom` and `hidden` fields for published items) — `RoomLogic`, `BuildRules`, `Furniture`, `Mesher`, `Thumbs`, `Hud`.
 - `shared/CustomItems.ts` — published-item records, limits, `footprintFromSize`, `registerCustomItems` (adds `custom:<id>` entries to `CATALOG`) — `CustomModels`, `maplestreet-world.ts`, `src/server/maplestreet-items.ts`, the admin editor.
@@ -205,7 +209,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `shared/CustomVehicles.ts` — published-vehicle records, limits, `BRAND_PATTERN`, `registerCustomVehicles` (tuning, dealer, traffic) — `CustomVehicleModels`, `Npc`, `maplestreet-world.ts`, `src/server/maplestreet-vehicles.ts`, the vehicle editor.
 - `shared/VehicleDrive.ts` — `predictDrive` / `solveDrive`: top speed and 0–60 targets → engine force and torque cutoff, matching the physics — the vehicle editor, tests.
 - `shared/PaintMask.ts` — color-mask recolor shared by the game and the editor preview.
-- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building layout and minimap routing (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
+- `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building/sidewalk layout and minimap routing; `tests/houses.test.ts` — every house plan on both lot orientations, seeding and the seed upgrade (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
 - `shared/Mowing.ts` — lawn cells (cut time + blade lean per m²), lean blending, growth (`GROW_DAYS` = 5), mowing pay, run-length encoding — `RoomLogic`, `Game`, `Lawn`, `Grass`.
 - `shared/Protocol.ts` — message protocol types — every transport, `RoomLogic`, `WorldServer`.
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.

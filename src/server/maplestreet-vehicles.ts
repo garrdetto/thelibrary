@@ -1,14 +1,12 @@
 import { z } from 'zod'
 import { BRAND_PATTERN, DRIVE_TEMPLATES, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
 import type { Env } from './env'
+import { getAsset, insertAsset, listAssets, statusFrom, updateAsset, type AssetFiles, type AssetRow, type AssetStatus } from './maplestreet-assets'
 
 export const VEHICLE_MODEL_KEY = (id: string) => `maplestreet-vehicle/${id}`
 export const VEHICLE_WHEEL_KEY = (id: string) => `maplestreet-vehicle/${id}/wheel`
 export const vehicleModelUrl = (id: string) => `/api/maplestreet-vehicles?model=${id}`
 export const vehicleWheelUrl = (id: string) => `/api/maplestreet-vehicles?wheel=${id}`
-
-const TABLE = `CREATE TABLE IF NOT EXISTS maplestreet_vehicles (id TEXT PRIMARY KEY NOT NULL, name TEXT NOT NULL, spec TEXT NOT NULL, model_type TEXT NOT NULL,
-  model_bytes INTEGER NOT NULL, wheel_type TEXT, wheel_bytes INTEGER, active INTEGER NOT NULL DEFAULT 1, created_by TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`
 
 const n = (min: number, max: number) => z.number().finite().min(min).max(max)
 const point = (lim = 10) => z.object({ x: n(-lim, lim), y: n(-lim, lim), z: n(-lim, lim) }).strict()
@@ -58,65 +56,38 @@ export const vehicleSpecSchema = z.object({
   wheelsRemoved: z.boolean(),
 }).strict()
 
-type VehicleRow = { id: string; name: string; spec: string; wheel_type: string | null; active: number; updated_at: number }
-
-let tableReady: Promise<unknown> | null = null
-export function ensureVehiclesTable(env: Env) {
-  tableReady ??= env.DB.prepare(TABLE).run().catch(error => { tableReady = null; throw error })
-  return tableReady
-}
-
-function toRecord(row: VehicleRow): CustomVehicleRecord | null {
-  let spec: CustomVehicleSpec
-  try {
-    spec = vehicleSpecSchema.parse(JSON.parse(row.spec)) as CustomVehicleSpec
-  } catch {
-    return null
-  }
+function toRecord(asset: AssetRow): CustomVehicleRecord | null {
+  const parsed = vehicleSpecSchema.safeParse(asset.spec)
+  if (!parsed.success) return null
   return {
-    ...spec,
-    id: row.id,
-    name: row.name,
-    modelUrl: vehicleModelUrl(row.id),
-    wheelUrl: row.wheel_type ? vehicleWheelUrl(row.id) : null,
-    active: row.active === 1,
-    updatedAt: row.updated_at,
+    ...(parsed.data as CustomVehicleSpec),
+    id: asset.id,
+    name: asset.name,
+    modelUrl: vehicleModelUrl(asset.id),
+    wheelUrl: asset.files.wheel ? vehicleWheelUrl(asset.id) : null,
+    active: asset.status !== 'retired',
+    status: asset.status,
+    updatedAt: asset.updatedAt,
   }
 }
 
-const COLUMNS = 'id, name, spec, wheel_type, active, updated_at'
+const present = (record: CustomVehicleRecord | null): record is CustomVehicleRecord => record !== null
 
-export async function listStoreVehicles(env: Env): Promise<CustomVehicleRecord[]> {
-  await ensureVehiclesTable(env)
-  const rows = await env.DB.prepare(`SELECT ${COLUMNS} FROM maplestreet_vehicles ORDER BY created_at ASC, id ASC`).all<VehicleRow>()
-  return rows.results.map(toRecord).filter((r): r is CustomVehicleRecord => r !== null)
+export async function listStoreVehicles(env: Env, options: { drafts?: boolean } = {}): Promise<CustomVehicleRecord[]> {
+  return (await listAssets(env, 'vehicle', options)).map(toRecord).filter(present)
 }
 
 export async function getStoreVehicle(env: Env, id: string): Promise<CustomVehicleRecord | null> {
-  await ensureVehiclesTable(env)
-  const row = await env.DB.prepare(`SELECT ${COLUMNS} FROM maplestreet_vehicles WHERE id = ?`).bind(id).first<VehicleRow>()
-  return row ? toRecord(row) : null
+  const asset = await getAsset(env, 'vehicle', id)
+  return asset ? toRecord(asset) : null
 }
 
-export async function insertStoreVehicle(env: Env, id: string, name: string, spec: CustomVehicleSpec, model: { type: string; bytes: number }, wheel: { type: string; bytes: number } | null, createdBy: string) {
-  await ensureVehiclesTable(env)
-  const now = Date.now()
-  await env.DB.prepare(`INSERT INTO maplestreet_vehicles (id, name, spec, model_type, model_bytes, wheel_type, wheel_bytes, active, created_by, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`)
-    .bind(id, name, JSON.stringify(spec), model.type, model.bytes, wheel?.type ?? null, wheel?.bytes ?? null, createdBy, now, now)
-    .run()
+export async function insertStoreVehicle(env: Env, id: string, name: string, spec: CustomVehicleSpec, model: { type: string; bytes: number }, wheel: { type: string; bytes: number } | null, createdBy: string, status: AssetStatus = 'published') {
+  const files: AssetFiles = { model: { key: VEHICLE_MODEL_KEY(id), type: model.type, bytes: model.bytes } }
+  if (wheel) files.wheel = { key: VEHICLE_WHEEL_KEY(id), type: wheel.type, bytes: wheel.bytes }
+  await insertAsset(env, { id, kind: 'vehicle', name, status, spec, files, createdBy })
 }
 
-export async function updateStoreVehicle(env: Env, id: string, changes: { active?: boolean; name?: string; spec?: CustomVehicleSpec }) {
-  await ensureVehiclesTable(env)
-  const sets: string[] = []
-  const values: unknown[] = []
-  if (changes.active !== undefined) { sets.push('active = ?'); values.push(changes.active ? 1 : 0) }
-  if (changes.name !== undefined) { sets.push('name = ?'); values.push(changes.name) }
-  if (changes.spec !== undefined) { sets.push('spec = ?'); values.push(JSON.stringify(changes.spec)) }
-  if (!sets.length) return 0
-  sets.push('updated_at = ?')
-  values.push(Date.now(), id)
-  const result = await env.DB.prepare(`UPDATE maplestreet_vehicles SET ${sets.join(', ')} WHERE id = ?`).bind(...values).run()
-  return result.meta.changes
+export async function updateStoreVehicle(env: Env, id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; spec?: CustomVehicleSpec }) {
+  return updateAsset(env, 'vehicle', id, { name: changes.name, status: statusFrom(changes), spec: changes.spec })
 }
