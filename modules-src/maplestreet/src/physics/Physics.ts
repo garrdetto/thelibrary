@@ -16,13 +16,14 @@ export const CG = {
   CHARACTER: 1 << 3,
   REMOTE: 1 << 4,     // kinematic proxies of other players' vehicles
   PROP: 1 << 5,       // furniture
+  DECK: 1 << 6,       // trailer beds: the one vehicle surface wheels may roll onto
 } as const;
 
 /** Rapier InteractionGroups = (membership << 16) | filter. */
 export const groups = (member: number, filter: number) => ((member & 0xffff) << 16) | (filter & 0xffff);
 
 /**
- * Collision matrix (who collides with whom):
+ * Collision matrix (who collides with whom; wheel rays skip vehicles):
  *            GROUND STATIC VEHICLE CHARACTER REMOTE PROP
  * VEHICLE      ✔      ✔       ✔        ✔       ✔     ✔
  * CHARACTER    ✔      ✔       ✔        ·       ✔     ✔
@@ -33,9 +34,12 @@ export const MASK = {
   static: groups(CG.STATIC, 0xffff),
   prop: groups(CG.PROP, CG.VEHICLE | CG.CHARACTER),
   vehicle: groups(CG.VEHICLE, CG.GROUND | CG.STATIC | CG.VEHICLE | CG.CHARACTER | CG.REMOTE | CG.PROP),
+  trailer: groups(CG.VEHICLE | CG.DECK, CG.GROUND | CG.STATIC | CG.VEHICLE | CG.CHARACTER | CG.REMOTE | CG.PROP),
   character: groups(CG.CHARACTER, CG.GROUND | CG.STATIC | CG.VEHICLE | CG.REMOTE | CG.PROP),
   remote: groups(CG.REMOTE, CG.VEHICLE | CG.CHARACTER),
-  wheelRay: groups(CG.VEHICLE, CG.GROUND | CG.STATIC | CG.VEHICLE | CG.REMOTE | CG.PROP),
+  remoteTrailer: groups(CG.REMOTE | CG.DECK, CG.VEHICLE | CG.CHARACTER),
+  /** Wheels stand on the ground, kerbs, props and trailer beds, never on another car, so cars can't climb onto each other. */
+  wheelRay: groups(CG.VEHICLE, CG.GROUND | CG.STATIC | CG.PROP | CG.DECK),
   cameraRay: groups(CG.CHARACTER, CG.GROUND | CG.STATIC),
   pick: groups(CG.CHARACTER, CG.GROUND | CG.STATIC | CG.PROP),
 };
@@ -107,6 +111,15 @@ export class Physics {
   }
 
   untrack(body: RAPIER.RigidBody) { this.tracked = this.tracked.filter(t => t.body !== body); }
+
+  /**
+   * A vehicle body's collider: a box with rounded edges, so two vehicles that
+   * touch slide off each other instead of snagging on corners.
+   */
+  vehicleShape(hx: number, hy: number, hz: number) {
+    const r = Math.min(0.12, hx * 0.2, hy * 0.45, hz * 0.2);
+    return RAPIER.ColliderDesc.roundCuboid(hx - r, hy - r, hz - r, r);
+  }
 
   addGround(halfSize: number) {
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0));

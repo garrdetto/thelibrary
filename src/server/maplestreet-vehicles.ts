@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { BRAND_PATTERN, DRIVE_TEMPLATES, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
+import { BRAND_PATTERN, DRIVE_TEMPLATES, MAX_DOOR_ROWS, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
 import type { Env } from './env'
 import { getAsset, insertAsset, listAssets, statusFrom, updateAsset, type AssetFiles, type AssetRow, type AssetStatus } from './maplestreet-assets'
 
@@ -25,6 +25,8 @@ const axleSchema = z.object({
   steer: z.boolean(),
   drive: z.boolean(),
 }).strict()
+
+const partBox = z.object({ front: n(-10, 10), back: n(-10, 10), bottom: n(-10, 10), top: n(-10, 10), drop: z.boolean().optional() }).strict().refine(b => b.front > b.back && b.top > b.bottom, 'A part box needs its front ahead of its back and its top above its bottom.')
 
 export const vehicleSpecSchema = z.object({
   template: z.enum(DRIVE_TEMPLATES),
@@ -54,6 +56,11 @@ export const vehicleSpecSchema = z.object({
   dealer: z.object({ forSale: z.boolean(), price: z.number().int().min(0).max(VEHICLE_LIMITS.priceMax), fuel: z.enum(['gas', 'electric']), tank: n(0.5, 200), mpg: n(1, 500) }).strict(),
   traffic: z.object({ enabled: z.boolean(), driver: plainText(40).refine(noBrand, BRAND_MESSAGE), route: z.enum(TRAFFIC_ROUTES), mph: n(3, 60) }).strict(),
   wheelsRemoved: z.boolean(),
+  parts: z.object({
+    doors: z.array(partBox).max(MAX_DOOR_ROWS),
+    hood: partBox.nullable(),
+    trunk: partBox.nullable(),
+  }).strict().optional(),
 }).strict()
 
 function toRecord(asset: AssetRow): CustomVehicleRecord | null {

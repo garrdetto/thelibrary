@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Fairway Nine · the library</title>
+    <style>
+      html,body{margin:0;height:100%;background:var(--lib-bg,#0a0e1a);color:var(--lib-text,#e9effc);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif}
+      #stage{position:relative;width:100%;height:100%}
+      .fw-screen{position:absolute;inset:0;z-index:20;display:grid;place-items:center;padding:16px;background:color-mix(in srgb,var(--lib-bg,#0a0e1a) 62%,transparent);backdrop-filter:blur(4px);overflow:auto}
+      .fw-screen[hidden]{display:none}
+      .fw-card{width:min(720px,100%);display:grid;gap:14px;padding:22px 24px;border-radius:16px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 24px 60px -24px var(--lib-shadow,rgba(0,0,0,.45))}
+      .fw-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--module-accent,var(--lib-accent,#39d0ff))}
+      .fw-card h1,.fw-card h2{margin:0;font-family:Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);letter-spacing:.4px}
+      .fw-card h1{font-size:34px}
+      .fw-card h2{font-size:24px}
+      .fw-card p{margin:0;color:var(--lib-soft,#aab6d3)}
+      .fw-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+      .fw-button{cursor:pointer;padding:10px 14px;border-radius:11px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-text,#e9effc);font:600 14px Inter,system-ui,sans-serif;text-align:left}
+      .fw-button:hover{background:color-mix(in srgb,var(--module-accent,var(--lib-accent,#39d0ff)) 14%,transparent)}
+      .fw-button:focus-visible,.fw-tab:focus-visible,.fw-input:focus-visible{outline:3px solid var(--module-accent,var(--lib-accent,#39d0ff));outline-offset:2px}
+      .fw-button.is-primary{background:var(--module-accent,var(--lib-accent,#39d0ff));color:var(--lib-on-accent,#06101f);border-color:transparent;text-align:center}
+      .fw-button[disabled]{opacity:.5;cursor:not-allowed}
+      .fw-button strong{display:block;color:inherit}
+      .fw-button span{display:block;font-weight:500;font-size:12.5px;color:var(--lib-muted,#8d9bba)}
+      .fw-button.is-primary span{color:inherit;opacity:.8}
+      .fw-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+      .fw-input{flex:1;min-width:120px;padding:10px 12px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel2,#18213a);color:var(--lib-text,#e9effc);font:700 16px Inter,system-ui,sans-serif;letter-spacing:3px;text-transform:uppercase}
+      .fw-code{font:800 28px Rajdhani,Inter,sans-serif;letter-spacing:6px;color:var(--lib-strong,#fff)}
+      .fw-list{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+      .fw-list li{padding:8px 12px;border-radius:9px;background:var(--lib-chip,rgba(255,255,255,.05));display:flex;justify-content:space-between}
+      .fw-note{font-size:12.5px;color:var(--lib-muted,#8d9bba)}
+      .fw-tabs{display:flex;gap:6px;flex-wrap:wrap}
+      .fw-tab{cursor:pointer;padding:7px 14px;border-radius:999px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-soft,#aab6d3);font:700 12.5px Inter,system-ui,sans-serif}
+      .fw-tab[aria-selected=true]{background:var(--module-accent,var(--lib-accent,#39d0ff));color:var(--lib-on-accent,#06101f);border-color:transparent}
+      .fw-table-wrap{overflow-x:auto}
+      .fw-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+      .fw-table th,.fw-table td{padding:7px 8px;border-bottom:1px solid var(--lib-line,rgba(120,170,255,.16));text-align:center}
+      .fw-table th:first-child,.fw-table td:first-child{text-align:left}
+      .fw-table thead th{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--lib-muted,#8d9bba)}
+      .fw-under{color:var(--module-accent,var(--lib-accent,#39d0ff));font-weight:800}
+      .fw-over{color:var(--lib-soft,#aab6d3)}
+      details summary{cursor:pointer;color:var(--lib-soft,#aab6d3);font-weight:600}
+      details ul{margin:8px 0 0;padding-left:18px;color:var(--lib-muted,#8d9bba)}
+      #meter-wrap{position:absolute;right:28px;top:50%;transform:translateY(-50%);z-index:12;display:grid;justify-items:center;gap:4px;pointer-events:none}
+      #meter-wrap[hidden]{display:none}
+      #meter{width:168px;height:168px}
+      #meter-readout{padding:3px 10px;border-radius:999px;background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 12.5px Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+      #turn-banner{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:12;padding:7px 16px;border-radius:999px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 14px Inter,system-ui,sans-serif;pointer-events:none}
+      #turn-banner[hidden]{display:none}
+      .fw-wind-arrow{display:inline-block;font-size:18px;line-height:1;color:var(--module-accent,var(--lib-accent,#39d0ff))}
+      .fw-hint{max-width:280px}
+      @media (max-width:640px){.fw-hint{display:none}}
+      .fw-controls{display:flex;gap:6px;flex-wrap:wrap;pointer-events:auto}
+      @media (max-width:640px){.fw-card{padding:16px}.fw-card h1{font-size:28px}#meter{width:132px;height:132px}#meter-wrap{right:12px;top:auto;bottom:96px;transform:none}}
+      @media (prefers-reduced-motion:reduce){.fw-screen{backdrop-filter:none}}
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="turn-banner" role="status" aria-live="polite" hidden></div>
+
+    <div id="meter-wrap" hidden>
+      <canvas id="meter" width="168" height="168" aria-hidden="true"></canvas>
+      <div id="meter-readout" role="status" aria-live="off"></div>
+    </div>
+
+    <section id="screen-start" class="fw-screen" aria-labelledby="start-title">
+      <div class="fw-card">
+        <div>
+          <div class="fw-eyebrow">Projectile motion · learning module</div>
+          <h1 id="start-title">Fairway Nine</h1>
+          <p>Nine original holes where every shot is a projectile problem: launch angle, spin, air drag and wind decide where the ball lands, then the slope and surface decide where it stops.</p>
+        </div>
+        <div class="fw-modes" role="group" aria-label="Choose a mode">
+          <button type="button" class="fw-button" data-mode="solo"><strong>Solo round</strong><span>All nine holes, stroke play against par.</span></button>
+          <button type="button" class="fw-button" data-mode="pin"><strong>Closest to the pin</strong><span>One shot per hole at the green. Measured to the centimetre.</span></button>
+          <button type="button" class="fw-button" data-mode="online"><strong>Online room</strong><span>Up to four players, three holes, room code.</span></button>
+        </div>
+        <details>
+          <summary>How the swing and the physics work</summary>
+          <ul>
+            <li>Click (or Space, or tap) once to start the meter, again to set power, and a third time on the line for accuracy. Early hooks left, late slices right.</li>
+            <li>Launch speed is power × club speed × lie: the rough costs 20–40 %, a bunker more than half.</li>
+            <li>Drag grows with the square of speed; backspin creates lift (the Magnus effect) and a steeper landing; wind pushes hardest high in the air.</li>
+            <li>On the green the slope pulls the ball downhill, so read the break before you putt.</li>
+          </ul>
+        </details>
+        <div>
+          <div class="fw-eyebrow">Record book</div>
+          <div class="fw-tabs" role="tablist" aria-label="Record book" id="board-tabs">
+            <button type="button" class="fw-tab" role="tab" data-board="round" aria-selected="true">Round</button>
+            <button type="button" class="fw-tab" role="tab" data-board="pin" aria-selected="false" tabindex="-1">Closest to the pin</button>
+            <button type="button" class="fw-tab" role="tab" data-board="match" aria-selected="false" tabindex="-1">Match history</button>
+          </div>
+          <div role="tabpanel" id="board-panel" class="fw-table-wrap" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-lobby" class="fw-screen" aria-labelledby="lobby-title" hidden>
+      <div class="fw-card">
+        <div>
+          <div class="fw-eyebrow">Online room</div>
+          <h2 id="lobby-title">Play three holes with friends</h2>
+          <p id="lobby-status" role="status">Host a room or join one with its six-character code.</p>
+        </div>
+        <div class="fw-row" id="lobby-actions">
+          <button type="button" class="fw-button is-primary" id="lobby-host">Host a room</button>
+          <form class="fw-row" id="lobby-join" style="flex:1">
+            <label for="lobby-code" class="fw-note">Room code</label>
+            <input id="lobby-code" class="fw-input" maxlength="6" autocomplete="off" spellcheck="false" inputmode="text" />
+            <button type="submit" class="fw-button">Join</button>
+          </form>
+        </div>
+        <div id="lobby-room" hidden>
+          <div class="fw-note">Room code</div>
+          <div class="fw-code" id="lobby-code-display"></div>
+        </div>
+        <ul class="fw-list" id="lobby-roster" aria-label="Players"></ul>
+        <div class="fw-row">
+          <button type="button" class="fw-button is-primary" id="lobby-start" hidden>Start the match</button>
+          <button type="button" class="fw-button" id="lobby-back">Back</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-scorecard" class="fw-screen" aria-labelledby="scorecard-title" hidden>
+      <div class="fw-card">
+        <div>
+          <div class="fw-eyebrow" id="scorecard-eyebrow">Scorecard</div>
+          <h2 id="scorecard-title">Scorecard</h2>
+          <p id="scorecard-summary"></p>
+        </div>
+        <div class="fw-table-wrap" id="scorecard-table"></div>
+        <div class="fw-row">
+          <button type="button" class="fw-button is-primary" id="scorecard-continue">Next hole</button>
+          <button type="button" class="fw-button" id="scorecard-menu">Back to the menu</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-pause" class="fw-screen" aria-labelledby="pause-title" hidden>
+      <div class="fw-card">
+        <h2 id="pause-title">Paused</h2>
+        <div class="fw-row">
+          <button type="button" class="fw-button is-primary" id="pause-resume">Resume</button>
+          <button type="button" class="fw-button" id="pause-scorecard">Scorecard</button>
+          <button type="button" class="fw-button" id="pause-quit">Quit to the menu</button>
+        </div>
+      </div>
+    </section>
+
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

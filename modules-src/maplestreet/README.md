@@ -16,6 +16,9 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 | --- | --- |
 | WASD | Walk, or drive. S brakes and then reverses, and Space is the handbrake. |
 | Click | Walk to the spot. Clicking a vehicle, shop door or usable item at home walks you there and uses it. |
+| Right-click | On a vehicle: your own shows **Drive** (walks to the driver's door and gets in) and **Open/Close doors**; anyone else's just says whose it is. Right-drag still orbits. |
+| Shift | Run. |
+| H | **Go home**: back to your driveway, once every 15 real minutes (also the HUD button and the town map). Your vehicles stay where you parked them. |
 | Arrow keys | Orbit (← →: the camera swings left or right around you) and tilt (↑ ↓) the camera. Right-drag also orbits. |
 | E / F / T / R | E gets in or out, shops or uses an item. F fills up at a pump, or calls a tow when the tank is empty. T hitches the trailer, and R flips a vehicle upright. |
 | M / B / J | M opens the town map, B opens Build and Buy mode, and J takes a delivery job. The minimap in the bottom-right corner turns with your view and draws the street route to your current delivery stop. |
@@ -39,7 +42,7 @@ The start screen shows your name and you can't change it: signed in to the libra
 ## Characters and wardrobe
 
 - New neighbors make their character once, in the wardrobe panel that opens on arrival: male or female (final), hair, face and a starter outfit. The two scanned models (`public/modules/maplestreet/{male,female}.glb`) are rebuilt from the raw scans by `tools/build-characters.mjs` (simplified mesh, auto-rigged skeleton, clothing-region mask `*-mask.png`); run it with `@gltf-transform/*`, `meshoptimizer` and `sharp` installed.
-- `src/avatar/`: `AvatarAssets` (loading, hair pressed flat for buzz/long/hats), `AvatarMaterial` (TSL recolor shader: skin, hair, eyes, jacket, tee, pants, shoes, patterns), `HairAndHats` (long hair, buns, beanie/cap/bucket hat), `AvatarModel` (pose: walk, idle, seated). `Character.ts` shows a stand-in until the model loads.
+- `src/avatar/`: `AvatarAssets` (loading, hair pressed flat for buzz/long/hats), `AvatarMaterial` (TSL recolor shader: skin, hair, eyes, jacket, tee, pants, shoes, patterns), `HairAndHats` (long hair, buns, beanie/cap/bucket hat), `AvatarModel` (pose: walk, run, idle, seated) and `Gait` (walk and run cycles shared by both bodies: cadence comes from speed and stride length so the planted foot keeps pace with the ground, the knee is straight at heel strike and tucks through the swing, and running adds a forward lean, pumping bent arms and a flight-phase bounce). The gait follows how fast the body actually moves, so walking into a wall doesn't run in place. `Character.ts` shows a stand-in until the model loads.
 - Wardrobe (C): `src/game/WardrobeUI.ts`. Catalog and look validation: `shared/Wardrobe.ts`. After creation, hair, eyes and skin stay free to change, but the outfit is locked: clothes only change at **Maple Threads** downtown, where you try pieces on, buy them (kept in `account.wardrobe`) or put owned ones back on. `RoomLogic` enforces this on `{t:'look'}`: the body can only be set while `account.look` is still null, and the clothing fields (`OUTFIT_KEYS`, `keepOutfit`) only change while you stand at the Maple Threads door. The worn look is `account.look`, sent to everyone in player snapshots.
 
 ## Admin-published items
@@ -52,7 +55,7 @@ Every admin-published asset (Buy items and vehicles today) lives in one D1 table
 
 - Drafts are listed only to the signed-in administrator, and only when the request asks for them (`?drafts=1`). The shared-world Durable Object never loads them, so players can't see or place them.
 - **Developer instance:** `/modules/maplestreet.html?dev=1` (`src/core/DevMode.ts`). The start screen offers only a private solo game with its own save (`maplestreet/dev/v1`), loads the admin's drafts as real catalog and dealer entries, and says how many came in. A DEV badge stays on screen. Add `&solo=1` to skip the start screen.
-- **Dev panel (F8)** (`src/game/DevPanel.ts`): every published and draft item and vehicle, drafts first. **Place** opens Buy mode on your lot with that item; **Drive** brings the vehicle out for a test drive where you stand, owned or not. Editing and publishing stay in the admin editors.
+- **Dev panel (F8)** (`src/game/DevPanel.ts`): every published and draft item and vehicle, drafts first. **Place** opens Buy mode on your lot with that item; **Drive** starts a test drive of the vehicle in front of Maple Motors, owned or not. Editing and publishing stay in the admin editors.
 - Drafts are never written to the offline caches, so a later normal session can't pick them up.
 
 - `shared/CustomItems.ts` turns each record into a `custom:<uuid>` catalog entry (`registerCustomItems`). The shared-world Durable Object registers them before it loads the world, and `src/build/CustomModels.ts` does the same in the page before any mode starts (the list is cached in `localStorage` for offline solo play), so `RoomLogic` validates and prices them like any other item.
@@ -104,6 +107,10 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 - **Needs** (hunger, energy, fun) drop only while you're in town. Your bed, fridge, grill, tub and other items refill them.
 - **Vehicles:**
   - You start with a pickup, a trailer and a riding mower.
+  - Nothing is ever brought to you. On arrival your truck and trailer are parked on your driveway; after that every vehicle stays wherever you leave it. The Garage's **Take out** parks one more vehicle on your driveway (or in front of Maple Motors before you own a home), and **Put away** returns it. Test drives wait in front of Maple Motors.
+  - Every spot a vehicle is put in is checked against buildings, props and every other vehicle (`src/physics/Parking.ts`), and a parked vehicle that ends up inside or on top of another is moved to the nearest free spot. Wheels never ride on other cars (only on trailer beds), vehicle bodies are rounded so they slide apart instead of snagging, and NPC drivers stop a bumper-length short of anything in their lane. A reconnect replaces your old session, so its truck can't linger where your new one appears.
+  - Enclosed vehicles (pickup, heavy-duty crew cab, sedan, coupe) have opening doors (`src/physics/VehicleDoors.ts`): the driver's door swings open as anyone gets in or out, and the right-click menu opens or closes them all. Open-air vehicles have none, and admin-published vehicles keep the doors baked into their model.
+  - Published and bundled vehicles open too: their doors, hood and trunk are marked as boxes in the vehicle editor (`parts`, suggested by AI), and `src/physics/CutParts.ts` cuts those regions out of the model into hinged leaves. The right-click menu opens the doors, the hood and the trunk; a pickup tailgate (`drop`) folds down. The Meridian Sedan, Bulwark 4x4 and Ironhorn Crew Cab ship with theirs marked.
   - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, the bundled Meridian Sedan, Bulwark 4x4 and Ironhorn Crew Cab (`shared/BundledVehicles.ts`, models in `public/modules/maplestreet/vehicles/`), plus any admin-published vehicles marked for sale. These are original designs.
   - Fuel burns as you drive and is saved with your account.
   - Drivers sit visibly in the seat, both your own and other players'.

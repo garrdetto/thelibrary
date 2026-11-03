@@ -1,5 +1,6 @@
 {
-  "include": ["engine/**/*.ts", "modules-src/_template/**/*.ts"],
+  "include": ["engine/**/*.ts", "modules-src/_template/**/*.ts", "modules-src/fairway/**/*.ts"],
+  "exclude": ["modules-src/fairway/tests/**"],
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

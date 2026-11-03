@@ -11,6 +11,8 @@ import type { AssetStatus } from '@/lib/maplestreet-vehicles'
 import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from '../AssetStatusActions'
 import { MeshyPanel } from '../MeshyPanel'
 import type { MeshySourceOption } from '../MeshyPanel'
+import { defaultPart, PART_LABEL, partOf, withPart } from './draft'
+import type { PartKey } from './draft'
 import { DRIVE_TEMPLATES, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, REFERENCE_KINDS, REFERENCE_LABEL, ROUTE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
 import type { Draft, DriveTemplate, MarkerId, ReferenceKind } from './draft'
 import type { ShrinkReport } from './modelTools'
@@ -120,7 +122,7 @@ export default function VehicleEditor() {
 
   function refit(template: DriveTemplate, scale?: number, yaw = draft.yaw) {
     if (!info) { setDraft(current => newDraft(template, null, { name: current.name })); return }
-    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
+    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, parts: current.parts, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
     setMeasured(null)
   }
 
@@ -167,7 +169,7 @@ export default function VehicleEditor() {
     setBusy('suggest'); setStatus(null); setSelected(null)
     try {
       const { groundMatrix, groundTriangles, renderViews } = await import('./suggestRender')
-      const { detectAxles, partsFromViews, surfaceSamples } = await import('./suggest')
+      const { boxFromSide, detectAxles, partsFromViews, surfaceSamples } = await import('./suggest')
       const ground = groundMatrix(draft, info.center)
       const found: string[] = [], missed: string[] = []
       let next: Draft = draft
@@ -183,13 +185,24 @@ export default function VehicleEditor() {
       let aiError: string | null = null
       try {
         const { images, frames } = renderViews(scene, ground)
-        const parts = partsFromViews(await suggestVehicleParts({ kind: TEMPLATE_LABEL[draft.template], views: images }), frames)
+        const answer = await suggestVehicleParts({ kind: TEMPLATE_LABEL[draft.template], views: images })
+        const parts = partsFromViews(answer, frames)
         const drop = draftRideHeight(next, length) - next.lift
         const base = BUILTIN_TUNING[draft.template]
         const centered = !!base.seat.straddle || base.seat.z === 0
         if (parts.seat) { next = { ...next, seat: { x: parts.seat.x, y: r3(parts.seat.y - drop), z: centered ? 0 : parts.seat.z ? -Math.abs(parts.seat.z) : next.seat.z } }; found.push('seat') } else missed.push('seat')
         if (parts.head) { next = { ...next, head: { x: parts.head.x, y: r3(parts.head.y - drop), z: parts.head.z || next.head.z } }; found.push('headlights') } else missed.push('headlights')
         if (parts.tail) { next = { ...next, tail: { x: parts.tail.x, y: r3(parts.tail.y - drop), z: parts.tail.z || next.tail.z } }; found.push('taillights') } else missed.push('taillights')
+        const opening = (['frontDoor', 'rearDoor', 'hood', 'trunk'] as const).flatMap(key => {
+          const b = boxFromSide(answer.boxes?.[key] ?? null, frames.side)
+          return b ? [{ key, box: { ...b, bottom: r3(b.bottom - drop), top: r3(b.top - drop), ...(key === 'trunk' && (draft.template === 'truck' || draft.template === 'hdtruck') ? { drop: true } : {}) } }] : []
+        })
+        if (opening.length) {
+          let partsNext = { doors: [] as typeof next.parts.doors, hood: null, trunk: null } as typeof next.parts
+          for (const o of opening) if (o.key !== 'rearDoor' || opening.some(p => p.key === 'frontDoor')) partsNext = withPart(partsNext, o.key, o.box)
+          next = { ...next, parts: partsNext }
+          found.push(opening.map(o => PART_LABEL[o.key].toLowerCase()).join(', '))
+        }
         if (parts.hitch && next.hitch) { next = { ...next, hitch: { x: r3(Math.min(0, parts.hitch.x)), y: r3(parts.hitch.y - drop) } }; found.push('hitch') }
       } catch (error) { aiError = (error as Error).message }
 
@@ -264,7 +277,7 @@ export default function VehicleEditor() {
     } catch (error) { setListError((error as Error).message) }
   }
 
-  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved })
+  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}) })
 
   const meshySources = useMemo<MeshySourceOption[]>(() => (vehicles ?? []).map(v => ({ label: v.name, source: { vehicleId: v.id } })), [vehicles])
   const onMeshyOpen = (opened: File) => { openFile(opened); setView('build') }
@@ -374,6 +387,20 @@ export default function VehicleEditor() {
             {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft[key][axis]} onChange={v => patch({ [key]: { ...draft[key], [axis]: v } } as Partial<Draft>)}/>)}
           </div>)}
           <label className="ms-veh-inline"><input type="checkbox" checked={!!draft.hitch} onChange={event => patch({ hitch: event.target.checked ? { x: r3(-(length || 4) / 2 - 0.15), y: -0.25 } : null })}/> Tow hitch for the trailer</label>
+        </fieldset>}
+
+        {step === 'markers' && <fieldset>
+          <legend>Doors, hood and trunk</legend>
+          <p className="ms-veh-note">Box each part that should open (meters from the body’s center, like the seat). Doors are drawn on the right side and mirrored to the left; in the game the model is cut along the box and the part swings on its hinge.</p>
+          {(['frontDoor', 'rearDoor', 'hood', 'trunk'] as const).map((key: PartKey) => {
+            const box = partOf(draft.parts, key)
+            const off = key === 'rearDoor' && !draft.parts.doors[0]
+            return <div key={key} className="ms-veh-xyz">
+              <label className="ms-veh-inline"><input type="checkbox" checked={!!box} disabled={off} onChange={event => patch({ parts: withPart(draft.parts, key, event.target.checked ? defaultPart(key, length || 4.5, height || 1.5, ride) : null) })}/> <strong>{PART_LABEL[key]}</strong></label>
+              {box && (['front', 'back', 'bottom', 'top'] as const).map(edge => <Num key={edge} label={edge[0].toUpperCase() + edge.slice(1)} value={box[edge]} onChange={v => patch({ parts: withPart(draft.parts, key, { ...box, [edge]: v }) })}/>)}
+              {box && key === 'trunk' && <label className="ms-veh-inline"><input type="checkbox" checked={!!box.drop} onChange={event => patch({ parts: withPart(draft.parts, key, { ...box, drop: event.target.checked || undefined }) })}/> Folds down (pickup tailgate)</label>}
+            </div>
+          })}
         </fieldset>}
 
         {step === 'paint' && <fieldset>

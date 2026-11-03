@@ -7,6 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeStatic } from '../core/Merge';
 import { BUILDINGS, Building, CIVIC, DEPOT, GAS_STATION } from '../../shared/WorldLayout';
+import { buildBodyShop } from './BodyShop';
 import { GRID_X, GRID_Z } from '../../shared/DowntownGrid';
 import { buildTownSquare } from './TownSquare';
 import type { MaterialLibrary } from '../core/Materials';
@@ -69,6 +70,9 @@ export class Downtown {
     scene.add(this.group);
     for (const b of BUILDINGS) this.building(b);
     for (const b of CIVIC) { this.building(b); this.civicExtras(b); }
+    const shop = buildBodyShop(physics, mats);
+    this.group.add(shop.group);
+    this.glows.push(...shop.glows);
     this.gasStation(scene);
     this.depot();
     this.streetscape();
