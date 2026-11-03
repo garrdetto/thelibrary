@@ -80,7 +80,15 @@ export class Downtown {
     const square = buildTownSquare(physics, mats);
     this.group.add(square.group);
     this.glows.push(...square.glows);
-    mergeStatic(this.group);
+    // Plain finishes share one vertex-colored material; glowing and textured ones stay their own.
+    mergeStatic(this.group, { flatten: () => true });
+  }
+
+  private materialCache = new Map<string, THREE.MeshStandardMaterial>();
+  private shared(key: string, make: (key: string) => THREE.MeshStandardMaterial) {
+    let m = this.materialCache.get(key);
+    if (!m) this.materialCache.set(key, (m = make(key)));
+    return m;
   }
 
   private building(b: Building) {
@@ -88,9 +96,10 @@ export class Downtown {
     const front = b.facing === '+z' ? 1 : -1;
     const style = styleOf(b);
     const seed = b.id.length * 977 + Math.round(b.x * 3);
-    const wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(b.color).multiplyScalar(style === 'curtain' ? 0.6 : 0.92), roughness: 0.9 });
-    const trim = style === 'brick' || style === 'stone' ? new THREE.MeshStandardMaterial({ color: 0xe2dbcd, roughness: 0.8 }) : this.mats.get('trim').material;
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.4, metalness: 0.6 });
+    // Identical materials are shared between buildings so the merge below can batch them across the town.
+    const wallMat = this.shared(`wall:${new THREE.Color(b.color).multiplyScalar(style === 'curtain' ? 0.6 : 0.92).getHexString()}`, c => new THREE.MeshStandardMaterial({ color: new THREE.Color(`#${c.slice(5)}`), roughness: 0.9 }));
+    const trim = style === 'brick' || style === 'stone' ? this.shared('masonry-trim', () => new THREE.MeshStandardMaterial({ color: 0xe2dbcd, roughness: 0.8 })) : this.mats.get('trim').material;
+    const dark = this.shared('dark', () => new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.4, metalness: 0.6 }));
     const metal = this.mats.get('metal').material;
     const boxMat = { trim, dark, wall: wallMat, metal };
 

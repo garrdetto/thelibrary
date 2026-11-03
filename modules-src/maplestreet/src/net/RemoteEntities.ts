@@ -176,7 +176,7 @@ export class RemoteEntities {
     view.root.remove(view.shell);
     const shell = view.shell = P.build(view.paint, view.lights);
     tintGlass(shell, style?.tint);
-    mergeStatic(shell);
+    mergeStatic(shell, { flatten: () => true });
     applyDents(shell, style?.dents);
     shell.userData.onFill = () => applyDents(shell, style?.dents);
     shell.traverse(o => (o.castShadow = true));

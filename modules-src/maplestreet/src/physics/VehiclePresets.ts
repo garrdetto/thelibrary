@@ -107,7 +107,7 @@ export function buildWheel(radius: number, width: number): THREE.Group {
     s.rotation.z = (i / 5) * Math.PI; g.add(s);
   }
   for (const m of g.children) m.castShadow = true;
-  mergeStatic(g);
+  mergeStatic(g, { flatten: () => true });
   return g;
 }
 
@@ -169,7 +169,7 @@ export function buildStyledWheel(radius: number, width: number, rims: Rims, body
     default: spokes(5, r - hub, r * 0.18, hub);
   }
   g.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
-  mergeStatic(g);
+  mergeStatic(g, { flatten: () => true });
   return g;
 }
 

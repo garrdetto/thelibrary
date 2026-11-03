@@ -4,6 +4,9 @@
  *  - rendering runs once per display frame and receives `alpha` (0..1) so
  *    bodies can be interpolated between the last two physics states.
  */
+/** Catch-up steps per frame. Past this a long frame slows the simulation rather than making the next frame longer. */
+const MAX_STEPS = 4;
+
 export class FixedLoop {
   private raf = 0;
   private last = 0;
@@ -28,12 +31,12 @@ export class FixedLoop {
 
       this.acc += dt;
       let steps = 0;
-      while (this.acc >= this.step && steps < 6) {
+      while (this.acc >= this.step && steps < MAX_STEPS) {
         this.fixed(this.step);
         this.acc -= this.step;
         steps++;
       }
-      if (steps === 6) this.acc = 0;          // spiral-of-death guard
+      if (steps === MAX_STEPS) this.acc = 0;  // spiral-of-death guard: a slow frame slows the sim instead of snowballing
 
       this.frame(dt, this.acc / this.step);
 

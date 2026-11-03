@@ -24,9 +24,12 @@
  * you. Objects too big for any cell (ground plane, merged road slabs) stay
  * where they are and are always drawn.
  *
- * Colliders are untouched: physics for the whole town stays loaded.
+ * Static parts are merged into one mesh per material once adopted (houses are
+ * merged per lot by HouseManager before they are tracked). Colliders are
+ * streamed separately by Physics.stream().
  */
 import * as THREE from 'three/webgpu';
+import { mergeStatic } from '../core/Merge';
 
 /** Edge of one grid cell, metres. The world is 1,280 m across, so 20 × 20 cells. */
 export const CHUNK_SIZE = 64;
@@ -78,7 +81,7 @@ const pos = new THREE.Vector3();
 const scl = new THREE.Vector3();
 const _col = new THREE.Color();
 
-function tierFor(radius: number): number {
+export function tierFor(radius: number): number {
   const want = radius * SCREEN_K;
   for (const t of VIEW_TIERS) if (want <= t) return t;
   return VIEW_TIERS[VIEW_TIERS.length - 1];
@@ -119,7 +122,12 @@ export class WorldChunks {
     source.updateMatrixWorld(true);
     const touched = new Set<ChunkPart>();
     this.adoptChildren(source, opts, touched, null);
-    for (const p of touched) this.fitBounds(p);
+    for (const p of touched) {
+      // Adopted scenery never changes, so each part becomes one draw per material
+      // (InstancedMeshes and anything marked userData.keep stay as they are).
+      if (!p.key.endsWith(':inst')) mergeStatic(p.group, { flatten: () => true });
+      this.fitBounds(p);
+    }
     return touched.size;
   }
 
@@ -159,12 +167,15 @@ export class WorldChunks {
     if (box.isEmpty()) return;
     const span = Math.max(box.max.x - box.min.x, box.max.z - box.min.z);
     if (span > (CHUNK_SIZE) * 1.5) {
-      // A town-wide group: look inside it. A single huge mesh stays global.
-      if (!(obj as THREE.Mesh).isMesh && obj.children.length) this.adoptChildren(obj, opts, touched, key);
-      return;
+      // A town-wide group: look inside it. A single huge mesh stays global, except
+      // tracked content, whose source group is not in the scene: that goes to the
+      // part at its center (the part's bounds grow to cover it).
+      if (!(obj as THREE.Mesh).isMesh && obj.children.length) { this.adoptChildren(obj, opts, touched, key); return; }
+      if (!key) return;
     }
     box.getBoundingSphere(sphere);
-    const view = opts.viewDistance ?? tierFor(sphere.radius);
+    // A batch merged from many small pieces keeps the view distance of the pieces it was made from.
+    const view = (obj.userData.viewDistance as number | undefined) ?? opts.viewDistance ?? tierFor(sphere.radius);
     const part = this.partAt(sphere.center.x, sphere.center.z, CHUNK_SIZE, view, opts.layer ?? 'static');
     part.group.attach(obj);
     touched.add(part);

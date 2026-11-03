@@ -122,7 +122,7 @@ export class Roads {
     this.wear();
     this.furniture();
     this.curves();
-    mergeStatic(this.group);
+    mergeStatic(this.group, { flatten: () => true });
   }
 
   /** Every place the curb drops: lot driveways, the curb-cut list and junction mouths. */

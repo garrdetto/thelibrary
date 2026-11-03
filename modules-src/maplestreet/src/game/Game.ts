@@ -734,8 +734,24 @@ export class Game {
       if (n && (n.hunger < 8 || n.energy < 5)) move.multiplyScalar(0.65);
       this.character.step(dt, move, run, live && I.isDown('Space'));
     }
+    this.streamColliders(dt);
     this.physics.step(dt);
     this.mowStep();
+  }
+
+  private streamFocus: { x: number; z: number }[] = [];
+  /** Static colliders stay on near you, every vehicle of yours (they never sleep) and the camera. */
+  private streamColliders(dt: number) {
+    const pts = this.streamFocus;
+    let n = 0;
+    const put = (x: number, z: number) => { const p = pts[n] ?? (pts[n] = { x: 0, z: 0 }); p.x = x; p.z = z; n++; };
+    const c = this.character.position;
+    put(c.x, c.z);
+    for (const v of this.vehicles.values()) put(v.root.position.x, v.root.position.z);
+    const cam = this.engine.camera.position;
+    put(cam.x, cam.z);
+    pts.length = n;
+    this.physics.stream(pts, dt);
   }
 
   private mowStep() {
@@ -968,7 +984,7 @@ export class Game {
       this.minimapAcc = 0;
     }
 
-    if (!NO_RENDER) this.engine.render();
+    if (!NO_RENDER) { this.engine.adapt(dt); this.engine.render(); }
     if (this.mode === 'build' && !NO_RENDER) this.thumbs.pump();
     this.input.endFrame();
   }

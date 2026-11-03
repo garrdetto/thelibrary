@@ -123,7 +123,7 @@ export class Vehicle {
     this.paint.needsUpdate = true;
     const body = this.preset.build(this.paint, this.lights);
     tintGlass(body, style?.tint);
-    mergeStatic(body);
+    mergeStatic(body, { flatten: () => true });
     applyDents(body, style?.dents);
     body.userData.onFill = () => applyDents(body, style?.dents);
     body.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });

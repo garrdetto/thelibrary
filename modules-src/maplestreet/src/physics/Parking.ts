@@ -52,6 +52,8 @@ export class Parking {
    */
   private boxFree(cx: number, cy: number, cz: number, yaw: number, hx: number, hy: number, hz: number, mask: number, exclude: readonly RAPIER.RigidBody[], ignore = 0) {
     const R = this.physics.R, world = this.physics.world;
+    // Static colliders are streamed around the player; make sure the ones here are on.
+    this.physics.wake(cx, cz, Math.max(hx, hz) + 8);
     const shape = new R.Cuboid(hx, hy, hz);
     let free = true;
     world.intersectionsWithShape({ x: cx, y: cy, z: cz }, this.quat(yaw), shape, (hit: unknown) => {

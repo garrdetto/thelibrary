@@ -117,9 +117,11 @@ export class Neighborhood {
 
   private buildLots() {
     const driveways: RectXZ[] = [];
+    const mailboxMat = new THREE.MeshStandardMaterial({ color: 0x1d2a44, metalness: 0.6, roughness: 0.35 });
     for (const lot of this.lots) {
       const lawn = new Lawn(lot, this.mats.grassDetail);
       this.lawns.set(lot.id, lawn);
+      lawn.mesh.userData.keep = true;               // its own stripe texture and uniforms, updated as you mow
       this.group.add(lawn.mesh);
 
       const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
@@ -129,7 +131,7 @@ export class Neighborhood {
       // Mailbox
       const mb = new THREE.Group();
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.1), this.mats.get('trim').material); post.position.y = 0.55;
-      const box = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.45, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1d2a44, metalness: 0.6, roughness: 0.35 }));
+      const box = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.45, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2), mailboxMat);
       box.position.y = 1.1;
       mb.add(post, box); mb.position.set(lot.x + 7.5, 0, lot.bend ? bendCurbZ(lot, lot.x + 7.5) + dir * 0.7 : frontZ + dir * 0.6);
       mb.traverse(o => (o.castShadow = true));

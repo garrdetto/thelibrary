@@ -35,9 +35,9 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
   - Walls up, cutaway or down with Home
 - **Money:** everything refunds 100%.
 
-## Start screen
+## Arriving
 
-The start screen shows your name and you can't change it: signed in to the library it's your username, otherwise a guest name made once for this browser (`Guest-xxxxx`, also used by the server). There are two modes, **Enter Maple Street** (the shared open world) and **Solo mode** (a private neighborhood on this device with unlimited money).
+Maple Street is one open world, so there is no name prompt or mode picker: the page goes straight into the shared world while a short "Walking over to Maple Street…" card shows. Signed in to the library you play under your username, otherwise under a guest name made once for this browser (`Guest-xxxxx`, also used by the server). If the world can't be reached it falls back to solo, and if the renderer can't start the card offers **Try again**. `?solo=1` still opens the private neighborhood with unlimited money (tests and the developer instance use it).
 
 ## Characters and wardrobe
 
@@ -106,11 +106,12 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
   - Gas & Go, with four pumps.
 - **Needs** (hunger, energy, fun) drop only while you're in town. Your bed, fridge, grill, tub and other items refill them.
 - **Vehicles:**
-  - You start with a pickup, a trailer and a riding mower.
+  - You start with the **Maple Hauler** (a red compact pickup, `STARTER_TRUCK` in `shared/Economy.ts`, model `public/modules/maplestreet/vehicles/maple-hauler.glb`), a trailer and a riding mower. It hauls deliveries, tows the trailer and can be repainted like any car. Older accounts keep their Work Pickup and get the Hauler too.
   - Nothing is ever brought to you. On arrival your truck and trailer are parked on your driveway; after that every vehicle stays wherever you leave it. The Garage's **Take out** parks one more vehicle on your driveway (or in front of Maple Motors before you own a home), and **Put away** returns it. Test drives wait in front of Maple Motors.
   - Every spot a vehicle is put in is checked against buildings, props and every other vehicle (`src/physics/Parking.ts`), and a parked vehicle that ends up inside or on top of another is moved to the nearest free spot. Wheels never ride on other cars (only on trailer beds), vehicle bodies are rounded so they slide apart instead of snagging, and NPC drivers stop a bumper-length short of anything in their lane. A reconnect replaces your old session, so its truck can't linger where your new one appears.
   - Enclosed vehicles (pickup, heavy-duty crew cab, sedan, coupe) have opening doors (`src/physics/VehicleDoors.ts`): the driver's door swings open as anyone gets in or out, and the right-click menu opens or closes them all. Open-air vehicles have none, and admin-published vehicles keep the doors baked into their model.
-  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, the bundled Meridian Sedan, Bulwark 4x4 and Ironhorn Crew Cab (`shared/BundledVehicles.ts`, models in `public/modules/maplestreet/vehicles/`), plus any admin-published vehicles marked for sale. These are original designs.
+  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, the bundled Meridian Sedan, Bulwark 4x4, Ironhorn Crew Cab and Lakeshore Coupe (`shared/BundledVehicles.ts`, models in `public/modules/maplestreet/vehicles/`), plus any admin-published vehicles marked for sale. These are original designs.
+  - Neighbor traffic includes six Lakeshore Coupes in silver, red, blue, black, white and green on the downtown loop and both rings. A vehicle record's `traffic.count`, `traffic.routes` and `traffic.colors` put a fleet on the road; each car's color travels in its snapshot `style` and is painted onto the model's paint region (`paint.mode: 'color'`).
   - Fuel burns as you drive and is saved with your account.
   - Drivers sit visibly in the seat, both your own and other players'.
 
@@ -125,11 +126,26 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 - shop, pump and item proximity checks
 - fuel levels, which client reports can only lower
 
-## Performance: world chunking and traffic
+## Performance
+
+What a frame costs, and why (measured headless at the spawn point, Nov 2026, before → after):
+
+| | Before | After |
+| --- | ---: | ---: |
+| GPU draw calls per frame (main + shadow + post) | ~1,560 | ~630 |
+| Rapier step (`world.step`) | ~8–10 ms | ~2 ms |
+| Catch-up physics steps after a slow frame | up to 6 | up to 4 |
+
+- **Physics streaming** (`Physics.stream`, called from `Game.fixed`). The town has about 9,800 static colliders, and Rapier pays for every enabled one on every 60 Hz step, so physics alone could eat half a frame and snowball into the next. Only static colliders within `STREAM_RADIUS` (160 m) of you, each of your vehicles and the camera are enabled, re-checked every 0.2 s and at once after a teleport; `Physics.wake` switches on the ones around a spot checked from afar (parking). Gameplay never touches the far ones; the ground stays on everywhere.
+- **Batching** (`src/core/Merge.ts`). Static content is drawn as one mesh per material: houses per 64 m cell (`HouseManager`, re-batched once per burst of edits), the neighborhood's scenery per chunk part, downtown, roads, vehicle bodies and wheels. Plain finishes (no texture, opaque, not glowing) all share one node material that reads color, roughness and metalness from the vertices, so they shade exactly as before but cost one draw. Anything that changes on its own (lawns, custom models that load later, vehicle bodies from .glb files) is marked `userData.keep` and left alone. Quantized glTF data is unpacked before merging (it used to be clamped to ±1, which squashed published vehicles).
+- **Adaptive resolution** (`Engine.adapt`). Full sharpness (device pixel ratio up to 2) whenever the device keeps up; below ~45 fps for two seconds the render resolution steps down by 0.25 (never below 1), and back up after a stretch above ~57 fps.
+- **Fixed-step cap** (`src/core/Loop.ts`, `MAX_STEPS`): a long frame slows the simulation instead of queueing more physics work for the next one.
+
+### World chunking and traffic
 
 Two systems share one focus point each frame (the character, the vehicle you drive, or the build-mode target; `Game.frame`):
 
-- **World chunks** (`src/world/WorldChunks.ts`). The neighborhood's scenery and every lot's house are moved into a 64 m grid. Each object gets a view distance from its size (`SCREEN_K`, about 4 px tall), rounded up to `VIEW_TIERS` (160, 320, 480, 720 m), so mailboxes drop out early and houses late. The woodland and street lamps, which were three world-wide `InstancedMesh`es, are split per 256 m cell (`INSTANCE_CELL`) so frustum and shadow culling can skip the trees behind you. A (cell, view distance) bucket is a `THREE.Group` that is attached to or removed from the scene; new buckets are compiled with `renderer.compileAsync` first and attached a few per frame, with 24 m of hysteresis. Ground, road and sidewalk slabs (town-wide merged meshes) and downtown (already one merged batch per material) are always drawn. Colliders are not affected.
+- **World chunks** (`src/world/WorldChunks.ts`). The neighborhood's scenery and every lot's house are moved into a 64 m grid. Each object gets a view distance from its size (`SCREEN_K`, about 4 px tall), rounded up to `VIEW_TIERS` (160, 320, 480, 720 m), so mailboxes drop out early and houses late. The woodland and street lamps, which were three world-wide `InstancedMesh`es, are split per 256 m cell (`INSTANCE_CELL`) so frustum and shadow culling can skip the trees behind you. A (cell, view distance) bucket is a `THREE.Group` that is attached to or removed from the scene; new buckets are compiled with `renderer.compileAsync` first and attached a few per frame, with 24 m of hysteresis. Ground, road and sidewalk slabs (town-wide merged meshes) and downtown (already one merged batch per material) are always drawn. Each part is merged into one mesh per material once adopted; houses arrive pre-batched per cell with the view distance of the pieces they came from, so furniture still drops out early.
 - **Traffic** (`src/net/RemoteEntities.ts`). Neighbor traffic is simulated as data by the authority (`shared/Npc.ts`) and arrives in snapshots for the whole town. A remote vehicle only gets its 3D shell, wheels, lights and kinematic collider within 200 m (`VEHICLE_SPAWN_R`) and gives them back to a per-kind pool past 240 m; when it comes back it is placed at the interpolated position, heading, steering and speed for that moment. Its driver goes with it. Neighbor walkers do the same within 110 m. Real players on foot are always drawn.
 
 `?nochunks` turns the chunk grid off for comparisons, and `maple.worldDebug()` in the console prints chunk and traffic counts. Measured headless (estimated per-frame work at five spots, Nov 2026): main-pass triangles fell 38–76 % and shadow-pass triangles 62–89 %, with draw calls between −11 % and +16 %; in the woods only 0 of 9 neighbor cars and 0 of 8 walkers are drawn.

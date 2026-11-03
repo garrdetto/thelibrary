@@ -133,6 +133,8 @@ export function buildCustomModel(item: CatalogItem): THREE.Group {
   const wrapper = new THREE.Group();
   wrapper.add(g);
   wrapper.userData.catalogId = item.id;
+  // Fills in when its model arrives, so it never joins a merged batch.
+  wrapper.userData.keep = true;
   const url = item.custom!.url;
   if (ready.has(url)) {
     const loaded = ready.get(url)!;
