@@ -6,6 +6,7 @@
 import type { BuildOp, WorldState } from './BuildRules';
 import type { Account } from './Economy';
 import type { Body, Look } from './Wardrobe';
+import type { CarStyle } from './Cars';
 
 export type { VehicleKind } from './Vehicles';
 import type { VehicleKind } from './Vehicles';
@@ -31,6 +32,8 @@ export interface VehicleSnap {
   steer: number;
   speed: number;
   hitchedTo: string | null;
+  /** Filled in by the authority from the owner's account, so everyone sees the same paint. */
+  style?: CarStyle | null;
 }
 
 export interface Job {
@@ -59,7 +62,7 @@ export type ClientMsg =
   | { t: 'mow'; strokes: MowStroke[] }
   | { t: 'jobRequest' }
   | { t: 'jobProgress'; jobId: string }
-  | { t: 'buy'; shop: string; item: string }
+  | { t: 'buy'; shop: string; item: string; car?: CarStyle }
   | { t: 'refuel'; kind: VehicleKind; gallons: number }
   | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
   | { t: 'use'; lotId: string; objectId: string }

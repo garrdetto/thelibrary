@@ -168,7 +168,7 @@ export class Game {
       repay: a => this.send({ t: 'repay', amount: a }),
       requestJob: () => this.send({ t: 'jobRequest' }),
       bringOut: k => this.bringOut(k),
-      buy: (shop, item) => this.send({ t: 'buy', shop, item }),
+      buy: (shop, item, car) => this.send({ t: 'buy', shop, item, ...(car ? { car } : {}) }),
       testDrive: k => this.bringOut(k, true),
       map: () => this.toggleMap(),
       wardrobe: () => this.openWardrobe(false),
@@ -358,6 +358,7 @@ export class Game {
     this.account = acc;
     this.wardrobe.updateAccount(acc);
     if (acc.look && !this.wardrobe.isOpen && lookKey(acc.look) !== lookKey(this.look)) this.setLook(acc.look);
+    for (const [kind, v] of this.vehicles) v.restyle(acc.cars[kind] ?? null);
     for (const [kind, v] of this.vehicles) {
       const srv = acc.fuel[kind];
       if (typeof srv !== 'number') continue;
@@ -468,7 +469,7 @@ export class Game {
   }
 
   private addVehicle(kind: VehicleKind, pos: THREE.Vector3, yaw: number) {
-    const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene);
+    const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene, this.account?.cars[kind] ?? null);
     this.vehicles.set(kind, v);
     const lvl = this.account?.fuel[kind];
     if (typeof lvl === 'number') { this.fuelUp(v, lvl); this.serverFuel[kind] = lvl; }

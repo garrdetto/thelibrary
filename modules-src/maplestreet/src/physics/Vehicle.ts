@@ -10,7 +10,8 @@ import type { VehicleSnap } from '../../shared/Protocol';
 import { mergeStatic } from '../core/Merge';
 import { MASK, Physics } from './Physics';
 import { wheelbaseOf } from '../../shared/Vehicles';
-import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { wheelFor, makeLights, paintFor, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { carStyleKey, type CarStyle } from '../../shared/Cars';
 
 export interface DriveInput { throttle: number; steer: number; brake: number; handbrake: boolean }
 
@@ -36,9 +37,11 @@ export class Vehicle {
   towedBy: Vehicle | null = null;
   private joint: RAPIER.ImpulseJoint | null = null;
   private unsubscribe: () => void = () => {};
+  private shell: THREE.Group;
+  styleKey = '';
   disposed = false;
 
-  constructor(private physics: Physics, kind: string, readonly id: string, pos: THREE.Vector3, yaw: number, scene: THREE.Scene, color?: number) {
+  constructor(private physics: Physics, kind: string, readonly id: string, pos: THREE.Vector3, yaw: number, scene: THREE.Scene, style?: CarStyle | null) {
     const preset = PRESETS[kind];
     if (!preset) throw new Error(`Unknown vehicle ${kind}`);
     const R = physics.R, P = (this.preset = preset);
@@ -88,13 +91,27 @@ export class Vehicle {
     });
 
     this.lights = makeLights();
-    const body = P.build(makePaint(color ?? P.paint), this.lights);
-    mergeStatic(body);
-    this.root.add(body);
+    this.shell = this.buildShell(style);
     this.root.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(this.root);
     physics.track(this.body, this.root);
     this.unsubscribe = physics.onPreStep(dt => this.preStep(dt));
+  }
+
+  private buildShell(style?: CarStyle | null) {
+    const body = this.preset.build(paintFor(this.preset, style), this.lights);
+    mergeStatic(body);
+    body.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    this.root.add(body);
+    this.styleKey = carStyleKey(style);
+    return body;
+  }
+
+  /** Repaints the body in place (a new color or finish from the dealer or body shop). */
+  restyle(style: CarStyle | null) {
+    if (carStyleKey(style) === this.styleKey) return;
+    this.root.remove(this.shell);
+    this.shell = this.buildShell(style);
   }
 
   get kind() { return this.preset.kind; }

@@ -9,13 +9,14 @@
  */
 import { applyOp, emptyBuild, levelBase, makeWorld, normalizeBuild, opCost, own, validateOp, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
-import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
+import { Account, availableCredit, clampNeed, isPaintable, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
 import { seedNeighborhood, upgradeSeed } from './Seed';
 import { decodeCells, encodeCells, gameDays, LawnCells, mowCells, sweepGrown } from './Mowing';
 import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
 import { cleanLook, keepOutfit } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
 import { vehicleRole } from './Vehicles';
+import { cleanCar } from './Cars';
 
 export interface LogicIO {
   send(sessionId: string, msg: ServerMsg): void;
@@ -200,6 +201,7 @@ export class NeighborhoodLogic {
             x: num(v.x), y: num(v.y, -50, 500), z: num(v.z), qx: num(v.qx, -1, 1), qy: num(v.qy, -1, 1), qz: num(v.qz, -1, 1), qw: num(v.qw, -1, 1),
             steer: num(v.steer, -1, 1), speed: num(v.speed, -100, 100),
             hitchedTo: typeof v.hitchedTo === 'string' ? `${sessionId}:${v.hitchedTo.split(':').pop()!.slice(0, 12)}` : null,
+            style: acc.cars[v.kind as VehicleKind] ?? null,
           }));
         break;
       }
@@ -225,7 +227,7 @@ export class NeighborhoodLogic {
       case 'mow': this.handleMow(sessionId, s, acc, msg.strokes); break;
       case 'jobRequest': this.issueJob(sessionId, s); break;
       case 'jobProgress': this.progressJob(sessionId, s, acc, msg.jobId); break;
-      case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item); break;
+      case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item, msg.car); break;
       case 'refuel': this.handleRefuel(sessionId, s, acc, msg.kind, msg.gallons); break;
       case 'fuel': {
         // Clients report fuel burned; levels may only go down here (refuelling goes through the pump).
@@ -351,7 +353,7 @@ export class NeighborhoodLogic {
     return !!pos && SHOP_DOORS.some(d => d.kind === kind && Math.hypot(pos.x - d.x, pos.z - d.z) <= SHOP_RADIUS + 2);
   }
 
-  private handleBuy(sessionId: string, s: Session, acc: Account, shopId: unknown, itemId: unknown) {
+  private handleBuy(sessionId: string, s: Session, acc: Account, shopId: unknown, itemId: unknown, car?: unknown) {
     const door = SHOP_DOORS.find(d => d.id === shopId);
     if (!door) return;
     const pos = this.position(s);
@@ -366,7 +368,11 @@ export class NeighborhoodLogic {
     if (item.needs) this.addNeeds(acc, item.needs);
     if (item.groceries) acc.groceries = Math.min(20, acc.groceries + item.groceries);
     if (item.upgrade) acc.upgrades.push(item.upgrade);
-    if (item.vehicle) { acc.garage.push(item.vehicle); acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank; }
+    if (item.vehicle) {
+      acc.garage.push(item.vehicle);
+      acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank;
+      acc.cars[item.vehicle] = cleanCar(isPaintable(item.vehicle) ? car : null, item.vehicle);
+    }
     if (item.clothing) acc.wardrobe.push(item.clothing);
     this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — wear it from the rack here` : `Bought: ${item.name}`);
   }
