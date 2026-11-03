@@ -358,7 +358,7 @@ export class Game {
     this.account = acc;
     this.wardrobe.updateAccount(acc);
     if (acc.look && !this.wardrobe.isOpen && lookKey(acc.look) !== lookKey(this.look)) this.setLook(acc.look);
-    for (const [kind, v] of this.vehicles) v.restyle(acc.cars[kind] ?? null);
+    for (const [kind, v] of this.vehicles) { v.restyle(acc.cars[kind] ?? null); v.setCondition(acc.cars[kind]?.damage ?? 0); }
     for (const [kind, v] of this.vehicles) {
       const srv = acc.fuel[kind];
       if (typeof srv !== 'number') continue;
@@ -460,6 +460,7 @@ export class Game {
   // ------------------------------------------------------------ vehicles
 
   private placeVehicle(v: Vehicle, x: number, z: number, yaw: number) {
+    v.quiet();
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
     v.body.setTranslation({ x, y: v.preset.chassis.hy + v.preset.suspension.rest + 0.6, z }, true);
     v.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
@@ -470,6 +471,8 @@ export class Game {
 
   private addVehicle(kind: VehicleKind, pos: THREE.Vector3, yaw: number) {
     const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene, this.account?.cars[kind] ?? null);
+    v.setCondition(this.account?.cars[kind]?.damage ?? 0);
+    v.onImpact = (dv, at) => { if (this.account?.garage.includes(kind)) this.send({ t: 'crash', kind, dv, at }); };
     this.vehicles.set(kind, v);
     const lvl = this.account?.fuel[kind];
     if (typeof lvl === 'number') { this.fuelUp(v, lvl); this.serverFuel[kind] = lvl; }
@@ -917,7 +920,8 @@ export class Game {
     if (!v || this.mode !== 'live') { this.hud.setDash(null); return; }
     const spec = VEHICLES[v.kind];
     const gear = v.input.handbrake && Math.abs(v.speed) < 0.3 ? 'P' : v.speed < -0.3 || (v.input.throttle < 0 && v.speed < 0.6) ? 'R' : 'D';
-    this.hud.setDash({ name: spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: v.preset.engineForce > 0 });
+    const condition = Math.round((1 - (this.account?.garage.includes(v.kind) ? this.account.cars[v.kind]?.damage ?? 0 : 0)) * 100);
+    this.hud.setDash({ name: condition < 100 ? `${spec.name} · ${condition}% condition` : spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: v.preset.engineForce > 0 });
     if (v.empty && !this.warned.fuel) { this.warned.fuel = true; this.hud.toast(`The ${spec.name} is out of ${spec.fuel === 'electric' ? 'charge' : 'fuel'} — press F to call a tow to Gas & Go`); }
   }
 

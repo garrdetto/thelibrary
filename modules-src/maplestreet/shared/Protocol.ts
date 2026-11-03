@@ -64,6 +64,8 @@ export type ClientMsg =
   | { t: 'jobProgress'; jobId: string }
   | { t: 'buy'; shop: string; item: string; car?: CarStyle }
   | { t: 'refuel'; kind: VehicleKind; gallons: number }
+  /** One of your cars hit something: horizontal speed change (m/s) and where on the chassis it was struck. */
+  | { t: 'crash'; kind: VehicleKind; dv: number; at: { x: number; y: number; z: number } }
   | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
   | { t: 'use'; lotId: string; objectId: string }
   | { t: 'look'; look: Look }
