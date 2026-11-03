@@ -42,3 +42,12 @@ export async function updateStoreVehicle(id: string, changes: { active?: boolean
   if (!response.ok) throw new Error(await readError(response))
   return ((await response.json()) as { vehicle: CustomVehicleRecord }).vehicle
 }
+
+export type SuggestedPoint = { x: number; y: number } | null
+export type SuggestedParts = { seat: { side: SuggestedPoint; top: SuggestedPoint }; head: { side: SuggestedPoint; front: SuggestedPoint }; tail: { side: SuggestedPoint; rear: SuggestedPoint }; hitch: { side: SuggestedPoint } }
+
+export async function suggestVehicleParts(input: { kind: string; views: { side: string; top: string; front: string; rear: string } }): Promise<SuggestedParts> {
+  const response = await fetch('/api/maplestreet-suggest', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+  if (!response.ok) throw new Error(await readError(response))
+  return (await response.json()) as SuggestedParts
+}

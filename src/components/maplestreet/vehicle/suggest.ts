@@ -48,9 +48,8 @@ class Occupancy {
   private key(i: number, j: number) { return (i + 50000) * 100000 + (j + 50000) }
   add(x: number, y: number) { this.cells.add(this.key(Math.floor(x / this.cell), Math.floor(y / this.cell))) }
   has(x: number, y: number) {
-    const i = Math.floor(x / this.cell), j = Math.floor(y / this.cell)
-    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) if (this.cells.has(this.key(i + di, j + dj))) return true
-    return false
+    const i = Math.floor(x / this.cell - 0.5), j = Math.floor(y / this.cell - 0.5)
+    return this.cells.has(this.key(i, j)) || this.cells.has(this.key(i + 1, j)) || this.cells.has(this.key(i, j + 1)) || this.cells.has(this.key(i + 1, j + 1))
   }
 }
 
@@ -66,59 +65,59 @@ function arcCover(grid: Occupancy, cx: number, ground: number, r: number) {
   return hit / total
 }
 
-function wheelAt(points: Float32Array, cx: number, ground: number, halfWidth: number): WheelGuess | null {
-  const grid = new Occupancy(0.02)
-  const outboard = halfWidth * 0.45
+function wheelAt(points: Float32Array, cx: number, ground: number, band: number, length: number): WheelGuess | null {
+  const reach = Math.max(0.2, length * 0.05)
+  const pos: number[] = [], neg: number[] = []
   for (let i = 0; i < points.length; i += 3) {
-    const x = points[i], y = points[i + 1], z = points[i + 2]
-    if (Math.abs(x - cx) < 1 && y < ground + 2 && Math.abs(z) >= outboard) grid.add(x, y)
+    if (points[i + 1] > ground + band || Math.abs(points[i] - cx) > reach) continue
+    const z = points[i + 2]
+    if (z >= 0) pos.push(z); else neg.push(-z)
+  }
+  const side = (pos.length >= neg.length ? pos : neg).sort((a, b) => a - b)
+  if (side.length < 10) return null
+  const inner = side[Math.floor(side.length * 0.02)], outer = side[Math.floor(side.length * 0.98)]
+  const width = clamp((outer - inner) * 1.02, 0.1, 0.5)
+  const halfTrack = Math.max(0.15, (outer + inner) / 2)
+  const zLo = halfTrack - width / 2 - 0.01, zHi = halfTrack + width / 2 + 0.01
+
+  const grid = new Occupancy(0.015)
+  for (let i = 0; i < points.length; i += 3) {
+    const x = points[i], y = points[i + 1], z = Math.abs(points[i + 2])
+    if (Math.abs(x - cx) < 1 && y < ground + 2 && z >= zLo && z <= zHi) grid.add(x, y)
   }
   let radius = 0, peak = 0
-  for (let r = 0.1; r <= 0.95; r += 0.01) {
+  for (let r = 0.1; r <= 0.95; r += 0.005) {
     const cover = arcCover(grid, cx, ground, r)
     if (cover >= 0.6) { radius = r; peak = Math.max(peak, cover) }
     else if (radius && cover < 0.3) break
   }
   if (!radius || peak < 0.6) return null
-
-  const centerY = ground + radius
-  const sideZ: number[] = []
-  for (let i = 0; i < points.length; i += 3) {
-    const x = points[i], y = points[i + 1], z = points[i + 2]
-    if (Math.hypot(x - cx, y - centerY) <= radius * 0.92 && Math.abs(z) >= halfWidth * 0.25) sideZ.push(Math.abs(z))
-  }
-  if (sideZ.length < 20) return null
-  sideZ.sort((a, b) => a - b)
-  const outer = sideZ[Math.floor(sideZ.length * 0.98)]
-  const bins = new Array<number>(80).fill(0)
-  for (const z of sideZ) { const b = Math.floor((outer - z) / 0.01); if (b >= 0 && b < bins.length) bins[b]++ }
-  const top = Math.max(...bins)
-  let band = 0
-  while (band < bins.length && bins[band] >= top * 0.15) band++
-  const width = clamp(band * 0.01, 0.12, 0.45)
-  return { x: r3(cx), radius: r3(radius), width: r3(width), halfTrack: r3(Math.max(0.2, outer - width / 2)) }
+  return { x: r3(cx), radius: r3(Math.max(0.1, radius - 0.03)), width: r3(width), halfTrack: r3(halfTrack) }
 }
 
 /**
  * Finds the front and rear wheels in a model given as surface points in the ground frame
- * (metres, +x forward, +y up with the lowest point of the model on y = 0, z across).
- * Tires are the only parts touching the ground, so their contact patches split along the
- * length; each wheel's radius is the largest circle resting on the ground whose lower
- * arcs stay on the model's surface (past the tread they cross open air).
+ * (metres, +x forward, +y up, z across). Each half of the model is searched on its own,
+ * since small front wheels (mowers) can float above the rear ones: the lowest points of a
+ * half are its tires' contact patches, which give the axle position, track and tire width;
+ * the radius is the largest circle resting there whose lower arcs stay on the model's
+ * surface (past the tread they cross open air).
  */
 export function detectAxles(points: Float32Array, size: { length: number; width: number; height: number }): AxleGuess | null {
   if (points.length < 30) return null
-  let ground = Infinity
-  for (let i = 1; i < points.length; i += 3) ground = Math.min(ground, points[i])
+  let minX = Infinity, maxX = -Infinity
+  for (let i = 0; i < points.length; i += 3) { minX = Math.min(minX, points[i]); maxX = Math.max(maxX, points[i]) }
+  const mid = (minX + maxX) / 2
   const band = Math.max(0.025, size.height * 0.025)
-  const contacts: number[] = []
-  for (let i = 0; i < points.length; i += 3) if (points[i + 1] <= ground + band) contacts.push(points[i])
-  const groups = clusters(contacts, Math.max(0.12, size.length * 0.05)).filter(g => g.length >= contacts.length * 0.03)
-  if (groups.length < 2) return null
-  const centers = groups.map(g => median(g)).sort((a, b) => b - a)
-  const halfWidth = size.width / 2
-  const front = wheelAt(points, centers[0], ground, halfWidth)
-  const rear = wheelAt(points, centers[centers.length - 1], ground, halfWidth)
+  const half = (front: boolean): WheelGuess | null => {
+    let ground = Infinity
+    for (let i = 0; i < points.length; i += 3) if ((points[i] > mid) === front) ground = Math.min(ground, points[i + 1])
+    const contacts: number[] = []
+    for (let i = 0; i < points.length; i += 3) if ((points[i] > mid) === front && points[i + 1] <= ground + band) contacts.push(points[i])
+    const groups = clusters(contacts, Math.max(0.12, size.length * 0.05)).sort((a, b) => b.length - a.length)
+    return groups.length ? wheelAt(points, median(groups[0]), ground, band, size.length) : null
+  }
+  const front = half(true), rear = half(false)
   if (!front || !rear || front.x - rear.x < 0.4) return null
   return { front, rear }
 }
