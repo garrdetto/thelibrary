@@ -17,9 +17,29 @@ function slice(g: THREE.BufferGeometry, start: number, count: number) {
   return out;
 }
 
+/**
+ * Plain Float32 copy of an attribute. Compressed glTF models (meshopt /
+ * KHR_mesh_quantization, as the vehicle editor and bundled vehicles publish)
+ * store positions, normals and UVs as normalized 8/16-bit integers limited to
+ * -1..1; baking a transform into those would clamp everything past ±1 and
+ * crush the model, so they are widened before anything is applied.
+ */
+function float32(a: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) {
+  if (a.array instanceof Float32Array && !a.normalized && !(a as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute) return a as THREE.BufferAttribute;
+  const n = a.itemSize, out = new Float32Array(a.count * n);
+  for (let i = 0; i < a.count; i++) {
+    out[i * n] = a.getX(i);
+    if (n > 1) out[i * n + 1] = a.getY(i);
+    if (n > 2) out[i * n + 2] = a.getZ(i);
+    if (n > 3) out[i * n + 3] = a.getW(i);
+  }
+  return new THREE.BufferAttribute(out, n);
+}
+
 function normalized(src: THREE.BufferGeometry, m: THREE.Matrix4) {
   const g = src.index ? src.toNonIndexed() : src.clone();
   for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
+  for (const name of Object.keys(g.attributes)) g.setAttribute(name, float32(g.getAttribute(name)));
   if (!g.getAttribute('normal')) g.computeVertexNormals();
   if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
   g.applyMatrix4(m);
