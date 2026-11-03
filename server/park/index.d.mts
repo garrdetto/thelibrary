@@ -109,6 +109,9 @@ export function tileMax(map: ParkMap, x: number, y: number): number
 export function tileSlope(map: ParkMap, x: number, y: number): { flat: boolean; base: number; dir: number }
 export function groundHeightAt(map: ParkMap, wx: number, wy: number, tile?: number): number
 export function pathHeightAt(map: ParkMap, wx: number, wy: number, tile?: number): number
+export const SLOPE_RISE: number
+export const STAIR_RISE: number
+export function pathRamp(map: ParkMap, x: number, y: number): { dx: number; dy: number; low: number; high: number } | null
 export function pathsConnect(map: ParkMap, ax: number, ay: number, bx: number, by: number, tile?: number): boolean
 export function isWalkPath(kind: number): boolean
 export function trackPoses(ride: Entity): Pose[]

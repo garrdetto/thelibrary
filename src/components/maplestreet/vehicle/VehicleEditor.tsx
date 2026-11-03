@@ -1,7 +1,7 @@
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { Gauge, LoaderCircle, Move3d, Pipette, RotateCw, Ruler, Upload } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Gauge, LoaderCircle, Move3d, Pipette, RotateCw, Ruler, Upload } from 'lucide-react'
 import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
@@ -21,6 +21,12 @@ const MARKERS: { id: MarkerId; label: string }[] = [
   { id: 'front', label: 'Front axle' }, { id: 'rear', label: 'Rear axle' }, { id: 'seat', label: 'Driver seat' },
   { id: 'head', label: 'Headlight' }, { id: 'tail', label: 'Taillight' }, { id: 'hitch', label: 'Tow hitch' },
 ]
+const STEPS = [
+  { id: 'placement', label: 'Placement' }, { id: 'drive', label: 'Driving' }, { id: 'wheels', label: 'Wheels' },
+  { id: 'markers', label: 'Seat & lights' }, { id: 'paint', label: 'Paint' }, { id: 'dealer', label: 'Dealer & traffic' }, { id: 'size', label: 'File size' },
+] as const
+type Step = (typeof STEPS)[number]['id']
+type View = 'build' | 'library' | 'meshy'
 const kb = (bytes: number) => bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
 const money = (value: number) => `$${value.toLocaleString('en-US')}`
 const r3 = (v: number) => Math.round(v * 1000) / 1000
@@ -59,6 +65,9 @@ export default function VehicleEditor() {
   const [drive, setDrive] = useState<{ record: CustomVehicleRecord; urls: string[] } | null>(null)
   const [measured, setMeasured] = useState<{ topMph: number; time: number | null } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [step, setStep] = useState<Step>('placement')
+  const [view, setView] = useState<View>('build')
+  const stepIndex = STEPS.findIndex(item => item.id === step)
   const fitted = useRef(false)
 
   const patch = useCallback((changes: Partial<Draft>) => { setDraft(current => ({ ...current, ...changes })); setMeasured(null) }, [])
@@ -209,7 +218,7 @@ export default function VehicleEditor() {
   const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved })
 
   const meshySources = useMemo<MeshySourceOption[]>(() => (vehicles ?? []).map(v => ({ label: v.name, source: { vehicleId: v.id } })), [vehicles])
-  const onMeshyOpen = (opened: File) => openFile(opened)
+  const onMeshyOpen = (opened: File) => { openFile(opened); setView('build') }
 
   const ready = !!spec && draft.name.trim().length >= LIMITS.nameMin && !busy
   const ride = size ? draftRideHeight(draft, length) : 0
@@ -217,9 +226,14 @@ export default function VehicleEditor() {
   return <section className="account-home ms-items ms-veh">
     <span className="section-eyebrow">MAPLE STREET · DEV MODE</span>
     <h1>Publish vehicles</h1>
-    <p>Load a .glb or .gltf body (or generate one with Meshy below), size it against the built-in vehicles and a resident, place the axles, seat and lights, then set how it drives. Published vehicles can be sold at Maple Motors, drive around town as neighbor traffic, or both. Keep every design original: no real makes, model names, logos or badges.</p>
+    <div className="adm-viewtabs" role="group" aria-label="Vehicle tools">
+      <button type="button" aria-pressed={view === 'build'} className={view === 'build' ? 'is-active' : ''} onClick={() => setView('build')}>Build a vehicle</button>
+      <button type="button" aria-pressed={view === 'library'} className={view === 'library' ? 'is-active' : ''} onClick={() => setView('library')}>Your vehicles{vehicles ? <span>{vehicles.length}</span> : null}</button>
+      <button type="button" aria-pressed={view === 'meshy'} className={view === 'meshy' ? 'is-active' : ''} onClick={() => setView('meshy')}>Generate with Meshy</button>
+    </div>
+    {view === 'build' && <p className="adm-help">Load a .glb or .gltf body, size it against the built-in vehicles and a resident, then work through the steps. Keep every design original: no real makes, model names, logos or badges.</p>}
 
-    <form className="ms-items-editor" onSubmit={publish} noValidate>
+    {view === 'build' && <form className="ms-items-editor ms-veh-editor" onSubmit={publish} noValidate>
       <div className="ms-veh-left">
         <div className="ms-items-stage ms-veh-stage">
           {url
@@ -261,14 +275,18 @@ export default function VehicleEditor() {
         <label className="ms-items-file">Vehicle model (.glb or .gltf)<input ref={fileInput} type="file" accept=".glb,.gltf" onChange={onFile}/></label>
         <label>Name<input value={draft.name} maxLength={LIMITS.nameMax} onChange={event => patch({ name: event.target.value })} required/></label>
 
-        <fieldset>
+        <div className="adm-steps" role="group" aria-label="Vehicle settings">
+          {STEPS.map((item, index) => <button key={item.id} type="button" aria-current={step === item.id ? 'step' : undefined} className={step === item.id ? 'is-active' : ''} onClick={() => setStep(item.id)}><span>{index + 1}</span>{item.label}</button>)}
+        </div>
+
+        {step === 'placement' && <fieldset>
           <legend>Placement</legend>
           <Num label="Scale" value={draft.scale} step={0.001} min={0.0001} onChange={scale => patch({ scale: Math.max(0.0001, scale) })}/>
           <Num label="Shift along length" suffix="m" value={draft.shiftX} onChange={shiftX => patch({ shiftX })}/>
           <Num label="Lift off the road" suffix="m" value={draft.lift} onChange={lift => patch({ lift })}/>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset>
+        {step === 'drive' && <fieldset>
           <legend>Drives like</legend>
           <label>Template<select value={draft.template} onChange={event => setTemplate(event.target.value as DriveTemplate)}>{DRIVE_TEMPLATES.map(t => <option key={t} value={t}>{TEMPLATE_LABEL[t]}</option>)}</select></label>
           <div className="ms-veh-pair">
@@ -281,9 +299,9 @@ export default function VehicleEditor() {
           <Slider label="Suspension stiffness" min={10} max={80} step={1} value={draft.stiffness} onChange={stiffness => patch({ stiffness })} display={String(draft.stiffness)}/>
           <p className="ms-veh-note">Engine: {engine.engineForce.toLocaleString()} N per driven wheel, torque fades out at {Math.round(engine.topSpeed * 2.237)} mph.{measured && <> Test drive measured {measured.topMph} mph and {measured.time == null ? 'never reached' : `${measured.time} s to`} {engine.zeroToMph} mph.</>}</p>
           <button type="button" onClick={() => void testDrive()} disabled={!spec || !!busy}>{busy === 'drive' ? <LoaderCircle className="spin" size={14}/> : <Gauge size={14} aria-hidden/>} Test drive</button>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset>
+        {step === 'wheels' && <fieldset>
           <legend>Wheels</legend>
           <label className="ms-veh-inline"><input type="checkbox" checked={draft.removeWheels} onChange={event => patch({ removeWheels: event.target.checked })}/> Remove the model’s baked-in wheels (use the game’s spinning, steering wheels)</label>
           {draft.axles.map((a, i) => <div key={i} className="ms-veh-axle">
@@ -296,9 +314,9 @@ export default function VehicleEditor() {
             <label className="ms-veh-inline"><input type="checkbox" checked={a.drive} onChange={event => patch({ axles: draft.axles.map((b, j) => j === i ? { ...b, drive: event.target.checked } : b) })}/> Driven</label>
           </div>)}
           <label>Separate wheel model (optional)<input type="file" accept=".glb" onChange={event => setWheelFile(event.target.files?.[0] ?? null)}/></label>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset>
+        {step === 'markers' && <fieldset>
           <legend>Seat, lights and hitch</legend>
           <p className="ms-veh-note">Pick a marker above the preview to drag it, or type exact positions (meters from the body’s center; forward is +).</p>
           {(['seat', 'head', 'tail'] as const).map(key => <div key={key} className="ms-veh-xyz">
@@ -306,9 +324,9 @@ export default function VehicleEditor() {
             {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft[key][axis]} onChange={v => patch({ [key]: { ...draft[key], [axis]: v } } as Partial<Draft>)}/>)}
           </div>)}
           <label className="ms-veh-inline"><input type="checkbox" checked={!!draft.hitch} onChange={event => patch({ hitch: event.target.checked ? { x: r3(-(length || 4) / 2 - 0.15), y: -0.25 } : null })}/> Tow hitch for the trailer</label>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset>
+        {step === 'paint' && <fieldset>
           <legend>Paint</legend>
           <label>Paintable part<select value={draft.paint.mode} onChange={event => patch({ paint: { ...draft.paint, mode: event.target.value as Draft['paint']['mode'] } })}>
             <option value="none">None (keep the model’s colors)</option>
@@ -325,9 +343,9 @@ export default function VehicleEditor() {
             <Slider label="Match range" min={0.03} max={0.6} step={0.01} value={draft.paint.tolerance} onChange={tolerance => patch({ paint: { ...draft.paint, tolerance } })} display={`${Math.round(draft.paint.tolerance * 100)}%`}/>
           </>}
           {draft.paint.mode !== 'none' && <label>Showroom color<input type="color" value={draft.paint.color} onChange={event => patch({ paint: { ...draft.paint, color: event.target.value } })}/></label>}
-        </fieldset>
+        </fieldset>}
 
-        <fieldset>
+        {step === 'dealer' && <fieldset>
           <legend>Maple Motors</legend>
           <label className="ms-veh-inline"><input type="checkbox" checked={draft.dealer.forSale} onChange={event => patch({ dealer: { ...draft.dealer, forSale: event.target.checked } })}/> For sale at the dealer</label>
           <Num label="Price" suffix="$" step={100} min={0} max={LIMITS.priceMax} value={draft.dealer.price} onChange={price => patch({ dealer: { ...draft.dealer, price: Math.round(price) } })}/>
@@ -336,17 +354,17 @@ export default function VehicleEditor() {
             <Num label={draft.dealer.fuel === 'electric' ? 'Battery' : 'Tank'} suffix={draft.dealer.fuel === 'electric' ? 'kWh' : 'gal'} step={0.5} min={0.5} max={200} value={draft.dealer.tank} onChange={tank => patch({ dealer: { ...draft.dealer, tank } })}/>
             <Num label={draft.dealer.fuel === 'electric' ? 'Efficiency' : 'Economy'} suffix={draft.dealer.fuel === 'electric' ? 'mi/unit' : 'mpg'} step={1} min={1} max={500} value={draft.dealer.mpg} onChange={mpg => patch({ dealer: { ...draft.dealer, mpg } })}/>
           </div>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset>
+        {step === 'dealer' && <fieldset>
           <legend>Neighbor traffic</legend>
           <label className="ms-veh-inline"><input type="checkbox" checked={draft.traffic.enabled} onChange={event => patch({ traffic: { ...draft.traffic, enabled: event.target.checked } })}/> Drives around town</label>
           <label>Driver name<input value={draft.traffic.driver} maxLength={40} placeholder={draft.name || 'Neighbor'} onChange={event => patch({ traffic: { ...draft.traffic, driver: event.target.value } })}/></label>
           <label>Route<select value={draft.traffic.route} onChange={event => patch({ traffic: { ...draft.traffic, route: event.target.value as Draft['traffic']['route'] } })}>{TRAFFIC_ROUTES.map(r => <option key={r} value={r}>{ROUTE_LABEL[r]}</option>)}</select></label>
           <Num label="Cruising speed" suffix="mph" step={1} min={3} max={60} value={draft.traffic.mph} onChange={mph => patch({ traffic: { ...draft.traffic, mph } })}/>
-        </fieldset>
+        </fieldset>}
 
-        <fieldset>
+        {step === 'size' && <fieldset>
           <legend>File size</legend>
           <div className="ms-veh-pair">
             <Num label="Max triangles" step={1000} min={2000} max={150000} value={draft.maxTriangles} onChange={maxTriangles => patch({ maxTriangles: Math.round(maxTriangles) })}/>
@@ -354,7 +372,13 @@ export default function VehicleEditor() {
           </div>
           <button type="button" onClick={() => void checkSize()} disabled={!spec || !!busy}>{busy === 'shrink' ? <LoaderCircle className="spin" size={14}/> : null} Shrink and check size</button>
           {report && <p className="ms-veh-note" role="status">{kb(report.bytesBefore)} → {kb(report.bytesAfter)} · {report.trianglesBefore.toLocaleString()} → {report.trianglesAfter.toLocaleString()} triangles · {report.texturesResized} texture{report.texturesResized === 1 ? '' : 's'} resized{report.wheelTrianglesRemoved ? ` · ${report.wheelTrianglesRemoved.toLocaleString()} baked-in wheel triangles removed` : ''}</p>}
-        </fieldset>
+        </fieldset>}
+
+        <div className="adm-step-nav">
+          <button type="button" onClick={() => setStep(STEPS[stepIndex - 1].id)} disabled={stepIndex === 0}><ChevronLeft size={14} aria-hidden/> {stepIndex > 0 ? STEPS[stepIndex - 1].label : 'Back'}</button>
+          <span>Step {stepIndex + 1} of {STEPS.length}</span>
+          <button type="button" onClick={() => setStep(STEPS[stepIndex + 1].id)} disabled={stepIndex === STEPS.length - 1}>{stepIndex < STEPS.length - 1 ? STEPS[stepIndex + 1].label : 'Next'} <ChevronRight size={14} aria-hidden/></button>
+        </div>
 
         <div className="ms-items-submit">
           <button type="submit" value="draft" className="ms-items-draft" disabled={!ready}>Save as draft</button>
@@ -362,14 +386,14 @@ export default function VehicleEditor() {
         </div>
         {status && <p role={status.tone === 'error' ? 'alert' : 'status'} className={status.tone === 'error' ? 'ms-items-error' : 'ms-items-ok'}>{status.text}</p>}
       </div>
-    </form>
+    </form>}
 
-    <MeshyPanel target="vehicle" sources={meshySources} onOpen={onMeshyOpen}/>
+    {view === 'meshy' && <MeshyPanel target="vehicle" sources={meshySources} onOpen={onMeshyOpen}/>}
 
     {drive && <TestDrive record={drive.record} onClose={() => setDrive(null)} onResult={result => setMeasured({ topMph: result.topMph, time: result.time })}/>}
 
-    <h2>Your vehicles</h2>
-    <p>Retiring takes a vehicle off the dealer lot and out of traffic. Players who already own it keep it in their garage.</p>
+    {view === 'library' && <>
+    <p className="adm-help">Retiring takes a vehicle off the dealer lot and out of traffic. Players who already own it keep it in their garage.</p>
     <DevInstanceNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadVehicles()}>Retry</button></p>}
     {vehicles === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading vehicles…</p>}
@@ -387,5 +411,6 @@ export default function VehicleEditor() {
         <AssetStatusActions status={statusOf(v)} onChange={next => void change(v, { status: next })}/>
       </li>)}
     </ul>}
+    </>}
   </section>
 }

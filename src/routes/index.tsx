@@ -18,6 +18,8 @@ import { ModuleScoreboard } from '@/components/ModuleScoreboard'
 import { AdminRecordResetButton, RecordResetProvider } from '@/components/AdminRecordReset'
 import { isScoredModule } from '@/lib/module-scores'
 import { embeddedModules, isEmbeddedModuleId, learningModules } from '@/lib/modules'
+import { arrangeModules } from '@/lib/module-layout'
+import { useModuleLayout } from '@/lib/use-module-layout'
 import type { EmbeddedModuleId, ModuleId } from '@/lib/modules'
 import { Streamdown } from 'streamdown'
 import type { Creation, LyricCorrection, LyricPreset, Message, SongSettings, StudioMode } from '@/lib/studio-types'
@@ -36,14 +38,13 @@ const navigation = [
 const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House }
 const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
-const moduleNav = learningModules.map(item => ({ id: item.id, label: item.title, icon: moduleIcons[item.id] }))
 const playLinks = embeddedModules.map(item => ({ id: item.id, label: item.title, src: item.src }))
 type PlayId = EmbeddedModuleId
 type View = StudioMode | 'home' | 'admin' | ModuleId
 const isPlayId = isEmbeddedModuleId
 const shortTrackModes = ['time-attack', 'race', 'multiplayer'] as const
 const shortTrackModeNames = { 'time-attack': 'Time Attack', race: 'Solo Race', multiplayer: 'Online' }
-const shortTrackTracks = [{ id: 'shorttrack', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells', name: 'Dells Short Track (0.3 mi)' }, { id: 'dellswide', name: 'Dells Wide Oval (0.27 mi)' }, { id: 'prison', name: 'Prison Speedway (0.29 mi)' }, { id: 'dirt', name: 'Dells Dirt Oval (0.3 mi)' }] as const
+const shortTrackTracks = [{ id: 'prison', name: 'Prison Speedway (0.29 mi)' }, { id: 'shorttrack', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells', name: 'Dells Short Track (0.3 mi)' }, { id: 'dellswide', name: 'Dells Wide Oval (0.27 mi)' }, { id: 'dirt', name: 'Dells Dirt Oval (0.3 mi)' }] as const
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']
 
@@ -59,6 +60,7 @@ function BrandMark({ small = false }: { small?: boolean }) {
 }
 
 function Studio() {
+  const moduleLayout = useModuleLayout()
   const [view, setView] = useState<View>('home')
   const [access, setAccess] = useState<{ username: string | null; isAdmin: boolean; pages: string[]; settings: { theme?: string } }>({ username: null, isAdmin: false, pages: [], settings: {} })
   const [accountReady, setAccountReady] = useState(false)
@@ -143,6 +145,9 @@ function Studio() {
     window.addEventListener('focus', refresh)
     return () => { active = false; window.removeEventListener('focus', refresh) }
   }, [])
+  useEffect(() => {
+    if (accountReady && access.isAdmin && window.location.hash.startsWith('#admin')) setView('admin')
+  }, [accountReady, access.isAdmin])
   useEffect(() => {
     if (['chat', 'image', 'lyrics'].includes(view) && !access.pages.includes(view) || view === 'admin' && !access.isAdmin) {
       setView('home'); setCurrent(null); setMessages([]); setInput('')
@@ -421,7 +426,8 @@ function Studio() {
     if (!devPlayActive) { setDevPlay(true); return }
     playFrame.current?.contentWindow?.postMessage({ type: 'tl-dev-panel' }, window.location.origin)
   }
-  const activeLabel = view === 'home' ? 'Module Library' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : moduleNav.find(item => item.id === view)?.label ?? navigation.find((item) => item.id === view)?.label
+  const moduleNav = arrangeModules(moduleLayout).visible.map(item => ({ id: item.id, label: item.title, icon: moduleIcons[item.id] }))
+  const activeLabel = view === 'home' ? 'Module Library' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : learningModules.find(item => item.id === view)?.title ?? navigation.find((item) => item.id === view)?.label
 
   return <div className="studio-shell">
     {mobileOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
@@ -448,7 +454,7 @@ function Studio() {
 
         {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
-        {activePlay?.id === 'shorttrack' && <LapRecordBoard track="shorttrack" trackName="Showdown Bullring (0.5 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
+        {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {view === 'admin' && access.isAdmin && <AdminPanel/>}
         {view === 'pool' && <PoolTable lobby={lobby}/>}

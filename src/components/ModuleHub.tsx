@@ -1,15 +1,19 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ArrowRight, Layers, Radio, Sparkles, Trophy, Users } from 'lucide-react'
-import { learningModules, moduleGroups } from '@/lib/modules'
+import { moduleGroups } from '@/lib/modules'
+import { arrangeModules } from '@/lib/module-layout'
+import { useModuleLayout } from '@/lib/use-module-layout'
 import type { ModuleId, ModuleSubject } from '@/lib/modules'
 
 type Filter = 'All' | ModuleSubject
 
 export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (id: ModuleId) => void; account: ReactNode; online: ReactNode; username: string | null }) {
   const [filter, setFilter] = useState<Filter>('All')
-  const featured = learningModules[0]
+  const layout = useModuleLayout()
+  const { visible: learningModules, featured } = useMemo(() => arrangeModules(layout), [layout])
   const shown = filter === 'All' ? learningModules : learningModules.filter(item => item.group === filter)
+  const groups = moduleGroups.filter(group => learningModules.some(item => item.group === group))
   return <section className="hub" aria-label="Learning modules">
     <div className="hub-hero">
       <div className="hub-hero-copy">
@@ -37,7 +41,7 @@ export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (
         <div className="hub-section-head">
           <h2>Module Library</h2>
           <div className="hub-filters" role="tablist" aria-label="Filter modules">
-            {(['All', ...moduleGroups] as Filter[]).map(item => <button type="button" role="tab" key={item} aria-selected={filter === item} className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item}</button>)}
+            {(['All', ...groups] as Filter[]).map(item => <button type="button" role="tab" key={item} aria-selected={filter === item} className={filter === item ? 'is-active' : ''} onClick={() => setFilter(item)}>{item}</button>)}
           </div>
         </div>
         <div className="hub-grid">

@@ -1,7 +1,7 @@
 import { FLAT_RIDES, WAVE_SETTINGS, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, COSTS, PATH_ADDITIONS } from './catalog.mjs'
 import { autoComplete } from './autotrack.mjs'
 import { DIRS, UNIT, clamp } from './util.mjs'
-import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners, pathHeightAt, PATH_STEP_LIMIT, STAIR_STEP_LIMIT } from './terrain.mjs'
+import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners, pathHeightAt, PATH_STEP_LIMIT, STAIR_STEP_LIMIT, SLOPE_RISE, STAIR_RISE } from './terrain.mjs'
 import { isWalkPath } from './terrain.mjs'
 import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP } from './track.mjs'
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
@@ -414,14 +414,21 @@ const HANDLERS = {
 
   // Auto-finish for the path builder: carry a raised walkway or stairway on from
   // its last tile, stepping down with stairs and gentle slopes until it reaches
-  // the ground or meets an existing path. Prefers straight ahead, then turns.
+  // the ground or meets an existing path. A sloped piece stores its high end and
+  // ramps down to the piece after it, so turns only happen after a flat piece.
+  // Searches straight ahead first, then turns, backing out of dead ends.
   // All or nothing: if no way down is found, nothing is built.
   pathFinish(state, cmd, park) {
     const map = state.map
     if (!isInt(cmd.x, 0, map.w - 1) || !isInt(cmd.y, 0, map.h - 1) || !isInt(cmd.dir, 0, 3) || ![1, 2, 4].includes(cmd.kind) || cmd.color !== undefined && !isInt(cmd.color, 0, 0xffffff)) return fail('Choose the end of a path to finish from.')
+    if (cmd.exit !== undefined && (typeof cmd.exit !== 'number' || !Number.isFinite(cmd.exit))) return fail('Choose the end of a path to finish from.')
     const start = tileIndex(map, cmd.x, cmd.y)
     if (!map.path[start] || map.owner[start] !== park) return fail('Start from the end of one of your paths.')
-    if ((map.pathElevation[start] ?? 0) === 0 && map.path[start] !== 4) return fail('This path is already on the ground.')
+    const edgeHeight = (x, y, d, inset = 0.02) => pathHeightAt(map, (x + 0.5 + DIRS[d][0] * (0.5 - inset)) * 4, (y + 0.5 + DIRS[d][1] * (0.5 - inset)) * 4)
+    const startExit = cmd.exit ?? edgeHeight(cmd.x, cmd.y, cmd.dir)
+    const nextX = cmd.x + DIRS[cmd.dir][0], nextY = cmd.y + DIRS[cmd.dir][1]
+    const nextGround = inMap(map, nextX, nextY) ? tileMax(map, nextX, nextY) : -Infinity
+    if (startExit <= nextGround + 0.05 && map.path[start] !== 4 && (map.pathElevation[start] ?? 0) === 0) return fail('This path is already on the ground.')
     const p = state.parks[park]
     const saved = new Map()
     const before = { cash: p.cash, construction: p.month.construction, structVersion: state.structVersion, pathVersion: state.pathVersion }
@@ -431,47 +438,62 @@ const HANDLERS = {
       p.cash = before.cash; p.month.construction = before.construction
       state.structVersion = before.structVersion; state.pathVersion = before.pathVersion; state.fields.clear()
     }
-    let x = cmd.x, y = cmd.y, dir = cmd.dir, pieces = 0, cost = 0
     const visited = new Set([start])
-    for (let step = 0; step < 96; step++) {
-      const deck = pathHeightAt(map, (x + 0.5) * 4, (y + 0.5) * 4)
-      let placed = false
-      for (const turn of [0, 1, 3]) {
+    let budget = 3000, cost = 0, pieces = 0
+    const place = (ni, nx, ny, kind, elevation) => {
+      const was = [map.path[ni], map.pathElevation[ni], map.pathColor[ni], map.pathAdd[ni]], cash = p.cash, construction = p.month.construction
+      touch(ni)
+      const res = HANDLERS.path(state, { t: 'path', kind, elevation, color: cmd.color, x0: nx, y0: ny, x1: nx, y1: ny }, park)
+      if (!res.ok) return null
+      return () => { map.path[ni] = was[0]; map.pathElevation[ni] = was[1]; map.pathColor[ni] = was[2]; map.pathAdd[ni] = was[3]; p.cash = cash; p.month.construction = construction; state.fields.clear() }
+    }
+    const search = (x, y, dir, exit, sloped, depth) => {
+      if (--budget < 0 || depth > 96) return false
+      const turns = sloped ? [0] : [0, 1, 3]
+      for (const turn of turns) {
         const d = (dir + turn) % 4, nx = x + DIRS[d][0], ny = y + DIRS[d][1]
         if (!inMap(map, nx, ny)) continue
         const ni = tileIndex(map, nx, ny)
-        if (visited.has(ni)) continue
-        if (map.path[ni]) {
-          // Joined an existing path at a reachable height: done.
-          if (map.owner[ni] === park && Math.abs(pathHeightAt(map, (nx + 0.5) * 4, (ny + 0.5) * 4) - deck) <= (map.path[ni] === 3 ? STAIR_STEP_LIMIT : PATH_STEP_LIMIT)) {
-            pathsChanged(state)
-            return ok({ cost, pieces })
-          }
-          continue
-        }
-        const base = Math.max(tileMax(map, nx, ny), map.water[ni] >= 0 ? map.water[ni] + 0.1 : -Infinity)
-        const above = deck - base
-        if (above < -0.3) continue
-        const over = isWater(map, ni, nx, ny)
-        let kind = cmd.kind, elevation
-        if (above >= 1 - 0.01) { kind = 3; elevation = Math.round((deck - 1 - base) / UNIT) }
-        else if (above >= 0.5 - 0.01) elevation = Math.round((deck - 0.5 - base) / UNIT)
-        else elevation = 0
-        if (over && elevation === 0 && kind !== 4) { kind = 4 }
-        if (elevation < 0 || elevation > 24) continue
-        touch(ni)
-        const res = HANDLERS.path(state, { t: 'path', kind, elevation, color: cmd.color, x0: nx, y0: ny, x1: nx, y1: ny }, park)
-        if (!res.ok) continue
-        cost += res.cost ?? 0; pieces++
-        visited.add(ni)
-        x = nx; y = ny; dir = d; placed = true
-        if (elevation === 0 && kind !== 3) return ok({ cost, pieces })
-        break
+        if (visited.has(ni) || !map.path[ni] || map.owner[ni] !== park) continue
+        const back = (d + 2) % 4
+        if (Math.abs(edgeHeight(nx, ny, back) - exit) <= 0.3) return true
       }
-      if (!placed) { rollback(); return fail('There is no clear way down from here. Turn the path or clear the way, then try again.') }
+      const options = []
+      for (const turn of turns) {
+        const d = (dir + turn) % 4, nx = x + DIRS[d][0], ny = y + DIRS[d][1]
+        if (!inMap(map, nx, ny)) continue
+        const ni = tileIndex(map, nx, ny)
+        if (visited.has(ni) || map.path[ni]) continue
+        const base = Math.max(tileMax(map, nx, ny), map.water[ni] >= 0 ? map.water[ni] + 0.1 : -Infinity)
+        const above = exit - base
+        if (above < -0.05) continue
+        const over = isWater(map, ni, nx, ny)
+        if (above >= STAIR_RISE - 0.01) options.push({ d, nx, ny, ni, kind: 3, elevation: Math.round(above / UNIT), drop: STAIR_RISE, rank: 0 })
+        if (above >= SLOPE_RISE - 0.01) options.push({ d, nx, ny, ni, kind: cmd.kind, elevation: Math.round(above / UNIT), drop: SLOPE_RISE, rank: above >= STAIR_RISE - 0.01 ? 2 : 0 })
+        if (above < SLOPE_RISE - 0.01) options.push({ d, nx, ny, ni, kind: over ? 4 : cmd.kind, elevation: 0, drop: 0, rank: 0, ground: true })
+        else if (!sloped || turn === 0) options.push({ d, nx, ny, ni, kind: cmd.kind, elevation: Math.round(above / UNIT), drop: 0, rank: 3 })
+      }
+      options.sort((a, b) => a.rank - b.rank)
+      for (const o of options) {
+        if (o.elevation < 0 || o.elevation > 24) continue
+        const undo = place(o.ni, o.nx, o.ny, o.kind, o.elevation)
+        if (!undo) continue
+        visited.add(o.ni)
+        if (o.ground) return true
+        if (search(o.nx, o.ny, o.d, exit - o.drop, o.drop > 0, depth + 1)) return true
+        visited.delete(o.ni)
+        undo()
+      }
+      return false
     }
-    rollback()
-    return fail('The path is too high to finish automatically. Build more of it by hand first.')
+    if (!search(cmd.x, cmd.y, cmd.dir, startExit, Boolean(cmd.sloped), 0)) {
+      rollback()
+      return fail(budget < 0 ? 'The path is too high to finish automatically. Build more of it by hand first.' : 'There is no clear way down from here. Turn the path or clear the way, then try again.')
+    }
+    for (const [i] of saved) if (map.path[i] && visited.has(i)) pieces++
+    cost = before.cash - p.cash
+    pathsChanged(state)
+    return ok({ cost, pieces })
   },
 
   pathPaint(state, cmd, park) {

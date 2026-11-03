@@ -84,6 +84,16 @@ input[type=color]{padding:2px;height:38px}
 .tcards{display:grid;gap:8px}
 .tcard{display:flex;flex-direction:column;gap:3px;padding:14px;border-radius:11px;border:2px solid var(--line);background:#161d28;color:var(--txt);text-align:left;cursor:pointer}
 .tcard b{font:900 15px "Arial Black",sans-serif}.tcard span{font-size:12px;color:var(--dim)}.tcard.on{border-color:var(--acc);background:#2a2614}
+.daynight{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0 0;padding:12px 14px;border-radius:11px;border:1px solid var(--line);background:#161d28}
+.daynight>span{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;font-weight:700}
+.dnswitch{position:relative;display:grid;grid-template-columns:1fr 1fr;width:190px;padding:3px;border:1px solid var(--line);border-radius:999px;background:#0e131b;color:var(--dim);cursor:pointer;font:800 12.5px system-ui}
+.dnswitch span{position:relative;z-index:1;padding:7px 0;text-align:center;transition:color .2s}
+.dnswitch i{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:999px;background:var(--acc);transition:transform .22s ease,background .22s}
+.dnswitch .dn-day{color:#111}
+.dnswitch.on i{transform:translateX(100%);background:#4b6cff}
+.dnswitch.on .dn-day{color:var(--dim)}.dnswitch.on .dn-night{color:#fff}
+.dnswitch:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.dnswitch i,.dnswitch span{transition:none}}
 .vhead{margin-top:16px}.vcards{grid-template-columns:1fr 1fr}.tcard:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 .nav{display:flex;justify-content:space-between;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .nav .navb{width:auto;margin:0;min-width:120px;text-align:center;letter-spacing:.5px}
@@ -161,6 +171,7 @@ input[type=color]{padding:2px;height:38px}
     <div class="steps" id="trackSteps"></div>
     <h2>Choose a track</h2>
     <div id="trackCards" class="tcards"></div>
+    <div class="daynight"><span id="sNightL">Time of day</span><button type="button" id="sNight" class="dnswitch" role="switch" aria-checked="false" aria-labelledby="sNightL"><span class="dn-day">&#9728; Day</span><span class="dn-night">&#9790; Night</span><i aria-hidden="true"></i></button></div>
     <h2 class="vhead">Choose a vehicle</h2>
     <div id="vehCards" class="tcards vcards" role="group" aria-label="Vehicle"></div>
     <div class="nav"><button class="btn navb" data-act="track-back">&larr; BACK</button><button class="btn pri navb" data-act="track-next">NEXT &rarr;</button></div>
@@ -174,7 +185,6 @@ input[type=color]{padding:2px;height:38px}
       <div><label class="f">AI trucks</label><input id="sAI" type="number" min="0" max="19" value="11"></div></div>
       <label class="f">AI difficulty</label><select id="sDiff"><option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option></select>
     </div>
-    <label class="f">Time of day</label><select id="sTime"><option value="day">Day</option><option value="night">Night (under the lights)</option></select>
     <div class="nav"><button class="btn navb" data-act="setup-back">&larr; BACK</button><button class="btn pri navb" data-act="setup-next" id="setupNext">START &rarr;</button></div>
   </div>
   <div id="scrGarage" class="scr panel hidden">

@@ -5,10 +5,10 @@ import { currentUser, requireUser } from '../auth'
 import { canResetRecords } from '../records'
 import { base64ToBytes } from '../gemini'
 import { issueTicket, redeemTicket } from './account'
+import { decodeSave, ensureParkSaves, isScoredPark, parkInSave, upsertParkSave } from '../park-saves'
 
 const TICKET_PREFIX = 'park:'
 const SHOT_MIME = new Set(['image/jpeg', 'image/webp', 'image/png'])
-const slot = z.number().int().min(0).max(6)
 const scenario = z.string().regex(/^[a-zA-Z]{1,32}$/)
 const parkId = z.string().regex(/^[a-f0-9-]{32,36}$/i)
 const saveData = z.string().regex(/^[A-Za-z0-9+/=]+$/).min(16).max(1_000_000)
@@ -17,8 +17,8 @@ const summary = z.object({ cash: z.number(), netWorth: money.optional(), company
 
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('ticket') }),
-  z.object({ action: z.literal('save'), slot, name: z.string().trim().min(1).max(40), scenario, data: saveData, summary }),
-  z.object({ action: z.literal('delete'), slot }),
+  z.object({ action: z.literal('save'), parkId: parkId.optional(), slot: z.number().int().optional(), name: z.string().trim().min(1).max(40), scenario, data: saveData, summary }),
+  z.object({ action: z.literal('delete'), parkId }),
   z.object({ action: z.literal('score'), parkId, scenario, value: money, parkName: z.string().trim().min(1).max(40), data: saveData.optional() }),
   z.object({ action: z.literal('shot'), parkId, scenario, mime: z.string().refine(value => SHOT_MIME.has(value)), image: z.string().regex(/^[A-Za-z0-9+/=]+$/).min(64).max(2_000_000) }),
   z.object({ action: z.literal('reset-scores'), scenario, password: z.string().min(1).max(128).optional() }),
@@ -86,11 +86,13 @@ export async function park(request: Request, env: Env) {
   }
   if (request.method === 'GET' && url.searchParams.has('scores')) {
     await ensureScoreTables(env)
+    await ensureParkSaves(env)
     const user = await currentUser(request, env)
     return json(await scoreboard(env, scenario.parse(url.searchParams.get('scores')), user?.id ?? null))
   }
   if (request.method === 'GET' && url.searchParams.has('view')) {
     await ensureScoreTables(env)
+    await ensureParkSaves(env)
     const map = scenario.parse(url.searchParams.get('view'))
     const id = parkId.parse(url.searchParams.get('park'))
     const resetAt = await scoreboardResetAt(env, map)
@@ -100,13 +102,15 @@ export async function park(request: Request, env: Env) {
   }
   const user = await requireUser(request, env, 'Sign in with your account to save parks and play online.')
   if (request.method === 'GET') {
+    await ensureScoreTables(env)
+    await ensureParkSaves(env)
     if (url.searchParams.has('saves')) {
-      const rows = await env.DB.prepare('SELECT slot, name, scenario, summary, updated_at FROM park_saves WHERE user_id = ? ORDER BY slot').bind(user.id).all<{ slot: number; name: string; scenario: string; summary: string; updated_at: number }>()
-      return json({ saves: rows.results.map(row => ({ slot: row.slot, name: row.name, scenario: row.scenario, summary: parseStored(row.summary, {}), updated: new Date(row.updated_at).toISOString() })) })
+      const rows = await env.DB.prepare('SELECT park_id, name, scenario, summary, updated_at FROM park_saves_by_park WHERE user_id = ? ORDER BY updated_at DESC').bind(user.id).all<{ park_id: string; name: string; scenario: string; summary: string; updated_at: number }>()
+      return json({ saves: rows.results.map(row => ({ parkId: row.park_id, name: row.name, scenario: row.scenario, summary: parseStored(row.summary, {}), updated: new Date(row.updated_at).toISOString() })) })
     }
-    const wanted = slot.parse(Number(url.searchParams.get('slot')))
-    const row = await env.DB.prepare('SELECT name, data FROM park_saves WHERE user_id = ? AND slot = ?').bind(user.id, wanted).first<{ name: string; data: string }>()
-    if (!row) return json({ error: 'That save slot is empty.' }, 404)
+    const wanted = parkId.parse(url.searchParams.get('load')).toLowerCase()
+    const row = await env.DB.prepare('SELECT name, data FROM park_saves_by_park WHERE user_id = ? AND park_id = ?').bind(user.id, wanted).first<{ name: string; data: string }>()
+    if (!row) return json({ error: 'That park is not saved to your account.' }, 404)
     return json({ name: row.name, data: row.data })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
@@ -114,7 +118,15 @@ export async function park(request: Request, env: Env) {
   const input = actions.parse(await readJson(request, 2_100_000))
   if (input.action === 'ticket') return json({ ticket: await issueTicket(env, user.id, user.username, TICKET_PREFIX) })
   if (input.action === 'delete') {
-    await env.DB.prepare('DELETE FROM park_saves WHERE user_id = ? AND slot = ?').bind(user.id, input.slot).run()
+    await ensureScoreTables(env)
+    await ensureParkSaves(env)
+    const id = input.parkId.toLowerCase()
+    const scored = await env.DB.prepare('SELECT shot_at FROM park_scores_by_park WHERE park_id = ? AND user_id = ?').bind(id, user.id).first<{ shot_at: number | null }>()
+    await env.DB.batch([
+      env.DB.prepare('DELETE FROM park_saves_by_park WHERE user_id = ? AND park_id = ?').bind(user.id, id),
+      env.DB.prepare('DELETE FROM park_scores_by_park WHERE park_id = ? AND user_id = ?').bind(id, user.id),
+    ])
+    if (scored) await env.FILES.delete(shotKey(id))
     return json({ deleted: true })
   }
   if (input.action === 'score') {
@@ -147,7 +159,9 @@ export async function park(request: Request, env: Env) {
     await env.DB.prepare('INSERT INTO park_scoreboard_resets (scenario, reset_at) VALUES (?, ?) ON CONFLICT(scenario) DO UPDATE SET reset_at = excluded.reset_at').bind(input.scenario, Date.now()).run()
     return json({ reset: true })
   }
-  await env.DB.prepare('INSERT INTO park_saves (user_id, slot, name, scenario, summary, data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, slot) DO UPDATE SET name = excluded.name, scenario = excluded.scenario, summary = excluded.summary, data = excluded.data, updated_at = excluded.updated_at')
-    .bind(user.id, input.slot, input.name, input.scenario, JSON.stringify(input.summary), input.data, Date.now()).run()
-  return json({ saved: true })
+  await ensureScoreTables(env)
+  await ensureParkSaves(env)
+  const saved = parkInSave(await decodeSave(input.data), input.parkId, input.name)
+  await upsertParkSave(env, user.id, { ...saved, summary: { ...saved.summary, ...input.summary } }, input.data, Date.now()).run()
+  return json({ saved: true, parkId: saved.parkId, scored: isScoredPark(saved) })
 }

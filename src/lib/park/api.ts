@@ -1,4 +1,4 @@
-export type SaveSummary = { slot: number; name: string; scenario: string; updated: string; summary: { cash: number; netWorth?: number; companyValue?: number; guests: number; rating: number; date: string; mode: string } }
+export type SaveSummary = { parkId: string; name: string; scenario: string; updated: string; summary: { cash: number; netWorth?: number; companyValue?: number; guests: number; rating: number; date: string; mode: string } }
 
 async function call<T>(init?: RequestInit, query = ''): Promise<T> {
   const response = await fetch(`/api/park${query}`, { credentials: 'same-origin', headers: init?.body ? { 'Content-Type': 'application/json' } : undefined, ...init })
@@ -17,8 +17,8 @@ export const parkApi = {
   submitShot: (parkId: string, scenario: string, mime: string, image: string) => call<ParkScoreBoard>({ method: 'POST', body: JSON.stringify({ action: 'shot', parkId, scenario, mime, image }) }),
   view: (scenario: string, parkId: string) => call<ParkView>(undefined, `?view=${encodeURIComponent(scenario)}&park=${encodeURIComponent(parkId)}`),
   saves: () => call<{ saves: SaveSummary[] }>(undefined, '?saves=1'),
-  load: (slot: number) => call<{ data: string; name: string }>(undefined, `?slot=${slot}`),
-  save: (slot: number, name: string, data: string, summary: SaveSummary['summary'], scenario: string) => call<{ saved: boolean }>({ method: 'POST', body: JSON.stringify({ action: 'save', slot, name, data, summary, scenario }) }),
-  remove: (slot: number) => call<{ deleted: boolean }>({ method: 'POST', body: JSON.stringify({ action: 'delete', slot }) }),
+  load: (parkId: string) => call<{ data: string; name: string }>(undefined, `?load=${encodeURIComponent(parkId)}`),
+  save: (parkId: string, name: string, data: string, summary: SaveSummary['summary'], scenario: string) => call<{ saved: boolean; parkId: string }>({ method: 'POST', body: JSON.stringify({ action: 'save', parkId, name, data, summary, scenario }) }),
+  remove: (parkId: string) => call<{ deleted: boolean }>({ method: 'POST', body: JSON.stringify({ action: 'delete', parkId }) }),
   ticket: () => call<{ ticket: string }>({ method: 'POST', body: JSON.stringify({ action: 'ticket' }) }),
 }
