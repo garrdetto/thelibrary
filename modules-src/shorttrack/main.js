@@ -1839,7 +1839,7 @@ function resetCar(c){c.place(c.tp.s,-HW-2.5);c.steer=0;c.relLane=null;}
 // ---- racecraft helpers ----
 // AI_TOUCH: lateral spacing at which two cars touch (collision circles are 2 * carScale across); AI_GAP adds a safety margin.
 // AI_PASS: lane width used to pull alongside; AI_SHIFT: how fast (m/s) the AI moves across the track; AI_CORNER: share of the real grip limit used in the turns.
-const AI_TOUCH=2*CFG.carScale,AI_GAP=AI_TOUCH+(DIRT?1.0:0.6),AI_PASS=AI_GAP+0.9,AI_SHIFT=DIRT?2.2:2.8,AI_CORNER=DIRT?0.95:0.985,CAR_LEN=5.5*CFG.carScale,AI_LINE_MAX=LINE_MAX-0.5;
+const AI_TOUCH=2*CFG.carScale,AI_GAP=AI_TOUCH+(DIRT?1.0:0.6),AI_PASS=AI_GAP+0.9,AI_SHIFT=DIRT?2.2:2.8,AI_CORNER=DIRT?0.975:0.998,CAR_LEN=5.5*CFG.carScale,AI_LINE_MAX=LINE_MAX-0.5;
 const sgnDs=(a,b)=>{let d=mod(a-b,P);if(d>P/2)d-=P;return d;};
 function latVel(o){const cn=center(o.tp.s);return o.vx*cn.nx+o.vz*cn.nz;}
 function headingOff(o){const tc=center(o.tp.s);return Math.abs(wrapA(Math.atan2(tc.tx,tc.tz)-o.h));}
@@ -1917,7 +1917,7 @@ function aiCtl(c,dt){
     lane=slow?c.fileLane:onLine(GROOVE_LOW+c.passOff);
     const mu=CFG.aiGrip*(c.gripB||1)*Math.max(0.8,1-0.0012*(c.dmg.l+c.dmg.rt));
     const muP=CFG.grip*(c.gripB||1)*Math.max(0.8,1-0.0012*(c.dmg.l+c.dmg.rt)-0.0006*(c.dmg.f+c.dmg.r));
-    const vAt=b=>{const t=Math.tan(b),lim=Math.sqrt(CFG.g*(muP+t)/Math.max(0.05,1-muP*t)*(R+lane))*AI_CORNER;return Math.min(lim,Math.sqrt(CFG.g*(mu+t)/(1-mu*t)*(R+lane))*0.95*c.skill*(c.paceK||1));};
+    const vAt=b=>{const t=Math.tan(b),lim=Math.sqrt(CFG.g*(muP+t)/Math.max(0.05,1-muP*t)*(R+lane))*AI_CORNER;return Math.min(lim,Math.sqrt(CFG.g*(mu+t)/(1-mu*t)*(R+lane))*0.95*c.skill*aiCornerK(c));};
     const vE=vAt(bankAt(T1)),vM=vAt(CFG.turnBank*Math.PI/180);
     const inT1=s>=T1&&s<T1+TURN,inT2=s>=T2;
     if(inT1||inT2){const into=(inT1?s-T1:s-T2)/TURN;target=into<0.2?vE:into>0.55?vM*1.04:vM;}
@@ -1978,9 +1978,9 @@ let settings={laps:25,ai:11,night:new URLSearchParams(location.search).get('nigh
 // gb/pb: grip and power edge over stock, lc: seconds between lane-change decisions (lower = more aggressive)
 // Traffic awareness (path scan, wreck avoidance, slide saves, bump-and-run) is the same at every level.
 const AI_LEVELS={
-  easy:  {sk:[1.15,0.03], dc:10.7,pass:33,gb:1.035,pb:1.03, lc:1.9,ag:0.4, pace:1.05, vary:0.010},
-  medium:{sk:[1.18,0.025],dc:11.2,pass:37,gb:1.055,pb:1.05, lc:1.6,ag:0.65,pace:1.025,vary:0.008},
-  hard:  {sk:[1.21,0.02], dc:11.7,pass:41,gb:1.075,pb:1.065,lc:1.3,ag:0.85,pace:1.0,  vary:0.006}};
+  easy:  {sk:[1.17,0.03], dc:10.7,pass:33,gb:1.065,pb:1.03, lc:1.9,ag:0.4, pace:1.05, vary:0.010},
+  medium:{sk:[1.2,0.025], dc:11.2,pass:37,gb:1.085,pb:1.05, lc:1.6,ag:0.65,pace:1.025,vary:0.008},
+  hard:  {sk:[1.23,0.02], dc:11.7,pass:41,gb:1.105,pb:1.065,lc:1.3,ag:0.85,pace:1.0,  vary:0.006}};
 // pace/vary: lap-time target as a multiple of the track baseline (the average of its top 20 Time Attack laps),
 // with each car drawn within +/- vary of it, so a Hard field runs right at the record-board average.
 // Track baseline: the average of the top 20 Time Attack laps on this track (seconds), or null with too few laps.
@@ -1999,7 +1999,9 @@ function aiPace(c,oldSp,nsp){
   const lt=now-prev,err=clamp(lt/c.lapTgt-1,-0.05,0.05);
   c.paceK=clamp((c.paceK||1)*(1+0.85*err),PACE_K[0],PACE_K[1]);aiPaceApply(c);
 }
-function aiPaceApply(c){const k=c.paceK||1;c.powB=(c.powB0||1)*(1+(k-1)*1.2);c.gripB=(c.gripB0||1)*(k>1?1+(k-1)*0.7:1);}
+// Slowing to a target comes mostly out of the straights (power), so the AI keeps its corner speed.
+function aiCornerK(c){const k=c.paceK||1;return k>=1?k:1-(1-k)*0.35;}
+function aiPaceApply(c){const k=c.paceK||1;c.powB=(c.powB0||1)*(k>=1?1+(k-1)*1.2:Math.max(0.7,1+(k-1)*2.2));c.gripB=(c.gripB0||1)*(k>1?1+(k-1)*0.7:1);}
 // ag: chance an AI races a car alongside hard (holds its line, door to door) instead of giving it room
 // Each vehicle (truck, Super Late Model) keeps its own saved paint scheme; 'sts_livery' remembers the last one used.
 const lvKey=v=>'sts_livery_'+v;
