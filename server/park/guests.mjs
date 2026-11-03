@@ -50,6 +50,74 @@ function passable(state, i, allowQueue = false) {
   return isWalkPath(state.map.path[i]) || (allowQueue && state.map.path[i] === 2) || entranceTiles(state).tiles.has(i)
 }
 
+// Follows a line of queue-line tiles from a ride gate to where it meets a
+// walkable path. Prefers to keep going straight so two lines laid side by side
+// stay separate, and never steps onto tiles in `avoid`. `stopAtPath` ends the
+// line at the first tile that touches a footpath (used for exit lines).
+function followLine(state, gate, avoid, stopAtPath) {
+  const map = state.map
+  const start = frontTile(gate)
+  if (!inMap(map, start.x, start.y)) return { tiles: [], entry: null, join: null }
+  const si = tileIndex(map, start.x, start.y)
+  if (isWalkPath(map.path[si])) return { tiles: [[start.x, start.y]], entry: [start.x, start.y], join: [start.x, start.y], direct: true }
+  if (map.path[si] !== 2) return { tiles: [], entry: null, join: null }
+  const walkNeighbor = cur => {
+    for (const [dx, dy] of DIRS) {
+      const x = cur[0] + dx, y = cur[1] + dy
+      if (inMap(map, x, y) && isWalkPath(map.path[tileIndex(map, x, y)]) && pathsConnect(map, cur[0], cur[1], x, y)) return [x, y]
+    }
+    return null
+  }
+  const tiles = [[start.x, start.y]], seen = new Set([si])
+  let cur = [start.x, start.y], heading = gate.dir, entry = null, join = null
+  for (let guard = 0; guard < 400; guard++) {
+    const near = walkNeighbor(cur)
+    if (near && !entry) { entry = [cur[0], cur[1]]; join = near }
+    if (near && stopAtPath) break
+    let next = null
+    for (const d of [heading, (heading + 1) % 4, (heading + 3) % 4, (heading + 2) % 4]) {
+      const x = cur[0] + DIRS[d][0], y = cur[1] + DIRS[d][1]
+      if (!inMap(map, x, y)) continue
+      const i = tileIndex(map, x, y)
+      if (map.path[i] !== 2 || seen.has(i) || avoid?.has(i) || !pathsConnect(map, cur[0], cur[1], x, y)) continue
+      next = [x, y]; heading = d; break
+    }
+    if (!next) break
+    seen.add(tileIndex(map, next[0], next[1])); tiles.push(next); cur = next
+  }
+  const last = tiles[tiles.length - 1]
+  const lastJoin = walkNeighbor(last)
+  if (lastJoin) { entry = last; join = lastJoin }
+  return { tiles, entry, join }
+}
+
+// Queue-line tiles used by ride exit lines. Entrance queues never route
+// through them, so guests only ever queue on the entrance side.
+function exitLineTiles(state) {
+  if (state.exitLineCache?.v === state.pathVersion) return state.exitLineCache
+  const tiles = new Set(), lines = new Map(), entranceFronts = new Set()
+  const map = state.map
+  for (const e of Object.values(state.entities)) {
+    if (e.type !== 'gate' || e.role !== 'entrance') continue
+    const f = frontTile(e)
+    if (inMap(map, f.x, f.y)) entranceFronts.add(tileIndex(map, f.x, f.y))
+  }
+  for (const ride of Object.values(state.entities)) {
+    if (ride.type !== 'ride') continue
+    const gate = state.entities[ride.exit]
+    if (!gate) continue
+    const line = followLine(state, gate, entranceFronts, true)
+    lines.set(ride.id, line)
+    if (!line.direct) for (const [x, y] of line.tiles) tiles.add(tileIndex(map, x, y))
+  }
+  state.exitLineCache = { v: state.pathVersion, tiles, lines }
+  return state.exitLineCache
+}
+
+export function exitLine(state, ride) {
+  return exitLineTiles(state).lines.get(ride.id) ?? { tiles: [], entry: null, join: null }
+}
+
 export function queueLine(state, ride) {
   const cache = state.queueCache ?? (state.queueCache = new Map())
   const key = `${state.pathVersion}:${ride.entrance}`
@@ -58,37 +126,8 @@ export function queueLine(state, ride) {
   const gate = state.entities[ride.entrance]
   let result = { key, tiles: [], entry: null }
   if (gate) {
-    const map = state.map
-    const start = frontTile(gate)
-    if (inMap(map, start.x, start.y)) {
-      const si = tileIndex(map, start.x, start.y)
-      if (isWalkPath(map.path[si])) result = { key, tiles: [[start.x, start.y]], entry: [start.x, start.y] }
-      else if (map.path[si] === 2) {
-        const tiles = [[start.x, start.y]], seen = new Set([si])
-        let cur = [start.x, start.y], entry = null
-        for (let guard = 0; guard < 400; guard++) {
-          let next = null
-          for (const [dx, dy] of DIRS) {
-            const x = cur[0] + dx, y = cur[1] + dy
-            if (!inMap(map, x, y)) continue
-            const i = tileIndex(map, x, y)
-            if (!pathsConnect(map, cur[0], cur[1], x, y)) continue
-            if (isWalkPath(map.path[i]) && !entry) entry = [cur[0], cur[1]]
-            if (map.path[i] === 2 && !seen.has(i) && !next) next = [x, y]
-          }
-          if (!next) break
-          seen.add(tileIndex(map, next[0], next[1])); tiles.push(next); cur = next
-        }
-        const last = tiles[tiles.length - 1]
-        let joins = false
-        for (const [dx, dy] of DIRS) {
-          const x = last[0] + dx, y = last[1] + dy
-          if (inMap(map, x, y) && isWalkPath(map.path[tileIndex(map, x, y)]) && pathsConnect(map, last[0], last[1], x, y)) joins = true
-        }
-        result = { key, tiles, entry: joins ? last : entry ? tiles[tiles.findIndex(t => t[0] === entry[0] && t[1] === entry[1])] ?? last : null }
-        if (joins) result.entry = last
-      }
-    }
+    const line = followLine(state, gate, exitLineTiles(state).tiles, false)
+    result = { key, tiles: line.tiles, entry: line.entry, join: line.join, direct: Boolean(line.direct) }
   }
   cache.set(ride.id, result)
   return result
@@ -423,6 +462,7 @@ export function updateGuests(state, dt) {
     }
     const speed = WALK_SPEED * (g.kid ? 1.1 : 1) * (g.energy < 60 ? 0.75 : 1)
     if (!moveWalker(g, dt, speed)) continue
+    if (g.exitRide && followExit(state, g)) continue
     const here = tileIndex(map, g.tx, g.ty)
     if (!passable(state, here) && map.path[here] !== 2) {
       if (!relocate(state, g)) { g.gone = true; continue }
@@ -475,6 +515,30 @@ export function finishRide(state, ride, guest) {
   const spot = exit ? frontTile(exit) : { x: ride.x, y: ride.y }
   guest.state = 'walk'; guest.ride = 0; guest.hidden = false
   guest.tx = spot.x; guest.ty = spot.y; guest.x = spot.x + 0.5; guest.y = spot.y + 0.5; guest.nx = -1; guest.lastDecide = 1
+  guest.exitRide = 0; guest.exitStep = 0
+  if (exit) {
+    const line = exitLine(state, ride)
+    if (!line.direct && line.tiles.length && line.join) { guest.exitRide = ride.id; guest.exitStep = 1 }
+  }
+}
+
+// Walks a guest who just left a ride along its exit line to the footpath.
+// Returns true while the guest is still on the exit line.
+function followExit(state, g) {
+  const ride = state.entities[g.exitRide]
+  const line = ride ? exitLine(state, ride) : null
+  if (!line || !line.join) { g.exitRide = 0; return false }
+  let k = g.exitStep
+  const at = line.tiles[k - 1]
+  if (!at || at[0] !== g.tx || at[1] !== g.ty) {
+    k = line.tiles.findIndex(t => t[0] === g.tx && t[1] === g.ty) + 1
+    if (k <= 0) { g.exitRide = 0; return false }
+  }
+  const next = k < line.tiles.length ? line.tiles[k] : line.join
+  g.nx = next[0]; g.ny = next[1]
+  g.exitStep = k + 1
+  if (k >= line.tiles.length) { g.exitRide = 0; g.exitStep = 0 }
+  return true
 }
 
 export function updateQueuePositions(state) {

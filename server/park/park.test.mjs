@@ -22,6 +22,8 @@ import {
   ELECTRICITY_COST_PER_TILE_PER_DAY,
   dailyOperatingCosts,
   queueLine,
+  exitLine,
+  tileMax,
   stepPark,
   spawnRate,
   ownedTileCount,
@@ -611,4 +613,93 @@ test('hotel colors, roofs and add-ons are saved, and add-ons cost money', () => 
   assert.equal(refund.ok, true)
   assert.equal(state.map.obj[tileIndex(state.map, 42, 42)], 0)
   assert.ok(Object.keys(HOTELS).length >= 8)
+})
+
+test('level land matches the corner the drag started from', () => {
+  const state = parkFixture()
+  const w = state.map.w + 1
+  for (let y = 0; y <= state.map.h; y++) for (let x = 12; x <= 16; x++) state.map.corners[y * w + x] = 9
+  // Starting low and dragging across the hill cuts the hill down to the start height.
+  assert.equal(applyCommand(state, { t: 'terrain', op: 'level', x0: 8, y0: 5, x1: 18, y1: 7, sx: 8, sy: 5 }).ok, true)
+  for (let x = 8; x <= 18; x++) assert.equal(tileMax(state.map, x, 6), 6)
+  // Starting on top of the hill raises the low ground up to the hill instead.
+  for (let y = 0; y <= state.map.h; y++) for (let x = 30; x <= 34; x++) state.map.corners[y * w + x] = 9
+  assert.equal(applyCommand(state, { t: 'terrain', op: 'level', x0: 32, y0: 20, x1: 26, y1: 22, sx: 32, sy: 20 }).ok, true)
+  for (let x = 26; x <= 32; x++) assert.equal(tileMax(state.map, x, 21), 9)
+})
+
+test('the path builder auto-finishes a raised walkway down to the ground', () => {
+  const state = parkFixture()
+  assert.equal(buildPath(state, 1, 30, 30).ok, true)
+  assert.equal(buildPath(state, 3, 31, 30, 2).ok, true)
+  assert.equal(buildPath(state, 3, 32, 30, 4).ok, true)
+  assert.equal(buildPath(state, 1, 33, 30, 5).ok, true)
+  const res = applyCommand(state, { t: 'pathFinish', x: 33, y: 30, dir: 0, kind: 1 })
+  assert.equal(res.ok, true, res.error)
+  assert.ok(res.pieces >= 2)
+  let x = 33
+  while (state.map.path[tileIndex(state.map, x + 1, 30)]) {
+    assert.equal(pathsConnect(state.map, x, 30, x + 1, 30), true)
+    x++
+  }
+  assert.equal(state.map.pathElevation[tileIndex(state.map, x, 30)], 0)
+  // Blocked on every side: nothing is built and the park is not charged.
+  const blocked = parkFixture()
+  assert.equal(buildPath(blocked, 1, 5, 5, 6).ok, true)
+  blocked.map.owner[tileIndex(blocked.map, 6, 5)] = 1
+  blocked.map.owner[tileIndex(blocked.map, 5, 4)] = 1
+  blocked.map.owner[tileIndex(blocked.map, 5, 6)] = 1
+  const cash = blocked.parks[0].cash, version = blocked.structVersion
+  assert.equal(applyCommand(blocked, { t: 'pathFinish', x: 5, y: 5, dir: 0, kind: 1 }).ok, false)
+  assert.equal(blocked.parks[0].cash, cash)
+  assert.equal(blocked.structVersion, version)
+})
+
+test('queue lines double as exit lines and guests walk out along them', () => {
+  const state = createPark('sandbox')
+  state.parks[0].named = true
+  state.parks[0].cash = 1_000_000
+  for (const e of Object.values(state.entities)) if (e.type === 'scenery') { state.map.obj[tileIndex(state.map, e.x, e.y)] = 0; delete state.entities[e.id] }
+  const entrance = Object.values(state.entities).find(e => e.type === 'parkEntrance')
+  const x = entrance.x, y = entrance.y
+  assert.equal(applyCommand(state, { t: 'path', kind: 1, elevation: 0, x0: x, y0: y - 14, x1: x, y1: y - 1 }).ok, true)
+  const made = applyCommand(state, { t: 'flat', ride: 'dropTower', x: x + 2, y: y - 11, rot: 0 })
+  assert.equal(made.ok, true, made.error)
+  assert.equal(applyCommand(state, { t: 'gate', ride: made.id, role: 'entrance', x: x + 1, y: y - 11 }).ok, true)
+  assert.equal(applyCommand(state, { t: 'gate', ride: made.id, role: 'exit', x: x + 2, y: y - 12 }).ok, true)
+  assert.equal(applyCommand(state, { t: 'path', kind: 2, elevation: 0, x0: x + 2, y0: y - 14, x1: x + 2, y1: y - 13 }).ok, true)
+  assert.equal(applyCommand(state, { t: 'path', kind: 2, elevation: 0, x0: x + 1, y0: y - 14, x1: x + 1, y1: y - 14 }).ok, true)
+  const ride = state.entities[made.id]
+  const line = exitLine(state, ride)
+  assert.equal(line.tiles.length, 3)
+  assert.deepEqual(line.join, [x, y - 14])
+  ride.status = 'open'; ride.price = 0
+  const onLine = new Set(line.tiles.map(([a, b]) => `${a},${b}`)), used = new Set()
+  for (let k = 0; k < 5000; k++) {
+    stepPark(state)
+    for (const g of state.guests) if (onLine.has(`${g.tx},${g.ty}`)) { used.add(g.id); assert.notEqual(g.state, 'queue') }
+  }
+  assert.ok(ride.totalRiders > 0, 'nobody rode')
+  assert.ok(used.size > 0, 'nobody used the exit line')
+  assert.equal(state.guests.filter(g => onLine.has(`${g.tx},${g.ty}`) && !g.exitRide).length, 0)
+})
+
+test('an entrance queue never routes through a neighbouring exit line', () => {
+  const state = parkFixture()
+  const ride = { id: 100, type: 'ride', entrance: 101, exit: 102 }
+  state.entities = {
+    100: ride,
+    101: { id: 101, type: 'gate', role: 'entrance', ride: 100, x: 5, y: 5, dir: 3 },
+    102: { id: 102, type: 'gate', role: 'exit', ride: 100, x: 6, y: 5, dir: 3 },
+  }
+  // Two side-by-side lines running north to a footpath.
+  for (const y of [4, 3, 2]) { state.map.path[tileIndex(state.map, 5, y)] = 2; state.map.path[tileIndex(state.map, 6, y)] = 2 }
+  state.map.path[tileIndex(state.map, 5, 1)] = 1
+  state.map.path[tileIndex(state.map, 6, 1)] = 1
+  state.pathVersion++
+  const exitTiles = new Set(exitLine(state, ride).tiles.map(([a, b]) => `${a},${b}`))
+  assert.deepEqual([...exitTiles], ['6,4', '6,3', '6,2'])
+  const queue = queueLine(state, ride)
+  assert.deepEqual(queue.tiles, [[5, 4], [5, 3], [5, 2]])
+  assert.deepEqual(queue.join, [5, 1])
 })
