@@ -1,9 +1,10 @@
-/** Same-origin postMessage bridge between an embedded module and the hub page (tl-host, tl-room, tl-score-saved, tl-lap). */
+/** Same-origin postMessage bridge between an embedded module and the hub page (tl-host, tl-room, tl-score-saved, tl-lap, tl-fairway). */
 
 export type HubOutgoing =
   | { type: 'tl-room'; code: string }
   | { type: 'tl-score-saved'; module: string; saved: boolean }
   | { type: 'tl-lap'; track: string; mode?: string }
+  | { type: 'tl-fairway'; board: 'round' | 'pin' | 'match' }
 
 export type HubIncoming = { type: 'tl-host' }
 
