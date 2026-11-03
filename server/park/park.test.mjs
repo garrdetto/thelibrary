@@ -703,3 +703,39 @@ test('an entrance queue never routes through a neighbouring exit line', () => {
   assert.deepEqual(queue.tiles, [[5, 4], [5, 3], [5, 2]])
   assert.deepEqual(queue.join, [5, 1])
 })
+
+test('path slopes ramp half as high as stairs and stairs keep climbing', () => {
+  const state = parkFixture()
+  const at = (x, u) => pathHeightAt(state.map, (x + u) * 4, 10.5 * 4)
+  assert.equal(buildPath(state, 1, 10, 10).ok, true)
+  // Two gentle slopes from the ground climb as high as one flight of stairs.
+  assert.equal(buildPath(state, 1, 11, 10, 1).ok, true)
+  assert.equal(buildPath(state, 1, 12, 10, 2).ok, true)
+  assert.equal(buildPath(state, 3, 13, 10, 4).ok, true)
+  assert.equal(buildPath(state, 3, 14, 10, 6).ok, true)
+  assert.equal(buildPath(state, 3, 15, 10, 8).ok, true)
+  assert.equal(buildPath(state, 1, 16, 10, 8).ok, true)
+  const ground = 6
+  assert.ok(Math.abs(at(11, 0.001) - ground) < 0.01)
+  assert.ok(Math.abs(at(11, 0.999) - (ground + 0.5)) < 0.01)
+  assert.ok(Math.abs(at(12, 0.999) - (ground + 1)) < 0.01)
+  for (let x = 13; x <= 15; x++) {
+    assert.ok(Math.abs(at(x, 0.001) - (ground + 1 + (x - 13))) < 0.01, `stairs ${x} start`)
+    assert.ok(Math.abs(at(x, 0.999) - (ground + 2 + (x - 13))) < 0.01, `stairs ${x} top`)
+  }
+  assert.ok(Math.abs(at(16, 0.5) - (ground + 4)) < 0.01)
+  for (let x = 10; x < 16; x++) assert.equal(pathsConnect(state.map, x, 10, x + 1, 10), true)
+  // Descending pieces keep their high end and ramp down to the piece after.
+  assert.equal(buildPath(state, 3, 17, 10, 8).ok, true)
+  assert.equal(buildPath(state, 1, 18, 10, 6).ok, true)
+  assert.ok(Math.abs(at(17, 0.001) - (ground + 4)) < 0.01)
+  assert.ok(Math.abs(at(17, 0.999) - (ground + 3)) < 0.01)
+  const res = applyCommand(state, { t: 'pathFinish', x: 18, y: 10, dir: 0, kind: 1, exit: ground + 3, sloped: false })
+  assert.equal(res.ok, true, res.error)
+  let x = 18
+  while (state.map.path[tileIndex(state.map, x + 1, 10)]) {
+    assert.ok(Math.abs(at(x, 0.999) - at(x + 1, 0.001)) < 0.05, `finish seam ${x}`)
+    x++
+  }
+  assert.equal(state.map.pathElevation[tileIndex(state.map, x, 10)], 0)
+})
