@@ -94,6 +94,7 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
     applyPaint(copy, r, paint);
     copy.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     holder.add(copy);
+    (g.userData.onFill as (() => void) | undefined)?.();
   };
   if (ready.has(r.modelUrl)) fill(ready.get(r.modelUrl)!);
   else { holder.add(placeholder(r)); void loadScene(r.modelUrl).then(fill); }

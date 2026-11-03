@@ -27,7 +27,9 @@ import { mergeStatic } from '../core/Merge';
 import { Avatar } from '../physics/Character';
 import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
-import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
+import { makeLights, paintFor, PRESETS, tintGlass, wheelForCar, type VehicleLights, type VehiclePreset } from '../physics/VehiclePresets';
+import { carStyleKey, tuneEffects, type CarStyle, type OwnedCar } from '../../shared/Cars';
+import { applyDents } from '../physics/Dents';
 import { VehicleDoors } from '../physics/VehicleDoors';
 
 const INTERP_DELAY_MS = 120;
@@ -72,9 +74,13 @@ const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b
 const isNpc = (id: string) => id.startsWith('npc-');
 
 /** Everything that makes a vehicle visible and solid. Pooled per kind and reused across vehicles. */
-interface VehicleView { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; doors: VehicleDoors | null; body: RAPIER.RigidBody }
+interface VehicleView {
+  kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; doors: VehicleDoors | null; body: RAPIER.RigidBody;
+  /** Body mesh and the one paint material it shares with the doors; rebuilt when the car's look changes. */
+  shell: THREE.Group; paint: THREE.MeshPhysicalMaterial; styleKey: string;
+}
 /** A remote vehicle: always its snapshot data, plus a view while it is near. */
-interface RemoteVehicle { kind: VehicleSnap['kind']; owner: string; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; fresh: boolean }
+interface RemoteVehicle { kind: VehicleSnap['kind']; owner: string; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; fresh: boolean; style: CarStyle | null }
 
 /** What a right-click on someone else's vehicle shows. */
 export interface RemoteVehicleInfo { kind: VehicleSnap['kind']; label: string; ownerName: string; distance: number }
@@ -136,7 +142,9 @@ export class RemoteEntities {
     for (const v of vehicles) {
       if (v.owner === me) continue;
       let rv = this.vehicles.get(v.id);
-      if (!rv) { rv = { kind: v.kind, owner: v.owner, buf: new SnapBuffer(), seen: now, view: null, fresh: false }; this.vehicles.set(v.id, rv); }
+      if (!rv) { rv = { kind: v.kind, owner: v.owner, buf: new SnapBuffer(), seen: now, view: null, fresh: false, style: null }; this.vehicles.set(v.id, rv); }
+      rv.style = v.style ?? null;
+      if (rv.view && rv.view.styleKey !== carStyleKey(rv.style)) this.restyle(rv.view, rv.style);
       rv.buf.push(time, v); rv.seen = now;
     }
     // Despawn anything not seen for 3 s.
@@ -150,26 +158,44 @@ export class RemoteEntities {
     const P = PRESETS[kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
-    const paint = makePaint(P.paint);
-    const shell = P.build(paint, lights);
-    mergeStatic(shell);
-    root.add(shell);
+    const paint = paintFor(P, null);
     const doors = VehicleDoors.for(kind, paint, P.seat.z);
     if (doors) root.add(doors.group);
-    const wheels: VehicleView['wheels'] = [];
-    for (const a of P.axles) for (const side of [1, -1]) {
-      const g = new THREE.Group(); const spin = wheelFor(P, a.radius, a.width);
-      g.add(spin); g.position.set(a.x, P.wheelY - P.suspension.rest * 0.8, a.halfTrack * side);
-      root.add(g); wheels.push({ g, steer: a.steer, spin: 0 });
-    }
-    root.traverse(o => (o.castShadow = true));
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased());
     this.physics.world.createCollider(this.physics.vehicleShape(P.chassis.hx, P.chassis.hy, P.chassis.hz).setFriction(0.3).setCollisionGroups(P.tongue ? MASK.remoteTrailer : MASK.remote), body);
-    return { kind, root, wheels, lights, doors, body };
+    const view: VehicleView = { kind, root, wheels: [], lights, doors, body, shell: new THREE.Group(), paint, styleKey: '-' };
+    this.restyle(view, null);
+    return view;
+  }
+
+  /** Dress a view as one particular car: its paint (shared with the doors), dents, tint, rims and lift. */
+  private restyle(view: VehicleView, style: CarStyle | null) {
+    const P: VehiclePreset = PRESETS[view.kind] ?? PRESETS.sedan;
+    view.paint.copy(paintFor(P, style));
+    view.paint.needsUpdate = true;
+    view.root.remove(view.shell);
+    const shell = view.shell = P.build(view.paint, view.lights);
+    tintGlass(shell, style?.tint);
+    mergeStatic(shell);
+    applyDents(shell, style?.dents);
+    shell.userData.onFill = () => applyDents(shell, style?.dents);
+    shell.traverse(o => (o.castShadow = true));
+    view.root.add(shell);
+    for (const w of view.wheels) view.root.remove(w.g);
+    const tune = tuneEffects(style as OwnedCar | null);
+    view.wheels = [];
+    for (const a of P.axles) for (const side of [1, -1]) {
+      const g = new THREE.Group(), spin = wheelForCar(P, a.radius, a.width, style, tune.tireScale);
+      g.add(spin); g.position.set(a.x, P.wheelY - (P.suspension.rest + tune.lift) * 0.8, a.halfTrack * side);
+      g.traverse(o => (o.castShadow = true));
+      view.root.add(g); view.wheels.push({ g, steer: a.steer, spin: 0 });
+    }
+    view.styleKey = carStyleKey(style);
   }
 
   private acquire(rv: RemoteVehicle) {
     const view = this.pool.get(rv.kind)?.pop() ?? this.buildView(rv.kind);
+    if (view.styleKey !== carStyleKey(rv.style)) this.restyle(view, rv.style);
     view.body.setEnabled(true);
     this.scene.add(view.root);
     rv.view = view;

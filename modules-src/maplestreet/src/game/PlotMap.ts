@@ -6,6 +6,7 @@
  */
 import { LotState, WorldState } from '../../shared/BuildRules';
 import { BUILDINGS, CIVIC, CURVES, DEPOT, DOWNTOWN, GAS_STATION, GRID_AREA, MAP_BOUNDS, ROADS, SIDEWALKS, TOWN_SQUARE_RECT } from '../../shared/WorldLayout';
+import { BODY_SHOP } from '../../shared/BodyShop';
 
 const BOUNDS = MAP_BOUNDS;
 const SHOP_ICON: Record<string, string> = { dealer: '🚙', diner: '🍔', bank: '🏦', cafe: '☕', grocery: '🛒', hardware: '🔧', gas: '⛽', fire: '🚒', police: '🚓' };
@@ -124,6 +125,8 @@ export class PlotMap {
     g.font = `${Math.max(12, s * 6)}px system-ui`; g.fillStyle = '#fff'; g.fillText('⛽', this.px(gs.canopy.x), this.py(gs.canopy.z));
     g.fillStyle = '#7b6b58'; rect(DEPOT.x, DEPOT.z, DEPOT.w, DEPOT.d);
     g.fillText('📦', this.px(DEPOT.x), this.py(DEPOT.z));
+    g.fillStyle = '#c9c4b8'; rect(BODY_SHOP.x, BODY_SHOP.z, BODY_SHOP.w, BODY_SHOP.d);
+    g.fillText('🔧', this.px(BODY_SHOP.x), this.py(BODY_SHOP.z));
 
     // Lots and the houses on them
     const world = this.world;

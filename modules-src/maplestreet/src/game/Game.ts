@@ -44,6 +44,8 @@ import { CameraRig } from './CameraRig';
 import { Hud } from './Hud';
 import { MiniMap, type Objective } from './MiniMap';
 import { WardrobeUI } from './WardrobeUI';
+import { BodyShopUI } from './BodyShopUI';
+import { atBodyShop, BODY_SHOP, inBay } from '../../shared/BodyShop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { defaultLook, lookKey, type Look } from '../../shared/Wardrobe';
 
@@ -105,6 +107,7 @@ export class Game {
   private grass!: Grass;
   private thumbs!: ThumbnailRenderer;
   private wardrobe!: WardrobeUI;
+  private bodyShop!: BodyShopUI;
   private look!: Look;
   private camSaved: { dist: number; pitch: number } | null = null;
 
@@ -186,7 +189,7 @@ export class Game {
       requestJob: () => this.send({ t: 'jobRequest' }),
       garage: k => this.garageAction(k),
       goHome: () => this.goHome(),
-      buy: (shop, item) => this.send({ t: 'buy', shop, item }),
+      buy: (shop, item, car) => this.send({ t: 'buy', shop, item, ...(car ? { car } : {}) }),
       testDrive: k => this.testDrive(k),
       map: () => this.toggleMap(),
       wardrobe: () => this.openWardrobe(false),
@@ -209,6 +212,9 @@ export class Game {
     });
     this.hud.wardrobeOpen = () => this.wardrobe.isOpen;
     this.hud.closeWardrobe = () => this.wardrobe.close(false);
+    this.bodyShop = new BodyShopUI((kind, order) => this.send({ t: 'service', kind, order }), () => {});
+    this.hud.bodyShopOpen = () => this.bodyShop.isOpen;
+    this.hud.closeBodyShop = () => this.bodyShop.close();
 
     this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 40, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x5cff7a, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
     this.beacon.position.y = 20; this.beacon.visible = false;
@@ -378,6 +384,7 @@ export class Game {
     this.account = acc;
     this.wardrobe.updateAccount(acc);
     if (acc.look && !this.wardrobe.isOpen && lookKey(acc.look) !== lookKey(this.look)) this.setLook(acc.look);
+    for (const [kind, v] of this.vehicles) { const car = acc.garage.includes(kind) ? acc.cars[kind] ?? null : null; v.restyle(car); v.setCar(car); }
     for (const [kind, v] of this.vehicles) {
       const srv = acc.fuel[kind];
       if (typeof srv !== 'number') continue;
@@ -390,6 +397,7 @@ export class Game {
     this.hud.setGarage(acc, new Set(this.vehicles.keys()), this.fuelLevels(), !!this.homeLot());
     if (this.hud.bankOpen) this.hud.updateBank(acc);
     if (this.hud.shopOpen) this.hud.updateShop(acc);
+    this.bodyShop.update(acc);
     this.refreshMap();
     if (acc.needs.hunger < 15 && !this.warned.hunger) { this.warned.hunger = true; this.hud.toast('You’re starving — grab a bite downtown or cook at home.'); }
     if (acc.needs.energy < 15 && !this.warned.energy) { this.warned.energy = true; this.hud.toast('You’re exhausted — a nap in your bed (or a coffee) would help.'); }
@@ -558,6 +566,7 @@ export class Game {
   // ------------------------------------------------------------ vehicles
 
   private placeVehicle(v: Vehicle, x: number, z: number, yaw: number) {
+    v.quiet();
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
     v.body.setTranslation({ x, y: v.preset.chassis.hy + v.preset.suspension.rest + 0.6, z }, true);
     v.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
@@ -567,7 +576,9 @@ export class Game {
   }
 
   private addVehicle(kind: VehicleKind, pos: THREE.Vector3, yaw: number) {
-    const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene);
+    const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene, this.account?.cars[kind] ?? null);
+    v.setCar(this.account?.garage.includes(kind) ? this.account.cars[kind] ?? null : null);
+    v.onImpact = (dv, at) => { if (this.account?.garage.includes(kind)) this.send({ t: 'crash', kind, dv, at }); };
     this.vehicles.set(kind, v);
     const lvl = this.account?.fuel[kind];
     if (typeof lvl === 'number') { this.fuelUp(v, lvl); this.serverFuel[kind] = lvl; }
@@ -1070,13 +1081,18 @@ export class Game {
       const door = this.nearDoor();
       if (door && door.kind !== 'gas') lines.push(`Park and press E, then walk up to ${door.name}`);
       if (v.preset.hitch && !v.trailer && tr && v.canHitch(tr)) lines.push('T — Hitch trailer');
+      if (inBay(v.root.position.x, v.root.position.z) && this.account?.garage.includes(v.kind)) lines.push(`Parked in a service bay — get out (E), then press E for ${BODY_SHOP.name}`);
       if (this.job && vehicleRole(v.kind) === 'hauler') lines.push(this.job.stage === 'toPickup' ? 'Drive into the yellow beacon to load cargo' : 'Drive into the green beacon to deliver');
       this.hud.prompt(lines.join('   ·   '));
       return;
     }
     const p = this.character.position;
     const door = this.nearDoor();
-    if (door) {
+    const serviced = atBodyShop(p.x, p.z) ? [...this.vehicles.values()].find(v => this.account?.garage.includes(v.kind) && inBay(v.root.position.x, v.root.position.z)) : undefined;
+    if (serviced && this.account) {
+      const v = serviced, acc = this.account;
+      this.interaction = { label: `E — Service your ${VEHICLES[v.kind]?.name ?? 'car'} at ${BODY_SHOP.name}`, run: () => { this.hud.closeModals(); this.bodyShop.open(v.kind, acc); } };
+    } else if (door) {
       this.interaction = { label: door.kind === 'bank' ? 'E — Talk to the bank teller' : `E — Shop at ${door.name}`, run: () => this.openShop(door) };
     } else {
       const lot = this.homeLot();
@@ -1133,7 +1149,8 @@ export class Game {
     if (!v || this.mode !== 'live') { this.hud.setDash(null); return; }
     const spec = VEHICLES[v.kind];
     const gear = v.input.handbrake && Math.abs(v.speed) < 0.3 ? 'P' : v.speed < -0.3 || (v.input.throttle < 0 && v.speed < 0.6) ? 'R' : 'D';
-    this.hud.setDash({ name: spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: v.preset.engineForce > 0 });
+    const condition = Math.round((1 - (this.account?.garage.includes(v.kind) ? this.account.cars[v.kind]?.damage ?? 0 : 0)) * 100);
+    this.hud.setDash({ name: condition < 100 ? `${spec.name} · ${condition}% condition` : spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: v.preset.engineForce > 0 });
     if (v.empty && !this.warned.fuel) { this.warned.fuel = true; this.hud.toast(`The ${spec.name} is out of ${spec.fuel === 'electric' ? 'charge' : 'fuel'} — press F to call a tow to Gas & Go`); }
   }
 

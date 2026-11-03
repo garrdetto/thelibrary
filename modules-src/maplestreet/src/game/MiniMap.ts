@@ -7,6 +7,7 @@
  */
 import type { WorldState } from '../../shared/BuildRules';
 import { BUILDINGS, CIVIC, CURVES, DEPOT, GAS_STATION, ROADS, TOWN_SQUARE_RECT } from '../../shared/WorldLayout';
+import { BODY_SHOP } from '../../shared/BodyShop';
 import { roadRoute, routeLength, type RoutePoint } from './RoadRoute';
 
 const METERS_ACROSS = 210;
@@ -72,6 +73,7 @@ export class MiniMap {
     g.fillStyle = '#4f7d3a'; rect(TOWN_SQUARE_RECT.cx, TOWN_SQUARE_RECT.cz, TOWN_SQUARE_RECT.sx, TOWN_SQUARE_RECT.sz);
     for (const b of BUILDINGS) { g.fillStyle = '#b9b0a0'; rect(b.x, b.z, b.w, b.d); }
     for (const b of CIVIC) { g.fillStyle = b.kind === 'fire' ? '#c0392b' : '#2c5aa0'; rect(b.x, b.z, b.w, b.d); }
+    g.fillStyle = '#f2b544'; rect(BODY_SHOP.x, BODY_SHOP.z, BODY_SHOP.w, BODY_SHOP.d);
     g.fillStyle = '#d93a2b'; rect(GAS_STATION.canopy.x, GAS_STATION.canopy.z, GAS_STATION.canopy.w, GAS_STATION.canopy.d);
     g.fillStyle = '#7b6b58'; rect(DEPOT.x, DEPOT.z, DEPOT.w, DEPOT.d);
 

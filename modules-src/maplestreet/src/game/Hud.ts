@@ -7,7 +7,8 @@
  */
 import { CATALOG, CatalogFunc, CatalogItem, CatalogRoom, SWATCHES } from '../../shared/Catalog';
 import { FLOOR_MATS, FloorMat, INTERIOR_FINISHES, LotState, RoofStyle, WALL_STYLES, WallFinish, WallKind, WallStyle, WorldState } from '../../shared/BuildRules';
-import { Account, availableCredit, COST, FUEL_PRICE, LOAN_CAP, LOAN_DAILY_RATE, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from '../../shared/Economy';
+import { Account, availableCredit, COST, FUEL_PRICE, isPaintable, LOAN_CAP, LOAN_DAILY_RATE, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES, type ShopItem } from '../../shared/Economy';
+import { defaultCar, FINISH_LABEL, PAINT_FINISHES, PAINT_SWATCHES, type CarStyle } from '../../shared/Cars';
 import { lotPrice } from '../../shared/WorldLayout';
 import type { Job, VehicleKind } from '../../shared/Protocol';
 import { PRESETS } from '../physics/VehiclePresets';
@@ -49,7 +50,7 @@ export interface HudEvents {
   garage(kind: VehicleKind): void;
   /** Go Home: back to your driveway, once every fifteen minutes. */
   goHome(): void;
-  buy(shop: string, item: string): void;
+  buy(shop: string, item: string, car?: CarStyle): void;
   testDrive(kind: VehicleKind): void;
   map(): void;
   wardrobe(): void;
@@ -329,7 +330,7 @@ export class Hud {
 
   setGarage(acc: Account, out: Set<VehicleKind>, fuel: Partial<Record<VehicleKind, number>>, hasHome: boolean) {
     const el = $('garage');
-    const sig = JSON.stringify([acc.garage, [...out], hasHome, acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k]?.tank ?? 1)) * 20))]);
+    const sig = JSON.stringify([acc.garage, [...out], hasHome, acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k]?.tank ?? 1)) * 20)), acc.garage.map(k => Math.round((acc.cars[k]?.damage ?? 0) * 100))]);
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.innerHTML = '';
@@ -340,7 +341,8 @@ export class Hud {
       row.className = 'car';
       const level = fuel[k] ?? acc.fuel[k] ?? 0;
       const pct = spec.fuel === 'none' ? 100 : Math.round((level / spec.tank) * 100);
-      row.innerHTML = `<b>${esc(spec.name)}</b><div class="fuel${pct < 20 ? ' low' : ''}" title="${spec.fuel === 'none' ? 'No engine' : pct + '% fuel'}"><i style="width:${pct}%"></i></div>`;
+      const condition = Math.round((1 - (acc.cars[k]?.damage ?? 0)) * 100);
+      row.innerHTML = `<b>${esc(spec.name)}${condition < 100 ? ` <small class="cond${condition < 50 ? ' bad' : ''}" title="Condition">${condition}%</small>` : ''}</b><div class="fuel${pct < 20 ? ' low' : ''}" title="${spec.fuel === 'none' ? 'No engine' : pct + '% fuel'}"><i style="width:${pct}%"></i></div>`;
       const b = document.createElement('button');
       b.className = 'btn';
       if (k === 'truck' || k === 'trailer') {
@@ -415,8 +417,11 @@ export class Hud {
   /** Set by Game: the wardrobe panel counts as a window that pauses walking. */
   wardrobeOpen: () => boolean = () => false;
   closeWardrobe: () => void = () => {};
-  get modalOpen() { return this.bankOpen || this.shopOpen || this.mapOpen || this.wardrobeOpen(); }
-  closeModals() { this.showBank(false); this.showShop(null); this.showMap(false); this.closeWardrobe(); }
+  /** Set by Game: the Maple Body & Wheel window. */
+  bodyShopOpen: () => boolean = () => false;
+  closeBodyShop: () => void = () => {};
+  get modalOpen() { return this.bankOpen || this.shopOpen || this.mapOpen || this.wardrobeOpen() || this.bodyShopOpen(); }
+  closeModals() { this.showBank(false); this.showShop(null); this.showMap(false); this.closeWardrobe(); this.closeBodyShop(); }
 
   showBank(on: boolean, acc?: Account | null) {
     $('bank').classList.toggle('show', on);
@@ -436,6 +441,7 @@ export class Hud {
   }
 
   showShop(door: ShopDoor | null, acc?: Account | null) {
+    if (door?.id !== this.shopDoor?.id) this.carPick = null;
     this.shopDoor = door;
     $('shop').classList.toggle('show', !!door);
     if (door && acc) this.updateShop(acc);
@@ -463,9 +469,12 @@ export class Hud {
       row.innerHTML = `<b>${esc(item.name)}</b><span>${esc(item.blurb)}</span>`;
       const b = document.createElement('button');
       b.className = 'btn' + (owned ? '' : ' accent');
-      b.textContent = owned ? 'Owned' : money(item.price);
+      b.textContent = owned ? 'Owned' : item.vehicle && isPaintable(item.vehicle) ? `${money(item.price)} · Pick color` : money(item.price);
       b.disabled = !!owned || item.price > acc.money;
-      b.onclick = () => this.ev.buy(door.id, item.id);
+      b.onclick = () => {
+        if (item.vehicle && isPaintable(item.vehicle)) { this.carPick = { item: item.id, style: this.carPick?.item === item.id ? this.carPick.style : defaultCar(item.vehicle) }; this.updateShop(acc); }
+        else this.ev.buy(door.id, item.id);
+      };
       row.appendChild(b);
       if (item.vehicle) {
         const kind = item.vehicle;
@@ -477,7 +486,56 @@ export class Hud {
         row.appendChild(t);
       }
       list.appendChild(row);
+      if (item.vehicle && !owned && this.carPick?.item === item.id) list.appendChild(this.colorPicker(door, item, acc));
     }
+  }
+
+  /** The dealer row whose paint picker is open, and the paint chosen so far. */
+  private carPick: { item: string; style: CarStyle } | null = null;
+
+  private colorPicker(door: ShopDoor, item: ShopItem, acc: Account) {
+    const pick = this.carPick!;
+    const box = document.createElement('div');
+    box.className = 'carPick';
+    box.setAttribute('role', 'group');
+    box.setAttribute('aria-label', `Paint for the ${item.name}`);
+    const swatches = document.createElement('div');
+    swatches.className = 'swatches';
+    const set = (style: Partial<CarStyle>) => { pick.style = { ...pick.style, ...style }; this.updateShop(acc); };
+    for (const s of PAINT_SWATCHES) {
+      const b = document.createElement('button');
+      b.className = 'swatch' + (s.color === pick.style.color ? ' on' : '');
+      b.style.background = s.color;
+      b.title = s.name; b.setAttribute('aria-label', s.name); b.setAttribute('aria-pressed', String(s.color === pick.style.color));
+      b.onclick = () => set({ color: s.color });
+      swatches.appendChild(b);
+    }
+    const custom = document.createElement('input');
+    custom.type = 'color'; custom.value = pick.style.color; custom.title = 'Any color'; custom.setAttribute('aria-label', 'Pick any color');
+    custom.onchange = () => set({ color: custom.value.toLowerCase() });
+    swatches.appendChild(custom);
+    const finishes = document.createElement('div');
+    finishes.className = 'finishes';
+    for (const f of PAINT_FINISHES) {
+      const b = document.createElement('button');
+      b.className = 'btn' + (f === pick.style.finish ? ' on' : '');
+      b.textContent = FINISH_LABEL[f]; b.setAttribute('aria-pressed', String(f === pick.style.finish));
+      b.onclick = () => set({ finish: f });
+      finishes.appendChild(b);
+    }
+    const name = PAINT_SWATCHES.find(s => s.color === pick.style.color)?.name ?? 'Custom color';
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const buy = document.createElement('button');
+    buy.className = 'btn accent'; buy.textContent = `Buy in ${FINISH_LABEL[pick.style.finish].toLowerCase()} ${name.toLowerCase()} — ${money(item.price)}`;
+    buy.disabled = item.price > acc.money;
+    buy.onclick = () => { const style = pick.style; this.carPick = null; this.ev.buy(door.id, item.id, style); };
+    const cancel = document.createElement('button');
+    cancel.className = 'btn'; cancel.textContent = 'Cancel';
+    cancel.onclick = () => { this.carPick = null; this.updateShop(acc); };
+    actions.append(buy, cancel);
+    box.append(swatches, finishes, actions);
+    return box;
   }
 
   // ------------------------------------------------------------ town map
