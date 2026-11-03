@@ -1,5 +1,6 @@
 /**
- * Procedural body meshes for the built-in vehicles. Their tuning (sizes,
+ * Procedural body meshes for the built-in vehicles (their opening doors are
+ * separate leaves, in ./VehicleDoors). Their tuning (sizes,
  * axles, suspension, engine) is plain data in shared/Vehicles.ts so every
  * authority and the admin editor read the same numbers.
  * Convention: chassis local +X = forward, +Y = up, +Z = right.
@@ -215,7 +216,6 @@ const BUILTIN_PRESETS: Record<BuiltinVehicleKind, VehiclePreset> = {
         box(g, paint, 0.1, 0.74, 0.06, -0.32, 0.98, z);                 // C-pillars
         box(g, paint, 2.3, 0.5, 0.08, -1.55, 0.37, z * 1.04);           // bed sides
         box(g, M.black, 0.18, 0.12, 0.05, 1.1, 0.9, z * 1.18);          // mirrors
-        box(g, M.chrome, 0.2, 0.03, 0.03, 0.5, 0.48, z * 1.08);         // door handles
       }
       box(g, paint, 0.08, 0.5, 1.84, -2.66, 0.37, 0);                    // tailgate
       box(g, M.plastic, 2.25, 0.04, 1.7, -1.55, 0.14, 0);                // bed liner
@@ -245,8 +245,6 @@ const BUILTIN_PRESETS: Record<BuiltinVehicleKind, VehiclePreset> = {
       for (const z of [0.8, -0.8]) {
         box(g, paint, 0.08, 0.46, 0.05, -0.2, 0.66, z);
         box(g, M.black, 0.15, 0.1, 0.05, 0.95, 0.6, z * 1.15);
-        box(g, M.chrome, 0.18, 0.025, 0.03, 0.35, 0.3, z * 1.12);
-        box(g, M.chrome, 0.18, 0.025, 0.03, -0.75, 0.3, z * 1.12);
       }
       box(g, M.plastic, 0.12, 0.18, 1.82, 2.38, -0.18, 0); box(g, M.plastic, 0.12, 0.18, 1.82, -2.36, -0.18, 0);
       box(g, M.black, 0.03, 0.12, 0.8, 2.41, 0.04, 0);
@@ -327,7 +325,6 @@ const BUILTIN_PRESETS: Record<BuiltinVehicleKind, VehiclePreset> = {
         box(g, M.black, 0.32, 0.26, 0.06, 1.25, 1.22, z * 1.22);        // tow mirrors
         box(g, M.black, 2.5, 0.06, 0.18, 0.2, -0.42, z * 0.98);         // running boards
         for (const x of [2.0, -2.0]) box(g, M.black, 1.36, 0.16, 0.2, x, 0.22, z * 1.0);   // fender flares
-        for (const x of [0.75, -0.2]) box(g, M.chrome, 0.22, 0.03, 0.03, x, 0.78, z * 1.04); // door handles
       }
       box(g, paint, 0.09, 0.66, 2.04, -2.98, 0.66, 0);                   // tailgate
       box(g, M.plastic, 2.08, 0.04, 1.86, -1.94, 0.32, 0);               // spray-in bed liner
@@ -367,8 +364,7 @@ const BUILTIN_PRESETS: Record<BuiltinVehicleKind, VehiclePreset> = {
       lampPair(g, L.head, 2.47, 0.2, 0.7, 0.05, 0.1, 0.22);
       lampPair(g, L.tail, -2.47, 0.33, 0.62, 0.05, 0.1, 0.38);
       for (const z of [0.97, -0.97]) {
-        box(g, M.black, 0.15, 0.09, 0.05, 0.62, 0.62, z * 1.08);
-        box(g, M.chrome, 0.16, 0.025, 0.03, -0.25, 0.33, z * 1.02);
+        box(g, M.black, 0.15, 0.09, 0.05, 0.8, 0.6, z * 1.08);
       }
       cyl(g, M.chrome, 0.05, 0.2, -2.45, -0.22, 0.55, 'x'); cyl(g, M.chrome, 0.05, 0.2, -2.45, -0.22, -0.55, 'x');
       return g;

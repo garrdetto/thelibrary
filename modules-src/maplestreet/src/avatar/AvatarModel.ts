@@ -1,7 +1,7 @@
 /**
  * One scanned body in the world: a skeleton clone sharing the body's geometry,
  * its own wardrobe material, extra hair/hat meshes on the head bone, and a
- * procedural pose (walk cycle, idle breathing, seated at the wheel).
+ * procedural pose (walk and run cycles from ./Gait, idle breathing, seated at the wheel).
  */
 import * as THREE from 'three/webgpu';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -9,6 +9,7 @@ import { WARDROBE_BY_ID, type Body, type Look } from '../../shared/Wardrobe';
 import type { BodyAsset } from './AvatarAssets';
 import { AvatarMaterial } from './AvatarMaterial';
 import { dressHead, type HatKind, type HeadDressing } from './HairAndHats';
+import { gaitFrequency, gaitPose, runBlend } from './Gait';
 
 const SIDES = ['L', 'R'] as const;
 
@@ -94,25 +95,26 @@ export class AvatarModel {
       B.hips.position.y = this.asset.joints.hips.y;
       return;
     }
-    const amp = Math.min(0.7, speed * 0.21);
-    this.phase += dt * (2 + speed * 2.1);
-    const s = Math.sin(this.phase);
-    const swing = s * amp;
-    B.upperLegL.rotation.set(-swing, 0, 0);
-    B.upperLegR.rotation.set(swing, 0, 0);
-    B.lowerLegL.rotation.set(Math.max(0, Math.sin(this.phase + 0.9)) * amp * 1.35 + amp * 0.08, 0, 0);
-    B.lowerLegR.rotation.set(Math.max(0, Math.sin(this.phase + Math.PI + 0.9)) * amp * 1.35 + amp * 0.08, 0, 0);
-    B.footL.rotation.set(0, 0, 0); B.footR.rotation.set(0, 0, 0);
-    const armIdle = Math.sin(this.t * 0.9) * 0.015;
-    B.upperArmL.rotation.set(swing * 0.75, 0, -this.armDown + armIdle);
-    B.upperArmR.rotation.set(-swing * 0.75, 0, this.armDown - armIdle);
-    B.lowerArmL.rotation.set(-0.12 - amp * 0.35 - Math.max(0, swing) * 0.3, 0, 0);
-    B.lowerArmR.rotation.set(-0.12 - amp * 0.35 - Math.max(0, -swing) * 0.3, 0, 0);
-    B.hips.rotation.set(0, swing * 0.12, 0);
-    B.spine.rotation.set(amp * 0.06, 0, 0);
-    B.chest.rotation.set(breathe, -swing * 0.2, 0);
-    B.head.rotation.set(-amp * 0.04, swing * 0.06, 0);
-    B.hips.position.y = this.asset.joints.hips.y + Math.abs(Math.cos(this.phase)) * amp * 0.035 - amp * 0.02;
+    this.phase = (this.phase + dt * gaitFrequency(speed)) % 1;
+    const g = gaitPose(this.phase, speed);
+    const run = runBlend(speed);
+    for (const s of SIDES) {
+      const sign = s === 'L' ? 1 : -1;
+      const L = s === 'L' ? g.legL : g.legR, A = s === 'L' ? g.armL : g.armR;
+      B[`upperLeg${s}`].rotation.set(-L.hip, 0, 0);
+      B[`lowerLeg${s}`].rotation.set(L.knee, 0, 0);
+      B[`foot${s}`].rotation.set(L.ankle, 0, 0);
+      const armIdle = Math.sin(this.t * 0.9) * 0.015;
+      B[`upperArm${s}`].rotation.set(A.arm, 0, -sign * (this.armDown * (1 - run * 0.25) - armIdle));
+      B[`lowerArm${s}`].rotation.set(-A.elbow, 0, 0);
+      B[`hand${s}`]?.rotation.set(0, 0, 0);
+    }
+    B.hips.rotation.set(0, g.twist * 0.5, 0);
+    B.spine.rotation.set(g.lean, 0, 0);
+    B.chest.rotation.set(breathe + g.lean * 0.3, -g.twist, 0);
+    B.neck?.rotation.set(0, 0, 0);
+    B.head.rotation.set(g.headPitch, g.twist * 0.3, 0);
+    B.hips.position.y = this.asset.joints.hips.y + g.hipBob;
   }
 
   dispose() {

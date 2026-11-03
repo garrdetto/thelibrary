@@ -58,6 +58,8 @@ interface Session {
   vehicles: VehicleSnap[];
   job: Job | null;
   lastSeen: number;
+  /** A newer connection for the same account took over: this one no longer appears in the world. */
+  superseded?: boolean;
 }
 
 export const DAY_LENGTH_SEC = 24 * 60;   // one in-game day = 24 real minutes
@@ -141,6 +143,15 @@ export class NeighborhoodLogic {
       const lot = this.world.lots[id];
       if (lot.owner === acc.id && lot.ownerName !== name) { lot.ownerName = name; this.dirty.lots.add(id); }
     }
+    // A reload or reconnect can arrive before the old socket closes. Only the
+    // newest connection is drawn, so its truck never spawns inside the old one.
+    for (const [id, other] of this.sessions) {
+      if (other.key !== key || other.superseded) continue;
+      other.superseded = true;
+      other.player = null;
+      other.vehicles = [];
+      this.io.broadcast({ t: 'left', id }, sessionId);
+    }
     this.sessions.set(sessionId, { key, player: null, vehicles: [], job: null, lastSeen: Date.now() });
 
     const mowed = this.coverageCodes();
@@ -158,6 +169,12 @@ export class NeighborhoodLogic {
     if (!s) return;
     this.dirty.accounts.add(s.key);
     this.sessions.delete(sessionId);
+    // The newest connection left while an older one is still open: that one shows up again on its next state.
+    if (!s.superseded) {
+      let newest: Session | null = null;
+      for (const other of this.sessions.values()) if (other.key === s.key) newest = other;
+      if (newest) newest.superseded = false;
+    }
     this.io.broadcast({ t: 'left', id: sessionId });
   }
 
@@ -185,6 +202,7 @@ export class NeighborhoodLogic {
 
     switch (msg.t) {
       case 'state': {
+        if (s.superseded) break;
         // Rebuild snapshots field by field: only finite numbers and known kinds reach other players.
         const p = msg.p;
         if (p && typeof p === 'object') {

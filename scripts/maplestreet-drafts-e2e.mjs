@@ -137,6 +137,45 @@ try {
     return { neighbors: lots.filter(l => l.owner?.startsWith('npc-')).length, open: lots.filter(l => !l.owner).length, seed: window.maple.houses.world.seedVersion }
   })
   assert(census.neighbors === 28 && census.open >= 30 && census.seed === 2, `28 starter houses and ${census.open} lots for sale`)
+  // Bundled vehicles (shared/BundledVehicles.ts): on the lot, buyable, and they sit on their wheels and drive.
+  const bundled = ['custom:bundled-meridian-sedan', 'custom:bundled-bulwark-4x4', 'custom:bundled-ironhorn-crew-cab']
+  const lot = await solo.evaluate(async kinds => {
+    const g = window.maple
+    const pos = g.character.position.clone()
+    pos.set(128, 0, 21)
+    g.character.teleport(pos)
+    const before = g.account.money
+    for (let i = 0; i < 100 && !kinds.every(k => g.account.garage.includes(k)); i++) {
+      if (i % 15 === 0) for (const k of kinds) if (!g.account.garage.includes(k)) g.send({ t: 'buy', shop: 'motors', item: k })
+      await new Promise(r => setTimeout(r, 100))
+    }
+    const out = { owned: kinds.filter(k => g.account.garage.includes(k)), paid: before - g.account.money, cars: [] }
+    kinds.forEach((k, i) => { if (out.owned.includes(k)) { g.bringOut(k); g.placeVehicle(g.vehicles.get(k), 25 + i * 11, 2.5, 0) } })
+    g.hud.closeModals()
+    for (let i = 0; i < 150; i++) g.fixed(1 / 60)
+    for (const k of out.owned) {
+      const v = g.vehicles.get(k), t = v.body.translation(), q = v.body.rotation()
+      let verts = 0
+      v.root.traverse(o => { if (o.isMesh) verts = Math.max(verts, o.geometry.attributes.position?.count ?? 0) })
+      const P = v.preset, ride = P.axles[0].radius - (P.wheelY - P.suspension.rest * 0.8)
+      out.cars.push({ k, y: +t.y.toFixed(3), ride: +ride.toFixed(3), up: +(1 - 2 * (q.x * q.x + q.z * q.z)).toFixed(3), verts })
+    }
+    return out
+  }, bundled)
+  assert(lot.owned.length === 3 && lot.paid === 24500 + 68000 + 38500, `the three bundled vehicles are sold at Maple Motors ($${lot.paid}, ${lot.owned.length} owned)`)
+  for (const c of lot.cars) {
+    assert(c.up > 0.98 && Math.abs(c.y - c.ride) < 0.2 && c.verts > 5000, `${c.k} sits upright on its wheels with its model loaded (y ${c.y} vs ride ${c.ride}, up ${c.up}, ${c.verts} vertices)`)
+  }
+  await view(solo, 'bundled-vehicles', [37, 4, 14], [37, 0.8, 2.5])
+  for (const k of bundled) {
+    await solo.evaluate(k => { const g = window.maple; g.enterVehicle(g.vehicles.get(k)) }, k)
+    await solo.keyboard.down('w')
+    await solo.evaluate(() => { const g = window.maple; for (let i = 0; i < 240; i++) g.fixed(1 / 60) })
+    await solo.keyboard.up('w')
+    const mph = await solo.evaluate(k => window.maple.vehicles.get(k).speed * 2.237, k)
+    assert(mph > 15, `${k} drives (${mph.toFixed(0)} mph after 4 s)`)
+    await solo.evaluate(k => { const g = window.maple; const v = g.vehicles.get(k); for (let i = 0; i < 300 && Math.abs(v.speed) > 0.3; i++) g.fixed(1 / 60); g.exitVehicle?.() }, k)
+  }
   await solo.evaluate(() => { document.querySelectorAll('.ui, .hud, #minimap').forEach(el => { el.style.visibility = 'hidden' }) })
   await view(solo, 'street-south', [-30, 10, 42], [-30, 3, 80])
   await view(solo, 'street-south-east', [34, 10, 42], [34, 3, 80])
@@ -154,7 +193,7 @@ try {
   editor.on('pageerror', e => errors.push(`editor: ${e.message}`))
   await editor.goto('/')
   await editor.getByRole('button', { name: 'Admin', exact: true }).click()
-  await editor.getByRole('tab', { name: 'Maple Street items' }).click()
+  await editor.getByRole('tab', { name: 'Items', exact: true }).click()
   await editor.getByRole('heading', { name: 'Your items' }).waitFor()
   await editor.locator('.ms-items-list li.is-draft', { hasText: 'Garden Settee' }).waitFor()
   assert(await editor.getByRole('button', { name: 'Save as draft' }).count() === 1, 'the editor offers Save as draft')

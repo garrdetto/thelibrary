@@ -187,6 +187,14 @@
     .car .fuel.low i { background: var(--bad); }
     .car button { grid-row: 1 / span 2; grid-column: 2; }
     #jobText { color: var(--mute); }
+    #homeBtn:disabled { opacity: 0.55; cursor: default; }
+    #ctxMenu { position: fixed; z-index: 30; min-width: 170px; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+    #ctxMenu[hidden] { display: none; }
+    #ctxMenu .ctx-title { font-size: 11px; font-weight: 700; color: var(--mute); padding: 3px 8px 5px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
+    #ctxMenu .ctx-item { text-align: left; padding: 7px 10px; border-radius: 6px; background: transparent; border: 1px solid transparent; font-weight: 600; }
+    #ctxMenu .ctx-item:hover:not(:disabled), #ctxMenu .ctx-item:focus-visible { background: rgba(242,181,68,0.16); border-color: var(--accent); outline: none; }
+    #ctxMenu .ctx-item:disabled { color: var(--mute); font-weight: 500; cursor: default; }
+    body[data-mode=build] #ctxMenu { display: none; }
     .keys { color: var(--mute); font-size: 11px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
     .keys b { color: var(--ink); font-weight: 600; }
 
@@ -315,6 +323,7 @@
     <div id="roomLabel">Connecting…</div>
     <button class="btn" id="mapBtn">Town map (M)</button>
     <button class="btn" id="wardrobeBtn">Wardrobe (C)</button>
+    <button class="btn accent" id="homeBtn" title="Back to your driveway (vehicles stay where you parked them). Once every 15 minutes.">Go home (H)</button>
     <h3>Garage</h3>
     <div id="garage"></div>
     <h3>Work</h3>
@@ -328,6 +337,8 @@
       <b>Shift</b><span>run</span>
       <b>Space</b><span>jump · handbrake</span>
       <b>E</b><span>get in/out · shop · use</span>
+      <b>Right-click</b><span>vehicle menu · Drive · doors</span>
+      <b>H</b><span>go home (every 15 min)</span>
       <b>F</b><span>fill up at a pump</span>
       <b>T</b><span>hitch / unhitch trailer</span>
       <b>R</b><span>flip vehicle upright</span>

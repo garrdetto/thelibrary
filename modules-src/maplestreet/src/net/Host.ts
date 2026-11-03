@@ -7,7 +7,7 @@
 import { NeighborhoodLogic, Persisted } from '../../shared/RoomLogic';
 import { AUTOSAVE_EVERY_MS, type ClientMsg, type ServerMsg } from '../../shared/Protocol';
 import { store } from '../core/Storage';
-import { NpcTraffic } from '../../shared/Npc';
+import { NpcTraffic, obstaclesFrom } from '../../shared/Npc';
 
 export type Deliver = (to: string | '*', msg: ServerMsg, except?: string) => void;
 
@@ -27,7 +27,7 @@ export class Host {
       broadcast: (msg, except) => {
         if (msg.t === 'snap' && withNpcs) {
           const n = this.npcs.snapshot();
-          this.npcs.obstacles = [...msg.players, ...msg.vehicles].map(e => ({ x: e.x, z: e.z }));
+          this.npcs.obstacles = obstaclesFrom(msg.players, msg.vehicles);
           msg = { ...msg, players: [...msg.players, ...n.players], vehicles: [...msg.vehicles, ...n.vehicles] };
         }
         deliver('*', msg, except);

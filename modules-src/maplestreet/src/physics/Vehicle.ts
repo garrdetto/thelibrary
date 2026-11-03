@@ -11,6 +11,7 @@ import { mergeStatic } from '../core/Merge';
 import { MASK, Physics } from './Physics';
 import { wheelbaseOf } from '../../shared/Vehicles';
 import { wheelFor, wheelForCar, makeLights, paintFor, PRESETS, tintGlass, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { VehicleDoors } from './VehicleDoors';
 import { carStyleKey, conditionEffects, CRASH_MIN_DV, tuneEffects, type CarStyle, type OwnedCar } from '../../shared/Cars';
 import { applyDents, impactPoint } from './Dents';
 
@@ -28,6 +29,8 @@ export class Vehicle {
   readonly ctrl: RAPIER.DynamicRayCastVehicleController;
   readonly root = new THREE.Group();
   readonly lights: VehicleLights;
+  /** Opening doors, or null for open-air vehicles. */
+  readonly doors: VehicleDoors | null;
   private wheels: WheelVis[] = [];
   private headlamp: THREE.SpotLight | null = null;
   private steerAngle = 0;
@@ -39,6 +42,8 @@ export class Vehicle {
   private joint: RAPIER.ImpulseJoint | null = null;
   private unsubscribe: () => void = () => {};
   private shell: THREE.Group;
+  /** One paint material for the body and its doors, so a repaint reaches both. */
+  private paint: THREE.MeshPhysicalMaterial;
   styleKey = '';
   /** What crash damage does to the drive right now (from the owner's account). */
   private cond = conditionEffects(0);
@@ -71,10 +76,10 @@ export class Vehicle {
     // Explicit mass properties: low COM + box inertia = planted handling.
     const sx = c.hx * 2, sy = c.hy * 2, sz = c.hz * 2, m = P.mass;
     this.collider = physics.world.createCollider(
-      R.ColliderDesc.cuboid(c.hx, c.hy, c.hz)
+      physics.vehicleShape(c.hx, c.hy, c.hz)
         .setMassProperties(m, { x: 0, y: P.comY, z: 0 }, { x: (m / 12) * (sy * sy + sz * sz), y: (m / 12) * (sx * sx + sz * sz), z: (m / 12) * (sx * sx + sy * sy) }, { x: 0, y: 0, z: 0, w: 1 })
-        .setFriction(0.4)
-        .setCollisionGroups(MASK.vehicle),
+        .setFriction(0.3)
+        .setCollisionGroups(P.tongue ? MASK.trailer : MASK.vehicle),
       this.body,
     );
 
@@ -103,7 +108,10 @@ export class Vehicle {
     });
 
     this.lights = makeLights();
+    this.paint = paintFor(P, style);
     this.shell = this.buildShell(style);
+    this.doors = VehicleDoors.for(P.kind, this.paint, P.seat.z);
+    if (this.doors) this.root.add(this.doors.group);
     this.root.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(this.root);
     physics.track(this.body, this.root);
@@ -111,7 +119,9 @@ export class Vehicle {
   }
 
   private buildShell(style?: CarStyle | null) {
-    const body = this.preset.build(paintFor(this.preset, style), this.lights);
+    this.paint.copy(paintFor(this.preset, style));
+    this.paint.needsUpdate = true;
+    const body = this.preset.build(this.paint, this.lights);
     tintGlass(body, style?.tint);
     mergeStatic(body);
     applyDents(body, style?.dents);
@@ -293,9 +303,10 @@ export class Vehicle {
     this.ctrl.updateVehicle(dt, undefined, MASK.wheelRay);
   }
 
-  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night. */
-  updateVisuals(night: number, braking: boolean) {
+  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night; doors swing. */
+  updateVisuals(night: number, braking: boolean, dt = 0) {
     const P = this.preset;
+    this.doors?.update(dt, this.speed);
     this.wheels.forEach((w, i) => {
       const len = this.ctrl.wheelSuspensionLength(i) ?? P.suspension.rest;
       w.steer.position.y = P.wheelY - len;
