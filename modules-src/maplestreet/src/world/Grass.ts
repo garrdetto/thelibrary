@@ -11,7 +11,7 @@
 import * as THREE from 'three/webgpu';
 import { cos, float, instanceIndex, positionLocal, sin, time, uv, vec3 } from 'three/tsl';
 import { floorKey, objectCells, WorldState } from '../../shared/BuildRules';
-import { CIVIC_BLOCK, CURB_CUTS, DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, RectXZ, ROADS, SIDEWALKS, WORLD_HALF } from '../../shared/WorldLayout';
+import { CIVIC_BLOCK, CURB_CUTS, DEPOT, DOWNTOWN, drivewayRect, GAS_STATION, GRID_BLOCKS, RectXZ, ROADS, SIDEWALKS, TOWN_SQUARE, WORLD_HALF } from '../../shared/WorldLayout';
 import type { Lawn } from './Lawn';
 
 const RADIUS = 30;
@@ -98,6 +98,7 @@ export class Grass {
       { cx: g.canopy.x, cz: 28, sx: g.canopy.w + 14, sz: 36 },
       { cx: DEPOT.x, cz: DEPOT.z + 6, sx: DEPOT.w + 12, sz: DEPOT.d + 18 },
       CIVIC_BLOCK,
+      ...GRID_BLOCKS.filter(b => b !== TOWN_SQUARE).map(b => ({ cx: (b.x0 + b.x1) / 2, cz: (b.z0 + b.z1) / 2, sx: b.x1 - b.x0 + 2, sz: b.z1 - b.z0 + 2 })),
     ];
   }
 

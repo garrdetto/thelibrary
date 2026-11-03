@@ -7,7 +7,8 @@
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LOT_PRICE } from '../../shared/Economy';
-import { CIVIC_BLOCK, DEPOT, DOWNTOWN, drivewayRect, LotDef, makeLots, RectXZ, ROADS, SIDEWALKS, STREETS, TOWN_HALF, WORLD_HALF } from '../../shared/WorldLayout';
+import { CIVIC_BLOCK, DEPOT, DOWNTOWN, drivewayRect, GRID_AREA, LotDef, makeLots, RectXZ, ROADS, SIDEWALKS, STREETS, TOWN_HALF, WORLD_HALF } from '../../shared/WorldLayout';
+import { GRID_X, GRID_Z } from '../../shared/DowntownGrid';
 import { noNormalsMRT } from '../core/Engine';
 import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import { Physics } from '../physics/Physics';
@@ -60,7 +61,7 @@ export class Neighborhood {
 
   private buildGround() {
     const s = WORLD_HALF * 2;
-    const seg = 190;
+    const seg = 300;
     const geo = new THREE.PlaneGeometry(s, s, seg, seg).rotateX(-Math.PI / 2);
     const e = this.mats.get('grass');
     const p = geo.getAttribute('position'), uv = geo.getAttribute('uv');
@@ -167,6 +168,7 @@ export class Neighborhood {
     const blocked = (x: number, z: number) => {
       for (const r of ROADS) if (Math.abs(x - r.cx) < r.sx / 2 + 2 && Math.abs(z - r.cz) < r.sz / 2 + 2) return true;
       if (x > DOWNTOWN.x0 - 14 && x < DOWNTOWN.x1 + 8 && z > DOWNTOWN.z0 - 4 && z < DOWNTOWN.z1 + 4) return true;
+      if (x > GRID_AREA.x0 - 6 && x < GRID_AREA.x1 + 6 && z > GRID_AREA.z0 - 6 && z < GRID_AREA.z1 + 6) return true;
       if (Math.abs(x - DEPOT.x) < DEPOT.w / 2 + 10 && Math.abs(z - DEPOT.z) < DEPOT.d / 2 + 16) return true;
       if (Math.abs(x - CIVIC_BLOCK.cx) < CIVIC_BLOCK.sx / 2 + 3 && Math.abs(z - CIVIC_BLOCK.cz) < CIVIC_BLOCK.sz / 2 + 3) return true;
       return false;
@@ -185,7 +187,7 @@ export class Neighborhood {
       spots.push({ x: lot.x + 14 + R() * 8, z: bz, s: 0.9 + R() * 0.5, kind: R() < 0.3 ? 2 : Math.floor(R() * 2) });
     }
     // Woodland outside the ring: mostly spruce, with hardwoods mixed in.
-    for (let i = 0; i < 950; i++) {
+    for (let i = 0; i < 2200; i++) {
       const x = (R() * 2 - 1) * (WORLD_HALF - 10), z = (R() * 2 - 1) * (WORLD_HALF - 10);
       if (Math.abs(x) < TOWN_HALF.x && Math.abs(z) < TOWN_HALF.z) continue;
       if (blocked(x, z)) continue;
@@ -281,6 +283,16 @@ export class Neighborhood {
     }
     for (let x = 116; x <= 250; x += 20) for (const z of [-5.6, 5.6]) { this.lampPositions.push(new THREE.Vector3(x, 5.6, z)); this.lampReach.push(new THREE.Vector3(0, 0, -Math.sign(z))); }
     for (const x of [-100, -120, -140]) { this.lampPositions.push(new THREE.Vector3(x, 5.6, -5.6)); this.lampReach.push(new THREE.Vector3(0, 0, 1)); }
+    // Downtown grid: both sides of every street, staggered, and along the avenues.
+    for (const z of GRID_Z) for (let c = 0; c < GRID_X.length - 1; c++) for (const side of [-1, 1]) {
+      for (let x = GRID_X[c] + (side > 0 ? 20 : 30); x <= GRID_X[c + 1] - 14; x += 22) {
+        this.lampPositions.push(new THREE.Vector3(x, 5.6, z + side * 5.6)); this.lampReach.push(new THREE.Vector3(0, 0, -side));
+      }
+    }
+    for (const x of GRID_X.slice(1)) for (let r = 0; r < GRID_Z.length - 1; r++) for (const side of [-1, 1]) {
+      const z = (GRID_Z[r] + GRID_Z[r + 1]) / 2 + side * 10;
+      this.lampPositions.push(new THREE.Vector3(x + side * 5.6, 5.6, z)); this.lampReach.push(new THREE.Vector3(-side, 0, 0));
+    }
 
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x2b2e31, metalness: 0.6, roughness: 0.4 });
     const pole = new THREE.CylinderGeometry(0.07, 0.11, 6, 10).translate(0, 3, 0);

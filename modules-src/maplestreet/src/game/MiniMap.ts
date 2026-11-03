@@ -6,7 +6,7 @@
  * the map, an arrow on the rim points the way.
  */
 import type { WorldState } from '../../shared/BuildRules';
-import { BUILDINGS, CIVIC, DEPOT, GAS_STATION, ROADS } from '../../shared/WorldLayout';
+import { BUILDINGS, CIVIC, DEPOT, GAS_STATION, ROADS, TOWN_SQUARE_RECT } from '../../shared/WorldLayout';
 import { roadRoute, routeLength, type RoutePoint } from './RoadRoute';
 
 const METERS_ACROSS = 210;
@@ -67,6 +67,7 @@ export class MiniMap {
     }
     g.fillStyle = '#5a5d62';
     for (const r of ROADS) rect(r.cx, r.cz, r.sx, r.sz);
+    g.fillStyle = '#4f7d3a'; rect(TOWN_SQUARE_RECT.cx, TOWN_SQUARE_RECT.cz, TOWN_SQUARE_RECT.sx, TOWN_SQUARE_RECT.sz);
     for (const b of BUILDINGS) { g.fillStyle = '#b9b0a0'; rect(b.x, b.z, b.w, b.d); }
     for (const b of CIVIC) { g.fillStyle = b.kind === 'fire' ? '#c0392b' : '#2c5aa0'; rect(b.x, b.z, b.w, b.d); }
     g.fillStyle = '#d93a2b'; rect(GAS_STATION.canopy.x, GAS_STATION.canopy.z, GAS_STATION.canopy.w, GAS_STATION.canopy.d);

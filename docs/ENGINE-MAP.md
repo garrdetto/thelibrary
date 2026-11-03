@@ -168,6 +168,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/build/Thumbs.ts` — off-screen catalog thumbnails — `Game`.
 - `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps — `Game`.
 - `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear — `Neighborhood`.
+- `src/world/TownSquare.ts` — Maple Commons: lawn, paths, gazebo, clock tower, benches, beds, trees, lamps, plaque — `Downtown`.
 - `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), fire and police stations (apparatus bays, bay lights, flagpoles), depot, streetscape, showroom cars — `Neighborhood`.
 - `src/world/Facades.ts` — facade styles and window/storefront layouts shared by the painted textures (albedo, night glow, roughness/metalness) and the 3D trim — `Downtown`.
 - `src/world/GasStation.ts` — Gas & Go forecourt, canopy, islands, dispensers, pylon price sign, canopy light — `Downtown`.
@@ -200,6 +201,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: 60 lots on ten residential streets, roads and `ROAD_NAMES`, sidewalks (with their road side), shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
+- `shared/DowntownGrid.ts` — the downtown grid east of Market Ave: `GRID_X` / `GRID_Z`, `GRID_BLOCKS`, `TOWN_SQUARE`, `GRID_ROADS`, `GRID_SIDEWALKS`, `GRID_BUILDINGS` (parcels and landmarks) — `WorldLayout`, `Downtown`, `Neighborhood`, `Npc`.
 - `shared/Seed.ts` — simulated neighbors' roster, `seedNeighborhood`, `upgradeSeed` (once per `SEED_VERSION`) — `RoomLogic`.
 - `shared/HousePlans.ts` — seven house plans in lot-local coordinates (`Plot`) emitted as build ops — `Seed`.
 - `shared/Assets.ts` — asset status (`draft`, `published`, `retired`) — `CustomItems`, `CustomVehicles`, `src/server/maplestreet-assets.ts`, the admin editors.

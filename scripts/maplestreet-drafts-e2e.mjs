@@ -9,7 +9,7 @@
  *   2. The developer instance (?dev=1) loads drafts into its own solo save,
  *      and a draft item can be placed on a lot there.
  *   3. A fresh solo neighborhood has every starter house; screenshots of the
- *      streets, sidewalks and trees go to .e2e/.
+ *      streets, sidewalks, trees, Maple Commons and the downtown grid go to .e2e/.
  *   4. The admin item editor shows the draft badge and actions.
  *
  *   ADMIN_PASSWORD=… node scripts/maplestreet-drafts-e2e.mjs [baseUrl] [legacyItemId]
@@ -139,6 +139,9 @@ try {
   await view(solo, 'birch-street', [0, 10, -120], [0, 2, -160])
   await view(solo, 'avenue-sidewalk', [76, 2.2, 32], [84, 0.5, 8])
   await view(solo, 'overview', [0, 180, 150], [0, 0, 0])
+  await view(solo, 'maple-commons', [290, 14, -6], [312, 0, 30])
+  await view(solo, 'downtown-main', [372, 8, -2], [440, 6, -2])
+  await view(solo, 'downtown-overview', [300, 200, 260], [400, 0, 0])
   await solo.close()
 
   // ---------------------------------------------------------------- 4. editor
