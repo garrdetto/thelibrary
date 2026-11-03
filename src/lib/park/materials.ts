@@ -19,7 +19,7 @@ const TABLE: Record<number, Material> = {
   [M.concrete]: { rough: 0.9, metal: 0, layer: LAYER.concrete, scale: 0.7, bump: 0.8 },
   [M.wood]: { rough: 0.75, metal: 0, layer: LAYER.wood, scale: 0.45, bump: 0.9 },
   [M.fiberglass]: { rough: 0.24, metal: 0, layer: LAYER.gelcoat, scale: 0.8, coat: 0.85, bump: 0.15 },
-  [M.glass]: { rough: 0.06, metal: 0, layer: LAYER.none, scale: 1, f0: 0.08, coat: 0.4 },
+  [M.glass]: { rough: 0.05, metal: 0, layer: LAYER.none, scale: 1, f0: 0.14, coat: 0.5 },
   [M.foliage]: { rough: 0.82, metal: 0, layer: LAYER.grass, scale: 0.9, wrap: 0.55, bump: 0.6, f0: 0.025 },
   [M.bark]: { rough: 0.9, metal: 0, layer: LAYER.wood, scale: 1.6, bump: 1 },
   [M.cloth]: { rough: 0.95, metal: 0, layer: LAYER.painted, scale: 3, wrap: 0.25, bump: 0.3 },

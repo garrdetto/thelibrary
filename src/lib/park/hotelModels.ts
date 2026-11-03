@@ -1,12 +1,16 @@
 import { MeshBuilder, mat4, hexColor } from './gl'
 import type { Vec3 } from './gl'
-import { C } from './models'
+import { C, tag } from './models'
+import { M } from './materials'
 import { FLOOR_HEIGHT } from '../../../server/park/index.mjs'
 
 export type HotelLook = { kind: string; w: number; h: number; floors: number; primary: number; secondary: number; trim: number; roof: string; addons: Record<string, boolean>; front: 0 | 1 | 2 | 3 }
 
 const T = mat4.translation
 const GLASS = hexColor('#24384f'), GLASS_LIGHT = hexColor('#6f9cc4'), WATER = hexColor('#3aa7dc'), SAND = hexColor('#e8d29a'), LEAF = hexColor('#4f8f3a'), BARK = hexColor('#6b4a30'), STONE = hexColor('#8f8c86')
+tag(M.glass, GLASS, GLASS_LIGHT)
+tag(M.water, WATER)
+tag(M.stone, STONE)
 const rgb = (n: number): Vec3 => [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255]
 const shade = (c: Vec3, f: number): Vec3 => [c[0] * f, c[1] * f, c[2] * f]
 
@@ -70,6 +74,8 @@ function skylineTower(b: MeshBuilder, W: number, H: number, l: HotelLook, p: Vec
     const z = podium + 0.3 + f * FLOOR_HEIGHT + 0.9
     b.box(null, 0, 0, z, tw * 2 + 0.08, th * 2 + 0.08, 1.5, GLASS)
     b.box(null, 0, 0, z + 1.5, tw * 2 + 0.1, th * 2 + 0.1, 0.12, s)
+    for (let x = -tw + 0.8; x < tw; x += 1.6) for (const y of [-th - 0.06, th + 0.06]) b.box(null, x, y, z, 0.08, 0.06, 1.5, s)
+    for (let y = -th + 0.8; y < th; y += 1.6) for (const x of [-tw - 0.06, tw + 0.06]) b.box(null, x, y, z, 0.06, 0.08, 1.5, s)
   }
   let roofTop = top + 0.3
   if (l.roof === 'crown') { b.box(null, 0, 0, roofTop, tw * 1.6, th * 1.6, 2.2, s); b.box(null, 0, 0, roofTop + 2.2, tw * 1.1, th * 1.1, 1.8, t); roofTop += 4 }

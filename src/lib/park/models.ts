@@ -15,7 +15,7 @@ const S = mat4.scaling
 
 const colorKey = (r: number, g: number, b: number) => (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
 const AUTO_MATERIALS = new Map<number, number>()
-const tag = (mat: number, ...colors: Vec3[]) => { for (const c of colors) AUTO_MATERIALS.set(colorKey(c[0], c[1], c[2]), mat) }
+export const tag = (mat: number, ...colors: Vec3[]) => { for (const c of colors) AUTO_MATERIALS.set(colorKey(c[0], c[1], c[2]), mat) }
 tag(M.structural, C.dark)
 tag(M.chrome, C.gold, hexColor('#d8b24a'))
 tag(M.wood, C.wood, C.darkWood, hexColor('#7a4a2c'), hexColor('#8b6038'), hexColor('#563b27'), hexColor('#786247'), hexColor('#b39a73'), hexColor('#c9a27a'), hexColor('#6b4a2c'))
@@ -134,11 +134,29 @@ export function treeModel(kind: string): MeshBuilder {
     b.sphere(null, 0, 0, 3.45, 0.55, C.leafDark, 1, 10, 14, 1, 0.08, shade)
   }
   const height = TREE_HEIGHT[kind] ?? 0
+  if (height) canopyAO(b)
   if (height) b.retag((r, g, bb, tint, _z, mat) => mat === M.paint && tint > 0.5 && g > r && g > bb ? M.foliage : mat === M.ridePaint && g > r && g > bb ? M.foliage : undefined, (z, mat) => {
     const k = Math.max(0, Math.min(1, z / height))
     return mat === M.foliage ? k * k : mat === M.bark ? k * k * 0.45 : 0
   })
   return b
+}
+
+function canopyAO(b: MeshBuilder) {
+  const d = b.data
+  let cx = 0, cy = 0, cz = 0, n = 0
+  for (let i = 0; i < d.length; i += STRIDE) if (d[i + 10] === M.foliage || (d[i + 9] > 0.5 && d[i + 7] > d[i + 6])) { cx += d[i]; cy += d[i + 1]; cz += d[i + 2]; n++ }
+  if (!n) return
+  cx /= n; cy /= n; cz /= n
+  let reach = 0
+  for (let i = 0; i < d.length; i += STRIDE) reach = Math.max(reach, Math.hypot(d[i] - cx, d[i + 1] - cy, (d[i + 2] - cz) * 1.2))
+  for (let i = 0; i < d.length; i += STRIDE) {
+    const dx = d[i] - cx, dy = d[i + 1] - cy, dz = d[i + 2] - cz, l = Math.hypot(dx, dy, dz) || 1
+    const outward = (dx * d[i + 3] + dy * d[i + 4] + dz * d[i + 5]) / l
+    const depth = Math.min(1, Math.hypot(dx, dy, dz * 1.2) / (reach || 1))
+    const under = Math.max(0, Math.min(1, (d[i + 2] - (cz - reach * 0.6)) / (reach * 1.2 || 1)))
+    d[i + 11] = Math.min(d[i + 11], 0.45 + 0.55 * Math.min(1, 0.35 + depth * 0.5 + Math.max(0, outward) * 0.25) * (0.55 + under * 0.45))
+  }
 }
 
 const TREE_HEIGHT: Record<string, number> = { oak: 7.5, pine: 9, birch: 8, palm: 7.5, bush: 2.2, flowers: 1.4, hedge: 2.2, topiary: 4 }
@@ -728,7 +746,7 @@ export function flatRideModel(kind: string, w: number, h: number): RideModel {
   return { base, parts }
 }
 
-export function carModel(style: string, front: boolean, riders: number): MeshBuilder {
+export function carModel(style: string, front: boolean, riders: number, near = false): MeshBuilder {
   const b = new MeshBuilder()
   if (style === 'kart') {
     b.box(null, 0, 0, 0.14, 1.12, 0.78, 0.28, front ? C.red : C.blue, 1)
@@ -758,6 +776,7 @@ export function carModel(style: string, front: boolean, riders: number): MeshBui
   }
   const inverted = style === 'inverted'
   const z0 = inverted ? -2.1 : 0.15
+  if (near) return detailedCar(b, front, riders, z0, inverted)
   b.box(null, 0, 0, z0, 2.0, 1.35, 0.75, C.white, 1)
   if (front) b.quad(null, [1.0, -0.67, z0 + 0.75], [1.0, 0.67, z0 + 0.75], [1.5, 0.5, z0 + 0.2], [1.5, -0.5, z0 + 0.2], C.white, 1)
   b.box(null, 0.1, 0, z0 + 0.7, 0.18, 1.2, 0.5, C.dark)
@@ -766,5 +785,54 @@ export function carModel(style: string, front: boolean, riders: number): MeshBui
   else for (const x of [-0.7, 0.7]) for (const y of [-0.6, 0.6]) b.cylinder(null, x, y, -0.15, 0.16, 0.16, 0.12, 6, C.dark, 0, true)
   const seats = [[0.35, -0.32], [0.35, 0.32], [-0.35, -0.32], [-0.35, 0.32]]
   for (let k = 0; k < Math.min(riders, 4); k++) b.sphere(null, seats[k][0], seats[k][1], z0 + 1.15, 0.2, C.skin, 0, 3, 6)
+  return b
+}
+
+const CHROME = hexColor('#c9ced6'), TYRE = hexColor('#1e1f22'), LENS = hexColor('#fff3c4')
+
+function detailedCar(b: MeshBuilder, front: boolean, riders: number, z0: number, inverted: boolean) {
+  b.mat = M.ridePaint
+  b.box(null, 0, 0, z0 + 0.12, 1.86, 1.35, 0.5, C.white, 1)
+  for (const y of [-0.62, 0.62]) b.limb([-0.93, y, z0 + 0.62], [0.93, y, z0 + 0.62], 0.07, 0.07, C.white, 1, 10)
+  b.limb([-0.93, -0.62, z0 + 0.62], [-0.93, 0.62, z0 + 0.62], 0.07, 0.07, C.white, 1, 10)
+  b.limb([0.93, -0.62, z0 + 0.62], [0.93, 0.62, z0 + 0.62], 0.07, 0.07, C.white, 1, 10)
+  b.box(null, 0, 0, z0, 1.7, 1.2, 0.14, C.white, 1)
+  if (front) {
+    b.quad(null, [0.93, -0.67, z0 + 0.62], [0.93, 0.67, z0 + 0.62], [1.45, 0.5, z0 + 0.22], [1.45, -0.5, z0 + 0.22], C.white, 1)
+    b.quad(null, [1.45, -0.5, z0 + 0.22], [1.45, 0.5, z0 + 0.22], [1.3, 0.55, z0 + 0.05], [1.3, -0.55, z0 + 0.05], C.white, 1)
+    b.mat = M.lamp
+    for (const y of [-0.34, 0.34]) b.sphere(null, 1.38, y, z0 + 0.3, 0.07, LENS, 0, 5, 8)
+  }
+  for (const x of [0.32, -0.42]) {
+    b.mat = M.cloth
+    b.box(null, x - 0.18, 0, z0 + 0.62, 0.14, 1.15, 0.62, C.dark)
+    b.sphere(null, x - 0.18, -0.3, z0 + 1.25, 0.15, C.dark, 0, 4, 8, 0.6)
+    b.sphere(null, x - 0.18, 0.3, z0 + 1.25, 0.15, C.dark, 0, 4, 8, 0.6)
+    b.box(null, x + 0.04, 0, z0 + 0.6, 0.42, 1.12, 0.06, C.dark)
+    b.mat = M.chrome
+    for (const y of [-0.3, 0.3]) {
+      b.limb([x - 0.1, y - 0.2, z0 + 1.15], [x + 0.18, y - 0.2, z0 + 0.86], 0.025, 0.025, CHROME, 0, 6)
+      b.limb([x - 0.1, y + 0.2, z0 + 1.15], [x + 0.18, y + 0.2, z0 + 0.86], 0.025, 0.025, CHROME, 0, 6)
+      b.limb([x + 0.18, y - 0.2, z0 + 0.86], [x + 0.18, y + 0.2, z0 + 0.86], 0.03, 0.03, CHROME, 0, 6)
+    }
+  }
+  b.mat = M.structural
+  if (inverted) { b.box(null, 0, 0, -1.4, 0.4, 0.4, 1.4, C.dark); b.box(null, 0, 0, -0.1, 1.6, 0.9, 0.3, C.dark) }
+  else {
+    b.box(null, 0, 0, z0 - 0.22, 1.5, 0.3, 0.2, C.dark)
+    for (const x of [-0.62, 0.62]) for (const y of [-0.55, 0.55]) {
+      b.mat = M.structural; b.box(null, x, y, z0 - 0.3, 0.42, 0.14, 0.32, C.dark)
+      b.mat = M.rubber
+      for (const [dx, dz, ax] of [[-0.13, -0.18, 0], [0.13, -0.18, 0], [0, -0.42, 1]] as const) {
+        const m = mat4.chain(T(x + dx, y + (ax ? 0 : y > 0 ? 0.08 : -0.08), z0 + dz), mat4.rotX(Math.PI / 2))
+        b.cylinder(m, 0, 0, -0.05, 0.09, 0.09, 0.1, 10, TYRE)
+        b.mat = M.chrome; b.cylinder(m, 0, 0, -0.06, 0.035, 0.035, 0.12, 6, CHROME); b.mat = M.rubber
+      }
+    }
+  }
+  b.mat = M.skin
+  const seats = [[0.32, -0.3], [0.32, 0.3], [-0.42, -0.3], [-0.42, 0.3]]
+  for (let k = 0; k < Math.min(riders, 4); k++) b.sphere(null, seats[k][0], seats[k][1], z0 + 1.15, 0.2, C.skin, 0, 5, 8)
+  b.mat = -1
   return b
 }
