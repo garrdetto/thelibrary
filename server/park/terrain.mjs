@@ -279,7 +279,7 @@ function generateVersus(scenario, players, rng) {
   return { map, scenery: clear, entrances }
 }
 
-export function terrainEdit(map, x0, y0, x1, y1, op) {
+export function terrainEdit(map, x0, y0, x1, y1, op, levelTo = null) {
   const changes = new Map()
   const w = map.w + 1
   const get = (x, y) => changes.has(y * w + x) ? changes.get(y * w + x) : map.corners[y * w + x]
@@ -288,7 +288,7 @@ export function terrainEdit(map, x0, y0, x1, y1, op) {
   const ys = [Math.max(0, Math.min(y0, y1)), Math.min(map.h, Math.max(y0, y1) + 1)]
   let min = Infinity, max = -Infinity
   for (let y = ys[0]; y <= ys[1]; y++) for (let x = xs[0]; x <= xs[1]; x++) { const v = get(x, y); min = Math.min(min, v); max = Math.max(max, v) }
-  const target = op === 'raise' ? (min === max ? max + 1 : max) : op === 'lower' ? (min === max ? min - 1 : min) : Math.round((min + max) / 2)
+  const target = op === 'raise' ? (min === max ? max + 1 : max) : op === 'lower' ? (min === max ? min - 1 : min) : Number.isInteger(levelTo) ? levelTo : Math.round((min + max) / 2)
   if (target < 0 || target > MAX_LAND) return null
   const queue = []
   for (let y = ys[0]; y <= ys[1]; y++) for (let x = xs[0]; x <= xs[1]; x++) { if (get(x, y) !== target) { set(x, y, target); queue.push([x, y]) } }

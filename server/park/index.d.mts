@@ -131,11 +131,13 @@ export function mechanicJobDistance(state: ParkState, mechanic: Staff, ride: Ent
 export function objectiveText(objective: Objective): string
 export function parkValue(state: ParkState, park: number): number
 export function companyValue(state: ParkState, park: number): number
-export function terrainPlan(state: ParkState, park: number, r: { x0: number; y0: number; x1: number; y1: number }, op: string): { error?: string; cost?: number }
+export function terrainPlan(state: ParkState, park: number, r: { x0: number; y0: number; x1: number; y1: number }, op: string, levelTo?: number | null): { error?: string; cost?: number }
 export function encodeDynamic(state: ParkState, sinceNews?: number): unknown
 export function applyDynamic(state: ParkState, dyn: unknown): void
 export function encodeGuests(guests: Guest[]): Int32Array
 export function decodeGuests(buffer: ArrayBuffer | Int32Array, previous?: Guest[]): Guest[]
 export function guestDetail(state: ParkState, id: number): Record<string, unknown> | null
 export function checksum(state: ParkState): number
-export function queueLine(state: ParkState, ride: Entity): { tiles: [number, number][]; entry: [number, number] | null }
+export function queueLine(state: ParkState, ride: Entity): { tiles: [number, number][]; entry: [number, number] | null; join?: [number, number] | null; direct?: boolean }
+export function exitLine(state: ParkState, ride: Entity): { tiles: [number, number][]; entry: [number, number] | null; join: [number, number] | null; direct?: boolean }
+export function levelStartHeight(map: ParkState['map'], r: { x0: number; y0: number; x1: number; y1: number }, sx?: number, sy?: number): number | null

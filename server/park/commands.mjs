@@ -74,9 +74,26 @@ function removeEntity(state, entity) {
   delete state.entities[entity.id]
 }
 
-export function terrainPlan(state, park, r, op) {
+// Height of the corner a Level land drag started from: the outer corner of the
+// start tile when the drag began at an edge of the area, otherwise the tile's
+// rounded average. Null when no start tile was sent (older clients).
+export function levelStartHeight(map, r, sx, sy) {
+  if (!Number.isInteger(sx) || !Number.isInteger(sy) || sx < r.x0 || sx > r.x1 || sy < r.y0 || sy > r.y1) return null
+  const w = map.w + 1, c = (x, y) => map.corners[y * w + x]
+  const edgeX = r.x0 !== r.x1 && (sx === r.x0 || sx === r.x1), edgeY = r.y0 !== r.y1 && (sy === r.y0 || sy === r.y1)
+  if (edgeX || edgeY) {
+    const cx = sx === r.x1 && r.x0 !== r.x1 ? sx + 1 : sx
+    const cy = sy === r.y1 && r.y0 !== r.y1 ? sy + 1 : sy
+    if (edgeX && edgeY) return c(cx, cy)
+    // Dragged along one axis: use the lower of the two corners on the start edge.
+    return edgeX ? Math.min(c(cx, sy), c(cx, sy + 1)) : Math.min(c(sx, cy), c(sx + 1, cy))
+  }
+  return Math.round((c(sx, sy) + c(sx + 1, sy) + c(sx, sy + 1) + c(sx + 1, sy + 1)) / 4)
+}
+
+export function terrainPlan(state, park, r, op, levelTo = null) {
   const map = state.map
-  const changes = terrainEdit(map, r.x0, r.y0, r.x1, r.y1, op)
+  const changes = terrainEdit(map, r.x0, r.y0, r.x1, r.y1, op, levelTo)
   if (!changes) return { error: 'The land cannot go any higher or lower here.' }
   if (!changes.size) return { error: 'The land is already level.' }
   const tiles = tilesTouchingCorners(map, changes.keys())
@@ -282,7 +299,8 @@ const HANDLERS = {
   terrain(state, cmd, park) {
     const r = rect(cmd, state.map)
     if (!r || !['raise', 'lower', 'level'].includes(cmd.op)) return fail('Choose an area of land to reshape.')
-    const plan = terrainPlan(state, park, r, cmd.op)
+    const levelTo = cmd.op === 'level' ? levelStartHeight(state.map, r, cmd.sx, cmd.sy) : null
+    const plan = terrainPlan(state, park, r, cmd.op, levelTo)
     if (plan.error) return fail(plan.error)
     if (!canAfford(state, park, plan.cost)) return fail(`You need $${plan.cost} to do that.`)
     applyTerrainPlan(state, park, plan)
@@ -392,6 +410,68 @@ const HANDLERS = {
     spend(state, park, cost, 'construction')
     pathsChanged(state)
     return ok({ cost, warning: blocked })
+  },
+
+  // Auto-finish for the path builder: carry a raised walkway or stairway on from
+  // its last tile, stepping down with stairs and gentle slopes until it reaches
+  // the ground or meets an existing path. Prefers straight ahead, then turns.
+  // All or nothing: if no way down is found, nothing is built.
+  pathFinish(state, cmd, park) {
+    const map = state.map
+    if (!isInt(cmd.x, 0, map.w - 1) || !isInt(cmd.y, 0, map.h - 1) || !isInt(cmd.dir, 0, 3) || ![1, 2, 4].includes(cmd.kind) || cmd.color !== undefined && !isInt(cmd.color, 0, 0xffffff)) return fail('Choose the end of a path to finish from.')
+    const start = tileIndex(map, cmd.x, cmd.y)
+    if (!map.path[start] || map.owner[start] !== park) return fail('Start from the end of one of your paths.')
+    if ((map.pathElevation[start] ?? 0) === 0 && map.path[start] !== 4) return fail('This path is already on the ground.')
+    const p = state.parks[park]
+    const saved = new Map()
+    const before = { cash: p.cash, construction: p.month.construction, structVersion: state.structVersion, pathVersion: state.pathVersion }
+    const touch = i => { if (!saved.has(i)) saved.set(i, [map.path[i], map.pathElevation[i], map.pathColor[i], map.pathAdd[i]]) }
+    const rollback = () => {
+      for (const [i, [kind, elevation, color, add]] of saved) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = color; map.pathAdd[i] = add }
+      p.cash = before.cash; p.month.construction = before.construction
+      state.structVersion = before.structVersion; state.pathVersion = before.pathVersion; state.fields.clear()
+    }
+    let x = cmd.x, y = cmd.y, dir = cmd.dir, pieces = 0, cost = 0
+    const visited = new Set([start])
+    for (let step = 0; step < 96; step++) {
+      const deck = pathHeightAt(map, (x + 0.5) * 4, (y + 0.5) * 4)
+      let placed = false
+      for (const turn of [0, 1, 3]) {
+        const d = (dir + turn) % 4, nx = x + DIRS[d][0], ny = y + DIRS[d][1]
+        if (!inMap(map, nx, ny)) continue
+        const ni = tileIndex(map, nx, ny)
+        if (visited.has(ni)) continue
+        if (map.path[ni]) {
+          // Joined an existing path at a reachable height: done.
+          if (map.owner[ni] === park && Math.abs(pathHeightAt(map, (nx + 0.5) * 4, (ny + 0.5) * 4) - deck) <= (map.path[ni] === 3 ? STAIR_STEP_LIMIT : PATH_STEP_LIMIT)) {
+            pathsChanged(state)
+            return ok({ cost, pieces })
+          }
+          continue
+        }
+        const base = Math.max(tileMax(map, nx, ny), map.water[ni] >= 0 ? map.water[ni] + 0.1 : -Infinity)
+        const above = deck - base
+        if (above < -0.3) continue
+        const over = isWater(map, ni, nx, ny)
+        let kind = cmd.kind, elevation
+        if (above >= 1 - 0.01) { kind = 3; elevation = Math.round((deck - 1 - base) / UNIT) }
+        else if (above >= 0.5 - 0.01) elevation = Math.round((deck - 0.5 - base) / UNIT)
+        else elevation = 0
+        if (over && elevation === 0 && kind !== 4) { kind = 4 }
+        if (elevation < 0 || elevation > 24) continue
+        touch(ni)
+        const res = HANDLERS.path(state, { t: 'path', kind, elevation, color: cmd.color, x0: nx, y0: ny, x1: nx, y1: ny }, park)
+        if (!res.ok) continue
+        cost += res.cost ?? 0; pieces++
+        visited.add(ni)
+        x = nx; y = ny; dir = d; placed = true
+        if (elevation === 0 && kind !== 3) return ok({ cost, pieces })
+        break
+      }
+      if (!placed) { rollback(); return fail('There is no clear way down from here. Turn the path or clear the way, then try again.') }
+    }
+    rollback()
+    return fail('The path is too high to finish automatically. Build more of it by hand first.')
   },
 
   pathPaint(state, cmd, park) {
@@ -648,7 +728,7 @@ const HANDLERS = {
     pathsChanged(state)
     const front = frontTile(state.entities[id])
     const connected = inMap(map, front.x, front.y) && (isWalkPath(map.path[tileIndex(map, front.x, front.y)]) || map.path[tileIndex(map, front.x, front.y)] === 2)
-    return ok({ id, cost, warning: connected ? null : `Connect the ${role} to a ${role === 'entrance' ? 'queue line or footpath' : 'footpath'}.` })
+    return ok({ id, cost, warning: connected ? null : `Connect the ${role} to a queue line or footpath.` })
   },
 
   coaster(state, cmd, park) {
