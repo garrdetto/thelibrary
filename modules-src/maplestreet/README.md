@@ -48,6 +48,7 @@ Every admin-published asset (Buy items and vehicles today) lives in one D1 table
 
 - Drafts are listed only to the signed-in administrator, and only when the request asks for them (`?drafts=1`). The shared-world Durable Object never loads them, so players can't see or place them.
 - **Developer instance:** `/modules/maplestreet.html?dev=1` (`src/core/DevMode.ts`). The start screen offers only a private solo game with its own save (`maplestreet/dev/v1`), loads the admin's drafts as real catalog and dealer entries, and says how many came in. A DEV badge stays on screen. Add `&solo=1` to skip the start screen.
+- **Dev panel (F8)** (`src/game/DevPanel.ts`): every published and draft item and vehicle, drafts first. **Place** opens Buy mode on your lot with that item; **Drive** brings the vehicle out for a test drive where you stand, owned or not. Editing and publishing stay in the admin editors.
 - Drafts are never written to the offline caches, so a later normal session can't pick them up.
 
 - `shared/CustomItems.ts` turns each record into a `custom:<uuid>` catalog entry (`registerCustomItems`). The shared-world Durable Object registers them before it loads the world, and `src/build/CustomModels.ts` does the same in the page before any mode starts (the list is cached in `localStorage` for offline solo play), so `RoomLogic` validates and prices them like any other item.

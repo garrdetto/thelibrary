@@ -186,6 +186,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/idle/seated pose — `Character.ts`.
 - `src/avatar/HairAndHats.ts` — long hair, buns, hats on the head bone — `AvatarModel`.
 - `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids).
+- `src/game/DevPanel.ts` — developer instance panel (F8): published and draft items and vehicles with Place and Drive — `main` (only with `?dev=1`), `Game.devPlace` / `devDrive`.
 - `src/game/WardrobeUI.ts` — wardrobe / character creator and Maple Threads shop panel — `Game`.
 - `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation — `RoomLogic`, `Economy`, `Npc`, client.
 - `tools/build-characters.mjs` — offline scan → rigged avatar + mask pipeline (not part of the build).
