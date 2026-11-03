@@ -1,0 +1,163 @@
+/**
+ * End-to-end check of Maple Street drafts and the reseeded neighborhood
+ * against a local dev server (pnpm dev, with ADMIN_PASSWORD in .dev.vars and
+ * the local D1 migrated):
+ *
+ *   1. /api/maplestreet-items: a draft is hidden from players, listed to the
+ *      admin with ?drafts=1, and goes live when published. Items published
+ *      through the old per-kind table are still listed.
+ *   2. The developer instance (?dev=1) loads drafts into its own solo save,
+ *      and a draft item can be placed on a lot there.
+ *   3. A fresh solo neighborhood has every starter house; screenshots of the
+ *      streets, sidewalks and trees go to .e2e/.
+ *   4. The admin item editor shows the draft badge and actions.
+ *
+ *   ADMIN_PASSWORD=… node scripts/maplestreet-drafts-e2e.mjs [baseUrl] [legacyItemId]
+ */
+import { chromium } from 'playwright'
+import { mkdirSync, readFileSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+
+const BASE = process.argv[2] ?? 'http://localhost:3000'
+const LEGACY_ID = process.argv[3] ?? null
+const PASSWORD = process.env.ADMIN_PASSWORD ?? 'local-admin-pass'
+const OUT = resolve(import.meta.dirname, '../.e2e')
+mkdirSync(OUT, { recursive: true })
+const root = resolve(import.meta.dirname, '..')
+
+const log = (...args) => console.log('•', ...args)
+const assert = (ok, message) => { if (!ok) throw new Error(`FAILED: ${message}`); log('ok', message) }
+const launchArgs = { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] }
+const browser = await chromium.launch(launchArgs)
+const admin = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 } })
+const guest = await browser.newContext({ baseURL: BASE, viewport: { width: 1440, height: 900 } })
+const headers = { Origin: BASE, 'Content-Type': 'application/json' }
+const errors = []
+
+const shot = async (page, name) => { await page.screenshot({ path: join(OUT, `${name}.png`) }); log('screenshot', name) }
+
+async function view(page, name, eye, at) {
+  await page.evaluate(({ eye, at }) => {
+    const g = window.maple
+    g.cam.update = () => {}
+    g.engine.camera.position.set(eye[0], eye[1], eye[2])
+    g.engine.camera.lookAt(at[0], at[1], at[2])
+  }, { eye, at })
+  await page.waitForTimeout(4000)
+  await shot(page, name)
+}
+
+try {
+  const login = await admin.request.post('/api/pool-account', { headers, data: { action: 'login', username: 'stoegbauer', password: PASSWORD } })
+  assert(login.ok(), 'admin signs in')
+
+  // ---------------------------------------------------------------- 1. API
+  const before = await (await admin.request.get('/api/maplestreet-items?drafts=1')).json()
+  if (LEGACY_ID) assert(before.items.some(i => i.id === LEGACY_ID && i.status === 'published'), 'an item from the old table is copied into the asset registry')
+
+  const model = readFileSync(join(root, 'public/models/maplestreet/furniture/bench.glb'))
+  const publish = async (name, status) => {
+    const res = await admin.request.post('/api/maplestreet-items', {
+      headers: { Origin: BASE },
+      multipart: {
+        model: { name: 'bench.glb', mimeType: 'model/gltf-binary', buffer: model },
+        name, price: '320', scale: JSON.stringify({ x: 1, y: 1, z: 1 }), room: 'outdoor', func: 'seating',
+        indoor: 'false', solid: 'true', yaw: '0', w: '2', d: '1', h: '0.9', status,
+      },
+    })
+    assert(res.status() === 201, `${status} "${name}" is saved (${res.status()})`)
+    return (await res.json()).item
+  }
+  const draft = await publish('Porch Glider', 'draft')
+  assert(draft.status === 'draft' && draft.active === true, 'it comes back as an active draft')
+  const second = await publish('Garden Settee', 'draft')
+
+  const publicList = await (await guest.request.get('/api/maplestreet-items?drafts=1')).json()
+  assert(publicList.drafts === false && !publicList.items.some(i => i.id === draft.id), 'players never see drafts, even when they ask')
+  const plainAdmin = await (await admin.request.get('/api/maplestreet-items')).json()
+  assert(!plainAdmin.items.some(i => i.id === draft.id), 'the game’s normal list leaves drafts out for the admin too')
+  const adminList = await (await admin.request.get('/api/maplestreet-items?drafts=1')).json()
+  assert(adminList.drafts === true && adminList.items.some(i => i.id === draft.id), 'the admin gets drafts with ?drafts=1')
+
+  const live = await admin.request.patch('/api/maplestreet-items', { headers, data: { id: draft.id, status: 'published' } })
+  assert(live.ok() && (await live.json()).item.status === 'published', 'publishing a draft makes it live')
+  const afterPublish = await (await guest.request.get('/api/maplestreet-items')).json()
+  assert(afterPublish.items.some(i => i.id === draft.id), 'players see it once published')
+  const retired = await admin.request.patch('/api/maplestreet-items', { headers, data: { id: draft.id, active: false } })
+  assert((await retired.json()).item.status === 'retired', 'the old retire request still works')
+  const forbidden = await guest.request.patch('/api/maplestreet-items', { headers, data: { id: second.id, status: 'published' } })
+  assert(forbidden.status() === 401 || forbidden.status() === 403, 'only the admin can change status')
+  const vehicles = await admin.request.get('/api/maplestreet-vehicles?drafts=1')
+  assert(vehicles.ok() && (await vehicles.json()).drafts === true, 'vehicles list drafts for the admin')
+
+  // ---------------------------------------------------------------- 2. developer instance
+  const dev = await admin.newPage()
+  dev.on('pageerror', e => errors.push(`dev: ${e.message}`))
+  await dev.addInitScript(() => { localStorage.setItem('maplestreet/body', 'female') })
+  await dev.goto('/modules/maplestreet.html?dev=1&webgl&noao')
+  await dev.waitForFunction(() => /Drafts loaded/.test(document.querySelector('.dev-note')?.textContent ?? ''), null, { timeout: 60000 })
+  const note = await dev.locator('.dev-note').innerText()
+  assert(/1 item/.test(note), `the start screen reports the draft (${note})`)
+  await shot(dev, 'dev-start')
+  await dev.locator('#playWorld').click()
+  await dev.waitForFunction(() => window.maple && window.maple.account, null, { timeout: 180000 })
+  const label = await dev.evaluate(() => window.maple.net?.label ?? '')
+  assert(/Developer instance/.test(label), `runs on the developer solo authority (${label})`)
+  const placed = await dev.evaluate(async id => {
+    const g = window.maple
+    const world = g.houses.world
+    const lot = Object.values(world.lots).find(l => !l.owner)
+    g.send({ t: 'build', seq: 9001, op: { op: 'buyLot', lotId: lot.id } })
+    await new Promise(r => setTimeout(r, 800))
+    const front = lot.front === '+z' ? lot.z + lot.d - 20 : lot.z + 18
+    g.send({ t: 'build', seq: 9002, op: { op: 'object', lotId: lot.id, obj: { id: 'devcheck01', catalogId: `custom:${id}`, gx: lot.x + 16, gz: front, rot: 0, level: 0 } } })
+    await new Promise(r => setTimeout(r, 800))
+    return { lot: lot.id, owner: world.lots[lot.id].owner, placed: !!world.builds[lot.id].objects.devcheck01 }
+  }, second.id)
+  assert(placed.placed, `a draft item is placed on ${placed.lot} in the developer instance`)
+  await dev.evaluate(() => window.maple.houses && dispatchEvent(new Event('pagehide')))
+  const saves = await dev.evaluate(() => ({ dev: !!localStorage.getItem('maplestreet/dev/v1'), solo: !!localStorage.getItem('maplestreet/offline/v2') }))
+  assert(saves.dev && !saves.solo, 'the developer instance keeps its own save')
+  await shot(dev, 'dev-game')
+  await dev.close()
+
+  // ---------------------------------------------------------------- 3. fresh neighborhood
+  const solo = await guest.newPage()
+  solo.on('pageerror', e => errors.push(`solo: ${e.message}`))
+  await solo.addInitScript(() => { localStorage.setItem('maplestreet/body', 'male'); localStorage.setItem('maplestreet/name', 'tester') })
+  await solo.goto('/modules/maplestreet.html?solo=1&webgl&noao')
+  await solo.waitForFunction(() => window.maple && window.maple.account, null, { timeout: 180000 })
+  const census = await solo.evaluate(() => {
+    const lots = Object.values(window.maple.houses.world.lots)
+    return { neighbors: lots.filter(l => l.owner?.startsWith('npc-')).length, open: lots.filter(l => !l.owner).length, seed: window.maple.houses.world.seedVersion }
+  })
+  assert(census.neighbors === 28 && census.open >= 30 && census.seed === 2, `28 starter houses and ${census.open} lots for sale`)
+  await solo.evaluate(() => { document.querySelectorAll('.ui, .hud, #minimap').forEach(el => { el.style.visibility = 'hidden' }) })
+  await view(solo, 'street-south', [-30, 10, 42], [-30, 3, 80])
+  await view(solo, 'street-south-east', [34, 10, 42], [34, 3, 80])
+  await view(solo, 'main-north', [-20, 9, 2], [-20, 3, -30])
+  await view(solo, 'main-north-east', [30, 9, 2], [30, 3, -30])
+  await view(solo, 'birch-street', [0, 10, -120], [0, 2, -160])
+  await view(solo, 'avenue-sidewalk', [76, 2.2, 32], [84, 0.5, 8])
+  await view(solo, 'overview', [0, 180, 150], [0, 0, 0])
+  await view(solo, 'woods', [-85, 8, 120], [-160, 6, 150])
+  await solo.close()
+
+  // ---------------------------------------------------------------- 4. editor
+  const editor = await admin.newPage()
+  editor.on('pageerror', e => errors.push(`editor: ${e.message}`))
+  await editor.goto('/')
+  await editor.getByRole('button', { name: 'Admin', exact: true }).click()
+  await editor.getByRole('tab', { name: 'Maple Street items' }).click()
+  await editor.getByRole('heading', { name: 'Your items' }).waitFor()
+  await editor.locator('.ms-items-list li.is-draft', { hasText: 'Garden Settee' }).waitFor()
+  assert(await editor.getByRole('button', { name: 'Save as draft' }).count() === 1, 'the editor offers Save as draft')
+  await editor.locator('.ms-items-list').scrollIntoViewIfNeeded()
+  await shot(editor, 'editor-list')
+  await editor.close()
+
+  assert(errors.length === 0, `no page errors${errors.length ? `: ${errors.join(' | ')}` : ''}`)
+  log('all checks passed')
+} finally {
+  await browser.close()
+}

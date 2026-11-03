@@ -58,6 +58,8 @@ export interface WorldState {
   lots: Record<string, LotState>;
   builds: Record<string, LotBuild>;
   version: number;
+  /** Which starter-house roster this world was seeded with (shared/Seed.ts); missing means the first. */
+  seedVersion?: number;
 }
 
 type Seg = { gx: number; gz: number; dir: WallDir };

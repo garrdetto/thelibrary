@@ -14,6 +14,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { CATALOG, type CatalogItem } from '../../shared/Catalog';
 import { isValidRecord, registerCustomItems, type CustomItemRecord } from '../../shared/CustomItems';
 import { store } from '../core/Storage';
+import { assetListUrl, devDrafts } from '../core/DevMode';
 
 const CACHE_KEY = 'maplestreet/custom-items/v1';
 const LIST_TIMEOUT_MS = 5000;
@@ -32,10 +33,13 @@ async function fetchList(): Promise<CustomItemRecord[] | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), LIST_TIMEOUT_MS);
   try {
-    const res = await fetch('/api/maplestreet-items', { credentials: 'same-origin', cache: 'no-store', signal: ctrl.signal });
+    const res = await fetch(assetListUrl('/api/maplestreet-items'), { credentials: 'same-origin', cache: 'no-store', signal: ctrl.signal });
     if (!res.ok) return null;
-    const data = (await res.json()) as { items?: unknown };
-    return Array.isArray(data.items) ? data.items.filter(isValidRecord) : null;
+    const data = (await res.json()) as { items?: unknown; drafts?: unknown };
+    if (data.drafts === true) devDrafts.allowed = true;
+    const list = Array.isArray(data.items) ? data.items.filter(isValidRecord) : null;
+    devDrafts.items = list?.filter(r => r.status === 'draft').length ?? 0;
+    return list;
   } catch {
     return null;
   } finally {
@@ -46,7 +50,7 @@ async function fetchList(): Promise<CustomItemRecord[] | null> {
 /** Registers the published items (or the last cached list when offline) and preloads their models. */
 export async function loadCustomCatalog(): Promise<void> {
   const fresh = await fetchList();
-  if (fresh) store.set(CACHE_KEY, JSON.stringify(fresh));
+  if (fresh) store.set(CACHE_KEY, JSON.stringify(fresh.filter(r => r.status !== 'draft')));
   const list = fresh ?? (store.json<unknown[]>(CACHE_KEY) ?? []).filter(isValidRecord);
   const items = registerCustomItems(list);
   const loads = items.filter(i => !i.hidden).map(i => loadModel(i));

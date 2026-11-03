@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { BUILDINGS, CIVIC, DEPOT, drivewayRect, makeLots, ROAD_NAMES, ROADS, SHOP_DOORS, type RectXZ } from '../shared/WorldLayout';
+import { BUILDINGS, CIVIC, DEPOT, drivewayRect, makeLots, ROAD_NAMES, ROADS, SHOP_DOORS, SIDEWALKS, type RectXZ } from '../shared/WorldLayout';
 import { roadRoute, routeLength } from '../src/game/RoadRoute';
 
 type Box = { id: string; x0: number; x1: number; z0: number; z1: number };
@@ -45,4 +45,22 @@ test('the minimap routes along the streets to the farthest lot', () => {
   const straight = Math.hypot(goal.x - DEPOT.padX, goal.z - DEPOT.padZ);
   const length = routeLength(route);
   assert.ok(length >= straight && length < straight * 2, `route ${length} m vs ${straight} m straight`);
+});
+
+test('sidewalks line every residential street without covering a lot, a road or each other', () => {
+  const S = SIDEWALKS.map((r, i) => fromRect(`walk${i}`, r));
+  const L = makeLots().map(l => ({ id: l.id, x0: l.x, x1: l.x + l.w, z0: l.z, z1: l.z + l.d }));
+  const R = ROADS.map((r, i) => fromRect(`road${i}`, r));
+  for (let i = 0; i < S.length; i++) {
+    for (let j = i + 1; j < S.length; j++) assert.ok(!overlap(S[i], S[j]), `${S[i].id} overlaps ${S[j].id}`);
+    for (const l of L) assert.ok(!overlap(S[i], l), `${S[i].id} covers ${l.id}`);
+    for (const r of R) assert.ok(!overlap(S[i], r), `${S[i].id} sits on ${r.id}`);
+  }
+  for (const r of SIDEWALKS) if (r.road) {
+    const along = r.road === '+x' || r.road === '-x';
+    const sign = r.road.startsWith('+') ? 1 : -1;
+    const x = along ? r.cx + sign * (r.sx / 2 + 0.5) : r.cx, z = along ? r.cz : r.cz + sign * (r.sz / 2 + 0.5);
+    assert.ok(ROADS.some(rd => Math.abs(x - rd.cx) < rd.sx / 2 && Math.abs(z - rd.cz) < rd.sz / 2), `sidewalk at ${r.cx},${r.cz} faces a road`);
+  }
+  assert.ok(SIDEWALKS.filter(r => r.road).length >= 30);
 });

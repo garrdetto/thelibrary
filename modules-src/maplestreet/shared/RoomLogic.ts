@@ -10,7 +10,7 @@
 import { applyOp, emptyBuild, levelBase, makeWorld, normalizeBuild, opCost, own, validateOp, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
 import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, VEHICLES } from './Economy';
-import { seedNeighborhood } from './Seed';
+import { seedNeighborhood, upgradeSeed } from './Seed';
 import { decodeCoverage, encodeCoverage, strokeCells, stripeShade } from './Mowing';
 import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
 import { cleanLook, defaultLook, isBody } from './Wardrobe';
@@ -83,6 +83,10 @@ export class NeighborhoodLogic {
         this.world.builds[l.id] = emptyBuild();
         this.dirty.lots.add(l.id);
       }
+      // Worlds seeded with an older roster get the new starter houses on lots nobody owns.
+      const reseeded = upgradeSeed(this.world);
+      for (const id of reseeded) this.dirty.lots.add(id);
+      if (reseeded.length) this.dirty.meta = true;
     } else {
       this.world = makeWorld(makeLots());
       seedNeighborhood(this.world);

@@ -12,6 +12,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { customVehicleKind, isValidVehicleRecord, registerCustomVehicles, tuningFromRecord, type CustomVehicleRecord } from '../../shared/CustomVehicles';
 import { recolorPixels } from '../../shared/PaintMask';
 import { store } from '../core/Storage';
+import { assetListUrl, devDrafts } from '../core/DevMode';
 import { buildWheel, PRESETS, type VehicleLights } from './VehiclePresets';
 
 const CACHE_KEY = 'maplestreet/custom-vehicles/v1';
@@ -28,10 +29,13 @@ async function fetchList(): Promise<CustomVehicleRecord[] | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), LIST_TIMEOUT_MS);
   try {
-    const res = await fetch('/api/maplestreet-vehicles', { credentials: 'same-origin', cache: 'no-store', signal: ctrl.signal });
+    const res = await fetch(assetListUrl('/api/maplestreet-vehicles'), { credentials: 'same-origin', cache: 'no-store', signal: ctrl.signal });
     if (!res.ok) return null;
-    const data = (await res.json()) as { vehicles?: unknown };
-    return Array.isArray(data.vehicles) ? data.vehicles.filter(isValidVehicleRecord) : null;
+    const data = (await res.json()) as { vehicles?: unknown; drafts?: unknown };
+    if (data.drafts === true) devDrafts.allowed = true;
+    const list = Array.isArray(data.vehicles) ? data.vehicles.filter(isValidVehicleRecord) : null;
+    devDrafts.vehicles = list?.filter(r => r.status === 'draft').length ?? 0;
+    return list;
   } catch {
     return null;
   } finally {
@@ -52,7 +56,7 @@ function loadScene(url: string): Promise<THREE.Object3D | null> {
 /** Registers published vehicles (or the cached list when offline) and preloads their models. */
 export async function loadCustomVehicles(): Promise<void> {
   const fresh = await fetchList();
-  if (fresh) store.set(CACHE_KEY, JSON.stringify(fresh));
+  if (fresh) store.set(CACHE_KEY, JSON.stringify(fresh.filter(r => r.status !== 'draft')));
   const list = fresh ?? (store.json<unknown[]>(CACHE_KEY) ?? []).filter(isValidVehicleRecord);
   await installVehicles(list);
 }

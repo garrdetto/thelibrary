@@ -4,12 +4,15 @@ import type { Env } from '../env'
 import { HttpError, json, readJson, requireSameOrigin } from '../http'
 import { inspectModel } from '../gltf-check'
 import { refreshWorldCatalog, requireMapleAdmin } from '../maplestreet-admin'
+import { assetStatusSchema, wantsDrafts } from '../maplestreet-assets'
+import { currentUser } from '../auth'
 import { getStoreVehicle, insertStoreVehicle, listStoreVehicles, updateStoreVehicle, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
 
 const idSchema = z.string().uuid()
 const updateSchema = z.object({
   id: idSchema,
   active: z.boolean().optional(),
+  status: assetStatusSchema.optional(),
   name: vehicleNameSchema.optional(),
   spec: vehicleSpecSchema.optional(),
 }).strict()
@@ -23,6 +26,8 @@ function check<T>(schema: z.ZodType<T>, value: unknown): T {
 }
 
 const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Maple Street vehicles.')
+const isAdmin = async (request: Request, env: Env) => (await currentUser(request, env))?.isAdmin === true
+const publishStatus = z.enum(['draft', 'published']).catch('published')
 
 async function serveFile(env: Env, key: string) {
   const stored = await env.FILES.getWithMetadata<{ mime?: string }>(key, 'arrayBuffer')
@@ -63,25 +68,26 @@ async function publish(request: Request, env: Env) {
   const model = await readModel(form.get('model'), VEHICLE_LIMITS.modelBytes, 'Vehicle models')
   if (!model) throw new HttpError(400, 'Choose a .glb or .gltf model to publish.')
   const wheel = await readModel(form.get('wheel'), VEHICLE_LIMITS.wheelBytes, 'Wheel models')
+  const status = publishStatus.parse(form.get('status'))
 
   const id = crypto.randomUUID()
   await env.FILES.put(VEHICLE_MODEL_KEY(id), model.bytes, { metadata: { mime: model.kind.type, bytes: model.bytes.byteLength } })
   if (wheel) await env.FILES.put(VEHICLE_WHEEL_KEY(id), wheel.bytes, { metadata: { mime: wheel.kind.type, bytes: wheel.bytes.byteLength } })
   try {
-    await insertStoreVehicle(env, id, name, spec, { type: model.kind.type, bytes: model.bytes.byteLength }, wheel ? { type: wheel.kind.type, bytes: wheel.bytes.byteLength } : null, user.id)
+    await insertStoreVehicle(env, id, name, spec, { type: model.kind.type, bytes: model.bytes.byteLength }, wheel ? { type: wheel.kind.type, bytes: wheel.bytes.byteLength } : null, user.id, status)
   } catch (error) {
     await env.FILES.delete(VEHICLE_MODEL_KEY(id))
     if (wheel) await env.FILES.delete(VEHICLE_WHEEL_KEY(id))
     throw error
   }
-  await refreshWorldCatalog(env)
+  if (status === 'published') await refreshWorldCatalog(env)
   return json({ vehicle: await getStoreVehicle(env, id) }, 201)
 }
 
 async function update(request: Request, env: Env) {
   await requireAdmin(request, env)
   const input = check(updateSchema, await readJson(request, 64 * 1024))
-  const changed = await updateStoreVehicle(env, input.id, { active: input.active, name: input.name, spec: input.spec as CustomVehicleSpec | undefined })
+  const changed = await updateStoreVehicle(env, input.id, { active: input.active, status: input.status, name: input.name, spec: input.spec as CustomVehicleSpec | undefined })
   if (!changed) return json({ error: 'Vehicle not found.' }, 404)
   await refreshWorldCatalog(env)
   return json({ vehicle: await getStoreVehicle(env, input.id) })
@@ -94,7 +100,8 @@ export async function maplestreetVehicles(request: Request, env: Env) {
     if (model !== null) return serveFile(env, VEHICLE_MODEL_KEY(idSchema.parse(model)))
     const wheel = url.searchParams.get('wheel')
     if (wheel !== null) return serveFile(env, VEHICLE_WHEEL_KEY(idSchema.parse(wheel)))
-    return json({ vehicles: await listStoreVehicles(env) })
+    const drafts = await wantsDrafts(request, env, isAdmin)
+    return json({ vehicles: await listStoreVehicles(env, { drafts }), drafts })
   }
   requireSameOrigin(request)
   if (request.method === 'POST') return publish(request, env)

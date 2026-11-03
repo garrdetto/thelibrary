@@ -10,6 +10,7 @@
  * origin at the physics body's center): rotate by `model.yaw` (degrees) >
  * scale by `model.scale` > translate by `model.x/y/z`.
  */
+import { isAssetStatus, type AssetStatus } from './Assets';
 import { refreshDealer, VEHICLES, type VehicleSpec } from './Economy';
 import { CUSTOM_VEHICLE_PREFIX, TUNING, type AxleTuning, type CustomVehicleKind, type VehicleTuning } from './Vehicles';
 
@@ -89,6 +90,8 @@ export interface CustomVehicleRecord extends CustomVehicleSpec {
   modelUrl: string;
   wheelUrl: string | null;
   active: boolean;
+  /** Missing on records cached before drafts existed: those were all published or retired. */
+  status?: AssetStatus;
   updatedAt: number;
 }
 
@@ -179,6 +182,7 @@ export function isValidVehicleRecord(r: unknown): r is CustomVehicleRecord {
     && typeof o.modelUrl === 'string' && o.modelUrl.length < 512
     && (o.wheelUrl === null || (typeof o.wheelUrl === 'string' && o.wheelUrl.length < 512))
     && typeof o.active === 'boolean'
+    && (o.status === undefined || isAssetStatus(o.status))
     && (DRIVE_TEMPLATES as readonly string[]).includes(o.template)
     && !!o.model && finite(o.model.scale, 0.0001, 10000) && finite(o.model.yaw, -360, 360) && point(o.model, 50)
     && !!p && !!p.chassis && finite(p.chassis.hx, 0.2, 5) && finite(p.chassis.hy, 0.05, 2) && finite(p.chassis.hz, 0.2, 2)

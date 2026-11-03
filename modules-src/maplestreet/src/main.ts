@@ -5,6 +5,7 @@ import { peerAvailable } from './net/PeerTransport';
 import { isBody, type Body } from '../shared/Wardrobe';
 import { loadCustomCatalog } from './build/CustomModels';
 import { loadCustomVehicles } from './physics/CustomVehicleModels';
+import { DEV_MODE, devDrafts } from './core/DevMode';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
@@ -61,6 +62,22 @@ const customCatalogReady = Promise.all([
   loadCustomVehicles().catch(e => console.warn('[maplestreet] published vehicles unavailable:', e)),
 ]);
 addEventListener('focus', () => { if (!game && !starting) accountReady = loadSignedInUser(); });
+
+/** The developer instance only runs solo; the start screen says which drafts came in. */
+function setupDevInstance() {
+  $('start').classList.add('dev');
+  $('playWorld').textContent = 'Enter the developer instance';
+  const note = document.createElement('p');
+  note.className = 'dev-note';
+  note.textContent = 'Developer instance: a private solo neighborhood with its own save. Loading drafts…';
+  $('playWorld').after(note);
+  void customCatalogReady.then(() => {
+    note.textContent = devDrafts.allowed
+      ? `Developer instance: a private solo neighborhood with its own save. Drafts loaded: ${devDrafts.items} item${devDrafts.items === 1 ? '' : 's'} and ${devDrafts.vehicles} vehicle${devDrafts.vehicles === 1 ? '' : 's'}. Find items in Buy mode and vehicles at Maple Motors.`
+      : 'Developer instance: drafts load only when you are signed in to the library as the administrator. You can still explore with published content.';
+  });
+}
+if (DEV_MODE) setupDevInstance();
 colorIn.value = store.get('maplestreet/color') ?? '#3a7bd5';
 serverIn.value = params.get('server') ?? store.get('maplestreet/server') ?? '';
 if (!peerAvailable()) $('onlineNote').textContent = 'Online rooms need an internet connection — solo runs fully offline.';
@@ -133,6 +150,12 @@ async function start(mode: NetMode) {
     (window as unknown as { maple?: Game }).maple = game;
     $('start').remove();
     document.body.classList.add('playing');
+    if (DEV_MODE) {
+      const badge = document.createElement('div');
+      badge.id = 'devBadge';
+      badge.textContent = devDrafts.allowed ? 'DEV · drafts on' : 'DEV';
+      document.body.append(badge);
+    }
   } catch (e) {
     console.error(e);
     starting = false;
@@ -141,7 +164,7 @@ async function start(mode: NetMode) {
   }
 }
 
-$('playWorld').onclick = () => start('world');
+$('playWorld').onclick = () => start(DEV_MODE ? 'offline' : 'world');
 $('playSolo').onclick = () => start('offline');
 $('playHost').onclick = () => start('host');
 $('playJoin').onclick = () => { if (codeIn.value.trim().length >= 4) start('join'); else codeIn.focus(); };
@@ -150,7 +173,7 @@ $('playServer').onclick = () => { if (serverIn.value.trim()) start('server'); el
 codeIn.addEventListener('keydown', e => { if (e.key === 'Enter') $('playJoin').click(); });
 
 addEventListener('message', e => {
-  if (e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return;
+  if (DEV_MODE || e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return;
   const code = game?.roomCode;
   if (code) postRoom(code);
   else if (!game) { inviteRequested = true; start('world'); }
@@ -158,7 +181,8 @@ addEventListener('message', e => {
 });
 
 const room = params.get('room');
-if (params.get('vehicleTest')) void import('./game/VehicleTestDrive').then(m => m.startVehicleTestDrive($('app')));
+if (DEV_MODE) { if (params.get('solo')) setTimeout(() => start('offline'), 300); }
+else if (params.get('vehicleTest')) void import('./game/VehicleTestDrive').then(m => m.startVehicleTestDrive($('app')));
 else if (room && room.toUpperCase() === 'WORLD') setTimeout(() => start('world'), 300);
 else if (room) { codeIn.value = room; setTimeout(() => start('join'), 300); }
 else if (params.get('world')) setTimeout(() => start('world'), 300);

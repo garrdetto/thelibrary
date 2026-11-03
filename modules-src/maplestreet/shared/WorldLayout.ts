@@ -78,7 +78,33 @@ export const ROADS: RectXZ[] = [
 /** Street names, in ROADS order. */
 export const ROAD_NAMES = ['Main St', 'West Ave', 'East Ave', 'North St', 'South St', 'Commerce St', 'Market Ave', 'Birch St', 'Aspen St', 'Cedar St', 'Dogwood St', 'Elm St', 'Fir St', 'Hazel St', 'Juniper St'];
 
-export const SIDEWALKS: RectXZ[] = [
+/** Which edge of a sidewalk faces its road; without one the road is toward Main Street (z = 0). */
+export type RoadSide = '+x' | '-x' | '+z' | '-z';
+export type Sidewalk = RectXZ & { road?: RoadSide };
+
+/**
+ * Residential sidewalks in the 2 m strips the layout already leaves clear:
+ * behind the back yards along every street, and on the lot side of West and
+ * East Ave between the cross streets (stopping short of the corners so no
+ * two slabs overlap).
+ */
+function residentialSidewalks(): Sidewalk[] {
+  const out: Sidewalk[] = [];
+  const streets = [ALLEY_Z, ...OUTER_Z];
+  for (const z of streets) for (const sign of [1, -1]) {
+    out.push({ cx: 0, cz: sign * (z - 6), sx: AVE_X * 2 - ROAD_W, sz: SIDEWALK_W, road: sign > 0 ? '+z' : '-z' });
+  }
+  const crossings = [0, ...streets];
+  for (let i = 0; i < crossings.length - 1; i++) {
+    const z0 = crossings[i] + ROAD_W / 2, z1 = crossings[i + 1] - ROAD_W / 2 - SIDEWALK_W;
+    for (const sign of [1, -1]) for (const side of [1, -1]) {
+      out.push({ cx: side * (AVE_X - ROAD_W / 2 - SIDEWALK_W / 2), cz: sign * (z0 + z1) / 2, sx: SIDEWALK_W, sz: z1 - z0, road: side > 0 ? '+x' : '-x' });
+    }
+  }
+  return out;
+}
+
+export const SIDEWALKS: Sidewalk[] = [
   { cx: 0, cz: -6, sx: -ROW_X0 * 2, sz: SIDEWALK_W },
   { cx: 0, cz: 6, sx: -ROW_X0 * 2, sz: SIDEWALK_W },
   { cx: (DOWNTOWN_X0 + DOWNTOWN_X1) / 2, cz: -7, sx: DOWNTOWN_X1 - DOWNTOWN_X0, sz: 4 },  // wide downtown sidewalks
@@ -87,6 +113,7 @@ export const SIDEWALKS: RectXZ[] = [
   { cx: (DOWNTOWN_X0 + 111) / 2, cz: 7, sx: 111 - DOWNTOWN_X0, sz: 4 },
   { cx: 124, cz: 7, sx: 10, sz: 4 },
   { cx: (137 + DOWNTOWN_X1) / 2, cz: 7, sx: DOWNTOWN_X1 - 137, sz: 4 },
+  ...residentialSidewalks(),
 ];
 
 /** Driveway aprons where the curb is dropped so cars can leave the street (beyond the lot driveways). */

@@ -35,6 +35,10 @@
     #start .row { display: flex; gap: 12px; align-items: end; }
     #start .row > div:first-child { flex: 1; }
     #start .primary { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--accent); color: #1b1406; font-weight: 700; font-size: 15px; }
+    #start.dev .card > :is(#playSolo, small, label:not(#bodyLabel):not([for]), .row.join, details) { display: none; }
+    #start.dev #playWorld { background: #f2b544; }
+    #start .dev-note { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px dashed rgba(242,181,68,0.6); color: var(--ink); font-size: 13px; line-height: 1.45; }
+    #devBadge { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 12px; border-radius: 999px; background: rgba(242,181,68,0.92); color: #1b1406; font: 700 12px/1.6 system-ui, sans-serif; letter-spacing: 0.06em; pointer-events: none; }
     #start .join { align-items: stretch; gap: 8px; }
     #start .wide { width: 100%; margin-top: 16px; padding: 10px 12px; }
     #start .join .btn { padding: 9px 12px; white-space: nowrap; }

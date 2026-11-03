@@ -163,7 +163,7 @@ export class Neighborhood {
 
   private buildTrees() {
     const R = rng(1234);
-    const spots: { x: number; z: number; s: number }[] = [];
+    const spots: { x: number; z: number; s: number; kind: number }[] = [];
     const blocked = (x: number, z: number) => {
       for (const r of ROADS) if (Math.abs(x - r.cx) < r.sx / 2 + 2 && Math.abs(z - r.cz) < r.sz / 2 + 2) return true;
       if (x > DOWNTOWN.x0 - 14 && x < DOWNTOWN.x1 + 8 && z > DOWNTOWN.z0 - 4 && z < DOWNTOWN.z1 + 4) return true;
@@ -171,21 +171,28 @@ export class Neighborhood {
       if (Math.abs(x - CIVIC_BLOCK.cx) < CIVIC_BLOCK.sx / 2 + 3 && Math.abs(z - CIVIC_BLOCK.cz) < CIVIC_BLOCK.sz / 2 + 3) return true;
       return false;
     };
-    // Street trees at lot corners + a couple per backyard edge.
+    // Street trees at lot corners share one species per street, so each block reads differently;
+    // back-yard trees are a mix. Kinds: 0 broad maple, 1 tall linden, 2 spruce.
+    const streetKind = (lot: LotDef) => {
+      const frontZ = Math.round(lot.front === '+z' ? lot.z + lot.d : lot.z);
+      return [0, 1, 0, 1, 1, 0][Math.floor(Math.abs(frontZ) / 50) % 6];
+    };
     for (const lot of this.lots) {
       const fz = lot.front === '+z' ? lot.z + lot.d - 1.5 : lot.z + 1.5;
       const bz = lot.front === '+z' ? lot.z + 1.5 : lot.z + lot.d - 1.5;
-      spots.push({ x: lot.x + 1, z: fz, s: 0.9 + R() * 0.3 }, { x: lot.x + 2 + R() * 6, z: bz, s: 1 + R() * 0.4 }, { x: lot.x + 14 + R() * 8, z: bz, s: 0.9 + R() * 0.5 });
+      spots.push({ x: lot.x + 1, z: fz, s: 0.9 + R() * 0.3, kind: streetKind(lot) });
+      spots.push({ x: lot.x + 2 + R() * 6, z: bz, s: 1 + R() * 0.4, kind: R() < 0.3 ? 2 : Math.floor(R() * 2) });
+      spots.push({ x: lot.x + 14 + R() * 8, z: bz, s: 0.9 + R() * 0.5, kind: R() < 0.3 ? 2 : Math.floor(R() * 2) });
     }
-    // Woodland outside the ring.
+    // Woodland outside the ring: mostly spruce, with hardwoods mixed in.
     for (let i = 0; i < 950; i++) {
       const x = (R() * 2 - 1) * (WORLD_HALF - 10), z = (R() * 2 - 1) * (WORLD_HALF - 10);
       if (Math.abs(x) < TOWN_HALF.x && Math.abs(z) < TOWN_HALF.z) continue;
       if (blocked(x, z)) continue;
-      spots.push({ x, z, s: 0.8 + R() * 0.9 });
+      spots.push({ x, z, s: 0.8 + R() * 0.9, kind: R() < 0.55 ? 2 : Math.floor(R() * 2) });
     }
 
-    // Two tree species, each a trunk with forked limbs and a crown of several
+    // Two hardwood species, each a trunk with forked limbs and a crown of several
     // overlapping noise-displaced lobes (smooth-shaded, leaf-textured).
     const bark = this.mats.get('bark').material;
     const leaves = this.mats.get('leaves').material as THREE.MeshStandardMaterial;
@@ -216,16 +223,37 @@ export class Neighborhood {
       crown.computeVertexNormals();
       return { trunk: mergeGeometries(trunkParts.map(g => g.toNonIndexed()))!, crown };
     });
+    // Spruce: a straight trunk under stacked, slightly ragged cones of needles.
+    const spruceTrunk = new THREE.CylinderGeometry(0.1, 0.24, 2.6, 8, 2).translate(0, 1.3, 0);
+    const tiers: THREE.BufferGeometry[] = [];
+    for (let t = 0; t < 5; t++) {
+      const r = 2.1 - t * 0.38, h = 2.6 - t * 0.25;
+      const cone = new THREE.ConeGeometry(r, h, 12, 3);
+      const cp = cone.getAttribute('position');
+      const v = new THREE.Vector3();
+      for (let i = 0; i < cp.count; i++) {
+        v.fromBufferAttribute(cp, i);
+        const k = 1 + 0.09 * Math.sin(v.x * 5.3 + t) * Math.cos(v.z * 4.7 - t);
+        cp.setXYZ(i, v.x * k, v.y, v.z * k);
+      }
+      cone.translate(0, 2.2 + t * 1.35 + h / 2, 0);
+      tiers.push(cone.toNonIndexed());
+    }
+    const spruceCrown = mergeGeometries(tiers)!;
+    spruceCrown.computeVertexNormals();
+    species.push({ trunk: spruceTrunk.toNonIndexed(), crown: spruceCrown });
+
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), col = new THREE.Color();
     const groups = species.map((sp, kind) => {
-      const mine = spots.filter((_, i) => i % 2 === kind);
+      const mine = spots.filter(t => t.kind === kind);
       const trunk = new THREE.InstancedMesh(sp.trunk, bark, mine.length);
       const canopy = new THREE.InstancedMesh(sp.crown, leaves, mine.length);
       mine.forEach((t, i) => {
         q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), R() * Math.PI * 2);
         m.compose(new THREE.Vector3(t.x, 0, t.z), q, new THREE.Vector3(t.s, t.s * (0.9 + R() * 0.25), t.s));
         trunk.setMatrixAt(i, m); canopy.setMatrixAt(i, m);
-        canopy.setColorAt(i, col.setHSL(0.22 + R() * 0.08, 0.38 + R() * 0.2, 0.42 + R() * 0.16));
+        if (kind === 2) canopy.setColorAt(i, col.setHSL(0.3 + R() * 0.05, 0.3 + R() * 0.15, 0.22 + R() * 0.1));
+        else canopy.setColorAt(i, col.setHSL(0.22 + R() * 0.08, 0.38 + R() * 0.2, 0.42 + R() * 0.16));
         this.physics.addStaticCylinder(t.x, 1.6 * t.s, t.z, 1.6 * t.s, 0.24 * t.s);
       });
       return [trunk, canopy];

@@ -7,18 +7,19 @@
 import type { ClientMsg, JoinOptions, ServerMsg } from '../../shared/Protocol';
 import { Host } from './Host';
 import type { NetStatus, Transport } from './Transport';
+import { DEV_MODE, DEV_SAVE } from '../core/DevMode';
 
 export const OFFLINE_SAVE = 'maplestreet/offline/v2';
 
 export class OfflineTransport implements Transport {
-  readonly label = 'Offline simulation';
+  readonly label = DEV_MODE ? 'Developer instance (drafts on)' : 'Offline simulation';
   private readonly self = 'local-player';
   private host: Host | null = null;
   private msgCb: (m: ServerMsg) => void = () => {};
   private statusCb: (s: NetStatus) => void = () => {};
 
   async connect(opts: JoinOptions) {
-    this.host = new Host(OFFLINE_SAVE, (to, msg, except) => {
+    this.host = new Host(DEV_MODE ? DEV_SAVE : OFFLINE_SAVE, (to, msg, except) => {
       if ((to === '*' || to === this.self) && except !== this.self) queueMicrotask(() => this.msgCb(msg));
     });
     this.host.receive(this.self, { t: 'hello', opts });

@@ -6,7 +6,8 @@ import { CATALOG_FUNCS, CATALOG_ROOMS } from '../../../modules-src/maplestreet/s
 import type { CatalogFunc, CatalogRoom } from '../../../modules-src/maplestreet/shared/Catalog'
 import { CUSTOM_LIMITS, footprintFromSize } from '../../../modules-src/maplestreet/shared/CustomItems'
 import { fetchStoreItems, publishStoreItem, updateStoreItem } from '@/lib/maplestreet-items'
-import type { CustomItemRecord, Vector3Like } from '@/lib/maplestreet-items'
+import type { AssetStatus, CustomItemRecord, Vector3Like } from '@/lib/maplestreet-items'
+import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from './AssetStatusActions'
 import { DevModeCanvas } from './DevModeCanvas'
 import type { DevModeState } from './DevModeCanvas'
 import { EditableModel, clampScale } from './EditableModel'
@@ -106,6 +107,7 @@ export default function MapleStreetItemEditor() {
   async function publish(event: FormEvent) {
     event.preventDefault()
     if (!file || !footprint || busy) return
+    const target = submitStatus(event)
     const priceValue = Number(price)
     if (!Number.isInteger(priceValue) || priceValue < CUSTOM_LIMITS.priceMin || priceValue > CUSTOM_LIMITS.priceMax) {
       setStatus({ tone: 'error', text: `Price must be a whole number from ${money(CUSTOM_LIMITS.priceMin)} to ${money(CUSTOM_LIMITS.priceMax)}.` })
@@ -114,9 +116,11 @@ export default function MapleStreetItemEditor() {
     setBusy(true)
     setStatus(null)
     try {
-      const item = await publishStoreItem({ model: file, name: name.trim(), price: priceValue, scale, room, func, indoor, solid, yaw, ...footprint })
+      const item = await publishStoreItem({ model: file, name: name.trim(), price: priceValue, scale, room, func, indoor, solid, yaw, ...footprint, status: target })
       setItems(current => [...(current ?? []), item])
-      setStatus({ tone: 'ok', text: `Published “${item.name}”. It appears in Maple Street's Buy catalog the next time players load the module.` })
+      setStatus({ tone: 'ok', text: target === 'draft'
+        ? `Saved “${item.name}” as a draft. Try it in the developer instance, then publish it from the list below.`
+        : `Published “${item.name}”. It appears in Maple Street's Buy catalog the next time players load the module.` })
     } catch (error) {
       setStatus({ tone: 'error', text: (error as Error).message })
     } finally {
@@ -124,10 +128,10 @@ export default function MapleStreetItemEditor() {
     }
   }
 
-  async function toggle(item: CustomItemRecord) {
+  async function setItemStatus(item: CustomItemRecord, next: AssetStatus) {
     try {
-      const next = await updateStoreItem(item.id, { active: !item.active })
-      setItems(current => current?.map(entry => entry.id === next.id ? next : entry) ?? null)
+      const updated = await updateStoreItem(item.id, { status: next })
+      setItems(current => current?.map(entry => entry.id === updated.id ? updated : entry) ?? null)
     } catch (error) {
       setListError((error as Error).message)
     }
@@ -187,27 +191,31 @@ export default function MapleStreetItemEditor() {
         </dl>
         {oversize && <p role="alert" className="ms-items-error">Scale the model down to fit within {CUSTOM_LIMITS.footprintMax} × {CUSTOM_LIMITS.footprintMax} m and {CUSTOM_LIMITS.heightMax} m tall.</p>}
 
-        <button type="submit" className="ms-items-publish" disabled={!ready || busy}>{busy ? <><LoaderCircle className="spin" size={16}/> Publishing…</> : 'Publish Update'}</button>
+        <div className="ms-items-submit">
+          <button type="submit" value="draft" className="ms-items-draft" disabled={!ready || busy}>Save as draft</button>
+          <button type="submit" value="published" className="ms-items-publish" disabled={!ready || busy}>{busy ? <><LoaderCircle className="spin" size={16}/> Saving…</> : 'Publish Update'}</button>
+        </div>
         {status && <p role={status.tone === 'error' ? 'alert' : 'status'} className={status.tone === 'error' ? 'ms-items-error' : 'ms-items-ok'}>{status.text}</p>}
       </div>
     </form>
 
     <MeshyPanel target="furniture" sources={meshySources} onOpen={opened => openFile(opened)}/>
 
-    <h2>Published items</h2>
+    <h2>Your items</h2>
     <p>Retiring takes an item out of the Buy catalog. Houses that already own it keep it.</p>
+    <DevInstanceNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadItems()}>Retry</button></p>}
     {items === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading items…</p>}
     {items?.length === 0 && <p>Nothing published yet.</p>}
     {!!items?.length && <ul className="ms-items-list">
-      {items.map(item => <li key={item.id} className={item.active ? '' : 'is-retired'}>
+      {items.map(item => <li key={item.id} className={statusOf(item) === 'retired' ? 'is-retired' : statusOf(item) === 'draft' ? 'is-draft' : ''}>
         <div>
           <strong>{item.name}</strong>
           <span>{money(item.price)} · {pretty(item.room)} / {pretty(item.func)} · {item.w} × {item.d} cells · scale {item.scale.x} × {item.scale.y} × {item.scale.z}</span>
         </div>
-        <span className="ms-items-state">{item.active ? 'In catalog' : 'Retired'}</span>
+        <AssetStatusBadge status={statusOf(item)}/>
         <a href={item.modelUrl} download>Model</a>
-        <button type="button" onClick={() => void toggle(item)}>{item.active ? 'Retire' : 'Restore'}</button>
+        <AssetStatusActions status={statusOf(item)} onChange={next => void setItemStatus(item, next)}/>
       </li>)}
     </ul>}
   </section>

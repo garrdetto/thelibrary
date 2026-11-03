@@ -5,16 +5,21 @@ import { HttpError, json, readJson, requireSameOrigin } from '../http'
 import { refreshWorldCatalog, requireMapleAdmin } from '../maplestreet-admin'
 import { inspectModel } from '../gltf-check'
 import { ITEM_MODEL_KEY, getStoreItem, insertStoreItem, listStoreItems, storeItemSchema, updateStoreItem } from '../maplestreet-items'
+import { assetStatusSchema, wantsDrafts } from '../maplestreet-assets'
+import { currentUser } from '../auth'
 
 const idSchema = z.string().uuid()
 const updateSchema = z.object({
   id: idSchema,
   active: z.boolean().optional(),
+  status: assetStatusSchema.optional(),
   name: storeItemSchema.shape.name.optional(),
   price: storeItemSchema.shape.price.optional(),
 }).strict()
 
 const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Maple Street items.')
+const isAdmin = async (request: Request, env: Env) => (await currentUser(request, env))?.isAdmin === true
+const publishStatus = z.enum(['draft', 'published']).catch('published')
 
 async function serveModel(env: Env, id: string) {
   const stored = await env.FILES.getWithMetadata<{ mime?: string }>(ITEM_MODEL_KEY(idSchema.parse(id)), 'arrayBuffer')
@@ -59,17 +64,18 @@ async function publish(request: Request, env: Env) {
     h: Number(field(form, 'h')),
   })
 
+  const status = publishStatus.parse(form.get('status'))
   const bytes = new Uint8Array(await file.arrayBuffer())
   const kind = inspectModel(file.name, bytes)
   const id = crypto.randomUUID()
   await env.FILES.put(ITEM_MODEL_KEY(id), bytes, { metadata: { mime: kind.type, bytes: bytes.byteLength } })
   try {
-    await insertStoreItem(env, id, input, { type: kind.type, bytes: bytes.byteLength }, user.id)
+    await insertStoreItem(env, id, input, { type: kind.type, bytes: bytes.byteLength }, user.id, status)
   } catch (error) {
     await env.FILES.delete(ITEM_MODEL_KEY(id))
     throw error
   }
-  await refreshWorldCatalog(env)
+  if (status === 'published') await refreshWorldCatalog(env)
   return json({ item: await getStoreItem(env, id) }, 201)
 }
 
@@ -87,7 +93,8 @@ export async function maplestreetItems(request: Request, env: Env) {
   if (request.method === 'GET') {
     const model = url.searchParams.get('model')
     if (model !== null) return serveModel(env, model)
-    return json({ items: await listStoreItems(env) })
+    const drafts = await wantsDrafts(request, env, isAdmin)
+    return json({ items: await listStoreItems(env, { drafts }), drafts })
   }
   requireSameOrigin(request)
   if (request.method === 'POST') return publish(request, env)
