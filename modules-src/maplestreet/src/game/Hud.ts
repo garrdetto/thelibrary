@@ -390,8 +390,11 @@ export class Hud {
   /** Set by Game: the wardrobe panel counts as a window that pauses walking. */
   wardrobeOpen: () => boolean = () => false;
   closeWardrobe: () => void = () => {};
-  get modalOpen() { return this.bankOpen || this.shopOpen || this.mapOpen || this.wardrobeOpen(); }
-  closeModals() { this.showBank(false); this.showShop(null); this.showMap(false); this.closeWardrobe(); }
+  /** Set by Game: the Maple Body & Wheel window. */
+  bodyShopOpen: () => boolean = () => false;
+  closeBodyShop: () => void = () => {};
+  get modalOpen() { return this.bankOpen || this.shopOpen || this.mapOpen || this.wardrobeOpen() || this.bodyShopOpen(); }
+  closeModals() { this.showBank(false); this.showShop(null); this.showMap(false); this.closeWardrobe(); this.closeBodyShop(); }
 
   showBank(on: boolean, acc?: Account | null) {
     $('bank').classList.toggle('show', on);

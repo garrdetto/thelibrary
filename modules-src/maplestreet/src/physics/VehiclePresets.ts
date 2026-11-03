@@ -7,7 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { BUILTIN_TUNING, type BuiltinVehicleKind, type VehicleTuning } from '../../shared/Vehicles';
 import { mergeStatic } from '../core/Merge';
-import type { CarStyle, PaintFinish } from '../../shared/Cars';
+import type { CarStyle, PaintFinish, RimFinish, Rims } from '../../shared/Cars';
 
 export interface VehiclePreset extends VehicleTuning {
   build(paint: THREE.Material, lights: VehicleLights): THREE.Group;
@@ -108,6 +108,89 @@ export function buildWheel(radius: number, width: number): THREE.Group {
   for (const m of g.children) m.castShadow = true;
   mergeStatic(g);
   return g;
+}
+
+
+const RIM_MATS: Record<Exclude<RimFinish, 'body'>, THREE.MeshStandardMaterial> = {
+  silver: M.rim,
+  chrome: new THREE.MeshStandardMaterial({ color: 0xf2f4f6, metalness: 1, roughness: 0.06 }),
+  black: new THREE.MeshStandardMaterial({ color: 0x121314, metalness: 0.5, roughness: 0.28 }),
+  gunmetal: new THREE.MeshStandardMaterial({ color: 0x3a3e44, metalness: 0.85, roughness: 0.32 }),
+  gold: new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1, roughness: 0.22 }),
+};
+
+/** An aftermarket wheel: the same tire size with a bigger rim (`rims.size`), in one of six styles and finishes. */
+export function buildStyledWheel(radius: number, width: number, rims: Rims, bodyColor: string): THREE.Group {
+  const g = new THREE.Group();
+  const finish = rims.finish === 'body' ? new THREE.MeshStandardMaterial({ color: new THREE.Color(bodyColor), metalness: 0.4, roughness: 0.3 }) : RIM_MATS[rims.finish];
+  const r = radius * (0.62 + rims.size * 0.07);
+  const tire = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, width, 32, 1), M.rubber);
+  tire.rotation.x = Math.PI / 2; g.add(tire);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(r, r, width * 1.02, 28), rims.style === 'dish' ? RIM_MATS.chrome : M.black);
+  barrel.rotation.x = Math.PI / 2; g.add(barrel);
+  const face = (mat: THREE.Material, rr: number, depth: number) => {
+    for (const z of [-1, 1]) {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(rr, rr, depth, 28), mat);
+      m.rotation.x = Math.PI / 2; m.position.z = z * (width * 0.5 - depth / 2 + 0.012); g.add(m);
+    }
+  };
+  const spokes = (n: number, len: number, thick: number, inner: number, twist = 0) => {
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      for (const z of [-1, 1]) {
+        const s = new THREE.Mesh(new THREE.BoxGeometry(len, thick, 0.05), finish);
+        s.position.set(Math.cos(a) * (inner + len / 2), Math.sin(a) * (inner + len / 2), z * (width * 0.5 + 0.005));
+        s.rotation.z = a + twist; g.add(s);
+      }
+    }
+  };
+  const ring = (rr: number, tube: number, mat: THREE.Material) => {
+    for (const z of [-1, 1]) {
+      const m = new THREE.Mesh(new THREE.TorusGeometry(rr, tube, 8, 32), mat);
+      m.position.z = z * (width * 0.5 + 0.01); g.add(m);
+    }
+  };
+  const hub = r * 0.22;
+  face(finish, hub, 0.06);
+  switch (rims.style) {
+    case 'fivespoke': spokes(5, r - hub, r * 0.26, hub); ring(r * 0.97, r * 0.04, finish); break;
+    case 'mesh': spokes(14, r - hub, r * 0.07, hub, 0.35); spokes(14, r - hub, r * 0.07, hub, -0.35); ring(r * 0.97, r * 0.04, finish); break;
+    case 'dish': ring(r * 0.95, r * 0.07, RIM_MATS.chrome); spokes(6, r * 0.62 - hub, r * 0.2, hub); face(finish, r * 0.64, 0.02); break;
+    case 'turbine': spokes(12, r - hub, r * 0.15, hub, 0.6); ring(r * 0.97, r * 0.05, finish); break;
+    case 'beadlock': {
+      spokes(6, r - hub, r * 0.22, hub); ring(r * 0.93, r * 0.08, finish);
+      for (let i = 0; i < 12; i++) for (const z of [-1, 1]) {
+        const a = (i / 12) * Math.PI * 2, bolt = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.035, r * 0.035, 0.04, 8), RIM_MATS.chrome);
+        bolt.rotation.x = Math.PI / 2; bolt.position.set(Math.cos(a) * r * 0.93, Math.sin(a) * r * 0.93, z * (width * 0.5 + 0.03)); g.add(bolt);
+      }
+      break;
+    }
+    default: spokes(5, r - hub, r * 0.18, hub);
+  }
+  g.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  mergeStatic(g);
+  return g;
+}
+
+/** The wheel for an owned car: its aftermarket rims, or the vehicle's own wheel, at the tire size its lift calls for. */
+export function wheelForCar(P: VehiclePreset, radius: number, width: number, car: CarStyle | null | undefined, tireScale = 1) {
+  const rims = car?.rims;
+  if (!rims || rims.style === 'factory') return wheelFor(P, radius * tireScale, width * (tireScale > 1 ? 1.08 : 1));
+  return buildStyledWheel(radius * tireScale, width * (tireScale > 1 ? 1.08 : 1), rims, car?.color ?? '#888888');
+}
+
+const TINT: (THREE.MeshStandardMaterial | null)[] = [null, ...[[0x141c24, 0.7], [0x0d1218, 0.82], [0x07090c, 0.93]].map(([color, opacity]) => new THREE.MeshStandardMaterial({ color, metalness: 0.25, roughness: 0.05, transparent: true, opacity }))];
+
+/** Swaps the shared window glass for tinted glass (before merging, which groups by material). */
+export function tintGlass(body: THREE.Object3D, tint: number | undefined) {
+  const mat = TINT[tint ?? 0];
+  if (!mat) return;
+  body.traverse(o => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (mesh.material === M.glass) mesh.material = mat;
+    else if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(m => m === M.glass ? mat : m);
+  });
 }
 
 // ------------------------------------------------------------------ presets

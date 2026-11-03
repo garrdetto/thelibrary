@@ -10,8 +10,8 @@ import type { VehicleSnap } from '../../shared/Protocol';
 import { mergeStatic } from '../core/Merge';
 import { MASK, Physics } from './Physics';
 import { wheelbaseOf } from '../../shared/Vehicles';
-import { wheelFor, makeLights, paintFor, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
-import { carStyleKey, conditionEffects, CRASH_MIN_DV, type CarStyle } from '../../shared/Cars';
+import { wheelFor, wheelForCar, makeLights, paintFor, PRESETS, tintGlass, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { carStyleKey, conditionEffects, CRASH_MIN_DV, tuneEffects, type CarStyle, type OwnedCar } from '../../shared/Cars';
 import { applyDents, impactPoint } from './Dents';
 
 export interface DriveInput { throttle: number; steer: number; brake: number; handbrake: boolean }
@@ -42,6 +42,9 @@ export class Vehicle {
   styleKey = '';
   /** What crash damage does to the drive right now (from the owner's account). */
   private cond = conditionEffects(0);
+  /** What the body shop's upgrades do to the drive. */
+  private tune = tuneEffects(null);
+  private wheelKey = '';
   private readonly pullSide: number;
   /** Called when the body takes a hard hit: speed change (m/s) and the chassis point struck. */
   onImpact: ((dv: number, at: { x: number; y: number; z: number }) => void) | null = null;
@@ -109,6 +112,7 @@ export class Vehicle {
 
   private buildShell(style?: CarStyle | null) {
     const body = this.preset.build(paintFor(this.preset, style), this.lights);
+    tintGlass(body, style?.tint);
     mergeStatic(body);
     applyDents(body, style?.dents);
     body.userData.onFill = () => applyDents(body, style?.dents);
@@ -125,11 +129,31 @@ export class Vehicle {
     this.shell = this.buildShell(style);
   }
 
-  /** Crash damage from the account: less engine and grip, and a slight pull once it's bad. */
-  setCondition(damage: number) {
-    this.cond = conditionEffects(damage);
+  /**
+   * The owner's record for this car: crash damage (less engine and grip, a pull once it's bad)
+   * and body shop work (engine, brakes and tires; lift raises the suspension and can fit
+   * bigger tires; rims swap the wheels). Null for a test drive: stock and undamaged.
+   */
+  setCar(car: OwnedCar | null) {
+    const P = this.preset;
+    this.cond = conditionEffects(car?.damage ?? 0);
+    this.tune = tuneEffects(car);
     let i = 0;
-    for (const a of this.preset.axles) for (let s = 0; s < 2; s++, i++) this.ctrl.setWheelFrictionSlip(i, (a.caster ? 0.15 : this.preset.frictionSlip) * this.cond.grip);
+    for (const a of P.axles) for (let s = 0; s < 2; s++, i++) {
+      this.ctrl.setWheelFrictionSlip(i, (a.caster ? 0.15 : P.frictionSlip) * this.cond.grip * this.tune.grip);
+      this.ctrl.setWheelRadius(i, a.radius * this.tune.tireScale);
+      this.ctrl.setWheelSuspensionRestLength(i, Math.max(0.05, P.suspension.rest + this.tune.lift));
+    }
+    const key = `${car?.rims ? `${car.rims.style},${car.rims.size},${car.rims.finish}` : ''}|${this.tune.tireScale}|${car?.rims?.finish === 'body' ? car.color : ''}`;
+    if (key === this.wheelKey) return;
+    this.wheelKey = key;
+    for (const w of this.wheels) {
+      const a = P.axles[w.axle];
+      w.steer.remove(w.spin);
+      w.spin = wheelForCar(P, a.radius, a.width, car, this.tune.tireScale);
+      w.spin.traverse(o => { o.castShadow = true; });
+      w.steer.add(w.spin);
+    }
   }
 
   /** Ignore the next velocity jumps (teleports, resets, hitching): they aren't crashes. */
@@ -206,14 +230,15 @@ export class Vehicle {
     const pedal = Math.abs(inp.throttle) < 0.01 && Math.abs(this.pedal) < 0.05 ? 0 : this.pedal;
 
     // Engine: strong low-end torque that tapers toward top speed; forward, brake-to-stop, then reverse at 40%.
-    let engine = 0, brake = inp.brake * P.brake;
+    const brakeForce = P.brake * this.tune.brake, power = P.engineForce * this.cond.engine * this.tune.engine, top = P.topSpeed * this.tune.topSpeed;
+    let engine = 0, brake = inp.brake * brakeForce;
     const torque = (u: number) => Math.max(0, 1 - u) ** 0.6 * (1 + 0.25 * Math.max(0, 1 - u * 3));
     if (pedal > 0) {
-      if (speed < -0.6) brake = Math.max(brake, P.brake * pedal);
-      else engine = P.engineForce * this.cond.engine * pedal * torque(speed / P.topSpeed);
+      if (speed < -0.6) brake = Math.max(brake, brakeForce * pedal);
+      else engine = power * pedal * torque(speed / top);
     } else if (pedal < 0) {
-      if (speed > 0.6) brake = Math.max(brake, P.brake * -pedal * (0.55 + 0.45 * Math.min(1, -pedal * 1.4)));
-      else engine = P.engineForce * this.cond.engine * pedal * 0.4 * Math.max(0, 1 + speed / (P.topSpeed * 0.22));
+      if (speed > 0.6) brake = Math.max(brake, brakeForce * -pedal * (0.55 + 0.45 * Math.min(1, -pedal * 1.4)));
+      else engine = power * pedal * 0.4 * Math.max(0, 1 + speed / (top * 0.22));
     } else if (P.engineForce > 0) {
       brake = Math.max(brake, P.brake * (v > 2 ? 0.035 : 0.12));   // engine braking, and the car settles when it's nearly stopped
     }

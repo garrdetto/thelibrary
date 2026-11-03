@@ -17,6 +17,7 @@ import { cleanLook, keepOutfit } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
 import { vehicleRole } from './Vehicles';
 import { addCrash, cleanCar, newCar } from './Cars';
+import { applyOrder, atBodyShop, BODY_SHOP, cleanOrder, inBay, quote } from './BodyShop';
 
 export interface LogicIO {
   send(sessionId: string, msg: ServerMsg): void;
@@ -230,6 +231,7 @@ export class NeighborhoodLogic {
       case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item, msg.car); break;
       case 'refuel': this.handleRefuel(sessionId, s, acc, msg.kind, msg.gallons); break;
       case 'crash': this.handleCrash(sessionId, s, acc, msg.kind, msg.dv, msg.at); break;
+      case 'service': this.handleService(sessionId, s, acc, msg.kind, msg.order); break;
       case 'fuel': {
         // Clients report fuel burned; levels may only go down here (refuelling goes through the pump).
         if (!msg.levels || typeof msg.levels !== 'object') break;
@@ -405,6 +407,25 @@ export class NeighborhoodLogic {
     if (!added) return;
     const pct = Math.round((1 - car.damage) * 100);
     this.sendAccount(sessionId, acc, car.damage >= 0.999 ? `Your ${VEHICLES[kind]?.name ?? 'car'} is wrecked — it barely runs until it's repaired at the body shop` : added >= 0.15 ? `Crunch! Your ${VEHICLES[kind]?.name ?? 'car'} is at ${pct}% condition — the body shop can fix it` : undefined);
+  }
+
+  /** Maple Body & Wheel: repairs and upgrades for a car the player owns, parked in one of the bays. */
+  private handleService(sessionId: string, s: Session, acc: Account, kind: unknown, raw: unknown) {
+    if (typeof kind !== 'string' || !acc.garage.includes(kind as VehicleKind)) return;
+    const k = kind as VehicleKind, name = VEHICLES[k]?.name ?? 'car';
+    const pos = this.position(s);
+    if (!pos || !atBodyShop(pos.x, pos.z)) return this.sendAccount(sessionId, acc, `Walk up to ${BODY_SHOP.name} first`);
+    const v = s.vehicles.find(x => x.kind === k);
+    if (!v || !inBay(v.x, v.z)) return this.sendAccount(sessionId, acc, `Park your ${name} in one of the bays first`);
+    const car = acc.cars[k] ??= cleanCar(null, k);
+    const full = cleanOrder(raw, car);
+    const order = isPaintable(k) ? full : { ...full, color: undefined, finish: undefined };
+    const q = quote(k, car, order);
+    if (!q.lines.length) return this.sendAccount(sessionId, acc, 'Nothing to change — pick some work first');
+    if (q.total > acc.money) return this.sendAccount(sessionId, acc, `Not enough money — that work costs $${q.total.toLocaleString()}`);
+    acc.money -= q.total;
+    acc.cars[k] = applyOrder(car, order, k);
+    this.sendAccount(sessionId, acc, `${BODY_SHOP.name} finished your ${name}: ${q.lines.map(l => l.label.toLowerCase()).join(', ')} — $${q.total.toLocaleString()}`);
   }
 
   private cooldowns = new Map<string, number>();

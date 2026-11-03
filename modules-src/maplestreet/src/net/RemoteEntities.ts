@@ -12,8 +12,8 @@ import { mergeStatic } from '../core/Merge';
 import { Avatar } from '../physics/Character';
 import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
-import { wheelFor, makeLights, paintFor, PRESETS, VehicleLights } from '../physics/VehiclePresets';
-import { carStyleKey } from '../../shared/Cars';
+import { makeLights, paintFor, PRESETS, tintGlass, wheelForCar, type VehicleLights, type VehiclePreset } from '../physics/VehiclePresets';
+import { carStyleKey, tuneEffects, type OwnedCar } from '../../shared/Cars';
 import { applyDents } from '../physics/Dents';
 
 const INTERP_DELAY_MS = 120;
@@ -99,22 +99,38 @@ export class RemoteEntities {
     for (const [id, rv] of this.vehicles) if (now - rv.seen > 3000) this.removeVehicle(id);
   }
 
+  /** The body, dented and tinted, with the owner's paint. */
+  private shellFor(P: VehiclePreset, v: VehicleSnap, lights: VehicleLights) {
+    const shell = P.build(paintFor(P, v.style), lights);
+    tintGlass(shell, v.style?.tint);
+    mergeStatic(shell);
+    applyDents(shell, v.style?.dents);
+    shell.userData.onFill = () => applyDents(shell, v.style?.dents);
+    shell.traverse(o => (o.castShadow = true));
+    return shell;
+  }
+
+  /** Wheels with the owner's rims, lowered by their lift kit (which also fits bigger tires). */
+  private wheelsFor(P: VehiclePreset, v: VehicleSnap, root: THREE.Group, old: RemoteVehicle['wheels'] = []) {
+    for (const w of old) root.remove(w.g);
+    const tune = tuneEffects(v.style as OwnedCar | null);
+    const wheels: RemoteVehicle['wheels'] = [];
+    for (const a of P.axles) for (const side of [1, -1]) {
+      const g = new THREE.Group(), spin = wheelForCar(P, a.radius, a.width, v.style, tune.tireScale);
+      g.add(spin); g.position.set(a.x, P.wheelY - (P.suspension.rest + tune.lift) * 0.8, a.halfTrack * side);
+      g.traverse(o => (o.castShadow = true));
+      root.add(g); wheels.push({ g, steer: a.steer, spin: 0 });
+    }
+    return wheels;
+  }
+
   private spawnVehicle(v: VehicleSnap): RemoteVehicle {
     const P = PRESETS[v.kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
-    const shell = P.build(paintFor(P, v.style), lights);
-    mergeStatic(shell);
-    applyDents(shell, v.style?.dents);
-    shell.userData.onFill = () => applyDents(shell, v.style?.dents);
+    const shell = this.shellFor(P, v, lights);
     root.add(shell);
-    const wheels: RemoteVehicle['wheels'] = [];
-    for (const a of P.axles) for (const side of [1, -1]) {
-      const g = new THREE.Group(); const spin = wheelFor(P, a.radius, a.width);
-      g.add(spin); g.position.set(a.x, P.wheelY - P.suspension.rest * 0.8, a.halfTrack * side);
-      root.add(g); wheels.push({ g, steer: a.steer, spin: 0 });
-    }
-    root.traverse(o => (o.castShadow = true));
+    const wheels = this.wheelsFor(P, v, root);
     this.scene.add(root);
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(v.x, v.y, v.z));
     this.physics.world.createCollider(R.ColliderDesc.cuboid(P.chassis.hx, P.chassis.hy, P.chassis.hz).setCollisionGroups(MASK.remote), body);
@@ -124,12 +140,9 @@ export class RemoteEntities {
   private restyleVehicle(rv: RemoteVehicle, v: VehicleSnap) {
     const P = PRESETS[rv.kind] ?? PRESETS.sedan;
     rv.root.remove(rv.shell);
-    const shell = rv.shell = P.build(paintFor(P, v.style), rv.lights);
-    mergeStatic(shell);
-    applyDents(shell, v.style?.dents);
-    shell.userData.onFill = () => applyDents(shell, v.style?.dents);
-    rv.shell.traverse(o => (o.castShadow = true));
+    rv.shell = this.shellFor(P, v, rv.lights);
     rv.root.add(rv.shell);
+    rv.wheels = this.wheelsFor(P, v, rv.root, rv.wheels);
     rv.styleKey = carStyleKey(v.style);
   }
 

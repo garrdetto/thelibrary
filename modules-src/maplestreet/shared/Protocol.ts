@@ -7,6 +7,7 @@ import type { BuildOp, WorldState } from './BuildRules';
 import type { Account } from './Economy';
 import type { Body, Look } from './Wardrobe';
 import type { CarStyle } from './Cars';
+import type { ServiceOrder } from './BodyShop';
 
 export type { VehicleKind } from './Vehicles';
 import type { VehicleKind } from './Vehicles';
@@ -66,6 +67,8 @@ export type ClientMsg =
   | { t: 'refuel'; kind: VehicleKind; gallons: number }
   /** One of your cars hit something: horizontal speed change (m/s) and where on the chassis it was struck. */
   | { t: 'crash'; kind: VehicleKind; dv: number; at: { x: number; y: number; z: number } }
+  /** Work on one of your cars, parked in a Maple Body & Wheel bay; the authority prices it. */
+  | { t: 'service'; kind: VehicleKind; order: ServiceOrder }
   | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
   | { t: 'use'; lotId: string; objectId: string }
   | { t: 'look'; look: Look }

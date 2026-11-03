@@ -26,12 +26,12 @@ test('starter vehicles and old saves get their factory paint', () => {
   for (const k of fresh.garage) assert.deepEqual(fresh.cars[k], defaultCar(k));
   const old = { ...fresh, cars: undefined } as unknown as Account;
   normalizeAccount(old);
-  assert.deepEqual(old.cars.truck, { color: factoryColor('truck'), finish: 'metallic', damage: 0, dents: [] });
+  assert.deepEqual(old.cars.truck, { color: factoryColor('truck'), finish: 'metallic', damage: 0, dents: [], tint: 0, rims: { style: 'factory', size: 0, finish: 'silver' }, lift: 0, perf: { engine: 0, exhaust: 0, brakes: 0, tires: 0 } });
 });
 
 test('malformed paint falls back to the factory look', () => {
   assert.deepEqual(cleanCar({ color: 'red', finish: 'chrome' }, 'sedan'), defaultCar('sedan'));
-  assert.deepEqual(cleanCar({ color: '#ABCDEF', finish: 'matte' }, 'sedan'), { color: '#abcdef', finish: 'matte', damage: 0, dents: [] });
+  assert.deepEqual(cleanCar({ color: '#ABCDEF', finish: 'matte' }, 'sedan'), { color: '#abcdef', finish: 'matte', damage: 0, dents: [], tint: 0, rims: { style: 'factory', size: 0, finish: 'silver' }, lift: 0, perf: { engine: 0, exhaust: 0, brakes: 0, tires: 0 } });
 });
 
 test('buying at Maple Motors keeps the chosen color and finish', () => {
@@ -39,14 +39,14 @@ test('buying at Maple Motors keeps the chosen color and finish', () => {
   standAt(dealer.x, dealer.z);
   logic.message('s1', { t: 'buy', shop: dealer.id, item: 'sedan', car: { color: '#1f5fae', finish: 'matte' } });
   assert.ok(account().garage.includes('sedan'));
-  assert.deepEqual(account().cars.sedan, { color: '#1f5fae', finish: 'matte', damage: 0, dents: [] });
+  assert.deepEqual(account().cars.sedan, { color: '#1f5fae', finish: 'matte', damage: 0, dents: [], tint: 0, rims: { style: 'factory', size: 0, finish: 'silver' }, lift: 0, perf: { engine: 0, exhaust: 0, brakes: 0, tires: 0 } });
 });
 
 test('a purchase without a valid color gets the factory paint', () => {
   const { logic, account, standAt } = town();
   standAt(dealer.x, dealer.z);
   logic.message('s1', { t: 'buy', shop: dealer.id, item: 'coupe', car: { color: 'javascript:alert(1)', finish: 'gloss' } as never });
-  assert.deepEqual(account().cars.coupe, { color: factoryColor('coupe'), finish: 'gloss', damage: 0, dents: [] });
+  assert.deepEqual(account().cars.coupe, { color: factoryColor('coupe'), finish: 'gloss', damage: 0, dents: [], tint: 0, rims: { style: 'factory', size: 0, finish: 'silver' }, lift: 0, perf: { engine: 0, exhaust: 0, brakes: 0, tires: 0 } });
 });
 
 test('vehicle snapshots carry the owner’s paint, never the client’s claim', () => {
@@ -57,7 +57,7 @@ test('vehicle snapshots carry the owner’s paint, never the client’s claim', 
   logic.tick(1);
   const snap = [...sent].reverse().find((m): m is Extract<ServerMsg, { t: 'snap' }> => m.t === 'snap');
   assert.ok(snap, 'a snapshot was broadcast');
-  assert.deepEqual(snap.vehicles.find(v => v.kind === 'sedan')?.style, { color: '#b3171d', finish: 'gloss', damage: 0, dents: [] });
+  assert.deepEqual(snap.vehicles.find(v => v.kind === 'sedan')?.style, { color: '#b3171d', finish: 'gloss', damage: 0, dents: [], tint: 0, rims: { style: 'factory', size: 0, finish: 'silver' }, lift: 0, perf: { engine: 0, exhaust: 0, brakes: 0, tires: 0 } });
   assert.equal(snap.vehicles.find(v => v.kind === 'golfcart')?.style, null, 'a test drive shows factory paint');
 });
 
@@ -100,5 +100,5 @@ test('a new car leaves the lot undamaged even if the request says otherwise', ()
   const { logic, account, standAt } = town();
   standAt(dealer.x, dealer.z);
   logic.message('s1', { t: 'buy', shop: dealer.id, item: 'atv', car: { color: '#1f5fae', finish: 'gloss', damage: 1, dents: [{ x: 0, y: 0, z: 0, depth: 0.2 }] } });
-  assert.deepEqual(account().cars.atv, { color: '#1f5fae', finish: 'gloss', damage: 0, dents: [] });
+  assert.deepEqual(account().cars.atv, { color: '#1f5fae', finish: 'gloss', damage: 0, dents: [], tint: 0, rims: { style: 'factory', size: 0, finish: 'silver' }, lift: 0, perf: { engine: 0, exhaust: 0, brakes: 0, tires: 0 } });
 });
