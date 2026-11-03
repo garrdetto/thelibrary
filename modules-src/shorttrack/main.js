@@ -8,7 +8,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from './shorttrack-numbers.js';
-import { buildPrisonSet, PRISON_CROWD, PRISON_STANDS } from './prison-speedway.js';
+import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from './prison-speedway.js';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -51,6 +51,16 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // Records: rec = lap-record id, minLap = shortest lap (ms) accepted as a record
 // Options: surface:'dirt' = dirt track, bareInfield = no pit road or scoring pylon in the infield, theme:'prison' = Prison Speedway scenery
 const TRACKS={
+  prison:{
+    name:'Prison Speedway', miles:'0.29 mi', rec:'prison',
+    L:131, R:33, W:16, APRON:6,
+    turnBank:21, straightBank:10, bankIn:55, bankOut:42,
+    grooveHigh:4.5, grooveLow:-4.7,
+    steer:0.97, smooth:1.63,
+    grip:1.17, apronGrip:0.92, gripUp:1.15,
+    minLap:7500,
+    theme:'prison',
+  },
   bullring:{
     name:'Madison International Raceway', miles:'0.5 mi', rec:'shorttrack',
     L:150, R:35, W:16, APRON:7,
@@ -79,16 +89,6 @@ const TRACKS={
     minLap:7000,
     bareInfield:true,
   },
-  prison:{
-    name:'Prison Speedway', miles:'0.29 mi', rec:'prison',
-    L:131, R:33, W:16, APRON:6,
-    turnBank:21, straightBank:10, bankIn:55, bankOut:42,
-    grooveHigh:4.5, grooveLow:-4.7,
-    steer:0.97, smooth:1.63,
-    grip:1.17, apronGrip:0.92, gripUp:1.15,
-    minLap:7500,
-    theme:'prison',
-  },
   dirt:{
     name:'Beaver Dam Raceway', miles:'0.3 mi', rec:'dirt',
     L:109, R:50, W:15, APRON:6,
@@ -100,7 +100,7 @@ const TRACKS={
     surface:'dirt',
   },
 };
-const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'bullring';})(),TRACK=TRACKS[TRACK_ID];
+const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'prison';})(),TRACK=TRACKS[TRACK_ID];
 for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
 const DIRT=TRACK.surface==='dirt';if(TRACK.grip)CFG.grip=TRACK.grip;if(TRACK.apronGrip)CFG.apronGrip=TRACK.apronGrip;CFG.aiGrip=CFG.grip;CFG.grip*=TRACK.gripUp||1;CFG.apronGrip*=TRACK.gripUp||1;if(DIRT){CFG.scrub*=0.55;CFG.slideScrub=0.22;}
 CFG.steerLow*=TRACK.steer||1;CFG.steerRampIn/=TRACK.smooth||1;CFG.steerRampOut/=TRACK.smooth||1;CFG.steerDamp=14/(TRACK.smooth||1);
@@ -403,6 +403,7 @@ if(!TRACK.bareInfield){ // pit road on the front stretch, with stall lines and a
   for(let i=0;i<(SMALL_INFIELD?0:9);i++){const s=10+i*18,c=center(s),lat=PIT1-9;const b=new THREE.Mesh(new THREE.BoxGeometry(16,4.5,9),garMat);b.position.set(c.x+c.nx*lat,2.25,c.z+c.nz*lat);b.castShadow=b.receiveShadow=true;scene.add(b);
     for(let d=-1;d<=1;d++){const door=new THREE.Mesh(new THREE.PlaneGeometry(4,3.2),doorMat);door.position.set(c.x+c.nx*(lat+4.51)+d*5,1.6,c.z+c.nz*(lat+4.51));door.rotation.y=Math.atan2(c.nx,c.nz);scene.add(door);}}
   // team haulers
+  if(!PRISON){
   const PALX=['#d7263d','#1b998b','#2e86de','#f9c80e','#f86624','#662e9b','#141414','#f4f4f4','#43bccd','#0b6e4f','#ff6f91','#1d3557'];
   const hr=rng(42),nh=SMALL_INFIELD?7:40,trl=new THREE.InstancedMesh(new THREE.BoxGeometry(2.6,4,15).translate(0,2.4,0),new THREE.MeshStandardMaterial({roughness:.4,metalness:.3}),nh),
     cab=new THREE.InstancedMesh(new THREE.BoxGeometry(2.5,3.2,3).translate(0,1.9,9.3),new THREE.MeshStandardMaterial({roughness:.35,metalness:.5}),nh),
@@ -410,6 +411,7 @@ if(!TRACK.bareInfield){ // pit road on the front stretch, with stall lines and a
   for(let i=0;i<nh;i++){const x=SMALL_INFIELD?-54+i*18:-78+(i%20)*8.2,z=SMALL_INFIELD?-6:i<20?-12:12;_o.position.set(x,0,z);_o.rotation.set(0,SMALL_INFIELD?Math.PI/2:i<20?0:Math.PI,0);_o.scale.set(1,1,1);_o.updateMatrix();
     for(const m of [trl,cab,whl])m.setMatrixAt(i,_o.matrix);tc.set(PALX[Math.floor(hr()*PALX.length)]);trl.setColorAt(i,tc);cab.setColorAt(i,tc.multiplyScalar(0.7));}
   for(const m of [trl,cab,whl]){m.castShadow=true;m.receiveShadow=true;m.frustumCulled=false;scene.add(m);}
+  }
 }
 // press box / suites on top of the front-stretch grandstand
 const glassMat=new THREE.MeshStandardMaterial({color:0x1b2a3a,roughness:.08,metalness:.9,emissive:0xffe6b0,emissiveIntensity:0});
@@ -454,6 +456,7 @@ const towers=[],towerHeadMat=new THREE.MeshStandardMaterial({color:0x222222,emis
   const gl=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xfff6e0,blending:THREE.AdditiveBlending,depthWrite:false,transparent:true}));
   gl.scale.set(28,28,1);gl.position.set(x-c.nx*1,46,z-c.nz*1);gl.visible=false;scene.add(gl);towers.push(gl);
  }}
+const prisonInfield=PRISON?buildPrisonInfield({scene,glowTex,lights:towers,halfLength:L/2}):null;
 if(PRISON)buildPrisonSet({scene,center,P,L,S_LINE,backLat,standTop:s=>sY(ROWS-1)(s)+3,fenceLat:HW+0.3,fenceTop:s=>wallTop(s)+4.6,glowTex,glassMat,lights:towers});
 // flag stand over the start/finish line
 const flagMat=new THREE.MeshBasicMaterial({color:0xffcc00,side:DS});
@@ -1964,7 +1967,7 @@ function aiCtl(c,dt){
 const cars=new Map();
 let player=null,menuCar=null,mode='menu',camMode='chase',camH=0,camSnap=true,lastPhase='idle';
 const race={ph:'idle',laps:25,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false,formP:null};
-let settings={laps:25,ai:11,night:false,diff:'medium'};
+let settings={laps:25,ai:11,night:new URLSearchParams(location.search).get('night')==='1',diff:'medium'};
 // sk: corner-speed aim, dc: how late they brake (m/s^2), pass: how far back they start a pass (m),
 // gb/pb: grip and power edge over stock, lc: seconds between lane-change decisions (lower = more aggressive)
 // Traffic awareness (path scan, wreck avoidance, slide saves, bump-and-run) is the same at every level.
@@ -2113,7 +2116,7 @@ function hostStart(){
   for(let i=ents.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[ents[i],ents[j]]=[ents[j],ents[i]];}
   const msg={t:'start',set:{...settings},grid:ents};sendAll(msg);beginRace(msg);
 }
-function readHostSettings(){settings.laps=+$('sLaps').value||25;settings.ai=clamp(parseInt($('sAI').value)||0,0,19);settings.night=$('sTime').value==='night';settings.diff=AI_LEVELS[$('sDiff').value]?$('sDiff').value:'medium';}
+function readHostSettings(){settings.laps=+$('sLaps').value||25;settings.ai=clamp(parseInt($('sAI').value)||0,0,19);settings.diff=AI_LEVELS[$('sDiff').value]?$('sDiff').value:'medium';}
 
 // ===================== NETWORK (PeerJS, host-authoritative race control) =====================
 const PREFIX='sts-oval-race-';
@@ -2255,7 +2258,7 @@ function setNight(n){
   hemi.intensity=n?0.4:DAY.hemiInt;hemi.color.set(n?0x8899cc:DAY.hemiSky);hemi.groundColor.set(n?0x402f1a:DAY.hemiGround);
   sun.intensity=n?1.7:DAY.sunInt;sun.color.set(n?0xeef3ff:DAY.sunColor);if(n)SUN_OFF.set(10,130,5);else SUN_OFF.set(...DAY.sunDir);
   skyDay.material.uniforms.sunPosition.value.copy(SUN_OFF).normalize();clouds.material.color.set(DAY.cloudTint);clouds.material.opacity=DAY.cloudOpacity;
-  towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.12:DAY.paintEnv;if(GROOVE_MAT)GROOVE_MAT.roughness=DIRT?0.95:n?0.8:0.55;glassMat.emissiveIntensity=n?0.6:0;
+  towerHeadMat.emissiveIntensity=n?4:0.15;towers.forEach(t=>t.visible=n);ENVK=n?0.12:DAY.paintEnv;if(GROOVE_MAT)GROOVE_MAT.roughness=DIRT?0.95:n?0.8:0.55;glassMat.emissiveIntensity=n?0.6:0;if(prisonInfield)prisonInfield.setNight(n);
   bloom.enabled=n;bloom.strength=0.25;bloom.threshold=0.85;scene.fog.near=n?1500:DAY.fogNear;scene.fog.far=n?3800:DAY.fogFar;
   const upd=c=>c&&c.m.paints.forEach(m=>{if(m.userData.r0==null){m.userData.r0=m.roughness;m.userData.cc0=m.clearcoat||0;}m.envMap=envTex;m.envMapIntensity=ENVK;m.roughness=n?Math.max(0.5,m.userData.r0):m.userData.r0;m.clearcoat=n?m.userData.cc0*0.3:m.userData.cc0;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?.7:DAY.exposure;
 }
@@ -2411,7 +2414,7 @@ function renderLobby(){
   $('waitTxt').textContent=NET.racing&&mode==='lobby'?'A race is already running. You will be on the grid for the next one.':`Waiting for the host to start... (${settings.laps} laps, ${settings.night?'night':'day'}, ${settings.diff||'medium'} AI)`;
   $('plabel').textContent=NET.online?`Drivers (${NET.players.size}/${CFG.maxCars}) \u2014 invite as many friends as you like`:'Driver';
 }
-function goLobby(){mode='lobby';$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';$('sDiff').value=settings.diff||'medium';renderLobby();showScreen('scrLobby');}
+function goLobby(){mode='lobby';$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;syncNightToggle();$('sDiff').value=settings.diff||'medium';renderLobby();showScreen('scrLobby');}
 function backToLobby(){if(NET.host){NET.racing=false;}clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;goLobby();}
 function leaveAll(){resetNet();clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;mode='menu';showScreen('scrMain');}
 function togglePause(){
@@ -2478,7 +2481,9 @@ $('scrGarage').addEventListener('click',e=>{
   else if(d.gnum==='rand'){let v;do{v=String(1+Math.floor(Math.random()*99));}while(v===myLv.number);commitGarage({...myLv,number:v});}
   else if(d.gnum){const t=myLv.number,v=((parseInt(t||'0',10)+Number(d.gnum))%1000+1000)%1000;let s=String(v);if(t.length>s.length)s=s.padStart(t.length,'0');commitGarage({...myLv,number:s.slice(-3)});}
 });
-['sLaps','sAI','sTime','sDiff'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();setNight(settings.night);broadcastLobby();}));
+['sLaps','sAI','sDiff'].forEach(id=>$(id).addEventListener('change',()=>{if(!NET.host)return;readHostSettings();broadcastLobby();}));
+function syncNightToggle(){const b=$('sNight');b.setAttribute('aria-checked',String(!!settings.night));b.classList.toggle('on',!!settings.night);}
+$('sNight').addEventListener('click',()=>{setNight(!settings.night);syncNightToggle();if(NET.host&&NET.online)broadcastLobby();});
 const WIZ={flow:'solo',track:TRACK_ID};
 const FLOW_STEPS={attack:['Mode','Track','Setup'],solo:['Mode','Track','Setup'],multi:['Mode','Host or join','Track','Setup','Lobby']};
 const stepsHtml=(flow,idx)=>FLOW_STEPS[flow].map((n,i)=>`<span class="${i<idx?'done':i===idx?'on':''}">${i+1}. ${n}</span>`).join('');
@@ -2489,11 +2494,11 @@ function setVehicle(v){if(!VEHICLES[v]||v===myLv.veh)return;saveLv();const own=s
   myLv=cleanLv(own?{...own,veh:v,name:myLv.name}:{...myLv,veh:v});saveLv();if(mode==='garage')renderGarage();const me=NET.players.get(NET.myId);if(me)me.lv=myLv;renderVehCards();
   if(v==='car'&&!CAR_ASSET){carAssetReady.then(ok=>{if(!ok)toast('The car could not load, so the truck will be used');if(!player)rebuildMenuCar();});return;}if(!player)rebuildMenuCar();}
 $('vehCards').addEventListener('click',e=>{const t=e.target.closest('[data-veh]');if(t)setVehicle(t.dataset.veh);});
-function showTrack(){mode='track';$('trackSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?2:1);renderTrackCards();renderVehCards();showScreen('scrTrack');}
+function showTrack(){mode='track';syncNightToggle();$('trackSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?2:1);renderTrackCards();renderVehCards();showScreen('scrTrack');}
 function showSetup(){mode='setup';const att=WIZ.flow==='attack';$('setupSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?3:2);
   $('setupTitle').textContent=att?'Time Attack setup':WIZ.flow==='multi'?'Room setup':'Race setup';$('setupTrack').textContent=`${TRACK.name} \u00b7 ${TRACK.miles} \u00b7 ${DIRT?'dirt':'asphalt'}`;
   $('raceFields').classList.toggle('hidden',att);$('setupNext').innerHTML=att?'START &rarr;':WIZ.flow==='multi'?'OPEN ROOM &rarr;':'START RACE &rarr;';
-  $('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;$('sTime').value=settings.night?'night':'day';$('sDiff').value=settings.diff||'medium';showScreen('scrSetup');}
+  $('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;syncNightToggle();$('sDiff').value=settings.diff||'medium';showScreen('scrSetup');}
 async function wizardNext(){readHostSettings();
   if(myLv.veh==='car'&&!CAR_ASSET&&!(await carAssetReady))toast('The car could not load, so the truck will be used');
   if(WIZ.flow==='attack')startTimeAttack();
@@ -2511,7 +2516,7 @@ function act(a){
     case 'menu':mode='menu';showScreen('scrMain');break;
     case 'multi-host':WIZ.flow='multi';showTrack();break;
     case 'track-back':if(WIZ.flow==='multi')goFlow('multi');else act('menu');break;
-    case 'track-next':if(WIZ.track!==TRACK_ID){const q=new URLSearchParams(location.search);q.set('track',WIZ.track);q.set('flow',WIZ.flow);q.delete('room');location.search=q.toString();}else showSetup();break;
+    case 'track-next':if(WIZ.track!==TRACK_ID){const q=new URLSearchParams(location.search);q.set('track',WIZ.track);q.set('flow',WIZ.flow);if(settings.night)q.set('night','1');else q.delete('night');q.delete('room');location.search=q.toString();}else showSetup();break;
     case 'setup-back':showTrack();break;
     case 'setup-next':wizardNext();break;
     case 'host':startHost(true);break;
@@ -2600,7 +2605,7 @@ addEventListener('message',e=>{
 
 // ===================== INIT =====================
 {const room=new URLSearchParams(location.search).get('room');if(room){$('joinCode').value=room.toUpperCase().replace(/[^A-Z]/g,'').slice(0,5);setTimeout(doJoin,300);}}
-rebuildMenuCar();applyQuality();setNight(false);showScreen('scrMain');requestAnimationFrame(frame);
+rebuildMenuCar();applyQuality();setNight(settings.night);showScreen('scrMain');requestAnimationFrame(frame);
 carAssetReady.then(ok=>{if(ok&&myLv.veh==='car'&&!player)rebuildMenuCar();});
 NUM_FONTS.forEach(f=>loadNumFont(f.id).then(refreshNumberFonts));
 {const q=new URLSearchParams(location.search),fl=q.get('flow');if(FLOW_STEPS[fl]&&!q.get('room')){WIZ.flow=fl;WIZ.track=TRACK_ID;q.delete('flow');history.replaceState(null,'',location.pathname+(q.toString()?'?'+q:''));showSetup();}}
