@@ -26,6 +26,7 @@ type Props = {
   onMarker: (id: MarkerId, position: { x: number; y: number; z: number }) => void
   onPick: (pick: { material: string; color: string | null }) => void
   onSelect: (id: MarkerId | null) => void
+  onScene?: (scene: Object3D | null) => void
 }
 
 function samplePixel(map: Texture | null, uv: { x: number; y: number } | undefined): string | null {
@@ -64,8 +65,9 @@ function maskedMap(map: Texture, key: string, tolerance: number, color: string):
   return tex
 }
 
-function VehicleModel({ url, draft, onInfo, picking, onPick }: { url: string; draft: Draft; onInfo: Props['onInfo']; picking: boolean; onPick: Props['onPick'] }) {
+function VehicleModel({ url, draft, onInfo, picking, onPick, onScene }: { url: string; draft: Draft; onInfo: Props['onInfo']; picking: boolean; onPick: Props['onPick']; onScene?: Props['onScene'] }) {
   const { scene } = useGLTF(url, false, true)
+  useEffect(() => { onScene?.(scene); return () => onScene?.(null) }, [scene, onScene])
   const originals = useRef(new Map<Object3D, Material | Material[]>())
   const info = useMemo<ModelInfo | null>(() => {
     scene.updateMatrixWorld(true)
@@ -218,7 +220,7 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
   </mesh>)
   return <>
     <group position={[0, ride, 0]}>
-      <VehicleModel url={props.url} draft={draft} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick}/>
+      <VehicleModel url={props.url} draft={draft} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick} onScene={props.onScene}/>
       {draft.axles.map((a, i) => [1, -1].map(side => <Wheel key={`${i}${side}`} radius={a.radius} width={a.width} position={[a.x, wheelCenterY, a.halfTrack * side]}/>))}
       <group position={[draft.seat.x, draft.seat.y, draft.seat.z]}><SeatedFigure/></group>
       {lamp(draft.head, '#fff4d6')}
