@@ -43,7 +43,7 @@ type View = StudioMode | 'home' | 'admin' | ModuleId
 const isPlayId = isEmbeddedModuleId
 const shortTrackModes = ['time-attack', 'race', 'multiplayer'] as const
 const shortTrackModeNames = { 'time-attack': 'Time Attack', race: 'Solo Race', multiplayer: 'Online' }
-const shortTrackTracks = [{ id: 'shorttrack', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells', name: 'Dells Short Track (0.3 mi)' }, { id: 'dellswide', name: 'Dells Wide Oval (0.27 mi)' }, { id: 'dirt', name: 'Dells Dirt Oval (0.3 mi)' }] as const
+const shortTrackTracks = [{ id: 'shorttrack', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells', name: 'Dells Short Track (0.3 mi)' }, { id: 'dellswide', name: 'Dells Wide Oval (0.27 mi)' }, { id: 'prison', name: 'Prison Speedway (0.29 mi)' }, { id: 'dirt', name: 'Dells Dirt Oval (0.3 mi)' }] as const
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']
 
