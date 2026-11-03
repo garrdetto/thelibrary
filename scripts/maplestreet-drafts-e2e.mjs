@@ -180,11 +180,12 @@ try {
     window.maple.hud.closeModals()
   })
   // Each bundled vehicle on its own on the road: a side-on screenshot from its real pose, then a 4 s pull.
-  for (const k of bundled) {
+  const everyBundled = [...bundled, 'custom:bundled-maple-hauler', 'custom:bundled-lakeshore-coupe']
+  for (const k of everyBundled) {
     await dismissPlot()
     const eye = await solo.evaluate(k => {
       const g = window.maple
-      for (const other of ['custom:bundled-meridian-sedan', 'custom:bundled-bulwark-4x4', 'custom:bundled-ironhorn-crew-cab']) {
+      for (const other of [...g.vehicles.keys()].filter(x => x.startsWith('custom:bundled-'))) {
         const o = g.vehicles.get(other)
         if (o && other !== k) { o.dispose(g.engine.scene); g.vehicles.delete(other) }
       }
@@ -192,11 +193,12 @@ try {
       const v = g.vehicles.get(k) ?? g.addVehicle(k, at, 0)
       g.placeVehicle(v, at.x, at.z, 0)
       for (let i = 0; i < 90; i++) g.fixed(1 / 60)
-      const c = v.localToWorld(0, 0, 0), side = v.localToWorld(0, 1.2, 8), nose = v.localToWorld(1, 0, 0)
-      return { eye: [side.x, side.y, side.z], at: [c.x, c.y, c.z], heading: [+(nose.x - c.x).toFixed(2), +(nose.z - c.z).toFixed(2)] }
+      const c = v.localToWorld(0, 0, 0), side = v.localToWorld(0, 1.2, 8), other = v.localToWorld(-2, 1.6, -8), nose = v.localToWorld(1, 0, 0)
+      return { eye: [side.x, side.y, side.z], eye2: [other.x, other.y, other.z], at: [c.x, c.y, c.z], heading: [+(nose.x - c.x).toFixed(2), +(nose.z - c.z).toFixed(2)] }
     }, k)
     log(`${k} heading`, JSON.stringify(eye.heading))
     await view(solo, `bundled-${k.slice('custom:bundled-'.length)}`, eye.eye, eye.at)
+    await view(solo, `bundled-${k.slice('custom:bundled-'.length)}-left`, eye.eye2, eye.at)
     await dismissPlot()
     await solo.evaluate(k => { const g = window.maple; g.enterVehicle(g.vehicles.get(k)) }, k)
     await solo.locator('canvas').first().focus().catch(() => {})
