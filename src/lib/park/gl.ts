@@ -349,6 +349,7 @@ export class Gl {
   shadowFbo: WebGLFramebuffer | null = null
   shadowTexel = 1 / SHADOW_SIZE
   shadowOffset = 0.05
+  stats = { shadowDraws: 0, mainDraws: 0, shadowVerts: 0, mainVerts: 0, instanceBytes: 0 }
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false })
@@ -438,7 +439,7 @@ export class Gl {
     const gl = this.gl
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.instance)
     if (count > mesh.instanceCapacity) { mesh.instanceCapacity = Math.max(count, Math.ceil(mesh.instanceCapacity * 1.5), 64); gl.bufferData(gl.ARRAY_BUFFER, mesh.instanceCapacity * 32, gl.DYNAMIC_DRAW) }
-    if (count > 0) gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, count * 8)
+    if (count > 0) { gl.bufferSubData(gl.ARRAY_BUFFER, 0, data, 0, count * 8); this.stats.instanceBytes += count * 32 }
     mesh.instanceCount = count
   }
 
@@ -525,7 +526,8 @@ export class Gl {
     const gl = this.gl, u = this.u
     gl.uniformMatrix4fv(u.uModel, false, model)
     gl.uniform1i(u.uInstanced, 0)
-    if (this.shadowPass) { gl.bindVertexArray(mesh.vao); gl.drawArrays(mesh.mode, 0, mesh.count); return }
+    if (this.shadowPass) { this.stats.shadowDraws++; this.stats.shadowVerts += mesh.count; gl.bindVertexArray(mesh.vao); gl.drawArrays(mesh.mode, 0, mesh.count); return }
+    this.stats.mainDraws++; this.stats.mainVerts += mesh.count
     if (opts.tint) gl.uniform3fv(u.uTint, opts.tint)
     if (opts.alpha !== undefined && opts.alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(u.uAlpha, opts.alpha); gl.depthMask(false) }
     if (opts.noDepthWrite) gl.depthMask(false)
@@ -549,7 +551,8 @@ export class Gl {
     const gl = this.gl, u = this.u
     gl.uniformMatrix4fv(u.uModel, false, this.identity)
     gl.uniform1i(u.uInstanced, 1)
-    if (this.shadowPass) { gl.bindVertexArray(mesh.vao); gl.drawArraysInstanced(mesh.mode, 0, mesh.count, mesh.instanceCount); gl.uniform1i(u.uInstanced, 0); return }
+    if (this.shadowPass) { this.stats.shadowDraws++; this.stats.shadowVerts += mesh.count * mesh.instanceCount; gl.bindVertexArray(mesh.vao); gl.drawArraysInstanced(mesh.mode, 0, mesh.count, mesh.instanceCount); gl.uniform1i(u.uInstanced, 0); return }
+    this.stats.mainDraws++; this.stats.mainVerts += mesh.count * mesh.instanceCount
     if (opts.emissive) gl.uniform1f(u.uEmissive, opts.emissive)
     if (opts.specular !== undefined) gl.uniform1f(u.uSpecular, opts.specular)
     if (opts.alpha !== undefined && opts.alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(u.uAlpha, opts.alpha); gl.depthMask(false) }
