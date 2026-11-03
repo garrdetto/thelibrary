@@ -42,6 +42,14 @@ Edit the TypeScript and `index.html`, not the generated page. This folder is exc
 
 The site admin can add Buy-mode items without a code change: **Admin → Maple Street items** opens a dev-mode editor (React Three Fiber) where a .glb/.gltf is previewed on a 1 m grid, scaled with drag handles, named, priced and published. `/api/maplestreet-items` stores the model in KV and the record in D1.
 
+## Drafts and the developer instance
+
+Every admin-published asset (Buy items and vehicles today) lives in one D1 table, `maplestreet_assets`, with a status: `draft`, `published` or `retired` (`shared/Assets.ts`). Both editors have **Save as draft** next to Publish, and the list shows a Draft badge with Publish and "Try in game".
+
+- Drafts are listed only to the signed-in administrator, and only when the request asks for them (`?drafts=1`). The shared-world Durable Object never loads them, so players can't see or place them.
+- **Developer instance:** `/modules/maplestreet.html?dev=1` (`src/core/DevMode.ts`). The start screen offers only a private solo game with its own save (`maplestreet/dev/v1`), loads the admin's drafts as real catalog and dealer entries, and says how many came in. A DEV badge stays on screen. Add `&solo=1` to skip the start screen.
+- Drafts are never written to the offline caches, so a later normal session can't pick them up.
+
 - `shared/CustomItems.ts` turns each record into a `custom:<uuid>` catalog entry (`registerCustomItems`). The shared-world Durable Object registers them before it loads the world, and `src/build/CustomModels.ts` does the same in the page before any mode starts (the list is cached in `localStorage` for offline solo play), so `RoomLogic` validates and prices them like any other item.
 - A placed copy is drawn as yaw (quarter turns) > the published `{x,y,z}` scale > an offset that centers the model's unscaled bounds and puts its bottom on the floor. The editor preview uses the same layout, so what the admin sees is what spawns.
 - The footprint (cells) and collider height come from the scaled bounds (`footprintFromSize`). Custom items are floor items, never tintable, and have no needs interaction.
@@ -64,7 +72,10 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 
 ## World and economy
 
-- **Lots:** 60 lots of 32 × 40 m on ten residential streets between West and East Avenue. The original 20 (N1–N10, S1–S10) face Main Street and North/South Street; N11–N30 and S11–S30 sit one row per street on Birch, Cedar, Elm and Hazel (north) and Aspen, Dogwood, Fir and Juniper (south). Saved worlds pick up the new lots as empty lots. Six lots come with furnished starter houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`).
+- **Lots:** 60 lots of 32 × 40 m on ten residential streets between West and East Avenue. The original 20 (N1–N10, S1–S10) face Main Street and North/South Street; N11–N30 and S11–S30 sit one row per street on Birch, Cedar, Elm and Hazel (north) and Aspen, Dogwood, Fir and Juniper (south). Saved worlds pick up the new lots as empty lots. 28 lots have simulated neighbors with furnished houses (`shared/Seed.ts`), and simulated drivers and walkers move around them (`shared/Npc.ts`); the rest are for sale.
+- **Starter houses** (`shared/HousePlans.ts`): seven plans (the original classic, a ranch with an attached two-car garage, a two-storey colonial with stairs, a craftsman bungalow with a deep front porch, a flat-roofed modern house, a steep-roofed cape with a front picket fence, and a duplex), each with its own wall palette, interior, patio, fence and yard extras. Plans are written in lot-local coordinates (`Plot`) and emitted as ordinary build ops through `validateOp`. `SEED_VERSION` marks the roster: loading an older world rebuilds the houses neighbors already own and moves new neighbors onto lots that are unowned and empty, once; player-owned lots are never touched.
+- **Sidewalks** line the back-yard side of every residential street and the lot side of West and East Ave (`residentialSidewalks()` in `shared/WorldLayout.ts`); each has a `road` side so `Roads.ts` curbs the right edge.
+- **Trees:** each street's corner trees share one species (maple or linden), back yards mix in spruce, and the woods outside town are mostly spruce.
 - **Civic block** on Commerce St behind downtown: Maple Street Fire Station 1 (three apparatus bays with red bay lights that glow at night) and Maple Street Police, both on the town map and minimap.
 - **Starting cash:** new neighbors start with $105,000 (existing accounts keep their balance).
 - **Grass** (`src/world/Grass.ts`): thin four-blade clumps at realistic heights (mowed lawn about 4–5 cm, uncut lawn 8–13 cm, open fields up to knee-high), dark roots to lighter tips, a gentle breeze and slow lush/dry color patches.
