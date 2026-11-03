@@ -3,7 +3,8 @@ import { isCustomVehicleKind, type BuiltinVehicleKind, type VehicleKind } from '
 import { Body, defaultLook, isBody, Look, cleanLook, STARTER_WARDROBE, WARDROBE } from './Wardrobe';
 
 export const START_MONEY = 105_000;
-export const LOT_PRICE = 20_000;
+/** Solo mode's bottomless bank balance: purchases always go through. */
+export const UNLIMITED_MONEY = 999_999_999;
 
 /** Hard ceiling on total outstanding debt per player. */
 export const LOAN_CAP = 50_000;

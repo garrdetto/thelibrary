@@ -1,122 +1,199 @@
 /**
- * Mowable lawn for one lot. A per-lot canvas (8 px/m) acts as the albedo
- * "mow map"; strokes are painted as rotated deck-width rectangles whose shade
- * depends on travel direction — the same physics that makes real stripes.
- * A tiled blade-detail bump map rides on uv1 (texture.channel = 1) so the
- * close-up still reads as grass while uv0 spans the whole lot.
+ * Mowable lawn for one lot.
+ *
+ * A per-lot data texture (4 texels per meter) records, for every spot, which
+ * way the blades were pushed by the last pass and how far they have grown
+ * back since. The lawn shader turns that into real stripes: blades leaning
+ * away from the camera show their long, sunlit sides and look light, blades
+ * leaning toward it show their shaded tips and look dark — so the stripes
+ * swap shade as you walk around them, fade when you look straight down, and
+ * a second pass at an angle leaves a diamond (checkerboard) pattern because
+ * each spot keeps part of its old lean. As the grass grows back over five
+ * in-game days it gets taller and the stripes melt away.
+ *
+ * The 1 m cells mirror the authority's state; strokes are also painted
+ * locally at full texture resolution, so your own stripes have clean edges.
  */
 import * as THREE from 'three/webgpu';
-import type { LotDef } from '../../shared/WorldLayout';
-import { Shade, strokeCells, stripeShade } from '../../shared/Mowing';
+import { cameraPosition, dot, float, length, max, mix, normalize, positionWorld, texture, uv, vec2, vec3 } from 'three/tsl';
+import { ageDays, blendLean, byteToAngle, growthOf, LawnCells, mowCells, TICKS_PER_DAY } from '../../shared/Mowing';
 import type { MowStroke } from '../../shared/Protocol';
+import type { LotDef } from '../../shared/WorldLayout';
 
-const PPM = 8;
-const SHADE_COLORS: Record<Exclude<Shade, 0>, string> = {
-  1: '#86b552', 2: '#5a8f34',     // with / against the front-back direction
-  3: '#7aac4a', 4: '#62973a',     // cross-cut
-};
+const PPM = 4;
+/** How much a fully bent stripe brightens or darkens the turf. */
+const STRIPE = 0.34;
+
+let albedo: THREE.CanvasTexture | null = null;
+/** One tiling turf texture (4 m square) shared by every lawn: thatch, tufts and the odd clover. */
+function turfAlbedo() {
+  if (albedo) return albedo;
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d')!;
+  g.fillStyle = '#5a8a35'; g.fillRect(0, 0, 256, 256);
+  let seed = 7;
+  const r = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let i = 0; i < 9000; i++) {
+    const x = r() * 256, y = r() * 256;
+    g.fillStyle = `hsla(${84 + r() * 26},${38 + r() * 22}%,${24 + r() * 22}%,0.55)`;
+    g.fillRect(x, y, 1, 1 + r() * 2.5);
+  }
+  for (let i = 0; i < 40; i++) {
+    g.fillStyle = `hsla(${92 + r() * 10},40%,${30 + r() * 8}%,0.35)`;
+    g.beginPath(); g.arc(r() * 256, r() * 256, 2 + r() * 3, 0, Math.PI * 2); g.fill();
+  }
+  albedo = new THREE.CanvasTexture(c);
+  albedo.wrapS = albedo.wrapT = THREE.RepeatWrapping;
+  albedo.colorSpace = THREE.SRGBColorSpace;
+  albedo.anisotropy = 8;
+  return albedo;
+}
+
+export interface LawnSample { growth: number; dx: number; dz: number; strength: number }
 
 export class Lawn {
   readonly mesh: THREE.Mesh;
-  readonly coverage: Uint8Array;
-  private canvas = document.createElement('canvas');
-  private g: CanvasRenderingContext2D;
-  private tex: THREE.CanvasTexture;
+  cells: LawnCells;
+  /** Bumped whenever blades should be re-laid (a cut, or the grass growing). */
+  revision = 0;
+  private readonly tw: number;
+  private readonly th: number;
+  /** Per texel: in-game day of the last cut (-1 = never), and blade lean angle. */
+  private readonly cutAt: Float32Array;
+  private readonly lean: Float32Array;
+  private readonly data: Uint8Array;
+  private readonly tex: THREE.DataTexture;
   private dirty = false;
   private flushTimer = 0;
+  private grownTick = -1;
+  private anyCut = false;
 
   constructor(readonly lot: LotDef, detail: THREE.Texture) {
-    this.canvas.width = lot.w * PPM;
-    this.canvas.height = lot.d * PPM;
-    this.g = this.canvas.getContext('2d')!;
-    this.coverage = new Uint8Array(lot.w * lot.d);
-    this.paintUncut();
-
-    this.tex = new THREE.CanvasTexture(this.canvas);
-    this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.tex.anisotropy = 8;
+    this.tw = lot.w * PPM; this.th = lot.d * PPM;
+    this.cells = { t: new Uint16Array(lot.w * lot.d), a: new Uint8Array(lot.w * lot.d) };
+    this.cutAt = new Float32Array(this.tw * this.th).fill(-1);
+    this.lean = new Float32Array(this.tw * this.th);
+    this.data = new Uint8Array(this.tw * this.th * 4);
+    for (let i = 0; i < this.tw * this.th; i++) this.data.set([128, 128, 255, 0], i * 4);
+    this.tex = new THREE.DataTexture(this.data, this.tw, this.th, THREE.RGBAFormat);
+    this.tex.magFilter = THREE.LinearFilter;
+    this.tex.minFilter = THREE.LinearFilter;
+    this.tex.needsUpdate = true;
 
     const geo = new THREE.PlaneGeometry(lot.w, lot.d, 1, 1);
     geo.rotateX(-Math.PI / 2);
     const p = geo.getAttribute('position');
     const uv1 = new Float32Array(p.count * 2);
-    for (let i = 0; i < p.count; i++) { uv1[i * 2] = (p.getX(i) + lot.x) / 1.6; uv1[i * 2 + 1] = (p.getZ(i) + lot.z) / 1.6; }
+    for (let i = 0; i < p.count; i++) { uv1[i * 2] = (p.getX(i) + lot.x + lot.w / 2) / 1.6; uv1[i * 2 + 1] = (p.getZ(i) + lot.z + lot.d / 2) / 1.6; }
     geo.setAttribute('uv1', new THREE.BufferAttribute(uv1, 2));
 
     const bump = detail.clone();
     bump.channel = 1;
     bump.needsUpdate = true;
-    const mat = new THREE.MeshStandardMaterial({ map: this.tex, bumpMap: bump, bumpScale: 2.5, roughness: 0.95 });
+    const mat = new THREE.MeshStandardNodeMaterial({ bumpMap: bump, bumpScale: 2.5, roughness: 0.95 });
+    const state = texture(this.tex, vec2(uv().x, uv().y.oneMinus()));
+    const dir = state.xy.mul(2).sub(1);
+    const growth = state.z;
+    const strength = state.w.mul(growth.oneMinus().pow(1.5));
+    const toCam = cameraPosition.sub(positionWorld);
+    const flat = vec2(toCam.x, toCam.z);
+    const side = length(flat).div(max(length(toCam), float(1e-3)));
+    const shade = float(1).sub(dot(dir, normalize(flat)).mul(strength).mul(side).mul(STRIPE));
+    const tint = mix(vec3(1.07, 1.1, 0.93), vec3(0.86, 0.94, 0.8), growth);
+    mat.colorNode = texture(turfAlbedo(), uv(1).mul(0.4)).rgb.mul(tint).mul(shade);
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.position.set(lot.x + lot.w / 2, 0.015, lot.z + lot.d / 2);
     this.mesh.receiveShadow = true;
   }
 
-  private paintUncut() {
-    const { g, canvas: c } = this;
-    g.fillStyle = '#4f7f2e'; g.fillRect(0, 0, c.width, c.height);
-    for (let i = 0; i < c.width * c.height * 0.25; i++) {          // tufty, uneven, slightly yellowed
-      g.fillStyle = `hsla(${78 + Math.random() * 30},${35 + Math.random() * 25}%,${22 + Math.random() * 20}%,0.6)`;
-      g.fillRect(Math.random() * c.width, Math.random() * c.height, 1, 1 + Math.random() * 2);
+  /** Paints one mower pass locally (the authority keeps the matching 1 m cells). */
+  mow(s: MowStroke, nowDays: number) {
+    mowCells(this.cells, this.lot, s, nowDays);
+    const len = Math.hypot(s.hx, s.hz) || 1;
+    const fx = s.hx / len, fz = s.hz / len;
+    const reach = Math.hypot(s.len, s.width) / 2;
+    const x0 = Math.max(0, Math.floor((s.x - reach - this.lot.x) * PPM)), x1 = Math.min(this.tw - 1, Math.ceil((s.x + reach - this.lot.x) * PPM));
+    const z0 = Math.max(0, Math.floor((s.z - reach - this.lot.z) * PPM)), z1 = Math.min(this.th - 1, Math.ceil((s.z + reach - this.lot.z) * PPM));
+    for (let j = z0; j <= z1; j++) for (let i = x0; i <= x1; i++) {
+      const wx = this.lot.x + (i + 0.5) / PPM - s.x, wz = this.lot.z + (j + 0.5) / PPM - s.z;
+      if (Math.abs(wx * fx + wz * fz) > s.len / 2 || Math.abs(-wx * fz + wz * fx) > s.width / 2) continue;
+      const k = j * this.tw + i;
+      const old = this.cutAt[k] >= 0 ? this.lean[k] : null;
+      const g = this.cutAt[k] >= 0 ? growthOf(nowDays - this.cutAt[k]) : 1;
+      this.lean[k] = blendLean(s.hx, s.hz, old, g);
+      this.cutAt[k] = nowDays;
+      this.writeTexel(k, nowDays);
     }
+    this.anyCut = true;
+    this.dirty = true;
+    this.revision++;
   }
 
-  /** Paint a stroke locally; returns number of previously-uncut cells covered. */
-  mow(s: MowStroke): number {
-    const shade = stripeShade(s.hx, s.hz) as Exclude<Shade, 0>;
-    const { g } = this;
-    g.save();
-    g.translate((s.x - this.lot.x) * PPM, (s.z - this.lot.z) * PPM);
-    g.rotate(Math.atan2(s.hz, s.hx));
-    g.globalAlpha = 0.85;
-    g.fillStyle = SHADE_COLORS[shade];
-    g.fillRect((-s.len / 2) * PPM, (-s.width / 2) * PPM, s.len * PPM, s.width * PPM);
-    g.restore();
-    let fresh = 0;
-    for (const idx of strokeCells(this.lot, s)) { if (!this.coverage[idx]) fresh++; this.coverage[idx] = shade; }
-    this.dirty = true; this.pixelsStale = true; this.revision++;
-    return fresh;
-  }
-
-  /** Restore an authoritative coverage grid (on join) as blocky stripes. */
-  loadCoverage(c: Uint8Array) {
-    this.paintUncut();
-    for (let i = 0; i < c.length; i++) {
-      if (!c[i]) continue;
-      this.coverage[i] = c[i];
-      this.g.fillStyle = SHADE_COLORS[c[i] as Exclude<Shade, 0>];
-      this.g.fillRect((i % this.lot.w) * PPM, Math.floor(i / this.lot.w) * PPM, PPM, PPM);
+  /** Restores the authority's cells (on join): each 1 m cell fills its 4 × 4 texels. */
+  loadCells(c: LawnCells, nowDays: number) {
+    this.cells = c;
+    this.anyCut = false;
+    for (let cz = 0; cz < this.lot.d; cz++) for (let cx = 0; cx < this.lot.w; cx++) {
+      const ci = cz * this.lot.w + cx;
+      const age = ageDays(c.t[ci], nowDays);
+      const at = Number.isFinite(age) ? nowDays - age : -1;
+      if (at >= 0) this.anyCut = true;
+      for (let j = 0; j < PPM; j++) for (let i = 0; i < PPM; i++) {
+        const k = (cz * PPM + j) * this.tw + cx * PPM + i;
+        this.cutAt[k] = at;
+        this.lean[k] = byteToAngle(c.a[ci]);
+        this.writeTexel(k, nowDays);
+      }
     }
-    this.dirty = true; this.pixelsStale = true; this.revision++;
+    this.grownTick = Math.floor(nowDays * TICKS_PER_DAY);
+    this.dirty = true;
+    this.revision++;
   }
 
-  regrow() { this.coverage.fill(0); this.paintUncut(); this.dirty = true; this.pixelsStale = true; this.revision++; }
-
-  private pixels: Uint8ClampedArray | null = null;
-  private pixelsStale = true;
-  /** Lawn color + whether it's cut at a world point (grass blades follow the stripes). */
-  sample(x: number, z: number, out: [number, number, number]): boolean {
-    if (this.pixelsStale || !this.pixels) {
-      this.pixels = this.g.getImageData(0, 0, this.canvas.width, this.canvas.height).data;
-      this.pixelsStale = false;
-    }
-    const px = Math.min(this.canvas.width - 1, Math.max(0, Math.floor((x - this.lot.x) * PPM)));
-    const py = Math.min(this.canvas.height - 1, Math.max(0, Math.floor((z - this.lot.z) * PPM)));
-    const i = (py * this.canvas.width + px) * 4;
-    out[0] = this.pixels[i] / 255; out[1] = this.pixels[i + 1] / 255; out[2] = this.pixels[i + 2] / 255;
-    const cx = Math.floor(x - this.lot.x), cz = Math.floor(z - this.lot.z);
-    return this.coverage[cz * this.lot.w + cx] > 0;
+  private writeTexel(k: number, nowDays: number) {
+    const o = k * 4, at = this.cutAt[k];
+    if (at < 0) { this.data[o] = 128; this.data[o + 1] = 128; this.data[o + 2] = 255; this.data[o + 3] = 0; return; }
+    const g = growthOf(nowDays - at);
+    if (g >= 1) { this.cutAt[k] = -1; this.data[o + 2] = 255; this.data[o + 3] = 0; return; }
+    this.data[o] = Math.round((Math.cos(this.lean[k]) * 0.5 + 0.5) * 255);
+    this.data[o + 1] = Math.round((Math.sin(this.lean[k]) * 0.5 + 0.5) * 255);
+    this.data[o + 2] = Math.round(g * 255);
+    this.data[o + 3] = 255;
   }
-  /** Bumped whenever the mow map changes, so dependents can refresh. */
-  revision = 0;
 
-  get percentMowed() { let n = 0; for (const v of this.coverage) if (v) n++; return n / this.coverage.length; }
+  /** Grass height, lean and stripe strength at a world point (the 3D blades follow it). */
+  sample(x: number, z: number, out: LawnSample, nowDays: number): LawnSample {
+    const i = Math.min(this.tw - 1, Math.max(0, Math.floor((x - this.lot.x) * PPM)));
+    const j = Math.min(this.th - 1, Math.max(0, Math.floor((z - this.lot.z) * PPM)));
+    const k = j * this.tw + i, at = this.cutAt[k];
+    if (at < 0) { out.growth = 1; out.strength = 0; out.dx = 0; out.dz = 0; return out; }
+    out.growth = growthOf(nowDays - at);
+    out.strength = Math.pow(1 - out.growth, 1.5);
+    out.dx = Math.cos(this.lean[k]); out.dz = Math.sin(this.lean[k]);
+    return out;
+  }
 
   contains(x: number, z: number) { const l = this.lot; return x >= l.x && x < l.x + l.w && z >= l.z && z < l.z + l.d; }
 
-  /** Texture uploads are throttled to ~10 Hz. */
-  update(dt: number) {
+  /**
+   * Uploads changes (throttled to ~10 Hz) and, every 30 in-game minutes, lets
+   * the grass grow. Returns true when it spent this frame's growth refresh.
+   */
+  update(dt: number, nowDays: number, mayRefresh: boolean): boolean {
     this.flushTimer += dt;
+    let refreshed = false;
+    const tick = Math.floor(nowDays * TICKS_PER_DAY);
+    if (mayRefresh && this.anyCut && tick !== this.grownTick) {
+      this.grownTick = tick;
+      let still = false;
+      for (let k = 0; k < this.cutAt.length; k++) if (this.cutAt[k] >= 0) { this.writeTexel(k, nowDays); if (this.cutAt[k] >= 0) still = true; }
+      this.anyCut = still;
+      this.dirty = true;
+      this.revision++;
+      refreshed = true;
+    }
     if (this.dirty && this.flushTimer > 0.1) { this.tex.needsUpdate = true; this.dirty = false; this.flushTimer = 0; }
+    return refreshed;
   }
 }

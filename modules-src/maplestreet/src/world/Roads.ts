@@ -5,10 +5,13 @@
  * residential streets, white edge lines on Main), continental crosswalks and
  * stop bars on every approach, stop signs and street-name blades, manhole
  * covers, storm-drain grates and darker polished wheel paths in each lane.
+ * The curved Willow Bend streets are ribbons that follow their centerlines,
+ * with curbs (dropped at driveways and where they meet other roads), gutters,
+ * a dashed center line, and stop signs where they meet West Ave.
  */
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { CURB_CUTS, drivewayRect, LotDef, RectXZ, ROAD_NAMES, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
+import { CURB_CUTS, CURVES, curveDistance, drivewayRect, LotDef, RectXZ, ROAD_NAMES, ROAD_W, ROADS, SIDEWALKS } from '../../shared/WorldLayout';
 import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import { mergeStatic } from '../core/Merge';
 import { Physics } from '../physics/Physics';
@@ -38,6 +41,20 @@ function subtract(a: number, b: number, cuts: Interval[], min = 0.3): Interval[]
   }
   return out.filter(([s0, s1]) => s1 - s0 >= min);
 }
+
+/** Stretches of a straight curb line that run into a curved street's asphalt. */
+function curveCuts(alongXEdge: boolean, edge: number, a0: number, a1: number): Interval[] {
+  const out: Interval[] = [];
+  let start: number | null = null;
+  for (let t = a0; t <= a1 + 0.25; t += 0.5) {
+    const inside = t <= a1 && curveDistance(alongXEdge ? t : edge, alongXEdge ? edge : t) < ROAD_W / 2 + 0.3;
+    if (inside && start === null) start = t - 0.5;
+    if (!inside && start !== null) { out.push([start, t]); start = null; }
+  }
+  return out;
+}
+
+type V2 = { x: number; z: number };
 
 interface Junction { x: number; z: number; hx: number; hz: number; xRoad: number; zRoad: number; arms: THREE.Vector2[] }
 
@@ -104,6 +121,7 @@ export class Roads {
     this.markings();
     this.wear();
     this.furniture();
+    this.curves();
     mergeStatic(this.group);
   }
 
@@ -139,7 +157,7 @@ export class Roads {
         const edge = ax ? r.cz + side * (r.sz / 2) : r.cx + side * (r.sx / 2);
         // Curbs only along the outside edges of the network, not where two roads overlap.
         const probe = edge + side * 0.6;
-        const runs = subtract(a0, a1, this.cutsFor(ax, edge));
+        const runs = subtract(a0, a1, [...this.cutsFor(ax, edge), ...curveCuts(ax, edge, a0, a1)]);
         for (const [s0, s1] of runs) {
           const mid = (s0 + s1) / 2;
           if (ROADS.some(o => o !== r && (ax ? inside(o, mid, probe) : inside(o, probe, mid)))) continue;
@@ -336,5 +354,124 @@ export class Roads {
         break;
       }
     }
+  }
+
+  /** Willow Bend, Hollow Bend and Lakeview Dr: asphalt ribbons with curbs, gutters, a center line and stop signs. */
+  private curves() {
+    const asphalt: number[] = [], asphaltUv: number[] = [];
+    const curb: THREE.BufferGeometry[] = [], gutter: THREE.BufferGeometry[] = [], yellow: THREE.BufferGeometry[] = [];
+    const tile = this.mats.get('asphalt').tile;
+    const drives = this.lots.filter(l => l.bend).map(l => drivewayRect(l));
+    const quad = (out: number[], a: number[], b: number[], c: number[], d: number[]) => out.push(...a, ...b, ...c, ...a, ...c, ...d);
+    const geo = (pos: number[]) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.computeVertexNormals(); return g; };
+    const strip = (pts: V2[], ns: V2[], off0: number, off1: number, y: number, out: number[], uvs?: number[]) => {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p = (k: number, o: number) => [pts[k].x + ns[k].x * o, y, pts[k].z + ns[k].z * o];
+        const A = p(i, off0), B = p(i, off1), C = p(i + 1, off1), D = p(i + 1, off0);
+        quad(out, A, B, C, D);
+        if (uvs) for (const v of [A, B, C, A, C, D]) uvs.push(v[0] / tile, v[2] / tile);
+      }
+    };
+
+    for (const c of CURVES) {
+      const P = c.pts, half = c.width / 2;
+      const T = P.map((_, i) => { const a = P[Math.max(0, i - 1)], b = P[Math.min(P.length - 1, i + 1)]; const l = Math.hypot(b.x - a.x, b.z - a.z) || 1; return { x: (b.x - a.x) / l, z: (b.z - a.z) / l }; });
+      const N = T.map(t => ({ x: -t.z, z: t.x }));
+      strip(P, N, -half, half, ROAD_TOP - 0.002, asphalt, asphaltUv);
+
+      // Curbs and gutters, segment by segment, dropped at driveways and where another road takes over.
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < P.length - 1; i++) {
+          const mx = (P[i].x + P[i + 1].x) / 2 + (N[i].x + N[i + 1].x) / 2 * side * (half + 0.08);
+          const mz = (P[i].z + P[i + 1].z) / 2 + (N[i].z + N[i + 1].z) / 2 * side * (half + 0.08);
+          if (drives.some(d => inside(d, mx, mz, 0.6))) continue;
+          if (ROADS.some(r => inside(r, mx, mz, 0.4))) continue;
+          if (curveDistance(mx + N[i].x * side * 0.7, mz + N[i].z * side * 0.7) < half - 0.2) continue;
+          const seg = [P[i], P[i + 1]], ns = [N[i], N[i + 1]];
+          const e = side * half, o = side * (half + 0.16);
+          const top: number[] = [], faces: number[] = [];
+          strip(seg, ns, Math.min(e, o), Math.max(e, o), 0.15, top);
+          for (const off of [e, o]) {
+            const a = [seg[0].x + ns[0].x * off, 0, seg[0].z + ns[0].z * off], b = [seg[1].x + ns[1].x * off, 0, seg[1].z + ns[1].z * off];
+            quad(faces, a, b, [b[0], 0.15, b[2]], [a[0], 0.15, a[2]]);
+            quad(faces, b, a, [a[0], 0.15, a[2]], [b[0], 0.15, b[2]]);
+          }
+          curb.push(geo([...top, ...faces]));
+          const gut: number[] = [];
+          strip(seg, ns, Math.min(e, e - side * 0.42), Math.max(e, e - side * 0.42), ROAD_TOP + 0.003, gut);
+          gutter.push(geo(gut));
+        }
+      }
+
+      // Dashed yellow center line, kept clear of the junctions at either end.
+      let s = 0;
+      const total = P.reduce((sum, p, i) => i ? sum + Math.hypot(p.x - P[i - 1].x, p.z - P[i - 1].z) : 0, 0);
+      for (let i = 0; i < P.length - 1; i++) {
+        const l = Math.hypot(P[i + 1].x - P[i].x, P[i + 1].z - P[i].z);
+        const mid = s + l / 2;
+        s += l;
+        if (mid < 10 || mid > total - 10 || mid % 9 > 3) continue;
+        if (ROADS.some(r => inside(r, P[i].x, P[i].z, 3))) continue;
+        const g: number[] = [];
+        strip([P[i], P[i + 1]], [N[i], N[i + 1]], -0.055, 0.055, ROAD_TOP + 0.004, g);
+        yellow.push(geo(g));
+      }
+
+      // Stop sign and street-name blade where the curve meets West Ave.
+      for (const end of [0, P.length - 1]) {
+        const p = P[end];
+        if (!ROADS.some(r => inside(r, p.x, p.z) && r.sz > r.sx)) continue;
+        const inward = end === 0 ? 1 : -1;
+        const k = Math.min(P.length - 1, Math.max(0, end + inward * 11));
+        const arm = { x: T[k].x * inward, z: T[k].z * inward };
+        const right = { x: arm.z, z: -arm.x };
+        this.stopSign(P[k].x + right.x * (half + 1.1), P[k].z + right.z * (half + 1.1), Math.atan2(arm.x, arm.z));
+        const bx = P[k].x - right.x * (half + 1.4), bz = P[k].z - right.z * (half + 1.4);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.045, 3.1, 8), new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.35, metalness: 0.9 }));
+        post.position.set(bx, 1.55, bz); post.castShadow = true;
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.22, 0.02), new THREE.MeshStandardMaterial({ map: bladeTexture(c.name), roughness: 0.4 }));
+        blade.position.set(bx, 3.0, bz); blade.rotation.y = Math.atan2(arm.x, arm.z) + Math.PI / 2;
+        this.group.add(post, blade);
+        this.physics.addStaticCylinder(bx, 1.5, bz, 1.5, 0.05);
+      }
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(asphalt, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(asphaltUv, 2));
+    g.computeVertexNormals();
+    const road = new THREE.Mesh(g, this.mats.get('asphalt').material);
+    road.receiveShadow = true;
+    this.group.add(road);
+    const conc = this.mats.get('concrete');
+    const add = (arr: THREE.BufferGeometry[], mat: THREE.Material, uvTile = 0, shadow = true) => {
+      if (!arr.length) return;
+      const m = mergeGeometries(arr)!;
+      if (uvTile) worldBoxUV(m, uvTile);
+      const mesh = new THREE.Mesh(m, mat);
+      mesh.receiveShadow = true; mesh.castShadow = shadow;
+      this.group.add(mesh);
+    };
+    add(curb, conc.material, conc.tile);
+    add(gutter, this.mats.get('sidewalk').material, this.mats.get('sidewalk').tile, false);
+    add(yellow, decalMaterial(0xd9a827, { roughness: 0.5 }), 0, false);
+  }
+
+  private stopMats: { front: THREE.MeshStandardMaterial; back: THREE.MeshStandardMaterial } | null = null;
+  /** A stop sign at (x, z) facing traffic that drives toward `yaw + π`. */
+  private stopSign(x: number, z: number, yaw: number) {
+    this.stopMats ??= {
+      front: new THREE.MeshStandardMaterial({ map: stopTexture(false), alphaTest: 0.5, roughness: 0.35 }),
+      back: new THREE.MeshStandardMaterial({ map: stopTexture(true), alphaTest: 0.5, roughness: 0.6, metalness: 0.5 }),
+    };
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 2.25, 8), new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.35, metalness: 0.9 }));
+    pole.position.set(x, 1.125, z); pole.castShadow = true;
+    const dx = Math.sin(yaw), dz = Math.cos(yaw);
+    const front = new THREE.Mesh(new THREE.PlaneGeometry(0.76, 0.76), this.stopMats.front);
+    front.position.set(x + dx * 0.03, 2.05, z + dz * 0.03); front.rotation.y = yaw; front.castShadow = true;
+    const back = new THREE.Mesh(new THREE.PlaneGeometry(0.76, 0.76), this.stopMats.back);
+    back.position.set(x + dx * 0.02, 2.05, z + dz * 0.02); back.rotation.y = yaw + Math.PI;
+    this.group.add(pole, front, back);
+    this.physics.addStaticCylinder(x, 1.1, z, 1.1, 0.05);
   }
 }

@@ -14,7 +14,12 @@ export interface LotDef {
   x: number; z: number;   // min corner (grid vertex)
   w: number; d: number;   // size in cells
   front: '+z' | '-z';     // which edge faces its street
+  /** Willow Bend lots: the curved street in front, and the lawn strip between the lot and the curb at the driveway. */
+  bend?: BendId;
+  setback?: number;
 }
+
+export type BendId = 'willow' | 'lake';
 
 export interface RectXZ { cx: number; cz: number; sx: number; sz: number }
 
@@ -58,11 +63,129 @@ export function makeLots(): LotDef[] {
       lots.push({ id: `S${n}`, x, z: streetZ + 5, w: LOT_W, d: LOT_D, front: '-z' });
     }
   });
-  return lots;
+  return [...lots, ...bendLots()];
+}
+
+// ---------------------------------------------------------------- Willow Bend (curved district)
+
+/**
+ * West of West Ave: two winding streets, Willow Bend (south) and Lakeview Drive
+ * (north), joined at the far end by the sweeping Hollow Bend, which Main Street
+ * runs straight into. Lots here come in several sizes, up to estate lots.
+ */
+export interface CurveRoad { name: string; width: number; pts: { x: number; z: number }[] }
+
+const BEND_X0 = -AVE_X;                       // the curves start at West Ave's centerline
+const BEND_X1 = -318;                         // ...and meet Hollow Bend here
+const BEND_Z = 132;
+export const BEND_Z_AT: Record<BendId, (x: number) => number> = {
+  willow: x => BEND_Z + 7 * Math.sin(((BEND_X0 - x) / 210) * Math.PI * 2),
+  lake: x => -BEND_Z - 7 * Math.sin(((BEND_X0 - x) / 170) * Math.PI * 2 + 0.9) + 7 * Math.sin(0.9),
+};
+
+function bendPts(id: BendId) {
+  const f = BEND_Z_AT[id], pts: { x: number; z: number }[] = [];
+  for (let x = BEND_X0; x >= BEND_X1 - 1e-6; x -= 1) pts.push({ x, z: f(x) });
+  return pts;
+}
+
+function hollowPts() {
+  const a = BEND_Z_AT.willow, b = BEND_Z_AT.lake, X = BEND_X1;
+  const tangent = (f: (x: number) => number) => { const dz = f(X - 0.5) - f(X + 0.5), l = Math.hypot(1, dz); return [-1 / l, dz / l]; };
+  const [ax, az] = tangent(a), [bx, bz] = tangent(b);
+  const P0 = [X, a(X)], P1 = [X + ax * 62, a(X) + az * 62], P2 = [X + bx * 62, b(X) + bz * 62], P3 = [X, b(X)];
+  const pts: { x: number; z: number }[] = [];
+  const N = 360;
+  for (let i = 0; i <= N; i++) {
+    const t = i / N, u = 1 - t;
+    const k0 = u * u * u, k1 = 3 * u * u * t, k2 = 3 * u * t * t, k3 = t * t * t;
+    pts.push({ x: k0 * P0[0] + k1 * P1[0] + k2 * P2[0] + k3 * P3[0], z: k0 * P0[1] + k1 * P1[1] + k2 * P2[1] + k3 * P3[1] });
+  }
+  return pts;
+}
+
+export const CURVES: CurveRoad[] = [
+  { name: 'Willow Bend', width: ROAD_W, pts: bendPts('willow') },
+  { name: 'Hollow Bend', width: ROAD_W, pts: hollowPts() },
+  { name: 'Lakeview Dr', width: ROAD_W, pts: bendPts('lake') },
+];
+
+/** Where Main Street meets Hollow Bend (the centerline crossing z = 0). */
+const MAIN_WEST_X = (() => {
+  const h = CURVES[1].pts;
+  for (let i = 1; i < h.length; i++) if (Math.sign(h[i - 1].z) !== Math.sign(h[i].z)) return Math.round(h[i].x);
+  return -360;
+})();
+
+const BEND_LOTS: { bend: BendId; side: 1 | -1; widths: number[] }[] = [
+  { bend: 'willow', side: -1, widths: [56, 34, 28, 48, 30] },
+  { bend: 'willow', side: 1, widths: [40, 44, 26, 60, 30] },
+  { bend: 'lake', side: 1, widths: [36, 26, 52, 30, 54] },
+  { bend: 'lake', side: -1, widths: [44, 28, 34, 32, 58] },
+];
+
+/** Lots along the curves: fronts follow the street, so each one sits just behind the curb at its nearest point. */
+function bendLots(): LotDef[] {
+  const out: LotDef[] = [];
+  let n = 1;
+  for (const row of BEND_LOTS) {
+    const f = BEND_Z_AT[row.bend];
+    let right = BEND_X0 - ROAD_W / 2 - 6;
+    for (const w of row.widths) {
+      const x = right - w, d = Math.max(36, Math.min(60, Math.round(w * 1.12)));
+      const zs: number[] = [];
+      for (let t = x; t <= x + w; t++) zs.push(f(t));
+      const curbAt = (t: number) => f(t) + row.side * (ROAD_W / 2);
+      let lot: LotDef;
+      if (row.side > 0) {
+        const z = Math.ceil(Math.max(...zs) + ROAD_W / 2 + 1.5);
+        lot = { id: `W${n}`, x, z, w, d, front: '-z', bend: row.bend, setback: z - curbAt(x + 4) };
+      } else {
+        const front = Math.floor(Math.min(...zs) - ROAD_W / 2 - 1.5);
+        lot = { id: `W${n}`, x, z: front - d, w, d, front: '+z', bend: row.bend, setback: curbAt(x + 4) - front };
+      }
+      out.push(lot);
+      n++;
+      right = x;
+    }
+  }
+  return out;
+}
+
+const CURVE_REACH = 24;
+const DIST = { x0: -400, z0: -220, w: 330, h: 440 };
+let distGrid: Float32Array | null = null;
+/** Distance (m) to the nearest curved-street centerline; Infinity farther than 24 m. */
+export function curveDistance(x: number, z: number): number {
+  if (!distGrid) {
+    const g = new Float32Array((DIST.w + 1) * (DIST.h + 1)).fill(Infinity);
+    for (const c of CURVES) for (const p of c.pts) {
+      const i0 = Math.max(0, Math.floor(p.x - CURVE_REACH - DIST.x0)), i1 = Math.min(DIST.w, Math.ceil(p.x + CURVE_REACH - DIST.x0));
+      const j0 = Math.max(0, Math.floor(p.z - CURVE_REACH - DIST.z0)), j1 = Math.min(DIST.h, Math.ceil(p.z + CURVE_REACH - DIST.z0));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const d = Math.hypot(DIST.x0 + i - p.x, DIST.z0 + j - p.z);
+        const k = j * (DIST.w + 1) + i;
+        if (d < g[k]) g[k] = d;
+      }
+    }
+    distGrid = g;
+  }
+  const fx = x - DIST.x0, fz = z - DIST.z0;
+  if (fx < 0 || fz < 0 || fx >= DIST.w || fz >= DIST.h) return Infinity;
+  const i = Math.floor(fx), j = Math.floor(fz), tx = fx - i, tz = fz - j, W = DIST.w + 1;
+  const a = distGrid[j * W + i], b = distGrid[j * W + i + 1], c = distGrid[(j + 1) * W + i], e = distGrid[(j + 1) * W + i + 1];
+  if (!Number.isFinite(a + b + c + e)) return Math.min(a, b, c, e) === Infinity ? Infinity : Math.min(a, b, c, e);
+  return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + e * tx) * tz;
+}
+
+/** The curb line a Willow Bend lot faces, at x. */
+export function bendCurbZ(lot: LotDef, x: number) {
+  const f = BEND_Z_AT[lot.bend!];
+  return f(x) + (lot.front === '-z' ? 1 : -1) * (ROAD_W / 2);
 }
 
 export const ROADS: RectXZ[] = [
-  { cx: (DOWNTOWN_X1 + 8 - 150) / 2, cz: 0, sx: DOWNTOWN_X1 + 8 + 150, sz: ROAD_W },     // Main Street (depot → downtown)
+  { cx: (DOWNTOWN_X1 + 8 + MAIN_WEST_X) / 2, cz: 0, sx: DOWNTOWN_X1 + 8 - MAIN_WEST_X, sz: ROAD_W },     // Main Street (Hollow Bend → depot → downtown)
   { cx: -AVE_X, cz: 0, sx: ROAD_W, sz: FAR_Z * 2 + ROAD_W },                           // West Ave (runs the length of the neighborhood)
   { cx: AVE_X, cz: 0, sx: ROAD_W, sz: FAR_Z * 2 + ROAD_W },                            // East Ave
   { cx: 0, cz: -ALLEY_Z, sx: AVE_X * 2 + ROAD_W, sz: ROAD_W },                          // North Street
@@ -198,12 +321,18 @@ export const DOWNTOWN = { x0: DOWNTOWN_X0, x1: DOWNTOWN_X1 + 14, z0: -ALLEY_Z - 
 /** The civic block behind downtown (fire and police), kept clear of trees and grass. */
 export const CIVIC_BLOCK: RectXZ = { cx: 136, cz: -76, sx: 72, sz: 34 };
 /** Everything the town map and minimap should show. */
-export const MAP_BOUNDS = { x0: -158, x1: 276, z0: -TOWN_HALF.z, z1: TOWN_HALF.z };
+export const MAP_BOUNDS = { x0: -392, x1: 276, z0: -TOWN_HALF.z, z1: TOWN_HALF.z };
 export const STREETS = { ALLEY_Z, AVE_X, ROW_X0, MAIN_FRONT, BACK_FRONT, OUTER_Z, FAR_Z };
 
-/** Each lot's concrete driveway: 4 m wide at the left of the frontage, 12 m deep. */
+/** Each lot's concrete driveway: 4 m wide at the left of the frontage, 12 m deep (plus the run out to a curved street's curb). */
 export function drivewayRect(lot: LotDef): RectXZ {
   const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
   const dir = lot.front === '+z' ? -1 : 1;
-  return { cx: lot.x + 4, cz: frontZ + dir * 4, sx: 4, sz: 12 };
+  const out = lot.setback ? lot.setback + 0.4 : 2;
+  return { cx: lot.x + 4, cz: frontZ + dir * (10 - out) / 2, sx: 4, sz: 10 + out };
+}
+
+/** Lot price: $20,000 for a standard 32 × 40 m lot, scaled by area (rounded to $500). */
+export function lotPrice(lot: { w: number; d: number }) {
+  return Math.round((20_000 * (lot.w * lot.d)) / (LOT_W * LOT_D) / 500) * 500;
 }

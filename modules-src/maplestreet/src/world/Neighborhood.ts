@@ -6,8 +6,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { LOT_PRICE } from '../../shared/Economy';
-import { CIVIC_BLOCK, DEPOT, DOWNTOWN, drivewayRect, LotDef, makeLots, RectXZ, ROADS, SIDEWALKS, STREETS, TOWN_HALF, WORLD_HALF } from '../../shared/WorldLayout';
+import { bendCurbZ, CIVIC_BLOCK, CURVES, curveDistance, DEPOT, DOWNTOWN, drivewayRect, LotDef, lotPrice, makeLots, RectXZ, ROAD_W, ROADS, SIDEWALKS, STREETS, TOWN_HALF, WORLD_HALF } from '../../shared/WorldLayout';
 import { noNormalsMRT } from '../core/Engine';
 import { MaterialLibrary, worldBoxUV } from '../core/Materials';
 import { Physics } from '../physics/Physics';
@@ -122,12 +121,12 @@ export class Neighborhood {
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.1), this.mats.get('trim').material); post.position.y = 0.55;
       const box = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.45, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1d2a44, metalness: 0.6, roughness: 0.35 }));
       box.position.y = 1.1;
-      mb.add(post, box); mb.position.set(lot.x + 7.5, 0, frontZ + dir * 0.6);
+      mb.add(post, box); mb.position.set(lot.x + 7.5, 0, lot.bend ? bendCurbZ(lot, lot.x + 7.5) + dir * 0.7 : frontZ + dir * 0.6);
       mb.traverse(o => (o.castShadow = true));
       this.group.add(mb);
 
       // For-sale sign / name plate (texture swapped on ownership change)
-      const mat = new THREE.MeshStandardMaterial({ map: labelTexture(['FOR SALE', `$${LOT_PRICE.toLocaleString()}`], 512, 320, '#f4efe3', '#8b1e1e'), roughness: 0.7 });
+      const mat = new THREE.MeshStandardMaterial({ map: labelTexture(['FOR SALE', `$${lotPrice(lot).toLocaleString()}`], 512, 320, '#f4efe3', '#8b1e1e'), roughness: 0.7 });
       const sign = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.75, 0.04), [this.mats.get('trim').material, this.mats.get('trim').material, this.mats.get('trim').material, this.mats.get('trim').material, mat, mat]);
       sign.position.set(lot.x + lot.w - 3, 1.25, frontZ + dir * 1.5);
       sign.castShadow = true;
@@ -152,7 +151,7 @@ export class Neighborhood {
       s.mat.map?.dispose();
       s.mat.map = ownerName
         ? labelTexture(['The', ownerName], 512, 320, '#2c3a2a', '#efe6cf', 'bold 64px Georgia')
-        : labelTexture(['FOR SALE', `$${LOT_PRICE.toLocaleString()}`], 512, 320, '#f4efe3', '#8b1e1e');
+        : labelTexture(['FOR SALE', `$${lotPrice(this.lots.find(l => l.id === lotId) ?? { w: 32, d: 40 }).toLocaleString()}`], 512, 320, '#f4efe3', '#8b1e1e');
       s.mat.needsUpdate = true;
     }
     const line = this.outlines.children.find(c => c.userData.lotId === lotId) as THREE.Line | undefined;
@@ -166,6 +165,8 @@ export class Neighborhood {
     const spots: { x: number; z: number; s: number; kind: number }[] = [];
     const blocked = (x: number, z: number) => {
       for (const r of ROADS) if (Math.abs(x - r.cx) < r.sx / 2 + 2 && Math.abs(z - r.cz) < r.sz / 2 + 2) return true;
+      if (curveDistance(x, z) < ROAD_W / 2 + 3) return true;
+      if (this.lots.some(l => x > l.x - 1.5 && x < l.x + l.w + 1.5 && z > l.z - 1.5 && z < l.z + l.d + 1.5)) return true;
       if (x > DOWNTOWN.x0 - 14 && x < DOWNTOWN.x1 + 8 && z > DOWNTOWN.z0 - 4 && z < DOWNTOWN.z1 + 4) return true;
       if (Math.abs(x - DEPOT.x) < DEPOT.w / 2 + 10 && Math.abs(z - DEPOT.z) < DEPOT.d / 2 + 16) return true;
       if (Math.abs(x - CIVIC_BLOCK.cx) < CIVIC_BLOCK.sx / 2 + 3 && Math.abs(z - CIVIC_BLOCK.cz) < CIVIC_BLOCK.sz / 2 + 3) return true;
@@ -268,13 +269,20 @@ export class Neighborhood {
     const streetZs = [0, ALLEY_Z, ...OUTER_Z].flatMap(z => [z, -z]);
     for (const lot of this.lots) {
       const side = lot.front === '+z' ? -1 : 1;                 // lamps stand on the lot side and reach over the road
+      if (lot.bend) {
+        const x = lot.x + lot.w / 2;
+        this.lampPositions.push(new THREE.Vector3(x, 5.6, bendCurbZ(lot, x) + side * 0.6));
+        this.lampReach.push(new THREE.Vector3(0, 0, -side));
+        continue;
+      }
       const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
       const street = streetZs.reduce((best, z) => Math.abs(z - frontZ) < Math.abs(best - frontZ) ? z : best, streetZs[0]);
       this.lampPositions.push(new THREE.Vector3(lot.x + lot.w / 2, 5.6, street + side * 5.6));
       this.lampReach.push(new THREE.Vector3(0, 0, -side));
     }
     const aveZs: number[] = [];
-    for (let z = -FAR_Z + 13; z < FAR_Z - 8; z += 26) if (streetZs.every(sz => Math.abs(z - sz) > 9)) aveZs.push(z);
+    const mouths = CURVES.flatMap(c => [c.pts[0], c.pts[c.pts.length - 1]]).filter(p => Math.abs(p.x + AVE_X) < 1).map(p => p.z);
+    for (let z = -FAR_Z + 13; z < FAR_Z - 8; z += 26) if ([...streetZs, ...mouths].every(sz => Math.abs(z - sz) > 9)) aveZs.push(z);
     for (const x of [-AVE_X, AVE_X]) for (const z of aveZs) {
       this.lampPositions.push(new THREE.Vector3(x + 5.6 * Math.sign(x), 5.6, z));
       this.lampReach.push(new THREE.Vector3(-Math.sign(x), 0, 0));
@@ -309,11 +317,12 @@ export class Neighborhood {
 
   // ---------------------------------------------------------------- per-frame
 
-  update(dt: number, night: number, focus: THREE.Vector3) {
+  update(dt: number, night: number, focus: THREE.Vector3, nowDays: number) {
     this.downtown.update(night);
     this.bulbMat.emissiveIntensity = night > 0.25 ? 6 : 0;
     this.windowGlow.emissiveIntensity = night * 2.2;
-    for (const l of this.lawns.values()) l.update(dt);
+    let refreshes = 2;
+    for (const l of this.lawns.values()) if (l.update(dt, nowDays, refreshes > 0)) refreshes--;
 
     this.poolTimer -= dt;
     if (this.poolTimer <= 0) {                         // re-assign the N real lights to the nearest lamps

@@ -35,6 +35,14 @@ export interface WorldSocket {
 interface Meta { version: number; epochDay: number; coverage: Record<string, string>; seedVersion?: number }
 interface LotRecord { lot: LotState; build: LotBuild }
 
+/**
+ * Storage generation. Bumping it starts everyone over on a fresh neighborhood:
+ * records from earlier generations are simply never read again.
+ * g2 (Nov 2026): reset for Willow Bend, growing lawns and one-time characters.
+ */
+export const WORLD_GENERATION = 'g2:';
+const K = { meta: `${WORLD_GENERATION}meta`, lot: `${WORLD_GENERATION}lot:`, acct: `${WORLD_GENERATION}acct:` };
+
 export const WORLD_LIMITS = {
   maxConnections: 48,
   maxMessageBytes: 32_768,
@@ -63,7 +71,7 @@ export class WorldServer {
   }
 
   private async load() {
-    const [meta, lots] = await Promise.all([this.storage.get<Meta>('meta'), this.storage.list<LotRecord>('lot:')]);
+    const [meta, lots] = await Promise.all([this.storage.get<Meta>(K.meta), this.storage.list<LotRecord>(K.lot)]);
     let saved: Persisted | null = null;
     if (meta && lots.size) {
       const world: Persisted['world'] = { lots: {}, builds: {}, version: meta.version, seedVersion: meta.seedVersion };
@@ -91,7 +99,7 @@ export class WorldServer {
       return { onMessage() {}, onClose() {} };
     }
     if (!logic.hasAccount(identity.key)) {
-      const stored = await this.storage.get<Account>(`acct:${identity.key}`);
+      const stored = await this.storage.get<Account>(`${K.acct}${identity.key}`);
       if (stored && !logic.hasAccount(identity.key)) logic.addAccount(stored);
     }
     const id = `s${(this.nextId++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -195,9 +203,9 @@ export class WorldServer {
     const { dirty } = logic;
     if (!dirty.lots.size && !dirty.accounts.size && !dirty.meta) return;
     const entries: Record<string, unknown> = {};
-    for (const id of dirty.lots) entries[`lot:${id}`] = { lot: logic.world.lots[id], build: logic.world.builds[id] } satisfies LotRecord;
-    for (const key of dirty.accounts) if (logic.accounts[key]) entries[`acct:${key}`] = logic.accounts[key];
-    entries.meta = { version: logic.world.version, epochDay: logic.epochDay, coverage: logic.coverageCodes(), seedVersion: logic.world.seedVersion } satisfies Meta;
+    for (const id of dirty.lots) entries[`${K.lot}${id}`] = { lot: logic.world.lots[id], build: logic.world.builds[id] } satisfies LotRecord;
+    for (const key of dirty.accounts) if (logic.accounts[key]) entries[`${K.acct}${key}`] = logic.accounts[key];
+    entries[K.meta] = { version: logic.world.version, epochDay: logic.epochDay, coverage: logic.coverageCodes(), seedVersion: logic.world.seedVersion } satisfies Meta;
     dirty.lots.clear(); dirty.accounts.clear(); dirty.meta = false;
     await this.storage.put(structuredClone(entries));
   }

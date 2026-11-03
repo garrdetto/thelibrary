@@ -11,14 +11,20 @@ import type { NetStatus, Transport } from './Transport';
 
 const GUEST_KEY = 'maplestreet/guest-key';
 
-export function worldEndpoint(name: string): string | null {
-  if (location.protocol !== 'https:' && location.protocol !== 'http:') return null;
+/** This browser's guest key (made once). Guests are named after it, so the name never changes. */
+export function guestKey(): string {
   let guest = store.get(GUEST_KEY);
   if (!guest || !/^[A-Za-z0-9]{12,64}$/.test(guest)) { guest = randomId(24); store.set(GUEST_KEY, guest); }
+  return guest;
+}
+
+export const guestName = () => `Guest-${guestKey().slice(0, 5)}`;
+
+export function worldEndpoint(): string | null {
+  if (location.protocol !== 'https:' && location.protocol !== 'http:') return null;
   const u = new URL('/api/maplestreet', location.href);
   u.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  u.searchParams.set('guest', guest);
-  u.searchParams.set('name', name.slice(0, 16));
+  u.searchParams.set('guest', guestKey());
   return u.toString();
 }
 

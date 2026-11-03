@@ -11,8 +11,8 @@
  * pools and objects live on CELLS; roofs and pools are vertex rectangles.
  */
 import { CATALOG, CatalogItem, footprint, SWATCHES } from './Catalog';
-import { COST, LOT_PRICE } from './Economy';
-import { LotDef } from './WorldLayout';
+import { COST } from './Economy';
+import { LotDef, lotPrice } from './WorldLayout';
 
 export const LEVEL_HEIGHT = 3.0;
 export const FOUNDATION_H = 0.25;
@@ -369,7 +369,7 @@ export function opCost(world: WorldState, op: BuildOp): number {
   const b = world.builds[(op as { lotId: string }).lotId];
   const refund = (n: number) => -Math.round(n * COST.refundRate);
   switch (op.op) {
-    case 'buyLot': return LOT_PRICE;
+    case 'buyLot': return world.lots[op.lotId] ? lotPrice(world.lots[op.lotId]) : Infinity;
     case 'walls': return op.segs.length * WALL_COST[op.kind ?? 'full'];
     case 'removeWall': { const w = b.walls[op.key]; return w ? refund(WALL_COST[wallKindOf(w)] + openingCost(w.opening)) : 0; }
     case 'opening': { const w = b.walls[op.key]; return openingCost(op.opening) + (w ? refund(openingCost(w.opening)) : 0); }

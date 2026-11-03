@@ -77,8 +77,8 @@ Pinned exactly in `package.json`, bundled by Vite, never loaded from a CDN (Phas
 | `@dimforge/rapier3d-compat` | 0.14.0 | maplestreet |
 | `postprocessing` | 6.39.5 | any module (peer range `three >=0.168 <0.187`, hence three 0.186.1, not 0.187.0) |
 | `cannon-es` | 0.20.0 | botwreck |
-| `peerjs` | 1.5.4 | sandlot, chess, checkers, shorttrack, maplestreet |
-| `colyseus.js` | 0.15.28 | maplestreet (loaded on demand) |
+| `peerjs` | 1.5.4 | sandlot, chess, checkers, shorttrack |
+| `colyseus.js` | 0.15.28 | (no longer used by a module; maplestreet's optional `colyseus-server/` is server-side) |
 
 Vendor chunks, each emitted once and cached across modules: `vendor` (three core + addons + postprocessing), `vendor-webgpu` (three's WebGPU/TSL build and the addons that need it), `vendor-rapier`, `vendor-net` (PeerJS).
 
@@ -145,14 +145,14 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/maplestreet/index.html` — page shell (start screen, HUD markup, styles), no CDN scripts — `vite.modules.ts` (→ `public/modules/maplestreet.html`).
 - `modules-src/maplestreet/index.ts` — entry; imports `src/main.ts` — `index.html`.
 - `modules-src/maplestreet/README.md` — module notes — developers.
-- `src/main.ts` — boot, transport choice (shared world, offline, PeerJS, tabs, Colyseus); waits for the published-item catalog and published vehicles before starting; `?vehicleTest=1` opens the admin test drive instead — `index.ts`.
+- `src/main.ts` — boot: locked name (library username, or a fixed guest name), two modes (shared world, solo with unlimited money); waits for the published-item catalog and published vehicles before starting; `?vehicleTest=1` opens the admin test drive instead — `index.ts`.
 - `src/core/Engine.ts` — renderer, scene, camera, resize (WebGPU/WebGL2) — `Game`, `BuildController`, `DayNight`, `Neighborhood`, `RemoteEntities`.
 - `src/core/Loop.ts` — fixed-step update/render loop — `Game`.
 - `src/core/Input.ts` — keyboard, mouse, touch — `Game`, `CameraRig`, `BuildController`.
 - `src/core/Materials.ts` — shared PBR materials, procedural textures — `Game`, `Mesher`, `Neighborhood`, `Downtown`.
 - `src/core/Merge.ts` — geometry merge helpers — `Downtown`, `RemoteEntities`, `Vehicle`, `VehiclePresets`.
 - `src/core/DevMode.ts` — developer instance flag (`?dev=1`), its save key and draft counts — `main`, `OfflineTransport`, `CustomModels`, `CustomVehicleModels`.
-- `src/core/Storage.ts` — per-device settings — `main`, `Game`, `BuildController`, `Host`, `LocalTransport`, `WorldTransport`.
+- `src/core/Storage.ts` — per-device settings — `main`, `Game`, `BuildController`, `Host`, `WorldTransport`.
 - `src/game/Game.ts` — client: player, vehicles, lots, needs, HUD wiring, command dispatch — `main`.
 - `src/game/CameraRig.ts` — third-person and build cameras — `Game`.
 - `src/game/Hud.ts` — HUD, menus, notifications — `Game`.
@@ -167,12 +167,12 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/build/CustomModels.ts` — admin-published items: fetches `/api/maplestreet-items` (cached for offline), registers them, loads each .glb with `GLTFLoader` and clones it per placement with the published `{x,y,z}` scale; custom items are added to the lot group unmerged — `main`, `Furniture`, `Thumbs`.
 - `src/build/Thumbs.ts` — off-screen catalog thumbnails — `Game`.
 - `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps — `Game`.
-- `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear — `Neighborhood`.
+- `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear; the curved Willow Bend streets as ribbons with curbs, gutters, center dashes and stop signs — `Neighborhood`.
 - `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), fire and police stations (apparatus bays, bay lights, flagpoles), depot, streetscape, showroom cars — `Neighborhood`.
 - `src/world/Facades.ts` — facade styles and window/storefront layouts shared by the painted textures (albedo, night glow, roughness/metalness) and the 3D trim — `Downtown`.
 - `src/world/GasStation.ts` — Gas & Go forecourt, canopy, islands, dispensers, pylon price sign, canopy light — `Downtown`.
-- `src/world/Lawn.ts` — mowable lawns and stripes — `Neighborhood`, `Grass`.
-- `src/world/Grass.ts` — instanced grass: thin four-blade clumps at realistic mowed/uncut/meadow heights with color patches — `Game`.
+- `src/world/Lawn.ts` — mowable lawns: per-lot data texture (blade lean + growth, 4 texels/m) and the view-dependent stripe shader; diamond patterns from crossed passes; grass grows back over five in-game days — `Neighborhood`, `Grass`.
+- `src/world/Grass.ts` — instanced grass: thin four-blade clumps; on lawns they follow the lawn's growth (≈4 → 11 cm) and lean the way they were mowed, shaded by lean vs. camera so stripes read in 3D; short verges along the curves, meadow elsewhere — `Game`.
 - `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
 - `src/physics/Physics.ts` — Rapier world and colliders — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
 - `src/physics/Character.ts` — kinematic character controller and `Avatar` (scanned model, stand-in while loading) — `Game`, `RemoteEntities`.
@@ -185,21 +185,18 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/avatar/AvatarModel.ts` — skeleton clone, look, procedural walk/idle/seated pose — `Character.ts`.
 - `src/avatar/HairAndHats.ts` — long hair, buns, hats on the head bone — `AvatarModel`.
 - `src/avatar/RigData.ts` — scan measurements (region means, scalp ellipsoids).
-- `src/game/WardrobeUI.ts` — wardrobe / character creator and Maple Threads shop panel — `Game`.
-- `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation — `RoomLogic`, `Economy`, `Npc`, client.
+- `src/game/WardrobeUI.ts` — one-time character creator (male/female, hair, face, starter outfit), wardrobe (hair and face only; outfit locked) and the Maple Threads shop panel — `Game`.
+- `shared/Wardrobe.ts` — looks, clothing catalog, `cleanLook` validation, `keepOutfit` (clothes only change at Maple Threads) — `RoomLogic`, `Economy`, `Npc`, client.
 - `tools/build-characters.mjs` — offline scan → rigged avatar + mask pipeline (not part of the build).
 - `src/physics/VehiclePresets.ts` — procedural bodies of the built-in vehicles (tuning comes from `shared/Vehicles.ts`); `PRESETS` also holds published vehicles; `wheelFor` picks a published wheel model or the procedural wheel — `Vehicle`, `Downtown`, `RemoteEntities`, `Hud`.
 - `src/net/Transport.ts` — transport interface — every transport, `Game`.
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
-- `src/net/OfflineTransport.ts` — solo play and fallback — `Game`, `main`.
-- `src/net/LocalTransport.ts` — same-device tabs — `Game`.
-- `src/net/PeerTransport.ts` — PeerJS rooms `tl-maplestreet-<code>` (imports `peerjs`) — `Game`, `main`.
-- `src/net/ColyseusTransport.ts` — optional Colyseus room (dynamic `import('colyseus.js')`) — `Game`.
-- `src/net/Host.ts` — in-browser authority for offline, tabs and PeerJS hosts — `OfflineTransport`, `LocalTransport`, `PeerTransport`.
+- `src/net/OfflineTransport.ts` — solo mode (unlimited money, save `maplestreet/solo/v3`) and fallback — `Game`.
+- `src/net/Host.ts` — in-browser authority for solo mode — `OfflineTransport`.
 - `src/net/RemoteEntities.ts` — remote player and vehicle interpolation — `Game`.
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
-- `shared/WorldServer.ts` — persistent world loop — `maplestreet-world.ts`.
-- `shared/WorldLayout.ts` — town layout: 60 lots on ten residential streets, roads and `ROAD_NAMES`, sidewalks (with their road side), shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
+- `shared/WorldServer.ts` — persistent world loop; storage keys are prefixed with `WORLD_GENERATION` (bump it to reset everyone) — `maplestreet-world.ts`.
+- `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — sidewalks (with their road side, `residentialSidewalks()`), `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.
 - `shared/Seed.ts` — simulated neighbors' roster, `seedNeighborhood`, `upgradeSeed` (once per `SEED_VERSION`) — `RoomLogic`.
 - `shared/HousePlans.ts` — seven house plans in lot-local coordinates (`Plot`) emitted as build ops — `Seed`.
 - `shared/Assets.ts` — asset status (`draft`, `published`, `retired`) — `CustomItems`, `CustomVehicles`, `src/server/maplestreet-assets.ts`, the admin editors.
@@ -213,7 +210,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `shared/VehicleDrive.ts` — `predictDrive` / `solveDrive`: top speed and 0–60 targets → engine force and torque cutoff, matching the physics — the vehicle editor, tests.
 - `shared/PaintMask.ts` — color-mask recolor shared by the game and the editor preview.
 - `tests/vehicles.test.ts` — registry, drive model vs. real physics, traffic, garages; `tests/town.test.ts` — lot/road/building/sidewalk layout and minimap routing; `tests/houses.test.ts` — every house plan on both lot orientations, seeding and the seed upgrade (`node scripts/maplestreet-tests.mjs`, part of `pnpm test`).
-- `shared/Mowing.ts` — mowing pay — `RoomLogic`, `Game`, `Lawn`.
+- `shared/Mowing.ts` — lawn cells (cut time + blade lean per m²), lean blending, growth (`GROW_DAYS` = 5), mowing pay, run-length encoding — `RoomLogic`, `Game`, `Lawn`, `Grass`.
 - `shared/Protocol.ts` — message protocol types — every transport, `RoomLogic`, `WorldServer`.
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.
 
@@ -245,6 +242,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/shorttrack/index.ts` — entry; provides `window.Peer`, imports `main.js` — `index.html`.
 - `modules-src/shorttrack/main.js` — whole module: three.js scene, trucks (`TM`), `buildStockCar`, liveries, `?track=`, lap posts, `tl-lap`, PeerJS `sts-oval-race-<code>` — `index.ts`.
 - `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
+- `modules-src/shorttrack/prison-speedway.js` — Prison Speedway scenery (`buildPrisonSet`: guard towers, curtain wall, razor wire, searchlights, name board) and the inmate crowd and stand colors — `main.js`.
 - `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
 
 ### pool — 8-Ball Pool
@@ -295,8 +293,8 @@ Every phase keeps these exactly (sources: `AGENTS.md`, `docs/AUDIT.md` §1, veri
 - `postMessage` child → parent `{type:'tl-score-saved', module, saved}` — refreshes `ModuleScoreboard`.
 - `postMessage` child → parent `{type:'tl-lap', track, mode}` — refreshes `LapRecordBoard`.
 - `postMessage` parent → child `{type:'tl-host'}`; child answers `{type:'tl-room', code}` — sandlot, chess, checkers, shorttrack, maplestreet.
-- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet), `?track=shorttrack|dells|dellswide|dirt` (Short Track Showdown), `?world=`, `?host=`, `?server=` (Colyseus URL), `?solo=` (Maple Street).
-- PeerJS room codes: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (Maple Street also allows `L`), shown upper-case; peer ids lower-case the code: `sandlot-`, `tl-chess-`, `tl-checkers-`, `tl-maplestreet-`. Short Track Showdown: 5 letters A–Z without I/O, peer id `sts-oval-race-<CODE>`.
+- Query params: `?room=<code>` (auto-join), `?name=<username>` (sandlot, chess, checkers, shorttrack, maplestreet), `?track=shorttrack|dells|dellswide|prison|dirt` (Short Track Showdown), `?world=`, `?solo=` (Maple Street).
+- PeerJS room codes: 6 characters from `ABCDEFGHJKMNPQRSTUVWXYZ23456789` (Maple Street also allows `L`), shown upper-case; peer ids lower-case the code: `sandlot-`, `tl-chess-`, `tl-checkers-`. Short Track Showdown: 5 letters A–Z without I/O, peer id `sts-oval-race-<CODE>`.
 - Group-chat invites `meta.invite = {module, label, code}`.
 - `/api/*`: `pool-account`, `workspace-access`, `workspace-admin`, `site-changes`, `account-settings`, `pool-practice`, `pool-preferences`, `pool-cue-overlay`, `racing`, `park`, `maplestreet`, `maplestreet-items`, `maplestreet-vehicles`, `meshy`, `group-chat`, `module-scores`, `studio`, `library`, `asset`, `learning`, `lyric-presets`.
 - Railway service: socket.io default namespace (pool), `/racing`, `/park`; tickets from `/api/pool-account?action=ticket`, `/api/racing`, `/api/park`; client URL env `VITE_POOL_SERVER_URL`; pool header `X-Pool-Player`.

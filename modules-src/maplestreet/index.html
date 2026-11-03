@@ -48,12 +48,8 @@
     #start.loading button { opacity: 0.6; pointer-events: none; }
     #start small { display: block; margin-top: 8px; color: var(--mute); }
     #startStatus { margin-top: 14px; min-height: 18px; color: var(--accent); }
-    #bodyPick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    #bodyPick button { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); font-weight: 700; }
-    #bodyPick button img { width: 100%; max-width: 120px; height: auto; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 7px; background: #2a333c; }
-    #bodyPick button[aria-checked=true] { border-color: var(--accent); background: rgba(242,181,68,0.14); box-shadow: 0 0 0 1px var(--accent) inset; }
-    #bodyPick.need button { border-color: rgba(239,91,76,0.7); }
-    #start.need-body #bodyLabel { color: #ffb3aa; }
+    #start .name-lock { display: flex; align-items: center; gap: 8px; width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); color: var(--ink); font-weight: 700; }
+    #start .name-lock::before { content: '🔒'; font-size: 12px; opacity: 0.7; }
 
     /* ---------- wardrobe / character creator */
     #wardrobe { top: 12px; right: 12px; bottom: 12px; width: min(380px, calc(100vw - 24px)); display: none; flex-direction: column; padding: 0; overflow: hidden; z-index: 31; }
@@ -62,7 +58,13 @@
     .wd-head { padding: 14px 16px 10px; border-bottom: 1px solid var(--line); }
     .wd-head h2 { margin: 0 0 2px; font: 600 22px Georgia, serif; }
     .wd-head p { margin: 0; color: var(--mute); font-size: 12px; }
-    #wdBody { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 10px; }
+    #wdBodyBox { margin-top: 10px; }
+    #wdBodyBox[hidden] { display: none; }
+    #wdBodyLabel { display: block; margin-bottom: 6px; color: var(--accent); font-size: 12px; font-weight: 700; }
+    #wdBody { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    #wdBody button { display: flex; align-items: center; gap: 8px; }
+    #wdBody img { width: 40px; height: 50px; object-fit: cover; border-radius: 5px; background: #2a333c; }
+    .wd-lock { margin: 0; padding: 8px 10px; border-radius: 8px; border: 1px dashed rgba(242,181,68,0.45); color: var(--mute); font-size: 12px; }
     #wdBody button, .wd-tab { background: rgba(255,255,255,0.05); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-weight: 700; color: var(--mute); }
     #wdBody button.on, .wd-tab.on { color: var(--ink); background: rgba(242,181,68,0.16); border-color: rgba(242,181,68,0.55); }
     #wdTabs { display: flex; gap: 4px; padding: 8px 12px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
@@ -92,9 +94,6 @@
 
     #start .card { max-height: calc(100vh - 32px); overflow-y: auto; }
     button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-    #roomBox { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border-radius: 8px; background: rgba(242,181,68,0.12); border: 1px solid rgba(242,181,68,0.4); }
-    #roomBox[hidden] { display: none; }
-    #roomCode { font: 700 18px ui-monospace, monospace; letter-spacing: 3px; color: var(--accent); }
     #roomLabel { color: var(--mute); font-size: 11px; }
     @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
 
@@ -247,37 +246,13 @@
     <div class="card panel">
       <h1>Maple Street</h1>
       <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank in one shared, always-open neighborhood.</p>
-      <div class="row">
-        <div><label for="pName">Your name</label><input id="pName" type="text" maxlength="20" placeholder="Neighbor" autocomplete="nickname" /></div>
-        <div><label for="pColor">Name tag</label><input id="pColor" type="color" value="#3a7bd5" /></div>
-      </div>
-      <label id="bodyLabel">Is your character male or female?</label>
-      <div id="bodyPick" role="radiogroup" aria-labelledby="bodyLabel">
-        <button type="button" role="radio" aria-checked="false" data-body="male"><img src="maplestreet/male.webp" alt="" width="120" height="150" /><span>Male</span></button>
-        <button type="button" role="radio" aria-checked="false" data-body="female"><img src="maplestreet/female.webp" alt="" width="120" height="150" /><span>Female</span></button>
-      </div>
+      <label id="pNameLabel" for="pName">Playing as</label>
+      <output id="pName" class="name-lock" aria-live="polite"></output>
+      <small id="pNameNote"></small>
       <button id="playWorld" class="primary">Enter Maple Street</button>
-      <small>Come and go whenever you like: your lot, house, money and loan stay exactly as you left them, and you start back on your own driveway. Signed in to the library? Your house follows your account to any device; otherwise it's kept in this browser.</small>
-      <button id="playSolo" class="btn wide">Explore solo (offline)</button>
-      <small>A private copy of the neighborhood that runs entirely on this device.</small>
-      <label>Private room</label>
-      <div class="row join">
-        <button id="playHost" class="btn">Host a room</button>
-        <input id="pCode" type="text" maxlength="6" placeholder="CODE" aria-label="Room code" />
-        <button id="playJoin" class="btn">Join</button>
-      </div>
-      <small id="onlineNote">Hosting gives you a 6-letter code for up to 8 neighbors. Your browser runs the neighborhood.</small>
-      <details>
-        <summary>More connection options</summary>
-        <div class="row join">
-          <button id="playTabs" class="btn">Same-device tabs</button>
-        </div>
-        <label for="pServer">Colyseus server</label>
-        <div class="row join">
-          <input id="pServer" type="text" placeholder="wss://your-server:2567" />
-          <button id="playServer" class="btn">Connect</button>
-        </div>
-      </details>
+      <small>The open world everyone shares. Come and go whenever you like: your lot, house, money and loan stay exactly as you left them, and you start back on your own driveway.</small>
+      <button id="playSolo" class="btn wide">Solo mode — unlimited money</button>
+      <small>A private neighborhood that runs on this device with a bottomless bank account. Build anything you like.</small>
       <div id="startStatus" role="status" aria-live="polite"></div>
     </div>
   </div>
@@ -292,7 +267,6 @@
   <div id="side" class="ui panel hud">
     <h3>Neighborhood</h3>
     <div id="roomLabel">Connecting…</div>
-    <div id="roomBox" hidden><span>Room code</span><span id="roomCode"></span></div>
     <button class="btn" id="mapBtn">Town map (M)</button>
     <button class="btn" id="wardrobeBtn">Wardrobe (C)</button>
     <h3>Garage</h3>
@@ -399,9 +373,12 @@
     <div class="wd-head">
       <h2 id="wdTitle">Wardrobe</h2>
       <p id="wdSub"></p>
-      <div id="wdBody" role="group" aria-label="Body">
-        <button type="button" data-body="male">Male</button>
-        <button type="button" data-body="female">Female</button>
+      <div id="wdBodyBox">
+        <span id="wdBodyLabel">Male or female? You choose once.</span>
+        <div id="wdBody" role="radiogroup" aria-labelledby="wdBodyLabel">
+          <button type="button" role="radio" aria-checked="false" data-body="male"><img src="maplestreet/male.webp" alt="" width="64" height="80" /><span>Male</span></button>
+          <button type="button" role="radio" aria-checked="false" data-body="female"><img src="maplestreet/female.webp" alt="" width="64" height="80" /><span>Female</span></button>
+        </div>
       </div>
     </div>
     <div id="wdTabs" role="tablist"></div>
