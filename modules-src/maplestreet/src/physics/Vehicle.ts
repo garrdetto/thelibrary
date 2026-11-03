@@ -11,6 +11,7 @@ import { mergeStatic } from '../core/Merge';
 import { MASK, Physics } from './Physics';
 import { wheelbaseOf } from '../../shared/Vehicles';
 import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { VehicleDoors } from './VehicleDoors';
 
 export interface DriveInput { throttle: number; steer: number; brake: number; handbrake: boolean }
 
@@ -26,6 +27,8 @@ export class Vehicle {
   readonly ctrl: RAPIER.DynamicRayCastVehicleController;
   readonly root = new THREE.Group();
   readonly lights: VehicleLights;
+  /** Opening doors, or null for open-air vehicles. */
+  readonly doors: VehicleDoors | null;
   private wheels: WheelVis[] = [];
   private headlamp: THREE.SpotLight | null = null;
   private steerAngle = 0;
@@ -56,10 +59,10 @@ export class Vehicle {
     // Explicit mass properties: low COM + box inertia = planted handling.
     const sx = c.hx * 2, sy = c.hy * 2, sz = c.hz * 2, m = P.mass;
     this.collider = physics.world.createCollider(
-      R.ColliderDesc.cuboid(c.hx, c.hy, c.hz)
+      physics.vehicleShape(c.hx, c.hy, c.hz)
         .setMassProperties(m, { x: 0, y: P.comY, z: 0 }, { x: (m / 12) * (sy * sy + sz * sz), y: (m / 12) * (sx * sx + sz * sz), z: (m / 12) * (sx * sx + sy * sy) }, { x: 0, y: 0, z: 0, w: 1 })
-        .setFriction(0.4)
-        .setCollisionGroups(MASK.vehicle),
+        .setFriction(0.3)
+        .setCollisionGroups(P.tongue ? MASK.trailer : MASK.vehicle),
       this.body,
     );
 
@@ -88,9 +91,12 @@ export class Vehicle {
     });
 
     this.lights = makeLights();
-    const body = P.build(makePaint(color ?? P.paint), this.lights);
+    const paint = makePaint(color ?? P.paint);
+    const body = P.build(paint, this.lights);
     mergeStatic(body);
     this.root.add(body);
+    this.doors = VehicleDoors.for(P.kind, paint, P.seat.z);
+    if (this.doors) this.root.add(this.doors.group);
     this.root.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
     scene.add(this.root);
     physics.track(this.body, this.root);
@@ -216,9 +222,10 @@ export class Vehicle {
     this.ctrl.updateVehicle(dt, undefined, MASK.wheelRay);
   }
 
-  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night. */
-  updateVisuals(night: number, braking: boolean) {
+  /** Per render frame: wheels follow suspension, steering and spin; lamps follow night; doors swing. */
+  updateVisuals(night: number, braking: boolean, dt = 0) {
     const P = this.preset;
+    this.doors?.update(dt, this.speed);
     this.wheels.forEach((w, i) => {
       const len = this.ctrl.wheelSuspensionLength(i) ?? P.suspension.rest;
       w.steer.position.y = P.wheelY - len;

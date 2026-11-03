@@ -161,7 +161,7 @@ try {
     g.character.teleport(pos)
     await new Promise(r => setTimeout(r, 500))
     if (!owned) return { owned, paid, traffic: false, note: document.getElementById('toast')?.textContent, money: g.account.money, at: g.character.position }
-    g.bringOut(kind)
+    g.garageAction(kind)
     const v = g.vehicles.get(kind)
     g.placeVehicle(v, 40, 2.5, 0)
     g.hud.closeModals()

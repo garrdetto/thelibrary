@@ -7,6 +7,7 @@ import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 import { MASK, Physics } from './Physics';
 import { AvatarModel } from '../avatar/AvatarModel';
+import { gaitFrequency, gaitPose } from '../avatar/Gait';
 import { loadBody } from '../avatar/AvatarAssets';
 import { Body, defaultLook, Look } from '../../shared/Wardrobe';
 
@@ -65,11 +66,10 @@ class StandIn {
       return;
     }
     this.legL.rotation.z = this.legR.rotation.z = this.armL.rotation.z = this.armR.rotation.z = 0;
-    this.phase += dt * (2 + speed * 2.1);
-    const amp = Math.min(0.75, speed * 0.22);
-    const s = Math.sin(this.phase) * amp;
-    this.legL.rotation.x = s; this.legR.rotation.x = -s;
-    this.armL.rotation.x = -s * 0.8; this.armR.rotation.x = s * 0.8;
+    this.phase = (this.phase + dt * gaitFrequency(speed)) % 1;
+    const g = gaitPose(this.phase, speed);
+    this.legL.rotation.x = -g.legL.hip; this.legR.rotation.x = -g.legR.hip;
+    this.armL.rotation.x = g.armL.arm; this.armR.rotation.x = g.armR.arm;
   }
 
   dispose() { this.root.traverse(o => (o as THREE.Mesh).geometry?.dispose()); }
@@ -168,6 +168,8 @@ export class Character {
   yaw = 0;
   private vy = 0;
   speed = 0;
+  /** How fast the body actually moved (m/s, horizontal): drives the gait and goes to other players. */
+  moveSpeed = 0;
   grounded = false;
 
   constructor(private physics: Physics, spawn: THREE.Vector3, look: Look, scene: THREE.Scene) {
@@ -207,6 +209,8 @@ export class Character {
     this.ctrl.computeColliderMovement(this.collider, desired, undefined, MASK.character);
     const m = this.ctrl.computedMovement();
     this.grounded = this.ctrl.computedGrounded();
+    this.moveSpeed = THREE.MathUtils.damp(this.moveSpeed, dt > 0 ? Math.hypot(m.x, m.z) / dt : 0, 14, dt);
+    if (this.moveSpeed < 0.03) this.moveSpeed = 0;
     const t = this.body.translation();
     this.body.setNextKinematicTranslation({ x: t.x + m.x, y: t.y + m.y, z: t.z + m.z });
     if (t.y < -20) this.teleport(new THREE.Vector3(t.x, 2, t.z));
@@ -216,6 +220,7 @@ export class Character {
     this.body.setTranslation({ x: p.x, y: p.y + EYE_OFFSET + 0.05, z: p.z }, true);
     this.body.setNextKinematicTranslation({ x: p.x, y: p.y + EYE_OFFSET + 0.05, z: p.z });
     this.vy = 0;
+    this.speed = this.moveSpeed = 0;
     this.physics.snapTracked(this.body);
   }
 
@@ -226,7 +231,7 @@ export class Character {
 
   updateVisual(dt: number, seated: boolean) {
     if (!seated) this.avatar.root.rotation.y = this.yaw;
-    this.avatar.animate(dt, this.speed, seated);
+    this.avatar.animate(dt, this.moveSpeed, seated);
   }
 
   get position() { const t = this.body.translation(); return new THREE.Vector3(t.x, t.y - EYE_OFFSET, t.z); }

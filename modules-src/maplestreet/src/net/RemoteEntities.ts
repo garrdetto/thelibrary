@@ -13,6 +13,7 @@ import { Avatar } from '../physics/Character';
 import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
 import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
+import { VehicleDoors } from '../physics/VehicleDoors';
 
 const INTERP_DELAY_MS = 120;
 
@@ -43,7 +44,10 @@ class SnapBuffer<T extends { x: number; y: number; z: number }> {
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
 
 interface RemotePlayer { avatar: Avatar; label: THREE.Sprite; buf: SnapBuffer<PlayerSnap>; seen: number; seatedIn: RemoteVehicle | null; lookKey: string }
-interface RemoteVehicle { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
+interface RemoteVehicle { kind: VehicleSnap['kind']; owner: string; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; doors: VehicleDoors | null; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
+
+/** What a right-click on someone else's vehicle shows. */
+export interface RemoteVehicleInfo { kind: VehicleSnap['kind']; label: string; ownerName: string; distance: number }
 
 function nameSprite(name: string, color: string) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
@@ -81,6 +85,7 @@ export class RemoteEntities {
         rp.avatar.standIn(this.scene, 0);
         this.players.set(p.id, rp);
       }
+      this.ownerNames.set(p.id, p.name);
       const key = lookKey(p.look);
       if (p.look && key !== rp.lookKey) { rp.lookKey = key; rp.avatar.setLook(p.look); }
       rp.buf.push(time, p); rp.seen = now;
@@ -100,9 +105,12 @@ export class RemoteEntities {
     const P = PRESETS[v.kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
-    const shell = P.build(makePaint(P.paint), lights);
+    const paint = makePaint(P.paint);
+    const shell = P.build(paint, lights);
     mergeStatic(shell);
     root.add(shell);
+    const doors = VehicleDoors.for(v.kind, paint, P.seat.z);
+    if (doors) root.add(doors.group);
     const wheels: RemoteVehicle['wheels'] = [];
     for (const a of P.axles) for (const side of [1, -1]) {
       const g = new THREE.Group(); const spin = wheelFor(P, a.radius, a.width);
@@ -112,11 +120,12 @@ export class RemoteEntities {
     root.traverse(o => (o.castShadow = true));
     this.scene.add(root);
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(v.x, v.y, v.z));
-    this.physics.world.createCollider(R.ColliderDesc.cuboid(P.chassis.hx, P.chassis.hy, P.chassis.hz).setCollisionGroups(MASK.remote), body);
-    return { kind: v.kind, root, wheels, lights, body, buf: new SnapBuffer(), seen: performance.now() };
+    this.physics.world.createCollider(this.physics.vehicleShape(P.chassis.hx, P.chassis.hy, P.chassis.hz).setFriction(0.3).setCollisionGroups(P.tongue ? MASK.remoteTrailer : MASK.remote), body);
+    return { kind: v.kind, owner: v.owner, root, wheels, lights, doors, body, buf: new SnapBuffer(), seen: performance.now() };
   }
 
   removePlayer(id: string) {
+    this.ownerNames.delete(id);
     const rp = this.players.get(id); if (!rp) return;
     rp.avatar.dispose(); this.players.delete(id);
   }
@@ -140,12 +149,12 @@ export class RemoteEntities {
       // Drivers sit in their seat, hands on the wheel, and ride along with the vehicle.
       const veh = b.vehicleId ? this.vehicles.get(b.vehicleId) ?? null : null;
       if (veh) {
-        if (rp.seatedIn !== veh) { rp.avatar.sitIn(veh.root, (PRESETS[veh.kind] ?? PRESETS.sedan).seat); rp.seatedIn = veh; }
+        if (rp.seatedIn !== veh) { rp.avatar.sitIn(veh.root, (PRESETS[veh.kind] ?? PRESETS.sedan).seat); rp.seatedIn = veh; veh.doors?.pulseDriver(); }
         rp.avatar.root.visible = true;
         rp.avatar.animate(dt, 0, true);
         continue;
       }
-      if (rp.seatedIn) { rp.avatar.standIn(this.scene, 0); rp.seatedIn = null; }
+      if (rp.seatedIn) { rp.seatedIn.doors?.pulseDriver(); rp.avatar.standIn(this.scene, 0); rp.seatedIn = null; }
       rp.avatar.root.visible = !b.vehicleId;
       rp.avatar.root.position.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
       rp.avatar.root.rotation.y = lerpAngle(a.yaw, b.yaw, k);
@@ -163,6 +172,7 @@ export class RemoteEntities {
         w.spin -= (speed * dt) / 0.35;
         w.g.children[0].rotation.z = w.spin;
       }
+      rv.doors?.update(dt, speed);
       rv.lights.head.emissiveIntensity = night > 0.3 ? 3 : 0;
       rv.lights.tail.emissiveIntensity = night > 0.3 ? 1.2 : 0.15;
       const p = rv.root.position, q = rv.root.quaternion;
@@ -170,6 +180,24 @@ export class RemoteEntities {
       rv.body.setNextKinematicRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
     }
   }
+
+  /** The nearest other player's (or neighbor's) vehicle under a ray, for the right-click menu. */
+  pickVehicle(ray: THREE.Raycaster, maxDistance = 80): RemoteVehicleInfo | null {
+    const roots = [...this.vehicles.values()].map(v => v.root);
+    for (const r of roots) r.updateMatrixWorld(true);
+    const hit = ray.intersectObjects(roots, true)[0];
+    if (!hit || hit.distance > maxDistance) return null;
+    for (const v of this.vehicles.values()) {
+      let o: THREE.Object3D | null = hit.object;
+      while (o && o !== v.root) o = o.parent;
+      if (!o) continue;
+      const P = PRESETS[v.kind] ?? PRESETS.sedan;
+      return { kind: v.kind, label: P.label, ownerName: this.ownerNames.get(v.owner) ?? 'A neighbor', distance: hit.distance };
+    }
+    return null;
+  }
+
+  private ownerNames = new Map<string, string>();
 
   clear() {
     for (const id of [...this.players.keys()]) this.removePlayer(id);
