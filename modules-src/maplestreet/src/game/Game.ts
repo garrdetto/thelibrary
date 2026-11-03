@@ -34,6 +34,7 @@ import type { NetStatus, Transport } from '../net/Transport';
 import { worldEndpoint, WorldTransport } from '../net/WorldTransport';
 import { Character, EYE_OFFSET } from '../physics/Character';
 import { MASK, Physics } from '../physics/Physics';
+import { Parking, type Footprint } from '../physics/Parking';
 import { Vehicle } from '../physics/Vehicle';
 import { DayNight } from '../world/DayNight';
 import { Grass } from '../world/Grass';
@@ -43,6 +44,9 @@ import { CameraRig } from './CameraRig';
 import { Hud } from './Hud';
 import { MiniMap, type Objective } from './MiniMap';
 import { WardrobeUI } from './WardrobeUI';
+import { BodyShopUI } from './BodyShopUI';
+import { atBodyShop, BODY_SHOP, inBay } from '../../shared/BodyShop';
+import { ContextMenu, type MenuItem } from './ContextMenu';
 import { defaultLook, lookKey, type Look } from '../../shared/Wardrobe';
 
 /** The shared open world, or solo with unlimited money. */
@@ -55,6 +59,11 @@ export interface StartOptions {
 }
 
 const NET_HZ = 15;
+/** Go Home can be used once every fifteen real minutes. */
+const GO_HOME_COOLDOWN_MS = 15 * 60 * 1000;
+/** Test drives (and garage pick-ups before you own a home) wait on the forecourt in front of Maple Motors, beside its door. */
+const DEALER_CURB = (() => { const d = SHOP_DOORS.find(x => x.kind === 'dealer')!; return { x: d.x + 8, z: d.z + 0.5, yaw: Math.PI }; })();
+const clockText = (ms: number) => { const t = Math.ceil(ms / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
 const FUEL_REPORT_SEC = 5;
 /** ?norender runs the full simulation without drawing (headless multiplayer tests). */
 const NO_RENDER = new URLSearchParams(location.search).has('norender');
@@ -76,6 +85,9 @@ interface Interaction { label: string; run: () => void }
 export class Game {
   private engine!: Engine;
   private physics!: Physics;
+  private parking!: Parking;
+  private menu = new ContextMenu();
+  private rightPress: { x: number; y: number } | null = null;
   private input!: Input;
   private day!: DayNight;
   private hood!: Neighborhood;
@@ -95,6 +107,7 @@ export class Game {
   private grass!: Grass;
   private thumbs!: ThumbnailRenderer;
   private wardrobe!: WardrobeUI;
+  private bodyShop!: BodyShopUI;
   private look!: Look;
   private camSaved: { dist: number; pitch: number } | null = null;
 
@@ -135,6 +148,7 @@ export class Game {
   async start(container: HTMLElement) {
     this.engine = await Engine.create(container);
     this.physics = await Physics.create();
+    this.parking = new Parking(this.physics);
     const scene = this.engine.scene;
     this.mats = new MaterialLibrary();
     this.input = new Input(this.engine.renderer.domElement);
@@ -173,9 +187,10 @@ export class Game {
       borrow: a => this.send({ t: 'loan', amount: a }),
       repay: a => this.send({ t: 'repay', amount: a }),
       requestJob: () => this.send({ t: 'jobRequest' }),
-      bringOut: k => this.bringOut(k),
-      buy: (shop, item) => this.send({ t: 'buy', shop, item }),
-      testDrive: k => this.bringOut(k, true),
+      garage: k => this.garageAction(k),
+      goHome: () => this.goHome(),
+      buy: (shop, item, car) => this.send({ t: 'buy', shop, item, ...(car ? { car } : {}) }),
+      testDrive: k => this.testDrive(k),
       map: () => this.toggleMap(),
       wardrobe: () => this.openWardrobe(false),
       mapAction: (a, lot) => this.mapAction(a, lot),
@@ -197,6 +212,9 @@ export class Game {
     });
     this.hud.wardrobeOpen = () => this.wardrobe.isOpen;
     this.hud.closeWardrobe = () => this.wardrobe.close(false);
+    this.bodyShop = new BodyShopUI((kind, order) => this.send({ t: 'service', kind, order }), () => {});
+    this.hud.bodyShopOpen = () => this.bodyShop.isOpen;
+    this.hud.closeBodyShop = () => this.bodyShop.close();
 
     this.beacon = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.6, 40, 24, 1, true), new THREE.MeshBasicMaterial({ color: 0x5cff7a, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }));
     this.beacon.position.y = 20; this.beacon.visible = false;
@@ -302,9 +320,11 @@ export class Game {
         if (!this.welcomed) {
           this.welcomed = true;
           if (home) {
-            this.goHome(home);
+            this.standAtHome(home);
+            this.parkAtHome(home);
             this.hud.toast(`Welcome home, ${m.account.name} — lot ${home.id} is right where you left it.`);
           } else {
+            this.settleVehicles();
             this.hud.toast(`Welcome to Maple Street, ${m.account.name}! Pick a plot to build on.`);
             this.build.setTool('buy');
             if (m.account.look) this.hud.showMap(true, true);
@@ -326,7 +346,7 @@ export class Game {
           if (mine) {
             this.hud.toast(`Lot ${m.op.lotId} is yours! Press B to build and furnish.`);
             const lot = this.houses.world?.lots[m.op.lotId];
-            if (lot && this.pendingHome === lot.id) { this.pendingHome = null; this.hud.showMap(false); this.goHome(lot); }
+            if (lot && this.pendingHome === lot.id) { this.pendingHome = null; this.hud.showMap(false); this.standAtHome(lot); this.parkAtHome(lot); }
             if (this.build.tool === 'buy') this.build.setTool('room');
           } else this.hud.toast(`${m.actorName} bought lot ${m.op.lotId}`);
         }
@@ -364,6 +384,7 @@ export class Game {
     this.account = acc;
     this.wardrobe.updateAccount(acc);
     if (acc.look && !this.wardrobe.isOpen && lookKey(acc.look) !== lookKey(this.look)) this.setLook(acc.look);
+    for (const [kind, v] of this.vehicles) { const car = acc.garage.includes(kind) ? acc.cars[kind] ?? null : null; v.restyle(car); v.setCar(car); }
     for (const [kind, v] of this.vehicles) {
       const srv = acc.fuel[kind];
       if (typeof srv !== 'number') continue;
@@ -373,9 +394,10 @@ export class Game {
       this.serverFuel[kind] = srv;
     }
     this.hud.setNeeds(acc);
-    this.hud.setGarage(acc, new Set(this.vehicles.keys()), this.fuelLevels());
+    this.hud.setGarage(acc, new Set(this.vehicles.keys()), this.fuelLevels(), !!this.homeLot());
     if (this.hud.bankOpen) this.hud.updateBank(acc);
     if (this.hud.shopOpen) this.hud.updateShop(acc);
+    this.bodyShop.update(acc);
     this.refreshMap();
     if (acc.needs.hunger < 15 && !this.warned.hunger) { this.warned.hunger = true; this.hud.toast('You’re starving — grab a bite downtown or cook at home.'); }
     if (acc.needs.energy < 15 && !this.warned.energy) { this.warned.energy = true; this.hud.toast('You’re exhausted — a nap in your bed (or a coffee) would help.'); }
@@ -410,22 +432,101 @@ export class Game {
     return Object.values(w.lots).find(l => l.owner === me) ?? null;
   }
 
-  /** Returning neighbors start on their own driveway, truck parked and facing the street. */
-  private goHome(lot: LotDef) {
+  /** Where you stand on your own lot: on the driveway, facing the house. */
+  private standAtHome(lot: LotDef) {
     if (this.driving) this.exitVehicle();
     const dir = lot.front === '+z' ? 1 : -1;                 // toward the street
     const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
-    const yaw = dir > 0 ? -Math.PI / 2 : Math.PI / 2;        // vehicle +X faces the street
-    const truck = this.vehicles.get(STARTER_TRUCK), trailer = this.vehicles.get('trailer');
-    if (truck) {
-      truck.unhitch();
-      this.placeVehicle(truck, lot.x + 4, frontZ - dir * 4.5, yaw);
-      if (trailer) { this.placeVehicle(trailer, lot.x + 4, frontZ - dir * 10, yaw); truck.hitch(trailer); }
-    }
     this.character.teleport(new THREE.Vector3(lot.x + 8, 0, frontZ - dir * 2));
     this.character.yaw = dir > 0 ? Math.PI : 0;              // face the house
     this.cam.yaw = dir > 0 ? 0 : Math.PI;
     this.clearMove();
+  }
+
+  /**
+   * Arriving (or moving in): your vehicles are parked on your driveway, truck
+   * and trailer hitched and facing the street, anything else beside them.
+   * Every spot is checked so nothing lands inside another vehicle.
+   */
+  private parkAtHome(lot: LotDef) {
+    const dir = lot.front === '+z' ? 1 : -1;
+    const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
+    const yaw = dir > 0 ? -Math.PI / 2 : Math.PI / 2;        // vehicle +X faces the street
+    const reserved: Footprint[] = [];
+    const truck = this.vehicles.get(STARTER_TRUCK), trailer = this.vehicles.get('trailer');
+    if (truck) this.parkRig(truck, trailer ?? null, lot.x + 4, frontZ - dir * 4.5, yaw, reserved);
+    let slot = 0;
+    for (const [kind, v] of this.vehicles) {
+      if (kind === STARTER_TRUCK || kind === 'trailer' || v === this.driving) continue;
+      this.parkVehicle(v, lot.x + 8.6 + slot * 3.4, frontZ - dir * 5.5, yaw, reserved);
+      slot++;
+    }
+  }
+
+  /** Puts a vehicle on the ground at the nearest free spot to (x, z). */
+  private parkVehicle(v: Vehicle, x: number, z: number, yaw: number, reserved: Footprint[] = []) {
+    v.towedBy?.unhitch();
+    v.unhitch();
+    const c = v.preset.chassis;
+    const exclude = [v.body];
+    const spot = this.parking.find({ x, z, yaw, hx: c.hx, hz: c.hz }, c.hy * 2 + v.preset.suspension.rest, exclude, reserved);
+    this.placeVehicle(v, spot.x, spot.z, spot.yaw);
+    reserved.push(spot);
+    return spot;
+  }
+
+  /** Truck and trailer as one unit: finds room for both, parks the truck and hitches the trailer behind it. */
+  private parkRig(truck: Vehicle, trailer: Vehicle | null, x: number, z: number, yaw: number, reserved: Footprint[] = []) {
+    if (!trailer || !truck.preset.hitch || !trailer.preset.tongue) return this.parkVehicle(truck, x, z, yaw, reserved);
+    truck.unhitch();
+    trailer.towedBy?.unhitch();
+    const tc = truck.preset.chassis;
+    const rear = truck.preset.hitch.x - trailer.preset.tongue.x - trailer.preset.chassis.hx;
+    const mid = (tc.hx + rear) / 2, half = (tc.hx - rear) / 2;
+    const fx = Math.cos(yaw), fz = -Math.sin(yaw);
+    const want = { x: x + fx * mid, z: z + fz * mid, yaw, hx: half, hz: Math.max(tc.hz, trailer.preset.chassis.hz) };
+    const spot = this.parking.find(want, tc.hy * 2 + truck.preset.suspension.rest, [truck.body, trailer.body], reserved);
+    this.placeVehicle(truck, spot.x - fx * mid, spot.z - fz * mid, yaw);
+    truck.hitch(trailer);
+    reserved.push(spot);
+    return spot;
+  }
+
+  /** Once after arriving without a home: make sure the starter vehicles aren't parked in someone else's. */
+  private settleVehicles() {
+    const reserved: Footprint[] = [];
+    const truck = this.vehicles.get(STARTER_TRUCK), trailer = this.vehicles.get('trailer');
+    if (truck) {
+      const p = truck.body.translation(), f = truck.forward();
+      this.parkRig(truck, trailer ?? null, p.x, p.z, Math.atan2(-f.z, f.x), reserved);
+    }
+  }
+
+  /**
+   * Go Home (button, H, or the town map): takes you, and only you, to your
+   * driveway. Vehicles stay wherever you parked them. Usable once every
+   * fifteen real minutes; the time is kept per account in this browser.
+   */
+  private goHomeKey() { return `maplestreet/go-home/${this.account?.id ?? 'guest'}`; }
+  goHomeReadyIn() {
+    const last = Number(store.get(this.goHomeKey()) ?? 0) || 0;
+    return Math.max(0, last + GO_HOME_COOLDOWN_MS - Date.now());
+  }
+
+  private goHome() {
+    const home = this.homeLot();
+    if (!home) return this.hud.toast('You don’t have a home yet — pick a plot on the town map (M)');
+    const wait = this.goHomeReadyIn();
+    if (wait > 0) return this.hud.toast(`Go home is ready again in ${clockText(wait)}`);
+    store.set(this.goHomeKey(), String(Date.now()));
+    this.hud.closeModals();
+    this.standAtHome(home);
+    this.hud.toast('Home sweet home. Your vehicles are still where you left them.');
+    this.syncGoHome();
+  }
+
+  private syncGoHome() {
+    this.hud.setGoHome(!!this.homeLot(), this.goHomeReadyIn());
   }
 
   /** Walk up to a lot's frontage (map "Visit"). */
@@ -437,14 +538,14 @@ export class Game {
     this.character.yaw = dir > 0 ? Math.PI : 0;
     this.cam.yaw = dir > 0 ? 0 : Math.PI;
     this.clearMove();
-    this.hud.toast(`Lot ${lot.id} — use Garage → Call over to bring a vehicle here`);
+    this.hud.toast(`Lot ${lot.id}`);
   }
 
   private mapAction(action: 'buy' | 'visit' | 'home', lot: LotState) {
     if (action === 'buy') {
       this.pendingHome = lot.id;
       this.sendBuild([{ op: 'buyLot', lotId: lot.id }]);
-    } else if (action === 'home') { this.hud.showMap(false); this.goHome(lot); }
+    } else if (action === 'home') this.goHome();
     else { this.hud.showMap(false); this.visit(lot); }
   }
 
@@ -465,6 +566,7 @@ export class Game {
   // ------------------------------------------------------------ vehicles
 
   private placeVehicle(v: Vehicle, x: number, z: number, yaw: number) {
+    v.quiet();
     const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
     v.body.setTranslation({ x, y: v.preset.chassis.hy + v.preset.suspension.rest + 0.6, z }, true);
     v.body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
@@ -474,7 +576,9 @@ export class Game {
   }
 
   private addVehicle(kind: VehicleKind, pos: THREE.Vector3, yaw: number) {
-    const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene);
+    const v = new Vehicle(this.physics, kind, kind, pos, yaw, this.engine.scene, this.account?.cars[kind] ?? null);
+    v.setCar(this.account?.garage.includes(kind) ? this.account.cars[kind] ?? null : null);
+    v.onImpact = (dv, at) => { if (this.account?.garage.includes(kind)) this.send({ t: 'crash', kind, dv, at }); };
     this.vehicles.set(kind, v);
     const lvl = this.account?.fuel[kind];
     if (typeof lvl === 'number') { this.fuelUp(v, lvl); this.serverFuel[kind] = lvl; }
@@ -482,44 +586,94 @@ export class Game {
   }
 
   /**
-   * Garage: bring a vehicle you own over to where you are. Truck and trailer
-   * are always out; one other vehicle at a time keeps snapshots small.
+   * Garage. Vehicles are never brought to you: truck and trailer are always
+   * out, and one other vehicle at a time can be taken out, parked on your
+   * driveway (or at Maple Motors before you own a home). Putting it away
+   * returns it to the garage. Keeping one extra out keeps snapshots small.
    */
-  private bringOut(kind: VehicleKind, trial = false) {
-    if (!this.account || (!trial && !this.account.garage.includes(kind))) return;
-    const p = this.driving ? this.driving.root.position.clone() : this.character.position;
-    const { fwd, right } = this.cam.basis();
-    const at = p.clone().add(new THREE.Vector3(right.x * 4.5, 0, right.y * 4.5));
-    const yaw = Math.atan2(-fwd.y, fwd.x);
+  private garageAction(kind: VehicleKind) {
+    if (!this.account?.garage.includes(kind) || kind === STARTER_TRUCK || kind === 'trailer') return;
+    const name = VEHICLES[kind].name;
     const existing = this.vehicles.get(kind);
     if (existing) {
-      if (existing === this.driving) return this.hud.toast(`You’re already driving the ${VEHICLES[kind].name}`);
-      existing.towedBy?.unhitch();
-      existing.unhitch();
-      this.placeVehicle(existing, at.x, at.z, yaw);
-      this.hud.toast(`${VEHICLES[kind].name} is parked next to you`);
+      if (existing === this.driving) return this.hud.toast(`Park and get out of the ${name} first`);
+      this.reportFuel();
+      existing.dispose(this.engine.scene);
+      this.vehicles.delete(kind);
+      this.hud.toast(`${name} is back in your garage`);
     } else {
       for (const [k, v] of this.vehicles) {
         if (k === STARTER_TRUCK || k === 'trailer') continue;
-        if (v === this.driving) this.exitVehicle();
+        if (v === this.driving) return this.hud.toast(`Park and get out of the ${VEHICLES[k].name} first`);
         this.reportFuel();
         v.dispose(this.engine.scene);
         this.vehicles.delete(k);
       }
-      const v = this.addVehicle(kind, at, yaw);
-      this.placeVehicle(v, at.x, at.z, yaw);
-      if (trial && !this.account.garage.includes(kind)) {
-        this.fuelUp(v, VEHICLES[kind].tank);
-        this.hud.closeModals();
-        this.enterVehicle(v);
-        this.hud.toast(`Test drive: take the ${VEHICLES[kind].name} for a spin. Buy it at Maple Motors to keep it.`);
-      } else this.hud.toast(`${VEHICLES[kind].name} brought out — press E (or click it) to get in`);
+      const home = this.homeLot();
+      const at = home ? this.homeSpot(home) : DEALER_CURB;
+      const v = this.addVehicle(kind, new THREE.Vector3(at.x, 0, at.z), at.yaw);
+      const reserved: Footprint[] = [];
+      this.parkVehicle(v, at.x, at.z, at.yaw, reserved);
+      this.hud.toast(home ? `${name} is parked on your driveway at lot ${home.id}` : `${name} is waiting in front of Maple Motors`);
     }
-    this.hud.setGarage(this.account, new Set(this.vehicles.keys()), this.fuelLevels());
+    if (this.account) this.hud.setGarage(this.account, new Set(this.vehicles.keys()), this.fuelLevels(), !!this.homeLot());
+  }
+
+  /** The spot beside the truck on your driveway. */
+  private homeSpot(lot: LotDef) {
+    const dir = lot.front === '+z' ? 1 : -1;
+    const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
+    return { x: lot.x + 8.6, z: frontZ - dir * 5.5, yaw: dir > 0 ? -Math.PI / 2 : Math.PI / 2 };
+  }
+
+  /**
+   * Maple Motors test drive: the car waits at the dealer's curb and you get in
+   * there. Only one extra vehicle is out at a time, so this replaces it.
+   */
+  private testDrive(kind: VehicleKind) {
+    if (!this.account || kind === 'trailer') return;
+    if (this.driving) this.exitVehicle();
+    for (const [k, v] of this.vehicles) {
+      if (k === STARTER_TRUCK || k === 'trailer' || k === kind) continue;
+      this.reportFuel();
+      v.dispose(this.engine.scene);
+      this.vehicles.delete(k);
+    }
+    const v = this.vehicles.get(kind) ?? this.addVehicle(kind, new THREE.Vector3(DEALER_CURB.x, 0, DEALER_CURB.z), DEALER_CURB.yaw);
+    this.parkVehicle(v, DEALER_CURB.x, DEALER_CURB.z, DEALER_CURB.yaw);
+    if (!this.account.garage.includes(kind)) this.fuelUp(v, VEHICLES[kind].tank);
+    this.hud.closeModals();
+    this.enterVehicle(v);
+    this.hud.toast(`Test drive: take the ${VEHICLES[kind].name} for a spin. Buy it at Maple Motors to keep it.`);
+    this.hud.setGarage(this.account, new Set(this.vehicles.keys()), this.fuelLevels(), !!this.homeLot());
+  }
+
+  /**
+   * Watchdog for parked vehicles: if one ended up inside or on top of another
+   * (a neighbor parked into it, a car arrived where it stood), lift it onto
+   * the nearest free spot. Vehicles being driven or towed are left alone.
+   */
+  private unstackAcc = 0;
+  private unstack(dt: number) {
+    this.unstackAcc += dt;
+    if (this.unstackAcc < 0.5) return;
+    this.unstackAcc = 0;
+    for (const v of this.vehicles.values()) {
+      if (v === this.driving || v.towedBy || Math.abs(v.speed) > 0.4) continue;
+      const exclude = [v.body, ...(v.trailer ? [v.trailer.body] : [])];
+      const c = v.preset.chassis;
+      if (!this.parking.stacked(v.body, c.hx, c.hy, c.hz, exclude)) continue;
+      const p = v.body.translation(), f = v.forward();
+      const yaw = Math.atan2(-f.z, f.x);
+      if (v.trailer) this.parkRig(v, v.trailer, p.x, p.z, yaw);
+      else this.parkVehicle(v, p.x, p.z, yaw);
+    }
   }
 
   private enterVehicle(v: Vehicle) {
     this.clearMove();
+    this.closeContextMenu();
+    v.doors?.pulseDriver();
     this.driving = v;
     this.character.setSeated(true);
     this.character.avatar.sitIn(v.root, v.preset.seat);
@@ -542,6 +696,7 @@ export class Game {
     this.character.avatar.standIn(this.character.pivot, -EYE_OFFSET);
     const f = v.forward();
     this.character.yaw = Math.atan2(f.x, f.z);
+    v.doors?.pulseDriver();
     this.driving = null;
   }
 
@@ -640,9 +795,8 @@ export class Game {
     for (const r of roots) r.updateMatrixWorld(true);
     const vh = ray.intersectObjects(roots, true)[0];
     if (vh && vh.distance < 80) {
-      const v = [...this.vehicles.values()].find(x => { let o: THREE.Object3D | null = vh.object; while (o) { if (o === x.root) return true; o = o.parent; } return false; })!;
-      const door = v.localToWorld(0, 0, -(v.preset.chassis.hz + 0.7));
-      return this.walkTo(door, { label: `Drive ${v.preset.label}`, reach: 1.6, run: () => this.enterVehicle(v) });
+      const v = this.ownVehicleOf(vh.object);
+      if (v) return this.walkToDrive(v);
     }
 
     const dist = this.physics.rayDistance(ray.ray.origin, ray.ray.direction, 400, MASK.pick);
@@ -664,6 +818,64 @@ export class Game {
     }
     this.walkTo(hit, null);
   }
+
+  private ownVehicleOf(obj: THREE.Object3D): Vehicle | null {
+    for (const v of this.vehicles.values()) {
+      let o: THREE.Object3D | null = obj;
+      while (o && o !== v.root) o = o.parent;
+      if (o) return v;
+    }
+    return null;
+  }
+
+  /** Walk to the driver's door and get in. */
+  private walkToDrive(v: Vehicle) {
+    const side = v.preset.seat.z > 0 ? 1 : -1;
+    const door = v.localToWorld(v.preset.seat.x, 0, side * (v.preset.chassis.hz + 0.7));
+    this.walkTo(door, { label: `Drive ${v.preset.label}`, reach: 1.6, run: () => this.enterVehicle(v) });
+  }
+
+  /**
+   * Right-click (press and release without dragging, so right-drag still
+   * orbits the camera) on a vehicle opens its menu: yours offers Drive and
+   * its doors; anyone else's just says whose it is.
+   */
+  private handleRightClick() {
+    const I = this.input;
+    if (I.mouseClicked(2)) this.rightPress = { x: I.pointer.x, y: I.pointer.y };
+    if (!I.mouseReleased(2) || !this.rightPress) return;
+    const moved = Math.hypot(I.pointer.x - this.rightPress.x, I.pointer.y - this.rightPress.y);
+    this.rightPress = null;
+    if (moved > 6 || this.hud.modalOpen) return;
+    if ((document.elementFromPoint(I.pointer.x, I.pointer.y) as HTMLElement | null)?.closest('.ui')) return;
+    const ray = new THREE.Raycaster();
+    this.engine.camera.updateMatrixWorld();
+    ray.setFromCamera(new THREE.Vector2(I.pointer.ndcX, I.pointer.ndcY), this.engine.camera);
+
+    const roots = [...this.vehicles.values()].map(v => v.root);
+    for (const r of roots) r.updateMatrixWorld(true);
+    const mine = ray.intersectObjects(roots, true)[0];
+    const theirs = this.remotes.pickVehicle(ray);
+    if (mine && mine.distance < 80 && (!theirs || mine.distance <= theirs.distance)) {
+      const v = this.ownVehicleOf(mine.object);
+      if (!v) return;
+      const name = VEHICLES[v.kind]?.name ?? v.preset.label;
+      const items: MenuItem[] = [];
+      if (v === this.driving) items.push({ label: 'Get out', run: () => this.exitVehicle() });
+      else if (v.preset.engineForce > 0) items.push({ label: 'Drive', run: () => this.walkToDrive(v) });
+      else items.push({ label: 'Hitch it from the truck (T)', disabled: true });
+      const doors = v.doors;
+      if (doors) items.push({ label: doors.isOpen ? 'Close doors' : 'Open doors', run: () => doors.setAll(!doors.isOpen) });
+      const test = !this.account?.garage.includes(v.kind);
+      return this.menu.show(I.pointer.x, I.pointer.y, test ? `Test drive: ${name}` : `Your ${name}`, items);
+    }
+    if (theirs) {
+      return this.menu.show(I.pointer.x, I.pointer.y, `${theirs.ownerName}’s ${theirs.label}`, [{ label: 'Not your vehicle', disabled: true }]);
+    }
+    this.menu.close();
+  }
+
+  private closeContextMenu() { this.menu.close(); }
 
   /** A usable item on your lot under (x, z) — beds, the fridge, the hoop… */
   private usableAt(x: number, z: number, y: number) {
@@ -697,10 +909,10 @@ export class Game {
   private frame(dt: number, alpha: number) {
     this.physics.interpolate(alpha);
     this.handleActions();
-    if (this.mode === 'live') this.handleClick();
+    if (this.mode === 'live') { this.handleClick(); this.handleRightClick(); this.unstack(dt); }
 
     const night = this.day.night;
-    for (const v of this.vehicles.values()) v.updateVisuals(night, v === this.driving && (v.input.handbrake || v.input.throttle < 0 && v.speed > 0.5));
+    for (const v of this.vehicles.values()) v.updateVisuals(night, v === this.driving && (v.input.handbrake || v.input.throttle < 0 && v.speed > 0.5), dt);
     for (const m of NIGHT_GLOW_MATERIALS) m.emissiveIntensity = night * 2.5;
     this.character.updateVisual(dt, !!this.driving);
     this.mats.tick(dt);
@@ -743,7 +955,8 @@ export class Game {
       this.hudAcc = 0;
       const offline = this.netStatus === 'offline' && !(this.net instanceof OfflineTransport);
       this.hud.setStatus({ clock: this.day.clockLabel, day: this.dayNum, account: this.account, net: this.net ? `${this.net.label}${offline ? ' (reconnecting)' : ''}` : 'Connecting', players: this.remotes.count, fps: this.loop.fps, backend: this.engine.backendName + (this.engine.aoEnabled ? ' + GTAO' : '') });
-      if (this.account) this.hud.setGarage(this.account, new Set(this.vehicles.keys()), this.fuelLevels());
+      if (this.account) this.hud.setGarage(this.account, new Set(this.vehicles.keys()), this.fuelLevels(), !!this.homeLot());
+      this.syncGoHome();
     }
     this.mapAcc += dt;
     if (this.mapAcc > 0.5 && this.hud.mapOpen) { this.mapAcc = 0; this.refreshMap(); }
@@ -776,12 +989,13 @@ export class Game {
 
   devDrive(kind: VehicleKind) {
     if (this.mode !== 'live') this.toggleBuild();
-    this.bringOut(kind, true);
+    this.testDrive(kind);
   }
 
   devHasLot() { return !!this.homeLot(); }
 
   private toggleBuild() {
+    this.menu.close();
     if (this.mode === 'live') {
       if (this.driving) this.exitVehicle();
       this.clearMove();
@@ -828,6 +1042,7 @@ export class Game {
     }
     if (I.wasPressed('KeyR') && this.driving) this.driving.reset();
     if (I.wasPressed('KeyJ')) this.send({ t: 'jobRequest' });
+    if (I.wasPressed('KeyH')) this.goHome();
   }
 
   // ------------------------------------------------------------ interactions
@@ -866,13 +1081,18 @@ export class Game {
       const door = this.nearDoor();
       if (door && door.kind !== 'gas') lines.push(`Park and press E, then walk up to ${door.name}`);
       if (v.preset.hitch && !v.trailer && tr && v.canHitch(tr)) lines.push('T — Hitch trailer');
+      if (inBay(v.root.position.x, v.root.position.z) && this.account?.garage.includes(v.kind)) lines.push(`Parked in a service bay — get out (E), then press E for ${BODY_SHOP.name}`);
       if (this.job && vehicleRole(v.kind) === 'hauler') lines.push(this.job.stage === 'toPickup' ? 'Drive into the yellow beacon to load cargo' : 'Drive into the green beacon to deliver');
       this.hud.prompt(lines.join('   ·   '));
       return;
     }
     const p = this.character.position;
     const door = this.nearDoor();
-    if (door) {
+    const serviced = atBodyShop(p.x, p.z) ? [...this.vehicles.values()].find(v => this.account?.garage.includes(v.kind) && inBay(v.root.position.x, v.root.position.z)) : undefined;
+    if (serviced && this.account) {
+      const v = serviced, acc = this.account;
+      this.interaction = { label: `E — Service your ${VEHICLES[v.kind]?.name ?? 'car'} at ${BODY_SHOP.name}`, run: () => { this.hud.closeModals(); this.bodyShop.open(v.kind, acc); } };
+    } else if (door) {
       this.interaction = { label: door.kind === 'bank' ? 'E — Talk to the bank teller' : `E — Shop at ${door.name}`, run: () => this.openShop(door) };
     } else {
       const lot = this.homeLot();
@@ -919,7 +1139,7 @@ export class Game {
     if (this.driving && v.empty) {
       const pump = GAS_STATION.pumps[Math.floor(Math.random() * GAS_STATION.pumps.length)];
       this.driving.unhitch();
-      this.placeVehicle(v, pump.x - 2.2 * Math.sign(pump.x - GAS_STATION.canopy.x || 1), pump.z, 0);
+      this.parkVehicle(v, pump.x - 2.2 * Math.sign(pump.x - GAS_STATION.canopy.x || 1), pump.z, 0);
       this.hud.toast('A tow truck dropped you at Gas & Go — press F to fill up');
     }
   }
@@ -929,7 +1149,8 @@ export class Game {
     if (!v || this.mode !== 'live') { this.hud.setDash(null); return; }
     const spec = VEHICLES[v.kind];
     const gear = v.input.handbrake && Math.abs(v.speed) < 0.3 ? 'P' : v.speed < -0.3 || (v.input.throttle < 0 && v.speed < 0.6) ? 'R' : 'D';
-    this.hud.setDash({ name: spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: v.preset.engineForce > 0 });
+    const condition = Math.round((1 - (this.account?.garage.includes(v.kind) ? this.account.cars[v.kind]?.damage ?? 0 : 0)) * 100);
+    this.hud.setDash({ name: condition < 100 ? `${spec.name} · ${condition}% condition` : spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: v.preset.engineForce > 0 });
     if (v.empty && !this.warned.fuel) { this.warned.fuel = true; this.hud.toast(`The ${spec.name} is out of ${spec.fuel === 'electric' ? 'charge' : 'fuel'} — press F to call a tow to Gas & Go`); }
   }
 
@@ -1036,7 +1257,7 @@ export class Game {
     const pos = v ? v.root.position : this.character.position;
     const p: PlayerSnap = {
       id: me, name: this.opts.name, color: this.opts.color,
-      x: pos.x, y: pos.y, z: pos.z, yaw: this.character.yaw, speed: v ? 0 : this.character.speed,
+      x: pos.x, y: pos.y, z: pos.z, yaw: this.character.yaw, speed: v ? 0 : this.character.moveSpeed,
       vehicleId: v ? `${me}:${v.id}` : null,
     };
     const vs = [...this.vehicles.values()].map(x => {

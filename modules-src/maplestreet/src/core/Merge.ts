@@ -22,6 +22,15 @@ function normalized(src: THREE.BufferGeometry, m: THREE.Matrix4) {
   for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal' && name !== 'uv') g.deleteAttribute(name);
   if (!g.getAttribute('normal')) g.computeVertexNormals();
   if (!g.getAttribute('uv')) g.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.getAttribute('position').count * 2), 2));
+  // Quantized glTF (KHR_mesh_quantization) stores normalized int16/int8 data;
+  // transforming it in place would clamp every coordinate to ±1, so unpack to floats first.
+  for (const name of ['position', 'normal', 'uv'] as const) {
+    const a = g.getAttribute(name) as THREE.BufferAttribute;
+    if (a.array instanceof Float32Array && !a.normalized) continue;
+    const out = new Float32Array(a.count * a.itemSize);
+    for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) out[i * a.itemSize + c] = a.getComponent(i, c);
+    g.setAttribute(name, new THREE.BufferAttribute(out, a.itemSize));
+  }
   g.applyMatrix4(m);
   return g;
 }

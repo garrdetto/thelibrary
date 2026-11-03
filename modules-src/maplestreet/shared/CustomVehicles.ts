@@ -147,6 +147,7 @@ function specFromRecord(r: CustomVehicleRecord): VehicleSpec {
     mpg: r.dealer.mpg,
     fuel: r.dealer.fuel,
     forSale: r.active && r.dealer.forSale && r.dealer.price > 0,
+    paintable: r.paint.mode !== 'none',
   };
 }
 

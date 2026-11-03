@@ -1,6 +1,7 @@
 /** Economy, needs, shops and vehicles: shared by the authority and the client UI. */
 import { isCustomVehicleKind, type BuiltinVehicleKind, type VehicleKind } from './Vehicles';
 import { Body, defaultLook, isBody, Look, cleanLook, STARTER_WARDROBE, WARDROBE } from './Wardrobe';
+import { cleanCar, type OwnedCar } from './Cars';
 
 export const START_MONEY = 105_000;
 /** Solo mode's bottomless bank balance: purchases always go through. */
@@ -33,7 +34,12 @@ export const NEED_DECAY_PER_MIN: Needs = { hunger: 1.1, energy: 0.75, fun: 0.9 }
 
 // ---------------------------------------------------------------- vehicles
 
-export interface VehicleSpec { kind: VehicleKind; name: string; price: number; tank: number; mpg: number; fuel: 'gas' | 'electric' | 'none'; forSale?: boolean }
+export interface VehicleSpec {
+  kind: VehicleKind; name: string; price: number; tank: number; mpg: number; fuel: 'gas' | 'electric' | 'none'; forSale?: boolean;
+  /** False for published vehicles that keep their model's own colors, so buyers don't pick a paint. */
+  paintable?: boolean;
+}
+export const isPaintable = (kind: string) => VEHICLES[kind]?.paintable !== false;
 
 /** Fuel use is scaled up ×30 so a tank lasts an evening of driving, not a month. */
 export const FUEL_SCALE = 30;
@@ -119,6 +125,8 @@ export interface Account {
   debt: number;
   earned: number;    // lifetime earnings, used to underwrite credit
   garage: VehicleKind[];
+  /** How each owned vehicle looks (paint color and finish), keyed like `garage`. */
+  cars: Partial<Record<VehicleKind, OwnedCar>>;
   fuel: Partial<Record<VehicleKind, number>>;
   needs: Needs;
   groceries: number;
@@ -138,6 +146,9 @@ export function normalizeAccount(a: Account): Account {
   for (const k of STARTER_GARAGE) if (!a.garage.includes(k)) a.garage.push(k);
   a.fuel = a.fuel && typeof a.fuel === 'object' ? a.fuel : {};
   for (const k of a.garage) if (typeof a.fuel[k] !== 'number' && VEHICLES[k]) a.fuel[k] = VEHICLES[k].tank;
+  const cars = a.cars && typeof a.cars === 'object' ? a.cars : {};
+  a.cars = {};
+  for (const k of a.garage) a.cars[k] = cleanCar(cars[k], k);
   a.needs = a.needs && typeof a.needs === 'object' ? a.needs : { hunger: 80, energy: 85, fun: 70 };
   a.groceries = Number.isFinite(a.groceries) ? a.groceries : 2;
   a.upgrades = Array.isArray(a.upgrades) ? a.upgrades : [];
@@ -148,7 +159,7 @@ export function normalizeAccount(a: Account): Account {
 }
 
 export function newAccount(id: string, key: string, name: string, color: string, body?: Body): Account {
-  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [], look: body ? defaultLook(body) : null, wardrobe: [] });
+  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], cars: {}, fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [], look: body ? defaultLook(body) : null, wardrobe: [] });
 }
 
 /**

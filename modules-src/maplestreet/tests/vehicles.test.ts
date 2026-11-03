@@ -153,7 +153,7 @@ test('a bundled vehicle can drive around town as a fleet in several colors', () 
   const cars = npc.snapshot().vehicles.filter(v => v.kind === kind);
   assert.equal(cars.length, 6);
   assert.equal(new Set(cars.map(v => v.id)).size, 6);
-  assert.ok(cars.every(v => /^#[0-9a-f]{6}$/.test(v.paint ?? '')), 'snapshots carry the paint');
+  assert.ok(cars.every(v => /^#[0-9a-f]{6}$/.test(v.style?.color ?? '')), 'snapshots carry the paint');
   const spread = cars.map(v => `${Math.round(v.x)},${Math.round(v.z)}`);
   assert.equal(new Set(spread).size, 6, 'no two start on the same spot');
 });

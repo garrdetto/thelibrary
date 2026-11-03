@@ -9,13 +9,15 @@
  */
 import { applyOp, emptyBuild, levelBase, makeWorld, normalizeBuild, opCost, own, validateOp, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
-import { Account, availableCredit, clampNeed, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
+import { Account, availableCredit, clampNeed, isPaintable, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
 import { seedNeighborhood, upgradeSeed } from './Seed';
 import { decodeCells, encodeCells, gameDays, LawnCells, mowCells, sweepGrown } from './Mowing';
 import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
 import { cleanLook, keepOutfit } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
 import { vehicleRole } from './Vehicles';
+import { addCrash, cleanCar, newCar } from './Cars';
+import { applyOrder, atBodyShop, BODY_SHOP, cleanOrder, inBay, quote } from './BodyShop';
 
 export interface LogicIO {
   send(sessionId: string, msg: ServerMsg): void;
@@ -56,6 +58,8 @@ interface Session {
   vehicles: VehicleSnap[];
   job: Job | null;
   lastSeen: number;
+  /** A newer connection for the same account took over: this one no longer appears in the world. */
+  superseded?: boolean;
 }
 
 export const DAY_LENGTH_SEC = 24 * 60;   // one in-game day = 24 real minutes
@@ -139,6 +143,15 @@ export class NeighborhoodLogic {
       const lot = this.world.lots[id];
       if (lot.owner === acc.id && lot.ownerName !== name) { lot.ownerName = name; this.dirty.lots.add(id); }
     }
+    // A reload or reconnect can arrive before the old socket closes. Only the
+    // newest connection is drawn, so its truck never spawns inside the old one.
+    for (const [id, other] of this.sessions) {
+      if (other.key !== key || other.superseded) continue;
+      other.superseded = true;
+      other.player = null;
+      other.vehicles = [];
+      this.io.broadcast({ t: 'left', id }, sessionId);
+    }
     this.sessions.set(sessionId, { key, player: null, vehicles: [], job: null, lastSeen: Date.now() });
 
     const mowed = this.coverageCodes();
@@ -156,6 +169,12 @@ export class NeighborhoodLogic {
     if (!s) return;
     this.dirty.accounts.add(s.key);
     this.sessions.delete(sessionId);
+    // The newest connection left while an older one is still open: that one shows up again on its next state.
+    if (!s.superseded) {
+      let newest: Session | null = null;
+      for (const other of this.sessions.values()) if (other.key === s.key) newest = other;
+      if (newest) newest.superseded = false;
+    }
     this.io.broadcast({ t: 'left', id: sessionId });
   }
 
@@ -183,6 +202,7 @@ export class NeighborhoodLogic {
 
     switch (msg.t) {
       case 'state': {
+        if (s.superseded) break;
         // Rebuild snapshots field by field: only finite numbers and known kinds reach other players.
         const p = msg.p;
         if (p && typeof p === 'object') {
@@ -200,6 +220,7 @@ export class NeighborhoodLogic {
             x: num(v.x), y: num(v.y, -50, 500), z: num(v.z), qx: num(v.qx, -1, 1), qy: num(v.qy, -1, 1), qz: num(v.qz, -1, 1), qw: num(v.qw, -1, 1),
             steer: num(v.steer, -1, 1), speed: num(v.speed, -100, 100),
             hitchedTo: typeof v.hitchedTo === 'string' ? `${sessionId}:${v.hitchedTo.split(':').pop()!.slice(0, 12)}` : null,
+            style: acc.cars[v.kind as VehicleKind] ?? null,
           }));
         break;
       }
@@ -225,8 +246,10 @@ export class NeighborhoodLogic {
       case 'mow': this.handleMow(sessionId, s, acc, msg.strokes); break;
       case 'jobRequest': this.issueJob(sessionId, s); break;
       case 'jobProgress': this.progressJob(sessionId, s, acc, msg.jobId); break;
-      case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item); break;
+      case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item, msg.car); break;
       case 'refuel': this.handleRefuel(sessionId, s, acc, msg.kind, msg.gallons); break;
+      case 'crash': this.handleCrash(sessionId, s, acc, msg.kind, msg.dv, msg.at); break;
+      case 'service': this.handleService(sessionId, s, acc, msg.kind, msg.order); break;
       case 'fuel': {
         // Clients report fuel burned; levels may only go down here (refuelling goes through the pump).
         if (!msg.levels || typeof msg.levels !== 'object') break;
@@ -351,7 +374,7 @@ export class NeighborhoodLogic {
     return !!pos && SHOP_DOORS.some(d => d.kind === kind && Math.hypot(pos.x - d.x, pos.z - d.z) <= SHOP_RADIUS + 2);
   }
 
-  private handleBuy(sessionId: string, s: Session, acc: Account, shopId: unknown, itemId: unknown) {
+  private handleBuy(sessionId: string, s: Session, acc: Account, shopId: unknown, itemId: unknown, car?: unknown) {
     const door = SHOP_DOORS.find(d => d.id === shopId);
     if (!door) return;
     const pos = this.position(s);
@@ -366,7 +389,11 @@ export class NeighborhoodLogic {
     if (item.needs) this.addNeeds(acc, item.needs);
     if (item.groceries) acc.groceries = Math.min(20, acc.groceries + item.groceries);
     if (item.upgrade) acc.upgrades.push(item.upgrade);
-    if (item.vehicle) { acc.garage.push(item.vehicle); acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank; }
+    if (item.vehicle) {
+      acc.garage.push(item.vehicle);
+      acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank;
+      acc.cars[item.vehicle] = newCar(isPaintable(item.vehicle) ? car : null, item.vehicle);
+    }
     if (item.clothing) acc.wardrobe.push(item.clothing);
     this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — wear it from the rack here` : `Bought: ${item.name}`);
   }
@@ -382,6 +409,41 @@ export class NeighborhoodLogic {
     acc.money = Math.round((acc.money - cost) * 100) / 100;
     acc.fuel[kind] = (acc.fuel[kind] ?? 0) + affordable;
     this.sendAccount(sessionId, acc, `${VEHICLES[kind].fuel === 'electric' ? 'Charged' : 'Filled up'}: ${affordable.toFixed(1)} ${VEHICLES[kind].fuel === 'electric' ? 'kWh' : 'gal'} for $${cost.toFixed(2)}`);
+  }
+
+  private crashTimes = new Map<string, number>();
+
+  /** A car the player owns and has out took a hit: damage it and dent it where it was struck. */
+  private handleCrash(sessionId: string, s: Session, acc: Account, kind: unknown, dv: unknown, at: unknown) {
+    if (typeof kind !== 'string' || !acc.garage.includes(kind as VehicleKind) || !s.vehicles.some(v => v.kind === kind)) return;
+    const key = `${sessionId}:${kind}`, now = Date.now();
+    if (now - (this.crashTimes.get(key) ?? 0) < 400) return;
+    this.crashTimes.set(key, now);
+    const car = acc.cars[kind as VehicleKind] ??= cleanCar(null, kind);
+    const p = at && typeof at === 'object' ? at as { x: unknown; y: unknown; z: unknown } : {} as { x: unknown; y: unknown; z: unknown };
+    const added = addCrash(car, num(dv, 0, 60), { x: num(p.x, -6, 6), y: num(p.y, -4, 4), z: num(p.z, -3, 3) });
+    if (!added) return;
+    const pct = Math.round((1 - car.damage) * 100);
+    this.sendAccount(sessionId, acc, car.damage >= 0.999 ? `Your ${VEHICLES[kind]?.name ?? 'car'} is wrecked — it barely runs until it's repaired at the body shop` : added >= 0.15 ? `Crunch! Your ${VEHICLES[kind]?.name ?? 'car'} is at ${pct}% condition — the body shop can fix it` : undefined);
+  }
+
+  /** Maple Body & Wheel: repairs and upgrades for a car the player owns, parked in one of the bays. */
+  private handleService(sessionId: string, s: Session, acc: Account, kind: unknown, raw: unknown) {
+    if (typeof kind !== 'string' || !acc.garage.includes(kind as VehicleKind)) return;
+    const k = kind as VehicleKind, name = VEHICLES[k]?.name ?? 'car';
+    const pos = this.position(s);
+    if (!pos || !atBodyShop(pos.x, pos.z)) return this.sendAccount(sessionId, acc, `Walk up to ${BODY_SHOP.name} first`);
+    const v = s.vehicles.find(x => x.kind === k);
+    if (!v || !inBay(v.x, v.z)) return this.sendAccount(sessionId, acc, `Park your ${name} in one of the bays first`);
+    const car = acc.cars[k] ??= cleanCar(null, k);
+    const full = cleanOrder(raw, car);
+    const order = isPaintable(k) ? full : { ...full, color: undefined, finish: undefined };
+    const q = quote(k, car, order);
+    if (!q.lines.length) return this.sendAccount(sessionId, acc, 'Nothing to change — pick some work first');
+    if (q.total > acc.money) return this.sendAccount(sessionId, acc, `Not enough money — that work costs $${q.total.toLocaleString()}`);
+    acc.money -= q.total;
+    acc.cars[k] = applyOrder(car, order, k);
+    this.sendAccount(sessionId, acc, `${BODY_SHOP.name} finished your ${name}: ${q.lines.map(l => l.label.toLowerCase()).join(', ')} — $${q.total.toLocaleString()}`);
   }
 
   private cooldowns = new Map<string, number>();

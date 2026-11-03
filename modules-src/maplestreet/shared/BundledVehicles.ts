@@ -433,11 +433,11 @@ export const BUNDLED_VEHICLES: readonly CustomVehicleRecord[] = [
       ]
     },
     paint: {
-      mode: 'none',
+      mode: 'color',
       material: '',
-      key: '#ffffff',
-      tolerance: 0.18,
-      color: '#b5121b'
+      key: '#b20a29',
+      tolerance: 0.2,
+      color: '#b20a29'
     },
     targets: {
       topSpeedMph: 63,

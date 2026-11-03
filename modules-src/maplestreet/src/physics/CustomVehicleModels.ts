@@ -87,13 +87,18 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
   holder.rotation.y = THREE.MathUtils.degToRad(r.model.yaw);
   holder.scale.setScalar(r.model.scale);
   g.add(holder);
+  // The model is already one optimized mesh, and it may arrive after the
+  // shell has been merged (mergeStatic), so it stays out of merging: keep the
+  // holder and everything in it as they are.
+  holder.userData.keep = true;
   const fill = (scene: THREE.Object3D | null) => {
     holder.clear();
     if (!scene) { holder.add(placeholder(r)); return; }
     const copy = cloneSkinned(scene);
     applyPaint(copy, r, paint);
-    copy.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    copy.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.keep = true; } });
     holder.add(copy);
+    (g.userData.onFill as (() => void) | undefined)?.();
   };
   if (ready.has(r.modelUrl)) fill(ready.get(r.modelUrl)!);
   else { holder.add(placeholder(r)); void loadScene(r.modelUrl).then(fill); }
@@ -105,6 +110,7 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
 function placeholder(r: CustomVehicleRecord) {
   const c = r.physics.chassis, s = 1 / r.model.scale;
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(c.hx * 2 * s, c.hy * 2.4 * s, c.hz * 2 * s), placeholderMat);
+  mesh.userData.keep = true;
   mesh.position.set(-r.model.x * s, (-r.model.y + c.hy * 0.6) * s, -r.model.z * s);
   return mesh;
 }
