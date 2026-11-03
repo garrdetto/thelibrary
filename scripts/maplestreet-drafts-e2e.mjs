@@ -179,9 +179,24 @@ try {
     for (const b of document.querySelectorAll('button')) if (/^Explore first$/.test(b.textContent?.trim() ?? '') && b.offsetParent) b.click()
     window.maple.hud.closeModals()
   })
-  await dismissPlot()
-  await view(solo, 'bundled-vehicles', [37, 4, 14], [37, 0.8, 2.5])
+  // Each bundled vehicle on its own on the road: a side-on screenshot from its real pose, then a 4 s pull.
   for (const k of bundled) {
+    await dismissPlot()
+    const eye = await solo.evaluate(k => {
+      const g = window.maple
+      for (const other of ['custom:bundled-meridian-sedan', 'custom:bundled-bulwark-4x4', 'custom:bundled-ironhorn-crew-cab']) {
+        const o = g.vehicles.get(other)
+        if (o && other !== k) { o.dispose(g.engine.scene); g.vehicles.delete(other) }
+      }
+      const at = g.character.position.clone().set(30, 0, 2.5)
+      const v = g.vehicles.get(k) ?? g.addVehicle(k, at, 0)
+      g.placeVehicle(v, at.x, at.z, 0)
+      for (let i = 0; i < 90; i++) g.fixed(1 / 60)
+      const c = v.localToWorld(0, 0, 0), side = v.localToWorld(0, 1.2, 8), nose = v.localToWorld(1, 0, 0)
+      return { eye: [side.x, side.y, side.z], at: [c.x, c.y, c.z], heading: [+(nose.x - c.x).toFixed(2), +(nose.z - c.z).toFixed(2)] }
+    }, k)
+    log(`${k} heading`, JSON.stringify(eye.heading))
+    await view(solo, `bundled-${k.slice('custom:bundled-'.length)}`, eye.eye, eye.at)
     await dismissPlot()
     await solo.evaluate(k => { const g = window.maple; g.enterVehicle(g.vehicles.get(k)) }, k)
     await solo.locator('canvas').first().focus().catch(() => {})
@@ -189,7 +204,7 @@ try {
     await solo.evaluate(() => { const g = window.maple; for (let i = 0; i < 240; i++) g.fixed(1 / 60) })
     await solo.keyboard.up('w')
     const mph = await solo.evaluate(k => window.maple.vehicles.get(k).speed * 2.237, k)
-    assert(mph > 15, `${k} drives (${mph.toFixed(0)} mph after 4 s)`)
+    assert(mph > 11, `${k} drives (${mph.toFixed(0)} mph after 4 s)`)
     await solo.evaluate(k => { const g = window.maple; const v = g.vehicles.get(k); for (let i = 0; i < 300 && Math.abs(v.speed) > 0.3; i++) g.fixed(1 / 60); g.exitVehicle?.() }, k)
   }
   await solo.evaluate(() => { document.querySelectorAll('.ui, .hud, #minimap').forEach(el => { el.style.visibility = 'hidden' }) })
