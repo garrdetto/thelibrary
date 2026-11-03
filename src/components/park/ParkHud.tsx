@@ -134,7 +134,6 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [chatText, setChatText] = useState('')
   const [saves, setSaves] = useState<SaveSummary[] | null>(null)
   const [saveBusy, setSaveBusy] = useState(false)
-  const [saveName, setSaveName] = useState('')
   const [finishing, setFinishing] = useState(false)
   const [lastSaved, setLastSaved] = useState<number | null>(null)
   const [newsSeen, setNewsSeen] = useState(0)
@@ -667,12 +666,11 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     try { setSaves((await parkApi.saves()).saves) } catch (error) { toast((error as Error).message, 'error'); setSaves([]) }
   }
 
-  async function writeSave(slot: number, label?: string): Promise<string | null> {
+  async function writeSave(): Promise<string | null> {
     const data = await compressSave(await session.exportSave())
     const s = session.state, p = s.parks[session.park]
-    const name = label ?? (saveName.trim() || `${p.name} · ${MONTHS[s.time.month]} Y${s.time.year}`)
     const value = companyValue(s, session.park)
-    await parkApi.save(slot, name.slice(0, 40), data, { cash: Math.round(p.cash), netWorth: Math.round(p.cash - p.loan), companyValue: value, guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
+    await parkApi.save(p.parkId, p.name.slice(0, 40), data, { cash: Math.round(p.cash), netWorth: Math.round(p.cash - p.loan), companyValue: value, guests: p.guestsIn, rating: p.rating, date: `${MONTHS[s.time.month]}, year ${s.time.year}`, mode: s.mode }, s.scenario)
     setLastSaved(Date.now())
     return submitScore(value, data)
   }
@@ -695,24 +693,15 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     return null
   }
 
-  async function saveTo(slot: number) {
-    setSaveBusy(true)
-    try {
-      const scoreError = await writeSave(slot)
-      toast(scoreError ? `Saved to slot ${slot}, but the ${scoreError}.` : `Saved to slot ${slot}.`, scoreError ? 'warn' : 'info')
-      setSaves((await parkApi.saves()).saves)
-    } catch (error) { toast((error as Error).message, 'error') } finally { setSaveBusy(false) }
-  }
-
   const autosaving = useRef<Promise<void> | null>(null)
   const autosave = useCallback(async (quiet = false) => {
     if (!signedIn) return
     if (autosaving.current) return autosaving.current
     const pending = (async () => {
       try {
-        const scoreError = await writeSave(0, `Autosave · ${session.state.parks[session.park].name}`)
+        const scoreError = await writeSave()
         if (scoreError) toast(`Autosaved, but the ${scoreError}.`, 'warn')
-        else if (!quiet) toast('Autosaved.')
+        else if (!quiet) toast('Park saved.')
       } catch (error) { toast(`Autosave failed: ${(error as Error).message}`, 'warn') }
     })()
     autosaving.current = pending
@@ -924,12 +913,10 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </Window>}
 
     {!viewOnly && panel === 'save' && <Window title="Save park" onClose={() => setPanel(null)}>
-      {!signedIn ? <p className="pk-hint">Sign in on the home page to save parks to your account.</p> : saves === null ? <p className="pk-hint"><LoaderCircle className="spin" size={14} /> Loading save slots…</p> : <>
-        <label className="pk-field"><span>Name</span><input value={saveName} maxLength={40} placeholder={`${park.name} · ${MONTHS[state.time.month]} Y${state.time.year}`} onChange={e => setSaveName(e.target.value)} /></label>
-        <p className="pk-hint">Your park autosaves every 5 minutes and when you leave{lastSaved ? ` · last saved ${new Date(lastSaved).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}.{session.state.mode === 'solo' && session.state.scenario !== 'sandbox' ? ' Each save also updates your company value and park screenshot on the leaderboard.' : ''}</p>
+      {!signedIn ? <p className="pk-hint">Sign in on the home page to save parks to your account.</p> : saves === null ? <p className="pk-hint"><LoaderCircle className="spin" size={14} /> Loading your saves…</p> : <>
+        <p className="pk-hint"><strong>{park.name}</strong> has its own save. {(() => { const mine = saves.find(x => x.parkId === park.parkId); return mine ? `Saved copy: ${mine.summary.date} · ${mine.summary.guests} guests.` : 'Not saved yet.' })()} Saving never replaces your other parks; a park is only removed when you delete it from Load park.</p>
+        <p className="pk-hint">This park autosaves every 5 minutes and when you leave{lastSaved ? ` · last saved ${new Date(lastSaved).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : ''}.{session.state.mode === 'solo' && session.state.scenario !== 'sandbox' ? ' Each save also updates your company value and park screenshot on the leaderboard.' : ''}</p>
         <div className="pk-actions"><button className="pk-btn pk-btn-go" disabled={saveBusy} onClick={() => { setSaveBusy(true); void autosave().finally(async () => { setSaveBusy(false); try { setSaves((await parkApi.saves()).saves) } catch { /* list refresh is optional */ } }) }}><Save size={14} /> Save now</button></div>
-        {saves.find(x => x.slot === 0) && <p className="pk-hint">Autosave: {saves.find(x => x.slot === 0)!.summary.date} · {saves.find(x => x.slot === 0)!.summary.guests} guests</p>}
-        <ul className="pk-slots">{[1, 2, 3, 4, 5, 6].map(slot => { const s = saves.find(x => x.slot === slot); return <li key={slot}><div><strong>Slot {slot}</strong><small>{s ? `${s.name} · ${s.summary.date} · ${s.summary.guests} guests` : 'Empty'}</small></div><button className="pk-btn" disabled={saveBusy} onClick={() => void saveTo(slot)}>{s ? 'Overwrite' : 'Save'}</button></li> })}</ul>
       </>}
     </Window>}
 
