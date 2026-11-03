@@ -21,7 +21,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
   const [, setLobbyVersion] = useState(0)
   const [mode, setMode] = useState<'coop' | 'versus'>('coop')
   const [scenario, setScenario] = useState('meadowbrook')
-  const [fromSlot, setFromSlot] = useState(0)
+  const [fromPark, setFromPark] = useState('')
   const [waiting, setWaiting] = useState<RoomInfo | null>(null)
   const lobbyRef = useRef<Lobby | null>(null)
   const [scoreKey, setScoreKey] = useState(0)
@@ -42,10 +42,10 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     try { setSession(make()) } catch (failure) { setError((failure as Error).message) }
   }
 
-  async function loadSlot(slot: number) {
-    setBusy(`load${slot}`); setError('')
+  async function loadPark(id: string) {
+    setBusy(`load${id}`); setError('')
     try {
-      const { data } = await parkApi.load(slot)
+      const { data } = await parkApi.load(id)
       const parsed = await decompressSave(data)
       startLocal(() => LocalSession.load(parsed))
     } catch (failure) { setError((failure as Error).message || 'That save could not be opened.') } finally { setBusy('') }
@@ -62,9 +62,10 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     } catch (failure) { setError((failure as Error).message || 'That park could not be opened.') } finally { setBusy('') }
   }
 
-  async function removeSlot(slot: number) {
-    setBusy(`del${slot}`)
-    try { await parkApi.remove(slot); await refreshSaves() } catch (failure) { setError((failure as Error).message) } finally { setBusy('') }
+  async function removePark(save: SaveSummary) {
+    if (!window.confirm(`Delete ${save.name}? Its save and leaderboard entry will be removed for good.`)) return
+    setBusy(`del${save.parkId}`)
+    try { await parkApi.remove(save.parkId); setScoreKey(k => k + 1); await refreshSaves() } catch (failure) { setError((failure as Error).message) } finally { setBusy('') }
   }
 
   async function connect() {
@@ -89,8 +90,8 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     setBusy('create'); setError('')
     try {
       let save: string | undefined
-      if (mode === 'coop' && fromSlot) {
-        const { data } = await parkApi.load(fromSlot)
+      if (mode === 'coop' && fromPark) {
+        const { data } = await parkApi.load(fromPark)
         save = data
         if (save.length > 180000) throw new Error('That park is too large to host online. Try a smaller save.')
       }
@@ -148,7 +149,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
       </article>)}</div>}
 
       {tab === 'load' && (!signedIn ? <p className="pk-menu-note">{accountReady ? 'Sign in on the home page to save and load parks.' : 'Checking your account…'}</p> : saves === null ? <p className="pk-menu-note"><LoaderCircle className="spin" size={15} /> Loading your saves…</p> : !saves.length ? <p className="pk-menu-note">No saved parks yet. Use the save button in a game to keep your progress.</p> :
-        <ul className="pk-save-list">{saves.map(s => <li key={s.slot}><div><strong>{s.name}</strong><small>{s.slot === 0 ? 'Autosave' : `Slot ${s.slot}`} · {SCENARIOS[s.scenario]?.name ?? s.scenario} · {s.summary.date} · {s.summary.guests} guests · {formatMoney(s.summary.cash)} · saved {new Date(s.updated).toLocaleString()}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy)} onClick={() => void loadSlot(s.slot)}>{busy === `load${s.slot}` ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />} Load</button><button className="pk-btn pk-btn-danger" aria-label={`Delete slot ${s.slot}`} disabled={Boolean(busy)} onClick={() => void removeSlot(s.slot)}><Trash2 size={14} /></button></li>)}</ul>)}
+        <ul className="pk-save-list">{saves.map(s => <li key={s.parkId}><div><strong>{s.name}</strong><small>{SCENARIOS[s.scenario]?.name ?? s.scenario} · {s.summary.date} · {s.summary.guests} guests · {formatMoney(s.summary.cash)} · saved {new Date(s.updated).toLocaleString()}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy)} onClick={() => void loadPark(s.parkId)}>{busy === `load${s.parkId}` ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />} Load</button><button className="pk-btn pk-btn-danger" aria-label={`Delete ${s.name}`} disabled={Boolean(busy)} onClick={() => void removePark(s)}><Trash2 size={14} /></button></li>)}</ul>)}
 
       {tab === 'online' && (!signedIn ? <p className="pk-menu-note">{accountReady ? 'Sign in on the home page to play online.' : 'Checking your account…'}</p> : !lobby || lobby.status === 'closed' ? <div className="pk-online-intro">
         <p><strong>Co-op</strong> — up to four tycoons share one park, building and managing together. Anyone can drop in while it runs.</p>
@@ -166,8 +167,8 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
           <h3>Host a park</h3>
           <div className="pk-chips"><button className={mode === 'coop' ? 'on' : ''} onClick={() => setMode('coop')}>Co-op</button><button className={mode === 'versus' ? 'on' : ''} onClick={() => setMode('versus')}>Versus</button></div>
           {mode === 'coop' && <>
-            <label className="pk-field"><span>Scenario</span><select value={fromSlot ? '' : scenario} disabled={Boolean(fromSlot)} onChange={e => setScenario(e.target.value)}>{SOLO.map(([id, s]) => <option key={id} value={id}>{s.name} ({s.difficulty})</option>)}</select></label>
-            <label className="pk-field"><span>Or continue a save</span><select value={fromSlot} onChange={e => setFromSlot(Number(e.target.value))}><option value={0}>New park</option>{(saves ?? []).map(s => <option key={s.slot} value={s.slot}>Slot {s.slot}: {s.name}</option>)}</select></label>
+            <label className="pk-field"><span>Scenario</span><select value={fromPark ? '' : scenario} disabled={Boolean(fromPark)} onChange={e => setScenario(e.target.value)}>{SOLO.map(([id, s]) => <option key={id} value={id}>{s.name} ({s.difficulty})</option>)}</select></label>
+            <label className="pk-field"><span>Or continue a save</span><select value={fromPark} onChange={e => setFromPark(e.target.value)}><option value="">New park</option>{(saves ?? []).map(s => <option key={s.parkId} value={s.parkId}>{s.name}</option>)}</select></label>
           </>}
           {mode === 'versus' && <p className="pk-menu-note">Everyone starts with $15,000 in identical valleys. Invite rivals, then start when ready.</p>}
           <button className="pk-btn pk-btn-go" disabled={busy === 'create'} onClick={() => void createRoom()}>{busy === 'create' ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />} {mode === 'coop' ? 'Open co-op park' : 'Open versus lobby'}</button>
