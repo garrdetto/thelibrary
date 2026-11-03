@@ -1,5 +1,7 @@
 import { between, pickOne, css, canvas, timerBar, keypad, blip, avatarImage } from './kit.js';
 import { CHARACTERS, avatar } from './characters.js';
+import { GAMES_A } from './games-a.js';
+import { GAMES_B } from './games-b.js';
 export { makeBag, rngFrom } from './kit.js';
 
 const PHRASES = [
@@ -32,7 +34,7 @@ function mathProblem(r, i) {
   const b = int(2, 12), a = int(2, 12); return { q: `${a * b} ÷ ${b}`, a };
 }
 
-export const CONTESTS = [
+const BASE = [
   {
     id: 'quickdraw', name: 'Quick Draw', icon: '🤠', better: 'low',
     how: 'A water-pistol standoff at high noon. When the sign flips to DRAW!, tap or press Space as fast as you can. Watch out for fake signs: firing early costs a one-second penalty. Three duels, average time counts.',
@@ -322,7 +324,7 @@ export const CONTESTS = [
       const phrase = pickOne(rng, PHRASES);
       stage.innerHTML = `<div class="c-type"><p class="c-phrase" aria-label="${phrase}"></p><input class="c-typein" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type the phrase"><p class="c-note" aria-live="polite">The clock starts on your first key.</p></div>`;
       const out = stage.querySelector('.c-phrase'), input = stage.querySelector('.c-typein'), note = stage.querySelector('.c-note');
-      let start = 0, finished = false;
+      let start = 0, finished = false, last = 0;
       const render = () => {
         const v = input.value; let ok = 0; while (ok < v.length && v[ok] === phrase[ok]) ok++;
         out.innerHTML = [...phrase].map((ch, i) => `<span class="${i < ok ? 'ok' : i < v.length ? 'bad' : i === v.length ? 'cur' : ''}">${ch === ' ' ? '&nbsp;' : ch}</span>`).join('');
@@ -330,6 +332,8 @@ export const CONTESTS = [
       };
       bag.listen(input, 'input', () => {
         if (finished) return;
+        if (input.value.length - last > 2) { input.value = input.value.slice(0, last); }
+        last = input.value.length;
         if (!start) start = performance.now();
         let ok = render();
         if (input.value.length > ok + 1) { input.value = input.value.slice(0, ok + 1); ok = render(); }
@@ -371,4 +375,6 @@ export const CONTESTS = [
   },
 ];
 
+const pickBase = (id) => BASE.find((c) => c.id === id);
+export const CONTESTS = [pickBase('quickdraw'), ...GAMES_A, ...GAMES_B, pickBase('count'), pickBase('toss'), pickBase('type')];
 export const contestById = Object.fromEntries(CONTESTS.map((c) => [c.id, c]));

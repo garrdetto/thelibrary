@@ -906,7 +906,7 @@ const bonk = {
   id: 'bonk', name: 'Mole Bonk', icon: '🔨', better: 'high',
   how: 'Twenty-five seconds. Bonk moles as they pop up: +1, golden moles +3, but leave the moles holding bombs alone (−3). Tap a hole or use the number pad 7 8 9 / 4 5 6 / 1 2 3 (or Q W E / A S D / Z X C).',
   fmt: (v) => `${v} pts`,
-  cpu: (r, s) => Math.max(0, Math.round(between(r, 12 + s * 26, 22 + s * 28) - (r() < 0.45 - s * 0.35 ? 3 : 0))),
+  cpu: (r, s) => Math.max(0, Math.round(between(r, 11 + s * 24, 20 + s * 26) - (r() < 0.45 - s * 0.35 ? 3 : 0))),
   run({ stage, rng, done, bag, who }) {
     injectStyle(); preload(who);
     const W = 720, H = 540, TOTAL = 25000, RISE = 110, SINK = 150;
@@ -1048,9 +1048,9 @@ const bonk = {
       drawAvatar(g, who, now < moodUntil ? mood : over ? 'happy' : 'happy', 44, 76, 64);
       pill(g, `${score} pts`, 84, 42, { size: 32, align: 'left', ring: th.accent });
       pill(g, `${Math.max(0, left / 1000).toFixed(1)} s`, W - 14, 42, { size: 30, align: 'right', bg: left < 5000 ? '#d9342bdd' : undefined });
-      pill(g, '+1 mole', 300, 42, { size: 18, bg: '#7a4b2add' });
+      pill(g, '+1 mole', 286, 42, { size: 18, bg: '#7a4b2add' });
       pill(g, '+3 gold', 388, 42, { size: 18, bg: '#b58300e6' });
-      pill(g, '−3 bomb', 476, 42, { size: 18, bg: '#5a2a6ee6' });
+      pill(g, '−3 bomb', 492, 42, { size: 18, bg: '#5a2a6ee6' });
       if (over) overlay(g, W, H, 'TIME!', `${Math.max(0, score)} pts`);
       return true;
     });
