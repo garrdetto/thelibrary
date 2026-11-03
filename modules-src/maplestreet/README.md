@@ -110,7 +110,7 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
   - Nothing is ever brought to you. On arrival your truck and trailer are parked on your driveway; after that every vehicle stays wherever you leave it. The Garage's **Take out** parks one more vehicle on your driveway (or in front of Maple Motors before you own a home), and **Put away** returns it. Test drives wait in front of Maple Motors.
   - Every spot a vehicle is put in is checked against buildings, props and every other vehicle (`src/physics/Parking.ts`), and a parked vehicle that ends up inside or on top of another is moved to the nearest free spot. Wheels never ride on other cars (only on trailer beds), vehicle bodies are rounded so they slide apart instead of snagging, and NPC drivers stop a bumper-length short of anything in their lane. A reconnect replaces your old session, so its truck can't linger where your new one appears.
   - Enclosed vehicles (pickup, heavy-duty crew cab, sedan, coupe) have opening doors (`src/physics/VehicleDoors.ts`): the driver's door swings open as anyone gets in or out, and the right-click menu opens or closes them all. Open-air vehicles have none, and admin-published vehicles keep the doors baked into their model.
-  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, plus any admin-published vehicles marked for sale. These are original designs.
+  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, the bundled Meridian Sedan, Bulwark 4x4 and Ironhorn Crew Cab (`shared/BundledVehicles.ts`, models in `public/modules/maplestreet/vehicles/`), plus any admin-published vehicles marked for sale. These are original designs.
   - Fuel burns as you drive and is saved with your account.
   - Drivers sit visibly in the seat, both your own and other players'.
 
@@ -124,6 +124,15 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 - mowing pay and delivery checks
 - shop, pump and item proximity checks
 - fuel levels, which client reports can only lower
+
+## Performance: world chunking and traffic
+
+Two systems share one focus point each frame (the character, the vehicle you drive, or the build-mode target; `Game.frame`):
+
+- **World chunks** (`src/world/WorldChunks.ts`). The neighborhood's scenery and every lot's house are moved into a 64 m grid. Each object gets a view distance from its size (`SCREEN_K`, about 4 px tall), rounded up to `VIEW_TIERS` (160, 320, 480, 720 m), so mailboxes drop out early and houses late. The woodland and street lamps, which were three world-wide `InstancedMesh`es, are split per 256 m cell (`INSTANCE_CELL`) so frustum and shadow culling can skip the trees behind you. A (cell, view distance) bucket is a `THREE.Group` that is attached to or removed from the scene; new buckets are compiled with `renderer.compileAsync` first and attached a few per frame, with 24 m of hysteresis. Ground, road and sidewalk slabs (town-wide merged meshes) and downtown (already one merged batch per material) are always drawn. Colliders are not affected.
+- **Traffic** (`src/net/RemoteEntities.ts`). Neighbor traffic is simulated as data by the authority (`shared/Npc.ts`) and arrives in snapshots for the whole town. A remote vehicle only gets its 3D shell, wheels, lights and kinematic collider within 200 m (`VEHICLE_SPAWN_R`) and gives them back to a per-kind pool past 240 m; when it comes back it is placed at the interpolated position, heading, steering and speed for that moment. Its driver goes with it. Neighbor walkers do the same within 110 m. Real players on foot are always drawn.
+
+`?nochunks` turns the chunk grid off for comparisons, and `maple.worldDebug()` in the console prints chunk and traffic counts. Measured headless (estimated per-frame work at five spots, Nov 2026): main-pass triangles fell 38–76 % and shadow-pass triangles 62–89 %, with draw calls between −11 % and +16 %; in the woods only 0 of 9 neighbor cars and 0 of 8 walkers are drawn.
 
 ## Modes
 
