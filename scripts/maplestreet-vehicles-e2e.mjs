@@ -87,7 +87,7 @@ try {
   page.on('console', m => { if (m.type() === 'error' && !/favicon|404|net::ERR/.test(m.text())) errors.push(`admin console: ${m.text()}`) })
   await page.goto('/')
   await page.getByRole('button', { name: 'Admin', exact: true }).click()
-  await page.getByRole('tab', { name: 'Maple Street vehicles' }).click()
+  await page.getByRole('tab', { name: 'Vehicles', exact: true }).click()
   await page.getByRole('heading', { name: 'Publish vehicles' }).waitFor()
   await page.getByText('credits left').waitFor({ timeout: 20000 })
   log('vehicle editor and Meshy panel are open')
