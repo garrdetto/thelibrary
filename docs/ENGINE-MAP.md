@@ -270,9 +270,11 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/components/park/ParkGame.tsx` — menu and lobby — `index.tsx` (lazy).
 - `src/components/park/ParkScoreboard.tsx` — per-map company-value leaderboard with View buttons — `ParkGame.tsx`.
 - `src/components/park/ParkShotDialog.tsx` — screenshot viewer for a leaderboard park — `ParkScoreboard.tsx`.
-- `src/components/park/ParkHud.tsx` — in-game interface, park naming gate, ride-category tabs, staff repair-job selection, daily staff/electricity finances, drag-anywhere quick draw for ground paths, coaster-style path builder (turn/section rows, Build piece, Remove last, Auto-finish via `pathFinish`) for stairs and raised walkways, Level land from the drag's start corner, custom footpath colors, drag-to-buy land with a price confirmation, arrow-key camera orbit and canvas — `ParkGame.tsx`.
+- `src/components/park/ParkHud.tsx` — in-game interface, park naming gate, ride-category tabs, staff repair-job selection, daily staff/electricity finances, drag-anywhere quick draw for ground paths, coaster-style path builder (turn/section rows, Build piece, Remove last, Auto-finish via `pathFinish`) for stairs and raised walkways, Level land from the drag's start corner, custom footpath colors, drag-to-buy land with a price confirmation, arrow-key camera orbit, graphics quality button and canvas — `ParkGame.tsx`.
 - `src/components/park/GuestCapacity.tsx` — guest cap readout (rides and shops, land, what is limiting) — `ParkHud.tsx`.
-- `src/lib/park/gl.ts` — WebGL2 helpers: mesh builder, shadow map, lighting, ground and water — `models.ts`, `renderer.ts`.
+- `src/lib/park/gl.ts` — WebGL2 helpers: mesh builder (auto materials, baked vertex AO, swept tubes), indexed 24-byte vertex packing, GGX/clearcoat lighting with ACES tonemap, fitted sun shadow map with rotated PCF, height fog, wind sway, quality-level shader variants and the GPU probe — `models.ts`, `renderer.ts`.
+- `src/lib/park/materials.ts` — material ids and the roughness/metalness/clearcoat/wrap/detail table — `gl.ts`, `models.ts`, `renderer.ts`.
+- `src/lib/park/quality.ts` — `low`/`medium`/`high` tiers (`?quality=`, software-renderer detection, probe × DPR) — `renderer.ts`, `ParkHud.tsx`.
 - `src/lib/park/models.ts` — guests (`addPerson`), scenery, stalls and flat-ride models including the enclosed Gravitron drum and oblong Zipper boom — `renderer.ts`.
 - `src/lib/park/renderer.ts` — terrain, shadow pass, elevated footpaths and stair ramps, boardwalks, smoothly banked custom kart tracks, side-by-side compact karts, customizable ride colors, flat rides, overhead signs where entrance queues meet the footpath (`queueSignModel`), and clearance-aware supports, `captureOverview` (whole-park leaderboard screenshot) and `renderShot` (off-screen capture at any camera) — `ParkHud.tsx`.
 - `src/lib/park/waterModels.ts` — Wave Pool model sized to its footprint (wave machine house, beach entry, moving swells set by the wave setting, loungers, lifeguard stand) — `renderer.ts`.
@@ -281,7 +283,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/lib/park/hotelModels.ts` — hotel meshes for the eight styles with floors, colors, roofs and add-ons (rooftop pool, sign, balconies, entrance canopy) — `renderer.ts`.
 - `src/components/park/RideComments.tsx` — "What guests are saying" in the ride window: mood bar and the latest comments — `ParkHud.tsx`.
 - `src/components/park/WaveControl.tsx` — wave setting picker in the ride window — `ParkHud.tsx`.
-- `src/lib/park/culling.ts` — view-frustum test that skips off-screen guests before instancing — `renderer.ts`.
+- `src/lib/park/culling.ts` — view-frustum tests: off-screen guests before instancing, and frustum planes/sphere tests for static instances and whole rides — `renderer.ts`.
 - `src/lib/park/shotCams.ts` — fixed debug cameras (`?shotCam=station|flat|waterRide|wavePool|hotel|shoreline|overview`) for matched screenshots — `ParkHud.tsx`, `scripts/park-shots.mjs`.
 - `scripts/park-scene.mjs`, `scripts/park-shots.mjs` — deterministic graphics test park and the screenshot / in-park perf / renderer audit harness (`docs/PARK-GRAPHICS-PLAN.md`) — run by hand.
 - `src/lib/park/session.ts` — local and online sessions — `ParkGame.tsx`, `ParkHud.tsx`.

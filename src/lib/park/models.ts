@@ -1,5 +1,6 @@
-import { MeshBuilder, mat4, hexColor } from './gl'
+import { MeshBuilder, mat4, hexColor, STRIDE } from './gl'
 import type { Mat4, Vec3 } from './gl'
+import { M } from './materials'
 
 export const C = {
   white: hexColor('#f3f1ea'), cream: hexColor('#efe3c4'), wood: hexColor('#8a5a36'), darkWood: hexColor('#5e3d24'), steel: hexColor('#9aa3ad'), dark: hexColor('#33363c'),
@@ -11,6 +12,23 @@ export const C = {
 export const SHIRTS: Vec3[] = ['#e5483b', '#3b7be5', '#3fbf5f', '#f2c230', '#9b51e0', '#f08a24', '#1fb5b0', '#e85d9b', '#ffffff', '#2d3b55', '#8bc34a', '#c0392b', '#5dade2', '#f5b7b1', '#a3e4d7', '#6e2c00'].map(hexColor)
 
 const S = mat4.scaling
+
+const colorKey = (r: number, g: number, b: number) => (Math.round(r * 255) << 16) | (Math.round(g * 255) << 8) | Math.round(b * 255)
+const AUTO_MATERIALS = new Map<number, number>()
+const tag = (mat: number, ...colors: Vec3[]) => { for (const c of colors) AUTO_MATERIALS.set(colorKey(c[0], c[1], c[2]), mat) }
+tag(M.structural, C.dark)
+tag(M.chrome, C.gold, hexColor('#d8b24a'))
+tag(M.wood, C.wood, C.darkWood, hexColor('#7a4a2c'), hexColor('#8b6038'), hexColor('#563b27'), hexColor('#786247'), hexColor('#b39a73'), hexColor('#c9a27a'), hexColor('#6b4a2c'))
+tag(M.concrete, C.stone, hexColor('#9b9b95'), hexColor('#e5d7c2'), hexColor('#d8c9a2'))
+tag(M.steel, C.steel)
+tag(M.foliage, C.leaf, C.leafDark, C.leafLight, C.pine, hexColor('#4f8f3a'))
+tag(M.bark, C.trunk, C.birchBark, hexColor('#6b4a30'))
+tag(M.stone, C.rock, hexColor('#8f8c86'))
+tag(M.water, C.water)
+tag(M.glass, C.glass, hexColor('#8fd3e8'), hexColor('#6fd0ee'), hexColor('#6ccaf5'), hexColor('#9fd2ef'))
+tag(M.rubber, C.black, hexColor('#2a2a2a'), hexColor('#2b2b2b'), hexColor('#2c2a26'))
+tag(M.skin, C.skin)
+MeshBuilder.autoMaterial = (r, g, b, tint) => AUTO_MATERIALS.get(colorKey(r, g, b)) ?? (tint > 0.5 ? M.ridePaint : M.paint)
 
 const mix3 = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 const foliage = (low: Vec3, high: Vec3) => (n: Vec3): Vec3 => mix3(low, high, Math.max(0, Math.min(1, n[2] * 0.55 + 0.5)))
@@ -115,8 +133,15 @@ export function treeModel(kind: string): MeshBuilder {
     b.sphere(null, 0, 0, 2.2, 0.9, C.leafDark, 1, 12, 16, 1, 0.08, shade)
     b.sphere(null, 0, 0, 3.45, 0.55, C.leafDark, 1, 10, 14, 1, 0.08, shade)
   }
+  const height = TREE_HEIGHT[kind] ?? 0
+  if (height) b.retag((r, g, bb, tint, _z, mat) => mat === M.paint && tint > 0.5 && g > r && g > bb ? M.foliage : mat === M.ridePaint && g > r && g > bb ? M.foliage : undefined, (z, mat) => {
+    const k = Math.max(0, Math.min(1, z / height))
+    return mat === M.foliage ? k * k : mat === M.bark ? k * k * 0.45 : 0
+  })
   return b
 }
+
+const TREE_HEIGHT: Record<string, number> = { oak: 7.5, pine: 9, birch: 8, palm: 7.5, bush: 2.2, flowers: 1.4, hedge: 2.2, topiary: 4 }
 
 export type PersonLook = { skin: Vec3; hair: Vec3; hairStyle: 'short' | 'long' | 'buzz' | 'cap' | 'bun'; pants: Vec3; shoes: Vec3; shorts?: boolean; cap?: Vec3 }
 
@@ -230,6 +255,8 @@ export function addPerson(b: MeshBuilder, o: PersonOpts) {
 export function personModel(look: PersonLook, frame: number, staffHat = false, detail = 1): MeshBuilder {
   const b = new MeshBuilder()
   addPerson(b, { ...look, staffHat, detail, phase: frame >= WALK_FRAMES ? -1 : frame / WALK_FRAMES * Math.PI * 2 })
+  const skin = colorKey(look.skin[0], look.skin[1], look.skin[2]), shoes = colorKey(look.shoes[0], look.shoes[1], look.shoes[2])
+  b.retag((r, g, bb) => { const k = colorKey(r, g, bb); return k === skin ? M.skin : k === shoes ? M.rubber : M.cloth })
   return b
 }
 
@@ -250,7 +277,7 @@ export function umbrellaModel(): MeshBuilder {
 }
 
 function scaleBuilder(builder: MeshBuilder, sx: number, sy: number, sz: number) {
-  for (let i = 0; i < builder.data.length; i += 10) {
+  for (let i = 0; i < builder.data.length; i += STRIDE) {
     builder.data[i] *= sx; builder.data[i + 1] *= sy; builder.data[i + 2] *= sz
     const nx = builder.data[i + 3] / sx, ny = builder.data[i + 4] / sy, nz = builder.data[i + 5] / sz
     const length = Math.hypot(nx, ny, nz) || 1

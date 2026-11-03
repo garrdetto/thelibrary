@@ -70,20 +70,21 @@ try {
   });
   console.log('scene', info);
   await page.waitForTimeout(1500);
-  const names = ['station', 'flat', 'waterRide', 'wavePool', 'hotel', 'shoreline'];
+  const only = option('only', '').split(',').filter(Boolean);
+  const names = ['station', 'flat', 'waterRide', 'wavePool', 'hotel', 'shoreline'].filter((n) => !only.length || only.includes(n));
   for (const name of names) {
-    const shot = await page.evaluate(async (name) => {
+    const shot = await page.evaluate(async ([name, day, tierHigh]) => {
       const { shotCamera } = await import('/src/lib/park/shotCams.ts');
       const { session, renderer } = window.__park;
       const cam = shotCamera(session.state, name);
       if (!cam) return null;
-      renderer.renderShot(cam, 1280, 800, 'image/jpeg', 0.45);
-      return renderer.renderShot(cam, 1280, 800, 'image/jpeg', 0.45);
-    }, name);
+      renderer.renderShot(cam, 1280, 800, 'image/jpeg', day, tierHigh);
+      return renderer.renderShot(cam, 1280, 800, 'image/jpeg', day, tierHigh);
+    }, [name, Number(option('day', '0.45')), !flag('current-tier')]);
     if (shot) writeFileSync(`${out}/${name}.jpg`, Buffer.from(shot.data, 'base64'));
     console.log(name, shot ? 'ok' : 'missing');
   }
-  const overview = await page.evaluate(() => window.__park.renderer.captureOverview());
+  const overview = !only.length || only.includes('overview') ? await page.evaluate(() => window.__park.renderer.captureOverview()) : null;
   if (overview) writeFileSync(`${out}/overview.jpg`, Buffer.from(overview.data, 'base64'));
   console.log('overview', overview ? `${Math.round(overview.data.length * 0.75 / 1024)} KB ${overview.mime}` : 'missing');
 
@@ -106,6 +107,7 @@ try {
   });
   writeFileSync(`${out}/audit.json`, JSON.stringify(audit, null, 1));
 
+  if (flag('shots-only')) { await browser.close(); if (server) { try { process.kill(-server.pid); } catch {} } process.exit(0); }
   const split = await page.evaluate(() => {
     const { renderer } = window.__park, gl = renderer.g.gl;
     renderer.focusPark(); renderer.cam.dist = 70;
