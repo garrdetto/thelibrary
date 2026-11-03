@@ -5,6 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { applyOp, BuildOp, normalizeBuild, WorldState } from '../../shared/BuildRules';
 import { Physics } from '../physics/Physics';
+import type { WorldChunks } from '../world/WorldChunks';
 import { MeshOptions, StructureMesher } from './Mesher';
 
 export class HouseManager {
@@ -13,7 +14,8 @@ export class HouseManager {
   private view: MeshOptions = { cutLevel: null, cutHeight: 1.0, showRoofs: true };
   private nightGlass: THREE.Material[] = [];
 
-  constructor(private scene: THREE.Scene, private physics: Physics, private mesher: StructureMesher) {}
+  /** With `chunks`, each lot's meshes go into the distance-based grid instead of straight into the scene. */
+  constructor(private scene: THREE.Scene, private physics: Physics, private mesher: StructureMesher, private chunks: WorldChunks | null = null) {}
 
   setWorld(world: WorldState) {
     this.world = world;
@@ -39,12 +41,15 @@ export class HouseManager {
     if (!this.world) return;
     const lot = this.world.lots[lotId], b = this.world.builds[lotId];
     const old = this.groups.get(lotId);
+    const dispose = (root: THREE.Object3D) => root.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); });
     if (old) {
       this.scene.remove(old);
-      old.traverse(o => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); });
+      dispose(old);
     }
+    if (this.chunks) for (const o of this.chunks.untrack(lotId)) dispose(o);
     const { group, colliders } = this.mesher.build(lot, b, this.view);
-    this.scene.add(group);
+    if (this.chunks) this.chunks.track(lotId, group);
+    else this.scene.add(group);
     this.groups.set(lotId, group);
     if (withColliders) this.physics.setLotColliders(lotId, colliders);
   }
