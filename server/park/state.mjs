@@ -3,7 +3,7 @@ import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath } from './track.mjs'
 import { flatRideSize, rideFlatSpec } from './flatspec.mjs'
-import { HOTELS, HOTEL_ADDONS, hotelSpec, hotelOrientedFits } from './hotels.mjs'
+import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_HISTORY_NIGHTS, hotelSpec, hotelOrientedFits, hotelRateLimits } from './hotels.mjs'
 
 export const ENGINE_VERSION = 5
 export const MAX_GUESTS = 6400
@@ -122,7 +122,7 @@ export function createPark(scenarioId, options = {}) {
 }
 
 export function emptyLedger() {
-  return { rides: 0, shops: 0, entry: 0, hotels: 0, construction: 0, upkeep: 0, wages: 0, electricity: 0, marketing: 0, interest: 0, landscaping: 0, hotelUpkeep: 0 }
+  return { rides: 0, shops: 0, entry: 0, hotels: 0, construction: 0, upkeep: 0, wages: 0, electricity: 0, marketing: 0, interest: 0, landscaping: 0, hotelUpkeep: 0, hotelAmenities: 0, hotelStaff: 0 }
 }
 
 export function objectiveText(objective) {
@@ -402,13 +402,16 @@ function sanitizeEntity(raw, state) {
   }
   if (raw.type === 'hotel' && HOTELS[raw.kind]) {
     const def = HOTELS[raw.kind]
-    const w = Math.round(num(raw.size?.[0], def.min[0], 1, 16)), h = Math.round(num(raw.size?.[1], def.min[1], 1, 16))
+    const w = Math.round(num(raw.size?.[0], def.min[0], 1, HOTEL_SIZE_LIMIT)), h = Math.round(num(raw.size?.[1], def.min[1], 1, HOTEL_SIZE_LIMIT))
     if (!hotelOrientedFits(def, w, h)) return null
     const color = (value, fallback) => Number.isInteger(value) && value >= 0 && value <= 0xffffff ? value : fallback
     const colors = { primary: color(raw.colors?.primary, def.colors.primary), secondary: color(raw.colors?.secondary, def.colors.secondary), trim: color(raw.colors?.trim, def.colors.trim) }
     const addons = Object.fromEntries(Object.keys(HOTEL_ADDONS).map(id => [id, raw.addons?.[id] === true]))
     const entrance = raw.entrance && Number.isInteger(raw.entrance.x) && Number.isInteger(raw.entrance.y) && inMap(state.map, raw.entrance.x, raw.entrance.y) ? { x: raw.entrance.x, y: raw.entrance.y } : null
-    return { ...base, type: 'hotel', kind: raw.kind, size: [w, h], floors: Math.round(num(raw.floors, def.floors[0], def.floors[0], def.floors[1])), name: String(raw.name ?? def.name).slice(0, 32), colors, roof: def.roofs.includes(raw.roof) ? raw.roof : def.roofs[0], addons, entrance, occupancy: num(raw.occupancy, 0.5, 0, 1), revenue: num(raw.revenue, 0), lastNight: num(raw.lastNight, 0), district: raw.district === true, built: num(raw.built) }
+    return { ...base, type: 'hotel', kind: raw.kind, size: [w, h], floors: Math.round(num(raw.floors, def.floors[0], def.floors[0], def.floors[1])), name: String(raw.name ?? def.name).slice(0, 32), colors, roof: def.roofs.includes(raw.roof) ? raw.roof : def.roofs[0], addons, entrance, occupancy: num(raw.occupancy, 0.5, 0, 1), revenue: num(raw.revenue, 0), lastNight: num(raw.lastNight, 0), district: raw.district === true, built: num(raw.built),
+      rate: Math.round(num(raw.rate, def.rate, ...hotelRateLimits(raw.kind))), service: HOTEL_SERVICE[raw.service] ? raw.service : 'standard', condition: num(raw.condition, 100, 0, 100),
+      profit: num(raw.profit, 0), invested: num(raw.invested, hotelSpec(raw.kind, [w, h], Math.round(num(raw.floors, def.floors[0], def.floors[0], def.floors[1])), addons)?.cost ?? 0, 0),
+      nights: Array.isArray(raw.nights) ? raw.nights.filter(Number.isFinite).slice(-HOTEL_HISTORY_NIGHTS) : [], night: raw.night && typeof raw.night === 'object' ? raw.night : null }
   }
   if (raw.type === 'gate') return { ...base, type: 'gate', ride: Math.round(num(raw.ride, 0, 0)), role: raw.role === 'exit' ? 'exit' : 'entrance', dir: Math.round(num(raw.dir, 0, 0, 3)) }
   if (raw.type === 'ride') {

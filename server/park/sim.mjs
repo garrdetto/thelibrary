@@ -293,8 +293,8 @@ function endOfMonth(state) {
     const interest = Math.round(p.loan * 0.012)
     p.cash -= upkeep + interest
     p.month.upkeep -= upkeep; p.month.interest -= interest
-    const income = p.month.rides + p.month.shops + p.month.entry + (p.month.hotels ?? 0)
-    const expenses = p.month.construction + p.month.upkeep + p.month.wages + p.month.electricity + p.month.marketing + p.month.interest + p.month.landscaping + (p.month.hotelUpkeep ?? 0)
+    const income = p.month.rides + p.month.shops + p.month.entry + (p.month.hotels ?? 0) + (p.month.hotelAmenities ?? 0)
+    const expenses = p.month.construction + p.month.upkeep + p.month.wages + p.month.electricity + p.month.marketing + p.month.interest + p.month.landscaping + (p.month.hotelUpkeep ?? 0) + (p.month.hotelStaff ?? 0)
     p.value = parkValue(state, p.id)
     p.history.push({ label: `${MONTHS[finished].slice(0, 3)} Y${year}`, income: Math.round(income), expenses: Math.round(expenses), profit: Math.round(income + expenses), guests: p.guestsIn, rating: p.rating, value: p.value, cash: Math.round(p.cash), company: companyValue(state, p.id), ...Object.fromEntries(Object.entries(p.month).map(([k, v]) => [k, Math.round(v)])) })
     if (p.history.length > 24) p.history.shift()
