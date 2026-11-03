@@ -166,7 +166,8 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/build/Furniture.ts` — furniture and fixture models; hands `custom:` items to `CustomModels` — `Game`, `BuildController`, `Mesher`, `Thumbs`.
 - `src/build/CustomModels.ts` — admin-published items: fetches `/api/maplestreet-items` (cached for offline), registers them, loads each .glb with `GLTFLoader` and clones it per placement with the published `{x,y,z}` scale; custom items are added to the lot group unmerged — `main`, `Furniture`, `Thumbs`.
 - `src/build/Thumbs.ts` — off-screen catalog thumbnails — `Game`.
-- `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps — `Game`.
+- `src/world/Neighborhood.ts` — terrain, road slabs, lots, trees, street lamps; hands its scenery to `WorldChunks` — `Game`.
+- `src/world/WorldChunks.ts` — distance-based world chunking: 64 m grid, per-object view distance from its size (160/320/480/720 m), world-wide instanced trees and lamps split per 256 m cell, async (`compileAsync`) attach queue with hysteresis; houses are tracked per lot — `Game`, `Neighborhood`, `HouseManager`.
 - `src/world/Roads.ts` — curbs, gutters, junction-aware markings, crosswalks, stop bars, stop signs, street-name blades, manholes, drains, wheel-path wear; the curved Willow Bend streets as ribbons with curbs, gutters, center dashes and stop signs — `Neighborhood`.
 - `src/world/TownSquare.ts` — Maple Commons: lawn, paths, gazebo, clock tower, benches, beds, trees, lamps, plaque — `Downtown`.
 - `src/world/Downtown.ts` — downtown buildings (parapets, cornices, awnings, sign cabinets), fire and police stations (apparatus bays, bay lights, flagpoles), depot, streetscape, showroom cars — `Neighborhood`.
@@ -195,7 +196,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/net/WorldTransport.ts` — shared world over `/api/maplestreet` — `Game`.
 - `src/net/OfflineTransport.ts` — solo mode (unlimited money, save `maplestreet/solo/v3`) and fallback — `Game`.
 - `src/net/Host.ts` — in-browser authority for solo mode — `OfflineTransport`.
-- `src/net/RemoteEntities.ts` — remote player and vehicle interpolation; repaints a remote car when its snapshot `style` changes — `Game`.
+- `src/net/RemoteEntities.ts` — remote player and vehicle interpolation; vehicles are data (snapshot buffers) with a pooled 3D view + collider only within 200 m (released past 240 m), neighbor walkers likewise within 110 m; a view takes each car's own paint and dents from its snapshot `style` (restyled when reused from the pool or when the style changes) — `Game`.
 - `shared/RoomLogic.ts` — single rules authority (ownership, builds, money, loans, mowing, deliveries, shops, fuel, needs) — `Game`, `Host`, `WorldServer`, `NeighborhoodRoom`, `maplestreet-world.ts`.
 - `shared/WorldServer.ts` — persistent world loop; storage keys are prefixed with `WORLD_GENERATION` (bump it to reset everyone) — `maplestreet-world.ts`.
 - `shared/WorldLayout.ts` — town layout: 60 grid lots on ten residential streets plus 20 Willow Bend lots of mixed sizes (26 × 36 to 60 × 60 m) on the curved streets (`CURVES`, `curveDistance`, `bendCurbZ`), roads and `ROAD_NAMES`, `lotPrice`, shops, civic buildings (`CIVIC`: fire and police), gas station, `MAP_BOUNDS` — sidewalks (with their road side, `residentialSidewalks()`), `RoomLogic`, `Game`, world files, `PlotMap`, `MiniMap`, `RoadRoute`.

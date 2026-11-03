@@ -38,6 +38,7 @@ import { Vehicle } from '../physics/Vehicle';
 import { DayNight } from '../world/DayNight';
 import { Grass } from '../world/Grass';
 import { Neighborhood } from '../world/Neighborhood';
+import { WorldChunks } from '../world/WorldChunks';
 import { CameraRig } from './CameraRig';
 import { Hud } from './Hud';
 import { MiniMap, type Objective } from './MiniMap';
@@ -57,6 +58,8 @@ const NET_HZ = 15;
 const FUEL_REPORT_SEC = 5;
 /** ?norender runs the full simulation without drawing (headless multiplayer tests). */
 const NO_RENDER = new URLSearchParams(location.search).has('norender');
+/** ?nochunks draws the whole town every frame, as before world chunking (for comparisons). */
+const NO_CHUNKS = new URLSearchParams(location.search).has('nochunks');
 
 export function persistentKey() {
   const K = 'maplestreet/identity';
@@ -76,6 +79,8 @@ export class Game {
   private input!: Input;
   private day!: DayNight;
   private hood!: Neighborhood;
+  /** Distance-based grid for static scenery; shares the frame's focus point with `remotes`. */
+  private chunks: WorldChunks | null = null;
   private houses!: HouseManager;
   private minimap = new MiniMap(document.getElementById('minimap') as HTMLCanvasElement);
   private minimapAcc = 0;
@@ -135,8 +140,9 @@ export class Game {
     this.input = new Input(this.engine.renderer.domElement);
     this.day = new DayNight(scene);
     await this.day.initSky();
-    this.hood = new Neighborhood(scene, this.physics, this.mats);
-    this.houses = new HouseManager(scene, this.physics, new StructureMesher(this.mats));
+    if (!NO_CHUNKS) this.chunks = new WorldChunks(scene, this.engine.renderer, this.engine.camera);
+    this.hood = new Neighborhood(scene, this.physics, this.mats, this.chunks);
+    this.houses = new HouseManager(scene, this.physics, new StructureMesher(this.mats), this.chunks);
     this.grass = new Grass(scene, this.hood.lawns, () => this.houses.world, this.engine.backendName.includes('WebGPU') ? 1 : 0.7);
     this.cam = new CameraRig(this.engine.camera, this.input, this.physics);
     this.remotes = new RemoteEntities(scene, this.physics, () => this.selfId);
@@ -728,7 +734,9 @@ export class Game {
     this.day.updateEnvironment(this.engine.renderer);
     this.hood.update(dt, night, focus, this.nowDays());
     this.grass.update(this.mode === 'build' ? this.build.controls.target : this.engine.camera.position.clone().lerp(focus, 0.6), this.nowDays());
-    this.remotes.update(dt, night);
+    // One focus point drives both proximity systems: scenery chunks and remote/neighbor vehicles.
+    this.chunks?.update(focus, dt);
+    this.remotes.update(dt, night, focus);
     this.updateJob(dt);
     this.updateMarker(dt);
     this.updateInteraction();
@@ -754,6 +762,11 @@ export class Game {
     if (!NO_RENDER) this.engine.render();
     if (this.mode === 'build' && !NO_RENDER) this.thumbs.pump();
     this.input.endFrame();
+  }
+
+  /** Chunk and traffic counts, read by the headless perf script and handy in the console (`maple.worldDebug()`). */
+  worldDebug() {
+    return { chunks: this.chunks?.stats() ?? null, traffic: this.remotes.stats() };
   }
 
   /** Developer instance hooks (src/game/DevPanel.ts): place a catalog item in Buy mode, or drive any vehicle. */
