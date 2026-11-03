@@ -436,6 +436,7 @@ function fragmentShader(level: number) {
   return `#version 300 es
 precision highp float;
 precision highp sampler2DShadow;
+precision highp sampler2DArray;
 #define QUALITY ${level}
 in vec3 vNormal; in vec3 vColor; in vec3 vWorld; in vec4 vShadow; in float vAo;
 flat in vec4 vMatA; flat in vec4 vMatB;
@@ -444,6 +445,7 @@ uniform float uFogDensity; uniform float uFogFalloff; uniform float uExposure;
 uniform float uAlpha; uniform float uEmissive; uniform bool uUnlit;
 uniform vec4 uHighlight;
 uniform float uWave; uniform float uTime; uniform float uGround; uniform float uSpecular;
+uniform sampler2DArray uDetail; uniform float uDetailOn;
 uniform sampler2DShadow uShadowMap; uniform float uShadowStrength; uniform float uShadowTexel; uniform float uShadowBias;
 ${SHADER_COMMON}
 out vec4 outColor;
@@ -459,6 +461,22 @@ float fbm(vec2 p) {
 #else
   return vnoise(p) * 0.5 + vnoise(p * 2.03 + 17.1) * 0.27 + vnoise(p * 4.11 + 3.7) * 0.15 + vnoise(p * 8.3 - 9.2) * 0.08;
 #endif
+}
+vec4 detailTri(vec3 p, vec3 n, float layer, float scale) {
+  vec3 w = abs(n);
+#if QUALITY == 0
+  vec2 uv = w.z >= max(w.x, w.y) ? p.xy : (w.x >= w.y ? p.yz : p.xz);
+  return texture(uDetail, vec3(uv * scale, layer));
+#else
+  w = w * w; w = w * w; w /= (w.x + w.y + w.z);
+  return texture(uDetail, vec3(p.yz * scale, layer)) * w.x + texture(uDetail, vec3(p.xz * scale, layer)) * w.y + texture(uDetail, vec3(p.xy * scale, layer)) * w.z;
+#endif
+}
+vec3 bumpNormal(vec3 n, vec3 dpx, vec3 dpy, float h, float k) {
+  vec3 r1 = cross(dpy, n), r2 = cross(n, dpx);
+  float det = dot(dpx, r1);
+  vec3 g = (dFdx(h) * r1 + dFdy(h) * r2) * sign(det);
+  return normalize(abs(det) * n - g * k);
 }
 float ign() { return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); }
 float shadowAt(vec3 n) {
@@ -518,16 +536,58 @@ void main() {
   vec3 V = -d / max(dist, 1e-4);
   float rough = vMatA.x, metal = vMatA.y, coat = vMatB.x, wrap = vMatB.y;
   vec3 f0d = vec3(vMatB.w);
-  if (uGround > 0.0) {
-    float big = fbm(vWorld.xy * 0.045), mid = fbm(vWorld.xy * 0.22 + 31.0), fine = vnoise(vWorld.xy * 2.7);
-    base *= mix(1.0, 0.82 + big * 0.3 + (mid - 0.5) * 0.16 + (fine - 0.5) * 0.1, uGround);
-    float g = max(0.0, base.g - max(base.r, base.b));
-    base = mix(base, base * vec3(1.08, 0.96, 0.78), g * (big - 0.45) * 1.6 * uGround);
-  }
-  if (uWave > 0.0) {
-    vec2 q = vWorld.xy * 0.6 + vec2(uTime * 0.35, uTime * 0.22);
-    n = normalize(n + vec3(vnoise(q) - 0.5, vnoise(q * 1.7 + 8.0) - 0.5, 0.0) * 0.35);
-    rough = 0.06; metal = 0.0; f0d = vec3(0.02); wrap = 0.0; coat = 0.0;
+  float ao = vAo, alpha = uAlpha;
+#if QUALITY > 0
+  vec3 dpx = dFdx(vWorld), dpy = dFdy(vWorld);
+#endif
+  if (uWave > 0.0 || vMatA.z > 6.5) {
+    float depth = vAo; ao = 1.0;
+    vec2 q = vWorld.xy * 0.085;
+    vec4 w1 = texture(uDetail, vec3(q + vec2(uTime * 0.013, uTime * 0.008), 7.0));
+#if QUALITY > 0
+    vec4 w2 = texture(uDetail, vec3(q * 2.7 + vec2(-uTime * 0.021, uTime * 0.017), 7.0));
+#else
+    vec4 w2 = vec4(0.5, 0.5, w1.b, w1.a);
+#endif
+    vec2 slope = ((w1.rg - 0.5) * 1.2 + (w2.rg - 0.5) * 0.8) * uDetailOn;
+    n = normalize(vec3(slope * (uWave > 0.0 ? 1.0 : 0.5), 1.0));
+    rough = 0.05; metal = 0.0; f0d = vec3(0.02); wrap = 0.0; coat = 0.0;
+    if (uWave > 0.0) {
+      base = mix(base, base * vec3(0.45, 0.72, 0.9), smoothstep(0.15, 1.0, depth) * 0.6);
+      float foam = (1.0 - smoothstep(0.02, 0.2, depth)) * smoothstep(0.3, 0.75, w1.b * 0.7 + w2.b * 0.5) * uDetailOn;
+      base = mix(base, vec3(0.8, 0.86, 0.88), foam);
+      rough = mix(rough, 0.75, foam);
+      alpha = clamp(mix(0.55, 0.97, smoothstep(0.0, 0.8, depth)) + foam, 0.0, 1.0);
+    }
+  } else if (uDetailOn > 0.0 && vMatA.z >= 0.0) {
+    float fade = 1.0 - smoothstep(40.0, 160.0, dist);
+    if (uGround > 0.0) {
+      vec4 t = texture(uDetail, vec3(vWorld.xy * vMatA.w, vMatA.z));
+#if QUALITY > 0
+      vec4 macro = texture(uDetail, vec3(vWorld.xy * 0.019 + 0.37, 5.0));
+#else
+      vec4 macro = vec4(0.5, 0.5, t.b, 0.5);
+#endif
+      float g = clamp((base.g - max(base.r, base.b)) * 5.0, 0.0, 1.0) * uGround;
+      base *= mix(1.0, 0.78 + macro.g * 0.44, uGround);
+      float dirt = smoothstep(0.58, 0.82, macro.b * 0.75 + t.b * 0.35) * g;
+      base = mix(base, base * vec3(1.35, 0.92, 0.6), dirt * 0.55);
+      base = mix(base, base * vec3(1.1, 1.0, 0.78), g * clamp(macro.g - 0.45, 0.0, 1.0) * 0.8);
+      base *= mix(1.0, 0.8 + t.g * 0.4, fade);
+      ao *= mix(1.0, t.a, 0.55 * fade);
+      rough = clamp(rough * (0.8 + t.b * 0.4), 0.04, 1.0);
+#if QUALITY > 0
+      n = bumpNormal(n, dpx, dpy, t.r, vMatB.z * 0.012 / vMatA.w * fade);
+#endif
+    } else {
+      vec4 t = detailTri(vWorld, n, vMatA.z, vMatA.w);
+      base *= mix(1.0, 0.76 + t.g * 0.48, fade);
+      rough = clamp(rough * (0.7 + t.b * 0.6), 0.04, 1.0);
+      ao *= mix(1.0, t.a, 0.7 * fade);
+#if QUALITY > 0
+      n = bumpNormal(n, dpx, dpy, t.r, vMatB.z * 0.006 / vMatA.w * fade);
+#endif
+    }
   }
   rough = clamp(rough, 0.045, 1.0);
   float sh = shadowAt(n);
@@ -556,7 +616,7 @@ void main() {
   vec3 lit = direct * uSunColor * sh;
   float hemi = n.z * 0.5 + 0.5;
   float normalAo = mix(0.72, 1.0, smoothstep(-0.6, 0.9, n.z));
-  float ao = normalAo * vAo;
+  ao *= normalAo;
   vec3 ambient = mix(uGroundColor, uSkyColor, hemi) + uHorizonColor * (1.0 - abs(n.z)) * 0.35;
   vec3 R = reflect(-V, n);
 #if QUALITY == 0
@@ -578,7 +638,7 @@ void main() {
 #endif
   vec3 fogCol = mix(uFogColor, uSunScatter, pow(max(dot(-V, uSunDir), 0.0), 6.0));
   c = mix(c, fogCol, fog);
-  outColor = vec4(finish(c), uAlpha);
+  outColor = vec4(finish(c), alpha);
 }`
 }
 
@@ -603,8 +663,70 @@ void main(){
   outColor = vec4(c, 1.0);
 }`
 
+const DETAIL_SIZE = 256, DETAIL_LAYERS = 8
+
+const DETAIL_FRAG = `#version 300 es
+precision highp float;
+uniform int uLayer; out vec4 o;
+float hsh(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float pn(vec2 p, vec2 P) {
+  vec2 i = floor(p), f = fract(p), u = f * f * (3.0 - 2.0 * f);
+  vec2 j = mod(i + 1.0, P); i = mod(i, P);
+  return mix(mix(hsh(i), hsh(vec2(j.x, i.y)), u.x), mix(hsh(vec2(i.x, j.y)), hsh(j), u.x), u.y);
+}
+float fbm(vec2 uv, vec2 P, int oct) {
+  float s = 0.0, a = 0.5, t = 0.0;
+  for (int k = 0; k < 6; k++) { if (k >= oct) break; s += pn(uv * P, P) * a; t += a; P *= 2.0; a *= 0.5; }
+  return s / t;
+}
+float wave(vec2 uv) { return fbm(uv, vec2(5.0), 5); }
+void main() {
+  vec2 uv = gl_FragCoord.xy / ${DETAIL_SIZE}.0;
+  vec4 r = vec4(0.5, 0.5, 0.5, 1.0);
+  if (uLayer == 0) {
+    float h = 0.55 * fbm(uv, vec2(3.0, 128.0), 4) + 0.45 * fbm(uv, vec2(2.0, 40.0), 3);
+    r = vec4(h, 0.5 + (h - 0.5) * 0.3, 0.5 + (h - 0.5) * 0.6, 1.0);
+  } else if (uLayer == 1) {
+    float peel = fbm(uv, vec2(20.0), 3);
+    vec2 d = vec2(uv.x + uv.y, uv.x - uv.y);
+    float sc = smoothstep(0.88, 0.93, pn(d * vec2(3.0, 190.0), vec2(3.0, 190.0))) * smoothstep(0.45, 0.75, pn(uv * 7.0, vec2(7.0)));
+    sc = max(sc, smoothstep(0.9, 0.95, pn(uv * vec2(2.0, 230.0), vec2(2.0, 230.0))) * smoothstep(0.5, 0.8, pn(uv * 5.0 + 3.0, vec2(5.0))));
+    r = vec4(0.5 + (peel - 0.5) * 0.4 - sc * 0.35, 0.5 + sc * 0.22 + (peel - 0.5) * 0.06, 0.5 + sc * 0.35, 1.0 - sc * 0.25);
+  } else if (uLayer == 2) {
+    float b = fbm(uv, vec2(6.0), 5), agg = pn(uv * 44.0, vec2(44.0)), pit = smoothstep(0.78, 0.9, pn(uv * 70.0, vec2(70.0)));
+    r = vec4(b * 0.55 + agg * 0.3 - pit * 0.45 + 0.1, 0.5 + (b - 0.5) * 0.55 + (agg - 0.5) * 0.18 - pit * 0.18, 0.5 + (agg - 0.5) * 0.3, 1.0 - pit * 0.55);
+  } else if (uLayer == 3) {
+    float row = floor(uv.y * 4.0), fy = fract(uv.y * 4.0), rnd = hsh(vec2(row, 7.0));
+    float fx = fract(uv.x + rnd * 0.73);
+    float seam = smoothstep(0.0, 0.05, fy) * smoothstep(1.0, 0.95, fy) * smoothstep(0.0, 0.012, fx) * smoothstep(1.0, 0.988, fx);
+    float grain = fract((uv.y * 4.0 + pn(uv * vec2(2.0, 16.0), vec2(2.0, 16.0)) * 0.9 + rnd) * 6.0);
+    grain = smoothstep(0.0, 0.5, grain) * smoothstep(1.0, 0.6, grain);
+    float fine = pn(uv * vec2(4.0, 160.0), vec2(4.0, 160.0));
+    r = vec4(seam * (0.72 + grain * 0.12 + fine * 0.08), 0.32 + rnd * 0.32 + grain * 0.16 + fine * 0.06 - (1.0 - seam) * 0.25, 0.5 + (fine - 0.5) * 0.3, mix(0.35, 1.0, seam));
+  } else if (uLayer == 4) {
+    float w = fbm(uv, vec2(3.0), 3), s = pn(uv * 90.0, vec2(90.0));
+    r = vec4(0.5 + (w - 0.5) * 0.4 + (s - 0.5) * 0.04, 0.5 + (w - 0.5) * 0.06, 0.5 + (w - 0.5) * 0.25, 1.0);
+  } else if (uLayer == 5) {
+    float bl = fbm(uv, vec2(40.0), 3), cl = fbm(uv, vec2(5.0), 4), dm = fbm(uv + 0.31, vec2(3.0), 5);
+    r = vec4(bl * 0.7 + cl * 0.3, 0.5 + (bl - 0.5) * 0.55 + (cl - 0.5) * 0.45, dm, 0.62 + bl * 0.38);
+  } else if (uLayer == 6) {
+    float row = floor(uv.y * 4.0), x = uv.x * 2.0 + mod(row, 2.0) * 0.5;
+    float fx = fract(x), fy = fract(uv.y * 4.0);
+    float e = min(min(fx, 1.0 - fx) * 0.5, min(fy, 1.0 - fy) * 0.25);
+    float mortar = 1.0 - smoothstep(0.004, 0.011, e);
+    float id = hsh(vec2(floor(x), row) + 3.0), nz = fbm(uv, vec2(24.0), 3);
+    r = vec4((1.0 - mortar) * (0.7 + nz * 0.2) + e * 2.0, 0.5 + (id - 0.5) * 0.4 - mortar * 0.3 + (nz - 0.5) * 0.12, 0.5 + (nz - 0.5) * 0.3 + mortar * 0.2, 1.0 - mortar * 0.6);
+  } else {
+    float e = 1.0 / ${DETAIL_SIZE}.0;
+    float h = wave(uv), hx = wave(uv + vec2(e, 0.0)) - wave(uv - vec2(e, 0.0)), hy = wave(uv + vec2(0.0, e)) - wave(uv - vec2(0.0, e));
+    vec3 n = normalize(vec3(-hx * 18.0, -hy * 18.0, 1.0));
+    r = vec4(n.xy * 0.5 + 0.5, smoothstep(0.55, 0.78, fbm(uv + 0.5, vec2(10.0), 4)), h);
+  }
+  o = clamp(r, 0.0, 1.0);
+}`
+
 const SHADOW_SIZE = 2048
-const UNIFORMS = ['uViewProj', 'uModel', 'uLightViewProj', 'uInstanced', 'uTint', 'uSunDir', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uHorizonColor', 'uFogColor', 'uSunScatter', 'uCamPos', 'uFogDensity', 'uFogFalloff', 'uExposure', 'uAlpha', 'uEmissive', 'uUnlit', 'uHighlight', 'uTime', 'uWave', 'uWind', 'uGround', 'uSpecular', 'uShadowMap', 'uShadowStrength', 'uShadowTexel', 'uShadowOffset', 'uShadowBias', 'uMatA', 'uMatB']
+const UNIFORMS = ['uDetail', 'uDetailOn', 'uViewProj', 'uModel', 'uLightViewProj', 'uInstanced', 'uTint', 'uSunDir', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uHorizonColor', 'uFogColor', 'uSunScatter', 'uCamPos', 'uFogDensity', 'uFogFalloff', 'uExposure', 'uAlpha', 'uEmissive', 'uUnlit', 'uHighlight', 'uTime', 'uWave', 'uWind', 'uGround', 'uSpecular', 'uShadowMap', 'uShadowStrength', 'uShadowTexel', 'uShadowOffset', 'uShadowBias', 'uMatA', 'uMatB']
 const SKY_UNIFORMS = ['uTop', 'uBottom', 'uSunDir', 'uSunColor', 'uSunScatter', 'uInvViewProj', 'uExposure']
 
 type Program = { program: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
@@ -627,6 +749,7 @@ export class Gl {
   shadowPass = false
   shadowTexture: WebGLTexture | null = null
   shadowFbo: WebGLFramebuffer | null = null
+  detail: WebGLTexture | null = null
   shadowTexel = 1 / SHADOW_SIZE
   shadowOffset = 0.05
   shadowBias = 0.0004
@@ -659,6 +782,45 @@ export class Gl {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
     gl.bindVertexArray(null)
     this.initShadows()
+    this.initDetail()
+  }
+
+  private initDetail() {
+    const gl = this.gl
+    try {
+      const tex = gl.createTexture()
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex)
+      gl.texStorage3D(gl.TEXTURE_2D_ARRAY, Math.log2(DETAIL_SIZE) + 1, gl.RGBA8, DETAIL_SIZE, DETAIL_SIZE, DETAIL_LAYERS)
+      const program = this.compile(SKY_VERT, DETAIL_FRAG), layerU = gl.getUniformLocation(program, 'uLayer')
+      const fbo = gl.createFramebuffer()
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
+      gl.useProgram(program); gl.viewport(0, 0, DETAIL_SIZE, DETAIL_SIZE); gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND)
+      gl.bindVertexArray(this.skyVao)
+      for (let layer = 0; layer < DETAIL_LAYERS; layer++) {
+        gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, tex, 0, layer)
+        gl.uniform1i(layerU, layer)
+        gl.drawArrays(gl.TRIANGLES, 0, 3)
+      }
+      gl.bindVertexArray(null)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.deleteFramebuffer(fbo); gl.deleteProgram(program)
+      gl.generateMipmap(gl.TEXTURE_2D_ARRAY)
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT)
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.REPEAT)
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, null)
+      this.detail = tex
+      this.setAnisotropy(this.level === 2 ? 8 : this.level === 1 ? 2 : 1)
+    } catch { this.detail = null }
+  }
+
+  private setAnisotropy(amount: number) {
+    const gl = this.gl, ext = this.extensions.anisotropic
+    if (!ext || !this.detail) return
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.detail)
+    gl.texParameterf(gl.TEXTURE_2D_ARRAY, ext.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(amount, gl.getParameter(ext.MAX_TEXTURE_MAX_ANISOTROPY_EXT)))
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, null)
   }
 
   private mainProgram(level: number): Program {
@@ -680,6 +842,7 @@ export class Gl {
     if (level === this.level) return
     const entry = this.mainProgram(level)
     this.level = level; this.program = entry.program; this.mainU = entry.u
+    this.setAnisotropy(level === 2 ? 8 : level === 1 ? 2 : 1)
     if (!this.shadowPass) this.u = this.mainU
   }
 
@@ -832,6 +995,10 @@ export class Gl {
     gl.uniform1f(u.uShadowTexel, this.shadowTexel)
     gl.uniform1f(u.uShadowOffset, shadows ? this.shadowOffset : 0)
     gl.uniform1f(u.uShadowBias, this.shadowBias)
+    gl.activeTexture(gl.TEXTURE1)
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.detail)
+    gl.uniform1i(u.uDetail, 1); gl.uniform1f(u.uDetailOn, this.detail ? 1 : 0)
+    gl.activeTexture(gl.TEXTURE0)
     gl.uniformMatrix4fv(u.uLightViewProj, false, this.lightViewProj)
     this.reset()
   }
