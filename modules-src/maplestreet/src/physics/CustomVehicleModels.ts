@@ -136,9 +136,13 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
 }
 
 /** Distances (m from the camera) where a published vehicle drops to the next level of detail. */
-export const VEHICLE_LOD_DISTANCES = [35, 90, 250] as const;
-/** Triangle budgets for levels 1 and 2 (level 0 is the full ~40k-triangle model, level 3 a box). */
-const VEHICLE_LOD_TRIANGLES = [8000, 1600] as const;
+export const VEHICLE_LOD_DISTANCES = [25, 60, 130, 260] as const;
+/**
+ * Triangle budgets for levels 1–3 (level 0 is the full model, up to ~160k triangles
+ * for the sharpest bundled cars; level 4 is a box). A model already under a budget
+ * just reuses its own geometry at that level.
+ */
+const VEHICLE_LOD_TRIANGLES = [40000, 9000, 2000] as const;
 
 interface LodSource { geo: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; matrix: THREE.Matrix4 }
 
