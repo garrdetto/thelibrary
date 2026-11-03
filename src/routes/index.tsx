@@ -4,7 +4,7 @@ import { AdminPanel } from '@/components/AdminPanel'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bookmark, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, X } from 'lucide-react'
+import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bookmark, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, X } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { PoolTable } from '@/components/PoolTable'
@@ -63,6 +63,7 @@ function Studio() {
   const [access, setAccess] = useState<{ username: string | null; isAdmin: boolean; pages: string[]; settings: { theme?: string } }>({ username: null, isAdmin: false, pages: [], settings: {} })
   const [accountReady, setAccountReady] = useState(false)
   const [playRoom, setPlayRoom] = useState<string | null>(null)
+  const [devPlay, setDevPlay] = useState(false)
   const playFrame = useRef<HTMLIFrameElement>(null)
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
@@ -213,6 +214,7 @@ function Studio() {
     if (lobby.match && next !== 'pool') lobby.leave()
     setSelection(null)
     setPlayRoom(null)
+    setDevPlay(false)
     setView(next)
     window.history.replaceState(null, '', next === 'racing' ? '#racing' : next === 'oval' ? '#oval' : next === 'park' ? '#park' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
     setCurrent(null)
@@ -413,7 +415,12 @@ function Studio() {
   }
 
   const activePlay = playLinks.find(item => item.id === view)
-  const playSrc = activePlay ? `${activePlay.src}?${new URLSearchParams({ ...(access.username ? { name: access.username } : {}), ...(playRoom ? { room: playRoom } : {}) })}`.replace(/\?$/, '') : ''
+  const devPlayActive = devPlay && access.isAdmin && activePlay?.id === 'maplestreet'
+  const playSrc = activePlay ? `${activePlay.src}?${new URLSearchParams({ ...(access.username ? { name: access.username } : {}), ...(devPlayActive ? { dev: '1', solo: '1', panel: '1' } : playRoom ? { room: playRoom } : {}) })}`.replace(/\?$/, '') : ''
+  function openDevPanel() {
+    if (!devPlayActive) { setDevPlay(true); return }
+    playFrame.current?.contentWindow?.postMessage({ type: 'tl-dev-panel' }, window.location.origin)
+  }
   const activeLabel = view === 'home' ? 'Module Library' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : moduleNav.find(item => item.id === view)?.label ?? navigation.find((item) => item.id === view)?.label
 
   return <div className="studio-shell">
@@ -440,7 +447,7 @@ function Studio() {
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
         {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
-        {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}</strong><a href={activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
+        {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="shorttrack" trackName="Showdown Bullring (0.5 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {view === 'admin' && access.isAdmin && <AdminPanel/>}
