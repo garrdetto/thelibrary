@@ -37,7 +37,7 @@ export type Preview = {
   selected?: number
 }
 
-type RideCache = { key: string; track?: GpuMesh | null; path?: TrackPath | null; bounds?: [number, number, number, number] | null }
+type RideCache = { key: string; track?: GpuMesh | null; near?: GpuMesh | null; nearDensity?: number; path?: TrackPath | null; bounds?: [number, number, number, number] | null }
 type Clock = { spin: number; phase: string; trainS: number; snapS: number; timer: number; speed: number }
 
 function hash(n: number) { let h = n | 0; h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); return ((h ^ (h >>> 16)) >>> 0) / 4294967296 }
@@ -443,6 +443,7 @@ export class ParkRenderer {
     let cache = this.rides.get(e.id)
     if (cache && cache.key === key) return cache
     if (cache?.track) this.g.free(cache.track)
+    if (cache?.near) this.g.free(cache.near)
     const path = e.pieces!.length ? buildTrackPath(e) : null
     const geometry = path ? this.trackGeometry(e, path) : null
     geometry?.bakeAO(0.5)
@@ -458,7 +459,19 @@ export class ParkRenderer {
     return cache
   }
 
-  private trackGeometry(e: Entity, path: TrackPath): MeshBuilder {
+  private nearTrack(e: Entity, cache: RideCache) {
+    const density = this.settings.level === 2 ? 1 : 2
+    if (!cache.path || COASTER_STYLES[e.style!]?.trackType && COASTER_STYLES[e.style!].trackType !== 'coaster') return cache.track ?? null
+    if (cache.near === undefined || cache.nearDensity !== density) {
+      if (cache.near) this.g.free(cache.near)
+      const geometry = this.trackGeometry(e, cache.path, density)
+      geometry.bakeAO(0.5)
+      cache.near = this.g.upload(geometry); cache.nearDensity = density
+    }
+    return cache.near
+  }
+
+  private trackGeometry(e: Entity, path: TrackPath, nearStep = 0): MeshBuilder {
     const s = this.state!, style = COASTER_STYLES[e.style!]
     const b = new MeshBuilder()
     const trackColor = hexColor(e.trackColor ?? e.color ?? style.track), supportColor = hexColor(e.supportColor ?? style.support)
@@ -510,24 +523,71 @@ export class ParkRenderer {
         if (top - ground > 0.4) b.cylinder(null, p[0], p[1], ground, 0.16, 0.14, top - ground, 8, supportColor, 0, false)
       }
     }
+    if (nearStep && trackType === 'coaster') {
+      const left: Vec3[] = [], right: Vec3[] = [], spine: Vec3[] = [], ups: Vec3[] = []
+      const push = (i: number) => {
+        const { p, u, r } = at(i)
+        left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55])
+        spine.push([p[0] - u[0] * 0.36, p[1] - u[1] * 0.36, p[2] - u[2] * 0.36]); ups.push(u)
+      }
+      for (let i = 0; i < path.count; i += nearStep) push(i)
+      if ((path.count - 1) % nearStep) push(path.count - 1)
+      b.mat = M.ridePaint
+      b.sweep(left, ups, wooden ? 0.12 : 0.095, trackColor, 12, 1, path.closed)
+      b.sweep(right, ups, wooden ? 0.12 : 0.095, trackColor, 12, 1, path.closed)
+      if (!wooden) b.sweep(spine, ups, e.style === 'extreme' || e.style === 'launch' ? 0.24 : 0.19, trackColor, 14, 1, path.closed)
+      const specialColor: Record<string, Vec3> = { chain: hexColor('#2b2b2b'), booster: hexColor('#f2c94c'), brakes: hexColor('#c0c4cc'), station: hexColor('#666a70') }
+      const tieEvery = Math.max(1, Math.round(1.0 / path.ds))
+      for (let i = 0; i < path.count; i += tieEvery) {
+        const { p, t, u, r } = at(i)
+        const sp = path.specials[path.piece[i]]
+        const m = mat4.basis(p, t, r, u)
+        if (wooden) {
+          b.mat = M.wood; b.box(m, 0, 0, -0.38, 0.3, 1.45, 0.16, hexColor('#6b4a2c'))
+          b.mat = M.steel; for (const y of [-0.55, 0.55]) b.box(m, 0, y, -0.24, 0.32, 0.16, 0.04, hexColor('#9aa3ad'))
+        } else {
+          b.mat = M.ridePaint
+          const sp0: Vec3 = [p[0] - u[0] * 0.36, p[1] - u[1] * 0.36, p[2] - u[2] * 0.36]
+          for (const side of [1, -1]) {
+            const rail: Vec3 = [p[0] + r[0] * 0.55 * side - u[0] * 0.04, p[1] + r[1] * 0.55 * side - u[1] * 0.04, p[2] + r[2] * 0.55 * side - u[2] * 0.04]
+            b.limb(rail, sp0, 0.045, 0.06, trackColor, 1, 8)
+          }
+          b.box(m, 0, 0, -0.5, 0.14, 0.34, 0.2, trackColor, 1)
+        }
+        if (sp && specialColor[sp] && sp !== 'station') {
+          b.mat = sp === 'chain' ? M.rubber : M.steel
+          b.box(m, 0, 0, wooden ? -0.24 : -0.17, 0.85, sp === 'chain' ? 0.16 : 0.34, 0.08, specialColor[sp])
+        }
+        if (sp === 'chain' || sp === 'brakes') {
+          b.mat = M.structural
+          const side = 1.25
+          b.box(m, 0, side, -0.42, path.ds * tieEvery + 0.02, 0.62, 0.05, hexColor('#7d8288'))
+          b.box(m, 0, 0.88, -0.44, 0.08, 0.5, 0.06, hexColor('#7d8288'))
+          b.mat = M.steel
+          b.box(m, 0, side + 0.3, -0.42, 0.05, 0.05, 1.0, hexColor('#b8bec6'))
+          b.box(m, 0, side + 0.3, 0.55, path.ds * tieEvery + 0.02, 0.06, 0.06, hexColor('#b8bec6'))
+        }
+      }
+      b.mat = -1
+    }
     const step = 2
     const left: Vec3[] = [], right: Vec3[] = [], spine: Vec3[] = []
-    for (let i = trackType === 'coaster' ? 0 : path.count; i < path.count; i += step) {
+    for (let i = trackType === 'coaster' && !nearStep ? 0 : path.count; i < path.count; i += step) {
       const { p, u, r } = at(i)
       const off = inverted ? 0 : 0
       left.push([p[0] + r[0] * 0.55 + u[0] * off, p[1] + r[1] * 0.55 + u[1] * off, p[2] + r[2] * 0.55 + u[2] * off])
       right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55])
       spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32])
     }
-    if ((path.count - 1) % step) { const { p, u, r } = at(path.count - 1); left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55]); spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32]) }
-    if (trackType === 'coaster') {
+    if (!nearStep && (path.count - 1) % step) { const { p, u, r } = at(path.count - 1); left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55]); spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32]) }
+    if (trackType === 'coaster' && !nearStep) {
       b.tube(left, wooden ? 0.12 : 0.1, trackColor, 8, 1)
       b.tube(right, wooden ? 0.12 : 0.1, trackColor, 8, 1)
       if (!wooden) b.tube(spine, 0.17, trackColor, 10, 1)
     }
     const specialColor: Record<string, Vec3> = { chain: hexColor('#2b2b2b'), booster: hexColor('#f2c94c'), brakes: hexColor('#c0c4cc'), station: hexColor('#666a70') }
     const tieEvery = Math.max(1, Math.round(1.0 / path.ds))
-    for (let i = trackType === 'coaster' ? 0 : path.count; i < path.count; i += tieEvery) {
+    for (let i = trackType === 'coaster' && !nearStep ? 0 : path.count; i < path.count; i += tieEvery) {
       const { p, t, u, r } = at(i)
       const sp = path.specials[path.piece[i]]
       const m = mat4.basis(p, t, r, u)
@@ -554,6 +614,13 @@ export class ParkRenderer {
       } else {
         b.cylinder(null, p[0], p[1], ground, 0.2, 0.17, top - ground, 10, supportColor, 0, false)
         b.cylinder(null, p[0], p[1], ground - 0.1, 0.48, 0.42, 0.35, 12, hexColor('#9b9b95'))
+        if (nearStep) {
+          b.mat = M.structural
+          b.cylinder(null, p[0], p[1], ground + 0.25, 0.32, 0.32, 0.05, 12, supportColor)
+          for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; b.cylinder(null, p[0] + Math.cos(a) * 0.26, p[1] + Math.sin(a) * 0.26, ground + 0.3, 0.025, 0.025, 0.05, 6, hexColor('#b8bec6')) }
+          b.cylinder(null, p[0], p[1], top - 0.08, 0.27, 0.27, 0.1, 12, supportColor)
+          b.mat = -1
+        }
         if (inverted) b.tube([[p[0], p[1], top], [p[0] - u[0] * 0.2, p[1] - u[1] * 0.2, p[2] + 0.2]], 0.15, supportColor, 5)
       }
     }
@@ -576,9 +643,9 @@ export class ParkRenderer {
     return b
   }
 
-  private carMesh(style: string, front: boolean, riders: number) {
-    const key = `car:${style}:${front}:${riders}`
-    if (!this.kindMeshes.has(key)) this.kindMeshes.set(key, this.g.upload(carModel(style, front, riders)))
+  private carMesh(style: string, front: boolean, riders: number, near = false) {
+    const key = `car:${style}:${front}:${riders}:${near}`
+    if (!this.kindMeshes.has(key)) this.kindMeshes.set(key, this.g.upload(carModel(style, front, riders, near)))
     return this.kindMeshes.get(key) ?? null
   }
 
@@ -812,7 +879,9 @@ export class ParkRenderer {
   private drawCoaster(e: Entity, dt: number, highlight?: [number, number, number, number]) {
     const cache = this.coasterCache(e)
     const style = COASTER_STYLES[e.style!]
-    this.g.draw(cache.track ?? null, undefined, { highlight })
+    const bb = cache.bounds, eye = this.eyePos
+    const near = !!bb && this.settings.trackDetail > 0 && Math.hypot(bb[0] - eye[0], bb[1] - eye[1], bb[2] - eye[2]) - bb[3] < this.settings.trackDetail
+    this.g.draw(near ? this.nearTrack(e, cache) : cache.track ?? null, undefined, { highlight })
     if (!cache.path || !e.complete) return
     if (style.trackType === 'kart') {
       const tint = hexColor(e.trainColor ?? style.train)
@@ -853,7 +922,8 @@ export class ParkRenderer {
         const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
         const inCar = Math.max(0, Math.min(seats, riders - k * seats))
         const shown = Math.min(4, Math.round(inCar * 4 / seats))
-        this.g.draw(this.carMesh(e.style!, k === 0, shown), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
+        const carNear = this.settings.trackDetail > 0 && (p.x - this.eyePos[0]) ** 2 + (p.y - this.eyePos[1]) ** 2 + (p.z - this.eyePos[2]) ** 2 < (this.settings.trackDetail * 0.6) ** 2
+        this.g.draw(this.carMesh(e.style!, k === 0, shown, carNear), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
       }
     }
   }

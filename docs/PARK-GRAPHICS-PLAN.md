@@ -191,3 +191,28 @@ Measured (SwiftShader, auto tier = `low`): draws 194/frame, frame 866–892 ms (
 SwiftShader. Park chunk 398,168 B (134,974 gzip): +29.3 KB raw / +10.0 KB gzip over the base. `perf-baseline --compare`:
 60.0/59.5 FPS unchanged, heap +1.0%, JS +1.3% (dev), transferred 12,900 KB; no regressions. Screenshots:
 `docs/park-graphics/phase2/`.
+
+### Phase 3 — Ride and structure geometry fidelity
+- Coaster track near LOD (`trackGeometry(e, path, nearStep)`, built lazily, cached with the far mesh): rails and spine
+  are continuous swept tubes (`MeshBuilder.sweep`) framed by the track's own up vector, so they never crack or twist,
+  with smooth normals; steel ties become tubular connectors from each rail to the spine with a keel plate (wooden ties
+  keep timber with steel rail plates); chain lift, booster and brake hardware; walkway plates with handrails along
+  chain lifts and brake runs; flanged, bolted support bases and saddles. Segment density is every path sample at `high`,
+  every second at `medium`. The far LOD is the original mesh, and it is always used at `low` and beyond
+  `trackDetail` (70 m `medium`, 140 m `high`) from the coaster's bounds. Still one draw per coaster.
+- Coaster cars near LOD (`carModel(..., near)`, one shared mesh per style/front/riders): rolled body edges, nose with
+  headlight lenses, padded seat backs with headrests, chrome lap bars, three-wheel bogies (road, up-stop and guide
+  wheels) with hubs, chassis rail; painted, chrome, rubber and cloth materials. Within 60% of `trackDetail`.
+- Hotels: glazing is glass (high-F0, glossy, sky reflection) with mullions on the tower bands; pools are water, stone
+  is stone.
+- Trees and shrubs: per-vertex canopy AO (darker toward the canopy core and underside) on top of the Phase 1 wind sway
+  and foliage wrap lighting; still instanced, same vertex count.
+- Guests: unchanged meshes; cloth/skin/rubber materials since Phase 1.
+
+Deferred: a second canopy shell and extra polygon density on flat-ride drums/booms and water-slide tubes. Every
+added triangle is paid by every instance on SwiftShader, and the auto tier there cannot afford it; the material,
+AO and shadow changes carry most of the visible gain on those rides.
+
+Measured (SwiftShader, auto tier = `low`): draws 194/frame, frame 908 ms min of 5 (base 919–997), running park 1.22 FPS
+avg (base 0.59–0.81), 1% low 0.63, heap 23.1 MB. `medium` 1,118 ms, `high` 1,335 ms. Screenshots:
+`docs/park-graphics/phase3/`.
