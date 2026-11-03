@@ -136,5 +136,15 @@ export function cleanLook(raw: unknown, owned: string[], prev?: Look | null): Lo
   };
 }
 
+/** The clothing half of a look: these only change at Maple Threads once the character is made. */
+export const OUTFIT_KEYS = ['top', 'topColor', 'topColor2', 'tee', 'pants', 'pantsColor', 'pantsColor2', 'shoes', 'shoesColor', 'shoesColor2', 'hat', 'hatColor', 'hatColor2'] as const;
+
+/** `next` with the body and every clothing field taken from `prev` (hair, eyes and skin may still change). */
+export function keepOutfit(next: Look, prev: Look): Look {
+  const out: Look = { ...next, body: prev.body };
+  for (const k of OUTFIT_KEYS) (out[k] as string) = prev[k];
+  return out;
+}
+
 /** A stable string for change detection on remote players. */
 export const lookKey = (l: Look | null | undefined) => (l ? Object.values(l).join('|') : '');

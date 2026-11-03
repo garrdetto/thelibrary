@@ -1,8 +1,12 @@
 /**
  * Character creator / wardrobe (C, or the Maple Threads counter downtown).
- * A side panel next to a close-up of your character: body, hairstyle, hair,
- * eye and skin colors are free; clothing you own can be worn and recolored,
- * and at Maple Threads everything can be tried on and bought.
+ * A side panel next to a close-up of your character.
+ *   - Creating your neighbor (once): pick male or female, hair, face and a
+ *     starter outfit. The body choice is final.
+ *   - Wardrobe (C): hair, eyes and skin stay free to change; the outfit is
+ *     shown but locked.
+ *   - Maple Threads: the only place clothes change — try anything on, buy it,
+ *     or put back on something you already own.
  */
 import type { Account } from '../../shared/Economy';
 import {
@@ -77,6 +81,7 @@ export class WardrobeUI {
 
   close(apply: boolean, note?: string) {
     if (!this.isOpen) return;
+    if (this.firstTime) apply = true;
     $('wardrobe').classList.remove('show');
     document.body.classList.remove('dressing');
     if (apply && this.look) this.ev.save(this.sanitized(), note);
@@ -106,7 +111,7 @@ export class WardrobeUI {
   }
 
   private setBody(body: Body) {
-    if (!this.look || this.look.body === body) return;
+    if (!this.firstTime || !this.look || this.look.body === body) return;
     const owned = this.account?.wardrobe ?? [];
     this.look = cleanLook({ ...this.look, body, hair: 'natural' }, owned, this.look);
     this.changed();
@@ -160,11 +165,16 @@ export class WardrobeUI {
   private render() {
     const L = this.look;
     if (!L) return;
+    const locked = !this.shop && !this.firstTime;
     $('wdTitle').textContent = this.shop ? 'Maple Threads' : this.firstTime ? 'Create your neighbor' : 'Wardrobe';
     $('wdSub').textContent = this.shop
-      ? `Try anything on. Buy it to keep it — then wear it any time with C.${this.account ? ` Balance ${money(this.account.money)}` : ''}`
-      : this.firstTime ? 'Pick a hairstyle, colors and an outfit. You can change it any time with C.' : 'Free: hair, eyes and skin. Clothes you own can be worn in any color.';
-    for (const b of document.querySelectorAll<HTMLButtonElement>('#wdBody button')) b.classList.toggle('on', b.dataset.body === L.body);
+      ? `Try anything on and buy it to wear it. Pieces you already own can go back on for free.${this.account ? ` Balance ${this.account.money >= 1e9 ? 'unlimited' : money(this.account.money)}` : ''}`
+      : this.firstTime ? 'Pick your body, hair, face and a starter outfit. Your body is final, and after today clothes only change by shopping at Maple Threads.'
+      : 'Hair, eyes and skin are free to change. Your outfit is set — shop at Maple Threads downtown for new clothes.';
+    $('wdBodyBox').hidden = !this.firstTime;
+    $('wdCancel').hidden = this.firstTime;
+    $('wdDone').textContent = this.firstTime ? 'Looks good' : this.shop ? 'Done shopping' : 'Done';
+    for (const b of document.querySelectorAll<HTMLButtonElement>('#wdBody button')) { b.classList.toggle('on', b.dataset.body === L.body); b.setAttribute('aria-checked', String(b.dataset.body === L.body)); }
     for (const b of document.querySelectorAll<HTMLButtonElement>('#wdTabs button')) {
       b.classList.toggle('on', b.dataset.tab === this.tab);
       b.hidden = this.shop && (b.dataset.tab === 'hair' || b.dataset.tab === 'face');
@@ -193,6 +203,20 @@ export class WardrobeUI {
     const slot = this.tab as Slot;
     const grid = document.createElement('div');
     grid.className = 'wd-grid';
+    if (locked) {
+      const worn = WARDROBE_BY_ID[L[slot]];
+      const [k1, k2] = COLOR_KEYS[slot];
+      const card = document.createElement('div');
+      card.className = 'wd-item on';
+      card.innerHTML = `<i style="background:linear-gradient(135deg, ${L[k1]} 0 55%, ${L[k2]} 55% 100%)"></i><b>${esc(worn.name)}</b><small>${esc(worn.blurb)}</small><span class="wd-tag">Wearing</span>`;
+      grid.appendChild(card);
+      body.appendChild(grid);
+      const note = document.createElement('p');
+      note.className = 'wd-lock';
+      note.textContent = 'Outfits are locked in. To change clothes, head to Maple Threads on Main Street downtown — anything you own can go back on there, and everything else is for sale.';
+      body.appendChild(note);
+      return;
+    }
     for (const item of WARDROBE.filter(i => i.slot === slot)) {
       const owned = this.owned(item);
       if (!owned && !this.shop) continue;
@@ -222,7 +246,7 @@ export class WardrobeUI {
     if (!this.shop && WARDROBE.some(i => i.slot === slot && !this.owned(i))) {
       const more = document.createElement('p');
       more.className = 'wd-more';
-      more.textContent = 'More styles are for sale at Maple Threads, downtown on Main Street.';
+      more.textContent = 'These are the starter pieces. More styles are for sale at Maple Threads, downtown on Main Street.';
       body.appendChild(more);
     }
     const item = WARDROBE_BY_ID[L[slot]];
