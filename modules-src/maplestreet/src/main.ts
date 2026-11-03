@@ -95,7 +95,8 @@ async function start(mode: NetMode) {
     if (DEV_MODE) {
       const g = game;
       const { DevPanel } = await import('./game/DevPanel');
-      new DevPanel({ place: id => g.devPlace(id), drive: kind => g.devDrive(kind as Parameters<Game['devDrive']>[0]), hasLot: () => g.devHasLot() });
+      devPanel = new DevPanel({ place: id => g.devPlace(id), drive: kind => g.devDrive(kind as Parameters<Game['devDrive']>[0]), hasLot: () => g.devHasLot() });
+      if (devPanelRequested || params.get('panel') === '1') devPanel.toggle(true);
       const badge = document.createElement('div');
       badge.id = 'devBadge';
       badge.textContent = devDrafts.allowed ? 'DEV · drafts on · F8 panel' : 'DEV · F8 panel';
@@ -111,6 +112,15 @@ async function start(mode: NetMode) {
 
 $('playWorld').onclick = () => start(DEV_MODE ? 'offline' : 'world');
 $('playSolo').onclick = () => start('offline');
+
+let devPanel: { toggle(force?: boolean): void } | null = null;
+let devPanelRequested = false;
+
+addEventListener('message', e => {
+  if (!DEV_MODE || e.origin !== location.origin || e.source !== parent || e.data?.type !== 'tl-dev-panel') return;
+  if (devPanel) devPanel.toggle();
+  else devPanelRequested = true;
+});
 
 addEventListener('message', e => {
   if (DEV_MODE || e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return;
