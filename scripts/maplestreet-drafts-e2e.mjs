@@ -174,9 +174,17 @@ try {
   for (const c of lot.cars) {
     assert(c.up > 0.98 && Math.abs(c.y - c.ride) < 0.2 && c.verts > 5000, `${c.k} sits upright on its wheels with its model loaded (y ${c.y} vs ride ${c.ride}, up ${c.up}, ${c.verts} vertices)`)
   }
+  // New neighbors get the "Choose your plot" map, which takes the keyboard: dismiss it before screenshots and driving.
+  const dismissPlot = () => solo.evaluate(() => {
+    for (const b of document.querySelectorAll('button')) if (/^Explore first$/.test(b.textContent?.trim() ?? '') && b.offsetParent) b.click()
+    window.maple.hud.closeModals()
+  })
+  await dismissPlot()
   await view(solo, 'bundled-vehicles', [37, 4, 14], [37, 0.8, 2.5])
   for (const k of bundled) {
+    await dismissPlot()
     await solo.evaluate(k => { const g = window.maple; g.enterVehicle(g.vehicles.get(k)) }, k)
+    await solo.locator('canvas').first().focus().catch(() => {})
     await solo.keyboard.down('w')
     await solo.evaluate(() => { const g = window.maple; for (let i = 0; i < 240; i++) g.fixed(1 / 60) })
     await solo.keyboard.up('w')
