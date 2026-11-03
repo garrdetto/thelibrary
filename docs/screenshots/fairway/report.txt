@@ -1,0 +1,6 @@
+PASS fairway (0 errors, 5 third-party notes) -> docs/screenshots/fairway/fairway.png
+    (external) console: Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://localhost:4173/api/fairway?board=round
+    (external) console: Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://localhost:4173/api/group-chat?count
+    (external) console: Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://localhost:4173/api/fairway?board=round
+    (external) console: Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://localhost:4173/api/group-chat?count
+    (external) console: Failed to load resource: the server responded with a status of 503 (Service Unavailable) @ http://localhost:4173/api/group-chat?count
