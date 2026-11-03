@@ -350,5 +350,245 @@ export const BUNDLED_VEHICLES: readonly CustomVehicleRecord[] = [
     active: true,
     status: 'published',
     updatedAt: 1793664000000
+  },
+  {
+    id: 'bundled-maple-hauler',
+    name: 'Maple Hauler',
+    template: 'truck',
+    model: {
+      scale: 2.72,
+      yaw: 180,
+      x: -0.003,
+      y: 0.016,
+      z: -0.001
+    },
+    physics: {
+      chassis: {
+        hx: 2.588,
+        hy: 0.381,
+        hz: 1.048
+      },
+      mass: 1827,
+      comY: -0.454,
+      axles: [
+        {
+          x: 1.752,
+          radius: 0.36,
+          width: 0.237,
+          halfTrack: 0.74,
+          steer: true,
+          drive: true
+        },
+        {
+          x: -1.363,
+          radius: 0.36,
+          width: 0.237,
+          halfTrack: 0.74,
+          steer: false,
+          drive: true
+        }
+      ],
+      wheelY: -0.163,
+      suspension: {
+        rest: 0.381,
+        travel: 0.254,
+        stiffness: 30,
+        compression: 2.4,
+        relaxation: 3.2
+      },
+      frictionSlip: 2.3,
+      sideStiffness: 1,
+      engineForce: 1945,
+      topSpeed: 40.84,
+      brake: 58.1,
+      maxSteer: 0.5934119456780721,
+      seat: {
+        x: 0.052,
+        y: -0.092,
+        z: -0.327
+      },
+      hitch: {
+        x: -2.738,
+        y: -0.254
+      },
+      cam: {
+        dist: 8.625,
+        height: 2.365
+      }
+    },
+    lights: {
+      head: [
+        {
+          x: 2.527,
+          y: -0.079,
+          z: 0.572
+        }
+      ],
+      tail: [
+        {
+          x: -2.532,
+          y: 0.071,
+          z: 0.735
+        }
+      ]
+    },
+    paint: {
+      mode: 'none',
+      material: '',
+      key: '#ffffff',
+      tolerance: 0.18,
+      color: '#b5121b'
+    },
+    targets: {
+      topSpeedMph: 63,
+      zeroToMph: 56,
+      zeroToSeconds: 12.2
+    },
+    dealer: {
+      forSale: false,
+      price: 0,
+      fuel: 'gas',
+      tank: 22,
+      mpg: 19
+    },
+    traffic: {
+      enabled: false,
+      driver: 'Maple Hauler',
+      route: 'ringA',
+      mph: 24
+    },
+    wheelsRemoved: true,
+    modelUrl: '/modules/maplestreet/vehicles/maple-hauler.glb',
+    wheelUrl: null,
+    active: true,
+    status: 'published',
+    updatedAt: 1793664000000
+  },
+  {
+    id: 'bundled-lakeshore-coupe',
+    name: 'Lakeshore Coupe',
+    template: 'coupe',
+    model: {
+      scale: 2.42,
+      yaw: 180,
+      x: -0.001,
+      y: 0.133,
+      z: -0.001
+    },
+    physics: {
+      chassis: {
+        hx: 2.302,
+        hy: 0.285,
+        hz: 1.105
+      },
+      mass: 1427,
+      comY: -0.401,
+      axles: [
+        {
+          x: 1.305,
+          radius: 0.333,
+          width: 0.242,
+          halfTrack: 0.837,
+          steer: true,
+          drive: false
+        },
+        {
+          x: -1.32,
+          radius: 0.333,
+          width: 0.242,
+          halfTrack: 0.837,
+          steer: false,
+          drive: true
+        }
+      ],
+      wheelY: -0.089,
+      suspension: {
+        rest: 0.267,
+        travel: 0.16,
+        stiffness: 38,
+        compression: 2.8,
+        relaxation: 3.6
+      },
+      frictionSlip: 2.7,
+      sideStiffness: 1.05,
+      engineForce: 3151,
+      topSpeed: 69.99,
+      brake: 50.6,
+      maxSteer: 0.5061454830783556,
+      seat: {
+        x: -0.292,
+        y: 0.012,
+        z: -0.364
+      },
+      hitch: null,
+      cam: {
+        dist: 7.57,
+        height: 2.144
+      }
+    },
+    lights: {
+      head: [
+        {
+          x: 2.128,
+          y: -0.036,
+          z: 0.727
+        }
+      ],
+      tail: [
+        {
+          x: -2.179,
+          y: 0.06,
+          z: 0.727
+        }
+      ]
+    },
+    paint: {
+      mode: 'color',
+      material: '',
+      key: '#c4c5ca',
+      tolerance: 0.16,
+      color: '#c4c5ca'
+    },
+    targets: {
+      topSpeedMph: 79,
+      zeroToMph: 60,
+      zeroToSeconds: 9.3
+    },
+    dealer: {
+      forSale: true,
+      price: 21500,
+      fuel: 'gas',
+      tank: 14,
+      mpg: 30
+    },
+    traffic: {
+      enabled: true,
+      driver: 'Lakeshore Coupe',
+      route: 'downtown',
+      mph: 24,
+      count: 6,
+      routes: [
+        'downtown',
+        'ringA',
+        'ringB',
+        'downtown',
+        'ringA',
+        'ringB'
+      ],
+      colors: [
+        '#c4c5ca',
+        '#a3161c',
+        '#1f4fa8',
+        '#1c1d21',
+        '#f2f2ee',
+        '#2f6b45'
+      ]
+    },
+    wheelsRemoved: true,
+    modelUrl: '/modules/maplestreet/vehicles/lakeshore-coupe.glb',
+    wheelUrl: null,
+    active: true,
+    status: 'published',
+    updatedAt: 1793664000000
   }
 ];

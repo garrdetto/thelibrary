@@ -79,7 +79,12 @@ export interface CustomVehicleSpec {
   /** Targets the engine numbers were solved for (what the test drive checks). */
   targets: { topSpeedMph: number; zeroToMph: number; zeroToSeconds: number };
   dealer: { forSale: boolean; price: number; fuel: 'gas' | 'electric'; tank: number; mpg: number };
-  traffic: { enabled: boolean; driver: string; route: TrafficRoute; mph: number };
+  /**
+   * Neighbor traffic. `count` puts several of them on the road (default 1);
+   * driver n takes `routes[n]` (else `route`) and paint `colors[n]` (else the
+   * vehicle color), so one model can drive around town in different colors.
+   */
+  traffic: { enabled: boolean; driver: string; route: TrafficRoute; mph: number; count?: number; routes?: TrafficRoute[]; colors?: string[] };
   /** The editor removed the model's baked-in wheels before upload. */
   wheelsRemoved: boolean;
 }
@@ -99,7 +104,9 @@ export interface CustomVehicleRecord extends CustomVehicleSpec {
 export const customVehicleKind = (id: string): CustomVehicleKind => `${CUSTOM_VEHICLE_PREFIX}${id}`;
 
 /** Published vehicles with traffic turned on, in id order so every host builds the same traffic. */
-export const CUSTOM_TRAFFIC: { kind: CustomVehicleKind; id: string; driver: string; route: TrafficRoute; speed: number }[] = [];
+export const CUSTOM_TRAFFIC: { kind: CustomVehicleKind; id: string; n: number; count: number; driver: string; route: TrafficRoute; speed: number; paint?: string }[] = [];
+export const TRAFFIC_COUNT_MAX = 8;
+const HEX = /^#[0-9a-f]{6}$/i;
 /** Bumped on every registration so long-running hosts can pick up traffic changes. */
 export let customVehiclesVersion = 0;
 
@@ -165,7 +172,14 @@ export function registerCustomVehicles(records: readonly CustomVehicleRecord[]):
   for (const [kind, r] of RECORDS) if (!seen.has(kind)) VEHICLES[kind] = { ...specFromRecord(r), forSale: false };
   CUSTOM_TRAFFIC.length = 0;
   for (const r of [...added].sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    if (r.active && r.traffic.enabled) CUSTOM_TRAFFIC.push({ kind: customVehicleKind(r.id), id: r.id, driver: r.traffic.driver || r.name, route: r.traffic.route, speed: r.traffic.mph * 0.44704 });
+    if (!r.active || !r.traffic.enabled) continue;
+    const t = r.traffic;
+    const count = Math.max(1, Math.min(TRAFFIC_COUNT_MAX, Math.floor(Number(t.count) || 1)));
+    for (let n = 0; n < count; n++) {
+      const route = Array.isArray(t.routes) && (TRAFFIC_ROUTES as readonly string[]).includes(t.routes[n]) ? t.routes[n] : t.route;
+      const paint = Array.isArray(t.colors) && typeof t.colors[n] === 'string' && HEX.test(t.colors[n]) ? t.colors[n].toLowerCase() : undefined;
+      CUSTOM_TRAFFIC.push({ kind: customVehicleKind(r.id), id: r.id, n, count, driver: t.driver || r.name, route, speed: t.mph * 0.44704, ...(paint ? { paint } : {}) });
+    }
   }
   refreshDealer();
   customVehiclesVersion++;

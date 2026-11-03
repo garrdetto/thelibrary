@@ -71,9 +71,9 @@ const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b
 const isNpc = (id: string) => id.startsWith('npc-');
 
 /** Everything that makes a vehicle visible and solid. Pooled per kind and reused across vehicles. */
-interface VehicleView { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody }
+interface VehicleView { kind: VehicleSnap['kind']; paint: string | undefined; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody }
 /** A remote vehicle: always its snapshot data, plus a view while it is near. */
-interface RemoteVehicle { kind: VehicleSnap['kind']; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; fresh: boolean }
+interface RemoteVehicle { kind: VehicleSnap['kind']; paint: string | undefined; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; fresh: boolean }
 interface RemotePlayer {
   name: string; color: string; npc: boolean; look: PlayerSnap['look'];
   avatar: Avatar | null; label: THREE.Sprite | null; lookKey: string;
@@ -95,10 +95,12 @@ function nameSprite(name: string, color: string) {
   return s;
 }
 
+const poolKey = (kind: string, paint: string | undefined) => (paint ? `${kind}|${paint}` : kind);
+
 export class RemoteEntities {
   private players = new Map<string, RemotePlayer>();
   private vehicles = new Map<string, RemoteVehicle>();
-  /** Idle vehicle views by kind: out of the scene, collider disabled. */
+  /** Idle vehicle views by kind and paint: out of the scene, collider disabled. */
   private pool = new Map<string, VehicleView[]>();
   private clockOffset: number | null = null;
   private q = new THREE.Quaternion();
@@ -131,7 +133,7 @@ export class RemoteEntities {
     for (const v of vehicles) {
       if (v.owner === me) continue;
       let rv = this.vehicles.get(v.id);
-      if (!rv) { rv = { kind: v.kind, buf: new SnapBuffer(), seen: now, view: null, fresh: false }; this.vehicles.set(v.id, rv); }
+      if (!rv) { rv = { kind: v.kind, paint: typeof v.paint === 'string' && /^#[0-9a-f]{6}$/i.test(v.paint) ? v.paint : undefined, buf: new SnapBuffer(), seen: now, view: null, fresh: false }; this.vehicles.set(v.id, rv); }
       rv.buf.push(time, v); rv.seen = now;
     }
     // Despawn anything not seen for 3 s.
@@ -141,11 +143,11 @@ export class RemoteEntities {
 
   // ---------------------------------------------------------------- vehicle views (pooled)
 
-  private buildView(kind: VehicleSnap['kind']): VehicleView {
+  private buildView(kind: VehicleSnap['kind'], paint: string | undefined): VehicleView {
     const P = PRESETS[kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
-    const shell = P.build(makePaint(P.paint), lights);
+    const shell = P.build(makePaint(paint ? parseInt(paint.slice(1), 16) : P.paint), lights);
     mergeStatic(shell);
     root.add(shell);
     const wheels: VehicleView['wheels'] = [];
@@ -157,11 +159,11 @@ export class RemoteEntities {
     root.traverse(o => (o.castShadow = true));
     const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased());
     this.physics.world.createCollider(R.ColliderDesc.cuboid(P.chassis.hx, P.chassis.hy, P.chassis.hz).setCollisionGroups(MASK.remote), body);
-    return { kind, root, wheels, lights, body };
+    return { kind, paint, root, wheels, lights, body };
   }
 
   private acquire(rv: RemoteVehicle) {
-    const view = this.pool.get(rv.kind)?.pop() ?? this.buildView(rv.kind);
+    const view = this.pool.get(poolKey(rv.kind, rv.paint))?.pop() ?? this.buildView(rv.kind, rv.paint);
     view.body.setEnabled(true);
     this.scene.add(view.root);
     rv.view = view;
@@ -175,8 +177,9 @@ export class RemoteEntities {
     for (const rp of this.players.values()) if (rp.seatRoot === view.root) this.hide(rp);
     view.root.removeFromParent();
     view.body.setEnabled(false);
-    let list = this.pool.get(view.kind);
-    if (!list) this.pool.set(view.kind, (list = []));
+    const key = poolKey(view.kind, view.paint);
+    let list = this.pool.get(key);
+    if (!list) this.pool.set(key, (list = []));
     list.push(view);
     rv.view = null;
   }

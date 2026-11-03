@@ -52,7 +52,9 @@ const BUILTIN_VEHICLES: Record<BuiltinVehicleKind, VehicleSpec> = {
 };
 /** Every registered vehicle: built-ins plus admin-published ones (shared/CustomVehicles.ts). */
 export const VEHICLES: Record<string, VehicleSpec> = { ...BUILTIN_VEHICLES };
-export const STARTER_GARAGE: VehicleKind[] = ['truck', 'trailer', 'mower'];
+/** The pickup every neighbor gets on arrival: the bundled Maple Hauler (shared/BundledVehicles.ts). */
+export const STARTER_TRUCK: VehicleKind = 'custom:bundled-maple-hauler';
+export const STARTER_GARAGE: VehicleKind[] = [STARTER_TRUCK, 'trailer', 'mower'];
 
 /** The vehicle's spec, or null for a published vehicle this authority hasn't loaded. */
 export const vehicleSpec = (kind: string): VehicleSpec | null => VEHICLES[kind] ?? null;

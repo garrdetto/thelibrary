@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import { BuildOp, levelBase, LotState } from '../../shared/BuildRules';
 import { CATALOG, footprint } from '../../shared/Catalog';
-import { Account, FUEL_SCALE, VEHICLES } from '../../shared/Economy';
+import { Account, FUEL_SCALE, STARTER_TRUCK, VEHICLES } from '../../shared/Economy';
 import { vehicleRole } from '../../shared/Vehicles';
 import { decodeCells, gameDays } from '../../shared/Mowing';
 import type { ClientMsg, Job, MowStroke, PlayerSnap, ServerMsg, VehicleKind } from '../../shared/Protocol';
@@ -210,7 +210,7 @@ export class Game {
     // Player + starter truck and trailer (the rest of the garage comes out on request).
     this.look = defaultLook('male');
     this.character = new Character(this.physics, new THREE.Vector3(SPAWN.x, 0, SPAWN.z), this.look, scene);
-    const truck = this.addVehicle('truck', new THREE.Vector3(SPAWN.x + 4, 0, 1.8), 0);
+    const truck = this.addVehicle(STARTER_TRUCK, new THREE.Vector3(SPAWN.x + 4, 0, 1.8), 0);
     const trailer = this.addVehicle('trailer', new THREE.Vector3(SPAWN.x - 2, 0, 1.8), 0);
     truck.hitch(trailer);
 
@@ -416,7 +416,7 @@ export class Game {
     const dir = lot.front === '+z' ? 1 : -1;                 // toward the street
     const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
     const yaw = dir > 0 ? -Math.PI / 2 : Math.PI / 2;        // vehicle +X faces the street
-    const truck = this.vehicles.get('truck'), trailer = this.vehicles.get('trailer');
+    const truck = this.vehicles.get(STARTER_TRUCK), trailer = this.vehicles.get('trailer');
     if (truck) {
       truck.unhitch();
       this.placeVehicle(truck, lot.x + 4, frontZ - dir * 4.5, yaw);
@@ -500,7 +500,7 @@ export class Game {
       this.hud.toast(`${VEHICLES[kind].name} is parked next to you`);
     } else {
       for (const [k, v] of this.vehicles) {
-        if (k === 'truck' || k === 'trailer') continue;
+        if (k === STARTER_TRUCK || k === 'trailer') continue;
         if (v === this.driving) this.exitVehicle();
         this.reportFuel();
         v.dispose(this.engine.scene);

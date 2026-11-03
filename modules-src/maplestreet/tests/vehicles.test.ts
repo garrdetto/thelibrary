@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import * as THREE from 'three/webgpu';
 import { BUNDLED_VEHICLES } from '../shared/BundledVehicles';
 import { BRAND_PATTERN, customVehicleKind, CUSTOM_TRAFFIC, DRIVE_TEMPLATES, isValidVehicleRecord, VEHICLE_LIMITS, registerCustomVehicles, type CustomVehicleRecord } from '../shared/CustomVehicles';
-import { newAccount, normalizeAccount, SHOP_ITEMS, VEHICLES } from '../shared/Economy';
+import { newAccount, normalizeAccount, SHOP_ITEMS, STARTER_GARAGE, STARTER_TRUCK, VEHICLES } from '../shared/Economy';
 import { NpcTraffic } from '../shared/Npc';
 import { accelTargetMph, predictDrive, solveDrive } from '../shared/VehicleDrive';
-import { BUILTIN_TUNING, rideHeight, TUNING } from '../shared/Vehicles';
+import { BUILTIN_TUNING, rideHeight, TUNING, vehicleRole } from '../shared/Vehicles';
 import { dynoKind } from '../src/physics/Dyno';
 import { Physics } from '../src/physics/Physics';
 import { Vehicle } from '../src/physics/Vehicle';
@@ -85,7 +85,7 @@ test('published vehicles register with the dealer, garage, physics and traffic',
   assert.equal(TUNING[kind].engineForce, r.physics.engineForce);
   assert.ok(SHOP_ITEMS.dealer.some(i => i.vehicle === kind));
   assert.ok(SHOP_ITEMS.dealer.some(i => i.vehicle === 'coupe'), 'built-ins stay for sale');
-  assert.equal(CUSTOM_TRAFFIC.length, 1);
+  assert.equal(CUSTOM_TRAFFIC.filter(t => t.kind === kind).length, 1);
 
   const npc = new NpcTraffic();
   npc.step(0.1);
@@ -98,7 +98,7 @@ test('published vehicles register with the dealer, garage, physics and traffic',
   registerCustomVehicles([{ ...r, active: false }]);
   assert.ok(!SHOP_ITEMS.dealer.some(i => i.vehicle === kind), 'retired vehicles leave the dealer');
   assert.ok(VEHICLES[kind], 'retired vehicles stay valid for owners');
-  assert.equal(CUSTOM_TRAFFIC.length, 0);
+  assert.equal(CUSTOM_TRAFFIC.filter(t => t.kind === kind).length, 0);
   npc.step(0.1);
   assert.ok(!npc.snapshot().vehicles.some(v => v.kind === kind), 'retired vehicles leave traffic');
 });
@@ -119,7 +119,8 @@ test('bundled vehicles are always on the dealer lot, and a published record can 
     assert.ok(isValidVehicleRecord(b), `${b.id} is a valid record`);
     assert.ok(!BRAND_PATTERN.test(b.name), `${b.name} has no real make or model`);
     const kind = customVehicleKind(b.id);
-    assert.ok(SHOP_ITEMS.dealer.some(i => i.vehicle === kind && i.price === b.dealer.price), `${b.name} is for sale`);
+    if (b.dealer.forSale) assert.ok(SHOP_ITEMS.dealer.some(i => i.vehicle === kind && i.price === b.dealer.price), `${b.name} is for sale`);
+    else assert.ok(STARTER_GARAGE.includes(kind), `${b.name} is either sold or given to every neighbor`);
     assert.ok(TUNING[kind], `${b.name} has tuning`);
     const file = join(process.cwd(), 'public', b.modelUrl);
     assert.ok(statSync(file).size < VEHICLE_LIMITS.modelBytes, `${b.modelUrl} exists and fits the model limit`);
@@ -128,6 +129,33 @@ test('bundled vehicles are always on the dealer lot, and a published record can 
   registerCustomVehicles([{ ...first, active: false }]);
   assert.ok(!SHOP_ITEMS.dealer.some(i => i.vehicle === customVehicleKind(first.id)), 'a published record with the same id wins');
   registerCustomVehicles([]);
+});
+
+test('every new neighbor starts with the Maple Hauler', () => {
+  registerCustomVehicles([]);
+  const acc = newAccount('p2', 'key', 'Neighbor', '#ffffff');
+  assert.equal(STARTER_TRUCK, customVehicleKind('bundled-maple-hauler'));
+  assert.ok(acc.garage.includes(STARTER_TRUCK));
+  assert.equal(acc.fuel[STARTER_TRUCK], VEHICLES[STARTER_TRUCK].tank);
+  assert.equal(vehicleRole(STARTER_TRUCK), 'hauler', 'it can haul deliveries');
+  assert.ok(TUNING[STARTER_TRUCK].hitch, 'it can tow the trailer');
+  assert.ok(!SHOP_ITEMS.dealer.some(i => i.vehicle === STARTER_TRUCK), 'it is not sold at Maple Motors');
+});
+
+test('a bundled vehicle can drive around town as a fleet in several colors', () => {
+  registerCustomVehicles([]);
+  const kind = customVehicleKind('bundled-lakeshore-coupe');
+  const fleet = CUSTOM_TRAFFIC.filter(t => t.kind === kind);
+  assert.equal(fleet.length, 6);
+  assert.equal(new Set(fleet.map(t => t.paint)).size, 6, 'each car has its own color');
+  const npc = new NpcTraffic();
+  npc.step(0.1);
+  const cars = npc.snapshot().vehicles.filter(v => v.kind === kind);
+  assert.equal(cars.length, 6);
+  assert.equal(new Set(cars.map(v => v.id)).size, 6);
+  assert.ok(cars.every(v => /^#[0-9a-f]{6}$/.test(v.paint ?? '')), 'snapshots carry the paint');
+  const spread = cars.map(v => `${Math.round(v.x)},${Math.round(v.z)}`);
+  assert.equal(new Set(spread).size, 6, 'no two start on the same spot');
 });
 
 test('bundled vehicles reach their dyno targets', async () => {

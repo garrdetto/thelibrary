@@ -31,6 +31,8 @@ export interface VehicleSnap {
   steer: number;
   speed: number;
   hitchedTo: string | null;
+  /** Body color ("#rrggbb") for neighbor traffic painted differently from its model's default. */
+  paint?: string;
 }
 
 export interface Job {

@@ -154,7 +154,7 @@ const STOP_WAIT = 1.4;        // seconds parked at the line
 const FOLLOW_GAP = 9;         // metres kept to whatever is ahead in the lane
 const LOOKAHEAD = 45;
 
-interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look }
+interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look; paint?: string }
 interface Walker { id: string; name: string; color: string; route: Walk; s: number; speed: number; look?: Look }
 
 const driver = (id: string, name: string, kind: VehicleKind, route: Path, s: number, speed: number): Driver =>
@@ -199,12 +199,15 @@ export class NpcTraffic {
     const old = new Map(this.drivers.slice(this.builtinDrivers).map(d => [d.id, d]));
     const next: Driver[] = [];
     for (const t of CUSTOM_TRAFFIC) {
-      const id = `npc-custom-${t.id.slice(0, 8)}`;
+      // The first driver keeps the original id so existing worlds see the same car.
+      const id = t.n ? `npc-custom-${t.id.slice(0, 8)}-${t.n}` : `npc-custom-${t.id.slice(0, 8)}`;
       const route = ROUTES[t.route];
       const prev = old.get(id);
-      if (prev && prev.kind === t.kind && prev.route === route) { prev.speed = t.speed; prev.name = t.driver; next.push(prev); continue; }
-      const seed = hashSeed(t.id);
-      const d: Driver = { ...driver(id, t.driver, t.kind, route, (seed % 1000) / 1000 * route.len, t.speed), look: npcLook(seed % 2 ? 'female' : 'male', 20 + (seed % 997)) };
+      if (prev && prev.kind === t.kind && prev.route === route) { prev.speed = t.speed; prev.name = t.driver; prev.paint = t.paint; next.push(prev); continue; }
+      const seed = hashSeed(t.n ? `${t.id}#${t.n}` : t.id);
+      // Spread a fleet sharing one route evenly around it.
+      const start = ((hashSeed(t.id) % 1000) / 1000 + t.n / t.count) % 1;
+      const d: Driver = { ...driver(id, t.driver, t.kind, route, start * route.len, t.speed), look: npcLook(seed % 2 ? 'female' : 'male', 20 + (seed % 997)), ...(t.paint ? { paint: t.paint } : {}) };
       this.place(d);
       next.push(d);
     }
@@ -294,7 +297,7 @@ export class NpcTraffic {
       // yaw about +Y, then roll about the car's own forward (+X) axis.
       const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2), cr = Math.cos(d.roll / 2), sr = Math.sin(d.roll / 2);
       const vid = `${d.id}:${d.kind}`;
-      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: d.x, y, z: d.z, qx: cy * sr, qy: sy * cr, qz: -sy * sr, qw: cy * cr, steer: d.steer, speed: d.v, hitchedTo: null });
+      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: d.x, y, z: d.z, qx: cy * sr, qy: sy * cr, qz: -sy * sr, qw: cy * cr, steer: d.steer, speed: d.v, hitchedTo: null, ...(d.paint ? { paint: d.paint } : {}) });
       players.push({ id: d.id, name: d.name, color: '#888888', x: d.x, y, z: d.z, yaw: 0, speed: 0, vehicleId: vid, look: d.look });
     }
     for (const w of this.walkers) {

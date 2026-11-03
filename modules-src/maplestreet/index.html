@@ -35,7 +35,7 @@
     #start .row { display: flex; gap: 12px; align-items: end; }
     #start .row > div:first-child { flex: 1; }
     #start .primary { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--accent); color: #1b1406; font-weight: 700; font-size: 15px; }
-    #start.dev .card > :is(#playSolo, small, label:not(#bodyLabel):not([for]), .row.join, details) { display: none; }
+    #start.dev .card > :is(small, label:not(#bodyLabel):not([for]), .row.join, details) { display: none; }
     #start.dev #playWorld { background: #f2b544; }
     #start .dev-note { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px dashed rgba(242,181,68,0.6); color: var(--ink); font-size: 13px; line-height: 1.45; }
     #devBadge { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 12px; border-radius: 999px; background: rgba(242,181,68,0.92); color: #1b1406; font: 700 12px/1.6 system-ui, sans-serif; letter-spacing: 0.06em; pointer-events: none; }
@@ -259,14 +259,8 @@
     <div class="card panel">
       <h1>Maple Street</h1>
       <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank in one shared, always-open neighborhood.</p>
-      <label id="pNameLabel" for="pName">Playing as</label>
-      <output id="pName" class="name-lock" aria-live="polite"></output>
-      <small id="pNameNote"></small>
-      <button id="playWorld" class="primary">Enter Maple Street</button>
-      <small>The open world everyone shares. Come and go whenever you like: your lot, house, money and loan stay exactly as you left them, and you start back on your own driveway.</small>
-      <button id="playSolo" class="btn wide">Solo mode — unlimited money</button>
-      <small>A private neighborhood that runs on this device with a bottomless bank account. Build anything you like.</small>
-      <div id="startStatus" role="status" aria-live="polite"></div>
+      <div id="startStatus" role="status" aria-live="polite">Walking over to Maple Street…</div>
+      <button id="playWorld" class="primary" hidden>Enter Maple Street</button>
     </div>
   </div>
 
