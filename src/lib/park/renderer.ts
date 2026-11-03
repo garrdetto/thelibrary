@@ -1,12 +1,12 @@
 import { Gl, MeshBuilder, InstanceList, mat4, hexColor } from './gl'
 import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
-import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
+import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, queueSignModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
 import { personCuller } from './culling'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel, WATER_RIDE_TINTS } from './waterRides'
 import { hotelModel, hotelLook } from './hotelModels'
-import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
 const TILE = 4
@@ -85,7 +85,7 @@ export class ParkRenderer {
       inst(stallKey(kind, size), stallModel(kind, size))
       if (kind === 'toilet') inst(stallKey(kind, [1, 1]), stallModel(kind, [1, 1]))
     }
-    inst('gate', gateModel())
+    inst('gate', gateModel()); inst('queueSign', queueSignModel())
     inst('bench', benchModel()); inst('bin', binModel()); inst('lampPost', lampPostModel()); inst('lampHead', lampHeadModel()); inst('litter', litterModel())
     const rain = new MeshBuilder(); rain.box(null, 0, 0, 0, 0.03, 0.03, 0.9, hexColor('#b8d4ee')); inst('rain', rain)
     const entrance = parkEntranceModel(); this.kindMeshes.set('parkEntrance', this.g.upload(entrance))
@@ -291,7 +291,7 @@ export class ParkRenderer {
       const size = def.size ?? [1, 1]
       return kind === 'toilet' ? [stallKey(kind, [1, 1]), stallKey(kind, size)] : [stallKey(kind, size)]
     })
-    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'bench', 'bin', 'lampPost', 'lampHead']) this.list(key).clear()
+    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'queueSign', 'bench', 'bin', 'lampPost', 'lampHead']) this.list(key).clear()
     for (const e of Object.values(s.entities)) {
       const cx = (e.x + 0.5) * TILE, cy = (e.y + 0.5) * TILE, z = groundHeightAt(map, cx, cy, TILE)
       if (e.type === 'scenery') {
@@ -306,6 +306,16 @@ export class ParkRenderer {
       } else if (e.type === 'gate') {
         const col = e.role === 'entrance' ? hexColor('#3fae5c') : hexColor('#d8432f')
         this.list('gate').push(cx, cy, Math.max(...tileCorners(map, e.x, e.y)), (e.dir ?? 0) * Math.PI / 2, col[0], col[1], col[2], 1)
+      } else if (e.type === 'ride' && e.entrance) {
+        // Overhead sign where the entrance queue meets the footpath. Exits get none.
+        const line = queueLine(s, e)
+        if (line.entry && line.join && !line.direct) {
+          const [ex, ey] = line.entry, d = DIRS.findIndex(([dx, dy]) => dx === line.join![0] - ex && dy === line.join![1] - ey)
+          if (d >= 0) {
+            const sx = (ex + 0.5) * TILE, sy = (ey + 0.5) * TILE, col = hexColor('#3fae5c')
+            this.list('queueSign').push(sx, sy, pathHeightAt(map, sx + DIRS[d][0] * TILE * 0.42, sy + DIRS[d][1] * TILE * 0.42, TILE), d * Math.PI / 2, col[0], col[1], col[2], 1)
+          }
+        }
       }
     }
     for (let i = 0; i < map.pathAdd.length; i++) {
@@ -318,7 +328,7 @@ export class ParkRenderer {
       if (add === 2) this.list('bin').push(cx, cy, z, yaw, 1, 1, 1)
       if (add === 3) { this.list('lampPost').push(cx, cy, z, 0, 1, 1, 1); this.list('lampHead').push(cx, cy, z, 0, 1, 1, 1) }
     }
-    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'bench', 'bin', 'lampPost', 'lampHead']) { const l = this.list(key); this.g.setInstances(this.kindMeshes.get(key) ?? null, l.data, l.count) }
+    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'queueSign', 'bench', 'bin', 'lampPost', 'lampHead']) { const l = this.list(key); this.g.setInstances(this.kindMeshes.get(key) ?? null, l.data, l.count) }
     this.builtStruct = s.structVersion
     this.builtLitter = ''
   }
@@ -607,7 +617,7 @@ export class ParkRenderer {
       g.drawInstanced(this.kindMeshes.get(stallKey(kind, size)) ?? null)
       if (kind === 'toilet') g.drawInstanced(this.kindMeshes.get(stallKey(kind, [1, 1])) ?? null)
     }
-    for (const key of ['gate', 'bench', 'bin', 'lampPost', 'litter']) g.drawInstanced(this.kindMeshes.get(key) ?? null)
+    for (const key of ['gate', 'queueSign', 'bench', 'bin', 'lampPost', 'litter']) g.drawInstanced(this.kindMeshes.get(key) ?? null)
     g.drawInstanced(this.kindMeshes.get('lampHead') ?? null, { emissive: night ? 2.5 : 0.2 })
     for (const e of Object.values(s.entities)) {
       if (e.type === 'parkEntrance') {

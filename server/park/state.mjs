@@ -459,6 +459,7 @@ function sanitizeGuest(g, state) {
     items: Array.isArray(g.items) ? g.items.filter(item => typeof item === 'string').slice(0, 6) : [], eating: num(g.eating, 0, 0, 60), rides: Math.round(num(g.rides, 0, 0)), ridden: Array.isArray(g.ridden) ? g.ridden.slice(-8).map(v => Math.round(num(v))) : [],
     thoughts: Array.isArray(g.thoughts) ? g.thoughts.slice(-5).filter(t => typeof t === 'string').map(t => t.slice(0, 80)) : [], inPark: num(g.inPark, 0, 0), stay: num(g.stay, 400, 60, 2000), patience: num(g.patience, 90, 20, 400),
     queueTime: 0, ride: Math.round(num(g.ride, 0, 0)), stuck: 0, lastDecide: 0, kid: Boolean(g.kid),
+    exitRide: Math.round(num(g.exitRide, 0, 0)), exitStep: Math.round(num(g.exitStep, 0, 0, 400)),
   }
 }
 

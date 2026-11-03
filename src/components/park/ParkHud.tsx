@@ -22,7 +22,7 @@ type Tool =
   | { kind: 'surface'; surface: number; size: number }
   | { kind: 'buyLand' }
   | { kind: 'path'; path: 1 | 2 | 3 | 4; elevation: number }
-  | { kind: 'pathBuilder'; path: 1 | 2 | 4; segment: PathSegment }
+  | { kind: 'pathBuilder'; path: 1 | 2 | 4; segment: PathSegment; turn: -1 | 0 | 1 }
   | { kind: 'pathPaint' }
   | { kind: 'unpath' }
   | { kind: 'pathAdd'; add: number }
@@ -40,6 +40,15 @@ type RideTab = 'All' | 'Gentle' | 'Thrill' | 'Water' | 'Other'
 type Selection = null | { kind: 'entity' | 'guest' | 'staff'; id: number }
 type Toast = { id: number; text: string; kind: 'error' | 'info' | 'warn' }
 type PathSegment = 'level' | 'up' | 'down' | 'stairs-up' | 'stairs-down'
+type PathBuild = { x: number; y: number; deck: number; dir: number; placed: boolean; trail: { x: number; y: number; deck: number; dir: number; placed: boolean }[] }
+const PATH_TURNS = [{ turn: -1, label: 'Turn left' }, { turn: 0, label: 'Straight' }, { turn: 1, label: 'Turn right' }] as const
+const PATH_SECTIONS = [
+  { segment: 'stairs-down', label: 'Stairs down', icon: 'M3 6h4v4h4v4h4v4h6' },
+  { segment: 'down', label: 'Slope down', icon: 'M3 8 L21 16' },
+  { segment: 'level', label: 'Flat', icon: 'M3 12 L21 12' },
+  { segment: 'up', label: 'Slope up', icon: 'M3 16 L21 8' },
+  { segment: 'stairs-up', label: 'Stairs up', icon: 'M3 18h6v-4h4v-4h4V6h4' },
+] as const
 
 const SURFACE_NAMES = ['Grass', 'Sand', 'Dirt', 'Rock', 'Snow']
 
@@ -119,8 +128,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [guestInfo, setGuestInfo] = useState<GuestInfo | null>(null)
   const [grid, setGrid] = useState(false)
   const [pathColor, setPathColor] = useState('#cdbb93')
-  const [pathElevation, setPathElevation] = useState(0)
-  const [pathBuild, setPathBuild] = useState<{ x: number; y: number; deck: number } | null>(null)
+  const [pathBuild, setPathBuild] = useState<PathBuild | null>(null)
   const [rideCam, setRideCam] = useState<number | null>(null)
   const [hover, setHover] = useState<{ x: number; y: number } | null>(null)
   const [chatText, setChatText] = useState('')
@@ -266,7 +274,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     return true
   }
 
-  function pathBuilderTarget(t: Extract<Tool, { kind: 'pathBuilder' }>, x: number, y: number) {
+  function pathBuilderTarget(t: Extract<Tool, { kind: 'pathBuilder' }>, x: number, y: number, from: PathBuild | null = pathBuild) {
     const map = state.map
     if (!inMap(map, x, y)) return { elevation: 0, deck: 0, path: t.path, ok: false, anchor: false }
     const index = tileIndex(map, x, y)
@@ -280,13 +288,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       }
     }
     if (map.owner[index] !== session.park || map.obj[index]) return { elevation: 0, deck: 0, path: t.path, ok: false, anchor: false }
-    if (pathBuild && Math.abs(x - pathBuild.x) + Math.abs(y - pathBuild.y) !== 1) return { elevation: 0, deck: 0, path: t.path, ok: false, anchor: false }
+    if (from && Math.abs(x - from.x) + Math.abs(y - from.y) !== 1) return { elevation: 0, deck: 0, path: t.path, ok: false, anchor: false }
 
     const base = Math.max(tileMax(map, x, y), map.water[index] >= 0 ? map.water[index] + 0.1 : -Infinity)
     const segmentRise = t.segment === 'up' ? 0.5 : t.segment === 'down' ? -0.5 : t.segment === 'stairs-up' ? 1 : t.segment === 'stairs-down' ? -1 : 0
-    let targetDeck = pathBuild ? pathBuild.deck + segmentRise : groundHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
+    let targetDeck = from ? from.deck + segmentRise : groundHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
 
-    if (!pathBuild) {
+    if (!from) {
       if (map.water[index] >= 0 && t.path !== 4) targetDeck = base + 0.5
       for (const [dx, dy] of DIRS) {
         const nx = x + dx, ny = y + dy
@@ -316,8 +324,13 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       const d = drag.current
       const brush = 'size' in t ? t.size : 1
       if (['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'pathAdd', 'demolish', 'buyLand'].includes(t.kind)) {
-        if (t.kind === 'pathBuilder') {
-          const target = pathBuilderTarget(t, hit.x, hit.y)
+        if (t.kind === 'pathBuilder' && d.button === 0 && d.start && (d.start.x !== hit.x || d.start.y !== hit.y)) {
+          // Quick draw: dragging with the path tool lays a straight run on the ground.
+          const dx = Math.abs(hit.x - d.start.x), dy = Math.abs(hit.y - d.start.y)
+          p.rect = dx >= dy ? { x0: d.start.x, y0: d.start.y, x1: hit.x, y1: d.start.y, elevation: 0, ok: true } : { x0: d.start.x, y0: d.start.y, x1: d.start.x, y1: hit.y, elevation: 0, ok: true }
+        } else if (t.kind === 'pathBuilder') {
+          const adjacent = pathBuild && Math.abs(hit.x - pathBuild.x) + Math.abs(hit.y - pathBuild.y) === 1
+          const target = pathBuilderTarget(t, hit.x, hit.y, adjacent ? pathBuild : null)
           p.rect = { x0: hit.x, y0: hit.y, x1: hit.x, y1: hit.y, elevation: target.elevation, ok: target.ok }
         } else if (d.button === 0 && d.start && t.kind !== 'pathAdd' && t.kind !== 'demolish') {
           if (t.kind === 'path') {
@@ -402,20 +415,19 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
         setPendingLand({ area, count: plan.tiles.length, cost: plan.cost })
         break
       }
-      case 'terrain': if (rect) await run({ t: 'terrain', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
+      case 'terrain': if (rect) await run({ t: 'terrain', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1, sx: d.start?.x ?? hit.x, sy: d.start?.y ?? hit.y }); break
       case 'water': if (rect) await run({ t: 'water', op: t.op, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'surface': if (rect) await run({ t: 'surface', surface: t.surface, x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'path': if (rect) await run({ t: 'path', kind: t.path, elevation: t.elevation, color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
       case 'pathBuilder': {
-        const target = pathBuilderTarget(t, hit.x, hit.y)
-        if (!target.ok) { toast(pathBuild ? 'Choose an adjacent tile at a reachable height.' : 'Choose a clear tile on land your park owns.', 'error'); break }
-        if (target.anchor) {
-          setPathBuild({ x: hit.x, y: hit.y, deck: target.deck })
-          toast(`Path builder anchored at ${hit.x + 1}, ${hit.y + 1}.`)
+        if (rect && (rect.x0 !== rect.x1 || rect.y0 !== rect.y1)) {
+          const res = await run({ t: 'path', kind: t.path, elevation: 0, color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 })
+          if (res.ok) { setPathBuild(null); if (res.warning) toast(res.warning, 'warn') }
           break
         }
-        const result = await run({ t: 'path', kind: target.path, elevation: target.elevation, color: Number.parseInt(pathColor.slice(1), 16), x0: hit.x, y0: hit.y, x1: hit.x, y1: hit.y })
-        if (result.ok) setPathBuild({ x: hit.x, y: hit.y, deck: target.deck })
+        const adjacent = pathBuild && Math.abs(hit.x - pathBuild.x) + Math.abs(hit.y - pathBuild.y) === 1
+        // A click away from the builder's end starts a new run there.
+        await placePathPiece(t, hit.x, hit.y, adjacent ? pathBuild : null)
         break
       }
       case 'pathPaint': if (rect) await run({ t: 'pathPaint', color: Number.parseInt(pathColor.slice(1), 16), x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: rect.y1 }); break
@@ -519,16 +531,81 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     setTool(t => 'rot' in t ? { ...t, rot: (t.rot + 1) % 4 } as Tool : t.kind === 'coaster' ? { ...t, dir: (t.dir + 1) % 4 } : t)
   }
 
-  function adjustPathElevation(delta: number) {
-    const elevation = Math.max(0, Math.min(24, pathElevation + delta))
-    setPathElevation(elevation)
-    setTool(current => current.kind === 'path' ? { ...current, elevation } : current)
-  }
-
   function startPathBuilder(path: 1 | 2 | 4 = 1) {
     const current = toolRef.current
     setPathBuild(current.kind === 'pathBuilder' ? pathBuild : null)
-    setTool({ kind: 'pathBuilder', path, segment: current.kind === 'pathBuilder' ? current.segment : 'level' })
+    setTool({ kind: 'pathBuilder', path, segment: current.kind === 'pathBuilder' ? current.segment : 'level', turn: current.kind === 'pathBuilder' ? current.turn : 0 })
+  }
+
+  // The tile the next builder piece goes on, coaster-style: straight ahead or
+  // turned left/right from the direction the path is heading.
+  function pathNextTile(build: PathBuild, turn: number) {
+    // Same handedness as the coaster builder: a right turn is dir + 3.
+    const dir = (build.dir - turn + 4) % 4
+    return { x: build.x + DIRS[dir][0], y: build.y + DIRS[dir][1], dir }
+  }
+
+  // Direction a path heads when the builder picks it up: away from the path it
+  // joins, or straight ahead if it stands alone.
+  function pathHeading(x: number, y: number) {
+    const map = state.map
+    for (let d = 0; d < 4; d++) {
+      const nx = x - DIRS[d][0], ny = y - DIRS[d][1]
+      if (inMap(map, nx, ny) && map.path[tileIndex(map, nx, ny)]) {
+        const ax = x + DIRS[d][0], ay = y + DIRS[d][1]
+        if (!inMap(map, ax, ay) || !map.path[tileIndex(map, ax, ay)]) return d
+      }
+    }
+    return 0
+  }
+
+  async function placePathPiece(t: Extract<Tool, { kind: 'pathBuilder' }>, x: number, y: number, prev: PathBuild | null = pathBuild) {
+    const target = pathBuilderTarget(t, x, y, prev)
+    if (!target.ok) { toast(prev ? 'The next section cannot go there. Try another section or direction.' : 'Choose a clear tile on land your park owns.', 'error'); return }
+    const dir = prev && Math.abs(x - prev.x) + Math.abs(y - prev.y) === 1 ? DIRS.findIndex(([dx, dy]) => dx === x - prev.x && dy === y - prev.y) : pathHeading(x, y)
+    const trail = prev ? [...prev.trail, { x: prev.x, y: prev.y, deck: prev.deck, dir: prev.dir, placed: prev.placed }].slice(-200) : []
+    if (target.anchor) {
+      setPathBuild({ x, y, deck: target.deck, dir: prev ? dir : pathHeading(x, y), placed: false, trail: prev ? trail : [] })
+      if (!prev) toast(`Building from the path at ${x + 1}, ${y + 1}.`)
+      return
+    }
+    const result = await run({ t: 'path', kind: target.path, elevation: target.elevation, color: Number.parseInt(pathColor.slice(1), 16), x0: x, y0: y, x1: x, y1: y })
+    if (result.ok) setPathBuild({ x, y, deck: target.deck, dir, placed: true, trail })
+  }
+
+  async function buildNextPath() {
+    const t = toolRef.current
+    if (t.kind !== 'pathBuilder' || !pathBuild) return
+    const next = pathNextTile(pathBuild, t.turn)
+    await placePathPiece(t, next.x, next.y)
+  }
+
+  async function removeLastPath() {
+    if (!pathBuild) return
+    if (pathBuild.placed) {
+      const res = await run({ t: 'unpath', x0: pathBuild.x, y0: pathBuild.y, x1: pathBuild.x, y1: pathBuild.y })
+      if (!res.ok) return
+    }
+    const last = pathBuild.trail[pathBuild.trail.length - 1]
+    setPathBuild(last ? { ...last, trail: pathBuild.trail.slice(0, -1) } : null)
+  }
+
+  async function finishPath() {
+    const t = toolRef.current
+    if (t.kind !== 'pathBuilder' || !pathBuild) return
+    setFinishing(true)
+    try {
+      const res = await run({ t: 'pathFinish', x: pathBuild.x, y: pathBuild.y, dir: (pathBuild.dir - t.turn + 4) % 4, kind: t.path, color: Number.parseInt(pathColor.slice(1), 16) })
+      if (res.ok) { toast(`Path finished down to the ground with ${res.pieces ?? 0} new sections for ${money(res.cost ?? 0)}.`); setPathBuild(null) }
+    } finally { setFinishing(false) }
+  }
+
+  function choosePathOrBuild(next: { segment?: PathSegment; turn?: -1 | 0 | 1 }) {
+    const t = toolRef.current
+    if (t.kind !== 'pathBuilder') return
+    const segment = next.segment ?? t.segment, turn = next.turn ?? t.turn
+    if (pathBuild && segment === t.segment && turn === t.turn) { void buildNextPath(); return }
+    setTool({ ...t, segment, turn })
   }
 
   useEffect(() => {
@@ -737,41 +814,21 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     </Window>}
 
     {panel === 'paths' && <Window title="Footpaths" onClose={() => togglePanel('paths')}>
-      <p className="pk-label">Path builder</p>
+      <p className="pk-label">Path type</p>
       <div className="pk-chips">
         <button className={tool.kind === 'pathBuilder' && tool.path === 1 ? 'on' : ''} onClick={() => startPathBuilder(1)}>Footpath · {money(12)}</button>
         <button className={tool.kind === 'pathBuilder' && tool.path === 2 ? 'on' : ''} onClick={() => startPathBuilder(2)}>Queue line · {money(14)}</button>
         <button className={tool.kind === 'pathBuilder' && tool.path === 4 ? 'on' : ''} onClick={() => startPathBuilder(4)}>Boardwalk · {money(24)}</button>
       </div>
-      {tool.kind === 'pathBuilder' && <>
-        <div className="pk-chips pk-path-segments" role="group" aria-label="Path section">
-          {([
-            ['level', 'Level'],
-            ['up', 'Ramp up · +0.5m'],
-            ['down', 'Ramp down · −0.5m'],
-            ['stairs-up', 'Stairs up · +1m'],
-            ['stairs-down', 'Stairs down · −1m'],
-          ] as const).map(([segment, label]) => <button key={segment} className={tool.segment === segment ? 'on' : ''} onClick={() => setTool({ ...tool, segment })}>{label}</button>)}
-        </div>
-        <p className="pk-hint">{pathBuild ? `Continue from ${pathBuild.x + 1}, ${pathBuild.y + 1} · ${pathBuild.deck.toFixed(1)}m. Click the next adjacent tile; its height is calculated for you.` : 'Click an existing path to continue from it, or click a clear tile to start at ground level. Then place sections on adjacent tiles.'}</p>
-        <button className="pk-btn" onClick={() => { setPathBuild(null); setTool({ kind: 'select' }); if (rendererRef.current) rendererRef.current.preview = {} }}>Done building</button>
-      </>}
+      <p className="pk-hint">Drag to quick-draw a straight path on the ground. Click a path, or a clear tile, to start the builder for stairs and raised walkways: each section joins the one before it.</p>
       <div className="pk-chips">
-        <button className={tool.kind === 'path' ? 'on' : ''} onClick={() => { setPathBuild(null); setTool({ kind: 'path', path: 1, elevation: pathElevation }) }}>Quick draw</button>
-        {tool.kind === 'path' && <>
-          <button className={tool.path === 1 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 1 })}>Footpath</button>
-          <button className={tool.path === 2 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 2 })}>Queue line</button>
-          <button className={tool.path === 3 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 3 })}>Stairs</button>
-          <button className={tool.path === 4 ? 'on' : ''} onClick={() => setTool({ ...tool, path: 4 })}>Boardwalk</button>
-        </>}
-        <button className={tool.kind === 'unpath' ? 'on' : ''} onClick={() => setTool({ kind: 'unpath' })}><Eraser size={13} /> Remove</button>
+        <button className={tool.kind === 'unpath' ? 'on' : ''} onClick={() => { setPathBuild(null); setTool({ kind: 'unpath' }) }}><Eraser size={13} /> Remove</button>
       </div>
-      {tool.kind === 'path' && <div className="pk-size"><span>Quick draw height</span><button onClick={() => adjustPathElevation(-1)} aria-label="Lower path"><Minus size={14} /></button><strong>{(pathElevation * 0.5).toFixed(1)}m above ground</strong><button onClick={() => adjustPathElevation(1)} aria-label="Raise path"><Plus size={14} /></button></div>}
       <label className="pk-path-color"><span>Footpath color</span><input type="color" value={pathColor} onChange={event => setPathColor(event.target.value)} /></label>
       <div className="pk-chips"><button className={tool.kind === 'pathPaint' ? 'on' : ''} onClick={() => setTool({ kind: 'pathPaint' })}>Recolor existing paths</button></div>
       <p className="pk-label">Path furniture</p>
       <div className="pk-chips">{Object.entries(PATH_ADDITIONS).map(([id, a]) => <button key={id} className={tool.kind === 'pathAdd' && tool.add === Number(id) ? 'on' : ''} onClick={() => setTool({ kind: 'pathAdd', add: Number(id) })}>{a.name} · {money(a.cost)}</button>)}</div>
-      <p className="pk-hint">The builder follows the heights of connected path sections, so you do not need to set elevations manually. Raised paths can cross scenery, rides, and track when there is enough clearance. Boardwalks can cross water. Queue lines connect to ride entrances.</p>
+      <p className="pk-hint">Raised paths can cross scenery, rides, and track when there is enough clearance. Boardwalks can cross water. Queue lines connect to ride entrances and exits.</p>
     </Window>}
 
     {panel === 'rides' && <Window title="Build a ride" onClose={() => togglePanel('rides')} wide>
@@ -906,6 +963,20 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       </>}
       {!viewOnly && <div className="pk-actions"><button className="pk-btn pk-btn-danger" onClick={() => { void run({ t: 'fire', id: staffMember.id }, 'Staff member let go.'); setSelection(null) }}>Fire</button></div>}
     </Window>}
+
+    {tool.kind === 'pathBuilder' && pathBuild && !viewOnly && (() => {
+      const next = pathNextTile(pathBuild, tool.turn)
+      const target = pathBuilderTarget(tool, next.x, next.y)
+      const cost = { 1: 12, 2: 14, 3: 18, 4: 24 }[target.path] ?? 12
+      const name = tool.path === 2 ? 'Queue line' : tool.path === 4 ? 'Boardwalk' : 'Footpath'
+      return <section className="pk-builder" aria-label="Path builder">
+        <header><strong><Footprints size={14} /> {name} builder · {pathBuild.deck.toFixed(1)}m</strong><button aria-label="Close path builder" onClick={() => setPathBuild(null)}><X size={16} /></button></header>
+        <div className="pk-builder-row pk-builder-row-3" role="group" aria-label="Direction">{PATH_TURNS.map(c => <button key={c.turn} className={tool.turn === c.turn ? 'on' : ''} onClick={() => choosePathOrBuild({ turn: c.turn })} title={tool.turn === c.turn ? `${c.label} · click again to build` : c.label}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={c.turn === 0 ? 'M12 21V3' : `M12 21 V10 Q12 6 ${12 + c.turn * 4} 6 H${12 + c.turn * 9}`} stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" /></svg><span>{c.label}</span></button>)}</div>
+        <div className="pk-builder-row" role="group" aria-label="Section">{PATH_SECTIONS.map(sec => <button key={sec.segment} className={tool.segment === sec.segment ? 'on' : ''} onClick={() => choosePathOrBuild({ segment: sec.segment })} title={tool.segment === sec.segment ? `${sec.label} · click again to build` : sec.label}><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d={sec.icon} stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round" /></svg><span>{sec.label}</span></button>)}</div>
+        <p className={`pk-builder-status ${target.ok ? 'ok' : 'bad'}`}>{target.ok ? target.anchor ? 'This joins an existing path.' : `Next section ${target.deck.toFixed(1)}m · Cost ${money(cost)}` : 'The next section cannot go there. Try another section or direction.'}</p>
+        <div className="pk-actions"><button className="pk-btn" disabled={!pathBuild.placed && !pathBuild.trail.length} onClick={() => void removeLastPath()}><Undo2 size={14} /> Remove last</button><button className="pk-btn" disabled={finishing || pathBuild.deck <= groundHeightAt(state.map, (pathBuild.x + 0.5) * TILE, (pathBuild.y + 0.5) * TILE, TILE) + 0.05} onClick={() => void finishPath()}>{finishing ? <LoaderCircle className="spin" size={14} /> : <Sparkles size={14} />} Auto-finish</button><button className="pk-btn pk-btn-go" disabled={!target.ok} onClick={() => void buildNextPath()}><Check size={14} /> Build piece</button></div>
+      </section>
+    })()}
 
     {builder && builderRide && !builderRide.complete && <section className="pk-builder" aria-label="Track builder">
       <header><strong><Wrench size={14} /> {builderRide.name}</strong><button aria-label="Close builder" onClick={() => setBuilder(null)}><X size={16} /></button></header>

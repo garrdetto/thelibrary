@@ -341,6 +341,17 @@ export function gateModel(): MeshBuilder {
   return b
 }
 
+// Overhead sign over the start of a ride's queue line, where it meets the
+// footpath. Local +x faces the footpath; the board takes the instance tint.
+export function queueSignModel(): MeshBuilder {
+  const b = new MeshBuilder()
+  for (const y of [-1.75, 1.75]) b.box(null, 1.75, y, 0, 0.22, 0.22, 3.4, C.dark)
+  b.box(null, 1.75, 0, 3.2, 0.26, 3.72, 0.2, C.dark)
+  b.box(null, 1.75, 0, 2.55, 0.16, 2.6, 0.62, C.white, 1)
+  for (const x of [1.66, 1.84]) b.box(null, x, 0, 2.66, 0.03, 2.1, 0.36, C.cream)
+  return b
+}
+
 export function parkEntranceModel(): MeshBuilder {
   const b = new MeshBuilder()
   for (const x of [-6.5, 6.5]) {
