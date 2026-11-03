@@ -1,8 +1,23 @@
 /**
- * Other players and their vehicles, rendered ~120 ms in the past and
- * interpolated between authority snapshots (classic entity interpolation —
- * smooth at 15 Hz updates regardless of jitter). Remote vehicles also get a
- * kinematic collider so your truck physically bumps into your neighbor's.
+ * Other players, neighbor traffic and their vehicles, rendered ~120 ms in the
+ * past and interpolated between authority snapshots (classic entity
+ * interpolation, smooth at 15 Hz updates regardless of jitter).
+ *
+ * Every remote vehicle is first of all data: a snapshot buffer the authority
+ * keeps filling (NpcTraffic in shared/Npc.ts simulates neighbor traffic for
+ * the whole town on the host, whether or not anyone can see it). Only
+ * vehicles within VEHICLE_SPAWN_R of the player get a view: the 3D shell,
+ * wheels, lights and a kinematic collider so your truck bumps into theirs.
+ * Past VEHICLE_DESPAWN_R the view goes back to a per-kind pool (removed from
+ * the scene, collider disabled), so it costs no draw calls, no shadow work
+ * and no physics. When the vehicle comes back into range a pooled view is
+ * placed at the exact interpolated position, heading, steering and speed the
+ * snapshots give for that moment, so it picks up mid-motion.
+ *
+ * Neighbor walkers and drivers (ids starting with `npc-`) are virtual the same
+ * way: their avatar is created the first time one is near, and taken out of
+ * the scene (and out of skeletal animation) while far away or while their car
+ * is virtual. Real players on foot are always drawn.
  */
 import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
@@ -15,6 +30,17 @@ import { MASK, Physics } from '../physics/Physics';
 import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
 
 const INTERP_DELAY_MS = 120;
+/** Vehicles get a 3D view inside this radius (m) and lose it past the despawn radius. */
+export const VEHICLE_SPAWN_R = 200;
+export const VEHICLE_DESPAWN_R = 240;
+/** Neighbor walkers, same idea; people are small, so the radius is shorter. */
+export const WALKER_SPAWN_R = 110;
+export const WALKER_DESPAWN_R = 140;
+const V_SPAWN2 = VEHICLE_SPAWN_R ** 2, V_DESPAWN2 = VEHICLE_DESPAWN_R ** 2;
+const W_SPAWN2 = WALKER_SPAWN_R ** 2, W_DESPAWN2 = WALKER_DESPAWN_R ** 2;
+
+/** The two snapshots bracketing a render time, and how far between them it is. Reused, never reallocated. */
+interface Sample<T> { a: T; b: T; k: number }
 
 class SnapBuffer<T extends { x: number; y: number; z: number }> {
   private buf: { t: number; s: T }[] = [];
@@ -23,27 +49,39 @@ class SnapBuffer<T extends { x: number; y: number; z: number }> {
     this.buf.push({ t, s });
     if (this.buf.length > 30) this.buf.shift();
   }
-  /** Returns [a, b, alpha] bracketing render time t. */
-  sample(t: number): [T, T, number] | null {
+  /** Fills `out` with the snapshots bracketing render time t. False when nothing has arrived yet. */
+  sample(t: number, out: Sample<T>): boolean {
     const b = this.buf;
-    if (!b.length) return null;
-    if (t <= b[0].t) return [b[0].s, b[0].s, 0];
+    if (!b.length) return false;
+    if (t <= b[0].t) { out.a = out.b = b[0].s; out.k = 0; return true; }
     for (let i = b.length - 1; i > 0; i--) {
       if (b[i - 1].t <= t) {
         const span = b[i].t - b[i - 1].t || 1;
-        return [b[i - 1].s, b[i].s, Math.min(1, (t - b[i - 1].t) / span)];
+        out.a = b[i - 1].s; out.b = b[i].s; out.k = Math.min(1, (t - b[i - 1].t) / span);
+        return true;
       }
     }
-    const last = b[b.length - 1].s;
-    return [last, last, 0];
+    out.a = out.b = b[b.length - 1].s; out.k = 0;
+    return true;
   }
-  get latest() { return this.buf[this.buf.length - 1]?.s ?? null; }
+  get latest() { return this.buf.length ? this.buf[this.buf.length - 1].s : null; }
 }
 
 const lerpAngle = (a: number, b: number, t: number) => a + Math.atan2(Math.sin(b - a), Math.cos(b - a)) * t;
+const isNpc = (id: string) => id.startsWith('npc-');
 
-interface RemotePlayer { avatar: Avatar; label: THREE.Sprite; buf: SnapBuffer<PlayerSnap>; seen: number; seatedIn: RemoteVehicle | null; lookKey: string }
-interface RemoteVehicle { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody; buf: SnapBuffer<VehicleSnap>; seen: number }
+/** Everything that makes a vehicle visible and solid. Pooled per kind and reused across vehicles. */
+interface VehicleView { kind: VehicleSnap['kind']; root: THREE.Group; wheels: { g: THREE.Group; steer: boolean; spin: number }[]; lights: VehicleLights; body: RAPIER.RigidBody }
+/** A remote vehicle: always its snapshot data, plus a view while it is near. */
+interface RemoteVehicle { kind: VehicleSnap['kind']; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; fresh: boolean }
+interface RemotePlayer {
+  name: string; color: string; npc: boolean; look: PlayerSnap['look'];
+  avatar: Avatar | null; label: THREE.Sprite | null; lookKey: string;
+  buf: SnapBuffer<PlayerSnap>; seen: number;
+  /** The vehicle root the avatar sits in, or null when standing in the scene or hidden. */
+  seatRoot: THREE.Object3D | null;
+  shown: boolean;
+}
 
 function nameSprite(name: string, color: string) {
   const c = document.createElement('canvas'); c.width = 512; c.height = 96;
@@ -60,9 +98,15 @@ function nameSprite(name: string, color: string) {
 export class RemoteEntities {
   private players = new Map<string, RemotePlayer>();
   private vehicles = new Map<string, RemoteVehicle>();
+  /** Idle vehicle views by kind: out of the scene, collider disabled. */
+  private pool = new Map<string, VehicleView[]>();
   private clockOffset: number | null = null;
   private q = new THREE.Quaternion();
   private q2 = new THREE.Quaternion();
+  private vs: Sample<VehicleSnap> = { a: null!, b: null!, k: 0 };
+  private ps: Sample<PlayerSnap> = { a: null!, b: null!, k: 0 };
+  private vec = { x: 0, y: 0, z: 0 };
+  private rot = { x: 0, y: 0, z: 0, w: 1 };
 
   constructor(private scene: THREE.Scene, private physics: Physics, private selfId: () => string | null) {}
 
@@ -75,20 +119,19 @@ export class RemoteEntities {
       if (p.id === me) continue;
       let rp = this.players.get(p.id);
       if (!rp) {
-        rp = { avatar: new Avatar(p.look ?? p.color), label: nameSprite(p.name, p.color), buf: new SnapBuffer(), seen: now, seatedIn: null, lookKey: lookKey(p.look) };
-        rp.label.position.y = 2.15;
-        rp.avatar.root.add(rp.label);
-        rp.avatar.standIn(this.scene, 0);
+        rp = { name: p.name, color: p.color, npc: isNpc(p.id), look: p.look, avatar: null, label: null, lookKey: lookKey(p.look), buf: new SnapBuffer(), seen: now, seatRoot: null, shown: false };
         this.players.set(p.id, rp);
+        // Real neighbors appear right away; simulated ones only once someone is near them.
+        if (!rp.npc) this.showStanding(rp);
       }
       const key = lookKey(p.look);
-      if (p.look && key !== rp.lookKey) { rp.lookKey = key; rp.avatar.setLook(p.look); }
+      if (p.look && key !== rp.lookKey) { rp.lookKey = key; rp.look = p.look; rp.avatar?.setLook(p.look); }
       rp.buf.push(time, p); rp.seen = now;
     }
     for (const v of vehicles) {
       if (v.owner === me) continue;
       let rv = this.vehicles.get(v.id);
-      if (!rv) { rv = this.spawnVehicle(v); this.vehicles.set(v.id, rv); }
+      if (!rv) { rv = { kind: v.kind, buf: new SnapBuffer(), seen: now, view: null, fresh: false }; this.vehicles.set(v.id, rv); }
       rv.buf.push(time, v); rv.seen = now;
     }
     // Despawn anything not seen for 3 s.
@@ -96,78 +139,150 @@ export class RemoteEntities {
     for (const [id, rv] of this.vehicles) if (now - rv.seen > 3000) this.removeVehicle(id);
   }
 
-  private spawnVehicle(v: VehicleSnap): RemoteVehicle {
-    const P = PRESETS[v.kind] ?? PRESETS.sedan, R = this.physics.R;
+  // ---------------------------------------------------------------- vehicle views (pooled)
+
+  private buildView(kind: VehicleSnap['kind']): VehicleView {
+    const P = PRESETS[kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
     const shell = P.build(makePaint(P.paint), lights);
     mergeStatic(shell);
     root.add(shell);
-    const wheels: RemoteVehicle['wheels'] = [];
+    const wheels: VehicleView['wheels'] = [];
     for (const a of P.axles) for (const side of [1, -1]) {
       const g = new THREE.Group(); const spin = wheelFor(P, a.radius, a.width);
       g.add(spin); g.position.set(a.x, P.wheelY - P.suspension.rest * 0.8, a.halfTrack * side);
       root.add(g); wheels.push({ g, steer: a.steer, spin: 0 });
     }
     root.traverse(o => (o.castShadow = true));
-    this.scene.add(root);
-    const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(v.x, v.y, v.z));
+    const body = this.physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased());
     this.physics.world.createCollider(R.ColliderDesc.cuboid(P.chassis.hx, P.chassis.hy, P.chassis.hz).setCollisionGroups(MASK.remote), body);
-    return { kind: v.kind, root, wheels, lights, body, buf: new SnapBuffer(), seen: performance.now() };
+    return { kind, root, wheels, lights, body };
   }
+
+  private acquire(rv: RemoteVehicle) {
+    const view = this.pool.get(rv.kind)?.pop() ?? this.buildView(rv.kind);
+    view.body.setEnabled(true);
+    this.scene.add(view.root);
+    rv.view = view;
+    rv.fresh = true;            // teleport the collider on its first pose instead of sweeping it across town
+  }
+
+  private release(rv: RemoteVehicle) {
+    const view = rv.view;
+    if (!view) return;
+    // Anyone seated in it leaves the scene with it; they come back when it does.
+    for (const rp of this.players.values()) if (rp.seatRoot === view.root) this.hide(rp);
+    view.root.removeFromParent();
+    view.body.setEnabled(false);
+    let list = this.pool.get(view.kind);
+    if (!list) this.pool.set(view.kind, (list = []));
+    list.push(view);
+    rv.view = null;
+  }
+
+  // ---------------------------------------------------------------- avatars (lazy)
+
+  private ensureAvatar(rp: RemotePlayer): Avatar {
+    if (!rp.avatar) {
+      rp.avatar = new Avatar(rp.look ?? rp.color);
+      rp.label = nameSprite(rp.name, rp.color);
+      rp.label.position.y = 2.15;
+      rp.avatar.root.add(rp.label);
+    }
+    return rp.avatar;
+  }
+  private showStanding(rp: RemotePlayer) {
+    this.ensureAvatar(rp).standIn(this.scene, 0);
+    rp.seatRoot = null; rp.shown = true;
+  }
+  private hide(rp: RemotePlayer) {
+    rp.avatar?.root.removeFromParent();
+    rp.seatRoot = null; rp.shown = false;
+  }
+
+  // ---------------------------------------------------------------- removal
 
   removePlayer(id: string) {
     const rp = this.players.get(id); if (!rp) return;
-    rp.avatar.dispose(); this.players.delete(id);
+    rp.avatar?.dispose(); this.players.delete(id);
   }
   removeVehicle(id: string) {
     const rv = this.vehicles.get(id); if (!rv) return;
-    for (const rp of this.players.values()) if (rp.seatedIn === rv) { rp.avatar.standIn(this.scene, 0); rp.seatedIn = null; }
-    this.scene.remove(rv.root); this.physics.world.removeRigidBody(rv.body); this.vehicles.delete(id);
+    this.release(rv);
+    this.vehicles.delete(id);
   }
   removeOwner(sessionId: string) {
     this.removePlayer(sessionId);
     for (const [id] of this.vehicles) if (id.startsWith(`${sessionId}:`)) this.removeVehicle(id);
   }
 
-  update(dt: number, night: number) {
+  // ---------------------------------------------------------------- per frame
+
+  /** `focus` is the player (or the build-mode target): proximity is measured from it. */
+  update(dt: number, night: number, focus: THREE.Vector3) {
     if (this.clockOffset === null) return;
     const t = Date.now() + this.clockOffset - INTERP_DELAY_MS;
+    const fx = focus.x, fz = focus.z;
 
-    for (const rp of this.players.values()) {
-      const s = rp.buf.sample(t); if (!s) continue;
-      const [a, b, k] = s;
-      // Drivers sit in their seat, hands on the wheel, and ride along with the vehicle.
-      const veh = b.vehicleId ? this.vehicles.get(b.vehicleId) ?? null : null;
-      if (veh) {
-        if (rp.seatedIn !== veh) { rp.avatar.sitIn(veh.root, (PRESETS[veh.kind] ?? PRESETS.sedan).seat); rp.seatedIn = veh; }
-        rp.avatar.root.visible = true;
-        rp.avatar.animate(dt, 0, true);
-        continue;
-      }
-      if (rp.seatedIn) { rp.avatar.standIn(this.scene, 0); rp.seatedIn = null; }
-      rp.avatar.root.visible = !b.vehicleId;
-      rp.avatar.root.position.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
-      rp.avatar.root.rotation.y = lerpAngle(a.yaw, b.yaw, k);
-      rp.avatar.animate(dt, a.speed + (b.speed - a.speed) * k, false);
-    }
     for (const rv of this.vehicles.values()) {
-      const s = rv.buf.sample(t); if (!s) continue;
-      const [a, b, k] = s;
-      rv.root.position.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+      // Proximity runs on the newest authoritative position: the vehicle keeps
+      // moving in the data even while it has no view.
+      const last = rv.buf.latest;
+      if (!last) continue;
+      const dx = last.x - fx, dz = last.z - fz, d2 = dx * dx + dz * dz;
+      if (!rv.view) { if (d2 < V_SPAWN2) this.acquire(rv); else continue; }
+      else if (d2 > V_DESPAWN2) { this.release(rv); continue; }
+
+      const view = rv.view!;
+      const s = this.vs;
+      if (!rv.buf.sample(t, s)) continue;
+      const { a, b, k } = s;
+      view.root.position.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
       this.q.set(a.qx, a.qy, a.qz, a.qw); this.q2.set(b.qx, b.qy, b.qz, b.qw);
-      rv.root.quaternion.slerpQuaternions(this.q, this.q2, k);
+      view.root.quaternion.slerpQuaternions(this.q, this.q2, k);
       const speed = a.speed + (b.speed - a.speed) * k, steer = a.steer + (b.steer - a.steer) * k;
-      for (const w of rv.wheels) {
+      for (const w of view.wheels) {
         w.g.rotation.y = w.steer ? steer : 0;
         w.spin -= (speed * dt) / 0.35;
         w.g.children[0].rotation.z = w.spin;
       }
-      rv.lights.head.emissiveIntensity = night > 0.3 ? 3 : 0;
-      rv.lights.tail.emissiveIntensity = night > 0.3 ? 1.2 : 0.15;
-      const p = rv.root.position, q = rv.root.quaternion;
-      rv.body.setNextKinematicTranslation({ x: p.x, y: p.y, z: p.z });
-      rv.body.setNextKinematicRotation({ x: q.x, y: q.y, z: q.z, w: q.w });
+      view.lights.head.emissiveIntensity = night > 0.3 ? 3 : 0;
+      view.lights.tail.emissiveIntensity = night > 0.3 ? 1.2 : 0.15;
+      const p = view.root.position, q = view.root.quaternion;
+      const v = this.vec, r = this.rot;
+      v.x = p.x; v.y = p.y; v.z = p.z; r.x = q.x; r.y = q.y; r.z = q.z; r.w = q.w;
+      if (rv.fresh) { view.body.setTranslation(v, true); view.body.setRotation(r, true); rv.fresh = false; }
+      view.body.setNextKinematicTranslation(v);
+      view.body.setNextKinematicRotation(r);
+    }
+
+    for (const rp of this.players.values()) {
+      const s = this.ps;
+      if (!rp.buf.sample(t, s)) continue;
+      const { a, b, k } = s;
+      // Drivers sit in their seat, hands on the wheel, and ride along with the vehicle.
+      const veh = b.vehicleId ? this.vehicles.get(b.vehicleId) ?? null : null;
+      if (veh) {
+        if (!veh.view) { if (rp.shown) this.hide(rp); continue; }      // their car is virtual: so are they
+        if (rp.seatRoot !== veh.view.root) {
+          this.ensureAvatar(rp).sitIn(veh.view.root, (PRESETS[veh.kind] ?? PRESETS.sedan).seat);
+          rp.seatRoot = veh.view.root; rp.shown = true;
+        }
+        rp.avatar!.root.visible = true;
+        rp.avatar!.animate(dt, 0, true);
+        continue;
+      }
+      if (rp.npc) {
+        const dx = b.x - fx, dz = b.z - fz, d2 = dx * dx + dz * dz;
+        if (rp.shown && !rp.seatRoot ? d2 > W_DESPAWN2 : d2 > W_SPAWN2) { if (rp.shown) this.hide(rp); continue; }
+      }
+      if (!rp.shown || rp.seatRoot) this.showStanding(rp);
+      const av = rp.avatar!;
+      av.root.visible = !b.vehicleId;
+      av.root.position.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+      av.root.rotation.y = lerpAngle(a.yaw, b.yaw, k);
+      av.animate(dt, a.speed + (b.speed - a.speed) * k, false);
     }
   }
 
@@ -177,4 +292,13 @@ export class RemoteEntities {
   }
 
   get count() { return this.players.size; }
+
+  /** Counts for the dev overlay and tests. */
+  stats() {
+    let rendered = 0, pooled = 0, avatars = 0, shown = 0;
+    for (const v of this.vehicles.values()) if (v.view) rendered++;
+    for (const l of this.pool.values()) pooled += l.length;
+    for (const p of this.players.values()) { if (p.avatar) avatars++; if (p.shown) shown++; }
+    return { vehicles: this.vehicles.size, rendered, pooled, players: this.players.size, avatars, shown };
+  }
 }
