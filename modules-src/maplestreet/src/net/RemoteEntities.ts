@@ -12,7 +12,7 @@ import { mergeStatic } from '../core/Merge';
 import { Avatar } from '../physics/Character';
 import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
-import { buildWheel, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
+import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights } from '../physics/VehiclePresets';
 
 const INTERP_DELAY_MS = 120;
 
@@ -97,7 +97,7 @@ export class RemoteEntities {
   }
 
   private spawnVehicle(v: VehicleSnap): RemoteVehicle {
-    const P = PRESETS[v.kind], R = this.physics.R;
+    const P = PRESETS[v.kind] ?? PRESETS.sedan, R = this.physics.R;
     const root = new THREE.Group();
     const lights = makeLights();
     const shell = P.build(makePaint(P.paint), lights);
@@ -105,7 +105,7 @@ export class RemoteEntities {
     root.add(shell);
     const wheels: RemoteVehicle['wheels'] = [];
     for (const a of P.axles) for (const side of [1, -1]) {
-      const g = new THREE.Group(); const spin = buildWheel(a.radius, a.width);
+      const g = new THREE.Group(); const spin = wheelFor(P, a.radius, a.width);
       g.add(spin); g.position.set(a.x, P.wheelY - P.suspension.rest * 0.8, a.halfTrack * side);
       root.add(g); wheels.push({ g, steer: a.steer, spin: 0 });
     }
@@ -140,7 +140,7 @@ export class RemoteEntities {
       // Drivers sit in their seat, hands on the wheel, and ride along with the vehicle.
       const veh = b.vehicleId ? this.vehicles.get(b.vehicleId) ?? null : null;
       if (veh) {
-        if (rp.seatedIn !== veh) { rp.avatar.sitIn(veh.root, PRESETS[veh.kind].seat); rp.seatedIn = veh; }
+        if (rp.seatedIn !== veh) { rp.avatar.sitIn(veh.root, (PRESETS[veh.kind] ?? PRESETS.sedan).seat); rp.seatedIn = veh; }
         rp.avatar.root.visible = true;
         rp.avatar.animate(dt, 0, true);
         continue;

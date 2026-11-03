@@ -9,7 +9,8 @@ import * as THREE from 'three/webgpu';
 import type { VehicleSnap } from '../../shared/Protocol';
 import { mergeStatic } from '../core/Merge';
 import { MASK, Physics } from './Physics';
-import { buildWheel, makeLights, makePaint, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
+import { wheelbaseOf } from '../../shared/Vehicles';
+import { wheelFor, makeLights, makePaint, PRESETS, VehicleLights, VehiclePreset } from './VehiclePresets';
 
 export interface DriveInput { throttle: number; steer: number; brake: number; handbrake: boolean }
 
@@ -37,10 +38,11 @@ export class Vehicle {
   private unsubscribe: () => void = () => {};
   disposed = false;
 
-  constructor(private physics: Physics, kind: VehiclePreset['kind'], readonly id: string, pos: THREE.Vector3, yaw: number, scene: THREE.Scene, color?: number) {
-    const R = physics.R, P = (this.preset = PRESETS[kind]);
-    const steerX = P.axles.filter(a => a.steer).map(a => a.x), fixedX = P.axles.filter(a => !a.steer).map(a => a.x);
-    this.wheelbase = steerX.length && fixedX.length ? Math.max(0.8, Math.abs(Math.max(...steerX) - Math.min(...fixedX))) : 2.5;
+  constructor(private physics: Physics, kind: string, readonly id: string, pos: THREE.Vector3, yaw: number, scene: THREE.Scene, color?: number) {
+    const preset = PRESETS[kind];
+    if (!preset) throw new Error(`Unknown vehicle ${kind}`);
+    const R = physics.R, P = (this.preset = preset);
+    this.wheelbase = wheelbaseOf(P) || 2.5;
     const c = P.chassis;
     _q.setFromAxisAngle(_v.set(0, 1, 0), yaw);
 
@@ -77,7 +79,7 @@ export class Vehicle {
         this.ctrl.setWheelFrictionSlip(idx, a.caster ? 0.15 : P.frictionSlip);
         this.ctrl.setWheelSideFrictionStiffness(idx, a.caster ? 0.02 : P.sideStiffness);
 
-        const steer = new THREE.Group(), spin = buildWheel(a.radius, a.width);
+        const steer = new THREE.Group(), spin = wheelFor(P, a.radius, a.width);
         steer.add(spin);
         steer.position.set(a.x, P.wheelY - P.suspension.rest, a.halfTrack * side);
         this.root.add(steer);

@@ -11,7 +11,7 @@ import type { MaterialLibrary } from '../core/Materials';
 import { buildGasStation } from './GasStation';
 import { facadeLayout, facadeTextures, faceTrim, styleOf } from './Facades';
 import type { Physics } from '../physics/Physics';
-import { buildWheel, makeLights, makePaint, PRESETS } from '../physics/VehiclePresets';
+import { wheelFor, makeLights, makePaint, PRESETS } from '../physics/VehiclePresets';
 
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
@@ -314,7 +314,7 @@ export class Downtown {
       const g = new THREE.Group();
       g.add(P.build(makePaint(color), makeLights()));
       for (const a of P.axles) for (const side of [1, -1]) {
-        const w = buildWheel(a.radius, a.width);
+        const w = wheelFor(P, a.radius, a.width);
         w.position.set(a.x, P.wheelY - P.suspension.rest * 0.8, a.halfTrack * side);
         g.add(w);
       }

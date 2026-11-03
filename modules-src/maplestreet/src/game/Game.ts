@@ -13,6 +13,7 @@ import * as THREE from 'three/webgpu';
 import { BuildOp, levelBase, LotState } from '../../shared/BuildRules';
 import { CATALOG, footprint } from '../../shared/Catalog';
 import { Account, FUEL_SCALE, VEHICLES } from '../../shared/Economy';
+import { vehicleRole } from '../../shared/Vehicles';
 import { decodeCells, gameDays } from '../../shared/Mowing';
 import type { ClientMsg, Job, MowStroke, PlayerSnap, ServerMsg, VehicleKind } from '../../shared/Protocol';
 import { DAY_LENGTH_SEC } from '../../shared/RoomLogic';
@@ -56,7 +57,6 @@ const NET_HZ = 15;
 const FUEL_REPORT_SEC = 5;
 /** ?norender runs the full simulation without drawing (headless multiplayer tests). */
 const NO_RENDER = new URLSearchParams(location.search).has('norender');
-const ENGINE_KINDS = new Set<VehicleKind>(['truck', 'hdtruck', 'coupe', 'sedan', 'golfcart', 'atv', 'mower', 'zeroturn']);
 
 export function persistentKey() {
   const K = 'maplestreet/identity';
@@ -837,7 +837,7 @@ export class Game {
       const door = this.nearDoor();
       if (door && door.kind !== 'gas') lines.push(`Park and press E, then walk up to ${door.name}`);
       if (v.preset.hitch && !v.trailer && tr && v.canHitch(tr)) lines.push('T — Hitch trailer');
-      if (this.job && (v.kind === 'truck' || v.kind === 'hdtruck')) lines.push(this.job.stage === 'toPickup' ? 'Drive into the yellow beacon to load cargo' : 'Drive into the green beacon to deliver');
+      if (this.job && vehicleRole(v.kind) === 'hauler') lines.push(this.job.stage === 'toPickup' ? 'Drive into the yellow beacon to load cargo' : 'Drive into the green beacon to deliver');
       this.hud.prompt(lines.join('   ·   '));
       return;
     }
@@ -900,7 +900,7 @@ export class Game {
     if (!v || this.mode !== 'live') { this.hud.setDash(null); return; }
     const spec = VEHICLES[v.kind];
     const gear = v.input.handbrake && Math.abs(v.speed) < 0.3 ? 'P' : v.speed < -0.3 || (v.input.throttle < 0 && v.speed < 0.6) ? 'R' : 'D';
-    this.hud.setDash({ name: spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: ENGINE_KINDS.has(v.kind) });
+    this.hud.setDash({ name: spec.name, mph: v.speed * 2.237, gear, fuel: v.fuel, tank: v.tank, electric: spec.fuel === 'electric', engine: v.preset.engineForce > 0 });
     if (v.empty && !this.warned.fuel) { this.warned.fuel = true; this.hud.toast(`The ${spec.name} is out of ${spec.fuel === 'electric' ? 'charge' : 'fuel'} — press F to call a tow to Gas & Go`); }
   }
 
@@ -929,7 +929,7 @@ export class Game {
     (this.beacon.material as THREE.MeshBasicMaterial).color.set(j.stage === 'toPickup' ? 0xffc400 : 0x5cff7a);
     this.jobPing -= dt;
     const v = this.driving;
-    if (v && (v.kind === 'truck' || v.kind === 'hdtruck') && this.jobPing <= 0 && Math.hypot(v.root.position.x - target.x, v.root.position.z - target.z) < 7) {
+    if (v && vehicleRole(v.kind) === 'hauler' && this.jobPing <= 0 && Math.hypot(v.root.position.x - target.x, v.root.position.z - target.z) < 7) {
       this.jobPing = 1;
       this.send({ t: 'jobProgress', jobId: j.id });
     }

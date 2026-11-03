@@ -3,6 +3,8 @@ import type { Identity } from '../../modules-src/maplestreet/shared/RoomLogic'
 import { registerCustomItems } from '../../modules-src/maplestreet/shared/CustomItems'
 import type { Env } from './env'
 import { listStoreItems } from './maplestreet-items'
+import { registerCustomVehicles } from '../../modules-src/maplestreet/shared/CustomVehicles'
+import { listStoreVehicles } from './maplestreet-vehicles'
 
 type DurableState = { blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T> }
 type ServerSocket = WebSocket & { accept(): void }
@@ -52,6 +54,7 @@ export class MapleStreetWorld {
     this.world = new WorldServer(storage)
     void state.blockConcurrencyWhile(async () => {
       registerCustomItems(await listStoreItems(env))
+      registerCustomVehicles(await listStoreVehicles(env))
       await this.world.ready()
     })
   }
@@ -60,6 +63,7 @@ export class MapleStreetWorld {
     const path = new URL(request.url).pathname
     if (path === '/catalog' && request.method === 'POST') {
       registerCustomItems(await listStoreItems(this.env))
+      registerCustomVehicles(await listStoreVehicles(this.env))
       return Response.json({ ok: true })
     }
     if (path === '/status') {
