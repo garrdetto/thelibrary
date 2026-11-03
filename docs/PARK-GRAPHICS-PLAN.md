@@ -130,3 +130,42 @@ Numbers for each phase are recorded below as they are measured.
 
 ### Phase 0 — Audit and plan
 Tooling, audit and this document. Renderer output unchanged. Screenshots: `docs/park-graphics/before/`.
+
+### Phase 1 — Lighting and color pipeline
+- Indexed, deduplicated 24-byte vertices (`packMesh` in `gl.ts`); `drawElements` replaces `drawArrays`. Dedup ratio is
+  ~5× on smooth meshes (oak 3,276 → 655 unique vertices, near guest 5,832 → 1,279).
+- Shadow pass culls back faces and uses a stripped depth-only vertex shader.
+- GGX (Smith-Schlick visibility, Schlick Fresnel) + Lambert, energy-conserving with metalness; clearcoat lobe at
+  `medium`/`high`; wrap diffuse for foliage, skin and cloth. Per-vertex material id (`materials.ts`), tagged automatically
+  from the model palette (`MeshBuilder.autoMaterial` in `models.ts`) with explicit overrides (guests: skin/cloth/rubber,
+  trees: foliage/bark with a wind weight, wooden coaster structure: wood, terrain/paths/water set by the renderer).
+- Vertex colors are treated as sRGB and linearised in the vertex shader; lighting is linear; ACES fitted tonemap with
+  exposure; sRGB encode (exact at `medium`/`high`, `sqrt` at `low`). The sky is a view-direction gradient with a sun disc
+  and glow through the same tonemap, so the horizon, fog and far terrain match.
+- Ambient: hemisphere + horizon band, normal AO × baked per-vertex AO (`MeshBuilder.bakeAO`, a voxel-occlusion bake run on
+  flat/water ride models, hotels, stalls and coaster tracks) and a split-sum sky reflection for specular ambient.
+- Shadows: light frustum fitted to the camera frustum slice (texel-snapped), slope-scaled depth bias plus slope-scaled
+  normal offset, 9-tap Poisson kernel rotated per pixel by interleaved gradient noise (`medium`/`high`), 4 bilinear taps
+  at `low`. The sun path is capped at ~53° elevation so midday still models form.
+- Height-exponential fog with sun in-scattering (one `mix`).
+- Wind sway for tree and bush canopies in the vertex shader (scaled by weather).
+- Frustum culling of static instances (scenery, stalls, path furniture; re-uploaded only when the camera moves) and of
+  whole rides, coasters and hotels, with a sun-direction margin so off-screen casters still cast.
+- Quality tiers (`quality.ts`): `?quality=`, else software renderer → `low`, else a one-frame fragment probe × DPR. The
+  HUD's gauge button cycles the tier. `captureOverview` always renders at `high`.
+
+Measured (SwiftShader, scene above, auto tier = `low`):
+
+| | Before | Phase 1 |
+| --- | ---: | ---: |
+| GPU draws / frame | 262 | 194 |
+| Vertices / frame (shadow + main) | 1,011,294 + 1,410,960 | 440,676 + 757,350 |
+| Frame time, GPU-synchronised (min of 5) | 919–997 ms | 770–836 ms |
+| Running park avg / 1% low FPS | 0.59–0.81 / 0.2–0.5 | 1.21 / 0.70 |
+| JS heap (running park) | 22.4 MB | 22.9 MB |
+| `medium` / `high` frame (same scene) | — | 1,227 / 1,303 ms (real-GPU tiers) |
+| Park chunk (`ParkGame-*.js`, production) | 368,866 B (124,940 gzip) | 390,216 B (132,867 gzip) |
+
+`node scripts/perf-baseline.mjs --compare --only park` against a same-machine run of the base commit: avg FPS
+60.0 → 60.0, 1% low 59.5 → 59.5, heap 16.57 → 16.68 MB (+0.7%), JS 11,981 → 12,112 KB (+1.1%, dev server, unminified),
+transferred 12,749 → 12,877 KB. No regressions. Screenshots: `docs/park-graphics/phase1/`.

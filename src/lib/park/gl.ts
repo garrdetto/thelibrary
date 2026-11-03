@@ -1,3 +1,4 @@
+import { materialTable } from './materials'
 export type Mat4 = Float32Array
 export type Vec3 = [number, number, number]
 
@@ -25,8 +26,7 @@ export const mat4 = {
     m[12] = -(xx * eye[0] + xy * eye[1] + xz * eye[2]); m[13] = -(yx * eye[0] + yy * eye[1] + yz * eye[2]); m[14] = -(zx * eye[0] + zy * eye[1] + zz * eye[2]); m[15] = 1
     return m
   },
-  invert(a: Mat4): Mat4 | null {
-    const m = new Float32Array(16)
+  invert(a: Mat4, m: Mat4 = new Float32Array(16)): Mat4 | null {
     const [a00, a01, a02, a03, a10, a11, a12, a13, a20, a21, a22, a23, a30, a31, a32, a33] = a
     const b00 = a00 * a11 - a01 * a10, b01 = a00 * a12 - a02 * a10, b02 = a00 * a13 - a03 * a10, b03 = a01 * a12 - a02 * a11
     const b04 = a01 * a13 - a03 * a11, b05 = a02 * a13 - a03 * a12, b06 = a20 * a31 - a21 * a30, b07 = a20 * a32 - a22 * a30
@@ -68,7 +68,7 @@ export function hexColor(hex: string): Vec3 {
   return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]
 }
 
-export const STRIDE = 10
+export const STRIDE = 13
 
 type Mat3 = [number, number, number, number, number, number, number, number, number]
 
@@ -95,11 +95,37 @@ function dirNoise(x: number, y: number, z: number) {
   return (s - Math.floor(s)) * 0.45 + t * 0.55
 }
 
+const AO_DIRS: Vec3[] = (() => {
+  const dirs: Vec3[] = []
+  const n = 10
+  for (let i = 0; i < n; i++) {
+    const z = 0.25 + 0.75 * ((i + 0.5) / n), r = Math.sqrt(1 - z * z), a = i * 2.39996
+    dirs.push([Math.cos(a) * r, Math.sin(a) * r, z])
+  }
+  return dirs
+})()
+
+export const AUTO = -1
+
 export class MeshBuilder {
+  static autoMaterial: (r: number, g: number, b: number, tint: number) => number = () => 0
   data: number[] = []
   lines = false
+  mat: number = AUTO
+  ao = 1
+  sway = 0
 
-  vertex(p: Vec3, n: Vec3, c: Vec3, tint = 0) { this.data.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2], tint) }
+  vertex(p: Vec3, n: Vec3, c: Vec3, tint = 0) { this.data.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2], tint, this.mat < 0 ? MeshBuilder.autoMaterial(c[0], c[1], c[2], tint) : this.mat, this.ao, this.sway) }
+
+  /** Re-tags vertices from `from` onward: `pick` returns a material id (or undefined to keep) and may set wind weight. */
+  retag(pick: (r: number, g: number, b: number, tint: number, z: number, mat: number) => number | undefined, sway?: (z: number, mat: number) => number, from = 0) {
+    const d = this.data
+    for (let i = from; i < d.length; i += STRIDE) {
+      const m = pick(d[i + 6], d[i + 7], d[i + 8], d[i + 9], d[i + 2], d[i + 10])
+      if (m !== undefined) d[i + 10] = m
+      if (sway) d[i + 12] = sway(d[i + 2], d[i + 10])
+    }
+  }
 
   tri(m: Mat4 | null, a: Vec3, b: Vec3, c: Vec3, color: Vec3, tint = 0) {
     const pa = m ? mat4.transformPoint(m, a) : a, pb = m ? mat4.transformPoint(m, b) : b, pc = m ? mat4.transformPoint(m, c) : c
@@ -193,6 +219,40 @@ export class MeshBuilder {
     }
   }
 
+  sweep(points: Vec3[], ups: Vec3[] | null, radius: number, color: Vec3, segments = 10, tint = 0, closed = false) {
+    const n = points.length
+    if (n < 2) return
+    const frames: { t: Vec3; u: Vec3; v: Vec3 }[] = []
+    let prevU: Vec3 | null = null
+    for (let i = 0; i < n; i++) {
+      const a = points[Math.max(0, i - 1)], b = points[Math.min(n - 1, i + 1)]
+      let tx = b[0] - a[0], ty = b[1] - a[1], tz = b[2] - a[2]
+      const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl
+      let ref: Vec3 = ups ? ups[i] : prevU ?? (Math.abs(tz) < 0.9 ? [0, 0, 1] : [1, 0, 0])
+      const d = ref[0] * tx + ref[1] * ty + ref[2] * tz
+      let ux = ref[0] - tx * d, uy = ref[1] - ty * d, uz = ref[2] - tz * d
+      let ul = Math.hypot(ux, uy, uz)
+      if (ul < 1e-4) { ref = Math.abs(tz) < 0.9 ? [0, 0, 1] : [1, 0, 0]; const e = ref[0] * tx + ref[1] * ty + ref[2] * tz; ux = ref[0] - tx * e; uy = ref[1] - ty * e; uz = ref[2] - tz * e; ul = Math.hypot(ux, uy, uz) || 1 }
+      ux /= ul; uy /= ul; uz /= ul
+      prevU = [ux, uy, uz]
+      frames.push({ t: [tx, ty, tz], u: [ux, uy, uz], v: [ty * uz - tz * uy, tz * ux - tx * uz, tx * uy - ty * ux] })
+    }
+    const ring = (i: number, k: number): [Vec3, Vec3] => {
+      const f = frames[i], p = points[i], a = k / segments * Math.PI * 2, c = Math.cos(a), s = Math.sin(a)
+      const d: Vec3 = [f.u[0] * c + f.v[0] * s, f.u[1] * c + f.v[1] * s, f.u[2] * c + f.v[2] * s]
+      return [[p[0] + d[0] * radius, p[1] + d[1] * radius, p[2] + d[2] * radius], d]
+    }
+    const last = closed ? n : n - 1
+    for (let i = 0; i < last; i++) {
+      const j = (i + 1) % n
+      for (let k = 0; k < segments; k++) {
+        const [A, na] = ring(i, k), [B, nb] = ring(i, k + 1), [Cc, nc] = ring(j, k + 1), [D, nd] = ring(j, k)
+        this.smoothTri(null, null, A, B, Cc, na, nb, nc, color, color, color, tint)
+        this.smoothTri(null, null, A, Cc, D, na, nc, nd, color, color, color, tint)
+      }
+    }
+  }
+
   limb(a: Vec3, b: Vec3, r0: number, r1: number, color: Vec3, tint = 0, segments = 10) {
     const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], len = Math.hypot(dx, dy, dz)
     if (len < 1e-5) return
@@ -207,14 +267,120 @@ export class MeshBuilder {
   line(a: Vec3, b: Vec3, color: Vec3) { this.lines = true; this.vertex(a, [0, 0, 1], color); this.vertex(b, [0, 0, 1], color) }
 
   get count() { return this.data.length / STRIDE }
+
+  append(other: MeshBuilder) { for (let i = 0; i < other.data.length; i++) this.data.push(other.data[i]) }
+
+  /** Bakes ambient occlusion into the per-vertex AO channel from a coarse voxelisation of the mesh itself. */
+  bakeAO(strength = 0.65, maxCells = 72, from = 0) {
+    const d = this.data, count = d.length / STRIDE
+    if (count - from / STRIDE < 3 || this.lines) return
+    let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity
+    for (let i = from; i < d.length; i += STRIDE) {
+      const x = d[i], y = d[i + 1], z = d[i + 2]
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z < z0) z0 = z; if (z > z1) z1 = z
+    }
+    const span = Math.max(x1 - x0, y1 - y0, z1 - z0)
+    const cell = Math.max(0.22, span / maxCells)
+    const nx = Math.ceil((x1 - x0) / cell) + 3, ny = Math.ceil((y1 - y0) / cell) + 3, nz = Math.ceil((z1 - z0) / cell) + 3
+    const grid = new Uint8Array(nx * ny * nz)
+    const ox = x0 - cell, oy = y0 - cell, oz = z0 - cell
+    const mark = (x: number, y: number, z: number) => {
+      const gx = Math.floor((x - ox) / cell), gy = Math.floor((y - oy) / cell), gz = Math.floor((z - oz) / cell)
+      if (gx >= 0 && gy >= 0 && gz >= 0 && gx < nx && gy < ny && gz < nz) grid[(gz * ny + gy) * nx + gx] = 1
+    }
+    for (let i = from; i + STRIDE * 3 <= d.length; i += STRIDE * 3) {
+      const ax = d[i], ay = d[i + 1], az = d[i + 2], bx = d[i + STRIDE], by = d[i + STRIDE + 1], bz = d[i + STRIDE + 2], cx = d[i + STRIDE * 2], cy = d[i + STRIDE * 2 + 1], cz = d[i + STRIDE * 2 + 2]
+      const len = Math.max(Math.hypot(bx - ax, by - ay, bz - az), Math.hypot(cx - ax, cy - ay, cz - az), Math.hypot(cx - bx, cy - by, cz - bz))
+      const steps = Math.min(40, Math.max(1, Math.ceil(len / (cell * 0.7))))
+      for (let u = 0; u <= steps; u++) for (let v = 0; v <= steps - u; v++) {
+        const s = u / steps, t = v / steps, r = 1 - s - t
+        mark(ax * r + bx * s + cx * t, ay * r + by * s + cy * t, az * r + bz * s + cz * t)
+      }
+    }
+    const occupied = (x: number, y: number, z: number) => {
+      const gx = Math.floor((x - ox) / cell), gy = Math.floor((y - oy) / cell), gz = Math.floor((z - oz) / cell)
+      return gx >= 0 && gy >= 0 && gz >= 0 && gx < nx && gy < ny && gz < nz && grid[(gz * ny + gy) * nx + gx] === 1
+    }
+    const dists = [1.6, 3, 5.5]
+    for (let i = from; i < d.length; i += STRIDE) {
+      const px = d[i], py = d[i + 1], pz = d[i + 2], qx = d[i + 3], qy = d[i + 4], qz = d[i + 5]
+      const ref: Vec3 = Math.abs(qz) < 0.9 ? [0, 0, 1] : [1, 0, 0]
+      let ux = qy * ref[2] - qz * ref[1], uy = qz * ref[0] - qx * ref[2], uz = qx * ref[1] - qy * ref[0]
+      const ul = Math.hypot(ux, uy, uz) || 1; ux /= ul; uy /= ul; uz /= ul
+      const vx = qy * uz - qz * uy, vy = qz * ux - qx * uz, vz = qx * uy - qy * ux
+      let hit = 0, total = 0
+      for (const [a, b, c] of AO_DIRS) {
+        const rx = ux * a + vx * b + qx * c, ry = uy * a + vy * b + qy * c, rz = uz * a + vz * b + qz * c
+        for (let k = 0; k < dists.length; k++) {
+          const w = 1 / (k + 1), s = dists[k] * cell
+          total += w
+          if (occupied(px + rx * s, py + ry * s, pz + rz * s)) { hit += w; break }
+        }
+      }
+      const ao = 1 - strength * Math.min(1, hit / total * 1.6)
+      d[i + 11] = Math.min(d[i + 11], ao)
+    }
+  }
 }
 
-const VERT = `#version 300 es
+export type GpuMesh = { vao: WebGLVertexArrayObject; buffer: WebGLBuffer; index: WebGLBuffer; indexType: number; count: number; vertexCount: number; mode: number; instance?: WebGLBuffer; instanceCount: number; instanceCapacity: number }
+
+export type Lighting = {
+  sunDir: Vec3; sunColor: Vec3; sky: Vec3; ground: Vec3; horizon: Vec3; fog: Vec3; fogDensity: number; fogFalloff: number; sunScatter: Vec3
+  skyTop: Vec3; skyBottom: Vec3; exposure: number; shadow?: number; wind: number
+}
+
+const BYTES = 24
+
+function packMesh(builder: MeshBuilder) {
+  const d = builder.data, n = d.length / STRIDE
+  const vb = new ArrayBuffer(n * BYTES), u32 = new Uint32Array(vb)
+  let size = 1
+  while (size < n * 2) size <<= 1
+  const table = new Int32Array(size).fill(-1)
+  const indices = n > 65535 ? new Uint32Array(n) : new Uint16Array(n)
+  const words = new Uint32Array(6), wf = new Float32Array(words.buffer)
+  const clamp8 = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)))
+  const snorm = (v: number) => Math.max(-127, Math.min(127, Math.round(v * 127))) & 255
+  let unique = 0
+  for (let i = 0; i < n; i++) {
+    const o = i * STRIDE
+    wf[0] = d[o]; wf[1] = d[o + 1]; wf[2] = d[o + 2]
+    words[3] = (snorm(d[o + 3]) | snorm(d[o + 4]) << 8 | snorm(d[o + 5]) << 16 | snorm(d[o + 11]) << 24) >>> 0
+    words[4] = (clamp8(d[o + 6]) | clamp8(d[o + 7]) << 8 | clamp8(d[o + 8]) << 16 | clamp8(d[o + 9]) << 24) >>> 0
+    words[5] = ((d[o + 10] & 255) | clamp8(d[o + 12]) << 8) >>> 0
+    let h = 2166136261
+    for (let k = 0; k < 6; k++) { h ^= words[k]; h = Math.imul(h, 16777619) }
+    let slot = (h >>> 0) & (size - 1), found = -1
+    while (table[slot] >= 0) {
+      const j = table[slot] * 6
+      if (u32[j] === words[0] && u32[j + 1] === words[1] && u32[j + 2] === words[2] && u32[j + 3] === words[3] && u32[j + 4] === words[4] && u32[j + 5] === words[5]) { found = table[slot]; break }
+      slot = (slot + 1) & (size - 1)
+    }
+    if (found < 0) {
+      found = unique++
+      table[slot] = found
+      u32.set(words, found * 6)
+    }
+    indices[i] = found
+  }
+  return { vertices: new Uint8Array(vb, 0, unique * BYTES), indices, unique }
+}
+
+const SHADER_COMMON = `
+uniform vec3 uSunDir;
+vec3 toLinear(vec3 c) { return c * (c * (c * 0.305306 + 0.682171) + 0.012523); }
+`
+
+function vertexShader(depth: boolean) {
+  return `#version 300 es
+${depth ? '#define DEPTH 1' : ''}
 layout(location=0) in vec3 aPos;
-layout(location=1) in vec3 aNormal;
+layout(location=1) in vec4 aNormal;
 layout(location=2) in vec4 aColor;
 layout(location=3) in vec4 iPosYaw;
 layout(location=4) in vec4 iColorScale;
+layout(location=5) in vec4 aMat;
 uniform mat4 uViewProj;
 uniform mat4 uModel;
 uniform mat4 uLightViewProj;
@@ -222,125 +388,239 @@ uniform bool uInstanced;
 uniform vec3 uTint;
 uniform float uTime;
 uniform float uWave;
+uniform float uWind;
 uniform float uShadowOffset;
+uniform vec4 uMatA[24];
+uniform vec4 uMatB[24];
+${SHADER_COMMON}
+#ifndef DEPTH
 out vec3 vNormal;
 out vec3 vColor;
 out vec3 vWorld;
 out vec4 vShadow;
+out float vAo;
+flat out vec4 vMatA;
+flat out vec4 vMatB;
+#endif
 void main() {
-  vec3 p = aPos; vec3 n = aNormal; vec3 tint = uTint;
+  vec3 p = aPos; vec3 n = aNormal.xyz; vec3 tint = uTint; float phase = 0.0;
   if (uInstanced) {
     float c = cos(iPosYaw.w), s = sin(iPosYaw.w);
     p = vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * iColorScale.w + iPosYaw.xyz;
     n = vec3(c * n.x - s * n.y, s * n.x + c * n.y, n.z);
     tint = iColorScale.rgb;
+    phase = iPosYaw.x * 0.21 + iPosYaw.y * 0.17;
   }
   vec4 w = uModel * vec4(p, 1.0);
+  if (uWind > 0.0 && aMat.y > 0.0) {
+    float k = aMat.y / 255.0 * uWind, t = uTime + phase;
+    w.xy += vec2(sin(t * 1.7 + w.z * 0.45) + 0.4 * sin(t * 4.1 + w.x), cos(t * 1.31 + w.z * 0.37) + 0.4 * cos(t * 3.7 + w.y)) * k;
+  }
   if (uWave > 0.0) w.z += sin(w.x * 0.35 + uTime * 1.3) * cos(w.y * 0.3 + uTime) * uWave;
+#ifndef DEPTH
   vNormal = mat3(uModel) * n;
-  vColor = mix(aColor.rgb, aColor.rgb * tint, aColor.a);
+  vColor = toLinear(mix(aColor.rgb, aColor.rgb * tint, aColor.a));
   vWorld = w.xyz;
-  vShadow = uLightViewProj * vec4(w.xyz + normalize(vNormal) * uShadowOffset, 1.0);
+  vAo = max(aNormal.w, 0.0);
+  int id = int(aMat.x + 0.5);
+  vMatA = uMatA[id]; vMatB = uMatB[id];
+  vec3 nn = normalize(vNormal);
+  float nl = dot(nn, uSunDir);
+  vShadow = uLightViewProj * vec4(w.xyz + nn * uShadowOffset * (0.35 + 1.4 * sqrt(max(0.0, 1.0 - nl * nl))), 1.0);
+#endif
   gl_Position = uViewProj * w;
 }`
+}
 
-const FRAG = `#version 300 es
+function fragmentShader(level: number) {
+  return `#version 300 es
 precision highp float;
 precision highp sampler2DShadow;
-in vec3 vNormal; in vec3 vColor; in vec3 vWorld; in vec4 vShadow;
-uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform vec3 uGroundColor; uniform vec3 uFogColor; uniform vec3 uCamPos;
-uniform float uFogNear; uniform float uFogFar; uniform float uAlpha; uniform float uEmissive; uniform bool uUnlit;
+#define QUALITY ${level}
+in vec3 vNormal; in vec3 vColor; in vec3 vWorld; in vec4 vShadow; in float vAo;
+flat in vec4 vMatA; flat in vec4 vMatB;
+uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform vec3 uGroundColor; uniform vec3 uHorizonColor; uniform vec3 uFogColor; uniform vec3 uSunScatter; uniform vec3 uCamPos;
+uniform float uFogDensity; uniform float uFogFalloff; uniform float uExposure;
+uniform float uAlpha; uniform float uEmissive; uniform bool uUnlit;
 uniform vec4 uHighlight;
 uniform float uWave; uniform float uTime; uniform float uGround; uniform float uSpecular;
-uniform sampler2DShadow uShadowMap; uniform float uShadowStrength; uniform float uShadowTexel;
+uniform sampler2DShadow uShadowMap; uniform float uShadowStrength; uniform float uShadowTexel; uniform float uShadowBias;
+${SHADER_COMMON}
 out vec4 outColor;
-float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+const float PI = 3.14159265;
+float hash2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
 float vnoise(vec2 p) {
   vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash2(i), hash2(i + vec2(1.0, 0.0)), f.x), mix(hash2(i + vec2(0.0, 1.0)), hash2(i + vec2(1.0, 1.0)), f.x), f.y);
 }
-float fbm(vec2 p) { return vnoise(p) * 0.5 + vnoise(p * 2.03 + 17.1) * 0.27 + vnoise(p * 4.11 + 3.7) * 0.15 + vnoise(p * 8.3 - 9.2) * 0.08; }
-float shadowAt() {
+float fbm(vec2 p) {
+#if QUALITY == 0
+  return vnoise(p);
+#else
+  return vnoise(p) * 0.5 + vnoise(p * 2.03 + 17.1) * 0.27 + vnoise(p * 4.11 + 3.7) * 0.15 + vnoise(p * 8.3 - 9.2) * 0.08;
+#endif
+}
+float ign() { return fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))); }
+float shadowAt(vec3 n) {
   if (uShadowStrength <= 0.0) return 1.0;
   vec3 c = vShadow.xyz / vShadow.w * 0.5 + 0.5;
   if (c.x <= 0.0 || c.x >= 1.0 || c.y <= 0.0 || c.y >= 1.0 || c.z >= 1.0) return 1.0;
+  float nl = clamp(dot(n, uSunDir), 0.05, 1.0);
+  float z = c.z - uShadowBias * (1.0 + min(4.0, sqrt(1.0 - nl * nl) / nl));
   float sum = 0.0;
-  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) sum += texture(uShadowMap, vec3(c.xy + vec2(float(x), float(y)) * uShadowTexel, c.z - 0.0008));
-  float edge = smoothstep(0.0, 0.08, min(min(c.x, 1.0 - c.x), min(c.y, 1.0 - c.y)));
-  return mix(1.0, sum / 9.0, uShadowStrength * edge);
+#if QUALITY == 0
+  vec2 o = vec2(0.5, -0.5) * uShadowTexel;
+  sum += texture(uShadowMap, vec3(c.xy + o.xx, z)) + texture(uShadowMap, vec3(c.xy + o.xy, z)) + texture(uShadowMap, vec3(c.xy + o.yx, z)) + texture(uShadowMap, vec3(c.xy + o.yy, z));
+  sum *= 0.25;
+#else
+  float a = ign() * 6.2831853; vec2 cs = vec2(cos(a), sin(a));
+  mat2 rot = mat2(cs.x, cs.y, -cs.y, cs.x) * uShadowTexel * ${level === 2 ? '2.4' : '1.9'};
+  sum += texture(uShadowMap, vec3(c.xy, z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(-0.94, -0.34), z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(0.94, 0.34), z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(-0.09, -0.92), z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(0.34, 0.94), z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(-0.82, 0.57), z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(0.8, -0.6), z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(-0.4, 0.2) * 1.6, z));
+  sum += texture(uShadowMap, vec3(c.xy + rot * vec2(0.45, -0.15) * 1.6, z));
+  sum /= 9.0;
+#endif
+  float edge = smoothstep(0.0, 0.06, min(min(c.x, 1.0 - c.x), min(c.y, 1.0 - c.y)));
+  return mix(1.0, sum, uShadowStrength * edge);
+}
+vec3 envColor(vec3 r) {
+  vec3 up = mix(uHorizonColor, uSkyColor * 1.25, smoothstep(0.0, 0.65, r.z));
+  return mix(uGroundColor * 0.6, up, smoothstep(-0.18, 0.04, r.z));
+}
+vec3 envBRDF(vec3 f0, float rough, float nv) {
+  vec4 r = rough * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
+  float a = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
+  vec2 ab = vec2(-1.04, 1.04) * a + r.zw;
+  return f0 * ab.x + ab.y;
+}
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+vec3 finish(vec3 c) {
+  c = aces(c * uExposure);
+#if QUALITY == 0
+  return sqrt(c);
+#else
+  return pow(c, vec3(1.0 / 2.2));
+#endif
 }
 void main() {
+  if (uUnlit) { outColor = vec4(mix(pow(vColor, vec3(1.0 / 2.2)), uHighlight.rgb, uHighlight.a), uAlpha); return; }
   vec3 n = normalize(vNormal);
   if (!gl_FrontFacing) n = -n;
   vec3 base = vColor;
-  vec3 V = normalize(uCamPos - vWorld);
-  vec3 c;
-  if (uUnlit) c = base;
-  else {
-    if (uGround > 0.0) {
-      float big = fbm(vWorld.xy * 0.045), mid = fbm(vWorld.xy * 0.22 + 31.0), fine = vnoise(vWorld.xy * 2.7);
-      base *= mix(1.0, 0.82 + big * 0.3 + (mid - 0.5) * 0.16 + (fine - 0.5) * 0.1, uGround);
-      float g = max(0.0, base.g - max(base.r, base.b));
-      base = mix(base, base * vec3(1.08, 0.96, 0.78), g * (big - 0.45) * 1.6 * uGround);
-    }
-    if (uWave > 0.0) {
-      vec2 q = vWorld.xy * 0.6 + vec2(uTime * 0.35, uTime * 0.22);
-      n = normalize(n + vec3(vnoise(q) - 0.5, vnoise(q * 1.7 + 8.0) - 0.5, 0.0) * 0.35);
-    }
-    float sh = shadowAt();
-    float d = max(dot(n, uSunDir), 0.0);
-    float wrap = max((dot(n, uSunDir) + 0.25) / 1.25, 0.0);
-    float h = n.z * 0.5 + 0.5;
-    vec3 amb = mix(uGroundColor, uSkyColor, h);
-    float ao = mix(0.72, 1.0, smoothstep(-0.6, 0.9, n.z));
-    vec3 diffuse = uSunColor * mix(d, wrap, 0.35) * sh;
-    c = base * (amb * ao + diffuse) + base * uEmissive;
-    vec3 H = normalize(uSunDir + V);
-    float spec = pow(max(dot(n, H), 0.0), uWave > 0.0 ? 90.0 : 28.0) * (uWave > 0.0 ? 1.4 : uSpecular);
-    c += uSunColor * spec * sh;
-    float fres = pow(1.0 - max(dot(n, V), 0.0), 4.0);
-    c += uSkyColor * fres * (uWave > 0.0 ? 0.55 : 0.12);
+  vec3 d = vWorld - uCamPos;
+  float dist = length(d);
+  vec3 V = -d / max(dist, 1e-4);
+  float rough = vMatA.x, metal = vMatA.y, coat = vMatB.x, wrap = vMatB.y;
+  vec3 f0d = vec3(vMatB.w);
+  if (uGround > 0.0) {
+    float big = fbm(vWorld.xy * 0.045), mid = fbm(vWorld.xy * 0.22 + 31.0), fine = vnoise(vWorld.xy * 2.7);
+    base *= mix(1.0, 0.82 + big * 0.3 + (mid - 0.5) * 0.16 + (fine - 0.5) * 0.1, uGround);
+    float g = max(0.0, base.g - max(base.r, base.b));
+    base = mix(base, base * vec3(1.08, 0.96, 0.78), g * (big - 0.45) * 1.6 * uGround);
   }
-  c = mix(c, uHighlight.rgb, uHighlight.a);
-  c = c * (1.0 + c * 0.12) / (1.0 + c * 0.55);
-  c = mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, 1.06);
-  float dist = length(vWorld - uCamPos);
-  float f = smoothstep(uFogNear, uFogFar, dist);
-  outColor = vec4(mix(c, uFogColor, f), uAlpha);
+  if (uWave > 0.0) {
+    vec2 q = vWorld.xy * 0.6 + vec2(uTime * 0.35, uTime * 0.22);
+    n = normalize(n + vec3(vnoise(q) - 0.5, vnoise(q * 1.7 + 8.0) - 0.5, 0.0) * 0.35);
+    rough = 0.06; metal = 0.0; f0d = vec3(0.02); wrap = 0.0; coat = 0.0;
+  }
+  rough = clamp(rough, 0.045, 1.0);
+  float sh = shadowAt(n);
+  vec3 L = uSunDir;
+  vec3 H = normalize(L + V);
+  float nl = dot(n, L), nlc = clamp(nl, 0.0, 1.0), nv = clamp(dot(n, V), 1e-3, 1.0), nh = clamp(dot(n, H), 0.0, 1.0), vh = clamp(dot(V, H), 0.0, 1.0);
+  float nlw = clamp((nl + wrap) / ((1.0 + wrap) * (1.0 + wrap)), 0.0, 1.0);
+  vec3 f0 = mix(f0d, base, metal);
+  vec3 diffuseColor = base * (1.0 - metal);
+  float a2 = rough * rough * rough * rough;
+  float dd = nh * nh * (a2 - 1.0) + 1.0;
+  float D = a2 / (PI * dd * dd);
+  float k = rough * rough * 0.5;
+  float Vis = 0.25 / ((nlc * (1.0 - k) + k) * (nv * (1.0 - k) + k));
+  float fw = pow(1.0 - vh, 5.0);
+  vec3 F = f0 + (1.0 - f0) * fw;
+  vec3 spec = PI * D * Vis * F * nlc * uSpecular;
+  vec3 direct = (diffuseColor * (1.0 - F) * nlw + spec);
+#if QUALITY > 0
+  if (coat > 0.0) {
+    float cdd = nh * nh * (0.0016 - 1.0) + 1.0;
+    float Fc = (0.04 + 0.96 * fw) * coat;
+    direct = direct * (1.0 - Fc) + vec3(0.0016 / (cdd * cdd) * 0.25 / max(vh * vh, 0.1) * Fc * nlc);
+  }
+#endif
+  vec3 lit = direct * uSunColor * sh;
+  float hemi = n.z * 0.5 + 0.5;
+  float normalAo = mix(0.72, 1.0, smoothstep(-0.6, 0.9, n.z));
+  float ao = normalAo * vAo;
+  vec3 ambient = mix(uGroundColor, uSkyColor, hemi) + uHorizonColor * (1.0 - abs(n.z)) * 0.35;
+  vec3 R = reflect(-V, n);
+#if QUALITY == 0
+  vec3 specAmb = envColor(R) * (f0 + (1.0 - f0) * pow(1.0 - nv, 5.0) * (1.0 - rough)) * (1.0 - rough * 0.7) * ao * uSpecular;
+#else
+  vec3 specAmb = envColor(R) * envBRDF(f0, rough, nv) * mix(1.0, ao, 0.6) * mix(0.55, 1.0, sh) * uSpecular;
+  if (coat > 0.0) specAmb += envColor(R) * (0.04 + 0.96 * pow(1.0 - nv, 5.0)) * coat * 0.6 * ao;
+#endif
+  vec3 c = lit + diffuseColor * ambient * ao + specAmb + base * uEmissive;
+  c = mix(c, toLinear(uHighlight.rgb) * 1.6, uHighlight.a);
+#if QUALITY == 0
+  float fog = 1.0 - exp(-uFogDensity * dist * exp(-uFogFalloff * max(0.0, (uCamPos.z + vWorld.z) * 0.5)));
+#else
+  float rdz = d.z / max(dist, 1e-4);
+  float fall = uFogFalloff;
+  float h0 = exp(-fall * max(uCamPos.z, 0.0));
+  float integral = abs(rdz * fall * dist) > 1e-3 ? h0 * (1.0 - exp(-fall * rdz * dist)) / (fall * rdz) : h0 * dist;
+  float fog = 1.0 - exp(-uFogDensity * max(integral, 0.0));
+#endif
+  vec3 fogCol = mix(uFogColor, uSunScatter, pow(max(dot(-V, uSunDir), 0.0), 6.0));
+  c = mix(c, fogCol, fog);
+  outColor = vec4(finish(c), uAlpha);
 }`
+}
 
 const DEPTH_FRAG = `#version 300 es
 precision mediump float;
 void main() {}`
 
 const SKY_VERT = `#version 300 es
-layout(location=0) in vec2 aPos; out vec2 vUv;
-void main(){ vUv = aPos * 0.5 + 0.5; gl_Position = vec4(aPos, 0.9999, 1.0); }`
+layout(location=0) in vec2 aPos; out vec2 vNdc;
+void main(){ vNdc = aPos; gl_Position = vec4(aPos, 0.9999, 1.0); }`
 const SKY_FRAG = `#version 300 es
-precision highp float; in vec2 vUv; uniform vec3 uTop; uniform vec3 uBottom; out vec4 outColor;
+precision highp float; in vec2 vNdc; uniform vec3 uTop; uniform vec3 uBottom; uniform vec3 uSunDir; uniform vec3 uSunColor; uniform vec3 uSunScatter; uniform mat4 uInvViewProj; uniform float uExposure; out vec4 outColor;
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
 void main(){
-  vec3 c = mix(uBottom, uTop, pow(clamp(vUv.y, 0.0, 1.0), 0.8));
-  c = c * (1.0 + c * 0.12) / (1.0 + c * 0.55);
+  vec4 a = uInvViewProj * vec4(vNdc, -1.0, 1.0), b = uInvViewProj * vec4(vNdc, 1.0, 1.0);
+  vec3 dir = normalize(b.xyz / b.w - a.xyz / a.w);
+  float up = clamp(dir.z, 0.0, 1.0);
+  vec3 c = mix(uBottom, uTop, pow(up, 0.38));
+  float sd = max(dot(dir, uSunDir), 0.0);
+  c += uSunScatter * pow(sd, 6.0) * 0.6 + uSunColor * (pow(sd, 900.0) * 6.0 + pow(sd, 60.0) * 0.12);
+  c = pow(aces(c * uExposure), vec3(1.0 / 2.2));
   outColor = vec4(c, 1.0);
 }`
 
-export type GpuMesh = { vao: WebGLVertexArrayObject; buffer: WebGLBuffer; count: number; mode: number; instance?: WebGLBuffer; instanceCount: number; instanceCapacity: number }
-
-export type Lighting = { sunDir: Vec3; sunColor: Vec3; sky: Vec3; ground: Vec3; fog: Vec3; fogNear: number; fogFar: number; skyTop: Vec3; skyBottom: Vec3; shadow?: number }
-
 const SHADOW_SIZE = 2048
-const UNIFORMS = ['uViewProj', 'uModel', 'uLightViewProj', 'uInstanced', 'uTint', 'uSunDir', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uFogColor', 'uCamPos', 'uFogNear', 'uFogFar', 'uAlpha', 'uEmissive', 'uUnlit', 'uHighlight', 'uTime', 'uWave', 'uGround', 'uSpecular', 'uShadowMap', 'uShadowStrength', 'uShadowTexel', 'uShadowOffset']
+const UNIFORMS = ['uViewProj', 'uModel', 'uLightViewProj', 'uInstanced', 'uTint', 'uSunDir', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uHorizonColor', 'uFogColor', 'uSunScatter', 'uCamPos', 'uFogDensity', 'uFogFalloff', 'uExposure', 'uAlpha', 'uEmissive', 'uUnlit', 'uHighlight', 'uTime', 'uWave', 'uWind', 'uGround', 'uSpecular', 'uShadowMap', 'uShadowStrength', 'uShadowTexel', 'uShadowOffset', 'uShadowBias', 'uMatA', 'uMatB']
+const SKY_UNIFORMS = ['uTop', 'uBottom', 'uSunDir', 'uSunColor', 'uSunScatter', 'uInvViewProj', 'uExposure']
+
+type Program = { program: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
 
 export class Gl {
   gl: WebGL2RenderingContext
   program: WebGLProgram
   depthProgram: WebGLProgram
   sky: WebGLProgram
+  skyU: Record<string, WebGLUniformLocation | null> = {}
   skyVao: WebGLVertexArrayObject
   u: Record<string, WebGLUniformLocation | null> = {}
   mainU: Record<string, WebGLUniformLocation | null> = {}
   depthU: Record<string, WebGLUniformLocation | null> = {}
   viewProj: Mat4 = mat4.identity()
+  invViewProj: Mat4 = mat4.identity()
   lightViewProj: Mat4 = mat4.identity()
   camPos: Vec3 = [0, 0, 0]
   identity = mat4.identity()
@@ -349,16 +629,26 @@ export class Gl {
   shadowFbo: WebGLFramebuffer | null = null
   shadowTexel = 1 / SHADOW_SIZE
   shadowOffset = 0.05
+  shadowBias = 0.0004
+  level = 1
   stats = { shadowDraws: 0, mainDraws: 0, shadowVerts: 0, mainVerts: 0, instanceBytes: 0 }
+  extensions = { anisotropic: null as EXT_texture_filter_anisotropic | null, colorBufferFloat: false }
+  private programs = new Map<number, Program>()
+  private materials = materialTable()
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, level = 1) {
     const gl = canvas.getContext('webgl2', { antialias: true, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false })
     if (!gl) throw new Error('Your browser does not support WebGL 2, which the park needs to draw in 3D.')
     this.gl = gl
-    this.program = this.compile(VERT, FRAG)
-    this.depthProgram = this.compile(VERT, DEPTH_FRAG)
+    this.extensions.anisotropic = gl.getExtension('EXT_texture_filter_anisotropic')
+    this.extensions.colorBufferFloat = !!gl.getExtension('EXT_color_buffer_float')
+    this.depthProgram = this.compile(vertexShader(true), DEPTH_FRAG)
+    for (const name of UNIFORMS) this.depthU[name] = gl.getUniformLocation(this.depthProgram, name)
+    this.level = level
+    const main = this.mainProgram(level)
+    this.program = main.program; this.mainU = main.u
     this.sky = this.compile(SKY_VERT, SKY_FRAG)
-    for (const name of UNIFORMS) { this.mainU[name] = gl.getUniformLocation(this.program, name); this.depthU[name] = gl.getUniformLocation(this.depthProgram, name) }
+    for (const name of SKY_UNIFORMS) this.skyU[name] = gl.getUniformLocation(this.sky, name)
     this.u = this.mainU
     this.skyVao = gl.createVertexArray()!
     gl.bindVertexArray(this.skyVao)
@@ -369,6 +659,28 @@ export class Gl {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
     gl.bindVertexArray(null)
     this.initShadows()
+  }
+
+  private mainProgram(level: number): Program {
+    let entry = this.programs.get(level)
+    if (!entry) {
+      const gl = this.gl
+      const program = this.compile(vertexShader(false), fragmentShader(level))
+      const u: Record<string, WebGLUniformLocation | null> = {}
+      for (const name of UNIFORMS) u[name] = gl.getUniformLocation(program, name)
+      gl.useProgram(program)
+      gl.uniform4fv(u.uMatA, this.materials.a); gl.uniform4fv(u.uMatB, this.materials.b)
+      entry = { program, u }
+      this.programs.set(level, entry)
+    }
+    return entry
+  }
+
+  setLevel(level: number) {
+    if (level === this.level) return
+    const entry = this.mainProgram(level)
+    this.level = level; this.program = entry.program; this.mainU = entry.u
+    if (!this.shadowPass) this.u = this.mainU
   }
 
   private initShadows() {
@@ -406,7 +718,9 @@ export class Gl {
       return s
     }
     const p = gl.createProgram()!
-    gl.attachShader(p, make(gl.VERTEX_SHADER, vs)); gl.attachShader(p, make(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p)
+    gl.attachShader(p, make(gl.VERTEX_SHADER, vs)); gl.attachShader(p, make(gl.FRAGMENT_SHADER, fs))
+    gl.bindAttribLocation(p, 0, 'aPos')
+    gl.linkProgram(p)
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'Shader failed to link.')
     return p
   }
@@ -415,15 +729,18 @@ export class Gl {
     const gl = this.gl
     if (previous) this.free(previous)
     if (!builder.count) return null
-    const vao = gl.createVertexArray()!, buffer = gl.createBuffer()!
+    const { vertices, indices, unique } = packMesh(builder)
+    const vao = gl.createVertexArray()!, buffer = gl.createBuffer()!, index = gl.createBuffer()!
     gl.bindVertexArray(vao)
     gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(builder.data), gl.STATIC_DRAW)
-    const bytes = STRIDE * 4
-    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, bytes, 0)
-    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, bytes, 12)
-    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, bytes, 24)
-    const mesh: GpuMesh = { vao, buffer, count: builder.count, mode: builder.lines ? gl.LINES : gl.TRIANGLES, instanceCount: 0, instanceCapacity: 0 }
+    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW)
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 3, gl.FLOAT, false, BYTES, 0)
+    gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 4, gl.BYTE, true, BYTES, 12)
+    gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 4, gl.UNSIGNED_BYTE, true, BYTES, 16)
+    gl.enableVertexAttribArray(5); gl.vertexAttribPointer(5, 4, gl.UNSIGNED_BYTE, false, BYTES, 20)
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index)
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW)
+    const mesh: GpuMesh = { vao, buffer, index, indexType: indices instanceof Uint32Array ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, count: indices.length, vertexCount: unique, mode: builder.lines ? gl.LINES : gl.TRIANGLES, instanceCount: 0, instanceCapacity: 0 }
     if (instanced) {
       mesh.instance = gl.createBuffer()!
       gl.bindBuffer(gl.ARRAY_BUFFER, mesh.instance)
@@ -445,28 +762,27 @@ export class Gl {
 
   free(mesh: GpuMesh) {
     const gl = this.gl
-    gl.deleteVertexArray(mesh.vao); gl.deleteBuffer(mesh.buffer)
+    gl.deleteVertexArray(mesh.vao); gl.deleteBuffer(mesh.buffer); gl.deleteBuffer(mesh.index)
     if (mesh.instance) gl.deleteBuffer(mesh.instance)
   }
 
-  beginShadow(lightViewProj: Mat4, extent: number) {
+  beginShadow(lightViewProj: Mat4, texelWorld: number, time = 0) {
     const gl = this.gl
     if (!this.shadowFbo) return false
     this.lightViewProj = lightViewProj
     this.shadowTexel = 1 / SHADOW_SIZE
-    this.shadowOffset = Math.max(0.03, extent * 2 / SHADOW_SIZE * 1.2)
+    this.shadowOffset = Math.max(0.02, texelWorld * 1.5)
     this.shadowPass = true
     this.u = this.depthU
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null)
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowFbo)
     gl.viewport(0, 0, SHADOW_SIZE, SHADOW_SIZE)
     gl.clear(gl.DEPTH_BUFFER_BIT)
-    gl.enable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE); gl.disable(gl.BLEND); gl.depthMask(true)
-    gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(2.5, 4)
+    gl.enable(gl.DEPTH_TEST); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.disable(gl.BLEND); gl.depthMask(true)
+    gl.enable(gl.POLYGON_OFFSET_FILL); gl.polygonOffset(1.6, 2.5)
     gl.useProgram(this.depthProgram)
     gl.uniformMatrix4fv(this.u.uViewProj, false, lightViewProj)
-    gl.uniformMatrix4fv(this.u.uLightViewProj, false, lightViewProj)
-    gl.uniform1f(this.u.uShadowOffset, 0); gl.uniform1f(this.u.uWave, 0); gl.uniform1i(this.u.uInstanced, 0)
+    gl.uniform1f(this.u.uWave, 0); gl.uniform1i(this.u.uInstanced, 0); gl.uniform1f(this.u.uWind, 0); gl.uniform1f(this.u.uTime, time)
     return true
   }
 
@@ -478,16 +794,21 @@ export class Gl {
     this.u = this.mainU
   }
 
+  windLevel = 0
+
   begin(width: number, height: number, view: Mat4, proj: Mat4, cam: Vec3, light: Lighting, time: number, shadowStrength = 0) {
     const gl = this.gl
     gl.bindFramebuffer(gl.FRAMEBUFFER, null)
     gl.viewport(0, 0, width, height)
-    gl.clearColor(light.skyBottom[0], light.skyBottom[1], light.skyBottom[2], 1)
+    gl.clearColor(0, 0, 0, 1)
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    mat4.multiply(proj, view, this.viewProj)
+    mat4.invert(this.viewProj, this.invViewProj)
     gl.useProgram(this.sky)
     gl.disable(gl.DEPTH_TEST)
-    gl.uniform3fv(gl.getUniformLocation(this.sky, 'uTop'), light.skyTop)
-    gl.uniform3fv(gl.getUniformLocation(this.sky, 'uBottom'), light.skyBottom)
+    const su = this.skyU
+    gl.uniform3fv(su.uTop, light.skyTop); gl.uniform3fv(su.uBottom, light.skyBottom); gl.uniform3fv(su.uSunDir, light.sunDir); gl.uniform3fv(su.uSunColor, light.sunColor)
+    gl.uniform3fv(su.uSunScatter, light.sunScatter); gl.uniformMatrix4fv(su.uInvViewProj, false, this.invViewProj); gl.uniform1f(su.uExposure, light.exposure)
     gl.bindVertexArray(this.skyVao)
     gl.drawArrays(gl.TRIANGLES, 0, 3)
     gl.enable(gl.DEPTH_TEST)
@@ -495,13 +816,14 @@ export class Gl {
     gl.cullFace(gl.BACK)
     gl.useProgram(this.program)
     this.u = this.mainU
-    this.viewProj = mat4.multiply(proj, view)
     this.camPos = cam
     const u = this.u
     gl.uniformMatrix4fv(u.uViewProj, false, this.viewProj)
     gl.uniform3fv(u.uSunDir, light.sunDir); gl.uniform3fv(u.uSunColor, light.sunColor); gl.uniform3fv(u.uSkyColor, light.sky); gl.uniform3fv(u.uGroundColor, light.ground)
-    gl.uniform3fv(u.uFogColor, light.fog); gl.uniform3fv(u.uCamPos, cam); gl.uniform1f(u.uFogNear, light.fogNear); gl.uniform1f(u.uFogFar, light.fogFar)
-    gl.uniform1f(u.uTime, time); gl.uniform1f(u.uWave, 0)
+    gl.uniform3fv(u.uHorizonColor, light.horizon); gl.uniform3fv(u.uSunScatter, light.sunScatter); gl.uniform1f(u.uExposure, light.exposure)
+    gl.uniform3fv(u.uFogColor, light.fog); gl.uniform3fv(u.uCamPos, cam); gl.uniform1f(u.uFogDensity, light.fogDensity); gl.uniform1f(u.uFogFalloff, light.fogFalloff)
+    gl.uniform1f(u.uTime, time); gl.uniform1f(u.uWave, 0); gl.uniform1f(u.uWind, 0)
+    this.windLevel = light.wind
     const shadows = shadowStrength > 0 && !!this.shadowTexture
     gl.activeTexture(gl.TEXTURE0)
     gl.bindTexture(gl.TEXTURE_2D, shadows ? this.shadowTexture : null)
@@ -509,6 +831,7 @@ export class Gl {
     gl.uniform1f(u.uShadowStrength, shadows ? shadowStrength : 0)
     gl.uniform1f(u.uShadowTexel, this.shadowTexel)
     gl.uniform1f(u.uShadowOffset, shadows ? this.shadowOffset : 0)
+    gl.uniform1f(u.uShadowBias, this.shadowBias)
     gl.uniformMatrix4fv(u.uLightViewProj, false, this.lightViewProj)
     this.reset()
   }
@@ -516,7 +839,7 @@ export class Gl {
   reset() {
     const gl = this.gl, u = this.u
     gl.uniform1f(u.uAlpha, 1); gl.uniform1f(u.uEmissive, 0); gl.uniform1i(u.uUnlit, 0); gl.uniform4f(u.uHighlight, 0, 0, 0, 0); gl.uniform3f(u.uTint, 1, 1, 1)
-    gl.uniform1f(u.uGround, 0); gl.uniform1f(u.uSpecular, 0.22)
+    gl.uniform1f(u.uGround, 0); gl.uniform1f(u.uSpecular, 1)
     gl.disable(gl.BLEND); gl.depthMask(true)
   }
 
@@ -526,7 +849,13 @@ export class Gl {
     const gl = this.gl, u = this.u
     gl.uniformMatrix4fv(u.uModel, false, model)
     gl.uniform1i(u.uInstanced, 0)
-    if (this.shadowPass) { this.stats.shadowDraws++; this.stats.shadowVerts += mesh.count; gl.bindVertexArray(mesh.vao); gl.drawArrays(mesh.mode, 0, mesh.count); return }
+    if (this.shadowPass) {
+      this.stats.shadowDraws++; this.stats.shadowVerts += mesh.count
+      if (opts.noCull) gl.disable(gl.CULL_FACE)
+      gl.bindVertexArray(mesh.vao); gl.drawElements(mesh.mode, mesh.count, mesh.indexType, 0)
+      if (opts.noCull) gl.enable(gl.CULL_FACE)
+      return
+    }
     this.stats.mainDraws++; this.stats.mainVerts += mesh.count
     if (opts.tint) gl.uniform3fv(u.uTint, opts.tint)
     if (opts.alpha !== undefined && opts.alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(u.uAlpha, opts.alpha); gl.depthMask(false) }
@@ -539,27 +868,64 @@ export class Gl {
     if (opts.specular !== undefined) gl.uniform1f(u.uSpecular, opts.specular)
     if (opts.noCull) gl.disable(gl.CULL_FACE)
     gl.bindVertexArray(mesh.vao)
-    gl.drawArrays(mesh.mode, 0, mesh.count)
+    gl.drawElements(mesh.mode, mesh.count, mesh.indexType, 0)
     if (opts.noCull) gl.enable(gl.CULL_FACE)
     if (opts.wave) gl.uniform1f(u.uWave, 0)
     if (opts.tint || opts.alpha !== undefined || opts.emissive || opts.unlit || opts.highlight || opts.noDepthWrite || opts.ground || opts.specular !== undefined) this.reset()
   }
 
-  drawInstanced(mesh: GpuMesh | null, opts: { emissive?: number; alpha?: number; specular?: number } = {}) {
+  drawInstanced(mesh: GpuMesh | null, opts: { emissive?: number; alpha?: number; specular?: number; wind?: number } = {}) {
     if (!mesh || !mesh.instanceCount) return
     if (this.shadowPass && ((opts.alpha !== undefined && opts.alpha < 1) || opts.emissive)) return
     const gl = this.gl, u = this.u
     gl.uniformMatrix4fv(u.uModel, false, this.identity)
     gl.uniform1i(u.uInstanced, 1)
-    if (this.shadowPass) { this.stats.shadowDraws++; this.stats.shadowVerts += mesh.count * mesh.instanceCount; gl.bindVertexArray(mesh.vao); gl.drawArraysInstanced(mesh.mode, 0, mesh.count, mesh.instanceCount); gl.uniform1i(u.uInstanced, 0); return }
+    const wind = opts.wind ? opts.wind * this.windLevel : 0
+    if (wind) gl.uniform1f(u.uWind, wind)
+    if (this.shadowPass) {
+      this.stats.shadowDraws++; this.stats.shadowVerts += mesh.count * mesh.instanceCount
+      gl.bindVertexArray(mesh.vao); gl.drawElementsInstanced(mesh.mode, mesh.count, mesh.indexType, 0, mesh.instanceCount)
+      gl.uniform1i(u.uInstanced, 0); if (wind) gl.uniform1f(u.uWind, 0); return
+    }
     this.stats.mainDraws++; this.stats.mainVerts += mesh.count * mesh.instanceCount
     if (opts.emissive) gl.uniform1f(u.uEmissive, opts.emissive)
     if (opts.specular !== undefined) gl.uniform1f(u.uSpecular, opts.specular)
     if (opts.alpha !== undefined && opts.alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(u.uAlpha, opts.alpha); gl.depthMask(false) }
     gl.bindVertexArray(mesh.vao)
-    gl.drawArraysInstanced(mesh.mode, 0, mesh.count, mesh.instanceCount)
+    gl.drawElementsInstanced(mesh.mode, mesh.count, mesh.indexType, 0, mesh.instanceCount)
     gl.uniform1i(u.uInstanced, 0)
+    if (wind) gl.uniform1f(u.uWind, 0)
     if (opts.emissive || opts.alpha !== undefined || opts.specular !== undefined) this.reset()
+  }
+
+  /** Times a fixed fragment workload (synchronised with a 1-pixel read) to pick a quality tier. */
+  probe(): number {
+    const gl = this.gl
+    try {
+      const size = 256
+      const tex = gl.createTexture(), fbo = gl.createFramebuffer()
+      gl.bindTexture(gl.TEXTURE_2D, tex)
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, size, size)
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo)
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0)
+      const program = this.compile(SKY_VERT, `#version 300 es
+precision highp float; in vec2 vNdc; out vec4 o;
+void main(){ vec2 p = vNdc * 9.0; float a = 0.0; for (int i = 0; i < 48; i++) { p = vec2(p.x * p.x - p.y * p.y, 2.0 * p.x * p.y) * 0.5 + vNdc; a += sin(p.x) * cos(p.y); } o = vec4(a, a * 0.5, 0.2, 1.0); }`)
+      gl.useProgram(program)
+      gl.viewport(0, 0, size, size)
+      gl.disable(gl.DEPTH_TEST)
+      gl.bindVertexArray(this.skyVao)
+      const px = new Uint8Array(4)
+      gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px)
+      const t0 = performance.now()
+      for (let i = 0; i < 4; i++) gl.drawArrays(gl.TRIANGLES, 0, 3)
+      gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px)
+      const ms = performance.now() - t0
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+      gl.deleteFramebuffer(fbo); gl.deleteTexture(tex); gl.deleteProgram(program)
+      gl.bindVertexArray(null)
+      return ms
+    } catch { return 99 }
   }
 }
 
