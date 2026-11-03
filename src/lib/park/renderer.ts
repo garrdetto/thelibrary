@@ -6,6 +6,9 @@ import { personCuller } from './culling'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel, WATER_RIDE_TINTS } from './waterRides'
 import { hotelModel, hotelLook } from './hotelModels'
+import { addPathTile } from './pathModels'
+import { ghostCorners } from './pathBuilder'
+import type { GhostPiece } from './pathBuilder'
 import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
@@ -24,6 +27,7 @@ export type Preview = {
   rect?: { x0: number; y0: number; x1: number; y1: number; ok: boolean; elevation?: number }
   ghost?: { type: 'flat' | 'stall' | 'scenery' | 'gate' | 'hotel'; floors?: number; kind: string; x: number; y: number; rot: number; ok: boolean; role?: 'entrance' | 'exit'; size?: [number, number]; wave?: string }
   piece?: { ride: Entity; piece: Piece; ok: boolean }
+  pathGhost?: { pieces: GhostPiece[]; ok: boolean }
   station?: { x: number; y: number; dir: number; length: number; ok: boolean }
   selected?: number
 }
@@ -236,35 +240,24 @@ export class ParkRenderer {
           const wx = (x + u) * TILE + (u === 1 ? -0.001 : 0.001), wy = (y + v) * TILE + (v === 1 ? -0.001 : 0.001)
           return [wx, wy, pathHeightAt(map, wx, wy, TILE) + lift]
         }
-        paths.quad(null, corner(0, 0), corner(1, 0), corner(1, 1), corner(0, 1), fill)
-        if (kind === 3) {
-          const h = (u: number, v: number) => pathHeightAt(map, (x + u) * TILE + (u === 1 ? -0.001 : 0.001), (y + v) * TILE + (v === 1 ? -0.001 : 0.001), TILE)
-          const h00 = h(0, 0), h10 = h(1, 0), h11 = h(1, 1), h01 = h(0, 1)
-          const riseX = Math.abs((h10 - h00) + (h11 - h01)), alongX = riseX >= Math.abs((h01 - h00) + (h11 - h10))
-          for (let step = 1; step < 8; step++) {
-            const u = step / 8, half = 0.06
-            const corners: [number, number][] = alongX
-              ? [[u - half, 0], [u + half, 0], [u + half, 1], [u - half, 1]]
-              : [[0, u - half], [0, u + half], [1, u + half], [1, u - half]]
-            const tread = corners.map(([cx, cy]) => {
-              const wx = (x + cx) * TILE, wy = (y + cy) * TILE
-              return [wx, wy, pathHeightAt(map, wx, wy, TILE) + lift + 0.035] as Vec3
-            })
-            paths.quad(null, tread[0], tread[1], tread[2], tread[3], edge)
-          }
-        }
-        const deck = pathHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
-        const ground = groundHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE)
-        if (deck > ground + 0.3 && !map.obj[i] && !s.trackCells.get(i)?.length) {
-          const wx = (x + 0.5) * TILE, wy = (y + 0.5) * TILE
-          paths.cylinder(null, wx, wy, ground, 0.18, 0.18, deck - ground, 8, hexColor('#68472c'))
-        }
+        const open = DIRS.map(([dx, dy]) => {
+          const nx = x + dx, ny = y + dy
+          if (!inMap(map, nx, ny) || !map.path[tileIndex(map, nx, ny)]) return true
+          const mx = (x + 0.5 + dx * 0.5) * TILE, my = (y + 0.5 + dy * 0.5) * TILE
+          return Math.abs(pathHeightAt(map, mx - dx * 0.01, my - dy * 0.01, TILE) - pathHeightAt(map, mx + dx * 0.01, my + dy * 0.01, TILE)) > 0.15
+        }) as [boolean, boolean, boolean, boolean]
+        const cornerZ = (u: number, v: number) => corner(u, v)[2] - lift
+        addPathTile(paths, x, y, [cornerZ(0, 0), cornerZ(1, 0), cornerZ(1, 1), cornerZ(0, 1)], {
+          kind, fill, edge, open,
+          supports: !map.obj[i] && !s.trackCells.get(i)?.length,
+          ground: (u, v) => groundHeightAt(map, (x + u) * TILE, (y + v) * TILE, TILE),
+        })
         const e = 0.08
         const sides: [number, number, [number, number, number, number]][] = [[1, 0, [1 - e, 0, 1, 1]], [0, 1, [0, 1 - e, 1, 1]], [-1, 0, [0, 0, e, 1]], [0, -1, [0, 0, 1, e]]]
         for (const [dx, dy, [u0, v0, u1, v1]] of sides) {
           const nx = x + dx, ny = y + dy
           const other = inMap(map, nx, ny) ? map.path[tileIndex(map, nx, ny)] : 0
-          if (other === kind) continue
+          if (other === kind || kind === 3) continue
           const up = (u: number, v: number): Vec3 => { const p = corner(u, v); p[2] += 0.02; return p }
           paths.quad(null, up(u0, v0), up(u1, v0), up(u1, v1), up(u0, v1), edge)
         }
@@ -801,6 +794,32 @@ export class ParkRenderer {
     this.g.drawInstanced(m, { alpha: 0.5 })
   }
 
+  private pathGhostKey = ''
+  private pathGhostMesh: GpuMesh | null = null
+
+  private drawPathGhost() {
+    const s = this.state!, map = s.map, ghost = this.preview.pathGhost
+    if (!ghost?.pieces.length) return
+    const key = JSON.stringify([ghost, s.structVersion])
+    if (key !== this.pathGhostKey) {
+      this.pathGhostKey = key
+      const b = new MeshBuilder()
+      for (const piece of ghost.pieces) {
+        if (!inMap(map, piece.x, piece.y)) continue
+        const fill = piece.kind === 2 ? QUEUE_COLOR : piece.kind === 3 ? hexColor('#b39a73') : piece.kind === 4 ? hexColor('#8b6038') : PATH_COLOR
+        const edge = piece.kind === 2 ? QUEUE_EDGE : piece.kind === 3 ? hexColor('#786247') : piece.kind === 4 ? hexColor('#563b27') : PATH_EDGE
+        const back = (piece.dir + 2) % 4
+        addPathTile(b, piece.x, piece.y, ghostCorners(map, piece), {
+          kind: piece.kind, fill, edge,
+          open: [0, 1, 2, 3].map(d => d !== piece.dir && d !== back) as [boolean, boolean, boolean, boolean],
+          ground: (u, v) => groundHeightAt(map, (piece.x + u) * TILE, (piece.y + v) * TILE, TILE),
+        })
+      }
+      this.pathGhostMesh = this.g.upload(b, this.pathGhostMesh)
+    }
+    if (this.pathGhostMesh) this.g.draw(this.pathGhostMesh, undefined, { alpha: 0.5, noCull: true, ...(ghost.ok ? {} : { highlight: [1, 0.2, 0.15, 0.55] as [number, number, number, number] }) })
+  }
+
   private drawPreview() {
     const s = this.state!, map = s.map, p = this.preview, g = this.g
     const key = JSON.stringify([p.rect, p.station, p.piece ? [p.piece.ride.id, p.piece.ride.pieces?.length, p.piece.piece, p.piece.ok] : null, s.structVersion])
@@ -831,6 +850,7 @@ export class ParkRenderer {
       this.overlay = g.upload(b, this.overlay)
     }
     if (this.overlay) g.draw(this.overlay, undefined, { alpha: 0.45, unlit: true, noCull: true })
+    this.drawPathGhost()
     const gh = p.ghost
     if (!gh) return
     const color: [number, number, number, number] = gh.ok ? [0.3, 1, 0.45, 0.35] : [1, 0.25, 0.2, 0.45]

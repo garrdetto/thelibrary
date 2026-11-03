@@ -45,6 +45,28 @@ function pathDeckAtTile(map, x, y) {
   return base + (map.pathElevation?.[i] ?? 0) * UNIT
 }
 
+export const SLOPE_RISE = 0.5
+export const STAIR_RISE = 1
+
+export function pathRamp(map, x, y) {
+  if (!inMap(map, x, y)) return null
+  const i = tileIndex(map, x, y)
+  const kind = map.path[i]
+  if (!kind || (map.pathElevation?.[i] ?? 0) <= 0) return null
+  const top = pathDeckAtTile(map, x, y)
+  const maxDrop = kind === 3 ? Infinity : SLOPE_RISE + 0.01
+  let low = null
+  for (const [dx, dy] of DIRS) {
+    const nx = x + dx, ny = y + dy
+    if (!inMap(map, nx, ny)) continue
+    const ni = tileIndex(map, nx, ny)
+    if (!map.path[ni]) continue
+    const height = pathDeckAtTile(map, nx, ny)
+    if (height < top - 0.01 && top - height <= maxDrop && (!low || height < low.height)) low = { dx, dy, height }
+  }
+  return low ? { dx: low.dx, dy: low.dy, low: low.height, high: top } : null
+}
+
 export function pathHeightAt(map, wx, wy, tile = 4) {
   const ground = groundHeightAt(map, wx, wy, tile)
   const x = Math.floor(wx / tile), y = Math.floor(wy / tile)
@@ -52,21 +74,11 @@ export function pathHeightAt(map, wx, wy, tile = 4) {
   const i = tileIndex(map, x, y)
   const kind = map.path[i]
   if (!kind) return ground
-  if (kind === 3 && (map.pathElevation?.[i] ?? 0) > 0) {
-    let low = null
-    for (const [dx, dy] of DIRS) {
-      const nx = x + dx, ny = y + dy
-      if (!inMap(map, nx, ny)) continue
-      const ni = tileIndex(map, nx, ny)
-      if (!map.path[ni]) continue
-      const height = pathDeckAtTile(map, nx, ny)
-      if (height < pathDeckAtTile(map, x, y) - 0.01 && (!low || height < low.height)) low = { dx, dy, height }
-    }
-    if (low) {
-      const u = wx / tile - x, v = wy / tile - y
-      const progress = low.dx ? (low.dx > 0 ? 1 - u : u) : low.dy > 0 ? 1 - v : v
-      return low.height + (pathDeckAtTile(map, x, y) - low.height) * clamp(progress, 0, 1)
-    }
+  const ramp = pathRamp(map, x, y)
+  if (ramp) {
+    const u = wx / tile - x, v = wy / tile - y
+    const progress = ramp.dx ? (ramp.dx > 0 ? 1 - u : u) : ramp.dy > 0 ? 1 - v : v
+    return ramp.low + (ramp.high - ramp.low) * clamp(progress, 0, 1)
   }
   const elevation = (map.pathElevation?.[i] ?? 0) * UNIT
   if (kind === 4 || elevation > 0) return pathDeckAtTile(map, x, y)
