@@ -7,7 +7,7 @@
  *      admin with ?drafts=1, and goes live when published. Items published
  *      through the old per-kind table are still listed.
  *   2. The developer instance (?dev=1) loads drafts into its own solo save,
- *      and a draft item can be placed on a lot there.
+ *      a draft item can be placed on a lot there, and F8 opens the dev panel.
  *   3. A fresh solo neighborhood has every starter house; screenshots of the
  *      streets, sidewalks, trees, Maple Commons and the downtown grid go to .e2e/.
  *   4. The admin item editor shows the draft badge and actions.
@@ -116,6 +116,11 @@ try {
     return { lot: lot.id, owner: world.lots[lot.id].owner, placed: !!world.builds[lot.id].objects.devcheck01 }
   }, second.id)
   assert(placed.placed, `a draft item is placed on ${placed.lot} in the developer instance`)
+  await dev.keyboard.press('F8')
+  await dev.locator('#devPanel li', { hasText: 'Garden Settee' }).waitFor({ timeout: 20000 })
+  const panel = await dev.locator('#devPanel').innerText()
+  assert(/Draft/.test(panel) && /Place/.test(panel), 'F8 opens the dev panel with the draft and a Place button')
+  await shot(dev, 'dev-panel')
   await dev.evaluate(() => window.maple.houses && dispatchEvent(new Event('pagehide')))
   const saves = await dev.evaluate(() => ({ dev: !!localStorage.getItem('maplestreet/dev/v1'), solo: !!localStorage.getItem('maplestreet/offline/v2') }))
   assert(saves.dev && !saves.solo, 'the developer instance keeps its own save')

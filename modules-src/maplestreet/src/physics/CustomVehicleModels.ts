@@ -35,6 +35,7 @@ async function fetchList(): Promise<CustomVehicleRecord[] | null> {
     if (data.drafts === true) devDrafts.allowed = true;
     const list = Array.isArray(data.vehicles) ? data.vehicles.filter(isValidVehicleRecord) : null;
     devDrafts.vehicles = list?.filter(r => r.status === 'draft').length ?? 0;
+    for (const r of list ?? []) if (r.status === 'draft') devDrafts.ids.add(r.id);
     return list;
   } catch {
     return null;

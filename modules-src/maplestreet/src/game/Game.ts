@@ -761,6 +761,22 @@ export class Game {
     this.input.endFrame();
   }
 
+  /** Developer instance hooks (src/game/DevPanel.ts): place a catalog item in Buy mode, or drive any vehicle. */
+  devPlace(catalogId: string) {
+    if (!this.homeLot()) return this.hud.toast('Buy a lot first, then place items on it');
+    if (this.mode === 'live') this.toggleBuild();
+    this.build.catalogId = catalogId;
+    this.build.setTool('object');
+    this.syncBuildHud();
+  }
+
+  devDrive(kind: VehicleKind) {
+    if (this.mode !== 'live') this.toggleBuild();
+    this.bringOut(kind, true);
+  }
+
+  devHasLot() { return !!this.homeLot(); }
+
   private toggleBuild() {
     if (this.mode === 'live') {
       if (this.driving) this.exitVehicle();
