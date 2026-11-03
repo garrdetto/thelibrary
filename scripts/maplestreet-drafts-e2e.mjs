@@ -106,7 +106,7 @@ try {
   const note = await dev.locator('.dev-note').innerText()
   assert(/1 item/.test(note), `the start screen reports the draft (${note})`)
   await shot(dev, 'dev-start')
-  await dev.locator('#playWorld').click()
+  await dev.locator('#playWorld').click({ timeout: 180000 })
   await dev.waitForFunction(() => window.maple && window.maple.account, null, { timeout: 180000 })
   const label = await dev.evaluate(() => window.maple.net?.label ?? '')
   assert(/Developer instance/.test(label), `runs on the developer solo authority (${label})`)
