@@ -104,7 +104,7 @@ Measured on the dyno, the built-in vehicles top out at: pickup 63 mph (0–60 in
 - **Needs** (hunger, energy, fun) drop only while you're in town. Your bed, fridge, grill, tub and other items refill them.
 - **Vehicles:**
   - You start with a pickup, a trailer and a riding mower.
-  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, plus any admin-published vehicles marked for sale. These are original designs.
+  - The dealer sells a heavy-duty crew-cab pickup, a muscle coupe, a sedan, a golf cart, a four-wheeler and a zero-turn mower, the bundled Meridian Sedan, Bulwark 4x4 and Ironhorn Crew Cab (`shared/BundledVehicles.ts`, models in `public/modules/maplestreet/vehicles/`), plus any admin-published vehicles marked for sale. These are original designs.
   - Fuel burns as you drive and is saved with your account.
   - Drivers sit visibly in the seat, both your own and other players'.
 

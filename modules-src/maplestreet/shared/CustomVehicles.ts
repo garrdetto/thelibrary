@@ -11,6 +11,7 @@
  * scale by `model.scale` > translate by `model.x/y/z`.
  */
 import { isAssetStatus, type AssetStatus } from './Assets';
+import { BUNDLED_VEHICLES } from './BundledVehicles';
 import { refreshDealer, VEHICLES, type VehicleSpec } from './Economy';
 import { CUSTOM_VEHICLE_PREFIX, TUNING, type AxleTuning, type CustomVehicleKind, type VehicleTuning } from './Vehicles';
 
@@ -143,14 +144,16 @@ function specFromRecord(r: CustomVehicleRecord): VehicleSpec {
 }
 
 /**
- * Adds or refreshes published vehicles. Records that disappear (or are
- * retired) stay registered but leave the dealer and traffic, so players who
- * own one keep driving it.
+ * Adds or refreshes published vehicles, plus the bundled ones that ship with
+ * the game (shared/BundledVehicles.ts; a published record with the same id
+ * wins). Records that disappear (or are retired) stay registered but leave
+ * the dealer and traffic, so players who own one keep driving it.
  */
 export function registerCustomVehicles(records: readonly CustomVehicleRecord[]): CustomVehicleRecord[] {
   const added: CustomVehicleRecord[] = [];
   const seen = new Set<string>();
-  for (const r of records) {
+  const ids = new Set(records.map(r => r?.id));
+  for (const r of [...BUNDLED_VEHICLES.filter(b => !ids.has(b.id)), ...records]) {
     if (!isValidVehicleRecord(r)) continue;
     const kind = customVehicleKind(r.id);
     RECORDS.set(kind, r);
