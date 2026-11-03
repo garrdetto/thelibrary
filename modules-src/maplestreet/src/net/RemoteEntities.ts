@@ -171,7 +171,7 @@ export class RemoteEntities {
   }
 
   /** The painted, dented body for a style; dents re-apply when a published model finishes loading. */
-  private buildShell(P: (typeof PRESETS)[string], style: VehicleSnap['style'], lights: VehicleLights, paint = paintFor(P, style)) {
+  private buildShell(P: (typeof PRESETS)[string], style: VehicleSnap['style'], lights: VehicleLights, paint: THREE.Material = paintFor(P, style)) {
     const shell = P.build(paint, lights);
     mergeStatic(shell);
     applyDents(shell, style?.dents);
