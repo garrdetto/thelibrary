@@ -169,3 +169,25 @@ Measured (SwiftShader, scene above, auto tier = `low`):
 `node scripts/perf-baseline.mjs --compare --only park` against a same-machine run of the base commit: avg FPS
 60.0 → 60.0, 1% low 59.5 → 59.5, heap 16.57 → 16.68 MB (+0.7%), JS 11,981 → 12,112 KB (+1.1%, dev server, unminified),
 transferred 12,749 → 12,877 KB. No regressions. Screenshots: `docs/park-graphics/phase1/`.
+
+### Phase 2 — Procedural material system
+- `Gl.initDetail` renders the eight detail layers into a 256×256×8 RGBA8 `TEXTURE_2D_ARRAY` at startup with one
+  fragment shader (`DETAIL_FRAG`: periodic, tileable value noise; brushed steel, painted metal with orange peel and
+  micro-scratches, concrete with aggregate and pits, wood planks with grain and seams, fiberglass gelcoat, grass/dirt,
+  offset pavers with mortar, and water normals/foam), then mipmaps it. 2.8 MB of GPU memory, nothing downloaded.
+  Anisotropic filtering (`EXT_texture_filter_anisotropic`, when present) is 1×/2×/8× by tier.
+- The material table now also drives the detail layer, tiles per metre and bump strength. Objects sample it triplanar in
+  world space (3 reads at `medium`/`high`, the dominant axis only at `low`); albedo variation, roughness variation and
+  cavity feed the lighting, and at `medium`/`high` the height channel bends the normal through `dFdx/dFdy` (surface
+  gradient, no tangents or UVs).
+- Terrain samples the grass layer from above plus a macro read at `medium`/`high`: large-scale tone variation, dry
+  patches and dirt where the grass is thin; footpaths get pavers through the same path (`uGround` still tints them).
+  The per-pixel `fbm` noise is gone.
+- Water: two scrolling normal layers (one at `low`), sky reflection through Schlick Fresnel, depth-based tint and
+  transparency from the terrain under each water vertex (stored in the AO channel), and shoreline foam.
+
+Measured (SwiftShader, auto tier = `low`): draws 194/frame, frame 866–892 ms (min of 5; base 919–997), running park
+0.79–1.07 FPS avg (base 0.59–0.81), 1% low 0.58 (base 0.2–0.5), heap 22.8–22.9 MB. `medium` 1,103 ms, `high` 1,372 ms on
+SwiftShader. Park chunk 398,168 B (134,974 gzip): +29.3 KB raw / +10.0 KB gzip over the base. `perf-baseline --compare`:
+60.0/59.5 FPS unchanged, heap +1.0%, JS +1.3% (dev), transferred 12,900 KB; no regressions. Screenshots:
+`docs/park-graphics/phase2/`.
