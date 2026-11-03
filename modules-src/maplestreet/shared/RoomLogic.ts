@@ -16,7 +16,7 @@ import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, Veh
 import { cleanLook, keepOutfit } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
 import { vehicleRole } from './Vehicles';
-import { cleanCar } from './Cars';
+import { addCrash, cleanCar, newCar } from './Cars';
 
 export interface LogicIO {
   send(sessionId: string, msg: ServerMsg): void;
@@ -229,6 +229,7 @@ export class NeighborhoodLogic {
       case 'jobProgress': this.progressJob(sessionId, s, acc, msg.jobId); break;
       case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item, msg.car); break;
       case 'refuel': this.handleRefuel(sessionId, s, acc, msg.kind, msg.gallons); break;
+      case 'crash': this.handleCrash(sessionId, s, acc, msg.kind, msg.dv, msg.at); break;
       case 'fuel': {
         // Clients report fuel burned; levels may only go down here (refuelling goes through the pump).
         if (!msg.levels || typeof msg.levels !== 'object') break;
@@ -371,7 +372,7 @@ export class NeighborhoodLogic {
     if (item.vehicle) {
       acc.garage.push(item.vehicle);
       acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank;
-      acc.cars[item.vehicle] = cleanCar(isPaintable(item.vehicle) ? car : null, item.vehicle);
+      acc.cars[item.vehicle] = newCar(isPaintable(item.vehicle) ? car : null, item.vehicle);
     }
     if (item.clothing) acc.wardrobe.push(item.clothing);
     this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — wear it from the rack here` : `Bought: ${item.name}`);
@@ -388,6 +389,22 @@ export class NeighborhoodLogic {
     acc.money = Math.round((acc.money - cost) * 100) / 100;
     acc.fuel[kind] = (acc.fuel[kind] ?? 0) + affordable;
     this.sendAccount(sessionId, acc, `${VEHICLES[kind].fuel === 'electric' ? 'Charged' : 'Filled up'}: ${affordable.toFixed(1)} ${VEHICLES[kind].fuel === 'electric' ? 'kWh' : 'gal'} for $${cost.toFixed(2)}`);
+  }
+
+  private crashTimes = new Map<string, number>();
+
+  /** A car the player owns and has out took a hit: damage it and dent it where it was struck. */
+  private handleCrash(sessionId: string, s: Session, acc: Account, kind: unknown, dv: unknown, at: unknown) {
+    if (typeof kind !== 'string' || !acc.garage.includes(kind as VehicleKind) || !s.vehicles.some(v => v.kind === kind)) return;
+    const key = `${sessionId}:${kind}`, now = Date.now();
+    if (now - (this.crashTimes.get(key) ?? 0) < 400) return;
+    this.crashTimes.set(key, now);
+    const car = acc.cars[kind as VehicleKind] ??= cleanCar(null, kind);
+    const p = at && typeof at === 'object' ? at as { x: unknown; y: unknown; z: unknown } : {} as { x: unknown; y: unknown; z: unknown };
+    const added = addCrash(car, num(dv, 0, 60), { x: num(p.x, -6, 6), y: num(p.y, -4, 4), z: num(p.z, -3, 3) });
+    if (!added) return;
+    const pct = Math.round((1 - car.damage) * 100);
+    this.sendAccount(sessionId, acc, car.damage >= 0.999 ? `Your ${VEHICLES[kind]?.name ?? 'car'} is wrecked — it barely runs until it's repaired at the body shop` : added >= 0.15 ? `Crunch! Your ${VEHICLES[kind]?.name ?? 'car'} is at ${pct}% condition — the body shop can fix it` : undefined);
   }
 
   private cooldowns = new Map<string, number>();

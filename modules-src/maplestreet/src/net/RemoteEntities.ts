@@ -14,6 +14,7 @@ import { lookKey } from '../../shared/Wardrobe';
 import { MASK, Physics } from '../physics/Physics';
 import { wheelFor, makeLights, paintFor, PRESETS, VehicleLights } from '../physics/VehiclePresets';
 import { carStyleKey } from '../../shared/Cars';
+import { applyDents } from '../physics/Dents';
 
 const INTERP_DELAY_MS = 120;
 
@@ -104,6 +105,8 @@ export class RemoteEntities {
     const lights = makeLights();
     const shell = P.build(paintFor(P, v.style), lights);
     mergeStatic(shell);
+    applyDents(shell, v.style?.dents);
+    shell.userData.onFill = () => applyDents(shell, v.style?.dents);
     root.add(shell);
     const wheels: RemoteVehicle['wheels'] = [];
     for (const a of P.axles) for (const side of [1, -1]) {
@@ -121,8 +124,10 @@ export class RemoteEntities {
   private restyleVehicle(rv: RemoteVehicle, v: VehicleSnap) {
     const P = PRESETS[rv.kind] ?? PRESETS.sedan;
     rv.root.remove(rv.shell);
-    rv.shell = P.build(paintFor(P, v.style), rv.lights);
-    mergeStatic(rv.shell);
+    const shell = rv.shell = P.build(paintFor(P, v.style), rv.lights);
+    mergeStatic(shell);
+    applyDents(shell, v.style?.dents);
+    shell.userData.onFill = () => applyDents(shell, v.style?.dents);
     rv.shell.traverse(o => (o.castShadow = true));
     rv.root.add(rv.shell);
     rv.styleKey = carStyleKey(v.style);

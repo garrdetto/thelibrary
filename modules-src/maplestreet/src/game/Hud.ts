@@ -326,7 +326,7 @@ export class Hud {
 
   setGarage(acc: Account, out: Set<VehicleKind>, fuel: Partial<Record<VehicleKind, number>>) {
     const el = $('garage');
-    const sig = JSON.stringify([acc.garage, [...out], acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k]?.tank ?? 1)) * 20))]);
+    const sig = JSON.stringify([acc.garage, [...out], acc.garage.map(k => Math.round(((fuel[k] ?? acc.fuel[k] ?? 0) / Math.max(1, VEHICLES[k]?.tank ?? 1)) * 20)), acc.garage.map(k => Math.round((acc.cars[k]?.damage ?? 0) * 100))]);
     if (el.dataset.sig === sig) return;
     el.dataset.sig = sig;
     el.innerHTML = '';
@@ -337,7 +337,8 @@ export class Hud {
       row.className = 'car';
       const level = fuel[k] ?? acc.fuel[k] ?? 0;
       const pct = spec.fuel === 'none' ? 100 : Math.round((level / spec.tank) * 100);
-      row.innerHTML = `<b>${esc(spec.name)}</b><div class="fuel${pct < 20 ? ' low' : ''}" title="${spec.fuel === 'none' ? 'No engine' : pct + '% fuel'}"><i style="width:${pct}%"></i></div>`;
+      const condition = Math.round((1 - (acc.cars[k]?.damage ?? 0)) * 100);
+      row.innerHTML = `<b>${esc(spec.name)}${condition < 100 ? ` <small class="cond${condition < 50 ? ' bad' : ''}" title="Condition">${condition}%</small>` : ''}</b><div class="fuel${pct < 20 ? ' low' : ''}" title="${spec.fuel === 'none' ? 'No engine' : pct + '% fuel'}"><i style="width:${pct}%"></i></div>`;
       const b = document.createElement('button');
       b.className = 'btn';
       b.textContent = out.has(k) ? 'Call over' : 'Bring out';

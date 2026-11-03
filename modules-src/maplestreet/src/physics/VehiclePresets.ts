@@ -41,13 +41,16 @@ const FINISH: Record<PaintFinish, { metalness: number; roughness: number; clearc
   matte: { metalness: 0.08, roughness: 0.78, clearcoat: 0, clearcoatRoughness: 1 },
 };
 
-export function makePaint(color: number, finish: PaintFinish = 'metallic') {
-  return new THREE.MeshPhysicalMaterial({ color, ...FINISH[finish] });
+/** `wear` (0–1, crash damage) dulls the paint: rougher, less clearcoat, a touch grayer. */
+export function makePaint(color: number, finish: PaintFinish = 'metallic', wear = 0) {
+  const f = FINISH[finish], w = Math.min(1, Math.max(0, wear));
+  const c = new THREE.Color(color).lerp(new THREE.Color(0x6f6a64), w * 0.25);
+  return new THREE.MeshPhysicalMaterial({ color: c, metalness: f.metalness * (1 - w * 0.4), roughness: Math.min(1, f.roughness + w * 0.35), clearcoat: f.clearcoat * (1 - w * 0.8), clearcoatRoughness: f.clearcoatRoughness });
 }
 
 /** Paint for an owned car's style, or the vehicle's factory paint. */
 export function paintFor(P: VehicleTuning, style?: CarStyle | null) {
-  return style ? makePaint(parseInt(style.color.slice(1), 16), style.finish) : makePaint(P.paint);
+  return style ? makePaint(parseInt(style.color.slice(1), 16), style.finish, style.damage ?? 0) : makePaint(P.paint);
 }
 
 export function makeLights(): VehicleLights {
