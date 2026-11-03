@@ -6,6 +6,7 @@ export type RideStats = { valid: boolean; e: number; i: number; n: number; maxSp
 export type Entity = {
   id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance' | 'hotel'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
   floors?: number; colors?: HotelColors; roof?: string; addons?: Record<string, boolean>; entrance?: { x: number; y: number } | null; occupancy?: number; lastNight?: number; district?: boolean
+  rate?: number; service?: string; condition?: number; profit?: number; invested?: number; nights?: number[]; night?: HotelNight | null
   size?: [number, number]; wave?: string; comments?: { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }[]; commentCounts?: { pos: number; mix: number; neg: number }
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
@@ -14,7 +15,7 @@ export type Entity = {
 }
 export type Guest = { id: number; park: number; x: number; y: number; tx: number; ty: number; state: string; hidden?: boolean; happy: number; items: string[]; kid: boolean; shirt: number; thoughts: string[]; dir?: number; energy?: number; hunger?: number; thirst?: number; cash?: number }
 export type Staff = { id: number; role: 'handyman' | 'mechanic' | 'entertainer' | 'security' | 'supervisor' | 'ems'; park: number; name: string; x: number; y: number; tx?: number; ty?: number; state: string; swept: number; fixed: number; target?: { ride?: number } | null; dir?: number }
-export type Ledger = { rides: number; shops: number; entry: number; construction: number; upkeep: number; wages: number; electricity: number; marketing: number; interest: number; landscaping: number; hotels?: number; hotelUpkeep?: number }
+export type Ledger = { rides: number; shops: number; entry: number; construction: number; upkeep: number; wages: number; electricity: number; marketing: number; interest: number; landscaping: number; hotels?: number; hotelUpkeep?: number; hotelAmenities?: number; hotelStaff?: number }
 export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'versus'; guests?: number; rating?: number; year?: number; value?: number; count?: number; excitement?: number }
 export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number; wages?: number; electricity?: number }
 export type LandRect = { x0: number; y0: number; x1: number; y1: number }
@@ -29,6 +30,9 @@ export type ParkState = {
   trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number }[]>; fields: Map<string, Int16Array>
 }
 export type HotelColors = { primary: number; secondary: number; trim: number }
+export type HotelNight = { occupied: number; rate: number; rooms: number; amenities: number; staff: number; utilities: number; maintenance: number; amenityCosts: number; income: number; costs: number; profit: number }
+export type HotelAddon = { name: string; cost: number; occupancy: number; share?: number; upkeep?: number; amenity?: boolean }
+export type HotelService = { name: string; staff: number; occupancy: number; wear: number; spend: number }
 export type HotelDef = { name: string; min: [number, number]; max: [number, number]; floors: [number, number]; base: number; perTileFloor: number; density: number; rate: number; upkeep: number; luxury: number; roofs: string[]; colors: HotelColors; description: string }
 export type GuestSpawn = { rate: number; cap: number; buildCap?: number; landCap?: number; limit?: 'rides' | 'land' | 'max' | 'closed' }
 export type Command = { t: string; [key: string]: unknown }
@@ -64,10 +68,25 @@ export function rideCommentsDetail(state: ParkState, id: number): { id: number; 
 export function recordComment(state: ParkState, ride: Entity, guest: Guest, kind: string): unknown
 export function guestProfile(rnd: () => number, kid: boolean): { type: 'kid' | 'thrill' | 'casual'; minI: number; maxI: number; tolerance: number }
 export const HOTELS: Record<string, HotelDef>
-export const HOTEL_ADDONS: Record<string, { name: string; cost: number; occupancy: number }>
+export const HOTEL_ADDONS: Record<string, HotelAddon>
+export const HOTEL_SERVICE: Record<string, HotelService>
+export const HOTEL_SIZE_LIMIT: number
+export const HOTEL_FLOOR_LIMIT: number
+export const HOTEL_HISTORY_NIGHTS: number
+export const RESIZE_PREMIUM: number
+export function addonCost(id: string, kind: string, rooms: number): number
+export function amenityBooks(addon: HotelAddon, def: HotelDef, rooms: number, occupied: number, rate: number, service?: HotelService): { income: number; cost: number; perGuest?: number }
+export const SHRINK_REFUND: number
+export function hotelRateLimits(kind: string): [number, number]
+export function hotelResizeCost(hotel: Entity, size: [number, number], floors: number): number
+export function hotelRefurbishCost(hotel: Entity): number
+export function rateFactor(def: HotelDef, rate?: number): number
+export function hotelOccupancy(state: ParkState, hotel: Entity, inDistrict: boolean): number
+export function hotelNight(hotel: Entity, occupancy: number, inDistrict?: boolean): HotelNight | null
+export function hotelPortfolio(state: ParkState, park: number): { hotels: number; rooms: number; occupied: number; income: number; costs: number; profit: number; lifetime: number; invested: number }
 export const FLOOR_HEIGHT: number
 export const HOTEL_GUESTS_PER_ROOM: number
-export function hotelSpec(kind: string, size: [number, number], floors: number, addons?: Record<string, boolean>): { rooms: number; cost: number; upkeep: number; rate: number; guestBonus: number } | null
+export function hotelSpec(kind: string, size: [number, number], floors: number, addons?: Record<string, boolean>): { rooms: number; building: number; cost: number; upkeep: number; rate: number; guestBonus: number } | null
 export function hotelOrientedFits(def: HotelDef, w: number, h: number): boolean
 export function hotelHeight(hotel: { floors?: number }): number
 export function hotelEntranceFor(state: ParkState, park: number, x: number, y: number, w: number, h: number): { x: number; y: number } | null

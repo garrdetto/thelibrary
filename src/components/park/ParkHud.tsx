@@ -14,7 +14,7 @@ import type { SaveSummary } from '@/lib/park/api'
 import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor } from '../../../server/park/index.mjs'
 import { WaveControl } from './WaveControl'
 import { RideComments } from './RideComments'
-import { ResortCards, ResortSummary, HotelWindowBody } from './ResortPanel'
+import { ResortCards, ResortSummary, ResortPortfolio, HotelWindowBody } from './ResortPanel'
 import { GuestCapacity } from './GuestCapacity'
 import { planPiece, startEnd, anchorEnd, pathHeading } from '@/lib/park/pathBuilder'
 import type { PathBuild, PathEnd, PathPlan, PathSegment } from '@/lib/park/pathBuilder'
@@ -869,6 +869,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     {panel === 'resorts' && <Window title="Resorts" onClose={() => togglePanel('resorts')} wide>
       <ResortCards selected={tool.kind === 'hotel' ? tool.hotel : null} onPick={kind => { setHotelQuote(null); setTool({ kind: 'hotel', hotel: kind, floors: HOTELS[kind].floors[0] }); setPanel(null) }} />
       <ResortSummary park={park} />
+      <ResortPortfolio state={state} park={park} onSelect={id => { setSelection({ kind: 'entity', id }); setPanel(null) }} />
     </Window>}
 
     {panel === 'shops' && <Window title="Shops and stalls" onClose={() => togglePanel('shops')} wide>
@@ -917,7 +918,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <div className="pk-grid2">
         <div>
           <p className="pk-label">This month</p>
-          <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, 'Hotel rooms': park.month.hotels ?? 0, 'Hotel upkeep': park.month.hotelUpkeep ?? 0, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Electricity: park.month.electricity, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
+          <dl className="pk-dl">{Object.entries({ 'Ride tickets': park.month.rides, 'Shop sales': park.month.shops, 'Park entry': park.month.entry, 'Hotel rooms': park.month.hotels ?? 0, 'Hotel amenities': park.month.hotelAmenities ?? 0, 'Hotel staff': park.month.hotelStaff ?? 0, 'Hotel upkeep': park.month.hotelUpkeep ?? 0, Construction: park.month.construction, Landscaping: park.month.landscaping, Marketing: park.month.marketing, Wages: park.month.wages, Electricity: park.month.electricity, Upkeep: park.month.upkeep, 'Loan interest': park.month.interest }).flatMap(([k, v]) => [<dt key={`${k}t`}>{k}</dt>, <dd key={`${k}d`} className={v < 0 ? 'pk-neg' : v > 0 ? 'pk-pos' : ''}>{money(v)}</dd>])}</dl>
           <p className="pk-hint">Electricity costs $1 per occupied ride or shop grid square each day.</p>
           <p className="pk-label">Bank loan</p>
           <div className="pk-row"><span>{money(park.loan)} of {money(park.maxLoan)}</span>{!viewOnly && <><button onClick={() => void run({ t: 'loan', delta: -1000 })}>Repay $1,000</button><button onClick={() => void run({ t: 'loan', delta: 1000 })}>Borrow $1,000</button></>}</div>
@@ -946,7 +947,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
     {entity?.type === 'ride' && <RideWindow ride={entity} session={session} readOnly={viewOnly} onClose={() => setSelection(null)} run={run} onBuild={() => setBuilder({ ride: entity.id, c: 0, s: 0, sp: '' })} onGate={role => setTool({ kind: 'gate', ride: entity.id, role })} rideCam={rideCam === entity.id} onRideCam={() => setRideCam(c => c === entity.id ? null : entity.id)} />}
     {entity?.type === 'hotel' && <Window title={entity.name ?? 'Hotel'} onClose={() => setSelection(null)}>
-      <HotelWindowBody hotel={entity} readOnly={viewOnly} run={run} onDemolish={async () => { const res = await run({ t: 'demolish', id: entity.id }); if (res.ok) { setSelection(null); toast('Hotel demolished.') } }} />
+      <HotelWindowBody hotel={entity} state={state} readOnly={viewOnly} run={run} onDemolish={async () => { const res = await run({ t: 'demolish', id: entity.id }); if (res.ok) { setSelection(null); toast('Hotel demolished.') } }} />
     </Window>}
     {entity?.type === 'stall' && <Window title={entity.name ?? 'Stall'} onClose={() => setSelection(null)}>
       <dl className="pk-dl"><dt>Sales</dt><dd>{entity.sales}</dd><dt>Revenue</dt><dd>{money(entity.revenue ?? 0)}</dd><dt>Upkeep</dt><dd>{money(STALLS[entity.kind!].upkeep)}/month</dd></dl>

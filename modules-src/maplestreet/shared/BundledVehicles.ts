@@ -6,8 +6,11 @@
  * with the same id replaces the bundled one.
  *
  * Models live in public/modules/maplestreet/vehicles/. They were made from
- * Meshy image-to-3D scans: reduced to 40k triangles, textures to 1024 px,
- * meshopt-compressed, the baked-in wheels cut out (the game draws its own),
+ * Meshy image-to-3D scans, meshopt-compressed. The Meridian Sedan, Bulwark 4x4
+ * and Ironhorn Crew Cab keep 160k triangles and 2048 px color and normal maps
+ * (Lanczos downscale, lightly sharpened color); the Maple Hauler and Lakeshore
+ * Coupe are 40k triangles at 1024 px. All draw with 8x anisotropic filtering
+ * (CustomVehicleModels). The scans had the baked-in wheels cut out (the game draws its own),
  * and manufacturer badges and lettering painted out. The numbers below come
  * from the vehicle editor's own draft math (src/components/maplestreet/vehicle/
  * draft.ts: newDraft + draftSpec) with the measured axles, wheels and lamps.

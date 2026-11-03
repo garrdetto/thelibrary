@@ -49,11 +49,30 @@ async function fetchList(): Promise<CustomVehicleRecord[] | null> {
 function loadScene(url: string): Promise<THREE.Object3D | null> {
   let p = scenes.get(url);
   if (!p) {
-    p = loader.loadAsync(url).then(g => g.scene).catch(e => { console.warn('[maplestreet] vehicle model failed:', url, e); return null; });
+    p = loader.loadAsync(url).then(g => sharpen(g.scene)).catch(e => { console.warn('[maplestreet] vehicle model failed:', url, e); return null; });
     scenes.set(url, p);
     void p.then(s => ready.set(url, s));
   }
   return p;
+}
+
+const TEXTURE_SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
+
+/**
+ * Vehicles are mostly seen side-on and at a slant, where plain trilinear
+ * filtering smears the paint, trim and window edges; 8x anisotropic
+ * filtering (as the town's roads and facades use) keeps them crisp.
+ */
+function sharpen(scene: THREE.Object3D) {
+  scene.traverse(o => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      const mat = m as unknown as Record<string, THREE.Texture | null | undefined>;
+      for (const slot of TEXTURE_SLOTS) { const t = mat[slot]; if (t?.isTexture) { t.anisotropy = 8; t.needsUpdate = true; } }
+    }
+  });
+  return scene;
 }
 
 /** Registers published vehicles (or the cached list when offline) and preloads their models. */

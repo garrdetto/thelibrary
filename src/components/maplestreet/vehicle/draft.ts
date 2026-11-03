@@ -134,8 +134,8 @@ export function newDraft(template: DriveTemplate, raw: Size3 | null, previous?: 
     traffic: previous?.traffic ?? { enabled: false, driver: '', route: 'ringA', mph: template === 'golfcart' ? 13 : 24 },
     removeWheels: previous?.removeWheels ?? true,
     parts: previous?.parts ?? { doors: [], hood: null, trunk: null },
-    maxTriangles: previous?.maxTriangles ?? 30000,
-    maxTexture: previous?.maxTexture ?? 1024,
+    maxTriangles: previous?.maxTriangles ?? 120000,
+    maxTexture: previous?.maxTexture ?? 2048,
   }
 }
 
