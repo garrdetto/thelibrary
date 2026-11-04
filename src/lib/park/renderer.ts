@@ -495,7 +495,7 @@ export class ParkRenderer {
   }
 
   private coasterCache(e: Entity) {
-    const key = `${e.pieces!.length}:${e.rev ?? 0}:${e.complete}:${e.color ?? ''}:${e.trackColor ?? ''}:${e.supportColor ?? ''}`
+    const key = `${e.pieces!.length}:${e.rev ?? 0}:${this.state?.structVersion ?? 0}:${e.complete}:${e.color ?? ''}:${e.trackColor ?? ''}:${e.supportColor ?? ''}`
     let cache = this.rides.get(e.id)
     if (cache && cache.key === key) return cache
     if (cache?.track) this.g.free(cache.track)
@@ -539,6 +539,29 @@ export class ParkRenderer {
       return { p, t, u, r }
     }
     const trackType = style.trackType ?? 'coaster'
+    const blockedBelow = (px: number, py: number, piece: number, top: number) => {
+      const x = Math.floor(px / TILE), y = Math.floor(py / TILE)
+      if (!inMap(s.map, x, y)) return true
+      const tile = tileIndex(s.map, x, y)
+      if (s.map.path[tile] || s.map.obj[tile]) return true
+      const ground = groundHeightAt(s.map, px, py, TILE)
+      return Boolean(s.trackCells.get(tile)?.some(cell => (cell.ride !== e.id || Math.abs(cell.piece - piece) > 1) && cell.lo < top - 0.05 && cell.hi > ground))
+    }
+    const supportSite = (i: number, rise: number, reach: number) => {
+      for (const shift of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+        const j = i + shift
+        if (j < 0 || j >= path.count) continue
+        const { p, r } = at(j)
+        const top = p[2] + rise, piece = path.piece[j]
+        const ground = groundHeightAt(s.map, p[0], p[1], TILE)
+        if (top - ground < 0.4 || blockedBelow(p[0], p[1], piece, top)) continue
+        const rl = Math.hypot(r[0], r[1]) || 1
+        const feet = reach ? [-1, 1].map(side => [p[0] + r[0] / rl * reach * side, p[1] + r[1] / rl * reach * side]) : []
+        if (feet.some(([fx, fy]) => blockedBelow(fx, fy, piece, top))) continue
+        return { p, ground, top, index: j }
+      }
+      return null
+    }
     if (trackType !== 'coaster') {
       const step = trackType === 'kart' ? 1 : 2, left: Vec3[] = [], right: Vec3[] = []
       const width = trackType === 'kart' ? 1.35 : trackType === 'river' ? 1.15 : 0.72
@@ -570,13 +593,8 @@ export class ParkRenderer {
       b.tube(right, railRadius, railColor, 7, 1)
       const supportEvery = Math.max(1, Math.round(4 / path.ds))
       for (let i = Math.floor(supportEvery / 2); i < path.count; i += supportEvery) {
-        const { p } = at(i), ground = groundHeightAt(s.map, p[0], p[1], TILE)
-        const x = Math.floor(p[0] / TILE), y = Math.floor(p[1] / TILE)
-        if (!inMap(s.map, x, y)) continue
-        const tile = tileIndex(s.map, x, y)
-        if (s.map.path[tile] || s.map.obj[tile]) continue
-        const top = trackType === 'slide' ? p[2] - 0.5 : p[2] - 0.25
-        if (top - ground > 0.4) b.cylinder(null, p[0], p[1], ground, 0.16, 0.14, top - ground, 8, supportColor, 0, false)
+        const site = supportSite(i, trackType === 'slide' ? -0.5 : -0.25, 0)
+        if (site) b.cylinder(null, site.p[0], site.p[1], site.ground, 0.16, 0.14, site.top - site.ground, 8, supportColor, 0, false)
       }
     }
     if (nearStep && trackType === 'coaster') {
@@ -650,22 +668,50 @@ export class ParkRenderer {
       b.box(m, 0, 0, -0.38, wooden ? 0.3 : 0.16, 1.25, wooden ? 0.16 : 0.12, sp && specialColor[sp] ? specialColor[sp] : wooden ? hexColor('#6b4a2c') : trackColor, sp ? 0 : 1)
       if (sp === 'chain' || sp === 'booster' || sp === 'brakes') b.box(m, 0, 0, -0.26, 0.6, 0.3, 0.1, specialColor[sp])
     }
-    const supportEvery = Math.max(1, Math.round(4 / path.ds))
+    const supportEvery = Math.max(1, Math.round((wooden ? 2 : 4) / path.ds))
     for (let i = trackType === 'coaster' ? Math.floor(supportEvery / 2) : path.count; i < path.count; i += supportEvery) {
-      const { p, u } = at(i)
+      const { u } = at(i)
       if (path.specials[path.piece[i]] === 'station' || path.specials[path.piece[i]] === 'loop') continue
       if (u[2] < 0.35 && !inverted) continue
-      const ground = groundHeightAt(s.map, p[0], p[1], TILE)
-      const x = Math.floor(p[0] / TILE), y = Math.floor(p[1] / TILE)
-      if (!inMap(s.map, x, y)) continue
-      const tile = tileIndex(s.map, x, y)
-      if (s.map.path[tile] || s.map.obj[tile]) continue
-      const top = inverted ? p[2] + 0.5 : p[2] - 0.45
-      if (top - ground < 0.4) continue
+      const site = supportSite(i, inverted ? 0.5 : -0.45, wooden ? 1.8 : 0)
+      if (!site) continue
+      const { p, ground, top } = site
       if (wooden) {
+        const bent = at(site.index)
+        const rl = Math.hypot(bent.r[0], bent.r[1]) || 1, tl = Math.hypot(bent.t[0], bent.t[1]) || 1
+        const rx = bent.r[0] / rl, ry = bent.r[1] / rl, tx = bent.t[0] / tl, ty = bent.t[1] / tl
+        const height = top - ground
+        const spread = Math.min(1.1, 0.3 + height * 0.05)
+        const wood = hexColor('#7a5632')
         b.mat = M.wood
-        for (const o of [-0.8, 0.8]) b.box(null, p[0] + o * 0.7, p[1] - o * 0.4, ground, 0.22, 0.22, top - ground, supportColor)
-        for (let z = ground + 1.5; z < top - 0.5; z += 2.2) b.box(null, p[0], p[1], z, 1.6, 0.15, 0.15, supportColor)
+        const legTop = (side: number, row: number): Vec3 => [p[0] + rx * 0.62 * side + tx * 0.45 * row, p[1] + ry * 0.62 * side + ty * 0.45 * row, top]
+        const legFoot = (side: number, row: number): Vec3 => {
+          const fx = p[0] + rx * (0.62 + spread) * side + tx * 0.45 * row, fy = p[1] + ry * (0.62 + spread) * side + ty * 0.45 * row
+          return [fx, fy, Math.min(ground, groundHeightAt(s.map, fx, fy, TILE)) - 0.1]
+        }
+        const levels: number[] = []
+        for (let z = 1.6; z < height - 0.7; z += 2.0) levels.push(z)
+        const along = (side: number, row: number, z: number): Vec3 => {
+          const a = legFoot(side, row), c = legTop(side, row), t = Math.max(0, Math.min(1, (z - (a[2] - ground)) / (c[2] - a[2])))
+          return [a[0] + (c[0] - a[0]) * t, a[1] + (c[1] - a[1]) * t, ground + z]
+        }
+        for (const row of [-1, 1]) {
+          for (const side of [-1, 1]) b.limb(legFoot(side, row), legTop(side, row), 0.13, 0.11, supportColor, 0, 6)
+          b.limb([legTop(-1, row)[0], legTop(-1, row)[1], top - 0.12], [legTop(1, row)[0], legTop(1, row)[1], top - 0.12], 0.1, 0.1, wood, 0, 6)
+          let prev: number | null = null
+          for (const z of levels) {
+            b.limb(along(-1, row, z), along(1, row, z), 0.07, 0.07, wood, 0, 5)
+            if (prev !== null) {
+              b.limb(along(-1, row, prev), along(1, row, z), 0.055, 0.055, wood, 0, 5)
+              b.limb(along(1, row, prev), along(-1, row, z), 0.055, 0.055, wood, 0, 5)
+            }
+            prev = z
+          }
+        }
+        for (const side of [-1, 1]) {
+          b.limb(legTop(side, -1), legTop(side, 1), 0.085, 0.085, wood, 0, 5)
+          for (const z of levels) b.limb(along(side, -1, z), along(side, 1, z), 0.065, 0.065, wood, 0, 5)
+        }
         b.mat = -1
       } else {
         b.cylinder(null, p[0], p[1], ground, 0.2, 0.17, top - ground, 10, supportColor, 0, false)
