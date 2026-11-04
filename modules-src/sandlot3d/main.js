@@ -14,7 +14,7 @@ const CH=[['Hoops','Point guard',2,4,5],['Ace','Quarterback',5,3,4],['Turbo','Ra
 ['Hoodie','Skater',3,3,4],['Pinstripe','Ballplayer',4,4,4],['Farmhand','Rancher',4,3,3],['Doc','Doctor',2,5,3],
 ['Smokey','Fire captain',4,3,3],['Spartan','Gladiator',5,2,3],['Big Deal','CEO',3,4,2],['Badge','Officer',3,4,4],
 ['Rocket','Astronaut',4,3,3],['Red','Skater',3,3,4],['Chef','Chef',2,4,3],['Cosmo','Astronaut',3,4,3],
-['Hard Hat','Builder',4,3,2],['Hex','Witch',3,4,3]].map((a,i)=>({i,n:a[0],r:a[1],p:a[2],c:a[3],s:a[4],bat:i>=16,src:'sprites/p'+String(i).padStart(2,'0')+'.png'}));
+['Hard Hat','Builder',4,3,2],['Hex','Witch',3,4,3]].map((a,i)=>({i,n:a[0],r:a[1],p:a[2],c:a[3],s:a[4],bat:i>=16,src:'sprites/p'+String(i).padStart(2,'0')+'.webp'}));
 const spdOf=c=>19+2.2*CH[c].s;
 
 const PARKS=[
@@ -131,7 +131,7 @@ const LOOKS=[
 ['#e3a585','#5a3a26','short','hardhat','#f2c230','#4a7ab0','#ff7a1a','#44607a','#6a4528','safety',''],
 ['#f0b8a0','#4a2a1e','long','witch','#3a2a5a','#3a2a5a','#7a5aa0','#3a2a5a','#2a2030','','r']];
 const LEFTY=new Set([2,8,14,18,25,29,33]);
-// 3D faces are now sculpted (eyes, brows, nose, lips); faces.png stays for reference only
+// 3D faces are now sculpted (eyes, brows, nose, lips)
 const EYES=['#4a2e1c','#5a3a22','#2f5a7a','#3d6a4a','#6a4a2a','#3a2a1e','#4a6a8a'];
 
 /* ================= RIG MATH ================= */

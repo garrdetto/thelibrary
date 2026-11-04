@@ -62,7 +62,7 @@ try {
   const before = await (await admin.request.get('/api/maplestreet-items?drafts=1')).json()
   if (LEGACY_ID) assert(before.items.some(i => i.id === LEGACY_ID && i.status === 'published'), 'an item from the old table is copied into the asset registry')
 
-  const model = readFileSync(join(root, 'public/models/maplestreet/furniture/bench.glb'))
+  const model = readFileSync(join(root, 'assets-src/models/maplestreet/furniture/bench.glb'))
   const publish = async (name, status) => {
     const res = await admin.request.post('/api/maplestreet-items', {
       headers: { Origin: BASE },

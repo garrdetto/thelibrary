@@ -782,7 +782,7 @@ export function PoolTable({ lobby }: { lobby: Lobby }) {
       context.putImageData(pixels, 0, 0)
       artworkRef.current = mask
     }
-    image.src = '/images/pool-tower-backdrop.png'
+    image.src = '/images/pool-tower-backdrop.webp'
     return () => { image.onload = null; artworkRef.current = null }
   }, [])
   useEffect(() => {
