@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Northwoods Angler · the library</title>
+    <style>
+      :root{--accent:#3fb8a8;--panel:rgba(12,20,26,.78);--panel-solid:#101a21;--line:rgba(160,210,220,.18);--text:#e8f1f2;--soft:#a9bec2;--muted:#7f969b;--good:#7bd88f;--warn:#ffcf4a}
+      html,body{margin:0;height:100%;background:#0a1116;color:var(--text);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+      #stage{position:fixed;inset:0;touch-action:none}
+      #scene{width:100%;height:100%;display:block}
+      [hidden]{display:none!important}
+      button{font:inherit;color:inherit}
+      .ang-btn{cursor:pointer;padding:8px 13px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--text);font-weight:650;font-size:13px;backdrop-filter:blur(6px)}
+      .ang-btn:hover{background:color-mix(in srgb,var(--accent) 22%,var(--panel-solid))}
+      .ang-btn[aria-pressed=true]{background:var(--accent);color:#04211d;border-color:transparent}
+      .ang-btn:focus-visible,.ang-lake:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+      .ang-btn.is-primary{background:var(--accent);color:#04211d;border-color:transparent}
+      #loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 40%,#183038,#070c10);z-index:50}
+      #loading div{display:grid;gap:10px;justify-items:center;text-align:center}
+      #loading strong{font:800 30px Rajdhani,Inter,sans-serif;letter-spacing:.5px}
+      .ang-spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:spin 1s linear infinite}
+      @keyframes spin{to{transform:rotate(360deg)}}
+      .ang-screen{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:16px;background:rgba(5,10,14,.55);backdrop-filter:blur(3px);overflow:auto}
+      .ang-card{width:min(860px,100%);max-height:calc(100vh - 32px);overflow:auto;display:grid;gap:14px;padding:22px 24px;border-radius:16px;background:var(--panel-solid);border:1px solid var(--line);box-shadow:0 24px 60px -24px rgba(0,0,0,.6)}
+      .ang-eyebrow{font-size:11px;font-weight:750;letter-spacing:1.6px;text-transform:uppercase;color:var(--accent)}
+      .ang-card h1,.ang-card h2{margin:0;font-family:Rajdhani,Inter,sans-serif;letter-spacing:.3px}
+      .ang-card h1{font-size:34px}
+      .ang-card h2{font-size:24px}
+      .ang-card p{margin:0;color:var(--soft)}
+      #lake-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+      .ang-lake{cursor:pointer;text-align:left;display:grid;gap:4px;padding:14px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
+      .ang-lake:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+      .ang-lake strong{font-size:16px}
+      .ang-lake span{font-size:12px;color:var(--accent);font-weight:650}
+      .ang-lake em{font-style:normal;font-size:12.5px;color:var(--soft)}
+      .ang-lake[disabled]{opacity:.55;cursor:not-allowed}
+      #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
+      #hud [data-ui]{pointer-events:auto}
+      .hud-top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+      .hud-info{padding:8px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:2px;max-width:min(520px,60vw)}
+      .hud-info strong{font:750 17px Rajdhani,Inter,sans-serif;letter-spacing:.3px}
+      .hud-info span{font-size:12px;color:var(--soft)}
+      .hud-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+      .hud-bottom{position:absolute;left:10px;right:10px;bottom:10px;display:flex;justify-content:space-between;align-items:flex-end;gap:10px}
+      .hud-gauges{display:flex;gap:6px;flex-wrap:wrap}
+      .hud-gauge{padding:6px 11px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font:750 15px Rajdhani,Inter,sans-serif;font-variant-numeric:tabular-nums;min-width:62px;text-align:center}
+      .hud-gauge small{display:block;font:650 10px Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      #minimap{width:150px;height:150px;border-radius:12px;border:1px solid var(--line);background:#132}
+      #stick{position:absolute;left:18px;bottom:96px;width:120px;height:120px;border-radius:50%;background:rgba(10,20,26,.45);border:1px solid var(--line);display:none;touch-action:none}
+      #stick [data-knob]{position:absolute;left:38px;top:38px;width:44px;height:44px;border-radius:50%;background:rgba(220,240,240,.55)}
+      @media (pointer:coarse){#stick{display:block}}
+      #map-panel{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:rgba(5,10,14,.6);padding:12px}
+      #map-panel .ang-card{width:min(720px,100%)}
+      #map-canvas{width:100%;aspect-ratio:1;border-radius:12px;cursor:crosshair}
+      .ang-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+      .ang-note{font-size:12.5px;color:var(--muted)}
+      @media (max-width:640px){#minimap{width:104px;height:104px}.hud-info{max-width:52vw}.hud-info span{display:none}.ang-card{padding:16px}}
+      @media (prefers-reduced-motion:reduce){.ang-spinner{animation:none}.ang-screen{backdrop-filter:none}}
+    </style>
+  </head>
+  <body>
+    <div id="stage"><canvas id="scene" aria-label="Lake view"></canvas></div>
+    <div id="loading" role="status"><div><div class="ang-spinner"></div><strong>Northwoods Angler</strong><span id="loading-text">Loading</span></div></div>
+
+    <section id="screen-lakes" class="ang-screen" hidden aria-labelledby="lakes-title">
+      <div class="ang-card">
+        <span class="ang-eyebrow">Pick your water</span>
+        <h1 id="lakes-title">Northwoods Angler</h1>
+        <p>Choose a lake, drive the boat to a spot, drop anchor and let the lake decide. The water follows the real clock and calendar in central Wisconsin.</p>
+        <div id="lake-list"></div>
+      </div>
+    </section>
+
+    <div id="hud" hidden>
+      <div class="hud-top">
+        <div class="hud-info" data-ui>
+          <strong id="lake-name">Lake</strong>
+          <span id="stat-weather"></span>
+        </div>
+        <div class="hud-actions" data-ui>
+          <button class="ang-btn" id="btn-troll" type="button" aria-pressed="false" title="Trolling motor (T)">Trolling motor</button>
+          <button class="ang-btn" id="btn-map" type="button" title="Map (M)">Map</button>
+          <button class="ang-btn" id="btn-lakes" type="button">Lakes</button>
+        </div>
+      </div>
+      <div id="stick" data-ui aria-label="Drive stick"><div data-knob></div></div>
+      <div class="hud-bottom">
+        <div class="hud-gauges" data-ui>
+          <div class="hud-gauge"><small>Speed</small><span id="stat-speed">0 mph</span></div>
+          <div class="hud-gauge"><small>Depth</small><span id="stat-depth">–</span></div>
+          <div class="hud-gauge"><small>Water</small><span id="stat-temp">–</span></div>
+          <div class="hud-gauge"><small>Time</small><span id="stat-time">–</span></div>
+          <button class="ang-btn is-primary" id="btn-anchor" type="button" aria-pressed="false" title="Anchor (Space)">Drop anchor</button>
+        </div>
+        <canvas id="minimap" width="300" height="300" data-ui aria-label="Mini map"></canvas>
+      </div>
+    </div>
+
+    <section id="map-panel" hidden aria-labelledby="map-title">
+      <div class="ang-card" data-ui>
+        <div class="ang-row"><h2 id="map-title">Lake map</h2><button class="ang-btn" id="map-close" type="button">Close</button></div>
+        <canvas id="map-canvas" width="720" height="720"></canvas>
+        <p class="ang-note">Click the water to drop a pin. Contours every 10 ft (20 ft on deep lakes).</p>
+      </div>
+    </section>
+
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
