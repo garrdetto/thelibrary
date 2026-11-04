@@ -10,6 +10,8 @@ export const embeddedModules = [
   { id: 'shorttrack', title: 'Short Track Showdown', src: '/modules/shorttrack.html' },
   { id: 'fairway', title: 'Fairway Nine', src: '/modules/fairway.html' },
   { id: 'alphabet', title: 'Alphabet Sprint', src: '/modules/alphabet.html' },
+  { id: 'sudoku', title: 'Sudoku', src: '/modules/sudoku.html' },
+  { id: 'minesweeper', title: 'Minesweeper', src: '/modules/minesweeper.html' },
   { id: 'songmaker', title: 'Song Maker', src: '/modules/songmaker.html' },
   { id: 'party', title: 'Skill Party', src: '/modules/party.html' },
 ] as const
@@ -53,5 +55,7 @@ export const learningModules: LearningModule[] = [
   { id: 'helicopter', title: 'Chopper Cave', subject: 'Reaction & control', group: 'Precision', summary: 'Precision flight through a narrowing cave. Feather the climb and dodge the blocks.', modes: ['Solo'], image: '/images/modules/heli.webp', accent: '#5cffb0' },
   { id: 'alphabet', title: 'Alphabet Sprint', subject: 'Touch typing', group: 'Precision', summary: 'Type A to Z perfectly against the clock. A wrong letter stays on screen until you backspace it, so accuracy is speed. Fastest times lead the board.', modes: ['Solo'], image: '/images/modules/alphabet.webp', accent: '#39d0ff' },
   { id: 'songmaker', title: 'Song Maker', subject: 'Composition', group: 'Creative', summary: 'Write or paste your own lyrics, choose a genre, mood and voice, and AI turns them into a finished song with real sung vocals. Stuck on words? Describe an idea and it drafts lyrics you can edit first. Play songs back and download them as MP3.', modes: ['Solo', 'AI'], image: '/images/modules/songmaker.webp', accent: '#ff3b7a' },
+  { id: 'sudoku', title: 'Sudoku', subject: 'Deduction', group: 'Logic', summary: 'Fresh puzzles every time with a single solution, three difficulties, pencil marks and mistake checking. Fastest solves on each difficulty lead the board.', modes: ['Solo'], image: '/images/modules/sudoku.webp', accent: '#3b8bff' },
+  { id: 'minesweeper', title: 'Minesweeper', subject: 'Probability & deduction', group: 'Logic', summary: 'Read the numbers, flag the mines and clear the field. The first click is always safe, chords open neighbours, and the fastest intermediate clears set the record.', modes: ['Solo'], image: '/images/modules/minesweeper.webp', accent: '#ff7a1a' },
   { id: 'party', title: 'Skill Party', subject: 'Reaction, aim & recall', group: 'Precision', summary: 'A party arena for up to four players. Pick a character, gather in the lobby and take turns choosing skill contests (reflex draws, target blitz, timing stops, memory flashes, quick math, crowd counts and more). Every result is measured, not rolled, and a running scoreboard crowns the champion.', modes: ['Solo vs CPU', '2–4 on 1 screen', 'Online room'], image: '/images/modules/party.webp', accent: '#ffcf4a' },
 ]
