@@ -69,6 +69,7 @@ export function learningModulesConfig(watch = false): InlineConfig {
       watch: watch ? {} : null,
       rollupOptions: {
         input: Object.fromEntries(ids.map((id) => [id, join(modulesSrc, id, 'index.html')])),
+        maxParallelFileOps: 128,
         output: {
           entryFileNames: `${chunkDir}/[name]-[hash].js`,
           chunkFileNames: `${chunkDir}/[name]-[hash].js`,
