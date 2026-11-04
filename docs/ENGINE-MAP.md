@@ -34,8 +34,9 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `public/_headers` — Workers static-asset caching: hashed `/modules/chunks/*` and `/assets/*` immutable for a year; `/models/*`, `/modules/maplestreet/*`, `/modules/sprites/*`, `/images/*` one day plus a week stale-while-revalidate — Cloudflare.
 - `docs/ASSETS.md` — before/after size, primitive and material table from the last `pnpm assets:report` — this PR and later phases.
 - `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
-- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/` and `modules-src/fairway/` (tests excluded; they run through esbuild) — `pnpm test`.
+- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/` and `modules-src/demoderby/` (tests excluded; they run through esbuild) — `pnpm test`.
 - `scripts/fairway-tests.mjs` — bundles `modules-src/fairway/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
+- `scripts/demoderby-tests.mjs` — bundles `modules-src/demoderby/tests/*.test.ts` with esbuild (`models/CarBody` swapped for `tests/CarBodyStub.ts`, so no canvas is needed) and runs whole AI-only heats with `node --test` — `pnpm test`.
 - `scripts/engine-smoke.mjs` — Vite-builds `_template`, embeds it in a hub-like iframe, checks boot, 60 Hz loop, `--lib-*` tokens, same-origin Draco/KTX2 decoders, `dispose()`, console errors and CDN requests; `--out` saves a screenshot — `pnpm engine:smoke`.
 - `.gitignore` — ignores the generated `public/modules/<id>.html` pages and `public/modules/chunks/` — git.
 - `.github/workflows/modules.yml` — required `modules` check: install, `pnpm assets:check` (committed models must match their sources), `pnpm build`, `pnpm test`, `node scripts/perf-baseline.mjs --check` — pull requests to `main`.
@@ -85,7 +86,7 @@ Pinned exactly in `package.json`, bundled by Vite, never loaded from a CDN (Phas
 | --- | --- | --- |
 | `three` (+ `three/addons/*`, `three/webgpu`, `three/tsl`) | **0.186.1** | sandlot3d, botwreck, shorttrack, maplestreet |
 | `@types/three` | 0.186.0 | type checking |
-| `@dimforge/rapier3d-compat` | 0.14.0 | maplestreet |
+| `@dimforge/rapier3d-compat` | 0.14.0 | maplestreet, demoderby |
 | `postprocessing` | 6.39.5 | any module (peer range `three >=0.168 <0.187`, hence three 0.186.1, not 0.187.0) |
 | `cannon-es` | 0.20.0 | botwreck |
 | `peerjs` | 1.5.4 | sandlot, chess, checkers, shorttrack |
@@ -111,7 +112,7 @@ Engine code imports three only as `three/webgpu` (addons from `three/addons/*` s
 - `engine/render/Environment.ts` — `applyEnvironment`: background and fog (Phase 3 adds IBL) — module `index.ts`.
 - `engine/render/Post.ts` — `createPost`: installs the App render pass (Phase 3 adds passes) — module `index.ts`.
 - `engine/render/Quality.ts` — `resolveQuality`: `auto` tier per backend, `?quality=` override — module `index.ts`.
-- `engine/physics/World.ts` — `PhysicsWorld`: lazy-loaded Rapier, fixed `step(dt)`, `track` + interpolated `syncMesh(body, mesh, alpha)`, `setDebug(parent)` line draw — module `index.ts`.
+- `engine/physics/World.ts` — `PhysicsWorld`: lazy-loaded Rapier, fixed `step(dt, events?)` (an optional `EventQueue` is drained by the caller for contact events), `track` + interpolated `syncMesh(body, mesh, alpha)`, `setDebug(parent)` line draw — module `index.ts`.
 - `engine/ui/Hud.ts` — `Hud`: DOM overlay panels, stats, buttons, toasts styled with `--lib-*` tokens mirrored live from the hub page — module `index.ts`.
 - `engine/net/HubBridge.ts` — same-origin `postMessage`: `tl-room`, `tl-score-saved`, `tl-lap`, `tl-fairway` out, `tl-host` in — `Peer`, `Scores`, fairway `index.ts`.
 - `engine/net/RoomFormats.ts` — production room-code formats (prefix, alphabet, length, wire case) for sandlot, chess, checkers, maplestreet, fairway, shorttrack — `Peer` callers.
@@ -141,6 +142,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `shorttrack` | three.js 0.186.1 ESM + addons (Sky, RoomEnvironment, bloom) | `modules-src/shorttrack/` |
 | `maplestreet` | three.js 0.186.1 WebGPU build (WebGL2 fallback), Rapier 0.14 | `modules-src/maplestreet/` |
 | `fairway` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, TSL node materials | `modules-src/fairway/` |
+| `demoderby` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, Rapier 0.14 raycast vehicles | `modules-src/demoderby/` |
 | `park` | hand-written WebGL2 | `src/lib/park/` |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
@@ -148,6 +150,25 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `party` | DOM + 2D canvas, bundled PeerJS | `modules-src/party/` |
 
 Known baseline issues: `shorttrack` is too busy under software WebGL for Playwright screenshots (gate note, not failure). The `maplestreet` `Buffer is not defined` error is gone now that colyseus.js is bundled.
+
+### demoderby — Demo Derby (`modules-src/demoderby/`)
+- `modules-src/demoderby/module.json` — id, title, accent `#ff8c2a`, modes — `config.ts`.
+- `modules-src/demoderby/config.ts` — every tunable: engine overrides (warm afternoon light), bindings, the 36 × 22 m arena, the two body specs (`wagon`, `sedan`), 16 flat paints, six spray fonts, number colours, vehicle physics, damage (`contactThreshold`, `hitThreshold`, `hitFull`, zones, dents, the 60 s no-contact rule), AI levels, scoring, heat, camera and particles — every file below.
+- `modules-src/demoderby/index.html` — page shell: `#stage`, the garage card (body, paint, number, spray style, outline, field size, AI level), results card, countdown banner, body/engine bars, touch labels — `vite.modules.ts` (→ `public/modules/demoderby.html`).
+- `modules-src/demoderby/index.ts` — entry: boots the engine, arena, sky and particles, the garage preview turntable, then a heat (player + AI field on a spawn ring), contact events → `Heat`, HUD, results, `Scores.submit('demoderby', points)`; disposes on pagehide — `index.html`.
+- `modules-src/demoderby/models/CarBody.ts` — `createCar`: procedural 1970s wagon/sedan shell as one deformable vertex-coloured mesh (segmented boxes, raked greenhouse), bumpers, dark window openings, roll bar, wheels and the door/roof number decals; `dent(point, direction, strength)` pushes vertices in, caps depth and darkens paint; geometry is in the chassis frame (forward −Z, origin `centreHeight` up) — `systems/Vehicle.ts`.
+- `modules-src/demoderby/models/Arena.ts` — `createArena`: dirt floor (canvas texture with ruts), jersey-barrier ring with matching collider boxes, tire stacks, covered bleachers with an instanced crowd, fair tents, light towers and a turning ferris wheel — `index.ts`.
+- `modules-src/demoderby/models/Particles.ts` — CPU particle pool rendered as `Points` (tire dust, engine smoke) — `index.ts`.
+- `modules-src/demoderby/models/Sky.ts` — gradient sky dome (same TSL shader as Fairway Nine) — `index.ts`.
+- `modules-src/demoderby/systems/Look.ts` — `CarLook` (body, paint, number, font, number colour, outline), cleaning, the per-device save and seeded `opponentLook` — `index.ts`, `ui/Garage.ts`, `CarBody.ts`.
+- `modules-src/demoderby/systems/Numbers.ts` — `paintNumber`: spray-painted number textures (overspray, drips, stencil bridges, outline, rough tilt) for the doors and roof — `CarBody.ts`.
+- `modules-src/demoderby/systems/Vehicle.ts` — `Vehicle`: chassis body + Rapier `DynamicRayCastVehicleController` (rear drive, dirt grip), controls, engine-power falloff, `takeHit` (zone damage, engine share, dents), knock-out, stuck/flip clocks, `rightSelf`, `sync` — `index.ts`, `Heat.ts`, `Ai.ts`.
+- `modules-src/demoderby/systems/Heat.ts` — `Heat`: countdown → running → finished; contact-force events → hits on both cars (per-pair cooldown), points, knockouts, the no-contact clock, placings from the back, winner and win bonus — `index.ts`.
+- `modules-src/demoderby/systems/Ai.ts` — `driveAi`: target picking, nose or back-in approach, wreck and wall avoidance (`blocked`), stuck and no-progress escape manoeuvres; writes only `car.controls` — `index.ts`.
+- `modules-src/demoderby/systems/Camera.ts` — spring chase camera with pointer orbit, grandstand view and the garage turntable — `index.ts`.
+- `modules-src/demoderby/ui/Garage.ts` — garage and results screens bound to the DOM in `index.html` — `index.ts`.
+- `modules-src/demoderby/tests/heat.test.ts`, `tests/CarBodyStub.ts` — headless six- and ten-car heats: cars stay inside the barriers and on the ground, hits dent and damage, every heat ends with one placed winner — `scripts/demoderby-tests.mjs`.
+- `public/images/modules/demoderby.webp` — hub thumbnail — `src/lib/modules.ts`.
 
 ### sandlot3d — Sandlot Sluggers 3D
 - `modules-src/sandlot3d/index.html` — page shell: screens, HUD markup, styles — `vite.modules.ts` (→ `public/modules/sandlot3d.html`).

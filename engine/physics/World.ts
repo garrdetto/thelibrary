@@ -1,4 +1,4 @@
-/** Rapier world wrapper: fixed-step stepping with interpolation snapshots, a debug-draw toggle and syncMesh(body, mesh). */
+/** Rapier world wrapper: fixed-step stepping (optionally draining an EventQueue) with interpolation snapshots, a debug-draw toggle and syncMesh(body, mesh). */
 import * as THREE from 'three/webgpu'
 import type RAPIER_NS from '@dimforge/rapier3d-compat'
 import type { PhysicsConfig } from '../config'
@@ -40,10 +40,10 @@ export class PhysicsWorld {
     this.previous.delete(body)
   }
 
-  step(dt: number): void {
+  step(dt: number, events?: RAPIER_NS.EventQueue): void {
     for (const [body, snapshot] of this.previous) this.capture(body, snapshot)
     this.world.timestep = dt
-    this.world.step()
+    this.world.step(events)
     this.updateDebug()
   }
 

@@ -1,11 +1,23 @@
 {
-  "include": ["engine/**/*.ts", "modules-src/_template/**/*.ts", "modules-src/fairway/**/*.ts"],
-  "exclude": ["modules-src/fairway/tests/**"],
+  "include": [
+    "engine/**/*.ts",
+    "modules-src/_template/**/*.ts",
+    "modules-src/fairway/**/*.ts",
+    "modules-src/demoderby/**/*.ts"
+  ],
+  "exclude": [
+    "modules-src/fairway/tests/**",
+    "modules-src/demoderby/tests/**"
+  ],
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "types": [],
     "resolveJsonModule": true,
     "noEmit": true,
