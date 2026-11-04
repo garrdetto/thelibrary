@@ -5,9 +5,11 @@ import viteReact from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import tailwindcss from '@tailwindcss/vite'
 import { learningModules } from './vite.modules'
+import { modelAssets } from './vite.assets'
 
 const config = defineConfig({
   plugins: [
+    modelAssets(),
     learningModules(),
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
     viteTsConfigPaths({

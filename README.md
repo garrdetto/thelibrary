@@ -32,6 +32,8 @@ pnpm install
 pnpm dev
 ```
 
+3D model sources are the `.glb` exports in `assets-src/models/`. `pnpm assets` (also run automatically by `pnpm dev` and `pnpm build`) compresses them into the git-ignored `public/models/`; `pnpm assets:report` prints the before/after table in `docs/ASSETS.md`.
+
 ## Site changes (ask Claude from the admin panel)
 
 Admin → **Site changes** is a chat with Claude. Each message starts a GitHub Actions run. Claude edits the code there and builds the site. Then the change is either published to `main` (it goes live through Workers Builds) or opened as a pull request, if you untick *Publish automatically*. Every change it published has an **Undo** button. The panel also shows how much of your credit balance is left.

@@ -34,6 +34,12 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
+      - name: Restore built models
+        uses: actions/cache@v4
+        with:
+          path: public/models
+          key: models-${{ hashFiles('assets-src/**', 'scripts/assets.mjs') }}
+
       - name: Assets
         run: pnpm assets
 
