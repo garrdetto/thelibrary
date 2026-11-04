@@ -1,6 +1,6 @@
 # Pool real-time server
 
-Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v53` (v53 adds the resort and hotel builder); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
+Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v55` (v55 adds custom-sized, resizable hotels and hotel finances); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
 
 Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin, currently `https://thelibrary.garrdetto.workers.dev`. Multiple trusted production or preview origins can be comma-separated. When configured, requests from other origins are rejected. When unset or empty, only `https://thelibrary.garrdetto.workers.dev` is accepted (v39 default). Configure explicit origins in production. In the site's Cloudflare build variables, set `VITE_POOL_SERVER_URL` to this service's public HTTPS URL, then redeploy the frontend. This public URL is compiled into the client; it is not a secret. When unset, the frontend uses its existing default service URL; signed-in solo practice remains available if multiplayer is offline.
 
@@ -194,6 +194,15 @@ Redeploy this service with the frontend so online parks run the same rules as so
 Redeploy this service with the frontend so online parks run the same rules as solo play:
 - Rides keep their last 12 guest comments (`comments`) and running counts by mood (`commentCounts`), recorded after each ride and when guests give up queuing, can't afford a ride, refuse one as too intense or too expensive, get stuck, or are turned away by a breakdown (`server/park/comments.mjs`).
 - New socket request `ride-comments` `{ id }` answers `{ comments }` for the selected ride only; comments are not part of the regular snapshot.
+
+### Thrill Park v55
+
+Redeploy this service with the frontend; older clients cannot replay the new hotel commands:
+- Hotels can be any footprint between each style's `min` and `max` (now up to 24 squares a side, `HOTEL_SIZE_LIMIT`) and wider floor ranges (up to 32 for Skyline Tower). Build cost is base + squares × floors, with a 2% per-floor premium above 8 floors.
+- New command `hotelResize` (`id`, `w`, `h`, `floors`) grows or shrinks a hotel in place from its north-west corner. Growing charges the cost difference plus 15%; shrinking refunds half.
+- `hotelSet` also takes `rate` (room price, 50–250% of the style's going rate; higher rates lose bookings), `service` (`budget`, `standard`, `premium`: wages, occupancy, wear, amenity spend) and `refurbish: true` (restores `condition`, which wears nightly and cuts occupancy below 80%).
+- New amenity add-ons (`restaurant`, `spa`, `conference`, `giftShop`, `kidsClub`) earn a share of the room rate per booked room and cost a daily running cost; their fit-out price scales with rooms (`addonCost`). Resort-district hotels charge a resort fee per booked room.
+- Each night `hotelNight` books room sales, amenities, staff, utilities, building upkeep and amenity running costs into `hotel.night`, `hotel.profit`, `hotel.nights` (last 30) and the ledger keys `hotels`, `hotelAmenities`, `hotelStaff` and `hotelUpkeep`. `hotel.invested` tracks money put in for ROI and payback. Snapshots carry these fields.
 
 ### Thrill Park v53
 

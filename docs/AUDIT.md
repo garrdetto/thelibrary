@@ -1,6 +1,6 @@
 # Module audit (Phase 0)
 
-Read-only inventory of every playable learning module as of commit `a90bd92` on `main`. No code was changed. Line numbers refer to that commit; for Maple Street they refer to the TypeScript sources in `modules-src/maplestreet/` (the shipped `public/modules/maplestreet.html` is a generated bundle and is not the extraction target).
+Read-only inventory of every playable learning module as of commit `a90bd92` on `main`. No code was changed. Line numbers refer to that commit; for Fox Plains they refer to the TypeScript sources in `modules-src/maplestreet/` (the shipped `public/modules/maplestreet.html` is a generated bundle and is not the extraction target).
 
 Scope note: pool, racing/oval and park live inside the React app, not in `public/modules`, so "entry file" for them is the mounted component.
 
@@ -32,7 +32,7 @@ Scope note: pool, racing/oval and park live inside the React app, not in `public
 
 ### Gate baseline (preview build, Playwright, Chromium SwiftShader)
 
-Every embedded module loads inside the hub iframe (`/#module-<id>`). The only console errors are `/api/*` responses (503 with no local D1, 401 when signed out), which are environment-only, plus the Maple Street `Buffer` error above.
+Every embedded module loads inside the hub iframe (`/#module-<id>`). The only console errors are `/api/*` responses (503 with no local D1, 401 when signed out), which are environment-only, plus the Fox Plains `Buffer` error above.
 
 ## 2. Visual-object builders per module (extraction targets for Phase 2)
 

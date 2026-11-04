@@ -40,7 +40,7 @@ export function encodeDynamic(state, sinceNews = 0) {
       const trains = e.trains?.map(train => ({ s: train.s, v: train.v, ph: train.phase, n: train.riders.length })) ?? []
       rides[e.id] = { st: e.status, q: e.queue.length, r: activeRiders, c: e.cycle, rel: Math.round(e.reliability), rev: Math.round(e.revenue * 10) / 10, tr: e.totalRiders, mr: e.monthRiders, p: e.price, n: e.name, col: e.color, tc: e.trackColor, sc: e.supportColor, trc: e.trainColor, m: e.mechanic, ...(trains.length ? { t: trains } : {}) }
     } else if (e.type === 'stall') stalls[e.id] = { s: e.sales, r: Math.round(e.revenue * 10) / 10, p: e.price, o: e.open }
-    else if (e.type === 'hotel') hotels[e.id] = { o: e.occupancy, r: Math.round(e.revenue ?? 0), l: Math.round(e.lastNight ?? 0), d: Boolean(e.district) }
+    else if (e.type === 'hotel') hotels[e.id] = { o: e.occupancy, r: Math.round(e.revenue ?? 0), l: Math.round(e.lastNight ?? 0), d: Boolean(e.district), p: Math.round(e.profit ?? 0), c: e.condition ?? 100, iv: Math.round(e.invested ?? 0), n: e.night ?? null, h: e.nights ?? [] }
   }
   return {
     time: state.time, weather: state.weather, speed: state.speed, ended: state.ended, parks: state.parks,
@@ -75,6 +75,7 @@ export function applyDynamic(state, dyn) {
     const e = state.entities[id]
     if (!e || e.type !== 'hotel') continue
     e.occupancy = h.o; e.revenue = h.r; e.lastNight = h.l; e.district = h.d
+    if (h.p !== undefined) { e.profit = h.p; e.condition = h.c; e.invested = h.iv; e.night = h.n; e.nights = h.h }
   }
   state.map.litter = decodeRle(dyn.litter, state.map.w * state.map.h, 0)
   const seen = new Set(state.news.map(n => n.id))

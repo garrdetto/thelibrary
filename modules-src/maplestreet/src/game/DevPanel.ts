@@ -86,7 +86,7 @@ export class DevPanel {
     const foot = document.createElement('p');
     const link = document.createElement('a');
     link.href = '/'; link.target = '_blank'; link.rel = 'noopener';
-    link.textContent = 'Edit and publish in Admin → Maple Street items / vehicles';
+    link.textContent = 'Edit and publish in Admin → Fox Plains items / vehicles';
     const reload = document.createElement('button');
     reload.className = 'btn'; reload.textContent = 'Reload drafts';
     reload.onclick = () => location.reload();

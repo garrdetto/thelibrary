@@ -14,6 +14,7 @@
 import { CUSTOM_TRAFFIC, customVehiclesVersion, type TrafficRoute } from './CustomVehicles';
 import type { PlayerSnap, VehicleKind, VehicleSnap } from './Protocol';
 import { rideHeight, tuningOf, wheelbaseOf } from './Vehicles';
+import type { CarStyle } from './Cars';
 import { CLOTH_COLORS, defaultLook, EYE_COLORS, HAIR_COLORS, HAIR_STYLES, SKIN_TONES, WARDROBE, type Body, type Look } from './Wardrobe';
 
 /** A deterministic outfit per neighbor, so they dress the same for everyone. */
@@ -123,12 +124,17 @@ function walk(pts: P[], lane: number): Walk {
   }
   return { pts, lane, len: start, segs };
 }
+const _walk = { x: 0, z: 0, fx: 1, fz: 0 };
+/** Point on a walking route. Returns one shared object (read it before the next call). */
 function walkAt(r: Walk, s: number) {
   s = ((s % r.len) + r.len) % r.len;
-  const seg = r.segs.find(g => s >= g.start && s < g.start + g.d) ?? r.segs[0];
+  let seg = r.segs[0];
+  for (const g of r.segs) if (s >= g.start && s < g.start + g.d) { seg = g; break; }
   const t = (s - seg.start) / seg.d;
   const fx = (seg.b[0] - seg.a[0]) / seg.d, fz = (seg.b[1] - seg.a[1]) / seg.d;
-  return { x: seg.a[0] + (seg.b[0] - seg.a[0]) * t - fz * r.lane, z: seg.a[1] + (seg.b[1] - seg.a[1]) * t + fx * r.lane, fx, fz };
+  _walk.x = seg.a[0] + (seg.b[0] - seg.a[0]) * t - fz * r.lane; _walk.z = seg.a[1] + (seg.b[1] - seg.a[1]) * t + fx * r.lane;
+  _walk.fx = fx; _walk.fz = fz;
+  return _walk;
 }
 
 const TURN_R = 4.5;
@@ -151,10 +157,46 @@ const ACCEL = 1.9;            // m/s² gentle pull-away
 const DECEL = 3.0;            // m/s² normal braking
 const STOP_GAP = 3.2;         // the stop line sits this far before the turn begins
 const STOP_WAIT = 1.4;        // seconds parked at the line
-const FOLLOW_GAP = 9;         // metres kept to whatever is ahead in the lane
+const FOLLOW_GAP = 2.6;       // metres kept between bumpers to whatever is ahead in the lane
 const LOOKAHEAD = 45;
 
-interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look }
+interface Driver { id: string; name: string; kind: VehicleKind; route: Path; s: number; speed: number; steer: number; v: number; wait: number; served: number; x: number; z: number; fx: number; fz: number; roll: number; look?: Look; paint?: string; ob?: Obstacle; style?: CarStyle }
+
+/** Something NPC drivers must not drive into: a ground-plane rectangle (half length `hx` along `fx, fz`, half width `hz`). */
+export interface Obstacle { x: number; z: number; hx: number; hz: number; fx: number; fz: number }
+
+/** Half extents of a vehicle kind's body on the ground. */
+const DEFAULT_HALF = { hx: 2.4, hz: 0.95 } as const;
+/** No allocation: the tuning's own chassis half extents (read-only). */
+function halfSize(kind: string): { readonly hx: number; readonly hz: number } {
+  return tuned(kind)?.chassis ?? DEFAULT_HALF;
+}
+
+/** Gap from `me`'s front bumper to `o`'s body when `o` reaches into the lane ahead of `me`, else Infinity. */
+function pathGap(me: Obstacle, o: Obstacle) {
+  const nx = -me.fz, nz = me.fx;
+  const dx = o.x - me.x, dz = o.z - me.z;
+  const along = dx * me.fx + dz * me.fz;
+  if (along <= 0) return Infinity;
+  const halfAlong = o.hx * Math.abs(o.fx * me.fx + o.fz * me.fz) + o.hz * Math.abs(-o.fz * me.fx + o.fx * me.fz);
+  const halfAcross = o.hx * Math.abs(o.fx * nx + o.fz * nz) + o.hz * Math.abs(-o.fz * nx + o.fx * nz);
+  const gap = along - halfAlong - me.hx;
+  if (gap > 30 || Math.abs(dx * nx + dz * nz) >= halfAcross + me.hz + 0.35) return Infinity;
+  return Math.max(0, gap);
+}
+
+/** Players on foot and every player vehicle from a snapshot, as obstacles for the drivers. */
+export function obstaclesFrom(players: readonly PlayerSnap[], vehicles: readonly VehicleSnap[]): Obstacle[] {
+  const out: Obstacle[] = [];
+  for (const p of players) if (!p.vehicleId) out.push({ x: p.x, z: p.z, hx: 0.35, hz: 0.35, fx: 1, fz: 0 });
+  for (const v of vehicles) {
+    const { hx, hz } = halfSize(v.kind);
+    const fx = 1 - 2 * (v.qy * v.qy + v.qz * v.qz), fz = 2 * (v.qx * v.qz - v.qw * v.qy);
+    const n = Math.hypot(fx, fz) || 1;
+    out.push({ x: v.x, z: v.z, hx, hz, fx: fx / n, fz: fz / n });
+  }
+  return out;
+}
 interface Walker { id: string; name: string; color: string; route: Walk; s: number; speed: number; look?: Look }
 
 const driver = (id: string, name: string, kind: VehicleKind, route: Path, s: number, speed: number): Driver =>
@@ -184,8 +226,8 @@ export class NpcTraffic {
   ];
   private readonly builtinDrivers = this.drivers.length;
   private customVersion = -1;
-  /** Hosts call this to keep NPCs from driving through players who stopped on the road. */
-  obstacles: { x: number; z: number }[] = [];
+  /** Hosts call this (see obstaclesFrom) to keep NPCs from driving into players and their vehicles. */
+  obstacles: Obstacle[] = [];
 
   constructor() {
     for (const d of this.drivers) this.place(d);
@@ -199,12 +241,17 @@ export class NpcTraffic {
     const old = new Map(this.drivers.slice(this.builtinDrivers).map(d => [d.id, d]));
     const next: Driver[] = [];
     for (const t of CUSTOM_TRAFFIC) {
-      const id = `npc-custom-${t.id.slice(0, 8)}`;
+      // The first driver keeps the original id so existing worlds see the same car.
+      // Bundled ids all start with "bundled-", so they are told apart by the rest of the id.
+      const tag = t.id.startsWith('bundled-') ? t.id.slice(8, 32) : t.id.slice(0, 8);
+      const id = t.n ? `npc-custom-${tag}-${t.n}` : `npc-custom-${tag}`;
       const route = ROUTES[t.route];
       const prev = old.get(id);
-      if (prev && prev.kind === t.kind && prev.route === route) { prev.speed = t.speed; prev.name = t.driver; next.push(prev); continue; }
-      const seed = hashSeed(t.id);
-      const d: Driver = { ...driver(id, t.driver, t.kind, route, (seed % 1000) / 1000 * route.len, t.speed), look: npcLook(seed % 2 ? 'female' : 'male', 20 + (seed % 997)) };
+      if (prev && prev.kind === t.kind && prev.route === route) { prev.speed = t.speed; prev.name = t.driver; prev.paint = t.paint; next.push(prev); continue; }
+      const seed = hashSeed(t.n ? `${t.id}#${t.n}` : t.id);
+      // Spread a fleet sharing one route evenly around it.
+      const start = ((hashSeed(t.id) % 1000) / 1000 + t.n / t.count) % 1;
+      const d: Driver = { ...driver(id, t.driver, t.kind, route, start * route.len, t.speed), look: npcLook(seed % 2 ? 'female' : 'male', 20 + (seed % 997)), ...(t.paint ? { paint: t.paint } : {}) };
       this.place(d);
       next.push(d);
     }
@@ -217,19 +264,35 @@ export class NpcTraffic {
     d.x = p.x; d.z = p.z; d.fx = p.fx; d.fz = p.fz;
   }
 
-  /** Distance to the nearest thing in this driver's lane ahead, or Infinity. */
+  /**
+   * Bumper-to-bumper distance to the nearest thing whose body reaches into
+   * this driver's path ahead, or Infinity. Bodies are oriented rectangles, so
+   * a truck parked across the lane or a long trailer is seen by its real size.
+   */
   private gapAhead(d: Driver) {
     let best = Infinity;
-    const check = (x: number, z: number) => {
-      const dx = x - d.x, dz = z - d.z;
-      const along = dx * d.fx + dz * d.fz;
-      if (along <= 0.5 || along > 30) return;
-      const across = Math.abs(-dx * d.fz + dz * d.fx);
-      if (across < 2.1) best = Math.min(best, along);
-    };
-    for (const o of this.obstacles) check(o.x, o.z);
-    for (const o of this.drivers) if (o !== d) check(o.x, o.z);
+    const me = this.body(d);
+    for (const o of this.obstacles) best = Math.min(best, pathGap(me, o));
+    for (const o of this.drivers) {
+      if (o === d) continue;
+      const them = this.body(o);
+      const g = pathGap(me, them);
+      if (g === Infinity) continue;
+      // Two drivers nosing into each other at a junction: the one nearer the
+      // other's body goes first, so they never both wait.
+      const back = pathGap(them, me);
+      if (back < Infinity && (g < back || (g === back && d.id < o.id))) continue;
+      best = Math.min(best, g);
+    }
     return best;
+  }
+
+  /** The driver's footprint, updated in place: this runs for every pair of drivers on every step. */
+  private body(d: Driver): Obstacle {
+    const h = halfSize(d.kind);
+    const o = d.ob ?? (d.ob = { x: 0, z: 0, hx: 0, hz: 0, fx: 1, fz: 0 });
+    o.x = d.x; o.z = d.z; o.hx = h.hx; o.hz = h.hz; o.fx = d.fx; o.fz = d.fz;
+    return o;
   }
 
   /** Fastest speed allowed now so the car can still slow for every curve and stop line ahead. */
@@ -253,7 +316,8 @@ export class NpcTraffic {
     for (const d of this.drivers) {
       const r = d.route;
       // Arrived at a stop line: hold, then mark it served so we pull through.
-      const lineIdx = r.stops.findIndex((_, i) => { const dist = toLine(r, d.s, i); return dist > -1.5 && dist < 0.6; });
+      let lineIdx = -1;
+      for (let i = 0; i < r.stops.length; i++) { const dist = toLine(r, d.s, i); if (dist > -1.5 && dist < 0.6) { lineIdx = i; break; } }
       if (lineIdx >= 0 && d.served !== lineIdx && d.v < 1.2) {
         d.wait += dt;
         d.v = 0;
@@ -265,7 +329,8 @@ export class NpcTraffic {
 
       let target = this.speedLimit(d);
       const gap = this.gapAhead(d);
-      if (gap < Infinity) target = Math.min(target, Math.max(0, (gap - FOLLOW_GAP * 0.55) * 0.9));
+      if (gap < Infinity) target = Math.min(target, Math.max(0, (gap - FOLLOW_GAP) * 0.9));
+      if (gap <= FOLLOW_GAP * 0.5) d.v = 0;
       if (d.wait > 0) target = 0;
       const dv = target - d.v;
       d.v = Math.max(0, d.v + Math.max(-DECEL * 1.6 * dt, Math.min(ACCEL * dt * (1 - d.v / (d.speed * 1.4)), dv)));
@@ -294,7 +359,7 @@ export class NpcTraffic {
       // yaw about +Y, then roll about the car's own forward (+X) axis.
       const cy = Math.cos(yaw / 2), sy = Math.sin(yaw / 2), cr = Math.cos(d.roll / 2), sr = Math.sin(d.roll / 2);
       const vid = `${d.id}:${d.kind}`;
-      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: d.x, y, z: d.z, qx: cy * sr, qy: sy * cr, qz: -sy * sr, qw: cy * cr, steer: d.steer, speed: d.v, hitchedTo: null });
+      vehicles.push({ id: vid, owner: d.id, kind: d.kind, x: d.x, y, z: d.z, qx: cy * sr, qy: sy * cr, qz: -sy * sr, qw: cy * cr, steer: d.steer, speed: d.v, hitchedTo: null, ...(d.paint ? { style: d.style?.color === d.paint ? d.style : (d.style = { color: d.paint, finish: 'metallic' }) } : {}) });
       players.push({ id: d.id, name: d.name, color: '#888888', x: d.x, y, z: d.z, yaw: 0, speed: 0, vehicleId: vid, look: d.look });
     }
     for (const w of this.walkers) {

@@ -6,6 +6,7 @@
  */
 import { LotState, WorldState } from '../../shared/BuildRules';
 import { BUILDINGS, CIVIC, CURVES, DEPOT, DOWNTOWN, GAS_STATION, GRID_AREA, MAP_BOUNDS, ROADS, SIDEWALKS, TOWN_SQUARE_RECT } from '../../shared/WorldLayout';
+import { BODY_SHOP } from '../../shared/BodyShop';
 
 const BOUNDS = MAP_BOUNDS;
 const SHOP_ICON: Record<string, string> = { dealer: '🚙', diner: '🍔', bank: '🏦', cafe: '☕', grocery: '🛒', hardware: '🔧', gas: '⛽', fire: '🚒', police: '🚓' };
@@ -73,10 +74,48 @@ export class PlotMap {
     return null;
   }
 
+  /** The town (ground, roads, downtown) never changes: drawn once per canvas size into an offscreen layer. */
+  private bg: HTMLCanvasElement | null = null;
+  private bgKey = '';
+
   draw() {
     if (!this.canvas.isConnected || this.canvas.offsetParent === null) return;
     const { w, h } = this.fit();
-    const g = this.ctx, s = this.scale;
+    const key = `${this.canvas.width}x${this.canvas.height}`;
+    if (key !== this.bgKey || !this.bg) {
+      this.bgKey = key;
+      this.bg ??= document.createElement('canvas');
+      this.bg.width = this.canvas.width; this.bg.height = this.canvas.height;
+      const bctx = this.bg.getContext('2d')!;
+      bctx.setTransform(this.ctx.getTransform());
+      this.drawTown(bctx, w, h);
+    }
+    // Lots change only with the world, ownership, hover or selection: cached as a second layer,
+    // so the 2 Hz refresh while the map is open just blits two images and draws your arrow.
+    if (this.world !== this.lastWorld) { this.lastWorld = this.world; this.worldSerial++; }
+    const lotsKey = `${key}|${this.worldSerial}|${this.world?.version ?? -1}|${this.hover}|${this.selected}|${this.me}`;
+    if (lotsKey !== this.lotsKey || !this.lots) {
+      this.lotsKey = lotsKey;
+      this.lots ??= document.createElement('canvas');
+      this.lots.width = this.canvas.width; this.lots.height = this.canvas.height;
+      const lctx = this.lots.getContext('2d')!;
+      lctx.setTransform(1, 0, 0, 1, 0, 0);
+      lctx.drawImage(this.bg, 0, 0);
+      lctx.setTransform(this.ctx.getTransform());
+      this.drawLots(lctx, this.scale);
+    }
+    const g = this.ctx;
+    g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(this.lots, 0, 0); g.restore();
+    this.drawMarker(g, this.scale);
+  }
+
+  private lots: HTMLCanvasElement | null = null;
+  private lotsKey = '';
+  private lastWorld: WorldState | null = null;
+  private worldSerial = 0;
+
+  private drawTown(g: CanvasRenderingContext2D, w: number, h: number) {
+    const s = this.scale;
     g.clearRect(0, 0, w, h);
     g.fillStyle = '#26381f'; g.fillRect(0, 0, w, h);
     g.fillStyle = '#3c5a2c'; g.fillRect(this.px(BOUNDS.x0 + 4), this.py(BOUNDS.z0 + 4), (BOUNDS.x1 - BOUNDS.x0 - 8) * s, (BOUNDS.z1 - BOUNDS.z0 - 8) * s);
@@ -111,7 +150,7 @@ export class PlotMap {
     // Downtown
     g.font = `600 ${Math.max(9, s * 3.2)}px system-ui, sans-serif`;
     g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (const b of [...BUILDINGS, ...CIVIC]) {
+    for (const b of BUILDINGS.concat(CIVIC)) {
       g.fillStyle = b.color; rect(b.x, b.z, b.w, b.d);
       g.strokeStyle = 'rgba(0,0,0,0.35)'; g.strokeRect(this.px(b.x - b.w / 2), this.py(b.z - b.d / 2), b.w * s, b.d * s);
       const icon = SHOP_ICON[b.kind];
@@ -124,7 +163,13 @@ export class PlotMap {
     g.font = `${Math.max(12, s * 6)}px system-ui`; g.fillStyle = '#fff'; g.fillText('⛽', this.px(gs.canopy.x), this.py(gs.canopy.z));
     g.fillStyle = '#7b6b58'; rect(DEPOT.x, DEPOT.z, DEPOT.w, DEPOT.d);
     g.fillText('📦', this.px(DEPOT.x), this.py(DEPOT.z));
+    g.fillStyle = '#c9c4b8'; rect(BODY_SHOP.x, BODY_SHOP.z, BODY_SHOP.w, BODY_SHOP.d);
+    g.fillText('🔧', this.px(BODY_SHOP.x), this.py(BODY_SHOP.z));
 
+  }
+
+  private drawLots(g: CanvasRenderingContext2D, s: number) {
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.lineCap = 'butt'; g.lineJoin = 'round'; g.setLineDash([]);
     // Lots and the houses on them
     const world = this.world;
     if (world) for (const id in world.lots) {
@@ -173,6 +218,9 @@ export class PlotMap {
       g.restore();
     }
 
+  }
+
+  private drawMarker(g: CanvasRenderingContext2D, s: number) {
     // You
     const m = this.marker;
     if (m) {

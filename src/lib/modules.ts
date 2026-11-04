@@ -1,6 +1,6 @@
 export const embeddedModules = [
   { id: 'sandlot3d', title: 'Sandlot Sluggers 3D', src: '/modules/sandlot3d.html' },
-  { id: 'maplestreet', title: 'Maple Street', src: '/modules/maplestreet.html' },
+  { id: 'maplestreet', title: 'Fox Plains', src: '/modules/maplestreet.html' },
   { id: 'sandlot', title: 'Sandlot Sluggers', src: '/modules/sandlot.html' },
   { id: 'botwreck', title: 'BotWreck 3D', src: '/modules/botwreck.html' },
   { id: 'chess', title: 'Chess', src: '/modules/chess.html' },
@@ -8,6 +8,7 @@ export const embeddedModules = [
   { id: '2048', title: '2048', src: '/modules/2048.html' },
   { id: 'helicopter', title: 'Chopper Cave', src: '/modules/helicopter.html' },
   { id: 'shorttrack', title: 'Short Track Showdown', src: '/modules/shorttrack.html' },
+  { id: 'fairway', title: 'Fairway Nine', src: '/modules/fairway.html' },
   { id: 'alphabet', title: 'Alphabet Sprint', src: '/modules/alphabet.html' },
   { id: 'wpm', title: 'Words Per Minute', src: '/modules/wpm.html' },
   { id: 'tetradrop', title: 'Tetra Drop', src: '/modules/tetradrop.html' },
@@ -46,9 +47,10 @@ export const moduleGroups: ModuleSubject[] = ['Strategy', 'Physics', 'Math', 'Pr
 
 export const learningModules: LearningModule[] = [
   { id: 'sandlot3d', title: 'Sandlot Sluggers 3D', subject: 'Sports science', group: 'Physics', summary: 'Bat timing, pitch location, fielding coverage and baserunning in full 3D. Draft nine, hit and pitch full innings, steal and bunt across four ballparks, including a dome modeled on American Family Field.', modes: ['Solo', '3D'], image: '/images/modules/sandlot3d.webp', accent: '#f4bf3a' },
-  { id: 'maplestreet', title: 'Maple Street', subject: 'Economics & engineering', group: 'Strategy', summary: 'Pick a plot in a shared, always-open town and build a house wall by wall: rooms, paint, roofs, pools, courts and 60 pieces of furniture. Drive pickups, a muscle coupe and a zero-turn mower, shop downtown, fill up at the gas station, mow striped lawns and manage a capped bank loan.', modes: ['Shared world', 'Solo', 'Online room', '3D'], image: '/images/modules/maplestreet.webp?v=2', accent: '#7cc46a' },
+  { id: 'maplestreet', title: 'Fox Plains', subject: 'Economics & engineering', group: 'Strategy', summary: 'Pick a plot in a shared, always-open town and build a house wall by wall: rooms, paint, roofs, pools, courts and 60 pieces of furniture. Drive pickups, a muscle coupe and a zero-turn mower, shop downtown, fill up at the gas station, mow striped lawns and manage a capped bank loan.', modes: ['Shared world', 'Solo', 'Online room', '3D'], image: '/images/modules/maplestreet.webp?v=2', accent: '#7cc46a' },
   { id: 'sandlot', title: 'Sandlot Sluggers', subject: 'Sports science', group: 'Physics', summary: 'Timing windows, launch angles and team strategy on a neighborhood diamond. Draft a roster and run a full season.', modes: ['Solo', '2 on 1 screen', 'Online room'], image: '/images/modules/sandlot.webp', accent: '#ffb547' },
   { id: 'shorttrack', title: 'Short Track Showdown', subject: 'Friction & banking', group: 'Physics', summary: 'Steering scrub, coast-in corner entry and banked grip at Prison Speedway, with its walled cell house in the infield, on a half-mile bullring, a tight, steep 0.3-mile Dells-style oval, its wider, flatter grass-infield cousin or its dirt twin. Paint your race truck and race AI or friends.', modes: ['Solo', 'Online room'], image: '/images/modules/shorttrack.webp?v=2', accent: '#ff7a1a' },
+  { id: 'fairway', title: 'Fairway Nine', subject: 'Projectile motion', group: 'Physics', summary: 'Launch angle, backspin lift, air drag and wind shape every shot across nine original holes, then slope and surface decide where the ball stops. Play a solo round, chase closest to the pin, or host an online room for up to four.', modes: ['Solo', 'Closest to the pin', 'Online room', '3D'], image: '/images/modules/fairway.webp', accent: '#4fd27a' },
   { id: 'botwreck', title: 'BotWreck 3D', subject: 'Engineering', group: 'Physics', summary: 'Pick a robot vehicle frame, then test momentum, impact force and structural failure in a 3D crash lab.', modes: ['Solo', '3D'], image: '/images/modules/botwreck.webp', accent: '#ff5a36' },
   { id: 'pool', title: '8-Ball Pool', subject: 'Geometry', group: 'Math', summary: 'Angles, spin and shot planning across 8-ball and 9-ball. Challenge anyone who is online.', modes: ['Practice', 'Live 1v1'], image: '/images/modules/pool.webp', accent: '#2fd6a3' },
   { id: 'racing', title: 'Max Secure Circuit', subject: 'Motion', group: 'Physics', summary: 'Racing lines and braking points on a twisting road course. Chase lap records or join a live grid of up to 24 cars.', modes: ['Time trial', 'Live grid'], image: '/images/modules/racing.webp', accent: '#39d0ff' },

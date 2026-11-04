@@ -26,6 +26,13 @@ export class Engine {
   backendName = 'unknown';
   aoEnabled = false;
   private post: { render(): void } | null = null;
+  /** Adaptive resolution: the sharpest pixel ratio this device can draw at a smooth frame rate. */
+  private maxRatio = 1;
+  private ratio = 1;
+  private frameAvg = 1000 / 60;
+  private adaptClock = 0;
+  private holdUntil = 0;
+  private fastFor = 0;
 
   static async create(container: HTMLElement): Promise<Engine> {
     const e = new Engine();
@@ -36,7 +43,8 @@ export class Engine {
   private async init(container: HTMLElement) {
     const params = new URLSearchParams(location.search);
     const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: params.has('webgl') });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    this.maxRatio = this.ratio = Math.min(devicePixelRatio, 2);
+    renderer.setPixelRatio(this.ratio);
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.92;
@@ -92,6 +100,38 @@ export class Engine {
       this.post = null;
     }
   }
+
+  /**
+   * Dynamic resolution. Full sharpness whenever the device keeps up; if frames
+   * average slower than ~45 fps for two seconds, the render resolution steps
+   * down (never below 1 CSS pixel per pixel), and it steps back up after the
+   * frame rate has stayed high for a while. A device that is fast enough never
+   * sees a change.
+   */
+  adapt(dtSec: number) {
+    if (dtSec <= 0 || dtSec > 0.5 || this.maxRatio <= 1) return;
+    const ms = dtSec * 1000;
+    this.frameAvg += (ms - this.frameAvg) * 0.05;
+    this.adaptClock += dtSec;
+    if (this.adaptClock < 2) return;
+    this.adaptClock = 0;
+    const now = performance.now();
+    if (this.frameAvg > 22 && this.ratio > 1) {
+      this.setRatio(Math.max(1, this.ratio - 0.25));
+      this.holdUntil = now + 8000;
+      this.fastFor = 0;
+    } else if (this.frameAvg < 17.5 && this.ratio < this.maxRatio && now > this.holdUntil) {
+      if ((this.fastFor += 2) >= 6) { this.setRatio(Math.min(this.maxRatio, this.ratio + 0.25)); this.fastFor = 0; }
+    } else this.fastFor = 0;
+  }
+
+  private setRatio(r: number) {
+    this.ratio = r;
+    this.renderer.setPixelRatio(r);
+    this.renderer.setSize(innerWidth, innerHeight);
+  }
+
+  get pixelRatio() { return this.ratio; }
 
   render() {
     if (this.post) this.post.render();

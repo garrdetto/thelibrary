@@ -1,11 +1,11 @@
 /**
- * End-to-end check of the Maple Street vehicle pipeline against a local dev
+ * End-to-end check of the Fox Plains vehicle pipeline against a local dev
  * server (pnpm dev) and the Meshy stand-in (node scripts/meshy-mock.mjs):
  *
  *   1. Meshy: text → previews → refine → remesh, cancel, balance and costs.
- *   2. Admin → Maple Street vehicles: open the Meshy model in the editor,
+ *   2. Admin → Fox Plains vehicles: open the Meshy model in the editor,
  *      match it to the sedan, test-drive it on the game physics, publish it.
- *   3. Solo Maple Street: buy it at Maple Motors, drive it, see it in traffic.
+ *   3. Solo Fox Plains: buy it at Maple Motors, drive it, see it in traffic.
  *   4. Shared world (Durable Object): the same vehicle is valid there too.
  *
  *   ADMIN_PASSWORD=… node scripts/maplestreet-vehicles-e2e.mjs [baseUrl]
@@ -87,7 +87,7 @@ try {
   page.on('console', m => { if (m.type() === 'error' && !/favicon|404|net::ERR/.test(m.text())) errors.push(`admin console: ${m.text()}`) })
   await page.goto('/')
   await page.getByRole('button', { name: 'Admin', exact: true }).click()
-  await page.getByRole('tab', { name: 'Maple Street vehicles' }).click()
+  await page.getByRole('tab', { name: 'Vehicles', exact: true }).click()
   await page.getByRole('heading', { name: 'Publish vehicles' }).waitFor()
   await page.getByText('credits left').waitFor({ timeout: 20000 })
   log('vehicle editor and Meshy panel are open')
@@ -161,7 +161,7 @@ try {
     g.character.teleport(pos)
     await new Promise(r => setTimeout(r, 500))
     if (!owned) return { owned, paid, traffic: false, note: document.getElementById('toast')?.textContent, money: g.account.money, at: g.character.position }
-    g.bringOut(kind)
+    g.garageAction(kind)
     const v = g.vehicles.get(kind)
     g.placeVehicle(v, 40, 2.5, 0)
     g.hud.closeModals()

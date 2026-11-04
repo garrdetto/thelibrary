@@ -7,6 +7,11 @@ import * as THREE from 'three/webgpu';
 import { Input } from '../core/Input';
 import { Physics } from '../physics/Physics';
 
+// Scratch objects reused every frame (no garbage in the render loop).
+const _focus = new THREE.Vector3();
+const _dir = new THREE.Vector3();
+const _basis = { fwd: new THREE.Vector2(), right: new THREE.Vector2() };
+
 export class CameraRig {
   yaw = -Math.PI / 2; // radians around Y; camera sits at target + (sin(yaw), , cos(yaw)) * dist
   pitch = 0.32;
@@ -45,18 +50,18 @@ export class CameraRig {
 
     if (!this.initialized) { this.smoothTarget.copy(target); this.initialized = true; }
     this.smoothTarget.lerp(target, 1 - Math.exp(-dt * 12));
-    const focus = this.smoothTarget.clone().add(new THREE.Vector3(0, opts.height * 0.45, 0));
+    const focus = _focus.copy(this.smoothTarget); focus.y += opts.height * 0.45;
     const want = Math.max(this.dist, opts.dist * 0.6);
-    const dir = new THREE.Vector3(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
+    const dir = _dir.set(Math.sin(this.yaw) * Math.cos(this.pitch), Math.sin(this.pitch), Math.cos(this.yaw) * Math.cos(this.pitch)).normalize();
     const free = this.physics.rayDistance(focus, dir, want);
     this.camera.position.copy(focus).addScaledVector(dir, Math.max(1.2, free - 0.3));
     this.camera.lookAt(focus);
   }
 
-  /** Camera-relative XZ basis for on-foot movement. */
+  /** Camera-relative XZ basis for on-foot movement. Shared vectors: valid until the next call. */
   basis() {
-    const fwd = new THREE.Vector2(-Math.sin(this.yaw), -Math.cos(this.yaw));
-    const right = new THREE.Vector2(-fwd.y, fwd.x);
-    return { fwd, right };
+    _basis.fwd.set(-Math.sin(this.yaw), -Math.cos(this.yaw));
+    _basis.right.set(-_basis.fwd.y, _basis.fwd.x);
+    return _basis;
   }
 }

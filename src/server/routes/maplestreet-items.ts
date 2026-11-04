@@ -17,7 +17,7 @@ const updateSchema = z.object({
   price: storeItemSchema.shape.price.optional(),
 }).strict()
 
-const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Maple Street items.')
+const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Fox Plains items.')
 const isAdmin = async (request: Request, env: Env) => (await currentUser(request, env))?.isAdmin === true
 const publishStatus = z.enum(['draft', 'published']).catch('published')
 

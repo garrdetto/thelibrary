@@ -1,5 +1,5 @@
 import { DRIVE_TEMPLATES, VEHICLE_LIMITS, BRAND_PATTERN } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
-import type { CustomVehicleRecord, CustomVehicleSpec, DriveTemplate, Point3, TrafficRoute } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
+import type { CustomVehicleRecord, CustomVehicleSpec, DriveTemplate, Point3, TrafficRoute, VehicleParts, PartBox } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { ECONOMY_TEMPLATES } from './templates'
 import { accelTargetMph, MPH_TO_MS, predictDrive, solveDrive } from '../../../../modules-src/maplestreet/shared/VehicleDrive'
 import { BODY_EXTENTS, BUILTIN_TUNING, rideHeight } from '../../../../modules-src/maplestreet/shared/Vehicles'
@@ -49,6 +49,8 @@ export type Draft = {
   dealer: CustomVehicleSpec['dealer']
   traffic: CustomVehicleSpec['traffic']
   removeWheels: boolean
+  /** Opening doors (right side, mirrored), hood and trunk, as boxes in chassis space. */
+  parts: VehicleParts
   maxTriangles: number
   maxTexture: number
 }
@@ -131,8 +133,9 @@ export function newDraft(template: DriveTemplate, raw: Size3 | null, previous?: 
     dealer: previous?.dealer ?? { forSale: true, price: economy.price, fuel: economy.fuel, tank: economy.tank, mpg: economy.mpg },
     traffic: previous?.traffic ?? { enabled: false, driver: '', route: 'ringA', mph: template === 'golfcart' ? 13 : 24 },
     removeWheels: previous?.removeWheels ?? true,
-    maxTriangles: previous?.maxTriangles ?? 30000,
-    maxTexture: previous?.maxTexture ?? 1024,
+    parts: previous?.parts ?? { doors: [], hood: null, trunk: null },
+    maxTriangles: previous?.maxTriangles ?? 120000,
+    maxTexture: previous?.maxTexture ?? 2048,
   }
 }
 
@@ -199,6 +202,7 @@ export function draftSpec(d: Draft, raw: Size3, center: { x: number; z: number; 
     dealer: d.dealer,
     traffic: { ...d.traffic, driver: d.traffic.driver.trim() || d.name.trim() },
     wheelsRemoved: d.removeWheels,
+    ...(d.parts.doors.length || d.parts.hood || d.parts.trunk ? { parts: d.parts } : {}),
   }
 }
 
@@ -217,3 +221,29 @@ export const LIMITS = VEHICLE_LIMITS
 export const mph = (ms: number) => ms / MPH_TO_MS
 export const feet = (m: number) => m * 3.28084
 export const fmtLen = (m: number) => `${m.toFixed(2)} m · ${feet(m).toFixed(1)} ft`
+
+export type PartKey = 'frontDoor' | 'rearDoor' | 'hood' | 'trunk'
+export const PART_LABEL: Record<PartKey, string> = { frontDoor: 'Front doors', rearDoor: 'Rear doors', hood: 'Hood', trunk: 'Trunk / tailgate' }
+
+/** A starting box for a part, from the body's size (y is chassis space: the road is at −ride). */
+export function defaultPart(key: PartKey, length: number, height: number, ride: number): PartBox {
+  const r2 = (v: number) => Math.round(v * 1000) / 1000
+  const y = (f: number) => r2(-ride + height * f)
+  switch (key) {
+    case 'frontDoor': return { front: r2(length * 0.17), back: r2(-length * 0.05), bottom: y(0.28), top: y(0.88) }
+    case 'rearDoor': return { front: r2(-length * 0.07), back: r2(-length * 0.26), bottom: y(0.28), top: y(0.86) }
+    case 'hood': return { front: r2(length * 0.5), back: r2(length * 0.2), bottom: y(0.5), top: y(0.75) }
+    case 'trunk': return { front: r2(-length * 0.3), back: r2(-length * 0.5), bottom: y(0.45), top: y(0.75) }
+  }
+}
+
+export const partOf = (parts: VehicleParts, key: PartKey): PartBox | null =>
+  key === 'frontDoor' ? parts.doors[0] ?? null : key === 'rearDoor' ? parts.doors[1] ?? null : parts[key]
+
+/** Sets or clears one part; a rear door needs a front door. */
+export function withPart(parts: VehicleParts, key: PartKey, box: PartBox | null): VehicleParts {
+  if (key === 'hood' || key === 'trunk') return { ...parts, [key]: box }
+  const front = key === 'frontDoor' ? box : parts.doors[0] ?? null
+  const rear = key === 'rearDoor' ? box : parts.doors[1] ?? null
+  return { ...parts, doors: front ? (rear ? [front, rear] : [front]) : [] }
+}

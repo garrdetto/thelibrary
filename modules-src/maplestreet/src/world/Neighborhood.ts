@@ -14,6 +14,7 @@ import { Physics } from '../physics/Physics';
 import { Downtown } from './Downtown';
 import { Lawn } from './Lawn';
 import { Roads } from './Roads';
+import type { WorldChunks } from './WorldChunks';
 
 const LIGHT_POOL = 6;
 
@@ -44,7 +45,12 @@ export class Neighborhood {
   private poolTimer = 0;
   readonly downtown: Downtown;
 
-  constructor(private scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary) {
+  /**
+   * With `chunks`, all neighborhood scenery small enough for a grid cell (lot
+   * props, lawns, the woodland, street lamps) is handed to the distance-based
+   * grid; only town-wide pieces (ground, road and sidewalk slabs) stay in `group`.
+   */
+  constructor(private scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary, chunks: WorldChunks | null = null) {
     scene.add(this.group, this.outlines);
     this.outlines.visible = false;
     physics.addGround(WORLD_HALF);
@@ -53,7 +59,11 @@ export class Neighborhood {
     this.buildLots();
     this.buildTrees();
     this.buildLamps();
-    this.downtown = new Downtown(scene, physics, mats);
+    this.downtown = new Downtown(scene, physics, mats, !chunks);
+    chunks?.adopt(this.group, { layer: 'hood' });
+    // Downtown joins the grid too: each cell is batched per material (plain finishes share one
+    // material, so a block is a handful of draws) and drops out by distance and view like the rest.
+    chunks?.adopt(this.downtown.group, { layer: 'downtown' });
   }
 
   // ---------------------------------------------------------------- terrain & roads
@@ -108,9 +118,11 @@ export class Neighborhood {
 
   private buildLots() {
     const driveways: RectXZ[] = [];
+    const mailboxMat = new THREE.MeshStandardMaterial({ color: 0x1d2a44, metalness: 0.6, roughness: 0.35 });
     for (const lot of this.lots) {
       const lawn = new Lawn(lot, this.mats.grassDetail);
       this.lawns.set(lot.id, lawn);
+      lawn.mesh.userData.keep = true;               // its own stripe texture and uniforms, updated as you mow
       this.group.add(lawn.mesh);
 
       const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z;
@@ -120,7 +132,7 @@ export class Neighborhood {
       // Mailbox
       const mb = new THREE.Group();
       const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.1, 0.1), this.mats.get('trim').material); post.position.y = 0.55;
-      const box = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.45, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1d2a44, metalness: 0.6, roughness: 0.35 }));
+      const box = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.45, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2).rotateY(Math.PI / 2), mailboxMat);
       box.position.y = 1.1;
       mb.add(post, box); mb.position.set(lot.x + 7.5, 0, lot.bend ? bendCurbZ(lot, lot.x + 7.5) + dir * 0.7 : frontZ + dir * 0.6);
       mb.traverse(o => (o.castShadow = true));
@@ -329,6 +341,8 @@ export class Neighborhood {
 
   // ---------------------------------------------------------------- per-frame
 
+  private nearLamps: THREE.Vector3[] = [];
+  private nearDist: number[] = [];
   update(dt: number, night: number, focus: THREE.Vector3, nowDays: number) {
     this.downtown.update(night);
     this.bulbMat.emissiveIntensity = night > 0.25 ? 6 : 0;
@@ -339,8 +353,18 @@ export class Neighborhood {
     this.poolTimer -= dt;
     if (this.poolTimer <= 0) {                         // re-assign the N real lights to the nearest lamps
       this.poolTimer = 0.5;
-      const near = [...this.lampPositions].sort((a, b) => a.distanceToSquared(focus) - b.distanceToSquared(focus));
-      this.lightPool.forEach((l, i) => { if (near[i]) l.position.copy(near[i]).setY(5.6); });
+      // Partial selection of the N nearest lamps (N = pool size) without copying or sorting them all.
+      const n = this.lightPool.length, best = this.nearLamps, bestD = this.nearDist;
+      best.length = 0; bestD.length = 0;
+      for (const p of this.lampPositions) {
+        const d = p.distanceToSquared(focus);
+        if (best.length === n && d >= bestD[n - 1]) continue;
+        let i = Math.min(best.length, n - 1);
+        if (best.length < n) { best.push(p); bestD.push(d); i = best.length - 1; }
+        while (i > 0 && bestD[i - 1] > d) { best[i] = best[i - 1]; bestD[i] = bestD[i - 1]; i--; }
+        best[i] = p; bestD[i] = d;
+      }
+      for (let i = 0; i < n; i++) if (best[i]) this.lightPool[i].position.copy(best[i]).setY(5.6);
     }
     for (const l of this.lightPool) l.intensity = night > 0.25 ? 55 * night : 0;
   }

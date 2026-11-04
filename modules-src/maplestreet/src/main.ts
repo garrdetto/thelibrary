@@ -8,10 +8,6 @@ import { DEV_MODE, devDrafts } from './core/DevMode';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const params = new URLSearchParams(location.search);
 
-const nameOut = $<HTMLOutputElement>('pName');
-const nameLabel = $('pNameLabel');
-const nameNote = $('pNameNote');
-
 /** Name tags get a steady color from the name, so a neighbor looks the same to everyone. */
 function tagColor(name: string) {
   let h = 0;
@@ -21,15 +17,9 @@ function tagColor(name: string) {
   return `#${f(0)}${f(8)}${f(4)}`;
 }
 
+// No name prompt: signed-in players use their library username, everyone else
+// the fixed guest name for this browser (the same one the server uses).
 let playerName = guestName();
-function showName(signedIn: boolean) {
-  nameOut.value = playerName;
-  nameLabel.textContent = signedIn ? 'Signed in as' : 'Playing as';
-  nameNote.textContent = signedIn
-    ? 'Your library username. Your house follows your account to any device.'
-    : 'Your guest name for this browser. Sign in to the library to play under your username on any device.';
-}
-showName(false);
 
 async function loadSignedInUser() {
   if (location.protocol !== 'https:' && location.protocol !== 'http:') return;
@@ -39,7 +29,6 @@ async function loadSignedInUser() {
     const data = (await res.json()) as { username?: unknown };
     const username = typeof data.username === 'string' && /^[A-Za-z0-9_-]{3,20}$/.test(data.username) ? data.username : null;
     playerName = username ?? guestName();
-    showName(!!username);
   } catch { /* offline or standalone: stay a guest */ }
 }
 let accountReady = loadSignedInUser();
@@ -50,6 +39,8 @@ const customCatalogReady = Promise.all([
 /** The developer instance only runs solo; the start screen says which drafts came in. */
 function setupDevInstance() {
   $('start').classList.add('dev');
+  $('playWorld').hidden = false;
+  $('startStatus').textContent = '';
   $('playWorld').textContent = 'Enter the developer instance';
   const note = document.createElement('p');
   note.className = 'dev-note';
@@ -79,7 +70,7 @@ async function start(mode: NetMode) {
   await Promise.all([accountReady, customCatalogReady]);
   store.set('maplestreet/mode', mode);
   $('start').classList.add('loading');
-  $('startStatus').textContent = mode === 'world' ? 'Walking over to Maple Street…' : 'Loading your solo neighborhood…';
+  $('startStatus').textContent = mode === 'world' ? 'Walking over to Fox Plains…' : 'Loading your solo neighborhood…';
   try {
     game = new Game({
       name: playerName, color: tagColor(playerName), mode,
@@ -95,7 +86,8 @@ async function start(mode: NetMode) {
     if (DEV_MODE) {
       const g = game;
       const { DevPanel } = await import('./game/DevPanel');
-      new DevPanel({ place: id => g.devPlace(id), drive: kind => g.devDrive(kind as Parameters<Game['devDrive']>[0]), hasLot: () => g.devHasLot() });
+      devPanel = new DevPanel({ place: id => g.devPlace(id), drive: kind => g.devDrive(kind as Parameters<Game['devDrive']>[0]), hasLot: () => g.devHasLot() });
+      if (devPanelRequested || params.get('panel') === '1') devPanel.toggle(true);
       const badge = document.createElement('div');
       badge.id = 'devBadge';
       badge.textContent = devDrafts.allowed ? 'DEV · drafts on · F8 panel' : 'DEV · F8 panel';
@@ -106,11 +98,21 @@ async function start(mode: NetMode) {
     starting = false;
     $('start').classList.remove('loading');
     $('startStatus').textContent = `Could not start: ${(e as Error).message}. Your browser may not support WebGL2.`;
+    $('playWorld').textContent = 'Try again';
+    $('playWorld').hidden = false;
   }
 }
 
 $('playWorld').onclick = () => start(DEV_MODE ? 'offline' : 'world');
-$('playSolo').onclick = () => start('offline');
+
+let devPanel: { toggle(force?: boolean): void } | null = null;
+let devPanelRequested = false;
+
+addEventListener('message', e => {
+  if (!DEV_MODE || e.origin !== location.origin || e.source !== parent || e.data?.type !== 'tl-dev-panel') return;
+  if (devPanel) devPanel.toggle();
+  else devPanelRequested = true;
+});
 
 addEventListener('message', e => {
   if (DEV_MODE || e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return;
@@ -119,7 +121,10 @@ addEventListener('message', e => {
   else if (!game) { inviteRequested = true; start('world'); }
 });
 
+// Fox Plains is one open world: go straight in. ?solo=1 (tests, and the
+// developer instance) still runs the private neighborhood; ?vehicleTest=1 is
+// the vehicle editor's test drive.
 if (DEV_MODE) { if (params.get('solo')) setTimeout(() => start('offline'), 300); }
 else if (params.get('vehicleTest')) void import('./game/VehicleTestDrive').then(m => m.startVehicleTestDrive($('app')));
-else if (params.get('room')?.toUpperCase() === 'WORLD' || params.get('world')) setTimeout(() => start('world'), 300);
-else if (params.get('solo')) setTimeout(() => start('offline'), 300);
+else if (params.get('solo')) void start('offline');
+else void start('world');

@@ -1,5 +1,5 @@
 /**
- * The shared, persistent Maple Street: one WebSocket to /api/maplestreet on
+ * The shared, persistent Fox Plains: one WebSocket to /api/maplestreet on
  * the site, which a Cloudflare Durable Object answers. Signed-in library
  * members are identified by their session cookie; everyone else by a random
  * key kept in this browser. Drops reconnect automatically with backoff, and
@@ -29,7 +29,7 @@ export function worldEndpoint(): string | null {
 }
 
 export class WorldTransport implements Transport {
-  readonly label = 'Maple Street (shared world)';
+  readonly label = 'Fox Plains (shared world)';
   private ws: WebSocket | null = null;
   private msgCb: (m: ServerMsg) => void = () => {};
   private statusCb: (s: NetStatus) => void = () => {};

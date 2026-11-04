@@ -1,15 +1,18 @@
 import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { ChevronLeft, ChevronRight, Gauge, LoaderCircle, Move3d, Pipette, RotateCw, Ruler, Upload } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Gauge, LoaderCircle, Move3d, Pipette, RotateCw, Ruler, Upload, WandSparkles } from 'lucide-react'
+import type { Object3D } from 'three'
 import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
-import { fetchStoreVehicles, publishStoreVehicle, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
+import { fetchStoreVehicles, publishStoreVehicle, suggestVehicleParts, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
 import type { AssetStatus } from '@/lib/maplestreet-vehicles'
 import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from '../AssetStatusActions'
 import { MeshyPanel } from '../MeshyPanel'
 import type { MeshySourceOption } from '../MeshyPanel'
+import { defaultPart, PART_LABEL, partOf, withPart } from './draft'
+import type { PartKey } from './draft'
 import { DRIVE_TEMPLATES, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, REFERENCE_KINDS, REFERENCE_LABEL, ROUTE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
 import type { Draft, DriveTemplate, MarkerId, ReferenceKind } from './draft'
 import type { ShrinkReport } from './modelTools'
@@ -69,6 +72,8 @@ export default function VehicleEditor() {
   const [view, setView] = useState<View>('build')
   const stepIndex = STEPS.findIndex(item => item.id === step)
   const fitted = useRef(false)
+  const modelScene = useRef<Object3D | null>(null)
+  const onScene = useCallback((scene: Object3D | null) => { modelScene.current = scene }, [])
 
   const patch = useCallback((changes: Partial<Draft>) => { setDraft(current => ({ ...current, ...changes })); setMeasured(null) }, [])
 
@@ -117,7 +122,7 @@ export default function VehicleEditor() {
 
   function refit(template: DriveTemplate, scale?: number, yaw = draft.yaw) {
     if (!info) { setDraft(current => newDraft(template, null, { name: current.name })); return }
-    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
+    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, parts: current.parts, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
     setMeasured(null)
   }
 
@@ -157,6 +162,63 @@ export default function VehicleEditor() {
       }
     })
   }, [])
+
+  async function suggestPoints() {
+    const scene = modelScene.current
+    if (!scene || !info || busy) return
+    setBusy('suggest'); setStatus(null); setSelected(null)
+    try {
+      const { groundMatrix, groundTriangles, renderViews } = await import('./suggestRender')
+      const { boxFromSide, detectAxles, partsFromViews, surfaceSamples } = await import('./suggest')
+      const ground = groundMatrix(draft, info.center)
+      const found: string[] = [], missed: string[] = []
+      let next: Draft = draft
+      const axles = detectAxles(surfaceSamples(groundTriangles(scene, ground)), { length, width, height })
+      if (axles) {
+        next = { ...next, lift: 0, axles: next.axles.map((a, i) => {
+          const w = i === 0 ? axles.front : axles.rear
+          return { ...a, x: w.x, radius: Math.min(LIMITS.wheelRadiusMax, Math.max(LIMITS.wheelRadiusMin, w.radius)), width: w.width, halfTrack: w.halfTrack }
+        }) }
+        found.push('wheels')
+      } else missed.push('wheels')
+
+      let aiError: string | null = null
+      try {
+        const { images, frames } = renderViews(scene, ground)
+        const answer = await suggestVehicleParts({ kind: TEMPLATE_LABEL[draft.template], views: images })
+        const parts = partsFromViews(answer, frames)
+        const drop = draftRideHeight(next, length) - next.lift
+        const base = BUILTIN_TUNING[draft.template]
+        const centered = !!base.seat.straddle || base.seat.z === 0
+        if (parts.seat) { next = { ...next, seat: { x: parts.seat.x, y: r3(parts.seat.y - drop), z: centered ? 0 : parts.seat.z ? -Math.abs(parts.seat.z) : next.seat.z } }; found.push('seat') } else missed.push('seat')
+        if (parts.head) { next = { ...next, head: { x: parts.head.x, y: r3(parts.head.y - drop), z: parts.head.z || next.head.z } }; found.push('headlights') } else missed.push('headlights')
+        if (parts.tail) { next = { ...next, tail: { x: parts.tail.x, y: r3(parts.tail.y - drop), z: parts.tail.z || next.tail.z } }; found.push('taillights') } else missed.push('taillights')
+        const opening = (['frontDoor', 'rearDoor', 'hood', 'trunk'] as const).flatMap(key => {
+          const b = boxFromSide(answer.boxes?.[key] ?? null, frames.side)
+          return b ? [{ key, box: { ...b, bottom: r3(b.bottom - drop), top: r3(b.top - drop), ...(key === 'trunk' && (draft.template === 'truck' || draft.template === 'hdtruck') ? { drop: true } : {}) } }] : []
+        })
+        if (opening.length) {
+          let partsNext = { doors: [] as typeof next.parts.doors, hood: null, trunk: null } as typeof next.parts
+          for (const o of opening) if (o.key !== 'rearDoor' || opening.some(p => p.key === 'frontDoor')) partsNext = withPart(partsNext, o.key, o.box)
+          next = { ...next, parts: partsNext }
+          found.push(opening.map(o => PART_LABEL[o.key].toLowerCase()).join(', '))
+        }
+        if (parts.hitch && next.hitch) { next = { ...next, hitch: { x: r3(Math.min(0, parts.hitch.x)), y: r3(parts.hitch.y - drop) } }; found.push('hitch') }
+      } catch (error) { aiError = (error as Error).message }
+
+      setDraft(next); setMeasured(null)
+      const list = (items: string[]) => items.length > 1 ? `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}` : items[0]
+      const text = [
+        found.length ? `Suggested the ${list(found)}. Drag any marker to fine-tune.` : '',
+        missed.length && !aiError ? `Couldn’t find the ${list(missed)}; place ${missed.length > 1 ? 'those' : 'it'} by hand.` : '',
+        !axles && aiError ? 'Couldn’t find the wheels; place them by hand.' : '',
+        aiError ? `Seat and light suggestions are unavailable: ${aiError}` : '',
+      ].filter(Boolean).join(' ')
+      setStatus({ tone: found.length ? 'ok' : 'error', text })
+    } catch (error) {
+      setStatus({ tone: 'error', text: (error as Error).message })
+    } finally { setBusy(null) }
+  }
 
   const onPick = useCallback(({ material, color }: { material: string; color: string | null }) => {
     setDraft(current => ({ ...current, paint: current.paint.mode === 'material' ? { ...current.paint, material } : { ...current.paint, mode: 'color', key: color ?? current.paint.key } }))
@@ -215,7 +277,7 @@ export default function VehicleEditor() {
     } catch (error) { setListError((error as Error).message) }
   }
 
-  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved })
+  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}) })
 
   const meshySources = useMemo<MeshySourceOption[]>(() => (vehicles ?? []).map(v => ({ label: v.name, source: { vehicleId: v.id } })), [vehicles])
   const onMeshyOpen = (opened: File) => { openFile(opened); setView('build') }
@@ -239,7 +301,7 @@ export default function VehicleEditor() {
           {url
             ? <ModelErrorBoundary resetKey={url} onError={text => { setStatus({ tone: 'error', text }); setFile(null); setUrl(null) }}>
                 <Suspense fallback={<p className="ms-items-loading" role="status"><LoaderCircle className="spin" size={16}/> Opening model…</p>}>
-                  <VehicleStage url={url} draft={draft} reference={reference} overlap={overlap} selected={selected} picking={picking} onInfo={onInfo} onMarker={onMarker} onPick={onPick} onSelect={setSelected}/>
+                  <VehicleStage url={url} draft={draft} reference={reference} overlap={overlap} selected={selected} picking={picking} onInfo={onInfo} onMarker={onMarker} onPick={onPick} onSelect={setSelected} onScene={onScene}/>
                 </Suspense>
               </ModelErrorBoundary>
             : <button type="button" className="ms-items-drop" onClick={() => fileInput.current?.click()}><Upload size={22} aria-hidden/> Choose a vehicle model</button>}
@@ -254,6 +316,7 @@ export default function VehicleEditor() {
           <label className="ms-veh-inline"><input type="checkbox" checked={overlap} onChange={event => setOverlap(event.target.checked)}/> Overlap</label>
           <button type="button" onClick={matchSize} disabled={!info || !reference}><Ruler size={14} aria-hidden/> Match size of {reference ? REFERENCE_LABEL[reference].toLowerCase() : '…'}</button>
           <button type="button" onClick={turnNose} disabled={!info}><RotateCw size={14} aria-hidden/> Turn nose 90°</button>
+          <button type="button" className="ms-veh-suggest" onClick={() => void suggestPoints()} disabled={!info || !!busy} title="Find the wheels from the model's shape and ask AI for the seat, lights and hitch">{busy === 'suggest' ? <LoaderCircle className="spin" size={14}/> : <WandSparkles size={14} aria-hidden/>} {busy === 'suggest' ? 'Finding points…' : 'Suggest points'}</button>
           <div className="ms-veh-markers" role="group" aria-label="Drag a marker">
             <Move3d size={14} aria-hidden/>
             {MARKERS.filter(m => m.id !== 'hitch' || draft.hitch).map(m => <button key={m.id} type="button" aria-pressed={selected === m.id} className={selected === m.id ? 'is-active' : ''} onClick={() => setSelected(selected === m.id ? null : m.id)} disabled={!info}>{m.label}</button>)}
@@ -324,6 +387,20 @@ export default function VehicleEditor() {
             {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft[key][axis]} onChange={v => patch({ [key]: { ...draft[key], [axis]: v } } as Partial<Draft>)}/>)}
           </div>)}
           <label className="ms-veh-inline"><input type="checkbox" checked={!!draft.hitch} onChange={event => patch({ hitch: event.target.checked ? { x: r3(-(length || 4) / 2 - 0.15), y: -0.25 } : null })}/> Tow hitch for the trailer</label>
+        </fieldset>}
+
+        {step === 'markers' && <fieldset>
+          <legend>Doors, hood and trunk</legend>
+          <p className="ms-veh-note">Box each part that should open (meters from the body’s center, like the seat). Doors are drawn on the right side and mirrored to the left; in the game the model is cut along the box and the part swings on its hinge.</p>
+          {(['frontDoor', 'rearDoor', 'hood', 'trunk'] as const).map((key: PartKey) => {
+            const box = partOf(draft.parts, key)
+            const off = key === 'rearDoor' && !draft.parts.doors[0]
+            return <div key={key} className="ms-veh-xyz">
+              <label className="ms-veh-inline"><input type="checkbox" checked={!!box} disabled={off} onChange={event => patch({ parts: withPart(draft.parts, key, event.target.checked ? defaultPart(key, length || 4.5, height || 1.5, ride) : null) })}/> <strong>{PART_LABEL[key]}</strong></label>
+              {box && (['front', 'back', 'bottom', 'top'] as const).map(edge => <Num key={edge} label={edge[0].toUpperCase() + edge.slice(1)} value={box[edge]} onChange={v => patch({ parts: withPart(draft.parts, key, { ...box, [edge]: v }) })}/>)}
+              {box && key === 'trunk' && <label className="ms-veh-inline"><input type="checkbox" checked={!!box.drop} onChange={event => patch({ parts: withPart(draft.parts, key, { ...box, drop: event.target.checked || undefined }) })}/> Folds down (pickup tailgate)</label>}
+            </div>
+          })}
         </fieldset>}
 
         {step === 'paint' && <fieldset>

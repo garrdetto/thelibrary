@@ -4,10 +4,12 @@ import { HttpError, json } from './http'
 import { accountSettings, poolAccount, workspaceAccess, workspaceAdmin } from './routes/account'
 import { poolCueOverlay, poolPractice, poolPreferences } from './routes/pool'
 import { racing } from './routes/racing'
+import { fairway } from './routes/fairway'
 import { park } from './routes/park'
 import { maplestreet } from './routes/maplestreet'
 import { maplestreetItems } from './routes/maplestreet-items'
 import { maplestreetVehicles } from './routes/maplestreet-vehicles'
+import { maplestreetSuggest } from './routes/maplestreet-suggest'
 import { meshy } from './routes/meshy'
 import { groupChat } from './routes/chat'
 import { moduleScores } from './routes/scores'
@@ -26,10 +28,12 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/pool-preferences': poolPreferences,
   '/api/pool-cue-overlay': poolCueOverlay,
   '/api/racing': racing,
+  '/api/fairway': fairway,
   '/api/park': park,
   '/api/maplestreet': maplestreet,
   '/api/maplestreet-items': maplestreetItems,
   '/api/maplestreet-vehicles': maplestreetVehicles,
+  '/api/maplestreet-suggest': maplestreetSuggest,
   '/api/meshy': meshy,
   '/api/group-chat': groupChat,
   '/api/module-scores': moduleScores,

@@ -61,8 +61,8 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
         detail={<>Featured: <b>{arranged.featured.title}</b>{layout.hidden.length ? ` · ${layout.hidden.length} hidden` : ''}</>} onOpen={() => onOpen('library')} cta="Arrange modules"/>
       <Stat icon={<Users size={18}/>} label="Accounts" value={accounts === 'error' ? failed : people ? people.total : pending}
         detail={people ? `${people.studio} with studio access${people.resets ? ` · ${people.resets} password reset${people.resets === 1 ? '' : 's'} pending` : ''}` : ' '} onOpen={() => onOpen('people')} cta="Manage people"/>
-      <Stat icon={<Package size={18}/>} label="Maple Street items" value={assetValue(items)} detail={assetDetail(items, 'items')} onOpen={() => onOpen('maplestreet')} cta="Open item editor"/>
-      <Stat icon={<Car size={18}/>} label="Maple Street vehicles" value={assetValue(vehicles)} detail={assetDetail(vehicles, 'vehicles')} onOpen={() => onOpen('vehicles')} cta="Open vehicle editor"/>
+      <Stat icon={<Package size={18}/>} label="Fox Plains items" value={assetValue(items)} detail={assetDetail(items, 'items')} onOpen={() => onOpen('maplestreet')} cta="Open item editor"/>
+      <Stat icon={<Car size={18}/>} label="Fox Plains vehicles" value={assetValue(vehicles)} detail={assetDetail(vehicles, 'vehicles')} onOpen={() => onOpen('vehicles')} cta="Open vehicle editor"/>
     </div>
 
     <section className="adm-card">
@@ -80,7 +80,7 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
         <button type="button" onClick={() => onOpen('changes')}><Sparkles size={16} aria-hidden/> Ask Claude to change the site</button>
         <button type="button" onClick={() => onOpen('people')}><KeyRound size={16} aria-hidden/> Reset a password</button>
         <button type="button" onClick={() => onOpen('people')}><ShieldCheck size={16} aria-hidden/> Grant studio access</button>
-        <a href="/modules/maplestreet.html?dev=1" target="_blank" rel="noopener"><Car size={16} aria-hidden/> Open the Maple Street developer instance</a>
+        <a href="/modules/maplestreet.html?dev=1" target="_blank" rel="noopener"><Car size={16} aria-hidden/> Open the Fox Plains developer instance</a>
       </div>
     </section>
   </div>

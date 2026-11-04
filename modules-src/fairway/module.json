@@ -1,0 +1,6 @@
+{
+  "id": "fairway",
+  "title": "Fairway Nine",
+  "accent": "#4fd27a",
+  "modes": ["solo", "online"]
+}

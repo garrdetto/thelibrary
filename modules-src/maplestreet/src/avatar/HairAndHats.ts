@@ -9,29 +9,44 @@ import type { Body } from '../../shared/Wardrobe';
 import { RIG } from './RigData';
 
 let strandTex: THREE.Texture | null = null;
-/** Grayscale strand streaks; alpha frays the tips at the bottom. */
+/**
+ * Grayscale strand streaks; alpha frays the tips at the bottom. Built straight
+ * into a pixel buffer: reading a canvas back (getImageData) forces a GPU
+ * readback that stalled the frame the first time long hair came into view.
+ */
 function strands() {
   if (strandTex) return strandTex;
-  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
-  const g = c.getContext('2d')!;
-  g.fillStyle = '#9a9a9a'; g.fillRect(0, 0, 256, 256);
+  const N = 256, data = new Uint8Array(N * N * 4);
+  // Columns are uniform top to bottom, so composite one row of streaks, then copy it down.
+  const row = new Float32Array(N).fill(0x9a);
   let s = 7;
   const r = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
   for (let i = 0; i < 900; i++) {
-    const x = r() * 256, w = 0.6 + r() * 1.8, v = 90 + r() * 165;
-    g.fillStyle = `rgba(${v},${v},${v},${0.25 + r() * 0.5})`;
-    g.fillRect(x, 0, w, 256);
+    const x = r() * N, w = 0.6 + r() * 1.8, v = 90 + r() * 165, a = 0.25 + r() * 0.5;
+    for (let col = Math.floor(x); col < Math.min(N, Math.ceil(x + w)); col++) {
+      const cover = Math.min(col + 1, x + w) - Math.max(col, x);      // antialiased edges, like fillRect
+      const k = a * Math.max(0, Math.min(1, cover));
+      row[col] = row[col] * (1 - k) + v * k;
+    }
   }
-  const img = g.getImageData(0, 0, 256, 256);
-  for (let x = 0; x < 256; x++) {
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const o = ((N - 1 - y) * N + x) * 4;                                  // row 0 is the bottom of the texture
+    const v = Math.round(row[x]);
+    data[o] = data[o + 1] = data[o + 2] = v; data[o + 3] = 255;
+  }
+  for (let x = 0; x < N; x++) {
     const cut = 214 + Math.floor(r() * 40);
-    for (let y = cut; y < 256; y++) img.data[(y * 256 + x) * 4 + 3] = 0;
+    for (let y = cut; y < N; y++) data[((N - 1 - y) * N + x) * 4 + 3] = 0;
   }
-  g.putImageData(img, 0, 0);
-  strandTex = new THREE.CanvasTexture(c);
-  strandTex.wrapS = THREE.RepeatWrapping;
-  strandTex.colorSpace = THREE.SRGBColorSpace;
-  strandTex.anisotropy = 4;
+  const tex = new THREE.DataTexture(data, N, N, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  strandTex = tex;
   return strandTex;
 }
 

@@ -28,5 +28,5 @@ export function AssetStatusActions({ status, onChange }: { status: AssetStatus; 
 }
 
 export function DevInstanceNote() {
-  return <p className="ms-items-note">Drafts are visible only to you, in the <a href={DEV_INSTANCE_URL} target="_blank" rel="noopener">developer instance</a> of Maple Street: a private solo game where you can place, buy and drive them before publishing.</p>
+  return <p className="ms-items-note">Drafts are visible only to you, in the <a href={DEV_INSTANCE_URL} target="_blank" rel="noopener">developer instance</a> of Fox Plains: a private solo game where you can place, buy and drive them before publishing.</p>
 }

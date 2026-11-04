@@ -11,6 +11,7 @@
  * scale by `model.scale` > translate by `model.x/y/z`.
  */
 import { isAssetStatus, type AssetStatus } from './Assets';
+import { BUNDLED_VEHICLES } from './BundledVehicles';
 import { refreshDealer, VEHICLES, type VehicleSpec } from './Economy';
 import { CUSTOM_VEHICLE_PREFIX, TUNING, type AxleTuning, type CustomVehicleKind, type VehicleTuning } from './Vehicles';
 
@@ -64,6 +65,31 @@ export interface CustomVehiclePhysics {
   cam: { dist: number; height: number };
 }
 
+/**
+ * Opening parts of a published model, marked in the editor as boxes in chassis
+ * space (+x forward, +y up, metres). Doors are given for the right side and
+ * mirrored to the left; each is hinged at its front edge. The hood is hinged
+ * at its back edge (by the windshield), the trunk or tailgate at its front edge.
+ * At load the model's triangles inside each box are cut out into a swinging leaf.
+ */
+export interface PartBox {
+  front: number; back: number; bottom: number; top: number;
+  /** Trunk only: a pickup tailgate that folds down from its bottom edge instead of lifting. */
+  drop?: boolean;
+}
+export interface VehicleParts { doors: PartBox[]; hood: PartBox | null; trunk: PartBox | null }
+export const MAX_DOOR_ROWS = 2;
+
+const partBox = (b: unknown): b is PartBox => {
+  const o = b as PartBox;
+  return !!o && typeof o === 'object' && [o.front, o.back, o.bottom, o.top].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 10) && o.front > o.back && o.top > o.bottom && (o.drop === undefined || typeof o.drop === 'boolean');
+};
+export const isValidParts = (p: unknown): p is VehicleParts => {
+  const o = p as VehicleParts;
+  return !!o && typeof o === 'object' && Array.isArray(o.doors) && o.doors.length <= MAX_DOOR_ROWS && o.doors.every(partBox)
+    && (o.hood === null || partBox(o.hood)) && (o.trunk === null || partBox(o.trunk));
+};
+
 export interface CustomVehicleSpec {
   template: DriveTemplate;
   model: { scale: number; yaw: number; x: number; y: number; z: number };
@@ -78,9 +104,16 @@ export interface CustomVehicleSpec {
   /** Targets the engine numbers were solved for (what the test drive checks). */
   targets: { topSpeedMph: number; zeroToMph: number; zeroToSeconds: number };
   dealer: { forSale: boolean; price: number; fuel: 'gas' | 'electric'; tank: number; mpg: number };
-  traffic: { enabled: boolean; driver: string; route: TrafficRoute; mph: number };
+  /**
+   * Neighbor traffic. `count` puts several of them on the road (default 1);
+   * driver n takes `routes[n]` (else `route`) and paint `colors[n]` (else the
+   * vehicle color), so one model can drive around town in different colors.
+   */
+  traffic: { enabled: boolean; driver: string; route: TrafficRoute; mph: number; count?: number; routes?: TrafficRoute[]; colors?: string[] };
   /** The editor removed the model's baked-in wheels before upload. */
   wheelsRemoved: boolean;
+  /** Doors, hood and trunk that open (missing on vehicles published before they existed). */
+  parts?: VehicleParts;
 }
 
 /** The public shape returned by GET /api/maplestreet-vehicles. */
@@ -98,7 +131,9 @@ export interface CustomVehicleRecord extends CustomVehicleSpec {
 export const customVehicleKind = (id: string): CustomVehicleKind => `${CUSTOM_VEHICLE_PREFIX}${id}`;
 
 /** Published vehicles with traffic turned on, in id order so every host builds the same traffic. */
-export const CUSTOM_TRAFFIC: { kind: CustomVehicleKind; id: string; driver: string; route: TrafficRoute; speed: number }[] = [];
+export const CUSTOM_TRAFFIC: { kind: CustomVehicleKind; id: string; n: number; count: number; driver: string; route: TrafficRoute; speed: number; paint?: string }[] = [];
+export const TRAFFIC_COUNT_MAX = 8;
+const HEX = /^#[0-9a-f]{6}$/i;
 /** Bumped on every registration so long-running hosts can pick up traffic changes. */
 export let customVehiclesVersion = 0;
 
@@ -139,18 +174,21 @@ function specFromRecord(r: CustomVehicleRecord): VehicleSpec {
     mpg: r.dealer.mpg,
     fuel: r.dealer.fuel,
     forSale: r.active && r.dealer.forSale && r.dealer.price > 0,
+    paintable: r.paint.mode !== 'none',
   };
 }
 
 /**
- * Adds or refreshes published vehicles. Records that disappear (or are
- * retired) stay registered but leave the dealer and traffic, so players who
- * own one keep driving it.
+ * Adds or refreshes published vehicles, plus the bundled ones that ship with
+ * the game (shared/BundledVehicles.ts; a published record with the same id
+ * wins). Records that disappear (or are retired) stay registered but leave
+ * the dealer and traffic, so players who own one keep driving it.
  */
 export function registerCustomVehicles(records: readonly CustomVehicleRecord[]): CustomVehicleRecord[] {
   const added: CustomVehicleRecord[] = [];
   const seen = new Set<string>();
-  for (const r of records) {
+  const ids = new Set(records.map(r => r?.id));
+  for (const r of [...BUNDLED_VEHICLES.filter(b => !ids.has(b.id)), ...records]) {
     if (!isValidVehicleRecord(r)) continue;
     const kind = customVehicleKind(r.id);
     RECORDS.set(kind, r);
@@ -162,7 +200,14 @@ export function registerCustomVehicles(records: readonly CustomVehicleRecord[]):
   for (const [kind, r] of RECORDS) if (!seen.has(kind)) VEHICLES[kind] = { ...specFromRecord(r), forSale: false };
   CUSTOM_TRAFFIC.length = 0;
   for (const r of [...added].sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    if (r.active && r.traffic.enabled) CUSTOM_TRAFFIC.push({ kind: customVehicleKind(r.id), id: r.id, driver: r.traffic.driver || r.name, route: r.traffic.route, speed: r.traffic.mph * 0.44704 });
+    if (!r.active || !r.traffic.enabled) continue;
+    const t = r.traffic;
+    const count = Math.max(1, Math.min(TRAFFIC_COUNT_MAX, Math.floor(Number(t.count) || 1)));
+    for (let n = 0; n < count; n++) {
+      const route = Array.isArray(t.routes) && (TRAFFIC_ROUTES as readonly string[]).includes(t.routes[n]) ? t.routes[n] : t.route;
+      const paint = Array.isArray(t.colors) && typeof t.colors[n] === 'string' && HEX.test(t.colors[n]) ? t.colors[n].toLowerCase() : undefined;
+      CUSTOM_TRAFFIC.push({ kind: customVehicleKind(r.id), id: r.id, n, count, driver: t.driver || r.name, route, speed: t.mph * 0.44704, ...(paint ? { paint } : {}) });
+    }
   }
   refreshDealer();
   customVehiclesVersion++;
@@ -196,5 +241,6 @@ export function isValidVehicleRecord(r: unknown): r is CustomVehicleRecord {
     && !!o.lights && Array.isArray(o.lights.head) && Array.isArray(o.lights.tail) && o.lights.head.length <= VEHICLE_LIMITS.lightsMax && o.lights.tail.length <= VEHICLE_LIMITS.lightsMax && [...o.lights.head, ...o.lights.tail].every(l => point(l))
     && !!o.paint && ['none', 'material', 'color'].includes(o.paint.mode) && /^#[0-9a-f]{6}$/i.test(o.paint.color)
     && !!o.dealer && typeof o.dealer.forSale === 'boolean' && finite(o.dealer.price, 0, VEHICLE_LIMITS.priceMax) && ['gas', 'electric'].includes(o.dealer.fuel) && finite(o.dealer.tank, 0.5, 200) && finite(o.dealer.mpg, 1, 500)
-    && !!o.traffic && typeof o.traffic.enabled === 'boolean' && (TRAFFIC_ROUTES as readonly string[]).includes(o.traffic.route) && finite(o.traffic.mph, 3, 60);
+    && !!o.traffic && typeof o.traffic.enabled === 'boolean' && (TRAFFIC_ROUTES as readonly string[]).includes(o.traffic.route) && finite(o.traffic.mph, 3, 60)
+    && (o.parts === undefined || isValidParts(o.parts));
 }

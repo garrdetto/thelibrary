@@ -6,11 +6,13 @@
  * frame, with the game's own wheels, lamps and paint.
  */
 import * as THREE from 'three/webgpu';
+import { cutParts } from './CutParts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { customVehicleKind, isValidVehicleRecord, registerCustomVehicles, tuningFromRecord, type CustomVehicleRecord } from '../../shared/CustomVehicles';
 import { recolorPixels } from '../../shared/PaintMask';
+import { impostor, lods, simplifiedGeometry, swapObjects, type LodEntry } from '../core/Lod';
 import { store } from '../core/Storage';
 import { assetListUrl, devDrafts } from '../core/DevMode';
 import { buildWheel, PRESETS, type VehicleLights } from './VehiclePresets';
@@ -47,11 +49,30 @@ async function fetchList(): Promise<CustomVehicleRecord[] | null> {
 function loadScene(url: string): Promise<THREE.Object3D | null> {
   let p = scenes.get(url);
   if (!p) {
-    p = loader.loadAsync(url).then(g => g.scene).catch(e => { console.warn('[maplestreet] vehicle model failed:', url, e); return null; });
+    p = loader.loadAsync(url).then(g => sharpen(g.scene)).catch(e => { console.warn('[maplestreet] vehicle model failed:', url, e); return null; });
     scenes.set(url, p);
     void p.then(s => ready.set(url, s));
   }
   return p;
+}
+
+const TEXTURE_SLOTS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const;
+
+/**
+ * Vehicles are mostly seen side-on and at a slant, where plain trilinear
+ * filtering smears the paint, trim and window edges; 8x anisotropic
+ * filtering (as the town's roads and facades use) keeps them crisp.
+ */
+function sharpen(scene: THREE.Object3D) {
+  scene.traverse(o => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+      const mat = m as unknown as Record<string, THREE.Texture | null | undefined>;
+      for (const slot of TEXTURE_SLOTS) { const t = mat[slot]; if (t?.isTexture) { t.anisotropy = 8; t.needsUpdate = true; } }
+    }
+  });
+  return scene;
 }
 
 /** Registers published vehicles (or the cached list when offline) and preloads their models. */
@@ -82,18 +103,30 @@ function installPreset(r: CustomVehicleRecord) {
 
 function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: VehicleLights): THREE.Group {
   const g = new THREE.Group();
+  // `detail` holds the full model (and, once cut, its opening doors); the LOD levels sit beside it.
+  const detail = new THREE.Group();
+  detail.userData.keep = true;
+  g.add(detail);
   const holder = new THREE.Group();
   holder.position.set(r.model.x, r.model.y, r.model.z);
   holder.rotation.y = THREE.MathUtils.degToRad(r.model.yaw);
   holder.scale.setScalar(r.model.scale);
-  g.add(holder);
+  detail.add(holder);
+  // The model is already one optimized mesh, and it may arrive after the
+  // shell has been merged (mergeStatic), so it stays out of merging: keep the
+  // holder and everything in it as they are.
+  holder.userData.keep = true;
   const fill = (scene: THREE.Object3D | null) => {
     holder.clear();
     if (!scene) { holder.add(placeholder(r)); return; }
     const copy = cloneSkinned(scene);
     applyPaint(copy, r, paint);
-    copy.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    copy.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.keep = true; } });
     holder.add(copy);
+    const sources = lodSources(g, copy);
+    g.userData.partRig = cutParts(detail, r.parts, r.physics.chassis.hz);
+    (g.userData.onFill as (() => void) | undefined)?.();
+    void addLods(g, detail, sources, paint, r);
   };
   if (ready.has(r.modelUrl)) fill(ready.get(r.modelUrl)!);
   else { holder.add(placeholder(r)); void loadScene(r.modelUrl).then(fill); }
@@ -102,9 +135,65 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
   return g;
 }
 
+/** Distances (m from the camera) where a published vehicle drops to the next level of detail. */
+export const VEHICLE_LOD_DISTANCES = [25, 60, 130, 260] as const;
+/**
+ * Triangle budgets for levels 1–3 (level 0 is the full model, up to ~160k triangles
+ * for the sharpest bundled cars; level 4 is a box). A model already under a budget
+ * just reuses its own geometry at that level.
+ */
+const VEHICLE_LOD_TRIANGLES = [40000, 9000, 2000] as const;
+
+interface LodSource { geo: THREE.BufferGeometry; material: THREE.Material | THREE.Material[]; matrix: THREE.Matrix4 }
+
+/** The model's meshes in body space, captured before cutParts splits them into doors and leaves. */
+function lodSources(body: THREE.Object3D, model: THREE.Object3D): LodSource[] {
+  body.updateMatrixWorld(true);
+  const inv = body.matrixWorld.clone().invert();
+  const out: LodSource[] = [];
+  model.traverse(o => {
+    const m = o as THREE.Mesh;
+    if (m.isMesh) out.push({ geo: m.geometry, material: m.material, matrix: new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld) });
+  });
+  return out;
+}
+
+/**
+ * Builds the simplified levels (same materials and paint, vertex buffers shared
+ * with the full model) and a box impostor, then hands the body to the LOD
+ * registry. Until they are ready the full model shows.
+ */
+async function addLods(body: THREE.Group, detail: THREE.Object3D, sources: LodSource[], paint: THREE.Material, r: CustomVehicleRecord) {
+  const total = sources.reduce((n, s) => n + (s.geo.index ? s.geo.index.count : s.geo.getAttribute('position').count) / 3, 0) || 1;
+  const levels: THREE.Group[] = [];
+  for (const target of VEHICLE_LOD_TRIANGLES) {
+    const lvl = new THREE.Group();
+    lvl.userData.keep = true;
+    for (const s of sources) {
+      const tris = (s.geo.index ? s.geo.index.count : s.geo.getAttribute('position').count) / 3;
+      const geo = (await simplifiedGeometry(s.geo, Math.max(64, Math.round(target * (tris / total))))) ?? s.geo;
+      const mesh = new THREE.Mesh(geo, s.material);
+      mesh.matrixAutoUpdate = false;
+      mesh.matrix.copy(s.matrix);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      lvl.add(mesh);
+    }
+    levels.push(lvl);
+  }
+  const color = (paint as THREE.MeshStandardMaterial).color ?? new THREE.Color(r.paint.color);
+  const box = impostor(detail, color);
+  box.userData.keep = true;
+  for (const l of levels) { l.visible = false; body.add(l); }
+  box.visible = false;
+  body.add(box);
+  lods.remove(body.userData.lod as LodEntry | undefined);
+  body.userData.lod = lods.add(body, VEHICLE_LOD_DISTANCES, swapObjects([detail, ...levels, box]));
+}
+
 function placeholder(r: CustomVehicleRecord) {
   const c = r.physics.chassis, s = 1 / r.model.scale;
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(c.hx * 2 * s, c.hy * 2.4 * s, c.hz * 2 * s), placeholderMat);
+  mesh.userData.keep = true;
   mesh.position.set(-r.model.x * s, (-r.model.y + c.hy * 0.6) * s, -r.model.z * s);
   return mesh;
 }
@@ -118,6 +207,7 @@ function addLamps(g: THREE.Group, points: { x: number; y: number; z: number }[],
 }
 
 const paintCache = new Map<string, THREE.Texture>();
+const sourcePixels = new Map<string, ImageData>();
 
 /** Applies the vehicle color to the published paint region (a material, or texels near a key color). */
 function applyPaint(root: THREE.Object3D, r: CustomVehicleRecord, paint: THREE.Material) {
@@ -157,8 +247,15 @@ export function maskedTexture(map: THREE.Texture, key: string, tolerance: number
   canvas.width = img.width; canvas.height = img.height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) return null;
-  ctx.drawImage(img, 0, 0);
-  const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  // The model's texels are read once per texture; each new paint color (a fleet of
+  // traffic cars, a dealer swatch) only recolors a copy of them.
+  let src = sourcePixels.get(map.uuid);
+  if (!src) {
+    ctx.drawImage(img, 0, 0);
+    src = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    sourcePixels.set(map.uuid, src);
+  }
+  const data = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
   const hex = paint.getHex();
   recolorPixels(data.data, key, tolerance, [(hex >> 16) & 255, (hex >> 8) & 255, hex & 255]);
   ctx.putImageData(data, 0, 0);

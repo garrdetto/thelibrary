@@ -1,5 +1,5 @@
 /**
- * The persistent, always-on Maple Street.
+ * The persistent, always-on Fox Plains.
  *
  * One WorldServer owns the shared neighborhood: anyone can connect, leave,
  * and come back later to find their lot, house, money and loan exactly as
@@ -17,7 +17,7 @@
  */
 import type { LotBuild, LotState } from './BuildRules';
 import type { Account } from './Economy';
-import { NpcTraffic } from './Npc';
+import { NpcTraffic, obstaclesFrom } from './Npc';
 import { AUTOSAVE_EVERY_MS, type ClientMsg, type JoinOptions, type ServerMsg } from './Protocol';
 import { Identity, NeighborhoodLogic, Persisted } from './RoomLogic';
 
@@ -95,7 +95,7 @@ export class WorldServer {
     await this.ready();
     const logic = this.logic!;
     if (this.sockets.size >= WORLD_LIMITS.maxConnections) {
-      socket.close(1013, 'Maple Street is full right now. Try again soon.');
+      socket.close(1013, 'Fox Plains is full right now. Try again soon.');
       return { onMessage() {}, onClose() {} };
     }
     if (!logic.hasAccount(identity.key)) {
@@ -153,7 +153,7 @@ export class WorldServer {
   private broadcast(msg: ServerMsg, except?: string) {
     if (msg.t === 'snap') {
       const n = this.npcs.snapshot();
-      this.npcs.obstacles = [...msg.players, ...msg.vehicles].map(e => ({ x: e.x, z: e.z }));
+      this.npcs.obstacles = obstaclesFrom(msg.players, msg.vehicles);
       msg = { ...msg, players: [...msg.players, ...n.players], vehicles: [...msg.vehicles, ...n.vehicles] };
     }
     const data = JSON.stringify(msg);

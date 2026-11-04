@@ -2,7 +2,10 @@ import { Gl, MeshBuilder, InstanceList, mat4, hexColor } from './gl'
 import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
 import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, queueSignModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
-import { personCuller } from './culling'
+import { personCuller, frustumPlanes, sphereVisible } from './culling'
+import { M } from './materials'
+import { QUALITY, requestedQuality, pickQuality, rendererName } from './quality'
+import type { ParkQuality, QualitySettings } from './quality'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel, WATER_RIDE_TINTS } from './waterRides'
 import { hotelModel, hotelLook } from './hotelModels'
@@ -13,11 +16,13 @@ import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, 
 import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
 
 const TILE = 4
-const PERSON_DETAIL_DIST = 55
 const SURFACE_COLORS: Vec3[] = ['#5b8f3c', '#cdb57a', '#7f6044', '#8a8780', '#e8ecee'].map(hexColor)
 const WATER_SHALLOW = hexColor('#7cc9cf'), WATER_DEEP = hexColor('#256f9e')
 const PATH_COLOR = hexColor('#cdbb93'), PATH_EDGE = hexColor('#8f7d5c'), QUEUE_COLOR = hexColor('#9fb3c9'), QUEUE_EDGE = hexColor('#556a84')
 const SCENERY_KINDS = ['oak', 'pine', 'birch', 'palm', 'bush', 'flowers', 'hedge', 'rock', 'fountain', 'statue', 'topiary']
+const SWAYS: Record<string, boolean> = { oak: true, pine: true, birch: true, palm: true, bush: true, flowers: true, hedge: true, topiary: true }
+const WIND_ON = { wind: 1 }, NO_OPTS = {}
+const withAO = (b: MeshBuilder, strength = 0.55) => { b.bakeAO(strength); return b }
 const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', wavePool: '#2f8fd0', waterslide: '#1fb5b0', zipper: '#e2513d', gravitron: '#7b51c9', ...WATER_RIDE_TINTS }
 const stallKey = (kind: string, size?: [number, number]) => `stall:${kind}:${(size ?? [1, 1]).join('x')}`
 
@@ -32,11 +37,13 @@ export type Preview = {
   selected?: number
 }
 
-type RideCache = { key: string; track?: GpuMesh | null; path?: TrackPath | null }
+type RideCache = { key: string; track?: GpuMesh | null; near?: GpuMesh | null; nearDensity?: number; path?: TrackPath | null; bounds?: [number, number, number, number] | null }
 type Clock = { spin: number; phase: string; trainS: number; snapS: number; timer: number; speed: number }
 
 function hash(n: number) { let h = n | 0; h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); return ((h ^ (h >>> 16)) >>> 0) / 4294967296 }
 const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
+
+const canvasOwners = new WeakMap<HTMLCanvasElement, ParkRenderer>()
 
 export class ParkRenderer {
   canvas: HTMLCanvasElement
@@ -47,6 +54,39 @@ export class ParkRenderer {
   rideCam: number | null = null
   showGrid = false
   preview: Preview = {}
+  debug: { noShadow?: boolean; noPost?: boolean } = {}
+  private capturing = false
+  quality: ParkQuality = 'medium'
+  qualityReason = ''
+  settings: QualitySettings = QUALITY.medium
+  private cssSize = { w: 1, h: 1, dpr: 1 }
+  private scratch = { lightView: mat4.identity(), lightProj: mat4.identity(), lightVP: mat4.identity(), cullVP: mat4.identity() }
+  private staticKeys: string[] = []
+  private planes = new Float32Array(24)
+  private cullView = new Float32Array(16)
+  private cullStruct = -1
+  private cullMargin = 0
+  private shadowMargin = 0
+
+  private cullStatic(margin: number) {
+    const vp = mat4.multiply(this.proj, this.view, this.scratch.cullVP)
+    frustumPlanes(vp, this.planes)
+    let same = this.cullStruct === this.builtStruct && Math.abs(this.shadowMargin - margin) < 0.5
+    for (let i = 0; same && i < 16; i++) if (vp[i] !== this.cullView[i]) same = false
+    if (same) return
+    this.cullView.set(vp); this.cullStruct = this.builtStruct; this.shadowMargin = margin
+    for (const key of this.staticKeys) {
+      const src = this.list(key), dst = this.list(`vis:${key}`), d = src.data
+      dst.clear()
+      for (let i = 0; i < src.count; i++) {
+        const o = i * 8, scale = d[o + 7]
+        if (sphereVisible(this.planes, d[o], d[o + 1], d[o + 2] + 3 * scale, 7 * scale + margin)) dst.push(d[o], d[o + 1], d[o + 2], d[o + 3], d[o + 4], d[o + 5], d[o + 6], scale)
+      }
+      this.g.setInstances(this.kindMeshes.get(key) ?? null, dst.data, dst.count)
+    }
+  }
+
+  private visible(x: number, y: number, z: number, r: number) { return sphereVisible(this.planes, x, y, z, r + this.cullMargin) }
   private width = 1
   private height = 1
   private view: Mat4 = mat4.identity()
@@ -74,7 +114,16 @@ export class ParkRenderer {
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas
+    canvasOwners.set(canvas, this)
     this.g = new Gl(canvas)
+    const asked = requestedQuality()
+    if (asked) { this.quality = asked; this.qualityReason = '?quality=' }
+    else {
+      const picked = pickQuality(this.g.probe(), typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, rendererName(this.g.gl))
+      this.quality = picked.tier; this.qualityReason = picked.reason
+    }
+    this.settings = QUALITY[this.quality]
+    this.g.setLevel(this.settings.level)
     const inst = (key: string, builder: MeshBuilder) => this.kindMeshes.set(key, this.g.upload(builder, null, true))
     for (const kind of SCENERY_KINDS) inst(`tree:${kind}`, treeModel(kind))
     for (let f = 0; f <= WALK_FRAMES; f++) {
@@ -86,8 +135,8 @@ export class ParkRenderer {
     inst('balloon', balloonModel()); inst('umbrella', umbrellaModel())
     for (const [kind, def] of Object.entries(STALLS)) {
       const size = def.size ?? [1, 1]
-      inst(stallKey(kind, size), stallModel(kind, size))
-      if (kind === 'toilet') inst(stallKey(kind, [1, 1]), stallModel(kind, [1, 1]))
+      inst(stallKey(kind, size), withAO(stallModel(kind, size)))
+      if (kind === 'toilet') inst(stallKey(kind, [1, 1]), withAO(stallModel(kind, [1, 1])))
     }
     inst('gate', gateModel()); inst('queueSign', queueSignModel())
     inst('bench', benchModel()); inst('bin', binModel()); inst('lampPost', lampPostModel()); inst('lampHead', lampHeadModel()); inst('litter', litterModel())
@@ -96,8 +145,18 @@ export class ParkRenderer {
   }
 
   resize(width: number, height: number, dpr: number) {
-    this.width = Math.max(1, Math.floor(width * dpr)); this.height = Math.max(1, Math.floor(height * dpr))
+    this.cssSize = { w: width, h: height, dpr }
+    const scale = Math.min(dpr, this.settings.maxDpr)
+    this.width = Math.max(1, Math.floor(width * scale)); this.height = Math.max(1, Math.floor(height * scale))
     this.canvas.width = this.width; this.canvas.height = this.height
+  }
+
+  setQuality(tier: ParkQuality, reason = 'chosen in settings') {
+    this.quality = tier; this.qualityReason = reason
+    this.settings = QUALITY[tier]
+    this.g.setLevel(this.settings.level)
+    this.rides.clear()
+    this.resize(this.cssSize.w, this.cssSize.h, this.cssSize.dpr)
   }
 
   setState(state: ParkState, myPark: number) {
@@ -114,7 +173,7 @@ export class ParkRenderer {
     this.cam.yaw = Math.PI / 2 + 0.55; this.cam.pitch = 0.78; this.cam.dist = 90
   }
 
-  captureOverview(width = 1600, height = 1000): { mime: string; data: string } | null {
+  overviewCam() {
     const s = this.state
     if (!s) return null
     const map = s.map
@@ -128,15 +187,28 @@ export class ParkRenderer {
     const spanX = (x1 - x0 + 1) * TILE, spanY = (y1 - y0 + 1) * TILE
     const cx = (x0 + x1 + 1) / 2 * TILE, cy = (y0 + y1 + 1) / 2 * TILE
     const radius = Math.hypot(spanX, spanY) / 2
-    const saved = { cam: { ...this.cam }, rideCam: this.rideCam, preview: this.preview, showGrid: this.showGrid, width: this.width, height: this.height, day: s.time.dayFraction }
+    return { tx: cx, ty: cy, tz: groundHeightAt(map, cx, cy, TILE), yaw: Math.PI * 0.75, pitch: 0.98, dist: Math.max(60, radius / Math.tan(0.39) * 0.95) }
+  }
+
+  captureOverview(width = 1600, height = 1000): { mime: string; data: string } | null {
+    const cam = this.overviewCam()
+    return cam ? this.renderShot(cam, width, height, 'image/jpeg', 0.5) : null
+  }
+
+  renderShot(cam: typeof this.cam, width: number, height: number, mime = 'image/jpeg', dayFraction?: number, highQuality = true): { mime: string; data: string } | null {
+    const s = this.state
+    if (!s) return null
+    const saved = { cam: { ...this.cam }, rideCam: this.rideCam, preview: this.preview, showGrid: this.showGrid, width: this.width, height: this.height, day: s.time.dayFraction, settings: this.settings }
     try {
       this.rideCam = null; this.preview = {}; this.showGrid = false; this.peopleReady = false
-      s.time.dayFraction = 0.5
-      Object.assign(this.cam, { tx: cx, ty: cy, tz: groundHeightAt(map, cx, cy, TILE), yaw: Math.PI * 0.75, pitch: 0.98, dist: Math.max(60, radius / Math.tan(0.39) * 0.95) })
+      if (highQuality) { this.settings = QUALITY.high; this.g.setLevel(QUALITY.high.level) }
+      this.capturing = true
+      if (dayFraction !== undefined) s.time.dayFraction = dayFraction
+      Object.assign(this.cam, cam)
       this.width = width; this.height = height
       this.canvas.width = width; this.canvas.height = height
       this.frame(this.lastFrame || performance.now())
-      const url = this.canvas.toDataURL('image/jpeg', 0.85)
+      const url = this.canvas.toDataURL(mime, 0.85)
       const match = /^data:(image\/[a-z]+);base64,(.+)$/.exec(url)
       return match ? { mime: match[1], data: match[2] } : null
     } finally {
@@ -145,6 +217,9 @@ export class ParkRenderer {
       s.time.dayFraction = saved.day
       this.width = saved.width; this.height = saved.height
       this.canvas.width = saved.width; this.canvas.height = saved.height
+      this.settings = saved.settings; this.g.setLevel(saved.settings.level)
+      this.capturing = false
+      this.g.freePost()
       this.peopleReady = false
       this.frame(this.lastFrame || performance.now())
     }
@@ -158,6 +233,7 @@ export class ParkRenderer {
     const s = this.state!
     const map = s.map
     const terrain = new MeshBuilder(), water = new MeshBuilder(), paths = new MeshBuilder(), grid = new MeshBuilder()
+    terrain.mat = M.terrain; water.mat = M.water; paths.mat = M.paving
     const P = (x: number, y: number, z: number): Vec3 => [x * TILE, y * TILE, z]
     const CW = map.w + 1
     const cornerH = (x: number, y: number) => map.corners[Math.max(0, Math.min(map.h, y)) * CW + Math.max(0, Math.min(map.w, x))]
@@ -226,7 +302,9 @@ export class ParkRenderer {
         const lv = wl - 0.2, up: Vec3 = [0, 0, 1]
         const wc = (h: number): Vec3 => { const depth = Math.max(0, Math.min(1, (lv - h) / 1.6)); return lerp3(WATER_SHALLOW, WATER_DEEP, depth) }
         const qa = P(x, y, lv), qb = P(x + 1, y, lv), qc = P(x + 1, y + 1, lv), qd = P(x, y + 1, lv)
-        water.smoothTri(null, null, qa, qb, qc, up, up, up, wc(a), wc(b), wc(c)); water.smoothTri(null, null, qa, qc, qd, up, up, up, wc(a), wc(c), wc(d))
+        const wd = (h: number) => { water.ao = Math.max(0, Math.min(1, (lv - h) / 2.4)) }
+        wd(a); water.vertex(qa, up, wc(a)); wd(b); water.vertex(qb, up, wc(b)); wd(c); water.vertex(qc, up, wc(c))
+        wd(a); water.vertex(qa, up, wc(a)); wd(c); water.vertex(qc, up, wc(c)); wd(d); water.vertex(qd, up, wc(d))
       }
       const kind = map.path[i]
       if (kind) {
@@ -321,7 +399,8 @@ export class ParkRenderer {
       if (add === 2) this.list('bin').push(cx, cy, z, yaw, 1, 1, 1)
       if (add === 3) { this.list('lampPost').push(cx, cy, z, 0, 1, 1, 1); this.list('lampHead').push(cx, cy, z, 0, 1, 1, 1) }
     }
-    for (const key of [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'queueSign', 'bench', 'bin', 'lampPost', 'lampHead']) { const l = this.list(key); this.g.setInstances(this.kindMeshes.get(key) ?? null, l.data, l.count) }
+    this.staticKeys = [...SCENERY_KINDS.map(k => `tree:${k}`), ...stallKeys, 'gate', 'queueSign', 'bench', 'bin', 'lampPost', 'lampHead']
+    this.cullStruct = -1
     this.builtStruct = s.structVersion
     this.builtLitter = ''
   }
@@ -349,6 +428,8 @@ export class ParkRenderer {
     let m = this.rideModels.get(key)
     if (!m) {
       const model = kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : waterRideModel(kind, w, h) ?? flatRideModel(kind, w, h)
+      model.base.bakeAO(0.6)
+      for (const part of model.parts) part.builder.bakeAO(0.45)
       m = { base: this.g.upload(model.base), parts: model.parts.map(p => ({ mesh: this.g.upload(p.builder), anim: p.anim })) }
       this.rideModels.set(key, m)
     }
@@ -366,13 +447,35 @@ export class ParkRenderer {
     let cache = this.rides.get(e.id)
     if (cache && cache.key === key) return cache
     if (cache?.track) this.g.free(cache.track)
+    if (cache?.near) this.g.free(cache.near)
     const path = e.pieces!.length ? buildTrackPath(e) : null
-    cache = { key, path, track: path ? this.g.upload(this.trackGeometry(e, path)) : null }
+    const geometry = path ? this.trackGeometry(e, path) : null
+    geometry?.bakeAO(0.5)
+    let bounds: [number, number, number, number] | null = null
+    if (path) {
+      let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity
+      for (let i = 0; i < path.count; i++) { const x = path.pos[i * 3], y = path.pos[i * 3 + 1], z = path.pos[i * 3 + 2]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z) }
+      z0 = Math.min(z0, 0)
+      bounds = [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + 6]
+    }
+    cache = { key, path, bounds, track: geometry ? this.g.upload(geometry) : null }
     this.rides.set(e.id, cache)
     return cache
   }
 
-  private trackGeometry(e: Entity, path: TrackPath): MeshBuilder {
+  private nearTrack(e: Entity, cache: RideCache) {
+    const density = this.settings.level === 2 ? 1 : 2
+    if (!cache.path || COASTER_STYLES[e.style!]?.trackType && COASTER_STYLES[e.style!].trackType !== 'coaster') return cache.track ?? null
+    if (cache.near === undefined || cache.nearDensity !== density) {
+      if (cache.near) this.g.free(cache.near)
+      const geometry = this.trackGeometry(e, cache.path, density)
+      geometry.bakeAO(0.5)
+      cache.near = this.g.upload(geometry); cache.nearDensity = density
+    }
+    return cache.near
+  }
+
+  private trackGeometry(e: Entity, path: TrackPath, nearStep = 0): MeshBuilder {
     const s = this.state!, style = COASTER_STYLES[e.style!]
     const b = new MeshBuilder()
     const trackColor = hexColor(e.trackColor ?? e.color ?? style.track), supportColor = hexColor(e.supportColor ?? style.support)
@@ -424,24 +527,71 @@ export class ParkRenderer {
         if (top - ground > 0.4) b.cylinder(null, p[0], p[1], ground, 0.16, 0.14, top - ground, 8, supportColor, 0, false)
       }
     }
+    if (nearStep && trackType === 'coaster') {
+      const left: Vec3[] = [], right: Vec3[] = [], spine: Vec3[] = [], ups: Vec3[] = []
+      const push = (i: number) => {
+        const { p, u, r } = at(i)
+        left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55])
+        spine.push([p[0] - u[0] * 0.36, p[1] - u[1] * 0.36, p[2] - u[2] * 0.36]); ups.push(u)
+      }
+      for (let i = 0; i < path.count; i += nearStep) push(i)
+      if ((path.count - 1) % nearStep) push(path.count - 1)
+      b.mat = M.ridePaint
+      b.sweep(left, ups, wooden ? 0.12 : 0.095, trackColor, 12, 1, path.closed)
+      b.sweep(right, ups, wooden ? 0.12 : 0.095, trackColor, 12, 1, path.closed)
+      if (!wooden) b.sweep(spine, ups, e.style === 'extreme' || e.style === 'launch' ? 0.24 : 0.19, trackColor, 14, 1, path.closed)
+      const specialColor: Record<string, Vec3> = { chain: hexColor('#2b2b2b'), booster: hexColor('#f2c94c'), brakes: hexColor('#c0c4cc'), station: hexColor('#666a70') }
+      const tieEvery = Math.max(1, Math.round(1.0 / path.ds))
+      for (let i = 0; i < path.count; i += tieEvery) {
+        const { p, t, u, r } = at(i)
+        const sp = path.specials[path.piece[i]]
+        const m = mat4.basis(p, t, r, u)
+        if (wooden) {
+          b.mat = M.wood; b.box(m, 0, 0, -0.38, 0.3, 1.45, 0.16, hexColor('#6b4a2c'))
+          b.mat = M.steel; for (const y of [-0.55, 0.55]) b.box(m, 0, y, -0.24, 0.32, 0.16, 0.04, hexColor('#9aa3ad'))
+        } else {
+          b.mat = M.ridePaint
+          const sp0: Vec3 = [p[0] - u[0] * 0.36, p[1] - u[1] * 0.36, p[2] - u[2] * 0.36]
+          for (const side of [1, -1]) {
+            const rail: Vec3 = [p[0] + r[0] * 0.55 * side - u[0] * 0.04, p[1] + r[1] * 0.55 * side - u[1] * 0.04, p[2] + r[2] * 0.55 * side - u[2] * 0.04]
+            b.limb(rail, sp0, 0.045, 0.06, trackColor, 1, 8)
+          }
+          b.box(m, 0, 0, -0.5, 0.14, 0.34, 0.2, trackColor, 1)
+        }
+        if (sp && specialColor[sp] && sp !== 'station') {
+          b.mat = sp === 'chain' ? M.rubber : M.steel
+          b.box(m, 0, 0, wooden ? -0.24 : -0.17, 0.85, sp === 'chain' ? 0.16 : 0.34, 0.08, specialColor[sp])
+        }
+        if (sp === 'chain' || sp === 'brakes') {
+          b.mat = M.structural
+          const side = 1.25
+          b.box(m, 0, side, -0.42, path.ds * tieEvery + 0.02, 0.62, 0.05, hexColor('#7d8288'))
+          b.box(m, 0, 0.88, -0.44, 0.08, 0.5, 0.06, hexColor('#7d8288'))
+          b.mat = M.steel
+          b.box(m, 0, side + 0.3, -0.42, 0.05, 0.05, 1.0, hexColor('#b8bec6'))
+          b.box(m, 0, side + 0.3, 0.55, path.ds * tieEvery + 0.02, 0.06, 0.06, hexColor('#b8bec6'))
+        }
+      }
+      b.mat = -1
+    }
     const step = 2
     const left: Vec3[] = [], right: Vec3[] = [], spine: Vec3[] = []
-    for (let i = trackType === 'coaster' ? 0 : path.count; i < path.count; i += step) {
+    for (let i = trackType === 'coaster' && !nearStep ? 0 : path.count; i < path.count; i += step) {
       const { p, u, r } = at(i)
       const off = inverted ? 0 : 0
       left.push([p[0] + r[0] * 0.55 + u[0] * off, p[1] + r[1] * 0.55 + u[1] * off, p[2] + r[2] * 0.55 + u[2] * off])
       right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55])
       spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32])
     }
-    if ((path.count - 1) % step) { const { p, u, r } = at(path.count - 1); left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55]); spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32]) }
-    if (trackType === 'coaster') {
+    if (!nearStep && (path.count - 1) % step) { const { p, u, r } = at(path.count - 1); left.push([p[0] + r[0] * 0.55, p[1] + r[1] * 0.55, p[2] + r[2] * 0.55]); right.push([p[0] - r[0] * 0.55, p[1] - r[1] * 0.55, p[2] - r[2] * 0.55]); spine.push([p[0] - u[0] * 0.32, p[1] - u[1] * 0.32, p[2] - u[2] * 0.32]) }
+    if (trackType === 'coaster' && !nearStep) {
       b.tube(left, wooden ? 0.12 : 0.1, trackColor, 8, 1)
       b.tube(right, wooden ? 0.12 : 0.1, trackColor, 8, 1)
       if (!wooden) b.tube(spine, 0.17, trackColor, 10, 1)
     }
     const specialColor: Record<string, Vec3> = { chain: hexColor('#2b2b2b'), booster: hexColor('#f2c94c'), brakes: hexColor('#c0c4cc'), station: hexColor('#666a70') }
     const tieEvery = Math.max(1, Math.round(1.0 / path.ds))
-    for (let i = trackType === 'coaster' ? 0 : path.count; i < path.count; i += tieEvery) {
+    for (let i = trackType === 'coaster' && !nearStep ? 0 : path.count; i < path.count; i += tieEvery) {
       const { p, t, u, r } = at(i)
       const sp = path.specials[path.piece[i]]
       const m = mat4.basis(p, t, r, u)
@@ -461,11 +611,20 @@ export class ParkRenderer {
       const top = inverted ? p[2] + 0.5 : p[2] - 0.45
       if (top - ground < 0.4) continue
       if (wooden) {
+        b.mat = M.wood
         for (const o of [-0.8, 0.8]) b.box(null, p[0] + o * 0.7, p[1] - o * 0.4, ground, 0.22, 0.22, top - ground, supportColor)
         for (let z = ground + 1.5; z < top - 0.5; z += 2.2) b.box(null, p[0], p[1], z, 1.6, 0.15, 0.15, supportColor)
+        b.mat = -1
       } else {
         b.cylinder(null, p[0], p[1], ground, 0.2, 0.17, top - ground, 10, supportColor, 0, false)
         b.cylinder(null, p[0], p[1], ground - 0.1, 0.48, 0.42, 0.35, 12, hexColor('#9b9b95'))
+        if (nearStep) {
+          b.mat = M.structural
+          b.cylinder(null, p[0], p[1], ground + 0.25, 0.32, 0.32, 0.05, 12, supportColor)
+          for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2; b.cylinder(null, p[0] + Math.cos(a) * 0.26, p[1] + Math.sin(a) * 0.26, ground + 0.3, 0.025, 0.025, 0.05, 6, hexColor('#b8bec6')) }
+          b.cylinder(null, p[0], p[1], top - 0.08, 0.27, 0.27, 0.1, 12, supportColor)
+          b.mat = -1
+        }
         if (inverted) b.tube([[p[0], p[1], top], [p[0] - u[0] * 0.2, p[1] - u[1] * 0.2, p[2] + 0.2]], 0.15, supportColor, 5)
       }
     }
@@ -488,9 +647,9 @@ export class ParkRenderer {
     return b
   }
 
-  private carMesh(style: string, front: boolean, riders: number) {
-    const key = `car:${style}:${front}:${riders}`
-    if (!this.kindMeshes.has(key)) this.kindMeshes.set(key, this.g.upload(carModel(style, front, riders)))
+  private carMesh(style: string, front: boolean, riders: number, near = false) {
+    const key = `car:${style}:${front}:${riders}:${near}`
+    if (!this.kindMeshes.has(key)) this.kindMeshes.set(key, this.g.upload(carModel(style, front, riders, near)))
     return this.kindMeshes.get(key) ?? null
   }
 
@@ -507,17 +666,20 @@ export class ParkRenderer {
     const daylight = Math.max(0, Math.min(1, elev * 1.6))
     const dusk = Math.max(0, 1 - Math.abs(elev - 0.12) * 6) * (f > 0.2 && f < 0.92 ? 1 : 0)
     const az = dayT * Math.PI + 0.4
-    const sunDir: Vec3 = [Math.cos(az) * 0.7, Math.sin(az) * 0.5, Math.max(0.12, elev)]
+    const sunDir: Vec3 = [Math.cos(az) * 0.7, Math.sin(az) * 0.5, Math.max(0.12, elev * 0.8)]
     const l = Math.hypot(...sunDir); sunDir[0] /= l; sunDir[1] /= l; sunDir[2] /= l
-    const dim = rain ? 0.6 : cloudy ? 0.8 : 1
-    // Night-end values are 30% brighter than the original palette.
-    const night: Vec3 = [0.6, 0.65, 0.83]
-    const sunColor = lerp3([0.55, 0.59, 0.78], lerp3([1.05, 0.98, 0.88], [1.1, 0.62, 0.35], dusk), daylight).map(v => v * dim) as Vec3
-    const sky = lerp3(night, [0.6, 0.68, 0.78], daylight).map(v => v * (rain ? 0.85 : 1)) as Vec3
-    const skyTop = lerp3([0.13, 0.2, 0.42], rain ? [0.45, 0.5, 0.56] : [0.33, 0.56, 0.86], daylight)
-    const skyBottom = lerp3(lerp3([0.29, 0.35, 0.55], [0.75, 0.85, 0.95], daylight), [0.98, 0.62, 0.42], dusk * 0.7)
-    const shadow = Math.max(0, Math.min(1, (elev - 0.06) * 4)) * (rain ? 0.35 : cloudy ? 0.55 : 0.82)
-    return { sunDir, sunColor, sky, ground: lerp3([0.34, 0.34, 0.42], [0.32, 0.3, 0.26], daylight), fog: skyBottom, fogNear: 260, fogFar: rain ? 520 : 900, skyTop, skyBottom, shadow }
+    const dim = rain ? 0.42 : cloudy ? 0.68 : 1
+    const overcast = rain ? 1 : cloudy ? 0.55 : 0
+    const sunColor = lerp3([0.34, 0.4, 0.62], lerp3([3.1, 2.86, 2.5], [2.7, 1.45, 0.7], dusk), daylight).map(v => v * dim) as Vec3
+    const sky = lerp3(lerp3([0.085, 0.11, 0.22], [0.29, 0.41, 0.66], daylight), lerp3([0.08, 0.09, 0.12], [0.52, 0.56, 0.62], daylight), overcast * 0.8)
+    const horizon = lerp3(lerp3(lerp3([0.1, 0.13, 0.24], [0.33, 0.52, 0.95], daylight), [1.05, 0.62, 0.4], dusk * 0.75), [0.55, 0.58, 0.62], overcast * daylight * 0.7)
+    const skyTop = lerp3(lerp3([0.012, 0.022, 0.07], [0.13, 0.29, 0.72], daylight), [0.36, 0.4, 0.46], overcast * daylight)
+    const ground = lerp3([0.04, 0.05, 0.07], [0.27, 0.25, 0.19], daylight)
+    const shadow = Math.max(0, Math.min(1, (elev - 0.06) * 4)) * (rain ? 0.3 : cloudy ? 0.55 : 0.92)
+    const sunScatter = sunColor.map((v, i) => v * 0.32 + horizon[i] * 0.4) as Vec3
+    const exposure = 0.34 + (1 - daylight) * 0.85 + overcast * 0.12
+    const dome = (c: Vec3) => c.map(v => v * 1.9) as Vec3
+    return { sunDir, sunColor, sky, ground, horizon, fog: dome(horizon), fogDensity: rain ? 0.0026 : cloudy ? 0.0012 : 0.0005, fogFalloff: 0.014, sunScatter: dome(sunScatter), skyTop: dome(skyTop), skyBottom: dome(horizon), exposure, shadow, wind: rain ? 0.14 : cloudy ? 0.09 : 0.05 }
   }
 
   isNight() { const f = this.state?.time.dayFraction ?? 0.4; return f > 0.84 || f < 0.22 }
@@ -559,17 +721,38 @@ export class ParkRenderer {
     return mat4.lookAt(this.orbitEye(), [c.tx, c.ty, c.tz], [0, 0, 1])
   }
 
-  private lightMatrix(light: Lighting, eye: Vec3): { m: Mat4; extent: number } {
-    const c = this.cam
-    const focus: Vec3 = this.rideCam ? eye : [c.tx, c.ty, c.tz]
-    const extent = this.rideCam ? 70 : Math.max(28, Math.min(230, c.dist * 1.15))
-    const d = light.sunDir, far = extent * 3 + 120
-    const pos: Vec3 = [focus[0] + d[0] * far * 0.5, focus[1] + d[1] * far * 0.5, focus[2] + d[2] * far * 0.5]
-    const up: Vec3 = Math.abs(d[2]) > 0.98 ? [0, 1, 0] : [0, 0, 1]
-    const view = mat4.lookAt(pos, focus, up)
-    const texel = extent * 2 / 2048
-    view[12] = Math.round(view[12] / texel) * texel; view[13] = Math.round(view[13] / texel) * texel
-    return { m: mat4.multiply(mat4.ortho(-extent, extent, -extent, extent, 1, far), view), extent }
+  private lightMatrix(light: Lighting, eye: Vec3): { m: Mat4; texel: number; depth: number } {
+    const v = this.view, d = light.sunDir
+    const fovY = this.rideCam ? 1.05 : 0.78, aspect = this.width / this.height, tan = Math.tan(fovY / 2)
+    const far = this.rideCam ? 90 : Math.max(45, Math.min(330, this.cam.dist * 2.4)), near = 0.4
+    const rx = v[0], ry = v[4], rz = v[8], ux = v[1], uy = v[5], uz = v[9], fx = -v[2], fy = -v[6], fz = -v[10]
+    let lxx = -d[1], lxy = d[0], lxz = 0
+    let ll = Math.hypot(lxx, lxy)
+    if (ll < 1e-3) { lxx = 1; lxy = 0; ll = 1 }
+    lxx /= ll; lxy /= ll
+    const lyx = d[1] * lxz - d[2] * lxy, lyy = d[2] * lxx - d[0] * lxz, lyz = d[0] * lxy - d[1] * lxx
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity
+    for (let k = 0; k < 8; k++) {
+      const dist = k < 4 ? near : far, h = dist * tan, w = h * aspect
+      const sx = k & 1 ? 1 : -1, sy = k & 2 ? 1 : -1
+      const px = eye[0] + fx * dist + rx * w * sx + ux * h * sy, py = eye[1] + fy * dist + ry * w * sx + uy * h * sy
+      const pz = Math.max(-4, eye[2] + fz * dist + rz * w * sx + uz * h * sy)
+      const a = px * lxx + py * lxy + pz * lxz, b = px * lyx + py * lyy + pz * lyz, c = px * d[0] + py * d[1] + pz * d[2]
+      if (a < minX) minX = a; if (a > maxX) maxX = a; if (b < minY) minY = b; if (b > maxY) maxY = b; if (c < minZ) minZ = c; if (c > maxZ) maxZ = c
+    }
+    const size = Math.ceil(Math.max(maxX - minX, maxY - minY, 24) / 4) * 4 + 4
+    const texel = size / 2048
+    const cx = Math.round((minX + maxX) / 2 / texel) * texel, cy = Math.round((minY + maxY) / 2 / texel) * texel
+    const zNear = -(maxZ + 160), zFar = -(minZ - 4)
+    const view = this.scratch.lightView
+    view[0] = lxx; view[4] = lxy; view[8] = lxz; view[12] = -cx
+    view[1] = lyx; view[5] = lyy; view[9] = lyz; view[13] = -cy
+    view[2] = d[0]; view[6] = d[1]; view[10] = d[2]; view[14] = 0
+    view[3] = 0; view[7] = 0; view[11] = 0; view[15] = 1
+    const proj = this.scratch.lightProj, half = size / 2
+    proj.fill(0)
+    proj[0] = 1 / half; proj[5] = 1 / half; proj[10] = -2 / (zFar - zNear); proj[14] = -(zFar + zNear) / (zFar - zNear); proj[15] = 1
+    return { m: mat4.multiply(proj, view, this.scratch.lightVP), texel, depth: zFar - zNear }
   }
 
   frame(now: number) {
@@ -585,26 +768,35 @@ export class ParkRenderer {
     this.eyePos = eye
     const light = this.lighting()
     const g = this.g
-    const shadowStrength = light.shadow ?? 0
+    const shadowStrength = this.debug.noShadow ? 0 : light.shadow ?? 0
+    const cot = Math.sqrt(Math.max(0, 1 - light.sunDir[2] ** 2)) / Math.max(0.12, light.sunDir[2])
+    this.cullStatic(shadowStrength > 0.02 ? Math.min(45, 12 * cot) : 0)
     let first = true
+    const st = g.stats; st.shadowDraws = 0; st.mainDraws = 0; st.shadowVerts = 0; st.mainVerts = 0; st.instanceBytes = 0
     if (shadowStrength > 0.02 && g.shadowsAvailable) {
-      const { m, extent } = this.lightMatrix(light, eye)
-      if (g.beginShadow(m, extent)) { this.drawWorld(dt); g.endShadow(); first = false }
+      const { m, texel, depth } = this.lightMatrix(light, eye)
+      g.shadowBias = 0.035 / depth
+      g.windLevel = light.wind
+      this.cullMargin = Math.min(60, 22 * cot)
+      if (g.beginShadow(m, texel, this.time)) { this.drawWorld(dt); g.endShadow(); first = false }
+      this.cullMargin = 0
     }
+    if (this.settings.fxaa && this.capturing && !this.debug.noPost) g.beginPost(this.width, this.height)
     g.begin(this.width, this.height, this.view, this.proj, eye, light, this.time, first ? 0 : shadowStrength)
     this.drawWorld(first ? dt : 0)
     this.drawPreview()
     if (this.showGrid) g.draw(this.grid, undefined, { alpha: 0.18, unlit: true })
     g.draw(this.water, undefined, { alpha: 0.78, wave: 0.08 })
     if (s.weather.kind === 'rain') this.drawRain(eye)
+    g.endPost()
   }
 
   private drawWorld(dt: number) {
     const s = this.state!, g = this.g
-    g.draw(this.terrain, undefined, { ground: 1, specular: 0.04 })
-    g.draw(this.paths, undefined, { ground: 0.55, specular: 0.06 })
+    g.draw(this.terrain, undefined, { ground: 1 })
+    g.draw(this.paths, undefined, { ground: 0.55 })
     const night = this.isNight()
-    for (const kind of SCENERY_KINDS) g.drawInstanced(this.kindMeshes.get(`tree:${kind}`) ?? null, { specular: kind === 'rock' || kind === 'statue' || kind === 'fountain' ? 0.35 : 0.06 })
+    for (const kind of SCENERY_KINDS) g.drawInstanced(this.kindMeshes.get(`tree:${kind}`) ?? null, SWAYS[kind] ? WIND_ON : NO_OPTS)
     for (const [kind, def] of Object.entries(STALLS)) {
       const size = def.size ?? [1, 1]
       g.drawInstanced(this.kindMeshes.get(stallKey(kind, size)) ?? null)
@@ -618,8 +810,19 @@ export class ParkRenderer {
         const z = Math.max(...tileCorners(s.map, e.x, e.y))
         g.draw(this.kindMeshes.get('parkEntrance') ?? null, mat4.chain(mat4.translation((e.x + 0.5) * TILE, (e.y + 0.5) * TILE, z), mat4.rotZ((e.dir ?? 3) % 2 ? 0 : Math.PI / 2)), { tint: col })
       }
-      if (e.type === 'hotel') { this.drawHotel(e, night); continue }
+      if (e.type === 'hotel') {
+        const f = footprint(e), hh = hotelHeight(e)
+        if (this.visible((f.x + f.w / 2) * TILE, (f.y + f.h / 2) * TILE, hh / 2, Math.hypot(f.w * TILE, f.h * TILE, hh) / 2)) this.drawHotel(e, night)
+        continue
+      }
       if (e.type !== 'ride') continue
+      if (e.kind === 'flat') {
+        const f = footprint(e), hh = FLAT_RIDES[e.ride as string]?.height ?? 10
+        if (!this.visible((f.x + f.w / 2) * TILE, (f.y + f.h / 2) * TILE, hh / 2, Math.hypot(f.w * TILE, f.h * TILE, hh) / 2 + 2)) continue
+      } else {
+        const b = this.coasterCache(e).bounds
+        if (b && !this.visible(b[0], b[1], b[2], b[3])) continue
+      }
       const highlight: [number, number, number, number] | undefined = this.preview.selected === e.id ? [1, 0.9, 0.3, 0.18] : e.status === 'broken' ? [1, 0.2, 0.1, 0.15 + Math.sin(this.time * 6) * 0.1] : undefined
       if (e.kind === 'flat') this.drawFlat(e, dt, highlight)
       else this.drawCoaster(e, dt, highlight)
@@ -648,7 +851,9 @@ export class ParkRenderer {
     let entry = this.hotelMeshes.get(id)
     if (!entry || entry.key !== key) {
       if (entry?.mesh) this.g.free(entry.mesh)
-      entry = { key, mesh: this.g.upload(hotelModel(look)) }
+      const model = hotelModel(look)
+      model.bakeAO(0.5)
+      entry = { key, mesh: this.g.upload(model) }
       this.hotelMeshes.set(id, entry)
     }
     return entry.mesh
@@ -680,7 +885,9 @@ export class ParkRenderer {
   private drawCoaster(e: Entity, dt: number, highlight?: [number, number, number, number]) {
     const cache = this.coasterCache(e)
     const style = COASTER_STYLES[e.style!]
-    this.g.draw(cache.track ?? null, undefined, { highlight })
+    const bb = cache.bounds, eye = this.eyePos
+    const near = !!bb && this.settings.trackDetail > 0 && Math.hypot(bb[0] - eye[0], bb[1] - eye[1], bb[2] - eye[2]) - bb[3] < this.settings.trackDetail
+    this.g.draw(near ? this.nearTrack(e, cache) : cache.track ?? null, undefined, { highlight })
     if (!cache.path || !e.complete) return
     if (style.trackType === 'kart') {
       const tint = hexColor(e.trainColor ?? style.train)
@@ -721,7 +928,8 @@ export class ParkRenderer {
         const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
         const inCar = Math.max(0, Math.min(seats, riders - k * seats))
         const shown = Math.min(4, Math.round(inCar * 4 / seats))
-        this.g.draw(this.carMesh(e.style!, k === 0, shown), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
+        const carNear = this.settings.trackDetail > 0 && (p.x - this.eyePos[0]) ** 2 + (p.y - this.eyePos[1]) ** 2 + (p.z - this.eyePos[2]) ** 2 < (this.settings.trackDetail * 0.6) ** 2
+        this.g.draw(this.carMesh(e.style!, k === 0, shown, carNear), mat4.basis([p.x, p.y, p.z], t, r, u), { tint, highlight })
       }
     }
   }
@@ -731,7 +939,7 @@ export class ParkRenderer {
     const balloons = this.list('balloons'), umbrellas = this.list('umbrellas')
     const keys: string[] = []
     for (let f = 0; f <= WALK_FRAMES; f++) for (const lod of [0, 1]) { for (let v = 0; v < GUEST_LOOKS.length; v++) keys.push(`person:${v}:${f}:${lod}`); keys.push(`staff:${f}:${lod}`) }
-    const eye = this.eyePos, lodOf = (wx: number, wy: number, wz: number) => (wx - eye[0]) ** 2 + (wy - eye[1]) ** 2 + (wz - eye[2]) ** 2 > PERSON_DETAIL_DIST ** 2 ? 1 : 0
+    const eye = this.eyePos, lodOf = (wx: number, wy: number, wz: number) => (wx - eye[0]) ** 2 + (wy - eye[1]) ** 2 + (wz - eye[2]) ** 2 > this.settings.personDetail ** 2 ? 1 : 0
     if (dt > 0 || !this.peopleReady) {
       this.peopleReady = true
       for (const key of keys) this.list(key).clear()
@@ -775,8 +983,8 @@ export class ParkRenderer {
       for (const key of keys) upload(key, this.list(key))
       upload('balloon', balloons); upload('umbrella', umbrellas)
     }
-    for (const key of keys) if (!this.g.shadowPass || key.endsWith(':0')) this.g.drawInstanced(this.kindMeshes.get(key) ?? null, { specular: 0.12 })
-    this.g.drawInstanced(this.kindMeshes.get('balloon') ?? null, { specular: 0.6 })
+    for (const key of keys) if (!this.g.shadowPass || key.endsWith(':0')) this.g.drawInstanced(this.kindMeshes.get(key) ?? null)
+    this.g.drawInstanced(this.kindMeshes.get('balloon') ?? null)
     this.g.drawInstanced(this.kindMeshes.get('umbrella') ?? null)
   }
 
@@ -971,7 +1179,8 @@ export class ParkRenderer {
   }
 
   dispose() {
-    const gl = this.g.gl
-    gl.getExtension('WEBGL_lose_context')?.loseContext()
+    const gl = this.g.gl, canvas = this.canvas
+    canvasOwners.delete(canvas)
+    setTimeout(() => { if (!canvasOwners.has(canvas)) gl.getExtension('WEBGL_lose_context')?.loseContext() }, 0)
   }
 }

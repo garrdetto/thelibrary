@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Maple Street — Neighborhood Builder</title>
+  <title>Fox Plains — Neighborhood Builder</title>
   <meta name="description" content="Buy a lot, build and furnish a house, mow lawns, run deliveries and manage a capped bank loan in a shared 3D neighborhood." />
   <style>
     :root {
@@ -35,7 +35,7 @@
     #start .row { display: flex; gap: 12px; align-items: end; }
     #start .row > div:first-child { flex: 1; }
     #start .primary { margin-top: 18px; width: 100%; padding: 12px; border: none; border-radius: 8px; background: var(--accent); color: #1b1406; font-weight: 700; font-size: 15px; }
-    #start.dev .card > :is(#playSolo, small, label:not(#bodyLabel):not([for]), .row.join, details) { display: none; }
+    #start.dev .card > :is(small, label:not(#bodyLabel):not([for]), .row.join, details) { display: none; }
     #start.dev #playWorld { background: #f2b544; }
     #start .dev-note { margin: 10px 0 0; padding: 10px 12px; border-radius: 8px; border: 1px dashed rgba(242,181,68,0.6); color: var(--ink); font-size: 13px; line-height: 1.45; }
     #devBadge { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 40; padding: 4px 12px; border-radius: 999px; background: rgba(242,181,68,0.92); color: #1b1406; font: 700 12px/1.6 system-ui, sans-serif; letter-spacing: 0.06em; pointer-events: none; }
@@ -187,6 +187,14 @@
     .car .fuel.low i { background: var(--bad); }
     .car button { grid-row: 1 / span 2; grid-column: 2; }
     #jobText { color: var(--mute); }
+    #homeBtn:disabled { opacity: 0.55; cursor: default; }
+    #ctxMenu { position: fixed; z-index: 30; min-width: 170px; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+    #ctxMenu[hidden] { display: none; }
+    #ctxMenu .ctx-title { font-size: 11px; font-weight: 700; color: var(--mute); padding: 3px 8px 5px; border-bottom: 1px solid var(--line); margin-bottom: 2px; }
+    #ctxMenu .ctx-item { text-align: left; padding: 7px 10px; border-radius: 6px; background: transparent; border: 1px solid transparent; font-weight: 600; }
+    #ctxMenu .ctx-item:hover:not(:disabled), #ctxMenu .ctx-item:focus-visible { background: rgba(242,181,68,0.16); border-color: var(--accent); outline: none; }
+    #ctxMenu .ctx-item:disabled { color: var(--mute); font-weight: 500; cursor: default; }
+    body[data-mode=build] #ctxMenu { display: none; }
     .keys { color: var(--mute); font-size: 11px; display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
     .keys b { color: var(--ink); font-weight: 600; }
 
@@ -226,6 +234,39 @@
     .shopItem b { font-size: 13px; }
     .shopItem span { color: var(--mute); font-size: 12px; }
     .shopItem button { grid-row: 1 / span 2; grid-column: 2; min-width: 88px; }
+    #shop .card { width: min(460px, calc(100vw - 32px)); }
+    .car .cond { font-weight: 600; color: var(--accent); font-size: 11px; }
+    .car .cond.bad { color: var(--bad); }
+    .carPick { padding: 10px 0 12px; border-bottom: 1px solid var(--line); }
+    .carPick .swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    .carPick .swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); padding: 0; cursor: pointer; }
+    .carPick .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(242,181,68,0.35); }
+    .carPick .swatch:focus-visible, .carPick input[type=color]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .carPick input[type=color] { width: 34px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+    .carPick .finishes { display: flex; gap: 6px; margin-top: 10px; }
+    .carPick .finishes .btn.on { border-color: var(--accent); color: var(--accent); }
+    .carPick .actions { flex-wrap: wrap; }
+    #bodyshop .card { width: min(560px, calc(100vw - 32px)); display: flex; flex-direction: column; max-height: calc(100vh - 32px); overflow: hidden; }
+    #bodyshop .bs-body { overflow-y: auto; flex: 1; min-height: 0; padding-right: 4px; }
+    .bs-section { padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .bs-section h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--mute); }
+    .bs-row { display: grid; grid-template-columns: 70px 1fr; gap: 8px; align-items: start; margin: 6px 0; }
+    .bs-label { color: var(--mute); font-size: 12px; padding-top: 6px; }
+    .bs-options { display: flex; flex-wrap: wrap; gap: 5px; }
+    .bs-options .btn { padding: 5px 9px; font-size: 12px; }
+    .bs-options .btn.on { border-color: var(--accent); color: var(--accent); }
+    .bs-options .btn:focus-visible, .bs-repair input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #bodyshop .swatches { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
+    #bodyshop .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.25); padding: 0; cursor: pointer; }
+    #bodyshop .swatch.on { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(242,181,68,0.35); }
+    #bodyshop input[type=color] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; cursor: pointer; }
+    .bs-repair { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+    .bs-note { margin: 4px 0 0; color: var(--mute); font-size: 12px; }
+    .bs-bill { padding-top: 8px; }
+    .bs-line { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; padding: 3px 0; }
+    .bs-line span { color: var(--mute); }
+    .bs-total { border-top: 1px solid var(--line); margin-top: 4px; padding-top: 6px; font-size: 14px; }
+    .bs-total span { color: var(--ink); font-weight: 600; }
     #mapModal .card { width: min(1180px, calc(100vw - 24px)); height: min(720px, calc(100vh - 24px)); display: flex; gap: 14px; padding: 14px; }
     #mapCanvas { flex: 1; min-width: 0; height: 100%; border-radius: 8px; display: block; }
     #mapInfo { width: 270px; display: flex; flex-direction: column; gap: 10px; }
@@ -257,16 +298,10 @@
 
   <div id="start">
     <div class="card panel">
-      <h1>Maple Street</h1>
+      <h1>Fox Plains</h1>
       <p>Buy a lot, build and furnish a house, mow lawns for cash, haul deliveries and borrow from the bank in one shared, always-open neighborhood.</p>
-      <label id="pNameLabel" for="pName">Playing as</label>
-      <output id="pName" class="name-lock" aria-live="polite"></output>
-      <small id="pNameNote"></small>
-      <button id="playWorld" class="primary">Enter Maple Street</button>
-      <small>The open world everyone shares. Come and go whenever you like: your lot, house, money and loan stay exactly as you left them, and you start back on your own driveway.</small>
-      <button id="playSolo" class="btn wide">Solo mode — unlimited money</button>
-      <small>A private neighborhood that runs on this device with a bottomless bank account. Build anything you like.</small>
-      <div id="startStatus" role="status" aria-live="polite"></div>
+      <div id="startStatus" role="status" aria-live="polite">Walking over to Fox Plains…</div>
+      <button id="playWorld" class="primary" hidden>Enter Fox Plains</button>
     </div>
   </div>
 
@@ -282,6 +317,7 @@
     <div id="roomLabel">Connecting…</div>
     <button class="btn" id="mapBtn">Town map (M)</button>
     <button class="btn" id="wardrobeBtn">Wardrobe (C)</button>
+    <button class="btn accent" id="homeBtn" title="Back to your driveway (vehicles stay where you parked them). Once every 15 minutes.">Go home (H)</button>
     <h3>Garage</h3>
     <div id="garage"></div>
     <h3>Work</h3>
@@ -295,6 +331,8 @@
       <b>Shift</b><span>run</span>
       <b>Space</b><span>jump · handbrake</span>
       <b>E</b><span>get in/out · shop · use</span>
+      <b>Right-click</b><span>vehicle menu · Drive · doors</span>
+      <b>H</b><span>go home (every 15 min)</span>
       <b>F</b><span>fill up at a pump</span>
       <b>T</b><span>hitch / unhitch trailer</span>
       <b>R</b><span>flip vehicle upright</span>
@@ -407,7 +445,7 @@
     <div class="card panel">
       <canvas id="mapCanvas"></canvas>
       <div id="mapInfo">
-        <h2 id="mapTitle">Maple Street</h2>
+        <h2 id="mapTitle">Fox Plains</h2>
         <p class="sub" id="mapSub">Click any lot to see it.</p>
         <dl id="mapLot"></dl>
         <div class="legend">

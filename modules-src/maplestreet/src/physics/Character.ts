@@ -3,10 +3,12 @@
  * (auto-step for porch steps and foundations, slope limits, snap-to-ground,
  * pushes dynamic bodies), plus the player's avatar.
  */
+import { prewarm } from '../core/Prewarm';
 import type RAPIER from '@dimforge/rapier3d-compat';
 import * as THREE from 'three/webgpu';
 import { MASK, Physics } from './Physics';
 import { AvatarModel } from '../avatar/AvatarModel';
+import { gaitFrequency, gaitPose } from '../avatar/Gait';
 import { loadBody } from '../avatar/AvatarAssets';
 import { Body, defaultLook, Look } from '../../shared/Wardrobe';
 
@@ -65,11 +67,10 @@ class StandIn {
       return;
     }
     this.legL.rotation.z = this.legR.rotation.z = this.armL.rotation.z = this.armR.rotation.z = 0;
-    this.phase += dt * (2 + speed * 2.1);
-    const amp = Math.min(0.75, speed * 0.22);
-    const s = Math.sin(this.phase) * amp;
-    this.legL.rotation.x = s; this.legR.rotation.x = -s;
-    this.armL.rotation.x = -s * 0.8; this.armR.rotation.x = s * 0.8;
+    this.phase = (this.phase + dt * gaitFrequency(speed)) % 1;
+    const g = gaitPose(this.phase, speed);
+    this.legL.rotation.x = -g.legL.hip; this.legR.rotation.x = -g.legR.hip;
+    this.armL.rotation.x = g.armL.arm; this.armR.rotation.x = g.armR.arm;
   }
 
   dispose() { this.root.traverse(o => (o as THREE.Mesh).geometry?.dispose()); }
@@ -104,11 +105,16 @@ export class Avatar {
     const body = this.wanted;
     loadBody(body).then(asset => {
       if (this.disposed || this.wanted !== body) return;
-      this.model?.dispose();
-      this.model = new AvatarModel(asset, this.look);
-      this.root.add(this.model.root);
-      if (this.stub) { this.stub.root.removeFromParent(); this.stub.dispose(); this.stub = null; }
-      if (this.seat) this.root.position.y = this.seat.y - this.hipY;
+      const model = new AvatarModel(asset, this.look);
+      // Compile its shaders in the background while the stand-in is still showing.
+      return prewarm(model.root).then(() => {
+        if (this.disposed || this.wanted !== body) { model.dispose(); return; }
+        this.model?.dispose();
+        this.model = model;
+        this.root.add(model.root);
+        if (this.stub) { this.stub.root.removeFromParent(); this.stub.dispose(); this.stub = null; }
+        if (this.seat) this.root.position.y = this.seat.y - this.hipY;
+      });
     }).catch(err => console.warn('[avatar] model unavailable, keeping the stand-in:', err));
   }
 
@@ -168,6 +174,8 @@ export class Character {
   yaw = 0;
   private vy = 0;
   speed = 0;
+  /** How fast the body actually moved (m/s, horizontal): drives the gait and goes to other players. */
+  moveSpeed = 0;
   grounded = false;
 
   constructor(private physics: Physics, spawn: THREE.Vector3, look: Look, scene: THREE.Scene) {
@@ -190,6 +198,7 @@ export class Character {
   }
 
   /** Fixed-step movement. `move` is a world-space XZ wish direction (length ≤ 1). */
+  private _desired = { x: 0, y: 0, z: 0 };
   step(dt: number, move: THREE.Vector2, run: boolean, jump: boolean) {
     const maxSpeed = run ? 6.0 : 2.6;
     const target = move.lengthSq() > 0 ? maxSpeed * Math.min(1, move.length()) : 0;
@@ -202,11 +211,15 @@ export class Character {
     }
     if (this.grounded) { this.vy = jump ? 4.6 : -1; } else { this.vy -= 9.81 * dt; }
 
-    const dir = move.lengthSq() > 0 ? move.clone().normalize() : move;
-    const desired = { x: dir.x * this.speed * dt, y: this.vy * dt, z: dir.y * this.speed * dt };
+    const len = move.length();
+    const dx = len > 0 ? move.x / len : 0, dz = len > 0 ? move.y / len : 0;
+    const desired = this._desired;
+    desired.x = dx * this.speed * dt; desired.y = this.vy * dt; desired.z = dz * this.speed * dt;
     this.ctrl.computeColliderMovement(this.collider, desired, undefined, MASK.character);
     const m = this.ctrl.computedMovement();
     this.grounded = this.ctrl.computedGrounded();
+    this.moveSpeed = THREE.MathUtils.damp(this.moveSpeed, dt > 0 ? Math.hypot(m.x, m.z) / dt : 0, 14, dt);
+    if (this.moveSpeed < 0.03) this.moveSpeed = 0;
     const t = this.body.translation();
     this.body.setNextKinematicTranslation({ x: t.x + m.x, y: t.y + m.y, z: t.z + m.z });
     if (t.y < -20) this.teleport(new THREE.Vector3(t.x, 2, t.z));
@@ -216,6 +229,7 @@ export class Character {
     this.body.setTranslation({ x: p.x, y: p.y + EYE_OFFSET + 0.05, z: p.z }, true);
     this.body.setNextKinematicTranslation({ x: p.x, y: p.y + EYE_OFFSET + 0.05, z: p.z });
     this.vy = 0;
+    this.speed = this.moveSpeed = 0;
     this.physics.snapTracked(this.body);
   }
 
@@ -226,8 +240,10 @@ export class Character {
 
   updateVisual(dt: number, seated: boolean) {
     if (!seated) this.avatar.root.rotation.y = this.yaw;
-    this.avatar.animate(dt, this.speed, seated);
+    this.avatar.animate(dt, this.moveSpeed, seated);
   }
 
-  get position() { const t = this.body.translation(); return new THREE.Vector3(t.x, t.y - EYE_OFFSET, t.z); }
+  private _pos = new THREE.Vector3();
+  /** Feet position. One shared vector, refreshed on every read: copy it if you need to keep it. */
+  get position() { const t = this.body.translation(); return this._pos.set(t.x, t.y - EYE_OFFSET, t.z); }
 }

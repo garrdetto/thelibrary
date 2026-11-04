@@ -1,5 +1,5 @@
 /**
- * Downtown Maple Street: a strip of storefronts and mid-rise buildings with
+ * Downtown Fox Plains: a strip of storefronts and mid-rise buildings with
  * generated facades (storefront glazing, awnings, signage, window grids that
  * light up at night), the Gas & Go station with canopy and pumps, the freight
  * depot, street furniture, and display cars at the dealership.
@@ -7,6 +7,7 @@
 import * as THREE from 'three/webgpu';
 import { mergeStatic } from '../core/Merge';
 import { BUILDINGS, Building, CIVIC, DEPOT, GAS_STATION } from '../../shared/WorldLayout';
+import { buildBodyShop } from './BodyShop';
 import { GRID_X, GRID_Z } from '../../shared/DowntownGrid';
 import { buildTownSquare } from './TownSquare';
 import type { MaterialLibrary } from '../core/Materials';
@@ -65,10 +66,14 @@ export class Downtown {
   private glows: THREE.MeshStandardMaterial[] = [];
   private canopyLight: THREE.PointLight | null = null;
 
-  constructor(scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary) {
+  /** With `merge: false` the caller (WorldChunks) batches downtown per cell instead, so it can be culled by distance and view. */
+  constructor(scene: THREE.Scene, private physics: Physics, private mats: MaterialLibrary, merge = true) {
     scene.add(this.group);
     for (const b of BUILDINGS) this.building(b);
     for (const b of CIVIC) { this.building(b); this.civicExtras(b); }
+    const shop = buildBodyShop(physics, mats);
+    this.group.add(shop.group);
+    this.glows.push(...shop.glows);
     this.gasStation(scene);
     this.depot();
     this.streetscape();
@@ -76,7 +81,15 @@ export class Downtown {
     const square = buildTownSquare(physics, mats);
     this.group.add(square.group);
     this.glows.push(...square.glows);
-    mergeStatic(this.group);
+    // Plain finishes share one vertex-colored material; glowing and textured ones stay their own.
+    if (merge) mergeStatic(this.group, { flatten: () => true });
+  }
+
+  private materialCache = new Map<string, THREE.MeshStandardMaterial>();
+  private shared(key: string, make: (key: string) => THREE.MeshStandardMaterial) {
+    let m = this.materialCache.get(key);
+    if (!m) this.materialCache.set(key, (m = make(key)));
+    return m;
   }
 
   private building(b: Building) {
@@ -84,9 +97,10 @@ export class Downtown {
     const front = b.facing === '+z' ? 1 : -1;
     const style = styleOf(b);
     const seed = b.id.length * 977 + Math.round(b.x * 3);
-    const wallMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(b.color).multiplyScalar(style === 'curtain' ? 0.6 : 0.92), roughness: 0.9 });
-    const trim = style === 'brick' || style === 'stone' ? new THREE.MeshStandardMaterial({ color: 0xe2dbcd, roughness: 0.8 }) : this.mats.get('trim').material;
-    const dark = new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.4, metalness: 0.6 });
+    // Identical materials are shared between buildings so the merge below can batch them across the town.
+    const wallMat = this.shared(`wall:${new THREE.Color(b.color).multiplyScalar(style === 'curtain' ? 0.6 : 0.92).getHexString()}`, c => new THREE.MeshStandardMaterial({ color: new THREE.Color(`#${c.slice(5)}`), roughness: 0.9 }));
+    const trim = style === 'brick' || style === 'stone' ? this.shared('masonry-trim', () => new THREE.MeshStandardMaterial({ color: 0xe2dbcd, roughness: 0.8 })) : this.mats.get('trim').material;
+    const dark = this.shared('dark', () => new THREE.MeshStandardMaterial({ color: 0x2a2d30, roughness: 0.4, metalness: 0.6 }));
     const metal = this.mats.get('metal').material;
     const boxMat = { trim, dark, wall: wallMat, metal };
 

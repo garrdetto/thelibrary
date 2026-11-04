@@ -120,7 +120,7 @@ export default function MapleStreetItemEditor() {
       setItems(current => [...(current ?? []), item])
       setStatus({ tone: 'ok', text: target === 'draft'
         ? `Saved “${item.name}” as a draft. Try it in the developer instance, then publish it from the list below.`
-        : `Published “${item.name}”. It appears in Maple Street's Buy catalog the next time players load the module.` })
+        : `Published “${item.name}”. It appears in Fox Plains's Buy catalog the next time players load the module.` })
     } catch (error) {
       setStatus({ tone: 'error', text: (error as Error).message })
     } finally {

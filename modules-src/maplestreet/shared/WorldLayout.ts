@@ -251,6 +251,7 @@ export const CURB_CUTS: RectXZ[] = [
   { cx: 94, cz: -18, sx: 4, sz: 16 },          // Maple Motors display lot off East Ave
   { cx: 118, cz: -60, sx: 18, sz: 4 },         // fire station apron onto Commerce St
   { cx: 154, cz: -60, sx: 8, sz: 4 },          // police station lot
+  { cx: 205, cz: -59, sx: 30, sz: 4 },         // Maple Body & Wheel apron (shared/BodyShop.ts)
 ];
 
 export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank' | 'clothing';
@@ -298,8 +299,8 @@ export const BUILDINGS: Building[] = [
  */
 const CIVIC_FRONT = -ALLEY_Z - 7;            // -61: building line behind Commerce St's north sidewalk
 export const CIVIC: Building[] = [
-  { id: 'fire', name: 'Maple Street Fire Station 1', kind: 'fire', x: 118, w: 24, d: 20, h: 9, facing: '+z', z: CIVIC_FRONT - 10, color: '#9b3b2e' },
-  { id: 'police', name: 'Maple Street Police', kind: 'police', x: 154, w: 26, d: 18, h: 10, facing: '+z', z: CIVIC_FRONT - 9, color: '#c9c3b5' },
+  { id: 'fire', name: 'Fox Plains Fire Station 1', kind: 'fire', x: 118, w: 24, d: 20, h: 9, facing: '+z', z: CIVIC_FRONT - 10, color: '#9b3b2e' },
+  { id: 'police', name: 'Fox Plains Police', kind: 'police', x: 154, w: 26, d: 18, h: 10, facing: '+z', z: CIVIC_FRONT - 9, color: '#c9c3b5' },
 ];
 
 
@@ -331,8 +332,8 @@ export const SPAWN = { x: -112, z: 9 };
 /** Half-extent of the built-up area (forest stays out of it). */
 export const TOWN_HALF = { x: AVE_X + 8, z: FAR_Z + 5 + LOT_D + 6 };
 export const DOWNTOWN = { x0: DOWNTOWN_X0, x1: DOWNTOWN_X1 + 14, z0: -ALLEY_Z - 6, z1: 52 };
-/** The civic block behind downtown (fire and police), kept clear of trees and grass. */
-export const CIVIC_BLOCK: RectXZ = { cx: 136, cz: -76, sx: 72, sz: 34 };
+/** The civic block behind downtown (fire, police and Maple Body & Wheel), kept clear of trees and grass. */
+export const CIVIC_BLOCK: RectXZ = { cx: 162, cz: -76, sx: 124, sz: 34 };
 /** Everything the town map and minimap should show. */
 export const MAP_BOUNDS = { x0: -392, x1: GRID_AREA.x1 + 6, z0: -TOWN_HALF.z, z1: TOWN_HALF.z };
 export { GRID_AREA, GRID_BLOCKS, TOWN_SQUARE, TOWN_SQUARE_RECT } from './DowntownGrid';

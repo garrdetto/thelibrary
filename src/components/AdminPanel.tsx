@@ -14,8 +14,8 @@ const sections = [
   { id: 'library', group: 'Library', label: 'Module order', icon: LayoutGrid, title: 'Module order', blurb: 'Arrange the homepage library and sidebar, pick the featured module and hide modules you are not ready to show.' },
   { id: 'people', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
   { id: 'changes', group: 'Site', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
-  { id: 'maplestreet', group: 'Maple Street', label: 'Items', icon: Package, title: 'Maple Street items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
-  { id: 'vehicles', group: 'Maple Street', label: 'Vehicles', icon: Car, title: 'Maple Street vehicles', blurb: 'Build, tune and publish vehicles for the dealer lot and neighbor traffic.' },
+  { id: 'maplestreet', group: 'Fox Plains', label: 'Items', icon: Package, title: 'Fox Plains items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
+  { id: 'vehicles', group: 'Fox Plains', label: 'Vehicles', icon: Car, title: 'Fox Plains vehicles', blurb: 'Build, tune and publish vehicles for the dealer lot and neighbor traffic.' },
 ] as const
 type Section = (typeof sections)[number]['id']
 const groups = [...new Set(sections.map(item => item.group))]
