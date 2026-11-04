@@ -20,6 +20,7 @@
   .touch button { padding: 14px 0; font-size: 18px; touch-action: none; }
   .touch button small { display: block; font-size: 10px; letter-spacing: 1px; color: var(--muted); font-weight: 600; margin-top: 2px; }
   .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px Rajdhani, sans-serif; }
+  .overlay .ov-stats > div { display: block; text-align: center; }
   .ov-stats span { display: block; font: 600 10px Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
   @media (max-width: 640px), (pointer: coarse) { .touch { display: grid; } }
   @media (max-width: 480px) { .panel.play { padding: 8px; } .stat { min-width: 60px; padding: 6px 8px; } .stat b { font-size: 20px; } }
@@ -81,7 +82,7 @@ const darkMQ = window.matchMedia('(prefers-color-scheme: dark)');
 let best = +(store.get('tetradrop-best') || 0);
 
 let board, piece, bag, queue, hold, holdUsed, score, lines, level, state = 'ready', submitted = false;
-let gravAcc = 0, lockT = 0, resets = 0, lowest = 0, clearing = null, soft = false;
+let overAt = 0, gravAcc = 0, lockT = 0, resets = 0, lowest = 0, clearing = null, soft = false;
 let dasDir = 0, dasT = 0, arrT = 0, statusT = 0;
 const held = { left: false, right: false };
 let cell = 24, side = 5, theme = {};
@@ -161,7 +162,7 @@ function submitRun() {
   hud(); return record;
 }
 function endRound() {
-  state = 'over'; soft = false; dasDir = 0; held.left = held.right = false;
+  state = 'over'; overAt = performance.now(); soft = false; dasDir = 0; held.left = held.right = false;
   const record = submitRun();
   showOverlay(record ? 'New best!' : 'Round over', 'The stack reached the top.', true, 'New round');
   say('Round over.');
@@ -325,7 +326,7 @@ const KEYMAP = { ArrowLeft: 'left', ArrowRight: 'right', ArrowDown: 'down', Arro
 window.addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if ((e.key === 'r' || e.key === 'R') && !e.repeat) { e.preventDefault(); newRound(); return; }
-  if ((state === 'ready' || state === 'over') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); if (!e.repeat) newRound(); return; }
+  if ((state === 'ready' || state === 'over') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); if (!e.repeat && (state === 'ready' || performance.now() - overAt > 800)) newRound(); return; }
   if (state === 'paused' || state === 'pausedClear') { if (e.key === 'Enter') { e.preventDefault(); resume(); return; } }
   const act = KEYMAP[e.key];
   if (!act) return;
