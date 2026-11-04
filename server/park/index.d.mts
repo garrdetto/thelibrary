@@ -1,4 +1,4 @@
-export type ParkMap = { w: number; h: number; corners: number[]; surface: number[]; water: number[]; path: number[]; pathElevation: number[]; pathColor: number[]; pathAdd: number[]; obj: number[]; owner: number[]; litter: number[] }
+export type ParkMap = { w: number; h: number; corners: number[]; surface: number[]; water: number[]; path: number[]; pathElevation: number[]; pathColor: number[]; pathAdd: number[]; pathOrder: number[]; obj: number[]; owner: number[]; litter: number[] }
 export type Piece = { c: number; s: number; sp?: 'station' | 'chain' | 'brakes' | 'booster' | 'loop' | 'corkscrew'; k?: number }
 export type Pose = { x: number; y: number; h: number; dir: number; slope: number }
 export type Train = { s: number; v: number; phase: string; timer: number; riders: number[]; ridersCount?: number; lap: number; stalled: number; pace?: number; waitS?: number }
@@ -163,3 +163,14 @@ export function checksum(state: ParkState): number
 export function queueLine(state: ParkState, ride: Entity): { tiles: [number, number][]; entry: [number, number] | null; join?: [number, number] | null; direct?: boolean }
 export function exitLine(state: ParkState, ride: Entity): { tiles: [number, number][]; entry: [number, number] | null; join: [number, number] | null; direct?: boolean }
 export function levelStartHeight(map: ParkState['map'], r: { x0: number; y0: number; x1: number; y1: number }, sx?: number, sy?: number): number | null
+export type QueueLayout = { prev: number; next: number; rails: [boolean, boolean, boolean, boolean]; bend: boolean; axis: number; order: number }
+export function nextPathOrder(map: ParkMap): number
+export function pathOrderAt(map: ParkMap, i: number): number
+export function queueLinks(map: ParkMap, x: number, y: number): { prev: number; next: number }
+export function queueStep(map: ParkMap, cur: [number, number], forward: boolean, seen: Set<number>, avoid?: Set<number> | null): { x: number; y: number; d: number } | null
+export function queueLayout(map: ParkMap, x: number, y: number, openings?: number[], links?: { prev: number; next: number } | null): QueueLayout
+export const KARTS_PER_STATION_TILE: number
+export const KART_LIMIT: number
+export function kartCount(stationLength: number): number
+export function kartRestS(path: TrackPath, index: number): number
+export function kartLane(index: number): number
