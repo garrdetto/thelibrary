@@ -5,6 +5,7 @@ import { accountSettings, poolAccount, workspaceAccess, workspaceAdmin } from '.
 import { poolCueOverlay, poolPractice, poolPreferences } from './routes/pool'
 import { racing } from './routes/racing'
 import { fairway } from './routes/fairway'
+import { angler } from './routes/angler'
 import { park } from './routes/park'
 import { maplestreet } from './routes/maplestreet'
 import { maplestreetItems } from './routes/maplestreet-items'
@@ -29,6 +30,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/pool-cue-overlay': poolCueOverlay,
   '/api/racing': racing,
   '/api/fairway': fairway,
+  '/api/angler': angler,
   '/api/park': park,
   '/api/maplestreet': maplestreet,
   '/api/maplestreet-items': maplestreetItems,

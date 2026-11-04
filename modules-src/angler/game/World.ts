@@ -46,6 +46,11 @@ export class World {
   bassAssets: BassAssets | null = null
   time = 0
   anchored = false
+  autopilot: { x: number; z: number } | null = null
+  background = false
+  private backgroundTimer = 0
+  private lastBackgroundTick = 0
+  private focusPlayer = false
   private skyTimer = 0
   private weatherTimer = 0
   private readonly frameHandlers: ((dt: number) => void)[] = []
@@ -132,6 +137,48 @@ export class World {
     return { x: Math.sin(w.windDir), z: -Math.cos(w.windDir), speed: w.windMph }
   }
 
+  setBackground(hidden: boolean): void {
+    if (hidden === this.background) return
+    this.background = hidden
+    clearInterval(this.backgroundTimer)
+    if (hidden) {
+      this.lastBackgroundTick = performance.now()
+      this.backgroundTimer = window.setInterval(() => {
+        const t = performance.now()
+        const dt = Math.min(120, (t - this.lastBackgroundTick) / 1000)
+        this.lastBackgroundTick = t
+        this.update(dt)
+      }, 1000)
+    }
+  }
+
+  focusOnPlayer(on: boolean): void {
+    this.focusPlayer = on
+    if (!on) this.camera.preferredYaw = null
+  }
+
+  /** Steers toward the autopilot pin; returns true when it has arrived. */
+  driveAutopilot(): boolean {
+    const pin = this.autopilot
+    const s = this.physics?.state
+    if (!pin || !s) return false
+    const dx = pin.x - s.x, dz = pin.z - s.z
+    const dist = Math.hypot(dx, dz)
+    if (dist < 9) {
+      this.controls.throttle = 0
+      this.controls.steer = 0
+      if (Math.abs(s.speed) < 0.8) { this.autopilot = null; return true }
+      return false
+    }
+    const want = Math.atan2(-dx, -dz)
+    let err = want - s.heading
+    err = Math.atan2(Math.sin(err), Math.cos(err))
+    this.controls.steer = Math.max(-1, Math.min(1, -err * 2.2))
+    const slow = dist < 70 ? Math.max(0.18, dist / 70) : 1
+    this.controls.throttle = Math.abs(err) > 1.2 ? 0.25 : slow * (1 - Math.min(0.6, Math.abs(err)))
+    return false
+  }
+
   private update(dt: number): void {
     this.time += dt
     if (!this.lake || !this.physics || !this.boat) {
@@ -145,11 +192,20 @@ export class World {
     this.boat.root.setPosition(s.x, s.heave, s.z)
     this.boat.root.setEulerAngles(0, (s.heading * 180) / Math.PI, 0)
     this.boat.hull.setLocalEulerAngles((s.pitch * 180) / Math.PI, 0, (s.roll * 180) / Math.PI)
-    this.boat.setLightsOn(this.sky.state.day < 0.5)
-    this.scene?.update(dt, wind)
-    if (this.player) this.placeRider(this.player)
-    const target = new pc.Vec3(s.x, 1.6 + s.heave, s.z)
-    this.camera.update(dt, target, s.heading, s.speed, !this.anchored)
+    if (!this.background) {
+      this.boat.setLightsOn(this.sky.state.day < 0.5)
+      this.scene?.update(dt, wind)
+      if (this.player) this.placeRider(this.player)
+      let target = new pc.Vec3(s.x, 1.6 + s.heave, s.z)
+      if (this.focusPlayer && this.player) {
+        const e = this.player.character.entity
+        const p = e.getPosition()
+        target = new pc.Vec3(p.x, p.y + 1.2, p.z)
+        const f = e.forward
+        this.camera.preferredYaw = (Math.atan2(f.x, f.z) * 180) / Math.PI + 35
+      }
+      this.camera.update(dt, target, s.heading, s.speed, !this.anchored)
+    } else if (this.player) this.placeRider(this.player)
     this.skyTimer += dt
     this.weatherTimer += dt
     if (this.weatherTimer > config.weatherRefreshSeconds) {
