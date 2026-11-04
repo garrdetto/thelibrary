@@ -146,6 +146,7 @@ export class Character {
     this.material = new pc.StandardMaterial()
     this.material.diffuse = new pc.Color(1, 1, 1)
     this.material.diffuseVertexColor = true
+    ;(this.material as pc.StandardMaterial & { vertexColorGamma: boolean }).vertexColorGamma = true
     this.material.gloss = 0.28
     this.material.metalness = 0
     this.material.useMetalness = true
