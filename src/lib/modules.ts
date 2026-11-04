@@ -14,6 +14,7 @@ export const embeddedModules = [
   { id: 'bubbles', title: 'Bubble Shooter', src: '/modules/bubbles.html' },
   { id: 'sudoku', title: 'Sudoku', src: '/modules/sudoku.html' },
   { id: 'minesweeper', title: 'Minesweeper', src: '/modules/minesweeper.html' },
+  { id: 'blockhead', title: 'Blockhead Siege', src: '/modules/blockhead.html' },
   { id: 'songmaker', title: 'Song Maker', src: '/modules/songmaker.html' },
   { id: 'party', title: 'Skill Party', src: '/modules/party.html' },
 ] as const
@@ -61,5 +62,6 @@ export const learningModules: LearningModule[] = [
   { id: 'bubbles', title: 'Bubble Shooter', subject: 'Angles & planning', group: 'Precision', summary: 'Aim, bank off the walls and pop groups of three or more matching bubbles before the ceiling creeps down. Drop floating clusters for bonus points.', modes: ['Solo'], image: '/images/modules/bubbles.webp', accent: '#ff5a7a' },
   { id: 'sudoku', title: 'Sudoku', subject: 'Deduction', group: 'Logic', summary: 'Fresh puzzles every time with a single solution, three difficulties, pencil marks and mistake checking. Fastest solves on each difficulty lead the board.', modes: ['Solo'], image: '/images/modules/sudoku.webp', accent: '#3b8bff' },
   { id: 'minesweeper', title: 'Minesweeper', subject: 'Probability & deduction', group: 'Logic', summary: 'Read the numbers, flag the mines and clear the field. The first click is always safe, chords open neighbours, and the fastest intermediate clears set the record.', modes: ['Solo'], image: '/images/modules/minesweeper.webp', accent: '#ff7a1a' },
+  { id: 'blockhead', title: 'Blockhead Siege', subject: 'Spatial awareness', group: 'Precision', summary: 'Top-down wave survival. Hold off growing hordes of blocky walkers with pistols, shotguns, rifles and barrels you can detonate. Solo, or two players on one keyboard.', modes: ['Solo', '2 on 1 screen'], image: '/images/modules/blockhead.webp', accent: '#ff5a36' },
   { id: 'party', title: 'Skill Party', subject: 'Reaction, aim & recall', group: 'Precision', summary: 'A party arena for up to four players. Pick a character, gather in the lobby and take turns choosing skill contests (reflex draws, target blitz, timing stops, memory flashes, quick math, crowd counts and more). Every result is measured, not rolled, and a running scoreboard crowns the champion.', modes: ['Solo vs CPU', '2–4 on 1 screen', 'Online room'], image: '/images/modules/party.webp', accent: '#ffcf4a' },
 ]

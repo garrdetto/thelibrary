@@ -4,7 +4,7 @@ import { AdminPanel } from '@/components/AdminPanel'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bomb, Bookmark, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, X } from 'lucide-react'
+import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bomb, Bookmark, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, X } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { PoolTable } from '@/components/PoolTable'
@@ -36,7 +36,7 @@ const navigation = [
   { id: 'image', label: 'Image studio', icon: Image },
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
 ] as const
-const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, fairway: Flag, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, songmaker: Mic2, party: PartyPopper }
+const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, fairway: Flag, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper }
 const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', fairway: 'room', party: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.map(item => ({ id: item.id, label: item.title, src: item.src }))
