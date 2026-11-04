@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Demo Derby · the library</title>
+    <style>
+      html,body{margin:0;height:100%;background:var(--lib-bg,#0a0e1a);color:var(--lib-text,#e9effc);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif}
+      #stage{position:relative;width:100%;height:100%}
+      .dd-screen{position:absolute;inset:0;z-index:20;display:grid;align-items:center;justify-items:start;padding:16px;pointer-events:none;overflow:auto}
+      .dd-screen[hidden]{display:none}
+      .dd-card{pointer-events:auto;width:min(440px,100%);display:grid;gap:14px;padding:20px 22px;border-radius:16px;background:color-mix(in srgb,var(--lib-panel,#111829) 92%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 24px 60px -24px var(--lib-shadow,rgba(0,0,0,.45));backdrop-filter:blur(8px)}
+      .dd-card.is-centered{justify-self:center;width:min(560px,100%)}
+      .dd-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--module-accent,var(--lib-accent,#ff8c2a))}
+      .dd-card h1,.dd-card h2{margin:0;font-family:Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);letter-spacing:.4px}
+      .dd-card h1{font-size:34px}
+      .dd-card h2{font-size:24px}
+      .dd-card p{margin:0;color:var(--lib-soft,#aab6d3)}
+      .dd-label{display:grid;gap:6px;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--lib-muted,#8d9bba)}
+      .dd-swatches{display:flex;flex-wrap:wrap;gap:6px}
+      .dd-swatch{width:30px;height:30px;border-radius:8px;border:2px solid transparent;cursor:pointer;padding:0;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
+      .dd-swatch[aria-pressed=true]{border-color:var(--lib-strong,#fff);box-shadow:0 0 0 2px var(--module-accent,#ff8c2a)}
+      .dd-swatch:focus-visible,.dd-chip:focus-visible,.dd-button:focus-visible,.dd-input:focus-visible,.dd-range:focus-visible{outline:3px solid var(--module-accent,var(--lib-accent,#ff8c2a));outline-offset:2px}
+      .dd-chips{display:flex;flex-wrap:wrap;gap:6px}
+      .dd-chip{cursor:pointer;padding:7px 12px;border-radius:999px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-soft,#aab6d3);font:700 12.5px Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
+      .dd-chip[aria-pressed=true]{background:var(--module-accent,var(--lib-accent,#ff8c2a));color:var(--lib-on-accent,#06101f);border-color:transparent}
+      .dd-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+      .dd-input{width:92px;padding:9px 12px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel2,#18213a);color:var(--lib-text,#e9effc);font:800 20px Rajdhani,Inter,sans-serif;letter-spacing:3px;text-transform:uppercase;text-align:center}
+      .dd-range{flex:1;min-width:120px;accent-color:var(--module-accent,#ff8c2a)}
+      .dd-button{cursor:pointer;padding:11px 16px;border-radius:11px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-text,#e9effc);font:700 14px Inter,system-ui,sans-serif}
+      .dd-button.is-primary{background:var(--module-accent,var(--lib-accent,#ff8c2a));color:var(--lib-on-accent,#06101f);border-color:transparent}
+      .dd-button:hover{filter:brightness(1.08)}
+      .dd-note{font-size:12.5px;color:var(--lib-muted,#8d9bba)}
+      .dd-note b{color:var(--lib-text,#e9effc)}
+      .dd-check{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--lib-text,#e9effc)}
+      .dd-check input{accent-color:var(--module-accent,#ff8c2a);width:16px;height:16px}
+      .dd-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+      .dd-table th,.dd-table td{padding:6px 8px;border-bottom:1px solid var(--lib-line,rgba(120,170,255,.16));text-align:left}
+      .dd-table td:last-child,.dd-table th:last-child{text-align:right}
+      .dd-table tr.is-you td{color:var(--module-accent,#ff8c2a);font-weight:700}
+      details summary{cursor:pointer;color:var(--lib-soft,#aab6d3);font-weight:600}
+      details ul{margin:8px 0 0;padding-left:18px;color:var(--lib-muted,#8d9bba)}
+      #banner{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:12;padding:8px 18px;border-radius:999px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:800 22px Rajdhani,Inter,sans-serif;letter-spacing:2px;pointer-events:none;color:var(--lib-strong,#fff)}
+      #banner[hidden]{display:none}
+      #banner.is-warn{color:#ffb14a;border-color:#ffb14a}
+      #health{position:absolute;right:16px;bottom:16px;z-index:12;width:min(300px,60%);display:grid;gap:4px;pointer-events:none}
+      @media (max-width:640px){#health{left:50%;right:auto;bottom:40%;transform:translateX(-50%)}}
+      #health[hidden]{display:none}
+      .dd-bar{height:10px;border-radius:999px;background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line,rgba(120,170,255,.16));overflow:hidden}
+      .dd-bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff4d3a,#ffb14a 50%,#7cd36a);transform-origin:left;transition:transform .15s linear}
+      .dd-bar.is-engine i{background:linear-gradient(90deg,#ff4d3a,#ffd34a)}
+      .dd-bar-label{display:flex;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+      .dd-touch{position:absolute;inset:0;z-index:11;pointer-events:none;display:none}
+      @media (pointer:coarse){.dd-touch{display:block}}
+      .dd-touch span{position:absolute;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.25);color:#fff;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase}
+      @media (max-width:640px){.dd-card{padding:16px}.dd-card h1{font-size:28px}.dd-screen{justify-items:center;align-items:end}}
+      @media (prefers-reduced-motion:reduce){.dd-card{backdrop-filter:none}.dd-bar i{transition:none}}
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+
+    <div id="banner" role="status" aria-live="polite" hidden></div>
+
+    <div id="health" hidden>
+      <div class="dd-bar-label"><span>Body</span><span id="health-text">100</span></div>
+      <div class="dd-bar"><i id="health-bar"></i></div>
+      <div class="dd-bar-label"><span>Engine</span><span id="engine-text">100</span></div>
+      <div class="dd-bar is-engine"><i id="engine-bar"></i></div>
+    </div>
+
+    <div class="dd-touch" aria-hidden="true">
+      <span style="left:6%;bottom:14%">◀ steer</span>
+      <span style="left:30%;bottom:14%">steer ▶</span>
+      <span style="right:6%;bottom:36%">▲ throttle</span>
+      <span style="right:6%;bottom:10%">▼ reverse</span>
+    </div>
+
+    <section id="screen-garage" class="dd-screen" aria-labelledby="garage-title">
+      <form class="dd-card" id="garage-form">
+        <div>
+          <div class="dd-eyebrow">Momentum &amp; impact · learning module</div>
+          <h1 id="garage-title">Demo Derby</h1>
+          <p>Paint a 1970s full-size wagon or sedan, spray your number on the doors and roof, and take it onto a county-fair dirt pad against the local field. Every hit trades momentum for damage; the last car still moving wins the heat.</p>
+        </div>
+        <div class="dd-label">Body<div class="dd-chips" id="body-chips" role="group" aria-label="Body style"></div></div>
+        <div class="dd-label">Flat paint<div class="dd-swatches" id="paint-swatches" role="group" aria-label="Paint color"></div></div>
+        <div class="dd-label">Number
+          <div class="dd-row">
+            <input id="number-input" class="dd-input" maxlength="3" autocomplete="off" spellcheck="false" inputmode="text" aria-label="Car number, up to three letters or digits" />
+            <div class="dd-swatches" id="number-swatches" role="group" aria-label="Number color"></div>
+          </div>
+        </div>
+        <div class="dd-label">Spray style<div class="dd-chips" id="font-chips" role="group" aria-label="Number style"></div>
+          <label class="dd-check"><input type="checkbox" id="outline-check" /> Outline the number</label>
+        </div>
+        <div class="dd-label">Field
+          <div class="dd-row"><input id="opponents-range" class="dd-range" type="range" min="3" max="9" step="1" aria-label="Number of opponents" /><span class="dd-note"><b id="opponents-text">6</b> opponents</span></div>
+          <div class="dd-chips" id="level-chips" role="group" aria-label="Opponent skill"></div>
+        </div>
+        <div class="dd-row">
+          <button type="submit" class="dd-button is-primary" id="start-button">Start the heat</button>
+          <span class="dd-note" id="best-note"></span>
+        </div>
+        <details>
+          <summary>How the physics and the rules work</summary>
+          <ul>
+            <li>Damage follows the impact force: momentum (mass × speed) lost in a split second. Hit harder, hurt more; a full-strength hit takes about a third of a car.</li>
+            <li>The nose carries the engine. Front hits cost power; backing into someone protects your motor, and the tailgate shrugs off most of it.</li>
+            <li>Dirt gives less sideways grip than pavement, so the tail slides on hard turns. Short, straight runs land the heaviest hits.</li>
+            <li>A car that goes 60 seconds without striking another one is called out of the heat, just like a fair derby.</li>
+            <li>Points: hits landed, knockouts, surviving seconds and 1000 for the win. The best heats lead the board.</li>
+          </ul>
+        </details>
+      </form>
+    </section>
+
+    <section id="screen-results" class="dd-screen" aria-labelledby="results-title" hidden>
+      <div class="dd-card is-centered">
+        <div>
+          <div class="dd-eyebrow" id="results-eyebrow">Heat over</div>
+          <h2 id="results-title">Results</h2>
+          <p id="results-line"></p>
+        </div>
+        <table class="dd-table" aria-label="Heat results"><thead><tr><th>Place</th><th>Car</th><th>Hits</th><th>KOs</th><th>Points</th></tr></thead><tbody id="results-body"></tbody></table>
+        <div class="dd-row">
+          <button type="button" class="dd-button is-primary" id="again-button">Run another heat</button>
+          <button type="button" class="dd-button" id="watch-button">Watch the rest</button>
+          <button type="button" class="dd-button" id="garage-button">Back to the garage</button>
+        </div>
+      </div>
+    </section>
+
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>
