@@ -6,6 +6,7 @@
    ===================================================================== */
 import { CHASSIS, ITEMS, SLOTS, SLOT_ORDER, PAINTS, AI_NAMES, loadoutWeight, validLoadout, emptyLoadout, randomBuild } from './catalog.js';
 import { buildArena, buildChassis, buildWheel, buildItem, nameTag, canvasTexture, flipperRest } from './models.js';
+import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js';
 
 let THREE, CANNON;
 try {
@@ -25,6 +26,7 @@ const ARENA = 32, HALF = ARENA / 2, MATCH_TIME = 150, COUNT_OUT = 10;
 /* ---------------- Renderer, scene, camera ---------------- */
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+const adaptRes = createAdaptiveResolution({ max: renderer.getPixelRatio(), min: Math.min(renderer.getPixelRatio(), 0.75), apply: (r) => { renderer.setPixelRatio(r); renderer.setSize(window.innerWidth, window.innerHeight); } });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -723,7 +725,8 @@ function step(dt) {
   if ((hudTick += dt) > 0.1 && phase !== 'garage') { hudTick = 0; renderRoster(false); }
 }
 function frame() {
-  const t = performance.now(), dt = Math.min(0.05, (t - last) / 1000); last = t;
+  const t = performance.now(), raw = (t - last) / 1000, dt = Math.min(0.05, raw); last = t;
+  if (!document.hidden) adaptRes.update(raw);
   step(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
