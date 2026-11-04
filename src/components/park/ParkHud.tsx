@@ -152,7 +152,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
   const [naming, setNaming] = useState(false)
   const toolRef = useRef(tool)
   toolRef.current = tool
-  const drag = useRef<{ button: number; x: number; y: number; moved: boolean; start?: { x: number; y: number }; cam?: { tx: number; ty: number; yaw: number; pitch: number }; anchor?: { x: number; y: number; z: number }; pointers: Map<number, { x: number; y: number }>; pinch?: number } >({ button: -1, x: 0, y: 0, moved: false, pointers: new Map() })
+  const drag = useRef<{ button: number; x: number; y: number; moved: boolean; start?: { x: number; y: number }; cam?: { tx: number; ty: number; yaw: number; pitch: number }; anchor?: { x: number; y: number; z: number }; pointers: Map<number, { x: number; y: number }>; pinch?: number; erase?: boolean } >({ button: -1, x: 0, y: 0, moved: false, pointers: new Map() })
   const keys = useRef(new Set<string>())
   const toastId = useRef(1)
 
@@ -485,6 +485,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const hit = r.pickTile(e.clientX, e.clientY)
     d.anchor = hit ? { x: hit.wx, y: hit.wy, z: hit.wz } : { x: r.cam.tx, y: r.cam.ty, z: r.cam.tz }
     d.start = hit ? { x: hit.x, y: hit.y } : undefined
+    d.erase = Boolean(e.button === 2 && hit && !viewOnly && state.map.path[tileIndex(state.map, hit.x, hit.y)])
     if (rideCam && e.button === 0) setRideCam(null)
   }
 
@@ -508,6 +509,14 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       if (a && p && Math.hypot(a.x - p.x, a.y - p.y) < r.cam.dist * 3) { r.cam.tx += a.x - p.x; r.cam.ty += a.y - p.y }
       return
     }
+    if (d.erase && d.button === 2 && d.start) {
+      const over = r.pickTile(e.clientX, e.clientY)
+      if (over) {
+        const ax = Math.abs(over.x - d.start.x), ay = Math.abs(over.y - d.start.y)
+        r.preview.rect = ax >= ay ? { x0: d.start.x, y0: d.start.y, x1: over.x, y1: d.start.y, ok: true } : { x0: d.start.x, y0: d.start.y, x1: d.start.x, y1: over.y, ok: true }
+      }
+      return
+    }
     if (d.cam && d.button === 2) {
       r.cam.yaw = d.cam.yaw + dx * 0.006
       r.cam.pitch = Math.max(0.18, Math.min(1.45, d.cam.pitch + dy * 0.005))
@@ -522,6 +531,14 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     if (d.button === 9) { if (!d.pointers.size) d.button = -1; return }
     const t = toolRef.current
     const areaTool = ['terrain', 'water', 'surface', 'path', 'pathBuilder', 'pathPaint', 'unpath', 'clear', 'buyLand', 'hotel'].includes(t.kind) || (t.kind === 'flat' && Boolean(FLAT_RIDES[t.ride].resize))
+    if (d.button === 2 && d.erase && d.start) {
+      const over = rendererRef.current?.pickTile(e.clientX, e.clientY)
+      const rect = d.moved && over
+        ? Math.abs(over.x - d.start.x) >= Math.abs(over.y - d.start.y) ? { x0: d.start.x, y0: d.start.y, x1: over.x, y1: d.start.y } : { x0: d.start.x, y0: d.start.y, x1: d.start.x, y1: over.y }
+        : { x0: d.start.x, y0: d.start.y, x1: d.start.x, y1: d.start.y }
+      void run({ t: 'unpath', ...rect })
+    }
+    d.erase = false
     if (d.button === 0 && (!d.moved || areaTool)) void applyTool(e.clientX, e.clientY)
     d.button = -1; d.start = undefined
     updatePreview(e.clientX, e.clientY)
