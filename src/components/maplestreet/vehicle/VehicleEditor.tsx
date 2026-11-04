@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Gauge, LoaderCircle, Move3d, Pipette, Rotate
 import type { Object3D } from 'three'
 import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
+import { BUNDLED_VEHICLES } from '../../../../modules-src/maplestreet/shared/BundledVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
 import { fetchStoreVehicles, publishStoreVehicle, suggestVehicleParts, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
 import type { AssetStatus } from '@/lib/maplestreet-vehicles'
@@ -273,11 +274,18 @@ export default function VehicleEditor() {
   async function change(vehicle: CustomVehicleRecord, changes: { active?: boolean; status?: AssetStatus; spec?: CustomVehicleSpec }) {
     try {
       const next = await updateStoreVehicle(vehicle.id, changes)
-      setVehicles(current => current?.map(v => v.id === next.id ? next : v) ?? null)
+      setVehicles(current => current?.some(v => v.id === next.id) ? current.map(v => v.id === next.id ? next : v) : [...(current ?? []), next])
     } catch (error) { setListError((error as Error).message) }
   }
 
   const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}) })
+
+  const allVehicles = useMemo(() => {
+    if (!vehicles) return null
+    const saved = new Map(vehicles.map(v => [v.id, v]))
+    const bundledIds = new Set<string>(BUNDLED_VEHICLES.map(b => b.id))
+    return [...BUNDLED_VEHICLES.map(b => saved.get(b.id) ?? b), ...vehicles.filter(v => !bundledIds.has(v.id))]
+  }, [vehicles])
 
   const meshySources = useMemo<MeshySourceOption[]>(() => (vehicles ?? []).map(v => ({ label: v.name, source: { vehicleId: v.id } })), [vehicles])
   const onMeshyOpen = (opened: File) => { openFile(opened); setView('build') }
@@ -290,7 +298,7 @@ export default function VehicleEditor() {
     <h1>Publish vehicles</h1>
     <div className="adm-viewtabs" role="group" aria-label="Vehicle tools">
       <button type="button" aria-pressed={view === 'build'} className={view === 'build' ? 'is-active' : ''} onClick={() => setView('build')}>Build a vehicle</button>
-      <button type="button" aria-pressed={view === 'library'} className={view === 'library' ? 'is-active' : ''} onClick={() => setView('library')}>Your vehicles{vehicles ? <span>{vehicles.length}</span> : null}</button>
+      <button type="button" aria-pressed={view === 'library'} className={view === 'library' ? 'is-active' : ''} onClick={() => setView('library')}>Your vehicles{allVehicles ? <span>{allVehicles.length}</span> : null}</button>
       <button type="button" aria-pressed={view === 'meshy'} className={view === 'meshy' ? 'is-active' : ''} onClick={() => setView('meshy')}>Generate with Meshy</button>
     </div>
     {view === 'build' && <p className="adm-help">Load a .glb or .gltf body, size it against the built-in vehicles and a resident, then work through the steps. Keep every design original: no real makes, model names, logos or badges.</p>}
@@ -470,18 +478,18 @@ export default function VehicleEditor() {
     {drive && <TestDrive record={drive.record} onClose={() => setDrive(null)} onResult={result => setMeasured({ topMph: result.topMph, time: result.time })}/>}
 
     {view === 'library' && <>
-    <p className="adm-help">Retiring takes a vehicle off the dealer lot and out of traffic. Players who already own it keep it in their garage.</p>
+    <p className="adm-help">These are all the vehicles in the game right now, including the ones that ship with it. Change the price, dealer and traffic settings here. Retiring takes a vehicle off the dealer lot and out of traffic; players who already own it keep it in their garage.</p>
     <DevInstanceNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadVehicles()}>Retry</button></p>}
     {vehicles === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading vehicles…</p>}
-    {vehicles?.length === 0 && <p>No vehicles published yet.</p>}
-    {!!vehicles?.length && <ul className="ms-items-list">
-      {vehicles.map(v => <li key={v.id} className={statusOf(v) === 'retired' ? 'is-retired' : statusOf(v) === 'draft' ? 'is-draft' : ''}>
+    {!!allVehicles?.length && <ul className="ms-items-list">
+      {allVehicles.map(v => <li key={v.id} className={statusOf(v) === 'retired' ? 'is-retired' : statusOf(v) === 'draft' ? 'is-draft' : ''}>
         <div>
           <strong>{v.name}</strong>
           <span>{TEMPLATE_LABEL[v.template]} · {v.targets.topSpeedMph} mph · 0–{v.targets.zeroToMph} in {v.targets.zeroToSeconds} s · {(v.physics.chassis.hx * 2).toFixed(2)} m long · {v.dealer.forSale ? money(v.dealer.price) : 'not for sale'}{v.traffic.enabled ? ` · traffic: ${ROUTE_LABEL[v.traffic.route]}` : ''}</span>
         </div>
         <AssetStatusBadge status={statusOf(v)}/>
+        <label className="ms-veh-inline">Price $<input key={`${v.id}-${v.dealer.price}`} type="number" step={100} min={0} max={LIMITS.priceMax} defaultValue={v.dealer.price} style={{ width: '6.5rem' }} onBlur={event => { const price = Math.round(Number(event.target.value)); if (Number.isFinite(price) && price >= 0 && price <= LIMITS.priceMax && price !== v.dealer.price) void change(v, { spec: { ...specOf(v), dealer: { ...v.dealer, price } } }) }}/></label>
         <label className="ms-veh-inline"><input type="checkbox" checked={v.dealer.forSale} onChange={event => void change(v, { spec: { ...specOf(v), dealer: { ...v.dealer, forSale: event.target.checked } } })}/> For sale</label>
         <label className="ms-veh-inline"><input type="checkbox" checked={v.traffic.enabled} onChange={event => void change(v, { spec: { ...specOf(v), traffic: { ...v.traffic, enabled: event.target.checked } } })}/> In traffic</label>
         <a href={v.modelUrl} download>Model</a>
