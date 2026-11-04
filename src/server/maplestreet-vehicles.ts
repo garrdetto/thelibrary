@@ -1,5 +1,6 @@
 import { z } from 'zod'
-import { BRAND_PATTERN, DRIVE_TEMPLATES, MAX_DOOR_ROWS, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
+import { BUNDLED_VEHICLES } from '../../modules-src/maplestreet/shared/BundledVehicles'
+import { BRAND_PATTERN, DRIVE_TEMPLATES, MAX_DOOR_ROWS, TRAFFIC_COUNT_MAX, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
 import type { Env } from './env'
 import { getAsset, insertAsset, listAssets, statusFrom, updateAsset, type AssetFiles, type AssetRow, type AssetStatus } from './maplestreet-assets'
 
@@ -54,7 +55,15 @@ export const vehicleSpecSchema = z.object({
   paint: z.object({ mode: z.enum(['none', 'material', 'color']), material: z.string().max(120), key: hex, tolerance: n(0.01, 1), color: hex }).strict(),
   targets: z.object({ topSpeedMph: n(2, VEHICLE_LIMITS.topSpeedMphMax), zeroToMph: n(1, 60), zeroToSeconds: n(0.5, 120) }).strict(),
   dealer: z.object({ forSale: z.boolean(), price: z.number().int().min(0).max(VEHICLE_LIMITS.priceMax), fuel: z.enum(['gas', 'electric']), tank: n(0.5, 200), mpg: n(1, 500) }).strict(),
-  traffic: z.object({ enabled: z.boolean(), driver: plainText(40).refine(noBrand, BRAND_MESSAGE), route: z.enum(TRAFFIC_ROUTES), mph: n(3, 60) }).strict(),
+  traffic: z.object({
+    enabled: z.boolean(),
+    driver: plainText(40).refine(noBrand, BRAND_MESSAGE),
+    route: z.enum(TRAFFIC_ROUTES),
+    mph: n(3, 60),
+    count: z.number().int().min(1).max(TRAFFIC_COUNT_MAX).optional(),
+    routes: z.array(z.enum(TRAFFIC_ROUTES)).max(TRAFFIC_COUNT_MAX).optional(),
+    colors: z.array(hex).max(TRAFFIC_COUNT_MAX).optional(),
+  }).strict(),
   wheelsRemoved: z.boolean(),
   parts: z.object({
     doors: z.array(partBox).max(MAX_DOOR_ROWS),
@@ -63,15 +72,22 @@ export const vehicleSpecSchema = z.object({
   }).strict().optional(),
 }).strict()
 
+export const bundledVehicle = (id: string) => BUNDLED_VEHICLES.find(vehicle => vehicle.id === id) ?? null
+
+export function bundledSpec(vehicle: CustomVehicleRecord): CustomVehicleSpec {
+  return { template: vehicle.template, model: vehicle.model, physics: vehicle.physics, lights: vehicle.lights, paint: vehicle.paint, targets: vehicle.targets, dealer: vehicle.dealer, traffic: vehicle.traffic, wheelsRemoved: vehicle.wheelsRemoved, ...(vehicle.parts ? { parts: vehicle.parts } : {}) }
+}
+
 function toRecord(asset: AssetRow): CustomVehicleRecord | null {
   const parsed = vehicleSpecSchema.safeParse(asset.spec)
   if (!parsed.success) return null
+  const bundled = bundledVehicle(asset.id)
   return {
     ...(parsed.data as CustomVehicleSpec),
     id: asset.id,
     name: asset.name,
-    modelUrl: vehicleModelUrl(asset.id),
-    wheelUrl: asset.files.wheel ? vehicleWheelUrl(asset.id) : null,
+    modelUrl: bundled ? bundled.modelUrl : vehicleModelUrl(asset.id),
+    wheelUrl: bundled ? bundled.wheelUrl : asset.files.wheel ? vehicleWheelUrl(asset.id) : null,
     active: asset.status !== 'retired',
     status: asset.status,
     updatedAt: asset.updatedAt,
@@ -93,6 +109,12 @@ export async function insertStoreVehicle(env: Env, id: string, name: string, spe
   const files: AssetFiles = { model: { key: VEHICLE_MODEL_KEY(id), type: model.type, bytes: model.bytes } }
   if (wheel) files.wheel = { key: VEHICLE_WHEEL_KEY(id), type: wheel.type, bytes: wheel.bytes }
   await insertAsset(env, { id, kind: 'vehicle', name, status, spec, files, createdBy })
+}
+
+export async function ensureBundledOverride(env: Env, id: string, createdBy: string) {
+  const bundled = bundledVehicle(id)
+  if (!bundled || await getAsset(env, 'vehicle', id)) return
+  await insertAsset(env, { id, kind: 'vehicle', name: bundled.name, status: 'published', spec: bundledSpec(bundled), files: {}, createdBy })
 }
 
 export async function updateStoreVehicle(env: Env, id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; spec?: CustomVehicleSpec }) {

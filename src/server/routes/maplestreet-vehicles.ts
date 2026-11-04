@@ -6,11 +6,11 @@ import { inspectModel } from '../gltf-check'
 import { refreshWorldCatalog, requireMapleAdmin } from '../maplestreet-admin'
 import { assetStatusSchema, wantsDrafts } from '../maplestreet-assets'
 import { currentUser } from '../auth'
-import { getStoreVehicle, insertStoreVehicle, listStoreVehicles, updateStoreVehicle, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
+import { bundledVehicle, ensureBundledOverride, getStoreVehicle, insertStoreVehicle, listStoreVehicles, updateStoreVehicle, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
 
 const idSchema = z.string().uuid()
 const updateSchema = z.object({
-  id: idSchema,
+  id: z.union([idSchema, z.string().regex(/^bundled-[a-z0-9-]{1,60}$/)]),
   active: z.boolean().optional(),
   status: assetStatusSchema.optional(),
   name: vehicleNameSchema.optional(),
@@ -85,8 +85,12 @@ async function publish(request: Request, env: Env) {
 }
 
 async function update(request: Request, env: Env) {
-  await requireAdmin(request, env)
+  const user = await requireAdmin(request, env)
   const input = check(updateSchema, await readJson(request, 64 * 1024))
+  if (bundledVehicle(input.id)) {
+    if (input.status === 'draft') throw new HttpError(400, 'Built-in vehicles can’t be turned into drafts. Retire it instead.')
+    await ensureBundledOverride(env, input.id, user.id)
+  }
   const changed = await updateStoreVehicle(env, input.id, { active: input.active, status: input.status, name: input.name, spec: input.spec as CustomVehicleSpec | undefined })
   if (!changed) return json({ error: 'Vehicle not found.' }, 404)
   await refreshWorldCatalog(env)
