@@ -2,6 +2,7 @@ import { STALLS, FLAT_RIDES, COASTER_STYLES } from './catalog.mjs'
 import { DIRS, clamp, stateRandom } from './util.mjs'
 import { tileIndex, inMap, isWalkPath, pathsConnect } from './terrain.mjs'
 import { frontTile, stallFrontTile, addNews } from './state.mjs'
+import { queueLinks, queueStep } from './queues.mjs'
 import { rideFlatSpec } from './flatspec.mjs'
 import { guestProfile, intensityLimit, warmUp, lovesRepeats } from './thrill.mjs'
 import { recordComment, rideComment } from './comments.mjs'
@@ -70,18 +71,20 @@ function followLine(state, gate, avoid, stopAtPath) {
   }
   const tiles = [[start.x, start.y]], seen = new Set([si])
   let cur = [start.x, start.y], heading = gate.dir, entry = null, join = null
+  // Tiles laid with a recorded order are walked the way they were built, so a
+  // line that weaves back and forth keeps its rows; older tiles without one
+  // keep going straight for as long as they can.
+  const turns = h => [h, (h + 1) % 4, (h + 3) % 4, (h + 2) % 4]
+  const startLinks = queueLinks(map, start.x, start.y)
+  const forward = startLinks.next >= 0 && startLinks.prev < 0 ? true : startLinks.prev >= 0 && startLinks.next < 0 ? false
+    : turns(heading).find(d => d === startLinks.next || d === startLinks.prev) !== startLinks.prev
   for (let guard = 0; guard < 400; guard++) {
     const near = walkNeighbor(cur)
     if (near && !entry) { entry = [cur[0], cur[1]]; join = near }
     if (near && stopAtPath) break
-    let next = null
-    for (const d of [heading, (heading + 1) % 4, (heading + 3) % 4, (heading + 2) % 4]) {
-      const x = cur[0] + DIRS[d][0], y = cur[1] + DIRS[d][1]
-      if (!inMap(map, x, y)) continue
-      const i = tileIndex(map, x, y)
-      if (map.path[i] !== 2 || seen.has(i) || avoid?.has(i) || !pathsConnect(map, cur[0], cur[1], x, y)) continue
-      next = [x, y]; heading = d; break
-    }
+    const step = queueStep(map, cur, forward, seen, avoid, heading)
+    const next = step ? [step.x, step.y] : null
+    if (step) heading = step.d
     if (!next) break
     seen.add(tileIndex(map, next[0], next[1])); tiles.push(next); cur = next
   }

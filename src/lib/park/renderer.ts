@@ -7,13 +7,15 @@ import { M } from './materials'
 import { QUALITY, requestedQuality, pickQuality, rendererName } from './quality'
 import type { ParkQuality, QualitySettings } from './quality'
 import { wavePoolModel } from './waterModels'
-import { waterRideModel, WATER_RIDE_TINTS } from './waterRides'
+import { waterRideModel } from './waterRides'
+import { decorateRide } from './rideNeon'
+import { bulb, bulbRun, neonTube, LIGHTS, GLOW } from './neon'
 import { hotelModel, hotelLook } from './hotelModels'
-import { addPathTile } from './pathModels'
+import { addPathTile, addQueueMarkings } from './pathModels'
 import { ghostCorners } from './pathBuilder'
 import type { GhostPiece } from './pathBuilder'
-import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine } from '../../../server/park/index.mjs'
-import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, kartLane, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine, exitLine, queueLayout, rideColors } from '../../../server/park/index.mjs'
+import type { ParkState, Entity, TrackPath, Piece, QueueLayout } from '../../../server/park/index.mjs'
 
 const TILE = 4
 const SURFACE_COLORS: Vec3[] = ['#5b8f3c', '#cdb57a', '#7f6044', '#8a8780', '#e8ecee'].map(hexColor)
@@ -22,8 +24,8 @@ const PATH_COLOR = hexColor('#cdbb93'), PATH_EDGE = hexColor('#8f7d5c'), QUEUE_C
 const SCENERY_KINDS = ['oak', 'pine', 'birch', 'palm', 'bush', 'flowers', 'hedge', 'rock', 'fountain', 'statue', 'topiary']
 const SWAYS: Record<string, boolean> = { oak: true, pine: true, birch: true, palm: true, bush: true, flowers: true, hedge: true, topiary: true }
 const WIND_ON = { wind: 1 }, NO_OPTS = {}
+const WHITE: Vec3 = [1, 1, 1]
 const withAO = (b: MeshBuilder, strength = 0.55) => { b.bakeAO(strength); return b }
-const FLAT_TINTS: Record<string, string> = { carousel: '#d8432f', teacups: '#e48bb0', ferris: '#3a77d0', swings: '#3fae5c', bumper: '#c2483a', ship: '#c9963e', dropTower: '#7b51c9', topSpin: '#e0782a', karts: '#d8432f', pool: '#3a77d0', wavePool: '#2f8fd0', waterslide: '#1fb5b0', zipper: '#e2513d', gravitron: '#7b51c9', ...WATER_RIDE_TINTS }
 const stallKey = (kind: string, size?: [number, number]) => `stall:${kind}:${(size ?? [1, 1]).join('x')}`
 
 export type Pick = { kind: 'guest' | 'staff' | 'entity'; id: number } | null
@@ -101,6 +103,8 @@ export class ParkRenderer {
   private ghostMeshes = new Map<string, GpuMesh | null>()
   private instances = new Map<string, InstanceList>()
   private hotelMeshes = new Map<number | string, { key: string; mesh: GpuMesh | null }>()
+  private slotCache = new Map<string, Vec3[]>()
+  private schemesKey = ''
   private rideModels = new Map<string, { base: GpuMesh | null; parts: { mesh: GpuMesh | null; anim: RideModel['parts'][number]['anim'] }[] }>()
   private rides = new Map<number, RideCache>()
   private clocks = new Map<string, Clock>()
@@ -285,6 +289,39 @@ export class ParkRenderer {
       const bed: Vec3 = [0.3, 0.33, 0.25], sand: Vec3 = [0.72, 0.64, 0.46]
       cornerColor.push([0, 1, 2].map(k => { const land = (a[k] + b[k] + c[k] + d[k]) / 4 * (1 - steep * 0.55) + rock[k] * steep * 0.55; const wetLand = land * (1 - shore * 0.6) + sand[k] * shore * 0.6; return (wetLand * (1 - under) + bed[k] * under) * ao }) as Vec3)
     }
+    // Each queue tile's place in a ride's entrance or exit line: the sides the
+    // line arrives from and leaves by, and where it opens onto the gate or
+    // the footpath. Tiles in no line fall back to their build order.
+    const queueRuns = new Map<number, { prev: number; next: number; openings: number[] }>()
+    for (const ride of Object.values(s.entities)) {
+      if (ride.type !== 'ride') continue
+      const entranceId = typeof ride.entrance === 'number' ? ride.entrance : 0, exitId = typeof ride.exit === 'number' ? ride.exit : 0
+      for (const [gateId, line] of [[entranceId, entranceId ? queueLine(s, ride) : null], [exitId, exitId ? exitLine(s, ride) : null]] as const) {
+        const gate = gateId ? s.entities[gateId] : null
+        if (!gate || !line || line.direct || !line.tiles.length) continue
+        line.tiles.forEach(([tx, ty], k) => {
+          const ti = tileIndex(map, tx, ty)
+          if (queueRuns.has(ti)) return
+          const toward = (ox: number, oy: number) => DIRS.findIndex(([dx, dy]) => dx === ox - tx && dy === oy - ty)
+          const before = k > 0 ? line.tiles[k - 1] : null, after = k + 1 < line.tiles.length ? line.tiles[k + 1] : null
+          const openings: number[] = []
+          if (k === 0) openings.push(toward(gate.x, gate.y))
+          if (line.entry && line.join && line.entry[0] === tx && line.entry[1] === ty) openings.push(toward(line.join[0], line.join[1]))
+          queueRuns.set(ti, { prev: before ? toward(before[0], before[1]) : -1, next: after ? toward(after[0], after[1]) : -1, openings: openings.filter(d => d >= 0) })
+        })
+      }
+    }
+    const layouts = new Map<number, QueueLayout>()
+    const layoutAt = (x: number, y: number) => {
+      const i = tileIndex(map, x, y)
+      let layout = layouts.get(i)
+      if (!layout) {
+        const run = queueRuns.get(i)
+        layout = queueLayout(map, x, y, run?.openings ?? [], run ? { prev: run.prev, next: run.next } : null)
+        layouts.set(i, layout)
+      }
+      return layout
+    }
     for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
       const i = tileIndex(map, x, y)
       const [a, b, c, d] = tileCorners(map, x, y)
@@ -324,27 +361,30 @@ export class ParkRenderer {
           const mx = (x + 0.5 + dx * 0.5) * TILE, my = (y + 0.5 + dy * 0.5) * TILE
           return Math.abs(pathHeightAt(map, mx - dx * 0.01, my - dy * 0.01, TILE) - pathHeightAt(map, mx + dx * 0.01, my + dy * 0.01, TILE)) > 0.15
         }) as [boolean, boolean, boolean, boolean]
+        const layout = kind === 2 ? layoutAt(x, y) : null
+        const rails = layout?.rails.map((rail, side) => {
+          if (!rail) return false
+          // One railing per shared edge: the tile on the +x/+y side draws it.
+          const nx = x + DIRS[side][0], ny = y + DIRS[side][1]
+          return side < 2 || !inMap(map, nx, ny) || map.path[tileIndex(map, nx, ny)] !== 2 || !layoutAt(nx, ny).rails[(side + 2) % 4]
+        }) as [boolean, boolean, boolean, boolean] | undefined
         const cornerZ = (u: number, v: number) => corner(u, v)[2] - lift
         addPathTile(paths, x, y, [cornerZ(0, 0), cornerZ(1, 0), cornerZ(1, 1), cornerZ(0, 1)], {
           kind, fill, edge, open,
+          rails,
           supports: !map.obj[i] && !s.trackCells.get(i)?.length,
           ground: (u, v) => groundHeightAt(map, (x + u) * TILE, (y + v) * TILE, TILE),
         })
         const e = 0.08
         const sides: [number, number, [number, number, number, number]][] = [[1, 0, [1 - e, 0, 1, 1]], [0, 1, [0, 1 - e, 1, 1]], [-1, 0, [0, 0, e, 1]], [0, -1, [0, 0, 1, e]]]
-        for (const [dx, dy, [u0, v0, u1, v1]] of sides) {
+        sides.forEach(([dx, dy, [u0, v0, u1, v1]], side) => {
           const nx = x + dx, ny = y + dy
           const other = inMap(map, nx, ny) ? map.path[tileIndex(map, nx, ny)] : 0
-          if (other === kind || kind === 3) continue
+          if (kind === 3 || (other === kind && !layout?.rails[side])) return
           const up = (u: number, v: number): Vec3 => { const p = corner(u, v); p[2] += 0.02; return p }
           paths.quad(null, up(u0, v0), up(u1, v0), up(u1, v1), up(u0, v1), edge)
-        }
-        if (kind === 2) {
-          for (const t of [0.33, 0.66]) {
-            const up = (u: number, v: number): Vec3 => { const p = corner(u, v); p[2] += 0.025; return p }
-            paths.quad(null, up(t - 0.015, 0.05), up(t + 0.015, 0.05), up(t + 0.015, 0.95), up(t - 0.015, 0.95), QUEUE_EDGE)
-          }
-        }
+        })
+        if (layout) addQueueMarkings(paths, corner, layout, QUEUE_EDGE)
       }
       grid.line(P(x, y, a + 0.06), P(x + 1, y, b + 0.06), [0.1, 0.12, 0.1]); grid.line(P(x, y, a + 0.06), P(x, y + 1, d + 0.06), [0.1, 0.12, 0.1])
     }
@@ -427,13 +467,25 @@ export class ParkRenderer {
     const key = `${kind}:${w}x${h}:${def.waves ? wave ?? def.waves : ''}`
     let m = this.rideModels.get(key)
     if (!m) {
-      const model = kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : waterRideModel(kind, w, h) ?? flatRideModel(kind, w, h)
+      const model = decorateRide(kind, kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : waterRideModel(kind, w, h) ?? flatRideModel(kind, w, h), w, h)
       model.base.bakeAO(0.6)
       for (const part of model.parts) part.builder.bakeAO(0.45)
       m = { base: this.g.upload(model.base), parts: model.parts.map(p => ({ mesh: this.g.upload(p.builder), anim: p.anim })) }
       this.rideModels.set(key, m)
     }
     return m
+  }
+
+  /** The ride's colors in slot order, as linear-ish RGB for the shader. */
+  private slotColors(e: Entity): Vec3[] {
+    const park = this.state?.parks[e.park]
+    const key = `${e.id}:${e.kind}:${e.ride ?? e.style}:${e.scheme ?? ''}:${JSON.stringify(e.colors ?? null)}:${e.color ?? ''}:${e.trackColor ?? ''}:${e.supportColor ?? ''}:${e.trainColor ?? ''}:${this.schemesKey}`
+    const cached = this.slotCache.get(key)
+    if (cached) return cached
+    const colors = rideColors(e, park).map(hexColor)
+    if (this.slotCache.size > 400) this.slotCache.clear()
+    this.slotCache.set(key, colors)
+    return colors
   }
 
   private flatMatrix(e: Entity) {
@@ -628,6 +680,21 @@ export class ParkRenderer {
         if (inverted) b.tube([[p[0], p[1], top], [p[0] - u[0] * 0.2, p[1] - u[1] * 0.2, p[2] + 0.2]], 0.15, supportColor, 5)
       }
     }
+    const lightEvery = Math.max(1, Math.round((trackType === 'coaster' ? 2.4 : 3) / path.ds))
+    for (let i = 0; i < path.count; i += lightEvery) {
+      const { p, u, r } = at(i)
+      const off = trackType === 'coaster' ? 0.72 : trackType === 'kart' ? 1.55 : trackType === 'river' ? 1.4 : 0.95
+      const lift = inverted ? 0.15 : 0.12
+      const phase = (i / path.count * 12) % 1
+      for (const side of [1, -1]) bulb(b, null, p[0] + r[0] * off * side + u[0] * lift, p[1] + r[1] * off * side + u[1] * lift, p[2] + r[2] * off * side + u[2] * lift, 0.09, LIGHTS, side > 0 ? phase : (phase + 0.5) % 1, 0)
+    }
+    if (trackType === 'coaster') {
+      const glow: Vec3[] = []
+      const glowStep = Math.max(1, Math.round(1.2 / path.ds))
+      for (let i = 0; i < path.count; i += glowStep) { const { p, u } = at(i); glow.push([p[0] - u[0] * 0.62, p[1] - u[1] * 0.62, p[2] - u[2] * 0.62]) }
+      if (path.closed && glow.length) glow.push(glow[0])
+      if (glow.length > 1) neonTube(b, glow, 0.05, GLOW, 4)
+    }
     const poses = trackPoses(e)
     e.pieces!.forEach((piece, index) => {
       if (piece.sp !== 'station') return
@@ -642,6 +709,7 @@ export class ParkRenderer {
         b.box(m, -1.6, side * 1.95, z - 0.1, 0.2, 0.2, 3.8, C.white)
       }
       b.box(m, 0, 0, z + 3.6, TILE + 0.2, 4.6, 0.25, hexColor(s.parks[e.park]?.color ?? '#d8432f'))
+      for (const side of [-1, 1]) bulbRun(b, m, [-TILE / 2, side * 2.3, z + 3.72], [TILE / 2, side * 2.3, z + 3.72], 7, 0.09, LIGHTS, 1, side > 0 ? 0 : 0.5, 0)
       void sx; void sy
     })
     return b
@@ -679,7 +747,7 @@ export class ParkRenderer {
     const sunScatter = sunColor.map((v, i) => v * 0.32 + horizon[i] * 0.4) as Vec3
     const exposure = 0.34 + (1 - daylight) * 0.85 + overcast * 0.12
     const dome = (c: Vec3) => c.map(v => v * 1.9) as Vec3
-    return { sunDir, sunColor, sky, ground, horizon, fog: dome(horizon), fogDensity: rain ? 0.0026 : cloudy ? 0.0012 : 0.0005, fogFalloff: 0.014, sunScatter: dome(sunScatter), skyTop: dome(skyTop), skyBottom: dome(horizon), exposure, shadow, wind: rain ? 0.14 : cloudy ? 0.09 : 0.05 }
+    return { sunDir, sunColor, sky, ground, horizon, fog: dome(horizon), fogDensity: rain ? 0.0026 : cloudy ? 0.0012 : 0.0005, fogFalloff: 0.014, sunScatter: dome(sunScatter), skyTop: dome(skyTop), skyBottom: dome(horizon), exposure, shadow, wind: rain ? 0.14 : cloudy ? 0.09 : 0.05, neon: 1.1 + (1 - daylight) * 0.5 + overcast * 0.3 }
   }
 
   isNight() { const f = this.state?.time.dayFraction ?? 0.4; return f > 0.84 || f < 0.22 }
@@ -793,6 +861,7 @@ export class ParkRenderer {
 
   private drawWorld(dt: number) {
     const s = this.state!, g = this.g
+    this.schemesKey = JSON.stringify(s.parks.map(p => p.schemes ?? null))
     g.draw(this.terrain, undefined, { ground: 1 })
     g.draw(this.paths, undefined, { ground: 0.55 })
     const night = this.isNight()
@@ -876,10 +945,10 @@ export class ParkRenderer {
     const model = this.rideModel(e.ride as string, e.size, e.wave)
     const base = this.flatMatrix(e)
     const c = this.clock(e, dt)
-    const tint = hexColor(e.color ?? FLAT_TINTS[e.ride as string] ?? '#d8432f')
+    const slots = this.slotColors(e)
     const anim = { spin: c.spin, phase: c.phase, timer: c.timer, running: c.phase === 'running' && e.status !== 'broken', speed: c.speed }
-    this.g.draw(model.base, base, { tint, highlight })
-    model.parts.forEach((p, i) => this.g.draw(p.mesh, mat4.multiply(base, p.anim(anim, i)), { tint, highlight }))
+    this.g.draw(model.base, base, { slots, highlight })
+    model.parts.forEach((p, i) => this.g.draw(p.mesh, mat4.multiply(base, p.anim(anim, i)), { slots, highlight }))
   }
 
   private drawCoaster(e: Entity, dt: number, highlight?: [number, number, number, number]) {
@@ -887,10 +956,11 @@ export class ParkRenderer {
     const style = COASTER_STYLES[e.style!]
     const bb = cache.bounds, eye = this.eyePos
     const near = !!bb && this.settings.trackDetail > 0 && Math.hypot(bb[0] - eye[0], bb[1] - eye[1], bb[2] - eye[2]) - bb[3] < this.settings.trackDetail
-    this.g.draw(near ? this.nearTrack(e, cache) : cache.track ?? null, undefined, { highlight })
+    const slots = this.slotColors(e)
+    this.g.draw(near ? this.nearTrack(e, cache) : cache.track ?? null, undefined, { highlight, slots, tint: WHITE })
     if (!cache.path || !e.complete) return
     if (style.trackType === 'kart') {
-      const tint = hexColor(e.trainColor ?? style.train)
+      const tint = slots[0]
       for (const [index, kart] of (e.trains ?? []).entries()) {
         const c = this.clock(e, dt, index)
         if (kart.phase === 'loading' || kart.phase === 'unloading' || kart.phase === 'waiting' || kart.phase === 'holding') c.trainS = kart.s
@@ -904,13 +974,13 @@ export class ParkRenderer {
         const t: Vec3 = [p.tx, p.ty, p.tz], u: Vec3 = [p.ux, p.uy, p.uz]
         const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
         const riders = kart.ridersCount ?? kart.riders.length
-        const lane = index % 2 === 0 ? -0.55 : 0.55
+        const lane = kartLane(index)
         this.g.draw(this.carMesh(e.style!, true, riders), mat4.basis([p.x + r[0] * lane, p.y + r[1] * lane, p.z + r[2] * lane], t, r, u), { tint, highlight })
       }
       return
     }
     const L = cache.path.length
-    const tint = hexColor(e.trainColor ?? style.train)
+    const tint = slots[0]
     for (const [trainIndex, train] of (e.trains ?? []).entries()) {
       const c = this.clock(e, dt, trainIndex)
       if (train.phase === 'loading' || train.phase === 'unloading' || train.phase === 'waiting' || train.phase === 'holding') c.trainS = train.s
@@ -1017,11 +1087,18 @@ export class ParkRenderer {
         const fill = piece.kind === 2 ? QUEUE_COLOR : piece.kind === 3 ? hexColor('#b39a73') : piece.kind === 4 ? hexColor('#8b6038') : PATH_COLOR
         const edge = piece.kind === 2 ? QUEUE_EDGE : piece.kind === 3 ? hexColor('#786247') : piece.kind === 4 ? hexColor('#563b27') : PATH_EDGE
         const back = (piece.dir + 2) % 4
-        addPathTile(b, piece.x, piece.y, ghostCorners(map, piece), {
+        const corners = ghostCorners(map, piece)
+        const sides = [0, 1, 2, 3].map(d => d !== piece.dir && d !== back) as [boolean, boolean, boolean, boolean]
+        addPathTile(b, piece.x, piece.y, corners, {
           kind: piece.kind, fill, edge,
-          open: [0, 1, 2, 3].map(d => d !== piece.dir && d !== back) as [boolean, boolean, boolean, boolean],
+          open: sides,
+          rails: piece.kind === 2 ? sides : undefined,
           ground: (u, v) => groundHeightAt(map, (piece.x + u) * TILE, (piece.y + v) * TILE, TILE),
         })
+        if (piece.kind === 2) {
+          const deck = (u: number, v: number): Vec3 => [(piece.x + u) * TILE, (piece.y + v) * TILE, corners[0] * (1 - u) * (1 - v) + corners[1] * u * (1 - v) + corners[2] * u * v + corners[3] * (1 - u) * v + 0.07]
+          addQueueMarkings(b, deck, { prev: back, next: piece.dir, axis: piece.dir % 2, bend: false }, QUEUE_EDGE)
+        }
       }
       this.pathGhostMesh = this.g.upload(b, this.pathGhostMesh)
     }
@@ -1073,8 +1150,9 @@ export class ParkRenderer {
       const model = this.rideModel(gh.kind, gh.size, gh.wave)
       const m = this.flatMatrix({ id: 0, type: 'ride', kind: 'flat', ride: gh.kind, x: gh.x, y: gh.y, rot: gh.rot, park: 0, ...(gh.size ? { size: gh.size } : {}) } as Entity)
       const anim = { spin: 0, phase: 'loading', timer: 0, running: false, speed: 0 }
-      g.draw(model.base, m, { alpha: 0.6, highlight: color, tint: hexColor(FLAT_TINTS[gh.kind]) })
-      model.parts.forEach((part, i) => g.draw(part.mesh, mat4.multiply(m, part.anim(anim, i)), { alpha: 0.6, highlight: color, tint: hexColor(FLAT_TINTS[gh.kind]) }))
+      const slots = this.slotColors({ id: 0, type: 'ride', kind: 'flat', ride: gh.kind, x: gh.x, y: gh.y, park: 0 } as Entity)
+      g.draw(model.base, m, { alpha: 0.6, highlight: color, slots })
+      model.parts.forEach((part, i) => g.draw(part.mesh, mat4.multiply(m, part.anim(anim, i)), { alpha: 0.6, highlight: color, slots }))
       return
     }
     if (!inMap(map, gh.x, gh.y)) return

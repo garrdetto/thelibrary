@@ -1,6 +1,6 @@
 import { FLAT_RIDES, COASTER_STYLES, STALLS } from './catalog.mjs'
 import { clamp, stateRandom, MONTHS, DAY_SECONDS, SIM_STEP } from './util.mjs'
-import { CAR_GAP, stepTrain } from './track.mjs'
+import { CAR_GAP, stepTrain, kartRestS } from './track.mjs'
 import { addNews, emptyLedger, entityCost, electricityTiles, ridePath, objectiveText } from './state.mjs'
 import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
@@ -153,9 +153,8 @@ function updateKarts(state, ride, dt) {
   const path = ridePath(state, ride)
   if (!path) return
   if (ride.trains.length !== ride.cars) {
-    const rest = Math.max(0.5, path.stationEnd - 0.6)
     ride.trains = Array.from({ length: ride.cars }, (_, index) => ({
-      s: Math.max(0.5, rest - index * CAR_GAP), v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0, pace: 0.94 + (index % 7) * 0.02,
+      s: kartRestS(path, index), v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0, pace: 0.94 + (index % 7) * 0.02,
     }))
   }
   let stalled = false
@@ -180,7 +179,7 @@ function updateKarts(state, ride, dt) {
     if (result === 'arrived') {
       unload(state, ride, kart.riders)
       kart.phase = 'loading'; kart.timer = 0; kart.v = 0; kart.lap = 0; kart.stalled = 0
-      kart.s = Math.max(0.5, path.stationEnd - 0.6 - index * CAR_GAP)
+      kart.s = kartRestS(path, index)
       maybeBreak(state, ride)
     } else if (result === 'stalled') { stalled = true; break }
   }

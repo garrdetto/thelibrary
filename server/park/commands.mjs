@@ -3,11 +3,13 @@ import { autoComplete } from './autotrack.mjs'
 import { DIRS, UNIT, clamp } from './util.mjs'
 import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners, pathHeightAt, PATH_STEP_LIMIT, STAIR_STEP_LIMIT, SLOPE_RISE, STAIR_RISE } from './terrain.mjs'
 import { isWalkPath } from './terrain.mjs'
-import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP } from './track.mjs'
+import { nextPathOrder } from './queues.mjs'
+import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP, KART_LIMIT, kartCount, kartRestS } from './track.mjs'
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
 import { mechanicJobDistance } from './guests.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
 import { flatSpec, validFlatSize } from './flatspec.mjs'
+import { SCHEME_COUNT, ROLES, rideSlots, rideColors, parkSchemes, sanitizeScheme } from './palette.mjs'
 import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_FLOOR_LIMIT, hotelSpec, hotelOrientedFits, hotelEntranceFor, hotelHeight, hotelRateLimits, hotelResizeCost, hotelRefurbishCost, addonCost } from './hotels.mjs'
 
 const MAX_RECT = 32
@@ -221,14 +223,14 @@ function finishCoaster(state, ride) {
   ride.rev = (ride.rev ?? 0) + 1
   const style = COASTER_STYLES[ride.style]
   const stationLength = ride.pieces.filter(p => p.sp === 'station').length
-  ride.cars = ride.carsSet ? clamp(ride.cars, 1, style.trackType === 'kart' ? 14 : 10) : clamp(stationLength + 1, 2, style.trackType === 'kart' ? 14 : 10)
+  ride.cars = style.trackType === 'kart' ? (ride.carsSet ? clamp(ride.cars, 1, KART_LIMIT) : kartCount(stationLength)) : ride.carsSet ? clamp(ride.cars, 1, 10) : clamp(stationLength + 1, 2, 10)
   const path = ridePath(state, ride)
   const stats = path ? rideStatsFromRun(path, style, style.trackType === 'kart' ? 1 : ride.cars) : { valid: false }
   ride.stats = stats
   ride.trains = style.trackType === 'kart'
     ? Array.from({ length: ride.cars }, (_, index) => {
       const kart = makeTrain()
-      if (path) kart.s = Math.max(0.5, path.stationEnd - 0.6 - index * CAR_GAP)
+      if (path) kart.s = kartRestS(path, index)
       kart.pace = 0.94 + (index % 7) * 0.02
       return kart
     })
@@ -406,7 +408,11 @@ const HANDLERS = {
     if (!tiles.length) return fail(blocked ?? 'There is already a path here.')
     const cost = tiles.length * ({ 1: COSTS.path, 2: COSTS.queue, 3: 18, 4: 24 }[kind])
     if (!canAfford(state, park, cost)) return fail(`You need $${cost} to build that.`)
-    for (const i of tiles) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = kind === 1 ? cmd.color ?? -1 : -1; if (kind === 2) map.pathAdd[i] = 0 }
+    const startX = clamp(Math.round(cmd.x0), 0, map.w - 1), startY = clamp(Math.round(cmd.y0), 0, map.h - 1)
+    const fromStart = i => Math.abs(i % map.w - startX) + Math.abs(Math.floor(i / map.w) - startY)
+    tiles.sort((a, b) => fromStart(a) - fromStart(b) || a - b)
+    let order = nextPathOrder(map)
+    for (const i of tiles) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = kind === 1 ? cmd.color ?? -1 : -1; map.pathOrder[i] = order++; if (kind === 2) map.pathAdd[i] = 0 }
     spend(state, park, cost, 'construction')
     pathsChanged(state)
     return ok({ cost, warning: blocked })
@@ -432,20 +438,20 @@ const HANDLERS = {
     const p = state.parks[park]
     const saved = new Map()
     const before = { cash: p.cash, construction: p.month.construction, structVersion: state.structVersion, pathVersion: state.pathVersion }
-    const touch = i => { if (!saved.has(i)) saved.set(i, [map.path[i], map.pathElevation[i], map.pathColor[i], map.pathAdd[i]]) }
+    const touch = i => { if (!saved.has(i)) saved.set(i, [map.path[i], map.pathElevation[i], map.pathColor[i], map.pathAdd[i], map.pathOrder[i]]) }
     const rollback = () => {
-      for (const [i, [kind, elevation, color, add]] of saved) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = color; map.pathAdd[i] = add }
+      for (const [i, [kind, elevation, color, add, order]] of saved) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = color; map.pathAdd[i] = add; map.pathOrder[i] = order }
       p.cash = before.cash; p.month.construction = before.construction
       state.structVersion = before.structVersion; state.pathVersion = before.pathVersion; state.fields.clear()
     }
     const visited = new Set([start])
     let budget = 3000, cost = 0, pieces = 0
     const place = (ni, nx, ny, kind, elevation) => {
-      const was = [map.path[ni], map.pathElevation[ni], map.pathColor[ni], map.pathAdd[ni]], cash = p.cash, construction = p.month.construction
+      const was = [map.path[ni], map.pathElevation[ni], map.pathColor[ni], map.pathAdd[ni], map.pathOrder[ni]], cash = p.cash, construction = p.month.construction
       touch(ni)
       const res = HANDLERS.path(state, { t: 'path', kind, elevation, color: cmd.color, x0: nx, y0: ny, x1: nx, y1: ny }, park)
       if (!res.ok) return null
-      return () => { map.path[ni] = was[0]; map.pathElevation[ni] = was[1]; map.pathColor[ni] = was[2]; map.pathAdd[ni] = was[3]; p.cash = cash; p.month.construction = construction; state.fields.clear() }
+      return () => { map.path[ni] = was[0]; map.pathElevation[ni] = was[1]; map.pathColor[ni] = was[2]; map.pathAdd[ni] = was[3]; map.pathOrder[ni] = was[4]; p.cash = cash; p.month.construction = construction; state.fields.clear() }
     }
     const search = (x, y, dir, exit, sloped, depth) => {
       if (--budget < 0 || depth > 96) return false
@@ -520,7 +526,7 @@ const HANDLERS = {
     for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
       const i = tileIndex(map, x, y)
       if (!map.path[i] || map.owner[i] !== park) continue
-      map.path[i] = 0; map.pathElevation[i] = 0; map.pathColor[i] = -1; map.pathAdd[i] = 0; map.litter[i] = 0; count++
+      map.path[i] = 0; map.pathElevation[i] = 0; map.pathColor[i] = -1; map.pathAdd[i] = 0; map.pathOrder[i] = 0; map.litter[i] = 0; count++
     }
     if (!count) return fail('There is no footpath of yours here.')
     pathsChanged(state)
@@ -631,7 +637,7 @@ const HANDLERS = {
     const ride = {
       id, type: 'ride', kind: 'flat', ride: cmd.ride, x: cmd.x, y: cmd.y, rot: cmd.rot, park, name: nextName(state, def.name), price: def.price, status: 'closed',
       entrance: 0, exit: 0, queue: [], riders: [], cycle: { phase: 'loading', timer: 0 }, reliability: 100, downtime: 0, revenue: 0, totalRiders: 0, monthRiders: 0,
-      built: state.time.seconds, color: null, stats: { valid: true, ...spec.stats }, brokenAt: 0, mechanic: 0, cycles: 0,
+      built: state.time.seconds, color: null, colors: null, scheme: null, stats: { valid: true, ...spec.stats }, brokenAt: 0, mechanic: 0, cycles: 0,
       ...(size ? { size } : {}), ...(wave ? { wave } : {}),
     }
     state.entities[id] = ride
@@ -835,7 +841,7 @@ const HANDLERS = {
       id, type: 'ride', kind: 'coaster', style: cmd.style, x: cmd.x, y: cmd.y, park, name: nextName(state, style.name), price: 2.5, status: 'closed',
       start: { x: cmd.x, y: cmd.y, dir: cmd.dir, h: Math.round(ground / 0.5) + 1 + (cmd.style === 'inverted' ? INVERTED_STATION_LIFT : 0) }, pieces: [], complete: false, trains: [], cars: 3, spent: 0, rev: 0,
       entrance: 0, exit: 0, queue: [], riders: [], cycle: { phase: 'loading', timer: 0 }, reliability: 100, downtime: 0, revenue: 0, totalRiders: 0, monthRiders: 0,
-      built: state.time.seconds, color: null, stats: null, carsSet: false, brokenAt: 0, mechanic: 0, cycles: 0,
+      built: state.time.seconds, color: null, colors: null, scheme: null, stats: null, carsSet: false, brokenAt: 0, mechanic: 0, cycles: 0,
     }
     state.entities[id] = ride
     let total = cost
@@ -946,7 +952,40 @@ const HANDLERS = {
       if (cmd[field] !== undefined) {
         if (typeof cmd[field] !== 'string' || !/^#[0-9a-f]{6}$/i.test(cmd[field])) return fail('Choose a valid ride color.')
         ride[field] = cmd[field]
+        if (ride.colors) { const key = field === 'trackColor' ? 'track' : field === 'supportColor' ? 'support' : 'main'; delete ride.colors[key]; if (!Object.keys(ride.colors).length) ride.colors = null }
+        ride.scheme = null
       }
+    }
+    if (cmd.scheme !== undefined) {
+      if (cmd.scheme !== null && !isInt(cmd.scheme, 0, SCHEME_COUNT - 1)) return fail('Choose one of the park color schemes.')
+      ride.scheme = cmd.scheme
+      if (cmd.scheme !== null && cmd.colors === undefined) ride.colors = null
+    }
+    if (cmd.colors !== undefined) {
+      if (cmd.colors === null) ride.colors = null
+      else {
+        if (typeof cmd.colors !== 'object' || Array.isArray(cmd.colors)) return fail('Choose valid ride colors.')
+        const keys = new Set(rideSlots(ride).map(s => s.key))
+        const next = { ...(ride.colors ?? {}) }
+        for (const [key, value] of Object.entries(cmd.colors)) {
+          if (!keys.has(key)) return fail('That part of the ride cannot be recolored.')
+          if (value === null) { delete next[key]; continue }
+          if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) return fail('Choose a valid ride color.')
+          next[key] = value.toLowerCase()
+        }
+        if (Number.isInteger(ride.scheme) && cmd.scheme === undefined) {
+          const resolved = rideColors(ride, state.parks[park])
+          rideSlots(ride).forEach((s, i) => { if (!(s.key in next) && !(cmd.colors[s.key] === null)) next[s.key] = resolved[i] })
+          ride.scheme = null
+        }
+        ride.colors = Object.keys(next).length ? next : null
+      }
+    }
+    if (ride.kind === 'coaster' && (cmd.colors !== undefined || cmd.scheme !== undefined)) {
+      const resolved = rideColors(ride, state.parks[park]), slots = rideSlots(ride)
+      ride.trainColor = resolved[slots.findIndex(s => s.key === 'main')]
+      ride.trackColor = resolved[slots.findIndex(s => s.key === 'track')]
+      ride.supportColor = resolved[slots.findIndex(s => s.key === 'support')]
     }
     if (cmd.cars !== undefined) {
       const style = ride.kind === 'coaster' ? COASTER_STYLES[ride.style] : null
@@ -1095,6 +1134,28 @@ const HANDLERS = {
       p.name = cmd.name.trim().slice(0, 32)
       p.named = true
       if (!wasNamed && state.speed === 0) state.speed = 1
+    }
+    if (cmd.scheme !== undefined) {
+      const edit = cmd.scheme
+      if (!edit || typeof edit !== 'object' || !isInt(edit.index, 0, SCHEME_COUNT - 1)) return fail('Choose one of the three park color schemes.')
+      const schemes = parkSchemes(p), current = schemes[edit.index]
+      if (edit.name !== undefined && (typeof edit.name !== 'string' || !edit.name.trim())) return fail('Give the color scheme a name.')
+      if (edit.colors !== undefined) {
+        if (!edit.colors || typeof edit.colors !== 'object') return fail('Choose valid scheme colors.')
+        for (const [role, value] of Object.entries(edit.colors)) {
+          if (!ROLES.includes(role)) return fail('That scheme color does not exist.')
+          if (typeof value !== 'string' || !/^#[0-9a-f]{6}$/i.test(value)) return fail('Choose a valid scheme color.')
+        }
+      }
+      schemes[edit.index] = sanitizeScheme({ name: edit.name ?? current.name, colors: { ...current.colors, ...(edit.colors ?? {}) } }, current)
+      p.schemes = schemes
+      for (const e of Object.values(state.entities)) {
+        if (e.type !== 'ride' || e.park !== park || e.kind !== 'coaster' || e.scheme !== edit.index) continue
+        const resolved = rideColors(e, p), slots = rideSlots(e)
+        e.trainColor = resolved[slots.findIndex(s => s.key === 'main')]
+        e.trackColor = resolved[slots.findIndex(s => s.key === 'track')]
+        e.supportColor = resolved[slots.findIndex(s => s.key === 'support')]
+      }
     }
     return ok()
   },

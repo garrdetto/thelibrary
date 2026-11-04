@@ -11,11 +11,12 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor, kartCount } from '../../../server/park/index.mjs'
 import { WaveControl } from './WaveControl'
 import { RideComments } from './RideComments'
 import { ResortCards, ResortSummary, ResortPortfolio, HotelWindowBody } from './ResortPanel'
 import { GuestCapacity } from './GuestCapacity'
+import { RideColors, SchemeEditor } from './RideColors'
 import { planPiece, startEnd, anchorEnd, pathHeading } from '@/lib/park/pathBuilder'
 import type { PathBuild, PathEnd, PathPlan, PathSegment } from '@/lib/park/pathBuilder'
 import type { Entity, Piece, Staff } from '../../../server/park/index.mjs'
@@ -908,6 +909,9 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
           {park.thoughts.length ? <ul className="pk-thoughts">{park.thoughts.map(([t, n]) => <li key={t}><span>{t}</span><b>{n}</b></li>)}</ul> : <p className="pk-hint">No strong opinions yet.</p>}
           <p className="pk-label">Marketing</p>
           <div className="pk-chips">{Object.entries(MARKETING).map(([id, m]) => { const live = park.marketing.find(c => c.kind === id); return <button key={id} disabled={Boolean(live)} onClick={() => void run({ t: 'market', kind: id })}>{m.name} · {money(m.cost)}{live ? ` · ${Math.ceil((live.until - state.time.seconds) / 40)}d left` : ''}</button> })}</div>
+          <p className="pk-label">Color schemes</p>
+          <p className="pk-hint">Pick a scheme from any ride's color combo list. Changing a color here repaints every ride using it.</p>
+          <SchemeEditor park={park} run={run} readOnly={viewOnly} />
           <p className="pk-label">Rides</p>
           <ul className="pk-list">{myRides.map(r => <li key={r.id}><button onClick={() => { setSelection({ kind: 'entity', id: r.id }); focusOn(r.x, r.y) }}>{r.name}</button><small className={`pk-status pk-${r.status}`}>{r.kind === 'coaster' && !r.complete ? 'Building' : r.status}</small></li>)}</ul>
         </div>
@@ -1021,7 +1025,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">
       <strong>{tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize ? `${FLAT_RIDES[tool.ride].name} · ${flatQuote ? `${flatQuote.w}×${flatQuote.h} · ${money(flatQuote.cost)} · ${flatQuote.capacity} swimmers` : 'Drag to set the size'}` : tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
-      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.style === 'kart' ? `${tool.length + 1} karts` : `${Math.min(tool.length + 1, 10)}-car train`} · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
+      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.style === 'kart' ? `${kartCount(tool.length)} karts` : `${Math.min(tool.length + 1, 10)}-car train`} · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
       {tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize && <span>Drag from corner to corner, {FLAT_RIDES[tool.ride].resize!.min.join('×')} to {FLAT_RIDES[tool.ride].resize!.max.join('×')}</span>}
       {((tool.kind === 'flat' && !FLAT_RIDES[tool.ride].resize) || tool.kind === 'stall' || tool.kind === 'scenery' || tool.kind === 'coaster') && <button onClick={rotateTool}><RotateCw size={14} /> Rotate</button>}
       <button onClick={() => { setTool({ kind: 'select' }); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>
@@ -1058,11 +1062,11 @@ function RideWindow({ ride, session, readOnly, onClose, run, onBuild, onGate, ri
   const mechanics = session.state.staff.filter(s => s.role === 'mechanic' && s.park === session.park)
   const reachableMechanic = mechanics.some(s => mechanicJobDistance(session.state, s, ride) >= 0)
   const value = rideValue(ride)
-  const colors = ['#d8432f', '#3a77d0', '#3fae5c', '#f2c230', '#9b51e0', '#f08a24', '#1fb5b0', '#e85d9b', '#2e2e36', '#f3f1ea']
   return <Window title={ride.name ?? 'Ride'} onClose={onClose}>
     {editing ? <form className="pk-chat-form" onSubmit={e => { e.preventDefault(); void run({ t: 'rideSet', id: ride.id, name }); setEditing(false) }}><input value={name} maxLength={32} onChange={e => setName(e.target.value)} aria-label="Ride name" /><button className="pk-btn">Rename</button></form> : <p className="pk-hint">{rideName}{!readOnly && <> · <button className="pk-inline" onClick={() => { setName(ride.name ?? ''); setEditing(true) }}>rename</button></>}</p>}
     <div className="pk-status-row"><span className={`pk-status pk-${ride.status}`}>{coaster && !ride.complete ? 'Under construction' : ride.status === 'broken' ? 'Broken down' : ride.status === 'open' ? 'Open' : 'Closed'}</span>
       {!readOnly && ride.status !== 'broken' && (!coaster || ride.complete) && <button className={`pk-btn ${ride.status === 'open' ? '' : 'pk-btn-go'}`} onClick={() => void run({ t: 'rideSet', id: ride.id, status: ride.status === 'open' ? 'closed' : 'open' })}>{ride.status === 'open' ? 'Close ride' : 'Open ride'}</button>}</div>
+    {!readOnly && <RideColors ride={ride} park={session.state.parks[ride.park]} run={run} />}
     {st?.valid ? <dl className="pk-dl">
       <dt>Excitement</dt><dd>{st.e.toFixed(2)} ({level(st.e)})</dd><dt>Intensity</dt><dd>{st.i.toFixed(2)} ({level(st.i)})</dd><dt>Nausea</dt><dd>{st.n.toFixed(2)} ({level(st.n)})</dd>
       {coaster && <><dt>Top speed</dt><dd>{st.maxSpeed} km/h</dd><dt>Length</dt><dd>{st.length} m</dd><dt>Ride time</dt><dd>{st.rideTime} s</dd><dt>Drops</dt><dd>{st.drops} (highest {st.highestDrop} m)</dd><dt>Inversions</dt><dd>{st.inversions}</dd><dt>G-forces</dt><dd>+{st.maxG} / {st.minG} · lateral {st.latG}</dd><dt>Air time</dt><dd>{st.airtime} s</dd></>}
@@ -1074,14 +1078,6 @@ function RideWindow({ ride, session, readOnly, onClose, run, onBuild, onGate, ri
     {ride.kind === 'flat' && ride.size && <p className="pk-hint">{ride.size[0]}×{ride.size[1]} squares</p>}
     {!readOnly && rollerCoaster && <p className="pk-hint">Trains: 2 sets · {ride.cars ?? 3} cars each</p>}
     {!readOnly && rollerCoaster && <div className="pk-row"><span>Cars per train</span><button aria-label="Fewer cars per train" disabled={(ride.cars ?? 3) <= 1} onClick={() => void run({ t: 'rideSet', id: ride.id, cars: Math.max(1, (ride.cars ?? 3) - 1) })}><Minus size={13} /></button><strong>{ride.cars ?? 3} / 10</strong><button aria-label="More cars per train" disabled={(ride.cars ?? 3) >= 10} onClick={() => void run({ t: 'rideSet', id: ride.id, cars: Math.min(10, (ride.cars ?? 3) + 1) })}><Plus size={13} /></button></div>}
-    {!readOnly && coaster ? <div className="pk-ride-colors">
-      <label className="pk-field"><span>Track color</span><input type="color" value={ride.trackColor ?? ride.color ?? COASTER_STYLES[ride.style!].track} onChange={event => void run({ t: 'rideSet', id: ride.id, trackColor: event.target.value })} /></label>
-      <label className="pk-field"><span>Support color</span><input type="color" value={ride.supportColor ?? COASTER_STYLES[ride.style!].support} onChange={event => void run({ t: 'rideSet', id: ride.id, supportColor: event.target.value })} /></label>
-      <label className="pk-field"><span>Train color</span><input type="color" value={ride.trainColor ?? COASTER_STYLES[ride.style!].train} onChange={event => void run({ t: 'rideSet', id: ride.id, trainColor: event.target.value })} /></label>
-    </div> : !readOnly && <div className="pk-ride-paint">
-      <label className="pk-field"><span>Ride color</span><input type="color" value={ride.color ?? colors[0]} onChange={event => void run({ t: 'rideSet', id: ride.id, color: event.target.value })} /></label>
-      <div className="pk-swatches">{colors.map(c => <button key={c} style={{ background: c }} aria-label={`Paint ${c}`} className={ride.color === c ? 'on' : ''} onClick={() => void run({ t: 'rideSet', id: ride.id, color: c })} />)}</div>
-    </div>}
     {!readOnly && <div className="pk-actions">
       {coaster && !ride.complete && <button className="pk-btn pk-btn-go" onClick={onBuild}><Wrench size={13} /> Build track</button>}
       {coaster && !ride.complete && (ride.pieces?.length ?? 0) > 0 && <button className="pk-btn" onClick={() => void run({ t: 'unpiece', ride: ride.id })}><Undo2 size={13} /> Remove last</button>}
