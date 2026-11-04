@@ -52,7 +52,9 @@ canvas#c{display:block;width:100%;height:100%}
 #keys{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);font-size:12px;color:rgba(255,255,255,.75);text-shadow:0 1px 3px #000;white-space:nowrap}
 #mirrorFrame{position:absolute;top:8px;left:50%;transform:translateX(-50%);border:3px solid #1b1b1b;border-radius:10px;box-shadow:0 3px 12px rgba(0,0,0,.6),inset 0 0 0 1px rgba(255,255,255,.15)}
 #menus{position:absolute;inset:0;pointer-events:none}
-.scr{position:absolute;left:24px;top:24px;max-height:calc(100% - 48px);width:min(390px,calc(100% - 48px));padding:22px;overflow:auto;pointer-events:auto}
+.scr{position:absolute;left:24px;top:24px;max-height:calc(100% - 48px);width:min(480px,calc(100% - 48px));padding:22px;overflow:auto;pointer-events:auto}
+#scrGarage{width:min(800px,calc(100% - 48px))}
+.gcols{display:grid;grid-template-columns:1fr 1fr;gap:0 22px}
 .scr h1{font:900 34px/1 "Arial Black",Impact,sans-serif;margin:0 0 6px;letter-spacing:-1px}
 .scr h1 em{color:var(--acc);font-style:normal}
 .scr h2{font:900 22px "Arial Black",sans-serif;margin:0 0 12px}
@@ -128,7 +130,7 @@ input[type=color]{padding:2px;height:38px}
 .gpreset[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
 #scrGarage button:focus-visible,#scrGarage input:focus-visible,#scrGarage select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
 @media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}
-  #scrGarage{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%;padding:16px}}
+  #scrGarage{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%;padding:16px}.gcols{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -189,6 +191,7 @@ input[type=color]{padding:2px;height:38px}
   </div>
   <div id="scrGarage" class="scr panel hidden">
     <h2>Garage</h2>
+    <div class="gcols"><div>
     <div class="f" id="gVehL">Vehicle</div>
     <div class="gview gveh" id="gVeh" role="group" aria-labelledby="gVehL"><button type="button" data-gveh="truck" aria-pressed="true">Race Truck</button><button type="button" data-gveh="car" aria-pressed="false">Super Late Model</button></div>
     <div class="gview" role="group" aria-label="Camera"><button type="button" data-gview="door" aria-pressed="true">Door</button><button type="button" data-gview="roof" aria-pressed="false">Roof</button><button type="button" data-gview="rear" aria-pressed="false">Rear</button><button type="button" data-gview="spin" aria-pressed="false">Spin</button></div>
@@ -202,6 +205,7 @@ input[type=color]{padding:2px;height:38px}
     <label class="f" for="gSize">Size</label>
     <div class="gsize"><input type="range" id="gSize" min="60" max="150" step="5" aria-describedby="gSizeNote"><output id="gSizeOut" for="gSize"></output></div>
     <p class="gnote" id="gSizeNote"></p>
+    </div><div>
     <div class="f" id="gFontL">Font</div><div class="gtiles" id="gFonts" role="group" aria-labelledby="gFontL"></div>
     <div class="f" id="gStyleL">Style</div><div class="gtiles" id="gStyles" role="group" aria-labelledby="gStyleL"></div>
     <div class="f" id="gColL">Number colors</div><div class="gpresets" id="gPresets" role="group" aria-labelledby="gColL"></div>
@@ -209,6 +213,7 @@ input[type=color]{padding:2px;height:38px}
     <p class="gnote" id="gColorNote"></p>
     <div class="f" id="gPlaceL">Placement</div>
     <div class="gplace" role="group" aria-labelledby="gPlaceL"><button type="button" data-gplace="numDoors" aria-pressed="true">Doors</button><button type="button" data-gplace="numRoof" aria-pressed="true">Roof</button><button type="button" data-gplace="numTail" aria-pressed="true" id="gTailBtn">Tailgate</button></div>
+    </div></div>
     <button class="btn" data-act="rand">Randomize everything</button>
     <div class="nav"><button class="btn navb" data-act="back">&larr; BACK</button><button class="btn pri navb" data-act="back">SAVE &#10003;</button></div>
   </div>
