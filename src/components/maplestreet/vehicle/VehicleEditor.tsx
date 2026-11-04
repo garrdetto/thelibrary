@@ -1,20 +1,24 @@
-import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Component, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { ChevronLeft, ChevronRight, Gauge, LoaderCircle, Move3d, Pipette, RotateCw, Ruler, Upload, WandSparkles } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Gauge, Lasso, LoaderCircle, Move3d, Pipette, Plus, RotateCw, Ruler, SquarePen, Undo2, Upload, WandSparkles, X } from 'lucide-react'
 import type { Object3D } from 'three'
 import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { BUNDLED_VEHICLES } from '../../../../modules-src/maplestreet/shared/BundledVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
-import { fetchStoreVehicles, publishStoreVehicle, suggestVehicleParts, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
+import { fetchStoreVehicleFiles, fetchStoreVehicles, publishStoreVehicle, suggestVehicleParts, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
 import type { AssetStatus } from '@/lib/maplestreet-vehicles'
 import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from '../AssetStatusActions'
 import { MeshyPanel } from '../MeshyPanel'
 import type { MeshySourceOption } from '../MeshyPanel'
 import { defaultPart, PART_LABEL, partOf, withPart } from './draft'
 import type { PartKey } from './draft'
-import { DRIVE_TEMPLATES, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, REFERENCE_KINDS, REFERENCE_LABEL, ROUTE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
+import { DRIVE_TEMPLATES, draftFromRecord, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, REFERENCE_KINDS, REFERENCE_LABEL, ROUTE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
+import { DEFAULT_SMOOTH, exportScene, SMOOTH_LIMITS } from './bodySmooth'
+import type { Px, SelectionReport, SmoothSettings } from './bodySmooth'
+import { SmoothOverlay } from './DentSmoother'
+import type { SmootherApi } from './DentSmoother'
 import type { Draft, DriveTemplate, MarkerId, ReferenceKind } from './draft'
 import type { ShrinkReport } from './modelTools'
 import { TestDrive } from './TestDrive'
@@ -26,7 +30,7 @@ const MARKERS: { id: MarkerId; label: string }[] = [
   { id: 'head', label: 'Headlight' }, { id: 'tail', label: 'Taillight' }, { id: 'hitch', label: 'Tow hitch' },
 ]
 const STEPS = [
-  { id: 'placement', label: 'Placement' }, { id: 'drive', label: 'Driving' }, { id: 'wheels', label: 'Wheels' },
+  { id: 'placement', label: 'Placement' }, { id: 'body', label: 'Body' }, { id: 'drive', label: 'Driving' }, { id: 'wheels', label: 'Wheels' },
   { id: 'markers', label: 'Seat & lights' }, { id: 'paint', label: 'Paint' }, { id: 'dealer', label: 'Dealer & traffic' }, { id: 'size', label: 'File size' },
 ] as const
 type Step = (typeof STEPS)[number]['id']
@@ -75,6 +79,13 @@ export default function VehicleEditor() {
   const fitted = useRef(false)
   const modelScene = useRef<Object3D | null>(null)
   const onScene = useCallback((scene: Object3D | null) => { modelScene.current = scene }, [])
+  const [editing, setEditing] = useState<CustomVehicleRecord | null>(null)
+  const pendingRecord = useRef<CustomVehicleRecord | null>(null)
+  const smoother = useRef<SmootherApi | null>(null)
+  const [lasso, setLasso] = useState(false)
+  const [selection, setSelection] = useState<SelectionReport | null>(null)
+  const [smooth, setSmooth] = useState<SmoothSettings>(DEFAULT_SMOOTH)
+  const [, bodyChanged] = useReducer((n: number) => n + 1, 0)
 
   const patch = useCallback((changes: Partial<Draft>) => { setDraft(current => ({ ...current, ...changes })); setMeasured(null) }, [])
 
@@ -101,6 +112,7 @@ export default function VehicleEditor() {
     if (!/\.(glb|gltf)$/i.test(chosen.name)) { setStatus({ tone: 'error', text: 'Choose a .glb or .gltf file.' }); return }
     if (chosen.size > 60 * 1024 * 1024) { setStatus({ tone: 'error', text: 'That file is over 60 MB. Remesh it in Meshy or reduce it before uploading.' }); return }
     fitted.current = false
+    setLasso(false); setSelection(null); bodyChanged()
     setInfo(null)
     setFile(chosen)
     setUrl(URL.createObjectURL(chosen))
@@ -114,6 +126,13 @@ export default function VehicleEditor() {
 
   const onInfo = useCallback((next: ModelInfo) => {
     setInfo(next)
+    const record = pendingRecord.current
+    if (record) {
+      pendingRecord.current = null
+      fitted.current = true
+      setDraft(draftFromRecord(record, next.raw, next.center))
+      return
+    }
     if (!fitted.current) {
       fitted.current = true
       const yaw = next.raw.z > next.raw.x * 1.15 ? 1 : 0
@@ -226,12 +245,24 @@ export default function VehicleEditor() {
     setPicking(false)
   }, [])
 
+  /** The model as it should be saved: the chosen file, or the preview scene once dents have been smoothed. */
+  async function sourceBytes() {
+    if (!file) throw new Error('Load a model first.')
+    if (smoother.current?.hasSelection) smoother.current.apply()
+    if (smoother.current?.edits && modelScene.current) {
+      bodyChanged()
+      return exportScene(modelScene.current)
+    }
+    const { toGlb } = await import('./modelTools')
+    return toGlb(file)
+  }
+
   async function shrink() {
     if (!file || !spec) throw new Error('Load a model first.')
-    const { shrinkModel, toGlb } = await import('./modelTools')
+    const { shrinkModel } = await import('./modelTools')
     const s = suspensionFor(draft, length)
-    const wheels = draft.removeWheels ? draft.axles.flatMap(a => [1, -1].map(side => ({ x: a.x, y: s.wheelY - s.rest * 0.8, z: a.halfTrack * side, radius: a.radius, width: a.width }))) : []
-    const result = await shrinkModel(await toGlb(file), { targetTriangles: draft.maxTriangles, maxTexture: draft.maxTexture, cutWheels: wheels.length ? { transform: spec.model, wheels } : null })
+    const wheels = draft.removeWheels && !editing?.wheelsRemoved ? draft.axles.flatMap(a => [1, -1].map(side => ({ x: a.x, y: s.wheelY - s.rest * 0.8, z: a.halfTrack * side, radius: a.radius, width: a.width }))) : []
+    const result = await shrinkModel(await sourceBytes(), { targetTriangles: draft.maxTriangles, maxTexture: draft.maxTexture, cutWheels: wheels.length ? { transform: spec.model, wheels } : null })
     setReport(result.report)
     return result.bytes
   }
@@ -262,8 +293,9 @@ export default function VehicleEditor() {
     try {
       const bytes = await shrink()
       if (bytes.byteLength > LIMITS.modelBytes) throw new Error(`Even after shrinking, the model is ${kb(bytes.byteLength)}. Lower the triangle or texture limits.`)
-      const vehicle = await publishStoreVehicle({ name: draft.name.trim(), spec, model: new Blob([bytes as BlobPart], { type: 'model/gltf-binary' }), wheel: wheelFile, status: target })
-      setVehicles(current => [...(current ?? []), vehicle])
+      const vehicle = await publishStoreVehicle({ id: editing?.id, name: draft.name.trim(), spec, model: new Blob([bytes as BlobPart], { type: 'model/gltf-binary' }), wheel: wheelFile, status: target })
+      setVehicles(current => current?.some(v => v.id === vehicle.id) ? current.map(v => v.id === vehicle.id ? vehicle : v) : [...(current ?? []), vehicle])
+      if (editing) { setEditing(vehicle); setSelection(null); bodyChanged(); setStatus({ tone: 'ok', text: `Saved your changes to “${vehicle.name}”. ${target === 'draft' ? 'It stays a draft until you publish it from the list.' : 'Players get the updated body the next time they load the module.'}` }); return }
       if (target === 'draft') setStatus({ tone: 'ok', text: `Saved “${vehicle.name}” as a draft. Drive it in the developer instance, then publish it from the list below.` })
       else setStatus({ tone: 'ok', text: `Published “${vehicle.name}”. ${vehicle.dealer.forSale ? 'It’s for sale at Maple Motors' : 'It isn’t for sale'}${vehicle.traffic.enabled ? ' and drives around town' : ''} the next time players load the module.` })
     } catch (error) {
@@ -277,6 +309,66 @@ export default function VehicleEditor() {
       setVehicles(current => current?.some(v => v.id === next.id) ? current.map(v => v.id === next.id ? next : v) : [...(current ?? []), next])
     } catch (error) { setListError((error as Error).message) }
   }
+
+  async function openRecord(v: CustomVehicleRecord) {
+    if (busy) return
+    setBusy('open'); setStatus(null); setListError(null)
+    try {
+      const files = await fetchStoreVehicleFiles(v)
+      pendingRecord.current = v
+      setEditing(v)
+      setWheelFile(files.wheel)
+      setReference(v.template)
+      openFile(files.model)
+      setView('build'); setStep('body')
+      setStatus({ tone: 'ok', text: `Editing “${v.name}”. Smooth the body, adjust any step, then save: the vehicle keeps its id, and players who own it keep it.` })
+    } catch (error) {
+      setListError((error as Error).message)
+    } finally { setBusy(null) }
+  }
+
+  function startNew() {
+    pendingRecord.current = null
+    setEditing(null); setFile(null); setUrl(null); setWheelFile(null); setInfo(null); setReport(null); setMeasured(null); setStatus(null)
+    setLasso(false); setSelection(null); bodyChanged()
+    fitted.current = false
+    setDraft(newDraft('sedan', null)); setReference('sedan'); setStep('placement')
+  }
+
+  function closeLasso(polygon: Px[]) {
+    setLasso(false)
+    const api = smoother.current
+    if (!api) return
+    const report = api.select(polygon, smooth.featherPx)
+    if (!report.vertices) { setSelection(null); setStatus({ tone: 'error', text: 'Nothing inside that loop faces the camera. Turn the preview so the dent faces you and draw the loop over the body itself.' }); return }
+    setStatus(null)
+    setSelection(report)
+    api.preview(smooth)
+  }
+
+  function tune(changes: Partial<SmoothSettings>) {
+    const next = { ...smooth, ...changes }
+    setSmooth(next)
+    if (smoother.current?.hasSelection) smoother.current.preview(next)
+  }
+
+  function applySmoothing() {
+    smoother.current?.apply()
+    setSelection(null); bodyChanged(); setReport(null)
+  }
+
+  function clearSmoothing() {
+    smoother.current?.cancel()
+    setSelection(null); setLasso(false)
+  }
+
+  function undoSmoothing() {
+    smoother.current?.undo()
+    setSelection(null); bodyChanged(); setReport(null)
+  }
+
+  const bodyEdits = smoother.current?.edits ?? 0
+  const undoDepth = smoother.current?.undoDepth ?? 0
 
   const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}) })
 
@@ -295,7 +387,7 @@ export default function VehicleEditor() {
 
   return <section className="account-home ms-items ms-veh">
     <span className="section-eyebrow">MAPLE STREET · DEV MODE</span>
-    <h1>Publish vehicles</h1>
+    <h1>{editing ? `Editing ${editing.name}` : 'Publish vehicles'}</h1>
     <div className="adm-viewtabs" role="group" aria-label="Vehicle tools">
       <button type="button" aria-pressed={view === 'build'} className={view === 'build' ? 'is-active' : ''} onClick={() => setView('build')}>Build a vehicle</button>
       <button type="button" aria-pressed={view === 'library'} className={view === 'library' ? 'is-active' : ''} onClick={() => setView('library')}>Your vehicles{allVehicles ? <span>{allVehicles.length}</span> : null}</button>
@@ -309,11 +401,13 @@ export default function VehicleEditor() {
           {url
             ? <ModelErrorBoundary resetKey={url} onError={text => { setStatus({ tone: 'error', text }); setFile(null); setUrl(null) }}>
                 <Suspense fallback={<p className="ms-items-loading" role="status"><LoaderCircle className="spin" size={16}/> Opening model…</p>}>
-                  <VehicleStage url={url} draft={draft} reference={reference} overlap={overlap} selected={selected} picking={picking} onInfo={onInfo} onMarker={onMarker} onPick={onPick} onSelect={setSelected} onScene={onScene}/>
+                  <VehicleStage url={url} draft={draft} reference={reference} overlap={overlap} selected={selected} picking={picking} onInfo={onInfo} onMarker={onMarker} onPick={onPick} onSelect={setSelected} onScene={onScene} smoother={smoother} locked={lasso}/>
                 </Suspense>
               </ModelErrorBoundary>
             : <button type="button" className="ms-items-drop" onClick={() => fileInput.current?.click()}><Upload size={22} aria-hidden/> Choose a vehicle model</button>}
+          {lasso && url && <SmoothOverlay onClose={closeLasso} onCancel={() => setLasso(false)}/>}
           {picking && <p className="ms-veh-hint" role="status"><Pipette size={14} aria-hidden/> Click the part of the model that should take the player’s paint color.</p>}
+          {lasso && <p className="ms-veh-hint" role="status"><Lasso size={14} aria-hidden/> Click around the dent to draw a loop; click the first corner or press Enter to close it, Esc to stop.</p>}
         </div>
 
         <div className="ms-veh-toolbar">
@@ -343,7 +437,8 @@ export default function VehicleEditor() {
       </div>
 
       <div className="ms-items-fields">
-        <label className="ms-items-file">Vehicle model (.glb or .gltf)<input ref={fileInput} type="file" accept=".glb,.gltf" onChange={onFile}/></label>
+        {editing && <p className="ms-veh-editing"><SquarePen size={14} aria-hidden/> <span>Changes save over <strong>{editing.name}</strong>{editing.id.startsWith('bundled-') ? ' (a built-in vehicle)' : ''}.</span> <button type="button" onClick={startNew}><Plus size={14} aria-hidden/> Start a new vehicle</button></p>}
+        <label className="ms-items-file">{editing ? 'Replace the model (.glb or .gltf, optional)' : 'Vehicle model (.glb or .gltf)'}<input ref={fileInput} type="file" accept=".glb,.gltf" onChange={onFile}/></label>
         <label>Name<input value={draft.name} maxLength={LIMITS.nameMax} onChange={event => patch({ name: event.target.value })} required/></label>
 
         <div className="adm-steps" role="group" aria-label="Vehicle settings">
@@ -355,6 +450,23 @@ export default function VehicleEditor() {
           <Num label="Scale" value={draft.scale} step={0.001} min={0.0001} onChange={scale => patch({ scale: Math.max(0.0001, scale) })}/>
           <Num label="Shift along length" suffix="m" value={draft.shiftX} onChange={shiftX => patch({ shiftX })}/>
           <Num label="Lift off the road" suffix="m" value={draft.lift} onChange={lift => patch({ lift })}/>
+        </fieldset>}
+
+        {step === 'body' && <fieldset>
+          <legend>Body dents</legend>
+          <p className="ms-veh-note">Turn the preview until a dent faces you, draw a loop around it, then raise the strength. Only the surface facing the camera moves, edges sharper than the crease angle (panel lines, trim, window frames) stay put, and the loop’s edge blends in so the rest of the design is untouched.</p>
+          <button type="button" onClick={() => { setSelected(null); setPicking(false); setLasso(current => !current) }} aria-pressed={lasso} disabled={!info}><Lasso size={14} aria-hidden/> {lasso ? 'Drawing… (Esc to stop)' : selection ? 'Draw around another dent' : 'Draw around a dent'}</button>
+          {selection && <p className="ms-veh-note" role="status">{selection.vertices.toLocaleString()} vertices selected on {selection.meshes} {selection.meshes === 1 ? 'part' : 'parts'}. The preview updates as you move the sliders.</p>}
+          <Slider label="Strength" min={0} max={1} step={0.01} value={smooth.strength} onChange={strength => tune({ strength })} display={`${Math.round(smooth.strength * 100)}%`}/>
+          <Slider label="Passes (wider dents need more)" min={1} max={SMOOTH_LIMITS.passesMax} step={1} value={smooth.passes} onChange={passes => tune({ passes })} display={String(smooth.passes)}/>
+          <Slider label="Keep creases sharper than" min={SMOOTH_LIMITS.creaseMin} max={SMOOTH_LIMITS.creaseMax} step={1} value={smooth.creaseDeg} onChange={creaseDeg => tune({ creaseDeg })} display={`${smooth.creaseDeg}°`}/>
+          <Slider label="Feather (applies when you draw the next loop)" min={0} max={SMOOTH_LIMITS.featherMax} step={1} value={smooth.featherPx} onChange={featherPx => tune({ featherPx })} display={`${smooth.featherPx} px`}/>
+          <div className="ms-veh-pair">
+            <button type="button" onClick={applySmoothing} disabled={!selection}><Check size={14} aria-hidden/> Keep this smoothing</button>
+            <button type="button" onClick={clearSmoothing} disabled={!selection && !lasso}><X size={14} aria-hidden/> Clear selection</button>
+          </div>
+          <button type="button" onClick={undoSmoothing} disabled={!undoDepth}><Undo2 size={14} aria-hidden/> Undo last smoothing{undoDepth ? ` (${undoDepth})` : ''}</button>
+          {bodyEdits > 0 && <p className="ms-veh-note" role="status">{bodyEdits} smoothing {bodyEdits === 1 ? 'pass is' : 'passes are'} kept. They’re baked into the model when you test drive, save or publish.</p>}
         </fieldset>}
 
         {step === 'drive' && <fieldset>
@@ -466,8 +578,8 @@ export default function VehicleEditor() {
         </div>
 
         <div className="ms-items-submit">
-          <button type="submit" value="draft" className="ms-items-draft" disabled={!ready}>Save as draft</button>
-          <button type="submit" value="published" className="ms-items-publish" disabled={!ready}>{busy === 'publish' ? <><LoaderCircle className="spin" size={16}/> Shrinking and saving…</> : 'Publish vehicle'}</button>
+          {!editing?.id.startsWith('bundled-') && <button type="submit" value="draft" className="ms-items-draft" disabled={!ready}>Save as draft</button>}
+          <button type="submit" value="published" className="ms-items-publish" disabled={!ready}>{busy === 'publish' ? <><LoaderCircle className="spin" size={16}/> Shrinking and saving…</> : editing ? 'Save changes' : 'Publish vehicle'}</button>
         </div>
         {status && <p role={status.tone === 'error' ? 'alert' : 'status'} className={status.tone === 'error' ? 'ms-items-error' : 'ms-items-ok'}>{status.text}</p>}
       </div>
@@ -492,6 +604,7 @@ export default function VehicleEditor() {
         <label className="ms-veh-inline">Price $<input key={`${v.id}-${v.dealer.price}`} type="number" step={100} min={0} max={LIMITS.priceMax} defaultValue={v.dealer.price} style={{ width: '6.5rem' }} onBlur={event => { const price = Math.round(Number(event.target.value)); if (Number.isFinite(price) && price >= 0 && price <= LIMITS.priceMax && price !== v.dealer.price) void change(v, { spec: { ...specOf(v), dealer: { ...v.dealer, price } } }) }}/></label>
         <label className="ms-veh-inline"><input type="checkbox" checked={v.dealer.forSale} onChange={event => void change(v, { spec: { ...specOf(v), dealer: { ...v.dealer, forSale: event.target.checked } } })}/> For sale</label>
         <label className="ms-veh-inline"><input type="checkbox" checked={v.traffic.enabled} onChange={event => void change(v, { spec: { ...specOf(v), traffic: { ...v.traffic, enabled: event.target.checked } } })}/> In traffic</label>
+        <button type="button" onClick={() => void openRecord(v)} disabled={!!busy} title="Open this vehicle in the editor to smooth its body or change any setting">{busy === 'open' && editing?.id !== v.id ? <LoaderCircle className="spin" size={12}/> : <SquarePen size={12} aria-hidden/>} Edit</button>
         <a href={v.modelUrl} download>Model</a>
         <AssetStatusActions status={statusOf(v)} onChange={next => void change(v, { status: next })}/>
       </li>)}

@@ -68,7 +68,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world`; registers published items and vehicles before loading the world and again on `POST /catalog` — `server.ts`.
 - `src/server/routes/maplestreet-items.ts` — `/api/maplestreet-items`: public list (drafts only for the admin with `?drafts=1`), `?model=<id>` serves the .glb from KV, admin multipart publish (POST, `status` draft or published) and status changes (PATCH `status`, or the older `active`) — `api.ts`. Helpers in `src/server/maplestreet-items.ts` and `src/server/gltf-check.ts`.
 - `src/server/maplestreet-assets.ts` — D1 `maplestreet_assets` (migration 0016, also created on first use and back-filled from `maplestreet_items` / `maplestreet_vehicles` with `INSERT OR IGNORE`): one row per published asset with `kind`, `status`, JSON `spec` and `files`; list/get/insert/update and the admin-only draft check — `maplestreet-items.ts`, `maplestreet-vehicles.ts`.
-- `src/server/routes/maplestreet-vehicles.ts` — `/api/maplestreet-vehicles`: public list (retired included with `active: false`), `?model=<id>` / `?wheel=<id>` serve KV `maplestreet-vehicle/<id>[/wheel]`, admin multipart publish (`name`, `spec` JSON, `model`, optional `wheel`) and PATCH (`active`, `name`, `spec`) — `api.ts`. Zod `vehicleSpecSchema` and D1 `maplestreet_vehicles` (migration 0014) in `src/server/maplestreet-vehicles.ts`; `requireMapleAdmin` / `refreshWorldCatalog` in `src/server/maplestreet-admin.ts`.
+- `src/server/routes/maplestreet-vehicles.ts` — `/api/maplestreet-vehicles`: public list (retired included with `active: false`), `?model=<id>` / `?wheel=<id>` serve KV `maplestreet-vehicle/<id>[/wheel]`, admin multipart publish (`name`, `spec` JSON, `model`, optional `wheel`; with `id` it saves over an existing vehicle and bumps the `&v=` on its model URL) and PATCH (`active`, `name`, `spec`) — `api.ts`. Zod `vehicleSpecSchema` and D1 `maplestreet_vehicles` (migration 0014) in `src/server/maplestreet-vehicles.ts`; `requireMapleAdmin` / `refreshWorldCatalog` in `src/server/maplestreet-admin.ts`.
 - `src/server/routes/meshy.ts` — `/api/meshy` (admin only): `?status` (connected, balance, credit table), job list (refreshes unfinished tasks from Meshy), `?model=<job>` (KV `meshy-model/<job>`), POST actions `text`, `image`, `refine`, `remesh`, `retexture`, `cancel`, `hide` — `api.ts`. Meshy client, friendly error mapping and D1 `meshy_jobs` (migration 0015) in `src/server/meshy.ts`; secret `MESHY_API_KEY`, dev-only `MESHY_API_BASE`.
 - `src/server/routes/scores.ts` — `/api/module-scores` GET `?module=`, POST `score` / `reset-records` — `api.ts`.
 - `src/server/routes/songmaker.ts` — `/api/songmaker` AI songs (see songmaker above) — `api.ts`.
@@ -95,6 +95,8 @@ Pinned exactly in `package.json`, bundled by Vite, never loaded from a CDN (Phas
 Vendor chunks, each emitted once and cached across modules: `vendor` (three core + addons + postprocessing), `vendor-webgpu` (three's WebGPU/TSL build and the addons that need it), `vendor-rapier`, `vendor-net` (PeerJS).
 
 - `modules-src/_shared/peer-global.ts` — imports the bundled PeerJS and sets `window.Peer` — sandlot, chess, checkers, shorttrack entries.
+- `modules-src/_shared/adaptive-resolution.js` — `createAdaptiveResolution({ max, min, step, apply })`: dynamic resolution with Fox Plains' thresholds (time-weighted frame time over 22 ms drops a 0.25 step and holds 8 s; under 17.5 ms for 6 s climbs back, never above `max`); `update(dt)` each frame, skipped while the tab is hidden — shorttrack `main.js` (max = the quality setting's ratio, `applyQuality` calls `setMax`), sandlot3d `index.ts` (as `window.__adaptiveResolution`) and `main.js` (max 1.75).
+- `modules-src/_shared/static-batch.js` — `batchStatic(root, exclude)`: merges rigid meshes under a root into one mesh per material (same shadow flags, render order, culling, layers and vertex layout; root-relative transform baked in; skips instanced, skinned, morphing, multi-material and childed meshes; run before first render). Anything that moves, deforms or is toggled on its own must be outside the root or in `exclude`. `?batch=0` turns it off in both modules for comparisons — shorttrack `main.js` (scenery, truck shells excluding body/decals/wheel pivots, each wheel), sandlot3d `index.ts` (as `window.__batchStatic`) and `main.js` (ballpark excluding sky and landing ring; per rig: face features, non-crown hair, beard, cap, helmet, cleats, glove, the off hand and each glove-hand finger).
 
 Engine code imports three only as `three/webgpu` (addons from `three/addons/*` share its core); modules import the engine through `engine/index.ts`.
 
@@ -170,10 +172,10 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 
 ### sandlot3d — Sandlot Sluggers 3D
 - `modules-src/sandlot3d/index.html` — page shell: screens, HUD markup, styles — `vite.modules.ts` (→ `public/modules/sandlot3d.html`).
-- `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE`, then loads `main.js` as a classic script — `index.html`.
+- `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE` and `window.__batchStatic`, then loads `main.js` as a classic script — `index.html`.
 - `modules-src/sandlot3d/three-legacy.ts` — r128-compatible `THREE` over 0.186.1: color management off, linear output, legacy light-intensity scale — `index.ts`.
 - `modules-src/sandlot3d/main.js` — whole module script: scene, `class Rig` athletes (`LimbTube`, `PLAYER_LOOK`, `UNIFORMS`), four ballparks, `window.__ss` — `index.ts` (`?url`).
-- `public/modules/sprites/` (34 files), `public/modules/faces.png` — roster and batter-card art — `main.js` at runtime.
+- `public/modules/sprites/` (34 WebP files) — roster and batter-card art — `main.js` at runtime.
 
 ### maplestreet — Fox Plains (`modules-src/maplestreet/`)
 - `modules-src/maplestreet/index.html` — page shell (start screen, HUD markup, styles), no CDN scripts — `vite.modules.ts` (→ `public/modules/maplestreet.html`).
@@ -352,7 +354,6 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
 - `modules-src/shorttrack/iconic-schemes.js` — the AI field: iconic NASCAR look-alike schemes per car number (`ICONIC_FIELD`, `ICONIC`), knockoff logos (`LOGOS`, `logoCanvas`) and the side/hood painters (`drawSchemeSide`, `drawSchemeHood`) — `main.js`.
 - `modules-src/shorttrack/prison-speedway.js` — Prison Speedway scenery (`buildPrisonSet`: guard towers, curtain wall, razor wire, searchlights, name board; `buildPrisonInfield`: the walled infield cell house with two three-storey cell blocks, four round towers, a barred front gate, barred windows with inmates (instanced) and a `setNight` hook that lights the cells) and the inmate crowd and stand colors — `main.js`.
-- `modules-src/shorttrack/static-batch.js` — `batchStatic(root, exclude)`: merges rigid meshes under a root into one mesh per material (same shadow flags, render order, culling, layers and vertex layout; world/root transform baked in; skips instanced, skinned, morphing, multi-material and childed meshes). Run once on the finished track scenery (excluding the sky and clouds), on each truck shell (excluding the deformable body, decals and wheel pivots) and on each wheel; `?batch=0` turns it off for comparisons — `main.js`.
 - `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
 
 ### pool — 8-Ball Pool

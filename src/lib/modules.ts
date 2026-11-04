@@ -23,8 +23,14 @@ export const embeddedModules = [
 export type EmbeddedModuleId = typeof embeddedModules[number]['id']
 export type ModuleId = EmbeddedModuleId | 'pool' | 'racing' | 'oval' | 'park'
 
+export const withdrawnModuleIds: ReadonlySet<ModuleId> = new Set<ModuleId>(['botwreck'])
+
+export function isModuleAvailable(id: string): boolean {
+  return !withdrawnModuleIds.has(id as ModuleId)
+}
+
 export function isEmbeddedModuleId(value: string): value is EmbeddedModuleId {
-  return embeddedModules.some(item => item.id === value)
+  return isModuleAvailable(value) && embeddedModules.some(item => item.id === value)
 }
 
 export type ModuleSubject = 'Strategy' | 'Physics' | 'Math' | 'Precision' | 'Logic' | 'Creative'

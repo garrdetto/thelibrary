@@ -39,6 +39,7 @@ const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
 const cv=$('gl'),hud=$('hud'),hx=hud.getContext('2d');
 const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(1.75,window.devicePixelRatio||1));
+const adaptRes=window.__adaptiveResolution?window.__adaptiveResolution({max:renderer.getPixelRatio(),min:Math.min(renderer.getPixelRatio(),.75),apply:r=>{renderer.setPixelRatio(r);resize()}}):null;
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(50,1,.3,9000);
@@ -438,6 +439,8 @@ const GEO={cyl:new THREE.CylinderGeometry(1,1,1,16,1),sph:new THREE.SphereGeomet
   // 34" bat for a 6-ft player: knob, thin handle, long taper, barrel, rounded end cap (rig units, root scale makes feet)
   bat:(()=>{const g=lathe([[0,-.05],[.07,-.05],[.075,-.02],[.04,.03],[.038,.75],[.048,1.05],[.075,1.45],[.1,1.8],[.108,2.2],[.108,2.48],[.09,2.56],[0,2.59]],16);g.scale(.73,.73,.73);return g})()};
 const rigs={};
+const BATCH=new URLSearchParams(location.search).get('batch')!=='0'&&typeof window.__batchStatic==='function';
+const batchStatic=(root,exclude)=>BATCH?window.__batchStatic(root,exclude):null;
 const LA=[.74,.68],LL=[.92,.9]; // arm / leg bone lengths (rig units)
 const HEAD_S=[.27*.87,.31*.87,.29*.87];
 class Rig{
@@ -467,15 +470,15 @@ class Rig{
     this.headMat=SKIN('#ffffff');this.paintHead();
     this.head=M(GEO.head,this.headMat);this.head.scale.set(HEAD_S[0]*lk.head,HEAD_S[1]*lk.head,HEAD_S[2]*lk.head);this.head.position.y=.42;this.neck.add(this.head);
     for(const s of[1,-1]){const e=M(GEO.sph,m.skin);e.scale.set(.09,.26,.16);e.position.set(s*.86,-.06,-.06);e.rotation.y=s*.25;this.head.add(e);const lobe=M(GEO.sph,m.skin,false);lobe.scale.set(.6,.35,.5);lobe.position.set(0,-.75,.1);e.add(lobe)}
-    this.face(i);this.buildHair();this.buildHeadwear();
+    this.face(i);batchStatic(this.head);this.buildHair();this.buildHeadwear();
     // limbs: one continuous skinned tube per arm and per leg
     this.arm=[0,1].map(s=>{const sg=s?-1:1,S=ringS(0,LA[0]+LA[1],.05,[-.12,-.09,-.06,-.03,.3,.345,LA[0]+LA[1]+.018,LA[0]+LA[1]+.03,LA[0]+LA[1]+.035]);
       const t=new LimbTube({L1:LA[0],L2:LA[1],join:.12,seg:14,S,R:armProfile(this.lb,true),groups:[[.3,0],[.345,1],[9,2]],mats:[m.sleeve,m.trim,lk.sleeves==='long'?m.undershirt:m.skin]});root.add(t.mesh);t.sg=sg;return t});
     this.leg=[0,1].map(s=>{const sg=s?-1:1,KN=LL[0]+.36,S=ringS(0,LL[0]+LL[1],.055,[-.17,-.13,-.09,-.05,-.02,KN,KN+.35,LL[0]+LL[1]+.02,LL[0]+LL[1]+.032,LL[0]+LL[1]+.035]);
       const t=new LimbTube({L1:LL[0],L2:LL[1],join:.15,seg:16,S,R:legProfile(Math.pow(this.lb,.8)),groups:[[KN,0],[KN+.35,1],[9,2]],mats:[m.pants,m.stirrups,m.socks]});root.add(t.mesh);t.sg=sg;return t});
-    this.hand=[0,1].map(s=>{const h=hand(m.skin,s?1:-1);root.add(h);return h});   // thumb toward the body's front-outer side
-    this.ft=[0,1].map(()=>{const f=cleat(m);root.add(f);return f});
-    this.glove=fieldersGlove(m.glove,m.gloveLace);this.hand[0].add(this.glove);this.glove.visible=false;
+    this.hand=[0,1].map(s=>{const h=hand(m.skin,s?1:-1);if(s)batchStatic(h);else h.userData.fingers.forEach(f=>batchStatic(f));root.add(h);return h});   // thumb toward the body's front-outer side
+    this.ft=[0,1].map(()=>{const f=cleat(m);batchStatic(f);root.add(f);return f});
+    this.glove=fieldersGlove(m.glove,m.gloveLace);batchStatic(this.glove);this.hand[0].add(this.glove);this.glove.visible=false;
     this.bat=M(GEO.bat,STD('#c99a5e',{roughness:.45}));root.add(this.bat);this.bat.visible=false;
     // contact shadow + team ring (kept at their old on-field size)
     this.blob=new THREE.Mesh(blobGeo,new THREE.MeshBasicMaterial({map:blobTex,transparent:true,depthWrite:false,opacity:.9}));this.blob.position.y=.05;this.blob.scale.set(2.2,1,2.2);root.add(this.blob);
@@ -530,7 +533,7 @@ class Rig{
       add(GEO.sph,0,.6,-.05,.86,.5,.86,true);for(let k=0;k<11;k++){const a=PI*.2+k/10*PI*.6;add(GEO.sph,Math.cos(a)*.9,-.08+.05*Math.sin(k*2.3),-Math.sin(a)*.72,.2,.2,.2)}}  // a ring of curls below the cap line
     if(st==='long'){const h=add(GEO.cyl,0,-.42,-.45,.92,1.0,.4);h.scale.set(.92,1.05,.42);h.userData.crown=false}
     if(st==='dreads')for(let k=0;k<11;k++){const a=PI*.12+k/10*PI*.76;const d=add(new THREE.CylinderGeometry(1,.8,1,7),Math.cos(a)*.88,-.35,-Math.sin(a)*.66,.075,1.0,.075);d.rotation.x=-.15}
-    this.buildFacialHair();this.setHeadwear(this.headwear||'cap')}
+    batchStatic(G,G.children.filter(h=>h.userData.crown));this.buildFacialHair();this.setHeadwear(this.headwear||'cap')}
   buildFacialHair(){
     if(this.beardG){this.head.remove(this.beardG);dropGeo(this.beardG)}const G=this.beardG=new THREE.Group();this.head.add(G);
     const f=this.look.facialHair,m=this.mats.hair;if(f==='none'||f==='stubble')return;
@@ -538,7 +541,7 @@ class Rig{
     if(f==='beard'){const g=skullPatch(1.04,PI/2-1.35,2.7,PI*.6,PI*.33,32,12),p=g.attributes.position;  // jaw and chin, with the mouth left clear
       for(let k=0;k<p.count;k++){const x=p.getX(k),y=p.getY(k),z=p.getZ(k);if(z>.5&&Math.abs(x)<.28&&y>-.66&&y<-.4)p.setXYZ(k,x*.97,y,z*.9)}g.computeVertexNormals();add(g)}
     if(f==='goatee'){add(skullPatch(1.035,PI/2-.42,.84,PI*.75,PI*.17,16,8))}
-    if(f==='beard'||f==='goatee'||f==='mustache'){const tube=new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V3(-.27,-.52,.8),V3(-.12,-.41,.95),V3(0,-.4,.98),V3(.12,-.41,.95),V3(.27,-.52,.8)]),16,.05,6);add(tube)}}
+    if(f==='beard'||f==='goatee'||f==='mustache'){const tube=new THREE.TubeGeometry(new THREE.CatmullRomCurve3([V3(-.27,-.52,.8),V3(-.12,-.41,.95),V3(0,-.4,.98),V3(.12,-.41,.95),V3(.27,-.52,.8)]),16,.05,6);add(tube)}batchStatic(G)}
   buildHeadwear(){
     const m=this.mats,H=this.head,add=(g,mat,parent)=>{const o=new THREE.Mesh(g,mat);o.castShadow=true;o.receiveShadow=true;parent.add(o);return o};
     // ball cap: six-panel crown, curved bill, top button, front logo
@@ -556,7 +559,7 @@ class Rig{
     const shell=skullPatch(1.18,0,PI*2,0,PI*.5,32,16),sp=shell.attributes.position;for(let k=0;k<sp.count;k++){const z=sp.getZ(k);if(z<.3)sp.setY(k,sp.getY(k)-.3*sstep(.3,-.9,z))}shell.computeVertexNormals();add(shell,m.helmet,hel);
     const flap=skullPatch(1.19,PI-1.0,2.0,PI*.42,PI*.4,16,10),fp=flap.attributes.position;for(let k=0;k<fp.count;k++){const y=fp.getY(k);if(y<-.25)fp.setX(k,fp.getX(k)*(1+.12*(-.25-y)))}flap.computeVertexNormals();add(flap,m.helmet,hel);
     add(bill(1.1,1.5,.95,.12),m.helmet,hel);
-    const hl=add(new THREE.PlaneGeometry(.5,.5),m.logo,hel);hl.position.set(0,.55,1.08);hl.rotation.x=-.5}
+    const hl=add(new THREE.PlaneGeometry(.5,.5),m.logo,hel);hl.position.set(0,.55,1.08);hl.rotation.x=-.5;batchStatic(cap);batchStatic(hel)}
   setHeadwear(kind){this.headwear=kind;if(this.capG){this.capG.visible=kind==='cap';this.helmetG.visible=kind==='helmet'}
     if(this.hairG)this.hairG.children.forEach(h=>{if(h.userData.crown)h.visible=kind==='none'})}
   paintHead(){const lk=this.look,L=this.L.slice();L[0]=lk.skin;L[1]=lk.hair;L[2]=lk.hairStyle==='curly'?'curly':lk.hairStyle;L[10]=(lk.facialHair==='beard'||lk.facialHair==='stubble')?'b':'';
@@ -681,6 +684,7 @@ function buildWorld(pk){
   if(pk.id==='dome')domeProps();
   landRing=new THREE.Mesh(new THREE.RingGeometry(2.2,3,36).rotateX(-PI/2),new THREE.MeshBasicMaterial({color:0xf4bf3a,transparent:true,opacity:.9,depthWrite:false}));
   landRing.visible=false;world.add(landRing);
+  batchStatic(world,[skyMesh,landRing]);
   setGrade(pk.id==='dome'?'dome':T);drawBoard();
 }
 
@@ -1713,7 +1717,7 @@ function drawTags(now){
 
 /* ================= MAIN LOOP ================= */
 let last=0;
-function frame(real){if(lastReal==null)lastReal=real;vt+=(real-lastReal)*slow;lastReal=real;const now=vt;try{step(now)}catch(e){console.error(e)}requestAnimationFrame(frame)}
+function frame(real){if(lastReal==null)lastReal=real;if(adaptRes&&!document.hidden)adaptRes.update((real-lastReal)/1000);vt+=(real-lastReal)*slow;lastReal=real;const now=vt;try{step(now)}catch(e){console.error(e)}requestAnimationFrame(frame)}
 function step(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
   const due=timers.filter(t=>now>=t.t);if(due.length){timers=timers.filter(t=>now<t.t);due.forEach(t=>t.fn())}

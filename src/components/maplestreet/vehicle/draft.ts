@@ -206,6 +206,42 @@ export function draftSpec(d: Draft, raw: Size3, center: { x: number; z: number; 
   }
 }
 
+/** The editor draft that would publish as this record again, once its model's raw bounds are known (the inverse of `draftSpec`). */
+export function draftFromRecord(v: CustomVehicleRecord, raw: Size3, center: { x: number; z: number; minY: number }): Draft {
+  const yaw = ((Math.round(v.model.yaw / 90) % 4) + 4) % 4
+  const scale = v.model.scale
+  const turned = turnedCenter(center, yaw)
+  const length = turnedSize(raw, yaw).x * scale
+  const draft: Draft = {
+    name: v.name,
+    template: v.template,
+    scale,
+    yaw,
+    shiftX: r2(v.model.x + turned.x * scale),
+    lift: 0,
+    axles: v.physics.axles.map(a => ({ x: a.x, radius: a.radius, width: a.width, halfTrack: a.halfTrack, steer: a.steer, drive: a.drive })),
+    seat: { x: v.physics.seat.x, y: v.physics.seat.y, z: v.physics.seat.z },
+    head: v.lights.head[0] ?? { x: r2(length / 2 - 0.08), y: 0.15, z: 0.6 },
+    tail: v.lights.tail[0] ?? { x: r2(-length / 2 + 0.06), y: 0.25, z: 0.6 },
+    hitch: v.physics.hitch ? { ...v.physics.hitch } : null,
+    mass: v.physics.mass,
+    frictionSlip: v.physics.frictionSlip,
+    maxSteerDeg: Math.round((v.physics.maxSteer * 180) / Math.PI),
+    stiffness: v.physics.suspension.stiffness,
+    topSpeedMph: v.targets.topSpeedMph,
+    zeroToSeconds: v.targets.zeroToSeconds,
+    paint: { ...v.paint },
+    dealer: { ...v.dealer },
+    traffic: { ...v.traffic },
+    removeWheels: v.wheelsRemoved,
+    parts: v.parts ? { doors: v.parts.doors.map(d => ({ ...d })), hood: v.parts.hood ? { ...v.parts.hood } : null, trunk: v.parts.trunk ? { ...v.parts.trunk } : null } : { doors: [], hood: null, trunk: null },
+    maxTriangles: 120000,
+    maxTexture: 2048,
+  }
+  draft.lift = r2(v.model.y + draftRideHeight(draft, length) + center.minY * scale)
+  return draft
+}
+
 /** Center of the raw bounds after the quarter-turn yaw (three.js Y rotation). */
 export function turnedCenter(c: { x: number; z: number }, yaw: number) {
   const a = (yaw * Math.PI) / 2, cos = Math.round(Math.cos(a)), sin = Math.round(Math.sin(a))
