@@ -3,85 +3,147 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>BotWreck 3D</title>
+<title>BotWreck Arena</title>
 <style>
-  :root { --bg: #07090f; --panel: rgba(12, 16, 28, 0.88); --line: rgba(120, 200, 255, 0.22); --accent: #39d0ff; --hot: #ff5a36; --text: #e8f1ff; --muted: #8ea3c0; }
+  :root { --bg: #07090f; --panel: rgba(12, 16, 28, 0.9); --line: rgba(120, 200, 255, 0.22); --accent: #39d0ff; --hot: #ff5a36; --text: #e8f1ff; --muted: #8ea3c0; --ok: #3bff8c; }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: "Rajdhani", "Segoe UI", system-ui, sans-serif; }
   canvas { display: block; }
   .hidden { display: none !important; }
-  #build { position: absolute; top: 0; left: 0; bottom: 0; width: 340px; padding: 22px 20px; background: var(--panel); border-right: 1px solid var(--line); backdrop-filter: blur(8px); overflow-y: auto; z-index: 5; }
-  #build h1 { margin: 0; font-size: 34px; letter-spacing: 2px; font-weight: 800; }
+  button { font: inherit; }
+  button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .bar { display: block; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #b388ff); transition: width .12s; }
+  .bar.hp i { background: linear-gradient(90deg, #ff3b3b, #ffd23b 55%, #3bff8c); background-size: 240px 100%; }
+  .bar.spin i, .bar.energy i { background: linear-gradient(90deg, #ff9a3b, #ff3bd0); }
+
+  #build { position: absolute; top: 0; left: 0; bottom: 0; width: 380px; padding: 20px 18px 24px; background: var(--panel); border-right: 1px solid var(--line); backdrop-filter: blur(8px); overflow-y: auto; z-index: 5; }
+  #build h1 { margin: 0; font-size: 32px; letter-spacing: 2px; font-weight: 800; }
   #build h1 span { color: var(--hot); }
-  #build p.sub { margin: 4px 0 18px; color: var(--muted); font-size: 14px; letter-spacing: 1px; text-transform: uppercase; }
-  .cfg { width: 100%; text-align: left; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: inherit; border-radius: 12px; padding: 14px; margin-bottom: 12px; cursor: pointer; font: inherit; transition: border-color .15s, background .15s, transform .15s; }
-  .cfg:hover { border-color: var(--accent); transform: translateX(3px); }
+  #build p.sub { margin: 2px 0 14px; color: var(--muted); font-size: 13px; letter-spacing: 1px; text-transform: uppercase; }
+  .label { font-size: 12px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin: 14px 0 6px; display: flex; justify-content: space-between; }
+  .cfg { width: 100%; text-align: left; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03); color: inherit; border-radius: 12px; padding: 11px 13px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s, background .15s; }
+  .cfg:hover { border-color: var(--accent); }
   .cfg[aria-pressed="true"] { border-color: var(--accent); background: rgba(57, 208, 255, 0.1); box-shadow: 0 0 0 1px var(--accent) inset; }
-  .cfg h2 { margin: 0 0 2px; font-size: 21px; letter-spacing: 1px; }
+  .cfg h2 { margin: 0 0 1px; font-size: 19px; letter-spacing: 1px; }
   .cfg small { color: var(--muted); font-size: 13px; }
-  .bars { margin-top: 10px; display: grid; grid-template-columns: 62px 1fr; gap: 4px 10px; font-size: 12px; color: var(--muted); align-items: center; }
-  .bar { height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
-  .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), #b388ff); }
-  .paint { display: flex; gap: 8px; margin: 6px 0 18px; flex-wrap: wrap; }
+  .bars { margin-top: 8px; display: grid; grid-template-columns: 62px 1fr; gap: 4px 10px; font-size: 12px; color: var(--muted); align-items: center; }
+  .slot { display: grid; grid-template-columns: 54px 1fr; gap: 2px 10px; align-items: center; margin-bottom: 9px; }
+  .slot span { font-size: 13px; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
+  .slot select { width: 100%; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: #10151f; color: var(--text); font: inherit; font-size: 15px; cursor: pointer; }
+  .slot small { grid-column: 2; color: var(--muted); font-size: 12px; line-height: 1.3; }
+  #weightWrap .bar { height: 8px; }
+  #weightWrap.over { animation: over .5s; }
+  @keyframes over { 0%, 100% { transform: none; } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+  #weightWrap.over .bar i { background: var(--hot); }
+  .paint, .seg { display: flex; gap: 8px; flex-wrap: wrap; }
   .paint button { width: 30px; height: 30px; border-radius: 8px; border: 2px solid transparent; cursor: pointer; }
   .paint button[aria-pressed="true"] { border-color: #fff; }
-  .label { font-size: 12px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; margin-top: 6px; }
-  #spawn { width: 100%; padding: 14px; font: inherit; font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #fff; border: 0; border-radius: 12px; cursor: pointer; background: linear-gradient(135deg, #ff5a36, #ff2d6f); box-shadow: 0 8px 30px rgba(255, 70, 70, 0.35); }
+  .seg button { flex: 1; padding: 8px 0; border-radius: 9px; border: 1px solid var(--line); background: rgba(255,255,255,0.03); color: var(--text); cursor: pointer; font-weight: 700; }
+  .seg button[aria-pressed="true"] { border-color: var(--accent); background: rgba(57, 208, 255, 0.12); }
+  #spawn { width: 100%; margin-top: 18px; padding: 14px; font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #fff; border: 0; border-radius: 12px; cursor: pointer; background: linear-gradient(135deg, #ff5a36, #ff2d6f); box-shadow: 0 8px 30px rgba(255, 70, 70, 0.35); }
   #spawn:hover { filter: brightness(1.1); }
-  .keys { margin-top: 18px; font-size: 13px; color: var(--muted); line-height: 1.8; }
+  .keys { margin-top: 14px; font-size: 13px; color: var(--muted); line-height: 1.8; }
+  .note { margin-top: 10px; font-size: 12px; color: var(--muted); line-height: 1.45; }
   kbd { display: inline-block; min-width: 22px; padding: 0 6px; border: 1px solid var(--line); border-radius: 5px; text-align: center; color: var(--text); background: rgba(255, 255, 255, 0.05); font-family: inherit; }
+
   #hud { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
-  #speed { position: absolute; right: 26px; bottom: 22px; text-align: right; }
-  #speed b { display: block; font-size: 64px; line-height: 1; font-weight: 800; }
-  #speed span { color: var(--muted); letter-spacing: 3px; font-size: 13px; }
-  .meter { position: absolute; left: 24px; bottom: 26px; width: 280px; }
-  .meter div { margin-bottom: 10px; }
-  .meter label { font-size: 12px; letter-spacing: 3px; color: var(--muted); display: flex; justify-content: space-between; }
-  .meter .bar { height: 10px; border-radius: 5px; margin-top: 4px; }
-  #integrity i { background: linear-gradient(90deg, #ff3b3b, #ffd23b 50%, #3bff8c); background-size: 280px 100%; }
-  #boost i { background: linear-gradient(90deg, #ff9a3b, #ff3bd0); }
-  #score { position: absolute; top: 18px; right: 24px; text-align: right; font-size: 14px; letter-spacing: 2px; color: var(--muted); }
-  #score b { display: block; font-size: 30px; color: var(--text); }
-  #toast { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); font-size: 44px; font-weight: 800; letter-spacing: 4px; color: #fff; text-shadow: 0 0 24px rgba(255, 90, 54, 0.9); opacity: 0; transition: opacity .25s; white-space: nowrap; }
-  #topbar { position: absolute; top: 16px; left: 20px; display: flex; gap: 10px; pointer-events: auto; }
-  #topbar button { font: inherit; font-size: 15px; font-weight: 700; letter-spacing: 2px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; cursor: pointer; }
-  #topbar button:hover { border-color: var(--accent); }
-  #help { position: absolute; bottom: 118px; left: 24px; font-size: 13px; color: var(--muted); letter-spacing: 1px; }
-  #touch { position: absolute; left: 0; right: 0; bottom: 90px; display: flex; justify-content: space-between; padding: 0 16px; pointer-events: none; }
-  #touch button { pointer-events: auto; width: 74px; height: 74px; border-radius: 50%; border: 1px solid var(--line); background: rgba(12,16,28,0.6); color: var(--text); font-size: 26px; touch-action: none; }
+  #topbar { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; pointer-events: auto; }
+  #timer { min-width: 96px; text-align: center; font-size: 34px; font-weight: 800; letter-spacing: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 2px 14px; }
+  #topbar button { font-size: 14px; font-weight: 700; letter-spacing: 2px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+  .card { position: absolute; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; width: 250px; }
+  .card h3 { margin: 0 0 6px; font-size: 15px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+  .card label { font-size: 12px; letter-spacing: 2px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 3px; }
+  .card label b { color: var(--text); }
+  .card ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
+  .card li { display: grid; grid-template-columns: 1fr 90px; gap: 8px; align-items: center; font-size: 13px; }
+  .card li em { font-style: normal; color: var(--muted); text-align: right; font-size: 12px; }
+  .card li.gone span { text-decoration: line-through; color: var(--muted); }
+  .card li.out span { color: var(--muted); }
+  .card li i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+  #me { top: 14px; left: 16px; }
+  #me .bar.hp { height: 10px; }
+  #foesCard { top: 14px; right: 16px; }
+  #weapons { position: absolute; left: 16px; bottom: 18px; width: 250px; display: grid; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  #weapons label { font-size: 12px; letter-spacing: 2px; color: var(--muted); display: flex; justify-content: space-between; margin-bottom: 3px; }
+  #weapons label b { color: var(--text); }
+  #feed { position: absolute; right: 16px; bottom: 18px; width: 320px; margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+  #feed li { font-size: 14px; background: rgba(12, 16, 28, 0.72); border-left: 3px solid var(--line); padding: 5px 10px; border-radius: 6px; }
+  #feed li.mine { border-left-color: var(--hot); }
+  #toast { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); font-size: 46px; font-weight: 800; letter-spacing: 4px; color: #fff; text-shadow: 0 0 24px rgba(255, 90, 54, 0.9); opacity: 0; transition: opacity .25s; white-space: nowrap; }
+  #count { position: absolute; top: 34%; left: 50%; transform: translateX(-50%); font-size: 28px; font-weight: 800; letter-spacing: 3px; color: #ffd23b; }
+  #help { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 13px; color: var(--muted); letter-spacing: 1px; white-space: nowrap; }
+  #touch { position: absolute; left: 0; right: 0; bottom: 120px; display: flex; justify-content: space-between; padding: 0 12px; pointer-events: none; }
+  #touch button { pointer-events: auto; width: 66px; height: 66px; border-radius: 50%; border: 1px solid var(--line); background: rgba(12,16,28,0.6); color: var(--text); font-size: 20px; touch-action: none; }
   #touch span { flex: 1; }
+
+  #result { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(4, 6, 10, 0.55); z-index: 6; }
+  #result .box { width: min(560px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 22px 24px; text-align: center; }
+  #resTitle { margin: 0; font-size: 44px; letter-spacing: 4px; }
+  #resTitle.win { color: var(--ok); }
+  #resHow { color: var(--muted); letter-spacing: 1px; margin: 2px 0 14px; }
+  #result table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  #result th { font-size: 11px; letter-spacing: 2px; color: var(--muted); font-weight: 600; text-transform: uppercase; padding: 6px 4px; text-align: left; }
+  #result td { padding: 6px 4px; border-top: 1px solid rgba(255,255,255,0.06); text-align: left; }
+  #result tr.me td { color: var(--accent); font-weight: 700; }
+  #result td i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; }
+  .score { margin: 16px 0 4px; font-size: 13px; letter-spacing: 2px; color: var(--muted); }
+  #resScore { font-size: 38px; font-weight: 800; }
+  .actions { display: flex; gap: 10px; margin-top: 14px; }
+  .actions button { flex: 1; padding: 12px; font-size: 18px; font-weight: 800; letter-spacing: 2px; border-radius: 12px; cursor: pointer; border: 1px solid var(--line); color: var(--text); background: rgba(255,255,255,0.04); }
+  .actions button.primary { border: 0; color: #fff; background: linear-gradient(135deg, #ff5a36, #ff2d6f); }
+
   #loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); z-index: 10; font-size: 22px; letter-spacing: 4px; }
   #loading.err { color: #ff8a8a; text-align: center; padding: 30px; font-size: 18px; letter-spacing: 1px; }
-  @media (max-width: 760px) { #build { width: 100%; height: 56%; top: auto; border-right: 0; border-top: 1px solid var(--line); } .meter { width: 180px; } #speed b { font-size: 44px; } #help { display: none; } }
+  @media (max-width: 760px) {
+    #build { width: 100%; height: 58%; top: auto; border-right: 0; border-top: 1px solid var(--line); }
+    .card { width: 190px; padding: 9px 10px; } .card li { grid-template-columns: 1fr 64px; font-size: 12px; }
+    #weapons { width: 190px; bottom: 210px; } #feed { display: none; } #help { display: none; } #toast { font-size: 30px; }
+  }
+  @media (prefers-reduced-motion: reduce) { #weightWrap.over { animation: none; } .bar i { transition: none; } }
 </style>
 <script src="module-scores.js"></script>
 </head>
 <body>
 <div id="loading">LOADING ARENA…</div>
-<aside id="build" aria-label="Build mode">
-  <h1>BOT<span>WRECK</span> 3D</h1>
-  <p class="sub">Build mode · pick a frame</p>
+<aside id="build" aria-label="Bot builder">
+  <h1>BOT<span>WRECK</span> ARENA</h1>
+  <p class="sub">Build a bot · bolt on weapons · last one running wins</p>
+  <div class="label">Frame</div>
   <div id="configs"></div>
+  <div id="weightWrap"><div class="label"><span>Payload</span><span id="weightText"></span></div><span class="bar"><i id="weightBar"></i></span></div>
+  <div class="label">Weapons &amp; armor</div>
+  <div id="slots"></div>
   <div class="label">Paint</div>
   <div class="paint" id="paint"></div>
-  <button id="spawn">SPAWN &amp; DRIVE</button>
+  <div class="label">Opponents</div>
+  <div class="seg" id="opp"><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button></div>
+  <button id="spawn">ENTER THE ARENA</button>
   <div class="keys">
-    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows drive · <kbd>Space</kbd> handbrake<br>
-    <kbd>Shift</kbd> rocket boost · <kbd>R</kbd> respawn · <kbd>F</kbd> flip upright<br>
-    <kbd>C</kbd> camera · <kbd>B</kbd> back to build mode
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows drive · <kbd>Space</kbd> fire hammer, axe or flipper<br>
+    <kbd>E</kbd> spin saws and spinners up or down · <kbd>F</kbd> self-right · <kbd>C</kbd> camera
   </div>
+  <p class="note">Rams deal damage from impact energy, ½·μ·v², so a heavy bot closing fast hits hardest. Each side's plating soaks hits before the chassis does, and any part can be torn off. A bot that can't move for 10 seconds is counted out.</p>
 </aside>
 <div id="hud" class="hidden">
-  <div id="topbar"><button id="toBuild">◀ BUILD</button><button id="respawn">RESPAWN</button></div>
-  <div id="score">WRECK SCORE<b id="scoreVal">0</b><span id="partsLost">0 parts lost</span></div>
-  <div id="toast"></div>
-  <div id="help">Hit the ramp, ram the wall, blast the red crates.</div>
-  <div class="meter">
-    <div><label>INTEGRITY <span id="intText">100%</span></label><div class="bar" id="integrity"><i style="width:100%"></i></div></div>
-    <div id="boostWrap"><label>BOOST <span id="boostText">100%</span></label><div class="bar" id="boost"><i style="width:100%"></i></div></div>
+  <div id="topbar"><button id="toBuild" aria-label="Back to the builder">◀ BUILD</button><div id="timer" aria-live="off"></div></div>
+  <div class="card" id="me"></div>
+  <div class="card" id="foesCard"><h3>Opponents</h3><ul id="foes"></ul></div>
+  <div id="weapons"></div>
+  <ul id="feed" aria-live="polite"></ul>
+  <div id="toast" aria-live="assertive"></div>
+  <div id="count" class="hidden"></div>
+  <div id="help"><kbd>Space</kbd> fire · <kbd>E</kbd> spin · <kbd>F</kbd> self-right · <kbd>C</kbd> camera</div>
+  <div id="touch" class="hidden"><button data-k="ArrowLeft" aria-label="Turn left">◀</button><button data-k="ArrowRight" aria-label="Turn right">▶</button><span></span><button data-k="KeyF" aria-label="Self-right">⟲</button><button data-k="KeyE" aria-label="Spin weapons">⚙</button><button data-k="Space" aria-label="Fire">✸</button><button data-k="ArrowDown" aria-label="Reverse">▼</button><button data-k="ArrowUp" aria-label="Forward">▲</button></div>
+</div>
+<div id="result" class="hidden" role="dialog" aria-labelledby="resTitle">
+  <div class="box">
+    <h2 id="resTitle"></h2>
+    <div id="resHow"></div>
+    <table><thead><tr><th>Bot</th><th>Frame</th><th>Damage</th><th>KOs</th><th>Left</th></tr></thead><tbody id="resRows"></tbody></table>
+    <div class="score">WRECK SCORE</div><div id="resScore"></div>
+    <div class="actions"><button id="toGarage">BUILDER</button><button id="again" class="primary">REMATCH</button></div>
   </div>
-  <div id="speed"><b id="speedVal">0</b><span>KM/H</span></div>
-  <div id="touch" class="hidden"><button data-k="ArrowLeft" aria-label="Steer left">◀</button><button data-k="ArrowRight" aria-label="Steer right">▶</button><span></span><button data-k="ShiftLeft" aria-label="Boost">⚡</button><button data-k="ArrowDown" aria-label="Reverse">▼</button><button data-k="ArrowUp" aria-label="Accelerate">▲</button></div>
 </div>
 <script type="module" src="./index.ts"></script>
 </body>
