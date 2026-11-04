@@ -94,6 +94,7 @@ Pinned exactly in `package.json`, bundled by Vite, never loaded from a CDN (Phas
 Vendor chunks, each emitted once and cached across modules: `vendor` (three core + addons + postprocessing), `vendor-webgpu` (three's WebGPU/TSL build and the addons that need it), `vendor-rapier`, `vendor-net` (PeerJS).
 
 - `modules-src/_shared/peer-global.ts` — imports the bundled PeerJS and sets `window.Peer` — sandlot, chess, checkers, shorttrack entries.
+- `modules-src/_shared/adaptive-resolution.js` — `createAdaptiveResolution({ max, min, step, apply })`: dynamic resolution with Fox Plains' thresholds (time-weighted frame time over 22 ms drops a 0.25 step and holds 8 s; under 17.5 ms for 6 s climbs back, never above `max`); `update(dt)` each frame, skipped while the tab is hidden — shorttrack `main.js` (max = the quality setting's ratio, `applyQuality` calls `setMax`), sandlot3d `index.ts` (as `window.__adaptiveResolution`) and `main.js` (max 1.75).
 
 Engine code imports three only as `three/webgpu` (addons from `three/addons/*` share its core); modules import the engine through `engine/index.ts`.
 
