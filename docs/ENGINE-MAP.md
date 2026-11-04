@@ -94,6 +94,7 @@ Pinned exactly in `package.json`, bundled by Vite, never loaded from a CDN (Phas
 Vendor chunks, each emitted once and cached across modules: `vendor` (three core + addons + postprocessing), `vendor-webgpu` (three's WebGPU/TSL build and the addons that need it), `vendor-rapier`, `vendor-net` (PeerJS).
 
 - `modules-src/_shared/peer-global.ts` — imports the bundled PeerJS and sets `window.Peer` — sandlot, chess, checkers, shorttrack entries.
+- `modules-src/_shared/static-batch.js` — `batchStatic(root, exclude)`: merges rigid meshes under a root into one mesh per material (same shadow flags, render order, culling, layers and vertex layout; root-relative transform baked in; skips instanced, skinned, morphing, multi-material and childed meshes; run before first render). Anything that moves, deforms or is toggled on its own must be outside the root or in `exclude`. `?batch=0` turns it off in both modules for comparisons — shorttrack `main.js` (scenery, truck shells excluding body/decals/wheel pivots, each wheel), sandlot3d `index.ts` (as `window.__batchStatic`) and `main.js` (ballpark excluding sky and landing ring; per rig: face features, non-crown hair, beard, cap, helmet, cleats, glove, the off hand and each glove-hand finger).
 
 Engine code imports three only as `three/webgpu` (addons from `three/addons/*` share its core); modules import the engine through `engine/index.ts`.
 
@@ -149,10 +150,10 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 
 ### sandlot3d — Sandlot Sluggers 3D
 - `modules-src/sandlot3d/index.html` — page shell: screens, HUD markup, styles — `vite.modules.ts` (→ `public/modules/sandlot3d.html`).
-- `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE`, then loads `main.js` as a classic script — `index.html`.
+- `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE` and `window.__batchStatic`, then loads `main.js` as a classic script — `index.html`.
 - `modules-src/sandlot3d/three-legacy.ts` — r128-compatible `THREE` over 0.186.1: color management off, linear output, legacy light-intensity scale — `index.ts`.
 - `modules-src/sandlot3d/main.js` — whole module script: scene, `class Rig` athletes (`LimbTube`, `PLAYER_LOOK`, `UNIFORMS`), four ballparks, `window.__ss` — `index.ts` (`?url`).
-- `public/modules/sprites/` (34 files), `public/modules/faces.png` — roster and batter-card art — `main.js` at runtime.
+- `public/modules/sprites/` (34 WebP files) — roster and batter-card art — `main.js` at runtime.
 
 ### maplestreet — Fox Plains (`modules-src/maplestreet/`)
 - `modules-src/maplestreet/index.html` — page shell (start screen, HUD markup, styles), no CDN scripts — `vite.modules.ts` (→ `public/modules/maplestreet.html`).
@@ -331,7 +332,6 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
 - `modules-src/shorttrack/iconic-schemes.js` — the AI field: iconic NASCAR look-alike schemes per car number (`ICONIC_FIELD`, `ICONIC`), knockoff logos (`LOGOS`, `logoCanvas`) and the side/hood painters (`drawSchemeSide`, `drawSchemeHood`) — `main.js`.
 - `modules-src/shorttrack/prison-speedway.js` — Prison Speedway scenery (`buildPrisonSet`: guard towers, curtain wall, razor wire, searchlights, name board; `buildPrisonInfield`: the walled infield cell house with two three-storey cell blocks, four round towers, a barred front gate, barred windows with inmates (instanced) and a `setNight` hook that lights the cells) and the inmate crowd and stand colors — `main.js`.
-- `modules-src/shorttrack/static-batch.js` — `batchStatic(root, exclude)`: merges rigid meshes under a root into one mesh per material (same shadow flags, render order, culling, layers and vertex layout; world/root transform baked in; skips instanced, skinned, morphing, multi-material and childed meshes). Run once on the finished track scenery (excluding the sky and clouds), on each truck shell (excluding the deformable body, decals and wheel pivots) and on each wheel; `?batch=0` turns it off for comparisons — `main.js`.
 - `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
 
 ### pool — 8-Ball Pool
