@@ -114,8 +114,8 @@ function staffActivity(staff: Staff) {
 
 const QUALITY_LABEL: Record<ParkQuality, string> = { low: 'Low', medium: 'Medium', high: 'High' }
 
-function Window({ title, onClose, children, wide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
-  return <section className={`pk-window ${wide ? 'pk-window-wide' : ''}`} aria-label={title}><header><strong>{title}</strong><button aria-label="Close" onClick={onClose}><X size={16} /></button></header><div className="pk-window-body">{children}</div></section>
+function Window({ title, onClose, children, wide, extraWide }: { title: string; onClose: () => void; children: ReactNode; wide?: boolean; extraWide?: boolean }) {
+  return <section className={`pk-window ${wide ? 'pk-window-wide' : ''} ${extraWide ? 'pk-window-xwide' : ''}`} aria-label={title}><header><strong>{title}</strong><button aria-label="Close" onClick={onClose}><X size={16} /></button></header><div className="pk-window-body">{children}</div></section>
 }
 
 export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }: { session: ParkSession; onQuit: () => void; signedIn: boolean; onScore?: () => void }) {
@@ -892,8 +892,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <ul className="pk-list">{state.staff.filter(s => s.park === session.park).map(s => <li key={s.id}><button onClick={() => { setSelection({ kind: 'staff', id: s.id }); focusOn(s.x, s.y) }}><i className="pk-swatch" style={{ background: STAFF[s.role].color }} />{s.name}</button><small>{staffActivity(s)}</small></li>)}</ul>
     </Window>}
 
-    {panel === 'park' && <Window title={park.name} onClose={() => togglePanel('park')} wide>
-      <div className="pk-grid2">
+    {panel === 'park' && <Window title={park.name} onClose={() => togglePanel('park')} wide extraWide>
+      <div className="pk-grid3">
         <div>
           <p className="pk-label">Objective</p>
           <p className={`pk-objective pk-${park.status}`}>{objectiveText(park.objective)}{park.status === 'won' ? ' ✔ Complete!' : park.status === 'lost' ? ' ✘ Failed.' : ''}</p>
@@ -909,6 +909,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
           {park.thoughts.length ? <ul className="pk-thoughts">{park.thoughts.map(([t, n]) => <li key={t}><span>{t}</span><b>{n}</b></li>)}</ul> : <p className="pk-hint">No strong opinions yet.</p>}
           <p className="pk-label">Marketing</p>
           <div className="pk-chips">{Object.entries(MARKETING).map(([id, m]) => { const live = park.marketing.find(c => c.kind === id); return <button key={id} disabled={Boolean(live)} onClick={() => void run({ t: 'market', kind: id })}>{m.name} · {money(m.cost)}{live ? ` · ${Math.ceil((live.until - state.time.seconds) / 40)}d left` : ''}</button> })}</div>
+        </div>
+        <div>
           <p className="pk-label">Color schemes</p>
           <p className="pk-hint">Pick a scheme from any ride's color combo list. Changing a color here repaints every ride using it.</p>
           <SchemeEditor park={park} run={run} readOnly={viewOnly} />
