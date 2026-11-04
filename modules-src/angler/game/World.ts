@@ -1,0 +1,183 @@
+/** The running lake: PlayCanvas app, sky, lake scene, the player's boat and angler, the camera and the per-frame update. */
+import { now } from '../shared/Clock'
+import * as pc from 'playcanvas'
+import { Boat, loadBassAssets } from '../scene/Boat'
+import type { BassAssets } from '../scene/Boat'
+import { Character, loadCharacterAssets } from '../scene/Character'
+import type { CharacterAssets, Pose } from '../scene/Character'
+import { LakeScene, seasonFor } from '../scene/LakeScene'
+import { Sky } from '../scene/Sky'
+import { BoatPhysics, newBoatState } from '../systems/BoatPhysics'
+import type { BoatControls } from '../systems/BoatPhysics'
+import { CameraRig } from '../systems/CameraRig'
+import { drivePose, sitPose, standPose } from '../systems/Poses'
+import { LAKES, landingOf } from '../shared/Lakes'
+import type { LakeDef, LakeId } from '../shared/Lakes'
+import { weatherAt } from '../shared/Weather'
+import type { Weather } from '../shared/Weather'
+import { centralTime } from '../shared/Astro'
+import { BOATS, DEFAULT_PAINT } from '../shared/Boats'
+import type { BoatKind, BoatPaint, Seat } from '../shared/Boats'
+import { DEFAULT_LOOK } from '../shared/Wardrobe'
+import type { Look } from '../shared/Wardrobe'
+import { config } from '../config'
+import type { QualityTier } from '../config'
+
+export interface Rider {
+  character: Character
+  seat: number
+  /** Overrides the seat pose (fishing). Returns a pose in character space. */
+  pose?: (time: number) => Pose
+  station?: Seat
+}
+
+export class World {
+  readonly app: pc.Application
+  readonly quality: QualityTier
+  sky!: Sky
+  lake: LakeDef | null = null
+  scene: LakeScene | null = null
+  boat: Boat | null = null
+  physics: BoatPhysics | null = null
+  camera!: CameraRig
+  player: Rider | null = null
+  weather: Weather | null = null
+  characterAssets!: CharacterAssets
+  bassAssets: BassAssets | null = null
+  time = 0
+  anchored = false
+  private skyTimer = 0
+  private weatherTimer = 0
+  private readonly frameHandlers: ((dt: number) => void)[] = []
+  readonly root: pc.Entity
+
+  constructor(readonly canvas: HTMLCanvasElement, quality: QualityTier) {
+    this.quality = quality
+    this.app = new pc.Application(canvas, { graphicsDeviceOptions: { antialias: quality !== 'low', alpha: false, powerPreference: 'high-performance' } })
+    this.app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW)
+    this.app.setCanvasResolution(pc.RESOLUTION_AUTO)
+    this.app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'medium' ? 1.5 : 1)
+    this.app.scene.ambientLight = new pc.Color(0.05, 0.05, 0.06)
+    this.app.scene.lighting.shadowsEnabled = true
+    this.root = new pc.Entity('world')
+    this.app.root.addChild(this.root)
+    const resize = () => this.app.resizeCanvas()
+    addEventListener('resize', resize)
+    this.app.on('update', (dt: number) => this.update(Math.min(dt, 0.1)))
+  }
+
+  async load(onProgress: (text: string) => void): Promise<void> {
+    onProgress('Loading the angler')
+    this.characterAssets = await loadCharacterAssets(config.assets)
+    onProgress('Loading the boat')
+    this.bassAssets = await loadBassAssets(this.app.graphicsDevice, config.assets, this.quality === 'low' ? 1024 : 2048)
+    this.sky = new Sky(this.app, this.quality)
+    this.camera = new CameraRig(this.app, this.canvas.parentElement ?? this.canvas, LAKES['silver-birch'])
+    this.app.start()
+  }
+
+  onFrame(handler: (dt: number) => void): void {
+    this.frameHandlers.push(handler)
+  }
+
+  async enterLake(id: LakeId, boatKind: BoatKind, paint: BoatPaint = DEFAULT_PAINT, look: Look = DEFAULT_LOOK): Promise<void> {
+    this.leaveLake()
+    const lake = LAKES[id]
+    this.lake = lake
+    const date = now()
+    const ct = centralTime(date)
+    const season = seasonFor(ct.month, ct.day)
+    this.scene = new LakeScene(this.app, lake, this.quality, season)
+    this.root.addChild(this.scene.root)
+    this.weather = weatherAt(lake, date)
+    await this.sky.refresh(date, this.weather)
+    this.spawnBoat(boatKind, paint)
+    const character = new Character(this.app, this.characterAssets, { name: 'player' })
+    character.setLook(look)
+    this.player = { character, seat: 0 }
+    this.boat!.hull.addChild(character.entity)
+    this.anchored = false
+    ;(this.camera as unknown as { lake: LakeDef }).lake = lake
+    this.camera.snapBehind(this.physics!.state.heading)
+  }
+
+  spawnBoat(kind: BoatKind, paint: BoatPaint): void {
+    const lake = this.lake!
+    const landing = landingOf(lake)
+    const previous = this.physics?.state
+    this.boat?.root.removeChild(this.player?.character.entity ?? new pc.Entity())
+    this.boat?.destroy()
+    this.boat = new Boat(this.app, kind, paint, this.bassAssets)
+    this.root.addChild(this.boat.root)
+    this.physics = new BoatPhysics(lake, BOATS[kind], previous ? { ...previous, speed: 0 } : newBoatState(landing.x, landing.z, landing.heading))
+    if (this.player) this.boat.hull.addChild(this.player.character.entity)
+  }
+
+  leaveLake(): void {
+    this.player?.character.destroy()
+    this.player = null
+    this.boat?.destroy()
+    this.boat = null
+    this.physics = null
+    this.scene?.root.destroy()
+    this.scene = null
+    this.lake = null
+  }
+
+  controls: BoatControls = { throttle: 0, steer: 0, trolling: false, anchored: false }
+
+  windVector(): { x: number; z: number; speed: number } {
+    const w = this.weather
+    if (!w) return { x: 0, z: 0, speed: 0 }
+    return { x: Math.sin(w.windDir), z: -Math.cos(w.windDir), speed: w.windMph }
+  }
+
+  private update(dt: number): void {
+    this.time += dt
+    if (!this.lake || !this.physics || !this.boat) {
+      for (const h of this.frameHandlers) h(dt)
+      return
+    }
+    const wind = this.windVector()
+    this.controls.anchored = this.anchored
+    this.physics.step(dt, this.controls, wind)
+    const s = this.physics.state
+    this.boat.root.setPosition(s.x, s.heave, s.z)
+    this.boat.root.setEulerAngles(0, (s.heading * 180) / Math.PI, 0)
+    this.boat.hull.setLocalEulerAngles((s.pitch * 180) / Math.PI, 0, (s.roll * 180) / Math.PI)
+    this.boat.setLightsOn(this.sky.state.day < 0.5)
+    this.scene?.update(dt, wind)
+    if (this.player) this.placeRider(this.player)
+    const target = new pc.Vec3(s.x, 1.6 + s.heave, s.z)
+    this.camera.update(dt, target, s.heading, s.speed, !this.anchored)
+    this.skyTimer += dt
+    this.weatherTimer += dt
+    if (this.weatherTimer > config.weatherRefreshSeconds) {
+      this.weatherTimer = 0
+      this.weather = weatherAt(this.lake, now())
+      this.scene?.setWind(this.weather.windMph)
+    }
+    if (this.skyTimer > config.skyRefreshSeconds && this.weather) {
+      this.skyTimer = 0
+      void this.sky.refresh(now(), this.weather)
+    }
+    for (const h of this.frameHandlers) h(dt)
+  }
+
+  placeRider(rider: Rider): void {
+    if (!this.boat) return
+    const spec = this.boat.spec
+    const seat = rider.station ?? spec.seats[rider.seat]
+    const e = rider.character.entity
+    e.setLocalPosition(seat.x, seat.y, seat.z)
+    e.setLocalEulerAngles(0, seat.yaw, 0)
+    let pose: Pose
+    if (rider.pose) pose = rider.pose(this.time)
+    else if (seat.pose === 'drive' && spec.wheel) {
+      const w = spec.wheel
+      pose = drivePose(this.time, [w[0] - seat.x, w[1] - seat.y, w[2] - seat.z], this.controls.steer, seat.seat)
+    } else if (seat.pose === 'drive' || seat.pose === 'sit') pose = sitPose(this.time, seat.seat)
+    else pose = standPose(this.time)
+    rider.character.applyPose(pose)
+  }
+}

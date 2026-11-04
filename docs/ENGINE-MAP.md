@@ -170,6 +170,15 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/demoderby/tests/heat.test.ts`, `tests/CarBodyStub.ts` — headless six- and ten-car heats: cars stay inside the barriers and on the ground, hits dent and damage, every heat ends with one placed winner — `scripts/demoderby-tests.mjs`.
 - `public/images/modules/demoderby.webp` — hub thumbnail — `src/lib/modules.ts`.
 
+### angler — Northwoods Angler (`modules-src/angler/`, PlayCanvas 2.23.3, not on `engine/`)
+
+The only PlayCanvas module: it bundles `playcanvas` from npm (pinned like three.js, never a CDN) and reuses nothing from `engine/`.
+- `tools/build-models.mjs` (`fisherman.mjs`, `boat.mjs`, `meshbin.mjs`) — run by hand: turns the owner's Meshy exports in `assets-src/angler/` (`fisherman.fbx`, `bass-boat.glb`) into `public/modules/angler/`: `fisherman.bin` / `fisherman-lod.bin` (decimated scan, 19-bone auto rig and weights, per-vertex body part / along / around codes and cavity AO) and `bass-boat.bin` with `bass-boat-base.webp`, `bass-boat-paint.png` (hull / cowl / seat trim / carpet / plain classes plus hull livery coordinates; brand decals are painted out) and `bass-boat-rough.webp`. Outputs are committed; `pnpm assets` does not touch them.
+- `shared/` — renderer-free rules also imported by the Worker and tests: `Lakes.ts` (five lakes, `heightAt`, `depthFeetAt`, `bottomAt`, spots, landing, water temperature), `Weather.ts`, `Astro.ts` (sun, moon, phase, Central time), `Clock.ts`, `Random.ts`, `Wardrobe.ts` (looks and palette), `Boats.ts` (boat specs, seats, fishing stations, paint).
+- `scene/` — `MeshBin.ts` (reader), `Character.ts` (skinned fisherman, two-bone IK, hats and sunglasses), `Outfit.ts` (look → fitted bind positions and vertex colours), `RigMath.ts`, `Boat.ts` (bass boat repaint, procedural jon boat and pontoon), `LakeScene.ts` (terrain, water, seasonal forest, reeds, pads, cabins, landing), `Sky.ts` (procedural cubemap sky + env atlas, sun/moon light, fog), `Geo.ts` (vertex-coloured mesh builder and instancing), `Textures.ts`.
+- `systems/` — `BoatPhysics.ts` (planing hull, grounding), `CameraRig.ts`, `Input.ts`, `Poses.ts` (drive, sit, stand and fishing poses).
+- `game/World.ts` (app, lake, boat, riders, frame loop), `game/Game.ts` (screens and HUD), `ui/LakeMap.ts`; tests `tests/*.test.ts` via `scripts/angler-tests.mjs`. `?clock=<ISO date>` previews another time of day (the server always uses real time); `?quality=low|medium|high`.
+
 ### sandlot3d — Sandlot Sluggers 3D
 - `modules-src/sandlot3d/index.html` — page shell: screens, HUD markup, styles — `vite.modules.ts` (→ `public/modules/sandlot3d.html`).
 - `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE` and `window.__batchStatic`, then loads `main.js` as a classic script — `index.html`.
