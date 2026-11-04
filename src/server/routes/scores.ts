@@ -3,7 +3,7 @@ import type { Env } from '../env'
 import { json, readJson, requireSameOrigin } from '../http'
 import { currentUser, requireUser } from '../auth'
 import { canResetRecords } from '../records'
-import { scoredModules } from '../../lib/module-scores'
+import { isScoredModule, scoredModules } from '../../lib/module-scores'
 import type { ScoredModuleId } from '../../lib/module-scores'
 
 const moduleIds = z.enum(Object.keys(scoredModules) as [ScoredModuleId, ...ScoredModuleId[]])
@@ -22,8 +22,18 @@ function leaderboardQuery(module: ScoredModuleId) {
 }
 
 export async function moduleScores(request: Request, env: Env) {
+  if (request.method === 'GET' && new URL(request.url).searchParams.has('popular')) {
+    const counts = await env.DB.prepare('SELECT module, COUNT(*) AS plays FROM module_scores GROUP BY module ORDER BY plays DESC LIMIT 12').all<{ module: string; plays: number }>()
+    const popular = counts.results.filter(row => isScoredModule(row.module)).slice(0, 6)
+    const boards = await Promise.all(popular.map(async row => {
+      const id = row.module as ScoredModuleId
+      const rows = await env.DB.prepare(leaderboardQuery(id).replace('LIMIT 10', 'LIMIT 3')).bind(id).all<{ username: string; value: number }>()
+      return { module: id, plays: row.plays, records: rows.results.map(item => ({ username: item.username, value: item.value })) }
+    }))
+    return json({ popular: boards })
+  }
   if (request.method === 'GET') {
-    const module = moduleIds.parse(new URL(request.url).searchParams.get('module'))
+    const module =moduleIds.parse(new URL(request.url).searchParams.get('module'))
     const user = await currentUser(request, env)
     const aggregate = scoredModules[module].order === 'asc' ? 'MIN' : 'MAX'
     const [rows, personal] = await Promise.all([
