@@ -22,7 +22,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/components/PoolAccount.tsx`, `SignInRibbon.tsx` — sign-in form and ribbon — `index.tsx`, `PoolTable.tsx`, `Racing.tsx`.
 - `src/components/GroupChat.tsx`, `SitePresence.tsx` — floating chat, invites (`meta.invite`), online presence — `index.tsx`, `Racing.tsx`.
 - `src/components/AdminPanel.tsx`, `WorkspaceAdmin.tsx`, `SiteChanges.tsx` — admin tabs: people, site-change chat — `index.tsx`.
-- `public/modules/module-scores.js` — `tlScores.submit(module, value)` → `/api/module-scores`, then `tl-score-saved` to the parent — 2048, Chopper Cave, BotWreck 3D pages.
+- `public/modules/module-scores.js` — `tlScores.submit(module, value)` → `/api/module-scores`, then `tl-score-saved` to the parent — 2048, Chopper Cave, BotWreck 3D and the single-file score modules.
 
 ### Tooling and delivery
 
@@ -70,6 +70,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/maplestreet-vehicles.ts` — `/api/maplestreet-vehicles`: public list (retired included with `active: false`), `?model=<id>` / `?wheel=<id>` serve KV `maplestreet-vehicle/<id>[/wheel]`, admin multipart publish (`name`, `spec` JSON, `model`, optional `wheel`) and PATCH (`active`, `name`, `spec`) — `api.ts`. Zod `vehicleSpecSchema` and D1 `maplestreet_vehicles` (migration 0014) in `src/server/maplestreet-vehicles.ts`; `requireMapleAdmin` / `refreshWorldCatalog` in `src/server/maplestreet-admin.ts`.
 - `src/server/routes/meshy.ts` — `/api/meshy` (admin only): `?status` (connected, balance, credit table), job list (refreshes unfinished tasks from Meshy), `?model=<job>` (KV `meshy-model/<job>`), POST actions `text`, `image`, `refine`, `remesh`, `retexture`, `cancel`, `hide` — `api.ts`. Meshy client, friendly error mapping and D1 `meshy_jobs` (migration 0015) in `src/server/meshy.ts`; secret `MESHY_API_KEY`, dev-only `MESHY_API_BASE`.
 - `src/server/routes/scores.ts` — `/api/module-scores` GET `?module=`, POST `score` / `reset-records` — `api.ts`.
+- `src/server/routes/songmaker.ts` — `/api/songmaker` AI songs (see songmaker above) — `api.ts`.
 - `src/server/routes/chat.ts` — `/api/group-chat` messages, presence, reads, `?count` — `api.ts`.
 - `src/server/routes/studio.ts` — `/api/studio`, `/api/library`, `/api/asset`, `/api/learning`, `/api/lyric-presets` — `api.ts`.
 - `src/server/routes/site-changes.ts` — `/api/site-changes` jobs and workflow dispatch — `api.ts`.
@@ -141,7 +142,8 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `park` | hand-written WebGL2 | `src/lib/park/` |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
-| `2048`, `helicopter` | 2D canvas / DOM | `public/modules/<id>.html` (static) |
+| `2048`, `helicopter`, `alphabet`, `wpm`, `tetradrop`, `bubbles`, `memory`, `simon`, `sudoku`, `minesweeper`, `mathrush`, `blockhead`, `songmaker` | 2D canvas / DOM | `public/modules/<id>.html` (static, shared `module-base.css`) |
+| `party` | DOM + 2D canvas, bundled PeerJS | `modules-src/party/` |
 
 Known baseline issues: `shorttrack` is too busy under software WebGL for Playwright screenshots (gate note, not failure). The `maplestreet` `Buffer is not defined` error is gone now that colyseus.js is bundled.
 
@@ -295,6 +297,32 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 
 ### helicopter — Chopper Cave
 - `public/modules/helicopter.html` — whole module, `tlScores.submit` — hub iframe.
+
+### Single-file score modules
+- `public/modules/module-base.css` — shared tokens, header/stat/panel/overlay/button styles (dark + light) — every page below.
+- `public/modules/alphabet.html` — Alphabet Sprint: a–z run, wrong letters block until Backspace, `tlScores.submit('alphabet', ms)` (lower is better) — hub iframe.
+- `public/modules/wpm.html` — Words Per Minute: 60 s random-word paragraph, net WPM — hub iframe.
+- `public/modules/tetradrop.html` — Tetra Drop: falling-block line clears (7-bag, SRS kicks, hold, ghost), score — hub iframe.
+- `public/modules/bubbles.html` — Bubble Shooter: hex grid, bank shots, drops, descending ceiling, score — hub iframe.
+- `public/modules/memory.html` — Memory Match: 6 × 6 pairs, ms to clear — hub iframe.
+- `public/modules/simon.html` — Echo Sequence: four tone pads, longest sequence — hub iframe.
+- `public/modules/sudoku.html` — Sudoku: unique-solution generator, three levels, Hard no-hint solves are ranked (ms) — hub iframe.
+- `public/modules/minesweeper.html` — Minesweeper: safe first click, chords, Intermediate clears ranked (ms) — hub iframe.
+- `public/modules/mathrush.html` — Math Rush: 60 s scaling arithmetic with streak multipliers, score — hub iframe.
+- `public/modules/blockhead.html` — Blockhead Siege: top-down wave survival, solo or two on one keyboard, score — hub iframe.
+
+### songmaker — Song Maker
+- `public/modules/songmaker.html` — lyrics editor, "Write lyrics" helper, sound options, song list with lazy-loaded playback and MP3 download — hub iframe; calls `/api/songmaker`.
+- `src/server/routes/songmaker.ts` — `/api/songmaker`: GET list + daily quota, `?audio=<id>` (owner-checked KV `song/<userId>/<id>`), POST `create` (Lyria `lyria-3.5`, or `lyria-3-clip-preview` for 30 s clips, through the Gemini Interactions REST API), `write` (lyrics draft with the text model), `delete`. D1 `songmaker_songs` (migration 0019, also created on first use); 5 songs per user per 24 h, admin unlimited — `api.ts`.
+
+### party — Skill Party
+- `modules-src/party/index.html` — page shell and all styles — `vite.modules.ts` (→ `public/modules/party.html`).
+- `modules-src/party/index.ts` — entry; provides `window.Peer`, imports `party.js` — `index.html`.
+- `modules-src/party/party.js` — host-authoritative state machine (lobby → pick → intro → play → results → final), local hot-seat turns, CPU results, PeerJS rooms `tl-party-<code>`, `tl-host`/`tl-room` chat bridge, `?room=` auto-join — `index.ts`.
+- `modules-src/party/contests.js` — the contest list (`CONTESTS`): Quick Draw, Crowd Count, Disc Toss, Type Dash plus `games-a.js` / `games-b.js` — `party.js`.
+- `modules-src/party/games-a.js`, `games-b.js` — themed mini-games (`run({stage, rng, done, bag, who})`, `cpu(rng, skill)`, `fmt`) — `contests.js`.
+- `modules-src/party/kit.js` — seeded `rngFrom`, lifecycle `makeBag`, canvas/keypad helpers, `avatarImage`, `blip` — contests.
+- `modules-src/party/characters.js` — eight original characters and the SVG `avatar()` — `party.js`, contests.
 
 ### shorttrack — Short Track Showdown
 - `modules-src/shorttrack/index.html` — page shell: menus, HUD markup, styles — `vite.modules.ts` (→ `public/modules/shorttrack.html`).

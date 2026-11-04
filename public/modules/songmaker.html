@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Song Maker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="module-base.css">
+<style>
+  main { --width: 980px; }
+  :root { --accent: #ff3b7a; --accent2: #7c5cff; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .panel h2 { margin: 0 0 12px; font: 700 24px Rajdhani, sans-serif; }
+  label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  textarea { width: 100%; min-height: 300px; resize: vertical; line-height: 1.55; font-size: 15px; }
+  input[type="text"], select { width: 100%; }
+  .field { margin-bottom: 10px; }
+  .writer { display: flex; gap: 8px; margin-bottom: 10px; }
+  .writer input { flex: 1; }
+  .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+  .actions .quota { margin-left: auto; color: var(--muted); font-size: 13px; }
+  .msg { min-height: 20px; margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+  .msg.error { color: var(--bad); }
+  .busy { display: none; align-items: center; gap: 12px; padding: 14px; border-radius: 12px; background: var(--cell); margin-top: 12px; }
+  .busy.show { display: flex; }
+  .eq { display: flex; gap: 3px; align-items: flex-end; height: 26px; }
+  .eq i { width: 4px; background: linear-gradient(var(--accent), var(--accent2)); border-radius: 2px; animation: eq 0.9s ease-in-out infinite; }
+  .eq i:nth-child(2) { animation-delay: -.3s; } .eq i:nth-child(3) { animation-delay: -.6s; } .eq i:nth-child(4) { animation-delay: -.15s; } .eq i:nth-child(5) { animation-delay: -.45s; }
+  @keyframes eq { 0%, 100% { height: 6px; } 50% { height: 26px; } }
+  .songs { display: grid; gap: 10px; }
+  .song { padding: 12px; border-radius: 12px; background: var(--cell); border: 1px solid var(--line); }
+  .song.fresh { border-color: var(--accent); }
+  .song h3 { margin: 0; font: 700 20px Rajdhani, sans-serif; }
+  .song small { color: var(--muted); display: block; margin: 2px 0 8px; }
+  .song audio { width: 100%; height: 40px; }
+  .song .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .song .row button, .song .row a { font: 600 12px Inter, sans-serif; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); color: var(--text); background: var(--panel); text-decoration: none; cursor: pointer; }
+  .song pre { white-space: pre-wrap; font: 13px/1.5 Inter, sans-serif; color: var(--muted); max-height: 220px; overflow: auto; margin: 8px 0 0; }
+  .empty { color: var(--muted); font-size: 14px; }
+  .signin { text-align: center; padding: 40px 20px; }
+  @media (max-width: 780px) { .layout { grid-template-columns: 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .eq i { animation: none; height: 14px; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Song Maker</h1><div class="stats"><div class="stat"><span>SONGS LEFT TODAY</span><b id="left">—</b></div></div></header>
+  <div class="bar"><p>Your lyrics, sung by AI. Pick a sound, press <b>Make my song</b>, and get a finished track with vocals.</p></div>
+  <div id="signin" class="panel signin" hidden><h2>Sign in to make songs</h2><p class="empty">Song Maker saves your songs to your account. Sign in on the library page, then come back here.</p></div>
+  <div class="layout" id="app" hidden>
+    <section class="panel">
+      <h2>1. Lyrics</h2>
+      <div class="writer"><input type="text" id="idea" maxlength="600" placeholder="No lyrics yet? Describe an idea, e.g. a road trip with my best friend" aria-label="Song idea"><button id="writeBtn">Write lyrics</button></div>
+      <div class="field"><label for="title">Title (optional)</label><input type="text" id="title" maxlength="80" placeholder="Untitled"></div>
+      <div class="field"><label for="lyrics">Lyrics</label><textarea id="lyrics" maxlength="4000" placeholder="[Verse 1]&#10;Write your lines here&#10;&#10;[Chorus]&#10;The part everybody sings"></textarea></div>
+      <h2>2. Sound</h2>
+      <div class="grid2">
+        <label>Genre<select id="genre"><option value="">Surprise me</option><option>Pop</option><option>Indie pop</option><option>Rock</option><option>Pop-punk</option><option>Hip-hop</option><option>Rap</option><option>R&amp;B</option><option>Country</option><option>Folk</option><option>EDM</option><option>House</option><option>Synthwave</option><option>Lo-fi</option><option>Jazz</option><option>Blues</option><option>Soul</option><option>Funk</option><option>Reggae</option><option>Metal</option><option>Gospel</option><option>Musical theatre</option><option>Kids sing-along</option></select></label>
+        <label>Mood<select id="mood"><option value="">Any</option><option>Happy</option><option>Hype</option><option>Romantic</option><option>Bittersweet</option><option>Sad</option><option>Chill</option><option>Dark</option><option>Epic</option><option>Funny</option><option>Dreamy</option></select></label>
+        <label>Vocals<select id="vocals"><option value="any">Any</option><option value="female">Female</option><option value="male">Male</option><option value="duet">Duet</option><option value="choir">Choir</option></select></label>
+        <label>Tempo<select id="tempo"><option value="any">Any</option><option value="slow">Slow</option><option value="medium">Medium</option><option value="fast">Fast</option></select></label>
+      </div>
+      <div class="field"><label for="style">Extra sound directions (optional)</label><input type="text" id="style" maxlength="400" placeholder="e.g. acoustic guitar, handclaps, big drums in the chorus"></div>
+      <label>Length<select id="length"><option value="full">Full song (about 2–3 minutes)</option><option value="clip">Short clip (30 seconds)</option></select></label>
+      <div class="actions"><button class="primary" id="makeBtn">Make my song</button><span class="quota" id="quota"></span></div>
+      <div class="busy" id="busy" role="status"><div class="eq"><i></i><i></i><i></i><i></i><i></i></div><span id="busyText">Writing the music and recording the vocals… this can take a minute or two.</span></div>
+      <p class="msg" id="msg" aria-live="polite"></p>
+    </section>
+    <section class="panel">
+      <h2>Your songs</h2>
+      <div class="songs" id="songs"><p class="empty">Loading…</p></div>
+    </section>
+  </div>
+  <footer>Songs are generated by AI and saved to your account (up to five a day). Use your own words: real artist names and copyrighted lyrics are declined by the music service. Every song carries an inaudible AI watermark.</footer>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
+let songs = [], quota = null, busy = false, freshId = null;
+
+async function api(body) {
+  const response = await fetch('/api/songmaker', body ? { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { credentials: 'same-origin' });
+  const data = await response.json().catch(() => ({ error: 'The service could not be reached. Please try again shortly.' }));
+  if (!response.ok) { const err = new Error(data.error || 'Something went wrong.'); err.status = response.status; throw err; }
+  return data;
+}
+function say(text, error) { $('msg').textContent = text || ''; $('msg').className = 'msg' + (error ? ' error' : ''); }
+function showQuota() {
+  const left = quota && quota.remaining != null ? quota.remaining : null;
+  $('left').textContent = left == null ? '∞' : left;
+  $('quota').textContent = left == null ? 'Unlimited songs' : `${left} of ${quota.limit} left in the last 24 h`;
+  $('makeBtn').disabled = busy || left === 0;
+}
+function fmtDate(iso) { try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
+function renderSongs() {
+  const box = $('songs');
+  if (!songs.length) { box.innerHTML = '<p class="empty">No songs yet. Your first one will show up here.</p>'; return; }
+  box.innerHTML = songs.map(s => `<article class="song${s.id === freshId ? ' fresh' : ''}"><h3>${esc(s.title)}</h3><small>${esc(s.style || 'AI arrangement')} · ${s.length === 'clip' ? '30 s clip' : 'full song'} · ${fmtDate(s.createdAt)}</small>
+    <div class="player" id="pl-${s.id}"><button class="primary" data-play="${s.id}">▶ Play</button></div>
+    <div class="row"><a href="/api/songmaker?audio=${s.id}" download="${esc(s.title.replace(/[^\w -]/g, '').trim() || 'song')}.mp3">Download MP3</a><button data-lyrics="${s.id}">Lyrics</button><button data-reuse="${s.id}">Reuse lyrics</button><button data-del="${s.id}">Delete</button></div>
+    <pre hidden id="ly-${s.id}">${esc(s.lyrics)}</pre></article>`).join('');
+}
+$('songs').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.play) {
+    const holder = $('pl-' + b.dataset.play); b.disabled = true; b.textContent = 'Loading…';
+    try { const res = await fetch('/api/songmaker?audio=' + b.dataset.play, { credentials: 'same-origin' }); if (!res.ok) throw new Error('That song is unavailable.'); const url = URL.createObjectURL(await res.blob()); holder.innerHTML = `<audio controls autoplay src="${url}"></audio>`; }
+    catch (err) { b.disabled = false; b.textContent = '▶ Play'; say(err.message, true); }
+  }
+  if (b.dataset.lyrics) { const pre = $('ly-' + b.dataset.lyrics); pre.hidden = !pre.hidden; }
+  if (b.dataset.reuse) { const s = songs.find(x => x.id === b.dataset.reuse); if (s) { $('lyrics').value = s.lyrics; $('title').value = s.title; say('Lyrics copied into the editor.'); $('lyrics').focus(); } }
+  if (b.dataset.del) {
+    if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Really delete?'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 3000); return; }
+    try { const r = await api({ action: 'delete', id: b.dataset.del }); songs = songs.filter(s => s.id !== b.dataset.del); quota = r.quota; renderSongs(); showQuota(); } catch (err) { say(err.message, true); }
+  }
+});
+$('writeBtn').onclick = async () => {
+  const idea = $('idea').value.trim();
+  if (idea.length < 3) { say('Describe your idea in a few words first.', true); $('idea').focus(); return; }
+  if ($('lyrics').value.trim() && $('lyrics').dataset.confirm !== '1') { $('lyrics').dataset.confirm = '1'; say('This replaces the lyrics in the editor. Press Write lyrics again to continue.'); return; }
+  $('lyrics').dataset.confirm = '';
+  $('writeBtn').disabled = true; say('Writing lyrics…');
+  try { const r = await api({ action: 'write', idea, genre: $('genre').value, mood: $('mood').value }); $('lyrics').value = r.lyrics; if (!$('title').value) $('title').value = r.title; say('Draft ready. Edit anything you like, then make the song.'); store.set('songmaker-draft', JSON.stringify({ title: $('title').value, lyrics: $('lyrics').value })); }
+  catch (err) { say(err.message, true); }
+  finally { $('writeBtn').disabled = false; }
+};
+$('makeBtn').onclick = async () => {
+  const lyrics = $('lyrics').value.trim();
+  if (lyrics.length < 20) { say('Add at least a couple of lines of lyrics, or use Write lyrics.', true); $('lyrics').focus(); return; }
+  busy = true; showQuota(); say(''); $('busy').classList.add('show');
+  try {
+    const r = await api({ action: 'create', title: $('title').value.trim(), lyrics, style: $('style').value.trim(), genre: $('genre').value, mood: $('mood').value, vocals: $('vocals').value, tempo: $('tempo').value, length: $('length').value });
+    songs.unshift(r.song); quota = r.quota; freshId = r.song.id; renderSongs();
+    say('Your song is ready. Press play!');
+    const play = document.querySelector('.song.fresh [data-play]'); if (play) { play.scrollIntoView({ behavior: 'smooth', block: 'center' }); play.click(); }
+  } catch (err) { say(err.message, true); }
+  finally { busy = false; $('busy').classList.remove('show'); showQuota(); }
+};
+['title', 'lyrics'].forEach(id => $(id).addEventListener('input', () => store.set('songmaker-draft', JSON.stringify({ title: $('title').value, lyrics: $('lyrics').value }))));
+(async () => {
+  try { const d = JSON.parse(store.get('songmaker-draft') || 'null'); if (d) { $('title').value = d.title || ''; $('lyrics').value = d.lyrics || ''; } } catch (e) { /* no draft */ }
+  try { const r = await api(); songs = r.songs; quota = r.quota; $('app').hidden = false; renderSongs(); showQuota(); }
+  catch (err) { if (err.status === 401) $('signin').hidden = false; else { $('app').hidden = false; $('songs').innerHTML = `<p class="empty">${esc(err.message)}</p>`; } }
+})();
+</script>
+</body>
+</html>

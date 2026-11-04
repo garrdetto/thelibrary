@@ -15,6 +15,7 @@ import { groupChat } from './routes/chat'
 import { moduleScores } from './routes/scores'
 import { moduleLayout } from './routes/module-layout'
 import { siteChanges } from './routes/site-changes'
+import { songmaker } from './routes/songmaker'
 import { asset, learning, library, lyricPresets, studio } from './routes/studio'
 
 const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
@@ -42,6 +43,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/asset': asset,
   '/api/learning': learning,
   '/api/lyric-presets': lyricPresets,
+  '/api/songmaker': songmaker,
 }
 
 export async function handleApi(request: Request, env: Env) {
