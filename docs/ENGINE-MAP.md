@@ -308,7 +308,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 
 ### songmaker — Song Maker
 - `public/modules/songmaker.html` — lyrics editor, "Write lyrics" helper, sound options, song list with lazy-loaded playback and MP3 download — hub iframe; calls `/api/songmaker`.
-- `src/server/routes/songmaker.ts` — `/api/songmaker`: GET list + daily quota, `?audio=<id>` (owner-checked KV `song/<userId>/<id>`), POST `create` (Lyria `lyria-3.5`, or `lyria-3-clip-preview` for 30 s clips, through the Gemini Interactions REST API), `write` (lyrics draft with the text model), `delete`. D1 `songmaker_songs` (migration 0018, also created on first use); 5 songs per user per 24 h, admin unlimited — `api.ts`.
+- `src/server/routes/songmaker.ts` — `/api/songmaker`: GET list + daily quota, `?audio=<id>` (owner-checked KV `song/<userId>/<id>`), POST `create` (Lyria `lyria-3.5`, or `lyria-3-clip-preview` for 30 s clips, through the Gemini Interactions REST API), `write` (lyrics draft with the text model), `delete`. D1 `songmaker_songs` (migration 0019, also created on first use); 5 songs per user per 24 h, admin unlimited — `api.ts`.
 
 ### party — Skill Party
 - `modules-src/party/index.html` — page shell and all styles — `vite.modules.ts` (→ `public/modules/party.html`).
