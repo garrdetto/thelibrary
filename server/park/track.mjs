@@ -24,7 +24,9 @@ export function kartLane(index) {
   return index % 2 === 0 ? -KART_LANE : KART_LANE
 }
 export const SAMPLE_STEP = 0.25
-const CURVE_RADIUS = { 1: 1.5, 2: 2.5 }
+const CURVE_RADIUS = { 1: 1.5, 2: 2.5, 3: 0.5 }
+export const KART_HAIRPIN_SPEED = 6
+const KART_HAIRPIN_BRAKE = 16
 const LOOP_LENGTH = 3
 const LOOP_RADIUS = 6.5
 const CORKSCREW_LENGTH = 3
@@ -69,7 +71,7 @@ export function trackPoses(ride) {
 
 function bankFor(piece, t) {
   if (!piece.c) return 0
-  const base = (Math.abs(piece.c) === 1 ? 0.2 : 0.14) * Math.sign(piece.c)
+  const base = (Math.abs(piece.c) === 1 ? 0.2 : Math.abs(piece.c) === 3 ? 0.08 : 0.14) * Math.sign(piece.c)
   const ramp = t < 0.4 ? t / 0.4 : t > 0.6 ? (1 - t) / 0.4 : 1
   const eased = ramp * ramp * (3 - 2 * ramp)
   return base * eased
@@ -189,7 +191,7 @@ export function buildTrackPath(ride) {
     while (end + 1 < ride.pieces.length && ride.pieces[end + 1].sp === 'station') end++
     if (lastSample.has(end)) stops.push(Math.max(0, lastSample.get(end) * ds - 0.6))
   }
-  return { pos, tan, up, curv, piece, count, ds, length, closed, stationEnd, stops, specials: ride.pieces.map(p => p.sp ?? null) }
+  return { pos, tan, up, curv, piece, count, ds, length, closed, stationEnd, stops, specials: ride.pieces.map(p => p.sp ?? null), hairpins: ride.pieces.map(p => Math.abs(p.c ?? 0) === 3) }
 }
 
 export function sampleAt(path, s, out = {}) {
@@ -243,7 +245,9 @@ export function stepTrain(path, train, cars, dt, opts = {}) {
     if (k === 0 && sp === 'brakes') onBrakes = true
   }
   slope /= cars
-  let a = -9.81 * slope - Math.sign(train.v) * (0.1 + 0.0011 * train.v * train.v)
+  const hairpinAhead = path.hairpins && (path.hairpins[sampleAt(path, train.s, tmp).piece] || path.hairpins[sampleAt(path, train.s + 3, tmp).piece])
+  if (hairpinAhead && train.v > KART_HAIRPIN_SPEED) train.v = Math.max(KART_HAIRPIN_SPEED, train.v - KART_HAIRPIN_BRAKE * dt)
+  let a =-9.81 * slope - Math.sign(train.v) * (0.1 + 0.0011 * train.v * train.v)
   if (opts.style?.drive) a += opts.style.drive * clamp(1 - Math.abs(train.v) / (opts.style.maxSpeed ?? 20), 0, 1)
   if (onBooster && train.v < 21) a += 14
   if (onBrakes && train.v > 6) a -= 12
@@ -384,7 +388,8 @@ function stationRun(pieces, index) {
 export function validatePieceAt(state, ride, pose, index, start, piece, extraCells, pieces) {
   const style = COASTER_STYLES[ride.style]
   if (index >= 220) return { error: 'This coaster has reached the maximum track length.' }
-  if (![-2, -1, 0, 1, 2].includes(piece.c) || ![-2, -1, 0, 1, 2].includes(piece.s)) return { error: 'Choose a valid track piece.' }
+  if (![-3, -2, -1, 0, 1, 2, 3].includes(piece.c) || ![-2, -1, 0, 1, 2].includes(piece.s)) return { error: 'Choose a valid track piece.' }
+  if (Math.abs(piece.c) === 3 && !style.hairpin) return { error: `${style.name} track cannot make a hairpin turn.` }
   if (piece.sp === 'corkscrew' && !style.corkscrews) return { error: `${style.name} track cannot build corkscrews.` }
   if (piece.sp === 'loop' && !style.loops) return { error: `${style.name} track cannot loop.` }
   const requested = piece
@@ -394,8 +399,10 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
   } else if (piece.sp && ['loop', 'corkscrew', 'station', 'brakes', 'booster'].includes(piece.sp)) {
     piece.c = 0
     piece.s = 0
-  } else if (piece.c && (Math.abs(pose.slope) > 1 || piece.s !== pose.slope)) {
-    piece = { c: 0, s: pose.slope - Math.sign(pose.slope) }
+  } else if (piece.c && Math.abs(pose.slope) > 1) {
+    return { error: 'Level out the steep section before turning.' }
+  } else if (piece.c) {
+    piece.s = pose.slope
   } else {
     piece.s = clamp(piece.s, pose.slope - 1, pose.slope + 1)
   }

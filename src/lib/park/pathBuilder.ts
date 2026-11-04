@@ -12,6 +12,7 @@ export type PathPlan =
   | { ok: false; x: number; y: number; dir: number; error: string; ghost?: GhostPiece }
 
 const TILE = 4
+const ALIGN_TOLERANCE = 0.26
 const PIECE_COST: Record<number, number> = { 1: 12, 2: 14, 3: 18, 4: 24 }
 
 export const segmentRise = (segment: PathSegment) =>
@@ -93,12 +94,15 @@ export function planPiece(map: ParkMap, park: number, from: PathEnd, segment: Pa
   }
   const elevation = Math.round((stored - base) / 0.5)
   if (elevation < 0 || stored < base - 0.05) return fail('The ground is too high here. Go up or turn.', ghost)
-  if (Math.abs(base + elevation * 0.5 - stored) > 0.06) return fail('The ground here does not line up. Level the land or try another piece.', ghost)
+  const deck = base + elevation * 0.5
+  if (Math.abs(deck - stored) > ALIGN_TOLERANCE) return fail('The ground here does not line up. Level the land or try another piece.', ghost)
   if (sign !== 0 && elevation < 1) return fail('The ground is too high here. Go up or turn.', ghost)
   if (sign < 0 && z1 < base - 0.05) return fail('Too close to the ground to go down here.', ghost)
   if (elevation > 24) return fail('The path cannot go any higher.', ghost)
   if (water && elevation === 0 && pathKind !== 4) return fail('Raise the path or use a boardwalk over water.', ghost)
-  return { ok: true, anchor: false, x, y, dir, kind, elevation, ghost, cost: PIECE_COST[kind], end: { x, y, dir, exit: z1, slope: sign, placed: true } }
+  const snapped = deck - stored
+  const snappedGhost: GhostPiece = { ...ghost, z0: z0 + snapped, z1: z1 + snapped }
+  return { ok: true, anchor: false, x, y, dir, kind, elevation, ghost: snappedGhost, cost: PIECE_COST[kind], end: { x, y, dir, exit: z1 + snapped, slope: sign, placed: true } }
 }
 
 export function ghostCorners(map: ParkMap, g: GhostPiece): [number, number, number, number] {
