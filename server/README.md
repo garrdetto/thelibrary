@@ -197,6 +197,11 @@ Redeploy this service with the frontend so online parks run the same rules as so
 
 ### Thrill Park v56
 
+Redeploy this service with the frontend so queue lines and kart stations match solo play:
+- Every path tile records its placement number in `map.pathOrder` (the `path` command numbers a drag from the end it started at; `unpath` clears it; saved with the other map arrays and 0 in older saves).
+- Queue lines follow that order (`server/park/queues.mjs`): `queueLine` and `exitLine` walk from the ride gate along the build order, so a line that weaves row on top of row keeps its rows instead of cutting across them. Tiles without an order keep the old prefer-straight rule.
+- Custom go-kart tracks hold four karts per station tile (`kartCount`, up to `KART_LIMIT` 40), waiting two abreast with a row every half tile and setting off side by side; saves and snapshots carry the larger fleets.
+
 Redeploy this service with the frontend; older clients cannot replay the new color commands:
 - Ride colors are slots (`server/park/palette.mjs`): every ride has a main color, chase lights and glow lights, plus ride-specific parts (`RIDE_SLOTS`, `COASTER_SLOTS`). `rideSet` takes `colors` (slot key → `#rrggbb`, `null` to clear one or all) and `scheme` (0–2 or `null`); `rideColors` resolves custom colors, then the park scheme, then the legacy `color`/`trackColor`/`supportColor`/`trainColor`, then the slot default. Coasters keep the legacy fields in step.
 - Each park has three editable color schemes (`schemes`, defaults `DEFAULT_SCHEMES`), changed with `park` `{ scheme: { index, name?, colors? } }`; rides using a scheme follow its edits. Snapshots carry `colors` and `scheme` per ride.

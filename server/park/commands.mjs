@@ -3,7 +3,8 @@ import { autoComplete } from './autotrack.mjs'
 import { DIRS, UNIT, clamp } from './util.mjs'
 import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners, pathHeightAt, PATH_STEP_LIMIT, STAIR_STEP_LIMIT, SLOPE_RISE, STAIR_RISE } from './terrain.mjs'
 import { isWalkPath } from './terrain.mjs'
-import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP } from './track.mjs'
+import { nextPathOrder } from './queues.mjs'
+import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP, KART_LIMIT, kartCount, kartRestS } from './track.mjs'
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
 import { mechanicJobDistance } from './guests.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
@@ -222,14 +223,14 @@ function finishCoaster(state, ride) {
   ride.rev = (ride.rev ?? 0) + 1
   const style = COASTER_STYLES[ride.style]
   const stationLength = ride.pieces.filter(p => p.sp === 'station').length
-  ride.cars = ride.carsSet ? clamp(ride.cars, 1, style.trackType === 'kart' ? 14 : 10) : clamp(stationLength + 1, 2, style.trackType === 'kart' ? 14 : 10)
+  ride.cars = style.trackType === 'kart' ? (ride.carsSet ? clamp(ride.cars, 1, KART_LIMIT) : kartCount(stationLength)) : ride.carsSet ? clamp(ride.cars, 1, 10) : clamp(stationLength + 1, 2, 10)
   const path = ridePath(state, ride)
   const stats = path ? rideStatsFromRun(path, style, style.trackType === 'kart' ? 1 : ride.cars) : { valid: false }
   ride.stats = stats
   ride.trains = style.trackType === 'kart'
     ? Array.from({ length: ride.cars }, (_, index) => {
       const kart = makeTrain()
-      if (path) kart.s = Math.max(0.5, path.stationEnd - 0.6 - index * CAR_GAP)
+      if (path) kart.s = kartRestS(path, index)
       kart.pace = 0.94 + (index % 7) * 0.02
       return kart
     })
@@ -407,7 +408,11 @@ const HANDLERS = {
     if (!tiles.length) return fail(blocked ?? 'There is already a path here.')
     const cost = tiles.length * ({ 1: COSTS.path, 2: COSTS.queue, 3: 18, 4: 24 }[kind])
     if (!canAfford(state, park, cost)) return fail(`You need $${cost} to build that.`)
-    for (const i of tiles) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = kind === 1 ? cmd.color ?? -1 : -1; if (kind === 2) map.pathAdd[i] = 0 }
+    const startX = clamp(Math.round(cmd.x0), 0, map.w - 1), startY = clamp(Math.round(cmd.y0), 0, map.h - 1)
+    const fromStart = i => Math.abs(i % map.w - startX) + Math.abs(Math.floor(i / map.w) - startY)
+    tiles.sort((a, b) => fromStart(a) - fromStart(b) || a - b)
+    let order = nextPathOrder(map)
+    for (const i of tiles) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = kind === 1 ? cmd.color ?? -1 : -1; map.pathOrder[i] = order++; if (kind === 2) map.pathAdd[i] = 0 }
     spend(state, park, cost, 'construction')
     pathsChanged(state)
     return ok({ cost, warning: blocked })
@@ -433,20 +438,20 @@ const HANDLERS = {
     const p = state.parks[park]
     const saved = new Map()
     const before = { cash: p.cash, construction: p.month.construction, structVersion: state.structVersion, pathVersion: state.pathVersion }
-    const touch = i => { if (!saved.has(i)) saved.set(i, [map.path[i], map.pathElevation[i], map.pathColor[i], map.pathAdd[i]]) }
+    const touch = i => { if (!saved.has(i)) saved.set(i, [map.path[i], map.pathElevation[i], map.pathColor[i], map.pathAdd[i], map.pathOrder[i]]) }
     const rollback = () => {
-      for (const [i, [kind, elevation, color, add]] of saved) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = color; map.pathAdd[i] = add }
+      for (const [i, [kind, elevation, color, add, order]] of saved) { map.path[i] = kind; map.pathElevation[i] = elevation; map.pathColor[i] = color; map.pathAdd[i] = add; map.pathOrder[i] = order }
       p.cash = before.cash; p.month.construction = before.construction
       state.structVersion = before.structVersion; state.pathVersion = before.pathVersion; state.fields.clear()
     }
     const visited = new Set([start])
     let budget = 3000, cost = 0, pieces = 0
     const place = (ni, nx, ny, kind, elevation) => {
-      const was = [map.path[ni], map.pathElevation[ni], map.pathColor[ni], map.pathAdd[ni]], cash = p.cash, construction = p.month.construction
+      const was = [map.path[ni], map.pathElevation[ni], map.pathColor[ni], map.pathAdd[ni], map.pathOrder[ni]], cash = p.cash, construction = p.month.construction
       touch(ni)
       const res = HANDLERS.path(state, { t: 'path', kind, elevation, color: cmd.color, x0: nx, y0: ny, x1: nx, y1: ny }, park)
       if (!res.ok) return null
-      return () => { map.path[ni] = was[0]; map.pathElevation[ni] = was[1]; map.pathColor[ni] = was[2]; map.pathAdd[ni] = was[3]; p.cash = cash; p.month.construction = construction; state.fields.clear() }
+      return () => { map.path[ni] = was[0]; map.pathElevation[ni] = was[1]; map.pathColor[ni] = was[2]; map.pathAdd[ni] = was[3]; map.pathOrder[ni] = was[4]; p.cash = cash; p.month.construction = construction; state.fields.clear() }
     }
     const search = (x, y, dir, exit, sloped, depth) => {
       if (--budget < 0 || depth > 96) return false
@@ -521,7 +526,7 @@ const HANDLERS = {
     for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
       const i = tileIndex(map, x, y)
       if (!map.path[i] || map.owner[i] !== park) continue
-      map.path[i] = 0; map.pathElevation[i] = 0; map.pathColor[i] = -1; map.pathAdd[i] = 0; map.litter[i] = 0; count++
+      map.path[i] = 0; map.pathElevation[i] = 0; map.pathColor[i] = -1; map.pathAdd[i] = 0; map.pathOrder[i] = 0; map.litter[i] = 0; count++
     }
     if (!count) return fail('There is no footpath of yours here.')
     pathsChanged(state)

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { ArrowRight, Layers, Radio, Sparkles, Trophy, Users } from 'lucide-react'
+import { ArrowRight, Layers, Radio, Sparkles, Users } from 'lucide-react'
+import { HubSlideshow } from './HubSlideshow'
 import { moduleGroups } from '@/lib/modules'
 import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
@@ -30,11 +31,7 @@ export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (
           <a className="hub-secondary" href="#modules">Browse modules</a>
         </div>
       </div>
-      <button type="button" className="hub-hero-art" onClick={() => onLaunch(featured.id)} aria-label={`Launch ${featured.title}`}>
-        <img src={featured.image} alt=""/>
-        <span className="hub-badge"><Trophy size={12}/> FEATURED MODULE</span>
-        <span className="hub-hero-caption"><strong>{featured.title}</strong><small>{featured.subject} · {featured.modes.join(' · ')}</small></span>
-      </button>
+      <HubSlideshow onLaunch={onLaunch} fallbackId={featured.id}/>
     </div>
     <div className={`hub-body${account || online ? '' : ' is-solo'}`}>
       <div className="hub-main" id="modules">
