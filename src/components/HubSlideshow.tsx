@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play, Trophy } from 'lucide-react'
-import { learningModules } from '@/lib/modules'
+import { isModuleAvailable, learningModules } from '@/lib/modules'
 import type { ModuleId } from '@/lib/modules'
 import { formatScore, isScoredModule, scoredModules } from '@/lib/module-scores'
 
@@ -27,7 +27,7 @@ export function HubSlideshow({ onLaunch, fallbackId }: { onLaunch: (id: ModuleId
 
   const slides: Slide[] = (boards ?? []).flatMap(board => {
     const item = learningModules.find(entry => entry.id === board.module)
-    if (!item || !isScoredModule(board.module) || !board.records.length) return []
+    if (!item || !isModuleAvailable(item.id) || !isScoredModule(board.module) || !board.records.length) return []
     return [{ id: item.id, title: item.title, subject: item.subject, image: item.image, accent: item.accent, records: board.records, metric: scoredModules[board.module].title, plays: board.plays }]
   })
   const fallback = learningModules.find(entry => entry.id === fallbackId) ?? learningModules[0]
