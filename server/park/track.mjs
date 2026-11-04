@@ -5,6 +5,24 @@ import { hotelHeight } from './hotels.mjs'
 
 export const SLOPE_RATE = { '-2': -8, '-1': -2, '0': 0, '1': 2, '2': 8 }
 export const CAR_GAP = 2.4
+// Go-karts wait in the station two abreast, a row every half tile, so each
+// station tile holds four karts.
+export const KARTS_PER_STATION_TILE = 4
+export const KART_LIMIT = 40
+export const KART_ROW_GAP = 2
+export const KART_LANE = 0.55
+
+export function kartCount(stationLength) {
+  return clamp(stationLength * KARTS_PER_STATION_TILE, 2, KART_LIMIT)
+}
+
+export function kartRestS(path, index) {
+  return Math.max(0.5, path.stationEnd - 0.6 - Math.floor(index / 2) * KART_ROW_GAP)
+}
+
+export function kartLane(index) {
+  return index % 2 === 0 ? -KART_LANE : KART_LANE
+}
 export const SAMPLE_STEP = 0.25
 const CURVE_RADIUS = { 1: 1.5, 2: 2.5 }
 const LOOP_LENGTH = 3

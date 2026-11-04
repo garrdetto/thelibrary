@@ -22,6 +22,9 @@ import {
   ELECTRICITY_COST_PER_TILE_PER_DAY,
   dailyOperatingCosts,
   queueLine,
+  queueLayout,
+  kartLane,
+  kartCount,
   exitLine,
   tileMax,
   stepPark,
@@ -108,7 +111,7 @@ test('older 64-square saved parks expand into the purchase map without moving th
   const state = createPark('meadowbrook')
   const saved = serializePark(state)
   const offset = 32
-  const fields = ['corners', 'surface', 'water', 'path', 'pathElevation', 'pathColor', 'pathAdd', 'obj', 'owner', 'litter']
+  const fields = ['corners', 'surface', 'water', 'path', 'pathElevation', 'pathColor', 'pathAdd', 'pathOrder', 'obj', 'owner', 'litter']
   for (const key of fields) {
     const corners = key === 'corners'
     const sourceWidth = corners ? state.map.w + 1 : state.map.w
@@ -189,6 +192,53 @@ test('queue lines require connected path heights and follow stairs', () => {
   assert.deepEqual(queueLine(state, ride).entry, [5, 5])
 })
 
+test('queue lines that weave row on top of row follow the order they were built', () => {
+  const state = parkFixture()
+  const ride = { id: 100, type: 'ride', kind: 'flat', ride: 'dropTower', x: 8, y: 10, park: 0, entrance: 101 }
+  state.entities = { 100: ride, 101: { id: 101, type: 'gate', role: 'entrance', ride: 100, x: 9, y: 10, dir: 0, park: 0 } }
+  // Three rows of queue laid east, north one, west, north one, east again,
+  // then a footpath at the far end of the top row.
+  const laid = []
+  const lay = (x, y) => { assert.equal(buildPath(state, 2, x, y).ok, true); laid.push([x, y]) }
+  for (let x = 10; x <= 14; x++) lay(x, 10)
+  for (let x = 14; x >= 10; x--) lay(x, 11)
+  for (let x = 10; x <= 14; x++) lay(x, 12)
+  assert.equal(buildPath(state, 1, 15, 12).ok, true)
+  const line = queueLine(state, ride)
+  assert.deepEqual(line.tiles, laid)
+  assert.deepEqual(line.entry, [14, 12])
+  assert.deepEqual(line.join, [15, 12])
+  const orders = laid.map(([x, y]) => state.map.pathOrder[tileIndex(state.map, x, y)])
+  assert.ok(orders.every((o, k) => k === 0 || o > orders[k - 1]))
+
+  const mid = queueLayout(state.map, 12, 11)
+  assert.deepEqual([mid.prev, mid.next], [0, 2])
+  assert.deepEqual(mid.rails, [false, true, false, true])
+  assert.equal(mid.bend, false)
+  const corner = queueLayout(state.map, 14, 10)
+  assert.deepEqual([corner.prev, corner.next], [2, 1])
+  assert.equal(corner.bend, true)
+  assert.deepEqual(corner.rails, [true, false, false, true])
+  const last = queueLayout(state.map, 14, 12)
+  assert.deepEqual(last.rails, [false, true, false, true])
+  const first = queueLayout(state.map, 10, 10, [2])
+  assert.deepEqual(first.rails, [false, true, false, true])
+
+  // A drag lays its tiles from the end the drag started at.
+  assert.equal(applyCommand(state, { t: 'path', kind: 2, elevation: 0, x0: 24, y0: 20, x1: 20, y1: 20 }).ok, true)
+  const dragOrders = [24, 23, 22, 21, 20].map(x => state.map.pathOrder[tileIndex(state.map, x, 20)])
+  assert.ok(dragOrders.every((o, k) => k === 0 || o > dragOrders[k - 1]))
+
+  const saved = serializePark(state)
+  assert.deepEqual(deserializePark(saved).map.pathOrder, state.map.pathOrder)
+  const legacy = structuredClone(saved)
+  delete legacy.map.pathOrder
+  const old = deserializePark(legacy)
+  assert.equal(old.map.pathOrder.every(value => value === 0), true)
+  assert.equal(applyCommand(old, { t: 'unpath', x0: 14, y0: 10, x1: 14, y1: 10 }).ok, true)
+  assert.deepEqual(queueLine(old, old.entities[100]).tiles.slice(0, 4), laid.slice(0, 4))
+})
+
 test('custom kart rides run an independent two-seat fleet and sync each vehicle', () => {
   const state = parkFixture()
   const result = applyCommand(state, { t: 'coaster', style: 'kart', x: 10, y: 10, dir: 0, length: 13 })
@@ -197,13 +247,20 @@ test('custom kart rides run an independent two-seat fleet and sync each vehicle'
   assert.equal(applyCommand(state, { t: 'finish', ride: result.id }).ok, true)
 
   const ride = state.entities[result.id]
-  assert.equal(ride.cars, 14)
-  assert.equal(ride.trains.length, 14)
-  assert.equal(rideCapacity(ride), 28)
+  assert.equal(ride.cars, 40)
+  assert.equal(ride.trains.length, 40)
+  assert.equal(rideCapacity(ride), 80)
   assert.equal(COASTER_STYLES.kart.seats, 2)
+  // Four karts per station tile: two abreast, a row every half tile.
+  assert.equal(ride.trains[0].s, ride.trains[1].s)
+  assert.equal(ride.trains[0].s - ride.trains[2].s, 2)
+  assert.equal(ride.trains[0].s - ride.trains[4].s, 4)
+  assert.notEqual(kartLane(0), kartLane(1))
+  assert.equal(kartLane(0), kartLane(2))
+  assert.equal(kartCount(3), 12)
 
   ride.status = 'open'
-  state.guests = Array.from({ length: 28 }, (_, index) => ({
+  state.guests = Array.from({ length: 80 }, (_, index) => ({
     id: index + 1, park: 0, x: 0, y: 0, tx: 0, ty: 0, state: 'queue', hidden: false,
     happy: 150, items: [], kid: false, shirt: 0, thoughts: [], queueTime: 0, patience: 1000,
     cash: 100, spent: 0, ride: ride.id, ridden: [], nausea: 0, energy: 200, minI: 1,
@@ -219,8 +276,8 @@ test('custom kart rides run an independent two-seat fleet and sync each vehicle'
 
   const replica = deserializePark(serializePark(state))
   applyDynamic(replica, encodeDynamic(state))
-  assert.equal(encodeDynamic(state).rides[result.id].t.length, 14)
-  assert.equal(replica.entities[result.id].trains.length, 14)
+  assert.equal(encodeDynamic(state).rides[result.id].t.length, 40)
+  assert.equal(replica.entities[result.id].trains.length, 40)
 })
 
 test('coaster slopes soften automatically and bank gradually through turns', () => {

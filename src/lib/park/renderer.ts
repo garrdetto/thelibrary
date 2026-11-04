@@ -9,11 +9,11 @@ import type { ParkQuality, QualitySettings } from './quality'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel, WATER_RIDE_TINTS } from './waterRides'
 import { hotelModel, hotelLook } from './hotelModels'
-import { addPathTile } from './pathModels'
+import { addPathTile, addQueueMarkings } from './pathModels'
 import { ghostCorners } from './pathBuilder'
 import type { GhostPiece } from './pathBuilder'
-import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine } from '../../../server/park/index.mjs'
-import type { ParkState, Entity, TrackPath, Piece } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, kartLane, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine, exitLine, queueLayout } from '../../../server/park/index.mjs'
+import type { ParkState, Entity, TrackPath, Piece, QueueLayout } from '../../../server/park/index.mjs'
 
 const TILE = 4
 const SURFACE_COLORS: Vec3[] = ['#5b8f3c', '#cdb57a', '#7f6044', '#8a8780', '#e8ecee'].map(hexColor)
@@ -285,6 +285,39 @@ export class ParkRenderer {
       const bed: Vec3 = [0.3, 0.33, 0.25], sand: Vec3 = [0.72, 0.64, 0.46]
       cornerColor.push([0, 1, 2].map(k => { const land = (a[k] + b[k] + c[k] + d[k]) / 4 * (1 - steep * 0.55) + rock[k] * steep * 0.55; const wetLand = land * (1 - shore * 0.6) + sand[k] * shore * 0.6; return (wetLand * (1 - under) + bed[k] * under) * ao }) as Vec3)
     }
+    // Each queue tile's place in a ride's entrance or exit line: the sides the
+    // line arrives from and leaves by, and where it opens onto the gate or
+    // the footpath. Tiles in no line fall back to their build order.
+    const queueRuns = new Map<number, { prev: number; next: number; openings: number[] }>()
+    for (const ride of Object.values(s.entities)) {
+      if (ride.type !== 'ride') continue
+      const entranceId = typeof ride.entrance === 'number' ? ride.entrance : 0, exitId = typeof ride.exit === 'number' ? ride.exit : 0
+      for (const [gateId, line] of [[entranceId, entranceId ? queueLine(s, ride) : null], [exitId, exitId ? exitLine(s, ride) : null]] as const) {
+        const gate = gateId ? s.entities[gateId] : null
+        if (!gate || !line || line.direct || !line.tiles.length) continue
+        line.tiles.forEach(([tx, ty], k) => {
+          const ti = tileIndex(map, tx, ty)
+          if (queueRuns.has(ti)) return
+          const toward = (ox: number, oy: number) => DIRS.findIndex(([dx, dy]) => dx === ox - tx && dy === oy - ty)
+          const before = k > 0 ? line.tiles[k - 1] : null, after = k + 1 < line.tiles.length ? line.tiles[k + 1] : null
+          const openings: number[] = []
+          if (k === 0) openings.push(toward(gate.x, gate.y))
+          if (line.entry && line.join && line.entry[0] === tx && line.entry[1] === ty) openings.push(toward(line.join[0], line.join[1]))
+          queueRuns.set(ti, { prev: before ? toward(before[0], before[1]) : -1, next: after ? toward(after[0], after[1]) : -1, openings: openings.filter(d => d >= 0) })
+        })
+      }
+    }
+    const layouts = new Map<number, QueueLayout>()
+    const layoutAt = (x: number, y: number) => {
+      const i = tileIndex(map, x, y)
+      let layout = layouts.get(i)
+      if (!layout) {
+        const run = queueRuns.get(i)
+        layout = queueLayout(map, x, y, run?.openings ?? [], run ? { prev: run.prev, next: run.next } : null)
+        layouts.set(i, layout)
+      }
+      return layout
+    }
     for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
       const i = tileIndex(map, x, y)
       const [a, b, c, d] = tileCorners(map, x, y)
@@ -324,27 +357,30 @@ export class ParkRenderer {
           const mx = (x + 0.5 + dx * 0.5) * TILE, my = (y + 0.5 + dy * 0.5) * TILE
           return Math.abs(pathHeightAt(map, mx - dx * 0.01, my - dy * 0.01, TILE) - pathHeightAt(map, mx + dx * 0.01, my + dy * 0.01, TILE)) > 0.15
         }) as [boolean, boolean, boolean, boolean]
+        const layout = kind === 2 ? layoutAt(x, y) : null
+        const rails = layout?.rails.map((rail, side) => {
+          if (!rail) return false
+          // One railing per shared edge: the tile on the +x/+y side draws it.
+          const nx = x + DIRS[side][0], ny = y + DIRS[side][1]
+          return side < 2 || !inMap(map, nx, ny) || map.path[tileIndex(map, nx, ny)] !== 2 || !layoutAt(nx, ny).rails[(side + 2) % 4]
+        }) as [boolean, boolean, boolean, boolean] | undefined
         const cornerZ = (u: number, v: number) => corner(u, v)[2] - lift
         addPathTile(paths, x, y, [cornerZ(0, 0), cornerZ(1, 0), cornerZ(1, 1), cornerZ(0, 1)], {
           kind, fill, edge, open,
+          rails,
           supports: !map.obj[i] && !s.trackCells.get(i)?.length,
           ground: (u, v) => groundHeightAt(map, (x + u) * TILE, (y + v) * TILE, TILE),
         })
         const e = 0.08
         const sides: [number, number, [number, number, number, number]][] = [[1, 0, [1 - e, 0, 1, 1]], [0, 1, [0, 1 - e, 1, 1]], [-1, 0, [0, 0, e, 1]], [0, -1, [0, 0, 1, e]]]
-        for (const [dx, dy, [u0, v0, u1, v1]] of sides) {
+        sides.forEach(([dx, dy, [u0, v0, u1, v1]], side) => {
           const nx = x + dx, ny = y + dy
           const other = inMap(map, nx, ny) ? map.path[tileIndex(map, nx, ny)] : 0
-          if (other === kind || kind === 3) continue
+          if (kind === 3 || (other === kind && !layout?.rails[side])) return
           const up = (u: number, v: number): Vec3 => { const p = corner(u, v); p[2] += 0.02; return p }
           paths.quad(null, up(u0, v0), up(u1, v0), up(u1, v1), up(u0, v1), edge)
-        }
-        if (kind === 2) {
-          for (const t of [0.33, 0.66]) {
-            const up = (u: number, v: number): Vec3 => { const p = corner(u, v); p[2] += 0.025; return p }
-            paths.quad(null, up(t - 0.015, 0.05), up(t + 0.015, 0.05), up(t + 0.015, 0.95), up(t - 0.015, 0.95), QUEUE_EDGE)
-          }
-        }
+        })
+        if (layout) addQueueMarkings(paths, corner, layout, QUEUE_EDGE)
       }
       grid.line(P(x, y, a + 0.06), P(x + 1, y, b + 0.06), [0.1, 0.12, 0.1]); grid.line(P(x, y, a + 0.06), P(x, y + 1, d + 0.06), [0.1, 0.12, 0.1])
     }
@@ -904,7 +940,7 @@ export class ParkRenderer {
         const t: Vec3 = [p.tx, p.ty, p.tz], u: Vec3 = [p.ux, p.uy, p.uz]
         const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
         const riders = kart.ridersCount ?? kart.riders.length
-        const lane = index % 2 === 0 ? -0.55 : 0.55
+        const lane = kartLane(index)
         this.g.draw(this.carMesh(e.style!, true, riders), mat4.basis([p.x + r[0] * lane, p.y + r[1] * lane, p.z + r[2] * lane], t, r, u), { tint, highlight })
       }
       return
@@ -1017,11 +1053,18 @@ export class ParkRenderer {
         const fill = piece.kind === 2 ? QUEUE_COLOR : piece.kind === 3 ? hexColor('#b39a73') : piece.kind === 4 ? hexColor('#8b6038') : PATH_COLOR
         const edge = piece.kind === 2 ? QUEUE_EDGE : piece.kind === 3 ? hexColor('#786247') : piece.kind === 4 ? hexColor('#563b27') : PATH_EDGE
         const back = (piece.dir + 2) % 4
-        addPathTile(b, piece.x, piece.y, ghostCorners(map, piece), {
+        const corners = ghostCorners(map, piece)
+        const sides = [0, 1, 2, 3].map(d => d !== piece.dir && d !== back) as [boolean, boolean, boolean, boolean]
+        addPathTile(b, piece.x, piece.y, corners, {
           kind: piece.kind, fill, edge,
-          open: [0, 1, 2, 3].map(d => d !== piece.dir && d !== back) as [boolean, boolean, boolean, boolean],
+          open: sides,
+          rails: piece.kind === 2 ? sides : undefined,
           ground: (u, v) => groundHeightAt(map, (piece.x + u) * TILE, (piece.y + v) * TILE, TILE),
         })
+        if (piece.kind === 2) {
+          const deck = (u: number, v: number): Vec3 => [(piece.x + u) * TILE, (piece.y + v) * TILE, corners[0] * (1 - u) * (1 - v) + corners[1] * u * (1 - v) + corners[2] * u * v + corners[3] * (1 - u) * v + 0.07]
+          addQueueMarkings(b, deck, { prev: back, next: piece.dir, axis: piece.dir % 2, bend: false }, QUEUE_EDGE)
+        }
       }
       this.pathGhostMesh = this.g.upload(b, this.pathGhostMesh)
     }

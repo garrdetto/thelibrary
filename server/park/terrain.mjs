@@ -139,6 +139,7 @@ function blankMap(w, h, base) {
     pathElevation: new Array(w * h).fill(0),
     pathColor: new Array(w * h).fill(-1),
     pathAdd: new Array(w * h).fill(0),
+    pathOrder: new Array(w * h).fill(0),
     obj: new Array(w * h).fill(0),
     owner: new Array(w * h).fill(255),
     litter: new Array(w * h).fill(0),
