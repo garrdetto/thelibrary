@@ -5,7 +5,7 @@
  * Time is driven by the server clock so every neighbor shares the sunset.
  */
 import * as THREE from 'three/webgpu';
-import { noNormalsMRT } from '../core/Engine';
+import { FOG_FAR, FOG_NEAR, noNormalsMRT } from '../core/Engine';
 
 const DAY = new THREE.Color(0xfff3e2), DUSK = new THREE.Color(0xff9a52), MOON = new THREE.Color(0xa9bfff);
 const SKY_DAY = new THREE.Color(0xa9c9ef), SKY_DUSK = new THREE.Color(0xe7a27a), SKY_NIGHT = new THREE.Color(0x16234a);
@@ -18,6 +18,8 @@ const SHADOW_EXTENT = 55;
 /** The physical sky is tuned for about half our exposure; scaling it keeps noon blue instead of washed out. */
 const SKY_GAIN = 0.45;
 const SHADOW_MAP = 4096;
+/** Star shell radius around the player: inside the camera far plane (CAMERA_FAR) even from the build camera. */
+const STAR_RADIUS = FOG_FAR - 80;
 
 export class DayNight {
   hours = 8.5;
@@ -50,14 +52,14 @@ export class DayNight {
     s.shadow.normalBias = 0.035;
     scene.add(s, s.target, this.hemi);
 
-    this.fog = new THREE.Fog(0xa9c9ef, 180, 900);
+    this.fog = new THREE.Fog(0xa9c9ef, FOG_NEAR, FOG_FAR);
     scene.fog = this.fog;
     scene.background = SKY_DAY.clone();
 
     const starGeo = new THREE.BufferGeometry();
     const p = new Float32Array(3000 * 3);
     for (let i = 0; i < 3000; i++) {
-      const v = new THREE.Vector3().randomDirection(); v.y = Math.abs(v.y) + 0.05; v.normalize().multiplyScalar(3000);
+      const v = new THREE.Vector3().randomDirection(); v.y = Math.abs(v.y) + 0.05; v.normalize().multiplyScalar(STAR_RADIUS);
       p.set([v.x, v.y, v.z], i * 3);
     }
     starGeo.setAttribute('position', new THREE.BufferAttribute(p, 3));

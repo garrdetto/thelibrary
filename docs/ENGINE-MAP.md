@@ -159,7 +159,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/maplestreet/index.ts` — entry; imports `src/main.ts` — `index.html`.
 - `modules-src/maplestreet/README.md` — module notes — developers.
 - `src/main.ts` — boot: locked name (library username, or a fixed guest name), two modes (shared world, solo with unlimited money); waits for the published-item catalog and published vehicles before starting; `?vehicleTest=1` opens the admin test drive instead — `index.ts`.
-- `src/core/Engine.ts` — renderer, scene, camera, resize (WebGPU/WebGL2) — `Game`, `BuildController`, `DayNight`, `Neighborhood`, `RemoteEntities`.
+- `src/core/Engine.ts` — renderer, scene, camera (far plane `CAMERA_FAR` = fog end + 100 m), pixel ratio capped at `MAX_PIXEL_RATIO` 2 with adaptive resolution below it, resize (WebGPU/WebGL2) — `Game`, `BuildController`, `DayNight`, `Neighborhood`, `RemoteEntities`.
 - `src/core/Loop.ts` — fixed-step update/render loop — `Game`.
 - `src/core/Input.ts` — keyboard, mouse, touch — `Game`, `CameraRig`, `BuildController`.
 - `src/core/Materials.ts` — shared PBR materials, procedural textures — `Game`, `Mesher`, `Neighborhood`, `Downtown`.
@@ -188,7 +188,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `src/world/Facades.ts` — facade styles and window/storefront layouts shared by the painted textures (albedo, night glow, roughness/metalness) and the 3D trim — `Downtown`.
 - `src/world/GasStation.ts` — Gas & Go forecourt, canopy, islands, dispensers, pylon price sign, canopy light — `Downtown`.
 - `src/world/Lawn.ts` — mowable lawns: per-lot data texture (blade lean + growth, 4 texels/m) and the view-dependent stripe shader; diamond patterns from crossed passes; grass grows back over five in-game days — `Neighborhood`, `Grass`.
-- `src/world/Grass.ts` — instanced grass: thin four-blade clumps; on lawns they follow the lawn's growth (≈4 → 11 cm) and lean the way they were mowed, shaded by lean vs. camera so stripes read in 3D; short verges along the curves, meadow elsewhere — `Game`.
+- `src/world/Grass.ts` — instanced grass in pooled 8 m tiles (one InstancedMesh each, one shared material, frustum-culled per tile) streamed within a 26 m radius (×√quality); clumps are rank-sorted so far tiles thin by `count` alone, the shader shrinks clumps before they drop and fades the rim, and tiles past 14 m use a one-segment clump. Thin four-blade clumps; on lawns they follow the lawn's growth (≈4 → 11 cm) and lean the way they were mowed, shaded by lean vs. camera so stripes read in 3D; a mower pass re-lays only the tiles it touched (`Lawn.takeDirty`); short verges along the curves, meadow elsewhere — `Game`.
 - `src/world/DayNight.ts` — sun and moon, physical sky (`SkyMesh` colorNode scaled by `SKY_GAIN`, plus a moonlit night tint), hemisphere fill, night exposure, PMREM environment bake (`fromScene` options form) — `Game`.
 - `src/physics/Physics.ts` — Rapier world and colliders; rounded vehicle colliders (`vehicleShape`); wheel rays hit trailer beds (`CG.DECK`) but never other cars — `Game`, `CameraRig`, `Character`, `Vehicle`, world and build files.
 - `src/physics/Parking.ts` — free-spot search for placing vehicles (buildings, props, every vehicle) and the stacked-vehicle check — `Game`.

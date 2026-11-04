@@ -19,9 +19,23 @@ export function noNormalsMRT<T extends THREE.Material>(m: T): T {
   return m;
 }
 
+/** Distance fog (DayNight): starts here, fully opaque at FOG_FAR. */
+export const FOG_NEAR = 180;
+export const FOG_FAR = 900;
+/**
+ * Camera far plane. Past FOG_FAR everything is drawn in flat fog color, so
+ * there is nothing to see beyond it; the 100 m margin covers the build camera
+ * (up to 150 m from its target) looking at stars that follow the player. The
+ * sky dome writes its depth at the far plane, so it is unaffected. A tight far
+ * plane also gives the depth buffer ~5× more precision than the old 5 km.
+ */
+export const CAMERA_FAR = FOG_FAR + 100;
+/** Highest render resolution, in device pixels per CSS pixel (retina phones report 3+). */
+export const MAX_PIXEL_RATIO = 2;
+
 export class Engine {
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 5000);
+  readonly camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, CAMERA_FAR);
   renderer!: THREE.WebGPURenderer;
   backendName = 'unknown';
   aoEnabled = false;
@@ -43,7 +57,7 @@ export class Engine {
   private async init(container: HTMLElement) {
     const params = new URLSearchParams(location.search);
     const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: params.has('webgl') });
-    this.maxRatio = this.ratio = Math.min(devicePixelRatio, 2);
+    this.maxRatio = this.ratio = Math.min(devicePixelRatio, MAX_PIXEL_RATIO);
     renderer.setPixelRatio(this.ratio);
     renderer.setSize(innerWidth, innerHeight);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -126,8 +140,8 @@ export class Engine {
   }
 
   private setRatio(r: number) {
-    this.ratio = r;
-    this.renderer.setPixelRatio(r);
+    this.ratio = Math.min(r, MAX_PIXEL_RATIO);
+    this.renderer.setPixelRatio(this.ratio);
     this.renderer.setSize(innerWidth, innerHeight);
   }
 

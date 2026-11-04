@@ -57,6 +57,8 @@ export class Lawn {
   cells: LawnCells;
   /** Bumped whenever blades should be re-laid (a cut, or the grass growing). */
   revision = 0;
+  /** World-space XZ box of everything that changed since `takeDirty()` last ran (NaN = nothing). */
+  private dirtyBox = [NaN, NaN, NaN, NaN];
   private readonly tw: number;
   private readonly th: number;
   /** Per texel: in-game day of the last cut (-1 = never), and blade lean angle. */
@@ -128,6 +130,28 @@ export class Lawn {
     this.anyCut = true;
     this.dirty = true;
     this.revision++;
+    this.markDirty(s.x - reach, s.z - reach, s.x + reach, s.z + reach);
+  }
+
+  private markDirty(x0: number, z0: number, x1: number, z1: number) {
+    const b = this.dirtyBox;
+    if (Number.isNaN(b[0])) { b[0] = x0; b[1] = z0; b[2] = x1; b[3] = z1; return; }
+    b[0] = Math.min(b[0], x0); b[1] = Math.min(b[1], z0); b[2] = Math.max(b[2], x1); b[3] = Math.max(b[3], z1);
+  }
+
+  private markAllDirty() { const l = this.lot; this.markDirty(l.x, l.z, l.x + l.w, l.z + l.d); }
+
+  /**
+   * The area whose blades need re-laying since the last call, written into `out`
+   * as [x0, z0, x1, z1]; false when nothing changed. Grass only re-lays the tiles
+   * a mower pass touched instead of the whole field.
+   */
+  takeDirty(out: number[]): boolean {
+    const b = this.dirtyBox;
+    if (Number.isNaN(b[0])) return false;
+    out[0] = b[0]; out[1] = b[1]; out[2] = b[2]; out[3] = b[3];
+    b[0] = NaN;
+    return true;
   }
 
   /** Restores the authority's cells (on join): each 1 m cell fills its 4 × 4 texels. */
@@ -149,6 +173,7 @@ export class Lawn {
     this.grownTick = Math.floor(nowDays * TICKS_PER_DAY);
     this.dirty = true;
     this.revision++;
+    this.markAllDirty();
   }
 
   private writeTexel(k: number, nowDays: number) {
@@ -191,6 +216,7 @@ export class Lawn {
       this.anyCut = still;
       this.dirty = true;
       this.revision++;
+      this.markAllDirty();
       refreshed = true;
     }
     if (this.dirty && this.flushTimer > 0.1) { this.tex.needsUpdate = true; this.dirty = false; this.flushTimer = 0; }
