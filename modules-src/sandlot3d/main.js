@@ -39,6 +39,7 @@ const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
 const cv=$('gl'),hud=$('hud'),hx=hud.getContext('2d');
 const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(1.75,window.devicePixelRatio||1));
+const adaptRes=window.__adaptiveResolution?window.__adaptiveResolution({max:renderer.getPixelRatio(),min:Math.min(renderer.getPixelRatio(),.75),apply:r=>{renderer.setPixelRatio(r);resize()}}):null;
 renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(50,1,.3,9000);
@@ -1716,7 +1717,7 @@ function drawTags(now){
 
 /* ================= MAIN LOOP ================= */
 let last=0;
-function frame(real){if(lastReal==null)lastReal=real;vt+=(real-lastReal)*slow;lastReal=real;const now=vt;try{step(now)}catch(e){console.error(e)}requestAnimationFrame(frame)}
+function frame(real){if(lastReal==null)lastReal=real;if(adaptRes&&!document.hidden)adaptRes.update((real-lastReal)/1000);vt+=(real-lastReal)*slow;lastReal=real;const now=vt;try{step(now)}catch(e){console.error(e)}requestAnimationFrame(frame)}
 function step(now){
   const dt=Math.min(.05,(now-last)/1000);last=now;
   const due=timers.filter(t=>now>=t.t);if(due.length){timers=timers.filter(t=>now<t.t);due.forEach(t=>t.fn())}

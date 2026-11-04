@@ -11,6 +11,7 @@ import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from './prison-speedway.js';
 import { batchStatic } from '../_shared/static-batch.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from './iconic-schemes.js';
+import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -2300,9 +2301,11 @@ function setNight(n){
   bloom.enabled=n;bloom.strength=0.25;bloom.threshold=0.85;scene.fog.near=n?1500:DAY.fogNear;scene.fog.far=n?3800:DAY.fogFar;
   const upd=c=>c&&c.m.paints.forEach(m=>{if(m.userData.r0==null){m.userData.r0=m.roughness;m.userData.cc0=m.clearcoat||0;}m.envMap=envTex;m.envMapIntensity=ENVK;m.roughness=n?Math.max(0.5,m.userData.r0):m.userData.r0;m.clearcoat=n?m.userData.cc0*0.3:m.userData.cc0;m.needsUpdate=true;});cars.forEach(upd);upd(menuCar);renderer.toneMappingExposure=n?.7:DAY.exposure;
 }
+let adaptRes=null;
 function applyQuality(){
   const q=quality,dpr=window.devicePixelRatio||1;
-  renderer.setPixelRatio(q==='low'?Math.min(1,dpr)*0.8:q==='med'?Math.min(1.25,dpr):Math.min(2,dpr));
+  const maxRatio=q==='low'?Math.min(1,dpr)*0.8:q==='med'?Math.min(1.25,dpr):Math.min(2,dpr);
+  if(!adaptRes)adaptRes=createAdaptiveResolution({max:maxRatio,min:Math.min(maxRatio,0.75),apply:r=>{renderer.setPixelRatio(r);resize();}});else adaptRes.setMax(maxRatio);renderer.setPixelRatio(maxRatio);
   const sh=q!=='low';if(renderer.shadowMap.enabled!==sh){renderer.shadowMap.enabled=sh;scene.traverse(o=>{if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>m.needsUpdate=true);});}
   const ms=q==='high'?2048:1024;if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null;}}
   useComposer=q!=='low';
@@ -2610,7 +2613,7 @@ function simulate(dt){
   for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++)collidePair(arr[i],arr[j]);
 }
 function frame(now){
-  requestAnimationFrame(frame);const dt=Math.min(0.1,(now-lastT)/1000);lastT=now;
+  requestAnimationFrame(frame);const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
   const simOn=mode==='race'||mode==='results'||(mode==='paused'&&NET.online);
   if(simOn){
     acc+=dt;let n=0;while(acc>=STEP&&n<24){simulate(STEP);acc-=STEP;n++;}if(n>=24)acc=0;
