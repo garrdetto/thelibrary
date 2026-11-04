@@ -6,8 +6,10 @@ import { getAsset, insertAsset, listAssets, statusFrom, updateAsset, type AssetF
 
 export const VEHICLE_MODEL_KEY = (id: string) => `maplestreet-vehicle/${id}`
 export const VEHICLE_WHEEL_KEY = (id: string) => `maplestreet-vehicle/${id}/wheel`
-export const vehicleModelUrl = (id: string) => `/api/maplestreet-vehicles?model=${id}`
-export const vehicleWheelUrl = (id: string) => `/api/maplestreet-vehicles?wheel=${id}`
+/** The version keeps the immutable cache honest when the admin saves a new model over a vehicle. */
+export const vehicleModelUrl = (id: string, version = 1) => `/api/maplestreet-vehicles?model=${id}&v=${version}`
+export const vehicleWheelUrl = (id: string, version = 1) => `/api/maplestreet-vehicles?wheel=${id}&v=${version}`
+export const BUNDLED_ID_PATTERN = /^bundled-[a-z0-9-]{1,60}$/
 
 const n = (min: number, max: number) => z.number().finite().min(min).max(max)
 const point = (lim = 10) => z.object({ x: n(-lim, lim), y: n(-lim, lim), z: n(-lim, lim) }).strict()
@@ -86,8 +88,8 @@ function toRecord(asset: AssetRow): CustomVehicleRecord | null {
     ...(parsed.data as CustomVehicleSpec),
     id: asset.id,
     name: asset.name,
-    modelUrl: bundled ? bundled.modelUrl : vehicleModelUrl(asset.id),
-    wheelUrl: bundled ? bundled.wheelUrl : asset.files.wheel ? vehicleWheelUrl(asset.id) : null,
+    modelUrl: asset.files.model ? vehicleModelUrl(asset.id, asset.version) : bundled ? bundled.modelUrl : vehicleModelUrl(asset.id, asset.version),
+    wheelUrl: asset.files.wheel ? vehicleWheelUrl(asset.id, asset.version) : bundled ? bundled.wheelUrl : null,
     active: asset.status !== 'retired',
     status: asset.status,
     updatedAt: asset.updatedAt,
@@ -119,4 +121,13 @@ export async function ensureBundledOverride(env: Env, id: string, createdBy: str
 
 export async function updateStoreVehicle(env: Env, id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; spec?: CustomVehicleSpec }) {
   return updateAsset(env, 'vehicle', id, { name: changes.name, status: statusFrom(changes), spec: changes.spec })
+}
+
+/** Saves a new model (and optionally a new wheel) over an existing vehicle along with its name, spec and status. */
+export async function replaceStoreVehicle(env: Env, id: string, name: string, spec: CustomVehicleSpec, model: { type: string; bytes: number }, wheel: { type: string; bytes: number } | null, status: AssetStatus) {
+  const asset = await getAsset(env, 'vehicle', id)
+  if (!asset) return 0
+  const files: AssetFiles = { ...asset.files, model: { key: VEHICLE_MODEL_KEY(id), type: model.type, bytes: model.bytes } }
+  if (wheel) files.wheel = { key: VEHICLE_WHEEL_KEY(id), type: wheel.type, bytes: wheel.bytes }
+  return updateAsset(env, 'vehicle', id, { name, spec, status, files })
 }

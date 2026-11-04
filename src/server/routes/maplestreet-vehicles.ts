@@ -6,11 +6,12 @@ import { inspectModel } from '../gltf-check'
 import { refreshWorldCatalog, requireMapleAdmin } from '../maplestreet-admin'
 import { assetStatusSchema, wantsDrafts } from '../maplestreet-assets'
 import { currentUser } from '../auth'
-import { bundledVehicle, ensureBundledOverride, getStoreVehicle, insertStoreVehicle, listStoreVehicles, updateStoreVehicle, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
+import { BUNDLED_ID_PATTERN, bundledVehicle, ensureBundledOverride, getStoreVehicle, insertStoreVehicle, listStoreVehicles, replaceStoreVehicle, updateStoreVehicle, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
 
 const idSchema = z.string().uuid()
+const anyIdSchema = z.union([idSchema, z.string().regex(BUNDLED_ID_PATTERN)])
 const updateSchema = z.object({
-  id: z.union([idSchema, z.string().regex(/^bundled-[a-z0-9-]{1,60}$/)]),
+  id: anyIdSchema,
   active: z.boolean().optional(),
   status: assetStatusSchema.optional(),
   name: vehicleNameSchema.optional(),
@@ -69,6 +70,8 @@ async function publish(request: Request, env: Env) {
   if (!model) throw new HttpError(400, 'Choose a .glb or .gltf model to publish.')
   const wheel = await readModel(form.get('wheel'), VEHICLE_LIMITS.wheelBytes, 'Wheel models')
   const status = publishStatus.parse(form.get('status'))
+  const editing = form.get('id')
+  if (typeof editing === 'string' && editing) return saveOver(env, check(anyIdSchema, editing), user.id, name, spec, model, wheel, status)
 
   const id = crypto.randomUUID()
   await env.FILES.put(VEHICLE_MODEL_KEY(id), model.bytes, { metadata: { mime: model.kind.type, bytes: model.bytes.byteLength } })
@@ -82,6 +85,22 @@ async function publish(request: Request, env: Env) {
   }
   if (status === 'published') await refreshWorldCatalog(env)
   return json({ vehicle: await getStoreVehicle(env, id) }, 201)
+}
+
+/** Edits from the "Your vehicles" list: the new model replaces the stored one, and players pick it up through the versioned model URL. */
+async function saveOver(env: Env, id: string, userId: string, name: string, spec: CustomVehicleSpec, model: { bytes: Uint8Array; kind: { type: string } }, wheel: { bytes: Uint8Array; kind: { type: string } } | null, status: 'draft' | 'published') {
+  const bundled = bundledVehicle(id)
+  if (bundled) {
+    if (status === 'draft') throw new HttpError(400, 'Built-in vehicles can’t be turned into drafts. Save it as published instead.')
+    await ensureBundledOverride(env, id, userId)
+  }
+  if (!await getStoreVehicle(env, id)) return json({ error: 'Vehicle not found.' }, 404)
+  await env.FILES.put(VEHICLE_MODEL_KEY(id), model.bytes, { metadata: { mime: model.kind.type, bytes: model.bytes.byteLength } })
+  if (wheel) await env.FILES.put(VEHICLE_WHEEL_KEY(id), wheel.bytes, { metadata: { mime: wheel.kind.type, bytes: wheel.bytes.byteLength } })
+  const changed = await replaceStoreVehicle(env, id, name, spec, { type: model.kind.type, bytes: model.bytes.byteLength }, wheel ? { type: wheel.kind.type, bytes: wheel.bytes.byteLength } : null, status)
+  if (!changed) return json({ error: 'Vehicle not found.' }, 404)
+  await refreshWorldCatalog(env)
+  return json({ vehicle: await getStoreVehicle(env, id) })
 }
 
 async function update(request: Request, env: Env) {
@@ -101,9 +120,9 @@ export async function maplestreetVehicles(request: Request, env: Env) {
   const url = new URL(request.url)
   if (request.method === 'GET') {
     const model = url.searchParams.get('model')
-    if (model !== null) return serveFile(env, VEHICLE_MODEL_KEY(idSchema.parse(model)))
+    if (model !== null) return serveFile(env, VEHICLE_MODEL_KEY(anyIdSchema.parse(model)))
     const wheel = url.searchParams.get('wheel')
-    if (wheel !== null) return serveFile(env, VEHICLE_WHEEL_KEY(idSchema.parse(wheel)))
+    if (wheel !== null) return serveFile(env, VEHICLE_WHEEL_KEY(anyIdSchema.parse(wheel)))
     const drafts = await wantsDrafts(request, env, isAdmin)
     return json({ vehicles: await listStoreVehicles(env, { drafts }), drafts })
   }

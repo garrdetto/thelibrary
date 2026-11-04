@@ -1,4 +1,4 @@
-import { learningModules } from './modules'
+import { isModuleAvailable, learningModules as allLearningModules } from './modules'
 import type { LearningModule, ModuleId } from './modules'
 
 export type ModuleLayout = {
@@ -7,6 +7,8 @@ export type ModuleLayout = {
   featured: ModuleId | null
   updatedAt: string | null
 }
+
+const learningModules = allLearningModules.filter(item => isModuleAvailable(item.id))
 
 export const moduleIds = learningModules.map(item => item.id) as [ModuleId, ...ModuleId[]]
 

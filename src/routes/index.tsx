@@ -1,13 +1,11 @@
 import { PoolAccount } from '@/components/PoolAccount'
 import { SignInRibbon } from '@/components/SignInRibbon'
-import { AdminPanel } from '@/components/AdminPanel'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bomb, Bookmark, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, X } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
-import { PoolTable } from '@/components/PoolTable'
 import { usePoolLobby } from '@/components/PoolLobby'
 import { InvitePopups } from '@/components/SitePresence'
 import { GroupChat } from '@/components/GroupChat'
@@ -18,17 +16,19 @@ import { FairwayRecordBoard } from '@/components/FairwayRecordBoard'
 import { ModuleScoreboard } from '@/components/ModuleScoreboard'
 import { AdminRecordResetButton, RecordResetProvider } from '@/components/AdminRecordReset'
 import { isScoredModule } from '@/lib/module-scores'
-import { embeddedModules, isEmbeddedModuleId, learningModules } from '@/lib/modules'
+import { embeddedModules, isEmbeddedModuleId, isModuleAvailable, learningModules } from '@/lib/modules'
 import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
 import type { EmbeddedModuleId, ModuleId } from '@/lib/modules'
-import { Streamdown } from 'streamdown'
+import { Markdown } from '@/components/Markdown'
 import type { Creation, LyricCorrection, LyricPreset, Message, SongSettings, StudioMode } from '@/lib/studio-types'
 
 export const Route = createFileRoute('/')({ component: Studio })
 
 const Racing = lazy(() => import('@/components/Racing').then(module => ({ default: module.Racing })))
 const ParkGame = lazy(() => import('@/components/park/ParkGame').then(module => ({ default: module.ParkGame })))
+const PoolTable = lazy(() => import('@/components/PoolTable').then(module => ({ default: module.PoolTable })))
+const AdminPanel = lazy(() => import('@/components/AdminPanel').then(module => ({ default: module.AdminPanel })))
 
 const defaultSettings: SongSettings = { genre: 'Indie pop', customGenre: '', artist: '', explicit: true, vibe: 'Dreamy & atmospheric', mood: 'Bittersweet', pitch: 'Mid-range', style: 'Conversational & intimate', instruments: 'Soft piano, warm bass, brushed drums', structure: 'Verse / Chorus / Verse / Chorus / Bridge / Chorus', instructions: '' }
 const navigation = [
@@ -39,7 +39,7 @@ const navigation = [
 const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, fairway: Flag, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper }
 const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', fairway: 'room', party: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
-const playLinks = embeddedModules.map(item => ({ id: item.id, label: item.title, src: item.src }))
+const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
 type PlayId = EmbeddedModuleId
 type View = StudioMode | 'home' | 'admin' | ModuleId
 const isPlayId = isEmbeddedModuleId
@@ -210,13 +210,13 @@ function Studio() {
 
   function joinChatInvite(invite: ChatInvite) {
     const id = invite.module
-    if (!learningModules.some(item => item.id === id)) return
+    if (!isModuleAvailable(id) || !learningModules.some(item => item.id === id)) return
     switchView(id as ModuleId)
     if (invite.code && isPlayId(id)) setPlayRoom(invite.code)
   }
 
   function switchView(next: View) {
-    if (busy || ['chat', 'image', 'lyrics'].includes(next) && !access.pages.includes(next) || next === 'admin' && !access.isAdmin) return
+    if (!isModuleAvailable(next) || busy || ['chat', 'image', 'lyrics'].includes(next) && !access.pages.includes(next) || next === 'admin' && !access.isAdmin) return
     if (lobby.match && next !== 'pool') lobby.leave()
     setSelection(null)
     setPlayRoom(null)
@@ -458,8 +458,8 @@ function Studio() {
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
-        {view === 'admin' && access.isAdmin && <AdminPanel/>}
-        {view === 'pool' && <PoolTable lobby={lobby}/>}
+        {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel/></Suspense>}
+        {view === 'pool' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Racking the balls…</p>}><PoolTable lobby={lobby}/></Suspense>}
         {view === 'park' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame username={access.username} accountReady={accountReady}/></Suspense>}
         {(view === 'racing' || view === 'oval') && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the race track…</p>}><Racing key={view} fixedTrack={view === 'oval' ? 'oval' : 'circuit'} players={lobby.players} playerName={lobby.name} joinRequest={raceJoinRequest} onJoinHandled={() => setRaceJoinRequest(0)}/></Suspense>}
         {view === 'chat' && <>
@@ -473,7 +473,7 @@ function Studio() {
               {access.pages.includes('lyrics') && <button className="suggestion-card card-song" onClick={() => suggest('lyrics', 'A bittersweet song about outgrowing your hometown but still feeling its pull.')}><div className="card-art song-art"><span className="music-staff"/><span className="note note-one">♪</span><span className="note note-two">♫</span><span className="note note-three">♪</span><span className="song-spark">✳</span></div><div className="card-label"><Music2 size={16}/><span>Find your next verse</span><ArrowRight size={16}/></div><p>Real feelings. Words that sound like you.</p></button>}
             </div>
             <div className="starter-hint"><Sparkles size={14}/><span>No perfect prompt needed. Just start with what’s on your mind.</span></div>
-          </div> : <div className="conversation" aria-live="polite">{messages.map((message, index) => <div key={index} className={`message ${message.role}`}><div className="message-avatar">{message.role === 'assistant' ? <BrandMark small/> : <Feather size={18}/>}</div><div className="message-body"><span className="message-author">{message.role === 'assistant' ? 'the library' : 'You'}</span><Streamdown>{message.content}</Streamdown></div></div>)}{busy && <div className="thinking"><BrandMark small/><span className="thinking-dots"><i/><i/><i/></span><span>Connecting the dots…</span></div>}<div ref={bottomRef}/></div>}
+          </div> : <div className="conversation" aria-live="polite">{messages.map((message, index) => <div key={index} className={`message ${message.role}`}><div className="message-avatar">{message.role === 'assistant' ? <BrandMark small/> : <Feather size={18}/>}</div><div className="message-body"><span className="message-author">{message.role === 'assistant' ? 'the library' : 'You'}</span><Markdown>{message.content}</Markdown></div></div>)}{busy && <div className="thinking"><BrandMark small/><span className="thinking-dots"><i/><i/><i/></span><span>Connecting the dots…</span></div>}<div ref={bottomRef}/></div>}
           <div className="composer-zone"><form className="chat-composer" onSubmit={generate}><textarea ref={inputRef} value={input} onChange={(event) => setInput(event.target.value)} placeholder="What’s on your mind? Let’s make something of it." aria-label="Chat message" rows={2} maxLength={4000} disabled={busy} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void generate() } }}/><div className="composer-toolbar"><div className="composer-tools"><span className="composer-mode"><MessageCircle size={14}/> Chat</span>{access.pages.includes('image') && <button type="button" onClick={() => suggest('image', input)} disabled={busy}><Image size={15}/> Create image</button>}{access.pages.includes('lyrics') && <button type="button" onClick={() => suggest('lyrics', input)} disabled={busy}><Music2 size={15}/> Write lyrics</button>}</div><button className="send-button" type="submit" aria-label="Send message" disabled={!input.trim() || busy}>{busy ? <LoaderCircle className="spin" size={18}/> : <ArrowUp size={20}/>}</button></div></form><div className="composer-footnote"><span><Cloud size={12}/> Your ideas, powered by the cloud.</span><span>AI can make mistakes. Keep your own perspective.</span></div></div>
         </>}
 
