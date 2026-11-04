@@ -635,7 +635,8 @@ void main() {
 #endif
   vec3 c = lit + diffuseColor * ambient * ao + specAmb + base * uEmissive;
   if (vMatA.z < -1.5) {
-    float on = vNeon < 0.002 ? 1.0 : 0.22 + 0.78 * smoothstep(-0.15, 0.4, sin(uTime * 4.5 - vNeon * 6.2831853));
+    float flash = 0.35 + 0.65 * smoothstep(-0.3, 0.5, sin(uTime * 5.0));
+    float on = vNeon < 0.002 ? flash : 0.06 + 0.94 * smoothstep(-0.15, 0.4, sin(uTime * 6.0 - vNeon * 6.2831853));
     c += base * uNeon * on;
   }
   c = mix(c, toLinear(uHighlight.rgb) * 1.6, uHighlight.a);

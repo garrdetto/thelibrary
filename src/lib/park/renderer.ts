@@ -793,7 +793,7 @@ export class ParkRenderer {
     const sunScatter = sunColor.map((v, i) => v * 0.32 + horizon[i] * 0.4) as Vec3
     const exposure = 0.34 + (1 - daylight) * 0.85 + overcast * 0.12
     const dome = (c: Vec3) => c.map(v => v * 1.9) as Vec3
-    return { sunDir, sunColor, sky, ground, horizon, fog: dome(horizon), fogDensity: rain ? 0.0026 : cloudy ? 0.0012 : 0.0005, fogFalloff: 0.014, sunScatter: dome(sunScatter), skyTop: dome(skyTop), skyBottom: dome(horizon), exposure, shadow, wind: rain ? 0.14 : cloudy ? 0.09 : 0.05, neon: 1.1 + (1 - daylight) * 0.5 + overcast * 0.3 }
+    return { sunDir, sunColor, sky, ground, horizon, fog: dome(horizon), fogDensity: 0, fogFalloff: 0.014, sunScatter: dome(sunScatter), skyTop: dome(skyTop), skyBottom: dome(horizon), exposure, shadow, wind: rain ? 0.14 : cloudy ? 0.09 : 0.05, neon: 2.4 + (1 - daylight) * 1.2 + overcast * 0.5 }
   }
 
   isNight() { const f = this.state?.time.dayFraction ?? 0.4; return f > 0.84 || f < 0.22 }
@@ -1287,10 +1287,11 @@ export class ParkRenderer {
         for (let i = 0; i < cache.path.count; i += 8) consider(sphere(cache.path.pos[i * 3], cache.path.pos[i * 3 + 1], cache.path.pos[i * 3 + 2], 1.6), { kind: 'entity', id: e.id })
         continue
       }
-      const f = e.type === 'ride' || e.type === 'hotel' ? footprint(e) : { x: e.x, y: e.y, w: 1, h: 1 }
+      const sized = e.type === 'ride' || e.type === 'hotel' || e.type === 'stall'
+      const f = sized ? footprint(e) : { x: e.x, y: e.y, w: 1, h: 1 }
       const cx = (f.x + f.w / 2) * TILE, cy = (f.y + f.h / 2) * TILE, z = groundHeightAt(s.map, cx, cy, TILE)
-      const rad = e.type === 'ride' || e.type === 'hotel' ? Math.max(f.w, f.h) * TILE * 0.55 : e.type === 'parkEntrance' ? 6 : 2.2
-      const height = e.type === 'hotel' ? Math.min(30, hotelHeight(e) * 0.5) : e.type === 'ride' ? Math.min(8, (FLAT_RIDES[e.ride as string]?.height ?? 6) * 0.4) : e.type === 'scenery' ? 3 : 1.5
+      const rad = e.type === 'ride' || e.type === 'hotel' ? Math.max(f.w, f.h) * TILE * 0.55 : e.type === 'stall' ? Math.max(2.2, Math.max(f.w, f.h) * TILE * 0.5) : e.type === 'parkEntrance' ? 6 : 2.2
+      const height = e.type === 'hotel' ? Math.min(30, hotelHeight(e) * 0.5) : e.type === 'ride' ? Math.min(8, (FLAT_RIDES[e.ride as string]?.height ?? 6) * 0.4) : e.type === 'stall' ? 2 : e.type === 'scenery' ? 3 : 1.5
       consider(sphere(cx, cy, z + height, rad), { kind: 'entity', id: e.id }, e.type === 'scenery' ? 3 : 0)
     }
     return best
