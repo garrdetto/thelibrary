@@ -331,6 +331,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
 - `modules-src/shorttrack/iconic-schemes.js` — the AI field: iconic NASCAR look-alike schemes per car number (`ICONIC_FIELD`, `ICONIC`), knockoff logos (`LOGOS`, `logoCanvas`) and the side/hood painters (`drawSchemeSide`, `drawSchemeHood`) — `main.js`.
 - `modules-src/shorttrack/prison-speedway.js` — Prison Speedway scenery (`buildPrisonSet`: guard towers, curtain wall, razor wire, searchlights, name board; `buildPrisonInfield`: the walled infield cell house with two three-storey cell blocks, four round towers, a barred front gate, barred windows with inmates (instanced) and a `setNight` hook that lights the cells) and the inmate crowd and stand colors — `main.js`.
+- `modules-src/shorttrack/static-batch.js` — `batchStatic(root, exclude)`: merges rigid meshes under a root into one mesh per material (same shadow flags, render order, culling, layers and vertex layout; world/root transform baked in; skips instanced, skinned, morphing, multi-material and childed meshes). Run once on the finished track scenery (excluding the sky and clouds), on each truck shell (excluding the deformable body, decals and wheel pivots) and on each wheel; `?batch=0` turns it off for comparisons — `main.js`.
 - `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
 
 ### pool — 8-Ball Pool

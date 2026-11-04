@@ -9,6 +9,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from './shorttrack-numbers.js';
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from './prison-speedway.js';
+import { batchStatic } from './static-batch.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from './iconic-schemes.js';
 
 // ===================== TUNING =====================
@@ -466,6 +467,9 @@ const flagMat=new THREE.MeshBasicMaterial({color:0xffcc00,side:DS});
  const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.12,0.12,7,8),new THREE.MeshStandardMaterial({color:0x999999}));pole.position.set(bx,fy+3.5,bz);scene.add(pole);
  const booth=new THREE.Mesh(new THREE.BoxGeometry(2.6,1.4,2.2),new THREE.MeshStandardMaterial({color:0x1d3557}));booth.position.set(bx-c.nx*0.8,fy+7.4,bz-c.nz*0.8);scene.add(booth);
  const flag=new THREE.Mesh(new THREE.PlaneGeometry(1.5,1.0),flagMat);flag.position.set(bx-c.nx*2.2,fy+6.4,bz-c.nz*2.2);flag.rotation.y=Math.PI/2;scene.add(flag);}
+
+const BATCH=new URLSearchParams(location.search).get('batch')!=='0';
+if(BATCH)batchStatic(scene,[sky,skyDay,clouds]);
 
 // ===================== EFFECTS =====================
 const MARKS=DIRT?14000:7000;
@@ -1660,6 +1664,7 @@ function buildCar(lv,o={}){
   const deform=[{geo:bodyMesh.geometry,orig:Float32Array.from(bodyMesh.geometry.attributes.position.array),scuff:true},...decals.map(d=>({geo:d.geometry,orig:Float32Array.from(d.geometry.attributes.position.array)}))];
   const wheels=[];
   for(const w of g.children.filter(o=>o.name.startsWith('Wheel_'))){const pivot=new THREE.Group();pivot.position.copy(w.position);g.add(pivot);pivot.add(w);w.position.set(0,0,0);wheels.push({pivot,w,front:w.name.includes('_F'),spinZ:true});}
+  if(BATCH){batchStatic(g,[bodyMesh,...decals,...wheels.map(w=>w.pivot)]);for(const {w} of wheels)batchStatic(w);}
   const paints=[bodyPaint,M.paint,M.glass,M.smoke,M.badge,...decals.map(d=>d.material)];
   for(const m of paints){if(m.isMeshPhysicalMaterial){m.envMap=envTex;m.envMapIntensity=ENVK;}}
   let light=null;
