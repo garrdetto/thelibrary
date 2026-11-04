@@ -1,7 +1,7 @@
 export const scoredModules = {
   '2048': { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 4, max: 20_000_000, note: 'Saved when a board fills up or when you start a new board.' },
   helicopter: { title: 'Longest Flights', metric: 'Distance', order: 'desc', unit: 'meters', min: 1, max: 10_000_000, note: 'Saved every time the chopper crashes.' },
-  botwreck: { title: 'Wreck Scores', metric: 'Wreck score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved when you respawn, return to the build bay or leave the module.' },
+  botwreck: { title: 'Wreck Scores', metric: 'Wreck score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved at the end of each arena match: damage dealt, knockouts, a win bonus and the health you finish with.' },
   alphabet: { title: 'Fastest Alphabets', metric: 'Time', order: 'asc', unit: 'ms', min: 300, max: 600_000, note: 'Saved when you finish Z with every letter correct.' },
   wpm: { title: 'Fastest Typists', metric: 'WPM', order: 'desc', unit: 'wpm', min: 1, max: 400, note: 'Saved when the one-minute timer runs out.' },
   tetradrop: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, note: 'Saved when the stack reaches the top or when you start a new round.' },
