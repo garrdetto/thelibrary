@@ -20,8 +20,10 @@ export async function fetchStoreVehicles(): Promise<CustomVehicleRecord[]> {
   return ((await response.json()) as { vehicles: CustomVehicleRecord[] }).vehicles
 }
 
-export async function publishStoreVehicle(input: { name: string; spec: CustomVehicleSpec; model: Blob; wheel: Blob | null; status: 'draft' | 'published' }): Promise<CustomVehicleRecord> {
+/** Publishes a new vehicle, or with `id` saves a new model, name, spec and status over an existing one. */
+export async function publishStoreVehicle(input: { id?: string; name: string; spec: CustomVehicleSpec; model: Blob; wheel: Blob | null; status: 'draft' | 'published' }): Promise<CustomVehicleRecord> {
   const form = new FormData()
+  if (input.id) form.append('id', input.id)
   form.append('name', input.name)
   form.append('spec', JSON.stringify(input.spec))
   form.append('model', input.model, 'vehicle.glb')
@@ -30,6 +32,19 @@ export async function publishStoreVehicle(input: { name: string; spec: CustomVeh
   const response = await fetch(ENDPOINT, { method: 'POST', body: form, credentials: 'same-origin' })
   if (!response.ok) throw new Error(await readError(response))
   return ((await response.json()) as { vehicle: CustomVehicleRecord }).vehicle
+}
+
+/** Downloads a published vehicle's model (and wheel) as files the editor can open and re-publish. */
+export async function fetchStoreVehicleFiles(record: CustomVehicleRecord): Promise<{ model: File; wheel: File | null }> {
+  const load = async (url: string, name: string) => {
+    const response = await fetch(url, { credentials: 'same-origin' })
+    if (!response.ok) throw new Error('That vehicle’s model could not be downloaded.')
+    const type = response.headers.get('content-type') ?? 'model/gltf-binary'
+    const ext = type.includes('json') || /\.gltf(\?|$)/i.test(url) ? 'gltf' : 'glb'
+    return new File([await response.blob()], `${name}.${ext}`, { type })
+  }
+  const [model, wheel] = await Promise.all([load(record.modelUrl, record.id), record.wheelUrl ? load(record.wheelUrl, `${record.id}-wheel`) : Promise.resolve(null)])
+  return { model, wheel }
 }
 
 export async function updateStoreVehicle(id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; spec?: CustomVehicleSpec }): Promise<CustomVehicleRecord> {

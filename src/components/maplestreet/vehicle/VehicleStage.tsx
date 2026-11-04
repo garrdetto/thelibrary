@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { MutableRefObject, ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
 import { Grid, Html, OrbitControls, TransformControls, useGLTF } from '@react-three/drei'
@@ -9,6 +9,8 @@ import { recolorPixels } from '../../../../modules-src/maplestreet/shared/PaintM
 import { BODY_EXTENTS, BUILTIN_TUNING, rideHeight } from '../../../../modules-src/maplestreet/shared/Vehicles'
 import type { Draft, MarkerId, ReferenceKind, Size3 } from './draft'
 import { draftRideHeight, suspensionFor, turnedCenter, turnedSize } from './draft'
+import { DentSmoother } from './DentSmoother'
+import type { SmootherApi } from './DentSmoother'
 
 const RESIDENT_URL = '/models/maplestreet/characters/resident.glb'
 const RESIDENT_HEIGHT = 1.75
@@ -27,6 +29,10 @@ type Props = {
   onPick: (pick: { material: string; color: string | null }) => void
   onSelect: (id: MarkerId | null) => void
   onScene?: (scene: Object3D | null) => void
+  /** Filled in once the model is open; the Body step smooths dents through it. */
+  smoother?: MutableRefObject<SmootherApi | null>
+  /** Holds the camera still while a selection is being drawn over the canvas. */
+  locked?: boolean
 }
 
 function samplePixel(map: Texture | null, uv: { x: number; y: number } | undefined): string | null {
@@ -65,7 +71,7 @@ function maskedMap(map: Texture, key: string, tolerance: number, color: string):
   return tex
 }
 
-function VehicleModel({ url, draft, onInfo, picking, onPick, onScene }: { url: string; draft: Draft; onInfo: Props['onInfo']; picking: boolean; onPick: Props['onPick']; onScene?: Props['onScene'] }) {
+function VehicleModel({ url, draft, onInfo, picking, onPick, onScene, smoother }: { url: string; draft: Draft; onInfo: Props['onInfo']; picking: boolean; onPick: Props['onPick']; onScene?: Props['onScene']; smoother?: Props['smoother'] }) {
   const { scene } = useGLTF(url, false, true)
   useEffect(() => { onScene?.(scene); return () => onScene?.(null) }, [scene, onScene])
   const originals = useRef(new Map<Object3D, Material | Material[]>())
@@ -77,6 +83,7 @@ function VehicleModel({ url, draft, onInfo, picking, onPick, onScene }: { url: s
       if (!mesh.isMesh) return
       mesh.castShadow = true; mesh.receiveShadow = true
       originals.current.set(mesh, mesh.material)
+      mesh.userData.msOriginalMaterial = mesh.material
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) if (m.name) names.add(m.name)
     })
     const box = new Box3().setFromObject(scene)
@@ -118,6 +125,7 @@ function VehicleModel({ url, draft, onInfo, picking, onPick, onScene }: { url: s
   }
   return <group position={[-turned.x * draft.scale + draft.shiftX, -ride + draft.lift - info.center.minY * draft.scale, -turned.z * draft.scale]} rotation-y={(draft.yaw * Math.PI) / 2} scale={draft.scale} onClick={click}>
     <primitive object={scene}/>
+    {smoother && <DentSmoother scene={scene} api={smoother}/>}
   </group>
 }
 
@@ -232,7 +240,7 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
   </mesh>)
   return <>
     <group position={[0, ride, 0]}>
-      <VehicleModel url={props.url} draft={draft} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick} onScene={props.onScene}/>
+      <VehicleModel url={props.url} draft={draft} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick} onScene={props.onScene} smoother={props.smoother}/>
       {draft.axles.map((a, i) => [1, -1].map(side => <Wheel key={`${i}${side}`} radius={a.radius} width={a.width} position={[a.x, wheelCenterY, a.halfTrack * side]}/>))}
       <group position={[draft.seat.x, draft.seat.y, draft.seat.z]}><SeatedFigure/></group>
       {lamp(draft.head, '#fff4d6')}
@@ -271,7 +279,7 @@ export function VehicleStage(props: Props) {
       <shadowMaterial opacity={0.35}/>
     </mesh>
     <ChassisScene {...props} info={info} setInfo={setInfo}/>
-    <OrbitControls makeDefault target={[0, 0.8, 0]} maxPolarAngle={Math.PI / 2 - 0.03} minDistance={1} maxDistance={70}/>
+    <OrbitControls makeDefault enabled={!props.locked} target={[0, 0.8, 0]} maxPolarAngle={Math.PI / 2 - 0.03} minDistance={1} maxDistance={70}/>
   </Canvas>
 }
 

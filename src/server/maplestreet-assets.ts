@@ -110,13 +110,14 @@ export async function insertAsset(env: Env, input: { id: string; kind: AssetKind
     .run()
 }
 
-export async function updateAsset(env: Env, kind: AssetKind, id: string, changes: { name?: string; status?: AssetStatus; spec?: unknown }) {
+export async function updateAsset(env: Env, kind: AssetKind, id: string, changes: { name?: string; status?: AssetStatus; spec?: unknown; files?: AssetFiles }) {
   await ensureAssetsTable(env)
   const sets: string[] = []
   const values: unknown[] = []
   if (changes.name !== undefined) { sets.push('name = ?'); values.push(changes.name) }
   if (changes.status !== undefined) { sets.push('status = ?'); values.push(changes.status) }
   if (changes.spec !== undefined) { sets.push('spec = ?'); values.push(JSON.stringify(changes.spec)) }
+  if (changes.files !== undefined) { sets.push('files = ?'); values.push(JSON.stringify(changes.files)) }
   if (!sets.length) return 0
   sets.push('version = version + 1', 'updated_at = ?')
   values.push(Date.now(), id, kind)
