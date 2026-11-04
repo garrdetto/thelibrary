@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ArrowRight, Car, KeyRound, LayoutGrid, Package, ShieldCheck, Sparkles, Users } from 'lucide-react'
-import { learningModules } from '@/lib/modules'
+import { isModuleAvailable, learningModules } from '@/lib/modules'
 import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
 
@@ -57,7 +57,7 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
 
   return <div className="adm-overview">
     <div className="adm-stats">
-      <Stat icon={<LayoutGrid size={18}/>} label="Module library" value={<>{arranged.visible.length}<small>/{learningModules.length}</small></>}
+      <Stat icon={<LayoutGrid size={18}/>} label="Module library" value={<>{arranged.visible.length}<small>/{learningModules.filter(item => isModuleAvailable(item.id)).length}</small></>}
         detail={<>Featured: <b>{arranged.featured.title}</b>{layout.hidden.length ? ` · ${layout.hidden.length} hidden` : ''}</>} onOpen={() => onOpen('library')} cta="Arrange modules"/>
       <Stat icon={<Users size={18}/>} label="Accounts" value={accounts === 'error' ? failed : people ? people.total : pending}
         detail={people ? `${people.studio} with studio access${people.resets ? ` · ${people.resets} password reset${people.resets === 1 ? '' : 's'} pending` : ''}` : ' '} onOpen={() => onOpen('people')} cta="Manage people"/>
