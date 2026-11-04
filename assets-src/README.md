@@ -1,6 +1,6 @@
 # Model sources (.glb)
 
-These are the pipeline's inputs. `pnpm assets` (`scripts/assets.mjs`) turns everything under `models/` into the optimized, git-ignored `public/models/` that the modules load; edit or replace files here, never in `public/models/`. The Sandlot Sluggers 3D player files become one `public/models/sandlot3d/players.glb` with a scene per player.
+These are the pipeline's inputs. `pnpm assets` (`scripts/assets.mjs`) turns everything under `models/` into the optimized `public/models/` that the modules load; edit or replace files here, never in `public/models/`, then commit the regenerated outputs together with the change. The Sandlot Sluggers 3D player files become one `public/models/sandlot3d/players.glb` with a scene per player.
 
 glTF binary exports of the 3D models drawn by the learning modules in `public/modules/`. Each file was produced by running the module's own model-building code in a headless browser (same three.js version the module loads) and saving it with three.js `GLTFExporter`. Units are the module's world units; +Y is up.
 

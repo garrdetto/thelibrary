@@ -383,7 +383,7 @@ if (flag('check')) {
 const catalog = readCatalog();
 const targets = only.length ? catalog.filter((module) => only.includes(module.id)) : catalog;
 const server = await ensureServer();
-const browser = await chromium.launch({ args: browserArgs });
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROME || undefined, args: browserArgs });
 try {
   if (!flag('no-prewarm')) {
     for (const module of targets) await prewarm(browser, module);

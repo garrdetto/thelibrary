@@ -77,7 +77,7 @@ async function checkModule(browser, id) {
 
 mkdirSync(outDir, { recursive: true });
 const server = await ensureServer();
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROME || undefined, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const results = [];
 for (const id of targets) results.push(await checkModule(browser, id));
 await browser.close();
