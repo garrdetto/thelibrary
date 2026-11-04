@@ -27,7 +27,7 @@ export const FLAT_RIDES = {
   lilyPads: { name: 'Lily-Pad Activity Pool', category: 'water', size: [4, 4], cost: 2400, upkeep: 45, capacity: 14, rideTime: 40, loadTime: 8, price: 1.2, stats: { e: 2.4, i: 1.5, n: 0.6 }, height: 3, description: 'Hop across floating pads while holding the rope net overhead.' },
   cliffJump: { name: 'Cliff Jump Platform', category: 'water', size: [3, 4], cost: 5800, upkeep: 85, capacity: 6, rideTime: 22, loadTime: 8, price: 1.6, stats: { e: 3.8, i: 5.4, n: 1.2 }, height: 12, description: 'Climb a rocky cliff and leap into a deep plunge pool.' },
   zipper: { name: 'Zipper', category: 'other', size: [5, 5], cost: 5760, upkeep: 108, capacity: 28, rideTime: 34, loadTime: 10, price: 2, stats: { e: 4.7, i: 5.2, n: 4.1 }, height: 18, description: 'A spinning arm carries a ring of swinging cars high above the midway.' },
-  gravitron: { name: 'Gravitron', category: 'other', size: [5, 5], cost: 5500, upkeep: 106, capacity: 36, rideTime: 32, loadTime: 9, price: 2, stats: { e: 4.3, i: 5.6, n: 4.8 }, height: 8, description: 'Riders circle inside a tilted saucer as it spins faster and faster.' },
+  gravitron: { name: 'Gravitron', category: 'other', size: [5, 5], cost: 5500, upkeep: 106, capacity: 36, rideTime: 32, loadTime: 9, price: 2, stats: { e: 4.3, i: 5.6, n: 4.8 }, height: 14, description: 'Riders circle inside a tilted saucer as it spins faster and faster.' },
 }
 
 export const WAVE_SETTINGS = {
