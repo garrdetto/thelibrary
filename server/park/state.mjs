@@ -1,3 +1,4 @@
+import { DEFAULT_SCHEMES, SCHEME_COUNT, parkSchemes, sanitizeRideColors } from './palette.mjs'
 import { SCENARIOS, FLAT_RIDES, COASTER_STYLES, STALLS, SCENERY, PARK_COLORS, WAVE_SETTINGS } from './catalog.mjs'
 import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
@@ -95,6 +96,7 @@ export function createPark(scenarioId, options = {}) {
       guestsIn: 0,
       totalGuests: 0,
       open: true,
+      schemes: DEFAULT_SCHEMES.map(d => ({ name: d.name, colors: { ...d.colors } })),
       marketing: [],
       month: emptyLedger(),
       history: [],
@@ -350,6 +352,7 @@ export function deserializePark(data) {
     id: i, parkId: typeof p?.parkId === 'string' && /^[a-f0-9-]{32,36}$/i.test(p.parkId) ? p.parkId : newParkId(), name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), named: p?.named === true, color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: Math.max(SCENARIOS[scenario].maxLoan, num(p?.maxLoan, SCENARIOS[scenario].maxLoan, 0)),
     entryFee: num(p?.entryFee, 10, 0, 100), rating: num(p?.rating, 300, 0, 999), value: num(p?.value), guestsIn: 0, totalGuests: Math.round(num(p?.totalGuests, 0, 0)), open: p?.open !== false,
     marketing: Array.isArray(p?.marketing) ? p.marketing.slice(0, 4).map(m => ({ kind: String(m?.kind ?? 'flyers').slice(0, 12), until: num(m?.until), boost: num(m?.boost, 1, 1, 3) })) : [],
+    schemes: parkSchemes(p),
     month: { ...emptyLedger(), ...Object.fromEntries(Object.entries(p?.month ?? {}).map(([k, v]) => [k, num(v)])) },
     history: Array.isArray(p?.history) ? p.history.slice(-24).map(row => Object.fromEntries(Object.entries(row ?? {}).slice(0, 16).map(([k, v]) => [k.slice(0, 16), typeof v === 'number' ? num(v) : String(v).slice(0, 30)]))) : [],
     thoughts: [], objective: SCENARIOS[scenario].objective, status: ['playing', 'won', 'lost'].includes(p?.status) ? p.status : 'playing', spawnDebt: 0, awards: [],
@@ -424,6 +427,7 @@ function sanitizeEntity(raw, state) {
       trackColor: typeof raw.trackColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.trackColor) ? raw.trackColor : null,
       supportColor: typeof raw.supportColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.supportColor) ? raw.supportColor : null,
       trainColor: typeof raw.trainColor === 'string' && /^#[0-9a-f]{6}$/i.test(raw.trainColor) ? raw.trainColor : null,
+      colors: sanitizeRideColors(raw, raw.colors), scheme: Number.isInteger(raw.scheme) && raw.scheme >= 0 && raw.scheme < SCHEME_COUNT ? raw.scheme : null,
       comments: sanitizeComments(raw.comments), commentCounts: { pos: Math.round(num(raw.commentCounts?.pos, 0, 0)), mix: Math.round(num(raw.commentCounts?.mix, 0, 0)), neg: Math.round(num(raw.commentCounts?.neg, 0, 0)) },
       stats: raw.stats && typeof raw.stats === 'object' ? Object.fromEntries(Object.entries(raw.stats).slice(0, 24).map(([k, v]) => [k, typeof v === 'boolean' ? v : num(v)])) : null, brokenAt: num(raw.brokenAt), mechanic: 0, cycles: Math.round(num(raw.cycles, 0, 0)),
     }

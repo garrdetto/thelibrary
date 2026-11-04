@@ -10,7 +10,7 @@ export type Entity = {
   size?: [number, number]; wave?: string; comments?: { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }[]; commentCounts?: { pos: number; mix: number; neg: number }
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
-  cycle?: { phase: string; timer: number; spin?: number }; reliability?: number; totalRiders?: number; monthRiders?: number; color?: string | null; trackColor?: string | null; supportColor?: string | null; trainColor?: string | null; stats?: RideStats | null; mechanic?: number
+  cycle?: { phase: string; timer: number; spin?: number }; reliability?: number; totalRiders?: number; monthRiders?: number; color?: string | null; trackColor?: string | null; supportColor?: string | null; trainColor?: string | null; colors?: Record<string, string> | null; scheme?: number | null; stats?: RideStats | null; mechanic?: number
   style?: string; start?: { x: number; y: number; dir: number; h: number }; pieces?: Piece[]; complete?: boolean; trains?: Train[]; cars?: number; carsSet?: boolean; spent?: number; rev?: number
 }
 export type Guest = { id: number; park: number; x: number; y: number; tx: number; ty: number; state: string; hidden?: boolean; happy: number; items: string[]; kid: boolean; shirt: number; thoughts: string[]; dir?: number; energy?: number; hunger?: number; thirst?: number; cash?: number }
@@ -20,7 +20,7 @@ export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'vers
 export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number; wages?: number; electricity?: number }
 export type LandRect = { x0: number; y0: number; x1: number; y1: number }
 export type ParkLand = { initial: LandRect; limit: LandRect }
-export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; resortHotels?: number; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
+export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; schemes?: ColorScheme[]; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; resortHotels?: number; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
 export type News = { id: number; t: number; park: number; text: string; kind: string; ref: number | null }
 export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
@@ -29,6 +29,9 @@ export type ParkState = {
   weather: { kind: 'sunny' | 'cloudy' | 'rain'; temp: number; next: number }; speed: number; news: News[]; newsSeq: number; ended: { text: string; winner: number; values?: number[] } | null
   trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number }[]>; fields: Map<string, Int16Array>
 }
+export type ColorRole = 'primary' | 'secondary' | 'accent' | 'trim' | 'lights' | 'glow'
+export type ColorScheme = { name: string; colors: Record<ColorRole, string> }
+export type ColorSlot = { key: string; name: string; role: ColorRole; def: string | null }
 export type HotelColors = { primary: number; secondary: number; trim: number }
 export type HotelNight = { occupied: number; rate: number; rooms: number; amenities: number; staff: number; utilities: number; maintenance: number; amenityCosts: number; income: number; costs: number; profit: number }
 export type HotelAddon = { name: string; cost: number; occupancy: number; share?: number; upkeep?: number; amenity?: boolean }
@@ -174,3 +177,17 @@ export const KART_LIMIT: number
 export function kartCount(stationLength: number): number
 export function kartRestS(path: TrackPath, index: number): number
 export function kartLane(index: number): number
+export const ROLES: ColorRole[]
+export const ROLE_NAMES: Record<ColorRole, string>
+export const SCHEME_COUNT: number
+export const RIDE_SLOTS: Record<string, ColorSlot[]>
+export const COASTER_SLOTS: ColorSlot[]
+export const DEFAULT_SCHEMES: ColorScheme[]
+export const PRESETS: ColorScheme[]
+export function rideSlots(ride: Entity | null | undefined): ColorSlot[]
+export function slotDefault(ride: Entity, slot: ColorSlot): string
+export function parkSchemes(park: Park | null | undefined): ColorScheme[]
+export function sanitizeScheme(raw: unknown, fallback: ColorScheme): ColorScheme
+export function rideColors(ride: Entity, park: Park | null | undefined): string[]
+export function colorsFromRoles(ride: Entity, roles: Record<ColorRole, string>): Record<string, string>
+export function sanitizeRideColors(ride: Entity, raw: unknown): Record<string, string> | null

@@ -1,6 +1,7 @@
 import { MeshBuilder, mat4, hexColor, STRIDE } from './gl'
 import type { Mat4, Vec3 } from './gl'
 import { M } from './materials'
+import { SLOT, LIGHTS, GLOW, bulb, bulbRing, bulbRun, neonTube, neonFrame, bulbText, bulbTextWidth } from './neon'
 
 export const C = {
   white: hexColor('#f3f1ea'), cream: hexColor('#efe3c4'), wood: hexColor('#8a5a36'), darkWood: hexColor('#5e3d24'), steel: hexColor('#9aa3ad'), dark: hexColor('#33363c'),
@@ -28,7 +29,7 @@ tag(M.water, C.water)
 tag(M.glass, C.glass, hexColor('#8fd3e8'), hexColor('#6fd0ee'), hexColor('#6ccaf5'), hexColor('#9fd2ef'))
 tag(M.rubber, C.black, hexColor('#2a2a2a'), hexColor('#2b2b2b'), hexColor('#2c2a26'))
 tag(M.skin, C.skin)
-MeshBuilder.autoMaterial = (r, g, b, tint) => AUTO_MATERIALS.get(colorKey(r, g, b)) ?? (tint > 0.5 ? M.ridePaint : M.paint)
+MeshBuilder.autoMaterial = (r, g, b, tint) => AUTO_MATERIALS.get(colorKey(r, g, b)) ?? (tint > 0.02 ? M.ridePaint : M.paint)
 
 const mix3 = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 const foliage = (low: Vec3, high: Vec3) => (n: Vec3): Vec3 => mix3(low, high, Math.max(0, Math.min(1, n[2] * 0.55 + 0.5)))
@@ -702,48 +703,101 @@ export function flatRideModel(kind: string, w: number, h: number): RideModel {
       parts.push({ builder: pod, anim: t => mat4.chain(T(0, 0, 8.5), mat4.rotY(wheelAngle(t)), T(point[0], 0, point[2]), mat4.rotY(Math.sin(t.spin * 1.2 + k * 2.7) * (t.running ? 1.05 : 0.15))) })
     }
   } else if (kind === 'gravitron') {
-    floor(7.7, hexColor('#454b5c'))
-    base.cylinder(null, 0, 0, 0.35, 6.5, 6.5, 0.4, 28, C.dark)
-    base.box(null, -5.6, 0, 0.4, 1.8, 3.0, 0.65, C.cream)
-    base.box(null, -5.6, 0, 1.05, 1.9, 3.1, 0.12, C.gold)
-    const drum = new MeshBuilder(), segments = 36, bottomRadius = 6.15, topRadius = 5.3, bottom = 0.75, top = 6.9
-    const exterior = [hexColor('#7b51c9'), hexColor('#d84365'), hexColor('#3a77d0'), hexColor('#e5d7c2')]
-    for (let i = 0; i < segments; i++) {
-      const a0 = i / segments * Math.PI * 2, a1 = (i + 1) / segments * Math.PI * 2
-      const p = (a: number, r: number, z: number): Vec3 => [Math.cos(a) * r, Math.sin(a) * r, z]
-      const panelColor = exterior[Math.floor(i / 3) % exterior.length]
-      drum.quad(null, p(a0, bottomRadius, bottom), p(a1, bottomRadius, bottom), p(a1, topRadius, top), p(a0, topRadius, top), panelColor, 1)
-      if (i % 3 === 0) drum.quad(null, p(a0 + 0.035, bottomRadius + 0.015, bottom + 0.4), p(a0 + 0.07, bottomRadius + 0.015, bottom + 0.4), p(a0 + 0.07, topRadius + 0.015, top - 0.4), p(a0 + 0.035, topRadius + 0.015, top - 0.4), C.white, 1)
-      const innerTop = 3.2
-      drum.quad(null, p(a0, innerTop, top + 0.02), p(a0, topRadius, top + 0.02), p(a1, topRadius, top + 0.02), p(a1, innerTop, top + 0.02), i % 2 ? hexColor('#272b38') : C.dark, 1)
-    }
-    const rim = (z: number, radius: number, color: Vec3) => {
-      const points: Vec3[] = []
-      for (let i = 0; i <= segments; i++) { const a = i / segments * Math.PI * 2; points.push([Math.cos(a) * radius, Math.sin(a) * radius, z]) }
-      drum.tube(points, 0.22, color, 8, 1)
-    }
-    rim(bottom, bottomRadius, C.steel)
-    rim(top, topRadius, C.white)
-    rim(top + 0.08, 3.2, C.gold)
-    drum.cylinder(null, 0, 0, bottom, 1.0, 0.65, top - bottom, 16, C.dark)
-    drum.cylinder(null, 0, 0, top, 2.6, 2.6, 0.16, 20, hexColor('#252a35'), 1)
-    drum.cylinder(null, 0, 0, top + 0.16, 1.0, 0.25, 0.9, 16, C.gold, 1)
-    for (let k = 0; k < 24; k++) {
-      const a = k / 24 * Math.PI * 2, x = Math.cos(a), y = Math.sin(a)
-      const panel = mat4.chain(T(x * 5.25, y * 5.25, bottom + 0.25), mat4.rotZ(a))
-      drum.box(panel, 0, 0, 0, 0.12, 0.62, 5.3, k % 3 ? hexColor('#d7dbe1') : hexColor('#9fa9ba'), 1)
-      if (k % 2 === 0) {
-        const rider = mat4.chain(T(x * 4.65, y * 4.65, bottom + 0.75), mat4.rotZ(a + Math.PI))
-        drum.box(rider, 0, 0, 0.2, 0.42, 0.36, 0.9, [C.red, C.blue, C.green, C.gold][(k / 2) % 4], 1)
-        drum.sphere(rider, 0, 0, 1.22, 0.2, C.skin, 0, 5, 7)
-        drum.box(rider, 0.02, 0, 0.02, 0.52, 0.42, 0.12, C.dark)
-      }
-      const lightAngle = a
-      drum.sphere(null, Math.cos(lightAngle) * 4.3, Math.sin(lightAngle) * 4.3, top + 0.12, 0.13, k % 2 ? C.gold : hexColor('#f6f2df'), 1, 4, 6)
-    }
-    parts.push({ builder: drum, anim: t => mat4.chain(T(0, 0, 0), mat4.rotZ(t.spin * (t.running ? 1.25 : 0.3))) })
+    gravitronModel(base, parts)
   }
   return { base, parts }
+}
+
+const G = { main: 0, lights: LIGHTS, glow: GLOW, band: 3, arch: 4, chevrons: 5, sign: 6, marqueeA: 7, marqueeB: 8 }
+
+// The Gravitron: an enclosed flying-saucer drum spinning low behind a lit
+// portal arch. The arch's leaning leg panels carry chevrons and chase lights,
+// its beam a four-row marquee of coloured bulbs, and the ride's name stands on
+// top in bulb lettering. Slot order: saucer, chase lights, glow lights, saucer
+// band, arch, chevrons, name letters, marquee bulbs A and B.
+function gravitronModel(base: MeshBuilder, parts: Part[]) {
+  const grey = hexColor('#454b5c'), steel = hexColor('#d7dbe1'), white = C.white
+  base.cylinder(null, 0.8, 0, 0, 7.9, 7.9, 0.4, 24, grey)
+  base.cylinder(null, 0.8, 0, 0.4, 6.9, 6.9, 0.35, 28, C.dark)
+  neonTube(base, Array.from({ length: 49 }, (_, i) => { const a = i / 48 * Math.PI * 2; return [0.8 + Math.cos(a) * 7.1, Math.sin(a) * 7.1, 0.78] as Vec3 }), 0.07, G.glow, 5)
+
+  const drum = new MeshBuilder()
+  const cx = 0.8, z0 = 0.75, zMid = 3.6, bandH = 0.5, zTop = 6.7, rBase = 2.9, rMid = 6.7, rTop = 2.2
+  const zUp = zMid + bandH
+  const lowerR = (z: number) => rBase + (rMid - rBase) * (z - z0) / (zMid - z0)
+  const upperR = (z: number) => rMid - 0.1 - (rMid - 0.1 - rTop) * (z - zUp) / (zTop - zUp)
+  drum.cylinder(null, cx, 0, z0, rBase, rMid, zMid - z0, 36, white, SLOT[G.main], true)
+  drum.cylinder(null, cx, 0, zMid, rMid, rMid, bandH, 36, white, SLOT[G.band], false)
+  drum.cylinder(null, cx, 0, zUp, rMid - 0.1, rTop, zTop - zUp, 36, white, SLOT[G.main], false)
+  drum.cylinder(null, cx, 0, zTop, rTop, rTop - 0.35, 0.4, 24, white, SLOT[G.band], false)
+  drum.cylinder(null, cx, 0, zTop + 0.4, rTop - 0.35, 0.9, 0.6, 20, C.dark)
+  drum.cylinder(null, cx, 0, zTop + 1.0, 0.9, 0.25, 0.55, 16, C.gold)
+  drum.sphere(null, cx, 0, zTop + 1.6, 0.28, C.gold, 0, 6, 8)
+  drum.cylinder(null, cx, 0, 0.4, rBase - 0.3, rBase - 0.1, z0 - 0.4, 24, C.dark)
+  for (let k = 0; k < 24; k++) {
+    const a = k / 24 * Math.PI * 2, x = Math.cos(a), y = Math.sin(a)
+    const lo: Vec3 = [cx + x * (rBase + 0.04), y * (rBase + 0.04), z0 + 0.05], hi: Vec3 = [cx + x * (rMid + 0.04), y * (rMid + 0.04), zMid - 0.02]
+    drum.tube([lo, hi], 0.07, k % 2 ? steel : C.cream, 5)
+    const up0: Vec3 = [cx + x * (rMid - 0.05), y * (rMid - 0.05), zUp + 0.02], up1: Vec3 = [cx + x * (rTop + 0.05), y * (rTop + 0.05), zTop - 0.02]
+    if (k % 2 === 0) drum.tube([up0, up1], 0.06, steel, 5)
+    for (let i = 0; i < 5; i++) {
+      const z = z0 + 0.35 + i * (zMid - z0 - 0.6) / 4, r = lowerR(z) + 0.06, a2 = a + Math.PI / 24
+      bulb(drum, null, cx + Math.cos(a2) * r, Math.sin(a2) * r, z, 0.11, G.glow, (i / 5 + k / 24) % 1, 0)
+    }
+    for (let i = 0; i < 4; i++) {
+      const z = zUp + 0.35 + i * (zTop - zUp - 0.7) / 3, r = upperR(z) + 0.06, a2 = a + Math.PI / 24
+      bulb(drum, null, cx + Math.cos(a2) * r, Math.sin(a2) * r, z, 0.1, G.glow, (1 - i / 4 + k / 24) % 1, 0)
+    }
+  }
+  bulbRing(drum, null, cx, 0, zMid + 0.12, rMid + 0.08, 56, 0.11, G.lights, 4, 0, 0)
+  bulbRing(drum, null, cx, 0, zMid + bandH - 0.12, rMid + 0.08, 56, 0.11, G.lights, 4, 0.06, 0)
+  bulbRing(drum, null, cx, 0, zTop + 0.2, rTop + 0.02, 22, 0.1, G.lights, 2, 0.1, 0)
+  bulbRing(drum, null, cx, 0, z0 + 0.1, rBase + 0.08, 20, 0.1, G.lights, 2, 0, 0)
+  parts.push({ builder: drum, anim: t => mat4.chain(T(cx, 0, 0), mat4.rotZ(t.spin * (t.running ? 1.25 : 0.3)), T(-cx, 0, 0)) })
+
+  const archX = -6.7, beamZ = 8.7, beamH = 1.7, halfSpan = 6.9, lean = Math.atan2(2.4, beamZ - 0.4)
+  for (const side of [-1, 1]) {
+    const m = mat4.chain(T(archX, side * 8.3, 0.4), mat4.rotX(side * lean))
+    const legH = Math.hypot(2.4, beamZ - 0.4)
+    base.box(m, 0, 0, 0, 0.7, 2.7, legH, white, SLOT[G.arch])
+    base.box(m, -0.37, 0, 0.3, 0.06, 2.2, legH - 0.6, hexColor('#10141c'))
+    for (let i = 0; i < 4; i++) {
+      const z = 1.2 + i * 1.75
+      for (const half of [-1, 1]) base.box(mat4.chain(m, T(-0.42, 0, z + 0.8), mat4.rotX(half * 0.8)), 0, 0, -0.8, 0.08, 0.24, 0.8, white, SLOT[G.chevrons])
+    }
+    for (const edge of [-1.2, 1.2]) bulbRun(base, m, [-0.45, edge, 0.3], [-0.45, edge, legH - 0.3], 15, 0.09, G.lights, 1, edge > 0 ? 0.5 : 0, 0)
+    base.box(null, archX, side * 8.55, 0, 1.6, 3.4, 0.4, grey)
+  }
+  base.box(null, archX, 0, beamZ, 1.0, halfSpan * 2 + 0.4, beamH, white, SLOT[G.arch])
+  base.box(null, archX - 0.53, 0, beamZ + 0.12, 0.06, halfSpan * 2 - 0.3, beamH - 0.24, hexColor('#10141c'))
+  const cols = 26, rows = 4
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const y = -(halfSpan - 0.55) + c * ((halfSpan - 0.55) * 2 / (cols - 1)), z = beamZ + 0.32 + r * ((beamH - 0.64) / (rows - 1))
+    bulb(base, null, archX - 0.64, y, z, 0.11, r % 2 ? G.marqueeB : G.marqueeA, ((c / cols) * 2 + r * 0.25) % 1, 0)
+  }
+  bulbRun(base, null, [archX - 0.6, halfSpan, beamZ + beamH + 0.05], [archX - 0.6, -halfSpan, beamZ + beamH + 0.05], 28, 0.09, G.lights, 2, 0, 0)
+  bulbRun(base, null, [archX - 0.6, halfSpan, beamZ - 0.05], [archX - 0.6, -halfSpan, beamZ - 0.05], 28, 0.09, G.lights, 2, 0.5, 0)
+
+  const signZ = beamZ + beamH, signH = 3.0, signW = 12.6
+  base.box(null, archX + 0.1, 0, signZ, 0.5, signW, signH, hexColor('#16181f'))
+  for (const y of [-signW / 2 + 0.4, signW / 2 - 0.4]) base.box(null, archX + 0.1, y, signZ - 0.1, 0.56, 0.3, signH + 0.2, white, SLOT[G.arch])
+  base.box(null, archX + 0.1, 0, signZ + signH - 0.1, 0.56, signW, 0.3, white, SLOT[G.arch])
+  const cell = Math.min(0.24, (signW - 1.6) / bulbTextWidth('GRAVITRON'))
+  bulbText(base, T(archX - 0.32, 0, signZ + signH / 2), 'GRAVITRON', cell, 0.1, G.sign, 0, 0)
+  neonFrame(base, archX - 0.3, 0, signZ + signH / 2, signW - 0.9, signH - 0.4, 0.05, G.glow, 0.5, 'yz')
+  bulbRun(base, null, [archX - 0.3, signW / 2 - 0.5, signZ + signH + 0.1], [archX - 0.3, -signW / 2 + 0.5, signZ + signH + 0.1], 30, 0.1, G.lights, 2, 0.25, 0)
+  for (const y of [-2.2, 2.2]) {
+    base.box(null, archX - 0.2, y, signZ + signH + 0.1, 0.4, 0.22, 0.9, C.dark)
+    base.cylinder(null, archX - 0.2, y, signZ + signH + 1.0, 0.45, 0.1, 0.2, 10, C.dark)
+    bulb(base, null, archX - 0.2, y, signZ + signH + 1.15, 0.2, G.glow, 0, 0)
+  }
+
+  base.box(null, -3.2, -7.9, 0.4, 2.0, 2.6, 2.3, C.cream)
+  base.box(null, -3.2, -7.9, 2.7, 2.4, 3.0, 0.2, white, SLOT[G.band])
+  base.box(null, -4.21, -7.9, 1.1, 0.04, 1.6, 1.2, C.glass)
+  neonFrame(base, -3.2, -7.9, 2.95, 2.3, 2.9, 0.05, G.glow, 0.3)
+  base.box(null, 3.0, -8.6, 0.4, 7.0, 0.12, 0.9, white, SLOT[G.arch])
+  base.box(null, 3.0, 8.6, 0.4, 7.0, 0.12, 0.9, white, SLOT[G.arch])
 }
 
 export function carModel(style: string, front: boolean, riders: number, near = false): MeshBuilder {

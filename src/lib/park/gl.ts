@@ -327,7 +327,7 @@ export type GpuMesh = { vao: WebGLVertexArrayObject; buffer: WebGLBuffer; index:
 
 export type Lighting = {
   sunDir: Vec3; sunColor: Vec3; sky: Vec3; ground: Vec3; horizon: Vec3; fog: Vec3; fogDensity: number; fogFalloff: number; sunScatter: Vec3
-  skyTop: Vec3; skyBottom: Vec3; exposure: number; shadow?: number; wind: number
+  skyTop: Vec3; skyBottom: Vec3; exposure: number; shadow?: number; wind: number; neon?: number
 }
 
 const BYTES = 24
@@ -386,6 +386,7 @@ uniform mat4 uModel;
 uniform mat4 uLightViewProj;
 uniform bool uInstanced;
 uniform vec3 uTint;
+uniform vec3 uSlots[9];
 uniform float uTime;
 uniform float uWave;
 uniform float uWind;
@@ -399,17 +400,22 @@ out vec3 vColor;
 out vec3 vWorld;
 out vec4 vShadow;
 out float vAo;
+out float vNeon;
 flat out vec4 vMatA;
 flat out vec4 vMatB;
 #endif
 void main() {
-  vec3 p = aPos; vec3 n = aNormal.xyz; vec3 tint = uTint; float phase = 0.0;
+  vec3 p = aPos; vec3 n = aNormal.xyz; vec3 tint = uTint; float phase = 0.0; float weight = aColor.a;
   if (uInstanced) {
     float c = cos(iPosYaw.w), s = sin(iPosYaw.w);
     p = vec3(c * p.x - s * p.y, s * p.x + c * p.y, p.z) * iColorScale.w + iPosYaw.xyz;
     n = vec3(c * n.x - s * n.y, s * n.x + c * n.y, n.z);
     tint = iColorScale.rgb;
+    weight = weight > 0.02 ? 1.0 : 0.0;
     phase = iPosYaw.x * 0.21 + iPosYaw.y * 0.17;
+  } else if (weight > 0.05 && weight < 0.95) {
+    tint = uSlots[clamp(int(weight * 10.0 + 0.5) - 1, 0, 8)];
+    weight = 1.0;
   }
   vec4 w = uModel * vec4(p, 1.0);
   if (uWind > 0.0 && aMat.y > 0.0) {
@@ -419,9 +425,10 @@ void main() {
   if (uWave > 0.0) w.z += sin(w.x * 0.35 + uTime * 1.3) * cos(w.y * 0.3 + uTime) * uWave;
 #ifndef DEPTH
   vNormal = mat3(uModel) * n;
-  vColor = toLinear(mix(aColor.rgb, aColor.rgb * tint, aColor.a));
+  vColor = toLinear(mix(aColor.rgb, aColor.rgb * tint, weight));
   vWorld = w.xyz;
   vAo = max(aNormal.w, 0.0);
+  vNeon = aMat.y / 255.0;
   int id = int(aMat.x + 0.5);
   vMatA = uMatA[id]; vMatB = uMatB[id];
   vec3 nn = normalize(vNormal);
@@ -438,8 +445,9 @@ precision highp float;
 precision highp sampler2DShadow;
 precision highp sampler2DArray;
 #define QUALITY ${level}
-in vec3 vNormal; in vec3 vColor; in vec3 vWorld; in vec4 vShadow; in float vAo;
+in vec3 vNormal; in vec3 vColor; in vec3 vWorld; in vec4 vShadow; in float vAo; in float vNeon;
 flat in vec4 vMatA; flat in vec4 vMatB;
+uniform float uNeon;
 uniform vec3 uSunColor; uniform vec3 uSkyColor; uniform vec3 uGroundColor; uniform vec3 uHorizonColor; uniform vec3 uFogColor; uniform vec3 uSunScatter; uniform vec3 uCamPos;
 uniform float uFogDensity; uniform float uFogFalloff; uniform float uExposure;
 uniform float uAlpha; uniform float uEmissive; uniform bool uUnlit;
@@ -626,6 +634,10 @@ void main() {
   if (coat > 0.0) specAmb += envColor(R) * (0.04 + 0.96 * pow(1.0 - nv, 5.0)) * coat * 0.6 * ao;
 #endif
   vec3 c = lit + diffuseColor * ambient * ao + specAmb + base * uEmissive;
+  if (vMatA.z < -1.5) {
+    float on = vNeon < 0.002 ? 1.0 : 0.22 + 0.78 * smoothstep(-0.15, 0.4, sin(uTime * 4.5 - vNeon * 6.2831853));
+    c += base * uNeon * on;
+  }
   c = mix(c, toLinear(uHighlight.rgb) * 1.6, uHighlight.a);
 #if QUALITY == 0
   float fog = 1.0 - exp(-uFogDensity * dist * exp(-uFogFalloff * max(0.0, (uCamPos.z + vWorld.z) * 0.5)));
@@ -746,7 +758,7 @@ void main() {
 }`
 
 const SHADOW_SIZE = 2048
-const UNIFORMS = ['uDetail', 'uDetailOn', 'uViewProj', 'uModel', 'uLightViewProj', 'uInstanced', 'uTint', 'uSunDir', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uHorizonColor', 'uFogColor', 'uSunScatter', 'uCamPos', 'uFogDensity', 'uFogFalloff', 'uExposure', 'uAlpha', 'uEmissive', 'uUnlit', 'uHighlight', 'uTime', 'uWave', 'uWind', 'uGround', 'uSpecular', 'uShadowMap', 'uShadowStrength', 'uShadowTexel', 'uShadowOffset', 'uShadowBias', 'uMatA', 'uMatB']
+const UNIFORMS = ['uDetail', 'uDetailOn', 'uViewProj', 'uModel', 'uLightViewProj', 'uInstanced', 'uTint', 'uSunDir', 'uSunColor', 'uSkyColor', 'uGroundColor', 'uHorizonColor', 'uFogColor', 'uSunScatter', 'uCamPos', 'uFogDensity', 'uFogFalloff', 'uExposure', 'uAlpha', 'uEmissive', 'uUnlit', 'uHighlight', 'uTime', 'uWave', 'uWind', 'uGround', 'uSpecular', 'uShadowMap', 'uShadowStrength', 'uShadowTexel', 'uShadowOffset', 'uShadowBias', 'uMatA', 'uMatB', 'uSlots', 'uNeon']
 const SKY_UNIFORMS = ['uTop', 'uBottom', 'uSunDir', 'uSunColor', 'uSunScatter', 'uInvViewProj', 'uExposure']
 
 type Program = { program: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
@@ -1065,7 +1077,7 @@ export class Gl {
     gl.uniform3fv(u.uSunDir, light.sunDir); gl.uniform3fv(u.uSunColor, light.sunColor); gl.uniform3fv(u.uSkyColor, light.sky); gl.uniform3fv(u.uGroundColor, light.ground)
     gl.uniform3fv(u.uHorizonColor, light.horizon); gl.uniform3fv(u.uSunScatter, light.sunScatter); gl.uniform1f(u.uExposure, light.exposure)
     gl.uniform3fv(u.uFogColor, light.fog); gl.uniform3fv(u.uCamPos, cam); gl.uniform1f(u.uFogDensity, light.fogDensity); gl.uniform1f(u.uFogFalloff, light.fogFalloff)
-    gl.uniform1f(u.uTime, time); gl.uniform1f(u.uWave, 0); gl.uniform1f(u.uWind, 0)
+    gl.uniform1f(u.uTime, time); gl.uniform1f(u.uWave, 0); gl.uniform1f(u.uWind, 0); gl.uniform1f(u.uNeon, light.neon ?? 0.6)
     this.windLevel = light.wind
     const shadows = shadowStrength > 0 && !!this.shadowTexture
     gl.activeTexture(gl.TEXTURE0)
@@ -1083,6 +1095,8 @@ export class Gl {
     this.reset()
   }
 
+  private slotBuffer = new Float32Array(27)
+
   reset() {
     const gl = this.gl, u = this.u
     gl.uniform1f(u.uAlpha, 1); gl.uniform1f(u.uEmissive, 0); gl.uniform1i(u.uUnlit, 0); gl.uniform4f(u.uHighlight, 0, 0, 0, 0); gl.uniform3f(u.uTint, 1, 1, 1)
@@ -1090,7 +1104,7 @@ export class Gl {
     gl.disable(gl.BLEND); gl.depthMask(true)
   }
 
-  draw(mesh: GpuMesh | null, model: Mat4 = this.identity, opts: { tint?: Vec3; alpha?: number; emissive?: number; unlit?: boolean; highlight?: [number, number, number, number]; wave?: number; noCull?: boolean; noDepthWrite?: boolean; ground?: number; specular?: number } = {}) {
+  draw(mesh: GpuMesh | null, model: Mat4 = this.identity, opts: { tint?: Vec3; slots?: Vec3[]; alpha?: number; emissive?: number; unlit?: boolean; highlight?: [number, number, number, number]; wave?: number; noCull?: boolean; noDepthWrite?: boolean; ground?: number; specular?: number } = {}) {
     if (!mesh) return
     if (this.shadowPass && ((opts.alpha !== undefined && opts.alpha < 1) || opts.unlit || opts.wave || mesh.mode !== this.gl.TRIANGLES)) return
     const gl = this.gl, u = this.u
@@ -1105,6 +1119,7 @@ export class Gl {
     }
     this.stats.mainDraws++; this.stats.mainVerts += mesh.count
     if (opts.tint) gl.uniform3fv(u.uTint, opts.tint)
+    if (opts.slots) { const f = this.slotBuffer; for (let i = 0; i < 9; i++) { const c = opts.slots[i + 1]; f[i * 3] = c ? c[0] : 1; f[i * 3 + 1] = c ? c[1] : 1; f[i * 3 + 2] = c ? c[2] : 1 } gl.uniform3fv(u.uSlots, f); if (!opts.tint && opts.slots[0]) gl.uniform3fv(u.uTint, opts.slots[0]) }
     if (opts.alpha !== undefined && opts.alpha < 1) { gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.uniform1f(u.uAlpha, opts.alpha); gl.depthMask(false) }
     if (opts.noDepthWrite) gl.depthMask(false)
     if (opts.emissive) gl.uniform1f(u.uEmissive, opts.emissive)
@@ -1118,7 +1133,7 @@ export class Gl {
     gl.drawElements(mesh.mode, mesh.count, mesh.indexType, 0)
     if (opts.noCull) gl.enable(gl.CULL_FACE)
     if (opts.wave) gl.uniform1f(u.uWave, 0)
-    if (opts.tint || opts.alpha !== undefined || opts.emissive || opts.unlit || opts.highlight || opts.noDepthWrite || opts.ground || opts.specular !== undefined) this.reset()
+    if (opts.tint || opts.slots || opts.alpha !== undefined || opts.emissive || opts.unlit || opts.highlight || opts.noDepthWrite || opts.ground || opts.specular !== undefined) this.reset()
   }
 
   drawInstanced(mesh: GpuMesh | null, opts: { emissive?: number; alpha?: number; specular?: number; wind?: number } = {}) {

@@ -18,6 +18,11 @@ import {
   tileIndex,
   COASTER_STYLES,
   STAFF,
+  rideColors,
+  rideSlots,
+  colorsFromRoles,
+  PRESETS,
+  DEFAULT_SCHEMES,
   STAFF_WAGE_PER_DAY,
   ELECTRICITY_COST_PER_TILE_PER_DAY,
   dailyOperatingCosts,
@@ -327,6 +332,71 @@ test('roller coasters provide two trains, custom car counts, and independent pai
   assert.equal(restored.trackColor, '#112233')
   assert.equal(restored.supportColor, '#445566')
   assert.equal(restored.trainColor, '#778899')
+})
+
+test('rides resolve colors per slot from custom paint, park schemes, legacy fields and defaults', () => {
+  const state = parkFixture()
+  const park = state.parks[0]
+  assert.equal(park.schemes.length, 3)
+  const made = applyCommand(state, { t: 'flat', ride: 'gravitron', x: 40, y: 40, rot: 0 })
+  assert.equal(made.ok, true)
+  const ride = state.entities[made.id]
+  const slots = rideSlots(ride)
+  assert.equal(slots[1].key, 'lights')
+  assert.equal(slots[2].key, 'glow')
+  assert.deepEqual(rideColors(ride, park), slots.map(s => s.def))
+
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, color: '#123456' }).ok, true)
+  assert.equal(rideColors(ride, park)[0], '#123456')
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, colors: { arch: '#ABCDEF' } }).ok, true)
+  assert.equal(rideColors(ride, park)[slots.findIndex(s => s.key === 'arch')], '#abcdef')
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, colors: { nope: '#abcdef' } }).ok, false)
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, colors: { arch: 'red' } }).ok, false)
+
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, scheme: 1, colors: null }).ok, true)
+  assert.equal(ride.colors, null)
+  assert.deepEqual(rideColors(ride, park), slots.map(s => DEFAULT_SCHEMES[1].colors[s.role]))
+  assert.equal(applyCommand(state, { t: 'park', scheme: { index: 1, name: 'Electric', colors: { primary: '#101010' } } }).ok, true)
+  assert.equal(park.schemes[1].name, 'Electric')
+  assert.equal(rideColors(ride, park)[0], '#101010')
+  assert.equal(applyCommand(state, { t: 'park', scheme: { index: 3 } }).ok, false)
+  assert.equal(applyCommand(state, { t: 'park', scheme: { index: 0, colors: { primary: 'blue' } } }).ok, false)
+
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, colors: { band: '#ffffff' } }).ok, true)
+  assert.equal(ride.scheme, null)
+  assert.equal(rideColors(ride, park)[0], '#101010')
+  assert.equal(rideColors(ride, park)[slots.findIndex(s => s.key === 'band')], '#ffffff')
+
+  const preset = colorsFromRoles(ride, PRESETS[0].colors)
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, colors: preset, scheme: null }).ok, true)
+  assert.deepEqual(rideColors(ride, park), slots.map(s => PRESETS[0].colors[s.role]))
+
+  const loaded = deserializePark(serializePark(state))
+  assert.deepEqual(rideColors(loaded.entities[ride.id], loaded.parks[0]), slots.map(s => PRESETS[0].colors[s.role]))
+  assert.equal(loaded.parks[0].schemes[1].name, 'Electric')
+  const online = createPark('meadowbrook')
+  online.entities = { [ride.id]: { ...ride, colors: null, scheme: null } }
+  applyDynamic(online, JSON.parse(JSON.stringify(encodeDynamic(state))))
+  assert.deepEqual(online.entities[ride.id].colors, preset)
+  assert.equal(online.parks[0].schemes[1].name, 'Electric')
+})
+
+test('coaster paint slots keep the legacy track, support and train fields in step', () => {
+  const state = parkFixture()
+  state.map.corners.fill(20)
+  const result = applyCommand(state, { t: 'preset', preset: 'zephyr', x: 60, y: 60, dir: 0 })
+  const ride = state.entities[result.id]
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, colors: { track: '#112233', main: '#445566' } }).ok, true)
+  assert.equal(ride.trackColor, '#112233')
+  assert.equal(ride.trainColor, '#445566')
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, scheme: 2 }).ok, true)
+  assert.equal(ride.trackColor, DEFAULT_SCHEMES[2].colors.secondary)
+  assert.equal(ride.supportColor, DEFAULT_SCHEMES[2].colors.accent)
+  assert.equal(applyCommand(state, { t: 'park', scheme: { index: 2, colors: { secondary: '#0a0b0c' } } }).ok, true)
+  assert.equal(ride.trackColor, '#0a0b0c')
+  assert.equal(applyCommand(state, { t: 'rideSet', id: ride.id, supportColor: '#778899' }).ok, true)
+  assert.equal(ride.scheme, null)
+  assert.equal(rideColors(ride, state.parks[0])[rideSlots(ride).findIndex(s => s.key === 'support')], '#778899')
 })
 
 test('coaster building prices are doubled and electricity is one dollar per tile daily', () => {
