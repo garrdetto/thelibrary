@@ -3,11 +3,13 @@
     "engine/**/*.ts",
     "modules-src/_template/**/*.ts",
     "modules-src/fairway/**/*.ts",
-    "modules-src/demoderby/**/*.ts"
+    "modules-src/demoderby/**/*.ts",
+    "modules-src/angler/**/*.ts"
   ],
   "exclude": [
     "modules-src/fairway/tests/**",
-    "modules-src/demoderby/tests/**"
+    "modules-src/demoderby/tests/**",
+    "modules-src/angler/tests/**"
   ],
   "compilerOptions": {
     "target": "ES2022",
