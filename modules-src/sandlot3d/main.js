@@ -1615,9 +1615,9 @@ function ballTick(now){
 const tmpP=new THREE.Vector3(),tmpL=new THREE.Vector3(),dbg={p:new THREE.Vector3(),l:new THREE.Vector3()};
 function catcherCam(){const asp=VW/VH;
   // eye line just above a 6-ft batter's letters, looking out over the plate
-  if(asp<.8)return{p:new THREE.Vector3(-.9,3.7,13.5),l:new THREE.Vector3(0,2.9,-40)};
-  if(asp<1.3)return{p:new THREE.Vector3(-.8,3.5,11),l:new THREE.Vector3(0,2.85,-40)};
-  return{p:new THREE.Vector3(-.75,3.4,9.6),l:new THREE.Vector3(0,2.8,-40)}}
+  if(asp<.8)return{p:new THREE.Vector3(0,3.2,13.5),l:new THREE.Vector3(0,2.6,-40)};
+  if(asp<1.3)return{p:new THREE.Vector3(0,3,11),l:new THREE.Vector3(0,2.5,-40)};
+  return{p:new THREE.Vector3(0,2.9,9.6),l:new THREE.Vector3(0,2.4,-40)}}
 function camTick(dt,now,ball){
   let k=3.2;
   if(camMode==='bat'){const c=catcherCam();tmpP.copy(c.p);tmpL.copy(c.l);k=4}
