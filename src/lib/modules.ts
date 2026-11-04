@@ -2,7 +2,7 @@ export const embeddedModules = [
   { id: 'sandlot3d', title: 'Sandlot Sluggers 3D', src: '/modules/sandlot3d.html' },
   { id: 'maplestreet', title: 'Fox Plains', src: '/modules/maplestreet.html' },
   { id: 'sandlot', title: 'Sandlot Sluggers', src: '/modules/sandlot.html' },
-  { id: 'botwreck', title: 'BotWreck 3D', src: '/modules/botwreck.html' },
+  { id: 'botwreck', title: 'BotWreck Arena', src: '/modules/botwreck.html' },
   { id: 'chess', title: 'Chess', src: '/modules/chess.html' },
   { id: 'checkers', title: 'Checkers', src: '/modules/checkers.html' },
   { id: '2048', title: '2048', src: '/modules/2048.html' },
@@ -22,7 +22,7 @@ export const embeddedModules = [
 export type EmbeddedModuleId = typeof embeddedModules[number]['id']
 export type ModuleId = EmbeddedModuleId | 'pool' | 'racing' | 'oval' | 'park'
 
-export const withdrawnModuleIds: ReadonlySet<ModuleId> = new Set<ModuleId>(['botwreck'])
+export const withdrawnModuleIds: ReadonlySet<ModuleId> = new Set<ModuleId>([])
 
 export function isModuleAvailable(id: string): boolean {
   return !withdrawnModuleIds.has(id as ModuleId)
@@ -53,7 +53,7 @@ export const learningModules: LearningModule[] = [
   { id: 'sandlot', title: 'Sandlot Sluggers', subject: 'Sports science', group: 'Physics', summary: 'Timing windows, launch angles and team strategy on a neighborhood diamond. Draft a roster and run a full season.', modes: ['Solo', '2 on 1 screen', 'Online room'], image: '/images/modules/sandlot.webp', accent: '#ffb547' },
   { id: 'shorttrack', title: 'Short Track Showdown', subject: 'Friction & banking', group: 'Physics', summary: 'Steering scrub, coast-in corner entry and banked grip at Prison Speedway, with its walled cell house in the infield, on a half-mile bullring, a tight, steep 0.3-mile Dells-style oval, its wider, flatter grass-infield cousin or its dirt twin. Paint your race truck and race AI or friends.', modes: ['Solo', 'Online room'], image: '/images/modules/shorttrack.webp?v=2', accent: '#ff7a1a' },
   { id: 'fairway', title: 'Fairway Nine', subject: 'Projectile motion', group: 'Physics', summary: 'Launch angle, backspin lift, air drag and wind shape every shot across nine original holes, then slope and surface decide where the ball stops. Play a solo round, chase closest to the pin, or host an online room for up to four.', modes: ['Solo', 'Closest to the pin', 'Online room', '3D'], image: '/images/modules/fairway.webp', accent: '#4fd27a' },
-  { id: 'botwreck', title: 'BotWreck 3D', subject: 'Engineering', group: 'Physics', summary: 'Pick a robot vehicle frame, then test momentum, impact force and structural failure in a 3D crash lab.', modes: ['Solo', '3D'], image: '/images/modules/botwreck.webp', accent: '#ff5a36' },
+  { id: 'botwreck', title: 'BotWreck Arena', subject: 'Engineering', group: 'Physics', summary: 'Build a combat robot from a frame, saws, spinners, hammers, flippers and armor, then test impact energy and part failure against up to three opponents in a steel arena.', modes: ['Solo', 'Arena', '3D'], image: '/images/modules/botwreck.webp', accent: '#ff5a36' },
   { id: 'pool', title: '8-Ball Pool', subject: 'Geometry', group: 'Math', summary: 'Angles, spin and shot planning across 8-ball and 9-ball. Challenge anyone who is online.', modes: ['Practice', 'Live 1v1'], image: '/images/modules/pool.webp', accent: '#2fd6a3' },
   { id: 'racing', title: 'Max Secure Circuit', subject: 'Motion', group: 'Physics', summary: 'Racing lines and braking points on a twisting road course. Chase lap records or join a live grid of up to 24 cars.', modes: ['Time trial', 'Live grid'], image: '/images/modules/racing.webp', accent: '#39d0ff' },
   { id: 'park', title: 'Thrill Park', subject: 'Systems & economics', group: 'Physics', summary: 'Shape the land, lay paths and design roller coasters whose hills and loops obey real physics. Keep guests happy and the books balanced, alone or with friends online.', modes: ['Scenarios', 'Sandbox', 'Online co-op', 'Versus'], image: '/images/modules/park.webp', accent: '#ffcf4a' },

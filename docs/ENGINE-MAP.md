@@ -22,7 +22,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/components/PoolAccount.tsx`, `SignInRibbon.tsx` — sign-in form and ribbon — `index.tsx`, `PoolTable.tsx`, `Racing.tsx`.
 - `src/components/GroupChat.tsx`, `SitePresence.tsx` — floating chat, invites (`meta.invite`), online presence — `index.tsx`, `Racing.tsx`.
 - `src/components/AdminPanel.tsx`, `WorkspaceAdmin.tsx`, `SiteChanges.tsx` — admin tabs: people, site-change chat — `index.tsx`.
-- `public/modules/module-scores.js` — `tlScores.submit(module, value)` → `/api/module-scores`, then `tl-score-saved` to the parent — 2048, Chopper Cave, BotWreck 3D and the single-file score modules.
+- `public/modules/module-scores.js` — `tlScores.submit(module, value)` → `/api/module-scores`, then `tl-score-saved` to the parent — 2048, Chopper Cave, BotWreck Arena and the single-file score modules.
 
 ### Tooling and delivery
 
@@ -279,10 +279,12 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/sandlot/index.html` — whole 2D module, PeerJS rooms `sandlot-<code>` — `vite.modules.ts` (→ `public/modules/sandlot.html`).
 - `modules-src/sandlot/index.ts` — entry; provides `window.Peer` — `index.html`.
 
-### botwreck — BotWreck 3D
-- `modules-src/botwreck/index.html` — page shell, loads `module-scores.js` — `vite.modules.ts` (→ `public/modules/botwreck.html`).
+### botwreck — BotWreck Arena
+- `modules-src/botwreck/index.html` — page shell: bot builder panel, fight HUD (chassis and part health, opponents, weapon charge, hit feed, timer, count-out), results dialog, touch controls; loads `module-scores.js` — `vite.modules.ts` (→ `public/modules/botwreck.html`).
 - `modules-src/botwreck/index.ts` — entry; imports `main.js` — `index.html`.
-- `modules-src/botwreck/main.js` — whole module: three.js + cannon-es crash lab, `tlScores.submit` — `index.ts`.
+- `modules-src/botwreck/catalog.js` — data only: `SLOTS` (front, top, left, right, back with their rotations), `CHASSIS` (Dart, Brute, Bastion: size, mass, payload budget, hit points, engine, top speed, turn), `ITEMS` (armor plate, spike ram, wedge, buzz saw, spinner bar, flipper, hammer, axe, armor dome: weight, hit points, absorb share, ram multiplier and weapon numbers), `PAINTS`, `AI_NAMES`, `loadoutWeight`, `validLoadout`, `randomBuild` for AI opponents — `main.js`.
+- `modules-src/botwreck/models.js` — three.js visuals: `buildArena` (steel floor, hazard border, kick walls, polycarbonate panels, light towers, crowd points), `buildChassis`, `buildWheel`, `buildItem` (each item in slot space facing -X, returning the moving parts to animate), `flipperRest`, `nameTag` — `main.js`.
+- `modules-src/botwreck/main.js` — simulation: cannon-es world with arena walls, `createBot` (RaycastVehicle drive with a skid-steer yaw assist and a top-speed limit, compound chassis shapes for each item), damage (`damageBot`: the part on the struck side soaks `absorb` of a hit, unarmored tops take 25% extra, nearby wheels share it; `detachPart` and `breakWheel` throw parts off as debris), rams in `onContact` (½·μ·v² of the closing speed, split by who was driving in and scaled by each face's `ramMul`; wedges lift), weapons in `runWeapons` (saws grind and wear, spinners store and dump energy, flippers launch, hammers and axes strike at the end of the swing), AI (`aiThink`: target choice, steering, unsticking, firing when the target is in range, self-righting), 10 s count-out, match flow (builder → 3 s countdown → 150 s fight → result by last bot running or damage dealt), HUD and camera; render resolution adapts through `_shared/adaptive-resolution.js` (0.75× to 2×); `step(dt)` is separate from rendering and `window.__botwreck.advance(seconds)` fast-forwards a match for tests; `tlScores.submit('botwreck', …)` at the end of each match — `index.ts`.
 
 ### chess — Chess
 - `modules-src/chess/index.html` — board, CPU worker, PeerJS rooms `tl-chess-<code>` — `vite.modules.ts` (→ `public/modules/chess.html`).
