@@ -46,7 +46,7 @@ const server = createServer((request, response) => {
 await new Promise((resolve) => server.listen(0, resolve))
 const origin = `http://localhost:${server.address().port}`
 
-const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] })
+const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROME || undefined, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] })
 const page = await browser.newPage({ viewport: { width: 960, height: 600 } })
 const errors = []
 const external = []

@@ -32,7 +32,7 @@ pnpm install
 pnpm dev
 ```
 
-3D model sources are the `.glb` exports in `assets-src/models/`. `pnpm assets` (also run automatically by `pnpm dev` and `pnpm build`) compresses them into the git-ignored `public/models/`; `pnpm assets:report` prints the before/after table in `docs/ASSETS.md`.
+3D model sources are the `.glb` exports in `assets-src/models/`. `pnpm assets` (also run automatically by `pnpm dev` and `pnpm build`) compresses them into `public/models/`, which is committed so deploys don't rebuild it; `pnpm assets:report` prints the before/after table in `docs/ASSETS.md`.
 
 ## Site changes (ask Claude from the admin panel)
 

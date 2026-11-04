@@ -1,0 +1,1052 @@
+{
+ "botwreck/arena.glb": {
+  "hash": "65e16692370c706a272c25558c3540d038633d53",
+  "before": 76216,
+  "after": 28660,
+  "primsBefore": 11,
+  "primsAfter": 6,
+  "matsBefore": 7,
+  "matsAfter": 6,
+  "preset": "static"
+ },
+ "botwreck/bot_rocket.glb": {
+  "hash": "c9a18b35aba5b453025b384818fda3ab6721dec7",
+  "before": 66256,
+  "after": 22512,
+  "primsBefore": 26,
+  "primsAfter": 11,
+  "matsBefore": 23,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "botwreck/bot_speedster.glb": {
+  "hash": "7491ee4ead85e79d58dcd570cc774a8be3cdbb62",
+  "before": 48712,
+  "after": 19496,
+  "primsBefore": 27,
+  "primsAfter": 11,
+  "matsBefore": 24,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "botwreck/bot_tank.glb": {
+  "hash": "e1dfbc22aa540bfd5b36af08d656741793c12c1a",
+  "before": 48552,
+  "after": 19488,
+  "primsBefore": 27,
+  "primsAfter": 11,
+  "matsBefore": 24,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "botwreck/crate_single.glb": {
+  "hash": "31e225c028d531bea14373aed23a47a4c5c28346",
+  "before": 5684,
+  "after": 3412,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "botwreck/crates.glb": {
+  "hash": "0dae33886a80fcc12ca4e8cabb3f398b9a2f68be",
+  "before": 94452,
+  "after": 9380,
+  "primsBefore": 49,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "static"
+ },
+ "maplestreet/characters/resident.glb": {
+  "hash": "439de39f84b20ad15970a8bfb8629429de78b3a5",
+  "before": 103536,
+  "after": 26104,
+  "primsBefore": 12,
+  "primsAfter": 5,
+  "matsBefore": 5,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/armchair.glb": {
+  "hash": "80fdb61e9bab308c2509958083cb1fba57e3b76e",
+  "before": 22652,
+  "after": 5392,
+  "primsBefore": 10,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/barStool.glb": {
+  "hash": "b5933f81bce52efa2d812f9b775963f1bc3dac0e",
+  "before": 15988,
+  "after": 4960,
+  "primsBefore": 3,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/bathtub.glb": {
+  "hash": "2a0c08df20af247eac0d76d4caa2caaa17377416",
+  "before": 8772,
+  "after": 4528,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/bed.glb": {
+  "hash": "8f26daecfdccf9f622aa46021e8e71a33feb0096",
+  "before": 22828,
+  "after": 7136,
+  "primsBefore": 10,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/bench.glb": {
+  "hash": "00d92d28eaa3f26938fd74e8426e3d753c36a879",
+  "before": 7728,
+  "after": 3216,
+  "primsBefore": 4,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/bookshelf.glb": {
+  "hash": "8a23e4f2fcfd86e6453980f89d658954f657139e",
+  "before": 80760,
+  "after": 13300,
+  "primsBefore": 44,
+  "primsAfter": 2,
+  "matsBefore": 6,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/bunkBed.glb": {
+  "hash": "641cc1482b8d27519247aeff40e5ceda08087536",
+  "before": 25740,
+  "after": 6024,
+  "primsBefore": 14,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/ceilingLight.glb": {
+  "hash": "bbc7aa897e64d6128baa7676db9f3204b97bb58a",
+  "before": 13300,
+  "after": 4692,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/chandelier.glb": {
+  "hash": "2d3bbb87d1defb48439b3c8e1c9f12fa91091317",
+  "before": 49184,
+  "after": 9952,
+  "primsBefore": 14,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/coffeeTable.glb": {
+  "hash": "7b01e986de6e7440abfd137f6df24f801bdd2892",
+  "before": 23372,
+  "after": 8024,
+  "primsBefore": 7,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/computer.glb": {
+  "hash": "ab024ae3ddb737fc72e21c0cd21ef3af4a0eb295",
+  "before": 34760,
+  "after": 9704,
+  "primsBefore": 13,
+  "primsAfter": 3,
+  "matsBefore": 6,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/counter.glb": {
+  "hash": "2b6cd89dea3dd0f8b4551cb6ac69bc69d5945ba1",
+  "before": 7848,
+  "after": 4428,
+  "primsBefore": 4,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/court.glb": {
+  "hash": "3fca8837cd80757ca1d71e357d02f828138f4231",
+  "before": 50104,
+  "after": 13156,
+  "primsBefore": 16,
+  "primsAfter": 3,
+  "matsBefore": 9,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/desk.glb": {
+  "hash": "f1c1b9608959a50ca8cad4b730e19cb42194921e",
+  "before": 27244,
+  "after": 7248,
+  "primsBefore": 9,
+  "primsAfter": 2,
+  "matsBefore": 5,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/diningSet.glb": {
+  "hash": "de81e27d66bdb01cc99b8e80e7147e21b10f09d1",
+  "before": 78456,
+  "after": 12780,
+  "primsBefore": 30,
+  "primsAfter": 8,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/dishwasher.glb": {
+  "hash": "af6f8df6f50311aab3c9d7761753a5a55f2e9945",
+  "before": 6032,
+  "after": 3704,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/divingBoard.glb": {
+  "hash": "aea78aaa87662d4d84527a58ccf09afc0c664dfb",
+  "before": 4200,
+  "after": 2988,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/doghouse.glb": {
+  "hash": "bf0c244985a03b22a570d258ef4b721d727be151",
+  "before": 5996,
+  "after": 4260,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/doubleVanity.glb": {
+  "hash": "f62fc636f99875b65d3ecae111f3e0b8d0715ce4",
+  "before": 17080,
+  "after": 6632,
+  "primsBefore": 6,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/dresser.glb": {
+  "hash": "63415f03023d66caec67d3afb9f12aefdba1617b",
+  "before": 24516,
+  "after": 7032,
+  "primsBefore": 11,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/endTable.glb": {
+  "hash": "6508693a13ec45af6df1432795b9ff543aa06c96",
+  "before": 24160,
+  "after": 8404,
+  "primsBefore": 7,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/fireplace.glb": {
+  "hash": "7507bf8531182767c88fab4a3539d4d91c0ea973",
+  "before": 17256,
+  "after": 9144,
+  "primsBefore": 6,
+  "primsAfter": 5,
+  "matsBefore": 5,
+  "matsAfter": 5,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/floorLamp.glb": {
+  "hash": "adec7e1bce484c880e6054c4ead38bc5f6d4defc",
+  "before": 17272,
+  "after": 6468,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "sandlot3d/players.glb": {
+  "hash": "f7f80d8c924606d33779f8a00bf0aac1006bc7a6",
+  "before": 63785640,
+  "after": 6120136,
+  "primsBefore": 2710,
+  "primsAfter": 340,
+  "matsBefore": 1013,
+  "matsAfter": 89,
+  "preset": "figure"
+ },
+ "maplestreet/furniture/flowerBed.glb": {
+  "hash": "47581b2ca51fba24513be83cfc7d923d76727140",
+  "before": 181492,
+  "after": 32868,
+  "primsBefore": 38,
+  "primsAfter": 6,
+  "matsBefore": 7,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/fridge.glb": {
+  "hash": "8b49e03d54d83d79f96b2f35f5f9e4aee258a448",
+  "before": 7748,
+  "after": 3768,
+  "primsBefore": 4,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/grill.glb": {
+  "hash": "50712db1010cf82bca17f75d6c6fba70dc5f61af",
+  "before": 17076,
+  "after": 4808,
+  "primsBefore": 7,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/hoop.glb": {
+  "hash": "4715e9e560743e748a34c228b914e15e8558253c",
+  "before": 29644,
+  "after": 10124,
+  "primsBefore": 6,
+  "primsAfter": 2,
+  "matsBefore": 6,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/hotTub.glb": {
+  "hash": "2726b38ade3b56587c3afaf38b0c89d0814b7858",
+  "before": 11628,
+  "after": 4896,
+  "primsBefore": 6,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/island.glb": {
+  "hash": "68c8cf2402e69e35643841dbeb80a8f0f5ed8a63",
+  "before": 18020,
+  "after": 5736,
+  "primsBefore": 5,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/lampPost.glb": {
+  "hash": "f49df0e85fd2615dd4e4169bd7c30d8b7f6787c8",
+  "before": 18308,
+  "after": 5336,
+  "primsBefore": 4,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/lounger.glb": {
+  "hash": "a8c5461e84fe001e87b4ae04c05f25ee59940057",
+  "before": 17204,
+  "after": 4728,
+  "primsBefore": 7,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/loveseat.glb": {
+  "hash": "cc70951cdb46aea4fa5411b47779173a0f046581",
+  "before": 16876,
+  "after": 5888,
+  "primsBefore": 9,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/mirror.glb": {
+  "hash": "78074bb8fb8bcffcef7d1dc446a65164db7fbc0a",
+  "before": 4180,
+  "after": 2904,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/nightstand.glb": {
+  "hash": "8ad42fd8287b7b7cb5d5ae062b00ddeb076ab72a",
+  "before": 29596,
+  "after": 8984,
+  "primsBefore": 9,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/painting.glb": {
+  "hash": "21952105cae0a4eaf92ea80226d30a27551a6d60",
+  "before": 6088,
+  "after": 4976,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/patioSet.glb": {
+  "hash": "154bde1534a11af1c26985fbd66d693be35758bf",
+  "before": 26604,
+  "after": 5884,
+  "primsBefore": 8,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/piano.glb": {
+  "hash": "a06b7060777140fe4358083f33c5b21aa0ba9e7d",
+  "before": 51232,
+  "after": 6404,
+  "primsBefore": 28,
+  "primsAfter": 3,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/plant.glb": {
+  "hash": "1c28f4eaa220c704fbaff4fe52fde8761a9ecb5a",
+  "before": 87484,
+  "after": 12712,
+  "primsBefore": 11,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/recliner.glb": {
+  "hash": "61d4f278c70ddfffbf3724515369932113ea3749",
+  "before": 9344,
+  "after": 2824,
+  "primsBefore": 5,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/rugLarge.glb": {
+  "hash": "2a15c0889422d16c41108cde233e99644682fbb5",
+  "before": 5860,
+  "after": 3568,
+  "primsBefore": 3,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/rugSmall.glb": {
+  "hash": "a751f25f3eea7a2ec66dfc0d0510b1f6c7ca96a0",
+  "before": 5860,
+  "after": 3536,
+  "primsBefore": 3,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/shelf.glb": {
+  "hash": "2696bdcffb0e774b5ed4a35b5cd8ecf5a19bdecc",
+  "before": 6064,
+  "after": 3776,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/shower.glb": {
+  "hash": "0964e0f63d64d7014641da1d93d80d7278f62dc5",
+  "before": 15972,
+  "after": 5788,
+  "primsBefore": 5,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/shrub.glb": {
+  "hash": "b9e8b45c22e23e911f050afd8dcd8b4ba37a3a03",
+  "before": 51508,
+  "after": 6752,
+  "primsBefore": 6,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/sideboard.glb": {
+  "hash": "d4f19ba21a27ba10994099f708be71185dd6bfef",
+  "before": 19104,
+  "after": 6160,
+  "primsBefore": 8,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/sinkCounter.glb": {
+  "hash": "aecbc963634fd82fb0e97c487b42c8501d24eb89",
+  "before": 14344,
+  "after": 6332,
+  "primsBefore": 6,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/sofa.glb": {
+  "hash": "ad656978f2472326ed48dce97aa675188ade0753",
+  "before": 18636,
+  "after": 6000,
+  "primsBefore": 10,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/stairs.glb": {
+  "hash": "b94ab5d666c5d64fcb67d1adb3c0c939edaa8355",
+  "before": 60228,
+  "after": 11508,
+  "primsBefore": 33,
+  "primsAfter": 5,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/stove.glb": {
+  "hash": "d2c6cbaaf543fe0d5a5714dc24c5f83dd73e6d7d",
+  "before": 29360,
+  "after": 6328,
+  "primsBefore": 8,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/swingSet.glb": {
+  "hash": "c7aebb5c58d5fbda590fd63d769a04a5697f38ff",
+  "before": 34452,
+  "after": 7660,
+  "primsBefore": 11,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/tallPlant.glb": {
+  "hash": "d85d928caebfed1ee8d461ba7ceab64972c9a94b",
+  "before": 23804,
+  "after": 5992,
+  "primsBefore": 10,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/toilet.glb": {
+  "hash": "56c889d4796eed5467b276b19f60ac23dd6a498b",
+  "before": 9496,
+  "after": 3048,
+  "primsBefore": 3,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/toyChest.glb": {
+  "hash": "265df078f5c9686d9fb42d88cb542dd183bc65aa",
+  "before": 12092,
+  "after": 6384,
+  "primsBefore": 3,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/tree.glb": {
+  "hash": "ac578fe90fed9901a8df50c73294d913e4cdeefb",
+  "before": 73256,
+  "after": 10020,
+  "primsBefore": 9,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/trampoline.glb": {
+  "hash": "44e4f4e8ad04833391a9e6a40e16770f4dd0cab1",
+  "before": 54492,
+  "after": 11856,
+  "primsBefore": 8,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/tvStand.glb": {
+  "hash": "296a558645e933e04622acb477e90b54a52d74d7",
+  "before": 9632,
+  "after": 4688,
+  "primsBefore": 5,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/twinBed.glb": {
+  "hash": "787038d07cfcde9361395dee4acd190e4a20b931",
+  "before": 21080,
+  "after": 6492,
+  "primsBefore": 9,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/vanity.glb": {
+  "hash": "1d69ceb2dc42b260a7aec2d165c16e5f90b6b7de",
+  "before": 10732,
+  "after": 5428,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/wallClock.glb": {
+  "hash": "b77a68f107e98654cb1b7e3e1e9cb797449b75d7",
+  "before": 11344,
+  "after": 4416,
+  "primsBefore": 3,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/wallTv.glb": {
+  "hash": "0e26c70476ac6adb23d606d06e88a63b7f27c9da",
+  "before": 4172,
+  "after": 2948,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "maplestreet/furniture/wardrobe.glb": {
+  "hash": "36a779f9c12d10e751f723419c6c52c00cac4557",
+  "before": 7880,
+  "after": 4376,
+  "primsBefore": 4,
+  "primsAfter": 3,
+  "matsBefore": 3,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/houses/house_N4.glb": {
+  "hash": "3b59e9e0850909c58227c045bba8d79bc84fb2a2",
+  "before": 5400584,
+  "after": 631320,
+  "primsBefore": 66,
+  "primsAfter": 15,
+  "matsBefore": 55,
+  "matsAfter": 15,
+  "preset": "house"
+ },
+ "maplestreet/houses/house_N2.glb": {
+  "hash": "f7c4398cb93f7b652a28a6c332a8219ec4125546",
+  "before": 5391940,
+  "after": 593332,
+  "primsBefore": 63,
+  "primsAfter": 16,
+  "matsBefore": 55,
+  "matsAfter": 16,
+  "preset": "house"
+ },
+ "maplestreet/houses/house_S2.glb": {
+  "hash": "7064a8dd45f057da1e4900016bab905c9dbe1929",
+  "before": 4915356,
+  "after": 546484,
+  "primsBefore": 58,
+  "primsAfter": 14,
+  "matsBefore": 52,
+  "matsAfter": 14,
+  "preset": "house"
+ },
+ "maplestreet/houses/house_N8.glb": {
+  "hash": "8282dbfade192bfd260c1ecf7a4dfc2580a01e3f",
+  "before": 5322736,
+  "after": 607228,
+  "primsBefore": 60,
+  "primsAfter": 14,
+  "matsBefore": 49,
+  "matsAfter": 14,
+  "preset": "house"
+ },
+ "maplestreet/houses/house_S5.glb": {
+  "hash": "baf627ddd4f6f4966d51e50376153192ba874f12",
+  "before": 5283424,
+  "after": 564524,
+  "primsBefore": 57,
+  "primsAfter": 13,
+  "matsBefore": 49,
+  "matsAfter": 13,
+  "preset": "house"
+ },
+ "maplestreet/houses/house_S7.glb": {
+  "hash": "105cde83d430000bc7dd48924de39fe06f837c72",
+  "before": 4828484,
+  "after": 541652,
+  "primsBefore": 58,
+  "primsAfter": 14,
+  "matsBefore": 52,
+  "matsAfter": 14,
+  "preset": "house"
+ },
+ "maplestreet/town/neighborhood.glb": {
+  "hash": "67399a429a3bb9fa58c01b11ee90d0fda5078926",
+  "before": 8569076,
+  "after": 1498420,
+  "primsBefore": 214,
+  "primsAfter": 41,
+  "matsBefore": 71,
+  "matsAfter": 29,
+  "preset": "static"
+ },
+ "maplestreet/town/downtown.glb": {
+  "hash": "b56105ec59300d015a3d0d48aa9588dad3bf0a4d",
+  "before": 4432036,
+  "after": 830748,
+  "primsBefore": 93,
+  "primsAfter": 46,
+  "matsBefore": 86,
+  "matsAfter": 46,
+  "preset": "static"
+ },
+ "maplestreet/vehicles/atv.glb": {
+  "hash": "51f739a6d6117c59f39179b833452c76eba42a63",
+  "before": 145968,
+  "after": 16888,
+  "primsBefore": 19,
+  "primsAfter": 8,
+  "matsBefore": 8,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/coupe.glb": {
+  "hash": "32691e31e318523b63dc3d41ac7a9f090eb4d6c2",
+  "before": 488964,
+  "after": 87492,
+  "primsBefore": 19,
+  "primsAfter": 9,
+  "matsBefore": 9,
+  "matsAfter": 5,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/golfcart.glb": {
+  "hash": "153ff9ba0e57024da55b6f2a56ad0396d7b011f3",
+  "before": 170148,
+  "after": 16824,
+  "primsBefore": 20,
+  "primsAfter": 8,
+  "matsBefore": 10,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/mower.glb": {
+  "hash": "3cc4b78176af614fbe02d19954888ba9d67849da",
+  "before": 142856,
+  "after": 15600,
+  "primsBefore": 18,
+  "primsAfter": 7,
+  "matsBefore": 8,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/hdtruck.glb": {
+  "hash": "606ab9d2f7e9f41158f1ebfd797f74cc40dcdee8",
+  "before": 429356,
+  "after": 71056,
+  "primsBefore": 21,
+  "primsAfter": 10,
+  "matsBefore": 10,
+  "matsAfter": 6,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/trailer.glb": {
+  "hash": "51dc1fa9e0f106f8a3fd6f06db6a4cdfff778a3c",
+  "before": 83676,
+  "after": 14236,
+  "primsBefore": 10,
+  "primsAfter": 5,
+  "matsBefore": 7,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/sedan.glb": {
+  "hash": "48429fa19e759e1b75910bee0b11e27eae6e092d",
+  "before": 500144,
+  "after": 89348,
+  "primsBefore": 19,
+  "primsAfter": 9,
+  "matsBefore": 9,
+  "matsAfter": 5,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/zeroturn.glb": {
+  "hash": "44565ef6f15746d3ef9de1d48e35ba64163250aa",
+  "before": 182432,
+  "after": 18624,
+  "primsBefore": 18,
+  "primsAfter": 7,
+  "matsBefore": 8,
+  "matsAfter": 3,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/truck.glb": {
+  "hash": "d7ebf2581227119bbfabd65f590c7c7c3bd73bba",
+  "before": 396032,
+  "after": 66208,
+  "primsBefore": 20,
+  "primsAfter": 9,
+  "matsBefore": 9,
+  "matsAfter": 5,
+  "preset": "rig"
+ },
+ "sandlot3d/ballpark_park.glb": {
+  "hash": "a0f78aff45ac426bf45024ded5ca66bdc8cff98c",
+  "before": 1904240,
+  "after": 361340,
+  "primsBefore": 74,
+  "primsAfter": 19,
+  "matsBefore": 51,
+  "matsAfter": 12,
+  "preset": "static"
+ },
+ "sandlot3d/ballpark_dome.glb": {
+  "hash": "a5274abfee4c30b2c31c10680d48f1ba08fd6841",
+  "before": 4025756,
+  "after": 1626516,
+  "primsBefore": 92,
+  "primsAfter": 19,
+  "matsBefore": 52,
+  "matsAfter": 15,
+  "preset": "static"
+ },
+ "sandlot3d/ballpark_sandlot.glb": {
+  "hash": "26c11b66f9981a397536585b9a0178000b99f8f7",
+  "before": 2103892,
+  "after": 378756,
+  "primsBefore": 188,
+  "primsAfter": 28,
+  "matsBefore": 114,
+  "matsAfter": 13,
+  "preset": "static"
+ },
+ "sandlot3d/ballpark_stadium.glb": {
+  "hash": "c9acc195bda839a1256d6a6d14859b7ad58e5118",
+  "before": 3291200,
+  "after": 1217896,
+  "primsBefore": 64,
+  "primsAfter": 19,
+  "matsBefore": 43,
+  "matsAfter": 14,
+  "preset": "static"
+ },
+ "shorttrack/crowd_bullring.glb": {
+  "hash": "b830f59f73492bde0413c4e7d81d848f948a7e24",
+  "before": 1069344,
+  "after": 1060044,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 1,
+  "preset": "instanced"
+ },
+ "shorttrack/crowd_dells.glb": {
+  "hash": "594ed95ad45d731b21a1f70450747a90dd067046",
+  "before": 1069320,
+  "after": 1060044,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 1,
+  "preset": "instanced"
+ },
+ "shorttrack/crowd_dirt.glb": {
+  "hash": "fb3f014775a51e17587e69b9da3ee097323c6837",
+  "before": 1069300,
+  "after": 1060044,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 1,
+  "preset": "instanced"
+ },
+ "shorttrack/track_dells.glb": {
+  "hash": "dfc015ca223a668ea5aa9c3de2841c8382f6862b",
+  "before": 11522504,
+  "after": 2518140,
+  "primsBefore": 126,
+  "primsAfter": 24,
+  "matsBefore": 52,
+  "matsAfter": 18,
+  "preset": "static"
+ },
+ "shorttrack/track_bullring.glb": {
+  "hash": "88080c84a1dcba0e7ad9f5b5a67d9d0c602f9959",
+  "before": 11570560,
+  "after": 2525552,
+  "primsBefore": 174,
+  "primsAfter": 26,
+  "matsBefore": 58,
+  "matsAfter": 18,
+  "preset": "static"
+ },
+ "shorttrack/trees_bullring.glb": {
+  "hash": "6618270cf0093ab1109a1c20450fb7bb52ce463a",
+  "before": 50876,
+  "after": 47248,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "instanced"
+ },
+ "shorttrack/trees_dells.glb": {
+  "hash": "a68a919db76c4f1cd387f35500e3cd93a219b30b",
+  "before": 50872,
+  "after": 47248,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "instanced"
+ },
+ "shorttrack/trees_dirt.glb": {
+  "hash": "27a6d654c3b67695924ff5a441cb71841a2b3296",
+  "before": 50872,
+  "after": 47248,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "instanced"
+ },
+ "shorttrack/truck_default.glb": {
+  "hash": "a8ea1af9bf0bb13e2f23dc4a7c1f10ed276b39ec",
+  "before": 2232824,
+  "after": 501044,
+  "primsBefore": 187,
+  "primsAfter": 36,
+  "matsBefore": 25,
+  "matsAfter": 16,
+  "preset": "rig"
+ },
+ "shorttrack/truck_livery_1.glb": {
+  "hash": "b69486383073e0a7b6968ab3bca29ad12cab04a5",
+  "before": 2984960,
+  "after": 619740,
+  "primsBefore": 187,
+  "primsAfter": 36,
+  "matsBefore": 25,
+  "matsAfter": 16,
+  "preset": "rig"
+ },
+ "shorttrack/track_dirt.glb": {
+  "hash": "442521d669d5014177c3d24da07583813eb904b8",
+  "before": 11808216,
+  "after": 2218536,
+  "primsBefore": 120,
+  "primsAfter": 22,
+  "matsBefore": 48,
+  "matsAfter": 16,
+  "preset": "static"
+ },
+ "shorttrack/truck_livery_2.glb": {
+  "hash": "d06c2b5b29418b5d786b1c96d46a872e4bc425bf",
+  "before": 2767488,
+  "after": 547584,
+  "primsBefore": 187,
+  "primsAfter": 36,
+  "matsBefore": 25,
+  "matsAfter": 16,
+  "preset": "rig"
+ },
+ "shorttrack/truck_livery_3.glb": {
+  "hash": "2034936cefa1476b3799d9a2428386575a4474fa",
+  "before": 2772896,
+  "after": 547104,
+  "primsBefore": 187,
+  "primsAfter": 36,
+  "matsBefore": 25,
+  "matsAfter": 16,
+  "preset": "rig"
+ },
+ "shorttrack/truck_pace.glb": {
+  "hash": "6723ff335b1545291ddd6e04823ae101f2d9aafc",
+  "before": 2202796,
+  "after": 491392,
+  "primsBefore": 183,
+  "primsAfter": 32,
+  "matsBefore": 24,
+  "matsAfter": 15,
+  "preset": "rig"
+ },
+ "shorttrack/truck_unpainted.glb": {
+  "hash": "a05f42ce44bf6f2dc9ff61bc8d6219d42026becd",
+  "before": 1837468,
+  "after": 411324,
+  "primsBefore": 180,
+  "primsAfter": 27,
+  "matsBefore": 20,
+  "matsAfter": 12,
+  "preset": "rig"
+ }
+}

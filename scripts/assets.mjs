@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Asset pipeline: optimizes every model in `assets-src/models/` into `public/models/` (git-ignored).
+ * Asset pipeline: optimizes every model in `assets-src/models/` into `public/models/`.
+ * The outputs and `public/models/.assets-cache.json` are committed, so a source change means running this and committing both;
+ * `--check` in CI fails when they are stale. Bump PIPELINE_VERSION when the pass itself changes so every output is rebuilt.
  *
  *   node scripts/assets.mjs            incremental: only sources that changed since the last run
  *   node scripts/assets.mjs --force    rebuild everything
@@ -143,7 +145,7 @@ async function main() {
 
   mkdirSync(outRoot, { recursive: true })
   const results = []
-  const concurrency = Math.max(1, Math.min(cpus().length, 8))
+  const concurrency = Math.max(1, Math.min(cpus().length, Number(process.env.ASSETS_WORKERS) || 4))
   let index = 0
   const started = Date.now()
   const next = async () => {
