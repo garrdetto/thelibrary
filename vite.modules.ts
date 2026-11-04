@@ -13,6 +13,7 @@ const threeAddon = /\/three\/examples\/jsm\//
 
 const vendorChunks: { name: string; match: RegExp }[] = [
   { name: 'vendor-rapier', match: /\/node_modules\/(\.pnpm\/[^/]+\/node_modules\/)?@dimforge\/rapier3d-compat\// },
+  { name: 'vendor-playcanvas', match: /\/node_modules\/(\.pnpm\/[^/]+\/node_modules\/)?playcanvas\// },
   { name: 'vendor-webgpu', match: webgpuBuild },
   { name: 'vendor', match: /\/node_modules\/(\.pnpm\/[^/]+\/node_modules\/)?(three|postprocessing)\// },
   { name: 'vendor-net', match: /\/node_modules\/(\.pnpm\/[^/]+\/node_modules\/)?(peerjs|peerjs-js-binarypack|webrtc-adapter|sdp|eventemitter3|@msgpack\/msgpack)\// },

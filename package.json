@@ -36,6 +36,7 @@
     "matter-js": "^0.20.0",
     "meshoptimizer": "1.1.1",
     "peerjs": "1.5.4",
+    "playcanvas": "2.23.3",
     "postprocessing": "6.39.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
