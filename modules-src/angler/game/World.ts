@@ -110,12 +110,22 @@ export class World {
     const lake = this.lake!
     const landing = landingOf(lake)
     const previous = this.physics?.state
-    this.boat?.root.removeChild(this.player?.character.entity ?? new pc.Entity())
+    if (this.player && this.boat) this.boat.hull.removeChild(this.player.character.entity)
     this.boat?.destroy()
     this.boat = new Boat(this.app, kind, paint, this.bassAssets)
     this.root.addChild(this.boat.root)
     this.physics = new BoatPhysics(lake, BOATS[kind], previous ? { ...previous, speed: 0 } : newBoatState(landing.x, landing.z, landing.heading))
     if (this.player) this.boat.hull.addChild(this.player.character.entity)
+  }
+
+  /** Swaps or repaints the player's boat in place (same position and heading). */
+  setBoat(kind: BoatKind, paint: BoatPaint): void {
+    if (!this.lake) return
+    if (this.boat && this.boat.spec.kind === kind) { this.boat.setPaint(paint); return }
+    const motor = this.physics?.motorBoost ?? 1
+    if (this.player) this.player.station = undefined
+    this.spawnBoat(kind, paint)
+    if (this.physics) this.physics.motorBoost = motor
   }
 
   leaveLake(): void {
@@ -150,6 +160,12 @@ export class World {
         this.update(dt)
       }, 1000)
     }
+  }
+
+  /** Renders the scene into the left part of the window while a side panel covers the right. */
+  setViewportWidth(fraction: number): void {
+    const cam = this.camera.entity.camera
+    if (cam) cam.rect = new pc.Vec4(0, 0, Math.max(0.3, Math.min(1, fraction)), 1)
   }
 
   focusOnPlayer(on: boolean): void {

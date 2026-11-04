@@ -100,6 +100,43 @@
       .ang-select{font:600 13px Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
       .ang-lake b{font-size:12px;color:var(--warn)}
       @media (max-width:760px){#catch-card{top:auto;bottom:118px;left:50%;right:auto;transform:translateX(-50%)}#sonar{display:none}#catch-log{display:none}.hud-rig select{max-width:120px}}
+      #panel{position:fixed;top:0;bottom:0;right:0;z-index:35;width:min(560px,100vw);overflow:auto;padding:14px 16px 20px;background:rgba(10,18,22,.94);border-left:1px solid var(--line);backdrop-filter:blur(8px);display:grid;align-content:start;gap:10px}
+      #panel h2{margin:0;font:800 22px Rajdhani,Inter,sans-serif}
+      #panel h3{margin:10px 0 4px;font:750 15px Rajdhani,Inter,sans-serif;letter-spacing:.4px;color:var(--accent)}
+      #panel label{display:block;margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      .pan-tabs{display:flex;gap:6px;flex-wrap:wrap}
+      .pan-tabs button,.chip-btn{cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--soft);font:700 12.5px Inter,sans-serif}
+      .pan-tabs button[aria-selected=true],.chip-btn[aria-pressed=true]{background:var(--accent);color:#04211d;border-color:transparent}
+      .pan-grid{display:grid;gap:4px}
+      .sw-row{display:flex;flex-wrap:wrap;gap:5px}
+      .sw{width:24px;height:24px;border-radius:7px;border:2px solid rgba(255,255,255,.18);cursor:pointer;padding:0}
+      .sw[aria-checked=true]{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
+      .opt-row{display:flex;flex-wrap:wrap;gap:6px}
+      .opt{cursor:pointer;display:grid;gap:1px;text-align:left;padding:7px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font:650 12.5px Inter,sans-serif;color:var(--text)}
+      .opt small{font-size:10.5px;color:var(--muted);font-weight:600}
+      .opt em{font-style:normal;font-size:11px;color:#ffe7a3}
+      .opt[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 22%,transparent)}
+      .opt[data-locked]{opacity:.7}
+      .sw:focus-visible,.opt:focus-visible,.chip-btn:focus-visible,.pan-tabs button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+      .pan-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;position:sticky;bottom:0;padding:8px 0;background:rgba(10,18,22,.94)}
+      .shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+      .shop-item{display:grid;gap:6px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
+      .shop-item p{margin:0;font-size:12px;color:var(--soft)}
+      .shop-item.is-owned{opacity:.6}
+      .shop-item .price{font-weight:800;color:#ffe7a3}
+      .ang-btn[disabled]{opacity:.45;cursor:not-allowed}
+      .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+      .stat-row div{padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.05)}
+      .stat-row small{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      .stat-row strong{font:800 16px Rajdhani,Inter,sans-serif}
+      .ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
+      .ach{padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.03);display:grid;gap:4px}
+      .ach p{margin:0;font-size:12px;color:var(--soft)}
+      .ach span{font-size:11px;font-weight:800;color:var(--muted)}
+      .ach.tier-1 span{color:#d39a5c}.ach.tier-2 span{color:#c8d0d8}.ach.tier-3 span{color:#ffcf4a}.ach.tier-4 span{color:#ff8af0}
+      .bar{height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+      .bar i{display:block;height:100%;background:var(--accent)}
+      @media (max-width:640px){.stat-row{grid-template-columns:repeat(2,1fr)}.hud-actions .ang-btn{padding:6px 9px;font-size:12px}}
       @media (max-width:640px){#minimap{width:104px;height:104px}.hud-info{max-width:52vw}.hud-info span{display:none}.ang-card{padding:16px}}
       @media (prefers-reduced-motion:reduce){.ang-spinner{animation:none}.ang-screen{backdrop-filter:none}}
     </style>
@@ -127,6 +164,10 @@
         </div>
         <div class="hud-actions" data-ui id="hud-actions">
           <button class="ang-btn" id="btn-troll" type="button" aria-pressed="false" title="Trolling motor (T)">Trolling motor</button>
+          <button class="ang-btn" id="btn-wardrobe" type="button" title="Wardrobe (C)">Wardrobe</button>
+          <button class="ang-btn" id="btn-boat" type="button" title="Boat and paint (B)">Boat</button>
+          <button class="ang-btn" id="btn-shop" type="button" title="Bait shop (P)">Shop</button>
+          <button class="ang-btn" id="btn-achievements" type="button" title="Achievements (J)">Achievements</button>
           <button class="ang-btn" id="btn-records" type="button" title="Record book (R)">Records</button>
           <button class="ang-btn" id="btn-map" type="button" title="Map (M)">Map</button>
           <button class="ang-btn" id="btn-lakes" type="button">Lakes</button>
@@ -160,6 +201,13 @@
       <span id="card-credits"></span>
       <p id="card-fact"></p>
     </section>
+
+ <aside id="panel" hidden aria-labelledby="panel-title" data-ui>
+      <header class="ang-row"><h2 id="panel-title">Tackle shop</h2><span class="chip is-tc" id="panel-tc"></span><button class="ang-btn" id="panel-close" type="button">Close</button></header>
+      <nav class="pan-tabs" role="tablist"><button type="button" role="tab" data-tab="wardrobe">Wardrobe</button><button type="button" role="tab" data-tab="boat">Boat</button><button type="button" role="tab" data-tab="shop">Shop</button><button type="button" role="tab" data-tab="achievements">Achievements</button></nav>
+      <p id="panel-status" class="ang-note" role="status"></p>
+      <div id="panel-body"></div>
+    </aside>
 
     <section id="records-panel" class="ang-screen" hidden aria-labelledby="records-title">
       <div class="ang-card" data-ui>

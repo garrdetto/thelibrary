@@ -31,7 +31,7 @@ export function seasonFor(month: number, day: number): Season {
 }
 
 const bottomColor: Record<Bottom, Rgb> = {
-  sand: [0.55, 0.49, 0.36], gravel: [0.42, 0.39, 0.34], rock: [0.33, 0.32, 0.3], muck: [0.16, 0.13, 0.09], weed: [0.16, 0.24, 0.1], timber: [0.24, 0.19, 0.12],
+  sand: [0.66, 0.6, 0.46], gravel: [0.55, 0.52, 0.46], rock: [0.46, 0.45, 0.42], muck: [0.28, 0.24, 0.17], weed: [0.27, 0.37, 0.18], timber: [0.36, 0.3, 0.2],
 }
 
 export class LakeScene {
@@ -68,9 +68,9 @@ export class LakeScene {
       const x = -extent + i * step, z = -extent + j * step
       heights[j * (n + 1) + i] = heightAt(lake, x, z)
     }
-    const grass: Rgb = season.snow ? [0.86, 0.88, 0.92] : season.bare ? [0.36, 0.32, 0.2] : [0.25 + season.fall * 0.12, 0.33 - season.fall * 0.06, 0.13]
-    const floor: Rgb = season.snow ? [0.78, 0.8, 0.84] : [0.2, 0.17, 0.1]
-    const beach: Rgb = lake.id === 'tamarack' ? [0.22, 0.2, 0.12] : lake.id === 'mill-pond' || lake.id === 'wolf-rapids' ? [0.4, 0.33, 0.22] : [0.62, 0.56, 0.42]
+    const grass: Rgb = season.snow ? [0.9, 0.92, 0.95] : season.bare ? [0.5, 0.45, 0.32] : [0.38 + season.fall * 0.14, 0.48 - season.fall * 0.08, 0.22]
+    const floor: Rgb = season.snow ? [0.84, 0.86, 0.9] : [0.34, 0.29, 0.19]
+    const beach: Rgb = lake.id === 'tamarack' ? [0.34, 0.31, 0.2] : lake.id === 'mill-pond' || lake.id === 'wolf-rapids' ? [0.54, 0.46, 0.33] : [0.72, 0.66, 0.52]
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
       const k = j * (n + 1) + i
       const x = -extent + i * step, z = -extent + j * step
@@ -91,7 +91,7 @@ export class LakeScene {
         const v = 0.85 + 0.3 * fbm(x / 25, z / 25, lake.seed + 41, 2)
         c = [c[0] * v, c[1] * v, c[2] * v]
       }
-      if (slope > 0.6 && h > 0.5) c = [0.36, 0.35, 0.33]
+      if (slope > 0.6 && h > 0.5) c = [0.5, 0.49, 0.46]
       colors[k * 4] = Math.round(clamp(c[0], 0, 1) * 255)
       colors[k * 4 + 1] = Math.round(clamp(c[1], 0, 1) * 255)
       colors[k * 4 + 2] = Math.round(clamp(c[2], 0, 1) * 255)
@@ -114,6 +114,7 @@ export class LakeScene {
     const material = new pc.StandardMaterial()
     material.diffuse = new pc.Color(1, 1, 1)
     material.diffuseVertexColor = true
+    ;(material as pc.StandardMaterial & { vertexColorGamma: boolean }).vertexColorGamma = true
     material.diffuseMap = grain
     material.useMetalness = true
     material.metalness = 0

@@ -173,6 +173,7 @@ export function vertexColorMaterial(options: { gloss?: number; cull?: number; me
   const m = new pc.StandardMaterial()
   m.diffuse = new pc.Color(1, 1, 1)
   m.diffuseVertexColor = true
+  ;(m as pc.StandardMaterial & { vertexColorGamma: boolean }).vertexColorGamma = true
   m.useMetalness = true
   m.metalness = options.metalness ?? 0
   m.gloss = options.gloss ?? 0.2

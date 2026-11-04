@@ -7,6 +7,11 @@ import type { Authority, BiteResult, Progress, TickResult } from './Authority'
 import { LakeMap } from '../ui/LakeMap'
 import { Sonar } from '../ui/Sonar'
 import { RecordBook } from '../ui/RecordBook'
+import { Panels } from '../ui/Panels'
+import type { PanelTab } from '../ui/Panels'
+import { equip, purchase } from '../shared/Shop'
+import type { BoatKind, BoatPaint } from '../shared/Boats'
+import type { Look } from '../shared/Wardrobe'
 import { LAKES, depthFeetAt, lakeIds, nearestSpot, waterTempF } from '../shared/Lakes'
 import type { LakeId } from '../shared/Lakes'
 import { centralTime, moonPhase, moonPhaseName } from '../shared/Astro'
@@ -18,7 +23,7 @@ import { SPECIES, formatLength, formatWeight } from '../shared/Species'
 import type { Presentation } from '../shared/Species'
 import { defaultProfile, lakeOpen, normalizeProfile } from '../shared/Profile'
 import type { AnglerProfile } from '../shared/Profile'
-import { anglerTitle, TIER_NAMES } from '../shared/Achievements'
+import { anglerTitle, evaluateAchievements, TIER_NAMES } from '../shared/Achievements'
 import type { Unlock } from '../shared/Achievements'
 import { MOTORS } from '../shared/Shop'
 import { toMph } from '../systems/BoatPhysics'
@@ -49,6 +54,8 @@ export class Game {
   private progressOdometer = 0
   private log: BiteResult[] = []
   private cardTimer = 0
+  panels!: Panels
+  private zoomedForPanel = false
 
   constructor(canvas: HTMLCanvasElement, quality: QualityTier) {
     this.world = new World(canvas, quality)
@@ -70,6 +77,16 @@ export class Game {
       onError: message => this.toast(message, 'warn'),
       progress: () => this.takeProgress(),
       crowd: () => this.crowd(),
+    })
+    this.panels = new Panels({
+      profile: () => this.profile,
+      signedIn: () => this.account.signedIn,
+      previewLook: look => this.world.player?.character.setLook(look),
+      saveLook: look => this.saveLook(look),
+      previewBoat: (kind, paint) => this.previewBoat(kind, paint),
+      saveBoat: (kind, paint) => this.saveBoat(kind, paint),
+      buy: item => this.buy(item),
+      closed: () => { this.world.focusOnPlayer(false); this.world.setViewportWidth(1); if (this.zoomedForPanel) this.world.camera.zoom(1 / 0.45); this.zoomedForPanel = false },
     })
     $('loading').hidden = true
     this.world.onFrame(dt => this.frame(dt))
@@ -108,6 +125,10 @@ export class Game {
     $('catch-close').addEventListener('click', () => { $('catch-card').hidden = true })
     $('rig-rod').addEventListener('change', () => this.changeRig())
     $('rig-bait').addEventListener('change', () => this.changeRig(true))
+    $('btn-wardrobe').addEventListener('click', () => this.openPanel('wardrobe'))
+    $('btn-boat').addEventListener('click', () => this.openPanel('boat'))
+    $('btn-shop').addEventListener('click', () => this.openPanel('shop'))
+    $('btn-achievements').addEventListener('click', () => this.openPanel('achievements'))
     $('lakes-close').addEventListener('click', () => { if (this.world.lake) $('screen-lakes').hidden = true })
     const big = $<HTMLCanvasElement>('map-canvas')
     big.addEventListener('click', e => {
@@ -136,8 +157,12 @@ export class Game {
     if (code === 'Space') this.toggleAnchor()
     if (code === 'KeyM') this.toggleMap()
     if (code === 'KeyR') this.records.open(this.world.lake?.id ?? 'all')
+    if (code === 'KeyC') this.openPanel('wardrobe')
+    if (code === 'KeyB') this.openPanel('boat')
+    if (code === 'KeyP') this.openPanel('shop')
+    if (code === 'KeyJ') this.openPanel('achievements')
     if (code === 'KeyT') { this.world.controls.trolling = !this.world.controls.trolling; this.refreshButtons() }
-    if (code === 'Escape') { this.toggleMap(false); this.records.close(); $('catch-card').hidden = true }
+    if (code === 'Escape') { this.toggleMap(false); this.records.close(); this.panels.close(); $('catch-card').hidden = true }
   }
 
   toggleAnchor(): void {
@@ -230,6 +255,55 @@ export class Game {
       this.world.anchored = true
       void this.fishing?.begin(rig)
     }
+  }
+
+  openPanel(tab: PanelTab): void {
+    if (!this.world.lake) return
+    if (this.panels.isOpen) { this.panels.close(); return }
+    if (tab === 'wardrobe' || tab === 'boat') {
+      if (!this.world.anchored) this.world.controls.throttle = 0
+      this.world.focusOnPlayer(tab === 'wardrobe')
+      if (tab === 'wardrobe') { this.world.camera.zoom(0.45); this.zoomedForPanel = true }
+    }
+    this.panels.open(tab)
+    if (innerWidth > 900) this.world.setViewportWidth(1 - Math.min(560, innerWidth) / innerWidth)
+  }
+
+  private async post(body: Record<string, unknown>): Promise<void> {
+    if (this.account.signedIn) {
+      const r = await api<{ profile: unknown }>(body)
+      this.profile = normalizeProfile(r.profile)
+    } else {
+      const p = this.profile
+      const result = body.action === 'buy' ? purchase(p, body.item as string) : equip(p, body.patch as Record<string, unknown>)
+      if (!result.ok) throw new Error(result.error)
+      for (const u of evaluateAchievements(p)) this.announce(u)
+    }
+    this.refreshProfile()
+  }
+
+  private async saveLook(look: Look): Promise<void> {
+    await this.post({ action: 'equip', patch: { look } })
+    this.world.player?.character.setLook(this.profile.look)
+  }
+
+  private previewBoat(kind: BoatKind, paint: BoatPaint): void {
+    if (this.world.boat?.spec.kind !== kind) this.stopFishing()
+    this.world.setBoat(kind, paint)
+  }
+
+  private async saveBoat(kind: BoatKind, paint: BoatPaint): Promise<void> {
+    await this.post({ action: 'equip', patch: { boat: kind, paint: { kind, paint } } })
+    this.world.setBoat(this.profile.boat, this.profile.paint[this.profile.boat])
+  }
+
+  private async buy(item: string): Promise<void> {
+    await this.post({ action: 'buy', item })
+    const p = this.profile
+    if (this.world.physics) this.world.physics.motorBoost = MOTORS[p.motor].boost
+    this.sonar.level = p.sonar
+    this.fillRig()
+    this.toast(`Bought: ${item.startsWith('rod:') ? RODS[item.slice(4) as RodId].name : 'new gear'}. ${p.tc.toLocaleString()} TC left.`, 'good')
   }
 
   private takeProgress(): Progress {
@@ -328,6 +402,7 @@ export class Game {
 
   refreshProfile(): void {
     const p = this.profile
+    this.panels?.refresh()
     $('tc-chip').textContent = `${p.tc.toLocaleString()} TC`
     $('title-chip').textContent = this.account.signedIn ? `${this.account.username} · ${anglerTitle(p)}` : 'Guest angler'
   }
