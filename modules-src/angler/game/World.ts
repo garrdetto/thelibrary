@@ -31,6 +31,12 @@ export interface Rider {
   station?: Seat
 }
 
+/** A boat the player is riding as crew: another angler's boat, moved by the shared lake. */
+export interface Carrier {
+  boat: Boat
+  state: { x: number; z: number; heading: number; speed: number; anchored: boolean }
+}
+
 export class World {
   readonly app: pc.Application
   readonly quality: QualityTier
@@ -44,6 +50,8 @@ export class World {
   weather: Weather | null = null
   characterAssets!: CharacterAssets
   bassAssets: BassAssets | null = null
+  private remoteBass: Promise<BassAssets | null> | null = null
+  carrier: Carrier | null = null
   time = 0
   anchored = false
   autopilot: { x: number; z: number } | null = null
@@ -81,6 +89,45 @@ export class World {
     this.app.start()
   }
 
+  /** A lighter paint map for other anglers' bass boats. */
+  remoteBassAssets(): Promise<BassAssets | null> {
+    this.remoteBass ??= loadBassAssets(this.app.graphicsDevice, config.assets, 512).catch(() => null)
+    return this.remoteBass
+  }
+
+  /** The boat the player stands in: their own, or the one they crew on. */
+  riderBoat(): Boat | null {
+    return this.carrier?.boat ?? this.boat
+  }
+
+  riderSpec() {
+    return (this.carrier?.boat ?? this.boat)!.spec
+  }
+
+  /** Climbs aboard another angler's boat at a crew seat; the player's own boat waits out of sight. */
+  board(carrier: Carrier, seat: number): void {
+    if (!this.player || !this.boat || !this.physics) return
+    this.carrier = carrier
+    this.autopilot = null
+    this.player.character.entity.reparent(carrier.boat.hull)
+    this.player.seat = seat
+    this.player.station = undefined
+    this.boat.root.enabled = false
+    this.physics.state.speed = 0
+  }
+
+  /** Back to the player's own boat, launched at the given spot. */
+  disembark(x: number, z: number, heading: number): void {
+    this.carrier = null
+    if (!this.player || !this.boat || !this.physics) return
+    this.player.character.entity.reparent(this.boat.hull)
+    this.player.seat = 0
+    this.player.station = undefined
+    this.boat.root.enabled = true
+    Object.assign(this.physics.state, { x, z, heading, speed: 0 })
+    this.anchored = false
+  }
+
   onFrame(handler: (dt: number) => void): void {
     this.frameHandlers.push(handler)
   }
@@ -99,6 +146,7 @@ export class World {
     this.spawnBoat(boatKind, paint)
     const character = new Character(this.app, this.characterAssets, { name: 'player' })
     character.setLook(look)
+    character.entity.tags.add('rider')
     this.player = { character, seat: 0 }
     this.boat!.hull.addChild(character.entity)
     this.anchored = false
@@ -110,12 +158,16 @@ export class World {
     const lake = this.lake!
     const landing = landingOf(lake)
     const previous = this.physics?.state
-    if (this.player && this.boat) this.boat.hull.removeChild(this.player.character.entity)
+    const riders = this.boat ? this.boat.hull.children.filter(c => c.tags.has('rider')) : []
+    for (const r of riders) this.boat!.hull.removeChild(r)
+    const hidden = this.boat ? !this.boat.root.enabled : false
     this.boat?.destroy()
     this.boat = new Boat(this.app, kind, paint, this.bassAssets)
+    this.boat.root.enabled = !hidden
     this.root.addChild(this.boat.root)
     this.physics = new BoatPhysics(lake, BOATS[kind], previous ? { ...previous, speed: 0 } : newBoatState(landing.x, landing.z, landing.heading))
-    if (this.player) this.boat.hull.addChild(this.player.character.entity)
+    for (const r of riders) this.boat.hull.addChild(r)
+    if (this.player && !this.carrier && !riders.includes(this.player.character.entity)) this.boat.hull.addChild(this.player.character.entity)
   }
 
   /** Swaps or repaints the player's boat in place (same position and heading). */
@@ -129,6 +181,7 @@ export class World {
   }
 
   leaveLake(): void {
+    this.carrier = null
     this.player?.character.destroy()
     this.player = null
     this.boat?.destroy()
@@ -203,16 +256,25 @@ export class World {
     }
     const wind = this.windVector()
     this.controls.anchored = this.anchored
-    this.physics.step(dt, this.controls, wind)
     const s = this.physics.state
-    this.boat.root.setPosition(s.x, s.heave, s.z)
-    this.boat.root.setEulerAngles(0, (s.heading * 180) / Math.PI, 0)
-    this.boat.hull.setLocalEulerAngles((s.pitch * 180) / Math.PI, 0, (s.roll * 180) / Math.PI)
+    const carrier = this.carrier
+    if (carrier) {
+      s.x = carrier.state.x
+      s.z = carrier.state.z
+      s.heading = carrier.state.heading
+      s.speed = carrier.state.speed
+    } else {
+      this.physics.step(dt, this.controls, wind)
+      this.boat.root.setPosition(s.x, s.heave, s.z)
+      this.boat.root.setEulerAngles(0, (s.heading * 180) / Math.PI, 0)
+      this.boat.hull.setLocalEulerAngles((s.pitch * 180) / Math.PI, 0, (s.roll * 180) / Math.PI)
+    }
     if (!this.background) {
       this.boat.setLightsOn(this.sky.state.day < 0.5)
       this.scene?.update(dt, wind)
       if (this.player) this.placeRider(this.player)
-      let target = new pc.Vec3(s.x, 1.6 + s.heave, s.z)
+      const heave = carrier ? carrier.boat.root.getPosition().y : s.heave
+      let target = new pc.Vec3(s.x, 1.6 + heave, s.z)
       if (this.focusPlayer && this.player) {
         const e = this.player.character.entity
         const p = e.getPosition()
@@ -220,7 +282,7 @@ export class World {
         const f = e.forward
         this.camera.preferredYaw = (Math.atan2(f.x, f.z) * 180) / Math.PI + 35
       }
-      this.camera.update(dt, target, s.heading, s.speed, !this.anchored)
+      this.camera.update(dt, target, s.heading, s.speed, !this.anchored && !(carrier?.state.anchored))
     } else if (this.player) this.placeRider(this.player)
     this.skyTimer += dt
     this.weatherTimer += dt
@@ -237,8 +299,9 @@ export class World {
   }
 
   placeRider(rider: Rider): void {
-    if (!this.boat) return
-    const spec = this.boat.spec
+    const boat = this.riderBoat()
+    if (!boat) return
+    const spec = boat.spec
     const seat = rider.station ?? spec.seats[rider.seat]
     const e = rider.character.entity
     e.setLocalPosition(seat.x, seat.y, seat.z)
@@ -247,7 +310,7 @@ export class World {
     if (rider.pose) pose = rider.pose(this.time)
     else if (seat.pose === 'drive' && spec.wheel) {
       const w = spec.wheel
-      pose = drivePose(this.time, [w[0] - seat.x, w[1] - seat.y, w[2] - seat.z], this.controls.steer, seat.seat)
+      pose = drivePose(this.time, [w[0] - seat.x, w[1] - seat.y, w[2] - seat.z], this.carrier ? 0 : this.controls.steer, seat.seat)
     } else if (seat.pose === 'drive' || seat.pose === 'sit') pose = sitPose(this.time, seat.seat)
     else pose = standPose(this.time)
     rider.character.applyPose(pose)
