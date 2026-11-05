@@ -32,7 +32,7 @@ const CATCH_U=[0,-4];
 /* Home plate geometry (world feet): the plate's back point sits on the origin where the foul lines meet,
    so the 17" front edge is 17" toward the mound. The pitch crosses the zone over the middle of the plate. */
 const PLATE_W=17/12,PLATE_D=PLATE_W,ZZ=-PLATE_D/2;
-const ZW=.85,ZC=2.45,ZH=1.0; // zone: hollow of the knee (~1.45 ft) to midway between belt and shoulders (~3.45 ft) on a 6-ft player
+const ZW=.85,ZC=2.45,ZH=1.0,BALL_R=.189,PITCH_SPEED=1.25; // zone: hollow of the knee (~1.45 ft) to midway between belt and shoulders (~3.45 ft) on a 6-ft player
 const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
 
 /* ================= THREE SETUP ================= */
@@ -1091,7 +1091,7 @@ let camMode='orbit',muted=false,cheerUntil=0,trail=[],timers=[],stealRun=null,fo
 let ghost=null; // {zx,zy,strike,t}: last pitch's crossing point over the plate
 const camPos=new THREE.Vector3(0,120,240),camLook=new THREE.Vector3(0,0,-80);
 function after(ms,fn){timers.push({t:NOW()+ms,fn})}
-const ballMesh=new THREE.Mesh(new THREE.SphereGeometry(.21,16,12),new THREE.MeshLambertMaterial({map:ballTex,emissive:0x333333}));
+const ballMesh=new THREE.Mesh(new THREE.SphereGeometry(BALL_R,16,12),new THREE.MeshLambertMaterial({map:ballTex,emissive:0x333333}));
 const ballShadow=new THREE.Mesh(blobGeo,new THREE.MeshBasicMaterial({map:blobTex,transparent:true,depthWrite:false,opacity:.8}));
 scene.add(ballMesh,ballShadow);ballMesh.visible=ballShadow.visible=false;
 const trailGeo=new THREE.BufferGeometry();trailGeo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(60*3),3));
@@ -1213,11 +1213,12 @@ function finish(){
   $('fBox').innerHTML=bx+'</table>';$('final').hidden=false;if(S.runs>S.cpu)sfx.cheer(true)}
 
 /* ================= PITCHING ================= */
-function pitchBase(t,zx,zy,mph,dur){return{...t,mph,t0:0,dur,zx,zy,bx:t.bx*(Math.random()<.5?-1:1),by:t.by,swung:false,missed:false,bunt:false}}
+function isStrike(zx,zy){const ox=Math.max(0,Math.abs(zx)*ZW-ZW),oy=Math.max(0,Math.abs(zy)*ZH-ZH);return ox*ox+oy*oy<=BALL_R*BALL_R+1e-9}
+function pitchBase(t,zx,zy,mph,dur){return{...t,mph,t0:0,dur:dur/PITCH_SPEED,zx,zy,bx:t.bx*(Math.random()<.5?-1:1),by:t.by,swung:false,missed:false,bunt:false}}
 function releasePoint(){const rel=new THREE.Vector3();rigs[pitcherId()].hand[1].getWorldPosition(rel);if(!(rel.y>1))rel.set(-.7,5.3,-.672*PK.B+2.2);return rel}
 function launch(now){ // CPU pitcher
   const t=TYPES[(Math.random()*4)|0],inz=Math.random()>D.wild;let zx,zy;
-  if(inz){zx=rnd(-.9,.9);zy=rnd(-.9,.9)}else if(Math.random()<.6){zx=(Math.random()<.5?-1:1)*rnd(1.15,1.75);zy=rnd(-1,1)}else{zx=rnd(-1,1);zy=(Math.random()<.5?-1:1)*rnd(1.15,1.6)}
+  if(inz){zx=rnd(-.9,.9);zy=rnd(-.9,.9)}else if(Math.random()<.6){zx=(Math.random()<.5?-1:1)*rnd(1.05+BALL_R/ZW,1.75);zy=rnd(-1,1)}else{zx=rnd(-1,1);zy=(Math.random()<.5?-1:1)*rnd(1.05+BALL_R/ZH,1.6)}
   ghost=null;pitch=pitchBase(t,zx,zy,t.mph,t.dur*D.s);pitch.t0=now;pitch.rel=releasePoint();pitch.bunt=bunt;
   const st=[2,3,4].filter(b=>stealArm[b]);stealArm={2:false,3:false,4:false};
   stealRun=st.length?{bases:st,t0:now}:null;phase='pitch';btnUpdate();say('');
@@ -1233,7 +1234,7 @@ function userLaunch(now){
   uwind=null;phase='pitch';say(acc>.85?'Painted it!':acc>.5?'':'Missed your spot.');
   cpuBatterPlan(pitch);cpuStealPlan(now);btnUpdate()}
 function cpuBatterPlan(p){
-  const b=CH[batterId()],inz=Math.abs(p.zx)<=1&&Math.abs(p.zy)<=1,edge=Math.max(Math.abs(p.zx),Math.abs(p.zy));
+  const b=CH[batterId()],inz=isStrike(p.zx,p.zy),edge=Math.max(Math.abs(p.zx),Math.abs(p.zy));
   let sw=inz?.66+(S.s===2?.2:0)-(S.b===3&&S.s<2?.25:0):.26+(S.s===2?.12:0)-(edge>1.5?.18:0);
   if(p.n!=='Fastball')sw+=inz?-.06:.08;
   if(Math.random()>sw){p.cpu={swing:false};return}
@@ -1262,7 +1263,7 @@ function pitchPos(u){
   const p=R.clone().lerp(E.clone().sub(Bv),u).add(Bv.clone().multiplyScalar(u*u));p.y+=arc*Math.sin(PI*Math.min(u,1));return p}
 function called(now){
   sfx.pop();let abOver=false,txt='',walk=false;const bid=batterId();
-  const inz=Math.abs(pitch.zx)<=1&&Math.abs(pitch.zy)<=1;
+  const inz=isStrike(pitch.zx,pitch.zy);
   if(pitch.missed||inz){S.s++;if(S.s>=3){txt=pitch.missed?'Strike three, swinging!':'Strike three, looking!';S.outs++;stats[bid].ab++;stats[bid].k++;abOver=true;banner('Strikeout',userBats()?null:'Sat him down',!userBats())}else{txt=pitch.missed?'Swing and a miss. Strike '+S.s+'.':'Called strike '+S.s+'.';sfx.ump()}}
   else{S.b++;if(S.b>=4){walk=true;abOver=true;stats[bid].bb++;txt='Ball four. Take your base.'}else txt='Ball '+S.b+'.'}
   say(txt);
@@ -1303,10 +1304,10 @@ function swing(){
   const p=(now-pitch.t0)/pitch.dur,d=p-IDEAL,dd=dist(ret.x,ret.y,pitch.zx,pitch.zy);
   const w=D.w*(.85+.075*bat.c)*(isB?1.9:1),tol=.85*(.9+.05*bat.c)*(isB?1.25:1);
   if(Math.abs(d)>w||dd>tol){pitch.missed=true;sfx.whiff();say(isB?'Missed the bunt!':Math.abs(d)>w?(d<0?'Way out in front!':'Too late!'):'Missed it. Bat in the wrong spot!');return}
-  const q=(1-Math.abs(d)/w)*(1-dd/tol);
+  const q=Math.pow((1-Math.abs(d)/w)*(1-dd/tol),.65);
   let ev,la,th;
   if(isB){ev=rnd(20,32)+q*6;la=rnd(-14,2);th=rnd(-36,36)}
-  else{ev=cl((44+62*Math.pow(q,.6)+(pitch.mph-80)*.15)*(.88+.06*bat.p),38,112);la=14+(ret.y-pitch.zy)*20+rnd(-5,5);th=(d/w*42+rnd(-7,7))*(LEFTY.has(bid)?-1:1)}
+  else{ev=cl((44+62*Math.pow(q,.6)+(pitch.mph-80)*.15)*(.88+.06*bat.p),38,112);la=22+(ret.y-pitch.zy)*24+rnd(-5,5);th=(d/w*42+rnd(-7,7))*(LEFTY.has(bid)?-1:1)}
   sfx.crack(isB?.1:q);
   if(!isB&&q<.12)return doFoul(now,rnd(-1,1)<0?-70:70,ev*.6,'Foul tip! Weak contact.');
   if(Math.abs(th)>45)return doFoul(now,th,ev,'Foul ball!');
@@ -1339,7 +1340,7 @@ function newBall(ev,la,th){
   const v=ev*1.467,a=th*PI/180,lr=la*PI/180,g=32.2;
   const b={x:0,y:1.5,z:3,ox:0,oy:1.5,dx:Math.sin(a),dy:Math.cos(a),t:0,mode:'air'};
   if(la<9){b.mode='ground';b.grounder=true;b.v=v*.7;b.hop=Math.max(.5,(la+12)*.12);b.ht=0;b.z=1}
-  else{b.D=v*v*Math.sin(2*lr)/g*.42;b.T=2*v*Math.sin(lr)/g*.8;b.H=v*v*Math.sin(lr)**2/(2*g)*.4;b.z0=3;b.vLand=b.D/b.T*.5}
+  else{b.D=v*v*Math.sin(2*lr)/g*Math.min(.6,.42*Math.pow(150/v,.8));b.T=2*v*Math.sin(lr)/g*.8;b.H=v*v*Math.sin(lr)**2/(2*g)*.4;b.z0=3;b.vLand=b.D/b.T*.5}
   return b}
 function predict(b,T=7,dt=.05){const c=Object.assign({},b),out=[];for(let t=0;t<=T;t+=dt){out.push({t,x:c.x,y:c.y,z:c.z,mode:c.mode});if(c.mode==='dead')break;ballStep(c,dt)}return out}
 function startLive(ev,la,th,isBunt,now){
@@ -1679,7 +1680,7 @@ function pitchMeter(now,c){
   hx.font='800 9px "Barlow Semi Condensed",sans-serif';hx.textAlign='center';hx.fillStyle='rgba(243,236,217,.8)';hx.fillText('REL',x0+w/2,y0+h+16)}
 /* ghost ball: where the last pitch actually crossed the plate, held until the next pitch is released */
 function drawGhost(now){
-  const g=ghost,x=g.zx*ZW,y=ZC+g.zy*ZH,[cx,cy]=proj(x,y,ZZ),[ex]=proj(x+.21,y,ZZ),r=Math.max(6,Math.abs(ex-cx));
+  const g=ghost,x=g.zx*ZW,y=ZC+g.zy*ZH,[cx,cy]=proj(x,y,ZZ),[ex]=proj(x+BALL_R,y,ZZ),r=Math.max(6,Math.abs(ex-cx));
   const a=cl((now-g.t)/180,0,1);hx.save();hx.globalAlpha=a;
   hx.fillStyle='rgba(0,0,0,.25)';hx.beginPath();hx.ellipse(cx+2,cy+3,r,r,0,0,7);hx.fill();
   const gr=hx.createRadialGradient(cx-r*.35,cy-r*.35,r*.1,cx,cy,r);gr.addColorStop(0,'rgba(255,255,255,.75)');gr.addColorStop(1,'rgba(235,232,220,.38)');
@@ -1724,7 +1725,7 @@ function step(now){
   if(phase==='windup'&&now-wt>1300)launch(now);
   if(phase==='uwind'&&uwind&&now-uwind.t0>1300)userLaunch(now);
   if(phase==='pitch'&&pitch){const p=(now-pitch.t0)/pitch.dur;
-    if(p>=1&&!pitch.ghosted&&(!pitch.swung||pitch.missed)){pitch.ghosted=1;ghost={zx:pitch.zx,zy:pitch.zy,strike:Math.abs(pitch.zx)<=1&&Math.abs(pitch.zy)<=1,t:now}}
+    if(p>=1&&!pitch.ghosted&&(!pitch.swung||pitch.missed)){pitch.ghosted=1;ghost={zx:pitch.zx,zy:pitch.zy,strike:isStrike(pitch.zx,pitch.zy),t:now}}
     if(pitch.user&&pitch.cpu&&pitch.cpu.swing&&!pitch.swung&&p>=pitch.cpu.at)cpuSwingNow(now);
     if(phase==='pitch'&&p>1.06)called(now)}
   if(phase==='field'&&PS){const sub=4,h=dt/sub;let done=false;for(let i=0;i<sub&&!done;i++)done=liveTick(PS,h);if(done)finishLive(PS)}

@@ -1,10 +1,11 @@
 import { Gl, MeshBuilder, InstanceList, mat4, hexColor } from './gl'
-import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
+import type { Mat4, Vec3, Lighting } from './gl'
+import type { RenderBackend, BackendFactory, MeshHandle as GpuMesh } from './backend'
 import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, queueSignModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
 import { personCuller, frustumPlanes, sphereVisible } from './culling'
 import { M } from './materials'
-import { QUALITY, requestedQuality, pickQuality, rendererName } from './quality'
+import { QUALITY, requestedQuality, pickQuality } from './quality'
 import type { ParkQuality, QualitySettings } from './quality'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel } from './waterRides'
@@ -40,7 +41,10 @@ export type Preview = {
   selected?: number
 }
 
-type RideCache = { key: string; track?: GpuMesh | null; near?: GpuMesh | null; nearDensity?: number; path?: TrackPath | null; bounds?: [number, number, number, number] | null }
+type RideCache = { key: string; struct?: number; tiles?: [number, number, number, number] | null; site?: string; track?: GpuMesh | null; near?: GpuMesh | null; nearDensity?: number; path?: TrackPath | null; bounds?: [number, number, number, number] | null }
+type TerrainChunk = { sig: number; terrain: GpuMesh | null; water: GpuMesh | null; paths: GpuMesh | null; grid: GpuMesh | null; sphere: [number, number, number, number] }
+/** Terrain chunk size in tiles, and how far out a tile change can alter a chunk's mesh. */
+const CHUNK = 16, CHUNK_MARGIN = 2
 type Clock = { spin: number; phase: string; trainS: number; snapS: number; timer: number; speed: number }
 
 function hash(n: number) { let h = n | 0; h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); h = Math.imul(h ^ (h >>> 16), 0x45d9f3b); return ((h ^ (h >>> 16)) >>> 0) / 4294967296 }
@@ -50,7 +54,7 @@ const canvasOwners = new WeakMap<HTMLCanvasElement, ParkRenderer>()
 
 export class ParkRenderer {
   canvas: HTMLCanvasElement
-  g: Gl
+  g: RenderBackend
   state: ParkState | null = null
   myPark = 0
   cam = { tx: 128, ty: 200, tz: 6, yaw: -Math.PI / 2 - 0.6, pitch: 0.82, dist: 95 }
@@ -90,16 +94,17 @@ export class ParkRenderer {
   }
 
   private visible(x: number, y: number, z: number, r: number) { return sphereVisible(this.planes, x, y, z, r + this.cullMargin) }
+  private chunkVisible(chunk: TerrainChunk) { return this.capturing || this.visible(chunk.sphere[0], chunk.sphere[1], chunk.sphere[2], chunk.sphere[3]) }
   private width = 1
   private height = 1
   private view: Mat4 = mat4.identity()
   private proj: Mat4 = mat4.identity()
   private builtStruct = -1
   private builtLitter = ''
-  private terrain: GpuMesh | null = null
-  private water: GpuMesh | null = null
-  private paths: GpuMesh | null = null
-  private grid: GpuMesh | null = null
+  /** Terrain, water, paths and grid in CHUNK × CHUNK tile pieces, keyed by first tile index. */
+  private chunks = new Map<number, TerrainChunk>()
+  private edge: GpuMesh | null = null
+  private edgeSig = -1
   private kindMeshes = new Map<string, GpuMesh | null>()
   private ghostMeshes = new Map<string, GpuMesh | null>()
   private instances = new Map<string, InstanceList>()
@@ -117,14 +122,14 @@ export class ParkRenderer {
   private eyePos: Vec3 = [0, 0, 0]
   private lastFrame = 0
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, backend: BackendFactory = c => new Gl(c)) {
     this.canvas = canvas
     canvasOwners.set(canvas, this)
-    this.g = new Gl(canvas)
+    this.g = backend(canvas)
     const asked = requestedQuality()
     if (asked) { this.quality = asked; this.qualityReason = '?quality=' }
     else {
-      const picked = pickQuality(this.g.probe(), typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, rendererName(this.g.gl))
+      const picked = pickQuality(this.g.probe(), typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, this.g.rendererName())
       this.quality = picked.tier; this.qualityReason = picked.reason
     }
     this.settings = QUALITY[this.quality]
@@ -164,8 +169,16 @@ export class ParkRenderer {
     this.resize(this.cssSize.w, this.cssSize.h, this.cssSize.dpr)
   }
 
+  private freeChunk(chunk: TerrainChunk) {
+    for (const mesh of [chunk.terrain, chunk.water, chunk.paths, chunk.grid]) if (mesh) this.g.free(mesh)
+  }
+
   setState(state: ParkState, myPark: number) {
-    if (this.state !== state) { this.builtStruct = -1; this.rides.clear(); this.clocks.clear(); this.display.clear() }
+    if (this.state !== state) {
+      this.builtStruct = -1; this.rides.clear(); this.clocks.clear(); this.display.clear()
+      for (const chunk of this.chunks.values()) this.freeChunk(chunk)
+      this.chunks.clear()
+    }
     this.state = state; this.myPark = myPark
   }
 
@@ -237,8 +250,8 @@ export class ParkRenderer {
   private rebuildStatic() {
     const s = this.state!
     const map = s.map
-    const terrain = new MeshBuilder(), water = new MeshBuilder(), paths = new MeshBuilder(), grid = new MeshBuilder()
-    terrain.mat = M.terrain; water.mat = M.water; paths.mat = M.paving
+    // Builders for the chunk being rebuilt (see the chunk loop below).
+    let terrain = new MeshBuilder(), water = new MeshBuilder(), paths = new MeshBuilder(), grid = new MeshBuilder()
     const P = (x: number, y: number, z: number): Vec3 => [x * TILE, y * TILE, z]
     const CW = map.w + 1
     const cornerH = (x: number, y: number) => map.corners[Math.max(0, Math.min(map.h, y)) * CW + Math.max(0, Math.min(map.w, x))]
@@ -274,11 +287,13 @@ export class ParkRenderer {
       for (const [tx, ty] of [[x - 1, y - 1], [x, y - 1], [x - 1, y], [x, y]]) if (inMap(map, tx, ty)) w = Math.max(w, waterLevel[tileIndex(map, tx, ty)])
       return w
     }
-    const cornerNormal: Vec3[] = [], cornerColor: Vec3[] = []
-    for (let y = 0; y <= map.h; y++) for (let x = 0; x <= map.w; x++) {
+    // Corner normals and colors, filled only for the chunks being rebuilt.
+    const cornerNormal: Vec3[] = new Array(CW * (map.h + 1)), cornerColor: Vec3[] = new Array(CW * (map.h + 1))
+    const prepCorners = (cx0: number, cy0: number, cx1: number, cy1: number) => { for (let y = cy0; y <= cy1; y++) for (let x = cx0; x <= cx1; x++) {
+      if (cornerNormal[y * CW + x]) continue
       const hx = (cornerH(x + 1, y) - cornerH(x - 1, y)) / (2 * TILE), hy = (cornerH(x, y + 1) - cornerH(x, y - 1)) / (2 * TILE)
       const l = Math.hypot(hx, hy, 1)
-      cornerNormal.push([-hx / l, -hy / l, 1 / l])
+      cornerNormal[y * CW + x] = [-hx / l, -hy / l, 1 / l]
       const h0 = cornerH(x, y), avg = (cornerH(x + 1, y) + cornerH(x - 1, y) + cornerH(x, y + 1) + cornerH(x, y - 1)) / 4
       const ao = Math.max(0.78, Math.min(1.06, 1 + (h0 - avg) * 0.09))
       const a = tileColor(x - 1, y - 1), b = tileColor(x, y - 1), c = tileColor(x - 1, y), d = tileColor(x, y)
@@ -288,8 +303,8 @@ export class ParkRenderer {
       const under = wet > -1e9 ? Math.max(0, Math.min(1, (level - h0) / 0.8)) : 0
       const shore = wet > -1e9 && h0 >= level - 0.01 ? Math.max(0, 1 - (h0 - level) / 1.1) : 0
       const bed: Vec3 = [0.3, 0.33, 0.25], sand: Vec3 = [0.72, 0.64, 0.46]
-      cornerColor.push([0, 1, 2].map(k => { const land = (a[k] + b[k] + c[k] + d[k]) / 4 * (1 - steep * 0.55) + rock[k] * steep * 0.55; const wetLand = land * (1 - shore * 0.6) + sand[k] * shore * 0.6; return (wetLand * (1 - under) + bed[k] * under) * ao }) as Vec3)
-    }
+      cornerColor[y * CW + x] = [0, 1, 2].map(k => { const land = (a[k] + b[k] + c[k] + d[k]) / 4 * (1 - steep * 0.55) + rock[k] * steep * 0.55; const wetLand = land * (1 - shore * 0.6) + sand[k] * shore * 0.6; return (wetLand * (1 - under) + bed[k] * under) * ao }) as Vec3
+    } }
     // Each queue tile's place in a ride's entrance or exit line: the sides the
     // line arrives from and leaves by, and where it opens onto the gate or
     // the footpath. Tiles in no line fall back to their build order.
@@ -323,9 +338,43 @@ export class ParkRenderer {
       }
       return layout
     }
-    for (let y = 0; y < map.h; y++) for (let x = 0; x < map.w; x++) {
+    // Rebuild only chunks whose tiles, or tiles within CHUNK_MARGIN of them,
+    // changed. Normals, shore colors, water edges, path ramps and queue rails
+    // all read neighbours, and the margin covers every one of those reads.
+    const landKey = `${this.myPark}:${s.parks.length}:${s.parks.map(park => { const l = park.land?.limit; return l ? `${l.x0},${l.y0},${l.x1},${l.y1}` : '' }).join('|')}`
+    let globalHash = 2166136261
+    for (let k = 0; k < landKey.length; k++) { globalHash ^= landKey.charCodeAt(k); globalHash = Math.imul(globalHash, 16777619) }
+    const chunkSig = (x0: number, y0: number, x1: number, y1: number) => {
+      let h = globalHash
+      const mix = (v: number) => { h ^= v | 0; h = Math.imul(h, 16777619) }
+      const ax = Math.max(0, x0 - CHUNK_MARGIN), ay = Math.max(0, y0 - CHUNK_MARGIN), bx = Math.min(map.w - 1, x1 + CHUNK_MARGIN), by = Math.min(map.h - 1, y1 + CHUNK_MARGIN)
+      for (let y = ay; y <= by + 1; y++) for (let x = ax; x <= bx + 1; x++) mix(Math.round(map.corners[y * CW + x] * 100))
+      for (let y = ay; y <= by; y++) for (let x = ax; x <= bx; x++) {
+        const i = tileIndex(map, x, y)
+        mix(map.surface[i]); mix(Math.round(map.water[i] * 100)); mix(map.path[i]); mix(map.pathElevation[i]); mix(map.pathColor[i]); mix(map.pathOrder[i]); mix(map.obj[i]); mix(map.owner[i])
+        mix(s.trackCells.get(i)?.length ? 1 : 0)
+        const run = queueRuns.get(i)
+        if (run) { mix(run.prev + 7); mix(run.next + 7); for (const o of run.openings) mix(o + 17) }
+      }
+      return h >>> 0
+    }
+    const live = new Set<number>()
+    for (let cy0 = 0; cy0 < map.h; cy0 += CHUNK) for (let cx0 = 0; cx0 < map.w; cx0 += CHUNK) {
+    const cx1 = Math.min(map.w, cx0 + CHUNK) - 1, cy1 = Math.min(map.h, cy0 + CHUNK) - 1
+    const id = cy0 * map.w + cx0
+    live.add(id)
+    const sig = chunkSig(cx0, cy0, cx1, cy1)
+    const old = this.chunks.get(id)
+    if (old && old.sig === sig) continue
+    terrain = new MeshBuilder(); water = new MeshBuilder(); paths = new MeshBuilder(); grid = new MeshBuilder()
+    terrain.mat = M.terrain; water.mat = M.water; paths.mat = M.paving
+    prepCorners(cx0, cy0, cx1 + 1, cy1 + 1)
+    let zLo = Infinity, zHi = -Infinity
+    for (let y = cy0; y <= cy1; y++) for (let x = cx0; x <= cx1; x++) {
       const i = tileIndex(map, x, y)
       const [a, b, c, d] = tileCorners(map, x, y)
+      zLo = Math.min(zLo, a, b, c, d); zHi = Math.max(zHi, a, b, c, d, map.water[i])
+      if (map.path[i]) zHi = Math.max(zHi, pathHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE) + 2)
       const pa = P(x, y, a), pb = P(x + 1, y, b), pc = P(x + 1, y + 1, c), pd = P(x, y + 1, d)
       const ia = y * CW + x, ib = y * CW + x + 1, ic = (y + 1) * CW + x + 1, id = (y + 1) * CW + x
       const smoothA = Math.abs(a - cornerH(x, y)) < 0.01, smoothB = Math.abs(b - cornerH(x + 1, y)) < 0.01, smoothC = Math.abs(c - cornerH(x + 1, y + 1)) < 0.01, smoothD = Math.abs(d - cornerH(x, y + 1)) < 0.01
@@ -389,15 +438,27 @@ export class ParkRenderer {
       }
       grid.line(P(x, y, a + 0.06), P(x + 1, y, b + 0.06), [0.1, 0.12, 0.1]); grid.line(P(x, y, a + 0.06), P(x, y + 1, d + 0.06), [0.1, 0.12, 0.1])
     }
+    // Railings and lamp-height clutter above the highest ground or deck.
+    zHi += 2
+    const w = (cx1 - cx0 + 1) * TILE, hgt = (cy1 - cy0 + 1) * TILE
+    this.chunks.set(id, {
+      sig,
+      terrain: this.g.upload(terrain, old?.terrain), water: this.g.upload(water, old?.water), paths: this.g.upload(paths, old?.paths), grid: this.g.upload(grid, old?.grid),
+      sphere: [(cx0 * TILE + w / 2), (cy0 * TILE + hgt / 2), (zLo + zHi) / 2, Math.hypot(w, hgt, zHi - zLo) / 2],
+    })
+    }
+    for (const [id, chunk] of this.chunks) if (!live.has(id)) { this.freeChunk(chunk); this.chunks.delete(id) }
+    // Map-edge skirts and the outer ground plane, kept apart so the chunks stay small.
+    terrain = new MeshBuilder(); terrain.mat = M.terrain
     const skirt = (x0: number, y0: number, x1: number, y1: number, h0: number, h1: number) => terrain.quad(null, [x1 * TILE, y1 * TILE, h1], [x0 * TILE, y0 * TILE, h0], [x0 * TILE, y0 * TILE, -3], [x1 * TILE, y1 * TILE, -3], hexColor('#6b5138'))
     const h = (x: number, y: number) => map.corners[y * (map.w + 1) + x]
     for (let x = 0; x < map.w; x++) { skirt(x + 1, 0, x, 0, h(x + 1, 0), h(x, 0)); skirt(x, map.h, x + 1, map.h, h(x, map.h), h(x + 1, map.h)) }
     for (let y = 0; y < map.h; y++) { skirt(0, y, 0, y + 1, h(0, y), h(0, y + 1)); skirt(map.w, y + 1, map.w, y, h(map.w, y + 1), h(map.w, y)) }
     terrain.quad(null, [-200, -200, -3.2], [map.w * TILE + 200, -200, -3.2], [map.w * TILE + 200, map.h * TILE + 200, -3.2], [-200, map.h * TILE + 200, -3.2], hexColor('#4a7434'))
-    this.terrain = this.g.upload(terrain, this.terrain)
-    this.water = this.g.upload(water, this.water)
-    this.paths = this.g.upload(paths, this.paths)
-    this.grid = this.g.upload(grid, this.grid)
+    let edgeHash = globalHash
+    for (let x = 0; x <= map.w; x++) for (const y of [0, map.h]) { edgeHash ^= Math.round(h(x, y) * 100); edgeHash = Math.imul(edgeHash, 16777619) }
+    for (let y = 0; y <= map.h; y++) for (const x of [0, map.w]) { edgeHash ^= Math.round(h(x, y) * 100); edgeHash = Math.imul(edgeHash, 16777619) }
+    if (edgeHash !== this.edgeSig || !this.edge) { this.edge = this.g.upload(terrain, this.edge); this.edgeSig = edgeHash }
 
     const stallKeys = Object.entries(STALLS).flatMap(([kind, def]) => {
       const size = def.size ?? [1, 1]
@@ -496,23 +557,53 @@ export class ParkRenderer {
     return mat4.chain(mat4.translation(cx, cy, Math.max(...tileCorners(s.map, e.x, e.y))), mat4.rotZ((e.rot ?? 0) * Math.PI / 2))
   }
 
+  /**
+   * Fingerprint of everything a coaster's supports read under its track:
+   * ground corners, paths, scenery and other track in its tile box plus a
+   * margin for footings. Building elsewhere in the park leaves it unchanged,
+   * so the mesh (and its baked AO, the slow part) is kept.
+   */
+  private trackSiteKey(e: Entity, tiles: [number, number, number, number]) {
+    const s = this.state!, map = s.map, CW = map.w + 1
+    const x0 = Math.max(0, tiles[0] - 3), y0 = Math.max(0, tiles[1] - 3), x1 = Math.min(map.w - 1, tiles[2] + 3), y1 = Math.min(map.h - 1, tiles[3] + 3)
+    let h = 2166136261
+    const mix = (v: number) => { h ^= v | 0; h = Math.imul(h, 16777619) }
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const i = tileIndex(map, x, y)
+      mix(Math.round(map.corners[y * CW + x] * 100)); mix(map.path[i]); mix(map.obj[i])
+      const cells = s.trackCells.get(i)
+      if (cells) for (const c of cells) { mix(c.ride); mix(c.piece); mix(Math.round(c.lo * 100)); mix(Math.round(c.hi * 100)) }
+    }
+    return `${h >>> 0}:${s.parks[e.park]?.color ?? ''}`
+  }
+
   private coasterCache(e: Entity) {
-    const key = `${e.pieces!.length}:${e.rev ?? 0}:${this.state?.structVersion ?? 0}:${e.complete}:${e.color ?? ''}:${e.trackColor ?? ''}:${e.supportColor ?? ''}`
+    const struct = this.state?.structVersion ?? 0
+    const key = `${e.pieces!.length}:${e.rev ?? 0}:${e.complete}:${e.color ?? ''}:${e.trackColor ?? ''}:${e.supportColor ?? ''}`
     let cache = this.rides.get(e.id)
-    if (cache && cache.key === key) return cache
+    if (cache && cache.key === key) {
+      if (cache.struct === struct) return cache
+      // Something was built somewhere. Rebuild only if it touched this coaster's site.
+      const site = cache.tiles ? this.trackSiteKey(e, cache.tiles) : ''
+      if (site === cache.site) { cache.struct = struct; return cache }
+    }
     if (cache?.track) this.g.free(cache.track)
     if (cache?.near) this.g.free(cache.near)
     const path = e.pieces!.length ? buildTrackPath(e) : null
     const geometry = path ? this.trackGeometry(e, path) : null
     geometry?.bakeAO(0.5)
     let bounds: [number, number, number, number] | null = null
+    let tiles: [number, number, number, number] | null = null
     if (path) {
       let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity
       for (let i = 0; i < path.count; i++) { const x = path.pos[i * 3], y = path.pos[i * 3 + 1], z = path.pos[i * 3 + 2]; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); z0 = Math.min(z0, z); z1 = Math.max(z1, z) }
       z0 = Math.min(z0, 0)
       bounds = [(x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2, Math.hypot(x1 - x0, y1 - y0, z1 - z0) / 2 + 6]
+      tiles = [Math.floor(x0 / TILE), Math.floor(y0 / TILE), Math.floor(x1 / TILE), Math.floor(y1 / TILE)]
     }
-    cache = { key, path, bounds, track: geometry ? this.g.upload(geometry) : null }
+    // The station and its gates sit on footprint tiles the path box may miss.
+    if (tiles) { const f = footprint(e); tiles[0] = Math.min(tiles[0], f.x); tiles[1] = Math.min(tiles[1], f.y); tiles[2] = Math.max(tiles[2], f.x + f.w - 1); tiles[3] = Math.max(tiles[3], f.y + f.h - 1) }
+    cache = { key, struct, tiles, site: tiles ? this.trackSiteKey(e, tiles) : '', path, bounds, track: geometry ? this.g.upload(geometry) : null }
     this.rides.set(e.id, cache)
     return cache
   }
@@ -899,10 +990,14 @@ export class ParkRenderer {
     }
     if (this.settings.fxaa && this.capturing && !this.debug.noPost) g.beginPost(this.width, this.height)
     g.begin(this.width, this.height, this.view, this.proj, eye, light, this.time, first ? 0 : shadowStrength)
+    if (g.lamps) { const lamps = this.list('lampHead'); g.lamps(lamps.data, lamps.count, this.isNight()) }
     this.drawWorld(first ? dt : 0)
     this.drawPreview()
-    if (this.showGrid) g.draw(this.grid, undefined, { alpha: 0.18, unlit: true })
-    g.draw(this.water, undefined, { alpha: 0.78, wave: 0.08 })
+    for (const chunk of this.chunks.values()) {
+      if (!this.chunkVisible(chunk)) continue
+      if (this.showGrid) g.draw(chunk.grid, undefined, { alpha: 0.18, unlit: true })
+      g.draw(chunk.water, undefined, { alpha: 0.78, wave: 0.08 })
+    }
     if (s.weather.kind === 'rain') this.drawRain(eye)
     g.endPost()
   }
@@ -910,8 +1005,12 @@ export class ParkRenderer {
   private drawWorld(dt: number) {
     const s = this.state!, g = this.g
     this.schemesKey = JSON.stringify(s.parks.map(p => p.schemes ?? null))
-    g.draw(this.terrain, undefined, { ground: 1 })
-    g.draw(this.paths, undefined, { ground: 0.55 })
+    g.draw(this.edge, undefined, { ground: 1 })
+    for (const chunk of this.chunks.values()) {
+      if (!this.chunkVisible(chunk)) continue
+      g.draw(chunk.terrain, undefined, { ground: 1 })
+      g.draw(chunk.paths, undefined, { ground: 0.55 })
+    }
     const night = this.isNight()
     for (const kind of SCENERY_KINDS) g.drawInstanced(this.kindMeshes.get(`tree:${kind}`) ?? null, SWAYS[kind] ? WIND_ON : NO_OPTS)
     for (const [kind, def] of Object.entries(STALLS)) {
@@ -1306,8 +1405,8 @@ export class ParkRenderer {
   }
 
   dispose() {
-    const gl = this.g.gl, canvas = this.canvas
+    const g = this.g, canvas = this.canvas
     canvasOwners.delete(canvas)
-    setTimeout(() => { if (!canvasOwners.has(canvas)) gl.getExtension('WEBGL_lose_context')?.loseContext() }, 0)
+    setTimeout(() => { if (!canvasOwners.has(canvas)) g.dispose() }, 0)
   }
 }

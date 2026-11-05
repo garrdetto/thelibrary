@@ -7,12 +7,22 @@ import type { ParkSession, RoomInfo, Player, ChatLine } from '@/lib/park/session
 import { parkApi } from '@/lib/park/api'
 import { ensureCustomRides } from '@/lib/park/customRides'
 import type { SaveSummary } from '@/lib/park/api'
+import type { BackendFactory } from '@/lib/park/backend'
 import { SCENARIOS, objectiveText, formatMoney, deserializePark } from '../../../server/park/index.mjs'
 
 type Tab = 'new' | 'load' | 'online'
 const SOLO = Object.entries(SCENARIOS).filter(([, s]) => !s.versus)
+const loadPark2 = import.meta.env.SSR ? null : () => import('@/lib/park2')
 
-export function ParkGame({ username, accountReady }: { username: string | null; accountReady: boolean }) {
+export function ParkGame({ username, accountReady, edition = 1 }: { username: string | null; accountReady: boolean; edition?: 1 | 2 }) {
+  const [backend, setBackend] = useState<{ create: BackendFactory } | null>(null)
+  const [backendError, setBackendError] = useState('')
+  useEffect(() => {
+    if (edition !== 2 || !loadPark2) return
+    let live = true
+    loadPark2().then(m => { if (live) setBackend({ create: m.createBackend }) }, () => { if (live) setBackendError('Thrill Park 2 could not load its 3D engine. Check your connection and reload the page.') })
+    return () => { live = false }
+  }, [edition])
   const [session, setSession] = useState<ParkSession | null>(null)
   const [tab, setTab] = useState<Tab>('new')
   const [busy, setBusy] = useState('')
@@ -122,8 +132,10 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     setSession(null)
   }
 
+  if (session && edition === 2 && !backend) return <div className="pk-root pk-root-game"><p className="race-loading" role="status">{backendError || 'Loading the Thrill Park 2 engine…'}</p></div>
+
   if (session) return <>
-    <div className="pk-root pk-root-game"><ParkHud session={session} onQuit={quit} signedIn={signedIn} onScore={() => setScoreKey(k => k + 1)} /></div>
+    <div className="pk-root pk-root-game"><ParkHud session={session} onQuit={quit} signedIn={signedIn} onScore={() => setScoreKey(k => k + 1)} backend={backend?.create} /></div>
     {session.state.mode === 'solo' && session.state.scenario !== 'sandbox' && <div className="pk-scores-wrap"><ParkScoreboard username={username} initial={session.state.scenario} refreshKey={scoreKey} /></div>}
   </>
 
@@ -131,7 +143,8 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     <section className="pk-menu">
       <div className="pk-hero">
         <span className="pk-eyebrow">BUILD · MANAGE · RIDE</span>
-        <h1>Thrill Park</h1>
+        <h1>{edition === 2 ? 'Thrill Park 2' : 'Thrill Park'}</h1>
+        {edition === 2 && <p className="pk-edition">Rebuilt on PlayCanvas with sky lighting, soft shadows, night lamps and glowing rides. Your saved parks and leaderboard places are shared with Thrill Park.</p>}
         <p>Sculpt the land, lay out paths, build rides and design your own roller coasters in 3D. Keep guests fed, happy and amazed, balance the books, and ride your creations. Play solo scenarios or team up online in shared co-op parks, or race rival tycoons in versus.</p>
       </div>
       <div className="pk-tabs" role="tablist">

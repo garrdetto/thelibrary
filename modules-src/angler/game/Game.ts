@@ -32,7 +32,7 @@ import { DriveInput } from '../systems/Input'
 import { Online } from './Online'
 import { LakeAudio } from '../systems/Audio'
 import type { RemotePhase } from '../shared/Online'
-import { parseInvite } from '../shared/Online'
+import { BOATS_PER_INSTANCE, parseInvite } from '../shared/Online'
 import type { QualityTier } from '../config'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
@@ -65,6 +65,11 @@ export class Game {
   private zoomedForPanel = false
   private lakeCounts: Record<string, { boats: number; anglers: number }> = {}
   private crewKey = ''
+  private reelHeld = false
+  private reelPulse = 0
+  private reelKey = ''
+  private streak = 0
+  private doubleHeader = false
 
   constructor(canvas: HTMLCanvasElement, quality: QualityTier) {
     this.world = new World(canvas, quality)
@@ -86,6 +91,9 @@ export class Game {
       onError: message => this.toast(message, 'warn'),
       progress: () => this.takeProgress(),
       crowd: () => this.crowd(),
+      onHookSet: clean => { if (clean) { this.audio.hookSet(); this.toast('Hook set! Keep reeling, ease off when it runs.', 'good', 3) } },
+      onRun: () => { this.audio.scream(); if (this.fishing?.reeling) this.toast('It is running! Ease off the reel.', 'warn', 2.5) },
+      onSlip: () => this.toast('Drag slipping! Let go of Reel In before the line gives.', 'warn', 2.5),
     })
     this.panels = new Panels({
       profile: () => this.profile,
@@ -175,7 +183,7 @@ export class Game {
     const esc = (t: string) => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
     if (!o.connected) { el.innerHTML = '<header><span><i></i>Shared lake</span><span>connecting…</span></header>'; return }
     const others = o.boatsOut() - 1
-    let html = `<header><span><i class="is-on"></i>Shared lake</span><span>${others ? `${others} other boat${others === 1 ? '' : 's'} out` : crew.length > 1 ? 'no other boats out' : 'just you so far'}</span></header>`
+    let html = `<header><span><i class="is-on"></i>Shared lake</span><span>${o.boatsOut()}/${BOATS_PER_INSTANCE} boats${others ? '' : crew.length > 1 ? ' · just your crew' : ' · just you so far'}</span></header>`
     if (crew.length > 1) {
       const captain = !o.aboard
       html += `<ul aria-label="Crew">${crew.map(c => `<li><span>${esc(c.you ? 'You' : c.name)}${c.seat === 0 ? ' · captain' : ''}</span>${captain && !c.you ? `<button type="button" data-kick="${c.id}" aria-label="Send ${esc(c.name)} back to their boat">✕</button>` : ''}</li>`).join('')}</ul>`
@@ -187,7 +195,7 @@ export class Game {
     } else {
       if (near) actions.push(`<button class="ang-btn is-primary" type="button" data-act="board">Board ${esc(near.view.name)}'s boat (E)</button>`)
       actions.push(`<button class="ang-btn" type="button" data-act="lock" aria-pressed="${o.locked}">${o.locked ? 'Unlock my boat' : 'Lock my boat'}</button>`)
-      if (crew.length < 2 && !near) html += `<p>${window.parent !== window ? 'Invite friends from the library chat, or pull' : 'Pull'} alongside a stopped boat to climb aboard. Up to four to a boat.</p>`
+      if (crew.length < 2 && !near) html += `<p>${window.parent !== window ? 'Invite friends from the library chat, or pull' : 'Pull'} alongside a stopped boat to climb aboard. Two anglers to a boat, up to four boats on the lake.</p>`
     }
     html += `<div class="crew-actions">${actions.join('')}</div>`
     el.innerHTML = html
@@ -212,6 +220,11 @@ export class Game {
 
   private bindUi(): void {
     $('btn-anchor').addEventListener('click', () => this.toggleAnchor())
+    const reel = $('btn-reel')
+    reel.addEventListener('pointerdown', e => { reel.setPointerCapture(e.pointerId); this.reelHeld = true })
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) reel.addEventListener(type, () => { this.reelHeld = false })
+    reel.addEventListener('click', e => { if (e.detail === 0) this.reelPulse = 0.6 })
+    reel.addEventListener('contextmenu', e => e.preventDefault())
     $('btn-map').addEventListener('click', () => this.toggleMap())
     $('btn-lakes').addEventListener('click', () => this.showLakes())
     $('btn-records').addEventListener('click', () => this.records.open(this.world.lake?.id ?? 'all'))
@@ -487,6 +500,8 @@ export class Game {
   private onLost(r: BiteResult): void {
     const s = SPECIES[r.species]
     this.toast(`Snapped off! It looked like a ${s.name.toLowerCase()}, ${formatWeight(r.weight * 0.85)} to ${formatWeight(r.weight * 1.15)}.`, 'warn', 6)
+    if (this.streak >= 3) this.toast(`Streak over at ${this.streak} in a row.`, 'soft')
+    this.streak = 0
     this.pushLog(r)
     this.world.focusOnPlayer(false)
   }
@@ -495,8 +510,10 @@ export class Game {
 
   private onLanded(r: BiteResult): void {
     if (this.world.background) this.away.push(r)
+    this.streak++
     this.pushLog(r)
     this.showCard(r)
+    if ([3, 5, 10, 15, 25].includes(this.streak)) this.toast(`Hot streak: ${this.streak} landed in a row!`, 'gold', 5)
     if (['Quality', 'Trophy', 'Legendary'].includes(r.tier) || r.personalBest || r.siteRecord) this.audio.chime(['Trophy', 'Legendary'].includes(r.tier) || r.siteRecord)
     try { window.parent?.postMessage({ type: 'tl-angler', species: r.species }, location.origin) } catch { /* not embedded */ }
     if (document.hidden && ['Trophy', 'Legendary'].includes(r.tier)) this.flashTitle(`${r.tier}! ${formatWeight(r.weight)} ${SPECIES[r.species].name}`)
@@ -541,6 +558,9 @@ export class Game {
     const top = Math.max(0.01, (1 - r.percentile) * 100)
     $('card-meta').textContent = `${w.lake?.name ?? ''} · ${spot} · ${hour12}:${String(ct.minute).padStart(2, '0')} ${ct.hour < 12 ? 'am' : 'pm'} · ${PRESENTATIONS[this.profile.rig.presentation].short} · bigger than ${(100 - top).toFixed(top < 1 ? 2 : 0)}% of ${s.name.toLowerCase()}`
     $('card-credits').textContent = this.authority.saved ? `+${(r.credits + r.daily).toLocaleString()} TC${r.daily ? ' (includes the daily bonus)' : ''}` : 'Sign in on the library to keep catches and credits'
+    const grade = this.fishing?.grade ?? 'Auto'
+    $('card-fight').textContent = grade === 'Auto' ? '' : `${grade === 'Clean' ? 'Clean fight: hook set and never slipped the drag' : grade === 'Steady' ? 'Steady fight' : 'Rough fight: the drag slipped a lot'}${this.streak > 1 ? ` · ${this.streak} in a row` : ''}`
+    $('card-fight').hidden = !$('card-fight').textContent
     $('card-fact').textContent = s.facts[Math.floor(Math.random() * s.facts.length)]
     $('catch-card').hidden = false
     clearTimeout(this.cardTimer)
@@ -588,7 +608,13 @@ export class Game {
       this.toggleAnchor()
     }
     if (w.lake) this.progressSeconds += dt
+    this.reelPulse = Math.max(0, this.reelPulse - dt)
+    const typing = (document.activeElement as HTMLElement | null)?.closest?.('select, input')
+    const reeling = this.reelHeld || this.reelPulse > 0 || (!typing && this.input.held('KeyF'))
+    if (this.fishing) this.fishing.reeling = reeling && w.anchored
+    this.audio.reeling = reeling
     this.fishing?.update(dt)
+    if (!w.background) this.updateReel(reeling)
     this.online.update(dt)
     const s = w.physics?.state
     if (s && w.lake) this.audio.update(dt, s.speed, aboard ? 0 : w.controls.throttle, w.weather?.windMph ?? 0, w.sky.state.day, this.fishingState().phase)
@@ -601,6 +627,34 @@ export class Game {
       this.hudTimer = 0
       this.updateHud()
     }
+  }
+
+  /** The Reel In button and its tension and line meters, every frame while anchored. */
+  private updateReel(reeling: boolean): void {
+    const f = this.fishing
+    const show = Boolean(f && f.active && this.world.anchored)
+    const phase = show ? f!.phase : 'off'
+    const fighting = phase === 'fight'
+    const label = phase === 'bite' ? 'Set the hook!' : fighting ? (reeling ? 'Reeling…' : 'Reel in (hold)') : phase === 'wait' ? 'Reel in & recast' : 'Reel in'
+    const key = `${show}|${phase}|${label}|${reeling}`
+    if (key !== this.reelKey) {
+      this.reelKey = key
+      $('reel').hidden = !show
+      $('reel-meters').hidden = !fighting
+      const btn = $<HTMLButtonElement>('btn-reel')
+      btn.textContent = label
+      btn.disabled = !['wait', 'bite', 'fight'].includes(phase)
+      btn.classList.toggle('is-strike', phase === 'bite')
+      btn.classList.toggle('is-held', reeling)
+    }
+    if (!fighting || !f) return
+    const tension = Math.min(1.2, f.tension) / 1.2
+    $('reel-tension').style.width = `${(tension * 100).toFixed(1)}%`
+    $('reel-tension-bar').classList.toggle('is-hot', f.tension > 1)
+    $('reel-tension-text').textContent = f.tension > 1 ? 'SLIPPING' : f.tension > 0.85 ? 'High' : ''
+    const out = 1 - f.progress
+    $('reel-line').style.width = `${(out * 100).toFixed(1)}%`
+    $('reel-line-text').textContent = `${Math.round(out * 30 + 3)} yd`
   }
 
   private updateHud(): void {
@@ -627,6 +681,11 @@ export class Game {
       else if (f.phase === 'show' || f.phase === 'land') status = 'Landed!'
     } else if (this.online.aboard) status = `Riding with ${this.online.captainName()}`
     else if (w.autopilot) status = 'Autopilot to your pin'
+    if (w.anchored && f?.phase === 'fight') {
+      const mate = this.online.crewFighting()
+      if (mate && !this.doubleHeader) { this.doubleHeader = true; this.toast(`Double header! You and ${mate} both have fish on.`, 'gold', 5); this.audio.chime(false) }
+      if (mate) status = `Double header with ${mate}!`
+    } else this.doubleHeader = false
     $('fish-status').textContent = status
     $('fish-status').hidden = !status
     const mini = $<HTMLCanvasElement>('minimap')

@@ -18,6 +18,8 @@ export class LakeAudio {
   private loonT = 60 + Math.random() * 120
   private hidden = false
   enabled = true
+  /** The player is cranking the reel, so the clicks come faster. */
+  reeling = false
 
   constructor() {
     try { this.enabled = localStorage.getItem(STORE) !== 'off' } catch { /* default on */ }
@@ -118,7 +120,7 @@ export class LakeAudio {
     if (this.phase === 'cast' && this.phaseT > 1.3 && this.phaseT - dt <= 1.3) this.plop(0.5)
     if (this.phase === 'fight') {
       this.dragT -= dt
-      if (this.dragT <= 0) { this.click(); this.dragT = 0.04 + Math.random() * 0.12 }
+      if (this.dragT <= 0) { this.click(); this.dragT = this.reeling ? 0.025 + Math.random() * 0.02 : 0.04 + Math.random() * 0.12 }
     }
     if (day < 0.35) {
       this.loonT -= dt
@@ -178,6 +180,11 @@ export class LakeAudio {
   private splash(size: number): void { this.burst(0.7, 'lowpass', 2600, 400, 0.22 * size) }
   private click(): void { this.burst(0.03, 'highpass', 3800, 3000, 0.07) }
   private twang(): void { this.tone(330, 180, 0.35, 0.08, 'triangle') }
+
+  /** A solid thump when the hook is set by hand. */
+  hookSet(): void { this.tone(160, 60, 0.18, 0.16, 'triangle'); this.burst(0.15, 'lowpass', 1800, 400, 0.1) }
+  /** The drag screaming as a fish takes line. */
+  scream(): void { this.burst(0.9, 'bandpass', 4200, 2600, 0.09) }
 
   /** A rising two-note chime: brighter for trophies. */
   chime(big: boolean): void {

@@ -3,7 +3,7 @@ import { SignInRibbon } from '@/components/SignInRibbon'
 import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, X } from 'lucide-react'
+import { ArrowDown, LogOut, ArrowRight, ArrowUp, Bomb, Bookmark, CarFront, Crosshair, Layers, Grid3x3, Bot, Crown, Disc, Gauge, Hash, House, Maximize2, Plane, Trophy, Check, ChevronDown, CircleDot, Flag, Cloud, Copy, Download, Feather, Image, Info, LoaderCircle, Menu, MessageCircle, Music2, AudioLines, Plus, Redo2, RefreshCcw, Shuffle, Sparkles, Undo2, WandSparkles, Wrench, Keyboard, Mic2, PartyPopper, Fish, RollerCoaster, X } from 'lucide-react'
 import { isSiteTheme, toSiteTheme, siteThemes } from '@/lib/site-themes'
 import type { SiteTheme } from '@/lib/site-themes'
 import { usePoolLobby } from '@/components/PoolLobby'
@@ -37,7 +37,7 @@ const navigation = [
   { id: 'image', label: 'Image studio', icon: Image },
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
 ] as const
-const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxplains2: House, fairway: Flag, demoderby: CarFront, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish }
+const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxplains2: House, fairway: Flag, demoderby: CarFront, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish }
 const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxplains2: 'room', fairway: 'room', party: 'room', angler: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
@@ -124,6 +124,7 @@ function Studio() {
     if (window.location.hash === '#racing') setView('racing')
     if (window.location.hash === '#oval') setView('oval')
     if (window.location.hash === '#park') setView('park')
+    if (window.location.hash === '#park2') setView('park2')
     const playHash = window.location.hash.replace(/^#module-/, '')
     if (window.location.hash.startsWith('#module-') && isPlayId(playHash)) setView(playHash)
   }, [])
@@ -223,7 +224,7 @@ function Studio() {
     setPlayRoom(null)
     setDevPlay(false)
     setView(next)
-    window.history.replaceState(null, '', next === 'racing' ? '#racing' : next === 'oval' ? '#oval' : next === 'park' ? '#park' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
+    window.history.replaceState(null, '', next === 'racing' ? '#racing' : next === 'oval' ? '#oval' : next === 'park' ? '#park' : next === 'park2' ? '#park2' : isPlayId(next) ? `#module-${next}` : window.location.pathname)
     setCurrent(null)
     setMessages([])
     setInput('')
@@ -238,7 +239,7 @@ function Studio() {
   async function generate(event?: FormEvent, action: 'new' | 'revise' | 'revamp' = 'new') {
     event?.preventDefault()
     const prompt = action === 'revise' ? revision.trim() : action === 'revamp' ? revamp.trim() || 'A fresh take that fits the current settings.' : input.trim()
-    if (!prompt || busy || view === 'pool' || view === 'racing' || view === 'oval' || view === 'park' || view === 'home' || view === 'admin' || isPlayId(view)) return
+    if (!prompt || busy || view === 'pool' || view === 'racing' || view === 'oval' || view === 'park' || view === 'park2' || view === 'home' || view === 'admin' || isPlayId(view)) return
     setBusy(true)
     setBusyAction(action)
     setError('')
@@ -450,7 +451,7 @@ function Studio() {
     <main className="main-panel"><RecordResetProvider>
       {accountReady && !access.username && <SignInRibbon/>}
       <header className="topbar"><button className="mobile-menu" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20}/></button><div className="top-welcome"><h1>{access.username ? <>Welcome back, <em>{access.username}</em></> : <>Welcome to <em>the library</em></>}</h1><div className="breadcrumb"><span>the library</span><span className="breadcrumb-slash">/</span><strong>{activeLabel}</strong></div></div><label className="theme-picker"><span>Theme</span><select aria-label="Site color theme" value={theme} onChange={(event) => { const next = event.target.value; if (isSiteTheme(next)) applyTheme(next, true) }}>{siteThemes.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label><div className="cloud-badge"><span/><Cloud size={14}/> Cloud-powered</div>{access.isAdmin && <button className="admin-top-button" onClick={() => switchView('admin')} disabled={busy}>Admin</button>}{accountReady && (access.username ? <button type="button" className="top-account" onClick={() => void signOut()}><LogOut size={14}/> Sign out</button> : view !== 'home' && <button type="button" className="top-account is-signin" onClick={() => switchView('home')}>Sign in</button>)}</header>
-      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' || view === 'oval' ? 'racing-content' : view === 'park' ? 'park-content' : view === 'pool' ? 'pool-content' : activePlay ? `play-content${activePlay.id === 'shorttrack' || activePlay.id === 'fairway' || isScoredModule(activePlay.id) ? ' has-board' : ''}` : view === 'home' ? 'hub-content' : ''}`}>
+      <div className={`workspace-content ${view === 'chat' ? 'chat-content' : view === 'racing' || view === 'oval' ? 'racing-content' : view === 'park' || view === 'park2' ? 'park-content' : view === 'pool' ? 'pool-content' : activePlay ? `play-content${activePlay.id === 'shorttrack' || activePlay.id === 'fairway' || isScoredModule(activePlay.id) ? ' has-board' : ''}` : view === 'home' ? 'hub-content' : ''}`}>
         {accountReady && !access.username && view !== 'pool' && view !== 'racing' && view !== 'oval' && <PoolAccount className="signin-spotlight" heading="Sign in or register" intro="Use any username and a password of 3 or more characters. A new username creates your account; an existing one signs you back in. No email needed, and your progress and settings follow your account." username={null} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>}
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
@@ -463,6 +464,7 @@ function Studio() {
         {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel/></Suspense>}
         {view === 'pool' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Racking the balls…</p>}><PoolTable lobby={lobby}/></Suspense>}
         {view === 'park' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame username={access.username} accountReady={accountReady}/></Suspense>}
+        {view === 'park2' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame key="park2" username={access.username} accountReady={accountReady} edition={2}/></Suspense>}
         {(view === 'racing' || view === 'oval') && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the race track…</p>}><Racing key={view} fixedTrack={view === 'oval' ? 'oval' : 'circuit'} players={lobby.players} playerName={lobby.name} joinRequest={raceJoinRequest} onJoinHandled={() => setRaceJoinRequest(0)}/></Suspense>}
         {view === 'chat' && <>
           {!messages.length ? <div className="welcome">
