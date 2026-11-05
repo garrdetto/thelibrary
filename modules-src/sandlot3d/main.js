@@ -32,7 +32,7 @@ const CATCH_U=[0,-4];
 /* Home plate geometry (world feet): the plate's back point sits on the origin where the foul lines meet,
    so the 17" front edge is 17" toward the mound. The pitch crosses the zone over the middle of the plate. */
 const PLATE_W=17/12,PLATE_D=PLATE_W,ZZ=-PLATE_D/2;
-const ZW=.85,ZC=2.45,ZH=1.0,BALL_R=.189,PITCH_SPEED=1.25; // zone: hollow of the knee (~1.45 ft) to midway between belt and shoulders (~3.45 ft) on a 6-ft player
+const ZW=PLATE_W/2,ZC=2.45,ZH=1.0,BALL_R=.189,PITCH_SPEED=1.25; // zone: hollow of the knee (~1.45 ft) to midway between belt and shoulders (~3.45 ft) on a 6-ft player
 const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
 
 /* ================= THREE SETUP ================= */
@@ -1175,8 +1175,9 @@ function halfOver(){
   if(top){if(S.line.you[S.inn-1]==null)S.line.you[S.inn-1]=0;
     if(S.inn>=INN&&S.cpu>S.runs){S.line.cpu[S.inn-1]='X';return finish()}
     S.half='bot';S.line.cpu[S.inn-1]=S.line.cpu[S.inn-1]||0}
-  else{if(S.inn>=INN&&S.runs!==S.cpu||S.inn>=INN+3)return finish();S.half='top';S.inn++;S.line.you[S.inn-1]=0}
+  else{if(S.inn>=INN&&S.runs!==S.cpu)return finish();S.half='top';S.inn++;S.line.you[S.inn-1]=0}
   S.outs=0;S.b=S.s=0;S.bases=[-1,-1,-1];bunt=false;stealArm={2:false,3:false,4:false};
+  if(S.inn>INN)S.bases[1]=batTeam()[(S.ord[S.half]+8)%9];
   camMode='orbit';banner((S.half==='top'?'Top ':'Bottom ')+S.inn,S.half==='top'?'Sluggers at bat':'Take the field. You pitch.',true);
   after(1800,startPitch);hudUpdate()}
 function simHalf(){ // quick-sim the Bandits' at-bats from the menu
@@ -1197,7 +1198,7 @@ function simHalf(){ // quick-sim the Bandits' at-bats from the menu
   $('inH').innerHTML=`Bottom ${S.inn}<small>Simulated · Sluggers ${S.runs}, Bandits ${S.cpu}</small>`;
   lines.forEach((l,i)=>{const d=document.createElement('div');d.style.animationDelay=(i*.25)+'s';
     d.innerHTML=`<img src="${CH[l[0]].src}" alt=""><span><b>${CH[l[0]].n}</b> ${l[1]}</span><span class="rs">${l[2]?'+'+l[2]+' run'+(l[2]>1?'s':''):l[3]?l[3]+' out':''}</span>`;log.appendChild(d)});
-  const over=walkoff()||(S.inn>=INN&&S.runs!==S.cpu)||S.inn>=INN+3;
+  const over=walkoff()||(S.inn>=INN&&S.runs!==S.cpu);
   $('inGo').textContent=over?'See final':'Top of '+(S.inn+1);$('inning').hidden=false;$('menu').hidden=true;phase='cpu';hudUpdate();
   $('inGo').onclick=()=>{$('inning').hidden=true;if(over)return finish();S.outs=3;halfOver()}}
 function finish(){
@@ -1409,7 +1410,7 @@ function runnerDecide(P,r){
   const aggr=P.outs>=2?.15:.4;
   if(runT<ballT-aggr){r.state='run';r.to=nb;r.forced=false}}
 function isForced(P,r){return r.forced}
-function outRunner(P,r,how){r.state='out';r.outT=P.t;P.outs++;P.events.push({t:P.t,type:'out',how,id:r.id,bat:!!r.bat,force:how==='force'||how==='batter1'});
+function outRunner(P,r,how){r.state='out';r.outT=P.t;r.outD=r.d;P.outs++;P.events.push({t:P.t,type:'out',how,id:r.id,bat:!!r.bat,force:how==='force'||how==='batter1'});
   // force removed for runners ahead of a retired batter or trailing runner
   for(const o of P.runners)if(o!==r&&o.state==='run'&&o.from>r.from)o.forced=o.forced&&!(r.bat||r.from<o.from)?false:o.forced;
   if(r.bat&&how!=='fly')for(const o of P.runners)if(!o.bat)o.forced=false;
@@ -1504,25 +1505,27 @@ function liveTick(P,dt){
   if(P.t>16)return true;return false}
 function finishLive(P){window.__lastPlay={t:P.t,outs:P.outs,outs0:P.outs0,runs:P.runs.slice(),third:P.thirdOut,runners:P.runners.map(r=>({id:r.id,from:r.from,to:r.to,st:r.state,d:Math.round(r.d)})),events:P.events};
   const bid=P.batter,st=stats[bid],side=userBats()?'you':'cpu';
-  let runs=P.runs.length;
-  if(P.thirdOut){runs=P.thirdOut.force?0:P.runs.filter(x=>x.t<=P.thirdOut.t).length}
-  const counted=P.thirdOut?(P.thirdOut.force?[]:P.runs.filter(x=>x.t<=P.thirdOut.t)):P.runs;
+  let counted=P.thirdOut?(P.thirdOut.force?[]:P.runs.filter(x=>x.t<=P.thirdOut.t)):P.runs.slice();
+  if(!P.hr&&!userBats()&&S.inn>=INN){const need=S.runs-S.cpu+1;if(need>0&&counted.length>need)counted=counted.slice(0,need)}
+  const runs=counted.length;
   counted.forEach(x=>stats[x.id].r++);addRuns(runs);
   S.outs=Math.min(3,P.outs);
   const nb=[-1,-1,-1];for(const r of P.runners)if(r.state==='safe'&&r.to>=1&&r.to<=3)nb[r.to-1]=r.id;S.bases=nb;
   const br=P.runners.find(r=>r.bat),reached=br&&(br.state==='safe'||br.state==='scored');
-  const fcOut=P.events.some(e=>e.type==='out'&&!e.bat);
+  const fcOut=P.events.some(e=>e.type==='out'&&!e.bat&&(e.force||(P.firstD??999)<95));
+  const brOut=br&&br.state==='out'&&!P.caught?Math.min(3,Math.floor((br.outD??0)/60)):0;
   const sac=!reached&&P.bunt&&P.runners.some(r=>!r.bat&&r.state!=='out'&&r.to>r.from);
   const sf=P.caught&&counted.length>0&&!reached;
   if(!sac&&!sf)st.ab++;
-  let hitBases=0;if(P.hr)hitBases=4;else if(reached&&!fcOut&&!P.caught)hitBases=br.state==='scored'?4:br.to;
-  if(hitBases){st.h++;S.hits[side]++}if(P.hr)st.hr++;
+  let hitBases=0;if(P.hr)hitBases=4;else if(reached&&!fcOut&&!P.caught)hitBases=br.state==='scored'?4:br.to;else if(brOut&&!fcOut)hitBases=brOut;
+  if(hitBases){st.h++;S.hits[side]++}if(hitBases===4)st.hr++;
   if(!P.events.some(e=>e.type==='out'&&e.force&&P.events.filter(x=>x.type==='out').length>1))st.rbi+=runs;
   const outs=P.events.filter(e=>e.type==='out').length;
   let title,sub=null,gold=userBats();
   if(P.hr){title=runs===4?'Grand Slam!':'Home Run!';sub=`${CH[bid].n} · ${Math.round(Math.hypot(P.ball.landX,P.ball.landY)*K)} ft`;gold=true}
   else if(outs>=3&&P.outs0===0&&outs===3){title='Triple Play!';gold=!userBats()}
   else if(outs===2){title='Double Play!';gold=!userBats()}
+  else if(brOut&&hitBases){title=['','Single','Double','Triple'][hitBases]+', out stretching'}
   else if(hitBases){title=['','Single!','Double!','Triple!','Inside the park!'][hitBases];if(hitBases===1&&(P.firstD??999)<95)title='Infield single!'}
   else if(sf){title='Sac fly'}else if(sac){title='Sacrifice'}
   else if(reached&&fcOut){title="Fielder's choice"}
