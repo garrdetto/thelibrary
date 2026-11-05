@@ -31,6 +31,9 @@ export type Env = {
   ANGLER_LAKE?: DurableObjectNamespace
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
+  ANTHROPIC_API_KEY?: string
+  CLAUDE_CHAT_MODEL?: string
+  CLAUDE_LYRICS_MODEL?: string
   SITE_CHANGES_GITHUB_TOKEN?: string
   SITE_CHANGES_SECRET?: string
   SITE_CHANGES_REPO?: string

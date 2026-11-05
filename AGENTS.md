@@ -29,7 +29,9 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 - `src/server/routes/site-changes.ts`: `/api/site-changes` (admin chat with Claude that edits and publishes the site; see Site changes below).
 - `src/server/routes/scores.ts`: `/api/module-scores` leaderboards for embedded modules (GET `?module=`, POST `score` / `reset-records`). Board settings live in `src/lib/module-scores.ts`.
 - `src/server/routes/studio.ts` + `src/server/lyrics.ts`: `/api/studio`, `/api/library?id=` (version history only), `/api/asset`, `/api/learning`, `/api/lyric-presets`.
-- `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret.
+- `src/server/claude.ts`: Claude Messages API client (plain `fetch`, prompt caching on system prompts, forced tool output, web search) from the `ANTHROPIC_API_KEY` secret. Studio chat uses `CHAT_MODEL` (`claude-sonnet-5-5`), lyrics and the Suno style prompt `LYRICS_MODEL` (`claude-opus-5-5`), image direction `IMAGE_DIRECTOR_MODEL` and style research `RESEARCH_MODEL` (`claude-sonnet-5-5`). Optional Worker vars `CLAUDE_CHAT_MODEL` and `CLAUDE_LYRICS_MODEL` override the first two. Provider errors are logged and mapped to plain messages.
+- `src/server/code-guard.ts`: the studios' no-code rule. `NO_CODE_RULE` goes into every studio system prompt, `looksLikeCode` checks every studio input (prompt, saved instructions, custom genre, artist, manual edits) and every model output, and `NO_CODE_MESSAGE` holds the refusal shown for each studio.
+- `src/server/gemini.ts`: Gemini client from the `GEMINI_API_KEY` secret (image pixels, Song Maker, cue art, car skins, vehicle suggestions).
 - `src/lib/studio-types.ts`: browser-safe studio types.
 
 ### Learning modules
@@ -59,7 +61,7 @@ TanStack Start / React 19 site on Cloudflare Workers with four areas: a creative
 ### Data
 - Cloudflare D1 `thelibrary-db` (binding `DB`); schema in `migrations/`. Tables: library_settings (admin library order), users, fairway_records (Fairway Nine record book), sessions, login_failures, tickets, pool_preferences, pool_practice_records, racing_profiles, racing_laps, module_scores, creations, lyric_corrections, lyric_presets, park_saves_by_park (one save per park), park_migrations, park_saves and park_scores (older, no longer read), park_scores_by_park, park_scoreboard_resets, maplestreet_world (Fox Plains's shared world, written by its Durable Object), maplestreet_assets (admin-published Buy items and vehicles, with drafts), maplestreet_items and maplestreet_vehicles (older copies, no longer written), meshy_jobs (Meshy tasks started from the admin editors), park_custom_rides (Thrill Park Ride creator), angler_profiles, angler_sessions and angler_catches (Northwoods Angler), songmaker_songs (Song Maker songs), site_changes, site_change_settings.
 - Workers KV `thelibrary-files` (binding `FILES`) for binary files: `cue/<userId>`, `skin/<userId>/<asset>`, `image/<userId>/<creationId>`, `maplestreet-item/<itemId>`, `maplestreet-vehicle/<vehicleId>` (and `/wheel`), `meshy-model/<jobId>`, `park-ride/<rideId>/mesh|thumb|source`, `song/<userId>/<songId>`.
-- Secrets: `ADMIN_PASSWORD`, `GEMINI_API_KEY`, optional `MESHY_API_KEY` (Meshy panel), and the site-changes secrets above. Config in `wrangler.jsonc`.
+- Secrets: `ADMIN_PASSWORD`, `ANTHROPIC_API_KEY` (studios), `GEMINI_API_KEY`, optional `MESHY_API_KEY` (Meshy panel), and the site-changes secrets above. Config in `wrangler.jsonc`.
 
 ### Multiplayer server (`server/`)
 - `server/index.mjs`, `server/racing.mjs` and `server/park.mjs` verify players by redeeming tickets at `<site>/api/pool-account?action=redeem`, `<site>/api/racing?action=redeem` and `<site>/api/park?action=redeem`. `FRONTEND_ORIGIN` must list the site origin.
@@ -70,7 +72,7 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 ## Platform rules
 
-- All AI runs server-side: Gemini with the Gemini API key secret, and Meshy 3D generation (admin only) with `MESHY_API_KEY`. Text uses `gemini-3-flash-preview`; images use `gemini-3.1-flash-image`; songs use Lyria (`lyria-3.5`, `lyria-3-clip-preview`). Song Maker exception: its free mode needs no key; `public/modules/songmaker-synth.js` builds the instrumental in the browser with Web Audio, and `write` falls back to the keyless Pollinations text API, then to the offline template writer in `src/server/keyless-lyrics.ts`. Never expose environment values or provider errors.
+- All AI runs server-side. The studios (AI chat, Image Studio, Lyric Studio) run on Claude with the `ANTHROPIC_API_KEY` Worker secret: chat and lyrics are written by Claude, and every image request is vetted and turned into a render instruction by Claude (which also sees the source picture for edits) before Gemini draws the pixels, because Claude models do not output images. Studios never accept or produce code (see `src/server/code-guard.ts`); each studio is only for what its name says. The rest of the site uses Gemini with the Gemini API key secret, and Meshy 3D generation (admin only) with `MESHY_API_KEY`. Text uses `gemini-3-flash-preview`; images use `gemini-3.1-flash-image`; songs use Lyria (`lyria-3.5`, `lyria-3-clip-preview`). Song Maker exception: its free mode needs no key; `public/modules/songmaker-synth.js` builds the instrumental in the browser with Web Audio, and `write` falls back to the keyless Pollinations text API, then to the offline template writer in `src/server/keyless-lyrics.ts`. Never expose environment values or provider errors.
 - Use D1 for structured records and KV for binary data. Never use local files, browser storage, or in-memory persistence for data that must persist.
 - Schema changes go in a new numbered file in `migrations/` and are applied with `wrangler d1 migrations apply thelibrary-db --remote`.
 - Non-GET endpoints check same origin. Ticket redeem endpoints are server-to-server and skip it.
@@ -86,6 +88,8 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 ## Studio rules
 
 - Never claim chat includes live browsing or personal document retrieval.
+- No code in any studio: chat, images and lyrics refuse requests for code, scripts, commands or markup, reject inputs that contain code, and discard any output that looks like code. Each studio stays on its own purpose (chat converses, Image Studio makes and edits pictures, Lyric Studio writes lyrics).
+- Lyrics are written in plain, literal, logical everyday language: no metaphors, similes, personification, invented phrases or forced rhymes; only common expressions people really say. `songwriterInstruction` holds these rules and `clichesIn` triggers one rewrite when stock phrasing slips through.
 - New lyrics, fine-tunes (`revise`), full rewrites (`revamp`), and manual edits are distinct. Fine-tunes are surgical, accumulate in `tuning`, and keep untouched lines. Revamps rewrite every line with current settings and keep the topic. Every derived version stores `parent_id`.
 - Saved lyric styles store the full song settings including `instructions`, the user's standing writing directions, which the model follows as preferences under the mandatory rules.
 - Explicit mode (default on) allows profanity but never slurs against protected groups.
