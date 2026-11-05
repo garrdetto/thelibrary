@@ -8,7 +8,7 @@ export type ChatLine = { id: number; from: string; text: string; system?: boolea
 export type RoomInfo = { id: string; name: string; mode: 'coop' | 'versus'; scenario: string; host: string; players: Player[]; started: boolean; max: number }
 export type RideComment = { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }
 export type RideComments = { id: number; now: number; comments: RideComment[]; counts: { pos: number; mix: number; neg: number } }
-export type GuestInfo = { id: number; park: number; happy: number; energy: number; hunger: number; thirst: number; toilet: number; nausea: number; cash: number; spent: number; rides: number; items: string[]; thoughts: string[]; state: string; kid: boolean; inPark: number; minI: number; maxI: number; tolerance: number; ride: number; type?: 'kid' | 'thrill' | 'casual'; warm?: number }
+export type GuestInfo = { id: number; park: number; happy: number; energy: number; hunger: number; thirst: number; toilet: number; nausea: number; cash: number; spent: number; rides: number; items: string[]; thoughts: string[]; state: string; kid: boolean; inPark: number; minI: number; maxI: number; tolerance: number; ride: number; type?: 'kid' | 'thrill' | 'casual'; warm?: number; hotel?: number; visit?: { hotel: number; amenity: string } | null }
 
 export interface ParkSession {
   state: ParkState

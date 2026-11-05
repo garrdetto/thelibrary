@@ -1,6 +1,6 @@
 import { encodeRle, decodeRle } from './util.mjs'
 
-const STATES = ['walk', 'queue', 'ride', 'sit', 'buy']
+const STATES = ['walk', 'queue', 'ride', 'sit', 'buy', 'amenity']
 
 export function encodeGuests(guests) {
   const out = new Int32Array(guests.length * 3)
@@ -40,7 +40,7 @@ export function encodeDynamic(state, sinceNews = 0) {
       const trains = e.trains?.map(train => ({ s: train.s, v: train.v, ph: train.phase, n: train.riders.length })) ?? []
       rides[e.id] = { st: e.status, q: e.queue.length, r: activeRiders, c: e.cycle, rel: Math.round(e.reliability), rev: Math.round(e.revenue * 10) / 10, tr: e.totalRiders, mr: e.monthRiders, p: e.price, n: e.name, col: e.color, tc: e.trackColor, sc: e.supportColor, trc: e.trainColor, cs: e.colors ?? null, sch: e.scheme ?? null, m: e.mechanic, ...(trains.length ? { t: trains } : {}) }
     } else if (e.type === 'stall') stalls[e.id] = { s: e.sales, r: Math.round(e.revenue * 10) / 10, p: e.price, o: e.open }
-    else if (e.type === 'hotel') hotels[e.id] = { o: e.occupancy, r: Math.round(e.revenue ?? 0), l: Math.round(e.lastNight ?? 0), d: Boolean(e.district), p: Math.round(e.profit ?? 0), c: e.condition ?? 100, iv: Math.round(e.invested ?? 0), n: e.night ?? null, h: e.nights ?? [] }
+    else if (e.type === 'hotel') hotels[e.id] = { o: e.occupancy, r: Math.round(e.revenue ?? 0), l: Math.round(e.lastNight ?? 0), d: Boolean(e.district), p: Math.round(e.profit ?? 0), c: e.condition ?? 100, iv: Math.round(e.invested ?? 0), n: e.night ?? null, h: e.nights ?? [], u: e.using ?? {}, td: e.today ?? null, yd: e.yesterday ?? null, vt: Math.round(e.visitTakings ?? 0), pr: e.prices ?? {} }
   }
   return {
     time: state.time, weather: state.weather, speed: state.speed, ended: state.ended, parks: state.parks,
@@ -76,6 +76,7 @@ export function applyDynamic(state, dyn) {
     if (!e || e.type !== 'hotel') continue
     e.occupancy = h.o; e.revenue = h.r; e.lastNight = h.l; e.district = h.d
     if (h.p !== undefined) { e.profit = h.p; e.condition = h.c; e.invested = h.iv; e.night = h.n; e.nights = h.h }
+    if (h.u !== undefined) { e.using = h.u; e.today = h.td; e.yesterday = h.yd; e.visitTakings = h.vt; e.prices = h.pr }
   }
   state.map.litter = decodeRle(dyn.litter, state.map.w * state.map.h, 0)
   const seen = new Set(state.news.map(n => n.id))
@@ -87,5 +88,5 @@ export function applyDynamic(state, dyn) {
 export function guestDetail(state, id) {
   const g = state.guests.find(guest => guest.id === id)
   if (!g) return null
-  return { id: g.id, park: g.park, happy: Math.round(g.happy), energy: Math.round(g.energy), hunger: Math.round(g.hunger), thirst: Math.round(g.thirst), toilet: Math.round(g.toilet), nausea: Math.round(g.nausea), cash: Math.round(g.cash * 100) / 100, spent: Math.round(g.spent * 100) / 100, rides: g.rides, items: g.items, thoughts: g.thoughts, state: g.state, kid: g.kid, inPark: Math.round(g.inPark), minI: g.minI, maxI: g.maxI, tolerance: g.tolerance, ride: g.ride, type: g.type ?? (g.kid ? 'kid' : 'casual'), warm: Math.round((g.warm ?? 0) * 10) / 10 }
+  return { id: g.id, park: g.park, happy: Math.round(g.happy), energy: Math.round(g.energy), hunger: Math.round(g.hunger), thirst: Math.round(g.thirst), toilet: Math.round(g.toilet), nausea: Math.round(g.nausea), cash: Math.round(g.cash * 100) / 100, spent: Math.round(g.spent * 100) / 100, rides: g.rides, items: g.items, thoughts: g.thoughts, state: g.state, kid: g.kid, inPark: Math.round(g.inPark), minI: g.minI, maxI: g.maxI, tolerance: g.tolerance, ride: g.ride, type: g.type ?? (g.kid ? 'kid' : 'casual'), warm: Math.round((g.warm ?? 0) * 10) / 10, hotel: g.hotel ?? 0, visit: g.visit ?? null }
 }

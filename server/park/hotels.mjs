@@ -4,14 +4,14 @@ import { FLAT_RIDES } from './catalog.mjs'
 // Every style can be built at any footprint between `min` and `max` (either way round) and any floor count in `floors`.
 // Build cost scales with squares × floors, and towers above HIGH_RISE_FLOORS pay a structural premium per extra floor.
 export const HOTELS = {
-  motorInn: { name: 'Roadside Motor Inn', min: [2, 2], max: [24, 8], floors: [1, 3], base: 25000, perTileFloor: 1700, density: 0.9, rate: 29, upkeep: 5, luxury: 0, roofs: ['flat', 'gable'], colors: { primary: 0xf1e3c6, secondary: 0x3a8f87, trim: 0xd8432f }, description: 'A long, low strip of rooms with doors onto a shaded walkway. Cheap to build.' },
-  skylineTower: { name: 'Skyline Tower', min: [3, 3], max: [16, 16], floors: [4, 32], base: 150000, perTileFloor: 520, density: 0.9, rate: 10, upkeep: 1.7, luxury: 0.6, roofs: ['flat', 'crown', 'spire'], colors: { primary: 0x9fb8cf, secondary: 0x2d3b55, trim: 0xf3f1ea }, description: 'A glass tower that packs hundreds of rooms onto a small lot.' },
-  palmCove: { name: 'Palm Cove Bungalows', min: [3, 3], max: [24, 24], floors: [1, 2], base: 60000, perTileFloor: 2600, density: 0.35, rate: 130, upkeep: 23, luxury: 1, roofs: ['thatch'], colors: { primary: 0xf6ead0, secondary: 0xc79a5a, trim: 0x2e9f8f }, description: 'Private thatched bungalows among palms. Few rooms, very high rates.' },
-  timberLodge: { name: 'Timber Lodge', min: [3, 3], max: [18, 14], floors: [1, 6], base: 50000, perTileFloor: 1500, density: 0.6, rate: 42, upkeep: 7, luxury: 0.4, roofs: ['gable', 'hip'], colors: { primary: 0x8a5a36, secondary: 0x3b5e3a, trim: 0xefe3c4 }, description: 'Log walls, a stone chimney and a steep roof. Cozy and well loved.' },
-  castleKeep: { name: 'Castle Keep Hotel', min: [4, 4], max: [20, 20], floors: [2, 12], base: 120000, perTileFloor: 1300, density: 0.55, rate: 41, upkeep: 7, luxury: 0.7, roofs: ['battlement', 'cone'], colors: { primary: 0xc9c3b5, secondary: 0x5c4b8a, trim: 0xd8b24a }, description: 'Stone walls, corner towers and banners. Sleep like royalty.' },
-  canopyTreehouses: { name: 'Canopy Treehouses', min: [3, 3], max: [18, 18], floors: [1, 4], base: 70000, perTileFloor: 2400, density: 0.3, rate: 134, upkeep: 23, luxury: 1, roofs: ['thatch', 'gable'], colors: { primary: 0x9a6b43, secondary: 0x4f8f3a, trim: 0xefe3c4 }, description: 'Cabins high in giant trees, joined by rope bridges.' },
-  lagoonVillas: { name: 'Lagoon Water Villas', min: [3, 3], max: [24, 24], floors: [1, 2], base: 90000, perTileFloor: 3200, density: 0.3, rate: 197, upkeep: 35, luxury: 1, roofs: ['thatch'], colors: { primary: 0xf3f1ea, secondary: 0xb88a55, trim: 0x2f8fd0 }, description: 'Villas on stilts over a private lagoon. The most exclusive stay in the park.' },
-  neonNights: { name: 'Neon Nights Retro', min: [2, 2], max: [16, 12], floors: [1, 10], base: 45000, perTileFloor: 1100, density: 0.75, rate: 25, upkeep: 4.4, luxury: 0.2, roofs: ['flat', 'sign'], colors: { primary: 0x2a2440, secondary: 0xe85d9b, trim: 0x39d0e0 }, description: 'Chrome, pastel and buzzing neon stripes that glow after dark.' },
+  motorInn: { name: 'Roadside Motor Inn', min: [4, 2], max: [32, 8], floors: [1, 3], base: 25000, perTileFloor: 1700, density: 0.9, rate: 29, upkeep: 5, luxury: 0, roofs: ['flat', 'gable'], colors: { primary: 0xf1e3c6, secondary: 0x3a8f87, trim: 0xd8432f }, description: 'A long, low strip of rooms with doors onto a shaded walkway. Cheap to build.' },
+  skylineTower: { name: 'Skyline Tower', min: [6, 4], max: [28, 18], floors: [4, 10], base: 150000, perTileFloor: 520, density: 0.9, rate: 10, upkeep: 1.7, luxury: 0.6, roofs: ['flat', 'crown', 'spire'], colors: { primary: 0x9fb8cf, secondary: 0x2d3b55, trim: 0xf3f1ea }, description: 'A broad glass slab of up to ten floors that packs hundreds of rooms along a wide frontage.' },
+  palmCove: { name: 'Palm Cove Bungalows', min: [5, 4], max: [32, 24], floors: [1, 2], base: 60000, perTileFloor: 2600, density: 0.35, rate: 130, upkeep: 23, luxury: 1, roofs: ['thatch'], colors: { primary: 0xf6ead0, secondary: 0xc79a5a, trim: 0x2e9f8f }, description: 'Private thatched bungalows among palms. Few rooms, very high rates.' },
+  timberLodge: { name: 'Timber Lodge', min: [5, 3], max: [28, 16], floors: [1, 6], base: 50000, perTileFloor: 1500, density: 0.6, rate: 42, upkeep: 7, luxury: 0.4, roofs: ['gable', 'hip'], colors: { primary: 0x8a5a36, secondary: 0x3b5e3a, trim: 0xefe3c4 }, description: 'Log walls, a stone chimney and a steep roof. Cozy and well loved.' },
+  castleKeep: { name: 'Castle Keep Hotel', min: [6, 5], max: [28, 20], floors: [2, 10], base: 120000, perTileFloor: 1300, density: 0.55, rate: 41, upkeep: 7, luxury: 0.7, roofs: ['battlement', 'cone'], colors: { primary: 0xc9c3b5, secondary: 0x5c4b8a, trim: 0xd8b24a }, description: 'Stone walls, corner towers and banners. Sleep like royalty.' },
+  canopyTreehouses: { name: 'Canopy Treehouses', min: [5, 4], max: [26, 18], floors: [1, 4], base: 70000, perTileFloor: 2400, density: 0.3, rate: 134, upkeep: 23, luxury: 1, roofs: ['thatch', 'gable'], colors: { primary: 0x9a6b43, secondary: 0x4f8f3a, trim: 0xefe3c4 }, description: 'Cabins high in giant trees, joined by rope bridges.' },
+  lagoonVillas: { name: 'Lagoon Water Villas', min: [5, 4], max: [32, 24], floors: [1, 2], base: 90000, perTileFloor: 3200, density: 0.3, rate: 197, upkeep: 35, luxury: 1, roofs: ['thatch'], colors: { primary: 0xf3f1ea, secondary: 0xb88a55, trim: 0x2f8fd0 }, description: 'Villas on stilts over a private lagoon. The most exclusive stay in the park.' },
+  neonNights: { name: 'Neon Nights Retro', min: [4, 2], max: [24, 12], floors: [1, 10], base: 45000, perTileFloor: 1100, density: 0.75, rate: 25, upkeep: 4.4, luxury: 0.2, roofs: ['flat', 'sign'], colors: { primary: 0x2a2440, secondary: 0xe85d9b, trim: 0x39d0e0 }, description: 'Chrome, pastel and buzzing neon stripes that glow after dark.' },
 }
 
 // `cost` is paid once. Amenities earn `share` of the room rate from each booked room a night (more in luxury styles and
@@ -35,8 +35,9 @@ export const HOTEL_SERVICE = {
   premium: { name: 'Premium', staff: 1.6, occupancy: 0.07, wear: 0.2, spend: 1.25 },
 }
 
-export const HOTEL_SIZE_LIMIT = 24
-export const HOTEL_FLOOR_LIMIT = 40
+export const HOTEL_SIZE_LIMIT = 32
+// Hotels top out at ten floors; resorts grow wide instead of tall.
+export const HOTEL_FLOOR_LIMIT = 10
 export const HIGH_RISE_FLOORS = 8
 export const HIGH_RISE_PREMIUM = 0.02
 export const HOTEL_RATE_RANGE = [0.5, 2.5]
@@ -68,6 +69,12 @@ export const NOISE_RADIUS = 6
 
 export function hotelOrientedFits(def, w, h) {
   const fits = (a, b) => a >= def.min[0] && a <= def.max[0] && b >= def.min[1] && b <= def.max[1]
+  return fits(w, h) || fits(h, w)
+}
+
+// Saved hotels built before the wider minimums keep their lots: loading only checks the upper bound.
+export function hotelLoadFits(def, w, h) {
+  const fits = (a, b) => a >= 1 && a <= def.max[0] && b >= 1 && b <= def.max[1]
   return fits(w, h) || fits(h, w)
 }
 
@@ -237,6 +244,8 @@ export function updateHotels(state) {
       hotel.profit = (hotel.profit ?? 0) + night.profit
       hotel.nights = [...(hotel.nights ?? []), night.profit].slice(-HOTEL_HISTORY_NIGHTS)
       hotel.condition = Math.max(0, Math.round(((hotel.condition ?? 100) - service.wear * (0.5 + hotel.occupancy)) * 10) / 10)
+      hotel.yesterday = hotel.today ?? hotelDay()
+      hotel.today = hotelDay()
       p.cash += night.profit
       p.month.hotels = (p.month.hotels ?? 0) + night.rooms
       p.month.hotelAmenities = (p.month.hotelAmenities ?? 0) + night.amenities
@@ -272,4 +281,94 @@ export function hotelSpawn(state, park, rnd, cap) {
   let pick = rnd() * weights.reduce((a, b) => a + b, 0)
   for (let k = 0; k < hotels.length; k++) { pick -= weights[k]; if (pick <= 0) return hotels[k] }
   return hotels[hotels.length - 1]
+}
+
+// ---- Walk-in amenities ------------------------------------------------------------------------------------------
+// Park guests and the hotel's own residents walk through the front door to use an amenity for `time` seconds.
+// `price` is a visit at a plain hotel (luxury styles charge more), `seats` are per 100 rooms (at least `min`), and
+// `free` amenities cost residents nothing. `effects` change the guest's needs when they come back out.
+export const AMENITY_VISITS = {
+  pool: { name: 'Pool', doing: 'swimming', time: 45, price: 6, seats: 5, min: 8, free: true, daytime: true, effects: { energy: 50, thirst: -60, happy: 12 }, thought: 'A swim in the hotel pool was just what I needed.' },
+  restaurant: { name: 'Restaurant', doing: 'dining', time: 35, price: 14, seats: 6, min: 10, effects: { hunger: -180, thirst: -90, happy: 10, toilet: 30 }, thought: 'What a lovely meal at the hotel restaurant.' },
+  spa: { name: 'Spa', doing: 'at the spa', time: 55, price: 28, seats: 3, min: 4, effects: { energy: 130, nausea: -255, happy: 18 }, thought: 'I feel brand new after the spa.' },
+  kidsClub: { name: 'Kids club', doing: 'at kids club', time: 40, price: 7, seats: 3, min: 6, free: true, kids: true, daytime: true, effects: { happy: 16, energy: 20 }, thought: 'Kids club was the best!' },
+  giftShop: { name: 'Gift shop', doing: 'shopping', time: 14, price: 9, seats: 3, min: 4, effects: { happy: 6 }, thought: 'I found a great souvenir in the hotel shop.' },
+}
+export const AMENITY_PRICE_MAX = 3
+export const AMENITY_SEAT_LIMIT = 48
+
+export function amenityDefaultPrice(kind, id) {
+  const visit = AMENITY_VISITS[id], def = HOTELS[kind]
+  return visit && def ? Math.round(visit.price * (1 + def.luxury * 0.8)) : 0
+}
+
+export function amenityPriceLimit(kind, id) {
+  return Math.max(1, Math.round(amenityDefaultPrice(kind, id) * AMENITY_PRICE_MAX))
+}
+
+export function amenityPrice(hotel, id) {
+  const set = hotel.prices?.[id]
+  return Number.isFinite(set) ? set : amenityDefaultPrice(hotel.kind, id)
+}
+
+export function amenityCapacity(hotel, id) {
+  const visit = AMENITY_VISITS[id]
+  if (!visit || !hotel.addons?.[id]) return 0
+  const rooms = hotelSpec(hotel.kind, hotel.size, hotel.floors, hotel.addons)?.rooms ?? 0
+  return Math.min(AMENITY_SEAT_LIMIT, Math.max(visit.min, Math.round(rooms * visit.seats / 100)))
+}
+
+export function amenityOpen(state, hotel, id) {
+  const visit = AMENITY_VISITS[id]
+  if (!visit || !hotel.addons?.[id]) return false
+  if (visit.daytime) { const f = state.time?.dayFraction ?? 0.5; if (f > 0.86 || f < 0.2) return false }
+  return true
+}
+
+export function sanitizeAmenityPrices(kind, raw) {
+  const out = {}
+  if (!raw || typeof raw !== 'object') return out
+  for (const id of Object.keys(AMENITY_VISITS)) {
+    const v = Number(raw[id])
+    if (Number.isInteger(v) && v >= 0 && v <= amenityPriceLimit(kind, id)) out[id] = v
+  }
+  return out
+}
+
+export function hotelDay() { return { visits: 0, takings: 0, home: 0 } }
+
+// What a guest would like from a hotel right now, most wanted first. Uses the shared RNG so replays match.
+export function amenityWishes(state, guest, rnd) {
+  const wishes = []
+  if (guest.hunger > 150 && !guest.eating && rnd() < (guest.hotel ? 0.6 : 0.3)) wishes.push('restaurant')
+  if ((guest.energy < 90 || guest.nausea > 140) && rnd() < 0.45) wishes.push('spa')
+  if (guest.energy < 110 && state.weather?.kind !== 'rain' && (state.weather?.temp ?? 20) >= 18 && rnd() < 0.5) wishes.push('pool')
+  if (guest.kid && rnd() < (guest.hotel ? 0.12 : 0.05)) wishes.push('kidsClub')
+  if (!wishes.length && rnd() < (guest.hotel ? 0.14 : 0.05)) {
+    const leisure = ['pool', 'restaurant', 'giftShop', 'spa']
+    wishes.push(leisure[Math.floor(rnd() * leisure.length)])
+  }
+  return wishes
+}
+
+// Hotels in this park that can take one more guest for `id` now, residents' own hotel first.
+export function amenityHotels(state, guest, id) {
+  const visit = AMENITY_VISITS[id]
+  if (!visit || (visit.kids && !guest.kid)) return []
+  const rows = []
+  for (const h of hotelsOf(state, guest.park)) {
+    if (!h.entrance || !amenityOpen(state, h, id)) continue
+    if ((h.using?.[id] ?? 0) >= amenityCapacity(h, id)) continue
+    rows.push(h)
+  }
+  return rows.sort((a, b) => (b.id === guest.hotel) - (a.id === guest.hotel) || a.id - b.id)
+}
+
+export function visitCost(hotel, id, guest) {
+  return AMENITY_VISITS[id]?.free && guest.hotel === hotel.id ? 0 : amenityPrice(hotel, id)
+}
+
+// Live counts for the Resorts window: who is inside each amenity and how full it is.
+export function amenityUse(hotel) {
+  return Object.keys(AMENITY_VISITS).filter(id => hotel.addons?.[id]).map(id => ({ id, name: AMENITY_VISITS[id].name, doing: AMENITY_VISITS[id].doing, using: hotel.using?.[id] ?? 0, capacity: amenityCapacity(hotel, id), price: amenityPrice(hotel, id), defaultPrice: amenityDefaultPrice(hotel.kind, id), limit: amenityPriceLimit(hotel.kind, id), free: Boolean(AMENITY_VISITS[id].free) }))
 }
