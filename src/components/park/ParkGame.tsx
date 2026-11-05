@@ -144,7 +144,7 @@ export function ParkGame({ username, accountReady, edition = 1 }: { username: st
       <div className="pk-hero">
         <span className="pk-eyebrow">BUILD · MANAGE · RIDE</span>
         <h1>{edition === 2 ? 'Thrill Park 2' : 'Thrill Park'}</h1>
-        {edition === 2 && <p className="pk-edition">Rebuilt on PlayCanvas with sky lighting, soft shadows, night lamps and glowing rides. Your saved parks and leaderboard places are shared with Thrill Park.</p>}
+        {edition === 2 && <p className="pk-edition">Rebuilt on Babylon.js with WebGPU (WebGL2 when WebGPU isn't available), sky lighting, soft shadows, night lamps and glowing rides. Your saved parks and leaderboard places are shared with Thrill Park.</p>}
         <p>Sculpt the land, lay out paths, build rides and design your own roller coasters in 3D. Keep guests fed, happy and amazed, balance the books, and ride your creations. Play solo scenarios or team up online in shared co-op parks, or race rival tycoons in versus.</p>
       </div>
       <div className="pk-tabs" role="tablist">

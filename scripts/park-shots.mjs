@@ -3,7 +3,7 @@
 //   node scripts/park-shots.mjs --out docs/park-graphics/after          screenshots + perf + audit
 //   node scripts/park-shots.mjs --out <dir> --quality low|medium|high     force a quality tier (default: auto)
 //   node scripts/park-shots.mjs --out <dir> --no-perf                     screenshots only
-//   node scripts/park-shots.mjs --out <dir> --edition 2                   Thrill Park 2 (PlayCanvas) instead of Thrill Park
+//   node scripts/park-shots.mjs --out <dir> --edition 2                   Thrill Park 2 (Babylon.js) instead of Thrill Park
 //
 // It opens Thrill Park from `pnpm dev` (started here when nothing answers on the port) in headless Chromium with
 // SwiftShader at 1280×800, starts a sandbox park, swaps in the deterministic scene from scripts/park-scene.mjs, renders
