@@ -1,18 +1,21 @@
-/** Fairway Nine entry: boots the shared engine, builds the sky, balls, tracer and aim guide, wires input, HUD, screens and the session, steps the systems each fixed step and moves meshes each frame; everything is freed on pagehide. */
+/** Fairway Nine entry: boots the shared engine, builds the sky, balls, golfer, tracer and shot preview, wires input, HUD, gauge, minimap, screens and the session, steps the systems each fixed step and moves meshes each frame; everything is freed on pagehide. */
 import * as THREE from 'three/webgpu'
 import { App, HubBridge, Hud, Input, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
 import { config, type Action } from './config'
-import { createAimGuide } from './models/AimGuide'
 import { createBall } from './models/Ball'
+import { createGolfer } from './models/Golfer'
+import { createShotPreview } from './models/ShotPreview'
 import { createSky } from './models/Sky'
 import { createTracer } from './models/Tracer'
 import { hudModel, boardCopy } from './session/Presenters'
 import { Play, type InputFrame } from './session/Play'
 import { courseFor } from './systems/Course'
+import { addressSetup, poseFor, solveRig } from './systems/GolferRig'
 import { currentCourseHole, playerById } from './systems/Match'
-import { addScaled, headingVector, lerp, type Vec3 } from './systems/Vector'
+import { headingVector, lerp, type Vec3 } from './systems/Vector'
 import { createGauge } from './ui/Gauge'
 import { createHudView } from './ui/HudView'
+import { createMinimap, type MinimapBall } from './ui/Minimap'
 import { createScreens } from './ui/Screens'
 import { createGrassField } from './view/GrassField'
 import { createHoleScene, type HoleScene } from './view/HoleScene'
@@ -70,8 +73,13 @@ async function boot(): Promise<void> {
   const sky = app.graph.add('world', createSky(config.sky))
   const tracer = createTracer(config.tracer)
   app.graph.add('fx', tracer.line)
-  const aimGuide = createAimGuide(config.aimGuide)
-  app.graph.add('fx', aimGuide.mesh)
+  const shotPreview = createShotPreview(config.shotPreview)
+  app.graph.add('fx', shotPreview.group)
+  app.own({ dispose: () => shotPreview.dispose() })
+  const golfer = createGolfer(config.golfer)
+  app.graph.add('props', golfer.root)
+  golfer.root.visible = false
+  app.own({ dispose: () => golfer.dispose() })
   const grass = createGrassField(config.grass, quality.tier)
   app.graph.add('world', grass.model.mesh)
 
@@ -112,15 +120,20 @@ async function boot(): Promise<void> {
   )
   app.own(screens)
   const hudView = app.own(
-    createHudView(hud, config.hud, config.meta.title, {
+    createHudView(hud, config.hud, { spinDial: config.spinDial, windDial: config.windDial, spinStep: config.aim.spinStep, clubs: config.clubs }, {
       club: (delta) => play?.changeClub(delta),
+      selectClub: (club) => play?.selectClub(club),
       aim: (direction) => play?.nudgeAim(direction),
       spin: (delta) => play?.changeSpin(delta),
+      setSpin: (value) => play?.setSpin(value),
+      power: (delta) => play?.changePower(delta),
+      shot: (kind) => play?.selectShot(kind),
       menu: () => play?.togglePause(),
     }),
   )
   hudView.setVisible(false)
-  const gauge = app.own(createGauge(config.gauge, config.meter, config.hud.readout))
+  const gauge = app.own(createGauge(config.gauge, config.meter))
+  const minimap = app.own(createMinimap(config.minimap))
 
   play = app.own(
     new Play(config, { id: seat.id, name: seat.name }, seat.signedIn, {
@@ -145,10 +158,31 @@ async function boot(): Promise<void> {
   app.own({ dispose: () => holeScene?.dispose() })
 
   let steps = 0
-  const frame: InputFrame = { swing: false, menu: false, aim: 0, clubUp: false, clubDown: false, spinUp: false, spinDown: false, orbiting: false, orbitDx: 0, orbitDy: 0 }
+  const frame: InputFrame = {
+    swing: false,
+    swingDown: false,
+    swingReleased: false,
+    menu: false,
+    aim: 0,
+    clubUp: false,
+    clubDown: false,
+    spinUp: false,
+    spinDown: false,
+    power: 0,
+    shotNext: false,
+    shotPick: null,
+    orbiting: false,
+    orbitDx: 0,
+    orbitDy: 0,
+  }
   app.onFixed((dt) => {
     input.update()
     frame.swing = input.pressed('swing')
+    frame.swingDown = input.isDown('swing')
+    frame.swingReleased = input.released('swing')
+    frame.power = input.axis('powerDown', 'powerUp')
+    frame.shotNext = input.pressed('shotNext')
+    frame.shotPick = input.pressed('shotFull') ? 'full' : input.pressed('shotChip') ? 'chip' : input.pressed('shotFlop') ? 'flop' : input.pressed('shotSpinner') ? 'spinner' : null
     frame.menu = input.pressed('menu')
     frame.aim = input.axis('aimRight', 'aimLeft')
     frame.clubUp = input.pressed('clubUp')
@@ -193,18 +227,34 @@ async function boot(): Promise<void> {
     else tracer.clear()
 
     const shown = play.shown
-    if (shown && focusBall && play.showsAim()) {
-      const course = courseFor(currentCourseHole(shown))
-      const heading = headingVector(play.aimYaw)
-      const points: [number, number, number][] = []
-      for (let dot = 1; dot <= config.aimGuide.dots; dot++) {
-        const spot = addScaled(focusBall, heading, dot * config.aimGuide.spacing)
-        points.push([spot[0], course.heightAt(spot[0], spot[2]) + config.aimGuide.lift, spot[2]])
-      }
-      aimGuide.place(points)
-      aimGuide.mesh.visible = true
+    const course = courseFor(shown ? currentCourseHole(shown) : 0)
+    const preview = inRound && screens.current() === null ? play.preview() : null
+    if (preview) shotPreview.show(preview.result.samples, preview.result.landingStep ?? 0, preview.zone, course.heightAt)
+    else shotPreview.hide()
+
+    const golferView = inRound ? play.golferView() : null
+    if (golferView) {
+      const setup = addressSetup(golferView.club)
+      const ground = course.heightAt(golferView.ball[0], golferView.ball[2])
+      golfer.place([golferView.ball[0], ground + setup.ball[1], golferView.ball[2]], setup.ball, golferView.yaw)
+      golfer.apply(solveRig(setup, poseFor(golferView)), golferView.club)
+      golfer.root.visible = true
     } else {
-      aimGuide.mesh.visible = false
+      golfer.root.visible = false
+    }
+
+    if (shown && inRound && screens.current() === null) {
+      const markers: MinimapBall[] = []
+      for (const view of play.ballViews()) if (view.visible) markers.push({ position: view.current, local: view.id === play.localId, active: view.id === focusId })
+      const flying = play.flightShot()
+      minimap.draw({
+        course,
+        balls: markers,
+        preview: preview ? { samples: preview.result.samples, landingIndex: preview.result.landingStep ?? 0, zone: preview.zone } : null,
+        flight: flying ? { samples: flying.shot.samples, count: flying.step + 1 } : null,
+      })
+    } else {
+      minimap.draw(null)
     }
 
     const followed = focusBall ?? target
@@ -219,11 +269,11 @@ async function boot(): Promise<void> {
       const player = playerById(shown, focusId)
       if (player) {
         const cameraYaw = Math.atan2(target[0] - position[0], target[2] - position[2])
-        const club = focusId === play.localId ? play.club : null
-        hudView.update(hudModel(config, shown, player, focusBall, club, player.lie, focusId === play.localId ? play.spin : 0, cameraYaw))
+        const club = focusId === play.localId ? (player.lie === 'green' ? 'putter' : play.club) : null
+        hudView.update(hudModel(config, shown, player, focusBall, club, player.lie, focusId === play.localId ? play.spin : 0, cameraYaw, focusId === play.localId ? play.planView() : null), performance.now() / 1000)
       }
     }
-    gauge.draw(screens.current() === null ? play.meter() : null)
+    gauge.draw(screens.current() === null ? play.meter() : null, play.plan.power)
   })
 
   app.start()
