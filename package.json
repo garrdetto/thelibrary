@@ -15,6 +15,7 @@
     "deploy": "vite build && wrangler deploy"
   },
   "dependencies": {
+    "@babylonjs/core": "9.34.0",
     "@cloudflare/vite-plugin": "latest",
     "@dimforge/rapier3d-compat": "0.14.0",
     "@gltf-transform/core": "4.5.1",

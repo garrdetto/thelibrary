@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@babylonjs/core':
+        specifier: 9.34.0
+        version: 9.34.0
       '@cloudflare/vite-plugin':
         specifier: latest
         version: 1.65.0(@types/node@22.20.5)(vite@7.3.7(@types/node@22.20.5)(jiti@2.7.0)(lightningcss@1.33.0)(yaml@2.9.1))(workerd@1.20261019.1)(wrangler@4.152.0(@types/node@22.20.5))
@@ -227,6 +230,9 @@ packages:
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
+
+  '@babylonjs/core@9.34.0':
+    resolution: {integrity: sha512-XdJOM1qdd+62+XWhJiioJCpDQBjobIdjIXgTbhd7miDdAK80nHPU3oxWPH4UTZX9hc5TDTyy8Sb057d14d9VpA==}
 
   '@braintree/sanitize-url@7.1.2':
     resolution: {integrity: sha512-jigsZK+sMF/cuiB7sERuo9V7N9jx+dhmHHnQyDSVdpZwVutaBu7WvNYqMDLSgFgfB30n452TP3vjDAvFC973mA==}
@@ -3303,6 +3309,8 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
+
+  '@babylonjs/core@9.34.0': {}
 
   '@braintree/sanitize-url@7.1.2': {}
 
