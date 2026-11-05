@@ -10,14 +10,16 @@ Game appearance, cue art, car paint, lobby sound, site theme, saved lyric styles
 
 ## Stack
 
-TanStack Start and React 19 built with Vite and the Cloudflare Vite plugin. `src/server.ts` is the Worker entry: `/api/*` is handled in `src/server/`, everything else by TanStack Start. Data lives in D1 (`thelibrary-db`), files in Workers KV (`thelibrary-files`). AI uses the Gemini API.
+TanStack Start and React 19 built with Vite and the Cloudflare Vite plugin. `src/server.ts` is the Worker entry: `/api/*` is handled in `src/server/`, everything else by TanStack Start. Data lives in D1 (`thelibrary-db`), files in Workers KV (`thelibrary-files`). The AI chat, Image Studio and Lyric Studio run on Claude (the Claude API). Images are planned and checked by Claude and drawn by Gemini, since Claude models don't output pictures. Song Maker, cue art and car skins use the Gemini API. None of the studios accept or write code.
 
 ## Setup
 
 Secrets (Cloudflare dashboard → Workers & Pages → thelibrary → Settings → Variables and Secrets, type **Secret**):
 
 - `ADMIN_PASSWORD`: password for the `stoegbauer` administrator.
-- `GEMINI_API_KEY`: key from Google AI Studio for chat, images, lyrics, cue art and car skins.
+- `ANTHROPIC_API_KEY`: Claude API key from platform.claude.com for the AI chat, Image Studio and Lyric Studio.
+- `GEMINI_API_KEY`: key from Google AI Studio for drawing images, Song Maker, cue art and car skins.
+- Optional plain-text variables `CLAUDE_CHAT_MODEL` and `CLAUDE_LYRICS_MODEL` to change the chat model (default `claude-sonnet-5-5`) or lyric model (default `claude-opus-5-5`).
 
 Pushes to `main` build and deploy through Workers Builds. Schema changes go in a new file in `migrations/` and are applied with:
 
