@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
-import { tuning, type HoleData, type Polygon } from '../tuning'
+import { tuning, type HoleData, type Polygon, type ShotKind } from '../tuning'
 import { simulateShot, type ShotParams } from '../systems/BallFlight'
+import { addressSetup, poseFor, solveRig } from '../systems/GolferRig'
+import { defaultShotKind, perfectParams, powerForDistance } from '../systems/ShotPlanner'
 import { createCourse, courseFor } from '../systems/Course'
 import { springStep } from '../systems/Camera'
 import { applyShot, createMatch, nextPlayer, pickHoles, placements, scoreLabel, shotParamsFor, shotRejection, windSeedsFor, type MatchState } from '../systems/Match'
 import { parseMessage } from '../systems/Protocol'
 import { MENU, reduceRound, tickRound } from '../systems/Round'
-import { accuracyToCurve, idleMeter, stepMeter } from '../systems/SwingMeter'
+import { effectivePower, signedMiss, startMeter, stepMeter, type MeterState, type SwingButton } from '../systems/SwingMeter'
 import { liePowerFactor } from '../systems/Surfaces'
 import { createRandom } from '../systems/Random'
 import { windAtHeight } from '../systems/Wind'
@@ -141,29 +143,166 @@ describe('ball flight', () => {
 })
 
 describe('swing meter', () => {
-  it('climbs, locks power on the second click and samples accuracy on the third', () => {
-    let meter = stepMeter(idleMeter(), true, 1 / 60)
-    assert.equal(meter.phase, 'climbing')
-    for (let step = 0; step < 60; step++) meter = stepMeter(meter, false, 1 / 60)
-    meter = stepMeter(meter, true, 1 / 60)
-    assert.equal(meter.phase, 'returning')
-    assert.ok(Math.abs(meter.power - tuning.meter.climbRate) < 0.05)
-    const steps = Math.round(((meter.needle - tuning.meter.accuracyLine) / tuning.meter.returnRate) * 60)
-    for (let step = 0; step < steps; step++) meter = stepMeter(meter, false, 1 / 60)
-    meter = stepMeter(meter, true, 1 / 60)
+  const dt = 1 / 60
+  const held: SwingButton = { pressed: false, released: false, down: true }
+  const up: SwingButton = { pressed: false, released: true, down: false }
+  const idle: SwingButton = { pressed: false, released: false, down: false }
+  const tap: SwingButton = { pressed: true, released: false, down: true }
+  const run = (meter: MeterState, button: SwingButton, seconds: number) => {
+    for (let step = 0; step < Math.round(seconds * 60); step++) meter = stepMeter(meter, button, dt)
+    return meter
+  }
+  const perfectSwing = (holdSeconds: number, rhythmSeconds = tuning.meter.rhythmSeconds) => {
+    let meter = run(startMeter(), held, holdSeconds)
+    meter = stepMeter(meter, up, dt)
+    assert.equal(meter.phase, 'path')
+    meter = run(meter, idle, tuning.meter.pathSeconds)
+    meter = stepMeter(meter, tap, dt)
+    assert.equal(meter.phase, 'contact')
+    meter = run(meter, idle, tuning.meter.contactSeconds)
+    meter = stepMeter(meter, tap, dt)
+    assert.equal(meter.phase, 'rhythm')
+    meter = run(meter, held, rhythmSeconds)
+    meter = stepMeter(meter, up, dt)
+    assert.equal(meter.phase, 'strike')
+    return run(meter, idle, tuning.meter.strikeSeconds + 0.05)
+  }
+
+  it('locks power on release, then path, contact and rhythm on the marks give a pure strike', () => {
+    const meter = perfectSwing(1)
     assert.equal(meter.phase, 'done')
-    assert.equal(meter.curve, 0, 'a click on the line is straight')
+    assert.ok(Math.abs(meter.power - tuning.meter.powerRate) < 0.03, `power ${meter.power}`)
+    assert.equal(meter.push, 0)
+    assert.equal(meter.curve, 0)
+    assert.equal(meter.rhythmLoss, 0)
+    assert.equal(effectivePower(meter), meter.power)
   })
 
-  it('hooks early, slices late and takes a maximum miss on overshoot', () => {
-    assert.ok(accuracyToCurve(0.08) < 0)
-    assert.ok(accuracyToCurve(-0.08) > 0)
-    let meter = stepMeter(idleMeter(), true, 1 / 60)
-    meter = stepMeter(meter, true, 1 / 60)
-    for (let step = 0; step < 600 && meter.phase !== 'done'; step++) meter = stepMeter(meter, false, 1 / 60)
+  it('pushes a late path tap, pulls an early one, and hooks an early contact click', () => {
+    assert.ok(signedMiss(0.1) > 0)
+    assert.ok(signedMiss(-0.1) < 0)
+    assert.equal(signedMiss(0.01), 0, 'inside the perfect zone')
+    let meter = stepMeter(run(startMeter(), held, 0.5), up, dt)
+    meter = run(meter, idle, tuning.meter.pathSeconds * 1.12)
+    meter = stepMeter(meter, tap, dt)
+    assert.ok(meter.push > 0, 'late path tap pushes right')
+    meter = run(meter, idle, tuning.meter.contactSeconds * 0.85)
+    meter = stepMeter(meter, tap, dt)
+    assert.ok(meter.curve < 0, 'early contact closes the face')
+  })
+
+  it('costs up to the full rhythm loss for an early release or a tap instead of a hold', () => {
+    const early = perfectSwing(1, tuning.meter.rhythmSeconds * 0.5)
+    assert.ok(early.rhythmLoss > 0.02 && early.rhythmLoss <= tuning.meter.maxRhythmLoss + 1e-9)
+    assert.ok(effectivePower(early) < early.power)
+    let tapped = stepMeter(run(startMeter(), held, 1), up, dt)
+    tapped = stepMeter(run(tapped, idle, tuning.meter.pathSeconds), tap, dt)
+    tapped = stepMeter(run(tapped, idle, tuning.meter.contactSeconds), tap, dt)
+    tapped = stepMeter(tapped, up, dt)
+    assert.equal(tapped.phase, 'strike')
+    assert.ok(Math.abs(tapped.rhythmLoss - tuning.meter.maxRhythmLoss) < 1e-9)
+  })
+
+  it('takes a full miss when the cursor runs past the overrun', () => {
+    let meter = stepMeter(run(startMeter(), held, 0.4), up, dt)
+    meter = run(meter, idle, 5)
     assert.equal(meter.phase, 'done')
-    assert.equal(meter.overshot, true)
+    assert.equal(meter.overran, true)
+    assert.equal(meter.push, 1)
     assert.equal(meter.curve, 1)
+  })
+
+  it('auto-locks power at the cap while the button stays down', () => {
+    const meter = run(startMeter(), held, 5)
+    assert.notEqual(meter.phase, 'power')
+    assert.equal(meter.power, tuning.meter.powerCap)
+  })
+})
+
+describe('shot types', () => {
+  const near = (overrides: Partial<ShotParams>) => shot({ club: 'sand', power: 0.7, ...overrides })
+  const roll = (params: ShotParams) => {
+    const result = simulateShot(params, 1, flat)
+    assert.ok(result.landing, 'the ball should land')
+    const toLanding = Math.hypot(result.landing[0] - params.origin[0], result.landing[2] - params.origin[2])
+    const toRest = Math.hypot(result.rest[0] - params.origin[0], result.rest[2] - params.origin[2])
+    return { result, roll: toRest - toLanding }
+  }
+
+  it('flies a flop highest and a chip lowest', () => {
+    const chip = roll(near({ shot: 'chip' })).result
+    const flop = roll(near({ shot: 'flop' })).result
+    const full = roll(near({})).result
+    assert.ok(flop.launchDegrees > full.launchDegrees && full.launchDegrees > chip.launchDegrees)
+    assert.ok(flop.apex > chip.apex * 2, `flop apex ${flop.apex.toFixed(1)} vs chip ${chip.apex.toFixed(1)}`)
+  })
+
+  it('lets a chip release and stops a flop soft', () => {
+    const chip = roll(near({ shot: 'chip', power: 0.6 }))
+    const flop = roll(near({ shot: 'flop', power: 0.6 }))
+    assert.ok(chip.roll > flop.roll * 2, `chip roll ${chip.roll.toFixed(1)} m vs flop ${flop.roll.toFixed(1)} m`)
+  })
+
+  it('makes a spinner bite harder than a chip on the green', () => {
+    const green = createCourse(0, tuning.terrain, flatHole({ fairway: [], green: square(-60, -120, 60, 20) }))
+    const run = (kind: ShotKind) => {
+      const params = near({ club: 'pitching', shot: kind, power: 0.6, lie: 'fairway' })
+      const result = simulateShot(params, 1, green)
+      const landing = result.landing ?? result.rest
+      return Math.hypot(result.rest[0] - landing[0], result.rest[2] - landing[2])
+    }
+    assert.ok(run('spinner') < run('chip') * 0.6, `spinner run-out ${run('spinner').toFixed(1)} m vs chip ${run('chip').toFixed(1)} m`)
+  })
+
+  it('pushes the start line right and ignores the shot type on a putt', () => {
+    const straight = simulateShot(shot({ club: 'iron7' }), 1, flat).rest
+    const pushed = simulateShot(shot({ club: 'iron7', push: 1 }), 1, flat).rest
+    assert.ok(pushed[0] > straight[0] + 5, 'heading −z, the right-hand side is +x')
+    const putt = shot({ club: 'putter', lie: 'green', power: 0.3 })
+    assert.deepEqual(simulateShot({ ...putt, shot: 'flop' }, 1, flat).rest, simulateShot(putt, 1, flat).rest)
+  })
+
+  it('plans the power that carries a target and defaults to a chip near the green', () => {
+    const params = shot({ club: 'iron7' })
+    const power = powerForDistance(params, 120, flat)
+    const carry = simulateShot(perfectParams(params, power), tuning.shortGame.previewSeed, flat).carry
+    assert.ok(Math.abs(carry - 120) < 1.5, `planned carry ${carry.toFixed(1)} m`)
+    assert.equal(powerForDistance(params, 5000, flat), 1)
+    assert.equal(defaultShotKind(25, 'fairway'), 'chip')
+    assert.equal(defaultShotKind(25, 'green'), 'full')
+    assert.equal(defaultShotKind(120, 'rough'), 'full')
+  })
+
+  it('carries the shot type and push through the match and the wire', () => {
+    const state = createMatch({ mode: 'solo', holes: [0], windSeeds: [1], matchSeed: 1, players: [{ id: 'a', name: 'Ada' }] })
+    const params = shotParamsFor(state, 'a', { yaw: 1, club: 'sand', power: 0.5, curve: 0, spin: 0, push: 0.4, shot: 'flop' })
+    assert.equal(params.shot, 'flop')
+    assert.equal(params.push, 0.4)
+    const message = parseMessage({ type: 'shot', playerId: 'a', params, seed: 3 })
+    assert.ok(message && message.type === 'shot' && message.params.shot === 'flop')
+  })
+})
+
+describe('golfer rig', () => {
+  it('puts the club head on the ball at address and at impact', () => {
+    for (const club of ['driver', 'iron7', 'sand', 'putter'] as const) {
+      const setup = addressSetup(club)
+      for (const pose of [poseFor({ stage: 'address', progress: 0, amount: 1, club, shot: 'full', time: 0 }), poseFor({ stage: 'down', progress: 1, amount: 1, club, shot: 'full', time: 0 })]) {
+        const solved = solveRig(setup, pose)
+        const miss = Math.hypot(solved.clubHead[0] - setup.ball[0], solved.clubHead[1] - setup.ball[1], solved.clubHead[2] - setup.ball[2])
+        assert.ok(miss < 0.12, `${club} head ${miss.toFixed(3)} m from the ball`)
+      }
+    }
+  })
+
+  it('keeps both hands on the grip through the swing', () => {
+    const setup = addressSetup('iron7')
+    for (const [stage, progress] of [['back', 1], ['down', 0.5], ['follow', 0.5], ['follow', 1]] as const) {
+      const solved = solveRig(setup, poseFor({ stage, progress, amount: 1, club: 'iron7', shot: 'full', time: 0 }))
+      const gap = Math.hypot(solved.wrists[0][0] - solved.wrists[1][0], solved.wrists[0][1] - solved.wrists[1][1], solved.wrists[0][2] - solved.wrists[1][2])
+      assert.ok(gap < 0.14, `${stage} ${progress}: wrists ${gap.toFixed(3)} m apart`)
+      assert.ok(solved.bones.every((bone) => bone.quaternion.every(Number.isFinite)))
+    }
   })
 })
 
@@ -257,7 +396,7 @@ describe('protocol and round flow', () => {
   it('walks menu → preview → aiming → swinging', () => {
     let state = reduceRound(MENU, { type: 'begin', mode: 'solo' })
     assert.equal(state.phase, 'preview')
-    state = tickRound(state, 10, false, 1).state
+    state = tickRound(state, 10, { pressed: false, released: false, down: false }, 1).state
     assert.equal(state.phase, 'aiming')
     state = reduceRound(state, { type: 'swingPressed' })
     assert.equal(state.phase, 'swinging')

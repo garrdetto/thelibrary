@@ -302,35 +302,42 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 
 ### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
 - `modules-src/fairway/module.json` — id `fairway`, title, accent `#4fd27a`, modes — `config.ts`.
-- `modules-src/fairway/tuning.ts` — pure tunables shared by systems and tests: air, ball, clubs, surface contact, lies, trees, cup, flight, terrain shape, wind, meter, camera, match rules, timing, hole data — `config.ts`, `systems/*`.
-- `modules-src/fairway/config.ts` — `tuning` plus engine overrides (`net.maxPeers` 3), action bindings, terrain/water/tree/grass/flag/ball/gauge looks, HUD and lobby copy, room format — `index.ts`, `view/*`, `session/*`, `ui/*`.
+- `modules-src/fairway/tuning.ts` — pure tunables shared by systems and tests: air, ball, clubs, surface contact, lies, trees, cup, flight, terrain shape, wind, four-input meter, shot types (full/chip/flop/spinner launch and landing multipliers), short-game planner, camera, match rules, timing, hole data — `config.ts`, `systems/*`.
+- `modules-src/fairway/config.ts` — `tuning` plus engine overrides (`net.maxPeers` 3), action bindings (power R/F, shot type 1–4/T), terrain/water/tree/grass/flag/ball/golfer/shot-preview/minimap/gauge/spin-dial/wind-dial looks, HUD and lobby copy, room format — `index.ts`, `view/*`, `session/*`, `ui/*`.
 - `modules-src/fairway/data/holes.json` — the nine original holes: tee, pin, route, tee box, fairway, green, bunker, water and cart-path polygons in world metres, hills, green tilt, trees, OOB bounds, drop zones — `tuning.ts`.
-- `modules-src/fairway/index.html` — page shell: `#stage`, start screen with mode picker and record-book tabs, lobby, scorecard, pause, meter canvas, turn banner; `--lib-*` tokens only — `vite.modules.ts` (→ `public/modules/fairway.html`).
-- `modules-src/fairway/index.ts` — entry: App, quality, environment, lighting, post, `Input<Action>`, Hud, sky/balls/tracer/aim guide/grass, steps `Play` each fixed step, moves meshes each frame, `__tlModule`, disposes on `pagehide` — `index.html`.
+- `modules-src/fairway/index.html` — page shell: `#stage`, start screen with mode picker and record-book tabs, lobby, scorecard, pause, meter and minimap canvases, turn banner, hole card, wind panel and shot dock styles; `--lib-*` tokens only — `vite.modules.ts` (→ `public/modules/fairway.html`).
+- `modules-src/fairway/index.ts` — entry: App, quality, environment, lighting, post, `Input<Action>`, Hud, sky/balls/golfer/tracer/shot preview/grass, gauge and minimap, steps `Play` each fixed step, poses the golfer from `GolferRig` and moves meshes each frame, `__tlModule`, disposes on `pagehide` — `index.html`.
 - `modules-src/fairway/models/Terrain.ts` — heightfield mesh with zone attributes and a TSL grass shader (two-octave noise, mow stripes) — `view/HoleScene.ts`.
 - `modules-src/fairway/models/Water.ts` — pond plane with a TSL Gerstner `positionNode` and fresnel `colorNode` — `view/HoleScene.ts`.
 - `modules-src/fairway/models/Trees.ts` — instanced oak, conifer and birch: bent branching trunks, noise-sculpted foliage clumps, alpha-cut leaf cards, TSL wind sway — `view/HoleScene.ts`.
 - `modules-src/fairway/models/Grass.ts` — instanced tapered grass blades with a colour ramp and TSL sway — `view/GrassField.ts`.
 - `modules-src/fairway/models/Flag.ts` — cup, flagstick and cloth with a sine flutter node and celebration boost — `view/HoleScene.ts`.
-- `modules-src/fairway/models/TeeMarkers.ts`, `models/Ball.ts`, `models/Tracer.ts`, `models/AimGuide.ts`, `models/Sky.ts` — tee posts, ball, shot tracer line, instanced aim dots, gradient sky dome — `view/HoleScene.ts`, `index.ts`.
+- `modules-src/fairway/models/TeeMarkers.ts`, `models/Ball.ts`, `models/Tracer.ts`, `models/Sky.ts` — tee posts, ball, shot tracer line, gradient sky dome — `view/HoleScene.ts`, `index.ts`.
+- `modules-src/fairway/models/Golfer.ts` — one skinned golfer (lofted body, clothes and cap in vertex colours, smooth joint weights) on the `GolferRig` skeleton, plus a club with wood, iron and putter heads — `index.ts`.
+- `modules-src/fairway/models/ShotPreview.ts` — faded ghost-ball trail and line along the perfect-strike flight and roll, landing-zone ellipse of discs, rest disc — `index.ts`.
 - `modules-src/fairway/view/HoleScene.ts` — samples a `Course` into terrain, water, tree, flag and tee-marker specs and disposes them per hole — `index.ts`.
 - `modules-src/fairway/view/GrassField.ts` — plants grass blades on a world-anchored grid around the ball by surface — `index.ts`.
-- `modules-src/fairway/session/Play.ts` — session controller: match and round state, swing launch, solo/host authority, guest replay, records, camera stepping — `index.ts`.
+- `modules-src/fairway/session/Play.ts` — session controller: match and round state, swing launch (path push, face curve, rhythm loss, shot type), solo/host authority, guest replay, records, camera stepping, the perfect-strike preview and the golfer view — `index.ts`.
+- `modules-src/fairway/session/ShotPlan.ts` — local shot setup between swings: shot type, planned power toward the target, cached preview and landing zone — `Play.ts`.
 - `modules-src/fairway/session/OnlineRoom.ts` — `PeerRoom<FairwayMessage>` glue: roster handshake, sender checks, late join, drops, `bridgeHub`, `autoJoinFromQuery` — `Play.ts`.
 - `modules-src/fairway/session/Presenters.ts` — HUD, scorecard and record-book display models — `Play.ts`, `index.ts`.
-- `modules-src/fairway/ui/Screens.ts`, `ui/HudView.ts`, `ui/Gauge.ts` — DOM screens and board tabs, engine-Hud panels with touch buttons, the curved swing gauge and numeric readout — `index.ts`.
-- `modules-src/fairway/systems/BallFlight.ts` — deterministic semi-implicit Euler flight (gravity, drag, Magnus lift, wind), bounce, roll, cup, water and OOB; `simulateShot(params, seed)` — `Match`, `Play`, tests.
+- `modules-src/fairway/ui/Screens.ts`, `ui/HudView.ts`, `ui/Gauge.ts` — DOM screens and board tabs; the hole card, wind panel and bottom shot dock (club and bag, lie, shot types, spin, planned power, aim, help); the concentric four-input gauge (power ring with the planned marker, path and contact marks, rhythm ring) and its narrated readout — `index.ts`.
+- `modules-src/fairway/ui/SpinDial.ts`, `ui/WindDial.ts`, `ui/Icons.ts` — spin ball with a direction arrow and a draggable vertical spin meter, wind compass, inline SVG club/shot/lie icons — `ui/HudView.ts`.
+- `modules-src/fairway/ui/Minimap.ts` — hole map turned tee-to-pin up: surfaces, trees, pin, balls, perfect-strike path, landing-zone ellipse, rest spot, live flight — `index.ts`.
+- `modules-src/fairway/systems/BallFlight.ts` — deterministic semi-implicit Euler flight (gravity, drag, Magnus lift, wind), bounce, roll, cup, water and OOB; push and shot type (launch angle, speed and spin, and landing: a chip releases, a flop lands soft, a spinner checks and can zip back); `simulateShot(params, seed)` — `Match`, `Play`, tests.
 - `modules-src/fairway/systems/Course.ts` — hole heightfield, gradient, normals, surfaces, bounds, tee/forward tee, pin and drops — `BallFlight`, `Match`, `view/*`.
 - `modules-src/fairway/systems/Surfaces.ts` — polygon tests, surface priority, lie power/spin factors, contact properties — `Course`, `BallFlight`.
 - `modules-src/fairway/systems/Wind.ts` — seeded hole wind and its height profile — `BallFlight`, `Match`.
-- `modules-src/fairway/systems/SwingMeter.ts` — three-click meter state machine and accuracy curve — `Round`, `ui/Gauge.ts`.
+- `modules-src/fairway/systems/SwingMeter.ts` — four-input meter state machine: hold for power, tap for path (push/pull), click-and-hold for contact (face), release for rhythm (up to 7 % loss), then the strike — `Round`, `ui/Gauge.ts`.
+- `modules-src/fairway/systems/ShotPlanner.ts` — perfect-strike preview, power-for-distance bisection, default shot type, landing-zone ellipse — `session/ShotPlan.ts`, tests.
+- `modules-src/fairway/systems/GolferRig.ts` — golfer skeleton, per-club address setup, swing keyframes (address, back, top, down, follow, putting pendulum), swing-plane club and two-bone IK solver — `models/Golfer.ts`, `index.ts`, tests.
 - `modules-src/fairway/systems/Camera.ts` — follow/preview/tracking/green camera state machine with the critically damped spring — `Play`.
 - `modules-src/fairway/systems/Match.ts` — match authority: holes, strokes, penalties, farthest-first turns, shot seeds, placements — `Play`, tests.
 - `modules-src/fairway/systems/Round.ts` — `RoundState` union and reducer/ticker for every mode — `Play`.
 - `modules-src/fairway/systems/Protocol.ts` — Zod-validated `FairwayMessage` union (hello, roster, start, shot, state, turn, finish) — `OnlineRoom`.
 - `modules-src/fairway/systems/Records.ts` — `/api/fairway` save/load client with an injected hub notifier — `Play`, `ui/Screens.ts`.
 - `modules-src/fairway/systems/ClubAdvice.ts`, `systems/Random.ts`, `systems/Vector.ts` — club reach table and suggestion, seeded RNG and hashing, vector math — systems, `Play`.
-- `modules-src/fairway/tests/fairway.test.ts` — flight (carry range, wind, spin, curve, bunker, rough, water, OOB, putting), meter, spring, match, protocol and round tests — `scripts/fairway-tests.mjs`.
+- `modules-src/fairway/tests/fairway.test.ts` — flight (carry range, wind, spin, curve, bunker, rough, water, OOB, putting), four-input meter, shot types, planner, golfer rig, spring, match, protocol and round tests — `scripts/fairway-tests.mjs`.
 - `public/images/modules/fairway.webp` — hub thumbnail rendered from the module — `modules.ts`.
 
 ### sandlot — Sandlot Sluggers

@@ -1,5 +1,5 @@
 /** Deterministic golf-ball flight, bounce and roll: a semi-implicit Euler integrator at the engine's fixed step, driven only by shot parameters and a seed. */
-import { clubById, clubLaunchSpeed, tuning, type ClubId, type LieKind, type SurfaceKind } from '../tuning'
+import { clubById, clubLaunchSpeed, tuning, type ClubId, type LandingSpec, type LieKind, type ShotKind, type ShotKindSpec, type SurfaceKind } from '../tuning'
 import { courseFor, type Course } from './Course'
 import { createRandom } from './Random'
 import { contactFor, lieForSurface, liePowerFactor, lieSpinFactor } from './Surfaces'
@@ -16,6 +16,10 @@ export interface ShotParams {
   curve: number
   /** Player spin setting in [−1, 1]: positive adds backspin, negative takes it away toward topspin. */
   spin: number
+  /** Swing-path miss in [−1, 1]: negative pulls the start line left, positive pushes it right. */
+  push?: number
+  /** Shot type; putts and anything without one fly as a full shot. */
+  shot?: ShotKind
   lie: LieKind
   teeShot: boolean
   wind: readonly [number, number]
@@ -36,6 +40,8 @@ export interface ShotResult {
   restSurface: SurfaceKind
   penalty: number
   landing: Vec3 | null
+  /** Sample index of the first touchdown (the end of the carry), or null if the ball never left the ground. */
+  landingStep: number | null
   carry: number
   apex: number
   descentDegrees: number | null
@@ -55,29 +61,39 @@ interface FlightState {
 
 const RPM_TO_RADIANS = (2 * Math.PI) / 60
 
+/** The shot type a set of parameters really flies: putts and putter strokes are always full. */
+export function shotKindSpec(params: Pick<ShotParams, 'lie' | 'club' | 'shot'>): ShotKindSpec {
+  if (params.lie === 'green' || params.club === 'putter') return tuning.shots.full
+  return tuning.shots[params.shot ?? 'full'] ?? tuning.shots.full
+}
+
 /**
- * Launch conditions from the club, meter and lie.
- *   v₀ = power × club.launchSpeed × lie.powerFactor          (launchSpeed = club speed × smash factor)
- *   launch yaw ψ′ = ψ − curve × maxYaw                        (positive curve turns right)
- *   v⃗ = v₀ (cos θ · ĥ(ψ′) + sin θ · ŷ)                       (θ = club loft, ĥ the ground heading)
- *   ω = spinRpm × 2π/60 × lieSpin × (0.4 + 0.6·power) × (1 + spin·k)
+ * Launch conditions from the club, shot type, meter and lie.
+ *   v₀ = power × club.launchSpeed × lie.powerFactor × kind.speedScale   (launchSpeed = club speed × smash factor)
+ *   launch yaw ψ′ = ψ − push × maxPush − curve × maxYaw                  (positive push and curve turn right)
+ *   θ = club.loft × kind.loftScale + kind.loftAdd                        (a chip delofts, a flop opens the face)
+ *   v⃗ = v₀ (cos θ · ĥ(ψ′) + sin θ · ŷ)                                  (ĥ the ground heading)
+ *   ω = spinRpm × 2π/60 × lieSpin × kind.spinScale × (0.4 + 0.6·power) × (1 + spin·k)
  * The spin axis starts as the right vector r̂ (pure backspin, so ω̂ × v⃗ points up) and is tilted toward −ŷ by
  * curve × maxSideSpinTilt, giving the sidespin that bends a slice right and a hook left.
  */
 export function launchState(params: ShotParams, powerFactor: number): FlightState & { launchSpeed: number; launchDegrees: number } {
   const club = clubById(params.lie === 'green' ? 'putter' : params.club)
+  const kind = shotKindSpec(params)
   const meter = tuning.meter
-  const launchSpeed = Math.max(0, Math.min(1, params.power)) * clubLaunchSpeed(club) * powerFactor
-  const yaw = params.yaw - params.curve * meter.maxYawRadians
-  const loft = (club.loftDegrees * Math.PI) / 180
+  const launchSpeed = Math.max(0, Math.min(1, params.power)) * clubLaunchSpeed(club) * powerFactor * kind.speedScale
+  const push = Math.max(-1, Math.min(1, params.push ?? 0))
+  const yaw = params.yaw - push * meter.maxPushRadians - params.curve * meter.maxYawRadians
+  const launchDegrees = club.putter ? club.loftDegrees : club.loftDegrees * kind.loftScale + kind.loftAdd
+  const loft = (launchDegrees * Math.PI) / 180
   const heading = headingVector(yaw)
   const velocity = addScaled(scale(heading, Math.cos(loft) * launchSpeed), UP, Math.sin(loft) * launchSpeed)
   const tilt = params.curve * meter.maxSideSpinTilt
   const right = rightVector(yaw)
   const spinAxis = normalize(addScaled(scale(right, Math.cos(tilt)), UP, -Math.sin(tilt)))
-  const spinScale = (1 + Math.max(-1, Math.min(1, params.spin)) * tuning.flight.spinRangeFraction) * (0.4 + 0.6 * params.power)
+  const spinScale = (1 + Math.max(-1, Math.min(1, params.spin)) * tuning.flight.spinRangeFraction) * (0.4 + 0.6 * params.power) * kind.spinScale
   const spinRate = club.spinRpm * RPM_TO_RADIANS * lieSpinFactor(params.lie, params.teeShot) * spinScale
-  return { position: params.origin, velocity, spinAxis, spinRate, launchSpeed, launchDegrees: club.loftDegrees }
+  return { position: params.origin, velocity, spinAxis, spinRate, launchSpeed, launchDegrees }
 }
 
 /**
@@ -108,22 +124,24 @@ export function airAcceleration(state: FlightState, wind: Vec3): Vec3 {
 
 /**
  * Ground impact. With the surface normal n̂, the velocity splits into v_n = (v⃗·n̂) n̂ and v_t = v⃗ − v_n.
- *   v⃗′ = −e · v_n + (1 − μ_k − c) · v_t
+ *   v⃗′ = −e·s_e · v_n + max(−r, 1 − μ_k·s_μ − c) · v_t
  * e is the surface restitution, μ_k its tangential friction, and c a backspin "check" term
- * c = check · clamp(r·ω_back / |v_t|, 0, 1) that lets a spinning wedge stop on a green. Spin keeps a retention fraction.
+ * c = check·s_c · clamp(r·ω_back / |v_t|, 0, 1) that lets a spinning wedge stop on a green. The shot type's landing
+ * multipliers s_e, s_μ, s_c soften a flop, let a chip release and make a spinner bite; a spinner's keep may go as low as
+ * −r, which sends the ball back toward the player. Spin keeps a retention fraction.
  */
-export function bounce(state: FlightState, normal: Vec3, surface: SurfaceKind): FlightState {
+export function bounce(state: FlightState, normal: Vec3, surface: SurfaceKind, landing: LandingSpec = tuning.shots.full.landing): FlightState {
   const contact = contactFor(surface)
   const normalSpeed = dot(state.velocity, normal)
   const normalPart = scale(normal, normalSpeed)
   const tangential = sub(state.velocity, normalPart)
   const tangentialSpeed = length(tangential)
   const backspin = Math.max(0, state.spinRate * dot(state.spinAxis, normalize(cross(tangential, UP))))
-  const check = tangentialSpeed > 1e-6 ? contact.backspinCheck * Math.min(1, (tuning.ball.radiusM * backspin) / tangentialSpeed) : 0
-  const keep = Math.max(0, 1 - contact.tangentialFriction - check)
+  const check = tangentialSpeed > 1e-6 ? contact.backspinCheck * landing.check * Math.min(1, (tuning.ball.radiusM * backspin) / tangentialSpeed) : 0
+  const keep = Math.max(-landing.reverse, 1 - contact.tangentialFriction * landing.friction - check)
   return {
     position: state.position,
-    velocity: addScaled(scale(tangential, keep), normalPart, -contact.restitution),
+    velocity: addScaled(scale(tangential, keep), normalPart, -contact.restitution * landing.restitution),
     spinAxis: state.spinAxis,
     spinRate: state.spinRate * contact.spinRetention,
   }
@@ -186,12 +204,14 @@ export function simulateShot(params: ShotParams, seed: number, course: Course = 
   const random = createRandom(seed)
   const powerFactor = liePowerFactor(params.lie, params.teeShot, random)
   const launch = launchState(params, powerFactor)
+  const landingSpec = shotKindSpec(params).landing
   const pin = course.pinPosition()
   const origin: Vec3 = [params.origin[0], course.heightAt(params.origin[0], params.origin[2]) + ball.radiusM, params.origin[2]]
   let state: FlightState = { position: origin, velocity: launch.velocity, spinAxis: launch.spinAxis, spinRate: launch.spinRate }
   const samples: number[] = [origin[0], origin[1], origin[2]]
   let airborne = launch.velocity[1] > 1e-6
   let landing: Vec3 | null = null
+  let landingStep: number | null = null
   let descentDegrees: number | null = null
   let apex = origin[1]
   let flightSeconds = 0
@@ -222,6 +242,7 @@ export function simulateShot(params: ShotParams, seed: number, course: Course = 
         restSurface = surface
         if (!landing) {
           landing = state.position
+          landingStep = samples.length / 3
           descentDegrees = (Math.atan2(-state.velocity[1], Math.hypot(state.velocity[0], state.velocity[2])) * 180) / Math.PI
         }
         if (!course.inBounds(x, z)) {
@@ -235,7 +256,7 @@ export function simulateShot(params: ShotParams, seed: number, course: Course = 
           const normal = course.normalAt(x, z)
           const into = -dot(state.velocity, normal)
           if (into > flight.bounceMinNormalSpeed) {
-            state = bounce(state, normal, surface)
+            state = bounce(state, normal, surface, landingSpec)
           } else {
             airborne = false
             const tangential = sub(state.velocity, scale(normal, dot(state.velocity, normal)))
@@ -248,8 +269,8 @@ export function simulateShot(params: ShotParams, seed: number, course: Course = 
       const surface = course.surfaceAt(x, z)
       restSurface = surface
       const gradient = course.gradientAt(x, z)
-      const contact = contactFor(surface)
-      const [vx, vz] = rollStep([state.velocity[0], state.velocity[2]], gradient, contact.rollingFriction, dt)
+      const rollingFriction = contactFor(surface).rollingFriction * landingSpec.rolling
+      const [vx, vz] = rollStep([state.velocity[0], state.velocity[2]], gradient, rollingFriction, dt)
       const nx = x + vx * dt
       const nz = z + vz * dt
       state = treeInteraction(course, { ...state, velocity: [vx, 0, vz], position: [nx, course.heightAt(nx, nz) + ball.radiusM, nz] }, dt, false)
@@ -261,7 +282,7 @@ export function simulateShot(params: ShotParams, seed: number, course: Course = 
       else if (horizontalDistance(state.position, pin) < cup.radius && speed < cup.captureSpeed) {
         state = { ...state, position: pin }
         outcome = 'holed'
-      } else if (speed < flight.restSpeed && slopePull <= flight.staticSlopeFactor * contact.rollingFriction * tuning.air.gravity) {
+      } else if (speed < flight.restSpeed && slopePull <= flight.staticSlopeFactor * rollingFriction * tuning.air.gravity) {
         restSurface = nextSurface
         samples.push(state.position[0], state.position[1], state.position[2])
         break
@@ -295,6 +316,7 @@ export function simulateShot(params: ShotParams, seed: number, course: Course = 
     restSurface,
     penalty,
     landing,
+    landingStep,
     carry: landing ? horizontalDistance(landing, origin) : 0,
     apex: apex - origin[1],
     descentDegrees,

@@ -1,67 +1,126 @@
-/** Three-click swing meter as a pure state machine, advanced once per fixed step with whether "swing" was pressed. */
+/** Four-input swing meter as a pure state machine, advanced once per fixed step with the swing button's state: hold for power, tap for path, click-and-hold for contact, release for rhythm. */
 import { tuning, type MeterSpec } from '../tuning'
 
-export type MeterPhase = 'idle' | 'climbing' | 'returning' | 'done'
+export type MeterPhase = 'idle' | 'power' | 'path' | 'contact' | 'rhythm' | 'strike' | 'done'
+
+export interface SwingButton {
+  pressed: boolean
+  released: boolean
+  down: boolean
+}
 
 export interface MeterState {
   phase: MeterPhase
-  /** Needle position: 0 at the bottom of the arc, 1 at full power; it may dip below 0 past the accuracy line. */
-  needle: number
+  /** Outer ring: grows while the button is held, locked on release. */
   power: number
-  /** needle − accuracyLine at the third click: positive is early (hook), negative is late (slice). */
-  accuracy: number
-  /** Accuracy mapped through the curve to [−1, 1]: negative hooks left, positive slices right. */
+  /** Cursor progress between the marks: 0 → 1 runs top to bottom on the path pass, then bottom to top on the contact pass. */
+  cursor: number
+  /** Inner rhythm ring: grows from the centre and reaches its mark at 1. */
+  ring: number
+  /** Seconds into the downswing after the rhythm release. */
+  strike: number
+  /** Cursor − mark at the path tap: negative is early (pull), positive late (push); null until tapped. */
+  pathError: number | null
+  /** Cursor − mark at the contact click: negative is early (closed face, hook), positive late (open face, slice). */
+  contactError: number | null
+  /** Ring − mark at the rhythm release: negative is early, positive late. */
+  rhythmError: number | null
+  /** Start-line miss in [−1, 1]: negative pulls left, positive pushes right. */
+  push: number
+  /** Clubface miss in [−1, 1]: negative hooks left, positive slices right. */
   curve: number
-  /** True when the needle ran past the overshoot limit and the swing was taken for the player. */
-  overshot: boolean
+  /** Fraction of distance lost to a mistimed rhythm release, up to maxRhythmLoss. */
+  rhythmLoss: number
+  /** True when the cursor or ring ran past its mark and the input was taken for the player. */
+  overran: boolean
 }
 
 export function idleMeter(): MeterState {
-  return { phase: 'idle', needle: 0, power: 0, accuracy: 0, curve: 0, overshot: false }
+  return { phase: 'idle', power: 0, cursor: 0, ring: 0, strike: 0, pathError: null, contactError: null, rhythmError: null, push: 0, curve: 0, rhythmLoss: 0, overran: false }
+}
+
+/** The meter right after the swing button goes down: the power ring starts to grow. */
+export function startMeter(): MeterState {
+  return { ...idleMeter(), phase: 'power' }
 }
 
 /**
- * Maps the accuracy sample to a signed curve in [−1, 1]. Inside the perfect zone (a fraction of the window) the shot
- * is straight. Outside it the miss grows as m = ((|a| − z·W) / (W − z·W))^p, clamped to 1, with W the accuracy window,
- * z the perfect-zone fraction and p the accuracy curve exponent. Early clicks (a > 0) hook, so the sign flips.
+ * Maps a timing error to a miss in [0, 1]. Inside the perfect zone z·W it is 0; outside it grows as
+ * m = ((|e| − z·W) / (W − z·W))^p, clamped to 1, with W the window and p the miss curve.
  */
-export function accuracyToCurve(accuracy: number, spec: MeterSpec = tuning.meter): number {
-  const window = spec.accuracyWindow
-  const zone = spec.perfectZone * window
-  const miss = Math.abs(accuracy)
+export function missMagnitude(error: number, window: number, perfect: number, curve: number): number {
+  const zone = perfect * window
+  const miss = Math.abs(error)
   if (miss <= zone) return 0
-  const magnitude = Math.min(1, Math.pow((miss - zone) / Math.max(1e-6, window - zone), spec.accuracyCurve))
-  return accuracy > 0 ? -magnitude : magnitude
+  return Math.min(1, Math.pow((miss - zone) / Math.max(1e-6, window - zone), curve))
+}
+
+export function signedMiss(error: number, spec: MeterSpec = tuning.meter): number {
+  const magnitude = missMagnitude(error, spec.window, spec.perfectZone, spec.missCurve)
+  return error < 0 && magnitude > 0 ? -magnitude : magnitude
+}
+
+export function rhythmLossFor(error: number, spec: MeterSpec = tuning.meter): number {
+  return spec.maxRhythmLoss * missMagnitude(error, spec.rhythmWindow, spec.rhythmPerfect, spec.missCurve)
+}
+
+/** Power that reaches the ball: the locked power less the rhythm loss. */
+export function effectivePower(meter: MeterState): number {
+  return meter.power * (1 - meter.rhythmLoss)
 }
 
 /**
  * Advances the meter by one fixed step.
- *   idle      → climbing   on click 1; the needle rises at climbRate (fraction per second).
- *   climbing  → returning  on click 2 (power = min(needle, 1)), or automatically at the climb cap with full power;
- *                          the needle then falls back at returnRate toward the accuracy line.
- *   returning → done       on click 3: accuracy = needle − accuracyLine. If the needle passes the overshoot limit
- *                          first, the swing is taken with the maximum slice (curve = 1).
- * "done" is terminal until the caller resets to idle after launching the shot.
+ *   idle    → power    when the button goes down.
+ *   power   → path     on release (power locks), or at the cap while still held.
+ *   path    → contact  on a tap: pathError = cursor − 1 sets the push or pull. Running past the overrun is a full push.
+ *   contact → rhythm   on a click: contactError = cursor − 1 sets the face (curve). Running past the overrun is a full
+ *                      slice and skips rhythm with the full loss, because the button was never held.
+ *   rhythm  → strike   on release: rhythmError = ring − 1 sets the distance loss. Holding past the overrun is a full loss.
+ *   strike  → done     after the downswing time, when the ball is struck.
  */
-export function stepMeter(state: MeterState, clicked: boolean, dt: number, spec: MeterSpec = tuning.meter): MeterState {
+export function stepMeter(state: MeterState, button: SwingButton, dt: number, spec: MeterSpec = tuning.meter): MeterState {
   switch (state.phase) {
     case 'idle':
-      return clicked ? { ...idleMeter(), phase: 'climbing' } : state
-    case 'climbing': {
-      const needle = Math.min(spec.climbCap, state.needle + spec.climbRate * dt)
-      if (clicked || needle >= spec.climbCap) return { ...state, phase: 'returning', needle, power: Math.min(1, needle) }
-      return { ...state, needle }
+      return button.pressed ? startMeter() : state
+    case 'power': {
+      if (!button.down) return { ...state, phase: 'path', cursor: 0 }
+      const power = Math.min(spec.powerCap, state.power + spec.powerRate * dt)
+      if (power >= spec.powerCap) return { ...state, phase: 'path', power, cursor: 0 }
+      return { ...state, power }
     }
-    case 'returning': {
-      if (clicked) {
-        const accuracy = state.needle - spec.accuracyLine
-        return { ...state, phase: 'done', accuracy, curve: accuracyToCurve(accuracy, spec) }
+    case 'path': {
+      if (button.pressed) {
+        const pathError = state.cursor - 1
+        return { ...state, phase: 'contact', cursor: 0, pathError, push: signedMiss(pathError, spec) }
       }
-      const needle = state.needle - spec.returnRate * dt
-      if (needle <= spec.overshootLimit) {
-        return { ...state, phase: 'done', needle: spec.overshootLimit, accuracy: spec.overshootLimit - spec.accuracyLine, curve: 1, overshot: true }
+      const cursor = state.cursor + dt / spec.pathSeconds
+      if (cursor > 1 + spec.overrun) return { ...state, phase: 'contact', cursor: 0, pathError: spec.overrun, push: 1, overran: true }
+      return { ...state, cursor }
+    }
+    case 'contact': {
+      if (button.pressed) {
+        const contactError = state.cursor - 1
+        return { ...state, phase: 'rhythm', ring: 0, contactError, curve: signedMiss(contactError, spec) }
       }
-      return { ...state, needle }
+      const cursor = state.cursor + dt / spec.contactSeconds
+      if (cursor > 1 + spec.overrun) {
+        return { ...state, phase: 'strike', cursor, contactError: spec.overrun, curve: 1, rhythmError: -1, rhythmLoss: spec.maxRhythmLoss, overran: true, strike: 0 }
+      }
+      return { ...state, cursor }
+    }
+    case 'rhythm': {
+      if (!button.down) {
+        const rhythmError = state.ring - 1
+        return { ...state, phase: 'strike', strike: 0, rhythmError, rhythmLoss: rhythmLossFor(rhythmError, spec) }
+      }
+      const ring = state.ring + dt / spec.rhythmSeconds
+      if (ring > 1 + spec.rhythmOverrun) return { ...state, phase: 'strike', strike: 0, ring, rhythmError: spec.rhythmOverrun, rhythmLoss: spec.maxRhythmLoss, overran: true }
+      return { ...state, ring }
+    }
+    case 'strike': {
+      const strike = state.strike + dt
+      return strike >= spec.strikeSeconds ? { ...state, phase: 'done', strike: spec.strikeSeconds } : { ...state, strike }
     }
     case 'done':
       return state
