@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { applyCommand, createPark, validatePiece, buildTrackPath, stepTrain, makeTrain, KART_HAIRPIN_SPEED } from './index.mjs'
-import { planPiece, startEnd } from '../../src/lib/park/pathBuilder.ts'
+import { planPiece, startEnd, edgeHeight } from '../../src/lib/park/pathBuilder.ts'
 
 function parkFixture() {
   const state = createPark('meadowbrook')
@@ -106,6 +106,53 @@ test('stairs, flat, flat, turn, flat continues on level ground', () => {
     assert.equal(plan.ok, true, `${segment} ${turn}: ${plan.error}`)
     const res = applyCommand(state, { t: 'path', kind: plan.kind, elevation: plan.elevation, x0: plan.x, y0: plan.y, x1: plan.x, y1: plan.y })
     assert.equal(res.ok, true, res.error)
+    from = plan.end
+  }
+})
+
+function buildRun(state, start, steps, kind) {
+  let from = start
+  const built = []
+  for (const [segment, turn = 0] of steps) {
+    const plan = planPiece(state.map, 0, from, segment, turn, kind)
+    assert.equal(plan.ok, true, `${segment} at step ${built.length}: ${plan.error}`)
+    const result = applyCommand(state, { t: 'path', kind: plan.kind, elevation: plan.elevation, x0: plan.x, y0: plan.y, x1: plan.x, y1: plan.y })
+    assert.equal(result.ok, true, `server refused a planned piece at ${plan.x},${plan.y}: ${result.error}`)
+    if (plan.end.slope === 0) assert.ok(Math.abs(edgeHeight(state.map, plan.x, plan.y, plan.end.dir) - plan.end.exit) < 0.05, `builder lost track of the deck height at ${plan.x},${plan.y}`)
+    built.push(plan)
+    from = plan.end
+  }
+  return built
+}
+
+test('a level boardwalk crosses a pond at one height and steps back onto the far bank', () => {
+  const state = parkFixture()
+  for (let y = 18; y <= 22; y++) for (let x = 24; x <= 30; x++) state.map.water[y * state.map.w + x] = 6.4
+  for (let y = 18; y <= 23; y++) for (let x = 24; x <= 31; x++) state.map.corners[y * (state.map.w + 1) + x] = 5
+  const built = buildRun(state, { ...startEnd(state.map, 20, 20), dir: 0 }, Array.from({ length: 14 }, () => ['level']), 4)
+  const overWater = built.filter(p => p.x >= 24 && p.x <= 30)
+  assert.ok(overWater.length >= 6)
+  const decks = new Set(overWater.map(p => p.end.exit.toFixed(2)))
+  assert.equal(decks.size, 1, `deck changed height over the water: ${[...decks]}`)
+  assert.ok(overWater[0].end.exit > 6.4)
+})
+
+test('a level boardwalk climbs onto rising ground and holds its height where the ground falls away', () => {
+  const state = parkFixture()
+  const W = state.map.w + 1
+  for (let y = 0; y <= state.map.h; y++) for (let x = 0; x <= state.map.w; x++) state.map.corners[y * W + x] = 6 + Math.max(0, Math.min(2, (x - 24) * 0.5)) - Math.max(0, Math.min(2, (x - 34) * 0.5))
+  buildRun(state, { ...startEnd(state.map, 20, 20), dir: 0 }, Array.from({ length: 18 }, () => ['level']), 4)
+})
+
+test('the path builder refuses, on the ghost, a piece the server would refuse for a tall step to a side path', () => {
+  const state = parkFixture()
+  assert.equal(applyCommand(state, { t: 'path', kind: 1, x0: 24, y0: 21, x1: 24, y1: 21 }).ok, true)
+  let from = { ...startEnd(state.map, 20, 20), dir: 0 }
+  for (const segment of ['level', 'up', 'up', 'up']) {
+    const plan = planPiece(state.map, 0, from, segment, 0, 4)
+    if (!plan.ok) { assert.match(plan.error, /different height|stairs/); return }
+    const result = applyCommand(state, { t: 'path', kind: plan.kind, elevation: plan.elevation, x0: plan.x, y0: plan.y, x1: plan.x, y1: plan.y })
+    assert.equal(result.ok, true, `planned piece refused by the server: ${result.error}`)
     from = plan.end
   }
 })
