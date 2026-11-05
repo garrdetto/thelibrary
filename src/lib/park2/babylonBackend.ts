@@ -29,12 +29,12 @@ type ParkMesh = {
   version: number
 }
 
-type Tier = { shadowRes: number; cascades: number; taps: number; frame: boolean; samples: number; bloom: number; ssao: boolean; lamps: number; grading: boolean }
+type Tier = { shadowRes: number; cascades: number; taps: number; frame: boolean; samples: number; bloom: number; ssao: boolean; lamps: number; grading: boolean; fx: number; haze: number }
 
 const TIERS: Tier[] = [
-  { shadowRes: 1024, cascades: 1, taps: 4, frame: false, samples: 1, bloom: 0, ssao: false, lamps: 8, grading: false },
-  { shadowRes: 2048, cascades: 2, taps: 8, frame: true, samples: 2, bloom: 0.08, ssao: false, lamps: 16, grading: true },
-  { shadowRes: 2048, cascades: 3, taps: 12, frame: true, samples: 4, bloom: 0.1, ssao: true, lamps: 24, grading: true },
+  { shadowRes: 1024, cascades: 1, taps: 4, frame: false, samples: 1, bloom: 0, ssao: false, lamps: 10, grading: false, fx: 0, haze: 0.0007 },
+  { shadowRes: 2048, cascades: 2, taps: 8, frame: true, samples: 2, bloom: 0.12, ssao: false, lamps: 20, grading: true, fx: 1, haze: 0.0012 },
+  { shadowRes: 2048, cascades: 3, taps: 12, frame: true, samples: 4, bloom: 0.17, ssao: true, lamps: 32, grading: true, fx: 2, haze: 0.0017 },
 ]
 
 const ZOOMS = [1, 3.2, 10]
@@ -599,10 +599,11 @@ export class BabylonBackend implements RenderBackend {
     set(1, light.sunColor, light.neon ?? 0.6)
     set(2, light.sky, light.exposure)
     set(3, light.ground, time)
-    set(4, light.horizon, light.fogDensity)
+    set(4, light.horizon, light.fogDensity > 0 ? light.fogDensity : this.tier.haze * (light.wind > 0.1 ? 1.8 : 1))
     set(5, light.fog, light.fogFalloff)
     set(6, light.sunScatter, this.detailLoaded ? 1 : 0)
     set(7, this.camPark, this.tier.frame ? 0 : 1)
+    g[22 * 4] = Math.max(0, this.tier.fx - (this.scale < 0.75 ? 1 : 0))
     this.windLevel = light.wind
     if (this.skyMaterial) {
       this.skyTop.set(light.skyTop[0], light.skyTop[1], light.skyTop[2])

@@ -222,11 +222,19 @@ export function addPerson(b: MeshBuilder, o: PersonOpts) {
     b.limb(P(...knee), P(...ankle), 0.06 * sc, 0.042 * sc, o.shorts ? o.skin : o.pants, 0, n(10))
     const m = mat4.chain(mat4.translation(...P(ankle[0] + 0.05, ankle[1], Math.max(0.05, ankle[2] - 0.04))), mat4.rotY(g.footPitch), S(1.75 * sc, 0.8 * sc, 0.62 * sc))
     b.sphere(m, 0, 0, 0, 0.075, o.shoes, 0, n(6), n(10))
+    if (hi) {
+      const sole = mat4.chain(mat4.translation(...P(ankle[0] + 0.05, ankle[1], Math.max(0.05, ankle[2] - 0.04) - 0.03)), mat4.rotY(g.footPitch), S(1.8 * sc, 0.84 * sc, 0.2 * sc))
+      b.sphere(sole, 0, 0, 0, 0.075, C.dark, 0, 4, 10)
+    }
   }
   b.sphere(mat4.chain(mat4.translation(...P(0, 0, H + 0.04)), S(0.72, 1, 0.62)), 0, 0, 0, 0.19 * sc, o.pants, 0, n(7), n(12))
   const torso = mat4.chain(mat4.translation(...P(0, 0, H + 0.02)), mat4.rotY(walking ? 0.06 : 0), S(0.7, 1, 1))
   b.cylinder(torso, 0, 0, 0, 0.17 * sc, 0.215 * sc, 0.43 * sc, hi ? 16 : 8, shirt, st, false)
   b.sphere(mat4.chain(mat4.translation(...P(walking ? 0.03 : 0, 0, H + 0.45)), S(0.7, 1, 0.42)), 0, 0, 0, 0.215 * sc, shirt, st, n(7), n(14))
+  if (hi) {
+    b.cylinder(torso, 0, 0, 0, 0.176 * sc, 0.18 * sc, 0.04 * sc, 16, C.dark, 0, false)
+    b.cylinder(null, ...P(walking ? 0.035 : 0, 0, H + 0.485), 0.062 * sc, 0.056 * sc, 0.035 * sc, 10, shirt, st, false)
+  }
   const neckBase = P(walking ? 0.035 : 0, 0, H + 0.5), headC: Vec3 = P(walking ? 0.05 : 0.01, 0, H + 0.71)
   b.limb(neckBase, P(walking ? 0.045 : 0.01, 0, H + 0.62), 0.05 * sc, 0.045 * sc, o.skin, 0, n(8))
   b.sphere(null, ...headC, 0.108 * sc, o.skin, 0, n(9), n(12), 1.2)
