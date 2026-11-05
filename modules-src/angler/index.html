@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <title>Northwoods Angler · the library</title>
     <style>
-      :root{--accent:#3fb8a8;--panel:rgba(12,20,26,.78);--panel-solid:#101a21;--line:rgba(160,210,220,.18);--text:#e8f1f2;--soft:#a9bec2;--muted:#7f969b;--good:#7bd88f;--warn:#ffcf4a}
+      :root{--accent:#3fc7b6;--panel:rgba(24,46,58,.64);--panel-solid:#16262f;--line:rgba(160,210,220,.18);--text:#e8f1f2;--soft:#a9bec2;--muted:#7f969b;--good:#7bd88f;--warn:#ffcf4a}
       html,body{margin:0;height:100%;background:#0a1116;color:var(--text);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
       #stage{position:fixed;inset:0;touch-action:none}
       #scene{width:100%;height:100%;display:block}
@@ -16,7 +16,7 @@
       .ang-btn[aria-pressed=true]{background:var(--accent);color:#04211d;border-color:transparent}
       .ang-btn:focus-visible,.ang-lake:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
       .ang-btn.is-primary{background:var(--accent);color:#04211d;border-color:transparent}
-      #loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 40%,#183038,#070c10);z-index:50}
+      #loading{position:fixed;inset:0;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 40%,#3a6f7c,#142a33);z-index:50}
       #loading div{display:grid;gap:10px;justify-items:center;text-align:center}
       #loading strong{font:800 30px Rajdhani,Inter,sans-serif;letter-spacing:.5px}
       .ang-spinner{width:34px;height:34px;border-radius:50%;border:3px solid var(--line);border-top-color:var(--accent);animation:spin 1s linear infinite}
@@ -78,8 +78,21 @@
       #crew .ang-btn{padding:6px 10px;font-size:12px}
       #crew .crew-actions{display:flex;gap:6px;flex-wrap:wrap}
       #crew p{margin:0;color:var(--muted)}
-      #fish-status{position:absolute;bottom:118px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font:750 14px Rajdhani,Inter,sans-serif;letter-spacing:.4px}
-      #toasts{position:absolute;bottom:158px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column-reverse;gap:6px;align-items:center;width:min(560px,92vw);pointer-events:none}
+      #fish-status{position:absolute;bottom:200px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font:750 14px Rajdhani,Inter,sans-serif;letter-spacing:.4px}
+      #reel{position:absolute;bottom:112px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;padding:8px 10px;border-radius:16px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px)}
+      #btn-reel{min-width:150px;padding:12px 18px;font:800 17px Rajdhani,Inter,sans-serif;letter-spacing:.6px;border-radius:12px;touch-action:none}
+      #btn-reel.is-strike{background:#ffcf4a;animation:strike .45s ease-in-out infinite alternate}
+      #btn-reel.is-held{filter:brightness(1.15);transform:scale(.97)}
+      @keyframes strike{to{transform:scale(1.08);box-shadow:0 0 0 6px rgba(255,207,74,.35)}}
+      .reel-meters{display:grid;gap:5px;width:150px}
+      .reel-meter small{display:flex;justify-content:space-between;font:700 10px Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--soft)}
+      .meter{position:relative;height:9px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden}
+      .meter i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:linear-gradient(90deg,var(--good),var(--warn) 70%,#ff6a4a);transition:width .08s linear}
+      .meter.is-line i{background:#8fd3ff}
+      .meter b{position:absolute;top:0;bottom:0;left:83%;width:2px;background:rgba(255,255,255,.7)}
+      .meter.is-hot{animation:hot .2s linear infinite alternate}
+      @keyframes hot{to{background:rgba(255,106,74,.45)}}
+      #toasts{position:absolute;bottom:240px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column-reverse;gap:6px;align-items:center;width:min(560px,92vw);pointer-events:none}
       @media (max-height:660px){#crew p,.hud-info #stat-outlook,.hud-info #guest-note{display:none}#toasts{max-height:30vh;overflow:hidden}}
       .ang-toast{padding:8px 14px;border-radius:12px;background:var(--panel-solid);border:1px solid var(--line);font-size:13px;font-weight:600;box-shadow:0 10px 30px -12px rgba(0,0,0,.6);animation:toast-in .25s ease-out}
       .ang-toast.is-good{border-color:color-mix(in srgb,var(--good) 60%,transparent)}
@@ -100,12 +113,20 @@
       #card-banner{font:800 15px Rajdhani,Inter,sans-serif;color:#ffcf4a;letter-spacing:.6px;text-transform:uppercase}
       #card-meta,#card-fact{font-size:12.5px;color:var(--soft);margin:0}
       #card-credits{font-weight:750;color:#ffe7a3;font-size:13px}
+      #card-fight{font:750 13px Inter,sans-serif;color:var(--good)}
       #records-panel .ang-card{width:min(820px,100%)}
-      .rec-hall{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
-      .rec-card{cursor:pointer;text-align:left;display:grid;gap:2px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
-      .rec-card span{font-size:12px;color:var(--accent);font-weight:700}
-      .rec-card strong{font:800 20px Rajdhani,Inter,sans-serif}
-      .rec-card em{font-style:normal;font-size:11.5px;color:var(--muted)}
+      .rec-hall{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;align-items:start}
+      .rec-card{text-align:left;display:grid;align-content:start;gap:6px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.05)}
+      .rec-card>span{font-size:13px;color:var(--accent);font-weight:800;letter-spacing:.3px}
+      .rec-card ol{margin:0;padding:0;list-style:none;display:grid;gap:5px}
+      .rec-card li{display:flex;gap:8px;align-items:flex-start}
+      .rec-card li.is-empty{font-size:12px;color:var(--muted)}
+      .rec-medal{font-size:16px;line-height:1.3}
+      .rec-fish{display:grid}
+      .rec-fish strong{font:800 18px Rajdhani,Inter,sans-serif}
+      .rec-fish small{display:inline;color:var(--muted);font-size:11.5px}
+      .rec-fish em{font-style:normal;font-size:12px;color:var(--soft)}
+      .rec-fish time{font-size:11.5px;color:var(--muted)}
       .rec-scroll{overflow-x:auto}
       .rec-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
       .rec-table th,.rec-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
@@ -115,7 +136,8 @@
       .podium-1 td:first-child{color:#ffcf4a;font-weight:800}
       .ang-select{font:600 13px Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
       .ang-lake b{font-size:12px;color:var(--warn)}
-      @media (max-width:760px){#catch-card{top:auto;bottom:118px;left:50%;right:auto;transform:translateX(-50%)}#sonar{display:none}#catch-log{display:none}.hud-rig select{max-width:120px}}
+      @media (max-width:640px){.reel-meters{width:110px}#btn-reel{min-width:120px}#reel{bottom:140px}#fish-status{bottom:222px}#toasts{bottom:262px}}
+      @media (max-width:760px){#catch-card{top:auto;bottom:200px;left:50%;right:auto;transform:translateX(-50%)}#sonar{display:none}#catch-log{display:none}.hud-rig select{max-width:120px}}
       #panel{position:fixed;top:0;bottom:0;right:0;z-index:35;width:min(560px,100vw);overflow:auto;padding:14px 16px 20px;background:rgba(10,18,22,.94);border-left:1px solid var(--line);backdrop-filter:blur(8px);display:grid;align-content:start;gap:10px}
       #panel h2{margin:0;font:800 22px Rajdhani,Inter,sans-serif}
       #panel h3{margin:10px 0 4px;font:750 15px Rajdhani,Inter,sans-serif;letter-spacing:.4px;color:var(--accent)}
@@ -175,7 +197,7 @@
       <div class="ang-card">
         <div class="ang-row"><span class="ang-eyebrow">Pick your water</span><button class="ang-btn" id="lakes-close" type="button" hidden>Back to the lake</button></div>
         <h1 id="lakes-title">Northwoods Angler</h1>
-        <p>Choose a lake, drive the boat to a spot, drop anchor and let the lake decide. The water follows the real clock and calendar in central Wisconsin.</p>
+        <p>Choose a lake, drive the boat to a spot and drop anchor. When the bobber dips, hit <strong>Reel In</strong> (or hold F) to set the hook, crank the fish in and ease off when it runs. Two anglers to a boat, four boats to a lake. The water follows the real clock and calendar in central Wisconsin.</p>
         <div id="lake-list"></div>
       </div>
     </section>
@@ -206,6 +228,13 @@
         </div>
       </div>
       <div id="fish-status" role="status" hidden></div>
+      <div id="reel" data-ui hidden>
+        <div class="reel-meters" id="reel-meters" hidden>
+          <div class="reel-meter"><small><span>Tension</span><span id="reel-tension-text"></span></small><div class="meter" id="reel-tension-bar"><i id="reel-tension"></i><b></b></div></div>
+          <div class="reel-meter"><small><span>Line out</span><span id="reel-line-text"></span></small><div class="meter is-line"><i id="reel-line"></i></div></div>
+        </div>
+        <button class="ang-btn is-primary" id="btn-reel" type="button" title="Reel in (hold F)">Reel in</button>
+      </div>
       <div id="toasts" aria-live="polite"></div>
       <ul id="catch-log" hidden aria-label="Recent catches"></ul>
       <div id="stick" data-ui aria-label="Drive stick"><div data-knob></div></div>
@@ -230,6 +259,7 @@
       <span id="card-latin"></span>
       <div class="card-numbers"><div><small>Weight</small><span id="card-weight"></span></div><div><small>Length</small><span id="card-length"></span></div></div>
       <p id="card-meta"></p>
+      <span id="card-fight" hidden></span>
       <span id="card-credits"></span>
       <p id="card-fact"></p>
     </section>
@@ -244,7 +274,7 @@
     <section id="records-panel" class="ang-screen" hidden aria-labelledby="records-title">
       <div class="ang-card" data-ui>
         <div class="ang-row"><h2 id="records-title">Record book</h2><button class="ang-btn" id="records-close" type="button">Close</button></div>
-        <div class="ang-row"><select id="rec-species" class="ang-select" aria-label="Board"></select><span id="rec-filters" class="ang-row"><select id="rec-lake" class="ang-select" aria-label="Lake"></select><select id="rec-period" class="ang-select" aria-label="Period"><option value="all">All time</option><option value="month">This month</option></select></span></div>
+        <div class="ang-row"><select id="rec-species" class="ang-select" aria-label="Species"></select></div>
         <p class="ang-note" id="rec-note"></p>
         <div id="rec-body"></div>
       </div>

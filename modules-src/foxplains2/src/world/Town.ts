@@ -10,6 +10,7 @@
 import * as pc from 'playcanvas';
 import { ChunkedBuilders, MeshBuilder, meshEntity, hexRGB, mixRGB, type RGB } from '../core/Geo';
 import type { Mats } from '../core/Tex';
+import { groundShader, type GroundLook } from '../core/GroundShader';
 import type { Physics } from '../physics/Physics';
 import {
   CIVIC_BLOCK, CURB_CUTS, CURVES, curveDistance, DEPOT, DOWNTOWN, drivewayRect, GRID_AREA, makeLots, ROAD_W, ROADS, SIDEWALKS,
@@ -37,6 +38,12 @@ const subtractAll = (a: Rect, cuts: Rect[]) => cuts.reduce<Rect[]>((pieces, c) =
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
 
 const ROAD_Y = 0.02, LINE_Y = 0.032, WALK_H = 0.12, DRIVE_Y = 0.035, LAWN_Y = 0.012;
+
+/** Ground shader settings (GroundShader.ts): macro drift, how much of the second read, macro size, dry/worn tint. */
+const GRASS_LOOK: GroundLook = { variation: 0.32, antiTile: 0.9, macroSize: 140, dry: [1.25, 1.08, 0.66] };
+const LAWN_LOOK: GroundLook = { variation: 0.14, antiTile: 0.8, macroSize: 90, dry: [1.08, 1.04, 0.84] };
+const ASPHALT_LOOK: GroundLook = { variation: 0.22, antiTile: 0.85, macroSize: 70, dry: [1.3, 1.27, 1.22] };
+const CONCRETE_LOOK: GroundLook = { variation: 0.12, antiTile: 0.6, macroSize: 50, dry: [0.88, 0.86, 0.82] };
 const YELLOW: RGB = hexRGB(0xe8b833), WHITE: RGB = hexRGB(0xf2f1ea);
 
 // ---------------------------------------------------------------- lawns
@@ -56,17 +63,23 @@ export class Lawn {
 
   mow(s: MowStroke, nowDays: number) { mowCells(this.cells, this.lot, s, nowDays); this.dirty = true; }
 
-  /** Fresh cuts are light or dark by lean and fade back to long grass over five days. */
+  /**
+   * Writes each cell into the atlas for the ground shader (GroundShader.ts):
+   * R = how freshly cut (fades to 0 as the grass grows back over five days),
+   * G/B = blade lean in world XZ. The shader turns lean against the view
+   * direction into light and dark stripes.
+   */
   paint(px: Uint8Array, stride: number, nowDays: number) {
     this.dirty = false;
     const { t, a } = this.cells, w = this.lot.w, d = this.lot.d;
     for (let z = 0; z < d; z++) for (let x = 0; x < w; x++) {
-      const i = z * w + x;
-      const g = t[i] ? growthOf(ageDays(t[i], nowDays)) : 1;
-      const lean = t[i] ? Math.cos(byteToAngle(a[i]) * 2) : 0;
-      const k = (0.78 + (1 - g) * (0.1 + lean * 0.14) - g * 0.06) * 255;
-      const yellow = g * 10, o = ((this.ay + z) * stride + this.ax + x) * 4;
-      px[o] = Math.min(255, k + yellow); px[o + 1] = Math.min(255, k + yellow * 0.4); px[o + 2] = Math.min(255, k * 0.9); px[o + 3] = 255;
+      const i = z * w + x, o = ((this.ay + z) * stride + this.ax + x) * 4;
+      const cut = t[i] ? 1 - growthOf(ageDays(t[i], nowDays)) : 0;
+      const ang = byteToAngle(a[i]);
+      px[o] = cut * 255;
+      px[o + 1] = cut > 0 ? 127.5 + Math.cos(ang) * 127.5 : 128;
+      px[o + 2] = cut > 0 ? 127.5 + Math.sin(ang) * 127.5 : 128;
+      px[o + 3] = 255;
     }
   }
 }
@@ -148,14 +161,14 @@ export class Town {
     const b = new MeshBuilder();
     const H = WORLD_HALF, step = 160;
     for (let x = -H; x < H; x += step) for (let z = -H; z < H; z += step) b.flat(x, z, x + step, z + step, 0);
-    const e = meshEntity('ground', [{ mesh: b.toMesh(this.device), material: this.mats.textured('grass', 'grass') }], { cast: false });
+    const e = meshEntity('ground', [{ mesh: b.toMesh(this.device), material: this.mats.ground('grass', 'grass', GRASS_LOOK) }], { cast: false });
     this.root.addChild(e);
   }
 
   // ------------------------------------------------------------ roads
 
   private buildRoads() {
-    const asphalt = this.mats.textured('asphalt', 'asphalt');
+    const asphalt = this.mats.ground('asphalt', 'asphalt', ASPHALT_LOOK);
     const paintMat = this.mats.plain('road-paint', { gloss: 0.4, vcolor: true });
     paintMat.depthBias = -1; paintMat.slopeDepthBias = -1; paintMat.update();
     const chunks = new ChunkedBuilders(128);
@@ -210,7 +223,7 @@ export class Town {
     });
 
     // Curved streets: ribbons along their centerlines (drawn over the straight asphalt where they join).
-    const curveMat = this.mats.textured('asphalt-curve', 'asphalt');
+    const curveMat = this.mats.ground('asphalt-curve', 'asphalt', ASPHALT_LOOK);
     curveMat.depthBias = -0.5; curveMat.slopeDepthBias = -0.5; curveMat.update();
     for (const c of CURVES) {
       for (let i = 0; i < c.pts.length - 1; i += 40) {
@@ -234,8 +247,8 @@ export class Town {
   // ------------------------------------------------------------ sidewalks and driveways
 
   private buildWalksAndDrives() {
-    const concrete = this.mats.textured('concrete', 'concrete');
-    const drive = this.mats.textured('driveway', 'concrete', { tile: 3 });
+    const concrete = this.mats.ground('concrete', 'concrete', CONCRETE_LOOK);
+    const drive = this.mats.ground('driveway', 'concrete', CONCRETE_LOOK, { tile: 3 });
     const chunks = new ChunkedBuilders(128);
     const drives = this.lots.map(l => rectOf(drivewayRect(l)));
     const cuts = [...drives, ...CURB_CUTS.map(rectOf)];
@@ -261,11 +274,11 @@ export class Town {
     this.atlas = new pc.Texture(this.device, { name: 'lawn-atlas', width: ATLAS, height: ATLAS, format: pc.PIXELFORMAT_RGBA8, mipmaps: false, minFilter: pc.FILTER_LINEAR, magFilter: pc.FILTER_LINEAR, addressU: pc.ADDRESS_CLAMP_TO_EDGE, addressV: pc.ADDRESS_CLAMP_TO_EDGE });
     const base = this.mats.textured('lawn', 'lawn');
     const m = base.clone() as pc.StandardMaterial;
-    m.diffuse.set(1.12, 1.12, 1.12);
+    m.name = 'lawn-mowable';
     m.diffuseDetailMap = this.atlas;
     m.diffuseDetailMapUv = 1;
     m.diffuseDetailMode = pc.DETAILMODE_MUL;
-    m.update();
+    groundShader(m, this.mats.macro(), LAWN_LOOK);
     const chunks = new ChunkedBuilders(128);
     let sx = 1, sy = 1, row = 0;
     for (const lot of this.lots) {

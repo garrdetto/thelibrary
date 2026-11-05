@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CREW_SIZE, CROWD_RADIUS, crowdAt, freeSeat, inviteCode, parseInvite, peerCode } from '../shared/Online'
+import { BOATS_PER_INSTANCE, CREW_SIZE, CROWD_RADIUS, INSTANCE_CAPACITY, crowdAt, freeSeat, inviteCode, parseInvite, peerCode } from '../shared/Online'
 import { lakeIds } from '../shared/Lakes'
 import { mulberry32 } from '../shared/Random'
 import { activity, conditionsAt } from '../shared/Catch'
@@ -19,11 +19,12 @@ test('invite codes round-trip and fit the library chat format', () => {
   assert.equal(parseInvite('08ABCD'), null)
 })
 
-test('crews fill seats one to three and stop at four', () => {
+test('two anglers to a boat, four boats to a lake', () => {
   assert.equal(freeSeat([0]), 1)
-  assert.equal(freeSeat([0, 1, 3]), 2)
-  assert.equal(freeSeat([0, 1, 2, 3]), -1)
-  assert.equal(CREW_SIZE, 4)
+  assert.equal(freeSeat([0, 1]), -1)
+  assert.equal(CREW_SIZE, 2)
+  assert.equal(BOATS_PER_INSTANCE, 4)
+  assert.equal(INSTANCE_CAPACITY, 8)
 })
 
 test('nearby boats thin the bite, distant ones do not', () => {

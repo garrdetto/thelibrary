@@ -233,3 +233,12 @@ export function formatLength(inches: number): string {
   const f = frac === 0.25 ? '¼' : frac === 0.5 ? '½' : frac === 0.75 ? '¾' : ''
   return `${whole}${f} in`
 }
+
+/** When a catch was landed, in lake time (central): "Nov 4, 2026 · 6:42 AM". */
+export function formatCaught(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const day = d.toLocaleDateString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', year: 'numeric' })
+  const time = d.toLocaleTimeString('en-US', { timeZone: 'America/Chicago', hour: 'numeric', minute: '2-digit' })
+  return `${day} · ${time}`
+}

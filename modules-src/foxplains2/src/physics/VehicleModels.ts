@@ -17,10 +17,64 @@
 import * as pc from 'playcanvas';
 import { meshEntity, MeshBuilder } from '../core/Geo';
 import type { Assets } from '../core/Assets';
-import { TUNING, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
+import { BODY_EXTENTS, TUNING, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
+import { BUNDLED_VEHICLES } from '../../../maplestreet/shared/BundledVehicles';
 import { customVehicleRecord, type CustomVehicleRecord } from '../../../maplestreet/shared/CustomVehicles';
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
+import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
+
+/** Built-in kinds drawn from primitives rather than a .glb. */
+const PROCEDURAL = new Set(['mower']);
+
+/**
+ * Built-in kinds that draw with one of the realistic scanned bodies
+ * (shared/BundledVehicles.ts) instead of their low-poly model. Physics stay
+ * the built-in's; the scan is scaled to the built-in's body length, centred on
+ * its axles and lowered so its wheel arches sit on the built-in wheel centres.
+ */
+const STAND_INS: Record<string, string> = {
+  sedan: 'bundled-meridian-sedan',
+  coupe: 'bundled-lakeshore-coupe',
+  truck: 'bundled-bulwark-4x4',
+  hdtruck: 'bundled-ironhorn-crew-cab',
+};
+
+function standIn(kind: string, tuning: VehicleTuning): CustomVehicleRecord | null {
+  const id = STAND_INS[kind], ext = BODY_EXTENTS[kind as keyof typeof BODY_EXTENTS];
+  if (!id || !ext) return null;
+  const rec = customVehicleRecord(`custom:${id}`) ?? BUNDLED_VEHICLES.find(r => r.id === id);
+  if (!rec) return null;
+  const B = rec.physics, s = (ext.front - ext.rear) / (2 * B.chassis.hx);
+  const bMid = (B.axles[0].x + B.axles[B.axles.length - 1].x) / 2, tMid = (tuning.axles[0].x + tuning.axles[tuning.axles.length - 1].x) / 2;
+  const bY = B.wheelY - B.suspension.rest, tY = tuning.wheelY - tuning.suspension.rest;
+  const at = (p: { x: number; y: number; z: number }) => ({ x: tMid + s * (p.x - bMid), y: tY + s * (p.y - bY), z: s * p.z });
+  return {
+    ...rec,
+    model: { ...rec.model, ...at(rec.model), scale: rec.model.scale * s },
+    lights: { head: rec.lights.head.map(at), tail: rec.lights.tail.map(at) },
+    physics: { ...B, axles: B.axles.map(a => ({ ...a, x: tMid + s * (a.x - bMid), radius: a.radius * s, width: a.width * s, halfTrack: a.halfTrack * s })) },
+  };
+}
+
+/**
+ * Uploaded bodies draw exactly as authored (geometry, color, normal, metal and
+ * roughness maps untouched), like classic Fox Plains' CustomVehicleModels:
+ * only their textures get 8x anisotropic filtering so panels stay crisp at
+ * grazing angles.
+ */
+const sharpened = new WeakSet<pc.Texture>();
+function sharpenScan(model: pc.Entity) {
+  for (const r of model.findComponents('render') as pc.RenderComponent[]) for (const mi of r.meshInstances) {
+    const m = mi.material as pc.StandardMaterial;
+    if (!(m instanceof pc.StandardMaterial)) continue;
+    for (const t of [m.diffuseMap, m.normalMap, m.glossMap, m.metalnessMap, m.aoMap, m.emissiveMap]) {
+      if (!t || sharpened.has(t)) continue;
+      sharpened.add(t);
+      t.anisotropy = 8;
+    }
+  }
+}
 
 export interface WheelView { steer: pc.Entity; spin: pc.Entity; axle: number; side: number; caster: boolean }
 
@@ -40,41 +94,88 @@ export interface VehicleView {
 const FINISH = { gloss: { metal: 0.15, gloss: 0.82, cc: 1 }, metallic: { metal: 0.55, gloss: 0.74, cc: 1 }, matte: { metal: 0.05, gloss: 0.28, cc: 0 } } as const;
 const hex = (h: string | number) => { const n = typeof h === 'number' ? h : parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255] as const; };
 
+function opaque(m: pc.StandardMaterial) {
+  m.blendType = pc.BLEND_NONE; m.depthWrite = true; m.cull = pc.CULLFACE_BACK;
+  m.opacity = 1; m.opacityMap = null; m.alphaTest = 0;
+  return m;
+}
+
 let sharedMats: { rubber: pc.StandardMaterial; rim: pc.StandardMaterial } | null = null;
 function wheelMats() {
   if (sharedMats) return sharedMats;
-  const rubber = new pc.StandardMaterial(); rubber.diffuse.set(0.08, 0.08, 0.08); rubber.useMetalness = true; rubber.metalness = 0; rubber.gloss = 0.2; rubber.update();
-  const rim = new pc.StandardMaterial(); rim.diffuseVertexColor = true; rim.diffuseVertexColorChannel = 'rgb'; (rim as unknown as { vertexColorGamma: boolean }).vertexColorGamma = true;
-  rim.useMetalness = true; rim.metalness = 0.85; rim.gloss = 0.72; rim.update();
+  const rubber = opaque(new pc.StandardMaterial()); rubber.diffuse.set(0.045, 0.045, 0.048); rubber.useMetalness = true; rubber.metalness = 0; rubber.gloss = 0.3; rubber.update();
+  const rim = opaque(new pc.StandardMaterial()); rim.diffuseVertexColor = true; rim.diffuseVertexColorChannel = 'rgb'; (rim as unknown as { vertexColorGamma: boolean }).vertexColorGamma = true;
+  rim.useMetalness = true; rim.metalness = 0.9; rim.gloss = 0.78; rim.update();
   sharedMats = { rubber, rim };
   return sharedMats;
 }
 
-/** One tire mesh and one rim-and-hub mesh per wheel size: two draw calls a wheel. */
+/**
+ * One tire mesh and one rim-and-hub mesh per wheel size: two draw calls a
+ * wheel. Both are closed surfaces of revolution (sidewalls, rounded shoulders,
+ * a dished rim face with spokes and a hub), built around +Y and turned onto
+ * the axle; the rim's outer face is on +Z, and left wheels turn it outward.
+ */
 const wheelMeshes = new Map<string, { tire: pc.Mesh; rim: pc.Mesh }>();
 function wheelMesh(device: pc.GraphicsDevice, radius: number, width: number) {
   const key = `${radius.toFixed(3)}|${width.toFixed(3)}`;
   let w = wheelMeshes.get(key);
   if (w) return w;
   const axleZ = new pc.Mat4().setFromEulerAngles(90, 0, 0);
+  const R = radius, h = width / 2, Ri = R * 0.64;
   const tire = new MeshBuilder().transform(axleZ);
-  tire.cylinder(0, -width / 2, 0, radius * 0.97, radius * 0.97, width, 28, false);
-  tire.cylinder(0, -width / 2 + 0.01, 0, radius, radius, width - 0.02, 28, false);
+  tire.lathe([
+    [Ri, -h * 0.9], [R * 0.78, -h], [R * 0.92, -h * 0.97], [R * 0.975, -h * 0.84], [R, -h * 0.6],
+    [R, h * 0.6], [R * 0.975, h * 0.84], [R * 0.92, h * 0.97], [R * 0.78, h], [Ri, h * 0.9],
+  ], 36, true);
+  // Inner liner so the tire never shows daylight between bead and rim.
+  tire.lathe([[Ri * 0.99, h * 0.9], [Ri * 0.99, -h * 0.9]], 36, true);
   const rim = new MeshBuilder().transform(axleZ);
-  rim.color = [0.78, 0.8, 0.83];
-  rim.cylinder(0, -width / 2 - 0.005, 0, radius * 0.64, radius * 0.64, width + 0.01, 24, true);
-  rim.cylinder(0, -width / 2 - 0.006, 0, radius * 0.64, radius * 0.64, 0.002, 24, true);
-  rim.color = [0.16, 0.17, 0.19];
-  rim.cylinder(0, width / 2, 0, radius * 0.2, radius * 0.16, 0.03, 12, true);
-  rim.cylinder(0, -width / 2 - 0.03, 0, radius * 0.16, radius * 0.2, 0.03, 12, true);
+  rim.color = [0.66, 0.68, 0.71];
+  rim.lathe([[Ri * 1.04, h * 0.92], [Ri * 0.96, h * 0.99], [Ri * 0.88, h * 0.93], [Ri * 0.8, h * 0.8], [Ri * 0.34, h * 0.72], [Ri * 0.28, h * 0.84]], 32, false);
+  rim.color = [0.2, 0.21, 0.23];
+  rim.lathe([[Ri * 0.28, h * 0.84], [Ri * 0.2, h * 0.98], [0.0001, h * 1.02]], 20, true);
+  rim.lathe([[0.0001, -h * 0.8], [Ri * 0.97, -h * 0.8], [Ri * 0.97, h * 0.92]], 28, false);
+  rim.color = [0.6, 0.62, 0.65];
   for (let i = 0; i < 5; i++) {
-    const m = new pc.Mat4().setTRS(pc.Vec3.ZERO, new pc.Quat().setFromEulerAngles(0, 0, i * 72), pc.Vec3.ONE);
-    rim.transform(m);
-    for (const z of [width / 2 + 0.006, -width / 2 - 0.012]) rim.box(radius * 0.15, -radius * 0.05, z, radius * 0.6, radius * 0.05, z + 0.012);
+    rim.transform(new pc.Mat4().mul2(axleZ, new pc.Mat4().setFromEulerAngles(0, i * 72, 0)));
+    rim.box(Ri * 0.3, h * 0.7, -Ri * 0.07, Ri * 0.84, h * 0.86, Ri * 0.07);
   }
   w = { tire: tire.toMesh(device), rim: rim.toMesh(device, true) };
   wheelMeshes.set(key, w);
   return w;
+}
+
+/**
+ * glTF materials as they come out of the asset pipeline: palette-merged, so a
+ * BLEND material is a whole greenhouse of glass and every opaque one still
+ * carries the palette's alpha as an opacity map. Opaque parts are forced to
+ * BLEND_NONE with depth writes and back-face culling (no sorting against the
+ * glass); glass becomes a dielectric with reflections that don't fade with
+ * its alpha, so windows read as tinted glass instead of holes.
+ */
+const fixed = new WeakSet<pc.Material>();
+function fixModelMaterials(model: pc.Entity) {
+  for (const r of model.findComponents('render') as pc.RenderComponent[]) {
+    for (const mi of r.meshInstances) {
+      const m = mi.material as pc.StandardMaterial;
+      if (!(m instanceof pc.StandardMaterial) || fixed.has(m)) continue;
+      fixed.add(m);
+      if (m.blendType === pc.BLEND_NONE && !m.opacityMap && m.opacity >= 1) { m.cull = pc.CULLFACE_BACK; m.depthWrite = true; m.update(); continue; }
+      const glass = m.blendType !== pc.BLEND_NONE;
+      if (!glass) { opaque(m); m.update(); continue; }
+      m.opacityMap = null;
+      m.diffuseMap = null;
+      m.diffuseVertexColor = false;
+      m.diffuse.set(0.035, 0.045, 0.055);
+      m.metalnessMap = null; m.glossMap = null; m.specularMap = null;
+      m.useMetalness = true; m.metalness = 0; m.gloss = 0.94; m.specularityFactor = 1;
+      m.opacity = 0.86;
+      m.opacityFadesSpecular = false;
+      m.blendType = pc.BLEND_NORMAL; m.depthWrite = false; m.cull = pc.CULLFACE_BACK;
+      m.update();
+    }
+  }
 }
 
 /** Recolored copies of textures keyed by texture, key color, tolerance and paint. */
@@ -100,6 +201,63 @@ function maskedTexture(device: pc.GraphicsDevice, map: pc.Texture, key: string, 
   return t;
 }
 
+/**
+ * The built-in bodies model the whole greenhouse, roof included, as one glass
+ * mesh. Faces that point up (the roof panel) move to their own index buffer on
+ * the same vertices and take the body paint, so the cab has a solid top and
+ * only the windows stay glass.
+ */
+const roofSplits = new WeakMap<pc.Mesh, { glass: pc.Mesh; roof: pc.Mesh } | null>();
+function roofSplit(src: pc.Mesh, rot: pc.Quat) {
+  if (roofSplits.has(src)) return roofSplits.get(src)!;
+  let out: { glass: pc.Mesh; roof: pc.Mesh } | null = null;
+  const idx: number[] = [], nrm: number[] = [];
+  if (src.indexBuffer[0] && src.primitive[0].base === 0 && src.getIndices(idx) && src.getNormals(nrm)) {
+    const n = new pc.Vec3(), roof: number[] = [], glass: number[] = [];
+    for (let i = 0; i + 2 < idx.length; i += 3) {
+      n.set(0, 0, 0);
+      for (let k = 0; k < 3; k++) { const j = idx[i + k] * 3; n.x += nrm[j]; n.y += nrm[j + 1]; n.z += nrm[j + 2]; }
+      rot.transformVector(n.normalize(), n);
+      (n.y > 0.72 ? roof : glass).push(idx[i], idx[i + 1], idx[i + 2]);
+    }
+    if (roof.length && glass.length) {
+      const fmt = src.indexBuffer[0].format;
+      const typed = (a: number[]) => fmt === pc.INDEXFORMAT_UINT32 ? new Uint32Array(a) : fmt === pc.INDEXFORMAT_UINT8 ? new Uint8Array(a) : new Uint16Array(a);
+      const part = (list: number[]) => {
+        const mesh = new pc.Mesh(src.device);
+        mesh.vertexBuffer = src.vertexBuffer;
+        mesh.indexBuffer[0] = new pc.IndexBuffer(src.device, fmt, list.length, pc.BUFFER_STATIC, typed(list).buffer);
+        mesh.primitive[0] = { type: pc.PRIMITIVE_TRIANGLES, base: 0, baseVertex: 0, count: list.length, indexed: true };
+        mesh.aabb = src.aabb;
+        // Shared by every vehicle of this kind and by the container's vertex buffer: never freed with one car.
+        mesh.incRefCount();
+        return mesh;
+      };
+      out = { glass: part(glass), roof: part(roof) };
+    }
+  }
+  roofSplits.set(src, out);
+  return out;
+}
+
+function splitRoof(model: pc.Entity) {
+  const renders = model.findComponents('render') as pc.RenderComponent[];
+  const paint = renders.flatMap(r => r.meshInstances).find(mi => (mi.material as pc.StandardMaterial).clearCoat > 0)?.material;
+  if (!paint) return;
+  model.syncHierarchy();
+  for (const r of renders) {
+    for (const mi of r.meshInstances) {
+      if ((mi.material as pc.StandardMaterial).blendType === pc.BLEND_NONE || !mi.mesh) continue;
+      const split = roofSplit(mi.mesh, mi.node.getRotation());
+      if (!split) continue;
+      mi.mesh = split.glass;
+      // Its own entity at the glass node: reassigning render.meshInstances would destroy the existing ones.
+      const roof = meshEntity('roof', [{ mesh: split.roof, material: paint }]);
+      mi.node.addChild(roof);
+    }
+  }
+}
+
 const close = (a: number, b: number, eps = 0.08) => Math.abs(a - b) < eps;
 
 class View implements VehicleView {
@@ -112,14 +270,17 @@ class View implements VehicleView {
   private paintMats: pc.StandardMaterial[] = [];
   private paintSources: { mat: pc.StandardMaterial; map: pc.Texture | null }[] = [];
   private style: CarStyle | null = null;
+  /** The record whose body this view draws (a published vehicle, or a built-in's realistic stand-in). */
+  private rec: CustomVehicleRecord | null = null;
   private lampState = '';
   private destroyed = false;
 
   constructor(readonly kind: string, readonly tuning: VehicleTuning, private lib: VehicleModels) {}
 
-  addWheels(custom: boolean) {
+  /** Wheel nodes per axle; `axles` overrides where they sit and how big they draw (realistic stand-in bodies). */
+  addWheels(custom: boolean, axles = this.tuning.axles) {
     const P = this.tuning, M = wheelMats();
-    P.axles.forEach((a, ai) => {
+    axles.forEach((a, ai) => {
       for (const side of [1, -1]) {
         const steer = new pc.Entity('wheel');
         steer.setLocalPosition(a.x, P.wheelY - P.suspension.rest, a.halfTrack * side);
@@ -159,6 +320,8 @@ class View implements VehicleView {
       }
     });
     for (const p of pivots) p.parent?.removeChild(p);
+    fixModelMaterials(model);
+    splitRoof(model);
     this.adopt(model);
     const seen = new Set<pc.Material>();
     for (const r of model.findComponents('render') as pc.RenderComponent[]) {
@@ -179,11 +342,12 @@ class View implements VehicleView {
 
   /** Published body placed by the record's model transform, paint by material or color key, plus lamp lenses. */
   fillCustom(model: pc.Entity | null, r: CustomVehicleRecord) {
+    this.rec = r;
     const holder = new pc.Entity('body');
     holder.setLocalPosition(r.model.x, r.model.y, r.model.z);
     holder.setLocalEulerAngles(0, r.model.yaw, 0);
     holder.setLocalScale(r.model.scale, r.model.scale, r.model.scale);
-    if (model) holder.addChild(model);
+    if (model) { sharpenScan(model); fixModelMaterials(model); holder.addChild(model); }
     else {
       const c = r.physics.chassis, s = 1 / r.model.scale;
       const box = new pc.Entity(); box.addComponent('render', { type: 'box' });
@@ -218,6 +382,18 @@ class View implements VehicleView {
     this.applyStyle();
   }
 
+  /** The riding mower, built from primitives (MowerModel.ts) instead of a downloaded body. */
+  fillMower() {
+    const mats = mowerMaterials(), S = mowerSharedMaterials();
+    const mat: Record<MowerPart, pc.Material> = { ...S, paint: mats.paint, head: mats.head, tail: mats.tail };
+    const parts = [...mowerMeshes(this.lib.device)].map(([part, mesh]) => ({ mesh, material: mat[part] }));
+    this.adopt(meshEntity('mower-body', parts));
+    this.paintMats.push(mats.paint);
+    this.head.push(mats.head);
+    this.tail.push(mats.tail);
+    this.applyStyle();
+  }
+
   private adopt(e: pc.Entity) {
     this.body?.destroy();
     this.body = e;
@@ -248,7 +424,7 @@ class View implements VehicleView {
     const color = s?.color ?? `#${P.paint.toString(16).padStart(6, '0')}`;
     const f = FINISH[s?.finish ?? 'metallic'] ?? FINISH.metallic;
     const wear = Math.min(1, Math.max(0, s?.damage ?? 0));
-    const rec = customVehicleRecord(this.kind);
+    const rec = this.rec ?? customVehicleRecord(this.kind);
     const [r, g, b] = hex(color);
     for (const m of this.paintMats) {
       const src = this.paintSources.find(p => p.mat === m);
@@ -290,7 +466,9 @@ export class VehicleModels {
 
   /** Starts loading every model a kind needs (call early for the vehicles you own). */
   preload(kind: string) {
-    const rec = customVehicleRecord(kind);
+    const tuning = TUNING[kind] ?? TUNING.sedan;
+    const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
+    if (!rec && PROCEDURAL.has(kind)) return;
     void this.assets.container(rec ? rec.modelUrl : `/models/maplestreet/vehicles/${kind}.glb`);
   }
 
@@ -298,9 +476,11 @@ export class VehicleModels {
   build(kind: string, style?: CarStyle | null): VehicleView {
     const tuning = TUNING[kind] ?? TUNING.sedan;
     const view = new View(kind, tuning, this);
-    const rec = customVehicleRecord(kind);
-    view.addWheels(!!rec);
+    const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
+    const procedural = !rec && PROCEDURAL.has(kind);
+    view.addWheels(!!rec || procedural, rec?.physics.axles);
     view.setStyle(style ?? null);
+    if (procedural) { view.fillMower(); return view; }
     const url = rec ? rec.modelUrl : `/models/maplestreet/vehicles/${TUNING[kind] ? kind : 'sedan'}.glb`;
     const fill = (c: pc.ContainerResource | null) => {
       const model = c ? c.instantiateRenderEntity({ castShadows: true, receiveShadows: true }) : null;

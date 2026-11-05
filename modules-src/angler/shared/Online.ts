@@ -5,12 +5,12 @@ import { lakeIds } from './Lakes'
 import type { LakeId } from './Lakes'
 
 /** Boats one lake instance fills before new arrivals go to the next instance. */
-export const BOATS_PER_INSTANCE = 16
-/** Hard connection cap per instance (boats plus invited crew). */
-export const INSTANCE_CAPACITY = 40
-export const INSTANCES_PER_LAKE = 8
+export const BOATS_PER_INSTANCE = 4
 /** Anglers per boat, captain included. */
-export const CREW_SIZE = 4
+export const CREW_SIZE = 2
+/** Hard connection cap per instance: every boat full. */
+export const INSTANCE_CAPACITY = BOATS_PER_INSTANCE * CREW_SIZE
+export const INSTANCES_PER_LAKE = 8
 /** Boats within this many metres count toward the crowd penalty. */
 export const CROWD_RADIUS = 80
 /** Boats within this many metres can be boarded without an invite code. */
