@@ -20,7 +20,7 @@ import { windCompass } from '../shared/Weather'
 import { outlook } from '../shared/Catch'
 import { PRESENTATIONS, RODS } from '../shared/Gear'
 import type { Rig, RodId } from '../shared/Gear'
-import { SPECIES, formatLength, formatWeight } from '../shared/Species'
+import { SPECIES, formatCaught, formatLength, formatWeight } from '../shared/Species'
 import type { Presentation } from '../shared/Species'
 import { defaultProfile, lakeOpen, normalizeProfile } from '../shared/Profile'
 import type { AnglerProfile } from '../shared/Profile'
@@ -33,6 +33,8 @@ import { Online } from './Online'
 import { LakeAudio } from '../systems/Audio'
 import type { RemotePhase } from '../shared/Online'
 import { BOATS_PER_INSTANCE, parseInvite } from '../shared/Online'
+import { Celebrate } from '../ui/Celebrate'
+import { saveCatchPhoto } from '../ui/CatchPhoto'
 import type { QualityTier } from '../config'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
@@ -70,6 +72,8 @@ export class Game {
   private reelKey = ''
   private streak = 0
   private doubleHeader = false
+  private lastCatch: BiteResult | null = null
+  private celebrate!: Celebrate
 
   constructor(canvas: HTMLCanvasElement, quality: QualityTier) {
     this.world = new World(canvas, quality)
@@ -81,6 +85,7 @@ export class Game {
   async start(): Promise<void> {
     const status = $('loading-text')
     await this.world.load(text => { status.textContent = text })
+    this.celebrate = new Celebrate(this.world, $('tags'))
     await this.loadAccount()
     this.fishing = new Fishing(this.world, this.authority, {
       onBite: r => this.onBite(r),
@@ -94,6 +99,11 @@ export class Game {
       onHookSet: clean => { if (clean) { this.audio.hookSet(); this.toast('Hook set! Keep reeling, ease off when it runs.', 'good', 3) } },
       onRun: () => { this.audio.scream(); if (this.fishing?.reeling) this.toast('It is running! Ease off the reel.', 'warn', 2.5) },
       onSlip: () => this.toast('Drag slipping! Let go of Reel In before the line gives.', 'warn', 2.5),
+      onJig: () => this.audio.jig(),
+      onJump: () => { this.audio.thrash(); if (this.fishing?.reeling) this.toast('It is jumping! Let go and bow the rod to it.', 'warn', 2) },
+      onBow: () => this.toast('Bowed to the jump. Line stayed tight.', 'good', 2),
+      onNetReady: () => { this.audio.cue(); this.toast('Fish at the boat. Tap Reel In to net it!', 'gold', 2) },
+      onNetMiss: final => { this.audio.thrash(); this.toast(final ? 'Scooped it on the second try.' : 'Missed the net! It surged off. Reel it back.', final ? 'soft' : 'warn', 2.5) },
     })
     this.panels = new Panels({
       profile: () => this.profile,
@@ -231,6 +241,7 @@ export class Game {
     $('btn-troll').addEventListener('click', () => { this.world.controls.trolling = !this.world.controls.trolling; this.refreshButtons() })
     $('map-close').addEventListener('click', () => this.toggleMap(false))
     $('catch-close').addEventListener('click', () => { $('catch-card').hidden = true })
+    $('catch-photo').addEventListener('click', () => void this.photo())
     $('rig-rod').addEventListener('change', () => this.changeRig())
     $('rig-bait').addEventListener('change', () => this.changeRig(true))
     $('btn-wardrobe').addEventListener('click', () => this.openPanel('wardrobe'))
@@ -514,6 +525,13 @@ export class Game {
     this.pushLog(r)
     this.showCard(r)
     if ([3, 5, 10, 15, 25].includes(this.streak)) this.toast(`Hot streak: ${this.streak} landed in a row!`, 'gold', 5)
+    this.lastCatch = r
+    if (!this.world.background) {
+      this.celebrate.float(`+${formatWeight(r.weight)}`, r.tier)
+      const big = ['Trophy', 'Legendary'].includes(r.tier) || r.siteRecord
+      if (big || r.personalBest) this.celebrate.confetti(big ? 120 : 60)
+      if (r.tier === 'Legendary' || r.siteRecord) this.celebrate.flash()
+    }
     if (['Quality', 'Trophy', 'Legendary'].includes(r.tier) || r.personalBest || r.siteRecord) this.audio.chime(['Trophy', 'Legendary'].includes(r.tier) || r.siteRecord)
     try { window.parent?.postMessage({ type: 'tl-angler', species: r.species }, location.origin) } catch { /* not embedded */ }
     if (document.hidden && ['Trophy', 'Legendary'].includes(r.tier)) this.flashTitle(`${r.tier}! ${formatWeight(r.weight)} ${SPECIES[r.species].name}`)
@@ -559,7 +577,9 @@ export class Game {
     $('card-meta').textContent = `${w.lake?.name ?? ''} · ${spot} · ${hour12}:${String(ct.minute).padStart(2, '0')} ${ct.hour < 12 ? 'am' : 'pm'} · ${PRESENTATIONS[this.profile.rig.presentation].short} · bigger than ${(100 - top).toFixed(top < 1 ? 2 : 0)}% of ${s.name.toLowerCase()}`
     $('card-credits').textContent = this.authority.saved ? `+${(r.credits + r.daily).toLocaleString()} TC${r.daily ? ' (includes the daily bonus)' : ''}` : 'Sign in on the library to keep catches and credits'
     const grade = this.fishing?.grade ?? 'Auto'
-    $('card-fight').textContent = grade === 'Auto' ? '' : `${grade === 'Clean' ? 'Clean fight: hook set and never slipped the drag' : grade === 'Steady' ? 'Steady fight' : 'Rough fight: the drag slipped a lot'}${this.streak > 1 ? ` · ${this.streak} in a row` : ''}`
+    const bows = this.fishing?.bows ?? 0
+    const extras = [bows ? `bowed to ${bows} jump${bows === 1 ? '' : 's'}` : '', this.fishing?.netClean ? 'netted first try' : '', this.streak > 1 ? `${this.streak} in a row` : ''].filter(Boolean)
+    $('card-fight').textContent = grade === 'Auto' ? '' : `${grade === 'Clean' ? 'Clean fight: hook set, drag held, netted first try' : grade === 'Steady' ? 'Steady fight' : 'Rough fight: the drag slipped a lot'}${extras.length ? ` · ${extras.join(' · ')}` : ''}`
     $('card-fight').hidden = !$('card-fight').textContent
     $('card-fact').textContent = s.facts[Math.floor(Math.random() * s.facts.length)]
     $('catch-card').hidden = false
@@ -629,23 +649,52 @@ export class Game {
     }
   }
 
+  private async photo(): Promise<void> {
+    const r = this.lastCatch
+    if (!r) return
+    try {
+      await saveCatchPhoto(this.world, {
+        species: SPECIES[r.species].name,
+        weight: formatWeight(r.weight),
+        length: formatLength(r.length),
+        tier: r.tier,
+        lake: this.world.lake?.name ?? '',
+        when: formatCaught(now().toISOString()),
+        angler: this.account.signedIn ? this.account.username : 'Guest angler',
+      })
+      this.toast('Catch photo saved to your downloads.', 'good')
+    } catch {
+      this.toast('The photo could not be saved.', 'warn')
+    }
+  }
+
   /** The Reel In button and its tension and line meters, every frame while anchored. */
   private updateReel(reeling: boolean): void {
     const f = this.fishing
     const show = Boolean(f && f.active && this.world.anchored)
     const phase = show ? f!.phase : 'off'
     const fighting = phase === 'fight'
-    const label = phase === 'bite' ? 'Set the hook!' : fighting ? (reeling ? 'Reeling…' : 'Reel in (hold)') : phase === 'wait' ? 'Reel in & recast' : 'Reel in'
-    const key = `${show}|${phase}|${label}|${reeling}`
+    const charging = phase === 'wait' && (f?.castCharge ?? -1) >= 0
+    const net = fighting && Boolean(f?.netReady)
+    const jumping = fighting && Boolean(f?.jumping)
+    const label = phase === 'bite' ? 'Set the hook!' : net ? 'Net it!' : jumping ? 'Let go! It jumped' : fighting ? (reeling ? 'Reeling…' : 'Reel in (hold)') : charging ? 'Release to cast' : phase === 'wait' ? 'Tap: jig · Hold: cast' : 'Reel in'
+    const key = `${show}|${phase}|${label}|${reeling}|${charging}`
     if (key !== this.reelKey) {
       this.reelKey = key
       $('reel').hidden = !show
-      $('reel-meters').hidden = !fighting
+      $('reel-meters').hidden = !fighting && !charging
+      $('reel-fight-meters').hidden = !fighting
+      $('reel-cast-meter').hidden = !charging
       const btn = $<HTMLButtonElement>('btn-reel')
       btn.textContent = label
       btn.disabled = !['wait', 'bite', 'fight'].includes(phase)
-      btn.classList.toggle('is-strike', phase === 'bite')
+      btn.classList.toggle('is-strike', phase === 'bite' || net)
+      btn.classList.toggle('is-jump', jumping)
       btn.classList.toggle('is-held', reeling)
+    }
+    if (charging && f) {
+      $('reel-cast').style.width = `${(f.castCharge * 100).toFixed(1)}%`
+      $('reel-cast-text').textContent = `${Math.round(7 + f.castCharge * 24)} yd`
     }
     if (!fighting || !f) return
     const tension = Math.min(1.2, f.tension) / 1.2

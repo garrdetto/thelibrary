@@ -1,6 +1,7 @@
 /** Turns match and shot state into display models: scorecard rows, HUD values and record-book text. Pure formatting, no DOM. */
 import type { ModuleConfig } from '../config'
-import { clubById, type ClubId, type LieKind } from '../tuning'
+import { clubById, type ClubId, type LieKind, type ShotKind } from '../tuning'
+import { clubReachTable } from '../systems/ClubAdvice'
 import { currentCourseHole, currentWind, parThrough, placements, scoreLabel, strokesThisHole, totalStrokes, type MatchState, type PlayerState } from '../systems/Match'
 import type { FairwayBoard, FairwayRecordRow } from '../systems/Records'
 import type { BoardCopy, ScorecardModel } from '../ui/Screens'
@@ -27,7 +28,19 @@ function holesCompleted(state: MatchState, player: PlayerState): number {
   return state.holeIndex + (player.holed || player.pickedUp ? 1 : 0)
 }
 
-export function hudModel(config: ModuleConfig, state: MatchState, player: PlayerState, ball: Vec3, club: ClubId | null, lie: LieKind, spin: number, cameraYaw: number): HudModel {
+export interface ShotPlanView {
+  /** Selected shot type, or null on a putt. */
+  shot: ShotKind | null
+  power: number
+  /** Perfect-strike carry (full shots) or roll-out distance (putts and short game), when known. */
+  distance: number | null
+  /** Launch spin of the perfect strike, when known. */
+  spinRpm: number | null
+  /** True while the local player is aiming and may change the setup. */
+  editable: boolean
+}
+
+export function hudModel(config: ModuleConfig, state: MatchState, player: PlayerState, ball: Vec3, club: ClubId | null, lie: LieKind, spin: number, cameraYaw: number, plan: ShotPlanView | null): HudModel {
   const holeIndex = currentCourseHole(state)
   const hole = config.holes[holeIndex]
   const wind = currentWind(state)
@@ -36,17 +49,36 @@ export function hudModel(config: ModuleConfig, state: MatchState, player: Player
   const total = player.strokes.slice(0, played).reduce<number>((sum, value) => sum + (value ?? 0), 0)
   const spinIndex = spin > 0 ? 2 : spin < 0 ? 0 : 1
   const pinMode = state.mode === 'pin'
+  const copy = config.hud
+  const spec = club ? clubById(club) : null
+  const reach = club ? clubReachTable().find((entry) => entry.club === club) : undefined
+  const putting = lie === 'green' || club === 'putter'
   return {
-    hole: `${hole.number} · ${hole.name}`,
+    holeNumber: String(hole.number),
+    holeName: hole.name,
     par: String(hole.par),
     stroke: pinMode ? '1' : String(strokesThisHole(player, state.holeIndex) + 1),
     total: pinMode ? '—' : played ? `${total} (${relative(total, parThrough(state, played))})` : '0',
+    holeLength: copy.holeLength(hole.yards, Math.round(hole.yards * config.metresPerYard)),
     windSpeed: config.presenters.wind(wind.speed.toFixed(1)),
     windAngle: cameraYaw - wind.yaw,
-    club: club ? clubById(club).name : '—',
-    lie: config.hud.lieLabels[lie],
+    windStrength: wind.speed / Math.max(1e-6, config.wind.speedRange[1]),
+    club,
+    clubName: spec ? spec.name : '—',
+    clubDetail: spec ? (spec.putter ? copy.putterDetail : copy.clubDetail(spec.loftDegrees, reach ? Math.round(reach.carry) : null)) : '',
+    lie,
+    lieLabel: copy.lieLabels[lie],
     toPin: metresAndYards(config, horizontalDistance(ball, pin)),
-    spin: `${config.hud.spinLabels[spinIndex]}${spin !== 0 ? ` ${Math.round(Math.abs(spin) * 100)}%` : ''}`,
+    spin,
+    spinLabel: `${copy.spinLabels[spinIndex]}${spin !== 0 ? ` ${Math.round(Math.abs(spin) * 100)}%` : ''}`,
+    spinDetail: plan?.spinRpm ? copy.spinRpm(Math.round(plan.spinRpm / 50) * 50) : '',
+    shotKind: plan?.shot ?? null,
+    shotHint: plan?.shot ? copy.shotHints[plan.shot] : '',
+    power: plan ? plan.power : null,
+    powerLabel: plan ? `${Math.round(plan.power * 100)}%` : '—',
+    distanceLabel: plan && plan.distance !== null ? copy.planDistance(metresAndYards(config, plan.distance), plan.shot !== 'full') : '',
+    editable: !!plan?.editable,
+    putting,
   }
 }
 

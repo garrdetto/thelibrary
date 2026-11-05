@@ -42,17 +42,87 @@
       .fw-over{color:var(--lib-soft,#aab6d3)}
       details summary{cursor:pointer;color:var(--lib-soft,#aab6d3);font-weight:600}
       details ul{margin:8px 0 0;padding-left:18px;color:var(--lib-muted,#8d9bba)}
-      #meter-wrap{position:absolute;right:28px;top:50%;transform:translateY(-50%);z-index:12;display:grid;justify-items:center;gap:4px;pointer-events:none}
+      #meter-wrap{position:absolute;right:216px;top:42%;transform:translateY(-50%);z-index:12;display:grid;justify-items:center;gap:4px;pointer-events:none}
       #meter-wrap[hidden]{display:none}
-      #meter{width:168px;height:168px}
-      #meter-readout{padding:3px 10px;border-radius:999px;background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 12.5px Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+      #meter{width:196px;height:196px}
+      #meter-readout{max-width:240px;text-align:center;padding:3px 10px;border-radius:12px;background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 12.5px Inter,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+      #minimap-wrap{position:absolute;right:12px;top:104px;z-index:11;width:180px;height:min(300px,calc(100% - 290px));min-height:140px;padding:4px;border-radius:14px;background:color-mix(in srgb,var(--lib-panel,#111829) 70%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 10px 30px -12px var(--lib-shadow,rgba(0,0,0,.45));pointer-events:none}
+      #minimap-wrap[hidden]{display:none}
+      #minimap{display:block;width:100%;height:100%}
       #turn-banner{position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:12;padding:7px 16px;border-radius:999px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 14px Inter,system-ui,sans-serif;pointer-events:none}
       #turn-banner[hidden]{display:none}
-      .fw-wind-arrow{display:inline-block;font-size:18px;line-height:1;color:var(--module-accent,var(--lib-accent,#39d0ff))}
-      .fw-hint{max-width:280px}
-      @media (max-width:640px){.fw-hint{display:none}}
-      .fw-controls{display:flex;gap:6px;flex-wrap:wrap;pointer-events:auto}
-      @media (max-width:640px){.fw-card{padding:16px}.fw-card h1{font-size:28px}#meter{width:132px;height:132px}#meter-wrap{right:12px;top:auto;bottom:96px;transform:none}}
+      .tl-hud-toasts{bottom:168px!important}
+
+      .fw-hole-card{display:flex!important;gap:12px;align-items:center;padding:10px 14px 10px 10px!important}
+      .fw-hole-badge{display:grid;place-items:center;width:54px;height:54px;border-radius:14px;background:linear-gradient(160deg,var(--module-accent,#4fd27a),color-mix(in srgb,var(--module-accent,#4fd27a) 45%,#06101f));color:#06101f;box-shadow:inset 0 1px 0 rgba(255,255,255,.4),0 6px 14px -6px rgba(0,0,0,.6)}
+      .fw-hole-badge span{font:800 9px Inter,system-ui,sans-serif;letter-spacing:1.4px;text-transform:uppercase;opacity:.75;margin-top:4px}
+      .fw-hole-badge b{font:800 28px/1 Rajdhani,Inter,sans-serif;margin-top:-6px}
+      .fw-hole-body{display:grid;gap:4px}
+      .fw-hole-name{font:700 17px/1.1 Rajdhani,Inter,sans-serif;letter-spacing:.4px;color:var(--lib-strong,#fff)}
+      .fw-hole-length{font-size:11.5px;color:var(--lib-muted,#8d9bba)}
+      .fw-hole-chips{display:flex;gap:6px}
+      .fw-chip{display:grid;justify-items:center;min-width:44px;padding:3px 8px;border-radius:9px;background:var(--lib-chip,rgba(255,255,255,.06));border:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      .fw-chip span{font:700 9px Inter,system-ui,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--lib-muted,#8d9bba)}
+      .fw-chip b{font:800 15px/1.1 Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);font-variant-numeric:tabular-nums}
+
+      .fw-wind-panel{display:flex!important;align-items:center;gap:10px;padding:8px 12px 8px 8px!important}
+      .fw-wind-text{display:grid}
+      .fw-wind-text span{font:700 10px Inter,system-ui,sans-serif;letter-spacing:1.2px;text-transform:uppercase;color:var(--lib-muted,#8d9bba)}
+      .fw-wind-text b{font:800 18px/1.1 Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);font-variant-numeric:tabular-nums}
+
+      .fw-dock{right:12px;display:flex!important;gap:0;align-items:stretch;padding:8px 6px!important;pointer-events:auto;overflow-x:auto;scrollbar-width:thin}
+      .fw-dock-section{flex:0 0 auto;display:grid;align-content:start;gap:5px;padding:0 12px;border-left:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      .fw-dock-section:first-child{border-left:0}
+      .fw-dock-section[hidden]{display:none}
+      .fw-dock-title{margin:0;font:800 9.5px Inter,system-ui,sans-serif;letter-spacing:1.4px;text-transform:uppercase;color:var(--lib-muted,#8d9bba)}
+      .fw-dock .tl-hud-button{padding:4px 8px;font-size:12.5px}
+      .fw-dock .tl-hud-button:disabled{opacity:.4;cursor:default}
+      .fw-dock .fw-step{min-width:30px;padding:4px 6px;text-align:center;font-weight:800}
+      .fw-club-row{display:flex;align-items:center;gap:6px}
+      .fw-club-face{display:flex;align-items:center;gap:8px;min-width:178px;padding:4px 8px;border-radius:11px;background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.02));border:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      .fw-club-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:10px;background:radial-gradient(circle at 40% 30%,rgba(255,255,255,.16),rgba(0,0,0,.25));color:var(--lib-text,#e9effc)}
+      .fw-club-text{display:grid;line-height:1.2}
+      .fw-club-text b{font:800 16px Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff)}
+      .fw-club-text span{font-size:11px;color:var(--lib-muted,#8d9bba);white-space:nowrap}
+      .fw-bag{display:flex;gap:3px}
+      .fw-dock .fw-bag-club{display:grid;justify-items:center;gap:0;min-width:28px;padding:2px 3px;font:800 9.5px Inter,system-ui,sans-serif;color:var(--lib-soft,#aab6d3)}
+      .fw-dock .fw-bag-club[aria-pressed=true]{background:var(--module-accent,#4fd27a);color:#06101f;border-color:transparent}
+      .fw-lie-row{display:flex;align-items:center;gap:6px;white-space:nowrap}
+      .fw-lie-row b{font:800 14px Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff)}
+      .fw-lie-sep{margin-left:6px;font:800 9.5px Inter,system-ui,sans-serif;letter-spacing:1.2px;text-transform:uppercase;color:var(--lib-muted,#8d9bba)}
+      .fw-lie-icon{display:grid;color:var(--lib-text,#e9effc)}
+      .fw-to-pin{font-variant-numeric:tabular-nums}
+      .fw-row-gap{width:6px}
+      @media (max-width:1180px){.fw-dock .fw-bag,.fw-dock .fw-shot-hint{display:none}.fw-dock .fw-club-face{min-width:150px}.fw-dock .fw-power-bar{width:120px}}
+      @media (max-width:900px){.fw-dock .fw-dock-section{padding:0 8px}.fw-dock .fw-power-bar{width:104px}.fw-dock .fw-shot-button span{font-size:0}.fw-dock .fw-shot-button kbd{font-size:9px;margin:0}.fw-dock .fw-spin-side{min-width:70px}.fw-dock .fw-spin-detail{display:none}}
+      .fw-shot-picker{display:grid;grid-template-columns:repeat(2,auto);gap:4px}
+      .fw-dock .fw-shot-button{display:flex;align-items:center;gap:4px;padding:2px 8px 2px 4px;text-align:left}
+      .fw-shot-button span{font:700 12px Inter,system-ui,sans-serif}
+      .fw-shot-button kbd{display:inline-grid;place-items:center;width:14px;height:14px;margin-right:4px;border-radius:4px;background:rgba(255,255,255,.12);font:800 9px Inter,system-ui,sans-serif}
+      .fw-dock .fw-shot-button[aria-pressed=true]{background:var(--module-accent,#4fd27a);color:#06101f;border-color:transparent}
+      .fw-shot-hint{max-width:210px;font-size:11px;color:var(--lib-muted,#8d9bba)}
+      .fw-spin-body{display:flex;align-items:center;gap:6px}
+      .fw-spin-dial{display:block;touch-action:none}
+      .fw-spin-side{display:grid;justify-items:start;gap:3px;min-width:96px}
+      .fw-spin-label{font:800 14px Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff)}
+      .fw-dock-spin[data-spin=back] .fw-spin-label{color:#39d0ff}
+      .fw-dock-spin[data-spin=top] .fw-spin-label{color:#ffb24a}
+      .fw-spin-detail{font-size:11px;color:var(--lib-muted,#8d9bba);font-variant-numeric:tabular-nums}
+      .fw-power-value{font:800 22px/1 Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);font-variant-numeric:tabular-nums}
+      .fw-power-bar{position:relative;width:150px;height:12px;border-radius:999px;background:rgba(0,0,0,.35);border:1px solid var(--lib-line,rgba(120,170,255,.16));overflow:hidden}
+      .fw-power-fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#2f9e5a,#4fd27a 60%,#ffd84a 92%,#ff6a5a);border-radius:999px;transition:width .12s ease-out}
+      .fw-power-mark{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.35)}
+      .fw-power-distance{font-size:11.5px;color:var(--lib-soft,#aab6d3);white-space:nowrap}
+      .fw-power-row,.fw-aim-row{display:flex;gap:4px}
+      .fw-help{position:relative}
+      .fw-help summary{list-style:none;cursor:pointer}
+      .fw-help summary::-webkit-details-marker{display:none}
+      .fw-help-text{position:absolute;right:0;bottom:calc(100% + 10px);width:280px;padding:10px 12px;border-radius:12px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 10px 30px -12px rgba(0,0,0,.6);font-size:12px;color:var(--lib-soft,#aab6d3)}
+      @media (prefers-reduced-motion:reduce){.fw-power-fill{transition:none}}
+      @media (max-width:640px){.fw-card{padding:16px}.fw-card h1{font-size:28px}#meter{width:150px;height:150px}#meter-wrap{right:auto;left:12px;top:88px;transform:none}#meter-readout{max-width:180px}#minimap-wrap{top:84px;width:110px;height:170px;min-height:0}.fw-hole-card .fw-hole-length,.fw-shot-hint,.fw-bag{display:none}.fw-club-face{min-width:0}.tl-hud-toasts{bottom:270px!important}
+        .fw-hole-card{gap:8px;padding:6px 8px 6px 6px!important}.fw-hole-badge{width:42px;height:42px}.fw-hole-badge b{font-size:22px}.fw-hole-name{font-size:14px}.fw-chip{min-width:34px;padding:2px 5px}.fw-chip b{font-size:13px}
+        .fw-wind-panel{padding:4px!important}.fw-wind-text span{display:none}.fw-wind-text b{font-size:14px}
+        .fw-dock{flex-wrap:wrap;row-gap:8px;overflow-x:hidden;max-height:46vh;overflow-y:auto}.fw-dock .fw-dock-section{border-left:0;padding:0 6px}}
       @media (prefers-reduced-motion:reduce){.fw-screen{backdrop-filter:none}}
     </style>
   </head>
@@ -62,8 +132,12 @@
     <div id="turn-banner" role="status" aria-live="polite" hidden></div>
 
     <div id="meter-wrap" hidden>
-      <canvas id="meter" width="168" height="168" aria-hidden="true"></canvas>
+      <canvas id="meter" width="196" height="196" aria-hidden="true"></canvas>
       <div id="meter-readout" role="status" aria-live="off"></div>
+    </div>
+
+    <div id="minimap-wrap" hidden>
+      <canvas id="minimap" role="img" aria-label="Hole map with the planned shot and its landing zone"></canvas>
     </div>
 
     <section id="screen-start" class="fw-screen" aria-labelledby="start-title">
@@ -81,7 +155,11 @@
         <details>
           <summary>How the swing and the physics work</summary>
           <ul>
-            <li>Click (or Space, or tap) once to start the meter, again to set power, and a third time on the line for accuracy. Early hooks left, late slices right.</li>
+            <li>Power: hold the button (click, Space or touch) and let go when the outer ring reaches the white marker. The faded balls show where a perfect strike at that marker goes; R/F moves the marker.</li>
+            <li>Path: the cursor runs down to the bottom mark; tap as it gets there. Early pulls left, late pushes right.</li>
+            <li>Contact: it races back to the top; click on the top mark and keep holding. Early closes the face (hook), late opens it (slice).</li>
+            <li>Rhythm: an inner ring grows from the centre; release as it meets its mark. Letting go early or late, or tapping instead of holding, costs up to 7 % of the distance.</li>
+            <li>Near the green pick a chip (low, runs out), a flop (high, lands soft) or a spinner (low, checks hard and can zip back) with 1–4 or T.</li>
             <li>Launch speed is power × club speed × lie: the rough costs 20–40 %, a bunker more than half.</li>
             <li>Drag grows with the square of speed; backspin creates lift (the Magnus effect) and a steeper landing; wind pushes hardest high in the air.</li>
             <li>On the green the slope pulls the ball downhill, so read the break before you putt.</li>

@@ -1,5 +1,5 @@
 /** The single authority for match state in every mode: players, hole order, strokes, ball positions, penalties, turn order and placements. The online host is the only peer that calls the mutators. */
-import { tuning, type ClubId, type LieKind, type RoundMode } from '../tuning'
+import { SHOT_KINDS, tuning, type ClubId, type LieKind, type RoundMode, type ShotKind } from '../tuning'
 import type { ShotParams, ShotResult } from './BallFlight'
 import { courseFor } from './Course'
 import { hashSeed, stringSeed } from './Random'
@@ -42,6 +42,8 @@ export interface SwingInput {
   power: number
   curve: number
   spin: number
+  push?: number
+  shot?: ShotKind
 }
 
 export type MatchEvent =
@@ -192,6 +194,7 @@ export function shotParamsFor(state: MatchState, playerId: string, swing: SwingI
   if (!player) throw new Error(`Unknown player ${playerId}`)
   const clamp = (value: number, min: number, max: number) => (Number.isFinite(value) ? Math.max(min, Math.min(max, value)) : 0)
   const club = tuning.clubs.some((entry) => entry.id === swing.club) ? swing.club : 'driver'
+  const putting = player.lie === 'green' || club === 'putter'
   return {
     hole: currentCourseHole(state),
     origin: player.ball,
@@ -200,6 +203,8 @@ export function shotParamsFor(state: MatchState, playerId: string, swing: SwingI
     power: clamp(swing.power, 0, 1),
     curve: clamp(swing.curve, -1, 1),
     spin: clamp(swing.spin, -1, 1),
+    push: clamp(swing.push ?? 0, -1, 1),
+    shot: !putting && swing.shot && SHOT_KINDS.includes(swing.shot) ? swing.shot : 'full',
     lie: player.lie,
     teeShot: player.teeShot,
     wind: currentWind(state).vector,
