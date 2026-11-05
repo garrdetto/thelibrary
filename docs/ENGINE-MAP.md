@@ -190,7 +190,7 @@ The only PlayCanvas module: it bundles `playcanvas` from npm (pinned like three.
 - `modules-src/sandlot3d/index.html` — page shell: screens, HUD markup, styles — `vite.modules.ts` (→ `public/modules/sandlot3d.html`).
 - `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE` and `window.__batchStatic`, then loads `main.js` as a classic script — `index.html`.
 - `modules-src/sandlot3d/three-legacy.ts` — r128-compatible `THREE` over 0.186.1: color management off, linear output, legacy light-intensity scale — `index.ts`.
-- `modules-src/sandlot3d/main.js` — whole module script: scene, `class Rig` athletes (`LimbTube`, `PLAYER_LOOK`, `UNIFORMS`), four ballparks, `window.__ss` — `index.ts` (`?url`).
+- `modules-src/sandlot3d/main.js` — whole module script: scene, `class Rig` athletes (`LimbTube`, `PLAYER_LOOK`, `UNIFORMS`), four ballparks, `window.__ss`; batting: `swing` maps timing and bat-aim error to contact quality (`q`, eased with a 0.65 power), launch angle (22° on a centred swing) and spray, and `newBall` carries balls with a speed-dependent factor (up to 0.6 for soft contact, 0.42 at the top end) so mid-speed liners reach the outfield; pitching: `PITCH_SPEED` (1.25) divides every pitch's travel time in `pitchBase`, the ball radius is `BALL_R` (0.189 ft, also the HUD ghost ball), and `isStrike` calls a strike when any part of the ball touches the zone (the CPU's intended balls start clear of that) — `index.ts` (`?url`).
 - `public/modules/sprites/` (34 WebP files) — roster and batter-card art — `main.js` at runtime.
 
 ### maplestreet — Fox Plains (`modules-src/maplestreet/`)
