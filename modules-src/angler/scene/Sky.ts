@@ -35,7 +35,7 @@ export function skyState(date: Date): SkyState {
   const day = smoothstep(-7, 8, sun.altitude)
   const moonLight = smoothstep(-2, 10, moon.altitude) * moonIllumination(phase) * (1 - day)
   const twilight = smoothstep(-10, 0, sun.altitude) * (1 - smoothstep(4, 16, sun.altitude))
-  const horizon = mixC(mixC([0.012, 0.016, 0.03], [0.95, 0.55, 0.32], twilight), [0.72, 0.82, 0.92], smoothstep(2, 20, sun.altitude))
+  const horizon = mixC(mixC([0.07, 0.1, 0.18], [1, 0.66, 0.42], twilight), [0.8, 0.89, 0.97], smoothstep(2, 20, sun.altitude))
   return { sunDir: bodyDirection(sun), moonDir: bodyDirection(moon), sunAlt: sun.altitude, moonAlt: moon.altitude, day, moonLight, horizon }
 }
 
@@ -43,7 +43,7 @@ function skyColor(dir: C3, s: SkyState, weather: Weather, seed: number): C3 {
   const y = dir[1]
   const up = Math.max(0, y)
   const twilight = smoothstep(-10, 0, s.sunAlt) * (1 - smoothstep(5, 18, s.sunAlt))
-  const zenithDay: C3 = [0.16, 0.34, 0.72], zenithNight: C3 = [0.004, 0.006, 0.016], zenithTwilight: C3 = [0.12, 0.13, 0.3]
+  const zenithDay: C3 = [0.24, 0.48, 0.86], zenithNight: C3 = [0.03, 0.05, 0.12], zenithTwilight: C3 = [0.2, 0.22, 0.42]
   let zenith = mixC(zenithNight, zenithDay, s.day)
   zenith = mixC(zenith, zenithTwilight, twilight * 0.6)
   const sunDot = dir[0] * s.sunDir[0] + dir[1] * s.sunDir[1] + dir[2] * s.sunDir[2]
@@ -53,7 +53,7 @@ function skyColor(dir: C3, s: SkyState, weather: Weather, seed: number): C3 {
   horizon = mixC(horizon, mixC(horizon, glowTint, 0.7), twilight * Math.pow(toward, 3))
   let c = mixC(horizon, zenith, Math.pow(up, 0.45))
   const overcast = weather.cloud
-  const grey = mixC([0.01, 0.012, 0.02], [0.62, 0.65, 0.68], s.day)
+  const grey = mixC([0.05, 0.06, 0.09], [0.74, 0.77, 0.8], s.day)
   c = mixC(c, mixC(grey, mixC(grey, horizon, 0.3), 1 - up), overcast * 0.75)
   const glow = Math.pow(toward, 12) * 0.35 + Math.pow(toward, 64) * 0.6
   c = [c[0] + glowTint[0] * glow * (s.day * 0.8 + twilight), c[1] + glowTint[1] * glow * (s.day * 0.8 + twilight), c[2] + glowTint[2] * glow * (s.day * 0.8 + twilight)]
@@ -68,7 +68,7 @@ function skyColor(dir: C3, s: SkyState, weather: Weather, seed: number): C3 {
     const cover = 0.25 + overcast * 0.75
     const density = smoothstep(1 - cover, 1 - cover + 0.25, n) * smoothstep(0.01, 0.12, y)
     if (density > 0) {
-      const lit = mixC([0.02, 0.025, 0.04], [0.95, 0.95, 0.96], s.day)
+      const lit = mixC([0.1, 0.11, 0.16], [1, 1, 1], s.day)
       const edge = mixC(lit, glowTint, twilight * 0.8 + Math.pow(toward, 4) * 0.4 * s.day)
       const shade = 0.75 + 0.25 * fbm(cu * 2 + 5, cv * 2, 92, 2)
       const cloudC: C3 = [edge[0] * shade * (1 - overcast * 0.35), edge[1] * shade * (1 - overcast * 0.35), edge[2] * shade * (1 - overcast * 0.35)]
@@ -90,7 +90,7 @@ function skyColor(dir: C3, s: SkyState, weather: Weather, seed: number): C3 {
       c = [c[0] + halo, c[1] + halo, c[2] + halo]
     }
   } else {
-    const ground = mixC([0.005, 0.006, 0.008], [0.12, 0.13, 0.12], s.day)
+    const ground = mixC([0.04, 0.05, 0.06], [0.22, 0.24, 0.22], s.day)
     c = mixC(horizon, ground, smoothstep(0, 0.25, -y))
   }
   return c
@@ -198,15 +198,15 @@ export class Sky {
     if (sunUp) {
       const warm = smoothstep(0, 25, s.sunAlt)
       light.color = new pc.Color(1, 0.62 + 0.33 * warm, 0.42 + 0.48 * warm)
-      light.intensity = (0.15 + 2.1 * s.day) * (1 - cloud * 0.6)
+      light.intensity = (0.45 + 2.5 * s.day) * (1 - cloud * 0.4)
       light.castShadows = cloud < 0.9
     } else {
-      light.color = new pc.Color(0.55, 0.65, 0.9)
-      light.intensity = 0.06 + s.moonLight * 0.35
+      light.color = new pc.Color(0.68, 0.76, 0.98)
+      light.intensity = 0.3 + s.moonLight * 0.45
       light.castShadows = s.moonLight > 0.3
     }
-    scene.skyboxIntensity = 0.6 + 0.6 * s.day
-    scene.exposure = 0.9 + (1 - s.day) * 1.3
+    scene.skyboxIntensity = 0.95 + 0.5 * s.day
+    scene.exposure = 1.2 + (1 - s.day) * 1.4
     const fogAmount = w ? w.fog : 0
     scene.fog.type = pc.FOG_LINEAR
     const h = s.horizon

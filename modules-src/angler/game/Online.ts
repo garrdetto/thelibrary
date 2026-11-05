@@ -1,4 +1,4 @@
-/** The shared lake: one WebSocket to the AnglerLake Durable Object, other anglers' boats and fishermen, crews of up to four on one boat, name tags, catch news and invite codes for the library chat. Catches still come only from /api/angler. */
+/** The shared lake: one WebSocket to the AnglerLake Durable Object, up to four boats per lake instance with two anglers to a boat, name tags, catch news and invite codes for the library chat. Catches still come only from /api/angler. */
 import * as pc from 'playcanvas'
 import type { World } from './World'
 import { RemoteAngler } from './RemoteAngler'
@@ -198,6 +198,13 @@ export class Online {
     const out = [{ id: this.selfId, name: 'You', seat: this.mySeat, you: true }]
     for (const r of this.remotes.values()) if (r.view.boat === this.myBoat) out.push({ id: r.view.id, name: r.view.name, seat: r.view.seat, you: false })
     return out.sort((a, b) => a.seat - b.seat)
+  }
+
+  /** The name of a boatmate who has a fish on right now, for double headers. */
+  crewFighting(): string | null {
+    if (!this.myBoat) return null
+    for (const r of this.remotes.values()) if (r.view.boat === this.myBoat && r.view.phase === 'fight') return r.view.name
+    return null
   }
 
   captainName(): string {

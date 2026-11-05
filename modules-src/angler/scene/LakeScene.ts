@@ -163,7 +163,9 @@ export class LakeScene {
     const positions = new Float32Array((n + 1) * (n + 1) * 3)
     const colors = new Uint8Array((n + 1) * (n + 1) * 4)
     const uvs = new Float32Array((n + 1) * (n + 1) * 2)
-    const deep = lake.water.deep, shallow = lake.water.shallow
+    // Lifted toward a clear sky-blue so the lake reads bright and inviting.
+    const lift = (c: Rgb, k: number): Rgb => [c[0] + (0.36 - c[0]) * k, c[1] + (0.6 - c[1]) * k, c[2] + (0.68 - c[2]) * k]
+    const deep = lift(lake.water.deep, 0.3), shallow = lift(lake.water.shallow, 0.2)
     const seeFt = 2 + lake.water.clarity * 12
     for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
       const k = j * (n + 1) + i

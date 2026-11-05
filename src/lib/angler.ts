@@ -1,9 +1,9 @@
-import { SPECIES, speciesIds, formatWeight, formatLength } from '../../modules-src/angler/shared/Species'
+import { SPECIES, speciesIds, formatCaught, formatWeight, formatLength } from '../../modules-src/angler/shared/Species'
 import type { SpeciesId } from '../../modules-src/angler/shared/Species'
 import { LAKES, lakeIds } from '../../modules-src/angler/shared/Lakes'
 import type { LakeId } from '../../modules-src/angler/shared/Lakes'
 
-export { SPECIES, speciesIds, LAKES, lakeIds, formatWeight, formatLength }
+export { SPECIES, speciesIds, LAKES, lakeIds, formatCaught, formatWeight, formatLength }
 export type { SpeciesId, LakeId }
 
 export type AnglerPeriod = 'all' | 'month'

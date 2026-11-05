@@ -72,7 +72,7 @@ export class World {
     this.app.setCanvasFillMode(pc.FILLMODE_FILL_WINDOW)
     this.app.setCanvasResolution(pc.RESOLUTION_AUTO)
     this.app.graphicsDevice.maxPixelRatio = Math.min(window.devicePixelRatio || 1, quality === 'high' ? 2 : quality === 'medium' ? 1.5 : 1)
-    this.app.scene.ambientLight = new pc.Color(0.05, 0.05, 0.06)
+    this.app.scene.ambientLight = new pc.Color(0.2, 0.21, 0.23)
     this.app.scene.lighting.shadowsEnabled = true
     this.root = new pc.Entity('world')
     this.app.root.addChild(this.root)

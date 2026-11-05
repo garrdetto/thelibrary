@@ -57,11 +57,12 @@ async function board(env: Env, species: string, lake: string, period: string, us
   return { species, lake, period, records: rows.results.map(toRecord), personalBest: personal?.best ?? null, signedIn: Boolean(userId) }
 }
 
+/** The three heaviest landed fish of every species, heaviest first within each species. */
 async function hall(env: Env) {
   const rows = await env.DB.prepare(`SELECT id, username, weight, length, lake, spot, tier, rig, created_at, species FROM (
     SELECT c.id, COALESCE(u.username, c.username) AS username, c.weight, c.length, c.lake, c.spot, c.tier, c.rig, c.created_at, c.species,
       ROW_NUMBER() OVER (PARTITION BY c.species ORDER BY c.weight DESC, c.created_at ASC) AS rn
-    FROM angler_catches c LEFT JOIN users u ON u.id = c.user_id WHERE c.landed = 1) WHERE rn = 1`).all<CatchRow>()
+    FROM angler_catches c LEFT JOIN users u ON u.id = c.user_id WHERE c.landed = 1) WHERE rn <= 3 ORDER BY species, rn`).all<CatchRow>()
   return rows.results.map(toRecord)
 }
 
