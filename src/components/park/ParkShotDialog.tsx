@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { Compass, ImageOff, LoaderCircle, X } from 'lucide-react'
 import type { ParkScore } from '@/lib/park/api'
 import { formatMoney } from '../../../server/park/index.mjs'
 
-export function ParkShotDialog({ record, mapName, onClose, onExplore, exploreBusy }: { record: ParkScore; mapName: string; onClose: () => void; onExplore?: () => void; exploreBusy?: boolean }) {
+export function ParkShotDialog({ record, mapName, detail, onClose, onExplore, exploreBusy }: { record: Pick<ParkScore, 'parkName' | 'username' | 'value' | 'savedAt' | 'shot' | 'viewable'>; mapName: string; detail?: ReactNode; onClose: () => void; onExplore?: () => void; exploreBusy?: boolean }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>(record.shot ? 'loading' : 'error')
   const closeRef = useRef<HTMLButtonElement>(null)
 
@@ -21,7 +22,7 @@ export function ParkShotDialog({ record, mapName, onClose, onExplore, exploreBus
       <header>
         <div>
           <h2 id="pk-shot-title">{record.parkName}</h2>
-          <p>{record.username} · {mapName} · Company value <strong>{formatMoney(record.value)}</strong> · saved <time dateTime={record.savedAt}>{saved}</time></p>
+          <p>{record.username} · {mapName} · {detail ?? <>Company value <strong>{formatMoney(record.value)}</strong> · saved <time dateTime={record.savedAt}>{saved}</time></>}</p>
         </div>
         <button ref={closeRef} type="button" className="pk-shot-close" onClick={onClose} aria-label="Close screenshot"><X size={18} /></button>
       </header>
