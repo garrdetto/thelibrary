@@ -13,12 +13,12 @@
  *  uG rows  0 sunDir.xyz shadowStrength | 1 sunColor.xyz neon | 2 sky.xyz exposure | 3 ground.xyz time
  *           4 horizon.xyz fogDensity | 5 fogColor.xyz fogFalloff | 6 sunScatter.xyz detailOn | 7 camPos.xyz direct
  *           8 shadowBias, texelWorld0, cascades, lampCount | 9 zoom1, zoom2, shadowRes, taps
- *           10..21 three cascade matrices (4 columns each)
+ *           10..21 three cascade matrices (4 columns each) | 22 fx (0 plain, 1 rich, 2 full), 0, 0, 0
  *  uD rows  0 tint.xyz alpha | 1 emissive unlit wave wind | 2 ground specular 0 0 | 3 highlight | 4..12 slot colours
  *  uL       lamp positions (xyz) for the night lights
  */
 
-export const G_ROWS = 22
+export const G_ROWS = 23
 export const D_ROWS = 13
 export const LAMP_MAX = 32
 export const MAT_ROWS = 24
@@ -29,6 +29,13 @@ const wgG = (row: number, sw: string) => `uniforms.uG[${row}].${sw}`
 const GLSL_COMMON = `
 vec3 toLinear(vec3 c) { return c * (c * (c * 0.305306 + 0.682171) + 0.012523); }
 vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float h31(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0, 1.0)), f.x), f.y);
+}
 `
 
 const GLSL_VERTEX_BODY = (depth: boolean) => `
@@ -57,6 +64,10 @@ const GLSL_VERTEX_BODY = (depth: boolean) => `
   if (uD[1].w > 0.0 && misc.y > 0.0) {
     float k = misc.y * uD[1].w, t = time + phase;
     w.xy += vec2(sin(t * 1.7 + w.z * 0.45) + 0.4 * sin(t * 4.1 + w.x), cos(t * 1.31 + w.z * 0.37) + 0.4 * cos(t * 3.7 + w.y)) * k;
+    if (uG[22].x > 0.5) {
+      float f = k * 0.3 * uG[22].x;
+      w.xyz += vec3(sin(t * 7.3 + w.x * 1.7 + w.y * 1.3), cos(t * 6.1 + w.y * 1.9 + w.z), sin(t * 8.7 + w.z * 2.1 + w.x)) * f;
+    }
   }
   if (uD[1].z > 0.0) w.z += sin(w.x * 0.35 + time * 1.3) * cos(w.y * 0.3 + time) * uD[1].z;
 ${depth ? `
@@ -214,6 +225,13 @@ vec3 envColor(vec3 r) {
   vec3 up = mix(${glG(4, 'xyz')}, ${glG(2, 'xyz')} * 1.25, smoothstep(0.0, 0.65, r.z));
   return mix(${glG(3, 'xyz')} * 0.6, up, smoothstep(-0.18, 0.04, r.z));
 }
+vec3 skyRefl(vec3 r, vec3 L, float sharp) {
+  vec3 c = envColor(r);
+  float s = max(dot(r, L), 0.0);
+  c += ${glG(6, 'xyz')} * pow(s, 5.0) * 0.45 * smoothstep(-0.05, 0.2, r.z);
+  c += ${glG(1, 'xyz')} * pow(s, sharp) * 1.8;
+  return c;
+}
 vec3 envBRDF(vec3 f0, float rough, float nv) {
   vec4 r = rough * vec4(-1.0, -0.0275, -0.572, 0.022) + vec4(1.0, 0.0425, 1.04, -0.04);
   float a = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
@@ -249,10 +267,13 @@ void main() {
   float rough = vMatA.x, metal = vMatA.y, coat = vMatB.x, wrap = vMatB.y;
   vec3 f0d = vec3(vMatB.w);
   float ao = vAo, alpha = uAlpha;
+  float fx = ${glG(22, 'x')};
+  bool water = uWave > 0.0 || vMatA.z > 6.5;
+  bool glass = !water && abs(vMatB.w - 0.14) < 0.012 && rough < 0.1;
 #if QUALITY > 0
   vec3 dpx = dFdx(vWorld), dpy = dFdy(vWorld);
 #endif
-  if (uWave > 0.0 || vMatA.z > 6.5) {
+  if (water) {
     float depth = vAo; ao = 1.0;
     vec2 q = vWorld.xy * 0.085;
     vec4 w1 = texture(uDetail, vec3(q + vec2(time * 0.013, time * 0.008), 7.0));
@@ -262,6 +283,12 @@ void main() {
     vec4 w2 = vec4(0.5, 0.5, w1.b, w1.a);
 #endif
     vec2 slope = ((w1.rg - 0.5) * 1.2 + (w2.rg - 0.5) * 0.8) * detailOn;
+#if QUALITY > 0
+    if (fx > 1.5) {
+      vec4 w3 = texture(uDetail, vec3(q * 7.3 + vec2(time * 0.037, -time * 0.029), 7.0));
+      slope += (w3.rg - 0.5) * 0.45 * detailOn * (1.0 - smoothstep(30.0, 120.0, dist));
+    }
+#endif
     n = normalize(vec3(slope * (uWave > 0.0 ? 1.0 : 0.5), 1.0));
     rough = 0.05; metal = 0.0; f0d = vec3(0.02); wrap = 0.0; coat = 0.0;
     if (uWave > 0.0) {
@@ -285,6 +312,12 @@ void main() {
       float dirt = smoothstep(0.58, 0.82, macro.b * 0.75 + t.b * 0.35) * g;
       base = mix(base, base * vec3(1.35, 0.92, 0.6), dirt * 0.55);
       base = mix(base, base * vec3(1.1, 1.0, 0.78), g * clamp(macro.g - 0.45, 0.0, 1.0) * 0.8);
+      if (fx > 0.5) {
+        float steep = 1.0 - smoothstep(0.55, 0.9, n.z);
+        float luma = dot(base, vec3(0.33, 0.45, 0.22));
+        base = mix(base, vec3(luma) * vec3(1.05, 0.96, 0.86) * 0.9, steep * g * 0.75);
+        base = mix(base, base * vec3(0.84, 1.14, 0.74), g * (t.b - 0.5) * 0.7 * min(fx, 2.0) * 0.5);
+      }
       base *= mix(1.0, 0.8 + t.g * 0.4, fade);
       ao *= mix(1.0, t.a, 0.55 * fade);
       rough = clamp(rough * (0.8 + t.b * 0.4), 0.04, 1.0);
@@ -337,25 +370,37 @@ void main() {
   if (coat > 0.0) specAmb += envColor(R) * (0.04 + 0.96 * pow(1.0 - nv, 5.0)) * coat * 0.6 * ao;
 #endif
   vec3 c = lit + diffuseColor * ambient * ao + specAmb + base * uEmissive;
+  if (fx > 0.5 && (water || glass)) {
+    float fr = (water ? 0.02 : 0.06) + (water ? 0.98 : 0.94) * pow(1.0 - nv, 5.0);
+    vec3 refl = skyRefl(R, L, water ? 350.0 : 160.0);
+    c = mix(c, refl, clamp(fr * (water ? 0.85 : 0.75), 0.0, 1.0));
+    c += ${glG(1, 'xyz')} * pow(max(dot(R, L), 0.0), water ? 900.0 : 400.0) * (fx > 1.5 ? 6.0 : 3.0) * sh;
+    if (glass) alpha = max(alpha, fr);
+  }
   int lampCount = int(${glG(8, 'w')} + 0.5);
   if (lampCount > 0) {
-    vec3 lamp = vec3(0.0);
+    vec3 lamp = vec3(0.0), lampSpec = vec3(0.0);
+    float reach = fx > 0.5 ? 196.0 : 100.0;
+    float gloss = 1.0 - rough;
     for (int i = 0; i < ${LAMP_MAX}; i++) {
       if (i >= lampCount) break;
       vec3 ld = uL[i].xyz - vWorld;
       float r2 = dot(ld, ld);
-      if (r2 < 100.0) {
-        float win = 1.0 - r2 * 0.01;
+      if (r2 < reach) {
+        float win = 1.0 - r2 / reach;
         float att = win * win / (r2 + 1.0);
-        lamp += vec3(1.0, 0.9, 0.78) * (max(dot(n, ld * inversesqrt(max(r2, 1e-4))), 0.0) * att * 28.0);
+        vec3 lc = (fx > 0.5 && mod(float(i), 2.0) > 0.5) ? vec3(1.0, 0.8, 0.56) : vec3(1.0, 0.9, 0.78);
+        vec3 ldn = ld * inversesqrt(max(r2, 1e-4));
+        lamp += lc * (max(dot(n, ldn), 0.0) * att * 28.0);
+        if (fx > 0.5) lampSpec += lc * pow(max(dot(n, normalize(ldn + V)), 0.0), 8.0 + 140.0 * gloss * gloss) * att * 9.0 * gloss;
       }
     }
-    c += diffuseColor * lamp * mix(1.0, ao, 0.6);
+    c += diffuseColor * lamp * mix(1.0, ao, 0.6) + lampSpec * (f0 + 0.03) * mix(1.0, ao, 0.6);
   }
   if (vMatA.z < -1.5) {
     float flash = 0.35 + 0.65 * smoothstep(-0.3, 0.5, sin(time * 5.0));
     float on = vNeon < 0.002 ? flash : 0.06 + 0.94 * smoothstep(-0.15, 0.4, sin(time * 6.0 - vNeon * 6.2831853));
-    c += base * ${glG(1, 'w')} * on;
+    c += base * ${glG(1, 'w')} * on * (1.0 + (fx > 1.5 ? 0.9 * pow(1.0 - nv, 2.0) : 0.0) + (fx > 0.5 ? 0.25 : 0.0));
   }
   c = mix(c, toLinear(uHighlight.rgb) * 1.6, uHighlight.a);
   float fog;
@@ -368,7 +413,8 @@ void main() {
   float integral = abs(rdz * fall * dist) > 1e-3 ? h0 * (1.0 - exp(-fall * rdz * dist)) / (fall * rdz) : h0 * dist;
   fog = 1.0 - exp(-${glG(4, 'w')} * max(integral, 0.0));
 #endif
-  vec3 fogCol = mix(${glG(5, 'xyz')}, ${glG(6, 'xyz')}, pow(max(dot(-V, L), 0.0), 6.0));
+  float sg = max(dot(-V, L), 0.0);
+  vec3 fogCol = mix(${glG(5, 'xyz')}, ${glG(6, 'xyz')}, fx > 0.5 ? min(pow(sg, 5.0) * 0.8 + pow(sg, 28.0) * 0.6, 1.0) : pow(sg, 6.0));
   c = mix(c, fogCol, fog);
   gl_FragColor = vec4(direct ? finish(c) : c, alpha);
 }
@@ -398,7 +444,32 @@ void main() {
   float up = clamp(dir.z, 0.0, 1.0);
   vec3 c = mix(uBottom, uTop, pow(up, 0.38));
   float sd = max(dot(dir, ${glG(0, 'xyz')}), 0.0);
+  float fx = ${glG(22, 'x')};
+  float time = ${glG(3, 'w')};
   c += ${glG(6, 'xyz')} * pow(sd, 6.0) * 0.6 + ${glG(1, 'xyz')} * (pow(sd, 900.0) * 6.0 + pow(sd, 60.0) * 0.12);
+  if (fx > 0.5) {
+    float low = 1.0 - smoothstep(0.12, 0.6, ${glG(0, 'z')});
+    c += ${glG(6, 'xyz')} * exp(-up * 7.0) * (pow(sd, 3.0) * 0.9 * low + 0.12);
+    c = mix(c, uBottom * 1.1, exp(-up * 22.0) * 0.45);
+    float night = 1.0 - smoothstep(0.2, 0.8, uTop.b);
+    if (night > 0.01 && dir.z > 0.02) {
+      vec3 sp = dir * 150.0;
+      vec3 ip = floor(sp);
+      float h = h31(ip);
+      float tw = 0.55 + 0.45 * sin(time * 2.3 + h * 60.0);
+      float d = length(fract(sp) - 0.5);
+      c += vec3(0.9, 0.95, 1.2) * step(0.9965, h) * smoothstep(0.35, 0.05, d) * tw * night * smoothstep(0.02, 0.25, dir.z) * 2.2;
+    }
+    if (dir.z > 0.01) {
+      vec2 cp = dir.xy / (dir.z + 0.14) * 0.55 + vec2(time * 0.006, time * 0.002);
+      float cov = vnoise(cp * 1.6) * 0.55 + vnoise(cp * 3.4) * 0.3 + vnoise(cp * 7.0) * 0.15;
+      if (fx > 1.5) cov += vnoise(cp * 14.0) * 0.08;
+      cov = smoothstep(0.52, 0.86, cov) * smoothstep(0.0, 0.18, dir.z);
+      float lit = 0.4 + 0.6 * pow(sd, 2.0);
+      vec3 cloud = uBottom * (0.9 + 0.3 * (1.0 - night)) + ${glG(6, 'xyz')} * 0.35 * lit + ${glG(1, 'xyz')} * 0.04 * pow(sd, 8.0);
+      c = mix(c, cloud, cov * 0.78);
+    }
+  }
   if (${glG(7, 'w')} > 0.5) c = pow(aces(c * ${glG(2, 'w')}), vec3(1.0 / 2.2));
   gl_FragColor = vec4(c, 1.0);
 }
@@ -453,6 +524,10 @@ const WGSL_VERTEX_BODY = (depth: boolean) => `
     let k : f32 = vertexInputs.misc.y * uniforms.uD[1].w;
     let t : f32 = time + phase;
     w = vec4f(w.xy + vec2f(sin(t * 1.7 + w.z * 0.45) + 0.4 * sin(t * 4.1 + w.x), cos(t * 1.31 + w.z * 0.37) + 0.4 * cos(t * 3.7 + w.y)) * k, w.z, w.w);
+    if (uniforms.uG[22].x > 0.5) {
+      let f : f32 = k * 0.3 * uniforms.uG[22].x;
+      w = vec4f(w.xyz + vec3f(sin(t * 7.3 + w.x * 1.7 + w.y * 1.3), cos(t * 6.1 + w.y * 1.9 + w.z), sin(t * 8.7 + w.z * 2.1 + w.x)) * f, w.w);
+    }
   }
   if (uniforms.uD[1].z > 0.0) { w.z = w.z + sin(w.x * 0.35 + time * 1.3) * cos(w.y * 0.3 + time) * uniforms.uD[1].z; }
 ${depth ? `
@@ -529,6 +604,7 @@ var uShadow2 : texture_2d<f32>;
 fn toLinear(c : vec3f) -> vec3f { return c * (c * (c * 0.305306 + 0.682171) + 0.012523); }
 fn aces(x : vec3f) -> vec3f { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), vec3f(0.0), vec3f(1.0)); }
 fn ign(p : vec2f) -> f32 { return fract(52.9829189 * fract(dot(p, vec2f(0.06711056, 0.00583715)))); }
+fn h21(p : vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
 fn dtex(uv : vec2f, layer : f32, gx : vec2f, gy : vec2f) -> vec4f { return textureSampleGrad(uDetail, uDetailSampler, uv, i32(layer + 0.5), gx, gy); }
 fn detailTri(p : vec3f, n : vec3f, layer : f32, scale : f32, dpx : vec3f, dpy : vec3f, low : bool) -> vec4f {
   var w : vec3f = abs(n);
@@ -604,6 +680,13 @@ fn envColor(r : vec3f) -> vec3f {
   let up : vec3f = mix(${wgG(4, 'xyz')}, ${wgG(2, 'xyz')} * 1.25, smoothstep(0.0, 0.65, r.z));
   return mix(${wgG(3, 'xyz')} * 0.6, up, smoothstep(-0.18, 0.04, r.z));
 }
+fn skyRefl(r : vec3f, L : vec3f, sharp : f32) -> vec3f {
+  var c : vec3f = envColor(r);
+  let s : f32 = max(dot(r, L), 0.0);
+  c = c + ${wgG(6, 'xyz')} * pow(s, 5.0) * 0.45 * smoothstep(-0.05, 0.2, r.z);
+  c = c + ${wgG(1, 'xyz')} * pow(s, sharp) * 1.8;
+  return c;
+}
 fn envBRDF(f0 : vec3f, rough : f32, nv : f32) -> vec3f {
   let r : vec4f = rough * vec4f(-1.0, -0.0275, -0.572, 0.022) + vec4f(1.0, 0.0425, 1.04, -0.04);
   let a : f32 = min(r.x * r.x, exp2(-9.28 * nv)) * r.x + r.y;
@@ -653,7 +736,10 @@ fn main(input : FragmentInputs) -> FragmentOutputs {
     var f0d : vec3f = vec3f(vMatB.w);
     var ao : f32 = fragmentInputs.vAo;
     var alpha : f32 = uAlpha;
-    if (uWave > 0.0 || vMatA.z > 6.5) {
+    let fx : f32 = ${wgG(22, 'x')};
+    let water : bool = uWave > 0.0 || vMatA.z > 6.5;
+    let glass : bool = !water && abs(vMatB.w - 0.14) < 0.012 && rough < 0.1;
+    if (water) {
       let depth : f32 = fragmentInputs.vAo;
       ao = 1.0;
       let q : vec2f = world.xy * 0.085;
@@ -662,7 +748,11 @@ fn main(input : FragmentInputs) -> FragmentOutputs {
       let w1 : vec4f = dtex(q + vec2f(time * 0.013, time * 0.008), 7.0, g1, g2);
       var w2 : vec4f = vec4f(0.5, 0.5, w1.b, w1.a);
       if (!low) { w2 = dtex(q * 2.7 + vec2f(-time * 0.021, time * 0.017), 7.0, g1 * 2.7, g2 * 2.7); }
-      let slope : vec2f = ((w1.rg - 0.5) * 1.2 + (w2.rg - 0.5) * 0.8) * detailOn;
+      var slope : vec2f = ((w1.rg - 0.5) * 1.2 + (w2.rg - 0.5) * 0.8) * detailOn;
+      if (!low && fx > 1.5) {
+        let w3 : vec4f = dtex(q * 7.3 + vec2f(time * 0.037, -time * 0.029), 7.0, g1 * 7.3, g2 * 7.3);
+        slope = slope + (w3.rg - 0.5) * 0.45 * detailOn * (1.0 - smoothstep(30.0, 120.0, dist));
+      }
       n = normalize(vec3f(slope * select(0.5, 1.0, uWave > 0.0), 1.0));
       rough = 0.05; metal = 0.0; f0d = vec3f(0.02); wrap = 0.0; coat = 0.0;
       if (uWave > 0.0) {
@@ -684,6 +774,12 @@ fn main(input : FragmentInputs) -> FragmentOutputs {
         let dirt : f32 = smoothstep(0.58, 0.82, wide.b * 0.75 + t.b * 0.35) * g;
         base = mix(base, base * vec3f(1.35, 0.92, 0.6), dirt * 0.55);
         base = mix(base, base * vec3f(1.1, 1.0, 0.78), g * clamp(wide.g - 0.45, 0.0, 1.0) * 0.8);
+        if (fx > 0.5) {
+          let steep : f32 = 1.0 - smoothstep(0.55, 0.9, n.z);
+          let luma : f32 = dot(base, vec3f(0.33, 0.45, 0.22));
+          base = mix(base, vec3f(luma) * vec3f(1.05, 0.96, 0.86) * 0.9, steep * g * 0.75);
+          base = mix(base, base * vec3f(0.84, 1.14, 0.74), g * (t.b - 0.5) * 0.7 * min(fx, 2.0) * 0.5);
+        }
         base = base * mix(1.0, 0.8 + t.g * 0.4, fade);
         ao = ao * mix(1.0, t.a, 0.55 * fade);
         rough = clamp(rough * (0.8 + t.b * 0.4), 0.04, 1.0);
@@ -744,27 +840,40 @@ fn main(input : FragmentInputs) -> FragmentOutputs {
       if (coat > 0.0) { specAmb = specAmb + envColor(R) * (0.04 + 0.96 * pow(1.0 - nv, 5.0)) * coat * 0.6 * ao; }
     }
     var c : vec3f = lit + diffuseColor * ambient * ao + specAmb + base * uEmissive;
+    if (fx > 0.5 && (water || glass)) {
+      let fr : f32 = select(0.06, 0.02, water) + select(0.94, 0.98, water) * pow(1.0 - nv, 5.0);
+      let refl : vec3f = skyRefl(R, L, select(160.0, 350.0, water));
+      c = mix(c, refl, clamp(fr * select(0.75, 0.85, water), 0.0, 1.0));
+      c = c + ${wgG(1, 'xyz')} * pow(max(dot(R, L), 0.0), select(400.0, 900.0, water)) * select(3.0, 6.0, fx > 1.5) * sh;
+      if (glass) { alpha = max(alpha, fr); }
+    }
     let lampCount : i32 = i32(${wgG(8, 'w')} + 0.5);
     if (lampCount > 0) {
       var lamp : vec3f = vec3f(0.0);
+      var lampSpec : vec3f = vec3f(0.0);
+      let reach : f32 = select(100.0, 196.0, fx > 0.5);
+      let gloss : f32 = 1.0 - rough;
       for (var i : i32 = 0; i < ${LAMP_MAX}; i = i + 1) {
         if (i >= lampCount) { break; }
         let ld : vec3f = uniforms.uL[i].xyz - world;
         let r2 : f32 = dot(ld, ld);
-        if (r2 < 100.0) {
-          let win : f32 = 1.0 - r2 * 0.01;
+        if (r2 < reach) {
+          let win : f32 = 1.0 - r2 / reach;
           let att : f32 = win * win / (r2 + 1.0);
-          lamp = lamp + vec3f(1.0, 0.9, 0.78) * (max(dot(n, ld * inverseSqrt(max(r2, 1e-4))), 0.0) * att * 28.0);
+          let lc : vec3f = select(vec3f(1.0, 0.9, 0.78), vec3f(1.0, 0.8, 0.56), fx > 0.5 && (i % 2) == 1);
+          let ldn : vec3f = ld * inverseSqrt(max(r2, 1e-4));
+          lamp = lamp + lc * (max(dot(n, ldn), 0.0) * att * 28.0);
+          if (fx > 0.5) { lampSpec = lampSpec + lc * pow(max(dot(n, normalize(ldn + V)), 0.0), 8.0 + 140.0 * gloss * gloss) * att * 9.0 * gloss; }
         }
       }
-      c = c + diffuseColor * lamp * mix(1.0, ao, 0.6);
+      c = c + diffuseColor * lamp * mix(1.0, ao, 0.6) + lampSpec * (f0 + vec3f(0.03)) * mix(1.0, ao, 0.6);
     }
     if (vMatA.z < -1.5) {
       let neon : f32 = fragmentInputs.vNeon;
       let flash : f32 = 0.35 + 0.65 * smoothstep(-0.3, 0.5, sin(time * 5.0));
       var on : f32 = 0.06 + 0.94 * smoothstep(-0.15, 0.4, sin(time * 6.0 - neon * 6.2831853));
       if (neon < 0.002) { on = flash; }
-      c = c + base * ${wgG(1, 'w')} * on;
+      c = c + base * ${wgG(1, 'w')} * on * (1.0 + select(0.0, 0.9 * pow(1.0 - nv, 2.0), fx > 1.5) + select(0.0, 0.25, fx > 0.5));
     }
     c = mix(c, toLinear(uHighlight.rgb) * 1.6, uHighlight.a);
     var fog : f32;
@@ -778,7 +887,10 @@ fn main(input : FragmentInputs) -> FragmentOutputs {
       if (abs(rdz * fall * dist) > 1e-3) { integral = h0 * (1.0 - exp(-fall * rdz * dist)) / (fall * rdz); }
       fog = 1.0 - exp(-${wgG(4, 'w')} * max(integral, 0.0));
     }
-    let fogCol : vec3f = mix(${wgG(5, 'xyz')}, ${wgG(6, 'xyz')}, pow(max(dot(-V, L), 0.0), 6.0));
+    let sg : f32 = max(dot(-V, L), 0.0);
+    var fogMix : f32 = pow(sg, 6.0);
+    if (fx > 0.5) { fogMix = min(pow(sg, 5.0) * 0.8 + pow(sg, 28.0) * 0.6, 1.0); }
+    let fogCol : vec3f = mix(${wgG(5, 'xyz')}, ${wgG(6, 'xyz')}, fogMix);
     c = mix(c, fogCol, fog);
     var shown : vec3f = c;
     if (direct) { shown = finish(c, low); }
@@ -805,6 +917,13 @@ uniform uInvViewProj : mat4x4f;
 uniform uTop : vec3f;
 uniform uBottom : vec3f;
 fn aces(x : vec3f) -> vec3f { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), vec3f(0.0), vec3f(1.0)); }
+fn h21(p : vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
+fn vnoise(p : vec2f) -> f32 {
+  let i : vec2f = floor(p);
+  var f : vec2f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2f(1.0, 0.0)), f.x), mix(h21(i + vec2f(0.0, 1.0)), h21(i + vec2f(1.0, 1.0)), f.x), f.y);
+}
 @fragment
 fn main(input : FragmentInputs) -> FragmentOutputs {
   let a : vec4f = uniforms.uInvViewProj * vec4f(fragmentInputs.vNdc, 0.5, 1.0);
@@ -812,7 +931,32 @@ fn main(input : FragmentInputs) -> FragmentOutputs {
   let up : f32 = clamp(dir.z, 0.0, 1.0);
   var c : vec3f = mix(uniforms.uBottom, uniforms.uTop, pow(up, 0.38));
   let sd : f32 = max(dot(dir, ${wgG(0, 'xyz')}), 0.0);
+  let fx : f32 = ${wgG(22, 'x')};
+  let time : f32 = ${wgG(3, 'w')};
   c = c + ${wgG(6, 'xyz')} * pow(sd, 6.0) * 0.6 + ${wgG(1, 'xyz')} * (pow(sd, 900.0) * 6.0 + pow(sd, 60.0) * 0.12);
+  if (fx > 0.5) {
+    let low : f32 = 1.0 - smoothstep(0.12, 0.6, ${wgG(0, 'z')});
+    c = c + ${wgG(6, 'xyz')} * exp(-up * 7.0) * (pow(sd, 3.0) * 0.9 * low + 0.12);
+    c = mix(c, uniforms.uBottom * 1.1, exp(-up * 22.0) * 0.45);
+    let night : f32 = 1.0 - smoothstep(0.2, 0.8, uniforms.uTop.b);
+    if (night > 0.01 && dir.z > 0.02) {
+      let sp : vec3f = dir * 150.0;
+      let ip : vec3f = floor(sp);
+      let h : f32 = fract(sin(dot(ip, vec3f(12.9898, 78.233, 37.719))) * 43758.5453);
+      let tw : f32 = 0.55 + 0.45 * sin(time * 2.3 + h * 60.0);
+      let d : f32 = length(fract(sp) - vec3f(0.5));
+      c = c + vec3f(0.9, 0.95, 1.2) * step(0.9965, h) * smoothstep(0.35, 0.05, d) * tw * night * smoothstep(0.02, 0.25, dir.z) * 2.2;
+    }
+    if (dir.z > 0.01) {
+      let cp : vec2f = dir.xy / (dir.z + 0.14) * 0.55 + vec2f(time * 0.006, time * 0.002);
+      var cov : f32 = vnoise(cp * 1.6) * 0.55 + vnoise(cp * 3.4) * 0.3 + vnoise(cp * 7.0) * 0.15;
+      if (fx > 1.5) { cov = cov + vnoise(cp * 14.0) * 0.08; }
+      cov = smoothstep(0.52, 0.86, cov) * smoothstep(0.0, 0.18, dir.z);
+      let lit : f32 = 0.4 + 0.6 * pow(sd, 2.0);
+      let cloud : vec3f = uniforms.uBottom * (0.9 + 0.3 * (1.0 - night)) + ${wgG(6, 'xyz')} * 0.35 * lit + ${wgG(1, 'xyz')} * 0.04 * pow(sd, 8.0);
+      c = mix(c, cloud, cov * 0.78);
+    }
+  }
   if (${wgG(7, 'w')} > 0.5) { c = pow(aces(c * ${wgG(2, 'w')}), vec3f(1.0 / 2.2)); }
   fragmentOutputs.color = vec4f(c, 1.0);
 }
