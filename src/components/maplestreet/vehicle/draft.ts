@@ -1,5 +1,6 @@
 import { DRIVE_TEMPLATES, VEHICLE_LIMITS, BRAND_PATTERN } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec, DriveTemplate, Point3, TrafficRoute, VehicleParts, PartBox } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
+import type { LampShapes } from '../../../../modules-src/maplestreet/shared/Shapes'
 import { ECONOMY_TEMPLATES } from './templates'
 import { accelTargetMph, MPH_TO_MS, predictDrive, solveDrive } from '../../../../modules-src/maplestreet/shared/VehicleDrive'
 import { BODY_EXTENTS, BUILTIN_TUNING, rideHeight } from '../../../../modules-src/maplestreet/shared/Vehicles'
@@ -51,6 +52,8 @@ export type Draft = {
   removeWheels: boolean
   /** Opening doors (right side, mirrored), hood and trunk, as boxes in chassis space. */
   parts: VehicleParts
+  /** Custom headlight and taillight outlines (mirrored to both sides). */
+  lampShapes: LampShapes
   maxTriangles: number
   maxTexture: number
 }
@@ -134,6 +137,7 @@ export function newDraft(template: DriveTemplate, raw: Size3 | null, previous?: 
     traffic: previous?.traffic ?? { enabled: false, driver: '', route: 'ringA', mph: template === 'golfcart' ? 13 : 24 },
     removeWheels: previous?.removeWheels ?? true,
     parts: previous?.parts ?? { doors: [], hood: null, trunk: null },
+    lampShapes: previous?.lampShapes ?? {},
     maxTriangles: previous?.maxTriangles ?? 120000,
     maxTexture: previous?.maxTexture ?? 2048,
   }
@@ -203,6 +207,7 @@ export function draftSpec(d: Draft, raw: Size3, center: { x: number; z: number; 
     traffic: { ...d.traffic, driver: d.traffic.driver.trim() || d.name.trim() },
     wheelsRemoved: d.removeWheels,
     ...(d.parts.doors.length || d.parts.hood || d.parts.trunk ? { parts: d.parts } : {}),
+    ...(d.lampShapes.head || d.lampShapes.tail ? { lampShapes: d.lampShapes } : {}),
   }
 }
 
@@ -235,6 +240,7 @@ export function draftFromRecord(v: CustomVehicleRecord, raw: Size3, center: { x:
     traffic: { ...v.traffic },
     removeWheels: v.wheelsRemoved,
     parts: v.parts ? { doors: v.parts.doors.map(d => ({ ...d })), hood: v.parts.hood ? { ...v.parts.hood } : null, trunk: v.parts.trunk ? { ...v.parts.trunk } : null } : { doors: [], hood: null, trunk: null },
+    lampShapes: { ...(v.lampShapes ?? {}) },
     maxTriangles: 120000,
     maxTexture: 2048,
   }
