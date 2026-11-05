@@ -297,7 +297,7 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `src/world/Downtown.ts` — downtown and grid buildings, storefronts, signs, civic, gas station, body shop, depot, town square, rings — `Game`.
 - `src/world/Houses.ts` — lot meshing from `shared/BuildRules.ts`, furniture models, lot colliders — `Game`.
 - `src/physics/Physics.ts`, `Character.ts`, `Vehicle.ts`, `Parking.ts` — Rapier world and the Fox Plains controllers ported line for line — `Game`, `Remotes`.
-- `src/physics/VehicleModels.ts` — built-in and published vehicle views, paint, lamps, procedural tires and rims; fixes glTF materials (opaque parts `BLEND_NONE` with depth writes and back-face culling, glass as a tinted dielectric) and gives built-in cabs a solid painted roof — `Vehicle`, `Remotes`.
+- `src/physics/VehicleModels.ts` — built-in and published vehicle views (sedan, coupe, truck and hdtruck draw with the realistic bundled scans as stand-ins, uploaded bodies untouched), paint, lamps, procedural tires and rims; fixes glTF materials (opaque parts `BLEND_NONE` with depth writes and back-face culling, glass as a tinted dielectric) and gives built-in cabs a solid painted roof — `Vehicle`, `Remotes`.
 - `src/physics/MowerModel.ts` — the riding mower built from primitives (hood, deck and chute, seat, steering wheel, fenders, grass catcher with lid and handle, blower tube) — `VehicleModels`.
 - `src/avatar/Avatar.ts` — scanned bodies, recolor shader chunk, procedural pose (`AvatarKits`, `Avatar`) — `Character`, `Remotes`.
 - `src/net/Remotes.ts` — interpolated neighbors, traffic and their vehicles, name tags — `Game`.
