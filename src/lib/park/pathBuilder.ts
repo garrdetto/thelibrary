@@ -1,4 +1,4 @@
-import { DIRS, SLOPE_RISE, STAIR_RISE, groundHeightAt, inMap, pathHeightAt, tileIndex, tileMax, tileMin, tileSlope } from '../../../server/park/index.mjs'
+import { DIRS, PATH_STEP_LIMIT, SLOPE_RISE, STAIR_RISE, STAIR_STEP_LIMIT, groundHeightAt, inMap, pathHeightAt, tileIndex, tileMax, tileMin, tileSlope } from '../../../server/park/index.mjs'
 import type { ParkMap } from '../../../server/park/index.mjs'
 
 export type PathSegment = 'level' | 'up' | 'down' | 'stairs-up' | 'stairs-down'
@@ -28,6 +28,18 @@ export function edgeHeight(map: ParkMap, x: number, y: number, dir: number, inse
 
 function groundEdge(map: ParkMap, x: number, y: number, dir: number) {
   return groundHeightAt(map, (x + 0.5 + DIRS[dir][0] * 0.49) * TILE, (y + 0.5 + DIRS[dir][1] * 0.49) * TILE, TILE)
+}
+
+function stepsTooHigh(map: ParkMap, x: number, y: number, height: number, kind: number) {
+  for (const [dx, dy] of DIRS) {
+    const nx = x + dx, ny = y + dy
+    if (!inMap(map, nx, ny)) continue
+    const neighbourKind = map.path[tileIndex(map, nx, ny)]
+    if (!neighbourKind) continue
+    const limit = kind === 3 || neighbourKind === 3 ? STAIR_STEP_LIMIT : PATH_STEP_LIMIT
+    if (Math.abs(height - pathHeightAt(map, (nx + 0.5) * TILE, (ny + 0.5) * TILE, TILE)) > limit) return true
+  }
+  return false
 }
 
 export function pathHeading(map: ParkMap, x: number, y: number) {
@@ -91,6 +103,7 @@ export function planPiece(map: ParkMap, park: number, from: PathEnd, segment: Pa
     const flatGhost: GhostPiece = { ...ghost, z0: entry, z1: groundEdge(map, x, y, dir), ground: true }
     if (Math.abs(entry - from.exit) > 0.3) return fail('The ground here is at a different height. Use a slope or stairs.', flatGhost)
     if (pathKind !== 4 && tileSlope(map, x, y).dir === -2) return fail('The land is too steep for a path. Use stairs or smooth it first.', flatGhost)
+    if (stepsTooHigh(map, x, y, base, pathKind)) return fail('The ground here is at a different height. Use a slope or stairs.', flatGhost)
     return { ok: true, anchor: false, x, y, dir, kind: pathKind, elevation: 0, ghost: flatGhost, cost: PIECE_COST[pathKind], end: { x, y, dir, exit: flatGhost.z1, slope: 0, placed: true } }
   }
   const elevation = Math.round((stored - base) / 0.5)
@@ -101,6 +114,8 @@ export function planPiece(map: ParkMap, park: number, from: PathEnd, segment: Pa
   if (sign < 0 && z1 < base - 0.05) return fail('Too close to the ground to go down here.', ghost)
   if (elevation > 24) return fail('The path cannot go any higher.', ghost)
   if (water && elevation === 0 && pathKind !== 4) return fail('Raise the path or use a boardwalk over water.', ghost)
+  if (elevation === 0 && kind !== 3 && kind !== 4 && tileSlope(map, x, y).dir === -2) return fail('The land is too steep for a path. Use stairs or smooth it first.', ghost)
+  if (stepsTooHigh(map, x, y, deck, kind)) return fail('The ground here is at a different height. Use a slope or stairs.', ghost)
   const snapped = deck - stored
   const snappedGhost: GhostPiece = { ...ghost, z0: z0 + snapped, z1: z1 + snapped }
   return { ok: true, anchor: false, x, y, dir, kind, elevation, ghost: snappedGhost, cost: PIECE_COST[kind], end: { x, y, dir, exit: z1 + snapped, slope: sign, placed: true } }
