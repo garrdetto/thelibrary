@@ -1,1 +1,1 @@
-import './src/main.ts';
+import './babylon/main.ts';
