@@ -42,28 +42,34 @@ export interface BodySpec {
   blurb: string
   length: number
   width: number
-  /** Height of the lower body (sills to belt line). */
-  bodyHeight: number
-  /** Belt line height above the ground. */
-  beltHeight: number
-  /** Greenhouse (roof) height above the belt line. */
-  roofHeight: number
-  /** Where the cabin starts and ends along the length, as fractions from the nose. */
-  cabin: readonly [start: number, end: number]
-  /** Roof plan: wagons keep the full roof to the tail, sedans taper to a trunk. */
-  roofEnd: number
-  hoodDrop: number
-  trunkDrop: number
+  /** Body floor (rocker bottom) height above the ground. */
+  sill: number
+  /** Belt line (top of the doors) height above the ground. */
+  belt: number
+  /** Roof height above the ground. */
+  roof: number
+  /** Height of the hood at the nose and of the deck or tailgate top at the tail. */
+  noseTop: number
+  tailTop: number
+  /** Where the cowl (windshield base), B pillar and C pillar sit along the length, as fractions from the nose. */
+  cowl: number
+  bPillar: number
+  cPillar: number
+  /** How far the windshield and backlight lean back, in metres along the length. */
+  windshieldRake: number
+  backlightRake: number
+  /** Fractions of the length where the door seams are. */
+  seams: readonly number[]
+  roofRack: boolean
+  quadLamps: boolean
   mass: number
   wheelbase: number
   track: number
   wheelRadius: number
   wheelWidth: number
-  /** Chassis collider half extents (x, y, z) and the y offset of the body centre. */
+  /** Chassis collider half extents (x, y, z) and the height of the body origin above the ground. */
   colliderHalf: readonly [number, number, number]
   centreHeight: number
-  /** Vertex grid density of the deformable body, segments per metre. */
-  segmentsPerMetre: number
 }
 
 export interface VehicleSpec {
@@ -186,22 +192,27 @@ const wagon: BodySpec = {
   name: 'Longroof wagon',
   blurb: 'Full-size 1970s family hauler. Long, heavy, and the tailgate takes a beating.',
   length: 5.6,
-  width: 2.05,
-  bodyHeight: 0.62,
-  beltHeight: 0.98,
-  roofHeight: 0.52,
-  cabin: [0.36, 0.97],
-  roofEnd: 0.97,
-  hoodDrop: 0.08,
-  trunkDrop: 0.04,
+  width: 2.02,
+  sill: 0.34,
+  belt: 1.0,
+  roof: 1.5,
+  noseTop: 0.9,
+  tailTop: 1.0,
+  cowl: 0.37,
+  bPillar: 0.6,
+  cPillar: 0.8,
+  windshieldRake: 0.72,
+  backlightRake: 0.14,
+  seams: [0.37, 0.6, 0.8],
+  roofRack: true,
+  quadLamps: true,
   mass: 2050,
   wheelbase: 3.2,
-  track: 1.62,
+  track: 1.76,
   wheelRadius: 0.37,
   wheelWidth: 0.24,
   colliderHalf: [1.0, 0.5, 2.78],
   centreHeight: 0.86,
-  segmentsPerMetre: 5,
 }
 
 const sedan: BodySpec = {
@@ -209,38 +220,43 @@ const sedan: BodySpec = {
   name: 'Boulevard sedan',
   blurb: 'Big four-door cruiser with a long trunk. A little lighter and quicker to turn around.',
   length: 5.4,
-  width: 2.0,
-  bodyHeight: 0.6,
-  beltHeight: 0.96,
-  roofHeight: 0.5,
-  cabin: [0.36, 0.74],
-  roofEnd: 0.74,
-  hoodDrop: 0.08,
-  trunkDrop: 0.1,
+  width: 1.98,
+  sill: 0.34,
+  belt: 0.98,
+  roof: 1.44,
+  noseTop: 0.88,
+  tailTop: 0.9,
+  cowl: 0.37,
+  bPillar: 0.58,
+  cPillar: 0.72,
+  windshieldRake: 0.7,
+  backlightRake: 0.62,
+  seams: [0.37, 0.58, 0.76],
+  roofRack: false,
+  quadLamps: false,
   mass: 1900,
   wheelbase: 3.1,
-  track: 1.6,
+  track: 1.72,
   wheelRadius: 0.36,
   wheelWidth: 0.23,
   colliderHalf: [0.98, 0.5, 2.68],
   centreHeight: 0.85,
-  segmentsPerMetre: 5,
 }
 
 export const config: ModuleConfig = {
   meta: moduleJson as ModuleMeta,
   engine: {
     ...ENGINE_DEFAULTS,
-    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#c9a977', toneMappingExposure: 1.05 },
+    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#c9a977', toneMappingExposure: 1.0 },
     camera: { fov: 58, near: 0.2, far: 600, position: [0, 9, 18], lookAt: [0, 0, 0] },
     environment: { ...ENGINE_DEFAULTS.environment, background: '#d9b98a', fogColor: '#d9b98a', fogNear: 90, fogFar: 320 },
     lighting: {
       ...ENGINE_DEFAULTS.lighting,
       skyColor: '#ffe8c4',
       groundColor: '#6b4a2a',
-      hemisphereIntensity: 0.75,
-      sunColor: '#ffd9a6',
-      sunIntensity: 2.6,
+      hemisphereIntensity: 0.55,
+      sunColor: '#ffdcae',
+      sunIntensity: 3.0,
       sunDirection: [-0.55, 0.9, 0.4],
       sunDistance: 70,
       shadowExtent: 34,

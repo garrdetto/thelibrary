@@ -1,6 +1,9 @@
-/** Arena factory: the dirt floor with ruts, the concrete barrier ring (with the collider boxes to match), bleachers with a crowd, fair tents, light towers and a turning ferris wheel; no rules, only shapes. */
+/** Arena factory: the dirt floor with ruts and a normal map, the concrete barrier ring (with the collider boxes to match), bleachers with a built crowd, pennant strings, fair tents, light towers and a turning ferris wheel; no rules, only shapes. */
 import * as THREE from 'three/webgpu'
 import type { ModuleConfig } from '../config'
+import { createCrowd, type Seat } from './Crowd'
+
+const { float, fract, instanceIndex, positionLocal, sin, time: shaderTime, vec3 } = THREE.TSL
 
 export interface BarrierBox {
   position: THREE.Vector3
@@ -53,9 +56,50 @@ function dirtTexture(size: number, light: string, dark: string): THREE.CanvasTex
     }
     ctx.stroke()
   }
+  for (let i = 0; i < 2500; i++) {
+    ctx.globalAlpha = 0.35 + random() * 0.4
+    ctx.fillStyle = random() < 0.5 ? '#d8c39a' : '#5a4027'
+    ctx.beginPath()
+    ctx.arc(random() * size, random() * size, 0.6 + random() * 1.6, 0, Math.PI * 2)
+    ctx.fill()
+  }
   ctx.globalAlpha = 1
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.anisotropy = 8
+  return texture
+}
+
+/** A tangent-space normal map from a texture's brightness (Sobel), so ruts and pebbles catch the light. */
+function normalFromHeight(source: HTMLCanvasElement, strength: number): THREE.CanvasTexture {
+  const size = source.width
+  const sourceCtx = source.getContext('2d')
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx || !sourceCtx) throw new Error('Canvas 2D is not available')
+  const data = sourceCtx.getImageData(0, 0, size, size).data
+  const height = new Float32Array(size * size)
+  for (let i = 0; i < size * size; i++) height[i] = (data[i * 4] * 0.3 + data[i * 4 + 1] * 0.59 + data[i * 4 + 2] * 0.11) / 255
+  const out = ctx.createImageData(size, size)
+  const at = (x: number, y: number) => height[((y + size) % size) * size + ((x + size) % size)]
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1)) * strength
+      const dy = (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1)) * strength
+      const length = Math.sqrt(dx * dx + dy * dy + 1)
+      const i = (y * size + x) * 4
+      out.data[i] = ((-dx / length) * 0.5 + 0.5) * 255
+      out.data[i + 1] = ((-dy / length) * 0.5 + 0.5) * 255
+      out.data[i + 2] = (1 / length) * 255
+      out.data[i + 3] = 255
+    }
+  }
+  ctx.putImageData(out, 0, 0)
+  const texture = new THREE.CanvasTexture(canvas)
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
   texture.anisotropy = 8
@@ -116,7 +160,9 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
 
   const dirt = own(dirtTexture(config.dirtTexture, config.groundColor, config.groundDark))
   dirt.repeat.set(config.groundSize / 18, config.groundSize / 18)
-  const groundMaterial = own(new THREE.MeshStandardMaterial({ map: dirt, roughness: 1, metalness: 0 }))
+  const dirtNormal = own(normalFromHeight(dirt.image as HTMLCanvasElement, 1.6))
+  dirtNormal.repeat.copy(dirt.repeat)
+  const groundMaterial = own(new THREE.MeshStandardMaterial({ map: dirt, normalMap: dirtNormal, normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.96, metalness: 0 }))
   const ground = new THREE.Mesh(own(new THREE.PlaneGeometry(config.groundSize, config.groundSize)), groundMaterial)
   ground.rotation.x = -Math.PI / 2
   ground.receiveShadow = true
@@ -129,7 +175,12 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
   outfield.position.y = -0.02
   root.add(outfield)
 
-  const inner = new THREE.Mesh(own(new THREE.PlaneGeometry(config.length + 2, config.width + 2)), own(new THREE.MeshStandardMaterial({ map: dirt, roughness: 1, color: new THREE.Color('#d9c09a') })))
+  const innerNormal = own(normalFromHeight(dirt.image as HTMLCanvasElement, 2.2))
+  innerNormal.repeat.set((config.length + 2) / 12, (config.width + 2) / 12)
+  const innerMap = own(dirt.clone())
+  innerMap.repeat.copy(innerNormal.repeat)
+  innerMap.needsUpdate = true
+  const inner = new THREE.Mesh(own(new THREE.PlaneGeometry(config.length + 2, config.width + 2)), own(new THREE.MeshStandardMaterial({ map: innerMap, normalMap: innerNormal, normalScale: new THREE.Vector2(1.1, 1.1), roughness: 0.95, color: new THREE.Color('#cfae84') })))
   inner.rotation.x = -Math.PI / 2
   inner.position.y = 0.005
   root.add(inner)
@@ -214,44 +265,23 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
     riser.position.set(0, rowRise * (row + 0.5), standZ + rowDepth * row - rowDepth / 2)
     standGroup.add(riser)
   }
-  const crowdGeometry = own(new THREE.CapsuleGeometry(0.22, 0.5, 3, 7))
-  const crowdMaterial = own(new THREE.MeshStandardMaterial({ roughness: 0.9, metalness: 0 }))
-  const crowdCount = config.grandstandRows * config.grandstandSeats
-  const crowd = new THREE.InstancedMesh(crowdGeometry, crowdMaterial, crowdCount)
-  const crowdSeats: { x: number; y: number; z: number; phase: number; bounce: number }[] = []
+  const seats: Seat[] = []
   let state = crowdSeed >>> 0
   const random = () => {
     state = (state * 1664525 + 1013904223) >>> 0
     return state / 4294967296
   }
-  const color = new THREE.Color()
-  let crowdIndex = 0
   for (let row = 0; row < config.grandstandRows; row++) {
     for (let seat = 0; seat < config.grandstandSeats; seat++) {
-      if (random() < 0.12) {
-        crowdSeats.push({ x: 0, y: -50, z: 0, phase: 0, bounce: 0 })
-        tireMatrix.makeTranslation(0, -50, 0)
-        crowd.setMatrixAt(crowdIndex, tireMatrix)
-        color.set(config.crowdColors[0])
-        crowd.setColorAt(crowdIndex, color)
-        crowdIndex++
-        continue
-      }
-      const x = -standWidth / 2 + 0.6 + (seat + 0.5) * ((standWidth - 1.2) / config.grandstandSeats) + (random() - 0.5) * 0.3
-      const y = rowRise * (row + 1) + 0.55
-      const z = standZ + rowDepth * row + 0.15
-      crowdSeats.push({ x, y, z, phase: random() * Math.PI * 2, bounce: 0.02 + random() * 0.05 })
-      tireMatrix.makeTranslation(x, y, z)
-      crowd.setMatrixAt(crowdIndex, tireMatrix)
-      color.set(config.crowdColors[Math.floor(random() * config.crowdColors.length)])
-      crowd.setColorAt(crowdIndex, color)
-      crowdIndex++
+      if (random() < 0.1) continue
+      const x = -standWidth / 2 + 0.6 + (seat + 0.5) * ((standWidth - 1.2) / config.grandstandSeats) + (random() - 0.5) * 0.25
+      const y = rowRise * (row + 1) + 0.06
+      const z = standZ + rowDepth * row + 0.2
+      seats.push({ x, y, z, yaw: Math.PI })
     }
   }
-  crowd.instanceMatrix.needsUpdate = true
-  if (crowd.instanceColor) crowd.instanceColor.needsUpdate = true
-  crowd.castShadow = true
-  standGroup.add(crowd)
+  const crowd = own(createCrowd(seats, { shirts: config.crowdColors, skins: ['#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#ffdbac', '#a1665e', '#5c3a21'], pants: ['#1f2a44', '#2b2b2b', '#3d405b', '#4a4e69', '#5e503f', '#2f3e46', '#6b705c'], caps: config.crowdColors }, crowdSeed))
+  standGroup.add(crowd.root)
   const roofPosts = new THREE.Group()
   for (let i = -2; i <= 2; i++) {
     const post = new THREE.Mesh(own(new THREE.CylinderGeometry(0.08, 0.08, 6, 8)), standSteel)
@@ -327,6 +357,47 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
   }
   root.add(poles)
 
+  const pennantGeometry = own(new THREE.BufferGeometry())
+  pennantGeometry.setAttribute('position', new THREE.Float32BufferAttribute([-0.14, 0, 0, 0.14, 0, 0, 0, -0.42, 0], 3))
+  pennantGeometry.setAttribute('normal', new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 0, 0, 1], 3))
+  pennantGeometry.setIndex([0, 1, 2])
+  const pennantMaterial = own(new THREE.MeshStandardNodeMaterial({ roughness: 0.9, side: THREE.DoubleSide }))
+  const flap = sin(shaderTime.mul(4.2).add(fract(instanceIndex.toFloat().mul(0.37)).mul(6.28))).mul(positionLocal.y.negate()).mul(0.35)
+  pennantMaterial.positionNode = positionLocal.add(vec3(float(0), float(0), flap))
+  const poleTops: THREE.Vector3[] = []
+  for (let i = 0; i < config.lightPoles; i++) poleTops.push(new THREE.Vector3((i % 2 ? 1 : -1) * (halfL + 3), 11.6, (i < 2 ? -1 : 1) * (halfW + 2.5)))
+  const strings: [THREE.Vector3, THREE.Vector3][] = [[poleTops[0], poleTops[1]], [poleTops[2], poleTops[3]], [poleTops[0], poleTops[2]], [poleTops[1], poleTops[3]]]
+  const perString = 28
+  const pennants = new THREE.InstancedMesh(pennantGeometry, pennantMaterial, strings.length * perString)
+  const pennantColors = ['#e63946', '#f1faee', '#ffb703', '#2a9d8f', '#3a86ff', '#ff006e']
+  const color = new THREE.Color()
+  const lineMaterial = own(new THREE.LineBasicMaterial({ color: new THREE.Color('#2b2b2b') }))
+  let pennantIndex = 0
+  for (const [from, to] of strings) {
+    const points: THREE.Vector3[] = []
+    for (let i = 0; i <= perString; i++) {
+      const t = i / perString
+      const sag = Math.sin(t * Math.PI) * 1.6
+      const point = from.clone().lerp(to, t)
+      point.y -= sag
+      points.push(point)
+      if (i < perString) {
+        const yaw = Math.atan2(to.x - from.x, to.z - from.z)
+        tireMatrix.makeRotationY(yaw + Math.PI / 2)
+        tireMatrix.setPosition(point)
+        pennants.setMatrixAt(pennantIndex, tireMatrix)
+        color.set(pennantColors[pennantIndex % pennantColors.length])
+        pennants.setColorAt(pennantIndex, color)
+        pennantIndex++
+      }
+    }
+    root.add(new THREE.Line(own(new THREE.BufferGeometry().setFromPoints(points)), lineMaterial))
+  }
+  pennants.instanceMatrix.needsUpdate = true
+  if (pennants.instanceColor) pennants.instanceColor.needsUpdate = true
+  pennants.frustumCulled = false
+  root.add(pennants)
+
   let time = 0
   const wheelAngle = { value: 0 }
   const update = (dt: number): void => {
@@ -338,20 +409,13 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
       gondola.position.set(Math.cos(angle) * wheelRadius, Math.sin(angle) * wheelRadius - 0.7, 0)
       gondola.rotation.z = -wheelAngle.value
     })
-    for (let i = 0; i < crowdSeats.length; i++) {
-      const seat = crowdSeats[i]
-      if (seat.y < 0) continue
-      tireMatrix.makeTranslation(seat.x, seat.y + Math.abs(Math.sin(time * 3 + seat.phase)) * seat.bounce, seat.z)
-      crowd.setMatrixAt(i, tireMatrix)
-    }
-    crowd.instanceMatrix.needsUpdate = true
   }
 
   const dispose = (): void => {
     root.removeFromParent()
     for (const resource of disposables.reverse()) resource.dispose()
-    crowd.dispose()
     tires.dispose()
+    pennants.dispose()
   }
 
   return { root, barriers, update, dispose }
