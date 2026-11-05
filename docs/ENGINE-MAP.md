@@ -370,8 +370,10 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `public/modules/blockhead.html` — Blockhead Siege: top-down wave survival, solo or two on one keyboard, score — hub iframe.
 
 ### songmaker — Song Maker
-- `public/modules/songmaker.html` — lyrics editor, "Write lyrics" helper, sound options, song list with lazy-loaded playback and MP3 download — hub iframe; calls `/api/songmaker`.
-- `src/server/routes/songmaker.ts` — `/api/songmaker`: GET list + daily quota, `?audio=<id>` (owner-checked KV `song/<userId>/<id>`), POST `create` (Lyria `lyria-3.5`, or `lyria-3-clip-preview` for 30 s clips, through the Gemini Interactions REST API), `write` (lyrics draft with the text model), `delete`. D1 `songmaker_songs` (migration 0019, also created on first use); 5 songs per user per 24 h, admin unlimited — `api.ts`.
+- `public/modules/songmaker.html` — lyrics editor, "Write lyrics" helper, sound options, Free (in-browser) / AI vocals engine choice, arrangement controls for the free engine, song list with lazy-loaded playback, MP3 download for AI songs and WAV download plus a speech-synthesis vocal guide for free songs (kept on the device, not saved) — hub iframe; calls `/api/songmaker`.
+- `public/modules/songmaker-synth.js` — free engine, ES module imported on demand: `defaultArrangement` maps genre, mood, tempo and style words to an arrangement; `renderSong` renders the lyric sections with `OfflineAudioContext` (drums, bass, chords, melody, reverb, notes scheduled in 2 s chunks via `suspend`), returns the buffer and lyric cues; `encodeWav`.
+- `src/server/keyless-lyrics.ts` — `write` fallback without a Gemini key: keyless Pollinations text API, then offline template lyrics.
+- `src/server/routes/songmaker.ts` — `/api/songmaker`: GET list + daily quota, `?audio=<id>` (owner-checked KV `song/<userId>/<id>`), POST `create` (Lyria `lyria-3.5`, or `lyria-3-clip-preview` for 30 s clips, through the Gemini Interactions REST API), `write` (lyrics draft with the text model, falling back to `keyless-lyrics.ts`), `delete`; GET also returns `ai` (whether `GEMINI_API_KEY` is set). D1 `songmaker_songs` (migration 0019, also created on first use); 5 songs per user per 24 h, admin unlimited — `api.ts`.
 
 ### party — Skill Party
 - `modules-src/party/index.html` — page shell and all styles — `vite.modules.ts` (→ `public/modules/party.html`).
