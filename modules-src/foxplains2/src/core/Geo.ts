@@ -166,6 +166,118 @@ export class MeshBuilder {
     }
   }
 
+  /**
+   * Surface of revolution about +Y from a (radius, y) profile. Walking the
+   * profile toward +Y on the outside faces outward. `smooth` shares normals
+   * between profile segments; otherwise every segment is lit flat (crisp rims).
+   */
+  lathe(profile: number[][], seg = 24, smooth = true, c: RGB = this.color) {
+    const segN = (k: number) => { const dr = profile[k + 1][0] - profile[k][0], dy = profile[k + 1][1] - profile[k][1], l = Math.hypot(dr, dy) || 1; return [dy / l, -dr / l]; };
+    const rows: { r: number; y: number; nr: number; ny: number; v: number }[][] = [];
+    if (smooth) {
+      rows.push(profile.map((p, j) => {
+        let nr = 0, ny = 0;
+        for (const k of [j - 1, j]) if (k >= 0 && k < profile.length - 1) { const n = segN(k); nr += n[0]; ny += n[1]; }
+        const l = Math.hypot(nr, ny) || 1;
+        return { r: p[0], y: p[1], nr: nr / l, ny: ny / l, v: j / (profile.length - 1) };
+      }));
+    } else {
+      for (let k = 0; k < profile.length - 1; k++) {
+        const n = segN(k);
+        rows.push([k, k + 1].map(j => ({ r: profile[j][0], y: profile[j][1], nr: n[0], ny: n[1], v: j / (profile.length - 1) })));
+      }
+    }
+    for (const row of rows) {
+      const n = row.length, base = this.vertexCount;
+      for (let i = 0; i <= seg; i++) {
+        const a = (i / seg) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+        for (const p of row) this.vertex(p.r * ca, p.y, p.r * sa, p.nr * ca, p.ny, p.nr * sa, i / seg, p.v, c);
+      }
+      for (let i = 0; i < seg; i++) for (let j = 0; j < n - 1; j++) {
+        const a = base + i * n + j, b = a + 1, d = a + n, cc = d + 1;
+        this.idx.push(a, b, cc, a, cc, d);
+      }
+    }
+  }
+
+  /**
+   * Rounded-rectangle sections strung along +X (rings sorted by x), smooth
+   * around each section and capped at both ends: hoods, seats, decks, bags.
+   */
+  loft(rings: { x: number; cy: number; cz?: number; hw: number; hh: number; r: number }[], corner = 4, caps = true, c: RGB = this.color) {
+    const ringPts = (g: (typeof rings)[number]) => {
+      const out: { y: number; z: number; ny: number; nz: number; u: number }[] = [];
+      const r = Math.min(g.r, g.hw, g.hh), cz = g.cz ?? 0;
+      const centers = [[1, 1], [-1, 1], [-1, -1], [1, -1]];
+      centers.forEach(([sz, sy], q) => {
+        for (let j = 0; j <= corner; j++) {
+          const t = (q + j / corner) * Math.PI / 2, ct = Math.cos(t), st = Math.sin(t);
+          out.push({ z: cz + sz * (g.hw - r) + r * ct, y: g.cy + sy * (g.hh - r) + r * st, ny: st, nz: ct, u: (q + j / corner) / 4 });
+        }
+      });
+      return out;
+    };
+    const all = rings.map(ringPts), n = all[0].length;
+    const base = this.vertexCount;
+    rings.forEach((g, i) => { for (const p of all[i]) this.vertex(g.x, p.y, p.z, 0, p.ny, p.nz, p.u, g.x, c); });
+    for (let i = 0; i < rings.length - 1; i++) for (let k = 0; k < n; k++) {
+      const k1 = (k + 1) % n;
+      const a = base + i * n + k, b = base + (i + 1) * n + k, cc = base + (i + 1) * n + k1, d = base + i * n + k1;
+      this.idx.push(a, b, cc, a, cc, d);
+    }
+    if (!caps) return;
+    for (const [i, s] of [[0, -1], [rings.length - 1, 1]]) {
+      const g = rings[i], pts = all[i];
+      const ctr = this.vertex(g.x, g.cy, g.cz ?? 0, s, 0, 0, 0.5, 0.5, c);
+      const ring = this.vertexCount;
+      for (const p of pts) this.vertex(g.x, p.y, p.z, s, 0, 0, 0.5 + p.nz / 2, 0.5 + p.ny / 2, c);
+      for (let k = 0; k < n; k++) {
+        const k1 = (k + 1) % n;
+        if (s > 0) this.idx.push(ctr, ring + k1, ring + k); else this.idx.push(ctr, ring + k, ring + k1);
+      }
+    }
+  }
+
+  /** Round tube from a to b (pipes, steering columns, frame bars). */
+  tube(a: number[], b: number[], r: number, seg = 10, caps = true, c: RGB = this.color) {
+    const d = new pc.Vec3(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const len = d.length();
+    if (len < 1e-5) return;
+    d.mulScalar(1 / len);
+    const q = new pc.Quat();
+    const axis = new pc.Vec3().cross(pc.Vec3.UP, d);
+    if (axis.length() < 1e-6) q.setFromEulerAngles(d.y < 0 ? 180 : 0, 0, 0);
+    else q.setFromAxisAngle(axis.normalize(), Math.acos(Math.max(-1, Math.min(1, d.y))) * pc.math.RAD_TO_DEG);
+    const prev = this.m;
+    const m = new pc.Mat4().setTRS(new pc.Vec3(a[0], a[1], a[2]), q, pc.Vec3.ONE);
+    if (prev) m.mul2(prev, m);
+    this.transform(m);
+    this.cylinder(0, 0, 0, r, r, len, seg, caps, c);
+    if (caps) {
+      const ctr = this.vertex(0, 0, 0, 0, -1, 0, 0.5, 0.5, c), ring = this.vertexCount;
+      for (let i = 0; i <= seg; i++) { const t = (i / seg) * Math.PI * 2; this.vertex(Math.cos(t) * r, 0, Math.sin(t) * r, 0, -1, 0, 0.5 + Math.cos(t) / 2, 0.5 + Math.sin(t) / 2, c); }
+      for (let i = 0; i < seg; i++) this.idx.push(ctr, ring + i, ring + i + 1);
+    }
+    this.transform(prev);
+  }
+
+  /** Torus around +Y (steering wheels, rims of round lids). */
+  torus(R: number, r: number, seg = 24, side = 8, c: RGB = this.color) {
+    const base = this.vertexCount;
+    for (let i = 0; i <= seg; i++) {
+      const u = (i / seg) * Math.PI * 2, cu = Math.cos(u), su = Math.sin(u);
+      for (let j = 0; j <= side; j++) {
+        const v = (j / side) * Math.PI * 2, cv = Math.cos(v), sv = Math.sin(v);
+        this.vertex(cu * (R + r * cv), r * sv, su * (R + r * cv), cu * cv, sv, su * cv, i / seg, j / side, c);
+      }
+    }
+    const n = side + 1;
+    for (let i = 0; i < seg; i++) for (let j = 0; j < side; j++) {
+      const a = base + i * n + j, b = a + 1, cc = a + n + 1, d = a + n;
+      this.idx.push(a, b, cc, a, cc, d);
+    }
+  }
+
   /** Ribbon along a polyline on the ground: width `w`, at height y, UVs u across (0..1) and v along (metres × uv). */
   ribbon(pts: { x: number; z: number }[], w0: number, w1: number, y: number, uv = 1, c: RGB = this.color) {
     if (pts.length < 2) return;

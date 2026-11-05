@@ -288,14 +288,16 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `src/main.ts` — boot: username or guest name, published vehicles and items (Fox Plains' caches), shared world or `?solo=1` — `Game`.
 - `src/core/Renderer.ts` — PlayCanvas WebGL2 device, `AppBase`, camera, `FoxSky` layer, `CameraFrame` (TAA, SSAO, bloom, grading), quality tiers, adaptive render scale — `Game`, `Sky`, `Remotes`.
 - `src/core/Assets.ts` — glTF containers with meshopt and WebP hooks — `Houses`, `VehicleModels`, `AvatarKits`.
-- `src/core/Geo.ts` — `MeshBuilder`, `ChunkedBuilders`, `meshEntity` — every world builder, `VehicleModels`.
-- `src/core/Tex.ts` — procedural PBR surfaces and normal maps, facades, glass, night glow (`Mats`) — `Town`, `Downtown`, `Houses`, `Game`.
+- `src/core/Geo.ts` — `MeshBuilder` (boxes, cylinders, blobs, ribbons, lathe, loft, tube, torus), `ChunkedBuilders`, `meshEntity` — every world builder, `VehicleModels`, `MowerModel`.
+- `src/core/Tex.ts` — procedural PBR surfaces with normal and gloss (roughness) maps, the ground macro noise, facades, glass, night glow (`Mats`, `Mats.ground`) — `Town`, `Downtown`, `Houses`, `Game`.
+- `src/core/GroundShader.ts` — diffuse/normal/gloss chunks for grass, lawns, asphalt and concrete: two-read anti-tiling blended by world-space macro noise, dry or worn patches, and view-dependent mowing stripes from the lawn atlas — `Tex`, `Town`.
 - `src/world/Sky.ts` — clock, sky dome shader, sun/moon light and cascades, env atlas bake, fog, exposure — `Game`.
-- `src/world/Town.ts` — ground, roads, markings, curves, sidewalks, driveways, lawn atlas (`Lawn`), instanced trees, lamps and light pool, for-sale signs — `Game`.
+- `src/world/Town.ts` — ground, roads, markings, curves, sidewalks, driveways, lawn atlas (`Lawn`: cut freshness and blade lean per 1 m cell), instanced trees, lamps and light pool, for-sale signs — `Game`.
 - `src/world/Downtown.ts` — downtown and grid buildings, storefronts, signs, civic, gas station, body shop, depot, town square, rings — `Game`.
 - `src/world/Houses.ts` — lot meshing from `shared/BuildRules.ts`, furniture models, lot colliders — `Game`.
 - `src/physics/Physics.ts`, `Character.ts`, `Vehicle.ts`, `Parking.ts` — Rapier world and the Fox Plains controllers ported line for line — `Game`, `Remotes`.
-- `src/physics/VehicleModels.ts` — built-in and published vehicle views, paint, lamps, wheels — `Vehicle`, `Remotes`.
+- `src/physics/VehicleModels.ts` — built-in and published vehicle views, paint, lamps, procedural tires and rims; fixes glTF materials (opaque parts `BLEND_NONE` with depth writes and back-face culling, glass as a tinted dielectric) and gives built-in cabs a solid painted roof — `Vehicle`, `Remotes`.
+- `src/physics/MowerModel.ts` — the riding mower built from primitives (hood, deck and chute, seat, steering wheel, fenders, grass catcher with lid and handle, blower tube) — `VehicleModels`.
 - `src/avatar/Avatar.ts` — scanned bodies, recolor shader chunk, procedural pose (`AvatarKits`, `Avatar`) — `Character`, `Remotes`.
 - `src/net/Remotes.ts` — interpolated neighbors, traffic and their vehicles, name tags — `Game`.
 - `src/game/Game.ts` — composition root and fixed step; `CameraRig.ts` — orbit/chase camera; `Hud.ts` — DOM HUD.

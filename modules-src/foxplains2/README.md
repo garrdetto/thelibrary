@@ -23,14 +23,16 @@ Identity keys are the same `localStorage` keys as Fox Plains (`maplestreet/ident
 | `src/main.ts` | boot: username or guest name, published vehicles and Buy items (same offline caches as Fox Plains), then the shared world (`?solo=1` for solo) |
 | `src/core/Renderer.ts` | WebGL2 device, `AppBase`, camera, the `FoxSky` layer, `CameraFrame` post (TAA, SSAO, bloom, grading, vignette), quality tiers and adaptive render scale |
 | `src/core/Assets.ts` | glTF containers with EXT_meshopt_compression (meshoptimizer's decoder via the parser's `bufferView.processAsync` hook) and EXT_texture_webp |
-| `src/core/Geo.ts` | `MeshBuilder` (boxes, ribbons, cylinders, blobs, vertex colors, second UV) and per-128 m-chunk merging |
-| `src/core/Tex.ts` | procedural PBR surfaces with normal maps (asphalt, concrete, brick, siding, shingles, floors…), facades with randomly lit windows, glass, night glow |
+| `src/core/Geo.ts` | `MeshBuilder` (boxes, ribbons, cylinders, blobs, lathe, loft, tube, torus, vertex colors, second UV) and per-128 m-chunk merging |
+| `src/core/Tex.ts` | procedural PBR surfaces with normal and gloss (roughness) maps (asphalt, concrete, brick, siding, shingles, floors…), the ground macro noise, facades with randomly lit windows, glass, night glow |
+| `src/core/GroundShader.ts` | shader chunks for grass, lawns, asphalt and concrete: each map read twice (own UV and a rotated, rescaled copy) and blended by world-space noise so no repeat shows, dry or worn patches, and lawn mowing stripes |
 | `src/world/Sky.ts` | clock, sky dome shader (sun, moon, clouds, stars), sun/moon light with cascaded shadows, env atlas re-baked every quarter hour, fog, exposure |
 | `src/world/Town.ts` | ground, roads with lane lines and crosswalks, curved streets, sidewalks with curb cuts, driveways, lawns (one atlas for every lot's mow state), instanced trees, street lamps with a pool of real lights, for-sale signs |
 | `src/world/Downtown.ts` | shops and grid buildings, storefronts and lit signs, civic block, gas station, Maple Body & Wheel, freight depot, Maple Commons, door and pump rings |
 | `src/world/Houses.ts` | every lot's house from the build data: floors, walls with finishes, doors and windows, fences, roofs, pools, furniture (`public/models/maplestreet/furniture/` or published .glb), colliders |
 | `src/physics/Physics.ts`, `Character.ts`, `Vehicle.ts`, `Parking.ts` | Rapier world, on-foot controller and raycast vehicle: the same numbers and logic as Fox Plains, so cars handle identically |
-| `src/physics/VehicleModels.ts` | vehicle views: built-in bodies from `public/models/maplestreet/vehicles/` (wheel pivots found at the axles), published bodies placed by their record, paint, lamps |
+| `src/physics/VehicleModels.ts` | vehicle views: built-in bodies from `public/models/maplestreet/vehicles/` (wheel pivots found at the axles), published bodies placed by their record, paint, lamps, closed procedural tires and rims. The palette-merged glTF materials are fixed on load: opaque parts draw with `BLEND_NONE`, depth writes and back-face culling; glass becomes a tinted dielectric whose reflections don't fade with its alpha; up-facing faces of a built-in greenhouse move to a painted roof so cabs aren't see-through |
+| `src/physics/MowerModel.ts` | the riding mower from primitives in the chassis frame: rounded hood with grille and lamps, frame and axles, cutting deck and chute, footboards, dash, steering column and wheel, seat, fenders, grass catcher with lid, lift handle and blower tube; the deck paint takes the owner's color |
 | `src/avatar/Avatar.ts` | the scanned bodies with a recolor shader chunk (rest positions in the vertex color stream, per-instance look parameters) and procedural poses |
 | `src/net/Remotes.ts` | other players, neighbor traffic and their vehicles, interpolated 120 ms behind, kinematic colliders, name tags |
 | `src/game/Game.ts` | composition root: fixed 60 Hz step inside PlayCanvas's update, networking, garage, interactions, mowing, deliveries, wardrobe |
@@ -43,6 +45,10 @@ WASD walk or drive, Shift run, Space jump or handbrake, click to walk (click you
 ## Quality
 
 `?quality=low|medium|high` (or Q, or the status-bar button; remembered per browser). High: TAA with sharpening, SSAO, bloom, four 2048 px shadow cascades. Medium: 4x MSAA, lighter SSAO, three cascades. Low: no AA or SSAO, two 1024 px cascades, 80% render scale. Slow frames lower the render scale a step at a time.
+
+## Mowing stripes
+
+`Lawn.paint` (Town.ts) writes one atlas texel per 1 m cell from the shared lawn data (`shared/Mowing.ts`): R is how freshly cut (fading over the five-day regrowth), G/B the blade lean in world XZ. The lawn shader (GroundShader.ts) compares that lean with the view direction: blades leaning away from the camera are lighter, toward it darker, so back-and-forth passes leave alternating stripes that swap shade as you walk around them and fade when you look across them. Cut grass also gets a flatter, lean-tilted normal and a little more sheen. Bilinear filtering keeps stripe edges soft.
 
 ## Debugging
 

@@ -6,6 +6,7 @@
  * how many metres one copy of its texture covers.
  */
 import * as pc from 'playcanvas';
+import { groundShader, type GroundLook } from './GroundShader';
 
 // ---------------------------------------------------------------- noise
 
@@ -31,21 +32,39 @@ function fbm(x: number, y: number, base: number, oct: number, s: number) {
 
 // ---------------------------------------------------------------- painting
 
-interface Painted { color: Uint8ClampedArray; height: Float32Array; w: number; h: number }
-type Painter = (x: number, y: number, u: number, v: number) => [number, number, number, number];   // r g b (0..1 sRGB), height
+interface Painted { color: Uint8ClampedArray; height: Float32Array; gloss: Uint8ClampedArray; glossMean: number; w: number; h: number }
+/** r g b (0..1 sRGB), height, and optionally gloss (0..1, a multiplier on the recipe's gloss; default from height: crevices are rougher). */
+type Painter = (x: number, y: number, u: number, v: number) => [number, number, number, number] | [number, number, number, number, number];
 
 function paint(size: number, fn: Painter): Painted {
-  const color = new Uint8ClampedArray(size * size * 4), height = new Float32Array(size * size);
+  const color = new Uint8ClampedArray(size * size * 4), height = new Float32Array(size * size), gloss = new Uint8ClampedArray(size * size * 4);
+  let sum = 0;
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-    const [r, g, b, hgt] = fn(x, y, x / size, y / size);
+    const p = fn(x, y, x / size, y / size);
     const i = y * size + x;
-    color[i * 4] = r * 255; color[i * 4 + 1] = g * 255; color[i * 4 + 2] = b * 255; color[i * 4 + 3] = 255;
-    height[i] = hgt;
+    color[i * 4] = p[0] * 255; color[i * 4 + 1] = p[1] * 255; color[i * 4 + 2] = p[2] * 255; color[i * 4 + 3] = 255;
+    height[i] = p[3];
+    const g = clamp01(p[4] ?? 0.72 + 0.28 * clamp01(p[3]));
+    gloss[i * 4] = gloss[i * 4 + 1] = gloss[i * 4 + 2] = g * 255; gloss[i * 4 + 3] = 255;
+    sum += g;
   }
-  return { color, height, w: size, h: size };
+  return { color, height, gloss, glossMean: sum / (size * size), w: size, h: size };
 }
 
-function normalsFrom(p: Painted, strength: number) {
+/** World-scale noise for the ground shader (GroundShader.ts): R blend between two reads, G brightness drift, B dry or worn patches. */
+function macroNoise(device: pc.GraphicsDevice) {
+  const size = 256, data = new Uint8ClampedArray(size * size * 4);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const u = x / size, v = y / size, i = (y * size + x) * 4;
+    data[i] = fbm(u, v, 4, 4, 301) * 255;
+    data[i + 1] = fbm(u, v, 6, 4, 302) * 255;
+    data[i + 2] = clamp01((fbm(u, v, 3, 5, 303) - 0.5) * 1.8 + 0.5) * 255;
+    data[i + 3] = 255;
+  }
+  return texture(device, 'ground-macro', data, size, size, false);
+}
+
+function normalsFrom(p: Pick<Painted, 'height' | 'w' | 'h'>, strength: number) {
   const { w, h, height } = p;
   const out = new Uint8ClampedArray(w * h * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -80,26 +99,37 @@ const mul3 = (a: number[], k: number): [number, number, number] => [clamp01(a[0]
 type Recipe = { size: number; tile: number; bump: number; gloss: number; metal?: number; paint: Painter };
 
 const R: Record<string, () => Recipe> = {
-  grass: () => ({ size: 256, tile: 7, bump: 1.4, gloss: 0.12, paint: (_x, _y, u, v) => {
-    const n = fbm(u, v, 8, 5, 3), m = fbm(u, v, 3, 3, 9), blade = hash(_x, _y, 5);
-    const c = lerp3(lerp3(C(0x445f2e), C(0x667f40), n), C(0x8a8656), Math.max(0, m - 0.6) * 1.3);
-    return [...mul3(c, 0.86 + blade * 0.24), n * 0.6 + blade * 0.4] as [number, number, number, number];
+  // Wild grass: clumps, bright blade tips, dark soil showing between, drier tufts.
+  grass: () => ({ size: 512, tile: 6, bump: 1.7, gloss: 0.22, paint: (x, y, u, v) => {
+    const n = fbm(u, v, 6, 5, 3), clump = fbm(u, v, 20, 3, 4), m = fbm(u, v, 3, 3, 9), blade = hash(x, y, 5), streak = hash(x >> 1, y, 6);
+    let c = lerp3(C(0x3d5a29), C(0x6a8642), n);
+    c = lerp3(c, C(0x8d8a56), Math.max(0, m - 0.58) * 1.6);
+    const tip = blade > 0.84 ? 0.15 : 0, gap = blade < 0.07 ? -0.24 : 0;
+    const k = 0.8 + clump * 0.22 + tip + gap + (streak - 0.5) * 0.1;
+    return [...mul3(c, k), clamp01(0.35 + clump * 0.35 + tip * 2 + gap * 1.5), clamp01(0.45 + blade * 0.55 + gap * 2)] as [number, number, number, number, number];
   } }),
-  lawn: () => ({ size: 256, tile: 4, bump: 1.6, gloss: 0.14, paint: (_x, _y, u, v) => {
-    const n = fbm(u, v, 10, 4, 21), blade = hash(_x, _y, 8);
-    const c = lerp3(C(0x4c7432), C(0x678c42), n);
-    return [...mul3(c, 0.84 + blade * 0.28), blade] as [number, number, number, number];
+  // Lawn: finer and denser than the wild grass, a touch bluer.
+  lawn: () => ({ size: 512, tile: 3.2, bump: 1.9, gloss: 0.24, paint: (x, y, u, v) => {
+    const n = fbm(u, v, 10, 4, 21), clump = fbm(u, v, 32, 3, 23), blade = hash(x, y, 8), streak = hash(x, y >> 1, 9);
+    const c = lerp3(C(0x436f2f), C(0x6a9446), n);
+    const tip = blade > 0.86 ? 0.13 : 0, gap = blade < 0.05 ? -0.2 : 0;
+    const k = 0.82 + clump * 0.18 + tip + gap + (streak - 0.5) * 0.08;
+    return [...mul3(c, k), clamp01(0.4 + clump * 0.3 + tip * 2 + gap * 1.5), clamp01(0.5 + blade * 0.5 + gap * 2)] as [number, number, number, number, number];
   } }),
-  asphalt: () => ({ size: 512, tile: 6, bump: 0.9, gloss: 0.34, paint: (x, y, u, v) => {
-    const n = fbm(u, v, 6, 4, 31), patch = fbm(u, v, 2, 3, 37), grit = hash(x, y, 2), stone = grit > 0.96 ? 0.07 : grit < 0.04 ? -0.04 : 0;
-    const k = 0.25 + n * 0.035 + (patch - 0.5) * 0.05 + stone + (grit - 0.5) * 0.025;
-    return [k, k * 1.005, k * 1.025, grit * 0.5 + n * 0.5];
+  // Asphalt: dark binder, light aggregate stones that catch the light, pits, hairline cracks.
+  asphalt: () => ({ size: 512, tile: 5, bump: 1.25, gloss: 0.4, paint: (x, y, u, v) => {
+    const n = fbm(u, v, 6, 4, 31), patch = fbm(u, v, 2, 3, 37), stone = hash(x >> 1, y >> 1, 2), fine = hash(x, y, 3);
+    let k = 0.19 + n * 0.03 + (patch - 0.5) * 0.04 + (fine - 0.5) * 0.03, h = 0.35 + n * 0.2, g = 0.62;
+    if (stone > 0.88) { k += 0.07 + fine * 0.1; h = 0.85; g = 0.95; }
+    else if (stone < 0.1) { k -= 0.04; h = 0.12; g = 0.35; }
+    if (Math.abs(fbm(u, v, 4, 4, 39) - 0.5) < 0.004 && fbm(u, v, 3, 2, 41) > 0.62) { k *= 0.82; h = 0.1; g = 0.4; }
+    return [k, k * 1.01, k * 1.03, h, g];
   } }),
-  concrete: () => ({ size: 256, tile: 2, bump: 1.6, gloss: 0.22, paint: (x, y, u, v) => {
+  concrete: () => ({ size: 256, tile: 2, bump: 1.6, gloss: 0.24, paint: (x, y, u, v) => {
     const n = fbm(u, v, 6, 4, 41), sp = hash(x, y, 4);
     const joint = Math.min(x, y, 255 - x, 255 - y) < 2 ? -0.18 : 0;
     const k = 0.66 + n * 0.1 + (sp - 0.5) * 0.05 + joint;
-    return [k, k * 0.99, k * 0.96, n * 0.5 + sp * 0.2 + joint * 2];
+    return [k, k * 0.99, k * 0.96, n * 0.5 + sp * 0.2 + joint * 2, clamp01(0.6 + sp * 0.4 + joint * 2)];
   } }),
   curb: () => ({ size: 128, tile: 1, bump: 1, gloss: 0.2, paint: (x, y, u, v) => { const k = 0.72 + fbm(u, v, 4, 3, 44) * 0.1 + (hash(x, y, 5) - 0.5) * 0.04; return [k, k, k * 0.97, k]; } }),
   gravel: () => ({ size: 256, tile: 3, bump: 3, gloss: 0.1, paint: (x, y, u, v) => {
@@ -221,7 +251,7 @@ function facade(device: pc.GraphicsDevice, kind: 'office' | 'brick' | 'store') {
     glow[i * 4 + 3] = 255;
     height[i] = hgt;
   }
-  const p: Painted = { color, height, w: W, h: H };
+  const p: Pick<Painted, 'height' | 'w' | 'h'> = { height, w: W, h: H };
   return {
     map: texture(device, `facade-${kind}`, color, W, H, true),
     normal: texture(device, `facade-${kind}-n`, normalsFrom(p, 3), W, H, false),
@@ -234,7 +264,8 @@ function facade(device: pc.GraphicsDevice, kind: 'office' | 'brick' | 'store') {
 export interface MatOpts { color?: number | [number, number, number]; gloss?: number; metal?: number; vcolor?: boolean; emissive?: number; emissiveIntensity?: number; opacity?: number; twoSided?: boolean; tile?: number; bump?: number }
 
 export class Mats {
-  private textures = new Map<string, { map: pc.Texture; normal: pc.Texture; recipe: Recipe }>();
+  private textures = new Map<string, { map: pc.Texture; normal: pc.Texture; gloss: pc.Texture; glossMean: number; recipe: Recipe }>();
+  private macroTex: pc.Texture | null = null;
   private mats = new Map<string, pc.StandardMaterial>();
   /** Materials whose emissive follows night (windows, lamp bulbs). */
   readonly nightGlow: { m: pc.StandardMaterial; k: number }[] = [];
@@ -246,10 +277,27 @@ export class Mats {
     if (!t) {
       const recipe = R[kind]();
       const p = paint(recipe.size, recipe.paint);
-      t = { map: texture(this.device, kind, p.color, p.w, p.h, true), normal: texture(this.device, `${kind}-n`, normalsFrom(p, recipe.bump), p.w, p.h, false), recipe };
+      t = {
+        map: texture(this.device, kind, p.color, p.w, p.h, true),
+        normal: texture(this.device, `${kind}-n`, normalsFrom(p, recipe.bump), p.w, p.h, false),
+        gloss: texture(this.device, `${kind}-g`, p.gloss, p.w, p.h, false),
+        glossMean: p.glossMean,
+        recipe,
+      };
       this.textures.set(kind, t);
     }
     return t;
+  }
+
+  /** The world-scale noise the ground shader reads. */
+  macro() { return (this.macroTex ??= macroNoise(this.device)); }
+
+  /** A textured surface with the ground shader: no visible repeat, macro drift, worn or dry patches (GroundShader.ts). */
+  ground(name: string, kind: keyof typeof R, look: GroundLook, o: MatOpts = {}) {
+    const fresh = !this.mats.has(name);
+    const m = this.textured(name, kind, o);
+    if (fresh) groundShader(m, this.macro(), look);
+    return m;
   }
 
   /** A textured PBR surface, optionally tinted (`color`) or vertex-colored. Cached by name. */
@@ -261,13 +309,16 @@ export class Mats {
     m.name = name;
     m.useMetalness = true;
     m.metalness = o.metal ?? t.recipe.metal ?? 0;
-    m.gloss = o.gloss ?? t.recipe.gloss;
+    m.gloss = Math.min(1, (o.gloss ?? t.recipe.gloss) / t.glossMean);
     m.diffuseMap = t.map;
     m.normalMap = t.normal;
+    m.glossMap = t.gloss;
+    m.glossMapChannel = 'g';
     m.bumpiness = o.bump ?? 1;
     const tile = 1 / (o.tile ?? t.recipe.tile);
     m.diffuseMapTiling = new pc.Vec2(tile, tile);
     m.normalMapTiling = new pc.Vec2(tile, tile);
+    m.glossMapTiling = new pc.Vec2(tile, tile);
     this.tint(m, o);
     m.update();
     this.mats.set(name, m);
