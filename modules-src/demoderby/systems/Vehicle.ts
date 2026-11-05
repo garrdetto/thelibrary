@@ -60,7 +60,7 @@ export class Vehicle {
     yaw: number,
   ) {
     const { rapier, world } = physics
-    this.model = createCar(spec, look, id)
+    this.model = createCar(spec, look, isPlayer ? 0 : id)
     const rotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw)
     this.body = world.createRigidBody(
       rapier.RigidBodyDesc.dynamic()
@@ -241,9 +241,18 @@ export class Vehicle {
     this.physics.track(this.body)
   }
 
-  /** Copies the body pose onto the model and spins the wheels. */
+  /** Copies the body pose onto the model, lays the contact shadow under it and spins the wheels. */
   sync(alpha: number): void {
     this.physics.syncMesh(this.body, this.model.root, alpha)
+    const root = this.model.root
+    const shadow = this.model.shadow
+    const yaw = Math.atan2(2 * (root.quaternion.w * root.quaternion.y + root.quaternion.x * root.quaternion.z), 1 - 2 * (root.quaternion.y * root.quaternion.y + root.quaternion.x * root.quaternion.x))
+    shadow.position.set(root.position.x, 0.02, root.position.z)
+    shadow.rotation.set(-Math.PI / 2, 0, yaw)
+    const lift = Math.max(0, root.position.y - this.spec.centreHeight)
+    const spread = 1 + lift * 0.4
+    shadow.scale.set(spread, spread, 1)
+    ;(shadow.material as THREE.MeshBasicMaterial).opacity = Math.max(0.15, 0.85 - lift * 0.5)
     for (let i = 0; i < 4; i++) {
       const wheel = this.model.wheels[i]
       const connection = this.controller.wheelChassisConnectionPointCs(i)

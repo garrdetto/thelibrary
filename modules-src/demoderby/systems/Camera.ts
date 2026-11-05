@@ -49,8 +49,11 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
         goalLook.copy(target).lerp(new THREE.Vector3(0, 0, 0), 0.35)
       } else if (api.mode === 'garage') {
         turntable += dt * 0.35
-        goal.set(Math.cos(turntable) * 8.5, 2.6, Math.sin(turntable) * 8.5).add(target)
-        goalLook.copy(target).add(new THREE.Vector3(0, 0.2, 0))
+        goal.set(Math.cos(turntable) * 7.2, 2.1, Math.sin(turntable) * 7.2).add(target)
+        const view = target.clone().sub(goal).setY(0).normalize()
+        const right = new THREE.Vector3(-view.z, 0, view.x)
+        const landscape = camera.aspect > 1.15
+        goalLook.copy(target).add(new THREE.Vector3(0, landscape ? 0.2 : -0.9, 0)).addScaledVector(right, landscape ? -2.3 : 0)
       } else {
         const yaw = Math.atan2(heading.x, heading.z) + yawOffset
         const distance = spec.chaseDistance * Math.cos(pitch)
