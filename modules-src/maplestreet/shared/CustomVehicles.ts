@@ -13,6 +13,7 @@
 import { isAssetStatus, type AssetStatus } from './Assets';
 import { BUNDLED_VEHICLES } from './BundledVehicles';
 import { refreshDealer, VEHICLES, type VehicleSpec } from './Economy';
+import { isValidLampShapes, isValidShape, type LampShapes, type Shape } from './Shapes';
 import { CUSTOM_VEHICLE_PREFIX, TUNING, type AxleTuning, type CustomVehicleKind, type VehicleTuning } from './Vehicles';
 
 export const DRIVE_TEMPLATES = ['sedan', 'truck', 'coupe', 'hdtruck', 'golfcart', 'atv'] as const;
@@ -73,6 +74,8 @@ export interface CustomVehiclePhysics {
  * At load the model's triangles inside each box are cut out into a swinging leaf.
  */
 export interface PartBox {
+  /** Custom outline inside the box (see Shapes.ts); the whole box when missing. */
+  shape?: Shape;
   front: number; back: number; bottom: number; top: number;
   /** Trunk only: a pickup tailgate that folds down from its bottom edge instead of lifting. */
   drop?: boolean;
@@ -82,7 +85,7 @@ export const MAX_DOOR_ROWS = 2;
 
 const partBox = (b: unknown): b is PartBox => {
   const o = b as PartBox;
-  return !!o && typeof o === 'object' && [o.front, o.back, o.bottom, o.top].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 10) && o.front > o.back && o.top > o.bottom && (o.drop === undefined || typeof o.drop === 'boolean');
+  return !!o && typeof o === 'object' && [o.front, o.back, o.bottom, o.top].every(v => typeof v === 'number' && Number.isFinite(v) && Math.abs(v) <= 10) && o.front > o.back && o.top > o.bottom && (o.drop === undefined || typeof o.drop === 'boolean') && (o.shape === undefined || isValidShape(o.shape));
 };
 export const isValidParts = (p: unknown): p is VehicleParts => {
   const o = p as VehicleParts;
@@ -114,6 +117,8 @@ export interface CustomVehicleSpec {
   wheelsRemoved: boolean;
   /** Doors, hood and trunk that open (missing on vehicles published before they existed). */
   parts?: VehicleParts;
+  /** Custom headlight and taillight outlines, mirrored to both sides. */
+  lampShapes?: LampShapes;
 }
 
 /** The public shape returned by GET /api/maplestreet-vehicles. */
@@ -242,5 +247,6 @@ export function isValidVehicleRecord(r: unknown): r is CustomVehicleRecord {
     && !!o.paint && ['none', 'material', 'color'].includes(o.paint.mode) && /^#[0-9a-f]{6}$/i.test(o.paint.color)
     && !!o.dealer && typeof o.dealer.forSale === 'boolean' && finite(o.dealer.price, 0, VEHICLE_LIMITS.priceMax) && ['gas', 'electric'].includes(o.dealer.fuel) && finite(o.dealer.tank, 0.5, 200) && finite(o.dealer.mpg, 1, 500)
     && !!o.traffic && typeof o.traffic.enabled === 'boolean' && (TRAFFIC_ROUTES as readonly string[]).includes(o.traffic.route) && finite(o.traffic.mph, 3, 60)
-    && (o.parts === undefined || isValidParts(o.parts));
+    && (o.parts === undefined || isValidParts(o.parts))
+    && (o.lampShapes === undefined || isValidLampShapes(o.lampShapes));
 }

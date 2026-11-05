@@ -65,9 +65,9 @@ export async function startVehicleTestDrive(container: HTMLElement) {
   let vehicle: Vehicle | null = null;
   let record: CustomVehicleRecord | null = null;
   const keys = new Set<string>();
-  addEventListener('keydown', e => { keys.add(e.key.toLowerCase()); if (e.key === ' ') e.preventDefault(); });
+  addEventListener('keydown', e => { keys.add(e.key.toLowerCase()); if (e.key === ' ' || e.key.startsWith('Arrow')) e.preventDefault(); });
   addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
-  let launchT: number | null = null, launchStart = 0, clock = 0, lastLive = 0;
+  let launchT: number | null = null, launchStart = 0, clock = 0, lastLive = 0, orbit = 0, tilt = 0;
 
   const spawn = () => {
     if (!record) return;
@@ -82,7 +82,7 @@ export async function startVehicleTestDrive(container: HTMLElement) {
     try {
       const result = await measure(customVehicleKind(record.id), record.targets.zeroToMph);
       post({ type: 'tl-vehicle-test-result', result, targetTopMph: record.targets.topSpeedMph });
-      hud.textContent = `Measured: top ${result.topMph} mph · 0–${result.targetMph} ${result.time === null ? 'not reached' : result.time + ' s'}. Drive with WASD, Space = handbrake, R = restart.`;
+      hud.textContent = `Measured: top ${result.topMph} mph · 0–${result.targetMph} ${result.time === null ? 'not reached' : result.time + ' s'}. Drive with E = forward, S = reverse, A = left, D = right, arrow keys = turn the camera, Space = handbrake, R = restart.`;
     } catch {
       post({ type: 'tl-vehicle-test-error', message: 'The test pull failed.' });
     }
@@ -107,8 +107,8 @@ export async function startVehicleTestDrive(container: HTMLElement) {
     clock += dt;
     const v = vehicle;
     if (v) {
-      const throttle = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
-      const steer = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+      const throttle = (keys.has('e') ? 1 : 0) - (keys.has('s') ? 1 : 0);
+      const steer = (keys.has('d') ? 1 : 0) - (keys.has('a') ? 1 : 0);
       v.input = { throttle: Math.max(0, throttle), brake: throttle < 0 && v.speed > 0.5 ? 1 : 0, steer, handbrake: keys.has(' ') };
       if (throttle < 0 && v.speed <= 0.5) v.input.throttle = -1;
       if (keys.has('r')) { keys.delete('r'); spawn(); }
@@ -124,8 +124,11 @@ export async function startVehicleTestDrive(container: HTMLElement) {
     const v = vehicle;
     if (v) {
       v.updateVisuals(0, v.input.brake > 0);
-      const fwd = v.forward();
-      const want = v.root.position.clone().addScaledVector(fwd, -v.preset.cam.dist).add(new THREE.Vector3(0, v.preset.cam.height, 0));
+      orbit += ((keys.has('arrowright') ? 1 : 0) - (keys.has('arrowleft') ? 1 : 0)) * 1.9 * dt;
+      tilt = THREE.MathUtils.clamp(tilt + ((keys.has('arrowup') ? 1 : 0) - (keys.has('arrowdown') ? 1 : 0)) * 1.1 * dt, -0.2, 1.2);
+      const fwd = v.forward().clone().applyAxisAngle(new THREE.Vector3(0, 1, 0), -orbit);
+      const reach = v.preset.cam.dist * Math.cos(tilt);
+      const want = v.root.position.clone().addScaledVector(fwd, -reach).add(new THREE.Vector3(0, v.preset.cam.height + v.preset.cam.dist * Math.sin(tilt), 0));
       cam.position.lerp(want, Math.min(1, dt * 5));
       cam.lookAt(v.root.position.x, v.root.position.y + 1, v.root.position.z);
       grid.position.set(Math.round(v.root.position.x), 0.01, Math.round(v.root.position.z));

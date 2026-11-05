@@ -59,7 +59,7 @@ export function TestDrive({ record, onClose, onResult }: { record: CustomVehicle
         <div><dt>Live speed</dt><dd>{live.mph.toFixed(0)} mph</dd></div>
         <div><dt>Your last 0–60</dt><dd>{live.launch == null ? '—' : `${live.launch} s`}</dd></div>
         {!result && !error && <p role="status"><LoaderCircle className="spin" size={14}/> {ready ? 'Running a full-throttle pull on the game’s physics…' : 'Loading the test pad…'}</p>}
-        {result && <p>Click the view and drive with WASD (Space is the handbrake, R restarts). The numbers come from the same physics every game mode uses.</p>}
+        {result && <p>Click the view and drive with E (forward), S (reverse), A (left) and D (right); the arrow keys turn the camera, Space is the handbrake and R restarts. The numbers come from the same physics every game mode uses.</p>}
         {error && <p role="alert" className="ms-items-error">{error}</p>}
       </dl>
     </div>

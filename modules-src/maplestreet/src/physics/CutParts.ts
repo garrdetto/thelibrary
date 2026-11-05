@@ -10,6 +10,7 @@
  */
 import * as THREE from 'three/webgpu';
 import type { PartBox, VehicleParts } from '../../shared/CustomVehicles';
+import { shapeContains } from '../../shared/Shapes';
 
 const DOOR_OPEN = 1.15, HOOD_OPEN = 0.9, TRUNK_OPEN = 1.05, TAILGATE_OPEN = 1.5, SWING_RATE = 3.2;
 
@@ -30,9 +31,15 @@ function regionsOf(parts: VehicleParts): Region[] {
 function contains(r: Region, p: THREE.Vector3, halfWidth: number) {
   const b = r.box;
   if (p.x < b.back || p.x > b.front || p.y < b.bottom || p.y > b.top) return false;
-  if (r.kind === 'door') return Math.sign(p.z) === r.side && Math.abs(p.z) >= halfWidth * 0.55;
+  const u = (p.x - b.back) / (b.front - b.back);
+  if (r.kind === 'door') {
+    if (Math.sign(p.z) !== r.side || Math.abs(p.z) < halfWidth * 0.55) return false;
+    return !b.shape || shapeContains(b.shape, u, (p.y - b.bottom) / (b.top - b.bottom));
+  }
   // The hood stays between the fenders; a trunk lid, hatch or tailgate spans the whole back.
-  return Math.abs(p.z) <= halfWidth * (r.kind === 'hood' ? 0.72 : 0.97);
+  const reach = halfWidth * (r.kind === 'hood' ? 0.72 : 0.97);
+  if (Math.abs(p.z) > reach) return false;
+  return !b.shape || shapeContains(b.shape, u, Math.abs(p.z) / reach);
 }
 
 /**

@@ -1204,6 +1204,10 @@ body{background:var(--paper);color:var(--tone-0)}
 .ms-veh-markers{display:flex;flex-wrap:wrap;align-items:center;gap:6px;width:100%}
 .ms-veh-markers button.is-active{border-color:var(--lib-accent,var(--green));background:color-mix(in srgb,var(--lib-accent,#5cd17a) 18%,transparent)}
 .ms-veh-inline{display:flex!important;align-items:center;gap:8px;font-weight:400!important}
+.ms-veh-shape{display:grid;gap:6px;padding-top:8px;border-top:1px solid var(--lib-line,var(--border))}
+.ms-veh-shape-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.ms-veh-shape-pad{width:100%;max-width:420px;aspect-ratio:280/180;cursor:crosshair;touch-action:none;outline:none;border-radius:8px}
+.ms-veh-shape-pad:focus-visible{box-shadow:0 0 0 2px var(--lib-accent,#f2b544)}
 .ms-veh-readout{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));column-gap:20px}
 .ms-veh-warn{margin:0;padding:8px 12px;border-radius:10px;border:1px solid color-mix(in srgb,#f2b544 50%,transparent);background:color-mix(in srgb,#f2b544 12%,transparent);font-size:13px}
 .ms-veh-note{margin:0;font-size:12px;line-height:1.5;color:var(--lib-muted,inherit)}
