@@ -10,7 +10,7 @@ import { RecordBook } from '../ui/RecordBook'
 import { Panels } from '../ui/Panels'
 import { renderAlmanac } from '../ui/Almanac'
 import type { PanelTab } from '../ui/Panels'
-import { equip, purchase } from '../shared/Shop'
+import { catalog, equip, owns, purchase } from '../shared/Shop'
 import type { BoatKind, BoatPaint } from '../shared/Boats'
 import type { Look } from '../shared/Wardrobe'
 import { LAKES, depthFeetAt, lakeIds, nearestSpot, waterTempF } from '../shared/Lakes'
@@ -427,7 +427,7 @@ export class Game {
     const w = this.world
     if (!w.lake || !w.physics) return '<p class="ang-note">Launch on a lake to read the almanac.</p>'
     const s = w.physics.state
-    return renderAlmanac({ lake: w.lake, x: s.x, z: s.z, rig: this.profile.rig, crowd: this.crowd() }, now())
+    return renderAlmanac({ lake: w.lake, x: s.x, z: s.z, rig: this.profile.rig, crowd: this.crowd() }, now(), owns(this.profile, 'almanac'), catalog().find(i => i.id === 'almanac')?.price ?? 0)
   }
 
   private async post(body: Record<string, unknown>): Promise<void> {
@@ -466,7 +466,7 @@ export class Game {
     if (this.world.physics) this.world.physics.motorBoost = MOTORS[p.motor].boost
     this.sonar.level = p.sonar
     this.fillRig()
-    this.toast(`Bought: ${item.startsWith('rod:') ? RODS[item.slice(4) as RodId].name : 'new gear'}. ${p.tc.toLocaleString()} TC left.`, 'good')
+    this.toast(`Bought: ${item.startsWith('rod:') ? RODS[item.slice(4) as RodId].name : item === 'almanac' ? "the Guide's Almanac" : 'new gear'}. ${p.tc.toLocaleString()} TC left.`, 'good')
   }
 
   private takeProgress(): Progress {

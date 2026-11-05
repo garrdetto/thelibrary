@@ -50,7 +50,7 @@ export function catalog(): ShopItem[] {
   items.push({ id: 'boat:pontoon', name: BOATS.pontoon.name, category: 'boats', price: 7500, blurb: 'A slow, wide party barge with lounges for four and the comfiest idle fishing on the lake.' })
   for (const m of MOTORS) if (m.level > 0) items.push({ id: `motor:${m.level}`, name: m.name, category: 'motors', price: m.price, blurb: `Top speed +${Math.round((m.boost - 1) * 100)}% on every boat.`, requires: m.level > 1 ? `motor:${m.level - 1}` : undefined })
   for (const s of SONARS) if (s.level > 0) items.push({ id: `sonar:${s.level}`, name: s.name, category: 'electronics', price: s.price, blurb: s.blurb, requires: s.level > 1 ? `sonar:${s.level - 1}` : undefined })
-  items.push({ id: 'almanac', name: "Guide's Almanac", category: 'electronics', price: 4000, blurb: 'Shows the best bite windows for every lake over the next 24 hours.' })
+  items.push({ id: 'almanac', name: "Guide's Almanac", category: 'electronics', price: 4000, blurb: 'Opens the full Almanac (G): an hour-by-hour bite outlook at your boat, every spot on the lake ranked and what your rig will likely hook.' })
   for (const [id, price] of Object.entries(wardrobePrices)) {
     if (price === 0) continue
     const [kind, style] = id.split(':')
