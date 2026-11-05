@@ -85,8 +85,9 @@ export function planPiece(map: ParkMap, park: number, from: PathEnd, segment: Pa
   const water = map.water[i] >= 0 && map.water[i] > tileMin(map, x, y)
   const base = Math.max(tileMax(map, x, y), map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity)
   const stored = sign > 0 ? z1 : z0
-  if (sign === 0 && stored <= base + 0.25 && !(water && pathKind !== 4)) {
-    const entry = groundEdge(map, x, y, (dir + 2) % 4)
+  const groundEntry = groundEdge(map, x, y, (dir + 2) % 4)
+  if (sign === 0 && stored <= base + 0.25 && !(water && pathKind !== 4) && (Math.abs(groundEntry - from.exit) <= 0.3 || stored < base - 0.05)) {
+    const entry = groundEntry
     const flatGhost: GhostPiece = { ...ghost, z0: entry, z1: groundEdge(map, x, y, dir), ground: true }
     if (Math.abs(entry - from.exit) > 0.3) return fail('The ground here is at a different height. Use a slope or stairs.', flatGhost)
     if (pathKind !== 4 && tileSlope(map, x, y).dir === -2) return fail('The land is too steep for a path. Use stairs or smooth it first.', flatGhost)
