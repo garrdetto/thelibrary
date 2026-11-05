@@ -3,6 +3,7 @@ import { handleApi } from './server/api'
 import type { Env } from './server/env'
 
 export { MapleStreetWorld } from './server/maplestreet-world'
+export { AnglerLake } from './server/angler-lake'
 
 export default {
   async fetch(request: Request, env: Env) {

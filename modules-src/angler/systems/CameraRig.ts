@@ -65,14 +65,22 @@ export class CameraRig {
     this.targetDistance = clamp(this.targetDistance * factor, 3.2, 80)
   }
 
+  /** When set, the camera eases to this yaw (degrees) unless the player has just moved it. */
+  preferredYaw: number | null = null
+
   update(dt: number, target: pc.Vec3, heading: number, speed: number, follow: boolean): void {
     this.time += dt
     this.distance += (this.targetDistance - this.distance) * (1 - Math.exp(-dt * 6))
     const behind = (heading * 180) / Math.PI
-    if (follow && Math.abs(speed) > 2.5 && this.time - this.lastInteraction > 2.5) {
+    const idle = this.time - this.lastInteraction > 2.5
+    if (follow && Math.abs(speed) > 2.5 && idle) {
       let d = behind - this.yaw
       d = ((d + 540) % 360) - 180
       this.yaw += d * (1 - Math.exp(-dt * 1.4))
+    } else if (this.preferredYaw !== null && idle) {
+      let d = this.preferredYaw - this.yaw
+      d = ((d + 540) % 360) - 180
+      this.yaw += d * (1 - Math.exp(-dt * 0.9))
     }
     this.focus.lerp(this.focus, target, 1 - Math.exp(-dt * 10))
     if (this.focus.distance(target) > 40) this.focus.copy(target)

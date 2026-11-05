@@ -701,6 +701,9 @@ body{background:var(--paper);color:var(--tone-0)}
 .lap-board-retry{border:1px solid var(--lib-line);border-radius:8px;padding:9px 14px;background:var(--lib-chip);color:var(--lib-text);cursor:pointer;font-size:12px}
 .lap-board-tabs{display:flex;gap:6px;margin:16px 0 12px;flex-wrap:wrap}
 .lap-board-tabs button{padding:8px 16px;border-radius:999px;border:1px solid var(--lib-line);background:var(--lib-chip);color:var(--lib-soft);font-weight:700;font-size:12.5px;cursor:pointer}
+.angler-board-filters select{padding:7px 12px;border-radius:999px;border:1px solid var(--lib-line);background:var(--lib-chip);color:var(--lib-text);font-weight:700;font-size:12.5px}
+.angler-board-link{background:none;border:0;padding:0;color:var(--lib-accent);font:inherit;font-weight:700;cursor:pointer;text-align:left}
+.angler-board-link:focus-visible,.angler-board-filters select:focus-visible{outline:3px solid var(--lib-accent);outline-offset:2px}
 .lap-board-tabs button.is-active{background:linear-gradient(135deg,var(--lib-accent),#8b5cff);color:var(--lib-on-accent);border-color:transparent}
 .lap-board-tabs button:focus-visible,.lap-board-retry:focus-visible{outline:3px solid var(--lib-accent);outline-offset:2px}
 .lap-board-note{padding:6px 0}

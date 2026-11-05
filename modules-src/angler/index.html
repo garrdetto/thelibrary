@@ -33,11 +33,13 @@
       .ang-lake:hover{background:color-mix(in srgb,var(--accent) 16%,transparent)}
       .ang-lake strong{font-size:16px}
       .ang-lake span{font-size:12px;color:var(--accent);font-weight:650}
+      .ang-lake span b.is-out{color:var(--good);font-weight:700}
       .ang-lake em{font-style:normal;font-size:12.5px;color:var(--soft)}
       .ang-lake[disabled]{opacity:.55;cursor:not-allowed}
       #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
       #hud [data-ui]{pointer-events:auto}
       .hud-top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+      .hud-left{display:grid;gap:8px;justify-items:start;align-content:start}
       .hud-info{padding:8px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:2px;max-width:min(520px,60vw)}
       .hud-info strong{font:750 17px Rajdhani,Inter,sans-serif;letter-spacing:.3px}
       .hud-info span{font-size:12px;color:var(--soft)}
@@ -55,6 +57,111 @@
       #map-canvas{width:100%;aspect-ratio:1;border-radius:12px;cursor:crosshair}
       .ang-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:space-between}
       .ang-note{font-size:12.5px;color:var(--muted)}
+      .hud-chips{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+      .chip{padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.08);font-size:12px;font-weight:700}
+      .chip.is-tc{background:color-mix(in srgb,var(--warn) 22%,transparent);color:#ffe7a3}
+      #stat-outlook{color:var(--accent);font-weight:650}
+      #guest-note{font-size:11.5px;color:var(--warn)}
+      .hud-rig{display:flex;gap:6px;align-items:center;padding:5px 7px;border-radius:10px;background:var(--panel);border:1px solid var(--line)}
+      .hud-rig select{font:600 12.5px Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:8px;padding:5px 6px;max-width:170px}
+      #sonar{width:300px;height:96px;border-radius:12px;border:1px solid var(--line);background:#071c2a}
+      #tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+      .ang-tag{position:absolute;left:0;top:0;padding:2px 8px;border-radius:999px;background:rgba(8,16,20,.62);border:1px solid var(--line);font:700 12px Inter,sans-serif;white-space:nowrap;will-change:transform}
+      #crew{width:min(250px,60vw);padding:8px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:6px;font-size:12px}
+      #crew header{display:flex;justify-content:space-between;gap:6px;align-items:center;color:var(--soft);font-weight:650}
+      #crew header i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px}
+      #crew header i.is-on{background:var(--good)}
+      #crew ul{margin:0;padding:0;list-style:none;display:grid;gap:3px}
+      #crew li{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:3px 6px;border-radius:7px;background:rgba(255,255,255,.04)}
+      #crew li button{all:unset;cursor:pointer;color:var(--muted);padding:0 4px}
+      #crew li button:focus-visible,#crew .ang-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+      #crew .ang-btn{padding:6px 10px;font-size:12px}
+      #crew .crew-actions{display:flex;gap:6px;flex-wrap:wrap}
+      #crew p{margin:0;color:var(--muted)}
+      #fish-status{position:absolute;top:64px;left:50%;transform:translateX(-50%);padding:6px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font:750 14px Rajdhani,Inter,sans-serif;letter-spacing:.4px}
+      #toasts{position:absolute;top:104px;left:50%;transform:translateX(-50%);display:grid;gap:6px;justify-items:center;width:min(560px,92vw);pointer-events:none}
+      .ang-toast{padding:8px 14px;border-radius:12px;background:var(--panel-solid);border:1px solid var(--line);font-size:13px;font-weight:600;box-shadow:0 10px 30px -12px rgba(0,0,0,.6);animation:toast-in .25s ease-out}
+      .ang-toast.is-good{border-color:color-mix(in srgb,var(--good) 60%,transparent)}
+      .ang-toast.is-warn{border-color:color-mix(in srgb,#ff7a5a 60%,transparent)}
+      .ang-toast.is-gold{border-color:var(--warn);background:linear-gradient(90deg,#2a2210,#1a1a12)}
+      @keyframes toast-in{from{opacity:0;transform:translateY(-6px)}}
+      #catch-log{position:absolute;right:10px;top:64px;margin:0;padding:6px;list-style:none;display:grid;gap:4px;width:190px;border-radius:12px;background:var(--panel);border:1px solid var(--line);pointer-events:auto}
+      #catch-log li{display:flex;justify-content:space-between;gap:8px;font-size:12px;padding:3px 6px;border-radius:7px;background:rgba(255,255,255,.04)}
+      #catch-log li.is-lost{opacity:.6;text-decoration:line-through}
+      .tier-keeper{color:#b8e0a8}.tier-quality{color:#7fd0ff}.tier-trophy{color:#ffcf4a}.tier-legendary{color:#ff8af0}.tier-common{color:var(--soft)}
+      #catch-card{position:fixed;right:12px;top:112px;z-index:25;width:min(340px,92vw);padding:16px 18px;border-radius:16px;background:linear-gradient(160deg,#122830,#0c171c);border:1px solid var(--line);box-shadow:0 28px 70px -24px rgba(0,0,0,.8);display:grid;gap:6px;animation:toast-in .35s ease-out}
+      #catch-card header{display:flex;justify-content:space-between;align-items:center}
+      .card-tier{font:800 12px Inter,sans-serif;letter-spacing:1.4px;text-transform:uppercase}
+      #card-species{margin:0;font:800 24px Rajdhani,Inter,sans-serif;letter-spacing:.3px}
+      #card-latin{font-style:italic;color:var(--muted);font-size:12.5px}
+      .card-numbers{display:flex;gap:18px;font:800 24px Rajdhani,Inter,sans-serif;font-variant-numeric:tabular-nums}
+      .card-numbers small{display:block;font:650 10px Inter,sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      #card-banner{font:800 15px Rajdhani,Inter,sans-serif;color:#ffcf4a;letter-spacing:.6px;text-transform:uppercase}
+      #card-meta,#card-fact{font-size:12.5px;color:var(--soft);margin:0}
+      #card-credits{font-weight:750;color:#ffe7a3;font-size:13px}
+      #records-panel .ang-card{width:min(820px,100%)}
+      .rec-hall{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+      .rec-card{cursor:pointer;text-align:left;display:grid;gap:2px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
+      .rec-card span{font-size:12px;color:var(--accent);font-weight:700}
+      .rec-card strong{font:800 20px Rajdhani,Inter,sans-serif}
+      .rec-card em{font-style:normal;font-size:11.5px;color:var(--muted)}
+      .rec-scroll{overflow-x:auto}
+      .rec-table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+      .rec-table th,.rec-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+      .rec-table th{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      .rec-table small{display:block;color:var(--muted);font-size:11px}
+      .rec-table td small[class^=tier]{display:inline}
+      .podium-1 td:first-child{color:#ffcf4a;font-weight:800}
+      .ang-select{font:600 13px Inter,system-ui,sans-serif;color:var(--text);background:#14232b;border:1px solid var(--line);border-radius:9px;padding:6px 8px}
+      .ang-lake b{font-size:12px;color:var(--warn)}
+      @media (max-width:760px){#catch-card{top:auto;bottom:118px;left:50%;right:auto;transform:translateX(-50%)}#sonar{display:none}#catch-log{display:none}.hud-rig select{max-width:120px}}
+      #panel{position:fixed;top:0;bottom:0;right:0;z-index:35;width:min(560px,100vw);overflow:auto;padding:14px 16px 20px;background:rgba(10,18,22,.94);border-left:1px solid var(--line);backdrop-filter:blur(8px);display:grid;align-content:start;gap:10px}
+      #panel h2{margin:0;font:800 22px Rajdhani,Inter,sans-serif}
+      #panel h3{margin:10px 0 4px;font:750 15px Rajdhani,Inter,sans-serif;letter-spacing:.4px;color:var(--accent)}
+      #panel label{display:block;margin:8px 0 4px;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      .pan-tabs{display:flex;gap:6px;flex-wrap:wrap}
+      .pan-tabs button,.chip-btn{cursor:pointer;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--soft);font:700 12.5px Inter,sans-serif}
+      .pan-tabs button[aria-selected=true],.chip-btn[aria-pressed=true]{background:var(--accent);color:#04211d;border-color:transparent}
+      .pan-grid{display:grid;gap:4px}
+      .sw-row{display:flex;flex-wrap:wrap;gap:5px}
+      .sw{width:24px;height:24px;border-radius:7px;border:2px solid rgba(255,255,255,.18);cursor:pointer;padding:0}
+      .sw[aria-checked=true]{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
+      .opt-row{display:flex;flex-wrap:wrap;gap:6px}
+      .opt{cursor:pointer;display:grid;gap:1px;text-align:left;padding:7px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font:650 12.5px Inter,sans-serif;color:var(--text)}
+      .opt small{font-size:10.5px;color:var(--muted);font-weight:600}
+      .opt em{font-style:normal;font-size:11px;color:#ffe7a3}
+      .opt[aria-pressed=true]{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 22%,transparent)}
+      .opt[data-locked]{opacity:.7}
+      .sw:focus-visible,.opt:focus-visible,.chip-btn:focus-visible,.pan-tabs button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+      .pan-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;position:sticky;bottom:0;padding:8px 0;background:rgba(10,18,22,.94)}
+      .shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+      .shop-item{display:grid;gap:6px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.04)}
+      .shop-item p{margin:0;font-size:12px;color:var(--soft)}
+      .shop-item.is-owned{opacity:.6}
+      .shop-item .price{font-weight:800;color:#ffe7a3}
+      .ang-btn[disabled]{opacity:.45;cursor:not-allowed}
+      .stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+      .stat-row div{padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.05)}
+      .stat-row small{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+      .stat-row strong{font:800 16px Rajdhani,Inter,sans-serif}
+      .alm-bars{display:flex;align-items:flex-end;gap:2px;height:96px;padding:4px 2px 16px;border-radius:10px;background:rgba(255,255,255,.04)}
+      .alm-bar{position:relative;flex:1;border-radius:3px 3px 0 0;background:#5d7a80}
+      .alm-bar.is-fair{background:#6fa7a0}.alm-bar.is-good{background:var(--accent)}.alm-bar.is-hot{background:var(--warn)}.alm-bar.is-dead{background:#3d4d52}
+      .alm-bar i{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);font:600 9.5px Inter,sans-serif;font-style:normal;color:var(--muted)}
+      .alm-list{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+      .alm-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;border-radius:9px;background:rgba(255,255,255,.04)}
+      .alm-list li span{display:grid}
+      .alm-list small{color:var(--muted);font-size:11.5px}
+      .alm-list b{font:800 14px Rajdhani,Inter,sans-serif}
+      .alm-list b.is-good{color:var(--accent)}.alm-list b.is-hot{color:var(--warn)}.alm-list b.is-dead,.alm-list b.is-slow{color:var(--muted)}
+      .ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
+      .ach{padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.03);display:grid;gap:4px}
+      .ach p{margin:0;font-size:12px;color:var(--soft)}
+      .ach span{font-size:11px;font-weight:800;color:var(--muted)}
+      .ach.tier-1 span{color:#d39a5c}.ach.tier-2 span{color:#c8d0d8}.ach.tier-3 span{color:#ffcf4a}.ach.tier-4 span{color:#ff8af0}
+      .bar{height:5px;border-radius:3px;background:rgba(255,255,255,.08);overflow:hidden}
+      .bar i{display:block;height:100%;background:var(--accent)}
+      @media (max-width:640px){.stat-row{grid-template-columns:repeat(2,1fr)}.hud-actions .ang-btn{padding:6px 9px;font-size:12px}}
       @media (max-width:640px){#minimap{width:104px;height:104px}.hud-info{max-width:52vw}.hud-info span{display:none}.ang-card{padding:16px}}
       @media (prefers-reduced-motion:reduce){.ang-spinner{animation:none}.ang-screen{backdrop-filter:none}}
     </style>
@@ -65,7 +172,7 @@
 
     <section id="screen-lakes" class="ang-screen" hidden aria-labelledby="lakes-title">
       <div class="ang-card">
-        <span class="ang-eyebrow">Pick your water</span>
+        <div class="ang-row"><span class="ang-eyebrow">Pick your water</span><button class="ang-btn" id="lakes-close" type="button" hidden>Back to the lake</button></div>
         <h1 id="lakes-title">Northwoods Angler</h1>
         <p>Choose a lake, drive the boat to a spot, drop anchor and let the lake decide. The water follows the real clock and calendar in central Wisconsin.</p>
         <div id="lake-list"></div>
@@ -73,17 +180,33 @@
     </section>
 
     <div id="hud" hidden>
+      <div id="tags" aria-hidden="true"></div>
       <div class="hud-top">
+        <div class="hud-left">
         <div class="hud-info" data-ui>
-          <strong id="lake-name">Lake</strong>
+          <div class="hud-chips"><strong id="lake-name">Lake</strong><span class="chip is-tc" id="tc-chip">0 TC</span><span class="chip" id="title-chip"></span></div>
           <span id="stat-weather"></span>
+          <span id="stat-outlook"></span>
+          <span id="guest-note" hidden>Guest mode: sign in on the library to keep catches, records and credits.</span>
         </div>
-        <div class="hud-actions" data-ui>
+        <section id="crew" data-ui aria-label="Shared lake" hidden></section>
+        </div>
+        <div class="hud-actions" data-ui id="hud-actions">
           <button class="ang-btn" id="btn-troll" type="button" aria-pressed="false" title="Trolling motor (T)">Trolling motor</button>
+          <button class="ang-btn" id="btn-wardrobe" type="button" title="Wardrobe (C)">Wardrobe</button>
+          <button class="ang-btn" id="btn-boat" type="button" title="Boat and paint (B)">Boat</button>
+          <button class="ang-btn" id="btn-shop" type="button" title="Bait shop (P)">Shop</button>
+          <button class="ang-btn" id="btn-achievements" type="button" title="Achievements (J)">Achievements</button>
+          <button class="ang-btn" id="btn-almanac" type="button" title="Guide's almanac (G)">Almanac</button>
+          <button class="ang-btn" id="btn-records" type="button" title="Record book (R)">Records</button>
           <button class="ang-btn" id="btn-map" type="button" title="Map (M)">Map</button>
           <button class="ang-btn" id="btn-lakes" type="button">Lakes</button>
+          <button class="ang-btn" id="btn-sound" type="button" aria-pressed="true" title="Sound (N)">Sound on</button>
         </div>
       </div>
+      <div id="fish-status" role="status" hidden></div>
+      <div id="toasts" aria-live="polite"></div>
+      <ul id="catch-log" hidden aria-label="Recent catches"></ul>
       <div id="stick" data-ui aria-label="Drive stick"><div data-knob></div></div>
       <div class="hud-bottom">
         <div class="hud-gauges" data-ui>
@@ -91,17 +214,46 @@
           <div class="hud-gauge"><small>Depth</small><span id="stat-depth">–</span></div>
           <div class="hud-gauge"><small>Water</small><span id="stat-temp">–</span></div>
           <div class="hud-gauge"><small>Time</small><span id="stat-time">–</span></div>
+          <div class="hud-rig"><select id="rig-rod" aria-label="Rod"></select><select id="rig-bait" aria-label="Presentation"></select></div>
           <button class="ang-btn is-primary" id="btn-anchor" type="button" aria-pressed="false" title="Anchor (Space)">Drop anchor</button>
         </div>
+        <canvas id="sonar" width="300" height="96" aria-label="Sonar"></canvas>
         <canvas id="minimap" width="300" height="300" data-ui aria-label="Mini map"></canvas>
       </div>
     </div>
+
+    <section id="catch-card" hidden aria-live="polite" data-ui>
+      <header><span id="card-tier" class="card-tier">Keeper</span><button class="ang-btn" id="catch-close" type="button" aria-label="Close catch card">Close</button></header>
+      <span id="card-banner" hidden></span>
+      <h2 id="card-species">Walleye</h2>
+      <span id="card-latin"></span>
+      <div class="card-numbers"><div><small>Weight</small><span id="card-weight"></span></div><div><small>Length</small><span id="card-length"></span></div></div>
+      <p id="card-meta"></p>
+      <span id="card-credits"></span>
+      <p id="card-fact"></p>
+    </section>
+
+ <aside id="panel" hidden aria-labelledby="panel-title" data-ui>
+      <header class="ang-row"><h2 id="panel-title">Tackle shop</h2><span class="chip is-tc" id="panel-tc"></span><button class="ang-btn" id="panel-close" type="button">Close</button></header>
+      <nav class="pan-tabs" role="tablist"><button type="button" role="tab" data-tab="wardrobe">Wardrobe</button><button type="button" role="tab" data-tab="boat">Boat</button><button type="button" role="tab" data-tab="shop">Shop</button><button type="button" role="tab" data-tab="achievements">Achievements</button><button type="button" role="tab" data-tab="almanac">Almanac</button></nav>
+      <p id="panel-status" class="ang-note" role="status"></p>
+      <div id="panel-body"></div>
+    </aside>
+
+    <section id="records-panel" class="ang-screen" hidden aria-labelledby="records-title">
+      <div class="ang-card" data-ui>
+        <div class="ang-row"><h2 id="records-title">Record book</h2><button class="ang-btn" id="records-close" type="button">Close</button></div>
+        <div class="ang-row"><select id="rec-species" class="ang-select" aria-label="Board"></select><span id="rec-filters" class="ang-row"><select id="rec-lake" class="ang-select" aria-label="Lake"></select><select id="rec-period" class="ang-select" aria-label="Period"><option value="all">All time</option><option value="month">This month</option></select></span></div>
+        <p class="ang-note" id="rec-note"></p>
+        <div id="rec-body"></div>
+      </div>
+    </section>
 
     <section id="map-panel" hidden aria-labelledby="map-title">
       <div class="ang-card" data-ui>
         <div class="ang-row"><h2 id="map-title">Lake map</h2><button class="ang-btn" id="map-close" type="button">Close</button></div>
         <canvas id="map-canvas" width="720" height="720"></canvas>
-        <p class="ang-note">Click the water to drop a pin. Contours every 10 ft (20 ft on deep lakes).</p>
+        <p class="ang-note">Click the water to drop a pin and the boat drives there on its own, then anchors. Contours every 10 ft (20 ft on deep lakes).</p>
       </div>
     </section>
 

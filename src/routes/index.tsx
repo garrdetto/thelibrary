@@ -13,6 +13,7 @@ import type { ChatInvite, ChatModule, InviteKind } from '@/components/GroupChat'
 import { ModuleHub } from '@/components/ModuleHub'
 import { LapRecordBoard } from '@/components/LapRecordBoard'
 import { FairwayRecordBoard } from '@/components/FairwayRecordBoard'
+import { AnglerRecordBoard } from '@/components/AnglerRecordBoard'
 import { ModuleScoreboard } from '@/components/ModuleScoreboard'
 import { AdminRecordResetButton, RecordResetProvider } from '@/components/AdminRecordReset'
 import { isScoredModule } from '@/lib/module-scores'
@@ -37,7 +38,7 @@ const navigation = [
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
 ] as const
 const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxplains2: House, fairway: Flag, demoderby: CarFront, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish }
-const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxplains2: 'room', fairway: 'room', party: 'room' }
+const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxplains2: 'room', fairway: 'room', party: 'room', angler: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
 type PlayId = EmbeddedModuleId
@@ -457,6 +458,7 @@ function Studio() {
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
+        {activePlay?.id === 'angler' && <AnglerRecordBoard/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel/></Suspense>}
         {view === 'pool' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Racking the balls…</p>}><PoolTable lobby={lobby}/></Suspense>}

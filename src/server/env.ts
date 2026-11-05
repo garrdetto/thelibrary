@@ -28,6 +28,7 @@ export type Env = {
   DB: D1Database
   FILES: KVNamespace
   MAPLE_WORLD?: DurableObjectNamespace
+  ANGLER_LAKE?: DurableObjectNamespace
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
   SITE_CHANGES_GITHUB_TOKEN?: string
