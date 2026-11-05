@@ -32,7 +32,7 @@ const CATCH_U=[0,-4];
 /* Home plate geometry (world feet): the plate's back point sits on the origin where the foul lines meet,
    so the 17" front edge is 17" toward the mound. The pitch crosses the zone over the middle of the plate. */
 const PLATE_W=17/12,PLATE_D=PLATE_W,ZZ=-PLATE_D/2;
-const ZW=PLATE_W/2,ZC=2.45,ZH=1.0,BALL_R=.189,PITCH_SPEED=1.25; // zone: hollow of the knee (~1.45 ft) to midway between belt and shoulders (~3.45 ft) on a 6-ft player
+const ZW=PLATE_W/2,ZC=2.45,ZH=1.0,BALL_R=.189,PITCH_SPEED=1.5625; // zone: hollow of the knee (~1.45 ft) to midway between belt and shoulders (~3.45 ft) on a 6-ft player
 const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
 
 /* ================= THREE SETUP ================= */
@@ -703,10 +703,31 @@ function hills(T){
     world.add(new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:c,side:THREE.DoubleSide})))}
 }
 function noiseCanvas(w,h,base,spots,amt){const[c,g]=mk(w,h);g.fillStyle=base;g.fillRect(0,0,w,h);for(let i=0;i<amt;i++){g.fillStyle=spots[i%spots.length];g.globalAlpha=rnd(.05,.25);g.fillRect(rnd(0,w),rnd(0,h),rnd(1,3),rnd(1,4))}g.globalAlpha=1;return c}
+function tileNoise(n,seed){const g=new Float32Array(n*n);let s=seed;for(let i=0;i<n*n;i++){s=(s*1664525+1013904223)>>>0;g[i]=s/4294967296}return g}
+function heightField(size,octaves,seed){
+  const h=new Float32Array(size*size);let amp=1,tot=0;
+  for(let o=0;o<octaves;o++){const n=4<<o,g=tileNoise(n,seed+o*977);
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++){const fx=x/size*n,fy=y/size*n,x0=Math.floor(fx),y0=Math.floor(fy),tx=fx-x0,ty=fy-y0,sx=tx*tx*(3-2*tx),sy=ty*ty*(3-2*ty);
+      const a=g[(y0%n)*n+x0%n],b=g[(y0%n)*n+(x0+1)%n],c=g[((y0+1)%n)*n+x0%n],d=g[((y0+1)%n)*n+(x0+1)%n];
+      h[y*size+x]+=amp*(a+(b-a)*sx+(c-a)*sy+(a-b-c+d)*sx*sy)}
+    tot+=amp;amp*=.55}
+  for(let i=0;i<h.length;i++)h[i]/=tot;return h}
+function normalMapFrom(h,size,strength){
+  const[c,g]=mk(size,size),img=g.createImageData(size,size);
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){
+    const l=h[y*size+(x+size-1)%size],r=h[y*size+(x+1)%size],u=h[((y+size-1)%size)*size+x],d=h[((y+1)%size)*size+x];
+    let nx=(l-r)*strength,ny=(u-d)*strength,nz=1;const il=1/Math.hypot(nx,ny,nz);nx*=il;ny*=il;nz*=il;
+    const i=(y*size+x)*4;img.data[i]=(nx*.5+.5)*255;img.data[i+1]=(ny*.5+.5)*255;img.data[i+2]=(nz*.5+.5)*255;img.data[i+3]=255}
+  g.putImageData(img,0,0);
+  const t=new THREE.CanvasTexture(c);t.anisotropy=MAXANI;t.wrapS=t.wrapT=THREE.RepeatWrapping;return t}
+let GROUND_N=null;
+function groundNormal(rx,ry){
+  if(!GROUND_N)GROUND_N=normalMapFrom(heightField(256,7,11),256,9);
+  const n=GROUND_N.clone();n.needsUpdate=true;n.repeat.set(rx,ry);return n}
 function ground(T){
   const base={sandlot:'#5f7f35',park:'#4f7f37',stadium:'#41503f',dome:'#5a6458'}[PK.id];
   const c=noiseCanvas(256,256,base,['#7a9a48','#3e5a28','#8b7a4a','#2f4422'],5000);const t=ctex(c,true);t.repeat.set(60,60);
-  const m=new THREE.Mesh(new THREE.PlaneGeometry(9000,9000),new THREE.MeshLambertMaterial({map:t}));m.rotation.x=-PI/2;m.position.y=-.15;m.receiveShadow=true;world.add(m);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(9000,9000),new THREE.MeshStandardMaterial({map:t,roughness:.92,metalness:0,envMap:ENV,envMapIntensity:.12,normalMap:groundNormal(900,900),normalScale:new THREE.Vector2(.6,.6)}));m.rotation.x=-PI/2;m.position.y=-.15;m.receiveShadow=true;world.add(m);
 }
 
 /* field surface: one big painted canvas in world coords */
@@ -750,7 +771,10 @@ function fieldSurface(){
   // dirt noise
   g.save();g.beginPath();g.arc(0,mz,B*1.08,0,7);g.arc(0,0,15*sc,0,7);g.clip();
   for(let i=0;i<7000;i++){g.fillStyle=Math.random()<.5?'rgba(80,45,20,.12)':'rgba(255,230,190,.10)';g.fillRect(rnd(-B*1.1,B*1.1),mz+rnd(-B*1.1,B*1.1),rnd(.2,.6),rnd(.2,.6))}g.restore();
-  // chalk
+  g.save();g.beginPath();g.arc(0,mz,B*1.08,0,7);g.arc(0,0,15*sc,0,7);g.clip();
+  for(let i=0;i<26000;i++){g.fillStyle=['rgba(60,32,14,.16)','rgba(255,225,180,.12)','rgba(120,80,45,.14)'][i%3];const q=rnd(.15,.9);g.fillRect(rnd(-B*1.1,B*1.1),mz+rnd(-B*1.1,B*1.1),q,q*rnd(.6,1.5))}
+  for(let i=0;i<260;i++){g.fillStyle=`rgba(${rnd(70,110)|0},${rnd(40,70)|0},25,${rnd(.05,.12)})`;g.beginPath();g.ellipse(rnd(-B*1.1,B*1.1),mz+rnd(-B*1.1,B*1.1),rnd(1.5,6),rnd(1,4),rnd(0,3),0,7);g.fill()}
+  g.restore();
   // ---- chalk (world feet; canvas y = world z, home plate's back point at the origin) ----
   g.strokeStyle='rgba(250,248,240,.95)';g.lineWidth=.25;g.lineCap='butt';g.lineJoin='miter';   // 3" lines
   const hw=PLATE_W/2,bxIn=hw+.5,bxOut=bxIn+4,bzF=ZZ-3,bzB=ZZ+3;   // 4'x6' boxes, 6" off the plate, centred on it
@@ -774,7 +798,7 @@ function fieldSurface(){
   g.setTransform(1,0,0,1,0,0);
   for(let i=0;i<70000;i++){g.fillStyle=Math.random()<.5?'rgba(0,40,0,.12)':'rgba(220,255,180,.07)';g.fillRect(Math.random()*Wc,Math.random()*Hc,1,1+Math.random()*2)}
   const t=ctex(c);
-  const m=new THREE.Mesh(new THREE.PlaneGeometry(2*X,zmax-zmin),new THREE.MeshLambertMaterial({map:t}));
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(2*X,zmax-zmin),new THREE.MeshStandardMaterial({map:t,roughness:.9,metalness:0,envMap:ENV,envMapIntensity:.1,normalMap:groundNormal(2*X/4,(zmax-zmin)/4),normalScale:new THREE.Vector2(.55,.55)}));
   m.rotation.x=-PI/2;m.position.set(0,0,(zmin+zmax)/2);m.receiveShadow=true;world.add(m);
 }
 function stripes(g,x,y,w,h,bw,col,ang){g.save();g.translate(x+w/2,y+h/2);g.rotate(ang);const R=Math.hypot(w,h);g.fillStyle=col;for(let s=-R;s<R;s+=bw*2)g.fillRect(s,-R,bw,2*R);g.restore()}
@@ -1715,9 +1739,9 @@ const tmpP=new THREE.Vector3(),tmpL=new THREE.Vector3(),dbg={p:new THREE.Vector3
 function catcherCam(){const asp=VW/VH;
   // eye line just above a 6-ft batter's letters, looking out over the plate
   // set back and raised like a broadcast view from behind the plate: plate at the bottom, zone and pitcher filling the middle
-  if(asp<.8)return{p:new THREE.Vector3(0,5.4,19),l:new THREE.Vector3(0,4.6,-60),f:46};
-  if(asp<1.3)return{p:new THREE.Vector3(0,5,17),l:new THREE.Vector3(0,.4,-60),f:36};
-  return{p:new THREE.Vector3(0,4.7,15.5),l:new THREE.Vector3(0,-3.2,-60),f:31}}
+  if(asp<.8)return{p:new THREE.Vector3(0,4.2,14.5),l:new THREE.Vector3(0,3.4,-60),f:46};
+  if(asp<1.3)return{p:new THREE.Vector3(0,4,13),l:new THREE.Vector3(0,-.35,-60),f:36};
+  return{p:new THREE.Vector3(0,3.6,11.5),l:new THREE.Vector3(0,-3.9,-60),f:31}}
 function camTick(dt,now,ball){
   let k=3.2;
   if(camMode==='bat'){const c=catcherCam();tmpP.copy(c.p);tmpL.copy(c.l);k=4}
