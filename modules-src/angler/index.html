@@ -89,6 +89,17 @@
       .meter{position:relative;height:9px;border-radius:5px;background:rgba(255,255,255,.12);overflow:hidden}
       .meter i{position:absolute;left:0;top:0;bottom:0;border-radius:5px;background:linear-gradient(90deg,var(--good),var(--warn) 70%,#ff6a4a);transition:width .08s linear}
       .meter.is-line i{background:#8fd3ff}
+      .meter.is-cast i{background:linear-gradient(90deg,#3fc7b6,#8fd3ff 60%,#ffffff);transition:none}
+      #btn-reel.is-jump{background:#ff7a5a;color:#fff;animation:strike .3s ease-in-out infinite alternate}
+      .card-actions{display:flex;gap:6px}
+      .ang-float{position:absolute;transform:translate(-50%,-100%);font:800 26px Rajdhani,Inter,sans-serif;letter-spacing:.4px;text-shadow:0 2px 10px rgba(0,0,0,.55),0 0 2px rgba(0,0,0,.8);white-space:nowrap;pointer-events:none;animation:float-up 2.6s ease-out forwards}
+      .ang-float.tier-common{color:#fff}
+      @keyframes float-up{0%{opacity:0;transform:translate(-50%,-60%) scale(.7)}12%{opacity:1;transform:translate(-50%,-100%) scale(1.12)}25%{transform:translate(-50%,-110%) scale(1)}100%{opacity:0;transform:translate(-50%,-260%) scale(1)}}
+      .ang-confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:45}
+      .ang-confetti i{position:absolute;top:-20px;border-radius:2px;opacity:.95;animation-name:confetti-fall;animation-timing-function:cubic-bezier(.25,.6,.4,1);animation-fill-mode:forwards}
+      @keyframes confetti-fall{to{transform:translate(var(--drift),105vh) rotate(var(--spin));opacity:.8}}
+      .ang-flash{position:fixed;inset:0;pointer-events:none;z-index:44;background:radial-gradient(ellipse at 50% 55%,rgba(255,224,130,.55),rgba(255,207,74,.18) 45%,transparent 75%);animation:flash 1.2s ease-out forwards}
+      @keyframes flash{from{opacity:1}to{opacity:0}}
       .meter b{position:absolute;top:0;bottom:0;left:83%;width:2px;background:rgba(255,255,255,.7)}
       .meter.is-hot{animation:hot .2s linear infinite alternate}
       @keyframes hot{to{background:rgba(255,106,74,.45)}}
@@ -197,7 +208,7 @@
       <div class="ang-card">
         <div class="ang-row"><span class="ang-eyebrow">Pick your water</span><button class="ang-btn" id="lakes-close" type="button" hidden>Back to the lake</button></div>
         <h1 id="lakes-title">Northwoods Angler</h1>
-        <p>Choose a lake, drive the boat to a spot and drop anchor. When the bobber dips, hit <strong>Reel In</strong> (or hold F) to set the hook, crank the fish in and ease off when it runs. Two anglers to a boat, four boats to a lake. The water follows the real clock and calendar in central Wisconsin.</p>
+        <p>Choose a lake, drive the boat to a spot and drop anchor. Hold <strong>Reel In</strong> (or F) to power up a cast and tap it to jig. When the bobber dips, hit it to set the hook, crank the fish in, ease off when it runs, let go when it jumps and tap to net it at the boat. Two anglers to a boat, four boats to a lake. The water follows the real clock and calendar in central Wisconsin.</p>
         <div id="lake-list"></div>
       </div>
     </section>
@@ -230,8 +241,11 @@
       <div id="fish-status" role="status" hidden></div>
       <div id="reel" data-ui hidden>
         <div class="reel-meters" id="reel-meters" hidden>
-          <div class="reel-meter"><small><span>Tension</span><span id="reel-tension-text"></span></small><div class="meter" id="reel-tension-bar"><i id="reel-tension"></i><b></b></div></div>
-          <div class="reel-meter"><small><span>Line out</span><span id="reel-line-text"></span></small><div class="meter is-line"><i id="reel-line"></i></div></div>
+          <div id="reel-fight-meters" class="reel-meters">
+            <div class="reel-meter"><small><span>Tension</span><span id="reel-tension-text"></span></small><div class="meter" id="reel-tension-bar"><i id="reel-tension"></i><b></b></div></div>
+            <div class="reel-meter"><small><span>Line out</span><span id="reel-line-text"></span></small><div class="meter is-line"><i id="reel-line"></i></div></div>
+          </div>
+          <div class="reel-meter" id="reel-cast-meter" hidden><small><span>Cast power</span><span id="reel-cast-text"></span></small><div class="meter is-cast"><i id="reel-cast"></i></div></div>
         </div>
         <button class="ang-btn is-primary" id="btn-reel" type="button" title="Reel in (hold F)">Reel in</button>
       </div>
@@ -253,7 +267,7 @@
     </div>
 
     <section id="catch-card" hidden aria-live="polite" data-ui>
-      <header><span id="card-tier" class="card-tier">Keeper</span><button class="ang-btn" id="catch-close" type="button" aria-label="Close catch card">Close</button></header>
+      <header><span id="card-tier" class="card-tier">Keeper</span><span class="card-actions"><button class="ang-btn" id="catch-photo" type="button" title="Save a photo of this catch">📷 Photo</button><button class="ang-btn" id="catch-close" type="button" aria-label="Close catch card">Close</button></span></header>
       <span id="card-banner" hidden></span>
       <h2 id="card-species">Walleye</h2>
       <span id="card-latin"></span>
