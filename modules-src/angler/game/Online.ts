@@ -3,6 +3,7 @@ import * as pc from 'playcanvas'
 import type { World } from './World'
 import { RemoteAngler } from './RemoteAngler'
 import { Boat } from '../scene/Boat'
+import { Wake } from '../scene/Wake'
 import type { BoatKind, BoatSpec } from '../shared/Boats'
 import type { LakeId } from '../shared/Lakes'
 import { BOARD_RADIUS, CREW_SIZE, POSITION_HZ, crowdAt, inviteCode } from '../shared/Online'
@@ -21,11 +22,13 @@ export interface OnlineEvents {
   crewChanged(aboard: boolean): void
   gear(): Gear
   signedIn(): boolean
+  chime(big: boolean): void
 }
 
 interface MovingBoat {
   id: string
   boat: Boat | null
+  wake: Wake | null
   kind: BoatKind
   paintKey: string
   loading: boolean
@@ -314,6 +317,7 @@ export class Online {
         const name = SPECIES[m.species].name.toLowerCase()
         const crewmate = this.remotes.get(m.id)?.view.boat === this.myBoat
         const big = ['Trophy', 'Legendary'].includes(m.tier)
+        if (crewmate) this.events.chime(big)
         if (crewmate) this.events.toast(`${m.name} landed a ${formatWeight(m.weight)} ${name}${m.tier === 'Common' ? '' : ` (${m.tier})`}.`, big ? 'gold' : 'good', big ? 8 : 5)
         else if (big || m.tier === 'Quality') this.events.toast(`Across the lake, ${m.name} landed a ${formatWeight(m.weight)} ${name} (${m.tier}).`, big ? 'gold' : 'soft', big ? 8 : 5)
         return
@@ -397,7 +401,7 @@ export class Online {
   private makeBoat(view: PeerView): MovingBoat {
     const [x, z, h, v, a] = view.pos
     const b: MovingBoat = {
-      id: view.id, boat: null, kind: view.gear.boat, paintKey: '', loading: false,
+      id: view.id, boat: null, wake: null, kind: view.gear.boat, paintKey: '', loading: false,
       target: { x, z, heading: h, speed: v, at: performance.now() },
       state: { x, z, heading: h, speed: v, anchored: a === 1 },
       phase: Math.random() * 10,
@@ -422,6 +426,8 @@ export class Online {
       this.world.root.addChild(b.boat.root)
       for (const r of riders) b.boat.hull.addChild(r)
       b.loading = false
+      if (!b.wake) { b.wake = new Wake(this.world.app, b.boat.spec); this.world.root.addChild(b.wake.entity) }
+      b.wake.setSpec(b.boat.spec)
       if (this.world.carrier && this.myBoat === b.id) this.world.carrier.boat = b.boat
       this.tryBoard()
     }
@@ -441,6 +447,8 @@ export class Online {
       for (const c of b.boat.hull.children.filter(c => c.tags.has('rider'))) b.boat.hull.removeChild(c)
       b.boat.destroy()
     }
+    b.wake?.destroy()
+    b.wake = null
     b.boat = null
   }
 
@@ -491,6 +499,7 @@ export class Online {
     s.heading += Math.atan2(Math.sin(t.heading - s.heading), Math.cos(t.heading - s.heading)) * k
     s.speed = t.speed
     if (!b.boat) return
+    b.wake?.update(dt, s.x, s.z, s.heading, s.speed, !this.world.background)
     const plane = clamp(Math.abs(s.speed) / 14, 0, 1)
     const heave = Math.sin(time * 1.4 + b.phase) * 0.025 + plane * 0.05
     b.boat.root.setPosition(s.x, heave, s.z)

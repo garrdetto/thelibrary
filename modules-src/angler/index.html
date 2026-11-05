@@ -39,6 +39,7 @@
       #hud{position:fixed;inset:0;pointer-events:none;z-index:10}
       #hud [data-ui]{pointer-events:auto}
       .hud-top{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+      .hud-left{display:grid;gap:8px;justify-items:start;align-content:start}
       .hud-info{padding:8px 12px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:2px;max-width:min(520px,60vw)}
       .hud-info strong{font:750 17px Rajdhani,Inter,sans-serif;letter-spacing:.3px}
       .hud-info span{font-size:12px;color:var(--soft)}
@@ -66,7 +67,7 @@
       #sonar{width:300px;height:96px;border-radius:12px;border:1px solid var(--line);background:#071c2a}
       #tags{position:absolute;inset:0;pointer-events:none;overflow:hidden}
       .ang-tag{position:absolute;left:0;top:0;padding:2px 8px;border-radius:999px;background:rgba(8,16,20,.62);border:1px solid var(--line);font:700 12px Inter,sans-serif;white-space:nowrap;will-change:transform}
-      #crew{position:absolute;left:10px;top:118px;width:min(250px,60vw);padding:8px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:6px;font-size:12px}
+      #crew{width:min(250px,60vw);padding:8px 10px;border-radius:12px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(6px);display:grid;gap:6px;font-size:12px}
       #crew header{display:flex;justify-content:space-between;gap:6px;align-items:center;color:var(--soft);font-weight:650}
       #crew header i{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;margin-right:6px}
       #crew header i.is-on{background:var(--good)}
@@ -143,6 +144,16 @@
       .stat-row div{padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.05)}
       .stat-row small{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
       .stat-row strong{font:800 16px Rajdhani,Inter,sans-serif}
+      .alm-bars{display:flex;align-items:flex-end;gap:2px;height:96px;padding:4px 2px 16px;border-radius:10px;background:rgba(255,255,255,.04)}
+      .alm-bar{position:relative;flex:1;border-radius:3px 3px 0 0;background:#5d7a80}
+      .alm-bar.is-fair{background:#6fa7a0}.alm-bar.is-good{background:var(--accent)}.alm-bar.is-hot{background:var(--warn)}.alm-bar.is-dead{background:#3d4d52}
+      .alm-bar i{position:absolute;left:50%;bottom:-15px;transform:translateX(-50%);font:600 9.5px Inter,sans-serif;font-style:normal;color:var(--muted)}
+      .alm-list{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+      .alm-list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 9px;border-radius:9px;background:rgba(255,255,255,.04)}
+      .alm-list li span{display:grid}
+      .alm-list small{color:var(--muted);font-size:11.5px}
+      .alm-list b{font:800 14px Rajdhani,Inter,sans-serif}
+      .alm-list b.is-good{color:var(--accent)}.alm-list b.is-hot{color:var(--warn)}.alm-list b.is-dead,.alm-list b.is-slow{color:var(--muted)}
       .ach-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
       .ach{padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.03);display:grid;gap:4px}
       .ach p{margin:0;font-size:12px;color:var(--soft)}
@@ -171,11 +182,14 @@
     <div id="hud" hidden>
       <div id="tags" aria-hidden="true"></div>
       <div class="hud-top">
+        <div class="hud-left">
         <div class="hud-info" data-ui>
           <div class="hud-chips"><strong id="lake-name">Lake</strong><span class="chip is-tc" id="tc-chip">0 TC</span><span class="chip" id="title-chip"></span></div>
           <span id="stat-weather"></span>
           <span id="stat-outlook"></span>
           <span id="guest-note" hidden>Guest mode: sign in on the library to keep catches, records and credits.</span>
+        </div>
+        <section id="crew" data-ui aria-label="Shared lake" hidden></section>
         </div>
         <div class="hud-actions" data-ui id="hud-actions">
           <button class="ang-btn" id="btn-troll" type="button" aria-pressed="false" title="Trolling motor (T)">Trolling motor</button>
@@ -183,12 +197,13 @@
           <button class="ang-btn" id="btn-boat" type="button" title="Boat and paint (B)">Boat</button>
           <button class="ang-btn" id="btn-shop" type="button" title="Bait shop (P)">Shop</button>
           <button class="ang-btn" id="btn-achievements" type="button" title="Achievements (J)">Achievements</button>
+          <button class="ang-btn" id="btn-almanac" type="button" title="Guide's almanac (G)">Almanac</button>
           <button class="ang-btn" id="btn-records" type="button" title="Record book (R)">Records</button>
           <button class="ang-btn" id="btn-map" type="button" title="Map (M)">Map</button>
           <button class="ang-btn" id="btn-lakes" type="button">Lakes</button>
+          <button class="ang-btn" id="btn-sound" type="button" aria-pressed="true" title="Sound (N)">Sound on</button>
         </div>
       </div>
-      <section id="crew" data-ui aria-label="Shared lake" hidden></section>
       <div id="fish-status" role="status" hidden></div>
       <div id="toasts" aria-live="polite"></div>
       <ul id="catch-log" hidden aria-label="Recent catches"></ul>
@@ -220,7 +235,7 @@
 
  <aside id="panel" hidden aria-labelledby="panel-title" data-ui>
       <header class="ang-row"><h2 id="panel-title">Tackle shop</h2><span class="chip is-tc" id="panel-tc"></span><button class="ang-btn" id="panel-close" type="button">Close</button></header>
-      <nav class="pan-tabs" role="tablist"><button type="button" role="tab" data-tab="wardrobe">Wardrobe</button><button type="button" role="tab" data-tab="boat">Boat</button><button type="button" role="tab" data-tab="shop">Shop</button><button type="button" role="tab" data-tab="achievements">Achievements</button></nav>
+      <nav class="pan-tabs" role="tablist"><button type="button" role="tab" data-tab="wardrobe">Wardrobe</button><button type="button" role="tab" data-tab="boat">Boat</button><button type="button" role="tab" data-tab="shop">Shop</button><button type="button" role="tab" data-tab="achievements">Achievements</button><button type="button" role="tab" data-tab="almanac">Almanac</button></nav>
       <p id="panel-status" class="ang-note" role="status"></p>
       <div id="panel-body"></div>
     </aside>
