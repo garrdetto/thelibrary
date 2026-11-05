@@ -4,10 +4,8 @@ import type { World } from './World'
 import type { Authority, BiteResult, Progress, TickResult } from './Authority'
 import { Bobber, Ripples, Rod, drawLine } from '../scene/Tackle'
 import { FishModel } from '../scene/FishModel'
-import { fishingPose, seatedLegs, standingLegs } from '../systems/Poses'
+import { fishingPose, holdPose } from '../systems/Poses'
 import type { FishingPhase } from '../systems/Poses'
-import { restPose } from '../scene/Character'
-import { qEuler } from '../scene/RigMath'
 import { PRESENTATIONS, RODS } from '../shared/Gear'
 import type { Rig } from '../shared/Gear'
 import { SPECIES } from '../shared/Species'
@@ -64,6 +62,11 @@ export class Fishing {
     this.authority = authority
   }
 
+  /** The fish being held up, for the shared lake. */
+  get heldFish(): { species: string; length: number } | undefined {
+    return this.result && ['land', 'show', 'release'].includes(this.phase) ? { species: this.result.species, length: Math.round(this.result.length * 10) / 10 } : undefined
+  }
+
   get waitingForBite(): boolean {
     return this.phase === 'wait'
   }
@@ -74,7 +77,7 @@ export class Fishing {
     this.active = true
     this.rig = rig
     const token = ++this.startToken
-    w.player.station = w.boat.spec.stations[0]
+    w.player.station = w.riderSpec().stations[w.player.seat] ?? w.riderSpec().stations[0]
     this.ensureRod(rig)
     this.startCast()
     try {
@@ -140,19 +143,7 @@ export class Fishing {
     const seat = w.player?.station
     const seated = seat?.pose !== 'stand'
     const phase = this.phase
-    if (phase === 'show' || phase === 'land' || phase === 'release') {
-      const pose = restPose()
-      if (seated) seatedLegs(pose, seat?.seat ?? 0.45)
-      else standingLegs(pose, time)
-      const lift = phase === 'land' ? smoothstep(0, 1.2, this.t) : phase === 'release' ? 1 - smoothstep(0, 0.8, this.t) : 1
-      const y = 0.98 + lift * 0.42
-      const spread = clamp((this.result?.length ?? 14) * 0.0254 * 0.32, 0.1, 0.42)
-      pose.spine = qEuler(phase === 'release' ? 18 : 4 - lift * 6, 0, 0)
-      pose.armR = { target: [spread, y, -0.36 - lift * 0.08], pole: [1, -0.6, 0.3] }
-      pose.armL = { target: [-spread, y - 0.02, -0.38 - lift * 0.08], pole: [-1, -0.6, 0.3] }
-      pose.head = qEuler(phase === 'show' ? -6 + Math.sin(time * 0.8) * 4 : 14, phase === 'show' ? Math.sin(time * 0.5) * 18 : 0, 0)
-      return pose
-    }
+    if (phase === 'show' || phase === 'land' || phase === 'release') return holdPose(time, phase, this.t, seated, seat?.seat ?? 0.45, this.result?.length ?? 14)
     const p = fishingPose(time, { phase: phase === 'snap' ? 'idle' : phase === 'off' ? 'idle' : phase, t: this.t, load: this.load, pull: this.pull, seated, seatHeight: seat?.seat ?? 0.45 })
     this.rodPitch = p.rodPitch
     this.rodYaw = p.rodYaw

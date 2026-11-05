@@ -28,6 +28,9 @@ import type { Unlock } from '../shared/Achievements'
 import { MOTORS } from '../shared/Shop'
 import { toMph } from '../systems/BoatPhysics'
 import { DriveInput } from '../systems/Input'
+import { Online } from './Online'
+import type { RemotePhase } from '../shared/Online'
+import { parseInvite } from '../shared/Online'
 import type { QualityTier } from '../config'
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T
@@ -55,7 +58,10 @@ export class Game {
   private log: BiteResult[] = []
   private cardTimer = 0
   panels!: Panels
+  online!: Online
   private zoomedForPanel = false
+  private lakeCounts: Record<string, { boats: number; anglers: number }> = {}
+  private crewKey = ''
 
   constructor(canvas: HTMLCanvasElement, quality: QualityTier) {
     this.world = new World(canvas, quality)
@@ -88,14 +94,98 @@ export class Game {
       buy: item => this.buy(item),
       closed: () => { this.world.focusOnPlayer(false); this.world.setViewportWidth(1); if (this.zoomedForPanel) this.world.camera.zoom(1 / 0.45); this.zoomedForPanel = false },
     })
+    this.online = new Online(this.world, {
+      toast: (text, kind, seconds) => this.toast(text, kind, seconds),
+      changed: () => this.onlineChanged(),
+      fishing: () => this.fishingState(),
+      crewChanged: aboard => this.crewChanged(aboard),
+      gear: () => ({ boat: this.profile.boat, paint: this.profile.paint[this.profile.boat], look: this.profile.look }),
+      signedIn: () => this.account.signedIn,
+    }, $('tags'))
     $('loading').hidden = true
     this.world.onFrame(dt => this.frame(dt))
     this.bindUi()
-    this.showLakes()
+    const invite = parseInvite(new URLSearchParams(location.search).get('room') ?? '')
+    if (invite && lakeOpen(this.profile, invite.lake)) void this.enter(invite.lake, { instance: invite.instance, board: invite.boat })
+    else {
+      if (invite) this.toast(`That invite is for ${LAKES[invite.lake].name}, which opens after ${LAKES[invite.lake].opensAt} landed fish.`, 'warn', 8)
+      this.showLakes()
+    }
   }
 
   crowd(): number {
-    return 0
+    return this.online?.crowd() ?? 0
+  }
+
+  private fishingState(): { phase: RemotePhase; fish?: { species: string; length: number } } {
+    const f = this.fishing
+    if (!f || !f.active || !this.world.anchored) return { phase: 'off' }
+    const phase: RemotePhase = f.phase === 'idle' ? 'off' : f.phase
+    return { phase, fish: f.heldFish }
+  }
+
+  private onlineChanged(): void {
+    if (this.authority instanceof ServerAuthority) this.authority.room = this.online.connected ? this.online.instance : undefined
+    this.refreshCrew()
+  }
+
+  private crewChanged(aboard: boolean): void {
+    this.world.anchored = false
+    this.fishing?.end()
+    this.world.focusOnPlayer(false)
+    this.map.pin = null
+    this.refreshButtons()
+    if (aboard && this.online.captainAnchored()) this.followCaptain()
+    this.refreshButtons()
+  }
+
+  /** Crew fish whenever their captain has the anchor down. */
+  private followCaptain(): void {
+    const anchored = this.online.captainAnchored()
+    if (anchored && !this.world.anchored) {
+      this.world.anchored = true
+      this.refreshButtons()
+      void this.fishing?.begin(this.profile.rig)
+    } else if (!anchored && this.world.anchored) this.stopFishing()
+  }
+
+  private boardOrLeave(): void {
+    if (!this.online.connected) return
+    if (this.online.aboard) { this.online.leaveBoat(); return }
+    const near = this.online.boardable()
+    if (near) { this.stopFishing(); this.online.board(near.view.id) }
+    else this.toast('Pull up within a boat length of another angler (both stopped) to climb aboard.', 'soft', 5)
+  }
+
+  private refreshCrew(): void {
+    const el = $('crew')
+    const o = this.online
+    if (!o || !this.world.lake) { el.hidden = true; return }
+    const crew = o.crew()
+    const near = o.boardable()
+    const key = JSON.stringify([o.connected, o.boatsOut(), crew, near?.view.id, o.locked, o.aboard, o.captainAnchored()])
+    if (key === this.crewKey && !el.hidden) return
+    this.crewKey = key
+    el.hidden = false
+    const esc = (t: string) => t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
+    if (!o.connected) { el.innerHTML = '<header><span><i></i>Shared lake</span><span>connecting…</span></header>'; return }
+    const others = o.boatsOut() - 1
+    let html = `<header><span><i class="is-on"></i>Shared lake</span><span>${others ? `${others} other boat${others === 1 ? '' : 's'} out` : crew.length > 1 ? 'no other boats out' : 'just you so far'}</span></header>`
+    if (crew.length > 1) {
+      const captain = !o.aboard
+      html += `<ul aria-label="Crew">${crew.map(c => `<li><span>${esc(c.you ? 'You' : c.name)}${c.seat === 0 ? ' · captain' : ''}</span>${captain && !c.you ? `<button type="button" data-kick="${c.id}" aria-label="Send ${esc(c.name)} back to their boat">✕</button>` : ''}</li>`).join('')}</ul>`
+    }
+    const actions: string[] = []
+    if (o.aboard) {
+      html += `<p>Aboard ${esc(o.captainName())}'s boat. ${o.captainAnchored() ? 'Anchored, so you are fishing.' : 'You fish when the captain anchors.'}</p>`
+      actions.push('<button class="ang-btn" type="button" data-act="leave">Back to my boat (E)</button>')
+    } else {
+      if (near) actions.push(`<button class="ang-btn is-primary" type="button" data-act="board">Board ${esc(near.view.name)}'s boat (E)</button>`)
+      actions.push(`<button class="ang-btn" type="button" data-act="lock" aria-pressed="${o.locked}">${o.locked ? 'Unlock my boat' : 'Lock my boat'}</button>`)
+      if (crew.length < 2 && !near) html += `<p>${window.parent !== window ? 'Invite friends from the library chat, or pull' : 'Pull'} alongside a stopped boat to climb aboard. Up to four to a boat.</p>`
+    }
+    html += `<div class="crew-actions">${actions.join('')}</div>`
+    el.innerHTML = html
   }
 
   private async loadAccount(): Promise<void> {
@@ -130,11 +220,27 @@ export class Game {
     $('btn-shop').addEventListener('click', () => this.openPanel('shop'))
     $('btn-achievements').addEventListener('click', () => this.openPanel('achievements'))
     $('lakes-close').addEventListener('click', () => { if (this.world.lake) $('screen-lakes').hidden = true })
+    $('crew').addEventListener('click', e => {
+      const target = (e.target as HTMLElement).closest('button')
+      if (!target) return
+      const kick = target.getAttribute('data-kick')
+      if (kick) { this.online.kick(kick); return }
+      const act = target.getAttribute('data-act')
+      if (act === 'board' || act === 'leave') this.boardOrLeave()
+      if (act === 'lock') this.online.setLocked(!this.online.locked)
+    })
+    addEventListener('message', e => {
+      if (e.origin !== location.origin || e.source !== window.parent || (e.data as { type?: string } | null)?.type !== 'tl-host') return
+      const code = this.online.inviteCode()
+      if (code) window.parent.postMessage({ type: 'tl-room', code }, location.origin)
+      else this.toast('Launch on a lake first, then send the invite.', 'soft')
+    })
     const big = $<HTMLCanvasElement>('map-canvas')
     big.addEventListener('click', e => {
       const r = big.getBoundingClientRect()
       const [x, z] = this.map.toWorld(((e.clientX - r.left) / r.width) * big.width, ((e.clientY - r.top) / r.height) * big.height, big.width)
       this.map.pin = this.world.lake && depthFeetAt(this.world.lake, x, z) > 2 ? { x, z } : null
+      if (this.online.aboard) { this.map.pin = null; this.toast('Your captain is driving.', 'soft'); return }
       this.world.autopilot = this.map.pin
       if (this.map.pin) {
         this.toast('Heading for your pin. Steer or throttle to take over.', 'soft')
@@ -161,12 +267,14 @@ export class Game {
     if (code === 'KeyB') this.openPanel('boat')
     if (code === 'KeyP') this.openPanel('shop')
     if (code === 'KeyJ') this.openPanel('achievements')
+    if (code === 'KeyE') this.boardOrLeave()
     if (code === 'KeyT') { this.world.controls.trolling = !this.world.controls.trolling; this.refreshButtons() }
     if (code === 'Escape') { this.toggleMap(false); this.records.close(); this.panels.close(); $('catch-card').hidden = true }
   }
 
   toggleAnchor(): void {
     if (!this.world.physics || !this.world.lake) return
+    if (this.online.aboard) { this.toast('Your captain handles the anchor. Press E to head back to your own boat.', 'soft'); return }
     if (this.world.anchored) { this.stopFishing(); return }
     const s = this.world.physics.state
     if (Math.abs(s.speed) > 3) { this.toast('Slow down before dropping anchor.', 'warn'); return }
@@ -186,8 +294,10 @@ export class Game {
   }
 
   private refreshButtons(): void {
+    const crew = this.online?.aboard ?? false
     $('btn-anchor').setAttribute('aria-pressed', String(this.world.anchored))
-    $('btn-anchor').textContent = this.world.anchored ? 'Pull anchor' : 'Drop anchor'
+    $('btn-anchor').textContent = crew ? 'Captain anchors' : this.world.anchored ? 'Pull anchor' : 'Drop anchor'
+    ;($('btn-anchor') as HTMLButtonElement).disabled = crew
     $('btn-troll').setAttribute('aria-pressed', String(this.world.controls.trolling))
   }
 
@@ -206,15 +316,38 @@ export class Game {
       button.className = 'ang-lake'
       button.type = 'button'
       button.disabled = !open
-      button.innerHTML = `<strong>${lake.name}</strong><span>${lake.type} · ${lake.acres.toLocaleString()} acres · ${lake.maxDepth} ft deep</span><em>${lake.blurb}</em>${open ? '' : `<b>Opens after ${lake.opensAt} landed fish (${this.profile.stats.landed} so far)</b>`}`
+      const out = this.lakeCounts[id]?.boats ?? 0
+      button.innerHTML = `<strong>${lake.name}</strong><span>${lake.type} · ${lake.acres.toLocaleString()} acres · ${lake.maxDepth} ft deep${out ? ` · <b class="is-out">${out} boat${out === 1 ? '' : 's'} out now</b>` : ''}</span><em>${lake.blurb}</em>${open ? '' : `<b>Opens after ${lake.opensAt} landed fish (${this.profile.stats.landed} so far)</b>`}`
       button.addEventListener('click', () => void this.enter(id))
       list.appendChild(button)
     }
     $('lakes-close').hidden = !this.world.lake
     $('screen-lakes').hidden = false
+    void this.loadLakeCounts()
   }
 
-  async enter(id: LakeId): Promise<void> {
+  private countsAt = 0
+
+  private async loadLakeCounts(): Promise<void> {
+    if (Date.now() - this.countsAt < 20_000) return
+    this.countsAt = Date.now()
+    try {
+      const r = await fetch('/api/angler-lake', { credentials: 'same-origin' })
+      if (!r.ok) return
+      const data = await r.json() as { lakes?: Record<string, { boats: number; anglers: number }> }
+      this.lakeCounts = data.lakes ?? {}
+      if (!$('screen-lakes').hidden) { this.countsAt = Date.now(); this.redrawLakeList() }
+    } catch { /* counts are optional */ }
+  }
+
+  private redrawLakeList(): void {
+    const keep = this.countsAt
+    this.showLakes()
+    this.countsAt = keep
+  }
+
+  async enter(id: LakeId, invite?: { instance: number; board: string }): Promise<void> {
+    this.online.disconnect()
     this.stopFishing()
     $('screen-lakes').hidden = true
     $('loading').hidden = false
@@ -232,6 +365,7 @@ export class Game {
     this.sonar.level = p.sonar
     this.refreshButtons()
     this.fillRig()
+    this.online.connect(id, invite)
   }
 
   fillRig(): void {
@@ -285,6 +419,7 @@ export class Game {
   private async saveLook(look: Look): Promise<void> {
     await this.post({ action: 'equip', patch: { look } })
     this.world.player?.character.setLook(this.profile.look)
+    this.online.sendGear()
   }
 
   private previewBoat(kind: BoatKind, paint: BoatPaint): void {
@@ -295,6 +430,7 @@ export class Game {
   private async saveBoat(kind: BoatKind, paint: BoatPaint): Promise<void> {
     await this.post({ action: 'equip', patch: { boat: kind, paint: { kind, paint } } })
     this.world.setBoat(this.profile.boat, this.profile.paint[this.profile.boat])
+    this.online.sendGear()
   }
 
   private async buy(item: string): Promise<void> {
@@ -312,7 +448,8 @@ export class Game {
     const odo = this.world.physics?.state.odometer ?? 0
     const miles = Math.max(0, odo - this.progressOdometer) / 1609.34
     this.progressOdometer = odo
-    return { seconds, miles: Math.round(miles * 1000) / 1000 }
+    const crew = this.online?.crew().length ?? 0
+    return { seconds, miles: Math.round(miles * 1000) / 1000, ...(crew > 1 ? { social: Math.min(4, crew) } : {}) }
   }
 
   private onBite(r: BiteResult): void {
@@ -410,9 +547,11 @@ export class Game {
   private frame(dt: number): void {
     this.input.update(dt)
     const w = this.world
-    w.controls.throttle = this.input.throttle
-    w.controls.steer = this.input.steer
-    if (this.input.active) {
+    const aboard = this.online.aboard
+    w.controls.throttle = aboard ? 0 : this.input.throttle
+    w.controls.steer = aboard ? 0 : this.input.steer
+    if (aboard) this.followCaptain()
+    else if (this.input.active) {
       if (w.anchored) this.stopFishing()
       if (w.autopilot) { w.autopilot = null; this.map.pin = null }
     } else if (w.autopilot && w.driveAutopilot()) {
@@ -422,10 +561,11 @@ export class Game {
     }
     if (w.lake) this.progressSeconds += dt
     this.fishing?.update(dt)
+    this.online.update(dt)
     const s = w.physics?.state
     if (s && w.lake) {
       this.stillTime = Math.abs(s.speed) < 0.3 ? this.stillTime + dt : 0
-      if (!w.background) this.sonar.update(dt, { lake: w.lake, x: s.x, z: s.z, date: now(), rig: this.profile.rig, settled: this.stillTime, crowd: 0 }, s.speed)
+      if (!w.background) this.sonar.update(dt, { lake: w.lake, x: s.x, z: s.z, date: now(), rig: this.profile.rig, settled: this.stillTime, crowd: this.crowd() }, s.speed)
     }
     this.hudTimer += dt
     if (this.hudTimer > 0.25 && !w.background) {
@@ -447,7 +587,7 @@ export class Game {
     const hour12 = ((ct.hour + 11) % 12) + 1
     $('stat-time').textContent = `${hour12}:${String(ct.minute).padStart(2, '0')} ${ct.hour < 12 ? 'am' : 'pm'}`
     if (w.weather) $('stat-weather').textContent = `${w.weather.label} · ${w.weather.airTempF}°F · wind ${windCompass(w.weather.windDir)} ${Math.round(w.weather.windMph)} mph · ${moonPhaseName(moonPhase(date))}`
-    const look = outlook({ lake: w.lake, x: s.x, z: s.z, date, rig: this.profile.rig, settled: 60, crowd: 0 })
+    const look = outlook({ lake: w.lake, x: s.x, z: s.z, date, rig: this.profile.rig, settled: 60, crowd: this.crowd() })
     $('stat-outlook').textContent = look.text
     const f = this.fishing
     let status = ''
@@ -456,11 +596,14 @@ export class Game {
       else if (f.phase === 'fight' || f.phase === 'bite') status = 'Fish on!'
       else if (f.phase === 'cast') status = 'Casting'
       else if (f.phase === 'show' || f.phase === 'land') status = 'Landed!'
-    } else if (w.autopilot) status = 'Autopilot to your pin'
+    } else if (this.online.aboard) status = `Riding with ${this.online.captainName()}`
+    else if (w.autopilot) status = 'Autopilot to your pin'
     $('fish-status').textContent = status
     $('fish-status').hidden = !status
     const mini = $<HTMLCanvasElement>('minimap')
-    this.map.draw(mini, [{ x: s.x, z: s.z, heading: s.heading, you: true }], false)
-    if (!$('map-panel').hidden) this.map.draw($<HTMLCanvasElement>('map-canvas'), [{ x: s.x, z: s.z, heading: s.heading, you: true }])
+    const boats = [...this.online.markers(), { x: s.x, z: s.z, heading: s.heading, you: true }]
+    this.map.draw(mini, boats, false)
+    if (!$('map-panel').hidden) this.map.draw($<HTMLCanvasElement>('map-canvas'), boats)
+    this.refreshCrew()
   }
 }

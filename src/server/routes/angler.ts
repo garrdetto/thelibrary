@@ -5,6 +5,7 @@ import { currentUser, requireUser } from '../auth.js'
 import { canResetRecords } from '../records.js'
 import { ensureAnglerTables, loadProfile, loadSession, saveProfile, saveSession } from '../angler.js'
 import type { AnglerSession } from '../angler.js'
+import { announceCatch, crewSize } from '../angler-lake.js'
 import { LAKES, depthFeetAt, isLakeId, lakeIds, nearestSpot } from '../../../modules-src/angler/shared/Lakes'
 import { activity, biteDelay, conditionsAt, creditsFor, rollCatch, MIN_BITE_SECONDS } from '../../../modules-src/angler/shared/Catch'
 import type { CatchResult } from '../../../modules-src/angler/shared/Catch'
@@ -19,12 +20,13 @@ import { purchase, equip } from '../../../modules-src/angler/shared/Shop'
 
 const lakeEnum = z.enum(lakeIds as [string, ...string[]])
 const rigSchema = z.object({ rod: z.enum(Object.keys(RODS) as [string, ...string[]]), presentation: z.string().max(20) })
+const roomSchema = z.number().int().min(0).max(7).optional()
 const progressSchema = z.object({ seconds: z.number().min(0).max(600), miles: z.number().min(0).max(20), social: z.number().int().min(0).max(4).optional() }).optional()
 
 const actions = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('start'), lake: lakeEnum, x: z.number().finite(), z: z.number().finite(), rig: rigSchema, crowd: z.number().int().min(0).max(16).optional(), progress: progressSchema }),
-  z.object({ action: z.literal('stop'), progress: progressSchema }),
-  z.object({ action: z.literal('tick'), crowd: z.number().int().min(0).max(16).optional(), progress: progressSchema }),
+  z.object({ action: z.literal('start'), lake: lakeEnum, x: z.number().finite(), z: z.number().finite(), rig: rigSchema, crowd: z.number().int().min(0).max(16).optional(), room: roomSchema, progress: progressSchema }),
+  z.object({ action: z.literal('stop'), room: roomSchema, progress: progressSchema }),
+  z.object({ action: z.literal('tick'), crowd: z.number().int().min(0).max(16).optional(), room: roomSchema, progress: progressSchema }),
   z.object({ action: z.literal('buy'), item: z.string().min(1).max(60) }),
   z.object({ action: z.literal('equip'), patch: z.record(z.string().max(30), z.unknown()) }),
   z.object({ action: z.literal('reset-records'), species: z.string().max(20), password: z.string().min(1).max(128).optional() }),
@@ -184,12 +186,16 @@ export async function angler(request: Request, env: Env) {
     return json({ profile })
   }
 
-  const applyTimed = (progress: z.infer<typeof progressSchema>) => {
+  const room = 'room' in input ? input.room : undefined
+  const memberKey = `member:${user.id}`
+  const applyTimed = async (progress: z.infer<typeof progressSchema>) => {
     if (!progress) return
     const last = session?.lastProgressAt ?? now - 60_000
     const elapsed = Math.max(0, Math.min(600, (now - last) / 1000 + 5))
     const night = sunPosition(new Date(now)).altitude < -6
-    const social = progress.social && session && now - (session.lastSocialAt ?? 0) > 30 * 60_000 ? 1 : 0
+    const due = Boolean(progress.social && session && now - (session.lastSocialAt ?? 0) > 30 * 60_000)
+    const lakeId = input.action === 'start' ? input.lake as AnglerSession['lake'] : session?.lake
+    const social = due && lakeId && await crewSize(env, lakeId, room, memberKey) > 1 ? 1 : 0
     applyProgress(profile, Math.min(progress.seconds, elapsed), Math.min(progress.miles, (elapsed * 72) / 3600), night, social)
     if (session) {
       session.lastProgressAt = now
@@ -205,7 +211,7 @@ export async function angler(request: Request, env: Env) {
     profile.rig = rig
     const lastBiteAt = session?.lastBiteAt ?? 0
     session = { lake: lake.id, x: input.x, z: input.z, rig, anchoredAt: now, lastSeen: now, nextBiteAt: 0, lastBiteAt, lastProgressAt: session?.lastProgressAt ?? now, lastSocialAt: session?.lastSocialAt ?? 0 }
-    applyTimed(input.progress)
+    await applyTimed(input.progress)
     schedule(session, now, input.crowd ?? 0, 8000)
     await saveSession(env, user.id, session)
     evaluateAchievements(profile)
@@ -214,14 +220,14 @@ export async function angler(request: Request, env: Env) {
   }
 
   if (input.action === 'stop') {
-    applyTimed(input.progress)
+    await applyTimed(input.progress)
     if (session) { session.nextBiteAt = 0; session.lastSeen = now; await saveSession(env, user.id, session) }
     evaluateAchievements(profile)
     await saveProfile(env, user.id, user.username, profile)
     return json({ stopped: true, profile })
   }
 
-  applyTimed(input.progress)
+  await applyTimed(input.progress)
   if (!session || !session.nextBiteAt) {
     evaluateAchievements(profile)
     await saveProfile(env, user.id, user.username, profile)
@@ -235,6 +241,7 @@ export async function angler(request: Request, env: Env) {
     const ctx = { lake, x: session.x, z: session.z, date: new Date(now), rig: session.rig, settled: 60, crowd: input.crowd ?? 0 }
     const roll = rollCatch(ctx, random, REELS[profile.reel].bonus)
     result = await recordCatch(env, user, profile, session, roll, now)
+    if (roll.kind === 'landed') await announceCatch(env, session.lake, room, memberKey, { species: roll.species, weight: roll.weight, length: roll.length, tier: roll.tier, delay: Math.round(roll.fight * 1000 + 2000) })
     session.lastBiteAt = now
     schedule(session, now, input.crowd ?? 0, roll.fight * 1000 + 6000)
   }

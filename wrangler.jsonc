@@ -17,9 +17,15 @@
     { "binding": "FILES", "id": "dd2a555458e249009207869d12fc90e9" }
   ],
   "durable_objects": {
-    "bindings": [{ "name": "MAPLE_WORLD", "class_name": "MapleStreetWorld" }]
+    "bindings": [
+      { "name": "MAPLE_WORLD", "class_name": "MapleStreetWorld" },
+      { "name": "ANGLER_LAKE", "class_name": "AnglerLake" }
+    ]
   },
-  "migrations": [{ "tag": "maplestreet-v1", "new_sqlite_classes": ["MapleStreetWorld"] }],
+  "migrations": [
+    { "tag": "maplestreet-v1", "new_sqlite_classes": ["MapleStreetWorld"] },
+    { "tag": "angler-lake-v1", "new_sqlite_classes": ["AnglerLake"] }
+  ],
   "previews": {
     "d1_databases": [
       {

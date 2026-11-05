@@ -166,3 +166,18 @@ export function fishingPose(time: number, a: FishingAnim): RodPose {
   pose.armL = { target: reelHand, pole: [-1, -0.6, 0.4] }
   return { pose, rodPitch, rodYaw, reel }
 }
+
+/** Holding a landed fish up in both hands: lifting it from the water (land), showing it (show) or lowering it back (release). */
+export function holdPose(time: number, phase: 'land' | 'show' | 'release', t: number, seated: boolean, seatHeight: number, lengthInches: number): Pose {
+  const pose = restPose()
+  if (seated) seatedLegs(pose, seatHeight)
+  else standingLegs(pose, time)
+  const lift = phase === 'land' ? smoothstep(0, 1.2, t) : phase === 'release' ? 1 - smoothstep(0, 0.8, t) : 1
+  const y = 0.98 + lift * 0.42
+  const spread = clamp(lengthInches * 0.0254 * 0.32, 0.1, 0.42)
+  pose.spine = qEuler(phase === 'release' ? 18 : 4 - lift * 6, 0, 0)
+  pose.armR = { target: [spread, y, -0.36 - lift * 0.08], pole: [1, -0.6, 0.3] }
+  pose.armL = { target: [-spread, y - 0.02, -0.38 - lift * 0.08], pole: [-1, -0.6, 0.3] }
+  pose.head = qEuler(phase === 'show' ? -6 + Math.sin(time * 0.8) * 4 : 14, phase === 'show' ? Math.sin(time * 0.5) * 18 : 0, 0)
+  return pose
+}

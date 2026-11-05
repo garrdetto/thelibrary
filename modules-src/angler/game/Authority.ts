@@ -54,6 +54,8 @@ export async function api<T>(body: unknown): Promise<T> {
 export class ServerAuthority implements Authority {
   readonly saved = true
   private offset = 0
+  /** The shared-lake instance this page is in, so catches reach the other anglers there. */
+  room: number | undefined
 
   private local(serverTime: number | null, serverNow: number): number | null {
     this.offset = Date.now() - serverNow
@@ -61,17 +63,17 @@ export class ServerAuthority implements Authority {
   }
 
   async start(lake: LakeId, x: number, z: number, rig: Rig, crowd: number, progress: Progress): Promise<number> {
-    const r = await api<{ nextBiteAt: number; serverNow: number }>({ action: 'start', lake, x, z, rig, crowd, progress })
+    const r = await api<{ nextBiteAt: number; serverNow: number }>({ action: 'start', lake, x, z, rig, crowd, progress, room: this.room })
     return this.local(r.nextBiteAt, r.serverNow) ?? Date.now() + 60_000
   }
 
   async tick(crowd: number, progress: Progress): Promise<TickResult> {
-    const r = await api<{ result: BiteResult | null; nextBiteAt: number | null; serverNow: number; profile: AnglerProfile; unlocked?: Unlock[] }>({ action: 'tick', crowd, progress })
+    const r = await api<{ result: BiteResult | null; nextBiteAt: number | null; serverNow: number; profile: AnglerProfile; unlocked?: Unlock[] }>({ action: 'tick', crowd, progress, room: this.room })
     return { result: r.result, nextBiteAt: this.local(r.nextBiteAt, r.serverNow), profile: r.profile, unlocked: r.unlocked }
   }
 
   async stop(progress: Progress): Promise<AnglerProfile | null> {
-    const r = await api<{ profile: AnglerProfile }>({ action: 'stop', progress })
+    const r = await api<{ profile: AnglerProfile }>({ action: 'stop', progress, room: this.room })
     return r.profile
   }
 }
