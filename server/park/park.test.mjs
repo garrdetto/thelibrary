@@ -61,6 +61,12 @@ import {
   spawnGuest,
   parkValue,
   HOTEL_GUESTS_PER_ROOM,
+  updateGuests,
+  encodeGuests,
+  decodeGuests,
+  amenityCapacity,
+  amenityDefaultPrice,
+  amenityUse,
 } from './index.mjs'
 
 function parkFixture() {
@@ -676,11 +682,14 @@ function hotelFixture() {
 test('hotels need a footpath, respect their size and floor limits, and cost by size', () => {
   const state = hotelFixture()
   assert.equal(applyCommand(state, { t: 'hotel', kind: 'motorInn', x: 40, y: 50, w: 4, h: 3, floors: 1 }).ok, false)
-  assert.equal(applyCommand(state, { t: 'hotel', kind: 'motorInn', x: 40, y: 40, w: 26, h: 3, floors: 1 }).ok, false)
+  assert.equal(applyCommand(state, { t: 'hotel', kind: 'motorInn', x: 40, y: 40, w: 33, h: 3, floors: 1 }).ok, false)
   assert.equal(applyCommand(state, { t: 'hotel', kind: 'motorInn', x: 40, y: 40, w: 20, h: 12, floors: 1 }).ok, false)
   assert.equal(applyCommand(state, { t: 'hotel', kind: 'motorInn', x: 40, y: 40, w: 4, h: 3, floors: 4 }).ok, false)
   assert.equal(hotelSpec('motorInn', [3, 3], 1).cost, 40300)
-  assert.ok(hotelSpec('skylineTower', [12, 12], 24).cost > 1_500_000)
+  assert.ok(hotelSpec('skylineTower', [24, 16], 10).cost > 1_500_000)
+  // Nothing goes above ten floors.
+  assert.ok(Object.values(HOTELS).every(def => def.floors[1] <= 10))
+  assert.equal(applyCommand(state, { t: 'hotel', kind: 'skylineTower', x: 44, y: 40, w: 8, h: 8, floors: 11 }).ok, false)
   const before = state.parks[0].cash
   const made = applyCommand(state, { t: 'hotel', kind: 'motorInn', x: 40, y: 40, w: 8, h: 4, floors: 2 })
   assert.equal(made.ok, true, made.error)
@@ -695,9 +704,9 @@ test('hotels need a footpath, respect their size and floor limits, and cost by s
 test('hotels raise the guest cap, earn nightly income and send guests out of their doors', () => {
   const state = hotelFixture()
   const empty = spawnRate(state, state.parks[0])
-  const made = applyCommand(state, { t: 'hotel', kind: 'skylineTower', x: 44, y: 40, w: 8, h: 8, floors: 12 })
+  const made = applyCommand(state, { t: 'hotel', kind: 'skylineTower', x: 44, y: 40, w: 8, h: 8, floors: 10 })
   assert.equal(made.ok, true, made.error)
-  const spec = hotelSpec('skylineTower', [8, 8], 12)
+  const spec = hotelSpec('skylineTower', [8, 8], 10)
   const after = spawnRate(state, state.parks[0])
   assert.equal(after.buildCap - empty.buildCap, Math.round(spec.rooms * HOTEL_GUESTS_PER_ROOM))
   const cash = state.parks[0].cash
@@ -723,7 +732,7 @@ test('hotels come in custom sizes, and price scales with squares, floors and hei
   assert.ok(big.cost > small.cost * 10 && big.rooms > small.rooms * 50)
   // Towers past HIGH_RISE_FLOORS pay a structural premium per floor.
   const per = f => (hotelSpec('skylineTower', [6, 6], f).building - HOTELS.skylineTower.base) / f
-  assert.ok(per(30) > per(8))
+  assert.ok(per(10) > per(8))
   const made = applyCommand(state, { t: 'hotel', kind: 'palmCove', x: 40, y: 40, w: 20, h: 18, floors: 1 })
   assert.equal(made.ok, true, made.error)
   assert.deepEqual(state.entities[made.id].size, [20, 18])
@@ -741,7 +750,7 @@ test('hotels can be resized in place and pay or refund the difference', () => {
   assert.equal(cash - state.parks[0].cash, quote)
   assert.ok(quote > hotelSpec('neonNights', [8, 6], 5).building - hotelSpec('neonNights', [4, 4], 2).building)
   assert.equal(state.map.obj[tileIndex(state.map, 47, 45)], hotel.id)
-  const shrink = applyCommand(state, { t: 'hotelResize', id: made.id, w: 3, h: 3, floors: 2 })
+  const shrink = applyCommand(state, { t: 'hotelResize', id: made.id, w: 4, h: 3, floors: 2 })
   assert.equal(shrink.ok, true, shrink.error)
   assert.ok(shrink.refund > 0)
   assert.equal(state.map.obj[tileIndex(state.map, 47, 45)], 0)
@@ -750,7 +759,7 @@ test('hotels can be resized in place and pay or refund the difference', () => {
 
 test('room rates, service levels, amenities and refurbishing change hotel books', () => {
   const state = hotelFixture()
-  const made = applyCommand(state, { t: 'hotel', kind: 'skylineTower', x: 44, y: 40, w: 8, h: 8, floors: 12 })
+  const made = applyCommand(state, { t: 'hotel', kind: 'skylineTower', x: 44, y: 40, w: 8, h: 8, floors: 10 })
   const hotel = state.entities[made.id]
   const base = hotelOccupancy(state, hotel, false)
   assert.equal(applyCommand(state, { t: 'hotelSet', id: made.id, rate: 20 }).ok, true)
@@ -758,7 +767,7 @@ test('room rates, service levels, amenities and refurbishing change hotel books'
   assert.equal(applyCommand(state, { t: 'hotelSet', id: made.id, rate: 1000 }).ok, false)
   assert.equal(applyCommand(state, { t: 'hotelSet', id: made.id, rate: 10, service: 'premium' }).ok, true)
   assert.ok(hotelOccupancy(state, hotel, false) > base)
-  assert.ok(hotelNight(hotel, 0.5).staff > hotelSpec('skylineTower', [8, 8], 12).upkeep)
+  assert.ok(hotelNight(hotel, 0.5).staff > hotelSpec('skylineTower', [8, 8], 10).upkeep)
   const plain = hotelNight(hotel, 0.6)
   assert.equal(applyCommand(state, { t: 'hotelSet', id: made.id, addon: 'restaurant', on: true }).ok, true)
   const fed = hotelNight(hotel, 0.6)
@@ -780,8 +789,8 @@ test('room rates, service levels, amenities and refurbishing change hotel books'
 
 test('two hotels near a pool form a resort district', () => {
   const state = hotelFixture()
-  const a = applyCommand(state, { t: 'hotel', kind: 'palmCove', x: 40, y: 40, w: 4, h: 4, floors: 1 })
-  const b = applyCommand(state, { t: 'hotel', kind: 'timberLodge', x: 46, y: 40, w: 4, h: 3, floors: 2 })
+  const a = applyCommand(state, { t: 'hotel', kind: 'palmCove', x: 40, y: 40, w: 5, h: 4, floors: 1 })
+  const b = applyCommand(state, { t: 'hotel', kind: 'timberLodge', x: 46, y: 40, w: 5, h: 3, floors: 2 })
   assert.equal(a.ok && b.ok, true)
   updateHotels(state)
   assert.equal(state.parks[0].resortHotels, 0)
@@ -810,6 +819,94 @@ test('hotel colors, roofs and add-ons are saved, and add-ons cost money', () => 
   assert.equal(refund.ok, true)
   assert.equal(state.map.obj[tileIndex(state.map, 42, 42)], 0)
   assert.ok(Object.keys(HOTELS).length >= 8)
+})
+
+function amenityFixture(addons = ['restaurant']) {
+  const state = hotelFixture()
+  const made = applyCommand(state, { t: 'hotel', kind: 'timberLodge', x: 44, y: 40, w: 8, h: 6, floors: 3 })
+  assert.equal(made.ok, true, made.error)
+  for (const addon of addons) assert.equal(applyCommand(state, { t: 'hotelSet', id: made.id, addon, on: true }).ok, true)
+  state.time.dayFraction = 0.5
+  const hotel = state.entities[made.id]
+  // A day visitor standing on the footpath at the hotel door.
+  const guest = spawnGuest(state, 0, hotel)
+  delete guest.hotel
+  Object.assign(guest, { cash: 100, lastDecide: 99 })
+  return { state, hotel, guest }
+}
+
+test('guests walk in through the hotel door, use an amenity out of sight, and come back out fed', () => {
+  const { state, hotel, guest } = amenityFixture()
+  guest.hunger = 220
+  guest.target = { key: `hotel:${hotel.id}`, hotel: hotel.id, amenity: 'restaurant' }
+  const cash = state.parks[0].cash, month = state.parks[0].month.hotelAmenities ?? 0
+  updateGuests(state, 0.05)
+  const price = amenityDefaultPrice('timberLodge', 'restaurant')
+  assert.equal(guest.state, 'amenity')
+  assert.equal(guest.hidden, true)
+  assert.equal(hotel.using.restaurant, 1)
+  assert.equal(state.parks[0].cash - cash, price)
+  assert.equal(state.parks[0].month.hotelAmenities - month, price)
+  assert.deepEqual(hotel.today, { visits: 1, takings: price, home: 0 })
+  const [code] = [encodeGuests(state.guests)]
+  assert.equal(decodeGuests(code).find(g => g.id === guest.id).state, 'amenity')
+  assert.equal(amenityUse(hotel).find(a => a.id === 'restaurant').using, 1)
+  updateGuests(state, 120)
+  assert.equal(guest.state, 'walk')
+  assert.equal(guest.hidden, false)
+  assert.equal(hotel.using.restaurant, 0)
+  assert.ok(guest.hunger < 100)
+  assert.deepEqual([guest.tx, guest.ty], [hotel.entrance.x, hotel.entrance.y])
+  // A new day rolls today's walk-ins into yesterday.
+  updateHotels(state)
+  assert.equal(hotel.yesterday.visits, 1)
+  assert.equal(hotel.today.visits, 0)
+})
+
+test('amenities fill up, keep kids-only rooms for kids, honour set prices and close the pool at night', () => {
+  const { state, hotel, guest } = amenityFixture(['pool', 'kidsClub', 'spa'])
+  const seats = amenityCapacity(hotel, 'spa')
+  assert.ok(seats >= 4)
+  hotel.using = { spa: seats }
+  guest.target = { key: `hotel:${hotel.id}`, hotel: hotel.id, amenity: 'spa' }
+  updateGuests(state, 0.05)
+  assert.equal(guest.state, 'walk')
+  assert.ok(guest.thoughts.some(t => t.includes('full')))
+  assert.equal(applyCommand(state, { t: 'hotelSet', id: hotel.id, priceOf: 'pool', price: 12 }).ok, true)
+  assert.equal(applyCommand(state, { t: 'hotelSet', id: hotel.id, priceOf: 'pool', price: 999 }).ok, false)
+  assert.equal(amenityUse(hotel).find(a => a.id === 'pool').price, 12)
+  assert.equal(deserializePark(serializePark(state)).entities[hotel.id].prices.pool, 12)
+  state.time.dayFraction = 0.95
+  Object.assign(guest, { x: hotel.entrance.x + 0.5, y: hotel.entrance.y + 0.5, tx: hotel.entrance.x, ty: hotel.entrance.y, nx: -1, ny: -1 })
+  guest.target = { key: `hotel:${hotel.id}`, hotel: hotel.id, amenity: 'pool' }
+  updateGuests(state, 0.05)
+  assert.notEqual(guest.state, 'amenity')
+  assert.ok(guest.thoughts.some(t => t.includes('closed')))
+})
+
+test('hotel residents walk back into their own hotel when their day is done', () => {
+  const { state, hotel } = amenityFixture([])
+  const resident = spawnGuest(state, 0, hotel)
+  assert.equal(resident.hotel, hotel.id)
+  resident.inPark = resident.stay + 1
+  resident.lastDecide = 0
+  updateGuests(state, 0.05)
+  assert.ok(!state.guests.includes(resident))
+  assert.equal(hotel.today.home, 1)
+  assert.ok(resident.thoughts.some(t => t.includes(hotel.name)))
+  const copy = deserializePark(serializePark(state, true))
+  assert.ok(copy)
+})
+
+test('hotels saved with old sizes and tall towers still load, capped at ten floors', () => {
+  const state = hotelFixture()
+  const made = applyCommand(state, { t: 'hotel', kind: 'skylineTower', x: 44, y: 40, w: 8, h: 8, floors: 10 })
+  const saved = JSON.parse(JSON.stringify(serializePark(state)))
+  const raw = Object.values(saved.entities).find(e => e.id === made.id)
+  raw.size = [3, 3]; raw.floors = 30
+  const copy = deserializePark(saved).entities[made.id]
+  assert.deepEqual(copy.size, [3, 3])
+  assert.equal(copy.floors, 10)
 })
 
 test('level land matches the corner the drag started from', () => {

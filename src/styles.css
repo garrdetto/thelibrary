@@ -898,13 +898,24 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-rating b{display:block;height:100%;background:linear-gradient(90deg,#e2553f,#ffcf4a,#3fae5c)}
 .pk-neg{color:#ff8a76!important}.pk-pos{color:#7fdc8f!important}
 .pk-hotel-table{display:flex;flex-direction:column;gap:2px;font-size:12px;margin-bottom:8px}
-.pk-hotel-table>*{display:grid;grid-template-columns:minmax(0,1.8fr) repeat(5,minmax(0,1fr));gap:6px;align-items:center;padding:6px 8px;border-radius:8px;text-align:right;font-variant-numeric:tabular-nums}
+.pk-hotel-table>*{display:grid;grid-template-columns:minmax(0,1.8fr) repeat(6,minmax(0,1fr));gap:6px;align-items:center;padding:6px 8px;border-radius:8px;text-align:right;font-variant-numeric:tabular-nums}
 .pk-hotel-table>* span:first-child{text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pk-hotel-table button{background:var(--pk-panel-2);border:1px solid var(--pk-line);color:inherit;font:inherit;cursor:pointer}
 .pk-hotel-table button:hover{background:#2f3a4b}
 .pk-hotel-head{opacity:.65;font-size:11px}
 .pk-hotel-foot{font-weight:700;border-top:1px solid var(--pk-line);border-radius:0}
-@media (max-width:560px){.pk-hotel-table>*{grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(0,1fr))}.pk-hotel-table>* span:nth-child(4),.pk-hotel-table>* span:nth-child(6){display:none}}
+@media (max-width:560px){.pk-hotel-table>*{grid-template-columns:minmax(0,1.6fr) repeat(3,minmax(0,1fr))}.pk-hotel-table>* span:nth-child(2),.pk-hotel-table>* span:nth-child(4),.pk-hotel-table>* span:nth-child(7){display:none}}
+.pk-resort-life{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.pk-resort-row{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(48px,1fr) auto;gap:8px;align-items:center;padding:6px 8px;border-radius:8px;background:var(--pk-panel-2);font-size:12px}
+.pk-resort-row small{display:block;opacity:.7;font-size:11px}
+.pk-resort-meter{height:8px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden}
+.pk-resort-meter i{display:block;height:100%;background:#4fb3a2;border-radius:4px;transition:width .4s ease}
+.pk-resort-meter i.full{background:#f0b44a}
+.pk-resort-price{display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
+.pk-resort-price button{display:grid;place-items:center;width:22px;height:22px;border-radius:6px;border:1px solid var(--pk-line);background:transparent;color:inherit;cursor:pointer}
+.pk-resort-price button:disabled{opacity:.35;cursor:default}
+.pk-resort-price strong{min-width:38px;text-align:center}
+@media (prefers-reduced-motion:reduce){.pk-resort-meter i{transition:none}}
 .pk-hotel-bars{display:flex;align-items:flex-end;gap:2px;height:44px;margin:8px 0;padding:4px;border-radius:8px;background:var(--pk-panel-2)}
 .pk-hotel-bars i{flex:1;min-width:2px;background:#7fdc8f;border-radius:2px 2px 0 0}
 .pk-hotel-bars i.neg{background:#ff8a76}

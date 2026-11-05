@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Minus, Plus, Trash2, Wrench } from 'lucide-react'
-import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, hotelSpec, hotelNight, hotelOccupancy, hotelRateLimits, hotelResizeCost, hotelRefurbishCost, hotelOrientedFits, hotelPortfolio, rateFactor, amenityBooks, addonCost, formatMoney } from '../../../server/park/index.mjs'
+import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, hotelSpec, hotelNight, hotelOccupancy, hotelRateLimits, hotelResizeCost, hotelRefurbishCost, hotelOrientedFits, hotelPortfolio, rateFactor, amenityBooks, addonCost, amenityUse, formatMoney } from '../../../server/park/index.mjs'
 import type { Entity, Park, ParkState } from '../../../server/park/index.mjs'
 
 const money = (v: number) => formatMoney(v)
@@ -23,7 +23,7 @@ export function ResortCards({ selected, onPick }: { selected: string | null; onP
 }
 
 export function ResortSummary({ park }: { park: Park }) {
-  return <p className="pk-hint">Drag out any size of lot next to a footpath, then set floors in the bar below; the price follows the size. Two hotels beside a pool within 10 squares form a resort district, which raises your park rating and adds a resort fee to every booked room.{park.resortHotels ? ` ${park.resortHotels} hotels are in a resort district now.` : ''}</p>
+  return <p className="pk-hint">Drag out a wide lot next to a footpath, then set up to ten floors in the bar below; the price follows the size. A pool, restaurant or kids club adds a front plaza where you can watch guests swim, dine and play, and guests walk in through the front door to use every amenity. Two hotels beside a pool within 10 squares form a resort district, which raises your park rating and adds a resort fee to every booked room.{park.resortHotels ? ` ${park.resortHotels} hotels are in a resort district now.` : ''}</p>
 }
 
 // Every hotel's latest night side by side, with totals, so the player can see which ones carry the resort.
@@ -35,7 +35,7 @@ export function ResortPortfolio({ state, park, onSelect }: { state: ParkState; p
   return <>
     <p className="pk-label">Your hotels</p>
     <div className="pk-hotel-table" role="table" aria-label="Hotel portfolio">
-      <div role="row" className="pk-hotel-head"><span role="columnheader">Hotel</span><span role="columnheader">Rooms</span><span role="columnheader">Booked</span><span role="columnheader">Rate</span><span role="columnheader">Last night</span><span role="columnheader">Lifetime</span></div>
+      <div role="row" className="pk-hotel-head"><span role="columnheader">Hotel</span><span role="columnheader">Rooms</span><span role="columnheader">Booked</span><span role="columnheader">Rate</span><span role="columnheader">Inside now</span><span role="columnheader">Last night</span><span role="columnheader">Lifetime</span></div>
       {hotels.map(h => {
         const spec = hotelSpec(h.kind as string, h.size!, h.floors ?? 1, h.addons)!
         return <button role="row" key={h.id} onClick={() => onSelect(h.id)}>
@@ -43,11 +43,12 @@ export function ResortPortfolio({ state, park, onSelect }: { state: ParkState; p
           <span role="cell">{spec.rooms.toLocaleString()}</span>
           <span role="cell">{Math.round((h.occupancy ?? 0) * 100)}%</span>
           <span role="cell">{money(h.rate ?? HOTELS[h.kind as string].rate)}</span>
+          <span role="cell">{Object.values(h.using ?? {}).reduce((a, b) => a + b, 0)}</span>
           <span role="cell" className={tone(h.night?.profit ?? 0)}>{signed(h.night?.profit ?? 0)}</span>
           <span role="cell" className={tone(h.profit ?? 0)}>{signed(Math.round(h.profit ?? 0))}</span>
         </button>
       })}
-      <div role="row" className="pk-hotel-foot"><span role="cell">All hotels</span><span role="cell">{total.rooms.toLocaleString()}</span><span role="cell">{total.rooms ? Math.round(total.occupied / total.rooms * 100) : 0}%</span><span role="cell" /><span role="cell" className={tone(total.profit)}>{signed(total.profit)}</span><span role="cell" className={tone(total.lifetime)}>{signed(Math.round(total.lifetime))}</span></div>
+      <div role="row" className="pk-hotel-foot"><span role="cell">All hotels</span><span role="cell">{total.rooms.toLocaleString()}</span><span role="cell">{total.rooms ? Math.round(total.occupied / total.rooms * 100) : 0}%</span><span role="cell" /><span role="cell">{hotels.reduce((sum, h) => sum + Object.values(h.using ?? {}).reduce((a, b) => a + b, 0), 0)}</span><span role="cell" className={tone(total.profit)}>{signed(total.profit)}</span><span role="cell" className={tone(total.lifetime)}>{signed(Math.round(total.lifetime))}</span></div>
     </div>
     <dl className="pk-dl">
       <dt>Rooms this month</dt><dd className="pk-pos">{money(m.hotels ?? 0)}</dd>
@@ -66,6 +67,37 @@ function Stepper({ label, value, min, max, onChange, suffix = '' }: { label: str
     <strong>{value}{suffix}</strong>
     <button aria-label={`More ${label.toLowerCase()}`} disabled={value >= max} onClick={() => onChange(Math.min(max, value + 1))}><Plus size={13} /></button>
   </div>
+}
+
+// Live view of who is inside each amenity, with per-visit prices the player can tune.
+function ResortLife({ hotel, readOnly, run }: { hotel: Entity; readOnly: boolean; run: Run }) {
+  const rows = amenityUse(hotel)
+  if (!rows.length) return <p className="pk-hint">Add a pool, restaurant, spa, kids club or gift shop and park guests will walk in to use them, paying per visit.</p>
+  const today = hotel.today ?? { visits: 0, takings: 0, home: 0 }, last = hotel.yesterday
+  const setPrice = (id: string, price: number) => run({ t: 'hotelSet', id: hotel.id, priceOf: id, price })
+  return <>
+    <div className="pk-resort-life" role="table" aria-label="Amenities in use">
+      {rows.map(a => {
+        const pct = a.capacity ? Math.min(100, Math.round(a.using / a.capacity * 100)) : 0
+        return <div role="row" key={a.id} className="pk-resort-row">
+          <span role="cell"><strong>{a.name}</strong><small>{a.using} {a.doing} · {a.capacity} places</small></span>
+          <span role="cell" className="pk-resort-meter" aria-label={`${pct}% full`}><i style={{ width: `${pct}%` }} className={pct >= 90 ? 'full' : ''} /></span>
+          <span role="cell" className="pk-resort-price">
+            {!readOnly && <button aria-label={`Lower ${a.name.toLowerCase()} price`} disabled={a.price <= 0} onClick={() => void setPrice(a.id, Math.max(0, a.price - 1))}><Minus size={12} /></button>}
+            <strong title={a.free ? 'Free for guests staying here' : undefined}>{a.price ? money(a.price) : 'Free'}{a.free ? '*' : ''}</strong>
+            {!readOnly && <button aria-label={`Raise ${a.name.toLowerCase()} price`} disabled={a.price >= a.limit} onClick={() => void setPrice(a.id, Math.min(a.limit, a.price + 1))}><Plus size={12} /></button>}
+          </span>
+        </div>
+      })}
+    </div>
+    <dl className="pk-dl">
+      <dt>Walk-in visits today</dt><dd>{today.visits.toLocaleString()} · {money(Math.round(today.takings))}</dd>
+      {last && <><dt>Yesterday</dt><dd>{last.visits.toLocaleString()} visits · {money(Math.round(last.takings))}</dd></>}
+      <dt>Guests back to their rooms today</dt><dd>{today.home.toLocaleString()}</dd>
+      <dt>Walk-in takings so far</dt><dd className="pk-pos">{money(Math.round(hotel.visitTakings ?? 0))}</dd>
+    </dl>
+    <p className="pk-hint">* Residents use the pool and kids club free. Guests skip anything priced well above the going rate ({rows.map(a => `${a.name.toLowerCase()} ${money(a.defaultPrice)}`).join(', ')}). The pool and kids club close after dark; full amenities turn guests away.</p>
+  </>
 }
 
 function NightBars({ nights }: { nights: number[] }) {
@@ -137,6 +169,9 @@ export function HotelWindowBody({ hotel, state, readOnly, run, onDemolish }: { h
         <dt>Pays for itself in</dt><dd>{payback === null ? 'not at this rate' : payback === 0 ? 'paid off' : `about ${payback.toLocaleString()} days`}</dd>
       </dl>
     </>}
+
+    <p className="pk-label">Resort life right now</p>
+    <ResortLife hotel={hotel} readOnly={readOnly} run={run} />
 
     {!readOnly && <>
       <p className="pk-label">Room rate</p>

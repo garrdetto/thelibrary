@@ -12,7 +12,8 @@ import { waterRideModel } from './waterRides'
 import { decorateRide } from './rideNeon'
 import { customModelKey, customRideModel } from './customRides'
 import { bulb, bulbRun, neonTube, LIGHTS, GLOW } from './neon'
-import { hotelModel, hotelLook } from './hotelModels'
+import { hotelModel, hotelLook, hotelLayout } from './hotelModels'
+import type { HotelLayout } from './hotelModels'
 import { addPathTile, addQueueMarkings } from './pathModels'
 import { ghostCorners } from './pathBuilder'
 import type { GhostPiece } from './pathBuilder'
@@ -109,12 +110,15 @@ export class ParkRenderer {
   private ghostMeshes = new Map<string, GpuMesh | null>()
   private instances = new Map<string, InstanceList>()
   private hotelMeshes = new Map<number | string, { key: string; mesh: GpuMesh | null }>()
+  private hotelLayouts = new Map<number | string, { key: string; layout: HotelLayout; order: Record<string, number[]> }>()
+  private doorWalks = new Map<number, { x0: number; y0: number; x1: number; y1: number; t: number; dur: number; shirt: number; kid: boolean }>()
+  private lastSeen = new Set<number>()
   private slotCache = new Map<string, Vec3[]>()
   private schemesKey = ''
   private rideModels = new Map<string, { base: GpuMesh | null; parts: { mesh: GpuMesh | null; anim: RideModel['parts'][number]['anim'] }[] }>()
   private rides = new Map<number, RideCache>()
   private clocks = new Map<string, Clock>()
-  private display = new Map<number, { x: number; y: number; yaw: number }>()
+  private display = new Map<number, { x: number; y: number; yaw: number; shirt?: number; kid?: boolean }>()
   private overlay: GpuMesh | null = null
   private overlayKey = ''
   private time = 0
@@ -1062,17 +1066,76 @@ export class ParkRenderer {
   private hotelMesh(id: number | string, e: Entity) {
     const def = HOTELS[e.kind as string]
     if (!def) return null
-    const look = hotelLook(e as Parameters<typeof hotelLook>[0], def.colors, def.roofs[0])
-    const key = JSON.stringify(look)
+    const info = this.hotelInfo(id, e)
+    if (!info) return null
+    const key = info.key
     let entry = this.hotelMeshes.get(id)
     if (!entry || entry.key !== key) {
       if (entry?.mesh) this.g.free(entry.mesh)
-      const model = hotelModel(look)
+      const model = hotelModel(info.look, info.layout)
       model.bakeAO(0.5)
       entry = { key, mesh: this.g.upload(model) }
       this.hotelMeshes.set(id, entry)
     }
     return entry.mesh
+  }
+
+  /** The hotel's look and plaza layout (amenity spots included), rebuilt only when its look changes. */
+  private hotelInfo(id: number | string, e: Entity) {
+    const def = HOTELS[e.kind as string]
+    if (!def) return null
+    const look = hotelLook(e as Parameters<typeof hotelLook>[0], def.colors, def.roofs[0])
+    const key = JSON.stringify(look)
+    let entry = this.hotelLayouts.get(id)
+    if (!entry || entry.key !== key) {
+      const layout = hotelLayout(look)
+      hotelModel(look, layout)
+      const order: Record<string, number[]> = {}
+      for (const [kind, spots] of Object.entries(layout.spots)) order[kind] = spots.map((_, i) => i).sort((a, b) => hash(a * 31 + 7 + (typeof id === 'number' ? id : 0)) - hash(b * 31 + 7 + (typeof id === 'number' ? id : 0)))
+      entry = { key, layout, order }
+      this.hotelLayouts.set(id, entry)
+    }
+    return { look, key, layout: entry.layout, order: entry.order }
+  }
+
+  /** Where each hotel's entrance path tile and lobby door are, in tile units, for guests walking in and out. */
+  private hotelDoors() {
+    const s = this.state!, doors: { ex: number; ey: number; dx: number; dy: number }[] = []
+    for (const e of Object.values(s.entities)) {
+      if (e.type !== 'hotel' || !e.entrance) continue
+      const info = this.hotelInfo(e.id, e)
+      if (!info) continue
+      const depth = (info.layout.plaza?.depth ?? 0) / TILE + 0.55
+      const f = info.look.front, [nx, ny] = f === 0 ? [-1, 0] : f === 1 ? [0, -1] : f === 2 ? [1, 0] : [0, 1]
+      const ex = e.entrance.x + 0.5, ey = e.entrance.y + 0.5
+      doors.push({ ex, ey, dx: ex + nx * depth, dy: ey + ny * depth })
+    }
+    return doors
+  }
+
+  /** Guests using a hotel's pool, terrace or play area, plus a few residents in the daytime, drawn on the plaza spots. */
+  private drawHotelCrowds(push: (x: number, y: number, z: number, yaw: number, shirt: number, look: number, scale: number) => void, visible: (x: number, y: number) => boolean) {
+    const s = this.state!, day = s.time?.dayFraction ?? 0.5, daytime = day > 0.2 && day < 0.86
+    for (const e of Object.values(s.entities)) {
+      if (e.type !== 'hotel') continue
+      const info = this.hotelInfo(e.id, e)
+      if (!info) continue
+      const base = this.hotelMatrix(e), bx = base[12], by = base[13], bz = base[14]
+      for (const [kind, spots] of Object.entries(info.layout.spots)) {
+        if (!spots.length) continue
+        const open = kind === 'restaurant' || daytime
+        const residents = open ? Math.floor(spots.length * (e.occupancy ?? 0) * (kind === 'restaurant' ? 0.3 : 0.22)) : 0
+        const count = Math.min(spots.length, (e.using?.[kind] ?? 0) + residents)
+        const order = info.order[kind] ?? []
+        for (let n = 0; n < count; n++) {
+          const sp = spots[order[n] ?? n], id = e.id * 997 + n * 13 + kind.length
+          if (!visible(bx + sp.x, by + sp.y)) continue
+          const bob = sp.swim ? Math.sin(this.time * 1.6 + id) * 0.06 - 1.12 : 0
+          const turn = sp.swim ? Math.sin(this.time * 0.3 + id) * 0.8 : Math.sin(this.time * 0.5 + id) * 0.15
+          push(bx + sp.x, by + sp.y, bz + sp.z + bob, sp.yaw + turn, Math.floor(hash(id) * 16), Math.floor(hash(id * 7 + 3) * GUEST_LOOKS.length) % GUEST_LOOKS.length, kind === 'kidsClub' ? 0.72 : 1)
+        }
+      }
+    }
   }
 
   private hotelMatrix(e: Entity) {
@@ -1165,11 +1228,31 @@ export class ParkRenderer {
       const seen = new Set<number>()
       const frameOf = (id: number, moving: boolean, rate = 1.85) => moving ? Math.floor((this.time * rate + hash(id * 11) * 4) * WALK_FRAMES) % WALK_FRAMES : WALK_FRAMES
       const visible = personCuller(mat4.multiply(this.proj, this.view), this.cam.tz)
+      const doors = this.hotelDoors(), primed = this.lastSeen.size > 0
+      const nearDoor = (x: number, y: number) => doors.find(d => (x - d.ex) ** 2 + (y - d.ey) ** 2 < 1.1)
+      const walkIn = (id: number, d: { x: number; y: number; shirt?: number; kid?: boolean }) => {
+        const door = nearDoor(d.x, d.y)
+        if (door && !this.doorWalks.has(id)) this.doorWalks.set(id, { x0: d.x, y0: d.y, x1: door.dx, y1: door.dy, t: 0, dur: Math.max(0.6, Math.hypot(door.dx - d.x, door.dy - d.y) / 0.9), shirt: d.shirt ?? 0, kid: Boolean(d.kid) })
+      }
+      const present = new Set<number>()
       for (const gst of s.guests) {
-        if (gst.hidden || gst.state === 'ride') continue
+        present.add(gst.id)
+        if (gst.hidden || gst.state === 'ride') {
+          // Stepping through a hotel door: keep drawing them until they are inside.
+          const d = this.display.get(gst.id)
+          if (gst.state === 'amenity' && d && this.lastSeen.has(gst.id)) walkIn(gst.id, d)
+          continue
+        }
         seen.add(gst.id)
         let d = this.display.get(gst.id)
         if (!d) { d = { x: gst.x, y: gst.y, yaw: 0 }; this.display.set(gst.id, d) }
+        d.shirt = gst.shirt; d.kid = gst.kid
+        if (primed && !this.lastSeen.has(gst.id) && !this.doorWalks.has(gst.id)) {
+          // Just came out of a hotel: walk from the lobby door down to the path.
+          const door = nearDoor(gst.x, gst.y)
+          if (door) this.doorWalks.set(gst.id, { x0: door.dx, y0: door.dy, x1: gst.x, y1: gst.y, t: 0, dur: Math.max(0.6, Math.hypot(door.dx - gst.x, door.dy - gst.y) / 0.9), shirt: gst.shirt, kid: gst.kid })
+        }
+        if (this.doorWalks.has(gst.id)) { d.x = gst.x; d.y = gst.y; continue }
         const dx = gst.x - d.x, dy = gst.y - d.y
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.x = gst.x; d.y = gst.y }
         else { d.x += dx * k; d.y += dy * k }
@@ -1183,7 +1266,23 @@ export class ParkRenderer {
         if (gst.items.includes('balloon')) { const bc = SHIRTS[(gst.id * 7) & 15]; balloons.push(wx, wy, z, d.yaw + Math.sin(this.time + gst.id) * 0.2, bc[0], bc[1], bc[2], scale) }
         if (gst.items.includes('umbrella') && s.weather.kind === 'rain') { const uc = SHIRTS[(gst.id * 3) & 15]; umbrellas.push(wx, wy, z, d.yaw, uc[0], uc[1], uc[2], scale) }
       }
-      if (this.display.size > seen.size + 200) for (const id of this.display.keys()) if (!seen.has(id)) this.display.delete(id)
+      // Residents who finished their day and walked into their hotel are gone from the list: finish their walk in.
+      for (const id of this.lastSeen) if (!present.has(id)) { const d = this.display.get(id); if (d) walkIn(id, d) }
+      for (const [id, w] of this.doorWalks) {
+        w.t += dt
+        if (w.t >= w.dur) { this.doorWalks.delete(id); continue }
+        const f = w.t / w.dur, x = w.x0 + (w.x1 - w.x0) * f, y = w.y0 + (w.y1 - w.y0) * f
+        const wx = x * TILE, wy = y * TILE
+        if (!visible(wx, wy)) continue
+        const z = pathHeightAt(map, wx, wy, TILE) + 0.06, shirt = SHIRTS[w.shirt & 15], look = Math.floor(hash(id * 7 + 3) * GUEST_LOOKS.length) % GUEST_LOOKS.length
+        this.list(`person:${look}:${frameOf(id, true, w.kid ? 2.3 : 1.85)}:${lodOf(wx, wy, z)}`).push(wx, wy, z, Math.atan2(w.y1 - w.y0, w.x1 - w.x0), shirt[0], shirt[1], shirt[2], w.kid ? 0.72 : 1)
+      }
+      this.drawHotelCrowds((wx, wy, z, yaw, shirtIndex, look, scale) => {
+        const shirt = SHIRTS[shirtIndex & 15]
+        this.list(`person:${look}:${WALK_FRAMES}:${lodOf(wx, wy, z)}`).push(wx, wy, z, yaw, shirt[0], shirt[1], shirt[2], scale)
+      }, (wx, wy) => visible(wx, wy))
+      this.lastSeen = seen
+      if (this.display.size > seen.size + 200) for (const id of this.display.keys()) if (!seen.has(id) && !this.doorWalks.has(id)) this.display.delete(id)
       for (const st of s.staff) {
         const id = -st.id
         let d = this.display.get(id)
