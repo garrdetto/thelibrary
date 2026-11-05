@@ -1,4 +1,4 @@
-/** The tackle-shop window: Wardrobe (face and outfit), Boat (which boat, livery and colours), Shop (rods, reels, boats, motors, electronics, clothes, liveries) and Achievements. Changes preview live on the angler and boat. */
+/** The tackle-shop window: Wardrobe (face and outfit), Boat (which boat, livery and colours), Shop (rods, reels, boats, motors, electronics, clothes, liveries), Achievements and the Guide's Almanac. Changes preview live on the angler and boat. */
 import { ACHIEVEMENTS, TIER_NAMES, anglerTitle } from '../shared/Achievements'
 import type { AchievementGroup } from '../shared/Achievements'
 import { BOATS, LIVERY_LABELS, liveries } from '../shared/Boats'
@@ -9,7 +9,7 @@ import { catalog, owns } from '../shared/Shop'
 import type { ShopCategory } from '../shared/Shop'
 import type { AnglerProfile } from '../shared/Profile'
 
-export type PanelTab = 'wardrobe' | 'boat' | 'shop' | 'achievements'
+export type PanelTab = 'wardrobe' | 'boat' | 'shop' | 'achievements' | 'almanac'
 
 export interface PanelHost {
   profile(): AnglerProfile
@@ -19,6 +19,7 @@ export interface PanelHost {
   previewBoat(kind: BoatKind, paint: BoatPaint): void
   saveBoat(kind: BoatKind, paint: BoatPaint): Promise<void>
   buy(item: string): Promise<void>
+  almanac(): string
   closed(): void
 }
 
@@ -86,6 +87,7 @@ export class Panels {
     if (this.tab === 'wardrobe') this.body.innerHTML = this.wardrobe(p)
     else if (this.tab === 'boat') this.body.innerHTML = this.boat(p)
     else if (this.tab === 'shop') this.body.innerHTML = this.shop(p)
+    else if (this.tab === 'almanac') this.body.innerHTML = this.host.almanac()
     else this.body.innerHTML = this.achievements(p)
   }
 

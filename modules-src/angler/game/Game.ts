@@ -8,6 +8,7 @@ import { LakeMap } from '../ui/LakeMap'
 import { Sonar } from '../ui/Sonar'
 import { RecordBook } from '../ui/RecordBook'
 import { Panels } from '../ui/Panels'
+import { renderAlmanac } from '../ui/Almanac'
 import type { PanelTab } from '../ui/Panels'
 import { equip, purchase } from '../shared/Shop'
 import type { BoatKind, BoatPaint } from '../shared/Boats'
@@ -29,6 +30,7 @@ import { MOTORS } from '../shared/Shop'
 import { toMph } from '../systems/BoatPhysics'
 import { DriveInput } from '../systems/Input'
 import { Online } from './Online'
+import { LakeAudio } from '../systems/Audio'
 import type { RemotePhase } from '../shared/Online'
 import { parseInvite } from '../shared/Online'
 import type { QualityTier } from '../config'
@@ -59,6 +61,7 @@ export class Game {
   private cardTimer = 0
   panels!: Panels
   online!: Online
+  readonly audio = new LakeAudio()
   private zoomedForPanel = false
   private lakeCounts: Record<string, { boats: number; anglers: number }> = {}
   private crewKey = ''
@@ -92,6 +95,7 @@ export class Game {
       previewBoat: (kind, paint) => this.previewBoat(kind, paint),
       saveBoat: (kind, paint) => this.saveBoat(kind, paint),
       buy: item => this.buy(item),
+      almanac: () => this.almanac(),
       closed: () => { this.world.focusOnPlayer(false); this.world.setViewportWidth(1); if (this.zoomedForPanel) this.world.camera.zoom(1 / 0.45); this.zoomedForPanel = false },
     })
     this.online = new Online(this.world, {
@@ -101,6 +105,7 @@ export class Game {
       crewChanged: aboard => this.crewChanged(aboard),
       gear: () => ({ boat: this.profile.boat, paint: this.profile.paint[this.profile.boat], look: this.profile.look }),
       signedIn: () => this.account.signedIn,
+      chime: big => this.audio.chime(big),
     }, $('tags'))
     $('loading').hidden = true
     this.world.onFrame(dt => this.frame(dt))
@@ -219,6 +224,9 @@ export class Game {
     $('btn-boat').addEventListener('click', () => this.openPanel('boat'))
     $('btn-shop').addEventListener('click', () => this.openPanel('shop'))
     $('btn-achievements').addEventListener('click', () => this.openPanel('achievements'))
+    $('btn-almanac').addEventListener('click', () => this.openPanel('almanac'))
+    $('btn-sound').addEventListener('click', () => this.toggleSound())
+    this.refreshSound()
     $('lakes-close').addEventListener('click', () => { if (this.world.lake) $('screen-lakes').hidden = true })
     $('crew').addEventListener('click', e => {
       const target = (e.target as HTMLElement).closest('button')
@@ -267,9 +275,21 @@ export class Game {
     if (code === 'KeyB') this.openPanel('boat')
     if (code === 'KeyP') this.openPanel('shop')
     if (code === 'KeyJ') this.openPanel('achievements')
+    if (code === 'KeyG') this.openPanel('almanac')
+    if (code === 'KeyN') this.toggleSound()
     if (code === 'KeyE') this.boardOrLeave()
     if (code === 'KeyT') { this.world.controls.trolling = !this.world.controls.trolling; this.refreshButtons() }
     if (code === 'Escape') { this.toggleMap(false); this.records.close(); this.panels.close(); $('catch-card').hidden = true }
+  }
+
+  private toggleSound(): void {
+    this.audio.toggle()
+    this.refreshSound()
+  }
+
+  private refreshSound(): void {
+    $('btn-sound').setAttribute('aria-pressed', String(this.audio.enabled))
+    $('btn-sound').textContent = this.audio.enabled ? 'Sound on' : 'Sound off'
   }
 
   toggleAnchor(): void {
@@ -403,6 +423,13 @@ export class Game {
     if (innerWidth > 900) this.world.setViewportWidth(1 - Math.min(560, innerWidth) / innerWidth)
   }
 
+  private almanac(): string {
+    const w = this.world
+    if (!w.lake || !w.physics) return '<p class="ang-note">Launch on a lake to read the almanac.</p>'
+    const s = w.physics.state
+    return renderAlmanac({ lake: w.lake, x: s.x, z: s.z, rig: this.profile.rig, crowd: this.crowd() }, now())
+  }
+
   private async post(body: Record<string, unknown>): Promise<void> {
     if (this.account.signedIn) {
       const r = await api<{ profile: unknown }>(body)
@@ -470,6 +497,7 @@ export class Game {
     if (this.world.background) this.away.push(r)
     this.pushLog(r)
     this.showCard(r)
+    if (['Quality', 'Trophy', 'Legendary'].includes(r.tier) || r.personalBest || r.siteRecord) this.audio.chime(['Trophy', 'Legendary'].includes(r.tier) || r.siteRecord)
     try { window.parent?.postMessage({ type: 'tl-angler', species: r.species }, location.origin) } catch { /* not embedded */ }
     if (document.hidden && ['Trophy', 'Legendary'].includes(r.tier)) this.flashTitle(`${r.tier}! ${formatWeight(r.weight)} ${SPECIES[r.species].name}`)
     setTimeout(() => this.world.focusOnPlayer(false), 9000)
@@ -563,6 +591,7 @@ export class Game {
     this.fishing?.update(dt)
     this.online.update(dt)
     const s = w.physics?.state
+    if (s && w.lake) this.audio.update(dt, s.speed, aboard ? 0 : w.controls.throttle, w.weather?.windMph ?? 0, w.sky.state.day, this.fishingState().phase)
     if (s && w.lake) {
       this.stillTime = Math.abs(s.speed) < 0.3 ? this.stillTime + dt : 0
       if (!w.background) this.sonar.update(dt, { lake: w.lake, x: s.x, z: s.z, date: now(), rig: this.profile.rig, settled: this.stillTime, crowd: this.crowd() }, s.speed)

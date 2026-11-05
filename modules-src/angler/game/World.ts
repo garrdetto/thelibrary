@@ -7,6 +7,7 @@ import { Character, loadCharacterAssets } from '../scene/Character'
 import type { CharacterAssets, Pose } from '../scene/Character'
 import { LakeScene, seasonFor } from '../scene/LakeScene'
 import { Sky } from '../scene/Sky'
+import { Wake } from '../scene/Wake'
 import { BoatPhysics, newBoatState } from '../systems/BoatPhysics'
 import type { BoatControls } from '../systems/BoatPhysics'
 import { CameraRig } from '../systems/CameraRig'
@@ -52,6 +53,7 @@ export class World {
   bassAssets: BassAssets | null = null
   private remoteBass: Promise<BassAssets | null> | null = null
   carrier: Carrier | null = null
+  wake: Wake | null = null
   time = 0
   anchored = false
   autopilot: { x: number; z: number } | null = null
@@ -165,6 +167,8 @@ export class World {
     this.boat = new Boat(this.app, kind, paint, this.bassAssets)
     this.boat.root.enabled = !hidden
     this.root.addChild(this.boat.root)
+    if (!this.wake) { this.wake = new Wake(this.app, this.boat.spec); this.root.addChild(this.wake.entity) }
+    this.wake.setSpec(this.boat.spec)
     this.physics = new BoatPhysics(lake, BOATS[kind], previous ? { ...previous, speed: 0 } : newBoatState(landing.x, landing.z, landing.heading))
     for (const r of riders) this.boat.hull.addChild(r)
     if (this.player && !this.carrier && !riders.includes(this.player.character.entity)) this.boat.hull.addChild(this.player.character.entity)
@@ -182,6 +186,8 @@ export class World {
 
   leaveLake(): void {
     this.carrier = null
+    this.wake?.destroy()
+    this.wake = null
     this.player?.character.destroy()
     this.player = null
     this.boat?.destroy()
@@ -271,6 +277,7 @@ export class World {
     }
     if (!this.background) {
       this.boat.setLightsOn(this.sky.state.day < 0.5)
+      this.wake?.update(dt, s.x, s.z, s.heading, carrier ? 0 : s.speed, !carrier)
       this.scene?.update(dt, wind)
       if (this.player) this.placeRider(this.player)
       const heave = carrier ? carrier.boat.root.getPosition().y : s.heave

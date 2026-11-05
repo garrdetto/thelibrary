@@ -101,12 +101,13 @@ export function weatherFactor(w: Weather): number {
   return f
 }
 
-/** Bite activity: 1 is a decent spot, 0.15 a dead one, 3 a hot bite. */
+/** Bite activity: 1 is a decent spot, 0.15 a dead one, approaching 3 a hot bite. Saturates smoothly so the best water still ranks above merely good water. */
 export function activity(ctx: FishingContext, c: Conditions = conditionsAt(ctx), chances = speciesChances(ctx, c)): number {
   const total = chances.reduce((s, x) => s + x.weight, 0)
   const settle = 0.6 + 0.55 * smoothstep(0, 60, ctx.settled)
   const crowd = Math.pow(0.9, Math.max(0, ctx.crowd))
-  return clamp((0.1 + total * 0.55) * weatherFactor(c.weather) * c.moon * settle * crowd, 0.15, 3)
+  const raw = (0.1 + total * 0.55) * weatherFactor(c.weather) * c.moon * settle * crowd
+  return clamp(3 * (1 - Math.exp(-raw / 3.5)), 0.15, 3)
 }
 
 export const BASE_BITE_SECONDS = 150
