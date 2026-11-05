@@ -148,6 +148,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `fairway` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, TSL node materials | `modules-src/fairway/` |
 | `demoderby` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, Rapier 0.14 raycast vehicles | `modules-src/demoderby/` |
 | `park` | hand-written WebGL2 | `src/lib/park/` |
+| `park2` | PlayCanvas 2.23.3 (WebGL2) behind the `park` renderer's backend interface | `src/lib/park2/` (models, simulation and HUD shared with `park`) |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
 | `2048`, `helicopter`, `alphabet`, `wpm`, `tetradrop`, `bubbles`, `memory`, `simon`, `sudoku`, `minesweeper`, `mathrush`, `blockhead`, `songmaker` | 2D canvas / DOM | `public/modules/<id>.html` (static, shared `module-base.css`) |
@@ -428,7 +429,14 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `src/components/park/WaveControl.tsx` — wave setting picker in the ride window — `ParkHud.tsx`.
 - `src/lib/park/culling.ts` — view-frustum tests: off-screen guests before instancing, and frustum planes/sphere tests for static instances and whole rides — `renderer.ts`.
 - `src/lib/park/shotCams.ts` — fixed debug cameras (`?shotCam=station|flat|waterRide|wavePool|hotel|shoreline|overview`) for matched screenshots — `ParkHud.tsx`, `scripts/park-shots.mjs`.
-- `scripts/park-scene.mjs`, `scripts/park-shots.mjs` — deterministic graphics test park and the screenshot / in-park perf / renderer audit harness (`docs/PARK-GRAPHICS-PLAN.md`) — run by hand.
+- `scripts/park-scene.mjs`, `scripts/park-shots.mjs` — deterministic graphics test park and the screenshot / in-park perf / renderer audit harness (`docs/PARK-GRAPHICS-PLAN.md`; `--edition 2` for Thrill Park 2) — run by hand.
+- `src/lib/park/backend.ts` — `RenderBackend`, everything `ParkRenderer` asks of the GPU; `gl.ts`'s `Gl` (Thrill Park) and `park2/pcBackend.ts` (Thrill Park 2) implement it, and `ParkRenderer` takes a backend factory — `renderer.ts`, `ParkHud.tsx`.
+- `src/lib/park/pathBuilder.ts` — coaster-style path builder planning; level boardwalk pieces are planned as the flat decks the server builds (`planBoardwalk`), and every planned piece is checked against the `path` command's side-neighbour step rule (`stepsTooHigh`) so refusals show on the ghost — `ParkHud.tsx`, `server/park/builders.test.mjs`.
+- `src/lib/park2/index.ts` — `createBackend`, loaded with a dynamic import by `ParkGame` (`edition={2}`) so PlayCanvas stays out of Thrill Park's bundle — `ParkGame.tsx`.
+- `src/lib/park2/pcBackend.ts` — Thrill Park 2's PlayCanvas backend: the park renderer's draws replayed into pooled mesh instances each frame (z-up park space under a fixed y-up rotation), the classic packed vertex format, procedural sky and image-based lighting, cascaded PCF sun shadows, clustered lamp lights at night, CameraFrame MSAA/bloom/SSAO/grading per tier, shader warm-up, and render-scale adaptation when frames run slow — `index.ts`.
+- `src/lib/park2/shaders.ts` — StandardMaterial chunk overrides: packed attributes, slot tints, instancing from the InstanceList layout, wind and wave displacement, and the classic surface (detail layers, ground, water, neon) fed into PlayCanvas's PBR lighting — `pcBackend.ts`.
+- `src/lib/park2/sky.ts` — RGBA16F equirect sky and environment from the renderer's `Lighting`, with rebuild distances — `pcBackend.ts`.
+- `src/lib/park2/scratch.ts` — throwaway WebGL2 context for the GPU probe, renderer name and the baked detail texture layers — `pcBackend.ts`.
 - `src/lib/park/session.ts` — local and online sessions — `ParkGame.tsx`, `ParkHud.tsx`.
 - `src/lib/park/api.ts` — saves, tickets, scores and screenshot client — `ParkGame`, `ParkHud`, `ParkScoreboard`.
 - `server/park/index.mjs` (+ `index.d.mts`) — shared simulation entry — park UI files, `renderer.ts`, `session.ts`, `server/park.mjs`.

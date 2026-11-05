@@ -1,3 +1,5 @@
+import type { RenderBackend } from './backend'
+import { rendererName } from './quality'
 import { materialTable } from './materials'
 export type Mat4 = Float32Array
 export type Vec3 = [number, number, number]
@@ -330,9 +332,9 @@ export type Lighting = {
   skyTop: Vec3; skyBottom: Vec3; exposure: number; shadow?: number; wind: number; neon?: number
 }
 
-const BYTES = 24
+export const BYTES = 24
 
-function packMesh(builder: MeshBuilder) {
+export function packMesh(builder: MeshBuilder) {
   const d = builder.data, n = d.length / STRIDE
   const vb = new ArrayBuffer(n * BYTES), u32 = new Uint32Array(vb)
   let size = 1
@@ -659,7 +661,7 @@ const DEPTH_FRAG = `#version 300 es
 precision mediump float;
 void main() {}`
 
-const SKY_VERT = `#version 300 es
+export const SKY_VERT = `#version 300 es
 layout(location=0) in vec2 aPos; out vec2 vNdc;
 void main(){ vNdc = aPos; gl_Position = vec4(aPos, 0.9999, 1.0); }`
 const SKY_FRAG = `#version 300 es
@@ -676,9 +678,9 @@ void main(){
   outColor = vec4(c, 1.0);
 }`
 
-const DETAIL_SIZE = 256, DETAIL_LAYERS = 8
+export const DETAIL_SIZE = 256, DETAIL_LAYERS = 8
 
-const DETAIL_FRAG = `#version 300 es
+export const DETAIL_FRAG = `#version 300 es
 precision highp float;
 uniform int uLayer; out vec4 o;
 float hsh(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
@@ -764,7 +766,7 @@ const SKY_UNIFORMS = ['uTop', 'uBottom', 'uSunDir', 'uSunColor', 'uSunScatter', 
 
 type Program = { program: WebGLProgram; u: Record<string, WebGLUniformLocation | null> }
 
-export class Gl {
+export class Gl implements RenderBackend {
   gl: WebGL2RenderingContext
   program: WebGLProgram
   depthProgram: WebGLProgram
@@ -1160,6 +1162,10 @@ export class Gl {
     if (wind) gl.uniform1f(u.uWind, 0)
     if (opts.emissive || opts.alpha !== undefined || opts.specular !== undefined) this.reset()
   }
+
+  rendererName() { return rendererName(this.gl) }
+
+  dispose() { this.gl.getExtension('WEBGL_lose_context')?.loseContext() }
 
   /** Times a fixed fragment workload (synchronised with a 1-pixel read) to pick a quality tier. */
   probe(): number {

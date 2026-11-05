@@ -1,10 +1,11 @@
 import { Gl, MeshBuilder, InstanceList, mat4, hexColor } from './gl'
-import type { GpuMesh, Mat4, Vec3, Lighting } from './gl'
+import type { Mat4, Vec3, Lighting } from './gl'
+import type { RenderBackend, BackendFactory, MeshHandle as GpuMesh } from './backend'
 import { C, SHIRTS, GUEST_LOOKS, STAFF_LOOK, WALK_FRAMES, treeModel, personModel, balloonModel, umbrellaModel, stallModel, gateModel, queueSignModel, parkEntranceModel, benchModel, binModel, lampPostModel, lampHeadModel, litterModel, flatRideModel, carModel } from './models'
 import type { RideModel } from './models'
 import { personCuller, frustumPlanes, sphereVisible } from './culling'
 import { M } from './materials'
-import { QUALITY, requestedQuality, pickQuality, rendererName } from './quality'
+import { QUALITY, requestedQuality, pickQuality } from './quality'
 import type { ParkQuality, QualitySettings } from './quality'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel } from './waterRides'
@@ -53,7 +54,7 @@ const canvasOwners = new WeakMap<HTMLCanvasElement, ParkRenderer>()
 
 export class ParkRenderer {
   canvas: HTMLCanvasElement
-  g: Gl
+  g: RenderBackend
   state: ParkState | null = null
   myPark = 0
   cam = { tx: 128, ty: 200, tz: 6, yaw: -Math.PI / 2 - 0.6, pitch: 0.82, dist: 95 }
@@ -121,14 +122,14 @@ export class ParkRenderer {
   private eyePos: Vec3 = [0, 0, 0]
   private lastFrame = 0
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement, backend: BackendFactory = c => new Gl(c)) {
     this.canvas = canvas
     canvasOwners.set(canvas, this)
-    this.g = new Gl(canvas)
+    this.g = backend(canvas)
     const asked = requestedQuality()
     if (asked) { this.quality = asked; this.qualityReason = '?quality=' }
     else {
-      const picked = pickQuality(this.g.probe(), typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, rendererName(this.g.gl))
+      const picked = pickQuality(this.g.probe(), typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1, this.g.rendererName())
       this.quality = picked.tier; this.qualityReason = picked.reason
     }
     this.settings = QUALITY[this.quality]
@@ -989,6 +990,7 @@ export class ParkRenderer {
     }
     if (this.settings.fxaa && this.capturing && !this.debug.noPost) g.beginPost(this.width, this.height)
     g.begin(this.width, this.height, this.view, this.proj, eye, light, this.time, first ? 0 : shadowStrength)
+    if (g.lamps) { const lamps = this.list('lampHead'); g.lamps(lamps.data, lamps.count, this.isNight()) }
     this.drawWorld(first ? dt : 0)
     this.drawPreview()
     for (const chunk of this.chunks.values()) {
@@ -1403,8 +1405,8 @@ export class ParkRenderer {
   }
 
   dispose() {
-    const gl = this.g.gl, canvas = this.canvas
+    const g = this.g, canvas = this.canvas
     canvasOwners.delete(canvas)
-    setTimeout(() => { if (!canvasOwners.has(canvas)) gl.getExtension('WEBGL_lose_context')?.loseContext() }, 0)
+    setTimeout(() => { if (!canvasOwners.has(canvas)) g.dispose() }, 0)
   }
 }

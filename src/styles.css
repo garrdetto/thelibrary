@@ -1053,6 +1053,7 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-eyebrow{font-size:11px;letter-spacing:2px;opacity:.8}
 .pk-hero h1{font-family:'Manrope',sans-serif;font-size:clamp(38px,6vw,64px);margin:6px 0 10px;letter-spacing:-1.5px;line-height:1}
 .pk-hero p{max-width:720px;margin:0;line-height:1.55;opacity:.9}
+.pk-hero p.pk-edition{margin:0 0 10px;font-weight:600;opacity:1;color:#ffd9b8}
 .pk-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .pk-tabs button{display:flex;gap:6px;align-items:center;padding:10px 16px;border-radius:12px;background:#ffffff10;border:1px solid var(--pk-line);font-weight:650;font-size:13px;min-height:44px}
 .pk-tabs button.on{background:var(--pk-accent);color:#1b1b1b}

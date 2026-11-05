@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Camera, Check, Cloud, CloudRain, Droplets, Eraser, FastForward, Footprints, Gauge, Grid3x3, Hotel, Landmark, LoaderCircle, LogOut, Maximize2, MessageCircle, Minus, Mountain, MousePointer2, Paintbrush, Pause, Play, Plus, RotateCw, Save, Sparkles, Store, Sun, Moon, Trash2, Trees, Undo2, Users, Wrench, X, Zap } from 'lucide-react'
 import { ParkRenderer } from '@/lib/park/renderer'
 import { customRideThumb } from '@/lib/park/customRides'
+import type { BackendFactory } from '@/lib/park/backend'
 import { shotCamera } from '@/lib/park/shotCams'
 import { QUALITY_TIERS } from '@/lib/park/quality'
 import type { ParkQuality } from '@/lib/park/quality'
@@ -120,7 +121,7 @@ function Window({ title, onClose, children, wide, extraWide }: { title: string; 
   return <section className={`pk-window ${wide ? 'pk-window-wide' : ''} ${extraWide ? 'pk-window-xwide' : ''}`} aria-label={title}><header><strong>{title}</strong><button aria-label="Close" onClick={onClose}><X size={16} /></button></header><div className="pk-window-body">{children}</div></section>
 }
 
-export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }: { session: ParkSession; onQuit: () => void; signedIn: boolean; onScore?: () => void }) {
+export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, backend }: { session: ParkSession; onQuit: () => void; signedIn: boolean; onScore?: () => void; backend?: BackendFactory }) {
   const viewOnly = session instanceof ViewSession
   const signedIn = accountSignedIn && !viewOnly
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -180,7 +181,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     const canvas = canvasRef.current
     if (!canvas) return
     let renderer: ParkRenderer
-    try { renderer = new ParkRenderer(canvas) } catch (error) { setGlError((error as Error).message); return }
+    try { renderer = new ParkRenderer(canvas, backend) } catch (error) { setGlError((error as Error).message); return }
     rendererRef.current = renderer
     setQuality({ tier: renderer.quality, auto: renderer.qualityReason !== '?quality=' })
     if (import.meta.env.DEV) (window as unknown as { __park?: unknown }).__park = { session, renderer }
@@ -215,7 +216,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
     }
     raf = requestAnimationFrame(loop)
     return () => { cancelAnimationFrame(raf); observer.disconnect(); renderer.dispose(); rendererRef.current = null }
-  }, [session])
+  }, [session, backend])
 
   useEffect(() => { const r = rendererRef.current; if (r) { r.showGrid = grid || !['select', 'flat', 'stall', 'scenery'].includes(tool.kind) } }, [grid, tool])
   useEffect(() => { const r = rendererRef.current; if (r) r.rideCam = rideCam }, [rideCam])

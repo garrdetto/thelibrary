@@ -97,6 +97,7 @@ export function planPiece(map: ParkMap, park: number, from: PathEnd, segment: Pa
   const water = map.water[i] >= 0 && map.water[i] > tileMin(map, x, y)
   const base = Math.max(tileMax(map, x, y), map.water[i] >= 0 ? map.water[i] + 0.1 : -Infinity)
   const stored = sign > 0 ? z1 : z0
+  if (kind === 4 && sign === 0) return planBoardwalk(map, from, x, y, dir, base, stored, ghost)
   const groundEntry = groundEdge(map, x, y, (dir + 2) % 4)
   if (sign === 0 && stored <= base + 0.25 && !(water && pathKind !== 4) && (Math.abs(groundEntry - from.exit) <= 0.3 || stored < base - 0.05)) {
     const entry = groundEntry
@@ -119,6 +120,33 @@ export function planPiece(map: ParkMap, park: number, from: PathEnd, segment: Pa
   const snapped = deck - stored
   const snappedGhost: GhostPiece = { ...ghost, z0: z0 + snapped, z1: z1 + snapped }
   return { ok: true, anchor: false, x, y, dir, kind, elevation, ghost: snappedGhost, cost: PIECE_COST[kind], end: { x, y, dir, exit: z1 + snapped, slope: sign, placed: true } }
+}
+
+// A level boardwalk piece is a flat deck, never ground-following: the server
+// sets it on the tile's highest corner (or just above water) plus whole
+// half-metre steps (`pathDeckAtTile`). Plan it the same way, holding the run's
+// height: where the ground rises it steps up onto it (as far as the server lets
+// path tiles connect, PATH_STEP_LIMIT, less a margin),
+// where it falls away it stays up on stilts (dropping at most BOARDWALK_DROP),
+// so the builder's idea of the path end always matches the deck it built.
+const BOARDWALK_CLIMB = PATH_STEP_LIMIT - 0.2
+const BOARDWALK_DROP = 0.3
+
+function planBoardwalk(map: ParkMap, from: PathEnd, x: number, y: number, dir: number, base: number, stored: number, ghost: GhostPiece): PathPlan {
+  const fail = (error: string, g?: GhostPiece): PathPlan => ({ ok: false, x, y, dir, error, ...(g ? { ghost: g } : {}) })
+  const joined = from.placed || (inMap(map, from.x, from.y) && !!map.path[tileIndex(map, from.x, from.y)])
+  let elevation = 0
+  if (joined && base - stored > BOARDWALK_CLIMB) return fail('The ground rises too steeply here. Use a slope or stairs.', ghost)
+  if (joined && stored - base > BOARDWALK_DROP) {
+    elevation = Math.round((stored - base) / 0.5)
+    if (elevation < 0) return fail('The ground is too high here. Go up or turn.', ghost)
+    if (Math.abs(base + elevation * 0.5 - stored) > ALIGN_TOLERANCE) return fail('The ground here does not line up. Level the land or try another piece.', ghost)
+  }
+  if (elevation > 24) return fail('The path cannot go any higher.', ghost)
+  const deck = base + elevation * 0.5
+  if (stepsTooHigh(map, x, y, deck, 4)) return fail('The ground here is at a different height. Use a slope or stairs.', { ...ghost, z0: deck, z1: deck })
+  const deckGhost: GhostPiece = { ...ghost, z0: deck, z1: deck, ground: false }
+  return { ok: true, anchor: false, x, y, dir, kind: 4, elevation, ghost: deckGhost, cost: PIECE_COST[4], end: { x, y, dir, exit: deck, slope: 0, placed: true } }
 }
 
 export function ghostCorners(map: ParkMap, g: GhostPiece): [number, number, number, number] {

@@ -3,6 +3,7 @@
 //   node scripts/park-shots.mjs --out docs/park-graphics/after          screenshots + perf + audit
 //   node scripts/park-shots.mjs --out <dir> --quality low|medium|high     force a quality tier (default: auto)
 //   node scripts/park-shots.mjs --out <dir> --no-perf                     screenshots only
+//   node scripts/park-shots.mjs --out <dir> --edition 2                   Thrill Park 2 (PlayCanvas) instead of Thrill Park
 //
 // It opens Thrill Park from `pnpm dev` (started here when nothing answers on the port) in headless Chromium with
 // SwiftShader at 1280×800, starts a sandbox park, swaps in the deterministic scene from scripts/park-scene.mjs, renders
@@ -21,6 +22,7 @@ const quality = option('quality', '');
 const warmupMs = Number(option('warmup', '6000'));
 const sampleMs = Number(option('sample', '15000'));
 const base = `http://localhost:${port}`;
+const edition = option('edition', '1') === '2' ? 2 : 1;
 const browserArgs = ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'];
 
 async function up() { try { const r = await fetch(base); return r.ok || r.status < 500; } catch { return false; } }
@@ -55,7 +57,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on('pageerror', (e) => console.error('pageerror', e.message));
   await page.addInitScript(probe);
-  await page.goto(`${base}/${quality ? `?quality=${quality}` : ''}#park`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/${quality ? `?quality=${quality}` : ''}#park${edition === 2 ? '2' : ''}`, { waitUntil: 'domcontentloaded' });
   await page.waitForSelector('.pk-btn-go', { timeout: 120000 });
   await page.locator('.pk-btn-go').first().click();
   await page.waitForFunction(() => window.__park?.renderer, null, { timeout: 60000 });
@@ -109,7 +111,7 @@ try {
 
   if (flag('shots-only')) { await browser.close(); if (server) { try { process.kill(-server.pid); } catch {} } process.exit(0); }
   const split = await page.evaluate(() => {
-    const { renderer } = window.__park, gl = renderer.g.gl;
+    const { renderer } = window.__park, gl = renderer.g.gl ?? renderer.g.device.gl;
     renderer.focusPark(); renderer.cam.dist = 70;
     const px = new Uint8Array(4), sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
     const time = (n) => { sync(); const t0 = performance.now(); for (let i = 0; i < n; i++) { renderer.frame(performance.now()); sync(); } return (performance.now() - t0) / n; };
