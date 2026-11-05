@@ -70,7 +70,7 @@ Use TypeScript, descriptive identifiers, React hooks, and type-only imports. Kee
 
 ## Platform rules
 
-- All AI runs server-side: Gemini with the Gemini API key secret, and Meshy 3D generation (admin only) with `MESHY_API_KEY`. Text uses `gemini-3-flash-preview`; images use `gemini-3.1-flash-image`; songs use Lyria (`lyria-3.5`, `lyria-3-clip-preview`). Never expose environment values or provider errors.
+- All AI runs server-side: Gemini with the Gemini API key secret, and Meshy 3D generation (admin only) with `MESHY_API_KEY`. Text uses `gemini-3-flash-preview`; images use `gemini-3.1-flash-image`; songs use Lyria (`lyria-3.5`, `lyria-3-clip-preview`). Song Maker exception: its free mode needs no key; `public/modules/songmaker-synth.js` builds the instrumental in the browser with Web Audio, and `write` falls back to the keyless Pollinations text API, then to the offline template writer in `src/server/keyless-lyrics.ts`. Never expose environment values or provider errors.
 - Use D1 for structured records and KV for binary data. Never use local files, browser storage, or in-memory persistence for data that must persist.
 - Schema changes go in a new numbered file in `migrations/` and are applied with `wrangler d1 migrations apply thelibrary-db --remote`.
 - Non-GET endpoints check same origin. Ticket redeem endpoints are server-to-server and skip it.

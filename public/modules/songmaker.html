@@ -12,6 +12,7 @@
   :root { --accent: #ff3b7a; --accent2: #7c5cff; }
   .layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
   .panel h2 { margin: 0 0 12px; font: 700 24px Rajdhani, sans-serif; }
+  .panel h2.sub { margin-top: 18px; }
   label { display: grid; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: 1px; color: var(--muted); text-transform: uppercase; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
   textarea { width: 100%; min-height: 300px; resize: vertical; line-height: 1.55; font-size: 15px; }
@@ -19,6 +20,22 @@
   .field { margin-bottom: 10px; }
   .writer { display: flex; gap: 8px; margin-bottom: 10px; }
   .writer input { flex: 1; }
+  .engine { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .engine label { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--cell); cursor: pointer; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text); }
+  .engine label:has(input:checked) { border-color: var(--accent); }
+  .engine label:has(input:disabled) { opacity: .6; cursor: default; }
+  .engine input { margin-top: 3px; accent-color: var(--accent); }
+  .engine small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.4; }
+  .arrange[hidden] { display: none; }
+  .arrange .hint { margin: 0 0 10px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  .sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin: 4px 0 10px; }
+  .sliders label span { display: flex; justify-content: space-between; gap: 8px; }
+  .sliders output { color: var(--text); font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; font-weight: 600; }
+  input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  .check { display: flex; align-items: flex-start; gap: 10px; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--text); font-weight: 600; margin: 8px 0; cursor: pointer; }
+  .check input { margin-top: 3px; accent-color: var(--accent); }
+  .check small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; margin-top: 2px; line-height: 1.4; }
+  .arrange .tools { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
   .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
   .actions .quota { margin-left: auto; color: var(--muted); font-size: 13px; }
   .msg { min-height: 20px; margin: 10px 0 0; font-size: 14px; color: var(--muted); }
@@ -34,20 +51,23 @@
   .song.fresh { border-color: var(--accent); }
   .song h3 { margin: 0; font: 700 20px Rajdhani, sans-serif; }
   .song small { color: var(--muted); display: block; margin: 2px 0 8px; }
+  .song .tag { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--accent); color: var(--text); font-size: 11px; font-weight: 600; }
   .song audio { width: 100%; height: 40px; }
+  .song .line { min-height: 18px; margin: 6px 0 0; font-size: 13px; color: var(--text); }
   .song .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
   .song .row button, .song .row a { font: 600 12px Inter, sans-serif; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); color: var(--text); background: var(--panel); text-decoration: none; cursor: pointer; }
   .song pre { white-space: pre-wrap; font: 13px/1.5 Inter, sans-serif; color: var(--muted); max-height: 220px; overflow: auto; margin: 8px 0 0; }
   .empty { color: var(--muted); font-size: 14px; }
   .signin { text-align: center; padding: 40px 20px; }
   @media (max-width: 780px) { .layout { grid-template-columns: 1fr; } }
+  @media (max-width: 480px) { .engine, .sliders { grid-template-columns: 1fr; } }
   @media (prefers-reduced-motion: reduce) { .eq i { animation: none; height: 14px; } }
 </style>
 </head>
 <body>
 <main>
-  <header class="top"><h1>Song Maker</h1><div class="stats"><div class="stat"><span>SONGS LEFT TODAY</span><b id="left">—</b></div></div></header>
-  <div class="bar"><p>Your lyrics, sung by AI. Pick a sound, press <b>Make my song</b>, and get a finished track with vocals.</p></div>
+  <header class="top"><h1>Song Maker</h1><div class="stats"><div class="stat"><span>AI SONGS LEFT TODAY</span><b id="left">—</b></div></div></header>
+  <div class="bar"><p>Your lyrics, turned into a song. Make a free instrumental right in your browser with no API key, or have AI sing it when the site has AI vocals set up.</p></div>
   <div id="signin" class="panel signin" hidden><h2>Sign in to make songs</h2><p class="empty">Song Maker saves your songs to your account. Sign in on the library page, then come back here.</p></div>
   <div class="layout" id="app" hidden>
     <section class="panel">
@@ -56,6 +76,10 @@
       <div class="field"><label for="title">Title (optional)</label><input type="text" id="title" maxlength="80" placeholder="Untitled"></div>
       <div class="field"><label for="lyrics">Lyrics</label><textarea id="lyrics" maxlength="4000" placeholder="[Verse 1]&#10;Write your lines here&#10;&#10;[Chorus]&#10;The part everybody sings"></textarea></div>
       <h2>2. Sound</h2>
+      <div class="engine" role="radiogroup" aria-label="How to make the song">
+        <label><input type="radio" name="engine" value="free" checked><span><b>Free · in your browser</b><small>An instrumental built on this device, with an optional spoken vocal guide. No API key and no daily limit.</small></span></label>
+        <label><input type="radio" name="engine" value="ai" id="engineAi"><span><b>AI vocals</b><small id="aiNote">Sung by AI with the site's Gemini key. Up to five a day.</small></span></label>
+      </div>
       <div class="grid2">
         <label>Genre<select id="genre"><option value="">Surprise me</option><option>Pop</option><option>Indie pop</option><option>Rock</option><option>Pop-punk</option><option>Hip-hop</option><option>Rap</option><option>R&amp;B</option><option>Country</option><option>Folk</option><option>EDM</option><option>House</option><option>Synthwave</option><option>Lo-fi</option><option>Jazz</option><option>Blues</option><option>Soul</option><option>Funk</option><option>Reggae</option><option>Metal</option><option>Gospel</option><option>Musical theatre</option><option>Kids sing-along</option></select></label>
         <label>Mood<select id="mood"><option value="">Any</option><option>Happy</option><option>Hype</option><option>Romantic</option><option>Bittersweet</option><option>Sad</option><option>Chill</option><option>Dark</option><option>Epic</option><option>Funny</option><option>Dreamy</option></select></label>
@@ -64,6 +88,24 @@
       </div>
       <div class="field"><label for="style">Extra sound directions (optional)</label><input type="text" id="style" maxlength="400" placeholder="e.g. acoustic guitar, handclaps, big drums in the chorus"></div>
       <label>Length<select id="length"><option value="full">Full song (about 2–3 minutes)</option><option value="clip">Short clip (30 seconds)</option></select></label>
+      <div class="arrange" id="arrange">
+        <h2 class="sub">3. Arrangement</h2>
+        <p class="hint">Fine-tune the free instrumental. Changing the genre, mood, tempo or sound directions above resets these to match.</p>
+        <div class="grid2">
+          <label>Groove<select id="a-groove"></select></label>
+          <label>Key<select id="a-key"></select></label>
+          <label>Scale<select id="a-scale"></select></label>
+          <label>Chords<select id="a-chords"></select></label>
+          <label>Bass<select id="a-bass"></select></label>
+          <label>Melody<select id="a-lead"></select></label>
+          <label>Melody plays<select id="a-leadEverywhere"><option value="0">Intro, choruses &amp; outro</option><option value="1">Whole song</option></select></label>
+          <label>Lyric pacing<select id="a-barsPerLine"><option value="1">1 bar per line · fast</option><option value="2">2 bars per line · relaxed</option></select></label>
+        </div>
+        <div class="sliders" id="sliders"></div>
+        <label class="check"><input type="checkbox" id="a-sevenths"><span>Jazzy seventh chords<small>Adds a fourth note to every chord for a richer R&amp;B or jazz color.</small></span></label>
+        <label class="check"><input type="checkbox" id="guide"><span>Vocal guide<small>Your browser's built-in voice reads each lyric line in time while it plays, using the Vocals choice above. Playback only; not part of the download.</small></span></label>
+        <div class="tools"><button id="variationBtn" title="New chords and melody with the same settings">New variation</button><button id="resetBtn">Reset to sound defaults</button></div>
+      </div>
       <div class="actions"><button class="primary" id="makeBtn">Make my song</button><span class="quota" id="quota"></span></div>
       <div class="busy" id="busy" role="status"><div class="eq"><i></i><i></i><i></i><i></i><i></i></div><span id="busyText">Writing the music and recording the vocals… this can take a minute or two.</span></div>
       <p class="msg" id="msg" aria-live="polite"></p>
@@ -73,14 +115,18 @@
       <div class="songs" id="songs"><p class="empty">Loading…</p></div>
     </section>
   </div>
-  <footer>Songs are generated by AI and saved to your account (up to five a day). Use your own words: real artist names and copyrighted lyrics are declined by the music service. Every song carries an inaudible AI watermark.</footer>
+  <footer>Free songs are built in your browser with no API key; they stay on this device until you download them. AI vocal songs are saved to your account (up to five a day), carry an inaudible AI watermark, and decline real artist names and copyrighted lyrics. Use your own words.</footer>
 </main>
 <script>
 'use strict';
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
-let songs = [], quota = null, busy = false, freshId = null;
+let songs = [], localSongs = [], quota = null, busy = false, freshId = null, aiReady = false, synth = null, arrangement = null, localCount = 0;
+const sliderDefs = [
+  ['tempo', 'Tempo', 60, 180, 1, v => `${v} BPM`], ['swing', 'Swing', 0, 0.6, 0.05, v => `${Math.round(v / 0.6 * 100)}%`], ['reverb', 'Reverb', 0, 1, 0.05, v => `${Math.round(v * 100)}%`],
+  ['mix.drums', 'Drums', 0, 1, 0.05, v => `${Math.round(v * 100)}%`], ['mix.bass', 'Bass', 0, 1, 0.05, v => `${Math.round(v * 100)}%`], ['mix.chords', 'Chords', 0, 1, 0.05, v => `${Math.round(v * 100)}%`], ['mix.lead', 'Melody', 0, 1, 0.05, v => `${Math.round(v * 100)}%`],
+];
 
 async function api(body) {
   const response = await fetch('/api/songmaker', body ? { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { credentials: 'same-origin' });
@@ -89,21 +135,102 @@ async function api(body) {
   return data;
 }
 function say(text, error) { $('msg').textContent = text || ''; $('msg').className = 'msg' + (error ? ' error' : ''); }
+const engine = () => document.querySelector('input[name="engine"]:checked').value;
 function showQuota() {
   const left = quota && quota.remaining != null ? quota.remaining : null;
-  $('left').textContent = left == null ? '∞' : left;
-  $('quota').textContent = left == null ? 'Unlimited songs' : `${left} of ${quota.limit} left in the last 24 h`;
-  $('makeBtn').disabled = busy || left === 0;
+  $('left').textContent = !aiReady ? '—' : left == null ? '∞' : left;
+  const free = engine() === 'free';
+  $('quota').textContent = free ? 'Free · no limit' : left == null ? 'Unlimited AI songs' : `${left} of ${quota.limit} AI songs left in the last 24 h`;
+  $('makeBtn').textContent = free ? 'Make my song (free)' : 'Make my song';
+  $('makeBtn').disabled = busy || (!free && left === 0);
+  $('arrange').hidden = !free;
 }
 function fmtDate(iso) { try { return new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }); } catch (e) { return ''; } }
+function fileName(title, ext) { return `${String(title).replace(/[^\w -]/g, '').trim() || 'song'}.${ext}`; }
 function renderSongs() {
   const box = $('songs');
-  if (!songs.length) { box.innerHTML = '<p class="empty">No songs yet. Your first one will show up here.</p>'; return; }
-  box.innerHTML = songs.map(s => `<article class="song${s.id === freshId ? ' fresh' : ''}"><h3>${esc(s.title)}</h3><small>${esc(s.style || 'AI arrangement')} · ${s.length === 'clip' ? '30 s clip' : 'full song'} · ${fmtDate(s.createdAt)}</small>
-    <div class="player" id="pl-${s.id}"><button class="primary" data-play="${s.id}">▶ Play</button></div>
-    <div class="row"><a href="/api/songmaker?audio=${s.id}" download="${esc(s.title.replace(/[^\w -]/g, '').trim() || 'song')}.mp3">Download MP3</a><button data-lyrics="${s.id}">Lyrics</button><button data-reuse="${s.id}">Reuse lyrics</button><button data-del="${s.id}">Delete</button></div>
+  if (!songs.length && !localSongs.length) { box.innerHTML = '<p class="empty">No songs yet. Your first one will show up here.</p>'; return; }
+  const local = localSongs.map(s => `<article class="song${s.id === freshId ? ' fresh' : ''}"><h3>${esc(s.title)}</h3><small><span class="tag">Free</span>${esc(s.style)} · ${s.length === 'clip' ? '30 s clip' : 'full song'} · on this device only</small>
+    <audio controls preload="auto" src="${s.url}" data-local="${s.id}"></audio><p class="line" id="line-${s.id}" aria-live="off"></p>
+    <div class="row"><a href="${s.url}" download="${esc(fileName(s.title, 'wav'))}">Download WAV</a><button data-lyrics="${s.id}">Lyrics</button><button data-reuse="${s.id}">Reuse lyrics</button><button data-remove="${s.id}">Remove</button></div>
     <pre hidden id="ly-${s.id}">${esc(s.lyrics)}</pre></article>`).join('');
+  const saved = songs.map(s => `<article class="song${s.id === freshId ? ' fresh' : ''}"><h3>${esc(s.title)}</h3><small>${esc(s.style || 'AI arrangement')} · ${s.length === 'clip' ? '30 s clip' : 'full song'} · ${fmtDate(s.createdAt)}</small>
+    <div class="player" id="pl-${s.id}"><button class="primary" data-play="${s.id}">▶ Play</button></div>
+    <div class="row"><a href="/api/songmaker?audio=${s.id}" download="${esc(fileName(s.title, 'mp3'))}">Download MP3</a><button data-lyrics="${s.id}">Lyrics</button><button data-reuse="${s.id}">Reuse lyrics</button><button data-del="${s.id}">Delete</button></div>
+    <pre hidden id="ly-${s.id}">${esc(s.lyrics)}</pre></article>`).join('');
+  box.innerHTML = local + saved;
 }
+
+async function loadSynth() {
+  if (synth) return synth;
+  synth = await import('./songmaker-synth.js');
+  const fill = (id, options) => { $(id).innerHTML = options.map(o => `<option value="${esc(o.id)}">${esc(o.label)}</option>`).join(''); };
+  fill('a-groove', synth.grooveOptions); fill('a-scale', synth.scaleOptions); fill('a-chords', synth.chordOptions); fill('a-bass', synth.bassOptions); fill('a-lead', synth.leadOptions);
+  fill('a-key', synth.keyNames.map((name, index) => ({ id: String(index), label: name })));
+  $('sliders').innerHTML = sliderDefs.map(([key, label, min, max, step]) => `<label>${key.startsWith('mix.') ? `<span>${label} volume<output id="o-${key}"></output></span>` : `<span>${label}<output id="o-${key}"></output></span>`}<input type="range" id="s-${key}" min="${min}" max="${max}" step="${step}"></label>`).join('');
+  return synth;
+}
+function readPath(key) { return key.startsWith('mix.') ? arrangement.mix[key.slice(4)] : arrangement[key]; }
+function showArrangement() {
+  if (!arrangement) return;
+  ['groove', 'scale', 'chords', 'bass', 'lead'].forEach(key => { $('a-' + key).value = arrangement[key]; });
+  $('a-key').value = String(arrangement.key);
+  $('a-leadEverywhere').value = arrangement.leadEverywhere ? '1' : '0';
+  $('a-barsPerLine').value = String(arrangement.barsPerLine);
+  $('a-sevenths').checked = arrangement.sevenths;
+  $('a-leadEverywhere').disabled = arrangement.lead === 'off';
+  sliderDefs.forEach(([key, , , , , show]) => { $('s-' + key).value = readPath(key); $('o-' + key).textContent = show(readPath(key)); });
+}
+function direction() { return { genre: $('genre').value, mood: $('mood').value, style: $('style').value, tempo: $('tempo').value, title: $('title').value }; }
+async function resetArrangement() { const s = await loadSynth(); arrangement = s.defaultArrangement(direction()); showArrangement(); }
+function bindArrangement() {
+  ['groove', 'scale', 'chords', 'bass', 'lead'].forEach(key => $('a-' + key).addEventListener('change', e => { arrangement[key] = e.target.value; showArrangement(); }));
+  $('a-key').addEventListener('change', e => { arrangement.key = Number(e.target.value); });
+  $('a-leadEverywhere').addEventListener('change', e => { arrangement.leadEverywhere = e.target.value === '1'; });
+  $('a-barsPerLine').addEventListener('change', e => { arrangement.barsPerLine = e.target.value === '1' ? 1 : 2; });
+  $('a-sevenths').addEventListener('change', e => { arrangement.sevenths = e.target.checked; });
+  $('sliders').addEventListener('input', e => {
+    const key = e.target.id.slice(2); const value = Number(e.target.value);
+    if (key.startsWith('mix.')) arrangement.mix = { ...arrangement.mix, [key.slice(4)]: value }; else arrangement[key] = value;
+    $('o-' + key).textContent = sliderDefs.find(d => d[0] === key)[5](value);
+  });
+  $('variationBtn').onclick = () => { arrangement.seed = (Math.imul(arrangement.seed, 1103515245) + 12345) >>> 0; say('New chords and melody ready. Make the song to hear them.'); };
+  $('resetBtn').onclick = () => { resetArrangement(); say('Arrangement reset to match your sound choices.'); };
+  ['genre', 'mood', 'tempo'].forEach(id => $(id).addEventListener('change', () => { if (synth) resetArrangement(); }));
+  $('style').addEventListener('change', () => { if (synth) resetArrangement(); });
+}
+
+function voicePitch(vocals, index) {
+  if (vocals === 'female') return 1.35;
+  if (vocals === 'male') return 0.7;
+  if (vocals === 'duet') return index % 2 ? 1.35 : 0.7;
+  return 1;
+}
+const guide = { timers: [], song: null };
+function stopGuide() { guide.timers.forEach(t => clearTimeout(t)); guide.timers = []; if ('speechSynthesis' in window) window.speechSynthesis.cancel(); }
+function startGuide(audio, song) {
+  stopGuide();
+  const line = $('line-' + song.id);
+  song.cues.forEach((cue, index) => {
+    if (cue.time + 0.05 < audio.currentTime) return;
+    guide.timers.push(setTimeout(() => {
+      if (line) line.textContent = '♪ ' + cue.text;
+      if (!song.guide || !('speechSynthesis' in window)) return;
+      const utterance = new SpeechSynthesisUtterance(cue.text);
+      utterance.rate = Math.min(2, Math.max(0.8, cue.text.split(/\s+/).length / (cue.duration * 2.6)));
+      utterance.pitch = voicePitch(song.vocals, index);
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }, (cue.time - audio.currentTime) * 1000));
+  });
+}
+['play', 'pause', 'seeked', 'ended'].forEach(type => $('songs').addEventListener(type, e => {
+  const audio = e.target; if (!audio.dataset || !audio.dataset.local) return;
+  const song = localSongs.find(s => s.id === audio.dataset.local); if (!song) return;
+  if (type === 'play' || (type === 'seeked' && !audio.paused)) { document.querySelectorAll('audio').forEach(other => { if (other !== audio) other.pause(); }); startGuide(audio, song); }
+  else if (type === 'pause' || type === 'ended') { stopGuide(); if (type === 'ended') { const line = $('line-' + song.id); if (line) line.textContent = ''; } }
+}, true));
+
 $('songs').addEventListener('click', async e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.play) {
@@ -112,7 +239,8 @@ $('songs').addEventListener('click', async e => {
     catch (err) { b.disabled = false; b.textContent = '▶ Play'; say(err.message, true); }
   }
   if (b.dataset.lyrics) { const pre = $('ly-' + b.dataset.lyrics); pre.hidden = !pre.hidden; }
-  if (b.dataset.reuse) { const s = songs.find(x => x.id === b.dataset.reuse); if (s) { $('lyrics').value = s.lyrics; $('title').value = s.title; say('Lyrics copied into the editor.'); $('lyrics').focus(); } }
+  if (b.dataset.reuse) { const s = [...localSongs, ...songs].find(x => x.id === b.dataset.reuse); if (s) { $('lyrics').value = s.lyrics; $('title').value = s.title; say('Lyrics copied into the editor.'); $('lyrics').focus(); } }
+  if (b.dataset.remove) { const s = localSongs.find(x => x.id === b.dataset.remove); stopGuide(); if (s) URL.revokeObjectURL(s.url); localSongs = localSongs.filter(x => x.id !== b.dataset.remove); renderSongs(); }
   if (b.dataset.del) {
     if (b.dataset.confirm !== '1') { b.dataset.confirm = '1'; b.textContent = 'Really delete?'; setTimeout(() => { b.dataset.confirm = ''; b.textContent = 'Delete'; }, 3000); return; }
     try { const r = await api({ action: 'delete', id: b.dataset.del }); songs = songs.filter(s => s.id !== b.dataset.del); quota = r.quota; renderSongs(); showQuota(); } catch (err) { say(err.message, true); }
@@ -124,26 +252,58 @@ $('writeBtn').onclick = async () => {
   if ($('lyrics').value.trim() && $('lyrics').dataset.confirm !== '1') { $('lyrics').dataset.confirm = '1'; say('This replaces the lyrics in the editor. Press Write lyrics again to continue.'); return; }
   $('lyrics').dataset.confirm = '';
   $('writeBtn').disabled = true; say('Writing lyrics…');
-  try { const r = await api({ action: 'write', idea, genre: $('genre').value, mood: $('mood').value }); $('lyrics').value = r.lyrics; if (!$('title').value) $('title').value = r.title; say('Draft ready. Edit anything you like, then make the song.'); store.set('songmaker-draft', JSON.stringify({ title: $('title').value, lyrics: $('lyrics').value })); }
+  try {
+    const r = await api({ action: 'write', idea, genre: $('genre').value, mood: $('mood').value });
+    $('lyrics').value = r.lyrics; if (!$('title').value) $('title').value = r.title;
+    say(r.writer === 'offline' ? 'Starter draft ready from the built-in writer. Make it yours by editing any line, then make the song.' : 'Draft ready. Edit anything you like, then make the song.');
+    store.set('songmaker-draft', JSON.stringify({ title: $('title').value, lyrics: $('lyrics').value }));
+  }
   catch (err) { say(err.message, true); }
   finally { $('writeBtn').disabled = false; }
 };
+async function makeFree(lyrics) {
+  const s = await loadSynth();
+  if (!arrangement) arrangement = s.defaultArrangement(direction());
+  $('busyText').textContent = 'Building your track… 0%';
+  const length = $('length').value;
+  const rendered = await s.renderSong(lyrics, { ...arrangement, mix: { ...arrangement.mix } }, { maxSeconds: length === 'clip' ? 30 : undefined, onProgress: share => { $('busyText').textContent = `Building your track… ${Math.round(share * 100)}%`; } });
+  const blob = s.encodeWav(rendered.buffer);
+  const title = $('title').value.trim() || lyrics.split('\n').map(line => line.trim()).find(line => line && !line.startsWith('['))?.slice(0, 60) || 'Untitled song';
+  const keyName = s.keyNames[arrangement.key];
+  const style = [$('genre').value || 'Pop', $('mood').value, `${arrangement.tempo} BPM`, `${keyName} ${arrangement.scale.replace('-', ' ')}`].filter(Boolean).join(' · ');
+  localCount += 1;
+  const song = { id: `local-${localCount}`, title, style, lyrics, length, url: URL.createObjectURL(blob), cues: rendered.cues, guide: $('guide').checked, vocals: $('vocals').value };
+  localSongs.unshift(song); freshId = song.id; renderSongs();
+  say(song.guide ? 'Your song is ready. Press play to hear it with the vocal guide.' : 'Your song is ready. Press play!');
+  const player = document.querySelector('.song.fresh audio'); if (player) { player.scrollIntoView({ behavior: 'smooth', block: 'center' }); player.play().catch(() => {}); }
+}
 $('makeBtn').onclick = async () => {
   const lyrics = $('lyrics').value.trim();
   if (lyrics.length < 20) { say('Add at least a couple of lines of lyrics, or use Write lyrics.', true); $('lyrics').focus(); return; }
   busy = true; showQuota(); say(''); $('busy').classList.add('show');
   try {
+    if (engine() === 'free') { await makeFree(lyrics); return; }
+    $('busyText').textContent = 'Writing the music and recording the vocals… this can take a minute or two.';
     const r = await api({ action: 'create', title: $('title').value.trim(), lyrics, style: $('style').value.trim(), genre: $('genre').value, mood: $('mood').value, vocals: $('vocals').value, tempo: $('tempo').value, length: $('length').value });
     songs.unshift(r.song); quota = r.quota; freshId = r.song.id; renderSongs();
     say('Your song is ready. Press play!');
     const play = document.querySelector('.song.fresh [data-play]'); if (play) { play.scrollIntoView({ behavior: 'smooth', block: 'center' }); play.click(); }
-  } catch (err) { say(err.message, true); }
+  } catch (err) { say(err.message || 'This browser could not build the song. Try a current version of Chrome, Edge, Firefox or Safari.', true); }
   finally { busy = false; $('busy').classList.remove('show'); showQuota(); }
 };
+document.querySelectorAll('input[name="engine"]').forEach(input => input.addEventListener('change', () => { store.set('songmaker-engine', engine()); showQuota(); if (engine() === 'free' && !arrangement) resetArrangement(); }));
 ['title', 'lyrics'].forEach(id => $(id).addEventListener('input', () => store.set('songmaker-draft', JSON.stringify({ title: $('title').value, lyrics: $('lyrics').value }))));
+bindArrangement();
 (async () => {
   try { const d = JSON.parse(store.get('songmaker-draft') || 'null'); if (d) { $('title').value = d.title || ''; $('lyrics').value = d.lyrics || ''; } } catch (e) { /* no draft */ }
-  try { const r = await api(); songs = r.songs; quota = r.quota; $('app').hidden = false; renderSongs(); showQuota(); }
+  try {
+    const r = await api(); songs = r.songs; quota = r.quota; aiReady = r.ai !== false; $('app').hidden = false;
+    if (!aiReady) { $('engineAi').disabled = true; $('aiNote').textContent = 'Not set up on this site yet: it needs a Gemini API key. The free option works without one.'; }
+    const preferred = store.get('songmaker-engine');
+    document.querySelector(`input[name="engine"][value="${aiReady && preferred === 'ai' ? 'ai' : 'free'}"]`).checked = true;
+    renderSongs(); showQuota();
+    if (engine() === 'free') resetArrangement().catch(() => say('The free song builder could not load. Refresh the page to try again.', true));
+  }
   catch (err) { if (err.status === 401) $('signin').hidden = false; else { $('app').hidden = false; $('songs').innerHTML = `<p class="empty">${esc(err.message)}</p>`; } }
 })();
 </script>
