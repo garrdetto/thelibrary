@@ -936,3 +936,31 @@ test('path slopes ramp half as high as stairs and stairs keep climbing', () => {
   }
   assert.equal(state.map.pathElevation[tileIndex(state.map, x, 10)], 0)
 })
+
+test('the Million Dollar Dash records the first moment value and rating both qualify, and saves keep it', async () => {
+  const { checkMillionDash, millionFromHistory, deserializePark, serializePark, MILLION_VALUE, MILLION_RATING, DAYS_PER_MONTH, DAY_SECONDS } = await import('./index.mjs')
+  const state = parkFixture()
+  const p = state.parks[0]
+  p.rating = MILLION_RATING
+  checkMillionDash(state)
+  assert.equal(p.millionAt, undefined, 'a cheap park does not qualify')
+  state.entities[999] = { id: 999, type: 'stall', kind: Object.keys((await import('./index.mjs')).STALLS)[0], park: 0, x: 1, y: 1 }
+  p.guestsIn = Math.ceil(MILLION_VALUE / 6)
+  p.rating = MILLION_RATING - 1
+  checkMillionDash(state)
+  assert.equal(p.millionAt, undefined, 'rating below 750 does not qualify')
+  p.rating = MILLION_RATING
+  state.time.seconds = 1234.5
+  checkMillionDash(state)
+  assert.equal(p.millionAt.seconds, 1234.5)
+  state.time.seconds = 2000
+  checkMillionDash(state)
+  assert.equal(p.millionAt.seconds, 1234.5, 'the first moment is kept')
+  const back = deserializePark(JSON.parse(JSON.stringify(serializePark(state))))
+  assert.equal(back.parks[0].millionAt.seconds, 1234.5)
+  const old = { history: [{ value: 5e5, rating: 800 }, { value: 1.2e6, rating: 760 }, { value: 2e6, rating: 900 }] }
+  const past = millionFromHistory(old, { year: 1, month: 3 })
+  assert.equal(past.approx, true)
+  assert.equal(past.seconds, (2 * DAYS_PER_MONTH - 0.3) * DAY_SECONDS)
+  assert.equal(millionFromHistory(old, { year: 2, month: 3 }), null, 'incomplete history is not trusted')
+})

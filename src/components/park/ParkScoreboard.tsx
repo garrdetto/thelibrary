@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { Eye, LoaderCircle, RefreshCw, Trophy } from 'lucide-react'
+import { Eye, LoaderCircle, RefreshCw, Timer, Trophy } from 'lucide-react'
 import { postReset, useRecordResetTarget } from '../AdminRecordReset'
 import { ParkShotDialog } from './ParkShotDialog'
 import { parkApi } from '@/lib/park/api'
-import type { ParkScore, ParkScoreBoard } from '@/lib/park/api'
-import { SCENARIOS, formatMoney } from '../../../server/park/index.mjs'
+import type { ParkMillionScore, ParkScore, ParkScoreBoard } from '@/lib/park/api'
+import { DAY_SECONDS, MILLION_RATING, MILLION_VALUE, MONTHS, SCENARIOS, formatMoney } from '../../../server/park/index.mjs'
+
+// In-game days since the park opened (the first day starts 30% in).
+const dashDays = (m: ParkMillionScore) => m.seconds / DAY_SECONDS + 0.3
+const dashDate = (m: ParkMillionScore) => `${MONTHS[m.month]?.slice(0, 3) ?? '?'} ${m.day + 1}, Year ${m.year}`
+type Viewing = { kind: 'value'; record: ParkScore } | { kind: 'million'; record: ParkMillionScore }
 
 export const SCORED_MAPS = Object.entries(SCENARIOS).filter(([id, s]) => !s.versus && id !== 'sandbox').map(([id, s]) => ({ id, name: s.name }))
 
@@ -14,7 +19,7 @@ export function ParkScoreboard({ username, initial, refreshKey, onExplore, explo
   const [board, setBoard] = useState<ParkScoreBoard | null>(null)
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [refreshing, setRefreshing] = useState(false)
-  const [viewing, setViewing] = useState<ParkScore | null>(null)
+  const [viewing, setViewing] = useState<Viewing | null>(null)
   const closeView = useCallback(() => setViewing(null), [])
   const name = SCORED_MAPS.find(m => m.id === map)?.name ?? map
 
@@ -30,11 +35,12 @@ export function ParkScoreboard({ username, initial, refreshKey, onExplore, explo
   useRecordResetTarget({
     key: `park-scores:${map}`,
     label: `Thrill Park ${name} leaderboard`,
-    description: `Current ${name} leaderboard entries will be cleared. Saved parks reappear after the next save or autosave.`,
+    description: `Current ${name} Richest Parks and Million Dollar Dash entries will be cleared. Saved parks reappear after the next save or autosave.`,
     reset: async () => { await postReset('/api/park', 'POST', { action: 'reset-scores', scenario: map }); await load(true) },
   })
 
   const records = board?.records ?? []
+  const million = board?.million ?? []
   const mine = username?.toLowerCase()
   return <section className="module-scores pk-scores" style={{ '--module-accent': '#ffcf4a' } as CSSProperties} aria-labelledby="park-scores-title" aria-busy={state === 'loading' || refreshing}>
     <header className="module-scores-head">
@@ -57,10 +63,34 @@ export function ParkScoreboard({ username, initial, refreshKey, onExplore, explo
       ? <div className="module-scores-scroll"><table>
           <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Park</th><th scope="col">Company value</th><th scope="col">Saved</th><th scope="col" aria-label="Screenshot"></th></tr></thead>
           <tbody>{records.map((record, index) => {
-            return <tr key={record.parkId} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{record.parkName}</td><td>{formatMoney(record.value)}</td><td><time dateTime={record.savedAt}>{new Date(record.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time></td><td><button type="button" className="pk-score-view" onClick={() => setViewing(record)} aria-label={`View a screenshot of ${record.parkName}`}><Eye size={13}/> View</button></td></tr>
+            return <tr key={record.parkId} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{record.parkName}</td><td>{formatMoney(record.value)}</td><td><time dateTime={record.savedAt}>{new Date(record.savedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</time></td><td><button type="button" className="pk-score-view" onClick={() => setViewing({ kind: 'value', record })} aria-label={`View a screenshot of ${record.parkName}`}><Eye size={13}/> View</button></td></tr>
           })}</tbody>
         </table></div>
       : <p className="module-scores-status">No parks on {name} yet. {username ? 'Save a park here to be the first.' : 'Sign in and be the first.'}</p>)}
-    {viewing && <ParkShotDialog record={viewing} mapName={name} onClose={closeView} onExplore={onExplore ? () => onExplore(map, viewing.parkId) : undefined} exploreBusy={exploreBusy === `${map}:${viewing.parkId}`} />}
+    {state === 'ready' && <section className="pk-dash" aria-labelledby="park-dash-title">
+      <header className="pk-dash-head">
+        <span className="module-scores-eyebrow"><Timer size={13}/> MILLION DOLLAR DASH</span>
+        <h3 id="park-dash-title">Quickest to {formatMoney(MILLION_VALUE)} <small>Top 10 on {name}</small></h3>
+        <p>Ranked by in-game time from opening day until the park value reached {formatMoney(MILLION_VALUE)} while the park rating was {MILLION_RATING} or higher at the same moment. Each park keeps its fastest time.</p>
+      </header>
+      {million.length
+        ? <div className="module-scores-scroll"><table>
+            <thead><tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Park</th><th scope="col">In-game time</th><th scope="col">Reached</th><th scope="col">Rating</th><th scope="col" aria-label="Screenshot"></th></tr></thead>
+            <tbody>{million.map((record, index) => <tr key={record.parkId} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}>
+              <td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{record.parkName}</td>
+              <td title={record.approx ? 'Recovered from monthly history, so the true moment may have been earlier that month.' : undefined}>{record.approx ? '≈ ' : ''}{dashDays(record).toFixed(1)} days</td>
+              <td>{dashDate(record)}</td><td>{record.rating}</td>
+              <td>{record.shot ? <button type="button" className="pk-score-view" onClick={() => setViewing({ kind: 'million', record })} aria-label={`View a screenshot of ${record.parkName}`}><Eye size={13}/> View</button> : null}</td>
+            </tr>)}</tbody>
+          </table></div>
+        : <p className="module-scores-status">No park on {name} has reached {formatMoney(MILLION_VALUE)} with a {MILLION_RATING} rating yet.</p>}
+    </section>}
+    {viewing && <ParkShotDialog
+      record={viewing.kind === 'value' ? viewing.record : { ...viewing.record, savedAt: viewing.record.reachedAt }}
+      mapName={name}
+      detail={viewing.kind === 'million' ? <>Reached {formatMoney(viewing.record.value)} park value with a {viewing.record.rating} rating in <strong>{viewing.record.approx ? '≈ ' : ''}{dashDays(viewing.record).toFixed(1)} in-game days</strong> ({dashDate(viewing.record)}). Screenshot shows the park as last saved.</> : undefined}
+      onClose={closeView}
+      onExplore={onExplore ? () => onExplore(map, viewing.record.parkId) : undefined}
+      exploreBusy={exploreBusy === `${map}:${viewing.record.parkId}`} />}
   </section>
 }

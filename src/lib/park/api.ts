@@ -9,7 +9,8 @@ async function call<T>(init?: RequestInit, query = ''): Promise<T> {
 
 export type ParkScore = { parkId: string; username: string; parkName: string; value: number; date: string; savedAt: string; shot: string | null; viewable: boolean }
 export type ParkView = { username: string; parkName: string; scenario: string; savedAt: string; data: string }
-export type ParkScoreBoard = { scenario: string; records: ParkScore[]; signedIn: boolean }
+export type ParkMillionScore = { parkId: string; username: string; parkName: string; seconds: number; day: number; month: number; year: number; value: number; rating: number; approx: boolean; reachedAt: string; shot: string | null; viewable: boolean }
+export type ParkScoreBoard = { scenario: string; records: ParkScore[]; million?: ParkMillionScore[]; signedIn: boolean }
 
 export const parkApi = {
   scores: (scenario: string) => call<ParkScoreBoard>(undefined, `?scores=${encodeURIComponent(scenario)}`),

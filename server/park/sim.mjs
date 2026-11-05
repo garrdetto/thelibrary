@@ -263,6 +263,37 @@ export function parkValue(state, park) {
   return Math.round(value + state.parks[park].guestsIn * 6)
 }
 
+export const MILLION_VALUE = 1_000_000
+export const MILLION_RATING = 750
+
+// The first in-game moment a park's value and rating are both at or above the
+// Million Dollar Dash thresholds at the same time. Recorded once per park and
+// kept in the save, so the leaderboard ranks the quickest in-game time.
+export function checkMillionDash(state) {
+  const t = state.time
+  for (const p of state.parks) {
+    if (!p.millionAt) { const past = millionFromHistory(p, t); if (past) p.millionAt = past }
+    if (p.millionAt || p.rating < MILLION_RATING) continue
+    const value = parkValue(state, p.id)
+    if (value < MILLION_VALUE) continue
+    p.millionAt = { seconds: Math.round(t.seconds * 100) / 100, day: t.day, month: t.month, year: t.year, value, rating: p.rating }
+    addNews(state, p.id, `${p.name} hit $1,000,000 park value with a ${p.rating} rating on ${MONTHS[t.month]} ${t.day + 1}, year ${t.year}.`, 'win')
+  }
+}
+
+// Parks saved before the dash was tracked: when the monthly history still covers
+// every month played, the first month-end that met both thresholds is used
+// (marked approx, since the true moment may have been earlier that month).
+export function millionFromHistory(p, time) {
+  const played = (time.year - 1) * MONTHS.length + time.month
+  const rows = Array.isArray(p.history) ? p.history : []
+  if (!played || rows.length !== played) return null
+  const i = rows.findIndex(r => (r?.value ?? 0) >= MILLION_VALUE && (r?.rating ?? 0) >= MILLION_RATING)
+  if (i < 0) return null
+  const done = i + 1
+  return { seconds: Math.max(0, (done * DAYS_PER_MONTH - 0.3) * DAY_SECONDS), day: 0, month: done % MONTHS.length, year: Math.floor(done / MONTHS.length) + 1, value: Math.round(rows[i].value), rating: Math.round(rows[i].rating), approx: true }
+}
+
 export function companyValue(state, park) {
   const p = state.parks[park]
   return Math.round(parkValue(state, park) + p.cash - p.loan)
@@ -391,6 +422,6 @@ export function stepPark(state, dt = SIM_STEP) {
   for (const e of Object.values(state.entities)) if (e.type === 'ride' && e.queue.length) e.queue = e.queue.filter(id => state.guestIndex.get(id)?.state === 'queue')
   updateQueuePositions(state)
   updateStaff(state, dt)
-  if (whole) { assignMechanics(state); updateRating(state); updateThrillCrowds(state) }
+  if (whole) { assignMechanics(state); updateRating(state); updateThrillCrowds(state); checkMillionDash(state) }
   if (t.tick % 100 === 0) { aggregateThoughts(state); for (const p of state.parks) p.value = parkValue(state, p.id) }
 }

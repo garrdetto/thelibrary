@@ -20,8 +20,9 @@ export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'vers
 export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number; wages?: number; electricity?: number }
 export type LandRect = { x0: number; y0: number; x1: number; y1: number }
 export type ParkLand = { initial: LandRect; limit: LandRect }
-export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; schemes?: ColorScheme[]; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; resortHotels?: number; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
+export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; schemes?: ColorScheme[]; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; resortHotels?: number; millionAt?: MillionAt; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
 export type News = { id: number; t: number; park: number; text: string; kind: string; ref: number | null }
+export type MillionAt = { seconds: number; day: number; month: number; year: number; value: number; rating: number; approx?: boolean }
 export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
   pathVersion: number; structVersion: number; parks: Park[]; guests: Guest[]; staff: Staff[]
@@ -156,6 +157,10 @@ export function mechanicJobDistance(state: ParkState, mechanic: Staff, ride: Ent
 export function objectiveText(objective: Objective): string
 export function parkValue(state: ParkState, park: number): number
 export function companyValue(state: ParkState, park: number): number
+export const MILLION_VALUE: number
+export const MILLION_RATING: number
+export function checkMillionDash(state: ParkState): void
+export function millionFromHistory(park: Park, time: ParkState['time']): MillionAt | null
 export function terrainPlan(state: ParkState, park: number, r: { x0: number; y0: number; x1: number; y1: number }, op: string, levelTo?: number | null): { error?: string; cost?: number }
 export function encodeDynamic(state: ParkState, sinceNews?: number): unknown
 export function applyDynamic(state: ParkState, dyn: unknown): void
