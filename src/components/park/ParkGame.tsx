@@ -30,7 +30,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
   useEffect(() => () => { lobbyRef.current?.close() }, [])
 
   useEffect(() => {
-    if ((tab === 'load' || tab === 'online') && signedIn && saves === null) void refreshSaves()
+    if ((tab === 'new' || tab === 'load' || tab === 'online') && signedIn && saves === null) void refreshSaves()
   }, [tab, signedIn])
 
   async function refreshSaves() {
@@ -144,7 +144,10 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
           <p>{s.description}</p>
           <p className="pk-objective-text">{objectiveText(s.objective)}</p>
           <small>Starting cash {formatMoney(s.cash)}{s.loan ? ` · loan ${formatMoney(s.loan)}` : ''}</small>
-          <button className="pk-btn pk-btn-go" onClick={() => startLocal(() => LocalSession.fresh(id))}><Play size={14} /> Play</button>
+          <div className="pk-play-row">
+            <button className="pk-btn pk-btn-go" onClick={() => startLocal(() => LocalSession.fresh(id))}><Play size={14} /> Play</button>
+            {signedIn && (saves ?? []).some(save => save.scenario === id) && <select className="pk-save-select" aria-label={`Saved parks for ${s.name}`} value="" disabled={Boolean(busy)} onChange={e => { if (e.target.value) void loadPark(e.target.value) }}><option value="">Saved parks…</option>{(saves ?? []).filter(save => save.scenario === id).map(save => <option key={save.parkId} value={save.parkId}>{save.name} · {save.summary.date} · {formatMoney(save.summary.cash)}</option>)}</select>}
+          </div>
         </div>
       </article>)}</div>}
 

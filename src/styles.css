@@ -1424,3 +1424,7 @@ body{background:var(--paper);color:var(--tone-0)}
   .adm-nav-group button{width:auto;white-space:nowrap}.adm-nav-group button.is-active::before{display:none}}
 @media(max-width:640px){.adm-arrange-list li{grid-template-columns:auto minmax(0,1fr) auto;gap:8px}.adm-arrange-list .adm-rank,.adm-arrange-list img{display:none}
   .adm-arrange-actions .adm-icon{width:30px}.adm-savebar{padding:12px}.adm-savebar>div{width:100%}.adm-savebar .adm-btn{flex:1}}
+
+.pk-play-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pk-save-select { min-width: 0; max-width: 100%; flex: 1 1 160px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--lib-border, rgba(255, 255, 255, 0.2)); background: var(--lib-surface, rgba(0, 0, 0, 0.3)); color: inherit; font: inherit; }
+.pk-save-select:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
