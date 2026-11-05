@@ -35,7 +35,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `public/_headers` — Workers static-asset caching: hashed `/modules/chunks/*` and `/assets/*` immutable for a year; `/models/*`, `/modules/maplestreet/*`, `/modules/sprites/*`, `/images/*` one day plus a week stale-while-revalidate — Cloudflare.
 - `docs/ASSETS.md` — before/after size, primitive and material table from the last `pnpm assets:report` — this PR and later phases.
 - `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
-- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/` and `modules-src/demoderby/` (tests excluded; they run through esbuild) — `pnpm test`.
+- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/`, `modules-src/demoderby/` and `modules-src/foxplains2/` (tests excluded; they run through esbuild) — `pnpm test`.
 - `scripts/fairway-tests.mjs` — bundles `modules-src/fairway/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
 - `scripts/demoderby-tests.mjs` — bundles `modules-src/demoderby/tests/*.test.ts` with esbuild (`models/CarBody` swapped for `tests/CarBodyStub.ts`, so no canvas is needed) and runs whole AI-only heats with `node --test` — `pnpm test`.
 - `scripts/engine-smoke.mjs` — Vite-builds `_template`, embeds it in a hub-like iframe, checks boot, 60 Hz loop, `--lib-*` tokens, same-origin Draco/KTX2 decoders, `dispose()`, console errors and CDN requests; `--out` saves a screenshot — `pnpm engine:smoke`.
@@ -278,6 +278,25 @@ The only PlayCanvas module: it bundles `playcanvas` from npm (pinned like three.
 - `shared/Mowing.ts` — lawn cells (cut time + blade lean per m²), lean blending, growth (`GROW_DAYS` = 5), mowing pay, run-length encoding — `RoomLogic`, `Game`, `Lawn`, `Grass`.
 - `shared/Protocol.ts` — message protocol types — every transport, `RoomLogic`, `WorldServer`.
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.
+
+### foxplains2 — Fox Plains 2 (`modules-src/foxplains2/`, PlayCanvas)
+Same shared world and protocol as Fox Plains; everything that doesn't draw is imported from `modules-src/maplestreet/` (`shared/`, `src/net/`, `Input`, `Storage`, `Gait`, `RigData`, `MiniMap`, `WardrobeUI`). Details in `modules-src/foxplains2/README.md`.
+- `modules-src/foxplains2/index.html` — page shell, HUD and wardrobe markup, styles — `vite.modules.ts` (→ `public/modules/foxplains2.html`).
+- `index.ts` — entry; imports `src/main.ts`.
+- `src/main.ts` — boot: username or guest name, published vehicles and items (Fox Plains' caches), shared world or `?solo=1` — `Game`.
+- `src/core/Renderer.ts` — PlayCanvas WebGL2 device, `AppBase`, camera, `FoxSky` layer, `CameraFrame` (TAA, SSAO, bloom, grading), quality tiers, adaptive render scale — `Game`, `Sky`, `Remotes`.
+- `src/core/Assets.ts` — glTF containers with meshopt and WebP hooks — `Houses`, `VehicleModels`, `AvatarKits`.
+- `src/core/Geo.ts` — `MeshBuilder`, `ChunkedBuilders`, `meshEntity` — every world builder, `VehicleModels`.
+- `src/core/Tex.ts` — procedural PBR surfaces and normal maps, facades, glass, night glow (`Mats`) — `Town`, `Downtown`, `Houses`, `Game`.
+- `src/world/Sky.ts` — clock, sky dome shader, sun/moon light and cascades, env atlas bake, fog, exposure — `Game`.
+- `src/world/Town.ts` — ground, roads, markings, curves, sidewalks, driveways, lawn atlas (`Lawn`), instanced trees, lamps and light pool, for-sale signs — `Game`.
+- `src/world/Downtown.ts` — downtown and grid buildings, storefronts, signs, civic, gas station, body shop, depot, town square, rings — `Game`.
+- `src/world/Houses.ts` — lot meshing from `shared/BuildRules.ts`, furniture models, lot colliders — `Game`.
+- `src/physics/Physics.ts`, `Character.ts`, `Vehicle.ts`, `Parking.ts` — Rapier world and the Fox Plains controllers ported line for line — `Game`, `Remotes`.
+- `src/physics/VehicleModels.ts` — built-in and published vehicle views, paint, lamps, wheels — `Vehicle`, `Remotes`.
+- `src/avatar/Avatar.ts` — scanned bodies, recolor shader chunk, procedural pose (`AvatarKits`, `Avatar`) — `Character`, `Remotes`.
+- `src/net/Remotes.ts` — interpolated neighbors, traffic and their vehicles, name tags — `Game`.
+- `src/game/Game.ts` — composition root and fixed step; `CameraRig.ts` — orbit/chase camera; `Hud.ts` — DOM HUD.
 
 ### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
 - `modules-src/fairway/module.json` — id `fairway`, title, accent `#4fd27a`, modes — `config.ts`.

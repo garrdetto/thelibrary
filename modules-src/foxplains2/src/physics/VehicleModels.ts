@@ -1,0 +1,315 @@
+/**
+ * What a vehicle looks like, for the player's own vehicles and everyone
+ * else's. Every view is built in the chassis frame (x forward, y up,
+ * z right) with its wheels as separate steer/spin entities.
+ *
+ *  - Built-in kinds (truck, sedan, coupe, hdtruck, golfcart, atv, mower,
+ *    zeroturn, trailer) use the library's optimized bodies in
+ *    public/models/maplestreet/vehicles/. Their wheel pivots are found at the
+ *    axle positions from shared/Vehicles.ts and re-hung on our own wheel nodes;
+ *    the clear-coated material takes the owner's paint, emissive materials
+ *    become head- and tail-lamps.
+ *  - `custom:` kinds (the bundled Maple Hauler and friends, and anything the
+ *    admin publishes) place the record's .glb by its model transform, take the
+ *    paint by material name or color key (shared/PaintMask.ts), and get our
+ *    procedural wheels and lamp lenses.
+ */
+import * as pc from 'playcanvas';
+import { meshEntity, MeshBuilder } from '../core/Geo';
+import type { Assets } from '../core/Assets';
+import { TUNING, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
+import { customVehicleRecord, type CustomVehicleRecord } from '../../../maplestreet/shared/CustomVehicles';
+import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
+import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
+
+export interface WheelView { steer: pc.Entity; spin: pc.Entity; axle: number; side: number; caster: boolean }
+
+export interface VehicleView {
+  readonly kind: string;
+  readonly tuning: VehicleTuning;
+  readonly root: pc.Entity;
+  readonly wheels: WheelView[];
+  head: pc.StandardMaterial[];
+  tail: pc.StandardMaterial[];
+  styleKey: string;
+  setStyle(style: CarStyle | null | undefined): void;
+  setLamps(night: number, braking: boolean): void;
+  destroy(): void;
+}
+
+const FINISH = { gloss: { metal: 0.15, gloss: 0.82, cc: 1 }, metallic: { metal: 0.55, gloss: 0.74, cc: 1 }, matte: { metal: 0.05, gloss: 0.28, cc: 0 } } as const;
+const hex = (h: string | number) => { const n = typeof h === 'number' ? h : parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255] as const; };
+
+let sharedMats: { rubber: pc.StandardMaterial; rim: pc.StandardMaterial } | null = null;
+function wheelMats() {
+  if (sharedMats) return sharedMats;
+  const rubber = new pc.StandardMaterial(); rubber.diffuse.set(0.08, 0.08, 0.08); rubber.useMetalness = true; rubber.metalness = 0; rubber.gloss = 0.2; rubber.update();
+  const rim = new pc.StandardMaterial(); rim.diffuseVertexColor = true; rim.diffuseVertexColorChannel = 'rgb'; (rim as unknown as { vertexColorGamma: boolean }).vertexColorGamma = true;
+  rim.useMetalness = true; rim.metalness = 0.85; rim.gloss = 0.72; rim.update();
+  sharedMats = { rubber, rim };
+  return sharedMats;
+}
+
+/** One tire mesh and one rim-and-hub mesh per wheel size: two draw calls a wheel. */
+const wheelMeshes = new Map<string, { tire: pc.Mesh; rim: pc.Mesh }>();
+function wheelMesh(device: pc.GraphicsDevice, radius: number, width: number) {
+  const key = `${radius.toFixed(3)}|${width.toFixed(3)}`;
+  let w = wheelMeshes.get(key);
+  if (w) return w;
+  const axleZ = new pc.Mat4().setFromEulerAngles(90, 0, 0);
+  const tire = new MeshBuilder().transform(axleZ);
+  tire.cylinder(0, -width / 2, 0, radius * 0.97, radius * 0.97, width, 28, false);
+  tire.cylinder(0, -width / 2 + 0.01, 0, radius, radius, width - 0.02, 28, false);
+  const rim = new MeshBuilder().transform(axleZ);
+  rim.color = [0.78, 0.8, 0.83];
+  rim.cylinder(0, -width / 2 - 0.005, 0, radius * 0.64, radius * 0.64, width + 0.01, 24, true);
+  rim.cylinder(0, -width / 2 - 0.006, 0, radius * 0.64, radius * 0.64, 0.002, 24, true);
+  rim.color = [0.16, 0.17, 0.19];
+  rim.cylinder(0, width / 2, 0, radius * 0.2, radius * 0.16, 0.03, 12, true);
+  rim.cylinder(0, -width / 2 - 0.03, 0, radius * 0.16, radius * 0.2, 0.03, 12, true);
+  for (let i = 0; i < 5; i++) {
+    const m = new pc.Mat4().setTRS(pc.Vec3.ZERO, new pc.Quat().setFromEulerAngles(0, 0, i * 72), pc.Vec3.ONE);
+    rim.transform(m);
+    for (const z of [width / 2 + 0.006, -width / 2 - 0.012]) rim.box(radius * 0.15, -radius * 0.05, z, radius * 0.6, radius * 0.05, z + 0.012);
+  }
+  w = { tire: tire.toMesh(device), rim: rim.toMesh(device, true) };
+  wheelMeshes.set(key, w);
+  return w;
+}
+
+/** Recolored copies of textures keyed by texture, key color, tolerance and paint. */
+const paintCache = new Map<string, pc.Texture>();
+function maskedTexture(device: pc.GraphicsDevice, map: pc.Texture, key: string, tolerance: number, paint: string): pc.Texture | null {
+  const id = `${map.name}|${map.width}x${map.height}|${key}|${tolerance}|${paint}`;
+  const hit = paintCache.get(id);
+  if (hit) return hit;
+  const img = map.getSource() as (CanvasImageSource & { width: number; height: number }) | null;
+  if (!img?.width) return null;
+  const c = document.createElement('canvas');
+  c.width = img.width; c.height = img.height;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  if (!g) return null;
+  g.drawImage(img, 0, 0);
+  const data = g.getImageData(0, 0, c.width, c.height);
+  const [r, gg, b] = hex(paint);
+  recolorPixels(data.data, key, tolerance, [r * 255, gg * 255, b * 255]);
+  g.putImageData(data, 0, 0);
+  const t = new pc.Texture(device, { name: `${map.name}-paint`, width: c.width, height: c.height, format: map.format, mipmaps: true, addressU: map.addressU, addressV: map.addressV, anisotropy: 8, minFilter: pc.FILTER_LINEAR_MIPMAP_LINEAR });
+  t.setSource(c);
+  paintCache.set(id, t);
+  return t;
+}
+
+const close = (a: number, b: number, eps = 0.08) => Math.abs(a - b) < eps;
+
+class View implements VehicleView {
+  readonly root = new pc.Entity('vehicle');
+  readonly wheels: WheelView[] = [];
+  head: pc.StandardMaterial[] = [];
+  tail: pc.StandardMaterial[] = [];
+  styleKey = '\u0000';
+  private body: pc.Entity | null = null;
+  private paintMats: pc.StandardMaterial[] = [];
+  private paintSources: { mat: pc.StandardMaterial; map: pc.Texture | null }[] = [];
+  private style: CarStyle | null = null;
+  private lampState = '';
+  private destroyed = false;
+
+  constructor(readonly kind: string, readonly tuning: VehicleTuning, private lib: VehicleModels) {}
+
+  addWheels(custom: boolean) {
+    const P = this.tuning, M = wheelMats();
+    P.axles.forEach((a, ai) => {
+      for (const side of [1, -1]) {
+        const steer = new pc.Entity('wheel');
+        steer.setLocalPosition(a.x, P.wheelY - P.suspension.rest, a.halfTrack * side);
+        const spin = new pc.Entity('spin');
+        steer.addChild(spin);
+        if (custom) {
+          const w = wheelMesh(this.lib.device, a.radius, a.width);
+          const e = meshEntity('tire', [{ mesh: w.tire, material: M.rubber }, { mesh: w.rim, material: M.rim }]);
+          if (side < 0) e.setLocalEulerAngles(0, 180, 0);
+          spin.addChild(e);
+        }
+        this.root.addChild(steer);
+        this.wheels.push({ steer, spin, axle: ai, side, caster: !!a.caster });
+      }
+    });
+  }
+
+  /** Built-in body: wheel pivots at the axles move onto our spin nodes; the rest is the body. */
+  fillBuiltin(model: pc.Entity) {
+    const P = this.tuning;
+    const pivots: pc.GraphNode[] = [];
+    model.forEach(n => {
+      if (n === model) return;
+      const p = n.getLocalPosition();
+      for (const w of this.wheels) {
+        const a = P.axles[w.axle];
+        if (close(p.x, a.x) && close(p.z, a.halfTrack * w.side) && close(p.y, P.wheelY - P.suspension.rest, 0.2) && n.children.length) {
+          if (!pivots.includes(n)) {
+            pivots.push(n);
+            for (const c of [...n.children]) {
+              const lp = c.getLocalPosition().clone(), lr = c.getLocalRotation().clone(), ls = c.getLocalScale().clone();
+              n.removeChild(c); w.spin.addChild(c);
+              c.setLocalPosition(lp); c.setLocalRotation(lr); c.setLocalScale(ls);
+            }
+          }
+        }
+      }
+    });
+    for (const p of pivots) p.parent?.removeChild(p);
+    this.adopt(model);
+    const seen = new Set<pc.Material>();
+    for (const r of model.findComponents('render') as pc.RenderComponent[]) {
+      for (const mi of r.meshInstances) {
+        const m = mi.material as pc.StandardMaterial;
+        if (!(m instanceof pc.StandardMaterial)) continue;
+        if (m.clearCoat > 0) { const c = this.own(mi, m, seen); this.paintMats.push(c); }
+        else if (m.emissive.r + m.emissive.g + m.emissive.b > 0.05 || m.emissiveMap) {
+          const c = this.own(mi, m, seen);
+          const red = c.emissive.r > c.emissive.g * 1.6 && c.emissive.r > c.emissive.b * 1.6;
+          const amber = c.emissive.r > 0.6 && c.emissive.g > 0.3 && c.emissive.b < 0.2;
+          if (red) this.tail.push(c); else if (!amber) this.head.push(c);
+        }
+      }
+    }
+    this.applyStyle();
+  }
+
+  /** Published body placed by the record's model transform, paint by material or color key, plus lamp lenses. */
+  fillCustom(model: pc.Entity | null, r: CustomVehicleRecord) {
+    const holder = new pc.Entity('body');
+    holder.setLocalPosition(r.model.x, r.model.y, r.model.z);
+    holder.setLocalEulerAngles(0, r.model.yaw, 0);
+    holder.setLocalScale(r.model.scale, r.model.scale, r.model.scale);
+    if (model) holder.addChild(model);
+    else {
+      const c = r.physics.chassis, s = 1 / r.model.scale;
+      const box = new pc.Entity(); box.addComponent('render', { type: 'box' });
+      box.setLocalScale(c.hx * 2 * s, c.hy * 2.4 * s, c.hz * 2 * s);
+      box.setLocalPosition(-r.model.x * s, (-r.model.y + c.hy * 0.6) * s, -r.model.z * s);
+      holder.addChild(box);
+    }
+    this.adopt(holder);
+    const seen = new Set<pc.Material>();
+    if (model && r.paint.mode !== 'none') {
+      for (const rc of model.findComponents('render') as pc.RenderComponent[]) for (const mi of rc.meshInstances) {
+        const m = mi.material as pc.StandardMaterial;
+        if (!(m instanceof pc.StandardMaterial)) continue;
+        if (r.paint.mode === 'material' && m.name !== r.paint.material) continue;
+        if (r.paint.mode === 'color' && !m.diffuseMap) continue;
+        const c = this.own(mi, m, seen);
+        this.paintMats.push(c);
+        this.paintSources.push({ mat: c, map: m.diffuseMap });
+      }
+    }
+    const lamp = (pts: { x: number; y: number; z: number }[], color: [number, number, number], list: pc.StandardMaterial[], sx: number, sy: number, sz: number) => {
+      if (!pts.length) return;
+      const mat = new pc.StandardMaterial();
+      mat.diffuse.set(color[0] * 0.3, color[1] * 0.3, color[2] * 0.3); mat.emissive.set(color[0], color[1], color[2]); mat.emissiveIntensity = 0; mat.gloss = 0.9; mat.useMetalness = true; mat.update();
+      list.push(mat);
+      const mb = new MeshBuilder();
+      for (const p of pts) for (const side of p.z === 0 ? [1] : [1, -1]) mb.box(p.x - sx / 2, p.y - sy / 2, p.z * side - sz / 2, p.x + sx / 2, p.y + sy / 2, p.z * side + sz / 2);
+      this.root.addChild(meshEntity('lamps', [{ mesh: mb.toMesh(this.lib.device), material: mat }], { cast: false }));
+    };
+    lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24);
+    lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2);
+    this.applyStyle();
+  }
+
+  private adopt(e: pc.Entity) {
+    this.body?.destroy();
+    this.body = e;
+    this.root.addChild(e);
+    if (this.destroyed) e.destroy();
+  }
+
+  /** A per-vehicle copy of a material (so one car's paint or brake lights don't change another's). */
+  private own(mi: pc.MeshInstance, m: pc.StandardMaterial, seen: Set<pc.Material>) {
+    if (seen.has(m)) return m;
+    const c = m.clone() as pc.StandardMaterial;
+    seen.add(c);
+    for (const r of (this.body?.findComponents('render') ?? []) as pc.RenderComponent[]) for (const x of r.meshInstances) if (x.material === m) x.material = c;
+    mi.material = c;
+    return c;
+  }
+
+  setStyle(style: CarStyle | null | undefined) {
+    const key = carStyleKey(style ?? null);
+    if (key === this.styleKey) return;
+    this.styleKey = key;
+    this.style = style ?? null;
+    this.applyStyle();
+  }
+
+  private applyStyle() {
+    const s = this.style, P = this.tuning;
+    const color = s?.color ?? `#${P.paint.toString(16).padStart(6, '0')}`;
+    const f = FINISH[s?.finish ?? 'metallic'] ?? FINISH.metallic;
+    const wear = Math.min(1, Math.max(0, s?.damage ?? 0));
+    const rec = customVehicleRecord(this.kind);
+    const [r, g, b] = hex(color);
+    for (const m of this.paintMats) {
+      const src = this.paintSources.find(p => p.mat === m);
+      if (rec?.paint.mode === 'color' && src?.map) {
+        const t = maskedTexture(this.lib.device, src.map, rec.paint.key, rec.paint.tolerance, color);
+        if (t) m.diffuseMap = t;
+      } else if (rec?.paint.mode === 'material' && src?.map) {
+        m.diffuse.set(r, g, b);
+      } else {
+        m.diffuseMap = null;
+        const k = 1 - wear * 0.25;
+        m.diffuse.set(r * k + 0.44 * (1 - k), g * k + 0.42 * (1 - k), b * k + 0.39 * (1 - k));
+      }
+      m.useMetalness = true;
+      m.metalness = f.metal * (1 - wear * 0.4);
+      m.gloss = Math.max(0.1, f.gloss - wear * 0.35);
+      m.clearCoat = f.cc * (1 - wear * 0.8);
+      m.clearCoatGloss = 0.92;
+      m.update();
+    }
+  }
+
+  setLamps(night: number, braking: boolean) {
+    const key = `${night > 0.3 ? 1 : 0}${braking ? 1 : 0}`;
+    if (key === this.lampState) return;
+    this.lampState = key;
+    for (const m of this.head) { m.emissiveIntensity = night > 0.3 ? 4 : 0.05; m.update(); }
+    for (const m of this.tail) { m.emissiveIntensity = braking ? 6 : night > 0.3 ? 2 : 0.25; m.update(); }
+  }
+
+  destroy() {
+    this.destroyed = true;
+    this.root.destroy();
+  }
+}
+
+export class VehicleModels {
+  constructor(private assets: Assets, readonly device: pc.GraphicsDevice) {}
+
+  /** Starts loading every model a kind needs (call early for the vehicles you own). */
+  preload(kind: string) {
+    const rec = customVehicleRecord(kind);
+    void this.assets.container(rec ? rec.modelUrl : `/models/maplestreet/vehicles/${kind}.glb`);
+  }
+
+  /** A view for `kind`, ready at once (the body fills in when its model has loaded). */
+  build(kind: string, style?: CarStyle | null): VehicleView {
+    const tuning = TUNING[kind] ?? TUNING.sedan;
+    const view = new View(kind, tuning, this);
+    const rec = customVehicleRecord(kind);
+    view.addWheels(!!rec);
+    view.setStyle(style ?? null);
+    const url = rec ? rec.modelUrl : `/models/maplestreet/vehicles/${TUNING[kind] ? kind : 'sedan'}.glb`;
+    const fill = (c: pc.ContainerResource | null) => {
+      const model = c ? c.instantiateRenderEntity({ castShadows: true, receiveShadows: true }) : null;
+      if (rec) view.fillCustom(model, rec);
+      else if (model) view.fillBuiltin(model);
+    };
+    const ready = this.assets.ready(url);
+    if (ready !== undefined) fill(ready);
+    else void this.assets.container(url).then(fill);
+    return view;
+  }
+}

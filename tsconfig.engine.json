@@ -4,7 +4,8 @@
     "modules-src/_template/**/*.ts",
     "modules-src/fairway/**/*.ts",
     "modules-src/demoderby/**/*.ts",
-    "modules-src/angler/**/*.ts"
+    "modules-src/angler/**/*.ts",
+    "modules-src/foxplains2/**/*.ts"
   ],
   "exclude": [
     "modules-src/fairway/tests/**",

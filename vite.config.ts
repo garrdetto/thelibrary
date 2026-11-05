@@ -8,6 +8,9 @@ import { learningModules } from './vite.modules'
 import { modelAssets } from './vite.assets'
 
 const config = defineConfig({
+  // Rollup opens up to 1,000 files at once by default, which can exhaust a
+  // 1,024 descriptor limit (Workers Builds) while it reads lucide-react's icons.
+  build: { rollupOptions: { maxParallelFileOps: 128 } },
   plugins: [
     modelAssets(),
     learningModules(),
