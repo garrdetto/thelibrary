@@ -23,7 +23,7 @@ export const embeddedModules = [
 ] as const
 
 export type EmbeddedModuleId = typeof embeddedModules[number]['id']
-export type ModuleId = EmbeddedModuleId | 'pool' | 'racing' | 'oval' | 'park' | 'park2'
+export type ModuleId = EmbeddedModuleId | 'pool' | 'racing' | 'oval' | 'park' | 'park2' | 'lens'
 
 export const withdrawnModuleIds: ReadonlySet<ModuleId> = new Set<ModuleId>(['botwreck'])
 
@@ -71,6 +71,7 @@ export const learningModules: LearningModule[] = [
   { id: 'helicopter', title: 'Chopper Cave', subject: 'Reaction & control', group: 'Precision', summary: 'Precision flight through a narrowing cave. Feather the climb and dodge the blocks.', modes: ['Solo'], image: '/images/modules/heli.webp', accent: '#5cffb0' },
   { id: 'alphabet', title: 'Alphabet Sprint', subject: 'Touch typing', group: 'Precision', summary: 'Type A to Z perfectly against the clock. A wrong letter stays on screen until you backspace it, so accuracy is speed. Fastest times lead the board.', modes: ['Solo'], image: '/images/modules/alphabet.webp', accent: '#39d0ff' },
   { id: 'songmaker', title: 'Song Maker', subject: 'Composition', group: 'Creative', summary: 'Write or paste your own lyrics, choose a genre, mood and voice, then build a free instrumental right in your browser with no API key, customizing the groove, key, chords, melody, tempo and mix, or have AI sing it with real vocals. Stuck on words? Describe an idea and it drafts lyrics you can edit first. Play songs back and download them.', modes: ['Solo', 'AI'], image: '/images/modules/songmaker.webp', accent: '#ff3b7a' },
+  { id: 'lens', title: 'Lens Creator', subject: 'Facial geometry & colour', group: 'Creative', summary: 'Design your own face lens live on your camera or a photo. Face tracking maps 478 points, then you restyle and recolour hair, reshape eyes, nose, jaw and chin, add makeup, props, animated effects and colour grading, and save snapshots, clips or the lens itself.', modes: ['Live camera', 'Photo'], image: '/images/modules/lens.webp', accent: '#ff7ad9' },
   { id: 'tetradrop', title: 'Tetra Drop', subject: 'Spatial reasoning', group: 'Logic', summary: 'The classic falling-block puzzle: rotate and slot seven tetromino shapes to clear lines as the drop speeds up. Hold, hard drop, ghost piece and level scoring.', modes: ['Solo'], image: '/images/modules/tetradrop.webp', accent: '#b388ff' },
   { id: 'bubbles', title: 'Bubble Shooter', subject: 'Angles & planning', group: 'Precision', summary: 'Aim, bank off the walls and pop groups of three or more matching bubbles before the ceiling creeps down. Drop floating clusters for bonus points.', modes: ['Solo'], image: '/images/modules/bubbles.webp', accent: '#ff5a7a' },
   { id: 'sudoku', title: 'Sudoku', subject: 'Deduction', group: 'Logic', summary: 'Fresh puzzles every time with a single solution, three difficulties, pencil marks and mistake checking. Fastest solves on each difficulty lead the board.', modes: ['Solo'], image: '/images/modules/sudoku.webp', accent: '#3b8bff' },
