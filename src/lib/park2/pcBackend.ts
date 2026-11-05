@@ -152,7 +152,7 @@ export class PcBackend implements RenderBackend {
     if (!layers) return
     this.detail = new pc.Texture(this.device, {
       name: 'park-detail', width: DETAIL_SIZE, height: DETAIL_SIZE, arrayLength: DETAIL_LAYERS, format: pc.PIXELFORMAT_RGBA8, mipmaps: true,
-      minFilter: pc.FILTER_LINEAR_MIPMAP_LINEAR, magFilter: pc.FILTER_LINEAR, addressU: pc.ADDRESS_REPEAT, addressV: pc.ADDRESS_REPEAT, anisotropy: 4,
+      minFilter: pc.FILTER_LINEAR_MIPMAP_LINEAR, magFilter: pc.FILTER_LINEAR, addressU: pc.ADDRESS_REPEAT, addressV: pc.ADDRESS_REPEAT, anisotropy: 8,
       levels: [layers],
     })
     this.scratch.detail = null
@@ -226,13 +226,9 @@ export class PcBackend implements RenderBackend {
     light.shadowDistance = t.shadowDistance
     light.shadowType = level === 0 ? pc.SHADOW_PCF3_32F : pc.SHADOW_PCF5_32F
     if (lowChanged) {
-      for (const pool of this.allPools()) {
-        for (const mi of pool.list) { this.layer.removeMeshInstances([mi]); mi.destroy() }
-        pool.list.length = 0; pool.params.length = 0; pool.used = 0
-      }
-      for (const m of this.materials.values()) m.destroy()
-      this.materials.clear()
+      for (const pool of this.active) for (let i = 0; i < pool.list.length; i++) pool.list[i].visible = false
       this.active.clear(); this.touched.clear()
+      for (const pool of this.allPools()) pool.used = 0
     }
     const cam = this.cameraEntity.camera!
     if (t.frame && !this.debug.noFrame) {
@@ -245,13 +241,13 @@ export class PcBackend implements RenderBackend {
       f.bloom.threshold = 1.15
       f.bloom.blurLevel = 14
       f.ssao.type = t.ssao ? pc.SSAOTYPE_LIGHTING : pc.SSAOTYPE_NONE
-      f.ssao.intensity = 0.45
+      f.ssao.intensity = 0.7
       f.ssao.radius = 40
       f.ssao.samples = 10
       f.ssao.scale = 0.5
       f.grading.enabled = t.grading
-      f.grading.saturation = 1.08
-      f.grading.contrast = 1.04
+      f.grading.saturation = 1.16
+      f.grading.contrast = 1.12
       f.vignette.intensity = t.grading ? 0.18 : 0
       f.vignette.inner = 0.55
       f.vignette.outer = 1.25
@@ -403,7 +399,7 @@ export class PcBackend implements RenderBackend {
     sl.color = this.sunColor
     sl.intensity = peak
     sl.castShadows = !this.debug.noShadow && (shadowStrength > 0.05 || (light.shadow ?? 0) > 0.05)
-    sl.shadowIntensity = Math.min(1, light.shadow ?? 0) * 0.62
+    sl.shadowIntensity = Math.min(1, light.shadow ?? 0) * 0.8
     this.app.scene.exposure = light.exposure
     const skyLevel = Math.max(light.sky[0], light.sky[1], light.sky[2])
     this.app.scene.skyboxIntensity = 1.55 + Math.max(0, Math.min(1, (0.45 - skyLevel) / 0.25)) * 0.9
@@ -432,7 +428,7 @@ export class PcBackend implements RenderBackend {
   }
 
   private pool(m: PcMesh, blend: boolean, cull: boolean, depthWrite: boolean) {
-    const key = `${blend ? 1 : 0}${cull ? 1 : 0}${depthWrite ? 1 : 0}`
+    const key = `${this.level === 0 ? 'l' : 's'}${blend ? 1 : 0}${cull ? 1 : 0}${depthWrite ? 1 : 0}`
     let pool = m.pools.get(key)
     if (!pool) { pool = { list: [], used: 0, params: [] }; m.pools.set(key, pool) }
     if (pool.used === pool.list.length) {
