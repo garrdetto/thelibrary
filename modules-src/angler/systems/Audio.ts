@@ -183,6 +183,12 @@ export class LakeAudio {
 
   /** A solid thump when the hook is set by hand. */
   hookSet(): void { this.tone(160, 60, 0.18, 0.16, 'triangle'); this.burst(0.15, 'lowpass', 1800, 400, 0.1) }
+  /** A small plip as the jigged bait hops. */
+  jig(): void { this.plop(0.35) }
+  /** A splashy thrash for a jumping fish or a missed net. */
+  thrash(): void { this.splash(0.6) }
+  /** A quick bright two-note prompt for the net. */
+  cue(): void { this.tone(880, 880, 0.12, 0.06, 'square'); this.tone(1175, 1175, 0.14, 0.06, 'square', 0.1) }
   /** The drag screaming as a fish takes line. */
   scream(): void { this.burst(0.9, 'bandpass', 4200, 2600, 0.09) }
 

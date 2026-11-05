@@ -7,6 +7,7 @@ import { Character, loadCharacterAssets } from '../scene/Character'
 import type { CharacterAssets, Pose } from '../scene/Character'
 import { LakeScene, seasonFor } from '../scene/LakeScene'
 import { Sky } from '../scene/Sky'
+import { PostFx } from '../scene/PostFx'
 import { Wake } from '../scene/Wake'
 import { BoatPhysics, newBoatState } from '../systems/BoatPhysics'
 import type { BoatControls } from '../systems/BoatPhysics'
@@ -42,6 +43,7 @@ export class World {
   readonly app: pc.Application
   readonly quality: QualityTier
   sky!: Sky
+  post: PostFx | null = null
   lake: LakeDef | null = null
   scene: LakeScene | null = null
   boat: Boat | null = null
@@ -88,6 +90,7 @@ export class World {
     this.bassAssets = await loadBassAssets(this.app.graphicsDevice, config.assets, this.quality === 'low' ? 1024 : 2048)
     this.sky = new Sky(this.app, this.quality)
     this.camera = new CameraRig(this.app, this.canvas.parentElement ?? this.canvas, LAKES['silver-birch'])
+    this.post = new PostFx(this.app, this.camera.entity.camera!, this.quality)
     this.app.start()
   }
 
@@ -227,6 +230,17 @@ export class World {
     if (cam) cam.rect = new pc.Vec4(0, 0, Math.max(0.3, Math.min(1, fraction)), 1)
   }
 
+  /** The next rendered frame copied onto a 2D canvas, for catch photos. */
+  snapshot(): Promise<HTMLCanvasElement> {
+    return new Promise(resolve => this.app.once('frameend', () => {
+      const c = document.createElement('canvas')
+      c.width = this.canvas.width
+      c.height = this.canvas.height
+      c.getContext('2d')?.drawImage(this.canvas, 0, 0)
+      resolve(c)
+    }))
+  }
+
   focusOnPlayer(on: boolean): void {
     this.focusPlayer = on
     if (!on) this.camera.preferredYaw = null
@@ -277,6 +291,7 @@ export class World {
     }
     if (!this.background) {
       this.boat.setLightsOn(this.sky.state.day < 0.5)
+      this.post?.setNight(1 - this.sky.state.day)
       this.wake?.update(dt, s.x, s.z, s.heading, carrier ? 0 : s.speed, !carrier)
       this.scene?.update(dt, wind)
       if (this.player) this.placeRider(this.player)

@@ -165,6 +165,66 @@ export class Ripples {
   }
 }
 
+interface Drop { entity: pc.Entity; x: number; y: number; z: number; vx: number; vy: number; vz: number; size: number; age: number; life: number }
+
+const DROP_LIMIT = 140
+
+/** Water droplets thrown up by casts, strikes, runs, jumps and landed fish: small bright beads on a ballistic arc that shrink as they fall back. */
+export class Splashes {
+  readonly root = new pc.Entity('splashes')
+  private readonly pool: Drop[] = []
+  private readonly mesh: pc.Mesh
+  private readonly material: pc.StandardMaterial
+
+  constructor(app: pc.AppBase) {
+    const g = new GeoBuilder()
+    g.blob(() => [1, 1, 1], { scale: [1, 1, 1] }, 4, 0)
+    this.mesh = g.toMesh(app.graphicsDevice)
+    const m = new pc.StandardMaterial()
+    m.diffuse = new pc.Color(0.75, 0.86, 0.92)
+    m.emissive = new pc.Color(0.55, 0.65, 0.7)
+    m.specular = new pc.Color(1, 1, 1)
+    m.gloss = 0.95
+    m.blendType = pc.BLEND_NORMAL
+    m.opacity = 0.85
+    m.depthWrite = false
+    m.update()
+    this.material = m
+  }
+
+  /** Throws `count` droplets up from the water at x, z; `power` scales their height and spread. */
+  spawn(x: number, z: number, count: number, power = 1): void {
+    for (let i = 0; i < count; i++) {
+      let d = this.pool.find(p => p.age >= p.life)
+      if (!d) {
+        if (this.pool.length >= DROP_LIMIT) return
+        const entity = new pc.Entity('drop')
+        entity.addComponent('render', { meshInstances: [new pc.MeshInstance(this.mesh, this.material)], castShadows: false })
+        this.root.addChild(entity)
+        d = { entity, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, size: 0, age: 1, life: 0 }
+        this.pool.push(d)
+      }
+      const a = Math.random() * Math.PI * 2
+      const out = (0.4 + Math.random() * 1.6) * power
+      Object.assign(d, { x: x + Math.cos(a) * 0.1, y: 0.02, z: z + Math.sin(a) * 0.1, vx: Math.cos(a) * out, vz: Math.sin(a) * out, vy: (1.6 + Math.random() * 2.6) * Math.sqrt(power), size: (0.018 + Math.random() * 0.03) * Math.min(1.6, 0.7 + power * 0.3), age: 0, life: 2 })
+      d.entity.enabled = true
+    }
+  }
+
+  update(dt: number): void {
+    for (const d of this.pool) {
+      if (d.age >= d.life) { if (d.entity.enabled) d.entity.enabled = false; continue }
+      d.age += dt
+      d.vy -= 9.8 * dt
+      d.x += d.vx * dt; d.y += d.vy * dt; d.z += d.vz * dt
+      if (d.y < 0 && d.vy < 0) { d.age = d.life; continue }
+      const s = d.size * (1 - Math.min(1, d.age / 1.4) * 0.5)
+      d.entity.setPosition(d.x, d.y, d.z)
+      d.entity.setLocalScale(s, s * 1.3, s)
+    }
+  }
+}
+
 /** Draws a sagging fishing line between two world points with immediate-mode lines. */
 export function drawLine(app: pc.AppBase, from: pc.Vec3, to: pc.Vec3, tension: number, color = new pc.Color(0.85, 0.88, 0.85, 0.9)): void {
   const segments = 12
