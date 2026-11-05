@@ -1,4 +1,4 @@
-/** The Guide's Almanac: the bite right now, an hour-by-hour outlook for the next day at the angler's spot, sun and moon times, every named spot on the lake and what the current rig is likely to hook. Read-only; it uses the same rules as the catch rolls. */
+/** The Guide's Almanac: the bite right now and sun and moon times for everyone; with the Almanac bought in the shop, also an hour-by-hour outlook for the next day at the angler's spot, sun and moon times, every named spot on the lake and what the current rig is likely to hook. Read-only; it uses the same rules as the catch rolls. */
 import { activity, conditionsAt, outlook, speciesChances } from '../shared/Catch'
 import type { FishingContext } from '../shared/Catch'
 import { centralTime, moonPhase, moonPhaseName, moonPosition, sunPosition } from '../shared/Astro'
@@ -41,7 +41,7 @@ function passes(from: Date, altitude: (d: Date) => number) {
   return { rise, set, top: best > 0 ? top : null }
 }
 
-export function renderAlmanac(ctx: Omit<FishingContext, 'date' | 'settled'>, date: Date): string {
+export function renderAlmanac(ctx: Omit<FishingContext, 'date' | 'settled'>, date: Date, owned: boolean, price: number): string {
   const base: FishingContext = { ...ctx, date, settled: 60 }
   const c = conditionsAt(base)
   const now = outlook(base, c)
@@ -79,10 +79,10 @@ export function renderAlmanac(ctx: Omit<FishingContext, 'date' | 'settled'>, dat
         </div>
         <p class="ang-note">${esc(w.label)} · air ${w.airTempF}°F · wind ${windCompass(w.windDir)} ${Math.round(w.windMph)} mph · pressure ${trend} · ${c.depth.toFixed(0)} ft under the boat, ${Math.round(waterTempF(ctx.lake, date, c.depth * 0.9))}°F near bottom${c.thermocline > 0 ? ` · thermocline near ${Math.round(c.thermocline)} ft` : ''}</p>
       </section>
-      <section><h3>Next 24 hours at this spot</h3>
+      ${owned ? `<section><h3>Next 24 hours at this spot</h3>
         <div class="alm-bars" role="img" aria-label="Bite outlook by hour">${bars}</div>
         <p class="ang-note">Best windows: ${best.map(h => `${hourLabel(h.d)} (${word(h.a).toLowerCase()})`).join(', ')}. Low light, a falling barometer, moon overhead or underfoot and a light chop all help; a crowd of boats thins it.</p>
-      </section>
+      </section>` : ''}
       <section><h3>Sun and moon</h3>
         <div class="stat-row">
           <div><small>Sunrise</small><strong>${when(sun.rise)}</strong></div>
@@ -91,11 +91,14 @@ export function renderAlmanac(ctx: Omit<FishingContext, 'date' | 'settled'>, dat
           <div><small>Moon overhead</small><strong>${when(moon.top)}</strong></div>
         </div>
       </section>
-      <section><h3>Spots on ${esc(ctx.lake.name)}</h3>
+      ${owned ? `<section><h3>Spots on ${esc(ctx.lake.name)}</h3>
         <ul class="alm-list">${spots.map(({ s, o, depth }) => `<li><span><strong>${esc(s.name)}</strong><small>${depth.toFixed(0)} ft · ${o.top.map(id => SPECIES[id].name.toLowerCase()).join(', ') || 'little holding here'}</small></span><b class="is-${word(o.activity).toLowerCase()}">${word(o.activity)}</b></li>`).join('')}</ul>
       </section>
       <section><h3>Likely on your ${esc(rod.name.toLowerCase())} and ${esc(bait.short.toLowerCase())}</h3>
         <ul class="alm-list">${chances.slice(0, 6).map(x => `<li><span><strong>${esc(SPECIES[x.id].name)}</strong><small>${esc(SPECIES[x.id].latin)}</small></span><b>${Math.max(1, Math.round((x.weight / total) * 100))}%</b></li>`).join('') || '<li><span>Nothing here takes that bait. Try another presentation or spot.</span></li>'}</ul>
-      </section>
+      </section>` : `<section class="alm-locked"><h3>The full Guide's Almanac</h3>
+        <p class="ang-note">An hour-by-hour bite outlook for the next day at your boat, every named spot on the lake ranked right now, and the species your rod and presentation are most likely to hook. It reads the same rules the lake rolls with; it never changes the odds.</p>
+        <div class="pan-actions"><button type="button" class="ang-btn is-primary" data-buy="almanac">Buy the Almanac · ${price.toLocaleString()} TC</button></div>
+      </section>`}
     </div>`
 }
