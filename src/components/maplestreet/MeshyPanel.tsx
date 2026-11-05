@@ -136,6 +136,7 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
       <h2><Sparkles size={18} aria-hidden/> Generate with Meshy</h2>
       <span className="ms-meshy-balance">{status.balance == null ? 'Balance unavailable' : `${status.balance.toLocaleString()} credits left`}</span>
     </header>
+    {target === 'ride' && <p className="ms-meshy-note">Thrill Park rides must be original: no real park, ride or film names, mascots or logos. Ask for the ride on its own, without riders or scenery; the park adds guests, queues and lights.</p>}
     {target === 'vehicle' && <p className="ms-meshy-note">Vehicles must be original designs: no real makes, model names, logos or badges. The game adds its own spinning, steering wheels, so ask for a body without wheels.</p>}
 
     <div className="ms-meshy-tabs" role="tablist" aria-label="Meshy tools">
@@ -143,7 +144,7 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
     </div>
 
     {mode === 'text' && <form className="ms-meshy-form" onSubmit={(event: FormEvent) => { event.preventDefault(); void run('text', () => meshyText({ target, prompt, negativePrompt: negative, aiModel, count, polycount }), `Started ${count} preview${count > 1 ? 's' : ''}. Pick the best one, then refine it for textures.`) }}>
-      <label>Describe the model<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={3} maxLength={600} required minLength={3} placeholder={target === 'vehicle' ? 'A boxy two-door utility wagon with a roof rack' : 'A mid-century walnut sideboard with brass handles'}/></label>
+      <label>Describe the model<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={3} maxLength={600} required minLength={3} placeholder={target === 'vehicle' ? 'A boxy two-door utility wagon with a roof rack' : target === 'ride' ? 'A spinning octopus ride with eight teal tub cars on long arms, on a round deck' : 'A mid-century walnut sideboard with brass handles'}/></label>
       <div className="ms-meshy-chips" aria-label="Prompt helpers">{PROMPT_HELPERS[target].map(text => <button key={text} type="button" onClick={() => addHelper(text)}>+ {text}</button>)}</div>
       <label>Avoid<input value={negative} onChange={event => setNegative(event.target.value)} maxLength={300}/></label>
       <div className="ms-meshy-row">

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { gunzipSync } from 'node:zlib'
 import { z } from 'zod'
-import { createPark, deserializePark, serializePark, applyCommand, stepPark, encodeDynamic, encodeGuests, guestDetail, rideCommentsDetail, SCENARIOS } from './park/index.mjs'
+import { createPark, deserializePark, serializePark, applyCommand, stepPark, encodeDynamic, encodeGuests, guestDetail, rideCommentsDetail, registerCustomRides, SCENARIOS } from './park/index.mjs'
 
 const MAX_ROOMS = 12
 const TICK_MS = 50
@@ -9,11 +9,31 @@ const DYN_EVERY = 5
 const CROWD_GUESTS = 2000
 const CHAT_INTERVAL = 700
 const COMMANDS_PER_SECOND = 25
+const RIDE_REFRESH_MS = 60_000
+
+let ridesFetchedAt = 0
+let ridesPending = null
+let ridesOrigin = null
+
+/** Registers the site's published custom rides (admin Ride Creator) so saves and commands that use them work online. */
+function syncCustomRides(origin, force = false) {
+  if (origin) ridesOrigin = origin
+  if (!ridesOrigin) return Promise.resolve()
+  if (!force && ridesPending && Date.now() - ridesFetchedAt < RIDE_REFRESH_MS) return ridesPending
+  ridesFetchedAt = Date.now()
+  ridesPending = fetch(`${ridesOrigin}/api/park-rides`, { signal: AbortSignal.timeout(6000) })
+    .then(response => response.ok ? response.json() : null)
+    .then(data => { if (data?.rides) registerCustomRides(data.rides) })
+    .catch(() => { ridesFetchedAt = 0 })
+  return ridesPending
+}
 
 export function attachPark(io, origins) {
   const ns = io.of('/park')
   const rooms = new Map()
   const members = new Map()
+  const ridesTimer = setInterval(() => { if (ns.sockets.size) void syncCustomRides(null) }, RIDE_REFRESH_MS)
+  ridesTimer.unref?.()
 
   ns.use(async (socket, next) => {
     try {
@@ -24,6 +44,7 @@ export function attachPark(io, origins) {
       const response = await fetch(`${origin}/api/park?action=redeem`, { method: 'POST', headers: { Authorization: `Bearer ${ticket}` }, signal: AbortSignal.timeout(8000) })
       if (!response.ok) return next(new Error('Sign in again to connect.'))
       socket.data.account = await response.json()
+      await syncCustomRides(origin)
       next()
     } catch { next(new Error('Unable to verify your park session.')) }
   })

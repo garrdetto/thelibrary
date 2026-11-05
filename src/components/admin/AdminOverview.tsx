@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowRight, Car, KeyRound, LayoutGrid, Package, ShieldCheck, Sparkles, Users } from 'lucide-react'
+import { ArrowRight, Car, FerrisWheel, KeyRound, LayoutGrid, Package, ShieldCheck, Sparkles, Users } from 'lucide-react'
 import { isModuleAvailable, learningModules } from '@/lib/modules'
 import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
@@ -8,7 +8,7 @@ import { useModuleLayout } from '@/lib/use-module-layout'
 type Account = { pages: string[]; isAdmin: boolean; needsPassword: boolean }
 type Asset = { status?: string; active?: boolean }
 type Counts = { published: number; drafts: number }
-type Section = 'library' | 'people' | 'changes' | 'maplestreet' | 'vehicles'
+type Section = 'library' | 'people' | 'changes' | 'maplestreet' | 'vehicles' | 'park-rides'
 
 function countAssets(list: Asset[]): Counts {
   return {
@@ -38,11 +38,13 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
   const [accounts, setAccounts] = useState<Account[] | null | 'error'>(null)
   const [items, setItems] = useState<Counts | null | 'error'>(null)
   const [vehicles, setVehicles] = useState<Counts | null | 'error'>(null)
+  const [rides, setRides] = useState<Counts | null | 'error'>(null)
 
   useEffect(() => {
     getJson<{ users: Account[] }>('/api/workspace-admin').then(result => setAccounts(result.users)).catch(() => setAccounts('error'))
     getJson<{ items: Asset[] }>('/api/maplestreet-items?drafts=1').then(result => setItems(countAssets(result.items))).catch(() => setItems('error'))
     getJson<{ vehicles: Asset[] }>('/api/maplestreet-vehicles?drafts=1').then(result => setVehicles(countAssets(result.vehicles))).catch(() => setVehicles('error'))
+    getJson<{ records: Asset[] }>('/api/park-rides?drafts=1').then(result => setRides(countAssets(result.records))).catch(() => setRides('error'))
   }, [])
 
   const people = accounts && accounts !== 'error' ? {
@@ -63,6 +65,7 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
         detail={people ? `${people.studio} with studio access${people.resets ? ` · ${people.resets} password reset${people.resets === 1 ? '' : 's'} pending` : ''}` : ' '} onOpen={() => onOpen('people')} cta="Manage people"/>
       <Stat icon={<Package size={18}/>} label="Fox Plains items" value={assetValue(items)} detail={assetDetail(items, 'items')} onOpen={() => onOpen('maplestreet')} cta="Open item editor"/>
       <Stat icon={<Car size={18}/>} label="Fox Plains vehicles" value={assetValue(vehicles)} detail={assetDetail(vehicles, 'vehicles')} onOpen={() => onOpen('vehicles')} cta="Open vehicle editor"/>
+      <Stat icon={<FerrisWheel size={18}/>} label="Thrill Park rides" value={assetValue(rides)} detail={rides && rides !== 'error' ? `${rides.drafts} draft${rides.drafts === 1 ? '' : 's'} waiting · published rides appear in every park’s build menu` : ' '} onOpen={() => onOpen('park-rides')} cta="Open ride creator"/>
     </div>
 
     <section className="adm-card">
