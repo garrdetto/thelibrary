@@ -17,7 +17,8 @@
 import * as pc from 'playcanvas';
 import { meshEntity, MeshBuilder } from '../core/Geo';
 import type { Assets } from '../core/Assets';
-import { TUNING, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
+import { BODY_EXTENTS, TUNING, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
+import { BUNDLED_VEHICLES } from '../../../maplestreet/shared/BundledVehicles';
 import { customVehicleRecord, type CustomVehicleRecord } from '../../../maplestreet/shared/CustomVehicles';
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
@@ -25,6 +26,55 @@ import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } fro
 
 /** Built-in kinds drawn from primitives rather than a .glb. */
 const PROCEDURAL = new Set(['mower']);
+
+/**
+ * Built-in kinds that draw with one of the realistic scanned bodies
+ * (shared/BundledVehicles.ts) instead of their low-poly model. Physics stay
+ * the built-in's; the scan is scaled to the built-in's body length, centred on
+ * its axles and lowered so its wheel arches sit on the built-in wheel centres.
+ */
+const STAND_INS: Record<string, string> = {
+  sedan: 'bundled-meridian-sedan',
+  coupe: 'bundled-lakeshore-coupe',
+  truck: 'bundled-bulwark-4x4',
+  hdtruck: 'bundled-ironhorn-crew-cab',
+};
+
+function standIn(kind: string, tuning: VehicleTuning): CustomVehicleRecord | null {
+  const id = STAND_INS[kind], ext = BODY_EXTENTS[kind as keyof typeof BODY_EXTENTS];
+  if (!id || !ext) return null;
+  const rec = customVehicleRecord(`custom:${id}`) ?? BUNDLED_VEHICLES.find(r => r.id === id);
+  if (!rec) return null;
+  const B = rec.physics, s = (ext.front - ext.rear) / (2 * B.chassis.hx);
+  const bMid = (B.axles[0].x + B.axles[B.axles.length - 1].x) / 2, tMid = (tuning.axles[0].x + tuning.axles[tuning.axles.length - 1].x) / 2;
+  const bY = B.wheelY - B.suspension.rest, tY = tuning.wheelY - tuning.suspension.rest;
+  const at = (p: { x: number; y: number; z: number }) => ({ x: tMid + s * (p.x - bMid), y: tY + s * (p.y - bY), z: s * p.z });
+  return {
+    ...rec,
+    model: { ...rec.model, ...at(rec.model), scale: rec.model.scale * s },
+    lights: { head: rec.lights.head.map(at), tail: rec.lights.tail.map(at) },
+    physics: { ...B, axles: B.axles.map(a => ({ ...a, x: tMid + s * (a.x - bMid), radius: a.radius * s, width: a.width * s, halfTrack: a.halfTrack * s })) },
+  };
+}
+
+/**
+ * Uploaded bodies draw exactly as authored (geometry, color, normal, metal and
+ * roughness maps untouched), like classic Fox Plains' CustomVehicleModels:
+ * only their textures get 8x anisotropic filtering so panels stay crisp at
+ * grazing angles.
+ */
+const sharpened = new WeakSet<pc.Texture>();
+function sharpenScan(model: pc.Entity) {
+  for (const r of model.findComponents('render') as pc.RenderComponent[]) for (const mi of r.meshInstances) {
+    const m = mi.material as pc.StandardMaterial;
+    if (!(m instanceof pc.StandardMaterial)) continue;
+    for (const t of [m.diffuseMap, m.normalMap, m.glossMap, m.metalnessMap, m.aoMap, m.emissiveMap]) {
+      if (!t || sharpened.has(t)) continue;
+      sharpened.add(t);
+      t.anisotropy = 8;
+    }
+  }
+}
 
 export interface WheelView { steer: pc.Entity; spin: pc.Entity; axle: number; side: number; caster: boolean }
 
@@ -220,14 +270,17 @@ class View implements VehicleView {
   private paintMats: pc.StandardMaterial[] = [];
   private paintSources: { mat: pc.StandardMaterial; map: pc.Texture | null }[] = [];
   private style: CarStyle | null = null;
+  /** The record whose body this view draws (a published vehicle, or a built-in's realistic stand-in). */
+  private rec: CustomVehicleRecord | null = null;
   private lampState = '';
   private destroyed = false;
 
   constructor(readonly kind: string, readonly tuning: VehicleTuning, private lib: VehicleModels) {}
 
-  addWheels(custom: boolean) {
+  /** Wheel nodes per axle; `axles` overrides where they sit and how big they draw (realistic stand-in bodies). */
+  addWheels(custom: boolean, axles = this.tuning.axles) {
     const P = this.tuning, M = wheelMats();
-    P.axles.forEach((a, ai) => {
+    axles.forEach((a, ai) => {
       for (const side of [1, -1]) {
         const steer = new pc.Entity('wheel');
         steer.setLocalPosition(a.x, P.wheelY - P.suspension.rest, a.halfTrack * side);
@@ -289,11 +342,12 @@ class View implements VehicleView {
 
   /** Published body placed by the record's model transform, paint by material or color key, plus lamp lenses. */
   fillCustom(model: pc.Entity | null, r: CustomVehicleRecord) {
+    this.rec = r;
     const holder = new pc.Entity('body');
     holder.setLocalPosition(r.model.x, r.model.y, r.model.z);
     holder.setLocalEulerAngles(0, r.model.yaw, 0);
     holder.setLocalScale(r.model.scale, r.model.scale, r.model.scale);
-    if (model) { fixModelMaterials(model); holder.addChild(model); }
+    if (model) { sharpenScan(model); fixModelMaterials(model); holder.addChild(model); }
     else {
       const c = r.physics.chassis, s = 1 / r.model.scale;
       const box = new pc.Entity(); box.addComponent('render', { type: 'box' });
@@ -370,7 +424,7 @@ class View implements VehicleView {
     const color = s?.color ?? `#${P.paint.toString(16).padStart(6, '0')}`;
     const f = FINISH[s?.finish ?? 'metallic'] ?? FINISH.metallic;
     const wear = Math.min(1, Math.max(0, s?.damage ?? 0));
-    const rec = customVehicleRecord(this.kind);
+    const rec = this.rec ?? customVehicleRecord(this.kind);
     const [r, g, b] = hex(color);
     for (const m of this.paintMats) {
       const src = this.paintSources.find(p => p.mat === m);
@@ -412,7 +466,8 @@ export class VehicleModels {
 
   /** Starts loading every model a kind needs (call early for the vehicles you own). */
   preload(kind: string) {
-    const rec = customVehicleRecord(kind);
+    const tuning = TUNING[kind] ?? TUNING.sedan;
+    const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
     if (!rec && PROCEDURAL.has(kind)) return;
     void this.assets.container(rec ? rec.modelUrl : `/models/maplestreet/vehicles/${kind}.glb`);
   }
@@ -421,9 +476,9 @@ export class VehicleModels {
   build(kind: string, style?: CarStyle | null): VehicleView {
     const tuning = TUNING[kind] ?? TUNING.sedan;
     const view = new View(kind, tuning, this);
-    const rec = customVehicleRecord(kind);
+    const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
     const procedural = !rec && PROCEDURAL.has(kind);
-    view.addWheels(!!rec || procedural);
+    view.addWheels(!!rec || procedural, rec?.physics.axles);
     view.setStyle(style ?? null);
     if (procedural) { view.fillMower(); return view; }
     const url = rec ? rec.modelUrl : `/models/maplestreet/vehicles/${TUNING[kind] ? kind : 'sedan'}.glb`;
