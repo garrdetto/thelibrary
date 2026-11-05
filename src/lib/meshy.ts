@@ -6,7 +6,7 @@
 
 export const MESHY_AI_MODELS = ['latest', 'meshy-6', 'meshy-6-lite'] as const
 export type MeshyAiModel = (typeof MESHY_AI_MODELS)[number]
-export const MESHY_TARGETS = ['furniture', 'vehicle', 'character'] as const
+export const MESHY_TARGETS = ['furniture', 'vehicle', 'character', 'ride'] as const
 export type MeshyTarget = (typeof MESHY_TARGETS)[number]
 export const MESHY_JOB_KINDS = ['preview', 'refine', 'image', 'remesh', 'retexture'] as const
 export type MeshyJobKind = (typeof MESHY_JOB_KINDS)[number]
@@ -46,7 +46,7 @@ export const MESHY_COSTS = {
   rigging: 5,
 }
 
-export const POLYCOUNT_DEFAULTS: Record<MeshyTarget, number> = { furniture: 8000, vehicle: 20000, character: 15000 }
+export const POLYCOUNT_DEFAULTS: Record<MeshyTarget, number> = { furniture: 8000, vehicle: 20000, character: 15000, ride: 12000 }
 export const POLYCOUNT_RANGE = { min: 500, max: 100000 }
 export const PREVIEW_COUNT_MAX = 4
 
@@ -65,10 +65,12 @@ export const PROMPT_HELPERS: Record<MeshyTarget, string[]> = {
   vehicle: ['no wheels', 'wheel wells empty', 'side view', 'game asset', 'low poly', 'original design, no logos or badges', 'clean single body'],
   furniture: ['game asset', 'low poly', 'single object', 'no floor or background', 'realistic proportions'],
   character: ['game asset', 'A-pose', 'full body', 'plain clothing, no logos'],
+  ride: ['amusement park ride', 'game asset', 'stylized', 'bright paint', 'on a round platform', 'single object, centered', 'original design, no logos or text'],
 }
 
 export const NEGATIVE_DEFAULTS: Record<MeshyTarget, string> = {
   vehicle: 'wheels, tires, logos, badges, brand names, license plate text, ground plane',
   furniture: 'floor, background, text, logos',
   character: 'logos, text, weapons',
+  ride: 'people, riders, ground plane, background, scenery, text, logos, brand names, characters from films or games',
 }

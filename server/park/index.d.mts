@@ -20,8 +20,9 @@ export type Objective = { type: 'guests' | 'value' | 'coasters' | 'none' | 'vers
 export type HistoryRow = { label: string; income: number; expenses: number; profit: number; guests: number; rating: number; value: number; cash: number; company: number; wages?: number; electricity?: number }
 export type LandRect = { x0: number; y0: number; x1: number; y1: number }
 export type ParkLand = { initial: LandRect; limit: LandRect }
-export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; schemes?: ColorScheme[]; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; resortHotels?: number; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
+export type Park = { id: number; parkId: string; land?: ParkLand | null; name: string; named?: boolean; color: string; schemes?: ColorScheme[]; cash: number; loan: number; maxLoan: number; entryFee: number; rating: number; value: number; guestsIn: number; totalGuests: number; open: boolean; marketing: { kind: string; until: number; boost: number }[]; month: Ledger; history: HistoryRow[]; thoughts: [string, number][]; objective: Objective; resortHotels?: number; millionAt?: MillionAt; status: 'playing' | 'won' | 'lost'; happiness?: number; litter?: number; spawn?: GuestSpawn }
 export type News = { id: number; t: number; park: number; text: string; kind: string; ref: number | null }
+export type MillionAt = { seconds: number; day: number; month: number; year: number; value: number; rating: number; approx?: boolean }
 export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
   pathVersion: number; structVersion: number; parks: Park[]; guests: Guest[]; staff: Staff[]
@@ -41,7 +42,21 @@ export type GuestSpawn = { rate: number; cap: number; buildCap?: number; landCap
 export type Command = { t: string; [key: string]: unknown }
 export type CommandResult = { ok: boolean; error?: string; warning?: string | null; id?: number; cost?: number; refund?: number; complete?: boolean; pieces?: number; count?: number }
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[]; hairpins?: boolean[] }
-export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; resize?: FlatResize; waves?: string }
+export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; resize?: FlatResize; waves?: string; custom?: CustomRideInfo }
+export type CustomRideMotionType = 'none' | 'spin' | 'swing' | 'wheel' | 'drop' | 'bob'
+export type CustomRideMotion = { type: CustomRideMotionType; speed: number; amount: number; axis: 'x' | 'y'; split: number; pivot: [number, number, number] }
+export type CustomRideInfo = { id: string; motion: CustomRideMotion; meshVersion: number; thumb: boolean; retired: boolean }
+export type CustomRideRecordInput = { id: string; name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; motion: CustomRideMotion; meshVersion: number; thumb: boolean; active: boolean }
+export const CUSTOM_RIDE_PREFIX: string
+export const CUSTOM_RIDE_ID: RegExp
+export const CUSTOM_RIDE_CATEGORIES: string[]
+export const CUSTOM_RIDE_MOTIONS: CustomRideMotionType[]
+export const CUSTOM_RIDE_LIMITS: { nameMin: number; nameMax: number; descriptionMax: number; sizeMin: number; sizeMax: number; heightMin: number; heightMax: number; costMin: number; costMax: number; upkeepMax: number; capacityMin: number; capacityMax: number; rideTimeMin: number; rideTimeMax: number; loadTimeMin: number; loadTimeMax: number; priceMax: number; statMax: number; speedMin: number; speedMax: number; meshBytes: number; thumbBytes: number; sourceBytes: number; trianglesMin: number; trianglesMax: number }
+export function sanitizeMotion(raw: unknown): CustomRideMotion
+export function customRideDef(raw: unknown): FlatRideDef | null
+export function registerCustomRides(list: unknown): string[]
+export function isCustomRide(id: unknown): boolean
+export function buildableRide(def: FlatRideDef | undefined): boolean
 export type FlatResize = { min: [number, number]; max: [number, number]; costBase: number; costPerTile: number; upkeepBase: number; upkeepPerTile: number; capacityPerTile: number; excitementPerTile: number; maxSizeBonus: number }
 export type WaveSetting = { name: string; e: number; i: number; n: number; height: number; speed: number }
 export type FlatSpec = { size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; height: number; stats: { e: number; i: number; n: number } }
@@ -156,6 +171,10 @@ export function mechanicJobDistance(state: ParkState, mechanic: Staff, ride: Ent
 export function objectiveText(objective: Objective): string
 export function parkValue(state: ParkState, park: number): number
 export function companyValue(state: ParkState, park: number): number
+export const MILLION_VALUE: number
+export const MILLION_RATING: number
+export function checkMillionDash(state: ParkState): void
+export function millionFromHistory(park: Park, time: ParkState['time']): MillionAt | null
 export function terrainPlan(state: ParkState, park: number, r: { x0: number; y0: number; x1: number; y1: number }, op: string, levelTo?: number | null): { error?: string; cost?: number }
 export function encodeDynamic(state: ParkState, sinceNews?: number): unknown
 export function applyDynamic(state: ParkState, dyn: unknown): void

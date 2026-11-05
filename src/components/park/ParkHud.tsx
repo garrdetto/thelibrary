@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { Camera, Check, Cloud, CloudRain, Droplets, Eraser, FastForward, Footprints, Gauge, Grid3x3, Hotel, Landmark, LoaderCircle, LogOut, Maximize2, MessageCircle, Minus, Mountain, MousePointer2, Paintbrush, Pause, Play, Plus, RotateCw, Save, Sparkles, Store, Sun, Moon, Trash2, Trees, Undo2, Users, Wrench, X, Zap } from 'lucide-react'
 import { ParkRenderer } from '@/lib/park/renderer'
+import { customRideThumb } from '@/lib/park/customRides'
 import { shotCamera } from '@/lib/park/shotCams'
 import { QUALITY_TIERS } from '@/lib/park/quality'
 import type { ParkQuality } from '@/lib/park/quality'
@@ -11,7 +12,7 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor, kartCount } from '../../../server/park/index.mjs'
+import { buildableRide, FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor, kartCount } from '../../../server/park/index.mjs'
 import { WaveControl } from './WaveControl'
 import { RideComments } from './RideComments'
 import { ResortCards, ResortSummary, ResortPortfolio, HotelWindowBody } from './ResortPanel'
@@ -862,8 +863,8 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore }:
       <div className="pk-tabs" role="tablist" aria-label="Ride categories">
         {(['All', 'Gentle', 'Thrill', 'Water', 'Other'] as const).map(tab => <button key={tab} role="tab" aria-selected={rideTab === tab} className={rideTab === tab ? 'on' : ''} onClick={() => setRideTab(tab)}>{tab}</button>)}
       </div>
-      <div className="pk-cards">{Object.entries(FLAT_RIDES).filter(([, ride]) => rideTab === 'All' || ride.category === rideTab.toLowerCase()).map(([id, r]) => <button key={id} className={`pk-card ${tool.kind === 'flat' && tool.ride === id ? 'on' : ''}`} onClick={() => { setFlatQuote(null); setTool({ kind: 'flat', ride: id, rot: 0 }); setPanel(null) }}>
-        <strong>{r.name}</strong><span>{r.resize ? `from ${money(flatSpec(id, r.resize.min, r.waves)?.cost ?? r.cost)} · drag to size` : `${money(r.cost)} · ${r.size[0]}×${r.size[1]}`}</span><small>{r.description}</small><em>Excitement {r.stats.e.toFixed(1)} · Intensity {r.stats.i.toFixed(1)}</em>
+      <div className="pk-cards">{Object.entries(FLAT_RIDES).filter(([, ride]) => buildableRide(ride) && (rideTab === 'All' || ride.category === rideTab.toLowerCase())).map(([id, r]) => <button key={id} className={`pk-card ${tool.kind === 'flat' && tool.ride === id ? 'on' : ''}`} onClick={() => { setFlatQuote(null); setTool({ kind: 'flat', ride: id, rot: 0 }); setPanel(null) }}>
+        {customRideThumb(r) && <img className="pk-card-thumb" src={customRideThumb(r)!} alt="" loading="lazy"/>}<strong>{r.name}</strong><span>{r.resize ? `from ${money(flatSpec(id, r.resize.min, r.waves)?.cost ?? r.cost)} · drag to size` : `${money(r.cost)} · ${r.size[0]}×${r.size[1]}`}</span><small>{r.description}</small><em>Excitement {r.stats.e.toFixed(1)} · Intensity {r.stats.i.toFixed(1)}</em>
       </button>)}</div>
       {rideTab === 'Other' && <>
         <p className="pk-label">Custom track rides</p>

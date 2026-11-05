@@ -5,6 +5,7 @@ import { HttpError, json, readJson, requireSameOrigin } from '../http'
 import { requireMapleAdmin } from '../maplestreet-admin'
 import { ITEM_MODEL_KEY } from '../maplestreet-items'
 import { VEHICLE_MODEL_KEY } from '../maplestreet-vehicles'
+import { RIDE_SOURCE_KEY } from '../park-rides'
 import { ensureJobModel, getJobRow, insertJob, isFinal, listJobRows, MESHY_MODEL_KEY, meshyConfigured, meshyFetch, refreshJob, setJob, TASK_PATHS, toJob } from '../meshy'
 
 const REFRESH_PER_LIST = 6
@@ -18,6 +19,7 @@ const source = z.union([
   z.object({ jobId: z.string().uuid() }).strict(),
   z.object({ itemId: z.string().uuid() }).strict(),
   z.object({ vehicleId: z.string().uuid() }).strict(),
+  z.object({ rideId: z.string().regex(/^cr_[a-f0-9]{10}$/) }).strict(),
 ])
 
 const actionSchema = z.discriminatedUnion('action', [
@@ -75,7 +77,9 @@ async function modelInput(request: Request, env: Env, src: z.infer<typeof source
   }
   const origin = new URL(request.url).origin
   const isPublic = origin.startsWith('https://') && !/localhost|127\.0\.0\.1/.test(origin)
-  const [key, path] = 'itemId' in src ? [ITEM_MODEL_KEY(src.itemId), `/api/maplestreet-items?model=${src.itemId}`] : [VEHICLE_MODEL_KEY(src.vehicleId), `/api/maplestreet-vehicles?model=${src.vehicleId}`]
+  const [key, path] = 'itemId' in src ? [ITEM_MODEL_KEY(src.itemId), `/api/maplestreet-items?model=${src.itemId}`]
+    : 'rideId' in src ? [RIDE_SOURCE_KEY(src.rideId), `/api/park-rides?source=${src.rideId}`]
+    : [VEHICLE_MODEL_KEY(src.vehicleId), `/api/maplestreet-vehicles?model=${src.vehicleId}`]
   if (isPublic) return { model_url: `${origin}${path}` }
   const stored = await env.FILES.getWithMetadata(key, 'arrayBuffer')
   if (!stored.value) throw new HttpError(404, 'That model wasn’t found.')

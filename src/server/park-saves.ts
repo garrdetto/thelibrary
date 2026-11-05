@@ -1,8 +1,10 @@
 import type { Env } from './env'
 import { HttpError } from './http'
-import { MONTHS, SCENARIOS, companyValue } from '../../server/park/index.mjs'
+import { MILLION_RATING, MILLION_VALUE, MONTHS, SCENARIOS, companyValue } from '../../server/park/index.mjs'
 
-type SavedPark = { id: number; parkId?: string; name?: string; cash?: number; loan?: number; guestsIn?: number; rating?: number }
+type SavedPark = { id: number; parkId?: string; name?: string; cash?: number; loan?: number; guestsIn?: number; rating?: number; millionAt?: unknown }
+
+export type MillionDash = { seconds: number; day: number; month: number; year: number; value: number; rating: number; approx: boolean }
 type SavedState = { scenario?: string; mode?: string; time?: { month?: number; year?: number }; parks?: SavedPark[]; entities?: Record<string, unknown> }
 
 export type ParkSaveSummary = { cash: number; netWorth?: number; companyValue?: number; guests: number; rating: number; date: string; mode: string }
@@ -15,9 +17,22 @@ export type ParkInSave = {
   mode: string
   value: number
   summary: ParkSaveSummary
+  millionAt: MillionDash | null
 }
 
 const PARK_ID = /^[a-f0-9-]{32,36}$/i
+
+// The Million Dollar Dash moment the sim stored in the park (checkMillionDash).
+// Anything that does not meet both thresholds is ignored.
+function millionDash(raw: unknown): MillionDash | null {
+  if (!raw || typeof raw !== 'object') return null
+  const m = raw as Record<string, unknown>
+  const n = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? v : NaN
+  const seconds = n(m.seconds), value = n(m.value), rating = n(m.rating)
+  if (!(seconds >= 0) || seconds > 1e9 || !(value >= MILLION_VALUE) || !(rating >= MILLION_RATING)) return null
+  const int = (v: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number.isFinite(n(v)) ? n(v) : lo)))
+  return { seconds: Math.round(seconds * 100) / 100, day: int(m.day, 0, 30), month: int(m.month, 0, 7), year: int(m.year, 1, 999), value: Math.round(value), rating: Math.min(999, Math.round(rating)), approx: m.approx === true }
+}
 
 export async function decodeSave(base64: string): Promise<SavedState> {
   try {
@@ -49,6 +64,7 @@ export function parkInSave(state: SavedState, wanted?: string, nameHint?: string
     scenario: String(state.scenario ?? ''),
     mode: String(state.mode ?? 'solo'),
     value,
+    millionAt: millionDash(found.millionAt),
     summary: {
       cash: Math.round(found.cash ?? 0),
       netWorth: Math.round((found.cash ?? 0) - (found.loan ?? 0)),

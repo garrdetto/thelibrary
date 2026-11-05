@@ -603,6 +603,7 @@ const HANDLERS = {
   flat(state, cmd, park) {
     const def = FLAT_RIDES[cmd.ride]
     if (!def || !isInt(cmd.x, 0, state.map.w - 1) || !isInt(cmd.y, 0, state.map.h - 1) || !isInt(cmd.rot, 0, 3)) return fail('Choose a ride and where to place it.')
+    if (def.custom?.retired) return fail(`${def.name} is no longer available to build.`)
     const sizing = def.resize && (cmd.w !== undefined || cmd.h !== undefined)
     if (sizing && !validFlatSize(def, cmd.w, cmd.h)) return fail(`${def.name} can be ${def.resize.min[0]}×${def.resize.min[1]} to ${def.resize.max[0]}×${def.resize.max[1]} squares.`)
     if (!def.resize && (cmd.w !== undefined || cmd.h !== undefined)) return fail(`${def.name} has a fixed size.`)

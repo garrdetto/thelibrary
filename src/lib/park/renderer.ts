@@ -9,6 +9,7 @@ import type { ParkQuality, QualitySettings } from './quality'
 import { wavePoolModel } from './waterModels'
 import { waterRideModel } from './waterRides'
 import { decorateRide } from './rideNeon'
+import { customModelKey, customRideModel } from './customRides'
 import { bulb, bulbRun, neonTube, LIGHTS, GLOW } from './neon'
 import { hotelModel, hotelLook } from './hotelModels'
 import { addPathTile, addQueueMarkings } from './pathModels'
@@ -464,12 +465,13 @@ export class ParkRenderer {
   private rideModel(kind: string, size?: [number, number], wave?: string) {
     const def = FLAT_RIDES[kind]
     const [w, h] = size ?? def.size
-    const key = `${kind}:${w}x${h}:${def.waves ? wave ?? def.waves : ''}`
+    const key = def.custom ? customModelKey(kind, def) : `${kind}:${w}x${h}:${def.waves ? wave ?? def.waves : ''}`
     let m = this.rideModels.get(key)
     if (!m) {
-      const model = decorateRide(kind, kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : waterRideModel(kind, w, h) ?? flatRideModel(kind, w, h), w, h)
-      model.base.bakeAO(0.6)
-      for (const part of model.parts) part.builder.bakeAO(0.45)
+      const model = def.custom ? decorateRide(kind, customRideModel(def), w, h)
+        : decorateRide(kind, kind === 'wavePool' ? wavePoolModel(w, h, wave ?? def.waves ?? 'rolling') : waterRideModel(kind, w, h) ?? flatRideModel(kind, w, h), w, h)
+      model.base.bakeAO(def.custom ? 0.35 : 0.6)
+      for (const part of model.parts) part.builder.bakeAO(def.custom ? 0.3 : 0.45)
       m = { base: this.g.upload(model.base), parts: model.parts.map(p => ({ mesh: this.g.upload(p.builder), anim: p.anim })) }
       this.rideModels.set(key, m)
     }

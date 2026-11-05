@@ -37,6 +37,33 @@ function ordinal(n: number): string {
   return `${n}${last === 1 ? 'st' : last === 2 ? 'nd' : last === 3 ? 'rd' : 'th'}`
 }
 
+/** Renders the sky dome over a dirt disc into a PMREM environment so paint, chrome and glass reflect the fair's sky. */
+function bakeEnvironment(app: App): void {
+  try {
+    const envScene = new THREE.Scene()
+    envScene.add(createSky({ ...config.sky, radius: 90 }))
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(85, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(config.arena.groundColor) }))
+    ground.position.y = -1.5
+    envScene.add(ground)
+    const pmrem = new THREE.PMREMGenerator(app.renderer)
+    const target = pmrem.fromScene(envScene, 0, 0.1, 100)
+    const scene = app.scene as THREE.Scene & { environmentIntensity?: number }
+    scene.environment = target.texture
+    scene.environmentIntensity = 0.55
+    app.own({
+      dispose() {
+        scene.environment = null
+        target.dispose()
+        pmrem.dispose()
+        ground.geometry.dispose()
+        ground.material.dispose()
+      },
+    })
+  } catch (error) {
+    console.warn('[demoderby] environment bake failed', error)
+  }
+}
+
 async function boot(): Promise<void> {
   const container = byId<HTMLElement>('stage')
   document.title = `${config.meta.title} · the library`
@@ -50,6 +77,7 @@ async function boot(): Promise<void> {
   app.graph.add('world', lighting.root)
   app.own(createPost(app, config.engine.post, quality.settings))
   app.graph.add('world', createSky(config.sky))
+  bakeEnvironment(app)
 
   const input = app.own(new Input<Action>(container, config.bindings, config.engine.input))
   const hud = app.own(new Hud(config.engine.hud, config.meta.accent))
@@ -106,6 +134,7 @@ async function boot(): Promise<void> {
   const spawnVehicle = (look: CarLook, isPlayer: boolean, position: THREE.Vector3, yaw: number): Vehicle => {
     const vehicle = new Vehicle(nextId++, look, bodyById(look.body), isPlayer, physics, config.vehicle, position, yaw)
     app.graph.add('props', vehicle.model.root)
+    app.graph.add('props', vehicle.model.shadow)
     carColliders.add(vehicle.collider.handle)
     vehicle.sync(1)
     return vehicle

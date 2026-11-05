@@ -5,6 +5,7 @@ import { ParkScoreboard } from './ParkScoreboard'
 import { LocalSession, NetSession, ViewSession, Lobby, compressSave, decompressSave } from '@/lib/park/session'
 import type { ParkSession, RoomInfo, Player, ChatLine } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
+import { ensureCustomRides } from '@/lib/park/customRides'
 import type { SaveSummary } from '@/lib/park/api'
 import { SCENARIOS, objectiveText, formatMoney, deserializePark } from '../../../server/park/index.mjs'
 
@@ -28,6 +29,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
   const signedIn = Boolean(username)
 
   useEffect(() => () => { lobbyRef.current?.close() }, [])
+  useEffect(() => { void ensureCustomRides() }, [])
 
   useEffect(() => {
     if ((tab === 'new' || tab === 'load' || tab === 'online') && signedIn && saves === null) void refreshSaves()
@@ -37,8 +39,9 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     try { setSaves((await parkApi.saves()).saves) } catch (failure) { setError((failure as Error).message); setSaves([]) }
   }
 
-  function startLocal(make: () => ParkSession) {
+  async function startLocal(make: () => ParkSession) {
     setError('')
+    await ensureCustomRides()
     try { setSession(make()) } catch (failure) { setError((failure as Error).message) }
   }
 
@@ -47,7 +50,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     try {
       const { data } = await parkApi.load(id)
       const parsed = await decompressSave(data)
-      startLocal(() => LocalSession.load(parsed))
+      await startLocal(() => LocalSession.load(parsed))
     } catch (failure) { setError((failure as Error).message || 'That save could not be opened.') } finally { setBusy('') }
   }
 
@@ -56,6 +59,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
     try {
       const view = await parkApi.view(map, parkId)
       const parsed = await decompressSave(view.data)
+      await ensureCustomRides()
       const next = new ViewSession(deserializePark(parsed), view.username, view.savedAt)
       setSession(next)
       window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -71,6 +75,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
   async function connect() {
     setBusy('connect'); setError('')
     try {
+      await ensureCustomRides(true)
       const { ticket } = await parkApi.ticket()
       lobbyRef.current?.close()
       const next = new Lobby(ticket)
@@ -145,7 +150,7 @@ export function ParkGame({ username, accountReady }: { username: string | null; 
           <p className="pk-objective-text">{objectiveText(s.objective)}</p>
           <small>Starting cash {formatMoney(s.cash)}{s.loan ? ` · loan ${formatMoney(s.loan)}` : ''}</small>
           <div className="pk-play-row">
-            <button className="pk-btn pk-btn-go" onClick={() => startLocal(() => LocalSession.fresh(id))}><Play size={14} /> Play</button>
+            <button className="pk-btn pk-btn-go" onClick={() => void startLocal(() => LocalSession.fresh(id))}><Play size={14} /> Play</button>
             {signedIn && (saves ?? []).some(save => save.scenario === id) && <select className="pk-save-select" aria-label={`Saved parks for ${s.name}`} value="" disabled={Boolean(busy)} onChange={e => { if (e.target.value) void loadPark(e.target.value) }}><option value="">Saved parks…</option>{(saves ?? []).filter(save => save.scenario === id).map(save => <option key={save.parkId} value={save.parkId}>{save.name} · {save.summary.date} · {formatMoney(save.summary.cash)}</option>)}</select>}
           </div>
         </div>

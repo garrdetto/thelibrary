@@ -17,6 +17,14 @@ export function ensureGuestIndex(state) {
 }
 export const START_MONTH = 0
 
+// The Million Dollar Dash moment kept in saves (see checkMillionDash in sim.mjs).
+function millionAt(p) {
+  const m = p?.millionAt
+  if (!m || typeof m !== 'object' || !Number.isFinite(m.seconds) || m.seconds < 0) return null
+  const int = (v, lo, hi) => Math.min(hi, Math.max(lo, Math.round(Number.isFinite(v) ? v : lo)))
+  return { seconds: Math.round(m.seconds * 100) / 100, day: int(m.day, 0, 30), month: int(m.month, 0, 7), year: int(m.year, 1, 999), value: int(m.value, 0, 1e10), rating: int(m.rating, 0, 999), ...(m.approx === true ? { approx: true } : {}) }
+}
+
 export function footprint(entity) {
   if (entity.type === 'ride' && entity.kind === 'flat') {
     const [w, h] = entity.size ?? FLAT_RIDES[entity.ride].size
@@ -357,6 +365,7 @@ export function deserializePark(data) {
     history: Array.isArray(p?.history) ? p.history.slice(-24).map(row => Object.fromEntries(Object.entries(row ?? {}).slice(0, 16).map(([k, v]) => [k.slice(0, 16), typeof v === 'number' ? num(v) : String(v).slice(0, 30)]))) : [],
     thoughts: [], objective: SCENARIOS[scenario].objective, status: ['playing', 'won', 'lost'].includes(p?.status) ? p.status : 'playing', spawnDebt: 0, awards: [],
     land: state.mode === 'versus' ? null : sanitizeLandBounds(p?.land, map, i) ?? landBoundsForOwner(map, i),
+    ...(millionAt(p) ? { millionAt: millionAt(p) } : {}),
   }))
   if (state.parks.some(park => !park.named)) state.speed = 0
   const entities = data.entities && typeof data.entities === 'object' ? Object.values(data.entities).slice(0, 20000) : []

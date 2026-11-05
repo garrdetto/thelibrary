@@ -33,6 +33,8 @@ async function createScoreTables(env: Env) {
     env.DB.prepare('CREATE TABLE IF NOT EXISTS park_scoreboard_resets (scenario TEXT PRIMARY KEY NOT NULL, reset_at INTEGER NOT NULL)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS park_scores_by_park (park_id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, scenario TEXT NOT NULL, username TEXT NOT NULL, park_name TEXT NOT NULL, value INTEGER NOT NULL, updated_at INTEGER NOT NULL, saved_at INTEGER, snapshot TEXT, shot_at INTEGER)'),
     env.DB.prepare('CREATE INDEX IF NOT EXISTS park_scores_by_park_scenario_value_idx ON park_scores_by_park (scenario, value DESC, saved_at DESC)'),
+    env.DB.prepare('CREATE TABLE IF NOT EXISTS park_million_by_park (park_id TEXT PRIMARY KEY NOT NULL, user_id TEXT NOT NULL, scenario TEXT NOT NULL, username TEXT NOT NULL, park_name TEXT NOT NULL, seconds REAL NOT NULL, day INTEGER NOT NULL, month INTEGER NOT NULL, year INTEGER NOT NULL, value INTEGER NOT NULL, rating INTEGER NOT NULL, approx INTEGER NOT NULL DEFAULT 0, reached_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)'),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS park_million_by_park_scenario_idx ON park_million_by_park (scenario, seconds ASC, reached_at ASC)'),
   ])
   const columns = await env.DB.prepare("SELECT name FROM pragma_table_info('park_scores_by_park')").all<{ name: string }>()
   if (!columns.results.some(column => column.name === 'shot_at')) {
@@ -49,6 +51,48 @@ function ensureScoreTables(env: Env) {
 async function scoreboardResetAt(env: Env, map: string) {
   const reset = await env.DB.prepare('SELECT reset_at FROM park_scoreboard_resets WHERE scenario = ?').bind(map).first<{ reset_at: number }>()
   return reset?.reset_at ?? 0
+}
+
+type MillionRow = { park_id: string; username: string; park_name: string; seconds: number; day: number; month: number; year: number; value: number; rating: number; approx: number; reached_at: number; shot_at: number | null; explorable: number | null }
+
+// Million Dollar Dash: quickest in-game time to $1M park value and a 750 rating
+// at the same moment, one entry per park, fastest first.
+async function millionBoard(env: Env, map: string, resetAt: number) {
+  const rows = await env.DB.prepare(`SELECT m.park_id, m.username, m.park_name, m.seconds, m.day, m.month, m.year, m.value, m.rating, m.approx, m.reached_at, s.shot_at, s.snapshot IS NOT NULL AS explorable
+    FROM park_million_by_park m LEFT JOIN park_scores_by_park s ON s.park_id = m.park_id AND s.updated_at > ?
+    WHERE m.scenario = ? AND m.updated_at > ? ORDER BY m.seconds ASC, m.reached_at ASC LIMIT 10`).bind(resetAt, map, resetAt).all<MillionRow>()
+  return rows.results.map(row => ({
+    parkId: row.park_id,
+    username: row.username,
+    parkName: row.park_name,
+    seconds: row.seconds,
+    day: row.day, month: row.month, year: row.year,
+    value: row.value,
+    rating: row.rating,
+    approx: Boolean(row.approx),
+    reachedAt: new Date(row.reached_at).toISOString(),
+    shot: row.shot_at ? `/api/park?shot=${encodeURIComponent(row.park_id)}&v=${row.shot_at}` : null,
+    viewable: Boolean(row.explorable),
+  }))
+}
+
+async function recordMillion(env: Env, userId: string, username: string, scenarioId: string, wantedPark: string, data: string, now: number) {
+  let park
+  try { park = parkInSave(await decodeSave(data), wantedPark) } catch { return }
+  const m = park.millionAt
+  if (!m || !isScoredPark(park) || park.scenario !== scenarioId) return
+  await env.DB.prepare(`INSERT INTO park_million_by_park (park_id, user_id, scenario, username, park_name, seconds, day, month, year, value, rating, approx, reached_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(park_id) DO UPDATE SET username = excluded.username, park_name = excluded.park_name, updated_at = excluded.updated_at,
+      seconds = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.seconds ELSE park_million_by_park.seconds END,
+      day = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.day ELSE park_million_by_park.day END,
+      month = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.month ELSE park_million_by_park.month END,
+      year = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.year ELSE park_million_by_park.year END,
+      value = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.value ELSE park_million_by_park.value END,
+      rating = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.rating ELSE park_million_by_park.rating END,
+      approx = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.approx ELSE park_million_by_park.approx END,
+      reached_at = CASE WHEN excluded.seconds < park_million_by_park.seconds THEN excluded.reached_at ELSE park_million_by_park.reached_at END
+    WHERE park_million_by_park.user_id = excluded.user_id AND park_million_by_park.scenario = excluded.scenario`)
+    .bind(park.parkId, userId, scenarioId, username, park.name, m.seconds, m.day, m.month, m.year, m.value, m.rating, m.approx ? 1 : 0, now, now).run()
 }
 
 type ScoreRow = { park_id: string; username: string; park_name: string; value: number; updated_at: number; saved_at: number | null; shot_at: number | null; explorable: number }
@@ -68,6 +112,7 @@ async function scoreboard(env: Env, map: string, userId: string | null) {
       shot: row.shot_at ? `/api/park?shot=${encodeURIComponent(row.park_id)}&v=${row.shot_at}` : null,
       viewable: Boolean(row.explorable),
     })),
+    million: await millionBoard(env, map, resetAt),
     signedIn: Boolean(userId),
   }
 }
@@ -125,6 +170,7 @@ export async function park(request: Request, env: Env) {
     await env.DB.batch([
       env.DB.prepare('DELETE FROM park_saves_by_park WHERE user_id = ? AND park_id = ?').bind(user.id, id),
       env.DB.prepare('DELETE FROM park_scores_by_park WHERE park_id = ? AND user_id = ?').bind(id, user.id),
+      env.DB.prepare('DELETE FROM park_million_by_park WHERE park_id = ? AND user_id = ?').bind(id, user.id),
     ])
     if (scored) await env.FILES.delete(shotKey(id))
     return json({ deleted: true })
@@ -140,6 +186,7 @@ export async function park(request: Request, env: Env) {
         snapshot = COALESCE(excluded.snapshot, park_scores_by_park.snapshot)
       WHERE park_scores_by_park.user_id = excluded.user_id AND park_scores_by_park.scenario = excluded.scenario`)
       .bind(input.parkId.toLowerCase(), user.id, input.scenario, user.username, input.parkName, input.value, savedAt, savedAt, input.data ?? null).run()
+    if (input.data) await recordMillion(env, user.id, user.username, input.scenario, input.parkId.toLowerCase(), input.data, savedAt)
     return json(await scoreboard(env, input.scenario, user.id))
   }
   if (input.action === 'shot') {
