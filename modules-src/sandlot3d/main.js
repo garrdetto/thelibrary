@@ -1303,10 +1303,10 @@ function swing(){
   const p=(now-pitch.t0)/pitch.dur,d=p-IDEAL,dd=dist(ret.x,ret.y,pitch.zx,pitch.zy);
   const w=D.w*(.85+.075*bat.c)*(isB?1.9:1),tol=.85*(.9+.05*bat.c)*(isB?1.25:1);
   if(Math.abs(d)>w||dd>tol){pitch.missed=true;sfx.whiff();say(isB?'Missed the bunt!':Math.abs(d)>w?(d<0?'Way out in front!':'Too late!'):'Missed it. Bat in the wrong spot!');return}
-  const q=(1-Math.abs(d)/w)*(1-dd/tol);
+  const q=Math.pow((1-Math.abs(d)/w)*(1-dd/tol),.65);
   let ev,la,th;
   if(isB){ev=rnd(20,32)+q*6;la=rnd(-14,2);th=rnd(-36,36)}
-  else{ev=cl((44+62*Math.pow(q,.6)+(pitch.mph-80)*.15)*(.88+.06*bat.p),38,112);la=14+(ret.y-pitch.zy)*20+rnd(-5,5);th=(d/w*42+rnd(-7,7))*(LEFTY.has(bid)?-1:1)}
+  else{ev=cl((44+62*Math.pow(q,.6)+(pitch.mph-80)*.15)*(.88+.06*bat.p),38,112);la=22+(ret.y-pitch.zy)*24+rnd(-5,5);th=(d/w*42+rnd(-7,7))*(LEFTY.has(bid)?-1:1)}
   sfx.crack(isB?.1:q);
   if(!isB&&q<.12)return doFoul(now,rnd(-1,1)<0?-70:70,ev*.6,'Foul tip! Weak contact.');
   if(Math.abs(th)>45)return doFoul(now,th,ev,'Foul ball!');
@@ -1339,7 +1339,7 @@ function newBall(ev,la,th){
   const v=ev*1.467,a=th*PI/180,lr=la*PI/180,g=32.2;
   const b={x:0,y:1.5,z:3,ox:0,oy:1.5,dx:Math.sin(a),dy:Math.cos(a),t:0,mode:'air'};
   if(la<9){b.mode='ground';b.grounder=true;b.v=v*.7;b.hop=Math.max(.5,(la+12)*.12);b.ht=0;b.z=1}
-  else{b.D=v*v*Math.sin(2*lr)/g*.42;b.T=2*v*Math.sin(lr)/g*.8;b.H=v*v*Math.sin(lr)**2/(2*g)*.4;b.z0=3;b.vLand=b.D/b.T*.5}
+  else{b.D=v*v*Math.sin(2*lr)/g*Math.min(.6,.42*Math.pow(150/v,.8));b.T=2*v*Math.sin(lr)/g*.8;b.H=v*v*Math.sin(lr)**2/(2*g)*.4;b.z0=3;b.vLand=b.D/b.T*.5}
   return b}
 function predict(b,T=7,dt=.05){const c=Object.assign({},b),out=[];for(let t=0;t<=T;t+=dt){out.push({t,x:c.x,y:c.y,z:c.z,mode:c.mode});if(c.mode==='dead')break;ballStep(c,dt)}return out}
 function startLive(ev,la,th,isBunt,now){
