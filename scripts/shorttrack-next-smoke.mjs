@@ -16,8 +16,8 @@ for (const run of runs) {
   page.on('pageerror', (e) => errors.push(String(e)))
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()) })
   page.on('request', (r) => { const u = r.url(); if (!u.startsWith(base) && !u.startsWith('data:') && !u.startsWith('blob:')) external.push(u) })
-  await page.goto(`${base}/modules/shorttrack.html${run.q}`)
-  await page.waitForTimeout(run.q ? 12000 : 8000)
+  await page.goto(`${base}/modules/shorttrack${run.q}`)
+  await page.waitForTimeout(run.q ? 16000 : 8000)
   const status = await page.evaluate(() => window.__stNext ?? null)
   await page.screenshot({ path: `${outDir}/${run.name}.png`, timeout: 15000 }).catch(() => console.log(`no screenshot for ${run.name}`))
   const ok = run.q ? status && status.physics === 'havok' && status.frames > 5 && !status.error : true
