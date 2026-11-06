@@ -38,7 +38,8 @@
     #hud h1 { font-size: 15px; }
     #where { margin-top: 4px; font-weight: 600; }
     #speed { font: 700 22px/1.1 ui-sans-serif, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
-    #speed:empty, #hint:empty { display: none; }
+    #speed:empty, #hint:empty, #toast:empty { display: none; }
+    #toast { margin-top: 6px; padding: 4px 8px; border-radius: 6px; background: rgba(79, 179, 255, 0.18); font-weight: 600; }
     #hint { margin-top: 4px; color: var(--accent); font-weight: 600; }
     #dev { position: fixed; top: 12px; right: 12px; z-index: 20; width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 12px 14px; background: rgba(12, 16, 24, 0.86); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
     #dev header { display: flex; justify-content: space-between; align-items: center; }
@@ -56,6 +57,14 @@
     #dev .make { display: inline-block; margin-top: 8px; color: var(--accent); font-size: 12px; }
     #dev .live, #dev .stats { color: var(--mute); font-size: 11px; font-variant-numeric: tabular-nums; }
     #dev .stats { margin-top: 10px; }
+    #flight { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 10; display: grid; grid-template-columns: auto auto auto; gap: 4px 18px; align-items: center; padding: 10px 16px; max-width: calc(100vw - 24px); background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); font-variant-numeric: tabular-nums; }
+    #flight[hidden], body.clean #flight { display: none; }
+    #flight canvas { grid-row: 1 / span 3; border-radius: 50%; }
+    #flight .big { font: 700 20px/1.1 ui-sans-serif, system-ui, sans-serif; }
+    #flight .dim { color: var(--mute); font-size: 11px; }
+    #f-warn { grid-column: 1 / -1; color: #ff7a6b; font-weight: 700; letter-spacing: 0.06em; }
+    #f-warn:empty { display: none; }
+    @media (max-width: 560px) { #flight { grid-template-columns: auto auto; } #flight canvas { display: none; } }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
@@ -67,8 +76,18 @@
     <div id="where" aria-live="polite"></div>
     <div id="speed" aria-live="off"></div>
     <div id="hint" aria-live="polite"></div>
+    <div id="toast" role="status"></div>
     <div id="stats" aria-live="off"></div>
-    <div class="keys"><b>WASD</b> move · <b>Shift</b> run · <b>E</b> get in or out · <b>Right-drag</b> look · <b>F8</b> developer panel</div>
+    <div class="keys"><b>WASD</b> move · <b>Shift</b> run · <b>E</b> get in or out, or climb aboard · <b>Right-drag</b> look · <b>F8</b> developer panel</div>
+  </section>
+  <section id="flight" aria-label="Flight instruments" hidden>
+    <canvas id="attitude" width="96" height="96" aria-hidden="true"></canvas>
+    <div><div id="f-spd" class="big"></div><div id="f-pwr" class="dim"></div></div>
+    <div><div id="f-alt" class="big"></div><div id="f-agl" class="dim"></div></div>
+    <div><div id="f-vs"></div><div id="f-rpm" class="dim"></div></div>
+    <div><div id="f-hdg"></div><div id="f-flp" class="dim"></div></div>
+    <div><div id="f-mode"></div><div id="f-fuel" class="dim"></div></div>
+    <div id="f-warn" role="alert"></div>
   </section>
   <section id="panel" aria-label="Look development controls">
     <h1>Kestrel County<small>Look development</small></h1>

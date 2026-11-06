@@ -3,7 +3,7 @@
  * lot runs that front them. Phase 1 holds the town core: Main Street (a
  * collector running east toward the airport), five avenues and three cross
  * streets on a 120 m grid, County Road heading south to the farms, and the
- * curving Ridge Road. Everything else (shapes, heights, lots) is derived.
+ * curving Ridge Road, and Airport Road to the apron. Everything else (shapes, heights, lots) is derived.
  */
 import type { RoadClassId, V2 } from './Roads';
 
@@ -33,6 +33,7 @@ function layout(): EdgeDef[] {
     for (let i = 0; i < xs.length - 1; i++) edges.push({ a: [xs[i], z], b: [xs[i + 1], z], cls: 'residential', name, lots: BOTH });
   }
   edges.push({ a: [-820, 560], b: [-640, MAIN_Z], via: [[-640, 560]], bend: 130, cls: 'residential', name: 'Ridge Road', lots: [{ side: 1, depth: 40, minWidth: 24 }] });
+  edges.push({ a: [600, MAIN_Z], b: [600, 75], cls: 'collector', name: 'Airport Road' });
   return edges;
 }
 

@@ -349,6 +349,14 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `shared/Roads.ts` — `RoadNet`: centre lines, graded profiles (`MAX_GRADE`, flat junction zones), junction curb returns and trims, lots and driveway placement, crosswalk ramps and curb cuts, the cross-section (`crossHeight`, `walkEnd`, `rowHalf`), and right-of-way queries (`query`, `nearest`, `lotsNear`) — `Terrain`, `RoadMesh`, `Scatter`, `LotMesh`, `WorldMain`, tests.
 - `shared/Terrain.ts` — `Terrain.heightAt` (ground graded under and around roads, lot pads, embankments) and `gridHeight` (the mesh's triangulation) — `County`, worker, tests.
 - `shared/County.ts` — `county()`: the network and terrain built once — worker, `WorldMain`, tests.
+- `shared/FlightMath.ts` — vectors, quaternions, `attitude` (pitch, bank, compass heading; north is −Z), `windAt` — flight files, `Flyer`.
+- `shared/Aircraft.ts` — `UTILITY_HELI` and `TRAINER_PLANE` specs, `AIRCRAFT` — flight files, `Game`, `DevPanel`.
+- `shared/HeliFlight.ts` — `heliForces` (thrust, inflow, ground effect, translational lift, vortex ring, disc tilt, torque and tail rotor, fin, stabiliser, autorotation), `pedalTrim` — `Flyer`, `FlightAssist`, tests.
+- `shared/PlaneFlight.ts` — `planeForces`, `liftCoefficient` (stall), flaps, ground effect, propeller, moments — `Flyer`, tests.
+- `shared/FlightAssist.ts` — Easy and Pro: `heliAssist` (speed, height and heading hold, landing cushion), `planeAssist` (attitude hold, auto-trim, coordination, stall protection, runway tracking) — `Flyer`, tests.
+- `shared/FlightSim.ts` — rigid-body integrator with flat ground for the tests; `shared/Landing.ts` — touchdown grades — `Flyer`, tests.
+- `shared/Airport.ts` — runway, taxiway, connectors, apron, helipads, plane stand, `onPaving` — `Terrain`, `AirportMesh`, `Game`, `WorldMain`.
+- `tests/flight.test.ts` — helicopter hover, ground effect, translational lift, assist recovery, forward flight, landing, autorotation, determinism; trainer stall speeds, cruise trim, take-off, glide, stall recovery, weathervaning — `scripts/county-tests.mjs`.
 - `tests/roads.test.ts` — determinism, connectivity, grades, junction seams, no overlaps (junctions, lots, right of way), curb-cut clearances, ground under sidewalks and meeting their outer edge — `scripts/county-tests.mjs` (`pnpm test`).
 - `src/main.ts` — renderer, kit and sky, then `WorldMain` or `LookDevMain` (`?lookdev=1`) — `index.ts`.
 - `src/WorldMain.ts` — boots physics, the vehicle registry, chunks and `Game`; spawn at home with the starter truck; day clock (`?hour=`), HUD, developer panel, `window.county` — `main`.
@@ -365,12 +373,16 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `src/world/LotMesh.ts` — full house with driveway and shrubs, distant massing, house collider boxes, seeded styles — `Chunks`.
 - `src/world/Scatter.ts` — street, yard and country trees, lamps and mailboxes per chunk; `lotPoint` — `Chunks`, `WorldMain`.
 - `src/world/TreeKit.ts` — instanced tree variants at two levels of detail — `Chunks`.
+- `src/world/AirportMesh.ts` — paving, markings, runway numbers, helipads, edge and threshold lights; collider triangles — `Chunks`.
+- `src/flight/Flyer.ts` — an aircraft on a Rapier body (skids, or tricycle gear on a vehicle controller), forces each pre-step, rotor strikes, landing grades, reset, `readout` — `Game`.
+- `src/game/FlightHud.ts` — flight instruments and attitude indicator — `WorldMain`.
+- `src/models/Plane.ts` — the Skylark trainer (lofted fuselage, airfoil wing, struts, tail, gear, moving propeller, elevator and rudder) — `Flyer`.
 - `src/world/LookDev.ts` — the Phase 0 scene — `LookDevMain`.
-- `src/game/Game.ts` — solo walking and driving on Fox Plains 2's classes: spawn after colliders exist, E in/out, R reset, teleport, rescue below ground, fixed step and chunk focus — `WorldMain`, `DevPanel`.
+- `src/game/Game.ts` — solo walking, driving and flying on Fox Plains 2's classes and `Flyer`: spawn after colliders exist, E in/out, R reset, teleport, rescue below ground, fixed step and chunk focus — `WorldMain`, `DevPanel`.
 - `src/game/Vehicles.ts` — registers built-in, bundled, published and (with `?dev=1`, admin only) draft vehicles; `vehicleEntries` — `WorldMain`, `DevPanel`.
 - `src/game/DevPanel.ts` — F8 panel: vehicle list with Spawn/Drive and specs, telemetry, teleports, time of day, stats, link to the vehicle editor — `WorldMain`.
 - `src/game/OrbitCamera.ts` — orbit/pan/zoom with preset views, ground clamp — `LookDevMain`.
-- `src/models/Parts.ts` (`sub`, `framedWindow`, `panelDoor`), `House.ts` (`buildHouse`, `buildDrive`), `Street.ts`, `Trees.ts` (`leafClump`, `broadleaf` with `lod`, `spruce`), `Airfield.ts`, `Helicopter.ts`, `Ground.ts` (look-dev ground) — `LookDev`, `LotMesh`, `TreeKit`, `Chunks`.
+- `src/models/Parts.ts` (`sub`, `framedWindow`, `panelDoor`), `House.ts` (`buildHouse`, `buildDrive`), `Street.ts`, `Trees.ts` (`leafClump`, `broadleaf` with `lod`, `spruce`), `Airfield.ts`, `Helicopter.ts`, `Ground.ts` (look-dev ground) — `LookDev`, `LotMesh`, `TreeKit`, `Chunks`, `Flyer`.
 ### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
 - `modules-src/fairway/module.json` — id `fairway`, title, accent `#4fd27a`, modes — `config.ts`.
 - `modules-src/fairway/tuning.ts` — pure tunables shared by systems and tests: air, ball, clubs, surface contact, lies, trees, cup, flight, terrain shape, wind, four-input meter, shot types (full/chip/flop/spinner launch and landing multipliers), short-game planner, camera, match rules, timing, hole data — `config.ts`, `systems/*`.
