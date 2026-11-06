@@ -9,9 +9,13 @@ Visible copy follows the site rules: everything is a "learning module", never ga
 ```
 modules-src/shorttrack/
   index.ts        picks the path: ?engine=next → next/boot.ts, otherwise the classic main.js
+  sim/            renderer-free core shared by the classic and the next module: no DOM, no Math.random, no clock
+    track.ts      (1a, done) layouts, CFG setup, track geometry
+    car.ts        (1b) vehicle step, walls, car contact, damage
+    ai.ts, race.ts (1c) AI driver, rolling start, race control
+  tests/          node --test suites (scripts/shorttrack-tests.mjs), fixtures recorded from the pre-port code
   next/           the Babylon module
     boot.ts       engine (WebGPU, WebGL2 fallback incl. on device loss), Havok init, render loop
-    sim/          (Phase 1) track, vehicle dynamics, AI, race control, damage: no DOM, no Math.random, no clock, fixed 120 Hz
     physics/      (Phase 4) Havok bodies for chassis, walls (continuous collision) and debris
     render/       (Phase 2) Babylon scene drawing interpolated sim state
     net/          (Phase 1) the PeerJS protocol plus a protocol version in hello
@@ -35,6 +39,7 @@ modules-src/shorttrack/
 - Moved to Phase 1: the recorded classic AI lap-time and speed traces, because recording them headless needs the sim extracted from `main.js` first.
 
 ### 1. Split and port, behaviour unchanged
+Done in sub-PRs so each stays reviewable: **1a** track layouts and geometry (`sim/track.ts`, exact match on all five tracks against `tests/fixtures/track-classic.json`; the smoke test now also loads classic Prison and Dirt and checks they draw frames through `window.__stClassic`), **1b** car physics, **1c** AI and race control, **1d** net and UI glue plus the recorded AI lap traces.
 `main.js` into the TS layers above, still drawn by the classic three.js renderer (`render-three/`). `scripts/shorttrack-tests.mjs` (esbuild + `node --test`) in `pnpm test`. Fixtures: AI lap times and speed-by-track-position traces per track and AI level in `modules-src/shorttrack/tests/fixtures/`. Golden test: same seed and inputs reproduce the classic car states within 1e-6 over 3 laps.
 
 ### 2. Babylon renderer at parity

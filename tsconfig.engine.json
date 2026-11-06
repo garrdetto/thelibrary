@@ -8,7 +8,8 @@
     "modules-src/foxplains2/**/*.ts",
     "modules-src/county/**/*.ts",
     "modules-src/bushleague/**/*.ts",
-    "modules-src/shorttrack/next/**/*.ts"
+    "modules-src/shorttrack/next/**/*.ts",
+    "modules-src/shorttrack/sim/**/*.ts"
   ],
   "exclude": [
     "modules-src/fairway/tests/**",

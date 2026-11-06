@@ -14,6 +14,7 @@ import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from './iconic-s
 import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js';
 import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers } from './custom-cars.js';
 import { carIdOf, numberSpot } from './shared/CustomCars';
+import { TRACKS, trackIdFrom, applyTrackConfig, createTrackGeometry } from './sim/track';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -47,107 +48,11 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 
 // ===================== TRACK MATH =====================
 // Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
-// ---------------- Track list ----------------
-// Layout (metres): L = straight length, R = turn radius, W = racing surface width, APRON = flat apron width
-// Banking (degrees): turnBank in the turns, straightBank on the straights;
-//   bankIn / bankOut = metres the banking takes to ramp up into a turn and back down out of it
-// Groove (metres from centerline, + = toward the wall): grooveHigh / grooveLow = the high and low racing lines
-// Feel: steer = steering sensitivity (1 = default), smooth = steering smoothing (higher = smoother inputs)
-// Grip: gripUp = player grip multiplier, grip / apronGrip = base tire grip (only set where it differs)
-// Records: rec = lap-record id, minLap = shortest lap (ms) accepted as a record
-// Options: surface:'dirt' = dirt track, bareInfield = no pit road or scoring pylon in the infield, theme:'prison' = Prison Speedway scenery
-const TRACKS={
-  prison:{
-    name:'Prison Speedway', miles:'0.29 mi', rec:'prison',
-    L:131, R:33, W:16, APRON:6,
-    turnBank:21, straightBank:10, bankIn:55, bankOut:42,
-    grooveHigh:4.5, grooveLow:-4.7,
-    steer:0.97, smooth:1.63,
-    grip:1.17, apronGrip:0.92, gripUp:1.15,
-    minLap:7500,
-    theme:'prison',
-  },
-  bullring:{
-    name:'Madison International Raceway', miles:'0.5 mi', rec:'shorttrack',
-    L:150, R:35, W:16, APRON:7,
-    turnBank:24, straightBank:10, bankIn:55, bankOut:40,
-    grooveHigh:5.0, grooveLow:-5.2,
-    steer:0.9, smooth:1.5,
-    gripUp:1.05,
-    minLap:12000,
-  },
-  dells:{
-    name:'Fox Speedway', miles:'0.3 mi', rec:'dells',
-    L:122, R:35, W:16, APRON:6,
-    turnBank:21, straightBank:11, bankIn:50, bankOut:45,
-    grooveHigh:4.0, grooveLow:-4.3,
-    steer:0.85, smooth:1.65,
-    gripUp:1.1,
-    minLap:8000,
-  },
-  dellswide:{
-    name:'Dells Raceway Park', miles:'0.27 mi', rec:'dellswide',
-    L:122, R:30, W:16, APRON:6,
-    turnBank:19, straightBank:10, bankIn:60, bankOut:40,
-    grooveHigh:4.4, grooveLow:-4.7,
-    steer:1.15, smooth:1.75,
-    gripUp:1.2,
-    minLap:7000,
-    bareInfield:true,
-  },
-  dirt:{
-    name:'Beaver Dam Raceway', miles:'0.3 mi', rec:'dirt',
-    L:109, R:50, W:15, APRON:6,
-    turnBank:20, straightBank:10, bankIn:65, bankOut:35,
-    grooveHigh:4.8, grooveLow:-5.2,
-    steer:1.6, smooth:1.04,
-    grip:0.72, apronGrip:0.6, gripUp:1.4,
-    minLap:8000,
-    surface:'dirt',
-  },
-};
-const TRACK_ID=(()=>{const t=new URLSearchParams(location.search).get('track');return TRACKS[t]?t:'prison';})(),TRACK=TRACKS[TRACK_ID];
-for(const k of ['L','R','W','APRON','turnBank','straightBank','bankIn','bankOut'])CFG[k]=TRACK[k];
-const DIRT=TRACK.surface==='dirt';if(TRACK.grip)CFG.grip=TRACK.grip;if(TRACK.apronGrip)CFG.apronGrip=TRACK.apronGrip;CFG.aiGrip=CFG.grip;CFG.grip*=TRACK.gripUp||1;CFG.apronGrip*=TRACK.gripUp||1;if(DIRT){CFG.scrub*=0.55;CFG.slideScrub=0.22;}
-CFG.steerLow*=TRACK.steer||1;CFG.steerRampIn/=TRACK.smooth||1;CFG.steerRampOut/=TRACK.smooth||1;CFG.steerDamp=14/(TRACK.smooth||1);
-const L=CFG.L,R=CFG.R,W=CFG.W,AP=CFG.APRON,HW=W/2;
-const TURN=Math.PI*R, P=2*L+2*TURN, S_LINE=L/2, T1=L, T2=2*L+TURN;
-function center(s){
-  s=mod(s,P);
-  if(s<L) return {x:-L/2+s,z:R,tx:1,tz:0,nx:0,nz:1};
-  s-=L;
-  if(s<TURN){const a=Math.PI/2-s/R,c=Math.cos(a),n=Math.sin(a);return {x:L/2+R*c,z:R*n,tx:n,tz:-c,nx:c,nz:n};}
-  s-=TURN;
-  if(s<L) return {x:L/2-s,z:-R,tx:-1,tz:0,nx:0,nz:-1};
-  s-=L;
-  const a=-Math.PI/2-s/R,c=Math.cos(a),n=Math.sin(a);return {x:-L/2+R*c,z:R*n,tx:n,tz:-c,nx:c,nz:n};
-}
-function toTrack(x,z){
-  if(x>=-L/2&&x<=L/2) return z>=0?{s:x+L/2,lat:z-R}:{s:L+TURN+(L/2-x),lat:-z-R};
-  if(x>L/2){const dx=x-L/2,a=Math.atan2(z,dx);return {s:L+(Math.PI/2-a)*R,lat:Math.hypot(dx,z)-R};}
-  const dx=x+L/2;let a=Math.atan2(z,dx);if(a>0)a-=TAU;
-  return {s:2*L+TURN+(-Math.PI/2-a)*R,lat:Math.hypot(dx,z)-R};
-}
-function bankAt(s){
-  // x < 0: metres before the nearest turn (on a straight); x > 0: metres into the turn
-  s=mod(s,P);let x;
-  if(s<L) x=-Math.min(s,L-s); else if(s<L+TURN) x=Math.min(s-L,L+TURN-s);
-  else if(s<2*L+TURN) x=-Math.min(s-L-TURN,2*L+TURN-s); else x=Math.min(s-T2,P-s);
-  const k=smooth(clamp((x+CFG.bankIn)/(CFG.bankIn+CFG.bankOut),0,1));
-  return (CFG.straightBank+(CFG.turnBank-CFG.straightBank)*k)*Math.PI/180;
-}
-const GROOVE_HIGH=TRACK.grooveHigh,GROOVE_LOW=TRACK.grooveLow,GROOVE_SPAN=0.8*(L/2+TURN/2),LINE_MIN=-HW+1.6,LINE_MAX=HW-2.2;let GROOVE_MAT=null;
-function grooveLat(s){const d1=Math.abs(mod(s-(T1+TURN/2)+P/2,P)-P/2),d2=Math.abs(mod(s-(T2+TURN/2)+P/2,P)-P/2),d=Math.min(d1,d2);
-  const w=0.5+0.5*Math.cos(Math.PI*clamp(d/GROOVE_SPAN,0,1));return lerp(GROOVE_HIGH,GROOVE_LOW,w);}
-function heightAt(s,lat){ if(lat<-HW) return 0; return (Math.min(lat,HW)+HW)*Math.tan(bankAt(s)); }
-function normalAt(s,lat,out){
-  // true surface normal from the height field, so cars pitch smoothly through the banking transition
-  const c0=center(s),c1=center(s+1),c2=center(s-1),l1=lat+0.5,l2=lat-0.5;
-  const ax=c1.x+c1.nx*lat-(c2.x+c2.nx*lat),ay=heightAt(s+1,lat)-heightAt(s-1,lat),az=c1.z+c1.nz*lat-(c2.z+c2.nz*lat);
-  const bx=c0.nx,by=heightAt(s,l1)-heightAt(s,l2),bz=c0.nz;
-  out.set(by*az-bz*ay,bz*ax-bx*az,bx*ay-by*ax).normalize();if(out.y<0)out.negate();return out;
-}
-function aMaxAt(s,lat,mu){ const t=lat<-HW?0:Math.tan(bankAt(s)); return CFG.g*(mu+t)/(1-mu*t); }
+const TRACK_ID=trackIdFrom(location.search),TRACK=TRACKS[TRACK_ID];
+const DIRT=applyTrackConfig(CFG,TRACK);
+const TG=createTrackGeometry(CFG,TRACK);
+const {L,R,W,AP,HW,TURN,P,S_LINE,T1,T2,GROOVE_HIGH,GROOVE_LOW,GROOVE_SPAN,LINE_MIN,LINE_MAX,center,toTrack,bankAt,grooveLat,heightAt,aMaxAt}=TG;let GROOVE_MAT=null;
+function normalAt(s,lat,out){const n=TG.normalAt(s,lat);return out.set(n[0],n[1],n[2]);}
 
 // ===================== RENDERER / SCENE =====================
 const wrap=$('wrap'), canvas=$('c');
@@ -2640,8 +2545,9 @@ function simulate(dt){
     stepCar(c,dt,ctl,capFor(c));}
   for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++)collidePair(arr[i],arr[j]);
 }
+const CLASSIC_STATUS={track:TRACK_ID,frames:0};window.__stClassic=CLASSIC_STATUS;
 function frame(now){
-  requestAnimationFrame(frame);const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
+  requestAnimationFrame(frame);CLASSIC_STATUS.frames++;const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
   const simOn=mode==='race'||mode==='results'||(mode==='paused'&&NET.online);
   if(simOn){
     acc+=dt;let n=0;while(acc>=STEP&&n<24){simulate(STEP);acc-=STEP;n++;}if(n>=24)acc=0;
