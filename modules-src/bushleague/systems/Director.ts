@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu'
 import type { App, Input } from '../../../engine'
 import {
+  BASES,
   Contest,
   PITCH_SPECS,
   PLATE_FRONT,
@@ -35,9 +36,19 @@ interface CameraPose {
 const PLATE_PLANE = new THREE.Plane(new THREE.Vector3(0, 0, 1), PLATE_FRONT)
 
 export interface DirectorHooks {
-  onContest(contest: Contest): void
+  onContest(contest: Contest, choice: SetupChoice): void
   onFinal(contest: Contest): void
 }
+
+/** Ballpark reactions the director triggers; index.ts points them at the current field and crowd. */
+export interface Scenery {
+  excite(level: number): void
+  startWave(): void
+  celebrate(kind: 'homer' | 'final'): void
+  scuff(x: number, z: number, radius: number, strength: number, angle?: number, length?: number): void
+}
+
+const BASE_SPOTS: readonly { x: number; z: number }[] = [1, 2, 3].map((base) => ({ x: BASES[base].x, z: BASES[base].z }))
 
 export class Director {
   contest: Contest | null = null
@@ -73,9 +84,13 @@ export class Director {
     private readonly screens: Screens,
     private readonly config: ModuleConfig,
     private readonly hooks: DirectorHooks,
+    private readonly scenery: Scenery,
   ) {
     this.setPose('overview', true)
   }
+
+  private readonly scuffed = new Set<string>()
+  private footClock = 0
 
   start(choice: SetupChoice, seed: number): Contest {
     this.choice = choice
@@ -87,7 +102,8 @@ export class Director {
     this.human = choice.side === 'away' ? 0 : choice.side === 'home' ? 1 : null
     this.flightScale = this.config.pace[choice.pace].pitchScale
     this.stealArmed = false
-    this.hooks.onContest(this.contest)
+    this.actors.trailEnabled = choice.trail
+    this.hooks.onContest(this.contest, choice)
     this.screens.resetLog()
     this.screens.hidePitch()
     this.screens.say(`${this.contest.teams[0].roster.team.city} ${this.contest.teams[0].roster.team.name} at ${this.contest.teams[1].roster.team.city} ${this.contest.teams[1].roster.team.name}`, 3)
@@ -122,6 +138,7 @@ export class Director {
     this.actors.placeFieldersHome()
     this.actors.placeRunners(contest.bases.map((runner) => runner?.id ?? null), offense)
     this.actors.setBatter(this.batterHand(), offense)
+    this.scenery.scuff(this.batterHand() === 'R' ? -0.8 : 0.8, 0.25, 0.35, 0.35)
     this.actors.setZone(contest.batter.height)
     this.actors.setBall(null)
     this.actors.setGhost(false)
@@ -176,7 +193,7 @@ export class Director {
           this.updateFlight(contest, dt)
           break
         case 'play':
-          this.updatePlay(contest)
+          this.updatePlay(contest, dt)
           break
       }
     }
@@ -282,6 +299,7 @@ export class Director {
     this.thrown = thrown
     this.swingPress = null
     this.outcome = null
+    this.actors.clearTrail()
     const path = pitchPath({ type: thrown.type, throws: thrown.throws, speed: thrown.speed, release: thrown.release, plate: { x: thrown.plateX, y: thrown.plateY }, wobbleSeed: thrown.wobbleSeed }, contest.air)
     this.flight = path.samples
     this.actors.setGhost(false)
@@ -322,6 +340,9 @@ export class Director {
     const t = this.stageTime / scale
     const arrival = this.flight[this.flight.length - 1].t
     this.actors.setBall(sampleKeys(this.flight, Math.min(t, arrival)))
+    const spec = PITCH_SPECS[thrown.type]
+    this.actors.spinBall(dt / scale, spec.rpm, thrown.throws === 'R' ? spec.tilt : -spec.tilt)
+    this.actors.pushTrail()
     if (this.humanBatting) {
       this.moveCursor(dt, pciRadius(this.swingPress?.type ?? 'contact'))
       this.readSwing(t)
@@ -358,12 +379,36 @@ export class Director {
     if (this.timeline) {
       this.actors.hideBatter()
       this.actors.setGhost(false)
+      this.actors.clearTrail()
     }
+    this.react(contest, outcome)
+    this.scuffed.clear()
     this.screens.updateBug(contest)
     this.enter('play')
   }
 
-  private updatePlay(contest: Contest): void {
+  /** Crowd noise and park effects for a pitch's result, from the home crowd's point of view. */
+  private react(contest: Contest, outcome: PitchOutcome): void {
+    const battingSide = outcome.halfOver ? (contest.battingSide === 0 ? 1 : 0) : contest.battingSide
+    const homeBatting = battingSide === 1
+    const kind = outcome.play?.kind
+    if (kind === 'homer') {
+      this.scenery.celebrate('homer')
+      this.scenery.excite(homeBatting ? 1 : 0.35)
+      return
+    }
+    if (outcome.final && contest.winner === 1) {
+      this.scenery.celebrate('final')
+      this.scenery.excite(1)
+      return
+    }
+    if (kind === 'hit' || kind === 'groundRule') this.scenery.excite(homeBatting ? 0.55 + (outcome.play?.hitBases ?? 1) * 0.1 : 0.2)
+    else if (outcome.events.some((text) => text.startsWith('Strike three'))) this.scenery.excite(homeBatting ? 0.15 : 0.55)
+    else if (outcome.play?.doublePlay) this.scenery.excite(homeBatting ? 0.1 : 0.6)
+    else if (outcome.batted && outcome.call === 'inPlay') this.scenery.excite(0.3)
+  }
+
+  private updatePlay(contest: Contest, dt: number): void {
     const skip = this.input.pressed('skip')
     const timeline = this.timeline
     if (timeline) {
@@ -373,13 +418,33 @@ export class Director {
         const at = sampleKeys(track.keys, t)
         if (at) this.actors.setFielder(track.id, at)
       }
+      this.footClock += dt
+      const footprints = this.footClock > 0.3
+      if (footprints) this.footClock = 0
       for (const track of tracksOf(timeline, 'runner')) {
         const at = sampleKeys(track.keys, t)
-        if (at) this.actors.runner(track.id, offense).group.position.copy(toWorld({ x: at.x, y: 0, z: at.z }))
+        if (!at) continue
+        this.actors.runner(track.id, offense).group.position.copy(toWorld({ x: at.x, y: 0, z: at.z }))
+        for (const [index, base] of BASE_SPOTS.entries()) {
+          const key = `${track.id}:${index}`
+          if (!this.scuffed.has(key) && Math.hypot(at.x - base.x, at.z - base.z) < 1.2) {
+            this.scuffed.add(key)
+            this.scenery.scuff(base.x, base.z, 0.9, 0.7, Math.atan2(at.z, at.x), 1.8)
+          }
+        }
+        if (footprints) this.scenery.scuff(at.x, at.z, 0.22, 0.25)
+      }
+      if (footprints) {
+        for (const track of tracksOf(timeline, 'fielder')) {
+          const at = sampleKeys(track.keys, t)
+          if (at && Math.hypot(at.x, at.z - 18.44) < 30) this.scenery.scuff(at.x, at.z, 0.2, 0.18)
+        }
       }
       const ball = tracksOf(timeline, 'ball')[0]
       const at = ball ? sampleKeys(ball.keys, t) : null
       this.actors.setBall(at)
+      const launch = this.outcome?.batted?.launch
+      if (launch) this.actors.spinBall(dt, Math.abs(launch.backspin) * 0.25, 0)
       const marks = marksBetween(timeline, this.lastMark, t)
       if (marks.length) this.screens.say(marks.join(' '), 1.6, true)
       this.lastMark = t
@@ -407,6 +472,7 @@ export class Director {
     this.stealArmed = false
     const finishedTop = contest.half === 'bottom'
     this.screens.say(`${finishedTop ? 'Middle' : 'End'} of the ${ordinal(finishedTop ? contest.inning : contest.inning - 1)}`, 2.4, true)
+    if (!finishedTop && contest.inning >= 4 && (contest.inning + contest.score[0] + contest.score[1]) % 3 === 0) this.scenery.startWave()
     this.resetScene()
     this.enter('between')
     this.stageTime = -1.6

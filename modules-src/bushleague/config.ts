@@ -17,7 +17,8 @@ export const config = {
   meta: moduleJson as ModuleMeta,
   engine: {
     ...ENGINE_DEFAULTS,
-    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#0b1020', toneMappingExposure: 1.05 },
+    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#0b1020', toneMappingExposure: 1.05, toneMapping: new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('tone') === 'aces' ? 'aces' : 'agx' },
+    post: { enabled: true },
     camera: { fov: 50, near: 0.1, far: 900, position: [0, 2.2, 3.6], lookAt: [0, 1.2, -18] },
     environment: { background: '#0e1630', fogColor: '#0e1630', fogNear: 220, fogFar: 520 },
     lighting: {

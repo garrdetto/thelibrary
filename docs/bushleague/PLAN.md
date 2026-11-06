@@ -64,7 +64,17 @@ The remaining eight parks, Home Run Derby, news ticker copy, polish and a final 
 - **Pitch flight in the headless sim is analytic;** the full spin-integrated path (`pitchPath`) is only computed for the screen.
 - **Calibration** (10,000 contests, seed 20261105): AVG .250, 4.37 runs per nine, HR/FB 13.1 %, K 21.4 %, BB 8.9 %, BABIP .295.
 
+## Decisions made in Phase 2
+- **Engine extended, opt-in.** `RendererConfig.toneMapping` and `PostConfig.effects` are optional; every other module keeps ACES and a direct render. GTAO and TRAA force a non-MSAA scene pass (WebGPU cannot gather from a multisampled depth texture; TRAA replaces MSAA).
+- **Crowd attributes are packed** into two vec4 instance attributes: WebGPU caps a pipeline at 8 vertex buffers.
+- **Grass is instanced, not compute-generated.** Blades are placed once on the CPU and swayed in the vertex stage; a compute pass buys nothing until blades need per-frame culling or trampling (Phase 7 polish).
+- **Dirt uses single-step parallax and bump, not multi-step POM**, plus a runtime canvas for chalk and scuffs; steep POM is a Phase 7 polish item if the close-up camera needs it.
+- **Crowd is low-poly instanced fans with vertex-stage reactions**, not octahedral impostors with VAT; at 45,000 fans it is still one draw call. Impostors and VAT clips come with the Phase 3 character pipeline.
+- **Per-park lighting is a preset sky dome baked to a PMREM**, not an HDRI file per park; HDRIs, light probes and baked lightmaps arrive with the Phase 3 asset pipeline.
+- **Deferred from the Phase 2 list:** HDR canvas output (`rec2100`), SSR, per-object motion blur, depth of field (with Phase 4 replays), automatic exposure from scene luminance (exposure eases between presets instead), and the real-GPU budget check (60 fps at 1440p ultra on an RTX 3060-class card) — software rendering here cannot measure it.
+
 ## Status
 - Phase 1: done — rules core with 27 rule tests, determinism and the 10,000-contest calibration test; gray-box park, capsule players, human pitching and batting, AI and watch modes, box score; catalog entry and thumbnail. Screenshots in `docs/screenshots/bushleague/`.
 - `scripts/bushleague-smoke.mjs` plays a three-inning contest to the final on WebGPU (watched) and forced WebGL2 (the page pitching and batting) after a build; it needs a local Chromium or `--channel msedge|chrome`, so it is not part of `pnpm test`.
-- Phase 1 leftovers carried into later phases: appeals, catcher's interference, obstruction, double switches, multi-throw rundowns (Phase 4 with manual fielding); manual throws and per-runner baserunning (Phase 4); the `docs/PERF-BASELINE.md` row via `scripts/perf-baseline.mjs` (Phase 2, once there is something to measure beyond the gray box).
+- Phase 1 leftovers carried into later phases: appeals, catcher's interference, obstruction, double switches, multi-throw rundowns (Phase 4 with manual fielding); manual throws and per-runner baserunning (Phase 4). The `docs/PERF-BASELINE.md` row landed with Phase 1 (measured standalone; see the note there).
+- Phase 2: done — AgX HDR output, the engine post chain (GTAO, TRAA, bloom, lens flare, vignette, grain), day/golden-hour/night presets with baked environment, cascaded shadows, light banks, mowed TSL turf, scuffable parallax dirt with worn chalk, instanced grass, a 4k–45k reactive crowd, seamed spinning ball and pitch trail, quality tiers with adaptive resolution, and the first two signature parks (The Outhouse, Sandlot Classic). Smoke passes on WebGPU (high tier) and WebGL2; screenshots `docs/screenshots/bushleague/phase2-*.png`.

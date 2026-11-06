@@ -72,7 +72,7 @@ export class App {
   private async buildRenderer(forceWebGL: boolean): Promise<THREE.WebGPURenderer> {
     const settings = this.config.renderer
     const renderer = new THREE.WebGPURenderer({ antialias: settings.antialias, forceWebGL })
-    renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMapping = settings.toneMapping === 'agx' ? THREE.AgXToneMapping : settings.toneMapping === 'neutral' ? THREE.NeutralToneMapping : THREE.ACESFilmicToneMapping
     renderer.toneMappingExposure = settings.toneMappingExposure
     renderer.shadowMap.enabled = settings.shadows
     renderer.shadowMap.type = THREE.PCFShadowMap
