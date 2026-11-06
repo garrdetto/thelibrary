@@ -417,6 +417,30 @@ test('determinism: human intents with quantized numbers replay exactly', () => {
   assert.deepEqual(replayed.box(), contest.box())
 })
 
+test('difficulty: a bigger contact cursor misses less, sharper AI hitters miss less, and both replay exactly', () => {
+  const whiffRate = (overrides: Partial<ContestSetup>) => {
+    let swings = 0
+    let whiffs = 0
+    for (let index = 0; index < 40; index++) {
+      const contest = new Contest(setup({ seed: 9000 + index, ...overrides }))
+      contest.simulate(20000)
+      swings += contest.tally.swings
+      whiffs += contest.tally.whiffs
+    }
+    return whiffs / swings
+  }
+  const small = whiffRate({ pciScale: [0.8, 0.8] })
+  const large = whiffRate({ pciScale: [1.4, 1.4] })
+  assert.ok(large < small - 0.04, `cursor 1.4 whiff ${large.toFixed(3)} vs 0.8 ${small.toFixed(3)}`)
+  const loose = whiffRate({ aiSkill: [-0.6, -0.6] })
+  const sharp = whiffRate({ aiSkill: [0.6, 0.6] })
+  assert.ok(sharp < loose, `skill +0.6 whiff ${sharp.toFixed(3)} vs -0.6 ${loose.toFixed(3)}`)
+  const base = setup({ seed: 31337, aiSkill: [0.5, -0.5], pciScale: [1.2, 0.9], innings: 3 })
+  const original = new Contest(base)
+  original.simulate(20000)
+  assert.deepEqual(replay(base, original.log).box(), original.box())
+})
+
 test('positions: bases form a 90-foot square', () => {
   for (let base = 0; base < 4; base++) {
     const a = BASES[base]

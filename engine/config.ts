@@ -97,6 +97,8 @@ export interface PostEffects {
   flare?: { threshold: number; ghostSamples: number; ghostSpacing: number; ghostAttenuation: number; strength: number }
   vignette?: number
   grain?: number
+  /** Depth of field, off until `PostChain.setFocus` gives it a strength (replays, cut-scenes). */
+  dof?: { focalLength: number; bokehScale: number }
 }
 
 export interface PostConfig {
