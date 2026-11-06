@@ -441,6 +441,7 @@ const GEO={cyl:new THREE.CylinderGeometry(1,1,1,16,1),sph:new THREE.SphereGeomet
 const rigs={};
 const BATCH=new URLSearchParams(location.search).get('batch')!=='0'&&typeof window.__batchStatic==='function';
 const batchStatic=(root,exclude)=>BATCH?window.__batchStatic(root,exclude):null;
+const ATHLETE=window.__athlete||null;
 const LA=[.74,.68],LL=[.92,.9]; // arm / leg bone lengths (rig units)
 const HEAD_S=[.27*.87,.31*.87,.29*.87];
 class Rig{
@@ -456,26 +457,17 @@ class Rig{
       glove:STD('#8a5428',{roughness:.55}),gloveLace:STD('#3a2414',{roughness:.6})};
     for(const k of['jersey','sleeve','undershirt','pants','pantsPlain','socks','stirrups','cap','trim','belt']){m[k].normalMap=null;m[k].roughness=.8} // smooth knit: a weave map reads as quilting at this scale
     const M=(g,mat,cast=true)=>{const x=new THREE.Mesh(g,mat);x.castShadow=cast;x.receiveShadow=true;return x};
-    // trunk: pelvis + belt (hips), abdomen skinned between hips and chest, chest with shoulders and traps
+    // trunk groups: hips, chest and neck carry the head, collar and headwear; the body itself is the Blender athlete (or the procedural tubes)
     this.hips=new THREE.Group();root.add(this.hips);
-    this.pelvis=M(pelvisGeo(this.bw),m.pantsPlain);this.hips.add(this.pelvis);
-    const belt=M(ringGrid([.08,.17].map(y=>({y,pts:section(.412*this.bw,.298,36,2.2)})),36,y=>y),m.belt);this.hips.add(belt);
-    const buckle=M(new THREE.BoxGeometry(.085,.07,.02),STD('#c9ccd0',{metalness:.8,roughness:.3}));buckle.position.set(0,.125,.305);this.hips.add(buckle);
     this.chest=new THREE.Group();this.chest.position.y=.1;this.hips.add(this.chest);
-    this.torso=M(chestGeo(this.bw),m.jersey);this.chest.add(this.torso);
-    this.abs=this.buildAbdomen();root.add(this.abs.mesh);
     this.neck=new THREE.Group();this.neck.position.y=1.34;this.chest.add(this.neck);
-    const nk=lathe([[0,-.12],[.172,-.12],[.158,0],[.142,.14],[.135,.28],[.13,.38],[0,.4]],20);nk.computeVertexNormals();const neckM=M(nk,m.skin);neckM.rotation.x=-.08;this.neck.add(neckM);
+    if(ATHLETE)this.buildBody();else this.buildTrunk();
     const collar=M(new THREE.TorusGeometry(.158,.022,8,28),m.trim);collar.rotation.x=PI/2-.12;collar.scale.set(1.05,1,.95);collar.position.y=.035;this.neck.add(collar);
     this.headMat=SKIN('#ffffff');this.paintHead();
     this.head=M(GEO.head,this.headMat);this.head.scale.set(HEAD_S[0]*lk.head,HEAD_S[1]*lk.head,HEAD_S[2]*lk.head);this.head.position.y=.42;this.neck.add(this.head);
     for(const s of[1,-1]){const e=M(GEO.sph,m.skin);e.scale.set(.09,.26,.16);e.position.set(s*.86,-.06,-.06);e.rotation.y=s*.25;this.head.add(e);const lobe=M(GEO.sph,m.skin,false);lobe.scale.set(.6,.35,.5);lobe.position.set(0,-.75,.1);e.add(lobe)}
     this.face(i);batchStatic(this.head);this.buildHair();this.buildHeadwear();
-    // limbs: one continuous skinned tube per arm and per leg
-    this.arm=[0,1].map(s=>{const sg=s?-1:1,S=ringS(0,LA[0]+LA[1],.05,[-.12,-.09,-.06,-.03,.3,.345,LA[0]+LA[1]+.018,LA[0]+LA[1]+.03,LA[0]+LA[1]+.035]);
-      const t=new LimbTube({L1:LA[0],L2:LA[1],join:.12,seg:14,S,R:armProfile(this.lb,true),groups:[[.3,0],[.345,1],[9,2]],mats:[m.sleeve,m.trim,lk.sleeves==='long'?m.undershirt:m.skin]});root.add(t.mesh);t.sg=sg;return t});
-    this.leg=[0,1].map(s=>{const sg=s?-1:1,KN=LL[0]+.36,S=ringS(0,LL[0]+LL[1],.055,[-.17,-.13,-.09,-.05,-.02,KN,KN+.35,LL[0]+LL[1]+.02,LL[0]+LL[1]+.032,LL[0]+LL[1]+.035]);
-      const t=new LimbTube({L1:LL[0],L2:LL[1],join:.15,seg:16,S,R:legProfile(Math.pow(this.lb,.8)),groups:[[KN,0],[KN+.35,1],[9,2]],mats:[m.pants,m.stirrups,m.socks]});root.add(t.mesh);t.sg=sg;return t});
+    if(!ATHLETE)this.buildLimbs();
     this.hand=[0,1].map(s=>{const h=hand(m.skin,s?1:-1);if(s)batchStatic(h);else h.userData.fingers.forEach(f=>batchStatic(f));root.add(h);return h});   // thumb toward the body's front-outer side
     this.ft=[0,1].map(()=>{const f=cleat(m);batchStatic(f);root.add(f);return f});
     this.glove=fieldersGlove(m.glove,m.gloveLace);batchStatic(this.glove);this.hand[0].add(this.glove);this.glove.visible=false;
@@ -487,6 +479,35 @@ class Rig{
     this.pos=V3();this.reach=null;this.reachW=0;this.lookW=0;this.lookT=V3();this.mirror=false;
     this.dressFor(team);this.setHeadwear('cap');
     root.visible=false;rigs[i]=this}
+  // Blender athlete (tools/build-athlete.py): one skinned body per player on its own flat skeleton, sharing the loaded geometry
+  buildBody(){
+    const m=this.mats,lk=this.look,bones={},list=[];m.buckle=STD('#c9ccd0',{metalness:.8,roughness:.3});m.button=STD('#f4f2ec',{roughness:.4});
+    const src=ATHLETE[0].skeleton;
+    src.bones.forEach(b=>{const n=new THREE.Bone();n.name=b.name;n.matrixAutoUpdate=false;this.root.add(n);bones[b.name]=n;list.push(n)});
+    const skel=new THREE.Skeleton(list,src.boneInverses.map(x=>x.clone()));
+    const slot=n=>({jersey:m.jersey,pantsPlain:m.pantsPlain,belt:m.belt,buckle:m.buckle,button:m.button,neck:m.skin,sleeve:m.sleeve,trim:m.trim,
+      forearm:lk.sleeves==='long'?m.undershirt:m.skin,pants:m.pants,stirrups:m.stirrups,socks:m.socks})[n]||m.jersey;
+    this.body=ATHLETE.map(p=>{const n=(p.material.name||'').replace(/^athlete_/,''),s=new THREE.SkinnedMesh(p.geometry,slot(n));s.name=n;
+      s.castShadow=true;s.receiveShadow=true;s.frustumCulled=false;this.root.add(s);s.bind(skel,p.bindMatrix);return s});
+    this.forearmMesh=this.body.find(s=>s.name==='forearm');this.bones=bones}
+  buildTrunk(){
+    const m=this.mats,M=(g,mat)=>{const x=new THREE.Mesh(g,mat);x.castShadow=true;x.receiveShadow=true;return x};
+    this.pelvis=M(pelvisGeo(this.bw),m.pantsPlain);this.hips.add(this.pelvis);
+    const belt=M(ringGrid([.08,.17].map(y=>({y,pts:section(.412*this.bw,.298,36,2.2)})),36,y=>y),m.belt);this.hips.add(belt);
+    const buckle=M(new THREE.BoxGeometry(.085,.07,.02),STD('#c9ccd0',{metalness:.8,roughness:.3}));buckle.position.set(0,.125,.305);this.hips.add(buckle);
+    this.torso=M(chestGeo(this.bw),m.jersey);this.chest.add(this.torso);
+    this.abs=this.buildAbdomen();this.root.add(this.abs.mesh);
+    const nk=lathe([[0,-.12],[.172,-.12],[.158,0],[.142,.14],[.135,.28],[.13,.38],[0,.4]],20);nk.computeVertexNormals();const neckM=M(nk,m.skin);neckM.rotation.x=-.08;this.neck.add(neckM)}
+  // procedural fallback limbs: one continuous tube per arm and per leg
+  buildLimbs(){
+    const m=this.mats,lk=this.look,root=this.root;
+    this.arm=[0,1].map(s=>{const sg=s?-1:1,S=ringS(0,LA[0]+LA[1],.05,[-.12,-.09,-.06,-.03,.3,.345,LA[0]+LA[1]+.018,LA[0]+LA[1]+.03,LA[0]+LA[1]+.035]);
+      const t=new LimbTube({L1:LA[0],L2:LA[1],join:.12,seg:14,S,R:armProfile(this.lb,true),groups:[[.3,0],[.345,1],[9,2]],mats:[m.sleeve,m.trim,lk.sleeves==='long'?m.undershirt:m.skin]});root.add(t.mesh);t.sg=sg;return t});
+    this.leg=[0,1].map(s=>{const sg=s?-1:1,KN=LL[0]+.36,S=ringS(0,LL[0]+LL[1],.055,[-.17,-.13,-.09,-.05,-.02,KN,KN+.35,LL[0]+LL[1]+.02,LL[0]+LL[1]+.032,LL[0]+LL[1]+.035]);
+      const t=new LimbTube({L1:LL[0],L2:LL[1],join:.15,seg:16,S,R:legProfile(Math.pow(this.lb,.8)),groups:[[KN,0],[KN+.35,1],[9,2]],mats:[m.pants,m.stirrups,m.socks]});root.add(t.mesh);t.sg=sg;return t})}
+  // bone matrix from a limb frame: x = along x front, y = along the bone, z = front; thickness scales x and z
+  setBone(name,o,t,n,sx,sy,sz){const b=this.bones[name];_bx.crossVectors(t,n);b.matrix.set(_bx.x*sx,t.x*sy,n.x*sz,o.x,_bx.y*sx,t.y*sy,n.y*sz,o.y,_bx.z*sx,t.z*sy,n.z*sz,o.z,0,0,0,1)}
+  setBoneMatrix(name,mat,sx,sy,sz){const b=this.bones[name];b.matrix.copy(mat).scale(_bs.set(sx,sy,sz))}
   // waist: rings blend position and rotation from the hips (bottom) to the chest (top) so twisting swings don't pinch
   buildAbdomen(){
     const bw=this.bw,P=[[-.02,.372,.282],[.15,.352,.266],[.32,.338,.252],[.45,.336,.25],[.6,.338,.252]],ys=[];for(let k=0;k<=12;k++)ys.push(lerp(-.02,.6,k/12));
@@ -577,7 +598,8 @@ class Rig{
   setLook(patch){const lk=Object.assign(this.look,patch||{}),m=this.mats;
     m.skin.color.set(lk.skin);m.skin.emissive.set(new THREE.Color(lk.skin).lerp(new THREE.Color('#ff6a50'),.5));m.skin.map=lk.skinMap||null;m.skin.needsUpdate=true;
     m.lip.color.set(new THREE.Color(lk.skin).lerp(new THREE.Color('#a8404a'),.38).multiplyScalar(.9));m.hair.color.set(lk.hair);m.brow.color.set(lk.hair);m.iris.color.set(lk.eyes);
-    this.arm.forEach(a=>{a.mesh.material[2]=lk.sleeves==='long'?m.undershirt:m.skin});
+    if(this.forearmMesh)this.forearmMesh.material=lk.sleeves==='long'?m.undershirt:m.skin;
+    else if(this.arm)this.arm.forEach(a=>{a.mesh.material[2]=lk.sleeves==='long'?m.undershirt:m.skin});
     if('hairStyle'in(patch||{})||'facialHair'in(patch||{}))this.buildHair();
     this.paintHead();if('number'in(patch||{}))this.dressFor(this.team)}
   // one-shot sequences: swing, pitch, throw
@@ -618,25 +640,36 @@ class Rig{
       const yy=Math.atan2(Math.sin(ly),Math.cos(ly));hy=cl(yy,-1.75,1.75);hp=cl(lp,-.5,.5)-p.ch[0]*.6}
     this.neck.rotation.set(hp*.4,hy*.35,0,'YXZ');this.head.rotation.set(hp*.6,hy*.65,0,'YXZ');
     this.hips.updateMatrix();this.chest.updateMatrix();_m.multiplyMatrices(this.hips.matrix,this.chest.matrix);
-    this.updateAbdomen();
+    const body=!!this.bones,side=['L','R'];
+    if(body){const bw=this.bw;this.setBoneMatrix('hips',this.hips.matrix,bw,1,1);this.setBoneMatrix('chest',_m,bw,1,.88+.12*bw);
+      this.neck.updateMatrix();_mn.multiplyMatrices(_m,this.neck.matrix);this.setBoneMatrix('neck',_mn,1,1,1)}
+    else this.updateAbdomen();
     // arms: shoulder -> elbow -> wrist, biceps side facing away from the elbow pole
-    const HL=V3(...p.hl),HR=V3(...p.hr_);
+    const HL=V3(...p.hl),HR=V3(...p.hr_),lb=this.lb,lg=Math.pow(lb,.8);
     if(o.reach){this.reachW=lerp(this.reachW,1,.25);_d.copy(o.reach);r.worldToLocal(_d);HL.lerp(_d,this.reachW)}else this.reachW=lerp(this.reachW,0,.2);
     for(const s of[0,1]){const sg=s?-1:1,S=V3(sg*.45*this.bw,1.15,0).applyMatrix4(_m),T=s?HR:HL;
       const pole=V3(sg*.7,-1,-.7).transformDirection(_m),E=V3(),Te=V3();ik(S,T,LA[0],LA[1],pole,E,Te);
-      const A=this.arm[s];A.update(S,E,Te,pole.clone().negate(),-sg);
-      const h=this.hand[s];h.position.copy(Te);_mb.makeBasis(A.endB,A.endT,A.endN);h.quaternion.setFromRotationMatrix(_mb);
+      const h=this.hand[s];h.position.copy(Te);
+      if(body){limbFrames(S,E,Te,pole.negate());this.setBone('upperarm_'+side[s],S,_t1,_n1,lb,1,lb);this.setBone('forearm_'+side[s],E,_t2,_n2,lb,1,lb);_mb.makeBasis(_bx.crossVectors(_t2,_n2),_t2,_n2)}
+      else{const A=this.arm[s];A.update(S,E,Te,pole.clone().negate(),-sg);_mb.makeBasis(A.endB,A.endT,A.endN)}
+      h.quaternion.setFromRotationMatrix(_mb);
       h.userData.fingers.forEach(f=>f.visible=!(s===0&&o.glove))}
     // legs: hip -> knee -> ankle, knee leading toward the facing direction
     _e.set(0,p.hr[1],0);_q.setFromEuler(_e);const fwd=V3(0,.2,1).applyQuaternion(_q);
     for(const s of[0,1]){const sg=s?-1:1,Hj=V3(sg*.25*this.bw,-.12,0).applyMatrix4(this.hips.matrix),F=s?p.fr:p.fl,T=V3(F[0],F[1]+.2,F[2]);
-      const Kn=V3(),Te=V3();ik(Hj,T,LL[0],LL[1],fwd,Kn,Te);this.leg[s].update(Hj,Kn,Te,fwd,-sg);
+      const Kn=V3(),Te=V3();ik(Hj,T,LL[0],LL[1],fwd,Kn,Te);
+      if(body){limbFrames(Hj,Kn,Te,fwd);this.setBone('thigh_'+side[s],Hj,_t1,_n1,lg,1,lg);this.setBone('shin_'+side[s],Kn,_t2,_n2,lg,1,lg)}
+      else this.leg[s].update(Hj,Kn,Te,fwd,-sg);
       const f=this.ft[s];f.position.set(Te.x,Math.max(0,Te.y-.19),Te.z);f.rotation.set(F[1]>.15?-.35:0,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ')}
     this.bat.visible=p.bat>.5&&!o.noBat;
     if(this.bat.visible){const dvec=batDir(p.ba[0],p.ba[1],_a);this.bat.position.set(p.bg[0]-dvec.x*.1,p.bg[1]-dvec.y*.1,p.bg[2]-dvec.z*.1);this.bat.quaternion.setFromUnitVectors(UP,dvec)}
     this.glove.visible=!!o.glove;
     this.blob.position.set(p.hip[0],.05,p.hip[2])}}
-const _mb=new THREE.Matrix4();
+const _mb=new THREE.Matrix4(),_mn=new THREE.Matrix4(),_bx=V3(),_bs=V3(),_t1=V3(),_n1=V3(),_t2=V3(),_n2=V3(),_lq=new THREE.Quaternion();
+// upper and lower limb frames: the front direction projected off the upper bone, then carried through the joint bend
+function limbFrames(A,B,C,front){_t1.subVectors(B,A).normalize();_t2.subVectors(C,B).normalize();
+  _n1.copy(front).addScaledVector(_t1,-front.dot(_t1));if(_n1.lengthSq()<1e-8)_n1.set(_t1.y,-_t1.x,0);if(_n1.lengthSq()<1e-8)_n1.set(0,0,1);_n1.normalize();
+  _lq.setFromUnitVectors(_t1,_t2);_n2.copy(_n1).applyQuaternion(_lq).normalize()}
 function dropGeo(o){o.traverse(n=>{if(n.geometry&&n.geometry!==GEO.sph&&n.geometry!==GEO.cyl)n.geometry.dispose()})}
 function rigFor(i,team){const r=rigs[i]||new Rig(i,team);if(r.team!==team)r.dressFor(team);r.ring.material.color.set(team==='you'?0xe0482f:0x3d7be0);return r}
 
