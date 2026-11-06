@@ -6,13 +6,15 @@
     "modules-src/demoderby/**/*.ts",
     "modules-src/angler/**/*.ts",
     "modules-src/foxplains2/**/*.ts",
-    "modules-src/county/**/*.ts"
+    "modules-src/county/**/*.ts",
+    "modules-src/bushleague/**/*.ts"
   ],
   "exclude": [
     "modules-src/fairway/tests/**",
     "modules-src/demoderby/tests/**",
     "modules-src/angler/tests/**",
-    "modules-src/county/tests/**"
+    "modules-src/county/tests/**",
+    "modules-src/bushleague/tests/**"
   ],
   "compilerOptions": {
     "target": "ES2022",
