@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Bush League Baseball · the library</title>
+    <meta name="description" content="Bush League Baseball, a learning module on pitch physics, timing and probability: drag, Magnus lift and the full rulebook on an original diamond." />
+    <style>
+      html,body{margin:0;height:100%;background:var(--lib-bg,#0a0e1a);color:var(--lib-text,#e9effc);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif}
+      #stage{position:relative;width:100%;height:100%}
+      .bl-screen{position:absolute;inset:0;z-index:20;display:grid;align-items:center;justify-items:start;padding:16px;pointer-events:none;overflow:auto}
+      .bl-screen[hidden]{display:none}
+      .bl-card{pointer-events:auto;width:min(480px,100%);display:grid;gap:14px;padding:20px 22px;border-radius:16px;background:color-mix(in srgb,var(--lib-panel,#111829) 94%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 24px 60px -24px var(--lib-shadow,rgba(0,0,0,.45));backdrop-filter:blur(8px)}
+      .bl-card.is-wide{justify-self:center;width:min(880px,100%)}
+      .bl-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--module-accent,var(--lib-accent,#e8b23a))}
+      .bl-card h1,.bl-card h2,.bl-card h3{margin:0;font-family:Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);letter-spacing:.4px}
+      .bl-card h1{font-size:34px}
+      .bl-card h2{font-size:26px}
+      .bl-card h3{font-size:16px;margin-top:4px}
+      .bl-card p{margin:0;color:var(--lib-soft,#aab6d3)}
+      .bl-label{display:grid;gap:6px;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--lib-muted,#8d9bba)}
+      .bl-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+      .bl-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+      @media (max-width:560px){.bl-grid2{grid-template-columns:1fr}}
+      .bl-select{width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel2,#18213a);color:var(--lib-text,#e9effc);font:600 14px Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
+      .bl-chips{display:flex;flex-wrap:wrap;gap:6px}
+      .bl-chip{cursor:pointer;padding:7px 12px;border-radius:999px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-soft,#aab6d3);font:700 12.5px Inter,system-ui,sans-serif;text-transform:none;letter-spacing:0}
+      .bl-chip[aria-pressed=true]{background:var(--module-accent,var(--lib-accent,#e8b23a));color:var(--lib-on-accent,#06101f);border-color:transparent}
+      .bl-button{cursor:pointer;padding:11px 16px;border-radius:11px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-chip,rgba(255,255,255,.05));color:var(--lib-text,#e9effc);font:700 14px Inter,system-ui,sans-serif}
+      .bl-button.is-primary{background:var(--module-accent,var(--lib-accent,#e8b23a));color:var(--lib-on-accent,#06101f);border-color:transparent}
+      .bl-button:hover{filter:brightness(1.08)}
+      .bl-chip:focus-visible,.bl-button:focus-visible,.bl-select:focus-visible,.bl-check input:focus-visible,.bl-pitch:focus-visible{outline:3px solid var(--module-accent,var(--lib-accent,#e8b23a));outline-offset:2px}
+      .bl-check{display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;font-weight:600;color:var(--lib-text,#e9effc)}
+      .bl-check input{accent-color:var(--module-accent,#e8b23a);width:16px;height:16px}
+      .bl-note{font-size:12.5px;color:var(--lib-muted,#8d9bba)}
+      .bl-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-1px;margin-right:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+      details summary{cursor:pointer;color:var(--lib-soft,#aab6d3);font-weight:600}
+      details ul{margin:8px 0 0;padding-left:18px;color:var(--lib-muted,#8d9bba)}
+      .bl-table{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+      .bl-table th,.bl-table td{padding:4px 6px;border-bottom:1px solid var(--lib-line,rgba(120,170,255,.16));text-align:right;white-space:nowrap}
+      .bl-table th:first-child,.bl-table td:first-child{text-align:left}
+      .bl-table thead th{color:var(--lib-muted,#8d9bba);font-weight:700}
+      .bl-table tr.is-total td{font-weight:800;color:var(--lib-strong,#fff)}
+      .bl-scroll{overflow-x:auto}
+      #bug{position:absolute;top:12px;left:12px;z-index:12;display:flex;align-items:stretch;border-radius:10px;overflow:hidden;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:800 15px Rajdhani,Inter,sans-serif;box-shadow:0 10px 30px -12px rgba(0,0,0,.6)}
+      #bug[hidden]{display:none}
+      .bug-teams{display:grid}
+      .bug-team{display:flex;justify-content:space-between;gap:14px;padding:3px 10px;min-width:92px;color:#fff}
+      .bug-team b{font-size:18px}
+      .bug-side{display:grid;align-content:center;justify-items:center;gap:2px;padding:4px 10px;border-left:1px solid var(--lib-line,rgba(120,170,255,.16));min-width:58px;color:var(--lib-strong,#fff)}
+      .bug-dots{display:flex;gap:4px}
+      .bug-dots i{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.18)}
+      .bug-dots i.on{background:var(--module-accent,#e8b23a)}
+      .bug-bases{position:relative;width:34px;height:26px}
+      .bug-bases i{position:absolute;width:10px;height:10px;transform:rotate(45deg);background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35)}
+      .bug-bases i.on{background:var(--module-accent,#e8b23a)}
+      #pitch-info{position:absolute;top:12px;right:12px;z-index:12;padding:6px 12px;border-radius:10px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:800 16px Rajdhani,Inter,sans-serif;color:#fff;text-align:right}
+      #pitch-info[hidden]{display:none}
+      #pitch-info small{display:block;font:600 11px Inter,sans-serif;color:var(--lib-muted,#8d9bba)}
+      #banner{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:12;max-width:min(680px,90%);padding:8px 18px;border-radius:12px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 16px Inter,sans-serif;pointer-events:none;color:var(--lib-strong,#fff);text-align:center}
+      #banner[hidden]{display:none}
+      #banner.is-big{font:800 26px Rajdhani,Inter,sans-serif;letter-spacing:1px;color:var(--module-accent,#e8b23a)}
+      #matchup{position:absolute;left:12px;bottom:44px;z-index:12;display:grid;gap:4px;font-size:12.5px;pointer-events:none}
+      #matchup[hidden]{display:none}
+      #matchup div{padding:4px 10px;border-radius:8px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      #matchup b{color:var(--lib-strong,#fff)}
+      #hint{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:12;max-width:94%;font-size:12px;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8);text-align:center;pointer-events:none}
+      #picker{position:absolute;right:12px;bottom:44px;z-index:13;display:grid;gap:8px;justify-items:end}
+      #picker[hidden]{display:none}
+      .bl-pitches{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:420px}
+      .bl-pitch{cursor:pointer;padding:7px 10px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel,#111829);color:var(--lib-text,#e9effc);font:700 12.5px Inter,sans-serif}
+      .bl-pitch[aria-pressed=true]{background:var(--module-accent,#e8b23a);color:var(--lib-on-accent,#06101f)}
+      .bl-pitch small{opacity:.75;font-weight:600;margin-left:4px}
+      #meter{position:relative;width:min(320px,80vw);height:18px;border-radius:999px;background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line,rgba(120,170,255,.16));overflow:hidden}
+      #meter-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#2f8f6a,#e8b23a 80%,#ff5a36)}
+      #meter-effort{position:absolute;top:0;bottom:0;width:3px;background:#fff;left:0;display:none}
+      #meter-mark{position:absolute;top:0;bottom:0;left:10%;width:4px;margin-left:-2px;background:#7fd6ff}
+      #meter-label{font-size:12px;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8)}
+      #steal-flag{position:absolute;left:12px;top:86px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px Inter,sans-serif;letter-spacing:.6px}
+      #steal-flag[hidden]{display:none}
+      #log{position:absolute;right:12px;top:64px;z-index:12;width:min(320px,44vw);max-height:40%;overflow:auto;font-size:12px;padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      #log[hidden]{display:none}
+      #log summary{font-size:12px}
+      #log ol{margin:6px 0 0;padding-left:18px;color:var(--lib-soft,#aab6d3)}
+      #log li{margin:2px 0}
+      @media (max-width:640px){#log{display:none}.bl-card{padding:16px}.bl-card h1{font-size:28px}.bl-screen{justify-items:center;align-items:end}#matchup{bottom:64px}}
+      @media (prefers-reduced-motion:reduce){.bl-card{backdrop-filter:none}}
+    </style>
+  </head>
+  <body>
+    <div id="stage" aria-label="Ballpark view"></div>
+
+    <div id="bug" hidden aria-live="polite">
+      <div class="bug-teams">
+        <div class="bug-team" id="bug-away"><span id="bug-away-abbr">AWY</span><b id="bug-away-runs">0</b></div>
+        <div class="bug-team" id="bug-home"><span id="bug-home-abbr">HOM</span><b id="bug-home-runs">0</b></div>
+      </div>
+      <div class="bug-side"><span id="bug-inning">▲ 1</span><span id="bug-count">0-0</span></div>
+      <div class="bug-side">
+        <div class="bug-bases" aria-label="Runners on base"><i id="bug-b2" style="left:12px;top:1px"></i><i id="bug-b3" style="left:1px;top:12px"></i><i id="bug-b1" style="left:23px;top:12px"></i></div>
+        <div class="bug-dots" aria-label="Outs"><i id="bug-o1"></i><i id="bug-o2"></i></div>
+      </div>
+    </div>
+    <div id="steal-flag" hidden>Runners going</div>
+    <div id="pitch-info" hidden><span id="pitch-type"></span> <span id="pitch-mph"></span><small id="pitch-call"></small></div>
+    <div id="banner" role="status" aria-live="polite" hidden></div>
+    <div id="matchup" hidden><div id="matchup-batter"></div><div id="matchup-pitcher"></div></div>
+    <details id="log" hidden><summary>Play-by-play</summary><ol id="log-list" reversed></ol></details>
+    <div id="picker" hidden>
+      <div class="bl-pitches" id="pitch-buttons" role="group" aria-label="Pitch type"></div>
+      <div id="meter-label">Aim, then click or press Space to start the meter</div>
+      <div id="meter" aria-hidden="true"><div id="meter-fill"></div><div id="meter-mark"></div><div id="meter-effort"></div></div>
+    </div>
+    <div id="hint"></div>
+
+    <section id="screen-setup" class="bl-screen" aria-labelledby="setup-title">
+      <form class="bl-card" id="setup-form">
+        <div>
+          <div class="bl-eyebrow">Pitch physics, timing &amp; probability · learning module</div>
+          <h1 id="setup-title">Bush League Baseball</h1>
+          <p>Thirty-two original clubs, ten oddball parks and the full rulebook. Every pitch breaks by its spin, every fly ball rides drag, lift, wind and altitude, and the box score keeps itself.</p>
+        </div>
+        <div class="bl-grid2">
+          <label class="bl-label">Your club<select class="bl-select" id="team-select"></select></label>
+          <label class="bl-label">Opponent<select class="bl-select" id="opponent-select"></select></label>
+        </div>
+        <div class="bl-label">You are<div class="bl-chips" id="side-chips" role="group" aria-label="Which side you play"></div></div>
+        <div class="bl-label">Length<div class="bl-chips" id="innings-chips" role="group" aria-label="Innings"></div></div>
+        <div class="bl-label">Pitch speed<div class="bl-chips" id="pace-chips" role="group" aria-label="Pitch speed"></div></div>
+        <div class="bl-row">
+          <label class="bl-check"><input type="checkbox" id="dh-check" checked /> Designated hitter</label>
+          <label class="bl-check"><input type="checkbox" id="runner-check" checked /> Runner on second in extras</label>
+          <label class="bl-check"><input type="checkbox" id="mercy-check" /> Ten-run mercy rule</label>
+        </div>
+        <p class="bl-note" id="park-note"></p>
+        <div class="bl-row">
+          <button type="submit" class="bl-button is-primary" id="start-button">First pitch</button>
+        </div>
+        <details>
+          <summary>How the physics and the rules work</summary>
+          <ul>
+            <li>Every pitch is flown with drag and Magnus lift: backspin rides, topspin dives, side spin sweeps. Thinner air at altitude carries farther.</li>
+            <li>Your swing has timing and a contact cursor. Early swings pull the ball, late swings go the other way; hitting under the ball lifts it.</li>
+            <li>Fair or foul, infield fly, tag-ups, forces, double plays, steals, balks and walk-offs all follow the rulebook.</li>
+            <li>The box score credits hits, errors, earned runs, wins, losses, saves and holds the way an official scorer would.</li>
+          </ul>
+        </details>
+      </form>
+    </section>
+
+    <section id="screen-final" class="bl-screen" aria-labelledby="final-title" hidden>
+      <div class="bl-card is-wide">
+        <div>
+          <div class="bl-eyebrow" id="final-eyebrow">Final</div>
+          <h2 id="final-title">Final</h2>
+          <p id="final-line"></p>
+        </div>
+        <div class="bl-scroll"><table class="bl-table" id="line-score" aria-label="Line score"></table></div>
+        <div class="bl-grid2" id="box-tables"></div>
+        <div class="bl-row">
+          <button type="button" class="bl-button is-primary" id="rematch-button">Rematch</button>
+          <button type="button" class="bl-button" id="new-button">New matchup</button>
+        </div>
+      </div>
+    </section>
+
+    <script type="module" src="./index.ts"></script>
+  </body>
+</html>

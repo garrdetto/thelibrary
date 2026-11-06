@@ -8,7 +8,7 @@
     "assets:check": "node scripts/assets.mjs --check",
     "assets:report": "node scripts/assets.mjs --report",
     "build": "vite build",
-    "test": "tsc -p tsconfig.engine.json && node --test server/park/park.test.mjs server/park/builders.test.mjs server/park/customRides.test.mjs && node scripts/maplestreet-tests.mjs && node scripts/fairway-tests.mjs && node scripts/angler-tests.mjs",
+    "test": "tsc -p tsconfig.engine.json && node --test server/park/park.test.mjs server/park/builders.test.mjs server/park/customRides.test.mjs && node scripts/maplestreet-tests.mjs && node scripts/fairway-tests.mjs && node scripts/angler-tests.mjs && node scripts/bushleague-tests.mjs",
     "gate": "node scripts/module-gate.mjs",
     "engine:smoke": "node scripts/engine-smoke.mjs",
     "preview": "vite preview",
