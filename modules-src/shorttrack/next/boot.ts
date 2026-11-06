@@ -53,7 +53,7 @@ export async function createEngine(canvas: HTMLCanvasElement, force: string | nu
   const preference = force === 'webgl' ? null : await webGpuPreference()
   if (preference !== null) {
     try {
-      const engine = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: true, ...(preference ? { powerPreference: preference } : {}) })
+      const engine = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: true, setMaximumLimits: true, ...(preference ? { powerPreference: preference } : {}) })
       await engine.initAsync()
       return { engine, backend: 'webgpu' }
     } catch (error) {

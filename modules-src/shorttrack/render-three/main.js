@@ -251,6 +251,7 @@ addMesh(ribbon(ptY(backLat,()=>0),ptY(backLat,s=>sY(ROWS-1)(s)+3),0,P,360,10,'ac
 // ---- crowd: seated fans built from torso+arms, head, legs and caps; they stand and cheer via a vertex shader ----
 const crowdU={uTime:{value:0},uLift:{value:0.6}};
 function crowdMat(){const m=new THREE.MeshStandardMaterial({roughness:.85});
+  m.userData.crowd=crowdU;   // ?engine=next re-creates this cheer with a Babylon material plugin (next/render/surface.ts)
   m.onBeforeCompile=sh=>{sh.uniforms.uTime=crowdU.uTime;sh.uniforms.uLift=crowdU.uLift;
     sh.vertexShader='uniform float uTime;uniform float uLift;\n'+sh.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
       float cid=float(gl_InstanceID);float ph=fract(sin(cid*12.9898)*43758.5453);
@@ -1901,7 +1902,7 @@ mirrorRT.texture.repeat.x=-1;mirrorRT.texture.offset.x=1;   // flip like a real 
 const ovScene=new THREE.Scene(),ovCam=new THREE.OrthographicCamera(0,1,1,0,-1,1);
 const ovQuad=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:mirrorRT.texture,depthTest:false,depthWrite:false}));ovScene.add(ovQuad);
 const MIRROR={x:0,y:11,w:0,h:0};
-if(GPU)GPU.attach({scene,camera,mirrorCam,sun,hemi,skyDay,sky:{turbidity:DAY.turbidity,rayleigh:DAY.rayleigh,mie:DAY.mie,mieG:DAY.mieG,sun:[...DAY.sunDir]},ground:new THREE.Color(0x4f5a2c).toArray()});
+if(GPU)GPU.attach({scene,camera,mirrorCam,sun,hemi,skyDay,sky:{turbidity:DAY.turbidity,rayleigh:DAY.rayleigh,mie:DAY.mie,mieG:DAY.mieG,sun:[...DAY.sunDir]},ground:new THREE.Color(0x4f5a2c).toArray(),towers});
 function resize(){
   const w=wrap.clientWidth,h=wrap.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
   composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);
@@ -2222,7 +2223,7 @@ function frame(now){
   if(focus){sun.target.position.set(focus.x,0,focus.z);sun.position.copy(sun.target.position).add(SUN_OFF);sun.target.updateMatrixWorld();}
   crowdU.uTime.value=now/1000;crowdU.uLift.value=lerp(crowdU.uLift.value,crowdHype,1-Math.exp(-dt*2));crowdHype=Math.max(0.6,crowdHype-dt*0.25);
   const mirrorOn=!!player&&(mode==='race'||mode==='paused');
-  if(GPU){GPU.frame({exposure:renderer.toneMappingExposure,bloom:{...bloom,enabled:bloom.enabled&&useComposer},shadows:renderer.shadowMap.enabled,shadowSize:sun.shadow.mapSize.x,night:!!settings.night,mirror:mirrorOn?MIRROR:null});return;}
+  if(GPU){GPU.frame({quality,exposure:renderer.toneMappingExposure,bloom:{...bloom,enabled:bloom.enabled&&useComposer},shadows:renderer.shadowMap.enabled,shadowSize:sun.shadow.mapSize.x,night:!!settings.night,mirror:mirrorOn?MIRROR:null});return;}
   renderer.shadowMap.needsUpdate=true;renderer.setRenderTarget(null);if(useComposer)composer.render(dt);else renderer.render(scene,camera);
   if(player&&(mode==='race'||mode==='paused')){
     renderer.setRenderTarget(mirrorRT);renderer.render(scene,mirrorCam);renderer.setRenderTarget(null);
