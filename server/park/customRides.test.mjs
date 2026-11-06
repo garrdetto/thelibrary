@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createPark, applyCommand, serializePark, deserializePark, stepPark, registerCustomRides, customRideDef, sanitizeMotion, buildableRide, FLAT_RIDES, CUSTOM_RIDE_LIMITS } from './index.mjs'
+import { createPark, applyCommand, serializePark, deserializePark, stepPark, registerCustomRides, customRideDef, sanitizeMotion, sanitizePlatform, buildableRide, FLAT_RIDES, CUSTOM_RIDE_LIMITS } from './index.mjs'
 
 const ride = (overrides = {}) => ({
   id: 'cr_0123456789', name: 'Comet Spinner', category: 'thrill', size: [4, 4], cost: 4200, upkeep: 80, capacity: 20, rideTime: 30, loadTime: 8, price: 2,
@@ -103,4 +103,28 @@ test('extra moving pieces are validated, clamped and only ride on earlier pieces
   assert.deepEqual(sanitizeMotion({ type: 'spin' }).pieces, [])
   const def = customRideDef(ride({ motion: { ...ride().motion, pieces: [{ type: 'swing' }] } }))
   assert.equal(def.custom.motion.pieces[0].type, 'swing')
+})
+
+test('the generated base and rise are validated and reach the park definition', () => {
+  const off = sanitizePlatform(null)
+  assert.equal(off.enabled, false)
+  assert.equal(off.column, 'none')
+  const p = sanitizePlatform({ enabled: true, shape: 'blob', fill: 4, height: 99, tiers: 9, top: 'red', side: '#ABCDEF', steps: 'up', column: 'telescoping', columnRadius: 0, columnSections: 12, fenceHeight: 7 })
+  assert.equal(p.shape, 'round')
+  assert.equal(p.fill, 1)
+  assert.equal(p.height, CUSTOM_RIDE_LIMITS.platformHeightMax)
+  assert.equal(p.tiers, CUSTOM_RIDE_LIMITS.platformTiersMax)
+  assert.equal(p.top, '#b8b2a6')
+  assert.equal(p.side, '#abcdef')
+  assert.equal(p.steps, 'front')
+  assert.equal(p.columnRadius, 0.1)
+  assert.equal(p.columnSections, CUSTOM_RIDE_LIMITS.columnSectionsMax)
+  assert.equal(p.fenceHeight, 2)
+  assert.equal(sanitizeMotion({ type: 'drop', rise: 500 }).rise, CUSTOM_RIDE_LIMITS.riseMax)
+  assert.equal(sanitizeMotion({ type: 'spin' }).rise, 0)
+  const def = customRideDef(ride({ platform: { enabled: true, column: 'fixed' }, motion: { ...ride().motion, rise: 6 } }))
+  assert.equal(def.custom.platform.enabled, true)
+  assert.equal(def.custom.platform.column, 'fixed')
+  assert.equal(def.custom.motion.rise, 6)
+  assert.equal(customRideDef(ride()).custom.platform.enabled, false)
 })

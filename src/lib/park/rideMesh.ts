@@ -6,7 +6,8 @@
  *
  * Layout (little-endian): u32 magic 'TPR1', u32 triangles, f32 metres per unit,
  * f32 height, then 14 bytes per corner: i16×3 position, i8×3 normal, u8 part
- * (0 = base, 1 = main moving part, 2 + n = extra moving piece n), u8×3 colour, u8 pad.
+ * (0 = base, 1 = main moving part, 2 + n = extra moving piece n, 249 = generated base,
+ * 250 + k = telescoping column section k), u8×3 colour, u8 pad.
  * 'TPR2' adds the extra pieces after the corners: u16 count, u16 pad, then 24 bytes
  * each: u8 group, u8 carrier part, u8 index in group, u8 pad, f32×3 pivot,
  * f32 azimuth around the main pivot, f32 reach.
@@ -102,14 +103,14 @@ export function decodeRideMesh(buffer: ArrayBuffer): RideMesh {
       instances.push({ group: bytes[o], carrier: bytes[o + 1], index: bytes[o + 2], pivot: [view.getFloat32(o + 4, true), view.getFloat32(o + 8, true), view.getFloat32(o + 12, true)], azimuth: view.getFloat32(o + 16, true), reach: view.getFloat32(o + 20, true) })
     }
   }
-  for (let c = 0; c < corners; c++) if (parts[c] > 1 + instances.length) parts[c] = 1
+  for (let c = 0; c < corners; c++) if (parts[c] > 1 + instances.length && parts[c] < 249) parts[c] = 1
   return { triangles, positions, normals, colors, parts, height, instances }
 }
 
 /** Triangles in each part, for the editor's read-out. */
 export function partCounts(mesh: RideMesh) {
   let moving = 0, pieces = 0
-  for (let t = 0; t < mesh.triangles; t++) { const part = mesh.parts[t * 3]; if (part === 1) moving++; else if (part > 1) pieces++ }
+  for (let t = 0; t < mesh.triangles; t++) { const part = mesh.parts[t * 3]; if (part === 1) moving++; else if (part > 1 && part < 249) pieces++ }
   return { base: mesh.triangles - moving - pieces, moving, pieces }
 }
 

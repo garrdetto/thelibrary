@@ -1,4 +1,4 @@
-import type { CustomRideMotion, CustomRideRecordInput } from '../../server/park/index.mjs'
+import type { CustomRideMotion, CustomRidePlatform, CustomRideRecordInput } from '../../server/park/index.mjs'
 
 export const PARK_RIDE_STATUSES = ['draft', 'published', 'retired'] as const
 export type ParkRideStatus = (typeof PARK_RIDE_STATUSES)[number]
@@ -21,6 +21,7 @@ export type ParkRideSpec = {
   price: number
   stats: { e: number; i: number; n: number }
   motion: CustomRideMotion
+  platform?: CustomRidePlatform
   bake: ParkRideBake
 }
 

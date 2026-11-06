@@ -3,9 +3,9 @@ import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { BufferAttribute, BufferGeometry, DoubleSide, Matrix4 } from 'three'
 import type { Group } from 'three'
-import type { CustomRideMotion } from '../../../../server/park/index.mjs'
+import type { CustomRideMotion, CustomRidePlatform } from '../../../../server/park/index.mjs'
 import type { RideMesh } from '@/lib/park/rideMesh'
-import { rideMatrices } from '@/lib/park/ridePieces'
+import { PLATFORM_PART, partMatrices } from '@/lib/park/ridePlatform'
 import { TILE_METRES } from './bake'
 
 export type StageClock = { phase: 'loading' | 'running'; timer: number; speed: number }
@@ -13,6 +13,7 @@ export type StageClock = { phase: 'loading' | 'running'; timer: number; speed: n
 type Props = {
   mesh: RideMesh | null
   motion: CustomRideMotion
+  platform?: CustomRidePlatform
   size: [number, number]
   rideTime: number
   loadTime: number
@@ -67,7 +68,7 @@ function Footprint({ size }: { size: [number, number] }) {
   </group>
 }
 
-function Ride({ mesh, motion, rideTime, loadTime, paused, rate, restart, step, guides, focus, size, onClock }: Omit<Props, 'onCanvas'>) {
+function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restart, step, guides, focus, size, onClock }: Omit<Props, 'onCanvas'>) {
   const geometries = useMemo(() => mesh ? partGeometries(mesh) : [], [mesh])
   useEffect(() => () => geometries.forEach(g => g.geometry.dispose()), [geometries])
   const groups = useRef(new Map<number, Group>())
@@ -92,7 +93,7 @@ function Ride({ mesh, motion, rideTime, loadTime, paused, rate, restart, step, g
       else { c.speed = Math.max(0, c.speed - dt * 0.6); c.spin += dt * c.speed }
     }
     if (mesh) {
-      const all = rideMatrices(motion, mesh.instances, { spin: c.spin, timer: c.timer, running: c.phase === 'running', speed: c.speed }, rideTime, mesh.height)
+      const all = partMatrices(motion, platform, mesh.instances, { spin: c.spin, timer: c.timer, running: c.phase === 'running', speed: c.speed }, rideTime, mesh.height)
       for (const [part, group] of groups.current) {
         const m = all[part]
         if (!m) continue
@@ -109,7 +110,7 @@ function Ride({ mesh, motion, rideTime, loadTime, paused, rate, restart, step, g
   const pivotSize = Math.max(0.18, span * 0.008)
   return <group>
     {geometries.map(({ part, geometry }) => {
-      const instance = part > 1 ? mesh?.instances[part - 2] : undefined
+      const instance = part > 1 && part < PLATFORM_PART ? mesh?.instances[part - 2] : undefined
       const lit = instance !== undefined && focus === instance.group
       return <group key={`${part}-${geometry.uuid}`} matrixAutoUpdate={false} ref={node => { if (node) groups.current.set(part, node); else groups.current.delete(part) }}>
         <mesh geometry={geometry} castShadow receiveShadow>

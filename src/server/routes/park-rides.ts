@@ -30,7 +30,7 @@ function checkMesh(bytes: Uint8Array) {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const triangles = view.getUint32(4, true), magic = view.getUint32(0, true), body = 16 + triangles * 42
   const unreadable = () => new HttpError(400, 'That baked ride could not be read. Bake it again.')
-  if ((magic !== MESH_MAGIC && magic !== MESH_MAGIC_PIECES) || triangles < 1 || triangles > L.trianglesMax * 1.05) throw unreadable()
+  if ((magic !== MESH_MAGIC && magic !== MESH_MAGIC_PIECES) || triangles < 1 || triangles > L.trianglesMax * 1.05 + L.platformTriangles) throw unreadable()
   if (magic === MESH_MAGIC) { if (body !== bytes.byteLength) throw unreadable(); return }
   if (body + 4 > bytes.byteLength) throw unreadable()
   const instances = view.getUint16(body, true)

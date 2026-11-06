@@ -3,7 +3,7 @@ import type { Vec3 } from './gl'
 import type { RideModel } from './models'
 import { decodeRideMesh } from './rideMesh'
 import type { RideMesh } from './rideMesh'
-import { rideMatrices } from './ridePieces'
+import { PLATFORM_PART, partMatrices } from './ridePlatform'
 import type { Mat4 } from './gl'
 import type { MotionClock } from './rideMotion'
 import { registerCustomRides } from '../../../server/park/index.mjs'
@@ -52,7 +52,7 @@ function meshFor(def: FlatRideDef): RideMesh | null | 'error' {
 export function customModelKey(kind: string, def: FlatRideDef) {
   const info = def.custom!
   const entry = meshes.get(`${info.id}:${info.meshVersion}`)
-  return `${kind}:custom:${info.meshVersion}:${entry?.state ?? 'new'}:${JSON.stringify(info.motion)}`
+  return `${kind}:custom:${info.meshVersion}:${entry?.state ?? 'new'}:${JSON.stringify(info.motion)}:${JSON.stringify(info.platform ?? null)}`
 }
 
 export const customRideThumb = (def: FlatRideDef) => def.custom?.thumb ? parkRideThumbUrl(def.custom.id, def.custom.meshVersion) : null
@@ -72,22 +72,28 @@ function placeholder(def: FlatRideDef): RideModel {
 export function customRideModel(def: FlatRideDef): RideModel {
   const mesh = meshFor(def)
   if (!mesh || mesh === 'error') return placeholder(def)
-  const builders = Array.from({ length: 2 + mesh.instances.length }, () => new MeshBuilder())
+  const builders = new Map<number, MeshBuilder>()
+  const builderFor = (part: number) => {
+    const id = part === PLATFORM_PART ? 0 : part > 1 + mesh.instances.length && part < PLATFORM_PART ? 1 : part
+    let b = builders.get(id)
+    if (!b) { b = new MeshBuilder(); builders.set(id, b) }
+    return b
+  }
+  builderFor(0)
   const P = mesh.positions, N = mesh.normals, C = mesh.colors
   const v = (i: number, a: Float32Array): Vec3 => [a[i * 3], a[i * 3 + 1], a[i * 3 + 2]]
   for (let t = 0; t < mesh.triangles; t++) {
     const a = t * 3, b = a + 1, c = a + 2
-    const target = builders[mesh.parts[a]] ?? builders[1]
-    target.smoothTri(null, null, v(a, P), v(b, P), v(c, P), v(a, N), v(b, N), v(c, N), v(a, C), v(b, C), v(c, C))
+    builderFor(mesh.parts[a]).smoothTri(null, null, v(a, P), v(b, P), v(c, P), v(a, N), v(b, N), v(c, N), v(a, C), v(b, C), v(c, C))
   }
-  const motion = def.custom!.motion
+  const motion = def.custom!.motion, platform = def.custom!.platform
   let lastKey = '', last: Mat4[] = []
   const matrices = (clock: MotionClock) => {
     const key = `${clock.spin}|${clock.timer}|${clock.running}|${clock.speed}`
-    if (key !== lastKey) { lastKey = key; last = rideMatrices(motion, mesh.instances, clock, def.rideTime, mesh.height) }
+    if (key !== lastKey) { lastKey = key; last = partMatrices(motion, platform, mesh.instances, clock, def.rideTime, mesh.height) }
     return last
   }
-  const parts = builders.slice(1).map((builder, i) => ({ builder, part: i + 1 })).filter(p => p.builder.count)
-    .map(({ builder, part }) => ({ builder, anim: (clock: MotionClock) => matrices(clock)[part] }))
-  return { base: builders[0], parts }
+  const parts = [...builders].filter(([part, builder]) => part !== 0 && builder.count).sort((x, y) => x[0] - y[0])
+    .map(([part, builder]) => ({ builder, anim: (clock: MotionClock) => matrices(clock)[part] ?? matrices(clock)[0] }))
+  return { base: builders.get(0)!, parts }
 }

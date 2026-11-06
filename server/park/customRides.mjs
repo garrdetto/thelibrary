@@ -8,6 +8,9 @@ export const CUSTOM_PIECE_MOTIONS = ['spin', 'swing', 'wobble', 'flip', 'bob', '
 export const CUSTOM_PIECE_SPLITS = ['pieces', 'sectors']
 export const CUSTOM_PIECE_HANGS = ['top', 'centre', 'bottom']
 export const CUSTOM_PIECE_AXES = ['radial', 'tangent', 'x', 'y']
+export const CUSTOM_PLATFORM_SHAPES = ['square', 'round', 'octagon', 'hexagon']
+export const CUSTOM_PLATFORM_STEPS = ['none', 'front', 'back', 'left', 'right', 'sides', 'all']
+export const CUSTOM_PLATFORM_COLUMNS = ['none', 'fixed', 'telescoping']
 export const CUSTOM_RIDE_LIMITS = {
   nameMin: 2, nameMax: 40, descriptionMax: 160,
   sizeMin: 1, sizeMax: 12,
@@ -20,6 +23,7 @@ export const CUSTOM_RIDE_LIMITS = {
   meshBytes: 2_500_000, thumbBytes: 300_000, sourceBytes: 15 * 1024 * 1024,
   trianglesMin: 500, trianglesMax: 24000,
   piecesMax: 6, instancesMax: 64, pieceCountMax: 32, reachMax: 60,
+  riseMax: 40, platformHeightMax: 8, platformTiersMax: 4, platformTriangles: 6000, columnRadiusMax: 4, columnSectionsMax: 4,
 }
 
 const L = CUSTOM_RIDE_LIMITS
@@ -47,6 +51,34 @@ function sanitizePiece(raw, index) {
   }
 }
 
+const color = (value, fallback) => typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : fallback
+
+/** The generated base under a custom ride. Pure and deterministic like sanitizeMotion. */
+export function sanitizePlatform(raw) {
+  return {
+    enabled: raw?.enabled === true,
+    shape: pick(raw?.shape, CUSTOM_PLATFORM_SHAPES, 'round'),
+    fill: round(clamp(raw?.fill, 0.3, 1, 0.9)),
+    height: round(clamp(raw?.height, 0, L.platformHeightMax, 0.6)),
+    tiers: Math.round(clamp(raw?.tiers, 1, L.platformTiersMax, 1)),
+    inset: round(clamp(raw?.inset, 0, 0.3, 0.1)),
+    top: color(raw?.top, '#b8b2a6'),
+    side: color(raw?.side, '#6d6a66'),
+    trim: color(raw?.trim, '#e0b23c'),
+    edge: raw?.edge !== false,
+    steps: pick(raw?.steps, CUSTOM_PLATFORM_STEPS, 'front'),
+    stepColor: color(raw?.stepColor, '#8e8a84'),
+    fence: raw?.fence === true,
+    fenceHeight: round(clamp(raw?.fenceHeight, 0.5, 2, 1.1)),
+    fenceColor: color(raw?.fenceColor, '#d9dde2'),
+    column: pick(raw?.column, CUSTOM_PLATFORM_COLUMNS, 'none'),
+    columnRadius: round(clamp(raw?.columnRadius, 0.1, L.columnRadiusMax, 0.6)),
+    columnSections: Math.round(clamp(raw?.columnSections, 1, L.columnSectionsMax, 3)),
+    columnColor: color(raw?.columnColor, '#9aa3ad'),
+    columnTop: round(clamp(raw?.columnTop, 0, L.heightMax, 0)),
+  }
+}
+
 const text = (value, max) => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : ''
 
 /** Validates a motion block. Pure and deterministic so the browser and the online server agree. */
@@ -60,6 +92,7 @@ export function sanitizeMotion(raw) {
     axis: raw?.axis === 'y' ? 'y' : 'x',
     split: round(clamp(raw?.split, 0, L.heightMax, 0)),
     pivot: [round(clamp(pivot[0], -30, 30, 0)), round(clamp(pivot[1], -30, 30, 0)), round(clamp(pivot[2], 0, L.heightMax, 0))],
+    rise: round(clamp(raw?.rise, 0, L.riseMax, 0)),
     pieces: (Array.isArray(raw?.pieces) ? raw.pieces : []).slice(0, L.piecesMax).map(sanitizePiece),
   }
 }
@@ -88,6 +121,7 @@ export function customRideDef(raw) {
     custom: {
       id: raw.id,
       motion: sanitizeMotion(raw.motion),
+      platform: sanitizePlatform(raw.platform),
       meshVersion: Math.max(0, Math.round(clamp(raw.meshVersion, 0, 1e9, 0))),
       thumb: raw.thumb === true,
       retired: raw.active === false,
