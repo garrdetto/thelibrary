@@ -8,7 +8,6 @@ import { issueTicket, redeemTicket } from './account'
 import type { Scheme } from '../../lib/racing'
 import { displayScheme, presets } from '../../lib/racing'
 
-const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dellswide: 7000, prison: 7500, dirt: 8000 }
 const raceModes = z.enum(['practice', 'multiplayer', 'time-attack', 'race'])
 const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells', 'dellswide', 'prison', 'dirt'])
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)

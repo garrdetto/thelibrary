@@ -1472,8 +1472,9 @@ body{background:var(--paper);color:var(--tone-0)}
 @media(max-width:640px){.adm-arrange-list li{grid-template-columns:auto minmax(0,1fr) auto;gap:8px}.adm-arrange-list .adm-rank,.adm-arrange-list img{display:none}
   .adm-arrange-actions .adm-icon{width:30px}.adm-savebar{padding:12px}.adm-savebar>div{width:100%}.adm-savebar .adm-btn{flex:1}}
 
-.pk-play-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.pk-save-select { min-width: 0; max-width: 100%; flex: 1 1 160px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--lib-border, rgba(255, 255, 255, 0.2)); background: var(--lib-surface, rgba(0, 0, 0, 0.3)); color: inherit; font: inherit; }
+.pk-play-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin-top: auto; }
+.pk-scenario-body .pk-play-row .pk-btn { margin-top: 0; align-self: stretch; }
+.pk-save-select { min-width: 0; max-width: 100%; flex: 1 1 160px; box-sizing: border-box; min-height: 34px; margin: 0; padding: 0 10px; border-radius: 8px; border: 1px solid var(--lib-border, rgba(255, 255, 255, 0.2)); background: var(--lib-surface, rgba(0, 0, 0, 0.3)); color: inherit; font: inherit; font-size: 12px; }
 .pk-save-select:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 .workspace-content.lens-content{max-width:1320px}

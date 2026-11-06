@@ -74,6 +74,7 @@ export default function RideCreator() {
   const [notice, setNotice] = useState<Notice>(null)
   const canvas = useRef<HTMLCanvasElement | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const editorRef = useRef<HTMLElement>(null)
 
   const loadRecords = useCallback(async () => {
     setListError(null)
@@ -234,9 +235,7 @@ export default function RideCreator() {
   return <div className="account-home ms-items rc">
     <p className="ms-items-note">Turn a Meshy generation or your own .glb into a Thrill Park flat ride. The model is baked into the park’s own lightweight format with its colours, so it runs on every device. Keep rides original: no real park, ride or film names, mascots or logos.</p>
 
-    <MeshyPanel target="ride" sources={sources} onOpen={(opened, job) => void openFile(opened, job)}/>
-
-    <section className="rc-editor" aria-label="Ride editor">
+    <section ref={editorRef} className="rc-editor" aria-label="Ride editor">
       <header className="rc-editor-head">
         <h2>{editing ? `Editing ${editing.spec.name}` : 'New ride'}</h2>
         {editing && <span className={`ms-items-state is-${status}`}>{STATUS_LABEL[status]}</span>}
@@ -252,7 +251,7 @@ export default function RideCreator() {
           <div className="ms-items-stage rc-stage">
             {mesh ? <RideStage mesh={mesh} motion={motion} size={size} rideTime={details.rideTime} loadTime={Math.min(details.loadTime, 4)} playing={playing} guides={guides} onCanvas={c => { canvas.current = c }}/>
               : <button type="button" className="ms-items-drop" onClick={() => fileInput.current?.click()} disabled={busy} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const dropped = event.dataTransfer.files?.[0]; if (dropped) void openFile(dropped) }}>
-                <Upload size={22} aria-hidden/> Drop a .glb here, upload one, or pick “Open in editor” on a finished Meshy job above
+                <Upload size={22} aria-hidden/> Drop a .glb here, upload one, or pick “Open in editor” on a finished Meshy job below
               </button>}
             {working === 'load' && <p className="ms-items-loading" role="status"><LoaderCircle className="spin" size={14}/> Opening the model…</p>}
             {working === 'bake' && <p className="ms-items-loading" role="status"><LoaderCircle className="spin" size={14}/> Baking colours and simplifying…</p>}
@@ -348,6 +347,8 @@ export default function RideCreator() {
         </div>
       </div>
     </section>
+
+    <MeshyPanel target="ride" sources={sources} onOpen={(opened, job) => { editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); void openFile(opened, job) }}/>
 
     <h2>Your rides</h2>
     {listError && <p className="ms-items-error" role="alert">{listError}</p>}

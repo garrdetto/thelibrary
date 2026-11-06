@@ -49,6 +49,7 @@ export default function MapleStreetItemEditor() {
   const [items, setItems] = useState<CustomItemRecord[] | null>(null)
   const [listError, setListError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const editorRef = useRef<HTMLFormElement>(null)
 
   const setScale = useCallback((next: Vector3Like) => setScaleState(next), [])
   const scaledSize = useMemo(() => rawSize ? { x: rawSize.x * scale.x, y: rawSize.y * scale.y, z: rawSize.z * scale.z } : null, [rawSize, scale])
@@ -146,7 +147,7 @@ export default function MapleStreetItemEditor() {
     <h1>Publish Buy-mode items</h1>
     <p>Load a .glb or .gltf model, drag the scale handles until it's the right size against the 1 m grid, then publish. Each grid square is one Buy-mode cell. Published items go into the shared world's catalog, and placed copies keep the exact scale.</p>
 
-    <form className="ms-items-editor" onSubmit={publish}>
+    <form ref={editorRef} className="ms-items-editor" onSubmit={publish}>
       <div className="ms-items-stage">
         {url
           ? <DevModeCanvas state={devMode}>
@@ -199,7 +200,7 @@ export default function MapleStreetItemEditor() {
       </div>
     </form>
 
-    <MeshyPanel target="furniture" sources={meshySources} onOpen={opened => openFile(opened)}/>
+    <MeshyPanel target="furniture" sources={meshySources} onOpen={opened => { editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); openFile(opened) }}/>
 
     <h2>Your items</h2>
     <p>Retiring takes an item out of the Buy catalog. Houses that already own it keep it.</p>
