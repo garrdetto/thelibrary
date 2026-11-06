@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "notes": "Every Meshy prompt used for Bush League Baseball, so the generated set can be reproduced. Generate from the admin panel (Bush League tab); clean up with scripts/blender/bushleague/; export to this folder; run pnpm assets. Animation action ids come from Meshy's animation library and are filled in when a clip is chosen.",
+  "negative": {
+    "ballplayer": "logos, team names, numbers, text, real players, bats, gloves, ground plane, background",
+    "ballpark": "people, logos, team names, real ballparks, text, background"
+  },
+  "groups": [
+    {
+      "id": "players",
+      "label": "Player body types",
+      "target": "ballplayer",
+      "items": [
+        { "id": "player-lean", "label": "Lean", "prompt": "Full-body baseball player, lean athletic build, plain fitted jersey and pants, stirrup socks, cleats, short hair, neutral face, A-pose, arms slightly away from the body, game asset" },
+        { "id": "player-stocky", "label": "Stocky", "prompt": "Full-body baseball player, short stocky muscular build, broad shoulders, plain jersey and pants, cleats, crew cut, A-pose, arms slightly away from the body, game asset" },
+        { "id": "player-belly", "label": "Big belly", "prompt": "Full-body baseball player with a big round beer belly, cheerful face, plain jersey stretched over the belly, baggy pants, cleats, mustache, A-pose, arms slightly away from the body, game asset" },
+        { "id": "player-tall", "label": "Tall", "prompt": "Full-body baseball pitcher, very tall and lanky, long arms, plain jersey and pants, high socks, cleats, A-pose, arms slightly away from the body, game asset" },
+        { "id": "player-short", "label": "Short", "prompt": "Full-body baseball player, short and wiry, quick-looking, plain jersey and pants, cleats, scruffy beard, A-pose, arms slightly away from the body, game asset" }
+      ]
+    },
+    {
+      "id": "gear",
+      "label": "Bats, gloves and gear",
+      "target": "ballpark",
+      "items": [
+        { "id": "bat-wood", "label": "Wood bat", "prompt": "Single wooden baseball bat, natural ash grain, black taped handle, no logos, game asset" },
+        { "id": "glove-fielder", "label": "Fielder's glove", "prompt": "Brown leather baseball fielder's glove, open pocket, laced web, no logos, game asset" },
+        { "id": "glove-catcher", "label": "Catcher's mitt", "prompt": "Round padded leather catcher's mitt, dark brown, no logos, game asset" },
+        { "id": "helmet-batting", "label": "Batting helmet", "prompt": "Glossy plain batting helmet with one ear flap, no logos or stickers, game asset" },
+        { "id": "catcher-gear", "label": "Catcher's gear", "prompt": "Baseball catcher's chest protector, shin guards and face mask arranged as one set, plain colors, no logos, game asset" },
+        { "id": "bases", "label": "Bases and plate", "prompt": "Set of three white canvas baseball bases and a rubber home plate, slightly scuffed, game asset" }
+      ]
+    },
+    {
+      "id": "park",
+      "label": "Park props",
+      "target": "ballpark",
+      "items": [
+        { "id": "scoreboard-small", "label": "Small-town scoreboard", "prompt": "Old wooden small-town baseball scoreboard on two posts, hand-painted panels, light bulbs, no text, game asset" },
+        { "id": "light-tower", "label": "Light tower", "prompt": "Steel lattice stadium light tower with a bank of twelve floodlights at the top, game asset" },
+        { "id": "dugout", "label": "Dugout", "prompt": "Sunken baseball dugout with a long bench, bat rack, water cooler and roof, open front, game asset" },
+        { "id": "foul-pole", "label": "Foul pole", "prompt": "Tall yellow baseball foul pole with a mesh screen fin, game asset" },
+        { "id": "concession", "label": "Concession stand", "prompt": "Small ballpark concession stand with a hot dog counter, awning and menu board without text, game asset" },
+        { "id": "porta-potty", "label": "Port-a-potty", "prompt": "Green plastic portable toilet booth with a crescent moon vent on the door, game asset" }
+      ]
+    },
+    {
+      "id": "mascots",
+      "label": "Mascots",
+      "target": "ballplayer",
+      "items": [
+        { "id": "mascot-thunder", "label": "Fartsville Thunder: storm cloud", "prompt": "Full-body cartoon mascot costume of a grumpy green storm cloud with arms and legs, wearing a baseball cap, A-pose, game asset" },
+        { "id": "mascot-gator", "label": "Swamp Butt Gators: gator", "prompt": "Full-body cartoon alligator mascot costume in a baseball jersey, goofy grin, A-pose, game asset" },
+        { "id": "mascot-salami", "label": "Grand Salamis: salami", "prompt": "Full-body cartoon salami sausage mascot costume with arms, legs and a baseball cap, A-pose, game asset" },
+        { "id": "mascot-astronaut", "label": "Uranus Astronauts: astronaut", "prompt": "Full-body cartoon astronaut mascot with an oversized round helmet and a baseball jersey, A-pose, game asset" }
+      ]
+    }
+  ],
+  "animations": [
+    { "id": "idle", "label": "Idle", "meshyActionId": null },
+    { "id": "walk", "label": "Walk", "meshyActionId": null },
+    { "id": "jog", "label": "Jog", "meshyActionId": null },
+    { "id": "sprint", "label": "Sprint", "meshyActionId": null },
+    { "id": "celebrate", "label": "Celebrate", "meshyActionId": null }
+  ]
+}

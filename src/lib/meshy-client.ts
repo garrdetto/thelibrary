@@ -32,7 +32,9 @@ export const meshyImage = (input: { target: MeshyTarget; image: string; texture:
 export const meshyRefine = (jobId: string, texturePrompt: string) => post<{ ids: string[] }>({ action: 'refine', jobId, texturePrompt })
 export const meshyRemesh = (target: MeshyTarget, source: MeshySource, polycount: number) => post<{ ids: string[] }>({ action: 'remesh', target, source, polycount })
 export const meshyRetexture = (target: MeshyTarget, source: MeshySource, prompt: string) => post<{ ids: string[] }>({ action: 'retexture', target, source, prompt })
-export const meshyCancel = (jobId: string) => post<{ ok: true }>({ action: 'cancel', jobId })
+export const meshyRig = (jobId: string, height = 1.85) => post<{ ids: string[] }>({ action: 'rig', jobId, height })
+export const meshyAnimate = (jobId: string, actionId: number, label: string) => post<{ ids: string[] }>({ action: 'animate', jobId, actionId, label })
+export const meshyCancel =(jobId: string) => post<{ ok: true }>({ action: 'cancel', jobId })
 export const meshyHide = (jobId: string) => post<{ ok: true }>({ action: 'hide', jobId })
 
 export async function meshyModelFile(jobId: string, name = 'meshy-model.glb'): Promise<File> {

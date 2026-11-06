@@ -48,6 +48,10 @@ export interface Scenery {
   scuff(x: number, z: number, radius: number, strength: number, angle?: number, length?: number): void
 }
 
+/** Where in the pitch clip the ball leaves the hand, and where in the swing clip the bat crosses the plate. */
+const RELEASE_AT = 0.72
+const CONTACT_AT = 0.55
+
 const BASE_SPOTS: readonly { x: number; z: number }[] = [1, 2, 3].map((base) => ({ x: BASES[base].x, z: BASES[base].z }))
 
 export class Director {
@@ -62,6 +66,7 @@ export class Director {
   private flightScale = 1
   private swingPress: { at: number; type: SwingType } | null = null
   private outcome: PitchOutcome | null = null
+  private pending: PitchOutcome | null = null
   private timeline: Timeline | null = null
   private playEnd = 0
   private lastMark = 0
@@ -103,6 +108,7 @@ export class Director {
     this.flightScale = this.config.pace[choice.pace].pitchScale
     this.stealArmed = false
     this.actors.trailEnabled = choice.trail
+    this.actors.bind(this.contest)
     this.hooks.onContest(this.contest, choice)
     this.screens.resetLog()
     this.screens.hidePitch()
@@ -132,12 +138,7 @@ export class Director {
 
   private resetScene(): void {
     const contest = this.contest!
-    const offense = contest.offense.roster.team.colors
-    const defense = contest.defenseTeam.roster.team.colors
-    this.actors.setColors(defense, offense)
-    this.actors.placeFieldersHome()
-    this.actors.placeRunners(contest.bases.map((runner) => runner?.id ?? null), offense)
-    this.actors.setBatter(this.batterHand(), offense)
+    this.actors.setScene(contest, this.batterHand())
     this.scenery.scuff(this.batterHand() === 'R' ? -0.8 : 0.8, 0.25, 0.35, 0.35)
     this.actors.setZone(contest.batter.height)
     this.actors.setBall(null)
@@ -215,7 +216,10 @@ export class Director {
       return
     }
     this.screens.updateBug(contest)
-    this.actors.placeRunners(contest.bases.map((runner) => runner?.id ?? null), contest.offense.roster.team.colors)
+    if (pre.events.length) {
+      this.actors.setScene(contest, this.batterHand())
+      this.actors.setZone(contest.batter.height)
+    }
     if (this.humanPitching) {
       this.pitchIndex = Math.min(this.pitchIndex, contest.pitcher.pitching!.repertoire.length - 1)
       this.screens.showPicker(contest.pitcher.pitching!.repertoire, this.pitchIndex, (index) => this.pickPitch(index))
@@ -304,8 +308,14 @@ export class Director {
     this.flight = path.samples
     this.actors.setGhost(false)
     this.actors.setBall(null)
+    this.actors.windup(this.config.timing.windup / RELEASE_AT)
     this.screens.hidePitch()
     this.enter('windup')
+  }
+
+  /** Seconds of clip so the bat reaches the zone `swingLag` (scaled for slow pitches) after it starts. */
+  private swingDuration(scale: number): number {
+    return (this.config.timing.swingLag * scale) / CONTACT_AT
   }
 
   private get displayScale(): number {
@@ -314,13 +324,8 @@ export class Director {
 
   private updateWindup(dt: number): void {
     if (this.humanBatting) this.moveCursor(dt, pciRadius('contact'))
-    const pitcher = this.actors.fielders.get('P')
-    if (pitcher) pitcher.group.rotation.x = -Math.sin(Math.min(1, this.stageTime / this.config.timing.windup) * Math.PI) * 0.35
     if (this.humanBatting) this.readSwing(-1)
-    if (this.stageTime >= this.config.timing.windup) {
-      if (pitcher) pitcher.group.rotation.x = 0
-      this.enter('flight')
-    }
+    if (this.stageTime >= this.config.timing.windup) this.enter('flight')
   }
 
   private readSwing(flightTime: number): void {
@@ -331,7 +336,7 @@ export class Director {
     else if (this.input.pressed('swing')) type = 'contact'
     if (!type) return
     this.swingPress = { at: flightTime, type }
-    if (type !== 'bunt') this.actors.swing(this.clock)
+    this.actors.swing(type, type === 'bunt' ? 0.4 : this.swingDuration(this.displayScale))
   }
 
   private updateFlight(contest: Contest, dt: number): void {
@@ -346,9 +351,9 @@ export class Director {
     if (this.humanBatting) {
       this.moveCursor(dt, pciRadius(this.swingPress?.type ?? 'contact'))
       this.readSwing(t)
-      this.actors.updateBat(this.clock, this.config.timing.swingLag * scale * 2)
-    } else {
-      this.actors.updateBat(this.clock, this.config.timing.swingLag * 2)
+    } else if (!this.pending && t >= arrival - this.config.timing.swingLag) {
+      this.pending = contest.resolveSwing(null)
+      if (this.pending.swing.action === 'swing') this.actors.swing(this.pending.swing.type, this.pending.swing.type === 'bunt' ? 0.4 : this.swingDuration(scale))
     }
     const grace = this.humanBatting ? 0.12 : 0
     if (t < arrival + grace) return
@@ -363,8 +368,9 @@ export class Director {
         swing = { action: 'swing', type: press.type, timing, aimX: Math.round(this.cursor.x * 1000), aimY: Math.round(this.cursor.y * 1000) }
       }
     }
-    const outcome = contest.resolveSwing(swing)
-    if (!this.humanBatting && outcome.swing.action === 'swing') this.actors.swing(this.clock)
+    const outcome = this.pending ?? contest.resolveSwing(swing)
+    this.pending = null
+    if (!outcome.batted) this.actors.catchPitch({ x: thrown.plateX, y: thrown.plateY, z: -0.6 })
     this.outcome = outcome
     this.actors.setCursor(false)
     this.actors.setGhost(true, thrown.plateX, thrown.plateY)
@@ -413,10 +419,9 @@ export class Director {
     const timeline = this.timeline
     if (timeline) {
       const t = this.stageTime
-      const offense = this.outcome!.halfOver ? contest.defenseTeam.roster.team.colors : contest.offense.roster.team.colors
       for (const track of tracksOf(timeline, 'fielder')) {
         const at = sampleKeys(track.keys, t)
-        if (at) this.actors.setFielder(track.id, at)
+        if (at) this.actors.setFielder(track.id, at, dt)
       }
       this.footClock += dt
       const footprints = this.footClock > 0.3
@@ -424,7 +429,7 @@ export class Director {
       for (const track of tracksOf(timeline, 'runner')) {
         const at = sampleKeys(track.keys, t)
         if (!at) continue
-        this.actors.runner(track.id, offense).group.position.copy(toWorld({ x: at.x, y: 0, z: at.z }))
+        this.actors.setRunner(track.id, at, dt)
         for (const [index, base] of BASE_SPOTS.entries()) {
           const key = `${track.id}:${index}`
           if (!this.scuffed.has(key) && Math.hypot(at.x - base.x, at.z - base.z) < 1.2) {
@@ -443,6 +448,7 @@ export class Director {
       const ball = tracksOf(timeline, 'ball')[0]
       const at = ball ? sampleKeys(ball.keys, t) : null
       this.actors.setBall(at)
+      this.actors.reactToBall(at)
       const launch = this.outcome?.batted?.launch
       if (launch) this.actors.spinBall(dt, Math.abs(launch.backspin) * 0.25, 0)
       const marks = marksBetween(timeline, this.lastMark, t)
@@ -457,7 +463,6 @@ export class Director {
       }
     } else if (this.thrown) {
       this.actors.setBall({ x: this.thrown.plateX, y: this.thrown.plateY, z: PLATE_FRONT - 0.4 - Math.min(0.6, this.stageTime * 2) })
-      this.actors.updateBat(this.clock, this.config.timing.swingLag * 2)
     }
     if (this.stageTime < this.playEnd && !skip) return
     const outcome = this.outcome!
@@ -485,6 +490,7 @@ export class Director {
     this.actors.setCursor(false)
     this.screens.updateBug(contest)
     this.screens.showFinal(contest, this.human)
+    if (contest.winner !== null) this.actors.celebrate(contest.teams[contest.winner].roster.team.id)
     this.setPose('overview')
     this.hooks.onFinal(contest)
   }

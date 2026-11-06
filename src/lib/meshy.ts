@@ -6,9 +6,9 @@
 
 export const MESHY_AI_MODELS = ['latest', 'meshy-6', 'meshy-6-lite'] as const
 export type MeshyAiModel = (typeof MESHY_AI_MODELS)[number]
-export const MESHY_TARGETS = ['furniture', 'vehicle', 'character', 'ride', 'racecar'] as const
+export const MESHY_TARGETS = ['furniture', 'vehicle', 'character', 'ride', 'racecar', 'ballplayer', 'ballpark'] as const
 export type MeshyTarget = (typeof MESHY_TARGETS)[number]
-export const MESHY_JOB_KINDS = ['preview', 'refine', 'image', 'remesh', 'retexture'] as const
+export const MESHY_JOB_KINDS = ['preview', 'refine', 'image', 'remesh', 'retexture', 'rig', 'animate'] as const
 export type MeshyJobKind = (typeof MESHY_JOB_KINDS)[number]
 export type MeshyJobStatus = 'PENDING' | 'IN_PROGRESS' | 'SUCCEEDED' | 'FAILED' | 'CANCELED'
 
@@ -44,19 +44,23 @@ export const MESHY_COSTS = {
   remesh: 5,
   retexture: 10,
   rigging: 5,
+  /** Estimate: Meshy bills animation clips separately from rigging; check the pricing page before a large batch. */
+  animation: 3,
 }
 
-export const POLYCOUNT_DEFAULTS: Record<MeshyTarget, number> = { furniture: 8000, vehicle: 20000, character: 15000, ride: 12000, racecar: 20000 }
+export const POLYCOUNT_DEFAULTS: Record<MeshyTarget, number> = { furniture: 8000, vehicle: 20000, character: 15000, ride: 12000, racecar: 20000, ballplayer: 24000, ballpark: 15000 }
 export const POLYCOUNT_RANGE = { min: 500, max: 100000 }
 export const PREVIEW_COUNT_MAX = 4
 
-export function estimateCredits(action: { kind: 'preview'; model: MeshyAiModel; count: number } | { kind: 'image'; model: MeshyAiModel; texture: boolean } | { kind: 'refine' | 'remesh' | 'retexture' }) {
+export function estimateCredits(action: { kind: 'preview'; model: MeshyAiModel; count: number } | { kind: 'image'; model: MeshyAiModel; texture: boolean } | { kind: 'refine' | 'remesh' | 'retexture' | 'rig' | 'animate' }) {
   switch (action.kind) {
     case 'preview': return MESHY_COSTS.preview[action.model] * action.count
     case 'image': return (action.texture ? MESHY_COSTS.image : MESHY_COSTS.imageMeshOnly)[action.model]
     case 'refine': return MESHY_COSTS.refine
     case 'remesh': return MESHY_COSTS.remesh
     case 'retexture': return MESHY_COSTS.retexture
+    case 'rig': return MESHY_COSTS.rigging
+    case 'animate': return MESHY_COSTS.animation
   }
 }
 
@@ -66,6 +70,8 @@ export const PROMPT_HELPERS: Record<MeshyTarget, string[]> = {
   furniture: ['game asset', 'low poly', 'single object', 'no floor or background', 'realistic proportions'],
   character: ['game asset', 'A-pose', 'full body', 'plain clothing, no logos'],
   ride: ['amusement park ride', 'game asset', 'stylized', 'bright paint', 'on a round platform', 'single object, centered', 'original design, no logos or text'],
+  ballplayer: ['baseball player', 'full body', 'A-pose', 'arms slightly away from the body', 'plain uniform, no logos, numbers or text', 'game asset', 'realistic proportions'],
+  ballpark: ['ballpark prop', 'game asset', 'single object, centered', 'original design, no logos or text', 'stylized'],
   racecar: ['short-track stock car', 'no wheels', 'wheel wells empty', 'plain white body', 'side view', 'game asset', 'original design, no logos, numbers or decals'],
 }
 
@@ -74,5 +80,7 @@ export const NEGATIVE_DEFAULTS: Record<MeshyTarget, string> = {
   furniture: 'floor, background, text, logos',
   character: 'logos, text, weapons',
   ride: 'people, riders, ground plane, background, scenery, text, logos, brand names, characters from films or games',
+  ballplayer: 'logos, team names, numbers, text, real players, bats, gloves, ground plane, background',
+  ballpark: 'people, logos, team names, real ballparks, text, background',
   racecar: 'wheels, tires, driver, logos, badges, brand names, sponsor decals, race numbers, text, ground plane',
 }

@@ -16,7 +16,7 @@ import { createStadiumLights, type StadiumLights } from './view/Lights'
 declare global {
   interface Window {
     __tlModule?: { app: App; backend: string; tier: string; steps: () => number }
-    __bushleague?: { director: Director; start(choice?: Partial<SetupChoice>, seed?: number): Contest; contest(): Contest | null; scene(): { crowd: number; grass: number; post: boolean; cascades: number }; react(kind: 'homer' | 'final'): void }
+    __bushleague?: { director: Director; start(choice?: Partial<SetupChoice>, seed?: number): Contest; contest(): Contest | null; tick(dt: number): void; scene(): { crowd: number; grass: number; post: boolean; cascades: number }; react(kind: 'homer' | 'final'): void }
   }
 }
 
@@ -94,8 +94,8 @@ async function boot(): Promise<void> {
   )
   const preview = new Contest({ seed: 1, away: 'sal', home: 'frt', innings: 3, dh: true, autoRunner: true, mercy: false, park: parkById('outhouse').id })
   dressPark(preview, 'night')
-  actors.placeFieldersHome()
-  actors.hideBatter()
+  actors.bind(preview)
+  actors.setScene(preview, 'R')
 
   let seed = stringSeed(`${Date.now()}`) % 1_000_000
   const start = (choice: SetupChoice, customSeed?: number) => {
@@ -117,13 +117,16 @@ async function boot(): Promise<void> {
   })
 
   let frames = 0
-  app.onFrame((frameSeconds) => {
-    frames++
-    const dt = Math.min(frameSeconds, 0.1)
+  const tick = (dt: number) => {
     director.update(dt)
+    actors.update(dt)
     field?.update(dt)
     crowd?.update(dt)
     lights?.update(dt)
+  }
+  app.onFrame((frameSeconds) => {
+    frames++
+    tick(Math.min(frameSeconds, 0.1))
     adaptive?.update(frameSeconds)
   })
   app.start()
@@ -133,6 +136,7 @@ async function boot(): Promise<void> {
     director,
     start: (choice = {}, customSeed) => start({ team: 'frt', opponent: 'sal', side: 'watch', innings: 3, pace: 'rookie', dh: true, autoRunner: true, mercy: false, time: 'night', trail: true, ...choice }, customSeed),
     contest: () => director.contest,
+    tick,
     scene: () => ({ crowd: crowd?.mesh.count ?? 0, grass: grass?.mesh.count ?? 0, post: post.enabled, cascades: budget.cascades }),
     react: (kind: 'homer' | 'final') => {
       scenery.celebrate(kind)
