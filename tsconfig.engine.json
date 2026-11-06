@@ -7,7 +7,8 @@
     "modules-src/angler/**/*.ts",
     "modules-src/foxplains2/**/*.ts",
     "modules-src/county/**/*.ts",
-    "modules-src/bushleague/**/*.ts"
+    "modules-src/bushleague/**/*.ts",
+    "modules-src/shorttrack/next/**/*.ts"
   ],
   "exclude": [
     "modules-src/fairway/tests/**",
