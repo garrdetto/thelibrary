@@ -359,7 +359,7 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `src/net/Remotes.ts` — interpolated neighbors, traffic and their vehicles, name tags — `Game`.
 - `src/game/Game.ts` — composition root and fixed step; `CameraRig.ts` — orbit/chase camera; `Hud.ts` — DOM HUD.
 
-### county — Kestrel County (`modules-src/county/`, PlayCanvas, working title, not in `modules.ts` yet)
+### county — Kestrel County (`modules-src/county/`, PlayCanvas, in `modules.ts` with `public/images/modules/county.webp`)
 A separate 4 × 4 km world (airport and helicopters to come) in a glossy realistic-clipart style. Phase 1 streams the county with graded terrain, a generated road network and a town of houses, with Fox Plains 2's walking and driving imported unchanged; `?lookdev=1` keeps the Phase 0 look-development scene. It imports Fox Plains 2's `MeshBuilder`/`meshEntity`, physics (`Physics`, `Vehicle`, `VehicleModels`, `Character`), `Assets`, `AvatarKits` and `CameraRig`, and Fox Plains' `Input`, `store`, `Wardrobe`, `Economy` and vehicle registry (`CustomVehicles`, `Vehicles`) rather than copying them. Details in `modules-src/county/README.md`.
 - `modules-src/county/index.html`, `index.ts` — page shell with the world HUD, developer panel styles and the look-dev panel — `vite.modules.ts` (→ `public/modules/county.html`).
 - `config.ts` — palette, finishes, grading, light and fog, look-dev views and times — every file below.
@@ -375,7 +375,9 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `shared/PlaneFlight.ts` — `planeForces`, `liftCoefficient` (stall), flaps, ground effect, propeller, moments — `Flyer`, tests.
 - `shared/FlightAssist.ts` — Easy and Pro: `heliAssist` (speed, height and heading hold, landing cushion), `planeAssist` (attitude hold, auto-trim, coordination, stall protection, runway tracking) — `Flyer`, tests.
 - `shared/FlightSim.ts` — rigid-body integrator with flat ground for the tests; `shared/Landing.ts` — touchdown grades — `Flyer`, tests.
-- `shared/Airport.ts` — runway, taxiway, connectors, apron, helipads, plane stand, `onPaving` — `Terrain`, `AirportMesh`, `Game`, `WorldMain`.
+- `shared/Airport.ts` — runway, taxiway, connectors, apron, helipads, plane stand, terminal, tower, hangar and windsock positions, `onPaving` — `Terrain`, `AirportMesh`, `AirportBuildings`, `AirTraffic`, `Game`, `WorldMain`.
+- `shared/AirTraffic.ts` — `FLEET`, `trafficPose` (a pure function of time: final, flare, rollout, taxi, stand, pushback, hold, line-up, take-off, climb), runway separation by departure holds, go-arounds, `finalDecision` — `TrafficManager`, tests.
+- `tests/traffic.test.ts` — determinism, smooth motion, glide slope, runway separation over a day, paving, stands, go-arounds — `scripts/county-tests.mjs`.
 - `tests/flight.test.ts` — helicopter hover, ground effect, translational lift, assist recovery, forward flight, landing, autorotation, determinism; trainer stall speeds, cruise trim, take-off, glide, stall recovery, weathervaning — `scripts/county-tests.mjs`.
 - `tests/roads.test.ts` — determinism, connectivity, grades, junction seams, no overlaps (junctions, lots, right of way), curb-cut clearances, ground under sidewalks and meeting their outer edge — `scripts/county-tests.mjs` (`pnpm test`).
 - `src/main.ts` — renderer, kit and sky, then `WorldMain` or `LookDevMain` (`?lookdev=1`) — `index.ts`.
@@ -394,6 +396,9 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `src/world/Scatter.ts` — street, yard and country trees, lamps and mailboxes per chunk; `lotPoint` — `Chunks`, `WorldMain`.
 - `src/world/TreeKit.ts` — instanced tree variants at two levels of detail — `Chunks`.
 - `src/world/AirportMesh.ts` — paving, markings, runway numbers, helipads, edge and threshold lights; collider triangles — `Chunks`.
+- `src/flight/TrafficManager.ts` — AI traffic models posed from real time, kinematic colliders, propellers, go-around decisions — `WorldMain`.
+- `src/models/Traffic.ts` — regional turboprop, business jet, club Skylark (lofted fuselages, airfoil wings, nacelles, T-tails, gear, lights) — `TrafficManager`.
+- `src/models/AirportBuildings.ts` — terminal, control tower and beacon, hangar, windsock, building colliders — `Chunks`, `WorldMain`.
 - `src/flight/Flyer.ts` — an aircraft on a Rapier body (skids, or tricycle gear on a vehicle controller), forces each pre-step, rotor strikes, landing grades, reset, `readout` — `Game`.
 - `src/game/FlightHud.ts` — flight instruments and attitude indicator — `WorldMain`.
 - `src/models/Plane.ts` — the Skylark trainer (lofted fuselage, airfoil wing, struts, tail, gear, moving propeller, elevator and rudder) — `Flyer`.
