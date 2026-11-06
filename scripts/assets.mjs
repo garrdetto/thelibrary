@@ -42,7 +42,7 @@ const PRESETS = [
   { match: /^maplestreet\/houses\//, name: 'house', join: true, simplify: 0.0005, textureQuality: 92 },
   { match: /^(maplestreet\/town|sandlot3d\/ballpark_|shorttrack\/track_|botwreck\/arena|botwreck\/crates)/, name: 'static', join: true, simplify: 0, textureQuality: 92 },
   { match: /^shorttrack\/(crowd|trees)_/, name: 'instanced', join: false, simplify: 0, textureQuality: 92, compress: false },
-  { match: /^sandlot3d\/athlete\.glb$/, name: 'skinned', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
+  { match: /^sandlot3d\/(athlete|field_detail)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /^sandlot3d\//, name: 'figure', join: true, simplify: 0, textureQuality: 92 },
   { match: /./, name: 'rig', join: true, flatten: false, simplify: 0, textureQuality: 92 },
 ]

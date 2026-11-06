@@ -37,35 +37,30 @@ const BATX=3.2,BATZ=ZZ+.1; // batter stands mid-box, about 2.5 ft off the plate
 
 /* ================= THREE SETUP ================= */
 const cv=$('gl'),hud=$('hud'),hx=hud.getContext('2d');
-const renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true,powerPreference:'high-performance'});
+const renderer=window.__renderer,TSL=THREE.TSL; // WebGPU, or its WebGL2 backend (?renderer=webgl or no WebGPU), set up in index.ts
 renderer.setPixelRatio(Math.min(1.75,window.devicePixelRatio||1));
 const adaptRes=window.__adaptiveResolution?window.__adaptiveResolution({max:renderer.getPixelRatio(),min:Math.min(renderer.getPixelRatio(),.75),apply:r=>{renderer.setPixelRatio(r);resize()}}):null;
-renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFShadowMap;
 const scene=new THREE.Scene();
 const camera=new THREE.PerspectiveCamera(50,1,.3,9000);
-const MAXANI=renderer.capabilities.getMaxAnisotropy();
+const MAXANI=renderer.getMaxAnisotropy?renderer.getMaxAnisotropy():8;
 
-/* color grading pass: scene -> MSAA target -> graded full-screen quad */
-const post=(()=>{const w2=renderer.capabilities.isWebGL2,RT=w2&&THREE.WebGLMultisampleRenderTarget?THREE.WebGLMultisampleRenderTarget:THREE.WebGLRenderTarget;
-  const rt=new RT(4,4,{depthBuffer:true});if(w2&&'samples' in rt)rt.samples=4;
-  const mat=new THREE.ShaderMaterial({depthTest:false,depthWrite:false,uniforms:{t:{value:rt.texture},tint:{value:new THREE.Vector3(1,1,1)},lift:{value:new THREE.Vector3()},sat:{value:1},con:{value:1},vig:{value:.3},px:{value:new THREE.Vector2(1,1)}},
-    vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=vec4(position.xy,0.,1.);}',
-    fragmentShader:`uniform sampler2D t;uniform vec3 tint,lift;uniform float sat,con,vig;uniform vec2 px;varying vec2 vUv;
-      void main(){vec3 c=texture2D(t,vUv).rgb;
-        vec3 b=(texture2D(t,vUv+vec2(px.x,0.)).rgb+texture2D(t,vUv-vec2(px.x,0.)).rgb+texture2D(t,vUv+vec2(0.,px.y)).rgb+texture2D(t,vUv-vec2(0.,px.y)).rgb)*.25;
-        c+=max(b-.82,0.)*.6;
-        c*=tint;float l=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(l),c,sat);c=(c-.5)*con+.5;c+=lift*(1.-c);
-        c=c/(1.+max(c-.92,0.)*1.4);
-        vec2 q=vUv-.5;c*=1.-vig*pow(length(q)*1.35,2.4);
-        gl_FragColor=vec4(clamp(c,0.,1.),1.);}`});
-  const q=new THREE.Mesh(new THREE.PlaneGeometry(2,2),mat);q.frustumCulled=false;const sc=new THREE.Scene();sc.add(q);
-  return{rt,mat,sc,cam:new THREE.OrthographicCamera(-1,1,1,-1,0,1),on:true}})();
+/* HDR grading: the scene renders to a half-float MSAA target, bright values bloom, then grade, a filmic shoulder that keeps
+   highlight detail instead of clipping, and a vignette. ?post=0 renders straight to the screen. */
+const post=(()=>{const T=TSL,u={tint:T.uniform(new THREE.Vector3(1,1,1)),lift:T.uniform(new THREE.Vector3()),sat:T.uniform(1),con:T.uniform(1),vig:T.uniform(.3)};
+  const pipe=new(THREE.RenderPipeline||THREE.PostProcessing)(renderer),scenePass=T.pass(scene,camera,{samples:4}),col=scenePass.getTextureNode('output');
+  let c=col.rgb;if(window.__bloom)c=c.add(window.__bloom(col,.32,.4,.9).rgb);
+  c=c.mul(u.tint);const l=T.dot(c,T.vec3(.2126,.7152,.0722));c=T.mix(T.vec3(l),c,u.sat);c=c.sub(.5).mul(u.con).add(.5);c=c.add(u.lift.mul(T.float(1).sub(c)));
+  c=T.min(c,.8).add(T.float(.2).mul(T.float(1).sub(T.exp(T.max(c.sub(.8),0).mul(-5)))));
+  const q=T.screenUV.sub(.5);c=c.mul(T.float(1).sub(u.vig.mul(T.pow(T.length(q).mul(1.35),2.4))));
+  pipe.outputNode=T.vec4(T.clamp(c,0,1),1);pipe.outputColorTransform=false;
+  return{pipe,u,on:new URLSearchParams(location.search).get('post')!=='0'}})();
 const GRADE={dusk:{tint:[1.05,.98,.9],lift:[.03,.01,.04],sat:1.04,con:1.06,vig:.4},day:{tint:[1.02,1,.97],lift:[.015,.015,.025],sat:.95,con:1.05,vig:.28},
   night:{tint:[.95,.98,1.05],lift:[.0,.012,.035],sat:.94,con:1.1,vig:.45},dome:{tint:[1.04,1.0,.95],lift:[.02,.02,.025],sat:.96,con:1.07,vig:.32}};
-function setGrade(k){const g=GRADE[k],u=post.mat.uniforms;u.tint.value.set(...g.tint);u.lift.value.set(...g.lift);u.sat.value=g.sat;u.con.value=g.con;u.vig.value=g.vig}
+function setGrade(k){const g=GRADE[k],u=post.u;u.tint.value.set(...g.tint);u.lift.value.set(...g.lift);u.sat.value=g.sat;u.con.value=g.con;u.vig.value=g.vig}
 let VW=1,VH=1,baseFov=46;
 function resize(){VW=cv.clientWidth||innerWidth;VH=cv.clientHeight||innerHeight;renderer.setSize(VW,VH,false);camera.aspect=VW/VH;baseFov=VW/VH<.8?60:VW/VH<1.2?54:46;camera.fov=camMode==='bat'?catcherCam().f:baseFov;camera.updateProjectionMatrix();
-  const d=Math.min(2,devicePixelRatio||1);hud.width=VW*d;hud.height=VH*d;hx.setTransform(d,0,0,d,0,0);const pr=renderer.getPixelRatio();post.rt.setSize(Math.round(VW*pr),Math.round(VH*pr));post.mat.uniforms.px.value.set(1/(VW*pr),1/(VH*pr))}
+  const d=Math.min(2,devicePixelRatio||1);hud.width=VW*d;hud.height=VH*d;hx.setTransform(d,0,0,d,0,0)}
 addEventListener('resize',resize);
 
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return[c,c.getContext('2d')]};
@@ -715,9 +710,9 @@ function buildWorld(pk){
   scene.background=new THREE.Color(SKY.fog);
   scene.fog=new THREE.Fog(SKY.fog,T==='night'?1400:1100,4200);
   // sky dome
-  const sm=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,uniforms:{top:{value:new THREE.Color(SKY.top)},mid:{value:new THREE.Color(SKY.mid)},bot:{value:new THREE.Color(SKY.bot)}},
-    vertexShader:'varying vec3 vP;void main(){vP=normalize(position);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-    fragmentShader:'uniform vec3 top,mid,bot;varying vec3 vP;void main(){float h=vP.y;vec3 c=h>0.?mix(mid,top,pow(clamp(h*1.4,0.,1.),.55)):mix(mid,bot,clamp(-h*5.,0.,1.));gl_FragColor=vec4(c,1.);}'});
+  const sm=new THREE.MeshBasicNodeMaterial({side:THREE.BackSide,depthWrite:false,fog:false});
+  {const S=TSL,top=S.color(SKY.top),mid=S.color(SKY.mid),bot=S.color(SKY.bot),h=S.normalize(S.positionLocal).y;
+    sm.colorNode=S.select(h.greaterThan(0),S.mix(mid,top,S.pow(S.clamp(h.mul(1.4),0,1),.55)),S.mix(mid,bot,S.clamp(h.mul(-5),0,1)))}
   skyMesh=new THREE.Mesh(new THREE.SphereGeometry(6000,32,16),sm);skyMesh.renderOrder=-1;world.add(skyMesh);
   hemi=new THREE.HemisphereLight(SKY.hemiS,SKY.hemiG,SKY.hI);world.add(hemi);
   sun=new THREE.DirectionalLight(SKY.sunC,SKY.sI);sun.position.set(...SKY.sun);sun.castShadow=true;
@@ -727,7 +722,9 @@ function buildWorld(pk){
     s.position.set(-1500,420,-2600);s.scale.set(1500,1500,1);world.add(s);
     const d=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color:0xffffff,transparent:true,depthWrite:false,fog:false}));d.position.copy(s.position);d.scale.set(260,260,1);world.add(d)}
   if(T==='night'){const n=1400,pos=new Float32Array(n*3);for(let i=0;i<n;i++){const th=Math.random()*PI*2,ph=Math.acos(rnd(.12,1));pos.set([Math.cos(th)*Math.sin(ph)*5000,Math.cos(ph)*5000,Math.sin(th)*Math.sin(ph)*5000],i*3)}
-    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));world.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:7,sizeAttenuation:true,fog:false,transparent:true,opacity:.8})))}
+    const sm=new THREE.PointsNodeMaterial({color:0xffffff,sizeAttenuation:false,fog:false,transparent:true,opacity:.8,depthWrite:false});
+    sm.positionNode=TSL.instancedBufferAttribute(new THREE.InstancedBufferAttribute(pos,3));sm.sizeNode=TSL.float(2.2);
+    const st=new THREE.Sprite(sm);st.count=n;st.frustumCulled=false;world.add(st)}
   if(T!=='night')clouds(T);
   hills(T);
   ground(T);
@@ -854,9 +851,23 @@ function fieldSurface(){
   g.setTransform(1,0,0,1,0,0);
   for(let i=0;i<70000;i++){g.fillStyle=Math.random()<.5?'rgba(0,40,0,.12)':'rgba(220,255,180,.07)';g.fillRect(Math.random()*Wc,Math.random()*Hc,1,1+Math.random()*2)}
   const t=ctex(c);
-  const m=new THREE.Mesh(new THREE.PlaneGeometry(2*X,zmax-zmin),new THREE.MeshStandardMaterial({map:t,roughness:.9,metalness:0,envMap:ENV,envMapIntensity:.1,normalMap:groundNormal(2*X/4,(zmax-zmin)/4),normalScale:new THREE.Vector2(.55,.55)}));
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(2*X,zmax-zmin),window.__field?fieldMaterial(t,window.__field):new THREE.MeshStandardMaterial({map:t,roughness:.9,metalness:0,envMap:ENV,envMapIntensity:.1,normalMap:groundNormal(2*X/4,(zmax-zmin)/4),normalScale:new THREE.Vector2(.55,.55)}));
   m.rotation.x=-PI/2;m.position.set(0,0,(zmin+zmax)/2);m.receiveShadow=true;world.add(m);
 }
+/* PBR turf and clay: the painted canvas gives the layout and colour; the Blender-baked tiles (tools/build-field.py) add blade and
+   grit detail, surface normals and roughness in world space, picked by whether the canvas is green there. Each tile is sampled at
+   two scales and rotations so it doesn't visibly repeat. */
+function fieldMaterial(canvasTex,F){
+  const T=TSL,mat=new THREE.MeshStandardNodeMaterial({metalness:0}),base=T.texture(canvasTex),c=base.rgb;
+  const grass=T.smoothstep(-.015,.05,c.g.sub(c.r)),w=T.positionWorld.xz;
+  const rot=v=>T.vec2(v.x.mul(.8).sub(v.y.mul(.6)),v.x.mul(.6).add(v.y.mul(.8)));
+  const two=(tex,scale)=>{const a=T.texture(tex,w.div(scale)),b=T.texture(tex,rot(w).div(scale*3.7));return T.mix(a,b,.35)};
+  const pick=key=>T.mix(two(F.dirt[key],2.6),two(F.grass[key],2),grass);
+  const detail=pick('detail').r.div(.885);
+  mat.colorNode=c.mul(T.mix(T.float(1),detail,T.mix(.45,.6,grass)));
+  mat.roughnessNode=T.max(pick('roughness').g,T.mix(.93,.8,grass));
+  mat.normalNode=T.normalMap(pick('normal').rgb,T.vec2(T.mix(.32,.5,grass)));
+  return mat}
 function stripes(g,x,y,w,h,bw,col,ang){g.save();g.translate(x+w/2,y+h/2);g.rotate(ang);const R=Math.hypot(w,h);g.fillStyle=col;for(let s=-R;s<R;s+=bw*2)g.fillRect(s,-R,bw,2*R);g.restore()}
 
 function basesAndChalk(){
@@ -952,10 +963,10 @@ function stands(path,rows,run,rise,base0,colA,colB,fill,opt={}){
 function crowd(ppl){
   if(!ppl.length)return;const n=ppl.length;
   const bodyG=new THREE.CylinderGeometry(.42,.58,1.7,10);bodyG.scale(1,1,.72);bodyG.translate(0,.85,0);const headG=new THREE.SphereGeometry(.4,12,9);headG.translate(0,2.12,0);
-  crowdMat=new THREE.MeshLambertMaterial({color:0xffffff});
-  const uni={time:{value:0},cheer:{value:0}};crowdMat.userData.u=uni;
-  crowdMat.onBeforeCompile=sh=>{sh.uniforms.time=uni.time;sh.uniforms.cheer=uni.cheer;
-    sh.vertexShader='uniform float time;uniform float cheer;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n#ifdef USE_INSTANCING\nfloat ph=instanceMatrix[3].x*.37+instanceMatrix[3].z*.71;transformed.y+=cheer*abs(sin(time*9.+ph))*.9+.06*sin(time*1.3+ph);\n#endif')};
+  crowdMat=new THREE.MeshLambertNodeMaterial({color:0xffffff});const T=TSL;
+  const uni={time:T.uniform(0),cheer:T.uniform(0)};crowdMat.userData.u=uni;
+  const ph=T.instancedBufferAttribute(new THREE.InstancedBufferAttribute(new Float32Array(ppl.map(p=>p[0]*.37+p[2]*.71)),1));
+  crowdMat.positionNode=T.positionLocal.add(T.vec3(0,uni.cheer.mul(T.abs(T.sin(uni.time.mul(9).add(ph)))).mul(.9).add(T.sin(uni.time.mul(1.3).add(ph)).mul(.06)),0));
   const bodies=new THREE.InstancedMesh(bodyG,crowdMat,n),heads=new THREE.InstancedMesh(headG,crowdMat,n);
   const m=new THREE.Matrix4(),q=new THREE.Quaternion(),c=new THREE.Color(),one=new THREE.Vector3(1,1,1);
   const shirts=[0xe0482f,0x3d7be0,0xf4f1e8,0xf4bf3a,0x2c2c34,0x47a35a,0x8c4ad1,0xff8a3d,0x1d5fa8,0xd8d8d8];
@@ -1912,7 +1923,7 @@ function step(now){
   const b=ballTick(now);layout(now,dt,b);debrisTick(dt);camTick(dt,now,b);
   if(crowdMat){const u=crowdMat.userData.u;u.time.value=now/1000;u.cheer.value=lerp(u.cheer.value,now<cheerUntil?1:0,.08)}
   if(landRing.visible){const s=1+.15*Math.sin(now/120);landRing.scale.set(s,1,s)}
-  if(post.on){renderer.setRenderTarget(post.rt);renderer.render(scene,camera);renderer.setRenderTarget(null);renderer.render(post.sc,post.cam)}else renderer.render(scene,camera);hudTick(now)}
+  if(post.on)post.pipe.render();else renderer.render(scene,camera);hudTick(now)}
 
 /* ================= INPUT ================= */
 const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();let drag=null;
