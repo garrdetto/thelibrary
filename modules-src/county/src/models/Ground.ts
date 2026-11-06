@@ -6,7 +6,7 @@
  */
 import type * as pc from 'playcanvas';
 import { MeshBuilder, meshEntity, type RGB } from '../../../foxplains2/src/core/Geo';
-import { fbm } from '../core/Noise';
+import { fbm } from '../../shared/Noise';
 import { PALETTE } from '../../config';
 
 const FLAT = { x0: -160, x1: 220, z0: -110, z1: 140 };
