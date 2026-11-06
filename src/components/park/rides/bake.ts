@@ -2,8 +2,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder, MeshoptSimplifier } from 'meshoptimizer'
 import type { BufferGeometry, Material, Mesh, Texture } from 'three'
 import { CUSTOM_RIDE_LIMITS } from '../../../../server/park/index.mjs'
-import type { CustomRideMotion } from '../../../../server/park/index.mjs'
+import type { CustomRideMotion, CustomRidePlatform } from '../../../../server/park/index.mjs'
 import type { RideMesh } from '@/lib/park/rideMesh'
+import { assembleRide } from '@/lib/park/ridePlatform'
 
 /** Park tiles are 4 m squares. */
 export const TILE_METRES = 4
@@ -28,7 +29,7 @@ export type SourceModel = {
 /** A reduced model ready to fit: one colour per triangle corner. */
 export type ReducedModel = { triangles: number; positions: Float32Array; normals: Float32Array; colors: Float32Array; bounds: { min: [number, number, number]; max: [number, number, number] } }
 
-export type FitSettings = { size: [number, number]; scale: number; yaw: number; motion: CustomRideMotion }
+export type FitSettings = { size: [number, number]; scale: number; yaw: number; motion: CustomRideMotion; platform?: CustomRidePlatform }
 
 const toSrgb = (c: number) => c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055
 
@@ -164,20 +165,12 @@ export function fitModel(model: ReducedModel, settings: FitSettings): RideMesh {
   const cx = (model.bounds.min[0] + model.bounds.max[0]) / 2, cy = (model.bounds.min[1] + model.bounds.max[1]) / 2, z0 = model.bounds.min[2]
   const turn = settings.yaw * Math.PI / 2, cos = Math.round(Math.cos(turn)), sin = Math.round(Math.sin(turn))
   const corners = model.triangles * 3
-  const positions = new Float32Array(corners * 3), normals = new Float32Array(corners * 3), parts = new Uint8Array(corners)
-  let height = 0
+  const positions = new Float32Array(corners * 3), normals = new Float32Array(corners * 3)
   for (let c = 0; c < corners; c++) {
     const x = (model.positions[c * 3] - cx) * k, y = (model.positions[c * 3 + 1] - cy) * k, z = (model.positions[c * 3 + 2] - z0) * k
     positions[c * 3] = x * cos - y * sin; positions[c * 3 + 1] = x * sin + y * cos; positions[c * 3 + 2] = z
     const nx = model.normals[c * 3], ny = model.normals[c * 3 + 1]
     normals[c * 3] = nx * cos - ny * sin; normals[c * 3 + 1] = nx * sin + ny * cos; normals[c * 3 + 2] = model.normals[c * 3 + 2]
-    height = Math.max(height, z)
   }
-  const moving = settings.motion.type !== 'none'
-  for (let t = 0; t < model.triangles; t++) {
-    const centroid = (positions[t * 9 + 2] + positions[t * 9 + 5] + positions[t * 9 + 8]) / 3
-    const part = moving && centroid >= settings.motion.split ? 1 : 0
-    parts[t * 3] = part; parts[t * 3 + 1] = part; parts[t * 3 + 2] = part
-  }
-  return { triangles: model.triangles, positions, normals, colors: model.colors, parts, height }
+  return assembleRide({ triangles: model.triangles, positions, normals, colors: model.colors }, settings.motion, settings.platform, settings.size)
 }

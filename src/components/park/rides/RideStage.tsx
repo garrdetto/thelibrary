@@ -2,44 +2,56 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
 import { BufferAttribute, BufferGeometry, DoubleSide, Matrix4 } from 'three'
-import type { Mesh } from 'three'
-import type { CustomRideMotion } from '../../../../server/park/index.mjs'
+import type { Group } from 'three'
+import type { CustomRideMotion, CustomRidePlatform } from '../../../../server/park/index.mjs'
 import type { RideMesh } from '@/lib/park/rideMesh'
-import { motionMatrix } from '@/lib/park/rideMotion'
+import { PLATFORM_PART, partMatrices } from '@/lib/park/ridePlatform'
 import { TILE_METRES } from './bake'
+
+export type StageClock = { phase: 'loading' | 'running'; timer: number; speed: number }
 
 type Props = {
   mesh: RideMesh | null
   motion: CustomRideMotion
+  platform?: CustomRidePlatform
   size: [number, number]
   rideTime: number
   loadTime: number
-  playing: boolean
+  paused: boolean
+  rate: number
+  restart: number
+  step: number
   guides: boolean
+  focus: number | null
   onCanvas?: (canvas: HTMLCanvasElement | null) => void
+  onClock?: (clock: StageClock) => void
 }
 
 const toLinear = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+const STEP_SECONDS = 1 / 30
 
-function partGeometry(mesh: RideMesh, part: 0 | 1) {
-  let count = 0
-  for (let t = 0; t < mesh.triangles; t++) if (mesh.parts[t * 3] === part) count++
-  if (!count) return null
-  const pos = new Float32Array(count * 9), nor = new Float32Array(count * 9), col = new Float32Array(count * 9)
-  let o = 0
-  for (let t = 0; t < mesh.triangles; t++) {
-    if (mesh.parts[t * 3] !== part) continue
-    pos.set(mesh.positions.subarray(t * 9, t * 9 + 9), o)
-    nor.set(mesh.normals.subarray(t * 9, t * 9 + 9), o)
-    for (let j = 0; j < 9; j++) col[o + j] = toLinear(mesh.colors[t * 9 + j])
-    o += 9
+function partGeometries(mesh: RideMesh) {
+  const counts = new Map<number, number>()
+  for (let t = 0; t < mesh.triangles; t++) counts.set(mesh.parts[t * 3], (counts.get(mesh.parts[t * 3]) ?? 0) + 1)
+  const out: { part: number; geometry: BufferGeometry }[] = []
+  for (const [part, count] of [...counts].sort((a, b) => a[0] - b[0])) {
+    const pos = new Float32Array(count * 9), nor = new Float32Array(count * 9), col = new Float32Array(count * 9)
+    let o = 0
+    for (let t = 0; t < mesh.triangles; t++) {
+      if (mesh.parts[t * 3] !== part) continue
+      pos.set(mesh.positions.subarray(t * 9, t * 9 + 9), o)
+      nor.set(mesh.normals.subarray(t * 9, t * 9 + 9), o)
+      for (let j = 0; j < 9; j++) col[o + j] = toLinear(mesh.colors[t * 9 + j])
+      o += 9
+    }
+    const geometry = new BufferGeometry()
+    geometry.setAttribute('position', new BufferAttribute(pos, 3))
+    geometry.setAttribute('normal', new BufferAttribute(nor, 3))
+    geometry.setAttribute('color', new BufferAttribute(col, 3))
+    geometry.computeBoundingSphere()
+    out.push({ part, geometry })
   }
-  const geometry = new BufferGeometry()
-  geometry.setAttribute('position', new BufferAttribute(pos, 3))
-  geometry.setAttribute('normal', new BufferAttribute(nor, 3))
-  geometry.setAttribute('color', new BufferAttribute(col, 3))
-  geometry.computeBoundingSphere()
-  return geometry
+  return out
 }
 
 function Footprint({ size }: { size: [number, number] }) {
@@ -56,39 +68,71 @@ function Footprint({ size }: { size: [number, number] }) {
   </group>
 }
 
-function Ride({ mesh, motion, rideTime, loadTime, playing, guides, size }: Omit<Props, 'onCanvas'>) {
-  const base = useMemo(() => mesh ? partGeometry(mesh, 0) : null, [mesh])
-  const moving = useMemo(() => mesh ? partGeometry(mesh, 1) : null, [mesh])
-  useEffect(() => () => { base?.dispose(); moving?.dispose() }, [base, moving])
-  const movingRef = useRef<Mesh>(null)
-  const clock = useRef({ phase: 'loading', timer: 0, spin: 0, speed: 0 })
+function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restart, step, guides, focus, size, onClock }: Omit<Props, 'onCanvas'>) {
+  const geometries = useMemo(() => mesh ? partGeometries(mesh) : [], [mesh])
+  useEffect(() => () => geometries.forEach(g => g.geometry.dispose()), [geometries])
+  const groups = useRef(new Map<number, Group>())
+  const clock = useRef({ phase: 'loading' as StageClock['phase'], timer: 0, spin: 0, speed: 0 })
+  const pendingSteps = useRef(0)
+  const reported = useRef(0)
   const matrix = useMemo(() => new Matrix4(), [])
 
+  useEffect(() => { clock.current = { phase: 'loading', timer: 0, spin: 0, speed: 0 } }, [restart])
+  useEffect(() => { if (step) pendingSteps.current += 1 }, [step])
+
   useFrame((_, delta) => {
-    const c = clock.current, dt = Math.min(0.1, delta)
-    if (!playing) { c.phase = 'loading'; c.timer = 0; c.speed = 0 }
-    else {
+    const c = clock.current
+    let dt = paused ? 0 : Math.min(0.1, delta) * rate
+    if (paused && pendingSteps.current > 0) { pendingSteps.current -= 1; dt = STEP_SECONDS }
+    if (dt > 0) {
       c.timer += dt
       if (c.phase === 'loading' && c.timer > loadTime) { c.phase = 'running'; c.timer = 0 }
       else if (c.phase === 'running' && c.timer > rideTime) { c.phase = 'loading'; c.timer = 0 }
+      const running = c.phase === 'running'
+      if (running) { c.spin += dt * Math.min(1, c.speed); c.speed = Math.min(1, c.speed + dt * 0.25) }
+      else { c.speed = Math.max(0, c.speed - dt * 0.6); c.spin += dt * c.speed }
     }
-    const running = c.phase === 'running'
-    if (running) { c.spin += dt * Math.min(1, c.speed); c.speed = Math.min(1, c.speed + dt * 0.25) }
-    else { c.speed = Math.max(0, c.speed - dt * 0.6); c.spin += dt * c.speed }
-    if (movingRef.current && mesh) {
-      matrix.fromArray(motionMatrix(motion, { spin: c.spin, timer: c.timer, running, speed: c.speed }, rideTime, mesh.height))
-      movingRef.current.matrix.copy(matrix)
+    if (mesh) {
+      const all = partMatrices(motion, platform, mesh.instances, { spin: c.spin, timer: c.timer, running: c.phase === 'running', speed: c.speed }, rideTime, mesh.height)
+      for (const [part, group] of groups.current) {
+        const m = all[part]
+        if (!m) continue
+        matrix.fromArray(m)
+        group.matrix.copy(matrix)
+        group.matrixWorldNeedsUpdate = true
+      }
     }
+    reported.current += Math.min(0.1, delta)
+    if (onClock && reported.current > 0.2) { reported.current = 0; onClock({ phase: c.phase, timer: c.timer, speed: c.speed }) }
   })
 
   const span = Math.max(size[0], size[1]) * TILE_METRES
+  const pivotSize = Math.max(0.18, span * 0.008)
   return <group>
-    {base && <mesh geometry={base} castShadow receiveShadow><meshStandardMaterial vertexColors roughness={0.72} metalness={0.05} side={DoubleSide}/></mesh>}
-    {moving && <mesh ref={movingRef} geometry={moving} matrixAutoUpdate={false} castShadow receiveShadow><meshStandardMaterial vertexColors roughness={0.68} metalness={0.08} side={DoubleSide}/></mesh>}
+    {geometries.map(({ part, geometry }) => {
+      const instance = part > 1 && part < PLATFORM_PART ? mesh?.instances[part - 2] : undefined
+      const lit = instance !== undefined && focus === instance.group
+      return <group key={`${part}-${geometry.uuid}`} matrixAutoUpdate={false} ref={node => { if (node) groups.current.set(part, node); else groups.current.delete(part) }}>
+        <mesh geometry={geometry} castShadow receiveShadow>
+          <meshStandardMaterial vertexColors roughness={part ? 0.68 : 0.72} metalness={part ? 0.08 : 0.05} side={DoubleSide} emissive={lit ? '#ff7a2f' : '#000000'} emissiveIntensity={lit ? 0.7 : 0}/>
+        </mesh>
+        {guides && instance && <mesh position={instance.pivot}><sphereGeometry args={[pivotSize, 12, 8]}/><meshBasicMaterial color={lit ? '#ffd166' : '#7cf29a'} depthTest={false} transparent opacity={0.9}/></mesh>}
+      </group>
+    })}
     {guides && motion.type !== 'none' && <>
       <mesh position={[0, 0, motion.split]}><planeGeometry args={[span, span]}/><meshBasicMaterial color="#4cc3ff" transparent opacity={0.14} depthWrite={false} side={DoubleSide}/></mesh>
       {motion.type !== 'drop' && motion.type !== 'bob' && <mesh position={motion.pivot}><sphereGeometry args={[Math.max(0.25, span * 0.012), 16, 12]}/><meshBasicMaterial color="#ff5c8a"/></mesh>}
     </>}
+    {guides && focus !== null && motion.pieces[focus] && <PieceBand piece={motion.pieces[focus]} centre={motion.pivot} span={span}/>}
+  </group>
+}
+
+function PieceBand({ piece, centre, span }: { piece: CustomRideMotion['pieces'][number]; centre: [number, number, number]; span: number }) {
+  const outer = Math.min(piece.outer, span * 0.75), inner = Math.min(piece.inner, outer)
+  const tall = Math.max(0.02, piece.to - piece.from)
+  return <group position={[centre[0], centre[1], piece.from + tall / 2]} rotation-x={Math.PI / 2}>
+    <mesh><cylinderGeometry args={[outer, outer, tall, 48, 1, true]}/><meshBasicMaterial color="#ffb84c" transparent opacity={0.1} depthWrite={false} side={DoubleSide}/></mesh>
+    {inner > 0.05 && <mesh><cylinderGeometry args={[inner, inner, tall, 32, 1, true]}/><meshBasicMaterial color="#ffb84c" transparent opacity={0.08} depthWrite={false} side={DoubleSide}/></mesh>}
   </group>
 }
 

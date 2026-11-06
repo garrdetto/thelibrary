@@ -25,8 +25,29 @@ function dropHeight(timer: number, rideTime: number, travel: number) {
   return 0
 }
 
+const smooth = (u: number) => { const t = Math.min(1, Math.max(0, u)); return t * t * (3 - 2 * t) }
+
+/** Extra height from `motion.rise`: climbs over the first fifth of the ride, holds, and settles back before it ends. */
+export function riseHeight(motion: CustomRideMotion, clock: MotionClock, rideTime: number) {
+  if (!motion.rise || !clock.running || motion.type === 'none') return 0
+  const u = Math.max(0, clock.timer) / Math.max(1, rideTime)
+  return motion.rise * (u < 0.8 ? smooth(u / 0.2) : 1 - smooth((u - 0.8) / 0.15))
+}
+
+/** How far the main moving part is above its resting place right now (rise plus drop or bob). */
+export function mainLift(motion: CustomRideMotion, clock: MotionClock, rideTime: number, height: number) {
+  const own = motion.type === 'drop' || motion.type === 'bob' ? motionCore(motion, clock, rideTime, height)[14] : 0
+  return riseHeight(motion, clock, rideTime) + own
+}
+
 /** Transform for the moving part in ride-local park space (Z up, metres). */
 export function motionMatrix(motion: CustomRideMotion, clock: MotionClock, rideTime: number, height: number): Mat4 {
+  const rise = riseHeight(motion, clock, rideTime)
+  const core = motionCore(motion, clock, rideTime, height)
+  return rise ? mat4.multiply(mat4.translation(0, 0, rise), core) : core
+}
+
+function motionCore(motion: CustomRideMotion, clock: MotionClock, rideTime: number, height: number): Mat4 {
   const [px, py, pz] = motion.pivot
   const around = (rotation: Mat4) => mat4.chain(mat4.translation(px, py, pz), rotation, mat4.translation(-px, -py, -pz))
   const s = motion.speed
