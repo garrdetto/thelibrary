@@ -58,11 +58,13 @@ From the console, `window.county` offers `setView`, `setHour`, `quality`, `rotor
 
 ## Next phases
 
-1. Terrain and chunk streaming, the town, walking and driving with the Fox Plains 2 physics.
+1. Terrain and chunk streaming, the town, a generated road network (junctions, curb returns, sloped curb cuts, sidewalks and driveways cut from the same outlines, with seam and height tests), walking and driving with the Fox Plains 2 physics and every built-in and published Fox Plains vehicle, and the admin developer panel (vehicle list and spawn, spec, paint, teleport, time, debug views).
 2. Helicopter flight model and flight assist.
 3. The airport and AI air traffic; the module appears in the library.
 4. Mowing at scale.
 5. The shared online world.
-6. Content.
+6. Homes and the house builder, on Fox Plains' `shared/BuildRules.ts` and `Catalog.ts`.
+7. Content, and an optional clipart bake for published vehicles.
+8. Later: flyable small planes, sling loads, touch controls.
 
 The full plan is kept with the project notes.
