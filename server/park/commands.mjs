@@ -4,7 +4,7 @@ import { DIRS, UNIT, clamp } from './util.mjs'
 import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners, pathHeightAt, PATH_STEP_LIMIT, STAIR_STEP_LIMIT, SLOPE_RISE, STAIR_RISE } from './terrain.mjs'
 import { isWalkPath } from './terrain.mjs'
 import { nextPathOrder } from './queues.mjs'
-import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP, KART_LIMIT, kartCount, kartRestS } from './track.mjs'
+import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP, kartLimit, kartLanes, kartCount, kartRestS, PATH_DECK_CLEARANCE } from './track.mjs'
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
 import { mechanicJobDistance } from './guests.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
@@ -165,8 +165,9 @@ export function stationTiles(state, ride) {
   const poses = trackPoses(ride), tiles = []
   ride.pieces.forEach((piece, index) => {
     if (piece.sp !== 'station') return
-    const pose = poses[index], [dx, dy] = DIRS[pose.dir]
-    tiles.push([Math.floor(pose.x + dx * 0.5), Math.floor(pose.y + dy * 0.5), pose.dir])
+    const pose = poses[index], [dx, dy] = DIRS[pose.dir], x = Math.floor(pose.x + dx * 0.5), y = Math.floor(pose.y + dy * 0.5)
+    tiles.push([x, y, pose.dir])
+    if (COASTER_STYLES[ride.style]?.wide) { const [sx, sy] = DIRS[(pose.dir + 1) % 4]; tiles.push([x + sx, y + sy, pose.dir]) }
   })
   return tiles
 }
@@ -223,14 +224,14 @@ function finishCoaster(state, ride) {
   ride.rev = (ride.rev ?? 0) + 1
   const style = COASTER_STYLES[ride.style]
   const stationLength = ride.pieces.filter(p => p.sp === 'station').length
-  ride.cars = style.trackType === 'kart' ? (ride.carsSet ? clamp(ride.cars, 1, KART_LIMIT) : kartCount(stationLength)) : ride.carsSet ? clamp(ride.cars, 1, 10) : clamp(stationLength + 1, 2, 10)
+  ride.cars = style.trackType === 'kart' ? (ride.carsSet ? clamp(ride.cars, 1, kartLimit(ride.style)) : kartCount(stationLength, ride.style)) : ride.carsSet ? clamp(ride.cars, 1, 10) : clamp(stationLength + 1, 2, 10)
   const path = ridePath(state, ride)
   const stats = path ? rideStatsFromRun(path, style, style.trackType === 'kart' ? 1 : ride.cars) : { valid: false }
   ride.stats = stats
   ride.trains = style.trackType === 'kart'
     ? Array.from({ length: ride.cars }, (_, index) => {
       const kart = makeTrain()
-      if (path) kart.s = kartRestS(path, index)
+      if (path) kart.s = kartRestS(path, index, kartLanes(ride.style))
       kart.pace = 0.94 + (index % 7) * 0.02
       return kart
     })
@@ -391,7 +392,7 @@ const HANDLERS = {
         }
         if (lowestPathHeight < tileMax(map, x, y) + clearance + 1.2) { blocked = entity.type === 'scenery' ? 'Scenery is too tall for the path. Clear it or raise the path.' : 'Something is too tall for the path. Raise it higher.'; continue }
       }
-      if ((state.trackCells.get(i) ?? []).some(cell => cell.lo < pathBase + 2.6)) { blocked = 'Coaster track is too low over this tile.'; continue }
+      if ((state.trackCells.get(i) ?? []).some(cell => cell.lo < pathBase + 2.6 && cell.hi > pathBase - PATH_DECK_CLEARANCE)) { blocked = 'Track is in the way. Raise the path over it or leave 2.6m of headroom under it.'; continue }
       let disconnected = false
       for (const [dx, dy] of DIRS) {
         const nx = x + dx, ny = y + dy
@@ -830,10 +831,11 @@ const HANDLERS = {
     if (!style || !isInt(cmd.x, 0, state.map.w - 1) || !isInt(cmd.y, 0, state.map.h - 1) || !isInt(cmd.dir, 0, 3)) return fail('Choose a track type and a starting tile.')
     const stationLength = isInt(cmd.length, 2, 13) ? cmd.length : 3
     const map = state.map
-    const [dx, dy] = DIRS[cmd.dir]
+    const [dx, dy] = DIRS[cmd.dir], [sx, sy] = DIRS[(cmd.dir + 1) % 4]
     let ground = 0
-    for (let k = 0; k < stationLength; k++) {
-      const x = cmd.x + dx * k, y = cmd.y + dy * k
+    for (let k = 0; k < stationLength * (style.wide ? 2 : 1); k++) {
+      const side = style.wide ? k % 2 : 0, along = style.wide ? k >> 1 : k
+      const x = cmd.x + dx * along + sx * side, y = cmd.y + dy * along + sy * side
       if (!inMap(map, x, y)) return fail('The station would leave the map.')
       const i = tileIndex(map, x, y)
       if (map.owner[i] !== park) return fail('You can only build on land your park owns.')
@@ -926,7 +928,7 @@ const HANDLERS = {
     const ride = state.entities[made.id]
     ride.name = uniqueName(state, design.name, ride.id)
     const undo = error => { HANDLERS.demolish(state, { id: ride.id }, park); p.cash = before.cash; p.month.construction = before.construction; return fail(`${design.name} does not fit here: ${error}`) }
-    const body = addPieces(state, ride, park, design.pieces)
+    const body = addPieces(state, ride, park, design.pieces.map(piece => ({ ...piece, g: 0 })))
     if (body.error) return undo(body.error)
     if (!ride.complete) {
       const route = autoComplete(state, ride)

@@ -55,7 +55,7 @@ export class Game {
 
   constructor(private r: Renderer, private kit: Kit, private sky: Sky, private county: County, private chunks: Chunks, readonly physics: Physics) {
     const app = r.app, assets = new Assets(app);
-    this.flightEnv = { ground: (x, z) => this.ground(x, z), wind: t => windAt(t) };
+    this.flightEnv = { ground: (x, z) => this.ground(x, z), wind: () => windAt(Date.now() / 1000) };
     this.input = new Input(r.device.canvas as HTMLCanvasElement);
     this.kits = new AvatarKits(assets, r.device);
     this.models = new VehicleModels(assets, r.device);

@@ -379,7 +379,11 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
         if (ride) { const fx = hit.fx, fy = hit.fy; const cx = ride.x + (ride.kind === 'flat' ? 1 : 0), cy = ride.y; dir = Math.abs(fx - cx - 0.5) > Math.abs(fy - cy - 0.5) ? (fx > cx ? 0 : 2) : (fy > cy ? 1 : 3) }
         p.ghost = { type: 'gate', kind: 'gate', x: hit.x, y: hit.y, rot: dir, ok: placementOk(t, hit.x, hit.y), role: t.role }
       }
-      if (t.kind === 'coaster') p.station = { x: hit.x, y: hit.y, dir: t.dir, length: t.length, ok: [...Array(t.length)].every((_, k) => { const [dx, dy] = DIRS[t.dir]; const tx = hit.x + dx * k, ty = hit.y + dy * k; return inMap(state.map, tx, ty) && state.map.owner[tileIndex(state.map, tx, ty)] === session.park && !state.map.obj[tileIndex(state.map, tx, ty)] && !state.map.path[tileIndex(state.map, tx, ty)] }) }
+      if (t.kind === 'coaster') {
+        const wide = Boolean(COASTER_STYLES[t.style]?.wide), [dx, dy] = DIRS[t.dir], [sx, sy] = DIRS[(t.dir + 1) % 4]
+        const free = (tx: number, ty: number) => inMap(state.map, tx, ty) && state.map.owner[tileIndex(state.map, tx, ty)] === session.park && !state.map.obj[tileIndex(state.map, tx, ty)] && !state.map.path[tileIndex(state.map, tx, ty)]
+        p.station = { x: hit.x, y: hit.y, dir: t.dir, length: t.length, wide, ok: [...Array(t.length)].every((_, k) => free(hit.x + dx * k, hit.y + dy * k) && (!wide || free(hit.x + dx * k + sx, hit.y + dy * k + sy))) }
+      }
     }
     if (p.rect && t.kind === 'path') p.rect.elevation = t.elevation
     if (p.rect && t.kind === 'buyLand') {
@@ -1047,7 +1051,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">
       <strong>{tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize ? `${FLAT_RIDES[tool.ride].name} · ${flatQuote ? `${flatQuote.w}×${flatQuote.h} · ${money(flatQuote.cost)} · ${flatQuote.capacity} swimmers` : 'Drag to set the size'}` : tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
-      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{tool.style === 'kart' ? `${kartCount(tool.length)} karts` : `${Math.min(tool.length + 1, 10)}-car train`} · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
+      {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{COASTER_STYLES[tool.style]?.trackType === 'kart' ? `${kartCount(tool.length, tool.style)} karts` : `${Math.min(tool.length + 1, 10)}-car train`} · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
       {tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize && <span>Drag from corner to corner, {FLAT_RIDES[tool.ride].resize!.min.join('×')} to {FLAT_RIDES[tool.ride].resize!.max.join('×')}</span>}
       {((tool.kind === 'flat' && !FLAT_RIDES[tool.ride].resize) || tool.kind === 'stall' || tool.kind === 'scenery' || tool.kind === 'coaster') && <button onClick={rotateTool}><RotateCw size={14} /> Rotate</button>}
       <button onClick={() => { setTool({ kind: 'select' }); if (rendererRef.current) rendererRef.current.preview = {} }}><X size={14} /> Done</button>

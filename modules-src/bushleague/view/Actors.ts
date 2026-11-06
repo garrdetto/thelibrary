@@ -1,7 +1,9 @@
-/** Placeholder players for the gray-box phase: team-colored capsules for the nine fielders, the batter with a bat, runners, the umpire, the ball with its ground shadow, and the batting cursor and strike zone frame. */
+/** Everyone and everything that moves on the field: rigged ballplayers in club uniforms (one per player, created as they appear and cached), the umpire, the seamed ball with its shadow and pitch trail, the batting cursor, strike-zone frame and pitch ghost. Also the catch, throw and slide reactions during a play. */
 import * as THREE from 'three/webgpu'
-import { BASES, FIELDER_HOME, FIELD_POSITIONS, PLATE_FRONT, strikeZone, type FieldPosition, type Hand, type TeamColors, type Vec3 } from '../sim'
+import { BASES, FIELDER_HOME, FIELD_POSITIONS, PLATE_FRONT, Rng, stringSeed, strikeZone, type Contest, type FieldPosition, type Hand, type Player, type Vec3 } from '../sim'
 import type { ModuleConfig } from '../config'
+import { Ballplayer } from '../players/Ballplayer'
+import { SKIN_TONES, UMPIRE_UNIFORM, teamUniform, type UniformColors } from '../players/Uniform'
 import { toWorld, worldXYZ } from './space'
 
 type ActorLook = ModuleConfig['actors']
@@ -39,58 +41,54 @@ function seamTexture(): THREE.CanvasTexture {
   return texture
 }
 
-interface Body {
-  group: THREE.Group
-  jersey: THREE.MeshStandardMaterial
-  cap: THREE.MeshStandardMaterial
+const SLIDE_BASES = [2, 3, 0].map((base) => toWorld(BASES[base]))
+
+function skinFor(player: Player): string {
+  return SKIN_TONES[new Rng(stringSeed(player.id)).int(0, SKIN_TONES.length - 1)]
 }
 
 export class Actors {
   readonly root = new THREE.Group()
-  readonly fielders = new Map<FieldPosition, Body>()
-  readonly runners = new Map<string, Body>()
-  readonly batter: Body
-  readonly bat: THREE.Group
   readonly ball: THREE.Mesh
   readonly ballShadow: THREE.Mesh
   readonly cursor: THREE.Group
   readonly cursorSweet: THREE.Mesh
   readonly zone: THREE.LineSegments
   readonly ghost: THREE.Mesh
-  private readonly bodyGeometry: THREE.CapsuleGeometry
-  private readonly headGeometry: THREE.SphereGeometry
-  private readonly disposables: { dispose(): void }[] = []
-  private readonly runnerPool: Body[] = []
-  private swingStart = -1
   readonly trail: THREE.Line
+  trailEnabled = true
+  private readonly disposables: { dispose(): void }[] = []
+  private readonly figures = new Map<string, Ballplayer>()
+  private readonly uniforms = new Map<string, UniformColors>()
+  private readonly gloveMaterial: THREE.MeshStandardMaterial
+  private readonly gloveGeometry: THREE.BufferGeometry
+  private readonly batGeometry: THREE.BufferGeometry
+  private readonly batMaterial: THREE.MeshStandardMaterial
+  private readonly umpire: Ballplayer
   private readonly trailPositions = new Float32Array(48 * 3)
   private trailCount = 0
-  trailEnabled = true
+  private contest: Contest | null = null
+  private defense = new Map<FieldPosition, string>()
+  private batterId: string | null = null
+  private readonly onField = new Set<string>()
+  private holder: string | null = null
+  private caught = new Set<string>()
+  private thrown = new Set<string>()
+  private slid = new Set<string>()
+  private readonly scratch = new THREE.Vector3()
 
-  constructor(private readonly look: ActorLook) {
+  constructor(look: ActorLook) {
     this.root.name = 'actors'
-    this.bodyGeometry = this.own(new THREE.CapsuleGeometry(look.radius, look.height - look.radius * 2 - 0.25, 6, 12))
-    this.headGeometry = this.own(new THREE.SphereGeometry(0.15, 16, 12))
-    for (const pos of FIELD_POSITIONS) {
-      const body = this.makeBody()
-      if (pos === 'C') body.group.scale.set(1, 0.62, 1)
-      this.fielders.set(pos, body)
-    }
-    this.batter = this.makeBody()
-    this.bat = new THREE.Group()
-    const barrel = new THREE.Mesh(this.own(new THREE.CylinderGeometry(0.035, 0.018, look.bat, 10)), this.own(new THREE.MeshStandardMaterial({ color: '#c8955a', roughness: 0.5 })))
-    barrel.rotation.z = Math.PI / 2
-    barrel.position.x = look.bat / 2
-    barrel.castShadow = true
-    this.bat.add(barrel)
-    this.bat.position.y = 1.15
-    this.batter.group.add(this.bat)
-
-    const umpire = this.makeBody()
-    umpire.jersey.color.set('#1e2430')
-    umpire.cap.color.set('#1e2430')
-    umpire.group.position.copy(worldXYZ(0.6, 0, -2.0))
-    umpire.group.scale.set(1, 0.9, 1)
+    this.gloveMaterial = this.own(new THREE.MeshStandardMaterial({ color: '#6b3f1f', roughness: 0.7 }))
+    this.gloveGeometry = this.own(new THREE.SphereGeometry(0.075, 12, 10).scale(1, 1.25, 0.55))
+    this.batGeometry = this.own(new THREE.CylinderGeometry(0.034, 0.016, look.bat, 10))
+    this.batMaterial = this.own(new THREE.MeshStandardMaterial({ color: '#c8955a', roughness: 0.45 }))
+    this.umpire = this.makeFigure({ body: 'stocky', height: 1.8, throws: 'R' } as Player, UMPIRE_UNIFORM, '#d9a07a')
+    this.umpire.showGlove(false)
+    this.umpire.setBase('crouch')
+    this.umpire.teleport(worldXYZ(0.55, 0, -2.0))
+    this.umpire.face(0, true)
+    this.root.add(this.umpire.group)
 
     this.ball = new THREE.Mesh(this.own(new THREE.SphereGeometry(look.ball, 24, 16)), this.own(new THREE.MeshStandardMaterial({ map: this.own(seamTexture()), roughness: 0.45, emissive: new THREE.Color('#2a2820') })))
     this.ball.castShadow = true
@@ -132,30 +130,36 @@ export class Actors {
     return item
   }
 
-  private makeBody(): Body {
-    const group = new THREE.Group()
-    const jersey = this.own(new THREE.MeshStandardMaterial({ color: '#cccccc', roughness: 0.8 }))
-    const cap = this.own(new THREE.MeshStandardMaterial({ color: '#333333', roughness: 0.7 }))
-    const torso = new THREE.Mesh(this.bodyGeometry, jersey)
-    torso.position.y = (this.look.height - 0.25) / 2
-    torso.castShadow = true
-    const head = new THREE.Mesh(this.headGeometry, cap)
-    head.position.y = this.look.height - 0.15
-    head.castShadow = true
-    group.add(torso, head)
-    this.root.add(group)
-    return { group, jersey, cap }
+  private makeFigure(player: Player, uniform: UniformColors, skin: string): Ballplayer {
+    return new Ballplayer({ body: player.body ?? 'stocky', height: player.height ?? 1.85, throws: player.throws, uniform, skin }, this.gloveMaterial, this.batGeometry, this.batMaterial, this.gloveGeometry)
   }
 
-  setColors(defense: TeamColors, offense: TeamColors): void {
-    for (const body of this.fielders.values()) {
-      body.jersey.color.set(defense.primary)
-      body.cap.color.set(defense.secondary)
+  /** Points the cast at a new contest: home whites for the home club, road colors for the visitors. */
+  bind(contest: Contest): void {
+    for (const figure of this.figures.values()) figure.dispose()
+    this.figures.clear()
+    this.uniforms.clear()
+    this.contest = contest
+    const [away, home] = contest.teams
+    this.uniforms.set(away.roster.team.id, teamUniform(away.roster.team.colors, false))
+    this.uniforms.set(home.roster.team.id, teamUniform(home.roster.team.colors, true))
+  }
+
+  /** The figure for a player, created the first time they take the field. */
+  figure(id: string): Ballplayer | null {
+    const contest = this.contest
+    if (!contest) return null
+    let figure = this.figures.get(id)
+    if (!figure) {
+      const side = contest.teams[0].players.has(id) ? 0 : 1
+      const player = contest.player(id)
+      figure = this.makeFigure(player, this.uniforms.get(contest.teams[side].roster.team.id)!, skinFor(player))
+      this.root.add(figure.group)
+      this.figures.set(id, figure)
     }
-    for (const body of [this.batter, ...this.runners.values(), ...this.runnerPool]) {
-      body.jersey.color.set(offense.primary)
-      body.cap.color.set(offense.secondary)
-    }
+    figure.group.visible = true
+    this.onField.add(id)
+    return figure
   }
 
   setZone(height: number): void {
@@ -169,75 +173,154 @@ export class Actors {
     this.zone.geometry.computeBoundingSphere()
   }
 
-  placeFieldersHome(): void {
-    for (const [pos, body] of this.fielders) {
-      body.group.position.copy(toWorld(FIELDER_HOME[pos]))
-      body.group.lookAt(0, 0, 0)
+  /** Lines up a fresh pitch: the defense at their depths, the batter in the box, runners on their bases; everyone else leaves the field. */
+  setScene(contest: Contest, batterHand: Hand): void {
+    this.onField.clear()
+    this.holder = null
+    this.caught.clear()
+    this.thrown.clear()
+    this.slid.clear()
+    this.defense.clear()
+    const plate = toWorld({ x: 0, y: 0, z: 0 })
+    for (const pos of FIELD_POSITIONS) {
+      const id = contest.defenseTeam.defense[pos]
+      this.defense.set(pos, id)
+      const figure = this.figure(id)!
+      figure.animator.stop()
+      figure.animator.reach(null)
+      figure.showGlove(true)
+      figure.holdBat(false)
+      figure.teleport(toWorld(FIELDER_HOME[pos]))
+      figure.faceToward(pos === 'C' ? toWorld({ x: 0, y: 0, z: 18 }) : plate, true)
+      figure.setBase(pos === 'C' ? 'crouch' : pos === 'P' ? 'idle' : 'ready')
     }
-  }
-
-  setFielder(pos: string, at: Vec3): void {
-    const body = this.fielders.get(pos as FieldPosition)
-    if (body) body.group.position.copy(toWorld({ x: at.x, y: 0, z: at.z }))
-  }
-
-  setBatter(hand: Hand, colors: TeamColors): void {
-    this.batter.group.visible = true
-    this.batter.jersey.color.set(colors.primary)
-    this.batter.cap.color.set(colors.secondary)
-    this.batter.group.position.copy(worldXYZ(hand === 'R' ? -0.85 : 0.85, 0, 0.25))
-    this.batter.group.rotation.set(0, hand === 'R' ? -Math.PI / 2 : Math.PI / 2, 0)
-    this.resetBat()
+    const batter = contest.batter
+    this.batterId = batter.id
+    const hitter = this.figure(batter.id)!
+    hitter.animator.stop()
+    hitter.showGlove(false)
+    hitter.holdBat(true)
+    hitter.teleport(worldXYZ(batterHand === 'R' ? -0.85 : 0.85, 0, 0.25))
+    hitter.face(batterHand === 'R' ? Math.PI / 2 : -Math.PI / 2, true)
+    hitter.setBase('stance')
+    for (const base of [1, 2, 3]) {
+      const runner = contest.bases[base]
+      if (!runner) continue
+      const figure = this.figure(runner.id)!
+      figure.animator.stop()
+      figure.showGlove(false)
+      figure.holdBat(false)
+      figure.teleport(toWorld(BASES[base]).add(new THREE.Vector3(base === 2 ? 0 : 0.8, 0, base === 2 ? 0.8 : 0)))
+      figure.faceToward(toWorld(BASES[(base + 1) % 4]), true)
+      figure.setBase('ready')
+    }
+    for (const [id, figure] of this.figures) if (!this.onField.has(id)) figure.group.visible = false
   }
 
   hideBatter(): void {
-    this.batter.group.visible = false
+    const batter = this.batterId ? this.figures.get(this.batterId) : null
+    batter?.holdBat(false)
+    if (batter) batter.setBase('run')
   }
 
-  resetBat(): void {
-    this.swingStart = -1
-    this.bat.rotation.set(0, 0, 0.9)
-    this.bat.position.set(0, 1.35, -0.1)
+  windup(duration: number): void {
+    const pitcher = this.defense.get('P')
+    if (pitcher) this.figures.get(pitcher)?.play('pitch', duration)
   }
 
-  swing(now: number): void {
-    this.swingStart = now
+  swing(type: 'contact' | 'power' | 'bunt', duration: number): void {
+    const batter = this.batterId ? this.figures.get(this.batterId) : null
+    batter?.play(type === 'bunt' ? 'bunt' : 'swing', duration)
   }
 
-  updateBat(now: number, duration: number): void {
-    if (this.swingStart < 0) return
-    const t = Math.min(1, (now - this.swingStart) / Math.max(0.05, duration))
-    const ease = t * t * (3 - 2 * t)
-    this.bat.rotation.set(0, ease * Math.PI * 1.25, 0.9 - ease * 0.9)
-    this.bat.position.set(0, 1.35 - ease * 0.25, -0.1)
+  catchPitch(at: Vec3): void {
+    const catcher = this.defense.get('C')
+    const figure = catcher ? this.figures.get(catcher) : null
+    figure?.animator.reach(toWorld(at))
   }
 
-  runner(id: string, colors: TeamColors): Body {
-    let body = this.runners.get(id)
-    if (!body) {
-      body = this.runnerPool.pop() ?? this.makeBody()
-      body.jersey.color.set(colors.primary)
-      body.cap.color.set(colors.secondary)
-      body.group.visible = true
-      this.runners.set(id, body)
-    }
-    return body
+  setFielder(pos: string, at: Vec3, dt: number): void {
+    const id = this.defense.get(pos as FieldPosition)
+    const figure = id ? this.figures.get(id) : null
+    figure?.moveTo(toWorld({ x: at.x, y: 0, z: at.z }), dt)
   }
 
-  placeRunners(onBase: (string | null)[], colors: TeamColors): void {
-    const keep = new Set(onBase.filter((id): id is string => !!id))
-    for (const [id, body] of this.runners) {
-      if (!keep.has(id)) {
-        body.group.visible = false
-        this.runners.delete(id)
-        this.runnerPool.push(body)
+  setRunner(id: string, at: Vec3, dt: number): void {
+    const figure = this.figure(id)
+    if (!figure) return
+    figure.holdBat(false)
+    figure.showGlove(false)
+    const position = toWorld({ x: at.x, y: 0, z: at.z }, this.scratch)
+    figure.moveTo(position, dt)
+    if (!this.slid.has(id) && figure.animator.base === 'run') {
+      for (const base of SLIDE_BASES) {
+        if (position.distanceTo(base) < 3.2) {
+          this.slid.add(id)
+          figure.play('slide', 0.9)
+          break
+        }
       }
     }
-    onBase.forEach((id, base) => {
-      if (!id || base === 0) return
-      const body = this.runner(id, colors)
-      body.group.position.copy(toWorld(BASES[base])).add(new THREE.Vector3(0.6, 0, 0.6))
-    })
+  }
+
+  /** Clears who has caught or thrown, so a replay plays the same reactions again. */
+  resetReactions(): void {
+    this.holder = null
+    this.caught.clear()
+    this.thrown.clear()
+    this.slid.clear()
+  }
+
+  /** Catches when the ball reaches a fielder, throws when it leaves the one holding it. Returns true on the frame a catch starts. */
+  reactToBall(at: Vec3 | null): boolean {
+    if (!at) return false
+    let caughtNow = false
+    const ball = toWorld(at)
+    let nearest: { id: string; distance: number } | null = null
+    for (const id of this.defense.values()) {
+      const figure = this.figures.get(id)
+      if (!figure) continue
+      const distance = Math.hypot(figure.group.position.x - ball.x, figure.group.position.z - ball.z)
+      if (!nearest || distance < nearest.distance) nearest = { id, distance }
+    }
+    if (!nearest) return false
+    const figure = this.figures.get(nearest.id)!
+    if (nearest.distance < 2.2 && ball.y < 3.2 && !this.caught.has(nearest.id) && this.holder !== nearest.id) {
+      this.caught.add(nearest.id)
+      this.thrown.delete(nearest.id)
+      figure.play(ball.y > 1.3 ? 'catchHigh' : 'catchLow', 0.5)
+      figure.animator.reach(ball)
+      caughtNow = true
+    }
+    if (nearest.distance < 1.2) {
+      if (this.holder !== nearest.id) this.holder = nearest.id
+      figure.animator.reach(null)
+    }
+    if (this.holder) {
+      const holding = this.figures.get(this.holder)
+      if (holding && !this.thrown.has(this.holder) && Math.hypot(holding.group.position.x - ball.x, holding.group.position.z - ball.z) > 1.6 && ball.y > 1) {
+        this.thrown.add(this.holder)
+        this.caught.delete(this.holder)
+        holding.faceToward(ball)
+        holding.play('throw', 0.45)
+        this.holder = null
+      }
+    }
+    return caughtNow
+  }
+
+  celebrate(teamId: string): void {
+    const contest = this.contest
+    if (!contest) return
+    for (const [id, figure] of this.figures) {
+      const side = contest.teams[0].players.has(id) ? 0 : 1
+      if (figure.group.visible && contest.teams[side].roster.team.id === teamId) figure.play('celebrate', 3)
+    }
+  }
+
+  update(dt: number): void {
+    for (const figure of this.figures.values()) if (figure.group.visible) figure.update(dt)
+    this.umpire.update(dt)
   }
 
   setBall(at: Vec3 | null): void {
@@ -290,6 +373,8 @@ export class Actors {
   }
 
   dispose(): void {
+    for (const figure of this.figures.values()) figure.dispose()
+    this.umpire.dispose()
     this.root.removeFromParent()
     for (const item of this.disposables) item.dispose()
   }

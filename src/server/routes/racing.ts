@@ -67,6 +67,7 @@ export async function racing(request: Request, env: Env) {
     return json({ reset: true })
   }
   if (input.action === 'lap') {
+    if (input.milliseconds < minimumLapMilliseconds[input.track]) return json({ error: 'That lap time is faster than the track allows.' }, 400)
     await env.DB.prepare('INSERT INTO racing_laps (id, user_id, username, milliseconds, mode, track, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
       .bind(`${user.id}:${input.run}:${input.lap}`, user.id, user.username, input.milliseconds, input.mode, input.track, Date.now()).run()
     return json({ saved: true })

@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu'
 import { float, length, mrt, normalView, output, packNormalToRGB, pass, sample, screenUV, smoothstep, uniform, unpackRGBToNormal, velocity, vec4 } from 'three/tsl'
 import { ao } from 'three/addons/tsl/display/GTAONode.js'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
+import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js'
 import { film } from 'three/addons/tsl/display/FilmNode.js'
 import { lensflare } from 'three/addons/tsl/display/LensflareNode.js'
 import { traa } from 'three/addons/tsl/display/TRAANode.js'
@@ -12,14 +13,23 @@ import type { PostConfig, PostEffects, QualitySettings } from '../config'
 export interface PostChain {
   readonly enabled: boolean
   render(): void
+  /** Focus distance in metres and blur strength 0–1 for the depth-of-field effect; a no-op without one. */
+  setFocus(distance: number, strength: number): void
   dispose(): void
 }
 
 function hasEffects(effects: PostEffects | undefined): effects is PostEffects {
-  return !!effects && !!(effects.ao || effects.taa || effects.bloom || effects.flare || effects.vignette || effects.grain)
+  return !!effects && !!(effects.ao || effects.taa || effects.bloom || effects.flare || effects.vignette || effects.grain || effects.dof)
 }
 
-function buildPipeline(app: App, effects: PostEffects): THREE.RenderPipeline {
+type FloatUniform = ReturnType<typeof float> & { value: number }
+
+interface Focus {
+  distance: FloatUniform
+  strength: FloatUniform
+}
+
+function buildPipeline(app: App, effects: PostEffects, focus: Focus): THREE.RenderPipeline {
   const scenePass = effects.ao || effects.taa ? pass(app.scene, app.camera, { samples: 0 }) : pass(app.scene, app.camera)
   const targets: Record<string, unknown> = { output }
   if (effects.ao) targets.normal = packNormalToRGB(normalView)
@@ -40,6 +50,7 @@ function buildPipeline(app: App, effects: PostEffects): THREE.RenderPipeline {
     color = vec4(color.rgb.mul(shade), color.a)
   }
   if (effects.taa) color = traa(color, depth, scenePass.getTextureNode('velocity'), app.camera) as unknown as typeof color
+  if (effects.dof) color = dof(color, scenePass.getViewZNode(), focus.distance, float(effects.dof.focalLength), focus.strength.mul(effects.dof.bokehScale)) as unknown as typeof color
   if (effects.bloom) {
     const glow = bloom(color, effects.bloom.strength, effects.bloom.radius, effects.bloom.threshold)
     if (effects.flare) {
@@ -67,9 +78,10 @@ function buildPipeline(app: App, effects: PostEffects): THREE.RenderPipeline {
 
 export function createPost(app: App, config: PostConfig, quality: QualitySettings): PostChain {
   let pipeline: THREE.RenderPipeline | null = null
+  const focus: Focus = { distance: uniform(10) as unknown as FloatUniform, strength: uniform(0) as unknown as FloatUniform }
   if (config.enabled && quality.post && hasEffects(config.effects)) {
     try {
-      pipeline = buildPipeline(app, config.effects)
+      pipeline = buildPipeline(app, config.effects, focus)
     } catch (error) {
       console.warn('[engine] post-processing unavailable, rendering directly', error)
       pipeline = null
@@ -81,6 +93,10 @@ export function createPost(app: App, config: PostConfig, quality: QualitySetting
   return {
     enabled: !!active,
     render,
+    setFocus(distance, strength) {
+      focus.distance.value = Math.max(0.1, distance)
+      focus.strength.value = Math.max(0, Math.min(1, strength))
+    },
     dispose() {
       app.setRenderPass(null)
       active?.dispose()

@@ -1,21 +1,26 @@
 /** DOM bindings for the setup card, score bug, banner, matchup strip, play-by-play, pitch picker and meter, and the final box score. */
 import { PITCH_SPECS, TEAMS, inningsPitched, parkById, teamById, type Contest, type PitchGrade, type TeamBox } from '../sim'
-import type { PitchPace } from '../config'
+import { config, type Difficulty, type DifficultyLevel } from '../config'
 import type { TimeOfDay } from '../looks'
 
-export type SideChoice = 'away' | 'home' | 'watch'
+export type SideChoice = 'away' | 'home' | 'both' | 'watch'
 
 export interface SetupChoice {
   team: string
   opponent: string
   side: SideChoice
   innings: 3 | 6 | 9
-  pace: PitchPace
+  difficulty: Difficulty | 'custom'
+  /** Resolved difficulty numbers (a preset, or the custom sliders). */
+  level: DifficultyLevel
   dh: boolean
   autoRunner: boolean
   mercy: boolean
   time: TimeOfDay
   trail: boolean
+  assist: boolean
+  colorSafe: boolean
+  replays: boolean
 }
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -87,9 +92,26 @@ export class Screens {
     }
     team.value = 'frt'
     opponent.value = 'sal'
-    const side = chips(byId('side-chips'), [{ value: 'home' as SideChoice, label: 'Home team' }, { value: 'away' as SideChoice, label: 'Visitors' }, { value: 'watch' as SideChoice, label: 'Just watch' }], 'home', () => updateNote())
+    const side = chips(byId('side-chips'), [{ value: 'home' as SideChoice, label: 'Home team' }, { value: 'away' as SideChoice, label: 'Visitors' }, { value: 'both' as SideChoice, label: 'Two players' }, { value: 'watch' as SideChoice, label: 'Just watch' }], 'home', () => updateNote())
     const innings = chips(byId('innings-chips'), [{ value: '3', label: '3 innings' }, { value: '6', label: '6 innings' }, { value: '9', label: '9 innings' }], '3', () => undefined)
-    const pace = chips(byId('pace-chips'), [{ value: 'rookie' as PitchPace, label: 'Rookie' }, { value: 'pro' as PitchPace, label: 'Pro' }, { value: 'allstar' as PitchPace, label: 'All-Star (real speed)' }], 'rookie', () => undefined)
+    const sliders = byId<HTMLElement>('custom-sliders')
+    const difficultyOptions = [...(Object.entries(config.difficulty) as [Difficulty, DifficultyLevel][]).map(([value, level]) => ({ value: value as Difficulty | 'custom', label: level.label })), { value: 'custom' as const, label: 'Custom' }]
+    const difficulty = chips(byId('difficulty-chips'), difficultyOptions, 'rookie', (value) => (sliders.hidden = value !== 'custom'))
+    const slider = (id: string, format: (value: number) => string) => {
+      const input = byId<HTMLInputElement>(id)
+      const output = byId<HTMLOutputElement>(`${id}-out`)
+      const sync = () => (output.textContent = format(Number(input.value)))
+      input.addEventListener('input', sync)
+      sync()
+      return () => Number(input.value)
+    }
+    const customPace = slider('custom-pace', (value) => `${(value / 100).toFixed(2)}×`)
+    const customPci = slider('custom-pci', (value) => `${value}%`)
+    const customSkill = slider('custom-skill', (value) => (value > 0 ? `+${value}` : String(value)))
+    const level = (): DifficultyLevel => {
+      const pick = difficulty()
+      return pick === 'custom' ? { label: 'Custom', pace: customPace() / 100, pci: customPci() / 100, skill: customSkill() / 100 } : config.difficulty[pick]
+    }
     const time = chips(byId('time-chips'), [{ value: 'day' as TimeOfDay, label: 'Day' }, { value: 'dusk' as TimeOfDay, label: 'Golden hour' }, { value: 'night' as TimeOfDay, label: 'Night' }], 'night', () => undefined)
     const note = byId('park-note')
     const updateNote = () => {
@@ -100,11 +122,20 @@ export class Screens {
     team.addEventListener('change', updateNote)
     opponent.addEventListener('change', updateNote)
     updateNote()
+    this.readChoice = () => {
+      const rival = opponent.value === team.value ? TEAMS.find((item) => item.id !== team.value)!.id : opponent.value
+      const checked = (id: string) => byId<HTMLInputElement>(id).checked
+      return { team: team.value, opponent: rival, side: side(), innings: Number(innings()) as 3 | 6 | 9, difficulty: difficulty(), level: level(), dh: checked('dh-check'), autoRunner: checked('runner-check'), mercy: checked('mercy-check'), time: time(), trail: checked('trail-check'), assist: checked('assist-check'), colorSafe: checked('safe-check'), replays: checked('replay-check') }
+    }
     byId<HTMLFormElement>('setup-form').addEventListener('submit', (event) => {
       event.preventDefault()
-      const rival = opponent.value === team.value ? TEAMS.find((item) => item.id !== team.value)!.id : opponent.value
-      onStart({ team: team.value, opponent: rival, side: side(), innings: Number(innings()) as 3 | 6 | 9, pace: pace(), dh: byId<HTMLInputElement>('dh-check').checked, autoRunner: byId<HTMLInputElement>('runner-check').checked, mercy: byId<HTMLInputElement>('mercy-check').checked, time: time(), trail: byId<HTMLInputElement>('trail-check').checked })
+      onStart(this.readChoice())
     })
+  }
+
+  /** The setup card's current choices (online matchups use the club, length, rules and look from it). */
+  readChoice: () => SetupChoice = () => {
+    throw new Error('setup not bound')
   }
 
   showSetup(visible: boolean): void {
@@ -216,15 +247,17 @@ export class Screens {
     this.meterLabel.textContent = label
   }
 
-  showFinal(contest: Contest, youSide: 0 | 1 | null): void {
+  /** `winnerSide` overrides the contest's own winner when an online matchup ended early (forfeit or concession). */
+  showFinal(contest: Contest, youSide: 0 | 1 | null, winnerSide: 0 | 1 | null = contest.winner): void {
     this.final.hidden = false
     this.bug.hidden = false
     this.picker.hidden = true
     const [away, home] = contest.teams
-    const winner = contest.teams[contest.winner ?? 0].roster.team
-    byId('final-eyebrow').textContent = contest.inning > contest.setup.innings ? `Final · ${contest.inning} innings` : 'Final'
+    const winner = contest.teams[winnerSide ?? 0].roster.team
+    const early = winnerSide !== contest.winner
+    byId('final-eyebrow').textContent = early ? `Ended in the ${contest.half === 'top' ? 'top' : 'bottom'} of inning ${contest.inning}` : contest.inning > contest.setup.innings ? `Final · ${contest.inning} innings` : 'Final'
     byId('final-title').textContent = `${away.roster.team.abbr} ${contest.score[0]}, ${home.roster.team.abbr} ${contest.score[1]}`
-    byId('final-line').textContent = youSide === null ? `${winner.city} ${winner.name} win.` : contest.winner === youSide ? `You win! The ${winner.name} take it.` : `The ${winner.name} take this one. Run it back?`
+    byId('final-line').textContent = youSide === null ? `${winner.city} ${winner.name} win.` : winnerSide === youSide ? `You win! The ${winner.name} take it.` : `The ${winner.name} take this one. Run it back?`
 
     const table = byId<HTMLTableElement>('line-score')
     table.replaceChildren()

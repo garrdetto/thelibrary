@@ -2,9 +2,17 @@
 
 Source for `public/modules/county.html`, module id `county` (working title). A new, separate open world in the Fox Plains family: a 4 × 4 km county with a town, an airport, flyable helicopters, Fox Plains' driving physics and its lawn mowing. It is drawn in a glossy, realistic 3D-clipart style with HDR lighting. It runs on PlayCanvas (`playcanvas` 2.23.3, bundled) and reuses Fox Plains 2's code by import instead of copying it.
 
-It is not in the library yet (`src/lib/modules.ts`); open `/modules/county.html` directly.
+It is in the library as Kestrel County (`src/lib/modules.ts`, thumbnail `public/images/modules/county.webp`).
 
-## Phase 2: flying (this folder today)
+## Phase 3: the airport
+
+- **Buildings (`src/models/AirportBuildings.ts`):** the terminal (two storeys, a glass curtain wall onto the apron, a landside canopy and a rooftop name board), the control tower (tapered shaft, eight-sided glass cab, gallery, rotating green-and-white beacon), the ribbed hangar from look development facing its own pad, and a windsock that swings downwind and fills with the wind. All have colliders.
+- **Air traffic (`shared/AirTraffic.ts`):** three original aircraft (a regional turboprop, a business jet and the flying club's Skylark) each fly a 15-minute cycle as a pure function of real time: a straight-in final on a 3° glide slope into the wind, flare, rollout to the first connector they can make, taxi to their stand, turnaround, pushback, taxi to the departure end, hold short, line up, take-off and climb out. Departures wait at the hold-short line until the runway is clear of every arrival and earlier departure. Every visitor computes the same traffic, so it needs no network traffic.
+- **In the page (`src/flight/TrafficManager.ts`):** models from `src/models/Traffic.ts` posed every frame, kinematic colliders that move with them, spinning propellers, and go-arounds: if you're on the runway when an arrival is 35 s out, it climbs away instead of landing.
+- **Wind:** the windsock, the helicopter and the trainer all feel the same wind (`windAt`, real time).
+- **Tests (`tests/traffic.test.ts`):** determinism, smooth motion (no jumps or heading snaps), the 3° glide slope, one plane on the runway at a time over a whole day, on the paving whenever on the ground, stands clear of each other, and go-arounds.
+
+## Phase 2: flying
 
 Two flyable aircraft wait at the airport east of town, reached by Airport Road at the end of Main Street: the five-seat utility helicopter on a helipad and the Skylark, an original two-seat high-wing trainer, on the apron. Walk up and press E to climb aboard.
 
@@ -46,7 +54,6 @@ See the county section of `docs/ENGINE-MAP.md` for every file. In short: `shared
 
 ## Next phases
 
-3. The rest of the airport and AI air traffic; the module appears in the library.
 4. Mowing at scale.
 5. The shared online world.
 6. Homes and the house builder, on Fox Plains' `shared/BuildRules.ts` and `Catalog.ts`.

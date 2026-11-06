@@ -1172,7 +1172,30 @@ body{background:var(--paper);color:var(--tone-0)}
 .rc-head-actions button:disabled{opacity:.5;cursor:default}
 .rc-left{display:grid;gap:12px;min-width:0}
 .rc-stage{height:520px}
-.rc-stage-tools{position:absolute;top:10px;right:10px;display:flex;gap:6px}
+.rc-stage-tools{position:absolute;top:10px;right:10px;left:10px;display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:6px;pointer-events:none}
+.rc-stage-tools>*{pointer-events:auto}
+.rc-stage-tools .rc-rate{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid #ffffff2a;border-radius:8px;background:#0d1218cc;color:#e6ebf0;font-size:13px;font-weight:600}
+.rc-stage-tools .rc-rate select{padding:3px 4px;border:0;border-radius:6px;background:#1c2530;color:inherit;font:inherit}
+.rc-clock{flex-basis:100%;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:#e6ebf0;text-shadow:0 1px 2px #000}
+.rc-piece-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.rc-piece-list>li{border:1px solid var(--lib-line,var(--border));border-radius:10px;background:var(--lib-panel2,transparent)}
+.rc-piece-list>li.is-open{border-color:var(--lib-accent,#f2b544)}
+.rc-piece-head{display:flex;align-items:center;gap:4px;padding:4px}
+.rc-piece-head button{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:4px 8px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
+.rc-piece-head button:disabled{opacity:.35;cursor:default}
+.rc-piece-head button[aria-pressed=true]{color:var(--lib-accent,#f2b544)}
+.rc-piece-head .rc-piece-title{flex:1;flex-wrap:wrap;justify-content:flex-start;gap:6px;text-align:left}
+.rc-piece-title small{flex-basis:100%;padding-left:20px;font-size:12px;color:var(--lib-muted,inherit)}
+.rc-piece-body{display:grid;gap:10px;padding:4px 12px 12px}
+.rc-check{display:flex!important;align-items:center;gap:8px;font-weight:500}
+.rc-colour{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px 8px}
+.rc-colour input[type=color]{grid-row:2;width:44px;height:32px;padding:2px;border:1px solid var(--lib-line,var(--border));border-radius:8px;background:transparent;cursor:pointer}
+.rc-colour input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+.rc-colour input[type=color]::-webkit-color-swatch{border:0;border-radius:5px}
+.rc-colour input[type=color]::-moz-color-swatch{border:0;border-radius:5px}
+.rc-colour code{grid-row:2;font-size:12px;color:var(--lib-muted,inherit)}
+.rc-colour input[type=color]:focus-visible{outline:2px solid var(--lib-accent,var(--green));outline-offset:2px}
+.rc-piece-head button:focus-visible,.rc-rate select:focus-visible{outline:2px solid var(--lib-accent,var(--green));outline-offset:2px}
 .rc-stage-tools button{border-color:#ffffff2a;background:#0d1218cc;color:#e6ebf0}
 .rc-stage-tools button[aria-pressed=true]{border-color:var(--lib-accent,#f2b544)}
 .ms-items-fields fieldset.rc-plain{padding:0;border:0}
@@ -1472,8 +1495,9 @@ body{background:var(--paper);color:var(--tone-0)}
 @media(max-width:640px){.adm-arrange-list li{grid-template-columns:auto minmax(0,1fr) auto;gap:8px}.adm-arrange-list .adm-rank,.adm-arrange-list img{display:none}
   .adm-arrange-actions .adm-icon{width:30px}.adm-savebar{padding:12px}.adm-savebar>div{width:100%}.adm-savebar .adm-btn{flex:1}}
 
-.pk-play-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.pk-save-select { min-width: 0; max-width: 100%; flex: 1 1 160px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--lib-border, rgba(255, 255, 255, 0.2)); background: var(--lib-surface, rgba(0, 0, 0, 0.3)); color: inherit; font: inherit; }
+.pk-play-row { display: flex; flex-wrap: wrap; align-items: stretch; gap: 8px; margin-top: auto; }
+.pk-scenario-body .pk-play-row .pk-btn { margin-top: 0; align-self: stretch; }
+.pk-save-select { min-width: 0; max-width: 100%; flex: 1 1 160px; box-sizing: border-box; min-height: 34px; margin: 0; padding: 0 10px; border-radius: 8px; border: 1px solid var(--lib-border, rgba(255, 255, 255, 0.2)); background: var(--lib-surface, rgba(0, 0, 0, 0.3)); color: inherit; font: inherit; font-size: 12px; }
 .pk-save-select:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 
 .workspace-content.lens-content{max-width:1320px}

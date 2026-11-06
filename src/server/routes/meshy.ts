@@ -30,6 +30,8 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('refine'), jobId: z.string().uuid(), texturePrompt: z.string().trim().max(600).default('') }).strict(),
   z.object({ action: z.literal('remesh'), target, source, polycount }).strict(),
   z.object({ action: z.literal('retexture'), target, source, prompt }).strict(),
+  z.object({ action: z.literal('rig'), jobId: z.string().uuid(), height: z.number().min(0.5).max(3).default(1.85) }).strict(),
+  z.object({ action: z.literal('animate'), jobId: z.string().uuid(), actionId: z.number().int().min(0).max(100_000), label: z.string().trim().min(1).max(80) }).strict(),
   z.object({ action: z.literal('cancel'), jobId: z.string().uuid() }).strict(),
   z.object({ action: z.literal('hide'), jobId: z.string().uuid() }).strict(),
 ])
@@ -144,6 +146,22 @@ async function act(request: Request, env: Env) {
       const taskId = await startTask(env, 'retexture', options)
       const parentId = 'jobId' in input.source ? input.source.jobId : null
       const id = await record('retexture', input.target, taskId, parentId, input.prompt, { ...options, model_url: 'model_url' in from ? '(model)' : undefined }, estimateCredits({ kind: 'retexture' }))
+      return json({ ids: [id] }, 201)
+    }
+    case 'rig': {
+      const parent = await getJobRow(env, input.jobId)
+      if (!parent || parent.status !== 'SUCCEEDED' || parent.kind === 'preview' || parent.kind === 'rig' || parent.kind === 'animate') throw new HttpError(409, 'Pick a finished, textured model to rig.')
+      const options = { input_task_id: parent.task_id, height_meters: input.height }
+      const taskId = await startTask(env, 'rig', options)
+      const id = await record('rig', parent.target, taskId, parent.id, `Rig ${parent.prompt}`.slice(0, 600), options, estimateCredits({ kind: 'rig' }))
+      return json({ ids: [id] }, 201)
+    }
+    case 'animate': {
+      const rig = await getJobRow(env, input.jobId)
+      if (!rig || rig.kind !== 'rig' || rig.status !== 'SUCCEEDED') throw new HttpError(409, 'Pick a finished rig to animate.')
+      const options = { rig_task_id: rig.task_id, action_id: input.actionId }
+      const taskId = await startTask(env, 'animate', options)
+      const id = await record('animate', rig.target, taskId, rig.id, input.label, options, estimateCredits({ kind: 'animate' }))
       return json({ ids: [id] }, 201)
     }
     case 'cancel': {

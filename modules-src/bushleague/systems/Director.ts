@@ -1,6 +1,6 @@
 /** Runs a contest on screen: pre-pitch decisions, the human pitching meter or batting cursor, the pitch in flight, play-back of the sim's timeline, the broadcast-style camera moves and the final box score. */
 import * as THREE from 'three/webgpu'
-import type { App, Input } from '../../../engine'
+import type { App, Input, PostChain } from '../../../engine'
 import {
   BASES,
   Contest,
@@ -13,6 +13,7 @@ import {
   type Hand,
   type PitchIntent,
   type PitchOutcome,
+  type PreOutcome,
   type Sample,
   type SwingIntent,
   type SwingType,
@@ -23,9 +24,25 @@ import type { Action, ModuleConfig } from '../config'
 import type { Actors } from '../view/Actors'
 import { toWorld } from '../view/space'
 import type { Screens, SetupChoice } from '../ui/Screens'
+import type { Broadcast } from '../ui/Broadcast'
+import type { BallparkAudio } from './Audio'
 import { marksBetween, sampleKeys, tracksOf } from './Playback'
+import type { IntentFeed } from './Online'
+import { ONLINE_PACE } from '../shared/Online'
 
-type Stage = 'idle' | 'between' | 'aim' | 'meter' | 'windup' | 'flight' | 'play' | 'final'
+type Stage = 'idle' | 'between' | 'aim' | 'meter' | 'await' | 'windup' | 'flight' | 'play' | 'replay' | 'final'
+type View = 'batting' | 'centerfield'
+
+/** Broadcast pieces the director cues: overlays, sound and the post chain's depth of field for replays. */
+export interface Presentation {
+  broadcast: Broadcast
+  audio: BallparkAudio
+  post: PostChain
+}
+
+const HOMER_CALLS = ['Get out the plunger, that ball is GONE!', 'Kiss it goodbye! Somebody tell the parking lot!', 'Way back... and that one is outta here!', 'Holy cow pie, that is a home run!']
+const VENDOR_CALLS = ['Hot dogs! Get your hot dogs!', 'Peanuts! Cold drinks! Nachos the size of your head!', 'Sunflower seeds! Spit responsibly!']
+const REPLAY_MARKS = new Set(['What a catch!', 'Thrown out!', 'Doubled off!', 'Gone!'])
 
 interface CameraPose {
   position: THREE.Vector3
@@ -48,13 +65,22 @@ export interface Scenery {
   scuff(x: number, z: number, radius: number, strength: number, angle?: number, length?: number): void
 }
 
+/** Where in the pitch clip the ball leaves the hand, and where in the swing clip the bat crosses the plate. */
+const RELEASE_AT = 0.72
+const CONTACT_AT = 0.55
+
 const BASE_SPOTS: readonly { x: number; z: number }[] = [1, 2, 3].map((base) => ({ x: BASES[base].x, z: BASES[base].z }))
 
 export class Director {
   contest: Contest | null = null
   stage: Stage = 'idle'
   private choice: SetupChoice | null = null
-  private human: 0 | 1 | null = null
+  private humans = new Set<0 | 1>()
+  private view: View = 'batting'
+  private lastBatter: string | null = null
+  private chargedFor: string | null = null
+  private replayOf: { timeline: Timeline; outcome: PitchOutcome } | null = null
+  private replayed = false
   private clock = 0
   private stageTime = 0
   private thrown: ThrownPitch | null = null
@@ -62,6 +88,7 @@ export class Director {
   private flightScale = 1
   private swingPress: { at: number; type: SwingType } | null = null
   private outcome: PitchOutcome | null = null
+  private pending: PitchOutcome | null = null
   private timeline: Timeline | null = null
   private playEnd = 0
   private lastMark = 0
@@ -72,6 +99,9 @@ export class Director {
   private effort = 0
   private stealArmed = false
   private seed = 1
+  private feed: IntentFeed | null = null
+  private sentPre = false
+  private waitNoticeAt = 0
   private readonly camera: CameraPose = { position: new THREE.Vector3(), target: new THREE.Vector3(), fov: 50 }
   private readonly goal: CameraPose = { position: new THREE.Vector3(), target: new THREE.Vector3(), fov: 50 }
   private readonly raycaster = new THREE.Raycaster()
@@ -85,6 +115,7 @@ export class Director {
     private readonly config: ModuleConfig,
     private readonly hooks: DirectorHooks,
     private readonly scenery: Scenery,
+    private readonly presentation: Presentation,
   ) {
     this.setPose('overview', true)
   }
@@ -97,13 +128,71 @@ export class Director {
     this.seed = seed
     const away = choice.side === 'away' ? choice.team : choice.opponent
     const home = choice.side === 'away' ? choice.opponent : choice.team
-    const setup: ContestSetup = { seed, away, home, innings: choice.innings, dh: choice.dh, autoRunner: choice.autoRunner, mercy: choice.mercy }
+    this.humans = new Set(choice.side === 'away' ? [0] : choice.side === 'home' ? [1] : choice.side === 'both' ? [0, 1] : [])
+    const human = (side: 0 | 1) => this.humans.has(side)
+    const skill = (side: 0 | 1) => (human(side) || this.humans.size === 0 ? 0 : choice.level.skill)
+    const pci = (side: 0 | 1) => (human(side) ? choice.level.pci * (choice.assist ? this.config.assist.pci : 1) : 1)
+    const setup: ContestSetup = { seed, away, home, innings: choice.innings, dh: choice.dh, autoRunner: choice.autoRunner, mercy: choice.mercy, aiSkill: [skill(0), skill(1)], pciScale: [pci(0), pci(1)] }
+    this.feed = null
+    return this.begin(choice, setup, choice.level.pace)
+  }
+
+  /** An online contest: this page plays `feed.side`; every decision comes back from the server as an input record before it is applied, so both pages stay in step. A page that joins mid-contest fast-forwards through the log first. */
+  startOnline(choice: SetupChoice, setup: ContestSetup, feed: IntentFeed): Contest {
+    this.choice = { ...choice, assist: false }
+    this.seed = setup.seed
+    this.humans = new Set([feed.side])
+    this.feed = feed
+    this.sentPre = false
+    const contest = this.begin(this.choice, setup, ONLINE_PACE)
+    let caughtUp = false
+    for (;;) {
+      const index = contest.log.length
+      const record = feed.next(contest.phase === 'pre' ? 'pre' : contest.phase === 'pitch' ? 'pitch' : 'swing', index)
+      if (!record || contest.phase === 'final') break
+      if (record.kind === 'pre') contest.prePitch(record.intent)
+      else if (record.kind === 'pitch') contest.preparePitch(record.intent)
+      else contest.resolveSwing(record.intent)
+      caughtUp = true
+    }
+    if (!caughtUp) return contest
+    this.screens.resetLog()
+    this.resetScene()
+    if (contest.phase === 'final') this.finish()
+    else if (contest.phase === 'swing' && contest.lastPitch) this.throwPitch(contest.lastPitch)
+    return contest
+  }
+
+  get online(): boolean {
+    return !!this.feed
+  }
+
+  /** Ends an online contest early (forfeit or concession) with the final card, credited to the server's winner. */
+  endOnline(winner: 0 | 1): void {
+    if (!this.contest || this.stage === 'final') return
+    this.forcedWinner = winner
+    this.finish()
+  }
+
+  private forcedWinner: 0 | 1 | null = null
+
+  leaveOnline(): void {
+    this.feed = null
+  }
+
+  private begin(choice: SetupChoice, setup: ContestSetup, pace: number): Contest {
     this.contest = new Contest(setup)
-    this.human = choice.side === 'away' ? 0 : choice.side === 'home' ? 1 : null
-    this.flightScale = this.config.pace[choice.pace].pitchScale
+    this.flightScale = pace
+    this.view = this.humans.size === 0 ? 'centerfield' : 'batting'
     this.stealArmed = false
+    this.lastBatter = null
+    this.replayOf = null
+    document.body.classList.toggle('is-color-safe', choice.colorSafe)
     this.actors.trailEnabled = choice.trail
+    this.actors.bind(this.contest)
     this.hooks.onContest(this.contest, choice)
+    this.presentation.broadcast.start(this.contest)
+    this.presentation.audio.organ()
     this.screens.resetLog()
     this.screens.hidePitch()
     this.screens.say(`${this.contest.teams[0].roster.team.city} ${this.contest.teams[0].roster.team.name} at ${this.contest.teams[1].roster.team.city} ${this.contest.teams[1].roster.team.name}`, 3)
@@ -113,18 +202,17 @@ export class Director {
   }
 
   rematch(): Contest | null {
-    if (!this.choice) return null
+    if (!this.choice || this.feed) return null
     return this.start(this.choice, this.seed + 1)
   }
 
   private get humanBatting(): boolean {
-    return this.human !== null && this.contest?.battingSide === this.human
+    return !!this.contest && this.humans.has(this.contest.battingSide)
   }
 
   private get humanPitching(): boolean {
-    return this.human !== null && this.contest?.fieldingSide === this.human
+    return !!this.contest && this.humans.has(this.contest.fieldingSide)
   }
-
   private enter(stage: Stage): void {
     this.stage = stage
     this.stageTime = 0
@@ -132,12 +220,7 @@ export class Director {
 
   private resetScene(): void {
     const contest = this.contest!
-    const offense = contest.offense.roster.team.colors
-    const defense = contest.defenseTeam.roster.team.colors
-    this.actors.setColors(defense, offense)
-    this.actors.placeFieldersHome()
-    this.actors.placeRunners(contest.bases.map((runner) => runner?.id ?? null), offense)
-    this.actors.setBatter(this.batterHand(), offense)
+    this.actors.setScene(contest, this.batterHand())
     this.scenery.scuff(this.batterHand() === 'R' ? -0.8 : 0.8, 0.25, 0.35, 0.35)
     this.actors.setZone(contest.batter.height)
     this.actors.setBall(null)
@@ -145,9 +228,23 @@ export class Director {
     this.actors.setCursor(false)
     this.screens.updateBug(contest)
     this.screens.setSteal(this.stealArmed)
-    this.screens.setHint(this.humanBatting ? this.config.copy.controlsBatting : this.humanPitching ? this.config.copy.controlsPitching : this.config.copy.controlsWatching)
-    this.setPose(this.humanPitching ? 'pitching' : 'batting')
+    this.screens.setHint(`${this.humanPitching ? this.config.copy.controlsPitching : this.humanBatting ? this.config.copy.controlsBatting : this.config.copy.controlsWatching} · ${this.config.copy.controlsCommon}`)
+    this.setPose(this.humanPitching ? 'pitching' : this.view)
     if (this.humanPitching && (this.batterHand() === 'L') === this.goal.position.x > 0) this.goal.position.x *= -1
+    this.presentation.broadcast.updateStats(contest)
+    this.presentation.broadcast.refreshTicker(contest)
+    const batter = contest.batter
+    if (batter.id !== this.lastBatter) {
+      this.lastBatter = batter.id
+      this.presentation.broadcast.introduce(contest, batter, this.config.timing.introSeconds)
+      if (contest.battingSide === 1) this.presentation.audio.say(`Now batting for ${contest.offense.roster.team.city}, number ${batter.number}, ${batter.first} ${batter.last}!`)
+    }
+    const scoring = !!contest.bases[2] || !!contest.bases[3]
+    if (contest.battingSide === 1 && scoring && this.chargedFor !== batter.id) {
+      this.chargedFor = batter.id
+      this.presentation.audio.charge()
+      this.scenery.excite(0.45)
+    }
   }
 
   private batterHand(): Hand {
@@ -156,7 +253,7 @@ export class Director {
     return bats === 'S' ? (contest.pitcher.throws === 'R' ? 'L' : 'R') : bats
   }
 
-  private setPose(name: 'batting' | 'pitching' | 'overview', snap = false): void {
+  private setPose(name: 'batting' | 'pitching' | 'overview' | 'centerfield', snap = false): void {
     const pose = this.config.cameras[name]
     toWorld({ x: pose.position[0], y: pose.position[1], z: pose.position[2] }, this.goal.position)
     toWorld({ x: pose.target[0], y: pose.target[1], z: pose.target[2] }, this.goal.target)
@@ -173,11 +270,18 @@ export class Director {
     this.stageTime += dt
     this.input.update()
     const contest = this.contest
+    if (this.input.pressed('mute')) this.presentation.broadcast.say(this.presentation.audio.toggleMute() ? 'Sound off' : 'Sound on', 1.2)
+    if (this.input.pressed('stats')) this.presentation.broadcast.toggleStats(contest)
     if (contest && this.stage !== 'final' && this.stage !== 'idle') {
       if (this.input.pressed('steal') && this.humanBatting) {
         this.stealArmed = !this.stealArmed
         this.screens.setSteal(this.stealArmed)
       }
+      if (this.input.pressed('camera') && !this.humanPitching && this.stage !== 'play' && this.stage !== 'replay') {
+        this.view = this.view === 'batting' ? 'centerfield' : 'batting'
+        this.setPose(this.view)
+      }
+      if (this.input.pressed('replay') && this.replayOf && (this.stage === 'between' || this.stage === 'aim')) this.startReplay(true)
       switch (this.stage) {
         case 'between':
           this.updateBetween(contest)
@@ -185,6 +289,9 @@ export class Director {
         case 'aim':
         case 'meter':
           this.updateAim(contest, dt)
+          break
+        case 'await':
+          this.updateAwait(contest)
           break
         case 'windup':
           this.updateWindup(dt)
@@ -195,27 +302,60 @@ export class Director {
         case 'play':
           this.updatePlay(contest, dt)
           break
+        case 'replay':
+          this.updateReplay(contest, dt)
+          break
       }
     }
     this.updateCamera(dt)
   }
 
+  private stealBases(contest: Contest): number[] {
+    return this.stealArmed ? [2, 1].filter((base) => contest.bases[base] && !contest.bases[base + 1]) : []
+  }
+
+  private waitOnline(feed: IntentFeed): void {
+    if (this.stageTime < 1.5 || this.clock - this.waitNoticeAt < 3) return
+    this.waitNoticeAt = this.clock
+    this.screens.say(feed.waitingFor(), 2.8)
+  }
+
   private updateBetween(contest: Contest): void {
     if (this.stageTime < this.config.timing.betweenPitches) return
-    const suggestion = contest.suggestPrePitch()
-    if (this.humanBatting) {
-      suggestion.steal = this.stealArmed ? [2, 1].filter((base) => contest.bases[base] && !contest.bases[base + 1]) : []
-      suggestion.pinchHit = null
+    const feed = this.feed
+    if (contest.phase === 'pre') {
+      let pre: PreOutcome
+      if (feed) {
+        if (this.humanBatting && !this.sentPre) {
+          feed.send({ t: 'pre', steal: this.stealBases(contest) })
+          this.sentPre = true
+        }
+        const record = feed.next('pre', contest.log.length)
+        if (!record) return this.waitOnline(feed)
+        this.sentPre = false
+        pre = contest.prePitch(record.intent)
+        feed.applied(contest.log.length - 1, contest)
+      } else {
+        const suggestion = contest.suggestPrePitch()
+        if (this.humanBatting) {
+          suggestion.steal = this.stealBases(contest)
+          suggestion.pinchHit = null
+        }
+        pre = contest.prePitch(suggestion)
+      }
+      if (pre.events.length) this.screens.say(pre.events.join(' '), 2.6)
+      if (pre.final) return this.finish()
+      if (pre.halfOver) {
+        this.halfBreak()
+        return
+      }
+      this.screens.updateBug(contest)
+      if (pre.events.length) {
+        this.actors.setScene(contest, this.batterHand())
+        this.actors.setZone(contest.batter.height)
+      }
     }
-    const pre = contest.prePitch(suggestion)
-    if (pre.events.length) this.screens.say(pre.events.join(' '), 2.6)
-    if (pre.final) return this.finish()
-    if (pre.halfOver) {
-      this.halfBreak()
-      return
-    }
-    this.screens.updateBug(contest)
-    this.actors.placeRunners(contest.bases.map((runner) => runner?.id ?? null), contest.offense.roster.team.colors)
+    if (contest.phase !== 'pitch') return
     if (this.humanPitching) {
       this.pitchIndex = Math.min(this.pitchIndex, contest.pitcher.pitching!.repertoire.length - 1)
       this.screens.showPicker(contest.pitcher.pitching!.repertoire, this.pitchIndex, (index) => this.pickPitch(index))
@@ -225,7 +365,38 @@ export class Director {
       this.enter('aim')
       return
     }
+    if (feed) {
+      const record = feed.next('pitch', contest.log.length)
+      if (!record) return this.waitOnline(feed)
+      return this.throwPitch(this.applyPitch(contest, record.intent))
+    }
     this.throwPitch(contest.preparePitch(null))
+  }
+
+  private applyPitch(contest: Contest, intent: PitchIntent): ThrownPitch {
+    const thrown = contest.preparePitch(intent)
+    this.feed?.applied(contest.log.length - 1, contest)
+    return thrown
+  }
+
+  /** Online: this page has sent its decision (or is waiting on the opponent's) and holds until the server's record arrives. */
+  private updateAwait(contest: Contest): void {
+    const feed = this.feed
+    if (!feed) return
+    if (contest.phase === 'pitch') {
+      const record = feed.next('pitch', contest.log.length)
+      if (!record) return this.waitOnline(feed)
+      this.throwPitch(this.applyPitch(contest, record.intent))
+      return
+    }
+    if (contest.phase !== 'swing') return
+    const record = feed.next('swing', contest.log.length)
+    if (!record) return this.waitOnline(feed)
+    const swing = record.intent
+    if (!this.humanBatting && swing.action === 'swing') this.actors.swing(swing.type, swing.type === 'bunt' ? 0.4 : this.swingDuration(1))
+    const outcome = contest.resolveSwing(swing)
+    feed.applied(contest.log.length - 1, contest)
+    this.settle(contest, outcome)
   }
 
   private pickPitch(index: number): void {
@@ -290,6 +461,11 @@ export class Director {
       }
       this.screens.hidePicker()
       this.actors.setCursor(false)
+      if (this.feed) {
+        this.feed.send({ t: 'pitch', intent })
+        this.enter('await')
+        return
+      }
       this.throwPitch(contest.preparePitch(intent))
     }
   }
@@ -304,8 +480,14 @@ export class Director {
     this.flight = path.samples
     this.actors.setGhost(false)
     this.actors.setBall(null)
+    this.actors.windup(this.config.timing.windup / RELEASE_AT)
     this.screens.hidePitch()
     this.enter('windup')
+  }
+
+  /** Seconds of clip so the bat reaches the zone `swingLag` (scaled for slow pitches) after it starts. */
+  private swingDuration(scale: number): number {
+    return (this.config.timing.swingLag * scale) / CONTACT_AT
   }
 
   private get displayScale(): number {
@@ -314,13 +496,8 @@ export class Director {
 
   private updateWindup(dt: number): void {
     if (this.humanBatting) this.moveCursor(dt, pciRadius('contact'))
-    const pitcher = this.actors.fielders.get('P')
-    if (pitcher) pitcher.group.rotation.x = -Math.sin(Math.min(1, this.stageTime / this.config.timing.windup) * Math.PI) * 0.35
     if (this.humanBatting) this.readSwing(-1)
-    if (this.stageTime >= this.config.timing.windup) {
-      if (pitcher) pitcher.group.rotation.x = 0
-      this.enter('flight')
-    }
+    if (this.stageTime >= this.config.timing.windup) this.enter('flight')
   }
 
   private readSwing(flightTime: number): void {
@@ -331,7 +508,7 @@ export class Director {
     else if (this.input.pressed('swing')) type = 'contact'
     if (!type) return
     this.swingPress = { at: flightTime, type }
-    if (type !== 'bunt') this.actors.swing(this.clock)
+    this.actors.swing(type, type === 'bunt' ? 0.4 : this.swingDuration(this.displayScale))
   }
 
   private updateFlight(contest: Contest, dt: number): void {
@@ -344,11 +521,16 @@ export class Director {
     this.actors.spinBall(dt / scale, spec.rpm, thrown.throws === 'R' ? spec.tilt : -spec.tilt)
     this.actors.pushTrail()
     if (this.humanBatting) {
-      this.moveCursor(dt, pciRadius(this.swingPress?.type ?? 'contact'))
+      if (this.choice?.assist && !this.swingPress) {
+        const jitter = this.config.assist.aimJitter
+        this.cursor.x += (thrown.plateX + Math.sin(this.clock * 7) * jitter - this.cursor.x) * Math.min(1, dt * 6)
+        this.cursor.y += (thrown.plateY + Math.cos(this.clock * 5) * jitter - this.cursor.y) * Math.min(1, dt * 6)
+        this.actors.setCursor(true, this.cursor.x, this.cursor.y, pciRadius('contact') * (this.contest?.setup.pciScale?.[this.contest.battingSide] ?? 1))
+      } else this.moveCursor(dt, pciRadius(this.swingPress?.type ?? 'contact'))
       this.readSwing(t)
-      this.actors.updateBat(this.clock, this.config.timing.swingLag * scale * 2)
-    } else {
-      this.actors.updateBat(this.clock, this.config.timing.swingLag * 2)
+    } else if (!this.feed && !this.pending && t >= arrival - this.config.timing.swingLag) {
+      this.pending = contest.resolveSwing(null)
+      if (this.pending.swing.action === 'swing') this.actors.swing(this.pending.swing.type, this.pending.swing.type === 'bunt' ? 0.4 : this.swingDuration(scale))
     }
     const grace = this.humanBatting ? 0.12 : 0
     if (t < arrival + grace) return
@@ -359,12 +541,31 @@ export class Director {
       if (!press) swing = { action: 'take', type: 'contact', timing: 0, aimX: 0, aimY: 0 }
       else {
         const contactAt = press.at < 0 ? -1 : press.at + this.config.timing.swingLag
-        const timing = press.type === 'bunt' ? 0 : Math.round((contactAt - arrival) * 1000)
+        const raw = press.type === 'bunt' ? 0 : (contactAt - arrival) * 1000
+        const timing = Math.round(this.choice?.assist && press.at >= 0 ? raw * this.config.assist.timing : raw)
         swing = { action: 'swing', type: press.type, timing, aimX: Math.round(this.cursor.x * 1000), aimY: Math.round(this.cursor.y * 1000) }
       }
     }
-    const outcome = contest.resolveSwing(swing)
-    if (!this.humanBatting && outcome.swing.action === 'swing') this.actors.swing(this.clock)
+    if (this.feed) {
+      if (swing) this.feed.send({ t: 'swing', intent: swing })
+      this.enter('await')
+      return
+    }
+    const outcome = this.pending ?? contest.resolveSwing(swing)
+    this.pending = null
+    this.settle(contest, outcome)
+  }
+
+  /** Lands a resolved pitch on screen: the catch or the crack of the bat, calls, the play's timeline and the crowd. */
+  private settle(contest: Contest, outcome: PitchOutcome): void {
+    const thrown = outcome.pitch
+    const audio = this.presentation.audio
+    if (!outcome.batted) {
+      this.actors.catchPitch({ x: thrown.plateX, y: thrown.plateY, z: -0.6 })
+      if (outcome.call !== 'hbp') audio.glove()
+    } else audio.bat(Math.max(0, Math.min(1, (outcome.batted.launch.speed - 20) / 28)))
+    if (outcome.events.some((item) => item.startsWith('Strike three, called'))) audio.say('Steee-rike three!', 'umpire')
+    if (outcome.play?.kind === 'homer') audio.say(HOMER_CALLS[contest.pitchCount % HOMER_CALLS.length])
     this.outcome = outcome
     this.actors.setCursor(false)
     this.actors.setGhost(true, thrown.plateX, thrown.plateY)
@@ -376,6 +577,8 @@ export class Director {
     this.timeline = outcome.play && outcome.batted ? outcome.play.timeline : null
     this.playEnd = this.timeline ? Math.min(this.timeline.duration, outcome.play?.kind === 'homer' ? 7 : 12) + this.config.timing.afterPlay : this.config.timing.afterPlay
     this.lastMark = 0
+    this.replayed = false
+    if (this.timeline && outcome.play && outcome.play.kind !== 'foul') this.replayOf = { timeline: this.timeline, outcome }
     if (this.timeline) {
       this.actors.hideBatter()
       this.actors.setGhost(false)
@@ -412,19 +615,107 @@ export class Director {
     const skip = this.input.pressed('skip')
     const timeline = this.timeline
     if (timeline) {
-      const t = this.stageTime
-      const offense = this.outcome!.halfOver ? contest.defenseTeam.roster.team.colors : contest.offense.roster.team.colors
+      const at = this.applyTimeline(timeline, this.stageTime, dt, true)
+      if (at) this.followBall(at)
+      const outcome = this.outcome
+      if (outcome?.play?.kind === 'homer' && this.stageTime > 2.4) this.followRunner(timeline, outcome.pitch.batterId, this.stageTime)
+    } else if (this.thrown) {
+      this.actors.setBall({ x: this.thrown.plateX, y: this.thrown.plateY, z: PLATE_FRONT - 0.4 - Math.min(0.6, this.stageTime * 2) })
+    }
+    if (this.stageTime < this.playEnd && !skip) return
+    if (!skip && this.worthReplaying()) return this.startReplay(false)
+    this.afterPlay(contest)
+  }
+
+  private afterPlay(contest: Contest): void {
+    const outcome = this.outcome!
+    if (outcome.final || contest.phase === 'final') return this.finish()
+    if (outcome.halfOver) return this.halfBreak()
+    this.resetScene()
+    this.enter('between')
+  }
+
+  private worthReplaying(): boolean {
+    if (!this.choice?.replays || this.replayed || !this.replayOf || this.replayOf.outcome !== this.outcome) return false
+    const play = this.outcome?.play
+    if (!play) return false
+    return play.kind === 'homer' || play.doublePlay || play.hitBases >= 3 || play.timeline.marks.some((mark) => REPLAY_MARKS.has(mark.text))
+  }
+
+  private startReplay(onDemand: boolean): void {
+    if (!this.replayOf) return
+    this.replayed = true
+    this.actors.resetReactions()
+    this.presentation.broadcast.showReplay(true)
+    this.enter('replay')
+    this.replayOnDemand = onDemand
+  }
+
+  private replayOnDemand = false
+
+  private updateReplay(contest: Contest, dt: number): void {
+    const replay = this.replayOf
+    const skip = this.input.pressed('skip') || this.input.pressed('replay')
+    if (!replay) return this.endReplay(contest)
+    const t = this.stageTime * this.config.timing.replaySpeed
+    const at = this.applyTimeline(replay.timeline, t, dt * this.config.timing.replaySpeed, false)
+    if (at) {
+      const ball = toWorld(at)
+      const side = toWorld({ x: at.x + 14, y: 1.6 + Math.min(6, at.y * 0.4), z: at.z - 10 })
+      this.goal.position.copy(side)
+      this.goal.target.copy(ball)
+      this.goal.fov = 34
+      this.presentation.post.setFocus(this.camera.position.distanceTo(ball), 1)
+    }
+    if (!skip && t < Math.min(replay.timeline.duration, this.config.timing.replayMax)) return
+    this.endReplay(contest)
+  }
+
+  private endReplay(contest: Contest): void {
+    this.presentation.post.setFocus(10, 0)
+    this.presentation.broadcast.showReplay(false)
+    if (this.replayOnDemand) {
+      this.resetScene()
+      this.enter('between')
+      return
+    }
+    this.afterPlay(contest)
+  }
+
+  private followBall(at: Sample | { x: number; y: number; z: number }): void {
+    const focus = toWorld({ x: at.x, y: Math.min(at.y, 12), z: at.z })
+    this.goal.target.lerp(focus, 0.25)
+    const back = toWorld({ x: at.x * 0.35, y: 16 + Math.min(18, Math.hypot(at.x, at.z) * 0.12), z: Math.min(at.z * 0.35, 30) - 26 })
+    this.goal.position.copy(back)
+    this.goal.fov = this.config.cameras.play.fov
+  }
+
+  /** Home-run trot: a low camera trailing the batter around the bases. */
+  private followRunner(timeline: Timeline, id: string, t: number): void {
+    const track = tracksOf(timeline, 'runner').find((item) => item.id === id)
+    const at = track ? sampleKeys(track.keys, t) : null
+    if (!at) return
+    const runner = toWorld(at)
+    this.goal.target.copy(runner).setY(1.1)
+    this.goal.position.copy(toWorld({ x: at.x * 0.6, y: 3.2, z: at.z * 0.6 - 9 }))
+    this.goal.fov = 38
+  }
+
+  /** Puts fielders, runners and the ball where the timeline has them at `t`; live play also leaves scuffs. Returns the ball position. */
+  private applyTimeline(timeline: Timeline, t: number, dt: number, live: boolean): Sample | { x: number; y: number; z: number } | null {
+    {
       for (const track of tracksOf(timeline, 'fielder')) {
         const at = sampleKeys(track.keys, t)
-        if (at) this.actors.setFielder(track.id, at)
+        if (at) this.actors.setFielder(track.id, at, dt)
       }
       this.footClock += dt
-      const footprints = this.footClock > 0.3
+      const footprints = live && this.footClock > 0.3
       if (footprints) this.footClock = 0
       for (const track of tracksOf(timeline, 'runner')) {
         const at = sampleKeys(track.keys, t)
         if (!at) continue
-        this.actors.runner(track.id, offense).group.position.copy(toWorld({ x: at.x, y: 0, z: at.z }))
+        this.actors.setRunner(track.id, at, dt)
+        if (!live) continue
         for (const [index, base] of BASE_SPOTS.entries()) {
           const key = `${track.id}:${index}`
           if (!this.scuffed.has(key) && Math.hypot(at.x - base.x, at.z - base.z) < 1.2) {
@@ -443,28 +734,16 @@ export class Director {
       const ball = tracksOf(timeline, 'ball')[0]
       const at = ball ? sampleKeys(ball.keys, t) : null
       this.actors.setBall(at)
+      if (this.actors.reactToBall(at)) this.presentation.audio.glove()
       const launch = this.outcome?.batted?.launch
       if (launch) this.actors.spinBall(dt, Math.abs(launch.backspin) * 0.25, 0)
-      const marks = marksBetween(timeline, this.lastMark, t)
-      if (marks.length) this.screens.say(marks.join(' '), 1.6, true)
-      this.lastMark = t
-      if (at) {
-        const focus = toWorld({ x: at.x, y: Math.min(at.y, 12), z: at.z })
-        this.goal.target.lerp(focus, 0.25)
-        const back = toWorld({ x: at.x * 0.35, y: 16 + Math.min(18, Math.hypot(at.x, at.z) * 0.12), z: Math.min(at.z * 0.35, 30) - 26 })
-        this.goal.position.copy(back)
-        this.goal.fov = this.config.cameras.play.fov
+      if (live) {
+        const marks = marksBetween(timeline, this.lastMark, t)
+        if (marks.length) this.screens.say(marks.join(' '), 1.6, true)
+        this.lastMark = t
       }
-    } else if (this.thrown) {
-      this.actors.setBall({ x: this.thrown.plateX, y: this.thrown.plateY, z: PLATE_FRONT - 0.4 - Math.min(0.6, this.stageTime * 2) })
-      this.actors.updateBat(this.clock, this.config.timing.swingLag * 2)
+      return at
     }
-    if (this.stageTime < this.playEnd && !skip) return
-    const outcome = this.outcome!
-    if (outcome.final || contest.phase === 'final') return this.finish()
-    if (outcome.halfOver) return this.halfBreak()
-    this.resetScene()
-    this.enter('between')
   }
 
   private halfBreak(): void {
@@ -473,6 +752,8 @@ export class Director {
     const finishedTop = contest.half === 'bottom'
     this.screens.say(`${finishedTop ? 'Middle' : 'End'} of the ${ordinal(finishedTop ? contest.inning : contest.inning - 1)}`, 2.4, true)
     if (!finishedTop && contest.inning >= 4 && (contest.inning + contest.score[0] + contest.score[1]) % 3 === 0) this.scenery.startWave()
+    this.presentation.audio.organ()
+    if ((contest.inning + contest.pitchCount) % 3 === 0) this.presentation.audio.say(VENDOR_CALLS[contest.pitchCount % VENDOR_CALLS.length], 'vendor')
     this.resetScene()
     this.enter('between')
     this.stageTime = -1.6
@@ -484,7 +765,11 @@ export class Director {
     this.screens.hidePicker()
     this.actors.setCursor(false)
     this.screens.updateBug(contest)
-    this.screens.showFinal(contest, this.human)
+    const winner = this.forcedWinner ?? contest.winner
+    this.forcedWinner = null
+    this.screens.showFinal(contest, this.humans.size === 1 ? [...this.humans][0] : null, winner)
+    this.presentation.broadcast.say(`That's the final: ${contest.teams[0].roster.team.abbr} ${contest.score[0]}, ${contest.teams[1].roster.team.abbr} ${contest.score[1]}.`, 4)
+    if (winner !== null) this.actors.celebrate(contest.teams[winner].roster.team.id)
     this.setPose('overview')
     this.hooks.onFinal(contest)
   }

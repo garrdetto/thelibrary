@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyCommand, createPark, validatePiece, buildTrackPath, stepTrain, makeTrain, KART_HAIRPIN_SPEED } from './index.mjs'
+import { applyCommand, createPark, validatePiece, buildTrackPath, stepTrain, makeTrain, KART_HAIRPIN_SPEED, trackPoses, rebuildTrackCells, serializePark, deserializePark, kartCount, kartLane } from './index.mjs'
 import { planPiece, startEnd, edgeHeight } from '../../src/lib/park/pathBuilder.ts'
 
 function parkFixture() {
@@ -155,4 +155,60 @@ test('the path builder refuses, on the ghost, a piece the server would refuse fo
     assert.equal(result.ok, true, `planned piece refused by the server: ${result.error}`)
     from = plan.end
   }
+})
+
+test('new slope pieces are steeper while saved track keeps its shape', () => {
+  const state = parkFixture()
+  const coaster = { id: 100, type: 'ride', kind: 'coaster', style: 'steel', park: 0, start: { x: 20, y: 20, dir: 0, h: 20 }, pieces: [{ c: 0, s: 1, g: 1 }], complete: false }
+  const steep = validatePiece(state, coaster, { c: 0, s: 2 })
+  assert.equal(steep.piece.g, 1)
+  assert.equal(steep.next.h - trackPoses(coaster)[1].h, 8)
+  const legacy = { ...coaster, id: 101, pieces: [{ c: 0, s: 1 }, { c: 0, s: 2 }] }
+  assert.equal(trackPoses(legacy)[2].h - trackPoses(legacy)[1].h, 5)
+  const kart = { id: 102, type: 'ride', kind: 'coaster', style: 'kart', park: 0, start: { x: 20, y: 30, dir: 0, h: 13 }, pieces: [], complete: false }
+  const up = validatePiece(state, kart, { c: 0, s: 1 })
+  assert.equal(up.piece.g, 2)
+  assert.equal(up.next.h - 13, 2)
+})
+
+test('a raised path can bridge a go-kart track and a kart track can pass under a raised path', () => {
+  const state = parkFixture()
+  const kart = { id: 100, type: 'ride', kind: 'coaster', style: 'kart', park: 0, start: { x: 20, y: 25, dir: 0, h: 13 }, pieces: Array.from({ length: 10 }, () => ({ c: 0, s: 0 })), complete: false }
+  state.entities[kart.id] = kart
+  rebuildTrackCells(state)
+  assert.equal(applyCommand(state, { t: 'path', kind: 1, elevation: 2, x0: 25, y0: 25, x1: 25, y1: 25 }).ok, false)
+  assert.equal(applyCommand(state, { t: 'path', kind: 1, elevation: 8, x0: 25, y0: 25, x1: 25, y1: 25 }).ok, true)
+  const under = { id: 101, type: 'ride', kind: 'coaster', style: 'kart', park: 0, start: { x: 26, y: 20, dir: 1, h: 13 }, pieces: Array.from({ length: 3 }, () => ({ c: 0, s: 0 })), complete: false }
+  assert.equal(applyCommand(state, { t: 'path', kind: 1, elevation: 9, x0: 26, y0: 23, x1: 26, y1: 23 }).ok, true)
+  assert.equal(validatePiece(state, under, { c: 0, s: 0 }).ok, true)
+})
+
+test('track frames never flip where turns meet', () => {
+  const ride = { style: 'kart', start: { x: 20, y: 20, dir: 2, h: 13 }, pieces: [1, 1, 1, 1, -1, -1, -1, -1].map(c => ({ c, s: 0 })), complete: false }
+  const path = buildTrackPath(ride)
+  for (let i = 1; i < path.count; i++) {
+    const d = path.up[i * 3] * path.up[i * 3 - 3] + path.up[i * 3 + 1] * path.up[i * 3 - 2] + path.up[i * 3 + 2] * path.up[i * 3 - 1]
+    assert.ok(d > 0.99)
+  }
+})
+
+test('saved hairpins and slope grades survive a reload', () => {
+  const state = parkFixture()
+  assert.equal(applyCommand(state, { t: 'coaster', style: 'kart', x: 20, y: 20, dir: 0, length: 2 }).ok, true)
+  const ride = Object.values(state.entities).find(e => e.style === 'kart')
+  ride.pieces.push({ c: 3, s: 0 }, { c: 0, s: 1, g: 2 })
+  const loaded = deserializePark(JSON.parse(JSON.stringify(serializePark(state))))
+  assert.deepEqual(loaded.entities[ride.id].pieces.map(p => [p.c, p.s, p.g ?? 0]), [[0, 0, 0], [0, 0, 0], [3, 0, 0], [0, 1, 2]])
+})
+
+test('the Grand Prix kart track covers two squares and races four abreast', () => {
+  const state = parkFixture()
+  assert.equal(applyCommand(state, { t: 'coaster', style: 'kartWide', x: 20, y: 20, dir: 0, length: 3 }).ok, true)
+  const ride = Object.values(state.entities).find(e => e.style === 'kartWide')
+  const map = state.map
+  for (let k = 0; k < 3; k++) for (const y of [20, 21]) assert.equal(map.obj[(20 + k) + y * map.w], ride.id)
+  assert.ok(validatePiece(state, ride, { c: 3, s: 0 }).error)
+  assert.equal(kartCount(3, 'kartWide'), 24)
+  assert.deepEqual([0, 1, 2, 3].map(i => Math.round(kartLane(i, 4) * 100) / 100), [-1.65, -0.55, 0.55, 1.65])
+  for (const c of [1, 2, -1, -2]) assert.equal(validatePiece(state, ride, { c, s: 0 }).ok, true, `turn ${c}`)
 })

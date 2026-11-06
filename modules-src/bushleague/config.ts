@@ -2,7 +2,12 @@
 import { ENGINE_DEFAULTS, type ActionBindings, type EngineConfig } from '../../engine'
 import moduleJson from './module.json'
 
-export type Action = 'up' | 'down' | 'left' | 'right' | 'swing' | 'power' | 'bunt' | 'steal' | 'pitch1' | 'pitch2' | 'pitch3' | 'pitch4' | 'pitch5' | 'skip'
+export type Action = 'up' | 'down' | 'left' | 'right' | 'swing' | 'power' | 'bunt' | 'steal' | 'pitch1' | 'pitch2' | 'pitch3' | 'pitch4' | 'pitch5' | 'skip' | 'camera' | 'replay' | 'stats' | 'mute'
+
+export const ACTION_LABELS: Readonly<Record<Action, string>> = {
+  up: 'Cursor up', down: 'Cursor down', left: 'Cursor left', right: 'Cursor right', swing: 'Swing / pitch meter', power: 'Power swing', bunt: 'Bunt', steal: 'Send the runners',
+  pitch1: 'Pitch 1', pitch2: 'Pitch 2', pitch3: 'Pitch 3', pitch4: 'Pitch 4', pitch5: 'Pitch 5', skip: 'Skip ahead', camera: 'Change camera', replay: 'Replay last play', stats: 'Stats overlay', mute: 'Sound on/off',
+}
 
 export interface ModuleMeta {
   id: string
@@ -11,7 +16,17 @@ export interface ModuleMeta {
   modes: readonly 'solo'[]
 }
 
-export type PitchPace = 'rookie' | 'pro' | 'allstar'
+export type Difficulty = 'rookie' | 'pro' | 'allstar' | 'mvp' | 'legend'
+
+export interface DifficultyLevel {
+  label: string
+  /** Pitch flight slow-down for your at-bats (1 = real speed). */
+  pace: number
+  /** Your contact cursor size. */
+  pci: number
+  /** Computer club's sharpness, −1…1 (0 is the calibrated league). */
+  skill: number
+}
 
 export const config = {
   meta: moduleJson as ModuleMeta,
@@ -57,6 +72,10 @@ export const config = {
     pitch4: [{ kind: 'key', code: 'Digit4' }],
     pitch5: [{ kind: 'key', code: 'Digit5' }],
     skip: [{ kind: 'key', code: 'Enter' }, { kind: 'pad', button: 9 }],
+    camera: [{ kind: 'key', code: 'KeyV' }, { kind: 'pad', button: 4 }],
+    replay: [{ kind: 'key', code: 'KeyY' }, { kind: 'pad', button: 5 }],
+    stats: [{ kind: 'key', code: 'Tab' }, { kind: 'pad', button: 8 }],
+    mute: [{ kind: 'key', code: 'KeyN' }],
   } satisfies ActionBindings<Action>,
   field: {
     grass: '#2f7a35',
@@ -74,22 +93,27 @@ export const config = {
     stripes: 14,
   },
   actors: { radius: 0.32, height: 1.85, ball: 0.06, bat: 0.86 },
-  pace: {
-    rookie: { label: 'Rookie', pitchScale: 2.1, note: 'Pitches travel at about half speed' },
-    pro: { label: 'Pro', pitchScale: 1.45, note: 'A little slower than real' },
-    allstar: { label: 'All-Star', pitchScale: 1, note: 'Real pitch speed' },
-  } satisfies Record<PitchPace, { label: string; pitchScale: number; note: string }>,
-  timing: { windup: 1.05, swingLag: 0.15, betweenPitches: 0.8, afterPlay: 1.4, cursorSpeed: 1.6, meterSeconds: 1.15 },
+  difficulty: {
+    rookie: { label: 'Rookie', pace: 2.1, pci: 1.35, skill: -0.5 },
+    pro: { label: 'Pro', pace: 1.6, pci: 1.15, skill: -0.2 },
+    allstar: { label: 'All-Star', pace: 1.3, pci: 1, skill: 0 },
+    mvp: { label: 'MVP', pace: 1.1, pci: 0.92, skill: 0.25 },
+    legend: { label: 'Legend', pace: 1, pci: 0.85, skill: 0.5 },
+  } satisfies Record<Difficulty, DifficultyLevel>,
+  assist: { pci: 1.3, timing: 0.35, aimJitter: 0.02 },
+  timing: { windup: 1.05, swingLag: 0.15, betweenPitches: 0.8, afterPlay: 1.4, cursorSpeed: 1.6, meterSeconds: 1.15, replaySpeed: 0.4, replayMax: 6, introSeconds: 4.5 },
   cameras: {
     batting: { position: [0, 3.3, -6.6], target: [0, 0.85, 16], fov: 50 },
+    centerfield: { position: [1.6, 5.2, 112], target: [0, 1.0, 0], fov: 6.5 },
     pitching: { position: [1.1, 3.1, 25.5], target: [0, 0.9, 0], fov: 17 },
     overview: { position: [0, 26, -30], target: [0, 0, 45], fov: 50 },
     play: { fov: 52 },
   },
   copy: {
-    controlsBatting: 'Move the cursor with the mouse or WASD · Space or click to swing · F or right-click for a power swing · B to bunt · R to send the runners',
+    controlsBatting: 'Move the cursor with the mouse or WASD · Space or click to swing · F or right-click for a power swing · B to bunt · R to send the runners · V changes the camera',
     controlsPitching: '1–5 to pick a pitch · aim with the mouse or WASD · click or Space three times: start, effort, accuracy',
-    controlsWatching: 'Sit back and watch · Enter skips ahead',
+    controlsWatching: 'Sit back and watch · Enter skips ahead · V changes the camera · Y replays the last play',
+    controlsCommon: 'Tab shows the stats · N toggles sound',
   },
 }
 

@@ -810,7 +810,7 @@ function gravitronModel(base: MeshBuilder, parts: Part[]) {
 
 export function carModel(style: string, front: boolean, riders: number, near = false): MeshBuilder {
   const b = new MeshBuilder()
-  if (style === 'kart') {
+  if (style === 'kart' || style === 'kartWide') {
     b.box(null, 0, 0, 0.14, 1.12, 0.78, 0.28, front ? C.red : C.blue, 1)
     b.box(null, 0.25, 0, 0.34, 0.54, 0.5, 0.14, C.dark)
     b.box(null, 0.48, 0, 0.4, 0.22, 0.58, 0.1, C.gold, 1)

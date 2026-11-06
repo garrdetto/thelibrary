@@ -80,8 +80,8 @@ export function buildHangar(B: Batch, lit: pc.Material) {
   bevelBox(satin, 3.2, 0.9, 0.9, 0.04, { color: PALETTE.metalGrey, at: sub(at, 6, 0.75, -H.d / 2 + 0.7) });
 }
 
-/** A canvas name board for the hangar front, lit softly at night. */
-export function hangarSign(device: pc.GraphicsDevice, text: string) {
+/** A canvas name board, `w` metres wide and facing +Z from its origin, lit softly at night. */
+export function hangarSign(device: pc.GraphicsDevice, text: string, w = 12) {
   const W = 1024, Hh = 128;
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = Hh;
@@ -98,9 +98,9 @@ export function hangarSign(device: pc.GraphicsDevice, text: string) {
   m.diffuseMap = tex; m.emissiveMap = tex; m.emissive.set(1, 1, 1); m.emissiveIntensity = 0.05;
   m.useMetalness = true; m.metalness = 0; m.gloss = 0.55;
   m.update();
-  const H = HANGAR, w = 12, h = 1.5, y = H.eave + 0.9, z = H.z + H.d / 2 + 0.03;
+  const h = w / 8;
   const b = new MeshBuilder();
-  b.quad([[H.x - w / 2, y - h / 2, z], [H.x + w / 2, y - h / 2, z], [H.x + w / 2, y + h / 2, z], [H.x - w / 2, y + h / 2, z]], [0, 0, 1], [[0, 1], [1, 1], [1, 0], [0, 0]]);
+  b.quad([[-w / 2, -h / 2, 0], [w / 2, -h / 2, 0], [w / 2, h / 2, 0], [-w / 2, h / 2, 0]], [0, 0, 1], [[0, 1], [1, 1], [1, 0], [0, 0]]);
   return { entity: meshEntity('hangar-sign', [{ mesh: b.toMesh(device), material: m }], { cast: false }), material: m };
 }
 

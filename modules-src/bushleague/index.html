@@ -60,11 +60,11 @@
       #banner{position:absolute;top:64px;left:50%;transform:translateX(-50%);z-index:12;max-width:min(680px,90%);padding:8px 18px;border-radius:12px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 16px Inter,sans-serif;pointer-events:none;color:var(--lib-strong,#fff);text-align:center}
       #banner[hidden]{display:none}
       #banner.is-big{font:800 26px Rajdhani,Inter,sans-serif;letter-spacing:1px;color:var(--module-accent,#e8b23a)}
-      #matchup{position:absolute;left:12px;bottom:44px;z-index:12;display:grid;gap:4px;font-size:12.5px;pointer-events:none}
+      #matchup{position:absolute;left:12px;bottom:58px;z-index:12;display:grid;gap:4px;font-size:12.5px;pointer-events:none}
       #matchup[hidden]{display:none}
       #matchup div{padding:4px 10px;border-radius:8px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
       #matchup b{color:var(--lib-strong,#fff)}
-      #hint{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:12;max-width:94%;font-size:12px;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8);text-align:center;pointer-events:none}
+      #hint{position:absolute;left:50%;bottom:32px;transform:translateX(-50%);z-index:12;max-width:94%;font-size:12px;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8);text-align:center;pointer-events:none}
       #picker{position:absolute;right:12px;bottom:44px;z-index:13;display:grid;gap:8px;justify-items:end}
       #picker[hidden]{display:none}
       .bl-pitches{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end;max-width:420px}
@@ -76,14 +76,59 @@
       #meter-effort{position:absolute;top:0;bottom:0;width:3px;background:#fff;left:0;display:none}
       #meter-mark{position:absolute;top:0;bottom:0;left:10%;width:4px;margin-left:-2px;background:#7fd6ff}
       #meter-label{font-size:12px;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8)}
-      #steal-flag{position:absolute;left:12px;top:86px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px Inter,sans-serif;letter-spacing:.6px}
+      #steal-flag{position:absolute;left:12px;top:116px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px Inter,sans-serif;letter-spacing:.6px}
       #steal-flag[hidden]{display:none}
       #log{position:absolute;right:12px;top:64px;z-index:12;width:min(320px,44vw);max-height:40%;overflow:auto;font-size:12px;padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
       #log[hidden]{display:none}
       #log summary{font-size:12px}
       #log ol{margin:6px 0 0;padding-left:18px;color:var(--lib-soft,#aab6d3)}
       #log li{margin:2px 0}
-      @media (max-width:640px){#log{display:none}.bl-card{padding:16px}.bl-card h1{font-size:28px}.bl-screen{justify-items:center;align-items:end}#matchup{bottom:64px}}
+      #lower-third{position:absolute;left:12px;bottom:118px;z-index:12;min-width:260px;max-width:min(420px,80vw);border-radius:10px;overflow:hidden;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));transform:translateX(-120%);transition:transform .45s cubic-bezier(.2,.8,.2,1);box-shadow:0 12px 30px -14px rgba(0,0,0,.7)}
+      #lower-third.is-in{transform:none}
+      #lower-third .lt-band{height:5px;background:var(--team,#e8b23a)}
+      #lower-third .lt-body{padding:8px 12px;display:grid;gap:2px}
+      #lower-third b{font:800 20px Rajdhani,Inter,sans-serif;color:#fff;letter-spacing:.4px}
+      #lower-third i{font-style:normal;font-size:12px;color:var(--module-accent,#e8b23a)}
+      #lower-third span{font-size:12px;color:var(--lib-soft,#aab6d3)}
+      #stats-panel{position:absolute;right:12px;bottom:118px;z-index:12;width:min(300px,80vw);padding:10px 12px;border-radius:10px;background:color-mix(in srgb,var(--lib-panel,#111829) 94%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));font-size:12px}
+      #stats-panel[hidden]{display:none}
+      #stats-panel h3{margin:0 0 6px;font:800 14px Rajdhani,Inter,sans-serif;color:#fff}
+      #ticker{position:absolute;left:0;right:0;bottom:0;z-index:11;height:26px;overflow:hidden;background:#0b0f19;border-top:2px solid var(--module-accent,#e8b23a);display:flex;align-items:center}
+      #ticker[hidden]{display:none}
+      #ticker strong{position:relative;z-index:1;flex:none;padding:0 10px;font:800 12px Rajdhani,Inter,sans-serif;letter-spacing:1px;color:#0b0f19;background:var(--module-accent,#e8b23a);height:100%;display:flex;align-items:center}
+      #ticker-track{white-space:nowrap;font-size:12px;color:#e9effc;padding-left:100%;animation:bl-ticker 70s linear infinite}
+      @media (prefers-reduced-motion:reduce){#ticker-track{animation:none;padding-left:12px;overflow:hidden;text-overflow:ellipsis}#lower-third{transition:none}}
+      @keyframes bl-ticker{to{transform:translateX(-100%)}}
+      #subtitle{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);z-index:13;max-width:min(720px,92%);padding:6px 14px;border-radius:8px;background:rgba(0,0,0,.72);color:#fff;font:600 15px Inter,sans-serif;text-align:center;pointer-events:none}
+      #subtitle[hidden]{display:none}
+      #replay-badge{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:12;padding:4px 14px;border-radius:999px;background:#c62828;color:#fff;font:800 14px Rajdhani,Inter,sans-serif;letter-spacing:2px}
+      #replay-badge[hidden]{display:none}
+      #controls-dialog{border:1px solid var(--lib-line,rgba(120,170,255,.16));border-radius:14px;background:var(--lib-panel,#111829);color:var(--lib-text,#e9effc);padding:18px 20px;width:min(460px,92vw)}
+      #controls-dialog::backdrop{background:rgba(0,0,0,.5)}
+      #controls-dialog h2{margin:0 0 10px;font:800 22px Rajdhani,Inter,sans-serif}
+      .bl-keys{display:grid;grid-template-columns:1fr auto auto;gap:6px 10px;align-items:center;font-size:13px}
+      .bl-keys code{padding:2px 8px;border-radius:6px;background:var(--lib-panel2,#18213a)}
+      .bl-online{display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      .bl-code{width:118px;text-transform:uppercase;letter-spacing:2px}
+      .bl-room{font:800 34px Rajdhani,Inter,sans-serif;letter-spacing:6px;color:var(--module-accent,#e8b23a)}
+      .bl-room[hidden]{display:none}
+      .bl-players{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+      .bl-players li{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:9px;background:var(--lib-chip,rgba(255,255,255,.05));font-size:13px}
+      .bl-players li.is-away{opacity:.6}
+      #bl-online-tag{position:absolute;top:86px;left:12px;z-index:12;padding:3px 10px;border-radius:999px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 12px Inter,sans-serif;color:var(--lib-soft,#aab6d3)}
+      #bl-online-tag[hidden]{display:none}
+      .bl-link{cursor:pointer;margin-left:6px;padding:0;border:0;background:none;color:var(--module-accent,#e8b23a);font:700 12px Inter,sans-serif;text-decoration:underline}
+      .bl-link[hidden]{display:none}
+      .bl-link:focus-visible{outline:2px solid var(--module-accent,#e8b23a);outline-offset:2px}
+      .bl-sliders{display:grid;gap:8px}
+      .bl-sliders[hidden]{display:none}
+      .bl-sliders label{display:grid;grid-template-columns:120px 1fr 44px;gap:8px;align-items:center;font-size:12.5px;text-transform:none;letter-spacing:0;color:var(--lib-soft,#aab6d3)}
+      .bl-sliders input{accent-color:var(--module-accent,#e8b23a)}
+      body.is-color-safe #meter-fill{background:linear-gradient(90deg,#0072b2,#56b4e9 60%,#e69f00)}
+      body.is-color-safe #meter-mark{background:#f0e442}
+      body.is-color-safe .bug-dots i.on,body.is-color-safe .bug-bases i.on{background:#e69f00}
+      body.is-color-safe #steal-flag{background:#0072b2}
+      @media (max-width:640px){#log{display:none}#lower-third{bottom:150px}#stats-panel{display:none}.bl-card{padding:16px}.bl-card h1{font-size:28px}.bl-screen{justify-items:center;align-items:end}#matchup{bottom:64px}}
       @media (prefers-reduced-motion:reduce){.bl-card{backdrop-filter:none}}
     </style>
   </head>
@@ -102,6 +147,7 @@
       </div>
     </div>
     <div id="steal-flag" hidden>Runners going</div>
+    <div id="bl-online-tag" hidden><span id="bl-online-name"></span> <button type="button" class="bl-link" id="bl-concede">Concede</button></div>
     <div id="pitch-info" hidden><span id="pitch-type"></span> <span id="pitch-mph"></span><small id="pitch-call"></small></div>
     <div id="banner" role="status" aria-live="polite" hidden></div>
     <div id="matchup" hidden><div id="matchup-batter"></div><div id="matchup-pitcher"></div></div>
@@ -112,6 +158,17 @@
       <div id="meter" aria-hidden="true"><div id="meter-fill"></div><div id="meter-mark"></div><div id="meter-effort"></div></div>
     </div>
     <div id="hint"></div>
+    <div id="lower-third" aria-live="polite"><div class="lt-band"></div><div class="lt-body"><b id="lt-name"></b><i id="lt-nick"></i><span id="lt-line"></span></div></div>
+    <aside id="stats-panel" hidden aria-label="Stats"><h3>Tonight</h3><div id="stats-body"></div></aside>
+    <div id="subtitle" role="status" aria-live="polite" hidden></div>
+    <div id="replay-badge" hidden>REPLAY</div>
+    <div id="ticker" hidden aria-label="The Gutter Report"><strong>THE GUTTER REPORT</strong><div id="ticker-track"></div></div>
+    <dialog id="controls-dialog" aria-labelledby="controls-title">
+      <h2 id="controls-title">Controls</h2>
+      <p class="bl-note">Pick an action, then press the key you want for it. Saved on this device.</p>
+      <div class="bl-keys" id="controls-list"></div>
+      <div class="bl-row" style="margin-top:12px"><button type="button" class="bl-button" id="controls-reset">Reset</button><button type="button" class="bl-button is-primary" id="controls-close">Done</button></div>
+    </dialog>
 
     <section id="screen-setup" class="bl-screen" aria-labelledby="setup-title">
       <form class="bl-card" id="setup-form">
@@ -126,17 +183,43 @@
         </div>
         <div class="bl-label">You are<div class="bl-chips" id="side-chips" role="group" aria-label="Which side you play"></div></div>
         <div class="bl-label">Length<div class="bl-chips" id="innings-chips" role="group" aria-label="Innings"></div></div>
-        <div class="bl-label">Pitch speed<div class="bl-chips" id="pace-chips" role="group" aria-label="Pitch speed"></div></div>
+        <div class="bl-label">Difficulty<div class="bl-chips" id="difficulty-chips" role="group" aria-label="Difficulty"></div>
+          <div class="bl-sliders" id="custom-sliders" hidden>
+            <label>Pitch speed<input type="range" id="custom-pace" min="100" max="220" step="5" value="145" /><output id="custom-pace-out">1.45×</output></label>
+            <label>Contact cursor<input type="range" id="custom-pci" min="70" max="160" step="5" value="110" /><output id="custom-pci-out">110%</output></label>
+            <label>Opponent skill<input type="range" id="custom-skill" min="-60" max="60" step="5" value="0" /><output id="custom-skill-out">0</output></label>
+          </div>
+        </div>
         <div class="bl-label">First pitch<div class="bl-chips" id="time-chips" role="group" aria-label="Time of day"></div></div>
         <div class="bl-row">
           <label class="bl-check"><input type="checkbox" id="dh-check" checked /> Designated hitter</label>
           <label class="bl-check"><input type="checkbox" id="runner-check" checked /> Runner on second in extras</label>
           <label class="bl-check"><input type="checkbox" id="mercy-check" /> Ten-run mercy rule</label>
           <label class="bl-check"><input type="checkbox" id="trail-check" checked /> Pitch trail</label>
+          <label class="bl-check"><input type="checkbox" id="assist-check" /> One-button batting assist</label>
+          <label class="bl-check"><input type="checkbox" id="safe-check" /> Color-safe meters and HUD</label>
+          <label class="bl-check"><input type="checkbox" id="replay-check" checked /> Replays of big plays</label>
         </div>
         <p class="bl-note" id="park-note"></p>
         <div class="bl-row">
           <button type="submit" class="bl-button is-primary" id="start-button">First pitch</button>
+          <button type="button" class="bl-button" id="controls-button">Controls</button>
+        </div>
+        <div class="bl-online">
+          <div class="bl-label">Play online</div>
+          <p class="bl-note">You play your club above against another person. Both sides get the Pro pitch speed and contact cursor; the batting assist is off. Ranked matchups are three innings and move your rating.</p>
+          <div class="bl-row">
+            <button type="button" class="bl-button" id="online-ranked">Ranked matchup</button>
+            <button type="button" class="bl-button" id="online-create">Private room</button>
+            <input class="bl-select bl-code" id="online-code" placeholder="Room code" maxlength="6" autocomplete="off" spellcheck="false" aria-label="Room code" />
+            <button type="button" class="bl-button" id="online-join">Join</button>
+          </div>
+          <p class="bl-note" id="online-note" role="status"></p>
+          <details id="ratings">
+            <summary>Ranked ladder</summary>
+            <div class="bl-scroll"><table class="bl-table" id="ratings-table" aria-label="Ranked ladder"></table></div>
+            <p class="bl-note" id="ratings-mine"></p>
+          </details>
         </div>
         <details>
           <summary>How the physics and the rules work</summary>
@@ -150,12 +233,29 @@
       </form>
     </section>
 
+    <section id="screen-lobby" class="bl-screen" aria-labelledby="lobby-title" hidden>
+      <div class="bl-card">
+        <div>
+          <div class="bl-eyebrow">Online matchup</div>
+          <h2 id="lobby-title">Connecting</h2>
+          <p id="lobby-text" role="status" aria-live="polite"></p>
+        </div>
+        <div class="bl-room" id="lobby-code" hidden></div>
+        <ul class="bl-players" id="lobby-players"></ul>
+        <div class="bl-row">
+          <button type="button" class="bl-button" id="lobby-copy" hidden>Copy code</button>
+          <button type="button" class="bl-button" id="lobby-cancel">Leave</button>
+        </div>
+      </div>
+    </section>
+
     <section id="screen-final" class="bl-screen" aria-labelledby="final-title" hidden>
       <div class="bl-card is-wide">
         <div>
           <div class="bl-eyebrow" id="final-eyebrow">Final</div>
           <h2 id="final-title">Final</h2>
           <p id="final-line"></p>
+          <p class="bl-note" id="final-online" hidden></p>
         </div>
         <div class="bl-scroll"><table class="bl-table" id="line-score" aria-label="Line score"></table></div>
         <div class="bl-grid2" id="box-tables"></div>

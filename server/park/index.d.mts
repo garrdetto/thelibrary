@@ -48,15 +48,29 @@ export type CommandResult = { ok: boolean; error?: string; warning?: string | nu
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[]; hairpins?: boolean[] }
 export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; resize?: FlatResize; waves?: string; custom?: CustomRideInfo }
 export type CustomRideMotionType = 'none' | 'spin' | 'swing' | 'wheel' | 'drop' | 'bob'
-export type CustomRideMotion = { type: CustomRideMotionType; speed: number; amount: number; axis: 'x' | 'y'; split: number; pivot: [number, number, number] }
-export type CustomRideInfo = { id: string; motion: CustomRideMotion; meshVersion: number; thumb: boolean; retired: boolean }
-export type CustomRideRecordInput = { id: string; name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; motion: CustomRideMotion; meshVersion: number; thumb: boolean; active: boolean }
+export type CustomPieceMotionType = 'spin' | 'swing' | 'wobble' | 'flip' | 'bob' | 'level'
+export type CustomRidePiece = { type: CustomPieceMotionType; speed: number; amount: number; from: number; to: number; inner: number; outer: number; split: 'pieces' | 'sectors'; count: number; hang: 'top' | 'centre' | 'bottom'; axis: 'radial' | 'tangent' | 'x' | 'y'; stagger: number; alternate: boolean; on: number }
+export type CustomRideMotion = { type: CustomRideMotionType; speed: number; amount: number; axis: 'x' | 'y'; split: number; pivot: [number, number, number]; rise: number; pieces: CustomRidePiece[] }
+export type CustomPlatformShape = 'square' | 'round' | 'octagon' | 'hexagon'
+export type CustomPlatformSteps = 'none' | 'front' | 'back' | 'left' | 'right' | 'sides' | 'all'
+export type CustomPlatformColumn = 'none' | 'fixed' | 'telescoping'
+export type CustomRidePlatform = { enabled: boolean; shape: CustomPlatformShape; fill: number; height: number; tiers: number; inset: number; top: string; side: string; trim: string; edge: boolean; steps: CustomPlatformSteps; stepColor: string; fence: boolean; fenceHeight: number; fenceColor: string; column: CustomPlatformColumn; columnRadius: number; columnSections: number; columnColor: string; columnTop: number }
+export type CustomRideInfo = { id: string; motion: CustomRideMotion; platform: CustomRidePlatform; meshVersion: number; thumb: boolean; retired: boolean }
+export type CustomRideRecordInput = { id: string; name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; motion: CustomRideMotion; platform?: CustomRidePlatform; meshVersion: number; thumb: boolean; active: boolean }
 export const CUSTOM_RIDE_PREFIX: string
 export const CUSTOM_RIDE_ID: RegExp
 export const CUSTOM_RIDE_CATEGORIES: string[]
 export const CUSTOM_RIDE_MOTIONS: CustomRideMotionType[]
-export const CUSTOM_RIDE_LIMITS: { nameMin: number; nameMax: number; descriptionMax: number; sizeMin: number; sizeMax: number; heightMin: number; heightMax: number; costMin: number; costMax: number; upkeepMax: number; capacityMin: number; capacityMax: number; rideTimeMin: number; rideTimeMax: number; loadTimeMin: number; loadTimeMax: number; priceMax: number; statMax: number; speedMin: number; speedMax: number; meshBytes: number; thumbBytes: number; sourceBytes: number; trianglesMin: number; trianglesMax: number }
+export const CUSTOM_PIECE_MOTIONS: CustomPieceMotionType[]
+export const CUSTOM_PIECE_SPLITS: CustomRidePiece['split'][]
+export const CUSTOM_PIECE_HANGS: CustomRidePiece['hang'][]
+export const CUSTOM_PIECE_AXES: CustomRidePiece['axis'][]
+export const CUSTOM_RIDE_LIMITS: { nameMin: number; nameMax: number; descriptionMax: number; sizeMin: number; sizeMax: number; heightMin: number; heightMax: number; costMin: number; costMax: number; upkeepMax: number; capacityMin: number; capacityMax: number; rideTimeMin: number; rideTimeMax: number; loadTimeMin: number; loadTimeMax: number; priceMax: number; statMax: number; speedMin: number; speedMax: number; meshBytes: number; thumbBytes: number; sourceBytes: number; trianglesMin: number; trianglesMax: number; piecesMax: number; instancesMax: number; pieceCountMax: number; reachMax: number; riseMax: number; platformHeightMax: number; platformTiersMax: number; platformTriangles: number; columnRadiusMax: number; columnSectionsMax: number }
 export function sanitizeMotion(raw: unknown): CustomRideMotion
+export function sanitizePlatform(raw: unknown): CustomRidePlatform
+export const CUSTOM_PLATFORM_SHAPES: CustomPlatformShape[]
+export const CUSTOM_PLATFORM_STEPS: CustomPlatformSteps[]
+export const CUSTOM_PLATFORM_COLUMNS: CustomPlatformColumn[]
 export function customRideDef(raw: unknown): FlatRideDef | null
 export function registerCustomRides(list: unknown): string[]
 export function isCustomRide(id: unknown): boolean
@@ -64,7 +78,7 @@ export function buildableRide(def: FlatRideDef | undefined): boolean
 export type FlatResize = { min: [number, number]; max: [number, number]; costBase: number; costPerTile: number; upkeepBase: number; upkeepPerTile: number; capacityPerTile: number; excitementPerTile: number; maxSizeBonus: number }
 export type WaveSetting = { name: string; e: number; i: number; n: number; height: number; speed: number }
 export type FlatSpec = { size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; height: number; stats: { e: number; i: number; n: number } }
-export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; corkscrews?: boolean; hairpin?: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
+export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; corkscrews?: boolean; hairpin?: boolean; wide?: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
 export type StallDef = { name: string; size?: [number, number]; cost: number; upkeep: number; price: number; item: string; kind: string; color: string; sign: string; hunger?: number; thirst?: number; happiness?: number }
 export type ScenarioDef = { name: string; difficulty: string; size: number; seed: number; terrain: string; cash: number; loan: number; maxLoan: number; objective: Objective; description: string; versus?: boolean }
 
@@ -208,9 +222,11 @@ export function queueStep(map: ParkMap, cur: [number, number], forward: boolean,
 export function queueLayout(map: ParkMap, x: number, y: number, openings?: number[], links?: { prev: number; next: number } | null): QueueLayout
 export const KARTS_PER_STATION_TILE: number
 export const KART_LIMIT: number
-export function kartCount(stationLength: number): number
-export function kartRestS(path: TrackPath, index: number): number
-export function kartLane(index: number): number
+export function kartLanes(style: string): number
+export function kartLimit(style: string): number
+export function kartCount(stationLength: number, style?: string): number
+export function kartRestS(path: TrackPath, index: number, lanes?: number): number
+export function kartLane(index: number, lanes?: number): number
 export const ROLES: ColorRole[]
 export const ROLE_NAMES: Record<ColorRole, string>
 export const SCHEME_COUNT: number

@@ -20,6 +20,9 @@ import { STARTER_TRUCK } from '../../maplestreet/shared/Economy';
 import { HELIPADS, PLANE_STAND, RUNWAY } from '../shared/Airport';
 import { TRAINER_PLANE, UTILITY_HELI } from '../shared/Aircraft';
 import { FlightHud } from './game/FlightHud';
+import { TrafficManager } from './flight/TrafficManager';
+import { windAt } from '../shared/FlightMath';
+import * as pc from 'playcanvas';
 
 const params = new URLSearchParams(location.search);
 const DAY_MINUTES = 48;
@@ -43,6 +46,8 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
   let toastTimer = 0;
   game.onToast = text => { toast.textContent = text; clearTimeout(toastTimer); toastTimer = window.setTimeout(() => { toast.textContent = ''; }, 4000); };
   const flightHud = new FlightHud();
+  const traffic = new TrafficManager(r.device, kit, r.app.root, physics, text => game.onToast(text));
+  const sockQ = new pc.Quat(), droopQ = new pc.Quat();
 
   const pinned = params.has('hour') && Number.isFinite(Number(params.get('hour')));
   sky.setHours(pinned ? Number(params.get('hour')) : 10);
@@ -65,6 +70,13 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
   let fps = 60, clock = 0;
   r.app.on('update', (dt: number) => {
     if (!pinned) sky.setHours((sky.hours + (dt * 24) / (DAY_MINUTES * 60)) % 24);
+    const now = Date.now() / 1000, here = game.here;
+    traffic.update(now, dt, TrafficManager.onRunway(here.x, here.z));
+    const wind = windAt(now), speed = Math.hypot(wind[0], wind[2]);
+    sockQ.setFromAxisAngle(pc.Vec3.UP, (Math.atan2(-wind[2], wind[0]) * 180) / Math.PI);
+    droopQ.setFromAxisAngle(pc.Vec3.BACK, -(1 - Math.min(1, speed / 7.7)) * 70 + Math.sin(now * 3.1) * 2);
+    chunks.buildings.sock.setRotation(sockQ.mul(droopQ));
+    chunks.buildings.beacon.rotateLocal(0, dt * 72, 0);
     sky.update(dt, r.camera.getPosition());
     kit.setNight(sky.night);
     r.setNight(sky.night);
@@ -84,7 +96,7 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
     setHour: h => sky.setHours(h), hours: () => sky.hours, places,
     stats: () => {
       const draws = (r.app.stats as unknown as { drawCalls?: { total?: number } }).drawCalls?.total ?? 0;
-      return `${Math.round(fps)} fps · ${draws} draws · ${chunks.busy} streaming jobs · scale ${r.renderScale.toFixed(2)}`;
+      return `${Math.round(fps)} fps · ${draws} draws · ${chunks.busy} streaming jobs · scale ${r.renderScale.toFixed(2)} · traffic: ${traffic.status().map(s => `${s.id} ${s.phase}`).join(", ")}`;
     },
   });
   if (params.get('panel') === '1') panel.toggle(true);
@@ -92,7 +104,7 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
     if (ev.origin === location.origin && ev.source === window.parent && (ev.data as { type?: string })?.type === 'tl-dev-panel') panel.toggle();
   });
   (window as unknown as { county: object }).county = {
-    game, chunks, net, setHour: (h: number) => sky.setHours(h), teleport: (x: number, z: number) => game.teleport(x, z),
+    game, chunks, net, traffic, setHour: (h: number) => sky.setHours(h), teleport: (x: number, z: number) => game.teleport(x, z),
     info: () => ({ fps: Math.round(fps), busy: chunks.busy, at: game.here, driving: game.driving?.kind ?? null, flying: game.flying?.readout((x, z) => game.ground(x, z)) ?? null }),
   };
 }

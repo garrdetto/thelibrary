@@ -2,7 +2,7 @@ import { DEFAULT_SCHEMES, SCHEME_COUNT, parkSchemes, sanitizeRideColors } from '
 import { SCENARIOS, FLAT_RIDES, COASTER_STYLES, STALLS, SCENERY, PARK_COLORS, WAVE_SETTINGS } from './catalog.mjs'
 import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
-import { rebuildTrackCells, buildTrackPath, KART_LIMIT } from './track.mjs'
+import { rebuildTrackCells, buildTrackPath, kartLimit } from './track.mjs'
 import { flatRideSize, rideFlatSpec } from './flatspec.mjs'
 import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_HISTORY_NIGHTS, hotelSpec, hotelLoadFits, hotelRateLimits, sanitizeAmenityPrices } from './hotels.mjs'
 
@@ -448,13 +448,13 @@ function sanitizeEntity(raw, state) {
       return { ...common, kind: 'flat', ride: raw.ride, rot: Math.round(num(raw.rot, 0, 0, 3)), ...sized, ...waved }
     }
     if (raw.kind === 'coaster' && COASTER_STYLES[raw.style]) {
-      const pieces = Array.isArray(raw.pieces) ? raw.pieces.slice(0, 220).map(p => ({ c: Math.round(num(p?.c, 0, -2, 2)), s: Math.round(num(p?.s, 0, -2, 2)), ...(['station', 'chain', 'brakes', 'booster', 'loop', 'corkscrew'].includes(p?.sp) ? { sp: p.sp } : {}) })) : []
+      const pieces = Array.isArray(raw.pieces) ? raw.pieces.slice(0, 220).map(p => ({ c: Math.round(num(p?.c, 0, -3, 3)), s: Math.round(num(p?.s, 0, -2, 2)), ...([1, 2].includes(p?.g) ? { g: p.g } : {}), ...(['station', 'chain', 'brakes', 'booster', 'loop', 'corkscrew'].includes(p?.sp) ? { sp: p.sp } : {}) })) : []
       const start = { x: Math.round(num(raw.start?.x, x, 0, state.map.w - 1)), y: Math.round(num(raw.start?.y, y, 0, state.map.h - 1)), dir: Math.round(num(raw.start?.dir, 0, 0, 3)), h: Math.round(num(raw.start?.h, 0, 0, 200)) }
       const isKart = COASTER_STYLES[raw.style].trackType === 'kart'
-      const maxTrains = isKart ? KART_LIMIT : COASTER_STYLES[raw.style].trackType ? 1 : 2
+      const maxTrains = isKart ? kartLimit(raw.style) : COASTER_STYLES[raw.style].trackType ? 1 : 2
       const trains = Array.isArray(raw.trains) ? raw.trains.slice(0, maxTrains).map(t => ({ s: num(t?.s), v: num(t?.v, 0, -60, 60), phase: ['loading', 'departing', 'running', 'arriving', 'unloading', 'waiting', 'holding'].includes(t?.phase) ? t.phase : 'loading', timer: num(t?.timer), riders: Array.isArray(t?.riders) ? t.riders.slice(0, isKart ? 2 : 64).map(v => Math.round(num(v))) : [], lap: Math.round(num(t?.lap)), stalled: 0, pace: num(t?.pace, 1, 0.8, 1.2), waitS: num(t?.waitS) })) : []
       if (!isKart && !COASTER_STYLES[raw.style].trackType && raw.complete && trains.length === 1) trains.push({ s: 0, v: 0, phase: 'waiting', timer: 0, riders: [], lap: 0, stalled: 0, waitS: 0 })
-      return { ...common, kind: 'coaster', style: raw.style, start, pieces, complete: Boolean(raw.complete), trains, cars: Math.round(num(raw.cars, 3, 1, isKart ? KART_LIMIT : 10)), carsSet: Boolean(raw.carsSet), spent: num(raw.spent, 0, 0), rev: Math.round(num(raw.rev, 0, 0)) }
+      return { ...common, kind: 'coaster', style: raw.style, start, pieces, complete: Boolean(raw.complete), trains, cars: Math.round(num(raw.cars, 3, 1, isKart ? kartLimit(raw.style) : 10)), carsSet: Boolean(raw.carsSet), spent: num(raw.spent, 0, 0), rev: Math.round(num(raw.rev, 0, 0)) }
     }
   }
   return null
@@ -480,7 +480,7 @@ function sanitizeGuest(g, state) {
     cash: num(g.cash, 40, 0, 1000), spent: num(g.spent, 0, 0), minI: num(g.minI, 2, 0, 10), type: ['kid', 'thrill', 'casual'].includes(g.type) ? g.type : g.kid ? 'kid' : 'casual', maxI: num(g.maxI, 7, 0, 13), tolerance: num(g.tolerance, 5, 0, 12), warm: num(g.warm, 0, 0, 2.5), shirt: Math.round(num(g.shirt, 0, 0, 15)),
     items: Array.isArray(g.items) ? g.items.filter(item => typeof item === 'string').slice(0, 6) : [], eating: num(g.eating, 0, 0, 60), rides: Math.round(num(g.rides, 0, 0)), ridden: Array.isArray(g.ridden) ? g.ridden.slice(-8).map(v => Math.round(num(v))) : [],
     thoughts: Array.isArray(g.thoughts) ? g.thoughts.slice(-5).filter(t => typeof t === 'string').map(t => t.slice(0, 80)) : [], inPark: num(g.inPark, 0, 0), stay: num(g.stay, 400, 60, 2000), patience: num(g.patience, 90, 20, 400),
-    queueTime: 0, ride: Math.round(num(g.ride, 0, 0)), stuck: 0, lastDecide: 0, kid: Boolean(g.kid),
+    queueTime: 0, qs: Number.isFinite(g.qs) ? num(g.qs, 0, 0) : undefined, ride: Math.round(num(g.ride, 0, 0)), stuck: 0, lastDecide: 0, kid: Boolean(g.kid),
     exitRide: Math.round(num(g.exitRide, 0, 0)), exitStep: Math.round(num(g.exitStep, 0, 0, 400)),
     ...(g.paid ? { paid: true } : {}), ...(Number.isInteger(g.hotel) && g.hotel > 0 ? { hotel: g.hotel } : {}),
   }

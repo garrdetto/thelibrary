@@ -17,7 +17,7 @@ import type { HotelLayout } from './hotelModels'
 import { addPathTile, addQueueMarkings } from './pathModels'
 import { ghostCorners } from './pathBuilder'
 import type { GhostPiece } from './pathBuilder'
-import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, kartLane, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine, exitLine, queueLayout, rideColors } from '../../../server/park/index.mjs'
+import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, kartLane, kartLanes, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine, exitLine, queueLayout, rideColors } from '../../../server/park/index.mjs'
 import type { ParkState, Entity, TrackPath, Piece, QueueLayout } from '../../../server/park/index.mjs'
 
 const TILE = 4
@@ -38,7 +38,7 @@ export type Preview = {
   ghost?: { type: 'flat' | 'stall' | 'scenery' | 'gate' | 'hotel'; floors?: number; kind: string; x: number; y: number; rot: number; ok: boolean; role?: 'entrance' | 'exit'; size?: [number, number]; wave?: string }
   piece?: { ride: Entity; piece: Piece; ok: boolean }
   pathGhost?: { pieces: GhostPiece[]; ok: boolean }
-  station?: { x: number; y: number; dir: number; length: number; ok: boolean }
+  station?: { x: number; y: number; dir: number; length: number; ok: boolean; wide?: boolean }
   selected?: number
 }
 
@@ -52,6 +52,10 @@ function hash(n: number) { let h = n | 0; h = Math.imul(h ^ (h >>> 16), 0x45d9f3
 const lerp3 = (a: Vec3, b: Vec3, t: number): Vec3 => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]
 
 const canvasOwners = new WeakMap<HTMLCanvasElement, ParkRenderer>()
+
+function kartHalfWidth(style: string) {
+  return COASTER_STYLES[style]?.wide ? 2.7 : 1.35
+}
 
 export class ParkRenderer {
   canvas: HTMLCanvasElement
@@ -660,22 +664,30 @@ export class ParkRenderer {
       return null
     }
     if (trackType !== 'coaster') {
-      const step = trackType === 'kart' ? 1 : 2, left: Vec3[] = [], right: Vec3[] = []
-      const width = trackType === 'kart' ? 1.35 : trackType === 'river' ? 1.15 : 0.72
-      for (let i = 0; i < path.count; i += step) {
-        const { p, r } = at(i)
+      const step = trackType === 'kart' ? 1 : 2, left: Vec3[] = [], right: Vec3[] = [], ups: Vec3[] = []
+      const width = trackType === 'kart' ? kartHalfWidth(e.style!) : trackType === 'river' ? 1.15 : 0.72
+      const push = (i: number) => {
+        const { p, r, u } = at(i)
         left.push([p[0] + r[0] * width, p[1] + r[1] * width, p[2] + r[2] * width])
         right.push([p[0] - r[0] * width, p[1] - r[1] * width, p[2] - r[2] * width])
+        ups.push(u)
       }
-      if ((path.count - 1) % step) {
-        const { p, r } = at(path.count - 1)
-        left.push([p[0] + r[0] * width, p[1] + r[1] * width, p[2] + r[2] * width])
-        right.push([p[0] - r[0] * width, p[1] - r[1] * width, p[2] - r[2] * width])
-      }
+      for (let i = 0; i < path.count; i += step) push(i)
+      if ((path.count - 1) % step) push(path.count - 1)
       const road = trackType === 'kart' ? hexColor(e.trackColor ?? e.color ?? '#454a50') : trackType === 'river' ? hexColor(e.trackColor ?? '#48aeca') : hexColor(e.trackColor ?? '#39a9d0')
+      const deck = 0.22, below = (p: Vec3, u: Vec3): Vec3 => [p[0] - u[0] * deck, p[1] - u[1] * deck, p[2] - u[2] * deck]
       for (let i = 0; i < left.length - 1; i++) {
         if (trackType === 'kart' || trackType === 'river') {
-          b.quad(null, left[i], left[i + 1], right[i + 1], right[i], road)
+          const u0 = ups[i], u1 = ups[i + 1], d0: Vec3 = [-u0[0], -u0[1], -u0[2]], d1: Vec3 = [-u1[0], -u1[1], -u1[2]]
+          b.smoothTri(null, null, left[i], left[i + 1], right[i + 1], u0, u1, u1, road, road, road)
+          b.smoothTri(null, null, left[i], right[i + 1], right[i], u0, u1, u0, road, road, road)
+          if (trackType === 'kart') {
+            const bl0 = below(left[i], u0), bl1 = below(left[i + 1], u1), br0 = below(right[i], u0), br1 = below(right[i + 1], u1)
+            b.smoothTri(null, null, bl0, br1, bl1, d0, d1, d1, supportColor, supportColor, supportColor)
+            b.smoothTri(null, null, bl0, br0, br1, d0, d0, d1, supportColor, supportColor, supportColor)
+            b.quad(null, left[i + 1], left[i], bl0, bl1, supportColor)
+            b.quad(null, right[i], right[i + 1], br1, br0, supportColor)
+          }
         } else {
           const wl = [left[i][0], left[i][1], left[i][2] - 0.1] as Vec3
           const wln = [left[i + 1][0], left[i + 1][1], left[i + 1][2] - 0.1] as Vec3
@@ -826,7 +838,7 @@ export class ParkRenderer {
     const lightEvery = Math.max(1, Math.round((trackType === 'coaster' ? 2.4 : 3) / path.ds))
     for (let i = 0; i < path.count; i += lightEvery) {
       const { p, u, r } = at(i)
-      const off = trackType === 'coaster' ? 0.72 : trackType === 'kart' ? 1.55 : trackType === 'river' ? 1.4 : 0.95
+      const off = trackType === 'coaster' ? 0.72 : trackType === 'kart' ? kartHalfWidth(e.style!) + 0.2 : trackType === 'river' ? 1.4 : 0.95
       const lift = inverted ? 0.15 : 0.12
       const phase = (i / path.count * 12) % 1
       for (const side of [1, -1]) bulb(b, null, p[0] + r[0] * off * side + u[0] * lift, p[1] + r[1] * off * side + u[1] * lift, p[2] + r[2] * off * side + u[2] * lift, 0.09, LIGHTS, side > 0 ? phase : (phase + 0.5) % 1, 0)
@@ -842,16 +854,17 @@ export class ParkRenderer {
     e.pieces!.forEach((piece, index) => {
       if (piece.sp !== 'station') return
       const pose = poses[index], [dx, dy] = DIRS[pose.dir], [sx, sy] = DIRS[(pose.dir + 1) % 4]
-      const cx = (pose.x + dx * 0.5) * TILE, cy = (pose.y + dy * 0.5) * TILE, z = pose.h * 0.5
+      const wide = style.wide ? TILE / 2 : 0
+      const cx = (pose.x + dx * 0.5) * TILE + sx * wide, cy = (pose.y + dy * 0.5) * TILE + sy * wide, z = pose.h * 0.5
       const yaw = Math.atan2(dy, dx)
       const m = mat4.chain(mat4.translation(cx, cy, 0), mat4.rotZ(yaw))
       const ground = groundHeightAt(s.map, cx, cy, TILE)
       for (const side of [-1, 1]) {
-        b.box(m, 0, side * 1.45, ground, TILE, 1.1, z - ground - 0.1, C.stone)
-        b.box(m, 0, side * 1.95, z - 0.1, TILE, 0.12, 1.1, C.white)
-        b.box(m, -1.6, side * 1.95, z - 0.1, 0.2, 0.2, 3.8, C.white)
+        b.box(m, 0, side * (1.45 + wide), ground, TILE, 1.1, z - ground - 0.1, C.stone)
+        b.box(m, 0, side * (1.95 + wide), z - 0.1, TILE, 0.12, 1.1, C.white)
+        b.box(m, -1.6, side * (1.95 + wide), z - 0.1, 0.2, 0.2, 3.8, C.white)
       }
-      b.box(m, 0, 0, z + 3.6, TILE + 0.2, 4.6, 0.25, hexColor(s.parks[e.park]?.color ?? '#d8432f'))
+      b.box(m, 0, 0, z + 3.6, TILE + 0.2, 4.6 + wide * 2, 0.25, hexColor(s.parks[e.park]?.color ?? '#d8432f'))
       for (const side of [-1, 1]) bulbRun(b, m, [-TILE / 2, side * 2.3, z + 3.72], [TILE / 2, side * 2.3, z + 3.72], 7, 0.09, LIGHTS, 1, side > 0 ? 0 : 0.5, 0)
       void sx; void sy
     })
@@ -877,7 +890,7 @@ export class ParkRenderer {
     const daylight = Math.max(0, Math.min(1, elev * 1.6))
     const dusk = Math.max(0, 1 - Math.abs(elev - 0.12) * 6) * (f > 0.2 && f < 0.92 ? 1 : 0)
     const az = dayT * Math.PI + 0.4
-    const sunDir: Vec3 = [Math.cos(az) * 0.7, Math.sin(az) * 0.5, Math.max(0.12, elev * 0.8)]
+    const sunDir: Vec3 = [Math.cos(az) * 0.42, Math.sin(az) * 0.3, Math.max(0.5, elev * 1.3)]
     const l = Math.hypot(...sunDir); sunDir[0] /= l; sunDir[1] /= l; sunDir[2] /= l
     const dim = rain ? 0.42 : cloudy ? 0.68 : 1
     const overcast = rain ? 1 : cloudy ? 0.55 : 0
@@ -886,7 +899,7 @@ export class ParkRenderer {
     const horizon = lerp3(lerp3(lerp3([0.1, 0.13, 0.24], [0.33, 0.52, 0.95], daylight), [1.05, 0.62, 0.4], dusk * 0.75), [0.55, 0.58, 0.62], overcast * daylight * 0.7)
     const skyTop = lerp3(lerp3([0.012, 0.022, 0.07], [0.13, 0.29, 0.72], daylight), [0.36, 0.4, 0.46], overcast * daylight)
     const ground = lerp3([0.04, 0.05, 0.07], [0.27, 0.25, 0.19], daylight)
-    const shadow = Math.max(0, Math.min(1, (elev - 0.06) * 4)) * (rain ? 0.3 : cloudy ? 0.55 : 0.92)
+    const shadow = Math.max(0, Math.min(1, (elev - 0.12) * 3)) * (rain ? 0.15 : cloudy ? 0.28 : 0.45)
     const sunScatter = sunColor.map((v, i) => v * 0.32 + horizon[i] * 0.4) as Vec3
     const exposure = 0.34 + (1 - daylight) * 0.85 + overcast * 0.12
     const dome = (c: Vec3) => c.map(v => v * 1.9) as Vec3
@@ -1184,7 +1197,7 @@ export class ParkRenderer {
         const t: Vec3 = [p.tx, p.ty, p.tz], u: Vec3 = [p.ux, p.uy, p.uz]
         const r: Vec3 = [u[1] * t[2] - u[2] * t[1], u[2] * t[0] - u[0] * t[2], u[0] * t[1] - u[1] * t[0]]
         const riders = kart.ridersCount ?? kart.riders.length
-        const lane = kartLane(index)
+        const lane = kartLane(index, kartLanes(e.style!))
         this.g.draw(this.carMesh(e.style!, true, riders), mat4.basis([p.x + r[0] * lane, p.y + r[1] * lane, p.z + r[2] * lane], t, r, u), { tint, highlight })
       }
       return
@@ -1368,13 +1381,14 @@ export class ParkRenderer {
         for (let y = Math.min(p.rect.y0, p.rect.y1); y <= Math.max(p.rect.y0, p.rect.y1); y++) for (let x = Math.min(p.rect.x0, p.rect.x1); x <= Math.max(p.rect.x0, p.rect.x1); x++) tile(x, y, col, p.rect.elevation)
       }
       if (p.station) {
-        const [dx, dy] = DIRS[p.station.dir]
-        for (let k = 0; k < p.station.length; k++) tile(p.station.x + dx * k, p.station.y + dy * k, p.station.ok ? [0.4, 1, 0.5] : [1, 0.3, 0.25])
+        const [dx, dy] = DIRS[p.station.dir], [sx, sy] = DIRS[(p.station.dir + 1) % 4]
+        for (let k = 0; k < p.station.length; k++) for (let w = 0; w < (p.station.wide ? 2 : 1); w++) tile(p.station.x + dx * k + sx * w, p.station.y + dy * k + sy * w, p.station.ok ? [0.4, 1, 0.5] : [1, 0.3, 0.25])
       }
       if (p.piece) {
         const poses = trackPoses(p.piece.ride)
-        const pts = samplePiece(poses[poses.length - 1], p.piece.piece, 24)
-        b.tube(pts.map(q => [q.x, q.y, q.z] as Vec3), 0.45, p.piece.ok ? [0.3, 1, 0.45] : [1, 0.3, 0.25], 6)
+        const wide = COASTER_STYLES[p.piece.ride.style!]?.wide ? TILE / 2 : 0
+        const pts = samplePiece(poses[poses.length - 1], p.piece.piece, 24).map(q => ({ ...q, x: q.x - Math.sin(q.psi) * wide, y: q.y + Math.cos(q.psi) * wide }))
+        b.tube(pts.map(q => [q.x, q.y, q.z] as Vec3), wide ? 1.2 : 0.45, p.piece.ok ? [0.3, 1, 0.45] : [1, 0.3, 0.25], 6)
         const last = pts[pts.length - 1]
         b.sphere(null, last.x, last.y, last.z, 0.7, p.piece.ok ? [0.3, 1, 0.45] : [1, 0.3, 0.25])
       }

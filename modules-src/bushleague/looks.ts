@@ -85,7 +85,7 @@ export const TIER_BUDGETS: Readonly<Record<QualityTier, TierBudget>> = {
   low: { post: null, cascades: 0, grassBlades: 0, crowd: 4000, bankLights: 2, bankShadows: false, pixelRatio: 1, adaptive: true },
   medium: { post: { bloom: BLOOM, vignette: 0.25 }, cascades: 0, grassBlades: 12000, crowd: 12000, bankLights: 4, bankShadows: false, pixelRatio: 1.25, adaptive: true },
   high: {
-    post: { ao: { radius: 0.6, thickness: 1.5, intensity: 0.75, resolutionScale: 0.5, samples: 12 }, taa: true, bloom: BLOOM, flare: { threshold: 0.85, ghostSamples: 4, ghostSpacing: 0.3, ghostAttenuation: 25, strength: 0.35 }, vignette: 0.3 },
+    post: { ao: { radius: 0.6, thickness: 1.5, intensity: 0.75, resolutionScale: 0.5, samples: 12 }, taa: true, bloom: BLOOM, flare: { threshold: 0.85, ghostSamples: 4, ghostSpacing: 0.3, ghostAttenuation: 25, strength: 0.35 }, vignette: 0.3, dof: { focalLength: 6, bokehScale: 2.5 } },
     cascades: 4,
     grassBlades: 60000,
     crowd: 24000,
@@ -95,7 +95,7 @@ export const TIER_BUDGETS: Readonly<Record<QualityTier, TierBudget>> = {
     adaptive: true,
   },
   ultra: {
-    post: { ao: { radius: 0.7, thickness: 1.5, intensity: 0.85, resolutionScale: 1, samples: 16 }, taa: true, bloom: BLOOM, flare: { threshold: 0.8, ghostSamples: 5, ghostSpacing: 0.28, ghostAttenuation: 22, strength: 0.4 }, vignette: 0.3, grain: 0.08 },
+    post: { ao: { radius: 0.7, thickness: 1.5, intensity: 0.85, resolutionScale: 1, samples: 16 }, taa: true, bloom: BLOOM, flare: { threshold: 0.8, ghostSamples: 5, ghostSpacing: 0.28, ghostAttenuation: 22, strength: 0.4 }, vignette: 0.3, grain: 0.08, dof: { focalLength: 6, bokehScale: 3 } },
     cascades: 4,
     grassBlades: 120000,
     crowd: 45000,

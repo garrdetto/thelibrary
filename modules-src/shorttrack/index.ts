@@ -1,2 +1,7 @@
 import '../_shared/peer-global';
-import './main.js';
+
+if (new URLSearchParams(location.search).get('engine') === 'next') {
+  void import('./next/boot').then((next) => next.start());
+} else {
+  void import('./main.js');
+}

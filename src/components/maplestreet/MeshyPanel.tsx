@@ -17,7 +17,7 @@ type Props = {
 }
 
 const POLL_MS = 5000
-const KIND_LABEL: Record<MeshyJob['kind'], string> = { preview: 'Preview', refine: 'Textured', image: 'From image', remesh: 'Remesh', retexture: 'Retexture' }
+const KIND_LABEL: Record<MeshyJob['kind'], string> = { preview: 'Preview', refine: 'Textured', image: 'From image', remesh: 'Remesh', retexture: 'Retexture', rig: 'Rigged', animate: 'Animation' }
 const MODEL_LABEL: Record<MeshyAiModel, string> = { latest: 'Latest (best quality)', 'meshy-6': 'Meshy 6', 'meshy-6-lite': 'Meshy 6 Lite (cheapest)' }
 const credits = (value: number) => `${value} credit${value === 1 ? '' : 's'}`
 
