@@ -4,6 +4,7 @@ import type { BufferGeometry, Material, Mesh, Texture } from 'three'
 import { CUSTOM_RIDE_LIMITS } from '../../../../server/park/index.mjs'
 import type { CustomRideMotion } from '../../../../server/park/index.mjs'
 import type { RideMesh } from '@/lib/park/rideMesh'
+import { splitPieces } from '@/lib/park/ridePieces'
 
 /** Park tiles are 4 m squares. */
 export const TILE_METRES = 4
@@ -164,7 +165,7 @@ export function fitModel(model: ReducedModel, settings: FitSettings): RideMesh {
   const cx = (model.bounds.min[0] + model.bounds.max[0]) / 2, cy = (model.bounds.min[1] + model.bounds.max[1]) / 2, z0 = model.bounds.min[2]
   const turn = settings.yaw * Math.PI / 2, cos = Math.round(Math.cos(turn)), sin = Math.round(Math.sin(turn))
   const corners = model.triangles * 3
-  const positions = new Float32Array(corners * 3), normals = new Float32Array(corners * 3), parts = new Uint8Array(corners)
+  const positions = new Float32Array(corners * 3), normals = new Float32Array(corners * 3)
   let height = 0
   for (let c = 0; c < corners; c++) {
     const x = (model.positions[c * 3] - cx) * k, y = (model.positions[c * 3 + 1] - cy) * k, z = (model.positions[c * 3 + 2] - z0) * k
@@ -173,11 +174,6 @@ export function fitModel(model: ReducedModel, settings: FitSettings): RideMesh {
     normals[c * 3] = nx * cos - ny * sin; normals[c * 3 + 1] = nx * sin + ny * cos; normals[c * 3 + 2] = model.normals[c * 3 + 2]
     height = Math.max(height, z)
   }
-  const moving = settings.motion.type !== 'none'
-  for (let t = 0; t < model.triangles; t++) {
-    const centroid = (positions[t * 9 + 2] + positions[t * 9 + 5] + positions[t * 9 + 8]) / 3
-    const part = moving && centroid >= settings.motion.split ? 1 : 0
-    parts[t * 3] = part; parts[t * 3 + 1] = part; parts[t * 3 + 2] = part
-  }
-  return { triangles: model.triangles, positions, normals, colors: model.colors, parts, height }
+  const { parts, instances } = splitPieces(positions, model.triangles, settings.motion)
+  return { triangles: model.triangles, positions, normals, colors: model.colors, parts, height, instances }
 }

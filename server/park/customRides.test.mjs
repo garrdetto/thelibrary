@@ -74,3 +74,33 @@ test('updating a ride keeps the same definition object', () => {
   assert.equal(def.name, 'Second Name')
   assert.equal(def.custom.meshVersion, 3)
 })
+
+test('extra moving pieces are validated, clamped and only ride on earlier pieces', () => {
+  const motion = sanitizeMotion({
+    type: 'spin', pivot: [0, 0, 2], split: 1,
+    pieces: [
+      { type: 'flip', from: 4, to: 2, inner: 9, outer: 3, count: 99, on: 3, hang: 'sideways', axis: 'diagonal', stagger: 4, alternate: 'yes' },
+      { type: 'swing', on: 0, speed: 50, amount: -1 },
+      { type: 'teleport', on: 5 },
+    ],
+  })
+  assert.equal(motion.pieces.length, 3)
+  const [flip, swing, unknown] = motion.pieces
+  assert.equal(flip.on, -1)
+  assert.equal(flip.to, flip.from)
+  assert.equal(flip.outer, flip.inner)
+  assert.equal(flip.count, CUSTOM_RIDE_LIMITS.pieceCountMax)
+  assert.equal(flip.hang, 'top')
+  assert.equal(flip.axis, 'radial')
+  assert.equal(flip.stagger, 1)
+  assert.equal(flip.alternate, false)
+  assert.equal(swing.on, 0)
+  assert.equal(swing.speed, CUSTOM_RIDE_LIMITS.speedMax)
+  assert.equal(swing.amount, 0)
+  assert.equal(unknown.type, 'spin')
+  assert.equal(unknown.on, 1)
+  assert.equal(sanitizeMotion({ pieces: Array.from({ length: 20 }, () => ({})) }).pieces.length, CUSTOM_RIDE_LIMITS.piecesMax)
+  assert.deepEqual(sanitizeMotion({ type: 'spin' }).pieces, [])
+  const def = customRideDef(ride({ motion: { ...ride().motion, pieces: [{ type: 'swing' }] } }))
+  assert.equal(def.custom.motion.pieces[0].type, 'swing')
+})

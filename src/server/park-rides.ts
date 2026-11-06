@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { CUSTOM_RIDE_CATEGORIES, CUSTOM_RIDE_LIMITS as L, CUSTOM_RIDE_MOTIONS } from '../../server/park/index.mjs'
+import { CUSTOM_PIECE_AXES, CUSTOM_PIECE_HANGS, CUSTOM_PIECE_MOTIONS, CUSTOM_PIECE_SPLITS, CUSTOM_RIDE_CATEGORIES, CUSTOM_RIDE_LIMITS as L, CUSTOM_RIDE_MOTIONS } from '../../server/park/index.mjs'
 import type { Env } from './env'
 import { parseStored } from './http'
 import { PARK_RIDE_STATUSES } from '../lib/park-rides'
@@ -12,6 +12,22 @@ export const rideIdSchema = z.string().regex(/^cr_[a-f0-9]{10}$/)
 export const rideStatusSchema = z.enum(PARK_RIDE_STATUSES)
 
 const stat = z.number().min(0).max(L.statMax)
+const pieceSchema = z.object({
+  type: z.enum(CUSTOM_PIECE_MOTIONS as ['spin', 'swing', 'wobble', 'flip', 'bob', 'level']),
+  speed: z.number().min(L.speedMin).max(L.speedMax),
+  amount: z.number().min(0).max(1),
+  from: z.number().min(0).max(L.heightMax),
+  to: z.number().min(0).max(L.heightMax),
+  inner: z.number().min(0).max(L.reachMax),
+  outer: z.number().min(0).max(L.reachMax),
+  split: z.enum(CUSTOM_PIECE_SPLITS as ['pieces', 'sectors']),
+  count: z.number().int().min(1).max(L.pieceCountMax),
+  hang: z.enum(CUSTOM_PIECE_HANGS as ['top', 'centre', 'bottom']),
+  axis: z.enum(CUSTOM_PIECE_AXES as ['radial', 'tangent', 'x', 'y']),
+  stagger: z.number().min(0).max(1),
+  alternate: z.boolean(),
+  on: z.number().int().min(-2).max(L.piecesMax - 1),
+}).strict()
 export const rideSpecSchema = z.object({
   name: z.string().trim().min(L.nameMin).max(L.nameMax).regex(/^[\p{L}\p{N} .,'&!?()+#/-]+$/u, 'Use letters, numbers and simple punctuation in the name.'),
   description: z.string().trim().max(L.descriptionMax).default(''),
@@ -32,7 +48,8 @@ export const rideSpecSchema = z.object({
     axis: z.enum(['x', 'y']),
     split: z.number().min(0).max(L.heightMax),
     pivot: z.tuple([z.number().min(-30).max(30), z.number().min(-30).max(30), z.number().min(0).max(L.heightMax)]),
-  }).strict(),
+    pieces: z.array(pieceSchema).max(L.piecesMax).default([]),
+  }).strict().refine(motion => motion.pieces.every((piece, index) => piece.on < index && piece.to >= piece.from && piece.outer >= piece.inner), 'Each moving piece can only ride on a piece listed before it.'),
   bake: z.object({ scale: z.number().min(0.001).max(1000), yaw: z.number().int().min(0).max(3), triangles: z.number().int().min(L.trianglesMin).max(L.trianglesMax) }).strict(),
 }).strict()
 

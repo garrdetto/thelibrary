@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, ReactNode } from 'react'
-import { Archive, Eye, EyeOff, LoaderCircle, Pause, Pencil, Play, Plus, RotateCw, Send, Trash2, Upload, Wand2 } from 'lucide-react'
+import { Archive, Eye, EyeOff, LoaderCircle, Pause, Pencil, Play, Plus, RotateCcw, RotateCw, Send, SkipForward, Trash2, Upload, Wand2 } from 'lucide-react'
 import { CUSTOM_RIDE_LIMITS as L, CUSTOM_RIDE_MOTIONS, sanitizeMotion } from '../../../../server/park/index.mjs'
 import type { CustomRideMotion } from '../../../../server/park/index.mjs'
 import { MeshyPanel } from '../../maplestreet/MeshyPanel'
 import type { MeshySourceOption } from '../../maplestreet/MeshyPanel'
 import type { MeshyJob } from '@/lib/meshy'
-import { decodeRideMesh, encodeRideMesh, partCounts } from '@/lib/park/rideMesh'
+import { decodeRideMesh, encodedSize, encodeRideMesh, partCounts } from '@/lib/park/rideMesh'
 import type { RideMesh } from '@/lib/park/rideMesh'
 import { MOTION_INFO, dropTravel } from '@/lib/park/rideMotion'
 import { deleteParkRide, fetchParkRideRecords, fetchParkRideSource, parkRideMeshUrl, parkRideThumbUrl, saveParkRide, setParkRideStatus } from '@/lib/park-rides'
@@ -14,6 +14,9 @@ import type { ParkRideCategory, ParkRideRecord, ParkRideSpec } from '@/lib/park-
 import { fitModel, fitScale, loadSource, rawExtent, reduceSource, TILE_METRES } from './bake'
 import type { ReducedModel, SourceModel } from './bake'
 import { RideStage, captureThumb } from './RideStage'
+import type { StageClock } from './RideStage'
+import { PiecesPanel } from './PiecesPanel'
+import { splitPieces } from '@/lib/park/ridePieces'
 import { suggestStats } from './suggest'
 import type { RideSuggestion } from './suggest'
 
@@ -22,6 +25,7 @@ type Notice = { tone: 'ok' | 'error'; text: string } | null
 
 const CATEGORIES: { id: ParkRideCategory; label: string }[] = [{ id: 'gentle', label: 'Gentle' }, { id: 'thrill', label: 'Thrill' }, { id: 'water', label: 'Water' }, { id: 'other', label: 'Other' }]
 const DEFAULT_MOTION: CustomRideMotion = sanitizeMotion({ type: 'spin', speed: 1, amount: 0.6, split: 0.6 })
+const RATES = [0.25, 0.5, 1, 2]
 const DEFAULT_DETAILS: Details = { name: '', description: '', category: 'gentle', cost: 2400, upkeep: 45, capacity: 16, rideTime: 28, loadTime: 8, price: 1.4, stats: { e: 2.2, i: 1.4, n: 1 } }
 const money = (value: number) => `$${value.toLocaleString('en-US')}`
 const STATUS_LABEL = { draft: 'Draft', published: 'Live in Thrill Park', retired: 'Retired' } as const
@@ -68,7 +72,12 @@ export default function RideCreator() {
   const [motion, setMotion] = useState<CustomRideMotion>(DEFAULT_MOTION)
   const [details, setDetails] = useState<Details>(DEFAULT_DETAILS)
   const [suggestion, setSuggestion] = useState<RideSuggestion | null>(null)
-  const [playing, setPlaying] = useState(true)
+  const [paused, setPaused] = useState(false)
+  const [rate, setRate] = useState(1)
+  const [restart, setRestart] = useState(0)
+  const [step, setStep] = useState(0)
+  const [stageClock, setStageClock] = useState<StageClock | null>(null)
+  const [focus, setFocus] = useState<number | null>(null)
   const [guides, setGuides] = useState(true)
   const [working, setWorking] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
@@ -84,12 +93,8 @@ export default function RideCreator() {
   const mesh = useMemo<RideMesh | null>(() => {
     if (reduced) return fitModel(reduced, { size, scale, yaw, motion })
     if (!fixedMesh) return null
-    const parts = new Uint8Array(fixedMesh.triangles * 3)
-    for (let t = 0; t < fixedMesh.triangles; t++) {
-      const centroid = (fixedMesh.positions[t * 9 + 2] + fixedMesh.positions[t * 9 + 5] + fixedMesh.positions[t * 9 + 8]) / 3
-      parts.fill(motion.type !== 'none' && centroid >= motion.split ? 1 : 0, t * 3, t * 3 + 3)
-    }
-    return { ...fixedMesh, parts }
+    const { parts, instances } = splitPieces(fixedMesh.positions, fixedMesh.triangles, motion)
+    return { ...fixedMesh, parts, instances }
   }, [reduced, fixedMesh, size, scale, yaw, motion])
 
   const height = mesh ? Math.round(mesh.height * 10) / 10 : 0
@@ -98,6 +103,7 @@ export default function RideCreator() {
   const k = reduced ? fitScale(reduced, { size, scale, yaw }) : 1
   const overhang = !!extent && (extent.x * k > size[0] * TILE_METRES + 0.05 || extent.y * k > size[1] * TILE_METRES + 0.05)
   const tooTall = height > L.heightMax
+  const reach = Math.hypot(size[0], size[1]) * TILE_METRES / 2
 
   const updateMotion = (patch: Partial<CustomRideMotion>) => setMotion(current => sanitizeMotion({ ...current, ...patch }))
   const updateDetails = (patch: Partial<Details>) => setDetails(current => ({ ...current, ...patch }))
@@ -139,14 +145,14 @@ export default function RideCreator() {
 
   function reset() {
     setEditing(null); setFile(null); setSource(null); setReduced(null); setFixedMesh(null); setSourceChanged(false); setSourceJob(null)
-    setSize([3, 3]); setScale(1); setYaw(0); setTriangles(8000); setMotion(DEFAULT_MOTION); setDetails(DEFAULT_DETAILS); setSuggestion(null); setNotice(null)
+    setSize([3, 3]); setScale(1); setYaw(0); setTriangles(8000); setMotion(DEFAULT_MOTION); setDetails(DEFAULT_DETAILS); setSuggestion(null); setNotice(null); setFocus(null)
   }
 
   async function edit(record: ParkRideRecord) {
     reset()
     setEditing(record)
     const spec = record.spec
-    setSize(spec.size); setScale(spec.bake.scale); setYaw(spec.bake.yaw); setTriangles(spec.bake.triangles); setMotion(spec.motion)
+    setSize(spec.size); setScale(spec.bake.scale); setYaw(spec.bake.yaw); setTriangles(spec.bake.triangles); setMotion(sanitizeMotion(spec.motion))
     setDetails({ name: spec.name, description: spec.description, category: spec.category, cost: spec.cost, upkeep: spec.upkeep, capacity: spec.capacity, rideTime: spec.rideTime, loadTime: spec.loadTime, price: spec.price, stats: spec.stats })
     setSourceJob(record.sourceJob)
     document.querySelector('.rc-editor')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
@@ -177,7 +183,7 @@ export default function RideCreator() {
   function centerPivot() {
     if (!mesh) return
     let sx = 0, sy = 0, n = 0, top = 0
-    for (let c = 0; c < mesh.triangles * 3; c++) if (mesh.parts[c]) { sx += mesh.positions[c * 3]; sy += mesh.positions[c * 3 + 1]; top = Math.max(top, mesh.positions[c * 3 + 2]); n++ }
+    for (let c = 0; c < mesh.triangles * 3; c++) if (mesh.parts[c] === 1) { sx += mesh.positions[c * 3]; sy += mesh.positions[c * 3 + 1]; top = Math.max(top, mesh.positions[c * 3 + 2]); n++ }
     const x = n ? sx / n : 0, y = n ? sy / n : 0
     const z = motion.type === 'swing' ? top : motion.type === 'wheel' ? motion.split + (top - motion.split) / 2 : motion.split
     updateMotion({ pivot: [Math.round(x * 100) / 100, Math.round(y * 100) / 100, Math.round(z * 100) / 100] })
@@ -250,15 +256,19 @@ export default function RideCreator() {
       <div className="ms-items-editor">
         <div className="rc-left">
           <div className="ms-items-stage rc-stage">
-            {mesh ? <RideStage mesh={mesh} motion={motion} size={size} rideTime={details.rideTime} loadTime={Math.min(details.loadTime, 4)} playing={playing} guides={guides} onCanvas={c => { canvas.current = c }}/>
+            {mesh ? <RideStage mesh={mesh} motion={motion} size={size} rideTime={details.rideTime} loadTime={Math.min(details.loadTime, 4)} paused={paused} rate={rate} restart={restart} step={step} guides={guides} focus={focus} onCanvas={c => { canvas.current = c }} onClock={setStageClock}/>
               : <button type="button" className="ms-items-drop" onClick={() => fileInput.current?.click()} disabled={busy} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const dropped = event.dataTransfer.files?.[0]; if (dropped) void openFile(dropped) }}>
                 <Upload size={22} aria-hidden/> Drop a .glb here, upload one, or pick “Open in editor” on a finished Meshy job above
               </button>}
             {working === 'load' && <p className="ms-items-loading" role="status"><LoaderCircle className="spin" size={14}/> Opening the model…</p>}
             {working === 'bake' && <p className="ms-items-loading" role="status"><LoaderCircle className="spin" size={14}/> Baking colours and simplifying…</p>}
             {mesh && <div className="rc-stage-tools">
-              <button type="button" onClick={() => setPlaying(p => !p)} aria-pressed={playing}>{playing ? <Pause size={14} aria-hidden/> : <Play size={14} aria-hidden/>} {playing ? 'Pause' : 'Run cycle'}</button>
+              <button type="button" onClick={() => setPaused(p => !p)} aria-pressed={paused}>{paused ? <Play size={14} aria-hidden/> : <Pause size={14} aria-hidden/>} {paused ? 'Resume' : 'Pause'}</button>
+              <button type="button" onClick={() => { setPaused(true); setStep(s => s + 1) }} title="Advance one frame (1/30 s)"><SkipForward size={14} aria-hidden/> Step</button>
+              <button type="button" onClick={() => setRestart(r => r + 1)}><RotateCcw size={14} aria-hidden/> Restart</button>
+              <label className="rc-rate">Speed<select value={rate} onChange={event => setRate(Number(event.target.value))}>{RATES.map(r => <option key={r} value={r}>{r}×</option>)}</select></label>
               <button type="button" onClick={() => setGuides(g => !g)} aria-pressed={guides}>{guides ? <EyeOff size={14} aria-hidden/> : <Eye size={14} aria-hidden/>} Guides</button>
+              {stageClock && <span className="rc-clock" role="status" aria-live="off">{paused ? 'Paused · ' : ''}{stageClock.phase === 'running' ? `Riding ${stageClock.timer.toFixed(1)} of ${details.rideTime} s` : `Loading ${stageClock.timer.toFixed(1)} s`}</span>}
             </div>}
           </div>
 
@@ -266,8 +276,9 @@ export default function RideCreator() {
             <div><dt>Footprint</dt><dd>{size[0]} × {size[1]} squares ({size[0] * TILE_METRES} × {size[1] * TILE_METRES} m)</dd></div>
             <div><dt>Height</dt><dd>{height.toFixed(1)} m{tooTall ? ' · too tall' : ''}</dd></div>
             <div><dt>Triangles</dt><dd>{mesh.triangles.toLocaleString()}{source ? ` of ${source.triangles.toLocaleString()}` : ''}</dd></div>
-            {counts && motion.type !== 'none' && <div><dt>Moving part</dt><dd>{counts.moving.toLocaleString()} triangles{counts.moving === 0 ? ' · lower the split height' : ''}</dd></div>}
-            <div><dt>Baked size</dt><dd>{Math.round((16 + mesh.triangles * 42) / 1024).toLocaleString()} KB</dd></div>
+            {counts && motion.type !== 'none' && <div><dt>Moving part</dt><dd>{counts.moving.toLocaleString()} triangles{counts.moving === 0 && !counts.pieces ? ' · lower the split height' : ''}</dd></div>}
+            {counts && motion.pieces.length > 0 && <div><dt>Extra pieces</dt><dd>{mesh.instances.length} moving · {counts.pieces.toLocaleString()} triangles</dd></div>}
+            <div><dt>Baked size</dt><dd>{Math.round(encodedSize(mesh) / 1024).toLocaleString()} KB</dd></div>
           </dl>}
           {overhang && <p className="ms-items-error" role="alert">The model hangs over the footprint. Guests and paths next to it will clip into it; lower the scale or enlarge the footprint.</p>}
         </div>
@@ -315,6 +326,8 @@ export default function RideCreator() {
               </>}
             </>}
           </fieldset>
+
+          <PiecesPanel motion={motion} mesh={mesh} height={height} reach={reach} focus={focus} onFocus={setFocus} onChange={next => setMotion(next)}/>
 
           <fieldset disabled={busy}>
             <legend>Ride details</legend>

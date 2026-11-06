@@ -4,6 +4,10 @@ export const CUSTOM_RIDE_PREFIX = 'cr_'
 export const CUSTOM_RIDE_ID = /^cr_[a-f0-9]{10}$/
 export const CUSTOM_RIDE_CATEGORIES = ['gentle', 'thrill', 'water', 'other']
 export const CUSTOM_RIDE_MOTIONS = ['none', 'spin', 'swing', 'wheel', 'drop', 'bob']
+export const CUSTOM_PIECE_MOTIONS = ['spin', 'swing', 'wobble', 'flip', 'bob', 'level']
+export const CUSTOM_PIECE_SPLITS = ['pieces', 'sectors']
+export const CUSTOM_PIECE_HANGS = ['top', 'centre', 'bottom']
+export const CUSTOM_PIECE_AXES = ['radial', 'tangent', 'x', 'y']
 export const CUSTOM_RIDE_LIMITS = {
   nameMin: 2, nameMax: 40, descriptionMax: 160,
   sizeMin: 1, sizeMax: 12,
@@ -15,11 +19,34 @@ export const CUSTOM_RIDE_LIMITS = {
   speedMin: 0.1, speedMax: 3,
   meshBytes: 2_500_000, thumbBytes: 300_000, sourceBytes: 15 * 1024 * 1024,
   trianglesMin: 500, trianglesMax: 24000,
+  piecesMax: 6, instancesMax: 64, pieceCountMax: 32, reachMax: 60,
 }
 
 const L = CUSTOM_RIDE_LIMITS
 const clamp = (value, lo, hi, fallback) => { const n = Number(value); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback }
 const round = (value, places = 2) => { const k = 10 ** places; return Math.round(value * k) / k }
+const pick = (value, list, fallback) => list.includes(value) ? value : fallback
+
+function sanitizePiece(raw, index) {
+  const from = round(clamp(raw?.from, 0, L.heightMax, 0)), inner = round(clamp(raw?.inner, 0, L.reachMax, 0))
+  return {
+    type: pick(raw?.type, CUSTOM_PIECE_MOTIONS, 'spin'),
+    speed: round(clamp(raw?.speed, L.speedMin, L.speedMax, 1)),
+    amount: round(clamp(raw?.amount, 0, 1, 0.6)),
+    from,
+    to: round(clamp(raw?.to, from, L.heightMax, Math.max(from, 3))),
+    inner,
+    outer: round(clamp(raw?.outer, inner, L.reachMax, L.reachMax)),
+    split: pick(raw?.split, CUSTOM_PIECE_SPLITS, 'pieces'),
+    count: Math.round(clamp(raw?.count, 1, L.pieceCountMax, 8)),
+    hang: pick(raw?.hang, CUSTOM_PIECE_HANGS, 'top'),
+    axis: pick(raw?.axis, CUSTOM_PIECE_AXES, 'radial'),
+    stagger: round(clamp(raw?.stagger, 0, 1, 0.5)),
+    alternate: raw?.alternate === true,
+    on: Math.round(clamp(raw?.on, -2, index - 1, -1)),
+  }
+}
+
 const text = (value, max) => typeof value === 'string' ? value.replace(/\s+/g, ' ').trim().slice(0, max) : ''
 
 /** Validates a motion block. Pure and deterministic so the browser and the online server agree. */
@@ -33,6 +60,7 @@ export function sanitizeMotion(raw) {
     axis: raw?.axis === 'y' ? 'y' : 'x',
     split: round(clamp(raw?.split, 0, L.heightMax, 0)),
     pivot: [round(clamp(pivot[0], -30, 30, 0)), round(clamp(pivot[1], -30, 30, 0)), round(clamp(pivot[2], 0, L.heightMax, 0))],
+    pieces: (Array.isArray(raw?.pieces) ? raw.pieces : []).slice(0, L.piecesMax).map(sanitizePiece),
   }
 }
 

@@ -9,6 +9,8 @@ import { deleteRideRow, getRide, insertRide, listRides, newRideId, RIDE_MESH_KEY
 import type { ParkRideSpec, ParkRideStatus } from '../../lib/park-rides'
 
 const MESH_MAGIC = 0x31525054
+const MESH_MAGIC_PIECES = 0x32525054
+const INSTANCE_BYTES = 24
 const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Thrill Park rides.')
 const isAdmin = async (request: Request, env: Env) => (await currentUser(request, env))?.isAdmin === true
 
@@ -26,8 +28,13 @@ async function serveFile(env: Env, key: string, type: string, cache: string) {
 function checkMesh(bytes: Uint8Array) {
   if (bytes.byteLength < 16 || bytes.byteLength > L.meshBytes) throw new HttpError(413, 'The baked ride is too large. Lower the triangle count and try again.')
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
-  const triangles = view.getUint32(4, true)
-  if (view.getUint32(0, true) !== MESH_MAGIC || triangles < 1 || triangles > L.trianglesMax * 1.05 || 16 + triangles * 42 !== bytes.byteLength) throw new HttpError(400, 'That baked ride could not be read. Bake it again.')
+  const triangles = view.getUint32(4, true), magic = view.getUint32(0, true), body = 16 + triangles * 42
+  const unreadable = () => new HttpError(400, 'That baked ride could not be read. Bake it again.')
+  if ((magic !== MESH_MAGIC && magic !== MESH_MAGIC_PIECES) || triangles < 1 || triangles > L.trianglesMax * 1.05) throw unreadable()
+  if (magic === MESH_MAGIC) { if (body !== bytes.byteLength) throw unreadable(); return }
+  if (body + 4 > bytes.byteLength) throw unreadable()
+  const instances = view.getUint16(body, true)
+  if (instances > L.instancesMax || body + 4 + instances * INSTANCE_BYTES !== bytes.byteLength) throw unreadable()
 }
 
 function checkThumb(bytes: Uint8Array) {

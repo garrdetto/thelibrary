@@ -48,14 +48,20 @@ export type CommandResult = { ok: boolean; error?: string; warning?: string | nu
 export type TrackPath = { pos: Float32Array; tan: Float32Array; up: Float32Array; curv: Float32Array; piece: Int16Array; count: number; ds: number; length: number; closed: boolean; stationEnd: number; specials: (string | null)[]; hairpins?: boolean[] }
 export type FlatRideDef = { name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; resize?: FlatResize; waves?: string; custom?: CustomRideInfo }
 export type CustomRideMotionType = 'none' | 'spin' | 'swing' | 'wheel' | 'drop' | 'bob'
-export type CustomRideMotion = { type: CustomRideMotionType; speed: number; amount: number; axis: 'x' | 'y'; split: number; pivot: [number, number, number] }
+export type CustomPieceMotionType = 'spin' | 'swing' | 'wobble' | 'flip' | 'bob' | 'level'
+export type CustomRidePiece = { type: CustomPieceMotionType; speed: number; amount: number; from: number; to: number; inner: number; outer: number; split: 'pieces' | 'sectors'; count: number; hang: 'top' | 'centre' | 'bottom'; axis: 'radial' | 'tangent' | 'x' | 'y'; stagger: number; alternate: boolean; on: number }
+export type CustomRideMotion = { type: CustomRideMotionType; speed: number; amount: number; axis: 'x' | 'y'; split: number; pivot: [number, number, number]; pieces: CustomRidePiece[] }
 export type CustomRideInfo = { id: string; motion: CustomRideMotion; meshVersion: number; thumb: boolean; retired: boolean }
 export type CustomRideRecordInput = { id: string; name: string; category: string; size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; price: number; stats: { e: number; i: number; n: number }; height: number; description: string; motion: CustomRideMotion; meshVersion: number; thumb: boolean; active: boolean }
 export const CUSTOM_RIDE_PREFIX: string
 export const CUSTOM_RIDE_ID: RegExp
 export const CUSTOM_RIDE_CATEGORIES: string[]
 export const CUSTOM_RIDE_MOTIONS: CustomRideMotionType[]
-export const CUSTOM_RIDE_LIMITS: { nameMin: number; nameMax: number; descriptionMax: number; sizeMin: number; sizeMax: number; heightMin: number; heightMax: number; costMin: number; costMax: number; upkeepMax: number; capacityMin: number; capacityMax: number; rideTimeMin: number; rideTimeMax: number; loadTimeMin: number; loadTimeMax: number; priceMax: number; statMax: number; speedMin: number; speedMax: number; meshBytes: number; thumbBytes: number; sourceBytes: number; trianglesMin: number; trianglesMax: number }
+export const CUSTOM_PIECE_MOTIONS: CustomPieceMotionType[]
+export const CUSTOM_PIECE_SPLITS: CustomRidePiece['split'][]
+export const CUSTOM_PIECE_HANGS: CustomRidePiece['hang'][]
+export const CUSTOM_PIECE_AXES: CustomRidePiece['axis'][]
+export const CUSTOM_RIDE_LIMITS: { nameMin: number; nameMax: number; descriptionMax: number; sizeMin: number; sizeMax: number; heightMin: number; heightMax: number; costMin: number; costMax: number; upkeepMax: number; capacityMin: number; capacityMax: number; rideTimeMin: number; rideTimeMax: number; loadTimeMin: number; loadTimeMax: number; priceMax: number; statMax: number; speedMin: number; speedMax: number; meshBytes: number; thumbBytes: number; sourceBytes: number; trianglesMin: number; trianglesMax: number; piecesMax: number; instancesMax: number; pieceCountMax: number; reachMax: number }
 export function sanitizeMotion(raw: unknown): CustomRideMotion
 export function customRideDef(raw: unknown): FlatRideDef | null
 export function registerCustomRides(list: unknown): string[]

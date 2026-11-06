@@ -3,7 +3,9 @@ import type { Vec3 } from './gl'
 import type { RideModel } from './models'
 import { decodeRideMesh } from './rideMesh'
 import type { RideMesh } from './rideMesh'
-import { motionMatrix } from './rideMotion'
+import { rideMatrices } from './ridePieces'
+import type { Mat4 } from './gl'
+import type { MotionClock } from './rideMotion'
 import { registerCustomRides } from '../../../server/park/index.mjs'
 import type { FlatRideDef } from '../../../server/park/index.mjs'
 import { fetchParkRideCatalog, parkRideMeshUrl, parkRideThumbUrl } from '../park-rides'
@@ -70,15 +72,22 @@ function placeholder(def: FlatRideDef): RideModel {
 export function customRideModel(def: FlatRideDef): RideModel {
   const mesh = meshFor(def)
   if (!mesh || mesh === 'error') return placeholder(def)
-  const base = new MeshBuilder(), moving = new MeshBuilder()
+  const builders = Array.from({ length: 2 + mesh.instances.length }, () => new MeshBuilder())
   const P = mesh.positions, N = mesh.normals, C = mesh.colors
   const v = (i: number, a: Float32Array): Vec3 => [a[i * 3], a[i * 3 + 1], a[i * 3 + 2]]
   for (let t = 0; t < mesh.triangles; t++) {
     const a = t * 3, b = a + 1, c = a + 2
-    const target = mesh.parts[a] ? moving : base
+    const target = builders[mesh.parts[a]] ?? builders[1]
     target.smoothTri(null, null, v(a, P), v(b, P), v(c, P), v(a, N), v(b, N), v(c, N), v(a, C), v(b, C), v(c, C))
   }
   const motion = def.custom!.motion
-  const parts = moving.count ? [{ builder: moving, anim: (clock: { spin: number; timer: number; running: boolean; speed: number }) => motionMatrix(motion, clock, def.rideTime, mesh.height) }] : []
-  return { base, parts }
+  let lastKey = '', last: Mat4[] = []
+  const matrices = (clock: MotionClock) => {
+    const key = `${clock.spin}|${clock.timer}|${clock.running}|${clock.speed}`
+    if (key !== lastKey) { lastKey = key; last = rideMatrices(motion, mesh.instances, clock, def.rideTime, mesh.height) }
+    return last
+  }
+  const parts = builders.slice(1).map((builder, i) => ({ builder, part: i + 1 })).filter(p => p.builder.count)
+    .map(({ builder, part }) => ({ builder, anim: (clock: MotionClock) => matrices(clock)[part] }))
+  return { base: builders[0], parts }
 }
