@@ -15,6 +15,7 @@ import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js';
 import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers } from './custom-cars.js';
 import { carIdOf, numberSpot } from './shared/CustomCars';
 import { TRACKS, trackIdFrom, applyTrackConfig, createTrackGeometry } from './sim/track';
+import { createCarPhysics, impactZone, impactDamage } from './sim/car';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -1627,60 +1628,15 @@ class Car{
 }
 
 // ===================== PHYSICS =====================
-function concreteContact(c){
-  const sh=Math.sin(c.h),ch=Math.cos(c.h),tm=c.m&&c.m.tm,k=tm?(c.m.car?0.98:0.98*TRUCK_SCALE):CFG.carScale,half=(tm?0.83:0.84)*k;
-  for(const lg of [(tm?TM.DIM.FA:1.48)*k,(tm?TM.DIM.RA:-1.42)*k])for(const b of [1,-1]){
-    if(toTrack(c.x+sh*lg-ch*half*b,c.z+ch*lg+sh*half*b).lat<-HW)return true;}
-  return false;
-}
-function stepCar(c,dt,ctl,cap){
-  const tgt=clamp(ctl.steer,-1,1);
-  const growing=Math.abs(tgt)>Math.abs(c.steer)&&(Math.sign(tgt)===Math.sign(c.steer)||c.steer===0);
-  c.steerV=(c.steerV||0)+((tgt-c.steer)*(growing?CFG.steerRampIn:CFG.steerRampOut)-(c.steerV||0))*Math.min(1,dt*CFG.steerDamp);
-  c.steer=clamp(c.steer+c.steerV*dt,-1,1);
-  c.thr=ctl.thr?1:0;c.brk=ctl.brk?1:0;
-  let sh=Math.sin(c.h),ch=Math.cos(c.h),vf=c.vx*sh+c.vz*ch;
-  const d=c.dmg,tp=c.tp,apron=tp.lat<-HW;
-  const gripF=Math.max(0.8,1-0.0012*(d.l+d.rt)-0.0006*(d.f+d.r))*(c.gripB||1);
-  const aOn=aMaxAt(tp.s,Math.max(tp.lat,-HW+0.01),CFG.grip*gripF);
-  const aMax=apron?lerp(aOn,aMaxAt(tp.s,tp.lat,CFG.apronGrip*gripF),CFG.offTrack):aOn;
-  const onConcrete=concreteContact(c),cs=onConcrete?CFG.concreteSpeed:1;
-  c.ck=(c.ck||0)+((onConcrete?1:0)-(c.ck||0))*Math.min(1,dt/0.15);
-  const bst=c.boost||1,powF=Math.max(0.55,1-0.0035*d.f-0.0012*(d.l+d.rt+d.r))*bst*cs*(c.powB||1),dragF=(1+0.005*d.f)/(bst*bst)/(cs*cs*cs);
-  let ax=0;
-  if(c.thr){if(vf>-0.5)ax+=Math.min(CFG.maxAccel,CFG.power*powF/Math.max(vf,1));else ax+=CFG.brake;}
-  if(c.brk){if(vf>0.5)ax-=CFG.brake;else if(!c.thr)ax-=4;}
-  if(cap&&vf>cap)ax=Math.min(ax,0)-3;
-  // resistance: rolling + aero drag + steering scrub (more wheel = more speed lost)
-  let res=CFG.roll+CFG.drag*dragF*vf*vf+CFG.scrub*Math.abs(c.steer)*vf*vf;
-  if(!c.thr)res+=CFG.engineBrake*Math.min(1,Math.abs(vf)/5);
-  const steerMax=CFG.steerLow/(1+Math.abs(vf)*CFG.steerSpeed);
-  const pull=clamp((d.l-d.rt)*0.0012,-0.15,0.15)*Math.min(1,Math.abs(vf)/10);
-  let yaw=vf*Math.tan(clamp(c.steer+pull,-1,1)*steerMax)/CFG.wheelbase*lerp(1,CFG.concreteTurn,c.ck);
-  const lon=Math.abs(ax)*0.85,latAvail=Math.sqrt(Math.max(aMax*aMax*0.2,aMax*aMax-lon*lon));
-  const ratio=Math.abs(vf*yaw)/latAvail;
-  if(DIRT){
-    if(ratio>1)yaw*=Math.min(1,1.25/ratio);
-    if(c.thr&&vf>9&&Math.abs(c.steer)>0.15)c.av+=Math.sign(c.steer)*(c.ai||c.auto?0.55:1.0)*Math.min(1,Math.abs(c.steer))*Math.min(1,(vf-9)/12)*dt*1.5;
-    c.h+=(yaw+c.av)*dt;c.av*=Math.exp(-dt*3.2);
-  }else{
-    if(ratio>1){yaw*=1/ratio;if(c.thr&&ratio>1.8&&vf>12)c.av+=Math.sign(yaw)*CFG.spinRate*(ratio-1.8)*dt*6;}
-    c.h+=(yaw+c.av)*dt;c.av*=Math.exp(-dt*(ratio>1.3?3:6));
-  }
-  sh=Math.sin(c.h);ch=Math.cos(c.h);vf=c.vx*sh+c.vz*ch;let vl=-c.vx*ch+c.vz*sh;
-  vl+=clamp(DIRT?-vl*6.5:-vl/dt,-latAvail,latAvail)*dt;     // pavement: tires hold the heading; dirt: the truck slides and gathers itself up
-  c.slip=Math.abs(vl)+Math.max(0,ratio-(DIRT?1:1.15))*10+(c.brk&&vf>20?2:0);
-  res+=CFG.slideScrub*Math.abs(vl);
-  let nv=vf+ax*dt;const sg=Math.sign(nv);if(sg!==0){const after=nv-sg*res*dt;nv=Math.sign(after)!==sg?0:after;}
-  if(nv<-CFG.reverseMax)nv=-CFG.reverseMax;
-  if(c.cf===undefined)c.cf=1;
-  if(onConcrete){const nf=Math.max(CFG.concreteSpeed,c.cf-dt*(1-CFG.concreteSpeed)/0.35);if(nv>0)nv*=nf/c.cf;c.cf=nf;}
-  else c.cf=Math.min(1,c.cf+dt*(1-CFG.concreteSpeed)/1.5);
-  c.vx=sh*nv-ch*vl;c.vz=ch*nv+sh*vl;c.vf=nv;
-  c.x+=c.vx*dt;c.z+=c.vz*dt;c.tp=toTrack(c.x,c.z);
-  walls(c);
-  if(!c.isPace){const nsp=mod(c.tp.s-S_LINE,P);aiPace(c,c.sp,nsp);if(c.sp>P-60&&nsp<60)lineCross(c);else if(c.sp<60&&nsp>P-60)c.cross--;c.sp=nsp;}
-}
+const PHYS=createCarPhysics(CFG,TG,DIRT,{
+  random:()=>Math.random(),
+  axles(c){const tm=c.m&&c.m.tm,k=tm?(c.m.car?0.98:0.98*TRUCK_SCALE):CFG.carScale;return {front:(tm?TM.DIM.FA:1.48)*k,rear:(tm?TM.DIM.RA:-1.42)*k,half:(tm?0.83:0.84)*k};},
+  aiPace:(c,a,b)=>aiPace(c,a,b),
+  lineCross:c=>lineCross(c),
+  impact:(c,px,pz,ix,iz,v,kind)=>impact(c,px,pz,ix,iz,v,kind),
+  sparks:(x,y,z,n,vx,vz)=>spawnSparks(x,y,z,n,vx,vz),
+});
+const {stepCar,walls,collidePair,concreteContact}=PHYS;
 function lineCross(c){
   c.cross++;const now=performance.now()/1000;
   if(c.cross===2)c.lapStart=now;
@@ -1689,54 +1645,8 @@ function lineCross(c){
     if(!c.fin&&(c.cross-2>=race.laps||race.ph==='checkered'||race.ph==='done'))c.fin=true;}
   c.lapDirty=c.fin;
 }
-const CORNERS=[[1,1],[1,-1],[-1,1],[-1,-1]];
-function walls(c){
-  const sh=Math.sin(c.h),ch=Math.cos(c.h);let worst=null;
-  for(const [a,b] of CORNERS){
-    const px=c.x+sh*2.35*CFG.carScale*a-ch*0.95*CFG.carScale*b,pz=c.z+ch*2.35*CFG.carScale*a+sh*0.95*CFG.carScale*b,t=toTrack(px,pz);
-    let pen=t.lat-(HW+0.1),out=1;const pin=(-HW-AP+0.1)-t.lat;if(pin>pen){pen=pin;out=-1;}
-    if(pen>0&&(!worst||pen>worst.pen))worst={pen,out,px,pz,s:t.s};
-  }
-  if(!worst)return;
-  const cn=center(worst.s),nx=cn.nx*worst.out,nz=cn.nz*worst.out;
-  c.x-=nx*worst.pen;c.z-=nz*worst.pen;
-  const vn=c.vx*nx+c.vz*nz;
-  if(vn>0){
-    const jx=-(1+CFG.wallRest)*vn*nx,jz=-(1+CFG.wallRest)*vn*nz;c.vx+=jx;c.vz+=jz;
-    const fr=1-Math.min(0.3,vn*0.02);c.vx*=fr;c.vz*=fr;
-    c.av+=0.14*((worst.pz-c.z)*jx-(worst.px-c.x)*jz);
-    if(vn>1.2)impact(c,worst.px,worst.pz,-nx,-nz,vn,'wall');
-  }else if(c.speed>12&&Math.random()<0.25)spawnSparks(worst.px,heightAt(worst.s,HW)+0.4,worst.pz,2,c.vx,c.vz);
-}
-function collidePair(a,b){
-  if(!a.local&&!b.local)return;
-  const dx0=a.x-b.x,dz0=a.z-b.z,CS=CFG.carScale,RS=2*CS;if(dx0*dx0+dz0*dz0>42*CS*CS)return;
-  const sa=Math.sin(a.h),ca=Math.cos(a.h),sb=Math.sin(b.h),cb=Math.cos(b.h);let best=null;
-  for(const ka of [-1.35*CS,0,1.35*CS])for(const kb of [-1.35*CS,0,1.35*CS]){
-    const ax=a.x+sa*ka,az=a.z+ca*ka,bx=b.x+sb*kb,bz=b.z+cb*kb,dx=ax-bx,dz=az-bz,d2=dx*dx+dz*dz;
-    if(d2<RS*RS&&d2>1e-6){const d=Math.sqrt(d2),o=RS-d;if(!best||o>best.o)best={o,nx:dx/d,nz:dz/d,px:(ax+bx)/2,pz:(az+bz)/2};}
-  }
-  if(!best)return;
-  const am=a.local?1:0,bm=b.local?1:0,w=am+bm;
-  a.x+=best.nx*best.o*am/w;a.z+=best.nz*best.o*am/w;b.x-=best.nx*best.o*bm/w;b.z-=best.nz*best.o*bm/w;
-  const rub=1-CFG.contactSlow/120;if(am){a.vx*=rub;a.vz*=rub;}if(bm){b.vx*=rub;b.vz*=rub;}
-  const vn=(a.vx-b.vx)*best.nx+(a.vz-b.vz)*best.nz;
-  if(vn<0){
-    const kb=CFG.carBounce,j=-(1+CFG.carRest*kb)*vn/w,jx=j*best.nx,jz=j*best.nz,yk=0.12*kb;   // rebound and yaw kick scaled by carBounce
-    if(am){a.vx+=jx;a.vz+=jz;a.av+=yk*((best.pz-a.z)*jx-(best.px-a.x)*jz);}
-    if(bm){b.vx-=jx;b.vz-=jz;b.av+=yk*(-(best.pz-b.z)*jx+(best.px-b.x)*jz);}
-    const hit=-vn,loss=1-Math.min(0.08,hit*0.012);
-    {const ds=sgnDs(a.tp.s,b.tp.s),front=ds>0?a:b;if(front.ai&&Math.abs(a.tp.lat-b.tp.lat)<AI_TOUCH*0.85&&hit<3.5)front.looseT=0.7;} // tapped from behind: the AI gets loose and lifts
-    if(am){a.vx*=loss;a.vz*=loss;}if(bm){b.vx*=loss;b.vz*=loss;}
-    if(hit>2.2){impact(a,best.px,best.pz,best.nx,best.nz,hit,'car');impact(b,best.px,best.pz,-best.nx,-best.nz,hit,'car');}
-    else if(a.speed>10&&Math.random()<0.3)spawnSparks(best.px,heightAt(a.tp.s,a.tp.lat)+0.5,best.pz,2,a.vx,a.vz);
-  }
-}
 function impact(c,px,pz,ix,iz,v,kind){
-  const sh=Math.sin(c.h),ch=Math.cos(c.h),dx=px-c.x,dz=pz-c.z;
-  const lx=(dx*ch-dz*sh)/CFG.carScale,lz=(dx*sh+dz*ch)/CFG.carScale,dlx=ix*ch-iz*sh,dlz=ix*sh+iz*ch;
-  const zone=Math.abs(lz)>1.6?(lz>0?'f':'r'):(lx>0?'l':'rt');
-  const amt=Math.max(0,v-(kind==='car'?2:1.3))*(kind==='car'?2.6:3.3)*CFG.damageScale;
+  const {lx,lz,dlx,dlz,zone}=impactZone(c,CFG.carScale,px,pz,ix,iz),amt=impactDamage(v,kind,CFG.damageScale);
   if(c.local&&amt>0.3)damageCar(c,[lx,0.55,lz],[dlx,0,dlz],amt,zone);
   if(kind==='car'&&!c.local)return;
   const y=heightAt(c.tp.s,c.tp.lat)+0.45;spawnSparks(px,y,pz,Math.min(50,Math.floor(v*4)),c.vx,c.vz);
@@ -2545,7 +2455,7 @@ function simulate(dt){
     stepCar(c,dt,ctl,capFor(c));}
   for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++)collidePair(arr[i],arr[j]);
 }
-const CLASSIC_STATUS={track:TRACK_ID,frames:0};window.__stClassic=CLASSIC_STATUS;
+const CLASSIC_STATUS={track:TRACK_ID,frames:0,get phase(){return race.ph;},get cars(){return cars.size;},get moved(){let m=0;cars.forEach(c=>{m+=Math.hypot(c.x,c.z)>0&&c.speed>0.5?1:0;});return m;}};window.__stClassic=CLASSIC_STATUS;
 function frame(now){
   requestAnimationFrame(frame);CLASSIC_STATUS.frames++;const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
   const simOn=mode==='race'||mode==='results'||(mode==='paused'&&NET.online);
