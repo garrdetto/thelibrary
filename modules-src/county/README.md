@@ -4,7 +4,19 @@ Source for `public/modules/county.html`, module id `county` (working title). A n
 
 It is not in the library yet (`src/lib/modules.ts`); open `/modules/county.html` directly.
 
-## Phase 1: the world slice (this folder today)
+## Phase 2: flying (this folder today)
+
+Two flyable aircraft wait at the airport east of town, reached by Airport Road at the end of Main Street: the five-seat utility helicopter on a helipad and the Skylark, an original two-seat high-wing trainer, on the apron. Walk up and press E to climb aboard.
+
+- **Flight models (`shared/`, renderer-free and tested):** `HeliFlight.ts` (rotor thrust from collective and rotor speed, inflow, ground effect, translational lift, vortex ring state, disc tilt with flapping lag and blowback, torque against the tail rotor, fin and stabiliser, autorotation) and `PlaneFlight.ts` (lift that rounds off and stalls with a wing drop, flaps, induced drag and ground effect, sideslip, roll, pitch and yaw moments from rates and surfaces, a propeller whose thrust falls with speed, P-factor and torque). `FlightAssist.ts` sits between the keys and the controls; `Aircraft.ts` holds the two specs; `Landing.ts` grades touchdowns.
+- **Easy assist (default):** helicopter: W/S set a speed and it hovers when released near zero, A/D turn, Q/E slide, Space/Shift climb and descend, height and heading held hands-off, a cushioned touchdown. Plane: W/S nose down/up and it holds that attitude, A/D bank and level the wings when released, rudder coordinated, automatic trim, stall protection, and it tracks the runway heading on the ground. **Pro** (M): direct cyclic, pedals, elevator, ailerons and rudder.
+- **Other keys:** Space/Shift throttle (plane), F flaps, B brakes, V cockpit view, R reset, E get out once landed and stopped.
+- **In the page:** `src/flight/Flyer.ts` puts each model on a Rapier body (helicopter skids; the trainer's tricycle gear on a Rapier vehicle controller), checks rotor strikes and grades landings. `src/game/FlightHud.ts` shows airspeed, altitude, climb, heading, power, rotor or engine speed, flaps, fuel, warnings and an attitude indicator.
+- **Airport (`shared/Airport.ts`, `src/world/AirportMesh.ts`):** runway 09/27 (1,360 × 30 m) with threshold bars, numbers, aiming points, centre and edge lines and lights; a parallel taxiway with connectors, centre lines, hold-short bars and blue edge lights; the apron with a parking stand and three lit helipads. The terminal, tower and hangars come in Phase 3.
+- **Developer panel:** "Fly the helicopter here" and "Fly the trainer here", plus teleports to the apron and runway 09.
+- **Tests (`tests/flight.test.ts`):** hover hold, ground effect and translational lift, assist recovery, forward flight, soft touchdown and landing grades, autorotation, determinism; trainer stall speeds with and without flaps, hands-off cruise, take-off distance and climb, glide ratio, stall recovery and weathervaning.
+
+## Phase 1: the world slice
 
 The page opens straight into the county. You start on the lawn of your house on Juniper Street with the Maple Hauler in the driveway.
 
@@ -34,12 +46,11 @@ See the county section of `docs/ENGINE-MAP.md` for every file. In short: `shared
 
 ## Next phases
 
-2. Helicopter flight model and flight assist.
-3. The airport and AI air traffic; the module appears in the library.
+3. The rest of the airport and AI air traffic; the module appears in the library.
 4. Mowing at scale.
 5. The shared online world.
 6. Homes and the house builder, on Fox Plains' `shared/BuildRules.ts` and `Catalog.ts`.
 7. Content, and an optional clipart bake for published vehicles.
-8. Later: flyable small planes, sling loads, touch controls.
+8. Later: more flyable planes, sling loads, touch controls.
 
 The full plan is kept with the project notes.
