@@ -51,7 +51,9 @@ export interface BroadleafShape { spread: number; crown: number; trunk: number; 
 export const OAK: BroadleafShape = { spread: 0.44, crown: 0.3, trunk: 0.42, clumps: 96, clumpSize: 0.066, leaf: PALETTE.oakLeaf };
 export const MAPLE: BroadleafShape = { spread: 0.34, crown: 0.37, trunk: 0.38, clumps: 84, clumpSize: 0.064, leaf: PALETTE.mapleLeaf };
 
-export function broadleaf(B: Batch, x: number, z: number, h: number, seed: number, s: BroadleafShape) {
+/** lod (0–1] thins the crown to fewer, larger and coarser clumps for distant or instanced trees. */
+export function broadleaf(B: Batch, x: number, z: number, h: number, seed: number, s: BroadleafShape, lod = 1) {
+  const N = lod >= 0.9 ? 3 : lod >= 0.4 ? 2 : 1, grow = 1 / Math.sqrt(lod);
   const r = rng(seed);
   const bark = B.get('matte'), leaves = B.get('foliage');
   const th = h * s.trunk, r0 = h * 0.034;
@@ -63,7 +65,7 @@ export function broadleaf(B: Batch, x: number, z: number, h: number, seed: numbe
     const sy = th * (0.78 + r() * 0.2), len = R * (0.75 + r() * 0.25);
     const ex = x + Math.cos(a) * Math.cos(el) * len, ez = z + Math.sin(a) * Math.cos(el) * len, ey = sy + Math.sin(el) * len;
     bark.tube([x, sy, z], [ex, ey, ez], r0 * 0.42, 7, false, PALETTE.bark);
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < (lod >= 0.4 ? 2 : 0); k++) {
       const b2 = a + (k ? 0.5 : -0.5), l2 = len * 0.45;
       bark.tube([ex, ey, ez], [ex + Math.cos(b2) * l2, ey + l2 * 0.6, ez + Math.sin(b2) * l2], r0 * 0.22, 5, false, PALETTE.bark);
     }
@@ -71,17 +73,17 @@ export function broadleaf(B: Batch, x: number, z: number, h: number, seed: numbe
   for (let i = 0; i < 8; i++) {
     const a = r() * Math.PI * 2, f = r() * 0.4;
     const cr = h * s.clumpSize * 2.2;
-    leafClump(leaves, x + Math.cos(a) * R * f, cy + (r() - 0.3) * Ry * 0.4, z + Math.sin(a) * R * f, cr, seed * 31 + i, tint(s.leaf, 0.58));
+    leafClump(leaves, x + Math.cos(a) * R * f, cy + (r() - 0.3) * Ry * 0.4, z + Math.sin(a) * R * f, cr, seed * 31 + i, tint(s.leaf, 0.58), N);
   }
-  for (let i = 0; i < s.clumps; i++) {
+  for (let i = 0; i < Math.round(s.clumps * lod); i++) {
     let dx = 0, dy = 0, dz = 0;
     do { dx = r() * 2 - 1; dy = r() * 2 - 1; dz = r() * 2 - 1; } while (dx * dx + dy * dy + dz * dz > 1 || dy < -0.55);
     const l = Math.hypot(dx, dy, dz) || 1, f = 0.7 + 0.3 * Math.sqrt(l);
     dx /= l; dy /= l; dz /= l;
     const lobe = 1 + 0.18 * Math.sin(Math.atan2(dz, dx) * 3 + seed);
-    const cr = h * s.clumpSize * (0.7 + r() * 0.55);
+    const cr = h * s.clumpSize * (0.7 + r() * 0.55) * grow;
     const light = 0.72 + 0.32 * (dy * 0.5 + 0.5) + (f - 0.85) * 0.5 + (r() - 0.5) * 0.08;
-    leafClump(leaves, x + dx * R * f * lobe, cy + dy * Ry * f, z + dz * R * f * lobe, cr, seed * 97 + i, tint(s.leaf, light, (r() - 0.5) * 0.03));
+    leafClump(leaves, x + dx * R * f * lobe, cy + dy * Ry * f, z + dz * R * f * lobe, cr, seed * 97 + i, tint(s.leaf, light, (r() - 0.5) * 0.03), N);
   }
 }
 
