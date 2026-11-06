@@ -9,6 +9,7 @@
  * regular grid (`GRID` metres), triangulated by `gridHeight`.
  */
 import { baseHeight, mix, smoothstep } from './Base';
+import { ELEV, onPaving } from './Airport';
 import { BELOW, DRIVE, lotLocal, onLotPaving, PAVING, pavingTop, pointInPoly, polyDistance, type RoadNet } from './Roads';
 
 /** How far the ground sits under a driveway or front walk's top. */
@@ -36,6 +37,7 @@ export class Terrain {
   heightAt(x: number, z: number) {
     const q = this.net.query(x, z);
     if (q.inside) return q.elev - BELOW;
+    if (onPaving(x, z)) return ELEV - BELOW;
     const base = baseHeight(x, z);
     const lot = this.lotPull(x, z);
     let h = lot.k > 0 ? mix(base, lot.pad, lot.k) : base;

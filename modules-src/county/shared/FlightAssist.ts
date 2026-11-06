@@ -8,7 +8,8 @@
  *   climb and descend (released, it holds the height). Torque is cancelled.
  * - Plane: W/S move the nose down and up and it holds the attitude you leave,
  *   A/D bank and level the wings when released, the rudder is coordinated,
- *   trim is automatic and the nose is kept below the stall.
+ *   trim is automatic and the nose is kept below the stall. On the ground it
+ *   holds the heading down the runway until you steer.
  * Pro: the keys move the cyclic, pedals and elevator, ailerons and rudder
  * directly; collective and throttle change at a steady rate.
  */
@@ -22,8 +23,8 @@ export type AssistMode = 'easy' | 'pro';
 /** Pilot keys, each −1–1: `fwd` (W +, S −), `roll` (D +, A −), `yaw` (E +, Q −), `power` (Space +, Shift −). */
 export interface PilotInput { fwd: number; roll: number; yaw: number; power: number; brake: boolean }
 
-export interface HeliAssist { speed: number; vsI: number; vfI: number; hold: number | null; collective: number }
-export const newHeliAssist = (): HeliAssist => ({ speed: 0, vsI: 0, vfI: 0, hold: null, collective: 0 });
+export interface HeliAssist { speed: number; vsI: number; vfI: number; hold: number | null; heading: number | null; collective: number }
+export const newHeliAssist = (): HeliAssist => ({ speed: 0, vsI: 0, vfI: 0, hold: null, heading: null, collective: 0 });
 
 /** Horizontal velocity along the nose's heading and to its right. */
 function headingVelocity(s: FlightState) {
@@ -49,7 +50,14 @@ export function heliAssist(spec: HeliSpec, s: FlightState, info: HeliInfo | null
   const wantBank = clamp(0.06 * (wantRight - v.right) + coordinated, -0.45, 0.45);
   let pitch = clamp(2.4 * (att.pitch - wantPitch) + 0.7 * wb[2], -1, 1);
   let roll = clamp(2.4 * (wantBank - att.bank) - 0.7 * wb[0], -1, 1);
-  const pedal = clamp(trim + 1.6 * (turn * 0.8 - -wb[1]), -1, 1);
+  let wantYaw = turn * 0.8;
+  if (turn || grounded) st.heading = null;
+  else {
+    if (st.heading === null) st.heading = att.heading;
+    const off = Math.atan2(Math.sin(st.heading - att.heading), Math.cos(st.heading - att.heading));
+    wantYaw = clamp(1.5 * off, -0.5, 0.5);
+  }
+  const pedal = clamp(trim + 1.6 * (wantYaw - -wb[1]), -1, 1);
 
   let wantClimb = input.power * 6;
   if (input.power) st.hold = null;
@@ -71,8 +79,8 @@ export function heliAssist(spec: HeliSpec, s: FlightState, info: HeliInfo | null
   return { collective, pitch, roll, pedal, engine };
 }
 
-export interface PlaneAssist { throttle: number; flaps: number; pitch: number | null; trimI: number; trim: number }
-export const newPlaneAssist = (): PlaneAssist => ({ throttle: 0, flaps: 0, pitch: null, trimI: 0, trim: 0 });
+export interface PlaneAssist { throttle: number; flaps: number; pitch: number | null; trimI: number; trim: number; track: number | null }
+export const newPlaneAssist = (): PlaneAssist => ({ throttle: 0, flaps: 0, pitch: null, trimI: 0, trim: 0, track: null });
 
 export function planeAssist(spec: PlaneSpec, s: FlightState, info: PlaneInfo | null, input: PilotInput, st: PlaneAssist, mode: AssistMode, grounded: boolean, dt: number): PlaneControls {
   st.throttle = clamp(st.throttle + input.power * 0.5 * dt, 0, 1);
@@ -80,9 +88,18 @@ export function planeAssist(spec: PlaneSpec, s: FlightState, info: PlaneInfo | n
   const base = { throttle: st.throttle, flaps: st.flaps, brake: input.brake ? 1 : 0, engine: true };
   if (mode === 'pro' || grounded) {
     st.pitch = null; st.trimI = 0;
-    const steer = grounded ? clamp(input.yaw + input.roll * 0.7, -1, 1) : input.yaw;
+    let steer = grounded ? clamp(input.yaw + input.roll * 0.7, -1, 1) : input.yaw;
+    if (mode === 'easy' && grounded) {
+      if (input.yaw || input.roll || Math.hypot(s.vel[0], s.vel[2]) < 2) st.track = null;
+      else {
+        if (st.track === null) st.track = att.heading;
+        const off = Math.atan2(Math.sin(st.track - att.heading), Math.cos(st.track - att.heading));
+        steer = clamp(3 * off + 0.8 * wb[1], -1, 1);
+      }
+    }
     return { ...base, elevator: -input.fwd, aileron: input.roll, rudder: steer, trim: st.trim };
   }
+  st.track = null;
   if (st.pitch === null) st.pitch = att.pitch;
   st.pitch = clamp(st.pitch - input.fwd * 0.22 * dt, -0.35, 0.35);
   const stallMargin = (info?.alpha ?? 0) + spec.incidence - (spec.clMax - spec.cl0) / spec.clAlpha + 0.05;
@@ -90,7 +107,7 @@ export function planeAssist(spec: PlaneSpec, s: FlightState, info: PlaneInfo | n
   const wantBank = input.roll * 0.6;
   const err = st.pitch - att.pitch;
   st.trimI = clamp(st.trimI + 0.5 * err * dt, -0.6, 0.6);
-  const turnComp = (1 / Math.max(0.5, Math.cos(att.bank)) - 1) * 0.6;
+  const turnComp = (1 / Math.max(0.5, Math.cos(att.bank)) - 1) * 1.3;
   const elevator = clamp(3 * err - 0.9 * wb[2] + st.trimI + turnComp, -1, 1);
   const aileron = clamp(2.2 * (wantBank - att.bank) - 0.5 * wb[0], -1, 1);
   const rudder = clamp(input.yaw + 2.5 * (info?.beta ?? 0) + 0.15 * aileron, -1, 1);

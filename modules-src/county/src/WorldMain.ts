@@ -1,7 +1,8 @@
 /**
  * Kestrel County, Phase 1: the streamed county with walking and driving.
  * The resident starts at home on Juniper Street with the Maple Hauler in the
- * driveway; F8 opens the developer panel. `?hour=` pins the time of day,
+ * driveway; the helicopter waits on a helipad and the trainer on the apron.
+ * F8 opens the developer panel. `?hour=` pins the time of day,
  * `?dev=1` loads the admin's draft vehicles and `?panel=1` opens the panel.
  */
 import type { Renderer } from './core/Renderer';
@@ -16,6 +17,9 @@ import { Game } from './game/Game';
 import { DevPanel } from './game/DevPanel';
 import { registerVehicles } from './game/Vehicles';
 import { STARTER_TRUCK } from '../../maplestreet/shared/Economy';
+import { HELIPADS, PLANE_STAND, RUNWAY } from '../shared/Airport';
+import { TRAINER_PLANE, UTILITY_HELI } from '../shared/Aircraft';
+import { FlightHud } from './game/FlightHud';
 
 const params = new URLSearchParams(location.search);
 const DAY_MINUTES = 48;
@@ -25,7 +29,7 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
   const [physics] = await Promise.all([Physics.create(), registerVehicles()]);
   const c = county();
   const chunks = new Chunks(r.app, kit, c, physics);
-  const game = new Game(r, sky, c, chunks, physics);
+  const game = new Game(r, kit, sky, c, chunks, physics);
   const { net } = c;
   const home = net.lots.find(l => l.house >= 0 && net.edges[l.edge].name === 'Juniper Street' && l.origin[0] > -1060) ?? net.lots.find(l => l.house >= 0)!;
   const e = net.edges[home.edge];
@@ -33,6 +37,12 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
   await game.start({ x: hx, z: hz, yaw: home.yaw + Math.PI }, left => say(`Building the neighbourhood… ${left}`));
   const [dx, dz] = net.offset(e, home.drive, home.side * (rowHalf(e.cls) + 6.5));
   game.addVehicle(STARTER_TRUCK, { x: dx, z: dz, yaw: home.yaw - Math.PI / 2 });
+  game.addAircraft(UTILITY_HELI.id, { x: HELIPADS[0].x, z: HELIPADS[0].z, yaw: Math.PI });
+  game.addAircraft(TRAINER_PLANE.id, { x: PLANE_STAND.x, z: PLANE_STAND.z, yaw: -Math.PI / 2 });
+  const toast = document.getElementById('toast')!;
+  let toastTimer = 0;
+  game.onToast = text => { toast.textContent = text; clearTimeout(toastTimer); toastTimer = window.setTimeout(() => { toast.textContent = ''; }, 4000); };
+  const flightHud = new FlightHud();
 
   const pinned = params.has('hour') && Number.isFinite(Number(params.get('hour')));
   sky.setHours(pinned ? Number(params.get('hour')) : 10);
@@ -43,7 +53,8 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
   const places = [
     { name: 'Home', x: hx, z: hz },
     place('Main Street', 'Main Street'), place('Ridge Road', 'Ridge Road', 0.45), place('County Road south', 'County Road', 0.3),
-    { name: 'Airport site', x: 640, z: 200 },
+    { name: 'Airport apron', x: 700, z: 40 },
+    { name: 'Runway 09', x: RUNWAY.x0 + 40, z: RUNWAY.z },
   ];
   const hud = { where: document.getElementById('where')!, speed: document.getElementById('speed')!, hint: document.getElementById('hint')!, stats: document.getElementById('stats')! };
   const nearestStreet = (x: number, z: number) => {
@@ -59,11 +70,12 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
     r.setNight(sky.night);
     r.adapt(dt);
     fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
-    if ((clock += dt) > 0.25) {
+    if ((clock += dt) > (game.flying ? 0.1 : 0.25)) {
       clock = 0;
       const p = game.here;
       hud.where.textContent = nearestStreet(p.x, p.z);
-      hud.speed.textContent = game.driving ? `${Math.round(Math.abs(game.driving.speed) * 2.237)} mph` : '';
+      flightHud.show(game.flying ? game.flying.readout((x, z) => game.ground(x, z)) : null);
+      hud.speed.textContent = game.flying ? '' : game.driving ? `${Math.round(Math.abs(game.driving.speed) * 2.237)} mph` : '';
       hud.hint.textContent = game.hint;
       hud.stats.textContent = `${sky.clockLabel} · ${Math.round(fps)} fps`;
     }
@@ -81,6 +93,6 @@ export async function bootWorld(r: Renderer, kit: Kit, sky: Sky, say: (s: string
   });
   (window as unknown as { county: object }).county = {
     game, chunks, net, setHour: (h: number) => sky.setHours(h), teleport: (x: number, z: number) => game.teleport(x, z),
-    info: () => ({ fps: Math.round(fps), busy: chunks.busy, at: game.here, driving: game.driving?.kind ?? null }),
+    info: () => ({ fps: Math.round(fps), busy: chunks.busy, at: game.here, driving: game.driving?.kind ?? null, flying: game.flying?.readout((x, z) => game.ground(x, z)) ?? null }),
   };
 }

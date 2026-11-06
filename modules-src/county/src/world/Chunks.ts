@@ -28,6 +28,7 @@ import { TreeField, TreeKit, type TreePlace } from './TreeKit';
 import { streetLamp, mailbox } from '../models/Street';
 import { place } from '../core/Shapes';
 import { PALETTE } from '../../config';
+import { buildAirport } from './AirportMesh';
 
 export const CHUNK = 256;
 const N_CHUNKS = Math.ceil((WORLD.half * 2) / CHUNK) + 1;
@@ -72,6 +73,9 @@ export class Chunks {
     }
     this.assign();
     this.root.addChild(this.backdrop());
+    const airport = buildAirport(app.graphicsDevice, kit);
+    this.root.addChild(airport.entity);
+    if (physics) physics.world.createCollider(physics.R.ColliderDesc.trimesh(airport.soup.pos, airport.soup.idx).setCollisionGroups(MASK.ground).setFriction(1));
   }
 
   private at(x: number, z: number) {
@@ -119,13 +123,14 @@ export class Chunks {
 
   get busy() { return this.jobs.length + this.heights.pending; }
 
-  /** Updates which chunks are loaded at which detail for these focus points, and runs build jobs for up to `budgetMs`. */
-  update(focus: { x: number; z: number }[], budgetMs = 7) {
+  /** Updates which chunks are loaded at which detail for these focus points (seeing further with the camera's `altitude`), and runs build jobs for up to `budgetMs`. */
+  update(focus: { x: number; z: number }[], budgetMs = 7, altitude = 0) {
     this.focus = focus;
+    const reach = Math.min(900, altitude * 1.6);
     for (const c of this.chunks) {
       const d = this.dist(c);
-      if (d < MID_R && !c.mid && !c.midPending) this.loadMid(c, d);
-      if (d > MID_DROP && c.mid) this.dropMid(c);
+      if (d < MID_R + reach && !c.mid && !c.midPending) this.loadMid(c, d);
+      if (d > MID_DROP + reach && c.mid) this.dropMid(c);
       if (d < NEAR_R && !c.near && !c.nearPending) this.loadNear(c, d);
       if (d > NEAR_DROP && c.near) this.dropNear(c);
     }
