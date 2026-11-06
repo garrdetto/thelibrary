@@ -157,15 +157,18 @@ function pose(o){return Object.assign({hip:[0,1.9,0],hr:[0,0,0],ch:[0,0,0],hd:[0
 function withBat(p,lefthand){ // put both hands on the bat (bottom hand left for a right-handed swing)
   const d=batDir(p.ba[0],p.ba[1],_a);p.hl=[p.bg[0],p.bg[1],p.bg[2]];p.hr_=[p.bg[0]+d.x*.27,p.bg[1]+d.y*.27,p.bg[2]+d.z*.27];p.hs=1;p.bat=1;return p}
 const POSE={
-  idle:(t)=>pose({hip:[0,1.9+.015*Math.sin(t*2.1),0],ch:[.03+.01*Math.sin(t*2.1),0,0]}),
-  ready:(t)=>pose({hip:[0,1.56,-.12],hr:[.28,0,0],ch:[.22,0,0],hl:[.5,-.25,.72],hr_:[-.5,-.25,.72],fl:[.58,0,.05],fr:[-.58,0,.05],fo:[.35,-.35]}),
+  idle:(t)=>{const w=Math.sin(t*.55),g=Math.sin(t*.3);
+    return pose({hip:[.035*w,1.9+.015*Math.sin(t*2.1),0],hr:[0,.05*g,.025*w],ch:[.03+.01*Math.sin(t*2.1),-.05*g,-.02*w],hd:[0,.22*Math.sin(t*.23)],fl:[.3+.02*w,0,0],fr:[-.3+.02*w,0,0]})},
+  ready:(t)=>pose({hip:[0,1.56+.012*Math.sin(t*4.4),-.12],hr:[.28,0,0],ch:[.22,0,0],hl:[.5,-.25,.72],hr_:[-.5,-.25,.72],fl:[.58,0,.05],fr:[-.58,0,.05],fo:[.35,-.35]}),
   set:(t)=>pose({hip:[0,1.74+.01*Math.sin(t*3),-.05],hr:[.12,0,0],ch:[.08,0,0],hl:[.45,-.55,.45],hr_:[-.45,-.55,.45],fl:[.52,0,0],fr:[-.52,0,0],fo:[.25,-.25]}),
   lead:(t)=>pose({hip:[0,1.58,-.1],hr:[.32,0,0],ch:[.18,0,0],hl:[.42,-.62,.5],hr_:[-.42,-.62,.5],fl:[.75,0,0],fr:[-.75,0,0],fo:[.2,-.2]}),
   crouch:(t)=>pose({hip:[0,.98,-.2],hr:[.18,0,0],ch:[.22,0,0],hl:[.35,.25,.95],hr_:[-.45,-.35,.5],fl:[.78,0,.1],fr:[-.78,0,.1],fo:[.55,-.55]}),
   slide:()=>pose({hip:[0,.75,-.3],hr:[-.55,0,0],ch:[-.15,0,0],hl:[.6,1.0,-.3],hr_:[-.6,1.0,-.3],hs:0,fl:[.2,.25,1.7],fr:[-.25,.15,.7],fo:[0,0]}),
   cheer:(t)=>pose({hip:[0,1.9+.18*Math.abs(Math.sin(t*7)),0],ch:[-.1,0,0],hl:[.75,1.55+.15*Math.sin(t*7),.2],hr_:[-.75,1.55+.15*Math.sin(t*7+1),.2]}),
   run:(t,r)=>{const A=r.amp,ph=r.phase,c=Math.cos(ph),s=Math.sin(ph),lean=.08+.22*r.sp;
-    return pose({hip:[0,1.8+.09*Math.abs(c),0],hr:[lean*.4,.14*s,0],ch:[lean,-.22*s,0],
+    // foot roll: toe down as the heel lifts behind, toe up as the foot reaches forward to land heel first
+    const roll=(sn,cs)=>r.sp*(.6*Math.max(0,cs)-.32*Math.max(0,-cs)*Math.max(0,sn)-.12*Math.max(0,-cs)*Math.max(0,-sn));
+    return pose({hip:[0,1.8+.09*Math.abs(c),0],hr:[lean*.4,.14*s,.05*s*r.sp],ch:[lean,-.22*s,-.04*s*r.sp],fp:[roll(s,c),roll(-s,-c)],
       hl:[.56,-.02+.32*Math.max(0,c)*r.sp,.18+.55*c*r.sp],hr_:[-.56,-.02+.32*Math.max(0,-c)*r.sp,.18-.55*c*r.sp],
       fl:[.24,Math.max(0,s)*(.35+.4*A)+Math.max(0,s)*Math.max(0,c)*.5*A,-c*A],fr:[-.24,Math.max(0,-s)*(.35+.4*A)+Math.max(0,-s)*Math.max(0,-c)*.5*A,c*A],fo:[0,0]})},
   // ---- batting (right-handed; lefties are mirrored) ----
@@ -174,13 +177,22 @@ const POSE={
   stance:(t)=>withBat(pose({hip:[-.05,1.62+.012*Math.sin(t*2.4),0],hr:[.1,-.12,0],ch:[.1,-.2,0],hd:[.05,0],fl:[.92,0,.05],fr:[-.92,0,0],fo:[1.35,1.45],bg:[-.56,3.0,.46],ba:[-2.28+.1*Math.sin(t*2.8),1.09+.04*Math.sin(t*2.8)]})),
   // load: weight back, front knee lifts, hands drift further back and up
   load:(t)=>withBat(pose({hip:[-.26,1.6,0],hr:[.08,-.34,0],ch:[.1,-.44,0],fl:[.72,.26+.1*Math.sin(cl(t*4,0,PI)),.1],fr:[-.92,0,0],fo:[1.3,1.45],bg:[-.76,3.06,.34],ba:[-2.45,1.0]})),
+  // launch: front foot down, hips fire open while the shoulders stay closed (hip-shoulder separation), hands start down
+  launch:()=>withBat(pose({hip:[-.02,1.53,0],hr:[.1,.42,0],ch:[.15,-.3,-.08],fl:[1.32,0,.13],fr:[-.9,0,0],fo:[1.6,1.55],bg:[-.48,2.72,.62],ba:[-1.7,.5]})),
   // contact: hips open, barrel level through the middle of the zone out over the plate
   contact:()=>withBat(pose({hip:[.3,1.5,0],hr:[.1,.95,0],ch:[.18,1.2,-.12],fl:[1.45,0,.15],fr:[-.85,.14,.05],fo:[1.75,2.2],bg:[.16,2.2,1.0],ba:[-.12,-.14]})),
+  // extension: arms long through the ball, back heel up and pivoting
+  extend:()=>withBat(pose({hip:[.36,1.55,0],hr:[.06,1.22,0],ch:[.12,1.6,-.08],fl:[1.45,0,.15],fr:[-.78,.2,.1],fo:[1.75,2.5],bg:[.52,2.55,.92],ba:[1.05,.05]})),
+  finish:()=>withBat(pose({hip:[.4,1.72,0],hr:[0,1.5,0],ch:[0,2.02,.04],fl:[1.45,0,.15],fr:[-.55,.32,.32],fo:[1.75,2.95],bg:[.22,3.42,-.18],ba:[3.25,.72]})),
   follow:()=>withBat(pose({hip:[.42,1.66,0],hr:[0,1.45,0],ch:[.04,1.95,0],fl:[1.45,0,.15],fr:[-.6,.28,.28],fo:[1.75,2.9],bg:[.38,3.55,.1],ba:[2.9,.55]})),
   bunt:()=>withBat(pose({hip:[.05,1.42,0],hr:[.22,1.3,0],ch:[.24,.15,0],fl:[.85,0,.25],fr:[-.55,0,.45],fo:[1.9,2.1],bg:[.95,2.2,.62],ba:[.12,.1]})),
   // ---- pitcher (root faces home plate) ----
   pset:()=>pose({hip:[0,1.9,0],ch:[.05,0,0],hl:[.08,3.05,.55],hr_:[-.08,3.0,.5],hs:1,fl:[.35,0,0],fr:[-.35,0,0]}),
   pkick:()=>pose({hip:[0,1.96,-.15],hr:[0,-1.45,0],ch:[-.06,-1.5,0],hl:[.05,3.05,-.1],hr_:[-.05,3.0,-.15],hs:1,fl:[.12,1.55,.25],fr:[0,0,-.12],fo:[-1.5,-1.5]}),
+  // hand break: the glove points at the plate, the ball hand swings down and back as the stride leg reaches out
+  pbreak:()=>pose({hip:[0,1.74,.45],hr:[.05,-1.35,0],ch:[0,-1.42,.12],hl:[.45,2.85,.85],hr_:[-.18,2.55,-.75],hs:1,fl:[.25,.8,1.35],fr:[0,0,-.15],fo:[-1.5,-1.5]}),
+  // layback: front foot planted, hips open, the ball high behind the ear before the arm whips through
+  playback:()=>pose({hip:[0,1.43,1.42],hr:[.15,-.35,0],ch:[.22,-.45,.12],hl:[.62,2.7,2.15],hr_:[-.62,3.92,.75],hs:1,fl:[.3,0,2.6],fr:[-.05,.18,.12],fo:[-.3,-1.15]}),
   pstride:()=>pose({hip:[0,1.45,1.1],hr:[.12,-1.1,0],ch:[0,-1.25,.2],hl:[.65,3.15,2.4],hr_:[-.25,3.95,-1.25],hs:1,fl:[.3,0,2.6],fr:[0,0,-.2],fo:[-.3,-1.5]}),
   prelease:()=>pose({hip:[0,1.42,1.6],hr:[.35,.1,0],ch:[.5,.35,-.12],hl:[.55,2.6,1.6],hr_:[-.45,3.7,2.95],hs:1,fl:[.3,0,2.6],fr:[-.1,.5,.6],fo:[-.2,-.8]}),
   pfollow:()=>pose({hip:[0,1.38,1.9],hr:[.6,.4,0],ch:[.55,.5,0],hl:[.6,2.5,1.5],hr_:[.7,1.55,2.55],hs:1,fl:[.3,0,2.6],fr:[-.4,.9,.85],fo:[0,.3]}),
@@ -188,21 +200,32 @@ const POSE={
   // ---- throwing (root faces target) ----
   tgather:()=>pose({hip:[0,1.8,0],hr:[.1,-.6,0],ch:[.05,-.7,0],hl:[.1,3.0,.45],hr_:[-.05,2.95,.4],hs:1,fl:[.35,0,.1],fr:[-.35,0,-.1]}),
   tcock:()=>pose({hip:[0,1.7,.25],hr:[.05,-1.2,0],ch:[0,-1.3,.15],hl:[.7,3.3,1.2],hr_:[-.3,3.85,-1.1],hs:1,fl:[.3,0,1.1],fr:[-.2,0,-.3],fo:[-.4,-1.4]}),
+  tlayback:()=>pose({hip:[0,1.66,.5],hr:[.12,-.4,0],ch:[.16,-.55,.06],hl:[.66,3.0,1.2],hr_:[-.52,3.85,.3],hs:1,fl:[.3,0,1.1],fr:[-.2,.1,-.1],fo:[-.3,-1.1]}),
   trelease:()=>pose({hip:[0,1.62,.7],hr:[.25,.15,0],ch:[.4,.4,-.1],hl:[.55,2.6,.9],hr_:[-.35,3.55,1.5],hs:1,fl:[.3,0,1.1],fr:[-.2,.3,.1]}),
   tfollow:()=>pose({hip:[0,1.6,.85],hr:[.4,.4,0],ch:[.45,.5,0],hl:[.5,2.5,.8],hr_:[.55,1.7,1.25],hs:1,fl:[.3,0,1.1],fr:[-.4,.6,.6]})};
 // keyframed one-shots
 const SEQ={
-  swing:[[0,'load'],[.11,'contact'],[.3,'follow'],[.7,'follow']],
-  pitch:[[0,'pset'],[.42,'pkick'],[.95,'pstride'],[1.3,'prelease'],[1.5,'pfollow'],[1.95,'pfield'],[2.6,'pfield']],
-  throw:[[0,'tgather'],[.16,'tcock'],[.3,'trelease'],[.5,'tfollow'],[.75,'tfollow']]};
+  swing:[[0,'load'],[.06,'launch'],[.11,'contact'],[.17,'extend'],[.3,'follow'],[.5,'finish'],[.7,'finish']],
+  pitch:[[0,'pset'],[.42,'pkick'],[.7,'pbreak'],[.95,'pstride'],[1.15,'playback'],[1.3,'prelease'],[1.5,'pfollow'],[1.95,'pfield'],[2.6,'pfield']],
+  throw:[[0,'tgather'],[.16,'tcock'],[.23,'tlayback'],[.3,'trelease'],[.5,'tfollow'],[.75,'tfollow']]};
 function lerpPose(a,b,t){const o={};for(const k in b){const x=a[k],y=b[k];o[k]=Array.isArray(y)?y.map((v,i)=>lerp(x?x[i]:v,v,t)):typeof y==='number'?lerp(x==null?y:x,y,t):y}return o}
 function resolve(p){ // hands to root space
   if(p.hs>=1)return p;chestMatrix(p,_m);
   const L=_a.set(...p.hl).applyMatrix4(_m),R=_b.set(...p.hr_).applyMatrix4(_m);
   p.hl=[lerp(L.x,p.hl[0],p.hs),lerp(L.y,p.hl[1],p.hs),lerp(L.z,p.hl[2],p.hs)];p.hr_=[lerp(R.x,p.hr_[0],p.hs),lerp(R.y,p.hr_[1],p.hs),lerp(R.z,p.hr_[2],p.hs)];p.hs=1;return p}
-function seqPose(name,t,ctx){const s=SEQ[name];let i=0;while(i<s.length-1&&t>=s[i+1][0])i++;
-  const a=s[i],b=s[Math.min(i+1,s.length-1)];const u=b[0]>a[0]?ease(cl((t-a[0])/(b[0]-a[0]),0,1)):1;
-  return lerpPose(resolve(POSE[a[1]](t,ctx)),resolve(POSE[b[1]](t,ctx)),u)}
+// keyed one-shots follow a cubic Hermite spline through the keys (tangents from the neighbouring slopes, flattened at turning
+// points so nothing overshoots), so motion carries through each key instead of stopping on it; bat poses re-grip the bat after
+function seqPose(name,t,ctx){const s=SEQ[name],L=s.length;let i=0;while(i<L-1&&t>=s[i+1][0])i++;
+  const k1=s[i],k2=s[Math.min(i+1,L-1)];if(k2[0]<=k1[0])return resolve(POSE[k1[1]](t,ctx));
+  const k0=s[Math.max(i-1,0)],k3=s[Math.min(i+2,L-1)],h=k2[0]-k1[0],u=cl((t-k1[0])/h,0,1);
+  const p0=resolve(POSE[k0[1]](t,ctx)),p1=resolve(POSE[k1[1]](t,ctx)),p2=resolve(POSE[k2[1]](t,ctx)),p3=resolve(POSE[k3[1]](t,ctx));
+  const slope=(a,b,ta,tb)=>tb>ta?(b-a)/(tb-ta):0,tan=(sa,sb,first,last)=>first?sb:last?sa:sa*sb<=0?0:(sa+sb)/2;
+  const u2=u*u,u3=u2*u,h00=2*u3-3*u2+1,h10=u3-2*u2+u,h01=-2*u3+3*u2,h11=u3-u2;
+  const val=(a,b,c,d)=>{const sa=slope(a,b,k0[0],k1[0]),sb=slope(b,c,k1[0],k2[0]),sc=slope(c,d,k2[0],k3[0]);
+    const d1=tan(sa,sb,i===0,false),d2=tan(sb,sc,false,i+2>=L);return h00*b+h10*h*d1+h01*c+h11*h*d2};
+  const o={};for(const k in p2){const b=p1[k]??p2[k],c=p2[k],a=p0[k]??b,d=p3[k]??c;
+    o[k]=Array.isArray(c)?c.map((v,j)=>val(a?a[j]??b[j]:b[j],b?b[j]??v:v,v,d?d[j]??v:v)):typeof c==='number'?val(a,b,c,d):c}
+  if(o.bat>.5&&p1.bat>.5&&p2.bat>.5)withBat(o);return o}
 const seqLen=n=>SEQ[n][SEQ[n].length-1][0];
 
 /* ================= TEXTURES ================= */
@@ -660,7 +683,7 @@ class Rig{
       const Kn=V3(),Te=V3();ik(Hj,T,LL[0],LL[1],fwd,Kn,Te);
       if(body){limbFrames(Hj,Kn,Te,fwd);this.setBone('thigh_'+side[s],Hj,_t1,_n1,lg,1,lg);this.setBone('shin_'+side[s],Kn,_t2,_n2,lg,1,lg)}
       else this.leg[s].update(Hj,Kn,Te,fwd,-sg);
-      const f=this.ft[s];f.position.set(Te.x,Math.max(0,Te.y-.19),Te.z);f.rotation.set(F[1]>.15?-.35:0,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ')}
+      const f=this.ft[s],fp=p.fp?p.fp[s]:F[1]>.15?-.35:0;f.position.set(Te.x,Math.max(0,Te.y-.19)+Math.max(0,Math.sin(fp))*.14,Te.z);f.rotation.set(fp,p.hr[1]*.5+(p.fo?p.fo[s]:0)*.5,0,'YXZ')}
     this.bat.visible=p.bat>.5&&!o.noBat;
     if(this.bat.visible){const dvec=batDir(p.ba[0],p.ba[1],_a);this.bat.position.set(p.bg[0]-dvec.x*.1,p.bg[1]-dvec.y*.1,p.bg[2]-dvec.z*.1);this.bat.quaternion.setFromUnitVectors(UP,dvec)}
     this.glove.visible=!!o.glove;
