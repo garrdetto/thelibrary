@@ -59,6 +59,40 @@ Done in this phase (approach changed from the plan, see below):
 ### 3. Visual upgrade
 HDR float16, physical sky, per-track IBL, Khronos PBR Neutral tone mapping (ACES option); clear-coat paint with flake; four-cascade shadows, contact shadows, SSAO2, TAA, bloom, motion blur on high; clustered lights for night towers, volumetric light for the prison searchlights; asphalt detail normals and a rubber line; compute particles on WebGPU; decal skid marks; thin-instanced crowd and props. Tiers `low`/`medium`/`high`/`ultra` (`?quality=`) with `_shared/adaptive-resolution.js`. Medium holds 60 fps at 1080p with 20 cars on a mid-range laptop GPU; low runs on WebGL2. `docs/PERF-BASELINE.md` row.
 
+Done in this phase:
+- **Tiers** (`next/render/quality.ts`): `?quality=low|medium|high|ultra` or the module's own Graphics quality (low/med/high map to low/medium/high); `?fx=-taa,+ssao` switches single effects for comparisons.
+  - low: FXAA, no shadows, no extras (also the WebGL2 floor);
+  - medium: 4× MSAA, the single fitted shadow map, surface detail, night tower lights, crowd motion;
+  - high: four-cascade shadows with contact-hardening (soft) edges limited to 180 m and to casters in that range, TAA, plus medium's extras;
+  - ultra: high with 4096 cascades.
+
+  Adaptive resolution is the classic `createAdaptiveResolution`, which already drives the presenter's pixel ratio.
+- **Tone mapping**: Khronos PBR Neutral by default, ACES with `?tonemap=aces` (the classic-matched look).
+- **Image-based light, fixed.** In Phase 2 the reflection probe never filled on WebGPU (the dome sampled the cube it was rendering), so reflections were missing. The probe now renders the dome with a copy of its material that points at a tiny dummy cube, and the cube is marked linear (it was being read as gamma, which blew reflections out). The calibration was refitted: car paint reflects at `CAL.paint` (0.4), and every surface stays within a few sRGB levels of classic with `?tonemap=aces`.
+- **Surface detail** (`next/render/surface.ts`):
+  - metallic flake under clear-coated paint, as a fine random normal map on the base layer with the coat kept smooth;
+  - sheen on tires;
+  - a tiled detail map (albedo, normal and roughness noise) on surfaces that already have a normal map (asphalt, concrete);
+  - the rubber line that builds over a race is the classic wear layer, already drawn.
+- **Night**: a spot light at each of the ten tower heads, aimed at the track and held in a `ClusteredLightContainer` so all ten light every material.
+- **Crowd**: the classic cheer (a three `onBeforeCompile` hook) is back as `CrowdPlugin`, a Babylon material plugin for GLSL and WGSL driven by the classic uniforms and a per-fan phase buffer.
+- **Performance fixes found on the way:**
+  - bridged materials carry their own image-processing settings, so the pre-pass renderer's per-pass toggling no longer marks every material dirty;
+  - render lists change only when their contents do;
+  - WebGPU starts with the adapter's maximum limits.
+- **Deferred, each with an `?fx=` switch to test:**
+  - SSAO2: with the cascaded shadows it darkens the mirror's render target;
+  - motion blur: it misreads the three-driven camera's history and streaks a still frame.
+- **Not done:**
+  - compute particles: Babylon's GPU particle systems emit continuously from one emitter and cannot burst at scattered points, so sparks and smoke stay the classic-matched ones;
+  - volumetric searchlight beams;
+  - SSR.
+- **Frame rate** (live 20-car race, headless Edge on an RTX 4060 Laptop GPU, where classic runs 24 fps):
+  - WebGPU: low 29, medium 17.5, high 11.5, ultra 10;
+  - WebGL2: medium 25.5, high 5.9.
+
+  The 60 fps at 1080p medium target on a mid-range laptop GPU could not be measured here: this harness throttles classic itself to 24 fps. It has to be checked on real hardware in a visible browser.
+
 ### 4. Physics upgrade
 Havok chassis, walls and debris; four raycast wheels with spring-damper suspension, combined-slip tires with load sensitivity, weight transfer, drag, downforce, drafting and side-draft, true banking normals, a dirt surface model, damage from contact impulses feeding grip, power and aero. Retune `AI_LEVELS`, `FORM_V` and the rolling start. AI laps within 3 % of the Phase 1 traces on asphalt, 5 % on dirt; a 20-car, 25-lap soak finishes with no NaN, no wall tunnelling, no stuck car; physics ≤ 3 ms per frame for 20 cars.
 

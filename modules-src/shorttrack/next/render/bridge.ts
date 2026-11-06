@@ -1,4 +1,5 @@
 import { Constants } from '@babylonjs/core/Engines/constants'
+import type { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { Material } from '@babylonjs/core/Materials/material'
 import { MultiMaterial } from '@babylonjs/core/Materials/multiMaterial'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
@@ -80,6 +81,16 @@ function indicesOf(g: THREE.BufferGeometry): Uint32Array | Uint16Array {
 
 const plainColor = (c: THREE.Color | undefined, k = 1): Color3 => (c ? new Color3(c.r * k, c.g * k, c.b * k) : new Color3(1, 1, 1))
 
+export type BridgeHooks = {
+  /** After a material's structural settings were applied (tier-dependent extras go here). */
+  material?: (mat: PBRMaterial, m: THREE.Material) => void
+  /** Image processing for every mirrored material (fixed, so the pre-pass renderer's per-pass toggling of the
+   * scene's configuration does not mark them dirty). */
+  imageProcessing?: ImageProcessingConfiguration
+  /** After an instanced mesh's first instance upload. */
+  instanced?: (mesh: Mesh, o: THREE.InstancedMesh, materials: PBRMaterial[]) => void
+}
+
 export class ThreeBridge {
   private entries = new Map<THREE.Object3D, Entry>()
   private materialCache = new Map<string, PBRMaterial>()
@@ -89,7 +100,12 @@ export class ThreeBridge {
   /** Meshes that cast shadows this frame (the presenter hands them to its shadow generator). */
   readonly casters = new Set<Mesh>()
 
-  constructor(private scene: Scene, private environment: () => { intensity: number; scale: number }) {}
+  constructor(private scene: Scene, private environment: () => { intensity: number; scale: number }, private hooks: BridgeHooks = {}) {}
+
+  /** Re-applies every material's structural settings (for example after a quality change). */
+  refreshMaterials(): void {
+    this.applied = new WeakMap()
+  }
 
   /** Mirrors `root` (its world matrices must be current). */
   sync(root: THREE.Object3D): void {
@@ -289,12 +305,14 @@ export class ThreeBridge {
     const matrices = o.instanceMatrix
     if (matrices.version !== entry.instanceVersion || o.count !== entry.count) {
       const array = matrices.array as Float32Array
-      if (entry.count === -1 || entry.instanceVersion === -1) mesh.thinInstanceSetBuffer('matrix', array, 16, false)
+      const first = entry.count === -1 || entry.instanceVersion === -1
+      if (first) mesh.thinInstanceSetBuffer('matrix', array, 16, false)
       else mesh.thinInstanceBufferUpdated('matrix')
       entry.instanceVersion = matrices.version
       entry.count = o.count
       mesh.thinInstanceCount = o.count
       mesh.thinInstanceRefreshBoundingInfo(false)
+      if (first) this.hooks.instanced?.(mesh, o, entry.materials)
     }
     const colors = o.instanceColor
     if (colors && colors.version !== entry.colorVersion) {
@@ -347,6 +365,7 @@ export class ThreeBridge {
     const cached = this.materialCache.get(key)
     if (cached) return cached
     const mat = new PBRMaterial(m.name || m.type, this.scene)
+    if (this.hooks.imageProcessing) mat.imageProcessingConfiguration = this.hooks.imageProcessing
     mat.metallic = 0
     mat.roughness = 1
     mat.sideOrientation = Material.CounterClockWiseSideOrientation
@@ -361,7 +380,7 @@ export class ThreeBridge {
     return mat
   }
 
-  private readonly applied = new WeakMap<PBRMaterial, { version: number; transparent: boolean; maps: (BaseTexture | null)[] }>()
+  private applied = new WeakMap<PBRMaterial, { version: number; transparent: boolean; maps: (BaseTexture | null)[] }>()
 
   /**
    * Structural settings (blending, culling, depth, texture slots) are applied when three bumps the material's
@@ -428,6 +447,7 @@ export class ThreeBridge {
     mat.zOffsetUnits = m.polygonOffset ? m.polygonOffsetUnits : 0
     mat.fogEnabled = m.fog !== false
     mat.wireframe = !!(m as THREE.MeshStandardMaterial).wireframe
+    this.hooks.material?.(mat, m)
   }
 
 

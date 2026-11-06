@@ -1,6 +1,7 @@
 import { Constants } from '@babylonjs/core/Engines/constants'
 import { Material } from '@babylonjs/core/Materials/material'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
+import { RawCubeTexture } from '@babylonjs/core/Materials/Textures/rawCubeTexture'
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
@@ -136,16 +137,16 @@ function toHalf(value: number): number {
 }
 
 /** Bakes the day sky into a half-float equirect texture (linear radiance, tone mapped by the frame like any other light). */
-export function bakeSky(scene: Scene, params: SkyParams): RawTexture {
+export function bakeSky(scene: Scene, params: SkyParams, limit = 60000): RawTexture {
   const radiance = makeSkyFunction(params)
   const data = new Uint16Array(W * H * 4)
   for (let row = 0; row < H; row++) {
     for (let col = 0; col < W; col++) {
       const c = radiance(directionAt((col + 0.5) / W, (row + 0.5) / H))
       const o = (row * W + col) * 4
-      data[o] = toHalf(Math.min(c[0], 60000))
-      data[o + 1] = toHalf(Math.min(c[1], 60000))
-      data[o + 2] = toHalf(Math.min(c[2], 60000))
+      data[o] = toHalf(Math.min(c[0], limit))
+      data[o + 1] = toHalf(Math.min(c[1], limit))
+      data[o + 2] = toHalf(Math.min(c[2], limit))
       data[o + 3] = toHalf(1)
     }
   }
@@ -191,4 +192,42 @@ export function skyDome(scene: Scene, texture: RawTexture, radius: number): Mesh
   mesh.isPickable = false
   mesh.renderingGroupId = 0
   return mesh
+}
+
+/**
+ * The day environment as a cube baked on the CPU from the same sky function (ground colour below the horizon), so
+ * nothing renders into a texture the scene is sampling. Mip levels give rough surfaces a blurrier sky.
+ */
+export function bakeEnvironmentCube(scene: Scene, params: SkyParams, ground: [number, number, number], size = 64): RawCubeTexture {
+  const radiance = makeSkyFunction(params)
+  const faces: Uint16Array[] = []
+  const dir = (face: number, a: number, b: number): V3 => {
+    switch (face) {
+      case 0: return [1, -b, -a]
+      case 1: return [-1, -b, a]
+      case 2: return [a, 1, b]
+      case 3: return [a, -1, -b]
+      case 4: return [a, -b, 1]
+      default: return [-a, -b, -1]
+    }
+  }
+  for (let face = 0; face < 6; face++) {
+    const data = new Uint16Array(size * size * 4)
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const d = dir(face, ((x + 0.5) / size) * 2 - 1, ((y + 0.5) / size) * 2 - 1), len = Math.hypot(d[0], d[1], d[2])
+        const n: V3 = [d[0] / len, d[1] / len, d[2] / len]
+        const c = n[1] >= 0 ? radiance(n) : ground
+        const o = (y * size + x) * 4
+        data[o] = toHalf(Math.min(c[0], 60000))
+        data[o + 1] = toHalf(Math.min(c[1], 60000))
+        data[o + 2] = toHalf(Math.min(c[2], 60000))
+        data[o + 3] = toHalf(1)
+      }
+    }
+    faces.push(data)
+  }
+  const cube = new RawCubeTexture(scene, faces, size, Constants.TEXTUREFORMAT_RGBA, Constants.TEXTURETYPE_HALF_FLOAT, true, false, Texture.TRILINEAR_SAMPLINGMODE)
+  cube.gammaSpace = false
+  return cube
 }
