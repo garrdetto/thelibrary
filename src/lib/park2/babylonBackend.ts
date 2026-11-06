@@ -345,14 +345,19 @@ export class BabylonBackend implements RenderBackend {
     }
     this.pipeline = pipeline
     if (t.ssao && !this.ssaoFailed) {
-      const ssao = new SSAO2RenderingPipeline('park-ssao', scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera], true)
-      ssao.radius = 3
-      ssao.totalStrength = 0.7
-      ssao.samples = 12
-      ssao.maxZ = 250
-      ssao.expensiveBlur = true
-      this.ssao = ssao
-      this.ssaoErrors = 0
+      try {
+        const ssao = new SSAO2RenderingPipeline('park-ssao', scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera], true)
+        ssao.radius = 3
+        ssao.totalStrength = 0.3
+        ssao.samples = 12
+        ssao.maxZ = 250
+        ssao.expensiveBlur = true
+        this.ssao = ssao
+        this.ssaoErrors = 0
+      } catch (error) {
+        this.ssaoFailed = true
+        console.warn('Thrill Park 2: screen-space ambient occlusion is unavailable; baked occlusion is still used.', error)
+      }
     }
   }
 
