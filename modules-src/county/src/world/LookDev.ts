@@ -15,7 +15,7 @@ import { broadleaf, MAPLE, OAK, spruce } from '../models/Trees';
 import { buildApron, buildHangar, buildWindsock, hangarSign, HANGAR, HELIPAD } from '../models/Airfield';
 import { buildHelicopter, type HelicopterModel } from '../models/Helicopter';
 import { buildGround } from '../models/Ground';
-import { rng } from '../core/Noise';
+import { rng } from '../../shared/Noise';
 import { PALETTE } from '../../config';
 
 export interface LookDevScene { heli: HelicopterModel; lamps: pc.Entity[]; triangles: number; breakdown: Record<string, number>; sign: pc.StandardMaterial }

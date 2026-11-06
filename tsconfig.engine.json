@@ -11,7 +11,8 @@
   "exclude": [
     "modules-src/fairway/tests/**",
     "modules-src/demoderby/tests/**",
-    "modules-src/angler/tests/**"
+    "modules-src/angler/tests/**",
+    "modules-src/county/tests/**"
   ],
   "compilerOptions": {
     "target": "ES2022",

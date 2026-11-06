@@ -6,7 +6,7 @@
  */
 import type { MeshBuilder, RGB } from '../../../foxplains2/src/core/Geo';
 import type { Batch } from '../core/Batch';
-import { rng } from '../core/Noise';
+import { rng } from '../../shared/Noise';
 import { PALETTE } from '../../config';
 
 const tint = (c: RGB, k: number, warm = 0): RGB => [Math.min(1, c[0] * k + warm), Math.min(1, c[1] * k + warm * 0.6), Math.min(1, c[2] * k)];
