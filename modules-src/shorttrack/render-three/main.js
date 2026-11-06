@@ -48,13 +48,18 @@ function normalAt(s,lat,out){
 
 // ===================== RENDERER / SCENE =====================
 const wrap=$('wrap'), canvas=$('c');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+// ?engine=next draws this same three.js scene with Babylon on WebGPU (WebGL2 fallback): next/render/presenter.ts.
+// The renderer, composer and bloom below become stand-ins that the presenter reads each frame.
+const GPU=new URLSearchParams(location.search).get('engine')==='next'?await (await import('../next/render/presenter')).createPresenter(canvas):null;
+const renderer=GPU?{outputColorSpace:'',toneMapping:0,toneMappingExposure:1,autoClear:true,shadowMap:{enabled:true,type:0,autoUpdate:false,needsUpdate:false},
+  setPixelRatio:r=>GPU.setPixelRatio(r),getPixelRatio:()=>GPU.getPixelRatio(),setSize:()=>GPU.resize(),setRenderTarget(){},render(){},clearDepth(){}}
+  :new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
 renderer.outputColorSpace=THREE.SRGBColorSpace; renderer.toneMapping=THREE.ACESFilmicToneMapping;
 renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate=false;
 const scene=new THREE.Scene();
 scene.fog = new THREE.Fog(0x9a8570, 8000, 15000);
 const camera=new THREE.PerspectiveCamera(45,1,0.1,2000);
-const pmrem=new THREE.PMREMGenerator(renderer);
+const pmrem=GPU?{fromScene:()=>({texture:new THREE.Texture()})}:new THREE.PMREMGenerator(renderer);
 // ---- SUMMER DAY LOOK: tweak these to taste ----
 const DAY={
   sunDir:[78,64,34],        // lower afternoon sun (~37 deg up): longer shadows, warmer light
@@ -81,11 +86,11 @@ const sun=new THREE.DirectionalLight(0xfaba66,.8); sun.castShadow=true; sun.shad
 Object.assign(sun.shadow.camera,{left:-55,right:55,top:55,bottom:-55,near:1,far:340}); sun.shadow.bias=-0.0004; sun.shadow.normalBias=0.03;
 scene.add(sun,sun.target);
 // post-processing: subtle bloom by day, glowing lights at night
-const composer=new EffectComposer(renderer,new THREE.WebGLRenderTarget(16,16,{type:THREE.HalfFloatType,samples:4}));
+const composer=GPU?{addPass(){},render(){},setPixelRatio(){},setSize(){}}:new EffectComposer(renderer,new THREE.WebGLRenderTarget(16,16,{type:THREE.HalfFloatType,samples:4}));
 composer.addPass(new RenderPass(scene,camera));
 
 // ⚡ TWEAKED VALUES: Strength dropped from 0.10 to 0.01, Threshold raised from 0.88 to 1.00
-const bloom=new UnrealBloomPass(new THREE.Vector2(16,16),0.02,0.25,.80);composer.addPass(bloom);composer.addPass(new OutputPass());
+const bloom=GPU?{enabled:false,strength:0.02,radius:0.25,threshold:0.8}:new UnrealBloomPass(new THREE.Vector2(16,16),0.02,0.25,.80);composer.addPass(bloom);composer.addPass(new OutputPass());
 let useComposer=true;
 
 // ===================== TEXTURES =====================
@@ -1895,11 +1900,13 @@ const mirrorCam=new THREE.PerspectiveCamera(32,4,0.3,700);
 mirrorRT.texture.repeat.x=-1;mirrorRT.texture.offset.x=1;   // flip like a real mirror
 const ovScene=new THREE.Scene(),ovCam=new THREE.OrthographicCamera(0,1,1,0,-1,1);
 const ovQuad=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:mirrorRT.texture,depthTest:false,depthWrite:false}));ovScene.add(ovQuad);
+const MIRROR={x:0,y:11,w:0,h:0};
+if(GPU)GPU.attach({scene,camera,mirrorCam,sun,hemi,skyDay,sky:{turbidity:DAY.turbidity,rayleigh:DAY.rayleigh,mie:DAY.mie,mieG:DAY.mieG,sun:[...DAY.sunDir]},ground:new THREE.Color(0x4f5a2c).toArray()});
 function resize(){
   const w=wrap.clientWidth,h=wrap.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
   composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);
   const MW=Math.round(Math.min(460,w*0.42)),MH=Math.round(MW/4);
-  Object.assign(ovCam,{left:0,right:w,top:h,bottom:0});ovCam.updateProjectionMatrix();ovQuad.scale.set(MW,MH,1);ovQuad.position.set(w/2,h-11-MH/2,0);
+  Object.assign(ovCam,{left:0,right:w,top:h,bottom:0});ovCam.updateProjectionMatrix();ovQuad.scale.set(MW,MH,1);ovQuad.position.set(w/2,h-11-MH/2,0);Object.assign(MIRROR,{x:w/2-MW/2,w:MW,h:MH});
   const f=$('mirrorFrame');f.style.width=MW+6+'px';f.style.height=MH+6+'px';
 }
 function setFov(f){if(Math.abs(camera.fov-f)>0.05){camera.fov=lerp(camera.fov,f,0.12);camera.updateProjectionMatrix();}}
@@ -2214,6 +2221,8 @@ function frame(now){
   const focus=player&&simOn?player:menuCar;
   if(focus){sun.target.position.set(focus.x,0,focus.z);sun.position.copy(sun.target.position).add(SUN_OFF);sun.target.updateMatrixWorld();}
   crowdU.uTime.value=now/1000;crowdU.uLift.value=lerp(crowdU.uLift.value,crowdHype,1-Math.exp(-dt*2));crowdHype=Math.max(0.6,crowdHype-dt*0.25);
+  const mirrorOn=!!player&&(mode==='race'||mode==='paused');
+  if(GPU){GPU.frame({exposure:renderer.toneMappingExposure,bloom:{...bloom,enabled:bloom.enabled&&useComposer},shadows:renderer.shadowMap.enabled,shadowSize:sun.shadow.mapSize.x,night:!!settings.night,mirror:mirrorOn?MIRROR:null});return;}
   renderer.shadowMap.needsUpdate=true;renderer.setRenderTarget(null);if(useComposer)composer.render(dt);else renderer.render(scene,camera);
   if(player&&(mode==='race'||mode==='paused')){
     renderer.setRenderTarget(mirrorRT);renderer.render(scene,mirrorCam);renderer.setRenderTarget(null);

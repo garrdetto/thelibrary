@@ -8,12 +8,12 @@ Visible copy follows the site rules: everything is a "learning module", never ga
 
 ```
 modules-src/shorttrack/
-  index.ts        picks the path: ?engine=next → next/boot.ts, otherwise render-three/main.js
+  index.ts        loads render-three/main.js; with ?engine=next it draws through next/render/ (?engine=next&scene=test: the boot test scene)
   tests/          node --test suites (scripts/shorttrack-tests.mjs): golden.test.ts, track.test.ts, protocol.test.ts; fixtures/ recorded from the pre-port code
   next/           the Babylon module
-    boot.ts       engine (WebGPU, WebGL2 fallback incl. on device loss), Havok init, render loop
+    boot.ts       createEngine (WebGPU, WebGL2 fallback), createPhysics (Havok), the ?scene=test scene
     physics/      (Phase 4) Havok bodies for chassis, walls (continuous collision) and debris
-    render/       (Phase 2) Babylon scene drawing interpolated sim state
+    render/       (Phase 2, done) presenter.ts, bridge.ts, sky.ts: Babylon draws the classic scene graph
     sim/          (Phase 1, done) config, track, car state, vehicle step, contacts, damage, AI, race control: no DOM, no Math.random, no clock
     net/          (Phase 1, done) the PeerJS protocol version in hello
     ui/           (Phase 2) the existing menus and HUD, split out when the Babylon renderer needs them
@@ -48,6 +48,13 @@ Done in this phase:
 
 ### 2. Babylon renderer at parity
 Every track and theme by day and night, trucks, stock car and admin custom cars (glTF + bundled meshopt decoder), liveries and numbers through `DynamicTexture` with the existing canvas painters, skid marks, wear, sparks, smoke. Draw calls ≤ the classic 459; screenshots match the Phase 1 set.
+
+Done in this phase (approach changed from the plan, see below):
+- **Approach.** `?engine=next` runs the same classic module (`render-three/main.js`: sim, menus, HUD, netcode, every scene builder) and swaps only the drawing: `next/render/presenter.ts` creates the Babylon engine on the module's canvas (WebGPU, WebGL2 fallback, reload onto WebGL2 if WebGPU loses its device or draws nothing for 6 s) and `next/render/bridge.ts` mirrors the three.js scene graph into Babylon each frame (transforms; visibility; geometry, instance and point buffers by attribute version; material values; canvas textures by version as `DynamicTexture` with the existing painters untouched). Every track, theme, truck, stock car, admin custom car (still loaded by three's GLTFLoader + meshopt), livery, number, skid mark, rubber wear layer, spark and smoke puff is therefore the classic one by construction. Rebuilding every scene builder natively is not needed for parity; Phase 3 replaces pieces with native Babylon where it upgrades them.
+- **Presenter.** HDR `DefaultRenderingPipeline` with ACES and bloom (night), three's Preetham sky ported to JS and baked into a half-float dome (`sky.ts`) with its irradiance (including the sun disc) as the day environment's spherical polynomial and a reflection probe for specular, the sun's shadow map culled to three's ±55 m shadow box, linear fog, and the rear-view mirror (a render target culled to the mirror camera, tone-mapped in its overlay quad).
+- **Calibration** (`CAL` in `presenter.ts`) was fitted region by region against the Phase 1 screenshots: road, paint, stands, wall and sky land within a few sRGB levels of classic on all five tracks by day and night (`docs/screenshots/shorttrack/next-<track>-<day|night>.webp`).
+- **Draw calls** (counted on the GPU APIs, headless Edge, RTX 4060 Laptop GPU): menu 196 (classic 207), mid-race 668 (classic 800), the same on WebGPU and WebGL2.
+- **Not at parity yet:** the crowd's cheer animation (a three `onBeforeCompile` vertex hook) is static; sparks are small diamonds and window nets thin quads (WebGPU has no point size or wide lines); paint at night reflects the day environment at 0.6 instead of three's room environment; the dirt surface at night is darker (44 vs 70 sRGB in the reference frame). Admin custom cars could not be checked locally (no D1 in the static preview).
 
 ### 3. Visual upgrade
 HDR float16, physical sky, per-track IBL, Khronos PBR Neutral tone mapping (ACES option); clear-coat paint with flake; four-cascade shadows, contact shadows, SSAO2, TAA, bloom, motion blur on high; clustered lights for night towers, volumetric light for the prison searchlights; asphalt detail normals and a rubber line; compute particles on WebGPU; decal skid marks; thin-instanced crowd and props. Tiers `low`/`medium`/`high`/`ultra` (`?quality=`) with `_shared/adaptive-resolution.js`. Medium holds 60 fps at 1080p with 20 cars on a mid-range laptop GPU; low runs on WebGL2. `docs/PERF-BASELINE.md` row.
