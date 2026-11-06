@@ -35,7 +35,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `public/_headers` — Workers static-asset caching: hashed `/modules/chunks/*` and `/assets/*` immutable for a year; `/models/*`, `/modules/maplestreet/*`, `/modules/sprites/*`, `/images/*` one day plus a week stale-while-revalidate — Cloudflare.
 - `docs/ASSETS.md` — before/after size, primitive and material table from the last `pnpm assets:report` — this PR and later phases.
 - `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
-- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/`, `modules-src/demoderby/` and `modules-src/foxplains2/` (tests excluded; they run through esbuild) — `pnpm test`.
+- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/`, `modules-src/demoderby/`, `modules-src/angler/`, `modules-src/foxplains2/` and `modules-src/county/` (tests excluded; they run through esbuild) — `pnpm test`.
 - `scripts/fairway-tests.mjs` — bundles `modules-src/fairway/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
 - `scripts/demoderby-tests.mjs` — bundles `modules-src/demoderby/tests/*.test.ts` with esbuild (`models/CarBody` swapped for `tests/CarBodyStub.ts`, so no canvas is needed) and runs whole AI-only heats with `node --test` — `pnpm test`.
 - `scripts/engine-smoke.mjs` — Vite-builds `_template`, embeds it in a hub-like iframe, checks boot, 60 Hz loop, `--lib-*` tokens, same-origin Draco/KTX2 decoders, `dispose()`, console errors and CDN requests; `--out` saves a screenshot — `pnpm engine:smoke`.
@@ -148,6 +148,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `fairway` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, TSL node materials | `modules-src/fairway/` |
 | `demoderby` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, Rapier 0.14 raycast vehicles | `modules-src/demoderby/` |
 | `park` | hand-written WebGL2 | `src/lib/park/` |
+| `county` | PlayCanvas 2.23.3 WebGL2 (CameraFrame HDR), look development only | `modules-src/county/` |
 | `park2` | Babylon.js 9.34.0 (WebGPU, WebGL2 fallback) behind the `park` renderer's backend interface | `src/lib/park2/` (models, simulation and HUD shared with `park`) |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
@@ -302,6 +303,21 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `src/avatar/Avatar.ts` — scanned bodies, recolor shader chunk, procedural pose (`AvatarKits`, `Avatar`) — `Character`, `Remotes`.
 - `src/net/Remotes.ts` — interpolated neighbors, traffic and their vehicles, name tags — `Game`.
 - `src/game/Game.ts` — composition root and fixed step; `CameraRig.ts` — orbit/chase camera; `Hud.ts` — DOM HUD.
+
+### county — Kestrel County (`modules-src/county/`, PlayCanvas, working title, not in `modules.ts` yet)
+Phase 0 look development for a separate 4 × 4 km world with an airport and helicopters in a glossy realistic-clipart style. It imports Fox Plains 2's `MeshBuilder`/`meshEntity` and Fox Plains' `store` rather than copying them. Details in `modules-src/county/README.md`.
+- `modules-src/county/index.html`, `index.ts` — page shell with the look-dev panel (views, times, quality, rotor) — `vite.modules.ts` (→ `public/modules/county.html`).
+- `config.ts` — palette, finishes, grading, light and fog, look-dev views and times — every file below.
+- `src/main.ts` — boot, panel and keys, `?view=`/`?hour=`/`?quality=`/`?rotor=1`/`?ui=0`, `window.county` — `index.ts`.
+- `src/core/Renderer.ts` — WebGL2 device, CameraFrame (Neutral tone mapping, TAA, SSAO, bloom, grading), quality tiers (`county/quality`), adaptive scale — `main`, `Sky`, `LookDev`.
+- `src/core/Shapes.ts` — `bevelBox`, `prism`, `sweep`, `gridSurface`, `roundOutline`, `triangulate`, `contactShade`, `place` — every model.
+- `src/core/Batch.ts` — one `MeshBuilder` per finish, `mark`/`contact` shading, `build` → one entity — `LookDev`, models.
+- `src/core/Noise.ts` — `rng`, `valueNoise`, `fbm` — `Trees`, `Ground`, `LookDev`.
+- `src/style/Kit.ts` — vertex-coloured finishes (matte, satin, plastic, paint, glass, metal, foliage, ground) and night `glow` materials — `Batch`, `LookDev`, `Helicopter`.
+- `src/world/Sky.ts` — gradient dome, clouds, stars, sun/moon light with cascades, env atlas bake, haze, exposure — `main`.
+- `src/world/LookDev.ts` — composes houses, street, trees, airfield, helicopter, ground and lamp lights; triangle breakdown — `main`.
+- `src/game/OrbitCamera.ts` — orbit/pan/zoom with preset views, ground clamp — `main`.
+- `src/models/Parts.ts` (`sub`, `framedWindow`, `panelDoor`), `House.ts` (`buildHouse`, `buildDrive`), `Street.ts`, `Trees.ts` (`leafClump`, `broadleaf`, `spruce`), `Airfield.ts` (hangar, `hangarSign`, apron, helipad, windsock), `Helicopter.ts` (lofted body, rotors as entities), `Ground.ts` (`groundHeight`, `buildGround`) — `LookDev`.
 
 ### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
 - `modules-src/fairway/module.json` — id `fairway`, title, accent `#4fd27a`, modes — `config.ts`.

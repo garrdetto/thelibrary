@@ -5,7 +5,8 @@
     "modules-src/fairway/**/*.ts",
     "modules-src/demoderby/**/*.ts",
     "modules-src/angler/**/*.ts",
-    "modules-src/foxplains2/**/*.ts"
+    "modules-src/foxplains2/**/*.ts",
+    "modules-src/county/**/*.ts"
   ],
   "exclude": [
     "modules-src/fairway/tests/**",

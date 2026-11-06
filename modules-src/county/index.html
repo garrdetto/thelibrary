@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kestrel County — Look development</title>
+  <meta name="description" content="Kestrel County look development: a street, houses and the airfield's hangar and helicopter in the glossy clipart style, with HDR lighting from morning to night." />
+  <style>
+    :root {
+      --panel: rgba(16, 20, 28, 0.62);
+      --line: rgba(255, 255, 255, 0.12);
+      --ink: #eef1f5;
+      --mute: #a9b3bf;
+      --accent: #4fb3ff;
+      --r: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1118; color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    #status { position: fixed; inset: 0; display: grid; place-items: center; color: var(--mute); pointer-events: none; }
+    body.ready #status { display: none; }
+    #panel { position: fixed; top: 12px; left: 12px; z-index: 10; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+    body.clean #panel { display: none; }
+    h1 { margin: 0; font: 700 17px/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; }
+    h1 small { display: block; margin-top: 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+    h2 { margin: 12px 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; }
+    button { font: inherit; color: var(--ink); cursor: pointer; background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; }
+    button:hover { border-color: rgba(255, 255, 255, 0.3); }
+    button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #06121e; font-weight: 700; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #stats { margin-top: 10px; color: var(--mute); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .keys { margin-top: 8px; color: var(--mute); font-size: 11px; }
+    .keys b { color: var(--ink); font-weight: 600; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="status" role="status">Setting up the county…</div>
+  <section id="panel" aria-label="Look development controls">
+    <h1>Kestrel County<small>Look development</small></h1>
+    <h2>View</h2>
+    <div class="row">
+      <button type="button" data-view="street">Street</button>
+      <button type="button" data-view="hangar">Hangar</button>
+      <button type="button" data-view="helicopter">Helicopter</button>
+      <button type="button" data-view="aerial">Aerial</button>
+    </div>
+    <h2>Time of day</h2>
+    <div class="row">
+      <button type="button" data-time="morning">Morning</button>
+      <button type="button" data-time="noon">Noon</button>
+      <button type="button" data-time="dusk">Dusk</button>
+      <button type="button" data-time="night">Night</button>
+    </div>
+    <h2>Render</h2>
+    <div class="row">
+      <button type="button" id="quality">Quality</button>
+      <button type="button" id="rotor" aria-pressed="false">Spin rotor</button>
+    </div>
+    <div id="stats" aria-live="off"></div>
+    <div class="keys"><b>Drag</b> orbit · <b>Right-drag</b> pan · <b>Wheel</b> zoom · <b>1–4</b> views · <b>T</b> time · <b>Q</b> quality</div>
+  </section>
+  <script type="module" src="./index.ts"></script>
+</body>
+</html>
