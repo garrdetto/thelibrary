@@ -1,9 +1,9 @@
 /**
  * The airport's paved surfaces on the level plateau east of town: runway
  * 09/27 (1,360 × 30 m), a parallel taxiway with three connectors, the apron
- * with three helipads and the trainer's parking spot, reached from Main
- * Street by Airport Road. The rest of the airport (terminal, tower, hangars)
- * comes later. North is −Z, east +X.
+ * with three helipads, the trainer's parking spot and the AI traffic's stands,
+ * the terminal, control tower, hangar and windsock, reached from Main Street
+ * by Airport Road. North is −Z, east +X.
  */
 import { AIRPORT } from './Base';
 
@@ -18,6 +18,11 @@ export const CONNECTORS = [560, 1200, 1840];
 export const APRON: Rect = { x0: 560, z0: -70, x1: 820, z1: 75 };
 export const APRON_LINK = { x: 640, width: 18 };
 export const HELIPADS = [{ x: 790, z: 50 }, { x: 790, z: 20 }, { x: 790, z: -10 }].map(p => ({ ...p, r: 8 }));
+/** The terminal (landside south, glass front on the apron), control tower, hangar (door north onto its own pad) and windsock. */
+export const TERMINAL: Rect = { x0: 622, z0: 86, x1: 706, z1: 112 };
+export const TOWER = { x: 842, z: 102 };
+export const HANGAR_AT = { x: 762, z: 99, w: 26, d: 22 };
+export const WINDSOCK_AT = { x: 1200, z: -120 };
 /** Where the trainer is parked: on the apron, nose south toward the taxiway. */
 export const PLANE_STAND = { x: 660, z: 10, heading: Math.PI };
 
@@ -27,6 +32,7 @@ export const PAVED: Rect[] = [
   ...CONNECTORS.map(x => rect(x, (RUNWAY.z + RUNWAY.width / 2 + TAXIWAY.z - TAXIWAY.width / 2) / 2, TAXIWAY.width, TAXIWAY.z - TAXIWAY.width / 2 - (RUNWAY.z + RUNWAY.width / 2) + 0.02)),
   rect(APRON_LINK.x, (TAXIWAY.z + TAXIWAY.width / 2 + APRON.z0) / 2, APRON_LINK.width, APRON.z0 - (TAXIWAY.z + TAXIWAY.width / 2) + 0.02),
   APRON,
+  { x0: HANGAR_AT.x - HANGAR_AT.w / 2 + 1, z0: APRON.z1 - 0.02, x1: HANGAR_AT.x + HANGAR_AT.w / 2 - 1, z1: HANGAR_AT.z - HANGAR_AT.d / 2 + 0.5 },
 ];
 
 export const onPaving = (x: number, z: number) => PAVED.some(r => x >= r.x0 && x <= r.x1 && z >= r.z0 && z <= r.z1);

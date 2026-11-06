@@ -29,6 +29,7 @@ import { streetLamp, mailbox } from '../models/Street';
 import { place } from '../core/Shapes';
 import { PALETTE } from '../../config';
 import { buildAirport } from './AirportMesh';
+import { buildAirportBuildings, type AirportBuildings } from '../models/AirportBuildings';
 
 export const CHUNK = 256;
 const N_CHUNKS = Math.ceil((WORLD.half * 2) / CHUNK) + 1;
@@ -59,6 +60,7 @@ export class Chunks {
   private blocks: (ReturnType<typeof buildTerrainBlock> | null)[] = Array(N_BLOCKS * N_BLOCKS).fill(null);
   private blockPending: boolean[] = Array(N_BLOCKS * N_BLOCKS).fill(false);
   private farHoles = true;
+  readonly buildings: AirportBuildings;
 
   constructor(private app: pc.AppBase, private kit: Kit, private county: County, private physics: Physics | null) {
     this.heights = new Heights(county.terrain);
@@ -76,6 +78,9 @@ export class Chunks {
     const airport = buildAirport(app.graphicsDevice, kit);
     this.root.addChild(airport.entity);
     if (physics) physics.world.createCollider(physics.R.ColliderDesc.trimesh(airport.soup.pos, airport.soup.idx).setCollisionGroups(MASK.ground).setFriction(1));
+    this.buildings = buildAirportBuildings(app.graphicsDevice, kit);
+    this.root.addChild(this.buildings.root);
+    if (physics) for (const b of this.buildings.colliders) physics.addStaticBox(b);
   }
 
   private at(x: number, z: number) {

@@ -88,6 +88,7 @@ export function buildLookDev(r: Renderer, kit: Kit): LookDevScene {
   buildWindsock(field);
   add(field, 'airfield');
   const sign = hangarSign(device, 'Kestrel County Airfield');
+  sign.entity.setPosition(HANGAR.x, HANGAR.eave + 0.9, HANGAR.z + HANGAR.d / 2 + 0.03);
   app.root.addChild(sign.entity);
   for (const x of [-6, 6]) lamps.push(pointLight(app, new pc.Vec3(HANGAR.x + x, HANGAR.eave - 0.6, HANGAR.z - 2), [1, 0.9, 0.75], 18));
 

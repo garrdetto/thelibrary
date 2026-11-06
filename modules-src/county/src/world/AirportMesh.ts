@@ -47,6 +47,7 @@ export function buildAirport(device: pc.GraphicsDevice, kit: Kit) {
   slab(asphalt, taxi, PALETTE.asphalt);
   for (const r of rest.slice(0, CONNECTORS.length + 1)) slab(asphalt, r, PALETTE.asphalt);
   slab(concrete, APRON, [0.47, 0.47, 0.45]);
+  slab(concrete, PAVED[PAVED.length - 1], [0.47, 0.47, 0.45]);
   const soup = B.soup([kit.finish.plastic]);
 
   const y = ELEV + MARK, white = PALETTE.laneWhite, yellow = PALETTE.laneYellow;
