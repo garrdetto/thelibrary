@@ -501,7 +501,8 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 
 ### shorttrack — Short Track Showdown
 - `modules-src/shorttrack/index.html` — page shell: menus, HUD markup, styles — `vite.modules.ts` (→ `public/modules/shorttrack.html`).
-- `modules-src/shorttrack/index.ts` — entry; provides `window.Peer`, imports `main.js` — `index.html`.
+- `modules-src/shorttrack/index.ts` — entry; provides `window.Peer`, loads `next/boot.ts` for `?engine=next`, otherwise `main.js` — `index.html`.
+- `modules-src/shorttrack/next/boot.ts` — the Babylon.js rebuild (`docs/shorttrack/PLAN.md`): WebGPU engine with WebGL2 fallback (also after device loss), Havok physics with its bundled WASM, `window.__stNext` status — `index.ts`. `scripts/shorttrack-next-smoke.mjs` checks it in Playwright.
 - `modules-src/shorttrack/main.js` — whole module: three.js scene, trucks (`TM`), `buildStockCar`, liveries, `?track=`, lap posts, `tl-lap`, PeerJS `sts-oval-race-<code>` — `index.ts`.
 - `modules-src/shorttrack/shorttrack-numbers.js` — race-number fonts and styles — `main.js`.
 - `modules-src/shorttrack/iconic-schemes.js` — the AI field: iconic NASCAR look-alike schemes per car number (`ICONIC_FIELD`, `ICONIC`), knockoff logos (`LOGOS`, `logoCanvas`) and the side/hood painters (`drawSchemeSide`, `drawSchemeHood`) — `main.js`.
