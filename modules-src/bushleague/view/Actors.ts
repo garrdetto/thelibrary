@@ -6,6 +6,39 @@ import { toWorld, worldXYZ } from './space'
 
 type ActorLook = ModuleConfig['actors']
 
+/** White leather with the red figure-eight seam and its stitches, laid out for a sphere's equirectangular UVs. */
+function seamTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 256
+  canvas.height = 128
+  const context = canvas.getContext('2d')!
+  context.fillStyle = '#f6f3ea'
+  context.fillRect(0, 0, 256, 128)
+  const seam = (u: number) => 64 + Math.sin(u * Math.PI * 4) * 34
+  context.strokeStyle = '#c4312a'
+  context.lineWidth = 2.2
+  for (const offset of [-3, 3]) {
+    context.beginPath()
+    for (let x = 0; x <= 256; x += 2) {
+      const y = seam(x / 256) + offset
+      if (x === 0) context.moveTo(x, y)
+      else context.lineTo(x, y)
+    }
+    context.stroke()
+  }
+  context.lineWidth = 1.2
+  for (let x = 0; x < 256; x += 6) {
+    const y = seam(x / 256)
+    context.beginPath()
+    context.moveTo(x - 2, y - 5)
+    context.lineTo(x + 2, y + 5)
+    context.stroke()
+  }
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  return texture
+}
+
 interface Body {
   group: THREE.Group
   jersey: THREE.MeshStandardMaterial
@@ -29,6 +62,10 @@ export class Actors {
   private readonly disposables: { dispose(): void }[] = []
   private readonly runnerPool: Body[] = []
   private swingStart = -1
+  readonly trail: THREE.Line
+  private readonly trailPositions = new Float32Array(48 * 3)
+  private trailCount = 0
+  trailEnabled = true
 
   constructor(private readonly look: ActorLook) {
     this.root.name = 'actors'
@@ -55,8 +92,14 @@ export class Actors {
     umpire.group.position.copy(worldXYZ(0.6, 0, -2.0))
     umpire.group.scale.set(1, 0.9, 1)
 
-    this.ball = new THREE.Mesh(this.own(new THREE.SphereGeometry(look.ball, 16, 12)), this.own(new THREE.MeshStandardMaterial({ color: '#fbfbf4', roughness: 0.35, emissive: new THREE.Color('#333022') })))
+    this.ball = new THREE.Mesh(this.own(new THREE.SphereGeometry(look.ball, 24, 16)), this.own(new THREE.MeshStandardMaterial({ map: this.own(seamTexture()), roughness: 0.45, emissive: new THREE.Color('#2a2820') })))
     this.ball.castShadow = true
+    const trailGeometry = this.own(new THREE.BufferGeometry())
+    trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3))
+    this.trail = new THREE.Line(trailGeometry, this.own(new THREE.LineBasicMaterial({ color: '#ff5a36', transparent: true, opacity: 0.85, depthWrite: false })))
+    this.trail.frustumCulled = false
+    this.trail.visible = false
+    this.root.add(this.trail)
     this.ballShadow = new THREE.Mesh(this.own(new THREE.CircleGeometry(0.12, 16)), this.own(new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, opacity: 0.35, depthWrite: false })))
     this.ballShadow.rotation.x = -Math.PI / 2
     this.root.add(this.ball, this.ballShadow)
@@ -205,6 +248,33 @@ export class Actors {
     this.ballShadow.position.set(this.ball.position.x, 0.03, this.ball.position.z)
     const scale = Math.max(0.4, 1 - at.y / 25)
     this.ballShadow.scale.setScalar(scale)
+  }
+
+  /** Turns the ball about a horizontal axis at `rpm` so the seams show the spin. */
+  spinBall(dt: number, rpm: number, tiltDegrees = 0): void {
+    const tilt = (tiltDegrees * Math.PI) / 180
+    const axis = new THREE.Vector3(Math.cos(tilt), Math.sin(tilt), 0).normalize()
+    this.ball.rotateOnWorldAxis(axis, (rpm / 60) * Math.PI * 2 * dt)
+  }
+
+  clearTrail(): void {
+    this.trailCount = 0
+    this.trail.visible = false
+    this.trail.geometry.setDrawRange(0, 0)
+  }
+
+  pushTrail(): void {
+    if (!this.trailEnabled || !this.ball.visible) return
+    const max = this.trailPositions.length / 3
+    if (this.trailCount >= max) {
+      this.trailPositions.copyWithin(0, 3)
+      this.trailCount = max - 1
+    }
+    this.trailPositions.set([this.ball.position.x, this.ball.position.y, this.ball.position.z], this.trailCount * 3)
+    this.trailCount++
+    this.trail.geometry.setDrawRange(0, this.trailCount)
+    this.trail.geometry.getAttribute('position').needsUpdate = true
+    this.trail.visible = this.trailCount > 1
   }
 
   setCursor(visible: boolean, x = 0, y = 0, radius = 0.12): void {

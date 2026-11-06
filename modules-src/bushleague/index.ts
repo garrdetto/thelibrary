@@ -1,18 +1,22 @@
-/** Bush League Baseball entry: boots the shared engine, builds the gray-box park and players, binds the setup and final screens and hands each contest to the Director; tears everything down on pagehide. */
+/** Bush League Baseball entry: boots the shared engine with the tier's broadcast budget (AgX HDR output, post chain, cascaded shadows, adaptive resolution), builds the park, lights, crowd and grass for each contest, binds the screens and hands the contest to the Director; tears everything down on pagehide. */
 import * as THREE from 'three/webgpu'
-import { App, Input, applyEnvironment, createLighting, createPost, disposeObject, resolveQuality } from '../../engine'
+import { App, Input, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
+import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js'
 import { config, type Action } from './config'
+import { LIGHT_PRESETS, TIER_BUDGETS, themeFor, type TimeOfDay } from './looks'
 import { Contest, parkById, stringSeed } from './sim'
-import { Director } from './systems/Director'
+import { Director, type Scenery } from './systems/Director'
 import { Screens, type SetupChoice } from './ui/Screens'
 import { Actors } from './view/Actors'
+import { createCrowd, type Crowd } from './view/Crowd'
 import { createField, type FieldView } from './view/Field'
-import { createSky } from './view/Sky'
+import { createGrass, type GrassField } from './view/Grass'
+import { createStadiumLights, type StadiumLights } from './view/Lights'
 
 declare global {
   interface Window {
     __tlModule?: { app: App; backend: string; tier: string; steps: () => number }
-    __bushleague?: { director: Director; start(choice?: Partial<SetupChoice>, seed?: number): Contest; contest(): Contest | null }
+    __bushleague?: { director: Director; start(choice?: Partial<SetupChoice>, seed?: number): Contest; contest(): Contest | null; scene(): { crowd: number; grass: number; post: boolean; cascades: number }; react(kind: 'homer' | 'final'): void }
   }
 }
 
@@ -23,36 +27,73 @@ async function boot(): Promise<void> {
   document.documentElement.style.setProperty('--module-accent', config.meta.accent)
 
   const app = await App.create({ container, config: config.engine })
-  const requested = new URLSearchParams(location.search).get('quality')
-  const quality = resolveQuality(requested === 'low' || requested === 'medium' || requested === 'high' || requested === 'ultra' ? { ...config.engine.quality, requested } : config.engine.quality, app.backend)
-  app.setPixelRatioCap(quality.settings.pixelRatioCap)
+  const quality = resolveQuality(config.engine.quality, app.backend)
+  const budget = TIER_BUDGETS[quality.tier]
+  app.setPixelRatioCap(budget.pixelRatio)
   app.own(applyEnvironment(app.scene, config.engine.environment))
-  const lighting = app.own(createLighting(config.engine.lighting, quality.settings))
-  app.graph.add('world', lighting.root)
-  lighting.follow(new THREE.Vector3(0, 0, -55))
-  app.own(createPost(app, config.engine.post, quality.settings))
-  const sky = app.graph.add('world', createSky('#2a5ba8', '#a9c6ea', '#1f3320'))
+  const rig = app.own(createLighting(config.engine.lighting, quality.settings))
+  app.graph.add('world', rig.root)
+  rig.follow(new THREE.Vector3(0, 0, -55))
+  const post = app.own(createPost(app, { ...config.engine.post, effects: budget.post ?? undefined }, { ...quality.settings, post: !!budget.post }))
+  const adaptive = budget.adaptive ? createAdaptiveResolution({ max: budget.pixelRatio, min: 0.75, apply: (ratio) => app.setPixelRatioCap(ratio) }) : null
 
   const input = app.own(new Input<Action>(container, config.bindings, config.engine.input))
   const actors = new Actors(config.actors)
   app.graph.add('characters', actors.root)
   app.own(actors)
   const screens = new Screens()
-  let field: FieldView | null = null
 
-  const director = new Director(app, input, actors, screens, config, {
-    onContest(contest) {
-      field?.dispose()
-      field = createField(contest.park, config.field, contest.teams[1].roster.team, contest.teams[0].roster.team)
-      app.graph.add('world', field.root)
+  let field: FieldView | null = null
+  let lights: StadiumLights | null = null
+  let crowd: Crowd | null = null
+  let grass: GrassField | null = null
+
+  const dressPark = (contest: Contest, time: TimeOfDay) => {
+    lights?.dispose()
+    crowd?.dispose()
+    grass?.dispose()
+    field?.dispose()
+    const home = contest.teams[1].roster.team
+    const away = contest.teams[0].roster.team
+    const theme = themeFor(contest.park.id)
+    field = createField(contest.park, config.field, theme, home, away)
+    app.graph.add('world', field.root)
+    lights = createStadiumLights(app, rig, budget, field.towers, field.lampMaterial)
+    const preset = LIGHT_PRESETS[time]
+    lights.setPreset(preset)
+    if (theme.fogTint && app.scene.fog) (app.scene.fog as THREE.Fog).color.lerp(new THREE.Color(theme.fogTint), 0.35)
+    field.signature?.setTimeOfDay(time)
+    crowd = createCrowd(field.bowl, budget.crowd, home.colors, away.colors, contest.setup.seed)
+    if (crowd) app.graph.add('props', crowd.mesh)
+    grass = createGrass(contest.park, budget.grassBlades, theme.grass[0], theme.grass[1], contest.setup.seed)
+    if (grass) app.graph.add('props', grass.mesh)
+  }
+
+  const scenery: Scenery = {
+    excite: (level) => crowd?.excite(level),
+    startWave: () => crowd?.startWave(),
+    celebrate: (kind) => field?.celebrate(kind),
+    scuff: (x, z, radius, strength, angle, length) => field?.dirt.scuff(x, z, radius, strength, angle, length),
+  }
+
+  const director = new Director(
+    app,
+    input,
+    actors,
+    screens,
+    config,
+    {
+      onContest(contest, choice) {
+        dressPark(contest, choice.time)
+      },
+      onFinal() {
+        screens.setHint('')
+      },
     },
-    onFinal() {
-      screens.setHint('')
-    },
-  })
-  const defaultContest = new Contest({ seed: 1, away: 'sal', home: 'frt', innings: 3, dh: true, autoRunner: true, mercy: false })
-  field = createField(parkById(defaultContest.teams[1].roster.team.park), config.field, defaultContest.teams[1].roster.team, defaultContest.teams[0].roster.team)
-  app.graph.add('world', field.root)
+    scenery,
+  )
+  const preview = new Contest({ seed: 1, away: 'sal', home: 'frt', innings: 3, dh: true, autoRunner: true, mercy: false, park: parkById('outhouse').id })
+  dressPark(preview, 'night')
   actors.placeFieldersHome()
   actors.hideBatter()
 
@@ -78,22 +119,34 @@ async function boot(): Promise<void> {
   let frames = 0
   app.onFrame((frameSeconds) => {
     frames++
-    director.update(Math.min(frameSeconds, 0.1))
+    const dt = Math.min(frameSeconds, 0.1)
+    director.update(dt)
+    field?.update(dt)
+    crowd?.update(dt)
+    lights?.update(dt)
+    adaptive?.update(frameSeconds)
   })
   app.start()
 
   window.__tlModule = { app, backend: app.backend, tier: quality.tier, steps: () => frames }
   window.__bushleague = {
     director,
-    start: (choice = {}, customSeed) => start({ team: 'frt', opponent: 'sal', side: 'watch', innings: 3, pace: 'rookie', dh: true, autoRunner: true, mercy: false, ...choice }, customSeed),
+    start: (choice = {}, customSeed) => start({ team: 'frt', opponent: 'sal', side: 'watch', innings: 3, pace: 'rookie', dh: true, autoRunner: true, mercy: false, time: 'night', trail: true, ...choice }, customSeed),
     contest: () => director.contest,
+    scene: () => ({ crowd: crowd?.mesh.count ?? 0, grass: grass?.mesh.count ?? 0, post: post.enabled, cascades: budget.cascades }),
+    react: (kind: 'homer' | 'final') => {
+      scenery.celebrate(kind)
+      scenery.excite(1)
+    },
   }
   addEventListener(
     'pagehide',
     () => {
       director.dispose()
+      lights?.dispose()
+      crowd?.dispose()
+      grass?.dispose()
       field?.dispose()
-      disposeObject(sky)
       app.dispose()
     },
     { once: true },

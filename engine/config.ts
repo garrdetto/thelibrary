@@ -21,6 +21,8 @@ export interface LoopConfig {
   frameRateWindowSeconds: number
 }
 
+export type ToneMappingName = 'aces' | 'agx' | 'neutral'
+
 export interface RendererConfig {
   preferWebGPU: boolean
   antialias: boolean
@@ -28,6 +30,8 @@ export interface RendererConfig {
   toneMappingExposure: number
   shadows: boolean
   clearColor: string
+  /** Output tone mapping; ACES when left out. */
+  toneMapping?: ToneMappingName
 }
 
 export interface CameraConfig {
@@ -85,8 +89,19 @@ export interface QualityConfig {
   autoTier: Readonly<Record<RenderBackend, QualityTier>>
 }
 
+/** Optional post effects, applied in this order on the linear HDR scene colour: ambient occlusion, temporal anti-aliasing, bloom, lens flare, vignette, film grain. Tone mapping and sRGB output follow. */
+export interface PostEffects {
+  ao?: { radius: number; thickness: number; intensity: number; resolutionScale: number; samples: number }
+  taa?: boolean
+  bloom?: { strength: number; radius: number; threshold: number }
+  flare?: { threshold: number; ghostSamples: number; ghostSpacing: number; ghostAttenuation: number; strength: number }
+  vignette?: number
+  grain?: number
+}
+
 export interface PostConfig {
   enabled: boolean
+  effects?: PostEffects
 }
 
 export interface HudConfig {

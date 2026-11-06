@@ -1,6 +1,7 @@
 /** DOM bindings for the setup card, score bug, banner, matchup strip, play-by-play, pitch picker and meter, and the final box score. */
 import { PITCH_SPECS, TEAMS, inningsPitched, parkById, teamById, type Contest, type PitchGrade, type TeamBox } from '../sim'
 import type { PitchPace } from '../config'
+import type { TimeOfDay } from '../looks'
 
 export type SideChoice = 'away' | 'home' | 'watch'
 
@@ -13,6 +14,8 @@ export interface SetupChoice {
   dh: boolean
   autoRunner: boolean
   mercy: boolean
+  time: TimeOfDay
+  trail: boolean
 }
 
 function byId<T extends HTMLElement>(id: string): T {
@@ -87,6 +90,7 @@ export class Screens {
     const side = chips(byId('side-chips'), [{ value: 'home' as SideChoice, label: 'Home team' }, { value: 'away' as SideChoice, label: 'Visitors' }, { value: 'watch' as SideChoice, label: 'Just watch' }], 'home', () => updateNote())
     const innings = chips(byId('innings-chips'), [{ value: '3', label: '3 innings' }, { value: '6', label: '6 innings' }, { value: '9', label: '9 innings' }], '3', () => undefined)
     const pace = chips(byId('pace-chips'), [{ value: 'rookie' as PitchPace, label: 'Rookie' }, { value: 'pro' as PitchPace, label: 'Pro' }, { value: 'allstar' as PitchPace, label: 'All-Star (real speed)' }], 'rookie', () => undefined)
+    const time = chips(byId('time-chips'), [{ value: 'day' as TimeOfDay, label: 'Day' }, { value: 'dusk' as TimeOfDay, label: 'Golden hour' }, { value: 'night' as TimeOfDay, label: 'Night' }], 'night', () => undefined)
     const note = byId('park-note')
     const updateNote = () => {
       const home = teamById(side() === 'away' ? opponent.value : team.value)
@@ -99,7 +103,7 @@ export class Screens {
     byId<HTMLFormElement>('setup-form').addEventListener('submit', (event) => {
       event.preventDefault()
       const rival = opponent.value === team.value ? TEAMS.find((item) => item.id !== team.value)!.id : opponent.value
-      onStart({ team: team.value, opponent: rival, side: side(), innings: Number(innings()) as 3 | 6 | 9, pace: pace(), dh: byId<HTMLInputElement>('dh-check').checked, autoRunner: byId<HTMLInputElement>('runner-check').checked, mercy: byId<HTMLInputElement>('mercy-check').checked })
+      onStart({ team: team.value, opponent: rival, side: side(), innings: Number(innings()) as 3 | 6 | 9, pace: pace(), dh: byId<HTMLInputElement>('dh-check').checked, autoRunner: byId<HTMLInputElement>('runner-check').checked, mercy: byId<HTMLInputElement>('mercy-check').checked, time: time(), trail: byId<HTMLInputElement>('trail-check').checked })
     })
   }
 
