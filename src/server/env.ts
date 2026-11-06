@@ -29,6 +29,7 @@ export type Env = {
   FILES: KVNamespace
   MAPLE_WORLD?: DurableObjectNamespace
   ANGLER_LAKE?: DurableObjectNamespace
+  BUSHLEAGUE_MATCH?: DurableObjectNamespace
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
   ANTHROPIC_API_KEY?: string
