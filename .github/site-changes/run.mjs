@@ -242,18 +242,18 @@ async function publish() {
   if (touchesServer) notes.push('This touches the multiplayer service, so it goes live after Railway redeploys.')
 
   if (job.autoMerge && created.ok) {
-    const merged = await mergeWhenGreen(prUrl)
-    if (merged) {
+    const outcome = await mergeWhenGreen(prUrl)
+    if (outcome.merged) {
       if (newMigrations && process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID) {
         const applied = run('pnpm', ['exec', 'wrangler', 'd1', 'migrations', 'apply', 'thelibrary-db', '--remote'])
         notes.push(applied.ok ? 'I applied the database change too.' : 'The database change still needs applying: run `pnpm exec wrangler d1 migrations apply thelibrary-db --remote`.')
       }
       notes.push('The site updates as soon as Cloudflare finishes deploying, usually within a couple of minutes.')
       saveState({ ...state, reported: true })
-      await report({ status: 'merged', reply: [reply, ...notes].join('\n\n'), prUrl, commit: merged, ...base })
+      await report({ status: 'merged', reply: [reply, ...notes].join('\n\n'), prUrl, commit: outcome.commit, ...base })
       return
     }
-    notes.push('Automatic merge is switched on: the pull request merges itself as soon as the `modules` check passes. If the check fails, nothing goes live and the pull request shows why.')
+    notes.push(outcome.note)
   } else {
     notes.push('Nothing is live until you merge it.')
   }
@@ -261,31 +261,59 @@ async function publish() {
   await report({ status: 'review', reply: [reply, ...notes].join('\n\n'), prUrl, commit: git('rev-parse', 'HEAD'), ...base })
 }
 
-// Turns on auto-merge (squash) for the pull request and waits for the `modules`
-// check to merge it. Returns the merge commit on main, or null if it is still
-// waiting after MERGE_WAIT_MS (the pull request stays open with auto-merge on).
+// Merges the pull request (squash) once the `modules` check passes. GitHub's
+// auto-merge waits for the check when a branch rule on main requires it;
+// without such a rule GitHub refuses auto-merge, so this run watches the check
+// and merges itself. The mutation is called directly because `gh pr merge
+// --auto` merges at once, before any check has run, when nothing blocks it.
+// Returns { merged: true, commit } or { merged: false, note } saying why not.
 const MERGE_WAIT_MS = Number(process.env.SITE_CHANGES_MERGE_WAIT_MS ?? 20 * 60 * 1000)
+const ENABLE_AUTO_MERGE = 'mutation($id: ID!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH }) { clientMutationId } }'
 
-async function mergeWhenGreen(prUrl) {
-  const enabled = run('gh', ['pr', 'merge', prUrl, '--auto', '--squash'])
-  if (!enabled.ok) {
-    console.log(`Could not enable auto-merge: ${tail(enabled.output, 5)}`)
+function pullRequest(prUrl) {
+  const view = run('gh', ['pr', 'view', prUrl, '--json', 'id,state,mergeCommit,headRefOid'])
+  if (!view.ok) return null
+  try {
+    return JSON.parse(view.output)
+  } catch {
     return null
   }
-  const deadline = Date.now() + MERGE_WAIT_MS
-  while (Date.now() < deadline) {
-    await new Promise(resolve => setTimeout(resolve, 20000))
-    const view = run('gh', ['pr', 'view', prUrl, '--json', 'state,mergeCommit'])
-    if (!view.ok) continue
-    try {
-      const info = JSON.parse(view.output)
-      if (info.state === 'MERGED') return info.mergeCommit?.oid ?? null
-      if (info.state === 'CLOSED') return null
-    } catch {
-      continue
-    }
+}
+
+function modulesCheck(sha) {
+  const checks = run('gh', ['api', `repos/${GITHUB_REPOSITORY}/commits/${sha}/check-runs?check_name=modules`])
+  if (!checks.ok) return 'pending'
+  try {
+    const runs = JSON.parse(checks.output).check_runs ?? []
+    if (!runs.length || runs.some(check => check.status !== 'completed')) return 'pending'
+    return runs.every(check => check.conclusion === 'success') ? 'passed' : 'failed'
+  } catch {
+    return 'pending'
   }
-  return null
+}
+
+async function mergeWhenGreen(prUrl) {
+  const opened = pullRequest(prUrl)
+  const auto = opened
+    ? run('gh', ['api', 'graphql', '-f', `query=${ENABLE_AUTO_MERGE}`, '-f', `id=${opened.id}`])
+    : { ok: false, output: 'The pull request could not be read.' }
+  if (!auto.ok) console.log(`Auto-merge is unavailable, so this run merges once the modules check passes: ${tail(auto.output, 5)}`)
+  const deadline = Date.now() + MERGE_WAIT_MS
+  while (true) {
+    await new Promise(resolve => setTimeout(resolve, 20000))
+    const info = pullRequest(prUrl)
+    if (info?.state === 'MERGED') return { merged: true, commit: info.mergeCommit?.oid ?? null }
+    if (info?.state === 'CLOSED') return { merged: false, note: 'The pull request was closed before it merged, so nothing went live.' }
+    if (Date.now() >= deadline) break
+    if (!info || auto.ok) continue
+    const check = modulesCheck(info.headRefOid)
+    if (check === 'failed') return { merged: false, note: 'The `modules` check failed, so nothing went live. The pull request shows why.' }
+    if (check !== 'passed') continue
+    const merged = run('gh', ['pr', 'merge', prUrl, '--squash'])
+    if (!merged.ok) return { merged: false, note: `The \`modules\` check passed, but GitHub wouldn't merge the pull request:\n\n${tail(merged.output, 5)}` }
+  }
+  if (auto.ok) return { merged: false, note: 'Automatic merge is switched on: the pull request merges itself as soon as the `modules` check passes. If the check fails, nothing goes live and the pull request shows why.' }
+  return { merged: false, note: `The \`modules\` check hadn't finished after ${Math.round(MERGE_WAIT_MS / 60000)} minutes, so the pull request is still open. Nothing is live until it's merged.` }
 }
 
 async function reportFailure() {

@@ -35,7 +35,7 @@ type Props = {
   locked?: boolean
 }
 
-function samplePixel(map: Texture | null, uv: { x: number; y: number } | undefined): string | null {
+export function samplePixel(map: Texture | null, uv: { x: number; y: number } | undefined): string | null {
   const image = map?.image as (CanvasImageSource & { width: number; height: number }) | undefined
   if (!image?.width || !uv) return null
   const canvas = document.createElement('canvas')
@@ -50,7 +50,7 @@ function samplePixel(map: Texture | null, uv: { x: number; y: number } | undefin
 }
 
 const maskCache = new Map<string, Texture>()
-function maskedMap(map: Texture, key: string, tolerance: number, color: string): Texture | null {
+export function maskedMap(map: Texture, key: string, tolerance: number, color: string): Texture | null {
   const id = `${map.uuid}|${key}|${tolerance}|${color}`
   const hit = maskCache.get(id)
   if (hit) return hit

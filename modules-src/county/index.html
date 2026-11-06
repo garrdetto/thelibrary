@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kestrel County</title>
+  <meta name="description" content="Kestrel County: a 4 km open county in a glossy clipart style, with graded roads, a town of houses and Fox Plains driving." />
+  <style>
+    :root {
+      --panel: rgba(16, 20, 28, 0.62);
+      --line: rgba(255, 255, 255, 0.12);
+      --ink: #eef1f5;
+      --mute: #a9b3bf;
+      --accent: #4fb3ff;
+      --r: 12px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1118; color: var(--ink); font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    #app, #app canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    #status { position: fixed; inset: 0; display: grid; place-items: center; color: var(--mute); pointer-events: none; }
+    body.ready #status { display: none; }
+    #panel { position: fixed; top: 12px; left: 12px; z-index: 10; width: min(300px, calc(100vw - 24px)); padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25); }
+    body.clean #panel { display: none; }
+    h1 { margin: 0; font: 700 17px/1.2 ui-sans-serif, system-ui, sans-serif; letter-spacing: 0.02em; }
+    h1 small { display: block; margin-top: 2px; font-size: 11px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+    h2 { margin: 12px 0 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
+    .row { display: flex; flex-wrap: wrap; gap: 6px; }
+    button { font: inherit; color: var(--ink); cursor: pointer; background: rgba(255, 255, 255, 0.07); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; }
+    button:hover { border-color: rgba(255, 255, 255, 0.3); }
+    button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #06121e; font-weight: 700; }
+    button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    #stats { margin-top: 10px; color: var(--mute); font-size: 11px; font-variant-numeric: tabular-nums; }
+    .keys { margin-top: 8px; color: var(--mute); font-size: 11px; }
+    .keys b { color: var(--ink); font-weight: 600; }
+    body.world #panel, body.lookdev #hud { display: none; }
+    #hud { position: fixed; top: 12px; left: 12px; z-index: 10; min-width: 200px; max-width: calc(100vw - 24px); padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); }
+    body.clean #hud { display: none; }
+    #hud h1 { font-size: 15px; }
+    #where { margin-top: 4px; font-weight: 600; }
+    #speed { font: 700 22px/1.1 ui-sans-serif, system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+    #speed:empty, #hint:empty { display: none; }
+    #hint { margin-top: 4px; color: var(--accent); font-weight: 600; }
+    #dev { position: fixed; top: 12px; right: 12px; z-index: 20; width: min(340px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 12px 14px; background: rgba(12, 16, 24, 0.86); border: 1px solid var(--line); border-radius: var(--r); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+    #dev header { display: flex; justify-content: space-between; align-items: center; }
+    #dev h2 { margin: 0; font-size: 12px; color: var(--ink); }
+    #dev h3 { margin: 12px 0 6px; font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--mute); }
+    #dev .note { margin: 6px 0 0; color: var(--mute); font-size: 11px; }
+    #dev input[type=search] { width: 100%; font: inherit; color: var(--ink); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+    #dev input[type=range] { width: 100%; }
+    #dev .vlist { margin-top: 6px; display: grid; gap: 4px; max-height: 260px; overflow: auto; }
+    #dev .vrow { display: grid; grid-template-columns: 1fr auto auto; grid-template-rows: auto auto; column-gap: 6px; align-items: center; padding: 5px 6px; border-radius: 8px; background: rgba(255, 255, 255, 0.04); }
+    #dev .vname { font-weight: 600; grid-column: 1; }
+    #dev .vname em { margin-left: 6px; font-style: normal; font-size: 10px; color: #06121e; background: #f6c445; border-radius: 4px; padding: 0 4px; }
+    #dev .vrow small { grid-column: 1; grid-row: 2; color: var(--mute); font-size: 11px; }
+    #dev .vrow button { grid-row: 1 / span 2; padding: 4px 8px; }
+    #dev .make { display: inline-block; margin-top: 8px; color: var(--accent); font-size: 12px; }
+    #dev .live, #dev .stats { color: var(--mute); font-size: 11px; font-variant-numeric: tabular-nums; }
+    #dev .stats { margin-top: 10px; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="status" role="status">Setting up the county…</div>
+  <section id="hud" aria-label="Where you are">
+    <h1>Kestrel County</h1>
+    <div id="where" aria-live="polite"></div>
+    <div id="speed" aria-live="off"></div>
+    <div id="hint" aria-live="polite"></div>
+    <div id="stats" aria-live="off"></div>
+    <div class="keys"><b>WASD</b> move · <b>Shift</b> run · <b>E</b> get in or out · <b>Right-drag</b> look · <b>F8</b> developer panel</div>
+  </section>
+  <section id="panel" aria-label="Look development controls">
+    <h1>Kestrel County<small>Look development</small></h1>
+    <h2>View</h2>
+    <div class="row">
+      <button type="button" data-view="street">Street</button>
+      <button type="button" data-view="hangar">Hangar</button>
+      <button type="button" data-view="helicopter">Helicopter</button>
+      <button type="button" data-view="aerial">Aerial</button>
+    </div>
+    <h2>Time of day</h2>
+    <div class="row">
+      <button type="button" data-time="morning">Morning</button>
+      <button type="button" data-time="noon">Noon</button>
+      <button type="button" data-time="dusk">Dusk</button>
+      <button type="button" data-time="night">Night</button>
+    </div>
+    <h2>Render</h2>
+    <div class="row">
+      <button type="button" id="quality">Quality</button>
+      <button type="button" id="rotor" aria-pressed="false">Spin rotor</button>
+    </div>
+    <div id="ldstats" aria-live="off"></div>
+    <div class="keys"><b>Drag</b> orbit · <b>Right-drag</b> pan · <b>Wheel</b> zoom · <b>1–4</b> views · <b>T</b> time · <b>Q</b> quality</div>
+  </section>
+  <script type="module" src="./index.ts"></script>
+</body>
+</html>

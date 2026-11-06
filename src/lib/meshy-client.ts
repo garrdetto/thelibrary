@@ -23,7 +23,7 @@ async function post<T>(body: unknown): Promise<T> {
   return (await response.json()) as T
 }
 
-export type MeshySource = { jobId: string } | { itemId: string } | { vehicleId: string } | { rideId: string }
+export type MeshySource = { jobId: string } | { itemId: string } | { vehicleId: string } | { rideId: string } | { carId: string }
 
 export const meshyStatus = () => get<MeshyStatus>('?status=1')
 export const meshyJobs = () => get<{ jobs: MeshyJob[]; connected: boolean }>('')

@@ -6,6 +6,7 @@ import { requireMapleAdmin } from '../maplestreet-admin'
 import { ITEM_MODEL_KEY } from '../maplestreet-items'
 import { VEHICLE_MODEL_KEY } from '../maplestreet-vehicles'
 import { RIDE_SOURCE_KEY } from '../park-rides'
+import { CAR_MODEL_KEY } from '../shorttrack-cars'
 import { ensureJobModel, getJobRow, insertJob, isFinal, listJobRows, MESHY_MODEL_KEY, meshyConfigured, meshyFetch, refreshJob, setJob, TASK_PATHS, toJob } from '../meshy'
 
 const REFRESH_PER_LIST = 6
@@ -20,6 +21,7 @@ const source = z.union([
   z.object({ itemId: z.string().uuid() }).strict(),
   z.object({ vehicleId: z.string().uuid() }).strict(),
   z.object({ rideId: z.string().regex(/^cr_[a-f0-9]{10}$/) }).strict(),
+  z.object({ carId: z.string().uuid() }).strict(),
 ])
 
 const actionSchema = z.discriminatedUnion('action', [
@@ -79,6 +81,7 @@ async function modelInput(request: Request, env: Env, src: z.infer<typeof source
   const isPublic = origin.startsWith('https://') && !/localhost|127\.0\.0\.1/.test(origin)
   const [key, path] = 'itemId' in src ? [ITEM_MODEL_KEY(src.itemId), `/api/maplestreet-items?model=${src.itemId}`]
     : 'rideId' in src ? [RIDE_SOURCE_KEY(src.rideId), `/api/park-rides?source=${src.rideId}`]
+    : 'carId' in src ? [CAR_MODEL_KEY(src.carId), `/api/shorttrack-cars?model=${src.carId}`]
     : [VEHICLE_MODEL_KEY(src.vehicleId), `/api/maplestreet-vehicles?model=${src.vehicleId}`]
   if (isPublic) return { model_url: `${origin}${path}` }
   const stored = await env.FILES.getWithMetadata(key, 'arrayBuffer')

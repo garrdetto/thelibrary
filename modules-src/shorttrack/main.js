@@ -12,6 +12,8 @@ import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from 
 import { batchStatic } from '../_shared/static-batch.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from './iconic-schemes.js';
 import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js';
+import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers } from './custom-cars.js';
+import { carIdOf, numberSpot } from './shared/CustomCars';
 
 // ===================== TUNING =====================
 const CFG = {
@@ -569,7 +571,7 @@ function cleanLv(l){
     numStyle:!italic&&NUM_STYLE_IDS.includes(l.numStyle)?l.numStyle:'block',numFont:NUM_FONT_IDS.includes(l.numFont)?l.numFont:'classic',
     numSlant:bool(l.numSlant,italic),numSize:Number.isFinite(size)?clamp(Math.round(size/5)*5,60,150):125,
     numColor:col(l.numColor,'#ffffff'),numOutline:col(l.numOutline,'#111111'),numAccent:col(l.numAccent,col(l.accent,d.accent)),
-    numDoors:bool(l.numDoors,true),numRoof:bool(l.numRoof,true),numTail:bool(l.numTail,true),veh:VEHICLES[l.veh]?l.veh:'truck',
+    numDoors:bool(l.numDoors,true),numRoof:bool(l.numRoof,true),numTail:bool(l.numTail,true),veh:VEHICLES[l.veh]||carIdOf(String(l.veh||''))?l.veh:'truck',
     ...(Array.isArray(l.sponsor)&&HEX.test(l.sponsor[1]||'')&&HEX.test(l.sponsor[2]||'')?{sponsor:[String(l.sponsor[0]||'').replace(/[<>]/g,'').slice(0,18),l.sponsor[1],l.sponsor[2]]}:{}),
     ...(typeof l.scheme==='string'&&ICONIC[l.scheme]?{scheme:l.scheme}:{})};
 }
@@ -1517,6 +1519,10 @@ function tmRoofTex(){return canvasTex(512,328,(g,w,h)=>{g.textAlign='center';g.t
   g.font='900 120px Arial Black';g.fillStyle='#111';g.fillText('PACE',w/2,h/2);});}
 const NUM_PX={low:160,med:208,high:256};
 function mountNumbers(m,lv){
+  if(m.custom){const px=m.crisp?320:NUM_PX[quality]||208;
+    mountCustomNumbers(m,lv,{art:cv=>drawNumberArt(cv,numArtOpts(lv),px),size:(spot,art)=>numberSize(spot,art,lv.numSize/100),spot:numberSpot,fontOk:numFontReady(lv.numFont),
+      material:cv=>{const mat=makeNumberMaterial(THREE,makeNumberTexture(THREE,cv));mat.userData.r0=mat.roughness;mat.userData.cc0=mat.clearcoat;mat.envMap=envTex;mat.envMapIntensity=ENVK;
+        if(envTex===envNight){mat.roughness=Math.max(0.5,mat.roughness);mat.clearcoat*=0.3;}return mat;}});return;}
   if(m.car){mountCarLivery(m,lv);return;}
   const N=m.numbers;
   if(N){for(const d of N.meshes){m.tmg.remove(d);d.geometry.dispose();}N.mat.dispose();N.tex.dispose();
@@ -1644,6 +1650,9 @@ function buildStockCar(lv,o={}){
   mountCarLivery(m,lv);return m;
 }
 function buildCar(lv,o={}){
+  if(!lv.pace&&carIdOf(lv.veh||'')){const a=customCarReady(lv.veh);
+    if(a){const m=buildCustomCar(a,lv,{modelScale:TM_S,carAsset:CAR_ASSET,crisp:o.crisp,envTex,envK:ENVK});mountNumbers(m,lv);return m;}
+    if(CAR_ASSET)return buildStockCar(lv,o);}
   if(lv.veh==='car'&&!lv.pace&&CAR_ASSET)return buildStockCar(lv,o);
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);
   body.scale.setScalar(TRUCK_SCALE);
@@ -2122,6 +2131,13 @@ function formSpeed(c){const s=c.tp.s,lat=c.tp.lat,inTurn=(s>=T1&&s<T1+TURN)||s>=
   let v=(FORM_V+clamp(slotErr(c)*0.5,-5,5))*k;if(inTurn)v=Math.min(v,0.95*Math.sqrt(aMaxAt(s,lat,CFG.aiGrip)*(R+lat)));return v;}
 function rollAt(c,v){const s=c.tp.s,lat=c.tp.lat,inTurn=(s>=T1&&s<T1+TURN)||s>=T2,vMax=inTurn?Math.sqrt(aMaxAt(s,lat,CFG.aiGrip)*(R+lat))*0.9:v,sp=Math.min(v,vMax);
   c.vx=Math.sin(c.h)*sp;c.vz=Math.cos(c.h)*sp;c.vf=sp;}
+// A custom body that finished loading after the race was set up replaces the stand-in stock car in place.
+function swapCarModel(c){
+  const old=c.m,m=buildCar(c.lv,{crisp:c.isPlayer});m.root.scale.setScalar(CFG.carScale);
+  m.root.position.copy(old.root.position);m.root.quaternion.copy(old.root.quaternion);m.root.visible=old.root.visible;
+  if(c.tag){old.root.remove(c.tag);m.root.add(c.tag);}
+  scene.add(m.root);Car.prototype.dispose.call({m:old});c.m=m;
+}
 function clearCars(){cars.forEach(c=>c.dispose());cars.clear();player=null;}
 function beginRace(msg){
   clearCars();if(menuCar)menuCar.m.root.visible=false;
@@ -2134,6 +2150,7 @@ function beginRace(msg){
     if(attack){c.place(S_LINE-70,-2);c.cross=1;}else{c.place(GRID_S-row*GRID_ROW,c.fileLane);c.cross=1;rollAt(c,FORM_V);}
     cars.set(e.id,c);if(isMe)player=c;
   });
+  for(const c of cars.values())if(carIdOf(c.lv.veh||'')&&!customCarReady(c.lv.veh))Promise.all([ensureCustomCar(c.lv.veh),carAssetReady]).then(([a])=>{if(a&&cars.get(c.id)===c)swapCarModel(c);});
   // Pace truck removed: the rolling start is still led by the virtual formation reference (race.formP).
   setNight(!!settings.night);
   camH=player.h;camSnap=true;camMode='chase';
@@ -2488,15 +2505,17 @@ function renderGarage(){
   for(const b of document.querySelectorAll('[data-gpreset]')){const p=NUM_PRESETS.find(x=>x.id===b.dataset.gpreset);b.setAttribute('aria-pressed',p.fill===n.numColor&&p.outline===n.numOutline&&p.accent===n.numAccent);}
   for(const b of document.querySelectorAll('[data-gplace]'))b.setAttribute('aria-pressed',!!n[b.dataset.gplace]);
   for(const b of document.querySelectorAll('[data-gview]'))b.setAttribute('aria-pressed',b.dataset.gview===gView);
-  for(const b of document.querySelectorAll('[data-gveh]'))b.setAttribute('aria-pressed',b.dataset.gveh===n.veh);
-  $('gTailBtn').textContent=n.veh==='car'?'Tail':'Tailgate';
+  const gv=$('gVeh'),vSig=Object.keys(VEHICLES).join();
+  if(gv.dataset.sig!==vSig){gv.dataset.sig=vSig;gv.innerHTML=Object.entries(VEHICLES).map(([id,v])=>`<button type="button" data-gveh="${esc(id)}">${esc(v.name)}${v.draft?' (draft)':''}</button>`).join('');}
+  for(const b of gv.querySelectorAll('[data-gveh]'))b.setAttribute('aria-pressed',b.dataset.gveh===n.veh);
+  $('gTailBtn').textContent=n.veh==='truck'?'Tailgate':'Tail';
   $('gColorNote').textContent=(NUM_STYLES.find(s=>s.id===n.numStyle)||NUM_STYLES[0]).roles;
   const opts=numArtOpts({...n,number:n.number||'00'});
   for(const b of document.querySelectorAll('[data-gstyle]'))drawNumberPreview(b.firstChild,{...opts,style:b.dataset.gstyle},n.primary);
   drawNumberPreview($('gStyles').querySelector('[data-gslant]').firstChild,{...opts,slant:true},n.primary);
-  const art=drawNumberArt(sizeArt,opts,120),spots=[['numDoors','door','The doors'],['numRoof','roof','The roof'],['numTail','tail',n.veh==='car'?'The tail':'The tailgate']].filter(([k])=>n[k]);
+  const art=drawNumberArt(sizeArt,opts,120),spots=[['numDoors','door','The doors'],['numRoof','roof','The roof'],['numTail','tail',n.veh==='truck'?'The tailgate':'The tail']].filter(([k])=>n[k]);
   const capped=spots.filter(([,s])=>numberCapped(NUM_SPOTS[s],art,n.numSize/100)).map(([,,name])=>name);
-  $('gSizeNote').textContent=!spots.length?`Turn on a placement below to show the number on the ${n.veh==='car'?'car':'truck'}.`
+  $('gSizeNote').textContent=!spots.length?`Turn on a placement below to show the number on the ${n.veh==='truck'?'truck':'car'}.`
     :capped.length?`${capped.join(' and ')} ${capped.length>1?'are':'is'} as full as ${capped.length>1?'they get':'it gets'}, so the number stops growing there past this size.`
     :'100% is the original number size; 125% is 25% larger.';
 }
@@ -2530,10 +2549,18 @@ const FLOW_STEPS={attack:['Mode','Track','Setup'],solo:['Mode','Track','Setup'],
 const stepsHtml=(flow,idx)=>FLOW_STEPS[flow].map((n,i)=>`<span class="${i<idx?'done':i===idx?'on':''}">${i+1}. ${n}</span>`).join('');
 function goFlow(f){WIZ.flow=f;WIZ.track=TRACK_ID;if(f==='multi'){mode='multi';document.querySelector('[data-steps="multi"]').innerHTML=stepsHtml('multi',1);showScreen('scrMulti');return;}showTrack();}
 function renderTrackCards(){$('trackCards').innerHTML=Object.entries(TRACKS).map(([id,t])=>`<button class="tcard${id===WIZ.track?' on':''}" data-track="${id}" aria-pressed="${id===WIZ.track}"><b>${t.name}</b><span>${t.miles} \u00b7 ${t.surface==='dirt'?'Dirt':'Asphalt'} \u00b7 ${t.turnBank}\u00b0 banked turns${t.theme==='prison'?' \u00b7 extra grip':''}</span></button>`).join('');}
-function renderVehCards(){$('vehCards').innerHTML=Object.entries(VEHICLES).map(([id,v])=>`<button type="button" class="tcard${id===myLv.veh?' on':''}" data-veh="${id}" aria-pressed="${id===myLv.veh}"><b>${v.name}</b><span>${v.desc}</span><span>Same speed and handling</span></button>`).join('');}
+function renderVehCards(){$('vehCards').innerHTML=Object.entries(VEHICLES).map(([id,v])=>`<button type="button" class="tcard${id===myLv.veh?' on':''}" data-veh="${esc(id)}" aria-pressed="${id===myLv.veh}"><b>${esc(v.name)}</b><span>${esc(v.desc)}</span><span>${v.draft?'Draft: only you can see it':'Same speed and handling'}</span></button>`).join('');}
 function setVehicle(v){if(!VEHICLES[v]||v===myLv.veh)return;saveLv();const own=store.get(lvKey(v),null);
   myLv=cleanLv(own?{...own,veh:v,name:myLv.name}:{...myLv,veh:v});saveLv();if(mode==='garage')renderGarage();const me=NET.players.get(NET.myId);if(me)me.lv=myLv;renderVehCards();
+  if(carIdOf(v)&&!customCarReady(v)){Promise.all([ensureCustomCar(v),carAssetReady]).then(([a])=>{if(!a)toast('That car could not load, so the stock car will be used');if(!player)rebuildMenuCar();});return;}
   if(v==='car'&&!CAR_ASSET){carAssetReady.then(ok=>{if(!ok)toast('The car could not load, so the truck will be used');if(!player)rebuildMenuCar();});return;}if(!player)rebuildMenuCar();}
+// Admin-made cars join the vehicle list once the catalog arrives; a saved choice that's gone falls back to the truck.
+loadCustomCars().then(()=>{
+  for(const [id,v] of customCarEntries())VEHICLES[id]=v;
+  if(carIdOf(myLv.veh)&&!VEHICLES[myLv.veh]){myLv=cleanLv({...myLv,veh:'truck'});saveLv();}
+  renderVehCards();if(mode==='garage')renderGarage();
+  if(carIdOf(myLv.veh))Promise.all([ensureCustomCar(myLv.veh),carAssetReady]).then(()=>{if(!player)rebuildMenuCar();});
+});
 $('vehCards').addEventListener('click',e=>{const t=e.target.closest('[data-veh]');if(t)setVehicle(t.dataset.veh);});
 function showTrack(){mode='track';syncNightToggle();$('trackSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?2:1);renderTrackCards();renderVehCards();showScreen('scrTrack');}
 function showSetup(){mode='setup';const att=WIZ.flow==='attack';$('setupSteps').innerHTML=stepsHtml(WIZ.flow,WIZ.flow==='multi'?3:2);
@@ -2542,6 +2569,7 @@ function showSetup(){mode='setup';const att=WIZ.flow==='attack';$('setupSteps').
   $('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;syncNightToggle();$('sDiff').value=settings.diff||'medium';showScreen('scrSetup');}
 async function wizardNext(){readHostSettings();
   if(myLv.veh==='car'&&!CAR_ASSET&&!(await carAssetReady))toast('The car could not load, so the truck will be used');
+  if(carIdOf(myLv.veh)&&!customCarReady(myLv.veh)){const [a]=await Promise.all([ensureCustomCar(myLv.veh),carAssetReady]);if(!a)toast('That car could not load, so the stock car will be used');}
   if(WIZ.flow==='attack')startTimeAttack();
   else if(WIZ.flow==='solo'){resetNet();NET.host=true;NET.online=false;NET.myId='host';NET.players.set('host',{id:'host',lv:myLv});hostStart();}
   else startHost(true);}
