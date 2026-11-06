@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, ReactNode } from 'react'
-import { Archive, Eye, EyeOff, LoaderCircle, Pause, Pencil, Play, Plus, RotateCcw, RotateCw, Send, SkipForward, Trash2, Upload, Wand2 } from 'lucide-react'
+import { Archive, Box, Eye, EyeOff, Layers, LoaderCircle, Move, Pause, Tag, Pencil, Play, Plus, RotateCcw, RotateCw, Send, SkipForward, Trash2, Upload, Wand2 } from 'lucide-react'
 import { CUSTOM_RIDE_LIMITS as L, CUSTOM_RIDE_MOTIONS, sanitizeMotion, sanitizePlatform } from '../../../../server/park/index.mjs'
-import type { CustomRideMotion, CustomRidePlatform } from '../../../../server/park/index.mjs'
+import type { CustomPieceMotionType, CustomRideMotion, CustomRidePlatform } from '../../../../server/park/index.mjs'
 import { MeshyPanel } from '../../maplestreet/MeshyPanel'
 import type { MeshySourceOption } from '../../maplestreet/MeshyPanel'
 import type { MeshyJob } from '@/lib/meshy'
@@ -15,11 +15,13 @@ import { fitModel, fitScale, loadSource, rawExtent, reduceSource, TILE_METRES } 
 import type { ReducedModel, SourceModel } from './bake'
 import { RideStage, captureThumb } from './RideStage'
 import type { StageClock } from './RideStage'
-import { PiecesPanel } from './PiecesPanel'
+import { PiecesPanel, PIECE_PRESETS } from './PiecesPanel'
+import { newPiece } from '@/lib/park/ridePieces'
 import { assembleRide, platformTop, stripPlatform } from '@/lib/park/ridePlatform'
 import { PlatformPanel } from './PlatformPanel'
 import { suggestStats } from './suggest'
 import type { RideSuggestion } from './suggest'
+import { NumberInput } from '../../admin/NumberInput'
 
 type Details = Omit<ParkRideSpec, 'size' | 'height' | 'motion' | 'platform' | 'bake'>
 type Notice = { tone: 'ok' | 'error'; text: string } | null
@@ -28,6 +30,14 @@ const CATEGORIES: { id: ParkRideCategory; label: string }[] = [{ id: 'gentle', l
 const DEFAULT_MOTION: CustomRideMotion = sanitizeMotion({ type: 'spin', speed: 1, amount: 0.6, split: 0.6 })
 const RATES = [0.25, 0.5, 1, 2]
 const DEFAULT_PLATFORM: CustomRidePlatform = sanitizePlatform({})
+type TabId = 'fit' | 'motion' | 'base' | 'pieces' | 'details'
+const TABS: { id: TabId; label: string; icon: typeof Move }[] = [
+  { id: 'fit', label: 'Fit', icon: Move },
+  { id: 'motion', label: 'Motion', icon: RotateCw },
+  { id: 'base', label: 'Base', icon: Box },
+  { id: 'pieces', label: 'Moving pieces', icon: Layers },
+  { id: 'details', label: 'Details & price', icon: Tag },
+]
 const DEFAULT_DETAILS: Details = { name: '', description: '', category: 'gentle', cost: 2400, upkeep: 45, capacity: 16, rideTime: 28, loadTime: 8, price: 1.4, stats: { e: 2.2, i: 1.4, n: 1 } }
 const money = (value: number) => `$${value.toLocaleString('en-US')}`
 const STATUS_LABEL = { draft: 'Draft', published: 'Live in Thrill Park', retired: 'Retired' } as const
@@ -47,7 +57,7 @@ function nameFromFile(file: File) {
 
 function NumberField({ label, value, min, max, step = 1, onChange, suffix }: { label: string; value: number; min: number; max: number; step?: number; onChange: (value: number) => void; suffix?: ReactNode }) {
   return <label>{label}{suffix && <small className="rc-suffix">{suffix}</small>}
-    <input type="number" value={value} min={min} max={max} step={step} onChange={event => { const n = Number(event.target.value); if (Number.isFinite(n)) onChange(Math.min(max, Math.max(min, n))) }}/>
+    <NumberInput value={value} min={min} max={max} step={step} integer={Number.isInteger(step) && Number.isInteger(min)} onChange={onChange}/>
   </label>
 }
 
@@ -81,6 +91,8 @@ export default function RideCreator() {
   const [step, setStep] = useState(0)
   const [stageClock, setStageClock] = useState<StageClock | null>(null)
   const [focus, setFocus] = useState<number | null>(null)
+  const [tab, setTab] = useState<TabId>('fit')
+  const [picking, setPicking] = useState<number | null>(null)
   const [guides, setGuides] = useState(true)
   const [working, setWorking] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
@@ -110,6 +122,20 @@ export default function RideCreator() {
 
   const updateMotion = (patch: Partial<CustomRideMotion>) => setMotion(current => sanitizeMotion({ ...current, ...patch }))
   const updateDetails = (patch: Partial<Details>) => setDetails(current => ({ ...current, ...patch }))
+  const startPicking = (index: number | null) => {
+    setPicking(index)
+    if (index !== null) { setFocus(index); setPaused(true); setRestart(r => r + 1); setGuides(true) }
+  }
+  const addPick = (point: [number, number, number]) => {
+    if (picking === null || !motion.pieces[picking]) return
+    setMotion(sanitizeMotion({ ...motion, pieces: motion.pieces.map((piece, i) => i === picking ? { ...piece, picks: [...piece.picks, point].slice(-L.picksMax) } : piece) }))
+  }
+  const addPiece = (type: CustomPieceMotionType) => {
+    const next = sanitizeMotion({ ...motion, pieces: [...motion.pieces, newPiece(type, height || 6)] })
+    setMotion(next)
+    setFocus(next.pieces.length - 1)
+    setTab('pieces')
+  }
   const updatePlatform = (patch: Partial<CustomRidePlatform>) => {
     const next = sanitizePlatform({ ...platform, ...patch })
     const shift = platformTop(next) - platformTop(platform)
@@ -159,7 +185,7 @@ export default function RideCreator() {
 
   function reset() {
     setEditing(null); setFile(null); setSource(null); setReduced(null); setFixedMesh(null); setSourceChanged(false); setSourceJob(null)
-    setSize([3, 3]); setScale(1); setYaw(0); setTriangles(8000); setMotion(DEFAULT_MOTION); setPlatform(DEFAULT_PLATFORM); setDetails(DEFAULT_DETAILS); setSuggestion(null); setNotice(null); setFocus(null)
+    setSize([3, 3]); setScale(1); setYaw(0); setTriangles(8000); setMotion(DEFAULT_MOTION); setPlatform(DEFAULT_PLATFORM); setPicking(null); setDetails(DEFAULT_DETAILS); setSuggestion(null); setNotice(null); setFocus(null)
   }
 
   async function edit(record: ParkRideRecord) {
@@ -265,10 +291,10 @@ export default function RideCreator() {
         <input ref={fileInput} type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" hidden onChange={onFile}/>
       </header>
 
-      <div className="ms-items-editor">
+      <div className="ms-items-editor rc-layout">
         <div className="rc-left">
           <div className="ms-items-stage rc-stage">
-            {mesh ? <RideStage mesh={mesh} motion={motion} platform={platform} size={size} rideTime={details.rideTime} loadTime={Math.min(details.loadTime, 4)} paused={paused} rate={rate} restart={restart} step={step} guides={guides} focus={focus} onCanvas={c => { canvas.current = c }} onClock={setStageClock}/>
+            {mesh ? <RideStage mesh={mesh} motion={motion} platform={platform} size={size} rideTime={details.rideTime} loadTime={Math.min(details.loadTime, 4)} paused={paused} rate={rate} restart={restart} step={step} guides={guides} focus={focus} onPivot={pivot => updateMotion({ pivot })} onSplit={split => updateMotion({ split })} picking={picking !== null && !!motion.pieces[picking]} picks={picking !== null ? motion.pieces[picking]?.picks : undefined} onPick={addPick} onCanvas={c => { canvas.current = c }} onClock={setStageClock}/>
               : <button type="button" className="ms-items-drop" onClick={() => fileInput.current?.click()} disabled={busy} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const dropped = event.dataTransfer.files?.[0]; if (dropped) void openFile(dropped) }}>
                 <Upload size={22} aria-hidden/> Drop a .glb here, upload one, or pick “Open in editor” on a finished Meshy job below
               </button>}
@@ -279,6 +305,11 @@ export default function RideCreator() {
               <button type="button" onClick={() => { setPaused(true); setStep(s => s + 1) }} title="Advance one frame (1/30 s)"><SkipForward size={14} aria-hidden/> Step</button>
               <button type="button" onClick={() => setRestart(r => r + 1)}><RotateCcw size={14} aria-hidden/> Restart</button>
               <label className="rc-rate">Speed<select value={rate} onChange={event => setRate(Number(event.target.value))}>{RATES.map(r => <option key={r} value={r}>{r}×</option>)}</select></label>
+              <label className="rc-rate rc-quick">Add<select value="" onChange={event => { const v = event.target.value; if (v === 'base') { updatePlatform({ enabled: true }); setTab('base') } else if (v) addPiece(v as CustomPieceMotionType) }} disabled={busy}>
+                <option value="">Choose…</option>
+                {!platform.enabled && <option value="base">A base under the ride</option>}
+                {motion.pieces.length < L.piecesMax && <optgroup label="Moving piece">{PIECE_PRESETS.map(preset => <option key={preset.type} value={preset.type}>{preset.label}</option>)}</optgroup>}
+              </select></label>
               <button type="button" onClick={() => setGuides(g => !g)} aria-pressed={guides}>{guides ? <EyeOff size={14} aria-hidden/> : <Eye size={14} aria-hidden/>} Guides</button>
               {stageClock && <span className="rc-clock" role="status" aria-live="off">{paused ? 'Paused · ' : ''}{stageClock.phase === 'running' ? `Riding ${stageClock.timer.toFixed(1)} of ${details.rideTime} s` : `Loading ${stageClock.timer.toFixed(1)} s`}</span>}
             </div>}
@@ -292,10 +323,20 @@ export default function RideCreator() {
             {counts && motion.pieces.length > 0 && <div><dt>Extra pieces</dt><dd>{mesh.instances.length} moving · {counts.pieces.toLocaleString()} triangles</dd></div>}
             <div><dt>Baked size</dt><dd>{Math.round(encodedSize(mesh) / 1024).toLocaleString()} KB</dd></div>
           </dl>}
+          {picking !== null && motion.pieces[picking] && <p className="ms-items-ok rc-drag-hint" role="status">Picking for piece {picking + 1}: click the parts on the model that should move together (the ride is paused at its loading pose). <button type="button" className="rc-link" onClick={() => startPicking(null)}>Done</button></p>}
+          {mesh && guides && motion.type !== 'none' && picking === null && <p className="ms-items-note rc-drag-hint">Drag the pink pivot to move it across the ride, and the blue handle to raise or lower where the moving part starts.</p>}
           {overhang && <p className="ms-items-error" role="alert">The model hangs over the footprint. Guests and paths next to it will clip into it; lower the scale or enlarge the footprint.</p>}
         </div>
 
         <div className="ms-items-fields">
+          <div className="rc-tabs" role="tablist" aria-label="Ride settings">
+            {TABS.map(item => <button key={item.id} type="button" role="tab" id={`rc-tab-${item.id}`} aria-controls="rc-tabpanel" aria-selected={tab === item.id} tabIndex={tab === item.id ? 0 : -1}
+              onClick={() => setTab(item.id)} onKeyDown={event => { const i = TABS.findIndex(t => t.id === tab); const next = event.key === 'ArrowRight' ? TABS[(i + 1) % TABS.length] : event.key === 'ArrowLeft' ? TABS[(i + TABS.length - 1) % TABS.length] : null; if (next) { event.preventDefault(); setTab(next.id); document.getElementById(`rc-tab-${next.id}`)?.focus() } }}>
+              <item.icon size={14} aria-hidden/> {item.label}{item.id === 'pieces' && motion.pieces.length > 0 && <span className="rc-tab-count">{motion.pieces.length}</span>}{item.id === 'base' && platform.enabled && <span className="rc-tab-count">on</span>}
+            </button>)}
+          </div>
+          <div className="rc-tabpanel" id="rc-tabpanel" role="tabpanel" aria-labelledby={`rc-tab-${tab}`}>
+          {tab === 'fit' && <>
           <fieldset disabled={!mesh || busy}>
             <legend>Fit</legend>
             <fieldset className="rc-plain" disabled={status !== 'draft'}>
@@ -315,7 +356,8 @@ export default function RideCreator() {
               <button type="button" onClick={() => void bake(source, triangles)} disabled={busy}>{working === 'bake' ? <LoaderCircle className="spin" size={14}/> : null} Re-bake</button>
             </div>}
           </fieldset>
-
+          </>}
+          {tab === 'motion' && <>
           <fieldset disabled={!mesh || busy}>
             <legend>Motion</legend>
             <label>How it moves<select value={motion.type} onChange={event => updateMotion({ type: event.target.value as CustomRideMotion['type'] })}>
@@ -340,11 +382,14 @@ export default function RideCreator() {
               </>}
             </>}
           </fieldset>
-
+          </>}
+          {tab === 'base' && <>
           <PlatformPanel platform={platform} motion={motion} size={size} disabled={!mesh || busy} onChange={updatePlatform}/>
-
-          <PiecesPanel motion={motion} mesh={mesh} height={height} reach={reach} focus={focus} onFocus={setFocus} onChange={next => setMotion(next)}/>
-
+          </>}
+          {tab === 'pieces' && <>
+          <PiecesPanel motion={motion} mesh={mesh} height={height} reach={reach} focus={focus} onFocus={setFocus} onChange={next => setMotion(next)} onAdd={addPiece} picking={picking} onPicking={startPicking}/>
+          </>}
+          {tab === 'details' && <>
           <fieldset disabled={busy}>
             <legend>Ride details</legend>
             <label>Name<input value={details.name} onChange={event => updateDetails({ name: event.target.value })} maxLength={L.nameMax} placeholder="Comet Spinner"/></label>
@@ -367,6 +412,8 @@ export default function RideCreator() {
             </div>
             <p className="ms-items-note">Guests skip rides above their intensity limit: kids stay under about 3, casual guests about 5.5 and thrill seekers ride almost anything. Players pay {money(details.cost)} to build it.</p>
           </fieldset>
+          </>}
+          </div>
 
           {notice && <p role={notice.tone === 'error' ? 'alert' : 'status'} className={notice.tone === 'error' ? 'ms-items-error' : 'ms-items-ok'}>{notice.text}</p>}
           <div className="ms-items-submit">

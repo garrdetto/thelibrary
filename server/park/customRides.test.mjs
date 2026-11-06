@@ -128,3 +128,14 @@ test('the generated base and rise are validated and reach the park definition', 
   assert.equal(def.custom.motion.rise, 6)
   assert.equal(customRideDef(ride()).custom.platform.enabled, false)
 })
+
+test('clicked picks on moving pieces are validated', () => {
+  const [piece] = sanitizeMotion({ type: 'spin', pieces: [{ type: 'swing', hang: 'clicked', picks: [[1, 2, 3], [999, -999, -5], 'x', [1, 2], ...Array.from({ length: 40 }, () => [0, 0, 1])], matching: false }] }).pieces
+  assert.equal(piece.hang, 'clicked')
+  assert.deepEqual(piece.picks[0], [1, 2, 3])
+  assert.deepEqual(piece.picks[1], [CUSTOM_RIDE_LIMITS.reachMax, -CUSTOM_RIDE_LIMITS.reachMax, 0])
+  assert.equal(piece.picks.length, CUSTOM_RIDE_LIMITS.picksMax)
+  assert.equal(piece.matching, false)
+  assert.equal(sanitizeMotion({ pieces: [{}] }).pieces[0].matching, true)
+  assert.deepEqual(sanitizeMotion({ pieces: [{}] }).pieces[0].picks, [])
+})

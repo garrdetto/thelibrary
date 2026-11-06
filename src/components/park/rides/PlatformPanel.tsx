@@ -1,6 +1,7 @@
 import { CUSTOM_PLATFORM_SHAPES, CUSTOM_PLATFORM_STEPS, CUSTOM_RIDE_LIMITS as L } from '../../../../server/park/index.mjs'
 import type { CustomRideMotion, CustomRidePlatform } from '../../../../server/park/index.mjs'
 import { SHAPE_LABEL, STEP_LABEL, columnSpan, stepOverhang } from '@/lib/park/ridePlatform'
+import { NumberInput } from '../../admin/NumberInput'
 
 type Props = {
   platform: CustomRidePlatform
@@ -35,7 +36,7 @@ export function PlatformPanel({ platform: p, motion, size, disabled, onChange }:
         <label>Shape<select value={p.shape} onChange={event => onChange({ shape: event.target.value as CustomRidePlatform['shape'] })}>
           {CUSTOM_PLATFORM_SHAPES.map(shape => <option key={shape} value={shape}>{SHAPE_LABEL[shape]}</option>)}
         </select></label>
-        <label>Tiers<input type="number" value={p.tiers} min={1} max={L.platformTiersMax} onChange={event => { const n = Number(event.target.value); if (Number.isFinite(n)) onChange({ tiers: Math.round(Math.min(L.platformTiersMax, Math.max(1, n))) }) }}/></label>
+        <label>Tiers<NumberInput value={p.tiers} min={1} max={L.platformTiersMax} integer onChange={tiers => onChange({ tiers })}/></label>
       </div>
       <Range label="Size" value={p.fill} min={0.3} max={1} step={0.01} format={v => `${Math.round(v * 100)}% of the footprint`} onChange={fill => onChange({ fill })}/>
       <Range label="Height" value={p.height} min={0} max={L.platformHeightMax} step={0.05} format={v => v < 0.005 ? 'flat on the ground' : metres(v)} onChange={height => onChange({ height })}/>
@@ -73,7 +74,7 @@ export function PlatformPanel({ platform: p, motion, size, disabled, onChange }:
         <div className="rc-grid2">
           <Range label="Thickness" value={p.columnRadius} min={0.1} max={L.columnRadiusMax} step={0.05} format={v => `${(v * 2).toFixed(1)} m across`} onChange={columnRadius => onChange({ columnRadius })}/>
           <Range label="Reaches up to" value={p.columnTop} min={0} max={Math.max(1, L.heightMax / 2)} step={0.1} format={v => v <= 0.001 ? 'the moving part' : metres(v)} onChange={columnTop => onChange({ columnTop })}/>
-          {p.column === 'telescoping' && <label>Sections<input type="number" value={p.columnSections} min={1} max={L.columnSectionsMax} onChange={event => { const n = Number(event.target.value); if (Number.isFinite(n)) onChange({ columnSections: Math.round(Math.min(L.columnSectionsMax, Math.max(1, n))) }) }}/></label>}
+          {p.column === 'telescoping' && <label>Sections<NumberInput value={p.columnSections} min={1} max={L.columnSectionsMax} integer onChange={columnSections => onChange({ columnSections })}/></label>}
           <Colour label="Column colour" value={p.columnColor} onChange={columnColor => onChange({ columnColor })}/>
         </div>
       </>}

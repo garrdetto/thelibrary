@@ -19,6 +19,7 @@ import { carProblems, carSpec, draftFromCar, fmtLen, newCarDraft, placement, tur
 import type { CarDraft, CarMarker } from './carDraft'
 import { CarStage } from './CarStage'
 import type { CarModelInfo } from './CarStage'
+import { NumberInput } from '../../admin/NumberInput'
 
 const MODULE_URL = '/#module-shorttrack'
 const MARKERS: { id: CarMarker; label: string }[] = [
@@ -43,7 +44,7 @@ class ModelErrorBoundary extends Component<{ resetKey: string; onError: (message
 }
 
 function Num({ label, value, onChange, step = 0.01, min, max, suffix }: { label: string; value: number; onChange: (value: number) => void; step?: number; min?: number; max?: number; suffix?: string }) {
-  return <label>{label}{suffix ? ` (${suffix})` : ''}<input type="number" step={step} min={min} max={max} value={Number.isFinite(value) ? value : ''} onChange={event => { const n = Number(event.target.value); if (Number.isFinite(n)) onChange(n) }}/></label>
+  return <label>{label}{suffix ? ` (${suffix})` : ''}<NumberInput step={step} min={min} max={max} value={value} onChange={onChange}/></label>
 }
 
 function Slider({ label, value, onChange, min, max, step, display }: { label: string; value: number; onChange: (value: number) => void; min: number; max: number; step: number; display: string }) {

@@ -26,6 +26,7 @@ export function newPiece(type: CustomPieceMotionType, height: number): CustomRid
     type, speed: 1, amount: type === 'flip' ? 1 : 0.6,
     from: 0, to: type === 'level' ? Math.round(height * 10) / 10 : low, inner: 1, outer: CUSTOM_RIDE_LIMITS.reachMax,
     split: 'pieces', count: 8, hang: PIECE_INFO[type].hang, axis: 'radial', stagger: type === 'flip' ? 0.3 : 0.5, alternate: false, on: -1,
+    picks: [], matching: true,
   }
 }
 
@@ -70,6 +71,26 @@ function connectedClusters(P: Float32Array, tris: number[], budget: number): num
   return clusters
 }
 
+/** Joins clicked parts that line up along the same direction from the centre (a chain and its seat) into one copy. */
+function joinAlongSpokes(P: Float32Array, clusters: number[][], px: number, py: number): number[][] {
+  const info = clusters.map(list => {
+    let x = 0, y = 0
+    for (const t of list) { x += centroid(P, t, 0); y += centroid(P, t, 1) }
+    x /= list.length; y /= list.length
+    return { list, angle: Math.atan2(y - py, x - px), radius: Math.hypot(x - px, y - py) }
+  })
+  const union = new Union(info.length)
+  for (let i = 0; i < info.length; i++) for (let j = i + 1; j < info.length; j++) {
+    const a = info[i], b = info[j]
+    if (a.radius < 1 || b.radius < 1) continue
+    const turn = Math.abs(Math.atan2(Math.sin(a.angle - b.angle), Math.cos(a.angle - b.angle)))
+    if (turn < 0.12 && Math.abs(a.radius - b.radius) < 1.5) union.join(i, j)
+  }
+  const groups = new Map<number, number[]>()
+  info.forEach((item, i) => { const root = union.find(i); const list = groups.get(root); if (list) list.push(...item.list); else groups.set(root, [...item.list]) })
+  return [...groups.values()]
+}
+
 /** Equal slices around the main pivot, turned so the cuts fall where the model is emptiest. */
 function sectorClusters(P: Float32Array, tris: number[], count: number, px: number, py: number): number[][] {
   const angles = tris.map(t => Math.atan2(centroid(P, t, 1) - py, centroid(P, t, 0) - px))
@@ -100,13 +121,15 @@ export function splitPieces(positions: Float32Array, triangles: number, motion: 
   const pieces = motion.pieces ?? []
   const owner = new Int16Array(triangles).fill(-1)
   pieces.forEach((piece, g) => {
+    const band: number[] = []
     for (let t = 0; t < triangles; t++) {
       const z = centroid(P, t, 2)
       if (z < piece.from || z > piece.to) continue
       const r = Math.hypot(centroid(P, t, 0) - px, centroid(P, t, 1) - py)
       if (r < piece.inner || r > piece.outer) continue
-      owner[t] = g
+      band.push(t)
     }
+    for (const t of piece.picks?.length ? pickedTriangles(P, band, piece, px, py) : band) owner[t] = g
   })
   const instances: RideInstance[] = []
   const claimed = pieces.map(() => 0)
@@ -118,7 +141,9 @@ export function splitPieces(positions: Float32Array, triangles: number, motion: 
     for (let t = 0; t < triangles; t++) if (owner[t] === g) tris.push(t)
     const room = cap - instances.length
     if (!tris.length || room <= 0) { tris.forEach(t => { owner[t] = -1 }); return }
-    let clusters = piece.split === 'sectors' ? sectorClusters(P, tris, Math.min(piece.count, room), px, py) : connectedClusters(P, tris, room)
+    let clusters = piece.split === 'sectors' ? sectorClusters(P, tris, Math.min(piece.count, room), px, py) : connectedClusters(P, tris, tris.length)
+    if (piece.split === 'pieces' && piece.picks?.length) clusters = joinAlongSpokes(P, clusters, px, py)
+    if (clusters.length > room) clusters = connectedClusters(P, tris, room)
     const info = clusters.map(list => {
       let x0 = Infinity, y0 = Infinity, z0 = Infinity, x1 = -Infinity, y1 = -Infinity, z1 = -Infinity
       for (const t of list) for (let k = 0; k < 3; k++) {
@@ -126,12 +151,13 @@ export function splitPieces(positions: Float32Array, triangles: number, motion: 
         x0 = Math.min(x0, P[o]); x1 = Math.max(x1, P[o]); y0 = Math.min(y0, P[o + 1]); y1 = Math.max(y1, P[o + 1]); z0 = Math.min(z0, P[o + 2]); z1 = Math.max(z1, P[o + 2])
       }
       const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2
-      const cz = piece.hang === 'top' ? z1 : piece.hang === 'bottom' ? z0 : (z0 + z1) / 2
+      const cz = piece.hang === 'bottom' ? z0 : piece.hang === 'centre' ? (z0 + z1) / 2 : z1
       let reach = 0.3
       for (const t of list) for (let k = 0; k < 3; k++) { const o = t * 9 + k * 3; reach = Math.max(reach, Math.hypot(P[o] - cx, P[o + 1] - cy, P[o + 2] - cz)) }
       return { list, pivot: [cx, cy, cz] as [number, number, number], azimuth: Math.atan2(cy - py, cx - px), reach }
     })
     info.sort((a, b) => a.azimuth - b.azimuth)
+    if (piece.hang === 'clicked' && piece.picks?.length) clickedPivots(P, info, piece.picks, px, py)
     clusters = info.map(i => i.list)
     info.forEach((cluster, index) => {
       let carrier = moving && piece.on !== -2 ? 1 : 0
@@ -152,6 +178,63 @@ export function splitPieces(positions: Float32Array, triangles: number, motion: 
   })
   for (let t = 0; t < triangles; t++) if (owner[t] < 0 || parts[t * 3] < 2) parts.fill(main[t], t * 3, t * 3 + 3)
   return { parts, instances, claimed }
+}
+
+function nearestTriangle(P: Float32Array, list: number[], point: [number, number, number]) {
+  let best = -1, bestD = Infinity
+  for (const t of list) {
+    const d = (centroid(P, t, 0) - point[0]) ** 2 + (centroid(P, t, 1) - point[1]) ** 2 + (centroid(P, t, 2) - point[2]) ** 2
+    if (d < bestD) { bestD = d; best = t }
+  }
+  return { triangle: best, distance: Math.sqrt(bestD) }
+}
+
+type Shape = { count: number; z0: number; z1: number; radius: number }
+function shapeOf(P: Float32Array, list: number[], px: number, py: number): Shape {
+  let z0 = Infinity, z1 = -Infinity, x = 0, y = 0
+  for (const t of list) { const z = centroid(P, t, 2); z0 = Math.min(z0, z); z1 = Math.max(z1, z); x += centroid(P, t, 0); y += centroid(P, t, 1) }
+  return { count: list.length, z0, z1, radius: Math.hypot(x / list.length - px, y / list.length - py) }
+}
+const alike = (a: Shape, b: Shape) => Math.abs(a.count - b.count) <= Math.max(2, a.count * 0.3) && Math.abs(a.z0 - b.z0) < 0.5 && Math.abs(a.z1 - b.z1) < 0.5 && Math.abs(a.radius - b.radius) < 0.75
+
+/** The connected parts the admin clicked on (within the piece's height and distance band), plus look-alike copies when `matching` is on. */
+function pickedTriangles(P: Float32Array, band: number[], piece: CustomRidePiece, px: number, py: number): number[] {
+  if (!band.length) return []
+  const clusters = connectedClusters(P, band, band.length)
+  const clusterOf = new Map<number, number>()
+  clusters.forEach((list, i) => { for (const t of list) clusterOf.set(t, i) })
+  const chosen = new Set<number>()
+  for (const pick of piece.picks) {
+    const near = nearestTriangle(P, band, pick)
+    if (near.triangle >= 0 && near.distance < 3) chosen.add(clusterOf.get(near.triangle)!)
+  }
+  if (piece.matching && chosen.size) {
+    const shapes = clusters.map(list => shapeOf(P, list, px, py))
+    const sources = [...chosen].map(i => shapes[i])
+    shapes.forEach((shape, i) => { if (sources.some(source => alike(source, shape))) chosen.add(i) })
+  }
+  return [...chosen].flatMap(i => clusters[i])
+}
+
+/** Puts each copy's pivot at the clicked point; copies nobody clicked get the clicked point turned round the centre to match. */
+function clickedPivots(P: Float32Array, info: { list: number[]; pivot: [number, number, number]; azimuth: number }[], picks: [number, number, number][], px: number, py: number) {
+  const owned = info.map(item => new Set(item.list))
+  const direct = new Map<number, [number, number, number]>()
+  for (const pick of picks) {
+    const near = nearestTriangle(P, info.flatMap(item => item.list), pick)
+    const at = owned.findIndex(set => set.has(near.triangle))
+    if (at >= 0 && !direct.has(at)) direct.set(at, pick)
+  }
+  if (!direct.size) return
+  const [sourceAt, sourcePick] = [...direct][0]
+  const sourceAzimuth = info[sourceAt].azimuth
+  const dx = sourcePick[0] - px, dy = sourcePick[1] - py
+  info.forEach((item, i) => {
+    const own = direct.get(i)
+    if (own) { item.pivot = [own[0], own[1], own[2]]; return }
+    const turn = item.azimuth - sourceAzimuth, c = Math.cos(turn), s = Math.sin(turn)
+    item.pivot = [px + dx * c - dy * s, py + dx * s + dy * c, sourcePick[2]]
+  })
 }
 
 const around = (p: [number, number, number], rotation: Mat4) => mat4.chain(mat4.translation(p[0], p[1], p[2]), rotation, mat4.translation(-p[0], -p[1], -p[2]))
