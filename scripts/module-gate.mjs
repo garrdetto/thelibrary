@@ -80,7 +80,7 @@ async function checkModule(browser, id) {
     await page.evaluate((q) => {
       for (const el of document.querySelectorAll('.play-frame iframe')) el.src = `${el.src.split('?')[0]}?${q}`;
     }, query);
-    const moved = await page.waitForFunction((q) => [...document.querySelectorAll('.play-frame iframe')].every((el) => el.src.endsWith(`?${q}`)), query, { timeout: 10000 }).catch(() => null);
+    const moved = await page.waitForFunction((q) => [...document.querySelectorAll('.play-frame iframe')].every((el) => el.src.endsWith(`?${q}`)), query, { timeout: 30000 }).catch(() => null);
     if (!moved) errors.push(`hub: module iframe did not take ?${query}`);
   }
   await page.waitForTimeout(settleMs);

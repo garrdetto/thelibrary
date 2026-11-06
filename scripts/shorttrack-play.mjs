@@ -45,6 +45,8 @@ async function open(query) {
   page.on('pageerror', (error) => errors.push(error.message))
   page.on('console', (msg) => msg.type() === 'error' && !/\/api\/|Failed to load resource|peerjs|WebSocket/i.test(msg.text()) && errors.push(msg.text()))
   await page.goto(`${base}?${query}`, { waitUntil: 'load' })
+  // the menus are wired once the module has initialised (on ?engine=next that waits for Babylon); its first frame says so
+  await page.waitForFunction(() => (window.__stClassic?.frames ?? 0) > 0, null, { timeout: 60000 }).catch(() => errors.push('the module never drew a frame'))
   return { page, errors }
 }
 
