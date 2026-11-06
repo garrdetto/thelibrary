@@ -109,28 +109,37 @@ function testScene(scene: Scene) {
   }
 }
 
+const WEBGPU_FIRST_FRAME_MS = 6000
+
 async function run(canvas: HTMLCanvasElement, readout: HTMLDivElement, status: NextStatus, force: string | null): Promise<void> {
   const { engine, backend } = await createEngine(canvas, force)
   status.backend = backend
-  const scene = new Scene(engine)
-  await createPhysics(scene)
-  status.physics = 'havok'
-  testScene(scene)
-  let lost = false
-  engine.onContextLostObservable.add(() => {
-    if (backend !== 'webgpu' || lost) return
-    lost = true
-    console.warn('WebGPU device lost, switching to WebGL2')
+  status.frames = 0
+  let switched = false
+  let scene: Scene | null = null
+  const toWebGl = (reason: string) => {
+    if (backend !== 'webgpu' || switched) return
+    switched = true
+    console.warn(`${reason}, switching to WebGL2`)
     engine.stopRenderLoop()
-    scene.dispose()
+    scene?.dispose()
     engine.dispose()
     const replacement = canvas.cloneNode() as HTMLCanvasElement
     canvas.replaceWith(replacement)
     status.fellBack = true
+    status.physics = null
     void run(replacement, readout, status, 'webgl').catch((error) => fail(readout, status, error))
-  })
+  }
+  engine.onContextLostObservable.add(() => toWebGl('WebGPU device lost'))
+  if (backend === 'webgpu') setTimeout(() => { if (status.frames === 0) toWebGl('WebGPU drew no frames') }, WEBGPU_FIRST_FRAME_MS)
+  const current = new Scene(engine)
+  scene = current
+  await createPhysics(current)
+  if (switched) return
+  status.physics = 'havok'
+  testScene(current)
   engine.runRenderLoop(() => {
-    scene.render()
+    current.render()
     status.frames += 1
     if (status.frames % 30 === 0) {
       status.fps = Math.round(engine.getFps())
@@ -139,7 +148,7 @@ async function run(canvas: HTMLCanvasElement, readout: HTMLDivElement, status: N
   })
   const resize = () => engine.resize()
   addEventListener('resize', resize)
-  scene.onDisposeObservable.add(() => removeEventListener('resize', resize))
+  current.onDisposeObservable.add(() => removeEventListener('resize', resize))
 }
 
 function fail(readout: HTMLDivElement, status: NextStatus, error: unknown) {
