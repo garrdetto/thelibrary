@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { ASSET_STATUSES, type AssetStatus } from '../../modules-src/maplestreet/shared/Assets'
 import type { Env } from './env'
 
-export const ASSET_KINDS = ['item', 'vehicle', 'garment', 'accessory', 'prop', 'building'] as const
+export const ASSET_KINDS = ['item', 'vehicle', 'garment', 'accessory', 'prop', 'building', 'stcar'] as const
 export type AssetKind = (typeof ASSET_KINDS)[number]
 export { ASSET_STATUSES }
 export type { AssetStatus }

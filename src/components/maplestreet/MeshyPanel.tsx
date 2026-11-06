@@ -138,13 +138,14 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
     </header>
     {target === 'ride' && <p className="ms-meshy-note">Thrill Park rides must be original: no real park, ride or film names, mascots or logos. Ask for the ride on its own, without riders or scenery; the park adds guests, queues and lights.</p>}
     {target === 'vehicle' && <p className="ms-meshy-note">Vehicles must be original designs: no real makes, model names, logos or badges. The game adds its own spinning, steering wheels, so ask for a body without wheels.</p>}
+    {target === 'racecar' && <p className="ms-meshy-note">Race cars must be original designs: no real makes, models, series, sponsors or logos. The track adds wheels, the driver’s paint color and race numbers, so ask for a plain body without wheels, decals or numbers.</p>}
 
     <div className="ms-meshy-tabs" role="tablist" aria-label="Meshy tools">
       {(['text', 'image', 'edit'] as const).map(value => <button key={value} type="button" role="tab" aria-selected={mode === value} className={mode === value ? 'is-active' : ''} onClick={() => setMode(value)}>{value === 'text' ? 'Text → 3D' : value === 'image' ? 'Image → 3D' : 'Edit a published model'}</button>)}
     </div>
 
     {mode === 'text' && <form className="ms-meshy-form" onSubmit={(event: FormEvent) => { event.preventDefault(); void run('text', () => meshyText({ target, prompt, negativePrompt: negative, aiModel, count, polycount }), `Started ${count} preview${count > 1 ? 's' : ''}. Pick the best one, then refine it for textures.`) }}>
-      <label>Describe the model<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={3} maxLength={600} required minLength={3} placeholder={target === 'vehicle' ? 'A boxy two-door utility wagon with a roof rack' : target === 'ride' ? 'A spinning octopus ride with eight teal tub cars on long arms, on a round deck' : 'A mid-century walnut sideboard with brass handles'}/></label>
+      <label>Describe the model<textarea value={prompt} onChange={event => setPrompt(event.target.value)} rows={3} maxLength={600} required minLength={3} placeholder={target === 'vehicle' ? 'A boxy two-door utility wagon with a roof rack' : target === 'racecar' ? 'A low, wedge-nosed short-track race car with a tall rear spoiler and flat sides' : target === 'ride' ? 'A spinning octopus ride with eight teal tub cars on long arms, on a round deck' : 'A mid-century walnut sideboard with brass handles'}/></label>
       <div className="ms-meshy-chips" aria-label="Prompt helpers">{PROMPT_HELPERS[target].map(text => <button key={text} type="button" onClick={() => addHelper(text)}>+ {text}</button>)}</div>
       <label>Avoid<input value={negative} onChange={event => setNegative(event.target.value)} maxLength={300}/></label>
       <div className="ms-meshy-row">

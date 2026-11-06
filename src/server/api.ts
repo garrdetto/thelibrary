@@ -12,6 +12,7 @@ import { parkRides } from './routes/park-rides'
 import { maplestreet } from './routes/maplestreet'
 import { maplestreetItems } from './routes/maplestreet-items'
 import { maplestreetVehicles } from './routes/maplestreet-vehicles'
+import { shorttrackCars } from './routes/shorttrack-cars'
 import { maplestreetSuggest } from './routes/maplestreet-suggest'
 import { meshy } from './routes/meshy'
 import { groupChat } from './routes/chat'
@@ -39,6 +40,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/maplestreet': maplestreet,
   '/api/maplestreet-items': maplestreetItems,
   '/api/maplestreet-vehicles': maplestreetVehicles,
+  '/api/shorttrack-cars': shorttrackCars,
   '/api/maplestreet-suggest': maplestreetSuggest,
   '/api/meshy': meshy,
   '/api/group-chat': groupChat,
