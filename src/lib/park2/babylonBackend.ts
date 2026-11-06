@@ -1,4 +1,5 @@
 import { Buffer as BabylonBuffer, VertexBuffer } from '@babylonjs/core/Buffers/buffer'
+import type { DataBuffer } from '@babylonjs/core/Buffers/dataBuffer'
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera'
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 import { Constants } from '@babylonjs/core/Engines/constants'
@@ -38,7 +39,9 @@ type ParkMesh = {
   unique: number
   lines: boolean
   instanced: boolean
-  geometry: Geometry | null
+  buffer: BabylonBuffer | null
+  indexBuffer: DataBuffer | null
+  indexCount: number
   pools: Map<string, Pool>
   shadowPools: Map<string, Pool>
   matrices: Float32Array
@@ -94,9 +97,12 @@ const dummyColor = (scene: Scene) => new RawTexture(new Uint8Array([255, 255, 25
  * it, WebGL2 otherwise. The classic park renderer's draw calls are replayed into
  * pooled Babylon meshes each frame. The packed vertex format, the surface
  * shading (detail layers, ground, water, neon, sky light) and the thin-instance
- * layout are the classic ones, written in GLSL and WGSL; Babylon adds cascaded
- * sun shadows (depth maps rendered by `RenderTargetTexture`s), lamp lights,
- * MSAA, bloom, grading and ambient occlusion through its rendering pipelines.
+ * layout are the classic ones, written in GLSL and WGSL, and so is the winding:
+ * front faces are counter-clockwise, which every pooled mesh states because
+ * Babylon defaults meshes in a right-handed scene to clockwise. Babylon adds
+ * cascaded sun shadows (depth maps rendered by `RenderTargetTexture`s), lamp
+ * lights, MSAA, bloom, grading and ambient occlusion through its rendering
+ * pipelines.
  */
 export class BabylonBackend implements RenderBackend {
   readonly shadowsAvailable = true
@@ -387,28 +393,36 @@ export class BabylonBackend implements RenderBackend {
       data[o + 15] = 0
     }
     const handle: ParkMesh = {
-      vertices: data, indices: indices as Uint16Array | Uint32Array, unique, lines: builder.lines, instanced, geometry: null,
+      vertices: data, indices: indices as Uint16Array | Uint32Array, unique, lines: builder.lines, instanced, buffer: null, indexBuffer: null, indexCount: 0,
       pools: new Map(), shadowPools: new Map(), matrices: new Float32Array(16), tints: new Float32Array(4), capacity: 0, count: 0, version: 0,
     }
     this.meshes.add(handle)
     return handle
   }
 
-  private geometryOf(m: ParkMesh): Geometry | null {
-    if (m.geometry) return m.geometry
-    if (!m.vertices || !m.indices || !this.scene || !this.engine) return null
+  /**
+   * One geometry per pooled mesh, over the buffers uploaded once per park mesh: Babylon keeps thin-instance buffers on a
+   * mesh's geometry and disposes a geometry with its last mesh, so a shared one died with the shadow casters on a level change.
+   */
+  private geometryFor(m: ParkMesh): Geometry | null {
+    if (!this.scene || !this.engine) return null
     const engine = this.engine
-    const buffer = new BabylonBuffer(engine, m.vertices, false, BYTES, false, false, true)
-    const geometry = new Geometry(Geometry.RandomId(), this.scene)
+    if (!m.buffer || !m.indexBuffer) {
+      if (!m.vertices || !m.indices) return null
+      m.buffer = new BabylonBuffer(engine, m.vertices, false, BYTES, false, false, true)
+      m.indexBuffer = engine.createIndexBuffer(m.indices)
+      m.indexCount = m.indices.length
+      m.vertices = null; m.indices = null
+    }
+    const buffer = m.buffer, geometry = new Geometry(Geometry.RandomId(), this.scene)
     const attribute = (kind: string, offset: number, size: number, type: number, normalized: boolean) =>
       new VertexBuffer(engine, buffer, kind, { offset, size, stride: BYTES, type, normalized, useBytes: true })
     geometry.setVerticesBuffer(attribute(VertexBuffer.PositionKind, 0, 3, VertexBuffer.FLOAT, false), m.unique)
     geometry.setVerticesBuffer(attribute('pnormal', 12, 4, VertexBuffer.BYTE, true), m.unique)
     geometry.setVerticesBuffer(attribute(VertexBuffer.ColorKind, 16, 4, VertexBuffer.UNSIGNED_BYTE, true), m.unique)
     geometry.setVerticesBuffer(attribute('misc', 20, 4, VertexBuffer.UNSIGNED_BYTE, true), m.unique)
-    geometry.setIndices(m.indices, m.unique)
-    m.geometry = geometry
-    m.vertices = null; m.indices = null
+    m.indexBuffer.references++
+    geometry.setIndexBuffer(m.indexBuffer, m.unique, m.indexCount, m.indexBuffer.is32Bits)
     return geometry
   }
 
@@ -444,8 +458,9 @@ export class BabylonBackend implements RenderBackend {
       }
       map.clear()
     }
-    m.geometry?.dispose()
-    m.geometry = null
+    m.buffer?.dispose()
+    if (m.indexBuffer) this.engine?._releaseBuffer(m.indexBuffer)
+    m.buffer = null; m.indexBuffer = null
     this.meshes.delete(m)
     if (this.warm?.mesh === m) this.warm = null
   }
@@ -480,16 +495,17 @@ export class BabylonBackend implements RenderBackend {
   }
 
   private pool(m: ParkMesh, shadow: boolean, blend: boolean, cull: boolean, depthWrite: boolean): Draw | null {
-    const geometry = this.geometryOf(m)
-    if (!geometry) return null
     const low = this.level === 0
     const key = `${low ? 'l' : 's'}${blend ? 1 : 0}${cull ? 1 : 0}${depthWrite ? 1 : 0}`
     const map = shadow ? m.shadowPools : m.pools
     let pool = map.get(key)
     if (!pool) { pool = { list: [], used: 0 }; map.set(key, pool) }
     if (pool.used === pool.list.length) {
+      const geometry = this.geometryFor(m)
+      if (!geometry) return null
       const mesh = new Mesh(shadow ? 'park-caster' : 'park-draw', this.scene!)
       geometry.applyToMesh(mesh)
+      mesh.sideOrientation = Material.CounterClockWiseSideOrientation
       mesh.alwaysSelectAsActiveMesh = true
       mesh.doNotSyncBoundingInfo = true
       mesh.isPickable = false
