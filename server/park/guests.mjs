@@ -9,6 +9,7 @@ import { recordComment, rideComment } from './comments.mjs'
 import { AMENITY_VISITS, amenityWishes, amenityHotels, amenityOpen, amenityCapacity, amenityDefaultPrice, visitCost, hotelDay } from './hotels.mjs'
 
 const WALK_SPEED = 1.05
+const QUEUE_SHUFFLE_SPEED = 0.8
 const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['drinks', 'coffee'], toilet: ['toilet'], gift: ['balloon', 'umbrella', 'info', 'souvenir'] }
 
 export function rideCapacity(ride) {
@@ -430,7 +431,7 @@ function arrive(state, guest) {
   if (kind === 'ride') {
     const ride = state.entities[Number(raw)]
     if (!ride || ride.status !== 'open') { think(guest, ride ? `${ride.name} is closed.` : 'That ride is gone!'); guest.happy -= 4; return }
-    guest.state = 'queue'; guest.ride = ride.id; guest.queueTime = 0
+    guest.state = 'queue'; guest.ride = ride.id; guest.queueTime = 0; guest.qs = null
     ride.queue.push(guest.id)
     return
   }
@@ -615,21 +616,34 @@ function followExit(state, g) {
   return true
 }
 
-export function updateQueuePositions(state) {
+// Queued guests walk the line one tile after another from where they joined,
+// shuffling forward as the line moves, three to a tile. `g.qs` is how far along
+// the line (in tiles from the gate) a guest stands.
+export function updateQueuePositions(state, dt) {
   const byId = state.guestIndex
   for (const ride of Object.values(state.entities)) {
     if (ride.type !== 'ride' || !ride.queue?.length) continue
     const line = queueLine(state, ride)
     const tiles = line.tiles.length ? line.tiles : null
+    if (!tiles) continue
+    const last = tiles.length - 1
+    const entry = line.entry ? tiles.findIndex(t => t[0] === line.entry[0] && t[1] === line.entry[1]) : -1
     ride.queue.forEach((id, k) => {
       const g = byId.get(id)
-      if (!g || !tiles) return
-      const slot = Math.min(tiles.length - 1, Math.floor(k / 3))
-      const [x, y] = tiles[slot]
-      const along = (k % 3) / 3 - 0.33
-      const prev = tiles[Math.max(0, slot - 1)], dxl = slot > 0 ? x - prev[0] : 0, dyl = slot > 0 ? y - prev[1] : 0
-      const gx = x + 0.5 + dxl * along + g.lane * 0.3, gy = y + 0.5 + dyl * along
-      g.x += (gx - g.x) * 0.2; g.y += (gy - g.y) * 0.2; g.tx = x; g.ty = y
+      if (!g) return
+      if (typeof g.qs !== 'number' || g.qs > last) g.qs = entry >= 0 ? entry : last
+      const goal = Math.min(last, k / 3)
+      const step = QUEUE_SHUFFLE_SPEED * dt
+      const before = g.qs
+      g.qs = Math.abs(goal - g.qs) <= step ? goal : g.qs + Math.sign(goal - g.qs) * step
+      const i = Math.min(last, Math.floor(g.qs)), f = g.qs - i, j = Math.min(last, i + 1)
+      const [ax, ay] = tiles[i], [bx, by] = tiles[j]
+      const fx = bx - ax, fy = by - ay, fl = Math.hypot(fx, fy) || 1
+      g.x = ax + 0.5 + fx * f - fy / fl * g.lane * 0.3
+      g.y = ay + 0.5 + fy * f + fx / fl * g.lane * 0.3
+      if (g.qs !== before) g.dir = Math.atan2(g.qs < before ? -fy : fy, g.qs < before ? -fx : fx)
+      const [tx, ty] = tiles[Math.min(last, Math.round(g.qs))]
+      g.tx = tx; g.ty = ty
     })
   }
 }
