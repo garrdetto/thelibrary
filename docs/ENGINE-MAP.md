@@ -402,6 +402,9 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `modules-src/shorttrack/iconic-schemes.js` — the AI field: iconic NASCAR look-alike schemes per car number (`ICONIC_FIELD`, `ICONIC`), knockoff logos (`LOGOS`, `logoCanvas`) and the side/hood painters (`drawSchemeSide`, `drawSchemeHood`) — `main.js`.
 - `modules-src/shorttrack/prison-speedway.js` — Prison Speedway scenery (`buildPrisonSet`: guard towers, curtain wall, razor wire, searchlights, name board; `buildPrisonInfield`: the walled infield cell house with two three-storey cell blocks, four round towers, a barred front gate, barred windows with inmates (instanced) and a `setNight` hook that lights the cells) and the inmate crowd and stand colors — `main.js`.
 - `public/modules/shorttrack-car.bin` — decimated super late model with atlas UV regions — fetched by `buildStockCar`.
+- `modules-src/shorttrack/custom-cars.js` — admin-made bodies from `/api/shorttrack-cars`: `loadCustomCars` (adds `custom:<id>` entries to `VEHICLES`), `ensureCustomCar` (GLTFLoader + meshopt, bakes meshes into the stock car frame and merges per material), `buildCustomCar` (same shape as `buildStockCar`, stock-car wheels scaled to the spec, driver's primary color on the paint part, brake lights) and `mountCustomNumbers` — `main.js`.
+- `modules-src/shorttrack/shared/CustomCars.ts` — custom car spec, record and limits, `STOCK_CAR` measurements, `carIdOf`, brand filter — `custom-cars.js`, `src/server/shorttrack-cars.ts`, the admin car editor.
+- `modules-src/shorttrack/shared/carSurface.ts` — `placementMatrix`, `numberAnchors` (raycasts in from outside to find the door, roof and tail number surfaces) and `numberPlanes` — `custom-cars.js`, `CarStage.tsx`.
 
 ### pool — 8-Ball Pool
 - `src/components/PoolTable.tsx` — table, physics, shots, practice and live 1v1 — `index.tsx`.

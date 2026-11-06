@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowRight, Car, FerrisWheel, KeyRound, LayoutGrid, Package, ShieldCheck, Sparkles, Users } from 'lucide-react'
+import { ArrowRight, Car, FerrisWheel, Flag, KeyRound, LayoutGrid, Package, ShieldCheck, Sparkles, Users } from 'lucide-react'
 import { isModuleAvailable, learningModules } from '@/lib/modules'
 import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
@@ -8,7 +8,7 @@ import { useModuleLayout } from '@/lib/use-module-layout'
 type Account = { pages: string[]; isAdmin: boolean; needsPassword: boolean }
 type Asset = { status?: string; active?: boolean }
 type Counts = { published: number; drafts: number }
-type Section = 'library' | 'people' | 'changes' | 'maplestreet' | 'vehicles' | 'park-rides'
+type Section = 'library' | 'people' | 'changes' | 'maplestreet' | 'vehicles' | 'park-rides' | 'shorttrack-cars'
 
 function countAssets(list: Asset[]): Counts {
   return {
@@ -39,12 +39,14 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
   const [items, setItems] = useState<Counts | null | 'error'>(null)
   const [vehicles, setVehicles] = useState<Counts | null | 'error'>(null)
   const [rides, setRides] = useState<Counts | null | 'error'>(null)
+  const [raceCars, setRaceCars] = useState<Counts | null | 'error'>(null)
 
   useEffect(() => {
     getJson<{ users: Account[] }>('/api/workspace-admin').then(result => setAccounts(result.users)).catch(() => setAccounts('error'))
     getJson<{ items: Asset[] }>('/api/maplestreet-items?drafts=1').then(result => setItems(countAssets(result.items))).catch(() => setItems('error'))
     getJson<{ vehicles: Asset[] }>('/api/maplestreet-vehicles?drafts=1').then(result => setVehicles(countAssets(result.vehicles))).catch(() => setVehicles('error'))
     getJson<{ records: Asset[] }>('/api/park-rides?drafts=1').then(result => setRides(countAssets(result.records))).catch(() => setRides('error'))
+    getJson<{ cars: Asset[] }>('/api/shorttrack-cars?drafts=1').then(result => setRaceCars(countAssets(result.cars))).catch(() => setRaceCars('error'))
   }, [])
 
   const people = accounts && accounts !== 'error' ? {
@@ -66,6 +68,7 @@ export function AdminOverview({ onOpen }: { onOpen: (section: Section) => void }
       <Stat icon={<Package size={18}/>} label="Fox Plains items" value={assetValue(items)} detail={assetDetail(items, 'items')} onOpen={() => onOpen('maplestreet')} cta="Open item editor"/>
       <Stat icon={<Car size={18}/>} label="Fox Plains vehicles" value={assetValue(vehicles)} detail={assetDetail(vehicles, 'vehicles')} onOpen={() => onOpen('vehicles')} cta="Open vehicle editor"/>
       <Stat icon={<FerrisWheel size={18}/>} label="Thrill Park rides" value={assetValue(rides)} detail={rides && rides !== 'error' ? `${rides.drafts} draft${rides.drafts === 1 ? '' : 's'} waiting · published rides appear in every park’s build menu` : ' '} onOpen={() => onOpen('park-rides')} cta="Open ride creator"/>
+      <Stat icon={<Flag size={18}/>} label="Short Track race cars" value={assetValue(raceCars)} detail={raceCars && raceCars !== 'error' ? `${raceCars.drafts} draft${raceCars.drafts === 1 ? '' : 's'} waiting · published cars join the Short Track vehicle list` : ' '} onOpen={() => onOpen('shorttrack-cars')} cta="Open car editor"/>
     </div>
 
     <section className="adm-card">
