@@ -28,6 +28,9 @@ type Props = {
   onClock?: (clock: StageClock) => void
   onPivot?: (pivot: [number, number, number]) => void
   onSplit?: (split: number) => void
+  picking?: boolean
+  picks?: [number, number, number][]
+  onPick?: (point: [number, number, number]) => void
 }
 
 const toLinear = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
@@ -71,7 +74,7 @@ function Footprint({ size }: { size: [number, number] }) {
   </group>
 }
 
-function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restart, step, guides, focus, size, onClock, onPivot, onSplit }: Omit<Props, 'onCanvas'>) {
+function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restart, step, guides, focus, size, onClock, onPivot, onSplit, picking, picks, onPick }: Omit<Props, 'onCanvas'>) {
   const geometries = useMemo(() => mesh ? partGeometries(mesh) : [], [mesh])
   useEffect(() => () => geometries.forEach(g => g.geometry.dispose()), [geometries])
   const groups = useRef(new Map<number, Group>())
@@ -116,7 +119,15 @@ function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restar
       const instance = part > 1 && part < PLATFORM_PART ? mesh?.instances[part - 2] : undefined
       const lit = instance !== undefined && focus === instance.group
       return <group key={`${part}-${geometry.uuid}`} matrixAutoUpdate={false} ref={node => { if (node) groups.current.set(part, node); else groups.current.delete(part) }}>
-        <mesh geometry={geometry} castShadow receiveShadow>
+        <mesh geometry={geometry} castShadow receiveShadow
+          onClick={picking && onPick ? event => {
+            if (event.delta > 5) return
+            event.stopPropagation()
+            const local = event.object.worldToLocal(event.point.clone())
+            onPick([Math.round(local.x * 1000) / 1000, Math.round(local.y * 1000) / 1000, Math.round(local.z * 1000) / 1000])
+          } : undefined}
+          onPointerOver={picking ? () => { document.body.style.cursor = 'crosshair' } : undefined}
+          onPointerOut={picking ? () => { document.body.style.cursor = '' } : undefined}>
           <meshStandardMaterial vertexColors roughness={part ? 0.68 : 0.72} metalness={part ? 0.08 : 0.05} side={DoubleSide} emissive={lit ? '#ff7a2f' : '#000000'} emissiveIntensity={lit ? 0.7 : 0}/>
         </mesh>
         {guides && instance && <mesh position={instance.pivot}><sphereGeometry args={[pivotSize, 12, 8]}/><meshBasicMaterial color={lit ? '#ffd166' : '#7cf29a'} depthTest={false} transparent opacity={0.9}/></mesh>}
@@ -127,6 +138,7 @@ function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restar
       {motion.type !== 'drop' && motion.type !== 'bob' && <PivotHandle pivot={motion.pivot} radius={Math.max(0.3, span * 0.016)} half={span / 2} onPivot={onPivot}/>}
       <SplitHandle split={motion.split} at={span / 2 + Math.max(0.4, span * 0.04)} top={Math.max(1, (mesh?.height ?? 6))} radius={Math.max(0.3, span * 0.018)} onSplit={onSplit}/>
     </>}
+    {picks?.map((p, i) => <mesh key={`pick-${i}`} position={p}><sphereGeometry args={[pivotSize * 1.3, 14, 10]}/><meshBasicMaterial color="#ffd166" depthTest={false} transparent opacity={0.95}/></mesh>)}
     {guides && focus !== null && motion.pieces[focus] && <PieceBand piece={motion.pieces[focus]} centre={motion.pivot} span={span}/>}
   </group>
 }

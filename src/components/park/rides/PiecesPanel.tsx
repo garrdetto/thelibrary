@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronUp, Copy, Crosshair, GripVertical, Layers, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, Copy, Crosshair, GripVertical, Layers, MousePointerClick, Trash2, Undo2 } from 'lucide-react'
 import { CUSTOM_PIECE_AXES, CUSTOM_PIECE_MOTIONS, CUSTOM_RIDE_LIMITS as L, sanitizeMotion } from '../../../../server/park/index.mjs'
 import type { CustomPieceMotionType, CustomRideMotion, CustomRidePiece } from '../../../../server/park/index.mjs'
 import type { RideMesh } from '@/lib/park/rideMesh'
@@ -15,6 +15,8 @@ type Props = {
   onFocus: (index: number | null) => void
   onChange: (motion: CustomRideMotion) => void
   onAdd: (type: CustomPieceMotionType) => void
+  picking: number | null
+  onPicking: (index: number | null) => void
 }
 
 export const PIECE_PRESETS: { label: string; type: CustomPieceMotionType }[] = [
@@ -52,7 +54,7 @@ export function movePiece(pieces: CustomRidePiece[], from: number, to: number) {
   })
 }
 
-export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onChange, onAdd }: Props) {
+export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onChange, onAdd, picking, onPicking }: Props) {
   const [dragging, setDragging] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
   const pieces = motion.pieces
@@ -67,7 +69,7 @@ export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onCha
 
   const commit = (next: CustomRidePiece[]) => onChange(sanitizeMotion({ ...motion, pieces: next }))
   const update = (index: number, patch: Partial<CustomRidePiece>) => commit(pieces.map((piece, i) => i === index ? { ...piece, ...patch } : piece))
-  const move = (from: number, to: number) => { commit(movePiece(pieces, from, to)); onFocus(to) }
+  const move = (from: number, to: number) => { onPicking(null); commit(movePiece(pieces, from, to)); onFocus(to) }
   const duplicate = (index: number) => {
     const next = [...pieces.slice(0, index + 1), { ...pieces[index] }, ...pieces.slice(index + 1)].map((piece, i) => i > index + 1 && piece.on > index ? { ...piece, on: piece.on + 1 } : piece)
     commit(next)
@@ -102,13 +104,25 @@ export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onCha
             <button type="button" onClick={() => duplicate(index)} disabled={pieces.length >= L.piecesMax} aria-label={`Duplicate piece ${index + 1}`} title="Duplicate"><Copy size={14} aria-hidden/></button>
             <button type="button" onClick={() => move(index, index - 1)} disabled={index === 0} aria-label={`Move piece ${index + 1} up`}><ChevronUp size={14} aria-hidden/></button>
             <button type="button" onClick={() => move(index, index + 1)} disabled={index === pieces.length - 1} aria-label={`Move piece ${index + 1} down`}><ChevronDown size={14} aria-hidden/></button>
-            <button type="button" onClick={() => { commit(withoutPiece(pieces, index)); onFocus(null) }} aria-label={`Remove piece ${index + 1}`}><Trash2 size={14} aria-hidden/></button>
+            <button type="button" onClick={() => { onPicking(null); commit(withoutPiece(pieces, index)); onFocus(null) }} aria-label={`Remove piece ${index + 1}`}><Trash2 size={14} aria-hidden/></button>
           </div>
           {open && <div className="rc-piece-body">
             <label>How it moves<select value={piece.type} onChange={event => { const type = event.target.value as CustomPieceMotionType; update(index, { type, hang: PIECE_INFO[type].hang, amount: type === 'flip' ? 1 : piece.amount }) }}>
               {CUSTOM_PIECE_MOTIONS.map(type => <option key={type} value={type}>{PIECE_INFO[type].label}</option>)}
             </select></label>
             <p className="ms-items-note">{info.hint}</p>
+            <div className="rc-pick">
+              <button type="button" className={picking === index ? 'is-on' : undefined} aria-pressed={picking === index} onClick={() => onPicking(picking === index ? null : index)}><MousePointerClick size={14} aria-hidden/> {picking === index ? 'Done picking' : 'Pick on model'}</button>
+              <span>{piece.picks.length ? `${piece.picks.length} clicked` : 'Or choose by height and distance below'}</span>
+              {piece.picks.length > 0 && <>
+                <button type="button" onClick={() => update(index, { picks: piece.picks.slice(0, -1) })}><Undo2 size={14} aria-hidden/> Undo last</button>
+                <button type="button" onClick={() => update(index, { picks: [], hang: piece.hang === 'clicked' ? 'top' : piece.hang })}>Clear clicks</button>
+              </>}
+            </div>
+            {piece.picks.length > 0 && <>
+              <label className="rc-check"><input type="checkbox" checked={piece.matching} onChange={event => update(index, { matching: event.target.checked })}/> Also pick matching copies around the ride</label>
+              <p className="ms-items-note">Only the parts you clicked{piece.matching ? ' and their look-alikes' : ''} move. The height and distance limits still apply, so narrow them to split a seat from the chain it hangs on. Choose “Where I clicked” below to put the pivot exactly at your click, like the top of a chain.</p>
+            </>}
             <div className="rc-grid2">
               <Range label="From height" value={piece.from} min={0} max={top} step={0.05} format={metres} onChange={from => update(index, { from, to: Math.max(from, piece.to) })}/>
               <Range label="Up to height" value={piece.to} min={0} max={top} step={0.05} format={metres} onChange={to => update(index, { to, from: Math.min(to, piece.from) })}/>
@@ -125,6 +139,7 @@ export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onCha
                 <option value="top">Top (hanging point)</option>
                 <option value="centre">Centre</option>
                 <option value="bottom">Bottom</option>
+                <option value="clicked" disabled={!piece.picks.length}>Where I clicked</option>
               </select></label>
               {piece.type === 'flip' && <label>Flip axle<select value={piece.axis} onChange={event => update(index, { axis: event.target.value as CustomRidePiece['axis'] })}>
                 {CUSTOM_PIECE_AXES.map(axis => <option key={axis} value={axis}>{AXIS_LABEL[axis]}</option>)}

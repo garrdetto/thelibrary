@@ -43,11 +43,13 @@ const pieceSchema = z.object({
   outer: z.number().min(0).max(L.reachMax),
   split: z.enum(CUSTOM_PIECE_SPLITS as ['pieces', 'sectors']),
   count: z.number().int().min(1).max(L.pieceCountMax),
-  hang: z.enum(CUSTOM_PIECE_HANGS as ['top', 'centre', 'bottom']),
+  hang: z.enum(CUSTOM_PIECE_HANGS as ['top', 'centre', 'bottom', 'clicked']),
   axis: z.enum(CUSTOM_PIECE_AXES as ['radial', 'tangent', 'x', 'y']),
   stagger: z.number().min(0).max(1),
   alternate: z.boolean(),
   on: z.number().int().min(-2).max(L.piecesMax - 1),
+  picks: z.array(z.tuple([z.number().min(-L.reachMax).max(L.reachMax), z.number().min(-L.reachMax).max(L.reachMax), z.number().min(0).max(L.heightMax)])).max(L.picksMax).default([]),
+  matching: z.boolean().default(true),
 }).strict()
 export const rideSpecSchema = z.object({
   name: z.string().trim().min(L.nameMin).max(L.nameMax).regex(/^[\p{L}\p{N} .,'&!?()+#/-]+$/u, 'Use letters, numbers and simple punctuation in the name.'),

@@ -6,7 +6,7 @@ export const CUSTOM_RIDE_CATEGORIES = ['gentle', 'thrill', 'water', 'other']
 export const CUSTOM_RIDE_MOTIONS = ['none', 'spin', 'swing', 'wheel', 'drop', 'bob']
 export const CUSTOM_PIECE_MOTIONS = ['spin', 'swing', 'wobble', 'flip', 'bob', 'level']
 export const CUSTOM_PIECE_SPLITS = ['pieces', 'sectors']
-export const CUSTOM_PIECE_HANGS = ['top', 'centre', 'bottom']
+export const CUSTOM_PIECE_HANGS = ['top', 'centre', 'bottom', 'clicked']
 export const CUSTOM_PIECE_AXES = ['radial', 'tangent', 'x', 'y']
 export const CUSTOM_PLATFORM_SHAPES = ['square', 'round', 'octagon', 'hexagon']
 export const CUSTOM_PLATFORM_STEPS = ['none', 'front', 'back', 'left', 'right', 'sides', 'all']
@@ -22,7 +22,7 @@ export const CUSTOM_RIDE_LIMITS = {
   speedMin: 0.1, speedMax: 3,
   meshBytes: 2_500_000, thumbBytes: 300_000, sourceBytes: 15 * 1024 * 1024,
   trianglesMin: 500, trianglesMax: 24000,
-  piecesMax: 6, instancesMax: 64, pieceCountMax: 32, reachMax: 60,
+  piecesMax: 6, picksMax: 24, instancesMax: 64, pieceCountMax: 32, reachMax: 60,
   riseMax: 40, platformHeightMax: 8, platformTiersMax: 4, platformTriangles: 6000, columnRadiusMax: 4, columnSectionsMax: 4,
 }
 
@@ -48,6 +48,9 @@ function sanitizePiece(raw, index) {
     stagger: round(clamp(raw?.stagger, 0, 1, 0.5)),
     alternate: raw?.alternate === true,
     on: Math.round(clamp(raw?.on, -2, index - 1, -1)),
+    picks: (Array.isArray(raw?.picks) ? raw.picks : []).filter(p => Array.isArray(p) && p.length === 3 && p.every(v => Number.isFinite(Number(v)))).slice(0, L.picksMax)
+      .map(p => [round(clamp(p[0], -L.reachMax, L.reachMax, 0), 3), round(clamp(p[1], -L.reachMax, L.reachMax, 0), 3), round(clamp(p[2], 0, L.heightMax, 0), 3)]),
+    matching: raw?.matching !== false,
   }
 }
 

@@ -92,6 +92,7 @@ export default function RideCreator() {
   const [stageClock, setStageClock] = useState<StageClock | null>(null)
   const [focus, setFocus] = useState<number | null>(null)
   const [tab, setTab] = useState<TabId>('fit')
+  const [picking, setPicking] = useState<number | null>(null)
   const [guides, setGuides] = useState(true)
   const [working, setWorking] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice>(null)
@@ -121,6 +122,14 @@ export default function RideCreator() {
 
   const updateMotion = (patch: Partial<CustomRideMotion>) => setMotion(current => sanitizeMotion({ ...current, ...patch }))
   const updateDetails = (patch: Partial<Details>) => setDetails(current => ({ ...current, ...patch }))
+  const startPicking = (index: number | null) => {
+    setPicking(index)
+    if (index !== null) { setFocus(index); setPaused(true); setRestart(r => r + 1); setGuides(true) }
+  }
+  const addPick = (point: [number, number, number]) => {
+    if (picking === null || !motion.pieces[picking]) return
+    setMotion(sanitizeMotion({ ...motion, pieces: motion.pieces.map((piece, i) => i === picking ? { ...piece, picks: [...piece.picks, point].slice(-L.picksMax) } : piece) }))
+  }
   const addPiece = (type: CustomPieceMotionType) => {
     const next = sanitizeMotion({ ...motion, pieces: [...motion.pieces, newPiece(type, height || 6)] })
     setMotion(next)
@@ -176,7 +185,7 @@ export default function RideCreator() {
 
   function reset() {
     setEditing(null); setFile(null); setSource(null); setReduced(null); setFixedMesh(null); setSourceChanged(false); setSourceJob(null)
-    setSize([3, 3]); setScale(1); setYaw(0); setTriangles(8000); setMotion(DEFAULT_MOTION); setPlatform(DEFAULT_PLATFORM); setDetails(DEFAULT_DETAILS); setSuggestion(null); setNotice(null); setFocus(null)
+    setSize([3, 3]); setScale(1); setYaw(0); setTriangles(8000); setMotion(DEFAULT_MOTION); setPlatform(DEFAULT_PLATFORM); setPicking(null); setDetails(DEFAULT_DETAILS); setSuggestion(null); setNotice(null); setFocus(null)
   }
 
   async function edit(record: ParkRideRecord) {
@@ -285,7 +294,7 @@ export default function RideCreator() {
       <div className="ms-items-editor rc-layout">
         <div className="rc-left">
           <div className="ms-items-stage rc-stage">
-            {mesh ? <RideStage mesh={mesh} motion={motion} platform={platform} size={size} rideTime={details.rideTime} loadTime={Math.min(details.loadTime, 4)} paused={paused} rate={rate} restart={restart} step={step} guides={guides} focus={focus} onPivot={pivot => updateMotion({ pivot })} onSplit={split => updateMotion({ split })} onCanvas={c => { canvas.current = c }} onClock={setStageClock}/>
+            {mesh ? <RideStage mesh={mesh} motion={motion} platform={platform} size={size} rideTime={details.rideTime} loadTime={Math.min(details.loadTime, 4)} paused={paused} rate={rate} restart={restart} step={step} guides={guides} focus={focus} onPivot={pivot => updateMotion({ pivot })} onSplit={split => updateMotion({ split })} picking={picking !== null && !!motion.pieces[picking]} picks={picking !== null ? motion.pieces[picking]?.picks : undefined} onPick={addPick} onCanvas={c => { canvas.current = c }} onClock={setStageClock}/>
               : <button type="button" className="ms-items-drop" onClick={() => fileInput.current?.click()} disabled={busy} onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const dropped = event.dataTransfer.files?.[0]; if (dropped) void openFile(dropped) }}>
                 <Upload size={22} aria-hidden/> Drop a .glb here, upload one, or pick “Open in editor” on a finished Meshy job below
               </button>}
@@ -314,7 +323,8 @@ export default function RideCreator() {
             {counts && motion.pieces.length > 0 && <div><dt>Extra pieces</dt><dd>{mesh.instances.length} moving · {counts.pieces.toLocaleString()} triangles</dd></div>}
             <div><dt>Baked size</dt><dd>{Math.round(encodedSize(mesh) / 1024).toLocaleString()} KB</dd></div>
           </dl>}
-          {mesh && guides && motion.type !== 'none' && <p className="ms-items-note rc-drag-hint">Drag the pink pivot to move it across the ride, and the blue handle to raise or lower where the moving part starts.</p>}
+          {picking !== null && motion.pieces[picking] && <p className="ms-items-ok rc-drag-hint" role="status">Picking for piece {picking + 1}: click the parts on the model that should move together (the ride is paused at its loading pose). <button type="button" className="rc-link" onClick={() => startPicking(null)}>Done</button></p>}
+          {mesh && guides && motion.type !== 'none' && picking === null && <p className="ms-items-note rc-drag-hint">Drag the pink pivot to move it across the ride, and the blue handle to raise or lower where the moving part starts.</p>}
           {overhang && <p className="ms-items-error" role="alert">The model hangs over the footprint. Guests and paths next to it will clip into it; lower the scale or enlarge the footprint.</p>}
         </div>
 
@@ -377,7 +387,7 @@ export default function RideCreator() {
           <PlatformPanel platform={platform} motion={motion} size={size} disabled={!mesh || busy} onChange={updatePlatform}/>
           </>}
           {tab === 'pieces' && <>
-          <PiecesPanel motion={motion} mesh={mesh} height={height} reach={reach} focus={focus} onFocus={setFocus} onChange={next => setMotion(next)} onAdd={addPiece}/>
+          <PiecesPanel motion={motion} mesh={mesh} height={height} reach={reach} focus={focus} onFocus={setFocus} onChange={next => setMotion(next)} onAdd={addPiece} picking={picking} onPicking={startPicking}/>
           </>}
           {tab === 'details' && <>
           <fieldset disabled={busy}>

@@ -1186,13 +1186,18 @@ body{background:var(--paper);color:var(--tone-0)}
 .ms-items-fields .rc-tabs button[aria-selected=true]{border-color:var(--lib-accent,#f2b544);background:var(--adm-accent-soft,#f2b5441f);color:inherit}
 .rc-tab-count{min-width:18px;padding:1px 6px;border-radius:999px;background:var(--lib-accent,#f2b544);color:var(--lib-on-accent,#111);font-size:11px;line-height:16px;text-align:center}
 .rc-tabpanel{display:grid;gap:14px}
-.rc-tabpanel>fieldset{grid-template-columns:repeat(auto-fill,minmax(210px,1fr));align-items:end;column-gap:14px}
+.rc-tabpanel>fieldset{grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;column-gap:14px}
 .rc-tabpanel>fieldset>*{min-width:0}
 .rc-tabpanel>fieldset>:is(.ms-items-note,.ms-items-error,.rc-check,.rc-grid2,.rc-grid3,.rc-plain,.ms-items-scale-actions,.rc-bake,.rc-piece-list,ol,.rc-wide){grid-column:1/-1}
-.rc-tabpanel .rc-grid2{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
-.rc-tabpanel .rc-grid3{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
-.rc-tabpanel .rc-piece-body{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));align-items:end;column-gap:14px}
-.rc-tabpanel .rc-piece-body>:is(.ms-items-note,.rc-check,.rc-grid2,.rc-grid3){grid-column:1/-1}
+.rc-tabpanel .rc-grid2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.rc-tabpanel .rc-grid3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.rc-tabpanel .rc-piece-body{grid-template-columns:repeat(2,minmax(0,1fr));align-items:end;column-gap:14px}
+.rc-tabpanel .rc-piece-body>:is(.ms-items-note,.rc-check,.rc-grid2,.rc-grid3,.rc-pick){grid-column:1/-1}
+.rc-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.rc-pick span{font-size:12.5px;color:var(--lib-muted,inherit)}
+.ms-items-fields .rc-pick button.is-on{border-color:transparent;background:#ffd166;color:#1b1b1b}
+.rc-link{padding:0 4px;border:0;background:none;color:inherit;font:inherit;font-weight:700;text-decoration:underline;cursor:pointer}
+@media(max-width:560px){.rc-tabpanel>fieldset,.rc-tabpanel .rc-piece-body,.rc-tabpanel .rc-grid2{grid-template-columns:1fr}.rc-tabpanel .rc-grid3{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .rc-grip{display:inline-flex;align-items:center;justify-content:center;width:22px;min-height:32px;color:var(--lib-muted,inherit);cursor:grab;touch-action:none}
 .rc-grip:active{cursor:grabbing}
 .rc-piece-list>li.is-dragging{opacity:.5}
