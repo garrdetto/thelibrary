@@ -49,7 +49,7 @@ async function run(label, query, side) {
   await page.waitForFunction(() => window.__tlModule && window.__bushleague, null, { timeout: 60_000 })
   const backend = await page.evaluate(() => window.__tlModule.backend)
   await page.evaluate(() => window.__tlModule.app.stop())
-  const step = (seconds) => page.evaluate((s) => { const d = window.__bushleague.director; for (let t = 0; t < s; t += 1 / 30) d.update(1 / 30); return d.stage }, seconds)
+  const step = (seconds) => page.evaluate((s) => { for (let t = 0; t < s; t += 1 / 30) window.__bushleague.tick(1 / 30); return window.__bushleague.director.stage }, seconds)
   await page.evaluate((who) => window.__bushleague.start({ side: who, innings: 3, pace: 'rookie' }, 2026), side)
   let guard = 0
   while (guard++ < 3000) {

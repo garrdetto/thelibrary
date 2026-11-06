@@ -17,6 +17,8 @@ export const TASK_PATHS: Record<MeshyJobKind, string> = {
   image: '/v1/image-to-3d',
   remesh: '/v1/remesh',
   retexture: '/v1/retexture',
+  rig: '/v1/rigging',
+  animate: '/v1/animations',
 }
 
 export const meshyConfigured = (env: Env) => Boolean(env.MESHY_API_KEY?.trim())
@@ -54,11 +56,17 @@ export async function meshyFetch<T>(env: Env, path: string, init: { method?: str
   return (text ? JSON.parse(text) : {}) as T
 }
 
+/** The .glb a finished task produced: text, image, remesh and retexture tasks list it under model_urls; rigging and animation tasks under result. */
+export function taskModelUrl(task: MeshyTask): string | undefined {
+  return task.model_urls?.glb ?? task.result?.rigged_character_glb_url ?? task.result?.animation_glb_url
+}
+
 export type MeshyTask = {
   id: string
   status: MeshyJobStatus
   progress?: number
   model_urls?: { glb?: string }
+  result?: { rigged_character_glb_url?: string; animation_glb_url?: string }
   thumbnail_url?: string
   consumed_credits?: number
   task_error?: { message?: string } | null
@@ -171,9 +179,10 @@ export async function refreshJob(env: Env, row: JobRow): Promise<JobRow> {
     credits: typeof task.consumed_credits === 'number' ? task.consumed_credits : row.credits,
     error: task.status === 'FAILED' ? 'Meshy couldn’t finish this model. Meshy refunds failed tasks.' : null,
   }
-  if (task.status === 'SUCCEEDED' && row.kind !== 'preview' && !row.model_bytes && task.model_urls?.glb) {
+  const glb = taskModelUrl(task)
+  if (task.status === 'SUCCEEDED' && row.kind !== 'preview' && !row.model_bytes && glb) {
     try {
-      next.model_bytes = await storeTaskModel(env, row.id, task.model_urls.glb)
+      next.model_bytes = await storeTaskModel(env, row.id, glb)
     } catch (error) {
       next.error = error instanceof HttpError ? error.message : 'Couldn’t store the model.'
     }
@@ -187,7 +196,8 @@ export async function ensureJobModel(env: Env, row: JobRow): Promise<void> {
   if (row.model_bytes) return
   if (row.status !== 'SUCCEEDED') throw new HttpError(409, 'That model isn’t finished yet.')
   const task = await meshyFetch<MeshyTask>(env, `${TASK_PATHS[row.kind]}/${encodeURIComponent(row.task_id)}`)
-  if (!task.model_urls?.glb) throw new HttpError(404, 'Meshy didn’t return a .glb for that task.')
-  const bytes = await storeTaskModel(env, row.id, task.model_urls.glb)
+  const glb = taskModelUrl(task)
+  if (!glb) throw new HttpError(404, 'Meshy didn’t return a .glb for that task.')
+  const bytes = await storeTaskModel(env, row.id, glb)
   await setJob(env, row.id, { model_bytes: bytes })
 }

@@ -110,3 +110,15 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/furniture/mirror.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/wallTv.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | **Total (105)** | **176.91** | **30.17** | | |
+
+## Bush League Baseball budgets
+
+Sources go in `assets-src/models/bushleague/` (with every Meshy prompt in `prompts.json`), cleaned by `scripts/blender/bushleague/cleanup.py`, then optimised by `pnpm assets` into `public/models/bushleague/`.
+
+| Asset | LOD0 | LOD1 | LOD2 | Notes |
+| --- | ---: | ---: | ---: | --- |
+| Player body (any of the five body types) | 25,000 | 8,000 | 2,000 | 1.85 m, shared skeleton (`players/Rig.ts`), `_slot` uniform attribute, AO in `COLOR_0` |
+| Mascot | 25,000 | 8,000 | 2,000 | Same skeleton and slots as players |
+| Prop (scoreboard, tower, dugout, gear) | 15,000 | 5,000 | 1,500 | Original designs, no text or logos |
+
+Start-up budget for the first contest: under 6 MB on `low`, under 25 MB on `ultra`; anything beyond streams in after first pitch. Until generated models land, the module draws procedural players on the same skeleton and slots (`players/BodyMesh.ts`), about 2,500 triangles each.
