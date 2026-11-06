@@ -26,19 +26,24 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | sandlot3d/ballpark_sandlot.glb | 2.10 | 0.38 | 188 → 28 | 114 → 13 |
 | sandlot3d/ballpark_park.glb | 1.90 | 0.36 | 74 → 19 | 51 → 12 |
 | shorttrack/truck_unpainted.glb | 1.84 | 0.41 | 180 → 27 | 20 → 12 |
+| shorttrack/car_slm_lod0.glb | 1.24 | 0.35 | 12 → 8 | 6 → 4 |
 | shorttrack/crowd_bullring.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
 | shorttrack/crowd_dells.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
 | shorttrack/crowd_dirt.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
+| shorttrack/car_slm_lod1.glb | 0.68 | 0.21 | 12 → 8 | 6 → 4 |
 | maplestreet/vehicles/sedan.glb | 0.50 | 0.09 | 19 → 9 | 9 → 5 |
 | maplestreet/vehicles/coupe.glb | 0.49 | 0.09 | 19 → 9 | 9 → 5 |
 | maplestreet/vehicles/hdtruck.glb | 0.43 | 0.07 | 21 → 10 | 10 → 6 |
 | maplestreet/vehicles/truck.glb | 0.40 | 0.07 | 20 → 9 | 9 → 5 |
+| shorttrack/wheel_race_lod0.glb | 0.25 | 0.09 | 4 → 4 | 4 → 4 |
+| shorttrack/car_slm_lod2.glb | 0.19 | 0.07 | 12 → 8 | 6 → 4 |
 | maplestreet/vehicles/zeroturn.glb | 0.18 | 0.02 | 18 → 7 | 8 → 3 |
 | maplestreet/furniture/flowerBed.glb | 0.18 | 0.03 | 38 → 6 | 7 → 3 |
 | maplestreet/vehicles/golfcart.glb | 0.17 | 0.02 | 20 → 8 | 10 → 4 |
 | maplestreet/vehicles/atv.glb | 0.15 | 0.02 | 19 → 8 | 8 → 4 |
 | maplestreet/vehicles/mower.glb | 0.14 | 0.02 | 18 → 7 | 8 → 3 |
 | maplestreet/characters/resident.glb | 0.10 | 0.03 | 12 → 5 | 5 → 1 |
+| shorttrack/wheel_race_lod1.glb | 0.10 | 0.04 | 4 → 4 | 4 → 4 |
 | botwreck/crates.glb | 0.09 | 0.01 | 49 → 2 | 2 → 2 |
 | maplestreet/furniture/plant.glb | 0.09 | 0.01 | 11 → 3 | 3 → 3 |
 | maplestreet/vehicles/trailer.glb | 0.08 | 0.01 | 10 → 5 | 7 → 3 |
@@ -70,6 +75,7 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/furniture/endTable.glb | 0.02 | 0.01 | 7 → 4 | 4 → 4 |
 | maplestreet/furniture/tallPlant.glb | 0.02 | 0.01 | 10 → 2 | 2 → 2 |
 | maplestreet/furniture/coffeeTable.glb | 0.02 | 0.01 | 7 → 3 | 3 → 3 |
+| shorttrack/wheel_race_lod2.glb | 0.02 | 0.01 | 4 → 4 | 4 → 4 |
 | maplestreet/furniture/bed.glb | 0.02 | 0.01 | 10 → 4 | 4 → 4 |
 | maplestreet/furniture/armchair.glb | 0.02 | 0.01 | 10 → 2 | 2 → 2 |
 | maplestreet/furniture/twinBed.glb | 0.02 | 0.01 | 9 → 4 | 4 → 4 |
@@ -109,7 +115,7 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/furniture/divingBoard.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/mirror.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/wallTv.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
-| **Total (105)** | **176.91** | **30.17** | | |
+| **Total (111)** | **179.40** | **30.94** | | |
 
 ## Bush League Baseball budgets
 

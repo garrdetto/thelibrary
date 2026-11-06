@@ -1048,5 +1048,65 @@
   "matsBefore": 20,
   "matsAfter": 12,
   "preset": "rig"
+ },
+ "shorttrack/car_slm_lod1.glb": {
+  "hash": "368a45e729c574c07ada71009a77a2d9b95a6767",
+  "before": 679064,
+  "after": 208440,
+  "primsBefore": 12,
+  "primsAfter": 8,
+  "matsBefore": 6,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "shorttrack/car_slm_lod0.glb": {
+  "hash": "a5e86abc055c19ceb36633e7487ee923bf1a2399",
+  "before": 1239012,
+  "after": 347556,
+  "primsBefore": 12,
+  "primsAfter": 8,
+  "matsBefore": 6,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "shorttrack/car_slm_lod2.glb": {
+  "hash": "57f6e133189a64be85238b641364b0cba1d91a16",
+  "before": 186796,
+  "after": 72820,
+  "primsBefore": 12,
+  "primsAfter": 8,
+  "matsBefore": 6,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "shorttrack/wheel_race_lod0.glb": {
+  "hash": "054e9691ffafd92f3e83cba452de2f705da7d358",
+  "before": 252348,
+  "after": 90648,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "shorttrack/wheel_race_lod1.glb": {
+  "hash": "68ad1dd73f95e16ffb021d920ec64d9e3f6989e2",
+  "before": 100464,
+  "after": 44740,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
+ },
+ "shorttrack/wheel_race_lod2.glb": {
+  "hash": "7985df8740be0209a8091332d7d1a985b73a4377",
+  "before": 22896,
+  "after": 14696,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
+  "preset": "rig"
  }
 }
