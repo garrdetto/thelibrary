@@ -188,9 +188,10 @@ The only PlayCanvas module: it bundles `playcanvas` from npm (pinned like three.
 
 ### sandlot3d — Sandlot Sluggers 3D
 - `modules-src/sandlot3d/index.html` — page shell: screens, HUD markup, styles — `vite.modules.ts` (→ `public/modules/sandlot3d.html`).
-- `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE` and `window.__batchStatic`, then loads `main.js` as a classic script — `index.html`.
+- `modules-src/sandlot3d/index.ts` — entry: installs the legacy `window.THREE` and `window.__batchStatic`, loads the athlete body (`GLTFLoader` + meshopt WASM decoder) into `window.__athlete` (null with `?athlete=0` or on failure), then loads `main.js` as a classic script — `index.html`.
 - `modules-src/sandlot3d/three-legacy.ts` — r128-compatible `THREE` over 0.186.1: color management off, linear output, legacy light-intensity scale — `index.ts`.
-- `modules-src/sandlot3d/main.js` — whole module script: scene, `class Rig` athletes (`LimbTube`, `PLAYER_LOOK`, `UNIFORMS`), four ballparks, `window.__ss` — `index.ts` (`?url`).
+- `modules-src/sandlot3d/main.js` — whole module script: scene, `class Rig` athletes (`PLAYER_LOOK`, `UNIFORMS`; the body is the skinned Blender athlete on a flat per-player skeleton posed from the same IK joints by `limbFrames`/`setBone`, with the procedural `LimbTube` body as the fallback), four ballparks, `window.__ss` — `index.ts` (`?url`).
+- `modules-src/sandlot3d/tools/build-athlete.py` — Blender script for the athlete body (pelvis, belt and loops, abdomen, chest, placket and buttons, neck, arms, legs; game UVs and named material slots; bones `hips`, `chest`, `neck`, `upperarm_L/R`, `forearm_L/R`, `thigh_L/R`, `shin_L/R` whose local axes are x = along × front, y = along, z = front) → `assets-src/models/sandlot3d/athlete.glb` → `pnpm assets` (preset `skinned`) → `public/models/sandlot3d/athlete.glb`.
 - `public/modules/sprites/` (34 WebP files) — roster and batter-card art — `main.js` at runtime.
 
 ### maplestreet — Fox Plains (`modules-src/maplestreet/`)

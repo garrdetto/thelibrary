@@ -1048,5 +1048,15 @@
   "matsBefore": 20,
   "matsAfter": 12,
   "preset": "rig"
+ },
+ "sandlot3d/athlete.glb": {
+  "hash": "d94c19cc48fa17cb017f8cddde0fb7565f8caaf9",
+  "before": 918900,
+  "after": 228844,
+  "primsBefore": 12,
+  "primsAfter": 12,
+  "matsBefore": 12,
+  "matsAfter": 12,
+  "preset": "skinned"
  }
 }
