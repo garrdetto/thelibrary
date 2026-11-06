@@ -50,6 +50,8 @@ export interface SwingView {
   type: PitchType
   grade: number
   sacrifice: boolean
+  /** −1…1 difficulty for this AI club; 0 is the calibrated league. */
+  skill?: number
 }
 
 export function chooseAiPitch(view: PitchView, rng: Rng): PitchIntent {
@@ -93,7 +95,8 @@ export function chooseAiSwing(view: SwingView, rng: Rng): SwingIntent {
   const tune = TUNING.aiBat
   const r = view.batter.ratings
   const movement = pitchMovement(view.type) * (0.6 + view.grade / 125)
-  const read = tune.readBase + tune.readEye * (1 - r.eye / 100) + tune.readMovement * movement
+  const sharp = 1 - 0.45 * (view.skill ?? 0)
+  const read = (tune.readBase + tune.readEye * (1 - r.eye / 100) + tune.readMovement * movement) * sharp
   const seenX = view.plateX + rng.normal(0, read)
   const seenY = view.plateY + rng.normal(0, read)
   const zone = strikeZone(view.batter.height)
@@ -119,8 +122,8 @@ export function chooseAiSwing(view: SwingView, rng: Rng): SwingIntent {
 
   const expected = (view.pitcher.pitching?.velocity ?? 40) - 1.5
   const bias = (expected - view.speed) * tune.speedBias * (1 - r.eye / 260)
-  const timingSd = tune.timingBase + tune.timingContact * (1 - r.contact / 100)
-  const aimSd = tune.aimBase + tune.aimContact * (1 - r.contact / 100) + tune.aimMovement * movement
+  const timingSd = (tune.timingBase + tune.timingContact * (1 - r.contact / 100)) * sharp
+  const aimSd = (tune.aimBase + tune.aimContact * (1 - r.contact / 100) + tune.aimMovement * movement) * sharp
   return {
     action: 'swing',
     type,

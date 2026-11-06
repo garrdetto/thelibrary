@@ -7,6 +7,8 @@ import { LIGHT_PRESETS, TIER_BUDGETS, themeFor, type TimeOfDay } from './looks'
 import { Contest, parkById, stringSeed } from './sim'
 import { Director, type Scenery } from './systems/Director'
 import { Screens, type SetupChoice } from './ui/Screens'
+import { Broadcast } from './ui/Broadcast'
+import { BallparkAudio } from './systems/Audio'
 import { Actors } from './view/Actors'
 import { createCrowd, type Crowd } from './view/Crowd'
 import { createField, type FieldView } from './view/Field'
@@ -34,7 +36,9 @@ async function boot(): Promise<void> {
   const rig = app.own(createLighting(config.engine.lighting, quality.settings))
   app.graph.add('world', rig.root)
   rig.follow(new THREE.Vector3(0, 0, -55))
-  const post = app.own(createPost(app, { ...config.engine.post, effects: budget.post ?? undefined }, { ...quality.settings, post: !!budget.post }))
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const effects = budget.post && reducedMotion ? { ...budget.post, flare: undefined, grain: undefined } : budget.post
+  const post = app.own(createPost(app, { ...config.engine.post, effects: effects ?? undefined }, { ...quality.settings, post: !!effects }))
   const adaptive = budget.adaptive ? createAdaptiveResolution({ max: budget.pixelRatio, min: 0.75, apply: (ratio) => app.setPixelRatioCap(ratio) }) : null
 
   const input = app.own(new Input<Action>(container, config.bindings, config.engine.input))
@@ -42,6 +46,8 @@ async function boot(): Promise<void> {
   app.graph.add('characters', actors.root)
   app.own(actors)
   const screens = new Screens()
+  const broadcast = new Broadcast(input)
+  const audio = new BallparkAudio((text) => broadcast.say(text))
 
   let field: FieldView | null = null
   let lights: StadiumLights | null = null
@@ -67,11 +73,17 @@ async function boot(): Promise<void> {
     if (crowd) app.graph.add('props', crowd.mesh)
     grass = createGrass(contest.park, budget.grassBlades, theme.grass[0], theme.grass[1], contest.setup.seed)
     if (grass) app.graph.add('props', grass.mesh)
+    audio.setAmbience(theme.signature ?? 'none', time !== 'day')
   }
 
   const scenery: Scenery = {
-    excite: (level) => crowd?.excite(level),
-    startWave: () => crowd?.startWave(),
+    excite: (level) => {
+      crowd?.excite(level)
+      audio.swell(level)
+    },
+    startWave: () => {
+      if (!reducedMotion) crowd?.startWave()
+    },
     celebrate: (kind) => field?.celebrate(kind),
     scuff: (x, z, radius, strength, angle, length) => field?.dirt.scuff(x, z, radius, strength, angle, length),
   }
@@ -91,6 +103,7 @@ async function boot(): Promise<void> {
       },
     },
     scenery,
+    { broadcast, audio, post },
   )
   const preview = new Contest({ seed: 1, away: 'sal', home: 'frt', innings: 3, dh: true, autoRunner: true, mercy: false, park: parkById('outhouse').id })
   dressPark(preview, 'night')
@@ -113,6 +126,7 @@ async function boot(): Promise<void> {
   document.getElementById('new-button')?.addEventListener('click', () => {
     screens.hideFinal()
     screens.showSetup(true)
+    broadcast.hide()
     director.stage = 'idle'
   })
 
@@ -123,6 +137,7 @@ async function boot(): Promise<void> {
     field?.update(dt)
     crowd?.update(dt)
     lights?.update(dt)
+    audio.update(dt)
   }
   app.onFrame((frameSeconds) => {
     frames++
@@ -134,7 +149,7 @@ async function boot(): Promise<void> {
   window.__tlModule = { app, backend: app.backend, tier: quality.tier, steps: () => frames }
   window.__bushleague = {
     director,
-    start: (choice = {}, customSeed) => start({ team: 'frt', opponent: 'sal', side: 'watch', innings: 3, pace: 'rookie', dh: true, autoRunner: true, mercy: false, time: 'night', trail: true, ...choice }, customSeed),
+    start: (choice = {}, customSeed) => start({ team: 'frt', opponent: 'sal', side: 'watch', innings: 3, difficulty: 'rookie', level: config.difficulty.rookie, dh: true, autoRunner: true, mercy: false, time: 'night', trail: true, assist: false, colorSafe: false, replays: false, ...choice }, customSeed),
     contest: () => director.contest,
     tick,
     scene: () => ({ crowd: crowd?.mesh.count ?? 0, grass: grass?.mesh.count ?? 0, post: post.enabled, cascades: budget.cascades }),
@@ -147,6 +162,7 @@ async function boot(): Promise<void> {
     'pagehide',
     () => {
       director.dispose()
+      audio.dispose()
       lights?.dispose()
       crowd?.dispose()
       grass?.dispose()

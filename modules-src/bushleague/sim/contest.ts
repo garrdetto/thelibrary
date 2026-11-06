@@ -26,6 +26,10 @@ export interface ContestSetup {
   park?: string
   /** Batting-practice pitches: every pitch crosses exactly at its target (rule drills, Home Run Derby). */
   practice?: boolean
+  /** Per side, −1…1: sharper or looser AI reads, aim and pitch control for that club (difficulty). 0 is the calibrated league. */
+  aiSkill?: readonly [number, number]
+  /** Per batting side: contact-cursor size multiplier (difficulty and the batting assist). 1 is the calibrated league. */
+  pciScale?: readonly [number, number]
 }
 
 export type InputRecord = { kind: 'pre'; intent: PrePitchIntent } | { kind: 'pitch'; intent: PitchIntent } | { kind: 'swing'; intent: SwingIntent }
@@ -336,7 +340,7 @@ export class Contest {
   suggestSwing(): SwingIntent {
     const pitch = this.lastPitch!
     const sacrifice = !this.setup.dh && this.batter.position === 'P' && this.outs < 2 && (this.bases[1] !== null || this.bases[2] !== null) && !this.bases[3]
-    return chooseAiSwing({ batter: this.batter, pitcher: this.pitcher, balls: this.balls, strikes: this.strikes, outs: this.outs, bases: [null, this.runnerOn(1), this.runnerOn(2), this.runnerOn(3)], plateX: pitch.plateX, plateY: pitch.plateY, speed: pitch.speed, type: pitch.type, grade: pitch.grade, sacrifice }, this.aiRng)
+    return chooseAiSwing({ batter: this.batter, pitcher: this.pitcher, balls: this.balls, strikes: this.strikes, outs: this.outs, bases: [null, this.runnerOn(1), this.runnerOn(2), this.runnerOn(3)], plateX: pitch.plateX, plateY: pitch.plateY, speed: pitch.speed, type: pitch.type, grade: pitch.grade, sacrifice, skill: this.setup.aiSkill?.[this.battingSide] ?? 0 }, this.aiRng)
   }
 
   prePitch(intent: PrePitchIntent | null = null): PreOutcome {
@@ -429,7 +433,8 @@ export class Contest {
     const fatigue = this.fatigue()
     const effortFactor = resolved.effort >= 90 ? 1.35 : resolved.effort <= 55 ? 0.82 : 1
     const accuracyFactor = 0.55 + (Math.abs(resolved.accuracy) / 100) * 1.6
-    const sigma = (TUNING.control.base + TUNING.control.skill * (1 - pitching.control / 100)) * (1 + fatigue * TUNING.control.fatigue) * effortFactor * (intent && resolved.accuracy !== 0 ? accuracyFactor : 1)
+    const sideSkill = this.setup.aiSkill?.[this.fieldingSide] ?? 0
+    const sigma = (TUNING.control.base + TUNING.control.skill * (1 - pitching.control / 100)) * (1 + fatigue * TUNING.control.fatigue) * effortFactor * (intent && resolved.accuracy !== 0 ? accuracyFactor : 1) * (1 - 0.35 * sideSkill)
     const bias = (resolved.accuracy / 100) * 0.08
     const exact = this.setup.practice === true
     const plateX = resolved.targetX / 1000 + (exact ? 0 : this.playRng.normal(bias, sigma))
@@ -498,7 +503,7 @@ export class Contest {
       if (inside > hbp.inside && inside < hbp.inside + hbp.depth && pitch.plateY > 0.35 && pitch.plateY < 1.75 && rng.chance(hbp.chance)) call = 'hbp'
       else call = zoneCall()
     } else {
-      const contact = resolveContact({ swing, plateX: pitch.plateX, plateY: pitch.plateY, pitchSpeed: pitch.speed, pitchGrade: pitch.grade, stuff: this.pitcher.pitching!.stuff, batter: batter.ratings, batterHand: hand }, rng)
+      const contact = resolveContact({ swing, plateX: pitch.plateX, plateY: pitch.plateY, pitchSpeed: pitch.speed, pitchGrade: pitch.grade, stuff: this.pitcher.pitching!.stuff, batter: batter.ratings, batterHand: hand, pciScale: this.setup.pciScale?.[this.battingSide] ?? 1 }, rng)
       if (contact.result === 'miss') call = 'swinging'
       else if (contact.result === 'tip') call = 'tip'
       else {

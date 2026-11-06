@@ -263,9 +263,18 @@ export class Actors {
     }
   }
 
-  /** Catches when the ball reaches a fielder, throws when it leaves the one holding it. */
-  reactToBall(at: Vec3 | null): void {
-    if (!at) return
+  /** Clears who has caught or thrown, so a replay plays the same reactions again. */
+  resetReactions(): void {
+    this.holder = null
+    this.caught.clear()
+    this.thrown.clear()
+    this.slid.clear()
+  }
+
+  /** Catches when the ball reaches a fielder, throws when it leaves the one holding it. Returns true on the frame a catch starts. */
+  reactToBall(at: Vec3 | null): boolean {
+    if (!at) return false
+    let caughtNow = false
     const ball = toWorld(at)
     let nearest: { id: string; distance: number } | null = null
     for (const id of this.defense.values()) {
@@ -274,13 +283,14 @@ export class Actors {
       const distance = Math.hypot(figure.group.position.x - ball.x, figure.group.position.z - ball.z)
       if (!nearest || distance < nearest.distance) nearest = { id, distance }
     }
-    if (!nearest) return
+    if (!nearest) return false
     const figure = this.figures.get(nearest.id)!
     if (nearest.distance < 2.2 && ball.y < 3.2 && !this.caught.has(nearest.id) && this.holder !== nearest.id) {
       this.caught.add(nearest.id)
       this.thrown.delete(nearest.id)
       figure.play(ball.y > 1.3 ? 'catchHigh' : 'catchLow', 0.5)
       figure.animator.reach(ball)
+      caughtNow = true
     }
     if (nearest.distance < 1.2) {
       if (this.holder !== nearest.id) this.holder = nearest.id
@@ -296,6 +306,7 @@ export class Actors {
         this.holder = null
       }
     }
+    return caughtNow
   }
 
   celebrate(teamId: string): void {

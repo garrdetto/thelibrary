@@ -28,6 +28,7 @@ export interface ContactInput {
   stuff: number
   batter: Ratings
   batterHand: Hand
+  pciScale?: number
 }
 
 export function pciRadius(type: SwingType): number {
@@ -38,7 +39,7 @@ export function resolveContact(input: ContactInput, rng: Rng): ContactResult {
   const { swing, batter } = input
   const tune = TUNING
   const deception = 1 - Math.max(-0.1, (input.pitchGrade + input.stuff - 100) * tune.stuffRadius)
-  const radius = pciRadius(swing.type) * deception
+  const radius = pciRadius(swing.type) * deception * (input.pciScale ?? 1)
   const window = tune.window[swing.type]
   const dx = input.plateX - swing.aimX / 1000
   const dy = input.plateY - swing.aimY / 1000
