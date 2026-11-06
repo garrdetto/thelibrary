@@ -20,6 +20,8 @@ const paramsSchema = z.object({
   power: finite.min(0).max(1),
   curve: finite.min(-1).max(1),
   spin: finite.min(-1).max(1),
+  push: finite.min(-1).max(1).optional(),
+  shot: z.enum(['full', 'chip', 'flop', 'spinner']).optional(),
   lie,
   teeShot: z.boolean(),
   wind: z.tuple([finite, finite]),

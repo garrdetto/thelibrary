@@ -1,8 +1,9 @@
 /** Session controller: owns the match and round state, turns input into swings, runs the authority for solo and host play, replays host shots on guests, and exposes plain state for index.ts to draw. */
 import type { RoomStatus } from '../../../engine'
 import type { ModuleConfig } from '../config'
-import type { ClubId, RoundMode } from '../tuning'
+import type { ClubId, RoundMode, ShotKind } from '../tuning'
 import { sampleAt, simulateShot, type ShotParams, type ShotResult } from '../systems/BallFlight'
+import type { SwingMoment } from '../systems/GolferRig'
 import { createCameraState, setCameraMode, stepCamera, type CameraMode, type CameraPose, type CameraState } from '../systems/Camera'
 import { suggestClub } from '../systems/ClubAdvice'
 import { courseFor } from '../systems/Course'
@@ -28,23 +29,43 @@ import {
 import type { FairwayMessage } from '../systems/Protocol'
 import { saveRecord, type FairwayBoard } from '../systems/Records'
 import { MENU, reduceRound, tickRound, type RoundEvent, type RoundState } from '../systems/Round'
-import type { MeterState } from '../systems/SwingMeter'
+import { effectivePower, type MeterState } from '../systems/SwingMeter'
 import { horizontalDistance, yawTowards, type Vec3 } from '../systems/Vector'
 import { OnlineRoom } from './OnlineRoom'
-import { holeOutMessage, scorecardModel } from './Presenters'
+import { holeOutMessage, scorecardModel, type ShotPlanView } from './Presenters'
+import { ShotPlan, type ShotPreview } from './ShotPlan'
 import type { Screens } from '../ui/Screens'
 
 export interface InputFrame {
   swing: boolean
+  swingDown: boolean
+  swingReleased: boolean
   menu: boolean
   aim: number
   clubUp: boolean
   clubDown: boolean
   spinUp: boolean
   spinDown: boolean
+  power: number
+  shotNext: boolean
+  shotPick: ShotKind | null
   orbiting: boolean
   orbitDx: number
   orbitDy: number
+}
+
+/** Where and how to draw the golfer this frame: the ball it stands to, the aim, the club and the moment of the swing. */
+export interface GolferView extends SwingMoment {
+  ball: Vec3
+  yaw: number
+}
+
+interface LastSwing {
+  playerId: string
+  yaw: number
+  club: ClubId
+  shot: ShotKind
+  power: number
 }
 
 export interface PlayHooks {
@@ -70,7 +91,10 @@ export class Play {
   aimYaw = Math.PI
   clubIndex = 0
   spin = 0
+  readonly plan = new ShotPlan()
   camera: CameraState
+  private clock = 0
+  private lastSwing: LastSwing | null = null
   previousPose: CameraPose
   readonly online: OnlineRoom
   private mode: RoundMode = 'solo'
@@ -182,6 +206,86 @@ export class Play {
     return (this.round.phase === 'aiming' || this.round.phase === 'swinging') && this.localTurn
   }
 
+  private localLie() {
+    return this.shown ? playerById(this.shown, this.self.id)?.lie : undefined
+  }
+
+  /** The swing as it stands for the local player, struck perfectly at the given power. */
+  private plannedParams(power: number): ShotParams | null {
+    if (!this.shown || !playerById(this.shown, this.self.id)) return null
+    return shotParamsFor(this.shown, this.self.id, { yaw: this.aimYaw, club: this.club, power, curve: 0, spin: this.spin, push: 0, shot: this.plan.shot })
+  }
+
+  /** Perfect-strike preview while aiming or swinging: at the planned power, the live power while the ring grows, then the locked power. */
+  preview(): ShotPreview | null {
+    if (!this.showsAim() || !this.shown) return null
+    const meter = this.round.phase === 'swinging' ? this.round.meter : null
+    const power = meter && meter.phase !== 'idle' ? meter.power : this.plan.power
+    const params = this.plannedParams(power)
+    return params ? this.plan.preview(params, power, courseFor(params.hole)) : null
+  }
+
+  planView(): ShotPlanView | null {
+    if (!this.showsAim()) return null
+    const putting = this.localLie() === 'green' || this.club === 'putter'
+    const preview = this.preview()
+    return {
+      shot: putting ? null : this.plan.shot,
+      power: this.plan.power,
+      distance: preview ? preview.distance : null,
+      spinRpm: preview && !putting ? preview.result.spinRpm : null,
+      editable: this.round.phase === 'aiming',
+    }
+  }
+
+  /**
+   * The golfer for this frame. While a player aims it stands at address to their ball; the local swing follows the meter
+   * (backswing with the power ring, held at the top through path, contact and rhythm, downswing on the strike); during
+   * the flight it plays the follow-through from where the shot was struck, then holds the finish.
+   */
+  golferView(): GolferView | null {
+    const shown = this.shown
+    if (!shown) return null
+    const phase = this.round.phase
+    if (phase === 'flight' || phase === 'resting') {
+      const shot = this.round.shot
+      const origin = sampleAt(shot, 0)
+      const mine = this.lastSwing && this.lastSwing.playerId === this.round.playerId ? this.lastSwing : null
+      const player = playerById(shown, this.round.playerId)
+      const club = mine?.club ?? suggestClub(horizontalDistance(origin, shot.landing ?? shot.rest), player?.lie ?? 'fairway')
+      const progress = phase === 'flight' ? (this.round.step * shot.stepSeconds) / this.config.golferTiming.followSeconds : 1
+      return {
+        ball: origin,
+        yaw: mine?.yaw ?? yawTowards(origin, shot.landing ?? shot.rest),
+        club,
+        shot: mine?.shot ?? 'full',
+        stage: 'follow',
+        progress,
+        amount: mine?.power ?? 1,
+        time: this.clock,
+      }
+    }
+    if (phase !== 'aiming' && phase !== 'swinging') return null
+    const player = shown.current ? playerById(shown, shown.current) : undefined
+    if (!player || player.holed || player.pickedUp) return null
+    const local = player.id === this.self.id
+    const pin = courseFor(currentCourseHole(shown)).pinPosition()
+    const club: ClubId = local ? (player.lie === 'green' ? 'putter' : this.club) : suggestClub(horizontalDistance(player.ball, pin), player.lie)
+    const base = { ball: player.ball, yaw: local ? this.aimYaw : yawTowards(player.ball, pin), club, shot: local && club !== 'putter' ? this.plan.shot : ('full' as ShotKind), time: this.clock }
+    const meter = phase === 'swinging' ? this.round.meter : null
+    if (!meter || meter.phase === 'idle') return { ...base, stage: 'address', progress: 0, amount: 1 }
+    switch (meter.phase) {
+      case 'power':
+        return { ...base, stage: 'back', progress: 1, amount: meter.power }
+      case 'path':
+      case 'contact':
+      case 'rhythm':
+        return { ...base, stage: 'top', progress: 1, amount: meter.power }
+      default:
+        return { ...base, stage: 'down', progress: meter.strike / this.config.meter.strikeSeconds, amount: meter.power }
+    }
+  }
+
   /** Starts a solo round or a closest-to-the-pin session. */
   startLocal(mode: 'solo' | 'pin'): void {
     const seed = Math.floor(Math.random() * 0xffffffff) >>> 0
@@ -273,6 +377,7 @@ export class Play {
 
   /** One fixed step of play: input, the round clock, the authority, the camera and the ball positions. */
   step(dt: number, input: InputFrame): void {
+    this.clock += dt
     if (input.menu) this.togglePause()
     const overlay = this.hooks.screens.current()
     const frozen = overlay === 'pause' && this.mode !== 'online'
@@ -292,7 +397,8 @@ export class Play {
     }
 
     if (!frozen && this.round.phase !== 'menu') {
-      const tick = tickRound(this.round, dt, clicked, this.config.camera.previewSeconds)
+      const button = { pressed: clicked, released: input.swingReleased, down: input.swingDown && overlay === null }
+      const tick = tickRound(this.round, dt, button, this.config.camera.previewSeconds)
       this.round = tick.state
       if (tick.applied) this.applyShown(tick.applied)
       if (tick.swing && !this.awaitingShot && this.shown?.current === this.self.id) this.launchLocal(tick.swing)
@@ -312,19 +418,56 @@ export class Play {
     }
     if (input.spinUp) this.changeSpin(1)
     if (input.spinDown) this.changeSpin(-1)
+    if (input.power) this.plan.nudge(input.power * this.config.aim.powerRate * dt)
+    if (input.shotPick) this.selectShot(input.shotPick)
+    else if (input.shotNext) this.cycleShot()
   }
 
   changeClub(delta: number): void {
     if (!this.showsAim()) return
-    const lie = this.shown ? playerById(this.shown, this.self.id)?.lie : undefined
+    const lie = this.localLie()
     if (lie === 'green') return
     const last = this.config.clubs.length - 1
+    const before = this.clubIndex
     this.clubIndex = Math.max(0, Math.min(last, this.clubIndex + delta))
+    if (this.clubIndex !== before) this.replan()
+  }
+
+  changePower(delta: number): void {
+    if (!this.showsAim() || this.round.phase !== 'aiming') return
+    this.plan.nudge(delta * this.config.aim.powerStep)
+  }
+
+  selectShot(kind: ShotKind): void {
+    if (!this.showsAim() || this.round.phase !== 'aiming' || this.localLie() === 'green' || this.club === 'putter') return
+    if (this.plan.select(kind)) this.replan()
+  }
+
+  cycleShot(): void {
+    if (!this.showsAim() || this.round.phase !== 'aiming' || this.localLie() === 'green' || this.club === 'putter') return
+    this.plan.next()
+    this.replan()
+  }
+
+  private replan(): void {
+    const params = this.plannedParams(1)
+    if (params) this.plan.replan(params, courseFor(params.hole))
   }
 
   changeSpin(delta: number): void {
     if (!this.showsAim()) return
     this.spin = Math.max(-1, Math.min(1, Math.round((this.spin + delta * this.config.aim.spinStep) * 100) / 100))
+  }
+
+  setSpin(value: number): void {
+    if (!this.showsAim() || this.round.phase !== 'aiming' || !Number.isFinite(value)) return
+    this.spin = Math.max(-1, Math.min(1, Math.round(value * 100) / 100))
+  }
+
+  selectClub(club: ClubId): void {
+    const index = this.config.clubs.findIndex((entry) => entry.id === club)
+    if (index < 0 || this.round.phase !== 'aiming') return
+    this.changeClub(index - this.clubIndex)
   }
 
   nudgeAim(direction: number): void {
@@ -346,7 +489,8 @@ export class Play {
 
   private launchLocal(meter: MeterState): void {
     if (!this.match) return
-    const swing: SwingInput = { yaw: this.aimYaw, club: this.club, power: meter.power, curve: meter.curve, spin: this.spin }
+    const swing: SwingInput = { yaw: this.aimYaw, club: this.club, power: effectivePower(meter), curve: meter.curve, spin: this.spin, push: meter.push, shot: this.plan.shot }
+    this.lastSwing = { playerId: this.self.id, yaw: this.aimYaw, club: this.localLie() === 'green' ? 'putter' : this.club, shot: this.plan.shot, power: meter.power }
     this.awaitingShot = true
     if (this.mode !== 'online' || this.online.isHost) {
       this.resolveShot(this.self.id, swing)
@@ -587,8 +731,11 @@ export class Play {
     this.aimYaw = yawTowards(player.ball, target)
     this.spin = 0
     if (player.id === this.self.id) {
-      const club = suggestClub(horizontalDistance(player.ball, target), player.lie)
+      const distance = horizontalDistance(player.ball, target)
+      const club = suggestClub(distance, player.lie)
       this.clubIndex = Math.max(0, this.config.clubs.findIndex((entry) => entry.id === club))
+      const params = this.plannedParams(1)
+      if (params) this.plan.reset(params, distance, horizontalDistance(player.ball, pin), course)
     }
     this.camera = setCameraMode(this.camera, player.lie === 'green' ? 'green' : 'follow')
   }

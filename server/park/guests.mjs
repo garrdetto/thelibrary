@@ -6,6 +6,7 @@ import { queueLinks, queueStep } from './queues.mjs'
 import { rideFlatSpec } from './flatspec.mjs'
 import { guestProfile, intensityLimit, warmUp, lovesRepeats } from './thrill.mjs'
 import { recordComment, rideComment } from './comments.mjs'
+import { AMENITY_VISITS, amenityWishes, amenityHotels, amenityOpen, amenityCapacity, amenityDefaultPrice, visitCost, hotelDay } from './hotels.mjs'
 
 const WALK_SPEED = 1.05
 const STALL_GROUPS = { food: ['burger', 'pizza', 'fries', 'icecream'], drink: ['drinks', 'coffee'], toilet: ['toilet'], gift: ['balloon', 'umbrella', 'info', 'souvenir'] }
@@ -153,6 +154,9 @@ function seedsFor(state, key) {
     const t = entranceTiles(state).exits[arg]; if (t) seeds.push([t.x, t.y])
   } else if (kind === 'enter') {
     const t = entranceTiles(state).inside[arg]; if (t) seeds.push([t.x, t.y])
+  } else if (kind === 'hotel') {
+    const e = state.entities[arg]
+    if (e?.type === 'hotel' && e.entrance) seeds.push([e.entrance.x, e.entrance.y])
   } else if (kind === 'fix') {
     const ride = state.entities[arg]
     for (const gateId of [ride?.exit, ride?.entrance]) { const gate = state.entities[gateId]; if (gate) { const f = frontTile(gate); seeds.push([f.x, f.y]) } }
@@ -309,16 +313,46 @@ function relocate(state, walker) {
   return false
 }
 
+// Hotel residents head back to their room instead of the park gates, as long as the hotel is still standing and reachable.
+function homeTarget(state, guest, reachable) {
+  const hotel = guest.hotel ? state.entities[guest.hotel] : null
+  if (hotel?.type !== 'hotel' || hotel.park !== guest.park || !reachable(`hotel:${hotel.id}`)) return null
+  return { key: `hotel:${hotel.id}`, hotel: hotel.id, home: true, leave: true }
+}
+
+// A hotel amenity this guest wants and can reach, afford and fit into, or null.
+function amenityTarget(state, guest, reachable, rnd) {
+  for (const id of amenityWishes(state, guest, rnd)) {
+    for (const hotel of amenityHotels(state, guest, id)) {
+      const price = visitCost(hotel, id, guest)
+      if (price > guest.cash) continue
+      if (price > amenityDefaultPrice(hotel.kind, id) * 1.6 + 1) { if (rnd() < 0.3) think(guest, `The ${AMENITY_VISITS[id].name.toLowerCase()} at ${hotel.name} is too expensive.`); continue }
+      if (!reachable(`hotel:${hotel.id}`)) continue
+      return { key: `hotel:${hotel.id}`, hotel: hotel.id, amenity: id }
+    }
+  }
+  return null
+}
+
 function chooseTarget(state, guest) {
   const rnd = () => stateRandom(state)
   const park = guest.park
   const here = tileIndex(state.map, guest.tx, guest.ty)
   const reachable = key => field(state, key)[here] >= 0
-  if (guest.happy < 45) { think(guest, 'I want to go home.'); return { key: `exit:${park}`, leave: true } }
-  if (guest.energy < 25) { think(guest, 'I am exhausted.'); return { key: `exit:${park}`, leave: true } }
-  if (guest.inPark > guest.stay) return { key: `exit:${park}`, leave: true }
-  if (guest.cash < 1 && guest.hunger < 220) { think(guest, 'I have run out of money.'); return { key: `exit:${park}`, leave: true } }
+  const leave = text => {
+    const home = homeTarget(state, guest, reachable)
+    if (home) { think(guest, `${text ? `${text} ` : ''}Time to head back to my room at ${state.entities[home.hotel].name}.`); return home }
+    if (text) think(guest, text)
+    return { key: `exit:${park}`, leave: true }
+  }
+  if (guest.happy < 45) return leave(guest.hotel ? 'I need a break.' : 'I want to go home.')
+  if (guest.energy < 25) return leave('I am exhausted.')
+  if (guest.inPark > guest.stay) return leave('')
+  if (guest.cash < 1 && guest.hunger < 220) return leave('I have run out of money.')
+  if (guest.hotel && (state.time?.dayFraction ?? 0.5) > 0.88 && rnd() < 0.4) return leave('It is getting late.')
   if (guest.toilet > 170) { if (reachable(`toilet:${park}`)) return { key: `toilet:${park}` }; think(guest, 'I need to find a restroom!'); guest.happy -= 4 }
+  const visit = amenityTarget(state, guest, reachable, rnd)
+  if (visit) return visit
   if (guest.thirst > 150 && !guest.eating) { if (reachable(`drink:${park}`)) return { key: `drink:${park}` }; think(guest, 'I am so thirsty.') }
   if (guest.hunger > 150 && !guest.eating) { if (reachable(`food:${park}`)) return { key: `food:${park}` }; think(guest, 'I am hungry, but I cannot find any food.') }
   if (guest.energy < 90 && rnd() < 0.6 && reachable(`bench:${park}`)) return { key: `bench:${park}` }
@@ -400,11 +434,47 @@ function arrive(state, guest) {
     ride.queue.push(guest.id)
     return
   }
+  if (kind === 'hotel') { enterHotel(state, guest, state.entities[Number(raw)], target); return }
   if (kind === 'bench') { guest.state = 'sit'; guest.timer = 10 + stateRandom(state) * 10; return }
   if (kind in STALL_GROUPS) {
     const stall = stallAt(state, guest, kind)
     if (stall) buy(state, guest, stall)
   }
+}
+
+// The guest has reached the hotel's front door: residents go up to their room, visitors use the amenity they came for.
+function enterHotel(state, guest, hotel, target) {
+  if (hotel?.type !== 'hotel') { think(guest, 'That hotel is gone!'); return }
+  hotel.today ??= hotelDay()
+  if (target.home) { guest.gone = true; hotel.today.home++; return }
+  const id = target.amenity, visit = AMENITY_VISITS[id]
+  if (!visit || !amenityOpen(state, hotel, id)) { think(guest, `The ${visit?.name.toLowerCase() ?? 'amenity'} at ${hotel.name} is closed.`); guest.happy -= 3; return }
+  if ((hotel.using?.[id] ?? 0) >= amenityCapacity(hotel, id)) { think(guest, `The ${visit.name.toLowerCase()} at ${hotel.name} is full.`); guest.happy -= 4; return }
+  const price = visitCost(hotel, id, guest)
+  if (price > guest.cash) { think(guest, 'I cannot afford that.'); return }
+  const p = state.parks[guest.park]
+  guest.cash -= price; guest.spent += price
+  p.cash += price; p.month.hotelAmenities = (p.month.hotelAmenities ?? 0) + price
+  hotel.today.visits++; hotel.today.takings += price
+  hotel.visitTakings = (hotel.visitTakings ?? 0) + price
+  hotel.using = { ...hotel.using, [id]: (hotel.using?.[id] ?? 0) + 1 }
+  guest.state = 'amenity'; guest.hidden = true; guest.visit = { hotel: hotel.id, amenity: id }
+  guest.timer = visit.time * (0.75 + stateRandom(state) * 0.5)
+}
+
+function leaveHotel(state, guest) {
+  const hotel = state.entities[guest.visit?.hotel], visit = AMENITY_VISITS[guest.visit?.amenity]
+  guest.state = 'walk'; guest.hidden = false
+  if (hotel?.type === 'hotel' && visit) {
+    const id = guest.visit.amenity
+    hotel.using = { ...hotel.using, [id]: Math.max(0, (hotel.using?.[id] ?? 1) - 1) }
+    const fx = visit.effects
+    for (const key of ['energy', 'hunger', 'thirst', 'toilet', 'nausea', 'happy']) if (fx[key]) guest[key] = clamp(guest[key] + fx[key], 0, 255)
+    if (id === 'giftShop' && guest.kid && !guest.items.includes('balloon')) guest.items.push('balloon')
+    think(guest, visit.thought)
+    if (hotel.entrance) { guest.tx = hotel.entrance.x; guest.ty = hotel.entrance.y; guest.x = guest.tx + 0.5; guest.y = guest.ty + 0.5; guest.nx = -1; guest.ny = -1 }
+  }
+  guest.visit = null
 }
 
 function dropLitter(state, guest, amount) {
@@ -432,6 +502,7 @@ export function updateGuests(state, dt) {
     g.toilet = Math.min(255, g.toilet + 0.28 * dt)
     g.nausea = Math.max(0, g.nausea - 1.6 * dt)
     if (g.state === 'ride') continue
+    if (g.state === 'amenity') { g.timer -= dt; if (g.timer <= 0 || state.entities[g.visit?.hotel]?.type !== 'hotel') leaveHotel(state, g); continue }
     if (g.state === 'buy') { g.timer -= dt; if (g.timer <= 0) { g.state = 'walk'; g.hidden = false } continue }
     if (g.state === 'sit') {
       g.energy = Math.min(255, g.energy + 7 * dt); g.timer -= dt

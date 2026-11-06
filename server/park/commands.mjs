@@ -10,7 +10,7 @@ import { mechanicJobDistance } from './guests.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
 import { flatSpec, validFlatSize } from './flatspec.mjs'
 import { SCHEME_COUNT, ROLES, rideSlots, rideColors, parkSchemes, sanitizeScheme } from './palette.mjs'
-import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_FLOOR_LIMIT, hotelSpec, hotelOrientedFits, hotelEntranceFor, hotelHeight, hotelRateLimits, hotelResizeCost, hotelRefurbishCost, addonCost } from './hotels.mjs'
+import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_FLOOR_LIMIT, hotelSpec, hotelOrientedFits, hotelEntranceFor, hotelHeight, hotelRateLimits, hotelResizeCost, hotelRefurbishCost, addonCost, AMENITY_VISITS, amenityPriceLimit } from './hotels.mjs'
 
 const MAX_RECT = 32
 const INVERTED_STATION_LIFT = 7
@@ -724,6 +724,13 @@ const HANDLERS = {
       const [lo, hi] = hotelRateLimits(hotel.kind)
       if (!isInt(cmd.rate, lo, hi)) return fail(`Room rates for ${def.name} run from $${lo} to $${hi} a night.`)
       hotel.rate = cmd.rate
+    }
+    if (cmd.priceOf !== undefined) {
+      const visit = AMENITY_VISITS[cmd.priceOf]
+      if (!visit) return fail('Choose an amenity.')
+      const hi = amenityPriceLimit(hotel.kind, cmd.priceOf)
+      if (!isInt(cmd.price, 0, hi)) return fail(`The ${visit.name.toLowerCase()} can charge $0 to $${hi} a visit.`)
+      hotel.prices = { ...hotel.prices, [cmd.priceOf]: cmd.price }
     }
     if (cmd.service !== undefined) {
       if (!HOTEL_SERVICE[cmd.service]) return fail('Choose a service level.')

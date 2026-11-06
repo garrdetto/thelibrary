@@ -2,7 +2,7 @@
 import { tuning, type RoundMode } from '../tuning'
 import { sampleCount, type ShotResult } from './BallFlight'
 import type { MatchEvent, MatchUpdate } from './Match'
-import { idleMeter, stepMeter, type MeterState } from './SwingMeter'
+import { startMeter, stepMeter, type MeterState, type SwingButton } from './SwingMeter'
 
 export type RoundState =
   | { phase: 'menu' }
@@ -57,7 +57,7 @@ export function reduceRound(state: RoundState, event: RoundEvent): RoundState {
     case 'readyToAim':
       return state.phase === 'nextTurn' || state.phase === 'preview' ? { phase: 'aiming', mode: state.mode } : state
     case 'swingPressed':
-      return state.phase === 'aiming' ? { phase: 'swinging', mode: state.mode, meter: stepMeter(idleMeter(), true, 0) } : state
+      return state.phase === 'aiming' ? { phase: 'swinging', mode: state.mode, meter: startMeter() } : state
     case 'launch':
       return state.phase === 'menu' || state.phase === 'finished' ? state : { phase: 'flight', mode: state.mode, playerId: event.playerId, shot: event.shot, step: 0, pending: event.pending }
     case 'resolved':
@@ -75,7 +75,7 @@ export function reduceRound(state: RoundState, event: RoundEvent): RoundState {
  * step; the shown match state switches only once the ball is at rest and the authoritative update is known, so a guest
  * waiting on the host simply lingers in "resting". Preview ends after the camera fly-over, holeOut after its banner.
  */
-export function tickRound(state: RoundState, dt: number, swingClicked: boolean, previewSeconds: number): TickResult {
+export function tickRound(state: RoundState, dt: number, button: SwingButton, previewSeconds: number): TickResult {
   const timing = tuning.timing
   switch (state.phase) {
     case 'preview': {
@@ -84,7 +84,7 @@ export function tickRound(state: RoundState, dt: number, swingClicked: boolean, 
       return { state: { ...state, elapsed }, swing: null, applied: null }
     }
     case 'swinging': {
-      const meter = stepMeter(state.meter, swingClicked, dt)
+      const meter = stepMeter(state.meter, button, dt)
       return { state: { ...state, meter }, swing: meter.phase === 'done' ? meter : null, applied: null }
     }
     case 'flight': {

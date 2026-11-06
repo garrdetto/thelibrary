@@ -7,6 +7,7 @@ export type Entity = {
   id: number; type: 'scenery' | 'stall' | 'ride' | 'gate' | 'parkEntrance' | 'hotel'; x: number; y: number; park: number; kind?: string; rot?: number; dir?: number
   floors?: number; colors?: HotelColors; roof?: string; addons?: Record<string, boolean>; entrance?: { x: number; y: number } | null; occupancy?: number; lastNight?: number; district?: boolean
   rate?: number; service?: string; condition?: number; profit?: number; invested?: number; nights?: number[]; night?: HotelNight | null
+  using?: Record<string, number>; today?: HotelDayStats | null; yesterday?: HotelDayStats | null; visitTakings?: number; prices?: Record<string, number>
   size?: [number, number]; wave?: string; comments?: { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }[]; commentCounts?: { pos: number; mix: number; neg: number }
   ride?: string | number; role?: 'entrance' | 'exit'; name?: string; price?: number; open?: boolean; sales?: number; revenue?: number
   status?: 'open' | 'closed' | 'broken'; entrance?: number; exit?: number; queue?: number[]; riders?: number[]; queueLength?: number; ridersCount?: number
@@ -34,6 +35,9 @@ export type ColorRole = 'primary' | 'secondary' | 'accent' | 'trim' | 'lights' |
 export type ColorScheme = { name: string; colors: Record<ColorRole, string> }
 export type ColorSlot = { key: string; name: string; role: ColorRole; def: string | null }
 export type HotelColors = { primary: number; secondary: number; trim: number }
+export type HotelDayStats = { visits: number; takings: number; home: number }
+export type AmenityVisit = { name: string; doing: string; time: number; price: number; seats: number; min: number; free?: boolean; kids?: boolean; daytime?: boolean; effects: Record<string, number>; thought: string }
+export type AmenityUse = { id: string; name: string; doing: string; using: number; capacity: number; price: number; defaultPrice: number; limit: number; free: boolean }
 export type HotelNight = { occupied: number; rate: number; rooms: number; amenities: number; staff: number; utilities: number; maintenance: number; amenityCosts: number; income: number; costs: number; profit: number }
 export type HotelAddon = { name: string; cost: number; occupancy: number; share?: number; upkeep?: number; amenity?: boolean }
 export type HotelService = { name: string; staff: number; occupancy: number; wear: number; spend: number }
@@ -106,6 +110,17 @@ export const FLOOR_HEIGHT: number
 export const HOTEL_GUESTS_PER_ROOM: number
 export function hotelSpec(kind: string, size: [number, number], floors: number, addons?: Record<string, boolean>): { rooms: number; building: number; cost: number; upkeep: number; rate: number; guestBonus: number } | null
 export function hotelOrientedFits(def: HotelDef, w: number, h: number): boolean
+export function hotelLoadFits(def: HotelDef, w: number, h: number): boolean
+export const AMENITY_VISITS: Record<string, AmenityVisit>
+export const AMENITY_PRICE_MAX: number
+export const AMENITY_SEAT_LIMIT: number
+export function amenityDefaultPrice(kind: string, id: string): number
+export function amenityPriceLimit(kind: string, id: string): number
+export function amenityPrice(hotel: Entity, id: string): number
+export function amenityCapacity(hotel: Entity, id: string): number
+export function amenityOpen(state: ParkState, hotel: Entity, id: string): boolean
+export function amenityUse(hotel: Entity): AmenityUse[]
+export function hotelDay(): HotelDayStats
 export function hotelHeight(hotel: { floors?: number }): number
 export function hotelEntranceFor(state: ParkState, park: number, x: number, y: number, w: number, h: number): { x: number; y: number } | null
 export function spawnRate(state: ParkState, park: Park): GuestSpawn

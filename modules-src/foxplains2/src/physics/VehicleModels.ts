@@ -20,6 +20,7 @@ import type { Assets } from '../core/Assets';
 import { BODY_EXTENTS, TUNING, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
 import { BUNDLED_VEHICLES } from '../../../maplestreet/shared/BundledVehicles';
 import { customVehicleRecord, type CustomVehicleRecord } from '../../../maplestreet/shared/CustomVehicles';
+import { lampTriangles, type Shape } from '../../../maplestreet/shared/Shapes';
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
 import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
@@ -368,17 +369,29 @@ class View implements VehicleView {
         this.paintSources.push({ mat: c, map: m.diffuseMap });
       }
     }
-    const lamp = (pts: { x: number; y: number; z: number }[], color: [number, number, number], list: pc.StandardMaterial[], sx: number, sy: number, sz: number) => {
+    const lamp = (pts: { x: number; y: number; z: number }[], color: [number, number, number], list: pc.StandardMaterial[], sx: number, sy: number, sz: number, shape?: Shape) => {
       if (!pts.length) return;
       const mat = new pc.StandardMaterial();
       mat.diffuse.set(color[0] * 0.3, color[1] * 0.3, color[2] * 0.3); mat.emissive.set(color[0], color[1], color[2]); mat.emissiveIntensity = 0; mat.gloss = 0.9; mat.useMetalness = true; mat.update();
       list.push(mat);
       const mb = new MeshBuilder();
-      for (const p of pts) for (const side of p.z === 0 ? [1] : [1, -1]) mb.box(p.x - sx / 2, p.y - sy / 2, p.z * side - sz / 2, p.x + sx / 2, p.y + sy / 2, p.z * side + sz / 2);
+      for (const p of pts) for (const side of (p.z === 0 ? [1] : [1, -1]) as (1 | -1)[]) {
+        if (!shape) { mb.box(p.x - sx / 2, p.y - sy / 2, p.z * side - sz / 2, p.x + sx / 2, p.y + sy / 2, p.z * side + sz / 2); continue; }
+        const t = lampTriangles(p, shape, side);
+        for (let i = 0; i < t.length; i += 9) {
+          const a = [t[i], t[i + 1], t[i + 2]], b = [t[i + 3], t[i + 4], t[i + 5]], c = [t[i + 6], t[i + 7], t[i + 8]];
+          const nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+          const l = Math.hypot(nx, ny, nz) || 1;
+          const i0 = mb.vertex(a[0], a[1], a[2], nx / l, ny / l, nz / l, 0, 0);
+          mb.vertex(b[0], b[1], b[2], nx / l, ny / l, nz / l, 1, 0);
+          mb.vertex(c[0], c[1], c[2], nx / l, ny / l, nz / l, 0, 1);
+          mb.tri(i0, i0 + 1, i0 + 2);
+        }
+      }
       this.root.addChild(meshEntity('lamps', [{ mesh: mb.toMesh(this.lib.device), material: mat }], { cast: false }));
     };
-    lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24);
-    lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2);
+    lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head);
+    lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail);
     this.applyStyle();
   }
 

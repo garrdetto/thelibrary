@@ -1,8 +1,8 @@
-/** The fishing loop while anchored: cast, wait for the authority's bite, hook-set, fight, land or lose, show the catch and release it. Drives the angler's pose, the rod, line, bobber, fish and ripples. Runs on its own so it works in a background tab, and the player can take over with Reel In: set the hook on a bite, crank the fish in faster, and ease off when it runs or the drag slips. The authority still decides what bites and whether it is landed. */
+/** The fishing loop while anchored: cast, wait for the authority's bite, hook-set, fight, land or lose, show the catch and release it. Drives the angler's pose, the rod, line, bobber, fish, ripples and splashes. Runs on its own so it works in a background tab, and the player can take over with Reel In: hold to power up a cast and tap to jig while waiting, set the hook on a bite, crank the fish in, ease off when it runs, let go when it jumps, and tap to net it at the boat. The authority still decides what bites and whether it is landed. */
 import * as pc from 'playcanvas'
 import type { World } from './World'
 import type { Authority, BiteResult, Progress, TickResult } from './Authority'
-import { Bobber, Ripples, Rod, drawLine } from '../scene/Tackle'
+import { Bobber, Ripples, Rod, Splashes, drawLine } from '../scene/Tackle'
 import { FishModel } from '../scene/FishModel'
 import { fishingPose, holdPose } from '../systems/Poses'
 import type { FishingPhase } from '../systems/Poses'
@@ -25,6 +25,11 @@ export interface FishingEvents {
   onHookSet?(clean: boolean): void
   onRun?(): void
   onSlip?(): void
+  onJig?(): void
+  onJump?(): void
+  onBow?(): void
+  onNetReady?(): void
+  onNetMiss?(final: boolean): void
 }
 
 export type FightGrade = 'Clean' | 'Steady' | 'Rough' | 'Auto'
@@ -72,8 +77,22 @@ export class Fishing {
   private cleanHook = false
   private reeledFight = false
   private snapAt = 1
-  private recastAt = 0
   grade: FightGrade = 'Auto'
+  /** 0–1 while Reel In is held to power up a cast, otherwise -1. */
+  castCharge = -1
+  private castPower = -1
+  private holdTime = 0
+  private jig = 0
+  /** The hooked fish is in the air: let go of Reel In (bow to it) or the tension spikes. */
+  jumping = false
+  private jumpReeled = false
+  bows = 0
+  /** The fish is beside the boat waiting for a tap of Reel In to net it. */
+  netReady = false
+  private netWindow = 0
+  private netTries = 0
+  netClean = false
+  readonly splashes: Splashes
 
   constructor(private world: World, private authority: Authority, private events: FishingEvents) {
     this.bobber = new Bobber(world.app)
@@ -81,6 +100,13 @@ export class Fishing {
     world.root.addChild(this.bobber.entity)
     this.ripples = new Ripples(world.app)
     world.root.addChild(this.ripples.root)
+    this.splashes = new Splashes(world.app)
+    world.root.addChild(this.splashes.root)
+  }
+
+  private splash(x: number, z: number, drops: number, power: number, ring = power): void {
+    this.ripples.spawn(x, z, 0.4 + ring * 0.8, 1.2 + ring * 0.4)
+    this.splashes.spawn(x, z, drops, power)
   }
 
   setAuthority(authority: Authority): void {
@@ -127,6 +153,9 @@ export class Fishing {
     this.queued = null
     this.tension = 0
     this.progress = 0
+    this.castCharge = -1
+    this.jumping = false
+    this.netReady = false
     this.bobber.entity.enabled = false
     if (this.rod) this.rod.visible = false
     this.fish?.destroy()
@@ -158,8 +187,11 @@ export class Fishing {
     fwd.y = 0
     fwd.normalize()
     const right = new pc.Vec3().cross(fwd, pc.Vec3.UP)
-    const dist = 11 + Math.random() * 10
-    const side = (Math.random() - 0.5) * 8
+    const aimed = this.castPower >= 0
+    const dist = aimed ? 7 + this.castPower * 24 : 11 + Math.random() * 10
+    const side = (Math.random() - 0.5) * (aimed ? 3 : 8)
+    this.castPower = -1
+    this.castCharge = -1
     this.lureTarget.set(pos.x + fwd.x * dist + right.x * side, 0, pos.z + fwd.z * dist + right.z * side)
     this.bobber.entity.enabled = false
     if (w.player) w.player.pose = time => this.pose(time)
@@ -172,7 +204,7 @@ export class Fishing {
     const phase = this.phase
     if (phase === 'show' || phase === 'land' || phase === 'release') return holdPose(time, phase, this.t, seated, seat?.seat ?? 0.45, this.result?.length ?? 14)
     const p = fishingPose(time, { phase: phase === 'snap' ? 'idle' : phase === 'off' ? 'idle' : phase, t: this.t, load: this.load, pull: this.pull, seated, seatHeight: seat?.seat ?? 0.45 })
-    this.rodPitch = p.rodPitch
+    this.rodPitch = p.rodPitch + this.jig * 16 + Math.max(0, this.castCharge) * 22
     this.rodYaw = p.rodYaw
     return p.pose
   }
@@ -184,10 +216,13 @@ export class Fishing {
   update(dt: number): void {
     this.time += dt
     this.ripples.update(dt)
+    this.splashes.update(dt)
     if (!this.active || !this.world.player || !this.rig) return
     this.t += dt
     const pressed = this.reeling && !this.wasReeling
+    const released = !this.reeling && this.wasReeling
     this.wasReeling = this.reeling
+    this.holdTime = this.reeling ? this.holdTime + dt : 0
     if (this.reeling) this.touched = true
     this.pollAuthority()
     const w = this.world
@@ -208,19 +243,23 @@ export class Fishing {
         if (this.t < 0.62) this.castFrom.copy(this.rod?.tip ?? hand)
         this.lure.lerp(this.castFrom, this.lureTarget, k)
         this.lure.y = this.castFrom.y * (1 - k) + Math.sin(k * Math.PI) * 4
-        if (k >= 1 && this.t < 1.4) { this.lure.copy(this.lureTarget); this.ripples.spawn(this.lure.x, this.lure.z, 0.7, 1.4) ; this.t = 1.4 }
+        if (k >= 1 && this.t < 1.4) { this.lure.copy(this.lureTarget); this.splash(this.lure.x, this.lure.z, 6, 0.45); this.t = 1.4 }
         if (this.t > 1.6) { this.phase = 'wait'; this.t = 0 }
         this.load = 0
         break
       }
       case 'wait': {
+        this.jig = Math.max(0, this.jig - dt * 2.4)
         this.lure.copy(this.lureTarget)
-        this.load = 0.05
-        if (this.queued) this.startBite(this.queued)
-        else if (pressed && this.time >= this.recastAt) {
-          // Reel the bait back and fire a fresh cast; the next bite still comes when the lake says.
-          this.recastAt = this.time + 3
-          this.startCast()
+        this.lure.y = Math.sin(this.jig * Math.PI) * 0.14
+        this.load = 0.05 + this.jig * 0.3
+        if (this.queued) { this.castCharge = -1; this.startBite(this.queued) }
+        else if (this.reeling && this.holdTime > 0.25) this.castCharge = Math.min(1, (this.holdTime - 0.25) / 1.1)
+        else if (released && this.castCharge >= 0) { this.castPower = this.castCharge; this.startCast() }
+        else if (released && this.jig < 0.3) {
+          this.jig = 1
+          this.splash(this.lure.x, this.lure.z, 3, 0.25, 0.2)
+          this.events.onJig?.()
         }
         break
       }
@@ -244,12 +283,13 @@ export class Fishing {
         else if (this.fightTime > this.nextRun && this.progress < 0.92) {
           this.run = 1 + Math.random() * (1 + strain * 2)
           this.nextRun = this.fightTime + this.run + 2.5 + Math.random() * 5
-          this.ripples.spawn(this.lure.x, this.lure.z, 0.8 + r.weight * 0.05, 1.2)
+          this.splash(this.lure.x, this.lure.z, 8, 0.6 + Math.min(0.6, r.weight * 0.04))
           this.events.onRun?.()
         }
         const running = this.run > 0
         const want = this.reeling ? (running ? 1.2 + strain * 0.2 : 0.32 + strain * 0.45) : (running ? 0.5 + strain * 0.2 : 0.12)
         this.tension += (want - this.tension) * (1 - Math.exp(-dt * (this.reeling ? 2.6 : 3.5)))
+        if (this.jumping && this.reeling) { this.jumpReeled = true; this.tension = Math.min(1.25, this.tension + dt * 2.4) }
         const base = 1 / total
         let rate = this.reeling ? base * 2.4 : base
         if (running) rate -= base * (this.reeling ? 1.6 : 0.8)
@@ -259,7 +299,29 @@ export class Fishing {
           if (this.time - this.slipNoticeAt > 3) { this.slipNoticeAt = this.time; this.events.onSlip?.() }
         }
         this.progress = clamp(this.progress + rate * dt, 0, 1)
-        if (this.fightTime > total * 2.5) this.progress = 1
+        if (this.fightTime > total * 2.5) { this.progress = 1; this.netReady = false }
+        else if (r.kind !== 'lost' && this.progress >= 0.94 && !this.netReady && this.netTries < 2) {
+          this.netReady = true
+          this.netWindow = 1.6
+          this.events.onNetReady?.()
+        }
+        if (this.netReady) {
+          this.netWindow -= dt
+          this.progress = 0.94
+          this.tension = Math.min(this.tension, 0.6)
+          if (pressed) {
+            this.netReady = false
+            this.netClean = true
+            this.progress = 1
+          } else if (this.netWindow <= 0) {
+            this.netReady = false
+            this.netTries++
+            this.progress = this.netTries >= 2 ? 1 : 0.8
+            this.run = this.netTries >= 2 ? 0 : 1.2
+            this.splash(this.lure.x, this.lure.z, 12, 0.9)
+            this.events.onNetMiss?.(this.netTries >= 2)
+          }
+        }
         const progress = this.progress
         const surge = Math.sin(this.t * 1.3) * 0.5 + Math.sin(this.t * 3.1) * 0.25
         this.pull = clamp(Math.sin(this.t * 0.6) * (running ? 1.6 : 1) + surge * 0.3, -1, 1)
@@ -277,8 +339,10 @@ export class Fishing {
         if (this.fish && this.fish.entity.enabled) this.animateJump(dt)
         if (r.kind === 'lost' && this.progress >= this.snapAt) { this.tension = 0; this.phase = 'snap'; this.t = 0; this.events.onLost(r) }
         else if (r.kind !== 'lost' && this.progress >= 1) {
-          this.grade = !this.reeledFight ? 'Auto' : this.slipTime === 0 && this.cleanHook ? 'Clean' : this.slipTime < 2 ? 'Steady' : 'Rough'
+          this.grade = !this.reeledFight ? 'Auto' : this.slipTime === 0 && this.cleanHook && this.netClean ? 'Clean' : this.slipTime < 2 ? 'Steady' : 'Rough'
           this.tension = 0
+          this.netReady = false
+          this.jumping = false
           this.phase = 'land'; this.t = 0; this.prepareHeld(r)
         }
         break
@@ -297,7 +361,7 @@ export class Fishing {
         else if (this.phase === 'show' && this.t > (['Trophy', 'Legendary'].includes(this.result!.tier) ? 9 : 6)) { this.phase = 'release'; this.t = 0 }
         else if (this.phase === 'release' && this.t > 0.9) {
           const p = this.fish?.entity.getPosition()
-          if (p) this.ripples.spawn(p.x, p.z, 1 + this.result!.weight * 0.04, 1.6)
+          if (p) this.splash(p.x, p.z, 10, 0.7 + Math.min(0.6, this.result!.weight * 0.03))
           this.fish?.destroy()
           this.fish = null
           this.startCast()
@@ -313,7 +377,7 @@ export class Fishing {
     const bob = presentation.float && ['wait', 'bite'].includes(this.phase)
     this.bobber.entity.enabled = bob
     if (bob) {
-      const dip = this.phase === 'bite' ? -0.06 - Math.abs(Math.sin(this.t * 14)) * 0.05 : Math.sin(this.time * 2.1) * 0.008
+      const dip = this.phase === 'bite' ? -0.06 - Math.abs(Math.sin(this.t * 14)) * 0.05 : Math.sin(this.time * 2.1) * 0.008 - this.jig * 0.05
       this.bobber.entity.setPosition(this.lure.x, 0.01 + dip, this.lure.z)
     }
     if (this.rod && showRod && this.phase !== 'off') {
@@ -336,7 +400,12 @@ export class Fishing {
     this.reeledFight = struck
     this.snapAt = 0.45 + Math.random() * 0.45
     this.jumpAt = SPECIES[r.species].jumps ? 2 + Math.random() * Math.max(2, r.fight * 0.5) : -1
-    if (struck) this.ripples.spawn(this.lure.x, this.lure.z, 1, 1.2)
+    this.jumping = false
+    this.bows = 0
+    this.netReady = false
+    this.netTries = 0
+    this.netClean = false
+    if (struck) this.splash(this.lure.x, this.lure.z, 12, 0.85)
     this.events.onHookSet?.(struck)
   }
 
@@ -345,7 +414,7 @@ export class Fishing {
     this.result = result
     this.phase = 'bite'
     this.t = 0
-    this.ripples.spawn(this.lure.x, this.lure.z, 0.5, 0.9)
+    this.splash(this.lure.x, this.lure.z, 5, 0.4, 0.15)
     this.events.onBite(result)
   }
 
@@ -374,28 +443,33 @@ export class Fishing {
 
   private jump(r: BiteResult): void {
     this.jumpAt = this.t + 4 + Math.random() * 8
-    if (this.t > r.fight - 2) { this.jumpAt = -1; return }
+    if (this.t > r.fight - 2 || this.progress > 0.85) { this.jumpAt = -1; return }
     if (!this.fish) {
       this.fish = new FishModel(this.world.app, r.species, r.length)
       this.world.root.addChild(this.fish.entity)
     }
     this.fish.entity.enabled = true
     this.jumpState = { t: 0, from: this.lure.clone() }
-    this.ripples.spawn(this.lure.x, this.lure.z, 1.2, 1.4)
+    this.jumping = true
+    this.jumpReeled = false
+    this.splash(this.lure.x, this.lure.z, 16, 1.1)
+    this.events.onJump?.()
   }
 
   private animateJump(dt: number): void {
     const js = this.jumpState
     if (js.t < 0 || !this.fish) return
     js.t += dt
-    const k = js.t / 0.9
+    const k = js.t / 1.3
     if (k >= 1) {
       this.fish.entity.enabled = false
-      this.ripples.spawn(this.lure.x, this.lure.z, 1.4, 1.6)
+      this.splash(this.lure.x, this.lure.z, 18, 1.2)
       js.t = -1
+      this.jumping = false
+      if (!this.jumpReeled && this.reeledFight) { this.bows++; this.events.onBow?.() }
       return
     }
-    this.fish.entity.setPosition(this.lure.x, Math.sin(k * Math.PI) * 0.9 - 0.15, this.lure.z)
+    this.fish.entity.setPosition(this.lure.x, Math.sin(k * Math.PI) * 1.15 - 0.15, this.lure.z)
     this.fish.entity.setEulerAngles(0, this.time * 40, -60 + k * 120)
     this.fish.swim(this.time, 1, 14)
   }
@@ -406,7 +480,7 @@ export class Fishing {
       this.world.root.addChild(this.fish.entity)
     }
     this.fish.entity.enabled = true
-    this.ripples.spawn(this.lure.x, this.lure.z, 1.2, 1.4)
+    this.splash(this.lure.x, this.lure.z, 16, 1)
   }
 
   private holdFish(dt: number): void {

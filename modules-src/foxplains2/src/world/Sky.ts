@@ -206,7 +206,7 @@ export class Sky {
       l.intensity = 3.2 * dayK + 0.06;
     } else {
       l.color = new pc.Color(MOON[0], MOON[1], MOON[2]);
-      l.intensity = 0.08 + 0.22 * smooth(-elev, 0.05, 0.3);
+      l.intensity = 0.3 + 0.6 * smooth(-elev, 0.05, 0.3);
     }
     // A directional light shines down its local −Y: turn −Y onto −dir.
     this.q.setFromDirections(pc.Vec3.DOWN, new pc.Vec3(-dir.x, -dir.y, -dir.z));
@@ -216,8 +216,8 @@ export class Sky {
     const fogCol = mix3(this.horizon, [0.5, 0.56, 0.62], 0.25 * dayK);
     scene.fog.color = new pc.Color(fogCol[0], fogCol[1], fogCol[2]);
     scene.fog.density = 0.00085 + dusk * 0.0006 + night * 0.0004;
-    scene.exposure = 1.0 + night * 0.75;
-    scene.ambientLight.set(0.015 + 0.03 * night, 0.02 + 0.035 * night, 0.03 + 0.05 * night);
+    scene.exposure = 1.0 + night * 1.5;
+    scene.ambientLight.set(0.015 + 0.09 * night, 0.02 + 0.1 * night, 0.03 + 0.14 * night);
 
     let dh = Math.abs(this.hours - this.envHours);
     if (dh > 12) dh = 24 - dh;

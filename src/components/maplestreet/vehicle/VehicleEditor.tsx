@@ -21,6 +21,7 @@ import { SmoothOverlay } from './DentSmoother'
 import type { SmootherApi } from './DentSmoother'
 import type { Draft, DriveTemplate, MarkerId, ReferenceKind } from './draft'
 import type { ShrinkReport } from './modelTools'
+import { ShapeDesigner } from './ShapeDesigner'
 import { TestDrive } from './TestDrive'
 import { VehicleStage } from './VehicleStage'
 import type { ModelInfo } from './VehicleStage'
@@ -142,7 +143,7 @@ export default function VehicleEditor() {
 
   function refit(template: DriveTemplate, scale?: number, yaw = draft.yaw) {
     if (!info) { setDraft(current => newDraft(template, null, { name: current.name })); return }
-    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, parts: current.parts, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
+    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, parts: current.parts, lampShapes: current.lampShapes, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
     setMeasured(null)
   }
 
@@ -370,7 +371,7 @@ export default function VehicleEditor() {
   const bodyEdits = smoother.current?.edits ?? 0
   const undoDepth = smoother.current?.undoDepth ?? 0
 
-  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}) })
+  const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}), ...(v.lampShapes ? { lampShapes: v.lampShapes } : {}) })
 
   const allVehicles = useMemo(() => {
     if (!vehicles) return null
@@ -507,6 +508,8 @@ export default function VehicleEditor() {
             {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft[key][axis]} onChange={v => patch({ [key]: { ...draft[key], [axis]: v } } as Partial<Draft>)}/>)}
           </div>)}
           <label className="ms-veh-inline"><input type="checkbox" checked={!!draft.hitch} onChange={event => patch({ hitch: event.target.checked ? { x: r3(-(length || 4) / 2 - 0.15), y: -0.25 } : null })}/> Tow hitch for the trailer</label>
+          <ShapeDesigner title="Headlight shape" axis="left" hint="Seen from the front, around the headlight marker." shape={draft.lampShapes.head} onChange={shape => patch({ lampShapes: { ...draft.lampShapes, head: shape } })}/>
+          <ShapeDesigner title="Taillight shape" axis="left" hint="Seen from the back, around the taillight marker." shape={draft.lampShapes.tail} onChange={shape => patch({ lampShapes: { ...draft.lampShapes, tail: shape } })}/>
         </fieldset>}
 
         {step === 'markers' && <fieldset>
@@ -518,6 +521,7 @@ export default function VehicleEditor() {
             return <div key={key} className="ms-veh-xyz">
               <label className="ms-veh-inline"><input type="checkbox" checked={!!box} disabled={off} onChange={event => patch({ parts: withPart(draft.parts, key, event.target.checked ? defaultPart(key, length || 4.5, height || 1.5, ride) : null) })}/> <strong>{PART_LABEL[key]}</strong></label>
               {box && (['front', 'back', 'bottom', 'top'] as const).map(edge => <Num key={edge} label={edge[0].toUpperCase() + edge.slice(1)} value={box[edge]} onChange={v => patch({ parts: withPart(draft.parts, key, { ...box, [edge]: v }) })}/>)}
+              {box && <div style={{ gridColumn: '1 / -1' }}><ShapeDesigner title={`${PART_LABEL[key]} shape`} axis={key === 'hood' || key === 'trunk' ? 'bottom' : 'none'} hint={key === 'hood' || key === 'trunk' ? 'Seen from above, front of the car to the right.' : 'Seen from the side, front of the car to the right. The same shape is used on both sides.'} shape={box.shape} onChange={shape => patch({ parts: withPart(draft.parts, key, { ...box, shape }) })}/></div>}
               {box && key === 'trunk' && <label className="ms-veh-inline"><input type="checkbox" checked={!!box.drop} onChange={event => patch({ parts: withPart(draft.parts, key, { ...box, drop: event.target.checked || undefined }) })}/> Folds down (pickup tailgate)</label>}
             </div>
           })}

@@ -7,6 +7,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { cutParts } from './CutParts';
+import { lampTriangles, type Shape } from '../../shared/Shapes';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -130,8 +131,8 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
   };
   if (ready.has(r.modelUrl)) fill(ready.get(r.modelUrl)!);
   else { holder.add(placeholder(r)); void loadScene(r.modelUrl).then(fill); }
-  addLamps(g, r.lights.head, lights.head, 0.05, 0.11, 0.24);
-  addLamps(g, r.lights.tail, lights.tail, 0.05, 0.12, 0.2);
+  addLamps(g, r.lights.head, lights.head, 0.05, 0.11, 0.24, r.lampShapes?.head);
+  addLamps(g, r.lights.tail, lights.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail);
   return g;
 }
 
@@ -198,8 +199,15 @@ function placeholder(r: CustomVehicleRecord) {
   return mesh;
 }
 
-function addLamps(g: THREE.Group, points: { x: number; y: number; z: number }[], mat: THREE.Material, sx: number, sy: number, sz: number) {
-  for (const p of points) for (const side of p.z === 0 ? [1] : [1, -1]) {
+function addLamps(g: THREE.Group, points: { x: number; y: number; z: number }[], mat: THREE.Material, sx: number, sy: number, sz: number, shape?: Shape) {
+  for (const p of points) for (const side of (p.z === 0 ? [1] : [1, -1]) as (1 | -1)[]) {
+    if (shape) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lampTriangles(p, shape, side)), 3));
+      geo.computeVertexNormals();
+      g.add(new THREE.Mesh(geo, mat));
+      continue;
+    }
     const m = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), mat);
     m.position.set(p.x, p.y, p.z * side);
     g.add(m);

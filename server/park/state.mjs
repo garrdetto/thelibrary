@@ -4,7 +4,7 @@ import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath, KART_LIMIT } from './track.mjs'
 import { flatRideSize, rideFlatSpec } from './flatspec.mjs'
-import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_HISTORY_NIGHTS, hotelSpec, hotelOrientedFits, hotelRateLimits } from './hotels.mjs'
+import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_HISTORY_NIGHTS, hotelSpec, hotelLoadFits, hotelRateLimits, sanitizeAmenityPrices } from './hotels.mjs'
 
 export const ENGINE_VERSION = 5
 export const MAX_GUESTS = 6400
@@ -416,7 +416,7 @@ function sanitizeEntity(raw, state) {
   if (raw.type === 'hotel' && HOTELS[raw.kind]) {
     const def = HOTELS[raw.kind]
     const w = Math.round(num(raw.size?.[0], def.min[0], 1, HOTEL_SIZE_LIMIT)), h = Math.round(num(raw.size?.[1], def.min[1], 1, HOTEL_SIZE_LIMIT))
-    if (!hotelOrientedFits(def, w, h)) return null
+    if (!hotelLoadFits(def, w, h)) return null
     const color = (value, fallback) => Number.isInteger(value) && value >= 0 && value <= 0xffffff ? value : fallback
     const colors = { primary: color(raw.colors?.primary, def.colors.primary), secondary: color(raw.colors?.secondary, def.colors.secondary), trim: color(raw.colors?.trim, def.colors.trim) }
     const addons = Object.fromEntries(Object.keys(HOTEL_ADDONS).map(id => [id, raw.addons?.[id] === true]))
@@ -424,7 +424,8 @@ function sanitizeEntity(raw, state) {
     return { ...base, type: 'hotel', kind: raw.kind, size: [w, h], floors: Math.round(num(raw.floors, def.floors[0], def.floors[0], def.floors[1])), name: String(raw.name ?? def.name).slice(0, 32), colors, roof: def.roofs.includes(raw.roof) ? raw.roof : def.roofs[0], addons, entrance, occupancy: num(raw.occupancy, 0.5, 0, 1), revenue: num(raw.revenue, 0), lastNight: num(raw.lastNight, 0), district: raw.district === true, built: num(raw.built),
       rate: Math.round(num(raw.rate, def.rate, ...hotelRateLimits(raw.kind))), service: HOTEL_SERVICE[raw.service] ? raw.service : 'standard', condition: num(raw.condition, 100, 0, 100),
       profit: num(raw.profit, 0), invested: num(raw.invested, hotelSpec(raw.kind, [w, h], Math.round(num(raw.floors, def.floors[0], def.floors[0], def.floors[1])), addons)?.cost ?? 0, 0),
-      nights: Array.isArray(raw.nights) ? raw.nights.filter(Number.isFinite).slice(-HOTEL_HISTORY_NIGHTS) : [], night: raw.night && typeof raw.night === 'object' ? raw.night : null }
+      nights: Array.isArray(raw.nights) ? raw.nights.filter(Number.isFinite).slice(-HOTEL_HISTORY_NIGHTS) : [], night: raw.night && typeof raw.night === 'object' ? raw.night : null,
+      prices: sanitizeAmenityPrices(raw.kind, raw.prices), using: {}, visitTakings: num(raw.visitTakings, 0, 0), today: dayStats(raw.today), yesterday: dayStats(raw.yesterday) }
   }
   if (raw.type === 'gate') return { ...base, type: 'gate', ride: Math.round(num(raw.ride, 0, 0)), role: raw.role === 'exit' ? 'exit' : 'entrance', dir: Math.round(num(raw.dir, 0, 0, 3)) }
   if (raw.type === 'ride') {
@@ -464,6 +465,10 @@ function sanitizeComments(list) {
   return list.slice(-12).filter(c => c && typeof c.text === 'string').map(c => ({ t: num(c.t, 0, 0), text: c.text.slice(0, 120), mood: ['pos', 'mix', 'neg'].includes(c.mood) ? c.mood : 'mix', who: String(c.who ?? 'a visitor').slice(0, 24) }))
 }
 
+function dayStats(raw) {
+  return { visits: Math.round(num(raw?.visits, 0, 0)), takings: num(raw?.takings, 0, 0), home: Math.round(num(raw?.home, 0, 0)) }
+}
+
 function sanitizeGuest(g, state) {
   const park = Math.round(num(g.park, 0, 0, state.parks.length - 1))
   const x = num(g.x, -1, 0, state.map.w), y = num(g.y, -1, 0, state.map.h)
@@ -477,6 +482,7 @@ function sanitizeGuest(g, state) {
     thoughts: Array.isArray(g.thoughts) ? g.thoughts.slice(-5).filter(t => typeof t === 'string').map(t => t.slice(0, 80)) : [], inPark: num(g.inPark, 0, 0), stay: num(g.stay, 400, 60, 2000), patience: num(g.patience, 90, 20, 400),
     queueTime: 0, ride: Math.round(num(g.ride, 0, 0)), stuck: 0, lastDecide: 0, kid: Boolean(g.kid),
     exitRide: Math.round(num(g.exitRide, 0, 0)), exitStep: Math.round(num(g.exitStep, 0, 0, 400)),
+    ...(g.paid ? { paid: true } : {}), ...(Number.isInteger(g.hotel) && g.hotel > 0 ? { hotel: g.hotel } : {}),
   }
 }
 
