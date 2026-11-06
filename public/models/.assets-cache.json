@@ -1050,13 +1050,23 @@
   "preset": "rig"
  },
  "sandlot3d/athlete.glb": {
-  "hash": "d94c19cc48fa17cb017f8cddde0fb7565f8caaf9",
+  "hash": "61fb0585b13ff4b736af7fa63b4c933ceac37b56",
   "before": 918900,
   "after": 228844,
   "primsBefore": 12,
   "primsAfter": 12,
   "matsBefore": 12,
   "matsAfter": 12,
-  "preset": "skinned"
+  "preset": "slots"
+ },
+ "sandlot3d/field_detail.glb": {
+  "hash": "71f71c74278f47c0a9fd4eaf6c315829b6f49e20",
+  "before": 2743120,
+  "after": 814912,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "slots"
  }
 }

@@ -1,4 +1,5 @@
-import * as THREE from 'three';
+import * as THREE from 'three/webgpu';
+import * as TSL from 'three/tsl';
 
 const LEGACY_LIGHT_SCALE = Math.PI;
 
@@ -27,11 +28,15 @@ export function createLegacyThree() {
   const DirectionalLight = legacyIntensity(THREE.DirectionalLight);
   const HemisphereLight = legacyIntensity(THREE.HemisphereLight);
   const AmbientLight = legacyIntensity(THREE.AmbientLight);
-  class WebGLRenderer extends THREE.WebGLRenderer {
-    constructor(parameters?: THREE.WebGLRendererParameters) {
-      super(parameters);
-      this.outputColorSpace = THREE.LinearSRGBColorSpace;
-    }
-  }
-  return { ...THREE, DirectionalLight, HemisphereLight, AmbientLight, WebGLRenderer };
+  return { ...THREE, TSL, DirectionalLight, HemisphereLight, AmbientLight };
+}
+
+export async function createRenderer(canvas: HTMLCanvasElement, forceWebGL: boolean, legacy: ReturnType<typeof createLegacyThree>) {
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, powerPreference: 'high-performance', forceWebGL });
+  renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+  renderer.library.addLight(THREE.DirectionalLightNode, legacy.DirectionalLight);
+  renderer.library.addLight(THREE.HemisphereLightNode, legacy.HemisphereLight);
+  renderer.library.addLight(THREE.AmbientLightNode, legacy.AmbientLight);
+  await renderer.init();
+  return renderer;
 }
