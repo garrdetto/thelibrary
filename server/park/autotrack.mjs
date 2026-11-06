@@ -43,7 +43,7 @@ function candidates(slope, style) {
   return list
 }
 
-const keyOf = p => `${Math.round(p.x * 2)},${Math.round(p.y * 2)},${p.h},${p.dir},${p.slope}`
+const keyOf = p => `${Math.round(p.x * 2)},${Math.round(p.y * 2)},${p.h},${p.dir},${p.slope},${p.g ?? 0}`
 
 export function autoComplete(state, ride) {
   if (ride.complete) return { error: 'The circuit is already complete.' }

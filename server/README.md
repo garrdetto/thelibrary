@@ -228,3 +228,12 @@ Redeploy this service with the frontend so online parks run the same rules as so
 - Some new guests check in from hotel doors instead of the park gate; they pay the entry fee on arrival, stay longer and carry more cash.
 - Two or more hotels beside a pool or wave pool within 10 squares form a resort district (`p.resortHotels`), adding up to 100 rating.
 - Snapshots carry `hotels` (occupancy, income, last night, district).
+
+### Thrill Park v58
+
+Redeploy this service with the frontend so online parks run the same rules as solo play:
+- Loading a park keeps go-kart hairpins (`c` ±3). Earlier versions clamped them to wide turns, which moved the rest of the track.
+- Track pieces carry a slope grade `g` (`slopeRate` in `track.mjs`): new coaster steep pieces climb about 60° and new go-kart slopes about 27°, while pieces without `g` keep their original angle.
+- Raised paths can cross over track and track can pass under raised paths, with 2.6 m of headroom and 0.5 m (`PATH_DECK_CLEARANCE`) for the deck.
+- New `kartWide` style (Grand Prix Kart Track): two squares wide, four karts abreast, no hairpins.
+- Queued guests walk up the line (`qs`) and a ride only loads the guest at the front once they reach it.

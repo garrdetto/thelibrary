@@ -1,6 +1,6 @@
 import { FLAT_RIDES, COASTER_STYLES, STALLS } from './catalog.mjs'
 import { clamp, stateRandom, MONTHS, DAY_SECONDS, SIM_STEP } from './util.mjs'
-import { CAR_GAP, stepTrain, kartRestS } from './track.mjs'
+import { CAR_GAP, stepTrain, kartRestS, kartLanes } from './track.mjs'
 import { addNews, emptyLedger, entityCost, electricityTiles, ridePath, objectiveText } from './state.mjs'
 import { updateGuests, updateStaff, updateQueuePositions, spawnGuest, finishRide, rideCapacity, mechanicJobDistance } from './guests.mjs'
 import { ejectRide } from './commands.mjs'
@@ -27,6 +27,8 @@ export function dailyOperatingCosts(state, park) {
 
 function board(state, ride, list, capacity) {
   if (ride.status !== 'open' || !ride.queue.length || list.length >= capacity) return
+  const head = state.guestIndex.get(ride.queue[0])
+  if (head?.state === 'queue' && (head.qs === null || head.qs > 1)) return
   const id = ride.queue.shift()
   const g = state.guestIndex.get(id)
   if (!g || g.state !== 'queue') return
@@ -154,7 +156,7 @@ function updateKarts(state, ride, dt) {
   if (!path) return
   if (ride.trains.length !== ride.cars) {
     ride.trains = Array.from({ length: ride.cars }, (_, index) => ({
-      s: kartRestS(path, index), v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0, pace: 0.94 + (index % 7) * 0.02,
+      s: kartRestS(path, index, kartLanes(ride.style)), v: 0, phase: 'loading', timer: 0, riders: [], lap: 0, stalled: 0, pace: 0.94 + (index % 7) * 0.02,
     }))
   }
   let stalled = false
@@ -179,7 +181,7 @@ function updateKarts(state, ride, dt) {
     if (result === 'arrived') {
       unload(state, ride, kart.riders)
       kart.phase = 'loading'; kart.timer = 0; kart.v = 0; kart.lap = 0; kart.stalled = 0
-      kart.s = kartRestS(path, index)
+      kart.s = kartRestS(path, index, kartLanes(ride.style))
       maybeBreak(state, ride)
     } else if (result === 'stalled') { stalled = true; break }
   }
@@ -420,7 +422,7 @@ export function stepPark(state, dt = SIM_STEP) {
   updateGuests(state, dt)
   ensureGuestIndex(state)
   for (const e of Object.values(state.entities)) if (e.type === 'ride' && e.queue.length) e.queue = e.queue.filter(id => state.guestIndex.get(id)?.state === 'queue')
-  updateQueuePositions(state)
+  updateQueuePositions(state, dt)
   updateStaff(state, dt)
   if (whole) { assignMechanics(state); updateRating(state); updateThrillCrowds(state); checkMillionDash(state) }
   if (t.tick % 100 === 0) { aggregateThoughts(state); for (const p of state.parks) p.value = parkValue(state, p.id) }

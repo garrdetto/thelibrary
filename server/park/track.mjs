@@ -4,6 +4,13 @@ import { tileMax, inMap, tileIndex, pathHeightAt } from './terrain.mjs'
 import { hotelHeight } from './hotels.mjs'
 
 export const SLOPE_RATE = { '-2': -8, '-1': -2, '0': 0, '1': 2, '2': 8 }
+// Climb per tile (half-metres) by grade. Pieces carry the grade they were built
+// with (`g`), so saved track keeps its shape: 0 is the original table, 1 is
+// coaster track with ~60° steep pieces, 2 is go-kart track at ~27°.
+const GRADE_RATES = { 1: { '-2': -14, '-1': -2, '0': 0, '1': 2, '2': 14 }, 2: { '-2': -8, '-1': -4, '0': 0, '1': 4, '2': 8 } }
+export function slopeRate(slope, grade) {
+  return (GRADE_RATES[grade] ?? SLOPE_RATE)[slope]
+}
 export const CAR_GAP = 2.4
 // Go-karts wait in the station two abreast, a row every half tile, so each
 // station tile holds four karts.
@@ -12,18 +19,37 @@ export const KART_LIMIT = 40
 export const KART_ROW_GAP = 2
 export const KART_LANE = 0.55
 
-export function kartCount(stationLength) {
-  return clamp(stationLength * KARTS_PER_STATION_TILE, 2, KART_LIMIT)
+// The Grand Prix track (`wide`) is two squares across: karts wait and race
+// four abreast, so it holds twice as many.
+export function kartLanes(style) {
+  return COASTER_STYLES[style]?.wide ? 4 : 2
 }
 
-export function kartRestS(path, index) {
-  return Math.max(0.5, path.stationEnd - 0.6 - Math.floor(index / 2) * KART_ROW_GAP)
+export function kartLimit(style) {
+  return KART_LIMIT * kartLanes(style) / 2
 }
 
-export function kartLane(index) {
-  return index % 2 === 0 ? -KART_LANE : KART_LANE
+export function kartCount(stationLength, style = 'kart') {
+  return clamp(stationLength * KARTS_PER_STATION_TILE * kartLanes(style) / 2, 2, kartLimit(style))
+}
+
+export function kartRestS(path, index, lanes = 2) {
+  return Math.max(0.5, path.stationEnd - 0.6 - Math.floor(index / lanes) * KART_ROW_GAP)
+}
+
+export function kartLane(index, lanes = 2) {
+  const k = index % lanes
+  return (k - (lanes - 1) / 2) * KART_LANE * 2
+}
+
+// Wide track runs half a square to the right of the piece's centre line,
+// over the piece's own square and the one beside it.
+function wideShift(psi) {
+  return [-Math.sin(psi) * TILE / 2, Math.cos(psi) * TILE / 2]
 }
 export const SAMPLE_STEP = 0.25
+// A raised path deck sits this far above the top of any track that passes under it.
+export const PATH_DECK_CLEARANCE = 0.5
 const CURVE_RADIUS = { 1: 1.5, 2: 2.5, 3: 0.5 }
 export const KART_HAIRPIN_SPEED = 6
 const KART_HAIRPIN_BRAKE = 16
@@ -35,7 +61,7 @@ export function startPose(ride) {
   const { x, y, dir, h } = ride.start
   const [dx, dy] = DIRS[dir]
   const px = x + 0.5 - dx * 0.5, py = y + 0.5 - dy * 0.5
-  return { x: px, y: py, h, dir, slope: 0 }
+  return { x: px, y: py, h, dir, slope: 0, g: 0 }
 }
 
 export function pieceLengthTiles(piece) {
@@ -45,22 +71,22 @@ export function pieceLengthTiles(piece) {
   return 1
 }
 
-export function pieceRise(slopeIn, piece) {
+export function pieceRise(slopeIn, piece, gradeIn = 0) {
   if (piece.sp === 'loop' || piece.sp === 'corkscrew') return 0
-  if (piece.c) return SLOPE_RATE[slopeIn] * (CURVE_RADIUS[Math.abs(piece.c)] + 0.5)
-  return (SLOPE_RATE[slopeIn] + SLOPE_RATE[piece.s]) / 2
+  if (piece.c) return slopeRate(slopeIn, gradeIn) * (CURVE_RADIUS[Math.abs(piece.c)] + 0.5)
+  return (slopeRate(slopeIn, gradeIn) + slopeRate(piece.s, piece.g ?? 0)) / 2
 }
 
 export function nextPose(pose, piece) {
   const [dx, dy] = DIRS[pose.dir]
-  const rise = pieceRise(pose.slope, piece)
-  if (piece.sp === 'loop' || piece.sp === 'corkscrew') return { x: pose.x + dx * pieceLengthTiles(piece), y: pose.y + dy * pieceLengthTiles(piece), h: pose.h, dir: pose.dir, slope: 0 }
+  const rise = pieceRise(pose.slope, piece, pose.g ?? 0)
+  if (piece.sp === 'loop' || piece.sp === 'corkscrew') return { x: pose.x + dx * pieceLengthTiles(piece), y: pose.y + dy * pieceLengthTiles(piece), h: pose.h, dir: pose.dir, slope: 0, g: 0 }
   if (piece.c) {
     const r = CURVE_RADIUS[Math.abs(piece.c)], turn = piece.c > 0 ? 3 : 1
     const ndir = (pose.dir + turn) % 4, [sx, sy] = DIRS[ndir]
-    return { x: pose.x + dx * r + sx * r, y: pose.y + dy * r + sy * r, h: pose.h + rise, dir: ndir, slope: piece.s }
+    return { x: pose.x + dx * r + sx * r, y: pose.y + dy * r + sy * r, h: pose.h + rise, dir: ndir, slope: piece.s, g: pose.g ?? 0 }
   }
-  return { x: pose.x + dx, y: pose.y + dy, h: pose.h + rise, dir: pose.dir, slope: piece.s }
+  return { x: pose.x + dx, y: pose.y + dy, h: pose.h + rise, dir: pose.dir, slope: piece.s, g: piece.g ?? 0 }
 }
 
 export function trackPoses(ride) {
@@ -80,7 +106,7 @@ function bankFor(piece, t) {
 export function samplePiece(pose, piece, steps) {
   const [dx, dy] = DIRS[pose.dir]
   const L = pieceLengthTiles(piece)
-  const rateIn = SLOPE_RATE[pose.slope], rateOut = SLOPE_RATE[piece.sp === 'loop' || piece.sp === 'corkscrew' ? 0 : piece.c ? pose.slope : piece.s]
+  const rateIn = slopeRate(pose.slope, pose.g ?? 0), rateOut = piece.sp === 'loop' || piece.sp === 'corkscrew' ? 0 : piece.c ? rateIn : slopeRate(piece.s, piece.g ?? 0)
   const points = []
   const n = steps ?? Math.max(8, Math.ceil(L * 24))
   for (let i = 0; i <= n; i++) {
@@ -138,6 +164,8 @@ export function buildTrackPath(ride) {
     const pts = samplePiece(poses[index], piece)
     for (let k = index === 0 ? 0 : 1; k < pts.length; k++) raw.push({ ...pts[k], piece: index })
   })
+  if (COASTER_STYLES[ride.style]?.wide) for (const p of raw) { const [ox, oy] = wideShift(p.psi); p.x += ox; p.y += oy }
+  for (let i = 1; i < raw.length; i++) raw[i].psi = raw[i - 1].psi + Math.atan2(Math.sin(raw[i].psi - raw[i - 1].psi), Math.cos(raw[i].psi - raw[i - 1].psi))
   if (raw.length < 2) return null
   const cum = [0]
   for (let i = 1; i < raw.length; i++) cum.push(cum[i - 1] + Math.hypot(raw[i].x - raw[i - 1].x, raw[i].y - raw[i - 1].y, raw[i].z - raw[i - 1].z))
@@ -354,8 +382,9 @@ export function rideStatsFromRun(path, style, cars) {
   }
 }
 
-export function pieceCells(pose, piece, inverted = false) {
-  const pts = samplePiece(pose, piece, Math.ceil(pieceLengthTiles(piece) * 16))
+export function pieceCells(pose, piece, inverted = false, wide = false) {
+  const line = samplePiece(pose, piece, Math.ceil(pieceLengthTiles(piece) * 16))
+  const pts = wide ? line.flatMap(p => { const [ox, oy] = wideShift(p.psi); return [p, { ...p, x: p.x + ox * 2, y: p.y + oy * 2 }] }) : line
   const cells = new Map()
   for (const p of pts) {
     const cx = Math.floor(p.x / TILE + 1e-6 * Math.sign(DIRS[pose.dir][0] || 1)), cy = Math.floor(p.y / TILE + 1e-6 * Math.sign(DIRS[pose.dir][1] || 1))
@@ -407,6 +436,8 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
     piece.s = clamp(piece.s, pose.slope - 1, pose.slope + 1)
   }
   if (Math.abs(piece.s) === 2 && !style.steep) piece.s = Math.sign(piece.s)
+  delete piece.g
+  if (!piece.c && piece.s) piece.g = requested.g === 0 ? 0 : style.trackType === 'kart' ? 2 : 1
   if (piece.sp === 'loop' && (pose.slope !== 0 || piece.s !== 0 || piece.c)) return { error: 'Loops need flat track on both sides.' }
   if (piece.sp === 'corkscrew' && (pose.slope !== 0 || piece.s !== 0 || piece.c)) return { error: 'Corkscrews need flat track on both sides.' }
   if (piece.sp === 'station' && (piece.c || piece.s || pose.slope)) return { error: 'Stations must be built on flat, straight track.' }
@@ -415,7 +446,7 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
   if (piece.sp === 'chain' && (piece.s < 0 || pose.slope < 0)) return { error: 'Chain lifts only work going up or on the level.' }
   const next = nextPose(pose, piece)
   const inverted = ride.style === 'inverted'
-  const cells = pieceCells(pose, piece, inverted)
+  const cells = pieceCells(pose, piece, inverted, Boolean(style.wide))
   const map = state.map
   const closes = Math.abs(next.x - start.x) < 1e-6 && Math.abs(next.y - start.y) < 1e-6 && next.h === start.h && next.dir === start.dir && next.slope === 0
   for (const cell of cells) {
@@ -434,7 +465,10 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
             : entity.type === 'parkEntrance' ? 4 : 2.8
       if (cell.lo < ground + clearance + 0.5) return { error: `The track needs more clearance above ${entityLabel(entity)}.` }
     }
-    if (map.path[ti] && cell.lo < pathHeightAt(map, (cell.x + 0.5) * TILE, (cell.y + 0.5) * TILE, TILE) + 2.6) return { error: 'The track needs to clear the footpath by at least 2.6m.' }
+    if (map.path[ti]) {
+      const deck = pathHeightAt(map, (cell.x + 0.5) * TILE, (cell.y + 0.5) * TILE, TILE)
+      if (cell.lo < deck + 2.6 && cell.hi > deck - PATH_DECK_CLEARANCE) return { error: map.pathElevation[ti] ? 'The track needs to clear the footpath by at least 2.6m or pass under it.' : 'The track needs to clear the footpath by at least 2.6m.' }
+    }
     for (const other of state.trackCells.get(ti) ?? []) {
       if (other.ride === ride.id && (other.piece >= index - 1 || (closes && other.piece === 0))) continue
       if (cell.lo < other.hi && other.lo < cell.hi) return { error: 'The track would collide with other track.' }
@@ -465,7 +499,7 @@ export function addRideCells(state, ride) {
   const poses = trackPoses(ride)
   const inverted = ride.style === 'inverted'
   ride.pieces.forEach((piece, index) => {
-    for (const cell of pieceCells(poses[index], piece, inverted)) {
+    for (const cell of pieceCells(poses[index], piece, inverted, Boolean(COASTER_STYLES[ride.style]?.wide))) {
       if (!inMap(state.map, cell.x, cell.y)) continue
       const ti = tileIndex(state.map, cell.x, cell.y)
       const list = state.trackCells.get(ti) ?? []

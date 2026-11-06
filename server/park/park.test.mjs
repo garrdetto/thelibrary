@@ -296,7 +296,7 @@ test('coaster slopes soften automatically and bank gradually through turns', () 
   const ride = { id: 100, type: 'ride', kind: 'coaster', style: 'steel', park: 0, start: { x: 20, y: 20, dir: 0, h: 20 }, pieces: [], complete: false }
   const adjusted = validatePiece(state, ride, { c: 0, s: 2 })
   assert.equal(adjusted.ok, true)
-  assert.deepEqual(adjusted.piece, { c: 0, s: 1 })
+  assert.deepEqual(adjusted.piece, { c: 0, s: 1, g: 1 })
   assert.equal(adjusted.adjusted, true)
   state.entities[ride.id] = ride
   assert.equal(applyCommand(state, { t: 'piece', ride: ride.id, c: 0, s: 2 }).ok, true)
