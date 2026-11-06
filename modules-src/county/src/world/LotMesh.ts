@@ -7,11 +7,12 @@
 import * as pc from 'playcanvas';
 import { bevelBox, prism, type V2 } from '../core/Shapes';
 import type { Batch } from '../core/Batch';
-import { buildDrive, buildHouse, type HouseStyle } from '../models/House';
+import { buildHouse, type HouseStyle } from '../models/House';
+import { quad, type P3 } from './RoadMesh';
 import { shrub } from '../models/Street';
 import { sub } from '../models/Parts';
 import { rng } from '../../shared/Noise';
-import { DRIVE, type Lot } from '../../shared/Roads';
+import { DRIVE, PAVING, pavingTop, type Lot, type RoadNet } from '../../shared/Roads';
 import type { StaticBox } from '../../../foxplains2/src/physics/Physics';
 import { PALETTE } from '../../config';
 
@@ -33,16 +34,43 @@ export function lotFrame(l: Lot) {
   return m;
 }
 
-export function buildLotHouse(B: Batch, l: Lot, lit: pc.Material) {
+export function buildLotHouse(B: Batch, net: RoadNet, l: Lot, lit: pc.Material) {
   const at = lotFrame(l);
   buildHouse(B, at, lotStyle(l, lit));
-  buildDrive(B, at, DRIVE.setback);
+  buildPaving(B, net, l);
   const r = rng(l.house + 77);
   for (const [dx, s] of [[-4.6, 1.2], [-2.6, 1.0], [3.4, 1.1]] as const) {
     if (r() < 0.25) continue;
     const p = at.transformPoint(new pc.Vec3(dx, 0, 0.95));
     shrub(B, p.x, p.z, s, l.house % 97 + dx * 3);
   }
+}
+
+/**
+ * The driveway and front walk: jointed concrete slabs from the garage door and
+ * the porch step to the sidewalk, ramping from the pad to meet the sidewalk's
+ * outer edge, with skirts that tuck their edges into the lawn.
+ */
+export function buildPaving(B: Batch, net: RoadNet, l: Lot) {
+  const b = B.get('matte'), c = Math.cos(l.yaw), s = Math.sin(l.yaw);
+  const at = (lx: number, lz: number, dy = 0): P3 => [l.origin[0] + lx * c + lz * s, pavingTop(net, l, lx, lz) + dy, l.origin[1] - lx * s + lz * c];
+  const up: P3 = [0, 1, 0], side = (k: number): P3 => [k * c, 0, -k * s], end: P3 = [-s, 0, -c];
+  PAVING.forEach((p, i) => {
+    const slab = i === 0 ? 3.3 : 1.2, x0 = p.x - p.half, x1 = p.x + p.half, cols = i === 0 ? 3 : 1;
+    const rows: [number, number, boolean][] = [];
+    for (let z = p.z0; z < DRIVE.setback - 1e-6;) {
+      const z1 = Math.min(DRIVE.setback, z + slab - 0.03);
+      rows.push([z, z1, false]);
+      if (z1 < DRIVE.setback - 1e-6) rows.push([z1, Math.min(DRIVE.setback, z1 + 0.03), true]);
+      z = z1 + 0.03;
+    }
+    for (const [za, zb, joint] of rows) for (let k = 0; k < cols; k++) {
+      const xa = x0 + ((x1 - x0) * k) / cols, xb = x0 + ((x1 - x0) * (k + 1)) / cols;
+      quad(b, [at(xa, za), at(xb, za), at(xb, zb), at(xa, zb)], [up, up, up, up], joint ? PALETTE.joint : PALETTE.concrete, up);
+    }
+    for (const [x, k] of [[x0, -1], [x1, 1]] as const) for (const [za, zb] of rows) quad(b, [at(x, za), at(x, zb), at(x, zb, -0.25), at(x, za, -0.25)], [side(k), side(k), side(k), side(k)], PALETTE.concrete, side(k));
+    quad(b, [at(x0, p.z0), at(x1, p.z0), at(x1, p.z0, -0.25), at(x0, p.z0, -0.25)], [end, end, end, end], PALETTE.concrete, end);
+  });
 }
 
 /** A distant house: plastered block, gable roof and garage, a few hundred triangles. */

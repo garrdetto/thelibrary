@@ -4,23 +4,17 @@ Source for `public/modules/county.html`, module id `county` (working title). A n
 
 It is not in the library yet (`src/lib/modules.ts`); open `/modules/county.html` directly.
 
-## Phase 0: look development (this folder today)
+## Phase 1: the world slice (this folder today)
 
-A single scene to settle the look before the world is built:
-- three houses on a residential street, with lawns (one freshly mowed), trees, lamps, mailboxes, a hydrant and a picket fence;
-- the corner of the airfield: a hangar, the apron, a helipad, a windsock and a parked five-seat helicopter.
+The page opens straight into the county. You start on the lawn of your house on Juniper Street with the Maple Hauler in the driveway.
 
-Use the panel to switch views (Street, Hangar, Helicopter, Aerial) and times of day (Morning, Noon, Dusk, Night), cycle the quality tier and spin the rotor.
+- **Ground:** `shared/Base.ts` is the natural terrain (farm country, a gentler bowl for the town, a level airport plateau, hills to the north, a backdrop past the map edge). `shared/Terrain.ts` grades it around everything built: under a right of way it sits below the hard surfaces, just outside it meets the sidewalk's outer edge, lots are levelled to their pad and open ground beside a road becomes an embankment.
+- **Roads:** `shared/Layout.ts` is the street plan; `shared/Roads.ts` derives the rest. Every street is graded (at most 6 %, flat through junctions), trimmed where its junction's curb returns start, and shares one cross-section: carriageway, a 15 cm curb, a grass verge, a sidewalk with a 2 % crossfall. Junctions are one flat surface plus the same layers swept round each corner. Driveways and crosswalk ramps cut the curb with flared wings and turn the verge into a concrete apron; the sidewalk runs through at its own height. `tests/roads.test.ts` fails the build on overlaps, seam gaps, grade breaks, cuts too close to junctions or each other, and ground poking through a sidewalk.
+- **Streaming:** `src/world/Chunks.ts` loads 256 m chunks at three levels round you and your vehicles, with heights from worker threads and meshes built under a per-frame budget.
+- **Walking and driving:** Fox Plains 2's `Character`, `Vehicle`, `VehicleModels` and `CameraRig`, imported unchanged, on Rapier heightfield and road colliders. WASD, Shift to run, E to get in or out, Space handbrake, R to reset a car, right-drag to look.
+- **Developer panel (F8, or `?panel=1`):** every vehicle in the shared registry with Spawn and Drive: built-in, bundled and published from the admin vehicle editor, plus the admin's drafts with `?dev=1`. It also shows telemetry, teleports and the time of day, and links to the vehicle editor for making new ones.
 
-Address-bar options:
-- `?view=street|hangar|helicopter|aerial`
-- `?hour=0–24`
-- `?quality=low|medium|high`
-- `?rotor=1`
-- `?ui=0` hides the panel for screenshots.
-
-From the console, `window.county` offers `setView`, `setHour`, `quality`, `rotor` and `info()` (fps, triangles per area, render scale).
-
+Address-bar options: `?hour=0–24`, `?quality=low|medium|high`, `?dev=1`, `?panel=1`, `?ui=0`, and `?lookdev=1` for the Phase 0 scene (with its own `?view=` and `?rotor=1`). `window.county` exposes `game`, `chunks`, `net`, `setHour`, `teleport` and `info()`.
 ## The look
 
 - **Realistic proportions and silhouettes:** real-world sizes (an 11 × 8.5 m house, a 4.4 m lamp post, a 10 m helicopter). Nothing inflated, blocky or caricatured.
@@ -32,33 +26,14 @@ From the console, `window.county` offers `setView`, `setHour`, `quality`, `rotor
 
 ## Files
 
-| File | What it does |
-| --- | --- |
-| `config.ts` | palette, finishes, grading, light and fog, look-dev views and times |
-| `src/main.ts` | boot, panel, keyboard, `window.county` |
-| `src/core/Renderer.ts` | PlayCanvas device and app, CameraFrame (TAA, SSAO, bloom, grading), quality tiers, adaptive scale |
-| `src/core/Shapes.ts` | `bevelBox`, `prism` (rounded extrusion), `sweep` (profile along a path), `gridSurface` (smooth lofted skins with per-quad colours), `roundOutline`, `triangulate`, `contactShade` |
-| `src/core/Batch.ts` | one builder per finish, so each area is one draw per finish |
-| `src/core/Noise.ts` | seeded random numbers and value noise |
-| `src/style/Kit.ts` | the material kit and night glow materials |
-| `src/world/Sky.ts` | gradient sky dome, clouds, stars, sun/moon light, env bake, haze |
-| `src/world/LookDev.ts` | composes the look-development scene |
-| `src/game/OrbitCamera.ts` | orbit, pan and zoom camera with preset views |
-| `src/models/House.ts`, `Parts.ts` | house, windows, doors |
-| `src/models/Street.ts` | road, curbs, sidewalks, lamps, mailbox, hydrant, fence, lawn stripes, shrubs |
-| `src/models/Trees.ts` | `leafClump`, oak and maple (`broadleaf`), spruce |
-| `src/models/Airfield.ts` | hangar, name board, apron, helipad, windsock |
-| `src/models/Helicopter.ts` | the utility helicopter with separate main and tail rotors |
-| `src/models/Ground.ts` | look-dev ground with hills (`groundHeight`) |
-
+See the county section of `docs/ENGINE-MAP.md` for every file. In short: `shared/` holds the renderer-free rules (terrain, layout, roads), `src/world/` the streamed scene, `src/game/` walking, driving and the developer panel, and `src/models/` the clipart models from Phase 0.
 ## Reused from other modules
 
-- **Fox Plains 2:** `MeshBuilder`, `meshEntity` and the colour helpers (`../foxplains2/src/core/Geo.ts`).
-- **Fox Plains:** `store` (`../maplestreet/src/core/Storage.ts`) for the per-browser quality setting (`county/quality`).
+- **Fox Plains 2:** `MeshBuilder` and `meshEntity` (`core/Geo.ts`), `Assets`, `AvatarKits`, `CameraRig`, and the physics (`Physics`, `Vehicle`, `VehicleModels`, `Character`). Change those there, for both modules.
+- **Fox Plains:** `Input`, `store`, `Wardrobe`, `Economy` and the vehicle registry (`shared/Vehicles.ts`, `CustomVehicles.ts`), so published vehicles drive the same everywhere.
 
 ## Next phases
 
-1. Terrain and chunk streaming, the town, a generated road network (junctions, curb returns, sloped curb cuts, sidewalks and driveways cut from the same outlines, with seam and height tests), walking and driving with the Fox Plains 2 physics and every built-in and published Fox Plains vehicle, and the admin developer panel (vehicle list and spawn, spec, paint, teleport, time, debug views).
 2. Helicopter flight model and flight assist.
 3. The airport and AI air traffic; the module appears in the library.
 4. Mowing at scale.

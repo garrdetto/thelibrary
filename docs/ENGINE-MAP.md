@@ -148,7 +148,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `fairway` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, TSL node materials | `modules-src/fairway/` |
 | `demoderby` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, Rapier 0.14 raycast vehicles | `modules-src/demoderby/` |
 | `park` | hand-written WebGL2 | `src/lib/park/` |
-| `county` | PlayCanvas 2.23.3 WebGL2 (CameraFrame HDR), look development only | `modules-src/county/` |
+| `county` | PlayCanvas 2.23.3 WebGL2 (CameraFrame HDR), Rapier via Fox Plains 2's physics | `modules-src/county/` |
 | `park2` | Babylon.js 9.34.0 (WebGPU, WebGL2 fallback) behind the `park` renderer's backend interface | `src/lib/park2/` (models, simulation and HUD shared with `park`) |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
@@ -305,20 +305,37 @@ Same shared world and protocol as Fox Plains; everything that doesn't draw is im
 - `src/game/Game.ts` — composition root and fixed step; `CameraRig.ts` — orbit/chase camera; `Hud.ts` — DOM HUD.
 
 ### county — Kestrel County (`modules-src/county/`, PlayCanvas, working title, not in `modules.ts` yet)
-Phase 0 look development for a separate 4 × 4 km world with an airport and helicopters in a glossy realistic-clipart style. It imports Fox Plains 2's `MeshBuilder`/`meshEntity` and Fox Plains' `store` rather than copying them. Details in `modules-src/county/README.md`.
-- `modules-src/county/index.html`, `index.ts` — page shell with the look-dev panel (views, times, quality, rotor) — `vite.modules.ts` (→ `public/modules/county.html`).
+A separate 4 × 4 km world (airport and helicopters to come) in a glossy realistic-clipart style. Phase 1 streams the county with graded terrain, a generated road network and a town of houses, with Fox Plains 2's walking and driving imported unchanged; `?lookdev=1` keeps the Phase 0 look-development scene. It imports Fox Plains 2's `MeshBuilder`/`meshEntity`, physics (`Physics`, `Vehicle`, `VehicleModels`, `Character`), `Assets`, `AvatarKits` and `CameraRig`, and Fox Plains' `Input`, `store`, `Wardrobe`, `Economy` and vehicle registry (`CustomVehicles`, `Vehicles`) rather than copying them. Details in `modules-src/county/README.md`.
+- `modules-src/county/index.html`, `index.ts` — page shell with the world HUD, developer panel styles and the look-dev panel — `vite.modules.ts` (→ `public/modules/county.html`).
 - `config.ts` — palette, finishes, grading, light and fog, look-dev views and times — every file below.
-- `src/main.ts` — boot, panel and keys, `?view=`/`?hour=`/`?quality=`/`?rotor=1`/`?ui=0`, `window.county` — `index.ts`.
+- `shared/Noise.ts` — `rng`, `valueNoise`, `fbm` — `Base`, `Roads`, `Scatter`, `TerrainMesh`, models.
+- `shared/Base.ts` — natural ground `baseHeight`/`smoothBase`, town bowl, airport plateau, backdrop past the map edge; `WORLD`, `TOWN`, `AIRPORT` — `Roads`, `Terrain`, `Chunks`, `Scatter`.
+- `shared/Layout.ts` — the street plan (`LAYOUT`: named edges, classes, curves, lot runs) — `Roads`.
+- `shared/Roads.ts` — `RoadNet`: centre lines, graded profiles (`MAX_GRADE`, flat junction zones), junction curb returns and trims, lots and driveway placement, crosswalk ramps and curb cuts, the cross-section (`crossHeight`, `walkEnd`, `rowHalf`), and right-of-way queries (`query`, `nearest`, `lotsNear`) — `Terrain`, `RoadMesh`, `Scatter`, `LotMesh`, `WorldMain`, tests.
+- `shared/Terrain.ts` — `Terrain.heightAt` (ground graded under and around roads, lot pads, embankments) and `gridHeight` (the mesh's triangulation) — `County`, worker, tests.
+- `shared/County.ts` — `county()`: the network and terrain built once — worker, `WorldMain`, tests.
+- `tests/roads.test.ts` — determinism, connectivity, grades, junction seams, no overlaps (junctions, lots, right of way), curb-cut clearances, ground under sidewalks and meeting their outer edge — `scripts/county-tests.mjs` (`pnpm test`).
+- `src/main.ts` — renderer, kit and sky, then `WorldMain` or `LookDevMain` (`?lookdev=1`) — `index.ts`.
+- `src/WorldMain.ts` — boots physics, the vehicle registry, chunks and `Game`; spawn at home with the starter truck; day clock (`?hour=`), HUD, developer panel, `window.county` — `main`.
+- `src/LookDevMain.ts` — Phase 0 scene controls, `?view=`/`?hour=`/`?rotor=1`/`?ui=0` — `main`.
 - `src/core/Renderer.ts` — WebGL2 device, CameraFrame (Neutral tone mapping, TAA, SSAO, bloom, grading), quality tiers (`county/quality`), adaptive scale — `main`, `Sky`, `LookDev`.
 - `src/core/Shapes.ts` — `bevelBox`, `prism`, `sweep`, `gridSurface`, `roundOutline`, `triangulate`, `contactShade`, `place` — every model.
-- `src/core/Batch.ts` — one `MeshBuilder` per finish, `mark`/`contact` shading, `build` → one entity — `LookDev`, models.
-- `src/core/Noise.ts` — `rng`, `valueNoise`, `fbm` — `Trees`, `Ground`, `LookDev`.
-- `src/style/Kit.ts` — vertex-coloured finishes (matte, satin, plastic, paint, glass, metal, foliage, ground) and night `glow` materials — `Batch`, `LookDev`, `Helicopter`.
+- `src/core/Batch.ts` — one `MeshBuilder` per finish, `mark`/`contact`/`move`, `soup` (collider triangles), `meshes`, `build` → one entity — models, `Chunks`, `TreeKit`.
+- `src/style/Kit.ts` — vertex-coloured finishes and night `glow` materials — `Batch`, `Chunks`, `LookDev`, `Helicopter`.
 - `src/world/Sky.ts` — gradient dome, clouds, stars, sun/moon light with cascades, env atlas bake, haze, exposure — `main`.
-- `src/world/LookDev.ts` — composes houses, street, trees, airfield, helicopter, ground and lamp lights; triangle breakdown — `main`.
-- `src/game/OrbitCamera.ts` — orbit/pan/zoom with preset views, ground clamp — `main`.
-- `src/models/Parts.ts` (`sub`, `framedWindow`, `panelDoor`), `House.ts` (`buildHouse`, `buildDrive`), `Street.ts`, `Trees.ts` (`leafClump`, `broadleaf`, `spruce`), `Airfield.ts` (hangar, `hangarSign`, apron, helipad, windsock), `Helicopter.ts` (lofted body, rotors as entities), `Ground.ts` (`groundHeight`, `buildGround`) — `LookDev`.
-
+- `src/world/Chunks.ts` — 256 m chunk streaming (far 8 m ground for all, mid roads/house massings/coarse trees, near 2 m ground/full houses/fine trees/lamps/mailboxes and colliders: Rapier heightfield, road trimesh, house boxes, trunks), budgeted build jobs, horizon backdrop — `WorldMain`, `Game`.
+- `src/world/Heights.ts`, `heights.worker.ts` — height grids from a worker pool (main-thread fallback) — `Chunks`.
+- `src/world/TerrainMesh.ts` — chunk ground mesh with colours and skirts, `groundColor`, `heightfieldData` — `Chunks`.
+- `src/world/RoadMesh.ts` — carriageway, bevelled curb, verge or apron, jointed sidewalk and skirt from the cross-section; junction fans and curb-return layers; markings (centre and edge lines, crosswalks, stop bars) — `Chunks`.
+- `src/world/LotMesh.ts` — full house with driveway and shrubs, distant massing, house collider boxes, seeded styles — `Chunks`.
+- `src/world/Scatter.ts` — street, yard and country trees, lamps and mailboxes per chunk; `lotPoint` — `Chunks`, `WorldMain`.
+- `src/world/TreeKit.ts` — instanced tree variants at two levels of detail — `Chunks`.
+- `src/world/LookDev.ts` — the Phase 0 scene — `LookDevMain`.
+- `src/game/Game.ts` — solo walking and driving on Fox Plains 2's classes: spawn after colliders exist, E in/out, R reset, teleport, rescue below ground, fixed step and chunk focus — `WorldMain`, `DevPanel`.
+- `src/game/Vehicles.ts` — registers built-in, bundled, published and (with `?dev=1`, admin only) draft vehicles; `vehicleEntries` — `WorldMain`, `DevPanel`.
+- `src/game/DevPanel.ts` — F8 panel: vehicle list with Spawn/Drive and specs, telemetry, teleports, time of day, stats, link to the vehicle editor — `WorldMain`.
+- `src/game/OrbitCamera.ts` — orbit/pan/zoom with preset views, ground clamp — `LookDevMain`.
+- `src/models/Parts.ts` (`sub`, `framedWindow`, `panelDoor`), `House.ts` (`buildHouse`, `buildDrive`), `Street.ts`, `Trees.ts` (`leafClump`, `broadleaf` with `lod`, `spruce`), `Airfield.ts`, `Helicopter.ts`, `Ground.ts` (look-dev ground) — `LookDev`, `LotMesh`, `TreeKit`, `Chunks`.
 ### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
 - `modules-src/fairway/module.json` — id `fairway`, title, accent `#4fd27a`, modes — `config.ts`.
 - `modules-src/fairway/tuning.ts` — pure tunables shared by systems and tests: air, ball, clubs, surface contact, lies, trees, cup, flight, terrain shape, wind, four-input meter, shot types (full/chip/flop/spinner launch and landing multipliers), short-game planner, camera, match rules, timing, hole data — `config.ts`, `systems/*`.

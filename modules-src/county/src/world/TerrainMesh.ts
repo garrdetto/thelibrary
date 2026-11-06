@@ -5,7 +5,7 @@
  * different level of detail. Triangles split along (i, j)–(i+1, j+1), as
  * `Terrain.gridHeight` assumes.
  */
-import type * as pc from 'playcanvas';
+import * as pc from 'playcanvas';
 import { MeshBuilder, meshEntity, type RGB } from '../../../foxplains2/src/core/Geo';
 import { fbm } from '../../shared/Noise';
 import { pointInPoly, type RoadNet } from '../../shared/Roads';
@@ -23,11 +23,16 @@ export function groundColor(net: RoadNet, x: number, z: number, slope: number): 
   if (net.lotsNear(x, z).some(l => pointInPoly(l.poly, x, z))) c = mix(c, PALETTE.grass, 0.6);
   const fine = fbm(x / 6.5 + 3, z / 6.5 - 8, 2);
   c = mix(c, PALETTE.grassDark, sat((0.55 - fine) * 1.6) * 0.45);
-  const k = 0.86 + (n - 0.5) * 0.12 + (fine - 0.5) * 0.08;
+  const k = 0.8 + (n - 0.5) * 0.12 + (fine - 0.5) * 0.08;
   return [c[0] * k, c[1] * k, c[2] * k];
 }
 
 export function buildTerrainChunk(device: pc.GraphicsDevice, material: pc.Material, net: RoadNet, h: Float32Array, x0: number, z0: number, n: number, step: number, drop = 0, name = 'ground') {
+  return meshEntity(name, [{ mesh: terrainBuilder(net, h, x0, z0, n, step, drop).toMesh(device, true), material }], { cast: false });
+}
+
+/** Grid triangles first (6 indices per cell, row by row), then the skirt. */
+function terrainBuilder(net: RoadNet, h: Float32Array, x0: number, z0: number, n: number, step: number, drop: number) {
   const b = new MeshBuilder(), w = n + 1;
   const H = (i: number, j: number) => h[Math.max(0, Math.min(n, j)) * w + Math.max(0, Math.min(n, i))] - drop;
   for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
@@ -54,11 +59,41 @@ export function buildTerrainChunk(device: pc.GraphicsDevice, material: pc.Materi
   for (let q = 0; q < ring.length; q++) {
     const [i0, j0] = ring[q], [i1, j1] = ring[(q + 1) % ring.length];
     const t0 = j0 * w + i0, t1 = j1 * w + i1, s0 = skirt[q], s1 = skirt[(q + 1) % ring.length];
-    b.tri(t0, s0, s1); b.tri(t0, s1, t1);
+    b.tri(t0, s1, s0); b.tri(t0, t1, s1);
   }
-  return meshEntity(name, [{ mesh: b.toMesh(device, true), material }], { cast: false });
+  return b;
 }
 
+/**
+ * Distant ground for a block of `per` × `per` chunks as one mesh. Its
+ * triangles are grouped by chunk so `show` can cut holes where chunks are
+ * drawn in detail, by swapping the index buffer only.
+ */
+export function buildTerrainBlock(device: pc.GraphicsDevice, material: pc.Material, net: RoadNet, h: Float32Array, x0: number, z0: number, n: number, step: number, per: number, drop: number, name: string) {
+  const b = terrainBuilder(net, h, x0, z0, n, step, drop), q = n / per;
+  const mesh = b.toMesh(device, true), entity = meshEntity(name, [{ mesh, material }], { cast: false });
+  const groups: number[][] = Array.from({ length: per * per }, () => []);
+  for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+    const g = groups[Math.floor(j / q) * per + Math.floor(i / q)], k = (j * n + i) * 6;
+    for (let d = 0; d < 6; d++) g.push(b.idx[k + d]);
+  }
+  const skirt = b.idx.slice(6 * n * n);
+  let shown = '';
+  return {
+    entity,
+    /** Draws only the chunks for which `visible(ci, cj)` holds (ci, cj counted within the block). */
+    show(visible: (ci: number, cj: number) => boolean) {
+      const key = groups.map((_, k) => (visible(k % per, Math.floor(k / per)) ? '1' : '0')).join('');
+      if (key === shown) return;
+      shown = key;
+      const out: number[] = [];
+      groups.forEach((g, k) => { if (key[k] === '1') for (const v of g) out.push(v); });
+      for (const v of skirt) out.push(v);
+      mesh.setIndices(new Uint32Array(out));
+      mesh.update(pc.PRIMITIVE_TRIANGLES, false);
+    },
+  };
+}
 /** A Rapier heightfield's heights for the grid: column-major, rows along Z. */
 export function heightfieldData(h: Float32Array, n: number) {
   const w = n + 1, out = new Float32Array(w * w);

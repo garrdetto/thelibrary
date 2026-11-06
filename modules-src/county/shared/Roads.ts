@@ -60,7 +60,7 @@ export interface Edge {
 export interface CornerPt { x: number; z: number; nx: number; nz: number; w: Widths }
 export interface Corner { from: EdgeEnd; to: EdgeEnd; kind: 'fillet' | 'arc'; tFrom: number; tTo: number; path: CornerPt[] }
 export interface Junction { node: number; x: number; z: number; elev: number; ends: EdgeEnd[]; corners: Corner[]; surface: V2[]; outline: V2[]; box?: [number, number, number, number] }
-export interface Lot { id: number; edge: number; side: 1 | -1; s0: number; s1: number; depth: number; poly: V2[]; drive: number; pad: number; yaw: number; origin: V2; house: number; box?: [number, number, number, number] }
+export interface Lot { id: number; edge: number; side: 1 | -1; s0: number; s1: number; depth: number; poly: V2[]; drive: number; dir: number; pad: number; yaw: number; origin: V2; house: number; box?: [number, number, number, number] }
 export interface RoadQuery { inside: boolean; dist: number; elev: number; top: number }
 
 const rot = (v: V2): V2 => [-v[1], v[0]];
@@ -306,7 +306,7 @@ export class RoadNet {
           const pad = this.elevAt(e, drive) + walkTop(e.cls);
           const id = this.lots.length;
           const built = r() < 0.55 && place.ok;
-          this.lots.push({ id, edge: e.id, side: run.side, s0: a, s1: b, depth: run.depth, poly, drive, pad, yaw, origin, house: built ? Math.floor(r() * 1e6) : -1 });
+          this.lots.push({ id, edge: e.id, side: run.side, s0: a, s1: b, depth: run.depth, poly, drive, dir, pad, yaw, origin, house: built ? Math.floor(r() * 1e6) : -1 });
           if (built) e.cuts.push({ side: run.side, s: drive, width: DRIVE.width, flare: DRIVE.flare, kind: 'drive', lot: id });
         }
       }
@@ -427,6 +427,30 @@ export class RoadNet {
     }
     return out;
   }
+}
+
+/** A point in a lot's house frame: x across the lot, z toward the street, from the front of the house. */
+export function lotLocal(l: Lot, x: number, z: number): V2 {
+  const c = Math.cos(l.yaw), s = Math.sin(l.yaw), dx = x - l.origin[0], dz = z - l.origin[1];
+  return [dx * c - dz * s, dx * s + dz * c];
+}
+
+/** The driveway (from the garage door) and front walk (from the porch step) in the house frame: x centre, half width, z where it starts. */
+export const PAVING = [{ x: DRIVE.garageX, half: DRIVE.width / 2, z0: -0.5 }, { x: 1.2, half: 0.6, z0: 2.4 }] as const;
+
+/** Whether (x, z) is under a built lot's driveway or front walk (both run from the house to the sidewalk). */
+export function onLotPaving(l: Lot, x: number, z: number) {
+  if (l.house < 0) return false;
+  const [lx, lz] = lotLocal(l, x, z);
+  return PAVING.some(p => Math.abs(lx - p.x) <= p.half + 0.05 && lz >= p.z0 - 0.2 && lz <= DRIVE.setback + 0.3);
+}
+
+/** Top of a lot's paving at house-frame (lx, lz): the pad at the house, ramping to meet the sidewalk's outer edge wherever it reaches the street. */
+export function pavingTop(net: RoadNet, l: Lot, lx: number, lz: number) {
+  const e = net.edges[l.edge], s = l.drive + (lx - DRIVE.garageX) * l.dir;
+  const front = net.elevAt(e, s) + walkTop(e.cls);
+  const t = Math.max(0, Math.min(1, (lz + 0.5) / (DRIVE.setback + 0.5)));
+  return l.pad + (front - l.pad) * t;
 }
 
 /** [minX, minZ, maxX, maxZ] of a polygon. */

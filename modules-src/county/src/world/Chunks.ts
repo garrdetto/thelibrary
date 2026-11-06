@@ -20,11 +20,11 @@ import type { County } from '../../shared/County';
 import { MASK, type Physics } from '../../../foxplains2/src/physics/Physics';
 import { MeshBuilder, meshEntity } from '../../../foxplains2/src/core/Geo';
 import { Heights } from './Heights';
-import { buildTerrainChunk, groundColor, heightfieldData } from './TerrainMesh';
+import { buildTerrainBlock, buildTerrainChunk, groundColor, heightfieldData } from './TerrainMesh';
 import { buildEdgePiece, buildJunction, type RoadBuilders } from './RoadMesh';
 import { buildHouseMass, buildLotHouse, houseColliders } from './LotMesh';
 import { countryTrees, fixtures, streetTrees, yardTrees, type Rect } from './Scatter';
-import { TreeKit, type TreePlace } from './TreeKit';
+import { TreeField, TreeKit, type TreePlace } from './TreeKit';
 import { streetLamp, mailbox } from '../models/Street';
 import { place } from '../core/Shapes';
 import { PALETTE } from '../../config';
@@ -33,13 +33,12 @@ export const CHUNK = 256;
 const N_CHUNKS = Math.ceil((WORLD.half * 2) / CHUNK) + 1;
 const ORIGIN = -(N_CHUNKS * CHUNK) / 2;
 const NEAR_R = 230, NEAR_DROP = 320, MID_R = 950, MID_DROP = 1080;
-const NEAR_STEP = 2, FAR_STEP = 8, FAR_SINK = 0.45;
+const NEAR_STEP = 2, FAR_STEP = 8, FAR_SINK = 0.45, PER = 4, N_BLOCKS = Math.ceil(N_CHUNKS / PER);
 
 interface Piece { edge: number; s0: number; s1: number }
 interface Chunk {
   i: number; j: number; rect: Rect; pieces: Piece[]; junctions: number[]; lots: number[];
-  far: pc.Entity | null; farPending: boolean;
-  mid: { root: pc.Entity; roadSoup: { pos: Float32Array; idx: Uint32Array }; masses: pc.Entity | null; trees: pc.Entity | null } | null; midPending: boolean;
+  mid: { root: pc.Entity; roadSoup: { pos: Float32Array; idx: Uint32Array }; masses: pc.Entity | null } | null; midPending: boolean;
   near: { root: pc.Entity; ground: pc.Entity; colliders: unknown[] } | null; nearPending: boolean;
   staticsAdded: boolean;
   trees: { mid: TreePlace[]; near: TreePlace[] } | null;
@@ -51,21 +50,25 @@ export class Chunks {
   readonly root = new pc.Entity('county');
   private chunks: Chunk[] = [];
   private heights: Heights;
-  private trees: TreeKit;
+  private trees: TreeField;
   private jobs: Job[] = [];
   private lit: pc.Material;
   private bulb: pc.Material;
   private focus: { x: number; z: number }[] = [];
+  private blocks: (ReturnType<typeof buildTerrainBlock> | null)[] = Array(N_BLOCKS * N_BLOCKS).fill(null);
+  private blockPending: boolean[] = Array(N_BLOCKS * N_BLOCKS).fill(false);
+  private farHoles = true;
 
   constructor(private app: pc.AppBase, private kit: Kit, private county: County, private physics: Physics | null) {
     this.heights = new Heights(county.terrain);
-    this.trees = new TreeKit(app.graphicsDevice, kit);
+    this.trees = new TreeField(new TreeKit(app.graphicsDevice, kit), app.graphicsDevice);
     this.lit = kit.glow('window', [1, 0.78, 0.5], 0, 1.4);
     this.bulb = kit.glow('bulb', [1, 0.86, 0.6], 0.15, 6);
     app.root.addChild(this.root);
+    this.root.addChild(this.trees.root);
     for (let j = 0; j < N_CHUNKS; j++) for (let i = 0; i < N_CHUNKS; i++) {
       const x0 = ORIGIN + i * CHUNK, z0 = ORIGIN + j * CHUNK;
-      this.chunks.push({ i, j, rect: { x0, z0, x1: x0 + CHUNK, z1: z0 + CHUNK }, pieces: [], junctions: [], lots: [], far: null, farPending: false, mid: null, midPending: false, near: null, nearPending: false, staticsAdded: false, trees: null });
+      this.chunks.push({ i, j, rect: { x0, z0, x1: x0 + CHUNK, z1: z0 + CHUNK }, pieces: [], junctions: [], lots: [], mid: null, midPending: false, near: null, nearPending: false, staticsAdded: false, trees: null });
     }
     this.assign();
     this.root.addChild(this.backdrop());
@@ -121,28 +124,40 @@ export class Chunks {
     this.focus = focus;
     for (const c of this.chunks) {
       const d = this.dist(c);
-      if (!c.far && !c.farPending) this.loadFar(c, d);
       if (d < MID_R && !c.mid && !c.midPending) this.loadMid(c, d);
       if (d > MID_DROP && c.mid) this.dropMid(c);
       if (d < NEAR_R && !c.near && !c.nearPending) this.loadNear(c, d);
       if (d > NEAR_DROP && c.near) this.dropNear(c);
     }
+    for (let k = 0; k < this.blocks.length; k++) if (!this.blocks[k] && !this.blockPending[k]) this.loadBlock(k);
+    if (this.farHoles) { this.farHoles = false; this.blocks.forEach((b, k) => b && this.cutHoles(b, k)); }
     this.heights.tick();
     const t0 = performance.now();
     this.jobs.sort((a, b) => a.priority - b.priority);
     while (this.jobs.length && performance.now() - t0 < budgetMs) this.jobs.shift()!.run();
+    this.trees.flush();
   }
 
-  private loadFar(c: Chunk, d: number) {
-    c.farPending = true;
-    const n = CHUNK / FAR_STEP;
-    void this.heights.request(c.rect.x0, c.rect.z0, n, FAR_STEP, 1000 + d).then(h => this.job(1000 + this.dist(c), () => {
-      c.far = buildTerrainChunk(this.app.graphicsDevice, this.kit.finish.ground, this.county.net, h, c.rect.x0, c.rect.z0, n, FAR_STEP, FAR_SINK, `far-${c.i}-${c.j}`);
-      c.far.enabled = !c.near;
-      this.root.addChild(c.far);
+  private loadBlock(k: number) {
+    this.blockPending[k] = true;
+    const bi = k % N_BLOCKS, bj = Math.floor(k / N_BLOCKS), x0 = ORIGIN + bi * PER * CHUNK, z0 = ORIGIN + bj * PER * CHUNK, n = (PER * CHUNK) / FAR_STEP;
+    const d = Math.min(...this.focus.map(f => Math.hypot(Math.max(x0 - f.x, 0, f.x - x0 - PER * CHUNK), Math.max(z0 - f.z, 0, f.z - z0 - PER * CHUNK))), 1e5);
+    void this.heights.request(x0, z0, n, FAR_STEP, 1000 + d).then(h => this.job(1000 + d, () => {
+      const b = buildTerrainBlock(this.app.graphicsDevice, this.kit.finish.ground, this.county.net, h, x0, z0, n, FAR_STEP, PER, FAR_SINK, `far-${bi}-${bj}`);
+      this.cutHoles(b, k);
+      this.root.addChild(b.entity);
+      this.blocks[k] = b;
     }));
   }
 
+  /** Leaves out the distant ground wherever a chunk is drawn in detail. */
+  private cutHoles(b: ReturnType<typeof buildTerrainBlock>, k: number) {
+    const bi = k % N_BLOCKS, bj = Math.floor(k / N_BLOCKS);
+    b.show((ci, cj) => {
+      const i = bi * PER + ci, j = bj * PER + cj;
+      return !(i < N_CHUNKS && j < N_CHUNKS && this.chunks[j * N_CHUNKS + i].near);
+    });
+  }
   private chunkTrees(c: Chunk) {
     if (!c.trees) {
       const near = [...streetTrees(this.county, c.rect), ...yardTrees(this.county, c.rect), ...countryTrees(this.county, c.rect)];
@@ -167,18 +182,17 @@ export class Chunks {
       for (const id of c.lots) if (net.lots[id].house >= 0) buildHouseMass(masses, net.lots[id]);
       const m = c.lots.length ? masses.build(this.app.graphicsDevice, 'house-masses') : null;
       if (m) { m.enabled = !c.near; root.addChild(m); }
-      const t = this.trees.instance(this.chunkTrees(c).mid, 'mid', 'trees-mid');
-      if (t) { t.enabled = !c.near; root.addChild(t); }
+      if (!c.near) this.trees.set(`${c.i},${c.j}`, 'mid', this.chunkTrees(c).mid);
       this.root.addChild(root);
-      c.mid = { root, roadSoup, masses: m, trees: t };
+      c.mid = { root, roadSoup, masses: m };
       c.midPending = false;
-      if (c.far) c.far.enabled = !c.near;
     });
   }
 
   private dropMid(c: Chunk) {
     if (c.near) this.dropNear(c);
     c.mid?.root.destroy();
+    this.trees.set(`${c.i},${c.j}`, 'mid', null);
     c.mid = null;
     c.midPending = false;
   }
@@ -197,7 +211,7 @@ export class Chunks {
         root.addChild(parts.ground);
       });
       const houses = new Batch(this.kit);
-      for (const id of c.lots) if (net.lots[id].house >= 0) this.job(this.dist(c) + 1, () => { if (c.nearPending) buildLotHouse(houses, net.lots[id], this.lit); });
+      for (const id of c.lots) if (net.lots[id].house >= 0) this.job(this.dist(c) + 1, () => { if (c.nearPending) buildLotHouse(houses, net, net.lots[id], this.lit); });
       this.job(this.dist(c) + 2, () => {
         if (!c.nearPending || !c.mid) { if (c.nearPending) { c.nearPending = false; } return; }
         for (const f of fixtures(this.county, c.rect)) {
@@ -206,15 +220,14 @@ export class Chunks {
           houses.move(mark, place(f.x, f.y, f.z, (f.yaw * Math.PI) / 180));
         }
         root.addChild(houses.build(this.app.graphicsDevice, 'houses'));
-        const t = this.trees.instance(this.chunkTrees(c).near, 'near', 'trees-near');
-        if (t) root.addChild(t);
+        this.trees.set(`${c.i},${c.j}`, 'near', this.chunkTrees(c).near);
+        this.trees.set(`${c.i},${c.j}`, 'mid', null);
         this.root.addChild(root);
         const colliders = this.addColliders(c, h, n);
         c.near = { root, ground: parts.ground!, colliders };
         c.nearPending = false;
-        if (c.far) c.far.enabled = false;
         if (c.mid?.masses) c.mid.masses.enabled = false;
-        if (c.mid?.trees) c.mid.trees.enabled = false;
+        this.farHoles = true;
       });
     });
   }
@@ -225,9 +238,10 @@ export class Chunks {
     c.near.root.destroy();
     if (this.physics) for (const col of c.near.colliders) this.physics.world.removeCollider(col as never, false);
     c.near = null;
-    if (c.far) c.far.enabled = true;
     if (c.mid?.masses) c.mid.masses.enabled = true;
-    if (c.mid?.trees) c.mid.trees.enabled = true;
+    this.trees.set(`${c.i},${c.j}`, 'near', null);
+    if (c.mid) this.trees.set(`${c.i},${c.j}`, 'mid', this.chunkTrees(c).mid);
+    this.farHoles = true;
   }
 
   private addColliders(c: Chunk, h: Float32Array, n: number) {

@@ -9,7 +9,10 @@
  * regular grid (`GRID` metres), triangulated by `gridHeight`.
  */
 import { baseHeight, mix, smoothstep } from './Base';
-import { BELOW, pointInPoly, polyDistance, type RoadNet } from './Roads';
+import { BELOW, DRIVE, lotLocal, onLotPaving, PAVING, pavingTop, pointInPoly, polyDistance, type RoadNet } from './Roads';
+
+/** How far the ground sits under a driveway or front walk's top. */
+export const PAVING_DEPTH = 0.18;
 
 export const GRID = 2;
 
@@ -36,12 +39,23 @@ export class Terrain {
     const base = baseHeight(x, z);
     const lot = this.lotPull(x, z);
     let h = lot.k > 0 ? mix(base, lot.pad, lot.k) : base;
+    let paved: number | null = null;
+    for (const l of this.net.lotsNear(x, z)) {
+      if (l.house < 0) continue;
+      const [lx, lz] = lotLocal(l, x, z);
+      if (onLotPaving(l, x, z)) { paved = pavingTop(this.net, l, lx, lz); continue; }
+      for (const pv of PAVING) {
+        const cx = Math.max(pv.x - pv.half, Math.min(pv.x + pv.half, lx)), cz = Math.max(pv.z0, Math.min(DRIVE.setback, lz));
+        const d = Math.hypot(lx - cx, lz - cz);
+        if (d < 4) h = mix(h, pavingTop(this.net, l, cx, cz), 1 - smoothstep(2.2, 4, d));
+      }
+    }
     if (q.dist < 40) {
       const target = q.elev + q.top;
       h = mix(h, target, (1 - smoothstep(4, 35, q.dist)) * (1 - lot.k));
       h = mix(h, target, 1 - smoothstep(3, 8, q.dist));
     }
-    return h;
+    return paved === null ? h : Math.min(h, paved - PAVING_DEPTH);
   }
 
   /** Height of the gridded ground mesh at any point: the two triangles of each cell split along its (i, j)–(i+1, j+1) diagonal. */

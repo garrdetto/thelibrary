@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { county } from '../shared/County';
+import { lotLocal, onLotPaving, pavingTop } from '../shared/Roads';
 import { RoadNet, CROSSFALL, CURB, MAX_GRADE, crossHeight, pointInPoly, rowHalf, walkEnd, walkTop, type V2 } from '../shared/Roads';
 
 const { net, terrain } = county();
@@ -112,8 +113,25 @@ test('the ground mesh stays under every sidewalk and verge', () => {
 test('the ground meets the sidewalk at the edge of the right of way', () => {
   for (const e of net.edges.filter(e => e.len < 400)) for (let s = e.trim[0] + 3; s < e.len - e.trim[1] - 3; s += 7.1) for (const side of [1, -1] as const) {
     const [x, z] = net.offset(e, s, side * (rowHalf(e.cls) + 0.5));
-    if (net.query(x, z).inside) continue;
+    if (net.query(x, z).inside || net.lotsNear(x, z).some(l => onLotPaving(l, x, z))) continue;
     const diff = terrain.heightAt(x, z) - (net.elevAt(e, s) + walkTop(e.cls));
     assert.ok(Math.abs(diff) < 0.05, `ground ${diff.toFixed(2)} m off the sidewalk on ${e.name}`);
   }
+});
+
+// The ground is a 2 m grid: where a driveway meets a sloping sidewalk, a grid cell can lift a corner sliver a few centimetres.
+test('lawns never show through a driveway or front walk', () => {
+  let worst = -Infinity;
+  for (const l of net.lots) {
+    if (l.house < 0) continue;
+    const c = Math.cos(l.yaw), s = Math.sin(l.yaw);
+    const at = (lx: number, lz: number): V2 => [l.origin[0] + lx * c + lz * s, l.origin[1] - lx * s + lz * c];
+    for (let lz = -0.4; lz <= 13.9; lz += 0.45) {
+      for (let lx = 6.15; lx <= 11.35; lx += 0.4) { const [x, z] = at(lx, lz); if (!net.query(x, z).inside) worst = Math.max(worst, terrain.gridHeight(x, z) - pavingTop(net, l, lx, lz)); }
+      if (lz > 2.6) for (const lx of [0.7, 1.2, 1.7]) { const [x, z] = at(lx, lz); if (!net.query(x, z).inside) worst = Math.max(worst, terrain.gridHeight(x, z) - pavingTop(net, l, lx, lz)); }
+    }
+    const [lx, lz] = lotLocal(l, ...at(3, 5));
+    assert.ok(Math.abs(lx - 3) < 1e-6 && Math.abs(lz - 5) < 1e-6);
+  }
+  assert.ok(worst <= 0.04, `lawn pokes ${worst.toFixed(3)} m through paving`);
 });

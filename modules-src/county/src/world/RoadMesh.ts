@@ -14,11 +14,11 @@ import { PALETTE } from '../../config';
 
 export interface RoadBuilders { asphalt: MeshBuilder; curb: MeshBuilder; grass: MeshBuilder; concrete: MeshBuilder; marks: MeshBuilder }
 
-type P3 = [number, number, number];
+export type P3 = [number, number, number];
 const JOINT = 1.5, JOINT_W = 0.03, SKIRT = 0.4, BEVEL = 0.035, MARK_Y = 0.006;
 
 /** A quad a-b-c-d with per-corner normals, wound so it faces along `face`. */
-function quad(b: MeshBuilder, p: P3[], n: P3[], c: RGB, face: P3) {
+export function quad(b: MeshBuilder, p: P3[], n: P3[], c: RGB, face: P3) {
   const ux = p[1][0] - p[0][0], uy = p[1][1] - p[0][1], uz = p[1][2] - p[0][2];
   const vx = p[3][0] - p[0][0], vy = p[3][1] - p[0][1], vz = p[3][2] - p[0][2];
   const flip = (uy * vz - uz * vy) * face[0] + (uz * vx - ux * vz) * face[1] + (ux * vy - uy * vx) * face[2] < 0;
