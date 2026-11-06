@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import type { ThreeEvent } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
-import { BufferAttribute, BufferGeometry, DoubleSide, Matrix4 } from 'three'
+import { BufferAttribute, BufferGeometry, DoubleSide, Matrix4, Plane, Vector3 } from 'three'
 import type { Group } from 'three'
 import type { CustomRideMotion, CustomRidePlatform } from '../../../../server/park/index.mjs'
 import type { RideMesh } from '@/lib/park/rideMesh'
@@ -25,6 +26,8 @@ type Props = {
   focus: number | null
   onCanvas?: (canvas: HTMLCanvasElement | null) => void
   onClock?: (clock: StageClock) => void
+  onPivot?: (pivot: [number, number, number]) => void
+  onSplit?: (split: number) => void
 }
 
 const toLinear = (c: number) => c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
@@ -68,7 +71,7 @@ function Footprint({ size }: { size: [number, number] }) {
   </group>
 }
 
-function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restart, step, guides, focus, size, onClock }: Omit<Props, 'onCanvas'>) {
+function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restart, step, guides, focus, size, onClock, onPivot, onSplit }: Omit<Props, 'onCanvas'>) {
   const geometries = useMemo(() => mesh ? partGeometries(mesh) : [], [mesh])
   useEffect(() => () => geometries.forEach(g => g.geometry.dispose()), [geometries])
   const groups = useRef(new Map<number, Group>())
@@ -121,9 +124,73 @@ function Ride({ mesh, motion, platform, rideTime, loadTime, paused, rate, restar
     })}
     {guides && motion.type !== 'none' && <>
       <mesh position={[0, 0, motion.split]}><planeGeometry args={[span, span]}/><meshBasicMaterial color="#4cc3ff" transparent opacity={0.14} depthWrite={false} side={DoubleSide}/></mesh>
-      {motion.type !== 'drop' && motion.type !== 'bob' && <mesh position={motion.pivot}><sphereGeometry args={[Math.max(0.25, span * 0.012), 16, 12]}/><meshBasicMaterial color="#ff5c8a"/></mesh>}
+      {motion.type !== 'drop' && motion.type !== 'bob' && <PivotHandle pivot={motion.pivot} radius={Math.max(0.3, span * 0.016)} half={span / 2} onPivot={onPivot}/>}
+      <SplitHandle split={motion.split} at={span / 2 + Math.max(0.4, span * 0.04)} top={Math.max(1, (mesh?.height ?? 6))} radius={Math.max(0.3, span * 0.018)} onSplit={onSplit}/>
     </>}
     {guides && focus !== null && motion.pieces[focus] && <PieceBand piece={motion.pieces[focus]} centre={motion.pivot} span={span}/>}
+  </group>
+}
+
+type Drag = { active: boolean }
+
+/** Ride space is Z up inside a group turned -90° about X, so world (x, y, z) is ride (x, -z, y). */
+function useDrag(onMove: (world: Vector3, event: ThreeEvent<PointerEvent>) => void, plane: (event: ThreeEvent<PointerEvent>) => Plane) {
+  const controls = useThree(state => state.controls) as { enabled: boolean } | null
+  const drag = useRef<Drag>({ active: false })
+  const current = useRef<Plane | null>(null)
+  const hit = useMemo(() => new Vector3(), [])
+  return {
+    onPointerDown: (event: ThreeEvent<PointerEvent>) => {
+      event.stopPropagation()
+      drag.current.active = true
+      current.current = plane(event)
+      ;(event.target as Element).setPointerCapture?.(event.pointerId)
+      if (controls) controls.enabled = false
+      document.body.style.cursor = 'grabbing'
+    },
+    onPointerMove: (event: ThreeEvent<PointerEvent>) => {
+      if (!drag.current.active || !current.current) return
+      event.stopPropagation()
+      if (event.ray.intersectPlane(current.current, hit)) onMove(hit, event)
+    },
+    onPointerUp: (event: ThreeEvent<PointerEvent>) => {
+      if (!drag.current.active) return
+      drag.current.active = false
+      ;(event.target as Element).releasePointerCapture?.(event.pointerId)
+      if (controls) controls.enabled = true
+      document.body.style.cursor = ''
+    },
+    onPointerOver: () => { if (!drag.current.active) document.body.style.cursor = 'grab' },
+    onPointerOut: () => { if (!drag.current.active) document.body.style.cursor = '' },
+  }
+}
+
+const snap = (v: number) => Math.round(v * 20) / 20
+
+function PivotHandle({ pivot, radius, half, onPivot }: { pivot: [number, number, number]; radius: number; half: number; onPivot?: (pivot: [number, number, number]) => void }) {
+  const handlers = useDrag(world => {
+    const x = Math.max(-half, Math.min(half, snap(world.x))), y = Math.max(-half, Math.min(half, snap(-world.z)))
+    if (x !== pivot[0] || y !== pivot[1]) onPivot?.([x, y, pivot[2]])
+  }, () => new Plane(new Vector3(0, 1, 0), -pivot[2]))
+  return <mesh position={pivot} {...(onPivot ? handlers : {})}><sphereGeometry args={[radius, 18, 12]}/><meshBasicMaterial color="#ff5c8a" depthTest={false} transparent opacity={0.95}/></mesh>
+}
+
+function SplitHandle({ split, at, top, radius, onSplit }: { split: number; at: number; top: number; radius: number; onSplit?: (split: number) => void }) {
+  const camera = useThree(state => state.camera)
+  const handlers = useDrag(world => {
+    const z = Math.max(0, Math.min(top, snap(world.y)))
+    if (z !== split) onSplit?.(z)
+  }, () => {
+    const facing = new Vector3(); camera.getWorldDirection(facing); facing.y = 0
+    if (facing.lengthSq() < 1e-6) facing.set(0, 0, 1)
+    facing.normalize()
+    return new Plane().setFromNormalAndCoplanarPoint(facing, new Vector3(at, split, 0))
+  })
+  if (!onSplit) return null
+  return <group position={[at, 0, split]} {...handlers}>
+    <mesh rotation-x={Math.PI / 2}><cylinderGeometry args={[radius, radius, radius * 0.7, 20]}/><meshBasicMaterial color="#4cc3ff" depthTest={false} transparent opacity={0.95}/></mesh>
+    <mesh position={[0, 0, radius * 1.1]} rotation-x={Math.PI / 2}><coneGeometry args={[radius * 0.6, radius * 0.9, 16]}/><meshBasicMaterial color="#4cc3ff" depthTest={false} transparent opacity={0.95}/></mesh>
+    <mesh position={[0, 0, -radius * 1.1]} rotation-x={-Math.PI / 2}><coneGeometry args={[radius * 0.6, radius * 0.9, 16]}/><meshBasicMaterial color="#4cc3ff" depthTest={false} transparent opacity={0.95}/></mesh>
   </group>
 }
 

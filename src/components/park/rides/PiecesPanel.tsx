@@ -1,9 +1,10 @@
-import { useMemo } from 'react'
-import { ChevronDown, ChevronUp, Crosshair, Layers, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { ChevronDown, ChevronUp, Copy, Crosshair, GripVertical, Layers, Trash2 } from 'lucide-react'
 import { CUSTOM_PIECE_AXES, CUSTOM_PIECE_MOTIONS, CUSTOM_RIDE_LIMITS as L, sanitizeMotion } from '../../../../server/park/index.mjs'
 import type { CustomPieceMotionType, CustomRideMotion, CustomRidePiece } from '../../../../server/park/index.mjs'
 import type { RideMesh } from '@/lib/park/rideMesh'
-import { AXIS_LABEL, PIECE_INFO, newPiece } from '@/lib/park/ridePieces'
+import { AXIS_LABEL, PIECE_INFO } from '@/lib/park/ridePieces'
+import { NumberInput } from '../../admin/NumberInput'
 
 type Props = {
   motion: CustomRideMotion
@@ -13,9 +14,10 @@ type Props = {
   focus: number | null
   onFocus: (index: number | null) => void
   onChange: (motion: CustomRideMotion) => void
+  onAdd: (type: CustomPieceMotionType) => void
 }
 
-const PRESETS: { label: string; type: CustomPieceMotionType }[] = [
+export const PIECE_PRESETS: { label: string; type: CustomPieceMotionType }[] = [
   { label: 'Cages that spin on their own', type: 'spin' },
   { label: 'Seats or cages that swing freely', type: 'swing' },
   { label: 'Cars that flip', type: 'flip' },
@@ -37,16 +39,22 @@ function withoutPiece(pieces: CustomRidePiece[], index: number) {
   return pieces.filter((_, i) => i !== index).map(piece => ({ ...piece, on: piece.on === index ? -1 : piece.on > index ? piece.on - 1 : piece.on }))
 }
 
-/** Swaps two neighbouring pieces, keeping every piece's carrier earlier in the list. */
-function swapPieces(pieces: CustomRidePiece[], a: number) {
-  const b = a + 1
-  const remap = (on: number) => on === a ? b : on === b ? a : on
-  const next = pieces.map(piece => ({ ...piece, on: remap(piece.on) }))
-  ;[next[a], next[b]] = [next[b], next[a]]
-  return next.map((piece, i) => piece.on >= i ? { ...piece, on: -1 } : piece)
+/** Moves a piece to a new place in the list, keeping every piece's carrier earlier in the list. */
+export function movePiece(pieces: CustomRidePiece[], from: number, to: number) {
+  if (from === to || to < 0 || to >= pieces.length) return pieces
+  const order = pieces.map((_, i) => i)
+  order.splice(to, 0, order.splice(from, 1)[0])
+  const where = new Map(order.map((old, i) => [old, i]))
+  return order.map((old, i) => {
+    const piece = pieces[old]
+    const on = piece.on >= 0 ? where.get(piece.on)! : piece.on
+    return { ...piece, on: on >= i ? -1 : on }
+  })
 }
 
-export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onChange }: Props) {
+export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onChange, onAdd }: Props) {
+  const [dragging, setDragging] = useState<number | null>(null)
+  const [over, setOver] = useState<number | null>(null)
   const pieces = motion.pieces
   const found = useMemo(() => {
     const out = pieces.map(() => ({ copies: 0, triangles: 0 }))
@@ -59,34 +67,41 @@ export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onCha
 
   const commit = (next: CustomRidePiece[]) => onChange(sanitizeMotion({ ...motion, pieces: next }))
   const update = (index: number, patch: Partial<CustomRidePiece>) => commit(pieces.map((piece, i) => i === index ? { ...piece, ...patch } : piece))
-  const add = (type: CustomPieceMotionType) => {
-    const next = [...pieces, newPiece(type, height || 6)]
+  const move = (from: number, to: number) => { commit(movePiece(pieces, from, to)); onFocus(to) }
+  const duplicate = (index: number) => {
+    const next = [...pieces.slice(0, index + 1), { ...pieces[index] }, ...pieces.slice(index + 1)].map((piece, i) => i > index + 1 && piece.on > index ? { ...piece, on: piece.on + 1 } : piece)
     commit(next)
-    onFocus(next.length - 1)
+    onFocus(index + 1)
   }
   const top = Math.max(0.5, height)
   const far = Math.max(1, Math.ceil(reach))
 
   return <fieldset className="rc-pieces" disabled={!mesh}>
     <legend>Extra moving pieces</legend>
-    <p className="ms-items-note">Give parts of the ride their own motion on top of the main one: cages that spin on their own, seats that swing out, cars that flip. Pick the triangles by height and distance from the main pivot; each separate piece found there moves on its own pivot and rides along with whatever carries it. Later pieces take triangles from earlier ones, so list an arm before the cage hanging from it.</p>
-    {pieces.length < L.piecesMax && <label>Add a moving piece<select value="" onChange={event => { if (event.target.value) add(event.target.value as CustomPieceMotionType) }}>
+    <p className="ms-items-note">Give parts of the ride their own motion on top of the main one: cages that spin on their own, seats that swing out, cars that flip. Pick the triangles by height and distance from the main pivot; each separate piece found there moves on its own pivot and rides along with whatever carries it. Later pieces take triangles from earlier ones, so list an arm before the cage hanging from it. Drag a piece by its grip, or use the arrows, to change the order.</p>
+    {pieces.length < L.piecesMax && <label>Add a moving piece<select value="" onChange={event => { if (event.target.value) onAdd(event.target.value as CustomPieceMotionType) }}>
       <option value="">Choose what it does…</option>
-      {PRESETS.map(preset => <option key={preset.type} value={preset.type}>{preset.label}</option>)}
+      {PIECE_PRESETS.map(preset => <option key={preset.type} value={preset.type}>{preset.label}</option>)}
     </select></label>}
     {pieces.length === 0 && <p className="ms-items-note">No extra pieces yet.</p>}
     <ol className="rc-piece-list">
       {pieces.map((piece, index) => {
         const open = focus === index, info = PIECE_INFO[piece.type], count = found[index]
-        return <li key={index} className={open ? 'is-open' : undefined}>
+        const classes = [open ? 'is-open' : '', dragging === index ? 'is-dragging' : '', over === index && dragging !== null && dragging !== index ? 'is-over' : ''].filter(Boolean).join(' ')
+        return <li key={index} className={classes || undefined}
+          onDragOver={event => { if (dragging === null) return; event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setOver(index) }}
+          onDragLeave={() => setOver(current => current === index ? null : current)}
+          onDrop={event => { event.preventDefault(); if (dragging !== null) move(dragging, index); setDragging(null); setOver(null) }}>
           <div className="rc-piece-head">
+            <span className="rc-grip" draggable title="Drag to reorder" aria-hidden onDragStart={event => { setDragging(index); event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(index)) }} onDragEnd={() => { setDragging(null); setOver(null) }}><GripVertical size={14}/></span>
             <button type="button" className="rc-piece-title" onClick={() => onFocus(open ? null : index)} aria-expanded={open}>
               <Layers size={14} aria-hidden/> <strong>Piece {index + 1}</strong> <span>{info.label}</span>
               <small>{count.copies ? `${count.copies} found · ${count.triangles.toLocaleString()} triangles` : 'nothing selected yet'}</small>
             </button>
             <button type="button" onClick={() => onFocus(open ? null : index)} aria-label={open ? 'Stop highlighting' : 'Highlight on the stage'} aria-pressed={open}><Crosshair size={14} aria-hidden/></button>
-            <button type="button" onClick={() => { commit(swapPieces(pieces, index - 1)); onFocus(index - 1) }} disabled={index === 0} aria-label={`Move piece ${index + 1} up`}><ChevronUp size={14} aria-hidden/></button>
-            <button type="button" onClick={() => { commit(swapPieces(pieces, index)); onFocus(index + 1) }} disabled={index === pieces.length - 1} aria-label={`Move piece ${index + 1} down`}><ChevronDown size={14} aria-hidden/></button>
+            <button type="button" onClick={() => duplicate(index)} disabled={pieces.length >= L.piecesMax} aria-label={`Duplicate piece ${index + 1}`} title="Duplicate"><Copy size={14} aria-hidden/></button>
+            <button type="button" onClick={() => move(index, index - 1)} disabled={index === 0} aria-label={`Move piece ${index + 1} up`}><ChevronUp size={14} aria-hidden/></button>
+            <button type="button" onClick={() => move(index, index + 1)} disabled={index === pieces.length - 1} aria-label={`Move piece ${index + 1} down`}><ChevronDown size={14} aria-hidden/></button>
             <button type="button" onClick={() => { commit(withoutPiece(pieces, index)); onFocus(null) }} aria-label={`Remove piece ${index + 1}`}><Trash2 size={14} aria-hidden/></button>
           </div>
           {open && <div className="rc-piece-body">
@@ -105,7 +120,7 @@ export function PiecesPanel({ motion, mesh, height, reach, focus, onFocus, onCha
                 <option value="pieces">Each separate piece (automatic)</option>
                 <option value="sectors">Equal slices around the centre</option>
               </select></label>
-              {piece.split === 'sectors' && <label>Slices<input type="number" value={piece.count} min={1} max={L.pieceCountMax} onChange={event => { const n = Number(event.target.value); if (Number.isFinite(n)) update(index, { count: Math.round(Math.min(L.pieceCountMax, Math.max(1, n))) }) }}/></label>}
+              {piece.split === 'sectors' && <label>Slices<NumberInput value={piece.count} min={1} max={L.pieceCountMax} integer onChange={count => update(index, { count })}/></label>}
               <label>Pivot at each piece's<select value={piece.hang} onChange={event => update(index, { hang: event.target.value as CustomRidePiece['hang'] })}>
                 <option value="top">Top (hanging point)</option>
                 <option value="centre">Centre</option>

@@ -5,6 +5,7 @@ import { estimateCredits, MESHY_AI_MODELS, NEGATIVE_DEFAULTS, POLYCOUNT_DEFAULTS
 import type { MeshyAiModel, MeshyJob, MeshyStatus, MeshyTarget } from '@/lib/meshy'
 import { meshyCancel, meshyHide, meshyImage, meshyJobs, meshyModelFile, meshyRefine, meshyRemesh, meshyRetexture, meshyStatus, meshyText } from '@/lib/meshy-client'
 import type { MeshySource } from '@/lib/meshy-client'
+import { NumberInput } from '../admin/NumberInput'
 
 export type MeshySourceOption = { label: string; source: MeshySource }
 
@@ -150,8 +151,8 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
       <label>Avoid<input value={negative} onChange={event => setNegative(event.target.value)} maxLength={300}/></label>
       <div className="ms-meshy-row">
         <label>Model<select value={aiModel} onChange={event => setAiModel(event.target.value as MeshyAiModel)}>{MESHY_AI_MODELS.map(m => <option key={m} value={m}>{MODEL_LABEL[m]}</option>)}</select></label>
-        <label>Previews<input type="number" min={1} max={PREVIEW_COUNT_MAX} value={count} onChange={event => setCount(Math.max(1, Math.min(PREVIEW_COUNT_MAX, Number(event.target.value) || 1)))}/></label>
-        <label>Polygons<input type="number" min={POLYCOUNT_RANGE.min} max={POLYCOUNT_RANGE.max} step={500} value={polycount} onChange={event => setPolycount(Number(event.target.value) || POLYCOUNT_DEFAULTS[target])}/></label>
+        <label>Previews<NumberInput min={1} max={PREVIEW_COUNT_MAX} integer value={count} onChange={setCount}/></label>
+        <label>Polygons<NumberInput min={POLYCOUNT_RANGE.min} max={POLYCOUNT_RANGE.max} step={500} integer value={polycount} onChange={setPolycount}/></label>
       </div>
       <button type="submit" disabled={!!busy || prompt.trim().length < 3 || !enough(previewCost)}>{busy === 'text' ? <LoaderCircle className="spin" size={14}/> : null} Generate previews · about {credits(previewCost)}</button>
     </form>}
@@ -162,7 +163,7 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
       <label>Texture notes (optional)<input value={prompt} onChange={event => setPrompt(event.target.value)} maxLength={600}/></label>
       <div className="ms-meshy-row">
         <label>Model<select value={aiModel} onChange={event => setAiModel(event.target.value as MeshyAiModel)}>{MESHY_AI_MODELS.map(m => <option key={m} value={m}>{MODEL_LABEL[m]}</option>)}</select></label>
-        <label>Polygons<input type="number" min={POLYCOUNT_RANGE.min} max={POLYCOUNT_RANGE.max} step={500} value={polycount} onChange={event => setPolycount(Number(event.target.value) || POLYCOUNT_DEFAULTS[target])}/></label>
+        <label>Polygons<NumberInput min={POLYCOUNT_RANGE.min} max={POLYCOUNT_RANGE.max} step={500} integer value={polycount} onChange={setPolycount}/></label>
       </div>
       <label className="ms-meshy-check"><input type="checkbox" checked={texture} onChange={event => setTexture(event.target.checked)}/> Add textures</label>
       <button type="submit" disabled={!!busy || !image || !enough(imageCost)}>{busy === 'image' ? <LoaderCircle className="spin" size={14}/> : null} Generate · about {credits(imageCost)}</button>
@@ -174,7 +175,7 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
         <label>New look (retexture prompt)<input value={editPrompt} onChange={event => setEditPrompt(event.target.value)} maxLength={600} placeholder="Weathered sage-green paint with chrome trim"/></label>
         <div className="ms-meshy-row">
           <button type="button" disabled={!!busy || !source || editPrompt.trim().length < 3 || !enough(estimateCredits({ kind: 'retexture' }))} onClick={() => source && void run('retexture', () => meshyRetexture(target, source, editPrompt), 'Retexture started.')}>Retexture · {credits(estimateCredits({ kind: 'retexture' }))}</button>
-          <label>Polygons<input type="number" min={POLYCOUNT_RANGE.min} max={POLYCOUNT_RANGE.max} step={500} value={polycount} onChange={event => setPolycount(Number(event.target.value) || POLYCOUNT_DEFAULTS[target])}/></label>
+          <label>Polygons<NumberInput min={POLYCOUNT_RANGE.min} max={POLYCOUNT_RANGE.max} step={500} integer value={polycount} onChange={setPolycount}/></label>
           <button type="button" disabled={!!busy || !source || !enough(estimateCredits({ kind: 'remesh' }))} onClick={() => source && void run('remesh', () => meshyRemesh(target, source, polycount), 'Remesh started.')}>Remesh · {credits(estimateCredits({ kind: 'remesh' }))}</button>
         </div>
       </>}

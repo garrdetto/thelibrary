@@ -1177,6 +1177,29 @@ body{background:var(--paper);color:var(--tone-0)}
 .rc-stage-tools .rc-rate{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid #ffffff2a;border-radius:8px;background:#0d1218cc;color:#e6ebf0;font-size:13px;font-weight:600}
 .rc-stage-tools .rc-rate select{padding:3px 4px;border:0;border-radius:6px;background:#1c2530;color:inherit;font:inherit}
 .rc-clock{flex-basis:100%;text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:#e6ebf0;text-shadow:0 1px 2px #000}
+.ms-items-editor.rc-layout{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);align-items:start}
+.rc-layout .rc-left{position:sticky;top:12px;z-index:1}
+.rc-layout .rc-stage{height:min(560px,62vh)}
+.rc-layout .ms-items-fields{min-width:0}
+.rc-tabs{display:flex;flex-wrap:wrap;gap:6px;padding:4px;border:1px solid var(--lib-line,var(--border));border-radius:12px;background:var(--lib-panel2,transparent)}
+.ms-items-fields .rc-tabs button{flex:1 1 auto;gap:6px;padding:8px 10px;border-color:transparent;background:transparent;white-space:nowrap}
+.ms-items-fields .rc-tabs button[aria-selected=true]{border-color:var(--lib-accent,#f2b544);background:var(--adm-accent-soft,#f2b5441f);color:inherit}
+.rc-tab-count{min-width:18px;padding:1px 6px;border-radius:999px;background:var(--lib-accent,#f2b544);color:var(--lib-on-accent,#111);font-size:11px;line-height:16px;text-align:center}
+.rc-tabpanel{display:grid;gap:14px}
+.rc-tabpanel>fieldset{grid-template-columns:repeat(auto-fill,minmax(210px,1fr));align-items:end;column-gap:14px}
+.rc-tabpanel>fieldset>*{min-width:0}
+.rc-tabpanel>fieldset>:is(.ms-items-note,.ms-items-error,.rc-check,.rc-grid2,.rc-grid3,.rc-plain,.ms-items-scale-actions,.rc-bake,.rc-piece-list,ol,.rc-wide){grid-column:1/-1}
+.rc-tabpanel .rc-grid2{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.rc-tabpanel .rc-grid3{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+.rc-tabpanel .rc-piece-body{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));align-items:end;column-gap:14px}
+.rc-tabpanel .rc-piece-body>:is(.ms-items-note,.rc-check,.rc-grid2,.rc-grid3){grid-column:1/-1}
+.rc-grip{display:inline-flex;align-items:center;justify-content:center;width:22px;min-height:32px;color:var(--lib-muted,inherit);cursor:grab;touch-action:none}
+.rc-grip:active{cursor:grabbing}
+.rc-piece-list>li.is-dragging{opacity:.5}
+.rc-piece-list>li.is-over{box-shadow:0 -3px 0 var(--lib-accent,#f2b544)}
+.rc-stage-tools .rc-quick select{max-width:180px}
+.rc-drag-hint{margin:0}
+@media(max-width:1100px){.ms-items-editor.rc-layout{grid-template-columns:1fr}.rc-layout .rc-left{position:static}.rc-layout .rc-stage{height:420px}}
 .rc-piece-list{display:grid;gap:8px;margin:0;padding:0;list-style:none}
 .rc-piece-list>li{border:1px solid var(--lib-line,var(--border));border-radius:10px;background:var(--lib-panel2,transparent)}
 .rc-piece-list>li.is-open{border-color:var(--lib-accent,#f2b544)}
@@ -1184,8 +1207,9 @@ body{background:var(--paper);color:var(--tone-0)}
 .rc-piece-head button{display:inline-flex;align-items:center;justify-content:center;min-width:32px;min-height:32px;padding:4px 8px;border:0;border-radius:8px;background:transparent;color:inherit;font:inherit;cursor:pointer}
 .rc-piece-head button:disabled{opacity:.35;cursor:default}
 .rc-piece-head button[aria-pressed=true]{color:var(--lib-accent,#f2b544)}
-.rc-piece-head .rc-piece-title{flex:1;flex-wrap:wrap;justify-content:flex-start;gap:6px;text-align:left}
-.rc-piece-title small{flex-basis:100%;padding-left:20px;font-size:12px;color:var(--lib-muted,inherit)}
+.rc-piece-head .rc-piece-title{flex:1 1 0;min-width:0;flex-wrap:wrap;justify-content:flex-start;gap:2px 6px;text-align:left;font-size:13px}
+.rc-piece-title span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-piece-title small{flex-basis:100%;padding-left:20px;font-weight:400;font-size:12px;color:var(--lib-muted,inherit)}
 .rc-piece-body{display:grid;gap:10px;padding:4px 12px 12px}
 .rc-check{display:flex!important;align-items:center;gap:8px;font-weight:500}
 .rc-colour{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:6px 8px}
