@@ -7,7 +7,9 @@
  * all 0..1 unorm so the id is `x * 255`). Instanced meshes are Babylon thin
  * instances: `world0..3` carry the instance matrix and `instanceColor` the tint.
  * Park space is z-up and right-handed; the scene is right-handed, so nothing is
- * converted.
+ * converted. Cascade shadow maps are looked up at `clip.xy * 0.5 + 0.5` in both
+ * languages: Babylon draws WebGPU render targets Y-flipped so that they sample
+ * like WebGL's, and the WebGPU-style `0.5 - clip.y * 0.5` mirrors every shadow.
  *
  * Uniform layout shared by every material (Float32Arrays mutated each frame):
  *  uG rows  0 sunDir.xyz shadowStrength | 1 sunColor.xyz neon | 2 sky.xyz exposure | 3 ground.xyz time
@@ -653,7 +655,7 @@ fn shadowAt(n : vec3f, wpos : vec3f, frag : vec2f) -> f32 {
     var limit : f32 = 0.94;
     if (c == 0) { limit = 1.0; }
     if (extent > limit || clip.z < -1.0 || clip.z > 1.0) { continue; }
-    let uv : vec2f = vec2f(clip.x * 0.5 + 0.5, 0.5 - clip.y * 0.5);
+    let uv : vec2f = clip.xy * 0.5 + 0.5;
     let z : f32 = clip.z * 0.5 + 0.5 - ${wgG(8, 'x')} * inverseSqrt(zoom) * (1.0 + min(4.0, slope / nl));
     var radius : f32 = 1.9 / res;
     if (taps > 8) { radius = 2.4 / res; }
