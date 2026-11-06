@@ -8,19 +8,16 @@ Visible copy follows the site rules: everything is a "learning module", never ga
 
 ```
 modules-src/shorttrack/
-  index.ts        picks the path: ?engine=next → next/boot.ts, otherwise the classic main.js
-  sim/            renderer-free core shared by the classic and the next module: no DOM, no Math.random, no clock
-    track.ts      (1a, done) layouts, CFG setup, track geometry
-    car.ts        (1b) vehicle step, walls, car contact, damage
-    ai.ts, race.ts (1c) AI driver, rolling start, race control
-  tests/          node --test suites (scripts/shorttrack-tests.mjs), fixtures recorded from the pre-port code
+  index.ts        picks the path: ?engine=next → next/boot.ts, otherwise render-three/main.js
+  tests/          node --test suites (scripts/shorttrack-tests.mjs): golden.test.ts, track.test.ts, protocol.test.ts; fixtures/ recorded from the pre-port code
   next/           the Babylon module
     boot.ts       engine (WebGPU, WebGL2 fallback incl. on device loss), Havok init, render loop
     physics/      (Phase 4) Havok bodies for chassis, walls (continuous collision) and debris
     render/       (Phase 2) Babylon scene drawing interpolated sim state
-    net/          (Phase 1) the PeerJS protocol plus a protocol version in hello
-    ui/           (Phase 1) the existing menus and HUD
-  main.js         classic three.js module, removed after the cut-over
+    sim/          (Phase 1, done) config, track, car state, vehicle step, contacts, damage, AI, race control: no DOM, no Math.random, no clock
+    net/          (Phase 1, done) the PeerJS protocol version in hello
+    ui/           (Phase 2) the existing menus and HUD, split out when the Babylon renderer needs them
+  render-three/   main.js: the classic three.js renderer, menus, HUD and netcode drawing next/sim/; removed after the cut-over
 ```
 
 - Babylon is imported by path only (`AGENTS.md`). Havok (`@babylonjs/havok`, pinned) is bundled; its WASM is emitted into `/modules/chunks/` and found through a Vite `?url` import, never a CDN.
@@ -39,8 +36,15 @@ modules-src/shorttrack/
 - Moved to Phase 1: the recorded classic AI lap-time and speed traces, because recording them headless needs the sim extracted from `main.js` first.
 
 ### 1. Split and port, behaviour unchanged
-Done in sub-PRs so each stays reviewable: **1a** track layouts and geometry (`sim/track.ts`, exact match on all five tracks against `tests/fixtures/track-classic.json`; the smoke test now also loads classic Prison and Dirt and checks they draw frames through `window.__stClassic`), **1b** car physics, **1c** AI and race control, **1d** net and UI glue plus the recorded AI lap traces.
+Landed in two PRs: **1a** (#164) track layouts and geometry, checked exactly against `tests/fixtures/track-classic.json`, with the smoke test also loading classic Prison and Dirt and checking they draw frames through `window.__stClassic`; then the rest of the phase (#165, below), which moved that geometry into `next/sim/` with everything else.
 `main.js` into the TS layers above, still drawn by the classic three.js renderer (`render-three/`). `scripts/shorttrack-tests.mjs` (esbuild + `node --test`) in `pnpm test`. Fixtures: AI lap times and speed-by-track-position traces per track and AI level in `modules-src/shorttrack/tests/fixtures/`. Golden test: same seed and inputs reproduce the classic car states within 1e-6 over 3 laps.
+
+Done in this phase:
+- **Reference recordings.** The classic page routes every random draw and clock read its simulation makes through one `SIM` object (players see no change) and `?record=1` exposes `recordRace`: an all-AI race with `SIM.rand` seeded and `SIM.now` on the sim clock, where one tick is `simulate(STEP)`, the forward-speed refresh the render pass did every frame, `raceControl(STEP)` and `updateBoosts(STEP)` (the classic loop at exactly 120 fps). The host car is driven by the AI at the level's middle settings. `scripts/shorttrack-reference.mjs` records, per track and AI level (seed 20261105, 19 AI plus the host, 5 laps, the live Time Attack baselines of 2026-11-05 frozen in the script: prison 11.666 s, bullring 13.708 s, dells 12.812 s, dellswide 12.317 s, dirt 15.138 s), every car's lap times and the mean speed per 2 m of track, plus the golden states (every car every 0.5 s through the leader's third lap) on medium. Reruns are byte-identical. It also writes the day and night reference screenshots `docs/screenshots/shorttrack/classic-<track>-<day|night>.webp` from the same race frozen at 20 s.
+- **Classic AI mean lap times** (easy / medium / hard, s): prison 12.88 / 12.79 / 12.62, bullring 15.11 / 14.84 / 14.60, dells 14.21 / 13.77 / 13.51, dellswide 13.72 / 13.46 / 13.15, dirt 17.29 / 16.87 / 16.52. These are the Phase 4 targets (3 % asphalt, 5 % dirt).
+- **The port.** `next/sim/` is the simulation ported operation for operation (same expression order, same random draws, same tick), and `render-three/main.js` (the old `main.js`) now draws it; sim events (sparks, impacts, damage, laps) come back through `World.events`. `next/net/protocol.ts` adds `pv` to `hello`. Menus, HUD and the renderer stay in `render-three/main.js` for now: `ui/` is split out in Phase 2, when the Babylon renderer needs the same screens.
+- **Golden test.** `tests/golden.test.ts` replays the recordings on `next/sim/`: every car's position, heading, velocities, yaw rate, steering, lap count, progress, damage, boost and pace factor within 1e-6 at every golden frame on all five tracks, and all 100 lap times of the prison race.
+- Live play keeps the classic per-frame race control and pack boost; only the recorder uses the fixed reference tick.
 
 ### 2. Babylon renderer at parity
 Every track and theme by day and night, trucks, stock car and admin custom cars (glTF + bundled meshopt decoder), liveries and numbers through `DynamicTexture` with the existing canvas painters, skid marks, wear, sparks, smoke. Draw calls ≤ the classic 459; screenshots match the Phase 1 set.
@@ -58,4 +62,4 @@ Headless scripts in `scripts/blender/shorttrack/` (pattern of `scripts/blender/b
 `next` becomes the default, `?engine=classic` stays one release; net protocol version bumped. Lap records move to versioned track keys (`prison-v2` …) with the old boards read-only under a Classic tab; nothing is deleted. Docs and thumbnail updated. The owner approves this merge. A follow-up removes the classic path.
 
 ## Checks for every phase
-`pnpm assets:check`, `pnpm build`, `pnpm test`, `node scripts/shorttrack-next-smoke.mjs` against `pnpm preview`, `pnpm gate --only shorttrack`, and play on the preview build. Headless Chromium here has no real GPU: SwiftShader WebGPU loses its device and the module falls back to WebGL2, so WebGPU itself is verified on real hardware after deploy.
+`pnpm assets:check`, `pnpm build`, `pnpm test`, `node scripts/shorttrack-next-smoke.mjs` against `pnpm preview`, `node scripts/shorttrack-play.mjs` (two autopilot laps per track through the menus and a two-tab PeerJS race), `pnpm gate --only shorttrack`, and play on the preview build. Headless Chromium here has no real GPU: SwiftShader WebGPU loses its device and the module falls back to WebGL2, so WebGPU itself is verified on real hardware after deploy.
