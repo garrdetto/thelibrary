@@ -318,7 +318,7 @@ function renderMarkdown(results, meta) {
 function readBaseline() {
   if (!existsSync(outPath)) return null;
   const text = readFileSync(outPath, 'utf8');
-  const match = text.match(/<!-- perf-data\n([\s\S]*?)\n-->/);
+  const match = text.match(/<!-- perf-data\r?\n([\s\S]*?)\r?\n-->/);
   return match ? JSON.parse(match[1]) : null;
 }
 

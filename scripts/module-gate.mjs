@@ -2,7 +2,10 @@
 // embedded module is opened inside the hub iframe (`/#module-<id>`), console
 // errors and page errors are collected, and a screenshot of each module is saved.
 //
-//   node scripts/module-gate.mjs [--out docs/gate] [--port 4173] [--only id,id]
+//   node scripts/module-gate.mjs [--out docs/gate] [--port 4173] [--only id,id] [--query engine=next] [--channel msedge]
+//
+// --query re-points each module iframe at `<page>?<query>` once the hub has mounted it (for example Short
+// Track Showdown's `engine=next`); screenshots then carry the query in their file name.
 //
 // Exit code 1 when any module reports an error. Requires a preview server to be
 // running on the port (`pnpm preview --port 4173`) or starts one itself.
@@ -23,6 +26,8 @@ const only = option('only', '')
   .map((id) => id.trim())
   .filter(Boolean);
 const settleMs = Number(option('settle', '6000'));
+const query = option('query', '');
+const channel = option('channel', undefined);
 
 const moduleIds = ['sandlot3d', 'maplestreet', 'foxplains2', 'sandlot', 'botwreck', 'chess', 'checkers', '2048', 'helicopter', 'shorttrack', 'fairway', 'demoderby', 'bushleague'];
 const targets = only.length ? moduleIds.filter((id) => only.includes(id)) : moduleIds;
@@ -62,12 +67,24 @@ async function checkModule(browser, id) {
     if (message.type() === 'error') record(`${message.text()} @ ${message.location().url}`, 'console');
   });
   page.on('pageerror', (error) => record(error.message, 'pageerror'));
-  page.on('requestfailed', (request) => record(`${request.url()} ${request.failure()?.errorText ?? ''}`, 'request'));
+  page.on('requestfailed', (request) => {
+    const reason = request.failure()?.errorText ?? '';
+    if (reason.includes('ERR_ABORTED')) external.push(`request (aborted by navigation): ${request.url()}`);
+    else record(`${request.url()} ${reason}`, 'request');
+  });
   await page.goto(`${base}/#module-${id}`, { waitUntil: 'load' });
   const frame = await page.waitForSelector('.play-frame iframe', { timeout: 20000 }).catch(() => null);
   if (!frame) errors.push('hub: module iframe did not mount');
+  else if (query) {
+    await page.waitForTimeout(1500);
+    await page.evaluate((q) => {
+      for (const el of document.querySelectorAll('.play-frame iframe')) el.src = `${el.src.split('?')[0]}?${q}`;
+    }, query);
+    const moved = await page.waitForFunction((q) => [...document.querySelectorAll('.play-frame iframe')].every((el) => el.src.endsWith(`?${q}`)), query, { timeout: 10000 }).catch(() => null);
+    if (!moved) errors.push(`hub: module iframe did not take ?${query}`);
+  }
   await page.waitForTimeout(settleMs);
-  const shot = join(outDir, `${id}.png`);
+  const shot = join(outDir, `${id}${query ? `-${query.replace(/[^a-z0-9]+/gi, '-')}` : ''}.png`);
   await page.screenshot({ path: shot, timeout: 90000, animations: 'disabled', caret: 'initial' }).catch((error) => {
     external.push(`screenshot: ${error.message.split('\n')[0]}`);
   });
@@ -77,7 +94,7 @@ async function checkModule(browser, id) {
 
 mkdirSync(outDir, { recursive: true });
 const server = await ensureServer();
-const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROME || undefined, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+const browser = await chromium.launch({ channel, executablePath: process.env.PLAYWRIGHT_CHROME || undefined, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const results = [];
 for (const id of targets) results.push(await checkModule(browser, id));
 await browser.close();

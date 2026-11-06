@@ -40,6 +40,8 @@ These are the numbers every later phase must beat. Re-measure with `node scripts
 
 Bush League Baseball (Phase 2: broadcast lighting, crowd, grass and post on the auto tier, which is `medium` under software WebGL) was measured on 2026-11-06 with the same probe, warm-up and sample window but opened standalone (`/modules/bushleague.html` from a production module build, Edge 156 with software WebGL) rather than through the hub on `pnpm dev`, so its transferred and JS sizes are minified and not comparable with the rows above; re-run `node scripts/perf-baseline.mjs --only bushleague` from a working `pnpm dev` to replace it. The Phase 1 gray box measured 2.7 fps, 38 three.js draws and 110 GPU draws the same way; software rendering says nothing about the real-GPU budget (60 fps at 1440p ultra on an RTX 3060-class card), which still has to be checked on hardware.
 
+Short Track Showdown classic reference for `docs/shorttrack/PLAN.md` (Phase 1, 2026-11-06): the same probe against a production build in `vite preview` (workerd) on port 4173, Edge headless with software WebGL, menu screen: first frame 3,080 ms, 0.2 fps, 17.4 MB heap, 1 three.js draw, 188 GPU draws per frame, 5,600 KB transferred. The row above (459 GPU draws per frame on `pnpm dev`) stays the draw-call budget for the Phase 2 Babylon renderer.
+
 ## Columns
 
 - First frame: milliseconds from opening the module (hub navigation, or the hub-card click for pool) to its first WebGL/WebGPU draw call; `(canvas2d)` marks the first 2D canvas draw and `(fcp)` the iframe first contentful paint for embedded modules that draw neither. `—` means the landing screen draws no canvas (for example a sign-in prompt or menu).

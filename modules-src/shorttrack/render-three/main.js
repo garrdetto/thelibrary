@@ -7,35 +7,18 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from './shorttrack-numbers.js';
-import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from './prison-speedway.js';
-import { batchStatic } from '../_shared/static-batch.js';
-import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from './iconic-schemes.js';
-import { createAdaptiveResolution } from '../_shared/adaptive-resolution.js';
-import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers } from './custom-cars.js';
-import { carIdOf, numberSpot } from './shared/CustomCars';
-import { TRACKS, trackIdFrom, applyTrackConfig, createTrackGeometry } from './sim/track';
-
-// ===================== TUNING =====================
-const CFG = {
-  L:180, R:62, W:16, APRON:7, turnBank:24, straightBank:6,      // track (m, degrees)
-  bankIn:60, bankOut:40,   // banking ramps up over the last 85 m of straight and first 40 m of the turn
-  g:9.81, grip:1.05, apronGrip:0.82,                             // tire grip (mu)
-  offTrack:0.7,     // how much of the apron penalty applies (0.25 = 75% less than full)
-  concreteTurn:0.10, concreteSpeed:0.8, // flat concrete below the banking: 20% less turning, 10% less speed once half a tire is on it
-  contactSlow:0.4,
-  packBoost:0.02,    // +2% top speed per position behind the leader; tapers over 2 s after a pass   // speed fraction lost per second while rubbing another car
-  power:360, maxAccel:11, drag:0.0009, roll:0.3, engineBrake:4.6, // engine & coast-down
-  brake:7, reverseMax:6,
-  scrub:0.0065,      // speed lost per unit of steering: decel = scrub * |steer| * v^2
-  slideScrub:0.5,   // extra decel while sliding sideways
-  wheelbase:2.8, steerLow:0.47, steerSpeed:0.07, steerRampIn:8, steerRampOut:6,
-  carScale:1.15,     // visual and collision size of every car
-  spinThreshold:1.6, spinRate:0.8,                               // throttle-on oversteer
-  wallRest:0.22, carRest:0.15, carBounce:0.7, damageScale:0.7,   // carBounce 0.7: car-to-car rebound and spin kick are 30% softer
-    // 0.7 = cars are 30% tougher (take 30% less damage per hit)
-  paceSpeed:31.0, aiPaceSpeed:30.50, cautionSpeed:29, cautionTime:25, aiDecel:5.5, maxCars:20
-};
+import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from '../shorttrack-numbers.js';
+import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from '../prison-speedway.js';
+import { batchStatic } from '../../_shared/static-batch.js';
+import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-schemes.js';
+import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
+import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers } from '../custom-cars.js';
+import { carIdOf, numberSpot } from '../shared/CustomCars';
+import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
+import { createCar } from '../next/sim/car';
+import { PROTOCOL_VERSION, ROOM_PREFIX, helloAccepted, VERSION_MISMATCH } from '../next/net/protocol';
+import { place as simPlace, resetCar as simResetCar } from '../next/sim/physics';
+import { createWorld, standings as simStandings, simulate as simSimulate, raceControl, updateBoosts, beginRace as simBeginRace, buildGrid, formV } from '../next/sim/race';
 
 // ===================== UTILS =====================
 const TAU=Math.PI*2, clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, mod=(a,n)=>((a%n)+n)%n, smooth=t=>t*t*(3-2*t);
@@ -43,16 +26,25 @@ const wrapA=a=>{while(a>Math.PI)a-=TAU;while(a<-Math.PI)a+=TAU;return a;};
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const SIM={rand:Math.random,now:()=>performance.now()/1000,frozen:false};   // sim randomness and clock; the reference recorder (record.js) seeds and steps them
 const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d;}catch(e){return d;}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch(e){}}};
 const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=new THREE.Vector3(),_m=new THREE.Matrix4(),_o=new THREE.Object3D();
 
-// ===================== TRACK MATH =====================
-// Counter-clockwise oval. s = distance along centerline, lat = offset (+ = outside / toward wall).
-const TRACK_ID=trackIdFrom(location.search),TRACK=TRACKS[TRACK_ID];
-const DIRT=applyTrackConfig(CFG,TRACK);
-const TG=createTrackGeometry(CFG,TRACK);
-const {L,R,W,AP,HW,TURN,P,S_LINE,T1,T2,GROOVE_HIGH,GROOVE_LOW,GROOVE_SPAN,LINE_MIN,LINE_MAX,center,toTrack,bankAt,grooveLat,heightAt,aMaxAt}=TG;let GROOVE_MAT=null;
-function normalAt(s,lat,out){const n=TG.normalAt(s,lat);return out.set(n[0],n[1],n[2]);}
+// ===================== TRACK =====================
+// The track list, tuning and track math live in sim/ (config.ts, track.ts); one simulation world per page.
+const TRACK_ID=trackIdOf(new URLSearchParams(location.search).get('track')),TRACK=TRACKS[TRACK_ID];
+const WORLD=createWorld(TRACK,()=>SIM.rand(),()=>SIM.now()),CFG=WORLD.cfg,TR=WORLD.track,DIRT=TR.dirt;
+const L=CFG.L,R=CFG.R,W=CFG.W,AP=CFG.APRON,HW=W/2;
+const TURN=TR.TURN, P=TR.P, S_LINE=TR.S_LINE, T1=TR.T1, T2=TR.T2;
+const center=s=>TR.center(s),toTrack=(x,z)=>TR.toTrack(x,z),bankAt=s=>TR.bankAt(s),grooveLat=s=>TR.grooveLat(s),heightAt=(s,lat)=>TR.heightAt(s,lat);
+const LINE_MAX=TR.LINE_MAX;let GROOVE_MAT=null;
+function normalAt(s,lat,out){
+  // true surface normal from the height field, so cars pitch smoothly through the banking transition
+  const c0=center(s),c1=center(s+1),c2=center(s-1),l1=lat+0.5,l2=lat-0.5;
+  const ax=c1.x+c1.nx*lat-(c2.x+c2.nx*lat),ay=heightAt(s+1,lat)-heightAt(s-1,lat),az=c1.z+c1.nz*lat-(c2.z+c2.nz*lat);
+  const bx=c0.nx,by=heightAt(s,l1)-heightAt(s,l2),bz=c0.nz;
+  out.set(by*az-bz*ay,bz*ax-bx*az,bx*ay-by*ax).normalize();if(out.y<0)out.negate();return out;
+}
 
 // ===================== RENDERER / SCENE =====================
 const wrap=$('wrap'), canvas=$('c');
@@ -1611,321 +1603,48 @@ function deformCar(c,lp,dir,amt){
 
 class Car{
   constructor(id,lv,o={}){
-    this.id=id;this.lv=lv;this.local=!!o.local;this.ai=!!o.ai;this.isPace=!!o.pace;this.isPlayer=!!o.player;
-    this.m=buildCar(lv,{crisp:this.isPlayer});this.m.root.scale.setScalar(CFG.carScale);scene.add(this.m.root);
+    this.lv=lv;this.m=buildCar(lv,{crisp:!!o.player});this.m.root.scale.setScalar(CFG.carScale);scene.add(this.m.root);
+    Object.assign(this,createCar(id,{local:o.local,ai:o.ai,pace:o.pace,player:o.player,stockCar:!!this.m.car}));
     if(!this.isPlayer){this.tag=makeTag(lv);this.m.root.add(this.tag);}
-    Object.assign(this,{x:0,z:0,h:0,vx:0,vz:0,vf:0,steer:0,av:0,thr:0,brk:0,slip:0,dmg:{f:0,r:0,l:0,rt:0},cross:0,sp:0,lapStart:null,lastLap:null,bestLap:null,
-      fin:false,stopT:0,stuckT:0,cautioned:false,buf:[],vis:true,wheelRot:0,aLat:0,aLong:0,prevVf:0,prevH:0,lane:-3.6,passOff:0,aiDecel:0,fileLane:-3.6,laneT:0,skill:0.97,
-      markT:0,smokeT:0,boost:1,boostRate:0,boostTgt:1,sndT:0,lastSeen:performance.now(),pitting:false,lastState:null});
-    this.tp={s:0,lat:0};
+    Object.assign(this,{buf:[],wheelRot:0,aLat:0,aLong:0,prevVf:0,prevH:0,markT:0,smokeT:0,sndT:0,lastSeen:performance.now(),lastState:null});
   }
-  place(s,lat){const c=center(s);this.x=c.x+c.nx*lat;this.z=c.z+c.nz*lat;this.h=Math.atan2(c.tx,c.tz);this.vx=this.vz=this.av=this.vf=0;this.prevH=this.h;this.tp=toTrack(this.x,this.z);this.sp=mod(this.tp.s-S_LINE,P);}
+  place(s,lat){simPlace(WORLD,this,s,lat);this.prevH=this.h;}
   get prog(){return (this.cross-2)*P+this.sp;}
   get speed(){return Math.hypot(this.vx,this.vz);}
   dispose(){scene.remove(this.m.root);this.m.root.traverse(o=>{if(o.geometry)o.geometry.dispose();const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];
     ms.forEach(m=>{if(m.map&&!m.map.userData.shared)m.map.dispose();m.dispose();});});}
 }
 
-// ===================== PHYSICS =====================
-function concreteContact(c){
-  const sh=Math.sin(c.h),ch=Math.cos(c.h),tm=c.m&&c.m.tm,k=tm?(c.m.car?0.98:0.98*TRUCK_SCALE):CFG.carScale,half=(tm?0.83:0.84)*k;
-  for(const lg of [(tm?TM.DIM.FA:1.48)*k,(tm?TM.DIM.RA:-1.42)*k])for(const b of [1,-1]){
-    if(toTrack(c.x+sh*lg-ch*half*b,c.z+ch*lg+sh*half*b).lat<-HW)return true;}
-  return false;
-}
-function stepCar(c,dt,ctl,cap){
-  const tgt=clamp(ctl.steer,-1,1);
-  const growing=Math.abs(tgt)>Math.abs(c.steer)&&(Math.sign(tgt)===Math.sign(c.steer)||c.steer===0);
-  c.steerV=(c.steerV||0)+((tgt-c.steer)*(growing?CFG.steerRampIn:CFG.steerRampOut)-(c.steerV||0))*Math.min(1,dt*CFG.steerDamp);
-  c.steer=clamp(c.steer+c.steerV*dt,-1,1);
-  c.thr=ctl.thr?1:0;c.brk=ctl.brk?1:0;
-  let sh=Math.sin(c.h),ch=Math.cos(c.h),vf=c.vx*sh+c.vz*ch;
-  const d=c.dmg,tp=c.tp,apron=tp.lat<-HW;
-  const gripF=Math.max(0.8,1-0.0012*(d.l+d.rt)-0.0006*(d.f+d.r))*(c.gripB||1);
-  const aOn=aMaxAt(tp.s,Math.max(tp.lat,-HW+0.01),CFG.grip*gripF);
-  const aMax=apron?lerp(aOn,aMaxAt(tp.s,tp.lat,CFG.apronGrip*gripF),CFG.offTrack):aOn;
-  const onConcrete=concreteContact(c),cs=onConcrete?CFG.concreteSpeed:1;
-  c.ck=(c.ck||0)+((onConcrete?1:0)-(c.ck||0))*Math.min(1,dt/0.15);
-  const bst=c.boost||1,powF=Math.max(0.55,1-0.0035*d.f-0.0012*(d.l+d.rt+d.r))*bst*cs*(c.powB||1),dragF=(1+0.005*d.f)/(bst*bst)/(cs*cs*cs);
-  let ax=0;
-  if(c.thr){if(vf>-0.5)ax+=Math.min(CFG.maxAccel,CFG.power*powF/Math.max(vf,1));else ax+=CFG.brake;}
-  if(c.brk){if(vf>0.5)ax-=CFG.brake;else if(!c.thr)ax-=4;}
-  if(cap&&vf>cap)ax=Math.min(ax,0)-3;
-  // resistance: rolling + aero drag + steering scrub (more wheel = more speed lost)
-  let res=CFG.roll+CFG.drag*dragF*vf*vf+CFG.scrub*Math.abs(c.steer)*vf*vf;
-  if(!c.thr)res+=CFG.engineBrake*Math.min(1,Math.abs(vf)/5);
-  const steerMax=CFG.steerLow/(1+Math.abs(vf)*CFG.steerSpeed);
-  const pull=clamp((d.l-d.rt)*0.0012,-0.15,0.15)*Math.min(1,Math.abs(vf)/10);
-  let yaw=vf*Math.tan(clamp(c.steer+pull,-1,1)*steerMax)/CFG.wheelbase*lerp(1,CFG.concreteTurn,c.ck);
-  const lon=Math.abs(ax)*0.85,latAvail=Math.sqrt(Math.max(aMax*aMax*0.2,aMax*aMax-lon*lon));
-  const ratio=Math.abs(vf*yaw)/latAvail;
-  if(DIRT){
-    if(ratio>1)yaw*=Math.min(1,1.25/ratio);
-    if(c.thr&&vf>9&&Math.abs(c.steer)>0.15)c.av+=Math.sign(c.steer)*(c.ai||c.auto?0.55:1.0)*Math.min(1,Math.abs(c.steer))*Math.min(1,(vf-9)/12)*dt*1.5;
-    c.h+=(yaw+c.av)*dt;c.av*=Math.exp(-dt*3.2);
-  }else{
-    if(ratio>1){yaw*=1/ratio;if(c.thr&&ratio>1.8&&vf>12)c.av+=Math.sign(yaw)*CFG.spinRate*(ratio-1.8)*dt*6;}
-    c.h+=(yaw+c.av)*dt;c.av*=Math.exp(-dt*(ratio>1.3?3:6));
+// ===================== SIMULATION EVENTS =====================
+// sim/ (physics.ts, ai.ts, race.ts) steps the cars and reports what happened; the classic renderer draws it,
+// plays it and sends it on.
+function drainSim(){
+  for(const e of WORLD.events){
+    if(e.t==='sparks')spawnSparks(e.x,e.y,e.z,e.n,e.vx,e.vz);
+    else if(e.t==='impact'){const c=cars.get(e.id);spawnSparks(e.x,e.y,e.z,Math.min(50,Math.floor(e.v*4)),e.vx,e.vz);if(e.v>6)spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);
+      const now=performance.now();if(c&&now-c.sndT>150){c.sndT=now;crashSnd(e.v,camera.position.distanceTo(_v.set(e.x,e.y,e.z)));}}
+    else if(e.t==='damage'){const c=cars.get(e.id);if(c)deformCar(c,e.lp,e.dir,e.amt);
+      if(NET.online){const msg={t:'d',i:e.id,p:e.lp,n:e.dir,a:+e.amt.toFixed(2),z:e.zone};NET.host?sendAll(msg):sendHost(msg);}}
+    else if(e.t==='lap')submitLap(e.ms);
   }
-  sh=Math.sin(c.h);ch=Math.cos(c.h);vf=c.vx*sh+c.vz*ch;let vl=-c.vx*ch+c.vz*sh;
-  vl+=clamp(DIRT?-vl*6.5:-vl/dt,-latAvail,latAvail)*dt;     // pavement: tires hold the heading; dirt: the truck slides and gathers itself up
-  c.slip=Math.abs(vl)+Math.max(0,ratio-(DIRT?1:1.15))*10+(c.brk&&vf>20?2:0);
-  res+=CFG.slideScrub*Math.abs(vl);
-  let nv=vf+ax*dt;const sg=Math.sign(nv);if(sg!==0){const after=nv-sg*res*dt;nv=Math.sign(after)!==sg?0:after;}
-  if(nv<-CFG.reverseMax)nv=-CFG.reverseMax;
-  if(c.cf===undefined)c.cf=1;
-  if(onConcrete){const nf=Math.max(CFG.concreteSpeed,c.cf-dt*(1-CFG.concreteSpeed)/0.35);if(nv>0)nv*=nf/c.cf;c.cf=nf;}
-  else c.cf=Math.min(1,c.cf+dt*(1-CFG.concreteSpeed)/1.5);
-  c.vx=sh*nv-ch*vl;c.vz=ch*nv+sh*vl;c.vf=nv;
-  c.x+=c.vx*dt;c.z+=c.vz*dt;c.tp=toTrack(c.x,c.z);
-  walls(c);
-  if(!c.isPace){const nsp=mod(c.tp.s-S_LINE,P);aiPace(c,c.sp,nsp);if(c.sp>P-60&&nsp<60)lineCross(c);else if(c.sp<60&&nsp>P-60)c.cross--;c.sp=nsp;}
-}
-function lineCross(c){
-  c.cross++;const now=performance.now()/1000;
-  if(c.cross===2)c.lapStart=now;
-  else if(c.cross>2&&c.lapStart!=null){const lt=now-c.lapStart;c.lastLap=lt;if(!c.bestLap||lt<c.bestLap)c.bestLap=lt;c.lapStart=now;
-    if(c.isPlayer&&!c.fin&&!c.lapDirty)submitLap(lt*1000);
-    if(!c.fin&&(c.cross-2>=race.laps||race.ph==='checkered'||race.ph==='done'))c.fin=true;}
-  c.lapDirty=c.fin;
-}
-const CORNERS=[[1,1],[1,-1],[-1,1],[-1,-1]];
-function walls(c){
-  const sh=Math.sin(c.h),ch=Math.cos(c.h);let worst=null;
-  for(const [a,b] of CORNERS){
-    const px=c.x+sh*2.35*CFG.carScale*a-ch*0.95*CFG.carScale*b,pz=c.z+ch*2.35*CFG.carScale*a+sh*0.95*CFG.carScale*b,t=toTrack(px,pz);
-    let pen=t.lat-(HW+0.1),out=1;const pin=(-HW-AP+0.1)-t.lat;if(pin>pen){pen=pin;out=-1;}
-    if(pen>0&&(!worst||pen>worst.pen))worst={pen,out,px,pz,s:t.s};
-  }
-  if(!worst)return;
-  const cn=center(worst.s),nx=cn.nx*worst.out,nz=cn.nz*worst.out;
-  c.x-=nx*worst.pen;c.z-=nz*worst.pen;
-  const vn=c.vx*nx+c.vz*nz;
-  if(vn>0){
-    const jx=-(1+CFG.wallRest)*vn*nx,jz=-(1+CFG.wallRest)*vn*nz;c.vx+=jx;c.vz+=jz;
-    const fr=1-Math.min(0.3,vn*0.02);c.vx*=fr;c.vz*=fr;
-    c.av+=0.14*((worst.pz-c.z)*jx-(worst.px-c.x)*jz);
-    if(vn>1.2)impact(c,worst.px,worst.pz,-nx,-nz,vn,'wall');
-  }else if(c.speed>12&&Math.random()<0.25)spawnSparks(worst.px,heightAt(worst.s,HW)+0.4,worst.pz,2,c.vx,c.vz);
-}
-function collidePair(a,b){
-  if(!a.local&&!b.local)return;
-  const dx0=a.x-b.x,dz0=a.z-b.z,CS=CFG.carScale,RS=2*CS;if(dx0*dx0+dz0*dz0>42*CS*CS)return;
-  const sa=Math.sin(a.h),ca=Math.cos(a.h),sb=Math.sin(b.h),cb=Math.cos(b.h);let best=null;
-  for(const ka of [-1.35*CS,0,1.35*CS])for(const kb of [-1.35*CS,0,1.35*CS]){
-    const ax=a.x+sa*ka,az=a.z+ca*ka,bx=b.x+sb*kb,bz=b.z+cb*kb,dx=ax-bx,dz=az-bz,d2=dx*dx+dz*dz;
-    if(d2<RS*RS&&d2>1e-6){const d=Math.sqrt(d2),o=RS-d;if(!best||o>best.o)best={o,nx:dx/d,nz:dz/d,px:(ax+bx)/2,pz:(az+bz)/2};}
-  }
-  if(!best)return;
-  const am=a.local?1:0,bm=b.local?1:0,w=am+bm;
-  a.x+=best.nx*best.o*am/w;a.z+=best.nz*best.o*am/w;b.x-=best.nx*best.o*bm/w;b.z-=best.nz*best.o*bm/w;
-  const rub=1-CFG.contactSlow/120;if(am){a.vx*=rub;a.vz*=rub;}if(bm){b.vx*=rub;b.vz*=rub;}
-  const vn=(a.vx-b.vx)*best.nx+(a.vz-b.vz)*best.nz;
-  if(vn<0){
-    const kb=CFG.carBounce,j=-(1+CFG.carRest*kb)*vn/w,jx=j*best.nx,jz=j*best.nz,yk=0.12*kb;   // rebound and yaw kick scaled by carBounce
-    if(am){a.vx+=jx;a.vz+=jz;a.av+=yk*((best.pz-a.z)*jx-(best.px-a.x)*jz);}
-    if(bm){b.vx-=jx;b.vz-=jz;b.av+=yk*(-(best.pz-b.z)*jx+(best.px-b.x)*jz);}
-    const hit=-vn,loss=1-Math.min(0.08,hit*0.012);
-    {const ds=sgnDs(a.tp.s,b.tp.s),front=ds>0?a:b;if(front.ai&&Math.abs(a.tp.lat-b.tp.lat)<AI_TOUCH*0.85&&hit<3.5)front.looseT=0.7;} // tapped from behind: the AI gets loose and lifts
-    if(am){a.vx*=loss;a.vz*=loss;}if(bm){b.vx*=loss;b.vz*=loss;}
-    if(hit>2.2){impact(a,best.px,best.pz,best.nx,best.nz,hit,'car');impact(b,best.px,best.pz,-best.nx,-best.nz,hit,'car');}
-    else if(a.speed>10&&Math.random()<0.3)spawnSparks(best.px,heightAt(a.tp.s,a.tp.lat)+0.5,best.pz,2,a.vx,a.vz);
-  }
-}
-function impact(c,px,pz,ix,iz,v,kind){
-  const sh=Math.sin(c.h),ch=Math.cos(c.h),dx=px-c.x,dz=pz-c.z;
-  const lx=(dx*ch-dz*sh)/CFG.carScale,lz=(dx*sh+dz*ch)/CFG.carScale,dlx=ix*ch-iz*sh,dlz=ix*sh+iz*ch;
-  const zone=Math.abs(lz)>1.6?(lz>0?'f':'r'):(lx>0?'l':'rt');
-  const amt=Math.max(0,v-(kind==='car'?2:1.3))*(kind==='car'?2.6:3.3)*CFG.damageScale;
-  if(c.local&&amt>0.3)damageCar(c,[lx,0.55,lz],[dlx,0,dlz],amt,zone);
-  if(kind==='car'&&!c.local)return;
-  const y=heightAt(c.tp.s,c.tp.lat)+0.45;spawnSparks(px,y,pz,Math.min(50,Math.floor(v*4)),c.vx,c.vz);
-  if(v>6)spawnSmoke(px,y,pz,c.vx,c.vz,false,1.6);
-  const now=performance.now();if(now-c.sndT>150){c.sndT=now;crashSnd(v,camera.position.distanceTo(_v.set(px,y,pz)));}
-}
-function damageCar(c,lp,dir,amt,zone){
-  c.dmg[zone]=Math.min(100,c.dmg[zone]+amt);deformCar(c,lp,dir,amt);
-  if(NET.online){const msg={t:'d',i:c.id,p:lp,n:dir,a:+amt.toFixed(2),z:zone};NET.host?sendAll(msg):sendHost(msg);}
-  if(NET.host)cautionHit(amt);
+  WORLD.events.length=0;
 }
 function applyDamageMsg(d){
   const c=cars.get(d.i);if(!c||c.local||!['f','r','l','rt'].includes(d.z))return;
   const a=clamp(+d.a||0,0,100);c.dmg[d.z]=Math.min(100,c.dmg[d.z]+a);
   if(Array.isArray(d.p)&&Array.isArray(d.n))deformCar(c,d.p.map(Number),d.n.map(Number),a);
 }
-function resetCar(c){c.place(c.tp.s,-HW-2.5);c.steer=0;c.relLane=null;}
-
-// ===================== AI =====================
-// ---- racecraft helpers ----
-// AI_TOUCH: lateral spacing at which two cars touch (collision circles are 2 * carScale across); AI_GAP adds a safety margin.
-// AI_PASS: lane width used to pull alongside; AI_SHIFT: how fast (m/s) the AI moves across the track; AI_CORNER: share of the real grip limit used in the turns.
-const AI_TOUCH=2*CFG.carScale,AI_GAP=AI_TOUCH+(DIRT?1.0:0.6),AI_PASS=AI_GAP+0.9,AI_SHIFT=DIRT?2.2:2.8,AI_CORNER=DIRT?0.975:0.998,CAR_LEN=5.5*CFG.carScale,AI_LINE_MAX=LINE_MAX-0.5;
-const sgnDs=(a,b)=>{let d=mod(a-b,P);if(d>P/2)d-=P;return d;};
-function latVel(o){const cn=center(o.tp.s);return o.vx*cn.nx+o.vz*cn.nz;}
-function headingOff(o){const tc=center(o.tp.s);return Math.abs(wrapA(Math.atan2(tc.tx,tc.tz)-o.h));}
-// a car that is spinning, sliding sideways, pointed the wrong way or crawling at racing speed
-function isHazard(o,v){return !o.isPace&&!o.fin&&(Math.abs(o.av)>0.55||headingOff(o)>0.5||(o.speed<Math.max(7,v*0.55)&&v>12));}
-// Is it safe to move from the current line to `lat`? Sweeps the whole strip the car crosses, looks further
-// behind for faster cars and further ahead when we are the faster one.
-function laneClear(c,lat){
-  const cur=c.tp.lat,up=lat>cur,lo=up?cur+1.2:lat-AI_GAP,hi=up?lat+AI_GAP:cur-1.2;
-  for(const o of cars.values()){if(o===c||!o.vis)continue;const ds=sgnDs(o.tp.s,c.tp.s),rv=c.vf-o.vf;
-    if(ds>0&&ds<CAR_LEN+1&&Math.abs(o.tp.lat-cur)<AI_GAP)return false;            // nose still overlaps the car we are passing
-    const back=CAR_LEN+2+Math.max(0,-rv)*1.4,fwd=CAR_LEN+4+Math.max(0,rv)*1.1;
-    if(ds>-back&&ds<fwd&&o.tp.lat>lo&&o.tp.lat<hi)return false;}
-  return true;
-}
-// ---- side-by-side awareness ----
-// Finds a car alongside (overlapping doors, inside or outside). Once per encounter the AI decides,
-// weighted by difficulty (c.aggr), whether to race it hard (hold its lane, door to door, no lift)
-// or give room (an extra car-width of space and a small lift when the other car is level or ahead).
-const SIDE_LEN=6.6*CFG.carScale,SIDE_TIGHT=AI_GAP+0.2,SIDE_ROOM=1.0;
-function sideBySide(c,lane){
-  let o=null,best=1e9,ds=0;
-  for(const q of cars.values()){if(q===c||!q.vis||q.isPace)continue;const d=sgnDs(q.tp.s,c.tp.s);
-    const dl=Math.abs(q.tp.lat-c.tp.lat);if(Math.abs(d)<SIDE_LEN&&dl<SIDE_TIGHT+2.5&&dl<best){best=dl;o=q;ds=d;}}
-  if(!o){c.sideT+=1/120;if(c.sideT>1){c.sideId=null;c.sideMode=null;}return {lane,lift:1};}
-  c.sideT=0;
-  if(c.sideId!==o.id){c.sideId=o.id;   // new encounter: decide how to race this car
-    const lead=-ds/SIDE_LEN;             // >0: we are ahead of them, <0: they are ahead of us
-    const p=clamp((c.aggr??0.5)+lead*0.2+(o.isPlayer?0:-0.05),0.03,0.97);
-    c.sideMode=Math.random()<p?'hard':'room';}
-  const dlat=o.tp.lat-c.tp.lat,outside=Math.abs(dlat)>0.4?dlat>0:String(c.id)<String(o.id),sep=SIDE_TIGHT+(c.sideMode==='room'?SIDE_ROOM:0.1);
-  // never squeeze a car into the wall or onto the apron: if there is no room on our side, give it
-  let ln=outside?Math.min(lane,o.tp.lat-sep):Math.max(lane,o.tp.lat+sep);ln=clamp(ln,LINE_MIN,LINE_MAX);
-  let lift=1;
-  if(c.sideMode==='room'){if(ds>-1.5)lift=0.985;                     // let them clear us
-    if(Math.abs(ln-(outside?o.tp.lat-sep:o.tp.lat+sep))>0.4)lift=Math.min(lift,0.97);} // pinned on the edge: back out of it
-  if(Math.abs(o.tp.lat-c.tp.lat)<AI_GAP+0.15&&Math.abs(latVel(o)-latVel(c))>1.2)lift=Math.min(lift,0.97); // they are coming across: ease off
-  return {lane:ln,lift};
-}
-// Picks the side to pass on: inside first in the turns and off the corners, the outside if that is the only room.
-function passLane(c,ahead,gl){
-  const onLine=o=>clamp(o,LINE_MIN,LINE_MAX),low=onLine(Math.min(gl,ahead.tp.lat)-AI_PASS),high=onLine(Math.max(gl,ahead.tp.lat)+AI_PASS);
-  const opts=[low,high].filter(l=>Math.abs(l-ahead.tp.lat)>=AI_GAP+0.3);
-  if(c.tp.lat>ahead.tp.lat+0.8)opts.reverse();
-  for(const l of opts)if(laneClear(c,l))return l;
-  return null;
-}
-// Two wide off the green: the inside file runs the groove (pulled down far enough to leave room) and the
-// outside file runs a lane width above it, until startHoldT runs out.
-function startLane(c,gl){const lo=clamp(gl,LINE_MIN,AI_LINE_MAX-AI_PASS);return c.startFile?lo+AI_PASS:lo;}
-function aiCtl(c,dt){
-  const s=c.tp.s,v=c.vf,ph=race.ph;let lane,target;
-  if(c.isPace){lane=c.pitting?-HW-3.5:-1.6;target=c.pitting?32:(ph==='pace'&&race.formP!=null?formSpeed(c):ph==='pace'?CFG.paceSpeed+0.3:CFG.cautionSpeed-1);}
-  else{
-    const slow=ph==='pace'||ph==='caution'||c.fin;c.laneT-=dt;c.bumpCD=Math.max(0,(c.bumpCD||0)-dt);c.bumpT=Math.max(0,(c.bumpT||0)-dt);c.looseT=Math.max(0,(c.looseT||0)-dt);c.evadeT=Math.max(0,(c.evadeT||0)-dt);
-    const gl=grooveLat(s),onLine=o=>clamp(o,LINE_MIN,LINE_MAX);c.startHoldT=Math.max(0,(c.startHoldT||0)-dt);
-    const cur=slow?c.fileLane:c.startHoldT>0?startLane(c,gl):onLine(gl+c.passOff);
-    // one pass over the field: the nearest car in our path, and the nearest wreck or spinning car ahead
-    let ahead=null,aheadD=1e9,haz=null,hazD=1e9;
-    for(const o of cars.values()){if(o===c||!o.vis)continue;const ds=mod(o.tp.s-s,P);if(ds>90)continue;
-      const dl=slow?Math.abs(o.tp.lat-cur):Math.min(Math.abs(o.tp.lat-cur),Math.abs(o.tp.lat-c.tp.lat));
-      if(ds<45&&dl<AI_GAP&&ds<aheadD){aheadD=ds;ahead=o;}
-      if(!slow&&ds>1&&ds<85&&ds<hazD&&isHazard(o,v)){hazD=ds;haz=o;}}
-    const gap=ahead?aheadD-CAR_LEN:1e9;
-    if(!slow){
-      // stuck behind a car that will not give up the spot: the more aggressive drivers try a bump-and-run
-      const held=ahead&&!ahead.isPace&&gap<10&&ahead.vf<v+1.5&&!isHazard(ahead,v);
-      c.heldT=held?(c.heldT||0)+dt:Math.max(0,(c.heldT||0)-dt*2);
-      if(held&&!c.bumpT&&!c.bumpCD&&c.heldT>lerp(7,2.5,c.aggr??0.5)){c.bumpT=1.8;c.bumpOn=ahead.id;c.bumpCD=9+Math.random()*5;c.heldT=0;}
-      if(c.laneT<=0){
-        if(c.passOff===0&&ahead&&aheadD<(c.passD||20)&&ahead.vf<v+1){const pl=passLane(c,ahead,gl);if(pl!=null){c.passOff=pl-gl;c.laneT=c.laneCD||3;}else c.laneT=0.35;}
-        else if(c.passOff!==0&&laneClear(c,onLine(gl))&&(!ahead||aheadD>25)){c.passOff=0;c.laneT=(c.laneCD||3)*0.66;}
-      }
-    }
-    lane=slow?c.fileLane:onLine(GROOVE_LOW+c.passOff);
-    const mu=CFG.aiGrip*(c.gripB||1)*Math.max(0.8,1-0.0012*(c.dmg.l+c.dmg.rt));
-    const muP=CFG.grip*(c.gripB||1)*Math.max(0.8,1-0.0012*(c.dmg.l+c.dmg.rt)-0.0006*(c.dmg.f+c.dmg.r));
-    const vAt=b=>{const t=Math.tan(b),lim=Math.sqrt(CFG.g*(muP+t)/Math.max(0.05,1-muP*t)*(R+lane))*AI_CORNER;return Math.min(lim,Math.sqrt(CFG.g*(mu+t)/(1-mu*t)*(R+lane))*0.95*c.skill*aiCornerK(c));};
-    const vE=vAt(bankAt(T1)),vM=vAt(CFG.turnBank*Math.PI/180);
-    const inT1=s>=T1&&s<T1+TURN,inT2=s>=T2;
-    if(inT1||inT2){const into=(inT1?s-T1:s-T2)/TURN;target=into<0.2?lerp(vE,vM,into/0.2):into>0.55?vM*1.04:vM;}
-    else{const dT=(s<T1?T1:T2)-s;target=Math.sqrt(vE*vE+2*(c.aiDecel||CFG.aiDecel)*Math.max(0,dT-6));}
-    if(ph==='pace'&&race.formP!=null&&!c.fin)target=Math.min(target,formSpeed(c));
-    if(ahead){
-      const bumping=c.bumpT>0&&ahead.id===c.bumpOn&&!slow;
-      const safe=ph==='pace'?2.5:slow?7:bumping?0:(DIRT?2.6:1.6)+Math.max(0,v)*(DIRT?0.14:0.1),cl=Math.max(0,v-ahead.vf);
-      // close no faster than we could still stop in the room left (about 5 m/s^2 of usable braking)
-      if(!bumping)target=Math.min(target,ahead.vf+Math.sqrt(2*5*Math.max(0,gap-safe)));
-      if(gap<safe)target=Math.min(target,ahead.vf-(safe-gap)*0.6);
-      else if(!bumping&&gap<safe+cl*cl/10)target=Math.min(target,ahead.vf+(gap-safe)*0.5);
-      if(bumping){target=Math.min(target,ahead.vf+1.6);if(gap<0.5){c.bumpT=Math.min(c.bumpT,0.35);c.laneT=0;}}
-    }
-    // a wreck or spinning car ahead: aim for where it will not be, and scrub speed if there is no room
-    if(haz){
-      const vl=latVel(haz),tArr=hazD/Math.max(4,v-haz.speed*0.5),pl=clamp(haz.tp.lat+vl*Math.min(1.2,tArr),-HW,HW);
-      const roomLo=(pl-AI_GAP-0.5)-LINE_MIN,roomHi=LINE_MAX-(pl+AI_GAP+0.5);
-      const goLow=roomLo>=0&&(roomHi<0||(c.tp.lat<pl?roomLo>-1:roomLo>roomHi+2));
-      const el=clamp(goLow?pl-AI_GAP-0.6:pl+AI_GAP+0.6,LINE_MIN,LINE_MAX),fits=Math.abs(el-pl)>=AI_GAP;
-      c.evadeLane=el;c.evadeT=0.5;
-      if(!fits)target=Math.min(target,haz.speed+hazD*0.3);
-      else if(hazD<35)target=Math.min(target,v*0.985);
-    }
-    if(c.looseT>0)target*=0.95;            // got bumped loose: gather it up before getting back in the gas
-    {const room=HW-1.3*CFG.carScale-c.tp.lat,drift=latVel(c);if(drift>0&&room<drift*(DIRT?0.7:0.9))target=Math.min(target,v-(DIRT?0.8:0.6));} // running out of room at the wall: lift and let it turn
-    const cap=capFor(c);if(cap)target=Math.min(target,cap-0.3);
-    const tc=center(s),mis=Math.abs(wrapA(Math.atan2(tc.tx,tc.tz)-c.h));
-    if(c.speed<1.5||(mis>1.3&&c.speed<6)){c.stuckT+=dt;if(c.stuckT>3){resetCar(c);c.stuckT=0;}}else c.stuckT=0;
-    // in the turns the AI lifts rather than brakes, so a car following closely is not brake-checked; brakes only
-    // for a wreck ahead, a car it is about to run into, or when far over the target speed
-    c.aiTurn=(inT1||inT2)&&ph!=='pace';c.brkTight=!!(haz&&hazD<35)||!!(ahead&&gap<(DIRT?2.6:1.6)+Math.max(0,v)*0.06);
-    c.brkAt=ahead&&gap<14?0.8:2.5;
-  }
-  const Ld=8+Math.abs(v)*0.45,tg=center(s+Ld);
-  if(!c.isPace&&!(ph==='pace'||ph==='caution'||c.fin)){
-    const base=grooveLat(s+Ld);
-    lane=c.startHoldT>0?startLane(c,base):clamp(base+c.passOff,LINE_MIN,AI_LINE_MAX);
-    if(c.evadeT>0)lane=c.evadeLane;
-    if(c.looseT>0)lane=Math.min(AI_LINE_MAX,lane+0.6);
-    const want=lane,sb=sideBySide(c,lane);lane=sb.lane;target*=sb.lift;
-    // move across the track at a steady rate (faster when dodging a wreck or making room), never in one jump
-    if(c.relLane==null)c.relLane=c.tp.lat-base;
-    const rate=(c.evadeT>0?7:sb.lane!==want?4.5:AI_SHIFT)*dt;c.relLane+=clamp(lane-base-c.relLane,-rate,rate);
-    lane=clamp(base+c.relLane,LINE_MIN,AI_LINE_MAX);}
-  const tx=tg.x+tg.nx*lane,tz=tg.z+tg.nz*lane;
-  const dx=tx-c.x,dz=tz-c.z,dist=Math.hypot(dx,dz)||1,alpha=wrapA(Math.atan2(dx,dz)-c.h);
-  const delta=Math.atan(2*Math.sin(alpha)/dist*CFG.wheelbase),sm=CFG.steerLow/(1+Math.abs(v)*CFG.steerSpeed);
-  // catch a slide: lift (never brake) while the rear is stepping out, and steer into it
-  const sliding=!c.isPace&&(DIRT?Math.abs(c.av)>0.8:Math.abs(c.av)>0.32||c.slip>2.6);
-  const steer=clamp(delta/sm-(sliding?clamp(c.av*0.6,-0.5,0.5):0),-1,1);
-  const brkAt=!c.isPace&&c.aiTurn&&!c.brkTight?5:(c.brkAt||2.5);
-  return {thr:!sliding&&v<target-0.2,brk:!sliding&&v>target+brkAt,steer};
-}
-
 // ===================== RACE STATE =====================
-const cars=new Map();
+const cars=WORLD.cars;
 let player=null,menuCar=null,mode='menu',camMode='chase',camH=0,camSnap=true,lastPhase='idle';
-const race={ph:'idle',laps:25,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false,formP:null};
+const race=WORLD.race;
 let settings={laps:25,ai:11,night:new URLSearchParams(location.search).get('night')==='1',diff:'medium'};
-// sk: corner-speed aim, dc: how late they brake (m/s^2), pass: how far back they start a pass (m),
-// gb/pb: grip and power edge over stock, lc: seconds between lane-change decisions (lower = more aggressive)
-// Traffic awareness (path scan, wreck avoidance, slide saves, bump-and-run) is the same at every level.
-const AI_LEVELS={
-  easy:  {sk:[1.17,0.03], dc:10.7,pass:33,gb:1.065,pb:1.03, lc:1.9,ag:0.4, pace:1.05, vary:0.010},
-  medium:{sk:[1.2,0.025], dc:11.2,pass:37,gb:1.085,pb:1.05, lc:1.6,ag:0.65,pace:1.025,vary:0.008},
-  hard:  {sk:[1.23,0.02], dc:11.7,pass:41,gb:1.105,pb:1.065,lc:1.3,ag:0.85,pace:1.0,  vary:0.006}};
+// AI_LEVELS (sim/config.ts) sets each level's corner aim, braking, passing reach, grip and power edge and aggression.
 // pace/vary: lap-time target as a multiple of the track baseline (the average of its top 20 Time Attack laps),
 // with each car drawn within +/- vary of it, so a Hard field runs right at the record-board average.
 // Track baseline: the average of the top 20 Time Attack laps on this track (seconds), or null with too few laps.
 function aiBaseline(){const l=(REC.lists['time-attack']||[]).slice(0,20).map(r=>r.milliseconds).filter(ms=>ms>=TRACK.minLap);
   return l.length>=3?l.reduce((a,b)=>a+b,0)/l.length/1000:null;}
-// Lap pacing: each AI car with a target lap time (c.lapTgt) measures a rolling lap at the line and at half
-// distance and trims c.paceK, which scales its corner speed and power (and grip when it needs more), so it
-// settles on its target lap. Only green-flag laps count; the first lap after the green is ignored.
-const PACE_K=[0.82,1.1];
-function aiPace(c,oldSp,nsp){
-  if(!c.ai||!c.local||!c.lapTgt||c.isPace)return;
-  if(race.ph!=='green'||c.fin){c.paceCk=null;return;}
-  const half=P/2,hit=(oldSp>P-60&&nsp<60)?0:(oldSp<half&&nsp>=half&&nsp-oldSp<60)?1:-1;if(hit<0)return;
-  const now=performance.now()/1000;c.paceCk=c.paceCk||[null,null];
-  const prev=c.paceCk[hit];c.paceCk[hit]=now;if(prev==null||now-race.greenT<c.lapTgt*1.2)return;
-  const lt=now-prev,err=clamp(lt/c.lapTgt-1,-0.05,0.05);
-  c.paceK=clamp((c.paceK||1)*(1+0.85*err),PACE_K[0],PACE_K[1]);aiPaceApply(c);
-}
-// Slowing to a target comes mostly out of the straights (power), so the AI keeps its corner speed.
-function aiCornerK(c){const k=c.paceK||1;return k>=1?k:1-(1-k)*0.35;}
-function aiPaceApply(c){const k=c.paceK||1;c.powB=(c.powB0||1)*(k>=1?1+(k-1)*1.2:Math.max(0.7,1+(k-1)*2.2));c.gripB=(c.gripB0||1)*(k>1?1+(k-1)*0.7:1);}
 // ag: chance an AI races a car alongside hard (holds its line, door to door) instead of giving it room
 // Each vehicle (truck, Super Late Model) keeps its own saved paint scheme; 'sts_livery' remembers the last one used.
 const lvKey=v=>'sts_livery_'+v;
@@ -1933,13 +1652,6 @@ function saveLv(){store.set('sts_livery',myLv);store.set(lvKey(myLv.veh),myLv);}
 let myLv=(()=>{const last=cleanLv(store.get('sts_livery',DEFAULT_LV)),own=store.get(lvKey(last.veh),null);return own?cleanLv({...own,veh:last.veh}):last;})();if(!myLv.number)myLv.number='7';saveLv();
 let quality=store.get('sts_q','med');
 
-function updateBoosts(dt){
-  const on=race.ph==='green'||race.ph==='checkered';
-  standings().forEach((c,i)=>{if(!c.local)return;const tgt=on&&!c.fin?1+CFG.packBoost*i:1;
-    if(tgt>=c.boost){c.boost=tgt;c.boostRate=0;}
-    else{if(tgt!==c.boostTgt)c.boostRate=(c.boost-tgt)/2;c.boost=Math.max(tgt,c.boost-c.boostRate*dt);}
-    c.boostTgt=tgt;});
-}
 const MODE_NAMES={'time-attack':'Time Attack','race':'Solo Race','multiplayer':'Online'};
 const RUN_ID=(crypto.randomUUID&&crypto.randomUUID())||'00000000-0000-4000-8000-'+String(Date.now()).slice(-12).padStart(12,'0');
 const REC={lists:{},state:{},me:null,warned:false};let runLap=0;
@@ -1973,43 +1685,8 @@ function submitLap(ms){
       fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:TRACK.rec,mode},location.origin);}catch(e){}
     }).catch(()=>{});
 }
-function capFor(c){if(c.isPace)return null;if(race.ph==='pace'){if(race.formP==null)return c.ai?CFG.aiPaceSpeed:CFG.paceSpeed;return c.ai?null:formSpeed(c)+0.6;}if(race.ph==='caution')return CFG.cautionSpeed;if(c.fin)return 24;return null;}
-function standings(){
-  const arr=[];cars.forEach(c=>{if(!c.isPace&&(c.vis||c.fin))arr.push(c);});
-  arr.sort((a,b)=>{const fa=race.fo.indexOf(a.id),fb=race.fo.indexOf(b.id);if(fa>=0||fb>=0){if(fa<0)return 1;if(fb<0)return -1;return fa-fb;}return b.prog-a.prog;});
-  return arr;
-}
-const nowS=()=>performance.now()/1000;
-function setPhase(ph){const wasPace=race.ph==='pace';race.ph=ph;const n=nowS();if(ph==='green'){race.greenT=n;race.gn=false;
-    if(wasPace)cars.forEach(c=>{if(c.ai&&c.local&&!c.isPace&&c.gridRow!=null){c.passOff=0;c.relLane=null;c.startFile=c.fileLane>-1?1:0;c.startHoldT=4.5+c.gridRow*0.3;c.laneT=c.startHoldT+Math.random()*1.5;}});
-    race.formP=null;}if(ph==='caution')race.cT=n;if(ph==='checkered')race.ckT=n;}
-function startCaution(){
-  return;setPhase('caution');
-  const lead=standings()[0],pace=cars.get('pace');
-  if(lead&&pace){pace.vis=true;pace.pitting=false;pace.place(lead.tp.s+45,-1.6);pace.vx=Math.sin(pace.h)*(CFG.cautionSpeed-1);pace.vz=Math.cos(pace.h)*(CFG.cautionSpeed-1);}
-}
-function cautionHit(){}
-function raceControl(dt){
-  const n=nowS(),st=standings(),lead=st[0];if(!lead)return;const pace=cars.get('pace');
-  for(const c of st)if(c.fin&&!race.fo.includes(c.id))race.fo.push(c.id);
-  if(pace&&pace.vis){
-    if((race.ph==='pace'&&lead.cross>=1&&lead.sp>mod(T2-S_LINE,P)+TURN*0.35)||(race.ph==='caution'&&race.gn&&lead.sp>P*0.5))pace.pitting=true;
-    if(race.ph==='green'&&n-race.greenT>5){pace.vis=false;pace.pitting=false;}
-  }
-  switch(race.ph){
-    case 'pace':if(lead.cross>=2)setPhase('green');break;
-    case 'green':
-      if(race.fo.length){setPhase('checkered');break;}
-      for(const c of st){if(c.fin)continue;if(c.speed<3)c.stopT+=dt;else{c.stopT=0;c.cautioned=false;}
-        if(c.stopT>2.5&&!c.cautioned&&n-race.greenT>8){c.cautioned=true;startCaution();break;}}
-      break;
-    case 'caution':
-      if(race.fo.length){setPhase('checkered');break;}
-      if(!race.gn&&n-race.cT>CFG.cautionTime){race.gn=true;race.gnCross=lead.cross;}
-      if(race.gn&&lead.cross>race.gnCross)setPhase('green');break;
-    case 'checkered':if(st.every(c=>c.fin)||n-race.ckT>40)setPhase('done');break;
-  }
-}
+const standings=()=>simStandings(WORLD);
+const nowS=()=>SIM.now();
 function onPhase(ph){
   const fc={pace:0xffcc00,caution:0xffcc00,green:0x2ec46d,attack:0x2ec46d};
   flagMat.map=null;flagMat.color.set(fc[ph]??0xffffff);
@@ -2023,38 +1700,19 @@ function onPhase(ph){
 }
 
 // ===================== RACE SETUP =====================
-const GRID_S=S_LINE-P/2,GRID_ROW=2*4.7*CFG.carScale,PACE_LEAD=GRID_ROW*1.6;
-// Rolling-start formation: a virtual reference (race.formP, in race-progress metres) rolls at pace speed.
-// Every car has a slot (its grid row behind the reference, in its own file); both cars in a row share the
-// same track distance, so they stay door to door, even through the turns.
-function slotErr(c){const off=c.isPace?PACE_LEAD:-(c.gridRow||0)*GRID_ROW;let e=mod(S_LINE+race.formP+off-c.tp.s,P);if(e>P/2)e-=P;return e;} // + = behind slot
-// The formation moves as one rigid block, so its speed is the slowest one both files can hold through the
-// turns (measured on the centerline); the outside file runs proportionally faster there to stay door to door.
-const FORM_V=(()=>{let v=CFG.aiPaceSpeed;for(const lat of [-3.6,0.6])for(let i=0;i<=8;i++){const s=T1+TURN*i/8;
-  v=Math.min(v,0.9*Math.sqrt(aMaxAt(s,lat,CFG.aiGrip)*(R+lat))*R/(R+lat));}return v;})();
-function formSpeed(c){const s=c.tp.s,lat=c.tp.lat,inTurn=(s>=T1&&s<T1+TURN)||s>=T2,k=inTurn?(R+lat)/R:1;
-  let v=(FORM_V+clamp(slotErr(c)*0.5,-5,5))*k;if(inTurn)v=Math.min(v,0.95*Math.sqrt(aMaxAt(s,lat,CFG.aiGrip)*(R+lat)));return v;}
-function rollAt(c,v){const s=c.tp.s,lat=c.tp.lat,inTurn=(s>=T1&&s<T1+TURN)||s>=T2,vMax=inTurn?Math.sqrt(aMaxAt(s,lat,CFG.aiGrip)*(R+lat))*0.9:v,sp=Math.min(v,vMax);
-  c.vx=Math.sin(c.h)*sp;c.vz=Math.cos(c.h)*sp;c.vf=sp;}
 // A custom body that finished loading after the race was set up replaces the stand-in stock car in place.
 function swapCarModel(c){
   const old=c.m,m=buildCar(c.lv,{crisp:c.isPlayer});m.root.scale.setScalar(CFG.carScale);
   m.root.position.copy(old.root.position);m.root.quaternion.copy(old.root.quaternion);m.root.visible=old.root.visible;
   if(c.tag){old.root.remove(c.tag);m.root.add(c.tag);}
-  scene.add(m.root);Car.prototype.dispose.call({m:old});c.m=m;
+  scene.add(m.root);Car.prototype.dispose.call({m:old});c.m=m;c.stockCar=!!m.car;
 }
 function clearCars(){cars.forEach(c=>c.dispose());cars.clear();player=null;}
 function beginRace(msg){
   clearCars();if(menuCar)menuCar.m.root.visible=false;
   const attack=!!(msg.set&&msg.set.attack);if(attack)settings.night=!!msg.set.night;else{settings={...settings,...msg.set};delete settings.attack;}setNight(!!settings.night);
-  Object.assign(race,{ph:attack?'attack':'pace',mode:attack?'time-attack':NET.online?'multiplayer':'race',laps:attack?9999:settings.laps,fo:[],gn:false,gnCross:0,cT:0,greenT:0,ckT:0,white:false,formP:-P/2});lastPhase=race.ph;resetMarks();fetchRecords(race.mode);
-  msg.grid.forEach((e,i)=>{
-    const isMe=e.id===NET.myId,local=isMe||(NET.host&&e.ai);
-    const c=new Car(e.id,cleanLv(e.lv),{local,ai:e.ai,player:isMe});c.skill=e.sk||0.97;c.aiDecel=e.dc||0;c.passD=e.pa||20;c.gripB=e.gb||1;c.powB=e.pb||1;c.laneCD=e.lc||3;c.aggr=e.ag??0.5;c.gripB0=c.gripB;c.powB0=c.powB;c.lapTgt=+e.tl||0;c.paceK=1;c.paceCk=null;c.sideId=null;c.sideMode=null;c.sideT=0;
-    const row=Math.floor(i/2);c.gridRow=row;c.fileLane=i%2?0.6:-3.6;c.lane=-3.6;c.lapDirty=true;
-    if(attack){c.place(S_LINE-70,-2);c.cross=1;}else{c.place(GRID_S-row*GRID_ROW,c.fileLane);c.cross=1;rollAt(c,FORM_V);}
-    cars.set(e.id,c);if(isMe)player=c;
-  });
+  simBeginRace(WORLD,msg.grid,{attack,laps:settings.laps,mode:attack?'time-attack':NET.online?'multiplayer':'race',myId:NET.myId,host:NET.host,make:(e,f)=>new Car(e.id,cleanLv(e.lv),f)});
+  lastPhase=race.ph;resetMarks();fetchRecords(race.mode);player=cars.get(NET.myId)||null;
   for(const c of cars.values())if(carIdOf(c.lv.veh||'')&&!customCarReady(c.lv.veh))Promise.all([ensureCustomCar(c.lv.veh),carAssetReady]).then(([a])=>{if(a&&cars.get(c.id)===c)swapCarModel(c);});
   // Pace truck removed: the rolling start is still led by the virtual formation reference (race.formP).
   setNight(!!settings.night);
@@ -2062,25 +1720,20 @@ function beginRace(msg){
   mode='race';showScreen(null);$('hud').classList.remove('hidden');onPhase(race.ph);
   if(attack)bigMsg('TIME ATTACK',`${TRACK.name} \u00b7 the clock starts when you cross the line`,4);else bigMsg('ROLLING START',`${TRACK.name} \u00b7 autopilot holds the field two wide \u00b7 you take over at the green`,4);
 }
-// The AI field comes from AI_FIELD (named drivers, fixed numbers, paint schemes and sponsor logos).
-function aiRoster(n){
-  const ro=AI_FIELD.map(l=>cleanLv(l));   // fixed field; a different random set of drivers starts each race
-  for(let i=ro.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[ro[i],ro[j]]=[ro[j],ro[i]];}
-  return ro.slice(0,n);
-}
+// The AI field comes from AI_FIELD (named drivers, fixed numbers, paint schemes and sponsor logos); sim/race.ts
+// buildGrid draws the starters, their skill and the grid order exactly as before.
 function hostStart(){
   readHostSettings();
-  const ents=[...NET.players.values()].map(p=>({id:p.id,lv:p.lv,ai:false}));
-  const base=aiBaseline(),r=rng((Math.random()*1e9)|0),used=new Set(ents.map(e=>e.lv.number)),humanNums=new Set(used),nAI=Math.min(settings.ai,CFG.maxCars-ents.length);
-  // AI cars keep their own numbers (each number has its scheme): a car whose number a human is running sits out
-  const roster=aiRoster(CFG.maxCars).filter(l=>!humanNums.has(l.number));for(let i=0;i<Math.min(nAI,roster.length);i++){const lv={...roster[i],veh:myLv.veh};used.add(lv.number);const A=AI_LEVELS[settings.diff||'medium'];ents.push({id:'ai'+i,lv,ai:true,sk:+(A.sk[0]+r()*A.sk[1]).toFixed(3),dc:A.dc,pa:A.pass,gb:A.gb,pb:A.pb,lc:A.lc,ag:A.ag,tl:base?+(base*A.pace*(1+(r()*2-1)*A.vary)).toFixed(3):0});}
-  for(let i=ents.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[ents[i],ents[j]]=[ents[j],ents[i]];}
-  const set={...settings};delete set.attack;const msg={t:'start',set,grid:ents};sendAll(msg);beginRace(msg);
+  const field=AI_FIELD.map(l=>cleanLv(l)),byNum=new Map(field.map(l=>[l.number,l]));
+  const humans=[...NET.players.values()].map(p=>({id:p.id,number:p.lv.number}));
+  const grid=buildGrid(()=>SIM.rand(),humans,field.map(l=>l.number),{ai:settings.ai,diff:settings.diff||'medium'},aiBaseline(),CFG.maxCars)
+    .map(({number,...e})=>e.ai?{...e,lv:{...byNum.get(number),veh:myLv.veh}}:{...e,lv:NET.players.get(e.id).lv});
+  const set={...settings};delete set.attack;const msg={t:'start',set,grid};sendAll(msg);beginRace(msg);
 }
 function readHostSettings(){settings.laps=+$('sLaps').value||25;settings.ai=clamp(parseInt($('sAI').value)||0,0,19);settings.diff=AI_LEVELS[$('sDiff').value]?$('sDiff').value:'medium';}
 
 // ===================== NETWORK (PeerJS, host-authoritative race control) =====================
-const PREFIX='sts-oval-race-';
+const PREFIX=ROOM_PREFIX;
 const NET={peer:null,online:false,host:false,myId:'host',code:'',conns:new Map(),hc:null,players:new Map()};
 function resetNet(){try{NET.peer&&NET.peer.destroy();}catch(e){}Object.assign(NET,{peer:null,online:false,host:false,myId:'host',code:'',conns:new Map(),hc:null,players:new Map()});}
 function sendAll(msg,except){if(!NET.online||!NET.host)return;for(const [id,c] of NET.conns)if(id!==except&&c.open)try{c.send(msg);}catch(e){}}
@@ -2111,7 +1764,7 @@ function doJoin(){
   resetNet();NET.online=true;NET.host=false;toast('Connecting...');
   const peer=new Peer({debug:0});NET.peer=peer;
   peer.on('open',id=>{NET.myId=id;NET.code=code;const conn=peer.connect(PREFIX+code,{serialization:'json',reliable:true});NET.hc=conn;
-    conn.on('open',()=>conn.send({t:'hello',lv:myLv}));conn.on('data',clientRecv);
+    conn.on('open',()=>conn.send({t:'hello',lv:myLv,pv:PROTOCOL_VERSION}));conn.on('data',clientRecv);
     conn.on('close',()=>{if(NET.hc===conn){toast('Lost connection to the host');leaveAll();}});});
   peer.on('error',e=>{toast(e.type==='peer-unavailable'?'No room with that code':'Network: '+e.type);if(e.type==='peer-unavailable')leaveAll();});
 }
@@ -2119,10 +1772,11 @@ function hostRecv(conn,d){
   if(!d||typeof d!=='object')return;const id=conn.peer;
   switch(d.t){
     case 'hello':
+      if(!helloAccepted(d)){try{conn.send({t:'version',pv:PROTOCOL_VERSION});}catch(e){}setTimeout(()=>conn.close(),300);return;}
       if(NET.players.size>=CFG.maxCars&&!NET.players.has(id)){try{conn.send({t:'full'});}catch(e){}setTimeout(()=>conn.close(),300);return;}
       NET.conns.set(id,conn);NET.players.set(id,{id,lv:cleanLv(d.lv)});broadcastLobby();chatLine('',NET.players.get(id).lv.name+' joined');break;
     case 's':if(d.s&&d.s.i===id)applyState(d.s);break;
-    case 'd':if(d.i===id){applyDamageMsg(d);sendAll(d,id);cautionHit(+d.a||0);}break;
+    case 'd':if(d.i===id){applyDamageMsg(d);sendAll(d,id);}break;
     case 'chat':{const p=NET.players.get(id);if(!p)return;const m={t:'chat',n:p.lv.name,m:String(d.m||'').slice(0,120)};sendAll(m);chatLine(m.n,m.m);}break;
   }
 }
@@ -2142,6 +1796,7 @@ function clientRecv(d){
     case 'chat':chatLine(d.n,d.m);break;
     case 'back':NET.racing=false;backToLobby();break;
     case 'full':toast('That race is full or already running');leaveAll();break;
+    case 'version':toast(VERSION_MISMATCH);leaveAll();break;
   }
 }
 function stateOf(c){const d=c.dmg;return {i:c.id,x:+c.x.toFixed(2),z:+c.z.toFixed(2),h:+c.h.toFixed(3),vx:+c.vx.toFixed(2),vz:+c.vz.toFixed(2),st:+c.steer.toFixed(2),th:c.thr,
@@ -2522,7 +2177,7 @@ addEventListener('keydown',e=>{
   if(mode==='race'||mode==='paused'||mode==='results'){
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
     if(e.code==='KeyC'&&!e.repeat)camMode=camMode==='chase'?'far':camMode==='far'?'hood':'chase';
-    if(e.code==='KeyR'&&!e.repeat&&player&&player.speed<6&&mode!=='paused')resetCar(player);
+    if(e.code==='KeyR'&&!e.repeat&&player&&player.speed<6&&mode!=='paused')simResetCar(WORLD,player);
     if(e.code==='Escape')togglePause();
   }
   if(e.code==='KeyM'&&!e.repeat)toggleMute();
@@ -2533,28 +2188,23 @@ addEventListener('resize',resize);
 function playerCtl(){return {thr:!!(keys.ArrowUp||keys.KeyW),brk:!!(keys.ArrowDown||keys.KeyS),steer:((keys.ArrowLeft||keys.KeyA)?1:0)-((keys.ArrowRight||keys.KeyD)?1:0)};}
 
 // ===================== MAIN LOOP =====================
+// ?autopilot=1 hands the player's car to the AI (scripts/shorttrack-play.mjs drives real laps with it)
+const AUTOPILOT=new URLSearchParams(location.search).get('autopilot')==='1';
+const CLASSIC_STATUS={track:TRACK_ID,frames:0};window.__stClassic=CLASSIC_STATUS;
 const STEP=1/120;let acc=0,lastT=performance.now(),hudT=0,crowdHype=0.6,pylonT=0;
 function simulate(dt){
-  if(race.ph==='pace'&&race.formP!=null)race.formP+=FORM_V*dt;
-  const arr=[];cars.forEach(c=>{if(c.vis)arr.push(c);});
-  const formation=race.ph==='pace'&&race.formP!=null;
-  for(const c of arr){if(!c.local)continue;
-    // rolling start: the AI drives every car (the player's too) in formation until the green flag drops
-    c.auto=c.isPlayer&&formation;
-    const ctl=c.isPlayer&&!c.auto?(mode==='paused'?{thr:0,brk:0,steer:0}:playerCtl()):aiCtl(c,dt);
-    stepCar(c,dt,ctl,capFor(c));}
-  for(let i=0;i<arr.length;i++)for(let j=i+1;j<arr.length;j++)collidePair(arr[i],arr[j]);
+  // rolling start: the AI drives every car (the player's too) in formation until the green flag drops
+  simSimulate(WORLD,dt,()=>AUTOPILOT?null:mode==='paused'?{thr:0,brk:0,steer:0}:playerCtl());
 }
-const CLASSIC_STATUS={track:TRACK_ID,frames:0};window.__stClassic=CLASSIC_STATUS;
 function frame(now){
   requestAnimationFrame(frame);CLASSIC_STATUS.frames++;const rawDt=(now-lastT)/1000,dt=Math.min(0.1,rawDt);lastT=now;if(adaptRes&&!document.hidden)adaptRes.update(rawDt);
-  const simOn=mode==='race'||mode==='results'||(mode==='paused'&&NET.online);
+  const simOn=!SIM.frozen&&(mode==='race'||mode==='results'||(mode==='paused'&&NET.online));
   if(simOn){
-    acc+=dt;let n=0;while(acc>=STEP&&n<24){simulate(STEP);acc-=STEP;n++;}if(n>=24)acc=0;
+    acc+=dt;let n=0;while(acc>=STEP&&n<24){simulate(STEP);acc-=STEP;n++;}if(n>=24)acc=0;drainSim();
     cars.forEach(c=>{if(!c.local)interp(c,now);});
-    if(NET.host)raceControl(dt);
+    if(NET.host)raceControl(WORLD,dt);
     updateWear(dt);
-    updateBoosts(dt);
+    updateBoosts(WORLD,dt);
     if(race.ph!==lastPhase){lastPhase=race.ph;onPhase(race.ph);}
   }
   cars.forEach(c=>carVisual(c,dt));if(menuCar&&menuCar.m.root.visible)carVisual(menuCar,dt);
@@ -2570,6 +2220,36 @@ function frame(now){
     renderer.autoClear=false;renderer.clearDepth();renderer.render(ovScene,ovCam);renderer.autoClear=true;
   }
 }
+
+// ===================== REFERENCE RECORDER (?record=1) =====================
+// Runs an all-AI race headless and deterministic: SIM.rand is seeded, SIM.now is the sim clock, and one tick is
+// simulate(STEP), the per-frame vf refresh carVisual does, raceControl and updateBoosts, i.e. the classic loop at
+// 120 fps. The host car is driven by the AI at the level's mid settings. Used for the fixtures in tests/fixtures/ (docs/shorttrack/PLAN.md, Phase 1).
+function recordRace(o){
+  let t=1000;SIM.rand=rng(o.seed|0);SIM.now=()=>t;
+  REC.lists['time-attack']=o.base?Array.from({length:20},()=>({milliseconds:o.base*1000})):[];
+  myLv={...myLv,veh:o.veh||'truck'};startHost(false);$('sLaps').value=o.laps;$('sAI').value=o.ai;$('sDiff').value=o.diff;
+  hostStart();
+  const A=AI_LEVELS[o.diff];Object.assign(player,{isPlayer:false,ai:true,skill:A.sk[0]+A.sk[1]/2,aiDecel:A.dc,passD:A.pass,gripB:A.gb,powB:A.pb,gripB0:A.gb,powB0:A.pb,laneCD:A.lc,aggr:A.ag,lapTgt:o.base?o.base*A.pace:0});
+  const BIN=2,nb=Math.ceil(P/BIN),sum=new Float64Array(nb),cnt=new Uint32Array(nb),laps={},states=[],r9=v=>+(+v).toFixed(9);
+  const lead=()=>standings()[0],cross=new Map();cars.forEach(c=>cross.set(c.id,c.cross));
+  const snap=()=>[...cars.values()].map(c=>[c.id,r9(c.x),r9(c.z),r9(c.h),r9(c.vx),r9(c.vz),r9(c.av),r9(c.steer),c.cross,r9(c.sp),r9(c.dmg.f),r9(c.dmg.r),r9(c.dmg.l),r9(c.dmg.rt),r9(c.boost),r9(c.paceK||1)]);
+  let tick=0;const max=120*60*Math.max(4,o.laps*2);
+  while(race.ph!=='done'&&tick<max&&!(o.stop&&tick>=o.stop)){
+    t+=STEP;simulate(STEP);cars.forEach(c=>{c.vf=c.vx*Math.sin(c.h)+c.vz*Math.cos(c.h);});raceControl(WORLD,STEP);updateBoosts(WORLD,STEP);WORLD.events.length=0;tick++;
+    const ld=lead();
+    if(o.golden&&tick%o.golden===0&&ld&&ld.cross<=4)states.push([tick,snap()]);
+    cars.forEach(c=>{
+      if(c.cross!==cross.get(c.id)){if(c.cross>2&&c.lastLap!=null)(laps[c.id]=laps[c.id]||[]).push(r9(c.lastLap));cross.set(c.id,c.cross);}
+      if(race.ph==='green'&&c.cross>=3&&!c.fin){const b=Math.min(nb-1,Math.floor(c.sp/BIN));sum[b]+=c.speed;cnt[b]++;}
+    });
+  }
+  if(o.stop){SIM.frozen=true;camSnap=true;camH=player.h;}
+  return {meta:{track:TRACK_ID,rec:TRACK.rec,diff:o.diff,seed:o.seed|0,laps:o.laps,ai:o.ai,veh:o.veh||'truck',base:o.base||null,step:STEP,ticks:tick,phase:race.ph,formV:r9(formV(WORLD)),P:r9(P),bin:BIN,golden:o.golden||0,
+      fields:'id,x,z,h,vx,vz,av,steer,cross,sp,dmgF,dmgR,dmgL,dmgRt,boost,paceK',order:[...cars.keys()]},
+    laps,speed:Array.from(sum,(s,i)=>cnt[i]?+(s/cnt[i]).toFixed(3):null),states};
+}
+if(new URLSearchParams(location.search).get('record')==='1')window.__stsRecord=recordRace;
 
 // ===================== LIBRARY CHAT INVITES =====================
 function tlPostRoom(code){try{if(window.parent!==window)window.parent.postMessage({type:'tl-room',code},location.origin);}catch(e){}}
