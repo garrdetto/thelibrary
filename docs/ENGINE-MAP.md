@@ -470,6 +470,8 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 ### sandlot — Sandlot Sluggers
 - `modules-src/sandlot/index.html` — whole 2D module, PeerJS rooms `sandlot-<code>` — `vite.modules.ts` (→ `public/modules/sandlot.html`).
 - `modules-src/sandlot/index.ts` — entry; provides `window.Peer` — `index.html`.
+- `modules-src/sandlot/tools/build-kids.py` — Blender script: builds every kid from the roster (body from `bodyDims`, face, hair, costume top, hat, shoes, extras, props, glove, white batting helmet) and renders toon-shaded, outlined front-on frames → `public/modules/sprites/kids/<id>.webp` (8-column atlas) and `kids.json` (per frame: set `g`/`n`/`b`/`h`, limb angles `la`/`ra`/`ll`/`rl`, hand, head and chest anchors). `drawKid` draws the nearest frame (`kidSheet`, `nearestKidFrame`, `drawKidSprite`; helmets tinted by `tintedHelmets`) and falls back to the drawn kid until the atlas loads or with `?sprites=0` — run with `blender -b -P modules-src/sandlot/tools/build-kids.py -- [ids]`.
+- `modules-src/sandlot/tools/export-roster.mjs` — prints `ROSTER` from `index.html` as JSON (with each kid's height) for `build-kids.py`.
 
 ### botwreck — BotWreck 3D
 - `modules-src/botwreck/index.html` — page shell, loads `module-scores.js` — `vite.modules.ts` (→ `public/modules/botwreck.html`).
