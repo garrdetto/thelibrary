@@ -13,6 +13,7 @@ import {
   type Hand,
   type PitchIntent,
   type PitchOutcome,
+  type PreOutcome,
   type Sample,
   type SwingIntent,
   type SwingType,
@@ -26,8 +27,10 @@ import type { Screens, SetupChoice } from '../ui/Screens'
 import type { Broadcast } from '../ui/Broadcast'
 import type { BallparkAudio } from './Audio'
 import { marksBetween, sampleKeys, tracksOf } from './Playback'
+import type { IntentFeed } from './Online'
+import { ONLINE_PACE } from '../shared/Online'
 
-type Stage = 'idle' | 'between' | 'aim' | 'meter' | 'windup' | 'flight' | 'play' | 'replay' | 'final'
+type Stage = 'idle' | 'between' | 'aim' | 'meter' | 'await' | 'windup' | 'flight' | 'play' | 'replay' | 'final'
 type View = 'batting' | 'centerfield'
 
 /** Broadcast pieces the director cues: overlays, sound and the post chain's depth of field for replays. */
@@ -96,6 +99,9 @@ export class Director {
   private effort = 0
   private stealArmed = false
   private seed = 1
+  private feed: IntentFeed | null = null
+  private sentPre = false
+  private waitNoticeAt = 0
   private readonly camera: CameraPose = { position: new THREE.Vector3(), target: new THREE.Vector3(), fov: 50 }
   private readonly goal: CameraPose = { position: new THREE.Vector3(), target: new THREE.Vector3(), fov: 50 }
   private readonly raycaster = new THREE.Raycaster()
@@ -127,8 +133,56 @@ export class Director {
     const skill = (side: 0 | 1) => (human(side) || this.humans.size === 0 ? 0 : choice.level.skill)
     const pci = (side: 0 | 1) => (human(side) ? choice.level.pci * (choice.assist ? this.config.assist.pci : 1) : 1)
     const setup: ContestSetup = { seed, away, home, innings: choice.innings, dh: choice.dh, autoRunner: choice.autoRunner, mercy: choice.mercy, aiSkill: [skill(0), skill(1)], pciScale: [pci(0), pci(1)] }
+    this.feed = null
+    return this.begin(choice, setup, choice.level.pace)
+  }
+
+  /** An online contest: this page plays `feed.side`; every decision comes back from the server as an input record before it is applied, so both pages stay in step. A page that joins mid-contest fast-forwards through the log first. */
+  startOnline(choice: SetupChoice, setup: ContestSetup, feed: IntentFeed): Contest {
+    this.choice = { ...choice, assist: false }
+    this.seed = setup.seed
+    this.humans = new Set([feed.side])
+    this.feed = feed
+    this.sentPre = false
+    const contest = this.begin(this.choice, setup, ONLINE_PACE)
+    let caughtUp = false
+    for (;;) {
+      const index = contest.log.length
+      const record = feed.next(contest.phase === 'pre' ? 'pre' : contest.phase === 'pitch' ? 'pitch' : 'swing', index)
+      if (!record || contest.phase === 'final') break
+      if (record.kind === 'pre') contest.prePitch(record.intent)
+      else if (record.kind === 'pitch') contest.preparePitch(record.intent)
+      else contest.resolveSwing(record.intent)
+      caughtUp = true
+    }
+    if (!caughtUp) return contest
+    this.screens.resetLog()
+    this.resetScene()
+    if (contest.phase === 'final') this.finish()
+    else if (contest.phase === 'swing' && contest.lastPitch) this.throwPitch(contest.lastPitch)
+    return contest
+  }
+
+  get online(): boolean {
+    return !!this.feed
+  }
+
+  /** Ends an online contest early (forfeit or concession) with the final card, credited to the server's winner. */
+  endOnline(winner: 0 | 1): void {
+    if (!this.contest || this.stage === 'final') return
+    this.forcedWinner = winner
+    this.finish()
+  }
+
+  private forcedWinner: 0 | 1 | null = null
+
+  leaveOnline(): void {
+    this.feed = null
+  }
+
+  private begin(choice: SetupChoice, setup: ContestSetup, pace: number): Contest {
     this.contest = new Contest(setup)
-    this.flightScale = choice.level.pace
+    this.flightScale = pace
     this.view = this.humans.size === 0 ? 'centerfield' : 'batting'
     this.stealArmed = false
     this.lastBatter = null
@@ -148,7 +202,7 @@ export class Director {
   }
 
   rematch(): Contest | null {
-    if (!this.choice) return null
+    if (!this.choice || this.feed) return null
     return this.start(this.choice, this.seed + 1)
   }
 
@@ -236,6 +290,9 @@ export class Director {
         case 'meter':
           this.updateAim(contest, dt)
           break
+        case 'await':
+          this.updateAwait(contest)
+          break
         case 'windup':
           this.updateWindup(dt)
           break
@@ -253,25 +310,52 @@ export class Director {
     this.updateCamera(dt)
   }
 
+  private stealBases(contest: Contest): number[] {
+    return this.stealArmed ? [2, 1].filter((base) => contest.bases[base] && !contest.bases[base + 1]) : []
+  }
+
+  private waitOnline(feed: IntentFeed): void {
+    if (this.stageTime < 1.5 || this.clock - this.waitNoticeAt < 3) return
+    this.waitNoticeAt = this.clock
+    this.screens.say(feed.waitingFor(), 2.8)
+  }
+
   private updateBetween(contest: Contest): void {
     if (this.stageTime < this.config.timing.betweenPitches) return
-    const suggestion = contest.suggestPrePitch()
-    if (this.humanBatting) {
-      suggestion.steal = this.stealArmed ? [2, 1].filter((base) => contest.bases[base] && !contest.bases[base + 1]) : []
-      suggestion.pinchHit = null
+    const feed = this.feed
+    if (contest.phase === 'pre') {
+      let pre: PreOutcome
+      if (feed) {
+        if (this.humanBatting && !this.sentPre) {
+          feed.send({ t: 'pre', steal: this.stealBases(contest) })
+          this.sentPre = true
+        }
+        const record = feed.next('pre', contest.log.length)
+        if (!record) return this.waitOnline(feed)
+        this.sentPre = false
+        pre = contest.prePitch(record.intent)
+        feed.applied(contest.log.length - 1, contest)
+      } else {
+        const suggestion = contest.suggestPrePitch()
+        if (this.humanBatting) {
+          suggestion.steal = this.stealBases(contest)
+          suggestion.pinchHit = null
+        }
+        pre = contest.prePitch(suggestion)
+      }
+      if (pre.events.length) this.screens.say(pre.events.join(' '), 2.6)
+      if (pre.final) return this.finish()
+      if (pre.halfOver) {
+        this.halfBreak()
+        return
+      }
+      this.screens.updateBug(contest)
+      if (pre.events.length) {
+        this.actors.setScene(contest, this.batterHand())
+        this.actors.setZone(contest.batter.height)
+      }
     }
-    const pre = contest.prePitch(suggestion)
-    if (pre.events.length) this.screens.say(pre.events.join(' '), 2.6)
-    if (pre.final) return this.finish()
-    if (pre.halfOver) {
-      this.halfBreak()
-      return
-    }
-    this.screens.updateBug(contest)
-    if (pre.events.length) {
-      this.actors.setScene(contest, this.batterHand())
-      this.actors.setZone(contest.batter.height)
-    }
+    if (contest.phase !== 'pitch') return
     if (this.humanPitching) {
       this.pitchIndex = Math.min(this.pitchIndex, contest.pitcher.pitching!.repertoire.length - 1)
       this.screens.showPicker(contest.pitcher.pitching!.repertoire, this.pitchIndex, (index) => this.pickPitch(index))
@@ -281,7 +365,38 @@ export class Director {
       this.enter('aim')
       return
     }
+    if (feed) {
+      const record = feed.next('pitch', contest.log.length)
+      if (!record) return this.waitOnline(feed)
+      return this.throwPitch(this.applyPitch(contest, record.intent))
+    }
     this.throwPitch(contest.preparePitch(null))
+  }
+
+  private applyPitch(contest: Contest, intent: PitchIntent): ThrownPitch {
+    const thrown = contest.preparePitch(intent)
+    this.feed?.applied(contest.log.length - 1, contest)
+    return thrown
+  }
+
+  /** Online: this page has sent its decision (or is waiting on the opponent's) and holds until the server's record arrives. */
+  private updateAwait(contest: Contest): void {
+    const feed = this.feed
+    if (!feed) return
+    if (contest.phase === 'pitch') {
+      const record = feed.next('pitch', contest.log.length)
+      if (!record) return this.waitOnline(feed)
+      this.throwPitch(this.applyPitch(contest, record.intent))
+      return
+    }
+    if (contest.phase !== 'swing') return
+    const record = feed.next('swing', contest.log.length)
+    if (!record) return this.waitOnline(feed)
+    const swing = record.intent
+    if (!this.humanBatting && swing.action === 'swing') this.actors.swing(swing.type, swing.type === 'bunt' ? 0.4 : this.swingDuration(1))
+    const outcome = contest.resolveSwing(swing)
+    feed.applied(contest.log.length - 1, contest)
+    this.settle(contest, outcome)
   }
 
   private pickPitch(index: number): void {
@@ -346,6 +461,11 @@ export class Director {
       }
       this.screens.hidePicker()
       this.actors.setCursor(false)
+      if (this.feed) {
+        this.feed.send({ t: 'pitch', intent })
+        this.enter('await')
+        return
+      }
       this.throwPitch(contest.preparePitch(intent))
     }
   }
@@ -408,7 +528,7 @@ export class Director {
         this.actors.setCursor(true, this.cursor.x, this.cursor.y, pciRadius('contact') * (this.contest?.setup.pciScale?.[this.contest.battingSide] ?? 1))
       } else this.moveCursor(dt, pciRadius(this.swingPress?.type ?? 'contact'))
       this.readSwing(t)
-    } else if (!this.pending && t >= arrival - this.config.timing.swingLag) {
+    } else if (!this.feed && !this.pending && t >= arrival - this.config.timing.swingLag) {
       this.pending = contest.resolveSwing(null)
       if (this.pending.swing.action === 'swing') this.actors.swing(this.pending.swing.type, this.pending.swing.type === 'bunt' ? 0.4 : this.swingDuration(scale))
     }
@@ -426,8 +546,19 @@ export class Director {
         swing = { action: 'swing', type: press.type, timing, aimX: Math.round(this.cursor.x * 1000), aimY: Math.round(this.cursor.y * 1000) }
       }
     }
+    if (this.feed) {
+      if (swing) this.feed.send({ t: 'swing', intent: swing })
+      this.enter('await')
+      return
+    }
     const outcome = this.pending ?? contest.resolveSwing(swing)
     this.pending = null
+    this.settle(contest, outcome)
+  }
+
+  /** Lands a resolved pitch on screen: the catch or the crack of the bat, calls, the play's timeline and the crowd. */
+  private settle(contest: Contest, outcome: PitchOutcome): void {
+    const thrown = outcome.pitch
     const audio = this.presentation.audio
     if (!outcome.batted) {
       this.actors.catchPitch({ x: thrown.plateX, y: thrown.plateY, z: -0.6 })
@@ -634,9 +765,11 @@ export class Director {
     this.screens.hidePicker()
     this.actors.setCursor(false)
     this.screens.updateBug(contest)
-    this.screens.showFinal(contest, this.humans.size === 1 ? [...this.humans][0] : null)
+    const winner = this.forcedWinner ?? contest.winner
+    this.forcedWinner = null
+    this.screens.showFinal(contest, this.humans.size === 1 ? [...this.humans][0] : null, winner)
     this.presentation.broadcast.say(`That's the final: ${contest.teams[0].roster.team.abbr} ${contest.score[0]}, ${contest.teams[1].roster.team.abbr} ${contest.score[1]}.`, 4)
-    if (contest.winner !== null) this.actors.celebrate(contest.teams[contest.winner].roster.team.id)
+    if (winner !== null) this.actors.celebrate(contest.teams[winner].roster.team.id)
     this.setPose('overview')
     this.hooks.onFinal(contest)
   }

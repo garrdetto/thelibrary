@@ -8,6 +8,9 @@ import { Contest, parkById, stringSeed } from './sim'
 import { Director, type Scenery } from './systems/Director'
 import { Screens, type SetupChoice } from './ui/Screens'
 import { Broadcast } from './ui/Broadcast'
+import { OnlinePanel } from './ui/OnlinePanel'
+import { OnlineLink, type ConnectOptions, type FinalMessage, type OnlineEvents } from './systems/Online'
+import { isRoomCode } from './shared/Online'
 import { BallparkAudio } from './systems/Audio'
 import { Actors } from './view/Actors'
 import { createCrowd, type Crowd } from './view/Crowd'
@@ -18,7 +21,7 @@ import { createStadiumLights, type StadiumLights } from './view/Lights'
 declare global {
   interface Window {
     __tlModule?: { app: App; backend: string; tier: string; steps: () => number }
-    __bushleague?: { director: Director; start(choice?: Partial<SetupChoice>, seed?: number): Contest; contest(): Contest | null; tick(dt: number): void; scene(): { crowd: number; grass: number; post: boolean; cascades: number }; react(kind: 'homer' | 'final'): void }
+    __bushleague?: { director: Director; start(choice?: Partial<SetupChoice>, seed?: number): Contest; contest(): Contest | null; tick(dt: number): void; scene(): { crowd: number; grass: number; post: boolean; cascades: number }; react(kind: 'homer' | 'final'): void; online(): OnlineLink | null }
   }
 }
 
@@ -100,6 +103,7 @@ async function boot(): Promise<void> {
       },
       onFinal() {
         screens.setHint('')
+        if (link?.finalMessage) showOnlineResult(link.finalMessage)
       },
     },
     scenery,
@@ -117,18 +121,137 @@ async function boot(): Promise<void> {
     seed = customSeed ?? seed + 1
     return director.start(choice, seed)
   }
-  screens.bindSetup((choice) => start(choice))
-  screens.showSetup(true)
-  document.getElementById('rematch-button')?.addEventListener('click', () => {
-    screens.hideFinal()
-    director.rematch()
-  })
-  document.getElementById('new-button')?.addEventListener('click', () => {
+  const panel = new OnlinePanel()
+  const rematchButton = document.getElementById('rematch-button') as HTMLButtonElement
+  let link: OnlineLink | null = null
+  let inviteRequested = false
+
+  const postRoom = (code: string) => {
+    try {
+      if (window.parent !== window) window.parent.postMessage({ type: 'tl-room', code }, location.origin)
+    } catch {
+      /* standalone */
+    }
+  }
+
+  function showOnlineResult(message: FinalMessage): void {
+    if (!link) return
+    const mine = message.winner === link.side
+    const text = message.reason === 'forfeit' ? (mine ? 'Your opponent did not come back, so the win is yours.' : 'You were away too long, so this one went to your opponent.') : message.reason === 'concede' ? (mine ? 'Your opponent conceded.' : 'You conceded.') : link.ranked ? 'Ranked result saved.' : ''
+    panel.showResult(text, message.ratings[link.side])
+    rematchButton.hidden = link.ranked
+    rematchButton.disabled = false
+    rematchButton.textContent = 'Rematch'
+    void panel.refreshRatings()
+  }
+
+  const leaveOnline = () => {
+    link?.close()
+    link = null
+    director.leaveOnline()
+    panel.hideLobby()
+    panel.setOpponent([], null, false)
+    panel.clearResult()
+    rematchButton.hidden = false
+    rematchButton.disabled = false
+    rematchButton.textContent = 'Rematch'
+  }
+
+  const backToSetup = () => {
     screens.hideFinal()
     screens.showSetup(true)
     broadcast.hide()
     director.stage = 'idle'
+  }
+
+  const goOnline = (options: Omit<ConnectOptions, 'team' | 'options'>) => {
+    leaveOnline()
+    const choice = screens.readChoice()
+    screens.setup.hidden = true
+    panel.setNote('')
+    panel.showLobby('Connecting', 'Opening the line to the ballpark…', [], null)
+    const events: OnlineEvents = {
+      lobby: (title, text, players, code) => {
+        panel.showLobby(title, text, players, code)
+        if (code && inviteRequested) {
+          inviteRequested = false
+          postRoom(code)
+        }
+      },
+      start: (setup, current, players) => {
+        panel.hideLobby()
+        panel.clearResult()
+        screens.showSetup(false)
+        screens.hideFinal()
+        director.startOnline(choice, setup, current)
+        panel.setOpponent(players, current.side, current.ranked)
+        panel.setConcede(true)
+      },
+      players: (players) => {
+        if (!link) return
+        panel.setOpponent(link.setup ? players : [], link.side, link.ranked)
+        if (!link.setup && !link.ranked && link.code) panel.showLobby(`Room ${link.code}`, players.length > 1 ? 'Both players are here.' : 'Waiting for your opponent to join…', players, link.code)
+      },
+      final: (message) => {
+        panel.setConcede(false)
+        if (message.reason !== 'final') director.endOnline(message.winner)
+        else if (director.stage === 'final') showOnlineResult(message)
+      },
+      rematch: (sides) => {
+        if (!link) return
+        screens.say(sides.includes(link.side) ? 'Waiting for your opponent to accept the rematch…' : 'Your opponent wants a rematch.', 3)
+      },
+      notice: (text) => screens.say(text, 3.2),
+      ended: (text) => {
+        const atFinal = director.stage === 'final'
+        leaveOnline()
+        if (atFinal) return
+        backToSetup()
+        panel.setNote(text)
+      },
+    }
+    link = new OnlineLink(events, { ...options, team: choice.team, options: { innings: choice.innings, dh: choice.dh, autoRunner: choice.autoRunner, mercy: choice.mercy } })
+    link.connect()
+  }
+
+  screens.bindSetup((choice) => {
+    leaveOnline()
+    start(choice)
   })
+  panel.bind({
+    ranked: () => goOnline({ mode: 'queue' }),
+    create: () => goOnline({ mode: 'create' }),
+    join: (code) => goOnline({ mode: 'join', code }),
+    leave: () => {
+      leaveOnline()
+      backToSetup()
+    },
+    concede: () => link?.send({ t: 'concede' }),
+  })
+  screens.showSetup(true)
+  rematchButton.addEventListener('click', () => {
+    if (link) {
+      link.send({ t: 'rematch' })
+      rematchButton.disabled = true
+      rematchButton.textContent = 'Waiting for opponent…'
+      return
+    }
+    screens.hideFinal()
+    director.rematch()
+  })
+  document.getElementById('new-button')?.addEventListener('click', () => {
+    leaveOnline()
+    backToSetup()
+  })
+  addEventListener('message', (event) => {
+    if (event.origin !== location.origin || (event.data as { type?: string } | null)?.type !== 'tl-host') return
+    if (link?.code && !link.ranked) return postRoom(link.code)
+    if (link) return screens.say('Ranked matchups are paired automatically; open a private room to invite someone.', 3)
+    inviteRequested = true
+    goOnline({ mode: 'create' })
+  })
+  const invited = new URLSearchParams(location.search).get('room')?.toUpperCase() ?? ''
+  if (isRoomCode(invited)) goOnline({ mode: 'join', code: invited })
 
   let frames = 0
   const tick = (dt: number) => {
@@ -157,6 +280,7 @@ async function boot(): Promise<void> {
       scenery.celebrate(kind)
       scenery.excite(1)
     },
+    online: () => link,
   }
   addEventListener(
     'pagehide',

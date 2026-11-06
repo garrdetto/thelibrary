@@ -76,7 +76,7 @@
       #meter-effort{position:absolute;top:0;bottom:0;width:3px;background:#fff;left:0;display:none}
       #meter-mark{position:absolute;top:0;bottom:0;left:10%;width:4px;margin-left:-2px;background:#7fd6ff}
       #meter-label{font-size:12px;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8)}
-      #steal-flag{position:absolute;left:12px;top:86px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px Inter,sans-serif;letter-spacing:.6px}
+      #steal-flag{position:absolute;left:12px;top:116px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px Inter,sans-serif;letter-spacing:.6px}
       #steal-flag[hidden]{display:none}
       #log{position:absolute;right:12px;top:64px;z-index:12;width:min(320px,44vw);max-height:40%;overflow:auto;font-size:12px;padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
       #log[hidden]{display:none}
@@ -108,6 +108,18 @@
       #controls-dialog h2{margin:0 0 10px;font:800 22px Rajdhani,Inter,sans-serif}
       .bl-keys{display:grid;grid-template-columns:1fr auto auto;gap:6px 10px;align-items:center;font-size:13px}
       .bl-keys code{padding:2px 8px;border-radius:6px;background:var(--lib-panel2,#18213a)}
+      .bl-online{display:grid;gap:8px;padding-top:12px;border-top:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      .bl-code{width:118px;text-transform:uppercase;letter-spacing:2px}
+      .bl-room{font:800 34px Rajdhani,Inter,sans-serif;letter-spacing:6px;color:var(--module-accent,#e8b23a)}
+      .bl-room[hidden]{display:none}
+      .bl-players{margin:0;padding:0;list-style:none;display:grid;gap:6px}
+      .bl-players li{display:flex;justify-content:space-between;gap:10px;padding:7px 10px;border-radius:9px;background:var(--lib-chip,rgba(255,255,255,.05));font-size:13px}
+      .bl-players li.is-away{opacity:.6}
+      #bl-online-tag{position:absolute;top:86px;left:12px;z-index:12;padding:3px 10px;border-radius:999px;background:var(--lib-panel,#111829);border:1px solid var(--lib-line,rgba(120,170,255,.16));font:700 12px Inter,sans-serif;color:var(--lib-soft,#aab6d3)}
+      #bl-online-tag[hidden]{display:none}
+      .bl-link{cursor:pointer;margin-left:6px;padding:0;border:0;background:none;color:var(--module-accent,#e8b23a);font:700 12px Inter,sans-serif;text-decoration:underline}
+      .bl-link[hidden]{display:none}
+      .bl-link:focus-visible{outline:2px solid var(--module-accent,#e8b23a);outline-offset:2px}
       .bl-sliders{display:grid;gap:8px}
       .bl-sliders[hidden]{display:none}
       .bl-sliders label{display:grid;grid-template-columns:120px 1fr 44px;gap:8px;align-items:center;font-size:12.5px;text-transform:none;letter-spacing:0;color:var(--lib-soft,#aab6d3)}
@@ -135,6 +147,7 @@
       </div>
     </div>
     <div id="steal-flag" hidden>Runners going</div>
+    <div id="bl-online-tag" hidden><span id="bl-online-name"></span> <button type="button" class="bl-link" id="bl-concede">Concede</button></div>
     <div id="pitch-info" hidden><span id="pitch-type"></span> <span id="pitch-mph"></span><small id="pitch-call"></small></div>
     <div id="banner" role="status" aria-live="polite" hidden></div>
     <div id="matchup" hidden><div id="matchup-batter"></div><div id="matchup-pitcher"></div></div>
@@ -192,6 +205,22 @@
           <button type="submit" class="bl-button is-primary" id="start-button">First pitch</button>
           <button type="button" class="bl-button" id="controls-button">Controls</button>
         </div>
+        <div class="bl-online">
+          <div class="bl-label">Play online</div>
+          <p class="bl-note">You play your club above against another person. Both sides get the Pro pitch speed and contact cursor; the batting assist is off. Ranked matchups are three innings and move your rating.</p>
+          <div class="bl-row">
+            <button type="button" class="bl-button" id="online-ranked">Ranked matchup</button>
+            <button type="button" class="bl-button" id="online-create">Private room</button>
+            <input class="bl-select bl-code" id="online-code" placeholder="Room code" maxlength="6" autocomplete="off" spellcheck="false" aria-label="Room code" />
+            <button type="button" class="bl-button" id="online-join">Join</button>
+          </div>
+          <p class="bl-note" id="online-note" role="status"></p>
+          <details id="ratings">
+            <summary>Ranked ladder</summary>
+            <div class="bl-scroll"><table class="bl-table" id="ratings-table" aria-label="Ranked ladder"></table></div>
+            <p class="bl-note" id="ratings-mine"></p>
+          </details>
+        </div>
         <details>
           <summary>How the physics and the rules work</summary>
           <ul>
@@ -204,12 +233,29 @@
       </form>
     </section>
 
+    <section id="screen-lobby" class="bl-screen" aria-labelledby="lobby-title" hidden>
+      <div class="bl-card">
+        <div>
+          <div class="bl-eyebrow">Online matchup</div>
+          <h2 id="lobby-title">Connecting</h2>
+          <p id="lobby-text" role="status" aria-live="polite"></p>
+        </div>
+        <div class="bl-room" id="lobby-code" hidden></div>
+        <ul class="bl-players" id="lobby-players"></ul>
+        <div class="bl-row">
+          <button type="button" class="bl-button" id="lobby-copy" hidden>Copy code</button>
+          <button type="button" class="bl-button" id="lobby-cancel">Leave</button>
+        </div>
+      </div>
+    </section>
+
     <section id="screen-final" class="bl-screen" aria-labelledby="final-title" hidden>
       <div class="bl-card is-wide">
         <div>
           <div class="bl-eyebrow" id="final-eyebrow">Final</div>
           <h2 id="final-title">Final</h2>
           <p id="final-line"></p>
+          <p class="bl-note" id="final-online" hidden></p>
         </div>
         <div class="bl-scroll"><table class="bl-table" id="line-score" aria-label="Line score"></table></div>
         <div class="bl-grid2" id="box-tables"></div>
