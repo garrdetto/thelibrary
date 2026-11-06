@@ -2,7 +2,7 @@
  * Shaders for Thrill Park 2's Babylon.js backend, in GLSL (WebGL2) and WGSL (WebGPU).
  *
  * The park's meshes keep their packed vertex format (see `babylonBackend.ts`):
- * `position`, `pnormal` (xyz normal, w unused), `color` (sRGB base colour with the
+ * `position`, `normal` (xyz normal, w unused), `color` (sRGB base colour with the
  * tint weight in alpha) and `misc` (material id, wind sway / neon phase, baked AO,
  * all 0..1 unorm so the id is `x * 255`). Instanced meshes are Babylon thin
  * instances: `world0..3` carry the instance matrix and `instanceColor` the tint.
@@ -77,7 +77,7 @@ ${depth ? `
   vDepth = clip.z * 0.5 + 0.5;
   gl_Position = clip;
 ` : `
-  vNormal = mat3(fw) * pnormal.xyz;
+  vNormal = mat3(fw) * normal.xyz;
   vec3 c0 = mix(color.rgb, color.rgb * tint, weight);
   vColor = toLinear(c0);
   vWorld = w.xyz;
@@ -92,7 +92,7 @@ ${depth ? `
 const GLSL_VERTEX_HEAD = `
 precision highp float;
 attribute vec3 position;
-attribute vec4 pnormal;
+attribute vec4 normal;
 attribute vec4 color;
 attribute vec4 misc;
 #ifdef INSTANCES
@@ -479,7 +479,7 @@ void main() {
 
 const WGSL_VERTEX_HEAD = `
 attribute position : vec3f;
-attribute pnormal : vec4f;
+attribute normal : vec4f;
 attribute color : vec4f;
 attribute misc : vec4f;
 #ifdef INSTANCES
@@ -537,7 +537,7 @@ ${depth ? `
   vertexOutputs.vDepth = clip.z * 0.5 + 0.5;
   vertexOutputs.position = vec4f(clip.x, clip.y, clip.z * 0.5 + 0.5, 1.0);
 ` : `
-  vertexOutputs.vNormal = (fw * vec4f(vertexInputs.pnormal.xyz, 0.0)).xyz;
+  vertexOutputs.vNormal = (fw * vec4f(vertexInputs.normal.xyz, 0.0)).xyz;
   vertexOutputs.vColor = toLinear(mix(vertexInputs.color.rgb, vertexInputs.color.rgb * tint, weight));
   vertexOutputs.vWorld = w.xyz;
   vertexOutputs.vAo = vertexInputs.misc.z;

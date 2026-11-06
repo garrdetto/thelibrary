@@ -6,6 +6,7 @@ import { Constants } from '@babylonjs/core/Engines/constants'
 import { Engine } from '@babylonjs/core/Engines/engine'
 import { ShaderStore } from '@babylonjs/core/Engines/shaderStore'
 import { WebGPUEngine } from '@babylonjs/core/Engines/webgpuEngine'
+import '@babylonjs/core/Engines/WebGPU/Extensions/engine.multiRender'
 import { ColorCurves } from '@babylonjs/core/Materials/colorCurves'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { Material } from '@babylonjs/core/Materials/material'
@@ -21,6 +22,7 @@ import { Geometry } from '@babylonjs/core/Meshes/geometry'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import '@babylonjs/core/Meshes/thinInstanceMesh'
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
+import { SSAO2RenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/ssao2RenderingPipeline'
 import { Scene } from '@babylonjs/core/scene'
 import { packMesh, BYTES, DETAIL_SIZE, DETAIL_LAYERS } from '../park/gl'
 import type { MeshBuilder, Mat4, Vec3, Lighting } from '../park/gl'
@@ -49,12 +51,12 @@ type ParkMesh = {
   version: number
 }
 
-type Tier = { shadowRes: number; cascades: number; taps: number; frame: boolean; samples: number; bloom: number; lamps: number; grading: boolean; fx: number; haze: number }
+type Tier = { shadowRes: number; cascades: number; taps: number; frame: boolean; samples: number; bloom: number; ssao: boolean; lamps: number; grading: boolean; fx: number; haze: number }
 
 const TIERS: Tier[] = [
-  { shadowRes: 1024, cascades: 1, taps: 4, frame: false, samples: 1, bloom: 0, lamps: 10, grading: false, fx: 0, haze: 0.0007 },
-  { shadowRes: 2048, cascades: 2, taps: 8, frame: true, samples: 2, bloom: 0.12, lamps: 20, grading: true, fx: 1, haze: 0.0012 },
-  { shadowRes: 2048, cascades: 3, taps: 12, frame: true, samples: 4, bloom: 0.17, lamps: 32, grading: true, fx: 2, haze: 0.0017 },
+  { shadowRes: 1024, cascades: 1, taps: 4, frame: false, samples: 1, bloom: 0, ssao: false, lamps: 10, grading: false, fx: 0, haze: 0.0007 },
+  { shadowRes: 2048, cascades: 2, taps: 8, frame: true, samples: 2, bloom: 0.12, ssao: false, lamps: 20, grading: true, fx: 1, haze: 0.0012 },
+  { shadowRes: 2048, cascades: 3, taps: 12, frame: true, samples: 4, bloom: 0.17, ssao: true, lamps: 32, grading: true, fx: 2, haze: 0.0017 },
 ]
 
 const ZOOMS = [1, 3.2, 10]
@@ -99,11 +101,12 @@ const dummyColor = (scene: Scene) => new RawTexture(new Uint8Array([255, 255, 25
  * front faces are counter-clockwise, which every pooled mesh states because
  * Babylon defaults meshes in a right-handed scene to clockwise. Babylon adds
  * cascaded sun shadows (depth maps rendered by `RenderTargetTexture`s), lamp
- * lights, and MSAA, bloom and grading through its default rendering pipeline.
- * There is no screen-space ambient occlusion: Babylon's SSAO2 reads depth and
- * normals from its prepass, which only prepass-capable materials write, so it
- * never saw these `ShaderMaterial`s: on WebGL2 it did nothing but turn MSAA
- * off, and on WebGPU it either threw or darkened the whole frame.
+ * lights, MSAA, bloom and grading through its default rendering pipeline,
+ * and ambient occlusion on high through SSAO2 in geometry-buffer mode: its
+ * default prepass mode reads depth and normals only prepass-capable materials
+ * write, so it never saw these `ShaderMaterial`s, while the geometry buffer
+ * draws every mesh again with its own shader and the standard `normal`
+ * attribute, which the packed normal is bound as.
  */
 export class BabylonBackend implements RenderBackend {
   readonly shadowsAvailable = true
@@ -138,6 +141,7 @@ export class BabylonBackend implements RenderBackend {
   private invViewProj = new Matrix()
   private viewProj = new Matrix()
   private pipeline: DefaultRenderingPipeline | null = null
+  private ssao: SSAO2RenderingPipeline | null = null
   private level = -1
   private wantLevel = 1
   private wantSince = 0
@@ -159,6 +163,8 @@ export class BabylonBackend implements RenderBackend {
   private camPark = new Float32Array(3)
   private warm: { mesh: ParkMesh; frames: number } | null = null
   private renderErrors = 0
+  private ssaoErrors = 0
+  private ssaoFailed = false
   private viewInv = new Float32Array(16)
 
   constructor(canvas: HTMLCanvasElement) {
@@ -263,6 +269,7 @@ export class BabylonBackend implements RenderBackend {
     const t = this.tier
     this.buildShadowTargets()
     this.pipeline?.dispose(); this.pipeline = null
+    this.ssao?.dispose(); this.ssao = null
     if (t.frame) this.buildPipeline()
     if (lowChanged) {
       for (const pool of this.active) for (const d of pool.list) d.mesh.isVisible = false
@@ -336,6 +343,16 @@ export class BabylonBackend implements RenderBackend {
       ip.vignetteBlendMode = ImageProcessingConfiguration.VIGNETTEMODE_MULTIPLY
     }
     this.pipeline = pipeline
+    if (t.ssao && !this.ssaoFailed) {
+      const ssao = new SSAO2RenderingPipeline('park-ssao', scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera], true)
+      ssao.radius = 3
+      ssao.totalStrength = 0.7
+      ssao.samples = 12
+      ssao.maxZ = 250
+      ssao.expensiveBlur = true
+      this.ssao = ssao
+      this.ssaoErrors = 0
+    }
   }
 
   private prepareWarmup() {
@@ -402,7 +419,7 @@ export class BabylonBackend implements RenderBackend {
     const attribute = (kind: string, offset: number, size: number, type: number, normalized: boolean) =>
       new VertexBuffer(engine, buffer, kind, { offset, size, stride: BYTES, type, normalized, useBytes: true })
     geometry.setVerticesBuffer(attribute(VertexBuffer.PositionKind, 0, 3, VertexBuffer.FLOAT, false), m.unique)
-    geometry.setVerticesBuffer(attribute('pnormal', 12, 4, VertexBuffer.BYTE, true), m.unique)
+    geometry.setVerticesBuffer(attribute(VertexBuffer.NormalKind, 12, 4, VertexBuffer.BYTE, true), m.unique)
     geometry.setVerticesBuffer(attribute(VertexBuffer.ColorKind, 16, 4, VertexBuffer.UNSIGNED_BYTE, true), m.unique)
     geometry.setVerticesBuffer(attribute('misc', 20, 4, VertexBuffer.UNSIGNED_BYTE, true), m.unique)
     m.indexBuffer.references++
@@ -452,7 +469,7 @@ export class BabylonBackend implements RenderBackend {
   private materialFor(depth: boolean, low: boolean, blend: boolean, cull: boolean, depthWrite: boolean, lines: boolean, d: { uD: Float32Array }) {
     const scene = this.scene!
     const mat = new ShaderMaterial(depth ? 'park-depth' : 'park', scene, depth ? 'parkDepth' : 'parkMain', {
-      attributes: ['position', 'pnormal', 'color', 'misc'],
+      attributes: ['position', 'normal', 'color', 'misc'],
       uniforms: ['world', 'viewProjection', 'uG', 'uD', 'uMatA', 'uMatB', 'uL', 'uC'],
       samplers: depth ? [] : ['uDetail', 'uShadow0', 'uShadow1', 'uShadow2'],
       defines: low ? ['PARK_LOW'] : [],
@@ -742,15 +759,23 @@ export class BabylonBackend implements RenderBackend {
       scene.render()
       engine.endFrame()
       this.renderErrors = 0
+      this.ssaoErrors = 0
     } catch (error) {
       this.renderErrors++
-      if (this.renderErrors === 1 || this.renderErrors === 120) console.error('Thrill Park 2 could not draw a frame.', error)
+      if (this.ssao && ++this.ssaoErrors > 5) {
+        console.warn('Thrill Park 2: ambient occlusion kept failing and was turned off.', error)
+        this.ssaoFailed = true
+        this.ssao.dispose(); this.ssao = null
+      } else if (!this.ssao && (this.renderErrors === 1 || this.renderErrors === 120)) {
+        console.error('Thrill Park 2 could not draw a frame.', error)
+      }
     }
   }
 
   dispose() {
     for (const m of [...this.meshes]) this.free(m)
     this.pipeline?.dispose()
+    this.ssao?.dispose()
     this.scene?.dispose()
     this.engine?.dispose()
     this.ready = false
