@@ -61,6 +61,7 @@ const TIERS: Tier[] = [
 
 const ZOOMS = [1, 3.2, 10]
 const SHADOW_LAYER = 0x10000000
+const BRIGHTNESS = 1.25
 const MAIN_GROUP = 1
 const SLOT_DEFAULT = 1
 
@@ -101,8 +102,12 @@ const dummyColor = (scene: Scene) => new RawTexture(new Uint8Array([255, 255, 25
  * front faces are counter-clockwise, which every pooled mesh states because
  * Babylon defaults meshes in a right-handed scene to clockwise. Babylon adds
  * cascaded sun shadows (depth maps rendered by `RenderTargetTexture`s), lamp
- * lights, MSAA, bloom, grading and ambient occlusion through its rendering
- * pipelines.
+ * lights, MSAA, bloom and grading through its default rendering pipeline,
+ * and ambient occlusion on high through SSAO2 in geometry-buffer mode: its
+ * default prepass mode reads depth and normals only prepass-capable materials
+ * write, so it never saw these `ShaderMaterial`s, while the geometry buffer
+ * draws every mesh again with its own shader and the standard `normal`
+ * attribute, which the packed normal is bound as.
  */
 export class BabylonBackend implements RenderBackend {
   readonly shadowsAvailable = true
@@ -158,8 +163,9 @@ export class BabylonBackend implements RenderBackend {
   private lampOrder: number[] = []
   private camPark = new Float32Array(3)
   private warm: { mesh: ParkMesh; frames: number } | null = null
-  private ssaoFailed = false
   private renderErrors = 0
+  private ssaoErrors = 0
+  private ssaoFailed = false
   private viewInv = new Float32Array(16)
 
   constructor(canvas: HTMLCanvasElement) {
@@ -326,12 +332,12 @@ export class BabylonBackend implements RenderBackend {
     ip.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES
     ip.exposure = 1
     if (t.grading) {
-      ip.contrast = 1.12
+      ip.contrast = 1.04
       const curves = new ColorCurves()
       curves.globalSaturation = 16
       ip.colorCurvesEnabled = true
       ip.colorCurves = curves
-      ip.vignetteEnabled = true
+      ip.vignetteEnabled = false
       ip.vignetteWeight = 1.1
       ip.vignetteStretch = 0
       ip.vignetteColor = new Color4(0, 0, 0, 0)
@@ -339,18 +345,14 @@ export class BabylonBackend implements RenderBackend {
     }
     this.pipeline = pipeline
     if (t.ssao && !this.ssaoFailed) {
-      try {
-        const ssao = new SSAO2RenderingPipeline('park-ssao', scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera])
-        ssao.radius = 6
-        ssao.totalStrength = 0.7
-        ssao.samples = 12
-        ssao.maxZ = 250
-        ssao.expensiveBlur = false
-        this.ssao = ssao
-      } catch (error) {
-        this.ssaoFailed = true
-        console.warn('Thrill Park 2: screen-space ambient occlusion is unavailable; baked occlusion is still used.', error)
-      }
+      const ssao = new SSAO2RenderingPipeline('park-ssao', scene, { ssaoRatio: 0.5, blurRatio: 1 }, [camera], true)
+      ssao.radius = 3
+      ssao.totalStrength = 0.7
+      ssao.samples = 12
+      ssao.maxZ = 250
+      ssao.expensiveBlur = true
+      this.ssao = ssao
+      this.ssaoErrors = 0
     }
   }
 
@@ -418,7 +420,7 @@ export class BabylonBackend implements RenderBackend {
     const attribute = (kind: string, offset: number, size: number, type: number, normalized: boolean) =>
       new VertexBuffer(engine, buffer, kind, { offset, size, stride: BYTES, type, normalized, useBytes: true })
     geometry.setVerticesBuffer(attribute(VertexBuffer.PositionKind, 0, 3, VertexBuffer.FLOAT, false), m.unique)
-    geometry.setVerticesBuffer(attribute('pnormal', 12, 4, VertexBuffer.BYTE, true), m.unique)
+    geometry.setVerticesBuffer(attribute(VertexBuffer.NormalKind, 12, 4, VertexBuffer.BYTE, true), m.unique)
     geometry.setVerticesBuffer(attribute(VertexBuffer.ColorKind, 16, 4, VertexBuffer.UNSIGNED_BYTE, true), m.unique)
     geometry.setVerticesBuffer(attribute('misc', 20, 4, VertexBuffer.UNSIGNED_BYTE, true), m.unique)
     m.indexBuffer.references++
@@ -468,7 +470,7 @@ export class BabylonBackend implements RenderBackend {
   private materialFor(depth: boolean, low: boolean, blend: boolean, cull: boolean, depthWrite: boolean, lines: boolean, d: { uD: Float32Array }) {
     const scene = this.scene!
     const mat = new ShaderMaterial(depth ? 'park-depth' : 'park', scene, depth ? 'parkDepth' : 'parkMain', {
-      attributes: ['position', 'pnormal', 'color', 'misc'],
+      attributes: ['position', 'normal', 'color', 'misc'],
       uniforms: ['world', 'viewProjection', 'uG', 'uD', 'uMatA', 'uMatB', 'uL', 'uC'],
       samplers: depth ? [] : ['uDetail', 'uShadow0', 'uShadow1', 'uShadow2'],
       defines: low ? ['PARK_LOW'] : [],
@@ -632,7 +634,7 @@ export class BabylonBackend implements RenderBackend {
     const set = (row: number, v: ArrayLike<number>, w: number) => { g[row * 4] = v[0]; g[row * 4 + 1] = v[1]; g[row * 4 + 2] = v[2]; g[row * 4 + 3] = w }
     set(0, s, shadowStrength)
     set(1, light.sunColor, light.neon ?? 0.6)
-    set(2, light.sky, light.exposure)
+    set(2, light.sky, light.exposure * BRIGHTNESS)
     set(3, light.ground, time)
     set(4, light.horizon, light.fogDensity > 0 ? light.fogDensity : this.tier.haze * (light.wind > 0.1 ? 1.8 : 1))
     set(5, light.fog, light.fogFalloff)
@@ -645,7 +647,7 @@ export class BabylonBackend implements RenderBackend {
       this.skyBottom.set(light.skyBottom[0], light.skyBottom[1], light.skyBottom[2])
     }
     if (this.scene) this.scene.clearColor = new Color4(light.fog[0], light.fog[1], light.fog[2], 1)
-    if (this.pipeline) this.pipeline.imageProcessing.exposure = light.exposure
+    if (this.pipeline) this.pipeline.imageProcessing.exposure = light.exposure * BRIGHTNESS
   }
 
   /** Lowers the render scale while frames run slow and raises it back when they recover. */
@@ -758,13 +760,14 @@ export class BabylonBackend implements RenderBackend {
       scene.render()
       engine.endFrame()
       this.renderErrors = 0
+      this.ssaoErrors = 0
     } catch (error) {
       this.renderErrors++
-      if (this.ssao) {
-        console.warn('Thrill Park 2: ambient occlusion failed and was turned off.', error)
+      if (this.ssao && ++this.ssaoErrors > 5) {
+        console.warn('Thrill Park 2: ambient occlusion kept failing and was turned off.', error)
         this.ssaoFailed = true
         this.ssao.dispose(); this.ssao = null
-      } else if (this.renderErrors === 1 || this.renderErrors === 120) {
+      } else if (!this.ssao && (this.renderErrors === 1 || this.renderErrors === 120)) {
         console.error('Thrill Park 2 could not draw a frame.', error)
       }
     }

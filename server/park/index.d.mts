@@ -78,7 +78,7 @@ export function buildableRide(def: FlatRideDef | undefined): boolean
 export type FlatResize = { min: [number, number]; max: [number, number]; costBase: number; costPerTile: number; upkeepBase: number; upkeepPerTile: number; capacityPerTile: number; excitementPerTile: number; maxSizeBonus: number }
 export type WaveSetting = { name: string; e: number; i: number; n: number; height: number; speed: number }
 export type FlatSpec = { size: [number, number]; cost: number; upkeep: number; capacity: number; rideTime: number; loadTime: number; height: number; stats: { e: number; i: number; n: number } }
-export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; corkscrews?: boolean; hairpin?: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
+export type CoasterStyle = { name: string; category?: string; trackType?: 'coaster' | 'kart' | 'slide' | 'river'; cost: number; pieceCost: number; upkeep: number; maxHeight: number; loops: boolean; steep: boolean; corkscrews?: boolean; hairpin?: boolean; wide?: boolean; seats: number; excitementBonus: number; intensityBonus: number; drive?: number; maxSpeed?: number; track: string; support: string; train: string; description: string }
 export type StallDef = { name: string; size?: [number, number]; cost: number; upkeep: number; price: number; item: string; kind: string; color: string; sign: string; hunger?: number; thirst?: number; happiness?: number }
 export type ScenarioDef = { name: string; difficulty: string; size: number; seed: number; terrain: string; cash: number; loan: number; maxLoan: number; objective: Objective; description: string; versus?: boolean }
 
@@ -222,9 +222,11 @@ export function queueStep(map: ParkMap, cur: [number, number], forward: boolean,
 export function queueLayout(map: ParkMap, x: number, y: number, openings?: number[], links?: { prev: number; next: number } | null): QueueLayout
 export const KARTS_PER_STATION_TILE: number
 export const KART_LIMIT: number
-export function kartCount(stationLength: number): number
-export function kartRestS(path: TrackPath, index: number): number
-export function kartLane(index: number): number
+export function kartLanes(style: string): number
+export function kartLimit(style: string): number
+export function kartCount(stationLength: number, style?: string): number
+export function kartRestS(path: TrackPath, index: number, lanes?: number): number
+export function kartLane(index: number, lanes?: number): number
 export const ROLES: ColorRole[]
 export const ROLE_NAMES: Record<ColorRole, string>
 export const SCHEME_COUNT: number
