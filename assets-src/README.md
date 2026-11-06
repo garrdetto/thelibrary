@@ -11,6 +11,8 @@ Modules without 3D models (chess, checkers, 2048, Chopper Cave, the 2D Sandlot S
 - `truck_unpainted.glb`: the bare truck model (`TM.buildTruck`) without liveries.
 - `track_<bullring|dells|dirt>.glb`: each track's surface, walls, grandstands, pits, lights and ground.
 - `crowd_<track>.glb`, `trees_<track>.glb`: the instanced crowd and tree line (`EXT_mesh_gpu_instancing`).
+- `car_slm_lod<0|1|2>.glb`: the stock Super Late Model from `public/modules/shorttrack-car.bin` at 35k / 18k / 4k triangles, made by `scripts/blender/shorttrack/stock_car.py`: `Body` with the classic material slots and livery atlas UVs, `Wheel_<FL|FR|RL|RR>` hub pivots with `Tire_<..>`, and the livery regions as extras on `StockCar`.
+- `wheel_race_lod<0|1|2>.glb`: a detailed 15 in steel race wheel with beadlock ring and slick tyre at the stock size (6k / 2k / 400 triangles), made by `scripts/blender/shorttrack/wheel.py`; hub at the origin, axle on Z, outer face +Z.
 
 ## botwreck/ — BotWreck 3D (`botwreck.html`, three.js r160)
 - `bot_<speedster|tank|rocket>.glb`: each vehicle with chassis, wheels and bolt-on parts assembled, nose facing +Z.
