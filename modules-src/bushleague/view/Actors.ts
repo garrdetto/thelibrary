@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu'
 import { BASES, FIELDER_HOME, FIELD_POSITIONS, PLATE_FRONT, Rng, stringSeed, strikeZone, type Contest, type FieldPosition, type Hand, type Player, type Vec3 } from '../sim'
 import type { ModuleConfig } from '../config'
 import { Ballplayer } from '../players/Ballplayer'
+import { modelGear, type Gear } from '../players/Models'
 import { SKIN_TONES, UMPIRE_UNIFORM, teamUniform, type JerseyLook, type UniformColors } from '../players/Uniform'
 import { faceTexture, leatherTexture, letteringTexture, type TextureDetail } from './Textures'
 import { toWorld, worldXYZ } from './space'
@@ -29,7 +30,8 @@ export class Actors {
   private readonly figures = new Map<string, Ballplayer>()
   private readonly uniforms = new Map<string, UniformColors>()
   private readonly gloveMaterial: THREE.MeshStandardMaterial
-  private readonly gloveGeometry: THREE.BufferGeometry
+  private readonly gloveGeometry: THREE.BufferGeometry | Gear['glove']
+  private readonly gear: Gear | null
   private readonly batGeometry: THREE.BufferGeometry
   private readonly batMaterial: THREE.MeshStandardMaterial
   private readonly umpire: Ballplayer
@@ -47,11 +49,14 @@ export class Actors {
 
   constructor(look: ActorLook, private readonly detail: TextureDetail = { size: 1024, anisotropy: 4 }) {
     this.root.name = 'actors'
-    this.gloveMaterial = this.own(new THREE.MeshStandardMaterial({ color: '#6b3f1f', roughness: 0.7 }))
-    this.gloveGeometry = this.own(new THREE.SphereGeometry(0.075, 12, 10).scale(1, 1.25, 0.55))
-    this.batGeometry = this.own(new THREE.CylinderGeometry(0.034, 0.016, look.bat, 10))
-    this.batMaterial = this.own(new THREE.MeshStandardMaterial({ color: '#c8955a', roughness: 0.45 }))
-    this.umpire = this.makeFigure({ body: 'stocky', height: 1.8, throws: 'R' } as Player, UMPIRE_UNIFORM, '#d9a07a', { lettering: null, pinstripe: null, face: faceTexture(detail) })
+    const gear = modelGear()
+    this.gear = gear
+    this.gloveMaterial = this.own(gear ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62 }) : new THREE.MeshStandardMaterial({ color: '#6b3f1f', roughness: 0.7 }))
+    this.gloveGeometry = gear ? gear.glove : this.own(new THREE.SphereGeometry(0.075, 12, 10).scale(1, 1.25, 0.55))
+    this.batGeometry = gear ? gear.bat.clone().scale(1, look.bat / 0.86, 1) : new THREE.CylinderGeometry(0.034, 0.016, look.bat, 10)
+    this.own(this.batGeometry)
+    this.batMaterial = this.own(gear ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.4 }) : new THREE.MeshStandardMaterial({ color: '#c8955a', roughness: 0.45 }))
+    this.umpire = this.makeFigure({ body: 'stocky', height: 1.8, throws: 'R' } as Player, UMPIRE_UNIFORM, '#d9a07a', { lettering: null, pinstripe: null, face: faceTexture(detail, 7) })
     this.umpire.showGlove(false)
     this.umpire.setBase('crouch')
     this.umpire.teleport(worldXYZ(0.55, 0, -2.0))
@@ -99,7 +104,7 @@ export class Actors {
   }
 
   private makeFigure(player: Player, uniform: UniformColors, skin: string, jersey?: JerseyLook): Ballplayer {
-    return new Ballplayer({ body: player.body ?? 'stocky', height: player.height ?? 1.85, throws: player.throws, uniform, skin, jersey }, this.gloveMaterial, this.batGeometry, this.batMaterial, this.gloveGeometry)
+    return new Ballplayer({ body: player.body ?? 'stocky', height: player.height ?? 1.85, throws: player.throws, uniform, skin, jersey }, this.gloveMaterial, this.batGeometry, this.batMaterial, this.gloveGeometry, this.gear !== null)
   }
 
   /** Surname, number and club wordmark in the uniform's trim, outlined against the jersey; some clubs wear pinstriped home whites. */
@@ -108,7 +113,8 @@ export class Actors {
     const light = new THREE.Color(uniform.jersey).getHSL({ h: 0, s: 0, l: 0 }).l > 0.6
     const lettering = letteringTexture({ name: player.last, number: player.number, wordmark: team.name, fill: uniform.trim, outline: light ? '#f7f4ec' : '#111318', pinstripe: null }, this.detail)
     const pinstripe = side === 1 && stringSeed(team.id) % 3 === 0 ? uniform.trim : null
-    return { lettering, pinstripe, face: faceTexture(this.detail) }
+    const skin = SKIN_TONES.indexOf(skinFor(player))
+    return { lettering, pinstripe, face: faceTexture(this.detail, stringSeed(`${player.id}:face`), skin >= 5) }
   }
 
   /** Points the cast at a new contest: home whites for the home club, road colors for the visitors. */
