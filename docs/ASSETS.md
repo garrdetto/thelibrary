@@ -18,32 +18,39 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/town/downtown.glb | 4.43 | 0.83 | 93 → 46 | 86 → 46 |
 | sandlot3d/ballpark_dome.glb | 4.03 | 1.63 | 92 → 19 | 52 → 15 |
 | sandlot3d/ballpark_stadium.glb | 3.29 | 1.22 | 64 → 19 | 43 → 14 |
+| shorttrack/truck_race_lod0.glb | 3.06 | 0.89 | 29 → 29 | 15 → 15 |
 | shorttrack/truck_livery_1.glb | 2.98 | 0.62 | 187 → 36 | 25 → 16 |
 | shorttrack/truck_livery_3.glb | 2.77 | 0.55 | 187 → 36 | 25 → 16 |
 | shorttrack/truck_livery_2.glb | 2.77 | 0.55 | 187 → 36 | 25 → 16 |
+| sandlot3d/field_detail.glb | 2.74 | 0.81 | 2 → 2 | 2 → 2 |
 | shorttrack/truck_default.glb | 2.23 | 0.50 | 187 → 36 | 25 → 16 |
 | shorttrack/truck_pace.glb | 2.20 | 0.49 | 183 → 32 | 24 → 15 |
 | sandlot3d/ballpark_sandlot.glb | 2.10 | 0.38 | 188 → 28 | 114 → 13 |
 | sandlot3d/ballpark_park.glb | 1.90 | 0.36 | 74 → 19 | 51 → 12 |
 | shorttrack/truck_unpainted.glb | 1.84 | 0.41 | 180 → 27 | 20 → 12 |
+| shorttrack/pace_car_lod0.glb | 1.34 | 0.41 | 15 → 15 | 9 → 9 |
 | shorttrack/car_slm_lod0.glb | 1.24 | 0.35 | 12 → 8 | 6 → 4 |
 | shorttrack/crowd_bullring.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
 | shorttrack/crowd_dells.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
 | shorttrack/crowd_dirt.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
-| sandlot3d/field_detail.glb | 2.74 | 0.81 | 2 → 2 | 2 → 2 |
+| shorttrack/truck_race_lod1.glb | 1.04 | 0.33 | 29 → 29 | 15 → 15 |
 | sandlot3d/athlete.glb | 0.92 | 0.23 | 12 → 12 | 12 → 12 |
 | shorttrack/car_slm_lod1.glb | 0.68 | 0.21 | 12 → 8 | 6 → 4 |
+| shorttrack/pace_car_lod1.glb | 0.54 | 0.19 | 15 → 15 | 9 → 9 |
 | maplestreet/vehicles/sedan.glb | 0.50 | 0.09 | 19 → 9 | 9 → 5 |
 | maplestreet/vehicles/coupe.glb | 0.49 | 0.09 | 19 → 9 | 9 → 5 |
 | maplestreet/vehicles/hdtruck.glb | 0.43 | 0.07 | 21 → 10 | 10 → 6 |
 | maplestreet/vehicles/truck.glb | 0.40 | 0.07 | 20 → 9 | 9 → 5 |
+| shorttrack/truck_race_lod2.glb | 0.35 | 0.14 | 29 → 29 | 15 → 15 |
 | shorttrack/wheel_race_lod0.glb | 0.25 | 0.09 | 4 → 4 | 4 → 4 |
 | shorttrack/car_slm_lod2.glb | 0.19 | 0.07 | 12 → 8 | 6 → 4 |
 | maplestreet/vehicles/zeroturn.glb | 0.18 | 0.02 | 18 → 7 | 8 → 3 |
 | maplestreet/furniture/flowerBed.glb | 0.18 | 0.03 | 38 → 6 | 7 → 3 |
 | maplestreet/vehicles/golfcart.glb | 0.17 | 0.02 | 20 → 8 | 10 → 4 |
 | maplestreet/vehicles/atv.glb | 0.15 | 0.02 | 19 → 8 | 8 → 4 |
+| shorttrack/pace_car_lod2.glb | 0.15 | 0.07 | 11 → 11 | 8 → 8 |
 | maplestreet/vehicles/mower.glb | 0.14 | 0.02 | 18 → 7 | 8 → 3 |
+| shorttrack/props_kit.glb | 0.12 | 0.06 | 11 → 11 | 8 → 8 |
 | maplestreet/characters/resident.glb | 0.10 | 0.03 | 12 → 5 | 5 → 1 |
 | shorttrack/wheel_race_lod1.glb | 0.10 | 0.04 | 4 → 4 | 4 → 4 |
 | botwreck/crates.glb | 0.09 | 0.01 | 49 → 2 | 2 → 2 |
@@ -117,7 +124,7 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/furniture/divingBoard.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/mirror.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/wallTv.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
-| **Total (111)** | **179.40** | **30.94** | | |
+| **Total (120)** | **189.66** | **34.07** | | |
 
 ## Bush League Baseball budgets
 
