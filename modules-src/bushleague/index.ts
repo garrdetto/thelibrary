@@ -13,6 +13,7 @@ import { OnlineLink, type ConnectOptions, type FinalMessage, type OnlineEvents }
 import { isRoomCode } from './shared/Online'
 import { BallparkAudio } from './systems/Audio'
 import { Actors } from './view/Actors'
+import { loadBallplayerModels } from './players/Models'
 import { createCrowd, type Crowd } from './view/Crowd'
 import { createField, type FieldView } from './view/Field'
 import { createGrass, type GrassField } from './view/Grass'
@@ -45,6 +46,7 @@ async function boot(): Promise<void> {
   const adaptive = budget.adaptive ? createAdaptiveResolution({ max: budget.pixelRatio, min: 0.75, apply: (ratio) => app.setPixelRatioCap(ratio) }) : null
 
   const input = app.own(new Input<Action>(container, config.bindings, config.engine.input))
+  if (new URLSearchParams(location.search).get('athlete') !== '0') await loadBallplayerModels(new URL('bushleague/players/', location.href).href)
   const actors = new Actors(config.actors, budget.textures)
   app.graph.add('characters', actors.root)
   app.own(actors)
