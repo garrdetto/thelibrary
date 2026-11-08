@@ -27,7 +27,7 @@ export const embeddedModules = [
 export type EmbeddedModuleId = typeof embeddedModules[number]['id']
 export type ModuleId = EmbeddedModuleId | 'pool' | 'racing' | 'oval' | 'park' | 'park2' | 'lens'
 
-export const withdrawnModuleIds: ReadonlySet<ModuleId> = new Set<ModuleId>(['botwreck'])
+export const withdrawnModuleIds: ReadonlySet<ModuleId> = new Set<ModuleId>()
 
 export function isModuleAvailable(id: string): boolean {
   return !withdrawnModuleIds.has(id as ModuleId)
