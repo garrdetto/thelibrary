@@ -21,7 +21,7 @@ except NameError:
     REPO = os.environ.get('BUSHLEAGUE_REPO', os.getcwd())
 OUT = os.path.join(REPO, 'public', 'modules', 'bushleague', 'players')
 
-SLOT = {'skin': 0, 'jersey': 1, 'trim': 2, 'pants': 3, 'socks': 4, 'cleats': 5, 'cap': 6, 'belt': 7}
+SLOT = {'skin': 0, 'jersey': 1, 'trim': 2, 'pants': 3, 'socks': 4, 'cleats': 5, 'cap': 6, 'belt': 7, 'spikes': 8, 'sole': 9}
 
 LAYOUT = {
     'hips': (None, (0, 0.98, 0)),
@@ -100,6 +100,35 @@ def build_armature():
     return rig
 
 
+FINGERS = (
+    (0.03, 0.088, 0.0088),
+    (0.0095, 0.094, 0.0092),
+    (-0.0115, 0.088, 0.0088),
+    (-0.031, 0.07, 0.0078),
+)
+
+
+def hand(add, side, wrist):
+    """A relaxed hand on the skin cage: a flat palm, four three-jointed fingers curling gently palm-down and a thumb angled forward. In the rest pose the palm faces down and the thumb points forward (+z)."""
+    palm = add((side * 0.775, 1.449, 0.002), (0.036, 0.019), wrist)
+    knuckles = add((side * 0.818, 1.448, 0.0), (0.04, 0.017), palm)
+    for z, length, radius in FINGERS:
+        base = (side * 0.832, 1.448, z * 0.95)
+        parent = add(base, (radius, radius * 0.92), knuckles)
+        x, y = base[0], base[1]
+        angle = 0.0
+        for joint_index, (share, bend) in enumerate(((0.45, 0.22), (0.32, 0.38), (0.23, 0.42))):
+            angle += bend
+            x += side * length * share * math.cos(angle)
+            y -= length * share * math.sin(angle)
+            taper = radius * (0.93 - joint_index * 0.1)
+            parent = add((x, y, z), (taper, taper * 0.88), parent)
+    thumb = add((side * 0.765, 1.442, 0.024), (0.0125, 0.0115), palm)
+    thumb = add((side * 0.79, 1.436, 0.045), (0.0098, 0.0094), thumb)
+    thumb = add((side * 0.812, 1.431, 0.06), (0.0088, 0.0083), thumb)
+    add((side * 0.83, 1.428, 0.068), (0.0076, 0.0072), thumb)
+
+
 def skin_body(body):
     """A skin-modifier cage along the skeleton: points with their (side, front) radii in three.js metres."""
     g = body['girth']
@@ -121,24 +150,23 @@ def skin_body(body):
     ribs = add((0, 1.21, 0.01), (0.168 * g, 0.115 * g), waist)
     chest = add((0, 1.33, 0.012), (0.188 * g * sh, 0.122 * g), ribs)
     yoke = add((0, 1.42, 0.0), (0.19 * g * sh, 0.11 * g), chest)
-    neck0 = add((0, 1.49, 0.005), (0.064 * g, 0.066 * g), yoke)
-    add((0, 1.64, 0.015), (0.05, 0.052), neck0)
+    neck0 = add((0, 1.5, 0.005), (0.046 * g, 0.048 * g), yoke)
+    add((0, 1.64, 0.015), (0.041, 0.043), neck0)
     for side in (1, -1):
         shoulder = add((side * 0.17 * sh, 1.435, 0), (0.074 * g, 0.072 * g), yoke)
         bicep = add((side * 0.3 * sh, 1.45, 0), (0.066 * g, 0.062 * g), shoulder)
         elbow = add((side * (0.19 + 0.29), 1.45, 0), (0.044 * g, 0.044 * g), bicep)
         forearm = add((side * 0.58, 1.45, 0.003), (0.048 * g, 0.041 * g), elbow)
         wrist = add((side * 0.73, 1.45, 0), (0.032, 0.025), forearm)
-        palm = add((side * 0.8, 1.45, 0), (0.046, 0.022), wrist)
-        add((side * 0.89, 1.448, 0), (0.036, 0.016), palm)
-        add((side * 0.775, 1.45, 0.04), (0.014, 0.014), wrist)
+        hand(add, side, wrist)
         hip = add((side * 0.1, 0.88, 0), (0.088 * g, 0.09 * g), pelvis)
         thigh = add((side * 0.1, 0.69, 0.008), (0.078 * g, 0.082 * g), hip)
         knee = add((side * 0.1, 0.49, 0.01), (0.054 * g, 0.056 * g), thigh)
         calf = add((side * 0.1, 0.35, -0.012), (0.056 * g, 0.06 * g), knee)
         ankle = add((side * 0.1, 0.1, 0), (0.034, 0.036), calf)
-        heel = add((side * 0.1, 0.045, -0.02), (0.042, 0.05), ankle)
-        add((side * 0.1, 0.035, 0.17), (0.045, 0.03), heel)
+        heel = add((side * 0.1, 0.05, -0.035), (0.031, 0.034), ankle)
+        ball = add((side * 0.1, 0.043, 0.085), (0.034, 0.024), heel)
+        add((side * 0.1, 0.038, 0.175), (0.026, 0.017), ball)
     mesh = bpy.data.meshes.new('cage')
     mesh.from_pydata([tuple(b(p)) for p, _ in points], edges, [])
     obj = bpy.data.objects.new('Body', mesh)
@@ -155,6 +183,14 @@ def skin_body(body):
     obj.select_set(True)
     bpy.ops.object.modifier_apply(modifier='Skin')
     bpy.ops.object.modifier_apply(modifier='Smooth')
+    hands = obj.vertex_groups.new(name='hands')
+    hands.add([v.index for v in obj.data.vertices if abs(v.co.x) > 0.745], 1.0, 'REPLACE')
+    trim = obj.modifiers.new('Hands', 'DECIMATE')
+    trim.ratio = 0.7
+    trim.vertex_group = 'hands'
+    trim.vertex_group_factor = 1.0
+    bpy.ops.object.modifier_apply(modifier='Hands')
+    obj.vertex_groups.remove(obj.vertex_groups['hands'])
     if body['belly'] > 0:
         for vertex in obj.data.vertices:
             x, y, z = vertex.co.x, vertex.co.z, -vertex.co.y
@@ -179,15 +215,15 @@ def head_parts():
             vertex.co.y -= 0.012 * (z - 0.2)
     bpy.ops.object.transform_apply(location=True, scale=True)
     head.location = (0, 0, 0)
-    bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=1, location=b((0, 1.69, 0.108)))
+    bpy.ops.mesh.primitive_uv_sphere_add(segments=12, ring_count=8, radius=1, location=b((0, 1.673, 0.104)))
     nose = bpy.context.active_object
-    nose.scale = (0.017, 0.022, 0.026)
+    nose.scale = (0.0135, 0.018, 0.019)
     bpy.ops.object.transform_apply(scale=True)
     parts = [head, nose]
     for side in (1, -1):
         bpy.ops.mesh.primitive_uv_sphere_add(segments=10, ring_count=8, radius=1, location=b((side * 0.093, 1.7, -0.005)))
         ear = bpy.context.active_object
-        ear.scale = (0.012, 0.022, 0.032)
+        ear.scale = (0.011, 0.019, 0.028)
         bpy.ops.object.transform_apply(scale=True)
         parts.append(ear)
     bpy.ops.mesh.primitive_uv_sphere_add(segments=32, ring_count=16, radius=1, location=b((0, 1.74, 0.0)))
@@ -213,11 +249,65 @@ def head_parts():
     return parts
 
 
+def sole_outline(z):
+    """Half-width of the shoe's sole plate at z (metres along the foot, heel at -0.068, toe at 0.188)."""
+    t = min(1.0, max(0.0, (z + 0.068) / 0.256))
+    return 0.046 * math.sqrt(math.sin(math.pi * t)) * (0.88 + 0.2 * t) + 0.002
+
+
+def cleat_parts():
+    """Sole plates under each shoe and the metal spikes under them: three at the heel, five round the forefoot."""
+    parts = []
+    for side in (1, -1):
+        bm = bmesh.new()
+        ring = []
+        steps = 18
+        for i in range(steps + 1):
+            z = -0.068 + 0.256 * i / steps
+            ring.append((side * 0.1 + sole_outline(z) * 1.0, z))
+        for i in range(steps, -1, -1):
+            z = -0.068 + 0.256 * i / steps
+            ring.append((side * 0.1 - sole_outline(z) * 0.92, z))
+        bottom = [bm.verts.new(b((x, -0.002, z))) for x, z in ring]
+        top = [bm.verts.new(b((x, 0.02 - max(0, z - 0.12) * 0.12, z))) for x, z in ring]
+        bm.faces.new(bottom[::-1])
+        bm.faces.new(top)
+        count = len(ring)
+        for i in range(count):
+            j = (i + 1) % count
+            bm.faces.new((bottom[i], bottom[j], top[j], top[i]))
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        mesh = bpy.data.meshes.new('sole')
+        bm.to_mesh(mesh)
+        bm.free()
+        sole = bpy.data.objects.new('Sole', mesh)
+        bpy.context.scene.collection.objects.link(sole)
+        bevel = sole.modifiers.new('Bevel', 'BEVEL')
+        bevel.width = 0.004
+        bevel.segments = 2
+        bpy.context.view_layer.objects.active = sole
+        bpy.ops.object.modifier_apply(modifier='Bevel')
+        parts.append(sole)
+        for sx, z in ((0, -0.05), (0.024, -0.028), (-0.022, -0.028), (0.034, 0.07), (-0.03, 0.07), (0.034, 0.125), (-0.026, 0.125), (0.004, 0.168)):
+            bpy.ops.mesh.primitive_cone_add(vertices=8, radius1=0.0055, radius2=0.0025, depth=0.012, location=b((side * 0.1 + side * sx, -0.007, z)))
+            spike = bpy.context.active_object
+            spike.rotation_euler = (math.radians(180), 0, 0)
+            bpy.ops.object.transform_apply(rotation=True)
+            spike.name = 'Spike'
+            parts.append(spike)
+    return parts
+
+
 def slot_for(co, part):
     x, y, z = co.x, co.z, -co.y
     ax = abs(x)
     if part in ('Cap', 'Cylinder'):
         return SLOT['cap']
+    if part == 'Sole':
+        return SLOT['sole']
+    if part == 'Spike':
+        return SLOT['spikes']
     if part != 'Body':
         return SLOT['skin']
     if ax > 0.2 and y > 1.3:
@@ -226,9 +316,9 @@ def slot_for(co, part):
         if ax < 0.355:
             return SLOT['trim']
         return SLOT['skin']
-    if y > 1.505:
+    if y > 1.5 and ax < 0.068:
         return SLOT['skin']
-    if y > 1.475 and ax < 0.11:
+    if y > 1.482 and ax < 0.09:
         return SLOT['trim']
     if y > 1.0:
         return SLOT['jersey']
@@ -270,6 +360,14 @@ def weight(obj, rig, part):
     groups = {name: obj.vertex_groups.new(name=name) for name in LAYOUT}
     for vertex in obj.data.vertices:
         p = Vector((vertex.co.x, vertex.co.z, -vertex.co.y))
+        if part in ('Sole', 'Spike'):
+            side = 'L' if p.x > 0 else 'R'
+            scored = sorted((segment_distance(p, *segments[name]), name) for name in (f'foot.{side}', f'toe.{side}'))
+            (d0, n0), (d1, n1) = scored
+            w0, w1 = 1 / max(1e-4, d0) ** 3, 1 / max(1e-4, d1) ** 3
+            groups[n0].add([vertex.index], w0 / (w0 + w1), 'REPLACE')
+            groups[n1].add([vertex.index], w1 / (w0 + w1), 'REPLACE')
+            continue
         if part != 'Body' or p.y > 1.6:
             groups['head'].add([vertex.index], 1.0, 'REPLACE')
             continue
@@ -296,6 +394,11 @@ def tag_slots(obj, part):
     """Slots are decided per face, then the mesh is split along every boundary between slots, so no triangle blends one uniform colour through the slot numbers between it and the next."""
     bm = bmesh.new()
     bm.from_mesh(obj.data)
+    if part == 'Body':
+        def near_collar(edge):
+            return all(1.43 < v.co.z < 1.56 and abs(v.co.x) < 0.13 for v in edge.verts)
+        bmesh.ops.subdivide_edges(bm, edges=[edge for edge in bm.edges if near_collar(edge)], cuts=2, use_grid_fill=True, smooth=1.0)
+        bmesh.ops.triangulate(bm, faces=[face for face in bm.faces if len(face.verts) > 4])
     face_slot = {face.index: slot_for(face.calc_center_median(), part) for face in bm.faces}
     bm.faces.ensure_lookup_table()
     boundary = [edge for edge in bm.edges if len(edge.link_faces) == 2 and face_slot[edge.link_faces[0].index] != face_slot[edge.link_faces[1].index]]
@@ -316,9 +419,9 @@ def build(body_name):
     body = BODIES[body_name]
     rig = build_armature()
     torso = skin_body(body)
-    parts = [torso] + head_parts()
+    parts = [torso] + head_parts() + cleat_parts()
     for part in parts:
-        kind = 'Cap' if part.name.startswith('Cap') else 'Cylinder' if part.name.startswith('Cylinder') else 'Body' if part is torso else 'Head'
+        kind = 'Body' if part is torso else next((k for k in ('Cap', 'Cylinder', 'Sole', 'Spike') if part.name.startswith(k)), 'Head')
         tag_slots(part, kind)
         part['_kind'] = kind
     for part in parts:

@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu'
 import { BONES, type BoneName, type Proportions, type Rig } from './Rig'
 
-export const SLOT = { skin: 0, jersey: 1, trim: 2, pants: 3, socks: 4, cleats: 5, cap: 6, belt: 7 } as const
+export const SLOT = { skin: 0, jersey: 1, trim: 2, pants: 3, socks: 4, cleats: 5, cap: 6, belt: 7, spikes: 8, sole: 9 } as const
 export type Slot = (typeof SLOT)[keyof typeof SLOT]
 
 class Builder {

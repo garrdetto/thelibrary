@@ -3,9 +3,11 @@ import * as THREE from 'three/webgpu'
 import type { BodyType, Hand } from '../sim'
 import { Animator, type ActionName, type BaseState } from './Animator'
 import { buildBody } from './BodyMesh'
-import { modelGeometry } from './Models'
+import { modelGeometry, type Gear } from './Models'
 import { createRig, proportionsFor, type Rig } from './Rig'
 import { createPlayerMaterial, type JerseyLook, type PlayerMaterial, type UniformColors } from './Uniform'
+
+type GloveGeometry = Gear['glove']
 
 export interface BallplayerOptions {
   body: BodyType
@@ -34,7 +36,7 @@ export class Ballplayer {
   private readonly lettering: THREE.Texture | null
   private readonly ownsGeometry: boolean
 
-  constructor(options: BallplayerOptions, gloveMaterial: THREE.Material, batGeometry: THREE.BufferGeometry, batMaterial: THREE.Material, gloveGeometry: THREE.BufferGeometry) {
+  constructor(options: BallplayerOptions, gloveMaterial: THREE.Material, batGeometry: THREE.BufferGeometry, batMaterial: THREE.Material, gloveGeometry: THREE.BufferGeometry | GloveGeometry, modelBat = false) {
     this.throws = options.throws
     const model = modelGeometry(options.body)
     const proportions = model ? { scale: 1, girth: 1, belly: 0, shoulders: 1 } : proportionsFor(options.body, options.height)
@@ -51,13 +53,22 @@ export class Ballplayer {
     this.mesh.frustumCulled = false
     this.group.add(this.mesh)
     const gloveSide = options.throws === 'R' ? 'L' : 'R'
-    this.glove = new THREE.Mesh(gloveGeometry, gloveMaterial)
-    this.glove.position.set(gloveSide === 'L' ? 0.07 : -0.07, -0.01, 0.03)
+    if (gloveGeometry instanceof THREE.BufferGeometry) {
+      this.glove = new THREE.Mesh(gloveGeometry, gloveMaterial)
+      this.glove.position.set(gloveSide === 'L' ? 0.07 : -0.07, -0.01, 0.03)
+    } else {
+      this.glove = new THREE.Mesh(gloveGeometry[gloveSide], gloveMaterial)
+      this.glove.scale.setScalar(1.18)
+      const out = gloveSide === 'L' ? 1 : -1
+      this.glove.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3(0, 0, -out), new THREE.Vector3(out, 0, 0), new THREE.Vector3(0, -1, 0)))
+      this.glove.position.set(out * 0.1, -0.006, 0)
+    }
     this.glove.castShadow = true
     this.rig.bones[`hand.${gloveSide}`].add(this.glove)
     this.bat = new THREE.Group()
     const barrel = new THREE.Mesh(batGeometry, batMaterial)
-    barrel.position.y = 0.42
+    if (!modelBat) barrel.position.y = 0.42
+    else barrel.position.y = -0.03
     barrel.castShadow = true
     this.bat.add(barrel)
     this.bat.visible = false
