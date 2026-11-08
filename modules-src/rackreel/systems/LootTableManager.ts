@@ -37,7 +37,7 @@ export interface Specimen {
   serial: number
 }
 
-export const LEGENDARY_CHANCE = 0.08
+export const LEGENDARY_CHANCE = 0.04
 
 const TIER_ODDS: [1 | 2 | 3, number][] = [[1, 0.2], [2, 0.3], [3, 0.5]]
 

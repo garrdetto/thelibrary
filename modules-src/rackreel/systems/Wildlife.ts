@@ -1,13 +1,17 @@
 import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Scene } from '@babylonjs/core/scene'
 import type { EngineContext } from '../core/EngineSetup'
 import { disposeRig, instantiate } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
-import { PLAY_LIMIT } from '../world/Terrain'
+import { PLAY_LIMIT, forestDensity } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
+import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, SAFE_DISTANCE, fleeSpeed, react } from './Herd'
+import type { DeerMood } from './Herd'
+import { SPECIES_BY_ID } from './LootTableManager'
 import type { LootTableManager, SpeciesTemplate, Specimen } from './LootTableManager'
 
-export type AnimalState = 'graze' | 'walk' | 'alert' | 'flee' | 'wounded' | 'down'
+export type AnimalState = DeerMood
 
 export interface Animal {
   id: number
@@ -15,17 +19,25 @@ export interface Animal {
   specimen: Specimen
   rig: ModelRig
   antlers: ModelRig | null
+  doe: boolean
   position: Vector3
   heading: number
+  desired: number
   speed: number
   state: AnimalState
   stateTime: number
+  fleeTime: number
   gait: number
   scale: number
   wounds: number
   goal: Vector3
   tagged: boolean
   downTime: number
+  lastDistance: number
+  alarm: number
+  scan: number
+  scanYaw: number
+  stomp: number
 }
 
 export interface ShotResult {
@@ -40,60 +52,114 @@ const BODY: Record<string, { y: number; z: number; r: number }[]> = {
   whitetail: [{ y: 1.0, z: 0.0, r: 0.42 }, { y: 1.0, z: -0.45, r: 0.36 }, { y: 1.5, z: 0.95, r: 0.22 }],
   blackbear: [{ y: 0.9, z: 0.0, r: 0.55 }, { y: 0.92, z: -0.45, r: 0.5 }, { y: 1.0, z: 0.95, r: 0.3 }],
 }
+const WALK_PHASE: Record<string, number> = { legBL: 0, legFL: 0.25, legBR: 0.5, legFR: 0.75 }
+
+function wrapAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a))
+}
 
 export class Wildlife {
   readonly animals: Animal[] = []
   private nextId = 1
+  private herdTimer = 0
   onLegendSpawn: ((animal: Animal) => void) | null = null
   onLost: ((animal: Animal) => void) | null = null
 
   constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly terrain: Terrain, private readonly loot: LootTableManager, private readonly models: Map<ModelName, ModelTemplate>, private readonly rng: () => number = Math.random) {}
 
-  spawnNear(player: Vector3, facing: number): Animal | null {
-    const template = this.loot.pickSpecies('game', this.terrain.groundAt(player.x, player.z) === 'marsh' ? 'marsh' : 'forest')
+  private landAt(x: number, z: number): boolean {
+    if (Math.abs(x) > PLAY_LIMIT - 20 || Math.abs(z) > PLAY_LIMIT - 20) return false
+    const g = this.terrain.groundAt(x, z)
+    return g !== 'water' && g !== 'rock' && this.terrain.heightAt(x, z) > 0.9
+  }
+
+  private spawnSpot(player: Vector3, facing: number | null, min: number, max: number): Vector3 | null {
     for (let attempt = 0; attempt < 40; attempt++) {
-      const dist = 75 + this.rng() * 70
-      const ang = facing + (this.rng() - 0.5) * Math.PI * 1.6
+      const dist = min + this.rng() * (max - min)
+      const ang = facing === null ? this.rng() * Math.PI * 2 : facing + (this.rng() - 0.5) * Math.PI * 1.6
       const x = player.x + Math.sin(ang) * dist
       const z = player.z + Math.cos(ang) * dist
-      if (Math.abs(x) > PLAY_LIMIT - 20 || Math.abs(z) > PLAY_LIMIT - 20) continue
-      const g = this.terrain.groundAt(x, z)
-      if (g === 'water' || g === 'rock' || this.terrain.heightAt(x, z) < 0.9) continue
-      return this.spawn(template, new Vector3(x, this.terrain.heightAt(x, z), z))
+      if (this.landAt(x, z)) return new Vector3(x, this.terrain.heightAt(x, z), z)
     }
     return null
   }
 
-  spawn(template: SpeciesTemplate, position: Vector3): Animal {
+  spawnNear(player: Vector3, facing: number): Animal | null {
+    const at = this.spawnSpot(player, facing, 75, 145)
+    return at ? this.spawn(SPECIES_BY_ID.whitetail, at, false) : null
+  }
+
+  maintain(dt: number, player: Vector3): void {
+    this.herdTimer -= dt
+    if (this.herdTimer > 0) return
+    this.herdTimer = 2
+    for (const a of [...this.animals]) {
+      if (a.state === 'down' || a.wounds > 0) continue
+      if (Vector3.Distance(a.position, player) > HERD_DESPAWN) this.remove(a)
+    }
+    const living = this.animals.filter((a) => a.state !== 'down').length
+    if (living >= HERD_SIZE) return
+    const at = this.spawnSpot(player, null, HERD_SPAWN_MIN, HERD_SPAWN_MAX)
+    if (!at) return
+    if (this.rng() < BEAR_SHARE && !this.animals.some((a) => a.template.id === 'blackbear')) {
+      this.spawn(SPECIES_BY_ID.blackbear, at, false)
+      return
+    }
+    if (this.rng() < BUCK_SHARE) {
+      this.spawn(SPECIES_BY_ID.whitetail, at, false)
+      return
+    }
+    const group = Math.min(HERD_SIZE - living, 1 + Math.floor(this.rng() * 3))
+    const heading = this.rng() * Math.PI * 2
+    for (let i = 0; i < group; i++) {
+      const p = at.add(new Vector3((this.rng() - 0.5) * 12, 0, (this.rng() - 0.5) * 12))
+      if (!this.landAt(p.x, p.z)) continue
+      p.y = this.terrain.heightAt(p.x, p.z)
+      const doe = this.spawn(SPECIES_BY_ID.whitetail, p, true)
+      doe.heading = doe.desired = heading + (this.rng() - 0.5) * 0.8
+    }
+  }
+
+  spawn(template: SpeciesTemplate, position: Vector3, doe: boolean): Animal {
     const specimen = this.loot.createSpecimen(template.id)
+    if (doe) {
+      specimen.legendary = false
+      specimen.recordTier = 0
+      specimen.value = 0
+      specimen.trophyPoints = 0
+      specimen.weightLb = Math.round(95 + this.rng() * 50)
+    }
     const model = this.models.get(template.model as ModelName)!
     const rig = instantiate(model, null, this.scene, (m) => this.ctx.registerDynamic(m))
     rig.root.rotationQuaternion = new Quaternion()
     let antlers: ModelRig | null = null
     let scale = 1
     if (template.id === 'whitetail') {
-      scale = 0.92 + Math.min(0.2, (specimen.weightLb - 130) / 600)
-      const head = rig.joints.get('head')!
-      antlers = instantiate(this.models.get('antlers')!, head, this.scene, (m) => this.ctx.registerDynamic(m))
-      const headPivot = model.parts.get('head')!.pivot
-      const s = 0.62 + Math.max(0, specimen.value - 85) / 125 * 0.62
-      antlers.root.scaling.setAll(s)
-      antlers.root.position.copyFrom(ANTLER_BASE.scale(1 - s).subtract(headPivot))
+      scale = doe ? 0.84 + this.rng() * 0.06 : 0.92 + Math.min(0.2, (specimen.weightLb - 130) / 600)
+      if (!doe) {
+        const head = rig.joints.get('head')!
+        antlers = instantiate(this.models.get('antlers')!, head, this.scene, (m) => this.ctx.registerDynamic(m))
+        const headPivot = model.parts.get('head')!.pivot
+        const s = 0.62 + Math.max(0, specimen.value - 85) / 125 * 0.62
+        antlers.root.scaling.setAll(s)
+        antlers.root.position.copyFrom(ANTLER_BASE.scale(1 - s).subtract(headPivot))
+      }
     } else {
       scale = Math.cbrt(specimen.weightLb / 300) * 1.05
     }
     rig.root.scaling.setAll(scale)
+    const heading = this.rng() * Math.PI * 2
     const animal: Animal = {
-      id: this.nextId++, template, specimen, rig, antlers, position, heading: this.rng() * Math.PI * 2, speed: 0, state: 'graze', stateTime: 2 + this.rng() * 5,
-      gait: 0, scale, wounds: 0, goal: position.clone(), tagged: false, downTime: 0,
+      id: this.nextId++, template, specimen, rig, antlers, doe, position, heading, desired: heading, speed: 0, state: 'graze', stateTime: 2 + this.rng() * 5, fleeTime: 0,
+      gait: this.rng() * 10, scale, wounds: 0, goal: position.clone(), tagged: false, downTime: 0, lastDistance: Infinity, alarm: 0, scan: 2 + this.rng() * 4, scanYaw: 0, stomp: 0,
     }
     this.animals.push(animal)
     if (specimen.legendary) this.onLegendSpawn?.(animal)
     return animal
   }
 
-  casters(): import('@babylonjs/core/Meshes/abstractMesh').AbstractMesh[] {
-    const out = []
+  casters(): AbstractMesh[] {
+    const out: AbstractMesh[] = []
     for (const a of this.animals) {
       out.push(...a.rig.meshes)
       if (a.antlers) out.push(...a.antlers.meshes)
@@ -115,12 +181,38 @@ export class Wildlife {
     }
   }
 
+  lure(player: Vector3): Animal | null {
+    let best: Animal | null = null
+    let bestD = Infinity
+    for (const a of this.animals) {
+      if (a.state !== 'graze' && a.state !== 'walk') continue
+      if (a.template.id !== 'whitetail') continue
+      const d = Vector3.Distance(a.position, player)
+      if (d < bestD) {
+        bestD = d
+        best = a
+      }
+    }
+    if (!best) return null
+    const away = best.position.subtract(player)
+    away.y = 0
+    best.goal = player.add(away.normalize().scale(55 + this.rng() * 25))
+    best.state = 'walk'
+    best.stateTime = 25
+    return best
+  }
+
   private flee(a: Animal, from: Vector3): void {
+    if (a.state !== 'flee' && a.state !== 'wounded') a.fleeTime = 0
     a.state = a.wounds > 0 ? 'wounded' : 'flee'
-    a.stateTime = 7 + this.rng() * 5
+    a.stateTime = 6 + this.rng() * 4
     const away = a.position.subtract(from)
     away.y = 0
-    a.heading = Math.atan2(away.x, away.z) + (this.rng() - 0.5) * 0.6
+    a.desired = Math.atan2(away.x, away.z) + (this.rng() - 0.5) * 0.7
+    for (const b of this.animals) {
+      if (b === a || b.state === 'down' || b.state === 'flee' || b.state === 'wounded') continue
+      if (Vector3.Distance(a.position, b.position) < ALARM_RADIUS) b.alarm = 0.3 + this.rng() * 0.6
+    }
   }
 
   shoot(origin: Vector3, direction: Vector3, maxDistance: number): ShotResult {
@@ -130,7 +222,7 @@ export class Wildlife {
       const c = Math.cos(a.heading)
       const s = Math.sin(a.heading)
       const test = (y: number, z: number, r: number): number | null => {
-        const center = new Vector3(a.position.x + z * s * a.scale, a.position.y + y * a.scale, a.position.z + z * c * a.scale)
+        const center = new Vector3(a.position.x + z * s * a.scale, a.rig.root.position.y + y * a.scale, a.position.z + z * c * a.scale)
         const oc = origin.subtract(center)
         const b = Vector3.Dot(oc, direction)
         const disc = b * b - (oc.lengthSquared() - (r * a.scale) ** 2)
@@ -161,6 +253,11 @@ export class Wildlife {
     return false
   }
 
+  private cover(a: Animal, player: Vector3): number {
+    const mid = a.position.add(player).scale(0.5)
+    return Math.min(1, forestDensity(mid.x, mid.z) * 0.8 + forestDensity(a.position.x, a.position.z) * 0.3)
+  }
+
   update(dt: number, player: Vector3, noise: number): void {
     for (const a of [...this.animals]) {
       a.stateTime -= dt
@@ -171,52 +268,83 @@ export class Wildlife {
         if (a.tagged && a.downTime > 2) this.remove(a)
         continue
       }
+      if (a.alarm > 0) {
+        a.alarm -= dt
+        if (a.alarm <= 0) this.flee(a, player)
+      }
+      const approaching = toPlayer < a.lastDistance - 0.04
+      a.lastDistance = toPlayer
       const hearing = a.template.id === 'whitetail' ? 1 : 0.75
-      const detect = (16 + 70 * noise) * hearing
-      if ((a.state === 'graze' || a.state === 'walk') && toPlayer < detect) {
+      const decision = react(a.state, { distance: toPlayer, noise, approaching, cover: this.cover(a, player), hearing }, a.stateTime)
+      if (decision === 'flee') this.flee(a, player)
+      else if (decision === 'alert') {
         a.state = 'alert'
-        a.stateTime = 1.5 + this.rng() * 2
+        a.stateTime = 2 + this.rng() * 3
         const d = player.subtract(a.position)
-        a.heading = Math.atan2(d.x, d.z)
-      } else if (a.state === 'alert' && (toPlayer < detect * 0.7 || a.stateTime <= 0 && toPlayer < detect)) {
-        this.flee(a, player)
-      } else if (a.state === 'alert' && a.stateTime <= 0) {
-        a.state = 'graze'
-        a.stateTime = 3 + this.rng() * 4
+        a.desired = Math.atan2(d.x, d.z)
+        a.stomp = this.rng() < 0.6 ? 1.2 : 0
+      } else if (decision === 'calm') {
+        if (a.state === 'flee') {
+          a.state = 'alert'
+          a.stateTime = 2.5
+          const d = player.subtract(a.position)
+          a.desired = Math.atan2(d.x, d.z)
+        } else {
+          a.state = 'graze'
+          a.stateTime = 3 + this.rng() * 4
+        }
       }
       if (a.state === 'graze' && a.stateTime <= 0) {
         a.state = 'walk'
-        a.stateTime = 4 + this.rng() * 6
-        a.heading += (this.rng() - 0.5) * 2
-      } else if (a.state === 'walk' && a.stateTime <= 0) {
-        a.state = 'graze'
-        a.stateTime = 4 + this.rng() * 8
+        a.stateTime = 5 + this.rng() * 8
+        a.goal = a.position.add(new Vector3((this.rng() - 0.5) * 50, 0, (this.rng() - 0.5) * 50))
+      } else if (a.state === 'walk') {
+        const d = a.goal.subtract(a.position)
+        if (d.length() < 2 || a.stateTime <= 0) {
+          a.state = 'graze'
+          a.stateTime = 5 + this.rng() * 10
+        } else a.desired = Math.atan2(d.x, d.z)
       }
       const running = a.state === 'flee' || a.state === 'wounded'
-      const target = running ? (a.template.id === 'whitetail' ? 11 : 8) * (a.state === 'wounded' ? 0.7 : 1) : a.state === 'walk' ? 1.3 : 0
-      a.speed += (target - a.speed) * Math.min(1, dt * (running ? 3 : 1.5))
+      if (running) {
+        a.fleeTime += dt
+        if (a.stateTime <= 0 && toPlayer > SAFE_DISTANCE + 80 && a.state === 'wounded') {
+          this.onLost?.(a)
+          this.remove(a)
+          continue
+        }
+        if (a.stateTime <= 0) {
+          const away = a.position.subtract(player)
+          a.desired = Math.atan2(away.x, away.z) + (this.rng() - 0.5) * 0.5
+          a.stateTime = 3
+        }
+      }
+      const buck = !a.doe && a.template.id === 'whitetail'
+      const target = running ? (a.template.id === 'whitetail' ? fleeSpeed(a.fleeTime, buck) : 8) * (a.state === 'wounded' ? 0.75 : 1) : a.state === 'walk' ? 1.25 : 0
+      a.speed += (target - a.speed) * Math.min(1, dt * (running ? 4 : 1.5))
+      const turnRate = running ? 3.2 : a.state === 'alert' ? 2.2 : 1.2
+      const dh = wrapAngle(a.desired - a.heading)
+      a.heading += Math.sign(dh) * Math.min(Math.abs(dh), turnRate * dt)
       if (a.speed > 0.05) {
         const fx = Math.sin(a.heading)
         const fz = Math.cos(a.heading)
         const nx = a.position.x + fx * a.speed * dt
         const nz = a.position.z + fz * a.speed * dt
-        const lookX = nx + fx * 3
-        const lookZ = nz + fz * 3
-        let blocked = this.terrain.heightAt(lookX, lookZ) < 0.4 || Math.abs(lookX) > PLAY_LIMIT || Math.abs(lookZ) > PLAY_LIMIT
+        const look = 2 + a.speed * 0.35
+        const lookX = nx + fx * look
+        const lookZ = nz + fz * look
+        let blocked = this.terrain.heightAt(lookX, lookZ) < 0.4 || Math.abs(lookX) > PLAY_LIMIT - 10 || Math.abs(lookZ) > PLAY_LIMIT - 10
         for (const t of this.ctx.queryTrunks(lookX, lookZ, 1)) if ((t.x - lookX) ** 2 + (t.z - lookZ) ** 2 < (t.r + 0.8) ** 2) blocked = true
-        if (blocked) a.heading += (this.rng() < 0.5 ? -1 : 1) * (0.8 + this.rng()) * Math.min(1, dt * 6) * 3
-        else {
+        if (blocked) {
+          a.desired = a.heading + (wrapAngle(a.desired - a.heading) >= 0 ? 1 : -1) * 1.2
+          a.heading += (wrapAngle(a.desired - a.heading) >= 0 ? 1 : -1) * Math.min(1, dt * 4)
+          if (!running) a.speed *= 0.9
+        } else {
           a.position.x = nx
           a.position.z = nz
         }
       }
       a.position.y = this.terrain.heightAt(a.position.x, a.position.z)
-      if (running && a.stateTime <= 0 && toPlayer > 230) {
-        this.onLost?.(a)
-        this.remove(a)
-        continue
-      }
-      if (running && a.stateTime <= 0) a.stateTime = 3
       this.pose(a, dt, a.speed)
     }
   }
@@ -225,34 +353,70 @@ export class Wildlife {
     const root = a.rig.root
     root.position.copyFrom(a.position)
     const slope = this.terrain.heightAt(a.position.x + Math.sin(a.heading), a.position.z + Math.cos(a.heading)) - a.position.y
-    const pitch = a.state === 'down' ? 0 : -Math.atan(slope) * 0.8
+    let pitch = a.state === 'down' ? 0 : -Math.atan(slope) * 0.8
     const roll = a.state === 'down' ? Math.min(Math.PI / 2, a.downTime * 3.5) : 0
-    Quaternion.FromEulerAnglesToRef(pitch, a.heading, roll, root.rotationQuaternion!)
     if (a.state === 'down') {
+      Quaternion.FromEulerAnglesToRef(pitch, a.heading, roll, root.rotationQuaternion!)
       root.position.y += 0.35 * a.scale * Math.min(1, a.downTime * 3.5)
       return
     }
-    a.gait += dt * (speed < 2 ? speed * 4.2 : 4 + speed * 0.75)
-    const run = Math.min(1, Math.max(0, (speed - 2) / 6))
-    const amp = speed < 0.05 ? 0 : 0.35 + run * 0.45
-    const legs: [string, number][] = [['legFL', 0], ['legBR', 0.15], ['legFR', Math.PI], ['legBL', Math.PI + 0.15]]
-    for (const [name, phase] of legs) {
-      const joint = a.rig.joints.get(name)
-      if (!joint) continue
-      const gallop = run > 0.5 ? (name.startsWith('legF') ? 0 : 1.2) + (name.endsWith('L') ? 0.25 : 0) : phase
-      joint.rotation.x = Math.sin(a.gait + gallop) * amp
+    const deer = a.template.id === 'whitetail'
+    const bounding = deer && speed > 6.5
+    const trot = Math.min(1, Math.max(0, (speed - 2) / 4))
+    if (bounding) {
+      a.gait += dt * (2.6 + speed * 0.12) * Math.PI * 2 / 2
+      const p = a.gait % (Math.PI * 2)
+      const air = Math.max(0, Math.sin(p))
+      root.position.y += air * 0.55 * a.scale
+      pitch += Math.cos(p) * 0.22
+      const reach = Math.sin(p - 0.4)
+      for (const name of ['legFL', 'legFR']) {
+        const j = a.rig.joints.get(name)
+        if (j) j.rotation.x = -0.75 * reach + (name === 'legFR' ? 0.08 : 0)
+      }
+      for (const name of ['legBL', 'legBR']) {
+        const j = a.rig.joints.get(name)
+        if (j) j.rotation.x = 0.85 * reach + (name === 'legBR' ? 0.08 : 0)
+      }
+    } else {
+      const cadence = speed < 0.05 ? 0 : speed < 2 ? speed * 0.95 : 1.9 + speed * 0.35
+      a.gait += dt * cadence * Math.PI * 2
+      const amp = speed < 0.05 ? 0 : 0.32 + trot * 0.25
+      for (const [name, phase] of Object.entries(WALK_PHASE)) {
+        const j = a.rig.joints.get(name)
+        if (!j) continue
+        const ph = trot > 0.5 ? (name === 'legFL' || name === 'legBR' ? 0 : 0.5) : phase
+        let target = Math.sin(a.gait + ph * Math.PI * 2) * amp
+        if (a.stomp > 0 && name === 'legFL') target = -Math.max(0, Math.sin(a.stomp * 9)) * 0.55
+        j.rotation.x += (target - j.rotation.x) * Math.min(1, dt * 14)
+      }
+      root.position.y += Math.abs(Math.sin(a.gait * 2)) * 0.025 * Math.min(1, speed)
     }
+    a.stomp = Math.max(0, a.stomp - dt)
+    Quaternion.FromEulerAnglesToRef(pitch, a.heading, 0, root.rotationQuaternion!)
     const head = a.rig.joints.get('head')
     if (head) {
-      const grazing = a.state === 'graze' && speed < 0.2
-      const target = grazing ? 0.95 + Math.sin(a.gait * 0.3) * 0.05 : a.state === 'alert' ? -0.25 : run * 0.15
-      head.rotation.x += (target - head.rotation.x) * Math.min(1, dt * 2.5)
-      if (a.state === 'graze') a.gait += dt * 0.6
+      a.scan -= dt
+      if (a.state === 'graze' && a.scan <= 0) {
+        a.scan = a.scan < -2.5 ? 3 + this.rng() * 6 : a.scan
+        if (a.scan > 0) a.scanYaw = (this.rng() - 0.5) * 1.1
+      }
+      const lookingUp = a.state === 'graze' && a.scan < 0
+      const grazing = a.state === 'graze' && speed < 0.2 && !lookingUp
+      const targetX = grazing ? 0.95 + Math.sin(a.gait * 0.3) * 0.05 : a.state === 'alert' || lookingUp ? -0.32 : bounding ? 0.1 : a.state === 'walk' ? 0.12 + Math.sin(a.gait * 2) * 0.05 : 0.15
+      let targetY = lookingUp ? a.scanYaw : 0
+      if (a.state === 'alert') targetY = 0
+      if (grazing) a.gait += dt * 0.6
+      head.rotation.x += (targetX - head.rotation.x) * Math.min(1, dt * (a.state === 'alert' ? 6 : 2.5))
+      head.rotation.y += (targetY - head.rotation.y) * Math.min(1, dt * 3)
       const eyes = a.rig.joints.get('headEyes')
-      if (eyes) eyes.rotation.x = head.rotation.x
+      if (eyes) {
+        eyes.rotation.x = head.rotation.x
+        eyes.rotation.y = head.rotation.y
+      }
     }
     const body = a.rig.joints.get('body')
-    if (body) body.position.y = Math.abs(Math.sin(a.gait)) * 0.05 * run
+    if (body) body.position.y = bounding ? 0 : Math.abs(Math.sin(a.gait)) * 0.05 * trot
   }
 
   nearestDown(point: Vector3, range: number): Animal | null {

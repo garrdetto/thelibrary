@@ -1,0 +1,42 @@
+export const HERD_SIZE = 8
+export const HERD_SPAWN_MIN = 90
+export const HERD_SPAWN_MAX = 260
+export const HERD_DESPAWN = 380
+export const BEAR_SHARE = 0.12
+export const BUCK_SHARE = 0.4
+export const PANIC_DISTANCE = 18
+export const SAFE_DISTANCE = 150
+export const ALARM_RADIUS = 45
+
+export type DeerMood = 'graze' | 'walk' | 'alert' | 'flee' | 'wounded' | 'down'
+
+export interface Senses {
+  distance: number
+  noise: number
+  approaching: boolean
+  cover: number
+  hearing: number
+}
+
+export function detectRadius(s: Pick<Senses, 'noise' | 'cover' | 'hearing'>): number {
+  return (14 + 72 * s.noise) * s.hearing * (1 - 0.45 * s.cover)
+}
+
+export function react(mood: DeerMood, s: Senses, alertLeft: number): 'flee' | 'alert' | 'calm' | 'keep' {
+  if (mood === 'down' || mood === 'wounded') return 'keep'
+  if (mood === 'flee') return s.distance > SAFE_DISTANCE ? 'calm' : 'keep'
+  if (s.distance < PANIC_DISTANCE) return 'flee'
+  const r = detectRadius(s)
+  if (mood === 'alert') {
+    if (s.distance < r * 0.6 || (s.approaching && s.distance < r)) return 'flee'
+    if (alertLeft <= 0) return s.distance < r ? 'flee' : 'calm'
+    return 'keep'
+  }
+  return s.distance < r ? 'alert' : 'keep'
+}
+
+export function fleeSpeed(t: number, buck: boolean): number {
+  const burst = buck ? 14 : 13
+  const cruise = buck ? 9 : 8.5
+  return cruise + (burst - cruise) * Math.exp(-t / 2.5)
+}
