@@ -1198,5 +1198,25 @@
   "matsBefore": 8,
   "matsAfter": 8,
   "preset": "vehicle"
+ },
+ "hood/furniture.glb": {
+  "hash": "1d82274331023a814a51dce313e402677cf21557",
+  "before": 2585184,
+  "after": 980952,
+  "primsBefore": 130,
+  "primsAfter": 130,
+  "matsBefore": 46,
+  "matsAfter": 46,
+  "preset": "props"
+ },
+ "hood/sim.glb": {
+  "hash": "86292b4bfa219144e784b30f3ccf69d84dddc2ab",
+  "before": 3877440,
+  "after": 918648,
+  "primsBefore": 16,
+  "primsAfter": 16,
+  "matsBefore": 13,
+  "matsAfter": 13,
+  "preset": "slots"
  }
 }

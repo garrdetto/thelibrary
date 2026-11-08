@@ -26,6 +26,9 @@ export function teamUniform(colors: TeamColors, home: boolean): UniformColors {
     : { jersey: ROAD_GRAY, trim: colors.primary, pants: ROAD_GRAY, socks: colors.primary, cleats: '#15171c', cap: colors.primary, belt: colors.accent }
 }
 
+const SPIKES = '#b9bdc4'
+const SOLE = '#dcd8cc'
+
 export const UMPIRE_UNIFORM: UniformColors = { jersey: '#1b2230', trim: '#1b2230', pants: '#5b616d', socks: '#15171c', cleats: '#15171c', cap: '#1b2230', belt: '#15171c' }
 
 export const SKIN_TONES = ['#f1c7a5', '#e5b48f', '#d9a07a', '#b97c55', '#a8714a', '#7a4b2c', '#5d3a22', '#4a2d1c']
@@ -38,7 +41,7 @@ export interface PlayerMaterial {
 export interface JerseyLook {
   lettering: THREE.Texture | null
   pinstripe: string | null
-  /** Shared face sheet (brows, eyes, nose shading, mouth) laid over the skin on the front of the head. */
+  /** The player's face sheet (brows, eyes, nose, lips, facial hair) laid over the skin on the front of the head. */
   face?: THREE.Texture | null
 }
 
@@ -54,6 +57,8 @@ export function createPlayerMaterial(colors: UniformColors, skin: string, jersey
     cleats: uniform(new THREE.Color(colors.cleats)),
     cap: uniform(new THREE.Color(colors.cap)),
     belt: uniform(new THREE.Color(colors.belt)),
+    spikes: uniform(new THREE.Color(SPIKES)),
+    sole: uniform(new THREE.Color(SOLE)),
   }
   type Vec3Node = ReturnType<typeof vec3>
   const asVec = (node: unknown) => node as Vec3Node
@@ -78,13 +83,14 @@ export function createPlayerMaterial(colors: UniformColors, skin: string, jersey
   }
   if (jersey.face) {
     const head = attribute<'vec3'>('wrap', 'vec3')
-    const onFace = step(float(1.5), head.y).mul(smoothstep(float(0.15), float(0.4), head.z))
+    const onFace = step(float(1.14), head.y).mul(smoothstep(float(0.15), float(0.4), head.z))
     const features = texture(jersey.face, vec2(float(0.5).add(head.x.mul(0.6)), float(0.5).add(head.y.sub(1.88).mul(0.6))))
-    color = mix(color, color.mul(features.rgb), features.a.mul(onFace)) as Vec3Node
+    color = mix(color, features.rgb, features.a.mul(onFace)) as Vec3Node
   }
   const material = new THREE.MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0 })
   material.colorNode = color
-  material.roughnessNode = mix(float(0.78), float(0.35), pick(SLOT.cleats).add(pick(SLOT.cap).mul(0.4)))
+  material.roughnessNode = mix(float(0.78), float(0.35), pick(SLOT.cleats).add(pick(SLOT.cap).mul(0.4)).add(pick(SLOT.spikes)).add(pick(SLOT.sole).mul(0.5)))
+  material.metalnessNode = pick(SLOT.spikes).mul(0.85)
   return {
     material,
     set(next, nextSkin) {

@@ -482,13 +482,37 @@ export function distanceSign(feet: number, paint: string, detail: TextureDetail)
   return finish(element, detail, true, false)
 }
 
-/** A face as a multiply layer over any skin tone: brows, eyes with whites and irises, nose and cheek shading, lips. Shared by every player. */
-export function faceTexture(detail: TextureDetail): THREE.CanvasTexture {
-  return once(`face:${detail.size}`, () => {
+const FACE_VARIANTS = 48
+const HAIR = ['#1b1410', '#2a1c14', '#3d2a1c', '#5a3c22', '#7a5530', '#a87a42', '#8a3f1f']
+const EYES = ['#3b2414', '#4a2e18', '#5b3a1e', '#6a5a2e', '#3e5a6e', '#4c6a48']
+
+/** One of the face sheets laid over the skin on the front of the head: eyes, brows, nose and lips with their own spacing, size and colour, and for some players a mustache, goatee, stubble or beard. Sheets are picked by a seed and cached, so a lineup shares a handful of canvases. */
+export function faceTexture(detail: TextureDetail, seed = 0, dark = false): THREE.CanvasTexture {
+  const variant = ((seed % FACE_VARIANTS) + FACE_VARIANTS) % FACE_VARIANTS
+  return once(`face:${detail.size}:${variant}:${dark ? 1 : 0}`, () => {
+    const rng = new Rng(variant * 7919 + (dark ? 31 : 0) + 1)
+    const pick = <T,>(list: readonly T[]): T => list[Math.floor(rng.next() * list.length)]
+    const range = (low: number, high: number) => low + (high - low) * rng.next()
     const size = Math.max(256, Math.min(512, detail.size / 4))
     const { canvas: element, context } = canvas(size, size)
     context.clearRect(0, 0, size, size)
     const u = size / 100
+    const hair = dark ? pick(HAIR.slice(0, 3)) : pick(HAIR)
+    const iris = dark ? pick(EYES.slice(0, 3)) : pick(EYES)
+    const spacing = range(13.5, 16.5)
+    const eyeW = range(5.6, 7)
+    const eyeH = range(2.9, 3.7)
+    const eyeY = range(47, 49.5)
+    const tilt = range(-0.08, 0.1)
+    const browW = range(1.8, 3.4)
+    const browArch = range(1.5, 4)
+    const browY = eyeY - range(6.5, 9)
+    const noseW = range(3.5, 6.5)
+    const mouthW = range(7.5, 11)
+    const mouthY = range(76.5, 79)
+    const lipFull = range(1.8, 3)
+    const roll = rng.next()
+    const facial = roll < 0.5 ? 'none' : roll < 0.64 ? 'stubble' : roll < 0.76 ? 'mustache' : roll < 0.88 ? 'goatee' : 'beard'
     const soft = (x: number, y: number, rx: number, ry: number, color: string) => {
       context.save()
       context.translate(x * u, y * u)
@@ -502,44 +526,101 @@ export function faceTexture(detail: TextureDetail): THREE.CanvasTexture {
       context.fill()
       context.restore()
     }
+    const tint = (hex: string, alpha: number) => {
+      const c = new THREE.Color(hex)
+      return `rgba(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)},${alpha})`
+    }
+    const hairPatch = (path: () => void, alpha: number, speckle: number) => {
+      context.save()
+      context.beginPath()
+      path()
+      context.clip()
+      context.fillStyle = tint(hair, alpha)
+      context.fillRect(0, 0, size, size)
+      context.fillStyle = tint(hair, Math.min(1, alpha + 0.25))
+      for (let i = 0; i < speckle; i++) context.fillRect(rng.next() * size, rng.next() * size, u * 0.45, u * 0.45)
+      context.restore()
+    }
+    if (facial === 'stubble' || facial === 'beard') {
+      hairPatch(() => {
+        context.moveTo(16 * u, 58 * u)
+        context.quadraticCurveTo(18 * u, 92 * u, 50 * u, 101 * u)
+        context.quadraticCurveTo(82 * u, 92 * u, 84 * u, 58 * u)
+        context.quadraticCurveTo(70 * u, 70 * u, 50 * u, 70 * u)
+        context.quadraticCurveTo(30 * u, 70 * u, 16 * u, 58 * u)
+      }, facial === 'beard' ? 0.72 : 0.2, facial === 'beard' ? 900 : 1400)
+    }
+    if (facial === 'goatee') {
+      hairPatch(() => context.ellipse(50 * u, (mouthY + 12) * u, 9 * u, 9 * u, 0, 0, Math.PI * 2), 0.75, 300)
+    }
+    if (facial === 'mustache' || facial === 'goatee' || facial === 'beard') {
+      hairPatch(() => {
+        context.moveTo((50 - mouthW - 1.5) * u, (mouthY + 1) * u)
+        context.quadraticCurveTo(50 * u, (mouthY - 6.5) * u, (50 + mouthW + 1.5) * u, (mouthY + 1) * u)
+        context.quadraticCurveTo(50 * u, (mouthY - 2) * u, (50 - mouthW - 1.5) * u, (mouthY + 1) * u)
+      }, 0.85, 200)
+    }
     for (const side of [-1, 1]) {
-      const x = 50 + side * 15
-      soft(x, 52, 9, 6, 'rgba(90,60,50,0.35)')
-      context.fillStyle = 'rgba(255,255,255,0.95)'
+      const x = 50 + side * spacing
+      soft(x, eyeY + 4, eyeW + 2.5, 5, 'rgba(70,40,30,0.28)')
+      context.save()
+      context.translate(x * u, eyeY * u)
+      context.rotate(side * tilt)
+      context.fillStyle = 'rgba(244,238,230,0.96)'
       context.beginPath()
-      context.ellipse(x * u, 48 * u, 6.5 * u, 3.4 * u, 0, 0, Math.PI * 2)
+      context.ellipse(0, 0, eyeW * u, eyeH * u, 0, 0, Math.PI * 2)
       context.fill()
-      context.fillStyle = 'rgba(60,40,28,1)'
+      context.save()
+      context.clip()
+      context.fillStyle = iris
       context.beginPath()
-      context.arc((x - side * 0.6) * u, 48 * u, 2.8 * u, 0, Math.PI * 2)
+      context.arc(-side * 0.6 * u, 0.2 * u, eyeH * 0.82 * u, 0, Math.PI * 2)
       context.fill()
-      context.fillStyle = 'rgba(10,8,6,1)'
+      context.fillStyle = 'rgba(8,6,5,1)'
       context.beginPath()
-      context.arc((x - side * 0.6) * u, 48 * u, 1.4 * u, 0, Math.PI * 2)
+      context.arc(-side * 0.6 * u, 0.2 * u, eyeH * 0.38 * u, 0, Math.PI * 2)
       context.fill()
-      context.strokeStyle = 'rgba(40,24,16,0.85)'
-      context.lineWidth = 1.1 * u
+      context.fillStyle = 'rgba(255,255,255,0.8)'
       context.beginPath()
-      context.ellipse(x * u, 48 * u, 6.5 * u, 3.4 * u, 0, Math.PI * 1.05, Math.PI * 1.95)
+      context.arc((-side * 0.6 + 0.8) * u, -0.8 * u, 0.55 * u, 0, Math.PI * 2)
+      context.fill()
+      context.restore()
+      context.strokeStyle = 'rgba(30,18,12,0.9)'
+      context.lineWidth = 1.2 * u
+      context.beginPath()
+      context.ellipse(0, 0, eyeW * u, eyeH * u, 0, Math.PI * 1.03, Math.PI * 1.97)
       context.stroke()
-      context.strokeStyle = 'rgba(35,22,14,0.9)'
-      context.lineWidth = 2.6 * u
+      context.strokeStyle = 'rgba(60,35,25,0.35)'
+      context.lineWidth = 0.7 * u
+      context.beginPath()
+      context.ellipse(0, 0.6 * u, eyeW * 1.05 * u, (eyeH + 1.4) * u, 0, Math.PI * 1.15, Math.PI * 1.85)
+      context.stroke()
+      context.restore()
+      context.strokeStyle = tint(hair, 0.92)
+      context.lineWidth = browW * u
       context.lineCap = 'round'
       context.beginPath()
-      context.moveTo((x - side * 7) * u, 41 * u)
-      context.quadraticCurveTo(x * u, 37.5 * u, (x + side * 7) * u, 40 * u)
+      context.moveTo((x - side * (eyeW + 1)) * u, (browY + 1.5) * u)
+      context.quadraticCurveTo((x + side * 1) * u, (browY - browArch) * u, (x + side * (eyeW + 1.5)) * u, (browY + 1) * u)
       context.stroke()
-      soft(50 + side * 22, 64, 9, 7, 'rgba(200,90,80,0.18)')
+      soft(50 + side * 22, 64, 9, 7, 'rgba(190,90,80,0.14)')
+      soft(50 + side * (noseW * 0.45), 67, 1.6, 1.1, 'rgba(40,20,15,0.55)')
     }
-    soft(50, 60, 4, 9, 'rgba(70,40,30,0.32)')
-    soft(50, 68, 6, 2.5, 'rgba(60,35,25,0.4)')
-    context.strokeStyle = 'rgba(120,50,45,0.85)'
-    context.lineWidth = 2 * u
+    soft(50, 59, noseW * 0.7, 9, 'rgba(70,40,30,0.24)')
+    soft(50, 68.5, noseW, 2.4, 'rgba(60,35,25,0.32)')
+    context.fillStyle = 'rgba(122,52,48,0.9)'
     context.beginPath()
-    context.moveTo(42 * u, 78 * u)
-    context.quadraticCurveTo(50 * u, 81 * u, 58 * u, 78 * u)
+    context.moveTo((50 - mouthW) * u, mouthY * u)
+    context.quadraticCurveTo(50 * u, (mouthY - lipFull - 0.6) * u, (50 + mouthW) * u, mouthY * u)
+    context.quadraticCurveTo(50 * u, (mouthY + lipFull + 1) * u, (50 - mouthW) * u, mouthY * u)
+    context.fill()
+    context.strokeStyle = 'rgba(58,22,20,0.95)'
+    context.lineWidth = 1.3 * u
+    context.beginPath()
+    context.moveTo((50 - mouthW) * u, mouthY * u)
+    context.quadraticCurveTo(50 * u, (mouthY + 0.8) * u, (50 + mouthW) * u, mouthY * u)
     context.stroke()
-    soft(50, 82, 6, 2.5, 'rgba(255,220,200,0.25)')
+    soft(50, mouthY + 4.5, 5, 2, 'rgba(255,225,205,0.18)')
     const texture = finish(element, detail, true, false)
     texture.generateMipmaps = true
     return texture

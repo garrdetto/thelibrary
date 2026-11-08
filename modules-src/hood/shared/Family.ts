@@ -4,7 +4,7 @@
  * (and catch up when a resident comes home from a visit). Renderer-free and deterministic.
  */
 import type { ActionDef } from './Catalog'
-import { HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, type Look } from './Look'
+import { BODIES, HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, type Look } from './Look'
 import type { Need } from './Needs'
 
 export const LIFE_STAGES = ['baby', 'toddler', 'child', 'teen', 'adult'] as const
@@ -233,6 +233,7 @@ export function babyLook(a: Look, b: Look | null, roll: () => number): Look {
     top: Math.floor(roll() * OUTFIT_COLORS.length),
     bottom: Math.floor(roll() * OUTFIT_COLORS.length),
     build: pickParent().build,
+    body: BODIES[Math.floor(roll() * BODIES.length)],
     height: Math.round((((a.height + (b?.height ?? a.height)) / 2) + (roll() - 0.5) * 0.06) * 100) / 100,
   }
 }

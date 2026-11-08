@@ -242,7 +242,7 @@ def build_antlers():
         for i in range(12):
             t = i / 11
             ang = t * 2.3
-            beam.append((side * (0.07 + 0.3 * math.sin(ang * 0.72)), 0.82 + 0.36 * math.sin(ang) - 0.06, 1.64 + 0.3 * math.sin(t * 2.5) + 0.05 * t))
+            beam.append((side * (0.07 + 0.3 * math.sin(ang * 0.72)), 0.82 + 0.36 * math.sin(ang) + 0.01, 1.61 + 0.3 * math.sin(t * 2.5) + 0.05 * t))
         m.add('antlers', piece_from_bm(tube(beam, [0.034 - 0.026 * (i / 11) for i in range(12)], 8), col), pivot=piv)
         burr = sphere(0.04, 10, 6, at=beam[0], scale=(1, 1, 0.5))
         m.add('antlers', piece_from_bm(burr, lambda co, n: (0.3, 0.24, 0.17)), pivot=piv)

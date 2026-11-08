@@ -1,4 +1,4 @@
-/** The Blender-built ballplayer bodies (tools/build-ballplayer.py → public/modules/bushleague/players/*.glb): loaded once, joints remapped onto the shared rig's bone order, `_slot` mapped to the uniform slot attribute, and torso and head wrap coordinates derived from the bind pose so jersey lettering and faces land the same way they do on the procedural body. */
+/** The Blender-built ballplayer bodies (tools/build-ballplayer.py → public/modules/bushleague/players/*.glb) and their glove and bat (tools/build-gear.py): loaded once, joints remapped onto the shared rig's bone order, `_slot` mapped to the uniform slot attribute, and torso and head wrap coordinates derived from the bind pose so jersey lettering and faces land the same way they do on the procedural body. */
 import * as THREE from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import type { BodyType } from '../sim'
@@ -74,17 +74,65 @@ async function loadOne(loader: GLTFLoader, base: string, body: ModelBody): Promi
   mesh.geometry.dispose()
 }
 
-/** Loads the three bodies; resolves false (and the procedural body is used) if any is missing or malformed. */
+export interface Gear {
+  /** Fielder's gloves for the left and right hand, vertex-coloured, in the glove's own frame (fingers +y, pocket +z). */
+  glove: Readonly<Record<'L' | 'R', THREE.BufferGeometry>>
+  /** The bat standing on its knob at the origin, barrel up, 0.86 m long, vertex-coloured. */
+  bat: THREE.BufferGeometry
+}
+
+let gear: Gear | null = null
+
+async function loadGeometry(loader: GLTFLoader, url: string): Promise<THREE.BufferGeometry> {
+  const gltf = await loader.loadAsync(url)
+  gltf.scene.updateMatrixWorld(true)
+  let found: THREE.Mesh | null = null
+  gltf.scene.traverse((object) => {
+    if (!found && (object as THREE.Mesh).isMesh) found = object as THREE.Mesh
+  })
+  const mesh = found as THREE.Mesh | null
+  if (!mesh) throw new Error(`${url} has no mesh`)
+  const geometry = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld)
+  mesh.geometry.dispose()
+  if (!geometry.getAttribute('color')) throw new Error(`${url} has no vertex colours`)
+  return geometry
+}
+
+function mirrored(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
+  const copy = geometry.clone().scale(-1, 1, 1)
+  const index = copy.getIndex()
+  if (index) {
+    for (let i = 0; i < index.count; i += 3) {
+      const second = index.getX(i + 1)
+      index.setX(i + 1, index.getX(i + 2))
+      index.setX(i + 2, second)
+    }
+  }
+  copy.computeVertexNormals()
+  return copy
+}
+
+/** Loads the three bodies, the glove and the bat; resolves false (and the procedural body and plain gear are used) if a body is missing or malformed. */
 export async function loadBallplayerModels(base: string): Promise<boolean> {
   const loader = new GLTFLoader()
+  const gearLoad = Promise.all([loadGeometry(loader, `${base}glove.glb`), loadGeometry(loader, `${base}bat.glb`)])
+    .then(([glove, bat]) => {
+      gear = { glove: { L: glove, R: mirrored(glove) }, bat }
+    })
+    .catch((error) => console.warn('Bush League: using plain glove and bat', error))
   try {
-    await Promise.all((['lean', 'stocky', 'belly'] as const).map((body) => loadOne(loader, base, body)))
+    await Promise.all([...(['lean', 'stocky', 'belly'] as const).map((body) => loadOne(loader, base, body)), gearLoad])
     return true
   } catch (error) {
     console.warn('Bush League: using procedural ballplayers', error)
     geometries.clear()
     return false
   }
+}
+
+/** The Blender glove and bat, or null before loading or after a failure. */
+export function modelGear(): Gear | null {
+  return gear
 }
 
 /** The shared Blender body for a body type, or null before loading or after a failure. */

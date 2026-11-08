@@ -1,7 +1,9 @@
 /** Procedural furniture: one original model per catalog item, centred on its footprint with its front facing -z. */
 import * as THREE from 'three/webgpu'
 import type { ObjectDef } from '../../shared/Catalog'
-import { box, cylinder, sphere } from './Kit'
+import { box, cylinder, material, sphere } from './Kit'
+import { models } from './Models'
+import { surface } from './Surfaces'
 import { buildTree } from './Street'
 import { GLOW, STEEL, cloth, legs, wood, type Builder, type SeatSpot } from './FurnitureKit'
 import { moreBuilders, moreSeats } from './FurnitureMore'
@@ -196,13 +198,98 @@ const builders: Record<string, Builder> = {
   },
 }
 
+const BOOKS = ['#c44e3f', '#3a6fa8', '#d8a23c', '#4f8a3f', '#7a5aa8', '#e8e1d3']
+const leaves = (c: string) => surface('leaves', 'tri', { size: 0.7, color: c, roughness: 0.9, side: THREE.DoubleSide })
+
+/** The finish for one of the Blender model's material slots (see tools/build-furniture.py), in this item's colours. */
+export function slotMaterial(slot: string, color: string, accent: string): THREE.Material {
+  const book = /^book_(\d)$/.exec(slot)
+  if (book) return material(BOOKS[Number(book[1]) % BOOKS.length], { roughness: 0.8 })
+  switch (slot) {
+    case 'wood_color': return wood(color)
+    case 'wood_accent': return wood(accent)
+    case 'wood_dark': return wood('#3a2a1f')
+    case 'wood_walnut': return wood('#6b4630')
+    case 'cloth_color': return cloth(color)
+    case 'cloth_accent': return cloth(accent)
+    case 'linen': return cloth('#f4f1ea')
+    case 'pillow': return cloth('#fbfaf7')
+    case 'paint_color': return material(color, { roughness: 0.6 })
+    case 'paint_accent': return material(accent, { roughness: 0.6 })
+    case 'gloss_color': return material(color, { roughness: 0.22 })
+    case 'gloss_accent': return material(accent, { roughness: 0.22 })
+    case 'metal_color': return material(color, { roughness: 0.38, metalness: 0.8 })
+    case 'metal_accent': return material(accent, { roughness: 0.36, metalness: 0.8 })
+    case 'leaf_accent': return leaves(accent)
+    case 'leaf': return leaves('#4f8a3f')
+    case 'bark': return surface('bark', 'tri', { size: 0.8, color: '#8a6a4c', roughness: 1 })
+    case 'stone': return surface('stone', 'tri', { size: 0.6, color: '#d6d2c8', roughness: 0.85 })
+    case 'soil': return material('#3e2a1c', { roughness: 1 })
+    case 'mulch': return material('#5a3d27', { roughness: 1 })
+    case 'steel': return material(STEEL, { metalness: 0.8, roughness: 0.3 })
+    case 'chrome': return material('#e4e7ea', { metalness: 0.95, roughness: 0.12 })
+    case 'blackmetal': return material('#202124', { metalness: 0.6, roughness: 0.45 })
+    case 'glass': return material('#d8ecf5', { opacity: 0.28, roughness: 0.05 })
+    case 'mirror': return material('#dfe9ee', { metalness: 0.9, roughness: 0.04 })
+    case 'screen': return material('#0b0f16', { roughness: 0.12, emissive: '#4f86c4', emissiveIntensity: 0.45 })
+    case 'display': return material('#7fd9f0', { emissive: '#7fd9f0', emissiveIntensity: 1.2 })
+    case 'glow_accent': return material(accent, GLOW)
+    case 'porcelain': return material('#f7f7f5', { roughness: 0.15 })
+    case 'cooktop': return material('#111214', { roughness: 0.08 })
+    case 'oven_glass': return material('#141518', { roughness: 0.05 })
+    case 'keys': return material('#2b2d32', { roughness: 0.7 })
+    case 'charcoal': return material('#2a2a2c', { roughness: 0.85 })
+    case 'rubber': return material('#151515', { roughness: 0.9 })
+    case 'tomato': return material('#c8321f', { roughness: 0.35 })
+    case 'ball': return material('#e8682c', { roughness: 0.7 })
+    case 'net': return material('#f4f4f4', { roughness: 0.9 })
+    case 'paper': return material('#ede5d1', { roughness: 0.9 })
+    case 'flower_yellow': return material('#f2d24b', { roughness: 0.7 })
+    case 'flower_white': return material('#fbf8f2', { roughness: 0.7 })
+    case 'flower_red': return material('#c44e3f', { roughness: 0.7 })
+    default: return material(color)
+  }
+}
+
+/** A clone of a Blender-built template with its slots filled in; geometry is shared with the template. */
+export function dressModel(template: THREE.Object3D, color: string, accent: string, shadows = true): THREE.Group {
+  const g = new THREE.Group()
+  for (const child of template.children) {
+    const copy = child.clone(true)
+    copy.traverse(node => {
+      const mesh = node as THREE.Mesh
+      if (!mesh.isMesh) return
+      const slot = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material).name
+      mesh.material = slotMaterial(slot, color, accent)
+      mesh.castShadow = shadows
+      mesh.receiveShadow = true
+    })
+    g.add(copy)
+  }
+  return g
+}
+
 export function buildFurniture(def: ObjectDef): THREE.Group {
+  const template = models.furniture?.getObjectByName(def.id)
+  if (template) {
+    const g = dressModel(template, def.color, def.accent, !def.flat)
+    g.name = def.id
+    return g
+  }
   const g = new THREE.Group()
   g.name = def.id
   const builder = builders[def.id] ?? moreBuilders[def.id]
   if (builder) builder(def, g, def.w, def.d)
   else g.add(box(def.w * 0.9, def.height, def.d * 0.9, def.color))
   return g
+}
+
+/** Seats in front of the object (the desk chair) face into it; every other seat faces out from its front. */
+/** Seats behind a desk or instrument, where the Sim sits facing the object rather than away from it. */
+const FACES_OBJECT = new Set(['computer', 'gaming-pc', 'desk', 'piano', 'drums'])
+
+export function seatFacesObject(def: ObjectDef): boolean {
+  return FACES_OBJECT.has(def.id)
 }
 
 /** Where a seated or lying Sim goes on an object, in the object's own unrotated frame. */

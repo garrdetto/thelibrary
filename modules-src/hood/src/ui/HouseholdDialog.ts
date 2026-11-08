@@ -1,5 +1,5 @@
 /** Move-in dialog, the resident editor (add a resident, edit a look) and small prompts. */
-import { BUILDS, HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, SKIN_TONES, defaultLook, type Look } from '../../shared/Look'
+import { BODIES, BUILDS, HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, SKIN_TONES, defaultLook, type Look } from '../../shared/Look'
 import { MAX_SIMS } from '../../shared/Lot'
 import { STAGE_LABELS, STARTING_STAGES, type StartingStage } from '../../shared/Family'
 import { button, el } from './Ui'
@@ -17,6 +17,7 @@ export interface HouseholdDraft {
 
 const STYLE_LABELS: Record<string, string> = { short: 'Short', long: 'Long', bun: 'Bun', curly: 'Curly', bald: 'Shaved' }
 const BUILD_LABELS: Record<string, string> = { slim: 'Slim', average: 'Average', broad: 'Broad' }
+const BODY_LABELS: Record<string, string> = { masculine: 'Masculine', feminine: 'Feminine' }
 const STAGE_HINTS: Record<StartingStage, string> = { adult: 'Can work and start a family', teen: 'Grows up in about 3 days', child: 'Grows up in about 6 days' }
 
 function swatches(colors: readonly string[], value: number, label: string, onPick: (index: number) => void): HTMLElement {
@@ -59,6 +60,7 @@ export function randomLook(): Look {
     top: Math.floor(Math.random() * OUTFIT_COLORS.length),
     bottom: Math.floor(Math.random() * OUTFIT_COLORS.length),
     build: pick(BUILDS),
+    body: pick(BODIES),
     height: Math.round((0.92 + Math.random() * 0.16) * 100) / 100,
   }
 }
@@ -89,6 +91,7 @@ export function residentEditor(draft: ResidentDraft, opts: { title: string; show
       opts.showStage ? el('div', { class: 'field' }, el('span', {}, 'Life stage'), choices(STARTING_STAGES, STAGE_LABELS, draft.stage, 'Life stage', v => { draft.stage = v; opts.onChange?.() }, STAGE_HINTS)) : null,
       el('details', { class: 'looks', open: opts.open !== false },
         el('summary', {}, 'Look'),
+        el('div', { class: 'field' }, el('span', {}, 'Body'), choices(BODIES, BODY_LABELS, draft.look.body, 'Body shape', v => set({ body: v }))),
         el('div', { class: 'field' }, el('span', {}, 'Skin'), swatches(SKIN_TONES, draft.look.skin, 'Skin tone', i => set({ skin: i }))),
         el('div', { class: 'field' }, el('span', {}, 'Hair'), choices(HAIR_STYLES, STYLE_LABELS, draft.look.hairStyle, 'Hair style', v => set({ hairStyle: v }))),
         el('div', { class: 'field' }, el('span', {}, 'Hair color'), swatches(HAIR_COLORS, draft.look.hair, 'Hair color', i => set({ hair: i }))),

@@ -212,12 +212,15 @@ class Model:
         self.ao_dist = ao_dist
         self.ao_strength = ao_strength
         self.materials = {}
+        self.parents = {}
 
-    def add(self, part, piece, pivot=(0, 0, 0), material=None):
+    def add(self, part, piece, pivot=(0, 0, 0), material=None, parent=None):
         self.parts.setdefault(part, []).append(piece)
         self.pivots.setdefault(part, pivot)
         if material:
             self.materials[part] = material
+        if parent:
+            self.parents[part] = parent
 
 
 def bake_ao(model, samples=20):
@@ -302,7 +305,7 @@ def write_model(model):
             chunk += struct.pack('<3I' if wide else '<3H', a, c, b)
         while len(chunk) % 4:
             chunk += b'\0'
-        header['parts'].append({'name': name, 'pivot': [piv[0], piv[2], piv[1]], 'vertices': vcount, 'indices': len(idx) * 3, 'wide': wide, 'offset': offset, 'bytes': len(chunk), 'uv': has_uv, 'material': model.materials.get(name, '')})
+        header['parts'].append({'name': name, 'pivot': [piv[0], piv[2], piv[1]], 'vertices': vcount, 'indices': len(idx) * 3, 'wide': wide, 'offset': offset, 'bytes': len(chunk), 'uv': has_uv, 'material': model.materials.get(name, ''), **({'parent': model.parents[name]} if name in model.parents else {})})
         offset += len(chunk)
         blobs.append(bytes(chunk))
     hj = json.dumps(header, separators=(',', ':')).encode('utf8')
@@ -353,8 +356,12 @@ def preview(model):
     sc.display.shading.color_type = 'VERTEX'
     sc.render.resolution_x = 512
     sc.render.resolution_y = 384
-    sc.render.filepath = os.path.join(PREVIEW, model.name + '.png')
-    bpy.ops.render.render(write_still=True)
+    views = [('', Vector((size * 0.9, -size * 1.1, size * 0.55))), ('-front', Vector((size * 1.0, size * 0.95, size * 0.3))), ('-side', Vector((size * 1.35, 0.0, size * 0.12)))]
+    for suffix, offset in views:
+        cam.location = center + offset
+        cam.rotation_euler = (center - cam.location).to_track_quat('-Z', 'Y').to_euler()
+        sc.render.filepath = os.path.join(PREVIEW, model.name + suffix + '.png')
+        bpy.ops.render.render(write_still=True)
 
 
 def bark(co, n):
@@ -839,6 +846,8 @@ def build_bobber():
 
 
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_detail.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_refine.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_surface.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():
