@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu'
 import type { BodyType, Hand } from '../sim'
 import { Animator, type ActionName, type BaseState } from './Animator'
 import { buildBody } from './BodyMesh'
+import { groundHeight } from '../view/Mound'
 import { modelGeometry, type Gear } from './Models'
 import { createRig, proportionsFor, type Rig } from './Rig'
 import { createPlayerMaterial, type JerseyLook, type PlayerMaterial, type UniformColors } from './Uniform'
@@ -101,6 +102,7 @@ export class Ballplayer {
   moveTo(position: THREE.Vector3, dt: number, autoBase = true): void {
     if (!this.placed) {
       this.group.position.copy(position)
+      this.group.position.y += groundHeight(position.x, position.z)
       this.last.copy(position)
       this.placed = true
       return
@@ -112,12 +114,14 @@ export class Ballplayer {
     this.speed += (speed - this.speed) * Math.min(1, dt * 8)
     if (distance > 0.01) this.targetYaw = Math.atan2(dx, dz)
     this.group.position.copy(position)
+    this.group.position.y += groundHeight(position.x, position.z)
     this.last.copy(position)
     if (autoBase && this.animator.base !== 'crouch' && this.animator.base !== 'stance') this.setBase(this.speed > 0.8 ? 'run' : this.animator.base === 'run' ? 'ready' : this.animator.base)
   }
 
   teleport(position: THREE.Vector3): void {
     this.group.position.copy(position)
+    this.group.position.y += groundHeight(position.x, position.z)
     this.last.copy(position)
     this.speed = 0
     this.placed = true

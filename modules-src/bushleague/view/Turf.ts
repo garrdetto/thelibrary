@@ -1,13 +1,17 @@
-/** Field surfaces as TSL node materials: mowed turf (stripes, checkerboard or diamonds per park, a view-dependent sheen, and painted blade detail at two scales for colour and bump) and infield dirt (painted clay grain and pebbles, single-step parallax and a runtime canvas where chalk lines and cleat scuffs are painted). */
+/** Field surfaces as TSL node materials: mowed turf (stripes, checkerboard or diamonds per park, a view-dependent sheen, and painted blade detail at two scales for colour and bump) and infield dirt (painted clay grain and pebbles, single-step parallax). The dirt reads the runtime paint layers where clay wear, chalk lines and cleat scuffs are painted. */
 import * as THREE from 'three/webgpu'
 import { abs, cameraPosition, cameraViewMatrix, color, dot, float, floor, length, mix, mod, mx_noise_float, normalWorld, normalize, positionWorld, smoothstep, step, texture, vec2, vec3, vec4 } from 'three/tsl'
-import { BASES, MOUND_DISTANCE, PLATE_FRONT } from '../sim'
+import { MOUND_DISTANCE, PLATE_FRONT } from '../sim'
 import type { MowPattern } from '../looks'
+import { paintClay, paintMarkings, weather } from './Chalk'
 import { clayDetail, grassDetail, type TextureDetail } from './Textures'
 
 const MAP_X0 = -32
 const MAP_Z0 = -12
 const MAP_SPAN = 64
+const PLATE_X0 = -4.5
+const PLATE_Z0 = -4.5
+const PLATE_SPAN = 9
 
 /** Sim (x, z) with z toward center field, from the world position. */
 function simXZ() {
@@ -53,97 +57,113 @@ export function createTurfMaterial(pattern: MowPattern, light: string, dark: str
   return material
 }
 
-/** Runtime paint for the infield: chalk lines, batter's boxes and the scuffs and slide marks play leaves behind. */
+interface PaintLayer {
+  canvas: HTMLCanvasElement
+  context: CanvasRenderingContext2D
+  texture: THREE.CanvasTexture
+  x0: number
+  z0: number
+  span: number
+  size: number
+  dirty: boolean
+}
+
+/** Runtime paint for the field: packing clay, chalk lines, batter's boxes and the scuffs and slide marks play leaves behind. Two layers share the drawing: the whole infield at `size`, and the plate area (9 m square) at `plateSize`, so the boxes and the plate end of the foul lines stay sharp up close. */
 export class DirtCanvas {
-  readonly canvas = document.createElement('canvas')
-  readonly texture: THREE.CanvasTexture
-  private readonly context: CanvasRenderingContext2D
-  private dirty = false
+  readonly layers: PaintLayer[]
   private sinceUpload = 0
 
-  constructor(readonly size = 1024, anisotropy = 4) {
-    this.canvas.width = size
-    this.canvas.height = size
-    this.context = this.canvas.getContext('2d')!
-    this.texture = new THREE.CanvasTexture(this.canvas)
-    this.texture.colorSpace = THREE.SRGBColorSpace
-    this.texture.anisotropy = anisotropy
-    this.texture.flipY = false
+  constructor(size = 1024, anisotropy = 4, plateSize = 512) {
+    this.layers = [
+      this.layer(MAP_X0, MAP_Z0, MAP_SPAN, size, anisotropy),
+      this.layer(PLATE_X0, PLATE_Z0, PLATE_SPAN, plateSize, anisotropy),
+    ]
     this.reset()
   }
 
-  private px(x: number, z: number): [number, number] {
-    return [((x - MAP_X0) / MAP_SPAN) * this.size, ((z - MAP_Z0) / MAP_SPAN) * this.size]
+  get texture(): THREE.CanvasTexture {
+    return this.layers[0].texture
   }
 
-  private metres(value: number): number {
-    return (value / MAP_SPAN) * this.size
+  private layer(x0: number, z0: number, span: number, size: number, anisotropy: number): PaintLayer {
+    const canvas = document.createElement('canvas')
+    canvas.width = size
+    canvas.height = size
+    const texture = new THREE.CanvasTexture(canvas)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.anisotropy = anisotropy
+    texture.flipY = false
+    return { canvas, context: canvas.getContext('2d')!, texture, x0, z0, span, size, dirty: true }
+  }
+
+  private draw(paint: (ctx: CanvasRenderingContext2D) => void, x?: number, z?: number, reach = 0): void {
+    for (const layer of this.layers) {
+      if (x !== undefined && z !== undefined && (x + reach < layer.x0 || x - reach > layer.x0 + layer.span || z + reach < layer.z0 || z - reach > layer.z0 + layer.span)) continue
+      const scale = layer.size / layer.span
+      const ctx = layer.context
+      ctx.save()
+      ctx.setTransform(scale, 0, 0, scale, -layer.x0 * scale, -layer.z0 * scale)
+      paint(ctx)
+      ctx.restore()
+      layer.dirty = true
+    }
   }
 
   reset(): void {
-    const ctx = this.context
-    ctx.clearRect(0, 0, this.size, this.size)
-    ctx.strokeStyle = 'rgba(245,242,232,0.96)'
-    ctx.lineWidth = this.metres(0.1)
-    ctx.lineCap = 'round'
-    for (const side of [-1, 1]) {
-      const [x0, y0] = this.px(side * 0.3, 0.3)
-      const [x1, y1] = this.px(side * 30, 30)
-      ctx.beginPath()
-      ctx.moveTo(x0, y0)
-      ctx.lineTo(x1, y1)
-      ctx.stroke()
-      const [bx, by] = this.px(side * 0.97 - 0.61, 0.2 - 0.915)
-      ctx.strokeRect(bx, by, this.metres(1.22), this.metres(1.83))
-    }
-    const [cx, cy] = this.px(-0.55, -2.4)
-    ctx.strokeRect(cx, cy, this.metres(1.1), this.metres(2.4))
-    const [fx, fy] = this.px(BASES[1].x - 0.45, BASES[1].z - 14)
-    ctx.beginPath()
-    ctx.moveTo(fx, fy)
-    ctx.lineTo(fx, fy + this.metres(14))
-    ctx.stroke()
-    this.dirty = true
+    for (const layer of this.layers) layer.context.clearRect(0, 0, layer.size, layer.size)
+    this.draw(paintClay)
+    this.draw(paintMarkings)
+    for (const [index, layer] of this.layers.entries()) weather(layer.context, layer.size, 17 + index)
   }
 
   /** Darkens a patch and scrapes the chalk under it; `length` stretches it along `angle` for slides. */
   scuff(x: number, z: number, radius: number, strength = 0.5, angle = 0, length = 1): void {
-    const ctx = this.context
-    const [px, py] = this.px(x, z)
-    ctx.save()
-    ctx.translate(px, py)
-    ctx.rotate(angle)
-    ctx.scale(length, 1)
-    const r = this.metres(radius)
-    ctx.globalCompositeOperation = 'destination-out'
-    ctx.fillStyle = `rgba(0,0,0,${0.5 * strength})`
-    ctx.beginPath()
-    ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.globalCompositeOperation = 'source-over'
-    const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, r)
-    gradient.addColorStop(0, `rgba(70,42,22,${0.45 * strength})`)
-    gradient.addColorStop(1, 'rgba(70,42,22,0)')
-    ctx.fillStyle = gradient
-    ctx.beginPath()
-    ctx.arc(0, 0, r, 0, Math.PI * 2)
-    ctx.fill()
-    ctx.restore()
-    this.dirty = true
+    this.draw((ctx) => {
+      ctx.translate(x, z)
+      ctx.rotate(angle)
+      ctx.scale(length, 1)
+      ctx.globalCompositeOperation = 'destination-out'
+      ctx.fillStyle = `rgba(0,0,0,${0.5 * strength})`
+      ctx.beginPath()
+      ctx.arc(0, 0, radius * 0.8, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.globalCompositeOperation = 'source-over'
+      const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, radius)
+      gradient.addColorStop(0, `rgba(70,42,22,${0.45 * strength})`)
+      gradient.addColorStop(1, 'rgba(70,42,22,0)')
+      ctx.fillStyle = gradient
+      ctx.beginPath()
+      ctx.arc(0, 0, radius, 0, Math.PI * 2)
+      ctx.fill()
+    }, x, z, radius * length)
   }
 
   update(dt: number): void {
     this.sinceUpload += dt
-    if (this.dirty && this.sinceUpload > 0.35) {
-      this.texture.needsUpdate = true
-      this.dirty = false
-      this.sinceUpload = 0
+    if (this.sinceUpload <= 0.35) return
+    let uploaded = false
+    for (const layer of this.layers) {
+      if (!layer.dirty) continue
+      layer.texture.needsUpdate = true
+      layer.dirty = false
+      uploaded = true
     }
+    if (uploaded) this.sinceUpload = 0
   }
 
   dispose(): void {
-    this.texture.dispose()
+    for (const layer of this.layers) layer.texture.dispose()
   }
+}
+
+/** The painted field at sim point `q`: the plate layer where it covers, the infield layer elsewhere, nothing outside both. */
+function paintAt(paint: DirtCanvas, q: THREE.Node<'vec2'>) {
+  const inside = (u: THREE.Node<'vec2'>) => step(float(0), u.x).mul(step(u.x, float(1))).mul(step(float(0), u.y)).mul(step(u.y, float(1)))
+  const [main, plate] = paint.layers
+  const uvMain = vec2(q.x.sub(main.x0).div(main.span), q.y.sub(main.z0).div(main.span))
+  const uvPlate = vec2(q.x.sub(plate.x0).div(plate.span), q.y.sub(plate.z0).div(plate.span))
+  const wide = texture(main.texture, uvMain).mul(inside(uvMain))
+  return mix(wide, texture(plate.texture, uvPlate), inside(uvPlate))
 }
 
 export function createDirtMaterial(dirt: string, paint: DirtCanvas, detail: TextureDetail): THREE.MeshStandardNodeMaterial {
@@ -160,8 +180,7 @@ export function createDirtMaterial(dirt: string, paint: DirtCanvas, detail: Text
   const broad = texture(clay, turned(q as unknown as ReturnType<typeof simXZ>, 4.4))
   const grain = fine.b.mul(1.3).add(0.45).mul(broad.b.mul(0.4).add(0.8))
   const base = color(dirt).mul(float(0.88).add(clods.mul(0.12))).mul(float(1).sub(speckle.mul(0.08))).mul(grain)
-  const uv = vec2(q.x.sub(MAP_X0).div(MAP_SPAN), q.y.sub(MAP_Z0).div(MAP_SPAN))
-  const paintSample = texture(paint.texture, uv)
+  const paintSample = paintAt(paint, q)
   material.colorNode = mix(base, paintSample.rgb, paintSample.a)
   const tilt = clods.mul(0.08)
   material.roughnessNode = float(0.97).sub(fine.b.sub(0.4).max(0).mul(0.3))
