@@ -70,7 +70,11 @@ export class LocalLink implements LotLink {
     const state = newLotState(0, 0, 'local', 'You', 'The Practice House', [
       { name: 'Robin', look: { ...defaultLook(), hair: 3, hairStyle: 'long', top: 2, bottom: 5, skin: 2 } },
       { name: 'Sam', look: { ...defaultLook(), hair: 0, hairStyle: 'short', top: 3, bottom: 5, skin: 4, build: 'broad' } },
+      { name: 'Pip', look: { ...defaultLook(), hair: 2, hairStyle: 'curly', top: 7, bottom: 0, skin: 3 }, stage: 'child' },
     ])
+    // Robin and Sam are close enough to try for a baby, so the practice lot shows the whole family loop.
+    state.friendships['h:s1|h:s2'] = 45
+    state.household.sims[2].parents = ['s1', 's2']
     this.room = new Room(state, {}, 'member:local', 42)
     const joined = this.room.join({ key: 'member:local', name: 'You', send: m => queueMicrotask(() => this.onMessage(m)), close: () => undefined })
     this.memberId = 'id' in joined ? joined.id : ''

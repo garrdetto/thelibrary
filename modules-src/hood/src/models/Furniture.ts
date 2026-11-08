@@ -2,20 +2,9 @@
 import * as THREE from 'three/webgpu'
 import type { ObjectDef } from '../../shared/Catalog'
 import { box, cylinder, sphere } from './Kit'
-import { surface } from './Surfaces'
 import { buildTree } from './Street'
-
-const wood = (c: string) => surface('grain', 'tri', { size: 0.9, color: c, roughness: 0.55 })
-const cloth = (c: string) => surface('fabric', 'tri', { size: 0.45, color: c, roughness: 0.95 })
-
-type Builder = (def: ObjectDef, g: THREE.Group, w: number, d: number) => void
-
-const STEEL = '#b9c0c6'
-const GLOW = { emissive: '#ffe2a8', emissiveIntensity: 1.4 }
-
-function legs(g: THREE.Group, w: number, d: number, h: number, color: string | THREE.Material, inset = 0.06, size = 0.05): void {
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(box(size, h, size, color, sx * (w / 2 - inset), h / 2, sz * (d / 2 - inset)))
-}
+import { GLOW, STEEL, cloth, legs, wood, type Builder, type SeatSpot } from './FurnitureKit'
+import { moreBuilders, moreSeats } from './FurnitureMore'
 
 const builders: Record<string, Builder> = {
   'bed-twin': (def, g, w, d) => {
@@ -210,15 +199,17 @@ const builders: Record<string, Builder> = {
 export function buildFurniture(def: ObjectDef): THREE.Group {
   const g = new THREE.Group()
   g.name = def.id
-  const builder = builders[def.id]
+  const builder = builders[def.id] ?? moreBuilders[def.id]
   if (builder) builder(def, g, def.w, def.d)
   else g.add(box(def.w * 0.9, def.height, def.d * 0.9, def.color))
   return g
 }
 
 /** Where a seated or lying Sim goes on an object, in the object's own unrotated frame. */
-export function seatOffset(def: ObjectDef, seat: number, lie: boolean): { x: number; y: number; z: number } {
+export function seatOffset(def: ObjectDef, seat: number, lie: boolean): SeatSpot {
   const seats = def.seats ?? 1
+  const rule = moreSeats[def.id]
+  if (rule) return rule(def, seat, lie)
   if (def.id === 'computer') return { x: 0, y: 0.48, z: -def.d * 0.75 }
   if (def.id === 'picnic') {
     const side = seat < 2 ? -1 : 1

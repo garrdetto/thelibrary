@@ -1,6 +1,6 @@
 # The Hood
 
-A shared street of player-owned houses (module id `hood`). Each signed-in member can move one household into an empty lot, build and furnish the house, and look after up to four residents with six needs. Everyone on the street, guests included, can walk into any yard; going inside takes the owner being home and answering the knock.
+A shared street of player-owned houses (module id `hood`). Each signed-in member can move one household into an empty lot, build and furnish the house, and look after up to eight residents with six needs: adults, teens and children, plus the babies they have. Everyone on the street, guests included, can walk into any yard; going inside takes the owner being home and answering the knock.
 
 ## Scenes
 
@@ -28,6 +28,27 @@ Keep rules in `shared/`, never in `src/`. `shared/` must stay renderer-free and 
 ### Visiting Sims
 
 A member with a home visits with one of their own Sims. The visited lot's object borrows it from the home lot's object (`/depart`), and hands it back with its needs and the sim minutes it spent away when the visitor leaves (`/return`); the rest of the household catches up on its own. A Sim left marked away comes home when its owner next opens their own lot.
+
+## Families
+
+`shared/Family.ts` holds the rules; `shared/Room.ts` runs them.
+
+- **Up to eight residents** (`MAX_SIMS`), babies on the way included. Move-in can make adults, teens and children (at least one adult); the owner adds more later from the Family panel (`addSim`), renames them (`renameSim`), changes their look (`restyleSim`) or moves someone out (`moveOut`; never the last grown-up, never a baby or toddler).
+- **Life stages** follow `SimRecord.age` in sim days: baby (0), toddler (1), child (3), teen (6), adult (9). Age moves with the household clock, so children grow while the household plays and catch up when a resident comes home from a visit. Older saves load as grown-ups (`ADULT_AGE`). Growing up sends a notice.
+- **What each age can do**: actions carry `ages` (default children and up; sitting and TV also toddlers). Cribs, high chairs and the play mat are for babies and toddlers, toys for toddlers and children, cooking, coffee, freelance work and the gym for teens and up. Only adults take jobs, go to work or flirt. Babies crawl slowly, cry when a need runs low, and their needs never empty.
+- **Social interactions** (`SOCIALS`): chat, hug, play, feed, change, rock to sleep, flirt and try for a baby. `socialBlock` says why one isn't possible (age, not housemates, not close enough, related, already expecting, house full); the page shows those reasons in the menu. Teens and adults autonomously feed, change, rock and play with the household's little ones when they need it.
+- **Babies**: two adult housemates who aren't related and are close (`BABY_FRIENDSHIP`, 40) try for a baby; it works three times in four. One of them is then `expecting` for a sim day (`PREGNANCY_MINUTES`), and the baby arrives with a name from a list, a look taken from both parents and `parents` set so family never flirts. Household members start at friendship 30 with each other.
+- The practice lot starts with Robin, Sam and their child Pip, with Robin and Sam close enough to try for a baby.
+
+## Buying
+
+The catalog is `shared/Catalog.ts` (the original items) plus `shared/CatalogMore.ts` (another 114): 141 items in eleven categories (seating, beds, tables & storage, kitchen, bathroom, electronics, hobbies, babies & kids, lighting, decor, yard & play). Each has its own procedural model: `src/models/Furniture.ts` and `src/models/FurnitureMore.ts`, with shared helpers in `src/models/FurnitureKit.ts`. Seats that aren't a row across the front (chess, hot tub, fire pit, bunk beds, bathtubs, the pool) have rules in `moreSeats`, which may turn the Sim with `yaw`.
+
+The Buy panel searches by name, room, action or need ("fun", "energy"), filters by category with counts, sorts by name or price, can hide what the household can't afford, and labels each item with its price, footprint, where it goes, seats, the needs it helps and who it's for.
+
+## Getting around the lot
+
+The top bar groups Household (Family, People), Town (Around town, Services, At work) and View (walls, settings, shortcuts). Keyboard: 1/2/3 for Live, Build and Buy; F family; P people; T town; S services; W at work; Space pause; Tab next resident; / search the catalog; Esc closes a menu, stops placing, or closes the side panel; ? lists them all. Clicking another resident offers everything the selected Sim can do with them, and greyed-out entries say why not.
 
 ## House customization
 

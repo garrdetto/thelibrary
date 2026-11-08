@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu'
 import { HAIR_COLORS, OUTFIT_COLORS, SKIN_TONES, type Look } from '../../shared/Look'
 import { material } from './Kit'
+import { STAGE_SCALE, type LifeStage } from '../../shared/Family'
 
 const limb = new THREE.CapsuleGeometry(1, 1, 4, 10)
 const head = new THREE.SphereGeometry(1, 20, 16)
@@ -59,7 +60,12 @@ function buildTool(tool: FigureTool): THREE.Group {
   return g
 }
 
-export function createSimFigure(look: Look, dress?: Dress): SimFigure {
+/** Children have bigger heads for their size. */
+const HEAD_SCALE: Record<LifeStage, number> = { baby: 1.7, toddler: 1.55, child: 1.28, teen: 1.06, adult: 1 }
+/** ...and shorter legs. */
+const LEG_SCALE: Record<LifeStage, number> = { baby: 0.6, toddler: 0.72, child: 0.86, teen: 0.97, adult: 1 }
+
+export function createSimFigure(look: Look, dress?: Dress, stage: LifeStage = 'adult'): SimFigure {
   const root = new THREE.Group()
   const body = new THREE.Group()
   root.add(body)
@@ -68,10 +74,12 @@ export function createSimFigure(look: Look, dress?: Dress): SimFigure {
   const top = dress?.top ?? OUTFIT_COLORS[look.top]
   const bottom = dress?.bottom ?? OUTFIT_COLORS[look.bottom]
   const width = look.build === 'slim' ? 0.88 : look.build === 'broad' ? 1.16 : 1
-  body.scale.setScalar(look.height)
+  const size = look.height * STAGE_SCALE[stage]
+  body.scale.setScalar(size)
 
+  const hipY = 0.9 * LEG_SCALE[stage]
   const hips = new THREE.Group()
-  hips.position.y = 0.9
+  hips.position.y = hipY
   body.add(hips)
   const legs: THREE.Group[] = []
   const knees: THREE.Group[] = []
@@ -89,6 +97,7 @@ export function createSimFigure(look: Look, dress?: Dress): SimFigure {
     shoe.rotation.x = Math.PI / 2
     knee.add(shin, shoe)
     pivot.add(thigh, knee)
+    pivot.scale.y = LEG_SCALE[stage]
     hips.add(pivot)
     legs.push(pivot)
     knees.push(knee)
@@ -115,7 +124,8 @@ export function createSimFigure(look: Look, dress?: Dress): SimFigure {
   neck.position.y = 0.64
   hips.add(neck)
   const face = new THREE.Group()
-  face.position.y = 0.8
+  face.position.y = 0.8 + (HEAD_SCALE[stage] - 1) * 0.1
+  face.scale.setScalar(HEAD_SCALE[stage])
   hips.add(face)
   face.add(part(head, skin, 0.12, 0.135, 0.12, 0.6))
   for (const side of [-1, 1]) {
@@ -170,7 +180,7 @@ export function createSimFigure(look: Look, dress?: Dress): SimFigure {
     }
   }
 
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.38, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color('#7cf2a8'), transparent: true, opacity: 0.85, depthWrite: false }))
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.3 * Math.max(0.6, STAGE_SCALE[stage]), 0.38 * Math.max(0.6, STAGE_SCALE[stage]), 32), new THREE.MeshBasicMaterial({ color: new THREE.Color('#7cf2a8'), transparent: true, opacity: 0.85, depthWrite: false }))
   ring.rotation.x = -Math.PI / 2
   ring.position.y = 0.03
   ring.visible = false
@@ -197,7 +207,7 @@ export function createSimFigure(look: Look, dress?: Dress): SimFigure {
     setPose(pose, walking, time, busy) {
       const swing = Math.sin(time * 9) * 0.55 * walking
       hips.rotation.set(0, 0, 0)
-      hips.position.set(0, 0.9, 0)
+      hips.position.set(0, hipY, 0)
       body.rotation.set(0, 0, 0)
       body.position.set(0, 0, 0)
       knees[0].rotation.x = knees[1].rotation.x = 0
@@ -215,7 +225,7 @@ export function createSimFigure(look: Look, dress?: Dress): SimFigure {
           arms[0].rotation.x = -0.9 + gesture
           arms[1].rotation.x = -0.9 - gesture
         }
-        hips.position.y = 0.9 + Math.abs(Math.sin(time * 9)) * 0.03 * walking
+        hips.position.y = hipY + Math.abs(Math.sin(time * 9)) * 0.03 * walking
       } else if (pose === 'sit') {
         hips.position.y = 0.0
         hips.position.z = -0.12
@@ -226,7 +236,7 @@ export function createSimFigure(look: Look, dress?: Dress): SimFigure {
         arms[1].rotation.z = -0.12
       } else {
         body.rotation.x = -Math.PI / 2
-        body.position.set(0, 0.12, 0.85)
+        body.position.set(0, 0.12 * size, 0.85 * size)
         legs[0].rotation.x = legs[1].rotation.x = 0
         arms[0].rotation.x = arms[1].rotation.x = 0.1
         arms[0].rotation.z = 0.1

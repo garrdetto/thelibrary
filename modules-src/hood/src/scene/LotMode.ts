@@ -1,11 +1,14 @@
 /** One loaded lot: the house in detail, the Sims on it, Live / Build / Buy, the door and the visitors. */
 import * as THREE from 'three/webgpu'
 import { placementError, type BuildOp } from '../../shared/Build'
-import { CATALOG, CATEGORY_LABELS, FLOOR_MATERIALS, objectDef, type Category, type ObjectDef } from '../../shared/Catalog'
+import { CATALOG, CATEGORY_ICONS, CATEGORY_LABELS, FLOOR_MATERIALS, objectDef, type Category, type ObjectDef } from '../../shared/Catalog'
+import { STAGE_LABELS, STAGE_SCALE, agesNote, canDoAction, socialOptions, type SocialParty } from '../../shared/Family'
+import { MAX_SIMS } from '../../shared/Lot'
+import { familyPanel, type FamilyPanel } from '../ui/FamilyPanel'
 import { CANOPY_STYLES, FEATURE_COSTS, FEATURE_LABELS, FENCE_STYLES, PORCH_POSTS, type FeatureKind } from '../../shared/Style'
 import { choiceRow, paletteRow, renderStylePanel, type StyleTab } from '../ui/StylePanel'
 import { D, LotGrid, W, footprintSize, inLot, type LotState, type PlacedObject } from '../../shared/Lot'
-import { NEEDS, NEED_LABELS, mood, moodLabel } from '../../shared/Needs'
+import { NEEDS, NEED_LABELS, mood, moodLabel, type Need } from '../../shared/Needs'
 import { clockLabel, clockParts, type LotView, type MemberView, type ServerMessage, type SettingsView, type SimView, type Speed } from '../../shared/Protocol'
 import { lotPlacement } from '../../shared/Street'
 import { OUTFIT_COLORS, SKIN_TONES } from '../../shared/Look'
@@ -25,11 +28,19 @@ import { TownView } from './TownView'
 import { SHIFT_SECONDS } from '../../shared/Jobs'
 import { renderTownPanel } from '../ui/TownPanel'
 import { careerLine, renderJobBoard, servicesPanel, workPanel, type ServicesPanel, type WorkPanel } from '../ui/CareerPanel'
-import type { AwayView, OrderView, WorkView } from '../../shared/Protocol'
+import type { AwayView, FamilyView, OrderView, WorkView } from '../../shared/Protocol'
 
 type Mode = 'live' | 'build' | 'buy'
-type SideKind = 'people' | 'settings' | 'town' | 'work' | 'services' | 'jobs'
+type SideKind = 'people' | 'settings' | 'town' | 'work' | 'services' | 'jobs' | 'family' | 'help'
 type Tool = 'room' | 'wall' | 'unwall' | 'door' | 'window' | 'unopen' | 'floor' | 'exterior' | 'canopy' | 'porch' | 'pergola' | 'fence' | 'chimney' | 'unfeature'
+
+interface MenuEntry {
+  label: string
+  run: () => void
+  note?: string
+  /** Why it can't be done right now; the entry shows but can't be picked. */
+  disabled?: string
+}
 
 interface Actor {
   view: SimView
@@ -68,6 +79,30 @@ const TOOLS: { id: Tool; label: string; hint: string }[] = [
 ]
 
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as Category[]
+type BuySort = 'name' | 'cheap' | 'pricey'
+const NEED_ICONS: Record<Need, string> = { hunger: '🍽', energy: '💤', hygiene: '🫧', bladder: '🚻', social: '💬', fun: '🎉' }
+
+/** What an item is good for, as short badges: the needs its actions feed. */
+function needBadges(def: ObjectDef): Need[] {
+  const out = new Set<Need>()
+  for (const action of def.actions) for (const need of NEEDS) if ((action.gains[need] ?? 0) > 0) out.add(need)
+  return [...out]
+}
+
+/** Who an item is for when it isn't for everyone (babies only, kids only, teens and up). */
+function itemAges(def: ObjectDef): string | null {
+  const notes = [...new Set(def.actions.map(a => agesNote(a)).filter((n): n is string => !!n))]
+  return notes.length === 1 && def.actions.every(a => agesNote(a) === notes[0]) ? notes[0] : null
+}
+
+const SHORTCUTS: [string, string][] = [
+  ['1 / 2 / 3', 'Live, Build and Buy'],
+  ['F', 'Family'], ['P', 'People on the lot'], ['T', 'Around town'], ['S', 'Services'], ['W', 'Residents at work'],
+  ['Tab', 'Next resident'], ['Space', 'Pause or play'],
+  ['R', 'Turn the item you are placing'], ['Delete', 'Sell the picked item'], ['/', 'Search the Buy catalog'],
+  ['Esc', 'Close a menu, stop placing, or close the side panel'],
+  ['Right-drag', 'Turn the view'],
+]
 
 export class LotMode implements PointerTarget {
   private readonly stage: Stage
@@ -98,7 +133,6 @@ export class LotMode implements PointerTarget {
   private buyRotation = 0
   private moving: PlacedObject | null = null
   private picked: PlacedObject | null = null
-  private category: Category = 'seating'
   private hoverTile: [number, number] | null = null
   private drag: { start: [number, number]; end: [number, number] } | null = null
   private readonly actors = new Map<string, Actor>()
@@ -116,20 +150,28 @@ export class LotMode implements PointerTarget {
   private work: WorkView[] = []
   private away: AwayView[] = []
   private orders: OrderView[] = []
+  private family: FamilyView[] = []
+  private buyCategory: Category | 'all' = 'all'
+  private buySearch = ''
+  private buySort: BuySort = 'name'
+  private buyAfford = false
+  private buyUi: { root: HTMLElement; search: HTMLInputElement; tabs: HTMLElement; items: HTMLElement; footer: HTMLElement; head: HTMLElement; key: string } | null = null
 
   private readonly top: HTMLDivElement
   private readonly bottom: HTMLDivElement
   private readonly info = { address: el('div', { class: 'title' }), sub: el('div', { class: 'sub' }), clock: el('div', { class: 'sub' }), funds: el('b'), speeds: el('div', { class: 'row', role: 'group', 'aria-label': 'Speed' }) }
-  private readonly peopleButton = button('People', () => this.toggleSide('people'))
+  private readonly peopleButton = button('People', () => this.toggleSide('people'), 'btn', 'Who is on the lot (P)')
   private readonly wallButton = button('Walls: cutaway', () => this.cycleWalls(), 'btn', 'Change how walls are shown')
-  private readonly settingsButton = button('Settings', () => this.toggleSide('settings'))
-  private readonly townButton = button('Around town', () => this.toggleSide('town'), 'btn', 'The workplaces and the dispatch feed')
-  private readonly servicesButton = button('Services', () => this.toggleSide('services'), 'btn', 'Call the police, fire station, EMS, burgers, the lawn crew, City Works or the resort')
-  private readonly workButton = button('At work', () => this.toggleSide('work'), 'btn', 'Residents on a shift in town')
+  private readonly settingsButton = button('⚙', () => this.toggleSide('settings'), 'btn', 'Lot settings')
+  private readonly townButton = button('Around town', () => this.toggleSide('town'), 'btn', 'The workplaces and the dispatch feed (T)')
+  private readonly servicesButton = button('Services', () => this.toggleSide('services'), 'btn', 'Call the police, fire station, EMS, burgers, the lawn crew, City Works or the resort (S)')
+  private readonly workButton = button('At work', () => this.toggleSide('work'), 'btn', 'Residents on a shift in town (W)')
+  private readonly helpButton = button('?', () => this.toggleSide('help'), 'btn', 'Keyboard shortcuts')
   private readonly live = el('div', { class: 'panel dock' })
   private readonly modes = el('div', { class: 'panel card row', role: 'tablist', 'aria-label': 'Mode' })
   private readonly dock = el('div', { class: 'panel dock' })
-  private side: { kind: SideKind; node: HTMLElement; work?: WorkPanel; services?: ServicesPanel; sim?: string; key?: string } | null = null
+  private side: { kind: SideKind; node: HTMLElement; work?: WorkPanel; services?: ServicesPanel; family?: FamilyPanel; sim?: string; key?: string } | null = null
+  private readonly familyButton = button('👪 Family', () => this.toggleSide('family'), 'btn', 'Everyone in the household, ages, babies and new residents (F)')
   private menu: HTMLElement | null = null
   private knocks: HTMLElement | null = null
   private liveKey = ''
@@ -149,18 +191,25 @@ export class LotMode implements PointerTarget {
     }
     this.top = el('div', { class: 'top' },
       el('div', { class: 'panel card' }, this.info.address, this.info.sub, el('div', { class: 'row', style: 'margin-top:6px' }, this.info.speeds, this.info.clock), el('div', { class: 'sub' }, this.info.funds)),
-      el('div', { class: 'panel card row' }, button(options.practice ? 'Leave practice' : 'Street', () => options.exit(), 'btn', 'Back to the street'), this.peopleButton, this.wallButton, this.townButton, this.servicesButton, this.workButton, this.settingsButton),
+      el('nav', { class: 'panel card nav', 'aria-label': 'Lot menu' },
+        el('div', { class: 'navgroup' }, button(options.practice ? '← Leave practice' : '← Street', () => options.exit(), 'btn', 'Back to the street')),
+        el('div', { class: 'navgroup', role: 'group', 'aria-label': 'Household' }, this.familyButton, this.peopleButton),
+        el('div', { class: 'navgroup', role: 'group', 'aria-label': 'Town' }, this.townButton, this.servicesButton, this.workButton),
+        el('div', { class: 'navgroup', role: 'group', 'aria-label': 'View' }, this.wallButton, this.settingsButton, this.helpButton),
+      ),
     )
     this.bottom = el('div', { class: 'bottom' }, this.live, this.modes)
     this.stage.ui.append(this.top, this.bottom)
     this.settingsButton.hidden = true
+    this.familyButton.hidden = true
     this.servicesButton.hidden = true
     this.workButton.hidden = true
     this.modes.hidden = true
     this.dock.hidden = true
     this.bottom.insertBefore(this.dock, this.modes)
     for (const mode of ['live', 'build', 'buy'] as Mode[]) {
-      const tab = button(mode === 'live' ? 'Live' : mode === 'build' ? 'Build' : 'Buy', () => this.setMode(mode), 'btn')
+      const index = mode === 'live' ? 1 : mode === 'build' ? 2 : 3
+      const tab = button(mode === 'live' ? '🙂 Live' : mode === 'build' ? '🔨 Build' : '🛒 Buy', () => this.setMode(mode), 'btn', `${mode === 'live' ? 'Look after the household' : mode === 'build' ? 'Walls, floors, doors, windows and the outside' : 'Furniture, appliances and the yard'} (${index})`)
       tab.dataset.mode = mode
       tab.setAttribute('role', 'tab')
       this.modes.append(tab)
@@ -174,12 +223,30 @@ export class LotMode implements PointerTarget {
 
   private readonly onKey = (event: KeyboardEvent) => {
     const t = event.target as HTMLElement | null
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) {
+      if (event.key === 'Escape' && t === this.buyUi?.search) { t.blur(); if (this.buySearch) { this.buySearch = ''; this.buyUi.search.value = ''; this.renderDock() } }
+      return
+    }
+    if (this.stage.ui.querySelector('.modal')) return
     if (event.key === 'Escape') {
       if (this.menu) this.closeMenu()
       else if (this.buyDef || this.moving || this.picked) { this.buyDef = null; this.moving = null; this.picked = null; this.renderDock() }
       else if (this.drag) this.drag = null
+      else if (this.side) { this.side.node.remove(); this.side = null }
+      return
     }
+    if (event.ctrlKey || event.metaKey || event.altKey) return
+    const key = event.key.toLowerCase()
+    const owner = this.role === 'owner'
+    if (owner && (key === '1' || key === '2' || key === '3')) { this.setMode(key === '1' ? 'live' : key === '2' ? 'build' : 'buy'); return }
+    if (key === '/' && owner) { event.preventDefault(); if (this.mode !== 'buy') this.setMode('buy'); this.buyUi?.search.focus(); return }
+    if (key === '?') { this.toggleSide('help'); return }
+    if (key === 'f' && owner) { this.toggleSide('family'); return }
+    if (key === 'p') { this.toggleSide('people'); return }
+    if (key === 't') { this.toggleSide('town'); return }
+    if (key === 's' && owner) { this.toggleSide('services'); return }
+    if (key === 'w' && owner) { this.toggleSide('work'); return }
+    if (key === ' ' && owner && t?.tagName !== 'BUTTON') { event.preventDefault(); this.link.send({ t: 'speed', speed: this.speed === 0 ? 1 : 0 }); return }
     if ((event.key === 'r' || event.key === 'R') && (this.buyDef || this.moving)) this.buyRotation = (this.buyRotation + 1) % 4
     if ((event.key === 'Delete' || event.key === 'Backspace') && this.picked && this.mode === 'buy') this.sellPicked()
     if (event.key === 'Tab' && this.mode === 'live') {
@@ -201,6 +268,7 @@ export class LotMode implements PointerTarget {
         this.applyLot(message.lot)
         this.modes.hidden = this.role !== 'owner'
         this.settingsButton.hidden = this.role !== 'owner'
+        this.familyButton.hidden = this.role !== 'owner'
         this.servicesButton.hidden = this.role !== 'owner'
         this.workButton.hidden = this.role !== 'owner'
         if (!this.town) {
@@ -228,6 +296,8 @@ export class LotMode implements PointerTarget {
           this.work = message.work ?? []
           this.away = message.away ?? []
           this.orders = message.orders ?? []
+          this.family = message.family ?? []
+          if (this.side?.kind === 'family') this.renderSide()
           this.workButton.textContent = this.work.length ? `At work (${this.work.length})` : 'At work'
           this.town?.setLocalPlayers(this.work.map(w => ({ name: w.name, look: w.look, job: w.career.job, level: w.career.level, lot: this.view?.lot ?? 0, call: w.task?.id.startsWith('call:') ? w.task.id.slice(5) : null })))
           if (this.side && (this.side.kind === 'work' || this.side.kind === 'services' || this.side.kind === 'jobs')) this.renderSide()
@@ -349,7 +419,7 @@ export class LotMode implements PointerTarget {
   private toggleSide(kind: SideKind, sim?: string): void {
     if (this.side?.kind === kind && this.side.sim === sim) { this.side.node.remove(); this.side = null; return }
     this.side?.node.remove()
-    this.side = { kind, sim, node: el('div', { class: `panel side${kind === 'jobs' || kind === 'work' ? ' wide' : ''}` }) }
+    this.side = { kind, sim, node: el('div', { class: `panel side${kind === 'jobs' || kind === 'work' ? ' wide' : kind === 'family' ? ' mid' : ''}`, role: 'region', 'aria-label': kind }) }
     this.stage.ui.append(this.side.node)
     this.renderSide()
   }
@@ -362,6 +432,21 @@ export class LotMode implements PointerTarget {
     const send = (command: Parameters<LotLink['send']>[0]) => this.link.send(command)
     if (side.kind === 'town') {
       if (this.town?.state) renderTownPanel(node, this.town.state, null, shut)
+      return
+    }
+    if (side.kind === 'family') {
+      side.family ??= familyPanel(node, this.stage.ui, send, id => { if (this.mode !== 'live') this.setMode('live'); this.selected = id; this.liveKey = ''; this.renderLive(); side.family?.update(this.family, this.selected) }, shut)
+      side.family.update(this.family, this.selected)
+      return
+    }
+    if (side.kind === 'help') {
+      if (side.key) return
+      side.key = 'help'
+      node.replaceChildren(
+        el('div', { class: 'row', style: 'justify-content:space-between' }, el('div', { class: 'title' }, 'Shortcuts'), button('✕', shut, 'btn sm', 'Close (Esc)')),
+        el('div', { class: 'keys' }, ...SHORTCUTS.flatMap(([k, what]) => [el('kbd', {}, k), el('span', {}, what)])),
+        el('p', { class: 'hint' }, 'Click a resident to select them. Click another person for things to do together, or click furniture to use it.'),
+      )
       return
     }
     if (side.kind === 'work') {
@@ -446,21 +531,24 @@ export class LotMode implements PointerTarget {
     this.info.funds.textContent = this.role === 'owner' ? `Household funds ${money(this.funds)}` : this.home ? 'The owner is home' : 'The owner is out'
     for (const b of this.info.speeds.querySelectorAll<HTMLButtonElement>('[data-speed]')) b.classList.toggle('on', Number(b.dataset.speed) === this.speed)
     if (this.mode === 'live') this.renderLive()
+    else if (this.mode === 'buy') this.renderBuy()
   }
 
   private renderLive(): void {
     const mine = this.sims.filter(s => s.mine)
     const sim = mine.find(s => s.id === this.selected)
-    const key = JSON.stringify([mine.map(s => [s.id, s.name]), this.selected, !!sim?.needs, sim?.act, sim?.queue, sim?.friends?.map(f => f.name), this.guest, this.role, this.home, sim?.career])
+    const key = JSON.stringify([mine.map(s => [s.id, s.name, s.stage, s.expecting !== undefined, s.look]), this.selected, !!sim?.needs, sim?.act, sim?.queue, sim?.friends?.map(f => f.name), this.guest, this.role, this.home, sim?.career])
     if (key === this.liveKey) {
       if (sim?.needs) this.updateBars(sim)
       return
     }
     this.liveKey = key
     const portraits = mine.length > 1 ? el('div', { class: 'portraits', role: 'group', 'aria-label': 'Household' }, ...mine.map(s => {
-      const b = el('button', { type: 'button', class: `portrait${s.id === this.selected ? ' on' : ''}`, 'aria-pressed': String(s.id === this.selected) },
-        el('span', { class: 'dot', style: `background:linear-gradient(${SKIN_TONES[s.look.skin]} 45%, ${OUTFIT_COLORS[s.look.top]} 45%)` }),
-        el('span', {}, s.name))
+      const size = Math.round(14 + 10 * STAGE_SCALE[s.stage])
+      const b = el('button', { type: 'button', class: `portrait${s.id === this.selected ? ' on' : ''}`, 'aria-pressed': String(s.id === this.selected), title: `${s.name} · ${STAGE_LABELS[s.stage]}${s.expecting !== undefined ? ' · expecting a baby' : ''}` },
+        el('span', { class: 'dot', style: `width:${size}px;height:${size}px;background:linear-gradient(${SKIN_TONES[s.look.skin]} 45%, ${OUTFIT_COLORS[s.look.top]} 45%)` }),
+        el('span', {}, s.name),
+        el('small', { class: 'sub' }, `${s.stage === 'adult' ? '' : STAGE_LABELS[s.stage]}${s.expecting !== undefined ? ' 🍼' : ''}` || '\u00a0'))
       b.addEventListener('click', () => { this.selected = s.id; this.liveKey = ''; this.renderLive() })
       return b
     })) : null
@@ -468,7 +556,9 @@ export class LotMode implements PointerTarget {
     if (sim?.needs) {
       const value = mood(sim.needs)
       this.moodText = el('span', { class: 'sub' }, `${moodLabel(value)} · ${value}`)
-      parts.push(el('div', { class: 'row', style: 'justify-content:space-between' }, el('b', {}, sim.name), this.moodText))
+      parts.push(el('div', { class: 'row', style: 'justify-content:space-between' },
+        el('div', { class: 'row', style: 'gap:6px' }, el('b', {}, sim.name), el('span', { class: `chip stage-${sim.stage}` }, STAGE_LABELS[sim.stage]), sim.expecting !== undefined ? el('span', { class: 'chip baby' }, '🍼 Expecting') : null),
+        this.moodText))
       this.bars = []
       parts.push(el('div', { class: 'needs' }, ...NEEDS.map(need => {
         const fill = el('i')
@@ -479,13 +569,19 @@ export class LotMode implements PointerTarget {
       const doing = [sim.act, ...(sim.queue ?? [])].filter(Boolean) as string[]
       parts.push(el('div', { class: 'queue' }, ...(doing.length ? doing.map((label, i) => el('span', { class: 'chip' }, i === 0 && sim.act ? `Now: ${label}` : label)) : [el('span', { class: 'hint' }, 'Free time. Click something to do.')]), doing.length ? button('Cancel', () => this.link.send({ t: 'cancel', sim: sim.id }), 'btn', 'Cancel actions') : null))
       if (sim.friends?.length) parts.push(el('div', { class: 'hint' }, `Friends here: ${sim.friends.map(f => `${f.name} ${f.value}`).join(', ')}`))
-      if (this.role === 'owner' && sim.hh) {
+      if (this.role === 'owner' && sim.hh && sim.stage !== 'adult') {
+        parts.push(el('div', { class: 'row', style: 'margin-top:6px;justify-content:space-between' },
+          el('span', { class: 'sub' }, sim.stage === 'baby' || sim.stage === 'toddler' ? 'Needs a grown-up to feed, change and rock them. Select a teen or adult and click them.' : 'Too young for a job. Grows up with household time.'),
+          button('Family', () => this.toggleSide('family'), 'btn sm'),
+        ))
+      } else if (this.role === 'owner' && sim.hh) {
         const career = sim.career
         parts.push(el('div', { class: 'row', style: 'margin-top:6px;justify-content:space-between' },
           el('span', { class: 'sub' }, careerLine(career)),
           el('div', { class: 'row' },
             career ? button('Go to work', () => this.link.send({ t: 'work', sim: sim.id }), 'btn primary', `Start a ${Math.round(SHIFT_SECONDS / 60)}-minute shift in town`) : null,
             button(career ? 'Jobs' : 'Find a job', () => this.toggleSide('jobs', sim.id), career ? 'btn' : 'btn primary'),
+            button('Family', () => this.toggleSide('family'), 'btn'),
           ),
         ))
       }
@@ -550,28 +646,85 @@ export class LotMode implements PointerTarget {
       this.dock.replaceChildren(tools, ...extra, el('div', { class: 'hint' }, `${hint}${this.tool === 'exterior' ? ' Changing siding costs per wall face; colors and trim are free.' : ' Walls $12, floors $4 a tile, doors $150, windows $90.'} Right-drag turns the view.`))
       return
     }
-    if (this.mode === 'buy') {
-      const tabs = el('div', { class: 'tools', role: 'tablist', 'aria-label': 'Catalog' }, ...CATEGORIES.map(c => {
-        const b = button(CATEGORY_LABELS[c], () => { this.category = c; this.renderDock() }, `btn${this.category === c ? ' on' : ''}`)
-        b.setAttribute('role', 'tab')
-        b.setAttribute('aria-selected', String(this.category === c))
-        return b
-      }))
-      const items = el('div', { class: 'items' }, ...CATALOG.filter(d => d.category === this.category).map(def => {
-        const b = el('button', { type: 'button', class: `item${this.buyDef?.id === def.id ? ' on' : ''}` },
-          el('b', {}, def.name), el('small', {}, `${money(def.price)} · ${def.place === 'outdoor' ? 'yard' : def.place === 'indoor' ? 'indoors' : 'anywhere'}`))
-        b.addEventListener('click', () => { this.buyDef = def; this.moving = null; this.picked = null; this.buyRotation = 0; this.renderDock() })
-        return b
-      }))
-      const picked = this.picked && objectDef(this.picked.def)
-      const footer = picked
-        ? el('div', { class: 'row', style: 'margin-top:6px' }, el('b', {}, picked.name),
-          button('Move', () => { this.moving = this.picked; this.buyRotation = this.picked!.r; this.renderDock() }),
-          button('Turn', () => this.picked && this.sendBuild({ op: 'move', id: this.picked.id, x: this.picked.x, z: this.picked.z, r: (this.picked.r + 1) % 4 })),
-          button(`Sell for ${money(Math.floor(picked.price / 2))}`, () => this.sellPicked()))
-        : el('div', { class: 'hint' }, this.buyDef ? `Placing ${this.buyDef.name}: click to place, R to turn, Esc to stop.` : this.moving ? 'Click where it should go. R turns it, Esc cancels.' : 'Pick an item, or click something you own to move or sell it.')
-      this.dock.replaceChildren(tabs, items, footer)
+    if (this.mode === 'buy') this.renderBuy()
+  }
+
+  /** The Buy catalog: search, category tabs with counts, sorting, an affordable-only filter, and item cards that say what each thing is good for. */
+  private renderBuy(): void {
+    if (!this.buyUi) {
+      const search = el('input', { type: 'search', class: 'search', placeholder: 'Search 140+ items…  ( / )', 'aria-label': 'Search the catalog', value: this.buySearch }) as HTMLInputElement
+      search.addEventListener('input', () => { this.buySearch = search.value; this.renderBuy() })
+      const sort = el('select', { 'aria-label': 'Sort items' },
+        el('option', { value: 'name' }, 'Sort: A to Z'), el('option', { value: 'cheap' }, 'Price: low to high'), el('option', { value: 'pricey' }, 'Price: high to low')) as HTMLSelectElement
+      sort.value = this.buySort
+      sort.addEventListener('change', () => { this.buySort = sort.value as BuySort; this.renderBuy() })
+      const afford = el('input', { type: 'checkbox' }) as HTMLInputElement
+      afford.checked = this.buyAfford
+      afford.addEventListener('change', () => { this.buyAfford = afford.checked; this.renderBuy() })
+      const head = el('span', { class: 'sub' })
+      const tabs = el('div', { class: 'cattabs', role: 'tablist', 'aria-label': 'Catalog categories' })
+      const items = el('div', { class: 'items buyitems', role: 'list' })
+      const footer = el('div', { class: 'buyfoot' })
+      const root = el('div', { class: 'buy' },
+        el('div', { class: 'buyhead' }, search, sort, el('label', { class: 'toggle sm' }, afford, el('span', {}, 'Only what I can afford')), head),
+        tabs, items, footer)
+      this.buyUi = { root, search, tabs, items, footer, head, key: '' }
     }
+    const ui = this.buyUi
+    if (ui.root.parentElement !== this.dock) this.dock.replaceChildren(ui.root)
+    const query = this.buySearch.trim().toLowerCase()
+    const matches = (def: ObjectDef) => !query || def.name.toLowerCase().includes(query) || CATEGORY_LABELS[def.category].toLowerCase().includes(query) || def.actions.some(a => a.label.toLowerCase().includes(query)) || needBadges(def).some(n => NEED_LABELS[n].toLowerCase().includes(query))
+    const affordable = (def: ObjectDef) => !this.buyAfford || def.price <= this.funds
+    const pool = CATALOG.filter(d => matches(d) && affordable(d))
+    const shown = pool.filter(d => query || this.buyCategory === 'all' || d.category === this.buyCategory)
+    shown.sort((a, b) => this.buySort === 'cheap' ? a.price - b.price || a.name.localeCompare(b.name) : this.buySort === 'pricey' ? b.price - a.price || a.name.localeCompare(b.name) : a.name.localeCompare(b.name))
+    const canBuy = CATALOG.filter(d => d.price <= this.funds).length
+    const key = JSON.stringify([query, this.buyCategory, this.buySort, this.buyAfford, this.buyDef?.id, canBuy, this.picked?.id ?? null, this.picked?.r ?? null, !!this.moving])
+    if (key === ui.key) return
+    ui.key = key
+    ui.head.textContent = `${money(this.funds)} to spend`
+    const counts = new Map<string, number>()
+    for (const d of pool) counts.set(d.category, (counts.get(d.category) ?? 0) + 1)
+    const tab = (id: Category | 'all', label: string, icon: string, n: number) => {
+      const on = !query && this.buyCategory === id
+      const b = button(`${icon} ${label}`, () => { this.buyCategory = id; if (this.buySearch) { this.buySearch = ''; ui.search.value = '' } this.renderBuy() }, `btn cat${on ? ' on' : ''}`)
+      b.append(el('small', { class: 'count' }, String(n)))
+      b.setAttribute('role', 'tab')
+      b.setAttribute('aria-selected', String(on))
+      b.disabled = n === 0
+      return b
+    }
+    ui.tabs.replaceChildren(tab('all', 'All', '✨', pool.length), ...CATEGORIES.map(c => tab(c, CATEGORY_LABELS[c], CATEGORY_ICONS[c], counts.get(c) ?? 0)))
+    if (!shown.length) {
+      ui.items.replaceChildren(el('div', { class: 'hint', style: 'padding:12px' }, query ? `Nothing matches “${this.buySearch.trim()}”. Try a need like “fun” or “energy”, or a room like “kitchen”.` : 'Nothing here fits the budget yet.'))
+    } else {
+      ui.items.replaceChildren(...shown.map(def => {
+        const cant = def.price > this.funds
+        const ages = itemAges(def)
+        const badges = needBadges(def)
+        const place = def.place === 'outdoor' ? 'Yard' : def.place === 'indoor' ? 'Indoors' : 'Anywhere'
+        const b = el('button', { type: 'button', role: 'listitem', class: `item card${this.buyDef?.id === def.id ? ' on' : ''}${cant ? ' cant' : ''}`, title: `${def.name}: ${def.actions.map(a => a.label).join(', ') || 'decoration'}` },
+          el('div', { class: 'row', style: 'gap:6px;flex-wrap:nowrap;width:100%' },
+            el('span', { class: 'chips' }, el('i', { style: `background:${def.color}` }), el('i', { style: `background:${def.accent}` })),
+            el('b', { class: 'name' }, def.name)),
+          el('div', { class: 'meta' }, el('span', { class: cant ? 'price cant' : 'price' }, money(def.price)), el('span', {}, `${def.w}×${def.d}`), el('span', {}, place), def.seats && def.seats > 1 ? el('span', {}, `${def.seats} seats`) : null),
+          badges.length || ages ? el('div', { class: 'badges' }, ...badges.map(n => el('span', { class: 'nb', title: NEED_LABELS[n] }, `${NEED_ICONS[n]} ${NEED_LABELS[n]}`)), ages ? el('span', { class: 'nb age' }, ages) : null) : el('div', { class: 'badges' }, el('span', { class: 'nb muted' }, 'Decoration')),
+        )
+        b.addEventListener('click', () => {
+          if (cant) { this.options.toast(`${def.name} costs ${money(def.price)}. The household has ${money(this.funds)}.`); return }
+          this.buyDef = def; this.moving = null; this.picked = null; this.buyRotation = 0; this.renderBuy()
+        })
+        return b
+      }))
+    }
+    const picked = this.picked && objectDef(this.picked.def)
+    ui.footer.replaceChildren(picked
+      ? el('div', { class: 'row' }, el('b', {}, picked.name),
+        button('Move', () => { this.moving = this.picked; this.buyRotation = this.picked!.r; this.renderBuy() }),
+        button('Turn ⟳', () => this.picked && this.sendBuild({ op: 'move', id: this.picked.id, x: this.picked.x, z: this.picked.z, r: (this.picked.r + 1) % 4 })),
+        button(`Sell for ${money(Math.floor(picked.price / 2))}`, () => this.sellPicked(), 'btn danger'),
+        button('Done', () => { this.picked = null; this.renderBuy() }))
+      : el('div', { class: 'hint' }, this.buyDef ? `Placing ${this.buyDef.name}: click the lot to place it, R turns it, Esc or right-click stops.` : this.moving ? 'Click where it should go. R turns it, Esc cancels.' : 'Pick an item to place it, or click something you own to move, turn or sell it.'))
   }
 
   private sellPicked(): void {
@@ -618,20 +771,45 @@ export class LotMode implements PointerTarget {
     this.menu = null
   }
 
-  private openMenu(event: PointerEvent, title: string, entries: { label: string; run: () => void; note?: string }[]): void {
+  private party(view: SimView): SocialParty {
+    return { id: view.id, stage: view.stage, hh: view.hh, rec: view.rec, parents: view.parents, expecting: view.expecting !== undefined }
+  }
+
+  /** The household has room for a baby (the owner's family list counts babies on the way). */
+  private familyRoom(): boolean {
+    if (this.role !== 'owner') return false
+    return this.family.length + this.family.filter(f => f.expecting !== null).length < MAX_SIMS
+  }
+
+  private openMenu(event: PointerEvent, title: string, entries: MenuEntry[], subtitle?: string): void {
     this.closeMenu()
     const rect = this.stage.app.container.getBoundingClientRect()
-    const menu = el('div', { class: 'panel menu', role: 'menu', 'aria-label': title, style: `left:${Math.min(event.clientX - rect.left, rect.width - 200)}px;top:${Math.min(event.clientY - rect.top, rect.height - 60 - entries.length * 38)}px` },
-      el('div', { class: 'head' }, title),
+    const height = 70 + entries.reduce((h, e) => h + (e.disabled ? 52 : 38), 0)
+    const menu = el('div', { class: 'panel menu', role: 'menu', 'aria-label': title, style: `left:${Math.max(4, Math.min(event.clientX - rect.left, rect.width - 250))}px;top:${Math.max(4, Math.min(event.clientY - rect.top, rect.height - height))}px` },
+      el('div', { class: 'head' }, title, subtitle ? el('small', { class: 'sub', style: 'display:block;font-weight:400' }, subtitle) : null),
       ...entries.map(entry => {
         const b = button(entry.note ? `${entry.label} (${entry.note})` : entry.label, () => { entry.run(); this.closeMenu() })
         b.setAttribute('role', 'menuitem')
+        if (entry.disabled) {
+          b.disabled = true
+          b.setAttribute('aria-disabled', 'true')
+          b.append(el('small', { class: 'why' }, entry.disabled))
+        }
         return b
       }),
+      entries.length ? null : el('div', { class: 'hint' }, 'Nothing to do here right now.'),
     )
+    menu.addEventListener('keydown', ev => {
+      const items = [...menu.querySelectorAll<HTMLButtonElement>('.btn:not([disabled])')]
+      const at = items.indexOf(document.activeElement as HTMLButtonElement)
+      if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+        ev.preventDefault()
+        items[(at + (ev.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
+      }
+    })
     this.stage.ui.append(menu)
     this.menu = menu
-    ;(menu.querySelector('.btn') as HTMLButtonElement | null)?.focus()
+    ;(menu.querySelector('.btn:not([disabled])') as HTMLButtonElement | null)?.focus()
   }
 
   click(ndc: THREE.Vector2, event: PointerEvent): void {
@@ -645,8 +823,17 @@ export class LotMode implements PointerTarget {
     if (simHit) {
       const id = simHit.object.userData.simId as string | undefined
       const target = id ? this.sims.find(s => s.id === id) : undefined
+      if (target && target.id === me?.id) return
+      if (target && me) {
+        const entries: MenuEntry[] = []
+        if (target.mine) entries.push({ label: `Control ${target.name}`, run: () => { this.selected = target.id; this.liveKey = ''; this.renderLive() } })
+        for (const option of socialOptions(this.party(me), { ...this.party(target), name: target.name }, { friendship: me.friends?.find(f => f.id === target.id)?.value ?? 0, room: this.familyRoom() })) {
+          entries.push({ label: option.label, disabled: option.why ?? undefined, run: () => this.link.send({ t: 'social', sim: me.id, target: target.id, kind: option.kind }) })
+        }
+        this.openMenu(event, `${target.name} · ${STAGE_LABELS[target.stage]}`, entries, `${me.name} can…`)
+        return
+      }
       if (target?.mine) { this.selected = target.id; this.liveKey = ''; this.renderLive(); return }
-      if (target && me) { this.openMenu(event, target.name, [{ label: `Chat with ${target.name}`, run: () => this.link.send({ t: 'chat', sim: me.id, target: target.id }) }]); return }
     }
     const hit = this.stage.pick(ndc, [...this.model.objects.values()])
     const objectId = hit?.object.userData.objectId as number | undefined
@@ -658,8 +845,9 @@ export class LotMode implements PointerTarget {
         this.openMenu(event, def.name, def.actions.map(action => ({
           label: action.label,
           note: own ? undefined : action.guest === 'no' ? 'household only' : action.guest === 'ask' ? 'if the owner allows' : undefined,
+          disabled: canDoAction(me.stage, action) ? undefined : `${me.name} is a ${STAGE_LABELS[me.stage].toLowerCase()}; this is for ${agesNote(action) ?? 'children and up'}.`,
           run: () => this.link.send({ t: 'use', sim: me.id, obj: object.id, act: action.id }),
-        })))
+        })), `${me.name} can…`)
         return
       }
     }
@@ -864,7 +1052,7 @@ export class LotMode implements PointerTarget {
     const c = Math.cos(theta), s = Math.sin(theta)
     return {
       pos: new THREE.Vector3(object.x + fw / 2 + offset.x * c + offset.z * s, offset.y, object.z + fd / 2 - offset.x * s + offset.z * c),
-      yaw: theta + Math.PI,
+      yaw: theta + Math.PI + (offset.yaw ?? 0),
     }
   }
 
@@ -873,11 +1061,11 @@ export class LotMode implements PointerTarget {
     const seen = new Set<string>()
     for (const view of this.sims) {
       seen.add(view.id)
-      const lookKey = JSON.stringify(view.look)
+      const lookKey = JSON.stringify([view.look, view.stage])
       let actor = this.actors.get(view.id)
       if (actor && actor.lookKey !== lookKey) { detach(actor.figure.root); actor.label.remove(); this.actors.delete(view.id); actor = undefined }
       if (!actor) {
-        const figure = createSimFigure(view.look)
+        const figure = createSimFigure(view.look, undefined, view.stage)
         figure.root.traverse(node => { node.userData.simId = view.id })
         this.model.group.add(figure.root)
         const label = el('div', { class: 'label' })
@@ -901,9 +1089,11 @@ export class LotMode implements PointerTarget {
       actor.yaw += diff * Math.min(1, dt * 10)
       actor.figure.root.position.copy(actor.pos)
       actor.figure.root.rotation.y = actor.yaw
-      actor.figure.setPose(view.pose, actor.walk, this.time, !!view.act && !moving && view.pose === 'stand')
+      const crawlSit = view.stage === 'baby' && view.pose === 'stand' && !moving
+      actor.figure.setPose(crawlSit ? 'sit' : view.pose, actor.walk, this.time, !!view.act && !moving && view.pose === 'stand' && !crawlSit)
       actor.figure.setSelected(view.id === this.selected && this.mode === 'live')
-      const head = this.model.toWorld(actor.pos.x, view.pose === 'lie' ? 1.0 : view.pose === 'sit' ? 1.75 : 2.15, actor.pos.z)
+      const scale = STAGE_SCALE[view.stage] ?? 1
+      const head = this.model.toWorld(actor.pos.x, view.pose === 'lie' ? 1.0 : (view.pose === 'sit' ? 1.75 : 2.15) * (0.35 + 0.65 * scale), actor.pos.z)
       const at = this.stage.project(head)
       if (!at) { actor.label.style.display = 'none'; continue }
       actor.label.style.display = ''
