@@ -3,6 +3,8 @@ import { FEATURE_KINDS, PAINTS, defaultStyle, featureStyles, sanitizeStyle, type
 import { defaultLook, sanitizeLook, sanitizeSimName, type Look } from './Look'
 import { fullNeeds, sanitizeNeeds, type Needs } from './Needs'
 import { LOT_D, LOT_W, isLotIndex, isStreetIndex } from './Street'
+import { sanitizeCareer, sanitizeOrders, sanitizeTrip, sanitizeWork, type Career, type Order, type Trip, type WorkShift } from './Careers'
+import type { JobId } from './Jobs'
 
 export const W = LOT_W
 export const D = LOT_D
@@ -29,12 +31,18 @@ export interface SimRecord {
   z: number
   /** Set while this Sim is visiting another lot. */
   away?: { street: number; lot: number } | null
+  career?: Career | null
+  /** Set while this Sim is on a shift in town. */
+  work?: WorkShift | null
+  /** Set while this Sim is away on a resort day. */
+  trip?: Trip | null
 }
 
 export interface Household {
   name: string
   funds: number
   sims: SimRecord[]
+  orders: Order[]
 }
 
 export interface Person {
@@ -81,6 +89,17 @@ export interface LotShell {
   floors: [number, number][]
   objects: PlacedObject[]
   features: Feature[]
+  /** Residents on a shift in town right now, so the street can show them at work. */
+  workers: ShellWorker[]
+}
+
+export interface ShellWorker {
+  name: string
+  look: Look
+  job: JobId
+  level: number
+  call: string | null
+  until: number
 }
 
 export const FRONTS: readonly [number, number][] = [[0, -1], [1, 0], [0, 1], [-1, 0]]
@@ -355,7 +374,8 @@ export function newLotState(street: number, lot: number, ownerId: string, ownerN
     household: {
       name: sanitizeSimName(householdName, 'Newcomers'),
       funds: STARTING_FUNDS,
-      sims: sims.slice(0, MAX_SIMS).map((sim, i) => ({ id: `s${i + 1}`, name: sanitizeSimName(sim.name, `Resident ${i + 1}`), look: sanitizeLook(sim.look), needs: fullNeeds(), x: spots[i][0], z: spots[i][1], away: null })),
+      sims: sims.slice(0, MAX_SIMS).map((sim, i) => ({ id: `s${i + 1}`, name: sanitizeSimName(sim.name, `Resident ${i + 1}`), look: sanitizeLook(sim.look), needs: fullNeeds(), x: spots[i][0], z: spots[i][1], away: null, career: null, work: null, trip: null })),
+      orders: [],
     },
     clock: 0,
     settings: { yardOpen: true, guestsUseFridgeBeds: false, alwaysLetIn: [], blocked: [] },
@@ -433,8 +453,12 @@ export function sanitizeLotState(input: unknown, street: number, lot: number): L
           x: Number.isFinite(Number(sim.x)) ? Math.max(0, Math.min(W - 1, Number(sim.x))) : 8,
           z: Number.isFinite(Number(sim.z)) ? Math.max(0, Math.min(D - 1, Number(sim.z))) : 7,
           away: away && Number.isInteger(away.street) && Number.isInteger(away.lot) ? { street: Number(away.street), lot: Number(away.lot) } : null,
+          career: sanitizeCareer(sim.career),
+          work: sanitizeWork(sim.work),
+          trip: sanitizeTrip(sim.trip),
         }
       }),
+      orders: sanitizeOrders(household.orders),
     },
     clock: Math.max(0, Number(s.clock) || 0),
     settings: { yardOpen: settings.yardOpen !== false, guestsUseFridgeBeds: settings.guestsUseFridgeBeds === true, alwaysLetIn: people(settings.alwaysLetIn), blocked: people(settings.blocked) },
@@ -450,6 +474,7 @@ export function shellOf(state: LotState): LotShell {
     floors: state.floors.filter(([index]) => !grid.inside[index]),
     objects: state.objects.filter(o => !grid.objectInside(o)),
     features: state.features,
+    workers: state.household.sims.filter(sim => sim.work).map(sim => ({ name: sim.name, look: sim.look, job: sim.work!.job, level: sim.career?.level ?? 1, call: sim.work!.task?.call ?? null, until: sim.work!.until })),
   }
 }
 
@@ -458,7 +483,20 @@ export function sanitizeShell(input: unknown): LotShell {
   const s = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
   const floors = (Array.isArray(s.floors) ? s.floors : []).filter((f): f is [number, number] => Array.isArray(f) && Number.isInteger(f[0]) && f[0] >= 0 && f[0] < W * D && Number.isInteger(f[1]) && f[1] >= 0 && f[1] < FLOOR_MATERIALS.length)
   const objects = (Array.isArray(s.objects) ? s.objects : []).filter((o): o is PlacedObject => !!o && typeof o.def === 'string' && !!objectDef(o.def) && Number.isInteger(o.id) && Number.isInteger(o.x) && Number.isInteger(o.z))
-  return { walls: edgeList(s.walls), doors: edgeList(s.doors), windows: edgeList(s.windows), style: sanitizeStyle(s.style), floors, objects, features: sanitizeFeatures(s.features) }
+  return { walls: edgeList(s.walls), doors: edgeList(s.doors), windows: edgeList(s.windows), style: sanitizeStyle(s.style), floors, objects, features: sanitizeFeatures(s.features), workers: sanitizeShellWorkers(s.workers) }
+}
+
+function sanitizeShellWorkers(input: unknown): ShellWorker[] {
+  if (!Array.isArray(input)) return []
+  const out: ShellWorker[] = []
+  for (const raw of input.slice(0, MAX_SIMS)) {
+    if (!raw || typeof raw !== 'object') continue
+    const w = raw as Record<string, unknown>
+    const work = sanitizeWork({ job: w.job, start: 0, until: w.until, perf: 0 })
+    if (!work) continue
+    out.push({ name: sanitizeSimName(w.name, 'Neighbor'), look: sanitizeLook(w.look), job: work.job, level: Math.max(1, Math.min(5, Math.floor(Number(w.level) || 1))), call: typeof w.call === 'string' ? w.call.slice(0, 60) : null, until: work.until })
+  }
+  return out
 }
 
 export function lotValue(state: Pick<LotState, 'objects' | 'walls' | 'floors'>): number {

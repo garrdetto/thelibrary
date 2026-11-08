@@ -7,6 +7,9 @@ import { buildForSaleSign, buildStreetGround, type StreetGround } from '../model
 import { button, el } from '../ui/Ui'
 import { LotModel } from './LotModel'
 import type { PointerTarget, Stage } from './Stage'
+import { TownView } from './TownView'
+import { renderTownPanel, tickerText } from '../ui/TownPanel'
+import type { PlaceId } from '../../shared/Town'
 
 export interface StreetActions {
   visit(lot: number): void
@@ -61,6 +64,10 @@ export class StreetMode implements PointerTarget {
   private readonly labels: { lot: StreetLotInfo; node: HTMLElement; anchor: THREE.Vector3 }[] = []
   private card: HTMLElement | null = null
   private selected: number | null = null
+  private readonly town: TownView
+  private readonly ticker: HTMLElement
+  private townSide: HTMLElement | null = null
+  private unsubscribe: () => void
 
   constructor(private readonly stage: Stage, private readonly info: StreetInfo, private readonly actions: StreetActions) {
     this.ground = buildStreetGround()
@@ -75,8 +82,9 @@ export class StreetMode implements PointerTarget {
       const lot = info.lots[model.lot]
       model.house.setNight(stage.night, lot.home)
     }
-    stage.rig.bounds = { minX: -75, maxX: 75, minZ: -40, maxZ: 40 }
-    stage.rig.maxDistance = 120
+    this.town = new TownView(stage, { street: info.street, houses: info.lots.map(l => !!l.shell), poll: true })
+    stage.rig.bounds = { minX: -200, maxX: 200, minZ: -72, maxZ: 48 }
+    stage.rig.maxDistance = 150
     stage.rig.jump(new THREE.Vector3(0, 0, 0), 0.25, 95, 0.95)
 
     const me = info.me
@@ -96,10 +104,19 @@ export class StreetMode implements PointerTarget {
         nav,
         me.home && (me.home.street !== info.street) ? button('My street', () => actions.changeStreet(me.home!.street)) : null,
         me.home ? button('Go home', () => actions.visit(-1), 'btn primary') : null,
+        button('Around town', () => this.toggleTown(), 'btn', 'The workplaces and the dispatch feed'),
         button('Practice lot', () => actions.practice(), 'btn', 'A starter house that runs only on this device'),
       ),
     )
     stage.ui.append(this.hud)
+    this.ticker = el('div', { class: 'panel ticker', style: 'position:absolute;left:10px;bottom:10px;pointer-events:auto', role: 'status' })
+    stage.ui.append(this.ticker)
+    this.unsubscribe = this.town.onUpdate(state => {
+      const text = tickerText(state)
+      this.ticker.hidden = !text
+      if (text) this.ticker.replaceChildren(text)
+      if (this.townSide) renderTownPanel(this.townSide, state, place => this.focusPlace(place), () => this.toggleTown())
+    })
     for (const lot of info.lots) {
       const label = el('div', { class: `label lotlabel${lot.mine ? ' mine' : ''}${lot.owner ? '' : ' sale'}` },
         lot.owner ? el('span', { class: lot.home ? 'home' : 'away' }) : null,
@@ -116,7 +133,30 @@ export class StreetMode implements PointerTarget {
     stage.target = this
   }
 
+  private toggleTown(): void {
+    if (this.townSide) { this.townSide.remove(); this.townSide = null; return }
+    this.closeCard()
+    this.townSide = el('div', { class: 'panel side', role: 'dialog', 'aria-label': 'Around town' })
+    this.stage.ui.append(this.townSide)
+    if (this.town.state) renderTownPanel(this.townSide, this.town.state, place => this.focusPlace(place), () => this.toggleTown())
+  }
+
+  private focusPlace(place: PlaceId): void {
+    this.stage.rig.focus(this.town.focusPoint(place))
+  }
+
   click(ndc: THREE.Vector2): void {
+    const picked = this.town.pick(ndc)
+    if (picked) {
+      this.closeCard()
+      this.card = el('div', { class: 'panel side', role: 'dialog', 'aria-label': picked.title },
+        el('div', { class: 'title' }, picked.title),
+        el('p', {}, picked.text),
+        el('div', { class: 'row' }, button('Close', () => this.closeCard())),
+      )
+      this.stage.ui.append(this.card)
+      return
+    }
     const hit = this.stage.pick(ndc, [this.shells.root])
     let lot = hit ? (hit.object.userData.lot as number | undefined) ?? null : null
     if (lot === null) {
@@ -129,8 +169,9 @@ export class StreetMode implements PointerTarget {
 
   private select(index: number): void {
     const lot = this.info.lots[index]
-    this.selected = index
     this.closeCard()
+    this.selected = index
+    if (this.townSide) { this.townSide.remove(); this.townSide = null }
     const me = this.info.me
     const atHome = me.home && me.home.street === this.info.street && me.home.lot === index
     const actions: HTMLElement[] = []
@@ -159,7 +200,9 @@ export class StreetMode implements PointerTarget {
     this.selected = null
   }
 
-  update(): void {
+  update(dt = 0): void {
+    this.town.setNight(this.stage.night)
+    this.town.update(dt)
     for (const { node, anchor, lot } of this.labels) {
       const at = this.stage.project(anchor)
       if (!at) { node.style.display = 'none'; continue }
@@ -174,6 +217,10 @@ export class StreetMode implements PointerTarget {
   dispose(): void {
     if (this.stage.target === this) this.stage.target = null
     this.closeCard()
+    this.unsubscribe()
+    this.townSide?.remove()
+    this.ticker.remove()
+    this.town.dispose()
     this.hud.remove()
     for (const { node } of this.labels) node.remove()
     for (const model of this.shells.models.values()) model.dispose()

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { Env } from './env.js'
-import { loadLot, saveLot } from './hood.js'
+import { addTownRequest, loadLot, saveLot, townRequests } from './hood.js'
 import { Room } from '../../modules-src/hood/shared/Room'
 import type { LotState, SimRecord } from '../../modules-src/hood/shared/Lot'
 import { sanitizeLook } from '../../modules-src/hood/shared/Look'
@@ -8,6 +8,7 @@ import { sanitizeNeeds } from '../../modules-src/hood/shared/Needs'
 import { STATE_HZ, TICK_HZ, type Command } from '../../modules-src/hood/shared/Protocol'
 import { isLotIndex, isStreetIndex } from '../../modules-src/hood/shared/Street'
 import { FEATURE_KINDS } from '../../modules-src/hood/shared/Style'
+import { JOB_IDS, SERVICE_KINDS } from '../../modules-src/hood/shared/Jobs'
 
 type DurableState = { blockConcurrencyWhile<T>(callback: () => Promise<T>): Promise<T> }
 type ServerSocket = WebSocket & { accept(): void }
@@ -55,6 +56,11 @@ const command = z.discriminatedUnion('t', [
   z.object({ t: z.literal('speed'), speed: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]) }),
   z.object({ t: z.literal('build'), op: buildOp }),
   z.object({ t: z.literal('settings'), yardOpen: z.boolean().optional(), guestsUseFridgeBeds: z.boolean().optional() }),
+  z.object({ t: z.literal('job'), sim: simId, job: z.enum(JOB_IDS).nullable() }),
+  z.object({ t: z.literal('work'), sim: simId }),
+  z.object({ t: z.literal('task'), sim: simId, task: z.string().min(1).max(80) }),
+  z.object({ t: z.literal('clockOut'), sim: simId }),
+  z.object({ t: z.literal('order'), kind: z.enum(SERVICE_KINDS), sim: simId.optional() }),
 ])
 const homecoming = z.object({ simId, needs: z.record(z.string(), z.number()), minutes: z.number().min(0).max(100_000) })
 
@@ -96,6 +102,7 @@ export class HoodLot {
   private dirty = false
   private lastSave = 0
   private saving: Promise<void> | null = null
+  private lastRequests = 0
 
   constructor(_state: DurableState, private readonly env: Env) {}
 
@@ -109,7 +116,10 @@ export class HoodLot {
         dirty: () => { this.dirty = true },
         presence: () => { this.dirty = true; void this.save(true) },
         visitorLeft: (key, sim, minutes) => { void this.sendHome(key, sim, minutes) },
+        requested: request => { void addTownRequest(this.env, street, request).catch(() => undefined) },
+        important: () => { this.dirty = true; void this.save(true) },
       }, undefined, (street * 31 + lot + 1) * 7919)
+      await this.refreshRequests()
       return this.room
     })().finally(() => { this.loading = null })
     return this.loading
@@ -219,6 +229,16 @@ export class HoodLot {
     this.room.command(id, parsed.data as Command)
   }
 
+  private async refreshRequests(): Promise<void> {
+    if (!this.room || !this.state) return
+    this.lastRequests = Date.now()
+    try {
+      const list = await townRequests(this.env, this.state.street)
+      const mine = this.room.requests.filter(r => !list.some(o => o.at === r.at && o.lot === r.lot && o.kind === r.kind))
+      this.room.setRequests([...list, ...mine])
+    } catch { /* the town view catches up on the next refresh */ }
+  }
+
   private ensureTimer(): void {
     if (this.timer) return
     this.lastTick = Date.now()
@@ -240,6 +260,7 @@ export class HoodLot {
     if (++this.ticks % Math.round(TICK_HZ / STATE_HZ) === 0) room.broadcastState()
     if (room.ownerHome) this.dirty = true
     if (this.dirty && now - this.lastSave > 30_000) void this.save(false)
+    if (now - this.lastRequests > 20_000) void this.refreshRequests()
   }
 
   private async save(force: boolean): Promise<void> {

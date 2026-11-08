@@ -18,21 +18,55 @@ function part(geometry: THREE.BufferGeometry, color: string, sx: number, sy: num
   return mesh
 }
 
+export type FigureTool = 'hose' | 'clipboard' | 'trimmer' | 'bag' | 'wrench' | 'tray' | 'cone' | 'shovel' | 'none'
+
 export interface SimFigure {
   root: THREE.Group
   body: THREE.Group
   setPose(pose: 'stand' | 'sit' | 'lie', walking: number, time: number, busy: boolean): void
   setSelected(on: boolean): void
+  setTool(tool: FigureTool): void
 }
 
-export function createSimFigure(look: Look): SimFigure {
+/** Work clothes that replace the outfit colors: a uniform shirt and trousers, a hat and a safety vest. */
+export interface Dress {
+  top: string
+  bottom: string
+  hat?: 'cap' | 'helmet' | 'hard' | 'visor' | 'none'
+  hatColor?: string
+  vest?: string
+}
+
+function buildTool(tool: FigureTool): THREE.Group {
+  const g = new THREE.Group()
+  const add = (geo: THREE.BufferGeometry, color: string, sx: number, sy: number, sz: number, x: number, y: number, z: number, rx = 0) => {
+    const m = part(geo, color, sx, sy, sz, 0.6)
+    m.position.set(x, y, z)
+    m.rotation.x = rx
+    g.add(m)
+  }
+  switch (tool) {
+    case 'hose': add(limb, '#b8862e', 0.04, 0.22, 0.04, 0, -0.02, 0.22, Math.PI / 2); add(limb, '#c9ccd1', 0.03, 0.06, 0.03, 0, -0.02, 0.48, Math.PI / 2); break
+    case 'clipboard': add(limb, '#8a6440', 0.11, 0.008, 0.08, 0, 0, 0.08, Math.PI / 2 - 0.4); add(limb, '#f4f2ea', 0.09, 0.009, 0.065, 0, 0.004, 0.085, Math.PI / 2 - 0.4); break
+    case 'trimmer': add(limb, '#e2762e', 0.022, 0.5, 0.022, 0, -0.25, 0.25, 2.3); add(limb, '#3a3d42', 0.06, 0.03, 0.06, 0, -0.52, 0.56); break
+    case 'bag': add(head, '#1c1d20', 0.13, 0.17, 0.11, 0, -0.18, 0); break
+    case 'wrench': add(limb, '#9aa0a8', 0.018, 0.12, 0.018, 0, -0.08, 0.04); break
+    case 'tray': add(limb, '#c88a3c', 0.14, 0.05, 0.1, 0, 0.02, 0.14); break
+    case 'cone': add(limb, '#f07c1e', 0.06, 0.12, 0.06, 0, -0.14, 0.06); break
+    case 'shovel': add(limb, '#8a6440', 0.02, 0.5, 0.02, 0, -0.25, 0.18, 2.6); add(limb, '#6b7076', 0.09, 0.02, 0.07, 0, -0.62, 0.42, 2.6); break
+    case 'none': break
+  }
+  return g
+}
+
+export function createSimFigure(look: Look, dress?: Dress): SimFigure {
   const root = new THREE.Group()
   const body = new THREE.Group()
   root.add(body)
   const skin = SKIN_TONES[look.skin]
   const hair = HAIR_COLORS[look.hair]
-  const top = OUTFIT_COLORS[look.top]
-  const bottom = OUTFIT_COLORS[look.bottom]
+  const top = dress?.top ?? OUTFIT_COLORS[look.top]
+  const bottom = dress?.bottom ?? OUTFIT_COLORS[look.bottom]
   const width = look.build === 'slim' ? 0.88 : look.build === 'broad' ? 1.16 : 1
   body.scale.setScalar(look.height)
 
@@ -89,7 +123,31 @@ export function createSimFigure(look: Look): SimFigure {
     eye.position.set(side * 0.042, 0.015, 0.112)
     face.add(eye)
   }
-  if (look.hairStyle !== 'bald') {
+  const hat = dress?.hat && dress.hat !== 'none' ? dress.hat : null
+  if (hat) {
+    const color = dress?.hatColor ?? '#2c2f33'
+    if (hat === 'helmet' || hat === 'hard') {
+      const dome = part(cap, color, 0.15, 0.13, 0.16, 0.4)
+      dome.position.y = 0.03
+      face.add(dome)
+      const brim = part(limb, color, 0.17, 0.01, 0.19, 0.4)
+      brim.position.set(0, 0.02, hat === 'helmet' ? -0.02 : 0)
+      face.add(brim)
+    } else {
+      const crown = part(cap, color, 0.13, hat === 'visor' ? 0.04 : 0.1, 0.135, 0.7)
+      crown.position.y = hat === 'visor' ? 0.06 : 0.04
+      face.add(crown)
+      const bill = part(limb, color, 0.08, 0.008, 0.08, 0.7)
+      bill.position.set(0, 0.05, 0.13)
+      face.add(bill)
+    }
+  }
+  if (dress?.vest) {
+    const vest = part(limb, dress.vest, 0.175 * width, 0.15, 0.125 * width, 0.5)
+    vest.position.y = 0.34
+    hips.add(vest)
+  }
+  if (look.hairStyle !== 'bald' && !(hat === 'helmet' || hat === 'hard')) {
     const crown = part(cap, hair, 0.128, 0.14, 0.13, 0.85)
     crown.position.y = 0.005
     crown.rotation.x = -0.25
@@ -119,11 +177,22 @@ export function createSimFigure(look: Look): SimFigure {
   ring.userData.ownMaterial = ring.material
   root.add(ring)
 
+  const hand = new THREE.Group()
+  hand.position.y = -0.52
+  arms[1].add(hand)
+  let toolName: FigureTool = 'none'
+
   return {
     root,
     body,
     setSelected(on) {
       ring.visible = on
+    },
+    setTool(tool) {
+      if (tool === toolName) return
+      toolName = tool
+      hand.clear()
+      if (tool !== 'none') hand.add(buildTool(tool))
     },
     setPose(pose, walking, time, busy) {
       const swing = Math.sin(time * 9) * 0.55 * walking

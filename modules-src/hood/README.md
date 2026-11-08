@@ -41,6 +41,26 @@ The exterior designer (Build → Exterior design, `src/ui/StylePanel.ts`) edits 
 
 Features (`features` in the lot, `feature`/`unfeature` build steps, drawn by `src/models/Features.ts`): canopies over doors and windows (shed, gable, arched, flat modern, striped awning; three widths), porch roofs on square, round or tapered craftsman posts that tuck under the main eave, pergolas with string lights, fences (picket, privacy, wrought iron, split rail) with gates Sims can walk through while fences block them, and brick chimneys through the roof. Patios and decks use the outdoor floors (cedar deck, brick pavers, flagstone, poured concrete, pea gravel, patio stone).
 
+## The town and its jobs
+
+Both ends of every street's road hold a small town (`shared/Town.ts`, drawn by `src/models/TownBuildings.ts`): east are the Hood Police Department, Fire Station 7, Hood General Hospital, the City Works yard, Greenline Lawn Co. and Kettle Ridge Correctional; west are Hood Fuel & Go, Sunny Side Burgers and Hood Springs Resort with its pool, lodge, cabins and lake.
+
+### Always running
+
+`shared/TownSim.ts` is the whole town as a pure function of the street number, the real clock and the street's service calls. Nothing ticks on a server, so the town keeps working with nobody watching, every page draws the same vehicles in the same places, and the lot's Room can check a worker's answer to a call without trusting the page.
+
+- Routines on fixed periods: Car 1's patrol with speed traps, drive-thru lunches and fuel stops; the trash route lot by lot; Greenline 1 mowing every yard in turn (each lawn's grass height follows when it was last mowed, and the lot view grows and cuts its tufts to match); Sunny Side deliveries; the resort shuttle picking up neighbors and off-duty crews; a fuel tanker refilling Hood Fuel; the Kettle Ridge bus taking an inmate work crew out with a guard and a City Works crew chief; bucket-truck streetlight repairs.
+- An emergency may start every `SLOT_SECONDS` (240 s): house or brush fires (Engine 1, Car 2 for traffic and Medic 1 standing by, sometimes taking a hurt firefighter to the nurses), medical calls (Medic 1 to the house, the nurses at the emergency bay and triage, sometimes Engine 1 assisting), arrests (Car 2 to a house, the restaurant, the gas station or the resort, then to Kettle Ridge where a guard books the suspect and walks them to a cell), two-car crashes with wrecks in the road, fuel spills at Hood Fuel, prison yard fights (Medic 1 takes the inmate to Hood General with a guard escort) and pool accidents at the resort.
+- Service calls from households go to their own responders (Car 3, Engine 2, Medic 2, the second delivery car, Greenline 2, City Pickup 9, the resort van), queued per vehicle (`serviceJobs`), so an order's arrival time (`serviceEta`) is known when it is placed.
+
+### Careers
+
+`shared/Jobs.ts` holds ten careers: Police Officer, Firefighter, Lawn Care Tech, Prison Guard, Resort Manager, City Worker, Gas Station Clerk, Fast Food Crew, EMS Paramedic and Nurse, each with five titles, pay per shift, a uniform and four tasks, some of which work alongside another job. A resident takes a job from the job board, then goes to work: the Sim leaves the lot for a `SHIFT_SECONDS` (five minute) shift on the real clock. During the shift the owner picks tasks (repeats are worth less) and answers live calls that `callsAt` lists for that job (a fire for firefighters, a booking for guards, a patient for nurses, a fuel delivery for the clerk, the work crew for guards and City Works, a lunch run for the fast food crew, and every household service call for its trade), which pay a bonus. At the end the household is paid by title and performance, the shift wears the Sim out by the job's costs, experience counts toward the next title, and the Sim walks home. Residents on a shift appear at their workplace, or at the call they are answering, for everyone on the street (`shell.workers`).
+
+### Services
+
+From the lot, the owner can ask the police for a patrol check, the fire station for a smoke alarm check, EMS for a wellness check (needs under 25 go back to 45), order burgers (everyone at home eats), book a mowing, report a pothole, or send a resident to Hood Springs for a resort day (back four minutes later rested and happy). The call goes into `hood_requests`, the responder's truck drives out to the curb, and the effect lands when it arrives. Free calls have a ten minute cooldown; a household can have one order of each kind on the way.
+
 ## Rendering
 
 three.js WebGPU with WebGL2 fallback through `engine/`. Procedural canvas textures (`src/models/Textures.ts`) are laid out in world metres by node materials (`src/models/Surfaces.ts`): lap siding, plaster, stone footings, shingles, planks, tile, carpet, pavers, grass with large-scale variation, asphalt, concrete, fence boards, bark, leaves, wood grain and fabric (triplanar on furniture). Houses (`src/models/House.ts`) are instanced wall faces with trim, shutters, panelled doors, steps and a hipped roof generated from the inside tiles with eaves. The active lot gets instanced, wind-swayed grass tufts (`src/models/Grass.ts`; still under reduced motion). Walls show up, cut away or down; visitors outside always see them up with the roof on.
@@ -48,4 +68,5 @@ three.js WebGPU with WebGL2 fallback through `engine/`. Procedural canvas textur
 ## Server
 
 - `/api/hood` (`src/server/routes/hood.ts`): GET a street (`?street=`), POST `claim` to move in, WebSocket upgrade to walk onto a lot (`?street=&lot=&sim=&guest=`).
-- D1 `hood_lots` (migration 0023, also created on first use): one row per household with the full `state`, the public `shell`, and `home`/`visitors` presence refreshed by the lot's object.
+- D1 `hood_lots` (migration 0023, also created on first use): one row per household with the full `state`, the public `shell` (including residents on a shift), and `home`/`visitors` presence refreshed by the lot's object.
+- D1 `hood_requests` (migration 0024, also created on first use): service calls by street, lot, kind, household name and time. `GET /api/hood?street=&town=1` returns the last hour of them plus the residents on a shift; the lot's object reloads them every 20 seconds and hands them to its Room.
