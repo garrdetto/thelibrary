@@ -5,7 +5,6 @@ import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Ray } from '@babylonjs/core/Culling/ray'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
-import type { InstancedMesh } from '@babylonjs/core/Meshes/instancedMesh'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { Scores } from '../../../engine/net/Scores'
@@ -31,13 +30,27 @@ import { creatureMaterial } from '../world/CreatureTextures'
 import type { CreatureSurface } from '../world/CreatureTextures'
 import type { FoliageKind } from '../world/FoliageTextures'
 import { PLAY_LIMIT, Terrain } from '../world/Terrain'
+import { STAND_CLIMB_SECONDS, STAND_LADDER_BASE, STAND_LADDER_TOP, STAND_SEAT, findStandSite, standToWorld } from '../world/TreeStand'
+import type { StandSite } from '../world/TreeStand'
 import { buildDock, buildGround, buildSky, buildWater, findLandmarks } from '../world/World'
+import { Avatar, HIP_HEIGHT } from './Avatar'
+import type { AvatarHands, AvatarStance } from './Avatar'
 
 type Tool = 'rod' | 'rifle'
+type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand'
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
 const GLOSSY = new Set(['utv', 'boat', 'rod', 'rifle', 'bobber', 'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch'])
 const MODULE_ID = 'rackreel'
+const WALK_SPEED = 2.5
+const SPRINT_SPEED = 5.2
+const CROUCH_SPEED = 1.2
+const AIM_SPEED = 0.9
+const CAMERA_DISTANCE = 3.3
+const SHOULDER_OFFSET = 0.45
+const ARROW_YAW_RATE = 2.1
+const ARROW_PITCH_RATE = 1.4
+const ARROW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 
 export class Game {
   private ctx!: EngineContext
@@ -55,10 +68,12 @@ export class Game {
   private readonly hud = new Hud()
   private skyMat!: import('@babylonjs/core/Materials/shaderMaterial').ShaderMaterial
   private waterMat!: import('@babylonjs/core/Materials/shaderMaterial').ShaderMaterial
-  private driver!: ModelRig
+  private avatar!: Avatar
   private rodRig!: ModelRig
   private rodTip!: TransformNode
   private rifleRig!: ModelRig
+  private standRig!: ModelRig
+  private stand!: StandSite
   private heroRig: ModelRig | null = null
   private heroClock = 0
   private heroLight: DirectionalLight | null = null
@@ -70,8 +85,13 @@ export class Game {
   private crouch = false
   private playing = false
   private time = 0
-  private lastFoot = new Vector3()
+  private mode: PlayerMode = 'foot'
+  private readonly foot = new Vector3()
+  private readonly velocity = new Vector3()
+  private facing = 0
   private moveSpeed = 0
+  private climbT = 0
+  private climbDir = 1
   private rifleCooldown = 0
   private recoil = 0
   private swayApplied = { x: 0, y: 0 }
@@ -81,6 +101,7 @@ export class Game {
   private sessionKey = Math.random().toString(36).slice(2, 10)
   private signTimer = 0
   private placeTimer = 0
+  private casters: AbstractMesh[] = []
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
@@ -97,34 +118,44 @@ export class Game {
     await Promise.all(MODEL_NAMES.map(async (name) => {
       this.models.set(name, await loadModel(scene, name, (model, part, tag) => this.materialFor(model, part, tag)))
       loaded++
-      this.hud.setLoading(0.1 + (loaded / MODEL_NAMES.length) * 0.5, `Bringing in the ${name.replace('fish-', '').replace('-lo', '')}…`)
+      this.hud.setLoading(0.1 + (loaded / MODEL_NAMES.length) * 0.5, `Bringing in the ${name.replace('fish-', '').replace('-lo', '').replace('treestand', 'tree stand')}…`)
     }))
     this.hud.setLoading(0.65, 'Planting the woods…')
     await nextFrame()
     const landmarks = findLandmarks(this.terrain)
     buildDock(this.ctx, landmarks)
-    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv])
+    this.stand = findStandSite(this.terrain, landmarks.spawn)
+    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, this.stand.tree])
+    this.foliage.colliders.push({ x: this.stand.tree.x, z: this.stand.tree.z, r: 0.45, min: this.stand.tree.add(new Vector3(-0.45, -1, -0.45)), max: this.stand.tree.add(new Vector3(0.45, 16, 0.45)) })
     this.ctx.buildCollisionOctree(this.foliage.colliders)
     this.hud.setLoading(0.85, 'Fueling the UTV…')
     await nextFrame()
-    this.vehicles = new VehicleController(this.ctx, this.terrain, this.ground)
     const reg = (m: AbstractMesh) => this.ctx.registerDynamic(m)
+    this.buildStand(reg)
+    this.vehicles = new VehicleController(this.ctx, this.terrain, this.ground)
     this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), landmarks.utv, landmarks.utvHeading)
     this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
-    this.driver = instantiate(this.models.get('hunter')!, null, scene, reg)
-    this.driver.root.setEnabled(false)
-    this.buildViewmodels()
+    this.avatar = new Avatar(instantiate(this.models.get('hunter')!, null, scene, reg))
+    this.buildGear(reg)
     this.wildlife = new Wildlife(this.ctx, scene, this.terrain, this.loot, this.models)
     this.wildlife.onLegendSpawn = (a) => this.hud.toast(`Fresh sign: a record-class ${SPECIES_BY_ID[a.template.id].name.toLowerCase()} is moving nearby`, 'big')
     this.wildlife.onLost = (a) => this.hud.toast(a.wounds ? 'The wounded animal is gone. Aim for the vitals behind the shoulder.' : `The ${a.template.name.toLowerCase()} slipped away.`)
     this.fishing = new Fishing(this.ctx, scene, this.terrain, this.loot, this.skill, this.models.get('bobber')!)
     this.fishing.onEvent = (e) => this.onFishing(e)
     const cam = this.ctx.camera
-    cam.position.set(landmarks.spawn.x, landmarks.spawn.y + EYE_HEIGHT, landmarks.spawn.z)
-    cam.rotation.set(0.05, landmarks.spawnHeading, 0)
-    this.lastFoot.copyFrom(cam.position)
+    cam.keysUp = []
+    cam.keysDown = []
+    cam.keysLeft = []
+    cam.keysRight = []
+    cam.speed = 0
+    this.foot.copyFrom(landmarks.spawn)
+    this.facing = landmarks.spawnHeading
+    cam.rotation.set(0.18, landmarks.spawnHeading, 0)
+    this.placeAvatar(0)
+    this.placeCamera()
+    this.collectCasters()
 
-    this.foliage.updateGrass(cam.position)
+    this.foliage.updateGrass(this.foot)
     this.bindInput()
     scene.onBeforeCameraRenderObservable.add(() => this.afterCameraMove())
     scene.onAfterCameraRenderObservable.add(() => this.removeSway())
@@ -161,24 +192,30 @@ export class Game {
     return mat
   }
 
-  private buildViewmodels(): void {
-    const { scene, camera } = this.ctx
-    const viewReg = (m: InstancedMesh) => {
-      m.sourceMesh.renderingGroupId = 1
-      m.sourceMesh.applyFog = false
-      this.ctx.registerDynamic(m)
-    }
-    this.rodRig = instantiate(this.models.get('rod')!, null, scene, viewReg)
-    this.rodRig.root.parent = camera
-    this.rodRig.root.position.set(0.3, -0.36, 0.42)
-    this.rodRig.root.rotation.set(-0.55, -0.08, 0)
+  private buildStand(reg: (m: AbstractMesh) => void): void {
+    const { scene } = this.ctx
+    this.standRig = instantiate(this.models.get('treestand')!, null, scene, reg)
+    this.standRig.root.position.copyFrom(this.stand.root)
+    this.standRig.root.rotation.y = this.stand.heading
+  }
+
+  private buildGear(reg: (m: AbstractMesh) => void): void {
+    const { scene } = this.ctx
+    this.rodRig = instantiate(this.models.get('rod')!, null, scene, reg)
+    this.rodRig.root.parent = this.avatar.rightHand
+    this.rodRig.root.position.set(0.02, -0.31, 0.03)
+    this.rodRig.root.rotation.set(0.55, 0, 0)
     this.rodTip = new TransformNode('rod-tip', scene)
     this.rodTip.parent = this.rodRig.root
     this.rodTip.position.set(0, 0, 1.8)
-    this.rifleRig = instantiate(this.models.get('rifle')!, null, scene, viewReg)
-    this.rifleRig.root.parent = camera
-    this.rifleRig.root.position.set(0.2, -0.2, 0.42)
+    this.rifleRig = instantiate(this.models.get('rifle')!, null, scene, reg)
+    this.rifleRig.root.parent = this.avatar.chest
     this.rifleRig.root.setEnabled(false)
+  }
+
+  private collectCasters(): void {
+    this.casters = [...this.avatar.meshes, ...this.rodRig.meshes, ...this.rifleRig.meshes, ...this.standRig.meshes]
+    for (const veh of this.vehicles.vehicles) this.casters.push(...veh.rig.meshes)
   }
 
   private bindInput(): void {
@@ -188,6 +225,8 @@ export class Game {
       this.hud.showPlaying(true)
       this.audio.unlock()
       this.lock()
+      const d = this.stand.tree.subtract(this.foot)
+      this.hud.toast(`A ladder stand overlooks the oak opening ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
     }
     document.getElementById('start-btn')!.addEventListener('click', start)
     document.getElementById('book-btn')!.addEventListener('click', () => this.hud.showBook(this.loot, this.yourRecords, () => undefined))
@@ -218,6 +257,7 @@ export class Game {
     addEventListener('keydown', (e) => {
       if (!this.playing || this.hud.modalOpen) return
       this.keys.add(e.code)
+      if (ARROW_KEYS.has(e.code) || e.code === 'Space') e.preventDefault()
       if (e.repeat) return
       if (e.code === 'Digit1') this.setTool('rod')
       else if (e.code === 'Digit2') this.setTool('rifle')
@@ -226,7 +266,6 @@ export class Game {
       else if (e.code === 'KeyR') this.fishing.cancel()
       else if (e.code === 'KeyM') this.audio.setMuted(!this.audio.muted)
       else if (e.code === 'KeyK') this.openBook()
-      if (e.code === 'Space') e.preventDefault()
     })
     addEventListener('keyup', (e) => this.keys.delete(e.code))
     addEventListener('blur', () => {
@@ -269,51 +308,63 @@ export class Game {
   }
 
   private interact(): void {
-    const cam = this.ctx.camera
-    if (this.vehicles.active) {
+    if (this.mode === 'climb') return
+    if (this.mode === 'stand') {
+      if (this.fishing.busy) this.fishing.cancel()
+      this.mode = 'climb'
+      this.climbDir = -1
+      this.climbT = 1
+      return
+    }
+    if (this.mode === 'vehicle') {
       const spot = this.vehicles.exit()
       if (!spot) {
         this.hud.toast('Too deep to step out here. Run the boat up to shore.', 'warn')
         return
       }
-      this.driver.root.setEnabled(false)
-      this.driver.root.parent = null
-      cam.position.set(spot.x, spot.y + EYE_HEIGHT, spot.z)
-      this.lastFoot.copyFrom(cam.position)
-      cam.keysUp = [87]
-      cam.keysDown = [83]
-      cam.keysLeft = [65]
-      cam.keysRight = [68]
+      this.avatar.root.parent = null
+      this.mode = 'foot'
+      this.foot.copyFrom(spot)
+      this.velocity.setAll(0)
       return
     }
-    const feet = new Vector3(cam.position.x, cam.position.y - EYE_HEIGHT, cam.position.z)
-    const down = this.wildlife.nearestDown(feet, 3.8)
+    const down = this.wildlife.nearestDown(this.foot, 3.8)
     if (down) {
       this.tag(down)
       return
     }
-    const v = this.vehicles.nearest(feet, 4.2)
-    if (v) this.enterVehicle(v)
+    const v = this.vehicles.nearest(this.foot, 4.2)
+    if (v) {
+      this.enterVehicle(v)
+      return
+    }
+    if (this.nearLadder()) {
+      if (this.fishing.busy) this.fishing.cancel()
+      this.mode = 'climb'
+      this.climbDir = 1
+      this.climbT = 0
+      this.crouch = false
+    }
+  }
+
+  private nearLadder(): boolean {
+    const base = standToWorld(this.stand, STAND_LADDER_BASE)
+    return Math.hypot(base.x - this.foot.x, base.z - this.foot.z) < 1.8
   }
 
   private enterVehicle(v: Vehicle): void {
     if (this.fishing.busy) this.fishing.cancel()
     if (v.kind === 'ATV' && this.tool === 'rifle') this.setTool('rod')
+    if (this.tool === 'rifle') this.setTool('rod')
     this.vehicles.enter(v)
+    this.mode = 'vehicle'
+    this.crouch = false
     const cam = this.ctx.camera
-    cam.keysUp = []
-    cam.keysDown = []
-    cam.keysLeft = []
-    cam.keysRight = []
     cam.rotation.set(0.28, v.heading, 0)
-    cam.cameraDirection.setAll(0)
-    this.driver.root.setEnabled(true)
-    this.driver.root.parent = v.root
-    this.driver.root.position.copyFrom(v.seat).addInPlaceFromFloats(0, -0.92, 0)
-    this.driver.root.rotationQuaternion = null
-    this.driver.root.rotation.set(0, 0, 0)
-    for (const leg of ['legL', 'legR']) this.driver.joints.get(leg)!.rotation.x = -1.45
-    for (const arm of ['armL', 'armR']) this.driver.joints.get(arm)!.rotation.x = -0.95
+    this.avatar.root.parent = v.root
+    this.avatar.root.rotationQuaternion = null
+    this.avatar.root.rotation.set(0, 0, 0)
+    this.avatar.root.position.copyFrom(v.seat).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
     this.hud.toast(v.kind === 'ATV' ? 'W/S throttle · A/D steer · Space brake · E to step out' : 'W/S throttle · A/D tiller · stop to cast · E to step out near shore')
   }
 
@@ -329,6 +380,10 @@ export class Game {
     }
     const v = this.vehicles.active
     if (this.tool === 'rod') {
+      if (this.mode === 'climb' || this.mode === 'stand') {
+        this.hud.toast('Climb down to fish. The stand is for the rifle.', 'warn')
+        return
+      }
       if (v && (v.kind === 'ATV' || Math.abs(v.speed) > 1.2)) {
         this.hud.toast(v.kind === 'ATV' ? 'Park the UTV and step out to fish.' : 'Ease off the throttle to cast.', 'warn')
         return
@@ -338,7 +393,7 @@ export class Game {
         return
       }
       this.fishing.startCharge()
-    } else {
+    } else if (this.mode !== 'climb') {
       this.fire()
     }
   }
@@ -347,17 +402,12 @@ export class Game {
     if (this.fishing.state === 'charging') {
       const dir = this.ctx.camera.getDirection(Vector3.Forward())
       this.fishing.release(this.castOrigin(), dir)
+      this.avatar.cast()
       this.audio.whoosh()
     }
   }
 
   private castOrigin(): Vector3 {
-    if (this.vehicles.active) {
-      const v = this.vehicles.active
-      const seat = this.vehicles.localToWorld(v, v.seat)
-      const dir = this.ctx.camera.getDirection(Vector3.Forward())
-      return seat.add(new Vector3(dir.x, 0, dir.z).normalize().scale(1.2)).addInPlaceFromFloats(0, 1.5, 0)
-    }
     return this.rodTip.getAbsolutePosition().clone()
   }
 
@@ -390,9 +440,10 @@ export class Game {
       this.hud.toast(blockedAt < 420 ? 'Missed — the shot hit cover.' : 'Missed.')
       return
     }
-    const yards = Math.round(shot.distance * 1.094)
+    const yards = Math.round(Vector3.Distance(this.foot, shot.animal.position) * 1.094)
     const down = this.wildlife.hit(shot.animal, shot.vital, origin)
-    if (down) this.hud.toast(`Clean ${shot.vital ? 'vital' : 'follow-up'} hit at ${yards} yd. Walk up and press E to tag it.`, 'big')
+    const climbHint = this.mode === 'stand' ? ' Climb down (E) and walk up to tag it.' : ' Walk up and press E to tag it.'
+    if (down) this.hud.toast(`Clean ${shot.vital ? 'vital' : 'follow-up'} hit at ${yards} yd.${climbHint}`, 'big')
     else this.hud.toast(`Hit at ${yards} yd but high or back. It ran — a second hit will put it down.`, 'warn')
   }
 
@@ -479,8 +530,8 @@ export class Game {
   }
 
   private placeName(): string {
-    const cam = this.ctx.camera.position
-    const g = this.terrain.groundAt(cam.x, cam.z)
+    if (this.mode === 'stand' || this.mode === 'climb') return 'Ladder stand'
+    const g = this.terrain.groundAt(this.foot.x, this.foot.z)
     const v = this.vehicles.active
     if (v?.kind === 'BOAT') return this.fishing.habitat === 'deep' ? 'Deep basin' : 'Bear Paw Lake'
     return { water: 'Bear Paw Lake', shore: 'Lakeshore', marsh: 'Cattail Marsh', meadow: 'Oak Opening', forest: 'Pine Ridge', trail: 'Two-track trail', rock: 'Granite Bluff' }[g]
@@ -497,36 +548,44 @@ export class Game {
     this.ctx.scene.render()
   }
 
+  private key(code: string): number {
+    return this.keys.has(code) ? 1 : 0
+  }
+
   private update(dt: number): void {
     const cam = this.ctx.camera
     const locked = document.pointerLockElement === this.canvas && !this.hud.modalOpen
+    const active = !this.hud.modalOpen
     const v = this.vehicles.active
     const reeling = this.fishing.state === 'reeling'
+    const lookScale = this.ads > 0.5 ? 0.3 : 1
+    cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
+    cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
     const input = {
-      throttle: locked && !reeling ? (this.keys.has('KeyW') ? 1 : 0) - (this.keys.has('KeyS') ? 1 : 0) : 0,
-      steer: locked && !reeling ? (this.keys.has('KeyD') ? 1 : 0) - (this.keys.has('KeyA') ? 1 : 0) : 0,
+      throttle: active && !reeling && v ? this.key('KeyW') - this.key('KeyS') : 0,
+      steer: active && !reeling && v ? this.key('KeyD') - this.key('KeyA') : 0,
       brake: this.keys.has('Space'),
     }
     this.vehicles.update(dt, input)
     if (v) this.audio.engine(true, Math.abs(v.speed) / 16, v.kind === 'BOAT')
     else this.audio.engine(false, 0, false)
-    const onFoot = !v
     const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
-    const wantAds = onFoot && this.tool === 'rifle' && this.rightDown && locked
-    this.ads += ((wantAds ? 1 : 0) - this.ads) * Math.min(1, dt * 12)
-    this.ctx.setAds(this.ads)
-    if (onFoot) {
-      cam.speed = reeling ? 0 : this.ads > 0.5 ? 0.16 : this.crouch ? 0.2 : sprint ? 0.82 : 0.42
-      if (!locked) cam.speed = 0
-    }
+    const canAim = (this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle'
+    const wantAds = canAim && this.rightDown && locked
+    this.ads += ((wantAds ? 1 : 0) - this.ads) * Math.min(1, dt * 10)
+    this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0)
+    if (this.mode === 'foot') this.walk(dt, active, sprint)
+    else if (this.mode === 'climb') this.climb(dt)
+    else if (this.mode === 'vehicle' && v) this.moveSpeed = Math.abs(v.speed)
+    else this.moveSpeed = 0
     this.rifleCooldown = Math.max(0, this.rifleCooldown - dt)
     this.recoil = Math.max(0, this.recoil - dt * 5)
+    this.placeAvatar(dt)
     this.fishing.update(dt, this.castOrigin(), this.leftDown && locked)
-    const noise = v ? 1.4 : this.moveSpeed < 0.3 ? 0.04 : this.crouch ? 0.15 : sprint ? 1 : 0.45
-    const feet = new Vector3(cam.position.x, cam.position.y - EYE_HEIGHT, cam.position.z)
-    const focus = v ? v.position : feet
+    const noise = this.mode === 'vehicle' ? 1.4 : this.mode === 'stand' ? 0.03 : this.mode === 'climb' ? 0.5 : this.moveSpeed < 0.3 ? 0.04 : this.crouch ? 0.15 : sprint ? 1 : 0.45
+    const focus = v ? v.position : this.foot
     this.wildlife.update(dt, focus, noise)
-    const exploring = (v ? Math.abs(v.speed) > 1 : this.moveSpeed > 0.5)
+    const exploring = this.mode === 'stand' || (v ? Math.abs(v.speed) > 1 : this.moveSpeed > 0.5)
     const onLand = !v || v.kind === 'ATV'
     const signal = this.director.update(dt, { exploring, lineInWater: this.fishing.lineInWater, onLand })
     if (signal === 'fish') this.fishing.bite()
@@ -540,14 +599,11 @@ export class Game {
         }
       }
     }
-    this.updateViewmodels(dt, onFoot)
+    this.updateGear()
     this.updateHud(dt, locked)
     this.foliage.updateGrass(focus)
     this.ctx.setShadowFocus(focus)
-    const casters: AbstractMesh[] = [...this.wildlife.casters()]
-    for (const veh of this.vehicles.vehicles) casters.push(...veh.rig.meshes)
-    if (v) casters.push(...this.driver.meshes)
-    this.foliage.updateShadowCasters(focus, casters)
+    this.foliage.updateShadowCasters(focus, [...this.casters, ...this.wildlife.casters()])
     if (this.heroRig) {
       this.heroClock += dt
       this.heroRig.root.rotation.y = Math.PI / 2 + Math.sin(this.heroClock * 0.8) * 0.35
@@ -556,53 +612,213 @@ export class Game {
     }
   }
 
-  private afterCameraMove(): void {
+  private walk(dt: number, active: boolean, sprint: boolean): void {
     const cam = this.ctx.camera
+    const yaw = cam.rotation.y
+    const f = active ? this.key('KeyW') - this.key('KeyS') : 0
+    const s = active ? this.key('KeyD') - this.key('KeyA') : 0
+    const busy = this.fishing.state === 'charging' || this.fishing.state === 'reeling'
+    let speed = sprint && !this.crouch ? SPRINT_SPEED : this.crouch ? CROUCH_SPEED : WALK_SPEED
+    if (this.ads > 0.3 || (this.tool === 'rifle' && this.rightDown)) speed = AIM_SPEED
+    if (busy) speed = 0
+    const dir = new Vector3(Math.sin(yaw) * f + Math.cos(yaw) * s, 0, Math.cos(yaw) * f - Math.sin(yaw) * s)
+    const len = dir.length()
+    if (len > 0) dir.scaleInPlace(speed / len)
+    const accel = Math.min(1, dt * (len > 0 ? 9 : 12))
+    this.velocity.x += (dir.x - this.velocity.x) * accel
+    this.velocity.z += (dir.z - this.velocity.z) * accel
+    const prevX = this.foot.x
+    const prevZ = this.foot.z
+    const p = this.foot
+    p.x = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.x + this.velocity.x * dt))
+    p.z = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.z + this.velocity.z * dt))
+    for (const t of this.ctx.queryTrunks(p.x, p.z, 0.4)) {
+      const dx = p.x - t.x
+      const dz = p.z - t.z
+      const d = Math.hypot(dx, dz)
+      const min = t.r + 0.3
+      if (d < min && d > 1e-4) {
+        p.x = t.x + (dx / d) * min
+        p.z = t.z + (dz / d) * min
+      }
+    }
+    if (this.terrain.depthAt(p.x, p.z) > 1.05 && !this.onDock(p)) {
+      p.x = prevX
+      p.z = prevZ
+      this.velocity.setAll(0)
+    }
+    const floor = Math.max(this.terrain.heightAt(p.x, p.z), this.onDock(p) ? 0.58 : -10)
+    p.y += (floor - p.y) * Math.min(1, dt * 18)
+    const moved = Math.hypot(p.x - prevX, p.z - prevZ) / Math.max(1e-3, dt)
+    this.moveSpeed += (moved - this.moveSpeed) * Math.min(1, dt * 8)
+    const faceCamera = this.fishing.busy || (this.tool === 'rifle' && (this.rightDown || this.rifleCooldown > 0.6))
+    let target = this.facing
+    if (faceCamera) target = yaw
+    else if (Math.hypot(this.velocity.x, this.velocity.z) > 0.3) target = Math.atan2(this.velocity.x, this.velocity.z)
+    let delta = target - this.facing
+    delta = Math.atan2(Math.sin(delta), Math.cos(delta))
+    this.facing += delta * Math.min(1, dt * (faceCamera ? 16 : 10))
+  }
+
+  private climb(dt: number): void {
+    this.climbT += (this.climbDir * dt) / STAND_CLIMB_SECONDS
+    this.moveSpeed = 0
+    if (this.climbT >= 1) {
+      this.climbT = 1
+      this.mode = 'stand'
+      this.facing = this.stand.heading
+      this.hud.toast('Settled in the stand. Deer won\'t hear you up here — rifle out (2), right-click to glass the opening.')
+      return
+    }
+    if (this.climbT <= 0) {
+      this.climbT = 0
+      this.mode = 'foot'
+      this.foot.copyFrom(standToWorld(this.stand, STAND_LADDER_BASE.add(new Vector3(0, 0, 0.45))))
+      this.foot.y = this.terrain.heightAt(this.foot.x, this.foot.z)
+      this.facing = this.stand.heading
+      this.velocity.setAll(0)
+      return
+    }
+    this.facing = this.stand.heading + Math.PI
+  }
+
+  private climbLocal(): Vector3 {
+    const t = this.climbT
+    const ladder = 0.86
+    if (t < ladder) {
+      const f = t / ladder
+      return Vector3.Lerp(STAND_LADDER_BASE, STAND_LADDER_TOP, f).addInPlaceFromFloats(0, 0.02, 0.22)
+    }
+    const f = (t - ladder) / (1 - ladder)
+    return Vector3.Lerp(STAND_LADDER_TOP.add(new Vector3(0, 0.02, 0.0)), STAND_SEAT.subtract(new Vector3(0, HIP_HEIGHT, 0)), f)
+  }
+
+  private placeAvatar(dt: number): void {
+    const root = this.avatar.root
+    let stance: AvatarStance = 'stand'
+    if (this.mode === 'vehicle') {
+      stance = 'sit'
+    } else {
+      root.rotationQuaternion = null
+      root.rotation.set(0, this.facing, 0)
+      if (this.mode === 'foot') root.position.copyFrom(this.foot)
+      else if (this.mode === 'climb') {
+        root.position.copyFrom(standToWorld(this.stand, this.climbLocal()))
+        stance = this.climbT < 0.86 ? 'climb' : 'sit'
+      } else {
+        root.position.copyFrom(standToWorld(this.stand, STAND_SEAT.subtract(new Vector3(0, HIP_HEIGHT, 0))))
+        stance = 'sit'
+      }
+    }
+    if (this.mode === 'stand' || this.mode === 'climb') this.foot.copyFrom(root.position)
     const v = this.vehicles.active
-    if (v) {
-      cam.rotation.x = Math.max(-0.25, Math.min(0.95, cam.rotation.x))
+    const st = this.fishing.state
+    let hands: AvatarHands = 'free'
+    if (stance === 'climb') hands = 'free'
+    else if (this.mode === 'vehicle' && v && (v.kind === 'ATV' || !this.fishing.busy && (Math.abs(v.speed) > 1.2 || this.tool !== 'rod'))) hands = 'wheel'
+    else if (this.tool === 'rifle') hands = this.rightDown && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
+    else if (st === 'charging' || st === 'flying') hands = 'cast'
+    else if (st === 'reeling') hands = 'reel'
+    else hands = 'rod'
+    this.avatar.update(dt, {
+      stance,
+      hands,
+      speed: this.mode === 'foot' ? this.moveSpeed : 0,
+      crouch: this.crouch && this.mode === 'foot',
+      castPower: st === 'charging' ? this.fishing.power : 0,
+      aimPitch: this.ctx.camera.rotation.x,
+      climbPhase: this.climbT * 9,
+    })
+    this.avatar.setVisible(this.ads < 0.55)
+  }
+
+  private updateGear(): void {
+    const v = this.vehicles.active
+    const inStand = this.mode === 'stand' || this.mode === 'climb'
+    const showRod = this.tool === 'rod' && !inStand && (!v || (v.kind === 'BOAT' && (this.fishing.busy || Math.abs(v.speed) < 1.2)))
+    const showRifle = this.tool === 'rifle' && this.mode !== 'vehicle' && this.mode !== 'climb' && this.ads < 0.55
+    this.rodRig.root.setEnabled(showRod)
+    this.rifleRig.root.setEnabled(showRifle)
+    if (showRifle) {
+      const r = this.rifleRig.root
+      if (this.rightDown && document.pointerLockElement === this.canvas) {
+        const torsoPitch = this.avatar.chest.rotation.x
+        r.position.set(0.15, 0.4, 0.46 - this.recoil * 0.06)
+        r.rotation.set(this.ctx.camera.rotation.x - torsoPitch - this.recoil * 0.12, 0, 0)
+      } else {
+        r.position.set(0.04, 0.2, 0.24)
+        r.rotation.set(-0.95, 0.15, -0.75)
+      }
+    }
+  }
+
+  private placeCamera(): void {
+    const cam = this.ctx.camera
+    const yaw = cam.rotation.y
+    const pitch = cam.rotation.x
+    const fwd = new Vector3(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
+    const right = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw))
+    const v = this.vehicles?.active
+    if (this.mode === 'vehicle' && v) {
       const dist = v.kind === 'BOAT' ? 8.5 : 7
-      const yaw = cam.rotation.y
-      const pitch = cam.rotation.x
       const pivot = v.position.add(new Vector3(0, v.kind === 'BOAT' ? 1.6 : 1.9, 0))
-      const fwd = new Vector3(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
       const pos = pivot.subtract(fwd.scale(dist))
       const floor = Math.max(this.terrain.heightAt(pos.x, pos.z), 0) + 0.6
       if (pos.y < floor) pos.y = floor
       cam.position.copyFrom(pos)
-      this.moveSpeed = Math.abs(v.speed)
-    } else {
-      cam.rotation.x = Math.max(-1.35, Math.min(1.35, cam.rotation.x))
-      const p = cam.position
-      p.x = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.x))
-      p.z = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.z))
-      for (const t of this.ctx.queryTrunks(p.x, p.z, 0.4)) {
-        const dx = p.x - t.x
-        const dz = p.z - t.z
-        const d = Math.hypot(dx, dz)
-        const min = t.r + 0.3
-        if (d < min && d > 1e-4) {
-          p.x = t.x + (dx / d) * min
-          p.z = t.z + (dz / d) * min
-        }
-      }
-      const depth = this.terrain.depthAt(p.x, p.z)
-      if (depth > 1.05) {
-        p.x = this.lastFoot.x
-        p.z = this.lastFoot.z
-      }
-      const floor = Math.max(this.terrain.heightAt(p.x, p.z), this.onDock(p) ? 0.58 : -10)
-      const eye = this.crouch ? 1.05 : EYE_HEIGHT
-      const targetY = floor + eye + (this.moveSpeed > 0.5 ? Math.sin(this.time * (this.moveSpeed > 3 ? 13 : 9)) * 0.025 : 0)
-      p.y += (targetY - p.y) * Math.min(1, this.ctx.engine.getDeltaTime() / 1000 * 18)
-      const dt = Math.max(1e-3, this.ctx.engine.getDeltaTime() / 1000)
-      const moved = Math.hypot(p.x - this.lastFoot.x, p.z - this.lastFoot.z) / dt
-      this.moveSpeed += (moved - this.moveSpeed) * Math.min(1, dt * 6)
-      this.lastFoot.copyFrom(p)
+      return
     }
-    const sway = this.tool === 'rifle' && !v ? this.skill.updateSway(this.ctx.engine.getDeltaTime() / 1000, Math.min(1, this.moveSpeed / 2), this.ads > 0.6, (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) && this.ads > 0.6) : { x: 0, y: 0, amplitude: 0 }
-    this.swayApplied.x = sway.y - this.recoil * 0.05
-    this.swayApplied.y = sway.x
+    const high = this.mode === 'stand' || this.mode === 'climb'
+    const base = high ? this.avatar.root.position.add(new Vector3(0, HIP_HEIGHT, 0)) : this.foot
+    const crouchK = this.mode === 'foot' && this.crouch ? 1 : 0
+    const pivot = base.add(new Vector3(0, high ? 0.62 : 1.62 - crouchK * 0.45, 0))
+    const aimK = this.tool === 'rifle' && this.rightDown ? 1 : 0
+    let pos: Vector3
+    if (high) {
+      const flat = new Vector3(Math.sin(yaw), 0, Math.cos(yaw))
+      const toTree = this.stand.tree.subtract(pivot)
+      toTree.y = 0
+      const facingTree = Vector3.Dot(flat, toTree.normalize())
+      const back = facingTree > 0.2 ? 2.6 : 0.7
+      pos = pivot.add(right.scale(0.85)).add(new Vector3(0, 0.22 - fwd.y * 0.4, 0)).subtract(flat.scale(Math.max(0.25, back)))
+    } else {
+      const dist = CAMERA_DISTANCE * (1 - aimK * 0.3)
+      pos = this.collideCamera(pivot, pivot.add(right.scale(SHOULDER_OFFSET)).subtract(fwd.scale(dist)))
+    }
+    const eye = high ? this.avatar.root.position.add(new Vector3(0, HIP_HEIGHT + 0.68, 0)) : this.foot.add(new Vector3(0, (this.crouch ? 1.08 : EYE_HEIGHT) + 0.0, 0))
+    eye.addInPlace(new Vector3(Math.sin(yaw), 0, Math.cos(yaw)).scale(0.12))
+    const k = Math.max(0, Math.min(1, (this.ads - 0.25) / 0.5))
+    cam.position.copyFrom(Vector3.Lerp(pos, eye, k * k * (3 - 2 * k)))
+  }
+
+  private collideCamera(pivot: Vector3, want: Vector3): Vector3 {
+    const steps = 14
+    let last = pivot.clone()
+    for (let i = 1; i <= steps; i++) {
+      const p = Vector3.Lerp(pivot, want, i / steps)
+      const floor = this.terrain.heightAt(p.x, p.z) + 0.35
+      if (p.y < floor) p.y = floor
+      let blocked = false
+      for (const t of this.ctx.queryTrunks(p.x, p.z, 0.3)) {
+        if ((t.x - p.x) ** 2 + (t.z - p.z) ** 2 < (t.r * 0.75 + 0.2) ** 2 && p.y < t.max.y) blocked = true
+      }
+      if (blocked) return Vector3.Lerp(pivot, last, 0.92)
+      last = p
+    }
+    return last
+  }
+
+  private afterCameraMove(): void {
+    const cam = this.ctx.camera
+    if (this.mode === 'vehicle') cam.rotation.x = Math.max(-0.25, Math.min(0.95, cam.rotation.x))
+    else cam.rotation.x = Math.max(-1.1, Math.min(1.25, cam.rotation.x))
+    this.placeCamera()
+    const dt = this.ctx.engine.getDeltaTime() / 1000
+    const rifleOut = this.tool === 'rifle' && (this.mode === 'foot' || this.mode === 'stand')
+    const sway = rifleOut ? this.skill.updateSway(dt, this.mode === 'stand' ? 0 : Math.min(1, this.moveSpeed / 2), this.ads > 0.6, (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')) && this.ads > 0.6) : { x: 0, y: 0, amplitude: 0 }
+    const steady = this.mode === 'stand' ? 0.55 : 1
+    this.swayApplied.x = sway.y * steady - this.recoil * 0.05
+    this.swayApplied.y = sway.x * steady
     cam.rotation.x += this.swayApplied.x
     cam.rotation.y += this.swayApplied.y
   }
@@ -626,27 +842,6 @@ export class Game {
     return Math.abs(x) < 1.0 && z > bb.minimum.z && z < bb.maximum.z
   }
 
-  private updateViewmodels(dt: number, onFoot: boolean): void {
-    const showRod = onFoot && this.tool === 'rod'
-    const showRifle = onFoot && this.tool === 'rifle' && this.ads < 0.7
-    this.rodRig.root.setEnabled(showRod)
-    this.rifleRig.root.setEnabled(showRifle)
-    const bob = this.moveSpeed > 0.5 ? Math.sin(this.time * 9) * 0.012 : 0
-    if (showRod) {
-      const state = this.fishing.state
-      let pitch = -0.55
-      if (state === 'charging') pitch = -0.55 - 0.9 * this.fishing.power
-      else if (state === 'reeling') pitch = -0.75 - (this.fishing.reel?.tension ?? 40) / 100 * 0.35 + Math.sin(this.time * 18) * 0.01
-      const r = this.rodRig.root.rotation
-      r.x += (pitch - r.x) * Math.min(1, dt * (state === 'flying' ? 20 : 8))
-      this.rodRig.root.position.y = -0.36 + bob
-    }
-    if (showRifle) {
-      this.rifleRig.root.position.set(0.2 - this.ads * 0.2, -0.2 + this.ads * 0.12 + bob, 0.42 - this.recoil * 0.08)
-      this.rifleRig.root.rotation.x = -this.recoil * 0.15
-    }
-  }
-
   private updateHud(dt: number, locked: boolean): void {
     const cam = this.ctx.camera
     const v = this.vehicles.active
@@ -654,10 +849,12 @@ export class Game {
     this.placeTimer -= dt
     if (this.placeTimer <= 0) {
       this.placeTimer = 0.5
-      this.hud.setPlace(this.placeName(), v ? (v.kind === 'ATV' ? `UTV · ${Math.round(Math.abs(v.speed) * 2.237)} mph` : `Boat · ${Math.round(Math.abs(v.speed) * 2.237)} mph`) : this.crouch ? 'Crouched' : 'On foot')
+      const status = v ? (v.kind === 'ATV' ? `UTV · ${Math.round(Math.abs(v.speed) * 2.237)} mph` : `Boat · ${Math.round(Math.abs(v.speed) * 2.237)} mph`) : this.mode === 'stand' ? 'In the stand' : this.mode === 'climb' ? 'Climbing' : this.crouch ? 'Crouched' : 'On foot'
+      this.hud.setPlace(this.placeName(), status)
     }
-    const scoped = this.tool === 'rifle' && !v && this.ads > 0.7
-    this.hud.setAim(!v && this.tool === 'rifle' ? (scoped ? 'scope' : 'hip') : 'none', this.skill.swayAmplitude)
+    const rifleOut = this.tool === 'rifle' && (this.mode === 'foot' || this.mode === 'stand')
+    const scoped = rifleOut && this.ads > 0.7
+    this.hud.setAim(rifleOut ? (scoped ? 'scope' : 'hip') : 'none', this.skill.swayAmplitude)
     this.hud.setBreath(scoped ? this.skill.breath : null)
     this.hud.setCast(this.fishing.state === 'charging' ? this.fishing.power : null)
     const hooked = this.fishing.hooked
@@ -672,16 +869,18 @@ export class Game {
       this.hud.setActivity(this.fishing.lineInWater ? (fishLeft < 15 ? 'Fish circling' : 'Line out') : gameLeft < 30 ? 'Fresh sign' : this.wildlife.animals.length ? 'Animal nearby' : 'Quiet')
     }
     let prompt = ''
-    if (!locked) prompt = this.hud.modalOpen ? '' : 'Click the view to look around'
+    if (!locked) prompt = this.hud.modalOpen ? '' : 'Click the view for mouse look · arrow keys also look around'
+    else if (this.mode === 'climb') prompt = this.climbDir > 0 ? 'Climbing up…' : 'Climbing down…'
+    else if (this.mode === 'stand') prompt = this.tool === 'rifle' ? (this.ads < 0.5 ? 'Right-click to aim · E to climb down' : 'Shift to hold your breath') : 'Press 2 for the rifle · E to climb down'
     else if (v) prompt = v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy ? 'Left-click to cast from the boat · E near shore to step out' : ''
     else {
-      const feet = new Vector3(cam.position.x, cam.position.y - EYE_HEIGHT, cam.position.z)
-      const down = this.wildlife.nearestDown(feet, 3.8)
-      const near = this.vehicles.nearest(feet, 4.2)
+      const down = this.wildlife.nearestDown(this.foot, 3.8)
+      const near = this.vehicles.nearest(this.foot, 4.2)
       if (down) prompt = `E — tag the ${down.template.name.toLowerCase()}`
       else if (this.fishing.state === 'bite') prompt = 'Click to set the hook!'
       else if (this.fishing.state === 'waiting') prompt = 'Watch the bobber… R to reel in'
       else if (near) prompt = near.kind === 'ATV' ? 'E — drive the UTV' : 'E — board the boat'
+      else if (this.nearLadder()) prompt = 'E — climb into the tree stand'
       else if (this.tool === 'rod' && !this.fishing.busy) prompt = 'Hold left-click to load a cast, release to throw'
       else if (this.tool === 'rifle' && this.ads < 0.5) prompt = 'Right-click to aim · Shift to hold your breath'
     }
@@ -692,4 +891,3 @@ export class Game {
 function nextFrame(): Promise<void> {
   return new Promise((r) => requestAnimationFrame(() => r()))
 }
-

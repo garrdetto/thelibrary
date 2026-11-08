@@ -87,8 +87,8 @@ export class VehicleController {
     root.rotationQuaternion = new Quaternion()
     const vehicle: Vehicle = {
       kind, rig, root, position: position.clone(), heading, speed: 0, steer: 0, pitch: 0, roll: 0, vy: 0, slopeAngle: 0, wheelSpin: 0,
-      seat: kind === 'ATV' ? new Vector3(0.3, 0.92, -0.05) : new Vector3(0.0, 0.42, -2.25),
-      exitSide: kind === 'ATV' ? new Vector3(1.6, 0, 0) : new Vector3(1.8, 0, 0),
+      seat: kind === 'ATV' ? new Vector3(-0.3, 0.9, -0.08) : new Vector3(0.55, 0.69, -0.92),
+      exitSide: kind === 'ATV' ? new Vector3(-1.6, 0, 0) : new Vector3(1.8, 0, 0),
       clock: Math.random() * 10,
       occupied: false,
     }

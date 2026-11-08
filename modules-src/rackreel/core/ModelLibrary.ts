@@ -10,7 +10,7 @@ import type { Scene } from '@babylonjs/core/scene'
 
 export const MODEL_NAMES = [
   'pine', 'pine-lo', 'hardwood', 'hardwood-lo', 'birch', 'birch-lo', 'grass', 'fern', 'cattail', 'rock', 'log',
-  'deer', 'antlers', 'bear', 'hunter', 'utv', 'boat', 'rod', 'rifle', 'bobber',
+  'deer', 'antlers', 'bear', 'hunter', 'utv', 'boat', 'rod', 'rifle', 'bobber', 'treestand',
   'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch',
 ] as const
 export type ModelName = typeof MODEL_NAMES[number]
@@ -19,6 +19,7 @@ export interface ModelPart {
   name: string
   pivot: Vector3
   mesh: Mesh
+  parent?: string
 }
 
 export interface ModelTemplate {
@@ -42,6 +43,7 @@ interface PartHeader {
   bytes: number
   uv?: boolean
   material?: string
+  parent?: string
 }
 
 const BASE = new URL('./rackreel/models/', location.href.replace(/[^/]*$/, '')).href
@@ -98,7 +100,7 @@ export async function loadModel(scene: Scene, name: ModelName, material: (model:
     mesh.receiveShadows = true
     mesh.setEnabled(false)
     mesh.doNotSyncBoundingInfo = false
-    parts.set(part.name, { name: part.name, pivot, mesh })
+    parts.set(part.name, { name: part.name, pivot, mesh, parent: part.parent })
   }
   return { name, parts }
 }
@@ -120,6 +122,14 @@ export function instantiate(template: ModelTemplate, parent: TransformNode | nul
     meshes.push(inst)
     register?.(inst)
     joints.set(part.name, joint)
+  }
+  for (const part of template.parts.values()) {
+    const parentPart = part.parent ? template.parts.get(part.parent) : undefined
+    const parentJoint = part.parent ? joints.get(part.parent) : undefined
+    if (!parentPart || !parentJoint) continue
+    const joint = joints.get(part.name)!
+    joint.parent = parentJoint
+    joint.position.copyFrom(part.pivot.subtract(parentPart.pivot))
   }
   return { root, joints, meshes }
 }
