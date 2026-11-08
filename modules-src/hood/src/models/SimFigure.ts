@@ -17,6 +17,9 @@ const cap = new THREE.SphereGeometry(1, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5
 limb.userData.shared = true
 head.userData.shared = true
 cap.userData.shared = true
+/** A safety vest: a short rounded tube around the resident's chest, scaled per build. */
+const vestShape = new THREE.CylinderGeometry(1, 0.97, 1, 32, 1)
+vestShape.userData.shared = true
 
 function part(geometry: THREE.BufferGeometry, color: string, sx: number, sy: number, sz: number, roughness = 0.75): THREE.Mesh {
   const mesh = new THREE.Mesh(geometry, material(color, { roughness }))
@@ -242,12 +245,19 @@ function createModelFigure(look: Look, template: THREE.Object3D, dress?: Dress):
   // Head centre sits 0.098 m above the head joint; the left palm 0.06 m down the hand from the wrist.
   if (hat) boneMount(bones.head, rest.world.head, new THREE.Vector3(0, 0.098, 0.002)).add(buildHat(hat, dress?.hatColor ?? '#2c2f33'))
   if (dress?.vest) {
-    const w = (look.build === 'slim' ? 0.9 : look.build === 'broad' ? 1.13 : 1) * (look.body === 'feminine' ? 0.95 : 1)
-    const mount = boneMount(bones.spine, rest.world.spine, new THREE.Vector3(0, 0.19, 0.004))
-    mount.add(part(limb, dress.vest, 0.182 * w, 0.125, 0.128 * w, 0.5))
-    const band = part(limb, '#dfe3e6', 0.186 * w, 0.012, 0.132 * w, 0.3)
-    band.position.y = -0.1
-    mount.add(band)
+    const w = look.build === 'slim' ? 0.9 : look.build === 'broad' ? 1.14 : 1
+    const depth = look.body === 'feminine' ? 1.14 : 1
+    const mount = boneMount(bones.spine, rest.world.spine, new THREE.Vector3(0, 0.17, 0.006))
+    const vest = new THREE.Mesh(vestShape, material(dress.vest, { roughness: 0.5 }))
+    vest.scale.set(0.188 * w, 0.31, 0.136 * w * depth)
+    const band = new THREE.Mesh(vestShape, material('#dfe3e6', { roughness: 0.3 }))
+    band.scale.set(0.191 * w, 0.022, 0.139 * w * depth)
+    band.position.y = -0.09
+    for (const m of [vest, band]) {
+      m.castShadow = true
+      m.receiveShadow = true
+      mount.add(m)
+    }
   }
   const hand = boneMount(bones.hand_L, rest.world.hand_L, new THREE.Vector3(Math.sin(0.1) * 0.06, -Math.cos(0.1) * 0.06, 0))
   let toolName: FigureTool = 'none'
