@@ -15,6 +15,7 @@ import { bulb, bulbRun, neonTube, LIGHTS, GLOW } from './neon'
 import { hotelModel, hotelLook, hotelLayout } from './hotelModels'
 import type { HotelLayout } from './hotelModels'
 import { addPathTile, addQueueMarkings } from './pathModels'
+import { tunnelGeometry, isTunnelHole } from './tunnels'
 import { ghostCorners } from './pathBuilder'
 import type { GhostPiece } from './pathBuilder'
 import { FLAT_RIDES, COASTER_STYLES, STALLS, STAFF, CAR_GAP, kartLane, kartLanes, DIRS, tileCorners, tileIndex, inMap, groundHeightAt, pathHeightAt, buildTrackPath, sampleAt, samplePiece, trackPoses, footprint, HOTELS, hotelHeight, queueLine, exitLine, queueLayout, rideColors } from '../../../server/park/index.mjs'
@@ -42,7 +43,7 @@ export type Preview = {
   selected?: number
 }
 
-type RideCache = { key: string; struct?: number; tiles?: [number, number, number, number] | null; site?: string; track?: GpuMesh | null; near?: GpuMesh | null; nearDensity?: number; path?: TrackPath | null; bounds?: [number, number, number, number] | null }
+type RideCache = { key: string; struct?: number; tiles?: [number, number, number, number] | null; site?: string; track?: GpuMesh | null; tunnel?: GpuMesh | null; near?: GpuMesh | null; nearDensity?: number; path?: TrackPath | null; bounds?: [number, number, number, number] | null }
 type TerrainChunk = { sig: number; terrain: GpuMesh | null; water: GpuMesh | null; paths: GpuMesh | null; grid: GpuMesh | null; sphere: [number, number, number, number] }
 /** Terrain chunk size in tiles, and how far out a tile change can alter a chunk's mesh. */
 const CHUNK = 16, CHUNK_MARGIN = 2
@@ -360,7 +361,7 @@ export class ParkRenderer {
       for (let y = ay; y <= by; y++) for (let x = ax; x <= bx; x++) {
         const i = tileIndex(map, x, y)
         mix(map.surface[i]); mix(Math.round(map.water[i] * 100)); mix(map.path[i]); mix(map.pathElevation[i]); mix(map.pathColor[i]); mix(map.pathOrder[i]); mix(map.obj[i]); mix(map.owner[i])
-        mix(s.trackCells.get(i)?.length ? 1 : 0)
+        mix(s.trackCells.get(i)?.length ? isTunnelHole(s, i) ? 2 : 1 : 0)
         const run = queueRuns.get(i)
         if (run) { mix(run.prev + 7); mix(run.next + 7); for (const o of run.openings) mix(o + 17) }
       }
@@ -383,6 +384,7 @@ export class ParkRenderer {
       const [a, b, c, d] = tileCorners(map, x, y)
       zLo = Math.min(zLo, a, b, c, d); zHi = Math.max(zHi, a, b, c, d, map.water[i])
       if (map.path[i]) zHi = Math.max(zHi, pathHeightAt(map, (x + 0.5) * TILE, (y + 0.5) * TILE, TILE) + 2)
+      if (isTunnelHole(s, i)) continue
       const pa = P(x, y, a), pb = P(x + 1, y, b), pc = P(x + 1, y + 1, c), pd = P(x, y + 1, d)
       const ia = y * CW + x, ib = y * CW + x + 1, ic = (y + 1) * CW + x + 1, id = (y + 1) * CW + x
       const smoothA = Math.abs(a - cornerH(x, y)) < 0.01, smoothB = Math.abs(b - cornerH(x + 1, y)) < 0.01, smoothC = Math.abs(c - cornerH(x + 1, y + 1)) < 0.01, smoothD = Math.abs(d - cornerH(x, y + 1)) < 0.01
@@ -597,9 +599,12 @@ export class ParkRenderer {
     }
     if (cache?.track) this.g.free(cache.track)
     if (cache?.near) this.g.free(cache.near)
+    if (cache?.tunnel) this.g.free(cache.tunnel)
     const path = e.pieces!.length ? buildTrackPath(e) : null
     const geometry = path ? this.trackGeometry(e, path) : null
     geometry?.bakeAO(0.5)
+    const tunnelStyle = COASTER_STYLES[e.style!]
+    const tunnel = path && this.state ? tunnelGeometry(this.state, e, path, tunnelStyle?.trackType === 'kart' ? kartHalfWidth(e.style!) : 1.1) : null
     let bounds: [number, number, number, number] | null = null
     let tiles: [number, number, number, number] | null = null
     if (path) {
@@ -611,7 +616,7 @@ export class ParkRenderer {
     }
     // The station and its gates sit on footprint tiles the path box may miss.
     if (tiles) { const f = footprint(e); tiles[0] = Math.min(tiles[0], f.x); tiles[1] = Math.min(tiles[1], f.y); tiles[2] = Math.max(tiles[2], f.x + f.w - 1); tiles[3] = Math.max(tiles[3], f.y + f.h - 1) }
-    cache = { key, struct, tiles, site: tiles ? this.trackSiteKey(e, tiles) : '', path, bounds, track: geometry ? this.g.upload(geometry) : null }
+    cache = { key, struct, tiles, site: tiles ? this.trackSiteKey(e, tiles) : '', path, bounds, track: geometry ? this.g.upload(geometry) : null, tunnel: tunnel ? this.g.upload(tunnel) : null }
     this.rides.set(e.id, cache)
     return cache
   }
@@ -1181,6 +1186,7 @@ export class ParkRenderer {
     const near = !!bb && this.settings.trackDetail > 0 && Math.hypot(bb[0] - eye[0], bb[1] - eye[1], bb[2] - eye[2]) - bb[3] < this.settings.trackDetail
     const slots = this.slotColors(e)
     this.g.draw(near ? this.nearTrack(e, cache) : cache.track ?? null, undefined, { highlight, slots, tint: WHITE })
+    if (cache.tunnel) this.g.draw(cache.tunnel, undefined, { slots, tint: WHITE })
     if (!cache.path || !e.complete) return
     if (style.trackType === 'kart') {
       const tint = slots[0]

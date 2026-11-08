@@ -212,3 +212,35 @@ test('the Grand Prix kart track covers two squares and races four abreast', () =
   assert.deepEqual([0, 1, 2, 3].map(i => Math.round(kartLane(i, 4) * 100) / 100), [-1.65, -0.55, 0.55, 1.65])
   for (const c of [1, 2, -1, -2]) assert.equal(validatePiece(state, ride, { c, s: 0 }).ok, true, `turn ${c}`)
 })
+
+test('go-kart and coaster track can dip under the ground, with an open cut first and a covered tunnel after', () => {
+  for (const style of ['kart', 'kartWide', 'steel']) {
+    const state = parkFixture()
+    assert.equal(applyCommand(state, { t: 'coaster', style, x: 20, y: 20, dir: 0, length: 2 }).ok, true)
+    const ride = Object.values(state.entities).find(e => e.style === style)
+    for (let k = 0; k < (style === 'steel' ? 10 : 5); k++) {
+      const result = validatePiece(state, ride, { c: 0, s: -1 })
+      assert.equal(result.ok, true, `${style} piece ${k}: ${result.error}`)
+      ride.pieces.push(result.piece)
+    }
+    rebuildTrackCells(state)
+    const kinds = []
+    for (const list of state.trackCells.values()) for (const cell of list) if (cell.ride === ride.id) kinds.push(cell.tunnel ?? 'surface')
+    assert.ok(kinds.includes('open'), `${style} has an open cut`)
+    assert.ok(kinds.includes('cover'), `${style} has a covered tunnel`)
+    assert.ok(buildTrackPath(ride))
+  }
+})
+
+test('tunnels stop at the depth limit', () => {
+  const state = parkFixture()
+  assert.equal(applyCommand(state, { t: 'coaster', style: 'kart', x: 20, y: 20, dir: 0, length: 2 }).ok, true)
+  const ride = Object.values(state.entities).find(e => e.style === 'kart')
+  let error = null
+  for (let k = 0; k < 60 && !error; k++) {
+    const result = validatePiece(state, ride, { c: 0, s: -2 })
+    if (!result.ok) error = result.error
+    else ride.pieces.push(result.piece)
+  }
+  assert.ok(error, 'a refusal')
+})

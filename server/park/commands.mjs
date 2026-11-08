@@ -4,7 +4,7 @@ import { DIRS, UNIT, clamp } from './util.mjs'
 import { terrainEdit, tilesTouchingCorners, tileIndex, inMap, tileSlope, tileMin, tileMax, tileCorners, pathHeightAt, PATH_STEP_LIMIT, STAIR_STEP_LIMIT, SLOPE_RISE, STAIR_RISE } from './terrain.mjs'
 import { isWalkPath } from './terrain.mjs'
 import { nextPathOrder } from './queues.mjs'
-import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP, kartLimit, kartLanes, kartCount, kartRestS, PATH_DECK_CLEARANCE } from './track.mjs'
+import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP, kartLimit, kartLanes, kartCount, kartRestS, PATH_DECK_CLEARANCE, tunnelOpenAt } from './track.mjs'
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
 import { mechanicJobDistance } from './guests.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
@@ -392,6 +392,7 @@ const HANDLERS = {
         }
         if (lowestPathHeight < tileMax(map, x, y) + clearance + 1.2) { blocked = entity.type === 'scenery' ? 'Scenery is too tall for the path. Clear it or raise the path.' : 'Something is too tall for the path. Raise it higher.'; continue }
       }
+      if (tunnelOpenAt(state, i)) { blocked = 'A tunnel opening is here. Paths cannot cross it.'; continue }
       if ((state.trackCells.get(i) ?? []).some(cell => cell.lo < pathBase + 2.6 && cell.hi > pathBase - PATH_DECK_CLEARANCE)) { blocked = 'Track is in the way. Raise the path over it or leave 2.6m of headroom under it.'; continue }
       let disconnected = false
       for (const [dx, dy] of DIRS) {
