@@ -20,3 +20,5 @@ public/modules/bushleague.html
 public/modules/county.html
 .e2e/
 public/modules/hood.html
+public/modules/rackreel.html
+__pycache__/

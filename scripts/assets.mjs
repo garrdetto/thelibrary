@@ -28,7 +28,7 @@ const outRoot = join(repoRoot, 'public', 'models')
 const cacheFile = join(outRoot, '.assets-cache.json')
 
 /** Node names kept apart from the join pass (moving parts a module may need to find). */
-const KEEP_NODE_NAMES = /^(Wheel_|Tire_|RaceNumber_|Hitch|Trailer)/i
+const KEEP_NODE_NAMES = /^(Wheel_|Tire_|RaceNumber_|Hitch|Trailer|Prop_)/i
 
 /**
  * Presets, matched in order against the path relative to `assets-src/models/` (forward slashes).
@@ -40,6 +40,7 @@ const KEEP_NODE_NAMES = /^(Wheel_|Tire_|RaceNumber_|Hitch|Trailer)/i
  */
 const PRESETS = [
   { match: /^maplestreet\/houses\//, name: 'house', join: true, simplify: 0.0005, textureQuality: 92 },
+  { match: /^shorttrack\/(truck_race_|pace_car_|props_kit)/, name: 'vehicle', join: true, flatten: false, palette: false, simplify: 0, textureQuality: 92 },
   { match: /^(maplestreet\/town|sandlot3d\/ballpark_|shorttrack\/track_|botwreck\/arena|botwreck\/crates)/, name: 'static', join: true, simplify: 0, textureQuality: 92 },
   { match: /^shorttrack\/(crowd|trees)_/, name: 'instanced', join: false, simplify: 0, textureQuality: 92, compress: false },
   { match: /^sandlot3d\/(athlete|field_detail)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },

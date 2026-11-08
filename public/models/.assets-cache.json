@@ -1128,5 +1128,75 @@
   "matsBefore": 2,
   "matsAfter": 2,
   "preset": "slots"
+ },
+ "shorttrack/pace_car_lod2.glb": {
+  "hash": "0406c52b478e8999d48a4d91dcec6b376ff40478",
+  "before": 145916,
+  "after": 69072,
+  "primsBefore": 11,
+  "primsAfter": 11,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "vehicle"
+ },
+ "shorttrack/pace_car_lod1.glb": {
+  "hash": "e2960c8595cf4539f0cd88751c1a8b10db676013",
+  "before": 538024,
+  "after": 186388,
+  "primsBefore": 15,
+  "primsAfter": 15,
+  "matsBefore": 9,
+  "matsAfter": 9,
+  "preset": "vehicle"
+ },
+ "shorttrack/pace_car_lod0.glb": {
+  "hash": "67d4cfdea99587e8cd463a51cb9a910efe0b7f83",
+  "before": 1343928,
+  "after": 412736,
+  "primsBefore": 15,
+  "primsAfter": 15,
+  "matsBefore": 9,
+  "matsAfter": 9,
+  "preset": "vehicle"
+ },
+ "shorttrack/truck_race_lod2.glb": {
+  "hash": "8ff3e0648b6b209fac045091b4f5f5e24b0f5e7f",
+  "before": 350532,
+  "after": 137096,
+  "primsBefore": 29,
+  "primsAfter": 29,
+  "matsBefore": 15,
+  "matsAfter": 15,
+  "preset": "vehicle"
+ },
+ "shorttrack/truck_race_lod1.glb": {
+  "hash": "4884a7b14c7236fd645db86761024f32077aa8dc",
+  "before": 1042700,
+  "after": 330688,
+  "primsBefore": 29,
+  "primsAfter": 29,
+  "matsBefore": 15,
+  "matsAfter": 15,
+  "preset": "vehicle"
+ },
+ "shorttrack/truck_race_lod0.glb": {
+  "hash": "bb4777d9a647916c53154b0eeb8ce4c27789b4c2",
+  "before": 3064560,
+  "after": 890084,
+  "primsBefore": 29,
+  "primsAfter": 29,
+  "matsBefore": 15,
+  "matsAfter": 15,
+  "preset": "vehicle"
+ },
+ "shorttrack/props_kit.glb": {
+  "hash": "aa72da8a70a225f25d9cbea427ca6663e6f218f9",
+  "before": 121492,
+  "after": 57460,
+  "primsBefore": 11,
+  "primsAfter": 11,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "vehicle"
  }
 }

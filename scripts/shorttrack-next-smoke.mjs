@@ -1,7 +1,11 @@
 import { chromium } from 'playwright'
 import { mkdirSync } from 'node:fs'
-const base = process.argv[2] || 'http://localhost:4173'
-const outDir = process.argv[3] || 'docs/gate/shorttrack-next'
+const argv = process.argv.slice(2)
+const channelAt = argv.indexOf('--channel')
+const channel = channelAt === -1 ? undefined : argv[channelAt + 1]
+const positional = channelAt === -1 ? argv : argv.filter((_, i) => i !== channelAt && i !== channelAt + 1)
+const base = positional[0] || 'http://localhost:4173'
+const outDir = positional[1] || 'docs/gate/shorttrack-next'
 mkdirSync(outDir, { recursive: true })
 const runs = [
   { name: 'webgpu-swiftshader', classic: false, args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-features=Vulkan', '--use-angle=swiftshader'], q: '?engine=next' },
@@ -11,7 +15,7 @@ const runs = [
 ]
 let bad = 0
 for (const run of runs) {
-  const browser = await chromium.launch({ args: run.args })
+  const browser = await chromium.launch({ args: run.args, channel })
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } })
   const errors = [], external = [], pageErrors = []
   page.on('pageerror', (e) => { errors.push(String(e)); pageErrors.push(String(e)) })

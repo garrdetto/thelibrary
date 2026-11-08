@@ -114,6 +114,19 @@ Done in this phase (approach changed from the plan, see the first point):
 
 ### 5. Blender assets
 **5a (done):** the pipeline and the first assets. `scripts/blender/shorttrack/stock_car.py` turns the classic `shorttrack-car.bin` into `car_slm_lod0..2.glb` (35k / 18k / 4k triangles; classic material slots, livery atlas UVs and regions, the baked shade as `ao`, hub-pivoted `Wheel_*`/`Tire_*`), and `wheel.py` models a new 15 in steel race wheel with beadlock ring and slick tyre at the stock size (6k / 2k / 400). Both run in headless Blender or with `pip install bpy`. `tests/assets.test.ts` checks the optimised outputs: budgets, wheel hubs against the classic file, regions and material order, and tyre size. Still to come in Phase 5: the truck, an original pace car and the track prop kits.
+**5b (done):** the rest of the Phase 5 assets.
+- **Race truck.** The truck is the owner's procedural design (`TM`), so it moved out of `render-three/main.js` into `modules-src/shorttrack/truck-model.js` unchanged. `scripts/shorttrack-truck-export.mjs` builds it in Node with three.js and writes a glTF. `truck.py` imports that export and joins everything outside the wheels into `Body`, keeping the classic material names as `truck_<name>`. Each wheel becomes a `Tire_<..>` under a `Wheel_<..>` pivot on the truck's own axles (`DIM.FA`, `DIM.RA`). The body has no texture atlas to keep: liveries and numbers are separate decal meshes in the classic renderer. LODs are 49k / 15k / 3.9k triangles.
+- **Original pace car.** `pace_car.py` builds a low two-door coupe of the module's own design, with no make, badge or logo:
+  - a closed loft of superellipse sections with tumblehome, a long hood and a ducktail deck;
+  - wheel arches cut by booleans and lined;
+  - a greenhouse loft with a paint roof, plus a red and blue roof light bar;
+  - its own five-spoke wheels, built at each LOD's resolution so the tyre survives at LOD2.
+
+  LODs are 33k / 12k / 2.9k triangles. It isn't drawn yet: the classic pace vehicle stays a truck until a renderer uses it.
+- **Prop kit.** `props.py` writes `props_kit.glb`, one `Prop_<name>` node per prop, each standing on its origin for instancing: cone, three-tyre stack, round hay bale, concrete barrier, infield light tower and pit board. The six props total 2.5k triangles, the largest 1.5k.
+- **Shared steps.** `common.py` holds arguments, materials, the AO bake and decimation. AO is baked within 0.25 m and lifted to 0.55–1, because body vertices hidden under the truck's cab otherwise smear dark bands along the beltline. Wheels are decimated first and the body gets what is left of the budget.
+- **Pipeline.** A `vehicle` preset in `scripts/assets.mjs` (`palette: false`, `flatten: false`) keeps material names and pivots for runtime paint tinting, and `Prop_` joins `KEEP_NODE_NAMES` so the kit's props are never merged. `tests/assets.test.ts` checks every LOD's budget, the pivots on the axles with the tyre on every `Tire_*`, the named paint, glass and light materials, and the six props within budget.
+- **Windows note.** The lockfile has two `sharp` versions (0.34.5 direct, 0.35.5 through `ndarray-pixels`), and on Windows only one libvips can load per process, so `pnpm assets` fails there. These outputs were made with a local resolve hook that points every `sharp` import at 0.34.5; none of these models has textures, so the output does not depend on it. Linux CI is unaffected (`assets:check` does not load sharp).
 Headless scripts in `scripts/blender/shorttrack/` (pattern of `scripts/blender/bushleague/cleanup.py`) into `assets-src/models/shorttrack/`, then `pnpm assets`. Budgets (LOD0/1/2): super late model 60k/18k/4k keeping the livery atlas regions and number spots; truck 50k/15k/4k keeping its texture layout; original pace car 40k/12k/3k; shared wheel 6k/2k/400 with `Wheel_*`/`Tire_*` hub pivots; instanced prop kits.
 
 ### 6. Cut-over
