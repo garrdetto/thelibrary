@@ -24,8 +24,6 @@ interface VehicleEntry {
   model: VehicleModel
   kind: VehicleKind
   label: HTMLElement
-  travelled: number
-  last: THREE.Vector2
 }
 
 interface WorkerEntry {
@@ -154,7 +152,7 @@ export class TownView {
       const label = el('div', { class: 'label townlabel' })
       label.style.display = 'none'
       this.stage.labels.append(label)
-      entry = { model, kind, label, travelled: 0, last: new THREE.Vector2(NaN, NaN) }
+      entry = { model, kind, label }
       this.vehicles.set(id, entry)
     }
     return entry
@@ -200,14 +198,9 @@ export class TownView {
       const entry = this.vehicle(v.id, v.kind)
       const g = entry.model.group
       g.visible = near(v.x, v.z, 260)
-      if (!Number.isNaN(entry.last.x)) entry.travelled += Math.hypot(v.x - entry.last.x, v.z - entry.last.y)
-      entry.last.set(v.x, v.z)
       g.position.set(v.x, 0, v.z)
       g.rotation.y = v.yaw
-      entry.model.setMotion(v.moving, entry.travelled)
-      entry.model.setLights(v.lights, this.time)
-      entry.model.setBucket(v.bucket)
-      entry.model.setNight(this.night)
+      if (g.visible) entry.model.update(v, dt, this.time, this.night)
       const show = v.lights && g.visible
       entry.label.style.display = show ? '' : 'none'
       if (show) {
