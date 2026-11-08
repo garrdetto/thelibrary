@@ -183,6 +183,7 @@ export class Game {
     await this.connect();
 
     app.on('update', (dt: number) => this.tick(dt));
+    this.r.warmShaders(3);
     window.setInterval(() => {
       if (!this.selfId) return;
       this.sendState();
@@ -238,6 +239,7 @@ export class Game {
         this.nowDays();
         this.remotes.clear();
         this.houses.setWorld(m.world);
+        this.r.warmShaders(3);
         for (const id in m.world.lots) {
           const lot = m.world.lots[id];
           this.town.setLotOwner(id, lot.owner);
@@ -595,7 +597,7 @@ export class Game {
     this.mats.setNight(night);
     this.r.setNight(night);
     this.town.update(dt, night, focus, this.nowDays());
-    this.houses.update(dt, this.r.camera.getPosition());
+    if (this.houses.update(dt, this.r.camera.getPosition())) this.r.warmShaders(1);
     this.remotes.update(dt, night, focus);
     this.updateJob(dt);
     if (this.marker.enabled) { const s = 0.8 + Math.sin(performance.now() / 160) * 0.08; this.marker.setLocalScale(s, 0.02, s); }

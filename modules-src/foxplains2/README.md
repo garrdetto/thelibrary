@@ -44,7 +44,7 @@ WASD walk or drive, Shift run, Space jump or handbrake, click to walk (click you
 
 ## Quality
 
-`?quality=low|medium|high` (or Q, or the status-bar button; remembered per browser). High: TAA with sharpening, SSAO, bloom, four 2048 px shadow cascades. Medium: 4x MSAA, lighter SSAO, three cascades. Low: no AA or SSAO, two 1024 px cascades, 80% render scale. Slow frames lower the render scale a step at a time.
+`?quality=low|medium|high` (or Q, or the status-bar button; remembered per browser). High: TAA with sharpening, SSAO, bloom, four 2048 px shadow cascades. Medium: 4x MSAA, lighter SSAO, three cascades. Low: no AA or SSAO, two 1024 px cascades, 80% render scale. Slow frames lower the render scale a step at a time. `Renderer.warmShaders` draws the whole scene with camera frustum culling off for a few frames after the world loads, after a quality change and when lots rebuild or furniture appears, so PlayCanvas compiles shaders up front instead of when the camera turns toward them.
 
 ## Mowing stripes
 

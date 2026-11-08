@@ -13,8 +13,13 @@
  * Every frame `update(focus)` compares the focus point with each part's
  * bounds (squared distances, no sqrt, no allocation). Parts that come into
  * range are queued: the first time a part is shown its materials are compiled
- * with `renderer.compileAsync` off the critical path, then it is attached to
- * the scene, a few parts per frame. Parts that leave range (plus HYSTERESIS,
+ * with `renderer.compileAsync` off the critical path (when a compiler is
+ * given; see Prewarm.ts for why there is none with AO on), then it is
+ * attached to the scene, a few parts per frame. The first frame a part is
+ * attached it is also drawn with frustum culling off, even when it is behind
+ * the camera (`warm`), so the main pass, the AO pass and the shadow pass build
+ * their pipelines a few parts at a time while it is out of sight, instead of
+ * all at once the moment the player turns around. Parts that leave range (plus HYSTERESIS,
  * so walking along a boundary doesn't flicker) are detached at once, which
  * takes them out of the main pass, the shadow pass and scene traversal.
  *
@@ -30,6 +35,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { mergeStatic } from '../core/Merge';
+import { compileWhole, type Compiler } from '../core/Prewarm';
 
 /** Edge of one grid cell, metres. The world is 1,280 m across, so 20 × 20 cells. */
 export const CHUNK_SIZE = 64;
@@ -45,6 +51,8 @@ const HYSTERESIS = 24;
 const ATTACH_PER_FRAME = 8;
 /** compileAsync calls in flight at once. */
 const MAX_COMPILES = 2;
+/** Parts drawn off-screen per frame to build their pipelines before they come into view. */
+const WARM_PER_FRAME = 6;
 /** Re-test distances when the focus moved this far, or after REFRESH_SEC. */
 const MOVE_EPS = 2;
 const REFRESH_SEC = 0.5;
@@ -67,6 +75,8 @@ interface ChunkPart {
   casts: boolean;
   state: PartState;
   compiled: boolean;
+  /** Drawn at least once with frustum culling off, so every pass has its pipelines. */
+  warmed: boolean;
   wanted: boolean;
 }
 
@@ -77,7 +87,6 @@ export interface AdoptOptions {
   viewDistance?: number;
 }
 
-interface Compiler { compileAsync(scene: THREE.Object3D, camera: THREE.Camera, target?: THREE.Scene | null): Promise<unknown> }
 
 const box = new THREE.Box3();
 const sphere = new THREE.Sphere();
@@ -114,6 +123,9 @@ export class WorldChunks {
   private last = new THREE.Vector3(Infinity, 0, Infinity);
   private sinceRefresh = 0;
   private primed = false;
+  private warmQueue: ChunkPart[] = [];
+  private warming: ChunkPart[] = [];
+  private warmCulled: THREE.Object3D[] = [];
 
   constructor(private scene: THREE.Scene, private compiler: Compiler | null = null, private camera: THREE.Camera | null = null) {
     this.root.name = 'world-chunks';
@@ -151,6 +163,7 @@ export class WorldChunks {
       this.fitBounds(p);
       // Shares materials with the rest of the town: no compile wait, show it now if in range.
       p.compiled = true;
+      if (p.warmed) { p.warmed = false; if (p.state === 'on') this.warmQueue.push(p); }
       if (this.primed && this.inRange(p, this.last.x, this.last.z, p.enter2)) this.show(p);
     }
   }
@@ -244,7 +257,7 @@ export class WorldChunks {
         // Bounds start empty and grow to what the part holds (fitBounds), so view tests are tight.
         minX: Infinity, minZ: Infinity, maxX: -Infinity, maxZ: -Infinity,
         minY: Infinity, maxY: -Infinity, box: new THREE.Box3(), casts: false,
-        state: 'off', compiled: !this.compiler, wanted: false };
+        state: 'off', compiled: !this.compiler, warmed: false, wanted: false };
       this.parts.set(key, p);
       this.list.push(p);
     }
@@ -312,6 +325,7 @@ export class WorldChunks {
     if (p.group.parent !== this.root) this.root.add(p.group);
     p.state = 'on';
     p.compiled = true;
+    if (!p.warmed) this.warmQueue.push(p);
   }
 
   /** Works through the queue: compile new parts in the background, attach ready ones a few per frame. */
@@ -325,7 +339,7 @@ export class WorldChunks {
       this.queue.shift();
       p.state = 'compiling';
       this.compiling++;
-      this.compiler.compileAsync(p.group, this.camera, this.scene)
+      compileWhole(this.compiler, p.group, this.camera, this.scene)
         .catch(() => { /* fall through and draw it anyway; the renderer compiles on first use */ })
         .finally(() => {
           this.compiling--;
@@ -356,6 +370,7 @@ export class WorldChunks {
       (sun.shadow as unknown as { updateMatrices(l: THREE.Light): void }).updateMatrices(sun);
       shadow = sun.shadow.getFrustum() as THREE.Frustum;
     }
+    this.endWarm();
     let shown = 0, hidden = 0;
     for (const p of this.list) {
       if (p.state !== 'on') continue;
@@ -365,7 +380,36 @@ export class WorldChunks {
       if (vis) shown++; else hidden++;
     }
     this.culled = hidden;
+    this.beginWarm();
     return shown;
+  }
+
+  /**
+   * Picks up to WARM_PER_FRAME attached parts that were never drawn and draws
+   * them this frame whatever the camera faces: the part is made visible and
+   * three.js's per-mesh frustum culling is switched off for its meshes.
+   * Off-screen triangles are clipped, so the cost is the pipeline builds that
+   * would otherwise land in one frame as the camera turns.
+   */
+  private beginWarm() {
+    let n = 0;
+    while (this.warmQueue.length && n < WARM_PER_FRAME) {
+      const p = this.warmQueue.shift()!;
+      if (p.warmed || p.state !== 'on') continue;
+      p.warmed = true;
+      p.group.visible = true;
+      p.group.traverse(o => { if (o.frustumCulled) { o.frustumCulled = false; this.warmCulled.push(o); } });
+      this.warming.push(p);
+      n++;
+    }
+  }
+
+  /** Restores frustum culling on the parts warmed last frame. */
+  private endWarm() {
+    if (!this.warming.length) return;
+    for (const o of this.warmCulled) o.frustumCulled = true;
+    this.warmCulled.length = 0;
+    this.warming.length = 0;
   }
 
   private culled = 0;
@@ -374,7 +418,7 @@ export class WorldChunks {
   stats() {
     let on = 0, objects = 0, visible = 0;
     for (const p of this.list) if (p.state === 'on') { on++; objects += p.group.children.length; if (p.group.visible) visible++; }
-    return { parts: this.list.length, on, visible, frustumCulled: this.culled, queued: this.queue.length, compiling: this.compiling, attachedObjects: objects };
+    return { parts: this.list.length, on, visible, frustumCulled: this.culled, queued: this.queue.length, compiling: this.compiling, warming: this.warmQueue.length, attachedObjects: objects };
   }
 }
 
