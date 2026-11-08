@@ -35,6 +35,7 @@ export interface ShotResult {
 }
 
 const VITALS: Record<string, { y: number; z: number; r: number }> = { whitetail: { y: 1.05, z: 0.32, r: 0.24 }, blackbear: { y: 0.95, z: 0.3, r: 0.3 } }
+const ANTLER_BASE = new Vector3(0, 1.6, 0.84)
 const BODY: Record<string, { y: number; z: number; r: number }[]> = {
   whitetail: [{ y: 1.0, z: 0.0, r: 0.42 }, { y: 1.0, z: -0.45, r: 0.36 }, { y: 1.5, z: 0.95, r: 0.22 }],
   blackbear: [{ y: 0.9, z: 0.0, r: 0.55 }, { y: 0.92, z: -0.45, r: 0.5 }, { y: 1.0, z: 0.95, r: 0.3 }],
@@ -74,12 +75,10 @@ export class Wildlife {
       scale = 0.92 + Math.min(0.2, (specimen.weightLb - 130) / 600)
       const head = rig.joints.get('head')!
       antlers = instantiate(this.models.get('antlers')!, head, this.scene, (m) => this.ctx.registerDynamic(m))
-      const antlerPivot = this.models.get('antlers')!.parts.get('antlers')!.pivot
       const headPivot = model.parts.get('head')!.pivot
-      antlers.root.position.copyFrom(antlerPivot.subtract(headPivot))
       const s = 0.62 + Math.max(0, specimen.value - 85) / 125 * 0.62
       antlers.root.scaling.setAll(s)
-      antlers.root.position.y -= (s - 1) * 0.35
+      antlers.root.position.copyFrom(ANTLER_BASE.scale(1 - s).subtract(headPivot))
     } else {
       scale = Math.cbrt(specimen.weightLb / 300) * 1.05
     }
