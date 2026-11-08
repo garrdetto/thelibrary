@@ -63,6 +63,23 @@ From the lot, the owner can ask the police for a patrol check, the fire station 
 
 ## Rendering
 
+### Blender models
+
+Residents and furniture are built in Blender by scripts in `tools/`, then optimized by the asset pipeline:
+
+```
+blender -b -P modules-src/hood/tools/build-sim.py        # assets-src/models/hood/sim.glb
+blender -b -P modules-src/hood/tools/build-furniture.py  # assets-src/models/hood/furniture.glb
+pnpm assets                                              # public/models/hood/*.glb (commit both)
+```
+
+Set `HOOD_PREVIEW=/tmp/prefix` on either script to also render Cycles previews.
+
+- **Residents** (`sim.glb`, `src/models/SimFigure.ts`): one skinned adult, about 1.78 m and 7.6 heads tall before the Sim's height scale, with a sculpted face (brow, sockets, cheekbones, nose, lips, ears, lidded eyes with iris and pupil), hands with thumbs, a crew-neck tee, belted trousers and sneakers. Morph targets `Feminine`, `Slim` and `Broad` follow the Look's `body` and `build`; hair meshes `Hair_short`, `Hair_long`, `Hair_bun` and `Hair_curly` follow `hairStyle` (bald shows none). Material slots (`Skin`, `Lips`, `Top`, `Bottom`, `Belt`, `Buckle`, `Shoes`, `Sole`, `Eye`, `Iris`, `Pupil`, `Brows`, `Hair`) are recoloured from the Look. Each figure is a `SkeletonUtils` clone posed every frame by `setPose`: a rotation in the body's own frame is turned into each bone's local rotation from its rest pose, so walking, sitting, lying and busy gestures match the old joint angles. Joint heights match the old figure (hips pivot at 0.90 m).
+- **Furniture** (`furniture.glb`, `src/models/Furniture.ts`): one root node per catalog id, one merged mesh each, with bevelled edges, puffed cushions, lathed and swept parts. Slots such as `wood_color`, `cloth_accent`, `gloss_color` or `metal_accent` take the catalog item's colours and the module's procedural wood grain and fabric; fixed slots (`chrome`, `glass`, `screen`, `porcelain`, `book_0`…) have set finishes (`slotMaterial`). The same file's `tree` is also used for the street trees (`buildTree`). The desk chair seats Sims facing the screen (`seatFacesObject`).
+- Both load once at boot (`src/models/Models.ts`). If either fails, or with `?sims=0` / `?props=0`, the older procedural figure and furniture are used.
+
+
 three.js WebGPU with WebGL2 fallback through `engine/`. Procedural canvas textures (`src/models/Textures.ts`) are laid out in world metres by node materials (`src/models/Surfaces.ts`): lap siding, plaster, stone footings, shingles, planks, tile, carpet, pavers, grass with large-scale variation, asphalt, concrete, fence boards, bark, leaves, wood grain and fabric (triplanar on furniture). Houses (`src/models/House.ts`) are instanced wall faces with trim, shutters, panelled doors, steps and a hipped roof generated from the inside tiles with eaves. The active lot gets instanced, wind-swayed grass tufts (`src/models/Grass.ts`; still under reduced motion). Walls show up, cut away or down; visitors outside always see them up with the roof on.
 
 ## Server

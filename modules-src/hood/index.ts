@@ -5,6 +5,7 @@ import { config } from './config'
 import { claimLot, fetchStreet, type StreetInfo } from './src/net/Api'
 import { LocalLink, SocketLink, type LotLink } from './src/net/Link'
 import type { Command } from './shared/Protocol'
+import { loadModels } from './src/models/Models'
 import { LotMode } from './src/scene/LotMode'
 import { Stage } from './src/scene/Stage'
 import { StreetMode } from './src/scene/StreetMode'
@@ -51,6 +52,8 @@ async function boot(): Promise<void> {
     loading.style.opacity = text ? '1' : '0'
     loading.style.pointerEvents = text ? 'auto' : 'none'
   }
+  // The Blender-built residents and furniture; scenes fall back to the simple models if they can't load.
+  await loadModels()
 
   const swap = (next: Scene, name: string) => {
     scene?.dispose()

@@ -68,7 +68,7 @@ export class LocalLink implements LotLink {
 
   constructor() {
     const state = newLotState(0, 0, 'local', 'You', 'The Practice House', [
-      { name: 'Robin', look: { ...defaultLook(), hair: 3, hairStyle: 'long', top: 2, bottom: 5, skin: 2 } },
+      { name: 'Robin', look: { ...defaultLook(), hair: 3, hairStyle: 'long', top: 2, bottom: 5, skin: 2, body: 'feminine' } },
       { name: 'Sam', look: { ...defaultLook(), hair: 0, hairStyle: 'short', top: 3, bottom: 5, skin: 4, build: 'broad' } },
     ])
     this.room = new Room(state, {}, 'member:local', 42)
