@@ -1,8 +1,12 @@
-/** Module host: WebGPU renderer with WebGL2 fallback, 60 Hz fixed-step loop with interpolated rendering, iframe resize, visibility pause and full GPU teardown. */
+/** Module host: WebGPU renderer with WebGL2 fallback, 60 Hz fixed-step loop with interpolated rendering, iframe resize, visibility pause, shader warm-up, cached shadow maps and full GPU teardown. */
 import * as THREE from 'three/webgpu'
 import type { EngineConfig, RenderBackend } from '../config'
+import { ShadowCache } from '../render/ShadowCache'
 import { FixedStep } from './FixedStep'
 import { SceneGraph } from './Scene'
+
+export const MAX_PIXEL_RATIO = 2
+const PREWARM_TIMEOUT_MS = 4000
 
 export interface AppOptions {
   container: HTMLElement
@@ -22,6 +26,7 @@ export class App {
   readonly scene = this.graph.scene
   readonly camera: THREE.PerspectiveCamera
   readonly clock: FixedStep
+  readonly shadows: ShadowCache
   renderer!: THREE.WebGPURenderer
   backend: RenderBackend = 'webgl2'
   running = false
@@ -33,6 +38,7 @@ export class App {
   private readonly owned = new Set<Disposable>()
   private renderPass: RenderPass = () => this.renderer.render(this.scene, this.camera)
   private resizeObserver: ResizeObserver | null = null
+  private warmed = false
   private lastTime = 0
   private rateFrames = 0
   private rateSeconds = 0
@@ -47,6 +53,8 @@ export class App {
     this.camera.position.set(...camera.position)
     this.camera.lookAt(...camera.lookAt)
     this.clock = new FixedStep(config.loop)
+    this.shadows = new ShadowCache(this.scene)
+    this.scene.onBeforeRender = () => this.shadows.update()
   }
 
   static async create(options: AppOptions): Promise<App> {
@@ -106,15 +114,67 @@ export class App {
     if (this.disposed) return
     const width = this.container.clientWidth || innerWidth
     const height = this.container.clientHeight || innerHeight
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.config.renderer.maxPixelRatio))
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.config.renderer.maxPixelRatio, MAX_PIXEL_RATIO))
     this.renderer.setSize(width, height, false)
     this.camera.aspect = width / Math.max(height, 1)
     this.camera.updateProjectionMatrix()
   }
 
   setPixelRatioCap(cap: number): void {
-    this.config.renderer.maxPixelRatio = cap
+    this.config.renderer.maxPixelRatio = Math.min(cap, MAX_PIXEL_RATIO)
     this.resize()
+  }
+
+  /**
+   * Builds every pipeline the scene needs before it is seen: compiles the whole
+   * scene in parallel where the backend can, then draws one frame through the
+   * real render pass (post chain and shadow pass included) with frustum
+   * culling off, so turning the camera never meets an uncompiled material.
+   * Call it again after adding a large batch of new content (a new level).
+   */
+  async prewarm(root: THREE.Object3D = this.scene): Promise<void> {
+    if (this.disposed) return
+    this.warmed = true
+    const culled: THREE.Object3D[] = []
+    const uncull = () => root.traverse((node) => {
+      if (node.frustumCulled) {
+        node.frustumCulled = false
+        culled.push(node)
+      }
+    })
+    const recull = () => {
+      for (const node of culled) node.frustumCulled = true
+      culled.length = 0
+    }
+    try {
+      uncull()
+      const compiling = this.renderer.compileAsync(root, this.camera, this.scene)
+      recull()
+      await Promise.race([compiling, new Promise((resolve) => setTimeout(resolve, PREWARM_TIMEOUT_MS))])
+    } catch {
+      recull()
+    }
+    if (this.disposed) return
+    this.warmDraw(root)
+  }
+
+  private warmDraw(root: THREE.Object3D): void {
+    const culled: THREE.Object3D[] = []
+    root.traverse((node) => {
+      if (node.frustumCulled) {
+        node.frustumCulled = false
+        culled.push(node)
+      }
+    })
+    this.shadows.invalidate()
+    try {
+      this.renderPass()
+    } catch {
+      /* the next frame draws normally */
+    } finally {
+      for (const node of culled) node.frustumCulled = true
+      this.shadows.invalidate()
+    }
   }
 
   onFixed(handler: FixedHandler): () => void {
@@ -175,6 +235,10 @@ export class App {
     const { steps, alpha } = this.clock.advance(frameSeconds)
     for (let step = 0; step < steps; step++) for (const handler of this.fixedHandlers) handler(this.clock.dt)
     for (const handler of this.frameHandlers) handler(frameSeconds, alpha)
+    if (!this.warmed) {
+      this.warmed = true
+      this.warmDraw(this.scene)
+    }
     this.renderPass()
     this.rateFrames++
     this.rateSeconds += frameSeconds
@@ -196,6 +260,8 @@ export class App {
     this.owned.clear()
     this.fixedHandlers.clear()
     this.frameHandlers.clear()
+    this.scene.onBeforeRender = () => {}
+    this.shadows.dispose()
     this.graph.dispose()
     this.renderer.dispose()
     this.renderer.domElement.remove()

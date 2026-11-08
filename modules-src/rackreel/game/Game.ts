@@ -10,7 +10,7 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { Scores } from '../../../engine/net/Scores'
 import { EYE_HEIGHT, createEngineSetup } from '../core/EngineSetup'
 import type { EngineContext } from '../core/EngineSetup'
-import { MODEL_NAMES, instantiate, loadModel } from '../core/ModelLibrary'
+import { MODEL_NAMES, disposeRig, instantiate, loadModel } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { Audio } from '../systems/Audio'
 import { EncounterDirector } from '../systems/EncounterDirector'
@@ -102,6 +102,7 @@ export class Game {
   private signTimer = 0
   private placeTimer = 0
   private casters: AbstractMesh[] = []
+  private readonly casterScratch: AbstractMesh[] = []
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
@@ -160,11 +161,47 @@ export class Game {
     scene.onBeforeCameraRenderObservable.add(() => this.afterCameraMove())
     scene.onAfterCameraRenderObservable.add(() => this.removeSway())
     this.ctx.engine.runRenderLoop(() => this.frame())
-    await scene.whenReadyAsync()
+    await this.prewarmSpawns()
     this.hud.setLoading(1, 'Ready')
     document.getElementById('loading')!.hidden = true
     document.getElementById('start')!.hidden = false
     ;(document.getElementById('start-btn') as HTMLButtonElement).focus()
+  }
+
+  /**
+   * Animals and trophy fish only appear mid-session, as instances of templates
+   * nothing else instances, so their instanced material and shadow-depth
+   * shaders used to compile in the frame they first showed up. One copy of each
+   * is built under the terrain, the scene waits until every shader (and the
+   * instanced shadow variants) is ready, and the copies are freed.
+   */
+  private async prewarmSpawns(): Promise<void> {
+    const { scene, shadows } = this.ctx
+    const wild: ModelName[] = ['deer', 'antlers', 'bear']
+    const fish = MODEL_NAMES.filter((name) => name.startsWith('fish-'))
+    const rigs: ModelRig[] = []
+    for (const name of wild) {
+      const model = this.models.get(name)
+      if (model) rigs.push(instantiate(model, null, scene))
+    }
+    for (const name of fish) {
+      const model = this.models.get(name)
+      if (model) rigs.push(instantiate(model, null, scene, (m) => {
+        m.sourceMesh.renderingGroupId = 1
+        m.sourceMesh.applyFog = false
+      }))
+    }
+    for (const rig of rigs) rig.root.position.set(0, -400, 0)
+    const wildRigs = rigs.slice(0, wild.length)
+    const deadline = performance.now() + 8000
+    await scene.whenReadyAsync()
+    while (performance.now() < deadline) {
+      let ready = true
+      for (const rig of wildRigs) for (const mesh of rig.meshes) for (const sub of mesh.sourceMesh.subMeshes ?? []) if (!shadows.isReady(sub, true, false)) ready = false
+      if (ready) break
+      await nextFrame()
+    }
+    for (const rig of rigs) disposeRig(rig)
   }
 
   private materialFor(model: ModelName, part: string, tag: string): Material {
@@ -608,7 +645,11 @@ export class Game {
     this.updateHud(dt, locked)
     this.foliage.updateGrass(focus)
     this.ctx.setShadowFocus(focus)
-    this.foliage.updateShadowCasters(focus, [...this.casters, ...this.wildlife.casters()])
+    const casterList = this.casterScratch
+    casterList.length = 0
+    for (const mesh of this.casters) casterList.push(mesh)
+    this.wildlife.collectCasters(casterList)
+    this.foliage.updateShadowCasters(focus, casterList)
     if (this.heroRig) {
       this.heroClock += dt
       this.heroRig.root.rotation.y = Math.PI / 2 + Math.sin(this.heroClock * 0.8) * 0.35

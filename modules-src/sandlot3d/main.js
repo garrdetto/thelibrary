@@ -1923,18 +1923,23 @@ function step(now){
   const b=ballTick(now);layout(now,dt,b);debrisTick(dt);camTick(dt,now,b);
   if(crowdMat){const u=crowdMat.userData.u;u.time.value=now/1000;u.cheer.value=lerp(u.cheer.value,now<cheerUntil?1:0,.08)}
   if(landRing.visible){const s=1+.15*Math.sin(now/120);landRing.scale.set(s,1,s)}
+  if(!warmed)warmDraw();
   if(post.on)post.pipe.render();else renderer.render(scene,camera);hudTick(now)}
+/* First frame only: draw once with frustum culling off so every material, including the shadow pass, is compiled before the camera turns toward it. */
+let warmed=false;
+function warmDraw(){warmed=true;const off=[];scene.traverse(o=>{if(o.frustumCulled){o.frustumCulled=false;off.push(o)}});try{if(post.on)post.pipe.render();else renderer.render(scene,camera)}catch(e){console.warn(e)}for(const o of off)o.frustumCulled=true}
 
 /* ================= INPUT ================= */
 const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();let drag=null;
-function zoneFromPointer(e){const r=cv.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(ndc,camera);
+let cvRect=null;addEventListener('resize',()=>{cvRect=null});addEventListener('scroll',()=>{cvRect=null},{capture:true,passive:true});
+function zoneFromPointer(e){const r=cvRect||(cvRect=cv.getBoundingClientRect());ndc.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(ndc,camera);
   const o=ray.ray.origin,d=ray.ray.direction;if(Math.abs(d.z)<1e-4)return null;const t=(ZZ-o.z)/d.z;return{x:cl((o.x+d.x*t)/ZW,-1.8,1.8),y:cl((o.y+d.y*t-ZC)/ZH,-1.8,1.8)}}
 const target=()=>S&&!userBats()?aim:ret;
 let tapStart=null;
 cv.addEventListener('pointermove',e=>{if(camMode!=='bat'||!S)return;const T=target();if(!userBats()&&phase!=='uready'&&phase!=='uwind')return;
   if(e.pointerType==='mouse'){const z=zoneFromPointer(e);if(z){T.x=z.x;T.y=z.y}}
   else if(drag){const a=zoneFromPointer(drag.e0),b=zoneFromPointer(e);if(a&&b){T.x=cl(drag.rx+(b.x-a.x)*1.15,-1.8,1.8);T.y=cl(drag.ry+(b.y-a.y)*1.15,-1.8,1.8)}}});
-cv.addEventListener('pointerdown',e=>{audio();if(!S)return;const T=target();
+cv.addEventListener('pointerdown',e=>{cvRect=null;audio();if(!S)return;const T=target();
   if(phase==='field'&&PS&&PS.userFields){const b=pickBaseAt(e.clientX,e.clientY);if(b)userThrow(b);return}
   if(userBats()){if(phase==='pitch'){swing();return}}
   else if(phase==='uwind'){userPitchPress();return}

@@ -94,6 +94,7 @@ export function createCrowd(seats: readonly Seat[], palette: CrowdPalette, seed:
     part.instanceMatrix.needsUpdate = true
     if (part.instanceColor) part.instanceColor.needsUpdate = true
     part.castShadow = true
+    part.userData.shadowAnimated = true
     part.frustumCulled = false
     root.add(part)
   }

@@ -199,6 +199,7 @@ function sandlot(park: Park, root: THREE.Group): Signature {
     corn.setMatrixAt(index, matrix)
   }
   corn.castShadow = true
+  corn.userData.shadowAnimated = true
   corn.receiveShadow = true
   root.add(corn)
 

@@ -53,14 +53,14 @@ export async function createEngine(canvas: HTMLCanvasElement, force: string | nu
   const preference = force === 'webgl' ? null : await webGpuPreference()
   if (preference !== null) {
     try {
-      const engine = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: true, setMaximumLimits: true, ...(preference ? { powerPreference: preference } : {}) })
+      const engine = new WebGPUEngine(canvas, { antialias: true, adaptToDeviceRatio: false, setMaximumLimits: true, ...(preference ? { powerPreference: preference } : {}) })
       await engine.initAsync()
       return { engine, backend: 'webgpu' }
     } catch (error) {
       console.warn('WebGPU unavailable, using WebGL2', error)
     }
   }
-  const engine = new Engine(canvas, true, { powerPreference: 'high-performance', stencil: true }, true)
+  const engine = new Engine(canvas, true, { powerPreference: 'high-performance', stencil: true }, false)
   return { engine, backend: 'webgl2' }
 }
 
@@ -113,6 +113,7 @@ const WEBGPU_FIRST_FRAME_MS = 6000
 
 async function run(canvas: HTMLCanvasElement, readout: HTMLDivElement, status: NextStatus, force: string | null): Promise<void> {
   const { engine, backend } = await createEngine(canvas, force)
+  engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2))
   status.backend = backend
   status.frames = 0
   let switched = false

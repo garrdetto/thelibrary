@@ -168,7 +168,7 @@ function addCrate(x, y, z, explosive, size = 1.6) {
   crates.push(crate); link(body, mesh); return crate;
 }
 function buildCrateField() {
-  for (const c of crates) { if (c.alive) { world.removeBody(c.body); scene.remove(c.mesh); } }
+  for (const c of crates) { if (c.alive) { world.removeBody(c.body); scene.remove(c.mesh); c.mesh.geometry.dispose(); } }
   crates.length = 0;
   for (let i = synced.length - 1; i >= 0; i--) if (synced[i].crate) synced.splice(i, 1);
   const cx = 38, cz = -18;
@@ -200,12 +200,19 @@ class ParticlePool {
   }
   spawn(p, v, color, life, size, grow = 0, grav = 0) {
     const i = this.next; this.next = (this.next + 1) % this.n;
-    this.pos.set([p.x, p.y, p.z], i * 3); this.vel.set([v.x, v.y, v.z], i * 3); this.c0.set([color.r, color.g, color.b], i * 3);
+    const o = i * 3;
+    this.pos[o] = p.x; this.pos[o + 1] = p.y; this.pos[o + 2] = p.z;
+    this.vel[o] = v.x; this.vel[o + 1] = v.y; this.vel[o + 2] = v.z;
+    this.c0[o] = color.r; this.c0[o + 1] = color.g; this.c0[o + 2] = color.b;
+    this.dirty = true;
     this.life[i] = life; this.max[i] = life; this.size[i] = size; this.grow[i] = grow; this.grav[i] = grav;
   }
   update(dt) {
+    if (!this.dirty) return;
+    let alive = false;
     for (let i = 0; i < this.n; i++) {
       if (this.life[i] <= 0) { if (this.size[i] !== 0) { this.size[i] = 0; this.pos[i * 3 + 1] = -999; } continue; }
+      alive = true;
       this.life[i] -= dt; const k = Math.max(0, this.life[i] / this.max[i]);
       this.vel[i * 3 + 1] -= this.grav[i] * dt;
       for (let a = 0; a < 3; a++) { this.pos[i * 3 + a] += this.vel[i * 3 + a] * dt; this.vel[i * 3 + a] *= 0.985; this.col[i * 3 + a] = this.c0[i * 3 + a] * k; }
@@ -213,10 +220,11 @@ class ParticlePool {
       this.size[i] = Math.max(0, this.size[i] + this.grow[i] * dt);
     }
     const g = this.points.geometry; g.attributes.position.needsUpdate = true; g.attributes.color.needsUpdate = true; g.attributes.psize.needsUpdate = true;
+    this.dirty = alive;
   }
 }
 const sparks = new ParticlePool(900, true), smoke = new ParticlePool(500, false), fire = new ParticlePool(500, true);
-const tmpV = new THREE.Vector3(), tmpC = new THREE.Color();
+const tmpV = new THREE.Vector3(), tmpC = new THREE.Color(), tmpP = { x: 0, y: 0, z: 0 };
 function burstSparks(p, n, speed = 12, normal = null) {
   for (let i = 0; i < n; i++) {
     tmpV.set(Math.random() - 0.5, Math.random() * 0.9 + 0.1, Math.random() - 0.5).normalize().multiplyScalar(speed * (0.3 + Math.random()));
@@ -226,7 +234,7 @@ function burstSparks(p, n, speed = 12, normal = null) {
   }
 }
 function puffSmoke(p, n, spread = 1, dark = 0.25) {
-  for (let i = 0; i < n; i++) { tmpV.set((Math.random() - 0.5) * spread, 1 + Math.random() * 2, (Math.random() - 0.5) * spread); const g = dark + Math.random() * 0.15; tmpC.setRGB(g, g, g * 1.05); smoke.spawn({ x: p.x + (Math.random() - 0.5) * spread, y: p.y, z: p.z + (Math.random() - 0.5) * spread }, tmpV, tmpC, 1.4 + Math.random() * 1.4, 0.6 + Math.random() * 0.6, 1.4, -0.4); }
+  for (let i = 0; i < n; i++) { tmpV.set((Math.random() - 0.5) * spread, 1 + Math.random() * 2, (Math.random() - 0.5) * spread); const g = dark + Math.random() * 0.15; tmpC.setRGB(g, g, g * 1.05); tmpP.x = p.x + (Math.random() - 0.5) * spread; tmpP.y = p.y; tmpP.z = p.z + (Math.random() - 0.5) * spread; smoke.spawn(tmpP, tmpV, tmpC, 1.4 + Math.random() * 1.4, 0.6 + Math.random() * 0.6, 1.4, -0.4); }
 }
 function fireball(p, n, r = 3) {
   for (let i = 0; i < n; i++) { tmpV.set(Math.random() - 0.5, Math.random() * 0.8 + 0.2, Math.random() - 0.5).normalize().multiplyScalar(r * (1 + Math.random() * 2)); tmpC.setHSL(0.02 + Math.random() * 0.1, 1, 0.5 + Math.random() * 0.2); fire.spawn(p, tmpV, tmpC, 0.5 + Math.random() * 0.6, 1.2 + Math.random() * 1.6, 2.5, -1.5); }
@@ -254,16 +262,25 @@ const Audio = {
 /* ---------------- Vehicle ---------------- */
 let car = null;
 const SPAWN = new CANNON.Vec3(0, 2.2, 30);
+const SHARED_MATERIALS = new Set([crateMat, tntMat]);
+function disposeTree(root, keepMaterials) {
+  const seen = new Set();
+  root.traverse(o => {
+    if (o.geometry && !seen.has(o.geometry)) { seen.add(o.geometry); o.geometry.dispose(); }
+    if (keepMaterials || !o.material) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) if (!SHARED_MATERIALS.has(m) && !seen.has(m)) { seen.add(m); m.dispose(); }
+  });
+}
 function boxMesh(size, color, rough = 0.45, metal = 0.35) { const m = new THREE.Mesh(new THREE.BoxGeometry(...size), new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal })); m.castShadow = true; m.receiveShadow = true; return m; }
 function edgeLines(mesh) { const e = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })); mesh.add(e); }
 function destroyCar() {
   if (!car) return;
   car.vehicle.removeFromWorld(world);
   world.removeBody(car.chassis);
-  for (const p of car.parts) { if (p.constraint && !p.detached) world.removeConstraint(p.constraint); world.removeBody(p.body); scene.remove(p.mesh); }
-  for (const w of car.wheelMeshes) scene.remove(w);
+  for (const p of car.parts) { if (p.constraint && !p.detached) world.removeConstraint(p.constraint); world.removeBody(p.body); scene.remove(p.mesh); disposeTree(p.mesh); }
+  for (const w of car.wheelMeshes) { scene.remove(w); disposeTree(w); }
   for (const d of car.debris) { world.removeBody(d.body); scene.remove(d.mesh); }
-  scene.remove(car.mesh);
+  scene.remove(car.mesh); disposeTree(car.mesh);
   for (let i = synced.length - 1; i >= 0; i--) if (synced[i].car) synced.splice(i, 1);
   car = null;
 }
@@ -382,7 +399,7 @@ function processExplosions() {
   for (let i = explosionQueue.length - 1; i >= 0; i--) {
     const ex = explosionQueue[i]; if (ex.at > clock) continue; explosionQueue.splice(i, 1);
     const c = ex.crate; if (!c.alive) continue; c.alive = false;
-    const p = c.body.position.clone(); world.removeBody(c.body); scene.remove(c.mesh);
+    const p = c.body.position.clone(); world.removeBody(c.body); scene.remove(c.mesh); c.mesh.geometry.dispose();
     const R = 9;
     const attachedParts = new Set(car ? car.parts.filter(pt => !pt.detached).map(pt => pt.body) : []);
     for (const b of world.bodies) {
@@ -460,6 +477,7 @@ function boostersLeft() { return car ? car.parts.filter(p => p.def.kind === 'boo
 /* ---------------- Main loop ---------------- */
 let clock = 0, last = performance.now(), hudTick = 0;
 const camPos = new THREE.Vector3(14, 8, 14), camLook = new THREE.Vector3();
+const camP = new THREE.Vector3(), camQ = new THREE.Quaternion(), camBack = new THREE.Vector3(), camDesired = new THREE.Vector3(), camAim = new THREE.Vector3();
 function driveControls(dt) {
   if (!car) return;
   const { vehicle, cfg } = car;
@@ -495,15 +513,15 @@ function breakOverloadedJoints() {
 }
 function followCamera(dt) {
   if (!car) return;
-  const ch = car.chassis, p = new THREE.Vector3(ch.position.x, ch.position.y, ch.position.z);
-  const q = new THREE.Quaternion(ch.quaternion.x, ch.quaternion.y, ch.quaternion.z, ch.quaternion.w);
-  const back = new THREE.Vector3(1, 0, 0).applyQuaternion(q); back.y = 0; if (back.lengthSq() < 1e-4) back.set(1, 0, 0); back.normalize();
-  let desired, look;
-  if (mode === 'build') { const a = clock * 0.35; desired = p.clone().add(new THREE.Vector3(Math.cos(a) * 9, 4.2, Math.sin(a) * 9)); look = p.clone(); }
+  const ch = car.chassis, p = camP.set(ch.position.x, ch.position.y, ch.position.z);
+  const q = camQ.set(ch.quaternion.x, ch.quaternion.y, ch.quaternion.z, ch.quaternion.w);
+  const back = camBack.set(1, 0, 0).applyQuaternion(q); back.y = 0; if (back.lengthSq() < 1e-4) back.set(1, 0, 0); back.normalize();
+  const desired = camDesired, look = camAim;
+  if (mode === 'build') { const a = clock * 0.35; desired.set(p.x + Math.cos(a) * 9, p.y + 4.2, p.z + Math.sin(a) * 9); look.copy(p); }
   else {
     const dist = camMode === 1 ? 13 : camMode === 2 ? 5 : 8.5, height = camMode === 1 ? 6.5 : camMode === 2 ? 2.2 : 3.6;
-    desired = p.clone().addScaledVector(back, dist).add(new THREE.Vector3(0, height, 0));
-    look = p.clone().addScaledVector(back, -4).add(new THREE.Vector3(0, 0.8, 0));
+    desired.copy(p).addScaledVector(back, dist); desired.y += height;
+    look.copy(p).addScaledVector(back, -4); look.y += 0.8;
   }
   const k = 1 - Math.exp(-dt * (mode === 'build' ? 3 : 4.5));
   camPos.lerp(desired, k); camLook.lerp(look, 1 - Math.exp(-dt * 8));
@@ -513,6 +531,22 @@ function followCamera(dt) {
   sun.position.set(p.x + 40, 70, p.z + 25); sun.target.position.copy(p);
   const sp = car.chassis.velocity.length(); camera.fov += ((62 + Math.min(18, sp * 0.4)) - camera.fov) * k; camera.updateProjectionMatrix();
 }
+/* Shadows re-render only when a synced body, the sun or the set of meshes changed, so the orbiting build camera reuses the map. */
+sun.shadow.autoUpdate = false; sun.shadow.needsUpdate = true;
+const shadowSeen = new WeakMap();
+let shadowCount = -1;
+function syncShadow() {
+  let dirty = synced.length !== shadowCount; shadowCount = synced.length;
+  for (const s of synced) {
+    const m = s.mesh, k = shadowSeen.get(m), px = m.position.x, py = m.position.y, pz = m.position.z, q = m.quaternion, sc = m.scale.x;
+    if (!k) { shadowSeen.set(m, [px, py, pz, q.x, q.y, q.z, q.w, sc, m.visible]); dirty = true; continue; }
+    if (k[0] !== px || k[1] !== py || k[2] !== pz || k[3] !== q.x || k[4] !== q.y || k[5] !== q.z || k[6] !== q.w || k[7] !== sc || k[8] !== m.visible) {
+      k[0] = px; k[1] = py; k[2] = pz; k[3] = q.x; k[4] = q.y; k[5] = q.z; k[6] = q.w; k[7] = sc; k[8] = m.visible; dirty = true;
+    }
+  }
+  if (car) for (const w of car.wheelMeshes) { const k = shadowSeen.get(w), q = w.quaternion; if (!k || k[0] !== w.position.x || k[1] !== w.position.y || k[2] !== w.position.z || k[3] !== q.x || k[4] !== q.y || k[5] !== q.z || k[6] !== q.w || k[8] !== w.visible) { shadowSeen.set(w, [w.position.x, w.position.y, w.position.z, q.x, q.y, q.z, q.w, 1, w.visible]); dirty = true; } }
+  if (dirty) sun.shadow.needsUpdate = true;
+}
 function frame() {
   const t = performance.now(), dt = Math.min(0.05, (t - last) / 1000); last = t; clock += dt;
   driveControls(dt);
@@ -521,15 +555,18 @@ function frame() {
   if (car) for (const part of car.parts) if (part.detached && part.rejoinAt && clock > part.rejoinAt) { part.rejoinAt = 0; part.body.collisionFilterMask = ALL; }
   if (car) { for (let i = 0; i < 4; i++) { if (car.brokenWheels[i]) continue; car.vehicle.updateWheelTransform(i); const tr = car.vehicle.wheelInfos[i].worldTransform; car.wheelMeshes[i].position.set(tr.position.x, tr.position.y, tr.position.z); car.wheelMeshes[i].quaternion.set(tr.quaternion.x, tr.quaternion.y, tr.quaternion.z, tr.quaternion.w); } }
   for (const s of synced) { s.mesh.position.set(s.body.position.x, s.body.position.y, s.body.position.z); s.mesh.quaternion.set(s.body.quaternion.x, s.body.quaternion.y, s.body.quaternion.z, s.body.quaternion.w); }
-  for (let i = chunks.length - 1; i >= 0; i--) { const c = chunks[i]; c.ttl -= dt; if (c.ttl < 1) c.mesh.scale.setScalar(Math.max(0.01, c.ttl)); if (c.ttl <= 0) { world.removeBody(c.body); scene.remove(c.mesh); chunks.splice(i, 1); synced.splice(synced.indexOf(c), 1); } }
+  for (let i = chunks.length - 1; i >= 0; i--) { const c = chunks[i]; c.ttl -= dt; if (c.ttl < 1) c.mesh.scale.setScalar(Math.max(0.01, c.ttl)); if (c.ttl <= 0) { world.removeBody(c.body); scene.remove(c.mesh); c.mesh.geometry.dispose(); chunks.splice(i, 1); synced.splice(synced.indexOf(c), 1); } }
   sparks.update(dt); smoke.update(dt); fire.update(dt);
   flash.intensity *= Math.exp(-dt * 6);
   followCamera(dt);
+  syncShadow();
   if ((hudTick += dt) > 0.1) { hudTick = 0; if (mode === 'drive') updateHud(); }
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 }
 buildCar(selected);
+/* Compile every material (and the shadow depth variants) before the first frame so the first turn or explosion never stalls on a shader. */
+try { renderer.compile(scene, camera); } catch (e) { /* the first frame compiles instead */ }
 document.getElementById('loading').remove();
 if (matchMedia('(pointer: coarse)').matches) {
   const tc = document.getElementById('touch'); tc.classList.remove('hidden');

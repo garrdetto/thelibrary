@@ -1,4 +1,4 @@
-/** Keyboard, mouse, touch and gamepad input read through a rebindable action map supplied by the module config. */
+/** Keyboard, mouse, touch and gamepad input read through a rebindable action map supplied by the module config. Pointer handlers allocate nothing: the target's rect is cached until it resizes or the page scrolls, and touch points come from a pool. */
 import type { ActionBindings, InputBinding, InputConfig } from '../config'
 
 export interface PointerState {
@@ -28,6 +28,10 @@ export class Input<A extends string> {
   private readonly boundKeys = new Set<string>()
   private previous = new Map<A, number>()
   private current = new Map<A, number>()
+  private readonly touchPool: TouchPoint[] = []
+  private readonly scratchPoint: TouchPoint = { x: 0, y: 0 }
+  private rect: DOMRect | null = null
+  private readonly rectObserver: ResizeObserver | null
   private pendingDx = 0
   private pendingDy = 0
   private pendingWheel = 0
@@ -39,6 +43,10 @@ export class Input<A extends string> {
   ) {
     this.bindingsMap = { ...bindings } as Record<A, readonly InputBinding[]>
     this.indexKeys()
+    this.rectObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(this.invalidateRect) : null
+    this.rectObserver?.observe(target)
+    addEventListener('resize', this.invalidateRect)
+    addEventListener('scroll', this.invalidateRect, { capture: true, passive: true })
     addEventListener('keydown', this.onKeyDown)
     addEventListener('keyup', this.onKeyUp)
     addEventListener('blur', this.onBlur)
@@ -65,8 +73,10 @@ export class Input<A extends string> {
   }
 
   update(): void {
+    const recycled = this.previous
     this.previous = this.current
-    this.current = new Map()
+    this.current = recycled
+    recycled.clear()
     const pads = typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : []
     for (const action of this.actions) {
       let value = 0
@@ -75,6 +85,7 @@ export class Input<A extends string> {
     }
     this.keyTaps.clear()
     this.mouseTaps.clear()
+    for (const tap of this.touchTaps) this.touchPool.push(tap)
     this.touchTaps.length = 0
     this.pointer.dx = this.pendingDx
     this.pointer.dy = this.pendingDy
@@ -141,9 +152,19 @@ export class Input<A extends string> {
     for (const action of this.actions) for (const binding of this.bindingsMap[action]) if (binding.kind === 'key') this.boundKeys.add(binding.code)
   }
 
-  private normalized(event: PointerEvent): TouchPoint {
-    const rect = this.target.getBoundingClientRect()
-    return { x: (event.clientX - rect.left) / Math.max(rect.width, 1), y: (event.clientY - rect.top) / Math.max(rect.height, 1) }
+  private readonly invalidateRect = (): void => {
+    this.rect = null
+  }
+
+  private normalized(event: PointerEvent, out: TouchPoint): TouchPoint {
+    const rect = (this.rect ??= this.target.getBoundingClientRect())
+    out.x = (event.clientX - rect.left) / Math.max(rect.width, 1)
+    out.y = (event.clientY - rect.top) / Math.max(rect.height, 1)
+    return out
+  }
+
+  private takePoint(): TouchPoint {
+    return this.touchPool.pop() ?? { x: 0, y: 0 }
   }
 
   private isTyping(event: KeyboardEvent): boolean {
@@ -165,18 +186,26 @@ export class Input<A extends string> {
   private readonly onBlur = (): void => {
     this.keys.clear()
     this.mouseButtons.clear()
+    for (const held of this.touches.values()) this.touchPool.push(held)
     this.touches.clear()
     this.pointer.down = false
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
-    const point = this.normalized(event)
+    this.rect = null
+    const point = this.normalized(event, this.scratchPoint)
     this.pointer.x = point.x
     this.pointer.y = point.y
     this.pointer.down = true
     if (event.pointerType === 'touch') {
-      this.touches.set(event.pointerId, point)
-      this.touchTaps.push(point)
+      const held = this.touches.get(event.pointerId) ?? this.takePoint()
+      held.x = point.x
+      held.y = point.y
+      this.touches.set(event.pointerId, held)
+      const tap = this.takePoint()
+      tap.x = point.x
+      tap.y = point.y
+      this.touchTaps.push(tap)
     } else {
       this.mouseButtons.add(event.button)
       this.mouseTaps.add(event.button)
@@ -184,18 +213,29 @@ export class Input<A extends string> {
   }
 
   private readonly onPointerUp = (event: PointerEvent): void => {
-    if (event.pointerType === 'touch') this.touches.delete(event.pointerId)
-    else this.mouseButtons.delete(event.button)
+    if (event.pointerType === 'touch') {
+      const held = this.touches.get(event.pointerId)
+      if (held) {
+        this.touches.delete(event.pointerId)
+        this.touchPool.push(held)
+      }
+    } else this.mouseButtons.delete(event.button)
     this.pointer.down = this.touches.size > 0 || this.mouseButtons.size > 0
   }
 
   private readonly onPointerMove = (event: PointerEvent): void => {
-    const point = this.normalized(event)
+    const point = this.normalized(event, this.scratchPoint)
     this.pointer.x = point.x
     this.pointer.y = point.y
     this.pendingDx += event.movementX
     this.pendingDy += event.movementY
-    if (event.pointerType === 'touch' && this.touches.has(event.pointerId)) this.touches.set(event.pointerId, point)
+    if (event.pointerType === 'touch') {
+      const held = this.touches.get(event.pointerId)
+      if (held) {
+        held.x = point.x
+        held.y = point.y
+      }
+    }
   }
 
   private readonly onWheel = (event: WheelEvent): void => {
@@ -211,6 +251,9 @@ export class Input<A extends string> {
   }
 
   dispose(): void {
+    this.rectObserver?.disconnect()
+    removeEventListener('resize', this.invalidateRect)
+    removeEventListener('scroll', this.invalidateRect, { capture: true })
     removeEventListener('keydown', this.onKeyDown)
     removeEventListener('keyup', this.onKeyUp)
     removeEventListener('blur', this.onBlur)
