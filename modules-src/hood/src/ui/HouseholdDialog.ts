@@ -1,5 +1,5 @@
 /** Move-in dialog: name the household and design up to four residents. */
-import { BUILDS, HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, SKIN_TONES, defaultLook, type Look } from '../../shared/Look'
+import { BODIES, BUILDS, HAIR_COLORS, HAIR_STYLES, OUTFIT_COLORS, SKIN_TONES, defaultLook, type Look } from '../../shared/Look'
 import { MAX_SIMS } from '../../shared/Lot'
 import { button, el } from './Ui'
 
@@ -10,6 +10,7 @@ export interface HouseholdDraft {
 
 const STYLE_LABELS: Record<string, string> = { short: 'Short', long: 'Long', bun: 'Bun', curly: 'Curly', bald: 'Shaved' }
 const BUILD_LABELS: Record<string, string> = { slim: 'Slim', average: 'Average', broad: 'Broad' }
+const BODY_LABELS: Record<string, string> = { masculine: 'Masculine', feminine: 'Feminine' }
 
 function swatches(colors: readonly string[], value: number, label: string, onPick: (index: number) => void): HTMLElement {
   const row = el('div', { class: 'row', role: 'radiogroup', 'aria-label': label })
@@ -63,6 +64,7 @@ export function openHouseholdDialog(host: HTMLElement, address: string, ownerNam
           el('div', { class: 'row', style: 'justify-content:space-between' }, el('b', {}, `Resident ${index + 1}`), draft.sims.length > 1 ? button('Remove', () => { draft.sims.splice(index, 1); render() }) : null),
           el('label', { class: 'field' }, el('span', {}, 'Name'), nameField),
           el('div', { class: 'field' }, el('span', {}, 'Skin'), swatches(SKIN_TONES, sim.look.skin, 'Skin tone', i => set({ skin: i }))),
+          el('div', { class: 'field' }, el('span', {}, 'Body'), choices(BODIES, BODY_LABELS, sim.look.body, 'Body shape', v => set({ body: v as Look['body'] }))),
           el('div', { class: 'field' }, el('span', {}, 'Hair'), choices(HAIR_STYLES, STYLE_LABELS, sim.look.hairStyle, 'Hair style', v => set({ hairStyle: v as Look['hairStyle'] }))),
           el('div', { class: 'field' }, el('span', {}, 'Hair color'), swatches(HAIR_COLORS, sim.look.hair, 'Hair color', i => set({ hair: i }))),
           el('div', { class: 'field' }, el('span', {}, 'Top'), swatches(OUTFIT_COLORS, sim.look.top, 'Top color', i => set({ top: i }))),

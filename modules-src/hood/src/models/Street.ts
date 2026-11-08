@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu'
 import { LOT_D, LOT_W, LOTS_PER_SIDE, STREET_HALF, STREET_LENGTH, lotPlacement, lotToWorld } from '../../shared/Street'
 import { box, cylinder, sphere } from './Kit'
+import { models } from './Models'
 import { surface } from './Surfaces'
 
 export interface StreetGround {
@@ -16,6 +17,8 @@ function flat(mesh: THREE.Mesh): THREE.Mesh {
 
 /** A broadleaf tree: textured trunk, a few branches and clustered leafy crowns. */
 export function buildTree(seed: number, scale = 1): THREE.Group {
+  const template = models.furniture?.getObjectByName('tree')
+  if (template) return mapleTree(template, seed, scale)
   const g = new THREE.Group()
   const bark = surface('bark', 'wall', { size: 1.2, color: '#7a5a3e', roughness: 1 })
   const leafTones = ['#5d8f45', '#4f8a3f', '#6a9c4c', '#457a36']
@@ -34,6 +37,31 @@ export function buildTree(seed: number, scale = 1): THREE.Group {
     g.add(sphere(r, leaves[(i + seed) % leaves.length], Math.cos(a) * ring, 3.1 + (i % 3) * 0.45 + (i === 0 ? 0.6 : 0), Math.sin(a) * ring, undefined, 0.85))
   }
   g.scale.setScalar(scale)
+  return g
+}
+
+const LEAF_TONES = ['#5d8f45', '#4f8a3f', '#6a9c4c', '#457a36']
+
+/** The Blender maple (tools/build-furniture.py), turned and tinted per seed so a row of them doesn't repeat. */
+function mapleTree(template: THREE.Object3D, seed: number, scale: number): THREE.Group {
+  const g = new THREE.Group()
+  const bark = surface('bark', 'tri', { size: 0.8, color: '#8a6a4c', roughness: 1 })
+  const light = surface('leaves', 'tri', { size: 0.7, color: LEAF_TONES[seed % LEAF_TONES.length], roughness: 0.9 })
+  const dark = surface('leaves', 'tri', { size: 0.7, color: LEAF_TONES[(seed + 2) % LEAF_TONES.length], roughness: 0.9 })
+  for (const child of template.children) {
+    const copy = child.clone(true)
+    copy.traverse(node => {
+      const mesh = node as THREE.Mesh
+      if (!mesh.isMesh) return
+      const slot = (mesh.material as THREE.Material).name
+      mesh.material = slot === 'bark' ? bark : slot === 'leaf' ? dark : light
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+    })
+    g.add(copy)
+  }
+  g.rotation.y = seed * 1.7
+  g.scale.setScalar(scale * 0.85 * (0.92 + (seed % 3) * 0.06))
   return g
 }
 

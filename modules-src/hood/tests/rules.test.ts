@@ -5,7 +5,7 @@ import { findPath } from '../shared/Path'
 import type { ServerMessage } from '../shared/Protocol'
 import { Room, type JoinInfo } from '../shared/Room'
 import { lotToWorld, lotPlacement } from '../shared/Street'
-import { defaultLook } from '../shared/Look'
+import { defaultLook, lookFromKey, sanitizeLook } from '../shared/Look'
 
 function lot() {
   return newLotState(0, 2, 'owner-1', 'maple', 'The Maples', [{ name: 'Ada', look: defaultLook() }, { name: 'Ben', look: defaultLook() }])
@@ -203,4 +203,13 @@ test('features: canopies need an outside opening, porches meet the house, fences
   const shell = shellOf(room.state)
   assert.equal(shell.features.length, room.state.features.length)
   assert.equal(shell.style.roofStyle, room.state.style.roofStyle)
+})
+
+test('looks keep their body shape and older saves infer one from their hair', () => {
+  assert.equal(sanitizeLook({ ...defaultLook(), body: 'feminine' }).body, 'feminine')
+  assert.equal(sanitizeLook({ ...defaultLook(), body: 'nonsense' }).body, 'masculine')
+  const { body: _, ...old } = { ...defaultLook(), hairStyle: 'long' as const }
+  assert.equal(sanitizeLook(old).body, 'feminine')
+  assert.equal(sanitizeLook({ ...old, hairStyle: 'curly' }).body, 'masculine')
+  assert.ok(['masculine', 'feminine'].includes(lookFromKey('guest-123').body))
 })
