@@ -8,6 +8,7 @@ import { fairway } from './routes/fairway'
 import { angler } from './routes/angler'
 import { anglerLake } from './routes/angler-lake'
 import { bushleague } from './routes/bushleague'
+import { hood } from './routes/hood'
 import { park } from './routes/park'
 import { parkRides } from './routes/park-rides'
 import { maplestreet } from './routes/maplestreet'
@@ -37,6 +38,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/angler': angler,
   '/api/angler-lake': anglerLake,
   '/api/bushleague': bushleague,
+  '/api/hood': hood,
   '/api/park': park,
   '/api/park-rides': parkRides,
   '/api/maplestreet': maplestreet,

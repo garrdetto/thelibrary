@@ -1,0 +1,121 @@
+/** DOM helpers and the stylesheet for The Hood's panels, using the library's --lib-* theme tokens. */
+
+const CSS = `
+.hd{position:absolute;inset:0;pointer-events:none;font:13px/1.35 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--lib-text,#e9effc);z-index:12}
+.hd *{box-sizing:border-box}
+.hd [hidden]{display:none!important}
+.hd button{font:inherit;color:inherit;cursor:pointer}
+.hd .panel{pointer-events:auto;background:color-mix(in srgb,var(--lib-panel,#111829) 92%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));border-radius:12px;box-shadow:0 8px 24px var(--lib-shadow,rgba(0,0,0,.45));backdrop-filter:blur(6px)}
+.hd .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.hd .top{position:absolute;top:10px;left:10px;right:10px;display:flex;gap:8px;align-items:flex-start;justify-content:space-between;pointer-events:none}
+.hd .top>*{pointer-events:auto}
+.hd .card{padding:8px 12px}
+.hd .title{font-weight:700;font-size:15px;color:var(--lib-strong,#fff)}
+.hd .sub{color:var(--lib-soft,#aab6d3);font-size:12px}
+.hd .btn{background:var(--lib-chip,rgba(255,255,255,.05));border:1px solid var(--lib-line,rgba(120,170,255,.16));border-radius:8px;padding:6px 10px;min-height:32px}
+.hd .btn:hover{border-color:var(--hood-accent,#e8a33c)}
+.hd .btn:focus-visible,.hd .sw:focus-visible,.hd .item:focus-visible{outline:2px solid var(--hood-accent,#e8a33c);outline-offset:2px}
+.hd .btn.on{background:var(--hood-accent,#e8a33c);color:#1a1206;border-color:transparent;font-weight:700}
+.hd .btn.primary{background:var(--hood-accent,#e8a33c);color:#1a1206;border-color:transparent;font-weight:700}
+.hd .btn[disabled]{opacity:.45;cursor:default}
+.hd .bottom{position:absolute;left:10px;right:10px;bottom:10px;display:flex;gap:8px;align-items:flex-end;justify-content:space-between;pointer-events:none}
+.hd .bottom>*{pointer-events:auto}
+.hd .needs{display:grid;grid-template-columns:repeat(2,minmax(120px,1fr));gap:4px 12px;margin-top:6px}
+.hd .need{display:grid;grid-template-columns:62px 1fr;gap:6px;align-items:center;font-size:12px}
+.hd .bar{height:8px;border-radius:5px;background:rgba(255,255,255,.08);overflow:hidden}
+.hd .bar>i{display:block;height:100%;border-radius:5px;transition:width .4s}
+.hd .portraits{display:flex;gap:6px;margin-bottom:6px}
+.hd .portrait{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 8px;border-radius:10px;border:1px solid var(--lib-line);background:var(--lib-chip);min-width:64px}
+.hd .portrait.on{border-color:var(--hood-accent,#e8a33c);box-shadow:0 0 0 1px var(--hood-accent,#e8a33c) inset}
+.hd .dot{width:22px;height:22px;border-radius:50%;border:2px solid rgba(255,255,255,.6)}
+.hd .queue{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.hd .chip{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--lib-chip);border:1px solid var(--lib-line)}
+.hd .menu{position:absolute;min-width:180px;padding:6px;display:flex;flex-direction:column;gap:4px;z-index:3}
+.hd .menu .head{font-weight:700;padding:2px 6px 4px;color:var(--lib-strong)}
+.hd .menu .btn{text-align:left}
+.hd .label{position:absolute;transform:translate(-50%,-100%);pointer-events:none;text-align:center;white-space:nowrap;text-shadow:0 1px 3px rgba(0,0,0,.8);font-size:12px;font-weight:600;color:#fff}
+.hd .label .bubble{display:inline-block;background:#fff;color:#1d1d1d;border-radius:10px;padding:3px 8px;margin-bottom:3px;font-weight:600;text-shadow:none;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+.hd .label .act{display:block;font-weight:500;font-size:11px;opacity:.85}
+.hd .lotlabel{pointer-events:auto;cursor:pointer;background:color-mix(in srgb,var(--lib-panel,#111829) 85%,transparent);border:1px solid var(--lib-line);border-radius:10px;padding:4px 9px;color:var(--lib-text);text-shadow:none;font-weight:500;transform:translate(-50%,-100%)}
+.hd .lotlabel b{color:var(--lib-strong)}
+.hd .lotlabel.mine{border-color:var(--hood-accent,#e8a33c)}
+.hd .lotlabel.sale{opacity:.85;font-style:italic}
+.hd .home{display:inline-block;width:8px;height:8px;border-radius:50%;background:#5bd77d;margin-right:4px}
+.hd .away{display:inline-block;width:8px;height:8px;border-radius:50%;background:#7d8790;margin-right:4px}
+.hd .dock{padding:8px;max-width:min(760px,calc(100vw - 20px))}
+.hd .tools{display:flex;gap:6px;flex-wrap:wrap}
+.hd .items{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:6px;max-height:190px;overflow:auto;margin-top:6px}
+.hd .item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:6px 8px;border-radius:8px;border:1px solid var(--lib-line);background:var(--lib-chip);text-align:left}
+.hd .item.on{border-color:var(--hood-accent,#e8a33c)}
+.hd .item small{color:var(--lib-muted,#8d9bba)}
+.hd .sw{width:26px;height:26px;border-radius:6px;border:2px solid rgba(255,255,255,.25);padding:0}
+.hd .sw.on{border-color:var(--hood-accent,#e8a33c)}
+.hd .sw.sm{width:20px;height:20px;border-radius:5px;border-width:2px}
+.hd .swatches{display:flex;flex-wrap:wrap;gap:4px}
+.hd .designer{max-height:min(240px,38vh);overflow:auto;margin-top:6px;padding-right:4px}
+.hd .chips{display:flex;gap:3px;margin:3px 0}
+.hd .chips i{width:14px;height:14px;border-radius:3px;display:inline-block;border:1px solid rgba(255,255,255,.25)}
+.hd .modal{position:absolute;inset:0;background:rgba(5,8,16,.55);display:flex;align-items:center;justify-content:center;pointer-events:auto;z-index:5}
+.hd .dialog{max-width:min(720px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:auto;padding:16px 18px}
+.hd .dialog h2{margin:0 0 4px;font-size:18px;color:var(--lib-strong)}
+.hd .dialog p{margin:4px 0 10px;color:var(--lib-soft)}
+.hd .field{display:flex;flex-direction:column;gap:4px;margin:6px 0}
+.hd .field>span{font-size:12px;color:var(--lib-soft)}
+.hd input[type=text]{background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line);border-radius:8px;color:var(--lib-text);padding:7px 9px;font:inherit;min-height:34px}
+.hd .simcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.hd .simcard{border:1px solid var(--lib-line);border-radius:10px;padding:10px;background:var(--lib-chip)}
+.hd .list{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.hd .person{display:flex;gap:6px;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--lib-line);border-radius:8px}
+.hd .side{position:absolute;right:10px;top:64px;width:min(320px,calc(100vw - 20px));padding:12px;max-height:calc(100% - 140px);overflow:auto}
+.hd .toggle{display:flex;gap:8px;align-items:center;margin:6px 0}
+.hd .loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,8,16,.6);font-size:16px;font-weight:600;pointer-events:auto;z-index:6;transition:opacity .3s}
+.hd .hint{font-size:12px;color:var(--lib-muted,#8d9bba);margin-top:4px}
+@media (max-width:640px){.hd .needs{grid-template-columns:1fr}.hd .side{top:auto;bottom:10px;max-height:55%}}
+@media (prefers-reduced-motion:reduce){.hd .bar>i,.hd .loading{transition:none}}
+`
+
+let installed = false
+
+export function installStyles(accent: string): HTMLDivElement {
+  if (!installed) {
+    const style = document.createElement('style')
+    style.textContent = CSS
+    document.head.appendChild(style)
+    installed = true
+  }
+  const root = document.createElement('div')
+  root.className = 'hd'
+  root.style.setProperty('--hood-accent', accent)
+  return root
+}
+
+type Child = Node | string | null | undefined | false
+
+export function el<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, unknown> = {}, ...children: Child[]): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag)
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value === undefined || value === null || value === false) continue
+    if (key === 'class') node.className = String(value)
+    else if (key === 'style') node.setAttribute('style', String(value))
+    else if (key.startsWith('on') && typeof value === 'function') node.addEventListener(key.slice(2), value as EventListener)
+    else if (key === 'text') node.textContent = String(value)
+    else node.setAttribute(key, value === true ? '' : String(value))
+  }
+  for (const child of children) if (child !== null && child !== undefined && child !== false) node.append(child)
+  return node
+}
+
+export function button(label: string, onClick: () => void, cls = 'btn', title?: string): HTMLButtonElement {
+  return el('button', { type: 'button', class: cls, onclick: onClick, title, 'aria-label': /[A-Za-z]/.test(label) ? undefined : title }, label)
+}
+
+export function needColor(value: number): string {
+  if (value > 66) return '#5bd77d'
+  if (value > 40) return '#e8c94a'
+  if (value > 20) return '#e8913c'
+  return '#e8533c'
+}
+
+export function money(value: number): string {
+  return `$${Math.floor(value).toLocaleString('en-US')}`
+}

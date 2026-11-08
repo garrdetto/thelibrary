@@ -8,6 +8,7 @@
     "modules-src/foxplains2/**/*.ts",
     "modules-src/county/**/*.ts",
     "modules-src/bushleague/**/*.ts",
+    "modules-src/hood/**/*.ts",
     "modules-src/shorttrack/next/**/*.ts"
   ],
   "exclude": [
@@ -15,7 +16,8 @@
     "modules-src/demoderby/tests/**",
     "modules-src/angler/tests/**",
     "modules-src/county/tests/**",
-    "modules-src/bushleague/tests/**"
+    "modules-src/bushleague/tests/**",
+    "modules-src/hood/tests/**"
   ],
   "compilerOptions": {
     "target": "ES2022",
