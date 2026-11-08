@@ -73,7 +73,7 @@ if (only.has('fixtures')) {
   mkdirSync(fixtureDir, { recursive: true })
   for (const track of tracks) {
     for (const diff of levels) {
-      const { page, errors } = await open(`track=${track}&record=1`)
+      const { page, errors } = await open(`track=${track}&record=1&engine=classic`)
       await page.waitForFunction(() => typeof window.__stsRecord === 'function', null, { timeout: 60000 })
       const result = await page.evaluate((o) => window.__stsRecord(o), { seed: SEED, diff, ai: 19, laps: 5, base: BASELINES[track], veh: 'truck', golden: diff === 'medium' ? 60 : 0 })
       writeFileSync(join(fixtureDir, `${track}-${diff}.json`), JSON.stringify(result))

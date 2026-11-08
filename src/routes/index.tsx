@@ -46,7 +46,8 @@ type View = StudioMode | 'home' | 'admin' | ModuleId
 const isPlayId = isEmbeddedModuleId
 const shortTrackModes = ['time-attack', 'race', 'multiplayer'] as const
 const shortTrackModeNames = { 'time-attack': 'Time Attack', race: 'Solo Race', multiplayer: 'Online' }
-const shortTrackTracks = [{ id: 'prison', name: 'Prison Speedway (0.29 mi)' }, { id: 'shorttrack', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells', name: 'Dells Short Track (0.3 mi)' }, { id: 'dellswide', name: 'Dells Wide Oval (0.27 mi)' }, { id: 'dirt', name: 'Dells Dirt Oval (0.3 mi)' }] as const
+const shortTrackTracks = [{ id: 'prison-v2', name: 'Prison Speedway (0.29 mi)' }, { id: 'shorttrack-v2', name: 'Showdown Bullring (0.5 mi)' }, { id: 'dells-v2', name: 'Dells Short Track (0.3 mi)' }, { id: 'dellswide-v2', name: 'Dells Wide Oval (0.27 mi)' }, { id: 'dirt-v2', name: 'Dells Dirt Oval (0.3 mi)' }] as const
+const shortTrackArchive = { label: 'Classic', note: 'Laps set on the classic vehicle physics. This book is read-only.', trackOf: (track: string) => track.replace(/-v2$/, '') }
 
 const genreOptions = ['Indie pop', 'Pop', 'Pop-punk', 'Rap', 'Old school rap', 'Trap', 'Drill', 'Boyband pop', 'R&B / Soul', 'Hip-hop', 'Emo', 'Punk rock', 'Metal', 'Grunge', 'Country', 'Folk', 'Alternative rock', 'Indie rock', 'Electronic', 'EDM', 'Reggaeton', 'Afrobeats', 'K-pop', 'Funk', 'Blues', 'Jazz', 'Gospel']
 
@@ -458,7 +459,7 @@ function Studio() {
 
         {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
-        {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks}/>}
+        {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison-v2" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks} archive={shortTrackArchive}/>}
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
         {activePlay?.id === 'angler' && <AnglerRecordBoard/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}

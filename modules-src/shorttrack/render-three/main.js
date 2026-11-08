@@ -34,8 +34,9 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ===================== TRACK =====================
 // The track list, tuning and track math live in sim/ (config.ts, track.ts); one simulation world per page.
 const TRACK_ID=trackIdOf(new URLSearchParams(location.search).get('track')),TRACK=TRACKS[TRACK_ID];
-// ?engine=next also drives the cars with the next vehicle model (next/sim/dynamics.ts); &physics=classic keeps the old one.
-const Q0=new URLSearchParams(location.search),PHYSICS=Q0.get('engine')==='next'&&Q0.get('physics')!=='classic'?'next':'classic';
+// The next engine (Babylon on WebGPU, next/sim/dynamics.ts physics) is the default; ?engine=classic keeps the three.js
+// renderer and the classic vehicle model for one release, and &physics=classic keeps only the classic model.
+const Q0=new URLSearchParams(location.search),ENGINE=Q0.get('engine')==='classic'?'classic':'next',PHYSICS=ENGINE==='next'&&Q0.get('physics')!=='classic'?'next':'classic';
 const WORLD=createWorld(TRACK,()=>SIM.rand(),()=>SIM.now(),PHYSICS),CFG=WORLD.cfg,TR=WORLD.track,DIRT=TR.dirt;
 const L=CFG.L,R=CFG.R,W=CFG.W,AP=CFG.APRON,HW=W/2;
 const TURN=TR.TURN, P=TR.P, S_LINE=TR.S_LINE, T1=TR.T1, T2=TR.T2;
@@ -51,9 +52,10 @@ function normalAt(s,lat,out){
 
 // ===================== RENDERER / SCENE =====================
 const wrap=$('wrap'), canvas=$('c');
-// ?engine=next draws this same three.js scene with Babylon on WebGPU (WebGL2 fallback): next/render/presenter.ts.
+// The next engine draws this same three.js scene with Babylon on WebGPU (WebGL2 fallback): next/render/presenter.ts.
+// If Babylon cannot start at all, the classic three.js renderer draws it instead.
 // The renderer, composer and bloom below become stand-ins that the presenter reads each frame.
-const GPU=new URLSearchParams(location.search).get('engine')==='next'?await (await import('../next/render/presenter')).createPresenter(canvas):null;
+const GPU=ENGINE==='next'?await import('../next/render/presenter').then(m=>m.createPresenter(canvas)).catch(e=>{console.warn('Next renderer unavailable, using the classic renderer',e);return null;}):null;
 const renderer=GPU?{outputColorSpace:'',toneMapping:0,toneMappingExposure:1,autoClear:true,shadowMap:{enabled:true,type:0,autoUpdate:false,needsUpdate:false},
   setPixelRatio:r=>GPU.setPixelRatio(r),getPixelRatio:()=>GPU.getPixelRatio(),setSize:()=>GPU.resize(),setRenderTarget(){},render(){},clearDepth(){}}
   :new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
@@ -1017,7 +1019,9 @@ let settings={laps:25,ai:11,night:new URLSearchParams(location.search).get('nigh
 // pace/vary: lap-time target as a multiple of the track baseline (the average of its top 20 Time Attack laps),
 // with each car drawn within +/- vary of it, so a Hard field runs right at the record-board average.
 // Track baseline: the average of the top 20 Time Attack laps on this track (seconds), or null with too few laps.
-function aiBaseline(){const l=(REC.lists['time-attack']||[]).slice(0,20).map(r=>r.milliseconds).filter(ms=>ms>=TRACK.minLap);
+// A new board with fewer than 3 laps borrows the classic board's (the next model laps within 3 % of it).
+function aiBaseline(){const pick=list=>(list||[]).slice(0,20).map(r=>r.milliseconds).filter(ms=>ms>=TRACK.minLap);
+  let l=pick(REC.lists['time-attack']);if(l.length<3)l=pick(REC.classicAttack);
   return l.length>=3?l.reduce((a,b)=>a+b,0)/l.length/1000:null;}
 // ag: chance an AI races a car alongside hard (holds its line, door to door) instead of giving it room
 // Each vehicle (truck, Super Late Model) keeps its own saved paint scheme; 'sts_livery' remembers the last one used.
@@ -1028,10 +1032,12 @@ let quality=store.get('sts_q','med');
 
 const MODE_NAMES={'time-attack':'Time Attack','race':'Solo Race','multiplayer':'Online'};
 const RUN_ID=(crypto.randomUUID&&crypto.randomUUID())||'00000000-0000-4000-8000-'+String(Date.now()).slice(-12).padStart(12,'0');
-const REC={lists:{},state:{},me:null,warned:false};let runLap=0;
+// Record boards: the next vehicle model races on versioned keys (`prison-v2` ...); the classic boards are read-only.
+const REC_TRACK=WORLD.model==='next'?TRACK.rec+'-v2':TRACK.rec;
+const REC={lists:{},state:{},me:null,warned:false,classicAttack:null};let runLap=0;
 async function fetchRecords(mode){
   REC.state[mode]='loading';
-  try{const r=await fetch(`/api/racing?records=1&mode=${mode}&track=${TRACK.rec}`,{credentials:'same-origin'});
+  try{const r=await fetch(`/api/racing?records=1&mode=${mode}&track=${REC_TRACK}`,{credentials:'same-origin'});
     if(r.status===401){REC.state[mode]='signedout';return {error:'Sign in on the library to see and set lap records.'};}
     if(!r.ok){REC.state[mode]='error';console.warn('records',mode,r.status,await r.text().catch(()=>''));
       return {error:REC.me?`Lap records are unavailable right now (${r.status}).`:'Sign in on the library to see and set lap records.'};}
@@ -1048,16 +1054,15 @@ async function showRecords(boxId,mode){
   box.querySelector('p').textContent=res.error||`Top 20 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
-  // laps on the next vehicle model stay off the record boards until it replaces the classic one
-  if(ms<TRACK.minLap||WORLD.model!=='classic')return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
-  fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:TRACK.rec})})
+  if(ms<TRACK.minLap||WORLD.model!=='next')return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
+  fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:REC_TRACK})})
     .then(async r=>{
       if(r.status===401||(r.status===403&&!REC.me)){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
       if(!r.ok){console.warn('lap submit',r.status);return;}
       const attack=mode==='time-attack';
       if(attack&&(!best||ms<best.milliseconds))bigMsg('NEW TRACK RECORD',`${MODE_NAMES[mode]} \u00b7 ${fmtLap(ms)}`,3);
       else if(attack&&((REC.lists[mode]||[]).length<20||ms<REC.lists[mode][REC.lists[mode].length-1].milliseconds))toast(`Top 20 lap: ${fmtLap(ms)}`);
-      fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:TRACK.rec,mode},location.origin);}catch(e){}
+      fetchRecords(mode);try{if(window.parent!==window)window.parent.postMessage({type:'tl-lap',track:REC_TRACK,mode},location.origin);}catch(e){}
     }).catch(()=>{});
 }
 const standings=()=>simStandings(WORLD);
@@ -1110,7 +1115,7 @@ function readHostSettings(){settings.laps=+$('sLaps').value||25;settings.ai=clam
 // ===================== NETWORK (PeerJS, host-authoritative race control) =====================
 const PREFIX=ROOM_PREFIX;
 const NET={peer:null,online:false,host:false,myId:'host',code:'',conns:new Map(),hc:null,players:new Map()};
-function resetNet(){try{NET.peer&&NET.peer.destroy();}catch(e){}Object.assign(NET,{peer:null,online:false,host:false,myId:'host',code:'',conns:new Map(),hc:null,players:new Map()});}
+function resetNet(){const peer=NET.peer;Object.assign(NET,{peer:null,online:false,host:false,myId:'host',code:'',conns:new Map(),hc:null,players:new Map()});try{peer&&peer.destroy();}catch(e){}}
 function sendAll(msg,except){if(!NET.online||!NET.host)return;for(const [id,c] of NET.conns)if(id!==except&&c.open)try{c.send(msg);}catch(e){}}
 function sendHost(msg){if(NET.hc&&NET.hc.open)try{NET.hc.send(msg);}catch(e){}}
 function broadcastLobby(){sendAll({t:'lobby',players:[...NET.players.values()],set:settings,racing:race.ph!=='idle',track:TRACK_ID});renderLobby();}
@@ -1147,8 +1152,8 @@ function hostRecv(conn,d){
   if(!d||typeof d!=='object')return;const id=conn.peer;
   switch(d.t){
     case 'hello':
-      if(!helloAccepted(d,WORLD.model)){try{conn.send({t:'version',pv:PROTOCOL_VERSION,ph:WORLD.model});}catch(e){}setTimeout(()=>conn.close(),300);return;}
-      if(NET.players.size>=CFG.maxCars&&!NET.players.has(id)){try{conn.send({t:'full'});}catch(e){}setTimeout(()=>conn.close(),300);return;}
+      if(!helloAccepted(d,WORLD.model)){try{conn.send({t:'version',pv:PROTOCOL_VERSION,ph:WORLD.model});}catch(e){}setTimeout(()=>conn.close(),3000);return;}
+      if(NET.players.size>=CFG.maxCars&&!NET.players.has(id)){try{conn.send({t:'full'});}catch(e){}setTimeout(()=>conn.close(),3000);return;}
       NET.conns.set(id,conn);NET.players.set(id,{id,lv:cleanLv(d.lv)});broadcastLobby();chatLine('',NET.players.get(id).lv.name+' joined');break;
     case 's':if(d.s&&d.s.i===id)applyState(d.s);break;
     case 'd':if(d.i===id){applyDamageMsg(d);sendAll(d,id);}break;
@@ -1543,6 +1548,7 @@ wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)r
 function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)};const gn=$('gName');gn.value=myLv.name;gn.disabled=true;gn.title='Your library username is your driver name';
   const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(!player)rebuildMenuCar();}
 fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
+if(REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
 
 // ===================== INPUT =====================

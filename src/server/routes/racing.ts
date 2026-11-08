@@ -8,9 +8,13 @@ import { issueTicket, redeemTicket } from './account'
 import type { Scheme } from '../../lib/racing'
 import { displayScheme, presets } from '../../lib/racing'
 
-const minimumLapMilliseconds = { circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dellswide: 7000, prison: 7500, dirt: 8000 }
+const minimumLapMilliseconds = {
+  circuit: 8000, oval: 4000, shorttrack: 12000, dells: 8000, dellswide: 7000, prison: 7500, dirt: 8000,
+  'shorttrack-v2': 12000, 'dells-v2': 8000, 'dellswide-v2': 7000, 'prison-v2': 7500, 'dirt-v2': 8000,
+}
+const closedTracks = new Set(['shorttrack', 'dells', 'dellswide', 'prison', 'dirt'])
 const raceModes = z.enum(['practice', 'multiplayer', 'time-attack', 'race'])
-const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells', 'dellswide', 'prison', 'dirt'])
+const trackIds = z.enum(['circuit', 'oval', 'shorttrack', 'dells', 'dellswide', 'prison', 'dirt', 'shorttrack-v2', 'dells-v2', 'dellswide-v2', 'prison-v2', 'dirt-v2'])
 const hex = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const vehicleIds = z.enum(['challenger', 'escalade', 'lamborghini', 'ram', 'muscle-red'])
 const bodyStyles = z.enum(['gt', 'coupe', 'muscle', 'prototype'])
@@ -67,6 +71,7 @@ export async function racing(request: Request, env: Env) {
     return json({ reset: true })
   }
   if (input.action === 'lap') {
+    if (closedTracks.has(input.track)) return json({ error: 'The classic Short Track Showdown boards are closed. Reload the module to race on the current boards.' }, 400)
     if (input.milliseconds < minimumLapMilliseconds[input.track]) return json({ error: 'That lap time is faster than the track allows.' }, 400)
     await env.DB.prepare('INSERT INTO racing_laps (id, user_id, username, milliseconds, mode, track, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
       .bind(`${user.id}:${input.run}:${input.lap}`, user.id, user.username, input.milliseconds, input.mode, input.track, Date.now()).run()

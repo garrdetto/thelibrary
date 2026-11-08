@@ -14,6 +14,7 @@ type LapRecordBoardProps<Mode extends string> = {
   status?: string
   onRetry?: () => void
   trackOptions?: readonly { id: string; name: string }[]
+  archive?: { label: string; note: string; trackOf: (track: string) => string }
 }
 
 function formatLap(milliseconds: number) {
@@ -22,8 +23,10 @@ function formatLap(milliseconds: number) {
   return minutes ? `${minutes}:${(seconds % 60).toFixed(3).padStart(6, '0')}` : `${seconds.toFixed(3)} s`
 }
 
-export function LapRecordBoard<Mode extends string>({ track: defaultTrack, trackName: defaultTrackName, modes, modeNames, initialMode, refreshKey, status, onRetry, trackOptions }: LapRecordBoardProps<Mode>) {
+export function LapRecordBoard<Mode extends string>({ track: defaultTrack, trackName: defaultTrackName, modes, modeNames, initialMode, refreshKey, status, onRetry, trackOptions, archive }: LapRecordBoardProps<Mode>) {
   const [track, setTrack] = useState(defaultTrack)
+  const [archived, setArchived] = useState(false)
+  const bookTrack = archive && archived ? archive.trackOf(track) : track
   const trackName = trackOptions?.find(option => option.id === track)?.name ?? defaultTrackName
   const [mode, setMode] = useState<Mode>(initialMode ?? modes[0])
   const [rows, setRows] = useState<LapRecordRow[] | null>(null)
@@ -47,7 +50,7 @@ export function LapRecordBoard<Mode extends string>({ track: defaultTrack, track
     let live = true
     setError('')
     setRows(null)
-    fetch(`/api/racing?records&mode=${encodeURIComponent(mode)}&track=${encodeURIComponent(track)}`)
+    fetch(`/api/racing?records&mode=${encodeURIComponent(mode)}&track=${encodeURIComponent(bookTrack)}`)
       .then(async response => {
         if (!response.ok) throw new Error('unavailable')
         const result = await response.json() as { records: LapRecordRow[] }
@@ -55,13 +58,13 @@ export function LapRecordBoard<Mode extends string>({ track: defaultTrack, track
       })
       .catch(() => { if (live) { setRows([]); setError('Lap records are unavailable right now. Try again in a moment.') } })
     return () => { live = false }
-  }, [mode, track, refreshKey, lapVersion])
+  }, [mode, bookTrack, refreshKey, lapVersion])
 
   useRecordResetTarget({
-    key: `laps:${track}:${mode}`,
-    label: `${modeNames[mode]} lap records`,
+    key: `laps:${bookTrack}:${mode}`,
+    label: `${archive && archived ? `${archive.label} ` : ''}${modeNames[mode]} lap records`,
     description: `Every saved ${modeNames[mode]} lap on ${trackName} will be deleted for all drivers. Other modes keep their records.`,
-    reset: async () => { await postReset('/api/racing', 'POST', { action: 'reset-records', mode, track }); setLapVersion(value => value + 1) },
+    reset: async () => { await postReset('/api/racing', 'POST', { action: 'reset-records', mode, track: bookTrack }); setLapVersion(value => value + 1) },
   })
 
   function moveTab(event: KeyboardEvent<HTMLDivElement>) {
@@ -85,12 +88,17 @@ export function LapRecordBoard<Mode extends string>({ track: defaultTrack, track
         </div>
         {onRetry && <button type="button" className="lap-board-retry" onClick={onRetry}>Refresh / retry saving</button>}
       </div>
+      {archive && <div className="lap-board-tabs lap-board-books" role="group" aria-label="Record book">
+        <button type="button" aria-pressed={!archived} className={archived ? '' : 'is-active'} onClick={() => setArchived(false)}>Current</button>
+        <button type="button" aria-pressed={archived} className={archived ? 'is-active' : ''} onClick={() => setArchived(true)}>{archive.label}</button>
+      </div>}
       <div className="lap-board-tabs" role="tablist" aria-label="Record book mode" onKeyDown={moveTab}>
         {modes.map(item => (
           <button key={item} type="button" role="tab" data-mode={item} aria-selected={item === mode} tabIndex={item === mode ? 0 : -1} className={item === mode ? 'is-active' : ''} onClick={() => setMode(item)}>{modeNames[item]}</button>
         ))}
       </div>
       <div role="tabpanel" aria-label={`${modeNames[mode]} fastest laps`}>
+        {archive && archived && <p className="lap-board-note">{archive.note}</p>}
         {status && <p className="lap-board-note" role="status">{status}</p>}
         {error && <p className="lap-board-note" role="status">{error}</p>}
         {rows === null
@@ -104,7 +112,7 @@ export function LapRecordBoard<Mode extends string>({ track: defaultTrack, track
                   </tr>
                 ))}</tbody>
               </table></div>
-            : !error && <p className="lap-board-note">No laps in {modeNames[mode]} yet. Set the first one.</p>}
+            : !error && <p className="lap-board-note">{archive && archived ? `No ${archive.label.toLowerCase()} laps in ${modeNames[mode]}.` : `No laps in ${modeNames[mode]} yet. Set the first one.`}</p>}
       </div>
     </section>
   )

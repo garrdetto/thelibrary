@@ -6,7 +6,7 @@ import type { VehicleModel } from '../sim/world'
  * `{t:'version', pv, ph}` and closes the connection, so peers running different physics never share a race. Bump this
  * whenever the wire format or the simulation changes.
  */
-export const PROTOCOL_VERSION = 1
+export const PROTOCOL_VERSION = 2
 
 export const ROOM_PREFIX = 'sts-oval-race-'
 
