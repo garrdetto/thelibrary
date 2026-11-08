@@ -12,6 +12,7 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/houses/house_N4.glb | 5.40 | 0.63 | 66 → 15 | 55 → 15 |
 | maplestreet/houses/house_N2.glb | 5.39 | 0.59 | 63 → 16 | 55 → 16 |
 | maplestreet/houses/house_N8.glb | 5.32 | 0.61 | 60 → 14 | 49 → 14 |
+| hood/vehicles.glb | 5.64 | 1.69 | 417 → 333 | 28 → 28 |
 | maplestreet/houses/house_S5.glb | 5.28 | 0.56 | 57 → 13 | 49 → 13 |
 | maplestreet/houses/house_S2.glb | 4.92 | 0.55 | 58 → 14 | 52 → 14 |
 | maplestreet/houses/house_S7.glb | 4.83 | 0.54 | 58 → 14 | 52 → 14 |

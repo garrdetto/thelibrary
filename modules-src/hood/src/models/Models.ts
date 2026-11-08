@@ -1,13 +1,14 @@
 /**
  * The Blender-built models: the resident body (`public/models/hood/sim.glb`, from `tools/build-sim.py`) and the
  * furniture set (`public/models/hood/furniture.glb`, from `tools/build-furniture.py`). Both are loaded once before
- * the first scene; if either fails (or with `?sims=0` / `?props=0`) the older procedural models are used instead.
+ * the first scene, with the town vehicles (`public/models/hood/vehicles.glb`, from `tools/build-vehicles.py`); if any fails
+ * (or with `?sims=0` / `?props=0` / `?cars=0`) the older procedural models are used instead.
  */
 import * as THREE from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 
-export const models: { sim: THREE.Object3D | null; furniture: THREE.Object3D | null } = { sim: null, furniture: null }
+export const models: { sim: THREE.Object3D | null; furniture: THREE.Object3D | null; vehicles: THREE.Object3D | null } = { sim: null, furniture: null, vehicles: null }
 
 let pending: Promise<void> | null = null
 
@@ -29,9 +30,10 @@ export function loadModels(): Promise<void> {
       console.warn(`The Hood: ${url} could not load, using the simple models`, error)
       return null
     })
-  pending = Promise.all([load('/models/hood/sim.glb', params.get('sims') === '0'), load('/models/hood/furniture.glb', params.get('props') === '0')]).then(([sim, furniture]) => {
+  pending = Promise.all([load('/models/hood/sim.glb', params.get('sims') === '0'), load('/models/hood/furniture.glb', params.get('props') === '0'), load('/models/hood/vehicles.glb', params.get('cars') === '0')]).then(([sim, furniture, vehicles]) => {
     models.sim = sim
     models.furniture = furniture
+    models.vehicles = vehicles
   })
   return pending
 }

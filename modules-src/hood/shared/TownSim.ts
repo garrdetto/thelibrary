@@ -5,7 +5,8 @@
 import { JOBS, SERVICES, type JobId, type ServiceKind } from './Jobs'
 import type { Look } from './Look'
 import { LOTS_PER_STREET, lotAddress, streetName } from './Street'
-import { PLACES, STREET_ORDER, alongPath, frontYard, lampSpot, route, stopSpot, type Path, type PlaceId, type Spot, type Stop } from './Town'
+import { alongPath, route, type Path } from './Drive'
+import { PLACES, STREET_ORDER, frontYard, lampSpot, stopSpot, type PlaceId, type Spot, type Stop } from './Town'
 
 export const SLOT_SECONDS = 240
 export const REQUEST_WINDOW_MS = 60 * 60 * 1000
@@ -42,6 +43,12 @@ export interface VehicleView {
   moving: boolean
   act: string
   bucket: number
+  /** Signed speed in m/s (negative while reversing), acceleration along the body and to its right, front wheel angle and trailer angle. */
+  speed: number
+  accel: number
+  lat: number
+  steer: number
+  trailer: number
 }
 
 export interface WorkerView {
@@ -163,7 +170,7 @@ interface Effects {
 
 type Leg = { t0: number; t1: number; label: string; lights: boolean } & (
   | { kind: 'drive'; path: Path }
-  | { kind: 'stay'; at: Spot; crew?: CrewFn; fx?: (u: number, d: number) => Effects; hidden?: boolean; bucket?: boolean; idle?: boolean }
+  | { kind: 'stay'; at: Spot; park: Spot; crew?: CrewFn; fx?: (u: number, d: number) => Effects; hidden?: boolean; bucket?: boolean; idle?: boolean }
 )
 
 class Plan {
@@ -171,23 +178,29 @@ class Plan {
   t: number
   stop: Stop
   arrivals: number[] = []
+  readonly kind: VehicleKind
+  /** Where the vehicle is and which way it faces, which can differ from the stop's own heading after pulling in from the other direction. */
+  pose: Spot
 
-  constructor(start: number, stop: Stop) {
+  constructor(start: number, stop: Stop, kind: VehicleKind) {
     this.t = start
     this.stop = stop
+    this.kind = kind
+    this.pose = stopSpot(stop)
   }
 
   drive(to: Stop, label: string, lights = false): this {
-    const path = route(this.stop, to, lights)
+    const path = route(this.stop, to, lights, this.kind, this.pose)
     this.legs.push({ kind: 'drive', t0: this.t, t1: this.t + path.duration, label, lights, path })
     this.t += path.duration
     this.stop = to
+    this.pose = path.end
     this.arrivals.push(this.t)
     return this
   }
 
   stay(seconds: number, label: string, extra: Partial<Extract<Leg, { kind: 'stay' }>> = {}): this {
-    this.legs.push({ kind: 'stay', t0: this.t, t1: this.t + seconds, label, lights: false, at: stopSpot(this.stop), ...extra })
+    this.legs.push({ kind: 'stay', t0: this.t, t1: this.t + seconds, label, lights: false, at: stopSpot(this.stop), park: this.pose, ...extra })
     this.t += seconds
     return this
   }
@@ -445,7 +458,7 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
     const house = houses[lot] !== false
     const label = house ? 'house fire' : 'brush fire'
     const target = house ? houseSpot(lot) : frontYard(lot, 10, 8)
-    const engine = new Plan(t0 + 6, U.e1.base).drive({ kind: 'curb', lot }, `Responding to a ${label}`, true)
+    const engine = new Plan(t0 + 6, U.e1.base, U.e1.kind).drive({ kind: 'curb', lot }, `Responding to a ${label}`, true)
     const onScene = engine.t
     const fight = 72
     engine.stay(fight, `Fighting a ${label}`, {
@@ -457,11 +470,11 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
       ]),
     }).drive(U.e1.base, 'Back to Fire Station 7')
     plans.set('e1', engine)
-    const police = new Plan(t0 + 12, U.p2.base).drive({ kind: 'curb', lot, offset: -9 }, `Traffic control at the ${label}`, true)
+    const police = new Plan(t0 + 12, U.p2.base, U.p2.kind).drive({ kind: 'curb', lot, offset: -9 }, `Traffic control at the ${label}`, true)
     police.stay(58, `Traffic control at ${addr(street, lot)}`, { lights: true, crew: (u, d, s) => drivers(s, U.p2.crew, u, d, [{ to: rel(s, 3.6, -4), act: 'Directing traffic', tool: 'cone' }, { to: rel(s, 3.2, 5), act: 'Keeping neighbors back' }]) })
       .drive(U.p2.base, 'Back to the station')
     plans.set('p2', police)
-    const ems = new Plan(t0 + 16, U.a1.base).drive({ kind: 'curb', lot, offset: 9 }, 'Standing by at the fire', true)
+    const ems = new Plan(t0 + 16, U.a1.base, U.a1.kind).drive({ kind: 'curb', lot, offset: 9 }, 'Standing by at the fire', true)
     const firefighterHurt = r(4) < 0.55
     const patient: Person = { ...U.e1.crew[2], id: `${id}-pt`, role: 'firefighter' }
     ems.stay(34, firefighterHurt ? 'Treating a firefighter' : 'Checking the residents', {
@@ -498,7 +511,7 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
     where = place ? place.name : addr(street, lot)
     const reason = atResort ? 'a swimmer who slipped on the pool deck' : (['a resident with chest pain', 'a fall in the kitchen', 'an allergic reaction', 'a sprained ankle'] as const)[Math.floor(r(5) * 4)]
     const patient: Person = { id: `${id}-pt`, role: 'patient', name: atResort ? 'Resort guest' : 'Resident', look: npcLook(street, k * 13 + 5) }
-    const ems = new Plan(t0 + 6, U.a1.base).drive(stop, `Responding to ${reason}`, true)
+    const ems = new Plan(t0 + 6, U.a1.base, U.a1.kind).drive(stop, `Responding to ${reason}`, true)
     const arrive = ems.t
     ems.stay(atResort ? 46 : 36, `Treating ${reason}`, {
       lights: true,
@@ -514,7 +527,7 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
     plans.set('a1', ems)
     let assistEnd = 0
     if (!atResort && r(6) < 0.4) {
-      const engine = new Plan(t0 + 10, U.e1.base).drive({ kind: 'curb', lot, offset: -6 }, 'Assisting Medic 1', true)
+      const engine = new Plan(t0 + 10, U.e1.base, U.e1.kind).drive({ kind: 'curb', lot, offset: -6 }, 'Assisting Medic 1', true)
       engine.stay(30, 'Assisting EMS', { lights: true, crew: (u, d, s) => drivers(s, U.e1.crew.slice(0, 2), u, d, [{ to: at(doorSpot(lot)).map((v, i) => v + (i ? 1.4 : -1.4)) as [number, number], act: 'Assisting EMS' }, { to: rel(s, 2, 0), act: 'Carrying the jump bag', tool: 'bag' }]) })
         .drive(U.e1.base, 'Back to Fire Station 7')
       assistEnd = engine.end
@@ -535,7 +548,7 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
     const o = fight ? { name: 'Kettle Ridge Correctional', stop: PLACE_STOPS.prison!.stop, spot: PLACES.prison.posts.gate, text: 'a fight in the prison yard' } : options[Math.floor(r(7) * options.length)]
     where = o.name
     const suspect: Person = fight ? town.inmates[5] : { id: `${id}-sus`, role: 'suspect', name: 'Suspect', look: npcLook(street, k * 17 + 3) }
-    const police = new Plan(t0 + 6, U.p2.base).drive(o.stop, `Responding to ${o.text}`, true)
+    const police = new Plan(t0 + 6, U.p2.base, U.p2.kind).drive(o.stop, `Responding to ${o.text}`, true)
     const arrive = police.t
     police.stay(fight ? 44 : 36, fight ? 'Backing up the guards' : 'Making an arrest', {
       lights: true,
@@ -572,7 +585,7 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
       call('booking', ['guard'], 'Book in the suspect from Car 2', booking, processed, PLACES.prison.posts.intake.x, PLACES.prison.posts.intake.z)
       feed.push({ at: booking, text: 'Car 2 brought a suspect to Kettle Ridge for booking.', kind: 'crime' })
     } else {
-      const ems = new Plan(t0 + 14, U.a1.base).drive({ kind: 'road', x: 152, side: -1 }, 'Responding to the prison', true)
+      const ems = new Plan(t0 + 14, U.a1.base, U.a1.kind).drive({ kind: 'road', x: 152, side: -1 }, 'Responding to the prison', true)
       const hurt = town.inmates[4]
       ems.stay(30, 'Treating an inmate', { lights: true, crew: (u, d, s) => [...drivers(s, U.a1.crew, u, d, [{ to: rel(s, 3, 2), act: 'Treating an inmate', tool: 'clipboard' }]), { who: hurt, x: rel(s, 3, 3)[0], z: rel(s, 3, 3)[1], yaw: 0, pose: 'lie', act: 'Hurt in a fight' }, { who: town.staff.guard2, x: rel(s, 4.4, 3.4)[0], z: rel(s, 4.4, 3.4)[1], yaw: 0, act: 'Guarding the inmate' }] })
       transport(ems, U.a1.crew, hurt, town.staff.guard2, 'an inmate')
@@ -592,12 +605,12 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
     const x = -50 + r(9) * 100
     where = streetName(street)
     const stop: Stop = { kind: 'road', x: x - side * 9, side }
-    const police = new Plan(t0 + 6, U.p2.base).drive(stop, 'Responding to a crash', true)
+    const police = new Plan(t0 + 6, U.p2.base, U.p2.kind).drive(stop, 'Responding to a crash', true)
     const arrive = police.t
     police.stay(76, 'Working a crash', { lights: true, crew: (u, d, s) => drivers(s, U.p2.crew, u, d, [{ to: [x, side * 1.2], act: 'Directing traffic', tool: 'cone' }, { to: [x + 3, side * 4.2], act: 'Taking statements', tool: 'clipboard' }]) })
       .drive(U.p2.base, 'Back to the station')
     plans.set('p2', police)
-    const ems = new Plan(t0 + 10, U.a1.base).drive({ kind: 'road', x: x + side * 9, side }, 'Responding to a crash', true)
+    const ems = new Plan(t0 + 10, U.a1.base, U.a1.kind).drive({ kind: 'road', x: x + side * 9, side }, 'Responding to a crash', true)
     ems.stay(36, 'Checking the drivers', { lights: true, crew: (u, d, s) => drivers(s, U.a1.crew, u, d, [{ to: [x - 1.5, side * 3], act: 'Checking the drivers', tool: 'clipboard' }, { to: [x + 1.5, side * 3.2], act: 'Checking the drivers' }]) })
       .drive(U.a1.base, 'Back to Hood General')
     plans.set('a1', ems)
@@ -611,7 +624,7 @@ function buildIncident(town: Town, k: number, houses: boolean[]): Incident | nul
   } else if (pick === 'spill') {
     where = 'Hood Fuel & Go'
     const stop = PLACE_STOPS.gas!.stop
-    const engine = new Plan(t0 + 6, U.e1.base).drive(stop, 'Responding to a fuel spill', true)
+    const engine = new Plan(t0 + 6, U.e1.base, U.e1.kind).drive(stop, 'Responding to a fuel spill', true)
     const arrive = engine.t
     engine.stay(62, 'Cleaning up a fuel spill', {
       lights: true,
@@ -639,7 +652,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
     case 'p1': {
       const P = 300, k = Math.floor(t / P), start = k * P
       return cached(`r:${street}:p1:${k}`, () => {
-        const plan = new Plan(start + 4, U.p1.base)
+        const plan = new Plan(start + 4, U.p1.base, U.p1.kind)
         const feed: FeedItem[] = []
         plan.drive({ kind: 'road', x: -55 + hash(street, k, 1) * 30, side: 1 }, 'On patrol').stay(24, 'Running a speed trap', { crew: (u, d, s) => drivers(s, U.p1.crew, u, d, [{ to: rel(s, 2.6, 1), act: 'Running a speed trap', tool: 'clipboard' }]) })
         if (k % 2 === 0) {
@@ -658,7 +671,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
     case 'g': {
       const P = 600, k = Math.floor(t / P), start = k * P + 30
       return cached(`r:${street}:g:${k}`, () => {
-        const plan = new Plan(start, U.g.base)
+        const plan = new Plan(start, U.g.base, U.g.kind)
         plan.drive({ kind: 'curb', lot: STREET_ORDER[0] }, 'Starting the trash route')
         STREET_ORDER.forEach((lot, i) => {
           if (i > 0) plan.drive({ kind: 'curb', lot }, 'Trash route')
@@ -680,7 +693,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
     case 'l1': {
       const P = 1440, k = Math.floor(t / P), start = k * P + 15
       return cached(`r:${street}:l1:${k}`, () => {
-        const plan = new Plan(start, U.l1.base)
+        const plan = new Plan(start, U.l1.base, U.l1.kind)
         const lawns = new Map<number, number>()
         const feed: FeedItem[] = []
         for (const lot of STREET_ORDER) {
@@ -698,7 +711,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
       const P = 180, k = Math.floor(t / P), start = k * P + 20
       return cached(`r:${street}:d1:${k}`, () => {
         const lot = Math.floor(hash(street, k, 31) * LOTS_PER_STREET)
-        const plan = new Plan(start, U.d1.base).drive({ kind: 'curb', lot, offset: 3 }, 'Out on a delivery')
+        const plan = new Plan(start, U.d1.base, U.d1.kind).drive({ kind: 'curb', lot, offset: 3 }, 'Out on a delivery')
           .stay(16, `Delivering burgers to ${addr(street, lot)}`, { crew: (u, d, s) => drivers(s, U.d1.crew, u, d, [{ to: at(doorSpot(lot)), act: 'Delivering burgers', tool: 'tray' }]) })
           .drive(U.d1.base, 'Back to Sunny Side').until(k * P + P, 'Waiting for orders', { idle: true })
         return { plan, feed: [] }
@@ -712,7 +725,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
         const who = { fire: 'off-duty firefighters', hospital: 'off-duty nurses', police: 'off-duty officers', prison: 'off-duty guards' }[offDuty]
         const pickupX = { fire: 110, hospital: 150, police: 80, prison: 160 }[offDuty]
         const side: 1 | -1 = offDuty === 'prison' ? -1 : 1
-        const plan = new Plan(start, U.s1.base).drive({ kind: 'curb', lot, offset: -3 }, 'Shuttle run')
+        const plan = new Plan(start, U.s1.base, U.s1.kind).drive({ kind: 'curb', lot, offset: -3 }, 'Shuttle run')
           .stay(12, `Picking up guests at ${addr(street, lot)}`, { crew: (u, d, s) => drivers(s, U.s1.crew, u, d, [{ to: rel(s, 2.2, 0), act: 'Loading bags' }]) })
           .drive({ kind: 'road', x: pickupX, side }, 'Shuttle run').stay(12, `Picking up ${who}`)
           .drive(U.s1.base, 'Heading to the resort').stay(14, 'Dropping guests at the lodge', { crew: () => [{ who: town.staff.manager, x: PLACES.resort.posts.lawn.x + 2, z: PLACES.resort.posts.lawn.z - 1, yaw: 0, act: 'Greeting new guests' }] })
@@ -723,7 +736,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
     case 't': {
       const P = 900, k = Math.floor((t - 200) / P), start = k * P + 200
       return cached(`r:${street}:t:${k}`, () => {
-        const plan = new Plan(start, U.t.base).drive({ kind: 'bay', place: 'gas', bay: 'tank' }, 'Bringing a fuel delivery')
+        const plan = new Plan(start, U.t.base, U.t.kind).drive({ kind: 'bay', place: 'gas', bay: 'tank' }, 'Bringing a fuel delivery')
         const arrive = plan.t
         plan.stay(90, 'Filling the station tanks', {
           crew: (u, d, s) => [
@@ -739,7 +752,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
       return cached(`r:${street}:b:${k}`, () => {
         const side: 1 | -1 = k % 2 ? 1 : -1
         const x = -40 + hash(street, k, 51) * 80
-        const plan = new Plan(start, U.b.base).drive({ kind: 'road', x, side }, 'Taking the work crew out')
+        const plan = new Plan(start, U.b.base, U.b.kind).drive({ kind: 'road', x, side }, 'Taking the work crew out')
         const arrive = plan.t
         plan.stay(300, `Inmate work crew on ${streetName(street)}`, {
           crew: (u, d, s) => {
@@ -762,7 +775,7 @@ function routinePlan(town: Town, id: string, t: number): { plan: Plan; feed: Fee
       return cached(`r:${street}:u:${k}`, () => {
         const lamp = lampSpot(Math.floor(hash(street, k, 61) * 12))
         const side: 1 | -1 = lamp.z > 0 ? 1 : -1
-        const plan = new Plan(start, U.u.base).drive({ kind: 'road', x: lamp.x + 1, side }, 'Heading to a streetlight')
+        const plan = new Plan(start, U.u.base, U.u.kind).drive({ kind: 'road', x: lamp.x + 1, side }, 'Heading to a streetlight')
           .stay(120, 'Fixing a streetlight', { bucket: true, crew: (_u, _d, s) => [{ who: U.u.crew[0], x: s.x, z: s.z - side * 0.6, yaw: face(s.x, s.z, lamp.x, lamp.z), act: 'Fixing a streetlight', tool: 'wrench' }] })
         if (k % 2) plan.drive({ kind: 'bay', place: 'gas', bay: 'pump4' }, 'Heading to Hood Fuel').stay(20, 'Fueling at Hood Fuel', { crew: (_u, _d, s) => [{ who: town.staff.clerk, x: s.x + 0.2, z: s.z - 1.6, yaw: 0, act: 'Fueling Bucket Truck 2', tool: 'hose' }] })
         plan.drive(U.u.base, 'Back to the yard').until(k * P + 100 + P, 'At the yard', { idle: true })
@@ -822,7 +835,7 @@ export function serviceJobs(street: number, requests: TownRequest[]): ServiceJob
     const { unit: unitId, offset } = RESPONDERS[request.kind]
     const unit = town.units[unitId]
     const start = Math.max(request.at / 1000 + 6, free.get(unitId) ?? 0)
-    const plan = new Plan(start, unit.base)
+    const plan = new Plan(start, unit.base, unit.kind)
     const service = SERVICES[request.kind]
     plan.drive({ kind: 'curb', lot: request.lot, offset }, serviceLabel(request.kind, street, request.lot), request.kind === 'ems')
     const arrive = plan.t
@@ -894,6 +907,8 @@ const PLAYER_POSTS: Record<JobId, (t: number, i: number) => [number, number, num
   nurse: (_t, i) => [PLACES.hospital.posts.entrance.x + 1.6 + i, PLACES.hospital.posts.entrance.z, Math.PI],
 }
 
+const PARKED = { speed: 0, accel: 0, lat: 0, steer: 0, trailer: 0 }
+
 /** Everything happening in town at one moment. */
 export function townAt(street: number, nowMs: number, requests: TownRequest[] = [], players: PlayerWorker[] = [], houses: boolean[] = []): TownState {
   const t = nowMs / 1000
@@ -947,7 +962,7 @@ export function townAt(street: number, nowMs: number, requests: TownRequest[] = 
     if (!leg || (leg.kind === 'stay' && leg.idle)) {
       if (unit.kind === 'tanker') continue
       const s = stopSpot(unit.base)
-      vehicles.push({ id: unit.id, kind: unit.kind, label: unit.label, x: s.x, z: s.z, yaw: s.yaw, lights: false, moving: false, act: leg?.label ?? 'Parked', bucket: 0 })
+      vehicles.push({ id: unit.id, kind: unit.kind, label: unit.label, x: s.x, z: s.z, yaw: s.yaw, lights: false, moving: false, act: leg?.label ?? 'Parked', bucket: 0, ...PARKED })
       slots.push(...unit.home(t))
       continue
     }
@@ -955,12 +970,12 @@ export function townAt(street: number, nowMs: number, requests: TownRequest[] = 
     busy[unit.id] = leg.label
     if (leg.kind === 'drive') {
       const s = alongPath(leg.path, u)
-      vehicles.push({ id: unit.id, kind: unit.kind, label: unit.label, x: s.x, z: s.z, yaw: s.yaw, lights: leg.lights, moving: true, act: leg.label, bucket: 0 })
+      vehicles.push({ id: unit.id, kind: unit.kind, label: unit.label, x: s.x, z: s.z, yaw: s.yaw, lights: leg.lights, moving: true, act: leg.label, bucket: 0, speed: s.speed, accel: s.accel, lat: s.lat, steer: s.steer, trailer: s.trailer })
       continue
     }
     const s = leg.at
     const bucket = leg.bucket ? Math.min(1, u / 6, (d - u) / 6) : 0
-    vehicles.push({ id: unit.id, kind: unit.kind, label: unit.label, x: s.x, z: s.z, yaw: s.yaw, lights: leg.lights, moving: false, act: leg.label, bucket: Math.max(0, bucket) })
+    vehicles.push({ id: unit.id, kind: unit.kind, label: unit.label, x: leg.park.x, z: leg.park.z, yaw: leg.park.yaw, lights: leg.lights, moving: false, act: leg.label, bucket: Math.max(0, bucket), ...PARKED })
     if (leg.crew) slots.push(...leg.crew(u, d, s))
     if (leg.fx) {
       const e = leg.fx(u, d)
