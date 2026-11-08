@@ -138,7 +138,7 @@ export class Game {
     this.avatar = new Avatar(instantiate(this.models.get('hunter')!, null, scene, reg))
     this.buildGear(reg)
     this.wildlife = new Wildlife(this.ctx, scene, this.terrain, this.loot, this.models)
-    this.wildlife.onLegendSpawn = (a) => this.hud.toast(`Fresh sign: a record-class ${SPECIES_BY_ID[a.template.id].name.toLowerCase()} is moving nearby`, 'big')
+    this.wildlife.onLegendSpawn = (a) => this.hud.toast(a.template.id === 'whitetail' ? 'Fresh rubs and scrapes: a record-class buck is roaming these woods' : `Fresh sign: a record-class ${SPECIES_BY_ID[a.template.id].name.toLowerCase()} is moving nearby`, 'big')
     this.wildlife.onLost = (a) => this.hud.toast(a.wounds ? 'The wounded animal is gone. Aim for the vitals behind the shoulder.' : `The ${a.template.name.toLowerCase()} slipped away.`)
     this.fishing = new Fishing(this.ctx, scene, this.terrain, this.loot, this.skill, this.models.get('bobber')!)
     this.fishing.onEvent = (e) => this.onFishing(e)
@@ -449,6 +449,12 @@ export class Game {
 
   private tag(animal: Animal): void {
     animal.tagged = true
+    if (animal.doe) {
+      this.bag.push(animal.specimen)
+      this.hud.setBag(this.bag.length, this.bag.reduce((a, s) => a + s.trophyPoints, 0))
+      this.hud.toast(`Antlerless tag filled: a ${animal.specimen.weightLb} lb doe for the freezer. Only bucks make the record book.`)
+      return
+    }
     this.recordSpecimen(animal.specimen)
   }
 
@@ -591,14 +597,13 @@ export class Game {
     if (signal === 'fish') this.fishing.bite()
     else if (signal === 'game') {
       this.director.rearm('game')
-      if (!this.wildlife.animals.some((a) => a.state !== 'down')) {
-        const animal = this.wildlife.spawnNear(focus, cam.rotation.y)
-        if (animal) {
-          const d = animal.position.subtract(focus)
-          this.hud.toast(`Movement to the ${compassWord(Math.atan2(d.x, d.z))}, about ${Math.round(d.length() * 1.094)} yd. Switch to the rifle (2) and ease in.`)
-        }
+      const animal = onLand ? this.wildlife.lure(focus) : null
+      if (animal) {
+        const d = animal.position.subtract(focus)
+        this.hud.toast(`${animal.doe ? 'Does are' : animal.template.id === 'whitetail' ? 'A buck is' : 'A bear is'} moving to the ${compassWord(Math.atan2(d.x, d.z))}, about ${Math.round(d.length() * 1.094)} yd. Switch to the rifle (2) and ease in.`)
       }
     }
+    this.wildlife.maintain(dt, focus)
     this.updateGear()
     this.updateHud(dt, locked)
     this.foliage.updateGrass(focus)
@@ -876,7 +881,7 @@ export class Game {
     else {
       const down = this.wildlife.nearestDown(this.foot, 3.8)
       const near = this.vehicles.nearest(this.foot, 4.2)
-      if (down) prompt = `E — tag the ${down.template.name.toLowerCase()}`
+      if (down) prompt = `E — tag the ${down.doe ? "doe" : down.template.id === "whitetail" ? "buck" : down.template.name.toLowerCase()}`
       else if (this.fishing.state === 'bite') prompt = 'Click to set the hook!'
       else if (this.fishing.state === 'waiting') prompt = 'Watch the bobber… R to reel in'
       else if (near) prompt = near.kind === 'ATV' ? 'E — drive the UTV' : 'E — board the boat'
