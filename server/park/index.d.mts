@@ -29,7 +29,7 @@ export type ParkState = {
   pathVersion: number; structVersion: number; parks: Park[]; guests: Guest[]; staff: Staff[]
   time: { tick: number; seconds: number; day: number; month: number; year: number; dayFraction: number }
   weather: { kind: 'sunny' | 'cloudy' | 'rain'; temp: number; next: number }; speed: number; news: News[]; newsSeq: number; ended: { text: string; winner: number; values?: number[] } | null
-  trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number }[]>; fields: Map<string, Int16Array>
+  trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number; tunnel?: 'cover' | 'open' }[]>; fields: Map<string, Int16Array>
 }
 export type ColorRole = 'primary' | 'secondary' | 'accent' | 'trim' | 'lights' | 'glow'
 export type ColorScheme = { name: string; colors: Record<ColorRole, string> }
@@ -183,6 +183,10 @@ export function isWalkPath(kind: number): boolean
 export function trackPoses(ride: Entity): Pose[]
 export function samplePiece(pose: Pose, piece: Piece, steps?: number): { x: number; y: number; z: number; psi: number; bank: number }[]
 export function buildTrackPath(ride: Entity): TrackPath | null
+export const TUNNEL_HEAD: number
+export const TUNNEL_ROOF: number
+export const TUNNEL_DEPTH: number
+export function tunnelKind(map: ParkState['map'], x: number, y: number, zmin: number, zmax: number): 'cover' | 'open' | null
 export function sampleAt(path: TrackPath, s: number, out?: Record<string, number>): { x: number; y: number; z: number; tx: number; ty: number; tz: number; ux: number; uy: number; uz: number; index: number; piece: number }
 export function ridePath(state: ParkState, ride: Entity): TrackPath | null
 export function validatePiece(state: ParkState, ride: Entity, piece: Piece): { ok?: boolean; error?: string; cost?: number; closes?: boolean; next?: Pose; piece?: Piece; adjusted?: boolean; cells?: { x: number; y: number; lo: number; hi: number }[] }

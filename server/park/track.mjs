@@ -1,6 +1,6 @@
 import { TILE, UNIT, DIRS, clamp } from './util.mjs'
 import { COASTER_STYLES, FLAT_RIDES, STALLS, SCENERY } from './catalog.mjs'
-import { tileMax, inMap, tileIndex, pathHeightAt } from './terrain.mjs'
+import { tileMax, tileMin, inMap, tileIndex, pathHeightAt } from './terrain.mjs'
 import { hotelHeight } from './hotels.mjs'
 
 export const SLOPE_RATE = { '-2': -8, '-1': -2, '0': 0, '1': 2, '2': 8 }
@@ -48,6 +48,56 @@ function wideShift(psi) {
   return [-Math.sin(psi) * TILE / 2, Math.cos(psi) * TILE / 2]
 }
 export const SAMPLE_STEP = 0.25
+// Tunnels: clear height above the track surface, roof thickness, and how deep
+// track may go below the ground.
+export const TUNNEL_HEAD = 3.2
+export const TUNNEL_ROOF = 0.4
+export const TUNNEL_DEPTH = 12
+// The Grand Prix circuit is eased: its centre line is smoothed so turns start
+// and finish gently and slopes roll into each other.
+const WIDE_SMOOTH_XY = 2.1
+const WIDE_SMOOTH_Z = 1.7
+
+/** 'cover' when a track tile's roof sits under the ground, 'open' when it is an uncovered cut, null on the surface. */
+export function tunnelKind(map, x, y, zmin, zmax) {
+  if (zmin >= tileMax(map, x, y) - 0.05) return null
+  return zmax + TUNNEL_HEAD + TUNNEL_ROOF <= tileMin(map, x, y) ? 'cover' : 'open'
+}
+
+export function canTunnel(style) {
+  return style.trackType === 'coaster' || style.trackType === 'kart' || !style.trackType
+}
+
+export function tunnelOpenAt(state, ti) {
+  return (state.trackCells.get(ti) ?? []).some(cell => cell.tunnel === 'open')
+}
+
+function smoothCurve(pos, count, ds, closed) {
+  const sx = WIDE_SMOOTH_XY / ds, sz = WIDE_SMOOTH_Z / ds
+  const reach = Math.ceil(Math.max(sx, sz) * 2.5)
+  const last = count - 1
+  const weights = sigma => { const w = []; for (let k = -reach; k <= reach; k++) w.push(Math.exp(-(k * k) / (2 * sigma * sigma))); return w }
+  const wx = weights(sx), wz = weights(sz)
+  const out = new Float32Array(pos.length)
+  for (let i = 0; i < count; i++) {
+    let x = 0, y = 0, z = 0, ax = 0, az = 0
+    for (let k = -reach; k <= reach; k++) {
+      let j = i + k
+      if (closed) j = ((j % last) + last) % last
+      else if (j < 0 || j > last) continue
+      const a = wx[k + reach], b = wz[k + reach]
+      x += pos[j * 3] * a; y += pos[j * 3 + 1] * a; ax += a
+      z += pos[j * 3 + 2] * b; az += b
+    }
+    const edge = closed ? 1 : clamp(Math.min(i, last - i) / (reach * 0.8), 0, 1)
+    const e = edge * edge * (3 - 2 * edge)
+    out[i * 3] = pos[i * 3] + (x / ax - pos[i * 3]) * e
+    out[i * 3 + 1] = pos[i * 3 + 1] + (y / ax - pos[i * 3 + 1]) * e
+    out[i * 3 + 2] = pos[i * 3 + 2] + (z / az - pos[i * 3 + 2]) * e
+  }
+  if (closed) { out[last * 3] = out[0]; out[last * 3 + 1] = out[1]; out[last * 3 + 2] = out[2] }
+  pos.set(out)
+}
 // A raised path deck sits this far above the top of any track that passes under it.
 export const PATH_DECK_CLEARANCE = 0.5
 const CURVE_RADIUS = { 1: 1.5, 2: 2.5, 3: 0.5 }
@@ -187,11 +237,14 @@ export function buildTrackPath(ride) {
     frames.push({ psi: a.psi + (b.psi - a.psi) * t, bank: a.bank + (b.bank - a.bank) * t, right: a.right ?? b.right })
   }
   const closed = ride.complete
+  const eased = Boolean(COASTER_STYLES[ride.style]?.wide)
+  if (eased) smoothCurve(pos, count, ds, closed)
   for (let i = 0; i < count; i++) {
     const i0 = i === 0 ? (closed ? count - 2 : 0) : i - 1, i1 = i === count - 1 ? (closed ? 1 : count - 1) : i + 1
     const T = norm([pos[i1 * 3] - pos[i0 * 3], pos[i1 * 3 + 1] - pos[i0 * 3 + 1], pos[i1 * 3 + 2] - pos[i0 * 3 + 2]])
     const f = frames[i]
-    const R = f.right ?? [-Math.sin(f.psi), Math.cos(f.psi), 0]
+    let R = f.right ?? [-Math.sin(f.psi), Math.cos(f.psi), 0]
+    if (eased) { const h = Math.hypot(T[0], T[1]) || 1; R = [-T[1] / h, T[0] / h, 0] }
     let U = norm(cross(T, R))
     if (f.bank) {
       const side = norm(cross(U, T))
@@ -455,9 +508,22 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
     if (map.owner[ti] !== ride.park) return { error: 'You can only build on land your park owns.' }
     const ground = tileMax(map, cell.x, cell.y)
     const minZ = inverted ? cell.zmin - 3.4 : cell.zmin - 0.05
-    if (minZ < ground) return { error: inverted ? 'Not enough room for riders to hang above the ground.' : 'The track would go underground. Raise it or lower the land.' }
+    let tunnel = null
+    if (minZ < ground) {
+      if (inverted) return { error: 'Not enough room for riders to hang above the ground.' }
+      if (!canTunnel(style)) return { error: 'The track would go underground. Raise it or lower the land.' }
+      if (ground - cell.zmin > TUNNEL_DEPTH) return { error: `Tunnels can only go ${TUNNEL_DEPTH}m below the ground.` }
+      if (map.water[ti] >= 0) return { error: 'Tunnels cannot go under water.' }
+      tunnel = tunnelKind(map, cell.x, cell.y, cell.zmin, cell.hi - 2.6)
+      cell.tunnel = tunnel
+      if (tunnel === 'open') {
+        const blocker = map.obj[ti] ? state.entities[map.obj[ti]] : null
+        if (map.path[ti]) return { error: 'A tunnel opening cannot be cut under a footpath.' }
+        if (blocker && blocker.id !== ride.id) return { error: 'A tunnel opening needs clear ground.' }
+      }
+    }
     if (cell.zmin - ground > style.maxHeight * UNIT) return { error: `${style.name} track can only rise ${style.maxHeight * UNIT}m above the ground.` }
-    const obj = map.obj[ti], entity = obj ? state.entities[obj] : null
+    const obj = map.obj[ti], entity = obj && !tunnel ? state.entities[obj] : null
     if (entity && entity.id !== ride.id && entity.kind !== 'coaster') {
       const clearance = entity.type === 'scenery' ? SCENERY[entity.kind]?.height ?? 3
         : entity.type === 'ride' ? (FLAT_RIDES[entity.ride]?.height ?? 6) * 0.4
@@ -478,7 +544,7 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
       if (cell.lo < other.hi && other.lo < cell.hi) return { error: 'The track would collide with itself.' }
     }
   }
-  return { ok: true, cells, next, closes, piece, adjusted: piece.c !== requested.c || piece.s !== requested.s || piece.sp !== requested.sp, cost: Math.round(style.pieceCost * pieceLengthTiles(piece) * (piece.sp === 'loop' || piece.sp === 'corkscrew' ? 2.2 : piece.sp === 'station' ? 1.6 : piece.sp ? 1.3 : 1) + Math.max(0, next.h - start.h) * 3) }
+  return { ok: true, cells, next, closes, piece, adjusted: piece.c !== requested.c || piece.s !== requested.s || piece.sp !== requested.sp, cost: Math.round(style.pieceCost * pieceLengthTiles(piece) * (piece.sp === 'loop' || piece.sp === 'corkscrew' ? 2.2 : piece.sp === 'station' ? 1.6 : piece.sp ? 1.3 : 1) + Math.max(0, next.h - start.h) * 3 + cells.filter(cell => cell.tunnel).length * style.pieceCost * 0.8) }
 }
 
 export function entityLabel(entity) {
@@ -503,7 +569,12 @@ export function addRideCells(state, ride) {
       if (!inMap(state.map, cell.x, cell.y)) continue
       const ti = tileIndex(state.map, cell.x, cell.y)
       const list = state.trackCells.get(ti) ?? []
-      list.push({ ride: ride.id, piece: index, lo: cell.lo, hi: cell.hi })
+      const entry = { ride: ride.id, piece: index, lo: cell.lo, hi: cell.hi }
+      if (!inverted) {
+        const kind = tunnelKind(state.map, cell.x, cell.y, cell.zmin, cell.hi - 2.6)
+        if (kind) entry.tunnel = kind
+      }
+      list.push(entry)
       state.trackCells.set(ti, list)
     }
   })
