@@ -1,6 +1,6 @@
 /** Post-processing chain installed as the App render pass. With `post.enabled`, a tier that allows post and some `effects`, it builds a TSL RenderPipeline (GTAO, TRAA, bloom, lens flare, vignette, grain) on the HDR scene colour; otherwise, or if the pipeline cannot be built, it renders the scene directly. */
 import * as THREE from 'three/webgpu'
-import { float, length, mrt, normalView, output, packNormalToRGB, pass, sample, screenUV, smoothstep, uniform, unpackRGBToNormal, velocity, vec4 } from 'three/tsl'
+import { float, length, mix, mrt, normalView, output, packNormalToRGB, pass, sample, screenUV, smoothstep, uniform, unpackRGBToNormal, velocity, vec4 } from 'three/tsl'
 import { ao } from 'three/addons/tsl/display/GTAONode.js'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js'
@@ -13,7 +13,7 @@ import type { PostConfig, PostEffects, QualitySettings } from '../config'
 export interface PostChain {
   readonly enabled: boolean
   render(): void
-  /** Focus distance in metres and blur strength 0–1 for the depth-of-field effect; a no-op without one. */
+  /** Focus distance in metres and blur strength 0–1 for the depth-of-field effect (strength 0 leaves the image untouched); a no-op without one. */
   setFocus(distance: number, strength: number): void
   dispose(): void
 }
@@ -50,7 +50,10 @@ function buildPipeline(app: App, effects: PostEffects, focus: Focus): THREE.Rend
     color = vec4(color.rgb.mul(shade), color.a)
   }
   if (effects.taa) color = traa(color, depth, scenePass.getTextureNode('velocity'), app.camera) as unknown as typeof color
-  if (effects.dof) color = dof(color, scenePass.getViewZNode(), focus.distance, float(effects.dof.focalLength), focus.strength.mul(effects.dof.bokehScale)) as unknown as typeof color
+  if (effects.dof) {
+    const blurred = dof(color, scenePass.getViewZNode(), focus.distance, float(effects.dof.focalLength), focus.strength.mul(effects.dof.bokehScale)) as unknown as typeof color
+    color = mix(color, blurred, focus.strength.mul(1000).min(1)) as unknown as typeof color
+  }
   if (effects.bloom) {
     const glow = bloom(color, effects.bloom.strength, effects.bloom.radius, effects.bloom.threshold)
     if (effects.flare) {

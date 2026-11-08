@@ -45,7 +45,7 @@ async function boot(): Promise<void> {
   const adaptive = budget.adaptive ? createAdaptiveResolution({ max: budget.pixelRatio, min: 0.75, apply: (ratio) => app.setPixelRatioCap(ratio) }) : null
 
   const input = app.own(new Input<Action>(container, config.bindings, config.engine.input))
-  const actors = new Actors(config.actors)
+  const actors = new Actors(config.actors, budget.textures)
   app.graph.add('characters', actors.root)
   app.own(actors)
   const screens = new Screens()
@@ -65,7 +65,7 @@ async function boot(): Promise<void> {
     const home = contest.teams[1].roster.team
     const away = contest.teams[0].roster.team
     const theme = themeFor(contest.park.id)
-    field = createField(contest.park, config.field, theme, home, away)
+    field = createField(contest.park, config.field, theme, home, away, budget.textures)
     app.graph.add('world', field.root)
     lights = createStadiumLights(app, rig, budget, field.towers, field.lampMaterial)
     const preset = LIGHT_PRESETS[time]

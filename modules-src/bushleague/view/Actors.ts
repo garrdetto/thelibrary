@@ -3,43 +3,11 @@ import * as THREE from 'three/webgpu'
 import { BASES, FIELDER_HOME, FIELD_POSITIONS, PLATE_FRONT, Rng, stringSeed, strikeZone, type Contest, type FieldPosition, type Hand, type Player, type Vec3 } from '../sim'
 import type { ModuleConfig } from '../config'
 import { Ballplayer } from '../players/Ballplayer'
-import { SKIN_TONES, UMPIRE_UNIFORM, teamUniform, type UniformColors } from '../players/Uniform'
+import { SKIN_TONES, UMPIRE_UNIFORM, teamUniform, type JerseyLook, type UniformColors } from '../players/Uniform'
+import { faceTexture, leatherTexture, letteringTexture, type TextureDetail } from './Textures'
 import { toWorld, worldXYZ } from './space'
 
 type ActorLook = ModuleConfig['actors']
-
-/** White leather with the red figure-eight seam and its stitches, laid out for a sphere's equirectangular UVs. */
-function seamTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = 256
-  canvas.height = 128
-  const context = canvas.getContext('2d')!
-  context.fillStyle = '#f6f3ea'
-  context.fillRect(0, 0, 256, 128)
-  const seam = (u: number) => 64 + Math.sin(u * Math.PI * 4) * 34
-  context.strokeStyle = '#c4312a'
-  context.lineWidth = 2.2
-  for (const offset of [-3, 3]) {
-    context.beginPath()
-    for (let x = 0; x <= 256; x += 2) {
-      const y = seam(x / 256) + offset
-      if (x === 0) context.moveTo(x, y)
-      else context.lineTo(x, y)
-    }
-    context.stroke()
-  }
-  context.lineWidth = 1.2
-  for (let x = 0; x < 256; x += 6) {
-    const y = seam(x / 256)
-    context.beginPath()
-    context.moveTo(x - 2, y - 5)
-    context.lineTo(x + 2, y + 5)
-    context.stroke()
-  }
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  return texture
-}
 
 const SLIDE_BASES = [2, 3, 0].map((base) => toWorld(BASES[base]))
 
@@ -77,20 +45,20 @@ export class Actors {
   private slid = new Set<string>()
   private readonly scratch = new THREE.Vector3()
 
-  constructor(look: ActorLook) {
+  constructor(look: ActorLook, private readonly detail: TextureDetail = { size: 1024, anisotropy: 4 }) {
     this.root.name = 'actors'
     this.gloveMaterial = this.own(new THREE.MeshStandardMaterial({ color: '#6b3f1f', roughness: 0.7 }))
     this.gloveGeometry = this.own(new THREE.SphereGeometry(0.075, 12, 10).scale(1, 1.25, 0.55))
     this.batGeometry = this.own(new THREE.CylinderGeometry(0.034, 0.016, look.bat, 10))
     this.batMaterial = this.own(new THREE.MeshStandardMaterial({ color: '#c8955a', roughness: 0.45 }))
-    this.umpire = this.makeFigure({ body: 'stocky', height: 1.8, throws: 'R' } as Player, UMPIRE_UNIFORM, '#d9a07a')
+    this.umpire = this.makeFigure({ body: 'stocky', height: 1.8, throws: 'R' } as Player, UMPIRE_UNIFORM, '#d9a07a', { lettering: null, pinstripe: null, face: faceTexture(detail) })
     this.umpire.showGlove(false)
     this.umpire.setBase('crouch')
     this.umpire.teleport(worldXYZ(0.55, 0, -2.0))
     this.umpire.face(0, true)
     this.root.add(this.umpire.group)
 
-    this.ball = new THREE.Mesh(this.own(new THREE.SphereGeometry(look.ball, 24, 16)), this.own(new THREE.MeshStandardMaterial({ map: this.own(seamTexture()), roughness: 0.45, emissive: new THREE.Color('#2a2820') })))
+    this.ball = new THREE.Mesh(this.own(new THREE.SphereGeometry(look.ball, 24, 16)), this.own(new THREE.MeshStandardMaterial({ map: this.own(leatherTexture(detail)), roughness: 0.45, emissive: new THREE.Color('#2a2820') })))
     this.ball.castShadow = true
     const trailGeometry = this.own(new THREE.BufferGeometry())
     trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3))
@@ -130,8 +98,17 @@ export class Actors {
     return item
   }
 
-  private makeFigure(player: Player, uniform: UniformColors, skin: string): Ballplayer {
-    return new Ballplayer({ body: player.body ?? 'stocky', height: player.height ?? 1.85, throws: player.throws, uniform, skin }, this.gloveMaterial, this.batGeometry, this.batMaterial, this.gloveGeometry)
+  private makeFigure(player: Player, uniform: UniformColors, skin: string, jersey?: JerseyLook): Ballplayer {
+    return new Ballplayer({ body: player.body ?? 'stocky', height: player.height ?? 1.85, throws: player.throws, uniform, skin, jersey }, this.gloveMaterial, this.batGeometry, this.batMaterial, this.gloveGeometry)
+  }
+
+  /** Surname, number and club wordmark in the uniform's trim, outlined against the jersey; some clubs wear pinstriped home whites. */
+  private jerseyFor(player: Player, side: 0 | 1, uniform: UniformColors): JerseyLook {
+    const team = this.contest!.teams[side].roster.team
+    const light = new THREE.Color(uniform.jersey).getHSL({ h: 0, s: 0, l: 0 }).l > 0.6
+    const lettering = letteringTexture({ name: player.last, number: player.number, wordmark: team.name, fill: uniform.trim, outline: light ? '#f7f4ec' : '#111318', pinstripe: null }, this.detail)
+    const pinstripe = side === 1 && stringSeed(team.id) % 3 === 0 ? uniform.trim : null
+    return { lettering, pinstripe, face: faceTexture(this.detail) }
   }
 
   /** Points the cast at a new contest: home whites for the home club, road colors for the visitors. */
@@ -153,7 +130,8 @@ export class Actors {
     if (!figure) {
       const side = contest.teams[0].players.has(id) ? 0 : 1
       const player = contest.player(id)
-      figure = this.makeFigure(player, this.uniforms.get(contest.teams[side].roster.team.id)!, skinFor(player))
+      const uniform = this.uniforms.get(contest.teams[side].roster.team.id)!
+      figure = this.makeFigure(player, uniform, skinFor(player), this.jerseyFor(player, side, uniform))
       this.root.add(figure.group)
       this.figures.set(id, figure)
     }
@@ -215,6 +193,17 @@ export class Actors {
       figure.setBase('ready')
     }
     for (const [id, figure] of this.figures) if (!this.onField.has(id)) figure.group.visible = false
+    this.setCatcherHidden(this.catcherHidden)
+  }
+
+  private catcherHidden = false
+
+  /** The catcher's-eye camera sits where the catcher crouches, so the catcher steps out of view while it is up. */
+  setCatcherHidden(hidden: boolean): void {
+    this.catcherHidden = hidden
+    const catcher = this.defense.get('C')
+    const figure = catcher ? this.figures.get(catcher) : null
+    if (figure) figure.group.visible = !hidden
   }
 
   hideBatter(): void {
