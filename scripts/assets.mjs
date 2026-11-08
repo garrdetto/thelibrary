@@ -35,11 +35,14 @@ const KEEP_NODE_NAMES = /^(Wheel_|Tire_|RaceNumber_|Hitch|Trailer)/i
  * `simplify` is the meshopt simplifier error bound (0 = off); `join` merges sibling meshes per material (`flatten: false` keeps the
  * hierarchy, so wheel and part pivots survive and only parts under the same parent merge); `compress: false` skips
  * quantization and meshopt (instanced crowds and trees: their per-instance float transforms only grow when quantized).
+ * `palette: false` keeps every material (and its name) for modules that recolor slots by name; `keepAttributes: true` keeps UVs on
+ * untextured materials whose textures the module paints at runtime.
  */
 const PRESETS = [
   { match: /^maplestreet\/houses\//, name: 'house', join: true, simplify: 0.0005, textureQuality: 92 },
   { match: /^(maplestreet\/town|sandlot3d\/ballpark_|shorttrack\/track_|botwreck\/arena|botwreck\/crates)/, name: 'static', join: true, simplify: 0, textureQuality: 92 },
   { match: /^shorttrack\/(crowd|trees)_/, name: 'instanced', join: false, simplify: 0, textureQuality: 92, compress: false },
+  { match: /^sandlot3d\/(athlete|field_detail)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /^sandlot3d\//, name: 'figure', join: true, simplify: 0, textureQuality: 92 },
   { match: /./, name: 'rig', join: true, flatten: false, simplify: 0, textureQuality: 92 },
 ]
@@ -333,7 +336,8 @@ async function worker() {
   const optimize = async (document, preset) => {
     document.setLogger(quiet)
     const keep = rootNames(document)
-    await document.transform(fn.unpartition(), fn.dedup(), fn.instance({ min: 5 }), fn.palette({ min: 5 }))
+    await document.transform(fn.unpartition(), fn.dedup(), fn.instance({ min: 5 }))
+    if (preset.palette !== false) await document.transform(fn.palette({ min: 5 }))
     if (preset.flatten !== false) await document.transform(fn.flatten())
     if (preset.join) {
       stripJoinNames(document, keep)
@@ -341,7 +345,7 @@ async function worker() {
     }
     await document.transform(fn.weld())
     if (preset.simplify > 0) await document.transform(fn.simplify({ simplifier: MeshoptSimplifier, ratio: 0, error: preset.simplify, lockBorder: true }))
-    await document.transform(fn.resample(), fn.prune(), fn.sparse())
+    await document.transform(fn.resample(), fn.prune({ keepAttributes: preset.keepAttributes === true }), fn.sparse())
     for (const texture of document.getRoot().listTextures()) {
       const size = texture.getSize()
       const tiny = !size || Math.max(size[0], size[1]) <= 256

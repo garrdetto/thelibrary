@@ -1967,9 +1967,76 @@ function drawCostumeHead(c, kid, x, y, r, s, o, t) {
 }
 
 /* ---------- full body, front view ---------- */
+/* Blender-rendered kids (tools/build-kids.py): one atlas per kid plus kids.json, which lists every frame's set
+   (g glove, n no glove, b helmet base, h helmet layer), limb angles and hand/head/chest anchors. drawKid shows the frame
+   whose limb angles are nearest the pose; until a kid's atlas has loaded, or with ?sprites=0, the drawn kid is used. */
+const KID_SPRITES = { meta: null, img: {}, tint: {} };
+if (new URLSearchParams(location.search).get('sprites') !== '0') {
+  fetch('sprites/kids/kids.json').then(r => (r.ok ? r.json() : null)).then(j => { KID_SPRITES.meta = j; }).catch(() => {});
+}
+function kidSheet(kid) {
+  const M = KID_SPRITES.meta, k = M && M.kids[kid.id];
+  if (!k) return null;
+  let im = KID_SPRITES.img[kid.id];
+  if (!im) { im = KID_SPRITES.img[kid.id] = new Image(); im.src = `sprites/kids/${kid.id}.webp?v=${M.version}`; }
+  return im.complete && im.naturalWidth ? { M, k, im } : null;
+}
+function nearestKidFrame(k, set, pose) {
+  let best = null, bd = Infinity;
+  k.frames.forEach((f, i) => {
+    if (f.set !== set) return;
+    let dd = 0;
+    for (const key of ['la', 'ra', 'll', 'rl']) { const a = f[key], b = pose[key]; dd += (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2; }
+    if (dd < bd) { bd = dd; best = i; }
+  });
+  return best;
+}
+function kidSpriteCell(M, i) { return [(i % M.cols) * M.cell[0], Math.floor(i / M.cols) * M.cell[1]]; }
+function tintedHelmets(sh, kid, color) {
+  const key = kid.id + color;
+  if (KID_SPRITES.tint[key]) return KID_SPRITES.tint[key];
+  const { M, k, im } = sh, cv = makeCanvas(im.naturalWidth, im.naturalHeight), g = cv.getContext('2d');
+  k.frames.forEach((f, i) => {
+    if (f.set !== 'h') return;
+    const [x, y] = kidSpriteCell(M, i), [w, h] = M.cell;
+    g.drawImage(im, x, y, w, h, x, y, w, h);
+    g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = color; g.fillRect(x, y, w, h);
+    g.globalCompositeOperation = 'destination-in'; g.drawImage(im, x, y, w, h, x, y, w, h); g.restore();
+  });
+  return (KID_SPRITES.tint[key] = cv);
+}
+function drawKidSprite(c, kid, sh, x, y, s, o, pose, d) {
+  const { M, k, im } = sh, [cw, ch] = M.cell, [fx, fy] = M.foot, sc = s / M.ppu;
+  const fi = nearestKidFrame(k, o.helmet ? 'b' : o.glove ? 'g' : 'n', pose);
+  if (fi == null) return null;
+  c.save();
+  c.translate(x, y - pose.bob * s);
+  if (pose.rot) { c.translate(0, -d.hip * s * 0.6); c.rotate(pose.rot); c.translate(0, d.hip * s * 0.6); }
+  if (o.flip) c.scale(-1, 1);
+  if (pose.scaleX !== 1) c.scale(Math.max(0.15, Math.abs(pose.scaleX)) * Math.sign(pose.scaleX || 1), 1);
+  if (o.shadow !== false && !pose.rot) { const g = c.createRadialGradient(0, pose.bob * s, 1, 0, pose.bob * s, d.sw * 1.7 * s); g.addColorStop(0, 'rgba(0,0,0,0.38)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.beginPath(); c.ellipse(0, pose.bob * s, d.sw * 1.7 * s, d.sw * 0.5 * s, 0, 0, 6.3); c.fill(); }
+  c.rotate(pose.lean);
+  const blit = (src, i) => { const [sx, sy] = kidSpriteCell(M, i); c.drawImage(src, sx, sy, cw, ch, -fx * sc, -fy * sc, cw * sc, ch * sc); };
+  c.imageSmoothingQuality = 'high';
+  blit(im, fi);
+  if (o.helmet) { const hi = nearestKidFrame(k, 'h', pose); if (hi != null) blit(tintedHelmets(sh, kid, o.helmet), hi); }
+  const f = k.frames[fi], at = q => ({ hx: (q[0] - fx) * sc, hy: (q[1] - fy) * sc });
+  const handPos = { [-1]: at(f.hands['-1']), 1: at(f.hands['1']) };
+  if (o.glove && o.hasBall) { const h = handPos[k.gloveSide]; blob(c, h.hx + k.gloveSide * s * 0.08, h.hy - s * 0.1, s * 0.09, s * 0.09, '#fff', 1); }
+  if (pose.ballSide && handPos[pose.ballSide]) { const h = handPos[pose.ballSide]; blob(c, h.hx, h.hy - d.arm * s * 0.2, Math.max(1.5, s * 0.1), Math.max(1.5, s * 0.1), '#fbfbf2', Math.max(0.8, s * 0.03)); }
+  if (o.number && s > 5 && !['pinstripe', 'suit', 'blazer', 'tux', 'labcoat', 'smock', 'chefcoat', 'robe', 'police'].includes(fitOf(kid).top)) {
+    const p = at(f.chest), col = kid.look.shirt;
+    c.fillStyle = shade(col, getLum(col) > 0.55 ? -0.55 : 0.6); c.font = `bold ${Math.max(6, s * 0.24)}px ${FONT}`; c.textAlign = 'center'; c.fillText(String(kid.number), p.hx + d.sw * s * 0.32, p.hy + s * 0.1);
+  }
+  c.restore();
+  return handPos;
+}
 function drawKid(c, kid, x, y, s, o = {}) {
   const L = kid.look, F = fitOf(kid), d = bodyDims(kid), t = o.t != null ? o.t : now();
   const pose = poseFor(kid, o, t);
+  const sheet = kidSheet(kid);
+  if (sheet) { const drawn = drawKidSprite(c, kid, sheet, x, y, s, o, pose, d); if (drawn) return drawn; }
   c.save();
   c.translate(x, y - pose.bob * s);
   if (pose.rot) { c.translate(0, -d.hip * s * 0.6); c.rotate(pose.rot); c.translate(0, d.hip * s * 0.6); }
@@ -2132,7 +2199,61 @@ function hull2(pts) {
 }
 function pathPts(c, pts) { c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)); c.closePath(); }
 
+/* Blender-rendered close-up batters (tools/build-batter.py): each frame is posed with the same maths as drawBatter3D and
+   rendered through the projB camera, so it is drawn at its stored canvas position. batters.json lists every frame's side,
+   swing phase k (null in the stance), contact height cy, bunt flag, layer (a batter, h white helmet tinted per team),
+   atlas rect, canvas position and bat tip. Until the atlas loads, or with ?sprites=0, the drawn batter is used. */
+const BATTER_SPRITES = { meta: null, img: {}, tint: {} };
+if (new URLSearchParams(location.search).get('sprites') !== '0') {
+  fetch('sprites/kids/batters.json').then(r => (r.ok ? r.json() : null)).then(j => { BATTER_SPRITES.meta = j; }).catch(() => {});
+}
+function batterSheet(kid) {
+  const M = BATTER_SPRITES.meta, k = M && M.kids[kid.id];
+  if (!k) return null;
+  let im = BATTER_SPRITES.img[kid.id];
+  if (!im) { im = BATTER_SPRITES.img[kid.id] = new Image(); im.src = `sprites/kids/bat-${kid.id}.webp?v=${M.version}`; }
+  return im.complete && im.naturalWidth ? { M, k, im } : null;
+}
+function batterFrame(frames, layer, side, swingT, cy, bunt) {
+  const pool = frames.filter(f => f.layer === layer && f.side === side && (bunt ? f.bunt : swingT == null ? f.k == null && !f.bunt : f.k != null));
+  if (!pool.length) return null;
+  if (bunt || swingT == null) return pool[0];
+  let k = pool[0].k;
+  for (const f of pool) if (Math.abs(f.k - swingT) < Math.abs(k - swingT)) k = f.k;
+  return pool.filter(f => f.k === k).reduce((a, b) => (Math.abs(b.cy - cy) < Math.abs(a.cy - cy) ? b : a));
+}
+function tintedBatterHelmets(sh, kid, color) {
+  const key = kid.id + color;
+  if (BATTER_SPRITES.tint[key]) return BATTER_SPRITES.tint[key];
+  const { k, im } = sh, cv = makeCanvas(im.naturalWidth, im.naturalHeight), g = cv.getContext('2d');
+  for (const f of k.frames) {
+    if (f.layer !== 'h') continue;
+    const [x, y, w, h] = f.rect;
+    g.drawImage(im, x, y, w, h, x, y, w, h);
+    g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = color; g.fillRect(x, y, w, h);
+    g.globalCompositeOperation = 'destination-in'; g.drawImage(im, x, y, w, h, x, y, w, h); g.restore();
+  }
+  return (BATTER_SPRITES.tint[key] = cv);
+}
+function drawBatterSprite(c, kid, sh, bx, bz, side, swingT, helmetColor, bunt, contactY) {
+  const H = kid.height, cy = contactY != null ? clamp(contactY, 0.9, H * 0.75) : H * 0.48, dir = side === 'R' ? 1 : -1;
+  const f = batterFrame(sh.k.frames, 'a', side, swingT, cy, bunt);
+  if (!f) return false;
+  { const g0 = projB(bx - dir * 0.1, 0, bz), g1 = projB(bx + dir * 1.2, 0, bz), r = Math.abs(g1.x - g0.x); const g = c.createRadialGradient(g0.x, g0.y, 2, g0.x, g0.y, r); g.addColorStop(0, 'rgba(0,0,0,0.38)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.beginPath(); c.ellipse(g0.x, g0.y, r, r * 0.3, 0, 0, 6.3); c.fill(); }
+  const blit = (src, fr) => { const [x, y, w, h] = fr.rect; c.drawImage(src, x, y, w, h, fr.at[0], fr.at[1], w, h); };
+  blit(sh.im, f);
+  const hf = batterFrame(sh.k.frames, 'h', side, swingT, cy, bunt);
+  if (hf) blit(tintedBatterHelmets(sh, kid, helmetColor || '#c0392b'), hf);
+  if (swingT != null && swingT > 0.38 && swingT < 0.68) {
+    const pf = batterFrame(sh.k.frames, 'a', side, swingT - 0.07, cy, false);
+    if (pf && pf !== f) { c.save(); c.globalAlpha = 0.28; c.fillStyle = '#ffffff'; c.beginPath(); c.moveTo(f.tip[0], f.tip[1]); c.lineTo(pf.tip[0], pf.tip[1]); c.lineTo(f.mid[0], f.mid[1]); c.closePath(); c.fill(); c.restore(); }
+  }
+  return true;
+}
 function drawBatter3D(c, kid, bx, bz, side, swingT, t, helmetColor, bunt, contactY) {
+  const sheet = batterSheet(kid);
+  if (sheet && Math.abs(Math.abs(bx) - sheet.M.batX) < 1e-6 && Math.abs(bz - sheet.M.batZ) < 1e-6 && drawBatterSprite(c, kid, sheet, bx, bz, side, swingT, helmetColor, bunt, contactY)) return;
   const L = kid.look, F = fitOf(kid), d = bodyDims(kid), H = d.H, k = H / 4.4;
   const dir = side === 'R' ? 1 : -1;
   const W3 = p => V(bx + dir * p.x, p.y, bz + p.z);                // local -> world

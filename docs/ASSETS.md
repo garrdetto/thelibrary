@@ -30,6 +30,8 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | shorttrack/crowd_bullring.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
 | shorttrack/crowd_dells.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
 | shorttrack/crowd_dirt.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
+| sandlot3d/field_detail.glb | 2.74 | 0.81 | 2 → 2 | 2 → 2 |
+| sandlot3d/athlete.glb | 0.92 | 0.23 | 12 → 12 | 12 → 12 |
 | shorttrack/car_slm_lod1.glb | 0.68 | 0.21 | 12 → 8 | 6 → 4 |
 | maplestreet/vehicles/sedan.glb | 0.50 | 0.09 | 19 → 9 | 9 → 5 |
 | maplestreet/vehicles/coupe.glb | 0.49 | 0.09 | 19 → 9 | 9 → 5 |
