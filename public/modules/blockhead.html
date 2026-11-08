@@ -52,7 +52,7 @@
       <div><h3>Solo</h3><p>Move <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows · fire the way you face with <kbd>Space</kbd> or <kbd>J</kbd> · switch weapon <kbd>Q</kbd>/<kbd>E</kbd> or <kbd>1</kbd>–<kbd>6</kbd>. The mouse aims and a click fires too. On touch screens use the stick and the fire button.</p></div>
       <div><h3>Two players, one keyboard</h3><p>P1: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> + <kbd>Space</kbd>, switch <kbd>Q</kbd>/<kbd>E</kbd>. P2: arrows + <kbd>Enter</kbd> or <kbd>/</kbd>, switch <kbd>,</kbd>/<kbd>.</kbd>. Shared score; a downed partner gets back up next wave at half health.</p></div>
     </div>
-    Pause with <kbd>P</kbd> or <kbd>Esc</kbd>. Kills in quick succession build a multiplier up to x10 that resets two seconds after the last one. Barrels explode when shot and set off their neighbours. Your score is saved to the leaderboard when the round ends.
+    Pause with <kbd>P</kbd> or <kbd>Esc</kbd>. Kills in quick succession build a multiplier up to x10 that resets two seconds after the last one. Barrels explode when shot and set off their neighbours. Your score is saved to the leaderboard as you play, so a siege cut short still counts.
   </footer>
 </main>
 <script src="module-scores.js"></script>
@@ -247,6 +247,7 @@ function addShake(v) { if (!reduceMQ.matches) shake = Math.min(14, shake + v); }
 
 function addScore(pts) {
   score = Math.min(100000000, score + pts);
+  if (!submitted && score > 0 && window.tlScores && tlScores.progress) tlScores.progress('blockhead', clamp(Math.round(score), 1, 100000000));
   for (let i = 1; i < WEAPONS.length; i++) if (!unlocked[i] && score >= WEAPONS[i].unlock) {
     unlocked[i] = true;
     for (const p of players) p.ammo[i] += WEAPONS[i].start;

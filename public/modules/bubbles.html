@@ -30,7 +30,7 @@
     <p class="status" id="status" aria-live="polite"></p>
     <div class="overlay" id="overlay"><h2 id="ovTitle">Round over</h2><p id="ovText"></p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">New round</button></div></div>
   </section>
-  <footer>Aim with the mouse, or drag on a touch screen and let go to fire. <kbd>←</kbd> <kbd>→</kbd> aim and <kbd>Space</kbd> or <kbd>↑</kbd> fires. Click the waiting bubble or press <kbd>X</kbd> to swap. Shots bank off the side walls. Each pop is worth 10 points, and bubbles you cut loose from the ceiling fall for a bonus that grows with the size of the drop. Every few shots that don't pop anything, a new row pushes in from the top; clear the board to reach the next level. The round ends when a bubble crosses the dashed line. Your score is saved to the leaderboard at the end of a round or when you start a new one.</footer>
+  <footer>Aim with the mouse, or drag on a touch screen and let go to fire. <kbd>←</kbd> <kbd>→</kbd> aim and <kbd>Space</kbd> or <kbd>↑</kbd> fires. Click the waiting bubble or press <kbd>X</kbd> to swap. Shots bank off the side walls. Each pop is worth 10 points, and bubbles you cut loose from the ceiling fall for a bonus that grows with the size of the drop. Every few shots that don't pop anything, a new row pushes in from the top; clear the board to reach the next level. The round ends when a bubble crosses the dashed line. Your score is saved to the leaderboard as you play, so a round cut short still counts.</footer>
 </main>
 <script src="module-scores.js"></script>
 <script>
@@ -192,7 +192,7 @@ function land(x, y, color) {
 function overDanger() { for (let r = 0; r < grid.length; r++) for (const v of grid[r]) if (v >= 0 && R + r * RH + R > DANGER + 1) return true; return false; }
 
 function say(text, hot) { statusEl.textContent = text; statusEl.className = 'status' + (hot ? ' hot' : ''); statusT = 2.4; }
-function hud() { $('score').textContent = score.toLocaleString(); $('level').textContent = level; $('best').textContent = best ? best.toLocaleString() : '—'; }
+function hud() { if (!submitted && state !== 'over' && score > 0 && window.tlScores && tlScores.progress) tlScores.progress('bubbles', Math.min(50000000, score)); $('score').textContent = score.toLocaleString(); $('level').textContent = level; $('best').textContent = best ? best.toLocaleString() : '—'; }
 function submitRun() {
   if (submitted || score <= 0) return false;
   submitted = true;

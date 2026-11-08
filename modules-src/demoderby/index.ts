@@ -196,6 +196,7 @@ async function boot(): Promise<void> {
   let lastSettings: HeatSettings | null = null
 
   const toGarage = (): void => {
+    submitScore()
     clearField()
     watching = false
     resultsShown = false
@@ -215,6 +216,7 @@ async function boot(): Promise<void> {
       removeVehicle(preview)
       preview = null
     }
+    submitScore()
     clearField()
     heatId++
     scoreSent = false
@@ -363,6 +365,7 @@ async function boot(): Promise<void> {
       showCars(`${heat.state.alive} of ${cars.length}`)
       showClock(formatClock(heat.state.clock))
       showPoints(heat.playerScore().toLocaleString())
+      if (!scoreSent && heat.state.phase === 'running') Scores.progress(config.meta.id, heat.playerScore(), { key: `heat-${heatId}` })
       if (player) {
         healthBar.style.transform = `scaleX(${player.health / 100})`
         engineBar.style.transform = `scaleX(${player.engine / 100})`

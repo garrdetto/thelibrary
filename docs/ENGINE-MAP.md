@@ -23,7 +23,7 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/components/PoolAccount.tsx`, `SignInRibbon.tsx` — sign-in form and ribbon — `index.tsx`, `PoolTable.tsx`, `Racing.tsx`.
 - `src/components/GroupChat.tsx`, `SitePresence.tsx` — floating chat, invites (`meta.invite`), online presence — `index.tsx`, `Racing.tsx`.
 - `src/components/AdminPanel.tsx`, `WorkspaceAdmin.tsx`, `SiteChanges.tsx` — admin tabs: people, site-change chat — `index.tsx`.
-- `public/modules/module-scores.js` — `tlScores.submit(module, value)` → `/api/module-scores`, then `tl-score-saved` to the parent — 2048, Chopper Cave, BotWreck 3D and the single-file score modules.
+- `public/modules/module-scores.js` — `tlScores.submit(module, value, {key})` → `/api/module-scores`, then `tl-score-saved` to the parent; `tlScores.progress(module, value, {key})` tracks an unfinished run, checkpoints it every 15 s, flushes on `pagehide`/hidden/`online`, and keeps unsaved values in the localStorage outbox `tl-score-outbox` (resent on the next page load) so a run cut short by closing, a disconnect or a power-off still lands on the board — 2048, Chopper Cave, BotWreck 3D and the single-file score modules.
 
 ### Tooling and delivery
 
@@ -126,7 +126,7 @@ Engine code imports three only as `three/webgpu` (addons from `three/addons/*` s
 - `engine/net/HubBridge.ts` — same-origin `postMessage`: `tl-room`, `tl-score-saved`, `tl-lap`, `tl-fairway` out, `tl-host` in — `Peer`, `Scores`, fairway `index.ts`.
 - `engine/net/RoomFormats.ts` — production room-code formats (prefix, alphabet, length, wire case) for sandlot, chess, checkers, maplestreet, fairway, shorttrack — `Peer` callers.
 - `engine/net/Peer.ts` — `PeerRoom`: host with retry on taken ids, join, broadcast, guest rejoin, `bridgeHub()` (`tl-host` → `tl-room`), `autoJoinFromQuery()` (`?room=`) — modules with online modes.
-- `engine/net/Scores.ts` — `Scores.submit` (same contract as `tlScores.submit` → `/api/module-scores`, then `tl-score-saved`), `Scores.lapSaved` (`tl-lap`), `installGlobal()` — modules with boards.
+- `engine/net/Scores.ts` — `Scores.submit` and `Scores.progress` (same contract and outbox as `tlScores` in `module-scores.js`; keep the two in step), `Scores.lapSaved` (`tl-lap`), `installGlobal()` — modules with boards.
 
 ## Models
 
@@ -167,7 +167,7 @@ Known baseline issues: `shorttrack` is too busy under software WebGL for Playwri
 - `modules-src/demoderby/module.json` — id, title, accent `#ff8c2a`, modes — `config.ts`.
 - `modules-src/demoderby/config.ts` — every tunable: engine overrides (warm afternoon light), bindings, the 36 × 22 m arena, the two body specs (`wagon`, `sedan`), 16 flat paints, six spray fonts, number colours, vehicle physics, damage (`contactThreshold`, `hitThreshold`, `hitFull`, zones, dents, the 60 s no-contact rule), AI levels, scoring, heat, camera and particles — every file below.
 - `modules-src/demoderby/index.html` — page shell: `#stage`, the garage card (body, paint, number, spray style, outline, field size, AI level), results card, countdown banner, body/engine bars, touch labels — `vite.modules.ts` (→ `public/modules/demoderby.html`).
-- `modules-src/demoderby/index.ts` — entry: boots the engine, bakes the sky into a PMREM environment (`bakeEnvironment`, so paint, chrome and glass reflect it), the arena, sky and particles, the garage preview turntable, then a heat (player + AI field on a spawn ring), contact events → `Heat`, HUD, results, `Scores.submit('demoderby', points)`; disposes on pagehide — `index.html`.
+- `modules-src/demoderby/index.ts` — entry: boots the engine, bakes the sky into a PMREM environment (`bakeEnvironment`, so paint, chrome and glass reflect it), the arena, sky and particles, the garage preview turntable, then a heat (player + AI field on a spawn ring), contact events → `Heat`, HUD, results, `Scores.progress`/`Scores.submit('demoderby', points)`; disposes on pagehide — `index.html`.
 - `modules-src/demoderby/models/Loft.ts` — `loft(stations)`: skins rings or open strips of (x, y) profile points along z into one welded, smooth-normal, vertex-coloured geometry (faces oriented away from the centroid), plus `mirror`, `bar` (tube between points) and `roundedBox` — `CarBody.ts`.
 - `modules-src/demoderby/models/CarBody.ts` — `createCar`: lofted 1970s wagon/sedan shell (`lowerProfile` with fender arches, flares, rocker and belt creases, hood crown and door-seam stations; `upperRing` greenhouse with raked windshield and backlight), reflective glass, pillars, dark caged interior, chrome bumpers with guards, sealed-beam lamps and bezels, barred grille, taillights, hood pins, wagon roof rack, lathe tires and steel rims with lug nuts, the door/roof number decals, grime and streaky rust in vertex colour (never on the player's car) and a contact-shadow plane; `dent(point, direction, strength)` pushes shell and decal vertices in, caps depth and darkens paint; geometry is in the chassis frame (forward −Z, origin `centreHeight` up) — `systems/Vehicle.ts`.
 - `modules-src/demoderby/models/Crowd.ts` — `createCrowd(seats)`: bleacher fans as four instanced meshes (torso with arms, head, legs, cap) with per-fan colours; `MeshStandardNodeMaterial` position nodes bob and cheer a share of them — `Arena.ts`.

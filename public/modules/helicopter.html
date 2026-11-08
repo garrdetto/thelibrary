@@ -63,6 +63,7 @@ function update(dt) {
   s.speed = Math.min(620, 260 + s.dist * 0.018);
   s.gap = Math.max(H * 0.3, H * 0.68 - s.dist * 0.012);
   const move = s.speed * dt; s.dist += move;
+  if (window.tlScores && tlScores.progress) tlScores.progress('helicopter', Math.floor(s.dist / 10));
   for (const c of s.cave) c.x -= move;
   while (s.cave[0].x < -SEG * 2) s.cave.shift();
   while (s.cave[s.cave.length - 1].x < W + SEG * 2) s.cave.push(caveStep(s.cave[s.cave.length - 1]));

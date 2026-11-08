@@ -33,7 +33,7 @@ export async function moduleScores(request: Request, env: Env) {
     return json({ popular: boards })
   }
   if (request.method === 'GET') {
-    const module =moduleIds.parse(new URL(request.url).searchParams.get('module'))
+    const module = moduleIds.parse(new URL(request.url).searchParams.get('module'))
     const user = await currentUser(request, env)
     const aggregate = scoredModules[module].order === 'asc' ? 'MIN' : 'MAX'
     const [rows, personal] = await Promise.all([
@@ -50,7 +50,10 @@ export async function moduleScores(request: Request, env: Env) {
     await env.DB.prepare('DELETE FROM module_scores WHERE module = ?').bind(input.module).run()
     return json({ reset: true })
   }
-  await env.DB.prepare('INSERT INTO module_scores (id, user_id, username, module, value, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
+  const better = scoredModules[input.module].order === 'asc' ? '<' : '>'
+  await env.DB.prepare(`INSERT INTO module_scores (id, user_id, username, module, value, created_at) VALUES (?, ?, ?, ?, ?, ?)
+  ON CONFLICT(id) DO UPDATE SET value = excluded.value, created_at = excluded.created_at
+  WHERE module_scores.user_id = excluded.user_id AND module_scores.module = excluded.module AND excluded.value ${better} module_scores.value`)
     .bind(`${user.id}:${input.run}`, user.id, user.username, input.module, input.value, Date.now()).run()
   return json({ saved: true })
 }
