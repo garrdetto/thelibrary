@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { HttpError, json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
-import { claimLot, homeOf, lotOwner, streetCount, streetLots } from '../hood.js'
+import { claimLot, homeOf, lotOwner, streetCount, streetLots, streetWorkers, townRequests } from '../hood.js'
 import { hoodLotStub, type HoodIdentity } from '../hood-lot.js'
 import { MAX_SIMS } from '../../../modules-src/hood/shared/Lot'
 import { sanitizeLook } from '../../../modules-src/hood/shared/Look'
@@ -30,10 +30,16 @@ const claimSchema = z.object({
   }),
 })
 
-/** `/api/hood`: GET lists a street of The Hood; POST `claim` moves a new household in; a WebSocket upgrade walks onto a lot. */
+/** `/api/hood`: GET lists a street of The Hood (`?town=1` gives just its service calls and who is at work); POST `claim` moves a new household in; a WebSocket upgrade walks onto a lot. */
 export async function hood(request: Request, env: Env) {
   const url = new URL(request.url)
   if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') return connect(request, env, url)
+
+  if (request.method === 'GET' && url.searchParams.has('town')) {
+    const street = streetParam.parse(url.searchParams.get('street') ?? '0')
+    const [requests, workers] = await Promise.all([townRequests(env, street), streetWorkers(env, street)])
+    return json({ now: Date.now(), requests, workers })
+  }
 
   if (request.method === 'GET') {
     const user = await currentUser(request, env)

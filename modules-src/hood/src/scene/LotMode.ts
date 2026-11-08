@@ -21,8 +21,14 @@ import { button, el, money, needColor } from '../ui/Ui'
 import { LotModel } from './LotModel'
 import type { PointerTarget, Stage } from './Stage'
 import { buildShells } from './StreetMode'
+import { TownView } from './TownView'
+import { SHIFT_SECONDS } from '../../shared/Jobs'
+import { renderTownPanel } from '../ui/TownPanel'
+import { careerLine, renderJobBoard, servicesPanel, workPanel, type ServicesPanel, type WorkPanel } from '../ui/CareerPanel'
+import type { AwayView, OrderView, WorkView } from '../../shared/Protocol'
 
 type Mode = 'live' | 'build' | 'buy'
+type SideKind = 'people' | 'settings' | 'town' | 'work' | 'services' | 'jobs'
 type Tool = 'room' | 'wall' | 'unwall' | 'door' | 'window' | 'unopen' | 'floor' | 'exterior' | 'canopy' | 'porch' | 'pergola' | 'fence' | 'chimney' | 'unfeature'
 
 interface Actor {
@@ -105,6 +111,11 @@ export class LotMode implements PointerTarget {
   private placedCamera = false
   private grid: LotGrid | null = null
   private grass: THREE.InstancedMesh | null = null
+  private town: TownView | null = null
+  private now = Date.now()
+  private work: WorkView[] = []
+  private away: AwayView[] = []
+  private orders: OrderView[] = []
 
   private readonly top: HTMLDivElement
   private readonly bottom: HTMLDivElement
@@ -112,10 +123,13 @@ export class LotMode implements PointerTarget {
   private readonly peopleButton = button('People', () => this.toggleSide('people'))
   private readonly wallButton = button('Walls: cutaway', () => this.cycleWalls(), 'btn', 'Change how walls are shown')
   private readonly settingsButton = button('Settings', () => this.toggleSide('settings'))
+  private readonly townButton = button('Around town', () => this.toggleSide('town'), 'btn', 'The workplaces and the dispatch feed')
+  private readonly servicesButton = button('Services', () => this.toggleSide('services'), 'btn', 'Call the police, fire station, EMS, burgers, the lawn crew, City Works or the resort')
+  private readonly workButton = button('At work', () => this.toggleSide('work'), 'btn', 'Residents on a shift in town')
   private readonly live = el('div', { class: 'panel dock' })
   private readonly modes = el('div', { class: 'panel card row', role: 'tablist', 'aria-label': 'Mode' })
   private readonly dock = el('div', { class: 'panel dock' })
-  private side: { kind: 'people' | 'settings'; node: HTMLElement } | null = null
+  private side: { kind: SideKind; node: HTMLElement; work?: WorkPanel; services?: ServicesPanel; sim?: string; key?: string } | null = null
   private menu: HTMLElement | null = null
   private knocks: HTMLElement | null = null
   private liveKey = ''
@@ -135,11 +149,13 @@ export class LotMode implements PointerTarget {
     }
     this.top = el('div', { class: 'top' },
       el('div', { class: 'panel card' }, this.info.address, this.info.sub, el('div', { class: 'row', style: 'margin-top:6px' }, this.info.speeds, this.info.clock), el('div', { class: 'sub' }, this.info.funds)),
-      el('div', { class: 'panel card row' }, button(options.practice ? 'Leave practice' : 'Street', () => options.exit(), 'btn', 'Back to the street'), this.peopleButton, this.wallButton, this.settingsButton),
+      el('div', { class: 'panel card row' }, button(options.practice ? 'Leave practice' : 'Street', () => options.exit(), 'btn', 'Back to the street'), this.peopleButton, this.wallButton, this.townButton, this.servicesButton, this.workButton, this.settingsButton),
     )
     this.bottom = el('div', { class: 'bottom' }, this.live, this.modes)
     this.stage.ui.append(this.top, this.bottom)
     this.settingsButton.hidden = true
+    this.servicesButton.hidden = true
+    this.workButton.hidden = true
     this.modes.hidden = true
     this.dock.hidden = true
     this.bottom.insertBefore(this.dock, this.modes)
@@ -185,6 +201,13 @@ export class LotMode implements PointerTarget {
         this.applyLot(message.lot)
         this.modes.hidden = this.role !== 'owner'
         this.settingsButton.hidden = this.role !== 'owner'
+        this.servicesButton.hidden = this.role !== 'owner'
+        this.workButton.hidden = this.role !== 'owner'
+        if (!this.town) {
+          const info = this.options.street
+          this.town = new TownView(this.stage, { street: message.lot.street, houses: info ? info.lots.map(l => !!l.shell) : [], poll: !this.options.practice && !!info })
+          this.town.onUpdate(() => { if (this.side?.kind === 'town') this.renderSide() })
+        }
         this.wallMode = this.role === 'owner' ? 'cut' : 'up'
         this.setMode('live')
         return
@@ -199,6 +222,16 @@ export class LotMode implements PointerTarget {
         this.home = message.home
         if (message.funds !== undefined) this.funds = message.funds
         this.sims = message.sims
+        this.now = message.now
+        this.town?.syncClock(message.now)
+        if (this.role === 'owner') {
+          this.work = message.work ?? []
+          this.away = message.away ?? []
+          this.orders = message.orders ?? []
+          this.workButton.textContent = this.work.length ? `At work (${this.work.length})` : 'At work'
+          this.town?.setLocalPlayers(this.work.map(w => ({ name: w.name, look: w.look, job: w.career.job, level: w.career.level, lot: this.view?.lot ?? 0, call: w.task?.id.startsWith('call:') ? w.task.id.slice(5) : null })))
+          if (this.side && (this.side.kind === 'work' || this.side.kind === 'services' || this.side.kind === 'jobs')) this.renderSide()
+        }
         if (!this.selected || !this.sims.some(s => s.id === this.selected && s.mine)) this.selected = this.sims.find(s => s.mine)?.id ?? null
         this.renderStatus()
         return
@@ -218,6 +251,9 @@ export class LotMode implements PointerTarget {
         return
       case 'knockEnd':
         if (this.knocks?.dataset.id === message.id) { this.knocks.remove(); this.knocks = null }
+        return
+      case 'town':
+        this.town?.setRequests(message.requests)
         return
       case 'notice':
         this.options.toast(message.text)
@@ -310,10 +346,10 @@ export class LotMode implements PointerTarget {
     this.liveKey = ''
   }
 
-  private toggleSide(kind: 'people' | 'settings'): void {
-    if (this.side?.kind === kind) { this.side.node.remove(); this.side = null; return }
+  private toggleSide(kind: SideKind, sim?: string): void {
+    if (this.side?.kind === kind && this.side.sim === sim) { this.side.node.remove(); this.side = null; return }
     this.side?.node.remove()
-    this.side = { kind, node: el('div', { class: 'panel side' }) }
+    this.side = { kind, sim, node: el('div', { class: `panel side${kind === 'jobs' || kind === 'work' ? ' wide' : ''}` }) }
     this.stage.ui.append(this.side.node)
     this.renderSide()
   }
@@ -321,6 +357,32 @@ export class LotMode implements PointerTarget {
   private renderSide(): void {
     if (!this.side) return
     const node = this.side.node
+    const side = this.side
+    const shut = () => { node.remove(); if (this.side === side) this.side = null }
+    const send = (command: Parameters<LotLink['send']>[0]) => this.link.send(command)
+    if (side.kind === 'town') {
+      if (this.town?.state) renderTownPanel(node, this.town.state, null, shut)
+      return
+    }
+    if (side.kind === 'work') {
+      side.work ??= workPanel(node, send, shut)
+      side.work.update(this.work, this.away, this.now)
+      return
+    }
+    if (side.kind === 'services') {
+      side.services ??= servicesPanel(node, send, shut)
+      side.services.update(this.orders, this.funds, this.sims.filter(s => s.mine && s.hh).map(s => ({ id: s.id, name: s.name })), this.now)
+      return
+    }
+    if (side.kind === 'jobs') {
+      const sim = this.sims.find(s => s.id === side.sim)
+      if (!sim) return
+      const key = JSON.stringify(sim.career ?? null)
+      if (side.key === key) return
+      side.key = key
+      renderJobBoard(node, { id: sim.id, name: sim.name, career: sim.career }, send, shut)
+      return
+    }
     const close = button('Close', () => { node.remove(); this.side = null })
     if (this.side.kind === 'people') {
       const list = el('div', { class: 'list' }, ...this.people.map(p => {
@@ -389,7 +451,7 @@ export class LotMode implements PointerTarget {
   private renderLive(): void {
     const mine = this.sims.filter(s => s.mine)
     const sim = mine.find(s => s.id === this.selected)
-    const key = JSON.stringify([mine.map(s => [s.id, s.name]), this.selected, !!sim?.needs, sim?.act, sim?.queue, sim?.friends?.map(f => f.name), this.guest, this.role, this.home])
+    const key = JSON.stringify([mine.map(s => [s.id, s.name]), this.selected, !!sim?.needs, sim?.act, sim?.queue, sim?.friends?.map(f => f.name), this.guest, this.role, this.home, sim?.career])
     if (key === this.liveKey) {
       if (sim?.needs) this.updateBars(sim)
       return
@@ -417,6 +479,16 @@ export class LotMode implements PointerTarget {
       const doing = [sim.act, ...(sim.queue ?? [])].filter(Boolean) as string[]
       parts.push(el('div', { class: 'queue' }, ...(doing.length ? doing.map((label, i) => el('span', { class: 'chip' }, i === 0 && sim.act ? `Now: ${label}` : label)) : [el('span', { class: 'hint' }, 'Free time. Click something to do.')]), doing.length ? button('Cancel', () => this.link.send({ t: 'cancel', sim: sim.id }), 'btn', 'Cancel actions') : null))
       if (sim.friends?.length) parts.push(el('div', { class: 'hint' }, `Friends here: ${sim.friends.map(f => `${f.name} ${f.value}`).join(', ')}`))
+      if (this.role === 'owner' && sim.hh) {
+        const career = sim.career
+        parts.push(el('div', { class: 'row', style: 'margin-top:6px;justify-content:space-between' },
+          el('span', { class: 'sub' }, careerLine(career)),
+          el('div', { class: 'row' },
+            career ? button('Go to work', () => this.link.send({ t: 'work', sim: sim.id }), 'btn primary', `Start a ${Math.round(SHIFT_SECONDS / 60)}-minute shift in town`) : null,
+            button(career ? 'Jobs' : 'Find a job', () => this.toggleSide('jobs', sim.id), career ? 'btn' : 'btn primary'),
+          ),
+        ))
+      }
     }
     if (this.role === 'visitor') {
       parts.push(el('div', { class: 'row', style: 'margin-top:6px' },
@@ -864,6 +936,12 @@ export class LotMode implements PointerTarget {
     this.model.house.setNight(this.stage.night, this.home)
     if (this.neighbors) for (const [lot, model] of this.neighbors.models) model.house.setNight(this.stage.night, !!this.options.street?.lots[lot]?.home)
     this.updateWallView()
+    if (this.town) {
+      this.town.setNight(this.stage.night)
+      this.town.update(dt)
+      const lawn = this.town.state?.lawns[this.view?.lot ?? 0]
+      if (this.grass && lawn !== undefined) this.grass.scale.y = 0.55 + lawn * 0.95
+    }
     this.syncActors(dt)
     this.updateGhost()
     this.stage.follow(this.stage.rig.target)
@@ -883,6 +961,7 @@ export class LotMode implements PointerTarget {
     this.top.remove()
     this.bottom.remove()
     this.model?.dispose()
+    this.town?.dispose()
     if (this.neighbors) {
       for (const model of this.neighbors.models.values()) model.dispose()
       detach(this.neighbors.root)

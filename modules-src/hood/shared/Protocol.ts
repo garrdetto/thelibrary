@@ -4,6 +4,8 @@ import type { Look } from './Look'
 import type { Edge, PlacedObject } from './Lot'
 import type { Feature, HouseStyle } from './Style'
 import type { Needs } from './Needs'
+import type { JobId, ServiceKind } from './Jobs'
+import type { TownRequest } from './TownSim'
 
 export type Speed = 0 | 1 | 2 | 3
 
@@ -20,6 +22,49 @@ export type Command =
   | { t: 'speed'; speed: Speed }
   | { t: 'build'; op: BuildOp }
   | { t: 'settings'; yardOpen?: boolean; guestsUseFridgeBeds?: boolean }
+  | { t: 'job'; sim: string; job: JobId | null }
+  | { t: 'work'; sim: string }
+  | { t: 'task'; sim: string; task: string }
+  | { t: 'clockOut'; sim: string }
+  | { t: 'order'; kind: ServiceKind; sim?: string }
+
+export interface CareerView {
+  job: JobId
+  level: number
+  title: string
+  xp: number
+  next: number
+  shifts: number
+  last: { pay: number; perf: number; at: number } | null
+}
+
+/** A household Sim on a shift in town, for the owner's work panel. */
+export interface WorkView {
+  id: string
+  name: string
+  look: Look
+  career: CareerView
+  start: number
+  until: number
+  perf: number
+  earned: number
+  task: { id: string; label: string; starts: number; ends: number } | null
+  counts: Record<string, number>
+  calls: { id: string; label: string }[]
+}
+
+export interface AwayView {
+  id: string
+  name: string
+  until: number
+  where: string
+}
+
+export interface OrderView {
+  kind: ServiceKind
+  eta: number
+  sim: string | null
+}
 
 export interface SimView {
   id: string
@@ -40,6 +85,7 @@ export interface SimView {
   queue?: string[]
   friends?: { name: string; value: number }[]
   bubble?: string
+  career?: CareerView | null
 }
 
 export interface LotView {
@@ -77,7 +123,8 @@ export interface MemberView {
 export type ServerMessage =
   | { t: 'welcome'; id: string; role: 'owner' | 'visitor'; lot: LotView; settings?: SettingsView }
   | { t: 'lot'; lot: LotView; settings?: SettingsView }
-  | { t: 'state'; clock: number; speed: Speed; funds?: number; home: boolean; sims: SimView[] }
+  | { t: 'state'; clock: number; speed: Speed; funds?: number; home: boolean; sims: SimView[]; now: number; work?: WorkView[]; away?: AwayView[]; orders?: OrderView[] }
+  | { t: 'town'; requests: TownRequest[] }
   | { t: 'people'; people: MemberView[] }
   | { t: 'knock'; id: string; name: string }
   | { t: 'knockEnd'; id: string }

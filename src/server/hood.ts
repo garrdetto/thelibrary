@@ -2,6 +2,8 @@ import type { Env } from './env.js'
 import { parseStored } from './http.js'
 import { newLotState, sanitizeLotState, sanitizeShell, shellOf, type LotShell, type LotState, type NewSim } from '../../modules-src/hood/shared/Lot'
 import { LOTS_PER_STREET, MAX_STREETS } from '../../modules-src/hood/shared/Street'
+import { SERVICE_KINDS, type ServiceKind } from '../../modules-src/hood/shared/Jobs'
+import { REQUEST_WINDOW_MS, type PlayerWorker, type TownRequest } from '../../modules-src/hood/shared/TownSim'
 
 /** A lot shows as home only while its Durable Object has touched the row recently. */
 export const HOME_FRESH_MS = 3 * 60 * 1000
@@ -14,6 +16,9 @@ export function ensureHoodTables(env: Env) {
       street INTEGER NOT NULL, lot INTEGER NOT NULL, owner_id TEXT NOT NULL UNIQUE, owner_name TEXT NOT NULL,
       state TEXT NOT NULL, shell TEXT NOT NULL, home INTEGER NOT NULL DEFAULT 0, visitors INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL, PRIMARY KEY (street, lot))`),
+    env.DB.prepare(`CREATE TABLE IF NOT EXISTS hood_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, street INTEGER NOT NULL, lot INTEGER NOT NULL, kind TEXT NOT NULL, by_name TEXT NOT NULL, at INTEGER NOT NULL)`),
+    env.DB.prepare('CREATE INDEX IF NOT EXISTS hood_requests_street_at ON hood_requests (street, at)'),
   ]).catch(error => {
     tablesReady = null
     throw error
@@ -63,17 +68,49 @@ export async function streetLots(env: Env, street: number, userId: string | null
   const { results } = await env.DB.prepare('SELECT lot, owner_id, owner_name, shell, home, visitors, updated_at FROM hood_lots WHERE street = ?').bind(street).all<Omit<LotRow, 'street' | 'state'>>()
   const lots: (StreetLot | null)[] = Array.from({ length: LOTS_PER_STREET }, () => null)
   const fresh = Date.now() - HOME_FRESH_MS
+  const now = Date.now()
   for (const row of results) {
     const index = Number(row.lot)
     if (index < 0 || index >= LOTS_PER_STREET) continue
     const live = Number(row.updated_at) > fresh
+    const shell = sanitizeShell(parseStored<unknown>(row.shell, null))
+    shell.workers = shell.workers.filter(w => w.until > now)
     lots[index] = {
       lot: index, owner: row.owner_name, home: live && Number(row.home) === 1, visitors: live ? Number(row.visitors) : 0,
-      shell: sanitizeShell(parseStored<unknown>(row.shell, null)),
+      shell,
       mine: !!userId && row.owner_id === userId,
     }
   }
   return lots
+}
+
+/** Residents of a street who are on a shift in town right now. */
+export async function streetWorkers(env: Env, street: number): Promise<PlayerWorker[]> {
+  await ensureHoodTables(env)
+  const { results } = await env.DB.prepare('SELECT lot, shell FROM hood_lots WHERE street = ?').bind(street).all<{ lot: number; shell: string }>()
+  const now = Date.now()
+  const out: PlayerWorker[] = []
+  for (const row of results) {
+    const shell = sanitizeShell(parseStored<unknown>(row.shell, null))
+    for (const w of shell.workers) if (w.until > now) out.push({ name: w.name, look: w.look, job: w.job, level: w.level, lot: Number(row.lot), call: w.call })
+  }
+  return out
+}
+
+/** The street's service calls from the last hour. */
+export async function townRequests(env: Env, street: number): Promise<TownRequest[]> {
+  await ensureHoodTables(env)
+  const since = Date.now() - REQUEST_WINDOW_MS
+  const { results } = await env.DB.prepare('SELECT lot, kind, by_name, at FROM hood_requests WHERE street = ? AND at > ? ORDER BY at LIMIT 80').bind(street, since).all<{ lot: number; kind: string; by_name: string; at: number }>()
+  return results
+    .filter(r => (SERVICE_KINDS as readonly string[]).includes(r.kind))
+    .map(r => ({ lot: Number(r.lot), kind: r.kind as ServiceKind, at: Number(r.at), by: r.by_name }))
+}
+
+export async function addTownRequest(env: Env, street: number, request: TownRequest): Promise<void> {
+  await ensureHoodTables(env)
+  await env.DB.prepare('INSERT INTO hood_requests (street, lot, kind, by_name, at) VALUES (?, ?, ?, ?, ?)').bind(street, request.lot, request.kind, (request.by ?? '').slice(0, 40), request.at).run()
+  if (Math.random() < 0.05) await env.DB.prepare('DELETE FROM hood_requests WHERE at < ?').bind(Date.now() - 24 * 60 * 60 * 1000).run()
 }
 
 /** How many streets the neighborhood shows: every street with a household, plus one with room to move in. */

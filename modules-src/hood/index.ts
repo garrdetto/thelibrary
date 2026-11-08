@@ -1,4 +1,5 @@
 /** The Hood: a street of player-owned houses. The street view and each lot are separate scenes, so only one detailed lot is ever loaded. */
+import * as THREE from 'three/webgpu'
 import { App, Hud, createLighting, createPost, resolveQuality } from '../../engine'
 import { config } from './config'
 import { claimLot, fetchStreet, type StreetInfo } from './src/net/Api'
@@ -17,7 +18,7 @@ interface Scene {
 
 declare global {
   interface Window {
-    __hood?: { scene: () => string; send: (command: Command) => void }
+    __hood?: { scene: () => string; send: (command: Command) => void; look: (x: number, z: number, distance: number, yaw?: number, pitch?: number) => void }
   }
 }
 
@@ -148,7 +149,7 @@ async function boot(): Promise<void> {
   let frames = 0
   app.onFixed(() => { frames++ })
   window.__tlModule = { app, backend: app.backend, tier: quality.tier, steps: () => frames }
-  window.__hood = { scene: () => sceneName, send: command => link?.send(command) }
+  window.__hood = { scene: () => sceneName, send: command => link?.send(command), look: (x, z, distance, yaw = 0.4, pitch = 0.7) => stage.rig.jump(new THREE.Vector3(x, 0, z), yaw, distance, pitch) }
   addEventListener('pagehide', () => { scene?.dispose(); stage.dispose(); app.dispose() }, { once: true })
 
   if (params.has('solo')) enterPractice()

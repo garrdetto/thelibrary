@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu'
 import { LOT_D, LOT_W, LOTS_PER_SIDE, STREET_HALF, STREET_LENGTH, lotPlacement, lotToWorld } from '../../shared/Street'
 import { box, cylinder, sphere } from './Kit'
+import { ROAD_END } from '../../shared/Town'
 import { surface } from './Surfaces'
 
 export interface StreetGround {
@@ -49,8 +50,8 @@ function buildMailbox(): THREE.Group {
 export function buildStreetGround(): StreetGround {
   const group = new THREE.Group()
   group.name = 'street'
-  const length = STREET_LENGTH + 80
-  group.add(flat(box(length, 0.1, (LOT_D + STREET_HALF) * 2 + 80, surface('grass', 'ground', { size: 4, roughness: 1, macro: true }), 0, -0.06, 0)))
+  const length = ROAD_END * 2
+  group.add(flat(box(length + 80, 0.1, (LOT_D + STREET_HALF) * 2 + 120, surface('grass', 'ground', { size: 4, roughness: 1, macro: true }), 0, -0.06, -10)))
   group.add(flat(box(length, 0.02, (STREET_HALF - 2) * 2, surface('asphalt', 'ground', { size: 6, roughness: 0.95 }), 0, 0.0, 0)))
   const paint = new THREE.MeshStandardMaterial({ color: '#e8d36a', roughness: 0.7 })
   group.userData.ownMaterial = paint
@@ -100,9 +101,23 @@ export function buildStreetGround(): StreetGround {
       heads.add(head)
     }
   }
+  for (let x = 70; x <= ROAD_END - 10; x += 30) {
+    for (const sx of [-1, 1]) {
+      for (const side of [-1, 1]) {
+        const lx = sx * x + (side > 0 ? 0 : 15)
+        const z = side * (STREET_HALF - 1.7)
+        group.add(cylinder(0.06, 4.2, '#30343a', lx, 2.1, z, { metalness: 0.5, roughness: 0.4 }))
+        group.add(box(0.7, 0.06, 0.08, '#30343a', lx, 4.15, z - side * 0.3))
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 10), lampHead)
+        head.position.set(lx, 4.0, z - side * 0.6)
+        heads.add(head)
+      }
+    }
+  }
+  const span = STREET_LENGTH + 8
   for (let i = 0; i < 30; i++) {
     const side = i % 2 ? 1 : -1
-    const x = -length / 2 + 6 + (i / 30) * (length - 12) + ((i * 37) % 7)
+    const x = -span / 2 + 6 + (i / 30) * (span - 12) + ((i * 37) % 7)
     const z = side * (STREET_HALF + LOT_D + 5 + ((i * 13) % 10))
     const tree = buildTree(i, 1.1 + ((i * 7) % 5) * 0.12)
     tree.position.set(x, 0, z)

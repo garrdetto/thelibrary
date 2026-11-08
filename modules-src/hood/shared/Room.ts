@@ -6,6 +6,11 @@ import { NEEDS, clampNeed, decayNeeds, fullNeeds, mood, urgency, type Needs } fr
 import { findPath, nearestWalkable, walkable, type PathRules } from './Path'
 import { LOT_CAPACITY, type Command, type LotView, type MemberView, type ServerMessage, type SettingsView, type SimView, type Speed } from './Protocol'
 import { lotAddress } from './Street'
+import { RESORT_MS, beginTask, finishShift, newCareer, settleTask, startShift, tripReturn } from './Careers'
+import { JOBS, SERVICES, SERVICE_COOLDOWN, jobDef, jobTitle, perfLabel, xpForNext, type JobId } from './Jobs'
+import { REQUEST_WINDOW_MS, callsAt, serviceEta, type TownCall, type TownRequest } from './TownSim'
+import { PLACES } from './Town'
+import type { AwayView, CareerView, OrderView, WorkView } from './Protocol'
 
 export interface JoinInfo {
   key: string
@@ -23,6 +28,12 @@ export interface RoomHooks {
   presence?(home: boolean, visitors: number): void
   /** A visitor left; their Sim's needs and the sim minutes it spent here go back to its home lot. */
   visitorLeft?(key: string, sim: SimRecord, minutes: number): void
+  /** The real clock in milliseconds; tests pass their own. */
+  now?(): number
+  /** A household called a service; the host keeps the street's list of calls. */
+  requested?(request: TownRequest): void
+  /** Something the rest of the street should see soon (a shift, a call). */
+  important?(): void
 }
 
 type Task =
@@ -108,6 +119,8 @@ export class Room {
   private pendingKnocks = new Map<string, number>()
   private lotVersion = 0
   private views: { version: number; entitled?: LotView; outside?: LotView } = { version: -1 }
+  requests: TownRequest[] = []
+  private requestKey = '[]'
 
   constructor(readonly state: LotState, private readonly hooks: RoomHooks = {}, private readonly ownerKeyValue = ownerKey(state), seed = 1) {
     this.grid = new LotGrid(state)
@@ -157,6 +170,7 @@ export class Room {
     if (role === 'owner') {
       for (const rec of this.state.household.sims) {
         rec.away = null
+        if (rec.work || rec.trip) continue
         this.spawn(rec, true, member.id)
         member.sims.push(`h-${rec.id}`)
       }
@@ -173,6 +187,7 @@ export class Room {
       this.say(sim, 'Hi, neighbors!')
     }
     member.send({ t: 'welcome', id: member.id, role, lot: this.lotView(member), settings: role === 'owner' ? this.settingsView() : undefined })
+    member.send({ t: 'town', requests: this.requests })
     this.broadcastPeople()
     if (role === 'visitor') this.owner?.send({ t: 'notice', text: `${member.name} is in your yard.` })
     else for (const m of this.members.values()) if (m !== member) m.send({ t: 'notice', text: `${member.name} is home.` })
@@ -206,7 +221,8 @@ export class Room {
   /** Lends a household Sim to another lot. Returns null when nobody is free to go. */
   depart(simId?: string): SimRecord | null {
     const sims = this.state.household.sims
-    const rec = sims.find(s => s.id === simId && !s.away) ?? sims.find(s => !s.away)
+    const free = (s: SimRecord) => !s.away && !s.work && !s.trip
+    const rec = sims.find(s => s.id === simId && free(s)) ?? sims.find(free)
     if (!rec) return null
     const live = this.sims.get(`h-${rec.id}`)
     if (live) {
@@ -390,7 +406,239 @@ export class Room {
         return
       }
       case 'build': return this.build(member, cmd.op)
+      case 'job': return this.setJob(member, cmd.sim, cmd.job)
+      case 'work': return this.goToWork(member, cmd.sim)
+      case 'task': return this.startTask(member, cmd.sim, cmd.task)
+      case 'clockOut': {
+        if (member.role !== 'owner') return
+        const rec = this.recOf(cmd.sim)
+        if (rec?.work) this.endShift(rec, true)
+        return
+      }
+      case 'order': return this.order(member, cmd.kind, cmd.sim)
     }
+  }
+
+  private now(): number {
+    return this.hooks.now?.() ?? Date.now()
+  }
+
+  /** The host hands over the street's recent service calls; everyone here gets them for the town view. */
+  setRequests(list: TownRequest[]): void {
+    const now = this.now()
+    const next = list.filter(r => now - r.at < REQUEST_WINDOW_MS).sort((a, b) => a.at - b.at || a.lot - b.lot).slice(-80)
+    const key = JSON.stringify(next)
+    if (key === this.requestKey) return
+    this.requests = next
+    this.requestKey = key
+    for (const m of this.members.values()) m.send({ t: 'town', requests: this.requests })
+  }
+
+  private recOf(id: string): SimRecord | undefined {
+    return this.state.household.sims.find(s => s.id === id || `h-${s.id}` === id)
+  }
+
+  private callsFor(job: JobId, cache?: Map<JobId, TownCall[]>): TownCall[] {
+    const hit = cache?.get(job)
+    if (hit) return hit
+    const calls = callsAt(this.state.street, this.now(), this.requests).filter(c => c.jobs.includes(job))
+    cache?.set(job, calls)
+    return calls
+  }
+
+  private setJob(member: Member, simId: string, job: JobId | null): void {
+    if (member.role !== 'owner') return
+    const rec = this.recOf(simId)
+    if (!rec) return
+    if (rec.work) return member.send({ t: 'notice', text: `${rec.name} is on a shift. Change jobs after it ends.` })
+    if (job === null) {
+      if (rec.career) member.send({ t: 'notice', text: `${rec.name} left the ${JOBS[rec.career.job].title.toLowerCase()} job.` })
+      rec.career = null
+    } else {
+      const def = jobDef(job)
+      if (!def || rec.career?.job === job) return
+      rec.career = newCareer(job)
+      member.send({ t: 'notice', text: `${rec.name} joined ${PLACES[def.place].name} as a ${jobTitle(job, 1)}.` })
+    }
+    this.hooks.dirty?.()
+  }
+
+  private goToWork(member: Member, simId: string): void {
+    if (member.role !== 'owner') return
+    const rec = this.recOf(simId)
+    if (!rec?.career || rec.work || rec.trip || rec.away) return
+    const live = this.sims.get(`h-${rec.id}`)
+    if (!live) return
+    if (rec.needs.energy < 15 || rec.needs.hunger < 12) return this.say(live, 'I need to eat and rest before a shift.')
+    this.dropSim(live)
+    for (const m of this.members.values()) m.sims = m.sims.filter(id => id !== live.id)
+    rec.work = startShift(rec.career.job, this.now())
+    member.send({ t: 'notice', text: `${rec.name} headed to ${PLACES[JOBS[rec.career.job].place].name} for a shift.` })
+    this.hooks.dirty?.()
+    this.hooks.important?.()
+  }
+
+  private startTask(member: Member, simId: string, taskId: string): void {
+    if (member.role !== 'owner') return
+    const rec = this.recOf(simId)
+    const work = rec?.work
+    if (!rec || !work) return
+    const now = this.now()
+    settleTask(work, now)
+    const result = beginTask(work, taskId, now, this.callsFor(work.job))
+    if (typeof result === 'string') return member.send({ t: 'notice', text: result })
+    work.task = result
+    this.hooks.dirty?.()
+    if (result.call) this.hooks.important?.()
+  }
+
+  private endShift(rec: SimRecord, early: boolean): void {
+    const work = rec.work
+    if (!work) return
+    const now = this.now()
+    if (work.task && !early) settleTask(work, Math.max(now, work.task.ends))
+    work.task = null
+    const career = rec.career && rec.career.job === work.job ? rec.career : newCareer(work.job)
+    const result = finishShift(career, work, rec.needs, now)
+    rec.career = career
+    rec.work = null
+    this.state.household.funds += result.pay
+    this.bringHome(rec)
+    const text = `${rec.name} is home from ${early ? 'a short shift' : 'work'}: earned $${result.pay} (${perfLabel(result.perf).toLowerCase()} shift).${result.promoted ? ` Promoted to ${result.promoted}!` : ''}`
+    this.owner?.send({ t: 'notice', text })
+    this.hooks.dirty?.()
+    this.hooks.important?.()
+  }
+
+  private bringHome(rec: SimRecord): void {
+    const door = this.grid.exteriorDoors()[0]
+    if (door) { rec.x = door.outside[0]; rec.z = door.outside[1] }
+    const owner = this.owner
+    if (owner && !this.sims.has(`h-${rec.id}`)) {
+      const sim = this.spawn(rec, true, owner.id)
+      owner.sims.push(sim.id)
+      if (door) this.enqueue(sim, { kind: 'go', x: door.inside[0], z: door.inside[1] })
+    }
+  }
+
+  private order(member: Member, kind: keyof typeof SERVICES, simId?: string): void {
+    if (member.role !== 'owner') return
+    const def = SERVICES[kind]
+    if (!def) return
+    const now = this.now()
+    const orders = this.state.household.orders
+    const say = (text: string) => member.send({ t: 'notice', text })
+    if (orders.some(o => o.kind === kind && !o.done)) return say(`${def.label} is already on the way.`)
+    if (def.cost === 0 && orders.some(o => o.kind === kind && now - o.at < SERVICE_COOLDOWN)) return say(`You called ${def.label} a few minutes ago. Try again a little later.`)
+    if (def.cost > this.state.household.funds) return say('The household cannot afford that right now.')
+    let sim: string | null = null
+    if (def.needsSim) {
+      const rec = simId ? this.recOf(simId) : undefined
+      if (!rec || rec.work || rec.trip || rec.away || !this.sims.has(`h-${rec.id}`)) return say('Pick a resident who is at home.')
+      sim = rec.id
+    }
+    const request: TownRequest = { lot: this.state.lot, kind, at: now, by: this.state.household.name }
+    const eta = serviceEta(this.state.street, this.requests, request)
+    this.setRequests([...this.requests, request])
+    this.hooks.requested?.(request)
+    orders.push({ kind, at: now, eta, sim, done: false })
+    if (orders.length > 20) orders.splice(0, orders.length - 20)
+    this.state.household.funds = Math.max(0, this.state.household.funds - def.cost)
+    say(`${def.label} is on the way, about ${Math.max(5, Math.round((eta - now) / 1000))} seconds out.`)
+    this.hooks.dirty?.()
+    this.hooks.important?.()
+  }
+
+  private deliver(kind: keyof typeof SERVICES, simId: string | null, now: number): void {
+    const home = this.state.household.sims.filter(s => !s.work && !s.trip && !s.away)
+    const owner = this.owner
+    const live = (rec: SimRecord) => this.sims.get(`h-${rec.id}`)
+    switch (kind) {
+      case 'food':
+        for (const rec of home) {
+          rec.needs.hunger = Math.min(100, rec.needs.hunger + 55)
+          rec.needs.fun = Math.min(100, rec.needs.fun + 5)
+          const sim = live(rec)
+          if (sim) this.say(sim, 'Burgers are here!')
+        }
+        owner?.send({ t: 'notice', text: 'Sunny Side Burgers delivered dinner. Everyone at home ate.' })
+        return
+      case 'ems':
+        for (const rec of home) for (const need of NEEDS) if (rec.needs[need] < 25) rec.needs[need] = 45
+        owner?.send({ t: 'notice', text: 'Medic 2 checked everyone over. Anyone running on empty is back on their feet.' })
+        return
+      case 'resort': {
+        const rec = simId ? this.recOf(simId) : undefined
+        if (!rec || rec.work || rec.trip || rec.away) { owner?.send({ t: 'notice', text: 'The resort van came by, but nobody was free to go.' }); return }
+        const sim = live(rec)
+        if (sim) {
+          this.dropSim(sim)
+          for (const m of this.members.values()) m.sims = m.sims.filter(id => id !== sim.id)
+        }
+        rec.trip = { kind: 'resort', until: now + RESORT_MS }
+        owner?.send({ t: 'notice', text: `${rec.name} hopped on the resort van to Hood Springs.` })
+        return
+      }
+      case 'police': owner?.send({ t: 'notice', text: 'Car 3 checked the house. All quiet on the block.' }); return
+      case 'fire': owner?.send({ t: 'notice', text: 'Engine 2 tested the smoke alarms. All good.' }); return
+      case 'mow': owner?.send({ t: 'notice', text: 'Greenline 2 is mowing the front yard.' }); return
+      case 'city': owner?.send({ t: 'notice', text: 'A City Works crew is patching the road out front.' }); return
+    }
+  }
+
+  /** Shifts, resort days and service calls run on the real clock, whatever the household speed. */
+  private realTime(): void {
+    const now = this.now()
+    const owner = this.owner
+    for (const rec of this.state.household.sims) {
+      if (rec.work) {
+        const text = settleTask(rec.work, now)
+        if (text) { owner?.send({ t: 'notice', text: `${rec.name}: ${text}` }); this.hooks.dirty?.() }
+        if (now >= rec.work.until) this.endShift(rec, false)
+      }
+      if (rec.trip && now >= rec.trip.until) {
+        rec.trip = null
+        tripReturn(rec.needs)
+        this.bringHome(rec)
+        owner?.send({ t: 'notice', text: `${rec.name} is back from Hood Springs, rested and happy.` })
+        this.hooks.dirty?.()
+      }
+    }
+    const orders = this.state.household.orders
+    for (const order of orders) {
+      if (order.done || now < order.eta) continue
+      order.done = true
+      this.deliver(order.kind, order.sim, now)
+      this.hooks.dirty?.()
+    }
+    const keep = orders.filter(o => !o.done || now - o.at < 2 * 60 * 60 * 1000)
+    if (keep.length !== orders.length) this.state.household.orders = keep
+  }
+
+  private careerView(rec: SimRecord): CareerView | null {
+    const c = rec.career
+    if (!c) return null
+    return { job: c.job, level: c.level, title: jobTitle(c.job, c.level), xp: c.xp, next: xpForNext(c.level), shifts: c.shifts, last: c.last }
+  }
+
+  private workViews(cache: Map<JobId, TownCall[]>): { work: WorkView[]; away: AwayView[]; orders: OrderView[] } {
+    const work: WorkView[] = []
+    const away: AwayView[] = []
+    for (const rec of this.state.household.sims) {
+      const w = rec.work
+      if (w) {
+        const career = this.careerView(rec) ?? { job: w.job, level: 1, title: jobTitle(w.job, 1), xp: 0, next: xpForNext(1), shifts: 0, last: null }
+        work.push({
+          id: rec.id, name: rec.name, look: rec.look, career, start: w.start, until: w.until, perf: Math.round(w.perf), earned: w.earned,
+          task: w.task ? { id: w.task.id, label: w.task.label, starts: w.task.starts, ends: w.task.ends } : null,
+          counts: w.counts,
+          calls: this.callsFor(w.job, cache).filter(c => !w.calls.includes(c.id)).map(c => ({ id: c.id, label: c.label })),
+        })
+      }
+      if (rec.trip) away.push({ id: rec.id, name: rec.name, until: rec.trip.until, where: 'Hood Springs Resort' })
+    }
+    const orders = this.state.household.orders.filter(o => !o.done).map(o => ({ kind: o.kind, eta: o.eta, sim: o.sim }))
+    return { work, away, orders }
   }
 
   private build(member: Member, op: BuildOp): void {
@@ -650,6 +898,7 @@ export class Room {
       this.live(sim, minutes, funds)
     }
     if (this.ownerHome) this.state.household.funds = Math.max(0, Math.round(funds.value * 100) / 100)
+    this.realTime()
     for (const [id, left] of [...this.pendingKnocks]) {
       const next = left - seconds
       if (next > 0) { this.pendingKnocks.set(id, next); continue }
@@ -851,6 +1100,7 @@ export class Room {
         if (value) friends.push({ name: other.rec.name, value: Math.round(value) })
       }
       view.friends = friends
+      if (sim.hh) view.career = this.careerView(sim.rec)
     }
     return view
   }
@@ -871,6 +1121,9 @@ export class Room {
   /** Sends each person the Sims they may see: someone still in the yard never sees who is inside. */
   broadcastState(): void {
     const speed = this.effectiveSpeed()
+    const now = this.now()
+    const owner = this.owner
+    const extra = owner ? this.workViews(new Map()) : null
     for (const m of this.members.values()) {
       const entitled = this.memberEntitled(m)
       const sims: SimView[] = []
@@ -878,7 +1131,8 @@ export class Room {
         if (!entitled && sim.controller !== m.id && this.grid.isInside(sim.tile[0], sim.tile[1])) continue
         sims.push(this.simView(sim, m))
       }
-      m.send({ t: 'state', clock: Math.floor(this.state.clock), speed, funds: m.role === 'owner' ? Math.floor(this.state.household.funds) : undefined, home: this.ownerHome, sims })
+      const mine = m.role === 'owner' && extra
+      m.send({ t: 'state', clock: Math.floor(this.state.clock), speed, funds: m.role === 'owner' ? Math.floor(this.state.household.funds) : undefined, home: this.ownerHome, sims, now, ...(mine ? extra : {}) })
     }
   }
 
