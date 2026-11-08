@@ -5,7 +5,7 @@ import type { ParkState, Command, CommandResult } from '../../../server/park/ind
 
 export type Player = { id: string; name: string; park: number; host: boolean }
 export type ChatLine = { id: number; from: string; text: string; system?: boolean }
-export type RoomInfo = { id: string; name: string; mode: 'coop' | 'versus'; scenario: string; host: string; players: Player[]; started: boolean; max: number }
+export type RoomInfo = { id: string; name: string; mode: 'coop' | 'versus'; scenario: string; realism?: boolean; host: string; players: Player[]; started: boolean; max: number }
 export type RideComment = { t: number; text: string; mood: 'pos' | 'mix' | 'neg'; who: string }
 export type RideComments = { id: number; now: number; comments: RideComment[]; counts: { pos: number; mix: number; neg: number } }
 export type GuestInfo = { id: number; park: number; happy: number; energy: number; hunger: number; thirst: number; toilet: number; nausea: number; cash: number; spent: number; rides: number; items: string[]; thoughts: string[]; state: string; kid: boolean; inPark: number; minI: number; maxI: number; tolerance: number; ride: number; type?: 'kid' | 'thrill' | 'casual'; warm?: number; hotel?: number; visit?: { hotel: number; amenity: string } | null }
@@ -47,7 +47,7 @@ export class LocalSession extends BaseSession implements ParkSession {
 
   constructor(state: ParkState) { super(); this.state = state }
 
-  static fresh(scenario: string) { return new LocalSession(createPark(scenario)) }
+  static fresh(scenario: string, realism = false) { return new LocalSession(createPark(scenario, { realism })) }
   static load(data: unknown) { return new LocalSession(deserializePark(data)) }
 
   async command(cmd: Command) {

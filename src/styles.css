@@ -1060,6 +1060,19 @@ body{background:var(--paper);color:var(--tone-0)}
 .pk-ended ul{list-style:none;padding:0;margin:12px 0 18px;display:grid;gap:4px}
 .pk-error{display:grid;place-items:center;gap:12px;height:100%;padding:30px;text-align:center}
 .pk-menu{max-width:1180px;margin:0 auto;padding:34px 28px 40px;display:flex;flex-direction:column;gap:18px}
+.pk-realism{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:10px 14px;border-radius:14px;background:#ffffff0c;border:1px solid var(--pk-line);transition:background .18s,border-color .18s}
+.pk-realism.on{background:#d0503c22;border-color:#e2553f88}
+.pk-realism p{margin:0;flex:1;min-width:240px;font-size:12.5px;line-height:1.45;opacity:.82}
+.pk-realism-switch{display:inline-flex;align-items:center;gap:9px;min-height:44px;padding:6px 12px 6px 6px;border-radius:12px;background:var(--pk-panel-2);border:1px solid var(--pk-line);color:inherit;font:inherit;font-size:13.5px;cursor:pointer}
+.pk-realism-switch:hover{background:#2f3a4b}
+.pk-realism-switch:focus-visible{outline:2px solid var(--pk-accent);outline-offset:2px}
+.pk-realism-track{position:relative;width:38px;height:22px;border-radius:11px;background:#ffffff26;transition:background .18s;flex:none}
+.pk-realism-knob{position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#f4f1ea;transition:transform .18s}
+.pk-realism.on .pk-realism-track{background:var(--pk-bad)}
+.pk-realism.on .pk-realism-knob{transform:translateX(16px)}
+.pk-realism-state{font-size:10px;letter-spacing:1px;text-transform:uppercase;padding:2px 7px;border-radius:20px;background:#ffffff1a;font-weight:700}
+.pk-realism.on .pk-realism-state{background:var(--pk-bad);color:#fff}
+@media (prefers-reduced-motion:reduce){.pk-realism,.pk-realism-track,.pk-realism-knob{transition:none}}
 .pk-hero{padding:28px 30px;border-radius:22px;background:radial-gradient(circle at 85% 10%,#ffcf4a55,transparent 45%),radial-gradient(circle at 10% 100%,#3fae5c55,transparent 50%),linear-gradient(135deg,#3a2a8c,#1b2d5a);box-shadow:0 14px 40px #0006}
 .pk-eyebrow{font-size:11px;letter-spacing:2px;opacity:.8}
 .pk-hero h1{font-family:'Manrope',sans-serif;font-size:clamp(38px,6vw,64px);margin:6px 0 10px;letter-spacing:-1.5px;line-height:1}

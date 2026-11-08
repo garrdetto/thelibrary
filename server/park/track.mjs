@@ -2,6 +2,7 @@ import { TILE, UNIT, DIRS, clamp } from './util.mjs'
 import { COASTER_STYLES, FLAT_RIDES, STALLS, SCENERY } from './catalog.mjs'
 import { tileMax, tileMin, inMap, tileIndex, pathHeightAt } from './terrain.mjs'
 import { hotelHeight } from './hotels.mjs'
+import { rideCostScale } from './realism.mjs'
 
 export const SLOPE_RATE = { '-2': -8, '-1': -2, '0': 0, '1': 2, '2': 8 }
 // Climb per tile (half-metres) by grade. Pieces carry the grade they were built
@@ -544,7 +545,7 @@ export function validatePieceAt(state, ride, pose, index, start, piece, extraCel
       if (cell.lo < other.hi && other.lo < cell.hi) return { error: 'The track would collide with itself.' }
     }
   }
-  return { ok: true, cells, next, closes, piece, adjusted: piece.c !== requested.c || piece.s !== requested.s || piece.sp !== requested.sp, cost: Math.round(style.pieceCost * pieceLengthTiles(piece) * (piece.sp === 'loop' || piece.sp === 'corkscrew' ? 2.2 : piece.sp === 'station' ? 1.6 : piece.sp ? 1.3 : 1) + Math.max(0, next.h - start.h) * 3 + cells.filter(cell => cell.tunnel).length * style.pieceCost * 0.8) }
+  return { ok: true, cells, next, closes, piece, adjusted: piece.c !== requested.c || piece.s !== requested.s || piece.sp !== requested.sp, cost: Math.round(style.pieceCost * pieceLengthTiles(piece) * (piece.sp === 'loop' || piece.sp === 'corkscrew' ? 2.2 : piece.sp === 'station' ? 1.6 : piece.sp ? 1.3 : 1) + Math.max(0, next.h - start.h) * 3 + cells.filter(cell => cell.tunnel).length * style.pieceCost * 0.8) * rideCostScale(state) }
 }
 
 export function entityLabel(entity) {

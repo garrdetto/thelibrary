@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LoaderCircle, Play, RefreshCcw, Trash2, Users, Zap } from 'lucide-react'
+import { Gauge, LoaderCircle, Play, RefreshCcw, Trash2, Users, Zap } from 'lucide-react'
 import { ParkHud } from './ParkHud'
 import { ParkScoreboard } from './ParkScoreboard'
 import { LocalSession, NetSession, ViewSession, Lobby, compressSave, decompressSave } from '@/lib/park/session'
@@ -8,7 +8,7 @@ import { parkApi } from '@/lib/park/api'
 import { ensureCustomRides } from '@/lib/park/customRides'
 import type { SaveSummary } from '@/lib/park/api'
 import type { BackendFactory } from '@/lib/park/backend'
-import { SCENARIOS, objectiveText, formatMoney, deserializePark } from '../../../server/park/index.mjs'
+import { SCENARIOS, objectiveText, formatMoney, deserializePark, REALISM_MAX_LOAN, REALISM_RIDE_COST } from '../../../server/park/index.mjs'
 
 type Tab = 'new' | 'load' | 'online'
 const SOLO = Object.entries(SCENARIOS).filter(([, s]) => !s.versus)
@@ -33,6 +33,7 @@ export function ParkGame({ username, accountReady, edition = 1 }: { username: st
   const [mode, setMode] = useState<'coop' | 'versus'>('coop')
   const [scenario, setScenario] = useState('meadowbrook')
   const [fromPark, setFromPark] = useState('')
+  const [realism, setRealism] = useState(false)
   const [waiting, setWaiting] = useState<RoomInfo | null>(null)
   const lobbyRef = useRef<Lobby | null>(null)
   const [scoreKey, setScoreKey] = useState(0)
@@ -110,7 +111,7 @@ export function ParkGame({ username, accountReady, edition = 1 }: { username: st
         save = data
         if (save.length > 180000) throw new Error('That park is too large to host online. Try a smaller save.')
       }
-      await lobby.request('create', { mode, scenario: mode === 'versus' ? 'twinValleys' : scenario, save })
+      await lobby.request('create', { mode, scenario: mode === 'versus' ? 'twinValleys' : scenario, save, realism })
     } catch (failure) { setError((failure as Error).message) } finally { setBusy('') }
   }
 
@@ -141,6 +142,15 @@ export function ParkGame({ username, accountReady, edition = 1 }: { username: st
 
   return <div className="pk-root">
     <section className="pk-menu">
+      <div className={`pk-realism ${realism ? 'on' : ''}`}>
+        <button type="button" role="switch" aria-checked={realism} aria-describedby="pk-realism-note" className="pk-realism-switch" onClick={() => setRealism(on => !on)}>
+          <span className="pk-realism-track" aria-hidden="true"><span className="pk-realism-knob" /></span>
+          <Gauge size={16} aria-hidden="true" />
+          <strong>Realism mode</strong>
+          <span className="pk-realism-state">{realism ? 'On' : 'Off'}</span>
+        </button>
+        <p id="pk-realism-note">Loans up to {formatMoney(REALISM_MAX_LOAN)}, but every ride costs {REALISM_RIDE_COST}× as much to build. Wages, electricity and fees stay the same. Applies to new parks, co-op and versus; saved parks keep the mode they started in.</p>
+      </div>
       <div className="pk-hero">
         <span className="pk-eyebrow">BUILD · MANAGE · RIDE</span>
         <h1>{edition === 2 ? 'Thrill Park 2' : 'Thrill Park'}</h1>
@@ -161,9 +171,9 @@ export function ParkGame({ username, accountReady, edition = 1 }: { username: st
           <h3>{s.name}</h3>
           <p>{s.description}</p>
           <p className="pk-objective-text">{objectiveText(s.objective)}</p>
-          <small>Starting cash {formatMoney(s.cash)}{s.loan ? ` · loan ${formatMoney(s.loan)}` : ''}</small>
+          <small>Starting cash {formatMoney(s.cash)}{s.loan ? ` · loan ${formatMoney(s.loan)}` : ''}{realism ? ` · borrow up to ${formatMoney(Math.max(s.maxLoan, REALISM_MAX_LOAN))} · rides ${REALISM_RIDE_COST}× cost` : ''}</small>
           <div className="pk-play-row">
-            <button className="pk-btn pk-btn-go" onClick={() => void startLocal(() => LocalSession.fresh(id))}><Play size={14} /> Play</button>
+            <button className="pk-btn pk-btn-go" onClick={() => void startLocal(() => LocalSession.fresh(id, realism))}><Play size={14} /> {realism ? 'Play realism' : 'Play'}</button>
             {signedIn && (saves ?? []).some(save => save.scenario === id) && <select className="pk-save-select" aria-label={`Saved parks for ${s.name}`} value="" disabled={Boolean(busy)} onChange={e => { if (e.target.value) void loadPark(e.target.value) }}><option value="">Saved parks…</option>{(saves ?? []).filter(save => save.scenario === id).map(save => <option key={save.parkId} value={save.parkId}>{save.name} · {save.summary.date} · {formatMoney(save.summary.cash)}</option>)}</select>}
           </div>
         </div>
@@ -179,7 +189,7 @@ export function ParkGame({ username, accountReady, edition = 1 }: { username: st
         <button className="pk-btn pk-btn-go" disabled={busy === 'connect'} onClick={() => void connect()}>{busy === 'connect' ? <LoaderCircle className="spin" size={14} /> : <Users size={14} />} Connect to the park lobby</button>
       </div> : lobby.status === 'connecting' ? <p className="pk-menu-note"><LoaderCircle className="spin" size={15} /> Connecting…</p> : waiting ? <div className="pk-waiting">
         <h3>{waiting.name}</h3>
-        <p>Versus · {waiting.players.length}/{waiting.max} tycoons · Twin Valleys</p>
+        <p>Versus · {waiting.players.length}/{waiting.max} tycoons · Twin Valleys{waiting.realism ? ' · Realism' : ''}</p>
         <ul>{waiting.players.map(p => <li key={p.id}>{p.name}{p.host ? ' · Host' : ''}</li>)}</ul>
         {waiting.host === lobby.me ? <button className="pk-btn pk-btn-go" disabled={waiting.players.length < 2 || busy === 'start'} onClick={() => void startVersus()}><Zap size={14} /> {waiting.players.length < 2 ? 'Waiting for a rival…' : 'Start the match'}</button> : <p className="pk-menu-note">Waiting for the host to start…</p>}
         <button className="pk-btn" onClick={() => { lobby.socket.emit('leave-room'); setWaiting(null) }}>Leave</button>
@@ -192,11 +202,12 @@ export function ParkGame({ username, accountReady, edition = 1 }: { username: st
             <label className="pk-field"><span>Or continue a save</span><select value={fromPark} onChange={e => setFromPark(e.target.value)}><option value="">New park</option>{(saves ?? []).map(s => <option key={s.parkId} value={s.parkId}>{s.name}</option>)}</select></label>
           </>}
           {mode === 'versus' && <p className="pk-menu-note">Everyone starts with $15,000 in identical valleys. Invite rivals, then start when ready.</p>}
+          {(mode === 'versus' || !fromPark) && <p className="pk-menu-note">{realism ? 'Realism mode is on for this park.' : 'Realism mode is off. Turn it on at the top of the page.'}</p>}
           <button className="pk-btn pk-btn-go" disabled={busy === 'create'} onClick={() => void createRoom()}>{busy === 'create' ? <LoaderCircle className="spin" size={14} /> : <Play size={14} />} {mode === 'coop' ? 'Open co-op park' : 'Open versus lobby'}</button>
         </div>
         <div className="pk-rooms">
           <h3>Open parks</h3>
-          {!lobby.rooms.length ? <p className="pk-menu-note">No parks are open. Host one and invite friends to this page.</p> : <ul>{lobby.rooms.map(r => <li key={r.id}><div><strong>{r.name}</strong><small>{r.mode === 'coop' ? 'Co-op' : 'Versus'} · {SCENARIOS[r.scenario]?.name ?? r.scenario} · {r.players.length}/{r.max} · {r.players.map(p => p.name).join(', ')}{r.started && r.mode === 'versus' ? ' · in progress' : ''}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy) || r.players.length >= r.max || (r.mode === 'versus' && r.started)} onClick={() => void joinRoom(r.id)}>Join</button></li>)}</ul>}
+          {!lobby.rooms.length ? <p className="pk-menu-note">No parks are open. Host one and invite friends to this page.</p> : <ul>{lobby.rooms.map(r => <li key={r.id}><div><strong>{r.name}</strong><small>{r.mode === 'coop' ? 'Co-op' : 'Versus'}{r.realism ? ' · Realism' : ''} · {SCENARIOS[r.scenario]?.name ?? r.scenario} · {r.players.length}/{r.max} · {r.players.map(p => p.name).join(', ')}{r.started && r.mode === 'versus' ? ' · in progress' : ''}</small></div><button className="pk-btn pk-btn-go" disabled={Boolean(busy) || r.players.length >= r.max || (r.mode === 'versus' && r.started)} onClick={() => void joinRoom(r.id)}>Join</button></li>)}</ul>}
         </div>
       </div>)}
       <ParkScoreboard username={username} refreshKey={scoreKey} onExplore={(m, p) => void viewPark(m, p)} exploreBusy={busy} />

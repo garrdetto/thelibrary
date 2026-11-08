@@ -7,6 +7,7 @@ import { nextPathOrder } from './queues.mjs'
 import { validatePiece, addRideCells, removeRideCells, makeTrain, rideStatsFromRun, trackPoses, pieceLengthTiles, CAR_GAP, kartLimit, kartLanes, kartCount, kartRestS, PATH_DECK_CLEARANCE, tunnelOpenAt } from './track.mjs'
 import { footprintTiles, addNews, entityCost, ridePath, frontTile, stallFrontTile, stallFootprintError, stallPlacementRotation } from './state.mjs'
 import { mechanicJobDistance } from './guests.mjs'
+import { rideCostScale } from './realism.mjs'
 import { LAND_SQUARE_COST, LAND_AREA_MAX, landAreaPlan, markLandChanged } from './land.mjs'
 import { flatSpec, validFlatSize } from './flatspec.mjs'
 import { SCHEME_COUNT, ROLES, rideSlots, rideColors, parkSchemes, sanitizeScheme } from './palette.mjs'
@@ -633,7 +634,8 @@ const HANDLERS = {
       plan = terrainPlan(state, park, r, 'level')
       if (plan.error) return fail(`The ground must be level here. ${plan.error}`)
     }
-    const cost = spec.cost + (plan?.cost ?? 0)
+    const rideCost = spec.cost * rideCostScale(state)
+    const cost = rideCost + (plan?.cost ?? 0)
     if (!canAfford(state, park, cost)) return fail(`You need $${cost.toLocaleString('en-US')} to build this ride.`)
     if (plan) applyTerrainPlan(state, park, plan)
     const id = state.nextId++
@@ -645,7 +647,7 @@ const HANDLERS = {
     }
     state.entities[id] = ride
     for (const [x, y] of tiles) map.obj[tileIndex(map, x, y)] = id
-    spend(state, park, spec.cost, 'construction')
+    spend(state, park, rideCost, 'construction')
     pathsChanged(state)
     return ok({ id, cost })
   },
@@ -845,8 +847,8 @@ const HANDLERS = {
       if (isWater(map, i, x, y)) return fail('Stations cannot be built on water.')
       ground = Math.max(ground, tileMax(map, x, y))
     }
-    const cost = style.cost
-    if (!canAfford(state, park, cost)) return fail(`You need $${cost} to start this track ride.`)
+    const cost = style.cost * rideCostScale(state)
+    if (!canAfford(state, park, cost)) return fail(`You need $${cost.toLocaleString('en-US')} to start this track ride.`)
     const id = state.nextId++
     const ride = {
       id, type: 'ride', kind: 'coaster', style: cmd.style, x: cmd.x, y: cmd.y, park, name: nextName(state, style.name), price: 2.5, status: 'closed',
@@ -1066,7 +1068,7 @@ const HANDLERS = {
       pathsChanged(state)
       return ok()
     }
-    const refund = Math.round(entityCost(target) * 0.5)
+    const refund = Math.round(entityCost(target, state) * 0.5)
     if (target.type === 'ride') {
       ejectRide(state, target)
       for (const gateId of [target.entrance, target.exit]) { const gate = state.entities[gateId]; if (gate) removeEntity(state, gate) }

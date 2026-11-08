@@ -1,6 +1,6 @@
 # Pool real-time server
 
-Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v57` (v57 adds admin-published custom rides); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
+Deploy this directory as a standalone Node.js service on Render or Railway. Set the service root to `server`, install with `npm install`, and start with `npm start`. No build step is needed. Node 22 or newer is required. The service listens on all network interfaces using the platform's `PORT` (8080 when unset, matching the Railway target port), logs the listening port and version at startup, and exposes `/health` as the health check. `/version` returns `pool-lobby 8-ball v59` (v59 adds Thrill Park Realism mode and $500 land); if it returns `Not found` or an older version, the platform is running an outdated copy of this server. On Railway, use the `garrdetto/thelibrary` repo, the `main` branch, root directory `server`, start command `npm start` and target port 8080.
 
 Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin, currently `https://thelibrary.garrdetto.workers.dev`. Multiple trusted production or preview origins can be comma-separated. When configured, requests from other origins are rejected. When unset or empty, only `https://thelibrary.garrdetto.workers.dev` is accepted (v39 default). Configure explicit origins in production. In the site's Cloudflare build variables, set `VITE_POOL_SERVER_URL` to this service's public HTTPS URL, then redeploy the frontend. This public URL is compiled into the client; it is not a secret. When unset, the frontend uses its existing default service URL; signed-in solo practice remains available if multiplayer is offline.
 
@@ -237,3 +237,10 @@ Redeploy this service with the frontend so online parks run the same rules as so
 - Raised paths can cross over track and track can pass under raised paths, with 2.6 m of headroom and 0.5 m (`PATH_DECK_CLEARANCE`) for the deck.
 - New `kartWide` style (Grand Prix Kart Track): two squares wide, four karts abreast, no hairpins.
 - Queued guests walk up the line (`qs`) and a ride only loads the guest at the front once they reach it.
+
+### Thrill Park v59
+
+Redeploy this service with the frontend so online parks run the same rules as solo play:
+- Realism mode: `create` accepts `realism: true` for co-op and versus rooms, and `createPark(..., { realism: true })` sets `state.realism`, saved with the park. Realism parks can borrow up to `REALISM_MAX_LOAN` ($150,000) and every ride costs `REALISM_RIDE_COST` (5×) to build: flat rides, custom rides, track ride stations and every track piece (`rideCostScale` in `server/park/realism.mjs`). Demolish refunds and park value follow the price paid. Running costs, wages, electricity and fees are unchanged. Room summaries carry `realism`.
+- Land costs $500 a square (`LAND_SQUARE_COST`) in every scenario and mode.
+

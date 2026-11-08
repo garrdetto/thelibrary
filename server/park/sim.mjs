@@ -261,7 +261,7 @@ function updateRating(state) {
 
 export function parkValue(state, park) {
   let value = 0
-  for (const e of Object.values(state.entities)) if (e.park === park && (e.type === 'ride' || e.type === 'stall' || e.type === 'hotel')) value += entityCost(e)
+  for (const e of Object.values(state.entities)) if (e.park === park && (e.type === 'ride' || e.type === 'stall' || e.type === 'hotel')) value += entityCost(e, state)
   return Math.round(value + state.parks[park].guestsIn * 6)
 }
 

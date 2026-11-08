@@ -4,6 +4,7 @@ import { DIRS, encodeRle, decodeRle, hashString } from './util.mjs'
 import { generateMap, tileIndex, inMap, isWalkPath, tileMax, tileSlope, tileMin } from './terrain.mjs'
 import { rebuildTrackCells, buildTrackPath, kartLimit } from './track.mjs'
 import { flatRideSize, rideFlatSpec } from './flatspec.mjs'
+import { REALISM_MAX_LOAN, rideCostScale } from './realism.mjs'
 import { HOTELS, HOTEL_ADDONS, HOTEL_SERVICE, HOTEL_SIZE_LIMIT, HOTEL_HISTORY_NIGHTS, hotelSpec, hotelLoadFits, hotelRateLimits, sanitizeAmenityPrices } from './hotels.mjs'
 
 export const ENGINE_VERSION = 5
@@ -81,6 +82,7 @@ export function createPark(scenarioId, options = {}) {
     time: { tick: 0, seconds: 0, day: 0, month: START_MONTH, year: 1, dayFraction: 0.3 },
     weather: { kind: 'sunny', temp: 22, next: 40 },
     speed: allParksNamed ? 1 : 0,
+    realism: options.realism === true,
     news: [],
     newsSeq: 1,
     ended: null,
@@ -97,7 +99,7 @@ export function createPark(scenarioId, options = {}) {
       color: PARK_COLORS[p],
       cash: scenario.cash,
       loan: scenario.loan,
-      maxLoan: scenario.maxLoan,
+      maxLoan: options.realism === true ? Math.max(scenario.maxLoan, REALISM_MAX_LOAN) : scenario.maxLoan,
       entryFee: scenario.versus ? 10 : 15,
       rating: 300,
       value: 0,
@@ -149,10 +151,10 @@ export function addNews(state, park, text, kind = 'info', ref = null) {
   if (state.news.length > 60) state.news.splice(0, state.news.length - 60)
 }
 
-export function entityCost(entity) {
+export function entityCost(entity, state = null) {
   if (entity.type === 'stall') return STALLS[entity.kind].cost
   if (entity.type === 'scenery') return SCENERY[entity.kind].cost
-  if (entity.type === 'ride' && entity.kind === 'flat') return rideFlatSpec(entity)?.cost ?? 0
+  if (entity.type === 'ride' && entity.kind === 'flat') return (rideFlatSpec(entity)?.cost ?? 0) * rideCostScale(state)
   if (entity.type === 'hotel') return hotelSpec(entity.kind, entity.size, entity.floors, entity.addons)?.cost ?? 0
   if (entity.type === 'ride' && entity.kind === 'coaster') return entity.spent ?? COASTER_STYLES[entity.style].cost
   return 0
@@ -326,7 +328,7 @@ export function serializePark(state, includeGuests = true) {
     v: state.v, scenario: state.scenario, mode: state.mode, seed: state.seed, rng: state.rng, map, entities,
     nextId: state.nextId, staffSeq: state.staffSeq, guestSeq: state.guestSeq, pathVersion: state.pathVersion, structVersion: state.structVersion,
     parks: state.parks, guests: includeGuests ? state.guests : [], staff: state.staff, time: state.time, weather: state.weather, speed: state.speed,
-    news: state.news, newsSeq: state.newsSeq, ended: state.ended,
+    news: state.news, newsSeq: state.newsSeq, ended: state.ended, ...(state.realism ? { realism: true } : {}),
   }
 }
 
@@ -350,6 +352,7 @@ export function deserializePark(data) {
     time: { tick: Math.round(num(data.time?.tick)), seconds: num(data.time?.seconds), day: Math.round(num(data.time?.day, 0, 0, 30)), month: Math.round(num(data.time?.month, 0, 0, 7)), year: Math.round(num(data.time?.year, 1, 1, 999)), dayFraction: num(data.time?.dayFraction, 0.3, 0, 1) },
     weather: { kind: ['sunny', 'cloudy', 'rain'].includes(data.weather?.kind) ? data.weather.kind : 'sunny', temp: num(data.weather?.temp, 20, -10, 40), next: num(data.weather?.next, 40, 0, 200) },
     speed: [0, 1, 2, 4].includes(data.speed) ? data.speed : 1,
+    realism: data.realism === true,
     news: Array.isArray(data.news) ? data.news.slice(-60).filter(n => n && typeof n.text === 'string').map(n => ({ id: num(n.id), t: num(n.t), park: num(n.park, -1), text: n.text.slice(0, 240), kind: String(n.kind ?? 'info').slice(0, 20), ref: n.ref ?? null })) : [],
     newsSeq: Math.round(num(data.newsSeq, 1, 1)), ended: data.ended && typeof data.ended === 'object' ? { text: String(data.ended.text ?? '').slice(0, 240), winner: num(data.ended.winner, -1) } : null,
     trackCells: new Map(), fields: new Map(),
@@ -357,7 +360,7 @@ export function deserializePark(data) {
   const parks = Array.isArray(data.parks) ? data.parks.slice(0, 4) : []
   if (!parks.length) throw new Error('This park file has no parks.')
   state.parks = parks.map((p, i) => ({
-    id: i, parkId: typeof p?.parkId === 'string' && /^[a-f0-9-]{32,36}$/i.test(p.parkId) ? p.parkId : newParkId(), name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), named: p?.named === true, color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: Math.max(SCENARIOS[scenario].maxLoan, num(p?.maxLoan, SCENARIOS[scenario].maxLoan, 0)),
+    id: i, parkId: typeof p?.parkId === 'string' && /^[a-f0-9-]{32,36}$/i.test(p.parkId) ? p.parkId : newParkId(), name: String(p?.name ?? parkName(i, state.mode)).slice(0, 40), named: p?.named === true, color: PARK_COLORS[i], cash: num(p?.cash), loan: num(p?.loan, 0, 0), maxLoan: Math.max(state.realism ? Math.max(SCENARIOS[scenario].maxLoan, REALISM_MAX_LOAN) : SCENARIOS[scenario].maxLoan, num(p?.maxLoan, SCENARIOS[scenario].maxLoan, 0)),
     entryFee: num(p?.entryFee, 10, 0, 100), rating: num(p?.rating, 300, 0, 999), value: num(p?.value), guestsIn: 0, totalGuests: Math.round(num(p?.totalGuests, 0, 0)), open: p?.open !== false,
     marketing: Array.isArray(p?.marketing) ? p.marketing.slice(0, 4).map(m => ({ kind: String(m?.kind ?? 'flyers').slice(0, 12), until: num(m?.until), boost: num(m?.boost, 1, 1, 3) })) : [],
     schemes: parkSchemes(p),

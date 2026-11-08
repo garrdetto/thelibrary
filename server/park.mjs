@@ -49,7 +49,7 @@ export function attachPark(io, origins) {
     } catch { next(new Error('Unable to verify your park session.')) }
   })
 
-  const summary = room => ({ id: room.id, name: room.name, mode: room.mode, scenario: room.scenario, host: room.host, started: room.started, max: room.max, players: playersOf(room) })
+  const summary = room => ({ id: room.id, name: room.name, mode: room.mode, scenario: room.scenario, realism: room.realism === true, host: room.host, started: room.started, max: room.max, players: playersOf(room) })
   const playersOf = room => [...room.players.values()].map(p => ({ id: p.id, name: p.name, park: p.park, host: p.id === room.host }))
   const publishRooms = () => ns.emit('rooms', [...rooms.values()].map(summary))
 
@@ -113,7 +113,7 @@ export function attachPark(io, origins) {
   function makeRoom(socket, mode, scenario, state) {
     const id = `park_${randomUUID().slice(0, 8)}`
     const account = socket.data.account
-    const room = { id, name: `${account.username}'s ${mode === 'coop' ? 'park' : 'rivalry'}`, mode, scenario, host: socket.id, players: new Map(), started: mode === 'coop', state, max: 4, chat: [], chatSeq: 1, tick: 0, newsSent: state?.newsSeq ? state.newsSeq - 1 : 0, timer: null }
+    const room = { id, name: `${account.username}'s ${mode === 'coop' ? 'park' : 'rivalry'}`, mode, scenario, realism: state?.realism === true, host: socket.id, players: new Map(), started: mode === 'coop', state, max: 4, chat: [], chatSeq: 1, tick: 0, newsSent: state?.newsSeq ? state.newsSeq - 1 : 0, timer: null }
     room.timer = setInterval(() => loop(room), TICK_MS)
     room.timer.unref?.()
     rooms.set(id, room)
@@ -127,7 +127,7 @@ export function attachPark(io, origins) {
     socket.join(room.id)
   }
 
-  const createInput = z.object({ mode: z.enum(['coop', 'versus']), scenario: z.string().max(32), save: z.string().max(180000).optional() }).strict()
+  const createInput = z.object({ mode: z.enum(['coop', 'versus']), scenario: z.string().max(32), save: z.string().max(180000).optional(), realism: z.boolean().optional() }).strict()
 
   ns.on('connection', socket => {
     const account = socket.data.account
@@ -142,7 +142,7 @@ export function attachPark(io, origins) {
       if (!parsed.success) return ack({ error: 'Choose a valid park setup.' })
       if (rooms.size >= MAX_ROOMS) return ack({ error: 'The server is hosting as many parks as it can. Try again later.' })
       leave(socket)
-      const { mode, scenario, save } = parsed.data
+      const { mode, scenario, save, realism = false } = parsed.data
       try {
         if (mode === 'coop') {
           let state
@@ -152,7 +152,7 @@ export function attachPark(io, origins) {
             if (state.parks.length !== 1) return ack({ error: 'Only single-park saves can be hosted in co-op.' })
           } else {
             if (!SCENARIOS[scenario] || SCENARIOS[scenario].versus) return ack({ error: 'Choose a scenario.' })
-            state = createPark(scenario, { mode: 'coop' })
+            state = createPark(scenario, { mode: 'coop', realism })
           }
           state.mode = 'coop'
           const room = makeRoom(socket, 'coop', state.scenario, state)
@@ -161,6 +161,7 @@ export function attachPark(io, origins) {
           sendInit(room, socket)
         } else {
           const room = makeRoom(socket, 'versus', 'twinValleys', null)
+          room.realism = realism
           addPlayer(room, socket, 0)
           socket.emit('room', summary(room))
         }
@@ -196,7 +197,7 @@ export function attachPark(io, origins) {
       if (room.players.size < 2) return ack({ error: 'At least two tycoons are needed.' })
       const players = [...room.players.values()]
       players.forEach((p, i) => { p.park = i })
-      room.state = createPark('twinValleys', { mode: 'versus', players: players.length, parkNames: players.map(p => `${p.name}'s Park`) })
+      room.state = createPark('twinValleys', { mode: 'versus', players: players.length, parkNames: players.map(p => `${p.name}'s Park`), realism: room.realism })
       room.started = true
       room.newsSent = room.state.newsSeq - 1
       for (const p of players) { const s = ns.sockets.get(p.id); if (s) sendInit(room, s) }
