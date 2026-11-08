@@ -12,7 +12,7 @@ modules-src/shorttrack/
   tests/          node --test suites (scripts/shorttrack-tests.mjs): golden.test.ts, track.test.ts, protocol.test.ts; fixtures/ recorded from the pre-port code
   next/           the Babylon module
     boot.ts       createEngine (WebGPU, WebGL2 fallback), createPhysics (Havok), the ?scene=test scene
-    physics/      (Phase 4) Havok bodies for chassis, walls (continuous collision) and debris
+    sim/dynamics.ts (Phase 4, done) the next vehicle model; render/debris.ts: Havok debris (chassis and walls stay in sim/, see Phase 4)
     render/       (Phase 2, done) presenter.ts, bridge.ts, sky.ts: Babylon draws the classic scene graph
     sim/          (Phase 1, done) config, track, car state, vehicle step, contacts, damage, AI, race control: no DOM, no Math.random, no clock
     net/          (Phase 1, done) the PeerJS protocol version in hello
@@ -95,6 +95,22 @@ Done in this phase:
 
 ### 4. Physics upgrade
 Havok chassis, walls and debris; four raycast wheels with spring-damper suspension, combined-slip tires with load sensitivity, weight transfer, drag, downforce, drafting and side-draft, true banking normals, a dirt surface model, damage from contact impulses feeding grip, power and aero. Retune `AI_LEVELS`, `FORM_V` and the rolling start. AI laps within 3 % of the Phase 1 traces on asphalt, 5 % on dirt; a 20-car, 25-lap soak finishes with no NaN, no wall tunnelling, no stuck car; physics ≤ 3 ms per frame for 20 cars.
+
+Done in this phase (approach changed from the plan, see the first point):
+- **Chassis and walls stay in the deterministic sim, not Havok.** The race must replay identically from a seed (golden tests, the reference recorder, the AI pace trim and lap checks), and online cars are simulated on every peer from the same `next/sim/` code; a WASM rigid-body solver stepping on each peer's own frame clock would drift between peers and could not be checked against the Phase 1 recordings. The new vehicle model is therefore strict TypeScript in `next/sim/dynamics.ts`, on the same 120 Hz tick, and the existing swept wall and car-to-car contacts (`physics.ts`) are shared by both models. Havok, already running in the presenter, simulates cosmetic debris only (`next/render/debris.ts`: panel chips for hits of 7 m/s and more, on a short-lived slab tilted to the track normal); debris never touches a car and may differ between peers.
+- **Vehicle model** (`World.model = 'next'`, picked by `?engine=next`; `&physics=classic` keeps the old model): a planar body with four wheels; slip angles with a relaxation length; magic-formula side force with load sensitivity (a broader, lower peak and longer relaxation on dirt); drive and brakes take only the grip each tire has left (traction control and ABS), then the friction ellipse; a sprung body whose pitch and roll follow the tire forces through damped springs and move load between the wheels, with 55 % static left-side weight; banking from the true surface normal (the in-plane force toward the bottom of the banking changes the normal load); aero drag, downforce split front and rear, drafting and side-draft from cars ahead and alongside; damage that costs grip, power and aero. Yaw kicks from contacts carry through `avOut`.
+- **Stability.** The first field runs crashed into pile-ups after the green: the AI's on/off throttle swung the full CG height of load front to back on every lift, and at the arcade grip levels (around 1.8 g in the turns) the full roll transfer lifted the inside wheels, so cars spun on turn entry. The effective transfer heights are now 25 % (pitch) and 60 % (roll) of the CG height, and the rear tires carry 1.2× grip, which keeps the AI's lift-off neutral.
+- **Calibration** (`NEXT_TUNE.grip` 1.65, `TRACK_GRIP.dellswide` 1.04) against the Phase 1 traces, mean AI lap of a 20-car 5-lap race, error against classic (seed 20261105 / seed 777), easy · medium · hard:
+  - prison +1.8 / +1.0 · +0.6 / +0.7 · −0.4 / +0.4 %
+  - bullring −1.0 / −0.6 · −1.1 / −0.6 · −1.7 / −1.4 %
+  - dells −0.8 / −0.2 · +2.7 / +2.3 · +0.4 / +1.8 %
+  - dellswide +2.2 / +0.8 · 0.0 / +0.7 · +2.9 / +2.7 % (with the trim)
+  - dirt −0.7 / −0.6 · +1.1 / +0.1 · +2.0 / +2.0 %
+
+  `AI_LEVELS`, `FORM_V` and the rolling start needed no change: the AI pace trim (`aiPace`) already holds each car to its lap target, and the formation speed comes from the track's centerline limit, which the next model holds with room to spare.
+- **Soak** (20 cars, 25 laps, hard AI, every track): every race finishes with no NaN, no car past the walls and no car stopped for 5 s under green; physics costs about 0.58 ms per 120 Hz tick for 20 cars (1.2 ms per 60 fps frame) on the Node runner.
+- **Online and records.** `hello` carries the model as `ph`, and a host refuses a guest on the other model with `PHYSICS_MISMATCH`. Laps driven on the next model are not posted to the record boards until the cut-over (Phase 6), so the boards stay comparable.
+- **Tests.** `tests/physics.test.ts` checks the medium AI on every track against the fixtures and runs the prison soak; `tests/physicsRun.ts` is the headless race shared by both. The golden tests still pin the classic model exactly.
 
 ### 5. Blender assets
 **5a (done):** the pipeline and the first assets. `scripts/blender/shorttrack/stock_car.py` turns the classic `shorttrack-car.bin` into `car_slm_lod0..2.glb` (35k / 18k / 4k triangles; classic material slots, livery atlas UVs and regions, the baked shade as `ao`, hub-pivoted `Wheel_*`/`Tire_*`), and `wheel.py` models a new 15 in steel race wheel with beadlock ring and slick tyre at the stock size (6k / 2k / 400). Both run in headless Blender or with `pip install bpy`. `tests/assets.test.ts` checks the optimised outputs: budgets, wheel hubs against the classic file, regions and material order, and tyre size. Still to come in Phase 5: the truck, an original pace car and the track prop kits.

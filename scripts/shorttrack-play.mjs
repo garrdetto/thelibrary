@@ -66,11 +66,15 @@ async function clickVisible(page, acts) {
   return null
 }
 
+const debrisPeak = new WeakMap()
+
 async function waitForLap(page, lap, timeoutMs) {
   const end = Date.now() + timeoutMs
   let seen = 0
   while (Date.now() < end) {
     seen = await lapOf(page)
+    const debris = await page.evaluate(() => window.__stClassic?.debris ?? 0)
+    debrisPeak.set(page, Math.max(debrisPeak.get(page) ?? 0, debris))
     if (seen >= lap) return seen
     await page.waitForTimeout(1000)
   }
@@ -87,8 +91,10 @@ for (const track of tracks) {
   const started = Date.now()
   const lap = await waitForLap(page, 3, 150000)
   const ok = lap >= 3
-  console.log(`${track}: ${ok ? 'two laps done' : `stalled on lap ${lap}`} in ${((Date.now() - started) / 1000).toFixed(0)} s`)
+  const physics = await page.evaluate(() => window.__stClassic?.physics)
+  console.log(`${track}: ${ok ? 'two laps done' : `stalled on lap ${lap}`} in ${((Date.now() - started) / 1000).toFixed(0)} s, ${physics} physics, debris peak ${debrisPeak.get(page) ?? 0}`)
   if (!ok) failures.push(`${track}: race stalled on lap ${lap}`)
+  if (physics !== (engine === 'next' ? 'next' : 'classic')) failures.push(`${track}: running ${physics} physics`)
   if (errors.length) failures.push(`${track}: ${errors.join(' | ')}`)
   await page.close()
 }
