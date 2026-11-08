@@ -19,8 +19,8 @@ export class EncounterDirector {
     this.target[channel] = ENCOUNTER_MIN_SECONDS + this.rng() * (ENCOUNTER_MAX_SECONDS - ENCOUNTER_MIN_SECONDS)
   }
 
-  update(dt: number, activity: { exploring: boolean; lineInWater: boolean; onLand: boolean }): EncounterChannel | null {
-    if (activity.lineInWater) this.progress.fish += dt * LINE_IN_WATER_RATE
+  update(dt: number, activity: { exploring: boolean; lineInWater: boolean; onLand: boolean; fishRate?: number }): EncounterChannel | null {
+    if (activity.lineInWater) this.progress.fish += dt * LINE_IN_WATER_RATE * (activity.fishRate ?? 1)
     else if (activity.exploring) this.progress.fish += dt * 0.25
     if (activity.exploring && activity.onLand) this.progress.game += dt
     else if (activity.onLand) this.progress.game += dt * 0.35

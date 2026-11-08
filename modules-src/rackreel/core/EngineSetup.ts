@@ -54,7 +54,7 @@ export interface EngineContext {
   enableTerrainOctree(ground: Mesh): void
   buildSelectionOctree(): void
   groundRay(ground: Mesh, x: number, z: number): { y: number; normal: Vector3 } | null
-  setAds(amount: number): void
+  setAds(amount: number, zoom?: number): void
 }
 
 export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
@@ -260,9 +260,9 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       const normal = hit.getNormal(true, false) ?? Vector3.Up()
       return { y: hit.pickedPoint.y, normal }
     },
-    setAds(amount) {
-      camera.fov = 0.9 + (0.21 - 0.9) * amount
-      camera.angularSensibility = 2200 + amount * 7600
+    setAds(amount, zoom = 1) {
+      camera.fov = 0.9 + (0.21 / zoom - 0.9) * amount
+      camera.angularSensibility = 2200 + amount * 7600 * zoom
     },
   }
   ray.length = 600

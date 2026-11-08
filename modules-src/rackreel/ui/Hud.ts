@@ -137,7 +137,7 @@ export class Hud {
   }
 
   get modalOpen(): boolean {
-    return !el('catch').hidden || !el('book').hidden
+    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false
   }
 
   showBook(loot: LootTableManager, you: Set<string>, onClose: () => void): void {
