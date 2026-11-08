@@ -131,6 +131,10 @@ export class Screens {
       event.preventDefault()
       onStart(this.readChoice())
     })
+    byId<HTMLButtonElement>('solo-button').addEventListener('click', () => {
+      const choice = this.readChoice()
+      onStart({ ...choice, side: choice.side === 'away' ? 'away' : 'home' })
+    })
   }
 
   /** The setup card's current choices (online matchups use the club, length, rules and look from it). */
