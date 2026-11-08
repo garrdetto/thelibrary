@@ -27,6 +27,8 @@ import type { Animal } from '../systems/Wildlife'
 import { Hud, compassWord } from '../ui/Hud'
 import { Foliage } from '../world/Foliage'
 import { foliageMaterial } from '../world/FoliageTextures'
+import { creatureMaterial } from '../world/CreatureTextures'
+import type { CreatureSurface } from '../world/CreatureTextures'
 import type { FoliageKind } from '../world/FoliageTextures'
 import { PLAY_LIMIT, Terrain } from '../world/Terrain'
 import { buildDock, buildGround, buildSky, buildWater, findLandmarks } from '../world/World'
@@ -135,7 +137,8 @@ export class Game {
   }
 
   private materialFor(model: ModelName, part: string, tag: string): Material {
-    if (tag) return foliageMaterial(this.ctx.scene, tag as FoliageKind)
+    if (tag === 'needles' || tag === 'leaves' || tag === 'birchleaves') return foliageMaterial(this.ctx.scene, tag as FoliageKind)
+    if (tag) return creatureMaterial(this.ctx.scene, tag as CreatureSurface)
     const key = TWO_SIDED.has(model) ? 'two' : GLOSSY.has(model) ? 'gloss' : 'matte'
     const existing = this.materials.get(key)
     if (existing) return existing

@@ -248,6 +248,8 @@ export class Wildlife {
       const target = grazing ? 0.95 + Math.sin(a.gait * 0.3) * 0.05 : a.state === 'alert' ? -0.25 : run * 0.15
       head.rotation.x += (target - head.rotation.x) * Math.min(1, dt * 2.5)
       if (a.state === 'graze') a.gait += dt * 0.6
+      const eyes = a.rig.joints.get('headEyes')
+      if (eyes) eyes.rotation.x = head.rotation.x
     }
     const body = a.rig.joints.get('body')
     if (body) body.position.y = Math.abs(Math.sin(a.gait)) * 0.05 * run

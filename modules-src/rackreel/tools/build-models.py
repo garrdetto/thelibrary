@@ -212,12 +212,15 @@ class Model:
         self.ao_dist = ao_dist
         self.ao_strength = ao_strength
         self.materials = {}
+        self.parents = {}
 
-    def add(self, part, piece, pivot=(0, 0, 0), material=None):
+    def add(self, part, piece, pivot=(0, 0, 0), material=None, parent=None):
         self.parts.setdefault(part, []).append(piece)
         self.pivots.setdefault(part, pivot)
         if material:
             self.materials[part] = material
+        if parent:
+            self.parents[part] = parent
 
 
 def bake_ao(model, samples=20):
@@ -302,7 +305,7 @@ def write_model(model):
             chunk += struct.pack('<3I' if wide else '<3H', a, c, b)
         while len(chunk) % 4:
             chunk += b'\0'
-        header['parts'].append({'name': name, 'pivot': [piv[0], piv[2], piv[1]], 'vertices': vcount, 'indices': len(idx) * 3, 'wide': wide, 'offset': offset, 'bytes': len(chunk), 'uv': has_uv, 'material': model.materials.get(name, '')})
+        header['parts'].append({'name': name, 'pivot': [piv[0], piv[2], piv[1]], 'vertices': vcount, 'indices': len(idx) * 3, 'wide': wide, 'offset': offset, 'bytes': len(chunk), 'uv': has_uv, 'material': model.materials.get(name, ''), **({'parent': model.parents[name]} if name in model.parents else {})})
         offset += len(chunk)
         blobs.append(bytes(chunk))
     hj = json.dumps(header, separators=(',', ':')).encode('utf8')
@@ -844,6 +847,9 @@ def build_bobber():
 
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_detail.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_refine.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_surface.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_hero.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_vehicles.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():
