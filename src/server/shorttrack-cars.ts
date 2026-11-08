@@ -27,7 +27,8 @@ export const carSpecSchema = z.object({
   model: z.object({ scale: n(0.0001, 10000), yaw: n(-360, 360), x: n(-50, 50), y: n(-50, 50), z: n(-50, 50) }).strict(),
   axles: z.tuple([axleSchema, axleSchema]).refine(([front, rear]) => front.x > rear.x + 1, 'The front axle must sit at least a metre ahead of the rear axle.'),
   wheelsRemoved: z.boolean(),
-  paint: z.object({ mode: z.enum(['none', 'material', 'color']), material: z.string().max(120), key: hex, tolerance: n(0.01, 1), color: hex }).strict(),
+  paint: z.object({ mode: z.enum(['body', 'none', 'material', 'color']), material: z.string().max(120), key: hex, tolerance: n(0.01, 1), color: hex }).strict(),
+  garage: z.object({ schemes: z.boolean(), logos: z.boolean(), numbers: z.boolean() }).strict().optional(),
   numbers: z.object({
     door: z.object({ x: n(-4, 4), y: n(0, 2.5), h: n(0.05, 0.8) }).strict().nullable(),
     roof: z.object({ x: n(-4, 4), h: n(0.05, 0.8) }).strict().nullable(),

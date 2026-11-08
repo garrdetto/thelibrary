@@ -8,7 +8,27 @@
 export type Point3 = { x: number; y: number; z: number }
 export type CarAxle = { x: number; radius: number; width: number; halfTrack: number }
 export type ModelTransform = { scale: number; yaw: number; x: number; y: number; z: number }
-export type CarPaint = { mode: 'none' | 'material' | 'color'; material: string; key: string; tolerance: number; color: string }
+/**
+ * Which part wears the driver's paint. `body` paints the whole model (dark parts such as glass and
+ * tyres stay dark); `material` one material; `color` every texel close to `key`. `none` is from
+ * older saves and now paints like `body`: every car takes the driver's colours.
+ */
+export type CarPaint = { mode: 'body' | 'none' | 'material' | 'color'; material: string; key: string; tolerance: number; color: string }
+
+/** What drivers may change on this car in the Garage. The main colour is always theirs. */
+export type CarGarage = {
+  /** Paint schemes (stripes, flames, two-tone…) with the secondary and accent colours. */
+  schemes: boolean
+  /** The sponsor logo on the sides and hood. */
+  logos: boolean
+  /** Race numbers (as decals at the placed spots, painted on at the stock spots otherwise). */
+  numbers: boolean
+}
+export const DEFAULT_GARAGE: CarGarage = { schemes: true, logos: true, numbers: true }
+/** The car's Garage options, with older saves (no `garage`) allowing everything. */
+export const carGarage = (spec: { garage?: Partial<CarGarage> | null }): CarGarage => ({ ...DEFAULT_GARAGE, ...(spec.garage ?? {}) })
+/** The paint mode the game uses: `none` from older saves paints the whole body. */
+export const paintMode = (paint: CarPaint): Exclude<CarPaint['mode'], 'none'> => paint.mode === 'none' ? 'body' : paint.mode
 export type CarNumbers = {
   door: { x: number; y: number; h: number } | null
   roof: { x: number; h: number } | null
@@ -21,6 +41,7 @@ export type CustomCarSpec = {
   axles: [CarAxle, CarAxle]
   wheelsRemoved: boolean
   paint: CarPaint
+  garage?: CarGarage
   numbers: CarNumbers
   lights: { tail: Point3 | null }
 }

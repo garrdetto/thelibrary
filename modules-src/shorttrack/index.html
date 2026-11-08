@@ -100,7 +100,7 @@ input[type=color]{padding:2px;height:38px}
 .nav{display:flex;justify-content:space-between;gap:10px;margin-top:16px;padding-top:12px;border-top:1px solid var(--line)}
 .nav .navb{width:auto;margin:0;min-width:120px;text-align:center;letter-spacing:.5px}
 #toast{position:absolute;left:50%;top:16px;transform:translateX(-50%);padding:10px 16px;font-weight:700;opacity:0;transition:opacity .3s;pointer-events:none;z-index:9}
-#scrGarage{width:min(460px,calc(100% - 48px))}
+#scrGarage{width:min(680px,calc(100% - 48px))}
 .gview,.gplace{display:flex;gap:6px}
 .gview{margin:0 0 4px}.gveh{margin:0 0 10px}
 .gview button,.gplace button,.numrow button{flex:1;padding:8px 6px;border:1px solid var(--line);border-radius:7px;background:#1a2230;color:var(--txt);font:800 12.5px system-ui;cursor:pointer}
@@ -116,19 +116,15 @@ input[type=color]{padding:2px;height:38px}
 .gsize input{flex:1;width:auto;padding:0;border:0;background:none;accent-color:var(--acc)}
 .gsize output{min-width:46px;text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
 .scr p.gnote{font-size:12px;line-height:1.45;margin:6px 0 0}
-.gtiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
-.gtile{display:flex;flex-direction:column;align-items:stretch;gap:3px;min-width:0;padding:5px;border:1px solid var(--line);border-radius:8px;background:#161d28;color:var(--txt);cursor:pointer}
-.gtile:hover{border-color:#5a6577}
-.gtile[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:#2a2614}
-.gtile .gl{height:34px;display:grid;place-items:center;font-size:24px;line-height:1;overflow:hidden;white-space:nowrap}
-.gtile canvas{display:block;width:100%;height:34px;border-radius:4px}
-.gtile .nm{font-size:10.5px;letter-spacing:.4px;text-transform:uppercase;color:var(--dim);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.gtile[aria-pressed="true"] .nm{color:var(--txt)}
-.gpresets{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
-.gpreset{height:30px;padding:3px;display:flex;gap:2px;border:1px solid var(--line);border-radius:7px;background:#161d28;cursor:pointer}
-.gpreset span{flex:1;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)}
-.gpreset[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
 #scrGarage button:focus-visible,#scrGarage input:focus-visible,#scrGarage select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+#scrGarage :is(button,input,select):disabled{opacity:.4;cursor:not-allowed}
+#scrGarage{overflow:hidden auto;overscroll-behavior:contain;padding:16px 20px}
+#scrGarage h2{margin-bottom:8px}#scrGarage .nav{margin-top:12px;padding-top:10px}#scrGarage .f{margin-top:8px}#scrGarage .gsec{margin-top:10px;padding-top:8px}
+.gpick{display:flex;gap:6px;align-items:stretch}.gpick select{flex:1;min-width:0;margin:0}
+.gpick button{flex:0 0 34px;border:1px solid var(--line);border-radius:7px;background:#161d28;color:var(--txt);cursor:pointer;font-size:12px}
+.gpick button:hover:not(:disabled){border-color:#5a6577}.gpick .gslant{flex:0 0 auto;padding:0 10px;font-weight:700}
+.gpick .gslant[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:#2a2614}
+.gnumprev{display:block;width:100%;height:64px;border-radius:8px;border:1px solid var(--line)}
 @media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}
   #scrGarage{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%;padding:16px}.gcols{grid-template-columns:1fr}}
 </style>
@@ -196,26 +192,27 @@ input[type=color]{padding:2px;height:38px}
     <div class="gview gveh" id="gVeh" role="group" aria-labelledby="gVehL"><button type="button" data-gveh="truck" aria-pressed="true">Race Truck</button><button type="button" data-gveh="car" aria-pressed="false">Super Late Model</button></div>
     <div class="gview" role="group" aria-label="Camera"><button type="button" data-gview="door" aria-pressed="true">Door</button><button type="button" data-gview="roof" aria-pressed="false">Roof</button><button type="button" data-gview="rear" aria-pressed="false">Rear</button><button type="button" data-gview="spin" aria-pressed="false">Spin</button></div>
     <label class="f" for="gName">Driver name</label><input id="gName" maxlength="20">
-    <label class="f" for="gPat">Paint scheme</label><select id="gPat"></select>
+    <p class="gnote hidden" id="gCarNote" role="status"></p>
+    <label class="f" for="gPat">Paint scheme</label><div class="gpick"><button type="button" data-gstep="gPat:-1" aria-label="Previous paint scheme">&#9664;</button><select id="gPat"></select><button type="button" data-gstep="gPat:1" aria-label="Next paint scheme">&#9654;</button></div>
     <div class="row2"><div><label class="f" for="gP1">Primary</label><input type="color" id="gP1"></div><div><label class="f" for="gP2">Secondary</label><input type="color" id="gP2"></div><div><label class="f" for="gP3">Accent</label><input type="color" id="gP3"></div></div>
     <div class="gsec">Race number <b id="gNumShow"></b></div>
     <label class="f" for="gNum">Number</label>
     <div class="numrow"><input id="gNum" maxlength="3" inputmode="numeric" autocomplete="off" aria-describedby="gNumHelp"><button type="button" data-gnum="-1" aria-label="Number down one">&minus;</button><button type="button" data-gnum="1" aria-label="Number up one">+</button><button type="button" class="wide" data-gnum="rand">Random</button></div>
-    <p class="gnote" id="gNumHelp">Up to three digits. Leading zeros are kept, so 07 stays 07.</p>
-    <label class="f" for="gSize">Size</label>
-    <div class="gsize"><input type="range" id="gSize" min="60" max="150" step="5" aria-describedby="gSizeNote"><output id="gSizeOut" for="gSize"></output></div>
-    <p class="gnote" id="gSizeNote"></p>
+    <p class="gnote" id="gNumHelp">Up to three digits; leading zeros stay. Left and right arrows step through any list.</p>
     </div><div>
-    <div class="f" id="gFontL">Font</div><div class="gtiles" id="gFonts" role="group" aria-labelledby="gFontL"></div>
-    <div class="f" id="gStyleL">Style</div><div class="gtiles" id="gStyles" role="group" aria-labelledby="gStyleL"></div>
-    <div class="f" id="gColL">Number colors</div><div class="gpresets" id="gPresets" role="group" aria-labelledby="gColL"></div>
+    <canvas id="gNumPrev" class="gnumprev" aria-hidden="true"></canvas>
+    <label class="f" for="gFont">Font</label><div class="gpick"><button type="button" data-gstep="gFont:-1" aria-label="Previous font">&#9664;</button><select id="gFont"></select><button type="button" data-gstep="gFont:1" aria-label="Next font">&#9654;</button></div>
+    <label class="f" for="gStyle">Style</label><div class="gpick"><button type="button" data-gstep="gStyle:-1" aria-label="Previous style">&#9664;</button><select id="gStyle"></select><button type="button" data-gstep="gStyle:1" aria-label="Next style">&#9654;</button><button type="button" class="gslant" data-gslant="1" aria-pressed="false">Slant</button></div>
+    <label class="f" for="gPreset">Number colors</label><div class="gpick"><button type="button" data-gstep="gPreset:-1" aria-label="Previous color set">&#9664;</button><select id="gPreset"></select><button type="button" data-gstep="gPreset:1" aria-label="Next color set">&#9654;</button></div>
     <div class="row2"><div><label class="f" for="gNC">Fill</label><input type="color" id="gNC"></div><div><label class="f" for="gNO">Outline</label><input type="color" id="gNO"></div><div><label class="f" for="gNA">Accent</label><input type="color" id="gNA"></div></div>
     <p class="gnote" id="gColorNote"></p>
     <div class="f" id="gPlaceL">Placement</div>
     <div class="gplace" role="group" aria-labelledby="gPlaceL"><button type="button" data-gplace="numDoors" aria-pressed="true">Doors</button><button type="button" data-gplace="numRoof" aria-pressed="true">Roof</button><button type="button" data-gplace="numTail" aria-pressed="true" id="gTailBtn">Tailgate</button></div>
+    <label class="f" for="gSize">Size</label>
+    <div class="gsize"><input type="range" id="gSize" min="60" max="150" step="5" aria-describedby="gSizeNote"><output id="gSizeOut" for="gSize"></output></div>
+    <p class="gnote" id="gSizeNote"></p>
     </div></div>
-    <button class="btn" data-act="rand">Randomize everything</button>
-    <div class="nav"><button class="btn navb" data-act="back">&larr; BACK</button><button class="btn pri navb" data-act="back">SAVE &#10003;</button></div>
+    <div class="nav"><button class="btn navb" data-act="back">&larr; BACK</button><button class="btn navb" data-act="rand">RANDOMIZE</button><button class="btn pri navb" data-act="back">SAVE &#10003;</button></div>
   </div>
   <div id="scrLobby" class="scr panel hidden">
     <div class="steps" data-steps="lobby"></div>

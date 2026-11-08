@@ -126,13 +126,13 @@ export default function CarEditor() {
     if (!fitted.current) {
       fitted.current = true
       const yaw = next.raw.z > next.raw.x * 1.15 ? 1 : 0
-      setDraft(current => newCarDraft(next.raw, { name: current.name, blurb: current.blurb, yaw, paint: current.paint, removeWheels: current.removeWheels }))
+      setDraft(current => newCarDraft(next.raw, { name: current.name, blurb: current.blurb, yaw, paint: current.paint, garage: current.garage, removeWheels: current.removeWheels }))
     }
   }, [])
 
   function refit(scale?: number, yaw = draft.yaw) {
     if (!info) return
-    setDraft(current => newCarDraft(info.raw, { name: current.name, blurb: current.blurb, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, removeWheels: current.removeWheels, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture }))
+    setDraft(current => newCarDraft(info.raw, { name: current.name, blurb: current.blurb, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, garage: current.garage, removeWheels: current.removeWheels, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture }))
   }
 
   function matchStock() {
@@ -444,10 +444,10 @@ export default function CarEditor() {
           {draft.tail && <div className="ms-veh-xyz">{(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft.tail![axis]} onChange={v => patch({ tail: { ...draft.tail!, [axis]: v } })}/>)}</div>}
         </fieldset>}
 
-        {step === 'paint' && <fieldset>
+        {step === 'paint' && <><fieldset>
           <legend>Paint</legend>
-          <label>Part that takes the driver’s color<select value={draft.paint.mode} onChange={event => patch({ paint: { ...draft.paint, mode: event.target.value as CarDraft['paint']['mode'] } })}>
-            <option value="none">None (keep the model’s colors)</option>
+          <label>Part that takes the driver’s paint<select value={draft.paint.mode === 'none' ? 'body' : draft.paint.mode} onChange={event => patch({ paint: { ...draft.paint, mode: event.target.value as CarDraft['paint']['mode'] } })}>
+            <option value="body">The whole body (recommended)</option>
             <option value="material">A material on the model</option>
             <option value="color">Everything close to a color</option>
           </select></label>
@@ -455,14 +455,23 @@ export default function CarEditor() {
             <option value="">Choose…</option>
             {(info?.materials ?? []).map(m => <option key={m} value={m}>{m}</option>)}
           </select></label>}
-          {draft.paint.mode !== 'none' && <button type="button" onClick={() => setPicking(p => !p)} aria-pressed={picking} disabled={!info}><Pipette size={14} aria-hidden/> {picking ? 'Click the model…' : 'Pick on the model'}</button>}
+          {(draft.paint.mode === 'material' || draft.paint.mode === 'color') && <button type="button" onClick={() => setPicking(p => !p)} aria-pressed={picking} disabled={!info}><Pipette size={14} aria-hidden/> {picking ? 'Click the model…' : 'Pick on the model'}</button>}
           {draft.paint.mode === 'color' && <>
             <label>Picked color<input type="color" value={draft.paint.key} onChange={event => patch({ paint: { ...draft.paint, key: event.target.value } })}/></label>
             <Slider label="Match range" min={0.03} max={0.6} step={0.01} value={draft.paint.tolerance} onChange={tolerance => patch({ paint: { ...draft.paint, tolerance } })} display={`${Math.round(draft.paint.tolerance * 100)}%`}/>
           </>}
-          {draft.paint.mode !== 'none' && <label>Preview color<input type="color" value={draft.paint.color} onChange={event => patch({ paint: { ...draft.paint, color: event.target.value } })}/></label>}
-          <p className="ms-veh-note">In the game this part wears each driver’s main color. Stripes, flames and sponsor patterns stay on the built-in car and truck.</p>
-        </fieldset>}
+          <label>Preview color<input type="color" value={draft.paint.color} onChange={event => patch({ paint: { ...draft.paint, color: event.target.value } })}/></label>
+          <p className="ms-veh-note">The painted part keeps the model’s shading, so panel lines, glass and tires stay dark while the body takes the driver’s color.</p>
+        </fieldset>
+        <fieldset>
+          <legend>Paint screen</legend>
+          <p className="ms-veh-note">What drivers can change on this car in the Garage. The main color is always theirs.</p>
+          <label className="ms-veh-inline"><input type="checkbox" checked disabled/> Main color</label>
+          <label className="ms-veh-inline"><input type="checkbox" checked={draft.garage.schemes} onChange={event => patch({ garage: { ...draft.garage, schemes: event.target.checked } })}/> Paint schemes, with secondary and accent colors (stripes, flames, two-tone…)</label>
+          <label className="ms-veh-inline"><input type="checkbox" checked={draft.garage.logos} onChange={event => patch({ garage: { ...draft.garage, logos: event.target.checked } })}/> Sponsor logos</label>
+          <label className="ms-veh-inline"><input type="checkbox" checked={draft.garage.numbers} onChange={event => patch({ garage: { ...draft.garage, numbers: event.target.checked } })}/> Race numbers</label>
+          {draft.garage.numbers && <p className="ms-veh-note">Numbers go on as decals where you placed a spot in Numbers &amp; lights, and are painted on at the stock car’s spots everywhere else.</p>}
+        </fieldset></>}
 
         {step === 'size' && <fieldset>
           <legend>File size</legend>

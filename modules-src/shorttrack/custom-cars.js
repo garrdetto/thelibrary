@@ -1,11 +1,13 @@
 // Admin-made car bodies from /api/shorttrack-cars. Each one is placed in the stock car's frame and
 // drives on the stock car's physics; this file only loads, prepares and dresses the model.
+// Every custom car wears the driver's full Garage livery (shared/carRepaint.ts): the main colour
+// always, plus paint schemes, sponsor logos and numbers unless the admin turned them off.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { recolorPixels } from '../maplestreet/shared/PaintMask';
-import { STOCK_CAR, carIdOf, carVehicleKey } from './shared/CustomCars';
+import { STOCK_CAR, carIdOf, carVehicleKey, carGarage, paintMode } from './shared/CustomCars';
+import { bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels } from './shared/carRepaint';
 import { numberAnchors, numberPlanes, placementMatrix } from './shared/carSurface';
 
 export const CUSTOM_CARS = new Map();
@@ -24,7 +26,13 @@ export async function loadCustomCars() {
   } catch { return []; }
 }
 
-export const customCarEntries = () => [...CUSTOM_CARS.values()].filter(c => c.active).map(c => [carVehicleKey(c.id), { name: c.name, desc: c.blurb || 'A custom body', draft: c.status === 'draft' }]);
+export const customCarEntries = () => [...CUSTOM_CARS.values()].filter(c => c.active).map(c => [carVehicleKey(c.id), { name: c.name, desc: c.blurb || 'A custom body', draft: c.status === 'draft', garage: carGarage(c) }]);
+
+/** The Garage options for a vehicle key: everything for the truck and stock car, the admin's choice for custom cars. */
+export function vehicleGarage(veh) {
+  const id = carIdOf(veh || ''), rec = id && CUSTOM_CARS.get(id);
+  return rec ? carGarage(rec) : carGarage({});
+}
 
 /** The prepared car for a `custom:<id>` vehicle if it has finished loading. */
 export function customCarReady(veh) {
@@ -40,7 +48,6 @@ export function ensureCustomCar(veh) {
   const have = assets.get(id);
   if (have) return have instanceof Promise ? have : Promise.resolve(have);
   const p = loader.loadAsync(rec.modelUrl).then(gltf => { const a = prepare(rec, gltf.scene); assets.set(id, a); return a; })
-    .catch(() => { assets.delete(id); return null; });
   assets.set(id, p);
   return p;
 }
@@ -78,34 +85,80 @@ function prepare(rec, scene) {
     parts.push({ geo, mat });
   }
   if (!parts.length) throw new Error('empty car model');
+  markPaintTargets(rec, parts);
   const probe = new THREE.Group();
   for (const p of parts) probe.add(new THREE.Mesh(p.geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
   const anchors = numberAnchors(probe, rec.numbers);
-  return { rec, parts, anchors, masks: new Map() };
+  return { rec, parts, anchors, bounds: boundsOf(parts.map(p => p.geo.attributes.position.array)) };
+}
+
+const seeThrough = m => (m.transparent && m.opacity < 0.9) || (m.transmission ?? 0) > 0.2;
+function colorNear(c, key, tolerance) {
+  const k = new THREE.Color(key), d = Math.hypot(c.r - k.r, c.g - k.g, c.b - k.b) / Math.sqrt(3);
+  return d <= tolerance;
+}
+
+// Which parts take the livery. Textured parts are baked in their own UVs; untextured ones are made
+// non-indexed so each triangle can take its own livery-atlas UVs.
+function markPaintTargets(rec, parts) {
+  const p = rec.paint, mode = paintMode(p);
+  for (const part of parts) part.area = meshArea(part.geo.attributes.position.array, part.geo.index ? part.geo.index.array : null);
+  let plain = [];
+  if (mode === 'body') {
+    for (const part of parts) if (part.mat.map && !seeThrough(part.mat)) part.paint = 'texture';
+    // Untextured bodies: the biggest opaque material and any of the same colour (glass, chrome and trim keep theirs).
+    const solid = parts.filter(q => !q.mat.map && !seeThrough(q.mat) && q.mat.color).sort((a, b) => b.area - a.area);
+    if (solid[0]) { const c = '#' + solid[0].mat.color.getHexString(); plain = solid.filter(q => colorNear(q.mat.color, c, 0.12)); }
+  } else if (mode === 'material') {
+    for (const part of parts) if (part.mat.name === p.material) { if (part.mat.map) part.paint = 'texture'; else plain.push(part); }
+  } else if (mode === 'color') {
+    for (const part of parts) {
+      if (part.mat.map) { part.paint = 'texture'; part.weight = paintWeight(p.key, p.tolerance); }
+      else if (part.mat.color && colorNear(part.mat.color, p.key, p.tolerance)) plain.push(part);
+    }
+  }
+  for (const part of plain) {
+    part.paint = 'plain';
+    if (part.geo.index) { const g = part.geo.toNonIndexed(); g.computeBoundingSphere(); part.geo.dispose(); part.geo = g; }
+  }
 }
 
 function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
 
-function maskedMap(a, map, color) {
-  const key = `${map.uuid}|${color}`;
-  if (a.masks.has(key)) return a.masks.get(key);
-  const img = map.image;
-  if (!img || !img.width) return null;
+function pixelsOf(img) {
   const cv = document.createElement('canvas'); cv.width = img.width; cv.height = img.height;
   const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
-  const px = g.getImageData(0, 0, cv.width, cv.height);
-  recolorPixels(px.data, a.rec.paint.key, a.rec.paint.tolerance, hexRgb(color)); g.putImageData(px, 0, 0);
+  return { cv, g, px: g.getImageData(0, 0, cv.width, cv.height) };
+}
+
+// The part's own texture with the livery baked into it (owned by this car, disposed with it).
+function bakedMap(a, part, primary, livery) {
+  const map = part.mat.map, img = map.image;
+  if (!img || !img.width) return null;
+  const { cv, g, px } = pixelsOf(img), weight = part.weight || paintWeight(null, 0), rgb = hexRgb(primary);
+  if (livery) {
+    const L = livery.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, livery.canvas.width, livery.canvas.height);
+    const geo = part.geo;
+    bakeLivery({ texture: px, livery: L, regions: livery.regions, bounds: a.bounds, flipY: map.flipY, weight, fallback: rgb,
+      parts: [{ positions: geo.attributes.position.array, uvs: geo.attributes.uv.array, index: geo.index ? geo.index.array : null }] });
+  } else tintPixels(px.data, rgb, weight);
+  g.putImageData(px, 0, 0);
   const t = new THREE.CanvasTexture(cv);
-  t.colorSpace = map.colorSpace; t.flipY = map.flipY; t.wrapS = map.wrapS; t.wrapT = map.wrapT; t.anisotropy = 8; t.userData.shared = true;
-  a.masks.set(key, t);
+  t.colorSpace = map.colorSpace; t.flipY = map.flipY; t.wrapS = map.wrapS; t.wrapT = map.wrapT; t.anisotropy = 8;
   return t;
 }
 
-function paintFor(a, src, primary) {
-  const m = src.clone(), p = a.rec.paint;
+function paintFor(a, part, lv, livery) {
+  const src = part.mat, m = src.clone();
   m.vertexColors = true;
-  if (p.mode === 'material' && src.name === p.material) m.color.set(primary);
-  if (p.mode === 'color' && src.map) { const t = maskedMap(a, src.map, primary); if (t) m.map = t; }
+  if (part.paint === 'texture') { const t = bakedMap(a, part, lv.primary, livery); if (t) { m.map = t; m.color.set(0xffffff); } }
+  else if (part.paint === 'plain') {
+    if (livery) {
+      if (!part.liveryUv) part.liveryUv = new THREE.BufferAttribute(liveryUvs(part.geo.attributes.position.array, livery.regions, a.bounds), 2);
+      if (!livery.texture) { livery.texture = new THREE.CanvasTexture(livery.canvas); livery.texture.colorSpace = THREE.SRGBColorSpace; livery.texture.flipY = false; livery.texture.anisotropy = 8; }
+      m.map = livery.texture; m.color.set(0xffffff);
+    } else m.color.set(lv.primary);
+  }
   return m;
 }
 
@@ -141,16 +194,22 @@ function addWheels(g, a, carAsset) {
 
 /**
  * Builds the car the same shape as `buildStockCar` returns, so racing, damage and lights treat it the same.
- * `ctx`: { modelScale, carAsset, crisp, envTex, envK }.
+ * `ctx`: { modelScale, carAsset, crisp, envTex, envK, livery }. `livery(lv)` returns the Garage livery drawn
+ * in the stock car's atlas as `{ canvas, regions }`, or null if the stock car's layout isn't loaded.
  */
 export function buildCustomCar(a, lv, ctx) {
   const root = new THREE.Group(), body = new THREE.Group(); root.add(body);
   const g = new THREE.Group(); g.rotation.y = -Math.PI / 2; g.scale.setScalar(ctx.modelScale); body.add(g);
   const paints = [], deform = [];
+  const livery = a.parts.some(p => p.paint) && ctx.livery ? ctx.livery(lv) : null;
   let bodyMesh = null;
+  const painted = [];
   for (const p of a.parts) {
-    const mat = paintFor(a, p.mat, lv.primary);
-    const mesh = new THREE.Mesh(p.geo.clone(), mat); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
+    const mat = paintFor(a, p, lv, livery);
+    const geo = p.geo.clone();
+    if (p.paint === 'plain' && p.liveryUv && mat.map) geo.setAttribute('uv', p.liveryUv.clone());
+    const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
+    if (p.paint) painted.push({ part: p, mat });
     bodyMesh = bodyMesh || mesh;
     deform.push({ geo: mesh.geometry, orig: Float32Array.from(mesh.geometry.attributes.position.array), scuff: true });
     if (mat.isMeshStandardMaterial) { mat.envMap = ctx.envTex; mat.envMapIntensity = ctx.envK; paints.push(mat); }
@@ -160,7 +219,18 @@ export function buildCustomCar(a, lv, ctx) {
   const tl = a.rec.lights.tail;
   if (tl) for (const side of [1, -1]) { const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.24), brakeMat); lamp.position.set(tl.x, tl.y, tl.z * side); g.add(lamp); }
   const bumperF = new THREE.Group(), bumperR = new THREE.Group(); body.add(bumperF, bumperR);
-  return { root, body, bodyMesh, orig: deform[0]?.orig, deform, wheels, bumperF, bumperR, paints, light: null, brakeMat, tm: true, tmg: g, car: true, custom: a, modelScale: ctx.modelScale, crisp: !!ctx.crisp, numbers: null };
+  return { root, body, bodyMesh, orig: deform[0]?.orig, deform, wheels, bumperF, bumperR, paints, light: null, brakeMat, tm: true, tmg: g, car: true, custom: a, painted, liveryOn: !!livery, modelScale: ctx.modelScale, crisp: !!ctx.crisp, numbers: null };
+}
+
+/** Repaints a built custom car in place with a new livery (painted-on numbers changed, or their font arrived). */
+export function repaintCustomCar(m, lv, livery) {
+  if (!livery) return;
+  for (const { part, mat } of m.painted) {
+    if (part.paint !== 'texture' && part.paint !== 'plain') continue;
+    const fresh = paintFor(m.custom, part, lv, livery), old = mat.map;
+    mat.map = fresh.map; fresh.dispose(); mat.needsUpdate = true;
+    if (old && old !== mat.map && !old.userData.shared) old.dispose();
+  }
 }
 
 /**

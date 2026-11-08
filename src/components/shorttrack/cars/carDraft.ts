@@ -1,5 +1,5 @@
-import { CAR_BRAND_PATTERN, CAR_LIMITS, STOCK_CAR, STOCK_LENGTH } from '../../../../modules-src/shorttrack/shared/CustomCars'
-import type { CarAxle, CarNumbers, CarPaint, CustomCarRecord, CustomCarSpec, Point3 } from '../../../../modules-src/shorttrack/shared/CustomCars'
+import { CAR_BRAND_PATTERN, CAR_LIMITS, STOCK_CAR, STOCK_LENGTH, carGarage } from '../../../../modules-src/shorttrack/shared/CustomCars'
+import type { CarAxle, CarGarage, CarNumbers, CarPaint, CustomCarRecord, CustomCarSpec, Point3 } from '../../../../modules-src/shorttrack/shared/CustomCars'
 import { turnedCenter, turnedSize } from '../../maplestreet/vehicle/draft'
 import type { Size3 } from '../../maplestreet/vehicle/draft'
 
@@ -19,6 +19,8 @@ export type CarDraft = {
   axles: [CarAxle, CarAxle]
   removeWheels: boolean
   paint: CarPaint
+  /** What drivers may change on this car in the Garage (the main colour always). */
+  garage: CarGarage
   numbers: CarNumbers
   tail: Point3 | null
   maxTriangles: number
@@ -47,7 +49,8 @@ export function newCarDraft(raw: Size3 | null, previous?: Partial<CarDraft>): Ca
     lift: previous?.lift ?? 0,
     axles: [axle(STOCK_CAR.axles[0]), axle(STOCK_CAR.axles[1])],
     removeWheels: previous?.removeWheels ?? true,
-    paint: previous?.paint ?? { mode: 'none', material: '', key: '#ffffff', tolerance: 0.18, color: '#d7263d' },
+    paint: previous?.paint ?? { mode: 'body', material: '', key: '#ffffff', tolerance: 0.18, color: '#d7263d' },
+    garage: carGarage({ garage: previous?.garage }),
     numbers: {
       door: { x: r3(n.door!.x * k), y: r3(n.door!.y * kh), h: n.door!.h },
       roof: { x: r3(n.roof!.x * k), h: n.roof!.h },
@@ -72,6 +75,7 @@ export function carSpec(d: CarDraft, center: Center): CustomCarSpec {
     axles: [{ ...d.axles[0] }, { ...d.axles[1] }],
     wheelsRemoved: d.removeWheels,
     paint: d.paint,
+    garage: { ...d.garage },
     numbers: d.numbers,
     lights: { tail: d.tail },
   }
@@ -90,7 +94,8 @@ export function draftFromCar(v: CustomCarRecord, center: Center): CarDraft {
     lift: r3(v.model.y + center.minY * v.model.scale),
     axles: [{ ...v.axles[0] }, { ...v.axles[1] }],
     removeWheels: v.wheelsRemoved,
-    paint: { ...v.paint },
+    paint: { ...v.paint, mode: v.paint.mode === 'none' ? 'body' : v.paint.mode },
+    garage: carGarage(v),
     numbers: { door: v.numbers.door && { ...v.numbers.door }, roof: v.numbers.roof && { ...v.numbers.roof }, tail: v.numbers.tail && { ...v.numbers.tail } },
     tail: v.lights.tail && { ...v.lights.tail },
     maxTriangles: 60000,

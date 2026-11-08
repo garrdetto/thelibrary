@@ -4,13 +4,14 @@ import { Canvas } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
 import { Grid, Html, OrbitControls, TransformControls, useGLTF } from '@react-three/drei'
 import { Box3, BoxGeometry, CanvasTexture, Color, EdgesGeometry, SRGBColorSpace, Vector3 } from 'three'
-import type { Group, Material, Mesh, MeshStandardMaterial, Object3D } from 'three'
+import type { Group, Material, Mesh, MeshStandardMaterial, Object3D, Texture } from 'three'
 import { STOCK_CAR, STOCK_LENGTH } from '../../../../modules-src/shorttrack/shared/CustomCars'
 import { numberAnchors, numberPlanes } from '../../../../modules-src/shorttrack/shared/carSurface'
 import type { NumberAnchors } from '../../../../modules-src/shorttrack/shared/carSurface'
 import { DentSmoother } from '../../maplestreet/vehicle/DentSmoother'
 import type { SmootherApi } from '../../maplestreet/vehicle/DentSmoother'
-import { maskedMap, samplePixel } from '../../maplestreet/vehicle/VehicleStage'
+import { samplePixel } from '../../maplestreet/vehicle/VehicleStage'
+import { meshArea, paintWeight, tintPixels } from '../../../../modules-src/shorttrack/shared/carRepaint'
 import { placement, turnedSize } from './carDraft'
 import type { CarDraft, CarMarker, Center, Size3 } from './carDraft'
 
@@ -49,6 +50,29 @@ function sampleNumber() {
   return numberTexture
 }
 
+const tintCache = new Map<string, CanvasTexture>()
+/** The texture recoloured the way the game paints it (shading kept, body at exactly `color`). */
+function tintedMap(map: Texture, color: string, key: string | null, tolerance: number) {
+  const id = `${map.uuid}|${color}|${key}|${tolerance}`
+  const hit = tintCache.get(id)
+  if (hit) return hit
+  const image = map.image as (CanvasImageSource & { width: number; height: number }) | undefined
+  if (!image?.width) return null
+  const canvas = document.createElement('canvas')
+  canvas.width = image.width; canvas.height = image.height
+  const g = canvas.getContext('2d', { willReadFrequently: true })!
+  g.drawImage(image, 0, 0)
+  const px = g.getImageData(0, 0, canvas.width, canvas.height)
+  const c = new Color(color)
+  tintPixels(px.data, [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)], paintWeight(key, tolerance))
+  g.putImageData(px, 0, 0)
+  const t = new CanvasTexture(canvas)
+  t.colorSpace = map.colorSpace; t.flipY = map.flipY; t.wrapS = map.wrapS; t.wrapT = map.wrapT
+  if (tintCache.size > 24) { const [first] = tintCache; first[1].dispose(); tintCache.delete(first[0]) }
+  tintCache.set(id, t)
+  return t
+}
+
 function CarModel({ url, draft, onInfo, picking, onPick, onScene, smoother, onPlaced }: Pick<Props, 'url' | 'draft' | 'onInfo' | 'picking' | 'onPick' | 'onScene' | 'smoother'> & { onPlaced: (root: Group) => void }) {
   const { scene } = useGLTF(url, false, true)
   const holder = useRef<Group>(null)
@@ -73,15 +97,36 @@ function CarModel({ url, draft, onInfo, picking, onPick, onScene, smoother, onPl
   useEffect(() => { if (info) onInfo(info) }, [info, onInfo])
 
   useEffect(() => {
-    const { mode, material, key, tolerance, color } = draft.paint
+    const { material, key, tolerance, color } = draft.paint
+    const mode = draft.paint.mode === 'none' ? 'body' : draft.paint.mode
+    const seeThrough = (m: MeshStandardMaterial & { transmission?: number }) => (m.transparent && m.opacity < 0.9) || (m.transmission ?? 0) > 0.2
+    // Untextured bodies: like the game, the biggest opaque material (and any of the same colour) takes the paint.
+    let plain: Color | null = null
+    if (mode === 'body') {
+      const area = new Map<MeshStandardMaterial, number>()
+      for (const [node, original] of originals.current) {
+        const mesh = node as Mesh, pos = mesh.geometry.attributes.position
+        for (const m of (Array.isArray(original) ? original : [original]) as MeshStandardMaterial[]) {
+          if (m.map || seeThrough(m) || !m.color) continue
+          area.set(m, (area.get(m) ?? 0) + meshArea(pos.array, mesh.geometry.index?.array ?? null))
+        }
+      }
+      plain = [...area].sort((a, b) => b[1] - a[1])[0]?.[0].color ?? null
+    }
+    const near = (c: Color, k: Color, tol: number) => Math.hypot(c.r - k.r, c.g - k.g, c.b - k.b) / Math.sqrt(3) <= tol
     for (const [node, original] of originals.current) {
       const mesh = node as Mesh
       const mats = Array.isArray(original) ? original : [original]
       const next = mats.map(m => {
         const src = m as MeshStandardMaterial
-        if (mode === 'material' && src.name === material) { const c = src.clone(); c.color = new Color(color); return c }
-        if (mode === 'color' && src.map) { const map = maskedMap(src.map, key, tolerance, color); if (map) { const c = src.clone(); c.map = map; return c } }
-        return src
+        const takes = mode === 'body' ? !seeThrough(src) && (!!src.map || (!!plain && !!src.color && near(src.color, plain, 0.12)))
+          : mode === 'material' ? src.name === material
+          : !!src.map || (!!src.color && near(src.color, new Color(key), tolerance))
+        if (!takes) return src
+        const c = src.clone()
+        if (src.map) { const map = tintedMap(src.map, color, mode === 'color' ? key : null, tolerance); if (map) { c.map = map; c.color = new Color('#ffffff') } }
+        else c.color = new Color(color)
+        return c
       })
       mesh.material = Array.isArray(original) ? next : next[0]
     }

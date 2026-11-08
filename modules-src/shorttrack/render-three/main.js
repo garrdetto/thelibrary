@@ -12,8 +12,9 @@ import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from 
 import { batchStatic } from '../../_shared/static-batch.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-schemes.js';
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
-import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers } from '../custom-cars.js';
-import { carIdOf, numberSpot } from '../shared/CustomCars';
+import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
+import { carIdOf, numberSpot, carGarage } from '../shared/CustomCars';
+import { parseRegions } from '../shared/carRepaint';
 import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
 import { createCar } from '../next/sim/car';
 import { TM } from '../truck-model.js';
@@ -792,6 +793,11 @@ function tmRoofTex(){return canvasTex(512,328,(g,w,h)=>{g.textAlign='center';g.t
 const NUM_PX={low:160,med:208,high:256};
 function mountNumbers(m,lv){
   if(m.custom){const px=m.crisp?320:NUM_PX[quality]||208;
+    // numbers painted into the livery (spots the admin didn't place) need the livery redrawn when they change
+    const pl=customLiveryLv(lv,m.custom.rec),sig=[pl.number,pl.numDoors,pl.numRoof,pl.numTail,pl.numStyle,pl.numFont,pl.numSlant,pl.numSize,pl.numColor,pl.numOutline,pl.numAccent].join('|'),ok=!pl.number||numFontReady(lv.numFont);
+    if(m.liveryOn&&m.liverySig!==undefined&&(m.liverySig!==sig||(!m.liveryFontOk&&ok)))repaintCustomCar(m,lv,customLivery(lv,m.custom.rec,{crisp:m.crisp}));
+    m.liverySig=sig;m.liveryFontOk=ok;
+    if(!carGarage(m.custom.rec).numbers)lv={...lv,number:''};
     mountCustomNumbers(m,lv,{art:cv=>drawNumberArt(cv,numArtOpts(lv),px),size:(spot,art)=>numberSize(spot,art,lv.numSize/100),spot:numberSpot,fontOk:numFontReady(lv.numFont),
       material:cv=>{const mat=makeNumberMaterial(THREE,makeNumberTexture(THREE,cv));mat.userData.r0=mat.roughness;mat.userData.cc0=mat.clearcoat;mat.envMap=envTex;mat.envMapIntensity=ENVK;
         if(envTex===envNight){mat.roughness=Math.max(0.5,mat.roughness);mat.clearcoat*=0.3;}return mat;}});return;}
@@ -882,7 +888,7 @@ function carLiveryTex(lv,size,glyphPx){
       if(lv.pattern==='stripes'||lv.pattern==='panels')vcentre(0.17,0.025);
       else if(lv.pattern==='twotone'){band(-1,0.5,p2);band(0.5,0.525,ac);}
       else if(lv.pattern==='fade'&&end==='B'){g.fillStyle=p2;g.fillRect(-2,-1,4,4);}});
-    if(!lv.pace&&!sch){const sc=document.createElement('canvas');sc.width=512;sc.height=154;drawSponsor(sc.getContext('2d'),256,77,504,146,sponsorOf(lv));
+    if(!lv.pace&&!sch&&!lv.noLogo){const sc=document.createElement('canvas');sc.width=512;sc.height=154;drawSponsor(sc.getContext('2d'),256,77,504,146,sponsorOf(lv));
       const logo=(nm,cx,cy,lw,rot)=>region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(sc,-lw/2,-lw*0.15,lw,lw*0.3);});
       logo('L',-1.75,0.62,0.95);logo('R',-1.75,0.62,0.95);logo('T',1.65,0,0.9,Math.PI/2);}
     if(!lv.number)return;
@@ -901,6 +907,16 @@ function carLiveryTex(lv,size,glyphPx){
 function mountCarLivery(m,lv){
   const tex=carLiveryTex(lv,m.crisp||quality==='high'?2048:1024,m.crisp?320:NUM_PX[quality]||208);
   if(m.liveryTex)m.liveryTex.dispose();m.liveryTex=tex;m.carPaint.map=tex;m.carPaint.needsUpdate=true;m.numbers={fontOk:!lv.number||numFontReady(lv.numFont)};
+}
+// A custom car's livery: the stock car's atlas with the Garage options the admin allowed. Numbers go on
+// as decals where the admin placed a spot and are painted on at the stock spots everywhere else.
+function customLiveryLv(lv,rec){const gar=carGarage(rec),N=rec.numbers;
+  return {...lv,pattern:gar.schemes?lv.pattern:'solid',scheme:gar.schemes?lv.scheme:undefined,noLogo:!gar.logos,
+    number:gar.numbers?lv.number:'',numDoors:lv.numDoors&&!N.door,numRoof:lv.numRoof&&!N.roof,numTail:lv.numTail&&!N.tail};}
+function customLivery(lv,rec,o={}){
+  if(!CAR_REGIONS)return null;const regions=parseRegions(CAR_REGIONS);if(!regions.length)return null;
+  const t=carLiveryTex(customLiveryLv(lv,rec),1024,o.crisp?320:NUM_PX[quality]||208),canvas=t.image;t.dispose();
+  return {canvas,regions};
 }
 function buildStockCar(lv,o={}){
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);
@@ -923,7 +939,7 @@ function buildStockCar(lv,o={}){
 }
 function buildCar(lv,o={}){
   if(!lv.pace&&carIdOf(lv.veh||'')){const a=customCarReady(lv.veh);
-    if(a){const m=buildCustomCar(a,lv,{modelScale:TM_S,carAsset:CAR_ASSET,crisp:o.crisp,envTex,envK:ENVK});mountNumbers(m,lv);return m;}
+    if(a){const m=buildCustomCar(a,lv,{modelScale:TM_S,carAsset:CAR_ASSET,crisp:o.crisp,envTex,envK:ENVK,livery:l=>customLivery(l,a.rec,o)});mountNumbers(m,lv);return m;}
     if(CAR_ASSET)return buildStockCar(lv,o);}
   if(lv.veh==='car'&&!lv.pace&&CAR_ASSET)return buildStockCar(lv,o);
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);
@@ -957,7 +973,7 @@ function buildCar(lv,o={}){
   return m;
 }
 function refreshNumberFonts(){
-  const upd=c=>{if(!c)return;const N=c.m.numbers;if(N&&!N.fontOk&&numFontReady(c.lv.numFont))mountNumbers(c.m,c.lv);};
+  const upd=c=>{if(!c)return;const N=c.m.numbers;if(((N&&!N.fontOk)||(c.m.custom&&c.m.liveryFontOk===false))&&numFontReady(c.lv.numFont))mountNumbers(c.m,c.lv);};
   cars.forEach(upd);upd(menuCar);if(mode==='garage')renderGarage();
 }
 function deformCar(c,lp,dir,amt){
@@ -1428,33 +1444,44 @@ function sendChat(){const m=$('chatIn').value.trim();if(!m)return;$('chatIn').va
 const G={name:'gName',number:'gNum',pattern:'gPat',primary:'gP1',secondary:'gP2',accent:'gP3',numColor:'gNC',numOutline:'gNO',numAccent:'gNA',numSize:'gSize'};
 const PAINT_KEYS=['name','pattern','primary','secondary','accent'];
 $('gPat').innerHTML=PATTERNS.map(s=>`<option value="${s}">${PATTERN_NAMES[s]}</option>`).join('');
-const gTile=(cls,label)=>{const b=document.createElement('button');b.type='button';b.className='gtile';const top=document.createElement(cls==='gl'?'span':'canvas');
-  if(cls==='gl')top.className='gl';else top.setAttribute('aria-hidden','true');const n=document.createElement('span');n.className='nm';n.textContent=label;b.append(top,n);return b;};
-for(const f of NUM_FONTS){const b=gTile('gl',f.name);b.dataset.gfont=f.id;b.setAttribute('aria-label',`${f.name} font`);
-  Object.assign(b.firstChild.style,{fontFamily:`'${f.family}','Arial Black',sans-serif`,fontWeight:String(f.weight),fontStyle:f.italic?'italic':'normal'});$('gFonts').append(b);}
-for(const s of NUM_STYLES){const b=gTile('cv',s.name);b.dataset.gstyle=s.id;b.setAttribute('aria-label',`${s.name} style`);$('gStyles').append(b);}
-{const b=gTile('cv','Slant');b.dataset.gslant='1';b.setAttribute('aria-label','Slant the number');$('gStyles').append(b);}
-for(const p of NUM_PRESETS){const b=document.createElement('button');b.type='button';b.className='gpreset';b.dataset.gpreset=p.id;b.title=p.name;b.setAttribute('aria-label',p.name);
-  for(const c of [p.fill,p.outline,p.accent]){const s=document.createElement('span');s.style.background=c;b.append(s);}$('gPresets').append(b);}
+$('gFont').innerHTML=NUM_FONTS.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
+$('gStyle').innerHTML=NUM_STYLES.map(st=>`<option value="${st.id}">${st.name}</option>`).join('');
+$('gPreset').innerHTML='<option value="">Custom colors</option>'+NUM_PRESETS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+// Pickers: a list with previous/next buttons; Left/Right arrows step the focused one (Up/Down work natively).
+function garagePick(id,v){
+  if(id==='gPat')return commitGarage({...myLv,pattern:v});
+  if(id==='gFont'){commitGarage({...myLv,numFont:v});loadNumFont(v).then(refreshNumberFonts);return;}
+  if(id==='gStyle')return commitGarage({...myLv,numStyle:v});
+  if(id==='gPreset'){const p=NUM_PRESETS.find(x=>x.id===v);if(p)commitGarage({...myLv,numColor:p.fill,numOutline:p.outline,numAccent:p.accent});}
+}
+function stepPick(id,dir){const el=$(id);if(el.disabled)return;const opts=[...el.options].filter(o=>o.value||id!=='gPreset');if(!opts.length)return;
+  const i=opts.findIndex(o=>o.value===el.value),next=opts[((i<0?(dir>0?-1:0):i)+dir+opts.length)%opts.length];el.value=next.value;garagePick(id,next.value);}
+for(const id of ['gFont','gStyle','gPreset'])$(id).addEventListener('change',e=>garagePick(id,e.target.value));
+$('scrGarage').addEventListener('keydown',e=>{const el=e.target;if(el.tagName!=='SELECT'||!el.closest('.gpick'))return;
+  if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();stepPick(el.id,e.key==='ArrowLeft'?-1:1);}});
 const sizeArt=document.createElement('canvas');
 function renderGarage(){
   const n=myLv;$('gNumShow').textContent=n.number?'#'+n.number:'';
   for(const k in G){const el=$(G[k]);if(document.activeElement!==el&&String(el.value)!==String(n[k]))el.value=n[k];}
   $('gSizeOut').textContent=n.numSize+'%';
-  for(const b of document.querySelectorAll('[data-gfont]')){b.setAttribute('aria-pressed',b.dataset.gfont===n.numFont);b.firstChild.textContent=n.number||'00';}
-  for(const b of document.querySelectorAll('[data-gstyle]'))b.setAttribute('aria-pressed',b.dataset.gstyle===n.numStyle);
-  $('gStyles').querySelector('[data-gslant]').setAttribute('aria-pressed',n.numSlant);
-  for(const b of document.querySelectorAll('[data-gpreset]')){const p=NUM_PRESETS.find(x=>x.id===b.dataset.gpreset);b.setAttribute('aria-pressed',p.fill===n.numColor&&p.outline===n.numOutline&&p.accent===n.numAccent);}
+  for(const [id,v] of [['gFont',n.numFont],['gStyle',n.numStyle]])if(document.activeElement!==$(id)&&$(id).value!==v)$(id).value=v;
+  $('scrGarage').querySelector('[data-gslant]').setAttribute('aria-pressed',n.numSlant);
+  {const p=NUM_PRESETS.find(x=>x.fill===n.numColor&&x.outline===n.numOutline&&x.accent===n.numAccent);$('gPreset').value=p?p.id:'';}
   for(const b of document.querySelectorAll('[data-gplace]'))b.setAttribute('aria-pressed',!!n[b.dataset.gplace]);
   for(const b of document.querySelectorAll('[data-gview]'))b.setAttribute('aria-pressed',b.dataset.gview===gView);
   const gv=$('gVeh'),vSig=Object.keys(VEHICLES).join();
   if(gv.dataset.sig!==vSig){gv.dataset.sig=vSig;gv.innerHTML=Object.entries(VEHICLES).map(([id,v])=>`<button type="button" data-gveh="${esc(id)}">${esc(v.name)}${v.draft?' (draft)':''}</button>`).join('');}
   for(const b of gv.querySelectorAll('[data-gveh]'))b.setAttribute('aria-pressed',b.dataset.gveh===n.veh);
   $('gTailBtn').textContent=n.veh==='truck'?'Tailgate':'Tail';
+  const gar=vehicleGarage(n.veh),custom=!!carIdOf(n.veh||'');
+  for(const el of $('scrGarage').querySelectorAll('#gPat,#gP2,#gP3,[data-gstep^="gPat"]'))el.disabled=!gar.schemes;
+  for(const el of $('scrGarage').querySelectorAll('[data-gnum],#gNum,#gSize,#gFont,#gStyle,#gPreset,[data-gstep^="gFont"],[data-gstep^="gStyle"],[data-gstep^="gPreset"],[data-gslant],[data-gplace],#gNC,#gNO,#gNA'))el.disabled=!gar.numbers;
+  const off=[!gar.schemes&&'paint schemes',!gar.logos&&'sponsor logos',!gar.numbers&&'race numbers'].filter(Boolean);
+  $('gCarNote').textContent=custom&&off.length?`This car keeps its own ${off.join(', ').replace(/, ([^,]*)$/,' and $1')}; the main color is yours.`:'';
+  $('gCarNote').classList.toggle('hidden',!(custom&&off.length));
   $('gColorNote').textContent=(NUM_STYLES.find(s=>s.id===n.numStyle)||NUM_STYLES[0]).roles;
   const opts=numArtOpts({...n,number:n.number||'00'});
-  for(const b of document.querySelectorAll('[data-gstyle]'))drawNumberPreview(b.firstChild,{...opts,style:b.dataset.gstyle},n.primary);
-  drawNumberPreview($('gStyles').querySelector('[data-gslant]').firstChild,{...opts,slant:true},n.primary);
+  drawNumberPreview($('gNumPrev'),opts,n.primary);
   const art=drawNumberArt(sizeArt,opts,120),spots=[['numDoors','door','The doors'],['numRoof','roof','The roof'],['numTail','tail',n.veh==='truck'?'The tailgate':'The tail']].filter(([k])=>n[k]);
   const capped=spots.filter(([,s])=>numberCapped(NUM_SPOTS[s],art,n.numSize/100)).map(([,,name])=>name);
   $('gSizeNote').textContent=!spots.length?`Turn on a placement below to show the number on the ${n.veh==='truck'?'truck':'car'}.`
@@ -1475,10 +1502,8 @@ $('scrGarage').addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
   if(d.gview){gView=d.gview;renderGarage();}
   else if(d.gveh){setVehicle(d.gveh);renderGarage();}
-  else if(d.gfont){commitGarage({...myLv,numFont:d.gfont});loadNumFont(d.gfont).then(refreshNumberFonts);}
-  else if(d.gstyle)commitGarage({...myLv,numStyle:d.gstyle});
+  else if(d.gstep){const [id,dir]=d.gstep.split(':');stepPick(id,Number(dir));}
   else if(d.gslant)commitGarage({...myLv,numSlant:!myLv.numSlant});
-  else if(d.gpreset){const p=NUM_PRESETS.find(x=>x.id===d.gpreset);commitGarage({...myLv,numColor:p.fill,numOutline:p.outline,numAccent:p.accent});}
   else if(d.gplace)commitGarage({...myLv,[d.gplace]:!myLv[d.gplace]});
   else if(d.gnum==='rand'){let v;do{v=String(1+Math.floor(Math.random()*99));}while(v===myLv.number);commitGarage({...myLv,number:v});}
   else if(d.gnum){const t=myLv.number,v=((parseInt(t||'0',10)+Number(d.gnum))%1000+1000)%1000;let s=String(v);if(t.length>s.length)s=s.padStart(t.length,'0');commitGarage({...myLv,number:s.slice(-3)});}
@@ -1566,6 +1591,15 @@ addEventListener('keydown',e=>{
   if(e.code==='KeyM'&&!e.repeat)toggleMute();
 });
 addEventListener('keyup',e=>{keys[e.code]=false;});
+// The page never scrolls, and neither does the site around it: arrow keys, space and page keys outside text
+// fields, and the mouse wheel anywhere but a panel that still has room to scroll, stop here.
+const SCROLL_KEYS=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','PageUp','PageDown','Home','End'];
+addEventListener('keydown',e=>{const t=e.target,tag=t.tagName;if(tag==='INPUT'&&!['range','color','button','checkbox'].includes(t.type)||tag==='TEXTAREA'||tag==='SELECT')return;
+  if(SCROLL_KEYS.includes(e.code)&&!(tag==='INPUT'&&t.type==='range'&&e.code.startsWith('Arrow')))e.preventDefault();});
+addEventListener('wheel',e=>{for(let el=e.target;el&&el!==document.body;el=el.parentElement){
+  if(el.scrollHeight>el.clientHeight+1&&/(auto|scroll)/.test(getComputedStyle(el).overflowY)){const down=e.deltaY>0;
+    if(down?el.scrollTop+el.clientHeight<el.scrollHeight-1:el.scrollTop>0)return;}}
+  e.preventDefault();},{passive:false});
 addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
 addEventListener('resize',resize);
 function playerCtl(){return {thr:!!(keys.ArrowUp||keys.KeyW),brk:!!(keys.ArrowDown||keys.KeyS),steer:((keys.ArrowLeft||keys.KeyA)?1:0)-((keys.ArrowRight||keys.KeyD)?1:0)};}
