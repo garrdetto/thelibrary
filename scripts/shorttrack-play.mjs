@@ -16,7 +16,7 @@ const option = (name, fallback) => {
   return index === -1 ? fallback : args[index + 1]
 }
 const channel = option('channel', undefined)
-const engine = option('engine', 'classic')
+const engine = option('engine', 'next')
 const tracks = option('tracks', 'prison,bullring,dells,dellswide,dirt').split(',')
 const online = !args.includes('--no-online')
 const root = resolve(import.meta.dirname, '../public')

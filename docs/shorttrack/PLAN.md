@@ -132,5 +132,18 @@ Headless scripts in `scripts/blender/shorttrack/` (pattern of `scripts/blender/b
 ### 6. Cut-over
 `next` becomes the default, `?engine=classic` stays one release; net protocol version bumped. Lap records move to versioned track keys (`prison-v2` …) with the old boards read-only under a Classic tab; nothing is deleted. Docs and thumbnail updated. The owner approves this merge. A follow-up removes the classic path.
 
+Done in this phase:
+- **Default engine.** `render-three/main.js` reads `ENGINE` (`next` unless `?engine=classic`). The next engine runs Babylon and the next vehicle model, and `&physics=classic` still swaps only the model. If the Babylon presenter cannot start at all (no WebGL2, a failed import), the page falls back to the classic three.js renderer instead of failing, and keeps the next physics. `?engine=next&scene=test` still opens the Phase 0 test scene.
+- **Protocol 2.** `PROTOCOL_VERSION` is 2, so a cached old page can never join a room on the new rules (it gets the version message). Within version 2, `ph` still keeps `?engine=classic` guests out of next rooms and the reverse.
+- **Records.**
+  - Next-model laps post to `<track>-v2` (`prison-v2`, `shorttrack-v2`, `dells-v2`, `dellswide-v2`, `dirt-v2`, same minimum lap times).
+  - `/api/racing` refuses new laps on the five classic Short Track keys. Their rows stay, are still served, and the admin can still reset them.
+  - `?engine=classic` posts no laps.
+  - The board under the iframe opens the `-v2` books and has a Current/Classic switch (`LapRecordBoard` `archive`) for the read-only classic books.
+  - The module's own board and `tl-lap` messages use the `-v2` key.
+  - While a new board has fewer than 3 Time Attack laps, the AI pace baseline borrows the classic board's (the next model laps within 3 % of it).
+- **Scripts.** Anything that needs classic asks for it: the reference recorder (`&engine=classic`), the smoke test's classic runs, and `shorttrack-play.mjs` (default engine now `next`). The gate's default load is now the next engine.
+- **Thumbnail.** `public/images/modules/shorttrack.webp` is a frame of the next engine at Prison Speedway.
+
 ## Checks for every phase
 `pnpm assets:check`, `pnpm build`, `pnpm test`, `node scripts/shorttrack-next-smoke.mjs` against `pnpm preview`, `node scripts/shorttrack-play.mjs` (two autopilot laps per track through the menus and a two-tab PeerJS race), `pnpm gate --only shorttrack`, and play on the preview build. Headless Chromium here has no real GPU: SwiftShader WebGPU loses its device and the module falls back to WebGL2, so WebGPU itself is verified on real hardware after deploy.

@@ -707,6 +707,7 @@ body{background:var(--paper);color:var(--tone-0)}
 .lap-board-tabs button.is-active{background:linear-gradient(135deg,var(--lib-accent),#8b5cff);color:var(--lib-on-accent);border-color:transparent}
 .lap-board-tabs button:focus-visible,.lap-board-retry:focus-visible{outline:3px solid var(--lib-accent);outline-offset:2px}
 .lap-board-note{padding:6px 0}
+.lap-board-books{margin-bottom:0}
 .lap-board-scroll{overflow-x:auto}
 .lap-board table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 .lap-board th,.lap-board td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--lib-line)}

@@ -10,8 +10,8 @@ mkdirSync(outDir, { recursive: true })
 const runs = [
   { name: 'webgpu-swiftshader', classic: false, args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-features=Vulkan', '--use-angle=swiftshader'], q: '?engine=next' },
   { name: 'webgl2-forced', classic: false, args: ['--use-angle=swiftshader'], q: '?engine=next&gpu=webgl' },
-  { name: 'classic', args: ['--use-angle=swiftshader'], q: '', classic: true },
-  { name: 'classic-dirt', args: ['--use-angle=swiftshader'], q: '?track=dirt', classic: true },
+  { name: 'classic', args: ['--use-angle=swiftshader'], q: '?engine=classic', classic: true },
+  { name: 'classic-dirt', args: ['--use-angle=swiftshader'], q: '?engine=classic&track=dirt', classic: true },
 ]
 let bad = 0
 for (const run of runs) {
