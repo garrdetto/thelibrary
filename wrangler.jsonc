@@ -20,13 +20,15 @@
     "bindings": [
       { "name": "MAPLE_WORLD", "class_name": "MapleStreetWorld" },
       { "name": "ANGLER_LAKE", "class_name": "AnglerLake" },
-      { "name": "BUSHLEAGUE_MATCH", "class_name": "BushLeagueMatch" }
+      { "name": "BUSHLEAGUE_MATCH", "class_name": "BushLeagueMatch" },
+      { "name": "HOOD_LOT", "class_name": "HoodLot" }
     ]
   },
   "migrations": [
     { "tag": "maplestreet-v1", "new_sqlite_classes": ["MapleStreetWorld"] },
     { "tag": "angler-lake-v1", "new_sqlite_classes": ["AnglerLake"] },
-    { "tag": "bushleague-match-v1", "new_sqlite_classes": ["BushLeagueMatch"] }
+    { "tag": "bushleague-match-v1", "new_sqlite_classes": ["BushLeagueMatch"] },
+    { "tag": "hood-lot-v1", "new_sqlite_classes": ["HoodLot"] }
   ],
   "previews": {
     "d1_databases": [

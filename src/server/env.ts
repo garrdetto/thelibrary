@@ -30,6 +30,7 @@ export type Env = {
   MAPLE_WORLD?: DurableObjectNamespace
   ANGLER_LAKE?: DurableObjectNamespace
   BUSHLEAGUE_MATCH?: DurableObjectNamespace
+  HOOD_LOT?: DurableObjectNamespace
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
   ANTHROPIC_API_KEY?: string

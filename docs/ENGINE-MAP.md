@@ -35,10 +35,11 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `public/_headers` — Workers static-asset caching: hashed `/modules/chunks/*` and `/assets/*` immutable for a year; `/models/*`, `/modules/maplestreet/*`, `/modules/sprites/*`, `/images/*` one day plus a week stale-while-revalidate — Cloudflare.
 - `docs/ASSETS.md` — before/after size, primitive and material table from the last `pnpm assets:report` — this PR and later phases.
 - `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
-- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/`, `modules-src/demoderby/`, `modules-src/angler/`, `modules-src/foxplains2/`, `modules-src/county/` and `modules-src/bushleague/` (tests excluded; they run through esbuild) — `pnpm test`.
+- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/`, `modules-src/demoderby/`, `modules-src/angler/`, `modules-src/foxplains2/`, `modules-src/county/`, `modules-src/bushleague/` and `modules-src/hood/` (tests excluded; they run through esbuild) — `pnpm test`.
 - `scripts/fairway-tests.mjs` — bundles `modules-src/fairway/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
 - `scripts/bushleague-tests.mjs` — bundles `modules-src/bushleague/tests/*.test.ts` with esbuild and runs them with `node --test`; optional name filters (`node scripts/bushleague-tests.mjs rules`) — `pnpm test`.
 - `scripts/bushleague-smoke.mjs` — serves the built `public/`, plays a three-inning Bush League contest to the final on WebGPU and on forced WebGL2 (the page pitching through the meter and batting with the keyboard), fails on page errors; `--channel msedge|chrome`, `--out` for screenshots — developers.
+- `scripts/hood-tests.mjs` — bundles `modules-src/hood/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
 - `scripts/demoderby-tests.mjs` — bundles `modules-src/demoderby/tests/*.test.ts` with esbuild (`models/CarBody` swapped for `tests/CarBodyStub.ts`, so no canvas is needed) and runs whole AI-only heats with `node --test` — `pnpm test`.
 - `scripts/engine-smoke.mjs` — Vite-builds `_template`, embeds it in a hub-like iframe, checks boot, 60 Hz loop, `--lib-*` tokens, same-origin Draco/KTX2 decoders, `dispose()`, console errors and CDN requests; `--out` saves a screenshot — `pnpm engine:smoke`.
 - `.gitignore` — ignores the generated `public/modules/<id>.html` pages and `public/modules/chunks/` — git.
@@ -55,9 +56,9 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 
 ## Worker API
 
-- `src/server.ts` — Worker entry: `/api/*` → `handleApi`, else TanStack Start; exports Durable Objects `MapleStreetWorld` and `AnglerLake` — Cloudflare (`wrangler.jsonc`).
+- `src/server.ts` — Worker entry: `/api/*` → `handleApi`, else TanStack Start; exports Durable Objects `MapleStreetWorld`, `AnglerLake`, `BushLeagueMatch` and `HoodLot` — Cloudflare (`wrangler.jsonc`).
 - `src/server/api.ts` — `/api/*` route table and error handling — `server.ts`.
-- `src/server/env.ts` — `Env` bindings type (DB, FILES, MAPLE_WORLD, secrets) — every server file.
+- `src/server/env.ts` — `Env` bindings type (DB, FILES, MAPLE_WORLD, HOOD_LOT, secrets) — every server file.
 - `src/server/http.ts` — JSON responses, same-origin checks, body parsing — every route.
 - `src/server/auth.ts` — PIN/password hashing, `tl_session` sessions, lockouts, admin — every route needing a user.
 - `src/server/records.ts` — shared leaderboard helpers — `routes/pool.ts`, `racing.ts`, `scores.ts`, `park.ts`.
@@ -71,6 +72,9 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/angler.ts` + `src/server/angler.ts` — `/api/angler`, Northwoods Angler profiles, anchored sessions, server-rolled catches and record boards (D1 `angler_*`); `start`/`tick`/`stop` carry the shared-lake `room`, so landed fish are announced to that lake instance and the Boat Party progress is checked against the instance's crew — `api.ts`.
 - `src/server/routes/angler-lake.ts` — `/api/angler-lake`: GET counts boats out per lake; a WebSocket upgrade (same origin; members by session, guests by a zod-checked key) joins the invited instance or the first of eight per lake with room — `api.ts`.
 - `src/server/angler-lake.ts` — Durable Object `AnglerLake` (binding `ANGLER_LAKE`, one per `<lake>:<instance>`): in-memory peers only (nothing stored), up to 4 boats and 8 connections, positions relayed at 4 Hz, fishing phases, crews of two (`board`, `leave`, `lock`, `kick`), member gear read from the saved profile and guest gear checked against the starter kit, internal `/catch` (delayed to the end of the fight) and `/crew` for the REST route — `server.ts`.
+- `src/server/routes/hood.ts` — `/api/hood`: GET a street of The Hood (`?street=`, owners, home/visitor presence, public shells), POST `claim` (signed in, Zod) to move a household in, WebSocket upgrade (same origin; members by session, guests by a key) to walk onto a lot — `api.ts`.
+- `src/server/hood.ts` — D1 `hood_lots` (migration 0023, also created on first use): load/save a lot's state and public shell, presence, homes, claims — `routes/hood.ts`, `hood-lot.ts`.
+- `src/server/hood-lot.ts` — Durable Object `HoodLot` (binding `HOOD_LOT`, one per `<street>:<lot>`): runs `modules-src/hood/shared/Room.ts` for everyone on the lot, Zod-checks commands, ticks at 10 Hz, sends state at 5 Hz, saves to D1, borrows visiting Sims from their home lot (`/depart`) and hands them back (`/return`) — `server.ts`.
 - `src/server/maplestreet-world.ts` — Durable Object running `shared/WorldServer.ts`, saves to D1 `maplestreet_world`; registers published items and vehicles before loading the world and again on `POST /catalog` — `server.ts`.
 - `src/server/routes/maplestreet-items.ts` — `/api/maplestreet-items`: public list (drafts only for the admin with `?drafts=1`), `?model=<id>` serves the .glb from KV, admin multipart publish (POST, `status` draft or published) and status changes (PATCH `status`, or the older `active`) — `api.ts`. Helpers in `src/server/maplestreet-items.ts` and `src/server/gltf-check.ts`.
 - `src/server/maplestreet-assets.ts` — D1 `maplestreet_assets` (migration 0016, also created on first use and back-filled from `maplestreet_items` / `maplestreet_vehicles` with `INSERT OR IGNORE`): one row per published asset with `kind`, `status`, JSON `spec` and `files`; list/get/insert/update and the admin-only draft check — `maplestreet-items.ts`, `maplestreet-vehicles.ts`.
@@ -456,6 +460,29 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `modules-src/fairway/systems/ClubAdvice.ts`, `systems/Random.ts`, `systems/Vector.ts` — club reach table and suggestion, seeded RNG and hashing, vector math — systems, `Play`.
 - `modules-src/fairway/tests/fairway.test.ts` — flight (carry range, wind, spin, curve, bunker, rough, water, OOB, putting), four-input meter, shot types, planner, golfer rig, spring, match, protocol and round tests — `scripts/fairway-tests.mjs`.
 - `public/images/modules/fairway.webp` — hub thumbnail rendered from the module — `modules.ts`.
+
+### hood — The Hood (`modules-src/hood/`, on `engine/`, details in its `README.md`)
+- `index.ts`, `index.html`, `config.ts`, `module.json` — boot (App, lighting, post, Hud), the street ↔ lot scene swap, move-in and the practice lot (`?solo=1`) — the page.
+- `shared/Street.ts` — street layout: 12 lots of 20 × 24 m per street, names, house numbers, `lotPlacement`/`lotToWorld` — everything.
+- `shared/Lot.ts` — lot state, `LotGrid` (walls on tile edges, doors, windows, floors, occupancy, inside by flood fill, access tiles), starter house, `sanitizeLotState`, public `shellOf` — Room, Build, server, client.
+- `shared/Catalog.ts` — 27 original objects with footprints, actions, need gains and guest rules; palettes and build costs — Room, Build, client.
+- `shared/Needs.ts`, `shared/Look.ts` — six needs (decay, urgency, mood) and resident looks — Room, client.
+- `shared/Path.ts` — A* on tiles; visitors' paths exclude inside tiles and doors — Room.
+- `shared/Style.ts` — exterior style (cladding, wainscot, trim, shutters, windows, doors, roof, paints, presets) and features (canopies, porches, pergolas, fences, chimneys) with costs and sanitizers — Lot, Build, client.
+- `shared/Build.ts` — build and buy steps with validation and cost (`applyBuild`, `placementError`, `style`, `feature`, `unfeature`, `outsideSide`) — Room, client ghost, Features.
+- `shared/Room.ts` — the lot authority (Sims, autonomy, queues, chat, knock and guest list, build gating, views filtered per viewer) — `HoodLot`, `LocalLink`, tests.
+- `shared/Protocol.ts` — commands, server messages, views, clock helpers — Room, server, client.
+- `src/net/Api.ts`, `src/net/Link.ts` — `/api/hood` REST, `SocketLink` to a lot's Durable Object, `LocalLink` running Room in the page — `index.ts`.
+- `src/scene/Stage.ts`, `CameraRig.ts` — camera orbit/pan/zoom, pointer gestures, daylight, label layer — both scenes.
+- `src/scene/StreetMode.ts` — the street view with shells, lot labels and the visit / move-in card — `index.ts`.
+- `src/scene/LotMode.ts` — one loaded lot: Live / Build / Buy, Sims, knock prompt, people and settings panels — `index.ts`.
+- `src/scene/LotModel.ts` — a lot's house and furniture placed on the street — both scenes.
+- `src/models/Textures.ts`, `Surfaces.ts` — procedural canvas textures and world-scaled node materials (ground, wall, roof, triplanar) — models.
+- `src/models/House.ts` — instanced two-tone cladding, trim, shutters, window grids and boxes, door styles, lanterns, steps, floors and the generated hip/gable/flat roof with fascia, gutters and gable ends — `LotModel`.
+- `src/models/Features.ts` — canopies, porch roofs, pergolas with lights, fences and gates, chimneys as instanced parts — `House.ts`.
+- `src/models/Furniture.ts`, `SimFigure.ts`, `Street.ts`, `Grass.ts`, `Kit.ts` — furniture, residents, street dressing and trees, lawn tufts, shared geometry/material caches — scenes.
+- `src/ui/Ui.ts`, `HouseholdDialog.ts`, `StylePanel.ts` — styles on `--lib-*` tokens, move-in dialog, exterior designer — scenes.
+- `tests/rules.test.ts` — inside detection, visitor paths, shells, knocking, guest rules, build gating, blocking, autonomy, lending Sims, exterior style costs and cleaning, feature placement, fences and gates — `scripts/hood-tests.mjs`.
 
 ### sandlot — Sandlot Sluggers
 - `modules-src/sandlot/index.html` — whole 2D module, PeerJS rooms `sandlot-<code>` — `vite.modules.ts` (→ `public/modules/sandlot.html`).
