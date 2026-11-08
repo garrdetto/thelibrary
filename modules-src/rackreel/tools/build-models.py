@@ -848,8 +848,6 @@ def build_bobber():
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_detail.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_refine.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_surface.py'), encoding='utf8').read(), globals())
-exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_hero.py'), encoding='utf8').read(), globals())
-exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_vehicles.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():
