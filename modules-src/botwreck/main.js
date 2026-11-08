@@ -449,6 +449,7 @@ function updateHud(force) {
   const attached = car.parts.filter(p => !p.detached).length + car.brokenWheels.filter(b => !b).length, total = car.parts.length + 4;
   const integ = Math.round(attached / total * 100);
   document.querySelector('#integrity i').style.width = integ + '%'; document.querySelector('#integrity i').style.backgroundPosition = `${-(100 - integ) * 2.8}px 0`; document.getElementById('intText').textContent = integ + '%';
+  if (mode === 'drive' && car.score > 0 && window.tlScores && tlScores.progress) { car.scoreKey = car.scoreKey || String(Math.random()); tlScores.progress('botwreck', car.score, { key: car.scoreKey }); }
   document.getElementById('scoreVal').textContent = car.score.toLocaleString(); document.getElementById('partsLost').textContent = `${car.lost} part${car.lost === 1 ? '' : 's'} lost`;
   const hasBoost = car.cfg.boost > 0; document.getElementById('boostWrap').style.display = hasBoost ? '' : 'none';
   if (hasBoost) { document.querySelector('#boost i').style.width = Math.round(car.boostFuel * 100) + '%'; document.getElementById('boostText').textContent = boostersLeft() ? Math.round(car.boostFuel * 100) + '%' : 'NO BOOSTERS'; }

@@ -45,7 +45,7 @@
     </div>
     <div class="overlay" id="overlay"><h2 id="ovTitle">Tetra Drop</h2><p id="ovText"></p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Start</button></div></div>
   </section>
-  <footer><kbd>←</kbd> <kbd>→</kbd> move (hold to slide) · <kbd>↓</kbd> soft drop (+1 per row) · <kbd>Space</kbd> hard drop (+2 per row) · <kbd>↑</kbd> or <kbd>X</kbd> rotate right · <kbd>Z</kbd> rotate left · <kbd>C</kbd> or <kbd>Shift</kbd> hold · <kbd>P</kbd> or <kbd>Esc</kbd> pause. Clearing 1, 2, 3 or 4 rows at once scores 100, 300, 500 or 800 times the level, and the level rises every 10 lines. Your score is saved to the leaderboard when the stack reaches the top or when you start a new round.</footer>
+  <footer><kbd>←</kbd> <kbd>→</kbd> move (hold to slide) · <kbd>↓</kbd> soft drop (+1 per row) · <kbd>Space</kbd> hard drop (+2 per row) · <kbd>↑</kbd> or <kbd>X</kbd> rotate right · <kbd>Z</kbd> rotate left · <kbd>C</kbd> or <kbd>Shift</kbd> hold · <kbd>P</kbd> or <kbd>Esc</kbd> pause. Clearing 1, 2, 3 or 4 rows at once scores 100, 300, 500 or 800 times the level, and the level rises every 10 lines. Your score is saved to the leaderboard as you play, so a round cut short still counts.</footer>
 </main>
 <script src="module-scores.js"></script>
 <script>
@@ -152,7 +152,7 @@ function lock() {
 function removeRows(rows) { for (const y of rows) { board.splice(y, 1); board.unshift(new Array(COLS).fill(null)); } }
 function say(text, hot) { statusEl.textContent = text; statusEl.className = 'status' + (hot ? ' hot' : ''); statusT = 2.2; }
 function fmtN(n) { return n.toLocaleString(); }
-function hud() { $('score').textContent = fmtN(score); $('lines').textContent = lines; $('level').textContent = level; $('best').textContent = best ? fmtN(best) : '—'; }
+function hud() { if (!submitted && state !== 'over' && score > 0 && window.tlScores && tlScores.progress) tlScores.progress('tetradrop', Math.min(50000000, score)); $('score').textContent = fmtN(score); $('lines').textContent = lines; $('level').textContent = level; $('best').textContent = best ? fmtN(best) : '—'; }
 
 function submitRun() {
   if (submitted || score <= 0) return false;

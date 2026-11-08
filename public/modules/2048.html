@@ -64,8 +64,9 @@ const N = 4;
 const COLORS = { 2: ['#2a3550', '#dfe7ff'], 4: ['#30406a', '#dfe7ff'], 8: ['#2e7bd6', '#fff'], 16: ['#2ba3e8', '#fff'], 32: ['#25c2d9', '#06202a'], 64: ['#2fd6a3', '#04261b'], 128: ['#8be04a', '#132400'], 256: ['#f4cf3c', '#2a2000'], 512: ['#ff9f3b', '#2a1400'], 1024: ['#ff6a3b', '#fff'], 2048: ['#ff3b7a', '#fff'], 4096: ['#b04bff', '#fff'], 8192: ['#7c5cff', '#fff'] };
 const grid = document.querySelector('.grid'); for (let i = 0; i < 16; i++) grid.appendChild(document.createElement('i'));
 const tilesEl = document.getElementById('tiles');
+function newKey() { try { return crypto.randomUUID(); } catch (e) { return Date.now().toString(16) + '-' + Math.random().toString(16).slice(2); } }
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
-let tiles = [], score = 0, best = +(store.get('2048-best') || 0), won = false, keepPlaying = false, over = false, idSeq = 1, history = null, busy = false;
+let runKey = newKey(), tiles = [], score = 0, best = +(store.get('2048-best') || 0), won = false, keepPlaying = false, over = false, idSeq = 1, history = null, busy = false;
 document.getElementById('best').textContent = best;
 function cellSize() { const w = tilesEl.clientWidth, gap = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap')); return { s: (w - gap * 3) / 4, gap }; }
 function place(el, r, c) { const { s, gap } = cellSize(); el.style.width = el.style.height = s + 'px'; el.style.transform = `translate(${c * (s + gap)}px, ${r * (s + gap)}px)`; }
@@ -89,8 +90,8 @@ function render(newIds = new Set(), mergedIds = new Set()) {
 }
 function empty() { const out = []; for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) if (!tiles.some(t => t.r === r && t.c === c)) out.push([r, c]); return out; }
 function addRandom() { const e = empty(); if (!e.length) return null; const [r, c] = e[Math.floor(Math.random() * e.length)]; const t = { id: idSeq++, r, c, v: Math.random() < 0.9 ? 2 : 4 }; tiles.push(t); return t.id; }
-function save() { store.set('2048-state', JSON.stringify({ tiles, score, won, keepPlaying })); }
-function newGame() { if (score > 0 && !over && window.tlScores) tlScores.submit('2048', score); tiles = []; score = 0; won = false; keepPlaying = false; over = false; history = null; tilesEl.innerHTML = ''; const a = addRandom(), b = addRandom(); hideOverlay(); render(new Set([a, b])); save(); }
+function save() { store.set('2048-state', JSON.stringify({ tiles, score, won, keepPlaying, run: runKey })); }
+function newGame() { if (score > 0 && !over && window.tlScores) tlScores.submit('2048', score, { key: runKey }); runKey = newKey(); tiles = []; score = 0; won = false; keepPlaying = false; over = false; history = null; tilesEl.innerHTML = ''; const a = addRandom(), b = addRandom(); hideOverlay(); render(new Set([a, b])); save(); }
 function canMove() { if (empty().length) return true; for (const t of tiles) for (const [dr, dc] of [[0, 1], [1, 0]]) { const o = tiles.find(x => x.r === t.r + dr && x.c === t.c + dc); if (o && o.v === t.v) return true; } return false; }
 function move(dir) {
   if (over || busy || (won && !keepPlaying)) return;
@@ -124,8 +125,9 @@ function move(dir) {
   if (gained) { const p = document.createElement('div'); p.className = 'plus'; p.textContent = '+' + gained; document.getElementById('scoreBox').appendChild(p); setTimeout(() => p.remove(), 700); }
   setTimeout(() => {
     const nid = addRandom(); render(new Set([nid]), mergedIds); busy = false; save();
+    if (gained && window.tlScores && tlScores.progress) tlScores.progress('2048', score, { key: runKey });
     if (!won && tiles.some(t => t.v >= 2048)) { won = true; showOverlay('You made 2048!', 'Keep going for a bigger tile?', true); }
-    else if (!canMove()) { over = true; if (window.tlScores) tlScores.submit('2048', score); showOverlay('Game over', `Final score ${score}`, false); }
+    else if (!canMove()) { over = true; if (window.tlScores) tlScores.submit('2048', score, { key: runKey }); showOverlay('Game over', `Final score ${score}`, false); }
   }, 115);
 }
 function undo() { if (!history || busy) return; const h = JSON.parse(history); tiles = h.tiles; score = h.score; over = false; history = null; tilesEl.innerHTML = ''; hideOverlay(); render(); save(); }
@@ -140,7 +142,7 @@ const board = document.getElementById('board');
 board.addEventListener('pointerdown', e => { touch = { x: e.clientX, y: e.clientY }; });
 board.addEventListener('pointerup', e => { if (!touch) return; const dx = e.clientX - touch.x, dy = e.clientY - touch.y; touch = null; if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return; move(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up')); });
 window.addEventListener('resize', () => render());
-try { const s = JSON.parse(store.get('2048-state') || 'null'); if (s && Array.isArray(s.tiles) && s.tiles.length) { tiles = s.tiles.map(t => ({ ...t, id: idSeq++ })); score = s.score || 0; won = !!s.won; keepPlaying = !!s.keepPlaying; render(); if (!canMove()) { over = true; showOverlay('Game over', `Final score ${score}`, false); } } else newGame(); } catch (e) { newGame(); }
+try { const s = JSON.parse(store.get('2048-state') || 'null'); if (s && Array.isArray(s.tiles) && s.tiles.length) { tiles = s.tiles.map(t => ({ ...t, id: idSeq++ })); score = s.score || 0; if (typeof s.run === 'string' && s.run) runKey = s.run; won = !!s.won; keepPlaying = !!s.keepPlaying; render(); if (!canMove()) { over = true; showOverlay('Game over', `Final score ${score}`, false); } } else newGame(); } catch (e) { newGame(); }
 board.focus();
 </script>
 </body>
