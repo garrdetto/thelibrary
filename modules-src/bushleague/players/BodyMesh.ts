@@ -12,13 +12,16 @@ class Builder {
   readonly skinIndex: number[] = []
   readonly skinWeight: number[] = []
   readonly slots: number[] = []
+  readonly wraps: number[] = []
 
-  vertex(p: THREE.Vector3, n: THREE.Vector3, bones: [number, number], weights: [number, number], slot: number): number {
+  /** `wrap` is (sin, height, cos) around the torso for jersey lettering, (normal x, 2 + normal y, normal z) on the head for the face; every other part gets (0, -1, 0). */
+  vertex(p: THREE.Vector3, n: THREE.Vector3, bones: [number, number], weights: [number, number], slot: number, wrap: readonly [number, number, number] = [0, -1, 0]): number {
     this.positions.push(p.x, p.y, p.z)
     this.normals.push(n.x, n.y, n.z)
     this.skinIndex.push(bones[0], bones[1], 0, 0)
     this.skinWeight.push(weights[0], weights[1], 0, 0)
     this.slots.push(slot)
+    this.wraps.push(wrap[0], wrap[1], wrap[2])
     return this.positions.length / 3 - 1
   }
 
@@ -29,6 +32,7 @@ class Builder {
     geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(this.skinIndex, 4))
     geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(this.skinWeight, 4))
     geometry.setAttribute('slot', new THREE.Float32BufferAttribute(this.slots, 1))
+    geometry.setAttribute('wrap', new THREE.Float32BufferAttribute(this.wraps, 3))
     geometry.setIndex(this.indices)
     geometry.computeVertexNormals()
     return geometry
@@ -79,7 +83,7 @@ function tube(builder: Builder, a: THREE.Vector3, b: THREE.Vector3, r0: number, 
 }
 
 /** Ellipsoid around `center`, skinned to one bone. `upper` limits it to the top half (cap crowns). */
-function blob(builder: Builder, center: THREE.Vector3, radii: THREE.Vector3, bone: BoneName, slot: (normal: THREE.Vector3) => number, upper = false, rows = 8, sides = 12): void {
+function blob(builder: Builder, center: THREE.Vector3, radii: THREE.Vector3, bone: BoneName, slot: (normal: THREE.Vector3) => number, upper = false, rows = 8, sides = 12, wrap?: (normal: THREE.Vector3) => readonly [number, number, number]): void {
   const start = builder.positions.length / 3
   const rowEnd = upper ? rows / 2 : rows
   for (let row = 0; row <= rowEnd; row++) {
@@ -88,7 +92,7 @@ function blob(builder: Builder, center: THREE.Vector3, radii: THREE.Vector3, bon
       const theta = (side / sides) * Math.PI * 2
       const normal = new THREE.Vector3(Math.sin(phi) * Math.cos(theta), Math.cos(phi), Math.sin(phi) * Math.sin(theta))
       const point = center.clone().add(normal.clone().multiply(radii))
-      builder.vertex(point, normal, [index(bone), index(bone)], [1, 0], slot(normal))
+      builder.vertex(point, normal, [index(bone), index(bone)], [1, 0], slot(normal), wrap?.(normal))
     }
   }
   for (let row = 0; row < rowEnd; row++) {
@@ -132,8 +136,16 @@ export function buildBody(rig: Rig, proportions: Proportions): THREE.BufferGeome
   const torsoSides = 14
   const start = builder.positions.length / 3
   const bottom = hips.y - 0.13 * s
-  for (let ring = 0; ring <= torsoRings; ring++) {
-    const u = ring / torsoRings
+  const bands = [0.3, 0.36, 0.93]
+  const slotOf = (u: number) => (u < 0.3 ? SLOT.pants : u < 0.36 ? SLOT.belt : u > 0.93 ? SLOT.trim : SLOT.jersey)
+  const rings: { u: number; slot: number; joined: boolean }[] = []
+  const heights = [...new Set([...Array.from({ length: torsoRings + 1 }, (_, ring) => ring / torsoRings), ...bands])].sort((a, b) => a - b)
+  for (const u of heights) {
+    if (bands.includes(u)) {
+      rings.push({ u, slot: slotOf(u - 1e-4), joined: false }, { u, slot: slotOf(u + 1e-4), joined: true })
+    } else rings.push({ u, slot: slotOf(u), joined: true })
+  }
+  for (const { u, slot } of rings) {
     const y = bottom + (neck.y - bottom) * u
     const width = (0.15 + 0.035 * Math.sin(u * Math.PI * 0.95) + (u > 0.7 ? 0.03 * proportions.shoulders : 0)) * s * g
     const depth = (0.105 + 0.02 * Math.sin(u * Math.PI)) * s * g
@@ -141,17 +153,17 @@ export function buildBody(rig: Rig, proportions: Proportions): THREE.BufferGeome
     const lower = u < 0.42 ? 'hips' : u < 0.72 ? 'spine' : 'chest'
     const upper = u < 0.42 ? 'spine' : u < 0.72 ? 'chest' : 'neck'
     const mix = u < 0.42 ? u / 0.42 * 0.35 : u < 0.72 ? ((u - 0.42) / 0.3) * 0.4 : ((u - 0.72) / 0.28) * 0.3
-    const slot = u < 0.3 ? SLOT.pants : u < 0.36 ? SLOT.belt : u > 0.93 ? SLOT.trim : SLOT.jersey
     for (let side = 0; side < torsoSides; side++) {
       const angle = (side / torsoSides) * Math.PI * 2
       const cx = Math.sin(angle)
       const cz = Math.cos(angle)
       const forward = Math.max(0, cz)
       const point = new THREE.Vector3(hips.x + cx * width, y, hips.z + cz * (depth + belly * forward * forward))
-      builder.vertex(point, new THREE.Vector3(cx, 0, cz), [index(lower), index(upper)], [1 - mix, mix], slot)
+      builder.vertex(point, new THREE.Vector3(cx, 0, cz), [index(lower), index(upper)], [1 - mix, mix], slot, [cx, u, cz])
     }
   }
-  for (let ring = 0; ring < torsoRings; ring++) {
+  for (let ring = 0; ring < rings.length - 1; ring++) {
+    if (!rings[ring].joined) continue
     for (let side = 0; side < torsoSides; side++) {
       const a0 = start + ring * torsoSides + side
       const a1 = start + ring * torsoSides + ((side + 1) % torsoSides)
@@ -161,7 +173,7 @@ export function buildBody(rig: Rig, proportions: Proportions): THREE.BufferGeome
 
   tube(builder, neck, world('head'), 0.055 * s, 0.05 * s, 'neck', 'chest', () => SLOT.skin, 3, 10)
   const head = world('head').add(new THREE.Vector3(0, 0.1 * s, 0.01 * s))
-  blob(builder, head, new THREE.Vector3(0.095, 0.115, 0.105).multiplyScalar(s), 'head', () => SLOT.skin)
+  blob(builder, head, new THREE.Vector3(0.095, 0.115, 0.105).multiplyScalar(s), 'head', () => SLOT.skin, false, 14, 18, (n) => [n.x, 2 + n.y, n.z])
   blob(builder, head.clone().add(new THREE.Vector3(0, 0.025 * s, -0.005 * s)), new THREE.Vector3(0.102, 0.1, 0.11).multiplyScalar(s), 'head', () => SLOT.cap, true)
   box(builder, head.clone().add(new THREE.Vector3(0, 0.03 * s, 0.13 * s)), new THREE.Vector3(0.17, 0.015, 0.09).multiplyScalar(s), ['head', 'head'], () => 0, SLOT.cap)
   box(builder, head.clone().add(new THREE.Vector3(0, -0.01 * s, 0.1 * s)), new THREE.Vector3(0.03, 0.04, 0.04).multiplyScalar(s), ['head', 'head'], () => 0, SLOT.skin)

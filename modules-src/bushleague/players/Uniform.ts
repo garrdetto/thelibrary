@@ -1,6 +1,6 @@
-/** Club uniforms as shader parameters: every body mesh carries a slot per vertex, and one TSL material per player maps slots to the club's home or road colors and that player's skin tone, so any mesh can wear any of the 32 clubs. */
+/** Club uniforms as shader parameters: every body mesh carries a slot per vertex, and one TSL material per player maps slots to the club's home or road colors and that player's skin tone, so any mesh can wear any of the 32 clubs. Jerseys add a lettering sheet (surname and number on the back, wordmark on the front) placed by the torso's wrap coordinates, and some clubs wear pinstripes. */
 import * as THREE from 'three/webgpu'
-import { attribute, float, mix, step, uniform, vec3 } from 'three/tsl'
+import { abs, attribute, float, fract, mix, positionGeometry, smoothstep, step, texture, uniform, vec2, vec3 } from 'three/tsl'
 import type { TeamColors } from '../sim'
 import { SLOT } from './BodyMesh'
 
@@ -35,7 +35,14 @@ export interface PlayerMaterial {
   set(colors: UniformColors, skin: string): void
 }
 
-export function createPlayerMaterial(colors: UniformColors, skin: string): PlayerMaterial {
+export interface JerseyLook {
+  lettering: THREE.Texture | null
+  pinstripe: string | null
+  /** Shared face sheet (brows, eyes, nose shading, mouth) laid over the skin on the front of the head. */
+  face?: THREE.Texture | null
+}
+
+export function createPlayerMaterial(colors: UniformColors, skin: string, jersey: JerseyLook = { lettering: null, pinstripe: null }): PlayerMaterial {
   const slot = attribute<'float'>('slot', 'float')
   const pick = (value: number) => step(float(value - 0.5), slot).mul(step(slot, float(value + 0.5)))
   const u = {
@@ -54,6 +61,26 @@ export function createPlayerMaterial(colors: UniformColors, skin: string): Playe
   for (const [key, value] of Object.entries(SLOT)) {
     if (key === 'skin') continue
     color = mix(color, asVec(u[key as keyof typeof u]), pick(value)) as Vec3Node
+  }
+  const cloth = pick(SLOT.jersey).add(pick(SLOT.pants))
+  if (jersey.pinstripe) {
+    const line = smoothstep(float(0.9), float(0.96), abs(fract(positionGeometry.x.add(positionGeometry.z.mul(0.35)).mul(38)).sub(0.5)).mul(2))
+    color = mix(color, asVec(uniform(new THREE.Color(jersey.pinstripe))), line.mul(cloth).mul(0.85)) as Vec3Node
+  }
+  if (jersey.lettering) {
+    const wrap = attribute<'vec3'>('wrap', 'vec3')
+    const height = wrap.y.sub(0.4).div(0.5)
+    const inside = step(float(0), height).mul(step(height, float(1))).mul(step(abs(wrap.x), float(0.62))).mul(pick(SLOT.jersey))
+    const back = step(wrap.z, float(0))
+    const across = mix(float(0.5).add(wrap.x.mul(0.8)), float(0.5).sub(wrap.x.mul(0.8)), back)
+    const sheet = texture(jersey.lettering, vec2(across, height.mul(0.5).add(back.mul(0.5))))
+    color = mix(color, sheet.rgb, sheet.a.mul(inside)) as Vec3Node
+  }
+  if (jersey.face) {
+    const head = attribute<'vec3'>('wrap', 'vec3')
+    const onFace = step(float(1.5), head.y).mul(smoothstep(float(0.15), float(0.4), head.z))
+    const features = texture(jersey.face, vec2(float(0.5).add(head.x.mul(0.6)), float(0.5).add(head.y.sub(1.88).mul(0.6))))
+    color = mix(color, color.mul(features.rgb), features.a.mul(onFace)) as Vec3Node
   }
   const material = new THREE.MeshStandardNodeMaterial({ roughness: 0.75, metalness: 0 })
   material.colorNode = color

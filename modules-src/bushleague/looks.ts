@@ -1,5 +1,6 @@
 /** Broadcast looks: time-of-day lighting presets, per-tier render budgets and the signature park themes. Pure data; view/ applies it. */
 import type { PostEffects, QualityTier } from '../../engine'
+import type { TextureDetail } from './view/Textures'
 
 export type TimeOfDay = 'day' | 'dusk' | 'night'
 
@@ -77,13 +78,15 @@ export interface TierBudget {
   bankShadows: boolean
   pixelRatio: number
   adaptive: boolean
+  /** Resolution and filtering for the painted surface textures (`view/Textures.ts`). */
+  textures: TextureDetail
 }
 
 const BLOOM = { strength: 0.32, radius: 0.55, threshold: 0.9 }
 
 export const TIER_BUDGETS: Readonly<Record<QualityTier, TierBudget>> = {
-  low: { post: null, cascades: 0, grassBlades: 0, crowd: 4000, bankLights: 2, bankShadows: false, pixelRatio: 1, adaptive: true },
-  medium: { post: { bloom: BLOOM, vignette: 0.25 }, cascades: 0, grassBlades: 12000, crowd: 12000, bankLights: 4, bankShadows: false, pixelRatio: 1.25, adaptive: true },
+  low: { post: null, cascades: 0, grassBlades: 0, crowd: 4000, bankLights: 2, bankShadows: false, pixelRatio: 1, adaptive: true, textures: { size: 512, anisotropy: 2 } },
+  medium: { post: { bloom: BLOOM, vignette: 0.25 }, cascades: 0, grassBlades: 12000, crowd: 12000, bankLights: 4, bankShadows: false, pixelRatio: 1.25, adaptive: true, textures: { size: 1024, anisotropy: 4 } },
   high: {
     post: { ao: { radius: 0.6, thickness: 1.5, intensity: 0.75, resolutionScale: 0.5, samples: 12 }, taa: true, bloom: BLOOM, flare: { threshold: 0.85, ghostSamples: 4, ghostSpacing: 0.3, ghostAttenuation: 25, strength: 0.35 }, vignette: 0.3, dof: { focalLength: 6, bokehScale: 2.5 } },
     cascades: 4,
@@ -93,6 +96,7 @@ export const TIER_BUDGETS: Readonly<Record<QualityTier, TierBudget>> = {
     bankShadows: false,
     pixelRatio: 1.75,
     adaptive: true,
+    textures: { size: 2048, anisotropy: 8 },
   },
   ultra: {
     post: { ao: { radius: 0.7, thickness: 1.5, intensity: 0.85, resolutionScale: 1, samples: 16 }, taa: true, bloom: BLOOM, flare: { threshold: 0.8, ghostSamples: 5, ghostSpacing: 0.28, ghostAttenuation: 22, strength: 0.4 }, vignette: 0.3, grain: 0.08, dof: { focalLength: 6, bokehScale: 3 } },
@@ -103,6 +107,7 @@ export const TIER_BUDGETS: Readonly<Record<QualityTier, TierBudget>> = {
     bankShadows: true,
     pixelRatio: 2,
     adaptive: true,
+    textures: { size: 2048, anisotropy: 16 },
   },
 }
 
