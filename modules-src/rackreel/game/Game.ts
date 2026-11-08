@@ -1,3 +1,4 @@
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import type { Material } from '@babylonjs/core/Materials/material'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
@@ -58,6 +59,7 @@ export class Game {
   private rifleRig!: ModelRig
   private heroRig: ModelRig | null = null
   private heroClock = 0
+  private heroLight: DirectionalLight | null = null
   private tool: Tool = 'rod'
   private keys = new Set<string>()
   private leftDown = false
@@ -451,6 +453,15 @@ export class Game {
     this.heroRig.root.position.set(0, 0.06, 0.55 + length * 0.75)
     this.heroRig.root.rotation.set(0, Math.PI / 2, 0)
     this.heroClock = 0
+    if (!this.heroLight) {
+      this.heroLight = new DirectionalLight('hero-key', new Vector3(0, -1, 0), this.ctx.scene)
+      this.heroLight.intensity = 1.5
+      this.heroLight.diffuse = new Color3(1, 0.95, 0.86)
+      this.heroLight.specular = new Color3(0.6, 0.58, 0.55)
+    }
+    this.heroLight.direction = this.ctx.camera.getDirection(new Vector3(-0.35, -0.55, 1)).normalize()
+    this.heroLight.includedOnlyMeshes = [...model.parts.values()].map((p) => p.mesh)
+    this.heroLight.setEnabled(true)
   }
 
   private clearHero(): void {
@@ -461,6 +472,7 @@ export class Game {
     }
     this.heroRig.root.dispose()
     this.heroRig = null
+    this.heroLight?.setEnabled(false)
   }
 
   private placeName(): string {
