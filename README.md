@@ -47,7 +47,7 @@ One-time setup:
    - `SITE_CHANGES_SECRET`: the shared secret.
    - `ANTHROPIC_API_KEY`: from platform.claude.com. Runs draw down your API credits. Alternatively, set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) to run on a Claude Pro/Max subscription instead.
    - Optional: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, so new database migrations are applied automatically.
-   - Optional repository variable `SITE_CHANGES_MODEL`, for example `opus` or `sonnet`.
+   - Optional repository variable `SITE_CHANGES_MODEL` to override the model. Site changes run on Claude Opus 5.5 (`claude-opus-5-5`) by default; set it to, for example, `claude-sonnet-5-5` for cheaper runs.
 3. **Create a GitHub fine-grained personal access token** for this repository only, with *Actions: Read and write*.
 4. **Cloudflare → Workers & Pages → thelibrary → Settings → Variables and Secrets** (type Secret):
    - `SITE_CHANGES_GITHUB_TOKEN`: the token from step 3.

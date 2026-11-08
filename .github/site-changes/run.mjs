@@ -6,6 +6,7 @@ const phase = process.argv[2]
 const { JOB_ID = '', CALLBACK_URL = '', SITE_CHANGES_SECRET = '', RUN_URL = '', GITHUB_REPOSITORY = '' } = process.env
 const STATE = join(process.env.RUNNER_TEMP ?? '/tmp', 'site-change-state.json')
 const PROGRESS_EVERY = 8000
+const DEFAULT_MODEL = 'claude-opus-5-5'
 
 const SYSTEM = `You are Claude, working on "the library" website, whose repository is checked out in the current directory. The site's administrator is talking to you from the admin panel on the live site. Each message runs in a fresh GitHub Actions job; earlier turns of the conversation are included in the prompt.
 
@@ -140,7 +141,7 @@ async function askClaude() {
   const env = { ...process.env }
   for (const key of ['SITE_CHANGES_SECRET', 'GH_TOKEN', 'GITHUB_TOKEN', 'CALLBACK_URL', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) delete env[key]
   const args = ['-p', buildPrompt(job), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', '--allowedTools', TOOLS, '--append-system-prompt', SYSTEM, '--max-turns', '150']
-  if (process.env.SITE_CHANGES_MODEL) args.push('--model', process.env.SITE_CHANGES_MODEL)
+  args.push('--model', process.env.SITE_CHANGES_MODEL?.trim() || DEFAULT_MODEL)
 
   const result = await new Promise((resolve, reject) => {
     const child = spawn('claude', args, { env, stdio: ['ignore', 'pipe', 'inherit'] })
