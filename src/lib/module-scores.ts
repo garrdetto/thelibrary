@@ -11,6 +11,7 @@ export const scoredModules = {
   sudoku: { title: 'Fastest Solves', metric: 'Time', order: 'asc', unit: 'ms', min: 10_000, max: 86_400_000, note: 'Saved when a Hard puzzle is solved without hints.' },
   minesweeper: { title: 'Fastest Clears', metric: 'Time', order: 'asc', unit: 'ms', min: 1_000, max: 3_600_000, note: 'Saved when an Intermediate field (16 × 16, 40 mines) is cleared.' },
   mathrush: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 1_000_000, note: 'Saved when the sixty-second timer runs out.' },
+  rackreel: { title: 'Trophy Room', metric: 'Trophy points', order: 'desc', unit: 'points', min: 1, max: 1_200, note: 'Trophy-class fish and game only, scored against the all-time record for the species (1,000 ties the record). Saved when you land the fish or tag the animal.' },
   demoderby: { title: 'Best Heats', metric: 'Points', order: 'desc', unit: 'points', min: 1, max: 1_000_000, note: 'Hits landed, knockouts, time survived and 1,000 for the win. Saved as you drive, so a heat cut short still counts, and finalized when you are knocked out or the heat ends.' },
   blockhead: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you play, so a siege you leave unfinished still counts, and finalized when the last player falls or you start a new siege.' },
 } as const
