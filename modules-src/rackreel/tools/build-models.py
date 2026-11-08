@@ -848,6 +848,10 @@ def build_bobber():
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_detail.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_refine.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_surface.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_hero.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_vehicles.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_boat.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_stand.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():
@@ -876,7 +880,7 @@ BUILDERS = {
     'pine': build_pine, 'hardwood': build_hardwood, 'birch': build_birch, 'grass': build_grass, 'fern': build_fern,
     'cattail': build_cattail, 'rock': build_rock, 'log': build_log, 'deer': build_deer, 'antlers': build_antlers,
     'bear': build_bear, 'hunter': build_hunter, 'utv': build_utv, 'boat': build_boat, 'rod': build_rod,
-    'rifle': build_rifle, 'bobber': build_bobber,
+    'rifle': build_rifle, 'bobber': build_bobber, 'treestand': build_treestand,
 }
 for kind, spec in FISH.items():
     BUILDERS['fish-' + kind] = (lambda k, s: (lambda: build_fish(k, s)))(kind, spec)
