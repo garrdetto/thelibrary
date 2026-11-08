@@ -116,6 +116,7 @@ function npcLook(street: number, salt: number): Look {
   return {
     skin: Math.floor(r(1) * 6), hair: Math.floor(r(2) * 8), hairStyle: STYLES[Math.floor(r(3) * 5)], top: Math.floor(r(4) * 10), bottom: Math.floor(r(5) * 10),
     build: (['slim', 'average', 'broad'] as const)[Math.floor(r(6) * 3)], height: 0.93 + r(7) * 0.15,
+    body: r(8) < 0.5 ? 'masculine' : 'feminine',
   }
 }
 

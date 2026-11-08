@@ -17,12 +17,14 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/houses/house_S7.glb | 4.83 | 0.54 | 58 → 14 | 52 → 14 |
 | maplestreet/town/downtown.glb | 4.43 | 0.83 | 93 → 46 | 86 → 46 |
 | sandlot3d/ballpark_dome.glb | 4.03 | 1.63 | 92 → 19 | 52 → 15 |
+| hood/sim.glb | 3.88 | 0.92 | 16 → 16 | 13 → 13 |
 | sandlot3d/ballpark_stadium.glb | 3.29 | 1.22 | 64 → 19 | 43 → 14 |
 | shorttrack/truck_race_lod0.glb | 3.06 | 0.89 | 29 → 29 | 15 → 15 |
 | shorttrack/truck_livery_1.glb | 2.98 | 0.62 | 187 → 36 | 25 → 16 |
 | shorttrack/truck_livery_3.glb | 2.77 | 0.55 | 187 → 36 | 25 → 16 |
 | shorttrack/truck_livery_2.glb | 2.77 | 0.55 | 187 → 36 | 25 → 16 |
 | sandlot3d/field_detail.glb | 2.74 | 0.81 | 2 → 2 | 2 → 2 |
+| hood/furniture.glb | 2.59 | 0.98 | 130 → 130 | 46 → 46 |
 | shorttrack/truck_default.glb | 2.23 | 0.50 | 187 → 36 | 25 → 16 |
 | shorttrack/truck_pace.glb | 2.20 | 0.49 | 183 → 32 | 24 → 15 |
 | sandlot3d/ballpark_sandlot.glb | 2.10 | 0.38 | 188 → 28 | 114 → 13 |
@@ -124,7 +126,7 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/furniture/divingBoard.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/mirror.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/wallTv.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
-| **Total (120)** | **189.66** | **34.07** | | |
+| **Total (122)** | **196.13** | **35.97** | | |
 
 ## Bush League Baseball budgets
 

@@ -3,9 +3,12 @@ export const HAIR_COLORS = ['#1f1a17', '#4a3020', '#7b5434', '#b88a4f', '#d9c08a
 export const OUTFIT_COLORS = ['#3a6fa8', '#c44e3f', '#4f8a3f', '#d8a23c', '#7a5aa8', '#2f3136', '#e8e1d3', '#e86f9a', '#3fb8a8', '#8a5d38'] as const
 export const HAIR_STYLES = ['short', 'long', 'bun', 'curly', 'bald'] as const
 export const BUILDS = ['slim', 'average', 'broad'] as const
+/** Body shape of the resident model (the Feminine morph target); clothes, hair and build stay free choices. */
+export const BODIES = ['masculine', 'feminine'] as const
 
 export type HairStyle = (typeof HAIR_STYLES)[number]
 export type Build = (typeof BUILDS)[number]
+export type Body = (typeof BODIES)[number]
 
 export interface Look {
   skin: number
@@ -14,12 +17,13 @@ export interface Look {
   top: number
   bottom: number
   build: Build
+  body: Body
   /** Height scale, 0.9 to 1.1. */
   height: number
 }
 
 export function defaultLook(): Look {
-  return { skin: 1, hair: 1, hairStyle: 'short', top: 0, bottom: 5, build: 'average', height: 1 }
+  return { skin: 1, hair: 1, hairStyle: 'short', top: 0, bottom: 5, build: 'average', body: 'masculine', height: 1 }
 }
 
 function pick(length: number, value: unknown, fallback: number): number {
@@ -32,13 +36,16 @@ export function sanitizeLook(input: unknown): Look {
   if (!input || typeof input !== 'object') return base
   const v = input as Record<string, unknown>
   const height = Number(v.height)
+  const hairStyle = (HAIR_STYLES as readonly string[]).includes(String(v.hairStyle)) ? (v.hairStyle as HairStyle) : base.hairStyle
   return {
     skin: pick(SKIN_TONES.length, v.skin, base.skin),
     hair: pick(HAIR_COLORS.length, v.hair, base.hair),
-    hairStyle: (HAIR_STYLES as readonly string[]).includes(String(v.hairStyle)) ? (v.hairStyle as HairStyle) : base.hairStyle,
+    hairStyle,
     top: pick(OUTFIT_COLORS.length, v.top, base.top),
     bottom: pick(OUTFIT_COLORS.length, v.bottom, base.bottom),
     build: (BUILDS as readonly string[]).includes(String(v.build)) ? (v.build as Build) : base.build,
+    // Sims saved before bodies existed keep the look their hair suggested.
+    body: (BODIES as readonly string[]).includes(String(v.body)) ? (v.body as Body) : hairStyle === 'long' || hairStyle === 'bun' ? 'feminine' : 'masculine',
     height: Number.isFinite(height) ? Math.max(0.9, Math.min(1.1, Math.round(height * 100) / 100)) : 1,
   }
 }
@@ -48,7 +55,7 @@ export function lookFromKey(key: string): Look {
   let h = 2166136261
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0
   const at = (n: number) => { h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0; return h % n }
-  return {
+  const look = {
     skin: at(SKIN_TONES.length),
     hair: at(HAIR_COLORS.length),
     hairStyle: HAIR_STYLES[at(HAIR_STYLES.length - 1)],
@@ -57,6 +64,7 @@ export function lookFromKey(key: string): Look {
     build: BUILDS[at(BUILDS.length)],
     height: 0.94 + at(13) / 100,
   }
+  return { ...look, body: BODIES[at(BODIES.length)] }
 }
 
 export function sanitizeSimName(input: unknown, fallback: string): string {

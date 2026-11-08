@@ -11,7 +11,7 @@ import { lotPlacement } from '../../shared/Street'
 import { OUTFIT_COLORS, SKIN_TONES } from '../../shared/Look'
 import type { LotLink } from '../net/Link'
 import type { StreetInfo } from '../net/Api'
-import { buildFurniture, seatOffset } from '../models/Furniture'
+import { buildFurniture, seatFacesObject, seatOffset } from '../models/Furniture'
 import { buildGrass } from '../models/Grass'
 import { detach } from '../models/Kit'
 import { createSimFigure, type SimFigure } from '../models/SimFigure'
@@ -864,7 +864,7 @@ export class LotMode implements PointerTarget {
     const c = Math.cos(theta), s = Math.sin(theta)
     return {
       pos: new THREE.Vector3(object.x + fw / 2 + offset.x * c + offset.z * s, offset.y, object.z + fd / 2 - offset.x * s + offset.z * c),
-      yaw: theta + Math.PI,
+      yaw: seatFacesObject(def) ? theta : theta + Math.PI,
     }
   }
 
