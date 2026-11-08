@@ -7,11 +7,11 @@ import { aiCtl } from './ai'
 import { collidePair, place, stepCar } from './physics'
 import { Track } from './track'
 import { newRaceState } from './world'
-import type { Phase, World } from './world'
+import type { Phase, VehicleModel, World } from './world'
 
-export function createWorld(def: TrackDef, rand: () => number, now: () => number): World {
+export function createWorld(def: TrackDef, rand: () => number, now: () => number, model: VehicleModel = 'classic'): World {
   const cfg = makeConfig(def)
-  return { def, cfg, track: new Track(def, cfg), cars: new Map(), race: newRaceState(), rand, now, events: [] }
+  return { model, def, cfg, track: new Track(def, cfg), cars: new Map(), race: newRaceState(), rand, now, events: [] }
 }
 
 /** Rolling-start grid geometry: rows two wide, a car length apart, starting half a lap back. */

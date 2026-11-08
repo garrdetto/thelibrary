@@ -4,6 +4,7 @@ import type { Controls, SimCar, Zone } from './car'
 import { clamp, lerp, mod } from './math'
 import type { World } from './world'
 import { AI_TOUCH, aiPace, sgnDs } from './ai'
+import { stepCarNext } from './dynamics'
 
 /** True while either axle has a tire on the flat concrete below the banking. */
 export function concreteContact(w: World, c: SimCar): boolean {
@@ -15,6 +16,11 @@ export function concreteContact(w: World, c: SimCar): boolean {
 }
 
 export function stepCar(w: World, c: SimCar, dt: number, ctl: Controls, cap: number | null): void {
+  if (w.model === 'next') {
+    stepCarNext(w, c, dt, ctl, cap)
+    finishStep(w, c)
+    return
+  }
   const CFG = w.cfg, T = w.track, DIRT = T.dirt
   const tgt = clamp(ctl.steer, -1, 1)
   const growing = Math.abs(tgt) > Math.abs(c.steer) && (Math.sign(tgt) === Math.sign(c.steer) || c.steer === 0)
@@ -85,6 +91,12 @@ export function stepCar(w: World, c: SimCar, dt: number, ctl: Controls, cap: num
   c.x += c.vx * dt
   c.z += c.vz * dt
   c.tp = T.toTrack(c.x, c.z)
+  finishStep(w, c)
+}
+
+/** Shared by both models: the walls, then the line crossings and the AI's lap pacing. */
+function finishStep(w: World, c: SimCar): void {
+  const T = w.track
   walls(w, c)
   if (!c.isPace) {
     const P = T.P, nsp = mod(c.tp.s - T.S_LINE, P)
@@ -228,6 +240,7 @@ export function place(w: World, c: SimCar, s: number, lat: number): void {
   c.z = cn.z + cn.nz * lat
   c.h = Math.atan2(cn.tx, cn.tz)
   c.vx = c.vz = c.av = c.vf = 0
+  c.dyn = undefined
   c.tp = T.toTrack(c.x, c.z)
   c.sp = mod(c.tp.s - T.S_LINE, T.P)
 }

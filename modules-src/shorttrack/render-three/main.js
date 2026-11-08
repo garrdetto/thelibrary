@@ -16,7 +16,7 @@ import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buil
 import { carIdOf, numberSpot } from '../shared/CustomCars';
 import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
 import { createCar } from '../next/sim/car';
-import { PROTOCOL_VERSION, ROOM_PREFIX, helloAccepted, VERSION_MISMATCH } from '../next/net/protocol';
+import { PROTOCOL_VERSION, ROOM_PREFIX, helloAccepted, VERSION_MISMATCH, PHYSICS_MISMATCH } from '../next/net/protocol';
 import { place as simPlace, resetCar as simResetCar } from '../next/sim/physics';
 import { createWorld, standings as simStandings, simulate as simSimulate, raceControl, updateBoosts, beginRace as simBeginRace, buildGrid, formV } from '../next/sim/race';
 
@@ -33,7 +33,9 @@ const _v=new THREE.Vector3(),_n=new THREE.Vector3(),_f=new THREE.Vector3(),_x=ne
 // ===================== TRACK =====================
 // The track list, tuning and track math live in sim/ (config.ts, track.ts); one simulation world per page.
 const TRACK_ID=trackIdOf(new URLSearchParams(location.search).get('track')),TRACK=TRACKS[TRACK_ID];
-const WORLD=createWorld(TRACK,()=>SIM.rand(),()=>SIM.now()),CFG=WORLD.cfg,TR=WORLD.track,DIRT=TR.dirt;
+// ?engine=next also drives the cars with the next vehicle model (next/sim/dynamics.ts); &physics=classic keeps the old one.
+const Q0=new URLSearchParams(location.search),PHYSICS=Q0.get('engine')==='next'&&Q0.get('physics')!=='classic'?'next':'classic';
+const WORLD=createWorld(TRACK,()=>SIM.rand(),()=>SIM.now(),PHYSICS),CFG=WORLD.cfg,TR=WORLD.track,DIRT=TR.dirt;
 const L=CFG.L,R=CFG.R,W=CFG.W,AP=CFG.APRON,HW=W/2;
 const TURN=TR.TURN, P=TR.P, S_LINE=TR.S_LINE, T1=TR.T1, T2=TR.T2;
 const center=s=>TR.center(s),toTrack=(x,z)=>TR.toTrack(x,z),bankAt=s=>TR.bankAt(s),grooveLat=s=>TR.grooveLat(s),heightAt=(s,lat)=>TR.heightAt(s,lat);
@@ -1628,6 +1630,7 @@ function drainSim(){
   for(const e of WORLD.events){
     if(e.t==='sparks')spawnSparks(e.x,e.y,e.z,e.n,e.vx,e.vz);
     else if(e.t==='impact'){const c=cars.get(e.id);spawnSparks(e.x,e.y,e.z,Math.min(50,Math.floor(e.v*4)),e.vx,e.vz);if(e.v>6)spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);
+      if(GPU&&GPU.debris&&e.v>=7){const tp=toTrack(e.x,e.z);GPU.debris.spawn(e.x,e.y,e.z,normalAt(tp.s,tp.lat,_v),e.vx,e.vz,e.v,c&&c.lv?c.lv.primary:undefined);}
       const now=performance.now();if(c&&now-c.sndT>150){c.sndT=now;crashSnd(e.v,camera.position.distanceTo(_v.set(e.x,e.y,e.z)));}}
     else if(e.t==='damage'){const c=cars.get(e.id);if(c)deformCar(c,e.lp,e.dir,e.amt);
       if(NET.online){const msg={t:'d',i:e.id,p:e.lp,n:e.dir,a:+e.amt.toFixed(2),z:e.zone};NET.host?sendAll(msg):sendHost(msg);}}
@@ -1680,7 +1683,8 @@ async function showRecords(boxId,mode){
   box.querySelector('p').textContent=res.error||`Top 20 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
-  if(ms<TRACK.minLap)return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
+  // laps on the next vehicle model stay off the record boards until it replaces the classic one
+  if(ms<TRACK.minLap||WORLD.model!=='classic')return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
   fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:TRACK.rec})})
     .then(async r=>{
       if(r.status===401||(r.status===403&&!REC.me)){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
@@ -1770,7 +1774,7 @@ function doJoin(){
   resetNet();NET.online=true;NET.host=false;toast('Connecting...');
   const peer=new Peer({debug:0});NET.peer=peer;
   peer.on('open',id=>{NET.myId=id;NET.code=code;const conn=peer.connect(PREFIX+code,{serialization:'json',reliable:true});NET.hc=conn;
-    conn.on('open',()=>conn.send({t:'hello',lv:myLv,pv:PROTOCOL_VERSION}));conn.on('data',clientRecv);
+    conn.on('open',()=>conn.send({t:'hello',lv:myLv,pv:PROTOCOL_VERSION,ph:WORLD.model}));conn.on('data',clientRecv);
     conn.on('close',()=>{if(NET.hc===conn){toast('Lost connection to the host');leaveAll();}});});
   peer.on('error',e=>{toast(e.type==='peer-unavailable'?'No room with that code':'Network: '+e.type);if(e.type==='peer-unavailable')leaveAll();});
 }
@@ -1778,7 +1782,7 @@ function hostRecv(conn,d){
   if(!d||typeof d!=='object')return;const id=conn.peer;
   switch(d.t){
     case 'hello':
-      if(!helloAccepted(d)){try{conn.send({t:'version',pv:PROTOCOL_VERSION});}catch(e){}setTimeout(()=>conn.close(),300);return;}
+      if(!helloAccepted(d,WORLD.model)){try{conn.send({t:'version',pv:PROTOCOL_VERSION,ph:WORLD.model});}catch(e){}setTimeout(()=>conn.close(),300);return;}
       if(NET.players.size>=CFG.maxCars&&!NET.players.has(id)){try{conn.send({t:'full'});}catch(e){}setTimeout(()=>conn.close(),300);return;}
       NET.conns.set(id,conn);NET.players.set(id,{id,lv:cleanLv(d.lv)});broadcastLobby();chatLine('',NET.players.get(id).lv.name+' joined');break;
     case 's':if(d.s&&d.s.i===id)applyState(d.s);break;
@@ -1802,7 +1806,7 @@ function clientRecv(d){
     case 'chat':chatLine(d.n,d.m);break;
     case 'back':NET.racing=false;backToLobby();break;
     case 'full':toast('That race is full or already running');leaveAll();break;
-    case 'version':toast(VERSION_MISMATCH);leaveAll();break;
+    case 'version':toast(d.ph&&d.ph!==WORLD.model?PHYSICS_MISMATCH:VERSION_MISMATCH);leaveAll();break;
   }
 }
 function stateOf(c){const d=c.dmg;return {i:c.id,x:+c.x.toFixed(2),z:+c.z.toFixed(2),h:+c.h.toFixed(3),vx:+c.vx.toFixed(2),vz:+c.vz.toFixed(2),st:+c.steer.toFixed(2),th:c.thr,
@@ -2198,7 +2202,7 @@ function playerCtl(){return {thr:!!(keys.ArrowUp||keys.KeyW),brk:!!(keys.ArrowDo
 // ===================== MAIN LOOP =====================
 // ?autopilot=1 hands the player's car to the AI (scripts/shorttrack-play.mjs drives real laps with it)
 const AUTOPILOT=new URLSearchParams(location.search).get('autopilot')==='1';
-const CLASSIC_STATUS={track:TRACK_ID,frames:0};window.__stClassic=CLASSIC_STATUS;
+const CLASSIC_STATUS={track:TRACK_ID,frames:0,physics:WORLD.model,get debris(){return GPU&&GPU.debris?GPU.debris.count:0;}};window.__stClassic=CLASSIC_STATUS;
 const STEP=1/120;let acc=0,lastT=performance.now(),hudT=0,crowdHype=0.6,pylonT=0;
 function simulate(dt){
   // rolling start: the AI drives every car (the player's too) in formation until the green flag drops
