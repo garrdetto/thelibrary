@@ -1,6 +1,6 @@
 import { tileIndex, inMap } from './terrain.mjs'
 
-export const LAND_SQUARE_COST = 100
+export const LAND_SQUARE_COST = 500
 export const LAND_AREA_MAX = 32
 
 export function markLandChanged(state) {

@@ -13,7 +13,7 @@ import { ViewSession } from '@/lib/park/session'
 import type { ParkSession, GuestInfo } from '@/lib/park/session'
 import { parkApi } from '@/lib/park/api'
 import type { SaveSummary } from '@/lib/park/api'
-import { buildableRide, FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor, kartCount, AMENITY_VISITS } from '../../../server/park/index.mjs'
+import { buildableRide, FLAT_RIDES, COASTER_STYLES, COASTER_PRESETS, STALLS, SCENERY, STAFF, MARKETING, SCENARIOS, MONTHS, DIRS, PATH_ADDITIONS, formatMoney, guestName, objectiveText, companyValue, footprintTiles, stallFrontTile, stallFootprintError, stallPlacementRotation, tileIndex, inMap, tileMin, validatePiece, rideCapacity, rideValue, groundHeightAt, isWalkPath, mechanicJobDistance, ownedTileCount, landAreaPlan, LAND_SQUARE_COST, LAND_AREA_MAX, flatSpec, HOTELS, hotelSpec, hotelOrientedFits, hotelEntranceFor, kartCount, AMENITY_VISITS, rideCostScale } from '../../../server/park/index.mjs'
 import { WaveControl } from './WaveControl'
 import { RideComments } from './RideComments'
 import { ResortCards, ResortSummary, ResortPortfolio, HotelWindowBody } from './ResortPanel'
@@ -160,6 +160,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
 
   const state = session.state
   const park = state.parks[session.park]
+  const rideScale = rideCostScale(state)
   const ownedLand = ownedTileCount(state, session.park)
   const maxLand = park.land ? (park.land.limit.x1 - park.land.limit.x0 + 1) * (park.land.limit.y1 - park.land.limit.y0 + 1) : 0
 
@@ -361,7 +362,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
         const sized = { ...t, rot: 0, area: area.size }
         p.ghost = { type: 'flat', kind: t.ride, x: area.x, y: area.y, rot: 0, size: area.size, wave: FLAT_RIDES[t.ride].waves, ok: placementOk(sized, area.x, area.y) }
         const spec = flatSpec(t.ride, area.size, FLAT_RIDES[t.ride].waves)
-        if (spec) setFlatQuote(prev => prev && prev.w === area.size[0] && prev.h === area.size[1] ? prev : { w: area.size[0], h: area.size[1], cost: spec.cost, capacity: spec.capacity })
+        if (spec) setFlatQuote(prev => prev && prev.w === area.size[0] && prev.h === area.size[1] ? prev : { w: area.size[0], h: area.size[1], cost: spec.cost * rideCostScale(session.state), capacity: spec.capacity })
       } else if (t.kind === 'flat') { const def = FLAT_RIDES[t.ride]; const w = t.rot % 2 ? def.size[1] : def.size[0], h = t.rot % 2 ? def.size[0] : def.size[1]; const x = hit.x - Math.floor((w - 1) / 2), y = hit.y - Math.floor((h - 1) / 2); p.ghost = { type: 'flat', kind: t.ride, x, y, rot: t.rot, ok: placementOk(t, x, y) } }
       if (t.kind === 'stall') {
         const [baseW, baseH] = STALLS[t.stall].size ?? [1, 1]
@@ -793,7 +794,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
     <canvas ref={canvasRef} className={`pk-canvas pk-tool-${tool.kind}`} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => setHover(null)} aria-label="Park view. Drag to move the camera, right-drag or use the arrow keys to rotate, scroll to zoom." tabIndex={0} />
 
     <header className="pk-topbar">
-      <div className="pk-stat pk-park-name" style={{ borderColor: park.color }}><strong>{park.name}</strong><small>{state.mode === 'versus' ? 'Versus' : state.mode === 'coop' ? 'Co-op' : SCENARIOS[state.scenario]?.name}</small></div>
+      <div className="pk-stat pk-park-name" style={{ borderColor: park.color }}><strong>{park.name}</strong><small>{state.mode === 'versus' ? 'Versus' : state.mode === 'coop' ? 'Co-op' : SCENARIOS[state.scenario]?.name}{state.realism ? ' · Realism' : ''}</small></div>
       <div className={`pk-stat ${park.cash < 0 ? 'pk-neg' : ''}`}><small>Cash</small><strong>{money(park.cash)}</strong></div>
       <div className="pk-stat"><small>Guests</small><strong>{park.guestsIn}</strong></div>
       <div className="pk-stat pk-rating"><small>Rating</small><strong>{park.rating}</strong><i><b style={{ width: `${park.rating / 10}%` }} /></i></div>
@@ -869,12 +870,12 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
         {(['All', 'Gentle', 'Thrill', 'Water', 'Other'] as const).map(tab => <button key={tab} role="tab" aria-selected={rideTab === tab} className={rideTab === tab ? 'on' : ''} onClick={() => setRideTab(tab)}>{tab}</button>)}
       </div>
       <div className="pk-cards">{Object.entries(FLAT_RIDES).filter(([, ride]) => buildableRide(ride) && (rideTab === 'All' || ride.category === rideTab.toLowerCase())).map(([id, r]) => <button key={id} className={`pk-card ${tool.kind === 'flat' && tool.ride === id ? 'on' : ''}`} onClick={() => { setFlatQuote(null); setTool({ kind: 'flat', ride: id, rot: 0 }); setPanel(null) }}>
-        {customRideThumb(r) && <img className="pk-card-thumb" src={customRideThumb(r)!} alt="" loading="lazy"/>}<strong>{r.name}</strong><span>{r.resize ? `from ${money(flatSpec(id, r.resize.min, r.waves)?.cost ?? r.cost)} · drag to size` : `${money(r.cost)} · ${r.size[0]}×${r.size[1]}`}</span><small>{r.description}</small><em>Excitement {r.stats.e.toFixed(1)} · Intensity {r.stats.i.toFixed(1)}</em>
+        {customRideThumb(r) && <img className="pk-card-thumb" src={customRideThumb(r)!} alt="" loading="lazy"/>}<strong>{r.name}</strong><span>{r.resize ? `from ${money((flatSpec(id, r.resize.min, r.waves)?.cost ?? r.cost) * rideScale)} · drag to size` : `${money(r.cost * rideScale)} · ${r.size[0]}×${r.size[1]}`}</span><small>{r.description}</small><em>Excitement {r.stats.e.toFixed(1)} · Intensity {r.stats.i.toFixed(1)}</em>
       </button>)}</div>
       {rideTab === 'Other' && <>
         <p className="pk-label">Custom track rides</p>
         <div className="pk-cards">{Object.entries(COASTER_STYLES).filter(([, style]) => style.category === 'other').map(([id, style]) => <button key={id} className={`pk-card ${tool.kind === 'coaster' && tool.style === id ? 'on' : ''}`} onClick={() => { setTool({ kind: 'coaster', style: id, dir: 0, length: 3 }); setPanel(null) }}>
-          <strong><i className="pk-swatch" style={{ background: style.track }} />{style.name}</strong><span>{money(style.cost)} + {money(style.pieceCost)}/piece</span><small>{style.description}</small><em>Build each section like a coaster track.</em>
+          <strong><i className="pk-swatch" style={{ background: style.track }} />{style.name}</strong><span>{money(style.cost * rideScale)} + {money(style.pieceCost * rideScale)}/piece</span><small>{style.description}</small><em>Build each section like a coaster track.</em>
         </button>)}</div>
       </>}
       <p className="pk-hint">Choose a ride, then click the map. Press R or <button className="pk-inline" onClick={rotateTool}><RotateCw size={12} /> rotate</button>. Uneven ground is levelled automatically.</p>
@@ -882,11 +883,11 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
 
     {panel === 'coasters' && <Window title="Build a roller coaster" onClose={() => togglePanel('coasters')} wide>
       <div className="pk-cards">{Object.entries(COASTER_STYLES).filter(([, style]) => style.category !== 'other').map(([id, c]) => <button key={id} className={`pk-card ${tool.kind === 'coaster' && tool.style === id ? 'on' : ''}`} onClick={() => { setTool({ kind: 'coaster', style: id, dir: 0, length: 3 }); setPanel(null) }}>
-        <strong><i className="pk-swatch" style={{ background: c.track }} />{c.name}</strong><span>{money(c.cost)} + {money(c.pieceCost)}/piece</span><small>{c.description}</small><em>{c.loops ? 'Loops · ' : ''}{c.steep ? 'Steep drops · ' : 'Gentle slopes · '}Max {Math.round(c.maxHeight * 0.5)}m</em>
+        <strong><i className="pk-swatch" style={{ background: c.track }} />{c.name}</strong><span>{money(c.cost * rideScale)} + {money(c.pieceCost * rideScale)}/piece</span><small>{c.description}</small><em>{c.loops ? 'Loops · ' : ''}{c.steep ? 'Steep drops · ' : 'Gentle slopes · '}Max {Math.round(c.maxHeight * 0.5)}m</em>
       </button>)}</div>
       <p className="pk-label">Ready-made designs</p>
       <div className="pk-cards">{Object.entries(COASTER_PRESETS).map(([id, d]) => <button key={id} className={`pk-card ${tool.kind === 'coaster' && tool.preset === id ? 'on' : ''}`} onClick={() => { setTool({ kind: 'coaster', style: d.style, dir: 0, length: d.station, preset: id }); setPanel(null) }}>
-        <strong><i className="pk-swatch" style={{ background: COASTER_STYLES[d.style].track }} />{d.name}</strong><span>{COASTER_STYLES[d.style].name}</span><small>{d.description}</small>{d.footprint && <em>{d.footprint[0]}×{d.footprint[1]} squares · {d.height} m tall · about {money(d.cost ?? 0)}</em>}
+        <strong><i className="pk-swatch" style={{ background: COASTER_STYLES[d.style].track }} />{d.name}</strong><span>{COASTER_STYLES[d.style].name}</span><small>{d.description}</small>{d.footprint && <em>{d.footprint[0]}×{d.footprint[1]} squares · {d.height} m tall · about {money((d.cost ?? 0) * rideScale)}</em>}
       </button>)}</div>
       <p className="pk-hint">Click to place the station, then build the circuit piece by piece, or press Auto-finish to close the loop. Designs are built in one go and finished to fit the ground; press R to turn them before placing.</p>
     </Window>}
@@ -1050,7 +1051,7 @@ export function ParkHud({ session, onQuit, signedIn: accountSignedIn, onScore, b
     </div>}
 
     {['flat', 'stall', 'scenery', 'coaster', 'gate', 'clear', 'pathAdd'].includes(tool.kind) && <div className="pk-placebar" role="group" aria-label="Placement">
-      <strong>{tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize ? `${FLAT_RIDES[tool.ride].name} · ${flatQuote ? `${flatQuote.w}×${flatQuote.h} · ${money(flatQuote.cost)} · ${flatQuote.capacity} swimmers` : 'Drag to set the size'}` : tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
+      <strong>{tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize ? `${FLAT_RIDES[tool.ride].name} · ${flatQuote ? `${flatQuote.w}×${flatQuote.h} · ${money(flatQuote.cost)} · ${flatQuote.capacity} swimmers` : 'Drag to set the size'}` : tool.kind === 'flat' ? `Place ${FLAT_RIDES[tool.ride].name} · ${money(FLAT_RIDES[tool.ride].cost * rideScale)}` : tool.kind === 'stall' ? `Place ${STALLS[tool.stall].name} · ${money(STALLS[tool.stall].cost)}` : tool.kind === 'scenery' ? `Place ${SCENERY[tool.scenery].name} · ${money(SCENERY[tool.scenery].cost)}` : tool.kind === 'coaster' ? (tool.preset ? `Place ${COASTER_PRESETS[tool.preset].name}` : `Place ${COASTER_STYLES[tool.style].name} station`) : tool.kind === 'gate' ? `Place ${state.entities[tool.ride]?.name ?? 'ride'} ${tool.role}` : tool.kind === 'clear' ? 'Drag to clear scenery' : tool.kind === 'pathAdd' ? `Place ${PATH_ADDITIONS[tool.add]?.name ?? 'item'} on a footpath` : ''}</strong>
       {tool.kind === 'coaster' && !tool.preset && <><button onClick={() => setTool({ ...tool, length: Math.max(2, tool.length - 1) })} aria-label="Shorter station"><Minus size={14} /></button><span>{COASTER_STYLES[tool.style]?.trackType === 'kart' ? `${kartCount(tool.length, tool.style)} karts` : `${Math.min(tool.length + 1, 10)}-car train`} · {tool.length}-tile station</span><button onClick={() => setTool({ ...tool, length: Math.min(13, tool.length + 1) })} aria-label="Longer station"><Plus size={14} /></button></>}
       {tool.kind === 'flat' && FLAT_RIDES[tool.ride].resize && <span>Drag from corner to corner, {FLAT_RIDES[tool.ride].resize!.min.join('×')} to {FLAT_RIDES[tool.ride].resize!.max.join('×')}</span>}
       {((tool.kind === 'flat' && !FLAT_RIDES[tool.ride].resize) || tool.kind === 'stall' || tool.kind === 'scenery' || tool.kind === 'coaster') && <button onClick={rotateTool}><RotateCw size={14} /> Rotate</button>}

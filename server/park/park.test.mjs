@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  REALISM_MAX_LOAN,
+  SCENARIOS,
+  REALISM_RIDE_COST,
+  LAND_SQUARE_COST,
+  companyValue,
   applyCommand,
   applyDynamic,
   createPark,
@@ -105,15 +110,15 @@ test('parks start with the same land and can buy contiguous expansion squares', 
   const index = tileIndex(state.map, tile.x, tile.y)
   const before = state.parks[0].cash
   const result = applyCommand(state, { t: 'buyLand', ...tile })
-  assert.deepEqual(result, { ok: true, cost: 100 })
+  assert.deepEqual(result, { ok: true, cost: 500 })
   assert.equal(state.map.owner[index], 0)
-  assert.equal(state.parks[0].cash, before - 100)
-  assert.equal(state.parks[0].month.landscaping, -100)
+  assert.equal(state.parks[0].cash, before - 500)
+  assert.equal(state.parks[0].month.landscaping, -500)
 
   assert.equal(applyCommand(state, { t: 'buyLand', ...tile }).ok, false)
   assert.equal(applyCommand(state, { t: 'buyLand', x: land.limit.x0, y: land.limit.y0 }).ok, false)
   assert.equal(applyCommand(state, { t: 'buyLand', x: land.initial.x0, y: land.initial.y1 + 1 }).ok, false)
-  state.parks[0].cash = 99
+  state.parks[0].cash = 499
   assert.equal(applyCommand(state, { t: 'buyLand', x: tile.x - 1, y: tile.y }).ok, false)
   assert.equal(state.map.owner[tileIndex(state.map, tile.x - 1, tile.y)], 255)
 })
@@ -447,14 +452,14 @@ test('area land purchases buy only connected, eligible squares and charge for ea
   assert.equal(plan.tiles.length, 5 * 10)
   const before = state.parks[0].cash
   const result = applyCommand(state, { t: 'buyLandArea', x0, y0, x1, y1 })
-  assert.deepEqual(result, { ok: true, cost: 5000, count: 50 })
-  assert.equal(state.parks[0].cash, before - 5000)
+  assert.deepEqual(result, { ok: true, cost: 25000, count: 50 })
+  assert.equal(state.parks[0].cash, before - 25000)
   assert.equal(ownedTileCount(state, 0), ownedBefore + 50)
   assert.equal(state.map.owner[tileIndex(state.map, x0, y0)], 255)
   assert.equal(state.map.owner[tileIndex(state.map, x1, y1)], 0)
   assert.equal(applyCommand(state, { t: 'buyLandArea', x0: land.limit.x0, y0: land.initial.y1 + 2, x1: land.limit.x0 + 3, y1: land.initial.y1 + 4 }).ok, false)
   assert.equal(applyCommand(state, { t: 'buyLandArea', x0: 0, y0: 0, x1: 40, y1: 3 }).ok, false)
-  state.parks[0].cash = 50
+  state.parks[0].cash = 250
   assert.equal(applyCommand(state, { t: 'buyLandArea', x0: x1 - 4, y0: y1 + 1, x1, y1: y1 + 2 }).ok, false)
 })
 
@@ -1061,3 +1066,92 @@ test('the Million Dollar Dash records the first moment value and rating both qua
   assert.equal(past.seconds, (2 * DAYS_PER_MONTH - 0.3) * DAY_SECONDS)
   assert.equal(millionFromHistory(old, { year: 2, month: 3 }), null, 'incomplete history is not trusted')
 })
+
+function realismFixture(realism) {
+  const state = parkFixture()
+  state.realism = realism
+  return state
+}
+
+test('realism mode raises the loan limit, survives saving and leaves land and running costs alone', () => {
+  const normal = createPark('meadowbrook')
+  const real = createPark('meadowbrook', { realism: true })
+  assert.equal(normal.realism, false)
+  assert.equal(real.realism, true)
+  assert.equal(normal.parks[0].maxLoan, 50000)
+  assert.equal(real.parks[0].maxLoan, REALISM_MAX_LOAN)
+  assert.equal(REALISM_MAX_LOAN, 150000)
+  assert.equal(real.parks[0].loan, normal.parks[0].loan)
+  real.parks[0].named = true
+  assert.equal(applyCommand(real, { t: 'loan', delta: 100000 }).ok, true)
+  assert.equal(real.parks[0].loan, normal.parks[0].loan + 100000)
+  assert.equal(applyCommand(real, { t: 'loan', delta: 50000 }).ok, false)
+  const loaded = deserializePark(JSON.parse(JSON.stringify(serializePark(real))))
+  assert.equal(loaded.realism, true)
+  assert.equal(loaded.parks[0].maxLoan, REALISM_MAX_LOAN)
+  const plain = deserializePark(JSON.parse(JSON.stringify(serializePark(normal))))
+  assert.equal(plain.realism, false)
+  assert.equal(plain.parks[0].maxLoan, 50000)
+  assert.equal(LAND_SQUARE_COST, 500)
+  for (const scenario of Object.keys(SCENARIOS)) {
+    for (const realism of [false, true]) {
+      const state = createPark(scenario, { realism })
+      if (!state.parks[0].land) continue
+      state.parks[0].named = true
+      state.parks[0].cash = 10_000
+      const { initial } = state.parks[0].land
+      const result = applyCommand(state, { t: 'buyLand', x: initial.x0 - 1, y: initial.y0 })
+      assert.deepEqual(result, { ok: true, cost: 500 }, `${scenario} realism=${realism}`)
+    }
+  }
+  const a = realismFixture(false), b = realismFixture(true)
+  for (const state of [a, b]) {
+    assert.equal(applyCommand(state, { t: 'flat', ride: Object.keys(FLAT_RIDES).find(id => !FLAT_RIDES[id].resize && !FLAT_RIDES[id].custom), x: 40, y: 40, rot: 0 }).ok, true)
+  }
+  for (const realism of [false, true]) {
+    const state = createPark('sandbox', { realism })
+    state.parks[0].named = true
+    assert.equal(applyCommand(state, { t: 'hire', role: 'handyman' }).ok, true)
+    state.staff.forEach(member => (realism ? b : a).staff.push({ ...member }))
+  }
+  const running = dailyOperatingCosts(a, 0)
+  assert.ok(running.wages > 0 && running.electricity > 0)
+  assert.deepEqual(dailyOperatingCosts(b, 0), running)
+})
+
+test('realism mode charges five times as much to build every ride and refunds half of what was paid', () => {
+  assert.equal(REALISM_RIDE_COST, 5)
+  const flatId = Object.keys(FLAT_RIDES).find(id => !FLAT_RIDES[id].resize && !FLAT_RIDES[id].custom)
+  const costs = {}
+  for (const realism of [false, true]) {
+    const state = realismFixture(realism)
+    const cash = state.parks[0].cash
+    const flat = applyCommand(state, { t: 'flat', ride: flatId, x: 40, y: 40, rot: 0 })
+    assert.equal(flat.ok, true, flat.error)
+    const flatPaid = cash - state.parks[0].cash
+    const valueBefore = companyValue(state, 0)
+    const coasterCash = state.parks[0].cash
+    const coaster = applyCommand(state, { t: 'coaster', style: 'steel', x: 60, y: 60, dir: 0, length: 3 })
+    assert.equal(coaster.ok, true, coaster.error)
+    const piece = applyCommand(state, { t: 'piece', ride: coaster.id, c: 0, s: 0 })
+    assert.equal(piece.ok, true, piece.error)
+    const trackPaid = coasterCash - state.parks[0].cash
+    assert.equal(companyValue(state, 0), valueBefore, 'park value follows the price paid')
+    const pool = applyCommand(state, { t: 'flat', ride: 'pool', x: 20, y: 20, rot: 0, w: 5, h: 4 })
+    assert.equal(pool.ok, true, pool.error)
+    const preset = Object.entries(COASTER_PRESETS).find(([, d]) => d.footprint)
+    const presetState = realismFixture(realism)
+    const made = applyCommand(presetState, { t: 'preset', preset: preset[0], x: 60, y: 60, dir: 0 })
+    assert.equal(made.ok, true, made.error)
+    const beforeDemolish = state.parks[0].cash
+    assert.equal(applyCommand(state, { t: 'demolish', id: flat.id }).ok, true)
+    costs[realism] = { flatPaid, trackPaid, refund: state.parks[0].cash - beforeDemolish, pool: pool.cost, preset: made.cost }
+  }
+  assert.equal(costs[false].flatPaid, FLAT_RIDES[flatId].cost)
+  assert.equal(costs[true].flatPaid, FLAT_RIDES[flatId].cost * 5)
+  assert.equal(costs[true].trackPaid, costs[false].trackPaid * 5)
+  assert.equal(costs[true].pool, flatSpec('pool', [5, 4]).cost * 5)
+  assert.equal(costs[true].preset, costs[false].preset * 5)
+  assert.equal(costs[true].refund, Math.round(costs[true].flatPaid * 0.5))
+})
+

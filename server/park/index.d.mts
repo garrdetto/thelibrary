@@ -28,7 +28,7 @@ export type ParkState = {
   v: number; scenario: string; mode: 'solo' | 'coop' | 'versus'; seed: number; rng: number; map: ParkMap; entities: Record<string, Entity>; nextId: number; staffSeq: number; guestSeq: number
   pathVersion: number; structVersion: number; parks: Park[]; guests: Guest[]; staff: Staff[]
   time: { tick: number; seconds: number; day: number; month: number; year: number; dayFraction: number }
-  weather: { kind: 'sunny' | 'cloudy' | 'rain'; temp: number; next: number }; speed: number; news: News[]; newsSeq: number; ended: { text: string; winner: number; values?: number[] } | null
+  weather: { kind: 'sunny' | 'cloudy' | 'rain'; temp: number; next: number }; speed: number; realism?: boolean; news: News[]; newsSeq: number; ended: { text: string; winner: number; values?: number[] } | null
   trackCells: Map<number, { ride: number; piece: number; lo: number; hi: number; tunnel?: 'cover' | 'open' }[]>; fields: Map<string, Int16Array>
 }
 export type ColorRole = 'primary' | 'secondary' | 'accent' | 'trim' | 'lights' | 'glow'
@@ -160,7 +160,10 @@ export const MARKETING: Record<string, { name: string; cost: number; days: numbe
 export function clamp(value: number, min: number, max: number): number
 export function formatMoney(value: number): string
 export function guestName(id: number): string
-export function createPark(scenarioId: string, options?: { mode?: 'solo' | 'coop' | 'versus'; players?: number; parkNames?: string[] }): ParkState
+export function createPark(scenarioId: string, options?: { mode?: 'solo' | 'coop' | 'versus'; players?: number; parkNames?: string[]; realism?: boolean }): ParkState
+export const REALISM_MAX_LOAN: number
+export const REALISM_RIDE_COST: number
+export function rideCostScale(state: { realism?: boolean } | null | undefined): number
 export function stepPark(state: ParkState, dt?: number): void
 export function applyCommand(state: ParkState, cmd: Command, park?: number): CommandResult
 export function serializePark(state: ParkState, includeGuests?: boolean): unknown
