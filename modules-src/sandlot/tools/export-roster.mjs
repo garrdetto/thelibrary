@@ -22,7 +22,7 @@ for (; end < html.length; end++) {
 const roster = vm.runInNewContext(`(${html.slice(html.indexOf('[', start), end + 1)})`)
 const BASE_HEIGHT = { tiny: 3.9, average: 4.4, lanky: 4.95, stocky: 4.55 }
 const out = roster.map((k) => ({
-  id: k.id, nick: k.nick, age: k.age, bats: k.bats, throws: k.throws, sig: k.sig || null, quirk: k.quirk || null, look: k.look,
+  id: k.id, nick: k.nick, age: k.age, bats: k.bats, throws: k.throws, sig: k.sig || null, quirk: k.quirk || null, stance: k.stance || null, number: k.num || (k.id * 7) % 99 || 99, look: k.look,
   height: BASE_HEIGHT[k.look.body] + (k.age - 10) * 0.08 + (k.look.acc.includes('tall') ? 0.25 : 0),
 }))
 process.stdout.write(JSON.stringify({ kids: out }, null, 1))

@@ -2199,7 +2199,61 @@ function hull2(pts) {
 }
 function pathPts(c, pts) { c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)); c.closePath(); }
 
+/* Blender-rendered close-up batters (tools/build-batter.py): each frame is posed with the same maths as drawBatter3D and
+   rendered through the projB camera, so it is drawn at its stored canvas position. batters.json lists every frame's side,
+   swing phase k (null in the stance), contact height cy, bunt flag, layer (a batter, h white helmet tinted per team),
+   atlas rect, canvas position and bat tip. Until the atlas loads, or with ?sprites=0, the drawn batter is used. */
+const BATTER_SPRITES = { meta: null, img: {}, tint: {} };
+if (new URLSearchParams(location.search).get('sprites') !== '0') {
+  fetch('sprites/kids/batters.json').then(r => (r.ok ? r.json() : null)).then(j => { BATTER_SPRITES.meta = j; }).catch(() => {});
+}
+function batterSheet(kid) {
+  const M = BATTER_SPRITES.meta, k = M && M.kids[kid.id];
+  if (!k) return null;
+  let im = BATTER_SPRITES.img[kid.id];
+  if (!im) { im = BATTER_SPRITES.img[kid.id] = new Image(); im.src = `sprites/kids/bat-${kid.id}.webp?v=${M.version}`; }
+  return im.complete && im.naturalWidth ? { M, k, im } : null;
+}
+function batterFrame(frames, layer, side, swingT, cy, bunt) {
+  const pool = frames.filter(f => f.layer === layer && f.side === side && (bunt ? f.bunt : swingT == null ? f.k == null && !f.bunt : f.k != null));
+  if (!pool.length) return null;
+  if (bunt || swingT == null) return pool[0];
+  let k = pool[0].k;
+  for (const f of pool) if (Math.abs(f.k - swingT) < Math.abs(k - swingT)) k = f.k;
+  return pool.filter(f => f.k === k).reduce((a, b) => (Math.abs(b.cy - cy) < Math.abs(a.cy - cy) ? b : a));
+}
+function tintedBatterHelmets(sh, kid, color) {
+  const key = kid.id + color;
+  if (BATTER_SPRITES.tint[key]) return BATTER_SPRITES.tint[key];
+  const { k, im } = sh, cv = makeCanvas(im.naturalWidth, im.naturalHeight), g = cv.getContext('2d');
+  for (const f of k.frames) {
+    if (f.layer !== 'h') continue;
+    const [x, y, w, h] = f.rect;
+    g.drawImage(im, x, y, w, h, x, y, w, h);
+    g.save(); g.beginPath(); g.rect(x, y, w, h); g.clip();
+    g.globalCompositeOperation = 'multiply'; g.fillStyle = color; g.fillRect(x, y, w, h);
+    g.globalCompositeOperation = 'destination-in'; g.drawImage(im, x, y, w, h, x, y, w, h); g.restore();
+  }
+  return (BATTER_SPRITES.tint[key] = cv);
+}
+function drawBatterSprite(c, kid, sh, bx, bz, side, swingT, helmetColor, bunt, contactY) {
+  const H = kid.height, cy = contactY != null ? clamp(contactY, 0.9, H * 0.75) : H * 0.48, dir = side === 'R' ? 1 : -1;
+  const f = batterFrame(sh.k.frames, 'a', side, swingT, cy, bunt);
+  if (!f) return false;
+  { const g0 = projB(bx - dir * 0.1, 0, bz), g1 = projB(bx + dir * 1.2, 0, bz), r = Math.abs(g1.x - g0.x); const g = c.createRadialGradient(g0.x, g0.y, 2, g0.x, g0.y, r); g.addColorStop(0, 'rgba(0,0,0,0.38)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.beginPath(); c.ellipse(g0.x, g0.y, r, r * 0.3, 0, 0, 6.3); c.fill(); }
+  const blit = (src, fr) => { const [x, y, w, h] = fr.rect; c.drawImage(src, x, y, w, h, fr.at[0], fr.at[1], w, h); };
+  blit(sh.im, f);
+  const hf = batterFrame(sh.k.frames, 'h', side, swingT, cy, bunt);
+  if (hf) blit(tintedBatterHelmets(sh, kid, helmetColor || '#c0392b'), hf);
+  if (swingT != null && swingT > 0.38 && swingT < 0.68) {
+    const pf = batterFrame(sh.k.frames, 'a', side, swingT - 0.07, cy, false);
+    if (pf && pf !== f) { c.save(); c.globalAlpha = 0.28; c.fillStyle = '#ffffff'; c.beginPath(); c.moveTo(f.tip[0], f.tip[1]); c.lineTo(pf.tip[0], pf.tip[1]); c.lineTo(f.mid[0], f.mid[1]); c.closePath(); c.fill(); c.restore(); }
+  }
+  return true;
+}
 function drawBatter3D(c, kid, bx, bz, side, swingT, t, helmetColor, bunt, contactY) {
+  const sheet = batterSheet(kid);
+  if (sheet && Math.abs(Math.abs(bx) - sheet.M.batX) < 1e-6 && Math.abs(bz - sheet.M.batZ) < 1e-6 && drawBatterSprite(c, kid, sheet, bx, bz, side, swingT, helmetColor, bunt, contactY)) return;
   const L = kid.look, F = fitOf(kid), d = bodyDims(kid), H = d.H, k = H / 4.4;
   const dir = side === 'R' ? 1 : -1;
   const W3 = p => V(bx + dir * p.x, p.y, bz + p.z);                // local -> world
