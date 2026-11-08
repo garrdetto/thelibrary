@@ -163,13 +163,15 @@ export class Game {
     this.input = new Input(this.engine.renderer.domElement);
     this.day = new DayNight(scene);
     await this.day.initSky();
-    if (!NO_CHUNKS) this.chunks = new WorldChunks(scene, this.engine.renderer, this.engine.camera);
+    // compileAsync can't see the GTAO pass's MRT, so with AO on its shaders would never be used (see Prewarm.ts).
+    const compiler = this.engine.aoEnabled ? null : this.engine.renderer;
+    if (!NO_CHUNKS) this.chunks = new WorldChunks(scene, compiler, this.engine.camera);
     this.hood = new Neighborhood(scene, this.physics, this.mats, this.chunks);
     this.houses = new HouseManager(scene, this.physics, new StructureMesher(this.mats), this.chunks);
     this.grass = new Grass(scene, this.hood.lawns, () => this.houses.world, this.engine.backendName.includes('WebGPU') ? 1 : 0.7);
     this.cam = new CameraRig(this.engine.camera, this.input, this.physics);
     this.remotes = new RemoteEntities(scene, this.physics, () => this.selfId);
-    setPrewarmTarget({ renderer: this.engine.renderer, camera: this.engine.camera, scene });
+    setPrewarmTarget(compiler ? { renderer: compiler, camera: this.engine.camera, scene } : null);
     this.build = new BuildController(this.engine.camera, this.input, scene, this.houses, {
       myKey: () => this.account?.id ?? null,
       money: () => this.account?.money ?? 0,

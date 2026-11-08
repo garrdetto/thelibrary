@@ -3,8 +3,9 @@ import * as THREE from 'three/webgpu'
 import type { BodyType, Hand } from '../sim'
 import { Animator, type ActionName, type BaseState } from './Animator'
 import { buildBody } from './BodyMesh'
+import { modelGeometry } from './Models'
 import { createRig, proportionsFor, type Rig } from './Rig'
-import { createPlayerMaterial, type PlayerMaterial, type UniformColors } from './Uniform'
+import { createPlayerMaterial, type JerseyLook, type PlayerMaterial, type UniformColors } from './Uniform'
 
 export interface BallplayerOptions {
   body: BodyType
@@ -12,6 +13,7 @@ export interface BallplayerOptions {
   throws: Hand
   uniform: UniformColors
   skin: string
+  jersey?: JerseyLook
 }
 
 export class Ballplayer {
@@ -29,13 +31,19 @@ export class Ballplayer {
   private targetYaw = 0
   private placed = false
   readonly throws: Hand
+  private readonly lettering: THREE.Texture | null
+  private readonly ownsGeometry: boolean
 
   constructor(options: BallplayerOptions, gloveMaterial: THREE.Material, batGeometry: THREE.BufferGeometry, batMaterial: THREE.Material, gloveGeometry: THREE.BufferGeometry) {
     this.throws = options.throws
-    const proportions = proportionsFor(options.body, options.height)
+    const model = modelGeometry(options.body)
+    const proportions = model ? { scale: 1, girth: 1, belly: 0, shoulders: 1 } : proportionsFor(options.body, options.height)
     this.rig = createRig(proportions)
-    this.geometry = buildBody(this.rig, proportions)
-    this.look = createPlayerMaterial(options.uniform, options.skin)
+    this.ownsGeometry = !model
+    this.geometry = model ?? buildBody(this.rig, proportions)
+    if (model) this.group.scale.setScalar(options.height / 1.85)
+    this.lettering = options.jersey?.lettering ?? null
+    this.look = createPlayerMaterial(options.uniform, options.skin, options.jersey)
     this.mesh = new THREE.SkinnedMesh(this.geometry, this.look.material)
     this.mesh.add(this.rig.root)
     this.mesh.bind(this.rig.skeleton)
@@ -124,7 +132,8 @@ export class Ballplayer {
 
   dispose(): void {
     this.group.removeFromParent()
-    this.geometry.dispose()
+    if (this.ownsGeometry) this.geometry.dispose()
     this.look.material.dispose()
+    this.lettering?.dispose()
   }
 }

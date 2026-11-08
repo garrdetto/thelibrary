@@ -377,14 +377,25 @@ export class Houses {
     return group;
   }
 
-  /** Rebuilds lots that changed (batched once a frame) and shows furniture near the focus. */
-  update(dt: number, focus: pc.Vec3) {
+  /**
+   * Rebuilds lots that changed (batched once a frame) and shows furniture near
+   * the focus. Returns true when something new appeared, so the caller can
+   * warm its shaders before the camera turns toward it.
+   */
+  update(dt: number, focus: pc.Vec3): boolean {
+    let added = this.pending.size > 0;
     for (const id of this.pending) this.rebuild(id);
     this.pending.clear();
     this.furnTimer -= dt;
-    if (this.furnTimer > 0) return;
+    if (this.furnTimer > 0) return added;
     this.furnTimer = 0.5;
     const r2 = FURNITURE_RADIUS * FURNITURE_RADIUS;
-    for (const l of this.lots.values()) if (l.furniture) l.furniture.enabled = (l.cx - focus.x) ** 2 + (l.cz - focus.z) ** 2 < r2;
+    for (const l of this.lots.values()) {
+      if (!l.furniture) continue;
+      const near = (l.cx - focus.x) ** 2 + (l.cz - focus.z) ** 2 < r2;
+      if (near && !l.furniture.enabled) added = true;
+      l.furniture.enabled = near;
+    }
+    return added;
   }
 }

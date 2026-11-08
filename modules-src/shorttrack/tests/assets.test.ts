@@ -85,3 +85,63 @@ for (let level = 0; level < 3; level += 1) {
     assert.ok(maxZ - minZ > 0.44 && maxZ - minZ < 0.5, `width ${maxZ - minZ}`)
   })
 }
+
+const TRUCK_BUDGETS = [50000, 15000, 4000]
+const PACE_BUDGETS = [40000, 12000, 3000]
+const PROP_BUDGET = 1500
+
+function materialNames(doc: Document): Set<string> {
+  return new Set(doc.getRoot().listMaterials().map((material) => material.getName()))
+}
+
+function checkPivots(doc: Document, axles: { front: number; rear: number }, tireMaterial: string) {
+  for (const tag of ['FL', 'FR', 'RL', 'RR']) {
+    const pivot = byName(doc, `Wheel_${tag}`)
+    assert.ok(pivot, `Wheel_${tag}`)
+    const [x, y, z] = pivot.getTranslation()
+    assert.ok(Math.abs(x - (tag[0] === 'F' ? axles.front : axles.rear)) < 0.02, `Wheel_${tag} axle ${x}`)
+    assert.ok(y > 0.25 && y < 0.5, `Wheel_${tag} hub height ${y}`)
+    assert.ok(tag[1] === 'L' ? z < -0.6 : z > 0.6, `Wheel_${tag} side ${z} (z is the right side)`)
+    const tire = pivot.listChildren().find((child) => child.getName() === `Tire_${tag}`)
+    assert.ok(tire, `Tire_${tag} under its pivot`)
+    const used = tire.getMesh()?.listPrimitives().map((prim) => prim.getMaterial()?.getName())
+    assert.ok(used?.includes(tireMaterial), `Tire_${tag} keeps its tyre (${used})`)
+  }
+}
+
+for (let level = 0; level < 3; level += 1) {
+  test(`race truck LOD${level}: budget, wheel pivots on the truck's axles, named materials`, async () => {
+    const { TM } = (await import('../truck-model.js')) as { TM: { DIM: { FA: number; RA: number } } }
+    const doc = await load(`truck_race_lod${level}.glb`)
+    const tris = triangles(doc)
+    assert.ok(tris <= TRUCK_BUDGETS[level], `${tris} triangles over ${TRUCK_BUDGETS[level]}`)
+    if (level === 0) assert.ok(tris > 40000, 'LOD0 keeps the full body')
+    assert.ok(byName(doc, 'RaceTruck'), 'RaceTruck root')
+    checkPivots(doc, { front: TM.DIM.FA, rear: TM.DIM.RA }, 'truck_tire')
+    const names = materialNames(doc)
+    for (const name of ['truck_paint', 'truck_glass', 'truck_tire', 'truck_taillight']) assert.ok(names.has(name), name)
+  })
+
+  test(`pace car LOD${level}: budget, wheel pivots, paint and light bar`, async () => {
+    const doc = await load(`pace_car_lod${level}.glb`)
+    const tris = triangles(doc)
+    assert.ok(tris <= PACE_BUDGETS[level], `${tris} triangles over ${PACE_BUDGETS[level]}`)
+    assert.ok(byName(doc, 'PaceCar'), 'PaceCar root')
+    checkPivots(doc, { front: 1.4, rear: -1.38 }, 'pace_tire')
+    const names = materialNames(doc)
+    for (const name of ['pace_paint', 'pace_glass', 'pace_light_red', 'pace_light_blue', 'pace_tire']) assert.ok(names.has(name), name)
+  })
+}
+
+test('track prop kit: six separate props on their origins, each within budget', async () => {
+  const doc = await load('props_kit.glb')
+  const props = doc.getRoot().listNodes().filter((node) => node.getName().startsWith('Prop_'))
+  assert.deepEqual(props.map((node) => node.getName()).sort(), ['Prop_barrier', 'Prop_cone', 'Prop_hay_bale', 'Prop_light_tower', 'Prop_pit_board', 'Prop_tyre_stack'])
+  for (const node of props) {
+    let n = 0
+    for (const prim of node.getMesh()!.listPrimitives()) n += prim.getIndices()!.getCount() / 3
+    assert.ok(n <= PROP_BUDGET, `${node.getName()}: ${n} triangles`)
+    const [x, , z] = node.getTranslation()
+    assert.ok(Math.abs(x) < 0.05 && Math.abs(z) < 0.05, `${node.getName()} stands on its origin`)
+  }
+})

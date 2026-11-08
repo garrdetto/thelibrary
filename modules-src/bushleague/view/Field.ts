@@ -7,6 +7,7 @@ import type { Bowl } from './Crowd'
 import { toWorld, worldXYZ } from './space'
 import { DirtCanvas, createDirtMaterial, createTurfMaterial } from './Turf'
 import { createSignature, type Signature } from './Signature'
+import { distanceSign, paddingTexture, seatTexture, woodTexture, type TextureDetail } from './Textures'
 
 type FieldLook = ModuleConfig['field']
 
@@ -45,48 +46,73 @@ export function strip(points: THREE.Vector3[], tops: THREE.Vector3[], uScale = 1
   return geometry
 }
 
-export function plankTexture(base: string): THREE.CanvasTexture {
+/** The scoreboard face: an LED matrix behind the club names, lit dots on a dark panel. */
+function scoreboardTexture(home: Team, away: Team, detail: TextureDetail): THREE.CanvasTexture {
+  const width = Math.min(2048, detail.size)
+  const height = Math.round(width * 0.375)
   const canvas = document.createElement('canvas')
-  canvas.width = 256
-  canvas.height = 128
+  canvas.width = width
+  canvas.height = height
   const context = canvas.getContext('2d')!
-  const tint = new THREE.Color(base)
-  for (let plank = 0; plank < 8; plank++) {
-    const shade = tint.clone().offsetHSL(0, 0, ((plank * 37) % 11) / 110 - 0.05)
-    context.fillStyle = `#${shade.getHexString()}`
-    context.fillRect(plank * 32, 0, 31, 128)
-    context.fillStyle = 'rgba(0,0,0,0.35)'
-    context.fillRect(plank * 32 + 31, 0, 1, 128)
-    context.fillStyle = 'rgba(30,18,8,0.5)'
-    context.beginPath()
-    context.arc(plank * 32 + 16, 20 + ((plank * 53) % 80), 2.5, 0, Math.PI * 2)
-    context.fill()
+  context.fillStyle = '#0a130f'
+  context.fillRect(0, 0, width, height)
+  const text = document.createElement('canvas')
+  text.width = width
+  text.height = height
+  const ink = text.getContext('2d')!
+  const unit = width / 512
+  ink.textAlign = 'center'
+  ink.fillStyle = '#e8b23a'
+  ink.font = `bold ${Math.round(34 * unit)}px Rajdhani, Inter, sans-serif`
+  ink.fillText('BUSH LEAGUE BASEBALL', width / 2, 52 * unit)
+  ink.fillStyle = '#f4f1e8'
+  ink.font = `bold ${Math.round(28 * unit)}px Inter, sans-serif`
+  ink.fillText(`${away.city} ${away.name}`, width / 2, 104 * unit)
+  ink.fillText(`at ${home.city} ${home.name}`, width / 2, 148 * unit)
+  context.drawImage(text, 0, 0)
+  const pitch = Math.max(3, Math.round(width / 300))
+  const dots = new Path2D()
+  for (let y = 0; y < height; y += pitch) for (let x = 0; x < width; x += pitch) {
+    dots.moveTo(x + pitch / 2 + pitch * 0.42, y + pitch / 2)
+    dots.arc(x + pitch / 2, y + pitch / 2, pitch * 0.42, 0, Math.PI * 2)
   }
+  context.globalCompositeOperation = 'destination-in'
+  context.fillStyle = '#000'
+  context.fill(dots)
+  context.globalCompositeOperation = 'destination-over'
+  context.fillStyle = '#0a130f'
+  context.fillRect(0, 0, width, height)
+  context.globalCompositeOperation = 'source-over'
+  context.fillStyle = 'rgba(255,255,255,0.04)'
+  for (let y = 0; y < height; y += pitch) for (let x = 0; x < width; x += pitch) context.fillRect(x + pitch * 0.3, y + pitch * 0.3, pitch * 0.4, pitch * 0.4)
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
-  texture.wrapS = THREE.RepeatWrapping
-  texture.wrapT = THREE.RepeatWrapping
+  texture.anisotropy = detail.anisotropy
   return texture
 }
 
-function scoreboardTexture(home: Team, away: Team): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas')
-  canvas.width = 512
-  canvas.height = 192
-  const context = canvas.getContext('2d')!
-  context.fillStyle = '#0d1a14'
-  context.fillRect(0, 0, 512, 192)
-  context.fillStyle = '#e8b23a'
-  context.font = 'bold 34px Rajdhani, Inter, sans-serif'
-  context.textAlign = 'center'
-  context.fillText('BUSH LEAGUE BASEBALL', 256, 52)
-  context.font = 'bold 28px Inter, sans-serif'
-  context.fillStyle = '#f4f1e8'
-  context.fillText(`${away.city} ${away.name}`, 256, 104)
-  context.fillText(`at ${home.city} ${home.name}`, 256, 148)
-  const texture = new THREE.CanvasTexture(canvas)
-  texture.colorSpace = THREE.SRGBColorSpace
-  return texture
+/** The skin infield in sim (x, z): the 95 ft arc around the rubber carried all the way to both foul lines, with a 1 m lip into foul ground past first and third, closed short of home (the home circle and base paths cover the rest). */
+function infieldDirtGeometry(): THREE.ShapeGeometry {
+  const radius = 29
+  const lip = 1
+  const r = Math.SQRT1_2
+  const line = (side: 1 | -1, t: number) => new THREE.Vector2(side * r * t + side * r * lip, r * t - r * lip)
+  const reach = (side: 1 | -1) => {
+    const ox = side * r * lip
+    const oz = -r * lip - MOUND_DISTANCE
+    const b = side * r * ox + r * oz
+    const c = ox * ox + oz * oz - radius * radius
+    return -b + Math.sqrt(b * b - c)
+  }
+  const right = line(1, reach(1))
+  const left = line(-1, reach(-1))
+  const shape = new THREE.Shape()
+  shape.moveTo(line(1, 7).x, line(1, 7).y)
+  shape.lineTo(right.x, right.y)
+  shape.absarc(0, MOUND_DISTANCE, radius, Math.atan2(right.y - MOUND_DISTANCE, right.x), Math.atan2(left.y - MOUND_DISTANCE, left.x), false)
+  shape.lineTo(line(-1, 7).x, line(-1, 7).y)
+  shape.closePath()
+  return new THREE.ShapeGeometry(shape, 96)
 }
 
 export interface FieldView {
@@ -101,7 +127,7 @@ export interface FieldView {
   dispose(): void
 }
 
-export function createField(park: Park, look: FieldLook, theme: ParkTheme, home: Team, away: Team): FieldView {
+export function createField(park: Park, look: FieldLook, theme: ParkTheme, home: Team, away: Team, detail: TextureDetail): FieldView {
   const root = new THREE.Group()
   root.name = 'ballpark'
   const disposables: { dispose(): void }[] = []
@@ -110,16 +136,15 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
     return item
   }
 
-  const grass = own(createTurfMaterial(theme.mow, theme.grass[0], theme.grass[1]))
+  const grass = own(createTurfMaterial(theme.mow, theme.grass[0], theme.grass[1], detail))
   const ground = flat(own(new THREE.PlaneGeometry(420, 420)), grass, 0)
   ground.position.z = -120
   root.add(ground)
 
-  const dirt = new DirtCanvas()
+  const dirt = new DirtCanvas(1024, detail.anisotropy)
   own(dirt)
-  const dirtMaterial = own(createDirtMaterial(theme.dirt, dirt))
-  const infieldDirt = flat(own(new THREE.CircleGeometry(29, 72, Math.PI / 4 - 0.1, Math.PI / 2 + 0.2)), dirtMaterial, 0.012)
-  infieldDirt.position.copy(worldXYZ(0, 0.012, MOUND_DISTANCE))
+  const dirtMaterial = own(createDirtMaterial(theme.dirt, dirt, detail))
+  const infieldDirt = flat(own(infieldDirtGeometry()), dirtMaterial, 0.012)
   root.add(infieldDirt)
   const pathWidth = 3.6
   for (const [from, to] of [[0, 1], [1, 2], [2, 3], [3, 0]] as const) {
@@ -188,19 +213,36 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
     fenceTop.push(toWorld({ ...polar(distance, spray), y: fenceHeight(park, spray) }))
     trackInner.push(toWorld({ ...polar(distance - 4.6, spray), y: 0.008 }))
   }
-  const planks = theme.fence === 'planks' ? own(plankTexture(theme.fenceColor)) : null
-  if (planks) planks.repeat.set(1 / 6, 1)
-  const fenceMaterial = own(standard(planks ? '#ffffff' : theme.fenceColor, 0.85, { side: THREE.DoubleSide, map: planks }))
+  const planks = theme.fence === 'planks'
+  const fenceMap = (planks ? woodTexture(theme.fenceColor, detail) : paddingTexture(theme.fenceColor, detail)).clone()
+  own(fenceMap)
+  fenceMap.repeat.set(planks ? 1 / 6 : 1 / 2.5, 1)
+  const fenceMaterial = own(standard('#ffffff', planks ? 0.85 : 0.7, { side: THREE.DoubleSide, map: fenceMap }))
   const fence = new THREE.Mesh(own(strip(fenceBase, fenceTop)), fenceMaterial)
   fence.castShadow = true
   fence.receiveShadow = true
   root.add(fence)
   const capTop = fenceTop.map((point) => point.clone().setY(point.y + 0.18))
   root.add(new THREE.Mesh(own(strip(fenceTop, capTop)), own(standard(look.fenceTop, 0.5, { side: THREE.DoubleSide }))))
-  const trackMaterial = own(createDirtMaterial(look.track, dirt))
+  const trackMaterial = own(createDirtMaterial(look.track, dirt, detail))
   const track = new THREE.Mesh(own(strip(trackInner, fenceBase.map((point) => point.clone().setY(0.008)))), trackMaterial)
   track.receiveShadow = true
   root.add(track)
+
+  const signPaint = planks ? '#f4efe2' : '#f2d36b'
+  for (const spray of [-45, -22.5, 0, 22.5, 45]) {
+    const distance = fenceDistance(park, spray)
+    const feet = Math.round(distance * 3.28084)
+    const sign = new THREE.Mesh(own(new THREE.PlaneGeometry(2.6, 1.3)), own(new THREE.MeshStandardMaterial({ map: own(distanceSign(feet, signPaint, detail)), transparent: true, roughness: 0.6, depthWrite: false })))
+    const left = toWorld(polar(fenceDistance(park, spray - 1), spray - 1))
+    const right = toWorld(polar(fenceDistance(park, spray + 1), spray + 1))
+    const along = right.sub(left).setY(0).normalize()
+    const inward = new THREE.Vector3(-along.z, 0, along.x)
+    if (inward.dot(toWorld(polar(distance, spray)).negate()) < 0) inward.negate()
+    sign.position.copy(toWorld({ ...polar(distance, spray), y: fenceHeight(park, spray) * 0.55 })).addScaledVector(inward, 0.4)
+    sign.lookAt(sign.position.clone().add(inward))
+    root.add(sign)
+  }
 
   const poleMaterial = own(standard(look.pole, 0.4, { emissive: new THREE.Color(look.pole), emissiveIntensity: 0.08 }))
   for (const side of [-1, 1]) {
@@ -246,12 +288,14 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
     }
     push(bowlInner[0].x, -bowlInner[0].z)
   }
-  const standsMap = theme.signature ? own(plankTexture(theme.standsColor)) : null
-  if (standsMap) standsMap.repeat.set(1 / 4, 6)
-  const bowl = new THREE.Mesh(own(strip(bowlInner, bowlOuter)), own(standard(standsMap ? '#ffffff' : theme.standsColor, 0.95, { side: THREE.DoubleSide, map: standsMap })))
+  const standsMap = own((theme.signature ? woodTexture(theme.standsColor, detail) : seatTexture(theme.standsColor, detail)).clone())
+  standsMap.repeat.set(1 / 4, theme.signature ? 6 : 26)
+  const bowl = new THREE.Mesh(own(strip(bowlInner, bowlOuter)), own(standard('#ffffff', 0.9, { side: THREE.DoubleSide, map: standsMap })))
   bowl.receiveShadow = true
   root.add(bowl)
-  const wall = new THREE.Mesh(own(strip(bowlInner.map((point) => point.clone().setY(0)), bowlInner)), own(standard(theme.wallColor, 0.9, { side: THREE.DoubleSide })))
+  const wallMap = own((theme.signature ? woodTexture(theme.wallColor, detail) : paddingTexture(theme.wallColor, detail)).clone())
+  wallMap.repeat.set(theme.signature ? 1 / 6 : 1 / 2.5, 1)
+  const wall = new THREE.Mesh(own(strip(bowlInner.map((point) => point.clone().setY(0)), bowlInner)), own(standard('#ffffff', 0.85, { side: THREE.DoubleSide, map: wallMap })))
   root.add(wall)
 
   const towerMaterial = own(standard('#4b5468', 0.6, { metalness: 0.3 }))
@@ -273,7 +317,7 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
   const signature = theme.signature ? createSignature(theme.signature, park, root, home, away) : null
   if (signature) disposables.push(signature)
   if (!signature?.replacesScoreboard) {
-    const boardTexture = own(scoreboardTexture(home, away))
+    const boardTexture = own(scoreboardTexture(home, away, detail))
     const board = new THREE.Mesh(own(new THREE.BoxGeometry(18, 7, 0.8)), [towerMaterial, towerMaterial, towerMaterial, towerMaterial, own(new THREE.MeshBasicMaterial({ map: boardTexture })), towerMaterial])
     const boardAt = polar(fenceDistance(park, 0) + (outfieldSeats ? 16 : 34), 0)
     board.position.copy(toWorld({ ...boardAt, y: 12 }))

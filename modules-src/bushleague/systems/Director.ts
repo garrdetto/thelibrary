@@ -230,7 +230,6 @@ export class Director {
     this.screens.setSteal(this.stealArmed)
     this.screens.setHint(`${this.humanPitching ? this.config.copy.controlsPitching : this.humanBatting ? this.config.copy.controlsBatting : this.config.copy.controlsWatching} · ${this.config.copy.controlsCommon}`)
     this.setPose(this.humanPitching ? 'pitching' : this.view)
-    if (this.humanPitching && (this.batterHand() === 'L') === this.goal.position.x > 0) this.goal.position.x *= -1
     this.presentation.broadcast.updateStats(contest)
     this.presentation.broadcast.refreshTicker(contest)
     const batter = contest.batter
@@ -254,6 +253,7 @@ export class Director {
   }
 
   private setPose(name: 'batting' | 'pitching' | 'overview' | 'centerfield', snap = false): void {
+    this.actors.setCatcherHidden(name === 'batting' || name === 'pitching')
     const pose = this.config.cameras[name]
     toWorld({ x: pose.position[0], y: pose.position[1], z: pose.position[2] }, this.goal.position)
     toWorld({ x: pose.target[0], y: pose.target[1], z: pose.target[2] }, this.goal.target)
@@ -580,6 +580,7 @@ export class Director {
     this.replayed = false
     if (this.timeline && outcome.play && outcome.play.kind !== 'foul') this.replayOf = { timeline: this.timeline, outcome }
     if (this.timeline) {
+      this.actors.setCatcherHidden(false)
       this.actors.hideBatter()
       this.actors.setGhost(false)
       this.actors.clearTrail()
@@ -646,6 +647,7 @@ export class Director {
     if (!this.replayOf) return
     this.replayed = true
     this.actors.resetReactions()
+    this.actors.setCatcherHidden(false)
     this.presentation.broadcast.showReplay(true)
     this.enter('replay')
     this.replayOnDemand = onDemand

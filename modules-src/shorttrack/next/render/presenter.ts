@@ -38,6 +38,7 @@ import { ThreeBridge } from './bridge'
 import { TIERS, settingsOf, tierOf, toneMapOf } from './quality'
 import type { Tier, TierSettings } from './quality'
 import { CrowdPlugin, SurfaceDetail, crowdPhases } from './surface'
+import { Debris } from './debris'
 import { bakeEnvironmentCube, bakeSky, directionAt, makeSkyFunction, skyDome } from './sky'
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
 import type { SkyParams } from './sky'
@@ -119,6 +120,8 @@ type CrowdUniforms = { uTime: { value: number }; uLift: { value: number } }
  */
 export class Presenter {
   readonly scene: Scene
+  /** Havok body debris for hard hits; set once Havok is running. */
+  debris: Debris | null = null
   readonly status: NextStatus
   private readonly camera: ThreeCamera
   private readonly mirrorCamera: ThreeCamera
@@ -394,6 +397,7 @@ export class Presenter {
     this.envIntensity = o.night ? 0 : (t.scene.environmentIntensity ?? 1) * CAL.env
     this.envScale = (o.night ? CAL.nightPaint : CAL.paint) * CAL.env
     this.bridge.sync(t.scene)
+    this.debris?.update()
     this.camera.copyFrom(t.camera)
     this.syncLights(t, o)
     this.syncFog(t)
@@ -554,7 +558,7 @@ export async function createPresenter(canvas: HTMLCanvasElement): Promise<Presen
     }
     engine.onContextLostObservable.add(() => toWebGl('WebGPU device lost'))
     if (backend === 'webgpu') setTimeout(() => { if (status.frames === 0) toWebGl('WebGPU drew no frames') }, WEBGPU_FIRST_FRAME_MS)
-    void createPhysics(presenter.scene).then(() => { status.physics = 'havok' }, (error: unknown) => { console.warn('Havok did not start', error) })
+    void createPhysics(presenter.scene).then(() => { status.physics = 'havok'; presenter.debris = new Debris(presenter.scene) }, (error: unknown) => { console.warn('Havok did not start', error) })
     return presenter
   } catch (error) {
     status.error = error instanceof Error ? error.message : String(error)

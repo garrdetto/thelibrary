@@ -27,7 +27,11 @@ export type SimEvent =
   | { t: 'lap'; id: string; ms: number }
   | { t: 'reset'; id: string }
 
+/** 'classic': the original kinematic model (golden-tested); 'next': the Phase 4 tire and suspension model. */
+export type VehicleModel = 'classic' | 'next'
+
 export type World = {
+  model: VehicleModel
   def: TrackDef
   cfg: Config
   track: Track
