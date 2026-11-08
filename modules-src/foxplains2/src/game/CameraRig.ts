@@ -56,7 +56,8 @@ export class CameraRig {
     this.pulled = reach < this.pulled ? reach : damp(this.pulled, reach, 3, dt);
     const r = Math.min(want, this.pulled);
     const tx = this.aim.x + dx * r, ty = Math.max(0.4, this.aim.y + dy * r), tz = this.aim.z + dz * r;
-    if (this.cur.lengthSq() === 0 || this.cur.distance(new pc.Vec3(tx, ty, tz)) > 60) this.cur.set(tx, ty, tz);
+    const jx = this.cur.x - tx, jy = this.cur.y - ty, jz = this.cur.z - tz;
+    if (this.cur.lengthSq() === 0 || jx * jx + jy * jy + jz * jz > 3600) this.cur.set(tx, ty, tz);
     else this.cur.set(damp(this.cur.x, tx, 14, dt), damp(this.cur.y, ty, 14, dt), damp(this.cur.z, tz, 14, dt));
     this.camera.setPosition(this.cur);
     this.camera.lookAt(this.aim);

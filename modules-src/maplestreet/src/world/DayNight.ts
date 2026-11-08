@@ -17,7 +17,8 @@ const NIGHT_ZENITH = new THREE.Vector3(0.018, 0.03, 0.075), NIGHT_HORIZON = new 
 const SHADOW_EXTENT = 55;
 /** The physical sky is tuned for about half our exposure; scaling it keeps noon blue instead of washed out. */
 const SKY_GAIN = 0.45;
-const SHADOW_MAP = 4096;
+/** 110 m box: 2048 texels is ~5 cm each, and a quarter of the fill and memory of 4096. */
+const SHADOW_MAP = 2048;
 
 export class DayNight {
   hours = 8.5;

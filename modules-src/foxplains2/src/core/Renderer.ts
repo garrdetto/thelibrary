@@ -45,6 +45,7 @@ export class Renderer {
   private frameAvg = 1000 / 60;
   private adaptClock = 0;
   private listeners: ((q: Quality) => void)[] = [];
+  private warmFrames = 0;
 
   private constructor(app: pc.AppBase, device: pc.GraphicsDevice) {
     this.app = app;
@@ -102,6 +103,21 @@ export class Renderer {
     store.set(QUALITY_KEY, q);
     this.applyQuality();
     for (const fn of this.listeners) fn(q);
+    this.warmShaders();
+  }
+
+  /**
+   * PlayCanvas compiles a shader the first frame a material is drawn, and only
+   * draws what is in front of the camera, so turning around used to compile
+   * everything behind the player in one long frame. This draws the whole scene
+   * with frustum culling off for a few frames (call it once the world is built
+   * and after anything that adds new materials) so those compiles happen up
+   * front.
+   */
+  warmShaders(frames = 2) {
+    const cam = this.camera.camera!;
+    this.warmFrames = Math.max(this.warmFrames, frames);
+    cam.frustumCulling = false;
   }
 
   cycleQuality() {
@@ -156,6 +172,7 @@ export class Renderer {
 
   /** Lowers the render scale when frames are slow (and raises it back when there is room). */
   adapt(dt: number) {
+    if (this.warmFrames > 0 && --this.warmFrames === 0) this.camera.camera!.frustumCulling = true;
     if (!this.frame || dt <= 0) return;
     this.frameAvg += (dt * 1000 - this.frameAvg) * 0.05;
     this.adaptClock += dt;

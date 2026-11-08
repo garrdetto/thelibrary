@@ -1,7 +1,7 @@
 /**
  * Rendering pipeline: WebGPURenderer (auto-falls back to WebGL2 when the
- * browser has no WebGPU), PCF soft shadows, ACES tone mapping and a TSL
- * post-processing chain with GTAO ambient occlusion.
+ * browser has no WebGPU), PCF shadows, ACES tone mapping and a TSL
+ * post-processing chain with GTAO ambient occlusion and FXAA.
  *
  * Append ?webgl to the URL to force the WebGL2 backend, ?noao to skip AO.
  */
@@ -49,7 +49,7 @@ export class Engine {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.92;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(renderer.domElement);
     await renderer.init();
     this.renderer = renderer;
@@ -66,9 +66,16 @@ export class Engine {
   }
 
   /**
-   * scene pass (color + view normals via MRT) -> GTAO -> multiply, as in the
-   * r172 webgpu_postprocessing_ao example. Resolved dynamically so
-   * a CDN hiccup on the addon only disables AO instead of the whole module.
+   * scene pass (color + view normals via MRT) -> GTAO -> multiply -> tone
+   * mapping -> FXAA. Resolved dynamically so a failed addon import only
+   * disables AO instead of the whole module.
+   *
+   * The scene pass renders without MSAA: GTAO samples the depth buffer with
+   * textureGather, which WGSL has no overload for on a multisampled depth
+   * texture, so with the renderer's 4x MSAA the GTAO pipeline failed to build
+   * and every frame submitted an invalid command buffer. MSAA on a two-target
+   * MRT pass was also the most expensive part of the frame; FXAA on the final
+   * image smooths edges for a fraction of that.
    */
   private async setupPostProcessing() {
     try {
@@ -77,11 +84,13 @@ export class Engine {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { ao }: any = await import('three/addons/tsl/display/GTAONode.js');
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const PostProcessing: any = (THREE as any).PostProcessing ?? (THREE as any).RenderPipeline;
+      const { fxaa }: any = await import('three/addons/tsl/display/FXAANode.js');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const PostProcessing: any = (THREE as any).RenderPipeline ?? (THREE as any).PostProcessing;
       if (!ao || !PostProcessing) throw new Error('GTAO / PostProcessing not available');
 
       const post = new PostProcessing(this.renderer);
-      const scenePass = tsl.pass(this.scene, this.camera);
+      const scenePass = tsl.pass(this.scene, this.camera, { samples: 0 });
       scenePass.setMRT(tsl.mrt({ output: tsl.output, normal: tsl.normalView }));
       flatNormalMRT.node = tsl.mrt({ normal: tsl.vec3(0, 0, 1) });
       const color = scenePass.getTextureNode('output');
@@ -92,7 +101,11 @@ export class Engine {
       aoPass.resolutionScale = 0.5;
       aoPass.radius.value = 0.6;
       aoPass.distanceFallOff.value = 1.0;
-      post.outputNode = tsl.vec4(color.rgb.mul(aoPass.getTextureNode().r), color.a);
+      const shaded = tsl.vec4(color.rgb.mul(aoPass.getTextureNode().r), color.a);
+      // FXAA wants tone-mapped sRGB input, so the output transform runs before it.
+      post.outputColorTransform = false;
+      post.outputNode = fxaa ? fxaa(tsl.renderOutput(shaded)) : shaded;
+      if (!fxaa) post.outputColorTransform = true;
       this.post = post;
       this.aoEnabled = true;
     } catch (err) {
