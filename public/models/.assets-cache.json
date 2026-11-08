@@ -1218,5 +1218,15 @@
   "matsBefore": 13,
   "matsAfter": 13,
   "preset": "slots"
+ },
+ "hood/vehicles.glb": {
+  "hash": "749f5f6ce9350efd76c59af4ec9b3e1805ce49f3",
+  "before": 5638168,
+  "after": 1687968,
+  "primsBefore": 417,
+  "primsAfter": 333,
+  "matsBefore": 28,
+  "matsAfter": 28,
+  "preset": "slots"
  }
 }
