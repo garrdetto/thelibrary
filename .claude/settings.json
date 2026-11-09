@@ -1,6 +1,6 @@
 {
   "permissions": {
-    "defaultMode": "auto",
+    "defaultMode": "bypassPermissions",
     "allow": ["Edit", "Write", "Bash(git *)", "Bash(gh *)", "Bash(pnpm *)", "Bash(npm *)", "Bash(npx *)", "Bash(node *)"]
   },
   "hooks": {
