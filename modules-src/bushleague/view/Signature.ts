@@ -1,4 +1,4 @@
-/** Signature dressing for the first two parks. The Outhouse: a giant port-a-potty scoreboard whose door flies open and flushes on home runs, and green fog drifting over the outfield. Sandlot Classic: a cornfield beyond center, a water tower, and fireflies once the sun is down. */
+/** Signature dressing for the first two parks. The Outhouse: a giant port-a-potty scoreboard whose door flies open and flushes on home runs. Sandlot Classic: a cornfield beyond center, a water tower, and fireflies once the sun is down. */
 import * as THREE from 'three/webgpu'
 import { color, mix, positionLocal, sin, time, uv, vec3 } from 'three/tsl'
 import { Rng, fenceDistance, polar, type Park, type Team } from '../sim'
@@ -111,37 +111,14 @@ function outhouse(park: Park, root: THREE.Group, home: Team, away: Team): Signat
   swirl.position.set(0, 0, 7)
   group.add(swirl)
 
-  const fogTexture = own(softDot())
-  const fogMaterial = own(new THREE.SpriteMaterial({ map: fogTexture, color: '#6fae4c', transparent: true, opacity: 0.16, depthWrite: false }))
-  const fogs: { sprite: THREE.Sprite; drift: number; phase: number; base: THREE.Vector3 }[] = []
-  const rng = new Rng(404)
-  for (let index = 0; index < 26; index++) {
-    const spray = rng.range(-42, 42)
-    const distance = rng.range(45, fenceDistance(park, spray) + 6)
-    const base = toWorld({ ...polar(distance, spray), y: rng.range(0.6, 2.4) })
-    const sprite = new THREE.Sprite(fogMaterial)
-    sprite.scale.set(rng.range(14, 26), rng.range(5, 8), 1)
-    sprite.position.copy(base)
-    root.add(sprite)
-    fogs.push({ sprite, drift: rng.range(0.2, 0.6), phase: rng.range(0, 6.28), base })
-  }
-
   let flush = -1
-  let clock = 0
   return {
     replacesScoreboard: true,
-    setTimeOfDay(next) {
-      fogMaterial.opacity = next === 'night' ? 0.22 : next === 'dusk' ? 0.18 : 0.13
-    },
+    setTimeOfDay() {},
     celebrate(kind) {
       if (kind === 'homer' || kind === 'final') flush = 0
     },
     update(dt) {
-      clock += dt
-      for (const fog of fogs) {
-        fog.sprite.position.x = fog.base.x + Math.sin(clock * 0.05 * fog.drift + fog.phase) * 6
-        fog.sprite.position.z = fog.base.z + Math.cos(clock * 0.04 * fog.drift + fog.phase) * 4
-      }
       if (flush < 0) return
       flush += dt
       const open = flush < 0.5 ? flush / 0.5 : flush < 3.2 ? 1 : Math.max(0, 1 - (flush - 3.2) / 0.6)
@@ -163,7 +140,6 @@ function outhouse(park: Park, root: THREE.Group, home: Team, away: Team): Signat
     },
     dispose() {
       group.removeFromParent()
-      for (const fog of fogs) fog.sprite.removeFromParent()
       for (const item of disposables) item.dispose()
     },
   }

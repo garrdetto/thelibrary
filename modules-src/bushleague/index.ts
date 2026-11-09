@@ -37,6 +37,7 @@ async function boot(): Promise<void> {
   const budget = TIER_BUDGETS[quality.tier]
   app.setPixelRatioCap(budget.pixelRatio)
   app.own(applyEnvironment(app.scene, config.engine.environment))
+  app.scene.fog = null
   const rig = app.own(createLighting(config.engine.lighting, quality.settings))
   app.graph.add('world', rig.root)
   rig.follow(new THREE.Vector3(0, 0, -55))
@@ -72,7 +73,6 @@ async function boot(): Promise<void> {
     lights = createStadiumLights(app, rig, budget, field.towers, field.lampMaterial)
     const preset = LIGHT_PRESETS[time]
     lights.setPreset(preset)
-    if (theme.fogTint && app.scene.fog) (app.scene.fog as THREE.Fog).color.lerp(new THREE.Color(theme.fogTint), 0.35)
     field.signature?.setTimeOfDay(time)
     crowd = createCrowd(field.bowl, budget.crowd, home.colors, away.colors, contest.setup.seed)
     if (crowd) app.graph.add('props', crowd.mesh)
