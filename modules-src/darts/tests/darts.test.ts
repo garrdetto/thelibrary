@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { RADII, SECTORS, label, ringAt, scoreAt, sectorAt, targetPoint, toPolar } from '../shared/Board'
 import { cpuThrow } from '../shared/Cpu'
 import type { DartThrow, GameState, MatchConfig, Multiplier } from '../shared/interfaces'
-import { IDEAL_SPEED, RELEASE, SPREAD, aimDirection, launch, simulate, throwDart } from '../shared/Physics'
+import { IDEAL_SPEED, METER, RELEASE, SPREAD, aimDirection, launch, meterScatter, simulate, throwDart } from '../shared/Physics'
 import { applyThrow, checkoutRoute, createMatch, forfeitTurn, nextTurn, removePlayer } from '../shared/Rules'
 import { createRng, gaussian } from '../shared/Rng'
 import { isRoomCode, roomCode } from '../shared/Room'
@@ -107,12 +107,68 @@ test('an ideal-speed throw with no spread lands on the aim point', () => {
   }
 })
 
-test('throwing softer drops the dart, harder lifts it', () => {
+test('the computer throwing softer drops the dart, harder lifts it', () => {
   const intent = { aimX: 0, aimY: 0, speed: IDEAL_SPEED, yaw: 0, wobble: 0 }
-  const soft = simulate(launch({ ...intent, speed: IDEAL_SPEED * 0.9 }, 'easy', createRng(1)))
-  const hard = simulate(launch({ ...intent, speed: IDEAL_SPEED * 1.1 }, 'easy', createRng(1)))
+  const soft = simulate(launch({ ...intent, speed: IDEAL_SPEED * 0.9 }, 'pro', createRng(1)))
+  const hard = simulate(launch({ ...intent, speed: IDEAL_SPEED * 1.1 }, 'pro', createRng(1)))
   assert.ok(soft.point[1] < -0.03)
   assert.ok(hard.point[1] > 0.02)
+})
+
+/** Share of a player's darts released `d` green half-widths from the middle that land within the meter's close radius of the aim. */
+function closeShare(d: number, level: 'easy' | 'normal' | 'hard', n: number, seed: number): number {
+  const rng = createRng(seed)
+  const aim = targetPoint(20, 3)
+  let close = 0
+  for (let i = 0; i < n; i++) {
+    const hit = simulate(launch({ aimX: aim.x, aimY: aim.y, speed: IDEAL_SPEED * (1 + d * METER.perfect), yaw: 0, wobble: 0.12 }, level, rng))
+    if (Math.hypot(hit.point[0] - aim.x, hit.point[1] - aim.y) <= METER.closeRadius) close++
+  }
+  return close / n
+}
+
+test('meter: the dead centre of the green lands exactly on the aim point at every steadiness', () => {
+  for (const level of ['easy', 'normal', 'hard'] as const) {
+    const rng = createRng(3)
+    for (const aim of [targetPoint(20, 3), targetPoint(25, 2), targetPoint(11, 2)]) {
+      for (const d of [0, 0.1, -0.1]) {
+        const hit = simulate(launch({ aimX: aim.x, aimY: aim.y, speed: IDEAL_SPEED * (1 + d * METER.perfect), yaw: 0, wobble: 1 }, level, rng))
+        assert.ok(Math.hypot(hit.point[0] - aim.x, hit.point[1] - aim.y) < 0.0005, `${level} d=${d}`)
+      }
+    }
+  }
+})
+
+test('meter: scatter grows from the middle of the green out through the yellow', () => {
+  assert.equal(meterScatter(IDEAL_SPEED, 'normal'), 0)
+  const at = (d: number) => meterScatter(IDEAL_SPEED * (1 + d * METER.perfect), 'normal')
+  assert.ok(at(0.3) < at(0.6) && at(0.6) < at(1) && at(1) < at(2) && at(2) < at(3))
+  assert.ok(Math.abs(at(1) - meterScatter(IDEAL_SPEED * (1 - METER.perfect), 'normal')) < 1e-12, 'early and late releases scatter alike')
+  assert.ok(meterScatter(IDEAL_SPEED * 1.02, 'easy') < meterScatter(IDEAL_SPEED * 1.02, 'normal'))
+  assert.ok(meterScatter(IDEAL_SPEED * 1.02, 'normal') < meterScatter(IDEAL_SPEED * 1.02, 'hard'))
+})
+
+test('meter: closer to the middle lands close more often, and the start of the yellow still lands close 5-10% of the time', () => {
+  const near = closeShare(0.3, 'normal', 600, 21)
+  const mid = closeShare(0.7, 'normal', 1200, 22)
+  const yellow = closeShare(1.05, 'normal', 4000, 23)
+  const deep = closeShare(2.5, 'normal', 2000, 24)
+  assert.ok(near > 0.9, `near ${near}`)
+  assert.ok(near > mid && mid > yellow && yellow > deep, `${near} ${mid} ${yellow} ${deep}`)
+  assert.ok(yellow >= 0.05 && yellow <= 0.1, `start of the yellow ${yellow}`)
+})
+
+test('meter: past the yellow, a soft release drops the dart and a hard one lifts it', () => {
+  const aim = targetPoint(20, 1)
+  let soft = 0
+  let hard = 0
+  const rng = createRng(31)
+  for (let i = 0; i < 200; i++) {
+    soft += simulate(launch({ aimX: aim.x, aimY: aim.y, speed: IDEAL_SPEED * 0.85, yaw: 0, wobble: 0 }, 'normal', rng)).point[1] - aim.y
+    hard += simulate(launch({ aimX: aim.x, aimY: aim.y, speed: IDEAL_SPEED * 1.15, yaw: 0, wobble: 0 }, 'normal', rng)).point[1] - aim.y
+  }
+  assert.ok(soft / 200 < -0.03, `soft ${soft / 200}`)
+  assert.ok(hard / 200 > 0.02, `hard ${hard / 200}`)
 })
 
 test('the same seed replays the same dart', () => {
