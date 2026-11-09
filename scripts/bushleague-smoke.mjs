@@ -1,7 +1,7 @@
 // Bush League Baseball smoke test: serves the built `public/` folder, opens the
 // module on the WebGPU path and on the forced WebGL2 path (`?webgl`), and plays a
 // three-inning contest to the final on each: one watched, one with the page
-// pitching through the three-press meter and batting with the keyboard.
+// pitching through the hold-and-release meter and batting with the keyboard.
 //
 //   pnpm build (or a learning-module build), then
 //   node scripts/bushleague-smoke.mjs [--channel msedge|chrome] [--out docs/screenshots/bushleague]
@@ -56,10 +56,10 @@ async function run(label, query, side) {
     const stage = await page.evaluate(() => window.__bushleague.director.stage)
     if (stage === 'final') break
     if (stage === 'aim') {
-      for (const wait of [0.7, 0.55, 0.1]) {
-        await page.keyboard.press('Space')
-        await step(wait)
-      }
+      await page.keyboard.down('Space')
+      await step(0.7)
+      await page.keyboard.up('Space')
+      await step(0.1)
       continue
     }
     if (stage === 'flight' && guard % 2) await page.keyboard.press('Space')

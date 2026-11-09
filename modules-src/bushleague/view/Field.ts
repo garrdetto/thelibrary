@@ -11,6 +11,7 @@ import { ON_DECK, ON_DECK_RADIUS, coachBoxSegments } from './Chalk'
 import { moundGeometry } from './Mound'
 import { createSignature, type Signature } from './Signature'
 import { distanceSign, paddingTexture, seatTexture, woodTexture, type TextureDetail } from './Textures'
+import { dressForHome } from './teamLook'
 
 type FieldLook = ModuleConfig['field']
 
@@ -50,7 +51,7 @@ export function strip(points: THREE.Vector3[], tops: THREE.Vector3[], uScale = 1
 }
 
 /** The scoreboard face: an LED matrix behind the club names, lit dots on a dark panel. */
-function scoreboardTexture(home: Team, away: Team, detail: TextureDetail): THREE.CanvasTexture {
+function scoreboardTexture(home: Team, away: Team, title: string, detail: TextureDetail): THREE.CanvasTexture {
   const width = Math.min(2048, detail.size)
   const height = Math.round(width * 0.375)
   const canvas = document.createElement('canvas')
@@ -65,7 +66,7 @@ function scoreboardTexture(home: Team, away: Team, detail: TextureDetail): THREE
   const ink = text.getContext('2d')!
   const unit = width / 512
   ink.textAlign = 'center'
-  ink.fillStyle = '#e8b23a'
+  ink.fillStyle = title
   ink.font = `bold ${Math.round(34 * unit)}px Rajdhani, Inter, sans-serif`
   ink.fillText('BUSH LEAGUE BASEBALL', width / 2, 52 * unit)
   ink.fillStyle = '#f4f1e8'
@@ -130,7 +131,9 @@ export interface FieldView {
   dispose(): void
 }
 
-export function createField(park: Park, look: FieldLook, theme: ParkTheme, home: Team, away: Team, detail: TextureDetail): FieldView {
+export function createField(park: Park, look: FieldLook, parkTheme: ParkTheme, home: Team, away: Team, detail: TextureDetail): FieldView {
+  const dress = dressForHome(parkTheme, home.colors)
+  const theme = dress.theme
   const root = new THREE.Group()
   root.name = 'ballpark'
   const disposables: { dispose(): void }[] = []
@@ -261,13 +264,13 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
   fence.receiveShadow = true
   root.add(fence)
   const capTop = fenceTop.map((point) => point.clone().setY(point.y + 0.18))
-  root.add(new THREE.Mesh(own(strip(fenceTop, capTop)), own(standard(look.fenceTop, 0.5, { side: THREE.DoubleSide }))))
+  root.add(new THREE.Mesh(own(strip(fenceTop, capTop)), own(standard(dress.fenceTop, 0.4, { side: THREE.DoubleSide }))))
   const trackMaterial = own(createDirtMaterial(look.track, dirt, detail))
   const track = new THREE.Mesh(own(strip(trackInner, fenceBase.map((point) => point.clone().setY(0.008)))), trackMaterial)
   track.receiveShadow = true
   root.add(track)
 
-  const signPaint = planks ? '#f4efe2' : '#f2d36b'
+  const signPaint = dress.signPaint
   for (const spray of [-45, -22.5, 0, 22.5, 45]) {
     const distance = fenceDistance(park, spray)
     const feet = Math.round(distance * 3.28084)
@@ -336,7 +339,7 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
   const wall = new THREE.Mesh(own(strip(bowlInner.map((point) => point.clone().setY(0)), bowlInner)), own(standard('#ffffff', 0.85, { side: THREE.DoubleSide, map: wallMap })))
   root.add(wall)
 
-  const towerMaterial = own(standard('#4b5468', 0.6, { metalness: 0.3 }))
+  const towerMaterial = own(standard('#c9ced8', 0.45, { metalness: 0.4 }))
   const lampMaterial = own(standard('#fff6da', 0.3, { emissive: new THREE.Color('#fff2c4'), emissiveIntensity: 1.6 }))
   const towers: THREE.Vector3[] = []
   for (const spray of [-110, 110, -60, 60, -20, 20]) {
@@ -355,7 +358,7 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
   const signature = theme.signature ? createSignature(theme.signature, park, root, home, away) : null
   if (signature) disposables.push(signature)
   if (!signature?.replacesScoreboard) {
-    const boardTexture = own(scoreboardTexture(home, away, detail))
+    const boardTexture = own(scoreboardTexture(home, away, dress.scoreboardTitle, detail))
     const board = new THREE.Mesh(own(new THREE.BoxGeometry(18, 7, 0.8)), [towerMaterial, towerMaterial, towerMaterial, towerMaterial, own(new THREE.MeshBasicMaterial({ map: boardTexture })), towerMaterial])
     const boardAt = polar(fenceDistance(park, 0) + (outfieldSeats ? 16 : 34), 0)
     board.position.copy(toWorld({ ...boardAt, y: 12 }))

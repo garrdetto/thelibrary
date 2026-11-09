@@ -1,6 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { STOCK_BOUNDS, bakeLivery, paintShade, parseRegions, regionBlend, regionFor, tintPixels } from '../shared/carRepaint'
+import { STOCK_BOUNDS, bakeLivery, paintShade, parseRegions, regionFor, tintPixels } from '../shared/carRepaint'
+import { baseWeights, wrapContext } from '../shared/liveryWrap'
 import { carGarage, paintMode } from '../shared/CustomCars'
 
 const REGIONS = parseRegions([
@@ -23,7 +24,15 @@ test('faces take their side from where they sit, not their winding', () => {
   assert.equal(regionFor([0, 0, 1], [0, 0.5, -1], b), 'L')   // flipped face on the left side
   assert.equal(regionFor([0, 1, 0], [0, 1.2, 0], b), 'T')
   assert.equal(regionFor([-1, 0, 0], [-2.7, 0.5, 0], b), 'B')
-  const blend = regionBlend([0, Math.SQRT1_2, Math.SQRT1_2], [0, 1, 0.9], b)
+  const px = { width: 1, height: 1, data: new Uint8ClampedArray(4) }
+  const ctx = wrapContext({ regions: REGIONS, base: px, decals: null, geo: null, bounds: b })
+  const main = (p: [number, number, number], n: [number, number, number]) => baseWeights(ctx, p, n).sort((a, b) => b[1] - a[1])[0]
+  // a 45° shoulder stays side paint; a flatter one (60° up) is the top's; a flipped normal changes nothing
+  assert.equal(main([0, 1, 0.9], [0, Math.SQRT1_2, Math.SQRT1_2])[0], 'R')
+  assert.ok(main([0, 1, 0.9], [0, Math.SQRT1_2, Math.SQRT1_2])[1] > 0.95)
+  assert.equal(main([0, 1, -0.9], [0, -Math.SQRT1_2, Math.SQRT1_2])[0], 'L')
+  assert.equal(main([0, 1.1, 0.5], [0, 0.87, 0.5])[0], 'T')
+  const blend = baseWeights(ctx, [0, 1, 0.9], [0, 0.8, 0.6])
   assert.deepEqual(blend.map(([r]) => r).sort(), ['R', 'T'])
   assert.ok(Math.abs(blend.reduce((a, [, w]) => a + w, 0) - 1) < 1e-9)
 })

@@ -1,12 +1,13 @@
-/** Oche Darts entry: boots the shared engine, builds the pub and board, locks the camera to the thrower's eye, wires the throw gesture to a local or online session, plays every dart's flight, keeps the overlay in step, answers the chat's room requests and frees everything on pagehide. */
+/** Darts entry: boots the shared engine, builds the pub and board, locks the camera to the thrower's eye, wires the throw gesture to a local or online session, plays every dart's flight, keeps the overlay in step, answers the chat's room requests and frees everything on pagehide. */
 import * as THREE from 'three/webgpu'
 import { App, HubBridge, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
 import { config } from './config'
 import { DartsSocket, roomInfo } from './net/Socket'
+import { isBoardStyle, type BoardStyle } from './render/BoardTexture'
 import { createDartKit, aimDart } from './render/Dart'
 import { createPub } from './render/Pub'
 import { LocalSession, OnlineSession, type Session } from './session/Session'
-import { BULL_HEIGHT, OCHE_DISTANCE } from './shared/Board'
+import { BULL_HEIGHT, OCHE_DISTANCE, RADII } from './shared/Board'
 import type { Announcement, CpuLevel, DartThrow, FlightParams, GameState, MatchConfig, ModeConfig } from './shared/interfaces'
 import { RELEASE, aimDirection, type SpreadLevel } from './shared/Physics'
 import { currentPlayer, modeLabel, type SeatSpec } from './shared/Rules'
@@ -45,7 +46,7 @@ function readSetup(form: HTMLFormElement): Setup {
   let rules: ModeConfig
   if (mode === 'cricket') rules = { mode: 'cricket', scoring: data.get('cricketPoints') === 'on', roundLimit: Number(data.get('cricketRounds') ?? 20) }
   else if (mode === 'countup') rules = { mode: 'countup', rounds: Number(data.get('countupRounds') ?? 8) }
-  else rules = { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: data.get('doubleIn') === 'on', doubleOut: data.get('doubleOut') === 'on' }
+  else rules = { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: data.get('doubleIn') === 'on', doubleOut: data.get('doubleOut') === 'on', doubleBull: data.get('board') === 'spider' && data.get('doubleBull') === 'on' }
   const who = String(data.get('who') ?? 'solo') as Setup['who']
   const name = String(data.get('playerName') ?? '').trim().slice(0, 16) || 'You'
   const count = Number(data.get('localCount') ?? 2)
@@ -61,13 +62,42 @@ function readSetup(form: HTMLFormElement): Setup {
   }
 }
 
-const CPU_NAMES: Record<CpuLevel, string> = { pub: 'Pub regular', league: 'League player', county: 'County player', pro: 'Touring pro' }
+const BOARD_KEY = 'tl-darts-board'
+
+function savedBoardStyle(): BoardStyle {
+  try {
+    const value = localStorage.getItem(BOARD_KEY)
+    return isBoardStyle(value) ? value : 'steel'
+  } catch {
+    return 'steel'
+  }
+}
+
+function saveBoardStyle(style: BoardStyle): void {
+  try {
+    localStorage.setItem(BOARD_KEY, style)
+  } catch {
+    /* private mode */
+  }
+}
+
+const CPU_NAMES:Record<CpuLevel, string> = { pub: 'Pub regular', league: 'League player', county: 'County player', pro: 'Touring pro' }
 
 async function boot(): Promise<void> {
   const container = byId<HTMLDivElement>('stage')
   document.title = `${config.meta.title} · the library`
 
   const app = await App.create({ container, config: config.engine })
+  if (app.backend === 'webgpu') {
+    const renderer = app.renderer as unknown as { onDeviceLost: (info: unknown) => void }
+    renderer.onDeviceLost = (info) => {
+      console.error('Oche Darts: graphics device lost, reloading with WebGL', info)
+      const url = new URL(location.href)
+      if (url.searchParams.has('webgl')) return
+      url.searchParams.set('webgl', '1')
+      location.replace(url.toString())
+    }
+  }
   const quality = resolveQuality(config.engine.quality, app.backend)
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
   app.own(applyEnvironment(app.scene, config.engine.environment))
@@ -80,6 +110,7 @@ async function boot(): Promise<void> {
     textureSize: quality.tier === 'low' ? config.board.lowTextureSize : config.board.textureSize,
     shadows: quality.settings.shadows,
     shadowMapSize: Math.min(2048, quality.settings.shadowMapSize),
+    style: savedBoardStyle(),
   })
   app.own(pub)
   app.graph.add('world', pub.root)
@@ -171,11 +202,12 @@ async function boot(): Promise<void> {
     }
   }
 
-  const overlayOpen = () => !overlay.menu.hidden || !overlay.lobby.hidden || !overlay.results.hidden
+  const overlayOpen = () => !overlay.menu.hidden || !overlay.lobby.hidden || !overlay.results.hidden || !overlay.pause.hidden
 
   const render = (state: GameState) => {
     shown = state
     overlay.render(state, localIds)
+    pub.setDisplay(String(currentPlayer(state).score))
   }
 
   const announce = (list: Announcement[]) => {
@@ -213,6 +245,7 @@ async function boot(): Promise<void> {
       render(state)
       announce(announcements)
       if (!overlay.results.hidden && state.status === 'playing') overlay.show('none')
+      if (!overlay.pause.hidden && state.version === 0) closePause()
     },
     gameOver(state: GameState, announcements: Announcement[]) {
       render(state)
@@ -290,6 +323,14 @@ async function boot(): Promise<void> {
         }
         if (socket.status === 'closed' && !socket.code) overlay.show('menu')
       },
+      restartVotes(requested, needed, by) {
+        const state = online.state
+        if (by && state && requested.length) {
+          const name = by === socket.you ? 'You' : state.players.find((player) => player.id === by)?.name ?? 'A player'
+          overlay.announceAll([{ kind: 'score', text: `${name} asked to restart (${requested.length}/${needed})`, playerId: by }])
+        }
+        refreshPause()
+      },
     })
     session = online
     lastLobbyMessage = ''
@@ -298,10 +339,70 @@ async function boot(): Promise<void> {
   }
 
   const form = byId<HTMLFormElement>('setup')
+  const pausePanel = overlay.pause
+  const boardRadios = () => [...document.querySelectorAll<HTMLInputElement>('input[name="board"], input[name="pauseBoard"]')]
+  const markBoard = (style: BoardStyle) => {
+    for (const radio of boardRadios()) radio.checked = radio.value === style
+  }
+  markBoard(pub.style)
+  let boardTimer = 0
+  const chooseBoard = (style: BoardStyle) => {
+    markBoard(style)
+    saveBoardStyle(style)
+    window.clearTimeout(boardTimer)
+    boardTimer = window.setTimeout(() => {
+      boardTimer = 0
+      if (style !== pub.style) pub.setStyle(style)
+    }, 30)
+  }
+  for (const radio of boardRadios()) {
+    radio.addEventListener('change', () => {
+      if (radio.checked && isBoardStyle(radio.value)) chooseBoard(radio.value)
+    })
+  }
+
+  const refreshPause = () => {
+    const current = session
+    const online = current?.kind === 'online'
+    const restart = byId<HTMLButtonElement>('pause-restart')
+    const note = byId('pause-note')
+    if (online) {
+      const live = current as OnlineSession
+      const voted = live.restartVotes.includes(socket.you)
+      const others = live.restartVotes.filter((id) => id !== socket.you).length
+      restart.textContent = voted ? 'Restart requested…' : others ? 'Agree to restart' : 'Request Restart'
+      restart.disabled = voted || !live.state || live.state.status === 'finished'
+      note.textContent = 'Online matches keep going while this menu is open. A restart needs everyone at the oche to agree.'
+    } else {
+      restart.textContent = 'Restart'
+      restart.disabled = !current
+      note.textContent = 'The match is on hold until you resume.'
+    }
+  }
+  const openPause = () => {
+    if (!session || overlayOpen()) return
+    input.interrupt()
+    if (session instanceof LocalSession) session.pause()
+    byId('pause-error').textContent = ''
+    refreshPause()
+    overlay.show('pause')
+    byId<HTMLButtonElement>('pause-resume').focus()
+  }
+  function closePause(): void {
+    overlay.show('none')
+    if (session instanceof LocalSession) session.resume()
+  }
+  const quitToMenu = () => {
+    leaveSession()
+    byId<HTMLButtonElement>('resume-btn').hidden = true
+    overlay.show('menu')
+  }
+
   const syncForm = () => {
     const setup = readSetup(form)
     const mode = setup.match.rules.mode
     byId('x01-options').hidden = mode !== 'x01'
+    byId('double-bull-option').hidden = new FormData(form).get('board') !== 'spider'
     byId('cricket-options').hidden = mode !== 'cricket'
     byId('countup-options').hidden = mode !== 'countup'
     byId('cpu-options').hidden = setup.who !== 'cpu'
@@ -353,11 +454,54 @@ async function boot(): Promise<void> {
       startOnline('join', code, readSetup(form).match)
     }
   })
-  byId('menu-btn').addEventListener('click', () => {
-    byId<HTMLButtonElement>('resume-btn').hidden = !session
+  byId('menu-btn').addEventListener('click', openPause)
+  byId('pause-resume').addEventListener('click', closePause)
+  byId('pause-restart').addEventListener('click', () => {
+    const current = session
+    if (!current) return
+    if (current.kind === 'online') {
+      ;(current as OnlineSession).requestRestart()
+      byId('pause-error').textContent = 'Restart requested. It starts over once everyone agrees.'
+      byId<HTMLButtonElement>('pause-restart').disabled = true
+      return
+    }
+    flights.clear()
+    current.rematch()
+    overlay.show('none')
+    overlay.announceAll([{ kind: 'score', text: 'Restarted', playerId: '' }])
+  })
+  byId('pause-setup').addEventListener('click', () => {
+    const current = session
+    byId<HTMLButtonElement>('resume-btn').hidden = !current || current.kind === 'online'
+    if (current?.kind === 'online') leaveSession()
     overlay.show('menu')
   })
-  byId('resume-btn').addEventListener('click', () => overlay.show(session && !session.state && session.kind === 'online' ? 'lobby' : 'none'))
+  byId('pause-quit').addEventListener('click', quitToMenu)
+  pausePanel.addEventListener('click', (event) => {
+    if (event.target === pausePanel) closePause()
+  })
+  addEventListener(
+    'keydown',
+    (event) => {
+      if (event.code !== 'Escape' && event.code !== 'KeyP') return
+      if ((event.target as HTMLElement | null)?.closest?.('input[type="text"], select, textarea')) return
+      if (!pausePanel.hidden) {
+        event.preventDefault()
+        event.stopPropagation()
+        closePause()
+        return
+      }
+      if (input.holding || overlayOpen() || !session?.state) return
+      event.preventDefault()
+      event.stopPropagation()
+      openPause()
+    },
+    true,
+  )
+  byId('resume-btn').addEventListener('click', () => {
+    overlay.show(session && !session.state && session.kind === 'online' ? 'lobby' : 'none')
+    if (session instanceof LocalSession) session.resume()
+  })
   byId('lobby-leave').addEventListener('click', () => {
     leaveSession()
     overlay.show('menu')
@@ -395,8 +539,22 @@ async function boot(): Promise<void> {
   app.onFixed(() => {
     steps++
   })
+  const boardEdge = new THREE.Vector3()
+  const boardTop = new THREE.Vector3()
+  const placeMeter = () => {
+    const rect = container.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    const radius = RADII.board / 1000
+    boardEdge.set(radius, BULL_HEIGHT, 0).project(app.camera)
+    boardTop.set(0, BULL_HEIGHT + radius, 0).project(app.camera)
+    const x = ((boardEdge.x + 1) / 2) * rect.width
+    const y = ((1 - boardEdge.y) / 2) * rect.height
+    const top = ((1 - boardTop.y) / 2) * rect.height
+    overlay.placeMeter(x, y, (y - top) * 2)
+  }
   app.onFrame((dt) => {
     fitCamera()
+    placeMeter()
     flights.update(Math.min(dt, 0.1))
     refreshHand()
   })

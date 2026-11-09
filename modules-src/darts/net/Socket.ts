@@ -91,6 +91,11 @@ export class DartsSocket {
     this.send({ type: 'REMATCH' })
   }
 
+  /** RESTART_REQUEST: votes to restart the match in progress; the room restarts once every connected player has asked. */
+  requestRestart(): void {
+    this.send({ type: 'RESTART_REQUEST' })
+  }
+
   leave(): void {
     this.closedByUs = true
     this.stopTimers()

@@ -24,8 +24,10 @@ export function playerColor(state: GameState, playerId: string): string {
   return config.dart.flightColors[index % config.dart.flightColors.length]
 }
 
-/** Half-width of the green band, as a fraction of the ideal speed. */
-const BAND = 0.03
+/** Half-width of the whole good zone (green fading to yellow), as a fraction of the ideal speed. */
+const BAND = 0.036
+/** Half-width of the solid green "Perfect" centre of the good zone. */
+const PERFECT = 0.011
 
 function meterRange(): { low: number; high: number } {
   return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
@@ -38,6 +40,7 @@ export class Overlay {
   readonly menu = el<HTMLDivElement>('menu')
   readonly lobby = el<HTMLDivElement>('lobby')
   readonly results = el<HTMLDivElement>('results')
+  readonly pause = el<HTMLDivElement>('pause')
   private readonly scoreboard = el<HTMLDivElement>('scoreboard')
   private readonly announce = el<HTMLDivElement>('announce')
   private readonly throws = el<HTMLDivElement>('throws')
@@ -53,18 +56,44 @@ export class Overlay {
   private announceTimer: ReturnType<typeof setTimeout> | null = null
   private queue: Announcement[] = []
 
+  private readonly meterWrap = el<HTMLDivElement>('meter-wrap')
+  private meterSpot = ''
+
+  /** Puts the power meter just right of the board: `x` is the board's right edge and `y` the bull's height on screen in CSS pixels, `boardPx` the board's on-screen diameter. */
+  placeMeter(x: number, y: number, boardPx: number): void {
+    const width = this.hud.clientWidth
+    const height = this.hud.clientHeight
+    if (!width || !height) return
+    const meterHeight = Math.round(Math.min(height * 0.7, Math.max(140, boardPx * 0.8)))
+    const left = Math.round(Math.min(width - 44, Math.max(8, x + 14)))
+    const top = Math.round(Math.min(height - meterHeight / 2 - 8, Math.max(meterHeight / 2 + 8, y)))
+    const tight = left + 40 + 150 > width
+    const spot = `${left}:${top}:${meterHeight}:${tight}`
+    if (spot === this.meterSpot) return
+    this.meterSpot = spot
+    this.meterWrap.style.setProperty('--meter-x', `${left}px`)
+    this.meterWrap.style.setProperty('--meter-y', `${top}px`)
+    this.meterWrap.style.setProperty('--meter-h', `${meterHeight}px`)
+    this.meterWrap.classList.toggle('is-tight', tight)
+  }
+
   constructor() {
     const { low, high } = meterRange()
     const band = BAND * IDEAL_SPEED
     this.meterBand.style.bottom = `${((IDEAL_SPEED - band - low) / (high - low)) * 100}%`
     this.meterBand.style.height = `${((band * 2) / (high - low)) * 100}%`
+    const core = (PERFECT / BAND) * 50
+    this.meterBand.style.setProperty('--perfect-from', `${50 - core}%`)
+    this.meterBand.style.setProperty('--perfect-to', `${50 + core}%`)
+    this.setPower(null)
     this.announce.style.setProperty('--announce-ms', `${config.timing.announceMs}ms`)
   }
 
-  show(panel: 'menu' | 'lobby' | 'results' | 'none'): void {
+  show(panel: 'menu' | 'lobby' | 'results' | 'pause' | 'none'): void {
     this.menu.hidden = panel !== 'menu'
     this.lobby.hidden = panel !== 'lobby'
     this.results.hidden = panel !== 'results'
+    this.pause.hidden = panel !== 'pause'
   }
 
   setRoom(code: string | null): void {
@@ -158,6 +187,9 @@ export class Overlay {
   setPower(speed: number | null): void {
     if (speed === null) {
       this.meter.classList.remove('is-on')
+      this.meterFill.style.height = '0px'
+      this.meterLabel.textContent = 'Hold to throw'
+      this.meterLabel.dataset.zone = 'idle'
       return
     }
     this.meter.classList.add('is-on')
@@ -165,7 +197,10 @@ export class Overlay {
     const ratio = (speed - low) / (high - low)
     this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% - 6px)`
     const off = (speed - IDEAL_SPEED) / IDEAL_SPEED
-    this.meterLabel.textContent = `${speed.toFixed(1)} m/s ${Math.abs(off) < BAND ? '· on line' : off < 0 ? '· low' : '· high'}`
+    const zone = Math.abs(off) <= PERFECT ? 'perfect' : Math.abs(off) <= BAND ? 'good' : off < 0 ? 'low' : 'high'
+    const words = { perfect: 'Perfect!', good: 'Good', low: 'Low', high: 'High' } as const
+    this.meterLabel.dataset.zone = zone
+    this.meterLabel.textContent = `${words[zone]} · ${speed.toFixed(1)} m/s`
   }
 
   /** Queues announcements and shows the most important one of each batch (a win beats a bust beats a 180 beats a single bed). */

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { defaultModuleLayout, normalizeModuleLayout } from './module-layout'
+import { defaultModuleLayout, layoutPayload, normalizeModuleLayout } from './module-layout'
 import type { ModuleLayout } from './module-layout'
 
 let current: ModuleLayout | null = null
@@ -45,7 +45,7 @@ async function send(body: unknown) {
 }
 
 export function saveModuleLayout(layout: ModuleLayout) {
-  return send({ order: layout.order, hidden: layout.hidden, featured: layout.featured })
+  return send(layoutPayload(layout))
 }
 
 export function resetModuleLayout() {

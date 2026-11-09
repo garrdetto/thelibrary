@@ -33,6 +33,8 @@ export interface ReelSnapshot {
   lineHealth: number
   slack: boolean
   strain: boolean
+  /** Strength of the fish's current run (0 when it isn't surging); drives jumps and drag in the animation. */
+  surge: number
   outcome: 'fighting' | 'landed' | 'snapped' | 'thrown'
 }
 
@@ -156,7 +158,7 @@ export class SkillCheckManager {
         this.outcome = 'thrown'
       }
     }
-    return { tension: this.tension, progress: this.progress, lineHealth: this.lineHealth, slack: this.tension < SLACK_LIMIT, strain: this.tension > STRAIN_LIMIT, outcome: this.outcome }
+    return { tension: this.tension, progress: this.progress, lineHealth: this.lineHealth, slack: this.tension < SLACK_LIMIT, strain: this.tension > STRAIN_LIMIT, surge: this.surge, outcome: this.outcome }
   }
 
   updateSway(dt: number, moving: number, aiming: boolean, holdBreath: boolean): { x: number; y: number; amplitude: number } {

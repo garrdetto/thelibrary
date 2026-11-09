@@ -27,6 +27,7 @@ import type { Screens, SetupChoice } from '../ui/Screens'
 import type { Broadcast } from '../ui/Broadcast'
 import type { BallparkAudio } from './Audio'
 import { marksBetween, sampleKeys, tracksOf } from './Playback'
+import { pitchMeterLevel, readPitchMeter } from './PitchMeter'
 import type { IntentFeed } from './Online'
 import { ONLINE_PACE } from '../shared/Online'
 
@@ -94,9 +95,7 @@ export class Director {
   private lastMark = 0
   private cursor = { x: 0, y: 0.75 }
   private pitchIndex = 0
-  private meterPhase: 1 | 2 = 1
-  private meterValue = 0
-  private effort = 0
+  private meterHeld = 0
   private stealArmed = false
   private seed = 1
   private feed: IntentFeed | null = null
@@ -359,7 +358,7 @@ export class Director {
     if (this.humanPitching) {
       this.pitchIndex = Math.min(this.pitchIndex, contest.pitcher.pitching!.repertoire.length - 1)
       this.screens.showPicker(contest.pitcher.pitching!.repertoire, this.pitchIndex, (index) => this.pickPitch(index))
-      this.screens.setMeter(0, null, 'Aim, then click or press Space to start the meter')
+      this.screens.setMeter(null, 'Aim, then hold the mouse or Space and let go in the green')
       const zone = strikeZone(contest.batter.height)
       this.cursor = { x: 0, y: (zone.top + zone.bottom) / 2 }
       this.enter('aim')
@@ -431,43 +430,42 @@ export class Director {
     if (this.stage === 'aim') {
       this.moveCursor(dt, 0.07)
       if (this.input.pressed('swing')) {
-        this.meterPhase = 1
-        this.meterValue = 0
+        this.meterHeld = 0
         this.enter('meter')
       }
       return
     }
-    const seconds = this.config.timing.meterSeconds
-    if (this.meterPhase === 1) {
-      this.meterValue += dt / seconds
-      this.screens.setMeter(this.meterValue, null, 'Press again to set the effort')
-      if (this.input.pressed('swing') || this.meterValue >= 1) {
-        this.effort = Math.min(1, this.meterValue)
-        this.meterPhase = 2
-      }
+    const meter = this.config.pitchMeter
+    if (this.input.isDown('swing')) {
+      this.meterHeld += dt
+      const level = pitchMeterLevel(this.meterHeld, meter.seconds)
+      const read = readPitchMeter(level, meter)
+      this.screens.setMeter(level, `${read.label} · ${Math.round(40 + level * 60)}% effort`, read.zone)
       return
     }
-    this.meterValue -= dt / seconds
-    this.screens.setMeter(this.meterValue, this.effort, 'Stop it on the blue mark for accuracy')
-    const pressed = this.input.pressed('swing')
-    if (pressed || this.meterValue <= -0.05) {
-      const accuracy = pressed ? Math.max(-1, Math.min(1, (this.meterValue - 0.1) / 0.1)) : -1
-      const intent: PitchIntent = {
-        type: repertoire[this.pitchIndex].type,
-        targetX: Math.round(this.cursor.x * 1000),
-        targetY: Math.round(this.cursor.y * 1000),
-        effort: Math.round(40 + this.effort * 60),
-        accuracy: Math.round(accuracy * 100),
-      }
-      this.screens.hidePicker()
-      this.actors.setCursor(false)
-      if (this.feed) {
-        this.feed.send({ t: 'pitch', intent })
-        this.enter('await')
-        return
-      }
-      this.throwPitch(contest.preparePitch(intent))
+    if (this.meterHeld < meter.minHold) {
+      this.screens.setMeter(null, 'Hold the mouse or Space to charge the pitch, then let go in the green')
+      this.enter('aim')
+      return
     }
+    const level = pitchMeterLevel(this.meterHeld, meter.seconds)
+    const read = readPitchMeter(level, meter)
+    const intent: PitchIntent = {
+      type: repertoire[this.pitchIndex].type,
+      targetX: Math.round(this.cursor.x * 1000),
+      targetY: Math.round(this.cursor.y * 1000),
+      effort: Math.round(40 + level * 60),
+      accuracy: read.accuracy,
+    }
+    this.screens.say(read.label, 1.2)
+    this.screens.hidePicker()
+    this.actors.setCursor(false)
+    if (this.feed) {
+      this.feed.send({ t: 'pitch', intent })
+      this.enter('await')
+      return
+    }
+    this.throwPitch(contest.preparePitch(intent))
   }
 
   private throwPitch(thrown: ThrownPitch): void {
@@ -621,7 +619,8 @@ export class Director {
       const outcome = this.outcome
       if (outcome?.play?.kind === 'homer' && this.stageTime > 2.4) this.followRunner(timeline, outcome.pitch.batterId, this.stageTime)
     } else if (this.thrown) {
-      this.actors.setBall({ x: this.thrown.plateX, y: this.thrown.plateY, z: PLATE_FRONT - 0.4 - Math.min(0.6, this.stageTime * 2) })
+      this.actors.setBall(null)
+      this.actors.clearTrail()
     }
     if (this.stageTime < this.playEnd && !skip) return
     if (!skip && this.worthReplaying()) return this.startReplay(false)

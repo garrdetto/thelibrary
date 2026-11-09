@@ -2,6 +2,7 @@
 import { PITCH_SPECS, TEAMS, inningsPitched, parkById, teamById, type Contest, type PitchGrade, type TeamBox } from '../sim'
 import { config, type Difficulty, type DifficultyLevel } from '../config'
 import type { TimeOfDay } from '../looks'
+import type { PitchMeterZone } from '../systems/PitchMeter'
 
 export type SideChoice = 'away' | 'home' | 'both' | 'watch'
 
@@ -66,8 +67,9 @@ export class Screens {
   private readonly logList = byId<HTMLOListElement>('log-list')
   private readonly picker = byId<HTMLElement>('picker')
   private readonly pitchButtons = byId<HTMLElement>('pitch-buttons')
+  private readonly meter = byId<HTMLElement>('meter')
   private readonly meterFill = byId<HTMLElement>('meter-fill')
-  private readonly meterEffort = byId<HTMLElement>('meter-effort')
+  private readonly meterBand = byId<HTMLElement>('meter-band')
   private readonly meterLabel = byId<HTMLElement>('meter-label')
   private readonly stealFlag = byId<HTMLElement>('steal-flag')
   private bannerTimer = 0
@@ -244,11 +246,17 @@ export class Screens {
     this.picker.hidden = true
   }
 
-  setMeter(fill: number, effort: number | null, label: string): void {
-    this.meterFill.style.width = `${Math.round(Math.max(0, Math.min(1, fill)) * 100)}%`
-    this.meterEffort.style.display = effort === null ? 'none' : 'block'
-    if (effort !== null) this.meterEffort.style.left = `${Math.round(effort * 100)}%`
+  /** The darts-style pitch meter: `level` 0–1 while charging (null when idle), the label beside it and the zone that colours the label. */
+  setMeter(level: number | null, label: string, zone: PitchMeterZone | 'idle' = 'idle'): void {
+    const { perfect, core, band } = config.pitchMeter
+    this.meterBand.style.bottom = `${(perfect - band) * 100}%`
+    this.meterBand.style.height = `${band * 200}%`
+    this.meterBand.style.setProperty('--perfect-from', `${50 - (core / band) * 50}%`)
+    this.meterBand.style.setProperty('--perfect-to', `${50 + (core / band) * 50}%`)
+    this.meter.classList.toggle('is-on', level !== null)
+    this.meterFill.style.height = level === null ? '0px' : `calc(${Math.max(0, Math.min(1, level)) * 100}% - 6px)`
     this.meterLabel.textContent = label
+    this.meterLabel.dataset.zone = level === null ? 'idle' : zone
   }
 
   /** `winnerSide` overrides the contest's own winner when an online matchup ended early (forfeit or concession). */

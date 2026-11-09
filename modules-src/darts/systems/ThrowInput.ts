@@ -185,6 +185,10 @@ export class ThrowInput {
     this.handlers.power(null)
   }
 
+  get holding(): boolean {
+    return this.charging !== null
+  }
+
   get pointerKind(): string {
     return this.pointerType
   }

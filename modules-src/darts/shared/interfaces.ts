@@ -62,6 +62,8 @@ export interface X01Config {
   start: 301 | 501 | 701
   doubleIn: boolean
   doubleOut: boolean
+  /** Soft-tip Double Bull: the whole bullseye (outer bull included) scores 50 and counts as a double. */
+  doubleBull?: boolean
 }
 
 export interface CricketConfig {
@@ -174,6 +176,7 @@ export type ClientMessage =
   | { type: 'GAME_START' }
   | { type: 'THROW_MADE'; intent: ThrowIntent; version: number }
   | { type: 'REMATCH' }
+  | { type: 'RESTART_REQUEST' }
   | { type: 'PING'; at: number }
 
 export type ServerMessage =
@@ -182,5 +185,6 @@ export type ServerMessage =
   | { type: 'TURN_SWITCH'; state: GameState; announcements: Announcement[] }
   | { type: 'GAME_OVER'; winnerId: string; state: GameState; announcements: Announcement[] }
   | { type: 'PLAYERS'; players: RoomPlayerView[] }
+  | { type: 'RESTART_VOTES'; requested: string[]; needed: number; by: string | null }
   | { type: 'ERROR'; message: string }
   | { type: 'PONG'; at: number }

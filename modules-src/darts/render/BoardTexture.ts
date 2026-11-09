@@ -1,16 +1,37 @@
-/** Procedural board textures drawn on canvas at regulation proportions: the colour face (alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and the number ring), a packed roughness/metal map (G = roughness, B = metalness) so wires and numbers shine while the sisal stays matte, and a normal map that raises the wires. */
+/** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes in rows that follow the rings (three rows in each double and triple), a raised white plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
 import * as THREE from 'three/webgpu'
 import { RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
 import { createRng } from '../shared/Rng'
 
+export type BoardStyle = 'steel' | 'spider'
+
+export const BOARD_STYLES: readonly { id: BoardStyle; label: string }[] = [
+  { id: 'steel', label: 'Steel Tip' },
+  { id: 'spider', label: 'Soft Tip' },
+]
+
+export function isBoardStyle(value: unknown): value is BoardStyle {
+  return value === 'steel' || value === 'spider'
+}
+
 export const BOARD_COLORS = {
-  black: '#161514',
-  cream: '#eadcb8',
-  red: '#c41e2c',
-  green: '#11804a',
+  black: '#141312',
+  cream: '#f1e4c2',
+  red: '#d01f30',
+  green: '#0f8a4f',
   sisal: '#1a1816',
-  wire: '#d8dbe0',
-  number: '#f2efe6',
+  wire: '#e6e9ee',
+  number: '#ffffff',
+  numberEdge: '#050505',
+} as const
+
+export const SPIDER_COLORS = {
+  black: '#141416',
+  red: '#d0162a',
+  catch: '#0c0c0e',
+  spider: '#eef0f2',
+  number: '#ffffff',
+  trim: '#e3192f',
 } as const
 
 export interface BoardTextures {
@@ -34,7 +55,7 @@ function painter(size: number): Painter {
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Canvas 2D is not available')
   return { ctx, canvas, size, scale: size / (RADII.board * 2), cx: size / 2, cy: size / 2 }
 }
@@ -61,16 +82,26 @@ function disc(p: Painter, radius: number, fill: string): void {
   p.ctx.fill()
 }
 
+function ring(p: Painter, radius: number, widthMm: number, style: string): void {
+  p.ctx.beginPath()
+  p.ctx.arc(p.cx, p.cy, radius * p.scale, 0, Math.PI * 2)
+  p.ctx.strokeStyle = style
+  p.ctx.lineWidth = widthMm * p.scale
+  p.ctx.stroke()
+}
+
 const WIRE_RADII = [RADII.innerBull, RADII.outerBull, RADII.tripleInner, RADII.tripleOuter, RADII.doubleInner, RADII.doubleOuter] as const
 const WIRE_MM = 1.15
+const SPIDER_MM = 1.7
+const SPIDER_RADII = WIRE_RADII.filter((radius) => radius !== RADII.innerBull)
 
-/** Draws the spider: six ring wires and twenty radial wires from the outer bull to the double ring, in `style` (colour on the face, white on the masks). */
-function spider(p: Painter, style: string, widthMm = WIRE_MM): void {
+/** Draws the spider: six rings and twenty radial dividers from the outer bull to the double ring, in `style` (colour on the face, white on the masks). */
+function spider(p: Painter, style: string, widthMm = WIRE_MM, radii: readonly number[] = WIRE_RADII): void {
   const { ctx, cx, cy, scale } = p
   ctx.strokeStyle = style
   ctx.lineWidth = widthMm * scale
   ctx.lineCap = 'round'
-  for (const radius of WIRE_RADII) {
+  for (const radius of radii) {
     ctx.beginPath()
     ctx.arc(cx, cy, radius * scale, 0, Math.PI * 2)
     ctx.stroke()
@@ -84,49 +115,63 @@ function spider(p: Painter, style: string, widthMm = WIRE_MM): void {
   }
 }
 
-/** The number ring: each number upright at its wedge's angle, plus the thin outer retaining wire. */
-function numbers(p: Painter, style: string): void {
+interface NumberStyle {
+  fill: string
+  /** Dark outline drawn under the digits so they stand off the face. */
+  edge?: string
+  edgeMm?: number
+  sizeMm: number
+  radiusMm: number
+  ringWire?: boolean
+}
+
+/** The number ring: each number upright at its wedge's angle, plus (for steel boards) the thin outer retaining wire. */
+function numbers(p: Painter, style: NumberStyle): void {
   const { ctx, cx, cy, scale } = p
-  const radius = (RADII.doubleOuter + RADII.numberRing) / 2 + 2
-  ctx.fillStyle = style
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.font = `700 ${Math.round(19 * scale)}px "Arial Narrow", "Helvetica Neue", Arial, sans-serif`
+  ctx.lineJoin = 'round'
+  ctx.font = `800 ${Math.round(style.sizeMm * scale)}px "Arial Black", "Helvetica Neue", Arial, sans-serif`
   SECTORS.forEach((value, i) => {
     const deg = i * SECTOR_DEGREES
     const a = canvasAngle(deg)
     ctx.save()
-    ctx.translate(cx + Math.cos(a) * radius * scale, cy + Math.sin(a) * radius * scale)
+    ctx.translate(cx + Math.cos(a) * style.radiusMm * scale, cy + Math.sin(a) * style.radiusMm * scale)
     ctx.rotate(((deg > 90 && deg < 270 ? deg - 180 : deg) * Math.PI) / 180)
+    if (style.edge && style.edgeMm) {
+      ctx.strokeStyle = style.edge
+      ctx.lineWidth = style.edgeMm * scale
+      ctx.strokeText(String(value), 0, 0)
+    }
+    ctx.fillStyle = style.fill
     ctx.fillText(String(value), 0, 0)
     ctx.restore()
   })
-  ctx.strokeStyle = style
-  ctx.lineWidth = 1.4 * scale
-  ctx.beginPath()
-  ctx.arc(cx, cy, RADII.numberRing * scale, 0, Math.PI * 2)
-  ctx.stroke()
+  if (style.ringWire) ring(p, RADII.numberRing, 1.4, style.fill)
 }
 
-/** Sisal: compressed fibre ends seen face-on, as fine speckle plus short radial streaks, varied per bed so each colour reads as real fibre. */
+const STEEL_NUMBERS = { sizeMm: 23, radiusMm: (RADII.doubleOuter + RADII.numberRing) / 2 + 0.5, ringWire: true } as const
+const SPIDER_NUMBERS = { sizeMm: 25, radiusMm: (RADII.doubleOuter + RADII.numberRing) / 2 + 2 } as const
+
+/** Sisal: compressed fibre ends seen face-on, as fine speckle plus short radial streaks, kept light so the beds stay crisp. */
 function sisal(p: Painter, seed: number): void {
   const { ctx, size } = p
   const image = ctx.getImageData(0, 0, size, size)
   const data = image.data
   const rng = createRng(seed)
   for (let i = 0; i < data.length; i += 4) {
-    const n = (rng() - 0.5) * 26 + (rng() < 0.04 ? 22 : 0)
+    const n = (rng() - 0.5) * 16 + (rng() < 0.03 ? 14 : 0)
     data[i] = Math.max(0, Math.min(255, data[i] + n))
     data[i + 1] = Math.max(0, Math.min(255, data[i + 1] + n * 0.95))
     data[i + 2] = Math.max(0, Math.min(255, data[i + 2] + n * 0.85))
   }
   ctx.putImageData(image, 0, 0)
-  ctx.globalAlpha = 0.08
+  ctx.globalAlpha = 0.05
   ctx.strokeStyle = '#000'
   ctx.lineWidth = Math.max(1, p.scale * 0.35)
-  for (let i = 0; i < size * 6; i++) {
+  for (let i = 0; i < size * 4; i++) {
     const angle = rng() * Math.PI * 2
-    const r = rng() * RADII.numberRing * p.scale
+    const r = rng() * RADII.doubleOuter * p.scale
     const x = p.cx + Math.cos(angle) * r
     const y = p.cy + Math.sin(angle) * r
     const len = (1 + rng() * 2.5) * p.scale
@@ -138,7 +183,74 @@ function sisal(p: Painter, seed: number): void {
   ctx.globalAlpha = 1
 }
 
-function drawFace(size: number): HTMLCanvasElement {
+const HOLE_PITCH = 3.4
+const HOLE_RADIUS = 1.05
+
+/** Each soft-tip band as moulded: its inner and outer radius and how many rows of holes it carries (three in every double and triple; the singles fill with rows at the hole pitch). */
+const HOLE_BANDS: readonly { inner: number; outer: number; rows?: number; sectors: boolean }[] = [
+  { inner: RADII.outerBull, outer: RADII.tripleInner, sectors: true },
+  { inner: RADII.tripleInner, outer: RADII.tripleOuter, rows: 3, sectors: true },
+  { inner: RADII.tripleOuter, outer: RADII.doubleInner, sectors: true },
+  { inner: RADII.doubleInner, outer: RADII.doubleOuter, rows: 3, sectors: true },
+  { inner: RADII.innerBull, outer: RADII.outerBull, rows: 2, sectors: false },
+]
+
+/** Soft-tip holes in polar rows that follow the rings, laid out segment by segment between the spider's dividers, so every bed holds whole rows of evenly spaced tip holes (three rows in the doubles and triples, a centre hole and a ring in the inner bull). Built as one path per layer (rims, then holes). */
+function holes(p: Painter, fill: string, rim: string | null): void {
+  const { ctx, cx, cy, scale } = p
+  const gap = SPIDER_MM / 2 + 0.45
+  const centres: number[] = []
+  const radii: number[] = []
+  const add = (r: number, angle: number, size: number) => {
+    const a = canvasAngle(angle)
+    centres.push(cx + Math.cos(a) * r * scale, cy + Math.sin(a) * r * scale)
+    radii.push(size * scale)
+  }
+  for (const band of HOLE_BANDS) {
+    const inner = band.inner + gap
+    const outer = band.outer - gap
+    const span = outer - inner
+    const rows = band.rows ?? Math.max(1, Math.round(span / HOLE_PITCH))
+    const step = span / rows
+    const size = Math.min(HOLE_RADIUS, step * 0.4)
+    const pitch = band.rows ? Math.min(HOLE_PITCH, step * 1.15) : HOLE_PITCH
+    for (let row = 0; row < rows; row++) {
+      const r = inner + step * (row + 0.5)
+      if (!band.sectors) {
+        const count = Math.max(6, Math.floor((2 * Math.PI * r) / HOLE_PITCH))
+        for (let k = 0; k < count; k++) add(r, (k * 360) / count, size)
+        continue
+      }
+      const edge = (gap / r) * (180 / Math.PI)
+      const arc = SECTOR_DEGREES - edge * 2
+      const count = Math.max(1, Math.floor(((arc * Math.PI) / 180) * r / pitch))
+      for (let i = 0; i < SECTORS.length; i++) {
+        const from = i * SECTOR_DEGREES - SECTOR_DEGREES / 2 + edge
+        for (let k = 0; k < count; k++) add(r, from + (arc * (k + 0.5)) / count, size)
+      }
+    }
+  }
+  const bullHole = Math.min(HOLE_RADIUS, (RADII.innerBull - gap) * 0.32)
+  add(0, 0, bullHole)
+  const bullRing = RADII.innerBull - gap - bullHole * 1.25
+  const bullCount = Math.max(5, Math.floor((2 * Math.PI * bullRing) / HOLE_PITCH))
+  for (let k = 0; k < bullCount; k++) add(bullRing, (k * 360) / bullCount, bullHole)
+  const layer = (style: string, offsetMm: number) => {
+    ctx.beginPath()
+    for (let i = 0; i < radii.length; i++) {
+      const x = centres[i * 2]
+      const y = centres[i * 2 + 1] + radii[i] * offsetMm
+      ctx.moveTo(x + radii[i], y)
+      ctx.arc(x, y, radii[i], 0, Math.PI * 2)
+    }
+    ctx.fillStyle = style
+    ctx.fill()
+  }
+  if (rim) layer(rim, 0.35)
+  layer(fill, 0)
+}
+
+function drawSteelFace(size: number): HTMLCanvasElement {
   const p = painter(size)
   p.ctx.fillStyle = BOARD_COLORS.sisal
   p.ctx.fillRect(0, 0, size, size)
@@ -148,50 +260,109 @@ function drawFace(size: number): HTMLCanvasElement {
     const to = from + SECTOR_DEGREES
     const even = i % 2 === 0
     const single = even ? BOARD_COLORS.black : BOARD_COLORS.cream
-    const ring = even ? BOARD_COLORS.red : BOARD_COLORS.green
+    const bed = even ? BOARD_COLORS.red : BOARD_COLORS.green
     wedge(p, RADII.outerBull, RADII.tripleInner, from, to, single)
-    wedge(p, RADII.tripleInner, RADII.tripleOuter, from, to, ring)
+    wedge(p, RADII.tripleInner, RADII.tripleOuter, from, to, bed)
     wedge(p, RADII.tripleOuter, RADII.doubleInner, from, to, single)
-    wedge(p, RADII.doubleInner, RADII.doubleOuter, from, to, ring)
+    wedge(p, RADII.doubleInner, RADII.doubleOuter, from, to, bed)
   }
   disc(p, RADII.outerBull, BOARD_COLORS.green)
   disc(p, RADII.innerBull, BOARD_COLORS.red)
   sisal(p, 1907)
-  p.ctx.shadowColor = 'rgba(0,0,0,0.55)'
-  p.ctx.shadowBlur = p.scale * 0.8
-  p.ctx.shadowOffsetY = p.scale * 0.4
+  p.ctx.shadowColor = 'rgba(0,0,0,0.6)'
+  p.ctx.shadowBlur = p.scale * 0.7
+  p.ctx.shadowOffsetY = p.scale * 0.35
   spider(p, BOARD_COLORS.wire)
-  numbers(p, BOARD_COLORS.number)
   p.ctx.shadowColor = 'transparent'
+  numbers(p, { ...STEEL_NUMBERS, fill: BOARD_COLORS.number, edge: BOARD_COLORS.numberEdge, edgeMm: 2.6 })
   return p.canvas
 }
 
-/** Packed material map: R = 1 (no baked occlusion), G = roughness, B = metalness. */
-function drawRoughnessMetal(size: number): HTMLCanvasElement {
+function drawSpiderFace(size: number): HTMLCanvasElement {
+  const p = painter(size)
+  p.ctx.fillStyle = SPIDER_COLORS.catch
+  p.ctx.fillRect(0, 0, size, size)
+  disc(p, RADII.board, SPIDER_COLORS.catch)
+  for (let i = 0; i < SECTORS.length; i++) {
+    const from = i * SECTOR_DEGREES - SECTOR_DEGREES / 2
+    const to = from + SECTOR_DEGREES
+    const even = i % 2 === 0
+    const single = even ? SPIDER_COLORS.black : SPIDER_COLORS.red
+    const bed = even ? SPIDER_COLORS.red : SPIDER_COLORS.black
+    wedge(p, RADII.outerBull, RADII.tripleInner, from, to, single)
+    wedge(p, RADII.tripleInner, RADII.tripleOuter, from, to, bed)
+    wedge(p, RADII.tripleOuter, RADII.doubleInner, from, to, single)
+    wedge(p, RADII.doubleInner, RADII.doubleOuter, from, to, bed)
+  }
+  disc(p, RADII.outerBull, SPIDER_COLORS.red)
+  disc(p, RADII.innerBull, SPIDER_COLORS.black)
+  holes(p, 'rgba(0,0,0,0.55)', 'rgba(255,255,255,0.07)')
+  p.ctx.shadowColor = 'rgba(0,0,0,0.7)'
+  p.ctx.shadowBlur = p.scale * 1.2
+  p.ctx.shadowOffsetY = p.scale * 0.6
+  spider(p, SPIDER_COLORS.spider, SPIDER_MM, SPIDER_RADII)
+  p.ctx.shadowColor = 'transparent'
+  ring(p, RADII.doubleOuter + 2.2, 1.25, SPIDER_COLORS.spider)
+  ring(p, RADII.numberRing + 4, 2.4, SPIDER_COLORS.trim)
+  ring(p, RADII.board - 2.5, 4, SPIDER_COLORS.trim)
+  numbers(p, { ...SPIDER_NUMBERS, fill: SPIDER_COLORS.number })
+  return p.canvas
+}
+
+/** Packed material map: R = 1 (no baked occlusion), G = roughness, B = metalness. Numbers stay mostly non-metallic so they read white under the lamp instead of mirroring the dark room. */
+function drawSteelRoughnessMetal(size: number): HTMLCanvasElement {
   const p = painter(size)
   p.ctx.fillStyle = 'rgb(255, 238, 0)'
   p.ctx.fillRect(0, 0, size, size)
   spider(p, 'rgb(255, 64, 255)', WIRE_MM * 0.9)
-  numbers(p, 'rgb(255, 90, 230)')
+  numbers(p, { ...STEEL_NUMBERS, fill: 'rgb(255, 120, 40)' })
   return p.canvas
 }
 
-function drawHeight(size: number): HTMLCanvasElement {
+function drawSpiderRoughnessMetal(size: number): HTMLCanvasElement {
   const p = painter(size)
-  p.ctx.fillStyle = '#000'
+  p.ctx.fillStyle = 'rgb(255, 150, 0)'
   p.ctx.fillRect(0, 0, size, size)
-  const rng = createRng(77)
-  const image = p.ctx.getImageData(0, 0, size, size)
+  disc(p, RADII.doubleOuter, 'rgb(255, 105, 0)')
+  holes(p, 'rgb(255, 235, 0)', null)
+  spider(p, 'rgb(255, 120, 0)', SPIDER_MM, SPIDER_RADII)
+  numbers(p, { ...SPIDER_NUMBERS, fill: 'rgb(255, 130, 0)' })
+  return p.canvas
+}
+
+function noiseBase(p: Painter, amount: number, seed: number): void {
+  p.ctx.fillStyle = '#000'
+  p.ctx.fillRect(0, 0, p.size, p.size)
+  const rng = createRng(seed)
+  const image = p.ctx.getImageData(0, 0, p.size, p.size)
   for (let i = 0; i < image.data.length; i += 4) {
-    const v = rng() * 34
+    const v = rng() * amount
     image.data[i] = v
     image.data[i + 1] = v
     image.data[i + 2] = v
   }
   p.ctx.putImageData(image, 0, 0)
+}
+
+function drawSteelHeight(size: number): HTMLCanvasElement {
+  const p = painter(size)
+  noiseBase(p, 26, 77)
   p.ctx.filter = `blur(${Math.max(1, p.scale * 0.6)}px)`
   spider(p, '#fff', WIRE_MM * 1.2)
-  numbers(p, '#fff')
+  numbers(p, { ...STEEL_NUMBERS, fill: '#fff' })
+  p.ctx.filter = 'none'
+  return p.canvas
+}
+
+function drawSpiderHeight(size: number): HTMLCanvasElement {
+  const p = painter(size)
+  noiseBase(p, 6, 91)
+  disc(p, RADII.doubleOuter, '#606060')
+  p.ctx.filter = `blur(${Math.max(1, p.scale * 0.35)}px)`
+  holes(p, '#000', null)
+  spider(p, '#fff', SPIDER_MM * 1.1, SPIDER_RADII)
+  ring(p, RADII.doubleOuter + 2.2, 1.4, '#fff')
+  numbers(p, { ...SPIDER_NUMBERS, fill: '#9a9a9a' })
   p.ctx.filter = 'none'
   return p.canvas
 }
@@ -199,11 +370,11 @@ function drawHeight(size: number): HTMLCanvasElement {
 /** Sobel normal map from a height canvas. */
 function normalFromHeight(source: HTMLCanvasElement, strength: number): HTMLCanvasElement {
   const size = source.width
-  const src = source.getContext('2d')
+  const src = source.getContext('2d', { willReadFrequently: true })
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx || !src) throw new Error('Canvas 2D is not available')
   const data = src.getImageData(0, 0, size, size).data
   const height = new Float32Array(size * size)
@@ -236,11 +407,13 @@ function texture(canvas: HTMLCanvasElement, srgb: boolean, anisotropy: number): 
   return map
 }
 
-/** Builds the three board maps at `size` pixels square (the normal map at half size, which is plenty for raised wires). */
-export function createBoardTextures(size: number, anisotropy = 8): BoardTextures {
-  const color = texture(drawFace(size), true, anisotropy)
-  const roughnessMetal = texture(drawRoughnessMetal(size), false, anisotropy)
-  const normal = texture(normalFromHeight(drawHeight(Math.max(512, size / 2)), 2.2), false, anisotropy)
+/** Builds the three board maps for a style at `size` pixels square (the normal map at half size, which is plenty for raised wires). */
+export function createBoardTextures(size: number, anisotropy = 8, style: BoardStyle = 'steel'): BoardTextures {
+  const spiderStyle = style === 'spider'
+  const color = texture(spiderStyle ? drawSpiderFace(size) : drawSteelFace(size), true, anisotropy)
+  const roughnessMetal = texture(spiderStyle ? drawSpiderRoughnessMetal(size) : drawSteelRoughnessMetal(size), false, anisotropy)
+  const heightSize = Math.max(512, size / 2)
+  const normal = texture(normalFromHeight(spiderStyle ? drawSpiderHeight(heightSize) : drawSteelHeight(heightSize), spiderStyle ? 1.6 : 2.2), false, anisotropy)
   return {
     color,
     roughnessMetal,

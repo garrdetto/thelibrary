@@ -11,12 +11,13 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { Scores } from '../../../engine/net/Scores'
 import { EYE_HEIGHT, createEngineSetup } from '../core/EngineSetup'
 import type { EngineContext } from '../core/EngineSetup'
-import { MODEL_NAMES, disposeRig, instantiate, loadModel } from '../core/ModelLibrary'
+import { MODEL_NAMES, disposeRig, instantiate, loadModel, partMesh } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { Audio } from '../systems/Audio'
 import { EncounterDirector } from '../systems/EncounterDirector'
 import { Fishing } from '../systems/Fishing'
 import type { FishingEvent } from '../systems/Fishing'
+import { RodFx } from '../systems/FishingFx'
 import { LootTableManager, SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
 import type { Specimen } from '../systems/LootTableManager'
 import { REEL_TUNING, SWAY_TUNING, SkillCheckManager } from '../systems/SkillCheckManager'
@@ -52,7 +53,7 @@ type Tool = 'rod' | 'rifle'
 type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand'
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
-const GLOSSY = new Set(['utv', 'boat', 'rod', 'rifle', 'bobber', 'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch'])
+const GLOSSY = new Set(['utv', 'boat', 'rod', 'rifle', 'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch'])
 const MODULE_ID = 'rackreel'
 const WALK_SPEED = 2.5
 const SPRINT_SPEED = 5.2
@@ -92,6 +93,10 @@ export class Game {
   private avatar!: Avatar
   private rodRig!: ModelRig
   private rodTip!: TransformNode
+  private rodFx!: RodFx
+  private dragTimer = 0
+  private jumpTold = false
+  private fishCam = 0
   private rifleRig!: ModelRig
   private standRigs: ModelRig[] = []
   private stands: StandSite[] = []
@@ -171,7 +176,7 @@ export class Game {
     this.wildlife = new Wildlife(this.ctx, scene, this.terrain, this.loot, this.models)
     this.wildlife.onLegendSpawn = (a) => this.hud.toast(a.template.id === 'whitetail' ? 'Fresh rubs and scrapes: a record-class buck is roaming these woods' : `Fresh sign: a record-class ${SPECIES_BY_ID[a.template.id].name.toLowerCase()} is moving nearby`, 'big')
     this.wildlife.onLost = (a) => this.hud.toast(a.wounds ? 'The wounded animal is gone. Aim for the vitals behind the shoulder.' : `The ${a.template.name.toLowerCase()} slipped away.`)
-    this.fishing = new Fishing(this.ctx, scene, this.terrain, this.loot, this.skill, this.models.get('bobber')!)
+    this.fishing = new Fishing(this.ctx, scene, this.terrain, this.loot, this.skill, (name) => this.models.get(name))
     this.fishing.onEvent = (e) => this.onFishing(e)
     this.minimap = new Minimap(this.terrain, document.getElementById('minimap')!)
     this.online = new Online(this.ctx, scene, this.models, {
@@ -284,6 +289,11 @@ export class Game {
       if (ready) break
       await nextFrame()
     }
+    for (const rig of rigs.slice(wild.length)) for (const m of rig.meshes) {
+      m.sourceMesh.renderingGroupId = 0
+      m.sourceMesh.applyFog = true
+    }
+    await Promise.all([scene.whenReadyAsync(), this.fishing.prewarm()])
     for (const rig of rigs) disposeRig(rig)
   }
 
@@ -378,6 +388,7 @@ export class Game {
     this.rodTip = new TransformNode('rod-tip', scene)
     this.rodTip.parent = this.rodRig.root
     this.rodTip.position.set(0, 0, 1.8)
+    this.rodFx = new RodFx(this.ctx, scene, partMesh(this.models.get('rod')!, 'rod'), this.rodRig.root, this.rodTip, this.rodRig.meshes)
     this.rifleRig = instantiate(this.models.get('rifle')!, null, scene, reg)
     this.rifleRig.root.parent = this.avatar.chest
     this.rifleRig.root.setEnabled(false)
@@ -561,6 +572,11 @@ export class Game {
       this.fishing.setHook()
       return
     }
+    if (this.fishing.state === 'nibble') {
+      this.hud.toast('Not yet — wait for the bobber to go under.')
+      return
+    }
+    if (this.fishing.state === 'landing') return
     if (this.fishing.state === 'reeling') {
       this.skill.crank()
       this.audio.click()
@@ -658,7 +674,7 @@ export class Game {
     const l = this.progress.profile.loadout
     const st = this.fishing.state
     const stance = this.mode === 'vehicle' || this.mode === 'stand' ? 'sit' : this.mode === 'climb' ? (this.climbT < this.layout.climbSplit ? 'climb' : 'sit') : 'stand'
-    const hands = this.mode === 'vehicle' ? 'wheel' : this.tool === 'rifle' ? (this.rightDown ? 'aim' : 'rifle') : st === 'reeling' ? 'reel' : st === 'charging' ? 'cast' : 'rod'
+    const hands = this.mode === 'vehicle' ? 'wheel' : this.tool === 'rifle' ? (this.rightDown ? 'aim' : 'rifle') : st === 'reeling' || st === 'landing' ? 'reel' : st === 'charging' ? 'cast' : 'rod'
     const at = this.mode === 'vehicle' ? this.foot : r.position
     const state: PlayerState = {
       n: this.online.name, p: [at.x, at.y, at.z], f: this.facing, st: stance, h: hands, sp: this.moveSpeed, c: this.crouch, cl: this.climbT * 9, ap: this.ctx.camera.rotation.x,
@@ -730,6 +746,13 @@ export class Game {
     if (e.type === 'splash') {
       this.audio.splash()
       if (!e.inWater) this.hud.toast('Too shallow there — cast out past the weeds.', 'warn')
+    } else if (e.type === 'nibble') {
+      this.audio.splash()
+      this.hud.toast('Something is nibbling… wait for the bobber to go under.')
+    } else if (e.type === 'jump') {
+      this.audio.splash(true)
+      if (!this.jumpTold) this.hud.toast(`Jumper! ${SPECIES_BY_ID[e.specimen.species].name} clearing the water — keep the line tight.`)
+      this.jumpTold = true
     } else if (e.type === 'bite') {
       this.director.rearm('fish')
       this.audio.splash()
@@ -737,6 +760,8 @@ export class Game {
     } else if (e.type === 'missed') {
       this.hud.toast('It spit the bait. Stay ready.')
     } else if (e.type === 'hooked') {
+      this.audio.splash(true)
+      this.jumpTold = false
       if (e.specimen.legendary) this.hud.toast('This one is heavy… a record-class fish!', 'big')
       else this.hud.toast('Fish on! Hold or click to reel — keep the needle in the green.')
     } else if (e.type === 'landed') {
@@ -815,7 +840,7 @@ export class Game {
     const locked = document.pointerLockElement === this.canvas && !this.hud.modalOpen
     const active = !this.hud.modalOpen
     const v = this.vehicles.active
-    const reeling = this.fishing.state === 'reeling'
+    const reeling = this.fishing.fighting
     const lookScale = this.ads > 0.5 ? 0.3 : 1
     cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
     cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
@@ -841,7 +866,15 @@ export class Game {
     this.rifleCooldown = Math.max(0, this.rifleCooldown - dt)
     this.recoil = Math.max(0, this.recoil - dt * 5)
     this.placeAvatar(dt)
+    this.rodFx.update(dt, this.fishing.rodBend, this.fishing.busy ? this.fishing.lineEnd : null, this.fishing.lineTaut, this.fishing.crankSpeed)
     this.fishing.update(dt, this.castOrigin(), this.leftDown && locked)
+    if (this.fishing.dragging) {
+      this.dragTimer -= dt
+      if (this.dragTimer <= 0) {
+        this.dragTimer = 0.045 + Math.random() * 0.02
+        this.audio.click()
+      }
+    }
     const noise = this.mode === 'vehicle' ? 1.4 : this.mode === 'stand' ? 0.03 : this.mode === 'climb' ? 0.5 : this.moveSpeed < 0.3 ? 0.04 : this.crouch ? 0.15 : sprint ? 1 : 0.45
     const focus = v ? v.position : this.foot
     this.wildlife.update(dt, [{ p: focus, noise }, ...this.online.members.map((m) => ({ p: m.at, noise: 0.35 }))])
@@ -858,6 +891,8 @@ export class Game {
       }
     }
     this.wildlife.maintain(dt, [focus, ...this.online.members.map((m) => m.at)])
+    const watching = this.mode === 'foot' && (this.fishing.lineInWater || this.fishing.fighting || this.fishing.state === 'flying')
+    this.fishCam += ((watching ? 1 : 0) - this.fishCam) * Math.min(1, dt * 2.5)
     this.updateGear()
     this.online.update(dt, this.playerState(), () => this.wildlife.snapshot())
     this.minimap.draw(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.mapMarkers())
@@ -883,7 +918,7 @@ export class Game {
     const yaw = cam.rotation.y
     const f = active ? this.key('KeyW') - this.key('KeyS') : 0
     const s = active ? this.key('KeyD') - this.key('KeyA') : 0
-    const busy = this.fishing.state === 'charging' || this.fishing.state === 'reeling'
+    const busy = this.fishing.state === 'charging' || this.fishing.fighting
     let speed = sprint && !this.crouch ? SPRINT_SPEED : this.crouch ? CROUCH_SPEED : WALK_SPEED
     if (this.ads > 0.3 || (this.tool === 'rifle' && this.rightDown)) speed = AIM_SPEED
     if (busy) speed = 0
@@ -987,7 +1022,7 @@ export class Game {
     else if (this.mode === 'vehicle' && v && (v.kind === 'ATV' || !this.fishing.busy && (Math.abs(v.speed) > 1.2 || this.tool !== 'rod'))) hands = 'wheel'
     else if (this.tool === 'rifle') hands = this.rightDown && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
     else if (st === 'charging' || st === 'flying') hands = 'cast'
-    else if (st === 'reeling') hands = 'reel'
+    else if (st === 'reeling' || st === 'landing') hands = 'reel'
     else hands = 'rod'
     this.avatar.update(dt, {
       stance,
@@ -997,6 +1032,8 @@ export class Game {
       castPower: st === 'charging' ? this.fishing.power : 0,
       aimPitch: this.ctx.camera.rotation.x,
       climbPhase: this.climbT * 9,
+      crankPhase: this.rodFx.crankPhase,
+      rodLoad: this.fishing.rodBend,
     })
     this.avatar.setVisible(this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson))
   }
@@ -1040,7 +1077,8 @@ export class Game {
     const high = this.mode === 'stand' || this.mode === 'climb'
     const base = high ? this.avatar.root.position.add(new Vector3(0, HIP_HEIGHT, 0)) : this.foot
     const crouchK = this.mode === 'foot' && this.crouch ? 1 : 0
-    const pivot = base.add(new Vector3(0, high ? 0.62 : 1.62 - crouchK * 0.45, 0))
+    const fishK = this.fishCam * this.fishCam * (3 - 2 * this.fishCam)
+    const pivot = base.add(new Vector3(0, high ? 0.62 : 1.62 - crouchK * 0.45 + fishK * 0.4, 0))
     const aimK = this.tool === 'rifle' && this.rightDown ? 1 : 0
     let pos: Vector3
     if (high && this.mode === 'stand' && this.layout.firstPerson) {
@@ -1054,8 +1092,9 @@ export class Game {
       pos = pivot.add(right.scale(0.85)).add(new Vector3(0, 0.22 - fwd.y * 0.4, 0)).subtract(flat.scale(Math.max(0.25, back)))
     } else {
       const indoors = this.cabin.inside(this.foot)
-      const dist = (indoors ? 1.9 : CAMERA_DISTANCE) * (1 - aimK * 0.3)
-      pos = this.collideCamera(pivot, pivot.add(right.scale(indoors ? 0.3 : SHOULDER_OFFSET)).subtract(fwd.scale(dist)))
+      const fishOut = indoors ? 0 : fishK
+      const dist = (indoors ? 1.9 : CAMERA_DISTANCE + fishOut * 0.6) * (1 - aimK * 0.3)
+      pos = this.collideCamera(pivot, pivot.add(right.scale(indoors ? 0.3 : SHOULDER_OFFSET + fishOut * 0.75)).subtract(fwd.scale(dist)))
     }
     const eye = high ? this.avatar.root.position.add(new Vector3(0, HIP_HEIGHT + 0.68, 0)) : this.foot.add(new Vector3(0, (this.crouch ? 1.08 : EYE_HEIGHT) + 0.0, 0))
     eye.addInPlace(new Vector3(Math.sin(yaw), 0, Math.cos(yaw)).scale(0.12))
@@ -1140,17 +1179,22 @@ export class Game {
       const gameLeft = this.director.remaining('game')
       this.hud.setActivity(this.fishing.lineInWater ? (fishLeft < 15 ? 'Fish circling' : 'Line out') : gameLeft < 30 ? 'Fresh sign' : this.wildlife.animals.length ? 'Animal nearby' : 'Quiet')
     }
+    const st = this.fishing.state
+    const fishPrompt = st === 'bite' ? 'Click to set the hook!'
+      : st === 'nibble' ? 'Nibble… wait for the bobber to go under'
+        : st === 'waiting' ? 'Watch the bobber… R to reel in'
+          : st === 'landing' ? 'Swinging it in…'
+            : ''
     let prompt = ''
     if (!locked) prompt = this.hud.modalOpen ? '' : 'Click the view for mouse look · arrow keys also look around'
     else if (this.mode === 'climb') prompt = this.climbDir > 0 ? 'Climbing up…' : 'Climbing down…'
     else if (this.mode === 'stand') prompt = this.tool === 'rifle' ? (this.ads < 0.5 ? 'Right-click to aim · E to climb down' : 'Shift to hold your breath') : 'Press 2 for the rifle · E to climb down'
-    else if (v) prompt = v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy ? 'Left-click to cast from the boat · E near shore to step out' : ''
+    else if (v) prompt = fishPrompt || (v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy ? 'Left-click to cast from the boat · E near shore to step out' : '')
     else {
       const down = this.wildlife.nearestDown(this.foot, 3.8)
       const near = this.vehicles.nearest(this.foot, 4.2)
       if (down) prompt = `E — tag the ${down.doe ? "doe" : down.template.id === "whitetail" ? "buck" : down.template.name.toLowerCase()}`
-      else if (this.fishing.state === 'bite') prompt = 'Click to set the hook!'
-      else if (this.fishing.state === 'waiting') prompt = 'Watch the bobber… R to reel in'
+      else if (fishPrompt) prompt = fishPrompt
       else if (this.cabin.spotNear(this.foot)) prompt = this.cabin.spotLabel(this.cabin.spotNear(this.foot)!)
       else if (near) prompt = near.kind === 'ATV' ? (near.rig.root.name.startsWith('quad') ? 'E — ride the quad' : 'E — drive the UTV') : 'E — board the boat'
       else if (this.nearLadder()) prompt = `E — climb into the ${STAND_LAYOUTS[this.nearLadder()!.kind].name}`

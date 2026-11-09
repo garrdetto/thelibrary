@@ -8,6 +8,11 @@ const WORKFLOW = 'site-change.yml'
 const ACTIVE = ['queued', 'running']
 const HISTORY_TURNS = 12
 const ORG_SPEND_TTL = 5 * 60 * 1000
+const DEFAULT_LAPTOP_LABEL = 'msi-laptop'
+const RUNNER_STATUS_TTL = 30 * 1000
+
+type Runner = 'github' | 'laptop'
+type LaptopStatus = 'online' | 'busy' | 'offline' | 'missing' | 'unknown'
 
 type Row = {
   id: string
@@ -24,6 +29,7 @@ type Row = {
   commit_sha: string | null
   pr_url: string | null
   run_url: string | null
+  runner: string | null
   created_at: number
   updated_at: number
 }
@@ -43,15 +49,17 @@ const shape = (row: Row) => ({
   commit: row.commit_sha,
   prUrl: row.pr_url,
   runUrl: row.run_url,
+  runner: row.runner === 'laptop' ? 'laptop' : 'github',
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 })
 
 const adminInput = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('send'), thread: z.string().uuid().optional(), text: z.string().trim().min(1).max(8000), autoMerge: z.boolean() }).strict(),
+  z.object({ action: z.literal('send'), thread: z.string().uuid().optional(), text: z.string().trim().min(1).max(8000), autoMerge: z.boolean(), runner: z.enum(['github', 'laptop']).optional() }).strict(),
   z.object({ action: z.literal('revert'), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal('retry'), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal('stop'), id: z.string().uuid() }).strict(),
+  z.object({ action: z.literal('set-runner'), runner: z.enum(['github', 'laptop']) }).strict(),
   z.object({ action: z.literal('set-balance'), dollars: z.number().min(0).max(1000000) }).strict(),
   z.object({ action: z.literal('delete-thread'), thread: z.string().uuid() }).strict(),
 ])
@@ -80,6 +88,11 @@ async function ensureTables(env: Env) {
     env.DB.prepare('CREATE INDEX IF NOT EXISTS site_changes_created_idx ON site_changes (created_at)'),
     env.DB.prepare('CREATE TABLE IF NOT EXISTS site_change_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)'),
   ])
+  const columns = await env.DB.prepare("SELECT name FROM pragma_table_info('site_changes')").all<{ name: string }>()
+  if (!columns.results.some(column => column.name === 'runner')) {
+    try { await env.DB.prepare('ALTER TABLE site_changes ADD COLUMN runner TEXT').run() }
+    catch (error) { if (!String(error).includes('duplicate column')) throw error }
+  }
   tablesReady = true
 }
 
@@ -169,7 +182,57 @@ function configuration(env: Env) {
   }
 }
 
-async function dispatch(request: Request, env: Env, id: string) {
+const laptopLabel = (env: Env) => env.SITE_CHANGES_RUNNER_LABEL?.trim() || DEFAULT_LAPTOP_LABEL
+
+async function savedRunner(env: Env): Promise<Runner> {
+  return (await getSetting(env, 'runner')) === 'laptop' ? 'laptop' : 'github'
+}
+
+// Whether the self-hosted runner on the administrator's laptop is connected to
+// GitHub. Listing runners needs "Administration: Read" on the token; without it
+// the answer is 'unknown' and laptop runs are dispatched without the check.
+let laptopCache: { status: LaptopStatus; at: number } | null = null
+async function laptopStatus(env: Env): Promise<LaptopStatus> {
+  if (!env.SITE_CHANGES_GITHUB_TOKEN) return 'unknown'
+  if (laptopCache && Date.now() - laptopCache.at < RUNNER_STATUS_TTL) return laptopCache.status
+  const repo = env.SITE_CHANGES_REPO ?? DEFAULT_REPO
+  let status: LaptopStatus = 'unknown'
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repo}/actions/runners?per_page=100`, {
+      headers: {
+        Authorization: `Bearer ${env.SITE_CHANGES_GITHUB_TOKEN}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'User-Agent': 'thelibrary-site-changes',
+      },
+    })
+    if (response.ok) {
+      const body = await response.json() as { runners?: { status?: string; busy?: boolean; labels?: { name?: string }[] }[] }
+      const label = laptopLabel(env).toLowerCase()
+      const matches = (body.runners ?? []).filter(runner => runner.labels?.some(item => item.name?.toLowerCase() === label))
+      const online = matches.filter(runner => runner.status === 'online')
+      status = !matches.length ? 'missing' : !online.length ? 'offline' : online.some(runner => !runner.busy) ? 'online' : 'busy'
+    } else if (response.status !== 403) {
+      console.error('Runner list failed', response.status)
+    }
+  } catch (error) {
+    console.error('Runner list failed', error)
+  }
+  laptopCache = { status, at: Date.now() }
+  return status
+}
+
+// Picks where a job runs. A laptop that GitHub reports offline (or that was
+// never set up) falls back to GitHub's own machines so the request still runs.
+async function chooseRunner(env: Env, wanted: Runner) {
+  if (wanted === 'github') return { runner: 'github' as Runner, notice: null }
+  const status = await laptopStatus(env)
+  if (status === 'offline') return { runner: 'github' as Runner, notice: 'Your laptop is offline, so this request is running on GitHub instead.' }
+  if (status === 'missing') return { runner: 'github' as Runner, notice: `No laptop runner labelled "${laptopLabel(env)}" is set up yet, so this request is running on GitHub instead.` }
+  return { runner: 'laptop' as Runner, notice: null }
+}
+
+async function dispatch(request: Request, env: Env, id: string, runner: Runner) {
   if (!env.SITE_CHANGES_GITHUB_TOKEN || !env.SITE_CHANGES_SECRET) return 'Site changes are not set up yet. Add the SITE_CHANGES_GITHUB_TOKEN and SITE_CHANGES_SECRET secrets.'
   const repo = env.SITE_CHANGES_REPO ?? DEFAULT_REPO
   const callback = `${new URL(request.url).origin}/api/site-changes`
@@ -183,7 +246,7 @@ async function dispatch(request: Request, env: Env, id: string) {
         'User-Agent': 'thelibrary-site-changes',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ ref: 'main', inputs: { job_id: id, callback_url: callback } }),
+      body: JSON.stringify({ ref: 'main', inputs: { job_id: id, callback_url: callback, runner } }),
     })
     if (response.ok) return null
     console.error('Workflow dispatch failed', response.status)
@@ -198,15 +261,21 @@ async function dispatch(request: Request, env: Env, id: string) {
   }
 }
 
-async function queue(request: Request, env: Env, row: Pick<Row, 'thread_id' | 'mode' | 'request' | 'target' | 'auto_merge'>) {
+async function queue(request: Request, env: Env, row: Pick<Row, 'thread_id' | 'mode' | 'request' | 'target' | 'auto_merge'>, wanted?: Runner) {
   const id = crypto.randomUUID()
   const now = Date.now()
-  await env.DB.prepare('INSERT INTO site_changes (id, thread_id, mode, request, target, auto_merge, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, row.thread_id, row.mode, row.request, row.target, row.auto_merge, 'queued', now, now).run()
-  const problem = await dispatch(request, env, id)
+  const { runner, notice } = await chooseRunner(env, wanted ?? await savedRunner(env))
+  await env.DB.prepare('INSERT INTO site_changes (id, thread_id, mode, request, target, auto_merge, status, runner, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, row.thread_id, row.mode, row.request, row.target, row.auto_merge, 'queued', runner, now, now).run()
+  const problem = await dispatch(request, env, id, runner)
   if (problem) await env.DB.prepare('UPDATE site_changes SET status = ?, reply = ?, updated_at = ? WHERE id = ?').bind('failed', problem, Date.now(), id).run()
   const saved = await env.DB.prepare('SELECT * FROM site_changes WHERE id = ?').bind(id).first<Row>()
-  return saved ? shape(saved) : null
+  return { message: saved ? shape(saved) : null, notice: problem ? null : notice }
+}
+
+async function runnerOverview(env: Env) {
+  const choice = await savedRunner(env)
+  return { choice, laptop: await laptopStatus(env), label: laptopLabel(env) }
 }
 
 async function threadBusy(env: Env, threadId: string) {
@@ -283,7 +352,7 @@ export async function siteChanges(request: Request, env: Env) {
       const rows = await env.DB.prepare('SELECT * FROM site_changes WHERE thread_id = ? ORDER BY created_at').bind(thread).all<Row>()
       return json({ messages: rows.results.map(shape) })
     }
-    return json({ configured: configuration(env), threads: await threads(env), credits: await credits(env) })
+    return json({ configured: configuration(env), threads: await threads(env), credits: await credits(env), runner: await runnerOverview(env) })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   requireSameOrigin(request)
@@ -292,8 +361,13 @@ export async function siteChanges(request: Request, env: Env) {
   if (input.action === 'send') {
     const threadId = input.thread ?? crypto.randomUUID()
     if (input.thread && await threadBusy(env, threadId)) throw new HttpError(409, 'Claude is still working on your last message in this conversation.')
-    const message = await queue(request, env, { thread_id: threadId, mode: 'change', request: input.text, target: null, auto_merge: input.autoMerge ? 1 : 0 })
-    return json({ thread: threadId, message })
+    if (input.runner) await setSetting(env, 'runner', input.runner)
+    const queued = await queue(request, env, { thread_id: threadId, mode: 'change', request: input.text, target: null, auto_merge: input.autoMerge ? 1 : 0 }, input.runner)
+    return json({ thread: threadId, ...queued })
+  }
+  if (input.action === 'set-runner') {
+    await setSetting(env, 'runner', input.runner)
+    return json({ runner: await runnerOverview(env) })
   }
   if (input.action === 'set-balance') {
     await setSetting(env, 'balance', JSON.stringify({ cents: Math.round(input.dollars * 100), at: Date.now() }))
@@ -311,15 +385,17 @@ export async function siteChanges(request: Request, env: Env) {
   if (input.action === 'stop') {
     if (!ACTIVE.includes(row.status)) throw new HttpError(400, 'That message has already finished.')
     await env.DB.prepare("UPDATE site_changes SET status = 'failed', progress = NULL, reply = ?, updated_at = ? WHERE id = ?")
-      .bind('Stopped waiting. If a workflow run is still going, cancel it from the Actions tab on GitHub.', Date.now(), row.id).run()
+      .bind(row.runner === 'laptop'
+        ? 'Stopped waiting. If your laptop is still working on it, cancel the run from the Actions tab on GitHub.'
+        : 'Stopped waiting. If a workflow run is still going, cancel it from the Actions tab on GitHub.', Date.now(), row.id).run()
     return json({ ok: true })
   }
   if (await threadBusy(env, row.thread_id)) throw new HttpError(409, 'Claude is still working on your last message in this conversation.')
   if (input.action === 'retry') {
     if (row.status !== 'failed') throw new HttpError(400, 'Only failed messages can be retried.')
-    return json({ message: await queue(request, env, { thread_id: row.thread_id, mode: row.mode, request: row.request, target: row.target, auto_merge: row.auto_merge }) })
+    return json(await queue(request, env, { thread_id: row.thread_id, mode: row.mode, request: row.request, target: row.target, auto_merge: row.auto_merge }))
   }
   if (row.status !== 'merged' || !row.commit_sha) throw new HttpError(400, 'Only changes that went live can be undone.')
   const firstLine = row.request.split('\n')[0].slice(0, 160)
-  return json({ message: await queue(request, env, { thread_id: row.thread_id, mode: 'revert', request: `Undo the change for: ${firstLine}`, target: row.commit_sha, auto_merge: 1 }) })
+  return json(await queue(request, env, { thread_id: row.thread_id, mode: 'revert', request: `Undo the change for: ${firstLine}`, target: row.commit_sha, auto_merge: 1 }))
 }

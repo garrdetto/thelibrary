@@ -1,6 +1,7 @@
 /** Every tunable for Bush League Baseball's page: engine overrides, bindings, quality tiers, field looks, cameras and play-back pacing. Rules and physics tunables live in sim/tuning.ts. */
 import { ENGINE_DEFAULTS, type ActionBindings, type EngineConfig } from '../../engine'
 import moduleJson from './module.json'
+import type { PitchMeterTuning } from './systems/PitchMeter'
 
 export type Action = 'up' | 'down' | 'left' | 'right' | 'swing' | 'power' | 'bunt' | 'steal' | 'pitch1' | 'pitch2' | 'pitch3' | 'pitch4' | 'pitch5' | 'skip' | 'camera' | 'replay' | 'stats' | 'mute'
 
@@ -28,11 +29,16 @@ export interface DifficultyLevel {
   skill: number
 }
 
+function toneFromQuery(): 'aces' | 'agx' | 'neutral' {
+  const tone = new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('tone')
+  return tone === 'aces' || tone === 'agx' ? tone : 'neutral'
+}
+
 export const config = {
   meta: moduleJson as ModuleMeta,
   engine: {
     ...ENGINE_DEFAULTS,
-    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#0b1020', toneMappingExposure: 1.05, toneMapping: new URLSearchParams(typeof location === 'undefined' ? '' : location.search).get('tone') === 'aces' ? 'aces' : 'agx' },
+    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#0b1020', toneMappingExposure: 1.05, toneMapping: toneFromQuery() },
     post: { enabled: true },
     camera: { fov: 50, near: 0.1, far: 900, position: [0, 2.2, 3.6], lookAt: [0, 1.2, -18] },
     environment: { background: '#0e1630', fogColor: '#0e1630', fogNear: 220, fogFar: 520 },
@@ -101,17 +107,18 @@ export const config = {
     legend: { label: 'Legend', pace: 1, pci: 0.85, skill: 0.5 },
   } satisfies Record<Difficulty, DifficultyLevel>,
   assist: { pci: 1.3, timing: 0.35, aimJitter: 0.02 },
-  timing: { windup: 1.05, swingLag: 0.15, betweenPitches: 0.8, afterPlay: 1.4, cursorSpeed: 1.6, meterSeconds: 1.15, replaySpeed: 0.4, replayMax: 6, introSeconds: 4.5 },
+  timing: { windup: 1.05, swingLag: 0.15, betweenPitches: 0.8, afterPlay: 1.4, cursorSpeed: 1.6, replaySpeed: 0.4, replayMax: 6, introSeconds: 4.5 },
+  pitchMeter: { seconds: 0.9, perfect: 0.8, core: 0.035, band: 0.16, minHold: 0.12 } satisfies PitchMeterTuning,
   cameras: {
-    batting: { position: [0, 1.05, -1.25], target: [0, 0.77, 0.43], fov: 50 },
+    batting: { position: [0, 0.9, -1.4], target: [0, 0.6, 0.43], fov: 56 },
     centerfield: { position: [1.6, 5.2, 112], target: [0, 1.0, 0], fov: 6.5 },
-    pitching: { position: [0, 1.05, -1.25], target: [0, 0.77, 0.43], fov: 50 },
+    pitching: { position: [0, 0.9, -1.4], target: [0, 0.6, 0.43], fov: 56 },
     overview: { position: [0, 26, -30], target: [0, 0, 45], fov: 50 },
     play: { fov: 52 },
   },
   copy: {
     controlsBatting: 'Move the cursor with the mouse or WASD · Space or click to swing · F or right-click for a power swing · B to bunt · R to send the runners · V changes the camera',
-    controlsPitching: '1–5 to pick a pitch · aim with the mouse or WASD · click or Space three times: start, effort, accuracy',
+    controlsPitching: '1–5 to pick a pitch · aim with the mouse or WASD · hold the mouse or Space and let go on the green Perfect mark',
     controlsWatching: 'Sit back and watch · Enter skips ahead · V changes the camera · Y replays the last play',
     controlsCommon: 'Tab shows the stats · N toggles sound',
   },
