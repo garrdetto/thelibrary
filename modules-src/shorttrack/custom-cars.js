@@ -7,8 +7,9 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STOCK_CAR, carIdOf, carVehicleKey, carGarage, paintMode } from './shared/CustomCars';
-import { bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels } from './shared/carRepaint';
+import { STOCK_BOUNDS, bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels, toLiveryFrame } from './shared/carRepaint';
 import { clearGroups, clearMask, clearPixels, cutClear } from './shared/carClear';
+import { applyAtlas, buildLiveryGeo, planAtlas, wheelOccluder, wrapContext } from './shared/liveryWrap';
 import { numberAnchors, numberPlanes, placementMatrix } from './shared/carSurface';
 
 export const CUSTOM_CARS = new Map();
@@ -92,7 +93,40 @@ function prepare(rec, scene) {
   const probe = new THREE.Group();
   for (const p of parts) probe.add(new THREE.Mesh(p.geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
   const anchors = numberAnchors(probe, rec.numbers);
-  return { rec, parts, anchors, bounds };
+  return { rec, parts, anchors, bounds, geo: undefined };
+}
+
+/**
+ * The body's projection maps in the livery frame (shared/liveryWrap.ts), made once per car: what each side,
+ * the top and the ends see first, and whether it takes paint. The stock wheels are added as discs so logos stay
+ * off the openings, and clear windows and spoilers don't count as paint. `regions` are the stock car's livery
+ * regions. Null if the body can't be mapped.
+ */
+export function customGeo(a, regions) {
+  if (a.geo === undefined) a.geo = liveryGeo(a.rec, a.parts, a.bounds, regions);
+  return a.geo;
+}
+
+function liveryGeo(rec, parts, bounds, regions) {
+  try {
+    const geo = [];
+    for (const p of parts) {
+      const positions = toLiveryFrame(p.geo.attributes.position.array, null, bounds).positions;
+      const index = p.geo.index ? p.geo.index.array : null;
+      // a textured body with clear parts is indexed body-only, then shared, then clear-only triangles
+      const body = p.clear && index ? p.geo.groups.find(g => g.materialIndex === 0) : null;
+      if (body) {
+        const end = body.start + body.count;
+        geo.push({ positions, index: index.subarray(0, end), paint: !!p.paint }, { positions, index: index.subarray(end), paint: false });
+      } else geo.push({ positions, index, paint: !!p.paint });
+    }
+    for (const ax of rec.axles || []) for (const side of [1, -1]) {
+      const z = side * (ax.halfTrack + ax.width / 2), c = toLiveryFrame([ax.x, ax.radius, z], null, bounds).positions;
+      const r = ax.radius * (STOCK_BOUNDS.max[1] - STOCK_BOUNDS.min[1]) / Math.max(1e-6, bounds.max[1] - bounds.min[1]);
+      geo.push(wheelOccluder(c[0], c[1], c[2], r));
+    }
+    return buildLiveryGeo(geo, regions);
+  } catch { return null; }
 }
 
 // Windows and the rear spoiler of a textured body stay clear: their texels are cut out of the painted

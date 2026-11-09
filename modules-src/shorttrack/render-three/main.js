@@ -14,8 +14,9 @@ import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
 import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
 import { carIdOf, numberSpot, carGarage } from '../shared/CustomCars';
-import { boundsOf, parseRegions } from '../shared/carRepaint';
+import { boundsOf, parseRegions, STOCK_BOUNDS } from '../shared/carRepaint';
 import { spoilerTriangles } from '../shared/carClear';
+import { buildLiveryGeo, fitDecal, planAtlas, upsamplePlan, applyAtlas, wrapContext } from '../shared/liveryWrap';
 import { sanitizeScheme, schemeForPainters } from '../shared/PaintScheme';
 import { initPaintDesigner } from '../paint-designer.js';
 import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
