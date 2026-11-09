@@ -11,7 +11,7 @@ type Filter = 'All' | ModuleSubject
 
 const PICK_COUNT = 8
 
-export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (id: ModuleId) => void; account: ReactNode; online: ReactNode; username: string | null }) {
+export function ModuleHub({ onLaunch, account, online }: { onLaunch: (id: ModuleId) => void; account: ReactNode; online: ReactNode; username: string | null }) {
   const [filter, setFilter] = useState<Filter>('All')
   const layout = useModuleLayout()
   const { visible: learningModules, featured } = useMemo(() => arrangeModules(layout), [layout])
