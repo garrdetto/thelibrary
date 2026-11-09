@@ -1,12 +1,12 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
-import type { ComponentType, KeyboardEvent } from 'react'
-import { Car, Feather, FerrisWheel, Flag, Gauge, LayoutDashboard, LayoutGrid, LoaderCircle, Package, Settings2, ShieldCheck, Sparkles, Trophy, Users } from 'lucide-react'
+import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
+import { Car, FerrisWheel, Flag, Gauge, Image, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Settings2, ShieldCheck, Sparkles, Trophy, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
 import { LibraryArrange } from './admin/LibraryArrange'
-import { AdminStudios } from './admin/AdminStudios'
-import type { StudioId } from './admin/AdminStudios'
+
+export type StudioId = 'chat' | 'image' | 'lyrics'
 
 const MapleStreetItemEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./maplestreet/MapleStreetItemEditor'))
 const ParkRideCreator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./park/rides/RideCreator'))
@@ -24,7 +24,9 @@ type Area = (typeof areas)[number]['id']
 const sections = [
   { id: 'overview', area: 'site', group: 'Dashboard', label: 'Overview', icon: LayoutDashboard, title: 'Overview', blurb: 'Everything you manage on the library at a glance.' },
   { id: 'library', area: 'site', group: 'Library', label: 'Module order', icon: LayoutGrid, title: 'Module order', blurb: 'Arrange the homepage library and sidebar, pick the featured module and hide modules you are not ready to show.' },
-  { id: 'workspace', area: 'site', group: 'Workspace', label: 'Your workspace', icon: Feather, title: 'Your workspace', blurb: 'Your studios: AI chat, the Image studio and the Lyric studio.' },
+  { id: 'chat', area: 'site', group: 'Studios', label: 'AI Chat', icon: MessageCircle, title: 'AI Chat', blurb: 'Talk ideas through with Claude.' },
+  { id: 'image', area: 'site', group: 'Studios', label: 'Image Studio', icon: Image, title: 'Image Studio', blurb: 'Create and edit pictures from a description.' },
+  { id: 'lyrics', area: 'site', group: 'Studios', label: 'Lyric Studio', icon: Music2, title: 'Lyric Studio', blurb: 'Write, fine-tune and revamp song lyrics.' },
   { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
   { id: 'changes', area: 'site', group: 'Site', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
   { id: 'maplestreet', area: 'modules', group: 'Fox Plains', label: 'Items', icon: Package, title: 'Fox Plains items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
@@ -35,28 +37,41 @@ const sections = [
   { id: 'park-rides', area: 'modules', group: 'Thrill Park', label: 'Ride creator', icon: FerrisWheel, title: 'Thrill Park ride creator', blurb: 'Generate rides with Meshy, set how they move and what they cost, and publish them to every park’s build menu.' },
 ] as const
 type Section = (typeof sections)[number]['id']
+const studioIds: readonly string[] = ['chat', 'image', 'lyrics']
+const isStudio = (id: string): id is StudioId => studioIds.includes(id)
 
 function sectionFromHash(): Section {
   if (typeof window === 'undefined') return 'overview'
   const id = window.location.hash.replace(/^#admin\/?/, '')
   if (id === 'modules') return 'maplestreet'
-  return sections.some(item => item.id === id) ? id as Section : 'overview'
+  return sections.some(item => item.id === id && !isStudio(item.id)) ? id as Section : 'overview'
 }
 
 function Loading({ text }: { text: string }) {
   return <p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> {text}</p>
 }
 
-export function AdminPanel({ onOpenStudio }: { onOpenStudio?: (id: StudioId) => void }) {
-  const [section, setSection] = useState<Section>('overview')
-  useEffect(() => { setSection(sectionFromHash()) }, [])
+export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { studio?: StudioId; children?: ReactNode; onOpenStudio?: (id: StudioId) => void; onOpenSection?: (id: string) => void }) {
+  const [chosen, setSection] = useState<Section>(studio ?? 'overview')
+  useEffect(() => { if (!studio) setSection(sectionFromHash()) }, [studio])
+  const section: Section = studio ?? chosen
 
   const current = sections.find(item => item.id === section)!
   const area: Area = current.area
   const visible = sections.filter(item => item.area === area)
   const groups = [...new Set(visible.map(item => item.group))]
 
+  function leave(next: Section) {
+    if (isStudio(next)) {
+      if (next !== studio) onOpenStudio?.(next)
+      return true
+    }
+    if (studio) { onOpenSection?.(next); return true }
+    return false
+  }
+
   function open(next: Section, focus = false) {
+    if (leave(next)) return
     setSection(next)
     if (window.location.hash.startsWith('#admin') || window.location.hash === '') window.history.replaceState(null, '', `#admin/${next}`)
     if (focus) requestAnimationFrame(() => document.getElementById(`admin-tab-${next}`)?.focus())
@@ -66,6 +81,7 @@ export function AdminPanel({ onOpenStudio }: { onOpenStudio?: (id: StudioId) => 
   function openArea(next: Area) {
     if (next === area) return
     const first = sections.find(item => item.area === next)!
+    if (leave(first.id)) return
     setSection(first.id)
     if (window.location.hash.startsWith('#admin') || window.location.hash === '') window.history.replaceState(null, '', `#admin/${first.id}`)
   }
@@ -105,7 +121,7 @@ export function AdminPanel({ onOpenStudio }: { onOpenStudio?: (id: StudioId) => 
       <div className={`adm-body adm-body-${section}`}>
         {section === 'overview' && <AdminOverview onOpen={next => open(next)}/>}
         {section === 'library' && <LibraryArrange/>}
-        {section === 'workspace' && <AdminStudios onOpenStudio={onOpenStudio}/>}
+        {studio && children}
         {section === 'people' && <WorkspaceAdmin/>}
         {section === 'changes' && <SiteChanges/>}
         {section === 'maplestreet' && <Suspense fallback={<Loading text="Opening the item editor…"/>}><MapleStreetItemEditor/></Suspense>}

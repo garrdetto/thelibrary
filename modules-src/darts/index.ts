@@ -1,4 +1,4 @@
-/** Oche Darts entry: boots the shared engine, builds the pub and board, locks the camera to the thrower's eye, wires the throw gesture to a local or online session, plays every dart's flight, keeps the overlay in step, answers the chat's room requests and frees everything on pagehide. */
+/** Darts entry: boots the shared engine, builds the pub and board, locks the camera to the thrower's eye, wires the throw gesture to a local or online session, plays every dart's flight, keeps the overlay in step, answers the chat's room requests and frees everything on pagehide. */
 import * as THREE from 'three/webgpu'
 import { App, HubBridge, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
 import { config } from './config'
@@ -7,7 +7,7 @@ import { isBoardStyle, type BoardStyle } from './render/BoardTexture'
 import { createDartKit, aimDart } from './render/Dart'
 import { createPub } from './render/Pub'
 import { LocalSession, OnlineSession, type Session } from './session/Session'
-import { BULL_HEIGHT, OCHE_DISTANCE } from './shared/Board'
+import { BULL_HEIGHT, OCHE_DISTANCE, RADII } from './shared/Board'
 import type { Announcement, CpuLevel, DartThrow, FlightParams, GameState, MatchConfig, ModeConfig } from './shared/interfaces'
 import { RELEASE, aimDirection, type SpreadLevel } from './shared/Physics'
 import { currentPlayer, modeLabel, type SeatSpec } from './shared/Rules'
@@ -538,8 +538,22 @@ async function boot(): Promise<void> {
   app.onFixed(() => {
     steps++
   })
+  const boardEdge = new THREE.Vector3()
+  const boardTop = new THREE.Vector3()
+  const placeMeter = () => {
+    const rect = container.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    const radius = RADII.board / 1000
+    boardEdge.set(radius, BULL_HEIGHT, 0).project(app.camera)
+    boardTop.set(0, BULL_HEIGHT + radius, 0).project(app.camera)
+    const x = ((boardEdge.x + 1) / 2) * rect.width
+    const y = ((1 - boardEdge.y) / 2) * rect.height
+    const top = ((1 - boardTop.y) / 2) * rect.height
+    overlay.placeMeter(x, y, (y - top) * 2)
+  }
   app.onFrame((dt) => {
     fitCamera()
+    placeMeter()
     flights.update(Math.min(dt, 0.1))
     refreshHand()
   })

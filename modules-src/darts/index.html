@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <title>Oche Darts · the library</title>
+    <title>Darts · the library</title>
     <meta name="description" content="Projectile motion and probability at a regulation dartboard: 501, 301, Cricket and Count Up, solo, against the computer, pass-and-play or in an online room." />
   </head>
   <body>
@@ -16,8 +16,10 @@
         <span class="d-chip" id="room-chip" hidden></span>
       </div>
       <div class="d-scoreboard" id="scoreboard" aria-live="polite"></div>
-      <div class="d-meter" id="meter" aria-hidden="true"><div class="d-meter-fill" id="meter-fill"></div><div class="d-meter-band" id="meter-band"></div></div>
-      <div class="d-meter-label" id="meter-label"></div>
+      <div class="d-meter-wrap" id="meter-wrap">
+        <div class="d-meter" id="meter" aria-hidden="true"><div class="d-meter-track"><div class="d-meter-band" id="meter-band"></div><div class="d-meter-fill" id="meter-fill"></div></div></div>
+        <div class="d-meter-label" id="meter-label"></div>
+      </div>
       <div class="d-announce" id="announce" role="status" aria-live="assertive"></div>
       <div class="d-turn">
         <div class="d-turn-name" id="turn-name"></div>
@@ -29,7 +31,7 @@
 
     <div class="d-overlay" id="menu">
       <form class="d-panel" id="setup" novalidate>
-        <h1>Oche <em>Darts</em></h1>
+        <h1><em>Darts</em></h1>
         <h2>Board</h2>
         <div class="d-seg" role="radiogroup" aria-label="Board">
           <label><input type="radio" name="board" value="steel" checked /><span>Steel Tip</span></label>
