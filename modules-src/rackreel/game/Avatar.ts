@@ -44,6 +44,14 @@ export class Avatar {
     return this.j.torso
   }
 
+  setOutfit(wear: string[]): void {
+    for (const [name, mesh] of this.rig.partMeshes) {
+      const i = name.indexOf(':')
+      if (i < 0) continue
+      mesh.setEnabled(wear.includes(name.slice(i + 1)))
+    }
+  }
+
   setVisible(visible: boolean): void {
     for (const m of this.meshes) m.isVisible = visible
   }

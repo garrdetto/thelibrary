@@ -1,4 +1,5 @@
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
+import { PointLight } from '@babylonjs/core/Lights/pointLight'
 import type { Material } from '@babylonjs/core/Materials/material'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
@@ -18,7 +19,7 @@ import { Fishing } from '../systems/Fishing'
 import type { FishingEvent } from '../systems/Fishing'
 import { LootTableManager, SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
 import type { Specimen } from '../systems/LootTableManager'
-import { SkillCheckManager } from '../systems/SkillCheckManager'
+import { REEL_TUNING, SWAY_TUNING, SkillCheckManager } from '../systems/SkillCheckManager'
 import { VehicleController } from '../systems/VehicleController'
 import type { Vehicle } from '../systems/VehicleController'
 import { Wildlife } from '../systems/Wildlife'
@@ -30,10 +31,21 @@ import { creatureMaterial } from '../world/CreatureTextures'
 import type { CreatureSurface } from '../world/CreatureTextures'
 import type { FoliageKind } from '../world/FoliageTextures'
 import { PLAY_LIMIT, Terrain } from '../world/Terrain'
-import { STAND_CLIMB_SECONDS, STAND_LADDER_BASE, STAND_LADDER_TOP, STAND_SEAT, findStandSite, standToWorld } from '../world/TreeStand'
+import { STAND_CLIMB_SECONDS, STAND_LAYOUTS, findStandSites, standToWorld } from '../world/TreeStand'
 import type { StandSite } from '../world/TreeStand'
 import { buildDock, buildGround, buildSky, buildWater, findLandmarks } from '../world/World'
 import { Avatar, HIP_HEIGHT } from './Avatar'
+import { Progress } from './Progress'
+import type { CatchReport } from './Progress'
+import { Panels } from '../ui/Panels'
+import type { PanelTab } from '../ui/Panels'
+import { Cabin } from '../world/Cabin'
+import { Minimap } from '../ui/Minimap'
+import type { MapMarker } from '../ui/Minimap'
+import { Online } from './Online'
+import type { PlayerState } from './Online'
+import { formatValue as fmtValue } from '../systems/LootTableManager'
+import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
 
 type Tool = 'rod' | 'rifle'
@@ -62,7 +74,16 @@ export class Game {
   private wildlife!: Wildlife
   private fishing!: Fishing
   private readonly loot = new LootTableManager()
-  private readonly skill = new SkillCheckManager()
+  private readonly skill = new SkillCheckManager(Math.random, { ...REEL_TUNING }, { ...SWAY_TUNING })
+  private readonly progress = new Progress()
+  private panels!: Panels
+  private cabin!: Cabin
+  private cabinRig!: ModelRig
+  private standKills = new Set<number>()
+  private gruntCooldown = 0
+  private quadAdded = false
+  private minimap!: Minimap
+  private online!: Online
   private readonly director = new EncounterDirector()
   private readonly audio = new Audio()
   private readonly hud = new Hud()
@@ -72,7 +93,8 @@ export class Game {
   private rodRig!: ModelRig
   private rodTip!: TransformNode
   private rifleRig!: ModelRig
-  private standRig!: ModelRig
+  private standRigs: ModelRig[] = []
+  private stands: StandSite[] = []
   private stand!: StandSite
   private heroRig: ModelRig | null = null
   private heroClock = 0
@@ -125,14 +147,22 @@ export class Game {
     await nextFrame()
     const landmarks = findLandmarks(this.terrain)
     buildDock(this.ctx, landmarks)
-    this.stand = findStandSite(this.terrain, landmarks.spawn)
-    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, this.stand.tree])
-    this.foliage.colliders.push({ x: this.stand.tree.x, z: this.stand.tree.z, r: 0.45, min: this.stand.tree.add(new Vector3(-0.45, -1, -0.45)), max: this.stand.tree.add(new Vector3(0.45, 16, 0.45)) })
+    const inland = new Vector3(-Math.sin(landmarks.spawnHeading), 0, -Math.cos(landmarks.spawnHeading))
+    this.cabin = new Cabin(this.terrain, landmarks.spawn.add(inland.scale(18)), landmarks.spawnHeading)
+    this.stands = findStandSites(this.terrain, landmarks.spawn, [this.cabin.root, landmarks.dock.start, landmarks.utv])
+    this.stand = this.stands[0]
+    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5))])
+    this.foliage.grassHoles.push({ x: this.cabin.root.x, z: this.cabin.root.z, r: 6.4 })
+    for (const st of this.stands) {
+      const r = st.kind === 'blind' ? 1.3 : 0.45
+      this.foliage.colliders.push({ x: st.tree.x, z: st.tree.z, r, min: st.tree.add(new Vector3(-r, -1, -r)), max: st.tree.add(new Vector3(r, st.kind === 'blind' ? 2.9 : 16, r)) })
+    }
     this.ctx.buildCollisionOctree(this.foliage.colliders)
     this.hud.setLoading(0.85, 'Fueling the UTV…')
     await nextFrame()
     const reg = (m: AbstractMesh) => this.ctx.registerDynamic(m)
     this.buildStand(reg)
+    this.buildCabin(reg)
     this.vehicles = new VehicleController(this.ctx, this.terrain, this.ground)
     this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), landmarks.utv, landmarks.utvHeading)
     this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
@@ -143,15 +173,68 @@ export class Game {
     this.wildlife.onLost = (a) => this.hud.toast(a.wounds ? 'The wounded animal is gone. Aim for the vitals behind the shoulder.' : `The ${a.template.name.toLowerCase()} slipped away.`)
     this.fishing = new Fishing(this.ctx, scene, this.terrain, this.loot, this.skill, this.models.get('bobber')!)
     this.fishing.onEvent = (e) => this.onFishing(e)
+    this.minimap = new Minimap(this.terrain, document.getElementById('minimap')!)
+    this.online = new Online(this.ctx, scene, this.models, {
+      herd: (list) => {
+        if (!this.wildlife.remote) {
+          this.wildlife.clearAll()
+          this.wildlife.remote = true
+        }
+        this.wildlife.applySnapshot(list)
+      },
+      shot: (id, vital, from) => {
+        const a = this.wildlife.animals.find((x) => x.id === id && x.state !== 'down')
+        if (a) this.wildlife.hit(a, vital, from)
+      },
+      tag: (id) => {
+        const a = this.wildlife.animals.find((x) => x.id === id)
+        if (a) a.tagged = true
+      },
+      news: (text) => this.hud.toast(text),
+      status: (text) => {
+        const chip = document.getElementById('party')
+        if (chip) {
+          chip.hidden = !text
+          chip.textContent = text
+        }
+        if (!this.online.isGuest && this.wildlife.remote) {
+          this.wildlife.clearAll()
+          this.wildlife.remote = false
+        }
+        this.panels?.refresh()
+      },
+    })
     const cam = this.ctx.camera
     cam.keysUp = []
     cam.keysDown = []
     cam.keysLeft = []
     cam.keysRight = []
     cam.speed = 0
-    this.foot.copyFrom(landmarks.spawn)
+    this.foot.copyFrom(this.cabin.frontDoor)
+    this.foot.y = this.terrain.heightAt(this.foot.x, this.foot.z)
     this.facing = landmarks.spawnHeading
     cam.rotation.set(0.18, landmarks.spawnHeading, 0)
+    this.panels = new Panels(this.progress)
+    this.panels.bag = () => this.bag
+    const panelChange = this.progress.onChange
+    this.progress.onChange = () => {
+      panelChange?.()
+      this.applyGear()
+    }
+    this.applyGear()
+    this.panels.party = {
+      status: () => this.online.describe(),
+      code: () => (this.online.active ? this.online.room.code : ''),
+      members: () => this.online.members.map((m) => m.name),
+      host: () => this.online.host(),
+      join: (code) => this.online.join(code),
+      leave: () => this.online.leave(),
+    }
+    void this.progress.load().then(() => {
+      this.online.name = this.progress.username || `Guest-${this.sessionKey.slice(0, 4)}`
+    })
+    this.online.name = `Guest-${this.sessionKey.slice(0, 4)}`
+    this.online.bridge()
     this.placeAvatar(0)
     this.placeCamera()
     this.collectCasters()
@@ -231,9 +314,59 @@ export class Game {
 
   private buildStand(reg: (m: AbstractMesh) => void): void {
     const { scene } = this.ctx
-    this.standRig = instantiate(this.models.get('treestand')!, null, scene, reg)
-    this.standRig.root.position.copyFrom(this.stand.root)
-    this.standRig.root.rotation.y = this.stand.heading
+    for (const st of this.stands) {
+      const rig = instantiate(this.models.get(STAND_LAYOUTS[st.kind].model)!, null, scene, reg)
+      rig.root.position.copyFrom(st.root)
+      rig.root.rotation.y = st.heading
+      this.standRigs.push(rig)
+    }
+  }
+
+  private buildCabin(reg: (m: AbstractMesh) => void): void {
+    this.cabinRig = instantiate(this.models.get('cabin')!, null, this.ctx.scene, reg)
+    this.cabinRig.root.position.copyFrom(this.cabin.root)
+    this.cabinRig.root.rotation.y = this.cabin.heading
+    const lamp = new PointLight('cabin-lamp', this.cabin.toWorld(new Vector3(0.4, 2.4, 0.3)), this.ctx.scene)
+    lamp.diffuse = new Color3(1.0, 0.78, 0.5)
+    lamp.specular = new Color3(0.3, 0.25, 0.18)
+    lamp.intensity = 1.7
+    lamp.range = 8.5
+    const stove = new PointLight('cabin-stove', this.cabin.toWorld(new Vector3(-3.0, 0.9, -0.8)), this.ctx.scene)
+    stove.diffuse = new Color3(1.0, 0.5, 0.2)
+    stove.intensity = 0.5
+    stove.range = 3.5
+  }
+
+  private applyGear(): void {
+    const fx = this.progress.effects
+    const l = this.progress.profile.loadout
+    this.avatar.setOutfit([l.jacket, l.vest, l.cap, l.pants, l.pack])
+    const r = this.skill.reel
+    r.crankProgress = REEL_TUNING.crankProgress * fx.reelSpeed
+    r.holdProgressPerSecond = REEL_TUNING.holdProgressPerSecond * fx.reelSpeed
+    r.surgeStrength = REEL_TUNING.surgeStrength * fx.surge
+    r.strainFrictionPerPoint = REEL_TUNING.strainFrictionPerPoint / fx.lineStrength
+    this.skill.sway.adsAmplitude = SWAY_TUNING.adsAmplitude * fx.scopeSteady
+    this.fishing.castRange = fx.castRange
+    this.fishing.bias = fx.baitBias
+    this.wildlife.detection = fx.detection
+    this.wildlife.vitalScale = fx.vitalScale
+    for (const v of this.vehicles.vehicles) v.power = v.kind === 'BOAT' ? fx.boatPower : v.rig.root.name.startsWith('quad') ? 1.15 : fx.utvPower
+    if (!this.quadAdded && this.progress.profile.owned.includes('quad') && this.models.has('quad')) {
+      this.quadAdded = true
+      const spot = this.cabin.parking(0)
+      spot.position.y = this.terrain.heightAt(spot.position.x, spot.position.z)
+      const quad = this.vehicles.add('ATV', instantiate(this.models.get('quad')!, null, this.ctx.scene, (m) => this.ctx.registerDynamic(m)), spot.position, spot.heading)
+      quad.seat.set(0, 0.95, -0.1)
+      quad.power = 1.15
+      this.casters.push(...quad.rig.meshes)
+    }
+  }
+
+  private openPanel(tab: PanelTab, spot: CabinSpot | null): void {
+    document.exitPointerLock()
+    this.keys.clear()
+    this.panels.openAt(tab, spot, () => this.lock())
   }
 
   private buildGear(reg: (m: AbstractMesh) => void): void {
@@ -251,7 +384,7 @@ export class Game {
   }
 
   private collectCasters(): void {
-    this.casters = [...this.avatar.meshes, ...this.rodRig.meshes, ...this.rifleRig.meshes, ...this.standRig.meshes]
+    this.casters = [...this.avatar.meshes, ...this.rodRig.meshes, ...this.rifleRig.meshes, ...this.standRigs.flatMap((r) => r.meshes)]
     for (const veh of this.vehicles.vehicles) this.casters.push(...veh.rig.meshes)
   }
 
@@ -263,7 +396,7 @@ export class Game {
       this.audio.unlock()
       this.lock()
       const d = this.stand.tree.subtract(this.foot)
-      this.hud.toast(`A ladder stand overlooks the oak opening ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
+      this.hud.toast(`${this.stands.filter((st) => st.kind === 'ladder').length} ladder stands and a box blind are marked on the map; the nearest is ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
     }
     document.getElementById('start-btn')!.addEventListener('click', start)
     document.getElementById('book-btn')!.addEventListener('click', () => this.hud.showBook(this.loot, this.yourRecords, () => undefined))
@@ -303,6 +436,10 @@ export class Game {
       else if (e.code === 'KeyR') this.fishing.cancel()
       else if (e.code === 'KeyM') this.audio.setMuted(!this.audio.muted)
       else if (e.code === 'KeyK') this.openBook()
+      else if (e.code === 'KeyI') this.openPanel('gear', this.mode === 'foot' ? this.cabin.spotNear(this.foot) : null)
+      else if (e.code === 'KeyG') this.grunt()
+      else if (e.code === 'KeyN') this.hud.toast(this.minimap.cycleZoom())
+      else if (e.code === 'KeyP') this.openPanel('party', null)
     })
     addEventListener('keyup', (e) => this.keys.delete(e.code))
     addEventListener('blur', () => {
@@ -370,12 +507,19 @@ export class Game {
       this.tag(down)
       return
     }
+    const spot = this.cabin.spotNear(this.foot)
+    if (spot) {
+      this.openPanel(spot === 'wardrobe' ? 'wardrobe' : spot === 'rack' ? 'gear' : 'shop', spot)
+      return
+    }
     const v = this.vehicles.nearest(this.foot, 4.2)
     if (v) {
       this.enterVehicle(v)
       return
     }
-    if (this.nearLadder()) {
+    const ladder = this.nearLadder()
+    if (ladder) {
+      this.stand = ladder
       if (this.fishing.busy) this.fishing.cancel()
       this.mode = 'climb'
       this.climbDir = 1
@@ -384,9 +528,16 @@ export class Game {
     }
   }
 
-  private nearLadder(): boolean {
-    const base = standToWorld(this.stand, STAND_LADDER_BASE)
-    return Math.hypot(base.x - this.foot.x, base.z - this.foot.z) < 1.8
+  private nearLadder(): StandSite | null {
+    for (const st of this.stands) {
+      const base = standToWorld(st, STAND_LAYOUTS[st.kind].base)
+      if (Math.hypot(base.x - this.foot.x, base.z - this.foot.z) < 1.8) return st
+    }
+    return null
+  }
+
+  private get layout() {
+    return STAND_LAYOUTS[this.stand.kind]
   }
 
   private enterVehicle(v: Vehicle): void {
@@ -478,7 +629,9 @@ export class Game {
       return
     }
     const yards = Math.round(Vector3.Distance(this.foot, shot.animal.position) * 1.094)
+    if (this.online.isGuest) this.online.sendShot(shot.animal.id, shot.vital, origin)
     const down = this.wildlife.hit(shot.animal, shot.vital, origin)
+    if (down && this.mode === 'stand') this.standKills.add(shot.animal.id)
     const climbHint = this.mode === 'stand' ? ' Climb down (E) and walk up to tag it.' : ' Walk up and press E to tag it.'
     if (down) this.hud.toast(`Clean ${shot.vital ? 'vital' : 'follow-up'} hit at ${yards} yd.${climbHint}`, 'big')
     else this.hud.toast(`Hit at ${yards} yd but high or back. It ran — a second hit will put it down.`, 'warn')
@@ -486,13 +639,73 @@ export class Game {
 
   private tag(animal: Animal): void {
     animal.tagged = true
+    this.online.sendTag(animal.id)
+    this.online.announce(animal.doe ? 'filled an antlerless tag.' : `tagged a ${animal.template.id === 'whitetail' ? 'buck' : animal.template.name.toLowerCase()} — ${fmtValue(animal.specimen.species, animal.specimen.value)}${animal.specimen.legendary ? ', a record!' : ''}`)
     if (animal.doe) {
       this.bag.push(animal.specimen)
       this.hud.setBag(this.bag.length, this.bag.reduce((a, s) => a + s.trophyPoints, 0))
       this.hud.toast(`Antlerless tag filled: a ${animal.specimen.weightLb} lb doe for the freezer. Only bucks make the record book.`)
+      void this.earn({ action: 'game', species: 'whitetail', value: 0, legendary: false, doe: true, stand: this.standKills.has(animal.id) })
       return
     }
+    void this.earn({ action: 'game', species: animal.specimen.species, value: animal.specimen.value, legendary: animal.specimen.legendary, doe: false, stand: this.standKills.has(animal.id) })
     this.recordSpecimen(animal.specimen)
+  }
+
+  private playerState(): PlayerState {
+    const v = this.vehicles.active
+    const r = this.avatar.root
+    const l = this.progress.profile.loadout
+    const st = this.fishing.state
+    const stance = this.mode === 'vehicle' || this.mode === 'stand' ? 'sit' : this.mode === 'climb' ? (this.climbT < this.layout.climbSplit ? 'climb' : 'sit') : 'stand'
+    const hands = this.mode === 'vehicle' ? 'wheel' : this.tool === 'rifle' ? (this.rightDown ? 'aim' : 'rifle') : st === 'reeling' ? 'reel' : st === 'charging' ? 'cast' : 'rod'
+    const at = this.mode === 'vehicle' ? this.foot : r.position
+    const state: PlayerState = {
+      n: this.online.name, p: [at.x, at.y, at.z], f: this.facing, st: stance, h: hands, sp: this.moveSpeed, c: this.crouch, cl: this.climbT * 9, ap: this.ctx.camera.rotation.x,
+      o: [l.jacket, l.vest, l.cap, l.pants, l.pack],
+    }
+    if (v) {
+      const kind = v.kind === 'BOAT' ? 'boat' : v.rig.root.name.startsWith('quad') ? 'quad' : 'utv'
+      state.v = { k: kind, p: [v.position.x, v.position.y, v.position.z], q: [v.heading, v.pitch, v.roll], s: [v.seat.x, v.seat.y, v.seat.z] }
+      state.p = [v.position.x, v.position.y, v.position.z]
+    }
+    return state
+  }
+
+  private mapMarkers(): MapMarker[] {
+    const out: MapMarker[] = [{ x: this.cabin.root.x, z: this.cabin.root.z, kind: 'cabin' }]
+    for (const st of this.stands) out.push({ x: st.tree.x, z: st.tree.z, kind: st.kind === 'blind' ? 'blind' : 'stand' })
+    for (const v of this.vehicles.vehicles) {
+      if (v === this.vehicles.active) continue
+      out.push({ x: v.position.x, z: v.position.z, kind: v.kind === 'BOAT' ? 'boat' : v.rig.root.name.startsWith('quad') ? 'quad' : 'utv' })
+    }
+    for (const a of this.wildlife.animals) if (a.state === 'down' && !a.tagged) out.push({ x: a.position.x, z: a.position.z, kind: 'down' })
+    for (const m of this.online.members) out.push({ x: m.at.x, z: m.at.z, kind: 'friend', label: m.name })
+    return out
+  }
+
+  private async earn(report: CatchReport): Promise<void> {
+    const result = await this.progress.report(report)
+    if (result.paid > 0) this.hud.toast(`+$${result.paid.toLocaleString()} · cash $${this.progress.profile.cash.toLocaleString()}`, 'big')
+    for (const t of result.completed) this.hud.toast(`Task complete: ${t.text} (+$${t.reward})`, 'big')
+  }
+
+  private grunt(): void {
+    if (!this.progress.effects.call) {
+      this.hud.toast('No grunt call in your pocket. Buy one from the catalog at the cabin, then equip it at the gear rack.', 'warn')
+      return
+    }
+    if (this.gruntCooldown > 0) {
+      this.hud.toast(`Give it a minute — overcalling spooks bucks (${Math.ceil(this.gruntCooldown)} s).`)
+      return
+    }
+    this.gruntCooldown = 60
+    this.audio.click()
+    const buck = this.wildlife.lure(this.foot)
+    if (buck) {
+      const d = buck.position.subtract(this.foot)
+      this.hud.toast(`A deer turns toward the grunt, ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}.`)
+    } else this.hud.toast('Nothing answers the call. Try again later.')
   }
 
   private recordSpecimen(specimen: Specimen): void {
@@ -528,6 +741,8 @@ export class Game {
       else this.hud.toast('Fish on! Hold or click to reel — keep the needle in the green.')
     } else if (e.type === 'landed') {
       this.audio.splash(true)
+      this.online.announce(`landed a ${fmtValue(e.specimen.species, e.specimen.value)} ${SPECIES_BY_ID[e.specimen.species].name.toLowerCase()}${e.specimen.legendary ? ' — a record!' : ''}`)
+      void this.earn({ action: 'fish', species: e.specimen.species, value: e.specimen.value, legendary: e.specimen.legendary, boat: this.vehicles.active?.kind === 'BOAT' })
       this.showHero(e.specimen)
       this.recordSpecimen(e.specimen)
     } else if (e.type === 'lost') {
@@ -573,7 +788,7 @@ export class Game {
   }
 
   private placeName(): string {
-    if (this.mode === 'stand' || this.mode === 'climb') return 'Ladder stand'
+    if (this.mode === 'stand' || this.mode === 'climb') return this.layout.name.replace(/^./, (c) => c.toUpperCase())
     const g = this.terrain.groundAt(this.foot.x, this.foot.z)
     const v = this.vehicles.active
     if (v?.kind === 'BOAT') return this.fishing.habitat === 'deep' ? 'Deep basin' : 'Bear Paw Lake'
@@ -616,7 +831,9 @@ export class Game {
     const canAim = (this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle'
     const wantAds = canAim && this.rightDown && locked
     this.ads += ((wantAds ? 1 : 0) - this.ads) * Math.min(1, dt * 10)
-    this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0)
+    this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0, this.progress.effects.scopeZoom)
+    this.gruntCooldown = Math.max(0, this.gruntCooldown - dt)
+    void this.progress.update(dt, active && !this.panels.open)
     if (this.mode === 'foot') this.walk(dt, active, sprint)
     else if (this.mode === 'climb') this.climb(dt)
     else if (this.mode === 'vehicle' && v) this.moveSpeed = Math.abs(v.speed)
@@ -627,10 +844,10 @@ export class Game {
     this.fishing.update(dt, this.castOrigin(), this.leftDown && locked)
     const noise = this.mode === 'vehicle' ? 1.4 : this.mode === 'stand' ? 0.03 : this.mode === 'climb' ? 0.5 : this.moveSpeed < 0.3 ? 0.04 : this.crouch ? 0.15 : sprint ? 1 : 0.45
     const focus = v ? v.position : this.foot
-    this.wildlife.update(dt, focus, noise)
+    this.wildlife.update(dt, [{ p: focus, noise }, ...this.online.members.map((m) => ({ p: m.at, noise: 0.35 }))])
     const exploring = this.mode === 'stand' || (v ? Math.abs(v.speed) > 1 : this.moveSpeed > 0.5)
     const onLand = !v || v.kind === 'ATV'
-    const signal = this.director.update(dt, { exploring, lineInWater: this.fishing.lineInWater, onLand })
+    const signal = this.director.update(dt, { exploring, lineInWater: this.fishing.lineInWater, onLand, fishRate: this.progress.effects.biteRate })
     if (signal === 'fish') this.fishing.bite()
     else if (signal === 'game') {
       this.director.rearm('game')
@@ -640,8 +857,10 @@ export class Game {
         this.hud.toast(`${animal.doe ? 'Does are' : animal.template.id === 'whitetail' ? 'A buck is' : 'A bear is'} moving to the ${compassWord(Math.atan2(d.x, d.z))}, about ${Math.round(d.length() * 1.094)} yd. Switch to the rifle (2) and ease in.`)
       }
     }
-    this.wildlife.maintain(dt, focus)
+    this.wildlife.maintain(dt, [focus, ...this.online.members.map((m) => m.at)])
     this.updateGear()
+    this.online.update(dt, this.playerState(), () => this.wildlife.snapshot())
+    this.minimap.draw(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.mapMarkers())
     this.updateHud(dt, locked)
     this.foliage.updateGrass(focus)
     this.ctx.setShadowFocus(focus)
@@ -649,6 +868,7 @@ export class Game {
     casterList.length = 0
     for (const mesh of this.casters) casterList.push(mesh)
     this.wildlife.collectCasters(casterList)
+    for (const mesh of this.online.casters()) casterList.push(mesh)
     this.foliage.updateShadowCasters(focus, casterList)
     if (this.heroRig) {
       this.heroClock += dt
@@ -678,6 +898,7 @@ export class Game {
     const p = this.foot
     p.x = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.x + this.velocity.x * dt))
     p.z = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.z + this.velocity.z * dt))
+    this.cabin.collide(p, 0.3)
     for (const t of this.ctx.queryTrunks(p.x, p.z, 0.4)) {
       const dx = p.x - t.x
       const dz = p.z - t.z
@@ -688,12 +909,12 @@ export class Game {
         p.z = t.z + (dz / d) * min
       }
     }
-    if (this.terrain.depthAt(p.x, p.z) > 1.05 && !this.onDock(p)) {
+    if (this.terrain.depthAt(p.x, p.z) > this.progress.effects.wadeDepth && !this.onDock(p)) {
       p.x = prevX
       p.z = prevZ
       this.velocity.setAll(0)
     }
-    const floor = Math.max(this.terrain.heightAt(p.x, p.z), this.onDock(p) ? 0.58 : -10)
+    const floor = Math.max(this.terrain.heightAt(p.x, p.z), this.onDock(p) ? 0.58 : -10, this.cabin.floorAt(p) ?? -10)
     p.y += (floor - p.y) * Math.min(1, dt * 18)
     const moved = Math.hypot(p.x - prevX, p.z - prevZ) / Math.max(1e-3, dt)
     this.moveSpeed += (moved - this.moveSpeed) * Math.min(1, dt * 8)
@@ -713,30 +934,32 @@ export class Game {
       this.climbT = 1
       this.mode = 'stand'
       this.facing = this.stand.heading
-      this.hud.toast('Settled in the stand. Deer won\'t hear you up here — rifle out (2), right-click to glass the opening.')
+      this.hud.toast(`Settled in the ${this.layout.name}. Deer won't hear you up here — rifle out (2), right-click to glass the opening.`)
       return
     }
     if (this.climbT <= 0) {
       this.climbT = 0
       this.mode = 'foot'
-      this.foot.copyFrom(standToWorld(this.stand, STAND_LADDER_BASE.add(new Vector3(0, 0, 0.45))))
+      const out = this.layout.base
+      this.foot.copyFrom(standToWorld(this.stand, out.add(new Vector3(0, 0, Math.sign(out.z) * 0.45))))
       this.foot.y = this.terrain.heightAt(this.foot.x, this.foot.z)
       this.facing = this.stand.heading
       this.velocity.setAll(0)
       return
     }
-    this.facing = this.stand.heading + Math.PI
+    this.facing = this.stand.heading + (this.layout.base.z > 0 ? Math.PI : 0)
   }
 
   private climbLocal(): Vector3 {
     const t = this.climbT
-    const ladder = 0.86
+    const L = this.layout
+    const ladder = L.climbSplit
     if (t < ladder) {
       const f = t / ladder
-      return Vector3.Lerp(STAND_LADDER_BASE, STAND_LADDER_TOP, f).addInPlaceFromFloats(0, 0.02, 0.22)
+      return Vector3.Lerp(L.base, L.top, f).addInPlaceFromFloats(0, 0.02, Math.sign(L.base.z) * 0.22)
     }
     const f = (t - ladder) / (1 - ladder)
-    return Vector3.Lerp(STAND_LADDER_TOP.add(new Vector3(0, 0.02, 0.0)), STAND_SEAT.subtract(new Vector3(0, HIP_HEIGHT, 0)), f)
+    return Vector3.Lerp(L.top.add(new Vector3(0, 0.02, 0.0)), L.seat.subtract(new Vector3(0, HIP_HEIGHT, 0)), f)
   }
 
   private placeAvatar(dt: number): void {
@@ -750,9 +973,9 @@ export class Game {
       if (this.mode === 'foot') root.position.copyFrom(this.foot)
       else if (this.mode === 'climb') {
         root.position.copyFrom(standToWorld(this.stand, this.climbLocal()))
-        stance = this.climbT < 0.86 ? 'climb' : 'sit'
+        stance = this.climbT < this.layout.climbSplit ? 'climb' : 'sit'
       } else {
-        root.position.copyFrom(standToWorld(this.stand, STAND_SEAT.subtract(new Vector3(0, HIP_HEIGHT, 0))))
+        root.position.copyFrom(standToWorld(this.stand, this.layout.seat.subtract(new Vector3(0, HIP_HEIGHT, 0))))
         stance = 'sit'
       }
     }
@@ -775,14 +998,14 @@ export class Game {
       aimPitch: this.ctx.camera.rotation.x,
       climbPhase: this.climbT * 9,
     })
-    this.avatar.setVisible(this.ads < 0.55)
+    this.avatar.setVisible(this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson))
   }
 
   private updateGear(): void {
     const v = this.vehicles.active
     const inStand = this.mode === 'stand' || this.mode === 'climb'
     const showRod = this.tool === 'rod' && !inStand && (!v || (v.kind === 'BOAT' && (this.fishing.busy || Math.abs(v.speed) < 1.2)))
-    const showRifle = this.tool === 'rifle' && this.mode !== 'vehicle' && this.mode !== 'climb' && this.ads < 0.55
+    const showRifle = this.tool === 'rifle' && this.mode !== 'vehicle' && this.mode !== 'climb' && this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson)
     this.rodRig.root.setEnabled(showRod)
     this.rifleRig.root.setEnabled(showRifle)
     if (showRifle) {
@@ -820,7 +1043,9 @@ export class Game {
     const pivot = base.add(new Vector3(0, high ? 0.62 : 1.62 - crouchK * 0.45, 0))
     const aimK = this.tool === 'rifle' && this.rightDown ? 1 : 0
     let pos: Vector3
-    if (high) {
+    if (high && this.mode === 'stand' && this.layout.firstPerson) {
+      pos = this.avatar.root.position.add(new Vector3(0, HIP_HEIGHT + 0.66, 0))
+    } else if (high) {
       const flat = new Vector3(Math.sin(yaw), 0, Math.cos(yaw))
       const toTree = this.stand.tree.subtract(pivot)
       toTree.y = 0
@@ -828,8 +1053,9 @@ export class Game {
       const back = facingTree > 0.2 ? 2.6 : 0.7
       pos = pivot.add(right.scale(0.85)).add(new Vector3(0, 0.22 - fwd.y * 0.4, 0)).subtract(flat.scale(Math.max(0.25, back)))
     } else {
-      const dist = CAMERA_DISTANCE * (1 - aimK * 0.3)
-      pos = this.collideCamera(pivot, pivot.add(right.scale(SHOULDER_OFFSET)).subtract(fwd.scale(dist)))
+      const indoors = this.cabin.inside(this.foot)
+      const dist = (indoors ? 1.9 : CAMERA_DISTANCE) * (1 - aimK * 0.3)
+      pos = this.collideCamera(pivot, pivot.add(right.scale(indoors ? 0.3 : SHOULDER_OFFSET)).subtract(fwd.scale(dist)))
     }
     const eye = high ? this.avatar.root.position.add(new Vector3(0, HIP_HEIGHT + 0.68, 0)) : this.foot.add(new Vector3(0, (this.crouch ? 1.08 : EYE_HEIGHT) + 0.0, 0))
     eye.addInPlace(new Vector3(Math.sin(yaw), 0, Math.cos(yaw)).scale(0.12))
@@ -842,9 +1068,9 @@ export class Game {
     let last = pivot.clone()
     for (let i = 1; i <= steps; i++) {
       const p = Vector3.Lerp(pivot, want, i / steps)
-      const floor = this.terrain.heightAt(p.x, p.z) + 0.35
+      const floor = Math.max(this.terrain.heightAt(p.x, p.z), this.cabin.floorAt(p) ?? -10) + 0.35
       if (p.y < floor) p.y = floor
-      let blocked = false
+      let blocked = this.cabin.near(p, 1) && this.cabin.segmentBlocked(pivot, p)
       for (const t of this.ctx.queryTrunks(p.x, p.z, 0.3)) {
         if ((t.x - p.x) ** 2 + (t.z - p.z) ** 2 < (t.r * 0.75 + 0.2) ** 2 && p.y < t.max.y) blocked = true
       }
@@ -925,8 +1151,9 @@ export class Game {
       if (down) prompt = `E — tag the ${down.doe ? "doe" : down.template.id === "whitetail" ? "buck" : down.template.name.toLowerCase()}`
       else if (this.fishing.state === 'bite') prompt = 'Click to set the hook!'
       else if (this.fishing.state === 'waiting') prompt = 'Watch the bobber… R to reel in'
-      else if (near) prompt = near.kind === 'ATV' ? 'E — drive the UTV' : 'E — board the boat'
-      else if (this.nearLadder()) prompt = 'E — climb into the tree stand'
+      else if (this.cabin.spotNear(this.foot)) prompt = this.cabin.spotLabel(this.cabin.spotNear(this.foot)!)
+      else if (near) prompt = near.kind === 'ATV' ? (near.rig.root.name.startsWith('quad') ? 'E — ride the quad' : 'E — drive the UTV') : 'E — board the boat'
+      else if (this.nearLadder()) prompt = `E — climb into the ${STAND_LAYOUTS[this.nearLadder()!.kind].name}`
       else if (this.tool === 'rod' && !this.fishing.busy) prompt = 'Hold left-click to load a cast, release to throw'
       else if (this.tool === 'rifle' && this.ads < 0.5) prompt = 'Right-click to aim · Shift to hold your breath'
     }

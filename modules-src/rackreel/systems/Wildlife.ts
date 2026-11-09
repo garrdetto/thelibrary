@@ -40,6 +40,22 @@ export interface Animal {
   stomp: number
 }
 
+export interface NetAnimal {
+  id: number
+  sp: string
+  doe: boolean
+  x: number
+  z: number
+  h: number
+  v: number
+  st: AnimalState
+  val: number
+  wt: number
+  leg: boolean
+  tp: number
+  dt: number
+}
+
 export interface ShotResult {
   animal: Animal | null
   vital: boolean
@@ -62,6 +78,10 @@ export class Wildlife {
   readonly animals: Animal[] = []
   private nextId = 1
   private herdTimer = 0
+  detection = 1
+  vitalScale = 1
+  remote = false
+  private targets = new Map<number, NetAnimal>()
   onLegendSpawn: ((animal: Animal) => void) | null = null
   onLost: ((animal: Animal) => void) | null = null
 
@@ -89,13 +109,16 @@ export class Wildlife {
     return at ? this.spawn(SPECIES_BY_ID.whitetail, at, false) : null
   }
 
-  maintain(dt: number, player: Vector3): void {
+  maintain(dt: number, players: Vector3 | Vector3[]): void {
+    if (this.remote) return
+    const list = Array.isArray(players) ? players : [players]
+    const player = list[0]
     this.herdTimer -= dt
     if (this.herdTimer > 0) return
     this.herdTimer = 2
     for (const a of [...this.animals]) {
       if (a.state === 'down' || a.wounds > 0) continue
-      if (Vector3.Distance(a.position, player) > HERD_DESPAWN) this.remove(a)
+      if (list.every((q) => Vector3.Distance(a.position, q) > HERD_DESPAWN)) this.remove(a)
     }
     const living = this.animals.filter((a) => a.state !== 'down').length
     if (living >= HERD_SIZE) return
@@ -120,9 +143,9 @@ export class Wildlife {
     }
   }
 
-  spawn(template: SpeciesTemplate, position: Vector3, doe: boolean): Animal {
-    const specimen = this.loot.createSpecimen(template.id)
-    if (doe) {
+  spawn(template: SpeciesTemplate, position: Vector3, doe: boolean, given?: Specimen, id?: number): Animal {
+    const specimen = given ?? this.loot.createSpecimen(template.id)
+    if (doe && !given) {
       specimen.legendary = false
       specimen.recordTier = 0
       specimen.value = 0
@@ -150,7 +173,7 @@ export class Wildlife {
     rig.root.scaling.setAll(scale)
     const heading = this.rng() * Math.PI * 2
     const animal: Animal = {
-      id: this.nextId++, template, specimen, rig, antlers, doe, position, heading, desired: heading, speed: 0, state: 'graze', stateTime: 2 + this.rng() * 5, fleeTime: 0,
+      id: id ?? this.nextId++, template, specimen, rig, antlers, doe, position, heading, desired: heading, speed: 0, state: 'graze', stateTime: 2 + this.rng() * 5, fleeTime: 0,
       gait: this.rng() * 10, scale, wounds: 0, goal: position.clone(), tagged: false, downTime: 0, lastDistance: Infinity, alarm: 0, scan: 2 + this.rng() * 4, scanYaw: 0, stomp: 0,
     }
     this.animals.push(animal)
@@ -235,7 +258,7 @@ export class Wildlife {
         return t > 0 ? t : null
       }
       const v = VITALS[a.template.id]
-      const tv = test(v.y, v.z, v.r)
+      const tv = test(v.y, v.z, v.r * this.vitalScale)
       if (tv !== null && tv < best.distance) best = { animal: a, vital: true, distance: tv }
       for (const part of BODY[a.template.id]) {
         const tb = test(part.y, part.z, part.r)
@@ -262,9 +285,65 @@ export class Wildlife {
     return Math.min(1, forestDensity(mid.x, mid.z) * 0.8 + forestDensity(a.position.x, a.position.z) * 0.3)
   }
 
-  update(dt: number, player: Vector3, noise: number): void {
+  snapshot(): NetAnimal[] {
+    return this.animals.filter((a) => !a.tagged).map((a) => ({
+      id: a.id, sp: a.template.id, doe: a.doe, x: Math.round(a.position.x * 100) / 100, z: Math.round(a.position.z * 100) / 100, h: Math.round(a.heading * 1000) / 1000,
+      v: Math.round(a.speed * 100) / 100, st: a.state, val: a.specimen.value, wt: a.specimen.weightLb, leg: a.specimen.legendary, tp: a.specimen.trophyPoints, dt: Math.round(a.downTime * 10) / 10,
+    }))
+  }
+
+  applySnapshot(list: NetAnimal[]): void {
+    const seen = new Set<number>()
+    for (const n of list) {
+      seen.add(n.id)
+      this.targets.set(n.id, n)
+      if (this.animals.some((a) => a.id === n.id)) continue
+      const template = SPECIES_BY_ID[n.sp as keyof typeof SPECIES_BY_ID]
+      if (!template) continue
+      const specimen: Specimen = { species: template.id, value: n.val, weightLb: n.wt, lengthIn: 0, legendary: n.leg, recordTier: this.loot.placement(template.id, n.val), trophyPoints: n.tp, serial: n.id + 100000 }
+      const a = this.spawn(template, new Vector3(n.x, this.terrain.heightAt(n.x, n.z), n.z), n.doe, specimen, n.id)
+      a.heading = n.h
+    }
+    for (const a of [...this.animals]) if (!seen.has(a.id)) {
+      this.targets.delete(a.id)
+      this.remove(a)
+    }
+  }
+
+  clearAll(): void {
+    for (const a of [...this.animals]) this.remove(a)
+    this.targets.clear()
+  }
+
+  private followRemote(dt: number): void {
+    for (const a of this.animals) {
+      const n = this.targets.get(a.id)
+      if (!n) continue
+      if (n.st === 'down' && a.state !== 'down') a.downTime = n.dt
+      a.state = n.st
+      a.speed = n.v
+      const k = Math.min(1, dt * 6)
+      a.position.x += (n.x + Math.sin(n.h) * n.v * 0.12 - a.position.x) * k
+      a.position.z += (n.z + Math.cos(n.h) * n.v * 0.12 - a.position.z) * k
+      a.position.y = this.terrain.heightAt(a.position.x, a.position.z)
+      a.heading += wrapAngle(n.h - a.heading) * k
+      if (a.state === 'down') a.downTime += dt
+      this.pose(a, dt, a.state === 'down' ? 0 : a.speed)
+    }
+  }
+
+  update(dt: number, players: Vector3 | { p: Vector3; noise: number }[], soloNoise = 0): void {
+    const listeners = Array.isArray(players) ? players : [{ p: players, noise: soloNoise }]
+    if (this.remote) {
+      this.followRemote(dt)
+      return
+    }
     for (const a of [...this.animals]) {
       a.stateTime -= dt
+      let nearest = listeners[0]
+      for (const l of listeners) if (Vector3.Distance(a.position, l.p) < Vector3.Distance(a.position, nearest.p)) nearest = l
+      const player = nearest.p
+      const noise = nearest.noise
       const toPlayer = Vector3.Distance(a.position, player)
       if (a.state === 'down') {
         a.downTime += dt
@@ -278,7 +357,7 @@ export class Wildlife {
       }
       const approaching = toPlayer < a.lastDistance - 0.04
       a.lastDistance = toPlayer
-      const hearing = a.template.id === 'whitetail' ? 1 : 0.75
+      const hearing = (a.template.id === 'whitetail' ? 1 : 0.75) * this.detection
       const decision = react(a.state, { distance: toPlayer, noise, approaching, cover: this.cover(a, player), hearing }, a.stateTime)
       if (decision === 'flee') this.flee(a, player)
       else if (decision === 'alert') {

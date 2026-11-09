@@ -27,7 +27,7 @@ export class Hud {
   private lastPrompt = ''
 
   showPlaying(on: boolean): void {
-    for (const id of ['hud-tl', 'hud-tr', 'help-hint']) el(id).hidden = !on
+    for (const id of ['hud-tl', 'hud-tr', 'help-hint', 'minimap']) el(id).hidden = !on
   }
 
   setLoading(fraction: number, text: string): void {
@@ -137,7 +137,7 @@ export class Hud {
   }
 
   get modalOpen(): boolean {
-    return !el('catch').hidden || !el('book').hidden
+    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false
   }
 
   showBook(loot: LootTableManager, you: Set<string>, onClose: () => void): void {

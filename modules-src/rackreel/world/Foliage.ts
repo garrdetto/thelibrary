@@ -52,6 +52,7 @@ const BIRCH_COLORS: [number, number, number][] = [[0.95, 0.86, 0.3], [0.7, 0.78,
 export class Foliage {
   readonly stands: Stand[] = []
   readonly colliders: TrunkCollider[] = []
+  readonly grassHoles: { x: number; z: number; r: number }[] = []
   readonly grass: Mesh
   private readonly grassMatrices = new Float32Array(GRASS_CAPACITY * 16)
   private grassCenter = new Vector3(1e9, 0, 1e9)
@@ -247,6 +248,7 @@ export class Foliage {
         if (d2 > r * r) continue
         const h = this.terrain.heightAt(x, z)
         if (h < 0.55) continue
+        if (this.grassHoles.some((g) => (g.x - x) ** 2 + (g.z - z) ** 2 < g.r * g.r)) continue
         const density = forestDensity(x, z)
         const want = (0.78 - density * 0.62) * (trailOffset(x, z) < 2.4 ? 0.1 : 1) * (1 - Math.sqrt(d2) / r * 0.45)
         if (hash(gx, gz, 23) > want) continue

@@ -67,6 +67,7 @@ export interface Vehicle {
   exitSide: Vector3
   clock: number
   occupied: boolean
+  power: number
 }
 
 export class VehicleController {
@@ -91,6 +92,7 @@ export class VehicleController {
       exitSide: kind === 'ATV' ? new Vector3(-1.6, 0, 0) : new Vector3(1.8, 0, 0),
       clock: Math.random() * 10,
       occupied: false,
+      power: 1,
     }
     if (kind === 'ATV') vehicle.position.y = this.terrain.heightAt(position.x, position.z) + ATV_TUNING.rideHeight
     this.vehicles.push(vehicle)
@@ -186,11 +188,11 @@ export class VehicleController {
     const targetSteer = input.steer * T.maxSteer * (1 - Math.min(0.55, Math.abs(v.speed) / T.maxForward * 0.55))
     v.steer += (targetSteer - v.steer) * Math.min(1, dt * 6)
     if (input.brake) v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), T.brake * dt)
-    else if (input.throttle > 0) v.speed += input.throttle * T.accel * dt * (v.speed < 0 ? 2.2 : 1)
+    else if (input.throttle > 0) v.speed += input.throttle * T.accel * v.power * dt * (v.speed < 0 ? 2.2 : 1)
     else if (input.throttle < 0) v.speed += input.throttle * T.accel * dt * (v.speed > 0 ? 2.2 : 0.7)
     v.speed -= Math.sign(v.speed) * Math.min(Math.abs(v.speed), (T.rolling + T.drag * v.speed * v.speed) * dt)
     v.speed -= Math.sin(v.pitch) * 9.8 * dt * 0.55
-    v.speed = Math.max(-T.maxReverse, Math.min(T.maxForward, v.speed))
+    v.speed = Math.max(-T.maxReverse, Math.min(T.maxForward * v.power, v.speed))
     const yawRate = (v.speed / T.wheelBase) * Math.tan(v.steer)
     const nextHeading = v.heading + yawRate * dt
     const fx = Math.sin(nextHeading)
@@ -244,12 +246,12 @@ export class VehicleController {
   private updateBoat(v: Vehicle, dt: number, input: DriveInput): void {
     const T = BOAT_TUNING
     v.steer += (input.steer - v.steer) * Math.min(1, dt * 3)
-    if (input.throttle > 0) v.speed += input.throttle * T.accel * dt
+    if (input.throttle > 0) v.speed += input.throttle * T.accel * v.power * dt
     else if (input.throttle < 0) v.speed += input.throttle * T.accel * dt * (v.speed > 0 ? 1.6 : 0.8)
     const drag = T.drag * v.speed * Math.abs(v.speed) + Math.sign(v.speed) * T.idleDrag * (input.throttle === 0 ? 1 : 0.2)
     v.speed -= Math.sign(drag) * Math.min(Math.abs(v.speed), Math.abs(drag) * dt)
     if (input.brake) v.speed *= Math.max(0, 1 - dt * 1.5)
-    v.speed = Math.max(-T.maxReverse, Math.min(T.maxForward, v.speed))
+    v.speed = Math.max(-T.maxReverse, Math.min(T.maxForward * v.power, v.speed))
     const authority = Math.min(1, 0.25 + Math.abs(v.speed) / 5)
     v.heading += v.steer * T.turnRate * authority * dt * (v.speed < 0 ? -1 : 1)
     const fx = Math.sin(v.heading)

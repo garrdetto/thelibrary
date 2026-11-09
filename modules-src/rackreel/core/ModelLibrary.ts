@@ -10,7 +10,7 @@ import type { Scene } from '@babylonjs/core/scene'
 
 export const MODEL_NAMES = [
   'pine', 'pine-lo', 'hardwood', 'hardwood-lo', 'birch', 'birch-lo', 'grass', 'fern', 'cattail', 'rock', 'log',
-  'deer', 'antlers', 'bear', 'hunter', 'utv', 'boat', 'rod', 'rifle', 'bobber', 'treestand',
+  'deer', 'antlers', 'bear', 'hunter', 'utv', 'boat', 'rod', 'rifle', 'bobber', 'treestand', 'cabin', 'quad', 'boxblind',
   'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch',
 ] as const
 export type ModelName = typeof MODEL_NAMES[number]
@@ -31,6 +31,7 @@ export interface ModelRig {
   root: TransformNode
   joints: Map<string, TransformNode>
   meshes: InstancedMesh[]
+  partMeshes: Map<string, InstancedMesh>
 }
 
 interface PartHeader {
@@ -110,6 +111,7 @@ export function instantiate(template: ModelTemplate, parent: TransformNode | nul
   if (parent) root.parent = parent
   const joints = new Map<string, TransformNode>()
   const meshes: InstancedMesh[] = []
+  const partMeshes = new Map<string, InstancedMesh>()
   for (const part of template.parts.values()) {
     const joint = new TransformNode(`${template.name}-${part.name}`, scene)
     joint.parent = root
@@ -120,6 +122,7 @@ export function instantiate(template: ModelTemplate, parent: TransformNode | nul
     inst.parent = joint
     inst.isPickable = false
     meshes.push(inst)
+    partMeshes.set(part.name, inst)
     register?.(inst)
     joints.set(part.name, joint)
   }
@@ -131,7 +134,7 @@ export function instantiate(template: ModelTemplate, parent: TransformNode | nul
     joint.parent = parentJoint
     joint.position.copyFrom(part.pivot.subtract(parentPart.pivot))
   }
-  return { root, joints, meshes }
+  return { root, joints, meshes, partMeshes }
 }
 
 export function disposeRig(rig: ModelRig, unregister?: (mesh: InstancedMesh) => void): void {

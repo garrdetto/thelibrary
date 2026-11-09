@@ -1,0 +1,2573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Pro Skater AI · the library</title>
+<link rel="icon" href="data:," />
+<meta name="description" content="Pro Skater AI: a 3D skateboarding physics module with a story career, timed blitz, half-pipe showdown and free skate, saved in your browser." />
+<style>
+/* =============================================================================
+   PRO SKATER AI — UI LAYER
+   The canvas fills the frame; every menu is a <section data-screen> inside
+   #ui and only one is visible at a time (see the UI module in the script).
+   ========================================================================== */
+:root {
+  --bg: #07090f;
+  --panel: rgba(14, 18, 28, 0.78);
+  --panel-solid: #121826;
+  --line: rgba(255, 255, 255, 0.10);
+  --text: #eef2ff;
+  --muted: #9aa6c4;
+  --accent: #ff7a1a;
+  --accent-2: #27e0c6;
+  --good: #4ade80;
+  --bad: #ff4d6d;
+  --gold: #ffd166;
+  --radius: 16px;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+canvas#view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; touch-action: none; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }
+.hidden { display: none !important; }
+
+#ui { position: fixed; inset: 0; pointer-events: none; }
+#ui > section { position: absolute; inset: 0; pointer-events: auto; }
+#ui > section[data-screen="hud"] { pointer-events: none; }
+
+/* ---------- menu backdrop (CSS only, so the GPU is idle in menus) -------- */
+.backdrop {
+  background:
+    radial-gradient(1200px 600px at 15% -10%, rgba(255, 122, 26, 0.28), transparent 60%),
+    radial-gradient(900px 700px at 110% 110%, rgba(39, 224, 198, 0.22), transparent 60%),
+    linear-gradient(160deg, #0a0e18 0%, #06070c 100%);
+  display: grid; place-items: center; padding: 24px; overflow: auto;
+}
+.backdrop::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.18;
+  background-image: linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
+  background-size: 48px 48px; transform: perspective(600px) rotateX(55deg) translateY(30%); transform-origin: bottom;
+  animation: gridroll 6s linear infinite;
+}
+@keyframes gridroll { to { background-position: 0 48px, 0 0; } }
+
+.card { position: relative; width: min(980px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow); backdrop-filter: blur(16px); padding: clamp(18px, 3vw, 34px); }
+.brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.brand h1 { margin: 0; font-size: clamp(34px, 6vw, 64px); letter-spacing: -0.04em; line-height: 0.95; font-weight: 900; font-style: italic; }
+.brand h1 span { background: linear-gradient(90deg, var(--accent), var(--gold)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.brand .tag { color: var(--accent-2); font-weight: 800; letter-spacing: 0.3em; font-size: 12px; text-transform: uppercase; }
+.sub { color: var(--muted); margin: 8px 0 22px; max-width: 60ch; }
+.wallet { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.06); border: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+.chip b { color: var(--text); }
+
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; }
+.mode { text-align: left; padding: 18px; border-radius: var(--radius); border: 1px solid var(--line); background: linear-gradient(160deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02)); transition: transform .15s ease, border-color .15s ease, background .15s ease; min-height: 140px; display: flex; flex-direction: column; gap: 6px; }
+.mode:hover, .mode:focus-visible { transform: translateY(-3px); border-color: var(--accent); background: linear-gradient(160deg, rgba(255,122,26,0.18), rgba(255,255,255,0.03)); }
+.mode .k { font-size: 11px; font-weight: 800; letter-spacing: .25em; color: var(--accent); }
+.mode h3 { margin: 0; font-size: 20px; }
+.mode p { margin: 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+.btn { padding: 10px 18px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,0.06); font-weight: 700; }
+.btn:hover { background: rgba(255,255,255,0.12); }
+.btn.primary { background: linear-gradient(90deg, var(--accent), #ff9f43); border-color: transparent; color: #1a0d00; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { background: rgba(255, 77, 109, 0.14); border-color: rgba(255, 77, 109, 0.5); color: #ffd3dc; }
+.btn[disabled] { opacity: .45; cursor: not-allowed; }
+.head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+.head h2 { margin: 0; font-size: 28px; letter-spacing: -0.02em; }
+
+.chapters { display: grid; gap: 14px; }
+.chapter { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: start; padding: 18px; border-radius: var(--radius); border: 1px solid var(--line); background: rgba(255,255,255,0.04); }
+.chapter.locked { opacity: .55; }
+.chapter h3 { margin: 0 0 4px; }
+.chapter .park { color: var(--accent-2); font-size: 12px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
+.objlist { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+.objlist li { display: flex; gap: 10px; align-items: center; font-size: 14px; color: var(--muted); }
+.objlist li::before { content: ""; width: 16px; height: 16px; border-radius: 5px; border: 2px solid var(--line); flex: none; }
+.objlist li.done { color: var(--text); }
+.objlist li.done::before { background: var(--good); border-color: var(--good); box-shadow: inset 0 0 0 2px var(--panel-solid); }
+.objlist li .cash { margin-left: auto; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+.parks { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.parkcard { text-align: left; padding: 16px; border-radius: var(--radius); border: 1px solid var(--line); background: rgba(255,255,255,0.04); display: grid; gap: 6px; }
+.parkcard[disabled] { opacity: .45; }
+.parkcard .swatch { height: 70px; border-radius: 10px; }
+.parkcard small { color: var(--muted); }
+
+.decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.deck { padding: 12px; border-radius: var(--radius); border: 1px solid var(--line); background: rgba(255,255,255,0.04); display: grid; gap: 8px; justify-items: center; text-align: center; }
+.deck.equipped { border-color: var(--accent-2); box-shadow: 0 0 0 1px var(--accent-2) inset; }
+.deck canvas { width: 54px; height: 216px; border-radius: 27px; box-shadow: 0 10px 24px rgba(0,0,0,.5); }
+.deck small { color: var(--muted); }
+
+.opts { display: grid; gap: 14px; }
+.opt { display: grid; grid-template-columns: 200px 1fr; gap: 12px; align-items: center; }
+.opt label { color: var(--muted); }
+.opt select, .opt input[type=range] { width: 100%; }
+select { background: var(--panel-solid); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 6px 18px; font-size: 13.5px; color: var(--muted); margin: 0; padding: 0; list-style: none; }
+.keys kbd { display: inline-block; min-width: 26px; text-align: center; padding: 2px 6px; margin-right: 6px; border-radius: 6px; background: rgba(255,255,255,0.1); border: 1px solid var(--line); color: var(--text); font: 600 12px var(--font); }
+.diag { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted); white-space: pre-wrap; background: rgba(0,0,0,.3); padding: 10px; border-radius: 10px; }
+
+/* ---------- loading -------------------------------------------------- */
+.loading { display: grid; place-items: center; background: rgba(4,6,10,.92); }
+.loading .bar { width: min(360px, 70vw); height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 14px; }
+.loading .bar i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .2s; }
+.loading p { color: var(--muted); margin: 6px 0 0; text-align: center; }
+
+/* ---------- HUD --------------------------------------------------------- */
+.hud { font-variant-numeric: tabular-nums; }
+.hud .tl, .hud .tr, .hud .tc, .hud .bl, .hud .bc { position: absolute; }
+.hud .tl { top: max(14px, env(safe-area-inset-top)); left: 16px; }
+.hud .tr { top: max(14px, env(safe-area-inset-top)); right: 16px; display: grid; gap: 8px; justify-items: end; }
+.hud .tc { top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); text-align: center; }
+.hud .bl { bottom: 18px; left: 16px; width: min(260px, 40vw); }
+.hud .bc { bottom: 18px; left: 50%; transform: translateX(-50%); text-align: center; width: min(760px, 92vw); }
+.score { font-size: clamp(26px, 4vw, 40px); font-weight: 900; letter-spacing: -0.02em; text-shadow: 0 3px 14px rgba(0,0,0,.6); }
+.modelabel { font-size: 11px; letter-spacing: .3em; font-weight: 800; color: var(--accent-2); text-transform: uppercase; }
+.timer { font-size: clamp(26px, 4vw, 38px); font-weight: 900; padding: 4px 16px; border-radius: 12px; background: rgba(0,0,0,.35); border: 1px solid var(--line); }
+.timer.low { color: var(--bad); animation: pulse 0.6s ease-in-out infinite alternate; }
+@keyframes pulse { to { transform: scale(1.06); } }
+.letters { display: flex; gap: 6px; }
+.letters span { width: 30px; height: 34px; display: grid; place-items: center; border-radius: 8px; font-weight: 900; font-style: italic; background: rgba(0,0,0,.35); border: 1px solid var(--line); color: rgba(255,255,255,.25); }
+.letters span.got { color: #1a0d00; background: linear-gradient(160deg, var(--gold), var(--accent)); border-color: transparent; box-shadow: 0 0 16px rgba(255, 170, 60, .6); }
+.objbtn { pointer-events: auto; font-size: 12px; padding: 6px 10px; border-radius: 10px; background: rgba(0,0,0,.4); border: 1px solid var(--line); color: var(--muted); }
+.special { display: grid; gap: 6px; }
+.special .lbl { font-size: 11px; font-weight: 800; letter-spacing: .25em; color: var(--muted); }
+.special .meter { height: 12px; border-radius: 6px; background: rgba(0,0,0,.45); border: 1px solid var(--line); overflow: hidden; }
+.special .meter i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #ffb703, #fb8500); transition: width .08s linear; }
+.special.full .meter i { background: linear-gradient(90deg, #ff4d6d, #ffd166, #27e0c6); background-size: 200% 100%; animation: shimmer 0.8s linear infinite; }
+.special.full .lbl { color: var(--gold); }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.ticker { min-height: 64px; display: grid; gap: 4px; justify-items: center; }
+.ticker .tricks { font-size: clamp(14px, 1.9vw, 19px); font-weight: 800; text-shadow: 0 2px 10px rgba(0,0,0,.8); }
+.ticker .combo { font-size: clamp(18px, 2.6vw, 28px); font-weight: 900; color: var(--gold); text-shadow: 0 2px 12px rgba(0,0,0,.8); }
+.balance { width: 220px; height: 10px; margin: 8px auto 0; border-radius: 5px; background: rgba(0,0,0,.5); border: 1px solid var(--line); position: relative; }
+.balance i { position: absolute; top: -4px; width: 6px; height: 18px; margin-left: -3px; border-radius: 3px; background: var(--accent-2); left: 50%; }
+.balance.vert { width: 10px; height: 120px; position: absolute; right: -150px; bottom: 30px; margin: 0; }
+.balance.vert i { left: -4px; top: 50%; width: 18px; height: 6px; margin-left: 0; margin-top: -3px; }
+.popups { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); display: grid; gap: 6px; justify-items: center; pointer-events: none; }
+.popup { font-weight: 900; font-size: clamp(20px, 3vw, 34px); text-shadow: 0 3px 16px rgba(0,0,0,.7); animation: rise 1.6s ease-out forwards; white-space: nowrap; }
+.popup.good { color: var(--good); } .popup.bad { color: var(--bad); } .popup.gold { color: var(--gold); } .popup.teal { color: var(--accent-2); }
+@keyframes rise { 0% { opacity: 0; transform: translateY(14px) scale(.9); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-26px); } }
+.zone { padding: 4px 12px; border-radius: 999px; font-weight: 900; font-size: 13px; background: rgba(39,224,198,.18); border: 1px solid var(--accent-2); color: var(--accent-2); opacity: .25; transition: opacity .15s; }
+.zone.on { opacity: 1; box-shadow: 0 0 18px rgba(39,224,198,.5); }
+.objpanel { position: absolute; top: 90px; right: 16px; width: min(330px, 86vw); padding: 16px; border-radius: var(--radius); background: var(--panel); border: 1px solid var(--line); backdrop-filter: blur(12px); pointer-events: auto; }
+.objpanel h4 { margin: 0 0 4px; font-size: 13px; letter-spacing: .2em; color: var(--accent-2); text-transform: uppercase; }
+.fps { position: absolute; left: 16px; top: 90px; font: 11px ui-monospace, monospace; color: var(--muted); background: rgba(0,0,0,.4); padding: 6px 8px; border-radius: 8px; white-space: pre; }
+
+/* ---------- touch controls ---------------------------------------------- */
+.touch { position: absolute; inset: auto 0 0 0; height: 0; pointer-events: none; }
+.touch .pad, .touch .acts { position: absolute; bottom: 90px; display: grid; gap: 8px; pointer-events: auto; }
+.touch .pad { left: 16px; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); }
+.touch .acts { right: 16px; grid-template-columns: repeat(2, 64px); }
+.touch button { border-radius: 16px; border: 1px solid var(--line); background: rgba(0,0,0,.42); font-weight: 800; font-size: 13px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.touch button.on { background: rgba(255,122,26,.45); }
+@media (hover: hover) and (pointer: fine) { .touch { display: none; } }
+
+/* ---------- overlays ---------------------------------------------------- */
+.overlay { display: grid; place-items: center; background: rgba(3,5,9,.62); backdrop-filter: blur(6px); padding: 20px; }
+.overlay .card { width: min(520px, 100%); }
+.results .big { font-size: clamp(40px, 7vw, 64px); font-weight: 900; letter-spacing: -0.03em; }
+.results .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin: 14px 0; }
+.results .stat { padding: 10px; border-radius: 12px; background: rgba(255,255,255,.05); border: 1px solid var(--line); }
+.results .stat small { display: block; color: var(--muted); font-size: 11px; letter-spacing: .15em; text-transform: uppercase; }
+.results .stat b { font-size: 20px; }
+.newbest { color: var(--gold); font-weight: 900; letter-spacing: .2em; font-size: 12px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+@media (max-width: 560px) { .opt { grid-template-columns: 1fr; } .chapter { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<canvas id="view" tabindex="0" aria-label="3D skatepark view"></canvas>
+
+<div id="ui">
+  <!-- MAIN MENU ------------------------------------------------------------ -->
+  <section data-screen="title" class="backdrop">
+    <div class="card">
+      <div class="brand"><h1>PRO SKATER <span>AI</span></h1><span class="tag">Momentum · rotation · flow</span></div>
+      <p class="sub">Skate three original parks with real momentum: pump the half-pipe, ollie gaps, flip, grab, grind and link it all into combos. Progress is saved in this browser.</p>
+      <div class="wallet" id="wallet"></div>
+      <div class="modes">
+        <button class="mode" data-action="open-story"><span class="k">MODE A</span><h3>Story Mode</h3><p>Career chapters with park objectives. Earn cash and unlock the next park.</p></button>
+        <button class="mode" data-action="open-parks" data-mode="blitz"><span class="k">MODE B</span><h3>Timed Blitz</h3><p>One minute. Bank as many combo points as you can. Best run is saved.</p></button>
+        <button class="mode" data-action="open-parks" data-mode="showdown"><span class="k">MODE C</span><h3>Half-Pipe Showdown</h3><p>60 seconds of vert. Every trick inside the half-pipe zone scores double.</p></button>
+        <button class="mode" data-action="open-parks" data-mode="free"><span class="k">MODE D</span><h3>Free Skate</h3><p>No clock, no pressure. Explore the park and practise lines.</p></button>
+      </div>
+      <div class="row">
+        <button class="btn" data-action="open-decks">Deck shop</button>
+        <button class="btn" data-action="open-options">Options</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- STORY CHAPTERS ------------------------------------------------------- -->
+  <section data-screen="story" class="backdrop hidden">
+    <div class="card">
+      <div class="head"><h2>Story Mode</h2><button class="btn" data-action="back">Back</button></div>
+      <div class="wallet" id="storyWallet"></div>
+      <div class="chapters" id="chapterList"></div>
+    </div>
+  </section>
+
+  <!-- PARK SELECT ---------------------------------------------------------- -->
+  <section data-screen="parks" class="backdrop hidden">
+    <div class="card">
+      <div class="head"><h2 id="parksTitle">Pick a park</h2><button class="btn" data-action="back">Back</button></div>
+      <p class="sub" id="parksSub"></p>
+      <div class="parks" id="parkList"></div>
+    </div>
+  </section>
+
+  <!-- DECK SHOP ------------------------------------------------------------ -->
+  <section data-screen="decks" class="backdrop hidden">
+    <div class="card">
+      <div class="head"><h2>Deck shop</h2><button class="btn" data-action="back">Back</button></div>
+      <div class="wallet" id="deckWallet"></div>
+      <div class="decks" id="deckList"></div>
+    </div>
+  </section>
+
+  <!-- OPTIONS -------------------------------------------------------------- -->
+  <section data-screen="options" class="backdrop hidden">
+    <div class="card">
+      <div class="head"><h2>Options</h2><button class="btn" data-action="back">Back</button></div>
+      <div class="opts">
+        <div class="opt"><label for="optQuality">Render quality</label>
+          <select id="optQuality">
+            <option value="low">Low (fast, 1024 shadows)</option>
+            <option value="high">High (1080p cap, 2048 shadows)</option>
+            <option value="ultra">Ultra (native resolution, 4096 shadows)</option>
+          </select></div>
+        <div class="opt"><label for="optVolume">Sound volume</label><input id="optVolume" type="range" min="0" max="1" step="0.05" /></div>
+        <div class="opt"><label for="optFps">Performance overlay</label><select id="optFps"><option value="0">Off</option><option value="1">On</option></select></div>
+        <h3 style="margin:10px 0 0">Controls</h3>
+        <ul class="keys">
+          <li><kbd>W</kbd><kbd>S</kbd> push / brake</li>
+          <li><kbd>A</kbd><kbd>D</kbd> carve, spin in the air</li>
+          <li><kbd>Space</kbd> hold to crouch and pump, release to ollie</li>
+          <li><kbd>J</kbd> flip trick (+ direction)</li>
+          <li><kbd>K</kbd> grab trick (hold, + direction)</li>
+          <li><kbd>L</kbd> grind near a rail or ledge, manual on flat</li>
+          <li><kbd>J</kbd>+<kbd>K</kbd> special (meter full)</li>
+          <li><kbd>Tab</kbd> objectives · <kbd>Esc</kbd> pause</li>
+        </ul>
+        <h3 style="margin:10px 0 0">Diagnostics</h3>
+        <div class="diag" id="diag">…</div>
+        <h3 style="margin:10px 0 0">Profile</h3>
+        <p class="sub" style="margin:0" id="profileInfo"></p>
+        <div class="row" style="margin-top:0"><button class="btn danger" data-action="reset-profile">Reset Profile</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOADING -------------------------------------------------------------- -->
+  <section data-screen="loading" class="loading hidden">
+    <div><div class="brand" style="justify-content:center"><h1 style="font-size:34px">PRO SKATER <span>AI</span></h1></div>
+      <div class="bar"><i id="loadBar"></i></div><p id="loadText">Loading…</p></div>
+  </section>
+
+  <!-- HUD ------------------------------------------------------------------ -->
+  <section data-screen="hud" class="hud hidden">
+    <div class="tl"><div class="modelabel" id="hudMode"></div><div class="score" id="hudScore">0</div></div>
+    <div class="tc"><div class="timer" id="hudTimer">1:00</div></div>
+    <div class="tr">
+      <div class="letters" id="hudLetters"><span>S</span><span>K</span><span>A</span><span>T</span><span>E</span></div>
+      <div class="zone hidden" id="hudZone">2× HALF-PIPE ZONE</div>
+      <button class="objbtn" id="hudObjBtn" data-action="toggle-objectives">Objectives (Tab)</button>
+    </div>
+    <div class="objpanel hidden" id="hudObjPanel"><h4 id="hudObjTitle">Objectives</h4><ul class="objlist" id="hudObjList"></ul></div>
+    <div class="fps hidden" id="hudFps"></div>
+    <div class="bl"><div class="special" id="hudSpecial"><span class="lbl">SPECIAL</span><div class="meter"><i></i></div></div></div>
+    <div class="bc">
+      <div class="ticker"><div class="combo" id="hudCombo"></div><div class="tricks" id="hudTricks"></div></div>
+      <div class="balance hidden" id="hudBalance"><i></i></div>
+    </div>
+    <div class="popups" id="hudPopups" aria-live="polite"></div>
+    <div class="touch" id="touch">
+      <div class="pad">
+        <span></span><button data-key="up">▲</button><span></span>
+        <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
+      </div>
+      <div class="acts">
+        <button data-key="flip">FLIP</button><button data-key="grab">GRAB</button>
+        <button data-key="grind">GRIND</button><button data-key="ollie">OLLIE</button>
+        <button data-key="pause" style="grid-column:span 2">PAUSE</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PAUSE ---------------------------------------------------------------- -->
+  <section data-screen="pause" class="overlay hidden">
+    <div class="card">
+      <div class="head"><h2>Paused</h2></div>
+      <ul class="objlist" id="pauseObjList"></ul>
+      <div class="row">
+        <button class="btn primary" data-action="resume">Resume</button>
+        <button class="btn" data-action="restart">Restart run</button>
+        <button class="btn" data-action="quit">Main menu</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- RESULTS -------------------------------------------------------------- -->
+  <section data-screen="results" class="overlay results hidden">
+    <div class="card">
+      <div class="modelabel" id="resMode"></div>
+      <div class="big" id="resScore">0</div>
+      <div class="newbest hidden" id="resBest">NEW PERSONAL BEST</div>
+      <div class="stats" id="resStats"></div>
+      <ul class="objlist" id="resObjs"></ul>
+      <div class="row">
+        <button class="btn primary" data-action="restart">Skate again</button>
+        <button class="btn hidden" id="resNext" data-action="next-chapter">Next chapter</button>
+        <button class="btn" data-action="quit">Main menu</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONFIRM -------------------------------------------------------------- -->
+  <section data-screen="confirm" class="overlay hidden">
+    <div class="card">
+      <h2 style="margin-top:0">Reset profile?</h2>
+      <p class="sub">This deletes your cash, story progress, unlocked parks, decks and records from this browser's database. It can't be undone.</p>
+      <div class="row"><button class="btn danger" data-action="confirm-reset">Delete everything</button><button class="btn" data-action="cancel-reset">Keep my profile</button></div>
+    </div>
+  </section>
+</div>
+
+<script type="module">
+/* =============================================================================
+   PRO SKATER AI — ENGINE
+   -----------------------------------------------------------------------------
+   One file, many modules. Each numbered section below is self-contained and
+   talks to the others only through the objects it exports at the bottom of
+   the section. Reading order follows the data flow:
+
+     §0  Imports           three.js is bundled by Vite (never a CDN copy)
+     §1  CONFIG            every tunable number in one frozen object
+     §2  SCRATCH           pre-allocated vectors/quaternions for hot loops
+     §3  SaveStore         IndexedDB persistence (localStorage/memory fallback)
+     §4  Profiles          save-file schema, defaults, validation, mutations
+     §5  Content           decks, parks, story chapters, game-mode matrix
+     §6  Textures          procedural 1024² PBR maps, cached on the CPU side
+     §7  Unloader          resource scopes + strict recursive dispose()
+     §8  Park              analytic height field, meshes, rails, zones
+     §9  Collectibles      S-K-A-T-E letters and particle flashes
+     §10 SkaterRig         procedural skater + board with IK posing
+     §11 Input             keyboard, gamepad and touch → actions
+     §12 Tricks            combo, scoring, repeat decay, special meter
+     §13 Skater            physics state machine: ground/air/grind/manual/bail
+     §14 Session           one run in one mode: timer, objectives, results
+     §15 Audio             tiny Web Audio synth (no audio files)
+     §16 HUD               DOM HUD with change-only writes
+     §17 Renderer & Level  lighting, shadows, environment, level lifecycle
+     §18 UI                SPA screen router and menus
+     §19 App               boot + fixed-step main loop
+   ========================================================================== */
+
+// §0 ─── Imports ──────────────────────────────────────────────────────────────
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+
+// §1 ─── CONFIG ───────────────────────────────────────────────────────────────
+/** All physics and scoring numbers live here so tuning never means hunting. */
+const CONFIG = Object.freeze({
+  physicsHz: 120,          // fixed simulation rate (render runs at display rate)
+  maxSubSteps: 10,         // cap catch-up steps after a long frame
+  gravity: 11,             // m/s², a touch above Earth for snappier airs
+  pushAccel: 5.5,          // m/s² while W is held
+  pushMaxSpeed: 8.5,       // pushing stops adding speed above this
+  brakeDecel: 7,
+  rollFriction: 0.22,      // m/s² constant rolling resistance
+  airDrag: 0.0055,         // per (m/s)² — tiny quadratic drag
+  maxSpeed: 14,
+  pumpGain: 0.4,           // extra downhill acceleration while crouched (pumping)
+  turnRate: 2.6,           // rad/s carving at low speed
+  turnRateFast: 1.7,       // rad/s carving at top speed
+  airSpinRate: 6.6,        // rad/s max spin in the air
+  airSpinAccel: 26,
+  lateralGrip: 11,         // how fast sideways sliding is killed (1/s)
+  ollieBase: 4.3,          // m/s vertical pop
+  ollieCharge: 1.8,        // extra pop for a full crouch
+  ollieChargeTime: 0.35,
+  stepUp: 0.28,            // larger sudden rises are walls
+  wallRestitution: 0.35,
+  vertSlope: 1.43,         // tan(55°): launches above this go straight up (vert)
+  vertInward: 0.25,        // m/s drift back into the ramp on vert airs
+  landAlign: 0.72,         // rad (~41°): worse landings bail
+  hardLanding: 15,         // m/s into the surface bails
+  bailTime: 1.5,
+  grindSnap: 0.55,         // m horizontal snap distance to a rail
+  grindFriction: 0.45,
+  grindMinSpeed: 3.2,
+  balanceDrift: 0.9,
+  balanceControl: 2.8,
+  bankDelay: 0.35,         // s on the ground before a combo banks
+  skaterRadius: 0.6,
+  specialFillPerPoint: 1 / 2600,
+  specialDecay: 0.025,
+});
+
+// §2 ─── SCRATCH ──────────────────────────────────────────────────────────────
+/* Every per-frame calculation reuses these instead of allocating, so the
+   garbage collector never wakes up mid-run (no GC micro-stutters). Rule:
+   a scratch object is only valid until the next function that might use it. */
+const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
+const _v4 = new THREE.Vector3(), _v5 = new THREE.Vector3(), _v6 = new THREE.Vector3();
+const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
+const _up = new THREE.Vector3(0, 1, 0);
+const _box = new THREE.Box3();
+const _sphere = new THREE.Sphere();
+const _grad = { x: 0, z: 0 };                 // height-field gradient output
+const _hit = { d2: 0, t: 0, line: null };      // closest grind line output
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const wrapAngle = (a) => { a = (a + Math.PI) % TAU; return a < 0 ? a + Math.PI : a - Math.PI; };
+const damp = (rate, dt) => 1 - Math.exp(-rate * dt);
+const fmt = (n) => Math.round(n).toLocaleString('en-US');
+
+// §3 ─── SaveStore (IndexedDB) ────────────────────────────────────────────────
+/**
+ * Key/value persistence. Prefers IndexedDB; if the browser blocks it (some
+ * private modes) it falls back to localStorage, then to memory, and says so
+ * in `mode` so the Options screen can tell the player where saves live.
+ * Writes are serialised through a promise queue so two quick saves can never
+ * land out of order.
+ */
+class SaveStore {
+  constructor(dbName = 'proskater-ai', storeName = 'profiles') {
+    this.dbName = dbName; this.storeName = storeName;
+    this.db = null; this.mode = 'memory'; this.memory = new Map();
+    this.queue = Promise.resolve();
+  }
+  async open() {
+    if (typeof indexedDB !== 'undefined') {
+      try {
+        this.db = await new Promise((resolve, reject) => {
+          const req = indexedDB.open(this.dbName, 1);
+          req.onupgradeneeded = () => { if (!req.result.objectStoreNames.contains(this.storeName)) req.result.createObjectStore(this.storeName); };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+          req.onblocked = () => reject(new Error('IndexedDB blocked'));
+        });
+        this.mode = 'indexeddb';
+        return;
+      } catch (err) { console.warn('[proskater] IndexedDB unavailable, falling back', err); }
+    }
+    try { localStorage.setItem('__ps_probe', '1'); localStorage.removeItem('__ps_probe'); this.mode = 'localstorage'; }
+    catch { this.mode = 'memory'; }
+  }
+  /** Runs one IndexedDB request inside its own transaction. */
+  #request(mode, make) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(this.storeName, mode);
+      const req = make(tx.objectStore(this.storeName));
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
+  async get(key) {
+    if (this.mode === 'indexeddb') return this.#request('readonly', (s) => s.get(key));
+    if (this.mode === 'localstorage') { const raw = localStorage.getItem(`${this.dbName}:${key}`); return raw ? JSON.parse(raw) : undefined; }
+    return this.memory.get(key);
+  }
+  put(key, value) {
+    const snapshot = structuredClone(value);
+    this.queue = this.queue.then(() => {
+      if (this.mode === 'indexeddb') return this.#request('readwrite', (s) => s.put(snapshot, key));
+      if (this.mode === 'localstorage') return localStorage.setItem(`${this.dbName}:${key}`, JSON.stringify(snapshot));
+      this.memory.set(key, snapshot);
+    }).catch((err) => console.error('[proskater] save failed', err));
+    return this.queue;
+  }
+  /**
+   * Securely clears a profile: deletes the record, and when no other
+   * profiles remain in this browser, deletes the whole database so nothing
+   * is left on disk. The store is reopened empty afterwards.
+   */
+  async wipe(key) {
+    await this.queue;
+    if (this.mode === 'indexeddb') {
+      await this.#request('readwrite', (s) => s.delete(key));
+      const remaining = await this.#request('readonly', (s) => s.count());
+      if (remaining === 0) {
+        this.db.close(); this.db = null;
+        await new Promise((resolve) => { const r = indexedDB.deleteDatabase(this.dbName); r.onsuccess = r.onerror = r.onblocked = () => resolve(); });
+        await this.open();
+      }
+    } else if (this.mode === 'localstorage') localStorage.removeItem(`${this.dbName}:${key}`);
+    else this.memory.delete(key);
+  }
+}
+
+// §4 ─── Profiles ─────────────────────────────────────────────────────────────
+const PROFILE_VERSION = 1;
+
+/** A brand-new save file. Everything the career needs starts here. */
+function freshProfile() {
+  return {
+    version: PROFILE_VERSION,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    totalCashEarned: 0,           // lifetime earnings (never decreases)
+    cash: 0,                      // wallet (spent in the deck shop)
+    storyChapter: 0,              // index of the furthest chapter reached
+    completedObjectives: [],      // objective ids, e.g. "ch1:letters"
+    unlockedParks: ['warehouse'],
+    ownedDecks: ['maple'],
+    equippedDeck: 'maple',
+    records: { blitz: {}, showdown: {}, story: {} },
+    stats: { runs: 0, tricksLanded: 0, bails: 0, lettersCollected: 0, bestCombo: 0, grindMeters: 0 },
+    settings: { quality: 'high', volume: 0.7, fps: false },
+  };
+}
+
+/** Accepts anything read from disk and returns a valid profile. */
+function normalizeProfile(raw) {
+  const base = freshProfile();
+  if (!raw || typeof raw !== 'object') return base;
+  const num = (v, d) => (Number.isFinite(v) && v >= 0 ? v : d);
+  const strs = (v, d) => (Array.isArray(v) ? [...new Set(v.filter((s) => typeof s === 'string'))] : d);
+  const recs = (v) => (v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).filter(([, n]) => Number.isFinite(n))) : {});
+  const p = {
+    ...base,
+    createdAt: num(raw.createdAt, base.createdAt),
+    totalCashEarned: num(raw.totalCashEarned, 0),
+    cash: num(raw.cash, 0),
+    storyChapter: clamp(Math.floor(num(raw.storyChapter, 0)), 0, CHAPTERS.length - 1),
+    completedObjectives: strs(raw.completedObjectives, []),
+    unlockedParks: strs(raw.unlockedParks, base.unlockedParks).filter((id) => PARKS[id]),
+    ownedDecks: strs(raw.ownedDecks, base.ownedDecks).filter((id) => DECKS.some((d) => d.id === id)),
+    equippedDeck: typeof raw.equippedDeck === 'string' ? raw.equippedDeck : 'maple',
+    records: { blitz: recs(raw.records?.blitz), showdown: recs(raw.records?.showdown), story: recs(raw.records?.story) },
+    stats: { ...base.stats, ...Object.fromEntries(Object.entries(raw.stats ?? {}).filter(([k, v]) => k in base.stats && Number.isFinite(v))) },
+    settings: {
+      quality: ['low', 'high', 'ultra'].includes(raw.settings?.quality) ? raw.settings.quality : 'high',
+      volume: clamp(Number(raw.settings?.volume ?? 0.7) || 0, 0, 1),
+      fps: Boolean(raw.settings?.fps),
+    },
+  };
+  if (!p.unlockedParks.includes('warehouse')) p.unlockedParks.unshift('warehouse');
+  if (!p.ownedDecks.includes('maple')) p.ownedDecks.unshift('maple');
+  if (!p.ownedDecks.includes(p.equippedDeck)) p.equippedDeck = 'maple';
+  return p;
+}
+
+/** Owns the live profile object and every rule that changes it. */
+class Profiles {
+  constructor(store) { this.store = store; this.key = 'guest'; this.data = freshProfile(); this.listeners = new Set(); }
+  async load(key) {
+    this.key = key;
+    const raw = await this.store.get(key);
+    this.data = normalizeProfile(raw);
+    if (!raw) await this.save();                // first visit: write the fresh profile
+  }
+  save() { this.data.updatedAt = Date.now(); this.listeners.forEach((fn) => fn(this.data)); return this.store.put(this.key, this.data); }
+  onChange(fn) { this.listeners.add(fn); }
+  award(cash) { this.data.cash += cash; this.data.totalCashEarned += cash; }
+  isDone(objectiveId) { return this.data.completedObjectives.includes(objectiveId); }
+  /** Marks an objective done once, pays it and checks for chapter completion. */
+  completeObjective(chapter, objective) {
+    const id = `${chapter.id}:${objective.id}`;
+    if (this.isDone(id)) return null;
+    this.data.completedObjectives.push(id);
+    this.award(objective.cash);
+    const chapterDone = chapter.objectives.every((o) => this.isDone(`${chapter.id}:${o.id}`));
+    let unlocked = null;
+    if (chapterDone) {
+      const idx = CHAPTERS.indexOf(chapter);
+      if (chapter.rewardDeck && !this.data.ownedDecks.includes(chapter.rewardDeck)) this.data.ownedDecks.push(chapter.rewardDeck);
+      const next = CHAPTERS[idx + 1];
+      if (next) {
+        this.data.storyChapter = Math.max(this.data.storyChapter, idx + 1);
+        if (!this.data.unlockedParks.includes(next.park)) { this.data.unlockedParks.push(next.park); unlocked = PARKS[next.park].name; }
+      }
+    }
+    this.save();
+    return { id, cash: objective.cash, chapterDone, unlocked };
+  }
+  chapterUnlocked(index) { return index <= this.data.storyChapter; }
+  record(mode, parkId, score) {
+    const book = this.data.records[mode];
+    const prev = book[parkId] ?? 0;
+    if (score > prev) { book[parkId] = score; return true; }
+    return false;
+  }
+  buyDeck(deck) {
+    if (this.data.ownedDecks.includes(deck.id) || this.data.cash < deck.price) return false;
+    this.data.cash -= deck.price; this.data.ownedDecks.push(deck.id); this.data.equippedDeck = deck.id; this.save(); return true;
+  }
+  equipDeck(id) { if (this.data.ownedDecks.includes(id)) { this.data.equippedDeck = id; this.save(); } }
+  async reset() { await this.store.wipe(this.key); this.data = freshProfile(); await this.save(); }
+}
+
+// §5 ─── Content: decks, parks, chapters, mode matrix ─────────────────────────
+/** Deck graphics are drawn on a 128×512 canvas (the underside of the board). */
+const DECKS = [
+  { id: 'maple', name: 'Plain Maple', price: 0, draw(g, w, h) { const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, '#c89b62'); gr.addColorStop(0.5, '#e2bb84'); gr.addColorStop(1, '#c08f55'); g.fillStyle = gr; g.fillRect(0, 0, w, h); g.strokeStyle = 'rgba(90,55,20,.35)'; for (let i = 0; i < 26; i++) { g.beginPath(); g.moveTo(Math.random() * w, 0); g.bezierCurveTo(Math.random() * w, h * .3, Math.random() * w, h * .6, Math.random() * w, h); g.stroke(); } } },
+  { id: 'sunset', name: 'Sunset Fade', price: 600, draw(g, w, h) { const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#ffd166'); gr.addColorStop(0.45, '#ff7a1a'); gr.addColorStop(1, '#7b2cbf'); g.fillStyle = gr; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(255,255,255,.85)'; g.beginPath(); g.arc(w / 2, h * 0.42, w * 0.32, 0, TAU); g.fill(); g.fillStyle = '#7b2cbf'; for (let i = 0; i < 6; i++) g.fillRect(0, h * 0.42 + i * 14, w, 5 + i); } },
+  { id: 'checker', name: 'Checker Classic', price: 1000, draw(g, w, h) { const s = w / 4; for (let y = 0; y < h / s; y++) for (let x = 0; x < 4; x++) { g.fillStyle = (x + y) % 2 ? '#111' : '#f1f1f1'; g.fillRect(x * s, y * s, s, s); } g.fillStyle = '#ff4d6d'; g.fillRect(w * .42, 0, w * .16, h); } },
+  { id: 'circuit', name: 'Circuit Board', price: 1500, draw(g, w, h) { g.fillStyle = '#062a24'; g.fillRect(0, 0, w, h); g.strokeStyle = '#27e0c6'; g.lineWidth = 3; for (let i = 0; i < 40; i++) { let x = Math.random() * w, y = Math.random() * h; g.beginPath(); g.moveTo(x, y); for (let k = 0; k < 4; k++) { if (k % 2) x += (Math.random() - .5) * 60; else y += (Math.random() - .5) * 90; g.lineTo(x, y); } g.stroke(); g.fillStyle = '#ffd166'; g.fillRect(x - 3, y - 3, 6, 6); } } },
+  { id: 'neon', name: 'Neon Grid', price: 2500, draw(g, w, h) { g.fillStyle = '#12002b'; g.fillRect(0, 0, w, h); g.strokeStyle = '#ff2fd6'; g.lineWidth = 2; for (let y = 0; y < h; y += 24) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); } g.strokeStyle = '#2fe7ff'; for (let x = 0; x <= w; x += 21) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); } g.font = 'italic 900 40px system-ui'; g.fillStyle = '#fff'; g.save(); g.translate(w / 2 + 14, h / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.fillText('SKATE', 0, 0); g.restore(); } },
+  { id: 'golden', name: 'Golden Hour', price: 5000, draw(g, w, h) { const gr = g.createLinearGradient(0, 0, w, h); gr.addColorStop(0, '#3d2600'); gr.addColorStop(0.5, '#ffd166'); gr.addColorStop(1, '#7a4b00'); g.fillStyle = gr; g.fillRect(0, 0, w, h); g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 2; for (let i = 0; i < 12; i++) { g.beginPath(); g.arc(w / 2, h / 2, 8 + i * 18, 0, TAU); g.stroke(); } } },
+];
+const deckById = (id) => DECKS.find((d) => d.id === id) ?? DECKS[0];
+
+/**
+ * Park layouts. Every element is placed at (x, z) with `rot` quarter turns.
+ * Element types and their parameters (metres):
+ *   halfpipe  W flat width, R transition radius, cap max angle°, len, deck
+ *   quarter   R, cap, len, deck              (rises toward local +u)
+ *   funbox    w top length, d width, h height, kick ramp length
+ *   kicker    w width, len, h, curve exponent (rises toward local +u)
+ *   ledge     w length, d depth, h height
+ *   rail      len, h
+ * Letters are world positions; `y` is metres above the ground under them.
+ */
+const PARKS = {
+  warehouse: {
+    id: 'warehouse', name: 'Rust Belt Warehouse', tagline: 'Concrete floor, plywood ramps and a center funbox.',
+    size: 64,
+    palette: { ground: 0xb8b2a8, ramp: 0xc9a476, side: 0x2f6f8f, coping: 0xd9dde3, wall: 0x6d4c41, sky: [0x8fb8e8, 0xf1d9b5], fog: 0xd8cbb8, sun: 0xfff0d6, accent: 0xff7a1a },
+    spawn: { x: -14, z: 3, heading: Math.PI / 2 },
+    elements: [
+      { type: 'halfpipe', x: 0, z: -21, rot: 0, W: 6, R: 3.4, cap: 80, len: 14, deck: 2.2 },
+      { type: 'funbox', x: 0, z: 3, rot: 0, w: 4, d: 3.2, h: 0.8, kick: 2.6, central: true },
+      { type: 'rail', x: 0, z: 14, rot: 0, len: 14, h: 0.55 },
+      { type: 'quarter', x: 24, z: 2, rot: 0, R: 3, cap: 78, len: 22, deck: 2.5 },
+      { type: 'quarter', x: -24, z: 2, rot: 2, R: 3, cap: 78, len: 22, deck: 2.5 },
+      { type: 'kicker', x: -12, z: -6, rot: 1, w: 2.6, len: 2.4, h: 0.9, curve: 1.6 },
+      { type: 'kicker', x: 12, z: 11, rot: 3, w: 2.6, len: 2.4, h: 0.9, curve: 1.6 },
+      { type: 'ledge', x: -14, z: 18, rot: 1, w: 8, d: 0.9, h: 0.45 },
+      { type: 'ledge', x: 14, z: -8, rot: 0, w: 7, d: 0.9, h: 0.45 },
+    ],
+    letters: [
+      { ch: 'S', x: 0, z: 3, y: 2.5 },
+      { ch: 'K', x: 3.5, z: 14, y: 1.9 },
+      { ch: 'A', x: 6.2, z: -18, y: 5.1 },
+      { ch: 'T', x: -12, z: -1.5, y: 2.6 },
+      { ch: 'E', x: 26.6, z: 8, y: 4.3 },
+    ],
+  },
+  rooftops: {
+    id: 'rooftops', name: 'Harbor Rooftops', tagline: 'Twin funboxes, long rails and a sideways half-pipe above the docks.',
+    size: 64,
+    palette: { ground: 0x9aa3ad, ramp: 0x8c9aa8, side: 0xb03a48, coping: 0xe8ecf2, wall: 0x37474f, sky: [0x5d8fd6, 0xffc89a], fog: 0xc9c6d6, sun: 0xffe2c4, accent: 0x27e0c6 },
+    spawn: { x: 0, z: 20, heading: Math.PI },
+    elements: [
+      { type: 'halfpipe', x: -18, z: -6, rot: 1, W: 6, R: 3.6, cap: 80, len: 14, deck: 2.2 },
+      { type: 'funbox', x: 8, z: -16, rot: 0, w: 5, d: 3.5, h: 1.0, kick: 3.0, central: true },
+      { type: 'funbox', x: 10, z: 16, rot: 1, w: 3, d: 3, h: 0.7, kick: 2.2 },
+      { type: 'rail', x: 4, z: 0, rot: 1, len: 18, h: 0.6 },
+      { type: 'rail', x: 14, z: 0, rot: 1, len: 12, h: 0.9 },
+      { type: 'quarter', x: 0, z: 26, rot: 1, R: 3, cap: 78, len: 30, deck: 2.4 },
+      { type: 'kicker', x: 24, z: 14, rot: 2, w: 3, len: 2.6, h: 1.0, curve: 1.6 },
+      { type: 'ledge', x: -6, z: 18, rot: 0, w: 10, d: 1, h: 0.5 },
+      { type: 'ledge', x: 24, z: -8, rot: 1, w: 9, d: 1, h: 0.45 },
+    ],
+    letters: [
+      { ch: 'S', x: 8, z: -16, y: 2.9 },
+      { ch: 'K', x: 4, z: -5, y: 2.0 },
+      { ch: 'A', x: -18, z: 0.6, y: 5.6 },
+      { ch: 'T', x: 19.5, z: 14, y: 3.0 },
+      { ch: 'E', x: 14, z: 5, y: 2.4 },
+    ],
+  },
+  canyon: {
+    id: 'canyon', name: 'Desert Bowl', tagline: 'A giant half-pipe, a gap between kickers and sun-baked ledges.',
+    size: 64,
+    palette: { ground: 0xd8b48a, ramp: 0xe0c49a, side: 0x8a3b12, coping: 0xf2f2f2, wall: 0xa0522d, sky: [0x4f9bd9, 0xffd29a], fog: 0xf0d2a8, sun: 0xffe6b0, accent: 0xffd166 },
+    spawn: { x: 0, z: 18, heading: Math.PI },
+    elements: [
+      { type: 'halfpipe', x: 0, z: -18, rot: 0, W: 7, R: 4, cap: 80, len: 18, deck: 2 },
+      { type: 'funbox', x: 0, z: 6, rot: 0, w: 6, d: 4, h: 1.1, kick: 3.2, central: true },
+      { type: 'rail', x: -9, z: 6, rot: 1, len: 10, h: 0.6 },
+      { type: 'rail', x: 9, z: 6, rot: 1, len: 10, h: 0.6 },
+      { type: 'quarter', x: -25, z: 8, rot: 2, R: 3.2, cap: 78, len: 24, deck: 2.5 },
+      { type: 'quarter', x: 25, z: 8, rot: 0, R: 3.2, cap: 78, len: 24, deck: 2.5 },
+      { type: 'kicker', x: -13, z: 21, rot: 0, w: 3, len: 2.8, h: 1.1, curve: 1.6 },
+      { type: 'kicker', x: 13, z: 21, rot: 2, w: 3, len: 2.8, h: 1.1, curve: 1.6 },
+      { type: 'ledge', x: 0, z: 27, rot: 0, w: 12, d: 1, h: 0.5 },
+    ],
+    letters: [
+      { ch: 'S', x: 0, z: 6, y: 3.0 },
+      { ch: 'K', x: -9, z: 9, y: 2.0 },
+      { ch: 'A', x: -7.4, z: -14, y: 5.7 },
+      { ch: 'T', x: 0, z: 21, y: 3.2 },
+      { ch: 'E', x: 27.5, z: 14, y: 4.6 },
+    ],
+  },
+};
+const PARK_ORDER = ['warehouse', 'rooftops', 'canyon'];
+
+/**
+ * Story chapters. Objective types and how Session checks them:
+ *   score     run score ≥ target            letters  all five letters in one run
+ *   funboxFlip a kickflip-family trick landed after flying over the central funbox
+ *   combo     one banked combo ≥ target      grind    metres grinded in one run
+ *   spin      landed rotation ≥ target°      vertAir  metres above coping in the half-pipe
+ *   special   land a special trick           manual   one manual ≥ target seconds
+ */
+const CHAPTERS = [
+  { id: 'ch1', park: 'warehouse', title: 'Warm-Up at the Warehouse', blurb: 'Learn the park, find the letters and show the locals a clean kickflip.', rewardDeck: 'sunset', objectives: [
+    { id: 'score', type: 'score', target: 15000, label: 'Score 15,000 points', cash: 300 },
+    { id: 'letters', type: 'letters', target: 5, label: 'Collect S-K-A-T-E', cash: 500 },
+    { id: 'funbox', type: 'funboxFlip', target: 1, label: 'Kickflip over the central funbox', cash: 400 },
+    { id: 'grind', type: 'grind', target: 15, label: 'Grind 15 m in one run', cash: 300 },
+    { id: 'combo', type: 'combo', target: 2500, label: 'Land a 2,500 point combo', cash: 500 },
+  ] },
+  { id: 'ch2', park: 'rooftops', title: 'Rooftop Run', blurb: 'Bigger air, longer rails. The harbor crowd wants rotation.', rewardDeck: 'circuit', objectives: [
+    { id: 'score', type: 'score', target: 50000, label: 'Score 50,000 points', cash: 600 },
+    { id: 'letters', type: 'letters', target: 5, label: 'Collect S-K-A-T-E', cash: 800 },
+    { id: 'spin', type: 'spin', target: 540, label: 'Land a 540 spin', cash: 600 },
+    { id: 'vert', type: 'vertAir', target: 1.2, label: 'Air 1.2 m above the half-pipe coping', cash: 700 },
+    { id: 'combo', type: 'combo', target: 10000, label: 'Land a 10,000 point combo', cash: 900 },
+  ] },
+  { id: 'ch3', park: 'canyon', title: 'Canyon Finals', blurb: 'The desert bowl is the final stage of the career. Bring everything.', rewardDeck: 'golden', objectives: [
+    { id: 'score', type: 'score', target: 120000, label: 'Score 120,000 points', cash: 1000 },
+    { id: 'letters', type: 'letters', target: 5, label: 'Collect S-K-A-T-E', cash: 1200 },
+    { id: 'special', type: 'special', target: 1, label: 'Land a special trick', cash: 1000 },
+    { id: 'manual', type: 'manual', target: 4, label: 'Hold a manual for 4 seconds', cash: 800 },
+    { id: 'combo', type: 'combo', target: 30000, label: 'Land a 30,000 point combo', cash: 1500 },
+  ] },
+];
+
+/** The four modes and what each one switches on. */
+const MODES = {
+  story:    { id: 'story', label: 'Story Mode', duration: 120, letters: true, objectives: true, zoneMult: 1, showZone: false, scored: true },
+  blitz:    { id: 'blitz', label: 'Timed Blitz', duration: 60, letters: false, objectives: false, zoneMult: 1, showZone: false, scored: true },
+  showdown: { id: 'showdown', label: 'Half-Pipe Showdown', duration: 60, letters: false, objectives: false, zoneMult: 2, showZone: true, scored: true },
+  free:     { id: 'free', label: 'Free Skate', duration: Infinity, letters: false, objectives: false, zoneMult: 1, showZone: false, scored: false },
+};
+
+/** Quality tiers: pixel budget, shadow map, texture size. */
+const QUALITY = {
+  low:   { maxPixels: 1280 * 720, maxDpr: 1, shadow: 1024, tex: 512 },
+  high:  { maxPixels: 1920 * 1080, maxDpr: 2, shadow: 2048, tex: 1024 },
+  ultra: { maxPixels: Infinity, maxDpr: 2, shadow: 4096, tex: 1024 },
+};
+
+/**
+ * Optional authored assets. Drop optimized files into public/modules/proskater/
+ * and list them here; the loader picks them up, applies the same mip filtering
+ * and disposes them with the level. Physics always uses the analytic park
+ * below, so a skatepark.glb is scenery around it, not collision.
+ */
+const ASSET_MANIFEST = { skatepark: null /* '/modules/proskater/skatepark.glb' */, skater: null /* '/modules/proskater/skater.glb' */ };
+
+// §6 ─── Textures (procedural PBR) ────────────────────────────────────────────
+/**
+ * Seamless detail maps generated on canvases: albedo detail (tinted by the
+ * material colour so one map serves every park palette), roughness and a
+ * normal map derived from the same height noise. The canvases are cached on
+ * the CPU, but GPU textures are created per level and disposed with it.
+ */
+const Textures = (() => {
+  const cache = new Map();                       // key → { albedo, rough, normal } canvases
+  let maxAniso = 8;
+  function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+  /** Tileable value noise: lattice wraps at `period` so the texture repeats seamlessly. */
+  function makeNoise(seed, period) {
+    const r = rng(seed), grid = new Float32Array(period * period);
+    for (let i = 0; i < grid.length; i++) grid[i] = r();
+    return (x, y) => {
+      const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+      const x0 = ((xi % period) + period) % period, y0 = ((yi % period) + period) % period;
+      const x1 = (x0 + 1) % period, y1 = (y0 + 1) % period;
+      const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+      const a = grid[y0 * period + x0], b = grid[y0 * period + x1], c = grid[y1 * period + x0], d = grid[y1 * period + x1];
+      return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+    };
+  }
+  /** Fills a height buffer with tileable fractal noise + a recipe callback. */
+  function heightField(size, seed, octaves, recipe) {
+    const h = new Float32Array(size * size);
+    const noises = Array.from({ length: octaves }, (_, o) => makeNoise(seed + o * 101, 8 << o));
+    for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+      let v = 0, amp = 0.5, norm = 0;
+      for (let o = 0; o < octaves; o++) { const f = (8 << o) / size; v += noises[o](x * f, y * f) * amp; norm += amp; amp *= 0.5; }
+      h[y * size + x] = recipe(v / norm, x / size, y / size);
+    }
+    return h;
+  }
+  function toCanvas(size, pixel) {
+    const c = document.createElement('canvas'); c.width = c.height = size;
+    const g = c.getContext('2d'), img = g.createImageData(size, size), d = img.data;
+    for (let i = 0, p = 0; i < size * size; i++, p += 4) { pixel(i, d, p); d[p + 3] = 255; }
+    g.putImageData(img, 0, 0); return c;
+  }
+  /** Sobel normal map from a wrapping height buffer. */
+  function normalCanvas(h, size, strength) {
+    return toCanvas(size, (i, d, p) => {
+      const x = i % size, y = (i / size) | 0;
+      const at = (dx, dy) => h[((y + dy + size) % size) * size + ((x + dx + size) % size)];
+      const nx = (at(-1, 0) - at(1, 0)) * strength, ny = (at(0, -1) - at(0, 1)) * strength;
+      const len = Math.hypot(nx, ny, 1);
+      d[p] = (nx / len * 0.5 + 0.5) * 255; d[p + 1] = (ny / len * 0.5 + 0.5) * 255; d[p + 2] = (1 / len * 0.5 + 0.5) * 255;
+    });
+  }
+  const RECIPES = {
+    concrete: { seed: 11, oct: 5, strength: 2.2,
+      height: (n, u, v) => { const joint = Math.min(Math.abs(u - 0.5), Math.abs(v - 0.5)) < 0.003 ? -0.35 : 0; const pits = n > 0.72 ? -(n - 0.72) * 1.4 : 0; return n * 0.6 + joint + pits; },
+      albedo: (h) => 0.72 + h * 0.38, rough: (h) => 0.78 + (0.5 - h) * 0.2 },
+    plywood: { seed: 29, oct: 4, strength: 1.2,
+      height: (n, u, v) => { const grain = Math.sin((v * 22 + n * 3.5) * TAU) * 0.08; const seam = Math.abs(((u * 4) % 1) - 0.5) > 0.497 ? -0.25 : 0; return n * 0.35 + grain + seam; },
+      albedo: (h) => 0.82 + h * 0.3, rough: (h) => 0.55 + (0.5 - h) * 0.25 },
+    painted: { seed: 47, oct: 4, strength: 0.9,
+      height: (n) => n * 0.3 + (n > 0.68 ? 0.12 : 0), albedo: (h) => 0.86 + h * 0.22, rough: (h) => 0.5 + h * 0.3 },
+  };
+  function canvases(kind, size) {
+    const key = `${kind}:${size}`;
+    if (!cache.has(key)) {
+      const r = RECIPES[kind];
+      const h = heightField(size, r.seed, r.oct, r.height);
+      const albedo = toCanvas(size, (i, d, p) => { const a = clamp(r.albedo(h[i]), 0, 1) * 255; d[p] = a; d[p + 1] = a * 0.985; d[p + 2] = a * 0.96; });
+      const rough = toCanvas(size, (i, d, p) => { const a = clamp(r.rough(h[i]), 0, 1) * 255; d[p] = d[p + 1] = d[p + 2] = a; });
+      cache.set(key, { albedo, rough, normal: normalCanvas(h, size, r.strength) });
+    }
+    return cache.get(key);
+  }
+  /** Mip-mapped, trilinear, anisotropic: crisp near, shimmer-free far. */
+  function finish(tex, srgb, repeat) {
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.generateMipmaps = true;
+    tex.anisotropy = maxAniso;
+    tex.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+    tex.repeat.set(repeat, repeat);
+    return tex;
+  }
+  return {
+    setAnisotropy(n) { maxAniso = n; },
+    /** Returns fresh GPU textures (registered in `scope`) for one material. */
+    pbr(kind, size, scope, repeat = 1) {
+      const c = canvases(kind, size);
+      return {
+        map: scope.track(finish(new THREE.CanvasTexture(c.albedo), true, repeat)),
+        roughnessMap: scope.track(finish(new THREE.CanvasTexture(c.rough), false, repeat)),
+        normalMap: scope.track(finish(new THREE.CanvasTexture(c.normal), false, repeat)),
+      };
+    },
+    finish,
+    /** Warm the CPU cache during the loading screen. */
+    prepare(size) { for (const k of Object.keys(RECIPES)) canvases(k, size); },
+  };
+})();
+
+// §7 ─── Unloader ─────────────────────────────────────────────────────────────
+/**
+ * A ResourceScope remembers every GPU resource a level creates. Leaving a level
+ * calls Unloader.purge(), which walks the scene graph recursively disposing
+ * geometries, every texture slot of every material, the materials themselves,
+ * skeletons and light shadow maps — then disposes anything the scope tracked
+ * that was not in the graph (e.g. textures held only by a sprite pool).
+ */
+class ResourceScope {
+  constructor(name) { this.name = name; this.items = new Set(); }
+  track(resource) { if (resource && typeof resource.dispose === 'function') this.items.add(resource); return resource; }
+  disposeAll() { for (const r of this.items) r.dispose(); const n = this.items.size; this.items.clear(); return n; }
+}
+
+const Unloader = {
+  disposeMaterial(material, seen) {
+    if (!material || seen.has(material)) return;
+    seen.add(material);
+    for (const key of Object.keys(material)) {
+      const value = material[key];
+      if (value && value.isTexture && !seen.has(value)) { seen.add(value); value.dispose(); }
+    }
+    if (material.uniforms) for (const u of Object.values(material.uniforms)) if (u?.value?.isTexture && !seen.has(u.value)) { seen.add(u.value); u.value.dispose(); }
+    material.dispose();
+  },
+  /** Recursively disposes an object tree and detaches it. */
+  disposeObject(root, seen = new Set()) {
+    if (!root) return;
+    root.traverse((obj) => {
+      if (obj.geometry && !seen.has(obj.geometry)) { seen.add(obj.geometry); obj.geometry.dispose(); }
+      if (obj.material) (Array.isArray(obj.material) ? obj.material : [obj.material]).forEach((m) => this.disposeMaterial(m, seen));
+      if (obj.isSkinnedMesh && obj.skeleton) obj.skeleton.dispose();
+      if (obj.isLight && typeof obj.dispose === 'function') obj.dispose();
+    });
+    root.removeFromParent();
+    root.clear();
+  },
+  /** Full level purge + renderer cache flush. Returns renderer memory after. */
+  purge(root, scope, renderer) {
+    this.disposeObject(root);
+    scope?.disposeAll();
+    renderer.renderLists.dispose();
+    return { ...renderer.info.memory, programs: renderer.info.programs?.length ?? 0 };
+  },
+};
+
+// §8 ─── Park ─────────────────────────────────────────────────────────────────
+/**
+ * The park is defined analytically: groundHeight(x, z) is the max of every
+ * element's local profile. The physics samples this function directly and the
+ * meshes are built from the same profiles, so what you see is what you ride.
+ */
+function quarterProfile(R, capDeg) {
+  const cap = capDeg * Math.PI / 180;
+  return { uCap: R * Math.sin(cap), hCap: R * (1 - Math.cos(cap)), cap };
+}
+
+/** Compiles one element: local height function, bounds, grind lines, meshes. */
+function compileElement(def) {
+  const theta = (def.rot ?? 0) * Math.PI / 2;
+  const el = { ...def, cos: Math.cos(theta), sin: Math.sin(theta), local: null, uMin: 0, uMax: 0, vHalf: 0, grind: [], profile: null, endCaps: [true, true] };
+  const NEG = -Infinity;
+  switch (def.type) {
+    case 'halfpipe': {
+      const q = quarterProfile(def.R, def.cap); el.q = q;
+      const half = def.W / 2, ext = half + q.uCap + def.deck;
+      el.uMin = -ext; el.uMax = ext; el.vHalf = def.len / 2;
+      el.local = (u, v) => {
+        if (v < -el.vHalf || v > el.vHalf) return NEG;
+        const a = Math.abs(u); if (a > ext) return NEG;
+        const d = a - half; if (d <= 0) return 0;
+        if (d <= q.uCap) return def.R - Math.sqrt(def.R * def.R - d * d);
+        return q.hCap;
+      };
+      const pts = [[-ext, q.hCap]];
+      for (let i = 24; i >= 0; i--) { const a = q.cap * i / 24; pts.push([-(half + def.R * Math.sin(a)), def.R * (1 - Math.cos(a))]); }
+      for (let i = 0; i <= 24; i++) { const a = q.cap * i / 24; pts.push([half + def.R * Math.sin(a), def.R * (1 - Math.cos(a))]); }
+      pts.push([ext, q.hCap]);
+      el.profile = pts;
+      el.coping = [[-(half + q.uCap), q.hCap], [half + q.uCap, q.hCap]];
+      for (const [u, h] of el.coping) el.grind.push({ u0: u, v0: -el.vHalf, u1: u, v1: el.vHalf, h, kind: 'coping' });
+      el.zone = { uMin: -(half + q.uCap), uMax: half + q.uCap, hTop: q.hCap };
+      break;
+    }
+    case 'quarter': {
+      const q = quarterProfile(def.R, def.cap); el.q = q;
+      el.uMin = 0; el.uMax = q.uCap + def.deck; el.vHalf = def.len / 2;
+      el.local = (u, v) => {
+        if (v < -el.vHalf || v > el.vHalf || u < 0 || u > el.uMax) return NEG;
+        if (u <= q.uCap) return def.R - Math.sqrt(def.R * def.R - u * u);
+        return q.hCap;
+      };
+      const pts = [];
+      for (let i = 0; i <= 24; i++) { const a = q.cap * i / 24; pts.push([def.R * Math.sin(a), def.R * (1 - Math.cos(a))]); }
+      pts.push([el.uMax, q.hCap]);
+      el.profile = pts;
+      el.coping = [[q.uCap, q.hCap]];
+      el.grind.push({ u0: q.uCap, v0: -el.vHalf, u1: q.uCap, v1: el.vHalf, h: q.hCap, kind: 'coping' });
+      break;
+    }
+    case 'funbox': {
+      const half = def.w / 2, ext = half + def.kick;
+      el.uMin = -ext; el.uMax = ext; el.vHalf = def.d / 2;
+      el.local = (u, v) => {
+        if (v < -el.vHalf || v > el.vHalf) return NEG;
+        const a = Math.abs(u); if (a > ext) return NEG;
+        return a <= half ? def.h : def.h * (1 - (a - half) / def.kick);
+      };
+      el.profile = [[-ext, 0], [-half, def.h], [half, def.h], [ext, 0]];
+      el.grind.push({ u0: -half, v0: -el.vHalf, u1: half, v1: -el.vHalf, h: def.h, kind: 'ledge' }, { u0: -half, v0: el.vHalf, u1: half, v1: el.vHalf, h: def.h, kind: 'ledge' });
+      el.over = { uHalf: half + def.kick * 0.6, vHalf: el.vHalf + 0.25, top: def.h };
+      break;
+    }
+    case 'kicker': {
+      el.uMin = 0; el.uMax = def.len; el.vHalf = def.w / 2;
+      el.local = (u, v) => (v < -el.vHalf || v > el.vHalf || u < 0 || u > def.len ? NEG : def.h * Math.pow(u / def.len, def.curve));
+      const pts = []; for (let i = 0; i <= 14; i++) { const u = def.len * i / 14; pts.push([u, def.h * Math.pow(u / def.len, def.curve)]); }
+      el.profile = pts;
+      break;
+    }
+    case 'ledge': {
+      el.uMin = -def.w / 2; el.uMax = def.w / 2; el.vHalf = def.d / 2;
+      el.local = (u, v) => (Math.abs(u) <= def.w / 2 && Math.abs(v) <= el.vHalf ? def.h : NEG);
+      el.grind.push({ u0: -def.w / 2, v0: -el.vHalf, u1: def.w / 2, v1: -el.vHalf, h: def.h, kind: 'ledge' }, { u0: -def.w / 2, v0: el.vHalf, u1: def.w / 2, v1: el.vHalf, h: def.h, kind: 'ledge' });
+      break;
+    }
+    case 'rail': {
+      el.uMin = -def.len / 2; el.uMax = def.len / 2; el.vHalf = 0.05;
+      el.local = () => NEG;                              // rails are grind-only
+      el.grind.push({ u0: -def.len / 2, v0: 0, u1: def.len / 2, v1: 0, h: def.h, kind: 'rail' });
+      break;
+    }
+  }
+  // World-space AABB for the fast reject in heightAt().
+  const corners = [[el.uMin, -el.vHalf], [el.uMax, -el.vHalf], [el.uMin, el.vHalf], [el.uMax, el.vHalf]].map(([u, v]) => toWorld(el, u, v));
+  el.minX = Math.min(...corners.map((c) => c[0])); el.maxX = Math.max(...corners.map((c) => c[0]));
+  el.minZ = Math.min(...corners.map((c) => c[1])); el.maxZ = Math.max(...corners.map((c) => c[1]));
+  return el;
+}
+/** One-axis slope from three samples; see Park.gradient(). */
+function edgeSlope(hl, h0, hr, e) {
+  const l = (h0 - hl) / e, r = (hr - h0) / e;
+  if (Math.abs(l - r) > 3) return Math.abs(l) < Math.abs(r) ? l : r;
+  return (l + r) / 2;
+}
+
+/** Local (u, v) → world (x, z). Inverse of the transform in heightAt(). */
+function toWorld(el, u, v) { return [el.x + u * el.cos - v * el.sin, el.z + u * el.sin + v * el.cos]; }
+
+/** Builds the top surface + side walls of an element from its 2D profile. */
+function buildProfileMeshes(el, matTop, matSide, scope) {
+  const pts = el.profile, L = el.vHalf;
+  // Split into strips at sharp creases so lighting stays crisp at edges.
+  const strips = [[pts[0]]];
+  for (let i = 1; i < pts.length; i++) {
+    strips[strips.length - 1].push(pts[i]);
+    if (i < pts.length - 1) {
+      const a = Math.atan2(pts[i][1] - pts[i - 1][1], pts[i][0] - pts[i - 1][0]);
+      const b = Math.atan2(pts[i + 1][1] - pts[i][1], pts[i + 1][0] - pts[i][0]);
+      if (Math.abs(wrapAngle(b - a)) > 0.35) strips.push([pts[i]]);
+    }
+  }
+  const pos = [], uv = [], idx = [];
+  let s = 0;
+  for (const strip of strips) {
+    const base = pos.length / 3;
+    for (let i = 0; i < strip.length; i++) {
+      if (i > 0) s += Math.hypot(strip[i][0] - strip[i - 1][0], strip[i][1] - strip[i - 1][1]);
+      const [u, h] = strip[i];
+      pos.push(u, h, -L, u, h, L); uv.push(s / 4, -L / 4, s / 4, L / 4);
+    }
+    for (let i = 0; i < strip.length - 1; i++) { const a = base + i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const top = new THREE.BufferGeometry();
+  top.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  top.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  top.setIndex(idx); top.computeVertexNormals();
+  // Side walls (two) and end caps: flat quads under the profile with explicit normals.
+  const sp = [], sn = [], su = [];
+  const quad = (a, b, c, d, n) => { for (const p of [a, b, c, a, c, d]) { sp.push(...p); sn.push(...n); su.push((p[0] + p[2]) / 3, p[1] / 3); } };
+  for (const side of [-1, 1]) for (let i = 0; i < pts.length - 1; i++) {
+    const [u0, h0] = pts[i], [u1, h1] = pts[i + 1]; const z = side * L;
+    if (h0 <= 0.001 && h1 <= 0.001) continue;
+    quad([u0, 0, z], [u1, 0, z], [u1, h1, z], [u0, h0, z], [0, 0, side]);
+  }
+  const first = pts[0], last = pts[pts.length - 1];
+  if (first[1] > 0.01) quad([first[0], 0, L], [first[0], 0, -L], [first[0], first[1], -L], [first[0], first[1], L], [-1, 0, 0]);
+  if (last[1] > 0.01) quad([last[0], 0, -L], [last[0], 0, L], [last[0], last[1], L], [last[0], last[1], -L], [1, 0, 0]);
+  const sides = new THREE.BufferGeometry();
+  sides.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+  sides.setAttribute('normal', new THREE.Float32BufferAttribute(sn, 3));
+  sides.setAttribute('uv', new THREE.Float32BufferAttribute(su, 2));
+  const g = new THREE.Group();
+  const mTop = new THREE.Mesh(scope.track(top), matTop); mTop.castShadow = mTop.receiveShadow = true;
+  const mSide = new THREE.Mesh(scope.track(sides), matSide); mSide.castShadow = mSide.receiveShadow = true;
+  g.add(mTop, mSide);
+  return g;
+}
+
+class Park {
+  /**
+   * @param def    entry from PARKS
+   * @param scope  ResourceScope that owns every GPU resource made here
+   * @param quality QUALITY tier (texture size)
+   */
+  constructor(def, scope, quality) {
+    this.def = def; this.scope = scope;
+    this.half = def.size / 2 - 0.6;               // skateable half-extent
+    this.elements = def.elements.map(compileElement);
+    this.group = new THREE.Group(); this.group.name = `park:${def.id}`;
+    this.grindLines = [];
+    this.halfPipeZone = null;                     // { box: Box3, coping, mesh }
+    this.funbox = null;                           // central funbox element
+    this.#buildMaterials(quality);
+    this.#buildGround();
+    for (const el of this.elements) this.#buildElement(el);
+    this.#buildSurroundings();
+  }
+
+  /** Ground height at world (x, z): max of 0 and every element profile. */
+  heightAt(x, z) {
+    let h = 0;
+    const els = this.elements;
+    for (let i = 0; i < els.length; i++) {
+      const el = els[i];
+      if (x < el.minX || x > el.maxX || z < el.minZ || z > el.maxZ) continue;
+      const dx = x - el.x, dz = z - el.z;
+      const e = el.local(dx * el.cos + dz * el.sin, -dx * el.sin + dz * el.cos);
+      if (e > h) h = e;
+    }
+    return h;
+  }
+  /**
+   * Surface gradient into the shared `_grad` scratch object. Smooth surfaces
+   * use the central difference; at a crease or a vertical edge (the two
+   * one-sided slopes disagree by more than 3) the gentler side wins, so the
+   * side of a ledge is never mistaken for a 20:1 ramp.
+   */
+  gradient(x, z) {
+    const e = 0.02, h0 = this.heightAt(x, z);
+    _grad.x = edgeSlope(this.heightAt(x - e, z), h0, this.heightAt(x + e, z), e);
+    _grad.z = edgeSlope(this.heightAt(x, z - e), h0, this.heightAt(x, z + e), e);
+    return _grad;
+  }
+  inHalfPipeZone(p) { return this.halfPipeZone ? this.halfPipeZone.box.containsPoint(p) : false; }
+  /** Finds the nearest grind line to p, writing into the `_hit` scratch. */
+  nearestGrind(p) {
+    _hit.d2 = Infinity; _hit.line = null;
+    for (const line of this.grindLines) {
+      const ax = line.a.x, az = line.a.z, dx = line.b.x - ax, dz = line.b.z - az;
+      const t = clamp(((p.x - ax) * dx + (p.z - az) * dz) / (line.len * line.len), 0, 1);
+      const cx = ax + dx * t - p.x, cz = az + dz * t - p.z, d2 = cx * cx + cz * cz;
+      if (d2 < _hit.d2) { _hit.d2 = d2; _hit.t = t * line.len; _hit.line = line; }
+    }
+    return _hit;
+  }
+
+  #buildMaterials(q) {
+    const p = this.def.palette, s = this.scope, size = q.tex;
+    const std = (opts) => s.track(new THREE.MeshStandardMaterial(opts));
+    this.mats = {
+      ground: std({ color: p.ground, roughness: 1, metalness: 0, ...Textures.pbr('concrete', size, s, this.def.size / 8), normalScale: new THREE.Vector2(0.7, 0.7) }),
+      ramp: std({ color: p.ramp, roughness: 1, metalness: 0, side: THREE.DoubleSide, ...Textures.pbr('plywood', size, s, 1), normalScale: new THREE.Vector2(0.5, 0.5) }),
+      side: std({ color: p.side, roughness: 1, metalness: 0, side: THREE.DoubleSide, ...Textures.pbr('painted', size, s, 1) }),
+      wall: std({ color: p.wall, roughness: 1, metalness: 0, ...Textures.pbr('painted', size, s, 4) }),
+      metal: std({ color: p.coping, roughness: 0.28, metalness: 1 }),
+      accent: std({ color: p.accent, roughness: 0.45, metalness: 0.1 }),
+      zone: s.track(new THREE.MeshBasicMaterial({ color: 0x27e0c6, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide })),
+      zoneEdge: s.track(new THREE.LineBasicMaterial({ color: 0x27e0c6, transparent: true, opacity: 0.85 })),
+    };
+  }
+  #buildGround() {
+    const size = this.def.size + 40;
+    const geo = this.scope.track(new THREE.PlaneGeometry(size, size, 1, 1)); geo.rotateX(-Math.PI / 2);
+    this.mats.ground.map.repeat.set(size / 8, size / 8);
+    this.mats.ground.roughnessMap.repeat.set(size / 8, size / 8);
+    this.mats.ground.normalMap.repeat.set(size / 8, size / 8);
+    const ground = new THREE.Mesh(geo, this.mats.ground); ground.receiveShadow = true; ground.name = 'ground';
+    this.group.add(ground);
+  }
+  #buildElement(el) {
+    const node = new THREE.Group(); node.name = el.type;
+    node.position.set(el.x, 0, el.z); node.rotation.y = -(el.rot ?? 0) * Math.PI / 2;
+    if (el.profile) {
+      const meshes = buildProfileMeshes(el, this.mats.ramp, this.mats.side, this.scope);
+      meshes.position.y = 0.012;                    // sit just above the slab (no z-fighting)
+      node.add(meshes);
+    }
+    if (el.type === 'ledge') {
+      const geo = this.scope.track(new THREE.BoxGeometry(el.w, el.h, el.d)); geo.translate(0, el.h / 2, 0);
+      const m = new THREE.Mesh(geo, this.mats.side); m.castShadow = m.receiveShadow = true; node.add(m);
+      const capGeo = this.scope.track(new THREE.BoxGeometry(el.w, 0.04, 0.06));
+      for (const s of [-1, 1]) { const c = new THREE.Mesh(capGeo, this.mats.metal); c.position.set(0, el.h, s * el.d / 2); node.add(c); }
+    }
+    if (el.type === 'rail') {
+      const bar = this.scope.track(new THREE.CylinderGeometry(0.045, 0.045, el.len, 12)); bar.rotateZ(Math.PI / 2);
+      const r = new THREE.Mesh(bar, this.mats.metal); r.position.y = el.h; r.castShadow = true; node.add(r);
+      const post = this.scope.track(new THREE.CylinderGeometry(0.035, 0.035, el.h, 8)); post.translate(0, el.h / 2, 0);
+      const footGeo = this.scope.track(new THREE.BoxGeometry(0.3, 0.04, 0.3));
+      for (let u = -el.len / 2 + 0.4; u <= el.len / 2 - 0.39; u += (el.len - 0.8) / Math.max(1, Math.round(el.len / 3))) {
+        const pm = new THREE.Mesh(post, this.mats.metal); pm.position.x = u; pm.castShadow = true; node.add(pm);
+        const fm = new THREE.Mesh(footGeo, this.mats.metal); fm.position.set(u, 0.02, 0); node.add(fm);
+      }
+    }
+    if (el.coping) {
+      const geo = this.scope.track(new THREE.CylinderGeometry(0.055, 0.055, el.vHalf * 2, 12)); geo.rotateX(Math.PI / 2);
+      for (const [u, h] of el.coping) { const c = new THREE.Mesh(geo, this.mats.metal); c.position.set(u, h + 0.03, 0); c.castShadow = true; node.add(c); }
+    }
+    if (el.type === 'funbox') {
+      const geo = this.scope.track(new THREE.BoxGeometry(el.w, 0.05, 0.07));
+      for (const s of [-1, 1]) { const c = new THREE.Mesh(geo, this.mats.metal); c.position.set(0, el.h + 0.01, s * el.d / 2); node.add(c); }
+      if (el.central) this.funbox = el;
+    }
+    this.group.add(node);
+    // Grind lines in world space.
+    for (const g of el.grind) {
+      const [ax, az] = toWorld(el, g.u0, g.v0), [bx, bz] = toWorld(el, g.u1, g.v1);
+      const a = new THREE.Vector3(ax, g.h, az), b = new THREE.Vector3(bx, g.h, bz);
+      const len = a.distanceTo(b), dir = b.clone().sub(a).normalize();
+      this.grindLines.push({ a, b, dir, len, kind: g.kind, yaw: Math.atan2(dir.x, dir.z) });
+    }
+    // HALF_PIPE_ZONE: the 2× boundary used by Half-Pipe Showdown.
+    if (el.zone && !this.halfPipeZone) {
+      const [x0, z0] = toWorld(el, el.zone.uMin, -el.vHalf), [x1, z1] = toWorld(el, el.zone.uMax, el.vHalf);
+      const box = new THREE.Box3(new THREE.Vector3(Math.min(x0, x1), -0.5, Math.min(z0, z1)), new THREE.Vector3(Math.max(x0, x1), el.zone.hTop + 9, Math.max(z0, z1)));
+      const size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+      const geo = this.scope.track(new THREE.BoxGeometry(size.x, size.y, size.z));
+      const mesh = new THREE.Mesh(geo, this.mats.zone); mesh.position.copy(center); mesh.name = 'HALF_PIPE_ZONE'; mesh.renderOrder = 5;
+      const edges = new THREE.LineSegments(this.scope.track(new THREE.EdgesGeometry(geo)), this.mats.zoneEdge); mesh.add(edges);
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.halfPipeZone = { box, coping: el.zone.hTop, mesh };
+    }
+  }
+  /** Perimeter walls, light towers and a skyline (all outside the skateable area). */
+  #buildSurroundings() {
+    const S = this.def.size, h = 2.4, t = 0.6;
+    const wallGeo = this.scope.track(new THREE.BoxGeometry(S + t * 2, h, t)); wallGeo.translate(0, h / 2, 0);
+    const wallGeoSide = this.scope.track(new THREE.BoxGeometry(t, h, S)); wallGeoSide.translate(0, h / 2, 0);
+    for (const s of [-1, 1]) {
+      const a = new THREE.Mesh(wallGeo, this.mats.wall); a.position.set(0, 0, s * (S / 2 + t / 2)); a.castShadow = a.receiveShadow = true;
+      const b = new THREE.Mesh(wallGeoSide, this.mats.wall); b.position.set(s * (S / 2 + t / 2), 0, 0); b.castShadow = b.receiveShadow = true;
+      this.group.add(a, b);
+    }
+    const stripe = this.scope.track(new THREE.BoxGeometry(S + t * 2 + 0.02, 0.18, t + 0.02));
+    for (const s of [-1, 1]) { const m = new THREE.Mesh(stripe, this.mats.accent); m.position.set(0, h - 0.3, s * (S / 2 + t / 2)); this.group.add(m); }
+    // Light towers in the corners.
+    const pole = this.scope.track(new THREE.CylinderGeometry(0.12, 0.16, 11, 10)); pole.translate(0, 5.5, 0);
+    const head = this.scope.track(new THREE.BoxGeometry(1.6, 0.5, 0.4));
+    const lampMat = this.scope.track(new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xfff3d0, emissiveIntensity: 1.6 }));
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const p = new THREE.Mesh(pole, this.mats.metal); p.position.set(sx * (S / 2 + 2), 0, sz * (S / 2 + 2)); p.castShadow = true;
+      const l = new THREE.Mesh(head, lampMat); l.position.set(0, 11, 0); l.lookAt(-sx * 10, 0, -sz * 10); p.add(l);
+      this.group.add(p);
+    }
+    // Skyline: instanced blocks with a procedural window texture.
+    const winCanvas = document.createElement('canvas'); winCanvas.width = 64; winCanvas.height = 128;
+    const g = winCanvas.getContext('2d'); g.fillStyle = '#2b3240'; g.fillRect(0, 0, 64, 128);
+    for (let y = 4; y < 128; y += 10) for (let x = 4; x < 64; x += 10) { g.fillStyle = Math.random() < 0.35 ? '#ffe9b0' : '#3c4658'; g.fillRect(x, y, 6, 6); }
+    const winTex = this.scope.track(Textures.finish(new THREE.CanvasTexture(winCanvas), true, 1));
+    winTex.repeat.set(2, 3);
+    const blockMat = this.scope.track(new THREE.MeshStandardMaterial({ map: winTex, emissiveMap: winTex, emissive: 0x887755, emissiveIntensity: 0.25, roughness: 0.8 }));
+    const blockGeo = this.scope.track(new THREE.BoxGeometry(1, 1, 1)); blockGeo.translate(0, 0.5, 0);
+    const count = 36, inst = new THREE.InstancedMesh(blockGeo, blockMat, count);
+    const m4 = new THREE.Matrix4(), rnd = (a, b) => a + Math.random() * (b - a);
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * TAU + rnd(-0.05, 0.05), r = S / 2 + rnd(30, 60);
+      m4.compose(_v1.set(Math.cos(ang) * r, 0, Math.sin(ang) * r), _q1.setFromAxisAngle(_up, -ang), _v2.set(rnd(8, 16), rnd(10, 36), rnd(8, 16)));
+      inst.setMatrixAt(i, m4);
+    }
+    inst.castShadow = false; inst.receiveShadow = true;
+    this.group.add(inst);
+  }
+}
+
+// §9 ─── Collectibles: S-K-A-T-E letters + particle flash ─────────────────────
+/** Letter outlines on a 1 × 1.4 grid (single polygons, no overlaps → no z-fighting). */
+function letterShape(ch) {
+  const poly = (pts) => { const s = new THREE.Shape(); pts.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y))); s.closePath(); return s; };
+  const t = 0.28;
+  switch (ch) {
+    case 'K': return poly([[0, 0], [t, 0], [t, 0.52], [0.66, 0], [1, 0], [0.5, 0.78], [1, 1.4], [0.66, 1.4], [t, 0.92], [t, 1.4], [0, 1.4]]);
+    case 'A': { const s = poly([[0, 0], [0.28, 0], [0.36, 0.4], [0.64, 0.4], [0.72, 0], [1, 0], [0.62, 1.4], [0.38, 1.4]]); const hole = new THREE.Path(); hole.moveTo(0.42, 0.62); hole.lineTo(0.5, 1.0); hole.lineTo(0.58, 0.62); hole.closePath(); s.holes.push(hole); return s; }
+    case 'T': return poly([[0, 1.4], [0, 1.12], [0.36, 1.12], [0.36, 0], [0.64, 0], [0.64, 1.12], [1, 1.12], [1, 1.4]]);
+    case 'E': return poly([[0, 0], [1, 0], [1, 0.26], [t, 0.26], [t, 0.57], [0.85, 0.57], [0.85, 0.83], [t, 0.83], [t, 1.14], [1, 1.14], [1, 1.4], [0, 1.4]]);
+    case 'S': default: {
+      // Offset a centre-line made of two arcs into a closed stroke polygon.
+      const c = [];
+      for (let i = 0; i <= 18; i++) { const a = (20 + (250 * i) / 18) * Math.PI / 180; c.push([0.5 + 0.36 * Math.cos(a), 1.03 + 0.33 * Math.sin(a)]); }
+      for (let i = 1; i <= 18; i++) { const a = (90 - (250 * i) / 18) * Math.PI / 180; c.push([0.5 + 0.36 * Math.cos(a), 0.37 + 0.33 * Math.sin(a)]); }
+      const left = [], right = [];
+      for (let i = 0; i < c.length; i++) {
+        const p0 = c[Math.max(0, i - 1)], p1 = c[Math.min(c.length - 1, i + 1)];
+        let nx = -(p1[1] - p0[1]), ny = p1[0] - p0[0]; const l = Math.hypot(nx, ny); nx /= l; ny /= l;
+        left.push([c[i][0] + nx * t / 2, c[i][1] + ny * t / 2]); right.push([c[i][0] - nx * t / 2, c[i][1] - ny * t / 2]);
+      }
+      return poly([...left, ...right.reverse()]);
+    }
+  }
+}
+
+/** Pooled additive particle bursts — preallocated buffers, no per-frame allocation. */
+class ParticleFlash {
+  constructor(scope, count = 90) {
+    this.count = count; this.life = 0;
+    this.positions = new Float32Array(count * 3); this.velocities = new Float32Array(count * 3);
+    const geo = scope.track(new THREE.BufferGeometry());
+    geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.material = scope.track(new THREE.PointsMaterial({ size: 0.22, color: 0xffd166, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.points = new THREE.Points(geo, this.material); this.points.frustumCulled = false; this.points.visible = false;
+    this.flash = new THREE.Sprite(scope.track(new THREE.SpriteMaterial({ map: haloTexture(scope), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending })));
+    this.flash.visible = false;
+  }
+  spawn(at, color) {
+    for (let i = 0; i < this.count; i++) {
+      this.positions[i * 3] = at.x; this.positions[i * 3 + 1] = at.y; this.positions[i * 3 + 2] = at.z;
+      const u = Math.random() * 2 - 1, a = Math.random() * TAU, r = Math.sqrt(1 - u * u), s = 3 + Math.random() * 5;
+      this.velocities[i * 3] = r * Math.cos(a) * s; this.velocities[i * 3 + 1] = u * s + 2; this.velocities[i * 3 + 2] = r * Math.sin(a) * s;
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+    this.material.color.set(color); this.flash.material.color.set(color);
+    this.flash.position.copy(at); this.life = 1; this.points.visible = this.flash.visible = true;
+  }
+  update(dt) {
+    if (this.life <= 0) return;
+    this.life -= dt * 1.25;
+    for (let i = 0; i < this.count; i++) {
+      this.velocities[i * 3 + 1] -= 9 * dt;
+      this.positions[i * 3] += this.velocities[i * 3] * dt; this.positions[i * 3 + 1] += this.velocities[i * 3 + 1] * dt; this.positions[i * 3 + 2] += this.velocities[i * 3 + 2] * dt;
+    }
+    this.points.geometry.attributes.position.needsUpdate = true;
+    const k = Math.max(0, this.life);
+    this.material.opacity = k; this.flash.material.opacity = k * k;
+    const sc = 1 + (1 - k) * 7; this.flash.scale.set(sc, sc, sc);
+    if (this.life <= 0) this.points.visible = this.flash.visible = false;
+  }
+}
+
+function haloTexture(scope) {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.55)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return scope.track(t);
+}
+
+const LETTER_COLORS = { S: 0xff7a1a, K: 0xffd166, A: 0x27e0c6, T: 0x7aa2ff, E: 0xff4d6d };
+
+/** Builds, animates and collects the five letters for one run. */
+class LetterField {
+  constructor(park, scope) {
+    this.group = new THREE.Group(); this.group.name = 'letters';
+    this.letters = [];
+    this.flash = new ParticleFlash(scope);
+    this.group.add(this.flash.points, this.flash.flash);
+    const halo = haloTexture(scope);
+    for (const def of park.def.letters) {
+      const geo = scope.track(new THREE.ExtrudeGeometry(letterShape(def.ch), { depth: 0.22, bevelEnabled: true, bevelThickness: 0.04, bevelSize: 0.035, bevelSegments: 2, curveSegments: 6 }));
+      geo.center(); geo.scale(0.95, 0.95, 0.95);
+      const color = LETTER_COLORS[def.ch];
+      const mat = scope.track(new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 1.8, roughness: 0.3, metalness: 0.2 }));
+      const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = true;
+      const glow = new THREE.Sprite(scope.track(new THREE.SpriteMaterial({ map: halo, color, transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending })));
+      glow.scale.set(3, 3, 3);
+      const node = new THREE.Group(); node.add(glow, mesh);
+      const baseY = park.heightAt(def.x, def.z) + def.y;
+      node.position.set(def.x, baseY, def.z);
+      geo.computeBoundingBox();
+      this.letters.push({ ch: def.ch, node, mesh, baseY, color, phase: Math.random() * TAU, collected: false, localBox: geo.boundingBox.clone() });
+      this.group.add(node);
+    }
+  }
+  /**
+   * Distance check first (cheap), then an exact Box3 ∩ Sphere test against
+   * the letter's world-space bounds. Returns the collected letter or null.
+   */
+  update(dt, time, skaterCenter) {
+    this.flash.update(dt);
+    _sphere.center.copy(skaterCenter); _sphere.radius = CONFIG.skaterRadius;
+    for (const L of this.letters) {
+      if (L.collected) continue;
+      L.node.position.y = L.baseY + Math.sin(time * 2 + L.phase) * 0.18;
+      L.mesh.rotation.y += dt * 1.6;
+      if (L.node.position.distanceToSquared(skaterCenter) > 9) continue;
+      _box.copy(L.localBox).expandByScalar(0.1);
+      _box.min.add(L.node.position); _box.max.add(L.node.position);
+      _box.min.x -= 0.25; _box.max.x += 0.25; _box.min.z -= 0.25; _box.max.z += 0.25;   // the letter spins; pad its footprint
+      if (_box.intersectsSphere(_sphere)) {
+        L.collected = true; L.node.visible = false;
+        this.flash.spawn(L.node.position, L.color);
+        return L.ch;
+      }
+    }
+    return null;
+  }
+}
+
+// §10 ─── SkaterRig ───────────────────────────────────────────────────────────
+/**
+ * A procedural skater on a board. The board's nose points along local +z; the
+ * rider stands sideways (chest toward −x, regular stance). Legs use analytic
+ * two-bone IK so the feet stay planted on the deck while the body crouches.
+ */
+class SkaterRig {
+  constructor(scope, deck) {
+    this.scope = scope;
+    this.root = new THREE.Group(); this.root.name = 'skater';
+    this.tilt = new THREE.Group(); this.root.add(this.tilt);          // surface alignment
+    this.boardPivot = new THREE.Group(); this.tilt.add(this.boardPivot);
+    this.body = new THREE.Group(); this.tilt.add(this.body);
+    const M = (color, rough = 0.7, metal = 0) => scope.track(new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: metal }));
+    const mats = { skin: M(0xc68e6a, 0.6), shirt: M(0x1fb6a3, 0.85), pants: M(0x2b2f3a, 0.9), shoe: M(0xf2f2f2, 0.6), beanie: M(0xff7a1a, 0.9), truck: M(0xbfc5cc, 0.3, 1), wheel: M(0xf5e6c8, 0.5), grip: M(0x161616, 0.95) };
+    const cap = (r, l, mat) => { const g = scope.track(new THREE.CapsuleGeometry(r, l, 6, 12)); const m = new THREE.Mesh(g, mat); m.castShadow = true; return m; };
+    // --- board -----------------------------------------------------------
+    this.board = new THREE.Group(); this.boardPivot.add(this.board);
+    const W = 0.21, Lb = 0.80;
+    const outline = new THREE.Shape();
+    outline.moveTo(-W / 2, -Lb / 2 + W / 2); outline.lineTo(-W / 2, Lb / 2 - W / 2);
+    outline.absarc(0, Lb / 2 - W / 2, W / 2, Math.PI, 0, true); outline.lineTo(W / 2, -Lb / 2 + W / 2);
+    outline.absarc(0, -Lb / 2 + W / 2, W / 2, 0, Math.PI, true);
+    const deckGeo = scope.track(new THREE.ExtrudeGeometry(outline, { depth: 0.014, bevelEnabled: true, bevelThickness: 0.004, bevelSize: 0.004, bevelSegments: 1, curveSegments: 10 }));
+    deckGeo.rotateX(-Math.PI / 2);
+    const deckMat = M(0xd6a86f, 0.6);
+    const deckMesh = new THREE.Mesh(deckGeo, deckMat); deckMesh.castShadow = true; deckMesh.position.y = 0.085; this.board.add(deckMesh);
+    const capGeo = (flip) => { const g = scope.track(new THREE.ShapeGeometry(outline, 10)); const uv = g.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + W / 2) / W, (uv.getY(i) + Lb / 2) / Lb); g.rotateX(flip ? Math.PI / 2 : -Math.PI / 2); return g; };
+    const grip = new THREE.Mesh(capGeo(false), mats.grip); grip.position.y = 0.085 + 0.0195; this.board.add(grip);
+    this.deckMaterial = scope.track(new THREE.MeshStandardMaterial({ roughness: 0.55, map: this.#deckTexture(deck) }));
+    const graphic = new THREE.Mesh(capGeo(true), this.deckMaterial); graphic.position.y = 0.0805; this.board.add(graphic);
+    const truckGeo = scope.track(new THREE.BoxGeometry(0.17, 0.035, 0.05)), wheelGeo = scope.track(new THREE.CylinderGeometry(0.027, 0.027, 0.032, 14)); wheelGeo.rotateZ(Math.PI / 2);
+    for (const z of [-0.27, 0.27]) {
+      const t = new THREE.Mesh(truckGeo, mats.truck); t.position.set(0, 0.058, z); this.board.add(t);
+      for (const x of [-0.095, 0.095]) { const w = new THREE.Mesh(wheelGeo, mats.wheel); w.position.set(x, 0.027, z); w.castShadow = true; this.board.add(w); }
+    }
+    // --- body ------------------------------------------------------------
+    this.L1 = 0.44; this.L2 = 0.44;                      // thigh, shin
+    this.hips = new THREE.Group(); this.body.add(this.hips);
+    const pelvis = cap(0.13, 0.12, mats.pants); pelvis.rotation.x = Math.PI / 2; this.hips.add(pelvis);
+    this.spine = new THREE.Group(); this.spine.position.y = 0.08; this.hips.add(this.spine);
+    const torso = cap(0.16, 0.34, mats.shirt); torso.position.y = 0.27; torso.scale.set(0.85, 1, 1.15); this.spine.add(torso);
+    this.head = new THREE.Group(); this.head.position.y = 0.62; this.spine.add(this.head);
+    const headMesh = new THREE.Mesh(scope.track(new THREE.SphereGeometry(0.11, 18, 14)), mats.skin); headMesh.castShadow = true; headMesh.position.y = 0.06; this.head.add(headMesh);
+    const beanie = new THREE.Mesh(scope.track(new THREE.SphereGeometry(0.115, 18, 10, 0, TAU, 0, Math.PI / 2)), mats.beanie); beanie.position.y = 0.08; this.head.add(beanie);
+    this.arms = []; this.legs = [];
+    for (const side of [1, -1]) {                         // +1 = front (toward nose, +z)
+      const shoulder = new THREE.Group(); shoulder.position.set(0, 0.5, side * 0.2); this.spine.add(shoulder);
+      const upper = cap(0.05, 0.22, mats.shirt); upper.position.y = -0.14; shoulder.add(upper);
+      const elbow = new THREE.Group(); elbow.position.y = -0.29; shoulder.add(elbow);
+      const fore = cap(0.042, 0.2, mats.skin); fore.position.y = -0.13; elbow.add(fore);
+      this.arms.push({ shoulder, elbow, side });
+      const hip = new THREE.Group(); hip.position.set(0, 0, side * 0.2); this.hips.add(hip);
+      const thigh = cap(0.075, this.L1 - 0.1, mats.pants); thigh.position.y = -this.L1 / 2; hip.add(thigh);
+      const knee = new THREE.Group(); knee.position.y = -this.L1; hip.add(knee);
+      const shin = cap(0.06, this.L2 - 0.08, mats.pants); shin.position.y = -this.L2 / 2; knee.add(shin);
+      const foot = new THREE.Mesh(scope.track(new THREE.BoxGeometry(0.11, 0.07, 0.27)), mats.shoe); foot.castShadow = true; foot.position.set(0, -this.L2 - 0.02, 0); foot.rotation.y = Math.PI / 2 - side * 0.25; knee.add(foot);
+      this.legs.push({ hip, knee, foot, side });
+    }
+    this.pose = { crouch: 0, armsOut: 0.4, grab: 0, grabType: 0, lean: 0, bail: 0, push: 0, manual: 0 };
+  }
+  #deckTexture(deck) {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 512;
+    deck.draw(c.getContext('2d'), 128, 512);
+    return this.scope.track(Textures.finish(new THREE.CanvasTexture(c), true, 1));
+  }
+  /** Analytic two-bone IK in the leg's x-y plane; knee bends toward −x (chest side). */
+  #solveLeg(leg, hipY, footX, footY) {
+    const dx = footX, dy = footY - hipY;
+    const d = clamp(Math.hypot(dx, dy), 0.05, this.L1 + this.L2 - 0.001);
+    const line = Math.atan2(dx, -dy);
+    const alpha = Math.acos(clamp((this.L1 * this.L1 + d * d - this.L2 * this.L2) / (2 * this.L1 * d), -1, 1));
+    const knee = Math.PI - Math.acos(clamp((this.L1 * this.L1 + this.L2 * this.L2 - d * d) / (2 * this.L1 * this.L2), -1, 1));
+    leg.hip.rotation.z = line - alpha;
+    leg.knee.rotation.z = knee;
+    leg.foot.rotation.z = -(line - alpha) - knee;          // keep the shoe flat on the deck
+  }
+  /** Applies the current pose; called once per rendered frame. */
+  apply(dt, time) {
+    const p = this.pose;
+    const deckTop = 0.105 + this.boardPivot.position.y;
+    const stand = 0.95, crouchDrop = 0.36 * p.crouch + 0.12 * p.grab;
+    const hipY = deckTop + stand - crouchDrop;
+    this.hips.position.set(0.04 * p.crouch, hipY, 0);
+    this.spine.rotation.z = -0.35 * p.crouch - 0.25 * p.grab + p.lean * 0.2;
+    this.spine.rotation.x = p.lean * 0.25;
+    this.head.rotation.z = 0.3 * p.crouch;
+    for (const leg of this.legs) {
+      let fy = deckTop - hipY + 0.06, fx = -0.02;
+      if (p.push > 0 && leg.side < 0) { fy -= 0.12 * p.push; fx += Math.sin(time * 9) * 0.22 * p.push; }
+      this.#solveLeg(leg, 0, fx - 0.04 * p.crouch, fy);
+    }
+    for (const arm of this.arms) {
+      const out = p.armsOut + Math.sin(time * 2.1 + arm.side) * 0.05;
+      arm.shoulder.rotation.x = -arm.side * (0.35 + out * 0.9);
+      arm.shoulder.rotation.z = 0.2;
+      arm.elbow.rotation.z = -0.25 - out * 0.2;
+      if (p.grab > 0 && arm.side === (p.grabType % 2 ? 1 : -1)) {
+        arm.shoulder.rotation.z = 0.2 + 1.1 * p.grab;
+        arm.shoulder.rotation.x *= 1 - p.grab;
+        arm.elbow.rotation.z = -0.1;
+      }
+    }
+    this.body.rotation.z = p.bail * 1.3;
+    this.body.position.y = -p.bail * 0.6;
+    this.body.rotation.x = p.manual * 0.15;
+  }
+  setDeck(deck) { const old = this.deckMaterial.map; this.deckMaterial.map = this.#deckTexture(deck); this.deckMaterial.needsUpdate = true; old?.dispose(); }
+}
+
+// §11 ─── Input ───────────────────────────────────────────────────────────────
+/**
+ * Keyboard, gamepad and touch all feed the same action names. Held state is a
+ * Set; presses and releases are queued events so a tap shorter than one frame
+ * is never lost and each event is consumed exactly once by the fixed-step sim.
+ */
+const KEYMAP = {
+  KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
+  Space: 'ollie', KeyJ: 'flip', KeyK: 'grab', KeyL: 'grind', KeyI: 'special', Tab: 'objectives', KeyO: 'objectives', Escape: 'pause', KeyP: 'pause', F3: 'debug',
+};
+class Input {
+  constructor() {
+    this.held = new Set(); this.pressQ = []; this.releaseQ = []; this.pressTime = new Map(); this.uiHandlers = new Map();
+    this.gpPrev = new Map();
+    addEventListener('keydown', (e) => { const a = KEYMAP[e.code]; if (!a) return; if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault(); if (!e.repeat) this.press(a); });
+    addEventListener('keyup', (e) => { const a = KEYMAP[e.code]; if (a) this.release(a); });
+    addEventListener('blur', () => { for (const a of [...this.held]) this.release(a); });
+    document.querySelectorAll('#touch [data-key]').forEach((btn) => {
+      const a = btn.dataset.key;
+      btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); btn.classList.add('on'); this.press(a); });
+      const up = () => { btn.classList.remove('on'); this.release(a); };
+      btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up);
+    });
+  }
+  press(a) {
+    if (this.held.has(a)) return;
+    const t = performance.now();
+    this.held.add(a); this.pressQ.push({ a, t }); this.pressTime.set(a, t);
+    this.uiHandlers.get(a)?.();
+  }
+  release(a) { if (!this.held.delete(a)) return; this.releaseQ.push({ a, t: performance.now() }); }
+  down(a) { return this.held.has(a); }
+  /**
+   * Consumes one queued event of `a`. Events live 250 ms: long enough to
+   * buffer a flip pressed just before the lip, short enough that a stale
+   * Space press can never pop you off a rail seconds later.
+   */
+  #takeFrom(q, a) {
+    const old = performance.now() - 250;
+    while (q.length && q[0].t < old) q.shift();
+    const i = q.findIndex((e) => e.a === a);
+    if (i < 0) return false;
+    q.splice(i, 1); return true;
+  }
+  take(a) { return this.#takeFrom(this.pressQ, a); }
+  takeRelease(a) { return this.#takeFrom(this.releaseQ, a); }
+  /** Was `a` pressed within the last `ms` milliseconds (and still held or just tapped)? */
+  recent(a, ms) { const t = this.pressTime.get(a); return t !== undefined && performance.now() - t < ms; }
+  axisX() { return (this.down('right') ? 1 : 0) - (this.down('left') ? 1 : 0); }
+  axisY() { return (this.down('up') ? 1 : 0) - (this.down('down') ? 1 : 0); }
+  /**
+   * Trick modifier: a direction counts only if it was pressed in the last
+   * `ms` milliseconds, so holding W to push (or A/D to carve) doesn't turn
+   * every kickflip into an Impossible. Tap the direction with the button.
+   */
+  direction(ms = 300) {
+    for (const d of ['up', 'down', 'left', 'right']) if (this.down(d) && this.recent(d, ms)) return d;
+    return 'none';
+  }
+  clear() { this.pressQ.length = 0; this.releaseQ.length = 0; }
+  onUI(action, fn) { this.uiHandlers.set(action, fn); }
+  /** Standard-mapping gamepad: A ollie, X flip, B grab, Y grind, Start pause, Back objectives. */
+  pollGamepad() {
+    const pads = navigator.getGamepads?.(); if (!pads) return;
+    for (const gp of pads) {
+      if (!gp) continue;
+      const btn = (i) => gp.buttons[i]?.pressed ?? false;
+      const axX = gp.axes[0] ?? 0, axY = gp.axes[1] ?? 0;
+      const states = { ollie: btn(0), grab: btn(1), flip: btn(2), grind: btn(3), pause: btn(9), objectives: btn(8),
+        left: axX < -0.4 || btn(14), right: axX > 0.4 || btn(15), up: axY < -0.4 || btn(12), down: axY > 0.4 || btn(13), special: btn(4) && btn(5) };
+      for (const [a, on] of Object.entries(states)) {
+        const was = this.gpPrev.get(a) ?? false;
+        if (on && !was) this.press(a); else if (!on && was) this.release(a);
+        this.gpPrev.set(a, on);
+      }
+      break;
+    }
+  }
+}
+
+// §12 ─── Tricks ──────────────────────────────────────────────────────────────
+/** Trick tables. `dur` is the board animation length in seconds. */
+const FLIPS = {
+  none:  { name: 'Kickflip', pts: 100, dur: 0.42, axis: 'roll', dir: 1, kick: true },
+  left:  { name: 'Heelflip', pts: 100, dur: 0.42, axis: 'roll', dir: -1, kick: true },
+  down:  { name: 'Pop Shove-It', pts: 80, dur: 0.36, axis: 'yaw', dir: 1 },
+  up:    { name: 'Impossible', pts: 150, dur: 0.5, axis: 'pitch', dir: 1 },
+  right: { name: 'Varial Kickflip', pts: 160, dur: 0.5, axis: 'varial', dir: 1, kick: true },
+};
+const GRABS = {
+  none: { name: 'Indy', pts: 120, type: 0 }, up: { name: 'Nosegrab', pts: 130, type: 1 }, down: { name: 'Tailgrab', pts: 130, type: 2 },
+  left: { name: 'Melon', pts: 140, type: 3 }, right: { name: 'Stalefish', pts: 150, type: 4 },
+};
+const GRINDS = { none: '50-50 Grind', up: 'Nosegrind', down: '5-0 Grind', left: 'Crooked Grind', right: 'Smith Grind' };
+const SPECIALS = { air: { name: 'Skyhook Flip', pts: 1600, dur: 0.85 }, grind: { name: 'Lightning Grind', pts: 1200 } };
+
+/**
+ * The combo: a list of trick entries, each with points that may keep growing
+ * (grabs, grinds, manuals). Combo value = sum × number of tricks. Repeating a
+ * trick in the same combo halves its value each time (min 1/8).
+ */
+class Tricks {
+  constructor() { this.entries = []; this.special = 0; this.zoneMult = 1; this.inZone = () => false; this.reset(); }
+  reset() { this.entries.length = 0; this.repeats = new Map(); this.version = 0; }
+  get active() { return this.entries.length > 0; }
+  /** Starts a trick entry; returns it so held tricks can add points later. */
+  add(name, pts) {
+    const n = this.repeats.get(name) ?? 0; this.repeats.set(name, n + 1);
+    const decay = Math.max(0.125, Math.pow(0.5, n));
+    const zone = this.zoneMult > 1 && this.inZone() ? this.zoneMult : 1;
+    const e = { name, base: pts, pts: pts * decay, decay, zone };
+    this.entries.push(e); this.special = Math.min(1, this.special + pts * CONFIG.specialFillPerPoint); this.version++;
+    return e;
+  }
+  grow(entry, pts) { entry.pts += pts * entry.decay; this.special = Math.min(1, this.special + pts * CONFIG.specialFillPerPoint * 0.5); this.version++; }
+  rename(entry, name) { entry.name = name; this.version++; }
+  get sum() { let s = 0; for (const e of this.entries) s += e.pts * e.zone; return s; }
+  get multiplier() { return this.entries.length; }
+  get value() { return Math.round(this.sum * this.multiplier); }
+  /** Banks the combo and returns its value. */
+  bank() { const v = this.value; this.reset(); return v; }
+  fail() { const v = this.value; this.reset(); this.special = 0; return v; }
+  decay(dt) { this.special = Math.max(0, this.special - CONFIG.specialDecay * dt); }
+}
+
+// §13 ─── Skater physics state machine ───────────────────────────────────────
+/**
+ * States: ground (with optional manual), air, grind, bail.
+ * Ground motion uses the exact projected acceleration of a particle on a
+ * height field: a = −g ∇h / (1 + |∇h|²). Launches happen when the surface
+ * falls away faster than gravity can follow; on steep transitions (vert) the
+ * outward speed is converted to vertical so airs come straight back down.
+ */
+class Skater {
+  constructor(park, spawn) { this.park = park; this.reset(spawn); }
+  reset(spawn) {
+    this.pos = new THREE.Vector3(spawn.x, this.park.heightAt(spawn.x, spawn.z), spawn.z);
+    this.vel = new THREE.Vector3(); this.vy = 0;
+    this.heading = spawn.heading; this.fakie = false;
+    this.state = 'ground'; this.groundTime = 1; this.charge = 0;
+    this.normal = new THREE.Vector3(0, 1, 0);
+    this.air = { time: 0, spin: 0, spinVel: 0, peakY: 0, overFunbox: false, inZone: false, tricks: [], firstTrick: null };
+    this.flip = null; this.grab = null; this.grabEntry = null; this.grabTime = 0; this.pendingSpecial = false;
+    this.grind = { line: null, t: 0, dir: 1, speed: 0, balance: 0, entry: null, dist: 0, lastLine: null, cooldown: 0 };
+    this.manual = { on: false, balance: 0, time: 0, entry: null };
+    this.bailTimer = 0; this.boardSpin = 0;
+  }
+  get speed() { return Math.hypot(this.vel.x, this.vel.z); }
+  forward(out) { return out.set(Math.sin(this.heading), 0, Math.cos(this.heading)); }
+
+  /** One fixed physics step. `ctx` = { input, tricks, session, sfx, events }. */
+  step(dt, ctx) {
+    this.grind.cooldown = Math.max(0, this.grind.cooldown - dt);
+    switch (this.state) {
+      case 'ground': this.#stepGround(dt, ctx); break;
+      case 'air': this.#stepAir(dt, ctx); break;
+      case 'grind': this.#stepGrind(dt, ctx); break;
+      case 'bail': this.#stepBail(dt, ctx); break;
+    }
+    this.#boundary();
+  }
+
+  #stepGround(dt, ctx) {
+    const { input, tricks } = ctx, park = this.park, g = CONFIG.gravity;
+    const grad = park.gradient(this.pos.x, this.pos.z), gx = grad.x, gz = grad.z, G2 = gx * gx + gz * gz;
+    // Gravity along the surface, plus the curvature term (κ·v²) that makes a
+    // transition bleed horizontal speed into vertical exactly as energy allows:
+    //   a = −(g + κ v²) ∇h / (1 + |∇h|²),  κ = second derivative along v.
+    const sp0 = this.speed;
+    let kv2 = 0;
+    if (sp0 > 0.05) {
+      const ux = this.vel.x / sp0, uz = this.vel.z / sp0, e = 0.03;
+      const kappa = (park.heightAt(this.pos.x + ux * e, this.pos.z + uz * e) - 2 * park.heightAt(this.pos.x, this.pos.z) + park.heightAt(this.pos.x - ux * e, this.pos.z - uz * e)) / (e * e);
+      kv2 = clamp(kappa, -80, 80) * sp0 * sp0;
+    }
+    let ax = -(g + kv2) * gx / (1 + G2), az = -(g + kv2) * gz / (1 + G2);
+    const crouch = input.down('ollie') && !this.manual.on;
+    if (crouch && this.vel.x * gx + this.vel.z * gz < 0) { ax *= 1 + CONFIG.pumpGain; az *= 1 + CONFIG.pumpGain; }
+    this.vel.x += ax * dt; this.vel.z += az * dt;
+    // Steering + grip: decompose into along-board and sideways speeds.
+    const sp = this.speed, steer = -input.axisX();
+    const rate = THREE.MathUtils.lerp(CONFIG.turnRate, CONFIG.turnRateFast, clamp(sp / CONFIG.maxSpeed, 0, 1));
+    if (!this.manual.on) this.heading += steer * rate * dt;
+    const f = this.forward(_v1), rx = -f.z, rz = f.x;
+    let along = this.vel.x * f.x + this.vel.z * f.z, lat = this.vel.x * rx + this.vel.z * rz;
+    lat *= Math.exp(-CONFIG.lateralGrip * dt);
+    if (input.down('up') && !this.manual.on && Math.abs(along) < CONFIG.pushMaxSpeed) along += (along < -0.2 ? -1 : 1) * CONFIG.pushAccel * dt;
+    if (input.down('down') && !this.manual.on) along -= Math.sign(along) * Math.min(Math.abs(along), CONFIG.brakeDecel * dt);
+    along -= Math.sign(along) * Math.min(Math.abs(along), (CONFIG.rollFriction + CONFIG.airDrag * along * along) * dt);
+    this.vel.x = f.x * along + rx * lat; this.vel.z = f.z * along + rz * lat;
+    const s2 = this.speed; if (s2 > CONFIG.maxSpeed) this.vel.multiplyScalar(CONFIG.maxSpeed / s2);
+    if (along < -0.15) this.fakie = true; else if (along > 0.15) this.fakie = false;
+    this.pushing = input.down('up') && !this.manual.on;
+    // Manual (balance on two wheels): L on flattish ground.
+    if (!this.manual.on && input.take('grind') && G2 < 0.04 && this.speed > 1.5) this.#startManual(ctx);
+    else if (this.manual.on && input.take('grind')) this.#endManual(ctx, false);
+    if (this.manual.on) this.#stepManual(dt, ctx);
+    if (this.state !== 'ground') return;
+    // Ollie: hold to crouch/charge, release to pop.
+    if (input.down('ollie')) this.charge = Math.min(1, this.charge + dt / CONFIG.ollieChargeTime);
+    if (input.takeRelease('ollie')) { this.#ollie(ctx, gx * this.vel.x + gz * this.vel.z); return; }
+    // Integrate position and follow the surface.
+    const ox = this.pos.x, oz = this.pos.z, oy = this.pos.y;
+    const nx = ox + this.vel.x * dt, nz = oz + this.vel.z * dt;
+    const nh = park.heightAt(nx, nz);
+    const expected = gx * (nx - ox) + gz * (nz - oz);
+    if (nh - oy > expected + CONFIG.stepUp && nh - oy > 0.12) { this.#wall(ox, oz, nx, nz); return; }
+    const vyPrev = this.vy, vyBall = vyPrev - g * dt, ballistic = oy + vyPrev * dt - 0.5 * g * dt * dt;
+    this.pos.x = nx; this.pos.z = nz;
+    // Takeoff: the surface drops away below the ballistic path (ledges, drops)
+    // or its vertical speed falls short of where gravity would carry us (lips).
+    const g2 = park.gradient(nx, nz), vySurf = g2.x * this.vel.x + g2.z * this.vel.z;
+    if (nh < ballistic - 0.02 || (vyPrev > 0.5 && vySurf < vyBall - 0.6)) {
+      this.#launch(Math.max(nh, ballistic), vyBall, ox, oz, ctx); return;
+    }
+    this.pos.y = nh;
+    this.vy = clamp(vySurf, -25, 25);
+    this.normal.set(-g2.x, 1, -g2.z).normalize();
+    this.groundTime += dt;
+    // Bank the combo once we've been rolling clean for a moment.
+    if (tricks.active && !this.manual.on && this.groundTime > CONFIG.bankDelay) ctx.events.bank();
+  }
+
+  #ollie(ctx, slopeVy) {
+    const pop = CONFIG.ollieBase + CONFIG.ollieCharge * this.charge;
+    if (this.manual.on) this.#endManual(ctx, true);
+    this.charge = 0;
+    this.#enterAir(this.pos.y + 0.01, Math.max(0, slopeVy) + pop, ctx);
+    ctx.tricks.add(this.fakie ? 'Fakie Ollie' : 'Ollie', 40);
+    ctx.sfx.pop();
+  }
+
+  #launch(y, vy, ox, oz, ctx) {
+    // Vert rule: on steep transitions send outward speed straight up. The
+    // slope is read 10 cm behind the takeoff point so the coping edge itself
+    // (where the gentler deck side wins) can't hide a vertical wall.
+    const sp = this.speed || 1;
+    const back = this.park.gradient(ox - this.vel.x / sp * 0.1, oz - this.vel.z / sp * 0.1);
+    const gx = back.x, gz = back.z, G = Math.hypot(gx, gz);
+    if (G > CONFIG.vertSlope) {
+      const dx = gx / G, dz = gz / G, out = this.vel.x * dx + this.vel.z * dz;
+      if (out > 0) {
+        this.vel.x -= dx * (out + CONFIG.vertInward); this.vel.z -= dz * (out + CONFIG.vertInward);
+        vy = Math.sqrt(vy * vy + out * out * 0.35);
+      }
+    }
+    this.#enterAir(y, vy, ctx);
+  }
+
+  #enterAir(y, vy, ctx) {
+    this.state = 'air'; this.pos.y = y; this.vy = vy; this.charge = 0;
+    const a = this.air; a.time = 0; a.spin = 0; a.spinVel = 0; a.peakY = y; a.overFunbox = false; a.tricks.length = 0; a.firstTrick = null;
+    a.inZone = this.park.inHalfPipeZone(this.pos);
+    this.normal.set(0, 1, 0);
+  }
+
+  #stepAir(dt, ctx) {
+    const { input, tricks } = ctx, park = this.park, a = this.air;
+    a.time += dt;
+    this.vy -= CONFIG.gravity * dt;
+    // Spin: accelerate toward the held direction, coast when released.
+    const want = -input.axisX() * CONFIG.airSpinRate;
+    a.spinVel += clamp(want - a.spinVel, -CONFIG.airSpinAccel * dt, CONFIG.airSpinAccel * dt) * (want === 0 ? 0.35 : 1);
+    this.heading += a.spinVel * dt; a.spin += a.spinVel * dt;
+    // Tricks.
+    if (input.down('flip') && input.down('grab') && tricks.special >= 1 && !this.flip) { input.take('flip'); input.take('grab'); this.#startSpecial(ctx); }
+    else if (input.take('special') && tricks.special >= 1 && !this.flip) this.#startSpecial(ctx);
+    if (input.take('flip') && !this.flip && !this.grab) {
+      const f = FLIPS[input.direction()];
+      this.flip = { ...f, t: 0 }; a.tricks.push(tricks.add(f.name, f.pts)); a.firstTrick ??= a.tricks[a.tricks.length - 1];
+      ctx.sfx.flick();
+    }
+    if (input.take('grab') && !this.flip && !this.grab) {
+      const gdef = GRABS[input.direction()];
+      this.grab = gdef; this.grabTime = 0; this.grabEntry = tricks.add(gdef.name, gdef.pts); a.tricks.push(this.grabEntry); a.firstTrick ??= this.grabEntry;
+    }
+    if (this.grab) { if (input.down('grab')) { this.grabTime += dt; tricks.grow(this.grabEntry, 60 * dt); } else this.grab = null; }
+    if (this.flip) { this.flip.t += dt; if (this.flip.t >= this.flip.dur) this.flip = null; }
+    // Move.
+    const ox = this.pos.x, oz = this.pos.z;
+    this.vel.x *= 1 - 0.02 * dt; this.vel.z *= 1 - 0.02 * dt;
+    this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt; this.pos.y += this.vy * dt;
+    if (this.pos.y > a.peakY) a.peakY = this.pos.y;
+    const fb = park.funbox;
+    if (fb && !a.overFunbox) {
+      const dx = this.pos.x - fb.x, dz = this.pos.z - fb.z, u = dx * fb.cos + dz * fb.sin, v = -dx * fb.sin + dz * fb.cos;
+      if (Math.abs(u) < fb.over.uHalf && Math.abs(v) < fb.over.vHalf && this.pos.y > fb.over.top + 0.2) a.overFunbox = true;
+    }
+    // Grind snap.
+    if ((input.down('grind') || input.recent('grind', 250)) && this.vy < 2.5 && this.grind.cooldown <= 0) {
+      const hit = park.nearestGrind(this.pos);
+      if (hit.line && hit.d2 < CONFIG.grindSnap * CONFIG.grindSnap && this.pos.y > hit.line.a.y - 0.4 && this.pos.y < hit.line.a.y + 0.9 && !(hit.line === this.grind.lastLine && this.grind.cooldown > 0)) {
+        input.take('grind'); this.#startGrind(hit.line, hit.t, ctx); return;
+      }
+    }
+    // Ground contact.
+    const h = park.heightAt(this.pos.x, this.pos.z);
+    if (this.pos.y < h - 0.4) {                               // hit the side of something
+      this.pos.x = ox; this.pos.z = oz;
+      const g2 = park.gradient((ox + this.pos.x) / 2 + this.vel.x * 0.02, (oz + this.pos.z) / 2 + this.vel.z * 0.02), G = Math.hypot(g2.x, g2.z) || 1;
+      const into = (this.vel.x * g2.x + this.vel.z * g2.z) / G;
+      if (into > 0) { this.vel.x -= (g2.x / G) * into * (1 + CONFIG.wallRestitution); this.vel.z -= (g2.z / G) * into * (1 + CONFIG.wallRestitution); }
+      else { this.vel.x *= -CONFIG.wallRestitution; this.vel.z *= -CONFIG.wallRestitution; }
+    } else if (this.pos.y <= h) this.#land(h, ctx);
+  }
+
+  #land(h, ctx) {
+    const { tricks } = ctx, a = this.air;
+    const grad = this.park.gradient(this.pos.x, this.pos.z);
+    const n = _v2.set(-grad.x, 1, -grad.z).normalize();
+    const v = _v3.set(this.vel.x, this.vy, this.vel.z);
+    const impact = -v.dot(n);
+    v.addScaledVector(n, impact);                              // keep the tangential part
+    const keep = impact < 4 ? 0.995 : 0.97;                    // smooth transition landings keep their flow
+    this.vel.x = v.x * keep; this.vel.z = v.z * keep;
+    this.pos.y = h; this.normal.copy(n);
+    // Bail checks: unfinished flip, bad alignment, too hard.
+    const hs = this.speed;
+    let reason = null;
+    if (this.flip && this.flip.t < this.flip.dur - 0.06) reason = 'flip';
+    if (!reason && impact > CONFIG.hardLanding) reason = 'hard';
+    let d = 0;
+    if (hs > 1.2) {
+      d = wrapAngle(Math.atan2(this.vel.x, this.vel.z) - this.heading);
+      const off = Math.min(Math.abs(d), Math.PI - Math.abs(d));
+      if (!reason && off > CONFIG.landAlign) reason = 'angle';
+    }
+    if (reason) { this.#bail(ctx, reason); return; }
+    // Clean landing: auto-straighten onto the rolling direction.
+    if (hs > 1.2) { const fak = Math.abs(d) > Math.PI / 2; this.heading = Math.atan2(this.vel.x, this.vel.z) + (fak ? Math.PI : 0); this.fakie = fak; }
+    this.vy = grad.x * this.vel.x + grad.z * this.vel.z;
+    this.flip = null; this.grab = null; this.state = 'ground'; this.groundTime = 0;
+    // Rotation naming + bonuses.
+    const deg = Math.round(Math.abs(a.spin) * 180 / Math.PI / 180) * 180;
+    if (deg >= 180) {
+      if (a.firstTrick) { tricks.rename(a.firstTrick, `${deg} ${a.firstTrick.name}`); tricks.grow(a.firstTrick, deg * 0.9); }
+      else if (tricks.active) { const e = tricks.entries[tricks.entries.length - 1]; tricks.rename(e, `${deg} ${e.name}`); tricks.grow(e, deg * 0.9); }
+      else tricks.add(`${deg} Spin`, deg * 0.9);
+    }
+    if (a.time > 0.7 && tricks.active) tricks.grow(tricks.entries[tricks.entries.length - 1], (a.time - 0.7) * 120);
+    ctx.events.landed({ spin: deg, air: a, impact });
+    ctx.sfx.land(Math.min(1, impact / 10));
+    if (this.pendingSpecial) { this.pendingSpecial = false; ctx.events.special(); }
+  }
+
+  #wall(ox, oz, nx, nz) {
+    const park = this.park, mx = (ox + nx) / 2, mz = (oz + nz) / 2;
+    const grad = park.gradient(mx, mz), G = Math.hypot(grad.x, grad.z);
+    if (G < 1e-3) { this.vel.multiplyScalar(-CONFIG.wallRestitution); return; }
+    const dx = grad.x / G, dz = grad.z / G, into = this.vel.x * dx + this.vel.z * dz;
+    if (into > 0) { this.vel.x -= dx * into * (1 + CONFIG.wallRestitution); this.vel.z -= dz * into * (1 + CONFIG.wallRestitution); }
+  }
+
+  #boundary() {
+    const lim = this.park.half;
+    if (this.pos.x > lim) { this.pos.x = lim; this.vel.x = -Math.abs(this.vel.x) * CONFIG.wallRestitution; }
+    if (this.pos.x < -lim) { this.pos.x = -lim; this.vel.x = Math.abs(this.vel.x) * CONFIG.wallRestitution; }
+    if (this.pos.z > lim) { this.pos.z = lim; this.vel.z = -Math.abs(this.vel.z) * CONFIG.wallRestitution; }
+    if (this.pos.z < -lim) { this.pos.z = -lim; this.vel.z = Math.abs(this.vel.z) * CONFIG.wallRestitution; }
+  }
+
+  #startSpecial(ctx) {
+    const s = SPECIALS.air;
+    this.flip = { name: s.name, pts: s.pts, dur: s.dur, axis: 'special', dir: 1, t: 0 };
+    const e = ctx.tricks.add(s.name, s.pts); this.air.tricks.push(e); this.air.firstTrick ??= e;
+    ctx.tricks.special = 0; this.pendingSpecial = true;
+    ctx.sfx.special();
+  }
+
+  // --- grind ------------------------------------------------------------
+  #startGrind(line, t, ctx) {
+    const gr = this.grind, input = ctx.input;
+    gr.line = line; gr.t = t;
+    const along = this.vel.x * line.dir.x + this.vel.z * line.dir.z;
+    gr.dir = along >= 0 ? 1 : -1;
+    gr.speed = Math.max(Math.abs(along), CONFIG.grindMinSpeed);
+    gr.balance = (Math.random() - 0.5) * 0.2; gr.dist = 0;
+    const moveYaw = line.yaw + (gr.dir < 0 ? Math.PI : 0);
+    const off = Math.abs(wrapAngle(this.heading - moveYaw));
+    const perpendicular = off > 0.9 && off < Math.PI - 0.9;
+    let name;
+    if (input.down('flip') && ctx.tricks.special >= 1) { name = SPECIALS.grind.name; ctx.tricks.special = 0; this.pendingSpecial = true; ctx.sfx.special(); }
+    else if (perpendicular) name = line.kind === 'coping' ? 'Lipslide' : 'Boardslide';
+    else name = GRINDS[input.direction()];
+    if (!perpendicular) this.heading = off < Math.PI / 2 ? moveYaw : moveYaw + Math.PI;
+    else this.heading = moveYaw + (wrapAngle(this.heading - moveYaw) > 0 ? Math.PI / 2 : -Math.PI / 2);
+    gr.entry = ctx.tricks.add(name, name === SPECIALS.grind.name ? SPECIALS.grind.pts : 75);
+    this.state = 'grind'; this.flip = null; this.grab = null; this.vy = 0;
+    this.pos.copy(line.a).addScaledVector(line.dir, t);
+    ctx.sfx.grind(true);
+  }
+  #stepGrind(dt, ctx) {
+    const gr = this.grind, line = gr.line, input = ctx.input;
+    gr.speed = Math.max(0.5, gr.speed - CONFIG.grindFriction * dt);
+    const step = gr.speed * dt; gr.t += gr.dir * step; gr.dist += step;
+    ctx.tricks.grow(gr.entry, 55 * step);
+    ctx.session?.addGrind(step);
+    // Balance: unstable equilibrium you correct with left/right.
+    gr.balance += (gr.balance * 1.0 + Math.sin(performance.now() * 0.0021) * CONFIG.balanceDrift * 0.45) * dt - input.axisX() * CONFIG.balanceControl * dt;
+    if (Math.abs(gr.balance) > 1) { this.#exitGrind(ctx, false); this.#bail(ctx, 'balance'); return; }
+    this.pos.copy(line.a).addScaledVector(line.dir, clamp(gr.t, 0, line.len));
+    this.vel.set(line.dir.x * gr.dir * gr.speed, 0, line.dir.z * gr.dir * gr.speed);
+    if (input.take('ollie')) { this.#exitGrind(ctx, true); this.#enterAir(this.pos.y + 0.02, CONFIG.ollieBase * 0.9, ctx); ctx.tricks.add('Ollie', 40); ctx.sfx.pop(); return; }
+    if (gr.t < 0 || gr.t > line.len) { this.#exitGrind(ctx, true); this.#enterAir(this.pos.y + 0.02, 1.2, ctx); }
+  }
+  #exitGrind(ctx, clean) {
+    this.grind.lastLine = this.grind.line; this.grind.cooldown = 0.3; this.grind.line = null;
+    ctx.sfx.grind(false);
+    if (clean && this.pendingSpecial) { this.pendingSpecial = false; ctx.events.special(); }
+  }
+
+  // --- manual ------------------------------------------------------------
+  #startManual(ctx) {
+    const m = this.manual; m.on = true; m.time = 0; m.balance = (Math.random() - 0.5) * 0.2;
+    const nose = ctx.input.down('up');
+    m.entry = ctx.tricks.add(nose ? 'Nose Manual' : 'Manual', 50);
+  }
+  #stepManual(dt, ctx) {
+    const m = this.manual, input = ctx.input;
+    m.time += dt; ctx.tricks.grow(m.entry, 45 * dt);
+    m.balance += (m.balance * 1.2 + Math.cos(performance.now() * 0.0017) * CONFIG.balanceDrift * 0.5) * dt - input.axisY() * CONFIG.balanceControl * dt;
+    this.groundTime = 0;
+    if (Math.abs(m.balance) > 1) { this.#endManual(ctx, false); this.#bail(ctx, 'balance'); }
+  }
+  #endManual(ctx, keepCombo) {
+    const m = this.manual; m.on = false;
+    ctx.session?.manualDone(m.time);
+    if (!keepCombo) this.groundTime = 0;
+  }
+
+  // --- bail ----------------------------------------------------------------
+  #bail(ctx, reason) {
+    this.state = 'bail'; this.bailTimer = CONFIG.bailTime; this.flip = null; this.grab = null; this.manual.on = false; this.pendingSpecial = false;
+    this.vel.multiplyScalar(0.3); this.vy = 0;
+    this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    ctx.events.bail(reason);
+    ctx.sfx.bail();
+  }
+  #stepBail(dt) {
+    this.bailTimer -= dt;
+    this.vel.multiplyScalar(Math.exp(-2.5 * dt));
+    this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt;
+    this.pos.y = this.park.heightAt(this.pos.x, this.pos.z);
+    if (this.bailTimer <= 0) {
+      this.state = 'ground'; this.groundTime = 0; this.vy = 0;
+      if (this.speed > 0.5) this.heading = Math.atan2(this.vel.x, this.vel.z);
+    }
+  }
+
+  /** Copies the physics state onto the rig. Uses scratch quaternions only. */
+  syncRig(rig, dt, time) {
+    rig.root.position.copy(this.pos);
+    rig.root.quaternion.setFromAxisAngle(_up, this.heading);
+    // Tilt to the surface normal (in rig space) on the ground, level in the air.
+    const target = this.state === 'air' ? _v4.set(0, 1, 0) : _v4.copy(this.normal);
+    _q1.copy(rig.root.quaternion).invert();
+    target.applyQuaternion(_q1);
+    _q2.setFromUnitVectors(_up, target);
+    rig.tilt.quaternion.slerp(_q2, damp(14, dt));
+    // Board flips (around the board's own axes).
+    const bp = rig.boardPivot;
+    bp.rotation.set(0, 0, 0); bp.position.y = 0;
+    if (this.flip) {
+      const k = clamp(this.flip.t / this.flip.dur, 0, 1), e = k * k * (3 - 2 * k), turn = TAU * e;
+      bp.position.y = Math.sin(Math.PI * k) * 0.22;
+      switch (this.flip.axis) {
+        case 'roll': bp.rotation.z = turn * this.flip.dir; break;
+        case 'yaw': bp.rotation.y = Math.PI * e; break;
+        case 'pitch': bp.rotation.x = turn; break;
+        case 'varial': bp.rotation.y = Math.PI * e; bp.rotation.z = turn; break;
+        case 'special': bp.rotation.z = turn * 2; bp.rotation.y = turn; bp.position.y = Math.sin(Math.PI * k) * 0.5; break;
+      }
+    }
+    if (this.state === 'bail') { bp.position.y = 0.05; bp.rotation.z = 2.4; bp.position.x = 0.45; }
+    // Pose.
+    const p = rig.pose;
+    const crouchT = this.state === 'air' ? (this.grab ? 0.7 : 0.35) : this.state === 'grind' ? 0.45 : this.charge * 0.9 + (this.manual.on ? 0.15 : 0);
+    p.crouch += (crouchT - p.crouch) * damp(12, dt);
+    p.grab += ((this.grab ? 1 : 0) - p.grab) * damp(14, dt);
+    if (this.grab) p.grabType = this.grab.type;
+    p.armsOut += ((this.state === 'grind' || this.manual.on ? 1 : this.state === 'air' ? 0.7 : 0.35) - p.armsOut) * damp(6, dt);
+    const bal = this.state === 'grind' ? this.grind.balance : this.manual.on ? this.manual.balance : 0;
+    p.lean += (bal - p.lean) * damp(10, dt);
+    p.bail += ((this.state === 'bail' ? 1 : 0) - p.bail) * damp(8, dt);
+    p.push += ((this.pushing && this.state === 'ground' && this.charge === 0 ? 1 : 0) - p.push) * damp(8, dt);
+    p.manual = this.manual.on ? 1 : 0;
+    rig.board.rotation.x = this.manual.on ? -0.22 : 0;
+    rig.board.position.y = this.manual.on ? 0.08 : 0;
+    rig.apply(dt, time);
+  }
+}
+
+// §14 ─── Session (one run in one mode) ───────────────────────────────────────
+/**
+ * Owns the score, the clock and objective tracking for a single run. Objective
+ * completion is written to the profile the moment it happens, so quitting
+ * mid-run never loses earned cash.
+ */
+class Session {
+  constructor({ mode, park, chapter, profiles, hud, sfx }) {
+    this.mode = mode; this.park = park; this.chapter = chapter; this.profiles = profiles; this.hud = hud; this.sfx = sfx;
+    this.time = mode.duration; this.elapsed = 0; this.score = 0; this.over = false; this.overtime = 0;
+    this.run = { letters: new Set(), grind: 0, bestCombo: 0, maxSpin: 0, vertAir: 0, special: false, manualBest: 0, tricks: 0, bails: 0 };
+    this.completedNow = [];
+    this.cashEarned = 0;
+  }
+  get objectives() { return this.mode.objectives && this.chapter ? this.chapter.objectives : []; }
+  update(dt, tricks) {
+    if (this.over) return;
+    this.elapsed += dt;
+    if (Number.isFinite(this.time)) {
+      this.time = Math.max(0, this.time - dt);
+      // At zero, the combo in progress may still land (max 8 s of overtime).
+      if (this.time <= 0) { if (!tricks.active || (this.overtime += dt) > 8) this.finish(); }
+    }
+  }
+  bank(value, combo) {
+    if (this.over && !combo) return;
+    this.score += value; this.run.tricks += combo;
+    this.run.bestCombo = Math.max(this.run.bestCombo, value);
+    this.check();
+    if (this.time <= 0) this.finish();
+  }
+  addGrind(m) { this.run.grind += m; }
+  manualDone(t) { this.run.manualBest = Math.max(this.run.manualBest, t); this.check(); }
+  letter(ch) { this.run.letters.add(ch); this.check(); }
+  landed(info) {
+    this.run.maxSpin = Math.max(this.run.maxSpin, info.spin);
+    if (info.air.inZone && this.park.halfPipeZone) this.run.vertAir = Math.max(this.run.vertAir, info.air.peakY - this.park.halfPipeZone.coping);
+    this.lastAir = info.air;
+  }
+  /** Called after a combo containing a kickflip-family trick lands clean. */
+  checkFunbox(entries, air) {
+    if (air?.overFunbox && entries.some((e) => /Kickflip/.test(e.name))) { this.funboxFlip = true; this.check(); }
+  }
+  special() { this.run.special = true; this.check(); }
+  progress(o) {
+    switch (o.type) {
+      case 'score': return Math.min(this.score, o.target);
+      case 'letters': return this.run.letters.size;
+      case 'funboxFlip': return this.funboxFlip ? 1 : 0;
+      case 'combo': return Math.min(this.run.bestCombo, o.target);
+      case 'grind': return Math.min(this.run.grind, o.target);
+      case 'spin': return Math.min(this.run.maxSpin, o.target);
+      case 'vertAir': return Math.min(Math.max(0, this.run.vertAir), o.target);
+      case 'special': return this.run.special ? 1 : 0;
+      case 'manual': return Math.min(this.run.manualBest, o.target);
+    }
+    return 0;
+  }
+  /** Checks every objective; newly met ones are saved and announced. */
+  check() {
+    for (const o of this.objectives) {
+      if (this.profiles.isDone(`${this.chapter.id}:${o.id}`)) continue;
+      if (this.progress(o) >= o.target) {
+        const res = this.profiles.completeObjective(this.chapter, o);
+        if (!res) continue;
+        this.completedNow.push(o); this.cashEarned += res.cash;
+        this.hud.popup(`✓ ${o.label}  +$${fmt(res.cash)}`, 'gold');
+        this.sfx.objective();
+        if (res.chapterDone) this.hud.popup(res.unlocked ? `Chapter complete! ${res.unlocked} unlocked` : 'Chapter complete!', 'teal');
+      }
+    }
+  }
+  finish() {
+    if (this.over) return;
+    this.over = true;
+    const p = this.profiles.data;
+    p.stats.runs++; p.stats.tricksLanded += this.run.tricks; p.stats.bails += this.run.bails;
+    p.stats.lettersCollected += this.run.letters.size; p.stats.grindMeters += Math.round(this.run.grind);
+    p.stats.bestCombo = Math.max(p.stats.bestCombo, this.run.bestCombo);
+    this.newBest = this.mode.scored ? this.profiles.record(this.mode.id, this.park.def.id, Math.round(this.score)) : false;
+    this.profiles.save();
+    this.onFinish?.(this);
+  }
+}
+
+// §15 ─── Audio (tiny synth, no files) ────────────────────────────────────────
+class Sfx {
+  constructor() { this.ctx = null; this.volume = 0.7; this.roll = null; this.grindNode = null; }
+  /** Audio contexts must start from a user gesture. */
+  unlock() {
+    if (this.ctx) { this.ctx.resume?.(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    this.ctx = new AC(); this.master = this.ctx.createGain(); this.master.gain.value = this.volume; this.master.connect(this.ctx.destination);
+    const len = this.ctx.sampleRate * 2, buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate), d = buf.getChannelData(0);
+    let last = 0; for (let i = 0; i < len; i++) { last = (last + 0.02 * (Math.random() * 2 - 1)) / 1.02; d[i] = last * 3.5; }
+    this.noise = buf;
+    const src = this.ctx.createBufferSource(); src.buffer = buf; src.loop = true;
+    const lp = this.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 400;
+    const g = this.ctx.createGain(); g.gain.value = 0;
+    src.connect(lp).connect(g).connect(this.master); src.start();
+    this.roll = { g, lp };
+  }
+  setVolume(v) { this.volume = v; if (this.master) this.master.gain.value = v; }
+  rolling(speed, grounded) {
+    if (!this.roll) return;
+    const t = this.ctx.currentTime, k = grounded ? clamp(speed / 12, 0, 1) : 0;
+    this.roll.g.gain.setTargetAtTime(k * 0.5, t, 0.05); this.roll.lp.frequency.setTargetAtTime(250 + k * 900, t, 0.05);
+  }
+  #burst(freq, dur, gain, type = 'bandpass', q = 1) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, src = this.ctx.createBufferSource(); src.buffer = this.noise;
+    const f = this.ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = this.ctx.createGain(); g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    src.connect(f).connect(g).connect(this.master); src.start(t, Math.random()); src.stop(t + dur + 0.05);
+  }
+  #tone(freq, dur, gain, type = 'sine', when = 0) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + when, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.master); o.start(t); o.stop(t + dur + 0.05);
+  }
+  pop() { this.#burst(1800, 0.08, 0.9, 'bandpass', 2); this.#tone(90, 0.12, 0.4, 'triangle'); }
+  flick() { this.#burst(3000, 0.05, 0.35, 'highpass'); }
+  land(k) { this.#burst(220, 0.18, 0.5 + k, 'lowpass'); this.#tone(60, 0.15, 0.3 + k * 0.3, 'sine'); }
+  bail() { this.#burst(300, 0.5, 1.2, 'lowpass'); this.#burst(2500, 0.25, 0.4, 'bandpass', 3); }
+  grind(on) {
+    if (!this.ctx) return;
+    if (on && !this.grindNode) {
+      const src = this.ctx.createBufferSource(); src.buffer = this.noise; src.loop = true;
+      const f = this.ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 6;
+      const g = this.ctx.createGain(); g.gain.value = 0.6; src.connect(f).connect(g).connect(this.master); src.start();
+      this.grindNode = { src, g };
+    } else if (!on && this.grindNode) { const n = this.grindNode; n.g.gain.setTargetAtTime(0, this.ctx.currentTime, 0.03); n.src.stop(this.ctx.currentTime + 0.2); this.grindNode = null; }
+  }
+  chime() { this.#tone(1046, 0.25, 0.3); this.#tone(1568, 0.35, 0.25, 'sine', 0.08); }
+  special() { this.#tone(523, 0.2, 0.25, 'sawtooth'); this.#tone(784, 0.3, 0.25, 'sawtooth', 0.1); }
+  objective() { [523, 659, 784, 1046].forEach((f, i) => this.#tone(f, 0.25, 0.22, 'triangle', i * 0.09)); }
+  bank() { this.#tone(880, 0.12, 0.18, 'square'); }
+  stopAll() { this.grind(false); this.rolling(0, false); }
+}
+
+// §16 ─── HUD ─────────────────────────────────────────────────────────────────
+/** DOM HUD. Every setter compares with the last value so idle frames write nothing. */
+class Hud {
+  constructor() {
+    const $ = (id) => document.getElementById(id);
+    this.el = { mode: $('hudMode'), score: $('hudScore'), timer: $('hudTimer'), letters: $('hudLetters'), zone: $('hudZone'), objBtn: $('hudObjBtn'),
+      objPanel: $('hudObjPanel'), objTitle: $('hudObjTitle'), objList: $('hudObjList'), special: $('hudSpecial'), specialBar: $('hudSpecial').querySelector('i'),
+      combo: $('hudCombo'), tricks: $('hudTricks'), balance: $('hudBalance'), balanceDot: $('hudBalance').querySelector('i'), popups: $('hudPopups'), fps: $('hudFps') };
+    this.last = {};
+  }
+  set(key, value, fn) { if (this.last[key] !== value) { this.last[key] = value; fn(value); } }
+  configure(session) {
+    const m = session.mode;
+    this.last = {};
+    this.el.mode.textContent = m.label + (session.chapter ? ` · ${session.chapter.title}` : '');
+    this.el.timer.parentElement.classList.toggle('hidden', !Number.isFinite(m.duration));
+    this.el.score.classList.toggle('hidden', !m.scored);
+    this.el.letters.classList.toggle('hidden', !m.letters);
+    this.el.zone.classList.toggle('hidden', !m.showZone);
+    this.el.objBtn.classList.toggle('hidden', !m.objectives);
+    this.el.objPanel.classList.add('hidden');
+    for (const s of this.el.letters.children) s.classList.remove('got');
+    this.el.popups.textContent = '';
+    this.renderObjectives(session);
+  }
+  renderObjectives(session) {
+    const list = this.el.objList; list.textContent = '';
+    if (!session.chapter) return;
+    this.el.objTitle.textContent = session.chapter.title;
+    for (const o of session.objectives) {
+      const li = document.createElement('li');
+      const done = session.profiles.isDone(`${session.chapter.id}:${o.id}`);
+      li.classList.toggle('done', done);
+      const prog = done ? '' : o.type === 'letters' ? ` (${session.run.letters.size}/5)` : o.type === 'grind' ? ` (${session.run.grind.toFixed(1)} m)` : '';
+      li.innerHTML = `<span>${o.label}${prog}</span><span class="cash">$${fmt(o.cash)}</span>`;
+      list.appendChild(li);
+    }
+  }
+  toggleObjectives() { if (!this.el.objBtn.classList.contains('hidden')) this.el.objPanel.classList.toggle('hidden'); }
+  letter(ch) { for (const s of this.el.letters.children) if (s.textContent === ch) s.classList.add('got'); }
+  popup(text, kind = 'good') {
+    const d = document.createElement('div'); d.className = `popup ${kind}`; d.textContent = text;
+    this.el.popups.appendChild(d); setTimeout(() => d.remove(), 1700);
+    while (this.el.popups.children.length > 4) this.el.popups.firstChild.remove();
+  }
+  update(session, skater, tricks, inZone) {
+    this.set('score', Math.round(session.score), (v) => (this.el.score.textContent = fmt(v)));
+    if (Number.isFinite(session.mode.duration)) {
+      const t = Math.ceil(session.time);
+      this.set('timer', t, (v) => { this.el.timer.textContent = `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`; this.el.timer.classList.toggle('low', v <= 10); });
+    }
+    this.set('special', Math.round(tricks.special * 100), (v) => { this.el.specialBar.style.width = `${v}%`; this.el.special.classList.toggle('full', v >= 100); });
+    this.set('combo', tricks.version * 100000 + (tricks.active ? tricks.multiplier : 0), () => {
+      if (!tricks.active) { this.el.combo.textContent = ''; this.el.tricks.textContent = ''; return; }
+      const names = tricks.entries.map((e) => e.name + (e.zone > 1 ? ' ×2' : ''));
+      this.el.tricks.textContent = (names.length > 5 ? '… + ' : '') + names.slice(-5).join(' + ');
+      this.el.combo.textContent = `${fmt(tricks.sum)} × ${tricks.multiplier}`;
+    });
+    const balancing = skater.state === 'grind' ? 'h' : skater.manual.on ? 'v' : '';
+    this.set('balMode', balancing, (v) => { this.el.balance.classList.toggle('hidden', !v); this.el.balance.classList.toggle('vert', v === 'v'); });
+    if (balancing === 'h') this.el.balanceDot.style.left = `${50 + clamp(skater.grind.balance, -1, 1) * 50}%`;
+    if (balancing === 'v') this.el.balanceDot.style.top = `${50 + clamp(skater.manual.balance, -1, 1) * 50}%`;
+    if (session.mode.showZone) this.set('zone', inZone, (v) => this.el.zone.classList.toggle('on', v));
+  }
+}
+
+// §17 ─── Renderer & Level ────────────────────────────────────────────────────
+/**
+ * Lighting recipe for soft, never-black shadows:
+ *   HemisphereLight sky dome   fills every shadow with sky/ground bounce
+ *   DirectionalLight sun       casts PCF-filtered shadows (radius-softened)
+ *   RoomEnvironment PMREM      image-based reflections for metal and plywood
+ * three r186 folded PCFSoftShadowMap into PCFShadowMap (the old constant now
+ * only logs a deprecation warning and falls back), so PCFShadowMap with a
+ * shadow radius is the soft filter here, and shadow.intensity < 1 keeps the
+ * darkest shadow lifted.
+ */
+class Level {
+  constructor(app, parkDef, modeDef) {
+    this.app = app; this.scope = new ResourceScope(parkDef.id);
+    this.root = new THREE.Group(); this.root.name = 'level';
+    const q = QUALITY[app.profiles.data.settings.quality];
+    this.park = new Park(parkDef, this.scope, q);
+    this.root.add(this.park.group);
+    const p = parkDef.palette;
+    // Sky dome (vertex-coloured gradient sphere) + fog.
+    const skyGeo = this.scope.track(new THREE.SphereGeometry(400, 32, 16));
+    const top = new THREE.Color(p.sky[0]), hor = new THREE.Color(p.sky[1]), colors = [];
+    const pos = skyGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) { const k = clamp(pos.getY(i) / 400, 0, 1); const c = hor.clone().lerp(top, Math.pow(k, 0.6)); colors.push(c.r, c.g, c.b); }
+    skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    const sky = new THREE.Mesh(skyGeo, this.scope.track(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+    sky.name = 'sky'; this.root.add(sky);
+    this.fog = new THREE.Fog(p.fog, 70, 260);
+    // Lights.
+    const hemi = new THREE.HemisphereLight(p.sky[0], 0x6b5a48, 1.25); this.root.add(hemi);
+    const sun = new THREE.DirectionalLight(p.sun, 2.7);
+    sun.position.set(-30, 46, 24); sun.target.position.set(0, 0, 0);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(q.shadow, q.shadow);
+    const S = parkDef.size / 2 + 6;
+    Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 5, far: 140 });
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035; sun.shadow.radius = q.shadow >= 2048 ? 4 : 2;
+    if ('intensity' in sun.shadow) sun.shadow.intensity = 0.82;
+    this.root.add(sun, sun.target);
+    // Skater + optional collectibles.
+    this.rig = new SkaterRig(this.scope, deckById(app.profiles.data.equippedDeck));
+    this.root.add(this.rig.root);
+    this.skater = new Skater(this.park, parkDef.spawn);
+    this.letters = modeDef.letters ? new LetterField(this.park, this.scope) : null;
+    if (this.letters) this.root.add(this.letters.group);
+    if (this.park.halfPipeZone) this.park.halfPipeZone.mesh.visible = modeDef.showZone;
+  }
+  /** Optional authored scenery via GLTFLoader (see ASSET_MANIFEST). */
+  async loadOptionalAssets() {
+    if (!ASSET_MANIFEST.skatepark) return;
+    try {
+      const gltf = await new GLTFLoader().loadAsync(ASSET_MANIFEST.skatepark);
+      gltf.scene.traverse((o) => {
+        if (!o.isMesh) return;
+        o.castShadow = o.receiveShadow = true;
+        for (const m of Array.isArray(o.material) ? o.material : [o.material]) for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap']) if (m[k]) Textures.finish(m[k], k === 'map' || k === 'emissiveMap', m[k].repeat.x);
+      });
+      gltf.scene.name = 'skatepark.glb';
+      this.root.add(gltf.scene);
+    } catch (err) { console.warn('[proskater] skatepark.glb not loaded', err); }
+  }
+}
+
+// §18 ─── UI (SPA screens) ────────────────────────────────────────────────────
+const UI = {
+  current: 'title', history: [],
+  screens: Object.fromEntries([...document.querySelectorAll('#ui > section')].map((s) => [s.dataset.screen, s])),
+  show(name, { push = true } = {}) {
+    if (push && this.current !== name && !['loading', 'hud', 'pause', 'results', 'confirm'].includes(this.current)) this.history.push(this.current);
+    for (const [k, el] of Object.entries(this.screens)) el.classList.toggle('hidden', k !== name && !(name === 'pause' && k === 'hud') && !(name === 'results' && k === 'hud'));
+    this.current = name;
+    const focus = this.screens[name].querySelector('button, select');
+    if (!['hud', 'loading'].includes(name)) focus?.focus({ preventScroll: true });
+  },
+  back() { this.show(this.history.pop() ?? 'title', { push: false }); },
+};
+
+// §19 ─── App: boot + main loop ───────────────────────────────────────────────
+class App {
+  constructor() {
+    this.canvas = document.getElementById('view');
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
+    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.0;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;      // soft PCF in r186 (see §17)
+    Textures.setAnisotropy(Math.min(8, this.renderer.capabilities.getMaxAnisotropy()));
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(62, 1, 0.1, 900);
+    // Environment map is the only persistent GPU texture across levels.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const room = new RoomEnvironment();
+    this.envMap = pmrem.fromScene(room, 0.04).texture;
+    Unloader.disposeObject(room); pmrem.dispose();
+    this.scene.environment = this.envMap;
+    this.scene.environmentIntensity = 0.45;
+    this.store = new SaveStore(); this.profiles = new Profiles(this.store);
+    this.input = new Input(); this.hud = new Hud(); this.sfx = new Sfx(); this.tricks = new Tricks();
+    this.level = null; this.session = null; this.paused = false; this.acc = 0; this.time = 0;
+    this.cam = { yaw: 0, pos: new THREE.Vector3(), look: new THREE.Vector3() };
+    this.fps = { frames: 0, t: 0, value: 0, worst: 0 };
+    this.last = performance.now();
+    this.baseline = null;
+    this.ctx = this.#makeCtx();
+    addEventListener('resize', () => this.resize());
+    document.addEventListener('visibilitychange', () => { if (document.hidden && UI.current === 'hud') this.pause(); });
+    this.resize();
+  }
+
+  async boot() {
+    await this.store.open();
+    const user = await this.#libraryUser();
+    await this.profiles.load(user ? `user:${user}` : 'guest');
+    this.sfx.setVolume(this.profiles.data.settings.volume);
+    this.profiles.onChange(() => this.refreshMenus());
+    this.#bindUI();
+    this.refreshMenus();
+    UI.show('title', { push: false });
+    this.renderer.setAnimationLoop(() => this.frame());
+    window.__skater = this;                                   // debugging / automated checks
+  }
+  /** Saves are per library account when signed in, else one guest profile. */
+  async #libraryUser() {
+    if (!/^https?:$/.test(location.protocol)) return null;
+    try {
+      const res = await fetch('/api/pool-account', { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) return null;
+      const data = await res.json();
+      return typeof data.username === 'string' && /^[A-Za-z0-9_-]{3,20}$/.test(data.username) ? data.username.toLowerCase() : null;
+    } catch { return null; }
+  }
+
+  resize() {
+    const q = QUALITY[this.profiles?.data.settings.quality ?? 'high'];
+    const w = innerWidth, h = innerHeight;
+    // Pixel budget: cap the drawing buffer at the tier's pixel count (1080p on High).
+    const dpr = Math.min(devicePixelRatio || 1, q.maxDpr, Math.sqrt(q.maxPixels / (w * h)));
+    this.renderer.setPixelRatio(Math.max(0.5, dpr));
+    this.renderer.setSize(w, h, false);
+    this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+  }
+
+  // --- level lifecycle ------------------------------------------------------
+  async start(modeId, parkId, chapter = null) {
+    this.sfx.unlock();
+    const mode = MODES[modeId], parkDef = PARKS[parkId];
+    this.lastStart = { modeId, parkId, chapter };
+    UI.show('loading');
+    const bar = document.getElementById('loadBar'), text = document.getElementById('loadText');
+    const step = async (pct, msg) => { bar.style.width = `${pct}%`; text.textContent = msg; await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))); };
+    await step(5, 'Clearing the last park…');
+    this.unload();
+    await step(20, 'Mixing concrete and cutting plywood…');
+    Textures.prepare(QUALITY[this.profiles.data.settings.quality].tex);
+    await step(55, `Building ${parkDef.name}…`);
+    this.level = new Level(this, parkDef, mode);
+    this.scene.add(this.level.root);
+    this.scene.fog = this.level.fog;
+    await this.level.loadOptionalAssets();
+    await step(80, 'Warming up shaders…');
+    this.#placeCamera(true);
+    this.renderer.compile(this.scene, this.camera);          // no first-frame shader hitches
+    await step(100, 'Drop in!');
+    this.tricks.reset(); this.tricks.special = 0;
+    this.tricks.zoneMult = mode.zoneMult;
+    this.tricks.inZone = () => this.level.park.inHalfPipeZone(this.level.skater.pos);
+    this.session = new Session({ mode, park: this.level.park, chapter, profiles: this.profiles, hud: this.hud, sfx: this.sfx });
+    this.session.onFinish = (s) => this.showResults(s);
+    this.hud.configure(this.session);
+    this.input.clear(); this.paused = false; this.acc = 0;
+    UI.show('hud');
+    this.canvas.focus({ preventScroll: true });
+  }
+  /** Leaves the level and purges every GPU resource it created. */
+  unload() {
+    this.sfx.stopAll();
+    if (!this.level) return null;
+    this.scene.fog = null;
+    const mem = Unloader.purge(this.level.root, this.level.scope, this.renderer);
+    this.level = null; this.session = null;
+    this.renderer.clear();
+    this.lastPurge = mem;
+    return mem;
+  }
+  pause() { if (!this.session || this.session.over) return; this.paused = true; this.sfx.stopAll(); this.#renderObjList(document.getElementById('pauseObjList')); UI.show('pause'); }
+  resume() { this.paused = false; this.input.clear(); this.last = performance.now(); UI.show('hud'); this.canvas.focus({ preventScroll: true }); }
+  quit() { this.unload(); this.refreshMenus(); UI.history = []; UI.show('title', { push: false }); }
+
+  // --- per-frame ------------------------------------------------------------
+  frame() {
+    const now = performance.now(); let dt = (now - this.last) / 1000; this.last = now;
+    if (dt > 0.25) dt = 0.25;
+    this.input.pollGamepad();
+    this.#fpsMeter(dt);
+    if (!this.level) return;
+    if (!this.paused && UI.current === 'hud') {
+      const h = 1 / CONFIG.physicsHz; this.acc += dt; let n = 0;
+      while (this.acc >= h && n < CONFIG.maxSubSteps) { this.#simStep(h); this.acc -= h; n++; }
+      if (n === CONFIG.maxSubSteps) this.acc = 0;
+      this.time += dt;
+    }
+    const lv = this.level, sk = lv.skater;
+    sk.syncRig(lv.rig, dt, this.time);
+    if (lv.letters) {
+      const got = lv.letters.update(this.paused ? 0 : dt, this.time, _v5.copy(sk.pos).setY(sk.pos.y + 0.9));
+      if (got && this.session) { this.session.letter(got); this.hud.letter(got); this.hud.popup(`${got}!`, 'gold'); this.sfx.chime(); this.hud.renderObjectives(this.session); }
+    }
+    this.#placeCamera(false, dt);
+    if (this.session) this.hud.update(this.session, sk, this.tricks, this.tricks.inZone());
+    this.sfx.rolling(sk.speed, sk.state === 'ground');
+    this.renderer.render(this.scene, this.camera);
+  }
+  #simStep(dt) {
+    const sk = this.level.skater, s = this.session;
+    if (this.input.take('pause')) { this.pause(); return; }
+    if (this.input.take('objectives')) this.hud.toggleObjectives();
+    if (this.input.take('debug')) document.getElementById('hudFps').classList.toggle('hidden');
+    sk.step(dt, this.ctx);
+    this.tricks.decay(dt);
+    s?.update(dt, this.tricks);
+  }
+  /** Event hooks between physics, tricks, session and HUD (created once). */
+  #makeCtx() {
+    const app = this;
+    return {
+      input: this.input, tricks: this.tricks, sfx: this.sfx,
+      get session() { return app.session; },
+      events: {
+        bank() {
+          const entries = app.tricks.entries.slice(), count = entries.length, value = app.tricks.bank();
+          if (!app.session) return;
+          app.session.checkFunbox(entries, app.level.skater.air);
+          app.session.bank(value, count);
+          if (value > 0 && count > 0) { app.hud.popup(`+${fmt(value)}`, 'good'); if (count > 1) app.sfx.bank(); }
+          app.hud.renderObjectives(app.session);
+        },
+        bail(reason) {
+          const lost = app.tricks.fail();
+          if (app.session) app.session.run.bails++;
+          app.hud.popup(lost > 0 ? `BAIL!  −${fmt(lost)}` : 'BAIL!', 'bad');
+        },
+        landed(info) { app.session?.landed(info); },
+        special() { app.session?.special(); },
+      },
+    };
+  }
+  /** Chase camera: follows the rolling direction, holds still during vert airs. */
+  #placeCamera(snap, dt = 0) {
+    const sk = this.level.skater, c = this.cam, park = this.level.park;
+    const hs = sk.speed;
+    let desired = c.yaw;
+    if (sk.state === 'grind' || (sk.state === 'ground' && hs > 1.2)) desired = Math.atan2(sk.vel.x, sk.vel.z);
+    else if (sk.state === 'ground') desired = sk.heading + (sk.fakie ? Math.PI : 0);
+    else if (sk.state === 'air' && hs > 3) desired = Math.atan2(sk.vel.x, sk.vel.z);
+    c.yaw = snap ? desired : c.yaw + wrapAngle(desired - c.yaw) * damp(3.2, dt);
+    const dist = 5.4 + Math.min(2, hs * 0.08), height = 2.1;
+    const target = _v6.set(sk.pos.x, sk.pos.y + 1.1, sk.pos.z);
+    const want = _v1.set(target.x - Math.sin(c.yaw) * dist, target.y + height, target.z - Math.cos(c.yaw) * dist);
+    const lim = park.def.size / 2 - 0.2;
+    want.x = clamp(want.x, -lim, lim); want.z = clamp(want.z, -lim, lim);
+    want.y = Math.max(want.y, park.heightAt(want.x, want.z) + 0.8);
+    if (snap) { c.pos.copy(want); c.look.copy(target); }
+    else { c.pos.lerp(want, damp(7, dt)); c.look.lerp(target, damp(14, dt)); }
+    this.camera.position.copy(c.pos); this.camera.lookAt(c.look);
+  }
+  #fpsMeter(dt) {
+    const f = this.fps; f.frames++; f.t += dt; f.worst = Math.max(f.worst, dt);
+    if (f.t >= 0.5) {
+      f.value = f.frames / f.t;
+      const m = this.renderer.info;
+      if (this.profiles.data.settings.fps || !this.hud.el.fps.classList.contains('hidden')) {
+        this.hud.el.fps.textContent = `${f.value.toFixed(0)} fps  worst ${(f.worst * 1000).toFixed(1)} ms\ncalls ${m.render.calls}  tris ${fmt(m.render.triangles)}\ngeo ${m.memory.geometries}  tex ${m.memory.textures}`;
+      }
+      f.frames = 0; f.t = 0; f.worst = 0;
+    }
+  }
+
+  // --- menus ----------------------------------------------------------------
+  showResults(s) {
+    this.sfx.stopAll();
+    const $ = (id) => document.getElementById(id);
+    $('resMode').textContent = s.mode.label + ' · ' + s.park.def.name;
+    $('resScore').textContent = s.mode.scored ? fmt(s.score) : 'Session over';
+    $('resBest').classList.toggle('hidden', !s.newBest);
+    const best = s.mode.scored ? (this.profiles.data.records[s.mode.id]?.[s.park.def.id] ?? 0) : 0;
+    const stats = [['Best combo', fmt(s.run.bestCombo)], ['Tricks landed', s.run.tricks], ['Bails', s.run.bails], ['Grind', `${s.run.grind.toFixed(1)} m`]];
+    if (s.mode.scored) stats.unshift(['Personal best', fmt(best)]);
+    if (s.mode.id === 'story') stats.push(['Cash earned', `$${fmt(s.cashEarned)}`], ['Letters', `${s.run.letters.size}/5`]);
+    $('resStats').innerHTML = stats.map(([k, v]) => `<div class="stat"><small>${k}</small><b>${v}</b></div>`).join('');
+    this.#renderObjList($('resObjs'));
+    const idx = s.chapter ? CHAPTERS.indexOf(s.chapter) : -1;
+    $('resNext').classList.toggle('hidden', !(idx >= 0 && CHAPTERS[idx + 1] && this.profiles.chapterUnlocked(idx + 1)));
+    UI.show('results');
+  }
+  #renderObjList(ul) {
+    ul.textContent = '';
+    const s = this.session; if (!s?.chapter) return;
+    for (const o of s.objectives) {
+      const li = document.createElement('li'); li.classList.toggle('done', this.profiles.isDone(`${s.chapter.id}:${o.id}`));
+      li.innerHTML = `<span>${o.label}</span><span class="cash">$${fmt(o.cash)}</span>`; ul.appendChild(li);
+    }
+  }
+  refreshMenus() {
+    const p = this.profiles.data;
+    const wallet = `<span class="chip">Cash <b>$${fmt(p.cash)}</b></span><span class="chip">Earned <b>$${fmt(p.totalCashEarned)}</b></span><span class="chip">Chapter <b>${p.storyChapter + 1}/${CHAPTERS.length}</b></span><span class="chip">Parks <b>${p.unlockedParks.length}/${PARK_ORDER.length}</b></span>`;
+    for (const id of ['wallet', 'storyWallet', 'deckWallet']) document.getElementById(id).innerHTML = wallet;
+    // Story chapters.
+    const list = document.getElementById('chapterList'); list.textContent = '';
+    CHAPTERS.forEach((ch, i) => {
+      const open = this.profiles.chapterUnlocked(i), done = ch.objectives.filter((o) => this.profiles.isDone(`${ch.id}:${o.id}`)).length;
+      const card = document.createElement('div'); card.className = `chapter${open ? '' : ' locked'}`;
+      card.innerHTML = `<div><span class="park">Chapter ${i + 1} · ${PARKS[ch.park].name}</span><h3>${ch.title}</h3><p class="sub" style="margin:0">${ch.blurb}</p>
+        <ul class="objlist">${ch.objectives.map((o) => `<li class="${this.profiles.isDone(`${ch.id}:${o.id}`) ? 'done' : ''}"><span>${o.label}</span><span class="cash">$${fmt(o.cash)}</span></li>`).join('')}</ul></div>
+        <div style="display:grid;gap:8px;justify-items:end"><span class="chip"><b>${done}/${ch.objectives.length}</b> done</span><button class="btn primary" ${open ? '' : 'disabled'}>${open ? 'Skate' : 'Locked'}</button></div>`;
+      card.querySelector('button').addEventListener('click', () => open && this.start('story', ch.park, ch));
+      list.appendChild(card);
+    });
+    // Decks.
+    const decks = document.getElementById('deckList'); decks.textContent = '';
+    for (const d of DECKS) {
+      const owned = p.ownedDecks.includes(d.id), eq = p.equippedDeck === d.id;
+      const card = document.createElement('div'); card.className = `deck${eq ? ' equipped' : ''}`;
+      const cv = document.createElement('canvas'); cv.width = 128; cv.height = 512; d.draw(cv.getContext('2d'), 128, 512);
+      const btn = document.createElement('button'); btn.className = `btn${owned ? '' : ' primary'}`;
+      btn.textContent = eq ? 'Equipped' : owned ? 'Equip' : `Buy $${fmt(d.price)}`;
+      btn.disabled = eq || (!owned && p.cash < d.price);
+      btn.addEventListener('click', () => (owned ? this.profiles.equipDeck(d.id) : this.profiles.buyDeck(d)));
+      card.append(cv); card.insertAdjacentHTML('beforeend', `<b>${d.name}</b><small>${owned ? 'Owned' : CHAPTERS.find((c) => c.rewardDeck === d.id) ? 'Or finish a chapter' : 'Shop'}</small>`); card.append(btn);
+      decks.appendChild(card);
+    }
+    // Options.
+    document.getElementById('optQuality').value = p.settings.quality;
+    document.getElementById('optVolume').value = String(p.settings.volume);
+    document.getElementById('optFps').value = p.settings.fps ? '1' : '0';
+    document.getElementById('profileInfo').textContent = `Saved in this browser (${this.store.mode === 'indexeddb' ? 'IndexedDB' : this.store.mode}) as "${this.profiles.key}". Started ${new Date(p.createdAt).toLocaleDateString()}. Runs: ${p.stats.runs}, tricks landed: ${fmt(p.stats.tricksLanded)}.`;
+    this.#diagnostics();
+  }
+  #diagnostics() {
+    const m = this.renderer.info.memory, last = this.lastPurge;
+    document.getElementById('diag').textContent =
+      `GPU now: ${m.geometries} geometries, ${m.textures} textures, ${this.renderer.info.programs?.length ?? 0} shader programs\n` +
+      (last ? `After last purge: ${last.geometries} geometries, ${last.textures} textures (the environment map is the one persistent texture)\n` : 'No level loaded yet\n') +
+      `Renderer: WebGL2 · ${this.renderer.getPixelRatio().toFixed(2)}× pixel ratio · ${this.renderer.domElement.width}×${this.renderer.domElement.height}`;
+  }
+  #openParks(modeId) {
+    const mode = MODES[modeId], p = this.profiles.data;
+    document.getElementById('parksTitle').textContent = mode.label;
+    document.getElementById('parksSub').textContent = modeId === 'blitz' ? 'One minute on the clock. Your best score per park is saved.' : modeId === 'showdown' ? 'Sixty seconds. Tricks started inside the glowing half-pipe zone score double.' : 'No timer. Press Esc for the menu when you are done.';
+    const list = document.getElementById('parkList'); list.textContent = '';
+    for (const id of PARK_ORDER) {
+      const park = PARKS[id], open = p.unlockedParks.includes(id), best = p.records[modeId]?.[id];
+      const pal = park.palette, hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
+      const b = document.createElement('button'); b.className = 'parkcard'; b.disabled = !open;
+      b.innerHTML = `<div class="swatch" style="background:linear-gradient(160deg, ${hex(pal.sky[0])}, ${hex(pal.sky[1])} 55%, ${hex(pal.ground)} 56%, ${hex(pal.side)})"></div><b>${park.name}</b><small>${open ? park.tagline : 'Unlock through Story Mode'}</small>${best ? `<small>Best: <b>${fmt(best)}</b></small>` : ''}`;
+      b.addEventListener('click', () => open && this.start(modeId, id));
+      list.appendChild(b);
+    }
+    UI.show('parks');
+  }
+  #bindUI() {
+    const on = (action, fn) => document.querySelectorAll(`[data-action="${action}"]`).forEach((el) => el.addEventListener('click', (e) => { this.sfx.unlock(); fn(e.currentTarget); }));
+    on('open-story', () => { this.refreshMenus(); UI.show('story'); });
+    on('open-parks', (el) => this.#openParks(el.dataset.mode));
+    on('open-decks', () => { this.refreshMenus(); UI.show('decks'); });
+    on('open-options', () => { this.refreshMenus(); UI.show('options'); });
+    on('back', () => UI.back());
+    on('resume', () => this.resume());
+    on('restart', () => { const l = this.lastStart; if (l) this.start(l.modeId, l.parkId, l.chapter); });
+    on('quit', () => this.quit());
+    on('next-chapter', () => { const i = CHAPTERS.indexOf(this.lastStart?.chapter); const n = CHAPTERS[i + 1]; if (n) this.start('story', n.park, n); });
+    on('toggle-objectives', () => this.hud.toggleObjectives());
+    on('reset-profile', () => UI.show('confirm', { push: false }));
+    on('cancel-reset', () => UI.show('options', { push: false }));
+    on('confirm-reset', async () => { await this.profiles.reset(); this.sfx.setVolume(this.profiles.data.settings.volume); this.refreshMenus(); UI.show('options', { push: false }); });
+    document.getElementById('optQuality').addEventListener('change', (e) => { this.profiles.data.settings.quality = e.target.value; this.profiles.save(); this.resize(); });
+    document.getElementById('optVolume').addEventListener('input', (e) => { this.profiles.data.settings.volume = Number(e.target.value); this.sfx.setVolume(Number(e.target.value)); });
+    document.getElementById('optVolume').addEventListener('change', () => this.profiles.save());
+    document.getElementById('optFps').addEventListener('change', (e) => { this.profiles.data.settings.fps = e.target.value === '1'; this.hud.el.fps.classList.toggle('hidden', !this.profiles.data.settings.fps); this.profiles.save(); });
+    // Esc in pause resumes; Esc in sub-menus goes back.
+    addEventListener('keydown', (e) => {
+      if (e.code !== 'Escape' && e.code !== 'KeyP') return;
+      if (UI.current === 'pause') { e.preventDefault(); this.input.clear(); this.resume(); }
+      else if (['story', 'parks', 'decks', 'options'].includes(UI.current) && e.code === 'Escape') UI.back();
+    }, true);
+    this.canvas.addEventListener('pointerdown', () => { this.sfx.unlock(); this.canvas.focus({ preventScroll: true }); });
+  }
+}
+
+const app = new App();
+app.boot().catch((err) => {
+  console.error('[proskater] boot failed', err);
+  document.getElementById('loadText').textContent = 'Could not start the 3D view on this device.';
+  UI.show('loading');
+});
+</script>
+</body>
+</html>

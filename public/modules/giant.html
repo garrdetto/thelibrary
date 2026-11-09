@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Giant's Hand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="module-base.css">
+<style>
+  :root { --accent: #7fd85a; --accent2: #2fb7d6; }
+  main { --width: 900px; }
+  .panel.play { padding: 10px; outline: none; }
+  .panel.play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; border-radius: 10px; cursor: grab; }
+  canvas.grabbing { cursor: grabbing; }
+  .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px Rajdhani, sans-serif; }
+  .overlay .ov-stats > div { display: block; text-align: center; }
+  .ov-stats span { display: block; font: 600 10px Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Giant's Hand</h1><div class="stats"><div class="stat"><span>SCORE</span><b id="score">0</b></div><div class="stat"><span>TIME</span><b id="time">90</b></div><div class="stat"><span>JUGGLE</span><b id="mult">x1</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
+  <div class="bar"><p>Ninety seconds. Toss the villagers as high and as far as you can.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New round <kbd>R</kbd></button></div></div>
+  <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Meadow. Press on a villager, drag and release to toss them.">
+    <canvas id="cv" width="880" height="500" aria-hidden="true"></canvas>
+    <div class="overlay show" id="overlay"><h2 id="ovTitle">Giant's Hand</h2><p id="ovText">A meadow full of tiny villagers and one enormous hand. Fling them skyward, catch them on the way down to build a juggle multiplier, pop balloons and sink them through the moving hoop. Nobody gets hurt: they just get very dizzy.</p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Start the round</button></div></div>
+  </section>
+  <footer>Press on a villager, drag and release; the speed of your swing sets the throw. When a villager lands you score for the height they reached and their time in the air, times your juggle multiplier. Catch a villager while they are still in the air and throw again to raise the multiplier (up to x8); it resets when anyone you threw touches the ground. Balloons pop for 100, a pass down through the gold hoop is worth 600, and a bounce off the side walls adds 50. Dizzy villagers can't be picked up until they shake it off. Your score is saved to the leaderboard as you play, so a round cut short still counts.</footer>
+</main>
+<script src="module-scores.js"></script>
+<script>
+'use strict';
+const W = 880, H = 500, GROUND = 450, G = 1300, ROUND = 90, PX_PER_M = 12;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), panel = $('panel'), overlay = $('overlay');
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SHIRTS = ['#e85d75', '#f2a541', '#5bb3e6', '#9b7be3', '#43c59e', '#e6d35b', '#ef7f4d', '#6e8ef0'];
+let best = +(store.get('giant-best') || 0);
+let S = null, mode = 'menu', last = 0, held = null, dpr = 1;
+const ptr = { x: 0, y: 0, hist: [] };
+
+function fit() { dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+fit(); window.addEventListener('resize', fit);
+function rand(a, b) { return a + Math.random() * (b - a); }
+function villager(i) { return { x: rand(40, W - 40), y: GROUND, vx: 0, vy: 0, dir: Math.random() < 0.5 ? -1 : 1, speed: rand(25, 50), state: 'walk', step: Math.random() * 6, rot: 0, spin: 0, dizzy: 0, shirt: SHIRTS[i % SHIRTS.length], peak: GROUND, air: 0, idle: rand(1, 4), thrown: false }; }
+function fresh() {
+  const v = []; for (let i = 0; i < 10; i++) v.push(villager(i));
+  return { score: 0, time: ROUND, mult: 1, people: v, balloons: [], fx: [], hoop: { x: W / 2, y: 150, dir: 1 }, t: 0, shake: 0, throws: 0, bestHeight: 0, juggles: 0 };
+}
+function hud() {
+  $('score').textContent = S.score.toLocaleString(); $('time').textContent = Math.ceil(S.time);
+  $('mult').textContent = 'x' + S.mult; $('best').textContent = best ? best.toLocaleString() : '—';
+}
+function text(x, y, t, color, big) { S.fx.push({ x: Math.max(40, Math.min(W - 40, x)), y: Math.max(30, y), vx: 0, vy: -45, life: 1.1, max: 1.1, text: t, color: color || '#fff6c4', big }); }
+function sparks(x, y, color, n) { const c = reduce ? Math.ceil(n / 3) : n; for (let i = 0; i < c; i++) { const a = Math.random() * 6.283, v = rand(40, 220); S.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rand(0.3, 0.8), max: 0.8, color, r: rand(2, 4) }); } }
+function add(points, x, y, label, color) {
+  S.score += points; text(x, y, '+' + points + (label ? ' ' + label : ''), color);
+  if (window.tlScores) tlScores.progress('giant', S.score);
+  hud();
+}
+function start() { S = fresh(); held = null; mode = 'play'; overlay.classList.remove('show'); panel.focus(); hud(); }
+function over() {
+  mode = 'over'; held = null; cv.classList.remove('grabbing');
+  if (S.score > best) { best = S.score; store.set('giant-best', String(best)); }
+  if (window.tlScores) tlScores.submit('giant', S.score);
+  $('ovTitle').textContent = 'Time!';
+  $('ovText').textContent = S.throws + ' throws, ' + S.juggles + ' mid-air catches, highest toss ' + Math.round(S.bestHeight) + ' m.';
+  $('ovStats').innerHTML = '<div><span>SCORE</span>' + S.score.toLocaleString() + '</div><div><span>BEST</span>' + best.toLocaleString() + '</div>';
+  $('ovBtn').textContent = 'Toss again'; overlay.classList.add('show'); $('ovBtn').focus(); hud();
+}
+function landed(p) {
+  const h = Math.max(0, (GROUND - p.peak) / PX_PER_M);
+  S.bestHeight = Math.max(S.bestHeight, h);
+  const pts = Math.round((h * 4 + p.air * 25) * S.mult);
+  if (p.thrown && pts > 0) add(pts, p.x, GROUND - 60, S.mult > 1 ? '(x' + S.mult + ')' : '');
+  if (p.thrown) { S.mult = 1; hud(); }
+  p.thrown = false; p.air = 0; p.peak = GROUND;
+}
+
+function update(dt) {
+  S.t += dt; S.shake = Math.max(0, S.shake - dt * 30);
+  if (mode === 'play') { S.time -= dt; if (S.time <= 0) { S.time = 0; for (const p of S.people) if (p.state === 'fly') landed(p); over(); return; } }
+  const hp = S.hoop; hp.x += hp.dir * (70 + (ROUND - S.time) * 1.2) * dt; if (hp.x > W - 120) hp.dir = -1; if (hp.x < 120) hp.dir = 1;
+  if (Math.random() < dt * 0.5 && S.balloons.length < 5) S.balloons.push({ x: rand(60, W - 60), y: GROUND + 20, vy: -rand(25, 45), color: SHIRTS[(Math.random() * 8) | 0], ph: Math.random() * 6 });
+  for (const b of S.balloons) { b.y += b.vy * dt; b.ph += dt; b.x += Math.sin(b.ph) * 12 * dt; }
+  S.balloons = S.balloons.filter(b => b.y > -40 && !b.popped);
+  for (const p of S.people) {
+    if (p === held) {
+      const dx = ptr.x - p.x; p.x = ptr.x; p.y = ptr.y + 22; p.rot += (Math.max(-1, Math.min(1, dx * 0.05)) - p.rot) * 0.25; p.step += dt * 14;
+      continue;
+    }
+    if (p.state === 'fly') {
+      const py = p.y;
+      p.vy += G * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.spin * dt; p.step += dt * 20; p.air += dt;
+      p.peak = Math.min(p.peak, p.y);
+      if (p.x < 10 && p.vx < 0) { p.x = 10; p.vx = -p.vx * 0.7; if (p.thrown && Math.abs(p.vx) > 150) add(50, p.x + 30, p.y - 30, 'wall'); }
+      if (p.x > W - 10 && p.vx > 0) { p.x = W - 10; p.vx = -p.vx * 0.7; if (p.thrown && Math.abs(p.vx) > 150) add(50, p.x - 30, p.y - 30, 'wall'); }
+      if (p.thrown && py - 26 < hp.y && p.y - 26 >= hp.y && Math.abs(p.x - hp.x) < 34 && p.vy > 0) { add(600 * S.mult, hp.x, hp.y - 20, 'HOOP!', '#ffd84a'); sparks(hp.x, hp.y, '#ffd84a', 24); S.shake = 5; }
+      for (const b of S.balloons) if (!b.popped && Math.hypot(b.x - p.x, b.y - (p.y - 26)) < 26) { b.popped = true; add(100 * S.mult, b.x, b.y, 'pop', b.color); sparks(b.x, b.y, b.color, 14); }
+      for (const o of S.people) {
+        if (o === p || o === held || o.state !== 'walk') continue;
+        if (Math.abs(o.x - p.x) < 16 && Math.abs(o.y - p.y) < 30 && Math.hypot(p.vx, p.vy) > 400) { o.state = 'fly'; o.vx = p.vx * 0.5; o.vy = -380; o.spin = rand(-10, 10); o.thrown = p.thrown; o.peak = o.y; o.air = 0; p.vx *= 0.6; text(o.x, o.y - 50, 'bonk', '#c8d2ea'); }
+      }
+      if (p.y >= GROUND) {
+        p.y = GROUND;
+        if (p.vy > 520) { p.vy = -p.vy * 0.32; p.vx *= 0.6; p.spin *= 0.5; sparks(p.x, GROUND, '#9bd86f', 6); }
+        else { p.vy = 0; p.vx = 0; p.rot = 0; p.spin = 0; p.state = 'dizzy'; p.dizzy = p.thrown ? Math.min(3, 0.8 + p.air * 0.6) : 0.6; landed(p); }
+      }
+      continue;
+    }
+    if (p.state === 'dizzy') { p.dizzy -= dt; if (p.dizzy <= 0) p.state = 'walk'; continue; }
+    p.idle -= dt;
+    if (p.idle <= 0) { p.idle = rand(1.5, 5); if (Math.random() < 0.5) p.dir *= -1; }
+    p.x += p.dir * p.speed * dt; p.step += dt * p.speed * 0.2;
+    if (p.x < 20) { p.x = 20; p.dir = 1; } if (p.x > W - 20) { p.x = W - 20; p.dir = -1; }
+  }
+  for (const f of S.fx) { f.x += f.vx * dt; f.y += f.vy * dt; f.life -= dt; if (!f.text) f.vy += 500 * dt; }
+  S.fx = S.fx.filter(f => f.life > 0);
+}
+
+function drawPerson(p) {
+  ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+  ctx.strokeStyle = '#2a2230'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  const fl = p.state === 'fly' || p === held, sw = Math.sin(p.step) * 0.6;
+  const a = fl ? Math.sin(p.step * 1.3) * 1.2 : sw, b = fl ? Math.cos(p.step * 1.1) * 1.2 : -sw;
+  if (p.state === 'dizzy') { ctx.rotate(Math.sin(S.t * 10) * 0.25); }
+  ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(Math.sin(a) * 11, -18 + Math.cos(a) * 18); ctx.moveTo(0, -18); ctx.lineTo(Math.sin(b) * 11, -18 + Math.cos(b) * 18); ctx.stroke();
+  ctx.fillStyle = p.shirt; ctx.beginPath(); ctx.roundRect(-6, -38, 12, 22, 5); ctx.fill();
+  const arm = fl ? Math.PI + Math.sin(p.step * 1.7) * 0.8 : -sw;
+  ctx.beginPath(); ctx.moveTo(-4, -34); ctx.lineTo(-4 + Math.sin(arm + 0.4) * 12, -34 + Math.cos(arm + 0.4) * 12); ctx.moveTo(4, -34); ctx.lineTo(4 + Math.sin(-arm - 0.4) * 12, -34 + Math.cos(-arm - 0.4) * 12); ctx.stroke();
+  ctx.fillStyle = '#f3cfa8'; ctx.beginPath(); ctx.arc(0, -46, 8, 0, 6.283); ctx.fill();
+  ctx.fillStyle = '#2a2230';
+  if (p.state === 'dizzy') { ctx.font = '700 9px Inter'; ctx.textAlign = 'center'; ctx.fillText('@ @', 0, -44); for (let i = 0; i < 3; i++) { const an = S.t * 5 + i * 2.09; ctx.fillStyle = '#ffd84a'; ctx.beginPath(); ctx.arc(Math.cos(an) * 12, -60 + Math.sin(an) * 4, 2.5, 0, 6.283); ctx.fill(); } }
+  else if (fl) { ctx.beginPath(); ctx.arc(-3, -47, 1.5, 0, 6.283); ctx.arc(3, -47, 1.5, 0, 6.283); ctx.fill(); ctx.beginPath(); ctx.arc(0, -42, 2.5, 0, 6.283); ctx.fill(); }
+  else { ctx.beginPath(); ctx.arc(-3 + p.dir, -47, 1.3, 0, 6.283); ctx.arc(3 + p.dir, -47, 1.3, 0, 6.283); ctx.fill(); }
+  ctx.restore();
+  if (p.y < -10) { ctx.fillStyle = p.shirt; ctx.beginPath(); ctx.moveTo(p.x, 6); ctx.lineTo(p.x - 8, 20); ctx.lineTo(p.x + 8, 20); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '600 11px Inter'; ctx.textAlign = 'center'; ctx.fillText(Math.round((GROUND - p.y) / PX_PER_M) + ' m', p.x, 34); }
+}
+
+function draw() {
+  ctx.save();
+  if (S && S.shake) ctx.translate(rand(-S.shake, S.shake) * 0.5, rand(-S.shake, S.shake) * 0.5);
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND); sky.addColorStop(0, '#3f8fe0'); sky.addColorStop(1, '#bfe6ff');
+  ctx.fillStyle = sky; ctx.fillRect(-10, -10, W + 20, H + 20);
+  const t = S ? S.t : 0;
+  ctx.fillStyle = '#ffe9a6'; ctx.beginPath(); ctx.arc(120, 80, 36, 0, 6.283); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,.9)';
+  for (let i = 0; i < 3; i++) { const cx = ((i * 330 + t * 14) % (W + 220)) - 110, cy = 70 + i * 36; ctx.beginPath(); ctx.arc(cx, cy, 20, 0, 6.283); ctx.arc(cx + 24, cy - 10, 26, 0, 6.283); ctx.arc(cx + 52, cy, 18, 0, 6.283); ctx.fill(); }
+  ctx.fillStyle = '#93c977'; ctx.beginPath(); ctx.moveTo(0, GROUND - 60); ctx.quadraticCurveTo(260, GROUND - 150, 520, GROUND - 50); ctx.quadraticCurveTo(700, GROUND - 120, W, GROUND - 60); ctx.lineTo(W, GROUND); ctx.lineTo(0, GROUND); ctx.fill();
+  ctx.fillStyle = '#c45b3c'; ctx.fillRect(660, GROUND - 60, 60, 46); ctx.fillStyle = '#7a3b2a'; ctx.beginPath(); ctx.moveTo(650, GROUND - 60); ctx.lineTo(690, GROUND - 90); ctx.lineTo(730, GROUND - 60); ctx.fill();
+  ctx.fillStyle = '#5ea84a'; ctx.fillRect(0, GROUND, W, H - GROUND); ctx.fillStyle = '#4f9440'; for (let x = 0; x < W; x += 14) ctx.fillRect(x, GROUND, 6, 4);
+  if (S) {
+    const hp = S.hoop;
+    ctx.strokeStyle = '#d9a520'; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(hp.x, hp.y, 34, 9, 0, 0, 6.283); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.5)'; ctx.lineWidth = 1; for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(hp.x + i * 9, hp.y + 6); ctx.lineTo(hp.x + i * 6, hp.y + 34); ctx.stroke(); }
+    for (const b of S.balloons) { ctx.strokeStyle = 'rgba(60,60,60,.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(b.x, b.y + 16); ctx.quadraticCurveTo(b.x + 6, b.y + 30, b.x, b.y + 44); ctx.stroke(); ctx.fillStyle = b.color; ctx.beginPath(); ctx.ellipse(b.x, b.y, 13, 16, 0, 0, 6.283); ctx.fill(); ctx.fillStyle = 'rgba(255,255,255,.4)'; ctx.beginPath(); ctx.ellipse(b.x - 4, b.y - 6, 3, 5, -0.4, 0, 6.283); ctx.fill(); }
+    for (const p of S.people) if (p !== held) { if (p.state === 'fly' && p.y < GROUND - 20) { ctx.fillStyle = 'rgba(0,0,0,.12)'; ctx.beginPath(); ctx.ellipse(p.x, GROUND + 2, 10, 3, 0, 0, 6.283); ctx.fill(); } drawPerson(p); }
+    if (held) {
+      drawPerson(held);
+      ctx.fillStyle = 'rgba(243,207,168,.9)'; ctx.strokeStyle = 'rgba(120,80,50,.6)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(ptr.x, ptr.y - 8, 26, 16, 0, Math.PI, 0); ctx.fill(); ctx.stroke();
+      for (let i = -2; i <= 1; i++) { ctx.beginPath(); ctx.roundRect(ptr.x + i * 12 + 1, ptr.y - 10, 10, 24, 5); ctx.fill(); ctx.stroke(); }
+    }
+    for (const f of S.fx) {
+      ctx.globalAlpha = Math.max(0, f.life / f.max);
+      if (f.text) { ctx.fillStyle = f.color; ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 3; ctx.font = '700 ' + (f.big ? 30 : 18) + 'px Rajdhani'; ctx.textAlign = 'center'; ctx.strokeText(f.text, f.x, f.y); ctx.fillText(f.text, f.x, f.y); }
+      else { ctx.fillStyle = f.color; ctx.fillRect(f.x, f.y, f.r, f.r); }
+    }
+    ctx.globalAlpha = 1;
+    if (mode === 'play' && S.time < 10) { ctx.fillStyle = 'rgba(255,90,90,' + (0.5 + Math.sin(S.t * 8) * 0.3) + ')'; ctx.font = '700 40px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText(Math.ceil(S.time), W / 2, 60); }
+    if (mode === 'pause') { ctx.fillStyle = 'rgba(5,10,20,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '700 48px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText('Paused', W / 2, H / 2); }
+  }
+  ctx.restore();
+}
+
+function frame(now) { const dt = Math.min(0.033, (now - last) / 1000 || 0); last = now; if (S && (mode === 'play' || mode === 'over')) update(dt); draw(); requestAnimationFrame(frame); }
+function toCanvas(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; }
+cv.addEventListener('pointerdown', e => {
+  if (!S || mode !== 'play') return;
+  const p = toCanvas(e); ptr.x = p.x; ptr.y = p.y; ptr.hist = [{ x: p.x, y: p.y, t: performance.now() }];
+  let pick = null, d0 = 42;
+  for (const v of S.people) { if (v.state === 'dizzy') continue; const d = Math.hypot(v.x - p.x, v.y - 28 - p.y); if (d < d0) { d0 = d; pick = v; } }
+  if (!pick) return;
+  if (pick.state === 'fly' && pick.thrown) { S.mult = Math.min(8, S.mult + 1); S.juggles++; text(pick.x, pick.y - 60, 'CATCH x' + S.mult, '#7fe3ff', true); hud(); }
+  held = pick; pick.state = 'held'; cv.setPointerCapture(e.pointerId); cv.classList.add('grabbing');
+});
+cv.addEventListener('pointermove', e => { const p = toCanvas(e); ptr.x = Math.max(8, Math.min(W - 8, p.x)); ptr.y = Math.max(-300, Math.min(GROUND - 24, p.y)); ptr.hist.push({ x: ptr.x, y: ptr.y, t: performance.now() }); while (ptr.hist.length > 6) ptr.hist.shift(); });
+function release() {
+  if (!held) return;
+  const now = performance.now(), recent = ptr.hist.filter(s => now - s.t < 110);
+  let vx = 0, vy = 0;
+  if (recent.length >= 2) { const a = recent[0], b = recent[recent.length - 1], dt = Math.max(0.016, (b.t - a.t) / 1000); vx = (b.x - a.x) / dt; vy = (b.y - a.y) / dt; }
+  const sp = Math.hypot(vx, vy), cap = 1450; if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
+  held.vx = vx; held.vy = vy; held.state = 'fly'; held.spin = Math.max(-18, Math.min(18, vx / 50));
+  if (sp > 250) { held.thrown = true; S.throws++; if (held.air === 0) held.peak = held.y; }
+  held = null; cv.classList.remove('grabbing');
+}
+cv.addEventListener('pointerup', release); cv.addEventListener('pointercancel', release);
+function togglePause() { if (mode === 'play') mode = 'pause'; else if (mode === 'pause') { mode = 'play'; last = performance.now(); } $('pauseBtn').firstChild.textContent = mode === 'pause' ? 'Resume ' : 'Pause '; }
+window.addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (k === 'p') togglePause(); if (k === 'r') start(); });
+window.addEventListener('blur', () => { release(); if (mode === 'play') togglePause(); });
+$('pauseBtn').addEventListener('click', togglePause); $('restart').addEventListener('click', start); $('ovBtn').addEventListener('click', start);
+$('best').textContent = best ? best.toLocaleString() : '—';
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
