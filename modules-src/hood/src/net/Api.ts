@@ -1,6 +1,7 @@
 /** REST calls to `/api/hood`: list a street and move a new household in. */
 import type { LotShell } from '../../shared/Lot'
 import type { Look } from '../../shared/Look'
+import type { StartingStage } from '../../shared/Family'
 
 export interface StreetLotInfo {
   lot: number
@@ -37,7 +38,7 @@ export async function fetchStreet(street?: number): Promise<StreetInfo> {
   return await response.json() as StreetInfo
 }
 
-export async function claimLot(street: number, lot: number, household: { name: string; sims: { name: string; look: Look }[] }): Promise<void> {
+export async function claimLot(street: number, lot: number, household: { name: string; sims: { name: string; look: Look; stage?: StartingStage }[] }): Promise<void> {
   const response = await fetch('/api/hood', {
     method: 'POST',
     credentials: 'same-origin',

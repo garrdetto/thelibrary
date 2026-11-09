@@ -6,6 +6,7 @@ import type { Feature, HouseStyle } from './Style'
 import type { Needs } from './Needs'
 import type { JobId, ServiceKind } from './Jobs'
 import type { TownRequest } from './TownSim'
+import type { LifeStage, SocialKind, StartingStage } from './Family'
 
 export type Speed = 0 | 1 | 2 | 3
 
@@ -27,6 +28,11 @@ export type Command =
   | { t: 'task'; sim: string; task: string }
   | { t: 'clockOut'; sim: string }
   | { t: 'order'; kind: ServiceKind; sim?: string }
+  | { t: 'social'; sim: string; target: string; kind: SocialKind }
+  | { t: 'addSim'; name: string; look: Look; stage: StartingStage }
+  | { t: 'renameSim'; sim: string; name: string }
+  | { t: 'restyleSim'; sim: string; look: Look }
+  | { t: 'moveOut'; sim: string }
 
 export interface CareerView {
   job: JobId
@@ -83,9 +89,30 @@ export interface SimView {
   mine: boolean
   needs?: Needs
   queue?: string[]
-  friends?: { name: string; value: number }[]
+  friends?: { id: string; name: string; value: number }[]
+  stage: LifeStage
+  /** Household record id, with the parents' ids, so the page can tell family apart. */
+  rec?: string
+  parents?: string[]
+  /** Sim minutes until a baby arrives, for the household. */
+  expecting?: number
   bubble?: string
   career?: CareerView | null
+}
+
+/** One household member for the owner's family panel, wherever they are right now. */
+export interface FamilyView {
+  id: string
+  name: string
+  look: Look
+  stage: LifeStage
+  age: number
+  /** Sim days until the next life stage, or null once grown up. */
+  nextIn: number | null
+  expecting: number | null
+  status: 'home' | 'work' | 'visiting' | 'resort'
+  job: string | null
+  parents: string[]
 }
 
 export interface LotView {
@@ -123,7 +150,7 @@ export interface MemberView {
 export type ServerMessage =
   | { t: 'welcome'; id: string; role: 'owner' | 'visitor'; lot: LotView; settings?: SettingsView }
   | { t: 'lot'; lot: LotView; settings?: SettingsView }
-  | { t: 'state'; clock: number; speed: Speed; funds?: number; home: boolean; sims: SimView[]; now: number; work?: WorkView[]; away?: AwayView[]; orders?: OrderView[] }
+  | { t: 'state'; clock: number; speed: Speed; funds?: number; home: boolean; sims: SimView[]; now: number; work?: WorkView[]; away?: AwayView[]; orders?: OrderView[]; family?: FamilyView[] }
   | { t: 'town'; requests: TownRequest[] }
   | { t: 'people'; people: MemberView[] }
   | { t: 'knock'; id: string; name: string }

@@ -10,6 +10,12 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { HAIR_COLORS, OUTFIT_COLORS, SKIN_TONES, type Look } from '../../shared/Look'
 import { material } from './Kit'
 import { models } from './Models'
+import { STAGE_SCALE, type LifeStage } from '../../shared/Family'
+
+/** Children have bigger heads for their size... */
+const HEAD_SCALE: Record<LifeStage, number> = { baby: 1.7, toddler: 1.55, child: 1.28, teen: 1.06, adult: 1 }
+/** ...and shorter legs and arms. */
+const LIMB_SCALE: Record<LifeStage, number> = { baby: 0.6, toddler: 0.72, child: 0.86, teen: 0.97, adult: 1 }
 
 const limb = new THREE.CapsuleGeometry(1, 1, 4, 10)
 const head = new THREE.SphereGeometry(1, 20, 16)
@@ -70,12 +76,14 @@ function buildTool(tool: FigureTool): THREE.Group {
   return g
 }
 
-export function createSimFigure(look: Look, dress?: Dress): SimFigure {
-  return models.sim ? createModelFigure(look, models.sim, dress) : createSimpleFigure(look, dress)
+/** A resident's figure at their life stage: smaller, bigger-headed and shorter-limbed the younger they are. */
+export function createSimFigure(look: Look, dress?: Dress, stage: LifeStage = 'adult'): SimFigure {
+  return models.sim ? createModelFigure(look, models.sim, dress, stage) : createSimpleFigure(look, dress, stage)
 }
 
-function selectionRing(): THREE.Mesh {
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.3, 0.38, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color('#7cf2a8'), transparent: true, opacity: 0.85, depthWrite: false }))
+function selectionRing(scale = 1): THREE.Mesh {
+  const r = Math.max(0.6, scale)
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.3 * r, 0.38 * r, 32), new THREE.MeshBasicMaterial({ color: new THREE.Color('#7cf2a8'), transparent: true, opacity: 0.85, depthWrite: false }))
   ring.rotation.x = -Math.PI / 2
   ring.position.y = 0.03
   ring.visible = false
@@ -208,11 +216,15 @@ function buildHat(hat: NonNullable<Dress['hat']>, color: string): THREE.Group {
   return g
 }
 
-function createModelFigure(look: Look, template: THREE.Object3D, dress?: Dress): SimFigure {
+function createModelFigure(look: Look, template: THREE.Object3D, dress?: Dress, stage: LifeStage = 'adult'): SimFigure {
   const root = new THREE.Group()
   const body = new THREE.Group()
   root.add(body)
-  body.scale.setScalar(look.height)
+  const size = look.height * STAGE_SCALE[stage]
+  const limbs = LIMB_SCALE[stage]
+  /** How far the hips drop when the legs are shorter (the hip joint sits about 0.9 m up). */
+  const legDrop = 0.88 * (1 - limbs)
+  body.scale.setScalar(size)
   const rest = restOf(template)
   const model = cloneSkinned(template)
   body.add(model)
@@ -239,7 +251,10 @@ function createModelFigure(look: Look, template: THREE.Object3D, dress?: Dress):
     const bone = model.getObjectByName(name)
     if (bone) bones[name] = bone
   }
-  const ring = selectionRing()
+  // Children: a bigger head, shorter legs and arms. Scaling a bone scales everything below it.
+  bones.head?.scale.setScalar(HEAD_SCALE[stage])
+  for (const name of ['thigh_L', 'thigh_R', 'upperarm_L', 'upperarm_R'] as const) bones[name]?.scale.setScalar(limbs)
+  const ring = selectionRing(STAGE_SCALE[stage])
   root.add(ring)
 
   // Head centre sits 0.098 m above the head joint; the left palm 0.06 m down the hand from the wrist.
@@ -305,7 +320,7 @@ function createModelFigure(look: Look, template: THREE.Object3D, dress?: Dress):
       const breathe = Math.sin(time * 1.7) * 0.012
       if (pose === 'stand') {
         const bob = Math.abs(Math.sin(phase)) * 0.025 * walking
-        shiftHips(0, bob - 0.012 * walking, 0)
+        shiftHips(0, bob - 0.012 * walking - legDrop, 0)
         turn('hips', 0.04 * walking, Math.sin(phase) * 0.08 * walking, 0)
         turn('spine', -0.03 * walking + breathe, -Math.sin(phase) * 0.06 * walking, 0)
         turn('chest', breathe, -Math.sin(phase) * 0.05 * walking, 0)
@@ -340,7 +355,7 @@ function createModelFigure(look: Look, template: THREE.Object3D, dress?: Dress):
         }
       } else {
         body.rotation.x = -Math.PI / 2
-        body.position.set(0, 0.12, 0.85)
+        body.position.set(0, 0.12 * size, 0.85 * size)
         turn('head', 0.1)
         for (const s of ['L', 'R'] as const) {
           turn(`thigh_${s}`, 0, 0, side[s] * 0.04)
@@ -355,7 +370,7 @@ function createModelFigure(look: Look, template: THREE.Object3D, dress?: Dress):
 
 // ------------------------------------------------------------------ the simple fallback figure
 
-function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
+function createSimpleFigure(look: Look, dress?: Dress, stage: LifeStage = 'adult'): SimFigure {
   const root = new THREE.Group()
   const body = new THREE.Group()
   root.add(body)
@@ -364,10 +379,12 @@ function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
   const top = dress?.top ?? OUTFIT_COLORS[look.top]
   const bottom = dress?.bottom ?? OUTFIT_COLORS[look.bottom]
   const width = look.build === 'slim' ? 0.88 : look.build === 'broad' ? 1.16 : 1
-  body.scale.setScalar(look.height)
+  const size = look.height * STAGE_SCALE[stage]
+  body.scale.setScalar(size)
 
+  const hipY = 0.9 * LIMB_SCALE[stage]
   const hips = new THREE.Group()
-  hips.position.y = 0.9
+  hips.position.y = hipY
   body.add(hips)
   const legs: THREE.Group[] = []
   const knees: THREE.Group[] = []
@@ -386,6 +403,7 @@ function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
     knee.add(shin, shoe)
     pivot.add(thigh, knee)
     hips.add(pivot)
+    pivot.scale.y = LIMB_SCALE[stage]
     legs.push(pivot)
     knees.push(knee)
   }
@@ -411,7 +429,8 @@ function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
   neck.position.y = 0.64
   hips.add(neck)
   const face = new THREE.Group()
-  face.position.y = 0.8
+  face.position.y = 0.8 + (HEAD_SCALE[stage] - 1) * 0.1
+  face.scale.setScalar(HEAD_SCALE[stage])
   hips.add(face)
   face.add(part(head, skin, 0.12, 0.135, 0.12, 0.6))
   for (const side of [-1, 1]) {
@@ -466,7 +485,7 @@ function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
     }
   }
 
-  const ring = selectionRing()
+  const ring = selectionRing(STAGE_SCALE[stage])
   root.add(ring)
 
   const hand = new THREE.Group()
@@ -489,7 +508,7 @@ function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
     setPose(pose, walking, time, busy) {
       const swing = Math.sin(time * 9) * 0.55 * walking
       hips.rotation.set(0, 0, 0)
-      hips.position.set(0, 0.9, 0)
+      hips.position.set(0, hipY, 0)
       body.rotation.set(0, 0, 0)
       body.position.set(0, 0, 0)
       knees[0].rotation.x = knees[1].rotation.x = 0
@@ -507,7 +526,7 @@ function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
           arms[0].rotation.x = -0.9 + gesture
           arms[1].rotation.x = -0.9 - gesture
         }
-        hips.position.y = 0.9 + Math.abs(Math.sin(time * 9)) * 0.03 * walking
+        hips.position.y = hipY + Math.abs(Math.sin(time * 9)) * 0.03 * walking
       } else if (pose === 'sit') {
         hips.position.y = 0.0
         hips.position.z = -0.12
@@ -518,7 +537,7 @@ function createSimpleFigure(look: Look, dress?: Dress): SimFigure {
         arms[1].rotation.z = -0.12
       } else {
         body.rotation.x = -Math.PI / 2
-        body.position.set(0, 0.12, 0.85)
+        body.position.set(0, 0.12 * size, 0.85 * size)
         legs[0].rotation.x = legs[1].rotation.x = 0
         arms[0].rotation.x = arms[1].rotation.x = 0.1
         arms[0].rotation.z = 0.1

@@ -5,11 +5,12 @@ import { fullNeeds, sanitizeNeeds, type Needs } from './Needs'
 import { LOT_D, LOT_W, isLotIndex, isStreetIndex } from './Street'
 import { sanitizeCareer, sanitizeOrders, sanitizeTrip, sanitizeWork, type Career, type Order, type Trip, type WorkShift } from './Careers'
 import type { JobId } from './Jobs'
+import { ADULT_AGE, FAMILY_FRIENDSHIP, STARTING_AGE, STARTING_STAGES, sanitizeAge, sanitizeExpecting, sanitizeParents, type Expecting, type StartingStage } from './Family'
 
 export const W = LOT_W
 export const D = LOT_D
 export const STARTING_FUNDS = 20000
-export const MAX_SIMS = 4
+export const MAX_SIMS = 8
 
 /** A wall edge on the tile grid: `v = 0` runs along x from (x, z) to (x + 1, z); `v = 1` runs along z from (x, z) to (x, z + 1). */
 export type Edge = [number, number, 0 | 1]
@@ -36,6 +37,12 @@ export interface SimRecord {
   work?: WorkShift | null
   /** Set while this Sim is away on a resort day. */
   trip?: Trip | null
+  /** Age in sim days; the life stage follows from it (`shared/Family.ts`). Older saves are grown-ups. */
+  age: number
+  /** Set while a baby is on the way. */
+  expecting?: Expecting | null
+  /** Household record ids of the parents, for residents born here. */
+  parents?: string[]
 }
 
 export interface Household {
@@ -363,23 +370,41 @@ export function starterLayout(): Pick<LotState, 'walls' | 'doors' | 'windows' | 
 export interface NewSim {
   name: string
   look: Look
+  stage?: StartingStage
+}
+
+/** Where residents stand when they move in, just inside the front door. */
+export const MOVE_IN_SPOTS: readonly [number, number][] = [[8, 7], [9, 8], [9, 7], [8, 8], [7, 8], [7, 7], [10, 8], [10, 7]]
+
+export function startingAge(stage: unknown): number {
+  return (STARTING_STAGES as readonly string[]).includes(String(stage)) ? STARTING_AGE[stage as StartingStage] : ADULT_AGE
+}
+
+/** Everyone who moves in together starts out close; returns friendship entries keyed like the Room keys them. */
+export function familyFriendships(ids: string[], existing: Record<string, number> = {}): Record<string, number> {
+  const out = { ...existing }
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) {
+    const key = [`h:${ids[i]}`, `h:${ids[j]}`].sort().join('|')
+    if (out[key] === undefined) out[key] = FAMILY_FRIENDSHIP
+  }
+  return out
 }
 
 export function newLotState(street: number, lot: number, ownerId: string, ownerName: string, householdName: string, sims: NewSim[]): LotState {
   const layout = starterLayout()
-  const spots: [number, number][] = [[8, 7], [9, 8], [9, 7], [8, 8]]
+  const residents = sims.slice(0, MAX_SIMS).map((sim, i) => ({ id: `s${i + 1}`, name: sanitizeSimName(sim.name, `Resident ${i + 1}`), look: sanitizeLook(sim.look), needs: fullNeeds(), x: MOVE_IN_SPOTS[i][0], z: MOVE_IN_SPOTS[i][1], away: null, career: null, work: null, trip: null, age: startingAge(sim.stage), expecting: null }))
   return {
     v: 1, street, lot, ownerId, ownerName,
     ...layout,
     household: {
       name: sanitizeSimName(householdName, 'Newcomers'),
       funds: STARTING_FUNDS,
-      sims: sims.slice(0, MAX_SIMS).map((sim, i) => ({ id: `s${i + 1}`, name: sanitizeSimName(sim.name, `Resident ${i + 1}`), look: sanitizeLook(sim.look), needs: fullNeeds(), x: spots[i][0], z: spots[i][1], away: null, career: null, work: null, trip: null })),
+      sims: residents,
       orders: [],
     },
     clock: 0,
     settings: { yardOpen: true, guestsUseFridgeBeds: false, alwaysLetIn: [], blocked: [] },
-    friendships: {},
+    friendships: familyFriendships(residents.map(r => r.id)),
   }
 }
 
@@ -456,13 +481,19 @@ export function sanitizeLotState(input: unknown, street: number, lot: number): L
           career: sanitizeCareer(sim.career),
           work: sanitizeWork(sim.work),
           trip: sanitizeTrip(sim.trip),
+          age: sanitizeAge(sim.age),
+          expecting: sanitizeExpecting(sim.expecting),
+          ...(sanitizeParents(sim.parents) ? { parents: sanitizeParents(sim.parents) } : {}),
         }
       }),
       orders: sanitizeOrders(household.orders),
     },
     clock: Math.max(0, Number(s.clock) || 0),
     settings: { yardOpen: settings.yardOpen !== false, guestsUseFridgeBeds: settings.guestsUseFridgeBeds === true, alwaysLetIn: people(settings.alwaysLetIn), blocked: people(settings.blocked) },
-    friendships,
+    friendships: familyFriendships(sims.slice(0, MAX_SIMS).map((raw, i) => {
+      const id = (raw as Record<string, unknown> | null)?.id
+      return typeof id === 'string' ? id.slice(0, 12) : `s${i + 1}`
+    }), friendships),
   }
 }
 
