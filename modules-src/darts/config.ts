@@ -23,17 +23,16 @@ export interface DartsConfig {
   room: { wall: string; wallTrim: string; floor: string; oche: string; cabinet: string }
   camera: { eyeHeight: number; distanceBehindOche: number; boardHalfExtent: number; minFov: number; maxFov: number }
   gesture: {
-    /** Launch speed (m/s) = base + gain × upward flick speed (screen heights per second). */
-    speedBase: number
-    speedGain: number
-    minFlick: number
-    yawGain: number
-    sampleWindowMs: number
-    aimFreezeSpeed: number
     touchAimOffsetPx: number
     keyboardStepM: number
     keyboardFineM: number
+    /** Seconds for the power meter to swing from empty to full and back. */
     chargeSeconds: number
+    /** Launch speed at the bottom and top of the meter, as fractions of the ideal speed. */
+    chargeLow: number
+    chargeHigh: number
+    /** Release steadiness for a held throw (0 perfectly steady, 1 very shaky). */
+    holdWobble: number
   }
   dart: { length: number; flightColors: readonly string[] }
   timing: { cpuThinkMs: number; turnPauseMs: number; legPauseMs: number; announceMs: number }
@@ -64,16 +63,13 @@ export const config: DartsConfig = {
   room: { wall: '#3b1f1a', wallTrim: '#24120d', floor: '#5a3a24', oche: '#d9c9a3', cabinet: '#4a2a17' },
   camera: { eyeHeight: 1.62, distanceBehindOche: 0.3, boardHalfExtent: 0.3, minFov: 12, maxFov: 34 },
   gesture: {
-    speedBase: 2.4,
-    speedGain: 2.35,
-    minFlick: 0.45,
-    yawGain: 0.08,
-    sampleWindowMs: 90,
-    aimFreezeSpeed: 0.35,
     touchAimOffsetPx: 64,
     keyboardStepM: 0.005,
     keyboardFineM: 0.001,
-    chargeSeconds: 1.3,
+    chargeSeconds: 1.6,
+    chargeLow: 0.7,
+    chargeHigh: 1.2,
+    holdWobble: 0.12,
   },
   dart: { length: 0.155, flightColors: ['#ff4d5e', '#39d0ff', '#ffcf4a', '#7cdc6a'] },
   timing: { cpuThinkMs: 650, turnPauseMs: 1600, legPauseMs: 3200, announceMs: 1500 },

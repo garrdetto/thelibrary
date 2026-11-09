@@ -144,7 +144,7 @@ export interface Announcement {
   playerId: string
 }
 
-/** What a released dart was asked to do: the aim point on the board face (metres from the bull), the launch speed and the sideways flick, plus how steady the release was (0 perfectly smooth, 1 very shaky). */
+/** What a released dart was asked to do: the aim point on the board face (metres from the bull), the launch speed and an optional sideways yaw, plus how steady the release was (0 perfectly smooth, 1 very shaky). */
 export interface ThrowIntent {
   aimX: number
   aimY: number

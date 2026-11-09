@@ -448,7 +448,7 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `src/models/Parts.ts` (`sub`, `framedWindow`, `panelDoor`), `House.ts` (`buildHouse`, `buildDrive`), `Street.ts`, `Trees.ts` (`leafClump`, `broadleaf` with `lod`, `spruce`), `Airfield.ts`, `Helicopter.ts`, `Ground.ts` (look-dev ground) — `LookDev`, `LotMesh`, `TreeKit`, `Chunks`, `Flyer`.
 ### darts — Oche Darts (`modules-src/darts/`, built from `_template`)
 - `modules-src/darts/module.json` — id `darts`, title, accent `#ff4d5e`, modes — `config.ts`.
-- `modules-src/darts/config.ts` — engine overrides (Neutral tone mapping, bloom and vignette), board texture sizes, pub colours, camera lock, throw-gesture mapping (flick speed → launch speed, yaw gain, touch aim offset, keyboard steps and charge), dart length and flight colours, timings — every file below.
+- `modules-src/darts/config.ts` — engine overrides (Neutral tone mapping, bloom and vignette), board texture sizes, pub colours, camera lock, power-meter settings (swing period, speed range, hold steadiness), touch aim offset, keyboard steps, dart length and flight colours, timings — every file below.
 - `modules-src/darts/index.html` — page shell: `#stage`, HUD (top bar, player cards, speed meter, announcement, turn strip), setup form (format, options, legs/sets, opponents, steadiness), online lobby and results panels — `vite.modules.ts` (→ `public/modules/darts.html`).
 - `modules-src/darts/index.ts` — entry: App, quality, lighting, post, pub, camera fit (board fills the view at any aspect), reticle and dart-in-hand, `ThrowInput` → session, flight playback, overlay, setup form, `tl-host` answers with a room code, `?room=` auto-join, Count Up board submit, `__tlModule`/`__darts`, disposes on `pagehide` — `index.html`.
 - `modules-src/darts/shared/interfaces.ts` — `Player`, `GameState`, `DartThrow`, `ThrowIntent`, `FlightParams`, mode configs (`X01Config`, `CricketConfig`, `CountUpConfig`, `MatchConfig`), announcements and the client/server message unions — everything in `shared/`, `src/server/darts-room.ts`.
@@ -460,7 +460,7 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `modules-src/darts/render/BoardTexture.ts` — 2048² canvas face (sectors, sisal, spider, number ring), packed roughness/metal map and Sobel normal map — `Pub.ts`.
 - `modules-src/darts/render/Pub.ts` — board with 3D wire spider, surround, cabinet with chalkboard doors, wall, floor, oche, board lamp (shadowed spot), sconces, baked environment — `index.ts`.
 - `modules-src/darts/render/Dart.ts` — lathe-built dart (point, knurled barrel, shaft, four flights per colour), `aimDart` — `index.ts`, `DartFlights.ts`.
-- `modules-src/darts/systems/ThrowInput.ts` — aim-then-flick pointer gesture and keyboard aim/charge → `ThrowIntent` — `index.ts`.
+- `modules-src/darts/systems/ThrowInput.ts` — click/touch-and-hold aim with a swinging power meter (`chargeLevel`, `speedFromLevel`), Space charge, cancel on right-click/Escape → `ThrowIntent` — `index.ts`.
 - `modules-src/darts/systems/DartFlights.ts` — flight playback from `simulate` samples, stick-and-quiver, bounce-outs, floor darts, clear — `index.ts`.
 - `modules-src/darts/systems/Sounds.ts` — synthesised whoosh, thunk, bust and cheer — `index.ts`.
 - `modules-src/darts/session/Session.ts` — `LocalSession` (solo, computer, pass-and-play; seeded spread, timed turns) and `OnlineSession` (socket-driven) — `index.ts`.

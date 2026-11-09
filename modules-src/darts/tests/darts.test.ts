@@ -328,3 +328,19 @@ test('room codes', () => {
   assert.ok(isRoomCode(code))
   assert.ok(!isRoomCode('ABCDE0'))
 })
+
+test('power meter: swings up and back, and its green band is the ideal speed', async () => {
+  const { chargeLevel, speedFromLevel, speedFromCharge } = await import('../systems/ThrowInput')
+  const { config } = await import('../config')
+  const period = config.gesture.chargeSeconds
+  assert.equal(chargeLevel(0), 0)
+  assert.equal(chargeLevel(period / 2), 1)
+  assert.ok(Math.abs(chargeLevel(period) - 0) < 1e-9)
+  assert.ok(Math.abs(chargeLevel(period / 4) - 0.5) < 1e-9)
+  assert.ok(speedFromLevel(0) < IDEAL_SPEED && speedFromLevel(1) > IDEAL_SPEED)
+  const idealLevel = (1 - config.gesture.chargeLow) / (config.gesture.chargeHigh - config.gesture.chargeLow)
+  assert.ok(Math.abs(speedFromLevel(idealLevel) - IDEAL_SPEED) < 1e-9)
+  const rising = (idealLevel * period) / 2
+  assert.ok(Math.abs(speedFromCharge(rising) - IDEAL_SPEED) < 1e-9)
+  assert.ok(Math.abs(speedFromCharge(period - rising) - IDEAL_SPEED) < 1e-9)
+})

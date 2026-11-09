@@ -3,7 +3,7 @@ import './overlay.css'
 import { config } from '../config'
 import { label } from '../shared/Board'
 import type { Announcement, DartThrow, GameState, Player, RoomPlayerView } from '../shared/interfaces'
-import { IDEAL_SPEED, MAX_SPEED, MIN_SPEED } from '../shared/Physics'
+import { IDEAL_SPEED } from '../shared/Physics'
 import { CRICKET_TARGETS, DARTS_PER_TURN, checkoutRoute, currentPlayer, modeLabel, standings } from '../shared/Rules'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -22,6 +22,13 @@ function make<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
 export function playerColor(state: GameState, playerId: string): string {
   const index = Math.max(0, state.players.findIndex((player) => player.id === playerId))
   return config.dart.flightColors[index % config.dart.flightColors.length]
+}
+
+/** Half-width of the green band, as a fraction of the ideal speed. */
+const BAND = 0.03
+
+function meterRange(): { low: number; high: number } {
+  return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
 }
 
 const MARK_GLYPHS = ['', '/', 'X', 'Ⓧ']
@@ -47,10 +54,10 @@ export class Overlay {
   private queue: Announcement[] = []
 
   constructor() {
-    const span = MAX_SPEED - MIN_SPEED
-    const band = 0.035 * IDEAL_SPEED
-    this.meterBand.style.bottom = `${((IDEAL_SPEED - band - MIN_SPEED) / span) * 100}%`
-    this.meterBand.style.height = `${((band * 2) / span) * 100}%`
+    const { low, high } = meterRange()
+    const band = BAND * IDEAL_SPEED
+    this.meterBand.style.bottom = `${((IDEAL_SPEED - band - low) / (high - low)) * 100}%`
+    this.meterBand.style.height = `${((band * 2) / (high - low)) * 100}%`
     this.announce.style.setProperty('--announce-ms', `${config.timing.announceMs}ms`)
   }
 
@@ -79,7 +86,7 @@ export class Overlay {
       : statusText ?? (mine ? (state.players.length > 1 ? `${player.name} to throw` : 'Your throw') : `${player.name} is throwing`)
     this.renderThrows(player.currentRoundThrows)
     this.renderCheckout(state, player)
-    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? 'Press to aim · flick up to throw · Space charges' : ''
+    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? 'Hold to aim and power up · let go in the green · Space works too' : ''
   }
 
   private renderCards(state: GameState): void {
@@ -154,10 +161,11 @@ export class Overlay {
       return
     }
     this.meter.classList.add('is-on')
-    const ratio = (speed - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)
+    const { low, high } = meterRange()
+    const ratio = (speed - low) / (high - low)
     this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% - 6px)`
     const off = (speed - IDEAL_SPEED) / IDEAL_SPEED
-    this.meterLabel.textContent = `${speed.toFixed(1)} m/s ${Math.abs(off) < 0.035 ? '· on line' : off < 0 ? '· low' : '· high'}`
+    this.meterLabel.textContent = `${speed.toFixed(1)} m/s ${Math.abs(off) < BAND ? '· on line' : off < 0 ? '· low' : '· high'}`
   }
 
   /** Queues announcements and shows the most important one of each batch (a win beats a bust beats a 180 beats a single bed). */

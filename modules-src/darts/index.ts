@@ -397,7 +397,7 @@ async function boot(): Promise<void> {
   })
   app.onFrame((dt) => {
     fitCamera()
-    flights.update(Math.min(dt, 0.05))
+    flights.update(Math.min(dt, 0.1))
     refreshHand()
   })
 

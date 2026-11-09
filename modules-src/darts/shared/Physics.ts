@@ -154,7 +154,7 @@ function turn(dir: Vec3, yaw: number, pitch: number): Vec3 {
 }
 
 /**
- * Turns an intent into the launch that actually happens. The arm points so a dart at IDEAL_SPEED lands on the aim point, so throwing softer drops low and harder flies high; the sideways flick yaws it; then the release error (Gaussian, standard deviation SPREAD[level] scaled up by an unsteady release) moves the direction and the speed.
+ * Turns an intent into the launch that actually happens. The arm points so a dart at IDEAL_SPEED lands on the aim point, so throwing softer drops low and harder flies high; an optional sideways yaw turns it; then the release error (Gaussian, standard deviation SPREAD[level] scaled up by an unsteady release) moves the direction and the speed.
  */
 export function launch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin: Vec3 = RELEASE): FlightParams {
   const clean = cleanIntent(intent)
