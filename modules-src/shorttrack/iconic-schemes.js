@@ -206,29 +206,33 @@ function textCanvas(text,fill,outline,italic){
 
 // Side art. The canvas transform is already in metres (x forward, y up) for this side; sa/sd are the signs of
 // that transform, used to draw logos the right way round. E = {xf, xr, yb, yt}: front/rear x and the rocker/beltline y.
-export function drawSchemeSide(g,sch,E,sa,sd){
+// o.layer: 'base' draws only the paint (bands, polys, streaks, dots), 'decal' only the logos and lettering, anything
+// else both. o.fit(x, y, w, h) -> {x, y, k} may move and shrink a logo or lettering onto painted panel (liveryWrap.ts).
+export function drawSchemeSide(g,sch,E,sa,sd,o={}){
   const X=t=>E.xf-t*(E.xf-E.xr),Y=s=>E.yb+s*(E.yt-E.yb),wide=0.6;
   const X0=t=>t<=0?E.xf+wide:t>=1?E.xr-wide:X(t),Y0=s=>s<=0?E.yb-wide:s>=1.15?E.yt+wide:Y(s);
+  const base=o.layer!=='decal',decal=o.layer!=='base';
+  const put=(cv,x,y,wm,hm)=>{const f=o.fit?o.fit(x,y,wm,hm):{x,y,k:1};g.save();g.translate(f.x,f.y);g.scale(sa,sd);g.drawImage(cv,-wm*f.k/2,-hm*f.k/2,wm*f.k,hm*f.k);g.restore();};
   for(const op of sch.side||[]){
     switch(op[0]){
-      case 'band':{const [,s0,s1,c,t0=0,t1=1]=op;g.fillStyle=c;g.beginPath();g.moveTo(X0(t0),Y0(s0));g.lineTo(X0(t1),Y0(s0));g.lineTo(X0(t1),Y0(s1));g.lineTo(X0(t0),Y0(s1));g.closePath();g.fill();break;}
-      case 'poly':{g.fillStyle=op[2];g.beginPath();op[1].forEach(([t,s],i)=>i?g.lineTo(X0(t),Y0(s)):g.moveTo(X0(t),Y0(s)));g.closePath();g.fill();break;}
-      case 'streak':{const [,t0,s0,t1,s1,w0,w1,c]=op;g.fillStyle=c;g.beginPath();
+      case 'band':{if(!base)break;const [,s0,s1,c,t0=0,t1=1]=op;g.fillStyle=c;g.beginPath();g.moveTo(X0(t0),Y0(s0));g.lineTo(X0(t1),Y0(s0));g.lineTo(X0(t1),Y0(s1));g.lineTo(X0(t0),Y0(s1));g.closePath();g.fill();break;}
+      case 'poly':{if(!base)break;g.fillStyle=op[2];g.beginPath();op[1].forEach(([t,s],i)=>i?g.lineTo(X0(t),Y0(s)):g.moveTo(X0(t),Y0(s)));g.closePath();g.fill();break;}
+      case 'streak':{if(!base)break;const [,t0,s0,t1,s1,w0,w1,c]=op;g.fillStyle=c;g.beginPath();
         g.moveTo(X0(t0),Y0(s0-w0/2));g.lineTo(X0(t1),Y0(s1-w1/2));g.lineTo(X0(t1),Y0(s1+w1/2));g.lineTo(X0(t0),Y0(s0+w0/2));g.closePath();g.fill();break;}
-      case 'logo':{const [,t,s,wm,key]=op,cv=logoCanvas(key,sch.logos);if(!cv)break;const hm=wm*cv.height/cv.width;
-        g.save();g.translate(X(t),Y(s));g.scale(sa,sd);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();break;}
-      case 'dot':{const [,t,s,r,c]=op;g.fillStyle=c;g.beginPath();g.arc(X(t),Y(s),r,0,Math.PI*2);g.fill();break;}
-      case 'text':{const [,t,s,hm,text,fill,outline,italic]=op,cv=textCanvas(text,fill,outline,italic);const wm=hm*cv.width/cv.height;
-        g.save();g.translate(X(t),Y(s));g.scale(sa,sd);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();break;}
+      case 'logo':{if(!decal)break;const [,t,s,wm,key]=op,cv=logoCanvas(key,sch.logos);if(!cv)break;put(cv,X(t),Y(s),wm,wm*cv.height/cv.width);break;}
+      case 'dot':{if(!base)break;const [,t,s,r,c]=op;g.fillStyle=c;g.beginPath();g.arc(X(t),Y(s),r,0,Math.PI*2);g.fill();break;}
+      case 'text':{if(!decal)break;const [,t,s,hm,text,fill,outline,italic]=op,cv=textCanvas(text,fill,outline,italic);put(cv,X(t),Y(s),hm*cv.width/cv.height,hm);break;}
     }
   }
 }
 // Hood art. The transform maps (x = forward metres, y = lateral metres); E = {x0, xf, half}: hood back edge, nose, half width.
-// putLogo(canvas, forwardMetres, widthMetres) places a logo the right way round for this surface.
-export function drawSchemeHood(g,sch,E,putLogo){
+// putLogo(canvas, forwardMetres, widthMetres) places a logo the right way round for this surface. o.layer as for the side.
+export function drawSchemeHood(g,sch,E,putLogo,o={}){
   const H=sch.hood||{},w=E.half+0.4;
-  g.fillStyle=H.color||sch.primary;g.fillRect(E.x0,-w,E.xf-E.x0+0.6,2*w);
-  if(H.nose){g.fillStyle=H.nose[0];g.fillRect(E.xf-H.nose[1],-w,H.nose[1]+0.6,2*w);}
-  for(const [hw,c] of H.stripes||[]){g.fillStyle=c;g.fillRect(E.x0-0.1,-hw,E.xf-E.x0+0.8,2*hw);}
-  if(H.logo){const cv=logoCanvas(H.logo[0],sch.logos);if(cv)putLogo(cv,H.logo[2]??(E.x0+E.xf)/2,H.logo[1]);}
+  if(o.layer!=='decal'){
+    g.fillStyle=H.color||sch.primary;g.fillRect(E.x0,-w,E.xf-E.x0+0.6,2*w);
+    if(H.nose){g.fillStyle=H.nose[0];g.fillRect(E.xf-H.nose[1],-w,H.nose[1]+0.6,2*w);}
+    for(const [hw,c] of H.stripes||[]){g.fillStyle=c;g.fillRect(E.x0-0.1,-hw,E.xf-E.x0+0.8,2*hw);}
+  }
+  if(o.layer!=='base'&&H.logo){const cv=logoCanvas(H.logo[0],sch.logos);if(cv)putLogo(cv,H.logo[2]??(E.x0+E.xf)/2,H.logo[1]);}
 }

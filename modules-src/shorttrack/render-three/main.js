@@ -12,10 +12,11 @@ import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from 
 import { batchStatic } from '../../_shared/static-batch.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-schemes.js';
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
-import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
+import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
 import { carIdOf, numberSpot, carGarage } from '../shared/CustomCars';
-import { boundsOf, parseRegions } from '../shared/carRepaint';
+import { boundsOf, parseRegions, STOCK_BOUNDS } from '../shared/carRepaint';
 import { spoilerTriangles } from '../shared/carClear';
+import { buildLiveryGeo, fitDecal, planAtlas, upsamplePlan, applyAtlas, wrapContext } from '../shared/liveryWrap';
 import { sanitizeScheme, schemeForPainters } from '../shared/PaintScheme';
 import { initPaintDesigner } from '../paint-designer.js';
 import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
@@ -807,7 +808,7 @@ function mountNumbers(m,lv){
   if(m.custom){const px=m.crisp?320:NUM_PX[quality]||208;
     // numbers painted into the livery (spots the admin didn't place) need the livery redrawn when they change
     const pl=customLiveryLv(lv,m.custom.rec),sig=[pl.number,pl.numDoors,pl.numRoof,pl.numTail,pl.numStyle,pl.numFont,pl.numSlant,pl.numSize,pl.numColor,pl.numOutline,pl.numAccent].join('|'),ok=!pl.number||numFontReady(lv.numFont);
-    if(m.liveryOn&&m.liverySig!==undefined&&(m.liverySig!==sig||(!m.liveryFontOk&&ok)))repaintCustomCar(m,lv,customLivery(lv,m.custom.rec,{crisp:m.crisp}));
+    if(m.liveryOn&&m.liverySig!==undefined&&(m.liverySig!==sig||(!m.liveryFontOk&&ok)))repaintCustomCar(m,lv,customLivery(lv,m.custom,{crisp:m.crisp}));
     m.liverySig=sig;m.liveryFontOk=ok;
     if(!carGarage(m.custom.rec).numbers)lv={...lv,number:''};
     mountCustomNumbers(m,lv,{art:cv=>drawNumberArt(cv,numArtOpts(lv),px),size:(spot,art)=>numberSize(spot,art,lv.numSize/100),spot:numberSpot,fontOk:numFontReady(lv.numFont),
@@ -871,59 +872,100 @@ function splitSpoiler(geo){
 const carAssetReady=fetch(new URL('shorttrack-car.bin',location.href)).then(r=>{if(!r.ok)throw new Error('car asset '+r.status);return r.arrayBuffer();})
   .then(b=>{CAR_ASSET=parseCarAsset(b);return true;}).catch(()=>false);
 const CAR_NUM_SPOTS={door:{base:0.3,maxW:1.5,maxH:0.5,x:-0.05,y:0.52},roof:{base:0.36,maxW:1.15,maxH:0.8,x:-0.62},tail:{base:0.17,maxW:0.85,maxH:0.3,y:0.8}};
-function carLiveryTex(lv,size,glyphPx){
-  const t=canvasTex(size,size,(g,w,h)=>{
-    g.fillStyle=lv.primary;g.fillRect(0,0,w,h);if(!CAR_REGIONS)return;
+// The stock car's own geometry in the livery frame (its .bin frame): projection maps for decals and logo
+// fitting, and per atlas size the texels whose flat art is wrong at a seam (shared/liveryWrap.ts).
+let STOCK_GEO=null;const STOCK_PLANS=new Map();
+function stockParts(){const out=[];
+  for(const p of CAR_ASSET){const a=p.geo.attributes,src=a.position.array,c=p.center;let pos=src;
+    if(c){pos=new Float32Array(src.length);for(let i=0;i<src.length;i+=3){pos[i]=src[i]+c[0];pos[i+1]=src[i+1]+c[1];pos[i+2]=src[i+2]+c[2];}}
+    const idx=p.geo.index.array;
+    for(const gr of p.geo.groups)out.push({positions:pos,normals:a.normal.array,uvs:a.uv?a.uv.array:null,index:idx.subarray(gr.start,gr.start+gr.count),paint:!c&&gr.materialIndex===0});}
+  return out;}
+function stockGeo(){if(!STOCK_GEO&&CAR_ASSET&&CAR_REGIONS)STOCK_GEO=buildLiveryGeo(stockParts(),parseRegions(CAR_REGIONS));return STOCK_GEO;}
+// Planned at 1024 at most; the crisp 2048 livery steps each planned texel into a 2x2 block (upsamplePlan).
+function stockPlan(size){let p=STOCK_PLANS.get(size);
+  if(!p&&CAR_ASSET&&CAR_REGIONS){
+    if(size>1024&&size%1024===0)p=upsamplePlan(stockPlan(1024),size/1024);
+    else p=planAtlas(stockParts().filter(q=>q.paint&&q.uvs),parseRegions(CAR_REGIONS),stockGeo(),STOCK_BOUNDS,size,size);
+    STOCK_PLANS.set(size,p);}
+  return p||null;}
+// The livery in the stock car's atlas. Base paint and decals (logos, lettering, numbers) are drawn in separate
+// layers; the stock car (o.plan) is then repainted along its seams from 3D so stripes meet cleanly and logos run
+// over the seam in one piece, and custom cars get both layers (t.userData.layers) to bake the same way.
+// Side logos and door numbers are moved onto painted panel with the body's own map (o.geo, the stock car's by default).
+function carLiveryTex(lv,size,glyphPx,o={}){
+  const geo=o.geo!==undefined?o.geo:stockGeo(),plan=o.plan!==undefined?o.plan:(geo?stockPlan(size):null);let layers=null;
+  const t=canvasTex(size,size,(g0,w,h)=>{
+    g0.fillStyle=lv.primary;g0.fillRect(0,0,w,h);if(!CAR_REGIONS)return;
     const R=Object.fromEntries(CAR_REGIONS.map(r=>[r[0],r]));
+    const dc=document.createElement('canvas');dc.width=w;dc.height=h;const gd=dc.getContext('2d',{willReadFrequently:true});
+    let g=g0;
     const region=(nm,fn)=>{const [,[rx,ry,rw,rh],,u0,u1,,v0,v1]=R[nm],a=rw*w/(u1-u0),d=rh*h/(v1-v0);
       g.save();g.beginPath();g.rect(rx*w,ry*h,rw*w,rh*h);g.clip();g.setTransform(a,0,0,d,rx*w-u0*a,ry*h-v0*d);fn(Math.sign(a),Math.sign(d));g.restore();};
     const p2=lv.secondary,ac=lv.accent,band=(y0,y1,c)=>{g.fillStyle=c;g.fillRect(-4,y0,8,y1-y0);};
     const centre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-4,-half,8,half*2);g.fillStyle=ac;g.fillRect(-4,-half-edge,8,edge);g.fillRect(-4,half,8,edge);};
     const vcentre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-half,-1,half*2,4);g.fillStyle=ac;g.fillRect(-half-edge,-1,edge,4);g.fillRect(half,-1,edge,4);};
     const sch=schemeOf(lv);
-    if(sch){
-      const E={xf:Math.max(R.L[3],R.L[4]),xr:Math.min(R.L[3],R.L[4]),yb:0.24,yt:0.86},Y=s=>E.yb+s*(E.yt-E.yb);
-      for(const side of ['L','R'])region(side,(sa,sd)=>drawSchemeSide(g,sch,E,sa,sd));
-      region('T',(sa,sd)=>{
-        if(sch.roof){g.fillStyle=sch.roof;g.fillRect(-1.6,-2,2.6,4);}
-        if(sch.deck){g.fillStyle=sch.deck;g.fillRect(-4,-2,4-1.6,4);}
-        drawSchemeHood(g,sch,{x0:1.0,xf:E.xf,half:1.1},(cv,f,wm)=>{const hm=wm*cv.height/cv.width;g.save();g.translate(f,0);g.scale(sa,sd);g.rotate(Math.PI/2);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();});});
-      // nose and tail carry the full-length side bands
-      for(const end of ['B','F'])region(end,()=>{for(const op of sch.side)if(op[0]==='band'&&((op[4]??0)<=0.02||(op[5]??1)>=0.98)){
-        const y0=op[1]<=0?-1:Y(op[1]),y1=op[2]>=1.15?3:Y(op[2]);g.fillStyle=op[3];g.fillRect(-2,y0,4,y1-y0);}});
-    }
-    else for(const side of ['L','R'])region(side,()=>{
-      switch(lv.pattern){
-        case 'stripes':band(0.76,0.82,p2);band(0.26,0.32,p2);band(0.72,0.735,ac);band(0.345,0.36,ac);break;
-        case 'twotone':band(-1,0.5,p2);band(0.5,0.525,ac);break;
-        case 'flames':g.fillStyle=p2;g.strokeStyle=ac;g.lineWidth=0.012;
-          for(let i=0;i<5;i++){const y=0.3+i*0.11,len=5.3*(0.25+0.18*Math.abs(Math.sin(i*1.9+1))),f=2.6;g.beginPath();g.moveTo(f,y-0.045);
-            g.bezierCurveTo(f-len*0.4,y-0.08,f-len*0.7,y-0.01,f-len,y);g.bezierCurveTo(f-len*0.6,y+0.02,f-len*0.3,y+0.055,f,y+0.045);g.closePath();g.fill();g.stroke();}break;
-        case 'panels':for(const [x0,x1] of [[-0.85,0.75],[-2.65,-2.05]]){g.fillStyle=p2;rr(g,x0,0.3,x1-x0,0.48,0.07);g.fill();g.strokeStyle=ac;g.lineWidth=0.018;g.stroke();}break;
-        case 'rainbow':rainbowBands(g,-4,4,0.78,0.3);break;
-        case 'fade':{const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-1,8,4);}break;
-      }});
-    if(!sch)region('T',()=>{
-      if(lv.pattern==='stripes'||lv.pattern==='panels')centre(0.17,0.025);
-      else if(lv.pattern==='fade'){const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-2,8,4);}});
-    if(!sch)for(const end of ['B','F'])region(end,()=>{
-      if(lv.pattern==='stripes'||lv.pattern==='panels')vcentre(0.17,0.025);
-      else if(lv.pattern==='twotone'){band(-1,0.5,p2);band(0.5,0.525,ac);}
-      else if(lv.pattern==='fade'&&end==='B'){g.fillStyle=p2;g.fillRect(-2,-1,4,4);}});
-    if(!lv.pace&&!sch&&!lv.noLogo){const sc=document.createElement('canvas');sc.width=512;sc.height=154;drawSponsor(sc.getContext('2d'),256,77,504,146,sponsorOf(lv));
-      const logo=(nm,cx,cy,lw,rot)=>region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(sc,-lw/2,-lw*0.15,lw,lw*0.3);});
-      logo('L',-1.75,0.62,0.95);logo('R',-1.75,0.62,0.95);logo('T',1.65,0,0.9,Math.PI/2);}
-    if(!lv.number)return;
-    const cv=document.createElement('canvas'),art=drawNumberArt(cv,numArtOpts(lv),glyphPx);if(!art)return;
-    const put=(nm,spot,cx,cy,rot)=>{const [nw,nh]=numberSize(spot,art,lv.numSize/100);region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(cv,-nw/2,-nh/2,nw,nh);});};
-    const S=CAR_NUM_SPOTS;
-    if(lv.numDoors){put('L',S.door,S.door.x,S.door.y);put('R',S.door,S.door.x,S.door.y);}
-    if(lv.numRoof)put('T',S.roof,S.roof.x,0,Math.PI/2);
-    if(lv.numTail){const [nw0,nh0]=numberSize(S.tail,art,lv.numSize/100),nw=nw0*TAIL_NUM.scale,nh=nh0*TAIL_NUM.scale,[,,,u0,u1,,v0,v1]=R.B;
-      region('B',(sa,sd)=>{const pad=0.06,lx=sa>0?Math.min(u0,u1):Math.max(u0,u1),by=sd>0?Math.max(v0,v1):Math.min(v0,v1);
-        // in the flipped frame +x is the viewer's right and +y is down, so step in from the left edge and up from the bottom edge
-        g.translate(lx+sa*(pad+nw/2),by-sd*(pad+nh/2));g.scale(sa,sd);g.drawImage(cv,-nw/2,-nh/2,nw,nh);});}
+    const E={xf:Math.max(R.L[3],R.L[4]),xr:Math.min(R.L[3],R.L[4]),yb:0.24,yt:0.86};
+    // race numbers first, so the side logos are fitted around them
+    const S=CAR_NUM_SPOTS,cv=document.createElement('canvas'),art=lv.number?drawNumberArt(cv,numArtOpts(lv),glyphPx):null,blocked={L:[],R:[]},doors={};
+    if(art&&lv.numDoors){const [nw,nh]=numberSize(S.door,art,lv.numSize/100);
+      for(const side of ['L','R']){const f=fitDecal(geo,side,S.door.x,S.door.y,nw,nh,[],0.5);doors[side]={...f,nw,nh};blocked[side].push({x:f.x,y:f.y,w:nw*f.k+0.08,h:nh*f.k+0.06});}}
+    const fitFor=side=>(x,y,wm,hm)=>fitDecal(geo,side,x,y,wm,hm,blocked[side]);
+    const paint=layer=>{const base=layer==='base';
+      if(sch){
+        const Y=s=>E.yb+s*(E.yt-E.yb);
+        for(const side of ['L','R'])region(side,(sa,sd)=>drawSchemeSide(g,sch,E,sa,sd,{layer,fit:fitFor(side)}));
+        region('T',(sa,sd)=>{
+          if(base&&sch.roof){g.fillStyle=sch.roof;g.fillRect(-1.6,-2,2.6,4);}
+          if(base&&sch.deck){g.fillStyle=sch.deck;g.fillRect(-4,-2,4-1.6,4);}
+          drawSchemeHood(g,sch,{x0:1.0,xf:E.xf,half:1.1},(cv,f,wm)=>{const hm=wm*cv.height/cv.width;g.save();g.translate(f,0);g.scale(sa,sd);g.rotate(Math.PI/2);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();},{layer});});
+        // nose and tail carry the full-length side bands
+        if(base)for(const end of ['B','F'])region(end,()=>{for(const op of sch.side)if(op[0]==='band'&&((op[4]??0)<=0.02||(op[5]??1)>=0.98)){
+          const y0=op[1]<=0?-1:Y(op[1]),y1=op[2]>=1.15?3:Y(op[2]);g.fillStyle=op[3];g.fillRect(-2,y0,4,y1-y0);}});
+      }
+      else if(base)for(const side of ['L','R'])region(side,()=>{
+        switch(lv.pattern){
+          case 'stripes':band(0.76,0.82,p2);band(0.26,0.32,p2);band(0.72,0.735,ac);band(0.345,0.36,ac);break;
+          case 'twotone':band(-1,0.5,p2);band(0.5,0.525,ac);break;
+          case 'flames':g.fillStyle=p2;g.strokeStyle=ac;g.lineWidth=0.012;
+            for(let i=0;i<5;i++){const y=0.3+i*0.11,len=5.3*(0.25+0.18*Math.abs(Math.sin(i*1.9+1))),f=2.6;g.beginPath();g.moveTo(f,y-0.045);
+              g.bezierCurveTo(f-len*0.4,y-0.08,f-len*0.7,y-0.01,f-len,y);g.bezierCurveTo(f-len*0.6,y+0.02,f-len*0.3,y+0.055,f,y+0.045);g.closePath();g.fill();g.stroke();}break;
+          case 'panels':for(const [x0,x1] of [[-0.85,0.75],[-2.65,-2.05]]){g.fillStyle=p2;rr(g,x0,0.3,x1-x0,0.48,0.07);g.fill();g.strokeStyle=ac;g.lineWidth=0.018;g.stroke();}break;
+          case 'rainbow':rainbowBands(g,-4,4,0.78,0.3);break;
+          case 'fade':{const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-1,8,4);}break;
+        }});
+      if(!sch&&base)region('T',()=>{
+        if(lv.pattern==='stripes'||lv.pattern==='panels')centre(0.17,0.025);
+        else if(lv.pattern==='fade'){const gr=g.createLinearGradient(1.0,0,-2.8,0);gr.addColorStop(0,'rgba(0,0,0,0)');gr.addColorStop(1,p2);g.fillStyle=gr;g.fillRect(-4,-2,8,4);}});
+      if(!sch&&base)for(const end of ['B','F'])region(end,()=>{
+        if(lv.pattern==='stripes'||lv.pattern==='panels')vcentre(0.17,0.025);
+        else if(lv.pattern==='twotone'){band(-1,0.5,p2);band(0.5,0.525,ac);}
+        else if(lv.pattern==='fade'&&end==='B'){g.fillStyle=p2;g.fillRect(-2,-1,4,4);}});
+      if(base)return;
+      if(!lv.pace&&!sch&&!lv.noLogo){const sc=document.createElement('canvas');sc.width=512;sc.height=154;drawSponsor(sc.getContext('2d'),256,77,504,146,sponsorOf(lv));
+        const logo=(nm,cx,cy,lw,rot)=>{const f=nm==='T'?{x:cx,y:cy,k:1}:fitDecal(geo,nm,cx,cy,lw,lw*0.3,blocked[nm]);
+          region(nm,(sa,sd)=>{g.translate(f.x,f.y);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(sc,-lw*f.k/2,-lw*0.15*f.k,lw*f.k,lw*0.3*f.k);});};
+        logo('L',-1.75,0.62,0.95);logo('R',-1.75,0.62,0.95);logo('T',1.65,0,0.9,Math.PI/2);}
+      if(!art)return;
+      const put=(nm,spot,cx,cy,rot,k=1)=>{const [nw,nh]=numberSize(spot,art,lv.numSize/100);region(nm,(sa,sd)=>{g.translate(cx,cy);g.scale(sa,sd);if(rot)g.rotate(rot);g.drawImage(cv,-nw*k/2,-nh*k/2,nw*k,nh*k);});};
+      if(lv.numDoors)for(const side of ['L','R'])put(side,S.door,doors[side].x,doors[side].y,0,doors[side].k);
+      if(lv.numRoof)put('T',S.roof,S.roof.x,0,Math.PI/2);
+      if(lv.numTail){const [nw0,nh0]=numberSize(S.tail,art,lv.numSize/100),nw=nw0*TAIL_NUM.scale,nh=nh0*TAIL_NUM.scale,[,,,u0,u1,,v0,v1]=R.B;
+        region('B',(sa,sd)=>{const pad=0.06,lx=sa>0?Math.min(u0,u1):Math.max(u0,u1),by=sd>0?Math.max(v0,v1):Math.min(v0,v1);
+          // in the flipped frame +x is the viewer's right and +y is down, so step in from the left edge and up from the bottom edge
+          g.translate(lx+sa*(pad+nw/2),by-sd*(pad+nh/2));g.scale(sa,sd);g.drawImage(cv,-nw/2,-nh/2,nw,nh);});}
+    };
+    g=g0;paint('base');
+    g=gd;paint('decal');
+    const wrap=plan||o.layers;
+    const B=wrap?g0.getImageData(0,0,w,h):null,D=wrap?gd.getImageData(0,0,w,h):null;
+    g0.drawImage(dc,0,0);
+    if(o.layers)layers={base:B,decals:D};
+    if(plan&&plan.width===w&&plan.height===h){const img=g0.getImageData(0,0,w,h);
+      applyAtlas(plan,img,wrapContext({regions:parseRegions(CAR_REGIONS),base:B,decals:D,geo,bounds:STOCK_BOUNDS}));g0.putImageData(img,0,0);}
   });
+  if(layers)t.userData.layers=layers;
   t.flipY=false;t.needsUpdate=true;return t;
 }
 function mountCarLivery(m,lv){
@@ -935,10 +977,12 @@ function mountCarLivery(m,lv){
 function customLiveryLv(lv,rec){const gar=carGarage(rec),N=rec.numbers;
   return {...lv,pattern:gar.schemes?lv.pattern:'solid',scheme:gar.schemes?lv.scheme:undefined,custom:gar.schemes?lv.custom:undefined,noLogo:!gar.logos,
     number:gar.numbers?lv.number:'',numDoors:lv.numDoors&&!N.door,numRoof:lv.numRoof&&!N.roof,numTail:lv.numTail&&!N.tail};}
-function customLivery(lv,rec,o={}){
+// `a` is the prepared custom car (custom-cars.js): its own projection map fits the logos and numbers to its
+// panels, and both livery layers go back so the bake can wrap them over its seams.
+function customLivery(lv,a,o={}){
   if(!CAR_REGIONS)return null;const regions=parseRegions(CAR_REGIONS);if(!regions.length)return null;
-  const t=carLiveryTex(customLiveryLv(lv,rec),1024,o.crisp?320:NUM_PX[quality]||208),canvas=t.image;t.dispose();
-  return {canvas,regions};
+  const t=carLiveryTex(customLiveryLv(lv,a.rec),1024,o.crisp?320:NUM_PX[quality]||208,{geo:customGeo(a,regions),plan:null,layers:true}),canvas=t.image,layers=t.userData.layers;t.dispose();
+  return {canvas,regions,base:layers&&layers.base,decals:layers&&layers.decals};
 }
 function buildStockCar(lv,o={}){
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);
@@ -962,7 +1006,7 @@ function buildStockCar(lv,o={}){
 }
 function buildCar(lv,o={}){
   if(!lv.pace&&carIdOf(lv.veh||'')){const a=customCarReady(lv.veh);
-    if(a){const m=buildCustomCar(a,lv,{modelScale:TM_S,carAsset:CAR_ASSET,crisp:o.crisp,envTex,envK:ENVK,livery:l=>customLivery(l,a.rec,o)});mountNumbers(m,lv);return m;}
+    if(a){const m=buildCustomCar(a,lv,{modelScale:TM_S,carAsset:CAR_ASSET,crisp:o.crisp,envTex,envK:ENVK,livery:l=>customLivery(l,a,o)});mountNumbers(m,lv);return m;}
     if(CAR_ASSET)return buildStockCar(lv,o);}
   if(lv.veh==='car'&&!lv.pace&&CAR_ASSET)return buildStockCar(lv,o);
   const root=new THREE.Group(),body=new THREE.Group();root.add(body);

@@ -7,11 +7,16 @@
  * custom car's bounds onto the stock car's, so stripes, flames and logos land in the same places on
  * any shape.
  *
- * Textured bodies are baked in their own UV layout: each texel takes the livery colour times its
+ * Textured bodies are baked in their own UV layout. Every texel is painted from its own 3D point
+ * and smooth normal (`liveryWrap.ts`), so the art changes from side to top along clean lines and
+ * logos run over seams in one piece. Each texel takes the livery colour times its
  * shading (`paintShade`): glass, tyres and grilles stay dark while the panels take a clean, even coat. Untextured bodies get new UVs into the livery atlas instead.
  *
  * Renderer-free (plain arrays and RGBA bytes) so the game, the admin preview and the tests share it.
  */
+
+import { shade, weighInto, wrapContext } from './liveryWrap'
+import type { LiveryGeo } from './liveryWrap'
 
 export type Axis = 0 | 1 | 2
 export type LiveryRegion = { name: string; rect: [number, number, number, number]; uAxis: Axis; u0: number; u1: number; vAxis: Axis; v0: number; v1: number }
@@ -45,32 +50,12 @@ export function regionFor(n: [number, number, number], c: [number, number, numbe
   return c[0] >= mid(0) ? 'F' : 'B'
 }
 
-/**
- * Up to three regions with blend weights for a face, so the art fades between the sides, the top
- * and the ends on curved panels instead of breaking into a patchwork where neighbouring faces
- * happen to pick different regions.
- */
-export function regionBlend(n: [number, number, number], c: [number, number, number], b: Bounds): [string, number][] {
-  const mid = (k: Axis) => (b.min[k] + b.max[k]) / 2
-  const high = c[1] > b.min[1] + (b.max[1] - b.min[1]) * 0.35
-  const out: [string, number][] = [
-    [c[2] >= mid(2) ? 'R' : 'L', n[2] ** 4],
-    [c[0] >= mid(0) ? 'F' : 'B', n[0] ** 4 * 0.8],
-    ['T', high ? Math.abs(n[1]) ** 4 : 0],
-  ]
-  const total = out.reduce((a, [, w]) => a + w, 0)
-  if (total < 1e-6) return [[regionFor(n, c, b), 1]]
-  const kept = out.map(([r, w]) => [r, w / total] as [string, number]).filter(([, w]) => w > 0.06)
-  const sum = kept.reduce((a, [, w]) => a + w, 0)
-  return kept.map(([r, w]) => [r, w / sum])
-}
-
 function centroid(pos: ArrayLike<number>, a: number, b: number, c: number): [number, number, number] {
   return [(pos[a * 3] + pos[b * 3] + pos[c * 3]) / 3, (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3, (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / 3]
 }
 
 /** Stretches a car-frame point from `from` bounds onto the stock car's. */
-function toStock(p: [number, number, number], from: Bounds, axis: Axis) {
+export function toStock(p: [number, number, number], from: Bounds, axis: Axis) {
   const a = from.min[axis], b = from.max[axis], s0 = STOCK_BOUNDS.min[axis], s1 = STOCK_BOUNDS.max[axis]
   return b - a > 1e-6 ? s0 + ((p[axis] - a) / (b - a)) * (s1 - s0) : (s0 + s1) / 2
 }
@@ -178,7 +163,30 @@ export function tintPixels(px: Uint8ClampedArray, rgb: [number, number, number],
 /** UVs outside 0–1 repeat; exactly 1 stays 1 so a chart's far edge doesn't fold back to 0. */
 const wrapUv = (v: number) => (v < 0 || v > 1 ? v - Math.floor(v) : v)
 
-export type BakePart = { positions: ArrayLike<number>; uvs: ArrayLike<number>; index: ArrayLike<number> | null }
+export type BakePart = { positions: ArrayLike<number>; uvs: ArrayLike<number>; index: ArrayLike<number> | null; normals?: ArrayLike<number> | null }
+
+/** Per-axis scale from a custom body's bounds onto the stock car's (normals divide by it). */
+function stretchOf(from: Bounds): [number, number, number] {
+  return [0, 1, 2].map(k => { const a = from.max[k] - from.min[k]; return a > 1e-6 ? (STOCK_BOUNDS.max[k] - STOCK_BOUNDS.min[k]) / a : 1 }) as [number, number, number]
+}
+
+/**
+ * Car-frame positions (and normals) of a part moved into the livery frame: the stock car's metres,
+ * stretched from `from` like `atlasPoint` does, so `liveryWrap.ts` can work on them directly.
+ */
+export function toLiveryFrame(positions: ArrayLike<number>, normals: ArrayLike<number> | null | undefined, from: Bounds) {
+  const s = stretchOf(from), pos = new Float32Array(positions.length), nor = normals ? new Float32Array(normals.length) : null
+  const p: [number, number, number] = [0, 0, 0]
+  for (let i = 0; i < positions.length; i += 3) {
+    p[0] = positions[i]; p[1] = positions[i + 1]; p[2] = positions[i + 2]
+    for (let k = 0 as Axis; k < 3; k++) pos[i + k] = toStock(p, from, k as Axis)
+    if (nor && normals) {
+      const x = normals[i] / s[0], y = normals[i + 1] / s[1], z = normals[i + 2] / s[2], l = Math.hypot(x, y, z) || 1
+      nor[i] = x / l; nor[i + 1] = y / l; nor[i + 2] = z / l
+    }
+  }
+  return { positions: pos, normals: nor }
+}
 
 /**
  * Bakes `livery` (the stock-layout atlas) into `texture` (in place) for every triangle of `parts`
@@ -189,30 +197,33 @@ export type BakePart = { positions: ArrayLike<number>; uvs: ArrayLike<number>; i
 export function bakeLivery(o: {
   texture: Pixels; livery: Pixels; regions: LiveryRegion[]; parts: BakePart[]; bounds: Bounds; flipY: boolean
   weight: (r: number, g: number, b: number) => number; fallback: [number, number, number]
+  /** Decals only (logos, lettering, numbers) in the atlas layout; projected over seams. Without it the livery's own decals are used flat. */
+  decals?: Pixels | null
+  /** The body's projection maps (`buildLiveryGeo`), so decals only land on the outer surface. */
+  geo?: LiveryGeo | null
 }) {
-  const { texture: T, livery: L } = o
+  const { texture: T } = o
   const W = T.width, H = T.height, n = W * H
   const liv = new Uint8ClampedArray(n * 3), covered = new Uint8Array(n)
-  const byName = new Map(o.regions.map(r => [r.name, r]))
-  const p: [number, number, number][] = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
-  const tx = [0, 0, 0], ty = [0, 0, 0]
+  // where triangles share texels (mirrored or stacked UV islands, common in game models), the one seen from
+  // outside paints it, so a wheel-well liner or the inside of the shell can't wipe a logo off the panel
+  const seen = o.geo ? new Uint8Array(n) : null
+  const ctx = wrapContext({ regions: o.regions, base: o.livery, decals: o.decals ?? null, geo: o.geo ?? null, bounds: STOCK_BOUNDS })
+  const tx = [0, 0, 0], ty = [0, 0, 0], vi = [0, 0, 0], col = [0, 0, 0], p = [0, 0, 0], nn = [0, 0, 0], wb = new Float64Array(5), wd = new Float64Array(5)
   for (const part of o.parts) {
-    const pos = part.positions, uv = part.uvs, idx = part.index
+    const frame = toLiveryFrame(part.positions, part.normals, o.bounds)
+    const pos = frame.positions, nor = frame.normals, uv = part.uvs, idx = part.index
     const count = idx ? idx.length : pos.length / 3
     for (let t = 0; t + 2 < count; t += 3) {
-      const vi = idx ? [idx[t], idx[t + 1], idx[t + 2]] : [t, t + 1, t + 2]
-      const blend = regionBlend(faceNormal(pos, vi[0], vi[1], vi[2]), centroid(pos, vi[0], vi[1], vi[2]), o.bounds)
-        .map(([name, w]) => ({ region: byName.get(name), w, lx: [0, 0, 0], ly: [0, 0, 0] })).filter(e => e.region)
-      if (!blend.length) continue
       for (let k = 0; k < 3; k++) {
-        const v = vi[k]
-        p[k][0] = pos[v * 3]; p[k][1] = pos[v * 3 + 1]; p[k][2] = pos[v * 3 + 2]
+        const v = idx ? idx[t + k] : t + k
+        vi[k] = v
         const u = wrapUv(uv[v * 2]), w = wrapUv(uv[v * 2 + 1])
         tx[k] = u * W - 0.5; ty[k] = (o.flipY ? 1 - w : w) * H - 0.5
-        for (const e of blend) { const a = atlasPoint(p[k], e.region!, o.bounds); e.lx[k] = a[0] * L.width; e.ly[k] = a[1] * L.height }
       }
       const d = (tx[1] - tx[0]) * (ty[2] - ty[0]) - (tx[2] - tx[0]) * (ty[1] - ty[0])
       if (Math.abs(d) < 1e-9) continue
+      const fn = faceNormal(pos, vi[0], vi[1], vi[2])
       const x0 = Math.max(0, Math.floor(Math.min(tx[0], tx[1], tx[2]))), x1 = Math.min(W - 1, Math.ceil(Math.max(tx[0], tx[1], tx[2])))
       const y0 = Math.max(0, Math.floor(Math.min(ty[0], ty[1], ty[2]))), y1 = Math.min(H - 1, Math.ceil(Math.max(ty[0], ty[1], ty[2])))
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
@@ -220,15 +231,23 @@ export function bakeLivery(o: {
         const b2 = ((tx[1] - tx[0]) * (y - ty[0]) - (x - tx[0]) * (ty[1] - ty[0])) / d
         const b0 = 1 - b1 - b2
         if (b0 < -1e-4 || b1 < -1e-4 || b2 < -1e-4) continue
-        let r = 0, g = 0, bl = 0
-        for (const e of blend) {
-          const sx = Math.min(L.width - 1, Math.max(0, Math.round(b0 * e.lx[0] + b1 * e.lx[1] + b2 * e.lx[2])))
-          const sy = Math.min(L.height - 1, Math.max(0, Math.round(b0 * e.ly[0] + b1 * e.ly[1] + b2 * e.ly[2])))
-          const s = (sy * L.width + sx) * 4
-          r += L.data[s] * e.w; g += L.data[s + 1] * e.w; bl += L.data[s + 2] * e.w
+        for (let k = 0; k < 3; k++) p[k] = b0 * pos[vi[0] * 3 + k] + b1 * pos[vi[1] * 3 + k] + b2 * pos[vi[2] * 3 + k]
+        let l = 0
+        if (nor) {
+          for (let k = 0; k < 3; k++) nn[k] = b0 * nor[vi[0] * 3 + k] + b1 * nor[vi[1] * 3 + k] + b2 * nor[vi[2] * 3 + k]
+          l = Math.hypot(nn[0], nn[1], nn[2])
         }
+        if (l > 1e-6) for (let k = 0; k < 3; k++) nn[k] /= l
+        else { nn[0] = fn[0]; nn[1] = fn[1]; nn[2] = fn[2] }
         const ti = y * W + x
-        liv[ti * 3] = r; liv[ti * 3 + 1] = g; liv[ti * 3 + 2] = bl; covered[ti] = 1
+        weighInto(ctx, p, nn, wb, wd)
+        if (seen) {
+          const v = Math.round(Math.max(wd[0], wd[1], wd[2], wd[3], wd[4]) * 254) + 1
+          if (covered[ti] && v < seen[ti]) continue
+          seen[ti] = v
+        }
+        shade(ctx, p, wb, col, wd)
+        liv[ti * 3] = col[0]; liv[ti * 3 + 1] = col[1]; liv[ti * 3 + 2] = col[2]; covered[ti] = 1
       }
     }
   }
