@@ -860,6 +860,7 @@ exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_qua
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_blind.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_hunter.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_animals.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():

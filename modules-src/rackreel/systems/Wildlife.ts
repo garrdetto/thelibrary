@@ -63,7 +63,7 @@ export interface ShotResult {
 }
 
 const VITALS: Record<string, { y: number; z: number; r: number }> = { whitetail: { y: 1.05, z: 0.32, r: 0.24 }, blackbear: { y: 0.95, z: 0.3, r: 0.3 } }
-const ANTLER_BASE = new Vector3(0, 1.6, 0.84)
+const ANTLER_BASE = new Vector3(0, 1.66, 0.73)
 const BODY: Record<string, { y: number; z: number; r: number }[]> = {
   whitetail: [{ y: 1.0, z: 0.0, r: 0.42 }, { y: 1.0, z: -0.45, r: 0.36 }, { y: 1.5, z: 0.95, r: 0.22 }],
   blackbear: [{ y: 0.9, z: 0.0, r: 0.55 }, { y: 0.92, z: -0.45, r: 0.5 }, { y: 1.0, z: 0.95, r: 0.3 }],
