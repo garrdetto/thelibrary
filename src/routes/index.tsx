@@ -39,7 +39,7 @@ const navigation = [
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
 ] as const
 const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxplains2: House, fairway: Flag, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace }
-const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxplains2: 'room', fairway: 'room', party: 'room', angler: 'room' }
+const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxplains2: 'room', fairway: 'room', party: 'room', angler: 'room', rackreel: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
 type View = StudioMode | 'home' | 'admin' | ModuleId

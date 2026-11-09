@@ -5,7 +5,16 @@ import { SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
 import type { Specimen } from '../systems/LootTableManager'
 import type { CabinSpot } from '../world/Cabin'
 
-export type PanelTab = 'gear' | 'wardrobe' | 'shop' | 'tasks' | 'bag'
+export type PanelTab = 'gear' | 'wardrobe' | 'shop' | 'tasks' | 'bag' | 'party'
+
+export interface PartyHooks {
+  status(): string
+  code(): string
+  members(): string[]
+  host(): Promise<string>
+  join(code: string): Promise<void>
+  leave(): void
+}
 
 const TABS: { id: PanelTab; label: string }[] = [
   { id: 'gear', label: 'Gear' },
@@ -13,6 +22,7 @@ const TABS: { id: PanelTab; label: string }[] = [
   { id: 'shop', label: 'Catalog' },
   { id: 'tasks', label: 'Tasks' },
   { id: 'bag', label: 'Bag' },
+  { id: 'party', label: 'Party' },
 ]
 
 const GEAR_SLOTS: { slot: Slot; label: string }[] = [
@@ -41,6 +51,7 @@ export class Panels {
   private spot: CabinSpot | null = null
   private onClose: () => void = () => undefined
   bag: () => Specimen[] = () => []
+  party: PartyHooks | null = null
 
   constructor(private readonly progress: Progress) {
     this.root = h('div', 'rr-screen panel-screen')
@@ -111,6 +122,10 @@ export class Panels {
     this.onClose()
   }
 
+  refresh(): void {
+    if (!this.root.hidden) this.render()
+  }
+
   private show(tab: PanelTab): void {
     this.tab = tab
     for (const [id, b] of this.tabs) b.setAttribute('aria-selected', String(id === tab))
@@ -169,6 +184,8 @@ export class Panels {
       }
       const s = p.stats
       this.body.append(h('p', 'panel-note', `Lifetime: ${s.fish} fish, ${s.deer} deer, ${s.bears} bears, ${s.records} records · $${s.earned.toLocaleString()} earned.`))
+    } else if (this.tab === 'party') {
+      this.renderParty()
     } else {
       this.note.textContent = 'What you have taken this outing.'
       const bag = this.bag()
@@ -178,6 +195,76 @@ export class Panels {
         this.body.append(this.row(s.value ? `${name} · ${formatValue(s.species, s.value)}` : `${name} · antlerless, ${s.weightLb} lb`, s.legendary ? 'Record-class' : s.trophyPoints ? `${s.trophyPoints} trophy pts` : '', ''))
       }
     }
+  }
+
+  private renderParty(): void {
+    const party = this.party
+    if (!party) return
+    const code = party.code()
+    this.note.textContent = code ? party.status() : 'Hunt and fish together: host a party and share the code, or invite a friend from the library chat. Up to four hunters share the same deer and see each other on the map.'
+    const section = h('section', 'panel-section')
+    if (!code) {
+      const hostBtn = h('button', 'rr-btn primary', 'Host a party')
+      hostBtn.type = 'button'
+      hostBtn.addEventListener('click', async () => {
+        hostBtn.disabled = true
+        try {
+          await party.host()
+        } catch {
+          this.flash('Could not open a party right now. Try again in a moment.', true)
+        }
+        this.render()
+      })
+      const input = h('input', 'party-code')
+      input.placeholder = 'Party code'
+      input.maxLength = 6
+      input.setAttribute('aria-label', 'Party code')
+      input.autocomplete = 'off'
+      const joinBtn = h('button', 'rr-btn', 'Join')
+      joinBtn.type = 'button'
+      joinBtn.addEventListener('click', async () => {
+        joinBtn.disabled = true
+        try {
+          await party.join(input.value)
+          this.flash('Joining…', false)
+        } catch {
+          this.flash('That code did not connect. Check it with your friend.', true)
+        }
+        joinBtn.disabled = false
+      })
+      input.addEventListener('keydown', (e) => {
+        e.stopPropagation()
+        if (e.key === 'Enter') joinBtn.click()
+      })
+      const row = h('div', 'party-row')
+      row.append(input, joinBtn)
+      section.append(hostBtn, row)
+    } else {
+      section.append(h('div', 'big-num', code))
+      const link = `${location.origin}${location.pathname}?room=${code}`
+      const copy = h('button', 'rr-btn', 'Copy invite link')
+      copy.type = 'button'
+      copy.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(link)
+          this.flash('Invite link copied.', false)
+        } catch {
+          this.flash(link, false)
+        }
+      })
+      const leave = h('button', 'rr-btn', 'Leave party')
+      leave.type = 'button'
+      leave.addEventListener('click', () => {
+        party.leave()
+        this.render()
+      })
+      const members = party.members()
+      section.append(h('p', 'panel-note', members.length ? `With you: ${members.join(', ')}` : 'Waiting for friends to join…'))
+      const row = h('div', 'party-row')
+      row.append(copy, leave)
+      section.append(row)
+    }
+    this.body.append(section)
   }
 
   private slots(slots: { slot: Slot; label: string }[], editable: boolean): void {
