@@ -48,6 +48,7 @@ export const BOAT_TUNING = {
   pitchAmplitude: 0.022,
   rollAmplitude: 0.03,
   planeLift: 0.13,
+  anchorSwing: 0.025,
 }
 
 export interface Vehicle {
@@ -68,6 +69,7 @@ export interface Vehicle {
   clock: number
   occupied: boolean
   power: number
+  anchored: boolean
 }
 
 export class VehicleController {
@@ -93,6 +95,7 @@ export class VehicleController {
       clock: Math.random() * 10,
       occupied: false,
       power: 1,
+      anchored: false,
     }
     if (kind === 'ATV') vehicle.position.y = this.terrain.heightAt(position.x, position.z) + ATV_TUNING.rideHeight
     this.vehicles.push(vehicle)
@@ -124,9 +127,10 @@ export class VehicleController {
     if (!v) return null
     const side = this.localToWorld(v, v.exitSide)
     let spot = side
-    if (v.kind === 'BOAT' || this.terrain.depthAt(side.x, side.z) > 0.7) spot = this.findShore(v) ?? side
+    if (v.kind === 'BOAT' || this.terrain.depthAt(side.x, side.z) > 0.7) spot = this.shoreNear(v.position) ?? side
     if (v.kind === 'BOAT' && this.terrain.depthAt(spot.x, spot.z) > 0.9) return null
     v.occupied = false
+    v.anchored = false
     v.speed = 0
     this.active = null
     this.mode = 'NONE'
@@ -134,12 +138,12 @@ export class VehicleController {
     return spot
   }
 
-  private findShore(v: Vehicle): Vector3 | null {
+  shoreNear(point: Vector3): Vector3 | null {
     for (let r = 2; r < 12; r += 1) {
       for (let a = 0; a < 16; a++) {
         const ang = (a / 16) * Math.PI * 2
-        const x = v.position.x + Math.cos(ang) * r
-        const z = v.position.z + Math.sin(ang) * r
+        const x = point.x + Math.cos(ang) * r
+        const z = point.z + Math.sin(ang) * r
         if (this.terrain.heightAt(x, z) > 0.15) return new Vector3(x, 0, z)
       }
     }
@@ -159,7 +163,7 @@ export class VehicleController {
   update(dt: number, input: DriveInput): void {
     for (const v of this.vehicles) {
       v.clock += dt
-      const drive = v === this.active ? input : { throttle: 0, steer: 0, brake: true }
+      const drive = v === this.active && !v.anchored ? input : { throttle: 0, steer: 0, brake: true }
       if (v.kind === 'ATV') this.updateAtv(v, dt, drive)
       else this.updateBoat(v, dt, drive)
       this.applyTransform(v)
@@ -251,6 +255,10 @@ export class VehicleController {
     const drag = T.drag * v.speed * Math.abs(v.speed) + Math.sign(v.speed) * T.idleDrag * (input.throttle === 0 ? 1 : 0.2)
     v.speed -= Math.sign(drag) * Math.min(Math.abs(v.speed), Math.abs(drag) * dt)
     if (input.brake) v.speed *= Math.max(0, 1 - dt * 1.5)
+    if (v.anchored) {
+      v.speed *= Math.max(0, 1 - dt * 2.5)
+      v.heading += T.anchorSwing * bufferedSine(v.clock * 0.23 + 0.4) * dt
+    }
     v.speed = Math.max(-T.maxReverse, Math.min(T.maxForward * v.power, v.speed))
     const authority = Math.min(1, 0.25 + Math.abs(v.speed) / 5)
     v.heading += v.steer * T.turnRate * authority * dt * (v.speed < 0 ? -1 : 1)

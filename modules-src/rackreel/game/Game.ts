@@ -48,9 +48,12 @@ import type { PlayerState } from './Online'
 import { formatValue as fmtValue } from '../systems/LootTableManager'
 import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
+import { ANCHOR_MAX_SPEED, BOARD_MAX_SPEED, BOARD_RANGE, CONSOLE_SEAT, DECK_SEATS, DECK_SEAT_NAMES, PASSENGER_SEAT, createAnchorLine, otherSeat, swivelToward } from './BoatSeats'
+import type { DeckSeat } from './BoatSeats'
+import type { RemoteBoat } from './Online'
 
 type Tool = 'rod' | 'rifle'
-type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand'
+type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand' | 'crew'
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
 const GLOSSY = new Set(['utv', 'boat', 'rod', 'rifle', 'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch'])
@@ -130,6 +133,15 @@ export class Game {
   private placeTimer = 0
   private casters: AbstractMesh[] = []
   private readonly casterScratch: AbstractMesh[] = []
+  private boat!: Vehicle
+  private anchorLine!: Mesh
+  private deckSeat: DeckSeat | null = null
+  private swivel = 0
+  private crewOf: string | null = null
+  private crewBoat: RemoteBoat | null = null
+  private crewAboard: string | null = null
+  private handsNow: AvatarHands = 'rod'
+  private dockEnd = new Vector3()
 
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
@@ -170,7 +182,9 @@ export class Game {
     this.buildCabin(reg)
     this.vehicles = new VehicleController(this.ctx, this.terrain, this.ground)
     this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), landmarks.utv, landmarks.utvHeading)
-    this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
+    this.boat = this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
+    this.anchorLine = createAnchorLine(scene, this.boat.root)
+    this.dockEnd.copyFrom(landmarks.dock.end)
     this.avatar = new Avatar(instantiate(this.models.get('hunter')!, null, scene, reg))
     this.buildGear(reg)
     this.wildlife = new Wildlife(this.ctx, scene, this.terrain, this.loot, this.models)
@@ -208,7 +222,15 @@ export class Game {
         }
         this.panels?.refresh()
       },
+      seat: (from) => {
+        if (this.mode !== 'vehicle' || this.vehicles.active !== this.boat || this.deckSeat === null) return
+        this.deckSeat = otherSeat(this.deckSeat)
+        this.hud.toast(`${from} swapped seats with you. You're on the ${DECK_SEAT_NAMES[this.deckSeat]} now.`)
+      },
+      localBoat: () => (this.vehicles.active === this.boat ? this.boat.root : null),
     })
+    this.online.id = this.sessionKey
+    this.online.carry(this.avatar.root)
     const cam = this.ctx.camera
     cam.keysUp = []
     cam.keysDown = []
@@ -451,6 +473,8 @@ export class Game {
       else if (e.code === 'KeyG') this.grunt()
       else if (e.code === 'KeyN') this.hud.toast(this.minimap.cycleZoom())
       else if (e.code === 'KeyP') this.openPanel('party', null)
+      else if (e.code === 'KeyQ') this.toggleAnchor()
+      else if (e.code === 'KeyF') this.switchSeat()
     })
     addEventListener('keyup', (e) => this.keys.delete(e.code))
     addEventListener('blur', () => {
@@ -484,7 +508,7 @@ export class Game {
 
   private setTool(tool: Tool): void {
     if (this.fishing.busy && tool !== 'rod') this.fishing.cancel()
-    if (this.vehicles.active && tool === 'rifle') {
+    if ((this.vehicles.active || this.mode === 'crew') && tool === 'rifle') {
       this.hud.toast('Unload and step out before using the rifle.', 'warn')
       return
     }
@@ -501,6 +525,10 @@ export class Game {
       this.climbT = 1
       return
     }
+    if (this.mode === 'crew') {
+      this.leaveCrew(false)
+      return
+    }
     if (this.mode === 'vehicle') {
       const spot = this.vehicles.exit()
       if (!spot) {
@@ -509,6 +537,8 @@ export class Game {
       }
       this.avatar.root.parent = null
       this.mode = 'foot'
+      this.deckSeat = null
+      this.anchorLine.setEnabled(false)
       this.foot.copyFrom(spot)
       this.velocity.setAll(0)
       return
@@ -523,7 +553,12 @@ export class Game {
       this.openPanel(spot === 'wardrobe' ? 'wardrobe' : spot === 'rack' ? 'gear' : 'shop', spot)
       return
     }
-    const v = this.vehicles.nearest(this.foot, 4.2)
+    const v = this.nearOwnVehicle()
+    const ride = this.nearRemoteBoat()
+    if (ride && (!v || Vector3.Distance(this.foot, ride.root.position) < Vector3.Distance(this.foot, v.position))) {
+      this.boardCrew(ride)
+      return
+    }
     if (v) {
       this.enterVehicle(v)
       return
@@ -557,6 +592,8 @@ export class Game {
     if (this.tool === 'rifle') this.setTool('rod')
     this.vehicles.enter(v)
     this.mode = 'vehicle'
+    this.deckSeat = v.anchored ? 0 : null
+    this.swivel = 0
     this.crouch = false
     const cam = this.ctx.camera
     cam.rotation.set(0.28, v.heading, 0)
@@ -564,7 +601,179 @@ export class Game {
     this.avatar.root.rotationQuaternion = null
     this.avatar.root.rotation.set(0, 0, 0)
     this.avatar.root.position.copyFrom(v.seat).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
-    this.hud.toast(v.kind === 'ATV' ? 'W/S throttle · A/D steer · Space brake · E to step out' : 'W/S throttle · A/D tiller · stop to cast · E to step out near shore')
+    this.hud.toast(v.kind === 'ATV' ? 'W/S throttle · A/D steer · Space brake · E to step out' : 'W/S throttle · A/D tiller · Q to drop anchor · E to step out near shore')
+  }
+
+  private toggleAnchor(): void {
+    const v = this.vehicles.active
+    if (this.mode === 'crew') {
+      this.hud.toast(`${this.crewBoat?.name ?? 'The captain'} handles the anchor.`)
+      return
+    }
+    if (!v || v.kind !== 'BOAT' || this.mode !== 'vehicle') return
+    if (v.anchored) {
+      if (this.fishing.busy) this.fishing.cancel()
+      v.anchored = false
+      this.deckSeat = null
+      this.swivel = 0
+      this.anchorLine.setEnabled(false)
+      this.audio.click()
+      this.hud.toast('Anchor up. Back at the console — W/S throttle, A/D tiller.')
+      return
+    }
+    if (Math.abs(v.speed) > ANCHOR_MAX_SPEED) {
+      this.hud.toast('Slow down before you drop the anchor.', 'warn')
+      return
+    }
+    v.anchored = true
+    this.deckSeat = 0
+    this.swivel = 0
+    this.anchorLine.setEnabled(true)
+    this.audio.splash()
+    const crew = this.online.crewOf(this.online.id)
+    this.hud.toast(`Anchor down. You're on the ${DECK_SEAT_NAMES[0]} seat${crew ? `, ${crew} has the ${DECK_SEAT_NAMES[1]}` : ''}. F switches seats · Q pulls the anchor.`)
+  }
+
+  private switchSeat(): void {
+    if (this.mode === 'crew') {
+      const b = this.crewBoat
+      if (!b?.anchored) {
+        this.hud.toast('The boat has to be anchored to move to the deck seats.')
+        return
+      }
+      this.online.requestSeat(b.id)
+      this.hud.toast(`Asked ${b.name} to swap seats.`)
+      return
+    }
+    const v = this.vehicles.active
+    if (this.mode !== 'vehicle' || v?.kind !== 'BOAT') return
+    if (!v.anchored || this.deckSeat === null) {
+      this.hud.toast('Drop the anchor (Q) first, then you can move to the deck seats.')
+      return
+    }
+    if (this.fishing.busy) this.fishing.cancel()
+    this.deckSeat = otherSeat(this.deckSeat)
+    const crew = this.online.crewOf(this.online.id)
+    this.hud.toast(`Moved to the ${DECK_SEAT_NAMES[this.deckSeat]} seat${crew ? `; ${crew} takes the other one` : ''}.`)
+  }
+
+  private hideOverlappedBoat(): void {
+    const own = this.boat
+    const covered = !own.occupied && this.online.boats().some((b) => Math.hypot(b.root.position.x - own.position.x, b.root.position.z - own.position.z) < 3.5)
+    if (own.root.isEnabled() === covered) own.root.setEnabled(!covered)
+  }
+
+  private nearOwnVehicle(): Vehicle | null {
+    const v = this.vehicles.nearest(this.foot, 4.2)
+    return v && v.root.isEnabled() ? v : null
+  }
+
+  private nearRemoteBoat(): RemoteBoat | null {
+    let best: RemoteBoat | null = null
+    let bestD = BOARD_RANGE
+    for (const b of this.online.boats()) {
+      const d = Math.hypot(b.root.position.x - this.foot.x, b.root.position.z - this.foot.z)
+      if (d < bestD) {
+        bestD = d
+        best = b
+      }
+    }
+    return best
+  }
+
+  private boardCrew(b: RemoteBoat): void {
+    if (b.crew) {
+      this.hud.toast(`${b.name}'s boat is full — ${b.crew} already has the other seat.`, 'warn')
+      return
+    }
+    if (b.speed > BOARD_MAX_SPEED) {
+      this.hud.toast(`Wait for ${b.name} to stop the boat.`, 'warn')
+      return
+    }
+    if (this.fishing.busy) this.fishing.cancel()
+    if (this.tool === 'rifle') this.setTool('rod')
+    this.mode = 'crew'
+    this.crewOf = b.id
+    this.crewBoat = b
+    this.crouch = false
+    this.swivel = 0
+    this.avatar.root.parent = b.root
+    this.avatar.root.rotationQuaternion = null
+    this.avatar.root.rotation.set(0, 0, 0)
+    this.online.announce(`climbed aboard ${b.name}'s boat.`)
+    this.hud.toast(b.anchored ? `Aboard with ${b.name} on the ${DECK_SEAT_NAMES[otherSeat(b.deck)]} seat. Cast away · F asks to swap seats · E near shore to step off.` : `Aboard with ${b.name} in the passenger seat. When they anchor you'll move to a deck seat.`)
+  }
+
+  private leaveCrew(forced: boolean): void {
+    const spot = this.vehicles.shoreNear(this.foot)
+    if (!forced && (!spot || this.terrain.depthAt(spot.x, spot.z) > 0.9)) {
+      this.hud.toast('Too deep to step off here. Ask the captain to run up to shore.', 'warn')
+      return
+    }
+    if (this.fishing.busy) this.fishing.cancel()
+    const name = this.crewBoat?.name ?? 'the captain'
+    this.avatar.root.setParent(null)
+    this.avatar.root.rotationQuaternion = null
+    this.mode = 'foot'
+    this.crewOf = null
+    this.crewBoat = null
+    this.velocity.setAll(0)
+    if (spot) {
+      this.foot.copyFrom(spot)
+      this.foot.y = this.terrain.heightAt(spot.x, spot.z)
+    } else {
+      this.foot.copyFrom(this.dockEnd)
+      this.foot.y = 0.58
+    }
+    if (forced) this.hud.toast(spot ? `${name} tied up the boat. You stepped ashore.` : `${name}'s boat is gone. You caught a ride back to the dock.`)
+  }
+
+  private seatLocal(): Vector3 | null {
+    if (this.mode === 'crew') {
+      const b = this.crewBoat
+      if (!b) return null
+      return b.anchored ? DECK_SEATS[otherSeat(b.deck)] : PASSENGER_SEAT
+    }
+    const v = this.vehicles.active
+    if (this.mode !== 'vehicle' || !v) return null
+    if (v.kind !== 'BOAT') return v.seat
+    return this.deckSeat === null ? CONSOLE_SEAT : DECK_SEATS[this.deckSeat]
+  }
+
+  private get onDeck(): boolean {
+    return this.mode === 'crew' || (this.mode === 'vehicle' && this.deckSeat !== null)
+  }
+
+  private updateCrew(dt: number): void {
+    if (this.mode === 'vehicle' && this.vehicles.active === this.boat) {
+      const crew = this.online.crewOf(this.online.id)
+      if (crew !== this.crewAboard) {
+        if (crew) this.hud.toast(`${crew} climbed aboard${this.deckSeat === null ? ' and took the passenger seat' : ` and took the ${DECK_SEAT_NAMES[otherSeat(this.deckSeat)]} seat`}.`)
+        else if (this.crewAboard) this.hud.toast(`${this.crewAboard} stepped off the boat.`)
+        this.crewAboard = crew
+      }
+    } else this.crewAboard = null
+    if (this.mode !== 'crew' || !this.crewOf) return
+    const b = this.online.boat(this.crewOf)
+    if (!b || !this.online.active) {
+      this.leaveCrew(true)
+      return
+    }
+    const wasAnchored = this.crewBoat?.anchored
+    this.crewBoat = b
+    if (wasAnchored !== undefined && wasAnchored !== b.anchored) {
+      if (b.anchored) this.hud.toast(`${b.name} dropped anchor. You're on the ${DECK_SEAT_NAMES[otherSeat(b.deck)]} seat.`)
+      else {
+        if (this.fishing.busy) this.fishing.cancel()
+        this.hud.toast(`${b.name} pulled the anchor. Hang on in the passenger seat.`)
+      }
+    }
+    if (this.avatar.root.parent !== b.root) {
+      this.avatar.root.parent = b.root
+      this.avatar.root.rotationQuaternion = null
+    }
+    this.swivel = b.anchored ? swivelToward(this.swivel, this.ctx.camera.rotation.y, b.heading, dt) : 0
+    this.moveSpeed = 0
   }
 
   private primaryDown(): void {
@@ -590,6 +799,10 @@ export class Game {
       }
       if (v && (v.kind === 'ATV' || Math.abs(v.speed) > 1.2)) {
         this.hud.toast(v.kind === 'ATV' ? 'Park the UTV and step out to fish.' : 'Ease off the throttle to cast.', 'warn')
+        return
+      }
+      if (this.mode === 'crew' && (this.crewBoat?.speed ?? 0) > 1.2) {
+        this.hud.toast('Hold on until the boat slows down.', 'warn')
         return
       }
       if (this.fishing.state === 'waiting') {
@@ -672,19 +885,22 @@ export class Game {
     const v = this.vehicles.active
     const r = this.avatar.root
     const l = this.progress.profile.loadout
-    const st = this.fishing.state
-    const stance = this.mode === 'vehicle' || this.mode === 'stand' ? 'sit' : this.mode === 'climb' ? (this.climbT < this.layout.climbSplit ? 'climb' : 'sit') : 'stand'
-    const hands = this.mode === 'vehicle' ? 'wheel' : this.tool === 'rifle' ? (this.rightDown ? 'aim' : 'rifle') : st === 'reeling' || st === 'landing' ? 'reel' : st === 'charging' ? 'cast' : 'rod'
-    const at = this.mode === 'vehicle' ? this.foot : r.position
+    const stance = this.mode === 'vehicle' || this.mode === 'stand' || this.mode === 'crew' ? 'sit' : this.mode === 'climb' ? (this.climbT < this.layout.climbSplit ? 'climb' : 'sit') : 'stand'
+    const at = this.mode === 'vehicle' || this.mode === 'crew' ? this.foot : r.position
     const state: PlayerState = {
-      n: this.online.name, p: [at.x, at.y, at.z], f: this.facing, st: stance, h: hands, sp: this.moveSpeed, c: this.crouch, cl: this.climbT * 9, ap: this.ctx.camera.rotation.x,
+      id: this.online.id, n: this.online.name, p: [at.x, at.y, at.z], f: this.onDeck ? this.swivel : this.facing, st: stance, h: this.handsNow, sp: this.moveSpeed, c: this.crouch, cl: this.climbT * 9, ap: this.ctx.camera.rotation.x,
       o: [l.jacket, l.vest, l.cap, l.pants, l.pack],
     }
-    if (v) {
+    const seat = this.seatLocal()
+    if (v && seat) {
       const kind = v.kind === 'BOAT' ? 'boat' : v.rig.root.name.startsWith('quad') ? 'quad' : 'utv'
-      state.v = { k: kind, p: [v.position.x, v.position.y, v.position.z], q: [v.heading, v.pitch, v.roll], s: [v.seat.x, v.seat.y, v.seat.z] }
+      state.v = { k: kind, p: [v.position.x, v.position.y, v.position.z], q: [v.heading, v.pitch, v.roll], s: [seat.x, seat.y, seat.z] }
+      if (v.anchored) {
+        state.v.a = 1
+        state.v.d = this.deckSeat ?? 0
+      }
       state.p = [v.position.x, v.position.y, v.position.z]
-    }
+    } else if (this.mode === 'crew' && this.crewOf && seat) state.r = { o: this.crewOf, s: [seat.x, seat.y, seat.z] }
     return state
   }
 
@@ -767,7 +983,7 @@ export class Game {
     } else if (e.type === 'landed') {
       this.audio.splash(true)
       this.online.announce(`landed a ${fmtValue(e.specimen.species, e.specimen.value)} ${SPECIES_BY_ID[e.specimen.species].name.toLowerCase()}${e.specimen.legendary ? ' — a record!' : ''}`)
-      void this.earn({ action: 'fish', species: e.specimen.species, value: e.specimen.value, legendary: e.specimen.legendary, boat: this.vehicles.active?.kind === 'BOAT' })
+      void this.earn({ action: 'fish', species: e.specimen.species, value: e.specimen.value, legendary: e.specimen.legendary, boat: this.vehicles.active?.kind === 'BOAT' || this.mode === 'crew' })
       this.showHero(e.specimen)
       this.recordSpecimen(e.specimen)
     } else if (e.type === 'lost') {
@@ -816,7 +1032,7 @@ export class Game {
     if (this.mode === 'stand' || this.mode === 'climb') return this.layout.name.replace(/^./, (c) => c.toUpperCase())
     const g = this.terrain.groundAt(this.foot.x, this.foot.z)
     const v = this.vehicles.active
-    if (v?.kind === 'BOAT') return this.fishing.habitat === 'deep' ? 'Deep basin' : 'Bear Paw Lake'
+    if (v?.kind === 'BOAT' || this.mode === 'crew') return this.fishing.habitat === 'deep' ? 'Deep basin' : 'Bear Paw Lake'
     return { water: 'Bear Paw Lake', shore: 'Lakeshore', marsh: 'Cattail Marsh', meadow: 'Oak Opening', forest: 'Pine Ridge', trail: 'Two-track trail', rock: 'Granite Bluff' }[g]
   }
 
@@ -850,8 +1066,11 @@ export class Game {
       brake: this.keys.has('Space'),
     }
     this.vehicles.update(dt, input)
-    if (v) this.audio.engine(true, Math.abs(v.speed) / 16, v.kind === 'BOAT')
+    if (v && !v.anchored) this.audio.engine(true, Math.abs(v.speed) / 16, v.kind === 'BOAT')
     else this.audio.engine(false, 0, false)
+    this.updateCrew(dt)
+    this.hideOverlappedBoat()
+    if (this.mode === 'vehicle' && v && this.deckSeat !== null) this.swivel = swivelToward(this.swivel, cam.rotation.y, v.heading, dt)
     const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
     const canAim = (this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle'
     const wantAds = canAim && this.rightDown && locked
@@ -862,7 +1081,7 @@ export class Game {
     if (this.mode === 'foot') this.walk(dt, active, sprint)
     else if (this.mode === 'climb') this.climb(dt)
     else if (this.mode === 'vehicle' && v) this.moveSpeed = Math.abs(v.speed)
-    else this.moveSpeed = 0
+    else if (this.mode !== 'crew') this.moveSpeed = 0
     this.rifleCooldown = Math.max(0, this.rifleCooldown - dt)
     this.recoil = Math.max(0, this.recoil - dt * 5)
     this.placeAvatar(dt)
@@ -875,11 +1094,11 @@ export class Game {
         this.audio.click()
       }
     }
-    const noise = this.mode === 'vehicle' ? 1.4 : this.mode === 'stand' ? 0.03 : this.mode === 'climb' ? 0.5 : this.moveSpeed < 0.3 ? 0.04 : this.crouch ? 0.15 : sprint ? 1 : 0.45
+    const noise = this.onDeck ? 0.12 : this.mode === 'vehicle' ? 1.4 : this.mode === 'stand' ? 0.03 : this.mode === 'climb' ? 0.5 : this.moveSpeed < 0.3 ? 0.04 : this.crouch ? 0.15 : sprint ? 1 : 0.45
     const focus = v ? v.position : this.foot
     this.wildlife.update(dt, [{ p: focus, noise }, ...this.online.members.map((m) => ({ p: m.at, noise: 0.35 }))])
-    const exploring = this.mode === 'stand' || (v ? Math.abs(v.speed) > 1 : this.moveSpeed > 0.5)
-    const onLand = !v || v.kind === 'ATV'
+    const exploring = this.mode === 'stand' || (v ? Math.abs(v.speed) > 1 : this.mode === 'crew' ? (this.crewBoat?.speed ?? 0) > 1 : this.moveSpeed > 0.5)
+    const onLand = (!v || v.kind === 'ATV') && this.mode !== 'crew'
     const signal = this.director.update(dt, { exploring, lineInWater: this.fishing.lineInWater, onLand, fishRate: this.progress.effects.biteRate })
     if (signal === 'fish') this.fishing.bite()
     else if (signal === 'game') {
@@ -1000,7 +1219,15 @@ export class Game {
   private placeAvatar(dt: number): void {
     const root = this.avatar.root
     let stance: AvatarStance = 'stand'
-    if (this.mode === 'vehicle') {
+    const seat = this.seatLocal()
+    if ((this.mode === 'vehicle' || this.mode === 'crew') && seat && root.parent) {
+      stance = 'sit'
+      root.rotationQuaternion = null
+      root.rotation.set(0, this.onDeck ? this.swivel : 0, 0)
+      root.position.set(seat.x, seat.y - HIP_HEIGHT, seat.z)
+      const parent = root.parent as TransformNode
+      this.foot.copyFrom(Vector3.TransformCoordinates(seat, parent.computeWorldMatrix(true))).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
+    } else if (this.mode === 'vehicle' || this.mode === 'crew') {
       stance = 'sit'
     } else {
       root.rotationQuaternion = null
@@ -1019,11 +1246,13 @@ export class Game {
     const st = this.fishing.state
     let hands: AvatarHands = 'free'
     if (stance === 'climb') hands = 'free'
-    else if (this.mode === 'vehicle' && v && (v.kind === 'ATV' || !this.fishing.busy && (Math.abs(v.speed) > 1.2 || this.tool !== 'rod'))) hands = 'wheel'
+    else if (this.mode === 'vehicle' && v && this.deckSeat === null && (v.kind === 'ATV' || !this.fishing.busy && (Math.abs(v.speed) > 1.2 || this.tool !== 'rod'))) hands = 'wheel'
+    else if (this.mode === 'crew' && !this.fishing.busy && (this.crewBoat?.speed ?? 0) > 1.2) hands = 'free'
     else if (this.tool === 'rifle') hands = this.rightDown && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
     else if (st === 'charging' || st === 'flying') hands = 'cast'
     else if (st === 'reeling' || st === 'landing') hands = 'reel'
     else hands = 'rod'
+    this.handsNow = hands
     this.avatar.update(dt, {
       stance,
       hands,
@@ -1041,8 +1270,9 @@ export class Game {
   private updateGear(): void {
     const v = this.vehicles.active
     const inStand = this.mode === 'stand' || this.mode === 'climb'
-    const showRod = this.tool === 'rod' && !inStand && (!v || (v.kind === 'BOAT' && (this.fishing.busy || Math.abs(v.speed) < 1.2)))
-    const showRifle = this.tool === 'rifle' && this.mode !== 'vehicle' && this.mode !== 'climb' && this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson)
+    const crewSlow = this.mode !== 'crew' || this.fishing.busy || (this.crewBoat?.speed ?? 0) < 1.2
+    const showRod = this.tool === 'rod' && !inStand && crewSlow && (!v || (v.kind === 'BOAT' && (this.fishing.busy || Math.abs(v.speed) < 1.2)))
+    const showRifle = this.tool === 'rifle' && this.mode !== 'vehicle' && this.mode !== 'crew' && this.mode !== 'climb' && this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson)
     this.rodRig.root.setEnabled(showRod)
     this.rifleRig.root.setEnabled(showRifle)
     if (showRifle) {
@@ -1065,6 +1295,21 @@ export class Game {
     const fwd = new Vector3(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
     const right = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw))
     const v = this.vehicles?.active
+    if (this.onDeck) {
+      const pivot = this.foot.add(new Vector3(0, HIP_HEIGHT + 0.66, 0))
+      const pos = pivot.add(right.scale(SHOULDER_OFFSET + 0.2)).subtract(fwd.scale(CAMERA_DISTANCE + 0.9))
+      const floor = Math.max(this.terrain.heightAt(pos.x, pos.z), 0) + 0.45
+      if (pos.y < floor) pos.y = floor
+      cam.position.copyFrom(pos)
+      return
+    }
+    if (this.mode === 'crew' && this.crewBoat) {
+      const pivot = this.crewBoat.root.position.add(new Vector3(0, 1.6, 0))
+      const pos = pivot.subtract(fwd.scale(8.5))
+      pos.y = Math.max(pos.y, Math.max(this.terrain.heightAt(pos.x, pos.z), 0) + 0.6)
+      cam.position.copyFrom(pos)
+      return
+    }
     if (this.mode === 'vehicle' && v) {
       const dist = v.kind === 'BOAT' ? 8.5 : 7
       const pivot = v.position.add(new Vector3(0, v.kind === 'BOAT' ? 1.6 : 1.9, 0))
@@ -1121,7 +1366,7 @@ export class Game {
 
   private afterCameraMove(): void {
     const cam = this.ctx.camera
-    if (this.mode === 'vehicle') cam.rotation.x = Math.max(-0.25, Math.min(0.95, cam.rotation.x))
+    if ((this.mode === 'vehicle' || this.mode === 'crew') && !this.onDeck) cam.rotation.x = Math.max(-0.25, Math.min(0.95, cam.rotation.x))
     else cam.rotation.x = Math.max(-1.1, Math.min(1.25, cam.rotation.x))
     this.placeCamera()
     const dt = this.ctx.engine.getDeltaTime() / 1000
@@ -1160,7 +1405,9 @@ export class Game {
     this.placeTimer -= dt
     if (this.placeTimer <= 0) {
       this.placeTimer = 0.5
-      const status = v ? (v.kind === 'ATV' ? `UTV · ${Math.round(Math.abs(v.speed) * 2.237)} mph` : `Boat · ${Math.round(Math.abs(v.speed) * 2.237)} mph`) : this.mode === 'stand' ? 'In the stand' : this.mode === 'climb' ? 'Climbing' : this.crouch ? 'Crouched' : 'On foot'
+      const status = this.mode === 'crew' ? `Aboard with ${this.crewBoat?.name ?? 'a friend'}${this.crewBoat?.anchored ? ' · anchored' : ''}`
+        : v?.anchored ? `Anchored · ${DECK_SEAT_NAMES[this.deckSeat ?? 0]} seat`
+          : v ? (v.kind === 'ATV' ? `UTV · ${Math.round(Math.abs(v.speed) * 2.237)} mph` : `Boat · ${Math.round(Math.abs(v.speed) * 2.237)} mph`) : this.mode === 'stand' ? 'In the stand' : this.mode === 'climb' ? 'Climbing' : this.crouch ? 'Crouched' : 'On foot'
       this.hud.setPlace(this.placeName(), status)
     }
     const rifleOut = this.tool === 'rifle' && (this.mode === 'foot' || this.mode === 'stand')
@@ -1189,13 +1436,20 @@ export class Game {
     if (!locked) prompt = this.hud.modalOpen ? '' : 'Click the view for mouse look · arrow keys also look around'
     else if (this.mode === 'climb') prompt = this.climbDir > 0 ? 'Climbing up…' : 'Climbing down…'
     else if (this.mode === 'stand') prompt = this.tool === 'rifle' ? (this.ads < 0.5 ? 'Right-click to aim · E to climb down' : 'Shift to hold your breath') : 'Press 2 for the rifle · E to climb down'
-    else if (v) prompt = fishPrompt || (v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy ? 'Left-click to cast from the boat · E near shore to step out' : '')
-    else {
+    else if (this.mode === 'crew') {
+      const b = this.crewBoat
+      prompt = fishPrompt || (!b || b.speed > 1.2 ? `${b?.name ?? 'The captain'} is driving — hold on` : b.anchored ? 'Left-click to cast · F to ask for the other seat · E near shore to step off' : 'Left-click to cast · E near shore to step off')
+    } else if (v) {
+      const idle = v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy
+      prompt = fishPrompt || (!idle ? '' : v.anchored ? 'Left-click to cast · F to switch seats · Q to pull the anchor' : 'Left-click to cast · Q to drop anchor · E near shore to step out')
+    } else {
       const down = this.wildlife.nearestDown(this.foot, 3.8)
-      const near = this.vehicles.nearest(this.foot, 4.2)
+      const near = this.nearOwnVehicle()
+      const ride = this.nearRemoteBoat()
       if (down) prompt = `E — tag the ${down.doe ? "doe" : down.template.id === "whitetail" ? "buck" : down.template.name.toLowerCase()}`
       else if (fishPrompt) prompt = fishPrompt
       else if (this.cabin.spotNear(this.foot)) prompt = this.cabin.spotLabel(this.cabin.spotNear(this.foot)!)
+      else if (ride && (!near || Vector3.Distance(this.foot, ride.root.position) < Vector3.Distance(this.foot, near.position))) prompt = ride.crew ? `${ride.name}'s boat is full` : `E — climb aboard ${ride.name}'s boat`
       else if (near) prompt = near.kind === 'ATV' ? (near.rig.root.name.startsWith('quad') ? 'E — ride the quad' : 'E — drive the UTV') : 'E — board the boat'
       else if (this.nearLadder()) prompt = `E — climb into the ${STAND_LAYOUTS[this.nearLadder()!.kind].name}`
       else if (this.tool === 'rod' && !this.fishing.busy) prompt = 'Hold left-click to load a cast, release to throw'
