@@ -35,7 +35,8 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `public/_headers` — Workers static-asset caching: hashed `/modules/chunks/*` and `/assets/*` immutable for a year; `/models/*`, `/modules/maplestreet/*`, `/modules/sprites/*`, `/images/*` one day plus a week stale-while-revalidate — Cloudflare.
 - `docs/ASSETS.md` — before/after size, primitive and material table from the last `pnpm assets:report` — this PR and later phases.
 - `vite.modules.ts` — learning-module build: each `modules-src/<id>/` with `index.ts` + `index.html` → `public/modules/<id>.html` plus hashed `public/modules/chunks/`, shared vendor chunks via `manualChunks`; `_`-prefixed folders are shared code — `vite.config.ts`.
-- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/`, `modules-src/demoderby/`, `modules-src/angler/`, `modules-src/foxplains2/`, `modules-src/county/`, `modules-src/bushleague/`, `modules-src/hood/` and `modules-src/rackreel/` (tests excluded; they run through esbuild) — `pnpm test`.
+- `tsconfig.engine.json` — strict type-check of `engine/`, `modules-src/_template/`, `modules-src/fairway/`, `modules-src/demoderby/`, `modules-src/angler/`, `modules-src/foxplains2/`, `modules-src/county/`, `modules-src/bushleague/`, `modules-src/hood/`, `modules-src/rackreel/` and `modules-src/darts/` (tests excluded; they run through esbuild) — `pnpm test`.
+- `scripts/darts-tests.mjs` — bundles `modules-src/darts/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
 - `scripts/fairway-tests.mjs` — bundles `modules-src/fairway/tests/*.test.ts` with esbuild and runs them with `node --test` — `pnpm test`.
 - `scripts/bushleague-tests.mjs` — bundles `modules-src/bushleague/tests/*.test.ts` with esbuild and runs them with `node --test`; optional name filters (`node scripts/bushleague-tests.mjs rules`) — `pnpm test`.
 - `scripts/bushleague-smoke.mjs` — serves the built `public/`, plays a three-inning Bush League contest to the final on WebGPU and on forced WebGL2 (the page pitching through the meter and batting with the keyboard), fails on page errors; `--channel msedge|chrome`, `--out` for screenshots — developers.
@@ -56,9 +57,9 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 
 ## Worker API
 
-- `src/server.ts` — Worker entry: `/api/*` → `handleApi`, else TanStack Start; exports Durable Objects `MapleStreetWorld`, `AnglerLake`, `BushLeagueMatch` and `HoodLot` — Cloudflare (`wrangler.jsonc`).
+- `src/server.ts` — Worker entry: `/api/*` → `handleApi`, else TanStack Start; exports Durable Objects `MapleStreetWorld`, `AnglerLake`, `BushLeagueMatch`, `DartsRoom` and `HoodLot` — Cloudflare (`wrangler.jsonc`).
 - `src/server/api.ts` — `/api/*` route table and error handling — `server.ts`.
-- `src/server/env.ts` — `Env` bindings type (DB, FILES, MAPLE_WORLD, HOOD_LOT, secrets) — every server file.
+- `src/server/env.ts` — `Env` bindings type (DB, FILES, MAPLE_WORLD, HOOD_LOT, DARTS_ROOM, secrets) — every server file.
 - `src/server/http.ts` — JSON responses, same-origin checks, body parsing — every route.
 - `src/server/auth.ts` — PIN/password hashing, `tl_session` sessions, lockouts, admin — every route needing a user.
 - `src/server/records.ts` — shared leaderboard helpers — `routes/pool.ts`, `racing.ts`, `scores.ts`, `park.ts`.
@@ -67,6 +68,8 @@ The index of every file the learning modules depend on. Read `AGENTS.md`, then t
 - `src/server/routes/pool.ts` — `/api/pool-practice`, `/api/pool-preferences`, `/api/pool-cue-overlay` — `api.ts`.
 - `src/server/routes/racing.ts` — `/api/racing` tickets, lap records (incl. Short Track tracks: the `-v2` keys take laps, the classic Short Track keys are read-only), paint, AI skins — `api.ts`.
 - `src/server/routes/fairway.ts` — `/api/fairway`: GET `?board=round|pin|match` (top 20 ascending plus the caller's best), POST `record` (Zod, same-origin, signed in, id `<user>:<run>`) and `reset-records` (admin); D1 `fairway_records` (migration 0018, also created on first use) — `api.ts`.
+- `src/server/routes/darts.ts` — `/api/darts`: GET `?room=<code>` (open/full/started from the room's `/info`), same-origin WebSocket upgrade `mode=create|join` (members by session, guests by a zod-checked key; create tries five fresh codes) into `DartsRoom` — `api.ts`.
+- `src/server/darts-room.ts` — Durable Object `DartsRoom` (binding `DARTS_ROOM`, one per `room:<code>`, up to four seats, nothing stored): Zod-checked ROOM_CREATE/ROOM_JOIN/GAME_START/THROW_MADE/REMATCH/PING; rolls each dart's release error itself, flies it with `shared/Physics`, scores it with `shared/Rules`, broadcasts THROW_MADE/TURN_SWITCH/GAME_OVER, turn timeout and 90 s seat hold — `server.ts`, `routes/darts.ts`.
 - `src/server/routes/park.ts` — `/api/park` tickets, gzip saves (slots 0–6), company-value boards with park screenshots (`?shot=`) — `api.ts`.
 - `src/server/routes/maplestreet.ts` — `/api/maplestreet` WebSocket upgrade to the shared world — `api.ts`.
 - `src/server/routes/angler.ts` + `src/server/angler.ts` — `/api/angler`, Northwoods Angler profiles, anchored sessions, server-rolled catches and record boards (D1 `angler_*`); `start`/`tick`/`stop` carry the shared-lake `room`, so landed fish are announced to that lake instance and the Boat Party progress is checked against the instance's crew — `api.ts`.
@@ -157,6 +160,7 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `maplestreet` | three.js 0.186.1 WebGPU build (WebGL2 fallback), Rapier 0.14 | `modules-src/maplestreet/` |
 | `fairway` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, TSL node materials | `modules-src/fairway/` |
 | `demoderby` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`, Rapier 0.14 raycast vehicles | `modules-src/demoderby/` |
+| `darts` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`; canvas-drawn board maps; deterministic rules and flight in `shared/` | `modules-src/darts/` |
 | `bushleague` | three.js 0.186.1 WebGPU build (WebGL2 fallback) via `engine/`; deterministic TypeScript rules and ball physics in `sim/` | `modules-src/bushleague/` |
 | `park` | hand-written WebGL2 | `src/lib/park/` |
 | `county` | PlayCanvas 2.23.3 WebGL2 (CameraFrame HDR), Rapier via Fox Plains 2's physics | `modules-src/county/` |
@@ -442,6 +446,28 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `src/game/DevPanel.ts` — F8 panel: vehicle list with Spawn/Drive and specs, telemetry, teleports, time of day, stats, link to the vehicle editor — `WorldMain`.
 - `src/game/OrbitCamera.ts` — orbit/pan/zoom with preset views, ground clamp — `LookDevMain`.
 - `src/models/Parts.ts` (`sub`, `framedWindow`, `panelDoor`), `House.ts` (`buildHouse`, `buildDrive`), `Street.ts`, `Trees.ts` (`leafClump`, `broadleaf` with `lod`, `spruce`), `Airfield.ts`, `Helicopter.ts`, `Ground.ts` (look-dev ground) — `LookDev`, `LotMesh`, `TreeKit`, `Chunks`, `Flyer`.
+### darts — Oche Darts (`modules-src/darts/`, built from `_template`)
+- `modules-src/darts/module.json` — id `darts`, title, accent `#ff4d5e`, modes — `config.ts`.
+- `modules-src/darts/config.ts` — engine overrides (Neutral tone mapping, bloom and vignette), board texture sizes, pub colours, camera lock, throw-gesture mapping (flick speed → launch speed, yaw gain, touch aim offset, keyboard steps and charge), dart length and flight colours, timings — every file below.
+- `modules-src/darts/index.html` — page shell: `#stage`, HUD (top bar, player cards, speed meter, announcement, turn strip), setup form (format, options, legs/sets, opponents, steadiness), online lobby and results panels — `vite.modules.ts` (→ `public/modules/darts.html`).
+- `modules-src/darts/index.ts` — entry: App, quality, lighting, post, pub, camera fit (board fills the view at any aspect), reticle and dart-in-hand, `ThrowInput` → session, flight playback, overlay, setup form, `tl-host` answers with a room code, `?room=` auto-join, Count Up board submit, `__tlModule`/`__darts`, disposes on `pagehide` — `index.html`.
+- `modules-src/darts/shared/interfaces.ts` — `Player`, `GameState`, `DartThrow`, `ThrowIntent`, `FlightParams`, mode configs (`X01Config`, `CricketConfig`, `CountUpConfig`, `MatchConfig`), announcements and the client/server message unions — everything in `shared/`, `src/server/darts-room.ts`.
+- `modules-src/darts/shared/Board.ts` — regulation radii (mm), clockwise number ring, `toPolar`, `sectorAt`, `ringAt`, `scoreAt`, `targetPoint`, labels — `Physics.ts`, `Rules.ts`, `Cpu.ts`, `render/`.
+- `modules-src/darts/shared/Physics.ts` — release point, `aimDirection` (re-aims until an ideal-speed dart lands on the aim point), `launch` (yaw, Gaussian release error by `SPREAD` level × steadiness), `simulate` (2 kHz semi-implicit Euler with gravity and quadratic drag, exact board-plane crossing, samples for playback) — sessions, `DartFlights`, `darts-room.ts`.
+- `modules-src/darts/shared/Rules.ts` — pure state machine: `createMatch`, `applyThrow` (x01 double-in/out and busts, Cricket marks and points, Count Up), `nextTurn`, legs and sets, `forfeitTurn`, `removePlayer`, `checkoutRoute`, `standings`, `modeLabel` — sessions, overlay, `darts-room.ts`.
+- `modules-src/darts/shared/Cpu.ts` — computer opponent's bed choice (T20, checkout routes, open Cricket numbers) and intent — `session/Session.ts`.
+- `modules-src/darts/shared/Rng.ts`, `shared/Room.ts` — mulberry32 and Box–Muller; room codes, seats and timings — physics, sessions, server.
+- `modules-src/darts/render/BoardTexture.ts` — 2048² canvas face (sectors, sisal, spider, number ring), packed roughness/metal map and Sobel normal map — `Pub.ts`.
+- `modules-src/darts/render/Pub.ts` — board with 3D wire spider, surround, cabinet with chalkboard doors, wall, floor, oche, board lamp (shadowed spot), sconces, baked environment — `index.ts`.
+- `modules-src/darts/render/Dart.ts` — lathe-built dart (point, knurled barrel, shaft, four flights per colour), `aimDart` — `index.ts`, `DartFlights.ts`.
+- `modules-src/darts/systems/ThrowInput.ts` — aim-then-flick pointer gesture and keyboard aim/charge → `ThrowIntent` — `index.ts`.
+- `modules-src/darts/systems/DartFlights.ts` — flight playback from `simulate` samples, stick-and-quiver, bounce-outs, floor darts, clear — `index.ts`.
+- `modules-src/darts/systems/Sounds.ts` — synthesised whoosh, thunk, bust and cheer — `index.ts`.
+- `modules-src/darts/session/Session.ts` — `LocalSession` (solo, computer, pass-and-play; seeded spread, timed turns) and `OnlineSession` (socket-driven) — `index.ts`.
+- `modules-src/darts/net/Socket.ts` — `DartsSocket` WebSocket client (create/join, throw, start, rematch, pings, rejoin) and `roomInfo` — `index.ts`, `Session.ts`.
+- `modules-src/darts/ui/Overlay.ts`, `ui/overlay.css` — player cards, darts-left dots, Cricket marks, turn strip with checkout route, speed meter, announcements, lobby and results — `index.ts`.
+- `modules-src/darts/tests/darts.test.ts` — polar scoring, physics determinism and spread, x01/Cricket/Count Up rules, legs and sets, checkout routes, computer opponent, room codes — `scripts/darts-tests.mjs`.
+
 ### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
 - `modules-src/fairway/module.json` — id `fairway`, title, accent `#4fd27a`, modes — `config.ts`.
 - `modules-src/fairway/tuning.ts` — pure tunables shared by systems and tests: air, ball, clubs, surface contact, lies, trees, cup, flight, terrain shape, wind, four-input meter, shot types (full/chip/flop/spinner launch and landing multipliers), short-game planner, camera, match rules, timing, hole data — `config.ts`, `systems/*`.

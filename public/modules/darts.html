@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Oche Darts · the library</title>
+    <meta name="description" content="Projectile motion and probability at a regulation dartboard: 501, 301, Cricket and Count Up, solo, against the computer, pass-and-play or in an online room." />
+    <script type="module" crossorigin src="/modules/chunks/darts-ByLRzvph.js"></script>
+    <link rel="modulepreload" crossorigin href="/modules/chunks/modulepreload-polyfill-B5Qt9EMX.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/vendor-DXSODnHw.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/vendor-webgpu-D8HjQnMj.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/Quality-C0fyCW5S.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/Environment-CL7xOJ_w.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/HubBridge-Bw6eDI56.js">
+    <link rel="modulepreload" crossorigin href="/modules/chunks/Scores-CSj5MYO8.js">
+    <link rel="stylesheet" crossorigin href="/modules/chunks/darts-G7EQOwGj.css">
+  </head>
+  <body>
+    <div id="stage" aria-label="Dartboard. Press on the board to aim, flick up to throw; arrow keys aim and Space throws."></div>
+
+    <div class="d-hud" id="hud" hidden>
+      <div class="d-topbar">
+        <button type="button" class="d-btn" id="menu-btn" data-ui>Menu</button>
+        <span class="d-chip" id="mode-chip"></span>
+        <span class="d-chip" id="room-chip" hidden></span>
+      </div>
+      <div class="d-scoreboard" id="scoreboard" aria-live="polite"></div>
+      <div class="d-meter" id="meter" aria-hidden="true"><div class="d-meter-band" id="meter-band"></div><div class="d-meter-fill" id="meter-fill"></div></div>
+      <div class="d-meter-label" id="meter-label"></div>
+      <div class="d-announce" id="announce" role="status" aria-live="assertive"></div>
+      <div class="d-turn">
+        <div class="d-turn-name" id="turn-name"></div>
+        <div class="d-throws" id="throws"></div>
+        <div class="d-checkout" id="checkout" hidden></div>
+        <div class="d-hint" id="hint"></div>
+      </div>
+    </div>
+
+    <div class="d-overlay" id="menu">
+      <form class="d-panel" id="setup" novalidate>
+        <h1>Oche <em>Darts</em></h1>
+        <p>A regulation board at 1.73 m, thrown from 2.37 m. Press to aim, flick up to throw: the flick speed sets how fast the dart leaves your hand, so a soft throw drops and a hard one rides high.</p>
+
+        <h2>Format</h2>
+        <div class="d-seg" role="radiogroup" aria-label="Format">
+          <label><input type="radio" name="mode" value="501" checked /><span>501</span></label>
+          <label><input type="radio" name="mode" value="301" /><span>301</span></label>
+          <label><input type="radio" name="mode" value="cricket" /><span>Cricket</span></label>
+          <label><input type="radio" name="mode" value="countup" /><span>Count Up</span></label>
+        </div>
+        <div class="d-row" id="x01-options" style="margin-top:10px">
+          <label class="d-check"><input type="checkbox" name="doubleIn" /> Double in</label>
+          <label class="d-check"><input type="checkbox" name="doubleOut" checked /> Double out</label>
+        </div>
+        <div class="d-row" id="cricket-options" style="margin-top:10px" hidden>
+          <label class="d-check"><input type="checkbox" name="cricketPoints" checked /> Score points</label>
+          <label class="d-field">Round limit
+            <select name="cricketRounds"><option>10</option><option>15</option><option selected>20</option><option>25</option></select>
+          </label>
+        </div>
+        <div class="d-row" id="countup-options" style="margin-top:10px" hidden>
+          <label class="d-field">Rounds
+            <select name="countupRounds"><option>4</option><option selected>8</option><option>10</option><option>12</option></select>
+          </label>
+        </div>
+        <div class="d-row" style="margin-top:10px">
+          <label class="d-field">Legs to win a set
+            <select name="legs"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+          </label>
+          <label class="d-field">Sets to win
+            <select name="sets"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+          </label>
+        </div>
+
+        <h2>Opponents</h2>
+        <div class="d-seg" role="radiogroup" aria-label="Opponents">
+          <label><input type="radio" name="who" value="solo" checked /><span>Solo</span></label>
+          <label><input type="radio" name="who" value="cpu" /><span>Computer</span></label>
+          <label><input type="radio" name="who" value="local" /><span>Pass &amp; play</span></label>
+          <label><input type="radio" name="who" value="online" /><span>Online</span></label>
+        </div>
+        <div class="d-row" id="cpu-options" style="margin-top:10px" hidden>
+          <label class="d-field">Computer level
+            <select name="cpuLevel"><option value="pub">Pub</option><option value="league" selected>League</option><option value="county">County</option><option value="pro">Pro</option></select>
+          </label>
+        </div>
+        <div id="local-options" hidden>
+          <div class="d-row" style="margin-top:10px">
+            <label class="d-field">Players
+              <select name="localCount"><option selected>2</option><option>3</option><option>4</option></select>
+            </label>
+          </div>
+          <div class="d-names" id="names"></div>
+        </div>
+        <div id="online-options" hidden>
+          <p style="margin-top:10px">Open a room and share its code (or invite from the chat), or join a friend's room. Up to four at the oche; everyone throws with the same steadiness.</p>
+          <div class="d-row">
+            <label class="d-field">Room code
+              <input type="text" name="code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC234" />
+            </label>
+            <button type="button" class="d-btn" id="join-btn" style="align-self:flex-end">Join room</button>
+          </div>
+        </div>
+        <div class="d-row" id="steady-row" style="margin-top:14px">
+          <label class="d-field">Your steadiness
+            <select name="spread"><option value="easy">Easy (tight grouping)</option><option value="normal" selected>Normal</option><option value="hard">Hard (wide grouping)</option></select>
+          </label>
+          <label class="d-field" id="name-field">Your name
+            <input type="text" name="playerName" maxlength="16" autocomplete="nickname" value="You" />
+          </label>
+        </div>
+        <div class="d-error" id="setup-error" role="alert"></div>
+        <div class="d-actions">
+          <button type="button" class="d-btn" id="resume-btn" hidden>Back to the oche</button>
+          <button type="submit" class="d-btn is-accent" id="start-btn">Step up</button>
+        </div>
+        <div class="d-help">Mouse or touch: press on the board to aim, then flick upward and let go. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green band. Solo Count Up over 8 rounds on Normal or Hard goes on the record board.</div>
+      </form>
+    </div>
+
+    <div class="d-overlay" id="lobby" hidden>
+      <div class="d-panel">
+        <h1>Room <span class="d-code" id="lobby-code"></span></h1>
+        <p id="lobby-mode"></p>
+        <h2>At the oche</h2>
+        <ul class="d-list" id="lobby-players"></ul>
+        <p id="lobby-note" style="margin-top:10px"></p>
+        <div class="d-error" id="lobby-error" role="alert"></div>
+        <div class="d-actions">
+          <button type="button" class="d-btn" id="copy-btn">Copy code</button>
+          <button type="button" class="d-btn" id="lobby-leave">Leave</button>
+          <button type="button" class="d-btn is-accent" id="lobby-start" hidden>Start the match</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-overlay" id="results" hidden>
+      <div class="d-panel">
+        <div class="d-winner" id="results-winner"></div>
+        <p id="results-mode"></p>
+        <table class="d-table" id="results-table"></table>
+        <p id="results-note" style="margin-top:10px"></p>
+        <div class="d-actions">
+          <button type="button" class="d-btn" id="results-menu">Menu</button>
+          <button type="button" class="d-btn is-accent" id="results-again">Rematch</button>
+        </div>
+      </div>
+    </div>
+
+  </body>
+</html>

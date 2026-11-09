@@ -10,7 +10,8 @@
     "modules-src/bushleague/**/*.ts",
     "modules-src/hood/**/*.ts",
     "modules-src/shorttrack/next/**/*.ts",
-    "modules-src/rackreel/**/*.ts"
+    "modules-src/rackreel/**/*.ts",
+    "modules-src/darts/**/*.ts"
   ],
   "exclude": [
     "modules-src/fairway/tests/**",
@@ -19,7 +20,8 @@
     "modules-src/county/tests/**",
     "modules-src/bushleague/tests/**",
     "modules-src/hood/tests/**",
-    "modules-src/rackreel/tests/**"
+    "modules-src/rackreel/tests/**",
+    "modules-src/darts/tests/**"
   ],
   "compilerOptions": {
     "target": "ES2022",

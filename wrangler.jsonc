@@ -21,14 +21,16 @@
       { "name": "MAPLE_WORLD", "class_name": "MapleStreetWorld" },
       { "name": "ANGLER_LAKE", "class_name": "AnglerLake" },
       { "name": "BUSHLEAGUE_MATCH", "class_name": "BushLeagueMatch" },
-      { "name": "HOOD_LOT", "class_name": "HoodLot" }
+      { "name": "HOOD_LOT", "class_name": "HoodLot" },
+      { "name": "DARTS_ROOM", "class_name": "DartsRoom" }
     ]
   },
   "migrations": [
     { "tag": "maplestreet-v1", "new_sqlite_classes": ["MapleStreetWorld"] },
     { "tag": "angler-lake-v1", "new_sqlite_classes": ["AnglerLake"] },
     { "tag": "bushleague-match-v1", "new_sqlite_classes": ["BushLeagueMatch"] },
-    { "tag": "hood-lot-v1", "new_sqlite_classes": ["HoodLot"] }
+    { "tag": "hood-lot-v1", "new_sqlite_classes": ["HoodLot"] },
+    { "tag": "darts-room-v1", "new_sqlite_classes": ["DartsRoom"] }
   ],
   "previews": {
     "d1_databases": [
