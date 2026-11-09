@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ArrowRight, Layers, Radio, Sparkles, Users } from 'lucide-react'
 import { HubSlideshow } from './HubSlideshow'
@@ -9,18 +9,34 @@ import type { ModuleId, ModuleSubject } from '@/lib/modules'
 
 type Filter = 'All' | ModuleSubject
 
+const PICK_COUNT = 8
+
 export function ModuleHub({ onLaunch, account, online, username }: { onLaunch: (id: ModuleId) => void; account: ReactNode; online: ReactNode; username: string | null }) {
   const [filter, setFilter] = useState<Filter>('All')
   const layout = useModuleLayout()
   const { visible: learningModules, featured } = useMemo(() => arrangeModules(layout), [layout])
   const shown = filter === 'All' ? learningModules : learningModules.filter(item => item.group === filter)
+  const [picks, setPicks] = useState<typeof learningModules | null>(null)
+  useEffect(() => {
+    const pool = [...learningModules]
+    for (let index = pool.length - 1; index > 0; index--) {
+      const swap = Math.floor(Math.random() * (index + 1))
+      ;[pool[index], pool[swap]] = [pool[swap], pool[index]]
+    }
+    setPicks(pool.slice(0, PICK_COUNT))
+  }, [learningModules])
   const groups = moduleGroups.filter(group => learningModules.some(item => item.group === group))
   return <section className="hub" aria-label="Learning modules">
     <div className="hub-hero">
       <div className="hub-hero-copy">
         <span className="hub-eyebrow"><Sparkles size={13}/> the library · learning modules</span>
         <h1>Learn by doing.<br/><em>Master every module.</em></h1>
-        <p>Strategy, physics, math and precision modules in one place. {username ? 'Open the chat bubble to see who is online and invite classmates head-to-head.' : 'Sign in to save your progress and go head-to-head with classmates live.'}</p>
+        <div className="hub-picks" aria-label="Random modules">
+          {picks ? picks.map(item => <button type="button" key={item.id} className="hub-pick" style={{ '--module-accent': item.accent } as CSSProperties} onClick={() => onLaunch(item.id)} aria-label={`Launch ${item.title}`} title={item.title}>
+            <img src={item.image} alt="" loading="lazy"/>
+            <span>{item.title}</span>
+          </button>) : Array.from({ length: PICK_COUNT }, (_, index) => <span key={index} className="hub-pick is-loading" aria-hidden="true"/>)}
+        </div>
         <div className="hub-stats">
           <span><Layers size={15}/><b>{learningModules.length}</b> modules</span>
           <span><Radio size={15}/><b>Live</b> head-to-head</span>
