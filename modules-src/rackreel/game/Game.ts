@@ -29,6 +29,7 @@ import { Hud, compassWord } from '../ui/Hud'
 import { Foliage } from '../world/Foliage'
 import { foliageMaterial } from '../world/FoliageTextures'
 import { creatureMaterial } from '../world/CreatureTextures'
+import { texturedMaterial } from '../world/TexturedMaterial'
 import type { CreatureSurface } from '../world/CreatureTextures'
 import type { FoliageKind } from '../world/FoliageTextures'
 import { PLAY_LIMIT, Terrain } from '../world/Terrain'
@@ -320,6 +321,7 @@ export class Game {
   }
 
   private materialFor(model: ModelName, part: string, tag: string): Material {
+    if (tag.startsWith('tex:')) return texturedMaterial(this.ctx.scene, tag.slice(4), this.materials)
     if (tag === 'needles' || tag === 'leaves' || tag === 'birchleaves') return foliageMaterial(this.ctx.scene, tag as FoliageKind)
     if (tag) return creatureMaterial(this.ctx.scene, tag as CreatureSurface)
     const key = TWO_SIDED.has(model) ? 'two' : GLOSSY.has(model) ? 'gloss' : 'matte'
