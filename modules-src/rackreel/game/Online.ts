@@ -1,5 +1,7 @@
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
+import type { Mesh } from '@babylonjs/core/Meshes/mesh'
+import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { PeerRoom } from '../../../engine/net/Peer'
 import type { RoomStatus } from '../../../engine/net/Peer'
@@ -10,11 +12,14 @@ import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import type { NetAnimal } from '../systems/Wildlife'
 import { Avatar, HIP_HEIGHT } from './Avatar'
 import type { AvatarHands, AvatarStance } from './Avatar'
+import { createAnchorLine } from './BoatSeats'
+import type { DeckSeat } from './BoatSeats'
 
 export const RACKREEL_ROOM: RoomFormat = { prefix: 'tl-rackreel-', alphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789', length: 6, wireCase: 'lower' }
 export const PARTY_MAX = 4
 
 export interface PlayerState {
+  id: string
   n: string
   p: [number, number, number]
   f: number
@@ -25,7 +30,19 @@ export interface PlayerState {
   cl: number
   ap: number
   o: string[]
-  v?: { k: 'utv' | 'boat' | 'quad'; p: [number, number, number]; q: [number, number, number]; s: [number, number, number] }
+  v?: { k: 'utv' | 'boat' | 'quad'; p: [number, number, number]; q: [number, number, number]; s: [number, number, number]; a?: 1; d?: DeckSeat }
+  r?: { o: string; s: [number, number, number] }
+}
+
+export interface RemoteBoat {
+  id: string
+  name: string
+  root: TransformNode
+  heading: number
+  anchored: boolean
+  deck: DeckSeat
+  speed: number
+  crew: string | null
 }
 
 export type NetMessage =
@@ -35,6 +52,7 @@ export type NetMessage =
   | { t: 'shot'; id: number; vital: boolean; from: [number, number, number] }
   | { t: 'tag'; id: number }
   | { t: 'news'; text: string }
+  | { t: 'seat'; to: string; from: string }
 
 interface Remote {
   avatar: Avatar
@@ -42,6 +60,7 @@ interface Remote {
   shown: Vector3
   vehicle: ModelRig | null
   vehicleKind: string
+  anchorLine: Mesh | null
   tag: HTMLDivElement
   rod: ModelRig
   rifle: ModelRig
@@ -53,6 +72,8 @@ export interface OnlineHooks {
   tag(id: number): void
   news(text: string): void
   status(text: string): void
+  seat(from: string): void
+  localBoat(): TransformNode | null
 }
 
 const VEHICLE_MODEL: Record<string, ModelName> = { utv: 'utv', boat: 'boat', quad: 'quad' }
@@ -65,7 +86,9 @@ export class Online {
   private statusTimer = 0
   private hostStates: Record<string, PlayerState> = {}
   private readonly tags: HTMLDivElement
+  private readonly passengers = new Set<TransformNode>()
   name = 'Guest'
+  id = ''
 
   constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly models: Map<ModelName, ModelTemplate>, private readonly hooks: OnlineHooks) {
     this.room = new PeerRoom<NetMessage>(RACKREEL_ROOM, { hostAttempts: 5, rejoinSeconds: 3, maxPeers: PARTY_MAX - 1 }, {
@@ -137,6 +160,36 @@ export class Online {
     if (this.active) this.room.send({ t: 'news', text: `${this.name} ${text}` })
   }
 
+  carry(node: TransformNode): void {
+    this.passengers.add(node)
+  }
+
+  boats(): RemoteBoat[] {
+    const out: RemoteBoat[] = []
+    for (const r of this.remotes.values()) {
+      const v = r.state.v
+      if (!v || v.k !== 'boat' || !r.vehicle) continue
+      out.push({
+        id: r.state.id, name: r.state.n, root: r.vehicle.root, heading: v.q[0], anchored: v.a === 1, deck: v.d ?? 0, speed: r.state.sp,
+        crew: this.crewOf(r.state.id),
+      })
+    }
+    return out
+  }
+
+  boat(id: string): RemoteBoat | null {
+    return this.boats().find((b) => b.id === id) ?? null
+  }
+
+  crewOf(ownerId: string): string | null {
+    for (const r of this.remotes.values()) if (r.state.r?.o === ownerId) return r.state.n
+    return null
+  }
+
+  requestSeat(ownerId: string): void {
+    this.room.send({ t: 'seat', to: ownerId, from: this.name })
+  }
+
   update(dt: number, me: PlayerState, herd: () => NetAnimal[]): void {
     if (!this.active) return
     this.sendTimer -= dt
@@ -191,6 +244,9 @@ export class Online {
     } else if (m.t === 'news') {
       this.hooks.news(m.text)
       if (this.room.isHost) this.room.send(m)
+    } else if (m.t === 'seat') {
+      if (m.to === this.id) this.hooks.seat(m.from)
+      else if (this.room.isHost) this.room.send(m)
     }
   }
 
@@ -209,8 +265,9 @@ export class Online {
       rod.root.rotation.set(0.55, 0, 0)
       const rifle = instantiate(this.models.get('rifle')!, null, this.scene, reg)
       rifle.root.parent = avatar.chest
-      r = { avatar, state: s, shown: new Vector3(...s.p), vehicle: null, vehicleKind: '', tag, rod, rifle }
+      r = { avatar, state: s, shown: new Vector3(...s.p), vehicle: null, vehicleKind: '', anchorLine: null, tag, rod, rifle }
       this.remotes.set(id, r)
+      this.passengers.add(avatar.root)
     }
     r.state = s
     r.tag.textContent = s.n
@@ -225,28 +282,27 @@ export class Online {
     const root = r.avatar.root
     if (s.v) {
       if (r.vehicleKind !== s.v.k) {
-        if (r.vehicle) disposeRig(r.vehicle, (mesh) => this.ctx.unregisterDynamic(mesh))
+        this.removeVehicle(r)
         r.vehicle = instantiate(this.models.get(VEHICLE_MODEL[s.v.k])!, null, this.scene, (mesh) => this.ctx.registerDynamic(mesh))
         r.vehicle.root.rotationQuaternion = new Quaternion()
         r.vehicleKind = s.v.k
+        if (s.v.k === 'boat') r.anchorLine = createAnchorLine(this.scene, r.vehicle.root)
       }
       const vr = r.vehicle!.root
       vr.position.addInPlace(new Vector3(...s.v.p).subtract(vr.position).scale(Math.min(1, dt * 10)))
       Quaternion.FromEulerAnglesToRef(s.v.q[1], s.v.q[0], s.v.q[2], vr.rotationQuaternion!)
-      root.parent = vr
-      root.rotationQuaternion = null
-      root.rotation.set(0, 0, 0)
-      root.position.set(s.v.s[0], s.v.s[1] - HIP_HEIGHT, s.v.s[2])
+      r.anchorLine?.setEnabled(s.v.a === 1)
+      this.seatOn(root, vr, s.v.s, s.v.a === 1 ? s.f : 0)
     } else {
-      if (r.vehicle) {
-        disposeRig(r.vehicle, (mesh) => this.ctx.unregisterDynamic(mesh))
-        r.vehicle = null
-        r.vehicleKind = ''
+      this.removeVehicle(r)
+      const ride = s.r ? this.rideFor(s.r.o) : null
+      if (ride && s.r) this.seatOn(root, ride, s.r.s, s.f)
+      else {
+        root.parent = null
+        root.rotationQuaternion = null
+        root.position.copyFrom(r.shown)
+        root.rotation.set(0, s.f, 0)
       }
-      root.parent = null
-      root.rotationQuaternion = null
-      root.position.copyFrom(r.shown)
-      root.rotation.set(0, s.f, 0)
     }
     r.avatar.update(dt, { stance: s.st, hands: s.h, speed: s.sp, crouch: s.c, castPower: 0, aimPitch: s.ap, climbPhase: s.cl })
     const rifleOut = s.h === 'rifle' || s.h === 'aim'
@@ -259,6 +315,29 @@ export class Online {
       r.rifle.root.position.set(0.04, 0.2, 0.24)
       r.rifle.root.rotation.set(-0.95, 0.15, -0.75)
     }
+  }
+
+  private seatOn(root: TransformNode, boat: TransformNode, seat: [number, number, number], swivel: number): void {
+    root.parent = boat
+    root.rotationQuaternion = null
+    root.rotation.set(0, swivel, 0)
+    root.position.set(seat[0], seat[1] - HIP_HEIGHT, seat[2])
+  }
+
+  private rideFor(ownerId: string): TransformNode | null {
+    if (ownerId === this.id) return this.hooks.localBoat()
+    for (const r of this.remotes.values()) if (r.state.id === ownerId && r.vehicleKind === 'boat' && r.vehicle) return r.vehicle.root
+    return null
+  }
+
+  private removeVehicle(r: Remote): void {
+    if (!r.vehicle) return
+    for (const p of this.passengers) if (p.parent === r.vehicle.root) p.setParent(null)
+    r.anchorLine?.dispose()
+    r.anchorLine = null
+    disposeRig(r.vehicle, (mesh) => this.ctx.unregisterDynamic(mesh))
+    r.vehicle = null
+    r.vehicleKind = ''
   }
 
   private positionTags(): void {
@@ -285,12 +364,14 @@ export class Online {
     if (!r) return
     r.rod.root.parent = null
     r.rifle.root.parent = null
+    this.removeVehicle(r)
+    this.passengers.delete(r.avatar.root)
+    r.avatar.root.parent = null
     for (const m of r.avatar.meshes) {
       this.ctx.unregisterDynamic(m)
       m.dispose()
     }
     r.avatar.root.dispose()
-    if (r.vehicle) disposeRig(r.vehicle, (mesh) => this.ctx.unregisterDynamic(mesh))
     disposeRig(r.rod, (mesh) => this.ctx.unregisterDynamic(mesh))
     disposeRig(r.rifle, (mesh) => this.ctx.unregisterDynamic(mesh))
     r.tag.remove()
