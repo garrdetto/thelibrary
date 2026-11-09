@@ -45,6 +45,8 @@ export class Fishing {
   private biteTime = 0
   private clock = 0
   private chargeDir = 1
+  castRange = 1
+  bias: Record<string, number> = {}
   onEvent: ((event: FishingEvent) => void) | null = null
 
   constructor(ctx: EngineContext, scene: Scene, private readonly terrain: Terrain, private readonly loot: LootTableManager, private readonly skill: SkillCheckManager, bobberModel: ModelTemplate) {
@@ -85,7 +87,7 @@ export class Fishing {
     const flat = new Vector3(direction.x, 0, direction.z)
     if (flat.lengthSquared() < 1e-4) flat.set(0, 0, 1)
     flat.normalize()
-    const distance = 7 + this.power * 33
+    const distance = (7 + this.power * 33) * this.castRange
     this.from.copyFrom(rodTip)
     this.target.set(rodTip.x + flat.x * distance, 0, rodTip.z + flat.z * distance)
     this.target.y = Math.max(0, this.terrain.heightAt(this.target.x, this.target.z))
@@ -127,7 +129,7 @@ export class Fishing {
   setHook(): boolean {
     if (this.state !== 'bite') return false
     const habitat = this.habitatAt(this.bobber.position.x, this.bobber.position.z)
-    const species = this.loot.pickSpecies('fish', habitat)
+    const species = this.loot.pickSpecies('fish', habitat, this.bias)
     const specimen = this.loot.createSpecimen(species.id)
     const template = SPECIES_BY_ID[species.id]
     const sizeFactor = (specimen.value - template.min) / Math.max(1e-6, template.max - template.min)

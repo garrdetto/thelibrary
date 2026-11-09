@@ -62,6 +62,8 @@ export class Wildlife {
   readonly animals: Animal[] = []
   private nextId = 1
   private herdTimer = 0
+  detection = 1
+  vitalScale = 1
   onLegendSpawn: ((animal: Animal) => void) | null = null
   onLost: ((animal: Animal) => void) | null = null
 
@@ -235,7 +237,7 @@ export class Wildlife {
         return t > 0 ? t : null
       }
       const v = VITALS[a.template.id]
-      const tv = test(v.y, v.z, v.r)
+      const tv = test(v.y, v.z, v.r * this.vitalScale)
       if (tv !== null && tv < best.distance) best = { animal: a, vital: true, distance: tv }
       for (const part of BODY[a.template.id]) {
         const tb = test(part.y, part.z, part.r)
@@ -278,7 +280,7 @@ export class Wildlife {
       }
       const approaching = toPlayer < a.lastDistance - 0.04
       a.lastDistance = toPlayer
-      const hearing = a.template.id === 'whitetail' ? 1 : 0.75
+      const hearing = (a.template.id === 'whitetail' ? 1 : 0.75) * this.detection
       const decision = react(a.state, { distance: toPlayer, noise, approaching, cover: this.cover(a, player), hearing }, a.stateTime)
       if (decision === 'flee') this.flee(a, player)
       else if (decision === 'alert') {

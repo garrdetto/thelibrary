@@ -93,9 +93,9 @@ export class LootTableManager {
     this.records = Object.fromEntries(Object.entries(RECORD_BOOK_SEED).map(([id, list]) => [id, list.map((e) => ({ ...e }))])) as Record<SpeciesId, RecordEntry[]>
   }
 
-  pickSpecies(kind: SpeciesKind, habitat: Habitat): SpeciesTemplate {
+  pickSpecies(kind: SpeciesKind, habitat: Habitat, bias: Record<string, number> = {}): SpeciesTemplate {
     const pool = SPECIES.filter((s) => s.kind === kind)
-    const weights = pool.map((s) => s.weight * (s.habitats.includes(habitat) ? 1 : 0.25))
+    const weights = pool.map((s) => s.weight * (s.habitats.includes(habitat) ? 1 : 0.25) * (bias[s.id] ?? 1))
     const total = weights.reduce((a, b) => a + b, 0)
     let roll = this.rng() * total
     for (let i = 0; i < pool.length; i++) {
