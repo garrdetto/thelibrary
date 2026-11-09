@@ -29,6 +29,23 @@ function play(state: GameState, darts: DartThrow[]): GameState {
 
 const x01 = (start: 301 | 501, doubleIn: boolean, doubleOut: boolean, legsPerSet = 1, setsToWin = 1): MatchConfig => ({ rules: { mode: 'x01', start, doubleIn, doubleOut }, legsPerSet, setsToWin })
 
+test('Double Bull scores the outer bull as a 50 double in x01', () => {
+  const outer = scoreAt(0, mm(10))
+  const plain = play(createMatch('t', x01(301, false, true), [{ id: 'a', name: 'A' }]), [outer])
+  assert.equal(plain.players[0].score, 276)
+  const doubleBull: MatchConfig = { rules: { mode: 'x01', start: 301, doubleIn: true, doubleOut: true, doubleBull: true }, legsPerSet: 1, setsToWin: 1 }
+  const opened = play(createMatch('t', doubleBull, [{ id: 'a', name: 'A' }]), [outer])
+  assert.equal(opened.players[0].opened, true)
+  assert.equal(opened.players[0].score, 251)
+  const finish = createMatch('t', doubleBull, [{ id: 'a', name: 'A' }])
+  finish.players[0].score = 50
+  finish.players[0].turnStartScore = 50
+  finish.players[0].opened = true
+  const result = applyThrow(finish, 'a', outer)
+  assert.equal(result.state.players[0].score, 0)
+  assert.equal(result.state.status, 'finished')
+})
+
 test('polar form measures clockwise from straight up', () => {
   assert.deepEqual(toPolar(0, 100), { radius: 100, angle: 0 })
   assert.equal(toPolar(100, 0).angle, 90)
