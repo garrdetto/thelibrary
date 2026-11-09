@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { HttpError, json, parseStored, readJson, requireSameOrigin } from '../http'
 import { requireUser } from '../auth'
-import { moduleIds, normalizeModuleLayout } from '../../lib/module-layout'
+import { CATEGORY_LIMIT, CATEGORY_NAME_MAX, TOP_COUNT, categoryIdPattern, layoutPayload, moduleIds, normalizeModuleLayout } from '../../lib/module-layout'
 import type { ModuleLayout } from '../../lib/module-layout'
 
 const LAYOUT_KEY = 'module-layout'
@@ -12,6 +12,9 @@ const layoutInput = z.object({
   order: z.array(id).max(64),
   hidden: z.array(id).max(64),
   featured: id.nullable(),
+  categories: z.array(z.object({ id: z.string().regex(categoryIdPattern), name: z.string().trim().min(1).max(CATEGORY_NAME_MAX) })).max(CATEGORY_LIMIT).optional(),
+  assignments: z.record(z.string().max(32), z.array(z.string().max(32)).max(CATEGORY_LIMIT)).optional(),
+  top: z.array(id).max(TOP_COUNT).optional(),
 }).refine(input => input.hidden.length < moduleIds.length, { message: 'Keep at least one module in the library.' })
 
 async function ensureTable(env: Env) {
@@ -31,7 +34,7 @@ export async function moduleLayout(request: Request, env: Env) {
   requireSameOrigin(request)
   const user = await requireUser(request, env, 'Sign in as the administrator to arrange the library.')
   if (!user.isAdmin) throw new HttpError(403, 'Administrator access required.')
-  const body = await readJson(request, 4000)
+  const body = await readJson(request, 24000)
   if (body && typeof body === 'object' && 'action' in body && body.action === 'reset') {
     await ensureTable(env)
     await env.DB.prepare('DELETE FROM library_settings WHERE key = ?').bind(LAYOUT_KEY).run()
@@ -42,6 +45,6 @@ export async function moduleLayout(request: Request, env: Env) {
   const now = Date.now()
   await ensureTable(env)
   await env.DB.prepare('INSERT INTO library_settings (key, value, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at')
-    .bind(LAYOUT_KEY, JSON.stringify({ order: layout.order, hidden: layout.hidden, featured: layout.featured }), now).run()
+    .bind(LAYOUT_KEY, JSON.stringify(layoutPayload(layout)), now).run()
   return json({ layout: { ...layout, updatedAt: new Date(now).toISOString() } })
 }

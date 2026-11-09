@@ -18,8 +18,9 @@ import { ModuleScoreboard } from '@/components/ModuleScoreboard'
 import { AdminRecordResetButton, RecordResetProvider } from '@/components/AdminRecordReset'
 import { isScoredModule } from '@/lib/module-scores'
 import { embeddedModules, isEmbeddedModuleId, isModuleAvailable, learningModules } from '@/lib/modules'
-import { arrangeModules } from '@/lib/module-layout'
 import { useModuleLayout } from '@/lib/use-module-layout'
+import { ModuleNav } from '@/components/ModuleNav'
+import { ScoreNotices } from '@/components/ScoreNotices'
 import type { ModuleId } from '@/lib/modules'
 import { Markdown } from '@/components/Markdown'
 import type { Creation, LyricCorrection, LyricPreset, Message, SongSettings, StudioMode } from '@/lib/studio-types'
@@ -431,7 +432,6 @@ function Studio() {
     if (!devPlayActive) { setDevPlay(true); return }
     playFrame.current?.contentWindow?.postMessage({ type: 'tl-dev-panel' }, window.location.origin)
   }
-  const moduleNav = arrangeModules(moduleLayout).visible.map(item => ({ id: item.id, label: item.title, icon: moduleIcons[item.id] }))
   const activeLabel = view === 'home' ? 'Module Library' : view === 'admin' ? 'Admin' : activePlay ? activePlay.label : learningModules.find(item => item.id === view)?.title ?? navigation.find((item) => item.id === view)?.label
 
   return <div className="studio-shell">
@@ -443,8 +443,7 @@ function Studio() {
         <button className={`nav-item nav-home ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')} disabled={busy}><Sparkles size={19} strokeWidth={1.7}/><span>Module Library</span>{view === 'home' && <span className="active-dot" />}</button>
         {access.pages.length > 0 && <p className="nav-caption nav-caption-play">YOUR WORKSPACE</p>}
         {navigation.filter(item => access.pages.includes(item.id)).map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}{id === 'lyrics' && <span className="new-tag">NEW</span>}</button>)}
-        <p className="nav-caption nav-caption-play">LEARNING MODULES</p>
-        {moduleNav.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}</button>)}
+        <ModuleNav layout={moduleLayout} view={view} busy={busy} icons={moduleIcons} onSelect={id => switchView(id)}/>
         <div className="nav-divider" /><button className={`nav-item ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')}>{access.username ? `Signed in as ${access.username}` : 'Sign in'}</button>
       </nav>
       <div className="sidebar-bottom"><div className="creative-note"><span className="tiny-star">✳</span><strong>Learn by doing.</strong><p>Strategy, physics, math<br/>and precision modules.</p></div><button className="help-link" onClick={() => setHelpOpen(true)}><Info size={16}/> About the library <ArrowRight size={14}/></button><div className="workspace-profile"><span className="profile-icon"><Feather size={18}/></span><div>{access.username ?? 'Guest'}<small>{access.username ? 'Progress saves to your account' : 'Sign in to save progress'}</small></div></div></div>
@@ -457,6 +456,7 @@ function Studio() {
         {accountReady && !access.username && view !== 'pool' && view !== 'racing' && view !== 'oval' && <PoolAccount className="signin-spotlight" heading="Sign in or register" intro="Use any username and a password of 3 or more characters. A new username creates your account; an existing one signs you back in. No email needed, and your progress and settings follow your account." username={null} ready={accountReady} disabled={false} beforeChange={async () => {}} onFailure={() => {}}/>}
         {error && <div className="error-banner" role="alert"><Info size={18}/><span>{error}</span><button onClick={() => setError('')} aria-label="Dismiss error"><X size={16}/></button></div>}
 
+        {view === 'home' && access.username && <ScoreNotices username={access.username} onOpen={id => switchView(id)}/>}
         {view === 'home' && <ModuleHub username={access.username} onLaunch={id => switchView(id)} account={null} online={null}/>}
         {activePlay && <section className="play-frame" aria-label={activePlay.label}><div className="play-frame-bar"><strong>{activePlay.label}{devPlayActive && <span className="play-dev-tag">Developer instance</span>}</strong><div className="play-frame-actions">{access.isAdmin && activePlay.id === 'maplestreet' && <>{devPlayActive && <button type="button" className="play-dev-exit" onClick={() => setDevPlay(false)}>Exit developer instance</button>}<button type="button" className="play-dev-button" onClick={openDevPanel} aria-pressed={devPlayActive}><Wrench size={14}/> Developer Panel</button></>}<a href={devPlayActive ? `${activePlay.src}?dev=1&solo=1&panel=1` : activePlay.src} target="_blank" rel="noopener"><Maximize2 size={14}/> Open full screen</a></div></div><iframe ref={playFrame} key={`${activePlay.id}:${playRoom ?? ''}:${devPlayActive ? 'dev' : ''}`} src={playSrc} title={activePlay.label} allow="autoplay; fullscreen; gamepad" allowFullScreen/></section>}
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison-v2" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks} archive={shortTrackArchive}/>}

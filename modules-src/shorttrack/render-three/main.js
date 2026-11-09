@@ -1647,7 +1647,7 @@ function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)
 fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
 if(REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
-const TT=initTrackTest({cfg:CFG,trackId:TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack')});
+const TT=initTrackTest({cfg:CFG,trackId:TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack'),resetCar:()=>{if(!player||mode!=='race')return false;simResetCar(WORLD,player);return true;}});
 
 // ===================== INPUT =====================
 const keys={};
@@ -1658,7 +1658,7 @@ addEventListener('keydown',e=>{
   if(mode==='race'||mode==='paused'||mode==='results'){
     if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code))e.preventDefault();
     if(e.code==='KeyC'&&!e.repeat)camMode=camMode==='chase'?'far':camMode==='far'?'hood':'chase';
-    if(e.code==='KeyR'&&!e.repeat&&player&&player.speed<6&&mode!=='paused')simResetCar(WORLD,player);
+    if(e.code==='KeyR'&&!e.repeat&&player&&(player.speed<6||TT.isTesting())&&mode!=='paused')simResetCar(WORLD,player);
     if(e.code==='Escape')togglePause();
   }
   if(e.code==='KeyM'&&!e.repeat)toggleMute();
