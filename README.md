@@ -55,6 +55,8 @@ One-time setup:
    - Optional `ANTHROPIC_ADMIN_KEY`: an Admin API key (`sk-ant-admin…`) to show your total API spend this month.
 5. **If you want review-first changes as pull requests:** go to GitHub → Settings → Actions → General and turn on *Allow GitHub Actions to create and approve pull requests*. If `main` has branch protection that blocks direct pushes, use review-first mode.
 
+**Run on my laptop:** tick this box under the message box to run requests on your own computer through a self-hosted GitHub Actions runner. Untick it to run on GitHub as before. If the laptop is offline, requests run on GitHub instead. Setup is in [`scripts/laptop-runner/README.md`](scripts/laptop-runner/README.md).
+
 Anthropic doesn't expose your remaining prepaid balance through any API. Enter it once in the panel (and again after you top up), and the panel subtracts the exact cost of each request.
 
 ## Thrill Park

@@ -126,7 +126,8 @@ async function askClaude() {
   const response = await fetch(`${CALLBACK_URL}?job=${JOB_ID}`, { headers: { Authorization: `Bearer ${SITE_CHANGES_SECRET}` } })
   if (!response.ok) throw new Error(`The site returned ${response.status} for this job. Check that SITE_CHANGES_SECRET matches on GitHub and Cloudflare.`)
   const job = await response.json()
-  const billing = process.env.ANTHROPIC_API_KEY ? 'api' : process.env.CLAUDE_CODE_OAUTH_TOKEN ? 'subscription' : null
+  const localLogin = process.env.SITE_CHANGES_LOCAL_LOGIN === '1'
+  const billing = process.env.ANTHROPIC_API_KEY ? 'api' : process.env.CLAUDE_CODE_OAUTH_TOKEN || localLogin ? 'subscription' : null
   saveState({ job, billing })
 
   if (job.mode === 'revert') {
@@ -185,7 +186,9 @@ async function askClaude() {
   const costUsd = typeof result.final?.total_cost_usd === 'number' ? result.final.total_cost_usd : undefined
   saveState({ job, billing, reply, costUsd })
   if (!result.final || result.final.is_error || result.code !== 0) {
-    const why = result.final?.subtype === 'error_max_turns' ? 'Claude ran out of steps before finishing.' : 'Claude stopped with an error.'
+    const why = result.final?.subtype === 'error_max_turns' ? 'Claude ran out of steps before finishing.'
+      : localLogin && !result.final ? 'Claude couldn\'t start on your laptop. Open Ubuntu, run `claude`, sign in with /login, then try again.'
+      : 'Claude stopped with an error.'
     await fail(`${why} Nothing was published.${reply ? `\n\n${reply}` : ''}`, { costUsd, billing })
   }
   await report({ status: 'running', progress: 'Checking the build', costUsd, billing })

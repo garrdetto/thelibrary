@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent, KeyboardEvent } from 'react'
-import { ExternalLink, LoaderCircle, Plus, RotateCcw, Send, Trash2, Undo2, Wallet } from 'lucide-react'
+import { ExternalLink, Laptop, LoaderCircle, Plus, RotateCcw, Send, Trash2, Undo2, Wallet } from 'lucide-react'
 import { Streamdown } from 'streamdown'
 
 type Status = 'queued' | 'running' | 'merged' | 'review' | 'answered' | 'failed' | 'reverted'
@@ -19,6 +19,7 @@ type ChangeMessage = {
   commit: string | null
   prUrl: string | null
   runUrl: string | null
+  runner: 'github' | 'laptop'
   createdAt: number
   updatedAt: number
 }
@@ -34,7 +35,10 @@ type Credits = {
   organizationMonthCents: number | null
   organizationCheckedAt: number | null
 }
-type Overview = { configured: { github: boolean; secret: boolean; adminKey: boolean; repo: string }; threads: Thread[]; credits: Credits }
+type LaptopStatus = 'online' | 'busy' | 'offline' | 'missing' | 'unknown'
+type RunnerInfo = { choice: 'github' | 'laptop'; laptop: LaptopStatus; label: string }
+type Overview = { configured: { github: boolean; secret: boolean; adminKey: boolean; repo: string }; threads: Thread[]; credits: Credits; runner?: RunnerInfo }
+type Queued = { message: ChangeMessage | null; notice?: string | null }
 
 const ACTIVE: Status[] = ['queued', 'running']
 const POLL_MS = 5000
@@ -47,6 +51,13 @@ const statusLabels: Record<Status, string> = {
   answered: 'Answered',
   failed: "Didn't finish",
   reverted: 'Undone',
+}
+const laptopLabels: Record<LaptopStatus, string> = {
+  online: 'online',
+  busy: 'online, busy with another job',
+  offline: 'offline — requests run on GitHub until it reconnects',
+  missing: 'not set up yet — requests run on GitHub',
+  unknown: 'status unknown',
 }
 const examples = [
   'Add a "Featured" badge to the Chess card in the module library',
@@ -123,11 +134,16 @@ function MessageView({ message, busy, onAction }: { message: ChangeMessage; busy
     </div>
     <div className={`change-bubble is-claude status-${message.status}`}>
       <span className="change-author">Claude <span className="change-status">{active && <LoaderCircle className="spin" size={12} aria-hidden="true"/>}{statusLabels[message.status]}</span></span>
-      {active && <p className="change-progress" role="status">{message.status === 'queued' ? (stale ? "This hasn't started yet. GitHub may be busy, or the workflow may be turned off — check the run log." : 'Waiting for GitHub to start…') : `${message.progress ?? 'Working'}…`}</p>}
+      {active && <p className="change-progress" role="status">{message.status === 'queued'
+        ? message.runner === 'laptop'
+          ? (stale ? "Your laptop hasn't picked this up yet. Check that it's awake and the runner is started, or stop waiting and try again with the laptop box unticked." : 'Waiting for your laptop to pick it up…')
+          : (stale ? "This hasn't started yet. GitHub may be busy, or the workflow may be turned off — check the run log." : 'Waiting for GitHub to start…')
+        : `${message.progress ?? 'Working'}…`}</p>}
       {message.reply && <div className="change-reply"><Streamdown>{message.reply}</Streamdown></div>}
       <div className="change-meta">
         {message.costUsd !== null && <span>{message.billing === 'subscription' ? '≈' : ''}${message.costUsd.toFixed(2)}</span>}
         <span>{when(message.updatedAt)}</span>
+        <span>{message.runner === 'laptop' ? 'On your laptop' : 'On GitHub'}</span>
         {message.commit && message.status !== 'review' && <span>Commit {message.commit.slice(0, 7)}</span>}
         {message.prUrl && <a href={message.prUrl} target="_blank" rel="noopener">Review changes <ExternalLink size={12}/></a>}
         {message.runUrl && <a href={message.runUrl} target="_blank" rel="noopener">Run log <ExternalLink size={12}/></a>}
@@ -147,6 +163,8 @@ export function SiteChanges() {
   const [messages, setMessages] = useState<ChangeMessage[]>([])
   const [text, setText] = useState('')
   const [autoMerge, setAutoMerge] = useState(true)
+  const [useLaptop, setUseLaptop] = useState(false)
+  const [notice, setNotice] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
@@ -158,6 +176,20 @@ export function SiteChanges() {
     setOverview(result)
     return result
   }, [])
+  const laptopChoiceLoaded = useRef(false)
+  useEffect(() => {
+    if (!overview?.runner || laptopChoiceLoaded.current) return
+    laptopChoiceLoaded.current = true
+    setUseLaptop(overview.runner.choice === 'laptop')
+  }, [overview])
+
+  async function chooseLaptop(next: boolean) {
+    setUseLaptop(next)
+    try {
+      const result = await api<{ runner: RunnerInfo }>({ action: 'set-runner', runner: next ? 'laptop' : 'github' })
+      setOverview(current => current ? { ...current, runner: result.runner } : current)
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to save where requests run.') }
+  }
   const loadThread = useCallback(async (id: string) => {
     const result = await api<{ messages: ChangeMessage[] }>(undefined, `?thread=${id}`)
     setMessages(result.messages)
@@ -180,7 +212,7 @@ export function SiteChanges() {
   useEffect(() => { bottom.current?.scrollIntoView({ block: 'nearest' }) }, [messages.length, messages[messages.length - 1]?.status])
 
   async function openThread(id: string | null) {
-    setThreadId(id); setError('')
+    setThreadId(id); setError(''); setNotice('')
     if (!id) { setMessages([]); composer.current?.focus(); return }
     try { await loadThread(id) } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to open that conversation.') }
   }
@@ -189,10 +221,11 @@ export function SiteChanges() {
     event?.preventDefault()
     const prompt = text.trim()
     if (!prompt || sending || threadActive) return
-    setSending(true); setError('')
+    setSending(true); setError(''); setNotice('')
     try {
-      const result = await api<{ thread: string; message: ChangeMessage | null }>({ action: 'send', text: prompt, autoMerge, ...(threadId ? { thread: threadId } : {}) })
+      const result = await api<{ thread: string } & Queued>({ action: 'send', text: prompt, autoMerge, runner: useLaptop ? 'laptop' : 'github', ...(threadId ? { thread: threadId } : {}) })
       setText('')
+      setNotice(result.notice ?? '')
       setThreadId(result.thread)
       await Promise.all([loadThread(result.thread), loadOverview()])
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to send your message.') }
@@ -205,9 +238,10 @@ export function SiteChanges() {
 
   async function act(action: 'revert' | 'retry' | 'stop', message: ChangeMessage) {
     if (action === 'revert' && !window.confirm('Undo this change on the live site? Claude will publish a commit that reverses it.')) return
-    setSending(true); setError('')
+    setSending(true); setError(''); setNotice('')
     try {
-      await api({ action, id: message.id })
+      const result = await api<Queued>({ action, id: message.id })
+      setNotice(result.notice ?? '')
       await Promise.all([loadThread(message.threadId), loadOverview()])
     } catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to do that right now.') }
     finally { setSending(false) }
@@ -226,9 +260,10 @@ export function SiteChanges() {
   return <section className="account-home site-changes">
     <span className="section-eyebrow">WORKSPACE ADMINISTRATION</span>
     <h1>Site changes</h1>
-    <p>Ask Claude to change the site, or ask questions about how it works. Each message runs on GitHub. Finished changes are built, checked and published to <code>main</code>, so they go live within a few minutes. Turn off auto-publish to review them as a pull request first.</p>
+    <p>Ask Claude to change the site, or ask questions about how it works. Each message runs on GitHub, or on your own laptop when <i>Run on my laptop</i> is ticked. Finished changes are built, checked and published to <code>main</code>, so they go live within a few minutes. Turn off auto-publish to review them as a pull request first.</p>
     {loading && <p role="status">Loading site changes…</p>}
     {error && <p role="alert" className="change-error">{error}</p>}
+    {notice && <p role="status" className="change-notice">{notice}</p>}
     {overview && !ready && <div className="change-setup" role="note">
       <strong>Finish setup to start sending requests</strong>
       <p>Add these secrets, then send a message. The repository README has step-by-step instructions.</p>
@@ -264,7 +299,14 @@ export function SiteChanges() {
           <textarea id="site-change-input" ref={composer} value={text} onChange={event => setText(event.target.value)} onKeyDown={onComposerKey} rows={3} maxLength={8000}
             placeholder={threadActive ? 'Claude is working on your last message…' : threadId ? 'Reply or ask for another change…' : 'Describe the change you want…'} disabled={!ready || sending || threadActive}/>
           <div className="change-composer-bar">
-            <label className="change-toggle"><input type="checkbox" checked={autoMerge} onChange={event => setAutoMerge(event.target.checked)} disabled={!ready}/> Publish automatically when it builds</label>
+            <div className="change-toggles">
+              <label className="change-toggle"><input type="checkbox" checked={autoMerge} onChange={event => setAutoMerge(event.target.checked)} disabled={!ready}/> Publish automatically when it builds</label>
+              <label className="change-toggle" title={overview.runner ? `Runner label: ${overview.runner.label}` : undefined}>
+                <input type="checkbox" checked={useLaptop} onChange={event => void chooseLaptop(event.target.checked)} disabled={!ready}/>
+                <Laptop size={14} aria-hidden="true"/> Run on my laptop
+                {useLaptop && overview.runner && <span className={`change-laptop-status is-${overview.runner.laptop}`}>({laptopLabels[overview.runner.laptop]})</span>}
+              </label>
+            </div>
             <button type="submit" disabled={!ready || sending || threadActive || !text.trim()}>{sending ? <LoaderCircle className="spin" size={14}/> : <Send size={14}/>} Send</button>
           </div>
         </form>
