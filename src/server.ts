@@ -6,6 +6,7 @@ export { MapleStreetWorld } from './server/maplestreet-world'
 export { AnglerLake } from './server/angler-lake'
 export { BushLeagueMatch } from './server/bushleague-match'
 export { HoodLot } from './server/hood-lot'
+export { DartsRoom } from './server/darts-room'
 
 export default {
   async fetch(request: Request, env: Env) {

@@ -1,0 +1,6 @@
+{
+  "id": "darts",
+  "title": "Oche Darts",
+  "accent": "#ff4d5e",
+  "modes": ["solo", "online"]
+}

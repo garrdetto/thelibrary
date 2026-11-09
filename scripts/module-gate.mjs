@@ -29,7 +29,7 @@ const settleMs = Number(option('settle', '6000'));
 const query = option('query', '');
 const channel = option('channel', undefined);
 
-const moduleIds = ['sandlot3d', 'maplestreet', 'foxplains2', 'sandlot', 'botwreck', 'chess', 'checkers', '2048', 'helicopter', 'shorttrack', 'fairway', 'demoderby', 'bushleague'];
+const moduleIds = ['sandlot3d', 'maplestreet', 'foxplains2', 'sandlot', 'botwreck', 'chess', 'checkers', '2048', 'helicopter', 'shorttrack', 'fairway', 'darts', 'demoderby', 'bushleague'];
 const targets = only.length ? moduleIds.filter((id) => only.includes(id)) : moduleIds;
 const base = `http://localhost:${port}`;
 
