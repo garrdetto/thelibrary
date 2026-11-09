@@ -27,12 +27,12 @@ On the laptop, Claude uses the Claude account you sign in to there. `setup.sh` i
 
 ## Blender and Meshy for site changes
 
-Requests that run on the laptop can build 3D models with Blender and Meshy.
+Laptop runs are the best place for 3D requests ("add a rowboat to the Angler dock", "a park ranger who waves"): Claude generates the model with Meshy, and Blender on the laptop grounds, sizes and slims it before it goes into the site. GitHub's machines have no Blender, so there the model arrives raw and Claude sizes it in code; tick **Run on my laptop** for requests that need Blender.
 
-- **Blender:** install it inside Ubuntu (WSL), so the runner can call `blender`:
+- **Blender:** `setup.sh` installs it inside Ubuntu (WSL). On a laptop that's already set up, run:
   ```sh
-  sudo snap install blender --classic
+  cd ~/thelibrary && git pull && bash scripts/laptop-runner/install-blender.sh
   blender --version
   ```
-  Claude runs it headless (`blender -b -P script.py`), the same way as the modules' `tools/build-*.py` scripts, and runs `pnpm assets` on the exported `.glb` files. GitHub's machines don't have Blender, so tick **Run on my laptop** for requests that need it.
-- **Meshy:** nothing to install. Each run gets a pass that generates through the site's own `/api/meshy`, using the Cloudflare `MESHY_API_KEY` that the admin generators already use (`node .github/site-changes/meshy.mjs`). It works on GitHub's machines too.
+  Claude runs it headless (`blender -b -P script.py`), the same way as the modules' `tools/build-*.py` scripts and `scripts/blender/meshy-cleanup.py`, and runs `pnpm assets` on the exported `.glb` files.
+- **Meshy:** nothing to install. Each run gets a pass that generates through the site's own `/api/meshy`, using the Cloudflare `MESHY_API_KEY` that the admin generators already use (`node .github/site-changes/meshy.mjs`). It works on GitHub's machines too. Optionally add the same key as the `MESHY_API_KEY` repository secret on GitHub (Settings → Secrets and variables → Actions) to also enable the one-command pipeline `scripts/meshy-generate.mjs` (rig, animation clips, resumable runs, credit cap). Details: `docs/MESHY-PIPELINE.md`.

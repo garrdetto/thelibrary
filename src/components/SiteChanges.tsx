@@ -63,6 +63,7 @@ const examples = [
   'Add a "Featured" badge to the Chess card in the module library',
   'Make the sign-in ribbon say "Welcome to the library — sign in to save your progress"',
   'Which files control the racing leaderboard?',
+  'Make a 3D park ranger with Meshy who stands by the Fox Plains town square and waves at people walking past',
 ]
 
 const money = (cents: number) => `${cents < 0 ? '−' : ''}$${(Math.abs(cents) / 100).toFixed(2)}`

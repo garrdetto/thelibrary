@@ -19,8 +19,17 @@ How to work:
 - If the request is unclear, or would destroy data (dropping tables, deleting accounts or records, removing secrets), make no edits and ask one short clarifying question instead.
 - Never read, print or change secrets, environment values or .env files.
 - Schema changes go in a new numbered file in migrations/; the workflow applies them.
-- To make a 3D model with Meshy, run \`node .github/site-changes/meshy.mjs generate "<prompt>" --out assets-src/models/<module>/<name>.glb\` (add \`--preview\` for an untextured draft, \`--polycount N\` to change detail). For a character or creature use \`--target character\`, then animate it: \`meshy.mjs animations "walk"\` lists ready-made clips with their ids, \`meshy.mjs rig <jobId> --out <file>.glb\` rigs the finished model (each command prints the \`job <id>\` the next one takes), and \`meshy.mjs animate <rigJobId> --action <id> --label "Walk" --out <file>.glb\` makes one clip per call. It uses the site's own Meshy connection, so everything also appears in the admin Meshy panel; \`node .github/site-changes/meshy.mjs balance\` shows the credits left. Each model costs Meshy credits, so only generate what the request needs, and run \`pnpm assets\` after adding files under assets-src/models/.
 - Blender is available on the administrator's laptop runner (not on GitHub's machines): build or clean up models with \`blender -b -P <script.py> -- <args>\` (the modules' tools/build-*.py scripts work this way), write exports to assets-src/models/, then run \`pnpm assets\`. If \`blender\` is not found, say so in your reply instead of skipping the model.
+
+3D models (Meshy):
+- When the administrator asks for a 3D object, character or animation the site doesn't have, generate it with Meshy. Each model costs Meshy credits, so only generate what the request needs. There are two ways in:
+  - When MESHY_API_KEY is set in your environment, use \`node scripts/meshy-generate.mjs\` (run it with --help for every option; docs/MESHY-PIPELINE.md explains the pipeline). It runs preview, refine, rig and animate in one command and then cleans the model up in Blender when Blender is installed. Example: \`node scripts/meshy-generate.mjs --prompt "a weathered red barn, game asset" --name barn --out assets-src/models/maplestreet/town --target furniture --size 12\`. Run the command with --dry-run first to see the credit estimate. A real run takes several minutes; give it a 20-minute timeout. If it is interrupted, run the identical command again and it resumes without paying twice. Meshy rigs and animates only two-legged humanoid characters (\`--target character --rig --height <m> --animate idle,walk,…\`; \`--list-animations\` shows the clips).
+  - Otherwise use the site's own Meshy connection: \`node .github/site-changes/meshy.mjs generate "<prompt>" --out assets-src/models/<module>/<name>.glb\` (add \`--preview\` for an untextured draft, \`--polycount N\` to change detail). For a character use \`--target character\`, then animate it: \`meshy.mjs animations "walk"\` lists ready-made clips with their ids, \`meshy.mjs rig <jobId> --out <file>.glb\` rigs the finished model (each command prints the \`job <id>\` the next one takes), and \`meshy.mjs animate <rigJobId> --action <id> --label "Walk" --out <file>.glb\` makes one clip per call. Everything also appears in the admin Meshy panel; \`node .github/site-changes/meshy.mjs balance\` shows the credits left. When Blender is installed, clean the download up with \`blender -b --factory-startup -P scripts/blender/meshy-cleanup.py -- --input <downloaded.glb> --out assets-src/models/<module> --name <name> [--size <m> | --height <m>] [--max-tris N]\` (keep the raw download outside assets-src/models/, e.g. in .meshy-cache/).
+- Write original prompts: describe shape, materials and colours, add "game asset", and leave out brands, logos, real people, and characters from films or games.
+- Animate everything that isn't a humanoid character (vehicles, rides, props, animals, spinning or bobbing objects) in the module's code.
+- Afterwards run \`pnpm assets\`, load the file from public/models/ the way that module already loads models (docs/ENGINE-MAP.md), set its scale, position and collision, and play clips by their names. Keep the new .glb (and its .meshy.json record when meshy-generate.mjs made one) and the public/models/ output in the change.
+- If Blender wasn't available, size and place the model in code. Don't fake a model with primitive shapes unless the administrator asks.
+- In your reply, say what was generated, where to see it on the site, and how many Meshy credits it used.
 
 Your final message is shown to the administrator as your chat reply. Write it in plain language for someone who is not a developer: what you changed (or your answer, or your question), where to see it on the site, and anything they need to do. Keep it short and do not include code unless they asked for it.`
 
@@ -96,6 +105,9 @@ function describeTool(name, input = {}) {
   if (name === 'Bash') {
     const command = String(input.command ?? '')
     if (/\bpnpm (run )?build\b/.test(command)) return 'Building the site to check for errors'
+    if (/meshy-generate\.mjs/.test(command)) return /--dry-run|--list-animations|--help/.test(command) ? 'Planning a 3D model' : 'Generating a 3D model with Meshy (this takes a few minutes)'
+    if (/\bpnpm (run )?assets\b/.test(command)) return 'Optimising 3D models'
+    if (/^blender\b/.test(command)) return 'Working on a model in Blender'
     return `Running ${command.split('\n')[0].slice(0, 90)}`
   }
   if (name === 'WebSearch' || name === 'WebFetch') return 'Looking something up'
@@ -148,6 +160,8 @@ async function askClaude() {
     env.SITE_MESHY_TOKEN = `sc.${JOB_ID}.${createHmac('sha256', SITE_CHANGES_SECRET).update(`meshy:${JOB_ID}`).digest('hex')}`
   }
   for (const key of ['SITE_CHANGES_SECRET', 'GH_TOKEN', 'GITHUB_TOKEN', 'CALLBACK_URL', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) delete env[key]
+  env.BASH_DEFAULT_TIMEOUT_MS ??= String(10 * 60 * 1000)
+  env.BASH_MAX_TIMEOUT_MS ??= String(30 * 60 * 1000)
   const args = ['-p', buildPrompt(job), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', '--allowedTools', TOOLS, '--append-system-prompt', SYSTEM, '--max-turns', '150']
   args.push('--model', process.env.SITE_CHANGES_MODEL?.trim() || DEFAULT_MODEL)
 
