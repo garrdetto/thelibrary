@@ -1,9 +1,10 @@
-/** One derby car: a Rapier chassis body with a raycast vehicle controller, its visual model, controls, damage (body and engine), dents, the out-of-the-heat state and the idle clock. */
+/** One derby car: a Rapier chassis body with a raycast vehicle controller, its visual model, controls, damage (body, engine and every component in `Damage.ts`) and what it does to the drive, dents, the out-of-the-heat state and the idle clock. */
 import * as THREE from 'three/webgpu'
 import type RAPIER from '@dimforge/rapier3d-compat'
 import type { PhysicsWorld } from '../../../engine'
 import { config, type BodySpec, type DamageSpec, type VehicleSpec } from '../config'
-import { createCar, type CarModel } from '../models/CarBody'
+import { createCar, type CarModel, type DetachedPart } from '../models/CarBody'
+import { applyComponentHit, applyRoll, createDamage, handlingOf, stepComponents, type CarDamage, type DamageNews, type Handling } from './Damage'
 import type { CarLook } from './Look'
 
 export interface Controls {
@@ -19,6 +20,8 @@ export interface Hit {
   /** 0–1 share of a full-strength hit. */
   strength: number
   point: THREE.Vector3
+  /** A barrier, not a car: scaled by `wallScale`. */
+  wall?: boolean
 }
 
 export class Vehicle {
@@ -38,6 +41,18 @@ export class Vehicle {
   points = 0
   survived = 0
   place = 0
+  readonly damage: CarDamage = createDamage()
+  /** Component changes since the last drain (tires, wheels, bumpers, lamps, glass, radiator, fire). */
+  readonly news: DamageNews[] = []
+  /** Parts that came off since the last drain, in world space, for the debris. */
+  readonly detached: DetachedPart[] = []
+  /** Damage rules for this heat (scaled by the damage preset). */
+  rules: DamageSpec = config.damage
+  private readonly handling: Handling
+  private handlingVersion = -1
+  private readonly engineBox = { value: 100 }
+  private rolled = false
+  private hitCount = 0
   private steerAngle = 0
   private stuckClock = 0
   private flipClock = 0
@@ -101,6 +116,7 @@ export class Vehicle {
       this.controller.setWheelSideFrictionStiffness(i, tuning.sideFrictionStiffness)
     })
     physics.track(this.body)
+    this.handling = handlingOf(this.damage, config.damage.handling)
   }
 
   get power(): number {
@@ -163,23 +179,37 @@ export class Vehicle {
     return target.copy(point).sub(this.position).applyQuaternion(this.quaternion.clone().invert())
   }
 
-  /** Applies a hit to this car; returns the health it lost. */
-  takeHit(hit: Hit, from: number, now: number, damage: DamageSpec): number {
+  /** Applies a hit to this car: body and engine health, the component damage around the struck point, dents and parts; returns the health it lost. */
+  takeHit(hit: Hit, from: number, now: number, damage: DamageSpec = this.rules): number {
     const last = this.lastHitAt.get(from) ?? -Infinity
     if (now - last < damage.hitCooldown) return 0
     this.lastHitAt.set(from, now)
-    if (!this.alive) return 0
     const zoneScale = damage.zone[hit.zone]
-    const loss = damage.maxHitDamage * hit.strength * zoneScale
-    this.health = Math.max(0, this.health - loss)
-    this.engine = Math.max(0, this.engine - loss * damage.engineShare[hit.zone])
+    const loss = damage.maxHitDamage * hit.strength * zoneScale * (hit.wall ? damage.wallScale : 1)
     const localPoint = this.toLocal(hit.point, new THREE.Vector3())
-    const direction = new THREE.Vector3(-localPoint.x, 0, -localPoint.z)
+    const half = this.spec.length / 2
+    localPoint.z = Math.max(-half, Math.min(half, localPoint.z))
+    localPoint.x = Math.max(-this.spec.width / 2, Math.min(this.spec.width / 2, localPoint.x))
+    const direction = new THREE.Vector3()
     if (hit.zone === 'side') direction.set(-Math.sign(localPoint.x) || 1, 0, 0)
     else direction.set(0, 0, hit.zone === 'front' ? 1 : -1)
-    this.model.dent(localPoint, direction.normalize(), Math.min(1, 0.3 + hit.strength * 0.8), { radius: damage.dentRadius, depth: damage.dentDepth, maxDepth: damage.dentMaxDepth, darken: damage.dentDarken })
+    const dentStrength = Math.min(1, 0.3 + hit.strength * 0.8) * (hit.wall ? 0.75 : 1)
+    this.model.dent(localPoint, direction, dentStrength, { radius: damage.dentRadius, depth: damage.dentDepth, maxDepth: damage.dentMaxDepth, darken: damage.dentDarken })
+    if (!this.alive) {
+      this.showParts()
+      return 0
+    }
+    this.health = Math.max(0, this.health - loss)
+    this.engine = Math.max(0, this.engine - loss * damage.engineShare[hit.zone])
+    this.hitCount++
+    this.news.push(...applyComponentHit(this.damage, this.spec, damage, localPoint.x, localPoint.y, localPoint.z, loss, this.id * 131 + this.hitCount))
+    this.showParts()
     if (this.health <= 0) this.knockOut('wrecked')
     return loss
+  }
+
+  private showParts(): void {
+    this.detached.push(...this.model.showDamage(this.damage))
   }
 
   knockOut(reason: 'wrecked' | 'idle'): void {
@@ -198,29 +228,88 @@ export class Vehicle {
     this.readPose()
     const speed = this.speed
     const forwardSpeed = this.forwardSpeed
-    const target = this.alive ? this.controls.steer * tuning.maxSteer * (1 - (1 - tuning.steerAtSpeedScale) * Math.min(1, speed / tuning.steerFadeSpeed)) : 0
+    this.applyHandling()
+    const handling = this.handling
+    const lock = tuning.maxSteer * handling.steerScale * (1 - (1 - tuning.steerAtSpeedScale) * Math.min(1, speed / tuning.steerFadeSpeed))
+    const target = this.alive ? this.controls.steer * lock + handling.pull : handling.pull
     const rate = tuning.steerRate * dt
     this.steerAngle += Math.max(-rate, Math.min(rate, target - this.steerAngle))
     const throttle = this.alive ? this.controls.throttle : 0
+    const torque = tuning.launchBoost + (tuning.topEndForce - tuning.launchBoost) * Math.min(1, Math.abs(forwardSpeed) / tuning.topSpeed)
+    const top = tuning.topSpeed * (0.75 + 0.25 * handling.drive)
     let engineForce = 0
-    if (throttle > 0 && forwardSpeed < tuning.topSpeed) engineForce = tuning.engineForce * throttle * this.power
-    else if (throttle < 0 && forwardSpeed > -tuning.reverseTopSpeed) engineForce = tuning.reverseForce * throttle * this.power
+    if (throttle > 0 && forwardSpeed < top) engineForce = tuning.engineForce * throttle * this.power * handling.drive * torque
+    else if (throttle < 0 && forwardSpeed > -tuning.reverseTopSpeed) engineForce = tuning.reverseForce * throttle * this.power * handling.drive * torque
     const braking = this.controls.brake && this.alive
-    const brake = braking ? tuning.brakeForce : throttle === 0 ? tuning.rollingBrake : 0
+    const brake = (braking ? tuning.brakeForce : throttle === 0 ? tuning.rollingBrake : 0) + handling.drag
     for (let i = 0; i < 4; i++) {
-      this.controller.setWheelSteering(i, i < 2 ? -this.steerAngle : 0)
-      this.controller.setWheelEngineForce(i, i >= 2 ? engineForce : engineForce * 0.15)
-      this.controller.setWheelBrake(i, this.alive ? brake : tuning.brakeForce * 0.6)
+      const steer = i < 2 ? -this.steerAngle - this.damage.wheels[i].toe : -this.damage.wheels[i].toe
+      this.controller.setWheelSteering(i, steer)
+      this.controller.setWheelEngineForce(i, this.damage.wheels[i].off ? 0 : i >= 2 ? engineForce : engineForce * 0.15)
+      this.controller.setWheelBrake(i, this.alive ? brake * (this.damage.wheels[i].off ? 2 : 1) : tuning.brakeForce * 0.6)
     }
     this.controller.updateVehicle(dt, undefined, undefined, filter)
+    this.engineBox.value = this.engine
+    const burn = stepComponents(this.damage, this.rules, this.engineBox, this.alive ? throttle : 0, dt, this.news)
+    this.engine = this.engineBox.value
+    if (burn > 0 && this.alive) {
+      this.health = Math.max(0, this.health - burn)
+      if (this.health <= 0) this.knockOut('wrecked')
+    }
     if (Math.abs(throttle) > 0.4 && speed < tuning.stuckSpeed) this.stuckClock += dt
     else this.stuckClock = Math.max(0, this.stuckClock - dt * 2)
-    if (!this.upright) this.flipClock += dt
-    else this.flipClock = 0
+    if (!this.upright) {
+      this.flipClock += dt
+      if (!this.rolled && this.flipClock > 0.4) {
+        this.rolled = true
+        this.rollOnto()
+      }
+    } else {
+      this.flipClock = 0
+      this.rolled = false
+    }
     if (this.alive) {
       this.idle += dt
       this.survived += dt
     }
+  }
+
+  /** Pushes this step's damage into the vehicle controller: per-wheel grip, springs, ride height and rolling radius. */
+  private applyHandling(): void {
+    if (this.handlingVersion === this.damage.version) return
+    this.handlingVersion = this.damage.version
+    const handling = handlingOf(this.damage, config.damage.handling, this.handling)
+    const { tuning } = this
+    for (let i = 0; i < 4; i++) {
+      this.controller.setWheelFrictionSlip(i, tuning.frictionSlip * handling.grip[i])
+      this.controller.setWheelSideFrictionStiffness(i, tuning.sideFrictionStiffness * handling.grip[i])
+      this.controller.setWheelSuspensionStiffness(i, tuning.suspensionStiffness * handling.spring[i])
+      this.controller.setWheelSuspensionRestLength(i, tuning.suspensionRest + handling.drop[i])
+      this.controller.setWheelRadius(i, this.spec.wheelRadius * handling.radius[i])
+    }
+  }
+
+  /** The car landed on its roof: crush it in and crack the glass. */
+  private rollOnto(): void {
+    const rules = this.rules
+    this.news.push(...applyRoll(this.damage, rules))
+    const roofY = this.spec.roof - this.spec.centreHeight
+    this.model.dent(new THREE.Vector3(0, roofY, 0), new THREE.Vector3(0, -1, 0), 0.9, { radius: this.spec.length * 0.35, depth: rules.dentDepth * 1.3, maxDepth: rules.dentMaxDepth, darken: rules.dentDarken })
+    if (this.alive) {
+      this.health = Math.max(0, this.health - rules.component.rollLoss)
+      if (this.health <= 0) this.knockOut('wrecked')
+    }
+    this.showParts()
+  }
+
+  /** The steering input that cancels the pull of bent front wheels (what a driver holds to go straight). */
+  get steerPull(): number {
+    return this.handling.pull / Math.max(0.05, this.tuning.maxSteer * this.handling.steerScale)
+  }
+
+  /** Visual wheel state: camber, toe, flat and missing. */
+  wheelState(i: number): CarDamage['wheels'][number] {
+    return this.damage.wheels[i]
   }
 
   get flippedFor(): number {
@@ -257,9 +346,13 @@ export class Vehicle {
       const wheel = this.model.wheels[i]
       const connection = this.controller.wheelChassisConnectionPointCs(i)
       const length = this.controller.wheelSuspensionLength(i) ?? this.tuning.suspensionRest
-      if (connection) wheel.position.set(connection.x, connection.y - length, connection.z)
-      wheel.rotation.set(0, i < 2 ? -this.steerAngle : 0, 0)
+      const state = this.damage.wheels[i]
+      const squash = state.flat && !state.off ? this.spec.wheelRadius * (1 - this.handling.radius[i]) : 0
+      if (connection) wheel.position.set(connection.x + (i % 2 === 0 ? -1 : 1) * Math.abs(state.camber) * 0.12, connection.y - length - squash * 0.5, connection.z)
+      wheel.rotation.set(0, (i < 2 ? -this.steerAngle : 0) - state.toe, state.camber)
       wheel.rotateX(this.controller.wheelRotation(i) ?? 0)
+      const flatScale = state.flat ? 1 - (1 - this.handling.radius[i]) * 0.5 : 1
+      wheel.scale.set(1, flatScale, flatScale)
     }
   }
 
