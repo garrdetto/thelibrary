@@ -16,7 +16,7 @@
         <span class="d-chip" id="room-chip" hidden></span>
       </div>
       <div class="d-scoreboard" id="scoreboard" aria-live="polite"></div>
-      <div class="d-meter" id="meter" aria-hidden="true"><div class="d-meter-band" id="meter-band"></div><div class="d-meter-fill" id="meter-fill"></div></div>
+      <div class="d-meter" id="meter" aria-hidden="true"><div class="d-meter-fill" id="meter-fill"></div><div class="d-meter-band" id="meter-band"></div></div>
       <div class="d-meter-label" id="meter-label"></div>
       <div class="d-announce" id="announce" role="status" aria-live="assertive"></div>
       <div class="d-turn">
@@ -30,7 +30,7 @@
     <div class="d-overlay" id="menu">
       <form class="d-panel" id="setup" novalidate>
         <h1>Oche <em>Darts</em></h1>
-        <p>A regulation board at 1.73 m, thrown from 2.37 m. Click and hold on the board to aim and a power meter swings up and down; let go to throw. Release in the green band and the dart flies true; too soft and it drops, too hard and it rides high.</p>
+        <p>A regulation board at 1.73 m, thrown from 2.37 m. Click and hold on the board to aim and a power meter swings up and down; let go to throw. Release on the bright green Perfect mark and the dart flies true; the band fades to yellow above and below it, and outside it the dart drops (too soft) or rides high (too hard).</p>
 
         <h2>Format</h2>
         <div class="d-seg" role="radiogroup" aria-label="Format">
@@ -99,6 +99,11 @@
           <label class="d-field" id="name-field">Your name
             <input type="text" name="playerName" maxlength="16" autocomplete="nickname" value="You" />
           </label>
+        </div>
+        <h2>Board</h2>
+        <div class="d-seg" role="radiogroup" aria-label="Board">
+          <label><input type="radio" name="board" value="steel" checked /><span>Steel-tip bristle</span></label>
+          <label><input type="radio" name="board" value="spider" /><span>Spider 360 3000 soft-tip</span></label>
         </div>
         <div class="d-error" id="setup-error" role="alert"></div>
         <div class="d-actions">

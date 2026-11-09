@@ -3,6 +3,7 @@ import * as THREE from 'three/webgpu'
 import { App, HubBridge, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
 import { config } from './config'
 import { DartsSocket, roomInfo } from './net/Socket'
+import { isBoardStyle, type BoardStyle } from './render/BoardTexture'
 import { createDartKit, aimDart } from './render/Dart'
 import { createPub } from './render/Pub'
 import { LocalSession, OnlineSession, type Session } from './session/Session'
@@ -61,7 +62,26 @@ function readSetup(form: HTMLFormElement): Setup {
   }
 }
 
-const CPU_NAMES: Record<CpuLevel, string> = { pub: 'Pub regular', league: 'League player', county: 'County player', pro: 'Touring pro' }
+const BOARD_KEY = 'tl-darts-board'
+
+function savedBoardStyle(): BoardStyle {
+  try {
+    const value = localStorage.getItem(BOARD_KEY)
+    return isBoardStyle(value) ? value : 'steel'
+  } catch {
+    return 'steel'
+  }
+}
+
+function saveBoardStyle(style: BoardStyle): void {
+  try {
+    localStorage.setItem(BOARD_KEY, style)
+  } catch {
+    /* private mode */
+  }
+}
+
+const CPU_NAMES:Record<CpuLevel, string> = { pub: 'Pub regular', league: 'League player', county: 'County player', pro: 'Touring pro' }
 
 async function boot(): Promise<void> {
   const container = byId<HTMLDivElement>('stage')
@@ -80,6 +100,7 @@ async function boot(): Promise<void> {
     textureSize: quality.tier === 'low' ? config.board.lowTextureSize : config.board.textureSize,
     shadows: quality.settings.shadows,
     shadowMapSize: Math.min(2048, quality.settings.shadowMapSize),
+    style: savedBoardStyle(),
   })
   app.own(pub)
   app.graph.add('world', pub.root)
@@ -176,6 +197,7 @@ async function boot(): Promise<void> {
   const render = (state: GameState) => {
     shown = state
     overlay.render(state, localIds)
+    pub.setDisplay(String(currentPlayer(state).score))
   }
 
   const announce = (list: Announcement[]) => {
@@ -298,7 +320,14 @@ async function boot(): Promise<void> {
   }
 
   const form = byId<HTMLFormElement>('setup')
+  const boardInput = form.querySelector<HTMLInputElement>(`input[name="board"][value="${pub.style}"]`)
+  if (boardInput) boardInput.checked = true
   const syncForm = () => {
+    const board = new FormData(form).get('board')
+    if (isBoardStyle(board) && board !== pub.style) {
+      pub.setStyle(board)
+      saveBoardStyle(board)
+    }
     const setup = readSetup(form)
     const mode = setup.match.rules.mode
     byId('x01-options').hidden = mode !== 'x01'

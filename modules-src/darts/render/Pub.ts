@@ -1,16 +1,21 @@
-/** The pub corner: a regulation board at 1.73 m in a wooden cabinet with chalkboard doors, real metal spider wires over the procedural face, a papered wall with wainscot, plank floor, a brass oche at 2.37 m, a shadow-casting board lamp and warm sconces, plus a small room baked into the environment map so wires and barrels have something to reflect. Board space is world space shifted down by the bull height. */
+/** The pub corner: a regulation board at 1.73 m, either the steel-tip bristle board in a wooden cabinet with chalkboard doors and real metal spider wires, or the red and black Spider 360 3000 soft-tip in its housing with a raised plastic spider and an LED score display, over the procedural face; a papered wall with wainscot, plank floor, a brass oche at 2.37 m, a shadow-casting board lamp and warm sconces, plus a small room baked into the environment map so wires and barrels have something to reflect. Board space is world space shifted down by the bull height. */
 import * as THREE from 'three/webgpu'
 import { bakeEnvironment, type BakedEnvironment } from '../../../engine'
 import { config } from '../config'
 import { BULL_HEIGHT, OCHE_DISTANCE, RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
 import { createRng } from '../shared/Rng'
-import { createBoardTextures } from './BoardTexture'
+import { createBoardTextures, type BoardStyle, type BoardTextures } from './BoardTexture'
 
 export interface Pub {
   root: THREE.Group
   /** The plane of the board face, for aiming raycasts (world space). */
   facePlane: THREE.Plane
   boardLamp: THREE.SpotLight
+  style: BoardStyle
+  /** Swaps the board between the steel-tip bristle board in its cabinet and the Spider 360 3000 soft-tip in its housing. */
+  setStyle(style: BoardStyle): void
+  /** Shows a score (or short text) on the soft-tip board's LED display. */
+  setDisplay(text: string): void
   dispose(): void
 }
 
@@ -18,6 +23,63 @@ export interface PubOptions {
   textureSize: number
   shadows: boolean
   shadowMapSize: number
+  style?: BoardStyle
+}
+
+function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+/** The soft-tip board's lower panel: model name, a red LED score window and the button labels. */
+function drawDisplay(ctx: CanvasRenderingContext2D, text: string): void {
+  const { width, height } = ctx.canvas
+  ctx.clearRect(0, 0, width, height)
+  ctx.fillStyle = '#101012'
+  ctx.fillRect(0, 0, width, height)
+  ctx.fillStyle = '#e3192f'
+  ctx.fillRect(0, 0, width, 6)
+  ctx.textBaseline = 'middle'
+  ctx.textAlign = 'left'
+  ctx.font = '900 italic 40px "Arial Black", Arial, sans-serif'
+  ctx.fillStyle = '#e3192f'
+  ctx.fillText('SPIDER', 28, 52)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillText('360', 208, 52)
+  ctx.font = '700 24px Arial, sans-serif'
+  ctx.fillStyle = '#c8c8cc'
+  ctx.fillText('3000 SOFT-TIP', 30, 92)
+  const wx = 370
+  const wy = 22
+  const ww = 330
+  const wh = 132
+  roundedRect(ctx, wx, wy, ww, wh, 14)
+  ctx.fillStyle = '#1b0306'
+  ctx.fill()
+  ctx.lineWidth = 4
+  ctx.strokeStyle = '#3a3b40'
+  ctx.stroke()
+  ctx.textAlign = 'center'
+  ctx.font = '700 98px "Courier New", ui-monospace, monospace'
+  ctx.fillStyle = 'rgba(255,40,50,0.12)'
+  ctx.fillText('888', wx + ww / 2, wy + wh / 2 + 4)
+  ctx.shadowColor = '#ff2a3a'
+  ctx.shadowBlur = 18
+  ctx.fillStyle = '#ff3444'
+  ctx.fillText(text.slice(0, 4), wx + ww / 2, wy + wh / 2 + 4)
+  ctx.shadowBlur = 0
+  ctx.font = '700 20px Arial, sans-serif'
+  ctx.fillStyle = '#9a9aa0'
+  const labels = ['GAME', 'PLAYER', 'HOLD']
+  labels.forEach((label, i) => ctx.fillText(label, 760 + i * 90, 150))
+  ctx.textAlign = 'left'
+  ctx.font = '600 18px Arial, sans-serif'
+  ctx.fillText('CRICKET · 301 · 501 · COUNT UP', 30, 140)
 }
 
 function canvasTexture(width: number, height: number, draw: (ctx: CanvasRenderingContext2D) => void, repeat: [number, number]): THREE.CanvasTexture {
@@ -168,7 +230,12 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   board.position.set(0, BULL_HEIGHT, 0)
   root.add(board)
 
-  const maps = createBoardTextures(options.textureSize, Math.min(16, renderer.getMaxAnisotropy?.() ?? 8))
+  const anisotropy = Math.min(16, renderer.getMaxAnisotropy?.() ?? 8)
+  let style: BoardStyle = options.style ?? 'steel'
+  let maps: BoardTextures = createBoardTextures(options.textureSize, anisotropy, style)
+  const steelParts = new THREE.Group()
+  steelParts.name = 'steel-tip'
+  root.add(steelParts)
   const faceMaterial = keepMat(
     new THREE.MeshStandardMaterial({
       map: maps.color,
@@ -195,27 +262,94 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   const bandMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#111'), roughness: 0.5, metalness: 0.4 }))
   const band = new THREE.Mesh(keep(new THREE.TorusGeometry(boardRadius + 0.002, 0.004, 10, 128)), bandMaterial)
   band.position.z = -0.006
-  board.add(band)
+  const steelBoard = new THREE.Group()
+  const spiderBoard = new THREE.Group()
+  board.add(steelBoard, spiderBoard)
+  steelBoard.add(band)
 
-  const wireMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#e4e7ec'), roughness: 0.16, metalness: 1 }))
-  const wireRadius = 0.00058
   const ringRadii = [RADII.innerBull, RADII.outerBull, RADII.tripleInner, RADII.tripleOuter, RADII.doubleInner, RADII.doubleOuter]
-  for (const radius of ringRadii) {
-    const ring = new THREE.Mesh(keep(new THREE.TorusGeometry(radius / 1000, wireRadius, 6, Math.max(48, Math.round(radius * 1.4)))), wireMaterial)
-    ring.position.z = wireRadius * 0.6
-    ring.castShadow = true
-    board.add(ring)
-  }
   const spokeLength = (RADII.doubleOuter - RADII.outerBull) / 1000
-  const spokeGeometry = keep(new THREE.CylinderGeometry(wireRadius, wireRadius, spokeLength, 6))
-  for (let i = 0; i < SECTORS.length; i++) {
-    const angle = ((i * SECTOR_DEGREES + SECTOR_DEGREES / 2) * Math.PI) / 180
-    const mid = (RADII.outerBull / 1000 + spokeLength / 2)
-    const spoke = new THREE.Mesh(spokeGeometry, wireMaterial)
-    spoke.position.set(Math.sin(angle) * mid, Math.cos(angle) * mid, wireRadius * 0.6)
-    spoke.rotation.z = -angle
-    spoke.castShadow = true
-    board.add(spoke)
+  const buildSpider = (target: THREE.Group, material: THREE.Material, wireRadius: number, radial: number) => {
+    for (const radius of ringRadii) {
+      const ring = new THREE.Mesh(keep(new THREE.TorusGeometry(radius / 1000, wireRadius, radial, Math.max(48, Math.round(radius * 1.4)))), material)
+      ring.position.z = wireRadius * 0.6
+      ring.castShadow = true
+      target.add(ring)
+    }
+    const spokeGeometry = keep(new THREE.CylinderGeometry(wireRadius, wireRadius, spokeLength, radial))
+    for (let i = 0; i < SECTORS.length; i++) {
+      const angle = ((i * SECTOR_DEGREES + SECTOR_DEGREES / 2) * Math.PI) / 180
+      const mid = RADII.outerBull / 1000 + spokeLength / 2
+      const spoke = new THREE.Mesh(spokeGeometry, material)
+      spoke.position.set(Math.sin(angle) * mid, Math.cos(angle) * mid, wireRadius * 0.6)
+      spoke.rotation.z = -angle
+      spoke.castShadow = true
+      target.add(spoke)
+    }
+  }
+  const wireMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#e4e7ec'), roughness: 0.16, metalness: 1 }))
+  buildSpider(steelBoard, wireMaterial, 0.00058, 6)
+  const plasticSpiderMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#34353a'), roughness: 0.42, metalness: 0.15 }))
+  buildSpider(spiderBoard, plasticSpiderMaterial, 0.00105, 8)
+
+  const housingMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#121214'), roughness: 0.38, metalness: 0.1 }))
+  const housingRedMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#d0162a'), roughness: 0.32, metalness: 0.15 }))
+  const housingWidth = 0.6
+  const housingTop = boardRadius + 0.05
+  const housingBottom = -boardRadius - 0.17
+  const housingHeight = housingTop - housingBottom
+  const housingDepth = 0.082
+  const housing = new THREE.Mesh(keep(new THREE.BoxGeometry(housingWidth, housingHeight, housingDepth)), housingMaterial)
+  housing.position.set(0, (housingTop + housingBottom) / 2, -0.004 - housingDepth / 2)
+  housing.castShadow = true
+  housing.receiveShadow = true
+  spiderBoard.add(housing)
+  const frameGeometry = keep(new THREE.TorusGeometry(boardRadius + 0.006, 0.006, 12, 160))
+  const frame = new THREE.Mesh(frameGeometry, housingRedMaterial)
+  frame.position.z = -0.002
+  spiderBoard.add(frame)
+  const edgeGeometry = keep(new THREE.BoxGeometry(0.012, housingHeight, housingDepth + 0.004))
+  for (const sign of [-1, 1]) {
+    const edge = new THREE.Mesh(edgeGeometry, housingRedMaterial)
+    edge.position.set(sign * (housingWidth / 2 + 0.006), housing.position.y, housing.position.z)
+    spiderBoard.add(edge)
+  }
+  const capGeometry2 = keep(new THREE.BoxGeometry(housingWidth + 0.024, 0.012, housingDepth + 0.004))
+  for (const y of [housingTop + 0.006, housingBottom - 0.006]) {
+    const cap = new THREE.Mesh(capGeometry2, housingRedMaterial)
+    cap.position.set(0, y, housing.position.z)
+    spiderBoard.add(cap)
+  }
+  const displayCanvas = document.createElement('canvas')
+  displayCanvas.width = 1024
+  displayCanvas.height = 176
+  const displayCtx = displayCanvas.getContext('2d')
+  if (!displayCtx) throw new Error('Canvas 2D is not available')
+  drawDisplay(displayCtx, '501')
+  const displayTexture = new THREE.CanvasTexture(displayCanvas)
+  displayTexture.colorSpace = THREE.SRGBColorSpace
+  displayTexture.anisotropy = 8
+  textures.push(displayTexture)
+  const displayMaterial = keepMat(new THREE.MeshStandardMaterial({ map: displayTexture, emissiveMap: displayTexture, emissive: new THREE.Color('#ffffff'), emissiveIntensity: 0.35, roughness: 0.25, metalness: 0 }))
+  const displayHeight = 0.1
+  const display = new THREE.Mesh(keep(new THREE.PlaneGeometry(displayHeight * (1024 / 176), displayHeight)), displayMaterial)
+  display.position.set(0, housingBottom + 0.075, -0.0035)
+  spiderBoard.add(display)
+  const buttonGeometry = keep(new THREE.CylinderGeometry(0.011, 0.012, 0.006, 24))
+  const buttonMaterials = [housingRedMaterial, keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#f2f2f2'), roughness: 0.35 })), housingRedMaterial]
+  buttonMaterials.forEach((material, i) => {
+    const button = new THREE.Mesh(buttonGeometry, material)
+    button.rotation.x = Math.PI / 2
+    const u = (760 + i * 90) / 1024 - 0.5
+    button.position.set(display.position.x + u * displayHeight * (1024 / 176), display.position.y + 0.012, -0.0005)
+    spiderBoard.add(button)
+  })
+  let displayText = '501'
+  const setDisplay = (text: string) => {
+    if (text === displayText) return
+    displayText = text
+    drawDisplay(displayCtx, text)
+    displayTexture.needsUpdate = true
   }
 
   const surroundMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#0d0d0e'), roughness: 0.85, metalness: 0 }))
@@ -223,7 +357,7 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   surround.rotation.x = Math.PI / 2
   surround.position.z = -thickness - config.board.surroundDepth / 2 + 0.012
   surround.receiveShadow = true
-  board.add(surround)
+  steelBoard.add(surround)
 
   const woodMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color(config.room.cabinet), roughness: 0.55, metalness: 0 }))
   const cabinetDepth = 0.14
@@ -231,7 +365,7 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   const back = new THREE.Mesh(keep(new THREE.BoxGeometry(cabinetSize, cabinetSize, 0.02)), woodMaterial)
   back.position.set(0, BULL_HEIGHT, -thickness - config.board.surroundDepth - 0.01)
   back.receiveShadow = true
-  root.add(back)
+  steelParts.add(back)
   const sideGeometry = keep(new THREE.BoxGeometry(0.025, cabinetSize, cabinetDepth))
   const capGeometry = keep(new THREE.BoxGeometry(cabinetSize + 0.05, 0.025, cabinetDepth))
   for (const sign of [-1, 1]) {
@@ -239,12 +373,12 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
     wall.position.set(sign * (cabinetSize / 2 + 0.0125), BULL_HEIGHT, back.position.z + cabinetDepth / 2)
     wall.castShadow = true
     wall.receiveShadow = true
-    root.add(wall)
+    steelParts.add(wall)
     const cap = new THREE.Mesh(capGeometry, woodMaterial)
     cap.position.set(0, BULL_HEIGHT + sign * (cabinetSize / 2 + 0.0125), back.position.z + cabinetDepth / 2)
     cap.castShadow = true
     cap.receiveShadow = true
-    root.add(cap)
+    steelParts.add(cap)
   }
   const chalk = canvasTexture(512, 1024, chalkboard, [1, 1])
   textures.push(chalk)
@@ -264,7 +398,7 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
     board2.position.set(sign * (cabinetSize / 4), 0, 0.012)
     board2.receiveShadow = true
     hinge.add(board2)
-    root.add(hinge)
+    steelParts.add(hinge)
   }
 
   const wallZ = back.position.z - 0.011
@@ -350,10 +484,36 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
     }
   })
 
-  return {
+  const showStyle = () => {
+    const soft = style === 'spider'
+    steelParts.visible = !soft
+    steelBoard.visible = !soft
+    spiderBoard.visible = soft
+    sideMaterial.color.set(soft ? '#141416' : '#2a2420')
+    faceMaterial.normalScale.set(soft ? 0.6 : 0.8, soft ? 0.6 : 0.8)
+  }
+  showStyle()
+
+  const pub: Pub = {
     root,
     facePlane: new THREE.Plane(new THREE.Vector3(0, 0, 1), 0),
     boardLamp,
+    style,
+    setStyle(next) {
+      if (next === style) return
+      style = next
+      pub.style = next
+      const old = maps
+      maps = createBoardTextures(options.textureSize, anisotropy, style)
+      faceMaterial.map = maps.color
+      faceMaterial.roughnessMap = maps.roughnessMetal
+      faceMaterial.metalnessMap = maps.roughnessMetal
+      faceMaterial.normalMap = maps.normal
+      faceMaterial.needsUpdate = true
+      old.dispose()
+      showStyle()
+    },
+    setDisplay,
     dispose() {
       environment?.dispose()
       maps.dispose()
@@ -365,4 +525,5 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
       root.removeFromParent()
     },
   }
+  return pub
 }
