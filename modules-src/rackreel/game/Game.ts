@@ -391,7 +391,7 @@ export class Game {
       const spot = this.cabin.parking(0)
       spot.position.y = this.terrain.heightAt(spot.position.x, spot.position.z)
       const quad = this.vehicles.add('ATV', instantiate(this.models.get('quad')!, null, this.ctx.scene, (m) => this.ctx.registerDynamic(m)), spot.position, spot.heading)
-      quad.seat.set(0, 0.95, -0.1)
+      quad.seat.set(0, 1.12, -0.32)
       quad.power = 1.15
       this.casters.push(...quad.rig.meshes)
     }
