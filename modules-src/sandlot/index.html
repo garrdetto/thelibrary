@@ -2242,6 +2242,8 @@ function drawBatterSprite(c, kid, sh, bx, bz, side, swingT, helmetColor, bunt, c
   if (!f) return false;
   { const g0 = projB(bx - dir * 0.1, 0, bz), g1 = projB(bx + dir * 1.2, 0, bz), r = Math.abs(g1.x - g0.x); const g = c.createRadialGradient(g0.x, g0.y, 2, g0.x, g0.y, r); g.addColorStop(0, 'rgba(0,0,0,0.38)'); g.addColorStop(1, 'rgba(0,0,0,0)'); c.fillStyle = g; c.beginPath(); c.ellipse(g0.x, g0.y, r, r * 0.3, 0, 0, 6.3); c.fill(); }
   const blit = (src, fr) => { const [x, y, w, h] = fr.rect; c.drawImage(src, x, y, w, h, fr.at[0], fr.at[1], w, h); };
+  const d0 = bz - SPRITE_CAM.z, d1 = bz - CAM.z, ks = (CAM.f / d1) / (SPRITE_CAM.f / d0);
+  c.save(); c.transform(ks, 0, 0, ks, W / 2 * (1 - ks), CAM.h0 - SPRITE_CAM.h0 * ks - (SPRITE_CAM.y - CAM.y) * CAM.f / d1);
   blit(sh.im, f);
   const hf = batterFrame(sh.k.frames, 'h', side, swingT, cy, bunt);
   if (hf) blit(tintedBatterHelmets(sh, kid, helmetColor || '#c0392b'), hf);
@@ -2249,6 +2251,7 @@ function drawBatterSprite(c, kid, sh, bx, bz, side, swingT, helmetColor, bunt, c
     const pf = batterFrame(sh.k.frames, 'a', side, swingT - 0.07, cy, false);
     if (pf && pf !== f) { c.save(); c.globalAlpha = 0.28; c.fillStyle = '#ffffff'; c.beginPath(); c.moveTo(f.tip[0], f.tip[1]); c.lineTo(pf.tip[0], pf.tip[1]); c.lineTo(f.mid[0], f.mid[1]); c.closePath(); c.fill(); c.restore(); }
   }
+  c.restore();
   return true;
 }
 function drawBatter3D(c, kid, bx, bz, side, swingT, t, helmetColor, bunt, contactY) {
@@ -2419,7 +2422,8 @@ function drawBatter3D(c, kid, bx, bz, side, swingT, t, helmetColor, bunt, contac
 /* =====================================================================
    10b. RENDERING — BATTING VIEW (catcher's point of view)
    ===================================================================== */
-const CAM = { z: -7, y: 3.6, f: 600, h0: 238 };
+const CAM = { z: -7.4, y: 3.3, f: 555, h0: 228 };
+const SPRITE_CAM = { z: -7, y: 3.6, f: 600, h0: 238 };
 function projB(x, y, z) { const sc = CAM.f / Math.max(0.6, z - CAM.z); return { x: W / 2 + x * sc, y: CAM.h0 - (y - CAM.y) * sc, s: sc }; }
 function unprojPlate(sx, sy) { const sc = CAM.f / (0 - CAM.z); return { x: (sx - W / 2) / sc, y: CAM.y - (sy - CAM.h0) / sc }; }
 const bgCache = {};

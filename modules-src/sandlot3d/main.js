@@ -1806,9 +1806,9 @@ const tmpP=new THREE.Vector3(),tmpL=new THREE.Vector3(),dbg={p:new THREE.Vector3
 function catcherCam(){const asp=VW/VH;
   // eye line just above a 6-ft batter's letters, looking out over the plate
   // set back and raised like a broadcast view from behind the plate: plate at the bottom, zone and pitcher filling the middle
-  if(asp<.8)return{p:new THREE.Vector3(0,4.2,14.5),l:new THREE.Vector3(0,3.4,-60),f:46};
-  if(asp<1.3)return{p:new THREE.Vector3(0,4,13),l:new THREE.Vector3(0,-.35,-60),f:36};
-  return{p:new THREE.Vector3(0,3.6,11.5),l:new THREE.Vector3(0,-3.9,-60),f:31}}
+  if(asp<.8)return{p:new THREE.Vector3(0,3.7,15.3),l:new THREE.Vector3(0,1,-60),f:51};
+  if(asp<1.3)return{p:new THREE.Vector3(0,3.5,13.8),l:new THREE.Vector3(0,-2.9,-60),f:40};
+  return{p:new THREE.Vector3(0,3.1,12.3),l:new THREE.Vector3(0,-6.4,-60),f:35}}
 function camTick(dt,now,ball){
   let k=3.2;
   if(camMode==='bat'){const c=catcherCam();tmpP.copy(c.p);tmpL.copy(c.l);k=4}
