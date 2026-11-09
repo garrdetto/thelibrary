@@ -19,12 +19,13 @@ import { spoilerTriangles } from '../shared/carClear';
 import { buildLiveryGeo, fitDecal, planAtlas, upsamplePlan, applyAtlas, wrapContext } from '../shared/liveryWrap';
 import { sanitizeScheme, schemeForPainters } from '../shared/PaintScheme';
 import { initPaintDesigner } from '../paint-designer.js';
+import { initTrackTest } from '../track-test.js';
 import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
 import { createCar } from '../next/sim/car';
 import { TM } from '../truck-model.js';
 import { PROTOCOL_VERSION, ROOM_PREFIX, helloAccepted, VERSION_MISMATCH, PHYSICS_MISMATCH } from '../next/net/protocol';
 import { place as simPlace, resetCar as simResetCar } from '../next/sim/physics';
-import { createWorld, standings as simStandings, simulate as simSimulate, raceControl, updateBoosts, beginRace as simBeginRace, buildGrid, formV } from '../next/sim/race';
+import { createWorld, standings as simStandings, simulate as simSimulate, raceControl, updateBoosts, beginRace as simBeginRace, buildGrid, formV, forgetFormV } from '../next/sim/race';
 
 // ===================== UTILS =====================
 const TAU=Math.PI*2, clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, mod=(a,n)=>((a%n)+n)%n, smooth=t=>t*t*(3-2*t);
@@ -1137,7 +1138,7 @@ async function showRecords(boxId,mode){
   box.querySelector('p').textContent=res.error||`Top 20 ${MODE_NAMES[mode]} laps \u00b7 ${TRACK.name}`+(race.mode===mode&&player&&player.bestLap?` \u00b7 your best this session ${fmtLap(player.bestLap*1000)}`:'');
 }
 function submitLap(ms){
-  if(ms<TRACK.minLap||WORLD.model!=='next')return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
+  if(ms<TRACK.minLap||WORLD.model!=='next'||TT.blocksLaps())return;const mode=race.mode;runLap++;const best=(REC.lists[mode]||[])[0];
   fetch('/api/racing',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'lap',run:RUN_ID,lap:runLap,milliseconds:Math.round(ms),mode,track:REC_TRACK})})
     .then(async r=>{
       if(r.status===401||(r.status===403&&!REC.me)){if(!REC.warned){REC.warned=true;toast('Sign in on the library to save your lap records');}return;}
@@ -1172,7 +1173,7 @@ function swapCarModel(c){
 }
 function clearCars(){cars.forEach(c=>c.dispose());cars.clear();player=null;}
 function beginRace(msg){
-  clearCars();if(menuCar)menuCar.m.root.visible=false;
+  clearCars();TT.refresh();if(menuCar)menuCar.m.root.visible=false;
   const attack=!!(msg.set&&msg.set.attack);if(attack)settings.night=!!msg.set.night;else{settings={...settings,...msg.set};delete settings.attack;}setNight(!!settings.night);
   simBeginRace(WORLD,msg.grid,{attack,laps:settings.laps,mode:attack?'time-attack':NET.online?'multiplayer':'race',myId:NET.myId,host:NET.host,make:(e,f)=>new Car(e.id,cleanLv(e.lv),f)});
   lastPhase=race.ph;resetMarks();fetchRecords(race.mode);player=cars.get(NET.myId)||null;
@@ -1499,7 +1500,7 @@ function renderLobby(){
 }
 function goLobby(){mode='lobby';$('sLaps').value=String(settings.laps);$('sAI').value=settings.ai;syncNightToggle();$('sDiff').value=settings.diff||'medium';renderLobby();showScreen('scrLobby');}
 function backToLobby(){if(NET.host){NET.racing=false;}clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;goLobby();}
-function leaveAll(){resetNet();clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;mode='menu';showScreen('scrMain');}
+function leaveAll(){resetNet();TT.refresh();clearCars();Object.assign(race,{ph:'idle',fo:[]});E.hud.classList.add('hidden');if(menuCar)menuCar.m.root.visible=true;mode='menu';showScreen('scrMain');}
 function togglePause(){
   if(mode==='race'){$('endAttackBtn').classList.toggle('hidden',race.ph!=='attack');mode='paused';$('pauseNote').textContent=NET.online?'The online race keeps running while this menu is open.':'';showScreen('scrPause');}
   else if(mode==='paused'){mode='race';showScreen(null);}
@@ -1646,6 +1647,7 @@ function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)
 fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
 if(REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});
+const TT=initTrackTest({cfg:CFG,trackId:TRACK_ID,trackName:TRACK.name,toast:m=>toast(m),onApply:()=>forgetFormV(WORLD),startTest:()=>goFlow('attack')});
 
 // ===================== INPUT =====================
 const keys={};
