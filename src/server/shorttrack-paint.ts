@@ -1,6 +1,7 @@
 import type { ClaudeTool } from './claude.js'
 import { NO_CODE_RULE } from './code-guard.js'
 import { SCHEME_LIMITS } from '../../modules-src/shorttrack/shared/PaintScheme'
+import type { FieldRef } from '../../modules-src/shorttrack/shared/FieldRefs'
 
 /** The paint designer always runs on Opus, whatever the studio model overrides say. */
 export const PAINT_MODEL = 'claude-opus-5-5'
@@ -105,3 +106,27 @@ Hood (seen from above, the stock car's hood and the truck's hood): {color, nose:
 Number colours: num {fill, outline, accent, slant}. Make the number readable against the body where it sits.
 
 CRAFT. Make it look like a real, well-designed short-track race car: a clear main colour, two or three supporting colours, strong shapes that read from a distance, pinstripes (thin streaks or bands in the accent colour) to edge big shapes, art that sweeps from the front toward the back, and one or two original sponsor logos unless the driver asks for none. Use 4–25 side shapes; more for detailed themes. Match the driver's request closely; when they name colours use them exactly. message: one short friendly sentence describing what you painted.`
+
+/** Research step for the AI field: a plain description of the real car's paint, never shown to drivers. */
+export const RESEARCH_SYSTEM = `You research famous race car paint schemes for a paint designer who will recreate their look. Search the web for photos and descriptions of the car you are given, then describe its paint scheme as a painter would need it, in plain sentences:
+- the base colour and every other colour, each with a best-guess hex value;
+- every stripe, band, swoosh, flame and panel: where it starts and ends along the car (front bumper, front wheel, door, rear wheel, rear bumper), how high it sits (rocker, mid-door, beltline), its shape, thickness and colour;
+- the hood, roof and rear deck: colours, stripes and what sits where;
+- the main sponsor logo's shape, colours and where it appears (hood, rear quarter panel, etc.), and any associate sponsor decals with their colours;
+- the race number: colours of fill and outline, slanted or upright, and where it sits.
+No code, no markup, no lists of links. Describe only what is painted on the car.`
+
+/** The designer's request for one AI field car: recreate the researched look with the parody sponsor. */
+export function fieldRequest(ref: FieldRef, research: string, notes: string) {
+  const sponsor = ref.sub ? `"${ref.sponsor}" with the small line "${ref.sub}"` : `"${ref.sponsor}"`
+  return `<request>
+Recreate, as faithfully as the shapes allow, the paint scheme of ${ref.ref}, for the opponent car #${ref.number} driven by "${ref.driver}".
+Match its colours, stripe and panel shapes, their positions along the car, the hood and roof art and the number colours as closely as you can. Use more shapes for accuracy (up to ${SCHEME_LIMITS.sideOps}).
+In every place the real car shows its main sponsor, paint the original parody sponsor ${sponsor} as your own logo, in the real logo's shape and colours. Small associate decals may be simple original shapes or parody words. Never paint a real brand name, and leave the race number itself off the art (it is added separately on the door).
+Name the scheme after the parody sponsor.${notes ? `
+Administrator's notes: ${notes.replace(/<\/?request>/gi, '')}` : ''}
+${research ? `
+What the real car looks like (research notes):
+${research.replace(/<\/?request>/gi, '')}` : ''}
+</request>`
+}

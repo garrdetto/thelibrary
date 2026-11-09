@@ -5,6 +5,8 @@ import { cleanNumber, type CarLook } from '../systems/Look'
 export interface HeatSettings {
   opponents: number
   level: string
+  /** Damage preset id: light, realistic or brutal. */
+  damage: string
 }
 
 export interface ResultRow {
@@ -82,7 +84,7 @@ function swatchGroup(container: HTMLElement, items: readonly { id: string; name:
 
 export function createGarage(initial: CarLook, handlers: GarageHandlers): GarageScreens {
   const look: CarLook = { ...initial }
-  const settings: HeatSettings = { opponents: config.heat.defaultOpponents, level: 'local' }
+  const settings: HeatSettings = { opponents: config.heat.defaultOpponents, level: 'local', damage: 'realistic' }
   const garage = byId<HTMLElement>('screen-garage')
   const results = byId<HTMLElement>('screen-results')
   const form = byId<HTMLFormElement>('garage-form')
@@ -115,6 +117,10 @@ export function createGarage(initial: CarLook, handlers: GarageHandlers): Garage
   }))
   refreshers.push(chipGroup(byId('level-chips'), config.ai, () => settings.level, (id) => {
     settings.level = id
+    for (const refresh of refreshers) refresh()
+  }))
+  refreshers.push(chipGroup(byId('damage-chips'), config.damagePresets, () => settings.damage, (id) => {
+    settings.damage = id
     for (const refresh of refreshers) refresh()
   }))
   numberInput.value = look.number
