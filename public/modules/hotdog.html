@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Corner Cart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="module-base.css">
+<style>
+  :root { --accent: #ff7a3d; --accent2: #f2c14a; }
+  main { --width: 920px; }
+  .panel.scene { padding: 10px; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 10px; }
+  .plan { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .plan section { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+  .plan h2 { margin: 0 0 10px; font: 700 22px Rajdhani, sans-serif; }
+  .plan h2 small { font: 600 12px Inter, sans-serif; color: var(--muted); margin-left: 6px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 14px; }
+  .row:last-child { border-bottom: 0; }
+  .row small { color: var(--muted); display: block; font-size: 12px; }
+  .row .btns { display: flex; gap: 6px; }
+  .row button { padding: 6px 10px; font-size: 12px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
+  .price { display: flex; align-items: center; gap: 10px; }
+  .price b { font: 700 30px Rajdhani, sans-serif; min-width: 84px; text-align: center; font-variant-numeric: tabular-nums; }
+  .forecast { font-size: 14px; line-height: 1.5; }
+  .forecast b { font-size: 16px; }
+  .ledger { font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .ledger b { color: var(--text); }
+  .go { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; align-items: center; flex-wrap: wrap; }
+  .go p { margin: 0 auto 0 0; color: var(--muted); font-size: 13px; }
+  .good { color: var(--good); } .bad { color: var(--bad); }
+  .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px Rajdhani, sans-serif; }
+  .overlay .ov-stats > div { display: block; text-align: center; }
+  .ov-stats span { display: block; font: 600 10px Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+  fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+  fieldset:disabled { opacity: .55; }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Corner Cart</h1><div class="stats"><div class="stat"><span>CASH</span><b id="cash">$0</b></div><div class="stat"><span>DAY</span><b id="day">1/30</b></div><div class="stat"><span>REPUTATION</span><b id="rep">—</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
+  <div class="bar"><p>Thirty days to turn $50 into as much as you can.</p><div><button id="restart">New season <kbd>R</kbd></button></div></div>
+  <section class="panel scene" id="panel">
+    <canvas id="cv" width="880" height="300" aria-hidden="true"></canvas>
+    <div class="overlay show" id="overlay"><h2 id="ovTitle">Corner Cart</h2><p id="ovText">You have a cart, a grill and $50. Each morning, check the forecast, stock sausages, buns and toppings, pick a corner and set your price. Then watch the day play out. Your score is the cash you have after day 30.</p><div class="ov-stats" id="ovStats"></div><div><button class="primary" id="ovBtn">Open for business</button></div></div>
+  </section>
+  <fieldset class="plan" id="plan">
+    <section>
+      <h2>Today <small id="dayName"></small></h2>
+      <div class="forecast" id="forecast"></div>
+      <h2 style="margin-top:12px">Corner</h2>
+      <div class="seg" id="spots" role="group" aria-label="Location"></div>
+      <p class="ledger" id="spotNote"></p>
+    </section>
+    <section>
+      <h2>Supplies <small>sausages spoil tonight; buns keep one day</small></h2>
+      <div id="stock"></div>
+    </section>
+    <section>
+      <h2>Price</h2>
+      <div class="price"><button id="down" aria-label="Lower price by 25 cents">−</button><b id="price">$3.00</b><button id="up" aria-label="Raise price by 25 cents">+</button></div>
+      <p class="ledger">Higher prices earn more per sale but turn away more customers. Toppings, a good reputation and a busy crowd let you charge more.</p>
+      <h2 style="margin-top:6px">Cart upgrades</h2>
+      <div id="upgrades"></div>
+    </section>
+  </fieldset>
+  <div class="go"><p id="yesterday"></p><button class="primary" id="openBtn">Open the cart</button><button id="skipBtn" style="display:none">Skip to closing <kbd>S</kbd></button></div>
+  <footer>Customers pass by all day. Each decides whether your price is worth it, based on the weather, the corner, your reputation and how many toppings you offer. You can serve only as many as your grill keeps up with, and you can't sell without both a sausage and a bun, so an empty bin or a long line costs sales and reputation. Rent is paid each day you open. The office district is quiet on weekends, the stadium is packed on match days (shown in the forecast) and the park is busiest when it's warm. Your final cash is saved to the leaderboard at the end of the season.</footer>
+</main>
+<script src="module-scores.js"></script>
+<script>
+'use strict';
+const DAYS = 30, W = 880, H = 300, DAY_SECONDS = 18;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), overlay = $('overlay');
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
+const WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const WEATHER = {
+  sunny: { label: 'Sunny', icon: '☀️', mult: 1, temp: [70, 82] },
+  hot: { label: 'Heat wave', icon: '🔥', mult: 1.25, temp: [90, 99] },
+  cloudy: { label: 'Cloudy', icon: '⛅', mult: 0.82, temp: [58, 70] },
+  rain: { label: 'Rain', icon: '🌧️', mult: 0.45, temp: [52, 64] },
+};
+const SPOTS = {
+  park: { label: 'City park', rent: 8, base: 70, premium: 0, note: 'Families and joggers. Busiest when it is warm.' },
+  office: { label: 'Office district', rent: 18, base: 105, premium: 0.5, note: 'Lunch rush on weekdays, nearly empty on weekends.' },
+  stadium: { label: 'Stadium gate', rent: 32, base: 45, premium: 1.75, note: 'Quiet most days, huge crowds on match days. Fans pay more.' },
+};
+const SUPPLIES = [
+  { id: 'sausage', label: 'Sausages', pack: 10, cost: 7, bulk: 50, bulkCost: 30 },
+  { id: 'bun', label: 'Buns', pack: 12, cost: 3, bulk: 48, bulkCost: 10 },
+  { id: 'mustard', label: 'Mustard', pack: 40, cost: 2, topping: true },
+  { id: 'ketchup', label: 'Ketchup', pack: 40, cost: 2, topping: true },
+  { id: 'onion', label: 'Grilled onions', pack: 30, cost: 4, topping: true },
+  { id: 'relish', label: 'Relish', pack: 30, cost: 3, topping: true },
+];
+const UPGRADES = [
+  { id: 'grill', label: 'Bigger grill', levels: [0, 60, 160], note: l => 'Serve up to ' + capacity(l) + ' a day (' + capacity(l - 1) + ' now)' },
+  { id: 'umbrella', label: 'Rain canopy', levels: [0, 45], note: () => 'Rainy days keep more customers' },
+  { id: 'sign', label: 'Neon sign', levels: [0, 70], note: () => '+15% passers-by notice the cart' },
+];
+let best = +(store.get('hotdog-best') || 0);
+let S = null, mode = 'menu', last = 0, people = [], coins = [], fast = false;
+
+function rand(a, b) { return a + Math.random() * (b - a); }
+function normal() { let u = 0, v = 0; while (!u) u = Math.random(); while (!v) v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(6.283 * v); }
+function money(n) { return (n < 0 ? '−$' : '$') + Math.abs(n).toFixed(2); }
+function capacity(level) { return [70, 130, 220][Math.max(0, level)] || 70; }
+function makeForecast(day) {
+  const r = Math.random();
+  const w = r < 0.42 ? 'sunny' : r < 0.55 ? 'hot' : r < 0.8 ? 'cloudy' : 'rain';
+  const temp = Math.round(rand(...WEATHER[w].temp));
+  return { weather: w, temp, match: (day % 7 === 5 || day % 7 === 2) && Math.random() < 0.85, festival: Math.random() < 0.08 };
+}
+function fresh() {
+  const stock = {}; for (const s of SUPPLIES) stock[s.id] = 0;
+  return { day: 1, cash: 50, rep: 0.5, price: 3, spot: 'park', stock, staleBuns: 0, up: { grill: 0, umbrella: 0, sign: 0 }, forecast: makeForecast(1), history: [], totalSold: 0, totalRevenue: 0 };
+}
+function toppings() { return SUPPLIES.filter(s => s.topping && S.stock[s.id] > 0).length; }
+function hud() {
+  $('cash').textContent = '$' + Math.floor(mode === 'day' ? S.liveCash : S.cash).toLocaleString();
+  $('day').textContent = Math.min(S.day, DAYS) + '/' + DAYS;
+  $('rep').textContent = '★'.repeat(Math.max(1, Math.round(S.rep * 5))) + '☆'.repeat(5 - Math.max(1, Math.round(S.rep * 5)));
+  $('best').textContent = best ? '$' + best.toLocaleString() : '—';
+}
+function renderPlan() {
+  const f = S.forecast, wd = WEEK[(S.day - 1) % 7], W0 = WEATHER[f.weather];
+  $('dayName').textContent = wd + ', day ' + S.day;
+  $('forecast').innerHTML = '<b>' + W0.icon + ' ' + W0.label + ', ' + f.temp + '°F</b><br>' + (f.match ? '⚽ Match day at the stadium.' : 'No match at the stadium today.') + (f.festival ? '<br>🎪 Street festival in the park!' : '');
+  const spots = $('spots'); spots.innerHTML = '';
+  for (const [id, sp] of Object.entries(SPOTS)) {
+    const b = document.createElement('button'); b.textContent = sp.label + ' · $' + sp.rent; b.setAttribute('aria-pressed', String(S.spot === id));
+    b.addEventListener('click', () => { S.spot = id; renderPlan(); }); spots.appendChild(b);
+  }
+  $('spotNote').textContent = SPOTS[S.spot].note + ' Rent $' + SPOTS[S.spot].rent + ' a day.';
+  const stock = $('stock'); stock.innerHTML = '';
+  for (const s of SUPPLIES) {
+    const row = document.createElement('div'); row.className = 'row';
+    const have = s.id === 'bun' ? (S.stock.bun + S.staleBuns) + (S.staleBuns ? ' (' + S.staleBuns + ' day-old)' : '') : S.stock[s.id];
+    row.innerHTML = '<div>' + s.label + ': <b>' + have + '</b><small>' + s.pack + (s.topping ? ' servings' : '') + ' for $' + s.cost + (s.bulk ? ' · ' + s.bulk + ' for $' + s.bulkCost : '') + '</small></div><div class="btns"></div>';
+    const btns = row.querySelector('.btns');
+    const add = (n, cost) => { const b = document.createElement('button'); b.textContent = '+' + n; b.disabled = S.cash < cost; b.setAttribute('aria-label', 'Buy ' + n + ' ' + s.label.toLowerCase() + ' for $' + cost); b.addEventListener('click', () => { if (S.cash < cost) return; S.cash -= cost; S.stock[s.id] += n; hud(); renderPlan(); }); btns.appendChild(b); };
+    add(s.pack, s.cost); if (s.bulk) add(s.bulk, s.bulkCost);
+    stock.appendChild(row);
+  }
+  $('price').textContent = money(S.price);
+  const ups = $('upgrades'); ups.innerHTML = '';
+  for (const u of UPGRADES) {
+    const lvl = S.up[u.id], next = u.levels[lvl + 1];
+    const row = document.createElement('div'); row.className = 'row';
+    row.innerHTML = '<div>' + u.label + (lvl ? ' <b class="good">✓' + (u.levels.length > 2 ? ' ' + lvl : '') + '</b>' : '') + '<small>' + (next !== undefined ? u.note(lvl + 1) : 'Fully upgraded') + '</small></div>';
+    if (next !== undefined) { const b = document.createElement('button'); b.textContent = '$' + next; b.disabled = S.cash < next; b.addEventListener('click', () => { if (S.cash < next) return; S.cash -= next; S.up[u.id]++; hud(); renderPlan(); }); row.appendChild(b); }
+    ups.appendChild(row);
+  }
+  const top = toppings(), stockable = Math.min(S.stock.sausage, S.stock.bun + S.staleBuns);
+  $('openBtn').textContent = 'Open the cart (rent $' + SPOTS[S.spot].rent + ')';
+  $('openBtn').disabled = mode !== 'plan';
+  $('openBtn').title = stockable ? '' : 'You have nothing to sell yet';
+  hud();
+  return top;
+}
+function plan() { mode = 'plan'; $('plan').disabled = false; $('skipBtn').style.display = 'none'; $('openBtn').style.display = ''; renderPlan(); }
+
+function simulateDay() {
+  const f = S.forecast, sp = SPOTS[S.spot], wd = (S.day - 1) % 7, weekend = wd >= 5;
+  let crowd = sp.base;
+  if (S.spot === 'office' && weekend) crowd *= 0.35;
+  if (S.spot === 'stadium' && f.match) crowd *= 4.5;
+  if (S.spot === 'park') { crowd *= f.temp >= 75 ? 1.2 : f.temp < 62 ? 0.75 : 1; if (f.festival) crowd *= 2.4; if (weekend) crowd *= 1.25; }
+  let weatherMult = WEATHER[f.weather].mult; if (f.weather === 'rain' && S.up.umbrella) weatherMult = 0.75;
+  crowd *= weatherMult * (0.55 + S.rep * 0.9) * (S.up.sign ? 1.15 : 1);
+  const passers = Math.max(0, Math.round(crowd * rand(0.85, 1.15)));
+  const top = toppings(), cap = capacity(S.up.grill);
+  const meanWill = 2.6 + sp.premium + top * 0.35 + (S.rep - 0.5) * 1.6 + (f.weather === 'hot' ? 0.25 : 0) + (f.match && S.spot === 'stadium' ? 0.6 : 0);
+  let sold = 0, priced = 0, noStock = 0, tooBusy = 0;
+  const events = [];
+  let buns = S.stock.bun + S.staleBuns, staleFirst = S.staleBuns;
+  for (let i = 0; i < passers; i++) {
+    const will = meanWill + normal() * 0.9;
+    if (will < S.price) { priced++; events.push('pass'); continue; }
+    if (S.stock.sausage <= 0 || buns <= 0) { noStock++; events.push('empty'); continue; }
+    if (sold >= cap) { tooBusy++; events.push('busy'); continue; }
+    sold++; S.stock.sausage--; buns--; if (staleFirst > 0) staleFirst--;
+    for (const s of SUPPLIES) if (s.topping && S.stock[s.id] > 0) S.stock[s.id]--;
+    events.push('buy');
+  }
+  const revenue = sold * S.price, rent = sp.rent;
+  const spoiled = S.stock.sausage, freshLeft = buns - staleFirst;
+  S.cash += revenue - rent; S.totalSold += sold; S.totalRevenue += revenue;
+  S.stock.sausage = 0; S.staleBuns = Math.max(0, freshLeft); S.stock.bun = 0;
+  const wanted = sold + noStock + tooBusy;
+  const fairness = Math.max(-1, Math.min(1, (meanWill - S.price) / 1.5));
+  const service = wanted ? sold / wanted : 1;
+  const target = Math.max(0.05, Math.min(1, 0.35 + top * 0.08 + fairness * 0.2 + (service - 0.7) * 0.5));
+  const prevRep = S.rep;
+  S.rep += (target - S.rep) * (wanted ? 0.35 : 0.08);
+  for (let i = events.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [events[i], events[j]] = [events[j], events[i]]; }
+  return { passers, sold, priced, noStock, tooBusy, revenue, rent, spoiled, events, repDelta: S.rep - prevRep };
+}
+
+let today = null, dayT = 0, eventIdx = 0, spawnAcc = 0;
+function openCart() {
+  if (mode !== 'plan') return;
+  mode = 'day'; $('plan').disabled = true; $('openBtn').style.display = 'none'; $('skipBtn').style.display = '';
+  today = simulateDay(); dayT = 0; eventIdx = 0; spawnAcc = 0; people = []; coins = [];
+  S.liveCash = S.cash - today.revenue; S.liveSold = 0; hud();
+  $('skipBtn').focus();
+}
+function closeDay() {
+  const t = today;
+  S.history.push(t);
+  const net = t.revenue - t.rent;
+  let line = 'Day ' + S.day + ': sold ' + t.sold + ' of ' + t.passers + ' passers-by for ' + money(t.revenue) + ', rent ' + money(t.rent) + ', net <b class="' + (net >= 0 ? 'good' : 'bad') + '">' + money(net) + '</b>.';
+  const notes = [];
+  if (t.priced) notes.push(t.priced + ' thought it cost too much');
+  if (t.noStock) notes.push(t.noStock + ' left when you ran out');
+  if (t.tooBusy) notes.push(t.tooBusy + ' gave up on the line');
+  if (t.spoiled) notes.push(t.spoiled + ' sausages spoiled');
+  if (notes.length) line += ' ' + notes.join(', ') + '.';
+  line += t.repDelta > 0.01 ? ' Reputation is rising.' : t.repDelta < -0.01 ? ' Reputation slipped.' : '';
+  $('yesterday').innerHTML = line;
+  S.day++;
+  if (S.day > DAYS) { over(); return; }
+  S.forecast = makeForecast(S.day);
+  plan();
+}
+function over() {
+  mode = 'over';
+  const score = Math.max(0, Math.floor(S.cash));
+  if (score > best) { best = score; store.set('hotdog-best', String(best)); }
+  if (window.tlScores && score > 0) tlScores.submit('hotdog', score);
+  $('ovTitle').textContent = 'Season over';
+  $('ovText').textContent = 'You sold ' + S.totalSold.toLocaleString() + ' hot dogs for ' + money(S.totalRevenue) + ' over thirty days.';
+  $('ovStats').innerHTML = '<div><span>FINAL CASH</span>$' + score.toLocaleString() + '</div><div><span>BEST</span>$' + best.toLocaleString() + '</div>';
+  $('ovBtn').textContent = 'New season'; overlay.classList.add('show'); $('plan').disabled = true; $('openBtn').style.display = 'none'; $('skipBtn').style.display = 'none'; hud(); $('ovBtn').focus();
+}
+function start() { S = fresh(); overlay.classList.remove('show'); $('yesterday').textContent = 'Tip: you start with no stock. Buy sausages and buns before opening.'; plan(); }
+
+function update(dt) {
+  if (mode === 'day') {
+    dayT += dt;
+    const ev = today.events, share = ev.length / DAY_SECONDS;
+    spawnAcc += dt * share;
+    while (spawnAcc >= 1 && eventIdx < ev.length) {
+      spawnAcc -= 1; const e = ev[eventIdx++], dir = Math.random() < 0.5 ? 1 : -1;
+      people.push({ x: dir > 0 ? -20 : W + 20, dir, kind: e, speed: rand(70, 110), done: false, wait: 0, shirt: 'hsl(' + ((Math.random() * 360) | 0) + ',60%,55%)', step: Math.random() * 6, lane: rand(0, 20) });
+    }
+    if (dayT >= DAY_SECONDS && eventIdx >= ev.length && !people.some(p => !p.done && p.kind === 'buy')) finishDay();
+  }
+  const cartX = W / 2;
+  for (const p of people) {
+    p.step += dt * p.speed * 0.12;
+    const stops = !p.done && p.kind !== 'pass';
+    if (stops && p.dir * (p.x - (cartX - p.dir * 34)) >= 0) {
+      p.x = cartX - p.dir * 34;
+      p.wait += dt; if (p.wait > (p.kind === 'buy' ? 0.35 : 0.25)) { p.done = true; p.speed = Math.max(p.speed, 120); if (p.kind === 'buy') { S.liveSold++; S.liveCash += S.price; coins.push({ x: cartX + 20, y: 140, t: 1 }); hud(); } }
+      continue;
+    }
+    if (stops && people.some(o => o !== p && o.dir === p.dir && !o.done && o.kind !== 'pass' && p.dir * (o.x - p.x) > 0 && p.dir * (o.x - p.x) < 16)) continue;
+    p.x += p.dir * p.speed * dt;
+  }
+  people = people.filter(p => p.x > -40 && p.x < W + 40);
+  for (const c of coins) { c.y -= 40 * dt; c.t -= dt; }
+  coins = coins.filter(c => c.t > 0);
+}
+function finishDay() {
+  fast = false; people = []; mode = 'closing';
+  hud(); closeDay();
+}
+
+function draw(now) {
+  const f = S ? S.forecast : { weather: 'sunny', temp: 75 }, t = now / 1000;
+  const skyTop = { sunny: '#5aa7e6', hot: '#f2a55b', cloudy: '#8ea4b8', rain: '#5d6f82' }[f.weather];
+  const sky = ctx.createLinearGradient(0, 0, 0, 210); sky.addColorStop(0, skyTop); sky.addColorStop(1, '#e7f1f7');
+  ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+  if (f.weather === 'sunny' || f.weather === 'hot') { ctx.fillStyle = f.weather === 'hot' ? '#ffd166' : '#fff2b0'; ctx.beginPath(); ctx.arc(760, 60, 34, 0, 6.283); ctx.fill(); }
+  const spot = S ? S.spot : 'park';
+  if (spot === 'office') { for (let i = 0; i < 9; i++) { const bh = 90 + (i * 53) % 90; ctx.fillStyle = i % 2 ? '#5b6b80' : '#6f8197'; ctx.fillRect(i * 100 - 10, 210 - bh, 90, bh); ctx.fillStyle = 'rgba(255,240,180,.55)'; for (let y = 220 - bh; y < 200; y += 18) for (let x = i * 100; x < i * 100 + 70; x += 16) ctx.fillRect(x, y, 8, 10); } }
+  else if (spot === 'stadium') { ctx.fillStyle = '#7c8796'; ctx.beginPath(); ctx.moveTo(60, 210); ctx.quadraticCurveTo(440, 40, 820, 210); ctx.fill(); ctx.fillStyle = '#9aa6b4'; for (let i = 0; i < 10; i++) ctx.fillRect(120 + i * 66, 150 - Math.sin(i / 9 * Math.PI) * 60, 6, 70); ctx.fillStyle = '#fff'; ctx.fillRect(140, 70, 4, 60); ctx.fillRect(736, 70, 4, 60); }
+  else { ctx.fillStyle = '#86c06a'; ctx.beginPath(); ctx.moveTo(0, 210); ctx.quadraticCurveTo(300, 120, 600, 200); ctx.quadraticCurveTo(760, 150, W, 200); ctx.lineTo(W, 210); ctx.fill(); for (let i = 0; i < 7; i++) { const x = 40 + i * 135; ctx.fillStyle = '#6b4a2b'; ctx.fillRect(x, 160, 8, 50); ctx.fillStyle = '#4f9a48'; ctx.beginPath(); ctx.arc(x + 4, 150, 30, 0, 6.283); ctx.fill(); } }
+  ctx.fillStyle = '#b9b2a6'; ctx.fillRect(0, 210, W, 50); ctx.fillStyle = '#4b4f57'; ctx.fillRect(0, 260, W, 40);
+  ctx.fillStyle = '#e8d36a'; for (let x = 0; x < W; x += 60) ctx.fillRect(x, 279, 30, 3);
+  const cx = W / 2;
+  ctx.fillStyle = '#2c2c34'; ctx.beginPath(); ctx.arc(cx - 40, 248, 12, 0, 6.283); ctx.arc(cx + 40, 248, 12, 0, 6.283); ctx.fill();
+  ctx.fillStyle = '#d6dbe2'; ctx.fillRect(cx - 70, 180, 140, 62); ctx.fillStyle = '#e04b3a'; ctx.fillRect(cx - 70, 200, 140, 14);
+  ctx.fillStyle = '#fff'; ctx.font = '700 13px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText('HOT DOGS ' + (S ? money(S.price) : ''), cx, 211);
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(cx - 60, 180); ctx.lineTo(cx - 60, 110); ctx.moveTo(cx + 60, 180); ctx.lineTo(cx + 60, 110); ctx.stroke();
+  const stripes = 8; for (let i = 0; i < stripes; i++) { ctx.fillStyle = i % 2 ? '#fff' : (S && S.up.umbrella ? '#2f7fd6' : '#f2a541'); ctx.beginPath(); ctx.moveTo(cx - 90 + i * 180 / stripes, 112); ctx.lineTo(cx - 90 + (i + 1) * 180 / stripes, 112); ctx.lineTo(cx, 80); ctx.fill(); }
+  if (S && S.up.sign) { ctx.fillStyle = `rgba(255,${120 + Math.sin(t * 6) * 60},180,.95)`; ctx.font = '700 16px Rajdhani'; ctx.fillText('★ OPEN ★', cx, 100); }
+  if (mode === 'day' || mode === 'closing') { ctx.fillStyle = 'rgba(200,200,200,.6)'; for (let i = 0; i < 3; i++) { const y = 175 - ((t * 30 + i * 12) % 36); ctx.beginPath(); ctx.arc(cx - 30 + i * 18 + Math.sin(t * 3 + i) * 4, y, 5, 0, 6.283); ctx.fill(); } }
+  for (const p of people) {
+    const y = 236 + p.lane * 0.4;
+    ctx.save(); ctx.translate(p.x, y);
+    ctx.strokeStyle = '#2a2230'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+    const moving = !(Math.abs(p.x - cx) < 40 && !p.done && p.kind !== 'pass'), sw = moving ? Math.sin(p.step) * 0.5 : 0;
+    ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(Math.sin(sw) * 9, 0); ctx.moveTo(0, -16); ctx.lineTo(-Math.sin(sw) * 9, 0); ctx.stroke();
+    ctx.fillStyle = p.shirt; ctx.fillRect(-5, -34, 10, 19);
+    ctx.fillStyle = '#f0c9a0'; ctx.beginPath(); ctx.arc(0, -40, 6, 0, 6.283); ctx.fill();
+    if (p.done && p.kind === 'buy') { ctx.fillStyle = '#c8783a'; ctx.fillRect(p.dir * 6 - 6, -28, 12, 4); ctx.fillStyle = '#f2d06b'; ctx.fillRect(p.dir * 6 - 7, -26, 14, 3); }
+    if (p.done && p.kind !== 'buy') { ctx.font = '14px Inter'; ctx.fillText(p.kind === 'empty' ? '😞' : '⌛', 0, -52); }
+    if (p.kind === 'pass' && Math.abs(p.x - cx) < 60) { ctx.font = '12px Inter'; ctx.fillText('$?!', 0, -52); }
+    ctx.restore();
+  }
+  for (const c of coins) { ctx.globalAlpha = c.t; ctx.fillStyle = '#2fb36a'; ctx.font = '700 16px Rajdhani'; ctx.fillText('+' + money(S.price), c.x, c.y); }
+  ctx.globalAlpha = 1;
+  if (f.weather === 'rain') { ctx.strokeStyle = 'rgba(200,220,255,.5)'; ctx.lineWidth = 1; for (let i = 0; i < 80; i++) { const x = (i * 97 + t * 260) % W, y = (i * 53 + t * 520) % H; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 4, y + 12); ctx.stroke(); } }
+  if (S && mode === 'day') {
+    ctx.fillStyle = 'rgba(10,15,30,.65)'; ctx.fillRect(12, 12, 210, 54); ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.font = '600 13px Inter';
+    const hour = 10 + Math.min(1, dayT / DAY_SECONDS) * 9;
+    ctx.fillText('Clock ' + Math.floor(hour) + ':' + String(Math.floor((hour % 1) * 60)).padStart(2, '0') + '   Sold ' + S.liveSold, 22, 33);
+    ctx.fillText(WEATHER[S.forecast.weather].icon + ' ' + SPOTS[S.spot].label, 22, 54);
+  }
+}
+
+function frame(now) { const dt = Math.min(0.05, (now - last) / 1000 || 0); last = now; if (S && mode === 'day') update(dt * (fast ? 8 : 1)); else update(dt); draw(now); requestAnimationFrame(frame); }
+$('openBtn').addEventListener('click', openCart);
+$('skipBtn').addEventListener('click', () => { if (mode === 'day') fast = true; });
+$('down').addEventListener('click', () => { S.price = Math.max(0.5, S.price - 0.25); renderPlan(); });
+$('up').addEventListener('click', () => { S.price = Math.min(15, S.price + 0.25); renderPlan(); });
+$('ovBtn').addEventListener('click', start); $('restart').addEventListener('click', start);
+window.addEventListener('keydown', e => {
+  if (e.target && (e.target.tagName === 'INPUT')) return;
+  const k = e.key.toLowerCase();
+  if (k === 'r' && mode !== 'day') start();
+  if (k === 's' && mode === 'day') fast = true;
+});
+S = fresh(); renderPlan(); $('plan').disabled = true; $('openBtn').disabled = true; mode = 'menu'; hud();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

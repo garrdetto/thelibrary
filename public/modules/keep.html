@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hold the Keep</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="module-base.css">
+<style>
+  :root { --accent: #f4b63a; --accent2: #e8553a; }
+  main { --width: 900px; }
+  .panel.play { padding: 10px; outline: none; }
+  .panel.play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  canvas { display: block; width: 100%; height: auto; touch-action: none; border-radius: 10px; cursor: grab; }
+  canvas.grabbing { cursor: grabbing; }
+  .shop { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; width: min(500px, 100%); }
+  .overlay .shop { display: grid; }
+  .shop button { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; padding: 12px; background: rgba(255,255,255,.07); color: #fff; border-color: rgba(255,255,255,.18); }
+  .shop button b { font: 700 18px Rajdhani, sans-serif; }
+  .shop button small { color: #c8d2ea; font-size: 12px; line-height: 1.35; }
+  .shop button em { font-style: normal; color: #ffd36b; font-weight: 800; }
+  .ov-stats { display: flex; gap: 18px; justify-content: center; font: 700 22px Rajdhani, sans-serif; }
+  .overlay .ov-stats > div { display: block; text-align: center; }
+  .ov-stats span { display: block; font: 600 10px Inter, sans-serif; letter-spacing: 2px; color: #9fb0d3; }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Hold the Keep</h1><div class="stats"><div class="stat"><span>SCORE</span><b id="score">0</b></div><div class="stat"><span>WAVE</span><b id="wave">1</b></div><div class="stat"><span>GOLD</span><b id="gold">0</b></div><div class="stat"><span>BEST</span><b id="best">—</b></div></div></header>
+  <div class="bar"><p>Grab attackers, lift them high and let go. Gravity does the rest.</p><div><button id="pauseBtn">Pause <kbd>P</kbd></button><button id="restart">New siege <kbd>R</kbd></button></div></div>
+  <section class="panel play" id="panel" tabindex="0" role="application" aria-label="Keep wall. Press on an attacker, drag and release to throw.">
+    <canvas id="cv" width="880" height="480" aria-hidden="true"></canvas>
+    <div class="overlay show" id="overlay"><h2 id="ovTitle">Hold the Keep</h2><p id="ovText">Raiders march on your keep in waves. Pick them up, fling them into the sky or into each other, and keep the wall standing. Spend gold between waves on repairs and defenses.</p><div class="ov-stats" id="ovStats"></div><div class="shop" id="shop"></div><div><button class="primary" id="ovBtn">Raise the drawbridge</button></div></div>
+  </section>
+  <footer>Press on an attacker, drag and release: the faster you swing, the harder they fly. A fall from high enough is a knockout, and a thrown raider that hits another one knocks both down, so line up bowling strikes. Raiders: <b>footmen</b> hack at the wall, <b>runners</b> are quick, <b>climbers</b> scale the wall for heavy damage, <b>brutes</b> need a long drop, <b>archers</b> shoot from range, and <b>sappers</b> explode on landing, so throw them into crowds. Between waves, buy repairs, a thicker wall, a moat that slows the march and archers who shoot for you. Your score is saved to the leaderboard as you play, so a siege cut short still counts.</footer>
+</main>
+<script src="module-scores.js"></script>
+<script>
+'use strict';
+const W = 880, H = 480, GROUND = 430, WALL_X = 740, WALL_TOP = 210, G = 1500;
+const $ = id => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), panel = $('panel'), overlay = $('overlay');
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TYPES = {
+  footman: { speed: 34, hp: 1, dmg: 3, color: '#d9534f', gold: 6, pts: 20, scale: 1 },
+  runner: { speed: 78, hp: 1, dmg: 2.5, color: '#f0ad4e', gold: 8, pts: 30, scale: 0.9 },
+  climber: { speed: 40, hp: 1, dmg: 10, color: '#5bc0de', gold: 10, pts: 40, scale: 0.95 },
+  brute: { speed: 22, hp: 2.2, dmg: 7, color: '#8e5bd6', gold: 18, pts: 70, scale: 1.35 },
+  archer: { speed: 36, hp: 1, dmg: 4, color: '#3fbf73', gold: 12, pts: 45, scale: 1 },
+  sapper: { speed: 44, hp: 1, dmg: 25, color: '#555c6b', gold: 14, pts: 50, scale: 1 },
+};
+let best = +(store.get('keep-best') || 0);
+let S = null, mode = 'menu', last = 0, held = null, dpr = 1;
+const ptr = { x: 0, y: 0, hist: [] };
+
+function fit() { dpr = Math.min(2, window.devicePixelRatio || 1); cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+fit(); window.addEventListener('resize', fit);
+function rand(a, b) { return a + Math.random() * (b - a); }
+function fresh() {
+  return { score: 0, wave: 0, gold: 0, hp: 100, maxHp: 100, moat: 0, archers: 0, archerT: 0, men: [], arrows: [], fx: [], queue: [], spawnT: 0, kills: 0, t: 0, shake: 0, msg: '', msgT: 0, combo: 0, comboT: 0, waveKills: 0 };
+}
+function waveList(n) {
+  const list = [], total = 6 + n * 3;
+  for (let i = 0; i < total; i++) {
+    const r = Math.random();
+    let type = 'footman';
+    if (n >= 2 && r < 0.22) type = 'runner';
+    if (n >= 3 && r > 0.82) type = 'climber';
+    if (n >= 4 && r > 0.9) type = 'brute';
+    if (n >= 5 && r > 0.6 && r < 0.7) type = 'archer';
+    if (n >= 6 && r > 0.7 && r < 0.78) type = 'sapper';
+    list.push(type);
+  }
+  return list;
+}
+function startWave() {
+  S.wave++; S.queue = waveList(S.wave); S.spawnT = 0.5; S.waveKills = 0;
+  mode = 'play'; overlay.classList.remove('show'); panel.focus();
+  flash('Wave ' + S.wave); hud();
+}
+function spawn(type) {
+  const T = TYPES[type];
+  S.men.push({ type, x: -20, y: GROUND, vx: 0, vy: 0, rot: 0, spin: 0, hp: T.hp, state: 'walk', step: Math.random() * 6, atkT: 0, climbY: 0, stop: type === 'archer' ? rand(300, 520) : WALL_X - 12, shotT: rand(1, 2.5), dead: 0, hitBy: null });
+}
+function flash(text) { S.msg = text; S.msgT = 1.6; }
+function hud() {
+  $('score').textContent = S.score.toLocaleString(); $('wave').textContent = S.wave; $('gold').textContent = S.gold;
+  $('best').textContent = best ? best.toLocaleString() : '—';
+}
+function burst(x, y, color, n, speed) {
+  const c = reduce ? Math.ceil(n / 3) : n;
+  for (let i = 0; i < c; i++) { const a = Math.random() * 6.283, v = rand(40, speed || 200); S.fx.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, life: rand(0.4, 0.9), max: 0.9, color, r: rand(1.5, 3.5), g: true }); }
+}
+function text(x, y, t, color) { S.fx.push({ x, y, vx: 0, vy: -45, life: 1, max: 1, text: t, color: color || '#fff6c4' }); }
+function kill(m, how) {
+  if (m.state === 'dead') return;
+  const T = TYPES[m.type];
+  m.state = 'dead'; m.dead = 3; S.kills++; S.waveKills++;
+  S.combo = S.comboT > 0 ? S.combo + 1 : 1; S.comboT = 1.2;
+  const pts = T.pts * S.wave * Math.min(5, S.combo);
+  S.score += pts; S.gold += T.gold;
+  text(m.x, m.y - 40, '+' + pts + (S.combo > 1 ? ' x' + Math.min(5, S.combo) : ''));
+  burst(m.x, m.y - 10, T.color, 14);
+  if (m.type === 'sapper') explode(m.x, m.y);
+  if (window.tlScores) tlScores.progress('keep', S.score);
+  hud();
+}
+function explode(x, y) {
+  S.shake = 12; burst(x, y, '#ffb03a', 36, 320); burst(x, y, '#444', 20, 200);
+  for (const o of S.men) {
+    if (o.state === 'dead' || o === held) continue;
+    const d = Math.hypot(o.x - x, o.y - y);
+    if (d < 90) { const k = 1 - d / 90; o.state = 'fly'; o.vx = (o.x - x) / (d || 1) * 500 * k; o.vy = -600 * k - 200; o.spin = rand(-14, 14); o.hp -= 1.2; }
+  }
+  if (x > WALL_X - 60) damageWall(18);
+}
+function damageWall(n) {
+  S.hp = Math.max(0, S.hp - n);
+  if (S.hp <= 0 && mode === 'play') over();
+}
+function land(m, impact) {
+  const T = TYPES[m.type];
+  const need = 760;
+  m.hp -= (impact / need) * (1 / Math.sqrt(T.scale));
+  if (m.type === 'sapper' && impact > 300) { m.hp = 0; }
+  burst(m.x, GROUND, '#a58a5d', Math.min(14, impact / 70), 120);
+  if (m.hp <= 0) kill(m, 'drop');
+  else { m.state = 'stun'; m.stunT = 1.2; m.rot = 0; m.spin = 0; text(m.x, m.y - 40, 'ouch', '#c8d2ea'); }
+}
+function over() {
+  mode = 'over';
+  if (S.score > best) { best = S.score; store.set('keep-best', String(best)); }
+  if (window.tlScores) tlScores.submit('keep', S.score);
+  $('ovTitle').textContent = 'The keep has fallen';
+  $('ovText').textContent = 'You held out to wave ' + S.wave + ' and knocked out ' + S.kills + ' raiders.';
+  $('ovStats').innerHTML = '<div><span>SCORE</span>' + S.score.toLocaleString() + '</div><div><span>BEST</span>' + best.toLocaleString() + '</div>';
+  $('shop').innerHTML = ''; $('ovBtn').textContent = 'New siege';
+  overlay.classList.add('show'); $('ovBtn').focus(); hud();
+}
+const SHOP = [
+  { id: 'repair', name: 'Repair', note: () => 'Restore 30 wall strength', cost: () => 20 + S.wave * 4, ok: () => S.hp < S.maxHp, buy: () => { S.hp = Math.min(S.maxHp, S.hp + 30); } },
+  { id: 'wall', name: 'Thicker wall', note: () => '+40 maximum strength (' + S.maxHp + ' now)', cost: () => 60 + (S.maxHp - 100) * 2, ok: () => S.maxHp < 400, buy: () => { S.maxHp += 40; S.hp += 40; } },
+  { id: 'moat', name: S => 'Moat', note: () => S.moat ? 'Deepen: raiders slow ' + (S.moat * 15 + 15) + '% (' + (S.moat * 15) + '% now)' : 'Raiders slow 15% near the wall', cost: () => 80 + S.moat * 90, ok: () => S.moat < 3, buy: () => { S.moat++; } },
+  { id: 'archer', name: () => 'Archer', note: () => 'Shoots a raider every ' + (4 / (S.archers + 1)).toFixed(1) + ' s (' + S.archers + ' hired)', cost: () => 100 + S.archers * 110, ok: () => S.archers < 5, buy: () => { S.archers++; } },
+];
+function openShop() {
+  mode = 'shop';
+  const bonus = 25 + S.wave * 10 + Math.round(S.hp / S.maxHp * 40);
+  S.gold += bonus; S.score += bonus * 5;
+  if (window.tlScores) tlScores.progress('keep', S.score);
+  $('ovTitle').textContent = 'Wave ' + S.wave + ' held';
+  $('ovText').textContent = 'Wall bonus: ' + bonus + ' gold. Wall strength ' + Math.round(S.hp) + ' / ' + S.maxHp + '.';
+  $('ovStats').innerHTML = '';
+  renderShop();
+  $('ovBtn').textContent = 'Start wave ' + (S.wave + 1);
+  overlay.classList.add('show'); $('ovBtn').focus(); hud();
+}
+function renderShop() {
+  const box = $('shop'); box.innerHTML = '';
+  for (const item of SHOP) {
+    const b = document.createElement('button'), cost = item.cost();
+    const name = typeof item.name === 'function' ? item.name(S) : item.name;
+    b.innerHTML = '<b>' + name + '</b><small>' + item.note() + '</small><em>' + cost + ' gold</em>';
+    b.disabled = !item.ok() || S.gold < cost;
+    b.addEventListener('click', () => { if (S.gold < item.cost() || !item.ok()) return; S.gold -= item.cost(); item.buy(); hud(); renderShop(); $('ovText').textContent = 'Wall strength ' + Math.round(S.hp) + ' / ' + S.maxHp + '. Gold left: ' + S.gold + '.'; });
+    box.appendChild(b);
+  }
+}
+function start() { S = fresh(); held = null; $('shop').innerHTML = ''; startWave(); }
+
+function update(dt) {
+  S.t += dt;
+  S.comboT -= dt; S.shake = Math.max(0, S.shake - dt * 30); S.msgT = Math.max(0, S.msgT - dt);
+  if (mode === 'play') {
+    S.spawnT -= dt;
+    if (S.spawnT <= 0 && S.queue.length) { spawn(S.queue.shift()); S.spawnT = Math.max(0.35, rand(1.6, 2.6) - S.wave * 0.12); }
+    if (S.archers) {
+      S.archerT -= dt;
+      if (S.archerT <= 0) {
+        const live = S.men.filter(m => m.state === 'walk' || m.state === 'attack' || m.state === 'climb');
+        if (live.length) {
+          const tgt = live.reduce((a, b) => (b.x > a.x ? b : a));
+          S.arrows.push({ x: WALL_X + 20, y: WALL_TOP - 30, tx: tgt, vx: (tgt.x - WALL_X) * 1.4, vy: -260, friendly: true, life: 3 });
+        }
+        S.archerT = 4 / (S.archers + 1);
+      }
+    }
+  }
+  for (const m of S.men) {
+    const T = TYPES[m.type];
+    if (m === held) {
+      const dx = ptr.x - m.x, dy = ptr.y + 18 * T.scale - m.y;
+      m.vx = dx / Math.max(dt, 0.001); m.vy = dy / Math.max(dt, 0.001);
+      m.x = ptr.x; m.y = ptr.y + 18 * T.scale; m.rot += (Math.max(-1, Math.min(1, dx * 0.05)) - m.rot) * 0.2; m.step += dt * 14;
+      continue;
+    }
+    if (m.state === 'dead') { m.dead -= dt; if (m.y < GROUND) { m.vy += G * dt; m.y = Math.min(GROUND, m.y + m.vy * dt); m.x += m.vx * dt; } continue; }
+    if (m.state === 'fly') {
+      m.vy += G * dt; m.x += m.vx * dt; m.y += m.vy * dt; m.rot += m.spin * dt; m.step += dt * 20;
+      if (m.x < 8) { m.x = 8; m.vx = Math.abs(m.vx) * 0.5; }
+      if (m.x > WALL_X - 10 && m.y > WALL_TOP) { m.x = WALL_X - 10; m.vx = -Math.abs(m.vx) * 0.3; }
+      for (const o of S.men) {
+        if (o === m || o === held || o.state === 'dead' || o.state === 'fly' || o.hitBy === m) continue;
+        if (Math.abs(o.x - m.x) < 18 * TYPES[o.type].scale && Math.abs((o.y - 24) - (m.y - 24)) < 34) {
+          const sp = Math.hypot(m.vx, m.vy);
+          if (sp > 260) {
+            o.hitBy = m; o.state = 'fly'; o.vx = m.vx * 0.6; o.vy = -Math.abs(m.vy) * 0.3 - 260; o.spin = rand(-12, 12); o.hp -= 0.6;
+            m.vx *= 0.5; S.shake = 4; text(o.x, o.y - 50, 'STRIKE!', '#ffd36b'); burst(o.x, o.y - 20, '#fff', 8);
+            if (m.type === 'sapper') { m.hp = 0; kill(m); }
+          }
+        }
+      }
+      if (m.y >= GROUND) {
+        m.y = GROUND; const impact = Math.abs(m.vy) + Math.abs(m.vx) * 0.25;
+        m.vx *= 0.2; m.vy = 0; m.hitBy = null;
+        if (impact > 220) land(m, impact); else { m.state = 'walk'; m.rot = 0; }
+      }
+      continue;
+    }
+    if (m.state === 'stun') { m.stunT -= dt; m.rot = 0; if (m.stunT <= 0) m.state = 'walk'; continue; }
+    if (mode !== 'play') continue;
+    const slow = m.x > WALL_X - 170 ? 1 - S.moat * 0.15 : 1;
+    if (m.state === 'walk') {
+      m.step += dt * T.speed * 0.18 * slow;
+      m.x += T.speed * slow * dt;
+      if (m.type === 'archer' && m.x >= m.stop) { m.state = 'shoot'; }
+      else if (m.x >= WALL_X - 12) { m.x = WALL_X - 12; m.state = m.type === 'climber' ? 'climb' : 'attack'; m.climbY = 0; if (m.type === 'sapper') { m.hp = 0; kill(m); damageWall(T.dmg); } }
+    } else if (m.state === 'attack') {
+      m.atkT += dt; m.step += dt * 8;
+      if (m.atkT > 0.8) { m.atkT = 0; damageWall(T.dmg * (1 + S.wave * 0.05)); burst(WALL_X, m.y - 20, '#8f8778', 4, 80); }
+    } else if (m.state === 'climb') {
+      m.climbY += 26 * dt; m.y = GROUND - m.climbY; m.step += dt * 6;
+      if (m.y <= WALL_TOP) { damageWall(T.dmg * 2); burst(WALL_X, WALL_TOP, '#5bc0de', 14); m.state = 'dead'; m.dead = 0.01; flash('Climber over the wall!'); }
+    } else if (m.state === 'shoot') {
+      m.shotT -= dt;
+      if (m.shotT <= 0) { m.shotT = rand(2.2, 3.4); const flight = 1.1; S.arrows.push({ x: m.x + 8, y: m.y - 34, vx: (WALL_X - m.x) / flight, vy: -G * 0.25 * flight, friendly: false, life: 3 }); }
+    }
+  }
+  S.men = S.men.filter(m => !(m.state === 'dead' && m.dead <= 0));
+  for (const a of S.arrows) {
+    a.life -= dt;
+    if (a.friendly) {
+      const t = a.tx; if (t && t.state !== 'dead' && t !== held) { const dx = t.x - a.x, dy = (t.y - 26) - a.y, d = Math.hypot(dx, dy); a.vx += (dx / d * 700 - a.vx) * dt * 6; a.vy += (dy / d * 700 - a.vy) * dt * 6; if (d < 14) { a.life = 0; kill(t); } }
+      else a.vy += G * 0.4 * dt;
+    } else { a.vy += G * 0.5 * dt; if (a.x >= WALL_X - 4) { a.life = 0; damageWall(TYPES.archer.dmg); burst(WALL_X, a.y, '#8f8778', 4, 60); } }
+    a.x += a.vx * dt; a.y += a.vy * dt;
+    if (a.y > GROUND) a.life = 0;
+  }
+  S.arrows = S.arrows.filter(a => a.life > 0);
+  for (const p of S.fx) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; if (p.g) p.vy += 600 * dt; }
+  S.fx = S.fx.filter(p => p.life > 0);
+  if (mode === 'play' && !S.queue.length && !S.men.some(m => m.state !== 'dead')) openShop();
+}
+
+function drawMan(m) {
+  const T = TYPES[m.type], s = T.scale;
+  ctx.save(); ctx.translate(m.x, m.y); ctx.rotate(m.rot); ctx.scale(s, s);
+  ctx.globalAlpha = m.state === 'dead' ? Math.max(0, Math.min(1, m.dead)) : 1;
+  ctx.strokeStyle = '#1b1f2a'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+  const swing = Math.sin(m.step) * 0.6, flail = m.state === 'fly' || m === held;
+  const legA = flail ? Math.sin(m.step * 1.3) * 1.1 : swing, legB = flail ? Math.cos(m.step * 1.1) * 1.1 : -swing;
+  const down = m.state === 'stun' || m.state === 'dead';
+  if (down) { ctx.rotate(-Math.PI / 2); ctx.translate(-4, -6); }
+  ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(Math.sin(legA) * 12, -18 + Math.cos(legA) * 18);
+  ctx.moveTo(0, -18); ctx.lineTo(Math.sin(legB) * 12, -18 + Math.cos(legB) * 18); ctx.stroke();
+  ctx.strokeStyle = T.color; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(0, -38); ctx.stroke();
+  ctx.strokeStyle = '#1b1f2a'; ctx.lineWidth = 3;
+  const armUp = m.state === 'attack' ? Math.sin(m.atkT * 8) * 1.4 - 0.8 : m.state === 'climb' ? -2.6 + Math.sin(m.step) * 0.4 : flail ? Math.sin(m.step * 1.7) * 2.2 : -swing * 0.8;
+  ctx.beginPath(); ctx.moveTo(0, -34); ctx.lineTo(Math.sin(armUp + 0.4) * 13, -34 + Math.cos(armUp + 0.4) * 13);
+  ctx.moveTo(0, -34); ctx.lineTo(Math.sin(-armUp + 0.2) * 13, -34 + Math.cos(-armUp + 0.2) * 13); ctx.stroke();
+  ctx.fillStyle = '#f2d2b0'; ctx.beginPath(); ctx.arc(0, -45, 7, 0, 6.283); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = T.color; ctx.beginPath(); ctx.arc(0, -47, 7.5, Math.PI, 0); ctx.fill();
+  if (m.type === 'sapper') { ctx.fillStyle = '#222'; ctx.beginPath(); ctx.arc(9, -26, 6, 0, 6.283); ctx.fill(); ctx.strokeStyle = '#ffb03a'; ctx.beginPath(); ctx.moveTo(12, -31); ctx.lineTo(15, -36); ctx.stroke(); }
+  if (m.type === 'archer') { ctx.strokeStyle = '#7a5130'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(10, -32, 11, -1.2, 1.2); ctx.stroke(); }
+  if (m.type === 'brute') { ctx.strokeStyle = '#6b6b6b'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(10, -30); ctx.lineTo(18, -48); ctx.stroke(); }
+  if (m.type === 'footman' && !down) { ctx.strokeStyle = '#a9b0bd'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(11, -30); ctx.lineTo(20, -40); ctx.stroke(); }
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+function draw() {
+  ctx.save();
+  if (S && S.shake) ctx.translate(rand(-S.shake, S.shake) * 0.5, rand(-S.shake, S.shake) * 0.5);
+  const sky = ctx.createLinearGradient(0, 0, 0, GROUND);
+  sky.addColorStop(0, '#5aa7e6'); sky.addColorStop(1, '#cfe8f7');
+  ctx.fillStyle = sky; ctx.fillRect(-10, -10, W + 20, H + 20);
+  const t = S ? S.t : 0;
+  ctx.fillStyle = 'rgba(255,255,255,.85)';
+  for (let i = 0; i < 4; i++) { const cx = ((i * 260 + t * 10) % (W + 200)) - 100, cy = 50 + i * 26; ctx.beginPath(); ctx.arc(cx, cy, 22, 0, 6.283); ctx.arc(cx + 24, cy - 8, 26, 0, 6.283); ctx.arc(cx + 52, cy, 20, 0, 6.283); ctx.fill(); }
+  ctx.fillStyle = '#86b36a'; ctx.beginPath(); ctx.moveTo(0, GROUND - 40); ctx.quadraticCurveTo(200, GROUND - 110, 420, GROUND - 40); ctx.quadraticCurveTo(560, GROUND - 90, 700, GROUND - 30); ctx.lineTo(700, GROUND); ctx.lineTo(0, GROUND); ctx.fill();
+  ctx.fillStyle = '#6aa14f'; ctx.fillRect(0, GROUND, W, H - GROUND);
+  ctx.fillStyle = '#8a6a43'; ctx.fillRect(0, GROUND + 6, W, H - GROUND);
+  if (S && S.moat) { ctx.fillStyle = 'rgba(52,120,200,' + (0.35 + S.moat * 0.15) + ')'; ctx.fillRect(WALL_X - 170, GROUND - 2, 150, 8 + S.moat * 3); }
+  const frac = S ? S.hp / S.maxHp : 1;
+  ctx.fillStyle = '#9a9384'; ctx.fillRect(WALL_X, WALL_TOP, W - WALL_X, GROUND - WALL_TOP);
+  ctx.fillRect(WALL_X + 40, WALL_TOP - 80, 80, 90);
+  for (let i = 0; i < 4; i++) ctx.fillRect(WALL_X + i * 36, WALL_TOP - 18, 22, 20);
+  for (let i = 0; i < 3; i++) ctx.fillRect(WALL_X + 40 + i * 30, WALL_TOP - 98, 18, 20);
+  ctx.strokeStyle = 'rgba(0,0,0,.18)'; ctx.lineWidth = 1;
+  for (let y = WALL_TOP + 14; y < GROUND; y += 18) for (let x = WALL_X + ((y / 18) % 2) * 18; x < W; x += 36) ctx.strokeRect(x, y, 36, 18);
+  ctx.fillStyle = '#3c2e22'; ctx.beginPath(); ctx.moveTo(WALL_X + 50, GROUND); ctx.lineTo(WALL_X + 50, GROUND - 60); ctx.arc(WALL_X + 80, GROUND - 60, 30, Math.PI, 0); ctx.lineTo(WALL_X + 110, GROUND); ctx.fill();
+  ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(WALL_X + 80, WALL_TOP - 98); ctx.lineTo(WALL_X + 80, WALL_TOP - 140); ctx.lineTo(WALL_X + 112, WALL_TOP - 128 + Math.sin(t * 4) * 3); ctx.lineTo(WALL_X + 80, WALL_TOP - 116); ctx.fill();
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(WALL_X + 80, WALL_TOP - 98); ctx.lineTo(WALL_X + 80, WALL_TOP - 142); ctx.stroke();
+  if (frac < 0.66) { ctx.strokeStyle = '#2b2620'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(WALL_X + 6, WALL_TOP + 40); ctx.lineTo(WALL_X + 30, WALL_TOP + 80); ctx.lineTo(WALL_X + 18, WALL_TOP + 120); ctx.stroke(); }
+  if (frac < 0.33) { ctx.beginPath(); ctx.moveTo(WALL_X + 120, WALL_TOP + 10); ctx.lineTo(WALL_X + 96, WALL_TOP + 70); ctx.lineTo(WALL_X + 130, WALL_TOP + 150); ctx.stroke(); }
+  if (S) for (let i = 0; i < S.archers; i++) { const ax = WALL_X + 8 + i * 26, ay = WALL_TOP - 18; ctx.fillStyle = '#2f6b3f'; ctx.fillRect(ax + 4, ay - 14, 6, 14); ctx.fillStyle = '#f2d2b0'; ctx.beginPath(); ctx.arc(ax + 7, ay - 18, 5, 0, 6.283); ctx.fill(); }
+  ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(WALL_X + 10, GROUND + 14, W - WALL_X - 20, 12);
+  ctx.fillStyle = frac > 0.5 ? '#2fd67a' : frac > 0.25 ? '#f4cf3c' : '#ff5a5a'; ctx.fillRect(WALL_X + 12, GROUND + 16, (W - WALL_X - 24) * frac, 8);
+  if (S) {
+    for (const m of S.men) if (m !== held) drawMan(m);
+    for (const a of S.arrows) { ctx.strokeStyle = a.friendly ? '#2f6b3f' : '#4a3520'; ctx.lineWidth = 2; const l = Math.hypot(a.vx, a.vy) || 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x - a.vx / l * 14, a.y - a.vy / l * 14); ctx.stroke(); }
+    if (held) { ctx.fillStyle = 'rgba(0,0,0,.18)'; ctx.beginPath(); ctx.ellipse(held.x, GROUND + 2, 14, 4, 0, 0, 6.283); ctx.fill(); const hgt = Math.max(0, GROUND - held.y); ctx.fillStyle = hgt > 230 ? '#2fd67a' : '#fff'; ctx.font = '600 13px Inter'; ctx.textAlign = 'center'; ctx.fillText(Math.round(hgt / 10) + ' m', held.x, held.y - 70); drawMan(held); }
+    for (const p of S.fx) {
+      ctx.globalAlpha = Math.max(0, p.life / p.max);
+      if (p.text) { ctx.fillStyle = p.color; ctx.font = '700 18px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText(p.text, p.x, p.y); }
+      else { ctx.fillStyle = p.color; ctx.fillRect(p.x, p.y, p.r, p.r); }
+    }
+    ctx.globalAlpha = 1;
+    if (mode === 'play') { ctx.fillStyle = 'rgba(10,15,30,.7)'; ctx.font = '600 13px Inter'; ctx.textAlign = 'left'; ctx.fillText('Raiders left: ' + (S.queue.length + S.men.filter(m => m.state !== 'dead').length), 12, 22); }
+    if (S.msgT > 0) { ctx.globalAlpha = Math.min(1, S.msgT); ctx.fillStyle = '#fff'; ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 4; ctx.font = '700 44px Rajdhani'; ctx.textAlign = 'center'; ctx.strokeText(S.msg, W / 2 - 60, 120); ctx.fillText(S.msg, W / 2 - 60, 120); ctx.globalAlpha = 1; }
+    if (mode === 'pause') { ctx.fillStyle = 'rgba(5,10,20,.55)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = '#fff'; ctx.font = '700 48px Rajdhani'; ctx.textAlign = 'center'; ctx.fillText('Paused', W / 2, H / 2); }
+  }
+  ctx.restore();
+}
+
+function frame(now) {
+  const dt = Math.min(0.033, (now - last) / 1000 || 0); last = now;
+  if (S && mode !== 'pause' && mode !== 'menu') update(dt);
+  draw(); requestAnimationFrame(frame);
+}
+function toCanvas(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; }
+function pick(p) {
+  let bestM = null, bestD = 40;
+  for (const m of S.men) {
+    if (m.state === 'dead') continue;
+    const s = TYPES[m.type].scale, d = Math.hypot(m.x - p.x, (m.y - 28 * s) - p.y);
+    if (d < bestD + 10 * s) { bestD = d; bestM = m; }
+  }
+  return bestM;
+}
+cv.addEventListener('pointerdown', e => {
+  if (!S || mode !== 'play') return;
+  const p = toCanvas(e); ptr.x = p.x; ptr.y = p.y; ptr.hist = [{ x: p.x, y: p.y, t: performance.now() }];
+  const m = pick(p);
+  if (m) { held = m; m.state = 'held'; m.hitBy = null; cv.setPointerCapture(e.pointerId); cv.classList.add('grabbing'); }
+});
+cv.addEventListener('pointermove', e => {
+  const p = toCanvas(e); ptr.x = Math.max(0, Math.min(W, p.x)); ptr.y = Math.max(-200, Math.min(GROUND - 30, p.y));
+  ptr.hist.push({ x: ptr.x, y: ptr.y, t: performance.now() }); while (ptr.hist.length > 6) ptr.hist.shift();
+});
+function release() {
+  if (!held) return;
+  const h = ptr.hist, now = performance.now();
+  const recent = h.filter(s => now - s.t < 110);
+  let vx = 0, vy = 0;
+  if (recent.length >= 2) { const a = recent[0], b = recent[recent.length - 1], dt = Math.max(0.016, (b.t - a.t) / 1000); vx = (b.x - a.x) / dt; vy = (b.y - a.y) / dt; }
+  const sp = Math.hypot(vx, vy), cap = 1500;
+  if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
+  held.vx = vx; held.vy = vy; held.state = 'fly'; held.spin = Math.max(-16, Math.min(16, vx / 60));
+  held = null; cv.classList.remove('grabbing');
+}
+cv.addEventListener('pointerup', release);
+cv.addEventListener('pointercancel', release);
+function togglePause() { if (mode === 'play') mode = 'pause'; else if (mode === 'pause') { mode = 'play'; last = performance.now(); } $('pauseBtn').firstChild.textContent = mode === 'pause' ? 'Resume ' : 'Pause '; }
+window.addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (k === 'p') togglePause(); if (k === 'r') start(); });
+window.addEventListener('blur', () => { release(); if (mode === 'play') togglePause(); });
+$('pauseBtn').addEventListener('click', togglePause);
+$('restart').addEventListener('click', start);
+$('ovBtn').addEventListener('click', () => { if (mode === 'shop') startWave(); else start(); });
+$('best').textContent = best ? best.toLocaleString() : '—';
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
