@@ -71,11 +71,22 @@
       .bl-pitch{cursor:pointer;padding:7px 10px;border-radius:10px;border:1px solid var(--lib-line,rgba(120,170,255,.16));background:var(--lib-panel,#111829);color:var(--lib-text,#e9effc);font:700 12.5px Inter,sans-serif}
       .bl-pitch[aria-pressed=true]{background:var(--module-accent,#e8b23a);color:var(--lib-on-accent,#06101f)}
       .bl-pitch small{opacity:.75;font-weight:600;margin-left:4px}
-      #meter{position:relative;width:min(320px,80vw);height:18px;border-radius:999px;background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line,rgba(120,170,255,.16));overflow:hidden}
-      #meter-fill{position:absolute;left:0;top:0;bottom:0;width:0;background:linear-gradient(90deg,#2f8f6a,#e8b23a 80%,#ff5a36)}
-      #meter-effort{position:absolute;top:0;bottom:0;width:3px;background:#fff;left:0;display:none}
-      #meter-mark{position:absolute;top:0;bottom:0;left:10%;width:4px;margin-left:-2px;background:#7fd6ff}
-      #meter-label{font-size:12px;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8)}
+      #picker:not([hidden]){grid-template-columns:auto auto;align-items:end;column-gap:14px}
+      .bl-picker-main{display:grid;gap:8px;justify-items:end}
+      #meter{position:relative;width:34px;height:min(34vh,220px);padding:6px;box-sizing:border-box;border-radius:12px;background:linear-gradient(135deg,#6b7079 0%,#3a3e46 22%,#1c1f25 55%,#0d0e12 100%);box-shadow:0 10px 24px rgba(0,0,0,.6),0 2px 4px rgba(0,0,0,.5),inset 1.5px 1.5px 0 rgba(255,255,255,.38),inset -1.5px -1.5px 0 rgba(0,0,0,.65),inset 0 0 0 3px rgba(255,255,255,.04);opacity:.85;transition:opacity .15s}
+      #meter::before{content:"";position:absolute;inset:3px;border-radius:9px;background:linear-gradient(315deg,rgba(255,255,255,.16),rgba(0,0,0,.35));pointer-events:none}
+      #meter.is-on{opacity:1}
+      .bl-meter-track{position:relative;width:100%;height:100%;border-radius:6px;overflow:hidden;background:linear-gradient(to right,#07080a,#16181d 50%,#07080a);box-shadow:inset 0 2px 5px rgba(0,0,0,.9),inset 0 -1px 0 rgba(255,255,255,.12),0 0 0 1px rgba(0,0,0,.7)}
+      #meter-band{position:absolute;left:0;right:0;opacity:.92;background:linear-gradient(to top,#ffcf4a 0%,#a8e04e var(--perfect-from,40%),#22d36a var(--perfect-from,40%),#22d36a var(--perfect-to,60%),#a8e04e var(--perfect-to,60%),#ffcf4a 100%);box-shadow:0 0 8px rgba(34,211,106,.45)}
+      #meter-fill{position:absolute;left:2px;right:2px;bottom:3px;height:0;border-radius:4px;background:linear-gradient(to top,rgba(255,255,255,.06),rgba(255,255,255,.22));border-top:3px solid #fff;box-shadow:0 -2px 8px rgba(255,255,255,.55)}
+      #meter:not(.is-on) #meter-fill{border-top-width:0;box-shadow:none}
+      #meter-label{max-width:320px;text-align:right;font-size:12px;font-weight:600;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.8)}
+      #meter-label[data-zone=idle]{font-weight:500}
+      #meter-label[data-zone=perfect]{color:#22d36a;font-size:14px;font-weight:800}
+      #meter-label[data-zone=good]{color:#d6e45a}
+      #meter-label[data-zone=soft],#meter-label[data-zone=wild]{color:#ff8a8a}
+      @media (max-width:640px){#meter{width:24px;padding:4px}}
+      @media (prefers-reduced-motion:reduce){#meter{transition:none}}
       #steal-flag{position:absolute;left:12px;top:116px;z-index:12;padding:4px 10px;border-radius:999px;background:#ff5a36;color:#fff;font:800 12px Inter,sans-serif;letter-spacing:.6px}
       #steal-flag[hidden]{display:none}
       #log{position:absolute;right:12px;top:64px;z-index:12;width:min(320px,44vw);max-height:40%;overflow:auto;font-size:12px;padding:6px 10px;border-radius:10px;background:color-mix(in srgb,var(--lib-panel,#111829) 88%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
@@ -124,8 +135,10 @@
       .bl-sliders[hidden]{display:none}
       .bl-sliders label{display:grid;grid-template-columns:120px 1fr 44px;gap:8px;align-items:center;font-size:12.5px;text-transform:none;letter-spacing:0;color:var(--lib-soft,#aab6d3)}
       .bl-sliders input{accent-color:var(--module-accent,#e8b23a)}
-      body.is-color-safe #meter-fill{background:linear-gradient(90deg,#0072b2,#56b4e9 60%,#e69f00)}
-      body.is-color-safe #meter-mark{background:#f0e442}
+      body.is-color-safe #meter-band{background:linear-gradient(to top,#e69f00 0%,#56b4e9 var(--perfect-from,40%),#0072b2 var(--perfect-from,40%),#0072b2 var(--perfect-to,60%),#56b4e9 var(--perfect-to,60%),#e69f00 100%);box-shadow:0 0 8px rgba(0,114,178,.45)}
+      body.is-color-safe #meter-label[data-zone=perfect]{color:#56b4e9}
+      body.is-color-safe #meter-label[data-zone=good]{color:#f0e442}
+      body.is-color-safe #meter-label[data-zone=soft],body.is-color-safe #meter-label[data-zone=wild]{color:#e69f00}
       body.is-color-safe .bug-dots i.on,body.is-color-safe .bug-bases i.on{background:#e69f00}
       body.is-color-safe #steal-flag{background:#0072b2}
       @media (max-width:640px){#log{display:none}#lower-third{bottom:150px}#stats-panel{display:none}.bl-card{padding:16px}.bl-card h1{font-size:28px}.bl-screen{justify-items:center;align-items:end}#matchup{bottom:64px}}
@@ -153,9 +166,11 @@
     <div id="matchup" hidden><div id="matchup-batter"></div><div id="matchup-pitcher"></div></div>
     <details id="log" hidden><summary>Play-by-play</summary><ol id="log-list" reversed></ol></details>
     <div id="picker" hidden>
-      <div class="bl-pitches" id="pitch-buttons" role="group" aria-label="Pitch type"></div>
-      <div id="meter-label">Aim, then click or press Space to start the meter</div>
-      <div id="meter" aria-hidden="true"><div id="meter-fill"></div><div id="meter-mark"></div><div id="meter-effort"></div></div>
+      <div class="bl-picker-main">
+        <div id="meter-label" data-zone="idle">Aim, then hold the mouse or Space and let go in the green</div>
+        <div class="bl-pitches" id="pitch-buttons" role="group" aria-label="Pitch type"></div>
+      </div>
+      <div id="meter" aria-hidden="true"><div class="bl-meter-track"><div id="meter-band"></div><div id="meter-fill"></div></div></div>
     </div>
     <div id="hint"></div>
     <div id="lower-third" aria-live="polite"><div class="lt-band"></div><div class="lt-body"><b id="lt-name"></b><i id="lt-nick"></i><span id="lt-line"></span></div></div>

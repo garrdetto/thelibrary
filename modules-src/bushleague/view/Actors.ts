@@ -22,7 +22,7 @@ export class Actors {
   readonly ballShadow: THREE.Mesh
   readonly cursor: THREE.Group
   readonly cursorSweet: THREE.Mesh
-  readonly zone: THREE.LineSegments
+  readonly zone: THREE.Mesh
   readonly ghost: THREE.Mesh
   readonly trail: THREE.Line
   trailEnabled = true
@@ -87,7 +87,8 @@ export class Actors {
 
     const zoneGeometry = this.own(new THREE.BufferGeometry())
     zoneGeometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(24), 3))
-    this.zone = new THREE.LineSegments(zoneGeometry, this.own(new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.95, depthTest: false, toneMapped: false })))
+    zoneGeometry.setIndex([0, 1, 5, 0, 5, 4, 1, 2, 6, 1, 6, 5, 2, 3, 7, 2, 7, 6, 3, 0, 4, 3, 4, 7])
+    this.zone = new THREE.Mesh(zoneGeometry, this.own(new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide, depthTest: false, depthWrite: false, toneMapped: false })))
     this.zone.frustumCulled = false
     this.zone.renderOrder = 9
     this.root.add(this.zone)
@@ -149,8 +150,10 @@ export class Actors {
   setZone(height: number): void {
     const zone = strikeZone(height)
     const half = 0.2159
+    const edge = 0.0125
     const z = -PLATE_FRONT
-    const points = [-half, zone.bottom, half, zone.bottom, half, zone.bottom, half, zone.top, half, zone.top, -half, zone.top, -half, zone.top, -half, zone.bottom]
+    const corners = (grow: number) => [-half - grow, zone.bottom - grow, half + grow, zone.bottom - grow, half + grow, zone.top + grow, -half - grow, zone.top + grow]
+    const points = [...corners(edge), ...corners(-edge)]
     const attribute = this.zone.geometry.getAttribute('position') as THREE.BufferAttribute
     for (let index = 0; index < points.length; index += 2) attribute.setXYZ(index / 2, points[index], points[index + 1], z)
     attribute.needsUpdate = true
