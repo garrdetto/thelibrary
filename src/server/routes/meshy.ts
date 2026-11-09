@@ -50,6 +50,19 @@ async function status(env: Env): Promise<MeshyStatus> {
   }
 }
 
+type AnimationEntry = { action_id: number; name: string; category?: string; sub_category?: string }
+
+/** Meshy's ready-made animation library (action ids for `animate`), filtered by words in the name or category. */
+async function animationLibrary(env: Env, search: string) {
+  if (!meshyConfigured(env)) throw new HttpError(503, 'Meshy isn’t connected yet.')
+  const library = await meshyFetch<AnimationEntry[]>(env, '/v1/animations/library')
+  const words = search.toLowerCase().split(/\s+/).filter(Boolean)
+  return library
+    .map((entry) => ({ actionId: entry.action_id, name: entry.name, category: [entry.category, entry.sub_category].filter(Boolean).join(' / ') }))
+    .filter((entry) => words.every((word) => `${entry.name} ${entry.category}`.toLowerCase().includes(word)))
+    .slice(0, 200)
+}
+
 async function list(env: Env) {
   const rows = await listJobRows(env)
   const stale = rows.filter(r => !isFinal(r.status)).slice(0, REFRESH_PER_LIST)
@@ -188,6 +201,7 @@ export async function meshy(request: Request, env: Env) {
   const user = run ?? await requireAdmin(request, env)
   if (request.method === 'GET') {
     if (url.searchParams.has('status')) return json(await status(env), 200, { 'Cache-Control': 'no-store' })
+    if (url.searchParams.has('animations')) return json({ animations: await animationLibrary(env, url.searchParams.get('animations') ?? '') }, 200, { 'Cache-Control': 'private, max-age=3600' })
     const model = url.searchParams.get('model')
     if (model !== null) return serveModel(env, z.string().uuid().parse(model))
     if (!meshyConfigured(env)) return json({ jobs: [], connected: false })
