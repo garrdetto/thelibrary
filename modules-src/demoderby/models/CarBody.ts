@@ -1,20 +1,31 @@
-/** Car model factory: a lofted 1970s full-size wagon or sedan (fender arches and flares, rocker and belt creases, hood crown, raked glass, pillars), chrome bumpers, sealed-beam lamps, grille, taillights, steel wheels, a dark caged interior, the spray-painted number decals and a contact shadow; one deformable vertex-coloured shell, all in the chassis frame (forward is -Z, origin `centreHeight` above the ground). */
+/** Car model factory: a lofted 1970s full-size wagon or sedan (fender arches and flares, rocker and belt creases, hood crown, raked glass, pillars) at crush resolution, chrome bumpers that sag and fall off, sealed-beam lamps that break, grille, taillights, treaded tires on steel wheels that bend, go flat and come off, glass that cracks, a dark caged interior, the spray-painted number decals and a contact shadow. The paint is a node material that scrapes through to bare steel and soot where the shell has been hit (a per-vertex `wear` channel written by `dent`). Everything is in the chassis frame (forward is -Z, origin `centreHeight` above the ground). */
 import * as THREE from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { paintById, type BodySpec } from '../config'
+import type { CarDamage } from '../systems/Damage'
 import type { CarLook } from '../systems/Look'
 import { paintNumber } from '../systems/Numbers'
 import { bar, loft, mirror, roundedBox, type Profile, type Station } from './Loft'
+import { crackTexture, scuffTexture, treadTextures } from './Textures'
+
+const { attribute, float, materialColor, materialRoughness, mix, smoothstep, texture, uv, vec2, vec3, vertexColor } = THREE.TSL
+
+export interface DetachedPart {
+  object: THREE.Object3D
+  kind: 'bumper' | 'wheel'
+}
 
 export interface CarModel {
   root: THREE.Group
   body: THREE.Mesh
   decals: THREE.Mesh[]
   wheels: THREE.Mesh[]
-  paint: THREE.MeshStandardMaterial
+  paint: THREE.MeshStandardNodeMaterial
   shadow: THREE.Mesh
   /** Pushes the shell in around a point in the chassis frame along a direction, by a strength of 0–1. */
   dent(point: THREE.Vector3, direction: THREE.Vector3, strength: number, spec: DentSpec): void
+  /** Shows the component damage: bumpers sag then drop, the hood and tailgate buckle, lamps break, glass cracks, lost wheels disappear. Returns parts that came off, already moved into world space, for the debris. */
+  showDamage(damage: CarDamage): DetachedPart[]
   dispose(): void
 }
 
@@ -30,6 +41,28 @@ interface Deformable {
   original: Float32Array
   colors: Float32Array | null
   baseColors: Float32Array | null
+  wear: Float32Array | null
+}
+
+/** Inserts `steps` evenly spaced points between every pair of profile points, so dents across a panel have vertices to move. */
+function subdivide(profile: Profile, steps: number): Profile {
+  const out: (readonly [number, number])[] = []
+  for (let i = 0; i < profile.length - 1; i++) {
+    const [x0, y0] = profile[i]
+    const [x1, y1] = profile[i + 1]
+    for (let k = 0; k < steps; k++) {
+      const t = k / steps
+      out.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t])
+    }
+  }
+  out.push(profile[profile.length - 1])
+  return out
+}
+
+function addWear(geometry: THREE.BufferGeometry): Float32Array {
+  const wear = new Float32Array(geometry.attributes.position.count)
+  geometry.setAttribute('wear', new THREE.BufferAttribute(wear, 1))
+  return wear
 }
 
 const scratch = new THREE.Vector3()
@@ -57,7 +90,7 @@ function smoothNoise(x: number, y: number, z: number): number {
   )
 }
 
-function smoothstep(t: number): number {
+function smoothstep01(t: number): number {
   const clamped = Math.min(1, Math.max(0, t))
   return clamped * clamped * (3 - 2 * clamped)
 }
@@ -197,19 +230,19 @@ function buildShell(spec: BodySpec, frame: BodyFrame, seed: number): THREE.Buffe
   const stations: Station[] = []
   const seamZs = spec.seams.map((fraction) => frame.noseZ + fraction * spec.length)
   const zs = new Set<number>()
-  for (let z = frame.noseZ; z <= frame.tailZ + 1e-6; z += 0.1) zs.add(Number(z.toFixed(3)))
+  for (let z = frame.noseZ; z <= frame.tailZ + 1e-6; z += 0.05) zs.add(Number(z.toFixed(3)))
   zs.add(frame.tailZ)
   for (const seam of seamZs) {
     zs.add(Number((seam - 0.012).toFixed(3)))
     zs.add(Number((seam + 0.012).toFixed(3)))
   }
   for (const axleZ of [frame.frontAxleZ, frame.rearAxleZ]) {
-    for (let k = -4; k <= 4; k++) zs.add(Number((axleZ + (k / 4) * frame.archRadius).toFixed(3)))
+    for (let k = -8; k <= 8; k++) zs.add(Number((axleZ + (k / 8) * frame.archRadius).toFixed(3)))
   }
   const ordered = [...zs].sort((a, b) => a - b)
   const grime = (x: number, y: number, z: number) => 0.9 + 0.1 * smoothNoise(x * 2.2 + seed, y * 3.1, z * 1.4 + seed * 0.37)
   for (const z of ordered) {
-    const profile = mirror(lowerProfile(spec, frame, z))
+    const profile = mirror(subdivide(lowerProfile(spec, frame, z), 3))
     const seamHere = seamZs.some((seam) => Math.abs(z - seam) < 0.02)
     const pointShade = profile.map(([x, y]) => {
       let shade = grime(x, y, z)
@@ -224,7 +257,7 @@ function buildShell(spec: BodySpec, frame: BodyFrame, seed: number): THREE.Buffe
   const shell = loft([noseCap, ...stations, tailCap], { closed: true })
 
   const { front, mid, back } = upperStations(spec, frame, 0)
-  const roofStations = [front[front.length - 1], ...mid, back[0]].map((station) => ({ ...station, profile: station.profile.slice(2, 7) }))
+  const roofStations = [front[front.length - 1], ...mid, back[0]].map((station) => ({ ...station, profile: subdivide(station.profile.slice(2, 7), 4) }))
   const roof = loft(roofStations, { closed: false })
   const merged = mergeGeometries([shell, roof], false)
   if (!merged) throw new Error('Could not build the car shell')
@@ -239,13 +272,13 @@ function upperStations(spec: BodySpec, frame: BodyFrame, inset: number): { front
   for (let i = 0; i <= steps; i++) {
     const f = i / steps
     const z = frame.cowlZ + 0.02 * inset * 10 + (frame.aTopZ - frame.cowlZ) * f
-    front.push({ z, profile: upperRing(spec, frame, z, 1 - smoothstep(f * 0.85 + 0.15), inset), shade: 0.97 })
+    front.push({ z, profile: upperRing(spec, frame, z, 1 - smoothstep01(f * 0.85 + 0.15), inset), shade: 0.97 })
   }
-  for (let z = frame.aTopZ + 0.15; z < frame.cTopZ - 0.05; z += 0.15) mid.push({ z, profile: upperRing(spec, frame, z, 0, inset), shade: 0.97 })
+  for (let z = frame.aTopZ + 0.08; z < frame.cTopZ - 0.04; z += 0.08) mid.push({ z, profile: upperRing(spec, frame, z, 0, inset), shade: 0.97 })
   for (let i = 0; i <= steps; i++) {
     const f = i / steps
     const z = frame.cTopZ + (frame.tailGlassZ - frame.cTopZ) * f
-    back.push({ z, profile: upperRing(spec, frame, z, smoothstep(f), inset), shade: 0.97 })
+    back.push({ z, profile: upperRing(spec, frame, z, smoothstep01(f), inset), shade: 0.97 })
   }
   return { front, mid, back }
 }
@@ -305,7 +338,7 @@ function tireGeometry(radius: number, width: number): THREE.BufferGeometry {
     new THREE.Vector2(radius * 0.84, width / 2),
     new THREE.Vector2(radius * 0.62, width / 2 - 0.01),
   ]
-  const geometry = new THREE.LatheGeometry(points, 24)
+  const geometry = new THREE.LatheGeometry(points, 64)
   geometry.rotateZ(Math.PI / 2)
   return geometry
 }
@@ -324,7 +357,7 @@ function rimGeometry(radius: number, width: number): THREE.BufferGeometry {
     new THREE.Vector2(r * 0.7, -width * 0.1),
     new THREE.Vector2(0, -width * 0.1),
   ]
-  const geometry = new THREE.LatheGeometry(points, 20)
+  const geometry = new THREE.LatheGeometry(points, 40)
   const lugs: THREE.BufferGeometry[] = [geometry]
   for (let i = 0; i < 5; i++) {
     const lug = new THREE.CylinderGeometry(0.014, 0.014, 0.03, 6)
@@ -380,14 +413,54 @@ function grilleMap(): THREE.CanvasTexture {
   return grilleTexture
 }
 
+function paintMaterial(hex: string): THREE.MeshStandardNodeMaterial {
+  const paint = new THREE.MeshStandardNodeMaterial({ color: new THREE.Color(hex), roughness: 0.78, metalness: 0.04 })
+  paint.envMapIntensity = 0.55
+  const wear = attribute('wear', 'float')
+  const scuff = texture(scuffTexture(), uv().mul(vec2(5, 14)))
+  const scrape = smoothstep(0.5, 0.9, wear.add(scuff.r.sub(0.5).mul(1.1)))
+  const soot = smoothstep(1.1, 1.7, wear.add(scuff.g.mul(0.25)))
+  const base = materialColor.rgb.mul(vertexColor().rgb)
+  const bare = vec3(0.5, 0.49, 0.47).mul(scuff.b.mul(0.55).add(0.55))
+  paint.colorNode = mix(base, bare, scrape).mul(float(1).sub(soot.mul(0.7)))
+  paint.metalnessNode = mix(float(0.04), float(0.82), scrape.mul(float(1).sub(soot)))
+  paint.roughnessNode = mix(materialRoughness.add(scuff.g.sub(0.5).mul(0.16)), float(0.34), scrape).add(soot.mul(0.3)).min(1)
+  return paint
+}
+
+function lampCorner(radius: number, x: number, y: number, z: number, lamp: THREE.Material, chrome: THREE.Material, quad: number[]): THREE.Group {
+  const group = new THREE.Group()
+  const lensParts: THREE.BufferGeometry[] = []
+  const bezelParts: THREE.BufferGeometry[] = []
+  for (const dx of quad) {
+    const lens = new THREE.SphereGeometry(radius, 24, 8, 0, Math.PI * 2, 0, Math.PI * 0.3)
+    lens.rotateX(-Math.PI / 2)
+    lens.scale(1, 1, 0.5)
+    lens.translate(x + dx, y, z + radius * 0.25)
+    lensParts.push(lens)
+    const bezel = new THREE.TorusGeometry(radius + 0.01, 0.014, 6, 28)
+    bezel.translate(x + dx, y, z + 0.004)
+    bezelParts.push(bezel)
+  }
+  const lens = new THREE.Mesh(mergeGeometries(lensParts, false) ?? lensParts[0], lamp)
+  lens.name = 'lens'
+  const bezel = new THREE.Mesh(mergeGeometries(bezelParts, false) ?? bezelParts[0], chrome)
+  const socket = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.9, 16).translate(x + quad[0], y, z + 0.006), new THREE.MeshStandardMaterial({ color: new THREE.Color('#0d0d0d'), roughness: 0.9 }))
+  socket.name = 'socket'
+  socket.visible = false
+  group.add(lens, bezel, socket)
+  return group
+}
+
 export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
   const root = new THREE.Group()
   root.name = `car-${look.number}`
   const frame = frameOf(spec)
   const y0 = frame.y0
   const paintHex = paintById(look.paint).hex
-  const paint = new THREE.MeshStandardMaterial({ color: new THREE.Color(paintHex), roughness: 0.82, metalness: 0.04, vertexColors: true, envMapIntensity: 0.55 })
+  const paint = paintMaterial(paintHex)
   const shellGeometry = buildShell(spec, frame, seed)
+  const shellWear = addWear(shellGeometry)
   const body = new THREE.Mesh(shellGeometry, paint)
   body.name = 'shell'
   body.castShadow = true
@@ -395,22 +468,35 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
   root.add(body)
   const shellColors = shellGeometry.attributes.color.array as Float32Array
 
-  const chrome = new THREE.MeshStandardMaterial({ color: new THREE.Color('#d9dbdd'), roughness: 0.28, metalness: 1, envMapIntensity: 1.1 })
+  const chrome = new THREE.MeshStandardMaterial({ color: new THREE.Color('#d9dbdd'), roughness: 0.22, metalness: 1, envMapIntensity: 1.2 })
   const dullChrome = new THREE.MeshStandardMaterial({ color: new THREE.Color('#a9abae'), roughness: 0.45, metalness: 0.9, envMapIntensity: 0.9 })
   const dark = new THREE.MeshStandardMaterial({ color: new THREE.Color('#111316'), roughness: 0.85, metalness: 0.1 })
-  const rubber = new THREE.MeshStandardMaterial({ color: new THREE.Color('#1b1b1b'), roughness: 0.97, metalness: 0 })
-  const glass = new THREE.MeshPhysicalMaterial({ color: new THREE.Color('#46525c'), roughness: 0.06, metalness: 0.6, transparent: true, opacity: 0.62, envMapIntensity: 1.6, depthWrite: false })
-  const lamp = new THREE.MeshStandardMaterial({ color: new THREE.Color('#e8e4d4'), roughness: 0.2, metalness: 0.3, emissive: new THREE.Color('#5a5544'), emissiveIntensity: 0.6, envMapIntensity: 1 })
-  const tail = new THREE.MeshStandardMaterial({ color: new THREE.Color('#9b1313'), roughness: 0.35, metalness: 0.1, emissive: new THREE.Color('#4a0808'), emissiveIntensity: 0.5 })
-  const amber = new THREE.MeshStandardMaterial({ color: new THREE.Color('#d9821b'), roughness: 0.35, metalness: 0.1, emissive: new THREE.Color('#5a3208'), emissiveIntensity: 0.4 })
-  const grille = new THREE.MeshStandardMaterial({ map: grilleMap(), roughness: 0.4, metalness: 0.7 })
-  const steel = new THREE.MeshStandardMaterial({ color: new THREE.Color(seed % 3 === 0 ? '#d4d4d4' : seed % 3 === 1 ? '#5a5c60' : '#b0251d'), roughness: 0.5, metalness: 0.6, envMapIntensity: 0.8 })
+  const { map: treadMap, normal: treadNormal } = treadTextures()
+  const rubber = new THREE.MeshStandardMaterial({ color: new THREE.Color('#3a3a3a'), map: treadMap, normalMap: treadNormal, normalScale: new THREE.Vector2(1.2, 1.2), roughness: 0.94, metalness: 0 })
+  const glass = new THREE.MeshPhysicalMaterial({ color: new THREE.Color('#3e4a54'), roughness: 0.04, metalness: 0.55, transparent: true, opacity: 0.6, envMapIntensity: 1.7, depthWrite: false })
+  const crackMaterial = new THREE.MeshStandardMaterial({ map: crackTexture(), transparent: true, opacity: 0, roughness: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
+  const lamp = new THREE.MeshPhysicalMaterial({ color: new THREE.Color('#f2efe2'), roughness: 0.05, metalness: 0.2, transmission: 0, clearcoat: 1, emissive: new THREE.Color('#6a6450'), emissiveIntensity: 0.6, envMapIntensity: 1.3 })
+  const tail = new THREE.MeshPhysicalMaterial({ color: new THREE.Color('#9b1313'), roughness: 0.18, metalness: 0.1, clearcoat: 1, emissive: new THREE.Color('#5a0808'), emissiveIntensity: 0.7 })
+  const amber = new THREE.MeshStandardMaterial({ color: new THREE.Color('#d9821b'), roughness: 0.3, metalness: 0.1, emissive: new THREE.Color('#5a3208'), emissiveIntensity: 0.45 })
+  const grille = new THREE.MeshStandardMaterial({ map: grilleMap(), roughness: 0.35, metalness: 0.75 })
+  const steel = new THREE.MeshStandardMaterial({ color: new THREE.Color(seed % 3 === 0 ? '#d4d4d4' : seed % 3 === 1 ? '#5a5c60' : '#b0251d'), roughness: 0.45, metalness: 0.65, envMapIntensity: 0.9 })
+  const broken = new THREE.MeshStandardMaterial({ color: new THREE.Color('#151515'), roughness: 0.6, metalness: 0.3 })
 
-  const glassMesh = new THREE.Mesh(buildGlass(spec, frame), glass)
+  const glassGeometry = buildGlass(spec, frame)
+  const glassMesh = new THREE.Mesh(glassGeometry, glass)
   glassMesh.name = 'glass'
   glassMesh.renderOrder = 3
   root.add(glassMesh)
-  const pillarMesh = new THREE.Mesh(pillars(spec, frame), paint)
+  const crackMesh = new THREE.Mesh(glassGeometry, crackMaterial)
+  crackMesh.name = 'glass-cracks'
+  crackMesh.renderOrder = 4
+  crackMesh.visible = false
+  root.add(crackMesh)
+  const pillarGeometry = pillars(spec, frame)
+  const pillarColors = new Float32Array(pillarGeometry.attributes.position.count * 3).fill(0.95)
+  pillarGeometry.setAttribute('color', new THREE.BufferAttribute(pillarColors, 3))
+  const pillarWear = addWear(pillarGeometry)
+  const pillarMesh = new THREE.Mesh(pillarGeometry, paint)
   pillarMesh.castShadow = true
   root.add(pillarMesh)
 
@@ -422,47 +508,46 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
   const seat = new THREE.Mesh(roundedBox(0.5, 0.55, 0.5, 0.08), new THREE.MeshStandardMaterial({ color: new THREE.Color('#2c2f36'), roughness: 0.9 }))
   seat.position.set(-0.42, spec.belt - 0.2 - y0, frame.bZ - 0.1)
   root.add(seat)
+  const wheelRim = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 8, 24), new THREE.MeshStandardMaterial({ color: new THREE.Color('#1a1a1a'), roughness: 0.6 }))
+  wheelRim.position.set(-0.42, spec.belt - 0.02 - y0, frame.cowlZ + 0.45)
+  wheelRim.rotation.x = -0.9
+  root.add(wheelRim)
 
   const bumperWidth = spec.width * 1.02
+  const bumpers: Record<'frontBumper' | 'rearBumper', THREE.Group> = { frontBumper: new THREE.Group(), rearBumper: new THREE.Group() }
   for (const front of [true, false]) {
     const z = front ? frame.noseZ - 0.07 : frame.tailZ + 0.07
+    const group = bumpers[front ? 'frontBumper' : 'rearBumper']
+    group.name = front ? 'front-bumper' : 'rear-bumper'
+    group.position.set(spec.width * 0.5, spec.sill + 0.12 - y0, z)
     const bumper = new THREE.Mesh(roundedBox(bumperWidth, 0.17, 0.14, 0.05), chrome)
-    bumper.position.set(0, spec.sill + 0.12 - y0, z)
+    bumper.position.set(-spec.width * 0.5, 0, 0)
     bumper.castShadow = true
-    root.add(bumper)
+    group.add(bumper)
     for (const side of [-1, 1]) {
       const guard = new THREE.Mesh(roundedBox(0.09, 0.26, 0.1, 0.03), chrome)
-      guard.position.set(side * spec.width * 0.28, spec.sill + 0.13 - y0, z + (front ? -0.04 : 0.04))
-      root.add(guard)
+      guard.position.set(side * spec.width * 0.28 - spec.width * 0.5, 0.01, front ? -0.04 : 0.04)
+      group.add(guard)
     }
+    root.add(group)
   }
 
   const lampY = (spec.sill + spec.noseTop) / 2 + 0.1
   const lampZ = frame.noseZ - 0.015
   const lampXs = spec.quadLamps ? [0.58, 0.8] : [0.72]
   const lampRadius = spec.quadLamps ? 0.085 : 0.11
-  const lampParts: THREE.BufferGeometry[] = []
-  const bezelParts: THREE.BufferGeometry[] = []
+  const lamps: THREE.Group[] = []
   for (const side of [-1, 1]) {
-    for (const fx of lampXs) {
-      const lens = new THREE.CylinderGeometry(lampRadius, lampRadius, 0.04, 18)
-      lens.rotateX(Math.PI / 2)
-      lens.translate(side * frame.half * 0.9 * fx, lampY - y0, lampZ)
-      lampParts.push(lens)
-      const bezel = new THREE.CylinderGeometry(lampRadius + 0.018, lampRadius + 0.018, 0.02, 18)
-      bezel.rotateX(Math.PI / 2)
-      bezel.translate(side * frame.half * 0.9 * fx, lampY - y0, lampZ + 0.008)
-      bezelParts.push(bezel)
-    }
+    const centre = side * frame.half * 0.9 * lampXs[0]
+    const offsets = lampXs.map((fx) => side * frame.half * 0.9 * fx - centre)
+    const corner = lampCorner(lampRadius, centre, lampY - y0, lampZ, lamp, chrome, offsets)
+    corner.name = side < 0 ? 'lamp-front-left' : 'lamp-front-right'
+    lamps.push(corner)
+    root.add(corner)
     const signal = new THREE.BoxGeometry(0.16, 0.06, 0.03)
     signal.translate(side * frame.half * 0.9 * 0.69, lampY - 0.15 - y0, lampZ + 0.01)
-    const signalMesh = new THREE.Mesh(signal, amber)
-    root.add(signalMesh)
+    root.add(new THREE.Mesh(signal, amber))
   }
-  const lampMesh = new THREE.Mesh(mergeGeometries(lampParts, false) ?? lampParts[0], lamp)
-  root.add(lampMesh)
-  const bezelMesh = new THREE.Mesh(mergeGeometries(bezelParts, false) ?? bezelParts[0], chrome)
-  root.add(bezelMesh)
   const grilleWidth = frame.half * 0.9 * (spec.quadLamps ? 0.46 : 0.6) * 2
   const grilleMesh = new THREE.Mesh(new THREE.BoxGeometry(grilleWidth, 0.2, 0.03), grille)
   grilleMesh.position.set(0, lampY - y0, lampZ + 0.01)
@@ -472,27 +557,31 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
   root.add(grilleFrame)
 
   const tailZ = frame.tailZ + 0.012
+  for (const side of [-1, 1]) {
+    const group = new THREE.Group()
+    group.name = side < 0 ? 'lamp-rear-left' : 'lamp-rear-right'
+    const wagon = spec.id === 'wagon'
+    const width = wagon ? 0.14 : frame.half * 0.62
+    const height = wagon ? 0.42 : 0.12
+    const x = side * frame.half * (wagon ? 0.86 : 0.55)
+    const y = (wagon ? (spec.sill + spec.tailTop) / 2 + 0.06 : spec.tailTop - 0.2) - y0
+    const light = new THREE.Mesh(roundedBox(width, height, 0.035, 0.012), tail)
+    light.name = 'lens'
+    light.position.set(x, y, tailZ)
+    const ring = new THREE.Mesh(new THREE.BoxGeometry(width + 0.03, height + 0.03, 0.015), chrome)
+    ring.position.set(x, y, tailZ - 0.004)
+    const socket = new THREE.Mesh(new THREE.BoxGeometry(width * 0.9, height * 0.9, 0.02), broken)
+    socket.name = 'socket'
+    socket.position.set(x, y, tailZ)
+    socket.visible = false
+    group.add(light, ring, socket)
+    lamps.push(group)
+    root.add(group)
+  }
   if (spec.id === 'wagon') {
-    for (const side of [-1, 1]) {
-      const light = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.42, 0.03), tail)
-      light.position.set(side * frame.half * 0.86, (spec.sill + spec.tailTop) / 2 + 0.06 - y0, tailZ)
-      root.add(light)
-      const ring = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.45, 0.015), chrome)
-      ring.position.set(side * frame.half * 0.86, (spec.sill + spec.tailTop) / 2 + 0.06 - y0, tailZ - 0.004)
-      root.add(ring)
-    }
     const gateTrim = new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.7, 0.03, 0.015), chrome)
     gateTrim.position.set(0, spec.tailTop - 0.5 - y0, tailZ)
     root.add(gateTrim)
-  } else {
-    for (const side of [-1, 1]) {
-      const light = new THREE.Mesh(new THREE.BoxGeometry(frame.half * 0.62, 0.12, 0.03), tail)
-      light.position.set(side * frame.half * 0.55, spec.tailTop - 0.2 - y0, tailZ)
-      root.add(light)
-      const ring = new THREE.Mesh(new THREE.BoxGeometry(frame.half * 0.65, 0.15, 0.015), chrome)
-      ring.position.set(side * frame.half * 0.55, spec.tailTop - 0.2 - y0, tailZ - 0.004)
-      root.add(ring)
-    }
   }
 
   const pinParts: THREE.BufferGeometry[] = []
@@ -516,11 +605,16 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     for (const z of [aTopZ + 0.1, (aTopZ + endZ) / 2, endZ - 0.1]) {
       rackParts.push(bar(new THREE.Vector3(-frame.half * 0.5, spec.roof + 0.075 - y0, z), new THREE.Vector3(frame.half * 0.5, spec.roof + 0.075 - y0, z), 0.012))
     }
-    root.add(new THREE.Mesh(mergeGeometries(rackParts, false) ?? rackParts[0], dullChrome))
+    const rackGeometry = mergeGeometries(rackParts, false) ?? rackParts[0]
+    root.add(new THREE.Mesh(rackGeometry, dullChrome))
   }
 
   const decals: THREE.Mesh[] = []
-  const deformables: Deformable[] = [{ geometry: shellGeometry, original: Float32Array.from(shellGeometry.attributes.position.array as Float32Array), colors: shellColors, baseColors: Float32Array.from(shellColors) }]
+  const deformables: Deformable[] = [
+    { geometry: shellGeometry, original: Float32Array.from(shellGeometry.attributes.position.array as Float32Array), colors: shellColors, baseColors: Float32Array.from(shellColors), wear: shellWear },
+    { geometry: pillarGeometry, original: Float32Array.from(pillarGeometry.attributes.position.array as Float32Array), colors: pillarColors, baseColors: Float32Array.from(pillarColors), wear: pillarWear },
+    { geometry: glassGeometry, original: Float32Array.from(glassGeometry.attributes.position.array as Float32Array), colors: null, baseColors: null, wear: null },
+  ]
   const sideArt = paintNumber(look, 'side')
   const roofArt = paintNumber(look, 'roof')
   const doorTop = spec.belt - 0.03
@@ -529,7 +623,7 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
   const doorWidth = Math.min(2.3, doorHeight * sideArt.aspect)
   const doorZ = (frame.cowlZ + frame.cZ) / 2 + 0.05
   for (const side of [-1, 1] as const) {
-    const geometry = new THREE.PlaneGeometry(doorWidth, doorHeight, 16, 6)
+    const geometry = new THREE.PlaneGeometry(doorWidth, doorHeight, 32, 12)
     geometry.rotateY(side < 0 ? -Math.PI / 2 : Math.PI / 2)
     const position = geometry.attributes.position as THREE.BufferAttribute
     for (let i = 0; i < position.count; i++) {
@@ -547,10 +641,10 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     decal.renderOrder = 2
     root.add(decal)
     decals.push(decal)
-    deformables.push({ geometry, original: Float32Array.from(geometry.attributes.position.array as Float32Array), colors: null, baseColors: null })
+    deformables.push({ geometry, original: Float32Array.from(geometry.attributes.position.array as Float32Array), colors: null, baseColors: null, wear: null })
   }
   const roofSize = Math.min(spec.width * 0.62, 1.25)
-  const roofGeometry = new THREE.PlaneGeometry(roofSize, roofSize, 12, 12)
+  const roofGeometry = new THREE.PlaneGeometry(roofSize, roofSize, 20, 20)
   roofGeometry.rotateX(-Math.PI / 2)
   roofGeometry.rotateY(Math.PI / 2)
   const roofZ = (frame.aTopZ + frame.cTopZ) / 2
@@ -561,7 +655,7 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
   roofDecal.renderOrder = 2
   root.add(roofDecal)
   decals.push(roofDecal)
-  deformables.push({ geometry: roofGeometry, original: Float32Array.from(roofGeometry.attributes.position.array as Float32Array), colors: null, baseColors: null })
+  deformables.push({ geometry: roofGeometry, original: Float32Array.from(roofGeometry.attributes.position.array as Float32Array), colors: null, baseColors: null, wear: null })
 
   const tireGeo = tireGeometry(spec.wheelRadius, spec.wheelWidth)
   const rimGeo = rimGeometry(spec.wheelRadius, spec.wheelWidth)
@@ -570,8 +664,10 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     const wheel = new THREE.Mesh(tireGeo, rubber)
     const rim = new THREE.Mesh(rimGeo, steel)
     rim.rotation.y = i % 2 === 0 ? Math.PI : 0
+    rim.castShadow = true
     wheel.add(rim)
     wheel.castShadow = true
+    wheel.receiveShadow = true
     wheel.name = `wheel-${i}`
     root.add(wheel)
     wheels.push(wheel)
@@ -603,6 +699,17 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     for (let i = 0; i < shellColors.length; i++) deformables[0].baseColors![i] = shellColors[i]
     ;(shellGeometry.attributes.color as THREE.BufferAttribute).needsUpdate = true
   }
+  if (seed !== 0) {
+    const wearBase = 0.12 + 0.2 * hashNoise(seed, 11, 2)
+    const position = shellGeometry.attributes.position as THREE.BufferAttribute
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i)
+      const y = position.getY(i) + y0
+      const z = position.getZ(i)
+      const edge = Math.abs(z) > spec.length * 0.42 || y < spec.sill + 0.15 ? 1 : 0.35
+      shellWear[i] = wearBase * edge * smoothNoise(x * 3 + seed, y * 6, z * 2.2)
+    }
+  }
 
   const dent = (point: THREE.Vector3, direction: THREE.Vector3, strength: number, dentSpec: DentSpec): void => {
     const radius = dentSpec.radius * (0.6 + 0.4 * strength)
@@ -610,16 +717,20 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     for (const part of deformables) {
       const position = part.geometry.attributes.position as THREE.BufferAttribute
       const array = position.array as Float32Array
+      let touched = false
       for (let i = 0; i < position.count; i++) {
         const ox = part.original[i * 3]
         const oy = part.original[i * 3 + 1]
         const oz = part.original[i * 3 + 2]
         const distance = scratch.set(array[i * 3] - point.x, array[i * 3 + 1] - point.y, array[i * 3 + 2] - point.z).length()
         if (distance >= radius) continue
-        const falloff = smoothstep(1 - distance / radius) * (0.75 + 0.5 * hashNoise(ox * 7, oy * 5, oz * 3))
+        touched = true
+        const core = smoothstep01(1 - distance / radius)
+        const crumple = 0.7 + 0.6 * hashNoise(ox * 7, oy * 5, oz * 3) + 0.25 * Math.sin(oz * 38 + oy * 21)
+        const falloff = core * crumple
         const push = depth * falloff
         let nx = array[i * 3] + direction.x * push
-        let ny = array[i * 3 + 1] + direction.y * push * 0.35
+        let ny = array[i * 3 + 1] + direction.y * push * (Math.abs(direction.y) > 0.5 ? 1 : 0.35) - (Math.abs(direction.y) > 0.5 ? 0 : push * 0.08 * (hashNoise(oz * 3, ox, 1) - 0.3))
         let nz = array[i * 3 + 2] + direction.z * push
         const dx = nx - ox
         const dy = ny - oy
@@ -640,12 +751,77 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
           part.colors[i * 3 + 1] = Math.max(0.12, part.colors[i * 3 + 1] * shade)
           part.colors[i * 3 + 2] = Math.max(0.1, part.colors[i * 3 + 2] * shade * 0.92)
         }
+        if (part.wear) part.wear[i] = Math.min(1.6, part.wear[i] + core * strength * (0.3 + 0.45 * hashNoise(ox * 13, oy * 3, oz * 9)))
       }
+      if (!touched) continue
       position.needsUpdate = true
       if (part.colors) (part.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true
+      if (part.wear) (part.geometry.attributes.wear as THREE.BufferAttribute).needsUpdate = true
       part.geometry.computeVertexNormals()
       part.geometry.computeBoundingSphere()
     }
+  }
+
+  const shown = { version: -1, bolts: { frontBumper: 0, rearBumper: 0 }, hood: 0, trunk: 0, lamps: [false, false, false, false], wheels: [false, false, false, false] }
+  const scrapeSpec: DentSpec = { radius: 0.9, depth: 0.12, maxDepth: 0.5, darken: 0.2 }
+  const detachWorld = (object: THREE.Object3D): THREE.Object3D => {
+    root.updateMatrixWorld(true)
+    object.updateMatrixWorld(true)
+    const world = object.matrixWorld.clone()
+    object.removeFromParent()
+    world.decompose(object.position, object.quaternion, object.scale)
+    return object
+  }
+  const showDamage = (damage: CarDamage): DetachedPart[] => {
+    if (damage.version === shown.version) return []
+    shown.version = damage.version
+    const out: DetachedPart[] = []
+    for (const part of ['frontBumper', 'rearBumper'] as const) {
+      const state = damage.bolts[part]
+      if (state === shown.bolts[part]) continue
+      shown.bolts[part] = state
+      const group = bumpers[part]
+      if (state === 1) {
+        group.rotation.set(part === 'frontBumper' ? -0.12 : 0.12, (part === 'frontBumper' ? 1 : -1) * 0.08, -0.16)
+        group.position.y -= 0.04
+      } else if (state === 2 && group.parent === root) {
+        out.push({ object: detachWorld(group), kind: 'bumper' })
+      }
+    }
+    if (damage.lids.hood > shown.hood) {
+      shown.hood = damage.lids.hood
+      const hoodZ = (frame.noseZ + frame.cowlZ) / 2
+      dent(new THREE.Vector3(0, spec.noseTop + 0.04 - y0, hoodZ), new THREE.Vector3(0, 1, 0.15).normalize(), 0.9, scrapeSpec)
+    }
+    if (damage.lids.trunk > shown.trunk) {
+      shown.trunk = damage.lids.trunk
+      const trunkZ = (frame.tailGlassZ + frame.tailZ) / 2
+      dent(new THREE.Vector3(0, spec.tailTop + 0.02 - y0, trunkZ), new THREE.Vector3(0, 1, -0.15).normalize(), 0.8, scrapeSpec)
+    }
+    damage.lamps.forEach((isBroken, i) => {
+      if (!isBroken || shown.lamps[i]) return
+      shown.lamps[i] = true
+      const group = lamps[i]
+      const lens = group.getObjectByName('lens')
+      const socket = group.getObjectByName('socket')
+      if (lens) lens.visible = false
+      if (socket) socket.visible = true
+    })
+    crackMesh.visible = damage.glass > 0.02
+    crackMaterial.opacity = Math.min(1, damage.glass * 1.4)
+    glass.opacity = 0.6 + damage.glass * 0.25
+    glass.roughness = 0.04 + damage.glass * 0.4
+    damage.wheels.forEach((state, i) => {
+      if (!state.off || shown.wheels[i]) return
+      shown.wheels[i] = true
+      const wheel = wheels[i]
+      const lost = wheel.clone(true)
+      wheel.updateMatrixWorld(true)
+      wheel.matrixWorld.decompose(lost.position, lost.quaternion, lost.scale)
+      wheel.visible = false
+      out.push({ object: lost, kind: 'wheel' })
+    })
+    return out
   }
 
   const dispose = (): void => {
@@ -653,6 +829,7 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     shadow.removeFromParent()
     shadow.geometry.dispose()
     ;(shadow.material as THREE.Material).dispose()
+    const shared = new Set<THREE.Texture | null>([grilleTexture, treadMap, treadNormal, crackTexture(), scuffTexture()])
     root.traverse((object) => {
       const mesh = object as THREE.Mesh
       if (!mesh.isMesh) return
@@ -660,11 +837,11 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
       for (const material of materials) {
         const map = (material as THREE.MeshStandardMaterial).map
-        if (map && map !== grilleTexture) map.dispose()
+        if (map && !shared.has(map)) map.dispose()
         material.dispose()
       }
     })
   }
 
-  return { root, body, decals, wheels, paint, shadow, dent, dispose }
+  return { root, body, decals, wheels, paint, shadow, dent, showDamage, dispose }
 }

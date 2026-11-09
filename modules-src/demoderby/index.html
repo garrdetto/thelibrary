@@ -49,6 +49,16 @@
       .dd-bar{height:10px;border-radius:999px;background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line,rgba(120,170,255,.16));overflow:hidden}
       .dd-bar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff4d3a,#ffb14a 50%,#7cd36a);transform-origin:left;transition:transform .15s linear}
       .dd-bar.is-engine i{background:linear-gradient(90deg,#ff4d3a,#ffd34a)}
+      .dd-damage{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:center;margin-bottom:6px;padding:8px 10px;border-radius:12px;background:color-mix(in srgb,var(--lib-panel,#111829) 78%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16))}
+      #damage-diagram{display:grid;grid-template-columns:9px 15px 15px 9px;grid-template-rows:16px 30px 16px;gap:2px}
+      #damage-diagram i{display:block;border-radius:3px;background:hsl(115deg 72% 46%);transition:background .2s linear}
+      #damage-diagram i.is-wheel{border-radius:2px;margin:2px 0}
+      #damage-diagram i.is-flat{transform:scaleY(.7)}
+      #damage-diagram i.is-off{opacity:.35;outline:1px dashed #ff4d3a}
+      #damage-diagram .is-roof{grid-column:2/4}
+      #damage-note{font-size:11.5px;font-weight:600;color:var(--lib-text,#e9effc);text-shadow:0 1px 2px rgba(0,0,0,.6)}
+      .dd-damage small{display:block;font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--lib-soft,#aab6d3)}
+      @media (prefers-reduced-motion:reduce){#damage-diagram i{transition:none}}
       .dd-bar-label{display:flex;justify-content:space-between;font-size:11px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--lib-soft,#aab6d3);text-shadow:0 1px 2px rgba(0,0,0,.6)}
       .dd-touch{position:absolute;inset:0;z-index:11;pointer-events:none;display:none}
       @media (pointer:coarse){.dd-touch{display:block}}
@@ -63,6 +73,14 @@
     <div id="banner" role="status" aria-live="polite" hidden></div>
 
     <div id="health" hidden>
+      <div class="dd-damage">
+        <div id="damage-diagram" role="img" aria-label="Your car from above, coloured by damage">
+          <i class="is-wheel" data-part="wheel0"></i><i data-part="frontLeft"></i><i data-part="frontRight"></i><i class="is-wheel" data-part="wheel1"></i>
+          <i data-part="left"></i><i class="is-roof" data-part="roof"></i><i data-part="right"></i>
+          <i class="is-wheel" data-part="wheel2"></i><i data-part="rearLeft"></i><i data-part="rearRight"></i><i class="is-wheel" data-part="wheel3"></i>
+        </div>
+        <div><small>Damage</small><span id="damage-note" role="status" aria-live="polite">Straight and sound</span></div>
+      </div>
       <div class="dd-bar-label"><span>Body</span><span id="health-text">100</span></div>
       <div class="dd-bar"><i id="health-bar"></i></div>
       <div class="dd-bar-label"><span>Engine</span><span id="engine-text">100</span></div>
@@ -98,6 +116,7 @@
           <div class="dd-row"><input id="opponents-range" class="dd-range" type="range" min="3" max="9" step="1" aria-label="Number of opponents" /><span class="dd-note"><b id="opponents-text">6</b> opponents</span></div>
           <div class="dd-chips" id="level-chips" role="group" aria-label="Opponent skill"></div>
         </div>
+        <div class="dd-label">Damage<div class="dd-chips" id="damage-chips" role="group" aria-label="Damage level"></div></div>
         <div class="dd-row">
           <button type="submit" class="dd-button is-primary" id="start-button">Start the heat</button>
           <span class="dd-note" id="best-note"></span>
@@ -106,8 +125,10 @@
           <summary>How the physics and the rules work</summary>
           <ul>
             <li>Damage follows the impact force: momentum (mass × speed) lost in a split second. Hit harder, hurt more; a full-strength hit takes about a third of a car.</li>
-            <li>The nose carries the engine. Front hits cost power; backing into someone protects your motor, and the tailgate shrugs off most of it.</li>
-            <li>Dirt gives less sideways grip than pavement, so the tail slides on hard turns. Short, straight runs land the heaviest hits.</li>
+            <li>The nose carries the engine. Front hits cost power and hole the radiator, which cooks the engine under throttle until it smokes, steams and can catch fire. Backing into someone protects your motor.</li>
+            <li>Every corner breaks on its own: bent wheels lose grip and pull the steering, tires blow, wheels come off and drag the car, a bent rear end saps drive, bumpers sag and drop, lamps and glass shatter. The diagram by your gauges shows it all.</li>
+            <li>Barriers bite too, a little less than a car. Damage level (Light, Realistic, Brutal) sets how hard every hit lands.</li>
+            <li>Dirt gives less sideways grip than pavement, so the tail slides on hard turns. Torque is strongest off the line, so short, straight runs land the heaviest hits.</li>
             <li>A car that goes 60 seconds without striking another one is called out of the heat, just like a fair derby.</li>
             <li>Points: hits landed, knockouts, surviving seconds and 1000 for the win. The best heats lead the board.</li>
           </ul>

@@ -1,13 +1,16 @@
-/** Demo Derby entry: boots the shared engine, builds the fair arena, runs the garage preview, then the heat (player + AI field) with contact damage, the HUD, results and the board; freed on pagehide. */
+/** Demo Derby entry: boots the shared engine at a full-HD render floor with the tier's post chain, builds the fair arena, runs the garage preview, then the heat (player + AI field) with component damage, sparks, shrapnel, lost parts, fire, steam and tire marks, the HUD with its damage diagram, results and the board; lowers the render floor when frames run slow; freed on pagehide. */
 import * as THREE from 'three/webgpu'
 import type RAPIER from '@dimforge/rapier3d-compat'
 import { App, Hud, Input, PhysicsWorld, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
-import { aiLevelById, bodyById, config, type Action } from './config'
+import { aiLevelById, bodyById, config, damageFor, paintById, type Action } from './config'
 import { createArena } from './models/Arena'
+import { createDebris } from './models/Debris'
 import { createParticles } from './models/Particles'
+import { createTrackMarks } from './models/TrackMarks'
 import { createSky } from './models/Sky'
 import { createBrain, driveAi, type AiBrain } from './systems/Ai'
 import { createChaseCamera } from './systems/Camera'
+import { PANELS, type DamageNews } from './systems/Damage'
 import { Heat } from './systems/Heat'
 import { loadLook, opponentLook, saveLook, type CarLook } from './systems/Look'
 import { Vehicle } from './systems/Vehicle'
@@ -16,6 +19,7 @@ import { createGarage, type HeatSettings, type ResultRow } from './ui/Garage'
 declare global {
   interface Window {
     __tlModule?: { app: App; backend: string; tier: string; steps: () => number }
+    __demoderby?: { cars: () => readonly Vehicle[] }
   }
 }
 
@@ -71,11 +75,19 @@ async function boot(): Promise<void> {
 
   const app = await App.create({ container, config: config.engine })
   const quality = resolveQuality(config.engine.quality, app.backend)
+  const tierLook = config.looks[quality.tier]
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
+  let renderFloor = quality.settings.minRenderHeight ?? tierLook.minRenderHeight
+  app.setRenderHeightFloor(renderFloor)
   app.own(applyEnvironment(app.scene, config.engine.environment))
   const lighting = app.own(createLighting(config.engine.lighting, quality.settings))
+  lighting.sun.shadow.bias = -0.0004
+  lighting.sun.shadow.normalBias = 0.025
+  lighting.sun.shadow.radius = 3
   app.graph.add('world', lighting.root)
-  app.own(createPost(app, config.engine.post, quality.settings))
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
+  const effects = tierLook.post && reducedMotion ? { ...tierLook.post, grain: undefined } : tierLook.post
+  app.own(createPost(app, { ...config.engine.post, effects: effects ?? undefined }, { ...quality.settings, post: !!effects }))
   app.graph.add('world', createSky(config.sky))
   bakeEnvironment(app)
 
@@ -86,18 +98,24 @@ async function boot(): Promise<void> {
   const events = new rapier.EventQueue(true)
   app.own({ dispose: () => events.free() })
 
-  const arena = app.own(createArena(config.arena))
+  const arena = app.own(createArena(config.arena, 7, tierLook.dirtTexture))
   app.graph.add('world', arena.root)
   world.createCollider(rapier.ColliderDesc.cuboid(config.arena.groundSize / 2, 0.5, config.arena.groundSize / 2).setTranslation(0, -0.5, 0).setFriction(1))
   for (const barrier of arena.barriers) {
     world.createCollider(rapier.ColliderDesc.cuboid(barrier.half.x, barrier.half.y, barrier.half.z).setTranslation(barrier.position.x, barrier.position.y, barrier.position.z).setFriction(0.4).setRestitution(0.2))
   }
-  const dust = app.own(createParticles(config.dust, 0.55, 0.9))
-  const smoke = app.own(createParticles(config.smoke, 0.5, 1.6))
-  app.graph.add('fx', dust.points)
-  app.graph.add('fx', smoke.points)
+  const dust = app.own(createParticles(config.dust, { opacity: 0.5, rise: 0.7, grow: 2.6, drag: 1.4 }))
+  const smoke = app.own(createParticles(config.smoke, { opacity: 0.38, rise: 1.4, grow: 3, drag: 0.8 }))
+  const steam = app.own(createParticles(config.steam, { opacity: 0.45, rise: 1.8, grow: 2.8, drag: 1 }))
+  const fire = app.own(createParticles(config.fire, { opacity: 0.85, rise: 1.8, grow: 0.35, drag: 1.4, additive: true, brightness: 2.2, endColor: '#c2410c' }))
+  const sparks = app.own(createParticles(config.sparks, { opacity: 1, rise: 0, gravity: 9.8, grow: 0.4, drag: 0.6, additive: true, brightness: 5, endColor: '#ff5a14', hard: true }))
+  for (const system of [dust, smoke, steam, fire, sparks]) app.graph.add('fx', system.object)
   const halfL = config.arena.length / 2
   const halfW = config.arena.width / 2
+  const debris = app.own(createDebris({ halfL, halfW }, config.debris.count, config.debris.life))
+  app.graph.add('props', debris.root)
+  const marks = app.own(createTrackMarks(config.arena.length + 2, config.arena.width + 2, tierLook.trackMarks))
+  app.graph.add('world', marks.mesh)
 
   const chase = createChaseCamera(config.camera)
   const banner = byId<HTMLElement>('banner')
@@ -106,6 +124,10 @@ async function boot(): Promise<void> {
   const engineBar = byId<HTMLElement>('engine-bar')
   const healthText = byId<HTMLElement>('health-text')
   const engineText = byId<HTMLElement>('engine-text')
+  const diagramCells = new Map<string, HTMLElement>()
+  for (const cell of Array.from(document.querySelectorAll<HTMLElement>('#damage-diagram [data-part]'))) diagramCells.set(cell.dataset.part ?? '', cell)
+  const damageNote = byId<HTMLElement>('damage-note')
+  let diagramVersion = -1
 
   const status = hud.panel('top-left', config.meta.title)
   const showCars = hud.stat(status, 'Still running', '–')
@@ -149,6 +171,9 @@ async function boot(): Promise<void> {
     cars = []
     brains = new Map()
     heat = null
+    debris.clear()
+    marks.clear()
+    diagramVersion = -1
   }
 
   const setPreview = (look: CarLook): void => {
@@ -240,7 +265,7 @@ async function boot(): Promise<void> {
       cars.push(car)
       if (i > 0) brains.set(car.id, createBrain(level, heatId * 1000 + i * 7919))
     }
-    heat = new Heat(cars, config.damage, config.scoring, config.heat.countdownSeconds, config.heat.finishHoldSeconds)
+    heat = new Heat(cars, damageFor(settings.damage), config.scoring, config.heat.countdownSeconds, config.heat.finishHoldSeconds)
     screens.hideAll()
     chase.setMode('chase')
     chase.snap()
@@ -269,6 +294,86 @@ async function boot(): Promise<void> {
       : ''
     screens.showResults(title, line, resultRows(), finished ? 'Heat over' : 'You are out', !finished)
     chase.setMode('stand')
+  }
+
+  let shake = 0
+  const impactVelocity = new THREE.Vector3()
+  const impact = (point: THREE.Vector3, strength: number, struck: Vehicle, involvesPlayer: boolean): void => {
+    const v = struck.body.linvel()
+    impactVelocity.set(v.x, 0, v.z)
+    sparks.burst(point, impactVelocity, Math.round(8 + strength * 40), 0.25, 3 + strength * 6)
+    dust.burst(point.clone().setY(0.2), impactVelocity, Math.round(2 + strength * 6), 0.6, 1.2)
+    if (strength > 0.15) debris.spray(point, impactVelocity, Math.round(3 + strength * 14), new THREE.Color(paintById(struck.look.paint).hex))
+    if (involvesPlayer) shake = Math.min(1, shake + 0.25 + strength * 0.8)
+  }
+  const newsText = (news: DamageNews): string | null => {
+    const corner = ['front left', 'front right', 'rear left', 'rear right']
+    switch (news.kind) {
+      case 'tire':
+        return `Blown tire, ${corner[news.wheel]}`
+      case 'wheel-off':
+        return `Lost the ${corner[news.wheel]} wheel`
+      case 'radiator':
+        return 'Radiator holed: the engine will cook under throttle'
+      case 'fire':
+        return 'Engine fire!'
+      case 'bumper':
+        return news.state === 2 ? `${news.part === 'frontBumper' ? 'Front' : 'Rear'} bumper torn off` : null
+      default:
+        return null
+    }
+  }
+  const drainDamage = (car: Vehicle): void => {
+    const v = car.body.linvel()
+    impactVelocity.set(v.x, v.y, v.z)
+    for (const part of car.detached.splice(0, car.detached.length)) debris.throwPart(part.object, impactVelocity)
+    for (const news of car.news.splice(0, car.news.length)) {
+      if (news.kind === 'lamp' || news.kind === 'glass') debris.spray(car.pos.clone().setY(car.spec.belt), impactVelocity, news.kind === 'glass' ? 10 : 5, new THREE.Color('#cfd8de'))
+      if (news.kind === 'tire') dust.burst(car.pos, impactVelocity, 12, 0.5, 2.5)
+      if (car.isPlayer) {
+        const text = newsText(news)
+        if (text) hud.toast(text)
+      }
+    }
+  }
+  const integrityColour = (value: number): string => `hsl(${Math.round(Math.max(0, Math.min(100, value)) * 1.15)}deg 72% ${value <= 0 ? 18 : 46}%)`
+  const showDiagram = (car: Vehicle): void => {
+    if (car.damage.version === diagramVersion) return
+    diagramVersion = car.damage.version
+    for (const panel of PANELS) {
+      const cell = diagramCells.get(panel)
+      if (cell) cell.style.background = integrityColour(car.damage.panels[panel])
+    }
+    car.damage.wheels.forEach((wheel, i) => {
+      const cell = diagramCells.get(`wheel${i}`)
+      if (!cell) return
+      cell.style.background = wheel.off ? '#111' : integrityColour(wheel.flat ? Math.min(wheel.integrity, 15) : wheel.integrity)
+      cell.classList.toggle('is-off', wheel.off)
+      cell.classList.toggle('is-flat', wheel.flat && !wheel.off)
+    })
+    const notes: string[] = []
+    if (car.damage.radiator < 50) notes.push('radiator leaking')
+    if (car.damage.driveline < 60) notes.push('driveline bent')
+    const flats = car.damage.wheels.filter((wheel) => wheel.flat && !wheel.off).length
+    const lost = car.damage.wheels.filter((wheel) => wheel.off).length
+    if (flats) notes.push(`${flats} flat${flats > 1 ? 's' : ''}`)
+    if (lost) notes.push(`${lost} wheel${lost > 1 ? 's' : ''} gone`)
+    if (Math.abs(car.steerPull) > 0.05) notes.push(`pulls ${car.steerPull > 0 ? 'right' : 'left'}`)
+    if (car.damage.fire) notes.push('on fire')
+    damageNote.textContent = notes.length ? notes.join(' · ') : 'Straight and sound'
+  }
+
+  let slowFor = 0
+  const adaptResolution = (dt: number): void => {
+    const rate = app.frameRate
+    if (!rate) return
+    slowFor = rate < 40 ? slowFor + dt : Math.max(0, slowFor - dt * 0.5)
+    if (slowFor < 3) return
+    slowFor = 0
+    if (renderFloor > 720) renderFloor = 720
+    else if (renderFloor > 0) renderFloor = 0
+    else return
+    app.setRenderHeightFloor(renderFloor)
   }
 
   const playerLookAt = new THREE.Vector3()
@@ -312,13 +417,16 @@ async function boot(): Promise<void> {
     preview?.update(dt, wheelFilter)
     physics.step(dt, events)
     if (heat) {
-      heat.resolveContacts(events)
+      heat.resolveContacts(events, world)
       heat.tick(dt)
       for (const event of heat.drainEvents()) {
         if (event.kind === 'knockout' && event.other) hud.toast(`${event.car.isPlayer ? 'You' : playerLabel(event.car)} knocked out ${event.other.isPlayer ? 'you' : playerLabel(event.other)}`)
         else if (event.kind === 'idle-out') hud.toast(`${event.car.isPlayer ? 'You were' : `${playerLabel(event.car)} was`} called out: no hits in 60 seconds`)
+        else if (event.kind === 'burned') hud.toast(`${event.car.isPlayer ? 'Your car burned out' : `${playerLabel(event.car)} burned out`}`)
         else if (event.kind === 'hit' && event.car.isPlayer && (event.strength ?? 0) > 0.6) hud.toast(`Big hit on ${event.other ? playerLabel(event.other) : 'a car'}`)
+        if ((event.kind === 'hit' || event.kind === 'wall') && event.point) impact(event.point, event.strength ?? 0, event.kind === 'hit' ? event.other ?? event.car : event.car, event.car.isPlayer || !!event.other?.isPlayer)
       }
+      for (const car of cars) drainDamage(car)
       if (heat.player && !heat.player.alive) submitScore()
       if (heat.state.phase === 'finished') submitScore()
       if ((heat.player && !heat.player.alive && !watching) || heat.state.phase === 'finished') showResults()
@@ -340,9 +448,17 @@ async function boot(): Promise<void> {
       lighting.follow(playerLookAt)
     }
     chase.update(app.camera, playerLookAt, playerHeading, dt)
+    if (shake > 0.001 && !reducedMotion) {
+      const amount = shake * shake * 0.18
+      app.camera.position.x += (Math.random() - 0.5) * amount
+      app.camera.position.y += (Math.random() - 0.5) * amount
+      app.camera.position.z += (Math.random() - 0.5) * amount
+      shake *= Math.exp(-dt * 7)
+    }
     arena.update(dt)
     for (const car of cars) {
-      if (car.alive && car.sideSlip > config.dust.slipSpeed) {
+      const slip = car.sideSlip
+      if (car.alive && slip > config.dust.slipSpeed) {
         for (let i = 2; i < 4; i++) {
           const ground = car.wheelGround(i)
           if (ground) dust.emit(ground, emitVelocity.set(0, 0, 0), 0.5)
@@ -351,15 +467,30 @@ async function boot(): Promise<void> {
         const ground = car.wheelGround(2 + Math.floor(Math.random() * 2))
         if (ground) dust.emit(ground, emitVelocity.copy(car.heading).multiplyScalar(-car.controls.throttle * 2), 0.4)
       }
+      for (let i = 0; i < 4; i++) {
+        const key = car.id * 4 + i
+        const ground = car.speed > 0.4 ? car.wheelGround(i) : null
+        if (ground) marks.stroke(key, ground.x, ground.z, car.spec.wheelWidth * (car.damage.wheels[i].flat ? 1.5 : 1), Math.min(1, slip / 5 + (car.damage.wheels[i].off ? 0.8 : 0)))
+        else marks.lift(key)
+      }
+      const nose = car.pos.clone().addScaledVector(car.heading, car.spec.length * 0.36)
+      nose.y += 0.55
       const smoking = car.alive ? car.engine < config.damage.smokeBelow : car.outReason === 'wrecked'
-      if (smoking && Math.random() < (car.alive ? 0.35 : 0.7)) {
-        const nose = car.pos.clone().addScaledVector(car.heading, car.spec.length * 0.42)
-        nose.y += 0.4
-        smoke.emit(nose, emitVelocity.set(0, 0.4, 0), 0.6)
+      if (smoking && Math.random() < (car.alive ? 0.25 + (1 - car.engine / config.damage.smokeBelow) * 0.5 : 0.7)) smoke.emit(nose, emitVelocity.set(0, 0.4, 0), 0.6)
+      if (car.damage.radiator < 50 && Math.random() < 0.5 * (1 - car.damage.radiator / 50) + 0.1) steam.emit(nose, emitVelocity.copy(car.heading).multiplyScalar(0.8), 0.5)
+      if (car.damage.fire) {
+        fire.emit(nose, emitVelocity.set(0, 0.4, 0), 0.6)
+        if (Math.random() < 0.4) smoke.emit(nose.setY(nose.y + 0.6), emitVelocity.set(0, 1, 0), 0.5)
       }
     }
     dust.update(dt)
     smoke.update(dt)
+    steam.update(dt)
+    fire.update(dt)
+    sparks.update(dt)
+    debris.update(dt)
+    marks.update(dt)
+    adaptResolution(dt)
     if (heat) {
       const player = heat.player
       showCars(`${heat.state.alive} of ${cars.length}`)
@@ -367,6 +498,7 @@ async function boot(): Promise<void> {
       showPoints(heat.playerScore().toLocaleString())
       if (!scoreSent && heat.state.phase === 'running') Scores.progress(config.meta.id, heat.playerScore(), { key: `heat-${heatId}` })
       if (player) {
+        showDiagram(player)
         healthBar.style.transform = `scaleX(${player.health / 100})`
         engineBar.style.transform = `scaleX(${player.engine / 100})`
         healthText.textContent = String(Math.round(player.health))
@@ -401,6 +533,7 @@ async function boot(): Promise<void> {
   screens.showGarage()
   app.start()
   window.__tlModule = { app, backend: app.backend, tier: quality.tier, steps: () => steps }
+  window.__demoderby = { cars: () => cars }
   addEventListener(
     'pagehide',
     () => {
