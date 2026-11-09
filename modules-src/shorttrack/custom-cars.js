@@ -8,6 +8,7 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STOCK_CAR, carIdOf, carVehicleKey, carGarage, paintMode } from './shared/CustomCars';
 import { bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels } from './shared/carRepaint';
+import { clearGroups, clearMask, clearPixels, cutClear } from './shared/carClear';
 import { numberAnchors, numberPlanes, placementMatrix } from './shared/carSurface';
 
 export const CUSTOM_CARS = new Map();
@@ -86,10 +87,38 @@ function prepare(rec, scene) {
   }
   if (!parts.length) throw new Error('empty car model');
   markPaintTargets(rec, parts);
+  const bounds = boundsOf(parts.map(p => p.geo.attributes.position.array));
+  for (const p of parts) if (p.paint === 'texture') markClear(p, bounds);
   const probe = new THREE.Group();
   for (const p of parts) probe.add(new THREE.Mesh(p.geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
   const anchors = numberAnchors(probe, rec.numbers);
-  return { rec, parts, anchors, bounds: boundsOf(parts.map(p => p.geo.attributes.position.array)) };
+  return { rec, parts, anchors, bounds };
+}
+
+// Windows and the rear spoiler of a textured body stay clear: their texels are cut out of the painted
+// body and drawn again, tinted and see-through, by a second material over the same triangles
+// (body-only triangles, then shared ones, then clear-only ones, as two overlapping groups).
+function markClear(part, bounds) {
+  const map = part.mat.map, img = map && map.image;
+  if (!img || !img.width) return;
+  const { cv, g, px } = pixelsOf(img), geo = part.geo;
+  const m = clearMask({ texture: px, positions: geo.attributes.position.array, uvs: geo.attributes.uv.array, index: geo.index ? geo.index.array : null, bounds, flipY: map.flipY });
+  if (!m) return;
+  const order = clearGroups(geo.index ? geo.index.array : null, m.triangles);
+  geo.setIndex(new THREE.BufferAttribute(order.index, 1));
+  geo.clearGroups();
+  geo.addGroup(order.body.start, order.body.count, 0);
+  geo.addGroup(order.clear.start, order.clear.count, 1);
+  const look = new ImageData(clearPixels(m, cv.width, cv.height), cv.width, cv.height);
+  g.putImageData(look, 0, 0);
+  const texture = new THREE.CanvasTexture(cv);
+  texture.colorSpace = THREE.SRGBColorSpace; texture.flipY = map.flipY; texture.wrapS = map.wrapS; texture.wrapT = map.wrapT; texture.anisotropy = 8;
+  texture.userData.shared = true;
+  part.clear = { mask: m, texture };
+}
+
+function clearMaterial(part) {
+  return new THREE.MeshPhysicalMaterial({ map: part.clear.texture, transparent: true, depthWrite: false, side: THREE.DoubleSide, roughness: 0.04, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03 });
 }
 
 const seeThrough = m => (m.transparent && m.opacity < 0.9) || (m.transmission ?? 0) > 0.2;
@@ -142,6 +171,7 @@ function bakedMap(a, part, primary, livery) {
     bakeLivery({ texture: px, livery: L, regions: livery.regions, bounds: a.bounds, flipY: map.flipY, weight, fallback: rgb,
       parts: [{ positions: geo.attributes.position.array, uvs: geo.attributes.uv.array, index: geo.index ? geo.index.array : null }] });
   } else tintPixels(px.data, rgb, weight);
+  if (part.clear) cutClear(px.data, part.clear.mask);
   g.putImageData(px, 0, 0);
   const t = new THREE.CanvasTexture(cv);
   t.colorSpace = map.colorSpace; t.flipY = map.flipY; t.wrapS = map.wrapS; t.wrapT = map.wrapT; t.anisotropy = 8;
@@ -151,7 +181,10 @@ function bakedMap(a, part, primary, livery) {
 function paintFor(a, part, lv, livery) {
   const src = part.mat, m = src.clone();
   m.vertexColors = true;
-  if (part.paint === 'texture') { const t = bakedMap(a, part, lv.primary, livery); if (t) { m.map = t; m.color.set(0xffffff); } }
+  if (part.paint === 'texture') {
+    const t = bakedMap(a, part, lv.primary, livery);
+    if (t) { m.map = t; m.color.set(0xffffff); if (part.clear) { m.alphaTest = 0.5; m.transparent = false; } }
+  }
   else if (part.paint === 'plain') {
     if (livery) {
       if (!part.liveryUv) part.liveryUv = new THREE.BufferAttribute(liveryUvs(part.geo.attributes.position.array, livery.regions, a.bounds), 2);
@@ -208,11 +241,12 @@ export function buildCustomCar(a, lv, ctx) {
     const mat = paintFor(a, p, lv, livery);
     const geo = p.geo.clone();
     if (p.paint === 'plain' && p.liveryUv && mat.map) geo.setAttribute('uv', p.liveryUv.clone());
-    const mesh = new THREE.Mesh(geo, mat); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
+    const clear = p.clear && mat.alphaTest > 0 ? clearMaterial(p) : null;
+    const mesh = new THREE.Mesh(geo, clear ? [mat, clear] : mat); mesh.castShadow = true; mesh.receiveShadow = true; g.add(mesh);
     if (p.paint) painted.push({ part: p, mat });
     bodyMesh = bodyMesh || mesh;
     deform.push({ geo: mesh.geometry, orig: Float32Array.from(mesh.geometry.attributes.position.array), scuff: true });
-    if (mat.isMeshStandardMaterial) { mat.envMap = ctx.envTex; mat.envMapIntensity = ctx.envK; paints.push(mat); }
+    for (const s of clear ? [mat, clear] : [mat]) if (s.isMeshStandardMaterial) { s.envMap = ctx.envTex; s.envMapIntensity = ctx.envK; paints.push(s); }
   }
   const wheels = addWheels(g, a, ctx.carAsset);
   const brakeMat = new THREE.MeshPhysicalMaterial({ color: 0x5a0008, emissive: 0xff1a26, emissiveIntensity: 0.2, roughness: 0.1, clearcoat: 1 });
