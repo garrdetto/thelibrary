@@ -195,7 +195,7 @@ export class Overlay {
     this.meter.classList.add('is-on')
     const { low, high } = meterRange()
     const ratio = (speed - low) / (high - low)
-    this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% - 6px)`
+    this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% + 1.5px)`
     const off = (speed - IDEAL_SPEED) / IDEAL_SPEED
     const zone = Math.abs(off) <= PERFECT ? 'perfect' : Math.abs(off) <= BAND ? 'good' : off < 0 ? 'low' : 'high'
     const words = { perfect: 'Perfect!', good: 'Good', low: 'Low', high: 'High' } as const
