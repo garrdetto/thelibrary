@@ -24,8 +24,10 @@ export function playerColor(state: GameState, playerId: string): string {
   return config.dart.flightColors[index % config.dart.flightColors.length]
 }
 
-/** Half-width of the green band, as a fraction of the ideal speed. */
-const BAND = 0.03
+/** Half-width of the whole good zone (green fading to yellow), as a fraction of the ideal speed. */
+const BAND = 0.026
+/** Half-width of the solid green "Perfect" centre of the good zone. */
+const PERFECT = 0.011
 
 function meterRange(): { low: number; high: number } {
   return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
@@ -58,6 +60,10 @@ export class Overlay {
     const band = BAND * IDEAL_SPEED
     this.meterBand.style.bottom = `${((IDEAL_SPEED - band - low) / (high - low)) * 100}%`
     this.meterBand.style.height = `${((band * 2) / (high - low)) * 100}%`
+    const core = (PERFECT / BAND) * 50
+    this.meterBand.style.setProperty('--perfect-from', `${50 - core}%`)
+    this.meterBand.style.setProperty('--perfect-to', `${50 + core}%`)
+    this.setPower(null)
     this.announce.style.setProperty('--announce-ms', `${config.timing.announceMs}ms`)
   }
 
@@ -158,6 +164,9 @@ export class Overlay {
   setPower(speed: number | null): void {
     if (speed === null) {
       this.meter.classList.remove('is-on')
+      this.meterFill.style.height = '0px'
+      this.meterLabel.textContent = 'Hold to throw'
+      this.meterLabel.dataset.zone = 'idle'
       return
     }
     this.meter.classList.add('is-on')
@@ -165,7 +174,10 @@ export class Overlay {
     const ratio = (speed - low) / (high - low)
     this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% - 6px)`
     const off = (speed - IDEAL_SPEED) / IDEAL_SPEED
-    this.meterLabel.textContent = `${speed.toFixed(1)} m/s ${Math.abs(off) < BAND ? '· on line' : off < 0 ? '· low' : '· high'}`
+    const zone = Math.abs(off) <= PERFECT ? 'perfect' : Math.abs(off) <= BAND ? 'good' : off < 0 ? 'low' : 'high'
+    const words = { perfect: 'Perfect!', good: 'Good', low: 'Low', high: 'High' } as const
+    this.meterLabel.dataset.zone = zone
+    this.meterLabel.textContent = `${words[zone]} · ${speed.toFixed(1)} m/s`
   }
 
   /** Queues announcements and shows the most important one of each batch (a win beats a bust beats a 180 beats a single bed). */

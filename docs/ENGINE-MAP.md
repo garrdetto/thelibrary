@@ -473,15 +473,15 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `modules-src/darts/shared/Rules.ts` — pure state machine: `createMatch`, `applyThrow` (x01 double-in/out and busts, Cricket marks and points, Count Up), `nextTurn`, legs and sets, `forfeitTurn`, `removePlayer`, `checkoutRoute`, `standings`, `modeLabel` — sessions, overlay, `darts-room.ts`.
 - `modules-src/darts/shared/Cpu.ts` — computer opponent's bed choice (T20, checkout routes, open Cricket numbers) and intent — `session/Session.ts`.
 - `modules-src/darts/shared/Rng.ts`, `shared/Room.ts` — mulberry32 and Box–Muller; room codes, seats and timings — physics, sessions, server.
-- `modules-src/darts/render/BoardTexture.ts` — 2048² canvas face (sectors, sisal, spider, number ring), packed roughness/metal map and Sobel normal map — `Pub.ts`.
-- `modules-src/darts/render/Pub.ts` — board with 3D wire spider, surround, cabinet with chalkboard doors, wall, floor, oche, board lamp (shadowed spot), sconces, baked environment — `index.ts`.
+- `modules-src/darts/render/BoardTexture.ts` — `BoardStyle` (`steel` bristle or `spider`, the red and black Spider 360 3000 soft-tip) and per-style 2048² canvas face (sectors, sisal or tip holes, spider, bold outlined number ring), packed roughness/metal map and Sobel normal map — `Pub.ts`, `index.ts`.
+- `modules-src/darts/render/Pub.ts` — board with 3D wire spider, surround, cabinet with chalkboard doors (steel), or a raised plastic spider and red-trimmed housing with an LED score display (soft-tip; `setStyle`, `setDisplay`), wall, floor, oche, board lamp (shadowed spot), sconces, baked environment — `index.ts` (board choice in the setup form, kept per device as `tl-darts-board`).
 - `modules-src/darts/render/Dart.ts` — lathe-built dart (point, knurled barrel, shaft, four flights per colour), `aimDart` — `index.ts`, `DartFlights.ts`.
 - `modules-src/darts/systems/ThrowInput.ts` — click/touch-and-hold aim with a swinging power meter (`chargeLevel`, `speedFromLevel`), Space charge, cancel on right-click/Escape → `ThrowIntent` — `index.ts`.
 - `modules-src/darts/systems/DartFlights.ts` — flight playback from `simulate` samples, stick-and-quiver, bounce-outs, floor darts, clear — `index.ts`.
 - `modules-src/darts/systems/Sounds.ts` — synthesised whoosh, thunk, bust and cheer — `index.ts`.
 - `modules-src/darts/session/Session.ts` — `LocalSession` (solo, computer, pass-and-play; seeded spread, timed turns) and `OnlineSession` (socket-driven) — `index.ts`.
 - `modules-src/darts/net/Socket.ts` — `DartsSocket` WebSocket client (create/join, throw, start, rematch, pings, rejoin) and `roomInfo` — `index.ts`, `Session.ts`.
-- `modules-src/darts/ui/Overlay.ts`, `ui/overlay.css` — player cards, darts-left dots, Cricket marks, turn strip with checkout route, speed meter, announcements, lobby and results — `index.ts`.
+- `modules-src/darts/ui/Overlay.ts`, `ui/overlay.css` — player cards, darts-left dots, Cricket marks, turn strip with checkout route, always-visible speed meter (solid green Perfect centre fading to yellow, `PERFECT`/`BAND`), announcements, lobby and results — `index.ts`.
 - `modules-src/darts/tests/darts.test.ts` — polar scoring, physics determinism and spread, x01/Cricket/Count Up rules, legs and sets, checkout routes, computer opponent, room codes — `scripts/darts-tests.mjs`.
 
 ### fairway — Fairway Nine (`modules-src/fairway/`, built from `_template`)
