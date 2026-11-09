@@ -44,7 +44,7 @@ async function boot(): Promise<void> {
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches
   const effects = budget.post && reducedMotion ? { ...budget.post, flare: undefined, grain: undefined } : budget.post
   const post = app.own(createPost(app, { ...config.engine.post, effects: effects ?? undefined }, { ...quality.settings, post: !!effects }))
-  const adaptive = budget.adaptive ? createAdaptiveResolution({ max: budget.pixelRatio, min: 0.75, apply: (ratio) => app.setPixelRatioCap(ratio) }) : null
+  const adaptive = budget.adaptive ? createAdaptiveResolution({ max: budget.pixelRatio, min: 1, apply: (ratio) => app.setPixelRatioCap(ratio) }) : null
 
   const input = app.own(new Input<Action>(container, config.bindings, config.engine.input))
   if (new URLSearchParams(location.search).get('athlete') !== '0') await loadBallplayerModels(new URL('bushleague/players/', location.href).href)

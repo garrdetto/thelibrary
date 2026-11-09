@@ -619,7 +619,8 @@ export class Director {
       const outcome = this.outcome
       if (outcome?.play?.kind === 'homer' && this.stageTime > 2.4) this.followRunner(timeline, outcome.pitch.batterId, this.stageTime)
     } else if (this.thrown) {
-      this.actors.setBall({ x: this.thrown.plateX, y: this.thrown.plateY, z: PLATE_FRONT - 0.4 - Math.min(0.6, this.stageTime * 2) })
+      this.actors.setBall(null)
+      this.actors.clearTrail()
     }
     if (this.stageTime < this.playEnd && !skip) return
     if (!skip && this.worthReplaying()) return this.startReplay(false)

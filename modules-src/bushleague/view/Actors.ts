@@ -150,7 +150,7 @@ export class Actors {
   setZone(height: number): void {
     const zone = strikeZone(height)
     const half = 0.2159
-    const edge = 0.0125
+    const edge = 0.0025
     const z = -PLATE_FRONT
     const corners = (grow: number) => [-half - grow, zone.bottom - grow, half + grow, zone.bottom - grow, half + grow, zone.top + grow, -half - grow, zone.top + grow]
     const points = [...corners(edge), ...corners(-edge)]
