@@ -3,7 +3,7 @@ import './overlay.css'
 import { config } from '../config'
 import { label } from '../shared/Board'
 import type { Announcement, DartThrow, GameState, Player, RoomPlayerView } from '../shared/interfaces'
-import { IDEAL_SPEED } from '../shared/Physics'
+import { IDEAL_SPEED, METER } from '../shared/Physics'
 import { CRICKET_TARGETS, DARTS_PER_TURN, checkoutRoute, currentPlayer, modeLabel, standings } from '../shared/Rules'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -25,9 +25,9 @@ export function playerColor(state: GameState, playerId: string): string {
 }
 
 /** Half-width of the whole good zone (green fading to yellow), as a fraction of the ideal speed. */
-const BAND = 0.036
-/** Half-width of the solid green "Perfect" centre of the good zone. */
-const PERFECT = 0.011
+const BAND = METER.band
+/** Half-width of the solid green "Perfect" centre of the good zone; its exact middle lands on the aim point. */
+const PERFECT = METER.perfect
 
 function meterRange(): { low: number; high: number } {
   return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
