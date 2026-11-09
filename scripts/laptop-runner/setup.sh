@@ -9,6 +9,8 @@
 # hour). If you leave it out and `gh` is signed in, the script asks GitHub for one.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 REPO="${SITE_CHANGES_REPO:-garrdetto/thelibrary}"
 LABEL="${SITE_CHANGES_RUNNER_LABEL:-msi-laptop}"
 DIR="${RUNNER_DIR:-$HOME/actions-runner}"
@@ -55,6 +57,11 @@ echo "→ Registering this laptop with $REPO as \"$LABEL\"…"
 if ! command -v claude >/dev/null && [[ ! -x "$HOME/.local/bin/claude" ]]; then
   echo "→ Installing Claude Code…"
   curl -fsSL https://claude.ai/install.sh | bash
+fi
+
+# Blender cleans up Meshy models on laptop runs (GitHub's machines don't have it). SKIP_BLENDER=1 leaves it out.
+if [[ "${SKIP_BLENDER:-}" != "1" ]]; then
+  bash "$SCRIPT_DIR/install-blender.sh" || echo "  Blender wasn't installed; 3D requests still work, without the clean-up step." >&2
 fi
 
 cat <<EOF

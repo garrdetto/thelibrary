@@ -19,12 +19,21 @@ How to work:
 - Never read, print or change secrets, environment values or .env files.
 - Schema changes go in a new numbered file in migrations/; the workflow applies them.
 
+3D models (Meshy):
+- When the administrator asks for a 3D object, character or animation the site doesn't have, generate it with \`node scripts/meshy-generate.mjs\` (run it with --help for every option; docs/MESHY-PIPELINE.md explains the pipeline). Example: \`node scripts/meshy-generate.mjs --prompt "a weathered red barn, game asset" --name barn --out assets-src/models/maplestreet/town --target furniture --size 12\`. Run the command with --dry-run first to see the credit estimate. A real run takes several minutes; give it a 20-minute timeout. If it is interrupted, run the identical command again and it resumes without paying twice.
+- Write original prompts: describe shape, materials and colours, add "game asset", and leave out brands, logos, real people, and characters from films or games.
+- Meshy rigs and animates only two-legged humanoid characters (\`--target character --rig --height <m> --animate idle,walk,…\`; \`--list-animations\` shows the clips). Animate everything else (vehicles, rides, props, animals, spinning or bobbing objects) in the module's code.
+- Afterwards run \`pnpm assets\`, load the file from public/models/ the way that module already loads models (docs/ENGINE-MAP.md), set its scale, position and collision, and play clips by the names in the script's RESULT. Keep the new .glb, its .meshy.json record and the public/models/ output in the change.
+- If the RESULT warns that Blender wasn't available, size and place the model in code. If the script says MESHY_API_KEY is missing, tell the administrator to add it as a GitHub repository secret, and don't fake the model with primitive shapes unless they ask.
+- In your reply, say what was generated, where to see it on the site, and how many Meshy credits it used.
+
 Your final message is shown to the administrator as your chat reply. Write it in plain language for someone who is not a developer: what you changed (or your answer, or your question), where to see it on the site, and anything they need to do. Keep it short and do not include code unless they asked for it.`
 
 const TOOLS = [
   'Read', 'Edit', 'MultiEdit', 'Write', 'Glob', 'Grep', 'TodoWrite', 'WebSearch', 'WebFetch',
   'Bash(pnpm:*)', 'Bash(bun:*)', 'Bash(node:*)', 'Bash(npx tsc:*)', 'Bash(ls:*)', 'Bash(git diff:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git show:*)',
   'Bash(pnpm *)', 'Bash(bun *)', 'Bash(node *)', 'Bash(npx tsc *)', 'Bash(ls *)', 'Bash(git diff *)', 'Bash(git status *)', 'Bash(git log *)', 'Bash(git show *)',
+  'Bash(blender:*)', 'Bash(blender *)',
 ].join(',')
 
 function loadState() {
@@ -93,6 +102,9 @@ function describeTool(name, input = {}) {
   if (name === 'Bash') {
     const command = String(input.command ?? '')
     if (/\bpnpm (run )?build\b/.test(command)) return 'Building the site to check for errors'
+    if (/meshy-generate\.mjs/.test(command)) return /--dry-run|--list-animations|--help/.test(command) ? 'Planning a 3D model' : 'Generating a 3D model with Meshy (this takes a few minutes)'
+    if (/\bpnpm (run )?assets\b/.test(command)) return 'Optimising 3D models'
+    if (/^blender\b/.test(command)) return 'Working on a model in Blender'
     return `Running ${command.split('\n')[0].slice(0, 90)}`
   }
   if (name === 'WebSearch' || name === 'WebFetch') return 'Looking something up'
@@ -141,6 +153,8 @@ async function askClaude() {
 
   const env = { ...process.env }
   for (const key of ['SITE_CHANGES_SECRET', 'GH_TOKEN', 'GITHUB_TOKEN', 'CALLBACK_URL', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) delete env[key]
+  env.BASH_DEFAULT_TIMEOUT_MS ??= String(10 * 60 * 1000)
+  env.BASH_MAX_TIMEOUT_MS ??= String(30 * 60 * 1000)
   const args = ['-p', buildPrompt(job), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', '--allowedTools', TOOLS, '--append-system-prompt', SYSTEM, '--max-turns', '150']
   args.push('--model', process.env.SITE_CHANGES_MODEL?.trim() || DEFAULT_MODEL)
 

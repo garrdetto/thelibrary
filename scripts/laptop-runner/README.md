@@ -24,3 +24,13 @@ The laptop runs a GitHub Actions self-hosted runner inside WSL (Ubuntu), so the 
 The runner is registered as `msi-laptop`. To use another name, set `SITE_CHANGES_RUNNER_LABEL` before running `setup.sh`, as a GitHub repository variable, and as a Cloudflare variable.
 
 On the laptop, Claude uses the Claude account you sign in to there. `setup.sh` installs Claude Code; run `claude`, then `/login`. It does not use the `ANTHROPIC_API_KEY` secret, so laptop requests count toward your Claude plan's usage, not your API credits. Requests on GitHub still use the API key. That same login also lets you start Remote Control sessions on the laptop from the Claude app (`claude remote-control`). Keep the laptop plugged in and awake while requests run.
+
+## 3D models (Meshy + Blender)
+
+Laptop runs are the best place for 3D requests ("add a rowboat to the Angler dock", "a park ranger who waves"): Claude generates the model with Meshy, and Blender on the laptop grounds, sizes and slims it before it goes into the site. GitHub's machines have no Blender, so there the model arrives raw and Claude sizes it in code. `setup.sh` installs Blender; on a laptop that's already set up, run:
+
+```sh
+cd ~/thelibrary && git pull && bash scripts/laptop-runner/install-blender.sh
+```
+
+Also add your Meshy API key as the `MESHY_API_KEY` repository secret on GitHub (Settings → Secrets and variables → Actions). Details: `docs/MESHY-PIPELINE.md`.

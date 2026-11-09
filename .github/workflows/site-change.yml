@@ -50,6 +50,11 @@ jobs:
           for tool in git gh curl; do
             command -v "$tool" >/dev/null || { echo "::error::$tool is missing on the laptop runner. Run scripts/laptop-runner/setup.sh again."; exit 1; }
           done
+          if command -v blender >/dev/null || [ -x "$HOME/blender/blender" ]; then
+            echo "Blender: $({ command -v blender >/dev/null && blender --version || "$HOME/blender/blender" --version; } 2>/dev/null | head -1)"
+          else
+            echo "::notice::Blender isn't installed on the laptop, so Meshy models skip the clean-up step. Run scripts/laptop-runner/install-blender.sh to add it."
+          fi
 
       - uses: pnpm/action-setup@v4
         with:
@@ -75,6 +80,9 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ runner.environment != 'self-hosted' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           SITE_CHANGES_LOCAL_LOGIN: ${{ runner.environment == 'self-hosted' && '1' || '' }}
           SITE_CHANGES_MODEL: ${{ vars.SITE_CHANGES_MODEL }}
+          # 3D models: scripts/meshy-generate.mjs reads these. MESHY_MAX_CREDITS caps one model's estimate.
+          MESHY_API_KEY: ${{ secrets.MESHY_API_KEY }}
+          MESHY_MAX_CREDITS: ${{ vars.MESHY_MAX_CREDITS || '150' }}
         run: node .github/site-changes/run.mjs claude
 
       # A pull request opened with the built-in GITHUB_TOKEN never starts other

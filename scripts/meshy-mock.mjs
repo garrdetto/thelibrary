@@ -9,7 +9,9 @@
  *              MESHY_API_BASE=http://localhost:8790/openapi
  *
  * Tasks advance from PENDING to SUCCEEDED over about six seconds and return a
- * small generated car body (with baked-in wheels) as their .glb.
+ * small generated car body (with baked-in wheels) as their .glb. Rigging and
+ * animation tasks return a small skinned figure (animations carry one clip per
+ * requested library action), and /v1/animations/library lists a few clips.
  */
 import { createServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
@@ -68,6 +70,38 @@ async function carGlb(tint) {
   return Buffer.from(await new NodeIO().writeBinary(doc))
 }
 
+const LIBRARY = [[0, 'Idle', 'DailyActions'], [14, 'Run_02', 'WalkAndRun'], [22, 'FunnyDancing_01', 'Dancing'], [28, 'Big_Wave_Hello', 'DailyActions'], [30, 'Casual_Walk', 'WalkAndRun']]
+
+/** A 1.7 m two-bone figure facing +Z, skinned to Hips and Spine, with one rotation clip per name. */
+async function figureGlb(clipNames) {
+  const doc = new Document()
+  const buffer = doc.createBuffer()
+  const material = doc.createMaterial('Body').setBaseColorFactor([0.8, 0.6, 0.45, 1])
+  const pos = [], idx = [], joints = [], weights = []
+  const ring = (y, r) => { const start = pos.length / 3; for (let i = 0; i < 8; i++) { const a = (i / 8) * Math.PI * 2; pos.push(Math.cos(a) * r, y, Math.sin(a) * r); const upper = y > 0.9; joints.push(upper ? 1 : 0, 0, 0, 0); weights.push(1, 0, 0, 0) } return start }
+  const rings = [ring(0, 0.18), ring(0.9, 0.2), ring(1.5, 0.22), ring(1.7, 0.1)]
+  for (let r = 0; r < rings.length - 1; r++) for (let i = 0; i < 8; i++) { const a = rings[r] + i, b = rings[r] + ((i + 1) % 8), c = rings[r + 1] + i, d = rings[r + 1] + ((i + 1) % 8); idx.push(a, c, b, b, c, d) }
+  const accessor = (type, array) => doc.createAccessor().setType(type).setArray(array).setBuffer(buffer)
+  const prim = doc.createPrimitive().setMaterial(material).setIndices(accessor('SCALAR', new Uint16Array(idx)))
+    .setAttribute('POSITION', accessor('VEC3', new Float32Array(pos))).setAttribute('JOINTS_0', accessor('VEC4', new Uint16Array(joints))).setAttribute('WEIGHTS_0', accessor('VEC4', new Float32Array(weights)))
+  const hips = doc.createNode('Hips').setTranslation([0, 0.9, 0])
+  const spine = doc.createNode('Spine').setTranslation([0, 0.3, 0])
+  hips.addChild(spine)
+  const ibm = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -0.9, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, -1.2, 0, 1])
+  const skin = doc.createSkin('Armature').addJoint(hips).addJoint(spine).setInverseBindMatrices(accessor('MAT4', ibm))
+  const body = doc.createNode('Character').setMesh(doc.createMesh('Character').addPrimitive(prim)).setSkin(skin)
+  const armature = doc.createNode('Armature').addChild(hips)
+  doc.createScene('Scene').addChild(armature).addChild(body)
+  clipNames.forEach((name, n) => {
+    const angle = 0.2 + n * 0.15
+    const q = [0, Math.sin(angle / 2), 0, Math.cos(angle / 2)]
+    const sampler = doc.createAnimationSampler().setInput(accessor('SCALAR', new Float32Array([0, 0.5, 1]))).setOutput(accessor('VEC4', new Float32Array([0, 0, 0, 1, ...q, 0, 0, 0, 1]))).setInterpolation('LINEAR')
+    const channel = doc.createAnimationChannel().setTargetNode(spine).setTargetPath('rotation').setSampler(sampler)
+    doc.createAnimation(name).addSampler(sampler).addChannel(channel)
+  })
+  return Buffer.from(await new NodeIO().writeBinary(doc))
+}
+
 function pngThumb(r, g, b) {
   const size = 64
   const raw = Buffer.alloc((size * 3 + 1) * size)
@@ -90,6 +124,14 @@ function view(task) {
   const progress = Math.min(100, Math.round(age * 18))
   const status = task.status !== 'AUTO' ? task.status : age < 1 ? 'PENDING' : progress < 100 ? 'IN_PROGRESS' : 'SUCCEEDED'
   const done = status === 'SUCCEEDED'
+  const glb = `http://localhost:${PORT}/assets/${task.id}.glb`
+  if (task.type === 'rigging' || task.type === 'animations') {
+    return {
+      id: task.id, type: task.type === 'rigging' ? 'rig' : 'animate', status, progress: status === 'PENDING' ? 0 : progress, created_at: task.created, consumed_credits: done ? task.cost : 0,
+      result: done ? (task.type === 'rigging' ? { rigged_character_glb_url: glb, rigged_character_fbx_url: '', basic_animations: null } : { animation_glb_url: glb, animation_fbx_url: '' }) : {},
+      task_error: status === 'FAILED' ? { message: 'Mock failure' } : null,
+    }
+  }
   return {
     id: task.id, type: task.type, mode: task.mode, status, progress: status === 'PENDING' ? 0 : progress,
     prompt: task.prompt ?? '', created_at: task.created, consumed_credits: task.cost,
@@ -110,14 +152,34 @@ const server = createServer(async (req, res) => {
   if (asset) {
     const task = tasks.get(asset[1])
     if (!task) return send(res, 404, { message: 'Not found' })
+    if (task.type === 'rigging' || task.type === 'animations') {
+      if (asset[2] !== 'glb') return send(res, 404, { message: 'Not found' })
+      return send(res, 200, await figureGlb(task.type === 'rigging' ? [] : task.actions.map(id => LIBRARY.find(([n]) => n === id)?.[1] ?? `Action_${id}`)), 'model/gltf-binary')
+    }
     const tint = [[0.7, 0.15, 0.12], [0.15, 0.35, 0.7], [0.2, 0.55, 0.3], [0.85, 0.6, 0.1]][task.seed % 4]
     return asset[2] === 'glb' ? send(res, 200, await carGlb(tint), 'model/gltf-binary') : send(res, 200, pngThumb(...tint.map(c => Math.round(c * 255))), 'image/png')
   }
   if (req.headers.authorization !== `Bearer ${KEY}`) return send(res, 401, { message: 'Invalid API key' })
-  const match = url.pathname.match(/^\/openapi\/(v1|v2)\/(text-to-3d|image-to-3d|remesh|retexture|balance)(?:\/([\w-]+))?$/)
+  const match = url.pathname.match(/^\/openapi\/(v1|v2)\/(text-to-3d|image-to-3d|remesh|retexture|rigging|animations|balance)(?:\/([\w-]+))?$/)
   if (!match) return send(res, 404, { message: 'Not found' })
   const [, , kind, id] = match
   if (kind === 'balance') return send(res, 200, { balance, monthly_credits: balance, permanent_credits: 0 })
+  if (kind === 'animations' && id === 'library') return send(res, 200, LIBRARY.map(([action_id, name, category]) => ({ action_id, name, category })))
+  if ((kind === 'rigging' || kind === 'animations') && req.method === 'POST' && !id) {
+    let raw = ''
+    for await (const part of req) raw += part
+    let body
+    try { body = JSON.parse(raw || '{}') } catch { return send(res, 400, { message: 'Bad JSON' }) }
+    if (kind === 'rigging' && !tasks.get(body.input_task_id) && !body.model_url) return send(res, 400, { message: 'input_task_id not found' })
+    if (kind === 'animations' && tasks.get(body.rig_task_id)?.type !== 'rigging') return send(res, 400, { message: 'rig_task_id not found' })
+    const actions = kind === 'animations' ? (Array.isArray(body.action_ids) ? body.action_ids : [body.action_id]) : []
+    const cost = kind === 'rigging' ? 5 : 3 * actions.length
+    if (balance < cost) return send(res, 402, { message: 'Insufficient credits' })
+    balance -= cost
+    const task = { id: randomUUID(), type: kind, actions, cost, created: Date.now(), status: 'AUTO', seed: tasks.size }
+    tasks.set(task.id, task)
+    return send(res, 202, { result: task.id })
+  }
   if (req.method === 'POST' && !id) {
     let raw = ''
     for await (const part of req) raw += part
