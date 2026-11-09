@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu'
 import type { ModuleConfig } from '../config'
 import { createCrowd, type Seat } from './Crowd'
+import { normalFromHeight } from './Textures'
 
 const { float, fract, instanceIndex, positionLocal, sin, time: shaderTime, vec3 } = THREE.TSL
 
@@ -22,7 +23,7 @@ function dirtTexture(size: number, light: string, dark: string): THREE.CanvasTex
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Canvas 2D is not available')
   ctx.fillStyle = light
   ctx.fillRect(0, 0, size, size)
@@ -64,44 +65,123 @@ function dirtTexture(size: number, light: string, dark: string): THREE.CanvasTex
     ctx.fill()
   }
   ctx.globalAlpha = 1
-  const texture = new THREE.CanvasTexture(canvas)
+  const turned = document.createElement('canvas')
+  turned.width = 256
+  turned.height = 512
+  const turnedCtx = turned.getContext('2d', { willReadFrequently: true })
+  if (!turnedCtx) throw new Error('Canvas 2D is not available')
+  turnedCtx.setTransform(0, 1, -1, 0, 256, 0)
+  turnedCtx.drawImage(canvas, 0, 0)
+  const texture = new THREE.CanvasTexture(turned)
   texture.colorSpace = THREE.SRGBColorSpace
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(1 / 0.85, 1 / 3)
   texture.anisotropy = 8
   return texture
 }
 
-/** A tangent-space normal map from a texture's brightness (Sobel), so ruts and pebbles catch the light. */
-function normalFromHeight(source: HTMLCanvasElement, strength: number): THREE.CanvasTexture {
-  const size = source.width
-  const sourceCtx = source.getContext('2d')
-  const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
-  const ctx = canvas.getContext('2d')
-  if (!ctx || !sourceCtx) throw new Error('Canvas 2D is not available')
-  const data = sourceCtx.getImageData(0, 0, size, size).data
-  const height = new Float32Array(size * size)
-  for (let i = 0; i < size * size; i++) height[i] = (data[i * 4] * 0.3 + data[i * 4 + 1] * 0.59 + data[i * 4 + 2] * 0.11) / 255
-  const out = ctx.createImageData(size, size)
-  const at = (x: number, y: number) => height[((y + size) % size) * size + ((x + size) % size)]
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const dx = (at(x + 1, y - 1) + 2 * at(x + 1, y) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x - 1, y) - at(x - 1, y + 1)) * strength
-      const dy = (at(x - 1, y + 1) + 2 * at(x, y + 1) + at(x + 1, y + 1) - at(x - 1, y - 1) - 2 * at(x, y - 1) - at(x + 1, y - 1)) * strength
-      const length = Math.sqrt(dx * dx + dy * dy + 1)
-      const i = (y * size + x) * 4
-      out.data[i] = ((-dx / length) * 0.5 + 0.5) * 255
-      out.data[i + 1] = ((-dy / length) * 0.5 + 0.5) * 255
-      out.data[i + 2] = (1 / length) * 255
-      out.data[i + 3] = 255
+/** The pad's top layer: the dirt plus darker watered patches (fairs wet the pad down), and a matching roughness map that makes the wet mud shine. */
+function padTextures(dirt: HTMLCanvasElement, seed: number): { map: THREE.CanvasTexture; roughness: THREE.CanvasTexture } {
+  const size = dirt.width
+  const colour = document.createElement('canvas')
+  colour.width = size
+  colour.height = size
+  const ctx = colour.getContext('2d')
+  const wet = document.createElement('canvas')
+  wet.width = size
+  wet.height = size
+  const wetCtx = wet.getContext('2d')
+  if (!ctx || !wetCtx) throw new Error('Canvas 2D is not available')
+  ctx.drawImage(dirt, 0, 0)
+  wetCtx.fillStyle = 'rgb(242,242,242)'
+  wetCtx.fillRect(0, 0, size, size)
+  let state = seed >>> 0
+  const random = () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 4294967296
+  }
+  for (let i = 0; i < 22; i++) {
+    const x = random() * size
+    const y = random() * size
+    const radius = size * (0.04 + random() * 0.12)
+    for (let k = 0; k < 6; k++) {
+      const ox = x + (random() - 0.5) * radius
+      const oy = y + (random() - 0.5) * radius
+      const r = radius * (0.4 + random() * 0.6)
+      const g = ctx.createRadialGradient(ox, oy, 0, ox, oy, r)
+      g.addColorStop(0, 'rgba(70,46,24,0.2)')
+      g.addColorStop(0.7, 'rgba(70,46,24,0.09)')
+      g.addColorStop(1, 'rgba(58,38,20,0)')
+      ctx.fillStyle = g
+      ctx.fillRect(ox - r, oy - r, r * 2, r * 2)
+      const w = wetCtx.createRadialGradient(ox, oy, 0, ox, oy, r)
+      w.addColorStop(0, 'rgba(120,120,120,0.7)')
+      w.addColorStop(1, 'rgba(120,120,120,0)')
+      wetCtx.fillStyle = w
+      wetCtx.fillRect(ox - r, oy - r, r * 2, r * 2)
     }
   }
-  ctx.putImageData(out, 0, 0)
-  const texture = new THREE.CanvasTexture(canvas)
+  const map = new THREE.CanvasTexture(colour)
+  map.colorSpace = THREE.SRGBColorSpace
+  map.wrapS = THREE.RepeatWrapping
+  map.wrapT = THREE.RepeatWrapping
+  map.anisotropy = 16
+  const roughness = new THREE.CanvasTexture(wet)
+  roughness.wrapS = THREE.RepeatWrapping
+  roughness.wrapT = THREE.RepeatWrapping
+  return { map, roughness }
+}
+
+/** Weathered precast concrete: speckle, stains running down from the top, and black rubber scuffs low on the face. */
+function concreteTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 256
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (!ctx) throw new Error('Canvas 2D is not available')
+  ctx.fillStyle = '#cdc8bc'
+  ctx.fillRect(0, 0, 512, 256)
+  let state = 4242
+  const random = () => {
+    state = (state * 1664525 + 1013904223) >>> 0
+    return state / 4294967296
+  }
+  for (let i = 0; i < 9000; i++) {
+    const shade = 150 + random() * 90
+    ctx.fillStyle = `rgba(${shade},${shade - 4},${shade - 12},${0.15 + random() * 0.3})`
+    ctx.fillRect(random() * 512, random() * 256, 1 + random() * 2, 1 + random() * 2)
+  }
+  for (let i = 0; i < 40; i++) {
+    const x = random() * 512
+    const g = ctx.createLinearGradient(0, 0, 0, 120 + random() * 120)
+    g.addColorStop(0, 'rgba(90,80,64,0.22)')
+    g.addColorStop(1, 'rgba(90,80,64,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(x, 0, 4 + random() * 16, 256)
+  }
+  for (let i = 0; i < 10; i++) {
+    ctx.strokeStyle = `rgba(20,20,20,${0.12 + random() * 0.25})`
+    ctx.lineWidth = 2 + random() * 8
+    ctx.beginPath()
+    const y = 170 + random() * 70
+    const x = random() * 512
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + 30 + random() * 120, y + (random() - 0.5) * 20)
+    ctx.stroke()
+  }
+  const turned = document.createElement('canvas')
+  turned.width = 256
+  turned.height = 512
+  const turnedCtx = turned.getContext('2d', { willReadFrequently: true })
+  if (!turnedCtx) throw new Error('Canvas 2D is not available')
+  turnedCtx.setTransform(0, 1, -1, 0, 256, 0)
+  turnedCtx.drawImage(canvas, 0, 0)
+  const texture = new THREE.CanvasTexture(turned)
+  texture.colorSpace = THREE.SRGBColorSpace
   texture.wrapS = THREE.RepeatWrapping
   texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(1 / 0.85, 1 / 3)
   texture.anisotropy = 8
   return texture
 }
@@ -149,7 +229,7 @@ function jerseyBarrier(length: number, height: number, thickness: number): THREE
   return geometry
 }
 
-export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): ArenaModel {
+export function createArena(config: ModuleConfig['arena'], crowdSeed = 7, dirtSize = config.dirtTexture): ArenaModel {
   const root = new THREE.Group()
   root.name = 'arena'
   const disposables: { dispose(): void }[] = []
@@ -158,7 +238,7 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
     return resource
   }
 
-  const dirt = own(dirtTexture(config.dirtTexture, config.groundColor, config.groundDark))
+  const dirt = own(dirtTexture(dirtSize, config.groundColor, config.groundDark))
   dirt.repeat.set(config.groundSize / 18, config.groundSize / 18)
   const dirtNormal = own(normalFromHeight(dirt.image as HTMLCanvasElement, 1.6))
   dirtNormal.repeat.copy(dirt.repeat)
@@ -177,17 +257,23 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
 
   const innerNormal = own(normalFromHeight(dirt.image as HTMLCanvasElement, 2.2))
   innerNormal.repeat.set((config.length + 2) / 12, (config.width + 2) / 12)
-  const innerMap = own(dirt.clone())
+  const pad = padTextures(dirt.image as HTMLCanvasElement, crowdSeed * 31 + 5)
+  const innerMap = own(pad.map)
   innerMap.repeat.copy(innerNormal.repeat)
-  innerMap.needsUpdate = true
-  const inner = new THREE.Mesh(own(new THREE.PlaneGeometry(config.length + 2, config.width + 2)), own(new THREE.MeshStandardMaterial({ map: innerMap, normalMap: innerNormal, normalScale: new THREE.Vector2(1.1, 1.1), roughness: 0.95, color: new THREE.Color('#cfae84') })))
+  const innerRoughness = own(pad.roughness)
+  innerRoughness.repeat.copy(innerNormal.repeat)
+  const inner = new THREE.Mesh(own(new THREE.PlaneGeometry(config.length + 2, config.width + 2)), own(new THREE.MeshStandardMaterial({ map: innerMap, normalMap: innerNormal, normalScale: new THREE.Vector2(1.2, 1.2), roughnessMap: innerRoughness, roughness: 1, color: new THREE.Color('#cfae84'), envMapIntensity: 0.6 })))
   inner.rotation.x = -Math.PI / 2
   inner.position.y = 0.005
+  inner.receiveShadow = true
   root.add(inner)
 
   const barriers: BarrierBox[] = []
   const hazard = own(hazardTexture())
-  const concrete = own(new THREE.MeshStandardMaterial({ color: new THREE.Color('#cfcabf'), roughness: 0.92, metalness: 0 }))
+  const concreteMap = own(concreteTexture())
+  const concreteNormal = own(normalFromHeight(concreteMap.image as HTMLCanvasElement, 1.4))
+  concreteNormal.repeat.copy(concreteMap.repeat)
+  const concrete = own(new THREE.MeshStandardMaterial({ map: concreteMap, normalMap: concreteNormal, normalScale: new THREE.Vector2(0.35, 0.35), roughness: 0.93, metalness: 0 }))
   const stripe = own(new THREE.MeshStandardMaterial({ map: hazard, roughness: 0.9 }))
   const segmentGeometry = own(jerseyBarrier(config.barrierSegment - 0.04, config.barrierHeight, config.barrierThickness))
   const halfL = config.length / 2
@@ -224,8 +310,8 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
   }
   root.add(barrierGroup)
 
-  const tireMaterial = own(new THREE.MeshStandardMaterial({ color: new THREE.Color('#161616'), roughness: 0.95 }))
-  const tireGeometry = own(new THREE.TorusGeometry(0.36, 0.14, 8, 18))
+  const tireMaterial = own(new THREE.MeshStandardMaterial({ color: new THREE.Color('#1a1a1a'), roughness: 0.9 }))
+  const tireGeometry = own(new THREE.TorusGeometry(0.36, 0.14, 14, 36))
   const tires = new THREE.InstancedMesh(tireGeometry, tireMaterial, 48)
   const tireMatrix = new THREE.Matrix4()
   let tireIndex = 0
@@ -245,6 +331,7 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7): Arena
   }
   tires.instanceMatrix.needsUpdate = true
   tires.castShadow = true
+  tires.receiveShadow = true
   root.add(tires)
 
   const standGroup = new THREE.Group()

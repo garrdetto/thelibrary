@@ -29,6 +29,7 @@ export class App {
   readonly shadows: ShadowCache
   renderer!: THREE.WebGPURenderer
   backend: RenderBackend = 'webgl2'
+  private renderHeightFloor = 0
   running = false
   paused = false
   frameRate = 0
@@ -114,7 +115,9 @@ export class App {
     if (this.disposed) return
     const width = this.container.clientWidth || innerWidth
     const height = this.container.clientHeight || innerHeight
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, this.config.renderer.maxPixelRatio, MAX_PIXEL_RATIO))
+    const cap = Math.min(this.config.renderer.maxPixelRatio, MAX_PIXEL_RATIO)
+    const floor = this.renderHeightFloor > 0 ? Math.min(cap, this.renderHeightFloor / Math.max(height, 1)) : 0
+    this.renderer.setPixelRatio(Math.max(Math.min(devicePixelRatio || 1, cap), floor))
     this.renderer.setSize(width, height, false)
     this.camera.aspect = width / Math.max(height, 1)
     this.camera.updateProjectionMatrix()
@@ -122,6 +125,12 @@ export class App {
 
   setPixelRatioCap(cap: number): void {
     this.config.renderer.maxPixelRatio = Math.min(cap, MAX_PIXEL_RATIO)
+    this.resize()
+  }
+
+  /** Keeps the drawing buffer at least this many pixels tall (supersampling a small or low-DPI view, within the pixel-ratio cap); 0 turns it off. */
+  setRenderHeightFloor(pixels: number): void {
+    this.renderHeightFloor = Math.max(0, pixels)
     this.resize()
   }
 

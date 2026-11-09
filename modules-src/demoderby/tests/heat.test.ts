@@ -1,9 +1,9 @@
-/** Runs whole heats headlessly (AI only, no renderer): cars stay inside the barriers and on the ground, hits deal damage and dents, and every heat ends with one placed winner. */
+/** Runs whole heats headlessly (AI only, no renderer): cars stay inside the barriers and on the ground, hits deal damage, dents and component damage at the solver's contact points, and every heat ends with one placed winner. */
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import * as THREE from 'three/webgpu'
 import { PhysicsWorld } from '../../../engine'
-import { bodyById, config } from '../config'
+import { aiLevelById, bodyById, config, damageFor } from '../config'
 import { createBrain, driveAi, type AiBrain } from '../systems/Ai'
 import { Heat } from '../systems/Heat'
 import { opponentLook } from '../systems/Look'
@@ -16,7 +16,7 @@ function percentiles(values: number[]): Record<string, number> {
   return { n: sorted.length, p10: at(0.1), p50: at(0.5), p90: at(0.9), p99: at(0.99), max: at(1) }
 }
 
-async function runHeat(seed: number, opponents: number, maxSeconds: number) {
+async function runHeat(seed: number, opponents: number, maxSeconds: number, level = 'veteran', preset = 'realistic') {
   const physics = await PhysicsWorld.create(config.engine.physics)
   const { rapier, world } = physics
   const events = new rapier.EventQueue(true)
@@ -43,9 +43,9 @@ async function runHeat(seed: number, opponents: number, maxSeconds: number) {
     const car = new Vehicle(i + 1, look, bodyById(look.body), i === 0, physics, config.vehicle, position, Math.atan2(-position.x, -position.z))
     cars.push(car)
     colliders.add(car.collider.handle)
-    brains.set(car.id, createBrain(config.ai[2], seed * 977 + i))
+    brains.set(car.id, createBrain(aiLevelById(level), seed * 977 + i))
   }
-  const heat = new Heat(cars, config.damage, config.scoring, 0.5, 1)
+  const heat = new Heat(cars, damageFor(preset), config.scoring, 0.5, 1)
   heat.forceLog = []
   const filter = (collider: { handle: number }) => !colliders.has(collider.handle)
   const dt = 1 / 60
@@ -63,7 +63,7 @@ async function runHeat(seed: number, opponents: number, maxSeconds: number) {
       car.update(dt, filter)
     }
     physics.step(dt, events)
-    heat.resolveContacts(events)
+    heat.resolveContacts(events, world)
     heat.tick(dt)
     for (const car of cars) {
       const p = car.pos
@@ -87,6 +87,11 @@ async function runHeat(seed: number, opponents: number, maxSeconds: number) {
     dents: cars.map((car) => (car.model as StubCarModel).dentCount),
     points: cars.map((car) => car.points),
     forces: percentiles(heat.forceLog ?? []),
+    bentWheels: cars.reduce((sum, car) => sum + car.damage.wheels.filter((wheel) => wheel.integrity < 80).length, 0),
+    flats: cars.reduce((sum, car) => sum + car.damage.wheels.filter((wheel) => wheel.flat).length, 0),
+    wheelsOff: cars.reduce((sum, car) => sum + car.damage.wheels.filter((wheel) => wheel.off).length, 0),
+    holedRadiators: cars.filter((car) => car.damage.radiator < 50).length,
+    brokenLamps: cars.reduce((sum, car) => sum + car.damage.lamps.filter(Boolean).length, 0),
   }
   for (const car of cars) car.dispose()
   events.free()
@@ -104,6 +109,8 @@ test('a six-car heat ends with one winner, real damage and dents', async () => {
   assert.ok(result.places.every((place) => place >= 1), 'every car is placed')
   assert.equal(new Set(result.places).size, result.places.length, 'places are unique')
   assert.ok(result.maxHeight < 3, `cars stay near the ground (max ${result.maxHeight})`)
+  assert.ok(result.bentWheels > 0, 'hits bend wheels')
+  assert.ok(result.brokenLamps > 0, 'hits break lamps')
 })
 
 test('a ten-car veteran heat also finishes', async () => {
@@ -111,4 +118,12 @@ test('a ten-car veteran heat also finishes', async () => {
   console.log(JSON.stringify(result))
   assert.equal(result.phase, 'finished')
   assert.ok(result.points.some((points) => points >= config.scoring.winPoints), 'the winner collects the win bonus')
+})
+
+test('a brutal heat against local drivers finishes with component damage', async () => {
+  const result = await runHeat(3, 7, 600, 'local', 'brutal')
+  console.log(JSON.stringify(result))
+  assert.equal(result.phase, 'finished')
+  assert.ok(result.places.every((place) => place >= 1), 'every car is placed')
+  assert.ok(result.bentWheels + result.flats + result.holedRadiators > 0, 'parts break')
 })

@@ -1,5 +1,5 @@
 /** Every tunable for Demo Derby: engine overrides, bindings, arena size, car bodies, paint and number options, vehicle physics, damage, AI and scoring. */
-import { ENGINE_DEFAULTS, type ActionBindings, type EngineConfig } from '../../engine'
+import { ENGINE_DEFAULTS, type ActionBindings, type EngineConfig, type PostEffects, type QualityTier } from '../../engine'
 import moduleJson from './module.json'
 
 export type Action = 'forward' | 'back' | 'left' | 'right' | 'brake' | 'reset' | 'camera' | 'debug'
@@ -92,6 +92,9 @@ export interface VehicleSpec {
   steerAtSpeedScale: number
   topSpeed: number
   reverseTopSpeed: number
+  /** Engine force multiplier at a standstill and at top speed (torque falls off with speed). */
+  launchBoost: number
+  topEndForce: number
   linearDamping: number
   angularDamping: number
   bodyFriction: number
@@ -129,6 +132,84 @@ export interface DamageSpec {
   idleWarnSeconds: number
   /** Smoke starts below this engine health. */
   smokeBelow: number
+  /** Barrier hits: force below which they do nothing, and the damage scale against a car hit. */
+  wallHitThreshold: number
+  wallScale: number
+  component: ComponentDamageSpec
+  handling: HandlingSpec
+}
+
+/** How a hit spreads into parts: panels, wheels, radiator, driveline, glass, lights and bolted-on parts. */
+export interface ComponentDamageSpec {
+  /** Panel integrity lost per point of body health lost. */
+  panelShare: number
+  /** Distance (m) from the hit to a wheel centre within which the wheel takes damage. */
+  wheelReach: number
+  /** Wheel integrity lost per point of body health lost, at the wheel itself. */
+  wheelShare: number
+  /** Camber and toe (rad) of a wheel at zero integrity. */
+  maxCamber: number
+  maxToe: number
+  /** A tire can blow once its wheel is below this integrity. */
+  flatBelow: number
+  /** Radiator and rear driveline integrity lost per point of front or rear body loss. */
+  radiatorShare: number
+  drivelineShare: number
+  /** Engine health lost per second with a dead radiator under throttle. */
+  overheatRate: number
+  /** Panel integrity under which a bumper sags, and falls off. */
+  bumperLoose: number
+  bumperOff: number
+  /** Panel integrity under which the hood or tailgate springs open. */
+  lidOpen: number
+  /** Corner integrity under which that corner's lamps break. */
+  lightBreak: number
+  /** Glass crack gained per point of body loss near the greenhouse. */
+  glassShare: number
+  /** The engine catches fire below this health; a fire burns this much body health a second. */
+  fireBelow: number
+  fireBurn: number
+  /** Body and roof loss when a car rolls onto its lid. */
+  rollLoss: number
+}
+
+/** What damage does to the drive: grip, suspension, steering and power. */
+export interface HandlingSpec {
+  /** Grip of a wheel at zero integrity, with a flat, and with the wheel gone. */
+  bentGrip: number
+  flatGrip: number
+  offGrip: number
+  /** Suspension stiffness share left at zero integrity. */
+  bentSpring: number
+  /** How far a corner drops (m) with a flat and with the wheel gone. */
+  flatDrop: number
+  offDrop: number
+  /** Rolling drag (brake units) from a flat and from a missing wheel. */
+  flatDrag: number
+  offDrag: number
+  /** Steering lock lost with both front wheels at zero integrity. */
+  steerLoss: number
+  /** Steering pull per radian of front toe. */
+  pullPerToe: number
+  /** Drive force left with a dead driveline. */
+  driveFloor: number
+}
+
+export interface DamagePreset {
+  id: 'light' | 'realistic' | 'brutal'
+  name: string
+  /** Multiplies every hit's damage. */
+  scale: number
+  /** Multiplies how quickly parts bend, break and fall off. */
+  parts: number
+}
+
+export interface TierLook {
+  /** Lowest drawing-buffer height (full HD is 1080). */
+  minRenderHeight: number
+  post: PostEffects | null
+  dirtTexture: number
+  trackMarks: number
 }
 
 export interface AiLevel {
@@ -140,6 +221,16 @@ export interface AiLevel {
   retarget: number
   /** How much the AI prefers a backing-in hit over a nose hit (0–1). */
   rearPreference: number
+  /** How far ahead it leads a moving target (0 aims at where it is, 1 at where it will be). */
+  lead: number
+  /** How readily it dodges a car charging at its flank (0–1). */
+  evasion: number
+  /** How well it aims for flanks, wheels and already-hurt corners (0–1). */
+  aim: number
+  /** Engine health below which it protects its nose and backs in. */
+  protectEngine: number
+  /** Steering gain on the angle to its aim point. */
+  steerGain: number
 }
 
 export interface ScoringSpec {
@@ -178,11 +269,17 @@ export interface ModuleConfig {
   vehicle: VehicleSpec
   damage: DamageSpec
   ai: readonly AiLevel[]
+  damagePresets: readonly DamagePreset[]
   scoring: ScoringSpec
   heat: { minOpponents: number; maxOpponents: number; defaultOpponents: number; countdownSeconds: number; spawnRing: number; finishHoldSeconds: number }
   camera: { chaseDistance: number; chaseHeight: number; lookAhead: number; stiffness: number; orbitSpeed: number; pitchMin: number; pitchMax: number; standPosition: readonly [number, number, number] }
   dust: { count: number; life: number; size: number; color: string; slipSpeed: number }
   smoke: { count: number; life: number; size: number; color: string }
+  sparks: { count: number; life: number; size: number; color: string }
+  fire: { count: number; life: number; size: number; color: string }
+  steam: { count: number; life: number; size: number; color: string }
+  debris: { count: number; life: number }
+  looks: Readonly<Record<QualityTier, TierLook>>
   hud: { controlsHint: string }
   storageKey: string
 }
@@ -247,7 +344,7 @@ export const config: ModuleConfig = {
   meta: moduleJson as ModuleMeta,
   engine: {
     ...ENGINE_DEFAULTS,
-    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#c9a977', toneMappingExposure: 1.0 },
+    renderer: { ...ENGINE_DEFAULTS.renderer, clearColor: '#c9a977', toneMappingExposure: 1.08, toneMapping: 'neutral' },
     camera: { fov: 58, near: 0.2, far: 600, position: [0, 9, 18], lookAt: [0, 0, 0] },
     environment: { ...ENGINE_DEFAULTS.environment, background: '#d9b98a', fogColor: '#d9b98a', fogNear: 90, fogFar: 320 },
     lighting: {
@@ -261,6 +358,16 @@ export const config: ModuleConfig = {
       sunDistance: 70,
       shadowExtent: 34,
     },
+    quality: {
+      ...ENGINE_DEFAULTS.quality,
+      tiers: {
+        low: { pixelRatioCap: 1, shadows: true, shadowMapSize: 1024, post: false },
+        medium: { pixelRatioCap: 2, shadows: true, shadowMapSize: 2048, post: true, minRenderHeight: 1080 },
+        high: { pixelRatioCap: 2, shadows: true, shadowMapSize: 4096, post: true, minRenderHeight: 1080 },
+        ultra: { pixelRatioCap: 2, shadows: true, shadowMapSize: 4096, post: true, minRenderHeight: 1440 },
+      },
+    },
+    post: { enabled: true },
   },
   bindings: {
     forward: [{ kind: 'key', code: 'KeyW' }, { kind: 'key', code: 'ArrowUp' }, { kind: 'axis', axis: 1, direction: -1 }, { kind: 'pad', button: 7 }, { kind: 'touch', region: [0.5, 0.45, 1, 0.75] }],
@@ -281,7 +388,7 @@ export const config: ModuleConfig = {
     groundColor: '#9c7a52',
     groundDark: '#6b4e2e',
     groundSize: 220,
-    dirtTexture: 1024,
+    dirtTexture: 2048,
     grandstandRows: 9,
     grandstandSeats: 48,
     crowdColors: ['#e3e3e3', '#1f3a73', '#b3312f', '#2d7a3e', '#f0c23a', '#f5a04b', '#7a4ca8', '#ff5f6d', '#3aa7c9', '#2b2b2b', '#ffd7b5', '#c48a5a'],
@@ -332,18 +439,20 @@ export const config: ModuleConfig = {
     suspensionCompression: 3.4,
     suspensionRelaxation: 2.6,
     maxSuspensionForce: 60000,
-    frictionSlip: 1.9,
+    frictionSlip: 2.2,
     sideFrictionStiffness: 0.55,
-    engineForce: 5200,
-    reverseForce: 4200,
+    engineForce: 9400,
+    reverseForce: 7600,
     brakeForce: 90,
     rollingBrake: 4,
     maxSteer: 0.62,
     steerRate: 2.8,
     steerFadeSpeed: 14,
     steerAtSpeedScale: 0.45,
-    topSpeed: 15,
-    reverseTopSpeed: 9,
+    topSpeed: 19,
+    reverseTopSpeed: 12,
+    launchBoost: 1.35,
+    topEndForce: 0.7,
     linearDamping: 0.12,
     angularDamping: 0.9,
     bodyFriction: 0.5,
@@ -354,9 +463,9 @@ export const config: ModuleConfig = {
   },
   damage: {
     contactThreshold: 30000,
-    hitThreshold: 70000,
-    hitFull: 480000,
-    maxHitDamage: 28,
+    hitThreshold: 85000,
+    hitFull: 1000000,
+    maxHitDamage: 19,
     zone: { front: 1.25, rear: 0.7, side: 1.0 },
     engineShare: { front: 0.9, rear: 0.1, side: 0.3 },
     powerFloor: 0.28,
@@ -368,17 +477,76 @@ export const config: ModuleConfig = {
     idleOutSeconds: 60,
     idleWarnSeconds: 15,
     smokeBelow: 45,
+    wallHitThreshold: 90000,
+    wallScale: 0.45,
+    component: {
+      panelShare: 3.2,
+      wheelReach: 1.3,
+      wheelShare: 3.4,
+      maxCamber: 0.32,
+      maxToe: 0.16,
+      flatBelow: 45,
+      radiatorShare: 2.2,
+      drivelineShare: 1.6,
+      overheatRate: 1.6,
+      bumperLoose: 62,
+      bumperOff: 22,
+      lidOpen: 40,
+      lightBreak: 78,
+      glassShare: 0.024,
+      fireBelow: 10,
+      fireBurn: 2.5,
+      rollLoss: 14,
+    },
+    handling: {
+      bentGrip: 0.55,
+      flatGrip: 0.42,
+      offGrip: 0.04,
+      bentSpring: 0.5,
+      flatDrop: 0.09,
+      offDrop: 0.3,
+      flatDrag: 6,
+      offDrag: 26,
+      steerLoss: 0.45,
+      pullPerToe: 0.5,
+      driveFloor: 0.45,
+    },
   },
   ai: [
-    { id: 'rookie', name: 'Rookie', throttle: 0.72, aggression: 0.5, retarget: 3.2, rearPreference: 0.3 },
-    { id: 'local', name: 'Local', throttle: 0.88, aggression: 0.75, retarget: 2.4, rearPreference: 0.55 },
-    { id: 'veteran', name: 'Veteran', throttle: 1, aggression: 1, retarget: 1.6, rearPreference: 0.75 },
+    { id: 'rookie', name: 'Rookie', throttle: 0.78, aggression: 0.55, retarget: 3, rearPreference: 0.3, lead: 0.35, evasion: 0.2, aim: 0.3, protectEngine: 25, steerGain: 1.8 },
+    { id: 'local', name: 'Local', throttle: 0.92, aggression: 0.8, retarget: 2.2, rearPreference: 0.5, lead: 0.7, evasion: 0.55, aim: 0.65, protectEngine: 45, steerGain: 2.3 },
+    { id: 'veteran', name: 'Veteran', throttle: 1, aggression: 1, retarget: 1.5, rearPreference: 0.7, lead: 1, evasion: 0.9, aim: 1, protectEngine: 60, steerGain: 2.8 },
+  ],
+  damagePresets: [
+    { id: 'light', name: 'Light', scale: 0.6, parts: 0.7 },
+    { id: 'realistic', name: 'Realistic', scale: 1, parts: 1 },
+    { id: 'brutal', name: 'Brutal', scale: 1.5, parts: 1.6 },
   ],
   scoring: { hitPoints: 100, knockoutPoints: 250, winPoints: 1000, survivalPerSecond: 2 },
   heat: { minOpponents: 3, maxOpponents: 9, defaultOpponents: 6, countdownSeconds: 3, spawnRing: 0.78, finishHoldSeconds: 2.5 },
-  camera: { chaseDistance: 9.5, chaseHeight: 4.2, lookAhead: 2.5, stiffness: 5.5, orbitSpeed: 0.0045, pitchMin: 0.08, pitchMax: 0.9, standPosition: [0, 11, 26] },
-  dust: { count: 600, life: 1.4, size: 0.9, color: '#c8a473', slipSpeed: 2.5 },
-  smoke: { count: 400, life: 2.2, size: 1.1, color: '#4a4a4a' },
+  camera: { chaseDistance: 9.5, chaseHeight: 4.2, lookAhead: 2.5, stiffness: 5.5, orbitSpeed: 0.0045, pitchMin: 0.08, pitchMax: 0.9, standPosition: [-21, 10, -17] },
+  dust: { count: 900, life: 1.8, size: 1.1, color: '#b8946a', slipSpeed: 2.5 },
+  smoke: { count: 600, life: 2.6, size: 1.2, color: '#4d4945' },
+  sparks: { count: 500, life: 0.55, size: 0.09, color: '#ffc46b' },
+  fire: { count: 300, life: 0.55, size: 0.45, color: '#ffb347' },
+  steam: { count: 300, life: 1.6, size: 0.9, color: '#e9edf0' },
+  debris: { count: 160, life: 30 },
+  looks: {
+    low: { minRenderHeight: 0, post: null, dirtTexture: 1024, trackMarks: 1024 },
+    medium: { minRenderHeight: 1080, post: { bloom: { strength: 0.22, radius: 0.35, threshold: 0.92 }, vignette: 0.22 }, dirtTexture: 2048, trackMarks: 2048 },
+    high: {
+      minRenderHeight: 1080,
+      post: { ao: { radius: 0.6, thickness: 1, intensity: 0.85, resolutionScale: 0.5, samples: 16 }, taa: true, bloom: { strength: 0.25, radius: 0.4, threshold: 0.9 }, vignette: 0.24, grain: 0.035 },
+      dirtTexture: 2048,
+      trackMarks: 2048,
+    },
+    ultra: {
+      minRenderHeight: 1440,
+      post: { ao: { radius: 0.7, thickness: 1, intensity: 0.9, resolutionScale: 1, samples: 16 }, taa: true, bloom: { strength: 0.28, radius: 0.45, threshold: 0.88 }, vignette: 0.24, grain: 0.035 },
+      dirtTexture: 2048,
+      trackMarks: 4096,
+    },
+  },
   hud: { controlsHint: 'W/S or ↑/↓ throttle and reverse · A/D steer · Space brake · R flip back over · C camera · drag to look' },
   storageKey: 'tl-demoderby-look',
 }
@@ -397,6 +565,34 @@ export function fontById(id: string): FontOption {
 
 export function bodyById(id: string): BodySpec {
   return config.bodies.find((body) => body.id === id) ?? config.bodies[0]
+}
+
+export function damagePresetById(id: string): DamagePreset {
+  return config.damagePresets.find((preset) => preset.id === id) ?? config.damagePresets[1]
+}
+
+/** The damage rules scaled by a preset: harder or softer hits, faster or slower part failures. */
+export function damageFor(presetId: string): DamageSpec {
+  const preset = damagePresetById(presetId)
+  const base = config.damage
+  const c = base.component
+  const k = preset.parts
+  return {
+    ...base,
+    maxHitDamage: base.maxHitDamage * preset.scale,
+    component: {
+      ...c,
+      panelShare: c.panelShare * k,
+      wheelShare: c.wheelShare * k,
+      radiatorShare: c.radiatorShare * k,
+      drivelineShare: c.drivelineShare * k,
+      glassShare: c.glassShare * k,
+      bumperLoose: Math.min(95, 100 - (100 - c.bumperLoose) / k),
+      bumperOff: Math.min(90, 100 - (100 - c.bumperOff) / k),
+      lidOpen: Math.min(90, 100 - (100 - c.lidOpen) / k),
+      lightBreak: Math.min(98, 100 - (100 - c.lightBreak) / k),
+    },
+  }
 }
 
 export function aiLevelById(id: string): AiLevel {

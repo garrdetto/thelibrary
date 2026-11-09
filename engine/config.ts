@@ -81,6 +81,8 @@ export interface QualitySettings {
   shadows: boolean
   shadowMapSize: number
   post: boolean
+  /** Lowest drawing-buffer height in pixels (1080 renders a small or low-DPI view at full HD, up to `pixelRatioCap`); off when left out. */
+  minRenderHeight?: number
 }
 
 export interface QualityConfig {

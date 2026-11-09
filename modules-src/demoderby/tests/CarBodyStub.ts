@@ -12,10 +12,13 @@ export function createCar(): StubCarModel {
     body: new THREE.Mesh(),
     decals: [],
     wheels: [0, 1, 2, 3].map(() => new THREE.Mesh()),
-    paint: new THREE.MeshStandardMaterial(),
+    paint: new THREE.MeshStandardNodeMaterial(),
     dentCount: 0,
     dent() {
       model.dentCount++
+    },
+    showDamage() {
+      return []
     },
     dispose() {},
   }
