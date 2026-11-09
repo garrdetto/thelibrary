@@ -4,6 +4,8 @@ import type { ModuleConfig } from '../config'
 
 export type CameraMode = 'chase' | 'stand' | 'garage'
 
+const AXES = ['x', 'y', 'z'] as const
+
 export interface ChaseCamera {
   mode: CameraMode
   setMode(mode: CameraMode): void
@@ -13,11 +15,18 @@ export interface ChaseCamera {
   snap(): void
 }
 
-function springStep(value: number, velocity: number, target: number, stiffness: number, dt: number): [number, number] {
+const spring = { value: 0, velocity: 0 }
+const ORIGIN = new THREE.Vector3()
+const view = new THREE.Vector3()
+const right = new THREE.Vector3()
+
+function springStep(value: number, velocity: number, target: number, stiffness: number, dt: number): typeof spring {
   const error = value - target
   const k = (velocity + stiffness * error) * dt
   const decay = Math.exp(-stiffness * dt)
-  return [target + (error + k) * decay, (velocity - stiffness * k) * decay]
+  spring.value = target + (error + k) * decay
+  spring.velocity = (velocity - stiffness * k) * decay
+  return spring
 }
 
 export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
@@ -46,19 +55,21 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
     update(camera, target, heading, dt) {
       if (api.mode === 'stand') {
         goal.set(...spec.standPosition)
-        goalLook.copy(target).lerp(new THREE.Vector3(0, 0, 0), 0.35)
+        goalLook.copy(target).lerp(ORIGIN, 0.35)
       } else if (api.mode === 'garage') {
         turntable += dt * 0.35
         goal.set(Math.cos(turntable) * 7.2, 2.1, Math.sin(turntable) * 7.2).add(target)
-        const view = target.clone().sub(goal).setY(0).normalize()
-        const right = new THREE.Vector3(-view.z, 0, view.x)
+        view.copy(target).sub(goal).setY(0).normalize()
+        right.set(-view.z, 0, view.x)
         const landscape = camera.aspect > 1.15
-        goalLook.copy(target).add(new THREE.Vector3(0, landscape ? 0.2 : -0.9, 0)).addScaledVector(right, landscape ? -2.3 : 0)
+        goalLook.copy(target).addScaledVector(right, landscape ? -2.3 : 0)
+        goalLook.y += landscape ? 0.2 : -0.9
       } else {
         const yaw = Math.atan2(heading.x, heading.z) + yawOffset
         const distance = spec.chaseDistance * Math.cos(pitch)
         goal.set(target.x - Math.sin(yaw) * distance, target.y + spec.chaseHeight * (0.6 + pitch), target.z - Math.cos(yaw) * distance)
-        goalLook.copy(target).addScaledVector(heading, spec.lookAhead).add(new THREE.Vector3(0, 0.8, 0))
+        goalLook.copy(target).addScaledVector(heading, spec.lookAhead)
+        goalLook.y += 0.8
         yawOffset *= Math.max(0, 1 - dt * 0.8)
       }
       if (goal.y < 0.8) goal.y = 0.8
@@ -70,13 +81,13 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
         snapNext = false
       } else {
         const stiffness = api.mode === 'garage' ? 2.5 : spec.stiffness
-        for (const axis of ['x', 'y', 'z'] as const) {
-          const [p, pv] = springStep(position[axis], positionVelocity[axis], goal[axis], stiffness, dt)
-          position[axis] = p
-          positionVelocity[axis] = pv
-          const [l, lv] = springStep(look[axis], lookVelocity[axis], goalLook[axis], stiffness * 1.6, dt)
-          look[axis] = l
-          lookVelocity[axis] = lv
+        for (const axis of AXES) {
+          const p = springStep(position[axis], positionVelocity[axis], goal[axis], stiffness, dt)
+          position[axis] = p.value
+          positionVelocity[axis] = p.velocity
+          const l = springStep(look[axis], lookVelocity[axis], goalLook[axis], stiffness * 1.6, dt)
+          look[axis] = l.value
+          lookVelocity[axis] = l.velocity
         }
       }
       camera.position.copy(position)

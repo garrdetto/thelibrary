@@ -1,6 +1,9 @@
 /** A Sims-style camera: orbit around a target on the ground, pan with drag or keys, zoom with the wheel. */
 import * as THREE from 'three/webgpu'
 
+const right = new THREE.Vector3()
+const forward = new THREE.Vector3()
+
 export class CameraRig {
   readonly target = new THREE.Vector3()
   yaw = 0
@@ -15,7 +18,7 @@ export class CameraRig {
   constructor(private readonly camera: THREE.PerspectiveCamera, private readonly element: HTMLElement) {
     addEventListener('keydown', this.onKey)
     addEventListener('keyup', this.onKey)
-    addEventListener('blur', () => this.keys.clear())
+    addEventListener('blur', this.onBlur)
     element.addEventListener('wheel', this.onWheel, { passive: false })
   }
 
@@ -24,6 +27,10 @@ export class CameraRig {
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return
     if (event.type === 'keydown') this.keys.add(event.code)
     else this.keys.delete(event.code)
+  }
+
+  private readonly onBlur = () => {
+    this.keys.clear()
   }
 
   private readonly onWheel = (event: WheelEvent) => {
@@ -58,8 +65,8 @@ export class CameraRig {
   /** Moves the target by a screen-space drag, so the ground follows the pointer. */
   pan(dx: number, dy: number): void {
     const scale = this.goal.distance * 0.0016
-    const right = new THREE.Vector3(Math.cos(this.goal.yaw), 0, -Math.sin(this.goal.yaw))
-    const forward = new THREE.Vector3(-Math.sin(this.goal.yaw), 0, -Math.cos(this.goal.yaw))
+    right.set(Math.cos(this.goal.yaw), 0, -Math.sin(this.goal.yaw))
+    forward.set(-Math.sin(this.goal.yaw), 0, -Math.cos(this.goal.yaw))
     this.goal.target.addScaledVector(right, -dx * scale).addScaledVector(forward, dy * scale)
     this.clampGoal()
   }
@@ -76,8 +83,8 @@ export class CameraRig {
 
   update(dt: number): void {
     const speed = this.goal.distance * 0.9 * dt
-    const right = new THREE.Vector3(Math.cos(this.goal.yaw), 0, -Math.sin(this.goal.yaw))
-    const forward = new THREE.Vector3(-Math.sin(this.goal.yaw), 0, -Math.cos(this.goal.yaw))
+    right.set(Math.cos(this.goal.yaw), 0, -Math.sin(this.goal.yaw))
+    forward.set(-Math.sin(this.goal.yaw), 0, -Math.cos(this.goal.yaw))
     if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) this.goal.target.addScaledVector(forward, speed)
     if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) this.goal.target.addScaledVector(forward, -speed)
     if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) this.goal.target.addScaledVector(right, -speed)
@@ -104,6 +111,7 @@ export class CameraRig {
   dispose(): void {
     removeEventListener('keydown', this.onKey)
     removeEventListener('keyup', this.onKey)
+    removeEventListener('blur', this.onBlur)
     this.element.removeEventListener('wheel', this.onWheel)
   }
 }

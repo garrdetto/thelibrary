@@ -159,10 +159,14 @@ export class Wildlife {
   }
 
   casters(): AbstractMesh[] {
-    const out: AbstractMesh[] = []
+    return this.collectCasters([])
+  }
+
+  /** Appends every animal mesh to `out` without allocating. */
+  collectCasters(out: AbstractMesh[]): AbstractMesh[] {
     for (const a of this.animals) {
-      out.push(...a.rig.meshes)
-      if (a.antlers) out.push(...a.antlers.meshes)
+      for (const mesh of a.rig.meshes) out.push(mesh)
+      if (a.antlers) for (const mesh of a.antlers.meshes) out.push(mesh)
     }
     return out
   }

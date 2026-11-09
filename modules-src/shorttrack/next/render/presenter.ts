@@ -43,6 +43,8 @@ import { bakeEnvironmentCube, bakeSky, directionAt, makeSkyFunction, skyDome } f
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
 import type { SkyParams } from './sky'
 
+const MAX_PIXEL_RATIO = 2
+
 /**
  * three's conventions in Babylon's terms, fitted to the classic reference screenshots (all five tracks, day and
  * night): three's ACES pre-scales exposure by 1/0.6; its lights and image-based light land at the factors below of
@@ -153,6 +155,10 @@ export class Presenter {
     this.status = status
     const scene = new Scene(engine)
     this.scene = scene
+    scene.skipPointerMovePicking = true
+    scene.skipPointerDownPicking = true
+    scene.skipPointerUpPicking = true
+    scene.detachControl()
     scene.useRightHandedSystem = true
     scene.clearColor = new Color4(0, 0, 0, 1)
     scene.ambientColor = new Color3(0, 0, 0)
@@ -373,9 +379,10 @@ export class Presenter {
     return SphericalPolynomial.FromHarmonics(sh)
   }
 
+  /** Render pixels per CSS pixel, like three's setPixelRatio; Babylon's scaling level is the inverse (CSS pixels per render pixel), capped at 2. */
   setPixelRatio(ratio: number): void {
-    this.pixelRatio = ratio
-    this.engine.setHardwareScalingLevel((window.devicePixelRatio || 1) / ratio)
+    this.pixelRatio = Math.min(Math.max(ratio, 0.25), MAX_PIXEL_RATIO)
+    this.engine.setHardwareScalingLevel(1 / this.pixelRatio)
   }
 
   getPixelRatio(): number {
@@ -548,6 +555,7 @@ export async function createPresenter(canvas: HTMLCanvasElement): Promise<Presen
     const { engine, backend } = await createEngine(canvas, params.get('gpu'))
     status.backend = backend
     const presenter = new Presenter(engine, status)
+    presenter.setPixelRatio(window.devicePixelRatio || 1)
     const toWebGl = (reason: string) => {
       if (backend !== 'webgpu') return
       console.warn(`${reason}, reloading on WebGL2`)

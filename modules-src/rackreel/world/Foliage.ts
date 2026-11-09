@@ -57,6 +57,8 @@ export class Foliage {
   private grassCenter = new Vector3(1e9, 0, 1e9)
   private shadowStands = new Set<Stand>()
   private extraCount = -1
+  private lastExtra: AbstractMesh[] = []
+  private nearScratch = new Set<Stand>()
   private readonly tints = new Map<string, Material>()
   private readonly tmp = Matrix.Identity()
   private readonly q = new Quaternion()
@@ -262,7 +264,8 @@ export class Foliage {
   }
 
   updateShadowCasters(focus: Vector3, extra: AbstractMesh[]): void {
-    const near = new Set<Stand>()
+    const near = this.nearScratch
+    near.clear()
     for (const stand of this.stands) {
       const dx = Math.max(Math.abs(stand.center.x - focus.x) - STAND_SIZE / 2, 0)
       const dz = Math.max(Math.abs(stand.center.z - focus.z) - STAND_SIZE / 2, 0)
@@ -271,16 +274,20 @@ export class Foliage {
     let changed = near.size !== this.shadowStands.size || extra.length !== this.extraCount
     this.extraCount = extra.length
     if (!changed) for (const s of near) if (!this.shadowStands.has(s)) changed = true
+    if (!changed) for (let i = 0; i < extra.length; i++) if (this.lastExtra[i] !== extra[i]) { changed = true; break }
     const map = this.ctx.shadows.getShadowMap()!
     if (changed || !map.renderList || map.renderList.length === 0) {
+      this.nearScratch = this.shadowStands
       this.shadowStands = near
-      const list: AbstractMesh[] = [...extra]
-      for (const stand of near) list.push(...stand.casters)
+      this.lastExtra = extra.slice()
+      const list: AbstractMesh[] = extra.slice()
+      for (const stand of near) for (const mesh of stand.casters) list.push(mesh)
       map.renderList = list
     }
   }
 
   forceShadowRefresh(): void {
     this.shadowStands = new Set()
+    this.extraCount = -1
   }
 }

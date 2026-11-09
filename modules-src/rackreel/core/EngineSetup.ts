@@ -5,6 +5,7 @@ import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
+import { RenderTargetTexture } from '@babylonjs/core/Materials/Textures/renderTargetTexture'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
@@ -129,7 +130,41 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   shadows.setDarkness(0.42)
   shadows.forceBackFacesOnly = false
   shadows.frustumEdgeFalloff = 0.25
-  shadows.getShadowMap()!.refreshRate = 1
+  const shadowMap = shadows.getShadowMap()!
+  shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE
+  let shadowSnapshot = new Float32Array(0)
+  let shadowList: AbstractMesh[] | null = null
+  const shadowSun = new Vector3(Number.NaN, 0, 0)
+  scene.onBeforeRenderTargetsRenderObservable.add(() => {
+    const list = shadowMap.renderList
+    if (!list) return
+    let dirty = list !== shadowList || !sun.position.equals(shadowSun)
+    const size = list.length * 17
+    if (shadowSnapshot.length !== size) {
+      shadowSnapshot = new Float32Array(size)
+      dirty = true
+    }
+    let at = 0
+    for (let i = 0; i < list.length; i++) {
+      const mesh = list[i]
+      const shown = mesh.isEnabled() && mesh.isVisible ? 1 : 0
+      if (shadowSnapshot[at] !== shown) {
+        shadowSnapshot[at] = shown
+        dirty = true
+      }
+      at++
+      const m = mesh.computeWorldMatrix().m
+      for (let k = 0; k < 16; k++, at++) {
+        if (shadowSnapshot[at] !== m[k]) {
+          shadowSnapshot[at] = m[k]
+          dirty = true
+        }
+      }
+    }
+    shadowList = list
+    shadowSun.copyFrom(sun.position)
+    if (dirty) shadowMap.resetRefreshCounter()
+  })
 
   const pipeline = new DefaultRenderingPipeline('grade', true, scene, [camera])
   pipeline.samples = 1
@@ -154,6 +189,8 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   const right = Vector3.Cross(Vector3.Up(), sunDirection).normalize()
   const up = Vector3.Cross(sunDirection, right).normalize()
   const ray = new Ray(Vector3.Zero(), new Vector3(0, -1, 0), 600)
+  const focusScratch = new Vector3()
+  const axisScratch = new Vector3()
 
   const ctx: EngineContext = {
     engine,
@@ -182,8 +219,9 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       const a = Math.round(Vector3.Dot(target, right) / texel) * texel
       const b = Math.round(Vector3.Dot(target, up) / texel) * texel
       const c = Vector3.Dot(target, sunDirection)
-      const snapped = right.scale(a).addInPlace(up.scale(b)).addInPlace(sunDirection.scale(c))
-      sun.position.copyFrom(snapped.subtract(sunDirection.scale(350)))
+      right.scaleToRef(a, focusScratch)
+      focusScratch.addInPlace(up.scaleToRef(b, axisScratch)).addInPlace(sunDirection.scaleToRef(c - 350, axisScratch))
+      sun.position.copyFrom(focusScratch)
     },
     buildCollisionOctree(colliders) {
       const creation = (entry: TrunkCollider, block: OctreeBlock<TrunkCollider>) => {

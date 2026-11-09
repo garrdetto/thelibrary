@@ -57,6 +57,7 @@ export function createFlag(spec: FlagSpec): FlagModel {
   const cloth = new THREE.Mesh(clothGeometry, material)
   cloth.position.set(spec.poleRadius, spec.poleHeight - spec.clothHeight / 2, 0)
   cloth.castShadow = true
+  cloth.userData.shadowAnimated = true
   root.add(cloth)
 
   return {

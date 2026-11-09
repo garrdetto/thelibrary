@@ -305,6 +305,7 @@ export function createTrees(spec: TreesSpec): THREE.Group {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
       mesh.castShadow = true
       mesh.receiveShadow = true
+      if (mesh !== meshes[0]) mesh.userData.shadowAnimated = true
       mesh.computeBoundingSphere()
       root.add(mesh)
     }

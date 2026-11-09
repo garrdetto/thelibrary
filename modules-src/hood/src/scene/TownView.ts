@@ -204,9 +204,10 @@ export class TownView {
       const show = v.lights && g.visible
       entry.label.style.display = show ? '' : 'none'
       if (show) {
-        const at = this.stage.project(new THREE.Vector3(v.x, v.kind === 'engine' || v.kind === 'bus' ? 4.2 : 3.2, v.z))
+        const at = this.stage.projectXYZ(v.x, v.kind === 'engine' || v.kind === 'bus' ? 4.2 : 3.2, v.z)
         if (at) {
-          entry.label.textContent = `${v.label}: ${v.act}`
+          const text = `${v.label}: ${v.act}`
+          if (entry.label.textContent !== text) entry.label.textContent = text
           entry.label.style.left = `${at.x}px`
           entry.label.style.top = `${at.y}px`
         } else entry.label.style.display = 'none'
@@ -248,10 +249,14 @@ export class TownView {
       entry.figure.setTool(w.tool)
       entry.figure.setPose(w.pose, walking, this.time + w.x * 0.1, w.tool !== 'none' && !walking)
       if (entry.label) {
-        const at = this.stage.project(new THREE.Vector3(w.x, 2.2, w.z))
+        const at = this.stage.projectXYZ(w.x, 2.2, w.z)
         entry.label.style.display = at ? '' : 'none'
         if (at) {
-          entry.label.replaceChildren(el('b', {}, w.name), el('span', { class: 'act' }, w.act))
+          const text = `${w.name}|${w.act}`
+          if (entry.label.dataset.text !== text) {
+            entry.label.dataset.text = text
+            entry.label.replaceChildren(el('b', {}, w.name), el('span', { class: 'act' }, w.act))
+          }
           entry.label.style.left = `${at.x}px`
           entry.label.style.top = `${at.y}px`
         }

@@ -15,6 +15,12 @@ export interface PointerTarget {
 const DAY_SKY = new THREE.Color('#9cc8ec')
 const DUSK_SKY = new THREE.Color('#f0a46b')
 const NIGHT_SKY = new THREE.Color('#0d1530')
+const DEFAULT_SUN_OFFSET = new THREE.Vector3(30, 50, 20)
+
+export interface ScreenPoint {
+  x: number
+  y: number
+}
 
 export class Stage {
   readonly rig: CameraRig
@@ -25,6 +31,15 @@ export class Stage {
   private down: { x: number; y: number; button: number; dragging: boolean; custom: boolean } | null = null
   private readonly ground = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
   private readonly fog: THREE.Fog
+  private readonly sky = new THREE.Color()
+  private readonly ndcScratch = new THREE.Vector2()
+  private readonly groundScratch = new THREE.Vector3()
+  private readonly projectScratch = new THREE.Vector3()
+  private readonly screenScratch: ScreenPoint = { x: 0, y: 0 }
+  private canvasRect: DOMRect | null = null
+  private viewWidth = 0
+  private viewHeight = 0
+  private readonly sizeObserver: ResizeObserver | null
 
   constructor(readonly app: App, readonly lighting: LightingRig, readonly ui: HTMLElement) {
     this.rig = new CameraRig(app.camera, app.container)
@@ -42,6 +57,12 @@ export class Stage {
     lighting.sun.shadow.bias = -0.0006
     lighting.sun.shadow.camera.updateProjectionMatrix()
     const canvas = app.renderer.domElement
+    this.measure()
+    this.sizeObserver = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(this.onResize) : null
+    this.sizeObserver?.observe(app.container)
+    this.sizeObserver?.observe(canvas)
+    addEventListener('resize', this.onResize)
+    addEventListener('scroll', this.onResize, { capture: true, passive: true })
     canvas.addEventListener('pointerdown', this.onDown)
     canvas.addEventListener('pointermove', this.onMove)
     canvas.addEventListener('pointerup', this.onUp)
@@ -49,14 +70,26 @@ export class Stage {
     canvas.addEventListener('contextmenu', event => event.preventDefault())
   }
 
-  ndc(event: { clientX: number; clientY: number }): THREE.Vector2 {
-    const rect = this.app.renderer.domElement.getBoundingClientRect()
-    return new THREE.Vector2(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1)
+  private readonly onResize = (): void => {
+    this.canvasRect = null
+    this.measure()
   }
 
+  private measure(): void {
+    this.viewWidth = this.app.container.clientWidth
+    this.viewHeight = this.app.container.clientHeight
+  }
+
+  /** Normalised device coordinates of a pointer; the vector is reused, so read it before the next call. */
+  ndc(event: { clientX: number; clientY: number }): THREE.Vector2 {
+    const rect = (this.canvasRect ??= this.app.renderer.domElement.getBoundingClientRect())
+    return this.ndcScratch.set(((event.clientX - rect.left) / Math.max(rect.width, 1)) * 2 - 1, -((event.clientY - rect.top) / Math.max(rect.height, 1)) * 2 + 1)
+  }
+
+  /** Where a pointer ray meets the ground plane; the vector is reused, so read or clone it before the next call. */
   groundPoint(ndc: THREE.Vector2): THREE.Vector3 | null {
     this.raycaster.setFromCamera(ndc, this.app.camera)
-    return this.raycaster.ray.intersectPlane(this.ground, new THREE.Vector3())
+    return this.raycaster.ray.intersectPlane(this.ground, this.groundScratch)
   }
 
   pick(ndc: THREE.Vector2, roots: THREE.Object3D[]): THREE.Intersection | null {
@@ -64,15 +97,27 @@ export class Stage {
     return this.raycaster.intersectObjects(roots, true)[0] ?? null
   }
 
-  /** Screen position of a world point, or null when it is behind the camera. */
-  project(point: THREE.Vector3): { x: number; y: number } | null {
-    const v = point.clone().project(this.app.camera)
+  /**
+   * Screen position of a world point, or null when it is behind the camera.
+   * Labels call this every frame, so it reads the cached view size instead of
+   * measuring the layout (which forced a reflow per label between style writes)
+   * and returns one reused point: read it before the next call.
+   */
+  project(point: THREE.Vector3): ScreenPoint | null {
+    return this.projectXYZ(point.x, point.y, point.z)
+  }
+
+  projectXYZ(x: number, y: number, z: number): ScreenPoint | null {
+    const v = this.projectScratch.set(x, y, z).project(this.app.camera)
     if (v.z > 1) return null
-    const rect = this.app.container.getBoundingClientRect()
-    return { x: (v.x * 0.5 + 0.5) * rect.width, y: (-v.y * 0.5 + 0.5) * rect.height }
+    if (!this.viewWidth) this.measure()
+    this.screenScratch.x = (v.x * 0.5 + 0.5) * this.viewWidth
+    this.screenScratch.y = (-v.y * 0.5 + 0.5) * this.viewHeight
+    return this.screenScratch
   }
 
   private readonly onDown = (event: PointerEvent) => {
+    this.canvasRect = null
     this.app.renderer.domElement.setPointerCapture(event.pointerId)
     this.down = { x: event.clientX, y: event.clientY, button: event.button, dragging: false, custom: false }
   }
@@ -114,7 +159,7 @@ export class Stage {
     const day = THREE.MathUtils.clamp(sunUp * 1.6, 0, 1)
     const dusk = THREE.MathUtils.clamp(1 - Math.abs(sunUp) * 4, 0, 1) * (hour > 4 && hour < 21 ? 1 : 0)
     this.night = 1 - day
-    const sky = NIGHT_SKY.clone().lerp(DAY_SKY, day).lerp(DUSK_SKY, dusk * 0.5)
+    const sky = this.sky.copy(NIGHT_SKY).lerp(DAY_SKY, day).lerp(DUSK_SKY, dusk * 0.5)
     ;(this.app.scene.background as THREE.Color).copy(sky)
     this.fog.color.copy(sky)
     const sun = this.lighting.sun
@@ -122,19 +167,23 @@ export class Stage {
     sun.color.set(dusk > 0.3 ? '#ffc58f' : day > 0.1 ? '#fff4e0' : '#9fb4ff')
     this.lighting.hemisphere.intensity = 0.35 + day * 0.65
     const angle = ((hour - 6) / 12) * Math.PI
-    const offset = new THREE.Vector3(Math.cos(angle) * 40, Math.max(12, Math.sin(angle) * 55), 22)
+    const offset = (sun.userData.offset as THREE.Vector3 | undefined) ?? new THREE.Vector3()
+    offset.set(Math.cos(angle) * 40, Math.max(12, Math.sin(angle) * 55), 22)
     sun.userData.offset = offset
   }
 
   follow(target: THREE.Vector3): void {
     const sun = this.lighting.sun
-    const offset = (sun.userData.offset as THREE.Vector3 | undefined) ?? new THREE.Vector3(30, 50, 20)
+    const offset = (sun.userData.offset as THREE.Vector3 | undefined) ?? DEFAULT_SUN_OFFSET
     sun.target.position.copy(target)
     sun.position.copy(target).add(offset)
     sun.target.updateMatrixWorld()
   }
 
   dispose(): void {
+    this.sizeObserver?.disconnect()
+    removeEventListener('resize', this.onResize)
+    removeEventListener('scroll', this.onResize, { capture: true })
     this.rig.dispose()
     this.labels.remove()
   }

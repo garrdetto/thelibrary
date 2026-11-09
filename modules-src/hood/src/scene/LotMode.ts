@@ -302,6 +302,7 @@ export class LotMode implements PointerTarget {
       this.stage.rig.jump(center, place.yaw === 0 ? Math.PI + 0.35 : 0.35, 26, 0.8)
     }
     this.updateWallView(true)
+    if (first) void this.stage.app.prewarm()
     this.liveKey = ''
     if (this.mode !== 'live') this.renderDock()
   }
