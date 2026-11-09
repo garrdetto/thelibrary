@@ -15,6 +15,10 @@ export interface AvatarPose {
   castPower: number
   aimPitch: number
   climbPhase: number
+  /** Reel crank angle in radians; the reeling hand follows it round. */
+  crankPhase?: number
+  /** Rod load 0..1 while fighting a fish: the angler leans back and lifts the rod. */
+  rodLoad?: number
 }
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
@@ -150,12 +154,14 @@ export class Avatar {
         break
       }
       case 'reel': {
-        const wob = Math.sin(this.clock * 14) * 0.05
-        set(j['upperArm' + R], -0.6, 0, 0.1)
-        set(j['foreArm' + R], -0.95 + wob * 0.5)
-        set(j['upperArm' + Lh], -0.75 + wob, 0, -0.35)
-        set(j['foreArm' + Lh], -1.25 + wob)
-        torsoX -= 0.08
+        const load = pose.rodLoad ?? 0.4
+        const crank = pose.crankPhase ?? this.clock * 14
+        const shake = Math.sin(this.clock * 23) * 0.02 * load
+        set(j['upperArm' + R], -0.3 + shake, -0.4, -0.3)
+        set(j['foreArm' + R], -1.4)
+        set(j['upperArm' + Lh], -0.3 + Math.sin(crank) * 0.11 + shake, 0.5 + Math.cos(crank) * 0.09, -0.2)
+        set(j['foreArm' + Lh], -1.35 + Math.sin(crank) * 0.1)
+        set(j.torso, torsoX - 0.06 - load * 0.16, torsoY, 0)
         break
       }
       case 'rifle':

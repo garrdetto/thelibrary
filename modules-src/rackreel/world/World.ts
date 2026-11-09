@@ -193,6 +193,7 @@ export function buildWater(ctx: EngineContext, terrain: Terrain): { mesh: Mesh; 
   material.backFaceCulling = false
   mesh.material = material
   mesh.isPickable = false
+  mesh.alphaIndex = 0
   mesh.freezeWorldMatrix()
   return { mesh, material }
 }
