@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "a single soft-tip electronic throwing dart, perfectly straight, short flexible matte black plastic tip, polished brass barrel with ring grooves, short black nylon shaft, four plain white standard-shape flights in a cross at the tail, no logos or printing, game asset",
+    "target": "furniture",
+    "negative": "floor, background, text, logos",
+    "aiModel": "latest",
+    "polycount": 8000,
+    "texturePrompt": "",
+    "rig": false,
+    "height": null
+  },
+  "tasks": {
+    "preview": {
+      "id": "01a1c279-2520-7338-a675-4d6edbaee2a4",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-09T22:41:23.930Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1c279-96a2-75db-bfe0-b236950904a6",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-09T22:41:50.824Z",
+      "credits": 10
+    }
+  },
+  "credits": 30,
+  "files": [
+    "assets-src/models/darts/dart-soft.glb"
+  ],
+  "createdAt": "2026-11-09T22:41:21.099Z",
+  "clips": [],
+  "cleanup": "generic (Blender 5.2.3)",
+  "updatedAt": "2026-11-09T22:42:45.612Z"
+}

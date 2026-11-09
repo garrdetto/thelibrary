@@ -1228,5 +1228,25 @@
   "matsBefore": 28,
   "matsAfter": 28,
   "preset": "slots"
+ },
+ "darts/dart-steel.glb": {
+  "hash": "ed2badd376b3559ddc8e7cf1b2cda692efdc0811",
+  "before": 4124600,
+  "after": 463276,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
+ },
+ "darts/dart-soft.glb": {
+  "hash": "4657a187b80a5346ddb8b7ff8530fd798edd33a7",
+  "before": 4587992,
+  "after": 602912,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 2,
+  "matsAfter": 2,
+  "preset": "rig"
  }
 }
