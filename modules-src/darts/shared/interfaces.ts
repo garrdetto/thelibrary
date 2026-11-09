@@ -62,6 +62,8 @@ export interface X01Config {
   start: 301 | 501 | 701
   doubleIn: boolean
   doubleOut: boolean
+  /** Soft-tip Double Bull: the whole bullseye (outer bull included) scores 50 and counts as a double. */
+  doubleBull?: boolean
 }
 
 export interface CricketConfig {

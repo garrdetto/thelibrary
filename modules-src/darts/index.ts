@@ -46,7 +46,7 @@ function readSetup(form: HTMLFormElement): Setup {
   let rules: ModeConfig
   if (mode === 'cricket') rules = { mode: 'cricket', scoring: data.get('cricketPoints') === 'on', roundLimit: Number(data.get('cricketRounds') ?? 20) }
   else if (mode === 'countup') rules = { mode: 'countup', rounds: Number(data.get('countupRounds') ?? 8) }
-  else rules = { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: data.get('doubleIn') === 'on', doubleOut: data.get('doubleOut') === 'on' }
+  else rules = { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: data.get('doubleIn') === 'on', doubleOut: data.get('doubleOut') === 'on', doubleBull: data.get('board') === 'spider' && data.get('doubleBull') === 'on' }
   const who = String(data.get('who') ?? 'solo') as Setup['who']
   const name = String(data.get('playerName') ?? '').trim().slice(0, 16) || 'You'
   const count = Number(data.get('localCount') ?? 2)
@@ -402,6 +402,7 @@ async function boot(): Promise<void> {
     const setup = readSetup(form)
     const mode = setup.match.rules.mode
     byId('x01-options').hidden = mode !== 'x01'
+    byId('double-bull-option').hidden = new FormData(form).get('board') !== 'spider'
     byId('cricket-options').hidden = mode !== 'cricket'
     byId('countup-options').hidden = mode !== 'countup'
     byId('cpu-options').hidden = setup.who !== 'cpu'

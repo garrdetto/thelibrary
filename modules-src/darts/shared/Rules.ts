@@ -53,7 +53,7 @@ export function normalizeConfig(config: MatchConfig): MatchConfig {
   const whole = (value: number, min: number, max: number, fallback: number) => (Number.isInteger(value) && value >= min && value <= max ? value : fallback)
   const rules = config.rules
   let clean: ModeConfig
-  if (rules.mode === 'x01') clean = { mode: 'x01', start: [301, 501, 701].includes(rules.start) ? rules.start : 501, doubleIn: !!rules.doubleIn, doubleOut: !!rules.doubleOut }
+  if (rules.mode === 'x01') clean = { mode: 'x01', start: [301, 501, 701].includes(rules.start) ? rules.start : 501, doubleIn: !!rules.doubleIn, doubleOut: !!rules.doubleOut, doubleBull: !!rules.doubleBull }
   else if (rules.mode === 'cricket') clean = { mode: 'cricket', scoring: rules.scoring !== false, roundLimit: whole(rules.roundLimit, 5, 50, 20) }
   else clean = { mode: 'countup', rounds: whole(rules.rounds, 1, 20, 8) }
   return { rules: clean, legsPerSet: whole(config.legsPerSet, 1, 11, 1), setsToWin: whole(config.setsToWin, 1, 7, 1) }
@@ -148,6 +148,12 @@ function dartAnnouncement(list: Announcement[], dart: DartThrow, playerId: strin
   else if (dart.multiplier === 3) say(list, 'triple', spokenLabel(dart), playerId)
   else if (dart.multiplier === 2) say(list, 'double', spokenLabel(dart), playerId)
   else say(list, 'score', label(dart), playerId)
+}
+
+/** With Double Bull on in x01, an outer-bull dart scores 50 and counts as a double, like the inner bull. */
+export function scoredDart(rules: ModeConfig, dart: DartThrow): DartThrow {
+  if (rules.mode !== 'x01' || !rules.doubleBull || dart.ring !== 'outerBull') return dart
+  return { ...dart, multiplier: 2, scoreValue: 50 }
 }
 
 function applyX01(state: GameState, player: Player, dart: DartThrow, list: Announcement[]): { bust: boolean; won: boolean } {
@@ -263,8 +269,9 @@ function legWon(state: GameState, winner: Player, list: Announcement[]): void {
 /**
  * Applies one dart for the player whose turn it is. Returns the new state (the input is never changed), what to announce, and whether the turn is over. A turn ends after three darts, on a bust, or when the dart wins the leg; the state then waits in `turnEnd`, `legOver` or `finished` until `nextTurn`.
  */
-export function applyThrow(input: GameState, playerId: string, dart: DartThrow): ThrowResult {
+export function applyThrow(input: GameState, playerId: string, thrown: DartThrow): ThrowResult {
   if (input.status !== 'playing' || input.currentTurnPlayerId !== playerId) return { state: input, announcements: [], turnOver: false }
+  const dart = scoredDart(input.config.rules, thrown)
   const state = clone(input)
   const player = currentPlayer(state)
   const list: Announcement[] = []
