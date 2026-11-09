@@ -30,6 +30,41 @@ export const SPREAD = {
 
 export type SpreadLevel = keyof typeof SPREAD
 
+/**
+ * The power meter, shared by the on-screen meter and the throw. Zones are half-widths as fractions of IDEAL_SPEED: `perfect` is the solid green centre, `band` the whole good zone (light green fading to yellow at its edges); outside the band is Low / High.
+ * A meter release lands on a random point around the aim, with a per-axis standard deviation that grows with how far off centre it was (q = offset ÷ band, 0 at dead centre, 1 at the band's yellow edge):
+ *   σ(q) = yellowScatter × (q ÷ yellowStart)^curve, scaled by the skill level.
+ * On Normal that is σ = 0 at dead centre (an exact hit), about 4.5 mm at q 0.2 (≈ 90 % land within 1 cm), 8.5 mm at the edge of the solid green (≈ 50 %), 2.45 cm where the yellow starts (≈ 8 %), and 4.5 cm at the band's edge (≈ 2–3 %).
+ * Past the band the scatter stops growing and the extra speed physically drops (soft) or lifts (hard) the dart instead.
+ */
+export const METER = {
+  perfect: 0.011,
+  band: 0.036,
+  /** q where the band reads as yellow. */
+  yellowStart: 0.65,
+  /** Per-axis scatter on the board (metres) at `yellowStart` on Normal. */
+  yellowScatter: 0.0245,
+  /** > 1 so the green centre is forgiving and the yellow falls away quickly. */
+  curve: 1.43,
+} as const
+
+/** Signed meter offset as a fraction of the ideal speed (negative = too soft). */
+export function meterOffset(speed: number): number {
+  return (speed - IDEAL_SPEED) / IDEAL_SPEED
+}
+
+/** How far off dead centre a meter reading is: 0 at the middle of the green, 1 at the yellow edge of the band, above 1 outside it. */
+export function meterQuality(speed: number): number {
+  return Math.abs(meterOffset(speed)) / METER.band
+}
+
+/** Per-axis standard deviation (metres on the board) of where a meter release lands around the aim point. Zero at dead centre. */
+export function meterScatter(speed: number, level: SpreadLevel): number {
+  const q = Math.min(1, meterQuality(Number.isFinite(speed) ? speed : IDEAL_SPEED))
+  const skill = Math.sqrt(SPREAD[level] / SPREAD.normal)
+  return METER.yellowScatter * Math.pow(q / METER.yellowStart, METER.curve) * skill
+}
+
 export interface Impact {
   /** Where the dart ended up in board space. */
   point: Vec3
@@ -58,6 +93,7 @@ export function cleanIntent(intent: ThrowIntent): ThrowIntent {
     speed: clamp(intent.speed, MIN_SPEED, MAX_SPEED),
     yaw: clamp(intent.yaw, -MAX_YAW, MAX_YAW),
     wobble: clamp(intent.wobble, 0, 1),
+    meter: intent.meter === true,
   }
 }
 
@@ -158,6 +194,7 @@ function turn(dir: Vec3, yaw: number, pitch: number): Vec3 {
  */
 export function launch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin: Vec3 = RELEASE): FlightParams {
   const clean = cleanIntent(intent)
+  if (clean.meter) return meterLaunch(clean, level, rng, origin)
   const sigma = SPREAD[level] * (1 + clean.wobble * 1.6)
   const ideal = aimDirection(clean.aimX, clean.aimY, origin)
   const yawError = gaussian(rng) * sigma
@@ -165,6 +202,20 @@ export function launch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin
   const speedError = 1 + gaussian(rng) * sigma * 0.6
   const dir = turn(ideal, clean.yaw + yawError, pitchError)
   const speed = clamp(clean.speed * speedError, MIN_SPEED, MAX_SPEED)
+  return { origin, velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed] }
+}
+
+/**
+ * A player's power-meter release. Inside the band the speed reading only sets how much the dart scatters: it picks a landing point around the aim (σ from `meterScatter`, 0 at dead centre) and flies there at the ideal speed, so dead centre is an exact hit. Outside the band the scatter holds at its band-edge size and the speed past the band edge is real, so a soft release drops and a hard one rides high, continuing smoothly from the band.
+ */
+function meterLaunch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin: Vec3): FlightParams {
+  const sigma = meterScatter(intent.speed, level)
+  const targetX = intent.aimX + gaussian(rng) * sigma
+  const targetY = intent.aimY + gaussian(rng) * sigma
+  const dir = turn(aimDirection(targetX, targetY, origin), intent.yaw, 0)
+  const off = meterOffset(intent.speed)
+  const past = Math.sign(off) * Math.max(0, Math.abs(off) - METER.band)
+  const speed = clamp(IDEAL_SPEED * (1 + past), MIN_SPEED, MAX_SPEED)
   return { origin, velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed] }
 }
 

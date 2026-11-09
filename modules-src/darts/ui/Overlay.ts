@@ -3,7 +3,7 @@ import './overlay.css'
 import { config } from '../config'
 import { label } from '../shared/Board'
 import type { Announcement, DartThrow, GameState, Player, RoomPlayerView } from '../shared/interfaces'
-import { IDEAL_SPEED } from '../shared/Physics'
+import { IDEAL_SPEED, METER } from '../shared/Physics'
 import { CRICKET_TARGETS, DARTS_PER_TURN, checkoutRoute, currentPlayer, modeLabel, standings } from '../shared/Rules'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -24,10 +24,9 @@ export function playerColor(state: GameState, playerId: string): string {
   return config.dart.flightColors[index % config.dart.flightColors.length]
 }
 
-/** Half-width of the whole good zone (green fading to yellow), as a fraction of the ideal speed. */
-const BAND = 0.036
-/** Half-width of the solid green "Perfect" centre of the good zone. */
-const PERFECT = 0.011
+/** The meter's zones come from the physics so what you see is what the throw uses: the whole good band (green fading to yellow) and its solid green "Perfect" centre. */
+const BAND = METER.band
+const PERFECT = METER.perfect
 
 function meterRange(): { low: number; high: number } {
   return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
@@ -195,7 +194,8 @@ export class Overlay {
     this.meter.classList.add('is-on')
     const { low, high } = meterRange()
     const ratio = (speed - low) / (high - low)
-    this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% - 6px)`
+    // The fill's 3 px top line is centred on the true reading so it lines up with the band exactly.
+    this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% + 1.5px)`
     const off = (speed - IDEAL_SPEED) / IDEAL_SPEED
     const zone = Math.abs(off) <= PERFECT ? 'perfect' : Math.abs(off) <= BAND ? 'good' : off < 0 ? 'low' : 'high'
     const words = { perfect: 'Perfect!', good: 'Good', low: 'Low', high: 'High' } as const

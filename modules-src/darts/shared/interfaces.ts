@@ -153,6 +153,8 @@ export interface ThrowIntent {
   speed: number
   yaw: number
   wobble: number
+  /** True for a player's power-meter release: `speed` is read as a meter reading, so dead centre of the green flies exactly to the aim point and anything else scatters by how far off centre it was (see `meterScatter`). Absent for the computer, which throws through the plain skill spread. */
+  meter?: boolean
 }
 
 /** Everything needed to replay one dart's flight on any screen: the release point and the velocity after human error. */

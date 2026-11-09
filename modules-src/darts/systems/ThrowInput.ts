@@ -1,4 +1,4 @@
-/** The throw: click (or touch) and hold on the board to aim, and a power meter swings from soft to hard and back; let go to throw at the speed it shows. The middle of the swing (the green band) is the speed that lands on the aim point, so releasing early drops the dart and late lifts it. Moving while holding fine-tunes the aim (touch aims a little above the finger); right-click, Escape or a cancelled touch drops the throw. Keyboard: arrows aim (Shift for fine steps), hold Space and release. */
+/** The throw: click (or touch) and hold on the board to aim, and a power meter swings from soft to hard and back; let go to throw at the speed it shows. Dead centre of the green band flies exactly to the aim point; elsewhere in the band the dart scatters more the further from centre you let go, and outside the band releasing early drops it and late lifts it. Moving while holding fine-tunes the aim (touch aims a little above the finger); right-click, Escape or a cancelled touch drops the throw. Keyboard: arrows aim (Shift for fine steps), hold Space and release. */
 import * as THREE from 'three/webgpu'
 import { config } from '../config'
 import { BULL_HEIGHT } from '../shared/Board'
@@ -44,6 +44,8 @@ export class ThrowInput {
   private charging: 'pointer' | 'key' | null = null
   private chargeStart = 0
   private chargeFrame = 0
+  /** The speed the meter is showing right now, so a release throws exactly what the player saw rather than a frame later. */
+  private shownSpeed: number | null = null
   private readonly raycaster = new THREE.Raycaster()
   private readonly ndc = new THREE.Vector2()
   private readonly hit = new THREE.Vector3()
@@ -89,21 +91,23 @@ export class ThrowInput {
     this.chargeStart = performance.now()
     const tick = () => {
       if (!this.charging) return
-      this.handlers.power(speedFromCharge((performance.now() - this.chargeStart) / 1000))
+      this.shownSpeed = speedFromCharge((performance.now() - this.chargeStart) / 1000)
+      this.handlers.power(this.shownSpeed)
       this.chargeFrame = requestAnimationFrame(tick)
     }
     tick()
   }
 
-  /** Ends the hold and throws at the speed the meter shows. */
+  /** Ends the hold and throws at the speed the meter is showing (the last drawn frame, not the instant of release, so what you see is what you throw). */
   private finishCharge(): void {
     if (!this.charging) return
-    const held = (performance.now() - this.chargeStart) / 1000
+    const speed = this.shownSpeed ?? speedFromCharge((performance.now() - this.chargeStart) / 1000)
     this.charging = null
+    this.shownSpeed = null
     cancelAnimationFrame(this.chargeFrame)
     this.handlers.power(null)
     if (!this.enabled) return
-    this.handlers.release({ aimX: this.aimX, aimY: this.aimY, speed: speedFromCharge(held), yaw: 0, wobble: gesture.holdWobble })
+    this.handlers.release({ aimX: this.aimX, aimY: this.aimY, speed, yaw: 0, wobble: gesture.holdWobble, meter: true })
   }
 
   private readonly onDown = (event: PointerEvent): void => {
@@ -180,6 +184,7 @@ export class ThrowInput {
   /** Drops a hold without throwing (the turn moved on, Escape, or a cancelled touch). */
   interrupt(): void {
     this.charging = null
+    this.shownSpeed = null
     cancelAnimationFrame(this.chargeFrame)
     this.releasePointer()
     this.handlers.power(null)

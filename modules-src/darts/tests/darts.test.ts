@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { RADII, SECTORS, label, ringAt, scoreAt, sectorAt, targetPoint, toPolar } from '../shared/Board'
 import { cpuThrow } from '../shared/Cpu'
 import type { DartThrow, GameState, MatchConfig, Multiplier } from '../shared/interfaces'
-import { IDEAL_SPEED, RELEASE, SPREAD, aimDirection, launch, simulate, throwDart } from '../shared/Physics'
+import { IDEAL_SPEED, METER, RELEASE, SPREAD, aimDirection, launch, meterScatter, simulate, throwDart } from '../shared/Physics'
 import { applyThrow, checkoutRoute, createMatch, forfeitTurn, nextTurn, removePlayer } from '../shared/Rules'
 import { createRng, gaussian } from '../shared/Rng'
 import { isRoomCode, roomCode } from '../shared/Room'
@@ -360,4 +360,60 @@ test('power meter: swings up and back, and its green band is the ideal speed', a
   const rising = (idealLevel * period) / 2
   assert.ok(Math.abs(speedFromCharge(rising) - IDEAL_SPEED) < 1e-9)
   assert.ok(Math.abs(speedFromCharge(period - rising) - IDEAL_SPEED) < 1e-9)
+})
+
+test('power meter: dead centre of the green is an exact hit at every skill level', () => {
+  const point = targetPoint(20, 3)
+  for (const level of ['easy', 'normal', 'hard'] as const) {
+    for (let seed = 1; seed <= 20; seed++) {
+      const hit = throwDart({ aimX: point.x, aimY: point.y, speed: IDEAL_SPEED, yaw: 0, wobble: 0.12, meter: true }, level, createRng(seed)).impact
+      assert.ok(Math.hypot(hit.point[0] - point.x, hit.point[1] - point.y) < 0.0005, `${level} seed ${seed}`)
+      assert.equal(hit.dart.scoreValue, 60)
+    }
+  }
+})
+
+test('power meter: the further from centre, the less often it lands close', () => {
+  const point = targetPoint(20, 1)
+  const closeRate = (q: number, side = 1) => {
+    const rng = createRng(1234)
+    const speed = IDEAL_SPEED * (1 + side * q * METER.band)
+    let close = 0
+    const n = 2000
+    for (let i = 0; i < n; i++) {
+      const hit = simulate(launch({ aimX: point.x, aimY: point.y, speed, yaw: 0, wobble: 0, meter: true }, 'normal', rng))
+      if (Math.hypot(hit.point[0] - point.x, hit.point[1] - point.y) < 0.01) close++
+    }
+    return close / n
+  }
+  const rates = [0.1, 0.2, 0.31, 0.5, METER.yellowStart, 1].map((q) => closeRate(q))
+  for (let i = 1; i < rates.length; i++) assert.ok(rates[i] < rates[i - 1], `close rate should fall: ${rates.join(', ')}`)
+  assert.ok(rates[0] > 0.97, `near centre almost always close: ${rates[0]}`)
+  assert.ok(rates[2] > 0.4 && rates[2] < 0.6, `edge of solid green about a coin flip: ${rates[2]}`)
+  const yellow = (closeRate(METER.yellowStart) + closeRate(METER.yellowStart, -1)) / 2
+  assert.ok(yellow >= 0.05 && yellow <= 0.1, `start of yellow lands close 5-10% of the time: ${yellow}`)
+  assert.ok(rates[5] > 0 && rates[5] < 0.05, `band edge rarely close: ${rates[5]}`)
+})
+
+test('power meter: scatter is zero at centre, grows with distance, holds past the band, and scales with skill', () => {
+  assert.equal(meterScatter(IDEAL_SPEED, 'normal'), 0)
+  const at = (q: number) => meterScatter(IDEAL_SPEED * (1 + q * METER.band), 'normal')
+  assert.ok(at(0.1) < at(0.3) && at(0.3) < at(0.65) && at(0.65) < at(1))
+  assert.equal(at(1.5), at(1))
+  assert.ok(Math.abs(at(-0.5) - at(0.5)) < 1e-12)
+  const edge = IDEAL_SPEED * (1 + METER.band)
+  assert.ok(meterScatter(edge, 'easy') < meterScatter(edge, 'normal') && meterScatter(edge, 'normal') < meterScatter(edge, 'hard'))
+})
+
+test('power meter: outside the band a soft release drops and a hard one rides high', () => {
+  const intent = { aimX: 0, aimY: 0, yaw: 0, wobble: 0, meter: true }
+  const drop = (speed: number) => {
+    let sum = 0
+    const rng = createRng(9)
+    for (let i = 0; i < 400; i++) sum += simulate(launch({ ...intent, speed }, 'normal', rng)).point[1]
+    return sum / 400
+  }
+  assert.ok(Math.abs(drop(IDEAL_SPEED * (1 + METER.band * 0.5))) < 0.005, 'inside the band misses are centred on the aim')
+  assert.ok(drop(IDEAL_SPEED * 0.85) < -0.05)
+  assert.ok(drop(IDEAL_SPEED * 1.15) > 0.03)
 })
