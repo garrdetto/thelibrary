@@ -45,6 +45,7 @@ interface PartHeader {
   uv?: boolean
   material?: string
   parent?: string
+  alias?: string
 }
 
 const BASE = new URL('./rackreel/models/', location.href.replace(/[^/]*$/, '')).href
@@ -65,6 +66,15 @@ export async function loadModel(scene: Scene, name: ModelName, material: (model:
   const dataStart = 8 + headerLength
   const parts = new Map<string, ModelPart>()
   for (const part of header.parts) {
+    if (part.alias) {
+      const source = parts.get(part.alias)
+      if (!source) throw new Error(`Missing alias source ${name}:${part.alias}`)
+      const mesh = source.mesh.clone(`${name}:${part.name}`)
+      mesh.material = material(name, part.name, part.material ?? '')
+      mesh.setEnabled(false)
+      parts.set(part.name, { name: part.name, pivot: source.pivot, mesh, parent: part.parent })
+      continue
+    }
     let at = dataStart + part.offset
     const positions = new Float32Array(buffer.slice(at, at + part.vertices * 12))
     at += part.vertices * 12

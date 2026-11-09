@@ -1,4 +1,4 @@
-/** Dart flight: a throw intent becomes a launch velocity (aimed so the ideal speed lands on the aim point), Gaussian release error widens it by skill and steadiness, and a fixed-step integrator with gravity and quadratic air drag finds where it meets the board plane. Board space: metres, origin at the bull, x right, y up, z towards the thrower. */
+/** Dart flight: a throw intent becomes a launch velocity, and a fixed-step integrator with gravity and quadratic air drag finds where it meets the board plane. A player's throw is judged by where the power meter stopped: the exact middle of the green lands on the aim point, and the further from it, the wider the random scatter (`meterScatter`). The computer keeps its own Gaussian release error by skill. Board space: metres, origin at the bull, x right, y up, z towards the thrower. */
 import { BULL_HEIGHT, OCHE_DISTANCE, RADII, scoreAt } from './Board'
 import type { DartThrow, FlightParams, ThrowIntent, Vec3 } from './interfaces'
 import { gaussian, type Rng } from './Rng'
@@ -29,6 +29,44 @@ export const SPREAD = {
 } as const
 
 export type SpreadLevel = keyof typeof SPREAD
+
+/** The player's steadiness settings; the other levels are the computer's. */
+export const PLAYER_LEVELS = ['easy', 'normal', 'hard'] as const
+export type PlayerLevel = (typeof PLAYER_LEVELS)[number]
+
+/**
+ * The power meter, as fractions of IDEAL_SPEED off the ideal: `perfect` is the half-width of the solid green, `band` of green plus the yellow fade.
+ * Releasing at distance d (in green half-widths) from the middle scatters the dart round the aim point with a standard deviation per axis that is
+ * zero up to `exact` (the dead-centre window lands exactly on the aim), then grows in a straight line to `edgeSigma` metres at the edge of the green
+ * (d = 1), where about 7.5 % of throws still land within `closeRadius` (8 mm, about one treble's width) of the aim, and keeps growing through the
+ * yellow up to `maxSigma`. Past the yellow the dart also drops (soft) or rises (hard) with the extra speed. `levelScale` widens or tightens it all.
+ */
+export const METER = {
+  perfect: 0.011,
+  band: 0.036,
+  exact: 0.15,
+  edgeSigma: 0.0203,
+  maxSigma: 0.15,
+  closeRadius: 0.008,
+  levelScale: { easy: 0.75, normal: 1, hard: 1.35 } as Record<PlayerLevel, number>,
+} as const
+
+export function isPlayerLevel(level: SpreadLevel): level is PlayerLevel {
+  return (PLAYER_LEVELS as readonly string[]).includes(level)
+}
+
+/** How far a release at `speed` is from the middle of the green, in green half-widths (0 dead centre, 1 the edge of the green). */
+export function meterDistance(speed: number): number {
+  return Math.abs(speed / IDEAL_SPEED - 1) / METER.perfect
+}
+
+/** Standard deviation per axis (metres) of where a player's dart lands around the aim point, for a release at `speed`. */
+export function meterScatter(speed: number, level: PlayerLevel): number {
+  const d = meterDistance(speed)
+  if (d <= METER.exact) return 0
+  const sigma = (METER.edgeSigma * (d - METER.exact)) / (1 - METER.exact)
+  return Math.min(METER.maxSigma, sigma * METER.levelScale[level])
+}
 
 export interface Impact {
   /** Where the dart ended up in board space. */
@@ -154,10 +192,15 @@ function turn(dir: Vec3, yaw: number, pitch: number): Vec3 {
 }
 
 /**
- * Turns an intent into the launch that actually happens. The arm points so a dart at IDEAL_SPEED lands on the aim point, so throwing softer drops low and harder flies high; an optional sideways yaw turns it; then the release error (Gaussian, standard deviation SPREAD[level] scaled up by an unsteady release) moves the direction and the speed.
+ * Turns an intent into the launch that actually happens. A player's throw (`PLAYER_LEVELS`) is aimed at the aim point moved by a random offset
+ * whose size comes from the power meter (`meterScatter`), so the middle of the green is exact; inside the green and yellow the speed only decides
+ * that scatter, and past the yellow the excess speed drops or lifts the dart. The computer's throw points so a dart at IDEAL_SPEED lands on the aim
+ * point (softer drops low, harder flies high), then its release error (Gaussian, standard deviation SPREAD[level] scaled up by an unsteady release)
+ * moves the direction and the speed. An optional sideways yaw turns either.
  */
 export function launch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin: Vec3 = RELEASE): FlightParams {
   const clean = cleanIntent(intent)
+  if (isPlayerLevel(level)) return playerLaunch(clean, level, rng, origin)
   const sigma = SPREAD[level] * (1 + clean.wobble * 1.6)
   const ideal = aimDirection(clean.aimX, clean.aimY, origin)
   const yawError = gaussian(rng) * sigma
@@ -165,6 +208,18 @@ export function launch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin
   const speedError = 1 + gaussian(rng) * sigma * 0.6
   const dir = turn(ideal, clean.yaw + yawError, pitchError)
   const speed = clamp(clean.speed * speedError, MIN_SPEED, MAX_SPEED)
+  return { origin, velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed] }
+}
+
+function playerLaunch(clean: ThrowIntent, level: PlayerLevel, rng: Rng, origin: Vec3): FlightParams {
+  const sigma = meterScatter(clean.speed, level)
+  const offsetX = gaussian(rng) * sigma
+  const offsetY = gaussian(rng) * sigma
+  const ideal = aimDirection(clean.aimX + offsetX, clean.aimY + offsetY, origin)
+  const off = clean.speed / IDEAL_SPEED - 1
+  const beyond = Math.sign(off) * Math.max(0, Math.abs(off) - METER.band)
+  const speed = clamp(IDEAL_SPEED * (1 + beyond), MIN_SPEED, MAX_SPEED)
+  const dir = turn(ideal, clean.yaw, 0)
   return { origin, velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed] }
 }
 

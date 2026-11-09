@@ -308,6 +308,8 @@ def write_model(model):
         header['parts'].append({'name': name, 'pivot': [piv[0], piv[2], piv[1]], 'vertices': vcount, 'indices': len(idx) * 3, 'wide': wide, 'offset': offset, 'bytes': len(chunk), 'uv': has_uv, 'material': model.materials.get(name, ''), **({'parent': model.parents[name]} if name in model.parents else {})})
         offset += len(chunk)
         blobs.append(bytes(chunk))
+    for name, (source, material, piv, parent) in getattr(model, 'aliases', {}).items():
+        header['parts'].append({'name': name, 'alias': source, 'pivot': [piv[0], piv[2], piv[1]], 'vertices': 0, 'indices': 0, 'wide': False, 'offset': offset, 'bytes': 0, 'uv': False, 'material': material, **({'parent': parent} if parent else {})})
     hj = json.dumps(header, separators=(',', ':')).encode('utf8')
     while (len(hj) + 8) % 4:
         hj += b' '
@@ -857,6 +859,8 @@ exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_cab
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_quad.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_blind.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_hunter.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_animals.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():

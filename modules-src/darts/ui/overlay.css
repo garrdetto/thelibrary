@@ -72,7 +72,7 @@ button { cursor: pointer; }
 .d-meter.is-on { opacity: 1; }
 .d-meter-track { position: relative; width: 100%; height: 100%; border-radius: 6px; overflow: hidden; background: linear-gradient(to right, #07080a, #16181d 50%, #07080a); box-shadow: inset 0 2px 5px rgba(0, 0, 0, .9), inset 0 -1px 0 rgba(255, 255, 255, .12), 0 0 0 1px rgba(0, 0, 0, .7); }
 .d-meter-band { position: absolute; left: 0; right: 0; opacity: .92; background: linear-gradient(to top, #ffcf4a 0%, #a8e04e var(--perfect-from, 40%), #22d36a var(--perfect-from, 40%), #22d36a var(--perfect-to, 60%), #a8e04e var(--perfect-to, 60%), #ffcf4a 100%); box-shadow: 0 0 8px rgba(34, 211, 106, .45); }
-.d-meter-fill { position: absolute; left: 2px; right: 2px; bottom: 3px; border-radius: 4px; background: linear-gradient(to top, rgba(255, 255, 255, .06), rgba(255, 255, 255, .22)); border-top: 3px solid #fff; box-shadow: 0 -2px 8px rgba(255, 255, 255, .55); height: 0; }
+.d-meter-fill { position: absolute; left: 2px; right: 2px; bottom: 0; border-radius: 4px; background: linear-gradient(to top, rgba(255, 255, 255, .06), rgba(255, 255, 255, .22)); border-top: 3px solid #fff; box-shadow: 0 -2px 8px rgba(255, 255, 255, .55); height: 0; }
 .d-meter:not(.is-on) .d-meter-fill { border-top-width: 0; box-shadow: none; }
 .d-meter-label { font-size: 12px; font-weight: 600; color: var(--d-soft); white-space: nowrap; text-shadow: 0 1px 2px #000; pointer-events: none; }
 .d-meter-label[data-zone="idle"] { color: var(--d-dim); font-weight: 500; }
