@@ -1,11 +1,14 @@
-/** Ballpark built from a park's numbers and theme: mowed turf, scuffable infield dirt, chalk, bases, plate, mound, the fence by spray angle with its warning track, foul poles, the seating bowl, light towers and a scoreboard, plus the signature dressing for Sandlot Classic and The Outhouse. */
+/** Ballpark built from a park's numbers and theme: mowed turf, scuffable infield dirt with packing clay and regulation chalk (see `Chalk.ts`), on-deck circles, rounded bases on anchors, a beveled plate in its rubber rim, the turned mound, the fence by spray angle with its warning track, foul poles, the seating bowl, light towers and a scoreboard, plus the signature dressing for Sandlot Classic and The Outhouse. */
 import * as THREE from 'three/webgpu'
-import { BASES, BASE_PATH, DEG, MOUND_DISTANCE, fenceDistance, fenceHeight, polar, type Park, type Team } from '../sim'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { BASES, BASE_PATH, DEG, MOUND_DISTANCE, PLATE_HALF_WIDTH, fenceDistance, fenceHeight, polar, type Park, type Team } from '../sim'
 import type { ModuleConfig } from '../config'
 import type { ParkTheme } from '../looks'
 import type { Bowl } from './Crowd'
 import { toWorld, worldXYZ } from './space'
 import { DirtCanvas, createDirtMaterial, createTurfMaterial } from './Turf'
+import { ON_DECK, ON_DECK_RADIUS, coachBoxSegments } from './Chalk'
+import { moundGeometry } from './Mound'
 import { createSignature, type Signature } from './Signature'
 import { distanceSign, paddingTexture, seatTexture, woodTexture, type TextureDetail } from './Textures'
 
@@ -136,13 +139,13 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
     return item
   }
 
+  const dirt = new DirtCanvas(1024, detail.anisotropy, detail.size >= 2048 ? 1024 : 512)
+  own(dirt)
   const grass = own(createTurfMaterial(theme.mow, theme.grass[0], theme.grass[1], detail))
   const ground = flat(own(new THREE.PlaneGeometry(420, 420)), grass, 0)
   ground.position.z = -120
   root.add(ground)
 
-  const dirt = new DirtCanvas(1024, detail.anisotropy)
-  own(dirt)
   const dirtMaterial = own(createDirtMaterial(theme.dirt, dirt, detail))
   const infieldDirt = flat(own(infieldDirtGeometry()), dirtMaterial, 0.012)
   root.add(infieldDirt)
@@ -164,17 +167,33 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
     cut.position.copy(toWorld(center)).setY(0.02)
     root.add(cut)
   }
-  const mound = new THREE.Mesh(own(new THREE.CylinderGeometry(2.4, 2.74, 0.25, 40)), dirtMaterial)
-  mound.position.copy(worldXYZ(0, 0.125, MOUND_DISTANCE))
+  const mound = new THREE.Mesh(own(moundGeometry()), dirtMaterial)
+  mound.position.y = 0.02
   mound.receiveShadow = true
   root.add(mound)
+  for (const spot of ON_DECK) {
+    const circle = flat(own(new THREE.CircleGeometry(ON_DECK_RADIUS, 32)), dirtMaterial, 0.014)
+    circle.position.copy(worldXYZ(spot.x, 0.014, spot.z))
+    root.add(circle)
+  }
 
   const chalk = own(standard(look.chalk, 0.7))
-  const rubber = new THREE.Mesh(own(new THREE.BoxGeometry(0.61, 0.04, 0.15)), chalk)
-  rubber.position.copy(worldXYZ(0, 0.27, MOUND_DISTANCE))
+  const coachLine = own(new THREE.BoxGeometry(0.076, 0.012, 1))
+  const rubber = new THREE.Mesh(own(new RoundedBoxGeometry(0.61, 0.05, 0.152, 2, 0.008)), chalk)
+  rubber.position.copy(worldXYZ(0, 0.274 - 0.012, MOUND_DISTANCE))
+  rubber.receiveShadow = true
   root.add(rubber)
+  for (const [[x0, z0], [x1, z1]] of coachBoxSegments()) {
+    const length = Math.hypot(x1 - x0, z1 - z0) + 0.076
+    const line = new THREE.Mesh(coachLine, chalk)
+    line.scale.z = length
+    line.position.copy(worldXYZ((x0 + x1) / 2, 0.02, (z0 + z1) / 2))
+    line.rotation.y = Math.atan2(x1 - x0, -(z1 - z0))
+    line.receiveShadow = true
+    root.add(line)
+  }
   for (const side of [-1, 1]) {
-    const start = 30 * Math.SQRT2
+    const start = BASE_PATH + 1.6
     const length = fenceDistance(park, side * 45) - start
     const line = new THREE.Mesh(own(new THREE.BoxGeometry(0.1, 0.02, length)), chalk)
     line.position.copy(toWorld(polar(start + length / 2, side * 45))).setY(0.03)
@@ -184,23 +203,42 @@ export function createField(park: Park, look: FieldLook, theme: ParkTheme, home:
   }
 
   const baseMaterial = own(standard(look.base, 0.5))
+  const bagGeometry = own(new RoundedBoxGeometry(0.381, 0.09, 0.381, 3, 0.022))
+  const anchorMaterial = own(standard('#2a2c30', 0.6))
+  const anchorGeometry = own(new THREE.BoxGeometry(0.44, 0.012, 0.44))
   for (const base of [1, 2, 3]) {
-    const bag = new THREE.Mesh(own(new THREE.BoxGeometry(0.38, 0.08, 0.38)), baseMaterial)
-    bag.position.copy(toWorld(BASES[base])).setY(0.04)
+    const bag = new THREE.Mesh(bagGeometry, baseMaterial)
+    bag.position.copy(toWorld(BASES[base])).setY(0.045)
     bag.rotation.y = Math.PI / 4
     bag.castShadow = true
+    bag.receiveShadow = true
     root.add(bag)
+    const anchor = new THREE.Mesh(anchorGeometry, anchorMaterial)
+    anchor.position.copy(toWorld(BASES[base])).setY(0.016)
+    anchor.rotation.y = Math.PI / 4
+    root.add(anchor)
   }
-  const plateShape = new THREE.Shape()
-  plateShape.moveTo(-0.216, 0.216)
-  plateShape.lineTo(0.216, 0.216)
-  plateShape.lineTo(0.216, 0)
-  plateShape.lineTo(0, -0.216)
-  plateShape.lineTo(-0.216, 0)
-  plateShape.closePath()
-  const plate = flat(own(new THREE.ShapeGeometry(plateShape)), baseMaterial, 0.03)
-  plate.position.copy(worldXYZ(0, 0.03, 0.216))
-  root.add(plate)
+  const plateOutline = (inset: number) => {
+    const half = PLATE_HALF_WIDTH - inset
+    const shape = new THREE.Shape()
+    shape.moveTo(-half, PLATE_HALF_WIDTH * 2 - inset)
+    shape.lineTo(half, PLATE_HALF_WIDTH * 2 - inset)
+    shape.lineTo(half, PLATE_HALF_WIDTH)
+    shape.lineTo(0, inset * Math.SQRT2)
+    shape.lineTo(-half, PLATE_HALF_WIDTH)
+    shape.closePath()
+    return shape
+  }
+  const plateTop = new THREE.Mesh(own(new THREE.ExtrudeGeometry(plateOutline(0.012), { depth: 0.006, bevelEnabled: true, bevelThickness: 0.006, bevelSize: 0.008, bevelSegments: 2 })), baseMaterial)
+  plateTop.rotation.x = -Math.PI / 2
+  plateTop.position.y = 0.034
+  plateTop.receiveShadow = true
+  root.add(plateTop)
+  const plateRim = new THREE.Mesh(own(new THREE.ExtrudeGeometry(plateOutline(-0.02), { depth: 0.018, bevelEnabled: false })), anchorMaterial)
+  plateRim.rotation.x = -Math.PI / 2
+  plateRim.position.y = 0.02
+  plateRim.receiveShadow = true
+  root.add(plateRim)
 
   const segments = 64
   const fenceBase: THREE.Vector3[] = []
