@@ -28,9 +28,15 @@ def import_meshy(path):
         for mat in o.data.materials:
             if mat and mat.node_tree and image is None:
                 for node in mat.node_tree.nodes:
-                    if node.type == 'TEX_IMAGE' and node.image:
-                        image = node.image
-                        break
+                    if node.type == 'BSDF_PRINCIPLED' and node.inputs['Base Color'].links:
+                        src = node.inputs['Base Color'].links[0].from_node
+                        if src.type == 'TEX_IMAGE' and src.image:
+                            image = src.image
+                if image is None:
+                    for node in mat.node_tree.nodes:
+                        if node.type == 'TEX_IMAGE' and node.image:
+                            image = node.image
+                            break
     bmesh.ops.remove_doubles(bm, verts=bm.verts[:], dist=1e-6)
     return bm, image
 
