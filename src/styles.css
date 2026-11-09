@@ -1701,3 +1701,7 @@ body{background:var(--paper);color:var(--tone-0)}
 .adm-assign-list fieldset label:focus-within{outline:2px solid var(--lib-accent);outline-offset:1px}
 @media(max-width:700px){.adm-assign-list li{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.nav-category-toggle svg{transition:none}}
+.adm-body-chat{display:flex;flex-direction:column;min-height:calc(100dvh - 320px)}
+.adm-body-chat .welcome{padding-top:12px}
+.adm-body-chat .composer-zone{position:sticky;bottom:12px}
+.adm-body-image .feature-heading,.adm-body-lyrics .feature-heading{margin-top:0}

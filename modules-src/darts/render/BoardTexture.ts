@@ -1,4 +1,4 @@
-/** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes, a raised plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
+/** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes in rows that follow the rings (two rows in each double and triple), a raised white plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
 import * as THREE from 'three/webgpu'
 import { RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
 import { createRng } from '../shared/Rng'
@@ -29,7 +29,7 @@ export const SPIDER_COLORS = {
   black: '#141416',
   red: '#d0162a',
   catch: '#0c0c0e',
-  spider: '#3c3d42',
+  spider: '#eef0f2',
   number: '#ffffff',
   trim: '#e3192f',
 } as const
@@ -182,34 +182,69 @@ function sisal(p: Painter, seed: number): void {
   ctx.globalAlpha = 1
 }
 
-/** Soft-tip holes: a hex grid of small round sockets over the scoring area, built as one path per layer (rims, then holes) so the whole grid fills in two draw calls. */
+const HOLE_PITCH = 3.4
+const HOLE_RADIUS = 1.05
+
+/** Each soft-tip band as moulded: its inner and outer radius and how many rows of holes it carries (two in every double and triple, as on a real board; the singles fill with rows at the hole pitch). */
+const HOLE_BANDS: readonly { inner: number; outer: number; rows?: number; sectors: boolean }[] = [
+  { inner: RADII.outerBull, outer: RADII.tripleInner, sectors: true },
+  { inner: RADII.tripleInner, outer: RADII.tripleOuter, rows: 2, sectors: true },
+  { inner: RADII.tripleOuter, outer: RADII.doubleInner, sectors: true },
+  { inner: RADII.doubleInner, outer: RADII.doubleOuter, rows: 2, sectors: true },
+  { inner: RADII.innerBull, outer: RADII.outerBull, rows: 2, sectors: false },
+]
+
+/** Soft-tip holes in polar rows that follow the rings, laid out segment by segment between the spider's dividers, so every bed holds whole rows of evenly spaced tip holes (two rows in the doubles and triples, a centre hole and a ring in the inner bull). Built as one path per layer (rims, then holes). */
 function holes(p: Painter, fill: string, rim: string | null): void {
   const { ctx, cx, cy, scale } = p
-  const pitch = 3.4
-  const radius = 1.05 * scale
-  const limit = RADII.doubleOuter - 1
+  const gap = SPIDER_MM / 2 + 0.45
   const centres: number[] = []
-  const rows = Math.ceil(limit / (pitch * 0.866))
-  const cols = Math.ceil(limit / pitch) + 1
-  for (let row = -rows; row <= rows; row++) {
-    const y = row * pitch * 0.866
-    const shift = row % 2 ? pitch / 2 : 0
-    for (let col = -cols; col <= cols; col++) {
-      const x = col * pitch + shift
-      if (x * x + y * y > limit * limit) continue
-      centres.push(cx + x * scale, cy + y * scale)
+  const radii: number[] = []
+  const add = (r: number, angle: number, size: number) => {
+    const a = canvasAngle(angle)
+    centres.push(cx + Math.cos(a) * r * scale, cy + Math.sin(a) * r * scale)
+    radii.push(size * scale)
+  }
+  for (const band of HOLE_BANDS) {
+    const inner = band.inner + gap
+    const outer = band.outer - gap
+    const span = outer - inner
+    const rows = band.rows ?? Math.max(1, Math.round(span / HOLE_PITCH))
+    const step = span / rows
+    const size = Math.min(HOLE_RADIUS, step * 0.4)
+    for (let row = 0; row < rows; row++) {
+      const r = inner + step * (row + 0.5)
+      if (!band.sectors) {
+        const count = Math.max(6, Math.floor((2 * Math.PI * r) / HOLE_PITCH))
+        for (let k = 0; k < count; k++) add(r, (k * 360) / count, size)
+        continue
+      }
+      const edge = (gap / r) * (180 / Math.PI)
+      const arc = SECTOR_DEGREES - edge * 2
+      const count = Math.max(1, Math.floor(((arc * Math.PI) / 180) * r / HOLE_PITCH))
+      for (let i = 0; i < SECTORS.length; i++) {
+        const from = i * SECTOR_DEGREES - SECTOR_DEGREES / 2 + edge
+        for (let k = 0; k < count; k++) add(r, from + (arc * (k + 0.5)) / count, size)
+      }
     }
   }
-  const layer = (style: string, offsetY: number) => {
+  const bullHole = Math.min(HOLE_RADIUS, (RADII.innerBull - gap) * 0.32)
+  add(0, 0, bullHole)
+  const bullRing = RADII.innerBull - gap - bullHole * 1.25
+  const bullCount = Math.max(5, Math.floor((2 * Math.PI * bullRing) / HOLE_PITCH))
+  for (let k = 0; k < bullCount; k++) add(bullRing, (k * 360) / bullCount, bullHole)
+  const layer = (style: string, offsetMm: number) => {
     ctx.beginPath()
-    for (let i = 0; i < centres.length; i += 2) {
-      ctx.moveTo(centres[i] + radius, centres[i + 1] + offsetY)
-      ctx.arc(centres[i], centres[i + 1] + offsetY, radius, 0, Math.PI * 2)
+    for (let i = 0; i < radii.length; i++) {
+      const x = centres[i * 2]
+      const y = centres[i * 2 + 1] + radii[i] * offsetMm
+      ctx.moveTo(x + radii[i], y)
+      ctx.arc(x, y, radii[i], 0, Math.PI * 2)
     }
     ctx.fillStyle = style
     ctx.fill()
   }
-  if (rim) layer(rim, radius * 0.35)
+  if (rim) layer(rim, 0.35)
   layer(fill, 0)
 }
 

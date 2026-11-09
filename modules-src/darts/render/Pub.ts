@@ -289,7 +289,7 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   }
   const wireMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#e4e7ec'), roughness: 0.16, metalness: 1 }))
   buildSpider(steelBoard, wireMaterial, 0.00058, 6)
-  const plasticSpiderMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#34353a'), roughness: 0.42, metalness: 0.15 }))
+  const plasticSpiderMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#f2f3f5'), roughness: 0.38, metalness: 0 }))
   buildSpider(spiderBoard, plasticSpiderMaterial, 0.00105, 8)
 
   const housingMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#121214'), roughness: 0.38, metalness: 0.1 }))

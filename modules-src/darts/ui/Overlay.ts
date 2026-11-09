@@ -25,7 +25,7 @@ export function playerColor(state: GameState, playerId: string): string {
 }
 
 /** Half-width of the whole good zone (green fading to yellow), as a fraction of the ideal speed. */
-const BAND = 0.026
+const BAND = 0.036
 /** Half-width of the solid green "Perfect" centre of the good zone. */
 const PERFECT = 0.011
 
@@ -55,6 +55,27 @@ export class Overlay {
   private readonly roomChip = el<HTMLSpanElement>('room-chip')
   private announceTimer: ReturnType<typeof setTimeout> | null = null
   private queue: Announcement[] = []
+
+  private readonly meterWrap = el<HTMLDivElement>('meter-wrap')
+  private meterSpot = ''
+
+  /** Puts the power meter just right of the board: `x` is the board's right edge and `y` the bull's height on screen in CSS pixels, `boardPx` the board's on-screen diameter. */
+  placeMeter(x: number, y: number, boardPx: number): void {
+    const width = this.hud.clientWidth
+    const height = this.hud.clientHeight
+    if (!width || !height) return
+    const meterHeight = Math.round(Math.min(height * 0.7, Math.max(140, boardPx * 0.8)))
+    const left = Math.round(Math.min(width - 44, Math.max(8, x + 14)))
+    const top = Math.round(Math.min(height - meterHeight / 2 - 8, Math.max(meterHeight / 2 + 8, y)))
+    const tight = left + 40 + 150 > width
+    const spot = `${left}:${top}:${meterHeight}:${tight}`
+    if (spot === this.meterSpot) return
+    this.meterSpot = spot
+    this.meterWrap.style.setProperty('--meter-x', `${left}px`)
+    this.meterWrap.style.setProperty('--meter-y', `${top}px`)
+    this.meterWrap.style.setProperty('--meter-h', `${meterHeight}px`)
+    this.meterWrap.classList.toggle('is-tight', tight)
+  }
 
   constructor() {
     const { low, high } = meterRange()
