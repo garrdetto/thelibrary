@@ -438,11 +438,11 @@ function Studio() {
     {mobileOpen && <button className="sidebar-scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? 'is-open' : ''}`}>
       <a className="brand" href="/" aria-label="the library home"><BrandMark /><span><span className="brand-name"><em>the</em> library</span><small>LEARNING MODULES</small></span></a>
-      {access.pages.length > 0 && <button className="new-session" onClick={() => switchView(access.pages[0] as StudioMode)} disabled={busy}><Plus size={17} /> New creation <span>↗</span></button>}
+      {!access.isAdmin && access.pages.length > 0 && <button className="new-session" onClick={() => switchView(access.pages[0] as StudioMode)} disabled={busy}><Plus size={17} /> New creation <span>↗</span></button>}
       <nav aria-label="Site navigation">
         <button className={`nav-item nav-home ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')} disabled={busy}><Sparkles size={19} strokeWidth={1.7}/><span>Module Library</span>{view === 'home' && <span className="active-dot" />}</button>
-        {access.pages.length > 0 && <p className="nav-caption nav-caption-play">YOUR WORKSPACE</p>}
-        {navigation.filter(item => access.pages.includes(item.id)).map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}{id === 'lyrics' && <span className="new-tag">NEW</span>}</button>)}
+        {!access.isAdmin && access.pages.length > 0 && <p className="nav-caption nav-caption-play">YOUR WORKSPACE</p>}
+        {navigation.filter(item => !access.isAdmin && access.pages.includes(item.id)).map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => switchView(id)} disabled={busy}><Icon size={19} strokeWidth={1.7}/><span>{label}</span>{view === id && <span className="active-dot" />}{id === 'lyrics' && <span className="new-tag">NEW</span>}</button>)}
         <ModuleNav layout={moduleLayout} view={view} busy={busy} icons={moduleIcons} onSelect={id => switchView(id)}/>
         <div className="nav-divider" /><button className={`nav-item ${view === 'home' ? 'active' : ''}`} onClick={() => switchView('home')}>{access.username ? `Signed in as ${access.username}` : 'Sign in'}</button>
       </nav>
@@ -463,7 +463,7 @@ function Studio() {
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
         {activePlay?.id === 'angler' && <AnglerRecordBoard/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
-        {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel/></Suspense>}
+        {view === 'admin' && access.isAdmin && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Loading the admin console…</p>}><AdminPanel onOpenStudio={id => switchView(id)}/></Suspense>}
         {view === 'pool' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Racking the balls…</p>}><PoolTable lobby={lobby}/></Suspense>}
         {view === 'park' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame username={access.username} accountReady={accountReady}/></Suspense>}
         {view === 'park2' && <Suspense fallback={<p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> Opening the park gates…</p>}><ParkGame key="park2" username={access.username} accountReady={accountReady} edition={2}/></Suspense>}
