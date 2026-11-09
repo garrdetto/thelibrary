@@ -22,6 +22,11 @@ export function gridGeometry(w: World): { GRID_S: number; GRID_ROW: number; PACE
 
 const formCache = new WeakMap<World, number>()
 
+/** Drops the cached formation speed, for when the world's handling changes. */
+export function forgetFormV(w: World): void {
+  formCache.delete(w)
+}
+
 /**
  * The formation moves as one rigid block, so its speed is the slowest one both files can hold through the turns
  * (measured on the centerline); the outside file runs proportionally faster there to stay door to door.

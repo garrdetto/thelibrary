@@ -18,6 +18,7 @@ import { maplestreetItems } from './routes/maplestreet-items'
 import { maplestreetVehicles } from './routes/maplestreet-vehicles'
 import { shorttrackCars } from './routes/shorttrack-cars'
 import { shorttrackPaint } from './routes/shorttrack-paint'
+import { shorttrackHandling } from './routes/shorttrack-handling'
 import { maplestreetSuggest } from './routes/maplestreet-suggest'
 import { meshy } from './routes/meshy'
 import { groupChat } from './routes/chat'
@@ -51,6 +52,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/maplestreet-vehicles': maplestreetVehicles,
   '/api/shorttrack-cars': shorttrackCars,
   '/api/shorttrack-paint': shorttrackPaint,
+  '/api/shorttrack-handling': shorttrackHandling,
   '/api/maplestreet-suggest': maplestreetSuggest,
   '/api/meshy': meshy,
   '/api/group-chat': groupChat,
