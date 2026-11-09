@@ -47,8 +47,8 @@ jobs:
       - name: Check laptop tools
         if: runner.environment == 'self-hosted'
         run: |
-          for tool in git gh curl; do
-            command -v "$tool" >/dev/null || { echo "::error::$tool is missing on the laptop runner. Run scripts/laptop-runner/setup.sh again."; exit 1; }
+          for tool in git gh curl unzip; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool is missing on the laptop runner. In Ubuntu run: sudo apt-get install -y $tool"; exit 1; }
           done
           if command -v blender >/dev/null || [ -x "$HOME/blender/blender" ]; then
             echo "Blender: $({ command -v blender >/dev/null && blender --version || "$HOME/blender/blender" --version; } 2>/dev/null | head -1)"
