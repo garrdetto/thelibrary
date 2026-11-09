@@ -1,10 +1,12 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent } from 'react'
-import { Car, FerrisWheel, Flag, Gauge, LayoutDashboard, LayoutGrid, LoaderCircle, Package, Settings2, ShieldCheck, Sparkles, Trophy, Users } from 'lucide-react'
+import { Car, Feather, FerrisWheel, Flag, Gauge, LayoutDashboard, LayoutGrid, LoaderCircle, Package, Settings2, ShieldCheck, Sparkles, Trophy, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
 import { LibraryArrange } from './admin/LibraryArrange'
+import { AdminStudios } from './admin/AdminStudios'
+import type { StudioId } from './admin/AdminStudios'
 
 const MapleStreetItemEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./maplestreet/MapleStreetItemEditor'))
 const ParkRideCreator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./park/rides/RideCreator'))
@@ -22,6 +24,7 @@ type Area = (typeof areas)[number]['id']
 const sections = [
   { id: 'overview', area: 'site', group: 'Dashboard', label: 'Overview', icon: LayoutDashboard, title: 'Overview', blurb: 'Everything you manage on the library at a glance.' },
   { id: 'library', area: 'site', group: 'Library', label: 'Module order', icon: LayoutGrid, title: 'Module order', blurb: 'Arrange the homepage library and sidebar, pick the featured module and hide modules you are not ready to show.' },
+  { id: 'workspace', area: 'site', group: 'Workspace', label: 'Your workspace', icon: Feather, title: 'Your workspace', blurb: 'Your studios: AI chat, the Image studio and the Lyric studio.' },
   { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
   { id: 'changes', area: 'site', group: 'Site', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
   { id: 'maplestreet', area: 'modules', group: 'Fox Plains', label: 'Items', icon: Package, title: 'Fox Plains items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
@@ -44,7 +47,7 @@ function Loading({ text }: { text: string }) {
   return <p className="race-loading" role="status"><LoaderCircle className="spin" size={18}/> {text}</p>
 }
 
-export function AdminPanel() {
+export function AdminPanel({ onOpenStudio }: { onOpenStudio?: (id: StudioId) => void }) {
   const [section, setSection] = useState<Section>('overview')
   useEffect(() => { setSection(sectionFromHash()) }, [])
 
@@ -102,6 +105,7 @@ export function AdminPanel() {
       <div className={`adm-body adm-body-${section}`}>
         {section === 'overview' && <AdminOverview onOpen={next => open(next)}/>}
         {section === 'library' && <LibraryArrange/>}
+        {section === 'workspace' && <AdminStudios onOpenStudio={onOpenStudio}/>}
         {section === 'people' && <WorkspaceAdmin/>}
         {section === 'changes' && <SiteChanges/>}
         {section === 'maplestreet' && <Suspense fallback={<Loading text="Opening the item editor…"/>}><MapleStreetItemEditor/></Suspense>}
