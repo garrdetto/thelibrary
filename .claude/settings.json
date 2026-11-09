@@ -1,4 +1,8 @@
 {
+  "permissions": {
+    "defaultMode": "auto",
+    "allow": ["Edit", "Write", "Bash(git *)", "Bash(gh *)", "Bash(pnpm *)", "Bash(npm *)", "Bash(npx *)", "Bash(node *)"]
+  },
   "hooks": {
     "SessionStart": [
       {
