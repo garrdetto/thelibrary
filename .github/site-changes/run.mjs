@@ -20,13 +20,14 @@ How to work:
 - Never read, print or change secrets, environment values or .env files.
 - Schema changes go in a new numbered file in migrations/; the workflow applies them.
 - To make a 3D model with Meshy, run \`node .github/site-changes/meshy.mjs generate "<prompt>" --out assets-src/models/<module>/<name>.glb\` (add \`--preview\` for an untextured draft, \`--polycount N\` to change detail). It uses the site's own Meshy connection, so the model also appears in the admin Meshy panel; \`node .github/site-changes/meshy.mjs balance\` shows the credits left. Each model costs Meshy credits, so only generate what the request needs, and run \`pnpm assets\` after adding files under assets-src/models/.
+- Blender is available on the administrator's laptop runner (not on GitHub's machines): build or clean up models with \`blender -b -P <script.py> -- <args>\` (the modules' tools/build-*.py scripts work this way), write exports to assets-src/models/, then run \`pnpm assets\`. If \`blender\` is not found, say so in your reply instead of skipping the model.
 
 Your final message is shown to the administrator as your chat reply. Write it in plain language for someone who is not a developer: what you changed (or your answer, or your question), where to see it on the site, and anything they need to do. Keep it short and do not include code unless they asked for it.`
 
 const TOOLS = [
   'Read', 'Edit', 'MultiEdit', 'Write', 'Glob', 'Grep', 'TodoWrite', 'WebSearch', 'WebFetch',
-  'Bash(pnpm:*)', 'Bash(bun:*)', 'Bash(node:*)', 'Bash(npx tsc:*)', 'Bash(ls:*)', 'Bash(git diff:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git show:*)',
-  'Bash(pnpm *)', 'Bash(bun *)', 'Bash(node *)', 'Bash(npx tsc *)', 'Bash(ls *)', 'Bash(git diff *)', 'Bash(git status *)', 'Bash(git log *)', 'Bash(git show *)',
+  'Bash(pnpm:*)', 'Bash(bun:*)', 'Bash(node:*)', 'Bash(blender:*)', 'Bash(npx tsc:*)', 'Bash(ls:*)', 'Bash(git diff:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git show:*)',
+  'Bash(pnpm *)', 'Bash(bun *)', 'Bash(node *)', 'Bash(blender *)', 'Bash(npx tsc *)', 'Bash(ls *)', 'Bash(git diff *)', 'Bash(git status *)', 'Bash(git log *)', 'Bash(git show *)',
 ].join(',')
 
 function loadState() {
