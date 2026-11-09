@@ -24,45 +24,45 @@ export interface LightPreset {
 export const LIGHT_PRESETS: Readonly<Record<TimeOfDay, LightPreset>> = {
   day: {
     label: 'Day',
-    sky: { top: '#2f6fc7', horizon: '#b8d4f2', ground: '#24331f' },
-    sunColor: '#fff3df',
-    sunIntensity: 3.2,
+    sky: { top: '#1462e0', horizon: '#8cc4ff', ground: '#2a4a22' },
+    sunColor: '#fffaf0',
+    sunIntensity: 3.6,
     sunDirection: [-0.45, 1, 0.3],
-    hemiSky: '#c4dcff',
-    hemiGround: '#2b3a22',
-    hemiIntensity: 1.0,
+    hemiSky: '#cfe4ff',
+    hemiGround: '#3a5a2a',
+    hemiIntensity: 1.15,
     fog: '#b9cde6',
-    exposure: 0.9,
-    environment: 0.7,
+    exposure: 1.0,
+    environment: 0.85,
     banks: 0,
     lampGlow: 0.4,
   },
   dusk: {
     label: 'Golden hour',
-    sky: { top: '#2b2f6e', horizon: '#f2a066', ground: '#2a1f1a' },
+    sky: { top: '#2a3c9e', horizon: '#ff9a5a', ground: '#2e2a1a' },
     sunColor: '#ffb070',
     sunIntensity: 2.6,
     sunDirection: [-0.9, 0.22, 0.25],
     hemiSky: '#ffc59a',
     hemiGround: '#3a2a20',
-    hemiIntensity: 0.75,
+    hemiIntensity: 0.9,
     fog: '#c98a6a',
-    exposure: 1.0,
+    exposure: 1.1,
     environment: 0.55,
     banks: 0.45,
     lampGlow: 2.5,
   },
   night: {
     label: 'Night',
-    sky: { top: '#03060f', horizon: '#18233f', ground: '#06080c' },
+    sky: { top: '#040a1f', horizon: '#1d3263', ground: '#06080c' },
     sunColor: '#c8d6ff',
     sunIntensity: 0.12,
     sunDirection: [0.3, 1, -0.4],
     hemiSky: '#3d4f7a',
     hemiGround: '#141a10',
-    hemiIntensity: 0.35,
+    hemiIntensity: 0.45,
     fog: '#0c1222',
-    exposure: 1.15,
+    exposure: 1.3,
     environment: 0.3,
     banks: 1,
     lampGlow: 9,
@@ -82,13 +82,13 @@ export interface TierBudget {
   textures: TextureDetail
 }
 
-const BLOOM = { strength: 0.12, radius: 0.3, threshold: 1.1 }
+const BLOOM = { strength: 0.1, radius: 0.2, threshold: 1.2 }
 
 export const TIER_BUDGETS: Readonly<Record<QualityTier, TierBudget>> = {
   low: { post: null, cascades: 0, grassBlades: 0, crowd: 4000, bankLights: 2, bankShadows: false, pixelRatio: 1, adaptive: true, textures: { size: 512, anisotropy: 2 } },
   medium: { post: { bloom: BLOOM }, cascades: 0, grassBlades: 12000, crowd: 12000, bankLights: 4, bankShadows: false, pixelRatio: 1.25, adaptive: true, textures: { size: 1024, anisotropy: 4 } },
   high: {
-    post: { ao: { radius: 0.6, thickness: 1.5, intensity: 0.75, resolutionScale: 0.5, samples: 12 }, taa: true, bloom: BLOOM },
+    post: { bloom: BLOOM },
     cascades: 4,
     grassBlades: 60000,
     crowd: 24000,
@@ -99,7 +99,7 @@ export const TIER_BUDGETS: Readonly<Record<QualityTier, TierBudget>> = {
     textures: { size: 2048, anisotropy: 8 },
   },
   ultra: {
-    post: { ao: { radius: 0.7, thickness: 1.5, intensity: 0.85, resolutionScale: 1, samples: 16 }, taa: true, bloom: BLOOM },
+    post: { bloom: BLOOM },
     cascades: 4,
     grassBlades: 120000,
     crowd: 45000,
@@ -126,11 +126,11 @@ export interface ParkTheme {
   signature: 'outhouse' | 'sandlot' | null
 }
 
-const BASE_THEME: ParkTheme = { mow: 'stripes', grass: ['#2c7a26', '#1f5f1c'], dirt: '#8f5b33', fence: 'padded', fenceColor: '#1d3b2c', standsColor: '#3a4256', wallColor: '#26303f', fogTint: null, signature: null }
+const BASE_THEME: ParkTheme = { mow: 'stripes', grass: ['#3fa233', '#2e8226'], dirt: '#b06a3a', fence: 'padded', fenceColor: '#1d3b2c', standsColor: '#3a4256', wallColor: '#26303f', fogTint: null, signature: null }
 
 export const PARK_THEMES: Readonly<Record<string, ParkTheme>> = {
-  sandlot: { ...BASE_THEME, mow: 'checker', grass: ['#338224', '#24621a'], dirt: '#94603a', fence: 'planks', fenceColor: '#7a5532', standsColor: '#8a6a48', wallColor: '#5a4330', signature: 'sandlot' },
-  outhouse: { ...BASE_THEME, mow: 'diamond', grass: ['#367a22', '#265c18'], dirt: '#8a5a36', fence: 'planks', fenceColor: '#5d4a2c', standsColor: '#7b5a36', wallColor: '#4a3a24', fogTint: '#4f7a3a', signature: 'outhouse' },
+  sandlot: { ...BASE_THEME, mow: 'checker', grass: ['#42a52f', '#308524'], dirt: '#b46c3c', fence: 'planks', fenceColor: '#7a5532', standsColor: '#8a6a48', wallColor: '#5a4330', signature: 'sandlot' },
+  outhouse: { ...BASE_THEME, mow: 'diamond', grass: ['#43a12c', '#2f8020'], dirt: '#ad683a', fence: 'planks', fenceColor: '#5d4a2c', standsColor: '#7b5a36', wallColor: '#4a3a24', fogTint: '#4f7a3a', signature: 'outhouse' },
 }
 
 export function themeFor(parkId: string): ParkTheme {
