@@ -1,4 +1,4 @@
-/** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes in rows that follow the rings (two rows in each double and triple), a raised white plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
+/** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes in rows that follow the rings (three rows in each double and triple), a raised white plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
 import * as THREE from 'three/webgpu'
 import { RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
 import { createRng } from '../shared/Rng'
@@ -92,15 +92,16 @@ function ring(p: Painter, radius: number, widthMm: number, style: string): void 
 
 const WIRE_RADII = [RADII.innerBull, RADII.outerBull, RADII.tripleInner, RADII.tripleOuter, RADII.doubleInner, RADII.doubleOuter] as const
 const WIRE_MM = 1.15
-const SPIDER_MM = 2.2
+const SPIDER_MM = 1.7
+const SPIDER_RADII = WIRE_RADII.filter((radius) => radius !== RADII.innerBull)
 
 /** Draws the spider: six rings and twenty radial dividers from the outer bull to the double ring, in `style` (colour on the face, white on the masks). */
-function spider(p: Painter, style: string, widthMm = WIRE_MM): void {
+function spider(p: Painter, style: string, widthMm = WIRE_MM, radii: readonly number[] = WIRE_RADII): void {
   const { ctx, cx, cy, scale } = p
   ctx.strokeStyle = style
   ctx.lineWidth = widthMm * scale
   ctx.lineCap = 'round'
-  for (const radius of WIRE_RADII) {
+  for (const radius of radii) {
     ctx.beginPath()
     ctx.arc(cx, cy, radius * scale, 0, Math.PI * 2)
     ctx.stroke()
@@ -185,16 +186,16 @@ function sisal(p: Painter, seed: number): void {
 const HOLE_PITCH = 3.4
 const HOLE_RADIUS = 1.05
 
-/** Each soft-tip band as moulded: its inner and outer radius and how many rows of holes it carries (two in every double and triple, as on a real board; the singles fill with rows at the hole pitch). */
+/** Each soft-tip band as moulded: its inner and outer radius and how many rows of holes it carries (three in every double and triple; the singles fill with rows at the hole pitch). */
 const HOLE_BANDS: readonly { inner: number; outer: number; rows?: number; sectors: boolean }[] = [
   { inner: RADII.outerBull, outer: RADII.tripleInner, sectors: true },
-  { inner: RADII.tripleInner, outer: RADII.tripleOuter, rows: 2, sectors: true },
+  { inner: RADII.tripleInner, outer: RADII.tripleOuter, rows: 3, sectors: true },
   { inner: RADII.tripleOuter, outer: RADII.doubleInner, sectors: true },
-  { inner: RADII.doubleInner, outer: RADII.doubleOuter, rows: 2, sectors: true },
+  { inner: RADII.doubleInner, outer: RADII.doubleOuter, rows: 3, sectors: true },
   { inner: RADII.innerBull, outer: RADII.outerBull, rows: 2, sectors: false },
 ]
 
-/** Soft-tip holes in polar rows that follow the rings, laid out segment by segment between the spider's dividers, so every bed holds whole rows of evenly spaced tip holes (two rows in the doubles and triples, a centre hole and a ring in the inner bull). Built as one path per layer (rims, then holes). */
+/** Soft-tip holes in polar rows that follow the rings, laid out segment by segment between the spider's dividers, so every bed holds whole rows of evenly spaced tip holes (three rows in the doubles and triples, a centre hole and a ring in the inner bull). Built as one path per layer (rims, then holes). */
 function holes(p: Painter, fill: string, rim: string | null): void {
   const { ctx, cx, cy, scale } = p
   const gap = SPIDER_MM / 2 + 0.45
@@ -212,6 +213,7 @@ function holes(p: Painter, fill: string, rim: string | null): void {
     const rows = band.rows ?? Math.max(1, Math.round(span / HOLE_PITCH))
     const step = span / rows
     const size = Math.min(HOLE_RADIUS, step * 0.4)
+    const pitch = band.rows ? Math.min(HOLE_PITCH, step * 1.15) : HOLE_PITCH
     for (let row = 0; row < rows; row++) {
       const r = inner + step * (row + 0.5)
       if (!band.sectors) {
@@ -221,7 +223,7 @@ function holes(p: Painter, fill: string, rim: string | null): void {
       }
       const edge = (gap / r) * (180 / Math.PI)
       const arc = SECTOR_DEGREES - edge * 2
-      const count = Math.max(1, Math.floor(((arc * Math.PI) / 180) * r / HOLE_PITCH))
+      const count = Math.max(1, Math.floor(((arc * Math.PI) / 180) * r / pitch))
       for (let i = 0; i < SECTORS.length; i++) {
         const from = i * SECTOR_DEGREES - SECTOR_DEGREES / 2 + edge
         for (let k = 0; k < count; k++) add(r, from + (arc * (k + 0.5)) / count, size)
@@ -298,9 +300,9 @@ function drawSpiderFace(size: number): HTMLCanvasElement {
   p.ctx.shadowColor = 'rgba(0,0,0,0.7)'
   p.ctx.shadowBlur = p.scale * 1.2
   p.ctx.shadowOffsetY = p.scale * 0.6
-  spider(p, SPIDER_COLORS.spider, SPIDER_MM)
+  spider(p, SPIDER_COLORS.spider, SPIDER_MM, SPIDER_RADII)
   p.ctx.shadowColor = 'transparent'
-  ring(p, RADII.doubleOuter + 2.2, 1.6, SPIDER_COLORS.spider)
+  ring(p, RADII.doubleOuter + 2.2, 1.25, SPIDER_COLORS.spider)
   ring(p, RADII.numberRing + 4, 2.4, SPIDER_COLORS.trim)
   ring(p, RADII.board - 2.5, 4, SPIDER_COLORS.trim)
   numbers(p, { ...SPIDER_NUMBERS, fill: SPIDER_COLORS.number })
@@ -323,7 +325,7 @@ function drawSpiderRoughnessMetal(size: number): HTMLCanvasElement {
   p.ctx.fillRect(0, 0, size, size)
   disc(p, RADII.doubleOuter, 'rgb(255, 105, 0)')
   holes(p, 'rgb(255, 235, 0)', null)
-  spider(p, 'rgb(255, 120, 0)', SPIDER_MM)
+  spider(p, 'rgb(255, 120, 0)', SPIDER_MM, SPIDER_RADII)
   numbers(p, { ...SPIDER_NUMBERS, fill: 'rgb(255, 130, 0)' })
   return p.canvas
 }
@@ -358,8 +360,8 @@ function drawSpiderHeight(size: number): HTMLCanvasElement {
   disc(p, RADII.doubleOuter, '#606060')
   p.ctx.filter = `blur(${Math.max(1, p.scale * 0.35)}px)`
   holes(p, '#000', null)
-  spider(p, '#fff', SPIDER_MM * 1.1)
-  ring(p, RADII.doubleOuter + 2.2, 1.8, '#fff')
+  spider(p, '#fff', SPIDER_MM * 1.1, SPIDER_RADII)
+  ring(p, RADII.doubleOuter + 2.2, 1.4, '#fff')
   numbers(p, { ...SPIDER_NUMBERS, fill: '#9a9a9a' })
   p.ctx.filter = 'none'
   return p.canvas
