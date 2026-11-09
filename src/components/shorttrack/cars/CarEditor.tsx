@@ -18,6 +18,7 @@ import type { ShrinkReport } from '../../maplestreet/vehicle/modelTools'
 import { carProblems, carSpec, draftFromCar, fmtLen, newCarDraft, placement, turnedSize } from './carDraft'
 import type { CarDraft, CarMarker } from './carDraft'
 import { CarStage } from './CarStage'
+import { FieldPaint } from './FieldPaint'
 import type { CarModelInfo } from './CarStage'
 import { NumberInput } from '../../admin/NumberInput'
 
@@ -31,7 +32,7 @@ const STEPS = [
   { id: 'numbers', label: 'Numbers & lights' }, { id: 'paint', label: 'Paint' }, { id: 'size', label: 'File size' },
 ] as const
 type Step = (typeof STEPS)[number]['id']
-type View = 'build' | 'library' | 'meshy'
+type View = 'build' | 'library' | 'meshy' | 'field'
 const kb = (bytes: number) => bytes > 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
 const r3 = (v: number) => Math.round(v * 1000) / 1000
 
@@ -341,7 +342,9 @@ export default function CarEditor() {
       <button type="button" aria-pressed={view === 'build'} className={view === 'build' ? 'is-active' : ''} onClick={() => setView('build')}>Build a car</button>
       <button type="button" aria-pressed={view === 'library'} className={view === 'library' ? 'is-active' : ''} onClick={() => setView('library')}>Your cars{cars ? <span>{cars.length}</span> : null}</button>
       <button type="button" aria-pressed={view === 'meshy'} className={view === 'meshy' ? 'is-active' : ''} onClick={() => setView('meshy')}>Generate with Meshy</button>
+      <button type="button" aria-pressed={view === 'field'} className={view === 'field' ? 'is-active' : ''} onClick={() => setView('field')}>AI field paint</button>
     </div>
+    {view === 'field' && <FieldPaint/>}
     {view === 'build' && <p className="adm-help">Load a .glb or .gltf body, size it against the stock Super Late Model, then work through the steps. Every custom car races on the stock car’s physics; the driver’s main color and race numbers are painted on in the game. Keep designs original: no real makes, models, series, sponsors or logos.</p>}
 
     {view === 'build' && <form className="ms-items-editor ms-veh-editor" onSubmit={publish} noValidate>

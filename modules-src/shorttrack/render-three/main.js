@@ -461,7 +461,13 @@ const PATTERN_NAMES={custom:'AI design',solid:'Solid',stripes:'Racing stripes',t
 // The AI field: every car runs a look-alike of the iconic NASCAR scheme its number is known for
 // (iconic-schemes.js: parody names, knockoff logos). lv.scheme names the scheme; the side/hood/atlas painters draw it.
 // lv.custom is an AI-designed scheme (shared/PaintScheme.ts, paint-designer.js), worn while lv.pattern is 'custom'.
-function schemeOf(lv){if(lv.pace)return null;if(lv.pattern==='custom'&&lv.custom)return schemeForPainters(lv.custom);return lv.scheme&&ICONIC[lv.scheme]||null;}
+// FIELD_DESIGNS: the AI field's schemes as recreated by the AI paint designer (admin, /api/shorttrack-paint?field=1),
+// keyed by scheme id; a car whose scheme has one wears it instead of the hand-made iconic scheme.
+const FIELD_DESIGNS={};
+function schemeOf(lv){if(lv.pace)return null;if(lv.pattern==='custom'&&lv.custom)return schemeForPainters(lv.custom);
+  if(lv.scheme&&FIELD_DESIGNS[lv.scheme])return schemeForPainters(FIELD_DESIGNS[lv.scheme]);return lv.scheme&&ICONIC[lv.scheme]||null;}
+fetch('/api/shorttrack-paint?field=1',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{
+  for(const [k,v] of Object.entries(d&&d.designs||{})){const sc=ICONIC[k]&&sanitizeScheme(v);if(sc)FIELD_DESIGNS[k]=sc;}}).catch(()=>{});
 const AI_FIELD=ICONIC_FIELD.map(f=>({name:f.name,number:f.number,primary:f.primary,secondary:f.secondary,accent:f.accent,pattern:'solid',
   numStyle:'block',numFont:'classic',numSlant:!!f.num.slant,numSize:125,numColor:f.num.fill,numOutline:f.num.outline,numAccent:f.num.accent,
   numDoors:true,numRoof:true,numTail:true,scheme:f.scheme}));
@@ -477,6 +483,7 @@ function hexLum(h){const n=parseInt(h.slice(1),16);return(0.299*(n>>16&255)+0.58
 const VEHICLES={truck:{name:'Race Truck',desc:'Short-track pickup with a bed wing'},car:{name:'Super Late Model',desc:'Stock car with your paint scheme and numbers'}};
 function cleanLv(l){
   l=l||{};const d=DEFAULT_LV,col=(v,f)=>HEX.test(v||'')?v:f,bool=(v,f)=>typeof v==='boolean'?v:f;
+  const fd=typeof l.scheme==='string'&&FIELD_DESIGNS[l.scheme];if(fd)l={...l,primary:fd.primary,secondary:fd.secondary,accent:fd.accent,numColor:fd.num.fill,numOutline:fd.num.outline,numAccent:fd.num.accent,numSlant:fd.num.slant};
   const italic=l.numStyle==='italic',size=parseFloat(l.numSize),custom=l.custom?sanitizeScheme(l.custom):null;
   return {name:(String(l.name||'').replace(/[<>]/g,'').slice(0,20).trim()||'Driver'),number:String(l.number??'').replace(/\D/g,'').slice(0,3),
     primary:col(l.primary,d.primary),secondary:col(l.secondary,d.secondary),accent:col(l.accent,d.accent),

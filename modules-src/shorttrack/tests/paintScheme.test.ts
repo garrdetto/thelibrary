@@ -54,3 +54,17 @@ test('sizes and counts are capped', () => {
   assert.equal(sanitizeScheme({ primary: 'blue' }), null)
   assert.equal(sanitizeScheme('x'), null)
 })
+
+test('every AI field car has a research reference with its own number and a parody sponsor', async () => {
+  const { FIELD_REFS } = await import('../shared/FieldRefs')
+  const { ICONIC_FIELD } = await import('../iconic-schemes.js')
+  const { SCHEME_BRAND_PATTERN } = await import('../shared/PaintScheme')
+  assert.equal(FIELD_REFS.length, ICONIC_FIELD.length)
+  for (const car of ICONIC_FIELD) {
+    const ref = FIELD_REFS.find(f => f.scheme === car.scheme)
+    assert.ok(ref, car.scheme)
+    assert.equal(ref.number, car.number)
+    assert.equal(ref.driver, car.name)
+    assert.ok(!SCHEME_BRAND_PATTERN.test(ref.sponsor), ref.sponsor)
+  }
+})
