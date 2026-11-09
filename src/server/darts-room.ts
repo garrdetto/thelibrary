@@ -37,9 +37,12 @@ const clientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('GAME_START') }),
   z.object({ type: z.literal('THROW_MADE'), version: z.number().int().min(0), intent: z.object({ aimX: finite, aimY: finite, speed: finite, yaw: finite, wobble: finite }) }),
   z.object({ type: z.literal('REMATCH') }),
+  z.object({ type: z.literal('RESTART_REQUEST') }),
   z.object({ type: z.literal('PING'), at: finite }),
 ])
 const identitySchema = z.object({ key: z.string().min(3).max(90), name: z.string().min(1).max(40), member: z.boolean() })
+
+const RESTART_VOTE_MS = 30_000
 
 function randomSeed(): number {
   const buffer = new Uint32Array(1)
@@ -77,6 +80,8 @@ export class DartsRoom {
   private state: GameState | null = null
   private turnTimer: ReturnType<typeof setTimeout> | null = null
   private pauseTimer: ReturnType<typeof setTimeout> | null = null
+  private restartVotes = new Set<string>()
+  private restartTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(_state: unknown, private readonly env: Env) {
     void this.env
@@ -181,10 +186,38 @@ export class DartsRoom {
       case 'REMATCH':
         if (this.isHost(seat) && this.state?.status === 'finished') this.begin()
         return
+      case 'RESTART_REQUEST':
+        this.requestRestart(seat)
+        return
       case 'THROW_MADE':
         this.throwDart(seat, message.intent, message.version)
         return
     }
+  }
+
+  private restartVoters(): string[] {
+    const state = this.state
+    if (!state) return []
+    return state.players.filter((player) => this.seats.some((seat) => seat.id === player.id && seat.joined && seat.socket)).map((player) => player.id)
+  }
+
+  private requestRestart(seat: Seat): void {
+    const state = this.state
+    if (!state || state.status === 'finished' || !state.players.some((player) => player.id === seat.id)) return
+    this.restartVotes.add(seat.id)
+    const voters = this.restartVoters()
+    if (voters.length >= 2 && voters.every((id) => this.restartVotes.has(id))) {
+      this.begin()
+      return
+    }
+    this.broadcast({ type: 'RESTART_VOTES', requested: [...this.restartVotes], needed: voters.length, by: seat.id })
+    if (this.restartTimer) clearTimeout(this.restartTimer)
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null
+      if (!this.restartVotes.size) return
+      this.restartVotes.clear()
+      this.broadcast({ type: 'RESTART_VOTES', requested: [], needed: this.restartVoters().length, by: null })
+    }, RESTART_VOTE_MS)
   }
 
   private isHost(seat: Seat): boolean {
@@ -308,8 +341,11 @@ export class DartsRoom {
   private clearTimers(): void {
     if (this.turnTimer) clearTimeout(this.turnTimer)
     if (this.pauseTimer) clearTimeout(this.pauseTimer)
+    if (this.restartTimer) clearTimeout(this.restartTimer)
     this.turnTimer = null
     this.pauseTimer = null
+    this.restartTimer = null
+    this.restartVotes.clear()
   }
 }
 

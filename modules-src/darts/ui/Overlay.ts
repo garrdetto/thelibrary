@@ -40,6 +40,7 @@ export class Overlay {
   readonly menu = el<HTMLDivElement>('menu')
   readonly lobby = el<HTMLDivElement>('lobby')
   readonly results = el<HTMLDivElement>('results')
+  readonly pause = el<HTMLDivElement>('pause')
   private readonly scoreboard = el<HTMLDivElement>('scoreboard')
   private readonly announce = el<HTMLDivElement>('announce')
   private readonly throws = el<HTMLDivElement>('throws')
@@ -67,10 +68,11 @@ export class Overlay {
     this.announce.style.setProperty('--announce-ms', `${config.timing.announceMs}ms`)
   }
 
-  show(panel: 'menu' | 'lobby' | 'results' | 'none'): void {
+  show(panel: 'menu' | 'lobby' | 'results' | 'pause' | 'none'): void {
     this.menu.hidden = panel !== 'menu'
     this.lobby.hidden = panel !== 'lobby'
     this.results.hidden = panel !== 'results'
+    this.pause.hidden = panel !== 'pause'
   }
 
   setRoom(code: string | null): void {

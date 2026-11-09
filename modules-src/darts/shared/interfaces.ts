@@ -174,6 +174,7 @@ export type ClientMessage =
   | { type: 'GAME_START' }
   | { type: 'THROW_MADE'; intent: ThrowIntent; version: number }
   | { type: 'REMATCH' }
+  | { type: 'RESTART_REQUEST' }
   | { type: 'PING'; at: number }
 
 export type ServerMessage =
@@ -182,5 +183,6 @@ export type ServerMessage =
   | { type: 'TURN_SWITCH'; state: GameState; announcements: Announcement[] }
   | { type: 'GAME_OVER'; winnerId: string; state: GameState; announcements: Announcement[] }
   | { type: 'PLAYERS'; players: RoomPlayerView[] }
+  | { type: 'RESTART_VOTES'; requested: string[]; needed: number; by: string | null }
   | { type: 'ERROR'; message: string }
   | { type: 'PONG'; at: number }
