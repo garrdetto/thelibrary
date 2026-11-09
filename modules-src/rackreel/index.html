@@ -97,8 +97,15 @@
       .panel-row .meter{width:160px;flex:none}
       .rr-btn:disabled{opacity:.5;cursor:default}
       #cash .dim{margin-right:2px}
-      #minimap{right:14px;top:96px;width:180px;height:180px;border-radius:14px;border:1px solid var(--line);background:rgba(16,15,12,.6);overflow:hidden}
+      #minimap{right:14px;bottom:14px;width:180px;height:180px;border-radius:50%;border:1px solid var(--line);background:rgba(16,15,12,.6);overflow:hidden}
       #minimap canvas{width:100%;height:100%;display:block}
+      .party-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+      .party-code{font:800 18px var(--head);letter-spacing:3px;text-transform:uppercase;padding:8px 12px;border-radius:9px;border:1px solid var(--line);background:#14120f;color:var(--bone);width:140px}
+      .party-code:focus-visible{outline:3px solid var(--ember);outline-offset:2px}
+      #party{border-color:rgba(127,208,255,.5);color:#cfeeff}
+      .name-tags{inset:0}
+      .name-tag{position:absolute;transform:translate(-50%,-100%);padding:2px 8px;border-radius:999px;background:rgba(14,30,40,.75);border:1px solid rgba(127,208,255,.6);color:#e9f6ff;font:700 12px Inter,system-ui,sans-serif;white-space:nowrap}
+      @media (max-width:640px){#minimap{width:120px;height:120px}}
       #help-hint{left:14px;bottom:14px;font-size:12px;color:var(--muted)}
       @media (max-width:640px){#prompt{bottom:150px;white-space:normal;max-width:calc(100% - 32px)}.big-num{font-size:34px}}
       @media (prefers-reduced-motion:reduce){.toast{animation:none}#loading .rr-bar i{transition:none}}
@@ -131,6 +138,7 @@
           <div><kbd>C</kbd> Crouch <kbd>Space</kbd> Brake</div>
           <div><kbd>R</kbd> Reel in <kbd>K</kbd> Record book</div>
           <div><kbd>I</kbd> Inventory <kbd>G</kbd> Grunt call</div>
+          <div><kbd>N</kbd> Map zoom <kbd>P</kbd> Hunting party</div>
           <div><kbd>M</kbd> Sound <kbd>Esc</kbd> Pause</div>
         </div>
         <div class="rr-actions">
@@ -150,7 +158,9 @@
       <div class="chip" id="compass">N</div>
       <div class="chip" id="activity"><span class="dim">Activity</span> <b id="activity-text">Quiet</b></div>
       <div class="chip" id="legend" hidden></div>
+      <div class="chip" id="party" hidden></div>
     </div>
+    <div id="minimap" class="hud" hidden></div>
     <div id="crosshair" class="hud" hidden></div>
     <div id="scope" class="hud" hidden><i></i></div>
     <div id="prompt" class="hud" aria-live="polite"></div>
@@ -165,7 +175,7 @@
       <div class="meter health"><i id="health-bar"></i></div>
     </div>
     <div id="toasts" class="hud" aria-live="polite"></div>
-    <div id="help-hint" class="hud" hidden>Esc pauses · K record book · I inventory</div>
+    <div id="help-hint" class="hud" hidden>Esc pauses · K record book · I inventory · P party · N map</div>
 
     <div id="catch" class="rr-screen" hidden>
       <div class="rr-card">
