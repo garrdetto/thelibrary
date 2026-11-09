@@ -21,9 +21,9 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 1
 fi
 
-echo "→ Installing the tools site changes need (git, gh, curl)…"
+echo "→ Installing the tools site changes need (git, gh, curl, unzip)…"
 sudo apt-get update -qq
-sudo apt-get install -y -qq git gh curl jq tar ca-certificates build-essential >/dev/null
+sudo apt-get install -y -qq git gh curl jq tar unzip xz-utils ca-certificates build-essential >/dev/null
 
 if [[ -z "$TOKEN" ]]; then
   if gh auth status >/dev/null 2>&1; then
