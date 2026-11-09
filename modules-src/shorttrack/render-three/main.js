@@ -15,6 +15,8 @@ import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
 import { loadCustomCars, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
 import { carIdOf, numberSpot, carGarage } from '../shared/CustomCars';
 import { parseRegions } from '../shared/carRepaint';
+import { sanitizeScheme, schemeForPainters } from '../shared/PaintScheme';
+import { initPaintDesigner } from '../paint-designer.js';
 import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
 import { createCar } from '../next/sim/car';
 import { TM } from '../truck-model.js';
@@ -455,9 +457,11 @@ function updSmoke(dt){for(const p of smoke){if(p.life<=0){p.s.visible=false;cont
 
 // ===================== LIVERIES =====================
 const PATTERNS=['solid','stripes','twotone','flames','panels','fade','rainbow'];
-const PATTERN_NAMES={solid:'Solid',stripes:'Racing stripes',twotone:'Two-tone split',flames:'Flames',panels:'Door panels',fade:'Gradient fade',rainbow:'Rainbow'};
+const PATTERN_NAMES={custom:'AI design',solid:'Solid',stripes:'Racing stripes',twotone:'Two-tone split',flames:'Flames',panels:'Door panels',fade:'Gradient fade',rainbow:'Rainbow'};
 // The AI field: every car runs a look-alike of the iconic NASCAR scheme its number is known for
 // (iconic-schemes.js: parody names, knockoff logos). lv.scheme names the scheme; the side/hood/atlas painters draw it.
+// lv.custom is an AI-designed scheme (shared/PaintScheme.ts, paint-designer.js), worn while lv.pattern is 'custom'.
+function schemeOf(lv){if(lv.pace)return null;if(lv.pattern==='custom'&&lv.custom)return schemeForPainters(lv.custom);return lv.scheme&&ICONIC[lv.scheme]||null;}
 const AI_FIELD=ICONIC_FIELD.map(f=>({name:f.name,number:f.number,primary:f.primary,secondary:f.secondary,accent:f.accent,pattern:'solid',
   numStyle:'block',numFont:'classic',numSlant:!!f.num.slant,numSize:125,numColor:f.num.fill,numOutline:f.num.outline,numAccent:f.num.accent,
   numDoors:true,numRoof:true,numTail:true,scheme:f.scheme}));
@@ -473,16 +477,16 @@ function hexLum(h){const n=parseInt(h.slice(1),16);return(0.299*(n>>16&255)+0.58
 const VEHICLES={truck:{name:'Race Truck',desc:'Short-track pickup with a bed wing'},car:{name:'Super Late Model',desc:'Stock car with your paint scheme and numbers'}};
 function cleanLv(l){
   l=l||{};const d=DEFAULT_LV,col=(v,f)=>HEX.test(v||'')?v:f,bool=(v,f)=>typeof v==='boolean'?v:f;
-  const italic=l.numStyle==='italic',size=parseFloat(l.numSize);
+  const italic=l.numStyle==='italic',size=parseFloat(l.numSize),custom=l.custom?sanitizeScheme(l.custom):null;
   return {name:(String(l.name||'').replace(/[<>]/g,'').slice(0,20).trim()||'Driver'),number:String(l.number??'').replace(/\D/g,'').slice(0,3),
     primary:col(l.primary,d.primary),secondary:col(l.secondary,d.secondary),accent:col(l.accent,d.accent),
-    pattern:PATTERNS.includes(l.pattern)?l.pattern:'solid',
+    pattern:PATTERNS.includes(l.pattern)||(l.pattern==='custom'&&custom)?l.pattern:'solid',
     numStyle:!italic&&NUM_STYLE_IDS.includes(l.numStyle)?l.numStyle:'block',numFont:NUM_FONT_IDS.includes(l.numFont)?l.numFont:'classic',
     numSlant:bool(l.numSlant,italic),numSize:Number.isFinite(size)?clamp(Math.round(size/5)*5,60,150):125,
     numColor:col(l.numColor,'#ffffff'),numOutline:col(l.numOutline,'#111111'),numAccent:col(l.numAccent,col(l.accent,d.accent)),
     numDoors:bool(l.numDoors,true),numRoof:bool(l.numRoof,true),numTail:bool(l.numTail,true),veh:VEHICLES[l.veh]||carIdOf(String(l.veh||''))?l.veh:'truck',
     ...(Array.isArray(l.sponsor)&&HEX.test(l.sponsor[1]||'')&&HEX.test(l.sponsor[2]||'')?{sponsor:[String(l.sponsor[0]||'').replace(/[<>]/g,'').slice(0,18),l.sponsor[1],l.sponsor[2]]}:{}),
-    ...(typeof l.scheme==='string'&&ICONIC[l.scheme]?{scheme:l.scheme}:{})};
+    ...(typeof l.scheme==='string'&&ICONIC[l.scheme]?{scheme:l.scheme}:{}),...(custom?{custom}:{})};
 }
 function hslHex(h,s,l){h=mod(h,1);const f=n=>{const k=(n+h*12)%12,a=s*Math.min(l,1-l);return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0');};return '#'+f(0)+f(8)+f(4);}
 function randomPaint(r){
@@ -751,7 +755,7 @@ const TRK_REAR=TM.DIM.RA*TM_S*TRUCK_SCALE,TRK_HALF=0.83*TM_S*TRUCK_SCALE;
 function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);return canvasTex(W,H,(g,w,h)=>{
   const u=x=>left?(TM_X1-x)/TM_L*w:(x-TM_X0)/TM_L*w,vy=y=>(1-(y-TM_Y0)/(TM_Y1-TM_Y0))*h,pm=w/TM_L,front=left?0:w,dir=left?1:-1;
   g.textAlign='center';g.textBaseline='middle';
-  const p2=lv.secondary,a=lv.accent,sch=!lv.pace&&lv.scheme&&ICONIC[lv.scheme];
+  const p2=lv.secondary,a=lv.accent,sch=schemeOf(lv);
   if(sch){   // metres on this side: x forward, y up (same frame as u()/vy())
     const ax=(left?-1:1)*w/TM_L,dy=-h/(TM_Y1-TM_Y0);
     g.save();g.setTransform(ax,0,0,dy,left?TM_X1*w/TM_L:-TM_X0*w/TM_L,h*TM_Y1/(TM_Y1-TM_Y0));
@@ -780,7 +784,7 @@ function tmSideTex(lv,left){const W=1280,H=Math.round(W*(TM_Y1-TM_Y0)/TM_L);retu
 });}
 function tmHoodTex(lv){return canvasTex(512,456,(g,w,h)=>{const pz=w/1.6,vx=x=>(1-(x-1.08)/1.42)*h;
   g.textAlign='center';g.textBaseline='middle';
-  const sch=!lv.pace&&lv.scheme&&ICONIC[lv.scheme];
+  const sch=schemeOf(lv);
   if(sch){   // (x forward, y lateral) metres -> canvas: lateral across, forward up
     g.save();g.setTransform(0,-h/1.42,pz,0,w/2,h*(1+1.08/1.42));
     drawSchemeHood(g,sch,{x0:1.08,xf:2.5,half:0.8},(cv,f,wm)=>{g.save();g.setTransform(1,0,0,1,0,0);const lw=wm*pz,lh=lw*cv.height/cv.width;g.drawImage(cv,w/2-lw/2,vx(f)-lh/2,lw,lh);g.restore();});
@@ -858,7 +862,7 @@ function carLiveryTex(lv,size,glyphPx){
     const p2=lv.secondary,ac=lv.accent,band=(y0,y1,c)=>{g.fillStyle=c;g.fillRect(-4,y0,8,y1-y0);};
     const centre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-4,-half,8,half*2);g.fillStyle=ac;g.fillRect(-4,-half-edge,8,edge);g.fillRect(-4,half,8,edge);};
     const vcentre=(half,edge)=>{g.fillStyle=p2;g.fillRect(-half,-1,half*2,4);g.fillStyle=ac;g.fillRect(-half-edge,-1,edge,4);g.fillRect(half,-1,edge,4);};
-    const sch=!lv.pace&&lv.scheme&&ICONIC[lv.scheme];
+    const sch=schemeOf(lv);
     if(sch){
       const E={xf:Math.max(R.L[3],R.L[4]),xr:Math.min(R.L[3],R.L[4]),yb:0.24,yt:0.86},Y=s=>E.yb+s*(E.yt-E.yb);
       for(const side of ['L','R'])region(side,(sa,sd)=>drawSchemeSide(g,sch,E,sa,sd));
@@ -911,7 +915,7 @@ function mountCarLivery(m,lv){
 // A custom car's livery: the stock car's atlas with the Garage options the admin allowed. Numbers go on
 // as decals where the admin placed a spot and are painted on at the stock spots everywhere else.
 function customLiveryLv(lv,rec){const gar=carGarage(rec),N=rec.numbers;
-  return {...lv,pattern:gar.schemes?lv.pattern:'solid',scheme:gar.schemes?lv.scheme:undefined,noLogo:!gar.logos,
+  return {...lv,pattern:gar.schemes?lv.pattern:'solid',scheme:gar.schemes?lv.scheme:undefined,custom:gar.schemes?lv.custom:undefined,noLogo:!gar.logos,
     number:gar.numbers?lv.number:'',numDoors:lv.numDoors&&!N.door,numRoof:lv.numRoof&&!N.roof,numTail:lv.numTail&&!N.tail};}
 function customLivery(lv,rec,o={}){
   if(!CAR_REGIONS)return null;const regions=parseRegions(CAR_REGIONS);if(!regions.length)return null;
@@ -1443,7 +1447,8 @@ function sendChat(){const m=$('chatIn').value.trim();if(!m)return;$('chatIn').va
 // garage
 const G={name:'gName',number:'gNum',pattern:'gPat',primary:'gP1',secondary:'gP2',accent:'gP3',numColor:'gNC',numOutline:'gNO',numAccent:'gNA',numSize:'gSize'};
 const PAINT_KEYS=['name','pattern','primary','secondary','accent'];
-$('gPat').innerHTML=PATTERNS.map(s=>`<option value="${s}">${PATTERN_NAMES[s]}</option>`).join('');
+function fillPatterns(){const has=!!myLv.custom,sig=has?'c:'+myLv.custom.name:'';const el=$('gPat');if(el.dataset.sig===sig&&el.options.length)return;el.dataset.sig=sig;
+  el.innerHTML=(has?[`<option value="custom">AI design: ${esc(myLv.custom.name)}</option>`]:[]).concat(PATTERNS.map(s=>`<option value="${s}">${PATTERN_NAMES[s]}</option>`)).join('');el.value=myLv.pattern;}
 $('gFont').innerHTML=NUM_FONTS.map(f=>`<option value="${f.id}">${f.name}</option>`).join('');
 $('gStyle').innerHTML=NUM_STYLES.map(st=>`<option value="${st.id}">${st.name}</option>`).join('');
 $('gPreset').innerHTML='<option value="">Custom colors</option>'+NUM_PRESETS.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
@@ -1461,7 +1466,7 @@ $('scrGarage').addEventListener('keydown',e=>{const el=e.target;if(el.tagName!==
   if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();stepPick(el.id,e.key==='ArrowLeft'?-1:1);}});
 const sizeArt=document.createElement('canvas');
 function renderGarage(){
-  const n=myLv;$('gNumShow').textContent=n.number?'#'+n.number:'';
+  fillPatterns();if(painter)painter.refresh();const n=myLv;$('gNumShow').textContent=n.number?'#'+n.number:'';
   for(const k in G){const el=$(G[k]);if(document.activeElement!==el&&String(el.value)!==String(n[k]))el.value=n[k];}
   $('gSizeOut').textContent=n.numSize+'%';
   for(const [id,v] of [['gFont',n.numFont],['gStyle',n.numStyle]])if(document.activeElement!==$(id)&&$(id).value!==v)$(id).value=v;
@@ -1489,10 +1494,13 @@ function renderGarage(){
     :'100% is the original number size; 125% is 25% larger.';
 }
 function fillGarage(){renderGarage();}
+let painter=null;
+painter=initPaintDesigner({$,signedIn:()=>!!REC.me,enabled:()=>vehicleGarage(myLv.veh).schemes,
+  apply:sc=>commitGarage({...myLv,pattern:'custom',custom:sc,primary:sc.primary,secondary:sc.secondary,accent:sc.accent,numColor:sc.num.fill,numOutline:sc.num.outline,numAccent:sc.num.accent,numSlant:sc.num.slant})});
 let gT=0,gNumT=0;
 function commitGarage(l){
   myLv=cleanLv(l);if(!myLv.number)myLv.number='0';saveLv();renderGarage();
-  if(menuCar&&PAINT_KEYS.every(k=>menuCar.lv[k]===myLv[k])){menuCar.lv=myLv;cancelAnimationFrame(gNumT);gNumT=requestAnimationFrame(()=>mountNumbers(menuCar.m,menuCar.lv));return;}
+  if(menuCar&&PAINT_KEYS.every(k=>menuCar.lv[k]===myLv[k])&&JSON.stringify(menuCar.lv.custom)===JSON.stringify(myLv.custom)){menuCar.lv=myLv;cancelAnimationFrame(gNumT);gNumT=requestAnimationFrame(()=>mountNumbers(menuCar.m,menuCar.lv));return;}
   clearTimeout(gT);gT=setTimeout(rebuildMenuCar,120);
 }
 function readGarage(){const l={...myLv};for(const k in G)l[k]=$(G[k]).value;if(REC.me)l.name=REC.me;commitGarage(l);}
@@ -1559,7 +1567,7 @@ function act(a){
     case 'join':doJoin();break;
     case 'garage':mode='garage';showScreen('scrGarage');fillGarage();break;
     case 'back':readGarage();mode='menu';showScreen('scrMain');break;
-    case 'rand':{const nm=myLv.name;myLv=cleanLv({...randomLivery(Math.random,0),name:nm});fillGarage();readGarage();}break;
+    case 'rand':{const nm=myLv.name;myLv=cleanLv({...randomLivery(Math.random,0),name:nm,custom:myLv.custom});fillGarage();readGarage();}break;
     case 'fs':if(document.fullscreenElement)document.exitFullscreen();else wrap.requestFullscreen&&wrap.requestFullscreen().catch(()=>{});break;
     case 'start':hostStart();break;
     case 'chat':sendChat();break;
@@ -1571,7 +1579,7 @@ function act(a){
 wrap.addEventListener('click',e=>{const b=e.target.closest('[data-act]');if(!b)return;audioInit();const a=b.dataset.act;if(a.startsWith('flow:'))goFlow(a.slice(5));else act(a);});
 wrap.addEventListener('click',e=>{const t=e.target.closest('[data-rec]');if(!t)return;const box=t.closest('.recbox');if(box)showRecords(box.id,t.dataset.rec);});
 function applyUsername(){if(!REC.me)return;myLv={...myLv,name:REC.me.slice(0,20)};const gn=$('gName');gn.value=myLv.name;gn.disabled=true;gn.title='Your library username is your driver name';
-  const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(!player)rebuildMenuCar();}
+  const me=NET.players.get(NET.myId);if(me)me.lv=myLv;if(mode==='lobby')renderLobby();if(mode==='garage')renderGarage();if(!player)rebuildMenuCar();}
 fetchRecords('time-attack');   // the record board is public; its top 20 sets the AI pace baseline (aiBaseline)
 if(REC_TRACK!==TRACK.rec)fetch(`/api/racing?records=1&mode=time-attack&track=${TRACK.rec}`).then(r=>r.ok?r.json():null).then(d=>{if(d)REC.classicAttack=d.records||[];}).catch(()=>{});
 fetch('/api/racing',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(d=>{if(d&&d.username){REC.me=d.username;applyUsername();fetchRecords('time-attack');}}).catch(()=>{});

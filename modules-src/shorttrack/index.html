@@ -124,6 +124,8 @@ input[type=color]{padding:2px;height:38px}
 .gpick button{flex:0 0 34px;border:1px solid var(--line);border-radius:7px;background:#161d28;color:var(--txt);cursor:pointer;font-size:12px}
 .gpick button:hover:not(:disabled){border-color:#5a6577}.gpick .gslant{flex:0 0 auto;padding:0 10px;font-weight:700}
 .gpick .gslant[aria-pressed="true"]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc);background:#2a2614}
+.gai input{flex:1;min-width:0;margin:0}.gpick #gAiGo{flex:0 0 auto;padding:0 12px;font-weight:800;background:var(--acc);color:#111;border-color:var(--acc)}
+.scr p.gnote.bad{color:#ff8a80}
 .gnumprev{display:block;width:100%;height:64px;border-radius:8px;border:1px solid var(--line)}
 @media (max-width:700px){#board{display:none}#bigmsg{font-size:28px}#keys{display:none}
   #scrGarage{left:8px;right:8px;top:auto;bottom:8px;width:auto;max-height:58%;padding:16px}.gcols{grid-template-columns:1fr}}
@@ -195,6 +197,9 @@ input[type=color]{padding:2px;height:38px}
     <p class="gnote hidden" id="gCarNote" role="status"></p>
     <label class="f" for="gPat">Paint scheme</label><div class="gpick"><button type="button" data-gstep="gPat:-1" aria-label="Previous paint scheme">&#9664;</button><select id="gPat"></select><button type="button" data-gstep="gPat:1" aria-label="Next paint scheme">&#9654;</button></div>
     <div class="row2"><div><label class="f" for="gP1">Primary</label><input type="color" id="gP1"></div><div><label class="f" for="gP2">Secondary</label><input type="color" id="gP2"></div><div><label class="f" for="gP3">Accent</label><input type="color" id="gP3"></div></div>
+    <label class="f" for="gAiPrompt">AI paint designer</label>
+    <div class="gpick gai"><input id="gAiPrompt" placeholder="e.g. matte black with neon green lightning" autocomplete="off" aria-describedby="gAiNote"><button type="button" id="gAiGo">Paint it</button></div>
+    <p class="gnote" id="gAiNote" role="status" aria-live="polite"></p>
     <div class="gsec">Race number <b id="gNumShow"></b></div>
     <label class="f" for="gNum">Number</label>
     <div class="numrow"><input id="gNum" maxlength="3" inputmode="numeric" autocomplete="off" aria-describedby="gNumHelp"><button type="button" data-gnum="-1" aria-label="Number down one">&minus;</button><button type="button" data-gnum="1" aria-label="Number up one">+</button><button type="button" class="wide" data-gnum="rand">Random</button></div>

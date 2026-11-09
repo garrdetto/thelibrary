@@ -8,7 +8,9 @@
 //   ['band', s0, s1, color, t0?, t1?]           horizontal band
 //   ['poly', [[t,s],...], color]                 filled polygon
 //   ['streak', t0,s0, t1,s1, w0,w1, color]       tapered stripe from (t0,s0) to (t1,s1); w = thickness in s
-//   ['logo', t, s, widthMetres, logoKey]         knockoff sponsor logo (keys in LOGOS)
+//   ['logo', t, s, widthMetres, logoKey]         knockoff sponsor logo (keys in LOGOS, or the scheme's own `logos`)
+//   ['dot', t, s, radiusMetres, color]           filled circle (AI-designed schemes)
+//   ['text', t, s, heightMetres, text, fill, outline|null, italic]   lettering (AI-designed schemes)
 // Hood art (forward metres f, lateral metres l; the hood runs from about f 1.05 to the nose):
 //   hood: {color, nose:[color,depth], stripes:[[halfWidth,color],...], logo:[key,widthMetres,f]}
 // roof / deck: colors for the stock car's roof and rear deck (default: body color).
@@ -145,9 +147,13 @@ function fitText(g,text,size,maxW,weight='900',style='italic',family=FONT){
   return s;
 }
 const logoCache=new Map();
+const ASPECT={box:0.36,oval:0.42,script:0.32,shield:0.9,star:0.5};
 // Renders a knockoff sponsor logo into its own canvas (W x W*aspect, transparent background).
-export function logoCanvas(key){
-  const L=LOGOS[key];if(!L)return null;let cv=logoCache.get(key);if(cv)return cv;
+// `defs` are a scheme's own logo definitions (AI-designed schemes), looked up before the built-in LOGOS.
+export function logoCanvas(key,defs){
+  const own=defs&&defs[key],L=own?{aspect:own.kind==='box'&&own.sub?0.42:ASPECT[own.kind]||0.4,...own}:LOGOS[key];if(!L)return null;
+  const ck=own?'own:'+JSON.stringify(L):key;let cv=logoCache.get(ck);if(cv)return cv;
+  if(logoCache.size>64)logoCache.clear();
   const W=640,H=Math.round(W*L.aspect);cv=document.createElement('canvas');cv.width=W;cv.height=H;
   const g=cv.getContext('2d');g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';
   const edge=L.edge||'#ffffff',lw=Math.max(6,H*0.06);
@@ -185,7 +191,17 @@ export function logoCanvas(key){
       rr(g,H*0.98,H*0.24,W-H*0.98-lw,H*0.52,H*0.12);g.fillStyle=L.bg;g.fill();g.stroke();
       fitText(g,L.text,H*0.34,W-H*1.15);g.fillStyle=L.fg;g.fillText(L.text,(H*0.98+W-lw)/2,H*0.51);break;}
   }
-  logoCache.set(key,cv);return cv;
+  logoCache.set(ck,cv);return cv;
+}
+const textCache=new Map();
+// Lettering for a scheme's 'text' op, drawn once at a fixed pixel size and scaled into metres.
+function textCanvas(text,fill,outline,italic){
+  const k=[text,fill,outline,italic].join('|');let cv=textCache.get(k);if(cv)return cv;if(textCache.size>64)textCache.clear();
+  const H=128;cv=document.createElement('canvas');const g0=cv.getContext('2d'),font=`${italic?'italic ':''}900 ${H*0.8}px ${FONT}`;g0.font=font;
+  const pad=outline?H*0.12:H*0.04;cv.width=Math.ceil(g0.measureText(text).width+pad*2);cv.height=H;
+  const g=cv.getContext('2d');g.font=font;g.textAlign='center';g.textBaseline='middle';g.lineJoin='round';
+  if(outline){g.lineWidth=H*0.14;g.strokeStyle=outline;g.strokeText(text,cv.width/2,H*0.54);}
+  g.fillStyle=fill;g.fillText(text,cv.width/2,H*0.54);textCache.set(k,cv);return cv;
 }
 
 // Side art. The canvas transform is already in metres (x forward, y up) for this side; sa/sd are the signs of
@@ -199,7 +215,10 @@ export function drawSchemeSide(g,sch,E,sa,sd){
       case 'poly':{g.fillStyle=op[2];g.beginPath();op[1].forEach(([t,s],i)=>i?g.lineTo(X0(t),Y0(s)):g.moveTo(X0(t),Y0(s)));g.closePath();g.fill();break;}
       case 'streak':{const [,t0,s0,t1,s1,w0,w1,c]=op;g.fillStyle=c;g.beginPath();
         g.moveTo(X0(t0),Y0(s0-w0/2));g.lineTo(X0(t1),Y0(s1-w1/2));g.lineTo(X0(t1),Y0(s1+w1/2));g.lineTo(X0(t0),Y0(s0+w0/2));g.closePath();g.fill();break;}
-      case 'logo':{const [,t,s,wm,key]=op,cv=logoCanvas(key);if(!cv)break;const hm=wm*cv.height/cv.width;
+      case 'logo':{const [,t,s,wm,key]=op,cv=logoCanvas(key,sch.logos);if(!cv)break;const hm=wm*cv.height/cv.width;
+        g.save();g.translate(X(t),Y(s));g.scale(sa,sd);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();break;}
+      case 'dot':{const [,t,s,r,c]=op;g.fillStyle=c;g.beginPath();g.arc(X(t),Y(s),r,0,Math.PI*2);g.fill();break;}
+      case 'text':{const [,t,s,hm,text,fill,outline,italic]=op,cv=textCanvas(text,fill,outline,italic);const wm=hm*cv.width/cv.height;
         g.save();g.translate(X(t),Y(s));g.scale(sa,sd);g.drawImage(cv,-wm/2,-hm/2,wm,hm);g.restore();break;}
     }
   }
@@ -211,5 +230,5 @@ export function drawSchemeHood(g,sch,E,putLogo){
   g.fillStyle=H.color||sch.primary;g.fillRect(E.x0,-w,E.xf-E.x0+0.6,2*w);
   if(H.nose){g.fillStyle=H.nose[0];g.fillRect(E.xf-H.nose[1],-w,H.nose[1]+0.6,2*w);}
   for(const [hw,c] of H.stripes||[]){g.fillStyle=c;g.fillRect(E.x0-0.1,-hw,E.xf-E.x0+0.8,2*hw);}
-  if(H.logo){const cv=logoCanvas(H.logo[0]);if(cv)putLogo(cv,H.logo[2]??(E.x0+E.xf)/2,H.logo[1]);}
+  if(H.logo){const cv=logoCanvas(H.logo[0],sch.logos);if(cv)putLogo(cv,H.logo[2]??(E.x0+E.xf)/2,H.logo[1]);}
 }
