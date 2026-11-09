@@ -18,8 +18,15 @@
 /* Chopper Cave — hold the mouse (or Space / touch) to climb, release to drop.
    Move the mouse left and right (or A/D, arrow keys) to fly back and forward. */
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-let W = 0, H = 0, dpr = 1;
-function resize() { dpr = Math.min(2, window.devicePixelRatio || 1); W = window.innerWidth; H = window.innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); }
+const W = 1280, H = 720;
+let dpr = 1, view = { s: 1, ox: 0, oy: 0, cw: W, ch: H };
+function resize() {
+  dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cw = window.innerWidth, ch = window.innerHeight, s = Math.min(cw / W, ch / H);
+  view = { s, ox: (cw - W * s) / 2, oy: (ch - H * s) / 2, cw, ch };
+  cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
+}
+function worldX(clientX) { return (clientX - view.ox) / view.s; }
 window.addEventListener('resize', resize); resize();
 const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* unavailable */ } } };
 let best = +(store.get('chopper-best') || 0);
@@ -103,6 +110,10 @@ function drawHeli(h, t) {
 }
 function draw() {
   const s = state, t = s.t;
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#070a12'; ctx.fillRect(0, 0, cv.width, cv.height);
+  const k = dpr * view.s; ctx.setTransform(k, 0, 0, k, dpr * view.ox, dpr * view.oy);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.clip();
   ctx.save();
   if (s.shake) ctx.translate((Math.random() - 0.5) * s.shake, (Math.random() - 0.5) * s.shake);
   const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#0d1428'); bg.addColorStop(1, '#141030'); ctx.fillStyle = bg; ctx.fillRect(-20, -20, W + 40, H + 40);
@@ -131,12 +142,13 @@ function draw() {
     ctx.fillText(s.mode === 'ready' ? 'Hold the mouse button to climb, let go to drop. Move the mouse left/right to fly back and forward.' : `${Math.floor(s.dist / 10)} m — click to fly again`, W / 2, H / 2 + 16);
     ctx.fillText('Space and arrow keys work too. Touch: hold to climb, drag sideways.', W / 2, H / 2 + 44);
   }
+  ctx.restore();
 }
 let last = performance.now();
 function loop(now) { const dt = Math.min(0.033, (now - last) / 1000); last = now; update(dt); draw(); requestAnimationFrame(loop); }
 function press(x) { initAudio(); if (state.mode === 'ready') state.mode = 'fly'; else if (state.mode === 'dead') { if (state.t > 0.5 || state.particles.length < 10) { reset(); state.mode = 'fly'; } } input.hold = true; if (x != null) input.targetX = x; }
-cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture?.(e.pointerId); press(e.clientX); });
-cv.addEventListener('pointermove', e => { input.targetX = e.clientX; });
+cv.addEventListener('pointerdown', e => { e.preventDefault(); cv.setPointerCapture?.(e.pointerId); press(worldX(e.clientX)); });
+cv.addEventListener('pointermove', e => { input.targetX = worldX(e.clientX); });
 window.addEventListener('pointerup', () => { input.hold = false; });
 cv.addEventListener('contextmenu', e => e.preventDefault());
 window.addEventListener('keydown', e => {
