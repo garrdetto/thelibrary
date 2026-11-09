@@ -40,6 +40,8 @@ export type Env = {
   SITE_CHANGES_GITHUB_TOKEN?: string
   SITE_CHANGES_SECRET?: string
   SITE_CHANGES_REPO?: string
+  /** Label of the self-hosted GitHub Actions runner on the admin's laptop (default msi-laptop). */
+  SITE_CHANGES_RUNNER_LABEL?: string
   ANTHROPIC_ADMIN_KEY?: string
   MESHY_API_KEY?: string
   /** Development only: point the Meshy client at a local stand-in. */

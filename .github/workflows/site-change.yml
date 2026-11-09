@@ -11,6 +11,12 @@ on:
       callback_url:
         description: The site's /api/site-changes endpoint
         required: true
+      runner:
+        description: Where to run (github, or laptop for the self-hosted runner on the admin's laptop)
+        required: false
+        default: github
+        type: choice
+        options: [github, laptop]
 
 permissions:
   contents: write
@@ -22,7 +28,9 @@ concurrency:
 
 jobs:
   change:
-    runs-on: ubuntu-latest
+    # "laptop" runs on the self-hosted runner set up with scripts/laptop-runner/
+    # (label from the SITE_CHANGES_RUNNER_LABEL repository variable, default msi-laptop).
+    runs-on: ${{ inputs.runner == 'laptop' && (vars.SITE_CHANGES_RUNNER_LABEL || 'msi-laptop') || 'ubuntu-latest' }}
     timeout-minutes: 60
     env:
       JOB_ID: ${{ inputs.job_id }}
@@ -35,6 +43,13 @@ jobs:
           ref: main
           fetch-depth: 50
           persist-credentials: false
+
+      - name: Check laptop tools
+        if: runner.environment == 'self-hosted'
+        run: |
+          for tool in git gh curl; do
+            command -v "$tool" >/dev/null || { echo "::error::$tool is missing on the laptop runner. Run scripts/laptop-runner/setup.sh again."; exit 1; }
+          done
 
       - uses: pnpm/action-setup@v4
         with:
@@ -52,10 +67,13 @@ jobs:
           pnpm install --no-frozen-lockfile
           npm install -g @anthropic-ai/claude-code
 
+      # On GitHub, Claude uses the API key (or subscription token) secret. On the
+      # laptop it uses the Claude account signed in there instead (`claude` → /login).
       - name: Ask Claude
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ runner.environment != 'self-hosted' && secrets.ANTHROPIC_API_KEY || '' }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ runner.environment != 'self-hosted' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
+          SITE_CHANGES_LOCAL_LOGIN: ${{ runner.environment == 'self-hosted' && '1' || '' }}
           SITE_CHANGES_MODEL: ${{ vars.SITE_CHANGES_MODEL }}
         run: node .github/site-changes/run.mjs claude
 
@@ -72,3 +90,9 @@ jobs:
       - name: Report failure
         if: failure() || cancelled()
         run: node .github/site-changes/run.mjs failed
+
+      # A self-hosted runner keeps its working copy between runs, so never leave
+      # the push token in its git config.
+      - name: Remove credentials from the laptop's checkout
+        if: always() && runner.environment == 'self-hosted'
+        run: git remote set-url origin "https://github.com/${{ github.repository }}.git" || true
