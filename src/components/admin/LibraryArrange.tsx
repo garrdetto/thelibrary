@@ -6,6 +6,7 @@ import type { ModuleId } from '@/lib/modules'
 import { arrangeModules, sameLayout } from '@/lib/module-layout'
 import type { ModuleLayout } from '@/lib/module-layout'
 import { loadModuleLayout, resetModuleLayout, saveModuleLayout, useModuleLayout } from '@/lib/use-module-layout'
+import { LibraryCategories } from './LibraryCategories'
 
 const byId = new Map(learningModules.map(item => [item.id, item]))
 
@@ -24,7 +25,9 @@ export function LibraryArrange() {
   const [notice, setNotice] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [announce, setAnnounce] = useState('')
   const listRef = useRef<HTMLOListElement>(null)
+  const [tab, setTab] = useState<'order' | 'categories'>('order')
   const dirty = !sameLayout(draft, saved)
+  const blankCategory = draft.categories.some(item => !item.name.trim())
 
   useEffect(() => { void loadModuleLayout(true) }, [])
   useEffect(() => { if (!dirty) setDraft(saved) }, [saved])
@@ -82,13 +85,13 @@ export function LibraryArrange() {
 
   async function save() {
     setBusy('save'); setNotice(null)
-    try { setDraft(await saveModuleLayout(draft)); setNotice({ tone: 'ok', text: 'Library order published. Everyone sees it on their next visit.' }) }
+    try { setDraft(await saveModuleLayout(draft)); setNotice({ tone: 'ok', text: 'Library published. Everyone sees it on their next visit.' }) }
     catch (error) { setNotice({ tone: 'error', text: (error as Error).message }) }
     finally { setBusy(null) }
   }
 
   async function reset() {
-    if (!window.confirm('Put every module back in its original order, show them all and clear the featured pick?')) return
+    if (!window.confirm('Put every module back in its original order, show them all, clear the featured and Top 5 picks and restore the original categories?')) return
     setBusy('reset'); setNotice(null)
     try { setDraft(await resetModuleLayout()); setNotice({ tone: 'ok', text: 'Library order reset to the default.' }) }
     catch (error) { setNotice({ tone: 'error', text: (error as Error).message }) }
@@ -106,7 +109,13 @@ export function LibraryArrange() {
       <button type="button" className="adm-btn adm-btn-ghost" onClick={() => void reset()} disabled={busy !== null}>{busy === 'reset' ? <LoaderCircle className="spin" size={15}/> : <RotateCcw size={15} aria-hidden/>} Reset to default</button>
     </div>
 
-    <p className="adm-help">Drag a module by its handle, or focus the handle and use the arrow keys (Home and End jump to the ends). The order here is the order of the homepage grid and the sidebar; the star picks the featured module at the top of the homepage.</p>
+    <div className="adm-segment adm-arrange-tabs" role="group" aria-label="Library settings">
+      <button type="button" className={tab === 'order' ? 'is-active' : ''} aria-pressed={tab === 'order'} onClick={() => setTab('order')}>Order &amp; visibility</button>
+      <button type="button" className={tab === 'categories' ? 'is-active' : ''} aria-pressed={tab === 'categories'} onClick={() => setTab('categories')}>Top 5 &amp; categories <span>{draft.categories.length}</span></button>
+    </div>
+
+    {tab === 'categories' ? <LibraryCategories draft={draft} setDraft={setDraft}/> : <>
+    <p className="adm-help">Drag a module by its handle, or focus the handle and use the arrow keys (Home and End jump to the ends). The order here is the order of the homepage grid and of each sidebar category; the star picks the featured module at the top of the homepage.</p>
 
     <ol ref={listRef} className={`adm-arrange-list${dragging ? ' is-dragging' : ''}`} aria-label="Module order">
       {draft.order.map((id, index) => {
@@ -121,7 +130,7 @@ export function LibraryArrange() {
           <img src={item.image} alt="" loading="lazy"/>
           <span className="adm-arrange-meta">
             <strong>{item.title}{featuredId === id && <em className="adm-pill adm-pill-accent">Featured</em>}{isHidden && <em className="adm-pill">Hidden</em>}</strong>
-            <small>{item.subject === item.group ? item.subject : `${item.subject} · ${item.group}`}</small>
+            <small>{item.subject}{(draft.assignments[id] ?? []).length > 0 && ` · ${draft.categories.filter(category => draft.assignments[id]?.includes(category.id)).map(category => category.name).join(', ')}`}</small>
           </span>
           <span className="adm-arrange-actions">
             <button type="button" className="adm-icon" onClick={() => reorder(id, 0)} disabled={index === 0} title="Move to top" aria-label={`Move ${item.title} to the top`}><ChevronsUp size={16} aria-hidden/></button>
@@ -135,12 +144,13 @@ export function LibraryArrange() {
     </ol>
     <p id="arrange-help" className="adm-sr">Use the arrow keys to move this module.</p>
     <p className="adm-sr" aria-live="polite">{announce}</p>
+    </>}
 
     <div className={`adm-savebar${dirty ? ' is-dirty' : ''}`} role="region" aria-label="Save changes">
-      <span>{dirty ? 'You have unpublished changes to the library order.' : notice?.tone === 'ok' ? notice.text : 'The library order is up to date.'}</span>
+      <span>{dirty ? 'You have unpublished changes to the library.' : notice?.tone === 'ok' ? notice.text : 'The library is up to date.'}</span>
       <div>
         <button type="button" className="adm-btn adm-btn-ghost" onClick={() => setDraft(saved)} disabled={!dirty || busy !== null}>Discard</button>
-        <button type="button" className="adm-btn adm-btn-primary" onClick={() => void save()} disabled={!dirty || busy !== null}>{busy === 'save' ? <><LoaderCircle className="spin" size={15}/> Publishing…</> : 'Publish order'}</button>
+        <button type="button" className="adm-btn adm-btn-primary" onClick={() => void save()} disabled={!dirty || blankCategory || busy !== null}>{busy === 'save' ? <><LoaderCircle className="spin" size={15}/> Publishing…</> : 'Publish library'}</button>
       </div>
     </div>
     {notice?.tone === 'error' && <p role="alert" className="adm-error">{notice.text}</p>}

@@ -3,6 +3,7 @@ import type { Env } from '../env'
 import { json, readJson, requireSameOrigin } from '../http'
 import { currentUser, requireUser } from '../auth'
 import { canResetRecords } from '../records'
+import { NOTICE_PLACES, saveWithKnockouts } from '../score-notices.js'
 import { isScoredModule, scoredModules } from '../../lib/module-scores'
 import type { ScoredModuleId } from '../../lib/module-scores'
 
@@ -51,9 +52,14 @@ export async function moduleScores(request: Request, env: Env) {
     return json({ reset: true })
   }
   const better = scoredModules[input.module].order === 'asc' ? '<' : '>'
-  await env.DB.prepare(`INSERT INTO module_scores (id, user_id, username, module, value, created_at) VALUES (?, ?, ?, ?, ?, ?)
+  const direction = scoredModules[input.module].order === 'asc' ? 'ASC' : 'DESC'
+  await saveWithKnockouts(env, {
+    game: input.module,
+    scorer: user,
+    top: () => env.DB.prepare(`SELECT id, user_id FROM module_scores WHERE module = ? ORDER BY value ${direction}, created_at ASC, id ASC LIMIT ${NOTICE_PLACES}`).bind(input.module),
+  }, () => env.DB.prepare(`INSERT INTO module_scores (id, user_id, username, module, value, created_at) VALUES (?, ?, ?, ?, ?, ?)
   ON CONFLICT(id) DO UPDATE SET value = excluded.value, created_at = excluded.created_at
   WHERE module_scores.user_id = excluded.user_id AND module_scores.module = excluded.module AND excluded.value ${better} module_scores.value`)
-    .bind(`${user.id}:${input.run}`, user.id, user.username, input.module, input.value, Date.now()).run()
+    .bind(`${user.id}:${input.run}`, user.id, user.username, input.module, input.value, Date.now()).run())
   return json({ saved: true })
 }

@@ -1,6 +1,7 @@
 // Live handling for this track (/api/shorttrack-handling, published from the admin console) and the admin-only
 // Track Test: a side panel that changes the handling while driving and pushes the tested settings live for this track.
-// `opts`: { cfg, trackId, trackName, toast(text), onApply(), startTest() }.
+// `opts`: { cfg, trackId, trackName, toast(text), onApply(), startTest(), resetCar() }.
+// Once Track Test starts, no lap is saved to the records, whether or not the settings are live.
 import { HANDLING_SETTINGS, applyHandling, handlingBase, sameHandling, sanitizeHandling } from './shared/Handling';
 
 const ENDPOINT = '/api/shorttrack-handling';
@@ -33,8 +34,8 @@ const CSS = `
 export function initTrackTest(opts) {
   const { cfg, trackId, trackName } = opts;
   const base = handlingBase(cfg);
-  let live = {}, draft = null, admin = false, busy = false, warned = false;
-  let panel = null, note = null, pushBtn = null, revertBtn = null, stockBtn = null;
+  let live = {}, draft = null, admin = false, busy = false, warned = false, testing = false;
+  let panel = null, note = null, pushBtn = null, revertBtn = null, stockBtn = null, resetBtn = null;
   const rows = new Map();
 
   function apply(tune) { applyHandling(cfg, base, tune); opts.onApply && opts.onApply(); }
@@ -63,7 +64,7 @@ export function initTrackTest(opts) {
     pushBtn.disabled = busy || !dirty();
     revertBtn.disabled = busy || !dirty();
     stockBtn.disabled = busy || Object.keys(sanitizeHandling(tune)).length === 0;
-    if (!busy) say(dirty() ? 'Testing unpublished settings. Laps are not saved to the records.' : Object.keys(live).length ? 'Driving the live settings for this track.' : 'Driving stock handling.');
+    if (!busy) say((dirty() ? 'Testing unpublished settings.' : Object.keys(live).length ? 'Driving the live settings for this track.' : 'Driving stock handling.') + ' Test laps are not saved to the records.');
   }
 
   function setDraft(tune) { draft = sanitizeHandling(tune); apply(draft); sync(); }
@@ -110,11 +111,16 @@ export function initTrackTest(opts) {
     }
     const btns = document.createElement('div');
     btns.className = 'tt-btns';
-    btns.innerHTML = '<button type="button" class="pri" data-tt="push"></button><button type="button" data-tt="revert">Back to live</button><button type="button" data-tt="stock">All stock</button>';
+    btns.innerHTML = '<button type="button" data-tt="reset" title="Put the car back on the track (R)">Reset car</button><button type="button" class="pri" data-tt="push"></button><button type="button" data-tt="revert">Back to live</button><button type="button" data-tt="stock">All stock</button>';
     pushBtn = btns.querySelector('[data-tt="push"]');
     pushBtn.textContent = `Push live to ${trackName}`;
     revertBtn = btns.querySelector('[data-tt="revert"]');
     stockBtn = btns.querySelector('[data-tt="stock"]');
+    resetBtn = btns.querySelector('[data-tt="reset"]');
+    resetBtn.addEventListener('click', () => {
+      resetBtn.blur();
+      say(opts.resetCar && opts.resetCar() ? 'Car reset. Test laps are not saved to the records.' : 'Start a run on track to reset the car.');
+    });
     pushBtn.addEventListener('click', () => { pushBtn.blur(); push(); });
     revertBtn.addEventListener('click', () => { revertBtn.blur(); setDraft(live); });
     stockBtn.addEventListener('click', () => { stockBtn.blur(); setDraft({}); });
@@ -137,6 +143,7 @@ export function initTrackTest(opts) {
 
   function startTesting() {
     if (!admin) return;
+    testing = true;
     if (draft === null) draft = { ...live };
     buildPanel();
     panel.classList.remove('hidden', 'tt-min');
@@ -170,11 +177,13 @@ export function initTrackTest(opts) {
       fetchLive().then(r => { if (draft === null && !sameHandling(r.tune, live)) { live = r.tune; } }).catch(() => {});
       apply(live);
     },
-    /** True while the admin is driving settings that aren't live, so laps aren't saved to the records. */
+    /** True in Track Test mode (or with unpublished settings), so test laps aren't saved to the records. */
     blocksLaps() {
-      const block = dirty();
-      if (block && !warned) { warned = true; opts.toast && opts.toast('Track Test: laps with unpublished handling are not saved'); }
+      const block = testing || dirty();
+      if (block && !warned) { warned = true; opts.toast && opts.toast('Track Test: test laps are not saved to the records'); }
       return block;
     },
+    /** True in Track Test mode, where the car can be reset at any speed. */
+    isTesting() { return testing; },
   };
 }

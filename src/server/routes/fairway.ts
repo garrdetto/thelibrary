@@ -3,10 +3,12 @@ import type { Env } from '../env.js'
 import { json, parseStored, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
 import { canResetRecords } from '../records.js'
+import { NOTICE_PLACES, saveWithKnockouts } from '../score-notices.js'
 import { fairwayBoardLimits, fairwayBoards } from '../../lib/fairway.js'
 import type { FairwayBoard } from '../../lib/fairway.js'
 
 const boardIds = z.enum(fairwayBoards)
+const boardNames: Record<FairwayBoard, string> = { round: 'Round', pin: 'Closest to the pin', match: 'Online match' }
 const detailSchema = z.record(z.string().max(40), z.unknown()).refine(detail => JSON.stringify(detail).length <= 2000)
 
 const actions = z.discriminatedUnion('action', [
@@ -70,7 +72,12 @@ export async function fairway(request: Request, env: Env) {
     await env.DB.prepare('DELETE FROM fairway_records WHERE board = ?').bind(input.board).run()
     return json({ reset: true })
   }
-  await env.DB.prepare('INSERT INTO fairway_records (id, user_id, username, board, value, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
-    .bind(`${user.id}:${input.run}`, user.id, user.username, input.board, input.value, input.detail ? JSON.stringify(input.detail) : null, Date.now()).run()
+  await saveWithKnockouts(env, {
+    game: 'fairway',
+    detail: boardNames[input.board],
+    scorer: user,
+    top: () => env.DB.prepare(`SELECT id, user_id FROM fairway_records WHERE board = ? ORDER BY value ASC, created_at ASC, id ASC LIMIT ${NOTICE_PLACES}`).bind(input.board),
+  }, () => env.DB.prepare('INSERT INTO fairway_records (id, user_id, username, board, value, detail, created_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING')
+    .bind(`${user.id}:${input.run}`, user.id, user.username, input.board, input.value, input.detail ? JSON.stringify(input.detail) : null, Date.now()).run())
   return json({ saved: true })
 }
