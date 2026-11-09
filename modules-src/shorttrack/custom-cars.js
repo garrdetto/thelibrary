@@ -7,7 +7,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { STOCK_CAR, carIdOf, carVehicleKey, carGarage, paintMode } from './shared/CustomCars';
-import { bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels } from './shared/carRepaint';
+import { STOCK_BOUNDS, bakeLivery, boundsOf, liveryUvs, meshArea, paintWeight, tintPixels, toLiveryFrame } from './shared/carRepaint';
+import { applyAtlas, buildLiveryGeo, planAtlas, wheelOccluder, wrapContext } from './shared/liveryWrap';
 import { numberAnchors, numberPlanes, placementMatrix } from './shared/carSurface';
 
 export const CUSTOM_CARS = new Map();
@@ -89,7 +90,33 @@ function prepare(rec, scene) {
   const probe = new THREE.Group();
   for (const p of parts) probe.add(new THREE.Mesh(p.geo, new THREE.MeshBasicMaterial({ side: THREE.DoubleSide })));
   const anchors = numberAnchors(probe, rec.numbers);
-  return { rec, parts, anchors, bounds: boundsOf(parts.map(p => p.geo.attributes.position.array)) };
+  const bounds = boundsOf(parts.map(p => p.geo.attributes.position.array));
+  return { rec, parts, anchors, bounds, geo: undefined };
+}
+
+/**
+ * The body's projection maps in the livery frame (shared/liveryWrap.ts), made once per car: what each side,
+ * the top and the ends see first, and whether it takes paint. The stock wheels are added as discs so logos stay
+ * off the openings. `regions` are the stock car's livery regions. Null if the body can't be mapped.
+ */
+export function customGeo(a, regions) {
+  if (a.geo === undefined) a.geo = liveryGeo(a.rec, a.parts, a.bounds, regions);
+  return a.geo;
+}
+
+function liveryGeo(rec, parts, bounds, regions) {
+  try {
+    const geo = parts.map(p => {
+      const f = toLiveryFrame(p.geo.attributes.position.array, null, bounds);
+      return { positions: f.positions, index: p.geo.index ? p.geo.index.array : null, paint: !!p.paint };
+    });
+    for (const ax of rec.axles || []) for (const side of [1, -1]) {
+      const z = side * (ax.halfTrack + ax.width / 2), c = toLiveryFrame([ax.x, ax.radius, z], null, bounds).positions;
+      const r = ax.radius * (STOCK_BOUNDS.max[1] - STOCK_BOUNDS.min[1]) / Math.max(1e-6, bounds.max[1] - bounds.min[1]);
+      geo.push(wheelOccluder(c[0], c[1], c[2], r));
+    }
+    return buildLiveryGeo(geo, regions);
+  } catch { return null; }
 }
 
 const seeThrough = m => (m.transparent && m.opacity < 0.9) || (m.transmission ?? 0) > 0.2;
@@ -139,8 +166,8 @@ function bakedMap(a, part, primary, livery) {
   if (livery) {
     const L = livery.canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, livery.canvas.width, livery.canvas.height);
     const geo = part.geo;
-    bakeLivery({ texture: px, livery: L, regions: livery.regions, bounds: a.bounds, flipY: map.flipY, weight, fallback: rgb,
-      parts: [{ positions: geo.attributes.position.array, uvs: geo.attributes.uv.array, index: geo.index ? geo.index.array : null }] });
+    bakeLivery({ texture: px, livery: livery.base || L, decals: livery.base ? livery.decals : null, geo: a.geo || null, regions: livery.regions, bounds: a.bounds, flipY: map.flipY, weight, fallback: rgb,
+      parts: [{ positions: geo.attributes.position.array, normals: geo.attributes.normal ? geo.attributes.normal.array : null, uvs: geo.attributes.uv.array, index: geo.index ? geo.index.array : null }] });
   } else tintPixels(px.data, rgb, weight);
   g.putImageData(px, 0, 0);
   const t = new THREE.CanvasTexture(cv);
@@ -155,11 +182,34 @@ function paintFor(a, part, lv, livery) {
   else if (part.paint === 'plain') {
     if (livery) {
       if (!part.liveryUv) part.liveryUv = new THREE.BufferAttribute(liveryUvs(part.geo.attributes.position.array, livery.regions, a.bounds), 2);
-      if (!livery.texture) { livery.texture = new THREE.CanvasTexture(livery.canvas); livery.texture.colorSpace = THREE.SRGBColorSpace; livery.texture.flipY = false; livery.texture.anisotropy = 8; }
+      if (!livery.texture) { livery.texture = new THREE.CanvasTexture(plainAtlas(a, livery)); livery.texture.colorSpace = THREE.SRGBColorSpace; livery.texture.flipY = false; livery.texture.anisotropy = 8; }
       m.map = livery.texture; m.color.set(0xffffff);
     } else m.color.set(lv.primary);
   }
   return m;
+}
+
+// Untextured parts share one copy of the livery atlas per car, repainted along their seams from 3D like the
+// stock car (shared/liveryWrap.ts) so the art meets cleanly and logos cross from one face to the next whole.
+function plainAtlas(a, livery) {
+  const src = livery.canvas;
+  if (!livery.base || !livery.decals) return src;
+  const plain = a.parts.filter(p => p.paint === 'plain');
+  for (const p of plain) if (!p.liveryUv) p.liveryUv = new THREE.BufferAttribute(liveryUvs(p.geo.attributes.position.array, livery.regions, a.bounds), 2);
+  if (!plain.length) return src;
+  const W = src.width, H = src.height;
+  if (!a.plainPlan || a.plainPlan.width !== W) {
+    a.plainPlan = planAtlas(plain.map(p => {
+      const f = toLiveryFrame(p.geo.attributes.position.array, p.geo.attributes.normal ? p.geo.attributes.normal.array : null, a.bounds);
+      return { positions: f.positions, normals: f.normals, uvs: p.liveryUv.array, index: null };
+    }), livery.regions, a.geo || null, STOCK_BOUNDS, W, H);
+  }
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d', { willReadFrequently: true }); g.drawImage(src, 0, 0);
+  const img = g.getImageData(0, 0, W, H);
+  applyAtlas(a.plainPlan, img, wrapContext({ regions: livery.regions, base: livery.base, decals: livery.decals, geo: a.geo || null, bounds: STOCK_BOUNDS }));
+  g.putImageData(img, 0, 0);
+  return cv;
 }
 
 // Wheels from the stock car (scaled to the custom radius and width), or plain tyres if it hasn't loaded.
