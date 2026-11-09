@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Spin Rally</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root { --bg: #0b0f19; --panel: #131a2a; --cell: #1b2438; --line: #26324c; --text: #e8eefc; --muted: #8796b5; --accent: #ff5a36; --accent2: #ffb03a; --good: #2fd6a3; --bad: #ff5a7a; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --bg: #eef2f8; --panel: #ffffff; --cell: #e8edf6; --line: #d3dae8; --text: #121826; --muted: #5d6b86; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: Inter, system-ui, sans-serif; }
+  body { display: flex; justify-content: center; padding: 16px 16px 32px; }
+  main { width: min(100%, 980px); }
+  header.top { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font: 700 46px/0.95 Rajdhani, sans-serif; letter-spacing: 1px; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h2 { margin: 0; font: 700 30px/1.1 Rajdhani, sans-serif; }
+  h3 { margin: 0 0 8px; font: 700 18px Rajdhani, sans-serif; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .room-tag { padding: 8px 14px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 13px; color: var(--muted); display: none; }
+  .room-tag.show { display: inline-block; }
+  .room-tag b { font: 600 16px "JetBrains Mono", monospace; color: var(--text); letter-spacing: 2px; margin-left: 4px; }
+  button { font: 600 14px Inter, sans-serif; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: 10px 16px; border-radius: 10px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #1d0a00; border: 0; font-weight: 800; }
+  button[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--panel)); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input { font: 600 16px "JetBrains Mono", monospace; letter-spacing: 3px; text-transform: uppercase; color: var(--text); background: var(--cell); border: 1px solid var(--line); padding: 9px 12px; border-radius: 9px; width: 130px; }
+  kbd { font: 600 11px Inter, sans-serif; padding: 1px 5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--cell); }
+  .stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
+  canvas { display: block; width: 100%; height: auto; border-radius: 9px; touch-action: none; }
+  .overlay { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; border-radius: 14px; background: rgba(8, 11, 20, 0.86); backdrop-filter: blur(3px); color: #fff; text-align: center; padding: 20px; overflow: auto; z-index: 4; }
+  .overlay.show { display: flex; }
+  .overlay p { margin: 0; color: #c8d2ea; max-width: 520px; line-height: 1.5; }
+  .menu { display: grid; gap: 14px; width: min(620px, 100%); text-align: left; }
+  .menu .group { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12); border-radius: 12px; padding: 12px; }
+  .menu .seg { display: flex; flex-wrap: wrap; gap: 8px; }
+  .menu .seg button { background: rgba(255,255,255,.06); color: #fff; border-color: rgba(255,255,255,.18); }
+  .menu .seg button[aria-pressed="true"] { border-color: var(--accent2); background: rgba(255,176,58,.18); }
+  .menu .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  #status { min-height: 18px; margin: 8px 0 0; color: var(--muted); font-size: 13px; }
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 14px; font-size: 13px; color: var(--muted); line-height: 1.7; }
+  .keys section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+  .keys b { color: var(--text); }
+  .touchpad { display: none; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+  @media (pointer: coarse) { .touchpad { display: flex; } }
+  .touchpad button { min-width: 90px; padding: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Spin Rally</h1><span class="room-tag" id="roomTag">Room <b id="roomCode"></b></span></header>
+  <div class="stage">
+    <canvas id="cv" width="960" height="600" aria-label="Table tennis table"></canvas>
+    <div class="overlay show" id="overlay">
+      <h2 id="ovTitle">Spin Rally</h2>
+      <p id="ovText">Table tennis with real spin. Read the ball, step into position and choose your stroke: loop with topspin, chop with backspin, smash high balls, drop it short, or save up for a Comet.</p>
+      <div class="menu" id="menu">
+        <div class="group"><h3>Opponent</h3><div class="seg" id="modeSeg">
+          <button data-mode="cpu" aria-pressed="true">Solo vs CPU</button>
+          <button data-mode="local" aria-pressed="false">2 on 1 keyboard</button>
+          <button data-mode="online" aria-pressed="false">Online room</button>
+        </div></div>
+        <div class="group" id="levelGroup"><h3>CPU level</h3><div class="seg" id="levelSeg">
+          <button data-level="0" aria-pressed="false">Club</button>
+          <button data-level="1" aria-pressed="true">County</button>
+          <button data-level="2" aria-pressed="false">Pro</button>
+        </div></div>
+        <div class="group" id="lengthGroup"><h3>Match</h3><div class="seg" id="lengthSeg">
+          <button data-len="1" aria-pressed="true">1 set to 11</button>
+          <button data-len="3" aria-pressed="false">Best of 3</button>
+          <button data-len="5" aria-pressed="false">Best of 5</button>
+        </div></div>
+        <div class="group" id="onlineGroup" hidden><h3>Online room</h3><div class="row">
+          <button id="hostBtn">Open a room</button><span>or</span><input id="codeIn" maxlength="6" placeholder="CODE" aria-label="Room code"><button id="joinBtn">Join</button>
+        </div><p style="font-size:13px;margin-top:8px">The host plays from the near end and keeps score. Share the six-letter code, or invite from the chat.</p></div>
+      </div>
+      <div class="actions"><button class="primary" id="startBtn">Start the match</button></div>
+      <p id="status" aria-live="polite"></p>
+    </div>
+  </div>
+  <div class="touchpad" id="touchpad" aria-hidden="true"><button data-t="power">Smash</button><button data-t="touch">Drop</button><button data-t="skill">Comet</button></div>
+  <div class="keys">
+    <section><b>Player 1 (near end)</b><br>Move: <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or the mouse. Double-tap a direction to dash.<br>Stroke: hold <kbd>W</kbd> (or swing the mouse forward) as you hit for a <b>topspin loop</b>, <kbd>S</kbd> (or pull back) for a <b>backspin chop</b>, <kbd>A</kbd>/<kbd>D</kbd> (or swipe sideways) to aim and add <b>sidespin</b>.<br><kbd>F</kbd> or left button: <b>smash</b>. <kbd>G</kbd> or right button: <b>drop shot</b>. <kbd>H</kbd> or middle button: <b>Comet</b> when the meter is full.</section>
+    <section><b>Player 2 (far end, same keyboard)</b><br>Move: arrow keys, double-tap to dash. Strokes the same way: hold toward the net for topspin, away for backspin, sideways to aim.<br><kbd>/</kbd> or <kbd>Num 1</kbd>: smash. <kbd>.</kbd> or <kbd>Num 2</kbd>: drop shot. <kbd>,</kbd> or <kbd>Num 3</kbd>: Comet.<br><br>Serve with any stroke key or a click. Sets go to 11, win by 2, and the serve changes every two points. A ball just out of reach is saved with a stretch, but weakly. Returning heavy spin with a flat stroke sends it into the net or long, so meet backspin with a loop and topspin with a chop or block. Your longest rallies against the CPU go on the leaderboard.</section>
+  </div>
+</main>
+<script src="module-scores.js"></script>
+<script type="module" src="./index.ts"></script>
+</body>
+</html>

@@ -13,6 +13,12 @@ export const scoredModules = {
   mathrush: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 1_000_000, note: 'Saved when the sixty-second timer runs out.' },
   rackreel: { title: 'Trophy Room', metric: 'Trophy points', order: 'desc', unit: 'points', min: 1, max: 1_200, note: 'Trophy-class fish and game only, scored against the all-time record for the species (1,000 ties the record). Saved when you land the fish or tag the animal.' },
   demoderby: { title: 'Best Heats', metric: 'Points', order: 'desc', unit: 'points', min: 1, max: 1_000_000, note: 'Hits landed, knockouts, time survived and 1,000 for the win. Saved as you drive, so a heat cut short still counts, and finalized when you are knocked out or the heat ends.' },
+  foodchain: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you swim, so a dive you leave unfinished still counts, and finalized when your last life is eaten.' },
+  keep: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you defend, so a siege you leave unfinished still counts, and finalized when the wall falls.' },
+  giant: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 10_000_000, note: 'One ninety-second round. Saved as you toss, and finalized when the clock runs out.' },
+  cookies: { title: 'Biggest Bakes', metric: 'Cookies', order: 'desc', unit: 'points', min: 1, max: 1_000_000_000_000_000, note: 'Total cookies baked in one five-minute bake-off, spent or not. Saved as you bake, and finalized when the ovens switch off.' },
+  hotdog: { title: 'Richest Carts', metric: 'Cash', order: 'desc', unit: 'dollars', min: 1, max: 10_000_000, note: 'Cash on hand after the thirtieth day. Saved when the season ends.' },
+  pingpong: { title: 'Longest Rallies', metric: 'Rally', order: 'desc', unit: 'hits', min: 2, max: 10_000, note: 'The longest rally in a match against the CPU, counting both players\' hits. Saved as you play, and finalized at match point.' },
   blockhead: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you play, so a siege you leave unfinished still counts, and finalized when the last player falls or you start a new siege.' },
 } as const
 
@@ -37,5 +43,7 @@ export function formatScore(module: ScoredModuleId, value: number) {
   if (unit === 'meters') return `${value.toLocaleString()} m`
   if (unit === 'ms') return formatDuration(value)
   if (unit === 'wpm') return `${value.toLocaleString()} wpm`
+  if (unit === 'dollars') return `$${value.toLocaleString()}`
+  if (unit === 'hits') return `${value.toLocaleString()} hits`
   return value.toLocaleString()
 }

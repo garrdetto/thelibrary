@@ -163,8 +163,9 @@ Renderers after Phase 1 step 1 (all served from the Vite build):
 | `park2` | Babylon.js 9.34.0 (WebGPU, WebGL2 fallback) behind the `park` renderer's backend interface | `src/lib/park2/` (models, simulation and HUD shared with `park`) |
 | `racing`, `oval`, `pool` | 2D canvas | `src/components/` |
 | `sandlot`, `chess`, `checkers` | 2D canvas / DOM, bundled PeerJS | `modules-src/<id>/` |
-| `2048`, `helicopter`, `alphabet`, `wpm`, `tetradrop`, `bubbles`, `memory`, `simon`, `sudoku`, `minesweeper`, `mathrush`, `blockhead`, `songmaker` | 2D canvas / DOM | `public/modules/<id>.html` (static, shared `module-base.css`) |
+| `2048`, `helicopter`, `alphabet`, `wpm`, `tetradrop`, `bubbles`, `memory`, `simon`, `sudoku`, `minesweeper`, `mathrush`, `blockhead`, `songmaker`, `foodchain`, `keep`, `giant`, `cookies`, `hotdog` | 2D canvas / DOM | `public/modules/<id>.html` (static, shared `module-base.css`) |
 | `party` | DOM + 2D canvas, bundled PeerJS | `modules-src/party/` |
+| `pingpong` | 2D canvas (projected 3D), bundled PeerJS | `modules-src/pingpong/` |
 
 Known baseline issues: `shorttrack` is too busy under software WebGL for Playwright screenshots (gate note, not failure). The `maplestreet` `Buffer is not defined` error is gone now that colyseus.js is bundled.
 
@@ -556,12 +557,22 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `public/modules/minesweeper.html` — Minesweeper: safe first click, chords, Intermediate clears ranked (ms) — hub iframe.
 - `public/modules/mathrush.html` — Math Rush: 60 s scaling arithmetic with streak multipliers, score — hub iframe.
 - `public/modules/blockhead.html` — Blockhead Siege: top-down wave survival, solo or two on one keyboard, score — hub iframe.
+- `public/modules/foodchain.html` — Food Chain: eat smaller fish to grow, stages, jellyfish and shark hazards, combo scoring, score — hub iframe.
+- `public/modules/keep.html` — Hold the Keep: grab-and-fling wall defense, six raider types, fall damage and bowling hits, between-wave shop (repair, wall, moat, archers), score — hub iframe.
+- `public/modules/giant.html` — Giant's Hand: ninety-second toss round, height and airtime scoring, mid-air catch juggle multiplier, balloons and a moving hoop, score — hub iframe.
+- `public/modules/cookies.html` — Cookie Factory: five-minute timed clicker (seven production lines at 15% price growth, doubling upgrades, golden cookies, 16 clicks/s cap), total baked as score — hub iframe.
+- `public/modules/hotdog.html` — Corner Cart: thirty-day cart business (forecast, three corners with rent, sausages that spoil, buns that keep a day, toppings, price, grill/canopy/sign upgrades, reputation), final cash as score — hub iframe.
 
 ### songmaker — Song Maker
 - `public/modules/songmaker.html` — lyrics editor, "Write lyrics" helper, sound options, Free (in-browser) / AI vocals engine choice, arrangement controls for the free engine, song list with lazy-loaded playback, MP3 download for AI songs and WAV download plus a speech-synthesis vocal guide for free songs (kept on the device, not saved) — hub iframe; calls `/api/songmaker`.
 - `public/modules/songmaker-synth.js` — free engine, ES module imported on demand: `defaultArrangement` maps genre, mood, tempo and style words to an arrangement; `renderSong` renders the lyric sections with `OfflineAudioContext` (drums, bass, chords, melody, reverb, notes scheduled in 2 s chunks via `suspend`), returns the buffer and lyric cues; `encodeWav`.
 - `src/server/keyless-lyrics.ts` — `write` fallback without a Gemini key: keyless Pollinations text API, then offline template lyrics.
 - `src/server/routes/songmaker.ts` — `/api/songmaker`: GET list + daily quota, `?audio=<id>` (owner-checked KV `song/<userId>/<id>`), POST `create` (Lyria `lyria-3.5`, or `lyria-3-clip-preview` for 30 s clips, through the Gemini Interactions REST API), `write` (lyrics draft with the text model, falling back to `keyless-lyrics.ts`), `delete`; GET also returns `ai` (whether `GEMINI_API_KEY` is set). D1 `songmaker_songs` (migration 0019, also created on first use); 5 songs per user per 24 h, admin unlimited — `api.ts`.
+
+### pingpong — Spin Rally
+- `modules-src/pingpong/index.html` — page shell, menu and key help — `vite.modules.ts` (→ `public/modules/pingpong.html`).
+- `modules-src/pingpong/index.ts` — entry; provides `window.Peer`, imports `pingpong.js` — `index.html`.
+- `modules-src/pingpong/pingpong.js` — table tennis in metres (x across, y along the table, z up): ball flight with gravity plus topspin and sidespin accelerations (`stepBall`), table bounce with spin kick, net and net-cord, `solve` aims a stroke at a landing point over the net, strokes (`STROKES`: drive, loop, chop, smash, drop, comet, stretch) with error from contact quality, stroke risk and incoming spin, serves found by simulating candidate tosses, rules (`handleEvents`: fault, let, double bounce, net, out, winner; sets to 11 win by 2, serve every two points), CPU levels (`LEVELS`: reaction, speed, quality, unforced and pressure errors; `predict` plans the intercept), dash and stretch saves, perspective canvas renderer flipped for the far player, PeerJS rooms `tl-pingpong-<code>` (host simulates; guest sends its paddle and stroke keys, host sends 30 Hz snapshots), `tl-host`/`tl-room` invites, longest rally vs CPU to `pingpong` scores — `index.ts`.
 
 ### party — Skill Party
 - `modules-src/party/index.html` — page shell and all styles — `vite.modules.ts` (→ `public/modules/party.html`).
