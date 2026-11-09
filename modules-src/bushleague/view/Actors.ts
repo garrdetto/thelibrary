@@ -87,7 +87,7 @@ export class Actors {
 
     const zoneGeometry = this.own(new THREE.BufferGeometry())
     zoneGeometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(24), 3))
-    this.zone = new THREE.LineSegments(zoneGeometry, this.own(new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.55, depthTest: false })))
+    this.zone = new THREE.LineSegments(zoneGeometry, this.own(new THREE.LineBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.95, depthTest: false, toneMapped: false })))
     this.zone.frustumCulled = false
     this.zone.renderOrder = 9
     this.root.add(this.zone)

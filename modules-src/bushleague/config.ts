@@ -103,9 +103,9 @@ export const config = {
   assist: { pci: 1.3, timing: 0.35, aimJitter: 0.02 },
   timing: { windup: 1.05, swingLag: 0.15, betweenPitches: 0.8, afterPlay: 1.4, cursorSpeed: 1.6, meterSeconds: 1.15, replaySpeed: 0.4, replayMax: 6, introSeconds: 4.5 },
   cameras: {
-    batting: { position: [0, 1.05, -1.25], target: [0, 0.77, 0.43], fov: 50 },
+    batting: { position: [0, 0.9, -1.4], target: [0, 0.6, 0.43], fov: 56 },
     centerfield: { position: [1.6, 5.2, 112], target: [0, 1.0, 0], fov: 6.5 },
-    pitching: { position: [0, 1.05, -1.25], target: [0, 0.77, 0.43], fov: 50 },
+    pitching: { position: [0, 0.9, -1.4], target: [0, 0.6, 0.43], fov: 56 },
     overview: { position: [0, 26, -30], target: [0, 0, 45], fov: 50 },
     play: { fov: 52 },
   },
