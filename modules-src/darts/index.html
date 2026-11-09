@@ -11,7 +11,7 @@
 
     <div class="d-hud" id="hud" hidden>
       <div class="d-topbar">
-        <button type="button" class="d-btn" id="menu-btn" data-ui>Menu</button>
+        <button type="button" class="d-btn" id="menu-btn" data-ui aria-keyshortcuts="P Escape">Pause</button>
         <span class="d-chip" id="mode-chip"></span>
         <span class="d-chip" id="room-chip" hidden></span>
       </div>
@@ -30,7 +30,12 @@
     <div class="d-overlay" id="menu">
       <form class="d-panel" id="setup" novalidate>
         <h1>Oche <em>Darts</em></h1>
-        <p>A regulation board at 1.73 m, thrown from 2.37 m. Click and hold on the board to aim and a power meter swings up and down; let go to throw. Release on the bright green Perfect mark and the dart flies true; the band fades to yellow above and below it, and outside it the dart drops (too soft) or rides high (too hard).</p>
+        <h2>Board</h2>
+        <div class="d-seg" role="radiogroup" aria-label="Board">
+          <label><input type="radio" name="board" value="steel" checked /><span>Steel Tip</span></label>
+          <label><input type="radio" name="board" value="spider" /><span>Soft Tip</span></label>
+        </div>
+        <p style="margin-top:12px">A regulation board at 1.73 m, thrown from 2.37 m. Click and hold on the board to aim and a power meter swings up and down; let go to throw. Release on the bright green Perfect mark and the dart flies true; the band fades to yellow above and below it, and outside it the dart drops (too soft) or rides high (too hard).</p>
 
         <h2>Format</h2>
         <div class="d-seg" role="radiogroup" aria-label="Format">
@@ -100,18 +105,32 @@
             <input type="text" name="playerName" maxlength="16" autocomplete="nickname" value="You" />
           </label>
         </div>
-        <h2>Board</h2>
-        <div class="d-seg" role="radiogroup" aria-label="Board">
-          <label><input type="radio" name="board" value="steel" checked /><span>Steel-tip bristle</span></label>
-          <label><input type="radio" name="board" value="spider" /><span>Spider 360 3000 soft-tip</span></label>
-        </div>
         <div class="d-error" id="setup-error" role="alert"></div>
         <div class="d-actions">
           <button type="button" class="d-btn" id="resume-btn" hidden>Back to the oche</button>
           <button type="submit" class="d-btn is-accent" id="start-btn">Step up</button>
         </div>
-        <div class="d-help">Mouse or touch: click and hold on the board to aim (move to fine-tune), watch the power meter and let go in the green band; right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green band, <kbd>Esc</kbd> cancels. Solo Count Up over 8 rounds on Normal or Hard goes on the record board.</div>
+        <div class="d-help">Mouse or touch: click and hold on the board to aim (move to fine-tune), watch the power meter and let go in the green band; right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green band, <kbd>Esc</kbd> cancels a throw, and <kbd>P</kbd> or <kbd>Esc</kbd> pauses. Solo Count Up over 8 rounds on Normal or Hard goes on the record board.</div>
       </form>
+    </div>
+
+    <div class="d-overlay" id="pause" hidden>
+      <div class="d-panel d-pause" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+        <h1 id="pause-title">Paused</h1>
+        <p id="pause-note"></p>
+        <div class="d-pause-actions">
+          <button type="button" class="d-btn is-accent" id="pause-resume">Resume</button>
+          <button type="button" class="d-btn" id="pause-restart">Restart</button>
+          <button type="button" class="d-btn" id="pause-setup">New match</button>
+          <button type="button" class="d-btn" id="pause-quit">Quit</button>
+        </div>
+        <h2>Board</h2>
+        <div class="d-seg" role="radiogroup" aria-label="Board">
+          <label><input type="radio" name="pauseBoard" value="steel" /><span>Steel Tip</span></label>
+          <label><input type="radio" name="pauseBoard" value="spider" /><span>Soft Tip</span></label>
+        </div>
+        <div class="d-error" id="pause-error" role="status"></div>
+      </div>
     </div>
 
     <div class="d-overlay" id="lobby" hidden>

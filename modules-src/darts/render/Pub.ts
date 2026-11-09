@@ -510,8 +510,8 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
       faceMaterial.metalnessMap = maps.roughnessMetal
       faceMaterial.normalMap = maps.normal
       faceMaterial.needsUpdate = true
-      old.dispose()
       showStyle()
+      window.setTimeout(() => old.dispose(), 1000)
     },
     setDisplay,
     dispose() {

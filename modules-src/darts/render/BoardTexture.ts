@@ -6,8 +6,8 @@ import { createRng } from '../shared/Rng'
 export type BoardStyle = 'steel' | 'spider'
 
 export const BOARD_STYLES: readonly { id: BoardStyle; label: string }[] = [
-  { id: 'steel', label: 'Steel-tip bristle' },
-  { id: 'spider', label: 'Spider 360 3000 soft-tip' },
+  { id: 'steel', label: 'Steel Tip' },
+  { id: 'spider', label: 'Soft Tip' },
 ]
 
 export function isBoardStyle(value: unknown): value is BoardStyle {
@@ -55,7 +55,7 @@ function painter(size: number): Painter {
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new Error('Canvas 2D is not available')
   return { ctx, canvas, size, scale: size / (RADII.board * 2), cx: size / 2, cy: size / 2 }
 }
@@ -182,39 +182,35 @@ function sisal(p: Painter, seed: number): void {
   ctx.globalAlpha = 1
 }
 
-/** Soft-tip holes: a hex grid of small round sockets over the scoring area, clipped to the double ring. */
+/** Soft-tip holes: a hex grid of small round sockets over the scoring area, built as one path per layer (rims, then holes) so the whole grid fills in two draw calls. */
 function holes(p: Painter, fill: string, rim: string | null): void {
   const { ctx, cx, cy, scale } = p
   const pitch = 3.4
-  const radius = 1.05
+  const radius = 1.05 * scale
   const limit = RADII.doubleOuter - 1
-  ctx.save()
-  ctx.beginPath()
-  ctx.arc(cx, cy, limit * scale, 0, Math.PI * 2)
-  ctx.clip()
+  const centres: number[] = []
   const rows = Math.ceil(limit / (pitch * 0.866))
+  const cols = Math.ceil(limit / pitch) + 1
   for (let row = -rows; row <= rows; row++) {
     const y = row * pitch * 0.866
     const shift = row % 2 ? pitch / 2 : 0
-    const cols = Math.ceil(limit / pitch) + 1
     for (let col = -cols; col <= cols; col++) {
       const x = col * pitch + shift
       if (x * x + y * y > limit * limit) continue
-      const px = cx + x * scale
-      const py = cy + y * scale
-      if (rim) {
-        ctx.beginPath()
-        ctx.arc(px, py + radius * 0.35 * scale, radius * scale, 0, Math.PI * 2)
-        ctx.fillStyle = rim
-        ctx.fill()
-      }
-      ctx.beginPath()
-      ctx.arc(px, py, radius * scale, 0, Math.PI * 2)
-      ctx.fillStyle = fill
-      ctx.fill()
+      centres.push(cx + x * scale, cy + y * scale)
     }
   }
-  ctx.restore()
+  const layer = (style: string, offsetY: number) => {
+    ctx.beginPath()
+    for (let i = 0; i < centres.length; i += 2) {
+      ctx.moveTo(centres[i] + radius, centres[i + 1] + offsetY)
+      ctx.arc(centres[i], centres[i + 1] + offsetY, radius, 0, Math.PI * 2)
+    }
+    ctx.fillStyle = style
+    ctx.fill()
+  }
+  if (rim) layer(rim, radius * 0.35)
+  layer(fill, 0)
 }
 
 function drawSteelFace(size: number): HTMLCanvasElement {
@@ -337,11 +333,11 @@ function drawSpiderHeight(size: number): HTMLCanvasElement {
 /** Sobel normal map from a height canvas. */
 function normalFromHeight(source: HTMLCanvasElement, strength: number): HTMLCanvasElement {
   const size = source.width
-  const src = source.getContext('2d')
+  const src = source.getContext('2d', { willReadFrequently: true })
   const canvas = document.createElement('canvas')
   canvas.width = size
   canvas.height = size
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx || !src) throw new Error('Canvas 2D is not available')
   const data = src.getImageData(0, 0, size, size).data
   const height = new Float32Array(size * size)

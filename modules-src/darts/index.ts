@@ -88,6 +88,16 @@ async function boot(): Promise<void> {
   document.title = `${config.meta.title} · the library`
 
   const app = await App.create({ container, config: config.engine })
+  if (app.backend === 'webgpu') {
+    const renderer = app.renderer as unknown as { onDeviceLost: (info: unknown) => void }
+    renderer.onDeviceLost = (info) => {
+      console.error('Oche Darts: graphics device lost, reloading with WebGL', info)
+      const url = new URL(location.href)
+      if (url.searchParams.has('webgl')) return
+      url.searchParams.set('webgl', '1')
+      location.replace(url.toString())
+    }
+  }
   const quality = resolveQuality(config.engine.quality, app.backend)
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
   app.own(applyEnvironment(app.scene, config.engine.environment))
@@ -192,7 +202,7 @@ async function boot(): Promise<void> {
     }
   }
 
-  const overlayOpen = () => !overlay.menu.hidden || !overlay.lobby.hidden || !overlay.results.hidden
+  const overlayOpen = () => !overlay.menu.hidden || !overlay.lobby.hidden || !overlay.results.hidden || !overlay.pause.hidden
 
   const render = (state: GameState) => {
     shown = state
@@ -235,6 +245,7 @@ async function boot(): Promise<void> {
       render(state)
       announce(announcements)
       if (!overlay.results.hidden && state.status === 'playing') overlay.show('none')
+      if (!overlay.pause.hidden && state.version === 0) closePause()
     },
     gameOver(state: GameState, announcements: Announcement[]) {
       render(state)
@@ -312,6 +323,14 @@ async function boot(): Promise<void> {
         }
         if (socket.status === 'closed' && !socket.code) overlay.show('menu')
       },
+      restartVotes(requested, needed, by) {
+        const state = online.state
+        if (by && state && requested.length) {
+          const name = by === socket.you ? 'You' : state.players.find((player) => player.id === by)?.name ?? 'A player'
+          overlay.announceAll([{ kind: 'score', text: `${name} asked to restart (${requested.length}/${needed})`, playerId: by }])
+        }
+        refreshPause()
+      },
     })
     session = online
     lastLobbyMessage = ''
@@ -320,14 +339,66 @@ async function boot(): Promise<void> {
   }
 
   const form = byId<HTMLFormElement>('setup')
-  const boardInput = form.querySelector<HTMLInputElement>(`input[name="board"][value="${pub.style}"]`)
-  if (boardInput) boardInput.checked = true
-  const syncForm = () => {
-    const board = new FormData(form).get('board')
-    if (isBoardStyle(board) && board !== pub.style) {
-      pub.setStyle(board)
-      saveBoardStyle(board)
+  const pausePanel = overlay.pause
+  const boardRadios = () => [...document.querySelectorAll<HTMLInputElement>('input[name="board"], input[name="pauseBoard"]')]
+  const markBoard = (style: BoardStyle) => {
+    for (const radio of boardRadios()) radio.checked = radio.value === style
+  }
+  markBoard(pub.style)
+  let boardTimer = 0
+  const chooseBoard = (style: BoardStyle) => {
+    markBoard(style)
+    saveBoardStyle(style)
+    window.clearTimeout(boardTimer)
+    boardTimer = window.setTimeout(() => {
+      boardTimer = 0
+      if (style !== pub.style) pub.setStyle(style)
+    }, 30)
+  }
+  for (const radio of boardRadios()) {
+    radio.addEventListener('change', () => {
+      if (radio.checked && isBoardStyle(radio.value)) chooseBoard(radio.value)
+    })
+  }
+
+  const refreshPause = () => {
+    const current = session
+    const online = current?.kind === 'online'
+    const restart = byId<HTMLButtonElement>('pause-restart')
+    const note = byId('pause-note')
+    if (online) {
+      const live = current as OnlineSession
+      const voted = live.restartVotes.includes(socket.you)
+      const others = live.restartVotes.filter((id) => id !== socket.you).length
+      restart.textContent = voted ? 'Restart requested…' : others ? 'Agree to restart' : 'Request Restart'
+      restart.disabled = voted || !live.state || live.state.status === 'finished'
+      note.textContent = 'Online matches keep going while this menu is open. A restart needs everyone at the oche to agree.'
+    } else {
+      restart.textContent = 'Restart'
+      restart.disabled = !current
+      note.textContent = 'The match is on hold until you resume.'
     }
+  }
+  const openPause = () => {
+    if (!session || overlayOpen()) return
+    input.interrupt()
+    if (session instanceof LocalSession) session.pause()
+    byId('pause-error').textContent = ''
+    refreshPause()
+    overlay.show('pause')
+    byId<HTMLButtonElement>('pause-resume').focus()
+  }
+  function closePause(): void {
+    overlay.show('none')
+    if (session instanceof LocalSession) session.resume()
+  }
+  const quitToMenu = () => {
+    leaveSession()
+    byId<HTMLButtonElement>('resume-btn').hidden = true
+    overlay.show('menu')
+  }
+
+  const syncForm = () => {
     const setup = readSetup(form)
     const mode = setup.match.rules.mode
     byId('x01-options').hidden = mode !== 'x01'
@@ -382,11 +453,54 @@ async function boot(): Promise<void> {
       startOnline('join', code, readSetup(form).match)
     }
   })
-  byId('menu-btn').addEventListener('click', () => {
-    byId<HTMLButtonElement>('resume-btn').hidden = !session
+  byId('menu-btn').addEventListener('click', openPause)
+  byId('pause-resume').addEventListener('click', closePause)
+  byId('pause-restart').addEventListener('click', () => {
+    const current = session
+    if (!current) return
+    if (current.kind === 'online') {
+      ;(current as OnlineSession).requestRestart()
+      byId('pause-error').textContent = 'Restart requested. It starts over once everyone agrees.'
+      byId<HTMLButtonElement>('pause-restart').disabled = true
+      return
+    }
+    flights.clear()
+    current.rematch()
+    overlay.show('none')
+    overlay.announceAll([{ kind: 'score', text: 'Restarted', playerId: '' }])
+  })
+  byId('pause-setup').addEventListener('click', () => {
+    const current = session
+    byId<HTMLButtonElement>('resume-btn').hidden = !current || current.kind === 'online'
+    if (current?.kind === 'online') leaveSession()
     overlay.show('menu')
   })
-  byId('resume-btn').addEventListener('click', () => overlay.show(session && !session.state && session.kind === 'online' ? 'lobby' : 'none'))
+  byId('pause-quit').addEventListener('click', quitToMenu)
+  pausePanel.addEventListener('click', (event) => {
+    if (event.target === pausePanel) closePause()
+  })
+  addEventListener(
+    'keydown',
+    (event) => {
+      if (event.code !== 'Escape' && event.code !== 'KeyP') return
+      if ((event.target as HTMLElement | null)?.closest?.('input[type="text"], select, textarea')) return
+      if (!pausePanel.hidden) {
+        event.preventDefault()
+        event.stopPropagation()
+        closePause()
+        return
+      }
+      if (input.holding || overlayOpen() || !session?.state) return
+      event.preventDefault()
+      event.stopPropagation()
+      openPause()
+    },
+    true,
+  )
+  byId('resume-btn').addEventListener('click', () => {
+    overlay.show(session && !session.state && session.kind === 'online' ? 'lobby' : 'none')
+    if (session instanceof LocalSession) session.resume()
+  })
   byId('lobby-leave').addEventListener('click', () => {
     leaveSession()
     overlay.show('menu')

@@ -32,6 +32,8 @@ export class LocalSession implements Session {
   private timers = new Set<ReturnType<typeof setTimeout>>()
   private readonly rng = createRng(randomSeed())
   private disposed = false
+  private paused = false
+  private held: (() => void)[] = []
 
   constructor(
     private readonly matchConfig: MatchConfig,
@@ -93,14 +95,31 @@ export class LocalSession implements Session {
   private later(ms: number, run: () => void): void {
     const timer = setTimeout(() => {
       this.timers.delete(timer)
-      if (!this.disposed) run()
+      if (this.disposed) return
+      if (this.paused) this.held.push(run)
+      else run()
     }, ms)
     this.timers.add(timer)
+  }
+
+  /** Holds turn changes and computer throws until resume(). */
+  pause(): void {
+    this.paused = true
+  }
+
+  resume(): void {
+    if (!this.paused) return
+    this.paused = false
+    const runs = this.held
+    this.held = []
+    for (const run of runs) if (!this.disposed) run()
   }
 
   rematch(): void {
     for (const timer of this.timers) clearTimeout(timer)
     this.timers.clear()
+    this.held = []
+    this.paused = false
     this.busyUntil = 0
     this.state = createMatch('local', this.matchConfig, this.seats)
     this.events.turnSwitch(this.state, [])
@@ -117,12 +136,14 @@ export class LocalSession implements Session {
 export interface OnlineEvents extends SessionEvents {
   room(code: string, you: string, players: RoomPlayerView[], config: MatchConfig): void
   error(message: string): void
+  restartVotes(requested: string[], needed: number, by: string | null): void
 }
 
 export class OnlineSession implements Session {
   readonly kind = 'online'
   state: GameState | null = null
   players: RoomPlayerView[] = []
+  restartVotes: string[] = []
   private pending = false
   private busyUntil = 0
   private readonly off: (() => void)[] = []
@@ -134,12 +155,21 @@ export class OnlineSession implements Session {
     this.off.push(
       socket.on('ROOM_STATE', (message) => {
         this.players = message.players
-        if (message.state && (!this.state || message.state.version >= this.state.version)) {
+        if (message.state) {
+          const restarted = !!this.state && message.state.version < this.state.version
           this.state = message.state
-          this.events.state(message.state)
-        }
-        if (!message.state) this.state = null
+          this.pending = false
+          if (restarted) {
+            this.restartVotes = []
+            this.events.restartVotes([], 0, null)
+            this.events.turnSwitch(message.state, [])
+          } else this.events.state(message.state)
+        } else this.state = null
         this.events.room(message.code, message.you, message.players, message.config)
+      }),
+      socket.on('RESTART_VOTES', (message) => {
+        this.restartVotes = message.requested
+        this.events.restartVotes(message.requested, message.needed, message.by)
       }),
       socket.on('PLAYERS', (message) => {
         this.players = message.players
@@ -190,6 +220,10 @@ export class OnlineSession implements Session {
 
   rematch(): void {
     this.socket.rematch()
+  }
+
+  requestRestart(): void {
+    this.socket.requestRestart()
   }
 
   dispose(): void {
