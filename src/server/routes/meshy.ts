@@ -7,6 +7,7 @@ import { ITEM_MODEL_KEY } from '../maplestreet-items'
 import { VEHICLE_MODEL_KEY } from '../maplestreet-vehicles'
 import { RIDE_SOURCE_KEY } from '../park-rides'
 import { CAR_MODEL_KEY } from '../shorttrack-cars'
+import { siteChangeRun } from '../site-change-token'
 import { ensureJobModel, getJobRow, insertJob, isFinal, listJobRows, MESHY_MODEL_KEY, meshyConfigured, meshyFetch, refreshJob, setJob, TASK_PATHS, toJob } from '../meshy'
 
 const REFRESH_PER_LIST = 6
@@ -98,8 +99,7 @@ async function startTask(env: Env, kind: MeshyJobKind, body: Record<string, unkn
   return created.result
 }
 
-async function act(request: Request, env: Env) {
-  const user = await requireAdmin(request, env)
+async function act(request: Request, env: Env, user: { id: string }) {
   const input = actionSchema.parse(await readJson(request, 7_500_000))
   if (!meshyConfigured(env) && input.action !== 'hide') throw new HttpError(503, 'Meshy isn’t connected yet.')
   const record = async (kind: MeshyJobKind, tgt: MeshyTarget, taskId: string, parentId: string | null, text: string, options: unknown, credits: number) => {
@@ -184,7 +184,8 @@ async function act(request: Request, env: Env) {
 
 export async function meshy(request: Request, env: Env) {
   const url = new URL(request.url)
-  await requireAdmin(request, env)
+  const run = await siteChangeRun(request, env)
+  const user = run ?? await requireAdmin(request, env)
   if (request.method === 'GET') {
     if (url.searchParams.has('status')) return json(await status(env), 200, { 'Cache-Control': 'no-store' })
     const model = url.searchParams.get('model')
@@ -192,7 +193,7 @@ export async function meshy(request: Request, env: Env) {
     if (!meshyConfigured(env)) return json({ jobs: [], connected: false })
     return json({ jobs: await list(env), connected: true }, 200, { 'Cache-Control': 'no-store' })
   }
-  requireSameOrigin(request)
-  if (request.method === 'POST') return act(request, env)
+  if (!run) requireSameOrigin(request)
+  if (request.method === 'POST') return act(request, env, user)
   return json({ error: 'Method not allowed.' }, 405)
 }
