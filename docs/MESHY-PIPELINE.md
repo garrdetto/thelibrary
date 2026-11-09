@@ -13,7 +13,7 @@ Site changes prompt ──► site-change.yml (GitHub, or your laptop with "Run 
 
 ## One-time setup
 
-1. **Meshy key for GitHub.** GitHub → garrdetto/thelibrary → Settings → Secrets and variables → Actions → New repository secret: `MESHY_API_KEY`, the same key as the Cloudflare secret the Meshy panel uses. Rigging and animation need a paid Meshy plan.
+1. **Meshy key for GitHub (optional).** GitHub → garrdetto/thelibrary → Settings → Secrets and variables → Actions → New repository secret: `MESHY_API_KEY`, the same key as the Cloudflare secret the Meshy panel uses. Rigging and animation need a paid Meshy plan. Without it, site changes still make models through the site's own Meshy connection (`node .github/site-changes/meshy.mjs`, which uses the Cloudflare key and a pass that only works during the run) and Claude runs `scripts/blender/meshy-cleanup.py` on the download itself; `scripts/meshy-generate.mjs` below needs the GitHub secret.
 2. **Credit cap (optional).** Repository variable `MESHY_MAX_CREDITS` (default 150). A run whose estimate is higher stops before spending anything.
 3. **Blender on the laptop.** In Ubuntu (WSL): `cd ~/thelibrary && git pull && bash scripts/laptop-runner/install-blender.sh`. New laptops get it from `setup.sh`. GitHub's machines have no Blender, so tick **Run on my laptop** for 3D requests; on GitHub the model is still made, just without the clean-up step (Claude sizes and places it in code instead).
 
