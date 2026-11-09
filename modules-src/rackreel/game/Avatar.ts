@@ -52,7 +52,7 @@ export class Avatar {
     for (const [name, mesh] of this.rig.partMeshes) {
       const i = name.indexOf(':')
       if (i < 0) continue
-      mesh.setEnabled(wear.includes(name.slice(i + 1)))
+      mesh.setEnabled(name.slice(i + 1).split('+').every((item) => wear.includes(item)))
     }
   }
 

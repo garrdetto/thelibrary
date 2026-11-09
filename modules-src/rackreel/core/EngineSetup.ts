@@ -71,7 +71,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   scene.skipPointerUpPicking = true
   scene.constantlyUpdateMeshUnderPointer = false
   scene.clearColor = new Color4(FOG_COLOR.r, FOG_COLOR.g, FOG_COLOR.b, 1)
-  scene.ambientColor = new Color3(0.18, 0.2, 0.2)
+  scene.ambientColor = new Color3(0.3, 0.32, 0.32)
   scene.fogMode = Scene.FOGMODE_EXP2
   scene.fogDensity = FOG_DENSITY
   scene.fogColor = FOG_COLOR.clone()
@@ -115,9 +115,9 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   sun.shadowMaxZ = 700
 
   const sky = new HemisphericLight('sky', new Vector3(0.1, 1, 0.2), scene)
-  sky.intensity = 0.85
-  sky.diffuse = new Color3(0.62, 0.72, 0.86)
-  sky.groundColor = new Color3(0.2, 0.19, 0.13)
+  sky.intensity = 1.05
+  sky.diffuse = new Color3(0.66, 0.75, 0.88)
+  sky.groundColor = new Color3(0.4, 0.37, 0.29)
   sky.specular = Color3.Black()
 
   const shadows = new ShadowGenerator(SHADOW_MAP_SIZE, sun, true)
@@ -127,7 +127,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   shadows.depthScale = 60
   shadows.bias = 0.0006
   shadows.normalBias = 0.012
-  shadows.setDarkness(0.42)
+  shadows.setDarkness(0.62)
   shadows.forceBackFacesOnly = false
   shadows.frustumEdgeFalloff = 0.25
   const shadowMap = shadows.getShadowMap()!
@@ -178,7 +178,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   pipeline.imageProcessing.toneMappingEnabled = true
   pipeline.imageProcessing.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES
   pipeline.imageProcessing.exposure = 1.08
-  pipeline.imageProcessing.contrast = 1.12
+  pipeline.imageProcessing.contrast = 1.04
   pipeline.imageProcessing.vignetteEnabled = true
   pipeline.imageProcessing.vignetteWeight = 1.4
   pipeline.imageProcessing.vignetteColor = new Color4(0.05, 0.06, 0.05, 0)
