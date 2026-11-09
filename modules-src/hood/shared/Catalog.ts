@@ -1,10 +1,12 @@
 import type { Need } from './Needs'
+import type { LifeStage } from './Family'
+import { MORE_ITEMS } from './CatalogMore'
 
 export type Pose = 'stand' | 'sit' | 'lie'
 /** Who may use an action: everyone on the lot that can reach it, household only, or guests only when the owner allows fridge and beds. */
 export type GuestRule = 'yes' | 'ask' | 'no'
 export type Placement = 'indoor' | 'outdoor' | 'any'
-export type Category = 'seating' | 'beds' | 'kitchen' | 'bathroom' | 'electronics' | 'decor' | 'outdoor'
+export type Category = 'seating' | 'beds' | 'surfaces' | 'kitchen' | 'bathroom' | 'electronics' | 'hobbies' | 'kids' | 'lighting' | 'decor' | 'outdoor'
 
 export interface ActionDef {
   id: string
@@ -16,6 +18,8 @@ export interface ActionDef {
   money?: number
   pose: Pose
   guest: GuestRule
+  /** Youngest and oldest life stage that may use it; see `actionAges` in `shared/Family.ts` for the default. */
+  ages?: [LifeStage, LifeStage]
 }
 
 export interface ObjectDef {
@@ -36,7 +40,7 @@ export interface ObjectDef {
   actions: ActionDef[]
 }
 
-export const CATALOG: readonly ObjectDef[] = [
+const BASE_ITEMS: readonly ObjectDef[] = [
   { id: 'bed-twin', name: 'Pine Twin Bed', category: 'beds', price: 320, w: 1, d: 2, height: 0.6, place: 'indoor', color: '#c79a64', accent: '#5b83c4',
     actions: [{ id: 'sleep', label: 'Sleep', minutes: 480, gains: { energy: 0.26 }, pose: 'lie', guest: 'ask' }, { id: 'nap', label: 'Nap', minutes: 90, gains: { energy: 0.2 }, pose: 'lie', guest: 'ask' }] },
   { id: 'bed-double', name: 'Harbor Double Bed', category: 'beds', price: 950, w: 2, d: 2, height: 0.65, place: 'indoor', seats: 2, color: '#7a4f33', accent: '#d9d2c3',
@@ -44,7 +48,7 @@ export const CATALOG: readonly ObjectDef[] = [
   { id: 'fridge', name: 'Cool Box Fridge', category: 'kitchen', price: 620, w: 1, d: 1, height: 1.9, place: 'indoor', color: '#e8ecef', accent: '#9aa3ab',
     actions: [{ id: 'snack', label: 'Grab a snack', minutes: 12, gains: { hunger: 1.6 }, pose: 'stand', guest: 'ask' }, { id: 'meal', label: 'Have a cold meal', minutes: 35, gains: { hunger: 1.9 }, money: -0.4, pose: 'stand', guest: 'ask' }] },
   { id: 'stove', name: 'Four-Burner Stove', category: 'kitchen', price: 450, w: 1, d: 1, height: 0.92, place: 'indoor', color: '#f2f2f0', accent: '#2c2c2c',
-    actions: [{ id: 'cook', label: 'Cook a hot dinner', minutes: 45, gains: { hunger: 2.4, fun: 0.15 }, money: -0.5, pose: 'stand', guest: 'no' }] },
+    actions: [{ id: 'cook', label: 'Cook a hot dinner', minutes: 45, gains: { hunger: 2.4, fun: 0.15 }, money: -0.5, pose: 'stand', guest: 'no', ages: ['teen', 'adult'] }] },
   { id: 'counter', name: 'Butcher-Block Counter', category: 'kitchen', price: 160, w: 1, d: 1, height: 0.92, place: 'indoor', color: '#f5f1e8', accent: '#b98a55', actions: [] },
   { id: 'kitchen-sink', name: 'Farmhouse Sink', category: 'kitchen', price: 280, w: 1, d: 1, height: 0.92, place: 'indoor', color: '#f5f1e8', accent: '#c7ced4',
     actions: [{ id: 'wash', label: 'Wash dishes', minutes: 20, gains: { hygiene: 0.3 }, pose: 'stand', guest: 'yes' }] },
@@ -67,7 +71,7 @@ export const CATALOG: readonly ObjectDef[] = [
     actions: [{ id: 'wash', label: 'Wash up', minutes: 10, gains: { hygiene: 2.2 }, pose: 'stand', guest: 'yes' }] },
   { id: 'computer', name: 'Desk and Computer', category: 'electronics', price: 900, w: 1, d: 1, height: 1.2, place: 'indoor', color: '#8a6a48', accent: '#30343a',
     actions: [
-      { id: 'work', label: 'Freelance work', minutes: 120, gains: { fun: -0.15, energy: -0.05 }, money: 1.1, pose: 'sit', guest: 'no' },
+      { id: 'work', label: 'Freelance work', minutes: 120, gains: { fun: -0.15, energy: -0.05 }, money: 1.1, pose: 'sit', guest: 'no', ages: ['teen', 'adult'] },
       { id: 'play', label: 'Browse and chat online', minutes: 50, gains: { fun: 1.0, social: 0.3 }, pose: 'sit', guest: 'no' },
     ] },
   { id: 'stereo', name: 'Bookshelf Stereo', category: 'electronics', price: 240, w: 1, d: 1, height: 0.7, place: 'indoor', color: '#3a3a40', accent: '#d8a23c',
@@ -76,7 +80,7 @@ export const CATALOG: readonly ObjectDef[] = [
   { id: 'plant', name: 'Potted Fern', category: 'decor', price: 60, w: 1, d: 1, height: 0.9, place: 'any', color: '#b5653d', accent: '#4f8f45', actions: [] },
   { id: 'rug', name: 'Woven Rug', category: 'decor', price: 130, w: 2, d: 2, height: 0.02, place: 'indoor', flat: true, color: '#b8574a', accent: '#e9d6b4', actions: [] },
   { id: 'grill', name: 'Kettle Grill', category: 'outdoor', price: 340, w: 1, d: 1, height: 1.0, place: 'outdoor', color: '#22252a', accent: '#c0392b',
-    actions: [{ id: 'grill', label: 'Grill burgers', minutes: 40, gains: { hunger: 2.0, fun: 0.4, social: 0.2 }, money: -0.4, pose: 'stand', guest: 'yes' }] },
+    actions: [{ id: 'grill', label: 'Grill burgers', minutes: 40, gains: { hunger: 2.0, fun: 0.4, social: 0.2 }, money: -0.4, pose: 'stand', guest: 'yes', ages: ['teen', 'adult'] }] },
   { id: 'bench', name: 'Park Bench', category: 'outdoor', price: 220, w: 2, d: 1, height: 0.85, place: 'outdoor', seats: 2, color: '#7f5a3b', accent: '#2f3236',
     actions: [{ id: 'sit', label: 'Sit and people-watch', minutes: 40, gains: { fun: 0.35, energy: 0.06, social: 0.1 }, pose: 'sit', guest: 'yes' }] },
   { id: 'picnic', name: 'Picnic Table', category: 'outdoor', price: 420, w: 2, d: 2, height: 0.78, place: 'outdoor', seats: 4, color: '#a87a4a', accent: '#8a6038',
@@ -89,6 +93,8 @@ export const CATALOG: readonly ObjectDef[] = [
   { id: 'flowers', name: 'Flower Bed', category: 'outdoor', price: 70, w: 1, d: 1, height: 0.4, place: 'outdoor', color: '#6b4a2f', accent: '#e86f9a', actions: [] },
 ]
 
+export const CATALOG: readonly ObjectDef[] = [...BASE_ITEMS, ...MORE_ITEMS]
+
 const BY_ID = new Map(CATALOG.map(def => [def.id, def]))
 
 export function objectDef(id: string): ObjectDef | undefined {
@@ -100,7 +106,8 @@ export function actionDef(def: ObjectDef, id: string): ActionDef | undefined {
 }
 
 export const CATEGORY_LABELS: Record<Category, string> = {
-  seating: 'Seating', beds: 'Beds', kitchen: 'Kitchen', bathroom: 'Bathroom', electronics: 'Electronics', decor: 'Decor', outdoor: 'Yard',
+  seating: 'Seating', beds: 'Beds', surfaces: 'Tables & storage', kitchen: 'Kitchen', bathroom: 'Bathroom', electronics: 'Electronics',
+  hobbies: 'Hobbies', kids: 'Babies & kids', lighting: 'Lighting', decor: 'Decor', outdoor: 'Yard & play',
 }
 
 export const BUILD_COSTS = { wall: 12, floor: 4, door: 150, window: 90, refund: 0.5 }
@@ -122,3 +129,8 @@ export const FLOOR_MATERIALS = [
   { name: 'Marble', color: '#efeeea' },
   { name: 'Terracotta tile', color: '#c47a55' },
 ] as const
+
+/** A short icon for each Buy category tab. */
+export const CATEGORY_ICONS: Record<Category, string> = {
+  seating: '🛋', beds: '🛏', surfaces: '🗄', kitchen: '🍳', bathroom: '🛁', electronics: '📺', hobbies: '🎨', kids: '🧸', lighting: '💡', decor: '🪴', outdoor: '🌳',
+}

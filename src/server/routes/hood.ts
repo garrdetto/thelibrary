@@ -5,6 +5,7 @@ import { currentUser, requireUser } from '../auth.js'
 import { claimLot, homeOf, lotOwner, streetCount, streetLots, streetWorkers, townRequests } from '../hood.js'
 import { hoodLotStub, type HoodIdentity } from '../hood-lot.js'
 import { MAX_SIMS } from '../../../modules-src/hood/shared/Lot'
+import { STARTING_STAGES } from '../../../modules-src/hood/shared/Family'
 import { sanitizeLook } from '../../../modules-src/hood/shared/Look'
 import { LOTS_PER_STREET, MAX_STREETS, lotAddress, streetName } from '../../../modules-src/hood/shared/Street'
 
@@ -26,7 +27,7 @@ const claimSchema = z.object({
   lot: lotParam,
   household: z.object({
     name: z.string().min(1).max(30),
-    sims: z.array(z.object({ name: z.string().min(1).max(30), look: lookSchema })).min(1).max(MAX_SIMS),
+    sims: z.array(z.object({ name: z.string().min(1).max(30), look: lookSchema, stage: z.enum(STARTING_STAGES).optional() })).min(1).max(MAX_SIMS),
   }),
 })
 
@@ -59,7 +60,7 @@ export async function hood(request: Request, env: Env) {
   requireSameOrigin(request)
   const user = await requireUser(request, env, 'Sign in to move into The Hood.')
   const body = claimSchema.parse(await readJson(request, 8000))
-  const result = await claimLot(env, user.id, user.username, body.street, body.lot, body.household.name, body.household.sims.map(sim => ({ name: sim.name, look: sanitizeLook(sim.look) })))
+  const result = await claimLot(env, user.id, user.username, body.street, body.lot, body.household.name, body.household.sims.map(sim => ({ name: sim.name, look: sanitizeLook(sim.look), stage: sim.stage })))
   if (!result.ok) throw new HttpError(409, result.reason === 'has-home' ? 'You already have a home in The Hood.' : 'Someone just moved into that lot. Pick another one.')
   return json({ ok: true, home: { street: body.street, lot: body.lot } })
 }

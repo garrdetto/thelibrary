@@ -92,6 +92,59 @@ const CSS = `
 .hd .progress{height:6px;border-radius:4px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:4px}
 .hd .progress>i{display:block;height:100%;background:var(--hood-accent,#e8a33c)}
 .hd .hint{font-size:12px;color:var(--lib-muted,#8d9bba);margin-top:4px}
+.hd .btn.sm{min-height:26px;padding:3px 8px;font-size:12px}
+.hd .btn.danger{border-color:rgba(232,83,60,.55);color:#ffb3a6}
+.hd .btn.danger:hover{border-color:#e8533c}
+.hd .nav{display:flex;align-items:center;flex-wrap:wrap;gap:2px;padding:6px}
+.hd .navgroup{display:flex;gap:4px;align-items:center;padding:0 6px;border-left:1px solid var(--lib-line,rgba(120,170,255,.16))}
+.hd .navgroup:first-child{border-left:0;padding-left:0}
+.hd .navgroup:not(:has(> :not([hidden]))){display:none}
+.hd .side.mid{width:min(430px,calc(100vw - 20px))}
+.hd .portraits{flex-wrap:wrap;max-width:min(560px,calc(100vw - 40px))}
+.hd .portrait{min-width:56px;padding:4px 6px}
+.hd .portrait small{font-size:10px;line-height:1}
+.hd .chip.stage-baby{background:#ffd6e5;color:#5a2236;border-color:transparent}
+.hd .chip.stage-toddler{background:#ffe8b8;color:#5a3d10;border-color:transparent}
+.hd .chip.stage-child{background:#c9f0d4;color:#17462a;border-color:transparent}
+.hd .chip.stage-teen{background:#cfe1ff;color:#17305a;border-color:transparent}
+.hd .chip.stage-adult{opacity:.85}
+.hd .chip.baby{background:#fff0c9;color:#5a3d10;border-color:transparent}
+.hd .chip.st-work{border-color:#7fc4ff}.hd .chip.st-resort{border-color:#3fb8a8}.hd .chip.st-visiting{border-color:#b8a4ff}
+.hd .famrow{border:1px solid var(--lib-line);border-radius:10px;padding:8px 10px;background:var(--lib-chip)}
+.hd .famrow.on{border-color:var(--hood-accent,#e8a33c)}
+.hd details.tip{margin:6px 0;font-size:12px;color:var(--lib-soft,#aab6d3)}
+.hd details.tip summary,.hd details.looks summary{cursor:pointer;font-weight:600;color:var(--lib-text)}
+.hd details.tip ul{margin:6px 0 0 16px;padding:0;display:flex;flex-direction:column;gap:4px}
+.hd details.looks{margin-top:4px}
+.hd .keys{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;margin-top:8px}
+.hd kbd{font:600 11px/1 ui-monospace,Menlo,Consolas,monospace;background:var(--lib-chip);border:1px solid var(--lib-line);border-bottom-width:2px;border-radius:5px;padding:3px 6px;white-space:nowrap;justify-self:start}
+.hd .menu{min-width:220px;max-width:300px}
+.hd .menu .btn[disabled]{opacity:.6;display:flex;flex-direction:column;align-items:flex-start}
+.hd .menu .why{font-size:11px;color:var(--lib-muted,#8d9bba);font-weight:400}
+.hd .dock{max-width:min(940px,calc(100vw - 20px))}
+.hd .buyhead{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.hd input[type=search],.hd select{background:var(--lib-panel2,#18213a);border:1px solid var(--lib-line);border-radius:8px;color:var(--lib-text);padding:6px 9px;font:inherit;min-height:32px}
+.hd input[type=search]{flex:1;min-width:180px}
+.hd input[type=search]:focus-visible,.hd select:focus-visible,.hd input[type=text]:focus-visible{outline:2px solid var(--hood-accent,#e8a33c);outline-offset:1px}
+.hd .toggle.sm{margin:0;font-size:12px}
+.hd .cattabs{display:flex;gap:4px;flex-wrap:wrap;padding:6px 0 4px}
+.hd .btn.cat{white-space:nowrap;display:inline-flex;gap:5px;align-items:center;padding:4px 9px;min-height:30px}
+.hd .btn.cat .count{font-size:10px;opacity:.75;background:rgba(255,255,255,.08);border-radius:999px;padding:1px 6px}
+.hd .btn.cat.on .count{background:rgba(0,0,0,.15)}
+.hd .buyitems{grid-template-columns:repeat(auto-fill,minmax(172px,1fr));max-height:min(230px,30vh)}
+.hd .item.card{gap:4px}
+.hd .item.card .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.hd .item.card .chips{margin:0;flex:none}
+.hd .item .meta{display:flex;gap:8px;font-size:11px;color:var(--lib-muted,#8d9bba)}
+.hd .item .price{color:var(--lib-strong,#fff);font-weight:600}
+.hd .item .price.cant{color:#ff9a8a}
+.hd .item.cant{opacity:.6}
+.hd .badges{display:flex;flex-wrap:wrap;gap:3px}
+.hd .nb{font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(255,255,255,.07);border:1px solid var(--lib-line)}
+.hd .nb.age{background:#fff0c9;color:#5a3d10;border-color:transparent}
+.hd .nb.muted{opacity:.7}
+.hd .buyfoot{margin-top:6px}
+@media (max-width:640px){.hd .nav .btn{padding:4px 7px;font-size:12px}.hd .buyitems{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
 @media (max-width:640px){.hd .needs{grid-template-columns:1fr}.hd .side{top:auto;bottom:10px;max-height:55%}}
 @media (prefers-reduced-motion:reduce){.hd .bar>i,.hd .loading{transition:none}}
 `

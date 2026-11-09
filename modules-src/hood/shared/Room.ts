@@ -10,7 +10,14 @@ import { RESORT_MS, beginTask, finishShift, newCareer, settleTask, startShift, t
 import { JOBS, SERVICES, SERVICE_COOLDOWN, jobDef, jobTitle, perfLabel, xpForNext, type JobId } from './Jobs'
 import { REQUEST_WINDOW_MS, callsAt, serviceEta, type TownCall, type TownRequest } from './TownSim'
 import { PLACES } from './Town'
-import type { AwayView, CareerView, OrderView, WorkView } from './Protocol'
+import type { AwayView, CareerView, FamilyView, OrderView, WorkView } from './Protocol'
+import {
+  ADULT_AGE, BABY_CHANCE, DAY, PREGNANCY_MINUTES, SOCIALS, STAGE_PLURALS, STAGE_SPEED, STARTING_STAGES,
+  atLeast, atMost, babyLook, babyName, canDoAction, daysToNextStage, freeSimId, growthLine, sanitizeAge, socialBlock, stageOf,
+  type LifeStage, type SocialKind, type SocialParty, type StartingStage,
+} from './Family'
+import { MAX_SIMS, MOVE_IN_SPOTS, familyFriendships, startingAge } from './Lot'
+import { sanitizeLook, sanitizeSimName, type Look } from './Look'
 
 export interface JoinInfo {
   key: string
@@ -39,7 +46,7 @@ export interface RoomHooks {
 type Task =
   | { kind: 'go'; x: number; z: number; auto?: boolean }
   | { kind: 'use'; obj: number; act: string; auto?: boolean }
-  | { kind: 'chat'; target: string; auto?: boolean }
+  | { kind: 'chat'; target: string; social?: SocialKind; auto?: boolean }
   | { kind: 'knock' }
 
 interface Activity {
@@ -51,6 +58,8 @@ interface Activity {
   seat?: number
   partner?: string
   action?: ActionDef
+  /** A social interaction: what it is and which side of it this Sim is on. */
+  social?: { kind: SocialKind; role: 'by' | 'to' }
 }
 
 interface SimRt {
@@ -85,11 +94,22 @@ interface Member {
 }
 
 const WALK_TILES_PER_SECOND = 2.2
-const CHAT_MINUTES = 25
 /** How long a knock waits for the owner, in real seconds, whatever the game speed. */
 export const KNOCK_SECONDS = 45
 const MAX_QUEUE = 6
 const PEER_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+
+/** What the other side of a social interaction is doing, as their label shows it. */
+function receivedLabel(kind: SocialKind, by: string): string {
+  switch (kind) {
+    case 'feed': return `Being fed by ${by}`
+    case 'change': return `Getting changed by ${by}`
+    case 'rock': return `Being rocked by ${by}`
+    case 'play': return `Playing with ${by}`
+    case 'baby': return `Cuddling with ${by}`
+    default: return SOCIALS[kind].label(by)
+  }
+}
 
 export function ownerKey(state: LotState): string {
   return `member:${state.ownerId}`
@@ -176,8 +196,8 @@ export class Room {
       }
     } else {
       const rec: SimRecord = info.sim
-        ? { ...info.sim, needs: { ...info.sim.needs }, away: null }
-        : { id: 'guest', name: info.name, look: lookFromKey(info.key), needs: fullNeeds(), x: 10, z: 0, away: null }
+        ? { ...info.sim, needs: { ...info.sim.needs }, away: null, age: sanitizeAge(info.sim.age) }
+        : { id: 'guest', name: info.name, look: lookFromKey(info.key), needs: fullNeeds(), x: 10, z: 0, away: null, age: ADULT_AGE }
       const spot = nearestWalkable(this.grid, 10, 0, { inside: false }) ?? [10, 0]
       rec.x = spot[0]
       rec.z = spot[1]
@@ -221,7 +241,7 @@ export class Room {
   /** Lends a household Sim to another lot. Returns null when nobody is free to go. */
   depart(simId?: string): SimRecord | null {
     const sims = this.state.household.sims
-    const free = (s: SimRecord) => !s.away && !s.work && !s.trip
+    const free = (s: SimRecord) => !s.away && !s.work && !s.trip && atLeast(stageOf(s.age), 'child')
     const rec = sims.find(s => s.id === simId && free(s)) ?? sims.find(free)
     if (!rec) return null
     const live = this.sims.get(`h-${rec.id}`)
@@ -241,9 +261,11 @@ export class Room {
     rec.away = null
     rec.needs = { ...needs }
     const elapsed = Math.max(0, Math.min(minutes, 24 * 60))
+    rec.age += elapsed / DAY
     if (!this.ownerHome) {
       this.state.clock += elapsed
       for (const other of this.state.household.sims) if (other !== rec && !other.away) decayNeeds(other.needs, elapsed, 35)
+      this.ageHousehold(elapsed, rec)
     } else {
       const owner = this.owner!
       this.spawn(rec, true, owner.id)
@@ -288,7 +310,15 @@ export class Room {
     return member.role === 'owner' || member.guest
   }
 
+  private stage(sim: SimRt): LifeStage {
+    return stageOf(sim.rec.age)
+  }
+
   private canUse(sim: SimRt, object: PlacedObject, action: ActionDef): string | null {
+    if (!canDoAction(this.stage(sim), action)) {
+      const stage = this.stage(sim)
+      return stage === 'baby' ? 'Goo goo?' : `That isn't for ${STAGE_PLURALS[stage]}.`
+    }
     if (this.grid.objectInside(object) && !this.canEnter(sim)) return 'That is inside the house.'
     if (sim.hh) return null
     if (action.guest === 'no') return 'That is just for the household.'
@@ -329,11 +359,37 @@ export class Room {
         if (blocked) return this.say(sim, blocked)
         return this.enqueue(sim, { kind: 'use', obj: cmd.obj, act: cmd.act })
       }
-      case 'chat': {
+      case 'chat':
+      case 'social': {
         const sim = mine(cmd.sim)
-        if (!sim || !this.sims.has(cmd.target) || cmd.target === sim.id) return
-        return this.enqueue(sim, { kind: 'chat', target: cmd.target })
+        const target = this.sims.get(cmd.target)
+        if (!sim || !target || cmd.target === sim.id) return
+        const kind: SocialKind = cmd.t === 'social' && SOCIALS[cmd.kind] ? cmd.kind : 'chat'
+        const blocked = this.socialBlocked(kind, sim, target)
+        if (blocked) return this.say(sim, blocked)
+        return this.enqueue(sim, { kind: 'chat', target: cmd.target, social: kind })
       }
+      case 'addSim': return this.addSim(member, cmd.name, cmd.look, cmd.stage)
+      case 'renameSim': {
+        if (member.role !== 'owner') return
+        const rec = this.recOf(cmd.sim)
+        if (!rec) return
+        const name = sanitizeSimName(cmd.name, rec.name)
+        if (name === rec.name) return
+        member.send({ t: 'notice', text: `${rec.name} is now called ${name}.` })
+        rec.name = name
+        this.hooks.dirty?.()
+        return
+      }
+      case 'restyleSim': {
+        if (member.role !== 'owner') return
+        const rec = this.recOf(cmd.sim)
+        if (!rec) return
+        rec.look = sanitizeLook(cmd.look)
+        this.hooks.dirty?.()
+        return
+      }
+      case 'moveOut': return this.moveOut(member, cmd.sim)
       case 'cancel': {
         const sim = mine(cmd.sim)
         if (!sim) return
@@ -451,6 +507,7 @@ export class Room {
     const rec = this.recOf(simId)
     if (!rec) return
     if (rec.work) return member.send({ t: 'notice', text: `${rec.name} is on a shift. Change jobs after it ends.` })
+    if (job !== null && stageOf(rec.age) !== 'adult') return member.send({ t: 'notice', text: `${rec.name} can take a job once grown up.` })
     if (job === null) {
       if (rec.career) member.send({ t: 'notice', text: `${rec.name} left the ${JOBS[rec.career.job].title.toLowerCase()} job.` })
       rec.career = null
@@ -467,6 +524,7 @@ export class Room {
     if (member.role !== 'owner') return
     const rec = this.recOf(simId)
     if (!rec?.career || rec.work || rec.trip || rec.away) return
+    if (stageOf(rec.age) !== 'adult') return member.send({ t: 'notice', text: `${rec.name} is too young to work.` })
     const live = this.sims.get(`h-${rec.id}`)
     if (!live) return
     if (rec.needs.energy < 15 || rec.needs.hunger < 12) return this.say(live, 'I need to eat and rest before a shift.')
@@ -535,6 +593,7 @@ export class Room {
     if (def.needsSim) {
       const rec = simId ? this.recOf(simId) : undefined
       if (!rec || rec.work || rec.trip || rec.away || !this.sims.has(`h-${rec.id}`)) return say('Pick a resident who is at home.')
+      if (!atLeast(stageOf(rec.age), 'child')) return say(`${rec.name} is too little to go on their own.`)
       sim = rec.id
     }
     const request: TownRequest = { lot: this.state.lot, kind, at: now, by: this.state.household.name }
@@ -639,6 +698,158 @@ export class Room {
     }
     const orders = this.state.household.orders.filter(o => !o.done).map(o => ({ kind: o.kind, eta: o.eta, sim: o.sim }))
     return { work, away, orders }
+  }
+
+  // ---- Family ------------------------------------------------------------------------------
+
+  private party(sim: SimRt): SocialParty {
+    return { id: sim.id, stage: this.stage(sim), hh: sim.hh, rec: sim.hh ? sim.rec.id : undefined, parents: sim.hh ? sim.rec.parents : undefined, expecting: !!sim.rec.expecting }
+  }
+
+  private friendship(a: SimRt, b: SimRt): number {
+    return this.state.friendships[[this.friendKey(a), this.friendKey(b)].sort().join('|')] ?? 0
+  }
+
+  /** Residents plus babies on the way, so the house never goes over `MAX_SIMS`. */
+  private hasRoom(): boolean {
+    const sims = this.state.household.sims
+    return sims.length + sims.filter(s => s.expecting).length < MAX_SIMS
+  }
+
+  private socialBlocked(kind: SocialKind, sim: SimRt, target: SimRt): string | null {
+    if (!this.canEnter(sim) && this.grid.isInside(target.tile[0], target.tile[1])) return 'They are inside the house.'
+    return socialBlock(kind, this.party(sim), this.party(target), { friendship: this.friendship(sim, target), room: this.hasRoom() })
+  }
+
+  private addSim(member: Member, name: string, look: Look, stage: StartingStage): void {
+    if (member.role !== 'owner') return
+    const say = (text: string) => member.send({ t: 'notice', text })
+    if (!this.hasRoom()) return say(`A household can have up to ${MAX_SIMS} residents, babies on the way included.`)
+    const sims = this.state.household.sims
+    const id = freeSimId(sims.map(s => s.id))
+    const door = this.grid.exteriorDoors()[0]
+    const spot = door?.inside ?? MOVE_IN_SPOTS[sims.length % MOVE_IN_SPOTS.length]
+    const rec: SimRecord = {
+      id, name: sanitizeSimName(name, `Resident ${sims.length + 1}`), look: sanitizeLook(look), needs: fullNeeds(),
+      x: spot[0], z: spot[1], away: null, career: null, work: null, trip: null,
+      age: startingAge((STARTING_STAGES as readonly string[]).includes(stage) ? stage : 'adult'), expecting: null,
+    }
+    sims.push(rec)
+    this.state.friendships = familyFriendships(sims.map(s => s.id), this.state.friendships)
+    const sim = this.spawn(rec, true, member.id)
+    member.sims.push(sim.id)
+    this.say(sim, 'Home sweet home!')
+    say(`${rec.name} moved in.`)
+    this.hooks.dirty?.()
+  }
+
+  private moveOut(member: Member, simId: string): void {
+    if (member.role !== 'owner') return
+    const say = (text: string) => member.send({ t: 'notice', text })
+    const sims = this.state.household.sims
+    const rec = this.recOf(simId)
+    if (!rec) return
+    if (rec.work || rec.trip || rec.away) return say(`${rec.name} is out right now. Try again when they are home.`)
+    if (!atLeast(stageOf(rec.age), 'child')) return say('Little ones stay with their family.')
+    const grownLeft = sims.filter(s => s !== rec && atLeast(stageOf(s.age), 'teen')).length
+    if (!grownLeft) return say('Someone grown has to stay to look after the house.')
+    const live = this.sims.get(`h-${rec.id}`)
+    if (live) {
+      this.dropSim(live)
+      for (const m of this.members.values()) m.sims = m.sims.filter(id => id !== live.id)
+    }
+    this.state.household.sims = sims.filter(s => s !== rec)
+    for (const key of Object.keys(this.state.friendships)) if (key.split('|').includes(`h:${rec.id}`)) delete this.state.friendships[key]
+    for (const other of this.state.household.sims) if (other.expecting?.partner === rec.id) other.expecting.partner = null
+    this.state.household.orders = this.state.household.orders.filter(o => o.sim !== rec.id || o.done)
+    say(`${rec.name} packed up and moved out. They are always welcome to visit.`)
+    this.hooks.dirty?.()
+  }
+
+  /** Household time passed: everyone at home grows older, babies on the way get closer. */
+  private ageHousehold(minutes: number, except?: SimRecord): void {
+    if (minutes <= 0) return
+    for (const rec of [...this.state.household.sims]) {
+      if (rec === except || rec.away) continue
+      const before = stageOf(rec.age)
+      rec.age = Math.min(400, rec.age + minutes / DAY)
+      const after = stageOf(rec.age)
+      if (after !== before) this.grewUp(rec, after)
+      if (rec.expecting) {
+        rec.expecting.left = Math.max(0, rec.expecting.left - minutes)
+        if (rec.expecting.left <= 0) this.birth(rec)
+      }
+    }
+  }
+
+  private grewUp(rec: SimRecord, stage: LifeStage): void {
+    this.owner?.send({ t: 'notice', text: growthLine(rec.name, stage) })
+    const live = this.sims.get(`h-${rec.id}`)
+    if (live) {
+      this.say(live, stage === 'adult' ? 'All grown up!' : 'I grew!')
+      if (live.act?.action && !canDoAction(stage, live.act.action)) this.endActivity(live, true)
+    }
+    this.hooks.dirty?.()
+  }
+
+  private conceive(sim: SimRt, partner: SimRt | undefined): void {
+    const owner = this.owner
+    if (!partner || !sim.hh || !partner.hh) return
+    if (sim.rec.expecting || partner.rec.expecting || !this.hasRoom()) return
+    if (this.rng.next() >= BABY_CHANCE) {
+      owner?.send({ t: 'notice', text: `No baby on the way for ${sim.rec.name} and ${partner.rec.name} this time. They can try again.` })
+      return
+    }
+    const carrier = this.rng.next() < 0.5 ? sim : partner
+    const other = carrier === sim ? partner : sim
+    carrier.rec.expecting = { partner: other.rec.id, left: PREGNANCY_MINUTES }
+    this.say(carrier, 'We\'re having a baby!')
+    owner?.send({ t: 'notice', text: `${sim.rec.name} and ${partner.rec.name} are expecting a baby! It arrives in about a day of household time.` })
+    this.hooks.dirty?.()
+  }
+
+  private birth(parent: SimRecord): void {
+    const sims = this.state.household.sims
+    if (sims.length >= MAX_SIMS) return
+    const partner = parent.expecting?.partner ? sims.find(s => s.id === parent.expecting!.partner) : undefined
+    parent.expecting = null
+    const live = this.sims.get(`h-${parent.id}`)
+    const spot: [number, number] = live ? [live.tile[0], live.tile[1]] : [Math.round(parent.x), Math.round(parent.z)]
+    const roll = () => this.rng.next()
+    const baby: SimRecord = {
+      id: freeSimId(sims.map(s => s.id)), name: babyName(roll, sims.map(s => s.name)), look: babyLook(parent.look, partner?.look ?? null, roll),
+      needs: fullNeeds(), x: spot[0], z: spot[1], away: null, career: null, work: null, trip: null, age: 0, expecting: null,
+      parents: [parent.id, ...(partner ? [partner.id] : [])],
+    }
+    sims.push(baby)
+    this.state.friendships = familyFriendships(sims.map(s => s.id), this.state.friendships)
+    for (const p of [parent, partner]) {
+      if (!p) continue
+      const key = [`h:${p.id}`, `h:${baby.id}`].sort().join('|')
+      this.state.friendships[key] = Math.max(this.state.friendships[key] ?? 0, 60)
+    }
+    const owner = this.owner
+    if (owner) {
+      const sim = this.spawn(baby, true, owner.id)
+      owner.sims.push(sim.id)
+      this.say(sim, 'Waaah!')
+      if (live) this.say(live, `Welcome, ${baby.name}!`)
+    }
+    owner?.send({ t: 'notice', text: `Welcome home, ${baby.name}! Born to ${parent.name}${partner ? ` and ${partner.name}` : ''}. Rename them from the Family panel.` })
+    this.hooks.dirty?.()
+    this.hooks.important?.()
+  }
+
+  private familyViews(): FamilyView[] {
+    const names = new Map(this.state.household.sims.map(r => [r.id, r.name]))
+    return this.state.household.sims.map(rec => ({
+      id: rec.id, name: rec.name, look: rec.look, stage: stageOf(rec.age), age: Math.round(rec.age * 10) / 10,
+      nextIn: (() => { const d = daysToNextStage(rec.age); return d === null ? null : Math.round(d * 10) / 10 })(),
+      expecting: rec.expecting ? Math.round(rec.expecting.left) : null,
+      status: rec.work ? 'work' : rec.trip ? 'resort' : rec.away ? 'visiting' : 'home',
+      job: rec.career ? jobTitle(rec.career.job, rec.career.level) : null,
+      parents: (rec.parents ?? []).map(id => names.get(id)).filter((n): n is string => !!n),
+    }))
   }
 
   private build(member: Member, op: BuildOp): void {
@@ -801,12 +1012,15 @@ export class Room {
       case 'chat': {
         const target = this.sims.get(task.target)
         if (!target) return false
+        const kind = task.social ?? 'chat'
+        const blocked = this.socialBlocked(kind, sim, target)
+        if (blocked) { if (!task.auto) this.say(sim, blocked); return false }
         const goals: [number, number][] = []
         for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) if (dx || dz) goals.push([target.tile[0] + dx, target.tile[1] + dz])
         const path = findPath(this.grid, sim.tile, goals, rules)
         if (!path) { if (!task.auto) this.say(sim, 'I can\'t reach them.'); return false }
         sim.path = path
-        sim.act = { task, stage: 'walk', minutes: CHAT_MINUTES, label: `Chat with ${target.rec.name}`, partner: target.id }
+        sim.act = { task, stage: 'walk', minutes: SOCIALS[kind].minutes, label: SOCIALS[kind].label(target.rec.name), partner: target.id, social: { kind, role: 'by' } }
         return true
       }
       case 'knock': {
@@ -841,13 +1055,16 @@ export class Room {
       if (!target || Math.hypot(target.x - sim.x, target.z - sim.z) > 1.8) { this.endActivity(sim, false); return }
       const targetBusy = target.act && !(('auto' in target.act.task && target.act.task.auto) || target.act.task.kind === 'go') && target.act.partner !== sim.id
       if (targetBusy) { this.say(sim, `${target.rec.name} is busy.`); this.endActivity(sim, false); return }
+      const kind = act.social?.kind ?? 'chat'
+      const blocked = this.socialBlocked(kind, sim, target)
+      if (blocked) { this.say(sim, blocked); this.endActivity(sim, false); return }
       if (target.act) this.endActivity(target, true)
       target.path = []
       act.stage = 'do'
-      target.act = { task: { kind: 'chat', target: sim.id, auto: true }, stage: 'do', minutes: CHAT_MINUTES, label: `Chat with ${sim.rec.name}`, partner: sim.id }
+      target.act = { task: { kind: 'chat', target: sim.id, social: kind, auto: true }, stage: 'do', minutes: SOCIALS[kind].minutes, label: receivedLabel(kind, sim.rec.name), partner: sim.id, social: { kind, role: 'to' } }
       sim.facing = Math.atan2(target.x - sim.x, target.z - sim.z)
       target.facing = Math.atan2(sim.x - target.x, sim.z - target.z)
-      this.say(sim, this.rng.next() < 0.5 ? 'How have you been?' : 'Nice to see you!')
+      this.say(sim, kind === 'chat' ? (this.rng.next() < 0.5 ? 'How have you been?' : 'Nice to see you!') : SOCIALS[kind].bubble)
       return
     }
     if (task.kind === 'knock') {
@@ -898,6 +1115,7 @@ export class Room {
       this.live(sim, minutes, funds)
     }
     if (this.ownerHome) this.state.household.funds = Math.max(0, Math.round(funds.value * 100) / 100)
+    if (this.ownerHome && minutes > 0) this.ageHousehold(minutes)
     this.realTime()
     for (const [id, left] of [...this.pendingKnocks]) {
       const next = left - seconds
@@ -909,7 +1127,7 @@ export class Room {
   }
 
   private move(sim: SimRt, seconds: number): void {
-    let budget = WALK_TILES_PER_SECOND * seconds
+    let budget = WALK_TILES_PER_SECOND * seconds * STAGE_SPEED[this.stage(sim)]
     while (budget > 0 && sim.path.length) {
       const [tx, tz] = sim.path[0]
       const dx = tx - sim.x, dz = tz - sim.z
@@ -932,11 +1150,17 @@ export class Room {
 
   private live(sim: SimRt, minutes: number, funds: { value: number }): void {
     const needs = sim.rec.needs
-    decayNeeds(needs, minutes)
+    const stage = this.stage(sim)
+    const little = atMost(stage, 'toddler')
+    decayNeeds(needs, minutes, little ? 12 : 0)
+    if (little && !sim.bubble && Math.min(needs.hunger, needs.hygiene, needs.bladder, needs.energy) < 30 && this.rng.next() < minutes * 0.03) {
+      this.say(sim, stage === 'baby' ? 'Waaah!' : needs.hunger < 30 ? 'Hungry!' : needs.energy < 30 ? 'Sleepy...' : 'Uh oh!')
+    }
     const act = sim.act
     if (act?.stage === 'do') {
       const action = act.action
-      const gains = action?.gains ?? (act.partner ? { social: 0.9, fun: 0.2 } : {})
+      const social = act.social ? SOCIALS[act.social.kind] : null
+      const gains = action?.gains ?? (social ? (act.social!.role === 'by' ? social.self : social.other) : act.partner ? { social: 0.9, fun: 0.2 } : {})
       for (const need of NEEDS) {
         const gain = gains[need]
         if (gain) needs[need] = clampNeed(needs[need] + gain * minutes)
@@ -945,7 +1169,7 @@ export class Room {
         const partner = this.sims.get(act.partner)
         if (partner && sim.id < partner.id) {
           const key = [this.friendKey(sim), this.friendKey(partner)].sort().join('|')
-          this.state.friendships[key] = Math.min(100, (this.state.friendships[key] ?? 0) + 0.12 * minutes)
+          this.state.friendships[key] = Math.min(100, (this.state.friendships[key] ?? 0) + (social?.friend ?? 0.12) * minutes)
         }
       }
       if (action?.money && sim.hh) {
@@ -954,15 +1178,17 @@ export class Room {
       }
       act.minutes -= minutes
       const feeding = Object.entries(gains).filter(([, g]) => (g ?? 0) > 0).map(([n]) => n as keyof Needs)
-      const full = feeding.length > 0 && feeding.every(n => needs[n] >= 99.5) && !action?.money
+      const mayEndEarly = !social || (social.early && act.social!.role === 'to')
+      const full = mayEndEarly && feeding.length > 0 && feeding.every(n => needs[n] >= 99.5) && !action?.money
+      if (act.minutes <= 0 && act.social?.kind === 'baby') this.conceive(sim, act.partner ? this.sims.get(act.partner) : undefined)
       if (act.minutes <= 0 || full) this.endActivity(sim, false)
     }
-    if (needs.bladder <= 0) {
+    if (needs.bladder <= 0 && !little) {
       needs.bladder = 45
       needs.hygiene = Math.max(0, needs.hygiene - 40)
       this.say(sim, 'Oh no... that was embarrassing.')
     }
-    if (needs.energy <= 0 && sim.act?.label !== 'Passed out') {
+    if (needs.energy <= 0 && !little && sim.act?.label !== 'Passed out') {
       this.endActivity(sim, true)
       sim.act = { task: { kind: 'go', x: sim.tile[0], z: sim.tile[1], auto: true }, stage: 'do', minutes: 60, label: 'Passed out', action: { id: 'faint', label: 'Passed out', minutes: 60, gains: { energy: 0.6 }, pose: 'lie', guest: 'yes' } }
       sim.pose = 'lie'
@@ -1005,20 +1231,33 @@ export class Room {
         if (score > 0.12) options.push({ task: { kind: 'use', obj: object.id, act: action.id, auto: true }, score })
       }
     }
+    const stage = this.stage(sim)
     for (const other of this.sims.values()) {
       if (other === sim) continue
       if (!this.canEnter(sim) && this.grid.isInside(other.tile[0], other.tile[1])) continue
       const dist = Math.hypot(other.x - sim.x, other.z - sim.z)
       const busy = other.act && !(('auto' in other.act.task && other.act.task.auto) || other.act.task.kind === 'go')
       if (busy) continue
+      // Grown-ups look after the household's babies and toddlers when they need it, unless the little one is busy in a crib or chair.
+      const usingObject = other.act?.stage === 'do' && other.act.obj !== undefined
+      if (sim.hh && other.hh && atLeast(stage, 'teen') && atMost(this.stage(other), 'toddler') && !usingObject) {
+        const n = other.rec.needs
+        const care: [SocialKind, number][] = [['feed', n.hunger], ['change', Math.min(n.hygiene, n.bladder)], ['rock', n.energy], ['play', Math.min(n.fun, n.social)]]
+        for (const [kind, value] of care) {
+          if (value >= 55 || this.socialBlocked(kind, sim, other)) continue
+          const score = 1.8 * urgency(value) + 0.1 - dist * 0.015
+          if (score > 0.2) options.push({ task: { kind: 'chat', target: other.id, social: kind, auto: true }, score })
+        }
+      }
+      if (this.socialBlocked('chat', sim, other)) continue
       const score = 1.1 * urgency(needs.social) + 0.15 - dist * 0.015
-      if (score > 0.12) options.push({ task: { kind: 'chat', target: other.id, auto: true }, score })
+      if (score > 0.12) options.push({ task: { kind: 'chat', target: other.id, social: 'chat', auto: true }, score })
     }
     options.sort((a, b) => b.score - a.score)
     const top = options.slice(0, 3)
     if (!top.length || this.rng.next() < 0.15) {
       sim.rest = 15 + this.rng.next() * 30
-      if (this.rng.next() < 0.5) {
+      if (stage !== 'baby' && this.rng.next() < 0.5) {
         const rules = this.rules(sim)
         for (let tries = 0; tries < 6; tries++) {
           const x = Math.max(0, Math.min(19, sim.tile[0] + Math.round((this.rng.next() - 0.5) * 8)))
@@ -1082,6 +1321,11 @@ export class Room {
     const view: SimView = {
       id: sim.id, name: sim.rec.name, look: sim.rec.look, x: Math.round(sim.x * 100) / 100, z: Math.round(sim.z * 100) / 100,
       facing: Math.round(sim.facing * 100) / 100, pose: sim.pose, hh: sim.hh, owner: member?.name ?? '', mine: mineSim,
+      stage: this.stage(sim),
+    }
+    if (sim.hh) {
+      view.rec = sim.rec.id
+      if (sim.rec.parents) view.parents = sim.rec.parents
     }
     if (sim.act) {
       view.act = sim.act.label
@@ -1092,15 +1336,16 @@ export class Room {
       view.needs = { ...sim.rec.needs }
       for (const need of NEEDS) view.needs[need] = Math.round(view.needs[need])
       view.queue = sim.queue.map(t => this.taskLabel(t))
-      const friends: { name: string; value: number }[] = []
+      const friends: { id: string; name: string; value: number }[] = []
       for (const other of this.sims.values()) {
         if (other === sim) continue
         const key = [this.friendKey(sim), this.friendKey(other)].sort().join('|')
         const value = this.state.friendships[key]
-        if (value) friends.push({ name: other.rec.name, value: Math.round(value) })
+        if (value) friends.push({ id: other.id, name: other.rec.name, value: Math.round(value) })
       }
       view.friends = friends
       if (sim.hh) view.career = this.careerView(sim.rec)
+      if (sim.rec.expecting) view.expecting = Math.round(sim.rec.expecting.left)
     }
     return view
   }
@@ -1109,7 +1354,7 @@ export class Room {
     switch (task.kind) {
       case 'go': return 'Walk here'
       case 'knock': return 'Knock on the door'
-      case 'chat': return `Chat with ${this.sims.get(task.target)?.rec.name ?? 'someone'}`
+      case 'chat': return SOCIALS[task.social ?? 'chat'].label(this.sims.get(task.target)?.rec.name ?? 'someone')
       case 'use': {
         const object = this.grid.objects.get(task.obj)
         const def = object && objectDef(object.def)
@@ -1123,7 +1368,7 @@ export class Room {
     const speed = this.effectiveSpeed()
     const now = this.now()
     const owner = this.owner
-    const extra = owner ? this.workViews(new Map()) : null
+    const extra = owner ? { ...this.workViews(new Map()), family: this.familyViews() } : null
     for (const m of this.members.values()) {
       const entitled = this.memberEntitled(m)
       const sims: SimView[] = []
