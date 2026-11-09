@@ -86,9 +86,14 @@ export function learningModulesConfig(watch = false): InlineConfig {
   }
 }
 
+/**
+ * Builds the learning modules once per process. Vite resolves the site config several times during `pnpm build` (once per
+ * environment and again for the Cloudflare and TanStack Start steps), and each resolve creates a new plugin instance, so the
+ * promise lives on `globalThis` rather than in this closure; otherwise every module was rebuilt three times per deploy.
+ */
 export function learningModules(): Plugin {
-  let started: Promise<unknown> | null = null
-  const run = (watch: boolean) => (started ??= build(learningModulesConfig(watch)))
+  const shared = globalThis as { __thelibraryLearningModules?: Promise<unknown> }
+  const run = (watch: boolean) => (shared.__thelibraryLearningModules ??= build(learningModulesConfig(watch)))
   return {
     name: 'thelibrary:learning-modules',
     async config(_, env) {
