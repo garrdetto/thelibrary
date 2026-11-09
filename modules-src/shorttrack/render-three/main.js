@@ -14,8 +14,8 @@ import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
 import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
 import { carIdOf, numberSpot, carGarage } from '../shared/CustomCars';
-import { parseRegions, STOCK_BOUNDS } from '../shared/carRepaint';
-import { buildLiveryGeo, fitDecal, planAtlas, upsamplePlan, applyAtlas, wrapContext } from '../shared/liveryWrap';
+import { boundsOf, parseRegions } from '../shared/carRepaint';
+import { spoilerTriangles } from '../shared/carClear';
 import { sanitizeScheme, schemeForPainters } from '../shared/PaintScheme';
 import { initPaintDesigner } from '../paint-designer.js';
 import { TRACKS, AI_LEVELS, trackIdOf } from '../next/sim/config';
@@ -856,7 +856,17 @@ function parseCarAsset(buf){
     geo.setAttribute('color',new THREE.BufferAttribute(col,3));
     if(uv16){const uv=new Float32Array(p.v*2);for(let i=0;i<uv.length;i++)uv[i]=uv16[i]/65535;geo.setAttribute('uv',new THREE.BufferAttribute(uv,2));}
     geo.setIndex(new THREE.BufferAttribute(idx.slice(),1));for(const [st,ct,mi] of p.groups)geo.addGroup(st,ct,mi);
+    if(!p.center)splitSpoiler(geo);
     geo.computeBoundingSphere();return {center:p.center,geo};});
+}
+// The rear spoiler is clear Lexan: its triangles leave the paint group for their own group (material 6).
+function splitSpoiler(geo){
+  const idx=geo.index.array,pos=geo.attributes.position.array,paint=geo.groups.find(g=>g.materialIndex===0);if(!paint)return;
+  const sp=new Set(spoilerTriangles(pos,idx,boundsOf([pos]),paint.start/3,paint.count/3));if(!sp.size)return;
+  const out=[],groups=[];
+  for(const g of geo.groups){const st=out.length;for(let t=g.start/3;t<(g.start+g.count)/3;t++)if(!sp.has(t))out.push(idx[t*3],idx[t*3+1],idx[t*3+2]);groups.push([st,out.length-st,g.materialIndex]);}
+  const st=out.length;for(const t of sp)out.push(idx[t*3],idx[t*3+1],idx[t*3+2]);groups.push([st,out.length-st,6]);
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(out),1));geo.clearGroups();for(const [s0,ct,mi] of groups)geo.addGroup(s0,ct,mi);
 }
 const carAssetReady=fetch(new URL('shorttrack-car.bin',location.href)).then(r=>{if(!r.ok)throw new Error('car asset '+r.status);return r.arrayBuffer();})
   .then(b=>{CAR_ASSET=parseCarAsset(b);return true;}).catch(()=>false);
@@ -978,15 +988,16 @@ function buildStockCar(lv,o={}){
   const g=new THREE.Group();g.rotation.y=-Math.PI/2;g.scale.setScalar(TM_S);body.add(g);
   const paint=new THREE.MeshPhysicalMaterial({color:0xffffff,vertexColors:true,roughness:0.3,metalness:0.2,clearcoat:1,clearcoatRoughness:0.08});
   const interior=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.85,metalness:0.2});
-  const glass=new THREE.MeshPhysicalMaterial({color:0x1b252c,roughness:0.05,metalness:0.3,clearcoat:1,clearcoatRoughness:0.03});
+  const glass=new THREE.MeshPhysicalMaterial({color:0x3c4a54,roughness:0.04,metalness:0,clearcoat:1,clearcoatRoughness:0.03,transparent:true,opacity:0.38,depthWrite:false,side:THREE.DoubleSide});
+  const lexan=new THREE.MeshPhysicalMaterial({color:0xe8eef2,roughness:0.04,metalness:0,clearcoat:1,clearcoatRoughness:0.03,transparent:true,opacity:0.2,depthWrite:false,side:THREE.DoubleSide});
   const tire=new THREE.MeshStandardMaterial({color:0x161616,roughness:0.92});
   const rim=new THREE.MeshStandardMaterial({color:0x9aa0a8,roughness:0.35,metalness:0.8});
   const tail=new THREE.MeshPhysicalMaterial({color:0x5a0008,emissive:0xff1a26,emissiveIntensity:0.2,roughness:0.1,clearcoat:1});
-  const M=[paint,interior,glass,tire,rim,tail],wheels=[];let bodyMesh=null;
+  const M=[paint,interior,glass,tire,rim,tail,lexan],wheels=[];let bodyMesh=null;
   for(const p of CAR_ASSET){const mesh=new THREE.Mesh(p.geo.clone(),M);mesh.castShadow=true;mesh.receiveShadow=true;
     if(p.center){const pivot=new THREE.Group();pivot.position.fromArray(p.center);g.add(pivot);pivot.add(mesh);wheels.push({pivot,w:mesh,front:p.center[0]>0,spinZ:true});}
     else{g.add(mesh);bodyMesh=mesh;}}
-  const paints=[paint,glass];for(const m of paints){m.envMap=envTex;m.envMapIntensity=ENVK;}
+  const paints=[paint,glass,lexan];for(const m of paints){m.envMap=envTex;m.envMapIntensity=ENVK;}
   const bumperF=new THREE.Group(),bumperR=new THREE.Group();body.add(bumperF,bumperR);
   const orig=Float32Array.from(bodyMesh.geometry.attributes.position.array);
   const m={root,body,bodyMesh,orig,deform:[{geo:bodyMesh.geometry,orig,scuff:true}],wheels,bumperF,bumperR,paints,light:null,brakeMat:tail,tm:true,tmg:g,car:true,carPaint:paint,liveryTex:null,modelScale:TM_S,crisp:!!o.crisp,numbers:null};
