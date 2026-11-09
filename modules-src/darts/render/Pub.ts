@@ -269,8 +269,8 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
 
   const ringRadii = [RADII.innerBull, RADII.outerBull, RADII.tripleInner, RADII.tripleOuter, RADII.doubleInner, RADII.doubleOuter]
   const spokeLength = (RADII.doubleOuter - RADII.outerBull) / 1000
-  const buildSpider = (target: THREE.Group, material: THREE.Material, wireRadius: number, radial: number) => {
-    for (const radius of ringRadii) {
+  const buildSpider = (target: THREE.Group, material: THREE.Material, wireRadius: number, radial: number, radii: readonly number[] = ringRadii) => {
+    for (const radius of radii) {
       const ring = new THREE.Mesh(keep(new THREE.TorusGeometry(radius / 1000, wireRadius, radial, Math.max(48, Math.round(radius * 1.4)))), material)
       ring.position.z = wireRadius * 0.6
       ring.castShadow = true
@@ -290,7 +290,7 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   const wireMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#e4e7ec'), roughness: 0.16, metalness: 1 }))
   buildSpider(steelBoard, wireMaterial, 0.00058, 6)
   const plasticSpiderMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#f2f3f5'), roughness: 0.38, metalness: 0 }))
-  buildSpider(spiderBoard, plasticSpiderMaterial, 0.00105, 8)
+  buildSpider(spiderBoard, plasticSpiderMaterial, 0.00082, 8, ringRadii.filter((radius) => radius !== RADII.innerBull))
 
   const housingMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#121214'), roughness: 0.38, metalness: 0.1 }))
   const housingRedMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#d0162a'), roughness: 0.32, metalness: 0.15 }))
