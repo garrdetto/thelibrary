@@ -856,6 +856,7 @@ exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_war
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_cabin.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_quad.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_blind.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():

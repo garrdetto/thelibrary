@@ -49,6 +49,10 @@ interface PartHeader {
 
 const BASE = new URL('./rackreel/models/', location.href.replace(/[^/]*$/, '')).href
 
+export function modelFileUrl(file: string): string {
+  return `${BASE}${file}`
+}
+
 export async function loadModel(scene: Scene, name: ModelName, material: (model: ModelName, part: string, tag: string) => Material): Promise<ModelTemplate> {
   const response = await fetch(`${BASE}${name}.rrm`)
   if (!response.ok) throw new Error(`Missing model ${name}`)
