@@ -8,7 +8,7 @@ export type DartsScorer = { id: string; username: string }
 
 let tableReady: Promise<unknown> | null = null
 
-/** D1 tables for the Darts record book (migration 0030, also created on first use): every saved leg and match once (`darts_legs`, `darts_matches`, keyed `<user>:<run>` so a resend never counts twice), each player's best per board and format with how many times they hit it (`darts_bests`), and their running dart and point/mark totals (`darts_averages`). */
+/** D1 tables for the Darts record book (migration 0031, also created on first use): every saved leg and match once (`darts_legs`, `darts_matches`, keyed `<user>:<run>` so a resend never counts twice), each player's best per board and format with how many times they hit it (`darts_bests`), and their running dart and point/mark totals (`darts_averages`). */
 export function ensureDartsTables(env: Env) {
   tableReady ??= env.DB.batch([
     env.DB.prepare(`CREATE TABLE IF NOT EXISTS darts_legs (
