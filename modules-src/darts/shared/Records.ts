@@ -96,7 +96,7 @@ function legTurns(state: GameState) {
  */
 export function legResults(state: GameState): LegResult[] {
   const mode = recordMode(state.config)
-  if (!mode || !legJustEnded(state)) return []
+  if (!mode || state.config.teamPlay || !legJustEnded(state)) return []
   const turns = legTurns(state)
   const dartsOf = (playerId: string) => turns.filter((turn) => turn.playerId === playerId).reduce((sum, turn) => sum + turn.throws.length, 0)
   if (mode === 'countup') {
@@ -132,9 +132,10 @@ export function matchAverages(state: GameState): MatchAverage[] {
 
 /**
  * Whether a match's darts go into the all-time averages: real against real (two or more people at the oche) or real against the hardest
- * computer (`pro`). Solo practice and the easier computers only show the averages.
+ * computer (`pro`). Solo practice, the easier computers and team matches only show the averages.
  */
 export function countsForAverages(state: GameState): boolean {
+  if (state.config.teamPlay) return false
   const humans = state.players.filter((player) => !player.cpu).length
   if (humans >= 2) return true
   return humans === 1 && state.players.some((player) => player.cpu && player.cpuLevel === 'pro')

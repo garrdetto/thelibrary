@@ -4,7 +4,7 @@ import { config } from '../config'
 import { label } from '../shared/Board'
 import type { Announcement, DartThrow, GameState, Player, RoomPlayerView } from '../shared/interfaces'
 import { IDEAL_SPEED, METER, meterZone } from '../shared/Physics'
-import { CRICKET_TARGETS, DARTS_PER_TURN, checkoutRoute, currentPlayer, modeLabel, standings } from '../shared/Rules'
+import { CRICKET_TARGETS, DARTS_PER_TURN, checkoutRoute, currentPlayer, modeLabel, sideName, sideTotals, standings, throwerName } from '../shared/Rules'
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id)
@@ -19,8 +19,10 @@ function make<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
   return node
 }
 
+/** Flight colour per player, or per team in team play so teammates match. */
 export function playerColor(state: GameState, playerId: string): string {
-  const index = Math.max(0, state.players.findIndex((player) => player.id === playerId))
+  const player = state.players.find((item) => item.id === playerId)
+  const index = player?.team ?? Math.max(0, state.players.findIndex((item) => item.id === playerId))
   return config.dart.flightColors[index % config.dart.flightColors.length]
 }
 
@@ -43,6 +45,7 @@ export class Overlay {
   readonly lobby = el<HTMLDivElement>('lobby')
   readonly results = el<HTMLDivElement>('results')
   readonly pause = el<HTMLDivElement>('pause')
+  readonly bracket = el<HTMLDivElement>('bracket')
   private readonly scoreboard = el<HTMLDivElement>('scoreboard')
   private readonly announce = el<HTMLDivElement>('announce')
   private readonly throws = el<HTMLDivElement>('throws')
@@ -97,7 +100,8 @@ export class Overlay {
     this.announce.style.setProperty('--announce-ms', `${config.timing.announceMs}ms`)
   }
 
-  show(panel: 'menu' | 'lobby' | 'results' | 'pause' | 'none'): void {
+  show(panel: 'menu' | 'lobby' | 'results' | 'pause' | 'bracket' | 'none'): void {
+    this.bracket.hidden = panel !== 'bracket'
     this.menu.hidden = panel !== 'menu'
     this.lobby.hidden = panel !== 'lobby'
     this.results.hidden = panel !== 'results'
@@ -114,13 +118,14 @@ export class Overlay {
     this.modeChip.textContent = modeLabel(state.config)
     this.renderCards(state)
     const player = currentPlayer(state)
-    const mine = !localIds || localIds.has(player.id)
+    const mine = (!localIds || localIds.has(player.id)) && !player.cpu
     const color = playerColor(state, player.id)
+    const who = player.thrower ? `${player.thrower} (${player.name})` : player.teamName ? `${player.name} (${player.teamName})` : player.name
     this.turnName.style.color = color
     this.turnName.textContent =
       state.status === 'finished' ? 'Match over'
       : state.status === 'legOver' ? 'Leg over'
-      : statusText ?? (mine ? (state.players.length > 1 ? `${player.name} to throw` : 'Your throw') : `${player.name} is throwing`)
+      : statusText ?? (mine ? (state.players.length > 1 || player.members ? `${who} to throw` : 'Your throw') : `${who} is throwing`)
     this.renderThrows(player.currentRoundThrows)
     this.renderCheckout(state, player)
     this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? 'Hold to aim and power up · let go in the green · Space works too' : ''
@@ -128,6 +133,8 @@ export class Overlay {
 
   private renderCards(state: GameState): void {
     const turnId = state.currentTurnPlayerId
+    this.scoreboard.classList.toggle('is-compact', state.players.length > 4)
+    const totals = state.config.teamPlay === 'regular' && state.gameMode !== 'x01' ? sideTotals(state) : []
     this.scoreboard.replaceChildren(
       ...state.players.map((player) => {
         const card = make('div', `d-card${player.id === turnId && state.status !== 'finished' ? ' is-turn' : ''}`)
@@ -151,6 +158,11 @@ export class Overlay {
         if (state.config.legsPerSet > 1 || state.config.setsToWin > 1) meta.append(make('span', '', `Legs ${state.legs.won[player.id] ?? 0}`))
         meta.append(make('span', '', state.gameMode === 'cricket' ? `MPR ${player.stats.average.toFixed(2)}` : `Avg ${player.stats.average.toFixed(1)}`))
         if (state.gameMode === 'x01' && !player.opened) meta.append(make('span', '', 'needs a double'))
+        if (player.members) meta.append(make('span', 'd-card-team', `Up: ${throwerName(player)}`))
+        else if (player.teamName) {
+          const total = totals.find((side) => side.player.team === player.team)
+          meta.append(make('span', 'd-card-team', total ? `${player.teamName} ${total.score}` : player.teamName))
+        }
         card.append(meta)
         if (state.gameMode === 'cricket') {
           const marks = make('div', 'd-marks')
@@ -270,7 +282,7 @@ export class Overlay {
 
   renderResults(state: GameState, note: string, canRematch: boolean): void {
     const winner = state.players.find((player) => player.id === state.winnerId)
-    el('results-winner').textContent = winner ? (state.players.length > 1 ? `${winner.name} wins!` : `Finished: ${winner.score}${state.gameMode === 'x01' ? '' : ' points'}`) : 'Match over'
+    el('results-winner').textContent = winner ? (state.players.length > 1 ? `${sideName(winner)} wins!` : `Finished: ${winner.score}${state.gameMode === 'x01' ? '' : ' points'}`) : 'Match over'
     el('results-mode').textContent = modeLabel(state.config)
     const table = el<HTMLTableElement>('results-table')
     const head = make('tr')
@@ -280,11 +292,12 @@ export class Overlay {
     const rows = standings(state).map((player) => {
       const row = make('tr')
       const legs = String(player.stats.legsWon)
+      const name = player.members ? `${player.name} (${player.members.map((member) => member.name).join(' & ')})` : player.teamName ? `${player.name} · ${player.teamName}` : player.name
       const values = cricket
-        ? [player.name, legs, String(player.score), player.stats.average.toFixed(2), String(player.stats.marks), String(player.stats.darts)]
+        ? [name, legs, String(player.score), player.stats.average.toFixed(2), String(player.stats.marks), String(player.stats.darts)]
         : state.gameMode === 'x01'
-          ? [player.name, legs, player.stats.average.toFixed(1), String(player.stats.oneEighties), player.stats.bestCheckout ? String(player.stats.bestCheckout) : '–', String(player.stats.darts)]
-          : [player.name, String(player.score), player.stats.average.toFixed(1), String(player.stats.highestTurn), String(player.stats.bulls), String(player.stats.darts)]
+          ? [name, legs, player.stats.average.toFixed(1), String(player.stats.oneEighties), player.stats.bestCheckout ? String(player.stats.bestCheckout) : '–', String(player.stats.darts)]
+          : [name, String(player.score), player.stats.average.toFixed(1), String(player.stats.highestTurn), String(player.stats.bulls), String(player.stats.darts)]
       for (const value of values) row.append(make('td', '', value))
       return row
     })

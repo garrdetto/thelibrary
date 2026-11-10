@@ -159,8 +159,8 @@ export class RecordBook {
       nodes.push(make('p', 'd-book-you', parts.join(' · ')))
     } else nodes.push(make('p', 'd-book-note', 'Sign in to the library to put your legs in the record book.'))
     nodes.push(make('p', 'd-book-note', average
-      ? `Every leg counts, alone or against anyone (not on Easy). Averages count when two people play each other, or against the Pro computer.`
-      : `Eight-round Count Up totals count, alone or against anyone (not on Easy).`))
+      ? `Every leg counts, alone, against anyone or in a tournament (team matches don't). Averages count when two people play each other, or against the Pro computer.`
+      : `Eight-round Count Up totals count, alone or against anyone (team matches don't).`))
     return nodes
   }
 
