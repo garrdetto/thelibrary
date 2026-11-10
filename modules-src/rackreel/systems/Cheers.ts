@@ -1,27 +1,32 @@
 /** Wisco Wild Man's celebrations, renderer-free: which cheer fits a moment, and the procedural pose on the 11-joint rig at time t. Joint names are the rig's (`*L` is his right side). Arm x rotation: 0 hangs down, about −1.57 points forward, about −3 points straight up. */
 
-export type CheerId = 'stoned' | 'tubbed' | 'crazy' | 'meltdown' | 'hype' | 'miss' | 'tearOff'
+export type CheerId = 'stoned' | 'tubbed' | 'crazy' | 'meltdown' | 'hype' | 'stacking' | 'miss' | 'tearOff' | 'sendIt' | 'beached'
 
 export type CheerTrigger =
   | { kind: 'hit' }
-  | { kind: 'tubbed'; lengthIn: number; record: boolean; streak: number }
+  | { kind: 'tubbed'; lengthIn: number; record: boolean; streak: number; total?: number }
   | { kind: 'miss' }
   | { kind: 'tearOff' }
 
 export const CHEERS: Record<CheerId, { duration: number; line: string }> = {
   stoned: { duration: 1.2, line: 'Stoned him! Reel \'er in!' },
   tubbed: { duration: 1.0, line: 'Into the tub!' },
-  crazy: { duration: 3.5, line: 'Woooooo!! LOOK AT THE SIZE OF \'IM!' },
-  meltdown: { duration: 5, line: 'HOLY BUCKETS! THAT\'S A WALL-HANGER, BUD!' },
+  crazy: { duration: 3.5, line: 'Absolute tank. WOOOOO!' },
+  meltdown: { duration: 5, line: 'WOOOOO! ABSOLUTE TANK! THAT\'S A WALL-HANGER, BUD!' },
   hype: { duration: 2, line: 'Yer on fire tonight!' },
+  stacking: { duration: 2, line: 'Stacking \'em up!' },
   miss: { duration: 1, line: 'Next one.' },
   tearOff: { duration: 1.2, line: 'Ya cranked through his run.' },
+  sendIt: { duration: 2.6, line: 'WOOOOOO!! YEAHHHHH!!!' },
+  beached: { duration: 3.4, line: 'HOW BOUT THAT BOYS! WOOOOOO!!' },
 }
 
 /** Carp run 10–30 in; Wild Man goes crazy from 24 in and has a meltdown from 28 in (or a record). */
 export const BIG_CARP_IN = 24
 export const TROPHY_CARP_IN = 28
 export const HYPE_STREAK = 3
+/** Every fifth carp in the tub on a trip, he's stacking 'em up. */
+export const STACK_EVERY = 5
 
 export function chooseCheer(trigger: CheerTrigger): CheerId {
   switch (trigger.kind) {
@@ -34,9 +39,38 @@ export function chooseCheer(trigger: CheerTrigger): CheerId {
     case 'tubbed':
       if (trigger.record || trigger.lengthIn >= TROPHY_CARP_IN) return 'meltdown'
       if (trigger.lengthIn >= BIG_CARP_IN) return 'crazy'
+      if (trigger.total && trigger.total % STACK_EVERY === 0) return 'stacking'
       if (trigger.streak > 0 && trigger.streak % HYPE_STREAK === 0) return 'hype'
       return 'tubbed'
   }
+}
+
+/** Things Wisco Wild Man just blurts out on the water, every so often, for no reason at all. */
+export const BLURTS: readonly string[] = [
+  'Put the ole sneaky on \'em.',
+  'WOOOOO! Smell that lake, bud!',
+  'Carp don\'t stand a chance tonight!',
+  'This boat\'s held together with zip ties and prayers. Runs like a dream!',
+  'Ain\'t nothin\' better than a cold one and a full tub.',
+  'Shhh! Put the ole sneaky on \'em... WOOOOO!',
+  'My cousin Dale shot a forty-pounder here. Well, he says he did.',
+  'If it swims, it\'s fair game, bud!',
+  'Ya see that swirl? That\'s a hog, I tell ya!',
+  'Lights on, brains off! WOOOOO!',
+  'Grandpappy always said, aim low and holler loud!',
+  'I got mud in my boots and I ain\'t even mad about it!',
+  'Back home they call me the Carp Whisperer. I whisper "WOOOOO!"',
+  'Keep yer eyes peeled and yer arrows wet!',
+  'Bud, I was born for this!',
+  'Mosquitoes out here are big enough to tow the boat!',
+  'Ain\'t no tub big enough, bud. Ain\'t no tub big enough!',
+  'Quiet now... quiet... WOOOOO! Sorry, couldn\'t help it.',
+]
+
+/** The blurt for the n-th time he pipes up: walks the list in a scrambled but repeat-free order. */
+export function blurtAt(n: number): string {
+  const len = BLURTS.length
+  return BLURTS[(n * 7 + Math.floor(n / len) * 3) % len]
 }
 
 export type Euler = [number, number, number]
@@ -219,7 +253,30 @@ export function cheerPose(id: CheerId, t: number): CheerPose {
       }
       break
     }
-    case 'hype': {
+    case 'sendIt': {
+      const pump = fistPump(t, 3)
+      pose.joints.upperArmL = [-2.7 - pump * 0.3, 0, 0.35]
+      pose.joints.foreArmL = [-0.5 + pump * 0.4, 0, 0]
+      pose.joints.torso = [-0.12, 0, 0]
+      pose.joints.head = [-0.45, Math.sin(t * 7) * 0.15, 0]
+      pose.mullet = t < 0.4 ? 5 : 1.5
+      break
+    }
+    case 'beached': {
+      pose.stand = smooth(0, 0.3, t)
+      if (t < 2.2) {
+        armsUp(pose, t, 0.7)
+        pose.hop = Math.abs(Math.sin((t / 0.32) * Math.PI)) * 0.2 * pose.stand
+        pose.stomp = pose.hop < 0.015 && t > 0.35
+        pose.joints.head = [-0.5, 0, 0]
+        pose.mullet = 2.5
+      } else {
+        chestPound(pose, t)
+      }
+      break
+    }
+    case 'hype':
+    case 'stacking': {
       pose.stand = 1
       const beat = t * 2.5
       const left = Math.max(0, Math.sin(beat * Math.PI))

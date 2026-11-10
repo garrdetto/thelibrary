@@ -34,7 +34,7 @@ export type FishingEvent =
 
 const LINE_POINTS = 16
 /** Metres of line a held reel brings in per second before the reel upgrade. */
-export const RETRIEVE_SPEED = 2.6
+export const RETRIEVE_SPEED = 3.25
 /** The cast is home once the float or lure is this close to the rod tip. */
 const RETRIEVE_HOME = 2.2
 const LAND_TIME = 1.15

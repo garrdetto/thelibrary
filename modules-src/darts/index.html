@@ -31,17 +31,19 @@
     </div>
 
     <div class="d-overlay" id="menu">
-      <form class="d-panel" id="setup" novalidate>
+      <form class="d-panel d-setup" id="setup" novalidate>
         <h1><em>Darts</em></h1>
+        <div class="d-setup-cols">
+        <div class="d-setup-col">
         <h2>Board</h2>
         <div class="d-seg" role="radiogroup" aria-label="Board">
-          <label><input type="radio" name="board" value="steel" checked /><span>Steel Tip</span></label>
-          <label><input type="radio" name="board" value="spider" /><span>Soft Tip</span></label>
+          <label><input type="radio" name="board" value="steel" /><span>Steel Tip</span></label>
+          <label><input type="radio" name="board" value="spider" checked /><span>Soft Tip</span></label>
         </div>
-        <p style="margin-top:12px">A regulation board at 1.73 m, thrown from 2.37 m. Click and hold on the board to aim and a power meter swings up and down; let go to throw. Between the two white lines in the green is Perfect and flies true, and the rest of the green lands within seven holes of your aim; the meter fades to yellow and then red, where the dart drops (too soft) or rides high (too hard). Soft Tip plays its own rules: any bed can finish and Double Bull is on.</p>
+        <p class="d-note">A regulation board at 1.73 m, thrown from 2.37 m. Soft Tip: any bed can finish 301 and 501 with Double Bull on, and Cricket uses a split bull.</p>
 
-        <h2>Format</h2>
-        <div class="d-seg" role="radiogroup" aria-label="Format">
+        <h2 id="format-title">Format</h2>
+        <div class="d-seg" id="format-seg" role="radiogroup" aria-label="Format">
           <label><input type="radio" name="mode" value="501" checked /><span>501</span></label>
           <label><input type="radio" name="mode" value="301" /><span>301</span></label>
           <label><input type="radio" name="mode" value="cricket" /><span>Cricket</span></label>
@@ -54,6 +56,7 @@
         </div>
         <div class="d-row" id="cricket-options" style="margin-top:10px" hidden>
           <label class="d-check"><input type="checkbox" name="cricketPoints" checked /> Score points</label>
+          <span class="d-check" title="Outer bull is one mark, inner bull two">Split bull</span>
           <label class="d-field">Round limit
             <select name="cricketRounds"><option>10</option><option>15</option><option selected>20</option><option>25</option></select>
           </label>
@@ -63,8 +66,7 @@
             <select name="countupRounds"><option>4</option><option selected>8</option><option>10</option><option>12</option></select>
           </label>
         </div>
-        <div class="d-book" id="record-book" aria-live="polite"></div>
-        <div class="d-row" style="margin-top:10px">
+        <div class="d-row" id="length-options" style="margin-top:10px">
           <label class="d-field">Legs to win a set
             <select name="legs"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
           </label>
@@ -72,13 +74,52 @@
             <select name="sets"><option selected>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
           </label>
         </div>
+        </div>
+        <div class="d-setup-col">
 
         <h2>Opponents</h2>
         <div class="d-seg" role="radiogroup" aria-label="Opponents">
           <label><input type="radio" name="who" value="solo" checked /><span>Solo</span></label>
           <label><input type="radio" name="who" value="cpu" /><span>Computer</span></label>
           <label><input type="radio" name="who" value="local" /><span>Pass &amp; play</span></label>
+          <label><input type="radio" name="who" value="teams" /><span>Teams</span></label>
+          <label><input type="radio" name="who" value="tournament" /><span>Tournament</span></label>
           <label><input type="radio" name="who" value="online" /><span>Online</span></label>
+        </div>
+        <div id="team-options" hidden>
+          <p style="margin-top:10px">Up to four teams of up to two. Teammates take turns at the oche and share a flight colour; any player can be a person or the computer.</p>
+          <div class="d-row">
+            <label class="d-field">Teams
+              <select name="teamCount"><option selected>2</option><option>3</option><option>4</option></select>
+            </label>
+            <label class="d-field">Players per team
+              <select name="teamSize"><option value="1">1</option><option value="2" selected>2</option></select>
+            </label>
+          </div>
+          <div class="d-seg" role="radiogroup" aria-label="Team scoring" style="margin-top:10px">
+            <label><input type="radio" name="teamPlay" value="stacked" checked /><span>Shared score</span></label>
+            <label><input type="radio" name="teamPlay" value="regular" /><span>Own scores</span></label>
+          </div>
+          <p class="d-note" id="team-play-note"></p>
+          <div class="d-teams" id="team-list"></div>
+        </div>
+        <div id="tournament-options" hidden>
+          <p style="margin-top:10px">Eight players, one against one, best of three legs: quarter-finals, semi-finals and a final on the board picked above. The leg rotation below sets the format of each leg for every match.</p>
+          <div class="d-row">
+            <label class="d-field">Leg 1
+              <select name="tourLeg0"><option value="501" selected>501</option><option value="301">301</option><option value="cricket">Cricket</option><option value="countup">Count Up</option></select>
+            </label>
+            <label class="d-field">Leg 2
+              <select name="tourLeg1"><option value="501">501</option><option value="301">301</option><option value="cricket" selected>Cricket</option><option value="countup">Count Up</option></select>
+            </label>
+            <label class="d-field">Leg 3 (decider)
+              <select name="tourLeg2"><option value="501">501</option><option value="301" selected>301</option><option value="cricket">Cricket</option><option value="countup">Count Up</option></select>
+            </label>
+          </div>
+          <div class="d-row" style="margin-top:8px">
+            <label class="d-check"><input type="checkbox" name="randomDraw" checked /> Random draw</label>
+          </div>
+          <div class="d-names" id="tour-list"></div>
         </div>
         <div class="d-row" id="cpu-options" style="margin-top:10px" hidden>
           <label class="d-field">Computer level
@@ -94,7 +135,7 @@
           <div class="d-names" id="names"></div>
         </div>
         <div id="online-options" hidden>
-          <p style="margin-top:10px">Open a room and share its code (or invite from the chat), or join a friend's room. Up to four at the oche; everyone throws with the same steadiness.</p>
+          <p style="margin-top:10px">Open a room and share its code (or invite from the chat), or join a friend's room. Up to four at the oche.</p>
           <div class="d-row">
             <label class="d-field">Room code
               <input type="text" name="code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC234" />
@@ -102,20 +143,24 @@
             <button type="button" class="d-btn" id="join-btn" style="align-self:flex-end">Join room</button>
           </div>
         </div>
-        <div class="d-row" id="steady-row" style="margin-top:14px">
-          <label class="d-field">Your steadiness
-            <select name="spread"><option value="easy">Easy (tight grouping)</option><option value="normal" selected>Normal</option><option value="hard">Hard (wide grouping)</option></select>
-          </label>
+        <div class="d-row" id="name-row" style="margin-top:14px">
           <label class="d-field" id="name-field">Your name
             <input type="text" name="playerName" maxlength="16" autocomplete="nickname" value="You" />
           </label>
         </div>
-        <div class="d-error" id="setup-error" role="alert"></div>
-        <div class="d-actions">
-          <button type="button" class="d-btn" id="resume-btn" hidden>Back to the oche</button>
-          <button type="submit" class="d-btn is-accent" id="start-btn">Step up</button>
         </div>
-        <div class="d-help">Mouse or touch: click and hold on the board to aim (move to fine-tune), watch the power meter and let go in the green band; right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green band, <kbd>Esc</kbd> cancels a throw, and <kbd>P</kbd> or <kbd>Esc</kbd> pauses. Each board keeps its own record book: fewest darts for 501, 301 and Cricket and the best eight-round Count Up, from any leg on Normal or Hard (in pass &amp; play, Player 1 is you).</div>
+        </div>
+        <div class="d-error" id="setup-error" role="alert"></div>
+        <div class="d-setup-foot">
+          <details class="d-help">
+            <summary>How to throw</summary>
+            Click and hold on the board to aim (move to fine-tune) and a power meter swings; let go in the green band. Between the two white lines is Perfect and flies true, the rest of the green lands within seven holes, and in the red the dart drops (too soft) or rides high (too hard). Right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green, <kbd>Esc</kbd> cancels a throw, <kbd>P</kbd> or <kbd>Esc</kbd> pauses. The record book is below the board on this page (in pass &amp; play and tournaments, Player 1 is you; team matches aren't recorded).
+          </details>
+          <div class="d-actions">
+            <button type="button" class="d-btn" id="resume-btn" hidden>Back to the oche</button>
+            <button type="submit" class="d-btn is-accent" id="start-btn">Step up</button>
+          </div>
+        </div>
       </form>
     </div>
 
@@ -150,6 +195,23 @@
           <button type="button" class="d-btn" id="copy-btn">Copy code</button>
           <button type="button" class="d-btn" id="lobby-leave">Leave</button>
           <button type="button" class="d-btn is-accent" id="lobby-start" hidden>Start the match</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-overlay" id="bracket" hidden>
+      <div class="d-panel d-bracket-panel">
+        <h1 id="bracket-title">Tournament</h1>
+        <p id="bracket-rotation"></p>
+        <div class="d-bracket" id="bracket-grid"></div>
+        <p class="d-bracket-note" id="bracket-note" role="status"></p>
+        <p id="bracket-next"></p>
+        <div class="d-actions">
+          <button type="button" class="d-btn" id="bracket-quit">Leave tournament</button>
+          <button type="button" class="d-btn" id="bracket-sim-all" hidden>Simulate to your next match</button>
+          <button type="button" class="d-btn" id="bracket-sim" hidden>Simulate this match</button>
+          <button type="button" class="d-btn is-accent" id="bracket-watch" hidden>Watch</button>
+          <button type="button" class="d-btn is-accent" id="bracket-play" hidden>Step up</button>
         </div>
       </div>
     </div>

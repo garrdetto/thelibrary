@@ -24,11 +24,50 @@ export const BOWBOAT = {
   stern: -4.81,
 }
 
+/** Where a shooter can stand, in boat space (x across, z along): the cockpit floor from the rear deck forward, then up the step onto the front deck, narrowing at the bow. */
+export const DECK_AREA = { back: -2.6, front: 5.05, half: 1.45, deckHalf: 1.6, narrowFrom: 4.55, step: 3.3, stepRun: 0.18 }
+
+/** Things on the floor a shooter walks around: the stock tank (circle) and the console with Wild Man's seat (box). */
+const TUB_KEEP = BOWBOAT.tubRadius + 0.32
+const CONSOLE = { minX: -1.0, maxX: 0.35, minZ: -1.45, maxZ: 0.35 }
+
+/** Height of the floor under a shooter's feet at boat-space z: cockpit floor, then the front deck. */
+export function deckHeight(z: number): number {
+  const k = Math.max(0, Math.min(1, (z - (DECK_AREA.step - DECK_AREA.stepRun / 2)) / DECK_AREA.stepRun))
+  return BOWBOAT.floor + (BOWBOAT.deck.y - BOWBOAT.floor) * k
+}
+
+/** Keeps a shooter's feet (boat space) inside the gunwales and out of the tub and the console. Changes `p` in place. */
+export function clampToDeck(p: { x: number; z: number }): void {
+  const a = DECK_AREA
+  p.z = Math.max(a.back, Math.min(a.front, p.z))
+  let half = p.z > a.step ? a.deckHalf : a.half
+  if (p.z > a.narrowFrom) half -= (p.z - a.narrowFrom) * 1.6
+  p.x = Math.max(-half, Math.min(half, p.x))
+  const tx = p.x - BOWBOAT.tub.x
+  const tz = p.z - BOWBOAT.tub.z
+  const td = Math.hypot(tx, tz)
+  if (td < TUB_KEEP) {
+    const k = td > 1e-4 ? TUB_KEEP / td : 1
+    p.x = BOWBOAT.tub.x + (td > 1e-4 ? tx * k : TUB_KEEP)
+    p.z = BOWBOAT.tub.z + (td > 1e-4 ? tz * k : 0)
+  }
+  const c = CONSOLE
+  if (p.x > c.minX && p.x < c.maxX && p.z > c.minZ && p.z < c.maxZ) {
+    const out = [p.x - c.minX, c.maxX - p.x, p.z - c.minZ, c.maxZ - p.z]
+    const i = out.indexOf(Math.min(...out))
+    if (i === 0) p.x = c.minX
+    else if (i === 1) p.x = c.maxX
+    else if (i === 2) p.z = c.minZ
+    else p.z = c.maxZ
+  }
+}
+
 export type LightMode = 'white' | 'amber' | 'off'
 export const LIGHT_ORDER: readonly LightMode[] = ['white', 'amber', 'off']
 export const LIGHT_COLORS: Record<Exclude<LightMode, 'off'>, [number, number, number]> = {
   white: [0.95, 0.97, 1.0],
   amber: [1.0, 0.56, 0.16],
 }
-/** The floods light everything around the boat: bright out to 15 yd (13.7 m), fading out by 40 yd (36.6 m). */
-export const FLOOD = { bright: 13.7, reach: 36.6, intensity: 2.6, deckRange: 12, deckIntensity: 1.7 }
+/** The floods light everything around the boat and into the water: bright out to 20 yd (18.3 m), fading out by 45 yd (41.1 m). */
+export const FLOOD = { bright: 18.3, reach: 41.1, intensity: 2.6, deckRange: 12, deckIntensity: 1.7 }

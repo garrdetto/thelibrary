@@ -11,12 +11,17 @@ import type {
   ModeConfig,
   Player,
   PlayerStats,
+  TeamMember,
   TurnRecord,
 } from './interfaces'
 
 export const DARTS_PER_TURN = 3
 export const CRICKET_TARGETS: readonly CricketTarget[] = [20, 19, 18, 17, 16, 15, 25]
 export const MAX_PLAYERS = 4
+/** Team play: up to four teams of up to two, so eight at the oche when each plays their own score. */
+export const MAX_TEAMS = 4
+export const TEAM_SIZE = 2
+export const MAX_TEAM_PLAYERS = MAX_TEAMS * TEAM_SIZE
 
 export const DEFAULT_RULES: Record<ModeConfig['mode'], ModeConfig> = {
   x01: { mode: 'x01', start: 501, doubleIn: false, doubleOut: true },
@@ -30,6 +35,10 @@ export interface SeatSpec {
   cpu?: boolean
   cpuLevel?: CpuLevel
   connectionStatus?: Player['connectionStatus']
+  team?: number
+  teamName?: string
+  /** Shared-score teams: the people who take turns on this seat's score. */
+  members?: TeamMember[]
 }
 
 export interface ThrowResult {
@@ -58,25 +67,73 @@ export function normalizeConfig(config: MatchConfig): MatchConfig {
   if (rules.mode === 'x01') clean = { mode: 'x01', start: [301, 501, 701].includes(rules.start) ? rules.start : 501, doubleIn: !!rules.doubleIn, doubleOut: !!rules.doubleOut, doubleBull: !!rules.doubleBull }
   else if (rules.mode === 'cricket') clean = { mode: 'cricket', scoring: rules.scoring !== false, roundLimit: whole(rules.roundLimit, 5, 50, 20) }
   else clean = { mode: 'countup', rounds: whole(rules.rounds, 1, 20, 8) }
-  return { rules: clean, legsPerSet: whole(config.legsPerSet, 1, 11, 1), setsToWin: whole(config.setsToWin, 1, 7, 1), board }
+  const normal: MatchConfig = { rules: clean, legsPerSet: whole(config.legsPerSet, 1, 11, 1), setsToWin: whole(config.setsToWin, 1, 7, 1), board }
+  if (config.teamPlay === 'stacked' || config.teamPlay === 'regular') normal.teamPlay = config.teamPlay
+  return normal
+}
+
+/** True when two players are on the same side: the same player, or teammates. */
+export function sameSide(a: Player, b: Player): boolean {
+  return a.id === b.id || (a.team !== undefined && a.team === b.team)
+}
+
+/** The name a side is called by in announcements and results: the team name in team play, otherwise the player's. */
+export function sideName(player: Player): string {
+  return player.teamName ?? player.name
+}
+
+/** The person throwing for a player or side right now: the member who is up on a shared-score team, otherwise the player. */
+export function throwerName(player: Player): string {
+  return player.thrower ?? player.name
+}
+
+/** Points up the next member of a shared-score side: their name, and whether the computer throws for them. */
+function syncThrower(player: Player): void {
+  const members = player.members
+  if (!members?.length) return
+  const member = members[(player.turnsTaken ?? 0) % members.length]
+  player.thrower = member.name
+  player.cpu = member.cpu
+  player.cpuLevel = member.cpuLevel
+}
+
+function finishedTurn(player: Player): void {
+  if (!player.members?.length) return
+  player.turnsTaken = (player.turnsTaken ?? 0) + 1
+  syncThrower(player)
 }
 
 export function createMatch(roomId: string, config: MatchConfig, seats: readonly SeatSpec[]): GameState {
-  if (!seats.length || seats.length > MAX_PLAYERS) throw new Error('A match needs one to four players.')
   const clean = normalizeConfig(config)
-  const players: Player[] = seats.map((seat) => ({
-    id: seat.id,
-    name: seat.name,
-    score: startScore(clean.rules),
-    currentRoundThrows: [],
-    connectionStatus: seat.connectionStatus ?? (seat.cpu ? 'cpu' : 'local'),
-    stats: emptyStats(),
-    marks: emptyMarks(),
-    opened: !(clean.rules.mode === 'x01' && clean.rules.doubleIn),
-    turnStartScore: startScore(clean.rules),
-    cpu: !!seat.cpu,
-    cpuLevel: seat.cpuLevel ?? 'league',
-  }))
+  const limit = clean.teamPlay === 'regular' ? MAX_TEAM_PLAYERS : MAX_PLAYERS
+  if (!seats.length || seats.length > limit) throw new Error(`A match needs one to ${limit === MAX_PLAYERS ? 'four' : 'eight'} players.`)
+  const players: Player[] = seats.map((seat) => {
+    const members = seat.members?.length ? seat.members.slice(0, TEAM_SIZE).map((member) => ({ ...member })) : undefined
+    const cpu = members ? members[0].cpu : !!seat.cpu
+    const player: Player = {
+      id: seat.id,
+      name: seat.name,
+      score: startScore(clean.rules),
+      currentRoundThrows: [],
+      connectionStatus: seat.connectionStatus ?? (cpu && !members?.some((member) => !member.cpu) ? 'cpu' : 'local'),
+      stats: emptyStats(),
+      marks: emptyMarks(),
+      opened: !(clean.rules.mode === 'x01' && clean.rules.doubleIn),
+      turnStartScore: startScore(clean.rules),
+      cpu,
+      cpuLevel: (members ? members[0].cpuLevel : seat.cpuLevel) ?? 'league',
+    }
+    if (seat.team !== undefined) {
+      player.team = seat.team
+      player.teamName = seat.teamName ?? `Team ${seat.team + 1}`
+    }
+    if (members) {
+      player.members = members
+      player.turnsTaken = 0
+      syncThrower(player)
+    }
+    return player
+  })
   const won = Object.fromEntries(players.map((player) => [player.id, 0]))
   return {
     roomId,
@@ -195,7 +252,7 @@ function applyCricket(state: GameState, player: Player, dart: DartThrow, list: A
   if (rules.mode !== 'cricket') return { won: false }
   const target = cricketTarget(dart)
   if (target !== null) {
-    const opponents = state.players.filter((other) => other.id !== player.id)
+    const opponents = state.players.filter((other) => !sameSide(other, player))
     let marks: number = dart.multiplier
     while (marks > 0) {
       marks--
@@ -209,7 +266,7 @@ function applyCricket(state: GameState, player: Player, dart: DartThrow, list: A
       }
     }
   }
-  const leads = state.players.every((other) => other.id === player.id || player.score >= other.score)
+  const leads = state.players.every((other) => sameSide(other, player) || player.score >= other.score)
   return { won: allClosed(player) && leads }
 }
 
@@ -224,13 +281,28 @@ function isLastInRound(state: GameState, player: Player): boolean {
   return order[order.length - 1].id === player.id
 }
 
-/** Winner of a leg that ran out of rounds (Count Up, or Cricket at its round limit): most points, then most Cricket marks; null for a tie. */
+/** Each side's combined points and Cricket marks (teammates who play their own scores add up), with its best-scoring player. */
+export function sideTotals(state: GameState): { player: Player; score: number; marks: number }[] {
+  const sides = new Map<string, { player: Player; score: number; marks: number }>()
+  for (const player of state.players) {
+    const key = player.team !== undefined ? `team:${player.team}` : player.id
+    const side = sides.get(key) ?? { player, score: 0, marks: 0 }
+    side.score += player.score
+    side.marks += totalMarks(player)
+    if (player.score > side.player.score) side.player = player
+    sides.set(key, side)
+  }
+  return [...sides.values()]
+}
+
+/** Winner of a leg that ran out of rounds (Count Up, or Cricket at its round limit): most points, then most Cricket marks (team totals in team play); null for a tie. */
 function roundLimitWinner(state: GameState): Player | null {
-  const ranked = [...state.players].sort((a, b) => b.score - a.score || (state.gameMode === 'cricket' ? totalMarks(b) - totalMarks(a) : 0))
-  if (ranked.length === 1) return ranked[0]
+  const cricket = state.gameMode === 'cricket'
+  const ranked = sideTotals(state).sort((a, b) => b.score - a.score || (cricket ? b.marks - a.marks : 0))
+  if (ranked.length === 1) return ranked[0].player
   const [first, second] = ranked
-  const tie = first.score === second.score && (state.gameMode !== 'cricket' || totalMarks(first) === totalMarks(second))
-  return tie ? null : first
+  const tie = first.score === second.score && (!cricket || first.marks === second.marks)
+  return tie ? null : first.player
 }
 
 function finishTurn(state: GameState, player: Player, bust: boolean): TurnRecord {
@@ -251,20 +323,24 @@ function finishTurn(state: GameState, player: Player, bust: boolean): TurnRecord
 
 function legWon(state: GameState, winner: Player, list: Announcement[]): void {
   state.legWinnerId = winner.id
-  winner.stats.legsWon++
-  state.legs.won[winner.id] = (state.legs.won[winner.id] ?? 0) + 1
+  const side = state.players.filter((player) => sameSide(player, winner))
+  const name = sideName(winner)
+  for (const player of side) {
+    player.stats.legsWon++
+    state.legs.won[player.id] = (state.legs.won[player.id] ?? 0) + 1
+  }
   const legsNeeded = state.config.legsPerSet
   if (state.legs.won[winner.id] >= legsNeeded) {
-    state.sets.won[winner.id] = (state.sets.won[winner.id] ?? 0) + 1
+    for (const player of side) state.sets.won[player.id] = (state.sets.won[player.id] ?? 0) + 1
     if (state.sets.won[winner.id] >= state.config.setsToWin) {
       state.status = 'finished'
       state.winnerId = winner.id
-      say(list, 'matchWon', `${winner.name} wins!`, winner.id)
+      say(list, 'matchWon', `${name} wins!`, winner.id)
       return
     }
-    say(list, 'setWon', `${winner.name} takes the set`, winner.id)
+    say(list, 'setWon', `${name} takes the set`, winner.id)
   } else {
-    say(list, 'legWon', `${winner.name} takes the leg`, winner.id)
+    say(list, 'legWon', `${name} takes the leg`, winner.id)
   }
   state.status = 'legOver'
 }
@@ -327,6 +403,8 @@ export function nextTurn(input: GameState): { state: GameState; announcements: A
   const n = state.players.length
   state.version++
   if (state.status === 'legOver') {
+    const ender = state.players.find((player) => player.id === state.currentTurnPlayerId)
+    if (ender) finishedTurn(ender)
     const setOver = state.legWinnerId !== null && Object.values(state.legs.won).some((won) => won >= state.config.legsPerSet)
     if (setOver) {
       for (const id of Object.keys(state.legs.won)) state.legs.won[id] = 0
@@ -347,12 +425,13 @@ export function nextTurn(input: GameState): { state: GameState; announcements: A
     const starter = state.players[state.legStarter]
     state.currentTurnPlayerId = starter.id
     state.status = 'playing'
-    say(list, 'score', `Set ${state.sets.current}, leg ${state.legs.current}: ${starter.name} to throw`, starter.id)
+    say(list, 'score', `Set ${state.sets.current}, leg ${state.legs.current}: ${throwerName(starter)} to throw`, starter.id)
     return { state, announcements: list }
   }
   const index = state.players.findIndex((player) => player.id === state.currentTurnPlayerId)
   const finished = state.players[index]
   finished.currentRoundThrows = []
+  finishedTurn(finished)
   const next = state.players[(index + 1) % n]
   if ((index + 1) % n === state.legStarter) state.round++
   next.turnStartScore = next.score
@@ -459,12 +538,15 @@ export function standings(state: GameState): Player[] {
     (state.sets.won[b.id] ?? 0) - (state.sets.won[a.id] ?? 0) ||
     (state.legs.won[b.id] ?? 0) - (state.legs.won[a.id] ?? 0) ||
     (state.gameMode === 'x01' ? a.score - b.score : b.score - a.score)
-  return [...state.players].sort((a, b) => (a.id === state.winnerId ? -1 : b.id === state.winnerId ? 1 : better(a, b)))
+  const winner = state.players.find((player) => player.id === state.winnerId)
+  const rank = (player: Player) => (player.id === state.winnerId ? 0 : winner && sameSide(player, winner) ? 1 : 2)
+  return [...state.players].sort((a, b) => rank(a) - rank(b) || better(a, b))
 }
 
 export function modeLabel(config: MatchConfig): string {
   const rules = config.rules
-  const match = config.setsToWin > 1 ? ` · first to ${config.setsToWin} sets of ${config.legsPerSet}` : config.legsPerSet > 1 ? ` · first to ${config.legsPerSet} legs` : ''
+  const teams = config.teamPlay === 'stacked' ? ' · teams, shared score' : config.teamPlay === 'regular' ? ' · teams' : ''
+  const match = (config.setsToWin > 1 ? ` · first to ${config.setsToWin} sets of ${config.legsPerSet}` : config.legsPerSet > 1 ? ` · first to ${config.legsPerSet} legs` : '') + teams
   if (rules.mode === 'x01') return `${rules.start}${rules.doubleIn ? ' · double in' : ''}${rules.doubleOut ? ' · double out' : ' · straight out'}${match}`
   if (rules.mode === 'cricket') return `Cricket${rules.scoring ? '' : ' · no points'} · ${rules.roundLimit} rounds${match}`
   return `Count Up · ${rules.rounds} rounds${match}`

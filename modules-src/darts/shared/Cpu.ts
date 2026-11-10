@@ -2,7 +2,7 @@
 import { targetPoint } from './Board'
 import type { CpuLevel, GameState, Multiplier, Player, ThrowIntent } from './interfaces'
 import { IDEAL_SPEED } from './Physics'
-import { CRICKET_TARGETS, checkoutRoute, dartsLeft } from './Rules'
+import { CRICKET_TARGETS, checkoutRoute, dartsLeft, sameSide } from './Rules'
 import { gaussian, type Rng } from './Rng'
 
 const STEADINESS: Record<CpuLevel, number> = { pub: 0.45, league: 0.25, county: 0.12, pro: 0.04 }
@@ -34,7 +34,7 @@ function x01Bed(state: GameState, player: Player): string {
 }
 
 function cricketBed(state: GameState, player: Player): string {
-  const opponents = state.players.filter((other) => other.id !== player.id)
+  const opponents = state.players.filter((other) => !sameSide(other, player))
   const behind = opponents.some((other) => other.score > player.score)
   const scoring = state.config.rules.mode === 'cricket' && state.config.rules.scoring
   if (behind && scoring) {

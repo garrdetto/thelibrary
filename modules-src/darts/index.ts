@@ -8,14 +8,34 @@ import { createDartKit, aimDart } from './render/Dart'
 import { createPub } from './render/Pub'
 import { LocalSession, OnlineSession, type Session } from './session/Session'
 import { BULL_HEIGHT, OCHE_DISTANCE, RADII } from './shared/Board'
-import type { Announcement, CpuLevel, DartThrow, FlightParams, GameState, MatchConfig, ModeConfig } from './shared/interfaces'
-import { RELEASE, aimDirection, type SpreadLevel } from './shared/Physics'
-import { currentPlayer, modeLabel, type SeatSpec } from './shared/Rules'
+import type { Announcement, CpuLevel, DartThrow, FlightParams, GameState, MatchConfig, TeamPlay } from './shared/interfaces'
+import { RELEASE, aimDirection } from './shared/Physics'
+import { TEAM_SIZE, currentPlayer, modeLabel, type SeatSpec } from './shared/Rules'
 import { isRoomCode } from './shared/Room'
 import { BOARD_NAMES, countsForAverages, legJustEnded, legResults, matchAverages, recordMode } from './shared/Records'
+import { simulateMatch } from './shared/QuickSim'
+import { createRng, randomSeed } from './shared/Rng'
+import {
+  ROTATION_NAMES,
+  ROUND_NAMES,
+  createTournament,
+  entrantOf,
+  isRotationMode,
+  legConfig,
+  legOrder,
+  legsWon,
+  nextTournamentMatch,
+  recordTournamentLeg,
+  rulesFor,
+  type RotationMode,
+  type Tournament,
+  type TournamentRules,
+} from './shared/Tournament'
 import { createSounds } from './systems/Sounds'
 import { DartFlights } from './systems/DartFlights'
 import { ThrowInput } from './systems/ThrowInput'
+import { Bracket } from './ui/Bracket'
+import { TeamSetup, TournamentSetup, type TeamLineup } from './ui/Lineups'
 import { Overlay, playerColor } from './ui/Overlay'
 import { RecordBook } from './ui/RecordBook'
 
@@ -36,43 +56,83 @@ function byId<T extends HTMLElement>(id: string): T {
 
 interface Setup {
   match: MatchConfig
-  who: 'solo' | 'cpu' | 'local' | 'online'
+  who: 'solo' | 'cpu' | 'local' | 'teams' | 'tournament' | 'online'
   cpuLevel: CpuLevel
-  spread: SpreadLevel
   names: string[]
+  /** The formats this setup plays: the one picked, or the tournament's game rotation. */
+  formats: RotationMode[]
+  teamCount: number
+  teamSize: number
+  teamPlay: TeamPlay
+  tourRules: TournamentRules
+  randomDraw: boolean
 }
 
 function readSetup(form: HTMLFormElement): Setup {
   const data = new FormData(form)
-  const mode = String(data.get('mode') ?? '501')
-  let rules: ModeConfig
-  if (mode === 'cricket') rules = { mode: 'cricket', scoring: data.get('cricketPoints') === 'on', roundLimit: Number(data.get('cricketRounds') ?? 20) }
-  else if (mode === 'countup') rules = { mode: 'countup', rounds: Number(data.get('countupRounds') ?? 8) }
-  else rules = { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: data.get('doubleIn') === 'on', doubleOut: data.get('doubleOut') === 'on', doubleBull: data.get('board') === 'spider' && data.get('doubleBull') === 'on' }
   const board = data.get('board') === 'spider' ? 'spider' : 'steel'
   const who = String(data.get('who') ?? 'solo') as Setup['who']
+  const tourRules: TournamentRules = {
+    board,
+    rotation: [0, 1, 2].map((i) => String(data.get(`tourLeg${i}`) ?? '501')).map((mode) => (isRotationMode(mode) ? mode : '501')),
+    doubleIn: data.get('doubleIn') === 'on',
+    doubleOut: data.get('doubleOut') === 'on',
+    doubleBull: data.get('doubleBull') === 'on',
+    cricketScoring: data.get('cricketPoints') === 'on',
+    cricketRounds: Number(data.get('cricketRounds') ?? 20),
+    countupRounds: Number(data.get('countupRounds') ?? 8),
+  }
+  const picked = String(data.get('mode') ?? '501')
+  const formats: RotationMode[] = who === 'tournament' ? tourRules.rotation : [isRotationMode(picked) ? picked : '501']
   const name = String(data.get('playerName') ?? '').trim().slice(0, 16) || 'You'
   const count = Number(data.get('localCount') ?? 2)
   const names = who === 'local'
     ? Array.from({ length: count }, (_, i) => String(data.get(`name${i}`) ?? '').trim().slice(0, 16) || `Player ${i + 1}`)
     : [name]
+  const teamPlay: TeamPlay = data.get('teamPlay') === 'regular' ? 'regular' : 'stacked'
+  const tournament = who === 'tournament'
+  const match: MatchConfig = { rules: rulesFor(formats[0], tourRules), legsPerSet: tournament ? 1 : Number(data.get('legs') ?? 1), setsToWin: tournament ? 1 : Number(data.get('sets') ?? 1), board }
+  if (who === 'teams') match.teamPlay = teamPlay
   return {
-    match: { rules, legsPerSet: Number(data.get('legs') ?? 1), setsToWin: Number(data.get('sets') ?? 1), board },
+    match,
     who,
     cpuLevel: String(data.get('cpuLevel') ?? 'league') as CpuLevel,
-    spread: String(data.get('spread') ?? 'normal') as SpreadLevel,
     names,
+    formats,
+    teamCount: Number(data.get('teamCount') ?? 2),
+    teamSize: Number(data.get('teamSize') ?? 2) === 1 ? 1 : TEAM_SIZE,
+    teamPlay,
+    tourRules,
+    randomDraw: data.get('randomDraw') === 'on',
   }
 }
 
-const BOARD_KEY = 'tl-darts-board'
+/** Seats for a team match: one seat per team taking turns on a shared score, or every player in their own seat with the teams' throws interleaved (Red 1, Blue 1, Red 2, Blue 2). */
+function teamSeats(teamPlay: TeamPlay, lineups: TeamLineup[]): SeatSpec[] {
+  if (teamPlay === 'stacked') return lineups.map((team, i) => ({ id: `t${i + 1}`, name: team.name, team: i, teamName: team.name, members: team.members }))
+  const seats: SeatSpec[] = []
+  for (let slot = 0; slot < TEAM_SIZE; slot++) {
+    lineups.forEach((team, i) => {
+      const member = team.members[slot]
+      if (member) seats.push({ id: `t${i + 1}p${slot + 1}`, name: member.name, team: i, teamName: team.name, cpu: member.cpu, cpuLevel: member.cpuLevel })
+    })
+  }
+  return seats
+}
+
+const TEAM_PLAY_NOTES: Record<TeamPlay, string> = {
+  stacked: 'Shared score: teammates take turns on one team score, so in 501 the team checks out together and in Cricket the team closes the numbers together.',
+  regular: "Own scores: each player keeps their own score on a team. The team takes the leg when any teammate checks out or closes out Cricket, and at a round limit (Count Up, Cricket) teammates' points are added up.",
+}
+
+const BOARD_KEY = 'tl-darts-board-v2'
 
 function savedBoardStyle(): BoardStyle {
   try {
     const value = localStorage.getItem(BOARD_KEY)
-    return isBoardStyle(value) ? value : 'steel'
+    return isBoardStyle(value) ? value : 'spider'
   } catch {
-    return 'steel'
+    return 'spider'
   }
 }
 
@@ -166,7 +226,7 @@ async function boot(): Promise<void> {
   }
 
   const overlay = new Overlay()
-  const book = new RecordBook(byId('record-book'), byId('avg-panel'))
+  const book = new RecordBook(byId('avg-panel'))
   app.own(book)
   let session: Session | null = null
   let shown: GameState | null = null
@@ -174,6 +234,12 @@ async function boot(): Promise<void> {
   let currentSetup: Setup | null = null
   let countUpKey = ''
   let lastLobbyMessage = ''
+  let tour: Tournament | null = null
+  let tourMatchId: string | null = null
+  const tourRng = createRng(randomSeed())
+  const bracket = new Bracket()
+  const teamSetup = new TeamSetup(byId('team-list'))
+  const tourSetup = new TournamentSetup(byId('tour-list'))
 
   const input = new ThrowInput(container, app.camera, {
     aim(x, y) {
@@ -212,9 +278,14 @@ async function boot(): Promise<void> {
     }
   }
 
-  const overlayOpen = () => !overlay.menu.hidden || !overlay.lobby.hidden || !overlay.results.hidden || !overlay.pause.hidden
+  const overlayOpen = () => !overlay.menu.hidden || !overlay.lobby.hidden || !overlay.results.hidden || !overlay.pause.hidden || !overlay.bracket.hidden
 
-  const ranked = () => session?.kind === 'online' || currentSetup?.spread !== 'easy'
+  /** Online rooms save their own results; at this screen a match counts when a person throws as Player 1 and it isn't a team match. */
+  const ranked = () => {
+    if (session?.kind === 'online') return true
+    const state = session?.state ?? null
+    return !!state && !state.config.teamPlay && state.players.some((player) => player.id === 'p1' && !player.cpu)
+  }
   const memberName = (playerId: string): string | null => {
     if (session?.kind === 'online') {
       const seat = (session as OnlineSession).players.find((player) => player.id === playerId)
@@ -251,7 +322,7 @@ async function boot(): Promise<void> {
   }
 
   const rankedCountUp = (state: GameState): boolean =>
-    session?.kind === 'local' && !!currentSetup && currentSetup.spread !== 'easy' && state.players.length === 1 && state.config.rules.mode === 'countup' && state.config.rules.rounds === 8
+    session?.kind === 'local' && !!currentSetup && ranked() && state.players.length === 1 && state.config.rules.mode === 'countup' && state.config.rules.rounds === 8
 
   const countUpRun = (): string => (countUpKey ||= `countup-${Date.now()}-${Math.random().toString(36).slice(2)}`)
 
@@ -264,7 +335,8 @@ async function boot(): Promise<void> {
     const notes: string[] = []
     if (rankedCountUp(state)) void Scores.submit(SCORE_MODULE, state.players[0].score, { key: countUpRun() })
     countUpKey = ''
-    if (currentSetup.spread === 'easy') notes.push('Easy steadiness is not ranked; play on Normal or Hard to post a record.')
+    if (state.config.teamPlay) notes.push('Team matches are not saved to the record book.')
+    else if (!ranked()) return ''
     else if (mode && book.signedIn) {
       if (countsForAverages(state)) book.saveAverage(state, matchAverages(state).find((average) => average.playerId === 'p1'))
       notes.push(`Saved to ${where}${countsForAverages(state) && rules.mode !== 'countup' ? ', average included' : ''}.`)
@@ -298,6 +370,18 @@ async function boot(): Promise<void> {
       announce(announcements)
       const note = finishNote(state)
       book.invalidateAverages()
+      if (session?.kind === 'online') book.refreshPage(state.config.board === 'spider' ? 'spider' : 'steel', recordMode(state.config), 2500)
+      if (tour && tourMatchId && session?.kind === 'local') {
+        const matchId = tourMatchId
+        window.setTimeout(() => {
+          if (session?.state !== state || tourMatchId !== matchId) return
+          tourMatchId = null
+          const result = state.winnerId ? recordTour(matchId, state.winnerId) : ''
+          leaveSession()
+          showBracket([result, note].filter(Boolean).join(' '))
+        }, 1800)
+        return
+      }
       window.setTimeout(() => {
         if (session?.state !== state && session?.state?.status !== 'finished') return
         const online = session?.kind === 'online'
@@ -322,16 +406,98 @@ async function boot(): Promise<void> {
     book.renderHud(null, () => '', () => null, false)
   }
 
-  const startLocal = (setup: Setup) => {
+  const launchLocal = (match: MatchConfig, seats: SeatSpec[], opening: string) => {
     leaveSession()
+    localIds = new Set(seats.filter((seat) => !seat.cpu && !seat.members?.every((member) => member.cpu)).map((seat) => seat.id))
+    session = new LocalSession(match, seats, events)
+    overlay.show('none')
+    overlay.announceAll([{ kind: 'score', text: opening, playerId: seats[0].id }])
+  }
+
+  const startLocal = (setup: Setup) => {
     currentSetup = setup
+    tour = null
+    tourMatchId = null
+    if (setup.who === 'tournament') {
+      tour = createTournament(setup.tourRules, tourSetup.read(), setup.randomDraw ? tourRng : undefined)
+      leaveSession()
+      showBracket('The draw is made. Good darts!')
+      return
+    }
+    if (setup.who === 'teams') {
+      launchLocal(setup.match, teamSeats(setup.teamPlay, teamSetup.read(setup.teamCount, setup.teamSize)), 'Throw!')
+      return
+    }
     const seats: SeatSpec[] = setup.names.map((name, i) => ({ id: `p${i + 1}`, name }))
     if (setup.who === 'cpu') seats.push({ id: 'cpu', name: CPU_NAMES[setup.cpuLevel], cpu: true, cpuLevel: setup.cpuLevel })
-    localIds = setup.who === 'cpu' ? new Set(seats.filter((seat) => !seat.cpu).map((seat) => seat.id)) : null
-    session = new LocalSession(setup.match, seats, setup.spread, events)
-    overlay.show('none')
-    overlay.announceAll([{ kind: 'score', text: 'Throw!', playerId: seats[0].id }])
+    launchLocal(setup.match, seats, 'Throw!')
   }
+
+  const showBracket = (note: string) => {
+    if (!tour) return
+    bracket.render(tour, note)
+    overlay.show('bracket')
+    const focus = [bracket.play, bracket.watch, bracket.quit].find((button) => !button.hidden)
+    focus?.focus()
+  }
+
+  const seatOf = (id: string): SeatSpec => {
+    const entrant = tour ? entrantOf(tour, id) : null
+    return entrant ? { id: entrant.id, name: entrant.name, cpu: entrant.cpu, cpuLevel: entrant.cpuLevel } : { id, name: id }
+  }
+
+  /** Records a leg winner in the bracket and says what it meant: a leg, a match, or the whole tournament. */
+  const recordTour = (matchId: string, winnerId: string): string => {
+    if (!tour) return ''
+    tour = recordTournamentLeg(tour, matchId, winnerId)
+    const match = tour.matches.find((item) => item.id === matchId)
+    const winner = entrantOf(tour, winnerId)
+    if (!match || !winner) return ''
+    const loserId = match.a === winnerId ? match.b : match.a
+    const score = `${legsWon(match, winnerId)}–${legsWon(match, loserId)}`
+    if (tour.championId === winnerId) return `${winner.name} wins the final ${score} and the tournament!`
+    if (match.winnerId) return `${winner.name} wins the match ${score} and goes through to the ${ROUND_NAMES[match.round + 1]}.`
+    const leg = match.legs[match.legs.length - 1]
+    return `${winner.name} takes leg ${match.legs.length} (${ROTATION_NAMES[leg.mode]}).`
+  }
+
+  const startTourLeg = () => {
+    const match = tour ? nextTournamentMatch(tour) : null
+    if (!tour || !match) return
+    tourMatchId = match.id
+    launchLocal(legConfig(tour, match), legOrder(match).map(seatOf), `${ROUND_NAMES[match.round]} · leg ${match.legs.length + 1}`)
+  }
+
+  /** Simulates the next match (all computers) leg by leg; returns what happened. */
+  const simulateTourMatch = (): string => {
+    const match = tour ? nextTournamentMatch(tour) : null
+    if (!tour || !match) return ''
+    let result = ''
+    for (let guard = 0; guard < 5 && tour; guard++) {
+      const current = tour.matches.find((item) => item.id === match.id)
+      if (!current || current.winnerId) break
+      const state = simulateMatch(legConfig(tour, current), legOrder(current).map(seatOf), tourRng)
+      if (!state.winnerId) break
+      result = recordTour(current.id, state.winnerId)
+    }
+    return result
+  }
+
+  const computerMatch = (): boolean => {
+    const match = tour ? nextTournamentMatch(tour) : null
+    if (!tour || !match) return false
+    return !!entrantOf(tour, match.a)?.cpu && !!entrantOf(tour, match.b)?.cpu
+  }
+
+  bracket.play.addEventListener('click', startTourLeg)
+  bracket.watch.addEventListener('click', startTourLeg)
+  bracket.sim.addEventListener('click', () => showBracket(simulateTourMatch()))
+  bracket.simAll.addEventListener('click', () => {
+    const results: string[] = []
+    while (computerMatch()) results.push(simulateTourMatch())
+    showBracket(results.slice(-3).join(' '))
+  })
+  bracket.quit.addEventListener('click', () => quitToMenu())
 
   const socket = new DartsSocket()
   let pendingRoom: ((code: string | null) => void) | null = null
@@ -339,6 +505,8 @@ async function boot(): Promise<void> {
   const startOnline = (action: 'create' | 'join', code: string, match: MatchConfig) => {
     leaveSession()
     currentSetup = null
+    tour = null
+    tourMatchId = null
     const online = new OnlineSession(socket, {
       ...events,
       room(roomCode, you, players, roomConfig) {
@@ -456,6 +624,8 @@ async function boot(): Promise<void> {
     if (session instanceof LocalSession) session.resume()
   }
   const quitToMenu = () => {
+    tour = null
+    tourMatchId = null
     leaveSession()
     byId<HTMLButtonElement>('resume-btn').hidden = true
     showBook(true)
@@ -464,17 +634,25 @@ async function boot(): Promise<void> {
 
   const syncForm = () => {
     const setup = readSetup(form)
-    const mode = setup.match.rules.mode
-    byId('x01-options').hidden = mode !== 'x01'
+    const formats = setup.formats
+    const tournament = setup.who === 'tournament'
+    byId('format-title').textContent = tournament ? 'Format options' : 'Format'
+    byId('format-seg').hidden = tournament
+    byId('length-options').hidden = tournament
+    byId('x01-options').hidden = !formats.some((mode) => mode === '501' || mode === '301')
     byId('double-bull-option').hidden = new FormData(form).get('board') !== 'spider'
-    byId('cricket-options').hidden = mode !== 'cricket'
-    byId('countup-options').hidden = mode !== 'countup'
+    byId('cricket-options').hidden = !formats.includes('cricket')
+    byId('countup-options').hidden = !formats.includes('countup')
     byId('cpu-options').hidden = setup.who !== 'cpu'
     byId('local-options').hidden = setup.who !== 'local'
+    byId('team-options').hidden = setup.who !== 'teams'
+    byId('tournament-options').hidden = !tournament
     byId('online-options').hidden = setup.who !== 'online'
-    byId('steady-row').hidden = setup.who === 'online'
-    byId('name-field').hidden = setup.who === 'local'
-    byId('start-btn').textContent = setup.who === 'online' ? 'Open a room' : 'Step up'
+    byId('name-row').hidden = setup.who === 'local' || setup.who === 'teams' || tournament
+    byId('team-play-note').textContent = TEAM_PLAY_NOTES[setup.teamPlay]
+    if (setup.who === 'teams') teamSetup.render(setup.teamCount, setup.teamSize)
+    if (tournament) tourSetup.render()
+    byId('start-btn').textContent = setup.who === 'online' ? 'Open a room' : tournament ? 'Make the draw' : 'Step up'
     const names = byId('names')
     const count = Number((form.elements.namedItem('localCount') as HTMLSelectElement).value)
     while (names.children.length < count) {

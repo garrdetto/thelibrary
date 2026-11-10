@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { HttpError, clientIp, json, readJson, requireSameOrigin } from '../http'
 import {
-  ADMIN_USERNAME, clearCounter, countDaily, currentUser, describeWait, endSession, hashPin, lockedFor, overDailyLimit,
+  ADMIN_LEVEL, ADMIN_USERNAME, OWNER_LEVEL, isOwnerRow, clearCounter, countDaily, currentUser, describeWait, endSession, hashPin, lockedFor, overDailyLimit,
   randomHex, recordFailure, requireUser, safeEqual, sha256, startSession, studioPages, toSessionUser,
 } from '../auth'
 import type { AccountSettings, UserRow } from '../auth'
@@ -46,18 +46,19 @@ async function signIn(request: Request, env: Env, input: { username: string; pas
     return json({ error: 'Invalid password.' }, 401)
   }
 
-  if (input.username === ADMIN_USERNAME) {
+  if (existing ? isOwnerRow(existing) : input.username === ADMIN_USERNAME) {
     if (!env.ADMIN_PASSWORD) return json({ error: 'The administrator account is not set up yet.' }, 503)
     if (!safeEqual(input.password, env.ADMIN_PASSWORD)) return fail()
-    let id = existing?.id
+    const owner = existing ?? await env.DB.prepare('SELECT * FROM users WHERE is_admin = ? LIMIT 1').bind(OWNER_LEVEL).first<UserRow>()
+    let id = owner?.id
     if (!id) {
       id = crypto.randomUUID()
-      await env.DB.prepare('INSERT INTO users (id, username, is_admin, created_at) VALUES (?, ?, 1, ?)').bind(id, ADMIN_USERNAME, Date.now()).run()
-    } else if (existing?.is_admin !== 1) {
-      await env.DB.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').bind(id).run()
+      await env.DB.prepare('INSERT INTO users (id, username, is_admin, created_at) VALUES (?, ?, ?, ?)').bind(id, ADMIN_USERNAME, OWNER_LEVEL, Date.now()).run()
+    } else if (owner?.is_admin !== OWNER_LEVEL) {
+      await env.DB.prepare('UPDATE users SET is_admin = ? WHERE id = ?').bind(OWNER_LEVEL, id).run()
     }
     await clearCounter(env, account)
-    return json({ username: ADMIN_USERNAME }, 200, { 'Set-Cookie': await startSession(request, env, id) })
+    return json({ username: owner?.username ?? ADMIN_USERNAME }, 200, { 'Set-Cookie': await startSession(request, env, id) })
   }
 
   if (input.password.length < 3) return json({ error: 'Your password must be at least 3 characters.' }, 400)
@@ -112,7 +113,7 @@ export async function poolAccount(request: Request, env: Env) {
 
 export async function workspaceAccess(request: Request, env: Env) {
   const user = await currentUser(request, env)
-  return json({ username: user?.username ?? null, isAdmin: user?.isAdmin ?? false, pages: user?.pages ?? [], settings: user?.settings ?? {} })
+  return json({ username: user?.username ?? null, isAdmin: user?.isAdmin ?? false, isOwner: user?.isOwner ?? false, pages: user?.pages ?? [], settings: user?.settings ?? {} })
 }
 
 const settingsInput = z.object({ theme: z.string().max(40).optional(), lobbySound: z.boolean().optional() }).strict()
@@ -130,6 +131,7 @@ export async function accountSettings(request: Request, env: Env) {
 
 const adminInput = z.discriminatedUnion('action', [
   z.object({ action: z.literal('update'), id: z.string().uuid(), username: usernameField, pages: z.array(z.enum(studioPages)).max(3) }).strict(),
+  z.object({ action: z.literal('set-admin'), id: z.string().uuid(), admin: z.boolean() }).strict(),
   z.object({ action: z.literal('reset-password'), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal('delete'), id: z.string().uuid() }).strict(),
 ])
@@ -150,8 +152,8 @@ export async function workspaceAdmin(request: Request, env: Env) {
     const rows = await env.DB.prepare('SELECT * FROM users ORDER BY username').all<UserRow>()
     return json({ users: rows.results.map(row => {
       const user = toSessionUser(row)
-      return { id: user.id, username: user.username, pages: user.pages, isAdmin: user.isAdmin, needsPassword: !user.isAdmin && !row.pin_hash, createdAt: row.created_at }
-    }) })
+      return { id: user.id, username: user.username, pages: user.pages, isAdmin: user.isAdmin, isOwner: user.isOwner, needsPassword: !user.isOwner && !row.pin_hash, createdAt: row.created_at }
+    }), viewerIsOwner: actor.isOwner })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   requireSameOrigin(request)
@@ -160,13 +162,26 @@ export async function workspaceAdmin(request: Request, env: Env) {
   const input = parsed.data
   const target = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(input.id).first<UserRow>()
   if (!target) return json({ error: 'Account not found.' }, 404)
-  if (target.username === ADMIN_USERNAME) return json({ error: 'The administrator account cannot be changed here.' }, 400)
+  const targetIsOwner = isOwnerRow(target)
+  const targetIsAdmin = targetIsOwner || target.is_admin === ADMIN_LEVEL
+  if (targetIsOwner && !actor.isOwner) return json({ error: 'Only the owner can change the owner account.' }, 403)
+  if (targetIsOwner && input.action !== 'update') return json({ error: 'The owner account cannot be reset, demoted or deleted.' }, 400)
+  if (targetIsAdmin && !actor.isOwner) return json({ error: 'Only the owner can change another administrator.' }, 403)
 
   if (input.action === 'update') {
-    if (input.username === ADMIN_USERNAME || reservedNames.has(input.username)) return json({ error: 'That username is reserved.' }, 400)
+    if (input.username === ADMIN_USERNAME && !targetIsOwner || reservedNames.has(input.username)) return json({ error: 'That username is reserved.' }, 400)
     const clash = await env.DB.prepare('SELECT id FROM users WHERE username = ? AND id <> ?').bind(input.username, target.id).first<{ id: string }>()
     if (clash) return json({ error: 'That username is already taken.' }, 409)
+    if (targetIsOwner) {
+      await env.DB.prepare('UPDATE users SET username = ?, is_admin = ? WHERE id = ?').bind(input.username, OWNER_LEVEL, target.id).run()
+      return json({ ok: true })
+    }
     await env.DB.prepare('UPDATE users SET username = ?, pages = ? WHERE id = ?').bind(input.username, JSON.stringify(input.pages), target.id).run()
+    return json({ ok: true })
+  }
+  if (input.action === 'set-admin') {
+    if (!actor.isOwner) return json({ error: 'Only the owner can add or remove administrators.' }, 403)
+    await env.DB.prepare('UPDATE users SET is_admin = ? WHERE id = ?').bind(input.admin ? ADMIN_LEVEL : 0, target.id).run()
     return json({ ok: true })
   }
   if (input.action === 'reset-password') {

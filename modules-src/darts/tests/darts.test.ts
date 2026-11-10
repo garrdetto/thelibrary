@@ -152,22 +152,34 @@ test('meter: anywhere in the green lands within seven holes of the aim at every 
 test('meter: the miss grows with how far from the middle you let go', () => {
   assert.equal(meterReach(IDEAL_SPEED, 'normal'), 0)
   const at = (d: number) => meterReach(IDEAL_SPEED * (1 + d * METER.perfect), 'normal')
-  assert.ok(at(0.3) < at(0.6) && at(0.6) < at(1) && at(1) < at(2) && at(2) < at(3))
-  assert.ok(Math.abs(at(1) - METER.greenHoles * HOLE) < 1e-9, 'the edge of the green reaches exactly seven holes')
-  assert.ok(Math.abs(at(1) - meterReach(IDEAL_SPEED * (1 - METER.perfect), 'normal')) < 1e-12, 'early and late releases miss alike')
+  const line = METER.exact
+  assert.ok(at(line + 0.05) > 0 && at(line + 0.05) < at(line + 0.2) && at(line + 0.2) < at(2) && at(2) < at(3))
+  assert.ok(at(2) <= METER.yellowHoles * HOLE)
+  assert.ok(Math.abs(at(2) - meterReach(IDEAL_SPEED * (1 - 2 * METER.perfect), 'normal')) < 1e-12, 'early and late releases miss alike')
   assert.ok(meterReach(IDEAL_SPEED * 1.015, 'easy') < meterReach(IDEAL_SPEED * 1.015, 'normal'))
   assert.ok(meterReach(IDEAL_SPEED * 1.03, 'normal') < meterReach(IDEAL_SPEED * 1.03, 'hard'))
   const avg = (list: number[]) => list.reduce((a, b) => a + b, 0) / list.length
-  const near = avg(missHoles(0.4, 'normal', 300, 21))
-  const edge = avg(missHoles(1, 'normal', 300, 22))
-  const yellow = avg(missHoles(2, 'normal', 300, 23))
+  const near = avg(missHoles(line + 0.1, 'normal', 300, 21))
+  const edge = avg(missHoles(2, 'normal', 300, 22))
+  const yellow = avg(missHoles(8, 'normal', 300, 23))
   assert.ok(near < edge && edge < yellow, `${near} ${edge} ${yellow}`)
-  assert.ok(edge >= 3.5 && edge <= 7.05, `edge of the green ${edge}`)
+  assert.ok(edge >= 1.5 && edge <= 5, `two green half-widths out ${edge}`)
 })
 
-test('meter: zones run perfect, green, yellow, then red', () => {
+test('meter: outside the white lines a dart is less likely to land dead on, but never thrown far off', () => {
+  const line = METER.exact
+  const share = (list: number[]) => list.filter((m) => m < 0.05).length / list.length
+  const near = missHoles(line + 0.1, 'normal', 400, 51)
+  const far = missHoles(10, 'normal', 400, 52)
+  assert.ok(share(near) > 0.4 && share(near) < 0.8, `just past the lines ${share(near)}`)
+  assert.ok(share(far) < share(near) && share(far) > 0, `deep in the yellow ${share(far)}`)
+  assert.ok(Math.max(...far) <= METER.yellowHoles * 1.25 + 0.1, `worst ${Math.max(...far)}`)
+})
+
+test('meter: zones run perfect, then yellow, then red, with the white lines just inside the solid green', () => {
   assert.equal(meterZone(IDEAL_SPEED), 'perfect')
-  assert.equal(meterZone(IDEAL_SPEED * (1 + METER.perfect * 0.6)), 'green')
+  assert.equal(meterZone(IDEAL_SPEED * (1 + METER.perfect * 0.6)), 'perfect')
+  assert.equal(meterZone(IDEAL_SPEED * (1 - METER.perfect * METER.exact * 0.98)), 'perfect')
   assert.equal(meterZone(IDEAL_SPEED * (1 - METER.perfect * 1.5)), 'yellow')
   assert.equal(meterZone(IDEAL_SPEED * (1 - METER.band - 0.01)), 'low')
   assert.equal(meterZone(IDEAL_SPEED * (1 + METER.band + 0.01)), 'high')

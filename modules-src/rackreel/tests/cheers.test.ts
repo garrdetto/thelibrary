@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { CHEERS, cheerPose, cheerWeight, chooseCheer } from '../systems/Cheers'
+import { BLURTS, CHEERS, blurtAt, cheerPose, cheerWeight, chooseCheer } from '../systems/Cheers'
 import type { CheerId } from '../systems/Cheers'
 
 test('the right cheer for every moment', () => {
@@ -14,10 +14,19 @@ test('the right cheer for every moment', () => {
   assert.equal(chooseCheer({ kind: 'tubbed', lengthIn: 19, record: true, streak: 1 }), 'meltdown')
   assert.equal(chooseCheer({ kind: 'tubbed', lengthIn: 19, record: false, streak: 3 }), 'hype')
   assert.equal(chooseCheer({ kind: 'tubbed', lengthIn: 26, record: false, streak: 3 }), 'crazy', 'a big fish beats the streak')
+  assert.equal(chooseCheer({ kind: 'tubbed', lengthIn: 15, record: false, streak: 3, total: 5 }), 'stacking', 'five in the tub: stacking \'em up')
+  assert.equal(chooseCheer({ kind: 'tubbed', lengthIn: 25, record: false, streak: 1, total: 5 }), 'crazy', 'a tank still beats the stack')
+  assert.equal(CHEERS.crazy.line.startsWith('Absolute tank.'), true)
+  for (const { line } of Object.values(CHEERS)) assert.ok(!/\bOpe\b/.test(line), 'no "Ope"')
+  for (const line of BLURTS) assert.ok(!/\bOpe\b/.test(line), 'no "Ope"')
+  assert.ok(BLURTS.includes('Put the ole sneaky on \'em.'))
+  const seen = new Set<string>()
+  for (let n = 0; n < BLURTS.length; n++) seen.add(blurtAt(n))
+  assert.equal(seen.size, BLURTS.length, 'every blurt comes up once before any repeats')
 })
 
 test('cheers last as long as the script says and blend in and out', () => {
-  const lengths: Record<CheerId, number> = { stoned: 1.2, tubbed: 1, crazy: 3.5, meltdown: 5, hype: 2, miss: 1, tearOff: 1.2 }
+  const lengths: Record<CheerId, number> = { stoned: 1.2, tubbed: 1, crazy: 3.5, meltdown: 5, hype: 2, stacking: 2, miss: 1, tearOff: 1.2, sendIt: 2.6, beached: 3.4 }
   for (const [id, d] of Object.entries(lengths) as [CheerId, number][]) {
     assert.equal(CHEERS[id].duration, d)
     assert.equal(cheerWeight(id, 0), 0)

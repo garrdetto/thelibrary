@@ -1268,5 +1268,15 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "character"
+ },
+ "rackreel/bow-sight.glb": {
+  "hash": "5175bad575aedb0fa45b401bc38b3fbe11f43ab7",
+  "before": 5458812,
+  "after": 853528,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
  }
 }

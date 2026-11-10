@@ -710,6 +710,8 @@ body{background:var(--paper);color:var(--tone-0)}
 .lap-board-note{padding:6px 0}
 .lap-board-books{margin-bottom:0}
 .lap-board-scroll{overflow-x:auto}
+.darts-board-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px 28px}
+.darts-board-sub{margin:10px 0 4px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--lib-soft);font-weight:700}
 .lap-board table{width:100%;border-collapse:collapse;font-size:13.5px;font-variant-numeric:tabular-nums}
 .lap-board th,.lap-board td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--lib-line)}
 .lap-board thead th{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--lib-muted);font-weight:700}

@@ -56,6 +56,13 @@ export interface EngineContext {
   buildSelectionOctree(): void
   groundRay(ground: Mesh, x: number, z: number): { y: number; normal: Vector3 } | null
   setAds(amount: number, zoom?: number): void
+  /**
+   * Pixels of mouse travel per radian of turn (higher is slower). Kept here because the camera's own `angularSensibility` lives on Babylon's
+   * mouse input, which this module replaces, and reads 0 without it.
+   */
+  lookSensibility: number
+  /** Mouse-look multipliers from the pause menu: `look` normally, `aim` through the scope or a drawn bow. */
+  sensitivity: { look: number; aim: number; invertX: boolean; invertY: boolean }
   /** Re-aims the key light (sun or moon) and the shadow frame; `direction` points from the light toward the ground. */
   setSunDirection(direction: Vector3): void
 }
@@ -85,7 +92,6 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   camera.maxZ = 2600
   camera.fov = 0.9
   camera.inertia = 0.45
-  camera.angularSensibility = 2200
   camera.speed = 0.32
   camera.keysUp = [87]
   camera.keysDown = [83]
@@ -274,12 +280,32 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       Vector3.CrossToRef(sunDirection, right, up)
       up.normalize()
     },
+    sensitivity: { look: 1, aim: 1, invertX: true, invertY: false },
+    lookSensibility: 2200,
     setAds(amount, zoom = 1) {
+      const { look, aim } = ctx.sensitivity
       camera.fov = 0.9 + (0.21 / zoom - 0.9) * amount
-      camera.angularSensibility = 2200 + amount * 7600 * zoom
+      ctx.lookSensibility = (2200 + amount * 7600 * zoom) / (look + (aim - look) * amount)
     },
   }
   ray.length = 600
+
+  camera.inputs.removeByType('FreeCameraMouseInput')
+  document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement !== canvas) return
+    const { invertX, invertY } = ctx.sensitivity
+    const divisor = Number.isFinite(ctx.lookSensibility) && ctx.lookSensibility > 1 ? ctx.lookSensibility : 2200
+    const dx = Number.isFinite(e.movementX) ? e.movementX : 0
+    const dy = Number.isFinite(e.movementY) ? e.movementY : 0
+    camera.cameraRotation.y += (dx * (invertX ? -1 : 1)) / divisor
+    camera.cameraRotation.x += (dy * (invertY ? -1 : 1)) / divisor
+  })
+  scene.onBeforeRenderObservable.add(() => {
+    const r = camera.rotation
+    if (!Number.isFinite(r.x) || !Number.isFinite(r.y) || !Number.isFinite(r.z)) r.set(0.18, Number.isFinite(r.y) ? r.y : 0, 0)
+    const c = camera.cameraRotation
+    if (!Number.isFinite(c.x) || !Number.isFinite(c.y)) c.set(0, 0)
+  })
 
   addEventListener('resize', () => engine.resize())
   return ctx

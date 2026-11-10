@@ -4,6 +4,7 @@ import type { Material } from '@babylonjs/core/Materials/material'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { findLaunch, planHomeStunt } from '../systems/BowRoutes'
 import { Ray } from '@babylonjs/core/Culling/ray'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
@@ -48,8 +49,9 @@ import type { PanelTab } from '../ui/Panels'
 import { Cabin } from '../world/Cabin'
 import { Minimap } from '../ui/Minimap'
 import type { MapMarker } from '../ui/Minimap'
-import { Online } from './Online'
+import { Online, fetchLobbies } from './Online'
 import type { PlayerState } from './Online'
+import { LobbyBrowser, PauseMenu, loadSensitivity, saveSensitivity } from '../ui/PauseMenu'
 import { formatValue as fmtValue } from '../systems/LootTableManager'
 import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
@@ -57,7 +59,7 @@ import { ANCHOR_MAX_SPEED, BOARD_MAX_SPEED, BOARD_RANGE, CONSOLE_SEAT, DECK_SEAT
 import type { DeckSeat } from './BoatSeats'
 import type { RemoteBoat } from './Online'
 import { Bowfishing } from './Bowfishing'
-import { BOWBOAT } from './BowBoat'
+import { BOWBOAT, deckHeight } from './BowBoat'
 import { Clock, hourFromSearch } from '../systems/TimeOfDay'
 import { Lighting } from '../world/Lighting'
 import { buildHighway } from '../world/Highway'
@@ -78,6 +80,8 @@ const AIM_SPEED = 0.9
 const CAMERA_DISTANCE = 3.3
 const SHOULDER_OFFSET = 0.45
 const DOUBLE_CLICK_MS = 380
+/** Standing on foot in water this deep (off the dock and out of the cabin) means something went wrong: back to the cabin. */
+const DROWNING_DEPTH = 1.2
 const ARROW_YAW_RATE = 2.1
 const ARROW_PITCH_RATE = 1.4
 /** Animals and remote players farther than this from the shadow focus don't cast (their shadows fall outside the map). */
@@ -127,12 +131,17 @@ export class Game {
   private keys = new Set<string>()
   private leftDown = false
   private rightDown = false
+  /** Left button pressed since the last frame while bowfishing: loose the arrow. */
+  private bowShoot = false
   /** Double right-click keeps the scope up without holding the button (for trackpads). */
   private scopeLock = false
   private lastRightAt = 0
   private ads = 0
   private crouch = false
   private playing = false
+  private headingOut = false
+  private pauseMenu!: PauseMenu
+  private lobbies!: LobbyBrowser
   private time = 0
   private mode: PlayerMode = 'foot'
   private readonly foot = new Vector3()
@@ -158,6 +167,9 @@ export class Game {
   private casters: AbstractMesh[] = []
   private readonly casterScratch: AbstractMesh[] = []
   private boat!: Vehicle
+  private boatHome = new Vector3()
+  private boatHomeHeading = 0
+  private spawnHeading = 0
   private anchorLine!: Mesh
   private deckSeat: DeckSeat | null = null
   private swivel = 0
@@ -203,7 +215,7 @@ export class Game {
     this.cabin = new Cabin(this.terrain, landmarks.spawn.add(inland.scale(18)), landmarks.spawnHeading)
     this.stands = findStandSites(this.terrain, landmarks.spawn, [this.cabin.root, landmarks.dock.start, landmarks.utv])
     this.stand = this.stands[0]
-    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5))])
+    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5)), ...this.jumpLane(landmarks.dock)])
     this.foliage.grassHoles.push({ x: this.cabin.root.x, z: this.cabin.root.z, r: 6.4 })
     for (const st of this.stands) {
       const r = st.kind === 'blind' ? 1.3 : 0.45
@@ -218,6 +230,9 @@ export class Game {
     this.vehicles = new VehicleController(this.ctx, this.terrain, this.ground)
     this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), landmarks.utv, landmarks.utvHeading)
     this.boat = this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
+    this.boatHome.copyFrom(landmarks.boat)
+    this.boatHomeHeading = landmarks.boatHeading
+    this.spawnHeading = landmarks.spawnHeading
     this.anchorLine = createAnchorLine(scene, this.boat.root)
     this.dockEnd.copyFrom(landmarks.dock.end)
     this.avatar = new Avatar(instantiate(this.models.get('hunter')!, null, scene, reg))
@@ -271,6 +286,7 @@ export class Game {
           this.wildlife.remote = false
         }
         this.panels?.refresh()
+        this.pauseMenu?.refresh()
       },
       seat: (from) => {
         if (this.mode !== 'vehicle' || this.vehicles.active !== this.boat || this.deckSeat === null) return
@@ -279,10 +295,11 @@ export class Game {
       },
       localBoat: () => (this.vehicles.active === this.boat ? this.boat.root : null),
       bowBoat: () => this.bowfish.boatNode,
-      bowSpot: (slot) => BOWBOAT.spots[slot] ?? BOWBOAT.spots[0],
+      bowSpot: (slot, deck) => (deck ? new Vector3(deck[0], deckHeight(deck[1]), deck[1]) : BOWBOAT.spots[slot] ?? BOWBOAT.spots[0]),
     })
     this.online.id = this.sessionKey
     this.online.carry(this.avatar.root)
+    this.ctx.sensitivity = loadSensitivity()
     const cam = this.ctx.camera
     cam.keysUp = []
     cam.keysDown = []
@@ -306,7 +323,7 @@ export class Game {
       code: () => (this.online.active ? this.online.room.code : ''),
       members: () => this.online.members.map((m) => m.name),
       host: () => this.online.host(),
-      join: (code) => this.online.join(code),
+      join: (code) => this.online.joinAndWait(code),
       leave: () => this.online.leave(),
     }
     void this.progress.load().then(() => {
@@ -328,6 +345,7 @@ export class Game {
     this.hud.setLoading(1, 'Ready')
     document.getElementById('loading')!.hidden = true
     document.getElementById('start')!.hidden = false
+    if (!this.headingOut) this.lobbies.start()
     ;(document.getElementById('start-btn') as HTMLButtonElement).focus()
   }
 
@@ -502,12 +520,16 @@ export class Game {
 
   private bindInput(): void {
     const start = async () => {
+      if (this.playing || this.headingOut) return
+      this.headingOut = true
+      this.lobbies.stop()
       document.getElementById('start')!.hidden = true
       await this.progress.ready
       if (!this.progress.profile.verified) {
         await this.makeCharacter()
         if (this.progress.signedIn) this.hud.toast('Character saved to your account. Welcome to the northwoods.', 'big')
       }
+      this.respawn('')
       this.playing = true
       this.hud.showPlaying(true)
       this.audio.unlock()
@@ -517,6 +539,59 @@ export class Game {
     }
     document.getElementById('start-btn')!.addEventListener('click', () => void start())
     document.getElementById('book-btn')!.addEventListener('click', () => this.showRecords(() => undefined))
+    const startCard = document.querySelector('#start .rr-card') as HTMLElement
+    this.lobbies = new LobbyBrowser(startCard, startCard.querySelector('.rr-actions'), {
+      list: () => fetchLobbies(),
+      join: async (code) => {
+        await this.online.joinAndWait(code)
+        this.hud.toast(`Joined party ${this.online.room.code}. Your friends are marked on the map.`, 'big')
+        await start()
+      },
+    })
+    this.pauseMenu = new PauseMenu({
+      resume: () => this.resume(),
+      inventory: () => {
+        this.pauseMenu.hide()
+        this.panels.openAt('gear', this.mode === 'foot' ? this.cabin.spotNear(this.foot) : null, () => this.pause())
+      },
+      records: () => {
+        this.pauseMenu.hide()
+        this.showRecords(() => this.pause())
+      },
+      respawn: () => {
+        this.respawn('Back at the cabin.')
+        this.resume()
+      },
+      sensitivity: () => ({ ...this.ctx.sensitivity }),
+      setSensitivity: (s) => {
+        this.ctx.sensitivity = s
+        saveSensitivity(s)
+      },
+      party: {
+        status: () => this.online.describe(),
+        code: () => (this.online.active ? this.online.room.code : ''),
+        isHost: () => this.online.isHost,
+        isGuest: () => this.online.isGuest,
+        members: () => this.online.members.map((m) => m.name),
+        lobbyOpen: () => this.online.lobbyOpen,
+        host: () => this.online.host(),
+        setLobby: (open) => this.online.setLobbyOpen(open),
+        join: (code) => this.online.joinAndWait(code),
+        leave: () => this.online.leave(),
+      },
+    })
+    addEventListener('keydown', (e) => {
+      if (e.code !== 'Escape' || !this.playing) return
+      if (this.pauseMenu.open) {
+        e.preventDefault()
+        this.resume()
+        return
+      }
+      if (this.hud.modalOpen) return
+      e.preventDefault()
+      if (document.pointerLockElement === this.canvas) document.exitPointerLock()
+      else this.pause()
+    })
     this.canvas.addEventListener('click', () => {
       if (this.playing && !this.hud.modalOpen && document.pointerLockElement !== this.canvas) this.lock()
     })
@@ -524,28 +599,32 @@ export class Game {
     document.addEventListener('pointerlockchange', () => {
       if (!document.pointerLockElement && this.playing && !this.hud.modalOpen) this.pause()
     })
-    document.addEventListener('pointerdown', (e) => {
+    document.addEventListener('mousedown', (e) => {
       if (!this.playing || this.hud.modalOpen || document.pointerLockElement !== this.canvas) return
       if (e.button === 0) {
         this.leftDown = true
-        if (this.mode === 'bowfish') return
+        if (this.mode === 'bowfish') {
+          this.bowShoot = true
+          return
+        }
         this.primaryDown()
       } else if (e.button === 2) {
         this.rightDown = true
         const now = performance.now()
+        const bow = this.mode === 'bowfish'
         if (this.scopeLock) {
           this.scopeLock = false
           this.lastRightAt = 0
-        } else if (this.tool === 'rifle' && now - this.lastRightAt < DOUBLE_CLICK_MS) {
+        } else if ((this.tool === 'rifle' || bow) && now - this.lastRightAt < DOUBLE_CLICK_MS) {
           this.scopeLock = true
           this.lastRightAt = 0
-          this.hud.toast('Scope locked on. Left-click to fire; right-click again to lower it.')
+          this.hud.toast(bow ? 'Bow locked up. Left-click to shoot; right-click again to lower it.' : 'Scope locked on. Left-click to fire; right-click again to lower it.')
         } else {
           this.lastRightAt = now
         }
       }
     })
-    document.addEventListener('pointerup', (e) => {
+    document.addEventListener('mouseup', (e) => {
       if (e.button === 0) {
         this.leftDown = false
         if (this.playing && this.mode !== 'bowfish') this.primaryUp()
@@ -556,7 +635,7 @@ export class Game {
     addEventListener('keydown', (e) => {
       if (!this.playing || this.hud.modalOpen) return
       this.keys.add(e.code)
-      if (ARROW_KEYS.has(e.code) || e.code === 'Space') e.preventDefault()
+      if (ARROW_KEYS.has(e.code) || e.code === 'Space' || (e.code === 'Tab' && this.mode === 'bowfish')) e.preventDefault()
       if (e.repeat) return
       if (this.mode === 'bowfish' && this.bowfish.key(e.code)) return
       if (this.mode === 'bowfish' && (e.code === 'KeyR' || e.code === 'KeyI' || e.code === 'KeyF')) return
@@ -597,6 +676,73 @@ export class Game {
     this.leftDown = false
     this.rightDown = false
     this.hud.setPrompt('Paused — click the view to carry on')
+    if (this.playing && !this.hud.modalOpen) this.pauseMenu.show()
+  }
+
+  private resume(): void {
+    this.pauseMenu.hide()
+    this.lock()
+  }
+
+  /** Puts the player on foot at the cabin's front door, out of any boat, vehicle or stand. */
+  private respawn(message: string): void {
+    if (this.fishing.busy) this.fishing.cancel()
+    this.scopeLock = false
+    this.rightDown = false
+    this.ads = 0
+    this.fishCam = 0
+    this.ctx.setAds(0, this.progress.effects.scopeZoom)
+    if (this.mode === 'bowfish') this.bowfish.abandon()
+    if (this.mode === 'crew') this.online.announce('headed back to the cabin.')
+    if (this.mode === 'vehicle' || this.vehicles.active) {
+      const v = this.vehicles.active
+      this.vehicles.release()
+      if (v === this.boat) this.vehicles.moor(v, this.boatHome, this.boatHomeHeading)
+    }
+    if (!this.boat.occupied) this.boat.root.setEnabled(true)
+    const root = this.avatar.root
+    root.parent = null
+    root.rotationQuaternion = null
+    root.rotation.set(0, 0, 0)
+    root.scaling.setAll(1)
+    root.setEnabled(true)
+    this.avatar.setVisible(true)
+    this.mode = 'foot'
+    this.deckSeat = null
+    this.crewOf = null
+    this.crewBoat = null
+    this.swivel = 0
+    this.crouch = false
+    this.anchorLine.setEnabled(false)
+    this.velocity.setAll(0)
+    this.foot.copyFrom(this.cabin.frontDoor)
+    this.foot.y = Math.max(this.terrain.heightAt(this.foot.x, this.foot.z), this.cabin.floorAt(this.foot) ?? -10)
+    this.facing = this.spawnHeading
+    root.position.copyFrom(this.foot)
+    root.rotation.set(0, this.facing, 0)
+    this.ctx.camera.rotation.set(0.18, this.spawnHeading, 0)
+    this.ctx.camera.fov = 0.9
+    this.placeAvatar(0)
+    this.placeCamera()
+    if (message) this.hud.toast(message, 'big')
+  }
+
+  /** Safety net: on foot in deep water (off the dock and outside the cabin) goes back to the cabin. */
+  private checkDrowning(): void {
+    if (this.mode !== 'foot' || !this.playing) return
+    const p = this.foot
+    if (this.onDock(p) || this.cabin.floorAt(p) !== null) return
+    if (this.terrain.depthAt(p.x, p.z) > Math.max(DROWNING_DEPTH, this.progress.effects.wadeDepth + 0.3)) this.respawn('You ended up in deep water, so you are back at the cabin.')
+  }
+
+  /** Keeps trees off Wild Man's line over the island so the boat flies clear on the way home. */
+  private jumpLane(dock: { start: Vector3; end: Vector3 }): Vector3[] {
+    const launch = findLaunch(this.terrain, { x: dock.start.x, z: dock.start.z }, { x: dock.end.x, z: dock.end.z })
+    const stunt = planHomeStunt(this.terrain, launch)
+    if (!stunt) return []
+    const out: Vector3[] = []
+    for (let s = stunt.takeoff; s <= stunt.touchdown; s += 6) out.push(new Vector3(stunt.entry.x + stunt.dir.x * s, 0, stunt.entry.z + stunt.dir.z * s))
+    return out
   }
 
   private openBook(): void {
@@ -998,8 +1144,8 @@ export class Game {
     const stance = this.mode === 'vehicle' || this.mode === 'stand' || this.mode === 'crew' ? 'sit' : this.mode === 'climb' ? (this.climbT < this.layout.climbSplit ? 'climb' : 'sit') : 'stand'
     if (this.mode === 'bowfish') {
       const lo = this.progress.profile.loadout
-      const swivel = this.ctx.camera.rotation.y - this.bowfish.boatHeading
-      return { id: this.online.id, n: this.online.name, p: [this.foot.x, this.foot.y, this.foot.z], f: Math.atan2(Math.sin(swivel), Math.cos(swivel)), st: 'stand', h: this.bowfish.hands, sp: 0, c: false, cl: 0, ap: this.ctx.camera.rotation.x, o: [lo.jacket, lo.vest, lo.cap, lo.pants, lo.pack], b: this.bowfish.netState() }
+      const swivel = this.avatar.root.rotation.y
+      return { id: this.online.id, n: this.online.name, p: [this.foot.x, this.foot.y, this.foot.z], f: Math.atan2(Math.sin(swivel), Math.cos(swivel)), st: 'stand', h: this.bowfish.hands, sp: Math.round(this.bowfish.walkSpeed * 10) / 10, c: false, cl: 0, ap: this.ctx.camera.rotation.x, o: [lo.jacket, lo.vest, lo.cap, lo.pants, lo.pack], b: this.bowfish.netState() }
     }
     const at = this.mode === 'vehicle' || this.mode === 'crew' ? this.foot : r.position
     const state: PlayerState = {
@@ -1237,9 +1383,12 @@ export class Game {
     const active = !this.hud.modalOpen
     const v = this.vehicles.active
     const reeling = this.fishing.fighting
-    const lookScale = this.ads > 0.5 ? 0.3 : 1
-    cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
-    cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
+    const sens = this.ctx.sensitivity
+    const aimingLook = this.ads > 0.5 || (this.mode === 'bowfish' && this.aimHeld)
+    const lookScale = this.ads > 0.5 ? 0.3 * sens.aim : aimingLook ? sens.aim : sens.look
+    if (this.mode === 'bowfish') this.ctx.lookSensibility = 2200 / (aimingLook ? sens.aim : sens.look)
+    cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * (sens.invertX ? -1 : 1) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
+    cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * (sens.invertY ? -1 : 1) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
     const input = {
       throttle: active && !reeling && v ? this.key('KeyW') - this.key('KeyS') : 0,
       steer: active && !reeling && v ? this.key('KeyD') - this.key('KeyA') : 0,
@@ -1248,7 +1397,16 @@ export class Game {
     this.vehicles.update(dt, input)
     const bowfishing = this.mode === 'bowfish'
     this.bowfish.setParty(this.online.bowTrip(), this.online.bowSlots(), this.online.active && this.online.members.length > 0)
-    this.bowfish.update(dt, { draw: this.leftDown && locked, reel: (this.keys.has('KeyR') || this.rightDown) && active, locked })
+    const walkKeys = bowfishing && active
+    this.bowfish.update(dt, {
+      aim: bowfishing && this.aimHeld,
+      shoot: this.bowShoot,
+      reel: (this.keys.has('KeyR') || this.leftDown) && active,
+      locked,
+      forward: walkKeys ? this.key('KeyW') - this.key('KeyS') : 0,
+      right: walkKeys ? this.key('KeyD') - this.key('KeyA') : 0,
+    })
+    this.bowShoot = false
     if (bowfishing) this.bowfish.feet(this.foot)
     else if (v && !v.anchored) this.audio.engine(true, Math.abs(v.speed) / 16, v.kind === 'BOAT')
     else this.audio.engine(false, 0, false)
@@ -1256,15 +1414,17 @@ export class Game {
     this.hideOverlappedBoat()
     if (this.mode === 'vehicle' && v && this.deckSeat !== null) this.swivel = swivelToward(this.swivel, cam.rotation.y, v.heading, dt)
     const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
-    const canAim = (this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle'
+    const canAim = ((this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle') || bowfishing
     if (!canAim) this.scopeLock = false
-    const wantAds = canAim && this.aimHeld && locked
+    const wantAds = canAim && !bowfishing && this.aimHeld && locked
     this.ads += ((wantAds ? 1 : 0) - this.ads) * Math.min(1, dt * 10)
     if (!bowfishing) this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0, this.progress.effects.scopeZoom)
     this.gruntCooldown = Math.max(0, this.gruntCooldown - dt)
     void this.progress.update(dt, active && !this.panels.open)
-    if (this.mode === 'foot') this.walk(dt, active, sprint)
-    else if (this.mode === 'climb') this.climb(dt)
+    if (this.mode === 'foot') {
+      this.walk(dt, active, sprint)
+      this.checkDrowning()
+    } else if (this.mode === 'climb') this.climb(dt)
     else if (this.mode === 'vehicle' && v) this.moveSpeed = Math.abs(v.speed)
     else if (this.mode !== 'crew') this.moveSpeed = 0
     if (bowfishing && this.fishing.busy) this.fishing.cancel()

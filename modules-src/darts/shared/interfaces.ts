@@ -54,7 +54,25 @@ export interface Player {
   /** True for the computer opponent; its `cpuLevel` sets its spread. */
   cpu: boolean
   cpuLevel: CpuLevel
+  /** Team play: the team index (0–3) this player or side belongs to; teammates share a flight colour and win legs together. */
+  team?: number
+  teamName?: string
+  /** Shared-score teams: the people taking turns on this side's score; `cpu`, `cpuLevel` and `thrower` follow whoever is up. */
+  members?: TeamMember[]
+  /** Shared-score teams: turns this side has finished, which picks the next member up. */
+  turnsTaken?: number
+  thrower?: string
 }
+
+/** One person on a shared-score team. */
+export interface TeamMember {
+  name: string
+  cpu: boolean
+  cpuLevel: CpuLevel
+}
+
+/** How a team match is scored: `stacked` (teammates take turns on one shared score) or `regular` (each plays their own score; legs are won for the team). */
+export type TeamPlay = 'stacked' | 'regular'
 
 export type CpuLevel = 'pub' | 'league' | 'county' | 'pro'
 
@@ -90,6 +108,8 @@ export interface MatchConfig {
   legsPerSet: number
   setsToWin: number
   board?: BoardKind
+  /** Present for team matches (local only); team legs never go on the record book. */
+  teamPlay?: TeamPlay
 }
 
 export interface LegScore {

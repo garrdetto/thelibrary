@@ -4,6 +4,7 @@ import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { ModelRig } from '../core/ModelLibrary'
 import { HUNTER_ARMS, solveArm } from '../systems/ArmReach'
 import type { Vec3 } from '../systems/ArmReach'
+import { legPose, walkGait } from '../systems/Gait'
 
 export const HIP_HEIGHT = 0.98
 
@@ -145,11 +146,11 @@ export class Avatar {
     const c = this.crouchBlend
     const run = Math.min(1, pose.speed / 5)
     const moving = pose.speed > 0.15
-    const stride = lerp(1.35, 2.1, run) * (1 - c * 0.35)
-    if (pose.stance === 'stand') this.phase += (pose.speed / stride) * Math.PI * 2 * dt
+    const gait = walkGait(pose.speed, c)
+    if (pose.stance === 'stand') this.phase += (pose.speed / gait.stride) * Math.PI * 2 * dt
     const p = this.phase
-    const amp = moving ? Math.min(1, pose.speed / 1.5) : 0
-    const swing = lerp(0.42, 0.7, run) * amp
+    const amp = gait.amp
+    const swing = lerp(0.42, 0.75, run) * amp
     const breathe = Math.sin(this.clock * 1.6) * 0.012
     const sideOn = pose.stance === 'stand' ? (pose.hands === 'aim' ? SIDE_ON.aim : pose.hands === 'draw' ? SIDE_ON.draw : null) : null
     let hipY = this.hipBase
@@ -158,16 +159,23 @@ export class Avatar {
     let hipYaw = 0
     let headX = 0
     if (pose.stance === 'stand') {
-      const bob = moving ? Math.abs(Math.cos(p)) * lerp(0.025, 0.06, run) : 0
-      hipY = this.hipBase - c * 0.36 + bob - (moving ? lerp(0.01, 0.04, run) : 0)
-      torsoX += lerp(0.04, 0.2, run) * amp + c * 0.35
-      torsoY = Math.sin(p) * 0.08 * amp
+      const legK = moving ? Math.min(1, dt * 30) : k
+      const setLeg = (node: TransformNode, x: number) => {
+        const r = this.fk.get(node)!
+        r.x += (x - r.x) * legK
+        r.y += -r.y * legK
+        r.z += -r.z * legK
+      }
+      const sinP = Math.sin(p)
+      const bob = moving ? Math.abs(Math.cos(p)) * lerp(0.0, 0.05, run) * amp : 0
+      hipY = this.hipBase - c * 0.36 + bob - gait.drop * sinP * sinP - gait.sink
+      torsoX += lerp(0.05, 0.22, run) * amp + c * 0.35
+      torsoY = sinP * lerp(0.12, 0.08, run) * amp
       headX = -torsoX * 0.6
-      for (const [side, sgn] of [['L', 1], ['R', -1]] as const) {
-        const s = Math.sin(p + (sgn > 0 ? 0 : Math.PI))
-        const lift = Math.max(0, Math.sin(p + (sgn > 0 ? 0 : Math.PI) + 1.3))
-        set(j['thigh' + side], -s * swing - c * 1.05, 0, 0)
-        set(j['shin' + side], lift * lerp(0.7, 1.5, run) * amp + 0.05 + c * 1.75)
+      for (const [side, off] of [['L', 0], ['R', Math.PI]] as const) {
+        const legs = legPose(p + off, gait)
+        setLeg(j['thigh' + side], legs.thigh - c * 1.05)
+        setLeg(j['shin' + side], legs.knee + 0.05 + c * 1.75)
       }
       hipYaw = -torsoY * 0.6
       if (sideOn) {

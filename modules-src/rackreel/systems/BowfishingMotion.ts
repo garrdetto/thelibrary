@@ -14,7 +14,9 @@ export interface Vec {
 }
 
 export const CARP = {
-  target: 14,
+  target: 78,
+  /** Water magnifies what's under it by about a third, so carp look (and take an arrow) this much longer than they are. */
+  look: 1.33,
   spawnMin: 9,
   spawnMax: 40,
   despawn: 62,
@@ -42,8 +44,8 @@ export const BOW = {
   line: 26,
   holdSteady: 3.5,
   shakePerSecond: 0.012,
-  reel: 2.9,
-  emptyReel: 3.6,
+  reel: 3.625,
+  emptyReel: 4.5,
   step: 1 / 240,
   deadSpeed: 2,
   renock: 1.2,
@@ -138,7 +140,7 @@ export function segmentGap(p0: Vec, p1: Vec, q0: Vec, q1: Vec): { distance: numb
 
 export function spine(c: Carp): [Vec, Vec] {
   const f = carpForward(c)
-  const h = c.lengthM * 0.5
+  const h = c.lengthM * 0.5 * CARP.look
   return [
     { x: c.x + f.x * h, y: c.y + f.y * h, z: c.z + f.z * h },
     { x: c.x - f.x * h, y: c.y - f.y * h, z: c.z - f.z * h },
@@ -170,7 +172,7 @@ export class CarpSchool<T = unknown> {
     return d >= CARP.minDepth && d <= CARP.maxDepth
   }
 
-  /** Adds a group of 1–4 carp somewhere 9–40 m from the boat in carp water. Returns how many were added. */
+  /** Adds a group of 2–5 carp somewhere 9–40 m from the boat in carp water. Returns how many were added. */
   spawnGroup(boat: BoatPose): number {
     for (let attempt = 0; attempt < 24; attempt++) {
       const a = this.rand() * Math.PI * 2
@@ -178,7 +180,7 @@ export class CarpSchool<T = unknown> {
       const x = boat.x + Math.sin(a) * r
       const z = boat.z + Math.cos(a) * r
       if (!this.inBand(x, z)) continue
-      const count = 1 + Math.floor(this.rand() * 4)
+      const count = 2 + Math.floor(this.rand() * 4)
       const heading = this.rand() * Math.PI * 2
       let added = 0
       for (let i = 0; i < count; i++) {

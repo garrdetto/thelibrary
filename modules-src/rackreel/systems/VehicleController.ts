@@ -138,6 +138,31 @@ export class VehicleController {
     return spot
   }
 
+  /** Gets out wherever the vehicle is (deep water included); used by Respawn. */
+  release(): void {
+    const v = this.active
+    if (v) {
+      v.occupied = false
+      v.speed = 0
+    }
+    this.active = null
+    this.mode = 'NONE'
+  }
+
+  /** Puts a vehicle back at its mooring or parking spot, stopped and unanchored. */
+  moor(v: Vehicle, position: Vector3, heading: number): void {
+    v.position.copyFrom(position)
+    if (v.kind === 'ATV') v.position.y = this.terrain.heightAt(position.x, position.z) + ATV_TUNING.rideHeight
+    v.heading = heading
+    v.speed = 0
+    v.steer = 0
+    v.pitch = 0
+    v.roll = 0
+    v.vy = 0
+    v.anchored = false
+    this.applyTransform(v)
+  }
+
   shoreNear(point: Vector3): Vector3 | null {
     for (let r = 2; r < 12; r += 1) {
       for (let a = 0; a < 16; a++) {

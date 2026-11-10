@@ -140,6 +140,13 @@ async function boot(): Promise<void> {
   app.graph.add('world', marks.mesh)
 
   const chase = createChaseCamera(config.camera)
+  const garageScreen = byId<HTMLElement>('screen-garage')
+  const garageCard = byId<HTMLElement>('garage-form')
+  const garageCardClear = (): number => {
+    const width = window.innerWidth
+    if (garageScreen.hidden || width <= 0) return 0
+    return garageCard.getBoundingClientRect().right / width
+  }
   const banner = byId<HTMLElement>('banner')
   const healthWrap = byId<HTMLElement>('health')
   const healthBar = byId<HTMLElement>('health-bar')
@@ -493,6 +500,7 @@ async function boot(): Promise<void> {
       playerHeading.copy(focus.heading)
       lighting.follow(playerLookAt)
     }
+    if (chase.mode === 'garage') chase.garageClear = garageCardClear()
     chase.update(app.camera, playerLookAt, playerHeading, dt)
     if (shake > 0.001 && !reducedMotion) {
       const amount = shake * shake * 0.18

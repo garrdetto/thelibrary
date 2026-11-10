@@ -14,6 +14,7 @@ import { ModuleHub } from '@/components/ModuleHub'
 import { LapRecordBoard } from '@/components/LapRecordBoard'
 import { FairwayRecordBoard } from '@/components/FairwayRecordBoard'
 import { RackReelRecordBoard } from '@/components/RackReelRecordBoard'
+import { DartsRecordBoard } from '@/components/DartsRecordBoard'
 import { AnglerRecordBoard } from '@/components/AnglerRecordBoard'
 import { ModuleScoreboard } from '@/components/ModuleScoreboard'
 import { ModuleScoreTabs } from '@/components/ModuleScoreTabs'
@@ -476,6 +477,7 @@ function Studio() {
         {activePlay?.id === 'shorttrack' && <LapRecordBoard track="prison-v2" trackName="Prison Speedway (0.29 mi)" modes={shortTrackModes} modeNames={shortTrackModeNames} trackOptions={shortTrackTracks} archive={shortTrackArchive}/>}
         {activePlay?.id === 'fairway' && <FairwayRecordBoard/>}
         {activePlay?.id === 'rackreel' && <RackReelRecordBoard/>}
+        {activePlay?.id === 'darts' && <DartsRecordBoard/>}
         {activePlay?.id === 'angler' && <AnglerRecordBoard/>}
         {activePlay && isScoredModule(activePlay.id) && <ModuleScoreboard key={activePlay.id} module={activePlay.id} username={access.username}/>}
         {activePlay && !isScoredModule(activePlay.id) && hasScoreBoard(activePlay.id) && <ModuleScoreTabs key={activePlay.id} moduleId={activePlay.id} username={access.username}/>}

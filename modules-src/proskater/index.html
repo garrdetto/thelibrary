@@ -1660,8 +1660,10 @@ class SkaterRig {
       const foot = new THREE.Mesh(scope.track(new THREE.BoxGeometry(0.11, 0.07, 0.27)), mats.shoe); foot.castShadow = true; foot.position.set(0, -this.L2 - 0.02, 0); foot.rotation.y = Math.PI / 2 - side * 0.25; knee.add(foot);
       this.legs.push({ hip, knee, foot, side });
     }
-    this.pose = { crouch: 0, armsOut: 0.4, grab: 0, grabType: 0, lean: 0, bail: 0, push: 0, manual: 0, invert: 0 };
-    this.stand = 0.95; this.ankleH = 0.06; this.footSpread = 0.2;
+    this.pose = { crouch: 0, armsOut: 0.2, grab: 0, grabType: 0, lean: 0, bail: 0, push: 0, manual: 0, invert: 0, look: 1, carve: 0 };
+    this.stand = 0.88; this.ankleH = 0.06; this.footSpread = 0.2;
+    this.footAim = { 1: new THREE.Group(), [-1]: new THREE.Group() };
+    this.body.add(this.footAim[1], this.footAim[-1]);
     this.model = null; this.retarget = null; this.wheels = []; this.rank = 'officer';
   }
   #deckTexture(deck) {
@@ -1690,29 +1692,42 @@ class SkaterRig {
   apply(dt, time) {
     const p = this.pose;
     const deckTop = 0.105 + this.boardPivot.position.y;
-    const crouchDrop = 0.36 * p.crouch + 0.12 * p.grab;
+    const crouchDrop = 0.36 * p.crouch + 0.12 * p.grab + 0.1 * p.push;
     const hipY = deckTop + this.stand - crouchDrop;
-    this.hips.position.set(0.04 * p.crouch, hipY, 0);
-    this.spine.rotation.z = -0.35 * p.crouch - 0.25 * p.grab + p.lean * 0.2;
-    this.spine.rotation.x = p.lean * 0.25;
-    this.head.rotation.z = 0.3 * p.crouch;
+    const look = p.look;                                     // +1 rolling regular, −1 fakie
+    this.hips.position.set(0.05 + 0.06 * p.crouch, hipY, 0);
+    this.hips.rotation.y = 0.12 * look + 0.25 * p.push;
+    // Positive z tips the chest (−x) forward over the toes.
+    this.spine.rotation.set(p.lean * 0.25, 0.18 * look + 0.3 * p.push, 0.16 + 0.32 * p.crouch + 0.22 * p.grab + 0.12 * p.push + p.lean * 0.2);
+    this.head.rotation.set(0, 0.75 * look + 0.25 * p.push, -0.14 - 0.26 * p.crouch - 0.1 * p.grab);
+    const ride = Math.sin(time * 5.3) * 0.006 * (1 - p.push);
     for (const leg of this.legs) {
-      let fy = deckTop - hipY + this.ankleH, fx = -0.02;
-      if (p.push > 0 && leg.side < 0) { fy -= 0.12 * p.push; fx += Math.sin(time * 9) * 0.22 * p.push; }
-      this.#solveLeg(leg, 0, fx - 0.04 * p.crouch, fy, leg.side * this.footSpread);
+      let fy = deckTop - hipY + this.ankleH + ride, fx = -0.03, fz = leg.side * this.footSpread;
+      if (p.push > 0 && leg.side < 0) {
+        // Push stroke: the back foot plants beside the board on the toe side and sweeps back.
+        const ph = (time * 1.35) % 1, down = ph < 0.58, k = down ? ph / 0.58 : (ph - 0.58) / 0.42;
+        const sweep = down ? THREE.MathUtils.lerp(0.18, -0.42, k) : THREE.MathUtils.lerp(-0.42, 0.18, k * k * (3 - 2 * k));
+        const groundY = -hipY + this.ankleH + (down ? 0 : Math.sin(Math.PI * k) * 0.14);
+        fy = THREE.MathUtils.lerp(fy, groundY, p.push);
+        fx = THREE.MathUtils.lerp(fx, -0.26, p.push);
+        fz = THREE.MathUtils.lerp(fz, sweep, p.push);
+      }
+      this.#solveLeg(leg, 0, fx - 0.05 * p.crouch, fy, fz);
     }
+    this.footAim[1].rotation.y = 0.85 * p.push;               // front foot turns down the board to push
+    this.footAim[-1].rotation.y = 1.25 * p.push;
     for (const arm of this.arms) {
-      const out = p.armsOut + Math.sin(time * 2.1 + arm.side) * 0.05;
-      arm.shoulder.rotation.x = -arm.side * (0.35 + out * 0.9);
-      arm.shoulder.rotation.z = 0.2;
-      arm.elbow.rotation.z = -0.25 - out * 0.2;
+      const out = p.armsOut + Math.sin(time * 2.1 + arm.side) * 0.04;
+      arm.shoulder.rotation.x = -arm.side * (0.1 + out * 0.8);
+      arm.shoulder.rotation.z = -0.08 - 0.25 * p.push * (arm.side > 0 ? 1 : -1) * Math.sin(time * 1.35 * TAU);
+      arm.elbow.rotation.z = -0.45 - out * 0.25;
       if (p.grab > 0 && arm.side === (p.grabType % 2 ? 1 : -1)) {
         arm.shoulder.rotation.z = 0.2 + 1.1 * p.grab;
         arm.shoulder.rotation.x *= 1 - p.grab;
         arm.elbow.rotation.z = -0.1;
       }
     }
-    this.body.rotation.z = p.bail * 1.3 + p.invert * 2.7;
+    this.body.rotation.z = p.bail * 1.3 + p.invert * 2.7 - p.carve * 0.16;
     this.body.position.y = -p.bail * 0.6 + p.invert * 0.9;
     this.body.rotation.x = p.manual * 0.15;
     if (this.retarget) this.#retargetPose();
@@ -1780,10 +1795,10 @@ class SkaterRig {
     const hip = local('LeftUpLeg'), knee = local('LeftLeg'), ankle = local('LeftFoot'), rootY = this.tilt.worldToLocal(model.getWorldPosition(new THREE.Vector3())).y;
     this.L1 = hip.distanceTo(knee); this.L2 = knee.distanceTo(ankle);
     this.ankleH = ankle.y - rootY;
-    this.footSpread = 0.2;
+    this.footSpread = 0.22;
     const hipSpread = Math.abs(hip.z);
     for (const leg of this.legs) leg.hip.position.z = leg.side * hipSpread;
-    const reach = Math.hypot(this.L1 + this.L2, 0) * 0.985;
+    const reach = (this.L1 + this.L2) * 0.9;
     this.stand = Math.sqrt(Math.max(0.1, reach * reach - (this.footSpread - hipSpread) ** 2)) + this.ankleH;
     model.position.y = 0.105 + this.stand - hip.y;
     // Bind: driver in its rest pose (straight limbs), rider in its bind pose.
@@ -1807,11 +1822,11 @@ class SkaterRig {
     for (const [prefix, side] of [['Left', 1], ['Right', -1]]) {
       const a = arm(side), l = leg(side);
       entries.push(
-        { bone: `${prefix}Arm`, node: a.shoulder, aim: [pos(a.shoulder), pos(a.elbow)], child: `${prefix}ForeArm` },
-        { bone: `${prefix}ForeArm`, node: a.elbow, aim: [pos(a.elbow), handPoint(a.elbow)], child: `${prefix}Hand` },
+        { bone: `${prefix}Arm`, node: a.shoulder, aim: [pos(a.shoulder), pos(a.elbow)], child: `${prefix}ForeArm`, twist: side * 1.3 },
+        { bone: `${prefix}ForeArm`, node: a.elbow, aim: [pos(a.elbow), handPoint(a.elbow)], child: `${prefix}Hand`, twist: side * 1.3 },
         { bone: `${prefix}UpLeg`, node: l.hip, aim: [pos(l.hip), pos(l.knee)], child: `${prefix}Leg` },
         { bone: `${prefix}Leg`, node: l.knee, aim: [pos(l.knee), shinPoint(l.knee)], child: `${prefix}Foot` },
-        { bone: `${prefix}Foot`, node: this.body, yaw: side > 0 ? 0.32 : 0.06 },
+        { bone: `${prefix}Foot`, node: this.footAim[side], yaw: side > 0 ? 0.3 : 0.08 },
       );
     }
     const list = [];
@@ -1823,6 +1838,8 @@ class SkaterRig {
         const driverDir = dirOf(e.aim[0], e.aim[1]);
         const modelDir = dirOf(pos(bone), pos(bones.get(e.child)));
         fix = new THREE.Quaternion().setFromUnitVectors(modelDir, driverDir);
+        // The A-pose arm swung straight down keeps its palm forward; roll it to face the thigh.
+        if (e.twist) fix.premultiply(new THREE.Quaternion().setFromAxisAngle(driverDir, e.twist));
       }
       if (e.yaw) fix.premultiply(new THREE.Quaternion().setFromAxisAngle(_up, e.yaw));
       list.push({
@@ -1836,7 +1853,7 @@ class SkaterRig {
   }
   /** Zeroes every driver joint (straight legs and arms) for the bind snapshot. */
   #driverRest() {
-    for (const g of [this.body, this.hips, this.spine, this.head]) g.rotation.set(0, 0, 0);
+    for (const g of [this.body, this.hips, this.spine, this.head, this.footAim[1], this.footAim[-1]]) g.rotation.set(0, 0, 0);
     this.body.position.set(0, 0, 0);
     this.hips.position.set(0, 0.105 + this.stand, 0);
     for (const a of this.arms) { a.shoulder.rotation.set(0, 0, 0); a.elbow.rotation.set(0, 0, 0); }
@@ -2079,6 +2096,7 @@ class Skater {
     const sp = this.speed, steer = -input.axisX();
     const rate = THREE.MathUtils.lerp(CONFIG.turnRate, CONFIG.turnRateFast, clamp(sp / CONFIG.maxSpeed, 0, 1));
     if (!this.manual.on) this.heading += steer * rate * dt;
+    this.steer = this.manual.on ? 0 : steer;
     const f = this.forward(_v1), rx = -f.z, rz = f.x;
     let along = this.vel.x * f.x + this.vel.z * f.z, lat = this.vel.x * rx + this.vel.z * rz;
     lat *= Math.exp(-CONFIG.lateralGrip * dt);
@@ -2389,7 +2407,10 @@ class Skater {
     p.crouch += (crouchT - p.crouch) * damp(12, dt);
     p.grab += ((this.grab ? 1 : 0) - p.grab) * damp(14, dt);
     if (this.grab) p.grabType = this.grab.type;
-    p.armsOut += ((this.state === 'grind' || this.manual.on ? 1 : this.state === 'air' ? 0.7 : 0.35) - p.armsOut) * damp(6, dt);
+    p.armsOut += ((this.state === 'grind' || this.manual.on ? 1 : this.state === 'air' ? 0.65 : 0.18) - p.armsOut) * damp(6, dt);
+    p.look += ((this.fakie ? -1 : 1) - p.look) * damp(4, dt);
+    const carveT = this.state === 'ground' ? (this.steer ?? 0) * clamp(this.speed / 6, 0, 1) * (this.fakie ? -1 : 1) : 0;
+    p.carve += (carveT - p.carve) * damp(6, dt);
     const bal = this.state === 'grind' ? this.grind.balance : this.manual.on ? this.manual.balance : 0;
     p.lean += (bal - p.lean) * damp(10, dt);
     p.bail += ((this.state === 'bail' ? 1 : 0) - p.bail) * damp(8, dt);
@@ -2400,6 +2421,7 @@ class Skater {
     p.push += ((this.pushing && this.state === 'ground' && this.charge === 0 ? 1 : 0) - p.push) * damp(8, dt);
     p.manual = this.manual.on ? 1 : 0;
     rig.board.rotation.x = this.manual.on ? -0.22 : 0;
+    rig.board.rotation.z = -p.carve * 0.07;
     rig.board.position.y = this.manual.on ? 0.08 : 0;
     rig.apply(dt, time);
   }

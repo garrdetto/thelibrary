@@ -215,7 +215,7 @@ export class Hud {
   }
 
   get modalOpen(): boolean {
-    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false || document.getElementById('creator')?.hidden === false
+    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false || document.getElementById('creator')?.hidden === false || document.getElementById('pause')?.hidden === false
   }
 
   showBook(board: RecordBoard, you: string, onClose: () => void): void {

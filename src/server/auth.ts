@@ -2,6 +2,8 @@ import type { Env } from './env'
 import { HttpError, parseStored } from './http'
 
 export const ADMIN_USERNAME = 'stoegbauer'
+export const OWNER_LEVEL = 2
+export const ADMIN_LEVEL = 1
 export const studioPages = ['chat', 'image', 'lyrics'] as const
 export type StudioPage = (typeof studioPages)[number]
 export type AccountSettings = { theme?: string; lobbySound?: boolean }
@@ -21,6 +23,7 @@ export type SessionUser = {
   id: string
   username: string
   isAdmin: boolean
+  isOwner: boolean
   pages: StudioPage[]
   settings: AccountSettings
 }
@@ -59,13 +62,19 @@ export async function hashPin(pin: string, saltHex: string) {
   return toHex(bits)
 }
 
+export function isOwnerRow(row: Pick<UserRow, 'is_admin' | 'username'>) {
+  return row.is_admin === OWNER_LEVEL || row.is_admin === ADMIN_LEVEL && row.username === ADMIN_USERNAME
+}
+
 export function toSessionUser(row: UserRow): SessionUser {
-  const isAdmin = row.is_admin === 1 && row.username === ADMIN_USERNAME
+  const isOwner = isOwnerRow(row)
+  const isAdmin = isOwner || row.is_admin === ADMIN_LEVEL
   const granted = parseStored<string[]>(row.pages, [])
   return {
     id: row.id,
     username: row.username,
     isAdmin,
+    isOwner,
     pages: isAdmin ? [...studioPages] : studioPages.filter(page => granted.includes(page)),
     settings: parseStored<AccountSettings>(row.settings, {}),
   }
