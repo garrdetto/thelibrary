@@ -31,6 +31,8 @@ export const ROUTE = {
 }
 
 export const SPEED = { creep: 0.67, cruise: 1.34, push: 2.68, run: 13.4 }
+/** How far the keel sits above the ground it is beached on. */
+export const HULL_DRAFT = 0.12
 export const SPEED_STEPS = [SPEED.creep, SPEED.cruise, SPEED.push] as const
 export const PLANE_SECONDS = 4
 const PLANE_ACCEL = (SPEED.run - SPEED.cruise) / PLANE_SECONDS
@@ -507,6 +509,10 @@ export class Autopilot {
   liftSlope = 0
   /** Sitting up on the bank after beaching it. */
   beached = false
+  /** Length of the hull, so a beached boat is kept above the bank from stern to bow. */
+  hullLength = 10.4
+  /** Pitch of the bank under a beached hull (radians, bow up positive); 0 on the water. */
+  groundPitch = 0
   private legs: Leg[] = []
   private leg = 0
   private index = 0
@@ -713,15 +719,35 @@ export class Autopilot {
     if (flying && !this.flying) events.airborne = true
     if (!flying && this.flying) events.splashdown = true
     this.flying = flying
-    const ground = this.map.heightAt(this.x, this.z)
-    lift = Math.max(lift, ground + 0.12, 0)
+    const ground = this.hullGround()
+    lift = Math.max(lift, ground.lift, 0)
     this.lift = lift
+    this.groundPitch = ground.lift > 0 && ground.lift >= lift - 1e-6 ? ground.pitch : 0
     const run = Math.abs(this.speed) * dt
     this.liftSlope = run > 1e-3 ? Math.max(-1, Math.min(1, (lift - before) / run)) : this.liftSlope * 0.9
   }
 
   get airborne(): boolean {
     return this.flying
+  }
+
+  /**
+   * The bank under the hull: the lift that keeps the whole keel `HULL_DRAFT` above the ground (stern, middle and bow sampled along the
+   * heading) and the pitch of the slope it sits on. Both are 0 over open water.
+   */
+  hullGround(): { lift: number; pitch: number } {
+    const fx = Math.sin(this.heading)
+    const fz = Math.cos(this.heading)
+    const half = this.hullLength * 0.42
+    const offsets = [-half, -half / 2, 0, half / 2, half]
+    const ground = offsets.map((d) => this.map.heightAt(this.x + fx * d, this.z + fz * d))
+    if (Math.max(...ground) <= -HULL_DRAFT) return { lift: 0, pitch: 0 }
+    const keel = (g: number) => Math.max(g, -HULL_DRAFT)
+    const pitch = Math.atan2(keel(ground[4]) - keel(ground[0]), half * 2)
+    const s = Math.sin(pitch)
+    let lift = 0
+    for (let i = 0; i < offsets.length; i++) lift = Math.max(lift, ground[i] + HULL_DRAFT - offsets[i] * s)
+    return { lift, pitch }
   }
 }
 

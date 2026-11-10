@@ -27,7 +27,7 @@ const NIGHT = {
 const DUSK_FOG = new Color3(0.72, 0.56, 0.48)
 /** People stay readable at night: their textured materials get a small emissive lift (it is multiplied by the texture, so detail is kept). */
 const CHARACTER_MATERIAL = /^rr-(hunter|wildman)/
-const CHARACTER_NIGHT_LIFT = 0.24
+const CHARACTER_NIGHT_LIFT = 0.12
 
 function smooth(e0: number, e1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))

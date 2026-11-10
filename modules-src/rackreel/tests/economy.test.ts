@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { ACTIVE_TASKS, FISH_COOLDOWN_MS, ITEMS, applyEvent, defaultProfile, equip, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
+import { ACTIVE_TASKS, CARP_BOUNTY, FISH_COOLDOWN_MS, ITEMS, applyEvent, defaultProfile, equip, eventCooldown, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
 
 test('a new profile starts with cash, starter gear and three tasks', () => {
   const p = defaultProfile()
@@ -17,6 +17,18 @@ test('catches pay more for bigger and trophy fish, and cooldowns stop spam', () 
   assert.ok(small.paid > 0)
   assert.equal(again.paid, 0)
   assert.ok(big.paid > small.paid * 2)
+})
+
+test('every carp pays the flat bounty with no cooldown, whatever its size', () => {
+  const p = defaultProfile()
+  const cash = p.cash
+  const first = applyEvent(p, { type: 'fish', species: 'carp', trophy: false, boat: true, legendary: false }, 0.1, 2_000_000)
+  const second = applyEvent(p, { type: 'fish', species: 'carp', trophy: true, boat: true, legendary: true }, 1.4, 2_000_500)
+  assert.equal(first.paid, CARP_BOUNTY)
+  assert.equal(second.paid, CARP_BOUNTY)
+  assert.equal(p.cash, cash + CARP_BOUNTY * 2)
+  assert.equal(eventCooldown('fish', 'carp'), 0)
+  assert.equal(eventCooldown('fish', 'walleye'), FISH_COOLDOWN_MS)
 })
 
 test('finishing a task pays its reward and a new task replaces it', () => {

@@ -19,6 +19,8 @@ import '@babylonjs/core/Rendering/boundingBoxRenderer'
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import '@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent'
 import { Scene } from '@babylonjs/core/scene'
+import { attachResolution } from './Resolution'
+import type { Resolution } from './Resolution'
 
 export const SHADOW_MAP_SIZE = 2048
 export const SHADOW_EXTENT = 95
@@ -65,12 +67,14 @@ export interface EngineContext {
   sensitivity: { look: number; aim: number; invertX: boolean; invertY: boolean }
   /** Re-aims the key light (sun or moon) and the shadow frame; `direction` points from the light toward the ground. */
   setSunDirection(direction: Vector3): void
+  /** The render size: native up to 1440 lines, stepped down while the frame rate is low (`core/Resolution.ts`). */
+  resolution: Resolution
 }
 
 export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   const engine = new Engine(canvas, true, { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance', antialias: false, adaptToDeviceRatio: false }, false)
-  engine.setHardwareScalingLevel(1 / Math.min(1.5, window.devicePixelRatio || 1))
   engine.enableOfflineSupport = false
+  const resolution = attachResolution(engine, canvas)
 
   const scene = new Scene(engine)
   scene.autoClear = false
@@ -213,6 +217,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
     sunDirection,
     shadows,
     pipeline,
+    resolution,
     collisionOctree,
     registerDynamic(mesh) {
       dynamic.add(mesh)
@@ -307,6 +312,10 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
     if (!Number.isFinite(c.x) || !Number.isFinite(c.y)) c.set(0, 0)
   })
 
-  addEventListener('resize', () => engine.resize())
+  addEventListener('resize', () => {
+    resolution.refit()
+    engine.resize()
+  })
+  scene.onAfterRenderObservable.add(() => resolution.update(performance.now(), engine.getFps()))
   return ctx
 }

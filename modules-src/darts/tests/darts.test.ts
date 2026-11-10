@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { RADII, SECTORS, label, ringAt, scoreAt, sectorAt, targetPoint, toPolar } from '../shared/Board'
 import { cpuThrow } from '../shared/Cpu'
 import type { DartThrow, GameState, MatchConfig, Multiplier } from '../shared/interfaces'
-import { HOLE, IDEAL_SPEED, METER, RELEASE, SPREAD, aimDirection, launch, meterReach, meterZone, simulate, throwDart } from '../shared/Physics'
+import { HOLE, IDEAL_SPEED, METER, RELEASE, SPREAD, aimDirection, launch, meterReach, meterZone, simulate, throwDart, crossDistance } from '../shared/Physics'
 import { applyThrow, checkoutRoute, createMatch, forfeitTurn, nextTurn, removePlayer } from '../shared/Rules'
 import { createRng, gaussian } from '../shared/Rng'
 import { isRoomCode, roomCode } from '../shared/Room'
@@ -166,14 +166,39 @@ test('meter: the miss grows with how far from the middle you let go', () => {
   assert.ok(edge >= 1.5 && edge <= 5, `two green half-widths out ${edge}`)
 })
 
-test('meter: outside the white lines a dart is less likely to land dead on, but never thrown far off', () => {
+test('meter: in the green outside the white lines every dart misses, slightly, and more the further from the lines', () => {
   const line = METER.exact
-  const share = (list: number[]) => list.filter((m) => m < 0.05).length / list.length
-  const near = missHoles(line + 0.1, 'normal', 400, 51)
-  const far = missHoles(10, 'normal', 400, 52)
-  assert.ok(share(near) > 0.4 && share(near) < 0.8, `just past the lines ${share(near)}`)
-  assert.ok(share(far) < share(near) && share(far) > 0, `deep in the yellow ${share(far)}`)
+  const avg = (list: number[]) => list.reduce((a, b) => a + b, 0) / list.length
+  const near = missHoles(line + 0.05, 'normal', 200, 51)
+  const mid = missHoles((line + 1) / 2, 'normal', 200, 52)
+  const edge = missHoles(0.99, 'normal', 200, 53)
+  assert.ok(Math.min(...near) > 0, 'just past the lines never lands dead on')
+  assert.ok(avg(near) < avg(mid) && avg(mid) < avg(edge), `${avg(near)} ${avg(mid)} ${avg(edge)}`)
+  assert.ok(Math.max(...edge) <= METER.greenEdgeHoles + 0.2, `worst in the green ${Math.max(...edge)}`)
+  const far = missHoles(10, 'normal', 400, 54)
+  assert.ok(Math.min(...far) >= METER.greenEdgeHoles * METER.floorSpread - 0.2, 'the yellow misses at least as much as the green edge')
   assert.ok(Math.max(...far) <= METER.yellowHoles * 1.25 + 0.1, `worst ${Math.max(...far)}`)
+})
+
+test('cross meter: the height reading misses high or low and the side reading left or right, by how far off the middle', () => {
+  const aim = targetPoint(20, 1)
+  const at = (speedOff: number, side: number) => {
+    const hit = simulate(launch({ aimX: aim.x, aimY: aim.y, speed: IDEAL_SPEED * (1 + speedOff), yaw: 0, wobble: 0.12, cross: side }, 'normal', createRng(7)))
+    return { x: (hit.point[0] - aim.x) / HOLE, y: (hit.point[1] - aim.y) / HOLE }
+  }
+  const centre = at(0, 0)
+  assert.ok(Math.hypot(centre.x, centre.y) < 0.15, 'both in the white lines flies true')
+  const inside = METER.perfect * METER.exact * 0.9
+  assert.ok(Math.hypot(at(inside, -inside).x, at(inside, -inside).y) < 0.15)
+  assert.ok(at(0, -0.02).x < -0.5 && Math.abs(at(0, -0.02).y) < 0.15, 'stopped left misses left')
+  assert.ok(at(0, 0.02).x > 0.5, 'stopped right misses right')
+  assert.ok(at(0.02, 0).y > 0.5 && Math.abs(at(0.02, 0).x) < 0.15, 'height above the green misses high')
+  assert.ok(at(-0.02, 0).y < -0.5, 'height below the green misses low')
+  assert.ok(at(0, 0.06).x > at(0, 0.02).x && at(0, 0.12).x > at(0, 0.06).x, 'further out sideways misses further')
+  const a = at(0.03, -0.04)
+  const b = at(0.03, -0.04)
+  assert.deepEqual(a, b, 'the cross meter has no luck in it')
+  for (const off of [0.001, 0.003, 0.005]) assert.ok(crossDistance(off + 0.001, 'normal', true) >= crossDistance(off, 'normal', true))
 })
 
 test('meter: zones run perfect, then yellow, then red, with the white lines just inside the solid green', () => {

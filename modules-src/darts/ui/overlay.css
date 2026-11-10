@@ -75,6 +75,17 @@ button { cursor: pointer; }
 .d-meter-band::after { content: ""; position: absolute; left: 0; right: 0; bottom: var(--exact-lo, 48%); top: calc(100% - var(--exact-hi, 52%)); border-top: 1px solid rgba(255, 255, 255, .55); border-bottom: 1px solid rgba(255, 255, 255, .55); box-shadow: 0 0 8px rgba(34, 211, 106, .6); }
 .d-meter-fill { position: absolute; left: 2px; right: 2px; bottom: 0; border-radius: 4px; background: linear-gradient(to top, rgba(255, 255, 255, .06), rgba(255, 255, 255, .22)); border-top: 3px solid #fff; box-shadow: 0 -2px 8px rgba(255, 255, 255, .55); height: 0; }
 .d-meter:not(.is-on) .d-meter-fill { border-top-width: 0; box-shadow: none; }
+.d-meter { --meter-pad: 6px; }
+.d-hmeter { position: absolute; z-index: 0; left: 50%; bottom: calc(var(--meter-pad) + (var(--meter-h, 280px) - 2 * var(--meter-pad)) * var(--green-at, .6)); width: calc((var(--meter-h, 280px) - 2 * var(--meter-pad)) * var(--h-scale, .6) + 12px); height: 30px; padding: 6px; box-sizing: border-box; transform: translate(-50%, 50%); border-radius: 10px; background: linear-gradient(135deg, #6b7079 0%, #3a3e46 22%, #1c1f25 55%, #0d0e12 100%); box-shadow: 0 8px 18px rgba(0, 0, 0, .55), inset 1.5px 1.5px 0 rgba(255, 255, 255, .38), inset -1.5px -1.5px 0 rgba(0, 0, 0, .65); opacity: .8; }
+.d-hmeter[hidden] { display: none; }
+.d-meter-track { z-index: 1; }
+.d-meter-wrap.is-sweep .d-hmeter { z-index: 2; opacity: 1; }
+.d-hmeter-track { position: relative; width: 100%; height: 100%; border-radius: 5px; overflow: hidden; background: #07080a; box-shadow: inset 0 2px 5px rgba(0, 0, 0, .9), 0 0 0 1px rgba(0, 0, 0, .7); }
+.d-hmeter-band { position: absolute; inset: 0; opacity: .92; }
+.d-hmeter-band::after { content: ""; position: absolute; top: 0; bottom: 0; left: var(--exact-lo, 49%); right: calc(100% - var(--exact-hi, 51%)); border-left: 1px solid rgba(255, 255, 255, .55); border-right: 1px solid rgba(255, 255, 255, .55); box-shadow: 0 0 8px rgba(34, 211, 106, .6); }
+.d-hmeter-mark { position: absolute; top: 0; bottom: 0; left: 0; width: 3px; margin-left: -1.5px; background: #fff; box-shadow: 0 0 8px rgba(255, 255, 255, .7); display: none; }
+.d-meter-wrap.is-sweep .d-hmeter-mark { display: block; }
+.d-meter-wrap.is-cross .d-meter-label { margin-left: calc(var(--h-half, 17px) - 17px); }
 .d-meter-label { font-size: 12px; font-weight: 600; color: var(--d-soft); white-space: nowrap; text-shadow: 0 1px 2px #000; pointer-events: none; }
 .d-meter-label[data-zone="idle"] { color: var(--d-dim); font-weight: 500; }
 .d-meter-label[data-zone="perfect"] { color: #22d36a; font-size: 14px; font-weight: 800; }
@@ -187,7 +198,7 @@ button { cursor: pointer; }
   .d-card { padding: 6px 9px; }
   .d-card-meta { font-size: 11px; gap: 6px; }
   .d-throw { min-width: 48px; padding: 5px 8px; }
-  .d-meter { width: 22px; padding: 4px; }
+  .d-meter { width: 22px; padding: 4px; --meter-pad: 4px; }
   .d-meter-label { display: none; }
   .d-panel { padding: 16px; }
   .d-bracket { grid-template-columns: 1fr; }
