@@ -14,7 +14,7 @@ export interface Vec {
 }
 
 export const CARP = {
-  target: 26,
+  target: 78,
   /** Water magnifies what's under it by about a third, so carp look (and take an arrow) this much longer than they are. */
   look: 1.33,
   spawnMin: 9,
@@ -44,8 +44,8 @@ export const BOW = {
   line: 26,
   holdSteady: 3.5,
   shakePerSecond: 0.012,
-  reel: 2.9,
-  emptyReel: 3.6,
+  reel: 3.625,
+  emptyReel: 4.5,
   step: 1 / 240,
   deadSpeed: 2,
   renock: 1.2,

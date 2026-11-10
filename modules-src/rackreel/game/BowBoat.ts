@@ -69,5 +69,5 @@ export const LIGHT_COLORS: Record<Exclude<LightMode, 'off'>, [number, number, nu
   white: [0.95, 0.97, 1.0],
   amber: [1.0, 0.56, 0.16],
 }
-/** The floods light everything around the boat: bright out to 15 yd (13.7 m), fading out by 40 yd (36.6 m). */
-export const FLOOD = { bright: 13.7, reach: 36.6, intensity: 2.6, deckRange: 12, deckIntensity: 1.7 }
+/** The floods light everything around the boat and into the water: bright out to 20 yd (18.3 m), fading out by 45 yd (41.1 m). */
+export const FLOOD = { bright: 18.3, reach: 41.1, intensity: 2.6, deckRange: 12, deckIntensity: 1.7 }
