@@ -38,7 +38,7 @@ const clientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ROOM_CREATE'), config: configSchema }),
   z.object({ type: z.literal('ROOM_JOIN') }),
   z.object({ type: z.literal('GAME_START') }),
-  z.object({ type: z.literal('THROW_MADE'), version: z.number().int().min(0), intent: z.object({ aimX: finite, aimY: finite, speed: finite, yaw: finite, wobble: finite }) }),
+  z.object({ type: z.literal('THROW_MADE'), version: z.number().int().min(0), intent: z.object({ aimX: finite, aimY: finite, speed: finite, yaw: finite, wobble: finite, cross: finite.optional() }) }),
   z.object({ type: z.literal('REMATCH') }),
   z.object({ type: z.literal('RESTART_REQUEST') }),
   z.object({ type: z.literal('PING'), at: finite }),
@@ -278,7 +278,7 @@ export class DartsRoom {
     this.armTurnTimer()
   }
 
-  private throwDart(seat: Seat, intent: { aimX: number; aimY: number; speed: number; yaw: number; wobble: number }, version: number): void {
+  private throwDart(seat: Seat, intent: { aimX: number; aimY: number; speed: number; yaw: number; wobble: number; cross?: number }, version: number): void {
     const state = this.state
     if (!state || state.status !== 'playing' || state.currentTurnPlayerId !== seat.id || state.version !== version) return
     const flight = launch(intent, 'normal', createRng(randomSeed()))
