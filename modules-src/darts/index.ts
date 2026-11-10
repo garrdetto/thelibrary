@@ -12,10 +12,12 @@ import type { Announcement, CpuLevel, DartThrow, FlightParams, GameState, MatchC
 import { RELEASE, aimDirection, type SpreadLevel } from './shared/Physics'
 import { currentPlayer, modeLabel, type SeatSpec } from './shared/Rules'
 import { isRoomCode } from './shared/Room'
+import { BOARD_NAMES, countsForAverages, legJustEnded, legResults, matchAverages, recordMode } from './shared/Records'
 import { createSounds } from './systems/Sounds'
 import { DartFlights } from './systems/DartFlights'
 import { ThrowInput } from './systems/ThrowInput'
 import { Overlay, playerColor } from './ui/Overlay'
+import { RecordBook } from './ui/RecordBook'
 
 declare global {
   interface Window {
@@ -47,6 +49,7 @@ function readSetup(form: HTMLFormElement): Setup {
   if (mode === 'cricket') rules = { mode: 'cricket', scoring: data.get('cricketPoints') === 'on', roundLimit: Number(data.get('cricketRounds') ?? 20) }
   else if (mode === 'countup') rules = { mode: 'countup', rounds: Number(data.get('countupRounds') ?? 8) }
   else rules = { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: data.get('doubleIn') === 'on', doubleOut: data.get('doubleOut') === 'on', doubleBull: data.get('board') === 'spider' && data.get('doubleBull') === 'on' }
+  const board = data.get('board') === 'spider' ? 'spider' : 'steel'
   const who = String(data.get('who') ?? 'solo') as Setup['who']
   const name = String(data.get('playerName') ?? '').trim().slice(0, 16) || 'You'
   const count = Number(data.get('localCount') ?? 2)
@@ -54,7 +57,7 @@ function readSetup(form: HTMLFormElement): Setup {
     ? Array.from({ length: count }, (_, i) => String(data.get(`name${i}`) ?? '').trim().slice(0, 16) || `Player ${i + 1}`)
     : [name]
   return {
-    match: { rules, legsPerSet: Number(data.get('legs') ?? 1), setsToWin: Number(data.get('sets') ?? 1) },
+    match: { rules, legsPerSet: Number(data.get('legs') ?? 1), setsToWin: Number(data.get('sets') ?? 1), board },
     who,
     cpuLevel: String(data.get('cpuLevel') ?? 'league') as CpuLevel,
     spread: String(data.get('spread') ?? 'normal') as SpreadLevel,
@@ -163,6 +166,8 @@ async function boot(): Promise<void> {
   }
 
   const overlay = new Overlay()
+  const book = new RecordBook(byId('record-book'), byId('avg-panel'))
+  app.own(book)
   let session: Session | null = null
   let shown: GameState | null = null
   let localIds: Set<string> | null = null
@@ -208,10 +213,34 @@ async function boot(): Promise<void> {
 
   const overlayOpen = () => !overlay.menu.hidden || !overlay.lobby.hidden || !overlay.results.hidden || !overlay.pause.hidden
 
+  const ranked = () => session?.kind === 'online' || currentSetup?.spread !== 'easy'
+  const memberName = (playerId: string): string | null => {
+    if (session?.kind === 'online') {
+      const seat = (session as OnlineSession).players.find((player) => player.id === playerId)
+      return seat?.member ? seat.name : null
+    }
+    return playerId === 'p1' && book.signedIn ? book.username : null
+  }
+  const renderAverages = (state: GameState | null = shown) => {
+    if (state) {
+      const members = state.players.map((player) => memberName(player.id)).filter((name): name is string => !!name)
+      book.prepareAverages(state, members)
+    }
+    book.renderHud(state, (id) => (state ? playerColor(state, id) : ''), memberName, !!state && ranked() && countsForAverages(state))
+  }
+  book.onChange = () => renderAverages()
+
   const render = (state: GameState) => {
     shown = state
     overlay.render(state, localIds)
     pub.setDisplay(String(currentPlayer(state).score))
+    renderAverages(state)
+  }
+
+  /** A local leg that just ended goes to the signed-in player's record book (Player 1 at this screen); online rooms save their own. */
+  const recordLeg = (state: GameState) => {
+    if (session?.kind !== 'local' || !ranked() || !legJustEnded(state)) return
+    book.saveLegs(state, legResults(state), 'p1')
   }
 
   const announce = (list: Announcement[]) => {
@@ -221,15 +250,19 @@ async function boot(): Promise<void> {
   }
 
   const finishNote = (state: GameState): string => {
-    if (session?.kind !== 'local' || !currentSetup) return ''
+    const mode = recordMode(state.config)
+    const where = `the ${BOARD_NAMES[state.config.board === 'spider' ? 'spider' : 'steel']} record book`
+    if (session?.kind === 'online') return mode ? `Signed-in players' legs and averages are saved to ${where}.` : ''
+    if (!currentSetup) return ''
     const rules = state.config.rules
-    const solo = state.players.length === 1
-    if (solo && rules.mode === 'countup' && rules.rounds === 8) {
-      if (currentSetup.spread === 'easy') return 'Easy steadiness is not ranked; play on Normal or Hard to post a record.'
-      void Scores.submit(SCORE_MODULE, state.players[0].score)
-      return 'Saved to the Count Up record board if you are signed in.'
-    }
-    return ''
+    const notes: string[] = []
+    if (state.players.length === 1 && rules.mode === 'countup' && rules.rounds === 8 && currentSetup.spread !== 'easy') void Scores.submit(SCORE_MODULE, state.players[0].score)
+    if (currentSetup.spread === 'easy') notes.push('Easy steadiness is not ranked; play on Normal or Hard to post a record.')
+    else if (mode && book.signedIn) {
+      if (countsForAverages(state)) book.saveAverage(state, matchAverages(state).find((average) => average.playerId === 'p1'))
+      notes.push(`Saved to ${where}${countsForAverages(state) && rules.mode !== 'countup' ? ', average included' : ''}.`)
+    } else if (mode) notes.push('Sign in to the library to save your legs to the record book.')
+    return notes.join(' ')
   }
 
   const events = {
@@ -237,6 +270,7 @@ async function boot(): Promise<void> {
       const color = playerColor(state, playerId)
       hand.visible = false
       sounds.whoosh()
+      recordLeg(state)
       flights.throw(flight, color, () => {
         sounds.thunk(dart.multiplier === 0)
         render(state)
@@ -254,11 +288,13 @@ async function boot(): Promise<void> {
     gameOver(state: GameState, announcements: Announcement[]) {
       render(state)
       announce(announcements)
+      const note = finishNote(state)
+      book.invalidateAverages()
       window.setTimeout(() => {
         if (session?.state !== state && session?.state?.status !== 'finished') return
         const online = session?.kind === 'online'
         const host = online ? (session as OnlineSession).host : true
-        overlay.renderResults(state, finishNote(state) || (online && !host ? 'The host can start a rematch.' : ''), host)
+        overlay.renderResults(state, [note, online && !host ? 'The host can start a rematch.' : ''].filter(Boolean).join(' '), host)
         overlay.show('results')
       }, 1400)
     },
@@ -274,6 +310,7 @@ async function boot(): Promise<void> {
     flights.clear()
     overlay.setRoom(null)
     overlay.hud.hidden = true
+    book.renderHud(null, () => '', () => null, false)
   }
 
   const startLocal = (setup: Setup) => {
@@ -297,6 +334,7 @@ async function boot(): Promise<void> {
       ...events,
       room(roomCode, you, players, roomConfig) {
         localIds = new Set([you])
+        if (roomConfig.board && roomConfig.board !== pub.style) showBoard(roomConfig.board)
         overlay.setRoom(roomCode)
         if (pendingRoom) {
           pendingRoom(roomCode)
@@ -350,9 +388,20 @@ async function boot(): Promise<void> {
   }
   markBoard(pub.style)
   let boardTimer = 0
+  const showBoard = (style: BoardStyle) => {
+    markBoard(style)
+    kit.setStyle(style)
+    window.clearTimeout(boardTimer)
+    boardTimer = window.setTimeout(() => {
+      boardTimer = 0
+      if (style !== pub.style) pub.setStyle(style)
+    }, 30)
+  }
   const chooseBoard = (style: BoardStyle) => {
     markBoard(style)
     saveBoardStyle(style)
+    boardDefaults(style)
+    showBook()
     kit.setStyle(style)
     window.clearTimeout(boardTimer)
     boardTimer = window.setTimeout(() => {
@@ -400,6 +449,7 @@ async function boot(): Promise<void> {
   const quitToMenu = () => {
     leaveSession()
     byId<HTMLButtonElement>('resume-btn').hidden = true
+    showBook(true)
     overlay.show('menu')
   }
 
@@ -433,8 +483,22 @@ async function boot(): Promise<void> {
     }
     while (names.children.length > count) names.lastElementChild?.remove()
   }
-  form.addEventListener('change', syncForm)
+  const boardDefaults = (style: BoardStyle) => {
+    const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement
+    field('doubleOut').checked = style === 'steel'
+    field('doubleBull').checked = true
+  }
+  boardDefaults(pub.style)
+  const showBook = (fresh = false) => {
+    const setup = readSetup(form)
+    void book.show(setup.match.board ?? 'steel', recordMode(setup.match), fresh)
+  }
+  form.addEventListener('change', () => {
+    syncForm()
+    showBook()
+  })
   syncForm()
+  showBook()
   form.addEventListener('submit', (event) => {
     event.preventDefault()
     byId('setup-error').textContent = ''
@@ -479,6 +543,7 @@ async function boot(): Promise<void> {
     const current = session
     byId<HTMLButtonElement>('resume-btn').hidden = !current || current.kind === 'online'
     if (current?.kind === 'online') leaveSession()
+    showBook(true)
     overlay.show('menu')
   })
   byId('pause-quit').addEventListener('click', quitToMenu)
@@ -518,6 +583,7 @@ async function boot(): Promise<void> {
   byId('results-menu').addEventListener('click', () => {
     if (session?.kind === 'online') leaveSession()
     byId<HTMLButtonElement>('resume-btn').hidden = !session
+    showBook(true)
     overlay.show('menu')
   })
   byId('results-again').addEventListener('click', () => {
@@ -546,16 +612,37 @@ async function boot(): Promise<void> {
   })
   const boardEdge = new THREE.Vector3()
   const boardTop = new THREE.Vector3()
+  const stageSize = { width: container.clientWidth, height: container.clientHeight }
+  const hudSize = { width: overlay.hud.clientWidth, height: overlay.hud.clientHeight }
+  let meterKey = ''
+  const sizes = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const target = entry.target === container ? stageSize : hudSize
+      target.width = entry.contentRect.width
+      target.height = entry.contentRect.height
+    }
+    meterKey = ''
+  })
+  sizes.observe(container)
+  sizes.observe(overlay.hud)
+  app.own({ dispose: () => sizes.disconnect() })
   const placeMeter = () => {
-    const rect = container.getBoundingClientRect()
+    const rect = stageSize
     if (!rect.width || !rect.height) return
+    if (!hudSize.width) {
+      hudSize.width = overlay.hud.clientWidth
+      hudSize.height = overlay.hud.clientHeight
+    }
+    const key = `${rect.width}:${rect.height}:${hudSize.width}:${hudSize.height}:${app.camera.fov}`
+    if (key === meterKey) return
+    meterKey = key
     const radius = RADII.board / 1000
     boardEdge.set(radius, BULL_HEIGHT, 0).project(app.camera)
     boardTop.set(0, BULL_HEIGHT + radius, 0).project(app.camera)
     const x = ((boardEdge.x + 1) / 2) * rect.width
     const y = ((1 - boardEdge.y) / 2) * rect.height
     const top = ((1 - boardTop.y) / 2) * rect.height
-    overlay.placeMeter(x, y, (y - top) * 2)
+    overlay.placeMeter(x, y, (y - top) * 2, hudSize.width, hudSize.height)
   }
   app.onFrame((dt) => {
     fitCamera()

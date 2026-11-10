@@ -24,6 +24,7 @@ export interface PlayerStats {
   points: number
   /** Three-dart average for x01 and Count Up; marks per round for Cricket. */
   average: number
+  /** Cricket marks that counted: each one that closed a number or scored points. */
   marks: number
   tons: number
   oneEighties: number
@@ -81,10 +82,14 @@ export interface CountUpConfig {
 
 export type ModeConfig = X01Config | CricketConfig | CountUpConfig
 
+/** The board a match is played on: `steel` (steel-tip bristle) or `spider` (soft tip). Records and averages are kept per board, because soft-tip rules differ. */
+export type BoardKind = 'steel' | 'spider'
+
 export interface MatchConfig {
   rules: ModeConfig
   legsPerSet: number
   setsToWin: number
+  board?: BoardKind
 }
 
 export interface LegScore {
@@ -115,6 +120,7 @@ export interface GameState {
   round: number
   legs: LegScore
   sets: LegScore
+  /** The turns of the leg being played (cleared when the next leg starts). */
   history: TurnRecord[]
   winnerId: string | null
   legWinnerId: string | null

@@ -26,7 +26,7 @@ export function playerColor(state: GameState, playerId: string): string {
 
 /** Half-width of the band where the green fades to yellow, as a fraction of the ideal speed; past it the meter turns red. */
 const BAND = METER.band
-/** Half-width of the solid green: anywhere in it lands within seven holes of the aim, and its exact middle lands on the aim point. */
+/** Half-width of the solid green: anywhere in it lands within seven holes of the aim; between the two white lines inside it (`METER.exact` of the way out) is Perfect and lands on the aim point. */
 const PERFECT = METER.perfect
 /** How far past the yellow (as a fraction of the ideal speed) the meter is fully red. */
 const TO_RED = 0.05
@@ -60,11 +60,11 @@ export class Overlay {
 
   private readonly meterWrap = el<HTMLDivElement>('meter-wrap')
   private meterSpot = ''
+  private fillShown = ''
+  private labelShown = ''
 
   /** Puts the power meter just right of the board: `x` is the board's right edge and `y` the bull's height on screen in CSS pixels, `boardPx` the board's on-screen diameter. */
-  placeMeter(x: number, y: number, boardPx: number): void {
-    const width = this.hud.clientWidth
-    const height = this.hud.clientHeight
+  placeMeter(x: number, y: number, boardPx: number, width: number, height: number): void {
     if (!width || !height) return
     const meterHeight = Math.round(Math.min(height * 0.7, Math.max(140, boardPx * 0.8)))
     const left = Math.round(Math.min(width - 44, Math.max(8, x + 14)))
@@ -89,6 +89,8 @@ export class Overlay {
     style.setProperty('--band-lo', at(-BAND))
     style.setProperty('--perfect-lo', at(-PERFECT))
     style.setProperty('--perfect-hi', at(PERFECT))
+    style.setProperty('--exact-lo', at(-PERFECT * METER.exact))
+    style.setProperty('--exact-hi', at(PERFECT * METER.exact))
     style.setProperty('--band-hi', at(BAND))
     style.setProperty('--red-hi', at(BAND + TO_RED))
     this.setPower(null)
@@ -192,20 +194,31 @@ export class Overlay {
 
   setPower(speed: number | null): void {
     if (speed === null) {
+      if (this.labelShown === 'idle') return
+      this.labelShown = 'idle'
+      this.fillShown = '0px'
       this.meter.classList.remove('is-on')
       this.meterFill.style.height = '0px'
       this.meterLabel.textContent = 'Hold to throw'
       this.meterLabel.dataset.zone = 'idle'
       return
     }
-    this.meter.classList.add('is-on')
+    if (!this.meter.classList.contains('is-on')) this.meter.classList.add('is-on')
     const { low, high } = meterRange()
     const ratio = (speed - low) / (high - low)
-    this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% + 1.5px)`
+    const fill = `calc(${(Math.max(0, Math.min(1, ratio)) * 100).toFixed(2)}% + 1.5px)`
+    if (fill !== this.fillShown) {
+      this.fillShown = fill
+      this.meterFill.style.height = fill
+    }
     const zone = meterZone(speed)
     const words = { perfect: 'Perfect!', green: 'Great', yellow: 'Good', low: 'Low', high: 'High' } as const
-    this.meterLabel.dataset.zone = zone
-    this.meterLabel.textContent = `${words[zone]} · ${speed.toFixed(1)} m/s`
+    const label = `${words[zone]} · ${speed.toFixed(1)} m/s`
+    if (label !== this.labelShown) {
+      this.labelShown = label
+      this.meterLabel.dataset.zone = zone
+      this.meterLabel.textContent = label
+    }
   }
 
   /** Queues announcements and shows the most important one of each batch (a win beats a bust beats a 180 beats a single bed). */

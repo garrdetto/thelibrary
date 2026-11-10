@@ -10,6 +10,7 @@ import { anglerLake } from './routes/angler-lake'
 import { rackreel } from './routes/rackreel'
 import { bushleague } from './routes/bushleague'
 import { darts } from './routes/darts'
+import { dartsRecords } from './routes/darts-records'
 import { hood } from './routes/hood'
 import { park } from './routes/park'
 import { parkRides } from './routes/park-rides'
@@ -45,6 +46,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/rackreel': rackreel,
   '/api/bushleague': bushleague,
   '/api/darts': darts,
+  '/api/darts-records': dartsRecords,
   '/api/hood': hood,
   '/api/park': park,
   '/api/park-rides': parkRides,
