@@ -6,6 +6,11 @@ BOWBOAT_SEAT = {'x': -0.36, 'y': -0.92, 'w': 0.5, 'd': 0.42, 'h': 0.56}
 BOWBOAT_GENERATOR = {'x': 0.44, 'y': -1.42, 'w': 0.5, 'd': 0.36, 'h': 0.4}
 BOWBOAT_LIGHT_AIM = math.radians(35)
 BOWBOAT_STRETCH = 2.0
+# The hull is also stretched up by this much about the waterline, so more of it stands out of the water.
+BOWBOAT_RISE = 1.2
+# A sidewall coaming on top of the gunwale, all the way round: standing on the front deck it comes up to just below the knee.
+BOWBOAT_RAIL = 0.4
+BOWBOAT_RAIL_THICK = 0.05
 BOWBOAT_INFO = {}
 WILDMAN_TEXTURE = 2048
 WILDMAN_HIP = 0.98
@@ -87,6 +92,16 @@ def boat_frame(bm):
         else:
             c.x *= k
             c.y *= k
+    gun0 = max(v.co.z for v in bm.verts if abs(v.co.x) > (b[0][1] - b[0][0]) * 0.42 and v.co.y > transom + 0.3)
+    for v in bm.verts:
+        c = v.co
+        motor = (c.y < transom * k - 0.03 and abs(c.x) < 0.5) or (c.y < transom * k + 0.42 and abs(c.x) < 0.36 and c.z > floor0 + 0.05)
+        if motor:
+            c.z += gun0 * (BOWBOAT_RISE - 1)
+        elif abs(c.x - ccx * k) < 0.75 and -0.75 < c.y - ccy * k < 0.5 and c.z > floor0 + 0.04:
+            c.z += floor0 * (BOWBOAT_RISE - 1)
+        else:
+            c.z *= BOWBOAT_RISE
     bm.normal_update()
     b = bounds([v.co for v in bm.verts])
     half = (b[0][1] - b[0][0]) / 2
@@ -103,7 +118,70 @@ def boat_frame(bm):
     BOWBOAT_TUB['y'] = cy + 1.7
     BOWBOAT_GENERATOR['x'] = 0.9
     BOWBOAT_GENERATOR['y'] = transom + 1.3
-    return {'half': half, 'transom': transom, 'bow': bow, 'floor': floor, 'deck': deck, 'gunwale': gunwale, 'inner': inner, 'stern': b[1][0], 'console': (cx, cy)}
+    return {'half': half, 'transom': transom, 'bow': bow, 'floor': floor, 'deck': deck, 'gunwale': gunwale, 'inner': inner, 'stern': b[1][0], 'console': (cx, cy), 'rail': gunwale + BOWBOAT_RAIL}
+
+
+def sheer_line(bm, info, step=0.25):
+    """The hull's outline at the gunwale, sampled from the transom to the bow: (y, half-width, sheer height) per station."""
+    verts = [v.co for v in bm.verts if v.co.z > info['gunwale'] - 0.14 and v.co.y > info['transom'] - 0.05 and not (v.co.y < info['transom'] + 0.45 and abs(v.co.x) < 0.4)]
+    out = []
+    y = info['transom']
+    while y < info['bow'] - 0.08:
+        near = [c for c in verts if abs(c.y - y) < 0.22]
+        if near:
+            w = max(abs(c.x) for c in near)
+            z = max(c.z for c in near)
+            out.append((y, w, z))
+        y += step
+    out.append((info['bow'] - 0.04, 0.12, max(c.z for c in verts if c.y > info['bow'] - 0.5)))
+    for _ in range(4):
+        for i in range(1, len(out) - 1):
+            out[i] = (out[i][0], (out[i - 1][1] + out[i][1] * 2 + out[i + 1][1]) / 4, (out[i - 1][2] + out[i][2] * 2 + out[i + 1][2]) / 4)
+    return out
+
+
+def rail_pieces(bm, info):
+    """The sidewall coaming: a sheet-aluminum wall `BOWBOAT_RAIL` tall on the gunwale down both sides and round the bow, a lower transom wall either side of the motor, and a round cap rail on top."""
+    h = BOWBOAT_RAIL
+    t = BOWBOAT_RAIL_THICK
+    line = sheer_line(bm, info)
+    top = info['rail']
+    pieces = []
+    wall_col = lambda co, n: aluminum(co, n, 0.96)
+    rail_top = []
+    for sx in (-1, 1):
+        wb = new_bm()
+        rings = []
+        for y, w, z in line:
+            xo = sx * max(0.08, w - 0.01)
+            xi = sx * max(0.03, w - 0.01 - t)
+            ring = [wb.verts.new((xo, y, z - 0.06)), wb.verts.new((xo, y, top)), wb.verts.new((xi, y, top)), wb.verts.new((xi, y, z - 0.06))]
+            rings.append(ring)
+        for a, b2 in zip(rings, rings[1:]):
+            for i in range(3):
+                quad = [a[i], a[i + 1], b2[i + 1], b2[i]]
+                wb.faces.new(quad if sx < 0 else quad[::-1])
+        pieces.append(piece_from_bm(wb, wall_col, smooth=False))
+        pts = [(sx * (w - 0.01 - t / 2), y, top) for y, w, z in line]
+        if sx < 0:
+            rail_top = pts[::-1]
+        else:
+            rail_top = rail_top + pts
+    cap = tube(rail_top, [0.028] * len(rail_top), 10, cap=True)
+    pieces.append(piece_from_bm(cap, lambda co, n: aluminum(co, n, 1.0)))
+    y0, w0, z0 = line[0]
+    for sx in (-1, 1):
+        wb = new_bm()
+        x_in, x_out = sx * 0.5, sx * (w0 - 0.01)
+        zt = z0 + (top - z0) * 0.6
+        for yy in (y0 + t, y0):
+            pass
+        v = [wb.verts.new((x_in, y0, z0 - 0.04)), wb.verts.new((x_in, y0, zt)), wb.verts.new((x_out, y0, zt)), wb.verts.new((x_out, y0, z0 - 0.04)),
+             wb.verts.new((x_in, y0 + t, z0 - 0.04)), wb.verts.new((x_in, y0 + t, zt)), wb.verts.new((x_out, y0 + t, zt)), wb.verts.new((x_out, y0 + t, z0 - 0.04))]
+        for quad in ([0, 1, 2, 3], [7, 6, 5, 4], [1, 5, 6, 2], [0, 4, 5, 1], [3, 2, 6, 7]):
+            wb.faces.new([v[i] for i in quad])
+        pieces.append(piece_from_bm(wb, wall_col, smooth=False))
+    return pieces
 
 
 def boat_labels(bm, info):
@@ -216,7 +294,7 @@ def light_pieces(info):
     white = lambda co, n: (1.0, 1.0, 1.0)
     frame, lenses = [], []
     half = info['half'] - 0.04
-    z = info['gunwale'] + 0.06
+    z = info['rail'] + 0.06
     down = math.sin(BOWBOAT_LIGHT_AIM)
     out = math.cos(BOWBOAT_LIGHT_AIM)
     spots = []
@@ -230,7 +308,7 @@ def light_pieces(info):
             spots.append(((sx * half, y, z), (sx * out, 0.0, -down), (0, -sx, 0)))
     for i in range(6):
         x = -half * 0.8 + 1.6 * half * i / 5
-        spots.append(((x * 0.82, info['bow'] - 0.1, info['deck'] + 0.12), (x * 0.12, out, -down), (1, 0, 0)))
+        spots.append(((x * 0.82, info['bow'] - 0.1, z), (x * 0.12, out, -down), (1, 0, 0)))
     for x in (-half * 0.75, -half * 0.45, half * 0.45, half * 0.75):
         spots.append(((x, info['transom'] - 0.02, z), (0.0, -out, -down), (-1, 0, 0)))
     for at, aim, side in spots:
@@ -259,7 +337,7 @@ def build_bowboat():
     m = Model('bowboat', ground=False, ao_dist=0.35, ao_strength=0.55)
     region = region_bm(bm, groups['hull'])
     m.add('hull', piece_from_bm(region, boat_color_fn(info)))
-    for p in tub_pieces(info) + seat_pieces(info) + generator_pieces(info):
+    for p in tub_pieces(info) + seat_pieces(info) + generator_pieces(info) + rail_pieces(bm, info):
         m.add('hull', p)
     frame, lenses, bar = light_pieces(info)
     for p in frame:
@@ -285,10 +363,10 @@ def build_bowboat():
         'tubRadius': round(t['radius'] - 0.05, 3),
         'flood': game(bar),
         'leds': len(lenses),
-        'bowLip': game((0.5, info['bow'] - 0.25, info['gunwale'] + 0.32)),
+        'bowLip': game((0.5, info['bow'] - 0.25, info['rail'] + 0.26)),
         'motor': game(motor_pivot),
         'prop': game(prop_pivot),
-        'floor': round(info['floor'], 3), 'deckTop': round(info['deck'], 3), 'gunwale': round(info['gunwale'], 3),
+        'floor': round(info['floor'], 3), 'deckTop': round(info['deck'], 3), 'gunwale': round(info['gunwale'], 3), 'rail': round(info['rail'], 3),
         'transom': round(info['transom'], 3), 'bow': round(info['bow'], 3), 'stern': round(info['stern'], 3), 'half': round(info['half'], 3),
     })
     write_model(m)
