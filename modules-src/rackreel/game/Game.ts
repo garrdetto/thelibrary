@@ -79,6 +79,10 @@ const AIM_SPEED = 0.9
 const CAMERA_DISTANCE = 3.3
 const SHOULDER_OFFSET = 0.45
 const DOUBLE_CLICK_MS = 380
+/** A boat that moved this far while the player was away sends them back to the cabin. */
+const BOAT_MOVED_RANGE = 15
+/** Lets remote boat positions catch up before checking. */
+const RETURN_CHECK_MS = 1500
 const ARROW_YAW_RATE = 2.1
 const ARROW_PITCH_RATE = 1.4
 const ARROW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
@@ -162,6 +166,11 @@ export class Game {
   private casters: AbstractMesh[] = []
   private readonly casterScratch: AbstractMesh[] = []
   private boat!: Vehicle
+  private boatHome = new Vector3()
+  private boatHomeHeading = 0
+  private spawnHeading = 0
+  private awayFrom: { x: number; z: number } | null = null
+  private returnTimer = 0
   private anchorLine!: Mesh
   private deckSeat: DeckSeat | null = null
   private swivel = 0
@@ -219,6 +228,9 @@ export class Game {
     this.vehicles = new VehicleController(this.ctx, this.terrain, this.ground)
     this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), landmarks.utv, landmarks.utvHeading)
     this.boat = this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
+    this.boatHome.copyFrom(landmarks.boat)
+    this.boatHomeHeading = landmarks.boatHeading
+    this.spawnHeading = landmarks.spawnHeading
     this.anchorLine = createAnchorLine(scene, this.boat.root)
     this.dockEnd.copyFrom(landmarks.dock.end)
     this.avatar = new Avatar(instantiate(this.models.get('hunter')!, null, scene, reg))
@@ -272,6 +284,8 @@ export class Game {
         }
         this.panels?.refresh()
         this.pauseMenu?.refresh()
+        if (this.online?.room.status === 'disconnected') this.markAway()
+        else this.checkReturnSoon()
       },
       seat: (from) => {
         if (this.mode !== 'vehicle' || this.vehicles.active !== this.boat || this.deckSeat === null) return
@@ -543,6 +557,10 @@ export class Game {
         this.pauseMenu.hide()
         this.showRecords(() => this.pause())
       },
+      respawn: () => {
+        this.respawn('Back at the cabin.')
+        this.resume()
+      },
       sensitivity: () => ({ ...this.ctx.sensitivity }),
       setSensitivity: (s) => {
         this.ctx.sensitivity = s
@@ -577,6 +595,10 @@ export class Game {
       if (this.playing && !this.hud.modalOpen && document.pointerLockElement !== this.canvas) this.lock()
     })
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault())
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.markAway()
+      else this.checkReturnSoon()
+    })
     document.addEventListener('pointerlockchange', () => {
       if (!document.pointerLockElement && this.playing && !this.hud.modalOpen) this.pause()
     })
@@ -663,6 +685,67 @@ export class Game {
   private resume(): void {
     this.pauseMenu.hide()
     this.lock()
+  }
+
+  /** Puts the player on foot at the cabin's front door, out of any boat, vehicle or stand. */
+  private respawn(message: string): void {
+    if (this.fishing.busy) this.fishing.cancel()
+    this.scopeLock = false
+    this.awayFrom = null
+    if (this.mode === 'bowfish') this.bowfish.abandon()
+    if (this.mode === 'crew') this.online.announce('headed back to the cabin.')
+    if (this.mode === 'vehicle') {
+      const v = this.vehicles.active
+      this.vehicles.release()
+      if (v === this.boat) this.vehicles.moor(v, this.boatHome, this.boatHomeHeading)
+    }
+    this.avatar.root.setParent(null)
+    this.avatar.root.rotationQuaternion = null
+    this.avatar.root.rotation.set(0, 0, 0)
+    this.mode = 'foot'
+    this.deckSeat = null
+    this.crewOf = null
+    this.crewBoat = null
+    this.swivel = 0
+    this.crouch = false
+    this.anchorLine.setEnabled(false)
+    this.velocity.setAll(0)
+    this.foot.copyFrom(this.cabin.frontDoor)
+    this.foot.y = this.terrain.heightAt(this.foot.x, this.foot.z)
+    this.facing = this.spawnHeading
+    this.ctx.camera.rotation.set(0.18, this.spawnHeading, 0)
+    this.ctx.camera.fov = 0.9
+    this.hud.toast(message, 'big')
+  }
+
+  /** Where the boat the player is riding is right now, or null when not in a boat. */
+  private ridingBoatAt(): Vector3 | null {
+    if (this.mode === 'crew') return this.crewBoat?.root.position ?? null
+    if (this.mode === 'bowfish') return this.bowfish.boatNode.position
+    if (this.mode === 'vehicle' && this.vehicles.active?.kind === 'BOAT') return this.vehicles.active.position
+    return null
+  }
+
+  /** The player left (tab hidden or connection lost): remember where their boat was. */
+  private markAway(): void {
+    if (this.awayFrom || !this.playing) return
+    const at = this.ridingBoatAt()
+    this.awayFrom = at ? { x: at.x, z: at.z } : null
+  }
+
+  /** Back again: once the boat's position has caught up, respawn at the cabin if it moved on. */
+  private checkReturnSoon(): void {
+    if (!this.awayFrom || document.visibilityState !== 'visible' || this.online?.room.status === 'disconnected') return
+    window.clearTimeout(this.returnTimer)
+    this.returnTimer = window.setTimeout(() => {
+      const from = this.awayFrom
+      this.awayFrom = null
+      if (!from || !this.playing) return
+      const at = this.ridingBoatAt()
+      if (at && Math.hypot(at.x - from.x, at.z - from.z) < BOAT_MOVED_RANGE) return
+      if (this.mode === 'foot' && !at) return
+      this.respawn('The boat moved on while you were away, so you are back at the cabin.')
+    }, RETURN_CHECK_MS)
   }
 
   /** Keeps trees off Wild Man's line over the island so the boat flies clear on the way home. */
@@ -952,7 +1035,8 @@ export class Game {
     if (this.mode !== 'crew' || !this.crewOf) return
     const b = this.online.boat(this.crewOf)
     if (!b || !this.online.active) {
-      this.leaveCrew(true)
+      if (this.awayFrom) this.respawn('The boat moved on while you were away, so you are back at the cabin.')
+      else this.leaveCrew(true)
       return
     }
     const wasAnchored = this.crewBoat?.anchored

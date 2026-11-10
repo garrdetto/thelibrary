@@ -28,6 +28,7 @@ export interface PauseHooks {
   resume(): void
   inventory(): void
   records(): void
+  respawn(): void
   sensitivity(): Sensitivity
   setSensitivity(s: Sensitivity): void
   party: PauseParty
@@ -95,7 +96,7 @@ function codeInput(): HTMLInputElement {
   return input
 }
 
-/** The Esc menu: resume, look sensitivity, inviting players and the open-lobby switch. */
+/** The Esc menu: resume, look sensitivity, inviting players, the open-lobby switch and Respawn at the cabin. */
 export class PauseMenu {
   private readonly root: HTMLDivElement
   private readonly party: HTMLElement
@@ -143,7 +144,10 @@ export class PauseMenu {
     inventory.addEventListener('click', () => this.hooks.inventory())
     const records = button('Record book')
     records.addEventListener('click', () => this.hooks.records())
-    actions.append(inventory, records)
+    const respawn = button('Respawn')
+    respawn.title = 'Go back to the cabin'
+    respawn.addEventListener('click', () => this.hooks.respawn())
+    actions.append(inventory, records, respawn)
 
     card.append(head, look, this.party, this.note, actions)
     this.root.append(card)
