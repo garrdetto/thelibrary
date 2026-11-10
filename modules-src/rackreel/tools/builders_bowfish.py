@@ -288,33 +288,52 @@ def led_pod(at, aim, side, width=0.13):
     return housing, lens
 
 
-def light_pieces(info):
-    """LED flood pods all the way around the gunwale: down both sides, across the bow and either side of the motor, each aimed out and 35 degrees down."""
+def light_pieces(bm, info):
+    """LED flood pods bolted to the outside of the sidewall rail just under the cap, following the hull's outline down both sides and round the bow, plus a row on the transom wall either side of the motor; each aimed out and 35 degrees down."""
     black = lambda co, n: (0.05, 0.05, 0.055)
     white = lambda co, n: (1.0, 1.0, 1.0)
     frame, lenses = [], []
-    half = info['half'] - 0.04
-    z = info['rail'] + 0.06
+    line = sheer_line(bm, info)
+    top = info['rail']
+    z = top - 0.11
     down = math.sin(BOWBOAT_LIGHT_AIM)
     out = math.cos(BOWBOAT_LIGHT_AIM)
+    port = [(-max(0.08, w - 0.01), y) for y, w, _ in line]
+    ring = port + [(-x, y) for x, y in reversed(port)]
+    seg_len = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(ring, ring[1:])]
+    total = sum(seg_len)
+    spacing = 1.05
+    count = max(8, int(total / spacing))
     spots = []
-    y0 = info['transom'] + 0.35
-    y1 = info['bow'] - 0.5
-    count = max(4, int((y1 - y0) / 1.05))
-    for sx in (-1, 1):
-        for i in range(count + 1):
-            y = y0 + (y1 - y0) * i / count
-            width = max(0.5, info['half'] * (0.75 if y > info['bow'] - 2.0 else 1.0))
-            spots.append(((sx * half, y, z), (sx * out, 0.0, -down), (0, -sx, 0)))
-    for i in range(6):
-        x = -half * 0.8 + 1.6 * half * i / 5
-        spots.append(((x * 0.82, info['bow'] - 0.1, z), (x * 0.12, out, -down), (1, 0, 0)))
-    for x in (-half * 0.75, -half * 0.45, half * 0.45, half * 0.75):
-        spots.append(((x, info['transom'] - 0.02, z), (0.0, -out, -down), (-1, 0, 0)))
-    for at, aim, side in spots:
+    for i in range(count):
+        d = total * (i + 0.5) / count
+        if d < 0.45 or d > total - 0.45:
+            continue
+        j = 0
+        while j < len(seg_len) - 1 and d > seg_len[j]:
+            d -= seg_len[j]
+            j += 1
+        a, b = ring[j], ring[j + 1]
+        tx, ty = b[0] - a[0], b[1] - a[1]
+        tl = math.hypot(tx, ty) or 1.0
+        tx, ty = tx / tl, ty / tl
+        nx, ny = -ty, tx
+        k = d / (seg_len[j] or 1.0)
+        px, py = a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k
+        spots.append(((px, py, z), (nx, ny), (nx * out, ny * out, -down), (tx, ty, 0)))
+    y0, w0, z0 = line[0]
+    zt = z0 + (top - z0) * 0.6
+    span = max(0.2, w0 - 0.01 - 0.6)
+    for x in (-(0.6 + span * 0.8), -(0.6 + span * 0.3), 0.6 + span * 0.3, 0.6 + span * 0.8):
+        spots.append(((x, y0, zt - 0.1), (0.0, -1.0), (0.0, -out, -down), (-1, 0, 0)))
+    for (px, py, pz), (nx, ny), aim, side in spots:
+        at = (px + nx * 0.045, py + ny * 0.045, pz)
         housing, lens = led_pod(at, aim, side, 0.16)
         frame.append(piece_from_bm(housing, black, smooth=False))
         lenses.append(piece_from_bm(lens, white, smooth=False))
+        brot = Matrix((Vector(side), Vector((nx, ny, 0.0)), Vector((0.0, 0.0, 1.0)))).transposed().to_4x4()
+        bracket = box((0.07, 0.05, 0.05), at=(px + nx * 0.02, py + ny * 0.02, pz), rot=brot)
+        frame.append(piece_from_bm(bracket, black, smooth=False))
     return frame, lenses, (0.0, info['gunwale'] + 0.9, (info['transom'] + info['bow']) / 2)
 
 
@@ -339,7 +358,7 @@ def build_bowboat():
     m.add('hull', piece_from_bm(region, boat_color_fn(info)))
     for p in tub_pieces(info) + seat_pieces(info) + generator_pieces(info) + rail_pieces(bm, info):
         m.add('hull', p)
-    frame, lenses, bar = light_pieces(info)
+    frame, lenses, bar = light_pieces(bm, info)
     for p in frame:
         m.add('hull', p)
     motor = region_bm(bm, groups['motor'])
