@@ -55,6 +55,8 @@ export interface EngineContext {
   buildSelectionOctree(): void
   groundRay(ground: Mesh, x: number, z: number): { y: number; normal: Vector3 } | null
   setAds(amount: number, zoom?: number): void
+  /** Mouse-look multipliers from the pause menu: `look` normally, `aim` through the scope or a drawn bow. */
+  sensitivity: { look: number; aim: number }
   /** Re-aims the key light (sun or moon) and the shadow frame; `direction` points from the light toward the ground. */
   setSunDirection(direction: Vector3): void
 }
@@ -271,9 +273,11 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       Vector3.CrossToRef(sunDirection, right, up)
       up.normalize()
     },
+    sensitivity: { look: 1, aim: 1 },
     setAds(amount, zoom = 1) {
+      const { look, aim } = ctx.sensitivity
       camera.fov = 0.9 + (0.21 / zoom - 0.9) * amount
-      camera.angularSensibility = 2200 + amount * 7600 * zoom
+      camera.angularSensibility = (2200 + amount * 7600 * zoom) / (look + (aim - look) * amount)
     },
   }
   ray.length = 600

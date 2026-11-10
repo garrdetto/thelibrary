@@ -236,6 +236,7 @@ async function publish() {
     }
   }
 
+  await report({ status: 'running', progress: 'Building the site for publishing', ...base })
   const build = run('pnpm', ['build'])
   const branch = `site-change/${JOB_ID.slice(0, 8)}`
   if (process.env.GH_TOKEN) git('remote', 'set-url', 'origin', `https://x-access-token:${process.env.GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git`)
@@ -267,6 +268,7 @@ async function publish() {
   if (touchesServer) notes.push('This touches the multiplayer service, so it goes live after Railway redeploys.')
 
   if (job.autoMerge && created.ok) {
+    await report({ status: 'running', progress: 'Waiting for the modules check, then merging', prUrl, ...base })
     const outcome = await mergeWhenGreen(prUrl)
     if (outcome.merged) {
       if (newMigrations && process.env.CLOUDFLARE_API_TOKEN && process.env.CLOUDFLARE_ACCOUNT_ID) {
