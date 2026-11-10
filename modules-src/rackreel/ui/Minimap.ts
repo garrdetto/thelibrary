@@ -1,10 +1,10 @@
-import { HALF, WORLD_SIZE, forestDensity, trailOffset } from '../world/Terrain'
+import { HALF, HIGHWAY, WORLD_SIZE, forestDensity, highwayCoord, trailOffset } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
 
 export interface MapMarker {
   x: number
   z: number
-  kind: 'cabin' | 'stand' | 'blind' | 'boat' | 'utv' | 'quad' | 'friend' | 'down' | 'dock'
+  kind: 'cabin' | 'stand' | 'blind' | 'boat' | 'utv' | 'quad' | 'friend' | 'down' | 'dock' | 'wildman'
   heading?: number
   label?: string
 }
@@ -30,8 +30,12 @@ export class Minimap {
         const x = (i + 0.5) / SIZE * WORLD_SIZE - HALF
         const z = HALF - (j + 0.5) / SIZE * WORLD_SIZE
         const h = terrain.heightAt(x, z)
+        const road = highwayCoord(x, z)
         let r: number, gg: number, b: number
-        if (h < 0) {
+        if (road.across < HIGHWAY.halfWidth && Math.abs(road.t) < HIGHWAY.reach) {
+          r = 96; gg = 96; b = 100
+          if (road.across < 0.8) { r = 200; gg = 168; b = 70 }
+        } else if (h < 0) {
           const d = Math.min(1, -h / 14)
           r = 70 - d * 45
           gg = 112 - d * 55
@@ -121,6 +125,13 @@ export class Minimap {
           g.strokeText(m.label, px + 10, py + 6)
           g.fillText(m.label, px + 10, py + 6)
         }
+      } else if (m.kind === 'wildman') {
+        g.fillStyle = '#ffb02e'
+        g.beginPath(); g.moveTo(px, py - 10); g.lineTo(px + 8, py + 2); g.lineTo(px + 5, py + 9); g.lineTo(px - 5, py + 9); g.lineTo(px - 8, py + 2); g.closePath(); g.stroke(); g.fill()
+        g.font = '800 17px Inter, system-ui, sans-serif'
+        g.fillStyle = '#ffe2b0'
+        g.strokeText(m.label ?? 'Wild Man', px + 11, py + 6)
+        g.fillText(m.label ?? 'Wild Man', px + 11, py + 6)
       } else if (m.kind === 'down') {
         g.strokeStyle = '#ffd36b'
         g.lineWidth = 4

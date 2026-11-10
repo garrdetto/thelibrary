@@ -17,8 +17,10 @@ export function texturedMaterial(scene: Scene, file: string, cache: Map<string, 
   texture.anisotropicFilteringLevel = 4
   mat.diffuseTexture = texture
   mat.diffuseColor = Color3.White()
-  mat.specularColor = file.startsWith('fish-') ? WET.specular : new Color3(0.05, 0.05, 0.05)
-  mat.specularPower = file.startsWith('fish-') ? WET.power : 16
+  const wet = file.startsWith('fish-')
+  const cloth = file.startsWith('hunter') || file === 'wildman'
+  mat.specularColor = wet ? WET.specular : cloth ? new Color3(0.015, 0.015, 0.015) : new Color3(0.05, 0.05, 0.05)
+  mat.specularPower = wet ? WET.power : cloth ? 6 : 16
   mat.ambientColor = new Color3(0.3, 0.3, 0.3)
   mat.backFaceCulling = false
   mat.twoSidedLighting = true

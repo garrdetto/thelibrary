@@ -104,6 +104,62 @@ export class Audio {
     this.burst(0.35, 2500, 0.25, 'highpass')
   }
 
+  /** A bow shot: the string slap and the line peeling off the reel. */
+  twang(): void {
+    if (!this.ctx || !this.master) return
+    const now = this.ctx.currentTime
+    const o = this.ctx.createOscillator()
+    const g = this.ctx.createGain()
+    o.type = 'triangle'
+    o.frequency.setValueAtTime(190, now)
+    o.frequency.exponentialRampToValueAtTime(95, now + 0.18)
+    g.gain.setValueAtTime(0.18, now)
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.25)
+    o.connect(g).connect(this.master)
+    o.start(now)
+    o.stop(now + 0.3)
+    this.burst(0.5, 3200, 0.09, 'bandpass')
+  }
+
+  /** Wild Man hollering: a voiced glide up and down through a vowel formant, with vibrato. `big` makes it longer and wilder. */
+  whoop(big = false): void {
+    if (!this.ctx || !this.master) return
+    const ctx = this.ctx
+    const now = ctx.currentTime
+    const len = big ? 1.5 : 0.75
+    const o = ctx.createOscillator()
+    o.type = 'sawtooth'
+    const base = big ? 210 : 240
+    o.frequency.setValueAtTime(base, now)
+    o.frequency.linearRampToValueAtTime(base * 2.6, now + len * 0.35)
+    o.frequency.linearRampToValueAtTime(base * (big ? 3.1 : 2.2), now + len * 0.6)
+    o.frequency.linearRampToValueAtTime(base * 1.4, now + len)
+    const vib = ctx.createOscillator()
+    vib.frequency.value = big ? 7.5 : 6
+    const vibGain = ctx.createGain()
+    vibGain.gain.value = big ? 22 : 12
+    vib.connect(vibGain).connect(o.frequency)
+    const formant = ctx.createBiquadFilter()
+    formant.type = 'bandpass'
+    formant.Q.value = 3.2
+    formant.frequency.setValueAtTime(750, now)
+    formant.frequency.linearRampToValueAtTime(1150, now + len * 0.4)
+    formant.frequency.linearRampToValueAtTime(820, now + len)
+    const low = ctx.createBiquadFilter()
+    low.type = 'lowpass'
+    low.frequency.value = 2600
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, now)
+    g.gain.exponentialRampToValueAtTime(big ? 0.34 : 0.26, now + 0.06)
+    g.gain.setValueAtTime(big ? 0.3 : 0.22, now + len * 0.8)
+    g.gain.exponentialRampToValueAtTime(0.0001, now + len)
+    o.connect(formant).connect(low).connect(g).connect(this.master)
+    o.start(now)
+    vib.start(now)
+    o.stop(now + len + 0.05)
+    vib.stop(now + len + 0.05)
+  }
+
   chime(): void {
     if (!this.ctx || !this.master) return
     const now = this.ctx.currentTime

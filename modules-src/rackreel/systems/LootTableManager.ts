@@ -1,5 +1,5 @@
 export type SpeciesKind = 'fish' | 'game'
-export type SpeciesId = 'muskie' | 'walleye' | 'pike' | 'smallmouth' | 'perch' | 'whitetail' | 'blackbear'
+export type SpeciesId = 'muskie' | 'walleye' | 'pike' | 'smallmouth' | 'perch' | 'carp' | 'whitetail' | 'blackbear'
 export type Habitat = 'deep' | 'weeds' | 'rocks' | 'forest' | 'marsh'
 
 export interface RecordEntry {
@@ -27,6 +27,8 @@ export interface SpeciesTemplate {
   trophyAt: number
   fight: number
   facts: string
+  /** Hard ceiling on the measured value, record-class animals included (carp top out at 30 in). */
+  cap?: number
 }
 
 export type RecordMetric = 'weight' | 'length' | 'score' | 'spread' | 'points' | 'dressed' | 'skull'
@@ -75,6 +77,7 @@ export const SPECIES: SpeciesTemplate[] = [
   { id: 'pike', name: 'Northern Pike', kind: 'fish', model: 'fish-pike', unit: 'lb', measure: 'Weight', min: 1.5, avg: 4.5, max: 14, habitats: ['weeds', 'marsh'], weight: 0.22, trophyAt: 14, fight: 0.7, facts: 'Pike spawn in flooded marsh as soon as the ice goes out and patrol the weed beds all summer.' },
   { id: 'smallmouth', name: 'Smallmouth Bass', kind: 'fish', model: 'fish-smallmouth', unit: 'lb', measure: 'Weight', min: 0.7, avg: 1.9, max: 5, habitats: ['rocks'], weight: 0.18, trophyAt: 5, fight: 0.6, facts: 'Bronze-sided bass of clear, rocky water; they hold where crayfish hide among boulders.' },
   { id: 'perch', name: 'Yellow Perch', kind: 'fish', model: 'fish-perch', unit: 'lb', measure: 'Weight', min: 0.15, avg: 0.45, max: 1.2, habitats: ['weeds', 'marsh', 'deep'], weight: 0.22, trophyAt: 1.2, fight: 0.25, facts: 'Perch school by size; find one and you have found a dozen. A key food for walleye and pike.' },
+  { id: 'carp', name: 'Common Carp', kind: 'fish', model: 'fish-carp', unit: 'in', measure: 'Length', min: 10, avg: 16, max: 26, cap: 30, habitats: ['marsh', 'weeds'], weight: 0, trophyAt: 26, fight: 0.8, facts: 'An invasive rough fish that roots up weed beds and muddies the water. Bowfishers take them at night on the shallow flats, which helps the native fish. Only taken with a bow, from Wisco Wild Man\'s boat.' },
   { id: 'whitetail', name: 'White-tailed Deer', kind: 'game', model: 'deer', unit: 'in', measure: 'Antler score', min: 75, avg: 115, max: 160, habitats: ['forest', 'marsh'], weight: 0.75, trophyAt: 160, fight: 0, facts: 'Antlers grow and drop every year. The score adds beam length, tine length, inside spread and circumferences in inches.' },
   { id: 'blackbear', name: 'Black Bear', kind: 'game', model: 'bear', unit: 'lb', measure: 'Weight', min: 120, avg: 210, max: 400, habitats: ['forest'], weight: 0.25, trophyAt: 400, fight: 0, facts: 'Northern Wisconsin holds one of the densest black bear populations in the country. Record bears are ranked by skull size, length plus width.' },
 ]
@@ -87,6 +90,7 @@ export const RECORD_BOOK_SEED: Record<SpeciesId, [RecordEntry, RecordEntry, Reco
   pike: [{ holder: 'H. Nygaard', value: 38.0, year: 1952, place: 'Lake Puckaway' }, { holder: 'E. Kowalski', value: 36.2, year: 1971, place: 'Chippewa River' }, { holder: 'M. Ruud', value: 34.5, year: 1997, place: 'Willow Flowage' }],
   smallmouth: [{ holder: 'L. Strand', value: 9.1, year: 1950, place: 'Indian Lake' }, { holder: 'W. Janke', value: 8.7, year: 1989, place: 'Door peninsula' }, { holder: 'S. Aho', value: 8.4, year: 2004, place: 'Menominee River' }],
   perch: [{ holder: 'P. Wendt', value: 3.3, year: 1954, place: 'Lake Winnebago' }, { holder: 'K. Laine', value: 3.1, year: 1976, place: 'Lake Michigan' }, { holder: 'B. Halvorsen', value: 2.9, year: 2011, place: 'Big Green' }],
+  carp: [{ holder: 'D. Vang', value: 29.9, year: 2016, place: 'Lake Koshkonong' }, { holder: 'R. Szymanski', value: 29.6, year: 2009, place: 'Petenwell Flowage' }, { holder: 'L. Kiefer', value: 29.3, year: 1994, place: 'Lake Poygan' }],
   whitetail: [{ holder: 'J. Brandvold', value: 206.1, year: 1914, place: 'Burnett County' }, { holder: 'G. Thiel', value: 201.6, year: 1999, place: 'Buffalo County' }, { holder: 'N. Sorensen', value: 197.4, year: 1965, place: 'Bayfield County' }],
   blackbear: [{ holder: 'F. Kallio', value: 790, year: 1963, place: 'Iron County' }, { holder: 'O. Wiita', value: 745, year: 1985, place: 'Sawyer County' }, { holder: 'A. Dahl', value: 712, year: 2009, place: 'Price County' }],
 }
@@ -107,6 +111,19 @@ export function mulberry32(seed: number): Rng {
 export function fishLengthIn(species: SpeciesId, weightLb: number): number {
   const shape: Record<string, number> = { muskie: 3500, walleye: 2700, pike: 3300, smallmouth: 1600, perch: 1350 }
   return Math.cbrt(weightLb * (shape[species] ?? 2500))
+}
+
+/** Weight of a fish that is measured by length (carp): the length-weight curve, give or take 8 %. */
+export function fishWeightLb(species: SpeciesId, lengthIn: number, u: number): number {
+  const shape: Record<string, number> = { carp: 1800 }
+  return round1(Math.max(0.3, (lengthIn ** 3 / (shape[species] ?? 2500)) * (0.92 + u * 0.16)))
+}
+
+/** Pounds and ounces, e.g. "7 lb 9 oz". */
+export function formatPounds(value: number): string {
+  const lb = Math.floor(value)
+  const oz = Math.round((value - lb) * 16)
+  return oz === 16 ? `${lb + 1} lb` : oz ? `${lb} lb ${oz} oz` : `${lb} lb`
 }
 
 export function round1(value: number): number {
@@ -160,6 +177,7 @@ const sixteenth = (v: number) => Math.round(v * 16) / 16
 export function measure(speciesId: SpeciesId, value: number, seed = 0): Measures {
   const t = SPECIES_BY_ID[speciesId]
   const r = mulberry32(hashKey(`${speciesId}:${Math.round(value * 100)}:${seed >>> 0}`))
+  if (t.kind === 'fish' && t.unit === 'in') return { length: value, weight: fishWeightLb(speciesId, value, r()) }
   if (t.kind === 'fish') {
     const length = fishLengthIn(speciesId, value) * (0.97 + r() * 0.06)
     return { weight: value, length: quarter(length) }
@@ -185,7 +203,7 @@ export class LootTableManager {
   }
 
   pickSpecies(kind: SpeciesKind, habitat: Habitat, bias: Record<string, number> = {}): SpeciesTemplate {
-    const pool = SPECIES.filter((s) => s.kind === kind)
+    const pool = SPECIES.filter((s) => s.kind === kind && s.weight > 0)
     const weights = pool.map((s) => s.weight * (s.habitats.includes(habitat) ? 1 : 0.25) * (bias[s.id] ?? 1))
     const total = weights.reduce((a, b) => a + b, 0)
     let roll = this.rng() * total
@@ -246,11 +264,12 @@ export class LootTableManager {
     if (rolled === 'record') value = Math.max(value, round1(top + 0.1))
     else if (value > top) value = top
     if (rolled === 'trophy') value = Math.max(value, template.trophyAt)
+    if (template.cap !== undefined) value = Math.min(value, template.cap)
     const sizeClass = classify(speciesId, value)
     const legendary = sizeClass === 'record' || sizeClass === 'near-record'
     const seed = Math.floor(this.rng() * 2147483647)
     const measures = measure(speciesId, value, seed)
-    const weightLb = template.unit === 'lb' ? value : measures.dressed ?? 150
+    const weightLb = template.unit === 'lb' ? value : measures.weight ?? measures.dressed ?? 150
     const lengthIn = measures.length ?? 0
     const recordTier = this.placement(speciesId, value)
     return { species: speciesId, value, weightLb, lengthIn, legendary, recordTier, trophyPoints: this.trophyPoints(speciesId, value), serial: ++this.serial, sizeClass, measures, seed }

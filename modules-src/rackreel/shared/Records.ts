@@ -52,6 +52,8 @@ export const RECORD_CATEGORIES: RecordCategory[] = [
   cat('smallmouth', 'length', 'Longest', 'in', 23, 'WI live-release record, Vilas Co., 2024'),
   cat('perch', 'weight', 'Heaviest', 'lb', 3.25, 'WI record, Winnebago Co., 1954'),
   cat('perch', 'length', 'Longest', 'in', 16.75, 'WI live-release record, Oconto Co., 2025'),
+  cat('carp', 'length', 'Longest', 'in', 30, 'Biggest carp on Wild Man\'s flats'),
+  cat('carp', 'weight', 'Heaviest', 'lb', 16.5, 'Biggest carp on Wild Man\'s flats'),
   cat('whitetail', 'score', 'Antler score', 'in', 206.125, 'WI typical record, Burnett Co., 1914'),
   cat('whitetail', 'spread', 'Inside spread', 'in', 20.125, 'WI typical record buck, 1914'),
   cat('whitetail', 'points', 'Most points', 'pts', 30, 'WI non-typical record, Buffalo Co., 1973'),
