@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "hunter-tank-khaki",
+  "tasks": {
+    "retexture": {
+      "id": "01a1c547-4e2a-73a3-8920-6ecb4afc189b",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T11:45:53.340Z",
+      "credits": 10
+    }
+  },
+  "credits": 10,
+  "createdAt": "2026-11-10T11:45:46.485Z",
+  "settings": {
+    "kind": "retexture",
+    "from": "hunter-base.glb",
+    "prompt": "Same man and face. Matte heather grey cotton sleeveless tank top on the torso only (no jacket, no vest, no leather). The arms are bare human skin: sun-tanned skin with natural arm hair from the shoulders down to the hands. Light khaki cotton chino pants, brown boots. No logos, no text, no brand names."
+  },
+  "updatedAt": "2026-11-10T11:46:26.294Z",
+  "files": [
+    "assets-src/rackreel/meshy/hunter-tank-khaki.glb"
+  ]
+}

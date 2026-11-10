@@ -8,12 +8,27 @@ HUNTER_COMBOS = {
     ('jacket-canvas', 'vest-blaze'): 'hunter-canvas-blaze-jeans',
     ('jacket-canvas', 'vest-fishing'): 'hunter-canvas-fishing-camo',
     ('jacket-canvas', 'vest-none'): 'hunter-canvas-none-waders',
+    ('jacket-blaze', 'vest-blaze'): 'hunter-blaze-full',
+    ('jacket-blaze', 'vest-fishing'): 'hunter-blaze-full',
+    ('jacket-blaze', 'vest-none'): 'hunter-blaze-full',
+    ('jacket-angler', 'vest-blaze'): 'hunter-angler-blazevest',
+    ('jacket-angler', 'vest-fishing'): 'hunter-angler-fishvest',
+    ('jacket-angler', 'vest-none'): 'hunter-angler-khaki',
+    ('jacket-tank', 'vest-blaze'): 'hunter-tank-blazevest',
+    ('jacket-tank', 'vest-fishing'): 'hunter-tank-fishvest',
+    ('jacket-tank', 'vest-none'): 'hunter-tank-khaki',
 }
-HUNTER_PANTS = {'pants-camo': 'hunter-base', 'pants-jeans': 'hunter-flannel-none-jeans', 'pants-waders': 'hunter-canvas-none-waders'}
-HUNTER_HATS = {'cap-blaze': 'hunter-cap-blaze', 'cap-camo': 'hunter-cap-camo', 'cap-bucket': 'hunter-cap-bucket'}
+HUNTER_SKIN_ARMS = {'hunter-tank-khaki', 'hunter-tank-blazevest', 'hunter-tank-fishvest'}
+HUNTER_PANTS = {'pants-camo': 'hunter-base', 'pants-jeans': 'hunter-flannel-none-jeans', 'pants-waders': 'hunter-canvas-none-waders',
+                'pants-blaze': 'hunter-blaze-full', 'pants-khaki': 'hunter-angler-khaki'}
+HUNTER_HATS = {'cap-blaze': 'hunter-cap-blaze', 'cap-camo': 'hunter-cap-camo', 'cap-bucket': 'hunter-cap-bucket',
+               'cap-backwards': 'hunter-cap-backwards', 'cap-cowboy': 'hunter-hat-cowboy', 'cap-visor': 'hunter-hat-visor'}
+HUNTER_HAT_BACKWARDS = {'cap-backwards'}
+HUNTER_HAT_FIT = {'cap-cowboy': 1.0, 'cap-visor': 1.22}
+HUNTER_HAT_FORWARD = {'cap-visor': 0.055}
 HUNTER_PACK = 'hunter-pack'
 HUNTER_PACK_PANEL_Y = 0.1
-HUNTER_HAT_LIFT = {'cap-blaze': 0.06, 'cap-camo': 0.06, 'cap-bucket': 0.03}
+HUNTER_HAT_LIFT = {'cap-blaze': 0.06, 'cap-camo': 0.06, 'cap-bucket': 0.03, 'cap-backwards': 0.06, 'cap-cowboy': 0.075, 'cap-visor': -0.02}
 HUNTER_HAT_SCALE = 0.85
 HUNTER_HEM_SOURCE = 'hunter-flannel-none-jeans'
 HUNTER_HIP = 0.98
@@ -193,12 +208,12 @@ def load_prop(name, rotate):
     return bm, image
 
 
-def fit_hat(bm, head_top, head_center, head_width, lift):
+def fit_hat(bm, head_top, head_center, head_width, lift, fit=1.0):
     zs = [v.co.z for v in bm.verts]
     z0, z1 = min(zs), max(zs)
     crown = [v.co for v in bm.verts if v.co.z > z0 + 0.55 * (z1 - z0)]
     cw = max(c.x for c in crown) - min(c.x for c in crown)
-    s = head_width * 1.2 / cw * HUNTER_HAT_SCALE
+    s = head_width * 1.2 / cw * HUNTER_HAT_SCALE * fit
     bmesh.ops.scale(bm, vec=(s, s, s), verts=bm.verts[:])
     crown = [v.co for v in bm.verts if v.co.z > (z0 + 0.55 * (z1 - z0)) * s]
     cx = (max(c.x for c in crown) + min(c.x for c in crown)) / 2
@@ -222,6 +237,75 @@ def save_variant_texture(name, image, size):
     FISH_TEXTURE_SIZE = size
     save_texture(image, name)
     FISH_TEXTURE_SIZE = keep
+
+
+def arm_skin_uvs(bm, labels, slot_of, B):
+    uv = bm.loops.layers.uv.active
+    wrist = {'L': B['RightHand'].z, 'R': B['LeftHand'].z}
+    tris, hands = [], []
+    for f in bm.faces:
+        j = labels[f.index]
+        if slot_of.get(f.index) != 'upper' or not (j.startswith('upperArm') or j.startswith('foreArm')):
+            continue
+        if j.startswith('foreArm') and f.calc_center_median().z < wrist[j[-1]] - 0.01:
+            hands.append(face_uv(f, uv))
+            continue
+        loops = list(f.loops)
+        for i in range(1, len(loops) - 1):
+            tris.append([tuple(loops[0][uv].uv), tuple(loops[i][uv].uv), tuple(loops[i + 1][uv].uv)])
+    return tris, hands
+
+
+def uv_mask(tris, size):
+    import numpy as np
+    mask = np.zeros((size, size), dtype=bool)
+    for tri in tris:
+        pts = np.array(tri) * size
+        x0, y0 = (np.floor(pts.min(axis=0)).astype(int) - 1).tolist()
+        x1, y1 = (np.ceil(pts.max(axis=0)).astype(int) + 1).tolist()
+        x0, y0, x1, y1 = max(x0, 0), max(y0, 0), min(x1, size - 1), min(y1, size - 1)
+        if x1 < x0 or y1 < y0:
+            continue
+        xs, ys = np.meshgrid(np.arange(x0, x1 + 1) + 0.5, np.arange(y0, y1 + 1) + 0.5)
+        (ax, ay), (bx, by), (cx, cy) = pts
+        d = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy)
+        if abs(d) < 1e-12:
+            continue
+        w1 = ((by - cy) * (xs - cx) + (cx - bx) * (ys - cy)) / d
+        w2 = ((cy - ay) * (xs - cx) + (ax - cx) * (ys - cy)) / d
+        pad = 1.5 / max(1.0, abs(d) ** 0.5)
+        mask[y0:y1 + 1, x0:x1 + 1] |= (w1 >= -pad) & (w2 >= -pad) & (1 - w1 - w2 >= -pad)
+    return mask
+
+
+def save_skin_arms(name, image, size, arm_tris, hand_uvs):
+    """The tank tops: Meshy keeps the jacket's sleeves in the paint, so the arm texels are repainted with the hands' skin tone, keeping the shading."""
+    import numpy as np
+    copy = image.copy()
+    copy.scale(size, size)
+    px = np.empty(size * size * 4, dtype=np.float32)
+    copy.pixels.foreach_get(px)
+    px = px.reshape(size, size, 4)
+    samples = np.array([px[int(v * size) % size, int(u * size) % size, :3] for u, v in hand_uvs]) if hand_uvs else np.array([[0.62, 0.42, 0.32]])
+    skin = np.median(samples, axis=0)
+    mask = uv_mask(arm_tris, size)
+    lum = px[..., :3] @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
+    mean = float(lum[mask].mean()) if mask.any() else 0.5
+    detail = np.clip(lum / max(mean, 1e-3), 0.55, 1.35) ** 0.6
+    tinted = np.clip(skin[None, None, :] * detail[..., None], 0, 1)
+    px[..., :3] = np.where(mask[..., None], tinted, px[..., :3])
+    copy.pixels.foreach_set(px.ravel())
+    out = os.path.join(OUT, name + '.webp')
+    scene = bpy.context.scene
+    settings = scene.render.image_settings
+    saved = (settings.file_format, settings.quality, settings.color_mode)
+    settings.file_format = 'WEBP'
+    settings.quality = 88
+    settings.color_mode = 'RGB'
+    copy.save_render(out, scene=scene)
+    settings.file_format, settings.quality, settings.color_mode = saved
+    bpy.data.images.remove(copy)
+    print('skin arms', name, 'skin', [round(float(c), 3) for c in skin], 'texels', int(mask.sum()))
 
 
 _procedural_hunter = build_hunter
@@ -334,8 +418,10 @@ def build_hunter():
     for item, src in HUNTER_HATS.items():
         if not meshy_source(src):
             continue
-        hb, img = load_prop(src, rotate=True)
-        fit_hat(hb, head_top, head_center, head_width, HUNTER_HAT_LIFT.get(item, 0.025) * HUNTER_HAT_SCALE)
+        hb, img = load_prop(src, rotate=item not in HUNTER_HAT_BACKWARDS)
+        fit_hat(hb, head_top, head_center, head_width, HUNTER_HAT_LIFT.get(item, 0.025) * HUNTER_HAT_SCALE, HUNTER_HAT_FIT.get(item, 1.0))
+        if item in HUNTER_HAT_FORWARD:
+            bmesh.ops.translate(hb, vec=(0, HUNTER_HAT_FORWARD[item], 0), verts=hb.verts[:])
         m.add('head:' + item, piece_from_textured(hb), pivot=tuple(pivots['head']), material='tex:' + src, parent='head')
         hb.free()
         if img is not None:
@@ -348,13 +434,16 @@ def build_hunter():
         pb.free()
         if img is not None:
             save_variant_texture(HUNTER_PACK, img, HUNTER_PROP_TEXTURE)
+    arm_tris, hand_uvs = arm_skin_uvs(bm, labels, slot_of, B)
     bm.free()
     for tex in sorted(set(HUNTER_COMBOS.values()) | set(HUNTER_PANTS.values())):
         if not meshy_source(tex):
             continue
         tb, img = import_meshy(meshy_source(tex))
         tb.free()
-        if img is not None:
+        if img is not None and tex in HUNTER_SKIN_ARMS:
+            save_skin_arms(tex, img, HUNTER_BODY_TEXTURE, arm_tris, hand_uvs)
+        elif img is not None:
             save_variant_texture(tex, img, HUNTER_BODY_TEXTURE)
     write_model(m)
     print('hunter hem', round(hem, 3), 'collar', round(collar, 3), 'parts', len(m.parts), 'aliases', len(m.aliases))

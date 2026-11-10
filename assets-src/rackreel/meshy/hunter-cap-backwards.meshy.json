@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "hunter-cap-backwards",
+  "tasks": {
+    "retexture": {
+      "id": "01a1c543-08e3-708d-bc13-987256c4fc7d",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T11:41:10.651Z",
+      "credits": 10
+    }
+  },
+  "credits": 10,
+  "createdAt": "2026-11-10T11:41:06.699Z",
+  "settings": {
+    "kind": "retexture",
+    "from": "hunter-cap-blaze.glb",
+    "prompt": "Casual faded navy blue and khaki trucker baseball cap with a mesh back and a plain front panel, tan bill. No logos, no text, no brand names."
+  },
+  "updatedAt": "2026-11-10T11:41:43.747Z",
+  "files": [
+    "assets-src/rackreel/meshy/hunter-cap-backwards.glb"
+  ]
+}

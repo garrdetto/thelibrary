@@ -2,6 +2,8 @@ export const HERD_SIZE = 8
 export const HERD_SPAWN_MIN = 90
 export const HERD_SPAWN_MAX = 260
 export const HERD_DESPAWN = 380
+/** A downed animal nobody walks up to tag is cleared after this long once everyone is out of range. */
+export const ABANDONED_DOWN_SECONDS = 600
 /** Every five minutes the deer run off the scene and a fresh batch enters at random spots. */
 export const HERD_TURNOVER_SECONDS = 300
 /** A deer that has been told to leave is gone after this long, or once it is `LEAVE_GONE` metres away. */

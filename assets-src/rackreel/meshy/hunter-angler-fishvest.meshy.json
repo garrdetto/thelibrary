@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "hunter-angler-fishvest",
+  "tasks": {
+    "retexture": {
+      "id": "01a1c749-bc1c-73a0-b7aa-59c1cef03cee",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T21:07:50.868Z",
+      "credits": 10
+    }
+  },
+  "credits": 10,
+  "createdAt": "2026-11-10T21:07:39.946Z",
+  "settings": {
+    "kind": "retexture",
+    "from": "hunter-base.glb",
+    "prompt": "Same man and face. Thin matte lightweight polyester long sleeve fishing sun shirt (not a jacket, no leather, no shine): bright ocean teal-blue body with a faded white wave and fish-scale print, lighter sky blue sleeves, collar open at the neck. Over it, an open khaki-green mesh fishing vest with many small zip tackle pockets on the chest. Light khaki cotton chino pants, tan canvas boots. No logos, no text, no brand names."
+  },
+  "updatedAt": "2026-11-10T21:08:32.267Z",
+  "files": [
+    "assets-src/rackreel/meshy/hunter-angler-fishvest.glb"
+  ]
+}

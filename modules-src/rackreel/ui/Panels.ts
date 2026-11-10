@@ -31,7 +31,7 @@ const GEAR_SLOTS: { slot: Slot; label: string }[] = [
   { slot: 'motor', label: 'Boat motor' }, { slot: 'utvKit', label: 'UTV' },
 ]
 const WARDROBE_SLOTS: { slot: Slot; label: string }[] = [
-  { slot: 'jacket', label: 'Jacket' }, { slot: 'vest', label: 'Vest' }, { slot: 'cap', label: 'Hat' }, { slot: 'pants', label: 'Pants' }, { slot: 'pack', label: 'Pack' },
+  { slot: 'jacket', label: 'Top' }, { slot: 'vest', label: 'Vest' }, { slot: 'cap', label: 'Hat' }, { slot: 'pants', label: 'Pants' }, { slot: 'pack', label: 'Pack' },
 ]
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {

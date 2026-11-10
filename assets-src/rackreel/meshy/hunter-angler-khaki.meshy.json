@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "hunter-angler-khaki",
+  "tasks": {
+    "retexture": {
+      "id": "01a1c547-4dd7-7295-b730-a8314988649e",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T11:45:51.603Z",
+      "credits": 10
+    }
+  },
+  "credits": 10,
+  "createdAt": "2026-11-10T11:45:46.255Z",
+  "settings": {
+    "kind": "retexture",
+    "from": "hunter-base.glb",
+    "prompt": "Same man and face. Thin matte lightweight polyester long sleeve fishing sun shirt (not a jacket, no leather, no shine): bright ocean teal-blue body with a faded white wave and fish-scale print, lighter sky blue sleeves, collar open at the neck. Light khaki cotton chino pants, tan canvas boots. No logos, no text, no brand names."
+  },
+  "updatedAt": "2026-11-10T11:46:25.792Z",
+  "files": [
+    "assets-src/rackreel/meshy/hunter-angler-khaki.glb"
+  ]
+}

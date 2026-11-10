@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "hunter-hat-visor",
+  "tasks": {
+    "preview": {
+      "id": "01a1c543-0a05-707c-af2e-08fe100a724a",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T11:41:10.054Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1c543-b368-72ee-950c-5d61139b4d3b",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T11:41:56.856Z",
+      "credits": 10
+    }
+  },
+  "credits": 30,
+  "createdAt": "2026-11-10T11:41:06.711Z",
+  "settings": {
+    "kind": "text",
+    "prompt": "A single sun visor hat on its own: a curved fabric bill attached to a headband with an open top (no crown), like a golf or fishing sun visor, no head, no person, game asset.",
+    "texture": "khaki tan cotton fabric bill and band, light grey underside. No logos, no text, no brand names.",
+    "polycount": 3000
+  },
+  "updatedAt": "2026-11-10T11:42:30.655Z",
+  "files": [
+    "assets-src/rackreel/meshy/hunter-hat-visor.glb"
+  ]
+}
