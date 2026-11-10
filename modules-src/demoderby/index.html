@@ -7,10 +7,17 @@
     <style>
       html,body{margin:0;height:100%;background:var(--lib-bg,#0a0e1a);color:var(--lib-text,#e9effc);overflow:hidden;font:500 14px/1.45 Inter,system-ui,sans-serif}
       #stage{position:relative;width:100%;height:100%}
-      .dd-screen{position:absolute;inset:0;z-index:20;display:grid;align-items:center;justify-items:start;padding:16px;pointer-events:none;overflow:auto}
+      .dd-screen{position:absolute;inset:0;z-index:20;display:grid;align-items:safe center;justify-items:start;padding:12px;pointer-events:none;overflow:auto}
       .dd-screen[hidden]{display:none}
       .dd-card{pointer-events:auto;width:min(440px,100%);display:grid;gap:14px;padding:20px 22px;border-radius:16px;background:color-mix(in srgb,var(--lib-panel,#111829) 92%,transparent);border:1px solid var(--lib-line,rgba(120,170,255,.16));box-shadow:0 24px 60px -24px var(--lib-shadow,rgba(0,0,0,.45));backdrop-filter:blur(8px)}
       .dd-card.is-centered{justify-self:center;width:min(560px,100%)}
+      .dd-card.is-garage{width:min(700px,100%);grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px 22px;padding:16px 20px}
+      .dd-card.is-garage h1{font-size:28px}
+      .dd-garage-head{grid-column:1/-1;display:grid;gap:4px}
+      .dd-garage-col{display:grid;gap:12px;align-content:start}
+      .dd-card.is-garage .dd-swatch{width:26px;height:26px}
+      .dd-card.is-garage .dd-chip{padding:6px 11px}
+      .dd-card.is-garage details ul{max-height:min(40vh,260px);overflow:auto}
       .dd-eyebrow{font-size:11px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;color:var(--module-accent,var(--lib-accent,#ff8c2a))}
       .dd-card h1,.dd-card h2{margin:0;font-family:Rajdhani,Inter,sans-serif;color:var(--lib-strong,#fff);letter-spacing:.4px}
       .dd-card h1{font-size:34px}
@@ -95,13 +102,14 @@
     </div>
 
     <section id="screen-garage" class="dd-screen" aria-labelledby="garage-title">
-      <form class="dd-card" id="garage-form">
-        <div>
+      <form class="dd-card is-garage" id="garage-form">
+        <div class="dd-garage-head">
           <div class="dd-eyebrow">Momentum &amp; impact · learning module</div>
           <h1 id="garage-title">Demo Derby</h1>
-          <p>Paint a 1970s full-size wagon or sedan, spray your number on the doors and roof, and take it onto a county-fair dirt pad against the local field. Every hit trades momentum for damage; the last car still moving wins the heat.</p>
+          <p>Paint a 1970s wagon or sedan, spray your number and take it onto a county-fair dirt pad. Every hit trades momentum for damage; the last car still moving wins the heat.</p>
           <p class="dd-note" id="park-note" hidden></p>
         </div>
+        <div class="dd-garage-col">
         <div class="dd-label">Body<div class="dd-chips" id="body-chips" role="group" aria-label="Body style"></div></div>
         <div class="dd-label">Flat paint<div class="dd-swatches" id="paint-swatches" role="group" aria-label="Paint color"></div></div>
         <div class="dd-label">Number
@@ -113,6 +121,8 @@
         <div class="dd-label">Spray style<div class="dd-chips" id="font-chips" role="group" aria-label="Number style"></div>
           <label class="dd-check"><input type="checkbox" id="outline-check" /> Outline the number</label>
         </div>
+        </div>
+        <div class="dd-garage-col">
         <div class="dd-label">Field
           <div class="dd-row"><input id="opponents-range" class="dd-range" type="range" min="3" max="9" step="1" aria-label="Number of opponents" /><span class="dd-note"><b id="opponents-text">6</b> opponents</span></div>
           <div class="dd-chips" id="level-chips" role="group" aria-label="Opponent skill"></div>
@@ -135,6 +145,7 @@
             <li>Points: hits landed, knockouts, surviving seconds and 1000 for the win. The best heats lead the board.</li>
           </ul>
         </details>
+        </div>
       </form>
     </section>
 

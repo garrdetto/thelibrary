@@ -83,7 +83,8 @@ export class Vehicle {
         .setRotation({ x: rotation.x, y: rotation.y, z: rotation.z, w: rotation.w })
         .setLinearDamping(tuning.linearDamping)
         .setAngularDamping(tuning.angularDamping)
-        .setCcdEnabled(true),
+        .setCcdEnabled(true)
+        .setCanSleep(false),
     )
     const [hx, hy, hz] = spec.colliderHalf
     this.collider = world.createCollider(

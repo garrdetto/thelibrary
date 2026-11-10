@@ -15,7 +15,11 @@ export interface ChaseCamera {
   snap(): void
   /** Moves the grandstand view (used once the Thrill Park stands around the pad, so the view looks across the pad into the park). */
   setStand(position: readonly [number, number, number]): void
+  /** Share of the frame's width (from the left) the garage card covers, so the turntable car sits in the open space to its right (0: the default framing). */
+  garageClear: number
 }
+
+const GARAGE_HALF_SPAN = 3.4
 
 const spring = { value: 0, velocity: 0 }
 const ORIGIN = new THREE.Vector3()
@@ -46,6 +50,7 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
 
   const api: ChaseCamera = {
     mode: 'garage',
+    garageClear: 0,
     setMode(mode) {
       if (api.mode !== mode) snapNext = true
       api.mode = mode
@@ -65,7 +70,13 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
         view.copy(target).sub(goal).setY(0).normalize()
         right.set(-view.z, 0, view.x)
         const landscape = camera.aspect > 1.15
-        goalLook.copy(target).addScaledVector(right, landscape ? -2.3 : 0)
+        const clear = landscape ? Math.min(0.8, Math.max(0, api.garageClear)) : 0
+        if (clear > 0) {
+          const halfWidth = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2) * camera.aspect
+          const distance = Math.max(7.2, GARAGE_HALF_SPAN / ((1 - clear) * halfWidth))
+          goal.set(Math.cos(turntable) * distance, 2.1 * distance / 7.2, Math.sin(turntable) * distance).add(target)
+          goalLook.copy(target).addScaledVector(right, -clear * distance * halfWidth)
+        } else goalLook.copy(target).addScaledVector(right, landscape ? -2.3 : 0)
         goalLook.y += landscape ? 0.2 : -0.9
       } else {
         const yaw = Math.atan2(heading.x, heading.z) + yawOffset

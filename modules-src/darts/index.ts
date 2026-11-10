@@ -226,7 +226,7 @@ async function boot(): Promise<void> {
   }
 
   const overlay = new Overlay()
-  const book = new RecordBook(byId('record-book'), byId('avg-panel'))
+  const book = new RecordBook(byId('avg-panel'))
   app.own(book)
   let session: Session | null = null
   let shown: GameState | null = null
@@ -370,6 +370,7 @@ async function boot(): Promise<void> {
       announce(announcements)
       const note = finishNote(state)
       book.invalidateAverages()
+      if (session?.kind === 'online') book.refreshPage(state.config.board === 'spider' ? 'spider' : 'steel', recordMode(state.config), 2500)
       if (tour && tourMatchId && session?.kind === 'local') {
         const matchId = tourMatchId
         window.setTimeout(() => {
