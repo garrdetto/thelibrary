@@ -22,9 +22,9 @@ export interface ReelTuning {
 
 export const REEL_TUNING: ReelTuning = {
   crankTension: 9,
-  crankProgress: 2.4,
+  crankProgress: 3,
   holdTensionPerSecond: 22,
-  holdProgressPerSecond: 7.5,
+  holdProgressPerSecond: 9.375,
   relaxPerSecond: 24,
   restTension: 24,
   idleLimit: 20,

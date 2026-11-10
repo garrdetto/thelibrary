@@ -1,4 +1,5 @@
 import { Effect } from '@babylonjs/core/Materials/effect'
+import { FLOOD } from '../game/BowBoat'
 
 const skyFunctions = /* glsl */ `
 uniform vec3 sunDir;
@@ -140,7 +141,7 @@ void main() {
   alpha = mix(alpha, max(alpha, 0.94), night);
   float lampOn = step(0.001, lampColor.r + lampColor.g + lampColor.b) * step(-0.5, lampDir.y);
   float lampDist = length(vWorld.xz - lampPos.xz);
-  float lit = (1.0 - smoothstep(13.7, 36.6, lampDist)) * lampOn;
+  float lit = (1.0 - smoothstep(${FLOOD.bright.toFixed(2)}, ${FLOOD.reach.toFixed(2)}, lampDist)) * lampOn;
   vec3 murk = vec3(0.3, 0.29, 0.17) * lampColor * (0.75 + 0.25 * vnoise(vWorld.xz * 0.7 + time * 0.05));
   col = mix(col, murk + refl * fres * 0.2, lit * 0.62);
   alpha = mix(alpha, 0.22 + fres * 0.18, lit);

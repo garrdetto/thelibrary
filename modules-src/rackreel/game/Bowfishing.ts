@@ -35,6 +35,7 @@ import type { Terrain } from '../world/Terrain'
 import type { Avatar } from './Avatar'
 import { BOWBOAT, FLOOD, LIGHT_COLORS, LIGHT_ORDER, clampToDeck, deckHeight } from './BowBoat'
 import type { LightMode } from './BowBoat'
+import { SIGHT_EYE, mountBowSight } from './BowSight'
 import { WildMan } from './WildMan'
 import type { BowTrip, PlayerState } from './Online'
 import type { AvatarHands } from './Avatar'
@@ -74,7 +75,7 @@ const DAWN = 0.3
 const CAMP_RANGE = 3.4
 const DRAW_BACK = 0.5
 const MAX_TUB_RIGS = 16
-const CARP_POOL = 40
+const CARP_POOL = 100
 const WALK_SPEED = 1.7
 const AIM_WALK_SPEED = 0.6
 const LINE_POINTS = 26
@@ -157,6 +158,9 @@ export class Bowfishing {
   private aimBlend = 0
   private aiming = false
   private shootQueued = false
+  private readonly handPos = new Vector3()
+  private readonly handQ = new Quaternion()
+  private handReady = false
   /** The shooter's feet on the deck, in boat space. */
   private readonly deckPos = new Vector3()
   private facing = 0
@@ -243,6 +247,9 @@ export class Bowfishing {
       this.carpRigs.push(rig)
     }
     this.flood.excludedMeshes = [...new Set([...this.boatRig.meshes, ...this.wild.meshes, ...host.player.meshes, ...this.bowRig.meshes].map((m) => ('sourceMesh' in m ? m.sourceMesh : m)))]
+    void mountBowSight(scene, this.bowRig.root).then((meshes) => {
+      for (const m of meshes) this.flood.excludedMeshes.push(m)
+    })
     this.buildCamp()
     this.placeAtCamp()
   }
@@ -486,7 +493,7 @@ export class Bowfishing {
         else this.host.hud.toast(`Ask ${this.trip?.name ?? 'the skipper'} to take 'er in. You can step off at the launch.`)
         return true
       }
-      if (['KeyT', 'KeyG', 'Space', 'KeyF', 'KeyL'].includes(code)) {
+      if (['KeyT', 'KeyG', 'Space', 'KeyF', 'KeyL', 'Tab'].includes(code)) {
         this.host.hud.toast(`${this.trip?.name ?? 'Your buddy'} is calling the shots with Wild Man tonight.`)
         return true
       }
@@ -518,6 +525,10 @@ export class Bowfishing {
         return true
       }
       case 'KeyE':
+        if (p.mode === 'docked') this.endTrip()
+        else this.host.hud.toast('Press Tab to have Wild Man take you back to shore.')
+        return true
+      case 'Tab':
         if (p.mode === 'docked') this.endTrip()
         else if (!p.homeward) {
           p.headHome()
@@ -807,7 +818,7 @@ export class Bowfishing {
     return Vector3.TransformNormal(new Vector3(0, 0, 1), this.bowRig.root.computeWorldMatrix(true)).normalize()
   }
 
-  /** Puts the bow in the shooter's left hand, pointed along the aim while drawing or held low at the ready. */
+  /** Puts the bow in the shooter's left hand, pointed along the aim while drawing or held low at the ready. Aiming then moves it in front of the eye (`fitBowToEye`). */
   private placeBow(dt: number, cam: UniversalCamera): void {
     const hand = this.host.player.leftHand
     const handPos = Vector3.TransformCoordinates(new Vector3(0.0, -0.27, 0.03), hand.computeWorldMatrix(true))
@@ -816,10 +827,15 @@ export class Bowfishing {
     const yaw = Math.atan2(aim.x, aim.z)
     const pitch = drawing ? Math.asin(Math.max(-1, Math.min(1, -aim.y))) : 0.6
     const cant = drawing ? 0.16 : 0.35
-    this.bowHolder.position.copyFrom(handPos)
+    this.handPos.copyFrom(handPos)
     const q = Quaternion.FromEulerAngles(pitch, yaw, cant)
-    if (!this.bowHolder.rotationQuaternion) this.bowHolder.rotationQuaternion = q
-    else Quaternion.SlerpToRef(this.bowHolder.rotationQuaternion, q, Math.min(1, dt * 18), this.bowHolder.rotationQuaternion)
+    if (!this.handReady) {
+      this.handQ.copyFrom(q)
+      this.handReady = true
+    } else Quaternion.SlerpToRef(this.handQ, q, Math.min(1, dt * 18), this.handQ)
+    this.bowHolder.position.copyFrom(handPos)
+    if (!this.bowHolder.rotationQuaternion) this.bowHolder.rotationQuaternion = new Quaternion()
+    this.bowHolder.rotationQuaternion.copyFrom(this.handQ)
     const arrowJoint = this.bowRig.joints.get('arrow')
     const nockZ = -0.17 - DRAW_BACK * this.draw
     if (arrowJoint) {
@@ -1159,7 +1175,7 @@ export class Bowfishing {
     const turn = Math.atan2(Math.sin(want - now), Math.cos(want - now))
     root.rotation.set(0, now + turn * Math.min(1, dt * (walking ? 10 : 18)), 0)
     avatar.update(dt, { stance: 'stand', hands: this.bow === 'drawing' ? 'draw' : 'bow', speed: this.walkSpeed, crouch: false, castPower: 0, aimPitch: cam.rotation.x, climbPhase: 0 })
-    avatar.setVisible(true)
+    avatar.setVisible(this.aimBlend < 0.55)
   }
 
   /** World position of the shooter's feet (for the minimap, wildlife and grass). */
@@ -1167,7 +1183,7 @@ export class Bowfishing {
     return out.copyFrom(this.worldPoint(this.deckPos))
   }
 
-  /** Close over the right shoulder and a little high, looking down into the light; aiming pulls in tight behind the bow and zooms down the sight. */
+  /** Close over the right shoulder and a little high, looking down into the light; aiming moves to the shooter's eye (the body is hidden) and zooms through the pin sight. */
   placeCamera(cam: UniversalCamera): void {
     const head = this.worldPoint(this.deckPos.add(new Vector3(0, 1.62, 0)))
     const yaw = cam.rotation.y
@@ -1175,10 +1191,23 @@ export class Bowfishing {
     const fwd = new Vector3(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
     const right = new Vector3(Math.cos(yaw), 0, -Math.sin(yaw))
     const k = this.aimBlend
-    const pos = head.add(right.scale(lerp(0.72, 0.32, k))).addInPlaceFromFloats(0, lerp(0.5, 0.1, k), 0).subtract(fwd.scale(lerp(1.45, 0.5, k)))
+    const pos = head.add(right.scale(lerp(0.72, 0.0, k))).addInPlaceFromFloats(0, lerp(0.5, 0.0, k), 0).subtract(fwd.scale(lerp(1.45, -0.08, k)))
     pos.y = Math.max(pos.y, 0.6)
     cam.position.copyFrom(pos)
     cam.fov = lerp(0.9, 0.5, k)
+    this.fitBowToEye(cam)
+  }
+
+  /** While aiming the bow comes up in front of the eye: the string at anchor, the riser on the left, and the pin sight's ring centred in the view. */
+  private fitBowToEye(cam: UniversalCamera): void {
+    const k = this.aimBlend
+    if (!this.aboard || k <= 0.001) return
+    const t = k > 0.995 ? 1 : k * k * (3 - 2 * k)
+    const camQ = Quaternion.FromEulerAngles(cam.rotation.x, cam.rotation.y, 0.02)
+    const eye = SIGHT_EYE.applyRotationQuaternion(camQ)
+    const at = cam.position.subtract(eye)
+    Vector3.LerpToRef(this.handPos, at, t, this.bowHolder.position)
+    Quaternion.SlerpToRef(this.handQ, camQ, t, this.bowHolder.rotationQuaternion!)
   }
 
   marker(): MapMarker | null {
@@ -1199,7 +1228,7 @@ export class Bowfishing {
     if (this.arrow) return ''
     if (this.bow === 'drawing') return 'Left-click to shoot · aim low, they\'re deeper than they look · WASD walk'
     if (this.role === 'crew') return `Right-click to aim · double right-click locks it · WASD walk the deck · ${this.trip?.name ?? 'your buddy'} is calling the shots`
-    return p.homeward ? 'Heading in · right-click to aim if you see one · WASD walk the deck' : 'Right-click to aim · double right-click locks it · WASD walk the deck · L lights · T/G speed · Space hold · F flats · E take me in'
+    return p.homeward ? 'Heading in · right-click to aim if you see one · WASD walk the deck' : 'Right-click to aim · double right-click locks it · WASD walk the deck · L lights · T/G speed · Space hold · F flats · Tab take me in'
   }
 
   /** A short status for the HUD's mode chip. */

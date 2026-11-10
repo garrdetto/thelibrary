@@ -615,7 +615,7 @@ export class Game {
     addEventListener('keydown', (e) => {
       if (!this.playing || this.hud.modalOpen) return
       this.keys.add(e.code)
-      if (ARROW_KEYS.has(e.code) || e.code === 'Space') e.preventDefault()
+      if (ARROW_KEYS.has(e.code) || e.code === 'Space' || (e.code === 'Tab' && this.mode === 'bowfish')) e.preventDefault()
       if (e.repeat) return
       if (this.mode === 'bowfish' && this.bowfish.key(e.code)) return
       if (this.mode === 'bowfish' && (e.code === 'KeyR' || e.code === 'KeyI' || e.code === 'KeyF')) return
