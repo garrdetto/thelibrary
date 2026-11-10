@@ -138,7 +138,7 @@ test('meter: the dead centre of the green lands exactly on the aim point at ever
   }
 })
 
-test('meter: anywhere in the green lands within seven holes of the aim at every steadiness, early or late', () => {
+test('meter: anywhere in the green lands within `greenHoles` of the aim at every steadiness, early or late', () => {
   for (const level of ['easy', 'normal', 'hard'] as const) {
     for (const d of [0.3, 0.6, 0.9, 1, -0.5, -1]) {
       for (const aim of [targetPoint(20, 3), targetPoint(25, 2), targetPoint(6, 2), targetPoint(19, 1)]) {
@@ -174,7 +174,10 @@ test('meter: in the green outside the white lines every dart misses, slightly, a
   const edge = missHoles(0.99, 'normal', 200, 53)
   assert.ok(Math.min(...near) > 0, 'just past the lines never lands dead on')
   assert.ok(avg(near) < avg(mid) && avg(mid) < avg(edge), `${avg(near)} ${avg(mid)} ${avg(edge)}`)
-  assert.ok(Math.max(...edge) <= METER.greenEdgeHoles + 0.2, `worst in the green ${Math.max(...edge)}`)
+  assert.ok(Math.max(...edge) <= METER.nearMissHoles[1] + 0.2, `worst in the green ${Math.max(...edge)}`)
+  const fewHoles = near.filter((m) => m >= METER.nearMissHoles[0] - 0.2).length / near.length
+  assert.ok(fewHoles > 0.3 && fewHoles < 0.5, `just past the lines, a few holes off ${fewHoles}`)
+  assert.ok(Math.max(...near) <= METER.nearMissHoles[1] + 0.2, `just past the lines, worst ${Math.max(...near)}`)
   const far = missHoles(10, 'normal', 400, 54)
   assert.ok(Math.min(...far) >= METER.greenEdgeHoles * METER.floorSpread - 0.2, 'the yellow misses at least as much as the green edge')
   assert.ok(Math.max(...far) <= METER.yellowHoles * 1.25 + 0.1, `worst ${Math.max(...far)}`)
@@ -201,9 +204,9 @@ test('cross meter: the height reading misses high or low and the side reading le
   for (const off of [0.001, 0.003, 0.005]) assert.ok(crossDistance(off + 0.001, 'normal', true) >= crossDistance(off, 'normal', true))
 })
 
-test('meter: zones run perfect, then yellow, then red, with the white lines just inside the solid green', () => {
+test('meter: zones run perfect, then yellow, then red, with the white lines inside the solid green', () => {
   assert.equal(meterZone(IDEAL_SPEED), 'perfect')
-  assert.equal(meterZone(IDEAL_SPEED * (1 + METER.perfect * 0.6)), 'perfect')
+  assert.equal(meterZone(IDEAL_SPEED * (1 + METER.perfect * METER.exact * 0.5)), 'perfect')
   assert.equal(meterZone(IDEAL_SPEED * (1 - METER.perfect * METER.exact * 0.98)), 'perfect')
   assert.equal(meterZone(IDEAL_SPEED * (1 - METER.perfect * 1.5)), 'yellow')
   assert.equal(meterZone(IDEAL_SPEED * (1 - METER.band - 0.01)), 'low')
