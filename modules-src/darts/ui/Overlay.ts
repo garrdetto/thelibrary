@@ -26,7 +26,7 @@ export function playerColor(state: GameState, playerId: string): string {
 
 /** Half-width of the band where the green fades to yellow, as a fraction of the ideal speed; past it the meter turns red. */
 const BAND = METER.band
-/** Half-width of the solid green: anywhere in it lands within seven holes of the aim, and its exact middle lands on the aim point. */
+/** Half-width of the solid green: anywhere in it lands within seven holes of the aim; between the two white lines inside it (`METER.exact` of the way out) is Perfect and lands on the aim point. */
 const PERFECT = METER.perfect
 /** How far past the yellow (as a fraction of the ideal speed) the meter is fully red. */
 const TO_RED = 0.05
@@ -89,6 +89,8 @@ export class Overlay {
     style.setProperty('--band-lo', at(-BAND))
     style.setProperty('--perfect-lo', at(-PERFECT))
     style.setProperty('--perfect-hi', at(PERFECT))
+    style.setProperty('--exact-lo', at(-PERFECT * METER.exact))
+    style.setProperty('--exact-hi', at(PERFECT * METER.exact))
     style.setProperty('--band-hi', at(BAND))
     style.setProperty('--red-hi', at(BAND + TO_RED))
     this.setPower(null)
