@@ -862,6 +862,7 @@ exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_mes
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_hunter.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_animals.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_vehicles.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_bowfish.py'), encoding='utf8').read(), globals())
 
 
 def build_pine_lo():
@@ -891,6 +892,7 @@ BUILDERS = {
     'cattail': build_cattail, 'rock': build_rock, 'log': build_log, 'deer': build_deer, 'antlers': build_antlers,
     'bear': build_bear, 'hunter': build_hunter, 'utv': build_utv, 'boat': build_boat, 'rod': build_rod,
     'rifle': build_rifle, 'bobber': build_bobber, 'treestand': build_treestand, 'cabin': build_cabin, 'quad': build_quad, 'boxblind': build_boxblind,
+    'bowboat': build_bowboat, 'wildman': build_wildman, 'bow': build_bow,
 }
 for kind, spec in FISH.items():
     BUILDERS['fish-' + kind] = (lambda k, s: (lambda: build_fish(k, s)))(kind, spec)

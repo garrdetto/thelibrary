@@ -149,8 +149,11 @@ export function buildGround(ctx: EngineContext, terrain: Terrain): Mesh {
 export function buildSky(ctx: EngineContext): { mesh: Mesh; material: ShaderMaterial } {
   const { scene } = ctx
   const mesh = CreateSphere('sky', { diameter: 2000, segments: 24, sideOrientation: Mesh.BACKSIDE }, scene)
-  const material = new ShaderMaterial('sky-mat', scene, 'rrSky', { attributes: ['position'], uniforms: ['worldViewProjection', 'sunDir', 'time'] })
+  const material = new ShaderMaterial('sky-mat', scene, 'rrSky', { attributes: ['position'], uniforms: ['worldViewProjection', 'sunDir', 'moonDir', 'night', 'glow', 'time'] })
   material.setVector3('sunDir', ctx.sunDirection.scale(-1))
+  material.setVector3('moonDir', ctx.sunDirection.clone())
+  material.setFloat('night', 0)
+  material.setFloat('glow', 0)
   material.setFloat('time', 0)
   material.backFaceCulling = false
   material.disableDepthWrite = true
@@ -176,17 +179,23 @@ export function buildWater(ctx: EngineContext, terrain: Terrain): { mesh: Mesh; 
   const depthMap = RawTexture.CreateRGBATexture(bytes, n, n, scene, false, false, Texture.BILINEAR_SAMPLINGMODE)
   depthMap.wrapU = Texture.CLAMP_ADDRESSMODE
   depthMap.wrapV = Texture.CLAMP_ADDRESSMODE
-  const r = 260
+  const r = 330
   const mesh = CreateGround('water', { width: r * 2, height: r * 2, subdivisions: 2 }, scene)
-  mesh.position.set(LAKE_CENTER.x, 0, LAKE_CENTER.z)
+  mesh.position.set(LAKE_CENTER.x + 40, 0, LAKE_CENTER.z + 60)
   const material = new ShaderMaterial('water-mat', scene, 'rrWater', {
     attributes: ['position'],
-    uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'sunDir'],
+    uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
     samplers: ['depthMap'],
     needAlphaBlending: true,
   })
   material.setTexture('depthMap', depthMap)
   material.setVector3('sunDir', ctx.sunDirection.scale(-1))
+  material.setVector3('moonDir', ctx.sunDirection.clone())
+  material.setFloat('night', 0)
+  material.setFloat('glow', 0)
+  material.setVector3('lampPos', new Vector3(0, -100, 0))
+  material.setVector3('lampDir', new Vector3(0, -1, 0))
+  material.setVector3('lampColor', Vector3.Zero())
   material.setColor3('fogColor', FOG_COLOR)
   material.setFloat('fogDensity', FOG_DENSITY)
   material.setFloat('worldSize', WORLD_SIZE)

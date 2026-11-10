@@ -11,7 +11,7 @@ import type { Scene } from '@babylonjs/core/scene'
 export const MODEL_NAMES = [
   'pine', 'pine-lo', 'hardwood', 'hardwood-lo', 'birch', 'birch-lo', 'grass', 'fern', 'cattail', 'rock', 'log',
   'deer', 'antlers', 'bear', 'hunter', 'utv', 'boat', 'rod', 'rifle', 'treestand', 'cabin', 'quad', 'boxblind',
-  'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch',
+  'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch', 'fish-carp', 'bowboat', 'wildman', 'bow',
 ] as const
 export type ModelName = typeof MODEL_NAMES[number]
 

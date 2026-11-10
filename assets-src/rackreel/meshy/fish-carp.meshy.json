@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "a common carp fish, side view, deep bronze-gold body with big crosshatched scales, cream belly, long dorsal fin, reddish lower fins, two barbels at the mouth, forked tail, realistic, game asset",
+    "target": "furniture",
+    "negative": "floor, background, text, logos",
+    "aiModel": "latest",
+    "polycount": 8000,
+    "texturePrompt": "bronze-gold large crosshatched scales, cream belly, reddish pelvic and anal fins, dark forked tail",
+    "rig": false,
+    "height": null
+  },
+  "tasks": {
+    "preview": {
+      "id": "01a1c302-92ee-7138-a0e9-5020465d3ce5",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T01:11:30.573Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1c303-2c98-7175-84ec-9c0558926c6d",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T01:12:09.438Z",
+      "credits": 10
+    }
+  },
+  "credits": 30,
+  "files": [
+    "assets-src/models/_rackreel/fish-carp.glb"
+  ],
+  "createdAt": "2026-11-10T01:11:27.652Z",
+  "clips": [],
+  "cleanup": "none",
+  "updatedAt": "2026-11-10T01:12:41.765Z"
+}
