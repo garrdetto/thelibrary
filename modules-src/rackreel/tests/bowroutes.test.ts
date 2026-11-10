@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Autopilot, ROUTE, SPEED, buildLoops, clearanceDistance, dockLine, findLaunch, nearestIndex } from '../systems/BowRoutes'
+import { Autopilot, ROUTE, SPEED, STUNT, buildLoops, clearanceDistance, dockLine, findLaunch, nearestIndex, planHomeStunt } from '../systems/BowRoutes'
 import type { RouteName } from '../systems/BowRoutes'
 import { HIGHWAY, ISLAND, Terrain, highwayCoord } from '../world/Terrain'
 
@@ -107,4 +107,48 @@ test('the back bay is reached under the highway bridge, and the run home comes o
   assert.ok(home.fastShallow >= ROUTE.runDepth, `home run depth ${home.fastShallow}`)
   assert.ok(home.arriveSpeed <= SPEED.cruise, `docks at ${home.arriveSpeed}`)
   assert.ok(Math.hypot(ap.x - launch.boat.x, ap.z - launch.boat.z) < 2, 'back at the launch')
+})
+
+test('the way home sends it over the island at full speed and beaches beside the camp', () => {
+  const stunt = planHomeStunt(terrain, launch)
+  assert.ok(stunt, 'a line over the island fits')
+  assert.ok(stunt.peak > 2 && stunt.touchdown - stunt.takeoff < STUNT.maxSpan, `arc ${stunt.peak} m high over ${stunt.touchdown - stunt.takeoff} m`)
+  assert.ok(Math.hypot(stunt.beach.x - launch.camp.x, stunt.beach.z - launch.camp.z) > 6, 'beaches clear of the cooler')
+  for (const start of [{ x: -150, z: 120 }, { x: 150, z: 20 }, { x: 40, z: 60 }]) {
+    const ap = new Autopilot(terrain, loops, launch)
+    const p = loops.shore[nearestIndex(loops.shore, start)]
+    ap.x = p.x
+    ap.z = p.z
+    ap.mode = 'loop'
+    ap.sendItHome()
+    let airborne = 0
+    let airSpeed = 0
+    let beached = false
+    let maxLift = 0
+    let clipped = 0
+    for (let i = 0; i < 600 * 30; i++) {
+      const e = ap.update(1 / 30, false)
+      if (e.airborne) {
+        airborne++
+        airSpeed = ap.speed
+      }
+      maxLift = Math.max(maxLift, ap.lift)
+      if (ap.lift < terrain.heightAt(ap.x, ap.z)) clipped++
+      if (e.beached) {
+        beached = true
+        break
+      }
+    }
+    assert.equal(airborne, 1, `takes off once from ${start.x},${start.z}`)
+    assert.ok(airSpeed > SPEED.run - 0.5, `full speed at takeoff (${airSpeed})`)
+    assert.ok(maxLift > stunt.peak - 0.5, `clears the island (${maxLift})`)
+    assert.equal(clipped, 0, 'never below the ground')
+    assert.ok(beached, 'beached it')
+    assert.equal(ap.mode, 'docked')
+    assert.ok(terrain.heightAt(ap.x, ap.z) > -0.6, 'up on the bank')
+    assert.ok(Math.hypot(ap.x - stunt.beach.x, ap.z - stunt.beach.z) < 3, 'stops where he aimed')
+    ap.depart()
+    assert.equal(ap.beached, false)
+    assert.ok(Math.hypot(ap.x - launch.boat.x, ap.z - launch.boat.z) < 0.1, 'shoved back off for the next trip')
+  }
 })

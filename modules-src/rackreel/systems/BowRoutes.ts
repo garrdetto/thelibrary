@@ -279,6 +279,115 @@ export interface Leg {
   plane: boolean
   /** Final approach: creep the last few metres and stop on the point. */
   stop?: boolean
+  /** Wide open the whole leg, no easing off (the island jump and the beaching run). */
+  send?: boolean
+  /** Runs up onto the bank at speed and slides to a stop on `to`. */
+  beach?: boolean
+}
+
+/** Wild Man's way home: a straight run over the island (`entry` → `exit`, airborne from `takeoff` to `touchdown`), then still wide open onto the bank at `beach`. */
+export interface HomeStunt {
+  setup: Pt
+  entry: Pt
+  exit: Pt
+  dir: Pt
+  /** Distance along entry → exit where the hull leaves and meets the water. */
+  takeoff: number
+  touchdown: number
+  /** Top of the arc, metres above the water. */
+  peak: number
+  beach: Pt
+}
+
+export const STUNT = {
+  entryBack: 48,
+  setupBack: 30,
+  exitOut: 8,
+  margin: 3,
+  clearance: 2.8,
+  beachUp: 2,
+  beachSide: 9,
+  maxSpan: 80,
+  minRun: 12,
+  maxBend: 0.35,
+  dryRun: 14,
+}
+
+function landSpan(map: WaterMap, a: Pt, d: Pt, length: number): { first: number; last: number; top: number } | null {
+  let first = -1
+  let last = -1
+  let top = 0
+  for (let s = 0; s <= length; s += 0.5) {
+    const x = a.x + d.x * s
+    const z = a.z + d.z * s
+    if (Math.hypot(x - ISLAND.x, z - ISLAND.z) > ISLAND.r * 1.6) continue
+    const h = map.heightAt(x, z)
+    if (h > -0.05) {
+      if (first < 0) first = s
+      last = s
+      top = Math.max(top, h)
+    }
+  }
+  return first < 0 ? null : { first, last, top }
+}
+
+/** The airborne arc over the island and its slope (rise per metre along the line) at distance `s` from the entry. */
+export function stuntArc(stunt: HomeStunt, s: number): { lift: number; slope: number } {
+  const a = stunt.takeoff
+  const b = stunt.touchdown
+  if (s <= a || s >= b) return { lift: 0, slope: 0 }
+  const u = (s - a) / (b - a)
+  return { lift: 4 * stunt.peak * u * (1 - u), slope: (4 * stunt.peak * (1 - 2 * u)) / (b - a) }
+}
+
+/**
+ * Plans the trip home over the island: a beaching spot on the bank either side of his camp, then lines through the island aimed at it, and keeps
+ * the first with deep water for the run-up, a sane flight and open water from the landing almost all the way to the bank. Returns null when none
+ * fits (he then comes home the ordinary way).
+ */
+export function planHomeStunt(map: WaterMap, launch: Launch): HomeStunt | null {
+  const out = { x: launch.shore.x - launch.boat.x, z: launch.shore.z - launch.boat.z }
+  const outLen = Math.hypot(out.x, out.z) || 1
+  const n = { x: out.x / outLen, z: out.z / outLen }
+  const side = { x: -n.z, z: n.x }
+  const beaches: Pt[] = []
+  for (const k of [1, -1]) {
+    const base = { x: launch.shore.x + side.x * STUNT.beachSide * k, z: launch.shore.z + side.z * STUNT.beachSide * k }
+    let shore = base
+    for (let s = -20; s <= 20; s += 0.5) {
+      const q = { x: base.x + n.x * s, z: base.z + n.z * s }
+      if (map.heightAt(q.x, q.z) > 0) {
+        shore = q
+        break
+      }
+    }
+    const beach = { x: shore.x + n.x * STUNT.beachUp, z: shore.z + n.z * STUNT.beachUp }
+    if (Math.hypot(beach.x - launch.camp.x, beach.z - launch.camp.z) > 6.5 && map.heightAt(beach.x, beach.z) < 1.2) beaches.push(beach)
+  }
+  for (const beach of beaches) {
+    const toBeach = Math.atan2(beach.z - ISLAND.z, beach.x - ISLAND.x)
+    for (const turn of [0, 0.1, -0.1, 0.2, -0.2, 0.3, -0.3]) {
+      const a = toBeach + turn
+      const dir = { x: Math.cos(a), z: Math.sin(a) }
+      const reach = ISLAND.r * 1.6
+      const entry = { x: ISLAND.x - dir.x * (reach + STUNT.entryBack), z: ISLAND.z - dir.z * (reach + STUNT.entryBack) }
+      const setup = { x: entry.x - dir.x * STUNT.setupBack, z: entry.z - dir.z * STUNT.setupBack }
+      const span = landSpan(map, entry, dir, (reach + STUNT.entryBack) * 2)
+      if (!span || span.first < STUNT.entryBack * 0.6) continue
+      const takeoff = span.first - STUNT.margin
+      const touchdown = span.last + STUNT.margin
+      if (touchdown - takeoff > STUNT.maxSpan) continue
+      const exit = { x: entry.x + dir.x * (span.last + STUNT.exitOut), z: entry.z + dir.z * (span.last + STUNT.exitOut) }
+      const run = { x: beach.x - exit.x, z: beach.z - exit.z }
+      const runLen = Math.hypot(run.x, run.z)
+      if (runLen < STUNT.minRun || Math.abs(wrapAngle(Math.atan2(run.z, run.x) - a)) > STUNT.maxBend) continue
+      if (map.depthAt(setup.x, setup.z) < ROUTE.runDepth || !deepLine(map, setup, { x: entry.x + dir.x * (span.first - 6), z: entry.z + dir.z * (span.first - 6) }, 1.0, 2)) continue
+      const wet = { x: beach.x - (run.x / runLen) * STUNT.dryRun, z: beach.z - (run.z / runLen) * STUNT.dryRun }
+      if (!deepLine(map, exit, wet, 0.4, 1.5)) continue
+      return { setup, entry, exit, dir, takeoff, touchdown, peak: span.top + STUNT.clearance, beach }
+    }
+  }
+  return null
 }
 
 /** Legs from `from` to `to`: out to deep water at cruise, across on plane (only on long legs through deep water), then in at cruise. */
@@ -373,6 +482,12 @@ export interface PilotEvents {
   onPlane?: boolean
   /** Reached the end of a trip leg list: joined a loop or docked. */
   arrived?: 'loop' | 'docked'
+  /** Left the water off the island. */
+  airborne?: boolean
+  /** Came back down on the far side. */
+  splashdown?: boolean
+  /** Slid to a stop up on the bank at the end of the run home. */
+  beached?: boolean
 }
 
 export class Autopilot {
@@ -386,10 +501,19 @@ export class Autopilot {
   route: RouteName = 'shore'
   mode: PilotMode = 'docked'
   homeward = false
+  /** Height of the hull above the water: in the air over the island, or up on the bank. */
+  lift = 0
+  /** Rise per metre travelled, for the bow-up and bow-down of the jump. */
+  liftSlope = 0
+  /** Sitting up on the bank after beaching it. */
+  beached = false
   private legs: Leg[] = []
   private leg = 0
   private index = 0
   private planingNow = false
+  private stuntPlan: HomeStunt | null | undefined
+  private flying = false
+  private slide: number | null = null
 
   constructor(private readonly map: WaterMap, readonly loops: Record<RouteName, Pt[]>, readonly landing: Launch) {
     this.x = landing.boat.x
@@ -418,8 +542,26 @@ export class Autopilot {
     return this.legs
   }
 
+  get homeStunt(): HomeStunt | null {
+    if (this.stuntPlan === undefined) this.stuntPlan = planHomeStunt(this.map, this.landing)
+    return this.stuntPlan
+  }
+
+  /** Back off the bank and afloat beside the launch. */
+  private refloat(): void {
+    if (!this.beached) return
+    this.beached = false
+    this.x = this.landing.boat.x
+    this.z = this.landing.boat.z
+    this.heading = this.landing.boatHeading
+    this.speed = 0
+    this.lift = 0
+    this.liftSlope = 0
+  }
+
   /** Leave the launch for the nearest point on the shore loop. */
   depart(): void {
+    this.refloat()
     this.route = 'shore'
     this.homeward = false
     this.travelTo(this.joinPoint('shore'), false)
@@ -437,6 +579,25 @@ export class Autopilot {
     this.travelTo(this.landing.boat, true)
   }
 
+  /** Wild Man's way home: wide open over the island, then straight up onto the bank beside his camp. Falls back to `headHome` when no line over the island fits. */
+  sendItHome(): void {
+    const st = this.homeStunt
+    if (!st) {
+      this.headHome()
+      return
+    }
+    this.homeward = true
+    const legs = planTrip(this.map, { x: this.x, z: this.z }, st.setup, false)
+    legs.push({ to: st.entry, plane: false })
+    legs.push({ to: st.exit, plane: false, send: true })
+    legs.push({ to: st.beach, plane: false, send: true, beach: true })
+    this.legs = legs
+    this.leg = 0
+    this.mode = 'travel'
+    this.hold = false
+    this.slide = null
+  }
+
   private joinPoint(route: RouteName): Pt {
     const loop = this.loops[route]
     const inside = route === 'bay' && bayCoord(this.x, this.z) > 0.9
@@ -450,6 +611,7 @@ export class Autopilot {
     this.leg = 0
     this.mode = 'travel'
     this.hold = false
+    this.slide = null
   }
 
   private remainingOnLeg(): number {
@@ -490,15 +652,30 @@ export class Autopilot {
     } else {
       const l = this.legs[this.leg]
       const left = this.remainingOnLeg()
-      const err = this.steerToward(l.to.x, l.to.z, dt)
+      const err = this.slide === null ? this.steerToward(l.to.x, l.to.z, dt) : 0
       const brake = (this.speed * this.speed - SPEED.cruise * SPEED.cruise) / (2 * OFF_PLANE_DECEL) + 4
       let target = SPEED.cruise
       if (l.plane && Math.abs(err) < 0.25 && left > Math.max(ROUTE.offPlane, brake)) target = SPEED.run
+      if (l.send) target = SPEED.run
       if (l.stop && left < 8) target = Math.max(0.25, SPEED.creep * Math.min(1, left / 4))
-      if (this.hold && !l.plane) target = 0
+      if (this.hold && !l.plane && !l.send) target = 0
       this.planingNow = target === SPEED.run
-      this.approach(target, dt)
-      const reached = l.stop ? left < 1.2 : left < Math.max(2.5, Math.abs(this.speed) * dt * 2)
+      if (l.beach && this.slide === null && this.map.depthAt(this.x, this.z) < 0.45) this.slide = (this.speed * this.speed) / (2 * Math.max(1.5, left))
+      if (this.slide !== null) this.speed = Math.max(0, this.speed - this.slide * dt)
+      else this.approach(target, dt)
+      if (l.beach && this.slide !== null && (this.speed <= 0.05 || left < 0.3)) {
+        this.speed = 0
+        this.slide = null
+        this.mode = 'docked'
+        this.beached = true
+        this.planingNow = false
+        this.leg = this.legs.length
+        events.arrived = 'docked'
+        events.beached = true
+        this.settle(dt, events)
+        return events
+      }
+      const reached = l.beach ? false : l.stop ? left < 1.2 : left < Math.max(2.5, Math.abs(this.speed) * dt * 2)
       if (reached) {
         this.leg++
         if (this.leg >= this.legs.length) {
@@ -519,7 +696,32 @@ export class Autopilot {
     this.z += Math.cos(this.heading) * this.speed * dt
     if (!wasPlane && this.onPlane) events.onPlane = true
     if (wasPlane && !this.onPlane) events.offPlane = true
+    this.settle(dt, events)
     return events
+  }
+
+  /** Lifts the hull along the jump's arc over the island, or onto the ground wherever it is above the water. */
+  private settle(dt: number, events: PilotEvents): void {
+    const before = this.lift
+    let lift = 0
+    const st = this.stuntPlan
+    const l = this.legs[this.leg]
+    if (st && this.homeward && this.mode === 'travel' && l?.send && !l.beach) {
+      lift = stuntArc(st, (this.x - st.entry.x) * st.dir.x + (this.z - st.entry.z) * st.dir.z).lift
+    }
+    const flying = lift > 0.3
+    if (flying && !this.flying) events.airborne = true
+    if (!flying && this.flying) events.splashdown = true
+    this.flying = flying
+    const ground = this.map.heightAt(this.x, this.z)
+    lift = Math.max(lift, ground + 0.12, 0)
+    this.lift = lift
+    const run = Math.abs(this.speed) * dt
+    this.liftSlope = run > 1e-3 ? Math.max(-1, Math.min(1, (lift - before) / run)) : this.liftSlope * 0.9
+  }
+
+  get airborne(): boolean {
+    return this.flying
   }
 }
 

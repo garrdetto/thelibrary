@@ -32,14 +32,16 @@ export interface PlayerState {
   o: string[]
   v?: { k: 'utv' | 'boat' | 'quad'; p: [number, number, number]; q: [number, number, number]; s: [number, number, number]; a?: 1; d?: DeckSeat }
   r?: { o: string; s: [number, number, number] }
-  /** Night bowfishing on Wisco Wild Man's boat: the trip owner sends the boat (`o`: x, z, heading, speed, light mode, docked); crew send the owner's id (`w`); everyone sends their shooting spot (`s`). */
-  b?: { o?: [number, number, number, number, number, number]; w?: string; s: number; d?: [number, number] }
+  /** Night bowfishing on Wisco Wild Man's boat: the trip owner sends the boat (`o`: x, z, heading, speed, light mode, docked, and the hull's lift over the island jump or up on the bank); crew send the owner's id (`w`); everyone sends their shooting spot (`s`). */
+  b?: { o?: BowPose; w?: string; s: number; d?: [number, number] }
 }
+
+export type BowPose = [number, number, number, number, number, number, number?]
 
 export interface BowTrip {
   id: string
   name: string
-  pose: [number, number, number, number, number, number]
+  pose: BowPose
 }
 
 export interface RemoteBoat {
