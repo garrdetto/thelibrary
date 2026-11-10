@@ -42,7 +42,7 @@ const defaultAssignments: Partial<Record<ModuleId, string[]>> = {
   maplestreet: ['worlds'], foxplains2: ['worlds'], hood: ['worlds'], park: ['worlds', 'business'], park2: ['worlds', 'business'],
   angler: ['outdoors'], rackreel: ['outdoors'],
   cookies: ['business'], hotdog: ['business'],
-  chess: ['puzzles'], checkers: ['puzzles'], '2048': ['puzzles'], tetradrop: ['puzzles'], sudoku: ['puzzles'], minesweeper: ['puzzles'], bubbles: ['puzzles'],
+  chess: ['puzzles'], checkers: ['puzzles'], '2048': ['puzzles'], tetradrop: ['puzzles'], sudoku: ['puzzles'], minesweeper: ['puzzles'], recall: ['puzzles'], bubbles: ['puzzles'],
   helicopter: ['arcade'], blockhead: ['arcade'], foodchain: ['arcade'], keep: ['arcade'], giant: ['arcade'], alphabet: ['arcade'], party: ['arcade'],
   songmaker: ['creative'], lens: ['creative'],
 }

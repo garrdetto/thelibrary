@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "a burly northern Wisconsin outdoorsman, mid-30s, short orange/blonde mullet (short on top and sides, longer at the back, down to the collar), thick blonde mustache, red-and-black buffalo plaid flannel with the sleeves rolled up, faded jeans, rubber boots, full body, A-pose, low-poly game asset, realistic proportions. No logos or real brands.",
+    "target": "character",
+    "negative": "logos, text, weapons",
+    "aiModel": "latest",
+    "polycount": 15000,
+    "texturePrompt": "sunburnt skin, wavy orange-blonde mullet hair to the collar, thick blonde horseshoe mustache, red and black buffalo check flannel, faded blue jeans, dark green rubber boots",
+    "rig": true,
+    "height": 1.8
+  },
+  "tasks": {
+    "preview": {
+      "id": "01a1c302-931b-763a-be7d-031ee8a74cc3",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T01:11:30.285Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1c303-3fd0-74e0-a4a2-342ddb5b22a1",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T01:12:14.802Z",
+      "credits": 10
+    },
+    "rig": {
+      "id": "01a1c303-b354-7038-8c09-9bbc48999de3",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T01:12:45.214Z",
+      "credits": 5
+    }
+  },
+  "credits": 35,
+  "files": [
+    "assets-src/models/_rackreel/wildman.glb"
+  ],
+  "createdAt": "2026-11-10T01:11:27.641Z",
+  "clips": [],
+  "cleanup": "none",
+  "updatedAt": "2026-11-10T01:13:02.291Z"
+}

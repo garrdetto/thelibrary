@@ -46,8 +46,11 @@
       #scope::before{width:62vmin;height:1.5px;margin-left:-31vmin}
       #scope::after{height:62vmin;width:1.5px;margin-top:-31vmin}
       #scope i{position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:#d6452a;box-shadow:0 0 6px #ff6a3d}
-      #prompt{left:50%;bottom:120px;transform:translateX(-50%);text-align:center;padding:7px 14px;border-radius:999px;background:var(--panel);border:1px solid var(--line);font-weight:700;white-space:nowrap}
-      #prompt:empty{display:none}
+      #prompt{position:fixed;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+      #controls{left:14px;bottom:42px;display:grid;gap:5px;justify-items:start;max-width:min(380px,calc(100vw - 220px));opacity:.82}
+      #controls .ctl{display:flex;align-items:center;gap:6px;padding:5px 10px 5px 6px;border-radius:9px;background:rgba(22,20,17,.55);border:1px solid rgba(233,220,192,.12);font-weight:700;font-size:12.5px;color:var(--text)}
+      #controls .ctl.note{padding-left:10px;color:var(--soft);font-weight:600}
+      #controls kbd.mouse{min-width:0;font-size:10px;letter-spacing:.3px;text-transform:uppercase}
       #reel{left:50%;bottom:34px;transform:translateX(-50%);width:min(520px,calc(100% - 32px));display:grid;gap:7px;padding:12px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line)}
       .rr-row{display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:var(--soft)}
       .tension{position:relative;height:16px;border-radius:8px;background:linear-gradient(90deg,#7a2615 0 10%,#335a2b 10% 90%,#7a2615 90%)}
@@ -61,6 +64,12 @@
       .toast{padding:8px 14px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font-weight:700;animation:fade 4.2s forwards}
       .toast.big{font:800 18px var(--head);color:var(--bone);border-color:rgba(201,155,90,.6)}
       .toast.warn{border-color:rgba(224,90,58,.7)}
+      .toast.say{border-color:rgba(255,176,46,.65);background:rgba(48,32,12,.86);color:#ffe7c2;font-size:15px;max-width:min(560px,calc(100vw - 32px));white-space:normal;text-align:center}
+      #draw{left:50%;bottom:70px;transform:translateX(-50%);width:240px}
+      #draw .meter i{background:linear-gradient(90deg,#d9a866,#ffb02e)}
+      #dot{left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;background:rgba(255,245,225,.85);box-shadow:0 0 0 1px rgba(0,0,0,.45)}
+      #tub{border-color:rgba(255,176,46,.5)}
+      .rr-keys-title{grid-column:1/-1;margin-top:4px;font-size:11px;font-weight:800;letter-spacing:1.6px;text-transform:uppercase;color:var(--bronze)}
       @keyframes fade{0%{opacity:0;transform:translateY(-6px)}8%,80%{opacity:1;transform:none}100%{opacity:0}}
       #catch{place-items:end center;background:linear-gradient(180deg,transparent 45%,rgba(8,8,7,.82))}
       #catch .rr-card{width:min(520px,100%);text-align:center;gap:10px;padding:16px 20px 18px}
@@ -128,7 +137,7 @@
       .name-tag{position:absolute;transform:translate(-50%,-100%);padding:2px 8px;border-radius:999px;background:rgba(14,30,40,.75);border:1px solid rgba(127,208,255,.6);color:#e9f6ff;font:700 12px Inter,system-ui,sans-serif;white-space:nowrap}
       @media (max-width:640px){#minimap{width:120px;height:120px}}
       #help-hint{left:14px;bottom:14px;font-size:12px;color:var(--muted)}
-      @media (max-width:640px){#prompt{bottom:150px;white-space:normal;max-width:calc(100% - 32px)}.big-num{font-size:34px}}
+      @media (max-width:640px){#controls{bottom:146px;max-width:calc(100vw - 32px)}.big-num{font-size:34px}}
       @media (prefers-reduced-motion:reduce){.toast{animation:none}#loading .rr-bar i{transition:none}}
     </style>
   </head>
@@ -147,7 +156,7 @@
       <div class="rr-card">
         <img class="rr-logo" src="rackreel/logo.webp" alt="Rack & Reel" />
         <div class="rr-eyebrow">Upper Midwest field module · fishing &amp; hunting</div>
-        <p>Two hundred and fifty acres of northern Wisconsin: pine, birch and maple ridges in fall color, a cattail marsh and a twenty-acre lake with an island. Fish the weed edges and deep breaks, drive the trails in the UTV or take the boat out, and still-hunt the ridges for whitetails and black bear. Every animal is weighed or scored the moment it appears: most are around average, one in fifty is a trophy, and a near-record or a new state record is a once-in-a-lifetime find. Live bait fishes under a float; lures only draw strikes while you reel them. Earn cash from every catch, tag and task, then outfit yourself at the log cabin.</p>
+        <p>Two hundred and fifty acres of northern Wisconsin: pine, birch and maple ridges in fall color, a cattail marsh and a twenty-acre lake with an island. Fish the weed edges and deep breaks, drive the trails in the UTV or take the boat out, and still-hunt the ridges for whitetails and black bear. Every animal is weighed or scored the moment it appears: most are around average, one in fifty is a trophy, and a near-record or a new state record is a once-in-a-lifetime find. Live bait fishes under a float; lures only draw strikes while you reel them. Earn cash from every catch, tag and task, then outfit yourself at the log cabin. The day runs on a clock: after dark, find Wisco Wild Man on his cooler down the shore from the dock and go bowfishing for carp under the lights, out to the island flats or under the interstate bridge into the back bay.</p>
         <div class="rr-keys">
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk or drive</div>
           <div><kbd>Mouse</kbd> or <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> Look around</div>
@@ -162,6 +171,14 @@
           <div><kbd>N</kbd> Map zoom <kbd>P</kbd> Hunting party</div>
           <div><kbd>Q</kbd> Anchor <kbd>F</kbd> Switch boat seat</div>
           <div><kbd>M</kbd> Sound <kbd>Esc</kbd> Pause</div>
+          <div class="rr-keys-title">Night bowfishing with Wisco Wild Man (his launch is down the shore from the dock)</div>
+          <div><kbd>Left</kbd> Hold to draw, release to shoot</div>
+          <div><kbd>R</kbd> or <kbd>Right</kbd> Hold to reel</div>
+          <div><kbd>L</kbd> Lights white, amber, off</div>
+          <div><kbd>W</kbd><kbd>S</kbd> Ask for faster or slower</div>
+          <div><kbd>Space</kbd> Hold up or go</div>
+          <div><kbd>F</kbd> Shoreline, island flats, back bay</div>
+          <div><kbd>E</kbd> Take me in, step off</div>
         </div>
         <div class="rr-actions">
           <button class="rr-btn primary" id="start-btn" type="button">Head out</button>
@@ -175,9 +192,11 @@
       <div id="tools"><span class="chip" data-tool="rod" aria-current="true">1 · Rod</span><span class="chip" data-tool="rifle">2 · Rifle</span></div>
       <div class="chip" id="cash"><span class="dim">Cash</span> <b id="cash-amount">$0</b></div>
       <div class="chip" id="bag"><span class="dim">Bag</span> <b id="bag-count">0</b> <span class="dim">· Trophy pts</span> <b id="bag-points">0</b></div>
+      <div class="chip" id="tub" hidden><span class="dim">Tub</span> <b id="tub-count">0</b> <span class="dim">carp ·</span> <b id="tub-weight">0</b> <span class="dim">lb</span></div>
     </div>
     <div id="hud-tr" class="hud" hidden>
       <div class="chip" id="compass">N</div>
+      <div class="chip" id="clock"><span class="dim">Clock</span> <b id="clock-time">4:00 PM</b></div>
       <div class="chip" id="activity"><span class="dim">Activity</span> <b id="activity-text">Quiet</b></div>
       <div class="chip" id="legend" hidden></div>
       <div class="chip" id="party" hidden></div>
@@ -186,7 +205,10 @@
     <div id="crosshair" class="hud" hidden></div>
     <div id="scope" class="hud" hidden><i></i></div>
     <div id="prompt" class="hud" aria-live="polite"></div>
+    <div id="controls" class="hud" aria-hidden="true" hidden></div>
     <div id="cast" class="hud" hidden><div class="rr-row"><span>Cast power</span><span id="cast-pct">0%</span></div><div class="meter"><i id="cast-bar"></i></div></div>
+    <div id="dot" class="hud" hidden></div>
+    <div id="draw" class="hud" hidden><div class="rr-row"><span>Draw</span><span id="draw-pct">0%</span></div><div class="meter"><i id="draw-bar"></i></div></div>
     <div id="breath" class="hud" hidden><div class="rr-row"><span>Breath</span></div><div class="meter"><i id="breath-bar"></i></div></div>
     <div id="reel" class="hud" hidden>
       <div class="rr-row"><span id="reel-species">Fish on</span><span id="reel-state">Keep the needle in the green</span></div>

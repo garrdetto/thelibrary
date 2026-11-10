@@ -55,6 +55,8 @@ export interface EngineContext {
   buildSelectionOctree(): void
   groundRay(ground: Mesh, x: number, z: number): { y: number; normal: Vector3 } | null
   setAds(amount: number, zoom?: number): void
+  /** Re-aims the key light (sun or moon) and the shadow frame; `direction` points from the light toward the ground. */
+  setSunDirection(direction: Vector3): void
 }
 
 export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
@@ -188,6 +190,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   const texel = (SHADOW_EXTENT * 2) / SHADOW_MAP_SIZE
   const right = Vector3.Cross(Vector3.Up(), sunDirection).normalize()
   const up = Vector3.Cross(sunDirection, right).normalize()
+  const scratchUp = Vector3.Up()
   const ray = new Ray(Vector3.Zero(), new Vector3(0, -1, 0), 600)
   const focusScratch = new Vector3()
   const axisScratch = new Vector3()
@@ -259,6 +262,14 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       if (!hit.hit || !hit.pickedPoint) return null
       const normal = hit.getNormal(true, false) ?? Vector3.Up()
       return { y: hit.pickedPoint.y, normal }
+    },
+    setSunDirection(direction) {
+      sunDirection.copyFrom(direction).normalize()
+      sun.direction.copyFrom(sunDirection)
+      Vector3.CrossToRef(scratchUp, sunDirection, right)
+      right.normalize()
+      Vector3.CrossToRef(sunDirection, right, up)
+      up.normalize()
     },
     setAds(amount, zoom = 1) {
       camera.fov = 0.9 + (0.21 / zoom - 0.9) * amount

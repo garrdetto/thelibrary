@@ -82,6 +82,7 @@ export const TASKS: TaskDef[] = [
   { id: 'standbuck', text: 'Tag a deer from a stand or blind', reward: 400, goal: 1, match: (e) => e.type === 'game' && e.species === 'whitetail' && e.stand },
   { id: 'doe1', text: 'Fill an antlerless tag', reward: 150, goal: 1, match: (e) => e.type === 'game' && e.doe },
   { id: 'bear1', text: 'Tag a black bear', reward: 600, goal: 1, match: (e) => e.type === 'game' && e.species === 'blackbear' },
+  { id: 'carp5', text: 'Arrow 5 carp bowfishing at night', reward: 260, goal: 5, match: (e) => e.type === 'fish' && e.species === 'carp' },
 ]
 
 export const TASK_BY_ID: Record<string, TaskDef> = Object.fromEntries(TASKS.map((t) => [t.id, t]))
@@ -149,7 +150,7 @@ export function refillTasks(p: Profile): void {
   }
 }
 
-const FISH_BASE: Record<string, number> = { muskie: 90, walleye: 30, pike: 40, smallmouth: 34, perch: 12 }
+const FISH_BASE: Record<string, number> = { muskie: 90, walleye: 30, pike: 40, smallmouth: 34, perch: 12, carp: 16 }
 
 export function payoutFor(e: GameEvent, sizeShare: number, loadout: Loadout): number {
   const share = Math.max(0, Math.min(1.5, sizeShare))

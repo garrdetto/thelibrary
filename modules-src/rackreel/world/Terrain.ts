@@ -60,29 +60,144 @@ export function marshWeight(angle: number): number {
   return smoothstep(0.75, 0.15, Math.abs(a))
 }
 
-const ISLAND = { x: 70, z: -20, r: 26 }
+export const ISLAND = { x: 70, z: -20, r: 26 }
+
+/** Broad shallow weed flats on three stretches of shoreline (west by the marsh, south and east), away from the dock. */
+export function flatsWeight(angle: number): number {
+  let w = 0
+  for (const [at, width] of [[2.75, 0.42], [-1.95, 0.3], [0.32, 0.26]] as const) {
+    const d = Math.atan2(Math.sin(angle - at), Math.cos(angle - at))
+    w = Math.max(w, Math.exp(-(d * d) / (width * width)))
+  }
+  return smoothstep(0.15, 0.7, w)
+}
 
 export function trailOffset(x: number, z: number): number {
   const { s, radius } = lakeCoord(x, z)
   return Math.abs(s - 1.42) * radius
 }
 
+const CHANNEL_ANGLE = 0.9
+const CHANNEL_DIR = { x: Math.cos(CHANNEL_ANGLE), z: Math.sin(CHANNEL_ANGLE) }
+/** The back bay: a shallow weedy basin north-east of the lake, reached only by a channel that runs under the interstate. */
+export const BAY = { x: LAKE_CENTER.x + CHANNEL_DIR.x * 275, z: LAKE_CENTER.z + CHANNEL_DIR.z * 275, r: 58 }
+export const CHANNEL = {
+  ax: LAKE_CENTER.x + CHANNEL_DIR.x * lakeRadius(CHANNEL_ANGLE) * 0.82,
+  az: LAKE_CENTER.z + CHANNEL_DIR.z * lakeRadius(CHANNEL_ANGLE) * 0.82,
+  bx: BAY.x,
+  bz: BAY.z,
+  width: 26,
+}
+/** The interstate: a straight four-lane highway crossing the channel on a bridge. `x, z` is where it crosses the channel; it runs along (dx, dz). */
+export const HIGHWAY = {
+  x: LAKE_CENTER.x + CHANNEL_DIR.x * 205,
+  z: LAKE_CENTER.z + CHANNEL_DIR.z * 205,
+  dx: -CHANNEL_DIR.z,
+  dz: CHANNEL_DIR.x,
+  halfWidth: 12,
+  deck: 7.5,
+  span: 64,
+  reach: 640,
+}
+
+export function bayRadius(angle: number): number {
+  return BAY.r * (1 + 0.12 * Math.sin(angle * 3 + 0.5) + 0.08 * Math.sin(angle * 5 - 1))
+}
+
+export function bayCoord(x: number, z: number): number {
+  return Math.hypot(x - BAY.x, z - BAY.z) / bayRadius(Math.atan2(z - BAY.z, x - BAY.x))
+}
+
+export function channelDistance(x: number, z: number): number {
+  const dx = CHANNEL.bx - CHANNEL.ax
+  const dz = CHANNEL.bz - CHANNEL.az
+  const t = Math.max(0, Math.min(1, ((x - CHANNEL.ax) * dx + (z - CHANNEL.az) * dz) / (dx * dx + dz * dz)))
+  return Math.hypot(x - (CHANNEL.ax + dx * t), z - (CHANNEL.az + dz * t))
+}
+
+/** Along-road and across-road distances from the highway's channel crossing. */
+export function highwayCoord(x: number, z: number): { t: number; across: number } {
+  const px = x - HIGHWAY.x
+  const pz = z - HIGHWAY.z
+  return { t: px * HIGHWAY.dx + pz * HIGHWAY.dz, across: Math.abs(px * HIGHWAY.dz - pz * HIGHWAY.dx) }
+}
+
+const GRADE_STEP = 4
+let gradeTable: Float32Array | null = null
+
+/** Height of the road surface along the highway: the land smoothed over ±48 m, climbing at 5 % to the bridge deck. */
+export function highwayGrade(t: number): number {
+  if (!gradeTable) {
+    const n = Math.ceil((HIGHWAY.reach * 2) / GRADE_STEP) + 1
+    const base = new Float32Array(n)
+    for (let i = 0; i < n; i++) {
+      const tt = -HIGHWAY.reach + i * GRADE_STEP
+      base[i] = baseHeight(HIGHWAY.x + HIGHWAY.dx * tt, HIGHWAY.z + HIGHWAY.dz * tt)
+    }
+    gradeTable = new Float32Array(n)
+    const w = 12
+    for (let i = 0; i < n; i++) {
+      let sum = 0
+      let count = 0
+      for (let k = -w; k <= w; k++) {
+        const j = Math.min(n - 1, Math.max(0, i + k))
+        sum += Math.max(1.5, base[j])
+        count++
+      }
+      const tt = -HIGHWAY.reach + i * GRADE_STEP
+      const ramp = HIGHWAY.deck - Math.max(0, Math.abs(tt) - HIGHWAY.span / 2) * 0.05
+      gradeTable[i] = Math.max(sum / count, ramp)
+    }
+  }
+  const u = (Math.max(-HIGHWAY.reach, Math.min(HIGHWAY.reach, t)) + HIGHWAY.reach) / GRADE_STEP
+  const i = Math.min(gradeTable.length - 2, Math.floor(u))
+  const f = u - i
+  return gradeTable[i] + (gradeTable[i + 1] - gradeTable[i]) * f
+}
+
 export function rawHeight(x: number, z: number): number {
+  let h = baseHeight(x, z)
+  const road = highwayCoord(x, z)
+  if (road.across < HIGHWAY.halfWidth + 18 && Math.abs(road.t) > HIGHWAY.span / 2 - 1) {
+    const w = 1 - smoothstep(HIGHWAY.halfWidth + 1, HIGHWAY.halfWidth + 18, road.across)
+    h += (highwayGrade(road.t) - 0.25 - h) * w
+  }
+  return h
+}
+
+function baseHeight(x: number, z: number): number {
   const { s, angle } = lakeCoord(x, z)
   const hills = fbm(x * 0.0042 + 3.1, z * 0.0042 - 1.7, 4, 1) * 34 + fbm(x * 0.016, z * 0.016, 3, 5) * 5
   const marsh = marshWeight(angle)
   let land = 3.2 + Math.max(-1.5, hills) * smoothstep(1.05, 1.9, s)
   land = land * (1 - marsh * smoothstep(2.0, 1.1, s)) + marsh * smoothstep(2.0, 1.1, s) * (0.35 + fbm(x * 0.05, z * 0.05, 2, 9) * 0.3)
   const floor = -1.2 - 15 * Math.pow(Math.max(0, 1 - s), 0.75) * (0.75 + 0.25 * fbm(x * 0.01, z * 0.01, 2, 3)) - fbm(x * 0.03, z * 0.03, 2, 4) * 1.4
+  const shelf = flatsWeight(angle) * smoothstep(0.6, 0.76, s)
+  const flat = -0.95 - (fbm(x * 0.035, z * 0.035, 3, 23) * 0.5 + 0.5) * 0.9
+  const bed = floor + (Math.max(floor, flat) - floor) * shelf
   const shore = smoothstep(0.9, 1.12, s)
-  let h = floor + (land - floor) * shore
+  let h = bed + (land - bed) * shore
   const di = Math.hypot(x - ISLAND.x, z - ISLAND.z) / ISLAND.r
   if (di < 1.6) h = Math.max(h, (1 - smoothstep(0.2, 1.3, di)) * 5.5 - 1.5 + fbm(x * 0.08, z * 0.08, 2, 11))
   const trail = trailOffset(x, z)
   if (s > 1.2 && trail < 6) h = h * (0.88 + 0.12 * smoothstep(1.5, 6, trail))
+  const dc = channelDistance(x, z)
+  const W = CHANNEL.width
+  if (dc < W * 2.2) h = Math.min(h, -3.6 + 4.8 * smoothstep(W * 0.28, W * 0.62, dc) + 30 * smoothstep(W * 0.62, W * 2.2, dc) - fbm(x * 0.05, z * 0.05, 2, 13) * 0.25)
+  const db = bayCoord(x, z)
+  if (db < 1.9) {
+    const floor = -1.1 - 3.4 * Math.pow(Math.max(0, 1 - db), 2.6) - (fbm(x * 0.04, z * 0.04, 3, 17) * 0.5 + 0.2) * smoothstep(0.95, 0.5, db)
+    h = Math.min(h, floor + 4.4 * smoothstep(0.82, 1.18, db) + 30 * smoothstep(1.18, 1.9, db))
+  }
   const edge = Math.max(Math.abs(x), Math.abs(z))
   h += smoothstep(HALF - 90, HALF - 4, edge) * 42
   return h
+}
+
+/** 0 on open water, the channel and the highway; 1 well clear of them. */
+export function waterwayClear(x: number, z: number): number {
+  const road = highwayCoord(x, z)
+  return smoothstep(1.05, 1.3, bayCoord(x, z)) * smoothstep(CHANNEL.width * 0.7, CHANNEL.width * 1.4, channelDistance(x, z)) * smoothstep(HIGHWAY.halfWidth + 3, HIGHWAY.halfWidth + 20, road.across)
 }
 
 export function forestDensity(x: number, z: number): number {
@@ -92,7 +207,7 @@ export function forestDensity(x: number, z: number): number {
   const shore = smoothstep(1.12, 1.35, s)
   const marsh = 1 - marshWeight(angle) * smoothstep(2.0, 1.2, s) * 0.85
   const trail = smoothstep(3.5, 8, trailOffset(x, z))
-  return Math.max(0, Math.min(1, patches * shore * marsh * trail * (1 - meadow * 0.75)))
+  return Math.max(0, Math.min(1, patches * shore * marsh * trail * (1 - meadow * 0.75) * waterwayClear(x, z)))
 }
 
 export type Ground = 'water' | 'shore' | 'marsh' | 'meadow' | 'forest' | 'trail' | 'rock'

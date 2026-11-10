@@ -5,6 +5,8 @@ import { launch, simulate } from '../../modules-src/darts/shared/Physics'
 import { applyThrow, createMatch, DEFAULT_RULES, forfeitTurn, nextTurn, normalizeConfig, removePlayer } from '../../modules-src/darts/shared/Rules'
 import { createRng } from '../../modules-src/darts/shared/Rng'
 import { LEG_PAUSE_MS, RECONNECT_MS, ROOM_SEATS, TURN_PAUSE_MS, TURN_TIMEOUT_MS } from '../../modules-src/darts/shared/Room'
+import { boardOf, countsForAverages, legJustEnded, legResults, matchAverages } from '../../modules-src/darts/shared/Records'
+import { saveDartsAverage, saveDartsLeg } from './darts-records.js'
 
 type ServerSocket = WebSocket & { accept(): void }
 
@@ -30,6 +32,7 @@ const configSchema = z.object({
   ]),
   legsPerSet: z.number().int().min(1).max(11),
   setsToWin: z.number().int().min(1).max(7),
+  board: z.enum(['steel', 'spider']).optional(),
 })
 const clientMessage = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ROOM_CREATE'), config: configSchema }),
@@ -71,7 +74,7 @@ function identityFrom(request: Request): DartsIdentity | null {
 }
 
 /**
- * One Oche Darts online room. Up to four seats; the first seat hosts and picks the format with ROOM_CREATE, others take seats with ROOM_JOIN. The room is the authority: a THROW_MADE carries only the thrower's intent, the room rolls the release error from its own random source, flies the dart with the shared physics, scores it with the shared rules and broadcasts the dart, its flight and the new state. Turns change on the room's clock (TURN_SWITCH), a silent thrower loses the rest of the turn after TURN_TIMEOUT_MS, a dropped seat is held for RECONNECT_MS, and GAME_OVER ends the match. Nothing is stored.
+ * One Oche Darts online room. Up to four seats; the first seat hosts and picks the format with ROOM_CREATE, others take seats with ROOM_JOIN. The room is the authority: a THROW_MADE carries only the thrower's intent, the room rolls the release error from its own random source, flies the dart with the shared physics, scores it with the shared rules and broadcasts the dart, its flight and the new state. Turns change on the room's clock (TURN_SWITCH), a silent thrower loses the rest of the turn after TURN_TIMEOUT_MS, a dropped seat is held for RECONNECT_MS, and GAME_OVER ends the match. Signed-in players' finished legs go to the Darts record book and finished matches to their all-time averages (`darts-records.ts`), saved here so the page can't send them.
  */
 export class DartsRoom {
   private code = ''
@@ -83,9 +86,7 @@ export class DartsRoom {
   private restartVotes = new Set<string>()
   private restartTimer: ReturnType<typeof setTimeout> | null = null
 
-  constructor(_state: unknown, private readonly env: Env) {
-    void this.env
-  }
+  constructor(_state: unknown, private readonly env: Env) {}
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
@@ -284,6 +285,7 @@ export class DartsRoom {
     const impact = simulate(flight)
     const result = applyThrow(state, seat.id, impact.dart)
     this.state = result.state
+    if (result.turnOver) this.record(result.state)
     this.broadcast({ type: 'THROW_MADE', playerId: seat.id, dart: impact.dart, flight, state: result.state, announcements: result.announcements })
     const flightMs = Math.round(impact.seconds * 1000)
     if (result.state.status === 'finished') {
@@ -302,6 +304,28 @@ export class DartsRoom {
       return
     }
     this.armTurnTimer()
+  }
+
+  /** Saves the record-book legs and, at the end of the match, the averages of every signed-in player in it. */
+  private record(state: GameState): void {
+    if (!legJustEnded(state)) return
+    const board = boardOf(state.config)
+    const member = (playerId: string) => {
+      const seat = this.seats.find((item) => item.id === playerId)
+      return seat?.member && seat.key.startsWith('member:') ? { id: seat.key.slice('member:'.length), username: seat.name } : null
+    }
+    const saves: Promise<unknown>[] = []
+    for (const leg of legResults(state)) {
+      const user = member(leg.playerId)
+      if (user) saves.push(saveDartsLeg(this.env, user, board, leg.mode, leg.value, crypto.randomUUID()))
+    }
+    if (state.status === 'finished' && countsForAverages(state)) {
+      for (const average of matchAverages(state)) {
+        const user = member(average.playerId)
+        if (user && average.darts > 0) saves.push(saveDartsAverage(this.env, user, board, average.mode, average.darts, average.total, crypto.randomUUID()))
+      }
+    }
+    for (const save of saves) save.catch((error) => console.error('Darts: could not save a result', error))
   }
 
   private schedulePause(ms: number): void {
@@ -328,6 +352,7 @@ export class DartsRoom {
       if (!this.state || this.state.status !== 'playing' || this.state.currentTurnPlayerId !== playerId || this.state.version !== version) return
       const result = forfeitTurn(this.state, playerId)
       this.state = result.state
+      if (result.turnOver) this.record(result.state)
       const name = result.state.players.find((player) => player.id === playerId)?.name ?? 'Player'
       this.broadcast({ type: 'TURN_SWITCH', state: result.state, announcements: [{ kind: 'miss', text: `${name} ran out of time`, playerId }, ...result.announcements] })
       if (result.state.status === 'finished' && result.state.winnerId) {
