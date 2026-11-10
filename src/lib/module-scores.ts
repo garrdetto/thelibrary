@@ -9,6 +9,7 @@ export const scoredModules = {
   memory: { title: 'Fastest Clears', metric: 'Time', order: 'asc', unit: 'ms', min: 1_000, max: 3_600_000, note: 'Saved when the last pair of the 6 × 6 grid is matched.' },
   simon: { title: 'Longest Sequences', metric: 'Sequence', order: 'desc', unit: 'steps', min: 1, max: 1_000, note: 'Saved when you miss a step.' },
   sudoku: { title: 'Fastest Solves', metric: 'Time', order: 'asc', unit: 'ms', min: 10_000, max: 86_400_000, note: 'Saved when a Hard puzzle is solved without hints.' },
+  recall: { title: 'Fastest Clears', metric: 'Time', order: 'asc', unit: 'ms', min: 2_000, max: 3_600_000, note: 'The clock starts when the cards flip face down after the five-second look and stops on the last of the ten pairs.' },
   minesweeper: { title: 'Fastest Clears', metric: 'Time', order: 'asc', unit: 'ms', min: 1_000, max: 3_600_000, note: 'Saved when an Intermediate field (16 × 16, 40 mines) is cleared.' },
   mathrush: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 1_000_000, note: 'Saved when the sixty-second timer runs out.' },
   rackreel: { title: 'Trophy Room', metric: 'Trophy points', order: 'desc', unit: 'points', min: 1, max: 1_200, note: 'Trophy-class fish and game only, scored against the all-time record for the species (1,000 ties the record). Saved when you land the fish or tag the animal.' },
