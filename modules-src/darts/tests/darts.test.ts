@@ -417,3 +417,53 @@ test('power meter: swings up and back, and its green band is the ideal speed', a
   assert.ok(Math.abs(speedFromCharge(rising) - IDEAL_SPEED) < 1e-9)
   assert.ok(Math.abs(speedFromCharge(period - rising) - IDEAL_SPEED) < 1e-9)
 })
+
+test('soft-tip dart: the model point is dropped, the body is re-centred and the drawn point lies on the axis', async () => {
+  const { NodeIO } = await import('@gltf-transform/core')
+  const { ALL_EXTENSIONS } = await import('@gltf-transform/extensions')
+  const { MeshoptDecoder } = await import('meshoptimizer')
+  const { softTipPlan, tipGeometry, TIP_LENGTH, TIP_REACH } = await import('../render/SoftTip')
+  await MeshoptDecoder.ready
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({ 'meshopt.decoder': MeshoptDecoder })
+  const doc = await io.read('public/models/darts/dart-soft.glb')
+  const node = doc.getRoot().listNodes().find((item) => item.getMesh())!
+  const matrix = node.getWorldMatrix()
+  const primitive = node.getMesh()!.listPrimitives().find((item) => item.getMaterial()?.getName() !== 'flight')!
+  const position = primitive.getAttribute('POSITION')!
+  const points = new Float32Array(position.getCount() * 3)
+  const v = [0, 0, 0]
+  for (let i = 0; i < position.getCount(); i++) {
+    position.getElement(i, v)
+    for (let k = 0; k < 3; k++) points[i * 3 + k] = matrix[k] * v[0] + matrix[4 + k] * v[1] + matrix[8 + k] * v[2] + matrix[12 + k]
+  }
+  const triangles = Array.from(primitive.getIndices()!.getArray()!)
+  const offAxis = (data: Float32Array, from: number, to: number) => {
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity
+    for (let i = 0; i < data.length / 3; i++) {
+      if (data[i * 3 + 2] < from || data[i * 3 + 2] >= to) continue
+      x0 = Math.min(x0, data[i * 3]); x1 = Math.max(x1, data[i * 3]); y0 = Math.min(y0, data[i * 3 + 1]); y1 = Math.max(y1, data[i * 3 + 1])
+    }
+    return Math.hypot((x0 + x1) / 2, (y0 + y1) / 2)
+  }
+  assert.ok(offAxis(points, 0.014, 0.016) > 0.002, 'the model front sits off the axis before the fix')
+  const plan = softTipPlan(points, triangles)
+  for (const [from, to] of [[0.014, 0.016], [0.018, 0.02], [0.022, 0.024], [0.03, 0.032], [0.046, 0.048]]) {
+    assert.ok(offAxis(plan.points, from, to) < 0.0006, `slice ${from * 1000}-${to * 1000} mm centred: ${offAxis(plan.points, from, to)}`)
+  }
+  for (let i = 0; i < points.length / 3; i++) {
+    if (points[i * 3 + 2] < 0.07) continue
+    for (let k = 0; k < 3; k++) assert.equal(plan.points[i * 3 + k], points[i * 3 + k])
+  }
+  const dropped = plan.tip.reduce((sum, flag) => sum + flag, 0)
+  assert.ok(dropped > 20 && dropped < plan.tip.length * 0.2, `dropped point triangles: ${dropped} of ${plan.tip.length}`)
+  for (let t = 0; t < plan.tip.length; t++) {
+    if (plan.tip[t]) continue
+    const centre = (plan.points[triangles[t * 3] * 3 + 2] + plan.points[triangles[t * 3 + 1] * 3 + 2] + plan.points[triangles[t * 3 + 2] * 3 + 2]) / 3
+    assert.ok(centre >= TIP_LENGTH - 1e-9)
+  }
+  const tip = tipGeometry()
+  tip.computeBoundingBox()
+  const box = tip.boundingBox!
+  assert.ok(Math.abs(box.min.z) < 1e-9 && Math.abs(box.max.z - TIP_REACH) < 1e-9)
+  assert.ok(Math.abs(box.min.x + box.max.x) < 1e-6 && Math.abs(box.min.y + box.max.y) < 1e-6, 'drawn point is centred on the axis')
+})

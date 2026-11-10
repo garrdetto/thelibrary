@@ -1,9 +1,24 @@
-/** A steel-tip dart modelled from lathe profiles: polished point, knurled tungsten barrel, anodised shaft and four printed flights in the thrower's colour. The tip sits at the origin and the dart points along −z, so orienting it to a velocity is one quaternion. */
+/** Darts for both boards: Meshy-made steel-tip and soft-tip models (`/models/darts/dart-steel.glb`, `dart-soft.glb`, fitted by `tools/fit-dart.py`) whose `flight` material takes the thrower's colour (the soft-tip point is straightened and drawn in black plastic by `SoftTip.ts`), with a lathe-built steel-tip dart until they load (or with `?dartModels=0`). The tip sits at the origin and the dart points along −z, so orienting it to a velocity is one quaternion. */
 import * as THREE from 'three/webgpu'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
+import type { BoardStyle } from './BoardTexture'
+import { applySoftTip, createSoftTipMaterial } from './SoftTip'
 
 export interface DartKit {
   create(color: string): THREE.Group
+  /** Picks the steel-tip or soft-tip set to match the board. */
+  setStyle(style: BoardStyle): void
+  /** Loads the Meshy models; resolves once they are in use (or failed, keeping the built-in dart). */
+  loadModels(): Promise<void>
+  /** Changes whenever `create` would build a different dart. */
+  readonly version: number
   dispose(): void
+}
+
+const MODEL_URLS: Record<BoardStyle, string> = {
+  steel: '/models/darts/dart-steel.glb',
+  spider: '/models/darts/dart-soft.glb',
 }
 
 const AXIS = new THREE.Vector3(0, 0, -1)
@@ -60,8 +75,66 @@ export function createDartKit(): DartKit {
     return material
   }
 
+  const models = new Map<BoardStyle, THREE.Object3D>()
+  const modelFlights = new Map<string, THREE.Material>()
+  let style: BoardStyle = 'steel'
+  let version = 0
+
+  const fromModel = (template: THREE.Object3D, color: string): THREE.Group => {
+    const group = new THREE.Group()
+    group.name = 'dart'
+    const body = template.clone(true)
+    body.traverse((node) => {
+      const mesh = node as THREE.Mesh
+      if (!mesh.isMesh) return
+      mesh.castShadow = true
+      mesh.receiveShadow = false
+      const swap = (material: THREE.Material) => {
+        if (material.name !== 'flight') return material
+        const key = `${material.uuid}:${color}`
+        let tinted = modelFlights.get(key)
+        if (!tinted) {
+          tinted = material.clone()
+          ;(tinted as THREE.MeshStandardMaterial).color?.set(color)
+          tinted.side = THREE.DoubleSide
+          modelFlights.set(key, tinted)
+        }
+        return tinted
+      }
+      mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
+    })
+    group.add(body)
+    return group
+  }
+
   return {
+    get version() {
+      return version
+    },
+    setStyle(next) {
+      if (next === style) return
+      style = next
+      version++
+    },
+    async loadModels() {
+      if (new URLSearchParams(location.search).get('dartModels') === '0') return
+      const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder)
+      await Promise.all(
+        (Object.keys(MODEL_URLS) as BoardStyle[]).map(async (key) => {
+          try {
+            const gltf = await loader.loadAsync(MODEL_URLS[key])
+            if (key === 'spider') applySoftTip(gltf.scene, createSoftTipMaterial())
+            models.set(key, gltf.scene)
+            version++
+          } catch (error) {
+            console.warn(`Darts: ${key} dart model unavailable, using the built-in dart`, error)
+          }
+        }),
+      )
+    },
     create(color) {
+      const model = models.get(style)
+      if (model) return fromModel(model, color)
       const group = new THREE.Group()
       group.name = 'dart'
       const parts = [new THREE.Mesh(pointGeometry, steel), new THREE.Mesh(barrelGeometry, tungsten), new THREE.Mesh(shaftGeometry, shaft)]
@@ -86,6 +159,24 @@ export function createDartKit(): DartKit {
       tungsten.dispose()
       shaft.dispose()
       for (const material of flightMaterials.values()) material.dispose()
+      for (const material of modelFlights.values()) material.dispose()
+      const seen = new Set<object>()
+      for (const model of models.values()) {
+        model.traverse((node) => {
+          const mesh = node as THREE.Mesh
+          if (!mesh.isMesh) return
+          const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+          for (const item of [mesh.geometry, ...materials]) {
+            if (seen.has(item)) continue
+            seen.add(item)
+            if (item instanceof THREE.Material) {
+              for (const value of Object.values(item)) if (value instanceof THREE.Texture) value.dispose()
+            }
+            item.dispose()
+          }
+        })
+      }
+      models.clear()
     },
   }
 }

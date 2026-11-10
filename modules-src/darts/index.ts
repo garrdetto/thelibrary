@@ -116,7 +116,9 @@ async function boot(): Promise<void> {
   app.graph.add('world', pub.root)
 
   const kit = createDartKit()
+  kit.setStyle(pub.style)
   app.own(kit)
+  void kit.loadModels()
   const flights = new DartFlights(kit, app.graph.layer('props'))
   app.own(flights)
   const sounds = createSounds()
@@ -151,6 +153,7 @@ async function boot(): Promise<void> {
 
   let handColor = config.dart.flightColors[0]
   let hand = kit.create(handColor)
+  let handVersion = kit.version
   app.graph.add('props', hand)
   const handWorld = new THREE.Vector3(RELEASE[0], RELEASE[1] + BULL_HEIGHT, RELEASE[2])
   const placeHand = (x: number, y: number) => {
@@ -189,16 +192,17 @@ async function boot(): Promise<void> {
     input.enabled = can
     reticle.visible = can
     hand.visible = can && !flights.inFlight
-    if (state && state.status === 'playing') {
-      const color = playerColor(state, currentPlayer(state).id)
-      if (color !== handColor) {
-        handColor = color
-        hand.removeFromParent()
-        hand = kit.create(color)
-        app.graph.add('props', hand)
-        placeHand(input.aimX, input.aimY)
-        reticleMaterial.color.set(color)
-      }
+    const color = state && state.status === 'playing' ? playerColor(state, currentPlayer(state).id) : handColor
+    if (color !== handColor || handVersion !== kit.version) {
+      handColor = color
+      handVersion = kit.version
+      const visible = hand.visible
+      hand.removeFromParent()
+      hand = kit.create(color)
+      hand.visible = visible
+      app.graph.add('props', hand)
+      placeHand(input.aimX, input.aimY)
+      reticleMaterial.color.set(color)
     }
   }
 
@@ -349,6 +353,7 @@ async function boot(): Promise<void> {
   const chooseBoard = (style: BoardStyle) => {
     markBoard(style)
     saveBoardStyle(style)
+    kit.setStyle(style)
     window.clearTimeout(boardTimer)
     boardTimer = window.setTimeout(() => {
       boardTimer = 0
