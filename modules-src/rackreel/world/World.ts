@@ -5,7 +5,7 @@ import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTextur
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector'
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder'
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder'
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder'
@@ -15,6 +15,7 @@ import type { Scene } from '@babylonjs/core/scene'
 import type { EngineContext } from '../core/EngineSetup'
 import { FOG_COLOR, FOG_DENSITY } from '../core/EngineSetup'
 import './Shaders'
+import { woodMaterial } from './Surfaces'
 import { CELL, GRID, HALF, LAKE_CENTER, Terrain, WORLD_SIZE, fbm, forestDensity, lakeCoord, lakeRadius, marshWeight, smoothstep, trailOffset } from './Terrain'
 
 export interface Landmarks {
@@ -238,27 +239,39 @@ export function buildDock(ctx: EngineContext, landmarks: Landmarks): Mesh {
   const { scene } = ctx
   const { start, end } = landmarks.dock
   const length = Vector3.Distance(new Vector3(start.x, 0, start.z), new Vector3(end.x, 0, end.z))
-  const parts: Mesh[] = []
+  const planks: Mesh[] = []
+  const posts: Mesh[] = []
   const deckY = 0.55
-  const planks = Math.floor(length / 0.3)
-  for (let i = 0; i < planks; i++) {
-    const p = CreateBox('plank', { width: 1.9, height: 0.06, depth: 0.27 }, scene)
-    p.position.set((Math.random() - 0.5) * 0.04, deckY, -length / 2 + i * 0.3 + 0.15)
-    parts.push(p)
+  const count = Math.floor(length / 0.3)
+  let seed = 1
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647
+    return seed / 2147483647
+  }
+  for (let i = 0; i < count; i++) {
+    const u0 = rand() * 0.45
+    const v0 = rand() * 0.8
+    const face = new Vector4(u0, v0, u0 + 0.5, v0 + 0.12)
+    const p = CreateBox('plank', { width: 1.9, height: 0.06, depth: 0.27, faceUV: [face, face, face, face, face, face] }, scene)
+    p.position.set((rand() - 0.5) * 0.04, deckY + (rand() - 0.5) * 0.008, -length / 2 + i * 0.3 + 0.15)
+    p.rotation.y = (rand() - 0.5) * 0.012
+    planks.push(p)
   }
   for (let i = 0; i <= Math.floor(length / 2.4); i++) {
     for (const sx of [-0.9, 0.9]) {
-      const post = CreateBox('post', { width: 0.16, height: 3.2, depth: 0.16 }, scene)
+      const u0 = rand() * 0.6
+      const face = new Vector4(u0, 0, u0 + 0.35, 1)
+      const post = CreateBox('post', { width: 0.16, height: 3.2, depth: 0.16, faceUV: [face, face, face, face, face, face] }, scene)
       post.position.set(sx, deckY - 1.4, -length / 2 + i * 2.4)
-      parts.push(post)
+      posts.push(post)
     }
   }
-  const dock = Mesh.MergeMeshes(parts, true, true)!
+  const deck = Mesh.MergeMeshes(planks, true, true)!
+  deck.material = woodMaterial(scene, 'dock-deck', false, [0.62, 0.52, 0.41], 11)
+  const legs = Mesh.MergeMeshes(posts, true, true)!
+  legs.material = woodMaterial(scene, 'dock-post', true, [0.4, 0.33, 0.26], 23)
+  const dock = Mesh.MergeMeshes([deck, legs], true, true, undefined, true, true)!
   dock.name = 'dock'
-  const mat = new StandardMaterial('dock-mat', scene)
-  mat.diffuseColor = new Color3(0.42, 0.33, 0.24)
-  mat.specularColor = new Color3(0.03, 0.03, 0.03)
-  dock.material = mat
   const mid = start.add(end).scale(0.5)
   dock.position.set(mid.x, 0, mid.z)
   dock.rotation.y = Math.atan2(end.x - start.x, end.z - start.z)

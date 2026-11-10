@@ -1,6 +1,6 @@
 /** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes in rows that follow the rings (three rows in each double and triple), a raised white plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
 import * as THREE from 'three/webgpu'
-import { RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
+import { HOLE_PITCH_MM, RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
 import { createRng } from '../shared/Rng'
 
 export type BoardStyle = 'steel' | 'spider'
@@ -183,7 +183,7 @@ function sisal(p: Painter, seed: number): void {
   ctx.globalAlpha = 1
 }
 
-const HOLE_PITCH = 3.4
+const HOLE_PITCH = HOLE_PITCH_MM
 const HOLE_RADIUS = 1.05
 
 /** Each soft-tip band as moulded: its inner and outer radius and how many rows of holes it carries (three in every double and triple; the singles fill with rows at the hole pitch). */

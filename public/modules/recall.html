@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hero Recall</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="module-base.css">
+<style>
+  main { --width: 780px; }
+  :root { --back1: #2a2f7a; --back2: #5b3fd1; --face: #fdf7ea; --faceline: #e9dcc0; }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --face: #fffaf0; --faceline: #e6d6b3; } }
+  .hud { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .lcd { min-width: 128px; padding: 6px 14px; border-radius: 10px; background: var(--cell); border: 1px solid var(--line); font: 600 28px "JetBrains Mono", monospace; text-align: center; font-variant-numeric: tabular-nums; }
+  .lcd.peek { color: var(--warn); }
+  .lcd.run { color: var(--accent); }
+  .lcd.done { color: var(--good); }
+  .phase { color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+  .board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; perspective: 1000px; user-select: none; -webkit-user-select: none; }
+  .card { position: relative; aspect-ratio: 5 / 6; padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; touch-action: manipulation; }
+  .card:hover { border: 0; }
+  .card:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .card:disabled { opacity: 1; cursor: default; }
+  .inner { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .45s cubic-bezier(.3,.7,.3,1.2); border-radius: 12px; }
+  .card.up .inner { transform: rotateY(180deg); }
+  .side { position: absolute; inset: 0; border-radius: 12px; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+  .back { background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.18), transparent 45%), repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 8px, transparent 8px 16px), linear-gradient(145deg, var(--back1), var(--back2)); border: 3px solid rgba(255,255,255,.22); box-shadow: 0 6px 14px rgba(0,0,0,.28); }
+  .back svg { width: 46%; height: auto; opacity: .9; }
+  .front { transform: rotateY(180deg); background: var(--face); border: 3px solid var(--faceline); box-shadow: 0 6px 14px rgba(0,0,0,.22); gap: 2px; padding: 6px 4px 8px; }
+  .front svg { width: 86%; height: auto; flex: 1 1 auto; min-height: 0; }
+  .front span { font: 700 clamp(12px, 2.6vw, 18px) Rajdhani, sans-serif; color: #2a2238; letter-spacing: .5px; line-height: 1; }
+  .card.matched .front { border-color: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 45%, transparent), 0 6px 14px rgba(0,0,0,.22); }
+  .card.matched .front svg { animation: hop .5s ease-out; }
+  .card.miss .front { border-color: var(--bad); }
+  @keyframes hop { 0% { transform: translateY(0) } 40% { transform: translateY(-10%) } 100% { transform: translateY(0) } }
+  .scores { margin-top: 14px; }
+  .scores h2 { margin: 0 0 8px; font: 700 22px Rajdhani, sans-serif; letter-spacing: .5px; }
+  .scores ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .scores li { display: grid; grid-template-columns: 34px 1fr auto auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 9px; background: var(--cell); border: 1px solid var(--line); font-size: 14px; }
+  .scores li b { font: 600 15px "JetBrains Mono", monospace; font-variant-numeric: tabular-nums; }
+  .scores li .place { font: 700 18px Rajdhani, sans-serif; color: var(--muted); }
+  .scores li:nth-child(1) .place { color: #f4cf3c; } .scores li:nth-child(2) .place { color: #c9d3e6; } .scores li:nth-child(3) .place { color: #e0995a; }
+  .scores li small { color: var(--muted); font-size: 12px; }
+  .scores li.fresh { border-color: var(--good); }
+  .scores .empty { color: var(--muted); font-size: 14px; margin: 0; }
+  .scores .head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .scores .head button { padding: 6px 10px; font-size: 12px; }
+  @media (max-width: 560px) { .board { grid-template-columns: repeat(4, 1fr); gap: 8px; } .lcd { font-size: 22px; min-width: 104px; } }
+  @media (prefers-reduced-motion: reduce) { .inner { transition: none; } .card.matched .front svg { animation: none; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Hero Recall</h1><div class="stats"><div class="stat"><span>BEST</span><b id="best">—</b></div><div class="stat"><span>CLEARS</span><b id="clears">0</b></div></div></header>
+  <section class="panel" id="panel">
+    <div class="hud"><button class="primary" id="start">Deal cards</button><span class="phase" id="phase">Ready</span><div class="lcd" id="clock" aria-label="Time" aria-live="off">0:00.00</div></div>
+    <div class="board" id="board" role="grid" aria-label="Cards"></div>
+    <div class="overlay" id="overlay"><h2 id="ovTitle">Cleared!</h2><p id="ovText"></p><div><button class="primary" id="again">Deal again</button><button id="close">View cards</button></div></div>
+  </section>
+  <section class="panel scores" aria-labelledby="localTitle">
+    <div class="head"><h2 id="localTitle">Your fastest clears</h2><button id="clearLocal" type="button">Clear list</button></div>
+    <ol id="localList"></ol>
+    <p class="empty" id="localEmpty">No clears on this device yet. Match all ten pairs to post a time.</p>
+  </section>
+  <footer>Press <b>Deal cards</b>: the twenty cards are shuffled and shown face up for <b>5 seconds</b>. Then they flip face down and the clock starts. Turn over two cards at a time to find the ten matching pairs; the clock stops on the last match. Keyboard: the arrow keys move between cards, <kbd>Space</kbd> or <kbd>Enter</kbd> flips one. Your ten best times are kept on this device, and signed-in clears are saved to the leaderboard below.</footer>
+</main>
+<script src="module-scores.js"></script>
+<script>
+'use strict';
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } }, del(k) { try { localStorage.removeItem(k); } catch (e) { /* storage unavailable */ } } };
+const $ = id => document.getElementById(id);
+const PEEK_MS = 5000, MISS_MS = 750, LOCAL_KEY = 'recall-times', CLEARS_KEY = 'recall-clears', KEEP = 10;
+
+const HEROES = [
+  { id: 'pip', name: 'Pip', svg: '<svg viewBox="0 0 100 100"><path d="M22 30 L30 6 L44 26 Z" fill="#e8742a"/><path d="M78 30 L70 6 L56 26 Z" fill="#e8742a"/><path d="M27 24 L31 13 L38 23 Z" fill="#ffd9b8"/><path d="M73 24 L69 13 L62 23 Z" fill="#ffd9b8"/><path d="M18 46 Q18 22 50 22 Q82 22 82 46 Q82 66 50 82 Q18 66 18 46 Z" fill="#f08a3a"/><path d="M30 56 Q50 50 70 56 Q66 74 50 82 Q34 74 30 56 Z" fill="#fff4e6"/><rect x="20" y="34" width="60" height="9" rx="4" fill="#3d5a3a"/><circle cx="37" cy="40" r="10" fill="#7fd6c2" stroke="#3d5a3a" stroke-width="4"/><circle cx="63" cy="40" r="10" fill="#7fd6c2" stroke="#3d5a3a" stroke-width="4"/><circle cx="34" cy="37" r="3" fill="#fff"/><circle cx="60" cy="37" r="3" fill="#fff"/><ellipse cx="50" cy="60" rx="5" ry="3.6" fill="#2a1c18"/><path d="M42 67 Q50 73 58 67" stroke="#2a1c18" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M18 88 Q50 76 82 88 L82 100 L18 100 Z" fill="#3d5a3a"/><circle cx="50" cy="90" r="4" fill="#f4cf3c"/></svg>' },
+  { id: 'bolt', name: 'Bolt', svg: '<svg viewBox="0 0 100 100"><line x1="50" y1="20" x2="50" y2="8" stroke="#56627a" stroke-width="3"/><circle cx="50" cy="7" r="5" fill="#ff5a7a"/><rect x="20" y="20" width="60" height="46" rx="14" fill="#7aa7d8"/><rect x="20" y="20" width="60" height="12" rx="6" fill="#9cc2ea"/><rect x="28" y="32" width="44" height="24" rx="10" fill="#1b2438"/><circle cx="40" cy="44" r="6" fill="#5cffd0"/><circle cx="60" cy="44" r="6" fill="#5cffd0"/><circle cx="41.5" cy="42.5" r="2" fill="#fff"/><circle cx="61.5" cy="42.5" r="2" fill="#fff"/><rect x="12" y="36" width="8" height="16" rx="3" fill="#56627a"/><rect x="80" y="36" width="8" height="16" rx="3" fill="#56627a"/><path d="M42 60 L58 60" stroke="#1b2438" stroke-width="3" stroke-linecap="round"/><rect x="28" y="70" width="44" height="26" rx="8" fill="#5f8fc4"/><path d="M52 74 L44 85 L51 85 L47 94 L57 81 L50 81 Z" fill="#f4cf3c"/><circle cx="34" cy="78" r="2.4" fill="#2e4766"/><circle cx="66" cy="78" r="2.4" fill="#2e4766"/></svg>' },
+  { id: 'sprig', name: 'Sprig', svg: '<svg viewBox="0 0 100 100"><path d="M30 56 Q14 56 16 40 Q17 32 24 34 Q26 46 30 46 Z" fill="#3fa65a"/><path d="M70 50 Q86 50 84 34 Q83 26 76 28 Q74 40 70 40 Z" fill="#3fa65a"/><rect x="30" y="14" width="40" height="72" rx="20" fill="#4cc06a"/><path d="M40 20 L40 80 M50 16 L50 84 M60 20 L60 80" stroke="#3fa65a" stroke-width="2"/><g fill="#fff8d6"><circle cx="36" cy="30" r="1.5"/><circle cx="64" cy="34" r="1.5"/><circle cx="35" cy="70" r="1.5"/><circle cx="66" cy="66" r="1.5"/></g><circle cx="57" cy="10" r="6" fill="#ff7ab0"/><circle cx="50" cy="12" r="6" fill="#ff7ab0"/><circle cx="54" cy="5" r="6" fill="#ff7ab0"/><circle cx="54" cy="10" r="3.6" fill="#f4cf3c"/><ellipse cx="42" cy="44" rx="4" ry="5.5" fill="#1d2a1d"/><ellipse cx="58" cy="44" rx="4" ry="5.5" fill="#1d2a1d"/><circle cx="43.2" cy="42" r="1.6" fill="#fff"/><circle cx="59.2" cy="42" r="1.6" fill="#fff"/><circle cx="36" cy="54" r="3.5" fill="#ff9ab8" opacity=".7"/><circle cx="64" cy="54" r="3.5" fill="#ff9ab8" opacity=".7"/><path d="M44 56 Q50 62 56 56" stroke="#1d2a1d" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M24 86 L76 86 L70 100 L30 100 Z" fill="#c8693a"/><rect x="22" y="82" width="56" height="8" rx="3" fill="#dc7d4a"/></svg>' },
+  { id: 'gloop', name: 'Gloop', svg: '<svg viewBox="0 0 100 100"><path d="M14 88 Q10 60 24 40 Q36 18 50 18 Q64 18 76 40 Q90 60 86 88 Q78 94 70 88 Q62 96 54 88 Q46 96 38 88 Q30 96 22 88 Q18 92 14 88 Z" fill="#9b6bff"/><path d="M30 36 Q38 24 48 24" stroke="#c9b0ff" stroke-width="6" fill="none" stroke-linecap="round"/><circle cx="38" cy="54" r="10" fill="#fff"/><circle cx="62" cy="54" r="10" fill="#fff"/><circle cx="40" cy="56" r="5" fill="#2a1848"/><circle cx="60" cy="56" r="5" fill="#2a1848"/><circle cx="41.5" cy="54" r="1.8" fill="#fff"/><circle cx="61.5" cy="54" r="1.8" fill="#fff"/><path d="M40 72 Q50 80 60 72 Q50 76 40 72 Z" fill="#2a1848" stroke="#2a1848" stroke-width="2" stroke-linejoin="round"/><circle cx="72" cy="34" r="4" fill="#c9b0ff" opacity=".8"/><circle cx="24" cy="70" r="3" fill="#c9b0ff" opacity=".7"/></svg>' },
+  { id: 'hoot', name: 'Hoot', svg: '<svg viewBox="0 0 100 100"><path d="M50 2 L74 36 L26 36 Z" fill="#3d3b8e"/><path d="M50 2 L58 14 L42 14 Z" fill="#5b58c2"/><path d="M50 18 l2.4 5 5.4.6-4 3.6 1.2 5.4-5-2.8-5 2.8 1.2-5.4-4-3.6 5.4-.6z" fill="#f4cf3c"/><ellipse cx="50" cy="38" rx="34" ry="5" fill="#2e2c70"/><ellipse cx="50" cy="66" rx="30" ry="30" fill="#8a5a3c"/><ellipse cx="50" cy="76" rx="18" ry="18" fill="#e8cfa6"/><path d="M42 72 l4 4 l4 -4 l4 4 l4 -4 M42 80 l4 4 l4 -4 l4 4 l4 -4" stroke="#c2a57a" stroke-width="1.8" fill="none"/><circle cx="38" cy="54" r="11" fill="#fff6dc"/><circle cx="62" cy="54" r="11" fill="#fff6dc"/><circle cx="38" cy="55" r="6" fill="#1d1430"/><circle cx="62" cy="55" r="6" fill="#1d1430"/><circle cx="39.6" cy="53" r="2" fill="#fff"/><circle cx="63.6" cy="53" r="2" fill="#fff"/><path d="M45 62 L55 62 L50 70 Z" fill="#f2a541"/><path d="M20 66 Q14 80 24 90 Q26 76 22 66 Z" fill="#6e4630"/><path d="M80 66 Q86 80 76 90 Q74 76 78 66 Z" fill="#6e4630"/></svg>' },
+  { id: 'pinch', name: 'Cap’n Pinch', svg: '<svg viewBox="0 0 100 100"><path d="M14 40 Q4 30 10 18 Q18 14 22 24 L18 26 Q16 20 13 22 Q12 30 20 36 Z" fill="#e84a3c"/><path d="M86 40 Q96 30 90 18 Q82 14 78 24 L82 26 Q84 20 87 22 Q88 30 80 36 Z" fill="#e84a3c"/><path d="M20 38 L28 50 M80 38 L72 50" stroke="#e84a3c" stroke-width="5" stroke-linecap="round"/><path d="M22 80 L10 92 M30 84 L22 98 M78 80 L90 92 M70 84 L78 98" stroke="#c43a2e" stroke-width="5" stroke-linecap="round"/><ellipse cx="50" cy="66" rx="32" ry="24" fill="#f05a48"/><ellipse cx="50" cy="60" rx="24" ry="12" fill="#ff7a66" opacity=".7"/><path d="M24 50 Q50 30 76 50 L74 56 Q50 42 26 56 Z" fill="#2a2a48"/><circle cx="58" cy="44" r="3" fill="#fff"/><path d="M76 50 L88 46 L84 56 Z" fill="#2a2a48"/><line x1="40" y1="54" x2="40" y2="46" stroke="#c43a2e" stroke-width="3"/><line x1="60" y1="54" x2="60" y2="46" stroke="#c43a2e" stroke-width="3"/><circle cx="40" cy="60" r="6" fill="#fff"/><circle cx="60" cy="60" r="6" fill="#fff"/><circle cx="41" cy="61" r="3" fill="#1d1430"/><circle cx="61" cy="61" r="3" fill="#1d1430"/><path d="M42 74 Q50 80 58 74" stroke="#7a1e18" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>' },
+  { id: 'waddle', name: 'Waddles', svg: '<svg viewBox="0 0 100 100"><path d="M32 26 Q24 8 38 8 Q42 0 50 4 Q58 0 62 8 Q76 8 68 26 Z" fill="#fff" stroke="#d9dee8" stroke-width="2"/><rect x="32" y="22" width="36" height="10" rx="3" fill="#f2f4f8" stroke="#d9dee8" stroke-width="2"/><ellipse cx="50" cy="64" rx="32" ry="34" fill="#23263a"/><ellipse cx="50" cy="70" rx="22" ry="26" fill="#fff"/><path d="M20 58 Q8 70 14 84 Q22 74 24 64 Z" fill="#23263a"/><path d="M80 58 Q92 70 86 84 Q78 74 76 64 Z" fill="#23263a"/><circle cx="40" cy="50" r="5" fill="#fff"/><circle cx="60" cy="50" r="5" fill="#fff"/><circle cx="41" cy="51" r="2.6" fill="#1d1430"/><circle cx="61" cy="51" r="2.6" fill="#1d1430"/><path d="M42 58 L58 58 L50 66 Z" fill="#f2a541"/><path d="M38 76 L50 82 L62 76 L62 86 L50 80 L38 86 Z" fill="#ff5a7a"/><circle cx="50" cy="81" r="3" fill="#d83a5a"/><ellipse cx="38" cy="98" rx="9" ry="3" fill="#f2a541"/><ellipse cx="62" cy="98" rx="9" ry="3" fill="#f2a541"/></svg>' },
+  { id: 'buzz', name: 'Buzz', svg: '<svg viewBox="0 0 100 100"><ellipse cx="26" cy="38" rx="16" ry="11" fill="#d8f2ff" stroke="#9fd2ee" stroke-width="2" transform="rotate(-30 26 38)"/><ellipse cx="74" cy="38" rx="16" ry="11" fill="#d8f2ff" stroke="#9fd2ee" stroke-width="2" transform="rotate(30 74 38)"/><ellipse cx="50" cy="62" rx="30" ry="32" fill="#f7c935"/><path d="M22 58 Q50 52 78 58 L79 68 Q50 62 21 68 Z M24 80 Q50 74 76 80 L72 88 Q50 84 28 88 Z" fill="#2a2238"/><path d="M24 44 Q24 22 50 22 Q76 22 76 44 Q70 40 50 40 Q30 40 24 44 Z" fill="#8a5a3c"/><path d="M22 44 Q20 54 28 56 L28 44 Z M78 44 Q80 54 72 56 L72 44 Z" fill="#8a5a3c"/><rect x="28" y="30" width="44" height="8" rx="4" fill="#6e4630"/><circle cx="38" cy="34" r="7" fill="#9fe6ff" stroke="#6e4630" stroke-width="3"/><circle cx="62" cy="34" r="7" fill="#9fe6ff" stroke="#6e4630" stroke-width="3"/><circle cx="40" cy="48" r="4" fill="#2a2238"/><circle cx="60" cy="48" r="4" fill="#2a2238"/><circle cx="41.2" cy="46.6" r="1.4" fill="#fff"/><circle cx="61.2" cy="46.6" r="1.4" fill="#fff"/><path d="M44 53 Q50 57 56 53" stroke="#2a2238" stroke-width="2.4" fill="none" stroke-linecap="round"/><path d="M50 94 L46 100 L54 100 Z" fill="#2a2238"/><path d="M72 40 Q90 44 92 34" stroke="#ff5a7a" stroke-width="4" fill="none" stroke-linecap="round"/></svg>' },
+  { id: 'cobble', name: 'Cobble', svg: '<svg viewBox="0 0 100 100"><path d="M16 50 L22 24 L44 12 L72 16 L86 38 L84 70 L66 90 L34 92 L16 74 Z" fill="#8c93a3"/><path d="M22 24 L44 12 L72 16 L64 28 L36 28 Z" fill="#a8afbe"/><path d="M84 70 L66 90 L34 92 L40 82 L64 80 Z" fill="#6f7686"/><path d="M28 20 Q36 10 50 12 Q62 8 70 16 Q60 20 50 18 Q38 22 28 20 Z" fill="#5fbf6a"/><circle cx="34" cy="17" r="4" fill="#4aa856"/><circle cx="62" cy="14" r="3.4" fill="#4aa856"/><path d="M30 44 L44 46 M56 46 L70 44" stroke="#3d4250" stroke-width="3" stroke-linecap="round"/><rect x="33" y="48" width="10" height="9" rx="3" fill="#ffb547"/><rect x="57" y="48" width="10" height="9" rx="3" fill="#ffb547"/><rect x="36" y="50" width="4" height="4" rx="1" fill="#fff4cc"/><rect x="60" y="50" width="4" height="4" rx="1" fill="#fff4cc"/><path d="M40 70 L60 70" stroke="#3d4250" stroke-width="3.4" stroke-linecap="round"/><path d="M22 60 L28 62 M74 30 L78 36 M70 64 L76 60" stroke="#6f7686" stroke-width="2.4" stroke-linecap="round"/></svg>' },
+  { id: 'nova', name: 'Nova', svg: '<svg viewBox="0 0 100 100"><circle cx="50" cy="46" r="38" fill="#cfe8ff" opacity=".45" stroke="#e8f2ff" stroke-width="4"/><path d="M28 36 L32 16 L44 30 Z" fill="#f2f2f6"/><path d="M72 36 L68 16 L56 30 Z" fill="#f2f2f6"/><path d="M31 30 L33 22 L39 29 Z" fill="#ffb3c8"/><path d="M69 30 L67 22 L61 29 Z" fill="#ffb3c8"/><ellipse cx="50" cy="50" rx="24" ry="22" fill="#f2f2f6"/><path d="M36 34 Q50 28 64 34 Q58 40 50 38 Q42 40 36 34 Z" fill="#ff9a4a"/><ellipse cx="41" cy="50" rx="4" ry="5" fill="#2f6bd6"/><ellipse cx="59" cy="50" rx="4" ry="5" fill="#2f6bd6"/><circle cx="42.4" cy="48" r="1.6" fill="#fff"/><circle cx="60.4" cy="48" r="1.6" fill="#fff"/><path d="M48 58 L52 58 L50 61 Z" fill="#ff7ab0"/><path d="M44 63 Q47 66 50 62 Q53 66 56 63" stroke="#555" stroke-width="1.8" fill="none" stroke-linecap="round"/><path d="M30 56 L18 54 M30 60 L18 62 M70 56 L82 54 M70 60 L82 62" stroke="#bbb" stroke-width="1.4"/><path d="M22 84 Q50 72 78 84 L80 100 L20 100 Z" fill="#f2f4f8" stroke="#c9d3e6" stroke-width="2"/><rect x="40" y="84" width="20" height="10" rx="3" fill="#39d0ff"/><circle cx="45" cy="89" r="2" fill="#ff5a7a"/><circle cx="55" cy="89" r="2" fill="#f4cf3c"/><path d="M78 20 l1.6 3.4 3.6.4-2.7 2.4.8 3.6-3.3-1.9-3.3 1.9.8-3.6-2.7-2.4 3.6-.4z" fill="#fff"/></svg>' }
+];
+const BACK = '<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="40" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="5"/><path d="M50 18 l9.4 19 21 3-15.2 14.8 3.6 20.9L50 65.8 31.2 75.7l3.6-20.9L19.6 40l21-3z" fill="rgba(255,255,255,.85)"/></svg>';
+
+const boardEl = $('board'), clockEl = $('clock'), phaseEl = $('phase'), startBtn = $('start'), overlay = $('overlay');
+let cards = [], open = [], matched = 0, state = 'idle', startAt = 0, elapsed = 0, raf = 0, peekTimer = 0, missTimer = 0, peekEnd = 0, moves = 0, focusIndex = 0;
+
+function shuffle(list) {
+  const a = list.slice();
+  const rand = n => { try { const u = new Uint32Array(1); crypto.getRandomValues(u); return u[0] % n; } catch (e) { return Math.floor(Math.random() * n); } };
+  for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+function fmt(ms) {
+  const m = Math.floor(ms / 60000), s = Math.floor(ms / 1000) % 60, cs = Math.floor(ms / 10) % 100;
+  return m + ':' + String(s).padStart(2, '0') + '.' + String(cs).padStart(2, '0');
+}
+function setClock(text, cls) { clockEl.textContent = text; clockEl.className = 'lcd' + (cls ? ' ' + cls : ''); }
+function label(card) { return card.up || card.done ? card.hero.name + (card.done ? ', matched' : '') : 'Hidden card'; }
+
+function build() {
+  boardEl.innerHTML = '';
+  cards.forEach((card, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'card';
+    btn.type = 'button';
+    btn.setAttribute('role', 'gridcell');
+    btn.tabIndex = i === focusIndex ? 0 : -1;
+    btn.innerHTML = '<div class="inner"><div class="side back">' + BACK + '</div><div class="side front">' + card.hero.svg + '<span>' + card.hero.name + '</span></div></div>';
+    btn.querySelector('.front svg').setAttribute('aria-hidden', 'true');
+    btn.addEventListener('click', () => flip(i));
+    btn.addEventListener('focus', () => { focusIndex = i; });
+    card.el = btn;
+    boardEl.appendChild(btn);
+    paint(card);
+  });
+}
+function paint(card) {
+  card.el.classList.toggle('up', card.up || card.done);
+  card.el.classList.toggle('matched', card.done);
+  card.el.setAttribute('aria-label', label(card));
+}
+
+function deal() {
+  clearTimeout(peekTimer); clearTimeout(missTimer); cancelAnimationFrame(raf);
+  overlay.classList.remove('show');
+  cards = shuffle(HEROES.concat(HEROES)).map(hero => ({ hero, up: true, done: false, el: null }));
+  open = []; matched = 0; moves = 0; elapsed = 0; focusIndex = 0;
+  build();
+  state = 'peek';
+  startBtn.textContent = 'Shuffle & restart';
+  phaseEl.textContent = 'Memorize!';
+  peekEnd = performance.now() + PEEK_MS;
+  tickPeek();
+  peekTimer = setTimeout(hideAll, PEEK_MS);
+}
+function tickPeek() {
+  if (state !== 'peek') return;
+  const left = Math.max(0, peekEnd - performance.now());
+  setClock((left / 1000).toFixed(1) + ' s', 'peek');
+  raf = requestAnimationFrame(tickPeek);
+}
+function hideAll() {
+  cancelAnimationFrame(raf);
+  cards.forEach(card => { card.up = false; paint(card); });
+  state = 'play';
+  phaseEl.textContent = 'Find the pairs · 0 / ' + HEROES.length;
+  startAt = performance.now();
+  tickPlay();
+  if (cards[focusIndex]) cards[focusIndex].el.focus({ preventScroll: true });
+}
+function tickPlay() {
+  if (state !== 'play') return;
+  elapsed = performance.now() - startAt;
+  setClock(fmt(elapsed), 'run');
+  raf = requestAnimationFrame(tickPlay);
+}
+
+function flip(i) {
+  const card = cards[i];
+  if (state !== 'play' || !card || card.up || card.done) return;
+  if (open.length === 2) settleMiss();
+  card.up = true; paint(card); open.push(card);
+  if (open.length < 2) return;
+  moves++;
+  const [a, b] = open;
+  if (a.hero.id === b.hero.id) {
+    a.done = b.done = true; a.up = b.up = false; open = [];
+    paint(a); paint(b);
+    matched++;
+    phaseEl.textContent = 'Find the pairs · ' + matched + ' / ' + HEROES.length;
+    if (matched === HEROES.length) finish();
+  } else {
+    a.el.classList.add('miss'); b.el.classList.add('miss');
+    missTimer = setTimeout(settleMiss, MISS_MS);
+  }
+}
+function settleMiss() {
+  clearTimeout(missTimer);
+  open.forEach(card => { card.up = false; card.el.classList.remove('miss'); paint(card); });
+  open = [];
+}
+
+function finish() {
+  state = 'done';
+  cancelAnimationFrame(raf);
+  const ms = Math.round(performance.now() - startAt);
+  setClock(fmt(ms), 'done');
+  phaseEl.textContent = 'Cleared in ' + moves + ' turns';
+  const list = readTimes();
+  const entry = { ms, moves, at: Date.now() };
+  list.push(entry);
+  list.sort((x, y) => x.ms - y.ms || x.at - y.at);
+  const kept = list.slice(0, KEEP);
+  store.set(LOCAL_KEY, JSON.stringify(kept));
+  const clears = (parseInt(store.get(CLEARS_KEY) || '0', 10) || 0) + 1;
+  store.set(CLEARS_KEY, String(clears));
+  const place = kept.indexOf(entry);
+  renderTimes(entry);
+  if (window.tlScores) window.tlScores.submit('recall', ms);
+  $('ovTitle').textContent = place === 0 ? 'New best!' : 'Cleared!';
+  $('ovText').textContent = 'All ' + HEROES.length + ' pairs in ' + fmt(ms) + ' with ' + moves + ' turns.' + (place >= 0 ? ' That is #' + (place + 1) + ' on your list.' : '');
+  setTimeout(() => { if (state === 'done') { overlay.classList.add('show'); $('again').focus(); } }, 550);
+}
+
+function readTimes() {
+  try { const data = JSON.parse(store.get(LOCAL_KEY) || '[]'); return Array.isArray(data) ? data.filter(e => e && Number.isFinite(e.ms) && e.ms > 0) : []; } catch (e) { return []; }
+}
+function renderTimes(fresh) {
+  const list = readTimes(), ol = $('localList');
+  ol.innerHTML = '';
+  list.forEach((e, i) => {
+    const li = document.createElement('li');
+    if (fresh && e.at === fresh.at && e.ms === fresh.ms) li.className = 'fresh';
+    const when = new Date(e.at);
+    li.innerHTML = '<span class="place">' + (i + 1) + '</span><small>' + when.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' · ' + (e.moves || '?') + ' turns</small><span></span><b>' + fmt(e.ms) + '</b>';
+    ol.appendChild(li);
+  });
+  $('localEmpty').style.display = list.length ? 'none' : '';
+  $('clearLocal').style.display = list.length ? '' : 'none';
+  $('best').textContent = list.length ? fmt(list[0].ms) : '—';
+  $('clears').textContent = store.get(CLEARS_KEY) || '0';
+}
+
+function preview() {
+  cards = shuffle(HEROES.concat(HEROES)).map(hero => ({ hero, up: false, done: false, el: null }));
+  build();
+  cards.forEach(card => { card.el.disabled = true; });
+}
+
+boardEl.addEventListener('keydown', e => {
+  const cols = getComputedStyle(boardEl).gridTemplateColumns.split(' ').length || 5;
+  const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+  if (step === undefined) return;
+  e.preventDefault();
+  const next = focusIndex + step;
+  if (next < 0 || next >= cards.length) return;
+  cards[focusIndex].el.tabIndex = -1;
+  focusIndex = next;
+  cards[next].el.tabIndex = 0;
+  cards[next].el.focus();
+});
+startBtn.addEventListener('click', deal);
+$('again').addEventListener('click', deal);
+$('close').addEventListener('click', () => overlay.classList.remove('show'));
+$('clearLocal').addEventListener('click', () => { store.del(LOCAL_KEY); renderTimes(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.classList.remove('show'); });
+
+preview();
+renderTimes();
+</script>
+</body>
+</html>

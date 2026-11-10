@@ -17,6 +17,9 @@ export const RADII = {
   board: 225.5,
 } as const
 
+/** Centre-to-centre distance between neighbouring tip holes on the soft-tip board, in millimetres. */
+export const HOLE_PITCH_MM = 3.4
+
 /** Height of the bull above the floor and the throwing distance from the face to the oche, in metres. */
 export const BULL_HEIGHT = 1.73
 export const OCHE_DISTANCE = 2.37

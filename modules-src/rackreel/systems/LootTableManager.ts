@@ -16,17 +16,29 @@ export interface SpeciesTemplate {
   model: string
   unit: 'lb' | 'in'
   measure: string
+  /** Smallest animal that ever appears. */
   min: number
+  /** The everyday animal: the most common size. */
+  avg: number
+  /** Top of the everyday range; the same as `trophyAt`. */
   max: number
-  skew: number
   habitats: Habitat[]
   weight: number
   trophyAt: number
   fight: number
   facts: string
-  /** Hard ceiling on the measured value (record-class specimens included). */
+  /** Hard ceiling on the measured value, record-class animals included (carp top out at 30 in). */
   cap?: number
 }
+
+export type RecordMetric = 'weight' | 'length' | 'score' | 'spread' | 'points' | 'dressed' | 'skull'
+export type Measures = Partial<Record<RecordMetric, number>>
+
+/**
+ * Size classes, rarest last. `record` beats the all-time #1, `near-record` is within a few
+ * percent of the book's top three, `trophy` is a big buck or a wall-hanger fish.
+ */
+export type SizeClass = 'small' | 'average' | 'good' | 'trophy' | 'near-record' | 'record'
 
 export interface Specimen {
   species: SpeciesId
@@ -37,21 +49,37 @@ export interface Specimen {
   recordTier: 0 | 1 | 2 | 3
   trophyPoints: number
   serial: number
+  sizeClass: SizeClass
+  measures: Measures
+  /** Rolled once per animal; with the size it fixes every measurement (rack, spread, length). */
+  seed: number
 }
 
-export const LEGENDARY_CHANCE = 0.04
-
-const TIER_ODDS: [1 | 2 | 3, number][] = [[1, 0.2], [2, 0.3], [3, 0.5]]
+/**
+ * Odds for every new fish and game animal. A new all-time record is 0.01%, a near-record
+ * 0.05% and a trophy 2%; everything else is an everyday animal around the species average.
+ * Inside each class sizes fall away exponentially, so the smaller end is always the commoner.
+ */
+export const RARITY = { record: 0.0001, nearRecord: 0.0005, trophy: 0.02 } as const
+/** Chance that a new animal is record-class (near-record or record). */
+export const LEGENDARY_CHANCE = RARITY.record + RARITY.nearRecord
+/** Share of everyday animals that come out at or below the average. */
+export const BELOW_AVERAGE_SHARE = 0.6
+/** A near-record starts this far under the book's #3. */
+export const NEAR_RECORD_FRACTION = 0.95
+/** Bucks top out at 20 points; past that is a freak rack, 0.005% of bucks. */
+export const MAX_TYPICAL_POINTS = 20
+export const FREAK_RACK_CHANCE = 0.00005
 
 export const SPECIES: SpeciesTemplate[] = [
-  { id: 'muskie', name: 'Muskellunge', kind: 'fish', model: 'fish-muskie', unit: 'lb', measure: 'Weight', min: 6, max: 38, skew: 2.4, habitats: ['deep', 'weeds'], weight: 0.08, trophyAt: 30, fight: 1.0, facts: 'Wisconsin\'s state fish. An ambush hunter of weed edges and deep breaks; the "fish of ten thousand casts".' },
-  { id: 'walleye', name: 'Walleye', kind: 'fish', model: 'fish-walleye', unit: 'lb', measure: 'Weight', min: 0.8, max: 9, skew: 2.2, habitats: ['deep', 'rocks'], weight: 0.3, trophyAt: 8, fight: 0.45, facts: 'A reflective layer behind the eye lets walleye feed in low light, so dusk and dawn on rock and gravel are best.' },
-  { id: 'pike', name: 'Northern Pike', kind: 'fish', model: 'fish-pike', unit: 'lb', measure: 'Weight', min: 1.5, max: 16, skew: 2.3, habitats: ['weeds', 'marsh'], weight: 0.22, trophyAt: 14, fight: 0.7, facts: 'Pike spawn in flooded marsh as soon as the ice goes out and patrol the weed beds all summer.' },
-  { id: 'smallmouth', name: 'Smallmouth Bass', kind: 'fish', model: 'fish-smallmouth', unit: 'lb', measure: 'Weight', min: 0.7, max: 5.5, skew: 2.0, habitats: ['rocks'], weight: 0.18, trophyAt: 5, fight: 0.6, facts: 'Bronze-sided bass of clear, rocky water; they hold where crayfish hide among boulders.' },
-  { id: 'perch', name: 'Yellow Perch', kind: 'fish', model: 'fish-perch', unit: 'lb', measure: 'Weight', min: 0.15, max: 1.3, skew: 2.0, habitats: ['weeds', 'marsh', 'deep'], weight: 0.22, trophyAt: 1.2, fight: 0.25, facts: 'Perch school by size; find one and you have found a dozen. A key food for walleye and pike.' },
-  { id: 'carp', name: 'Common Carp', kind: 'fish', model: 'fish-carp', unit: 'in', measure: 'Length', min: 10, max: 28.5, cap: 30, skew: 2.6, habitats: ['marsh', 'weeds'], weight: 0, trophyAt: 28, fight: 0.8, facts: 'An invasive rough fish that roots up weed beds and muddies the water. Bowfishers take them at night on the shallow flats, which helps the native fish.' },
-  { id: 'whitetail', name: 'White-tailed Deer', kind: 'game', model: 'deer', unit: 'in', measure: 'Gross score', min: 85, max: 165, skew: 2.1, habitats: ['forest', 'marsh'], weight: 0.75, trophyAt: 160, fight: 0, facts: 'Antlers grow and drop every year. Gross score adds beam length, tine length and circumferences in inches.' },
-  { id: 'blackbear', name: 'Black Bear', kind: 'game', model: 'bear', unit: 'lb', measure: 'Weight', min: 140, max: 420, skew: 2.2, habitats: ['forest'], weight: 0.25, trophyAt: 450, fight: 0, facts: 'Northern Wisconsin holds one of the densest black bear populations in the country; males fatten hard on acorns in fall.' },
+  { id: 'muskie', name: 'Muskellunge', kind: 'fish', model: 'fish-muskie', unit: 'lb', measure: 'Weight', min: 6, avg: 14, max: 30, habitats: ['deep', 'weeds'], weight: 0.08, trophyAt: 30, fight: 1.0, facts: 'Wisconsin\'s state fish. An ambush hunter of weed edges and deep breaks; the "fish of ten thousand casts".' },
+  { id: 'walleye', name: 'Walleye', kind: 'fish', model: 'fish-walleye', unit: 'lb', measure: 'Weight', min: 0.8, avg: 2.2, max: 8, habitats: ['deep', 'rocks'], weight: 0.3, trophyAt: 8, fight: 0.45, facts: 'A reflective layer behind the eye lets walleye feed in low light, so dusk and dawn on rock and gravel are best.' },
+  { id: 'pike', name: 'Northern Pike', kind: 'fish', model: 'fish-pike', unit: 'lb', measure: 'Weight', min: 1.5, avg: 4.5, max: 14, habitats: ['weeds', 'marsh'], weight: 0.22, trophyAt: 14, fight: 0.7, facts: 'Pike spawn in flooded marsh as soon as the ice goes out and patrol the weed beds all summer.' },
+  { id: 'smallmouth', name: 'Smallmouth Bass', kind: 'fish', model: 'fish-smallmouth', unit: 'lb', measure: 'Weight', min: 0.7, avg: 1.9, max: 5, habitats: ['rocks'], weight: 0.18, trophyAt: 5, fight: 0.6, facts: 'Bronze-sided bass of clear, rocky water; they hold where crayfish hide among boulders.' },
+  { id: 'perch', name: 'Yellow Perch', kind: 'fish', model: 'fish-perch', unit: 'lb', measure: 'Weight', min: 0.15, avg: 0.45, max: 1.2, habitats: ['weeds', 'marsh', 'deep'], weight: 0.22, trophyAt: 1.2, fight: 0.25, facts: 'Perch school by size; find one and you have found a dozen. A key food for walleye and pike.' },
+  { id: 'carp', name: 'Common Carp', kind: 'fish', model: 'fish-carp', unit: 'in', measure: 'Length', min: 10, avg: 16, max: 26, cap: 30, habitats: ['marsh', 'weeds'], weight: 0, trophyAt: 26, fight: 0.8, facts: 'An invasive rough fish that roots up weed beds and muddies the water. Bowfishers take them at night on the shallow flats, which helps the native fish. Only taken with a bow, from Wisco Wild Man\'s boat.' },
+  { id: 'whitetail', name: 'White-tailed Deer', kind: 'game', model: 'deer', unit: 'in', measure: 'Antler score', min: 75, avg: 115, max: 160, habitats: ['forest', 'marsh'], weight: 0.75, trophyAt: 160, fight: 0, facts: 'Antlers grow and drop every year. The score adds beam length, tine length, inside spread and circumferences in inches.' },
+  { id: 'blackbear', name: 'Black Bear', kind: 'game', model: 'bear', unit: 'lb', measure: 'Weight', min: 120, avg: 210, max: 400, habitats: ['forest'], weight: 0.25, trophyAt: 400, fight: 0, facts: 'Northern Wisconsin holds one of the densest black bear populations in the country. Record bears are ranked by skull size, length plus width.' },
 ]
 
 export const SPECIES_BY_ID = Object.fromEntries(SPECIES.map((s) => [s.id, s])) as Record<SpeciesId, SpeciesTemplate>
@@ -62,7 +90,7 @@ export const RECORD_BOOK_SEED: Record<SpeciesId, [RecordEntry, RecordEntry, Reco
   pike: [{ holder: 'H. Nygaard', value: 38.0, year: 1952, place: 'Lake Puckaway' }, { holder: 'E. Kowalski', value: 36.2, year: 1971, place: 'Chippewa River' }, { holder: 'M. Ruud', value: 34.5, year: 1997, place: 'Willow Flowage' }],
   smallmouth: [{ holder: 'L. Strand', value: 9.1, year: 1950, place: 'Indian Lake' }, { holder: 'W. Janke', value: 8.7, year: 1989, place: 'Door peninsula' }, { holder: 'S. Aho', value: 8.4, year: 2004, place: 'Menominee River' }],
   perch: [{ holder: 'P. Wendt', value: 3.3, year: 1954, place: 'Lake Winnebago' }, { holder: 'K. Laine', value: 3.1, year: 1976, place: 'Lake Michigan' }, { holder: 'B. Halvorsen', value: 2.9, year: 2011, place: 'Big Green' }],
-  carp: [{ holder: 'D. Vang', value: 30.0, year: 2016, place: 'Lake Koshkonong' }, { holder: 'R. Szymanski', value: 29.6, year: 2009, place: 'Petenwell Flowage' }, { holder: 'L. Kiefer', value: 29.2, year: 1994, place: 'Lake Poygan' }],
+  carp: [{ holder: 'D. Vang', value: 29.9, year: 2016, place: 'Lake Koshkonong' }, { holder: 'R. Szymanski', value: 29.6, year: 2009, place: 'Petenwell Flowage' }, { holder: 'L. Kiefer', value: 29.3, year: 1994, place: 'Lake Poygan' }],
   whitetail: [{ holder: 'J. Brandvold', value: 206.1, year: 1914, place: 'Burnett County' }, { holder: 'G. Thiel', value: 201.6, year: 1999, place: 'Buffalo County' }, { holder: 'N. Sorensen', value: 197.4, year: 1965, place: 'Bayfield County' }],
   blackbear: [{ holder: 'F. Kallio', value: 790, year: 1963, place: 'Iron County' }, { holder: 'O. Wiita', value: 745, year: 1985, place: 'Sawyer County' }, { holder: 'A. Dahl', value: 712, year: 2009, place: 'Price County' }],
 }
@@ -81,18 +109,89 @@ export function mulberry32(seed: number): Rng {
 }
 
 export function fishLengthIn(species: SpeciesId, weightLb: number): number {
-  const shape: Record<string, number> = { muskie: 3500, walleye: 2700, pike: 3300, smallmouth: 1600, perch: 1350, carp: 1800 }
+  const shape: Record<string, number> = { muskie: 3500, walleye: 2700, pike: 3300, smallmouth: 1600, perch: 1350 }
   return Math.cbrt(weightLb * (shape[species] ?? 2500))
 }
 
-/** Weight of a fish measured by length (carp): the length-weight curve, give or take 8 %. */
-export function fishWeightLb(species: SpeciesId, lengthIn: number, rng: Rng = Math.random): number {
+/** Weight of a fish that is measured by length (carp): the length-weight curve, give or take 8 %. */
+export function fishWeightLb(species: SpeciesId, lengthIn: number, u: number): number {
   const shape: Record<string, number> = { carp: 1800 }
-  return round1(Math.max(0.3, (lengthIn ** 3 / (shape[species] ?? 2500)) * (0.92 + rng() * 0.16)))
+  return round1(Math.max(0.3, (lengthIn ** 3 / (shape[species] ?? 2500)) * (0.92 + u * 0.16)))
+}
+
+/** Pounds and ounces, e.g. "7 lb 9 oz". */
+export function formatPounds(value: number): string {
+  const lb = Math.floor(value)
+  const oz = Math.round((value - lb) * 16)
+  return oz === 16 ? `${lb + 1} lb` : oz ? `${lb} lb ${oz} oz` : `${lb} lb`
 }
 
 export function round1(value: number): number {
   return Math.round(value * 10) / 10
+}
+
+/** 0..1, falling away exponentially: small results are common, results near 1 are rare. */
+export function decay(u: number, k: number): number {
+  return -Math.log(1 - u * (1 - Math.exp(-k))) / k
+}
+
+/** Bottom of the near-record window: just under the book's #3. */
+export function nearRecordAt(speciesId: SpeciesId): number {
+  return RECORD_BOOK_SEED[speciesId][2].value * NEAR_RECORD_FRACTION
+}
+
+/** Which size class a measured value falls in. Shared by the client, online guests and the server. */
+export function classify(speciesId: SpeciesId, value: number): SizeClass {
+  const t = SPECIES_BY_ID[speciesId]
+  if (value > RECORD_BOOK_SEED[speciesId][0].value) return 'record'
+  if (value >= nearRecordAt(speciesId)) return 'near-record'
+  if (value >= t.trophyAt) return 'trophy'
+  if (value >= t.avg + (t.trophyAt - t.avg) * 0.25) return 'good'
+  if (value >= t.avg - (t.avg - t.min) * 0.35) return 'average'
+  return 'small'
+}
+
+export const SIZE_CLASS_LABEL: Record<SizeClass, string> = {
+  small: 'Small',
+  average: 'Average',
+  good: 'Above average',
+  trophy: 'Trophy',
+  'near-record': 'Near record',
+  record: 'New state record',
+}
+
+function hashKey(text: string): number {
+  let h = 2166136261
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619)
+  return h >>> 0
+}
+
+const quarter = (v: number) => Math.round(v * 4) / 4
+const eighth = (v: number) => Math.round(v * 8) / 8
+const sixteenth = (v: number) => Math.round(v * 16) / 16
+
+/**
+ * Every record-book measurement of an animal, worked out from its main value alone so the
+ * shooter, online guests and the server all get the same rack, spread and length.
+ */
+export function measure(speciesId: SpeciesId, value: number, seed = 0): Measures {
+  const t = SPECIES_BY_ID[speciesId]
+  const r = mulberry32(hashKey(`${speciesId}:${Math.round(value * 100)}:${seed >>> 0}`))
+  if (t.kind === 'fish' && t.unit === 'in') return { length: value, weight: fishWeightLb(speciesId, value, r()) }
+  if (t.kind === 'fish') {
+    const length = fishLengthIn(speciesId, value) * (0.97 + r() * 0.06)
+    return { weight: value, length: quarter(length) }
+  }
+  if (speciesId === 'whitetail') {
+    let points = Math.max(3, Math.min(MAX_TYPICAL_POINTS, Math.round(4 + (value - 60) / 10.5 + (r() - 0.5) * 5)))
+    if (r() < FREAK_RACK_CHANCE) points = MAX_TYPICAL_POINTS + 1 + Math.min(10, Math.floor(-Math.log(1 - r()) * 2.5))
+    const spread = Math.max(8, 7 + 0.064 * value + (r() - 0.5) * 2.4)
+    const heavy = r() < 0.03 ? r() * 60 : 0
+    const dressed = 110 + Math.max(0, value - 85) * 0.9 + r() * 45 + heavy
+    return { score: value, points, spread: eighth(spread), dressed: Math.round(dressed) }
+  }
+  const skull = Math.min(23.9, 15.5 + (value - 140) / 650 * 7.4 + (r() - 0.5) * 1.0)
+  return { weight: value, skull: sixteenth(Math.max(14, skull)) }
 }
 
 export class LootTableManager {
@@ -115,47 +214,65 @@ export class LootTableManager {
     return pool[pool.length - 1]
   }
 
-  baselineValue(template: SpeciesTemplate): number {
+  /** Roll which size class a new animal is, using `RARITY`. Bait can shift the trophy odds only. */
+  rollClass(trophyOdds = 1): 'everyday' | 'trophy' | 'near-record' | 'record' {
     const u = this.rng()
-    const shaped = Math.pow(u, template.skew)
-    const jitter = (this.rng() - 0.5) * 0.04 * (template.max - template.min)
-    return Math.max(template.min, template.min + (template.max - template.min) * shaped + jitter)
+    if (u < RARITY.record) return 'record'
+    if (u < RARITY.record + RARITY.nearRecord) return 'near-record'
+    if (u < RARITY.record + RARITY.nearRecord + RARITY.trophy * trophyOdds) return 'trophy'
+    return 'everyday'
   }
 
-  legendaryValue(template: SpeciesTemplate, tier: 1 | 2 | 3): number {
-    const book = this.records[template.id]
-    const low = book[tier - 1].value
-    const high = tier === 1 ? book[0].value * 1.035 : book[tier - 2].value
-    return low + (high - low) * (0.05 + this.rng() * 0.9)
+  /**
+   * The everyday animal: most come out right around the average, a little more often a bit
+   * smaller, and the bigger ones thin out exponentially toward the trophy line.
+   */
+  baselineValue(template: SpeciesTemplate): number {
+    const { min, avg, trophyAt } = template
+    if (this.rng() < BELOW_AVERAGE_SHARE) return avg - (avg - min) * Math.pow(this.rng(), 1.8)
+    return avg + (trophyAt - avg) * decay(this.rng(), 4.5) * 0.999
   }
 
-  rollTier(): 1 | 2 | 3 {
-    let roll = this.rng()
-    for (const [tier, odds] of TIER_ODDS) {
-      roll -= odds
-      if (roll <= 0) return tier
-    }
-    return 3
+  /** A trophy: from the trophy line up toward the near-record window, smaller ones commoner. */
+  trophyValue(template: SpeciesTemplate): number {
+    const top = nearRecordAt(template.id)
+    return template.trophyAt + (top - template.trophyAt) * decay(this.rng(), 4) * 0.999
   }
 
-  createSpecimen(speciesId: SpeciesId): Specimen {
+  /** Within a few percent of the book's top three, never past the all-time #1. */
+  nearRecordValue(template: SpeciesTemplate): number {
+    const book = RECORD_BOOK_SEED[template.id]
+    const low = nearRecordAt(template.id)
+    return Math.min(low + (book[0].value - low) * decay(this.rng(), 3), book[0].value)
+  }
+
+  /** A new all-time record: past the #1 by up to 3%. */
+  recordValue(template: SpeciesTemplate): number {
+    const top = RECORD_BOOK_SEED[template.id][0].value
+    return Math.max(top * (1.001 + 0.029 * decay(this.rng(), 3)), round1(top + 0.1))
+  }
+
+  createSpecimen(speciesId: SpeciesId, trophyOdds = 1): Specimen {
     const template = SPECIES_BY_ID[speciesId]
-    let value = this.baselineValue(template)
-    let legendary = false
-    let tier: 1 | 2 | 3 = 3
-    if (this.rng() < LEGENDARY_CHANCE) {
-      tier = this.rollTier()
-      value = this.legendaryValue(template, tier)
-      legendary = true
-    }
-    value = round1(value)
-    if (legendary) value = Math.max(value, round1(this.records[speciesId][tier - 1].value + 0.1))
+    const rolled = this.rollClass(trophyOdds)
+    let value = rolled === 'record' ? this.recordValue(template)
+      : rolled === 'near-record' ? this.nearRecordValue(template)
+        : rolled === 'trophy' ? this.trophyValue(template)
+          : this.baselineValue(template)
+    value = round1(Math.max(template.min, value))
+    const top = RECORD_BOOK_SEED[speciesId][0].value
+    if (rolled === 'record') value = Math.max(value, round1(top + 0.1))
+    else if (value > top) value = top
+    if (rolled === 'trophy') value = Math.max(value, template.trophyAt)
     if (template.cap !== undefined) value = Math.min(value, template.cap)
-    const lengthMeasured = template.kind === 'fish' && template.unit === 'in'
-    const weightLb = template.unit === 'lb' ? value : lengthMeasured ? fishWeightLb(template.id, value, this.rng) : round1(130 + (value - 85) * 1.15 + this.rng() * 30)
-    const lengthIn = lengthMeasured ? value : template.kind === 'fish' ? round1(fishLengthIn(template.id, weightLb)) : 0
+    const sizeClass = classify(speciesId, value)
+    const legendary = sizeClass === 'record' || sizeClass === 'near-record'
+    const seed = Math.floor(this.rng() * 2147483647)
+    const measures = measure(speciesId, value, seed)
+    const weightLb = template.unit === 'lb' ? value : measures.weight ?? measures.dressed ?? 150
+    const lengthIn = measures.length ?? 0
     const recordTier = this.placement(speciesId, value)
-    return { species: speciesId, value, weightLb, lengthIn, legendary, recordTier, trophyPoints: this.trophyPoints(speciesId, value), serial: ++this.serial }
+    return { species: speciesId, value, weightLb, lengthIn, legendary, recordTier, trophyPoints: this.trophyPoints(speciesId, value), serial: ++this.serial, sizeClass, measures, seed }
   }
 
   placement(speciesId: SpeciesId, value: number): 0 | 1 | 2 | 3 {
@@ -183,13 +300,6 @@ export class LootTableManager {
     book.length = 3
     return tier
   }
-}
-
-/** Pounds and ounces, e.g. "7 lb 9 oz". */
-export function formatPounds(value: number): string {
-  const lb = Math.floor(value)
-  const oz = Math.round((value - lb) * 16)
-  return oz === 16 ? `${lb + 1} lb` : oz ? `${lb} lb ${oz} oz` : `${lb} lb`
 }
 
 export function formatValue(speciesId: SpeciesId, value: number): string {

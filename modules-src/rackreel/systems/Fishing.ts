@@ -15,6 +15,7 @@ import { bufferedSine } from './Waves'
 import type { Habitat, LootTableManager, Specimen } from './LootTableManager'
 import { SPECIES_BY_ID } from './LootTableManager'
 import type { ReelSnapshot, SkillCheckManager } from './SkillCheckManager'
+import type { BaitStyle } from '../shared/Economy'
 
 export type FishingState = 'idle' | 'charging' | 'flying' | 'waiting' | 'nibble' | 'bite' | 'reeling' | 'landing' | 'retrieving'
 
@@ -22,8 +23,8 @@ export type FishingEvent =
   | { type: 'cast'; distance: number }
   | { type: 'splash'; inWater: boolean; habitat: Habitat | null }
   | { type: 'nibble' }
-  | { type: 'bite' }
-  | { type: 'missed' }
+  | { type: 'bite'; lure: boolean }
+  | { type: 'missed'; pulled?: boolean }
   | { type: 'hooked'; specimen: Specimen }
   | { type: 'jump'; specimen: Specimen }
   | { type: 'landed'; specimen: Specimen }
@@ -31,7 +32,10 @@ export type FishingEvent =
   | { type: 'reeled-in' }
 
 const LINE_POINTS = 16
-const BITE_WINDOW = 1.7
+/** Metres of line a held reel brings in per second before the reel upgrade. */
+export const RETRIEVE_SPEED = 2.6
+/** The cast is home once the float or lure is this close to the rod tip. */
+const RETRIEVE_HOME = 2.2
 const LAND_TIME = 1.15
 /** Fish models are about 1.12 units nose to tail; the mouth sits at +0.5 on the model's z axis. */
 const FISH_MODEL_LENGTH = 1.12
@@ -83,8 +87,14 @@ export class Fishing {
   private dripTimer = 0
   private lostBobber = false
   private holding = false
+  private lureDepth = 0
+  private wakeTimer = 0
   castRange = 1
+  reelSpeed = 1
   bias: Record<string, number> = {}
+  bait: BaitStyle = { kind: 'live', nibbleScale: 1, hookWindow: 1.7, rate: 1, trophyOdds: 1, hint: '' }
+  /** True while the angler is reeling an unhooked line back in. */
+  retrieving = false
   onEvent: ((event: FishingEvent) => void) | null = null
 
   constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly terrain: Terrain, private readonly loot: LootTableManager, private readonly skill: SkillCheckManager, private readonly fishModel: (name: ModelName) => ModelTemplate | undefined, private readonly rand: () => number = Math.random) {
@@ -178,6 +188,7 @@ export class Fishing {
     this.flightTime = 0.55 + this.power * 0.6
     this.flight = 0
     this.state = 'flying'
+    this.lureDepth = 0
     this.lostBobber = false
     this.bobber.setEnabled(true)
     this.line.setEnabled(true)
@@ -209,8 +220,13 @@ export class Fishing {
   /** A fish has found the bait. It mouths it for a moment (nibble), then takes the float under (bite). */
   bite(): boolean {
     if (this.state !== 'waiting') return false
+    if (this.bait.kind === 'lure') {
+      this.strike()
+      return true
+    }
     this.state = 'nibble'
     this.nibble = planNibble(this.rand)
+    this.nibble = { duration: this.nibble.duration * this.bait.nibbleScale, twitches: this.nibble.twitches.map((t) => t * this.bait.nibbleScale) }
     this.nibbleClock = 0
     this.nextTwitch = 0
     this.onEvent?.({ type: 'nibble' })
@@ -222,7 +238,7 @@ export class Fishing {
     const at = this.bobber.position
     const habitat = this.habitatAt(at.x, at.z)
     const species = this.loot.pickSpecies('fish', habitat, this.bias)
-    const specimen = this.loot.createSpecimen(species.id)
+    const specimen = this.loot.createSpecimen(species.id, this.bait.trophyOdds)
     const template = SPECIES_BY_ID[species.id]
     const sizeFactor = (specimen.value - template.min) / Math.max(1e-6, template.max - template.min)
     const fight = template.fight * (0.65 + Math.min(1.4, sizeFactor) * 0.55) * (specimen.legendary ? 1.25 : 1)
@@ -243,10 +259,16 @@ export class Fishing {
   update(dt: number, rodTip: Vector3, holdingReel: boolean): void {
     this.clock += dt
     this.holding = holdingReel && this.state === 'reeling'
+    this.retrieving = false
+    if (holdingReel && (this.state === 'waiting' || this.state === 'nibble')) {
+      if (this.reelLine(dt, rodTip)) return
+    } else if (this.state === 'waiting' && this.bait.kind === 'lure') {
+      this.sinkLure(dt)
+    }
     switch (this.state) {
       case 'charging': this.updateCharge(dt); break
       case 'flying': this.updateFlight(dt); break
-      case 'waiting': this.updateFloat(dt, 0, 0); break
+      case 'waiting': this.updateFloat(dt, this.lureDepth, 0); break
       case 'nibble': this.updateNibble(dt); break
       case 'bite': this.updateBite(dt); break
       case 'reeling': this.updateFight(dt, rodTip, holdingReel); break
@@ -328,16 +350,69 @@ export class Fishing {
     const dip = this.twitchAmount()
     this.updateFloat(dt, dip * 0.045, dip * 0.35)
     if (this.nibbleClock < this.nibble.duration) return
+    this.strike()
+  }
+
+  /** The fish takes it: the float goes under, or a lure gets hammered. */
+  private strike(): void {
     this.state = 'bite'
-    this.biteTime = BITE_WINDOW
+    this.biteTime = this.bait.hookWindow
     this.biteClock = 0
+    this.lureDepth = 0
     const a = this.rand() * Math.PI * 2
     this.drift.set(Math.cos(a), 0, Math.sin(a))
     this.fx.splash(this.landing, 0.55, this.rand)
     this.fx.ring(this.landing.x, this.landing.z, 0.9, 1, 1.4, 1)
     this.marker.show(true)
     this.ringTimer = 0
-    this.onEvent?.({ type: 'bite' })
+    this.onEvent?.({ type: 'bite', lure: this.bait.kind === 'lure' })
+  }
+
+  /**
+   * Holding the reel with no fish on brings the line in a little at a time: let go and it stops
+   * where it is. Live bait moved during a nibble pulls it away from the fish.
+   */
+  private reelLine(dt: number, rodTip: Vector3): boolean {
+    if (this.state === 'nibble') {
+      this.state = 'waiting'
+      this.nextTwitch = 0
+      this.fx.ring(this.landing.x, this.landing.z, 0.4, 0.7, 1.2)
+      this.onEvent?.({ type: 'missed', pulled: true })
+    }
+    this.retrieving = true
+    const home = new Vector3(rodTip.x, 0, rodTip.z)
+    const toward = home.subtract(new Vector3(this.landing.x, 0, this.landing.z))
+    const dist = toward.length()
+    const step = RETRIEVE_SPEED * this.reelSpeed * dt
+    if (dist <= RETRIEVE_HOME + step) {
+      this.finish()
+      this.onEvent?.({ type: 'reeled-in' })
+      return true
+    }
+    toward.scaleInPlace(step / dist)
+    const nx = this.landing.x + toward.x
+    const nz = this.landing.z + toward.z
+    if (this.terrain.depthAt(nx, nz) < 0.15) {
+      // Ran up on the shore or the weeds: lift it out the rest of the way.
+      this.cancel()
+      return false
+    }
+    this.landing.x = nx
+    this.landing.z = nz
+    if (this.bait.kind === 'lure') {
+      this.lureDepth = Math.min(0.08, this.lureDepth + dt * 0.3)
+      this.wakeTimer -= dt
+      if (this.wakeTimer <= 0) {
+        this.wakeTimer = 0.25
+        this.fx.ring(this.landing.x, this.landing.z, 0.22, 0.4, 0.9, 0.4)
+      }
+    }
+    return false
+  }
+
+  /** A lure that stops sinks back toward the bottom and loses its action. */
+  private sinkLure(dt: number): void {
+    this.lureDepth = Math.max(0, this.lureDepth - dt * 0.05)
   }
 
   private updateBite(dt: number): void {
