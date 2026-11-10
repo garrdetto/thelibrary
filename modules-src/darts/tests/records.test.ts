@@ -97,7 +97,7 @@ test('averages: count real against real or against the Pro computer only', () =>
 test('meter: the yellow is wider and a release just past the green costs little', () => {
   const at = (d: number) => meterReach(IDEAL_SPEED * (1 + d * METER.perfect), 'normal') / HOLE
   assert.ok(METER.band / METER.perfect >= 4, 'the yellow runs at least three green half-widths past the green')
-  assert.ok(at(1.25) < 7.2, `a frame past the green reaches ${at(1.25).toFixed(2)} holes`)
+  assert.ok(at(1.25) < 8.7, `a frame past the green reaches ${at(1.25).toFixed(2)} holes`)
   assert.ok(at(METER.band / METER.perfect) <= METER.yellowHoles + 1e-9)
 })
 
@@ -105,13 +105,13 @@ test('meter: the green is a third of ±1.7 %, fades to yellow before the band ed
   const at = (d: number) => meterReach(IDEAL_SPEED * (1 + d * METER.perfect), 'normal') / HOLE
   assert.ok(Math.abs(METER.perfect - 0.017 / 3) < 1e-12)
   assert.ok(METER.fade > METER.perfect && METER.fade < METER.band)
-  assert.ok(at(3) < 7.5, `a release at the old green edge reaches ${at(3).toFixed(2)} holes`)
+  assert.ok(at(3) < 9, `a release at the old green edge reaches ${at(3).toFixed(2)} holes`)
   for (let d = 1; d < METER.band / METER.perfect; d += 0.25) assert.ok(at(d + 0.25) >= at(d) - 1e-12)
 })
 
-test('meter: the white lines sit at ±0.42 % with the colour zones unchanged, and between them lands exactly', () => {
+test('meter: the white lines sit at ±0.21 % with the colour zones unchanged, and between them lands exactly', () => {
   const at = (d: number) => meterReach(IDEAL_SPEED * (1 + d * METER.perfect), 'hard')
-  assert.ok(Math.abs(METER.perfect * METER.exact - 0.0125 / 3) < 1e-12)
+  assert.ok(Math.abs(METER.perfect * METER.exact - 0.00625 / 3) < 1e-12)
   assert.ok(Math.abs(METER.perfect - 0.017 / 3) < 1e-12 && METER.fade === 0.03 && METER.band === 0.085)
   const edge = METER.exact
   assert.equal(at(edge * 0.98), 0, 'inside the white lines lands on the aim')

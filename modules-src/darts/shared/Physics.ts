@@ -40,12 +40,13 @@ export const HOLE = HOLE_PITCH_MM / 1000
 /**
  * The power meter, as fractions of IDEAL_SPEED off the ideal: `perfect` is the half-width of the solid green (a third of the earlier ±1.7 %), `fade` where
  * the green has faded fully to yellow, and `band` the half-width of the yellow; past it the meter runs on into red. A release `d` green half-widths from the middle misses the aim point by at
- * most `reach(d)`: nothing up to `exact` (the Perfect window between the meter's two white lines, ±0.42 %, just inside the solid green), then measured from the lines as if they sat at `reachLine` (±0.67 %): `greenHoles` holes
+ * most `reach(d)`: nothing up to `exact` (the Perfect window between the meter's two white lines, ±0.21 %, well inside the solid green), then measured from the lines as if they sat at `reachLine` (±0.67 %): `greenHoles` holes
  * at `reachLine`'s edge of the green, on through the yellow (the reach eases in from nothing over `lineRamp` green half-widths past the lines) to `yellowHoles` at the edge of the band (easing in slowly, so a release well past the green still lands close), and staying there in
  * the red, where the extra speed also drops (soft) or lifts (hard) the dart. Outside the lines every dart misses by at least `meterFloor`: nothing at the
- * lines, growing to `greenEdgeHoles` holes at the edge of the green (in the green that is the whole miss, `floorSpread` to all of it), then holding.
+ * lines, growing to `greenEdgeHoles` holes at the edge of the green (`floorSpread` to all of it), then holding. On top of that, `nearMissChance` of
+ * the darts outside the lines miss by a few holes (`nearMissHoles`, low to high), so a dart that just misses the white lines often leaves the bull.
  * Past the green a dart can also miss further, with `meterMissChance` (from `lineMissChance` at the green edge up to `bandMissChance` at the band
- * edge), by `missFloor` to all of the reach, in any direction. The cross meter (`ThrowIntent.cross`, a test option) has no chance in it: the
+ * edge), by `missFloor` to all of the reach, in any direction. Every miss distance here is 20 % bigger than it first was. The cross meter (`ThrowIntent.cross`, a test option) has no chance in it: the
  * vertical reading misses high or low and the horizontal one left or right, each by `crossDistance`, with `sideRedHoles` more per 5 % into the red sideways.
  * `levelScale` tightens (Easy) or widens (Hard) the reach.
  */
@@ -53,18 +54,20 @@ export const METER = {
   perfect: 0.017 / 3,
   fade: 0.03,
   band: 0.085,
-  exact: 0.0125 / 0.017,
+  exact: 0.00625 / 0.017,
   reachLine: 0.02 / 0.017,
   lineRamp: 0.4,
-  greenHoles: 7,
-  yellowHoles: 12,
-  lineMissChance: 0.35,
-  bandMissChance: 0.95,
+  greenHoles: 8.4,
+  yellowHoles: 14.4,
+  lineMissChance: 0.49,
+  bandMissChance: 1,
   missFloor: 0.4,
-  greenEdgeHoles: 2,
+  greenEdgeHoles: 2.4,
   floorSpread: 0.8,
+  nearMissChance: 0.4,
+  nearMissHoles: [4.8, 7.2] as readonly [number, number],
   sideRange: 0.15,
-  sideRedHoles: 8,
+  sideRedHoles: 9.6,
   levelScale: { easy: 0.75, normal: 1, hard: 1.25 } as Record<PlayerLevel, number>,
 } as const
 
@@ -270,6 +273,11 @@ export function meterMiss(speed: number, level: PlayerLevel, rng: Rng): { x: num
   const spread = rng()
   if (d <= METER.exact) return { x: 0, y: 0 }
   let distance = meterFloor(d, level) * (METER.floorSpread + (1 - METER.floorSpread) * spread)
+  if (roll < METER.nearMissChance) {
+    const [low, high] = METER.nearMissHoles
+    distance = Math.max(distance, (low + (high - low) * spread) * HOLE * METER.levelScale[level])
+    if (d <= 1) distance = Math.min(distance, METER.greenHoles * HOLE)
+  }
   if (roll < meterMissChance(speed)) distance = Math.max(distance, meterReach(speed, level) * (METER.missFloor + (1 - METER.missFloor) * spread))
   return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance }
 }
