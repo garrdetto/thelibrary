@@ -1,18 +1,18 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { PANIC_DISTANCE, SAFE_DISTANCE, detectRadius, fleeSpeed, react } from '../systems/Herd'
-import { LEGENDARY_CHANCE, LootTableManager, mulberry32 } from '../systems/LootTableManager'
+import { LEGENDARY_CHANCE, LootTableManager, RARITY, mulberry32 } from '../systems/LootTableManager'
 
 const calm = { noise: 0.45, approaching: false, cover: 0, hearing: 1 }
 
-test('records are a 4% chance for bucks and fish', () => {
-  assert.equal(LEGENDARY_CHANCE, 0.04)
+test('record-class bucks and fish are 0.06% (near-record plus record)', () => {
+  assert.equal(LEGENDARY_CHANCE, RARITY.record + RARITY.nearRecord)
   const loot = new LootTableManager(mulberry32(11))
   for (const species of ['whitetail', 'walleye'] as const) {
     let hits = 0
-    const n = 20000
+    const n = 400_000
     for (let i = 0; i < n; i++) if (loot.createSpecimen(species).legendary) hits++
-    assert.ok(Math.abs(hits / n - 0.04) < 0.006, `${species} rate ${hits / n}`)
+    assert.ok(Math.abs(hits / n - LEGENDARY_CHANCE) < LEGENDARY_CHANCE * 0.3, `${species} rate ${hits / n}`)
   }
 })
 
