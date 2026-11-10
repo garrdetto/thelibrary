@@ -3,7 +3,7 @@ import './overlay.css'
 import { config } from '../config'
 import { label } from '../shared/Board'
 import type { Announcement, DartThrow, GameState, Player, RoomPlayerView } from '../shared/interfaces'
-import { IDEAL_SPEED, METER } from '../shared/Physics'
+import { IDEAL_SPEED, METER, meterZone } from '../shared/Physics'
 import { CRICKET_TARGETS, DARTS_PER_TURN, checkoutRoute, currentPlayer, modeLabel, standings } from '../shared/Rules'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -24,10 +24,12 @@ export function playerColor(state: GameState, playerId: string): string {
   return config.dart.flightColors[index % config.dart.flightColors.length]
 }
 
-/** Half-width of the whole good zone (green fading to yellow), as a fraction of the ideal speed. */
+/** Half-width of the band where the green fades to yellow, as a fraction of the ideal speed; past it the meter turns red. */
 const BAND = METER.band
-/** Half-width of the solid green "Perfect" centre of the good zone; its exact middle lands on the aim point. */
+/** Half-width of the solid green: anywhere in it lands within seven holes of the aim, and its exact middle lands on the aim point. */
 const PERFECT = METER.perfect
+/** How far past the yellow (as a fraction of the ideal speed) the meter is fully red. */
+const TO_RED = 0.05
 
 function meterRange(): { low: number; high: number } {
   return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
@@ -79,12 +81,16 @@ export class Overlay {
 
   constructor() {
     const { low, high } = meterRange()
-    const band = BAND * IDEAL_SPEED
-    this.meterBand.style.bottom = `${((IDEAL_SPEED - band - low) / (high - low)) * 100}%`
-    this.meterBand.style.height = `${((band * 2) / (high - low)) * 100}%`
-    const core = (PERFECT / BAND) * 50
-    this.meterBand.style.setProperty('--perfect-from', `${50 - core}%`)
-    this.meterBand.style.setProperty('--perfect-to', `${50 + core}%`)
+    const at = (fraction: number) => `${Math.max(0, Math.min(100, ((IDEAL_SPEED * (1 + fraction) - low) / (high - low)) * 100))}%`
+    const style = this.meterBand.style
+    style.bottom = '0'
+    style.height = '100%'
+    style.setProperty('--red-lo', at(-BAND - TO_RED))
+    style.setProperty('--band-lo', at(-BAND))
+    style.setProperty('--perfect-lo', at(-PERFECT))
+    style.setProperty('--perfect-hi', at(PERFECT))
+    style.setProperty('--band-hi', at(BAND))
+    style.setProperty('--red-hi', at(BAND + TO_RED))
     this.setPower(null)
     this.announce.style.setProperty('--announce-ms', `${config.timing.announceMs}ms`)
   }
@@ -196,9 +202,8 @@ export class Overlay {
     const { low, high } = meterRange()
     const ratio = (speed - low) / (high - low)
     this.meterFill.style.height = `calc(${Math.max(0, Math.min(1, ratio)) * 100}% + 1.5px)`
-    const off = (speed - IDEAL_SPEED) / IDEAL_SPEED
-    const zone = Math.abs(off) <= PERFECT ? 'perfect' : Math.abs(off) <= BAND ? 'good' : off < 0 ? 'low' : 'high'
-    const words = { perfect: 'Perfect!', good: 'Good', low: 'Low', high: 'High' } as const
+    const zone = meterZone(speed)
+    const words = { perfect: 'Perfect!', green: 'Great', yellow: 'Good', low: 'Low', high: 'High' } as const
     this.meterLabel.dataset.zone = zone
     this.meterLabel.textContent = `${words[zone]} · ${speed.toFixed(1)} m/s`
   }

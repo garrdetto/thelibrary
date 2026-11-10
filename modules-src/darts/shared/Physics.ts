@@ -1,5 +1,5 @@
-/** Dart flight: a throw intent becomes a launch velocity, and a fixed-step integrator with gravity and quadratic air drag finds where it meets the board plane. A player's throw is judged by where the power meter stopped: the exact middle of the green lands on the aim point, and the further from it, the wider the random scatter (`meterScatter`). The computer keeps its own Gaussian release error by skill. Board space: metres, origin at the bull, x right, y up, z towards the thrower. */
-import { BULL_HEIGHT, OCHE_DISTANCE, RADII, scoreAt } from './Board'
+/** Dart flight: a throw intent becomes a launch velocity, and a fixed-step integrator with gravity and quadratic air drag finds where it meets the board plane. A player's throw is judged by where the power meter stopped: the exact middle of the green lands on the aim point, anywhere in the green lands within seven holes of it, and the further out (yellow, then red) the further it can miss (`meterReach`). The computer keeps its own Gaussian release error by skill. Board space: metres, origin at the bull, x right, y up, z towards the thrower. */
+import { BULL_HEIGHT, HOLE_PITCH_MM, OCHE_DISTANCE, RADII, scoreAt } from './Board'
 import type { DartThrow, FlightParams, ThrowIntent, Vec3 } from './interfaces'
 import { gaussian, type Rng } from './Rng'
 
@@ -34,21 +34,24 @@ export type SpreadLevel = keyof typeof SPREAD
 export const PLAYER_LEVELS = ['easy', 'normal', 'hard'] as const
 export type PlayerLevel = (typeof PLAYER_LEVELS)[number]
 
+/** Distance between neighbouring tip holes on the soft-tip board, in metres: the unit the meter's misses are measured in. */
+export const HOLE = HOLE_PITCH_MM / 1000
+
 /**
- * The power meter, as fractions of IDEAL_SPEED off the ideal: `perfect` is the half-width of the solid green, `band` of green plus the yellow fade.
- * Releasing at distance d (in green half-widths) from the middle scatters the dart round the aim point with a standard deviation per axis that is
- * zero up to `exact` (the dead-centre window lands exactly on the aim), then grows in a straight line to `edgeSigma` metres at the edge of the green
- * (d = 1), where about 7.5 % of throws still land within `closeRadius` (8 mm, about one treble's width) of the aim, and keeps growing through the
- * yellow up to `maxSigma`. Past the yellow the dart also drops (soft) or rises (hard) with the extra speed. `levelScale` widens or tightens it all.
+ * The power meter, as fractions of IDEAL_SPEED off the ideal: `perfect` is the half-width of the solid green, `band` the half-width out to where
+ * the green has faded to yellow; past it the meter runs on into red. A release `d` green half-widths from the middle misses the aim point by at
+ * most `reach(d)`: nothing up to `exact` (the dead-centre window lands exactly on the aim), then growing in a straight line to `greenHoles` holes
+ * at the edge of the green (never more, at any steadiness), on through the yellow to `yellowHoles` at the edge of the band, and staying there in
+ * the red, where the extra speed also drops (soft) or lifts (hard) the dart. The actual miss is between half and all of the reach, in any direction.
+ * `levelScale` tightens (Easy) or widens (Hard) the reach.
  */
 export const METER = {
-  perfect: 0.011,
-  band: 0.036,
-  exact: 0.15,
-  edgeSigma: 0.0203,
-  maxSigma: 0.15,
-  closeRadius: 0.008,
-  levelScale: { easy: 0.75, normal: 1, hard: 1.35 } as Record<PlayerLevel, number>,
+  perfect: 0.02,
+  band: 0.06,
+  exact: 0.25,
+  greenHoles: 7,
+  yellowHoles: 16,
+  levelScale: { easy: 0.75, normal: 1, hard: 1.25 } as Record<PlayerLevel, number>,
 } as const
 
 export function isPlayerLevel(level: SpreadLevel): level is PlayerLevel {
@@ -57,15 +60,31 @@ export function isPlayerLevel(level: SpreadLevel): level is PlayerLevel {
 
 /** How far a release at `speed` is from the middle of the green, in green half-widths (0 dead centre, 1 the edge of the green). */
 export function meterDistance(speed: number): number {
-  return Math.abs(speed / IDEAL_SPEED - 1) / METER.perfect
+  const d = Math.abs(speed / IDEAL_SPEED - 1) / METER.perfect
+  // A release drawn exactly on a zone edge counts as the inner zone (floating point can put it a hair outside).
+  return Math.max(0, d - 1e-9)
 }
 
-/** Standard deviation per axis (metres) of where a player's dart lands around the aim point, for a release at `speed`. */
-export function meterScatter(speed: number, level: PlayerLevel): number {
+/** Which part of the meter a release at `speed` falls in: the dead-centre `perfect` window, the rest of the `green`, the `yellow`, or the red (`low` or `high`). */
+export function meterZone(speed: number): 'perfect' | 'green' | 'yellow' | 'low' | 'high' {
+  const d = meterDistance(speed)
+  if (d <= METER.exact) return 'perfect'
+  if (d <= 1) return 'green'
+  if (d <= METER.band / METER.perfect) return 'yellow'
+  return speed < IDEAL_SPEED ? 'low' : 'high'
+}
+
+/** The furthest (metres) a player's dart can land from the aim point for a release at `speed`. */
+export function meterReach(speed: number, level: PlayerLevel): number {
   const d = meterDistance(speed)
   if (d <= METER.exact) return 0
-  const sigma = (METER.edgeSigma * (d - METER.exact)) / (1 - METER.exact)
-  return Math.min(METER.maxSigma, sigma * METER.levelScale[level])
+  const scale = METER.levelScale[level]
+  const green = METER.greenHoles * HOLE
+  if (d <= 1) return Math.min(green, (green * scale * (d - METER.exact)) / (1 - METER.exact))
+  const edge = METER.band / METER.perfect
+  const t = Math.min(1, (d - 1) / (edge - 1))
+  const yellow = METER.yellowHoles * HOLE
+  return (green + (yellow - green) * t) * scale
 }
 
 export interface Impact {
@@ -193,7 +212,7 @@ function turn(dir: Vec3, yaw: number, pitch: number): Vec3 {
 
 /**
  * Turns an intent into the launch that actually happens. A player's throw (`PLAYER_LEVELS`) is aimed at the aim point moved by a random offset
- * whose size comes from the power meter (`meterScatter`), so the middle of the green is exact; inside the green and yellow the speed only decides
+ * whose size comes from the power meter (`meterReach`), so the middle of the green is exact; inside the green and yellow the speed only decides
  * that scatter, and past the yellow the excess speed drops or lifts the dart. The computer's throw points so a dart at IDEAL_SPEED lands on the aim
  * point (softer drops low, harder flies high), then its release error (Gaussian, standard deviation SPREAD[level] scaled up by an unsteady release)
  * moves the direction and the speed. An optional sideways yaw turns either.
@@ -211,10 +230,18 @@ export function launch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin
   return { origin, velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed] }
 }
 
+/** Where a player's dart is pointed, as an offset (metres) from the aim point: between half and all of `meterReach`, in a random direction. */
+export function meterMiss(speed: number, level: PlayerLevel, rng: Rng): { x: number; y: number } {
+  const reach = meterReach(speed, level)
+  const angle = rng() * 2 * Math.PI
+  const distance = reach * (0.5 + 0.5 * rng())
+  return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance }
+}
+
 function playerLaunch(clean: ThrowIntent, level: PlayerLevel, rng: Rng, origin: Vec3): FlightParams {
-  const sigma = meterScatter(clean.speed, level)
-  const offsetX = gaussian(rng) * sigma
-  const offsetY = gaussian(rng) * sigma
+  const miss = meterMiss(clean.speed, level, rng)
+  const offsetX = miss.x
+  const offsetY = miss.y
   const ideal = aimDirection(clean.aimX + offsetX, clean.aimY + offsetY, origin)
   const off = clean.speed / IDEAL_SPEED - 1
   const beyond = Math.sign(off) * Math.max(0, Math.abs(off) - METER.band)
