@@ -42,7 +42,8 @@ export const HOLE = HOLE_PITCH_MM / 1000
  * the green has faded fully to yellow, and `band` the half-width of the yellow; past it the meter runs on into red. A release `d` green half-widths from the middle misses the aim point by at
  * most `reach(d)`: nothing up to `exact` (the Perfect window between the meter's two white lines, ±0.67 %, which reaches a little past the solid green into the start of the fade), then growing in a straight line to `greenHoles` holes
  * at the edge of the green (never more, at any steadiness) while the lines sit inside it, on through the yellow (with the lines outside the green, the reach eases in from nothing over `lineRamp` green half-widths past them) to `yellowHoles` at the edge of the band (easing in slowly, so a release well past the green still lands close), and staying there in
- * the red, where the extra speed also drops (soft) or lifts (hard) the dart. The actual miss is between half and all of the reach, in any direction.
+ * the red, where the extra speed also drops (soft) or lifts (hard) the dart. Outside the lines a dart only misses with `meterMissChance` (from
+ * `lineMissChance` just past them up to `bandMissChance` at the band edge), and a miss is `missFloor` to all of the reach, in any direction.
  * `levelScale` tightens (Easy) or widens (Hard) the reach.
  */
 export const METER = {
@@ -52,7 +53,10 @@ export const METER = {
   exact: 0.02 / 0.017,
   lineRamp: 0.4,
   greenHoles: 7,
-  yellowHoles: 16,
+  yellowHoles: 12,
+  lineMissChance: 0.35,
+  bandMissChance: 0.95,
+  missFloor: 0.4,
   levelScale: { easy: 0.75, normal: 1, hard: 1.25 } as Record<PlayerLevel, number>,
 } as const
 
@@ -234,11 +238,29 @@ export function launch(intent: ThrowIntent, level: SpreadLevel, rng: Rng, origin
   return { origin, velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed] }
 }
 
-/** Where a player's dart is pointed, as an offset (metres) from the aim point: between half and all of `meterReach`, in a random direction. */
+/**
+ * How likely a release at `speed` is to miss the aim point at all: 0 between the white lines, `lineMissChance` just past them, climbing to
+ * `bandMissChance` at the edge of the yellow and staying there in the red. A release outside the lines can still land dead on; it just gets less likely.
+ */
+export function meterMissChance(speed: number): number {
+  const d = meterDistance(speed)
+  if (d <= METER.exact) return 0
+  const edge = METER.band / METER.perfect
+  const into = Math.min(1, (d - METER.exact) / Math.max(1e-9, edge - METER.exact))
+  return METER.lineMissChance + (METER.bandMissChance - METER.lineMissChance) * Math.sqrt(into)
+}
+
+/**
+ * Where a player's dart is pointed, as an offset (metres) from the aim point. Outside the white lines the dart either lands on the aim (with the
+ * chance left over from `meterMissChance`) or misses by `missFloor` to all of `meterReach` in a random direction, so it is never thrown far off.
+ */
 export function meterMiss(speed: number, level: PlayerLevel, rng: Rng): { x: number; y: number } {
   const reach = meterReach(speed, level)
   const angle = rng() * 2 * Math.PI
-  const distance = reach * (0.5 + 0.5 * rng())
+  const roll = rng()
+  const spread = rng()
+  if (reach <= 0 || roll >= meterMissChance(speed)) return { x: 0, y: 0 }
+  const distance = reach * (METER.missFloor + (1 - METER.missFloor) * spread)
   return { x: Math.cos(angle) * distance, y: Math.sin(angle) * distance }
 }
 

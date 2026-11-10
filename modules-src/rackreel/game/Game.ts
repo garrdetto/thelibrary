@@ -79,10 +79,6 @@ const AIM_SPEED = 0.9
 const CAMERA_DISTANCE = 3.3
 const SHOULDER_OFFSET = 0.45
 const DOUBLE_CLICK_MS = 380
-/** A short pause after coming back before the player is put at the cabin. */
-const RETURN_CHECK_MS = 400
-/** Already this close to the cabin door on foot: coming back leaves the player where they are. */
-const AT_CABIN_RANGE = 12
 /** Standing on foot in water this deep (off the dock and out of the cabin) means something went wrong: back to the cabin. */
 const DROWNING_DEPTH = 1.2
 const ARROW_YAW_RATE = 2.1
@@ -171,8 +167,6 @@ export class Game {
   private boatHome = new Vector3()
   private boatHomeHeading = 0
   private spawnHeading = 0
-  private wasAway = false
-  private returnTimer = 0
   private anchorLine!: Mesh
   private deckSeat: DeckSeat | null = null
   private swivel = 0
@@ -286,8 +280,6 @@ export class Game {
         }
         this.panels?.refresh()
         this.pauseMenu?.refresh()
-        if (this.online?.room.status === 'disconnected') this.markAway()
-        else this.checkReturnSoon()
       },
       seat: (from) => {
         if (this.mode !== 'vehicle' || this.vehicles.active !== this.boat || this.deckSeat === null) return
@@ -598,10 +590,6 @@ export class Game {
       if (this.playing && !this.hud.modalOpen && document.pointerLockElement !== this.canvas) this.lock()
     })
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault())
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') this.markAway()
-      else this.checkReturnSoon()
-    })
     document.addEventListener('pointerlockchange', () => {
       if (!document.pointerLockElement && this.playing && !this.hud.modalOpen) this.pause()
     })
@@ -698,7 +686,6 @@ export class Game {
     this.ads = 0
     this.fishCam = 0
     this.ctx.setAds(0, this.progress.effects.scopeZoom)
-    this.wasAway = false
     if (this.mode === 'bowfish') this.bowfish.abandon()
     if (this.mode === 'crew') this.online.announce('headed back to the cabin.')
     if (this.mode === 'vehicle' || this.vehicles.active) {
@@ -732,28 +719,6 @@ export class Game {
     this.placeAvatar(0)
     this.placeCamera()
     if (message) this.hud.toast(message, 'big')
-  }
-
-  private atCabin(): boolean {
-    const door = this.cabin.frontDoor
-    return this.mode === 'foot' && Math.hypot(this.foot.x - door.x, this.foot.z - door.z) < AT_CABIN_RANGE
-  }
-
-  /** The player left (tab hidden or connection lost). */
-  private markAway(): void {
-    if (this.playing) this.wasAway = true
-  }
-
-  /** Back again: every return to the page starts the player at the cabin. */
-  private checkReturnSoon(): void {
-    if (!this.wasAway || document.visibilityState !== 'visible' || this.online?.room.status === 'disconnected') return
-    window.clearTimeout(this.returnTimer)
-    this.returnTimer = window.setTimeout(() => {
-      if (!this.wasAway || document.visibilityState !== 'visible') return
-      this.wasAway = false
-      if (!this.playing || this.atCabin()) return
-      this.respawn('Welcome back. You are at the cabin.')
-    }, RETURN_CHECK_MS)
   }
 
   /** Safety net: on foot in deep water (off the dock and outside the cabin) goes back to the cabin. */
@@ -1051,8 +1016,7 @@ export class Game {
     if (this.mode !== 'crew' || !this.crewOf) return
     const b = this.online.boat(this.crewOf)
     if (!b || !this.online.active) {
-      if (this.wasAway) this.respawn('The boat moved on while you were away, so you are back at the cabin.')
-      else this.leaveCrew(true)
+      this.leaveCrew(true)
       return
     }
     const wasAnchored = this.crewBoat?.anchored
@@ -1414,7 +1378,7 @@ export class Game {
     const sens = this.ctx.sensitivity
     const aimingLook = this.ads > 0.5 || (this.mode === 'bowfish' && this.aimHeld)
     const lookScale = this.ads > 0.5 ? 0.3 * sens.aim : aimingLook ? sens.aim : sens.look
-    if (this.mode === 'bowfish') cam.angularSensibility = 2200 / (aimingLook ? sens.aim : sens.look)
+    if (this.mode === 'bowfish') this.ctx.lookSensibility = 2200 / (aimingLook ? sens.aim : sens.look)
     cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * (sens.invertX ? -1 : 1) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
     cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * (sens.invertY ? -1 : 1) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
     const input = {
