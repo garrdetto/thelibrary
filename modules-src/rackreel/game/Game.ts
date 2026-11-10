@@ -79,10 +79,12 @@ const AIM_SPEED = 0.9
 const CAMERA_DISTANCE = 3.3
 const SHOULDER_OFFSET = 0.45
 const DOUBLE_CLICK_MS = 380
-/** A boat that moved this far while the player was away sends them back to the cabin. */
-const BOAT_MOVED_RANGE = 15
-/** Lets remote boat positions catch up before checking. */
-const RETURN_CHECK_MS = 1500
+/** A short pause after coming back before the player is put at the cabin. */
+const RETURN_CHECK_MS = 400
+/** Already this close to the cabin door on foot: coming back leaves the player where they are. */
+const AT_CABIN_RANGE = 12
+/** Standing on foot in water this deep (off the dock and out of the cabin) means something went wrong: back to the cabin. */
+const DROWNING_DEPTH = 1.2
 const ARROW_YAW_RATE = 2.1
 const ARROW_PITCH_RATE = 1.4
 const ARROW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
@@ -169,7 +171,7 @@ export class Game {
   private boatHome = new Vector3()
   private boatHomeHeading = 0
   private spawnHeading = 0
-  private awayFrom: { x: number; z: number } | null = null
+  private wasAway = false
   private returnTimer = 0
   private anchorLine!: Mesh
   private deckSeat: DeckSeat | null = null
@@ -529,6 +531,7 @@ export class Game {
         await this.makeCharacter()
         if (this.progress.signedIn) this.hud.toast('Character saved to your account. Welcome to the northwoods.', 'big')
       }
+      this.respawn('')
       this.playing = true
       this.hud.showPlaying(true)
       this.audio.unlock()
@@ -691,17 +694,26 @@ export class Game {
   private respawn(message: string): void {
     if (this.fishing.busy) this.fishing.cancel()
     this.scopeLock = false
-    this.awayFrom = null
+    this.rightDown = false
+    this.ads = 0
+    this.fishCam = 0
+    this.ctx.setAds(0, this.progress.effects.scopeZoom)
+    this.wasAway = false
     if (this.mode === 'bowfish') this.bowfish.abandon()
     if (this.mode === 'crew') this.online.announce('headed back to the cabin.')
-    if (this.mode === 'vehicle') {
+    if (this.mode === 'vehicle' || this.vehicles.active) {
       const v = this.vehicles.active
       this.vehicles.release()
       if (v === this.boat) this.vehicles.moor(v, this.boatHome, this.boatHomeHeading)
     }
-    this.avatar.root.setParent(null)
-    this.avatar.root.rotationQuaternion = null
-    this.avatar.root.rotation.set(0, 0, 0)
+    if (!this.boat.occupied) this.boat.root.setEnabled(true)
+    const root = this.avatar.root
+    root.parent = null
+    root.rotationQuaternion = null
+    root.rotation.set(0, 0, 0)
+    root.scaling.setAll(1)
+    root.setEnabled(true)
+    this.avatar.setVisible(true)
     this.mode = 'foot'
     this.deckSeat = null
     this.crewOf = null
@@ -711,41 +723,45 @@ export class Game {
     this.anchorLine.setEnabled(false)
     this.velocity.setAll(0)
     this.foot.copyFrom(this.cabin.frontDoor)
-    this.foot.y = this.terrain.heightAt(this.foot.x, this.foot.z)
+    this.foot.y = Math.max(this.terrain.heightAt(this.foot.x, this.foot.z), this.cabin.floorAt(this.foot) ?? -10)
     this.facing = this.spawnHeading
+    root.position.copyFrom(this.foot)
+    root.rotation.set(0, this.facing, 0)
     this.ctx.camera.rotation.set(0.18, this.spawnHeading, 0)
     this.ctx.camera.fov = 0.9
-    this.hud.toast(message, 'big')
+    this.placeAvatar(0)
+    this.placeCamera()
+    if (message) this.hud.toast(message, 'big')
   }
 
-  /** Where the boat the player is riding is right now, or null when not in a boat. */
-  private ridingBoatAt(): Vector3 | null {
-    if (this.mode === 'crew') return this.crewBoat?.root.position ?? null
-    if (this.mode === 'bowfish') return this.bowfish.boatNode.position
-    if (this.mode === 'vehicle' && this.vehicles.active?.kind === 'BOAT') return this.vehicles.active.position
-    return null
+  private atCabin(): boolean {
+    const door = this.cabin.frontDoor
+    return this.mode === 'foot' && Math.hypot(this.foot.x - door.x, this.foot.z - door.z) < AT_CABIN_RANGE
   }
 
-  /** The player left (tab hidden or connection lost): remember where their boat was. */
+  /** The player left (tab hidden or connection lost). */
   private markAway(): void {
-    if (this.awayFrom || !this.playing) return
-    const at = this.ridingBoatAt()
-    this.awayFrom = at ? { x: at.x, z: at.z } : null
+    if (this.playing) this.wasAway = true
   }
 
-  /** Back again: once the boat's position has caught up, respawn at the cabin if it moved on. */
+  /** Back again: every return to the page starts the player at the cabin. */
   private checkReturnSoon(): void {
-    if (!this.awayFrom || document.visibilityState !== 'visible' || this.online?.room.status === 'disconnected') return
+    if (!this.wasAway || document.visibilityState !== 'visible' || this.online?.room.status === 'disconnected') return
     window.clearTimeout(this.returnTimer)
     this.returnTimer = window.setTimeout(() => {
-      const from = this.awayFrom
-      this.awayFrom = null
-      if (!from || !this.playing) return
-      const at = this.ridingBoatAt()
-      if (at && Math.hypot(at.x - from.x, at.z - from.z) < BOAT_MOVED_RANGE) return
-      if (this.mode === 'foot' && !at) return
-      this.respawn('The boat moved on while you were away, so you are back at the cabin.')
+      if (!this.wasAway || document.visibilityState !== 'visible') return
+      this.wasAway = false
+      if (!this.playing || this.atCabin()) return
+      this.respawn('Welcome back. You are at the cabin.')
     }, RETURN_CHECK_MS)
+  }
+
+  /** Safety net: on foot in deep water (off the dock and outside the cabin) goes back to the cabin. */
+  private checkDrowning(): void {
+    if (this.mode !== 'foot' || !this.playing) return
+    const p = this.foot
+    if (this.onDock(p) || this.cabin.floorAt(p) !== null) return
+    if (this.terrain.depthAt(p.x, p.z) > Math.max(DROWNING_DEPTH, this.progress.effects.wadeDepth + 0.3)) this.respawn('You ended up in deep water, so you are back at the cabin.')
   }
 
   /** Keeps trees off Wild Man's line over the island so the boat flies clear on the way home. */
@@ -1035,7 +1051,7 @@ export class Game {
     if (this.mode !== 'crew' || !this.crewOf) return
     const b = this.online.boat(this.crewOf)
     if (!b || !this.online.active) {
-      if (this.awayFrom) this.respawn('The boat moved on while you were away, so you are back at the cabin.')
+      if (this.wasAway) this.respawn('The boat moved on while you were away, so you are back at the cabin.')
       else this.leaveCrew(true)
       return
     }
@@ -1433,8 +1449,10 @@ export class Game {
     if (!bowfishing) this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0, this.progress.effects.scopeZoom)
     this.gruntCooldown = Math.max(0, this.gruntCooldown - dt)
     void this.progress.update(dt, active && !this.panels.open)
-    if (this.mode === 'foot') this.walk(dt, active, sprint)
-    else if (this.mode === 'climb') this.climb(dt)
+    if (this.mode === 'foot') {
+      this.walk(dt, active, sprint)
+      this.checkDrowning()
+    } else if (this.mode === 'climb') this.climb(dt)
     else if (this.mode === 'vehicle' && v) this.moveSpeed = Math.abs(v.speed)
     else if (this.mode !== 'crew') this.moveSpeed = 0
     if (bowfishing && this.fishing.busy) this.fishing.cancel()
