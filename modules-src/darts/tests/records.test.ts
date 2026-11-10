@@ -101,11 +101,13 @@ test('meter: the yellow is wider and a release just past the green costs little'
   assert.ok(at(METER.band / METER.perfect) <= METER.yellowHoles + 1e-9)
 })
 
-test('meter: the Perfect window between the white lines is the middle half of the green and lands exactly', () => {
+test('meter: the Perfect window between the white lines is ±0.5 % of the ideal speed and lands exactly', () => {
   const at = (d: number) => meterReach(IDEAL_SPEED * (1 + d * METER.perfect), 'hard')
-  assert.equal(METER.exact, 0.5)
-  assert.equal(at(0.49), 0, 'inside the white lines lands on the aim')
-  assert.equal(at(-0.49), 0)
-  assert.ok(at(0.55) > 0, 'just outside the lines is green but not Perfect')
+  assert.ok(Math.abs(METER.perfect * METER.exact - 0.005) < 1e-12)
+  assert.ok(Math.abs(METER.perfect - 0.017) < 1e-12, 'the green is 15 % narrower than the original ±2 %')
+  const edge = METER.exact
+  assert.equal(at(edge * 0.98), 0, 'inside the white lines lands on the aim')
+  assert.equal(at(-edge * 0.98), 0)
+  assert.ok(at(edge * 1.1) > 0, 'just outside the lines is green but not Perfect')
   assert.ok(at(0.99) / HOLE <= METER.greenHoles + 1e-9)
 })

@@ -65,14 +65,14 @@ function readSetup(form: HTMLFormElement): Setup {
   }
 }
 
-const BOARD_KEY = 'tl-darts-board'
+const BOARD_KEY = 'tl-darts-board-v2'
 
 function savedBoardStyle(): BoardStyle {
   try {
     const value = localStorage.getItem(BOARD_KEY)
-    return isBoardStyle(value) ? value : 'steel'
+    return isBoardStyle(value) ? value : 'spider'
   } catch {
-    return 'steel'
+    return 'spider'
   }
 }
 
