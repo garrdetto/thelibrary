@@ -50,6 +50,9 @@ export class ThrowInput {
   private readonly ndc = new THREE.Vector2()
   private readonly hit = new THREE.Vector3()
   private readonly plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0)
+  /** The latest pointer position waiting to become the aim; pointer moves are folded into one aim update per frame, because high-rate mice send several per frame and each aim re-solves the flight. */
+  private pendingAim: { x: number; y: number; offset: number } | null = null
+  private aimFrame = 0
 
   constructor(
     private readonly element: HTMLElement,
@@ -79,9 +82,23 @@ export class ThrowInput {
     return { x: this.hit.x, y: this.hit.y - BULL_HEIGHT }
   }
 
-  private aimFrom(event: PointerEvent): void {
+  private aimFrom(event: PointerEvent, now = false): void {
     const offset = event.pointerType === 'touch' || event.pointerType === 'pen' ? gesture.touchAimOffsetPx : 0
-    const point = this.boardPoint(event.clientX, event.clientY - offset)
+    this.pendingAim = { x: event.clientX, y: event.clientY, offset }
+    if (now) {
+      this.flushAim()
+      return
+    }
+    if (!this.aimFrame) this.aimFrame = requestAnimationFrame(this.flushAim)
+  }
+
+  private readonly flushAim = (): void => {
+    if (this.aimFrame) cancelAnimationFrame(this.aimFrame)
+    this.aimFrame = 0
+    const pending = this.pendingAim
+    this.pendingAim = null
+    if (!pending) return
+    const point = this.boardPoint(pending.x, pending.y - pending.offset)
     if (point) this.setAim(point.x, point.y)
   }
 
@@ -117,7 +134,7 @@ export class ThrowInput {
     this.pointerId = event.pointerId
     this.pointerType = event.pointerType
     try { this.element.setPointerCapture(event.pointerId) } catch { /* not capturable */ }
-    this.aimFrom(event)
+    this.aimFrom(event, true)
     this.startCharge('pointer')
   }
 
@@ -132,6 +149,7 @@ export class ThrowInput {
 
   private readonly onUp = (event: PointerEvent): void => {
     if (event.pointerId !== this.pointerId) return
+    this.flushAim()
     this.releasePointer()
     if (this.charging === 'pointer') this.finishCharge()
   }
@@ -200,6 +218,9 @@ export class ThrowInput {
 
   dispose(): void {
     this.interrupt()
+    if (this.aimFrame) cancelAnimationFrame(this.aimFrame)
+    this.aimFrame = 0
+    this.pendingAim = null
     this.element.removeEventListener('pointerdown', this.onDown)
     this.element.removeEventListener('pointermove', this.onMove)
     this.element.removeEventListener('pointerup', this.onUp)
