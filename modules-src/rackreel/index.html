@@ -91,6 +91,15 @@
       .score-state{color:var(--muted);font-size:11px}
       .catch-scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 14px;max-height:34vh;overflow:auto}
       .catch-scores:empty{display:none}
+      .creator-screen{place-items:center end;background:linear-gradient(90deg,transparent 35%,rgba(8,8,7,.78))}
+      .creator-card{width:min(440px,100%);max-height:calc(100vh - 32px);overflow:auto}
+      .creator-body{display:grid;gap:10px}
+      .creator-group{border:1px solid var(--line);border-radius:12px;padding:8px 12px 12px;margin:0}
+      .creator-group legend{padding:0 6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--bronze)}
+      .creator-row{display:flex;flex-wrap:wrap;gap:6px}
+      .creator-pick{font-size:13px;padding:8px 12px}
+      .creator-pick[aria-checked="true"]{border-color:var(--ember);background:#3b2c18;color:var(--bone)}
+      .creator-status{min-height:1.2em;font-size:13px}
       .panel-screen{z-index:45}
       .panel-card{width:min(860px,100%);max-height:calc(100vh - 32px);overflow:auto;gap:12px}
       .panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
@@ -143,7 +152,7 @@
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk or drive</div>
           <div><kbd>Mouse</kbd> or <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> Look around</div>
           <div><kbd>Left</kbd> Cast / fire · hold to reel</div>
-          <div><kbd>Right</kbd> Aim down sights</div>
+          <div><kbd>Right</kbd> Aim · double-click locks the scope</div>
           <div><kbd>1</kbd> Rod <kbd>2</kbd> Rifle</div>
           <div><kbd>E</kbd> Drive, board, climb, tag</div>
           <div><kbd>Shift</kbd> Sprint · hold breath</div>
@@ -210,7 +219,7 @@
       <div class="rr-card">
         <div class="rr-eyebrow">Rack &amp; Reel high scores · top three</div>
         <h2>Record Book</h2>
-        <p>The top three anglers and hunters in every category the Wisconsin record keepers track, with the real state record beside each one. A fish counts once it is reeled all the way in; a buck or bear counts once you walk within 10 yards of it. Sign in on the library to keep your place.</p>
+        <p>The top three anglers and hunters in every category the Wisconsin record keepers track. The real Wisconsin mark under each one is only a reference. A fish counts once it is reeled all the way in; a buck or bear counts once you walk within 10 yards of it. Sign in on the library to keep your place.</p>
         <div class="book-grid" id="book-grid"></div>
         <div class="rr-actions"><button class="rr-btn primary" id="book-close" type="button">Close</button></div>
       </div>

@@ -99,10 +99,12 @@ export interface Profile {
   stats: { fish: number; deer: number; bears: number; records: number; earned: number }
   lastFishAt: number
   lastGameAt: number
+  /** True once the player has made their character. Everyone starts unverified, old saves included. */
+  verified: boolean
 }
 
 export function defaultProfile(): Profile {
-  const p: Profile = { cash: 250, owned: ITEMS.filter((i) => i.price === 0).map((i) => i.id), loadout: { ...STARTER }, tasks: [], taskCursor: 0, stats: { fish: 0, deer: 0, bears: 0, records: 0, earned: 0 }, lastFishAt: 0, lastGameAt: 0 }
+  const p: Profile = { cash: 250, owned: ITEMS.filter((i) => i.price === 0).map((i) => i.id), loadout: { ...STARTER }, tasks: [], taskCursor: 0, stats: { fish: 0, deer: 0, bears: 0, records: 0, earned: 0 }, lastFishAt: 0, lastGameAt: 0, verified: false }
   refillTasks(p)
   return p
 }
@@ -132,6 +134,7 @@ export function normalizeProfile(raw: unknown): Profile {
     stats: { fish: num(s.fish), deer: num(s.deer), bears: num(s.bears), records: num(s.records), earned: num(s.earned) },
     lastFishAt: num(r.lastFishAt),
     lastGameAt: num(r.lastGameAt),
+    verified: r.verified === true,
   }
   refillTasks(p)
   return p
@@ -290,4 +293,38 @@ export function gearEffects(l: Loadout): GearEffects {
     utvPower: l.utvKit === 'utv-turbo' ? 1.3 : 1,
     call: l.call === 'call-grunt',
   }
+}
+
+export type LookSlot = 'jacket' | 'vest' | 'cap' | 'pants' | 'pack'
+export type Look = Record<LookSlot, string>
+
+/**
+ * What the character creator offers. Only looks: gear that changes how the hunt goes (the camo
+ * jacket's cover aside, which everyone starts with), like waders or the fishing vest, stays in the
+ * catalog. Whatever is picked is given free and worn.
+ */
+export const CHARACTER_CHOICES: Record<LookSlot, string[]> = {
+  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas'],
+  vest: ['vest-blaze', 'vest-none'],
+  cap: ['cap-blaze', 'cap-camo', 'cap-bucket'],
+  pants: ['pants-camo', 'pants-jeans'],
+  pack: ['pack-none'],
+}
+
+export const LOOK_SLOTS: LookSlot[] = ['jacket', 'vest', 'cap', 'pants', 'pack']
+
+export function lookOf(p: Profile): Look {
+  return { jacket: p.loadout.jacket, vest: p.loadout.vest, cap: p.loadout.cap, pants: p.loadout.pants, pack: p.loadout.pack }
+}
+
+/** Makes the character: checks every pick, gives and wears it, and marks the profile verified. */
+export function createCharacter(p: Profile, look: Look): string | null {
+  for (const slot of LOOK_SLOTS) if (!CHARACTER_CHOICES[slot].includes(look[slot])) return 'That outfit is not offered when making a character.'
+  for (const slot of LOOK_SLOTS) {
+    const id = look[slot]
+    if (!p.owned.includes(id)) p.owned.push(id)
+    p.loadout[slot] = id
+  }
+  p.verified = true
+  return null
 }

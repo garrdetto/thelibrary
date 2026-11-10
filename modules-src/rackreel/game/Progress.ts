@@ -1,7 +1,7 @@
-import { FISH_COOLDOWN_MS, GAME_COOLDOWN_MS, applyEvent, applyPlaytime, defaultProfile, equip, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
+import { FISH_COOLDOWN_MS, GAME_COOLDOWN_MS, applyEvent, createCharacter, applyPlaytime, defaultProfile, equip, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
 import { categoryValues, placeOn } from '../shared/Records'
 import type { RecordBoard } from '../shared/Records'
-import type { GameEvent, GearEffects, Profile, Slot } from '../shared/Economy'
+import type { GameEvent, GearEffects, Look, Profile, Slot } from '../shared/Economy'
 import { SPECIES_BY_ID } from '../systems/LootTableManager'
 import type { SpeciesId } from '../systems/LootTableManager'
 
@@ -19,8 +19,8 @@ export const GUEST_NAME = 'You (guest)'
 type PostReply = { profile?: unknown; paid?: number; completed?: EarnReport['completed']; records?: RecordBoard; placed?: Record<string, number>; error?: string }
 
 export type CatchReport =
-  | { action: 'fish'; species: SpeciesId; value: number; legendary: boolean; boat: boolean }
-  | { action: 'game'; species: SpeciesId; value: number; legendary: boolean; doe: boolean; stand: boolean }
+  | { action: 'fish'; species: SpeciesId; value: number; legendary: boolean; boat: boolean; seed: number }
+  | { action: 'game'; species: SpeciesId; value: number; legendary: boolean; doe: boolean; stand: boolean; seed: number }
 
 export class Progress {
   profile: Profile = defaultProfile()
@@ -58,7 +58,28 @@ export class Progress {
     return gearEffects(this.profile.loadout)
   }
 
-  async load(): Promise<void> {
+  /** Settles once the saved profile has been read (or found missing). */
+  ready: Promise<void> = Promise.resolve()
+
+  /** Makes the character and marks the profile verified, on the server when signed in. */
+  async createCharacter(look: Look): Promise<string | null> {
+    if (this.signedIn) {
+      const data = await this.post({ action: 'create-character', look }).catch(() => ({ error: 'The cabin could not be reached. Try again.' }) as PostReply)
+      if (data.error) return data.error
+      this.adopt(data.profile)
+      return null
+    }
+    const error = createCharacter(this.profile, look)
+    this.onChange?.()
+    return error
+  }
+
+  load(): Promise<void> {
+    this.ready = this.loadProfile()
+    return this.ready
+  }
+
+  private async loadProfile(): Promise<void> {
     try {
       const res = await fetch(API, { credentials: 'same-origin' })
       if (!res.ok) return
@@ -90,7 +111,10 @@ export class Progress {
     if (this.signedIn) {
       const data = await this.post(c).catch(() => ({ error: 'offline' }) as PostReply)
       if (data.error) return { paid: 0, completed: [], placed: {} }
-      if (data.records) this.board = data.records
+      if (data.records) {
+        this.board = data.records
+        if (window.parent !== window) window.parent.postMessage({ type: 'tl-rackreel', species: c.species }, location.origin)
+      }
       this.adopt(data.profile)
       return { paid: data.paid ?? 0, completed: data.completed ?? [], placed: data.placed ?? {} }
     }
@@ -101,7 +125,7 @@ export class Progress {
     const accepted = now - last >= (c.action === 'fish' ? FISH_COOLDOWN_MS : GAME_COOLDOWN_MS)
     const placed: Record<string, number> = {}
     if (accepted && !doe) {
-      for (const [id, value] of Object.entries(categoryValues(c.species, c.value))) {
+      for (const [id, value] of Object.entries(categoryValues(c.species, c.value, c.seed))) {
         const rank = placeOn(this.board, id, { username: GUEST_NAME, value, at: now })
         if (rank) placed[id] = rank
       }

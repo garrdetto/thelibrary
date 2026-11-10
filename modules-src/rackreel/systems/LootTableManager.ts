@@ -49,6 +49,8 @@ export interface Specimen {
   serial: number
   sizeClass: SizeClass
   measures: Measures
+  /** Rolled once per animal; with the size it fixes every measurement (rack, spread, length). */
+  seed: number
 }
 
 /**
@@ -63,6 +65,9 @@ export const LEGENDARY_CHANCE = RARITY.record + RARITY.nearRecord
 export const BELOW_AVERAGE_SHARE = 0.6
 /** A near-record starts this far under the book's #3. */
 export const NEAR_RECORD_FRACTION = 0.95
+/** Bucks top out at 20 points; past that is a freak rack, 0.005% of bucks. */
+export const MAX_TYPICAL_POINTS = 20
+export const FREAK_RACK_CHANCE = 0.00005
 
 export const SPECIES: SpeciesTemplate[] = [
   { id: 'muskie', name: 'Muskellunge', kind: 'fish', model: 'fish-muskie', unit: 'lb', measure: 'Weight', min: 6, avg: 14, max: 30, habitats: ['deep', 'weeds'], weight: 0.08, trophyAt: 30, fight: 1.0, facts: 'Wisconsin\'s state fish. An ambush hunter of weed edges and deep breaks; the "fish of ten thousand casts".' },
@@ -152,15 +157,16 @@ const sixteenth = (v: number) => Math.round(v * 16) / 16
  * Every record-book measurement of an animal, worked out from its main value alone so the
  * shooter, online guests and the server all get the same rack, spread and length.
  */
-export function measure(speciesId: SpeciesId, value: number): Measures {
+export function measure(speciesId: SpeciesId, value: number, seed = 0): Measures {
   const t = SPECIES_BY_ID[speciesId]
-  const r = mulberry32(hashKey(`${speciesId}:${Math.round(value * 100)}`))
+  const r = mulberry32(hashKey(`${speciesId}:${Math.round(value * 100)}:${seed >>> 0}`))
   if (t.kind === 'fish') {
     const length = fishLengthIn(speciesId, value) * (0.97 + r() * 0.06)
     return { weight: value, length: quarter(length) }
   }
   if (speciesId === 'whitetail') {
-    const points = Math.max(3, Math.min(16, Math.round(4 + (value - 60) / 18 + (r() - 0.5) * 2.4)))
+    let points = Math.max(3, Math.min(MAX_TYPICAL_POINTS, Math.round(4 + (value - 60) / 10.5 + (r() - 0.5) * 5)))
+    if (r() < FREAK_RACK_CHANCE) points = MAX_TYPICAL_POINTS + 1 + Math.min(10, Math.floor(-Math.log(1 - r()) * 2.5))
     const spread = Math.max(8, 7 + 0.064 * value + (r() - 0.5) * 2.4)
     const heavy = r() < 0.03 ? r() * 60 : 0
     const dressed = 110 + Math.max(0, value - 85) * 0.9 + r() * 45 + heavy
@@ -242,11 +248,12 @@ export class LootTableManager {
     if (rolled === 'trophy') value = Math.max(value, template.trophyAt)
     const sizeClass = classify(speciesId, value)
     const legendary = sizeClass === 'record' || sizeClass === 'near-record'
-    const measures = measure(speciesId, value)
+    const seed = Math.floor(this.rng() * 2147483647)
+    const measures = measure(speciesId, value, seed)
     const weightLb = template.unit === 'lb' ? value : measures.dressed ?? 150
     const lengthIn = measures.length ?? 0
     const recordTier = this.placement(speciesId, value)
-    return { species: speciesId, value, weightLb, lengthIn, legendary, recordTier, trophyPoints: this.trophyPoints(speciesId, value), serial: ++this.serial, sizeClass, measures }
+    return { species: speciesId, value, weightLb, lengthIn, legendary, recordTier, trophyPoints: this.trophyPoints(speciesId, value), serial: ++this.serial, sizeClass, measures, seed }
   }
 
   placement(speciesId: SpeciesId, value: number): 0 | 1 | 2 | 3 {

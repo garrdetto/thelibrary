@@ -29,12 +29,18 @@ export interface HighScore {
 /** Category id → top three, best first. */
 export type RecordBoard = Record<string, HighScore[]>
 
+/** The in-game board and catch card show the top three of each category. */
 export const BOARD_SIZE = 3
+/** The site's record board under the module lists the top 20, like the other boards. */
+export const BOARD_LIMIT = 20
 
 const cat = (species: SpeciesId, metric: RecordMetric, label: string, unit: RecordCategory['unit'], value: number, note: string): RecordCategory =>
   ({ id: `${species}.${metric}`, species, metric, label, unit, state: { value, note } })
 
-/** Wisconsin benchmarks: DNR hook-and-line weights, DNR live-release lengths, Buck & Bear Club and B&C scores. */
+/**
+ * Wisconsin benchmarks (DNR hook-and-line weights, DNR live-release lengths, Buck & Bear Club and
+ * B&C scores). They are shown only as a reference beside each board; players never compete with them.
+ */
 export const RECORD_CATEGORIES: RecordCategory[] = [
   cat('muskie', 'weight', 'Heaviest', 'lb', 69.69, 'WI record, Sawyer Co., 1949'),
   cat('muskie', 'length', 'Longest', 'in', 63.5, 'WI record fish, Sawyer Co., 1949'),
@@ -61,7 +67,7 @@ export function categoriesFor(species: SpeciesId): RecordCategory[] {
 }
 
 /** Category id → measured value for an animal of this size. Does are not scored. */
-export function categoryValues(species: SpeciesId, value: number, measures: Measures = measure(species, value)): Record<string, number> {
+export function categoryValues(species: SpeciesId, value: number, seed = 0, measures: Measures = measure(species, value, seed)): Record<string, number> {
   const out: Record<string, number> = {}
   for (const c of categoriesFor(species)) {
     const v = measures[c.metric]
@@ -112,6 +118,16 @@ export function formatRecord(categoryId: string, value: number): string {
     return oz === 16 ? `${lb + 1} lb` : oz ? `${lb} lb ${oz} oz` : `${lb} lb`
   }
   return `${fraction(value, c.metric === 'score' || c.metric === 'spread' ? 8 : c.metric === 'skull' ? 16 : 4)}″`
+}
+
+/** One line of the animal's other measurements, for the board's Detail column. */
+export function measureSummary(categoryId: string, measures: Measures): string {
+  const c = CATEGORY_BY_ID[categoryId]
+  if (!c) return ''
+  return categoriesFor(c.species)
+    .filter((o) => o.id !== categoryId && typeof measures[o.metric] === 'number')
+    .map((o) => `${formatRecord(o.id, measures[o.metric]!)}${o.metric === 'spread' ? ' spread' : o.metric === 'skull' ? ' skull' : o.metric === 'length' ? ' long' : ''}`)
+    .join(' · ')
 }
 
 export function speciesName(species: SpeciesId): string {

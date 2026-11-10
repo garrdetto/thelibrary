@@ -1,6 +1,8 @@
 export const ENCOUNTER_MIN_SECONDS = 60
 export const ENCOUNTER_MAX_SECONDS = 180
-export const LINE_IN_WATER_RATE = 3
+/** Fish find a working bait a third quicker than they used to (was 3). */
+export const FISH_SPEEDUP = 1.33
+export const LINE_IN_WATER_RATE = 3 * FISH_SPEEDUP
 export const IDLE_RATE = 0
 
 export type EncounterChannel = 'fish' | 'game'

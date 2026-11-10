@@ -40,6 +40,9 @@ import { Avatar, HIP_HEIGHT } from './Avatar'
 import { Progress } from './Progress'
 import type { CatchReport, EarnReport } from './Progress'
 import { Panels } from '../ui/Panels'
+import { CharacterCreator } from '../ui/CharacterCreator'
+import { lookOf } from '../shared/Economy'
+import type { Look } from '../shared/Economy'
 import type { PanelTab } from '../ui/Panels'
 import { Cabin } from '../world/Cabin'
 import { Minimap } from '../ui/Minimap'
@@ -67,6 +70,7 @@ const CROUCH_SPEED = 1.2
 const AIM_SPEED = 0.9
 const CAMERA_DISTANCE = 3.3
 const SHOULDER_OFFSET = 0.45
+const DOUBLE_CLICK_MS = 380
 const ARROW_YAW_RATE = 2.1
 const ARROW_PITCH_RATE = 1.4
 const ARROW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
@@ -114,6 +118,9 @@ export class Game {
   private keys = new Set<string>()
   private leftDown = false
   private rightDown = false
+  /** Double right-click keeps the scope up without holding the button (for trackpads). */
+  private scopeLock = false
+  private lastRightAt = 0
   private ads = 0
   private crouch = false
   private playing = false
@@ -130,6 +137,9 @@ export class Game {
   private swayApplied = { x: 0, y: 0 }
   private bag: Specimen[] = []
   private baitHintShown = false
+  private readonly creator = new CharacterCreator()
+  /** The camera faces the hunter while the character creator is open. */
+  private creating = false
   /** Animals this player put down, which tag themselves once the hunter walks within 10 yards. */
   private myKills = new Set<number>()
   private materials = new Map<string, Material>()
@@ -193,6 +203,7 @@ export class Game {
     this.avatar = new Avatar(instantiate(this.models.get('hunter')!, null, scene, reg))
     this.buildGear(reg)
     this.wildlife = new Wildlife(this.ctx, scene, this.terrain, this.loot, this.models)
+    this.wildlife.onTurnover = () => this.hud.toast('The deer have moved off. A fresh bunch is filtering in across the property.')
     this.wildlife.onLegendSpawn = (a) => this.hud.toast(a.template.id === 'whitetail' ? 'Fresh rubs and scrapes: a record-class buck is roaming these woods' : `Fresh sign: a record-class ${SPECIES_BY_ID[a.template.id].name.toLowerCase()} is moving nearby`, 'big')
     this.wildlife.onLost = (a) => this.hud.toast(a.wounds ? 'The wounded animal is gone. Aim for the vitals behind the shoulder.' : `The ${a.template.name.toLowerCase()} slipped away.`)
     this.fishing = new Fishing(this.ctx, scene, this.terrain, this.loot, this.skill, (name) => this.models.get(name))
@@ -434,8 +445,13 @@ export class Game {
   }
 
   private bindInput(): void {
-    const start = () => {
+    const start = async () => {
       document.getElementById('start')!.hidden = true
+      await this.progress.ready
+      if (!this.progress.profile.verified) {
+        await this.makeCharacter()
+        if (this.progress.signedIn) this.hud.toast('Character saved to your account. Welcome to the northwoods.', 'big')
+      }
       this.playing = true
       this.hud.showPlaying(true)
       this.audio.unlock()
@@ -443,7 +459,7 @@ export class Game {
       const d = this.stand.tree.subtract(this.foot)
       this.hud.toast(`${this.stands.filter((st) => st.kind === 'ladder').length} ladder stands and a box blind are marked on the map; the nearest is ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
     }
-    document.getElementById('start-btn')!.addEventListener('click', start)
+    document.getElementById('start-btn')!.addEventListener('click', () => void start())
     document.getElementById('book-btn')!.addEventListener('click', () => this.showRecords(() => undefined))
     this.canvas.addEventListener('click', () => {
       if (this.playing && !this.hud.modalOpen && document.pointerLockElement !== this.canvas) this.lock()
@@ -459,6 +475,17 @@ export class Game {
         this.primaryDown()
       } else if (e.button === 2) {
         this.rightDown = true
+        const now = performance.now()
+        if (this.scopeLock) {
+          this.scopeLock = false
+          this.lastRightAt = 0
+        } else if (this.tool === 'rifle' && now - this.lastRightAt < DOUBLE_CLICK_MS) {
+          this.scopeLock = true
+          this.lastRightAt = 0
+          this.hud.toast('Scope locked on. Left-click to fire; right-click again to lower it.')
+        } else {
+          this.lastRightAt = now
+        }
       }
     })
     document.addEventListener('pointerup', (e) => {
@@ -525,7 +552,13 @@ export class Game {
     })
   }
 
+  /** Aiming down the scope: right button held, or locked on with a double right-click. */
+  private get aimHeld(): boolean {
+    return this.rightDown || this.scopeLock
+  }
+
   private setTool(tool: Tool): void {
+    this.scopeLock = false
     if (this.fishing.busy && tool !== 'rod') this.fishing.cancel()
     if ((this.vehicles.active || this.mode === 'crew') && tool === 'rifle') {
       this.hud.toast('Unload and step out before using the rifle.', 'warn')
@@ -883,10 +916,10 @@ export class Game {
       this.bag.push(animal.specimen)
       this.hud.setBag(this.bag.length, this.bag.reduce((a, s) => a + s.trophyPoints, 0))
       this.hud.toast(`Antlerless tag filled: a ${animal.specimen.weightLb} lb doe for the freezer. Only bucks make the record book.`)
-      void this.earn({ action: 'game', species: 'whitetail', value: 0, legendary: false, doe: true, stand: this.standKills.has(animal.id) })
+      void this.earn({ action: 'game', species: 'whitetail', value: 0, legendary: false, doe: true, stand: this.standKills.has(animal.id), seed: 0 })
       return
     }
-    const report = this.earn({ action: 'game', species: animal.specimen.species, value: animal.specimen.value, legendary: animal.specimen.legendary, doe: false, stand: this.standKills.has(animal.id) })
+    const report = this.earn({ action: 'game', species: animal.specimen.species, value: animal.specimen.value, legendary: animal.specimen.legendary, doe: false, stand: this.standKills.has(animal.id), seed: animal.specimen.seed })
     this.recordSpecimen(animal.specimen, report)
   }
 
@@ -1020,7 +1053,7 @@ export class Game {
     } else if (e.type === 'landed') {
       this.audio.splash(true)
       this.online.announce(`landed a ${fmtValue(e.specimen.species, e.specimen.value)} ${SPECIES_BY_ID[e.specimen.species].name.toLowerCase()}${e.specimen.legendary ? ' — a record!' : ''}`)
-      const report = this.earn({ action: 'fish', species: e.specimen.species, value: e.specimen.value, legendary: e.specimen.legendary, boat: this.vehicles.active?.kind === 'BOAT' || this.mode === 'crew' })
+      const report = this.earn({ action: 'fish', species: e.specimen.species, value: e.specimen.value, legendary: e.specimen.legendary, boat: this.vehicles.active?.kind === 'BOAT' || this.mode === 'crew', seed: e.specimen.seed })
       this.showHero(e.specimen)
       this.recordSpecimen(e.specimen, report)
     } else if (e.type === 'lost') {
@@ -1110,7 +1143,8 @@ export class Game {
     if (this.mode === 'vehicle' && v && this.deckSeat !== null) this.swivel = swivelToward(this.swivel, cam.rotation.y, v.heading, dt)
     const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
     const canAim = (this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle'
-    const wantAds = canAim && this.rightDown && locked
+    if (!canAim) this.scopeLock = false
+    const wantAds = canAim && this.aimHeld && locked
     this.ads += ((wantAds ? 1 : 0) - this.ads) * Math.min(1, dt * 10)
     this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0, this.progress.effects.scopeZoom)
     this.gruntCooldown = Math.max(0, this.gruntCooldown - dt)
@@ -1179,7 +1213,7 @@ export class Game {
     const s = active ? this.key('KeyD') - this.key('KeyA') : 0
     const busy = this.fishing.state === 'charging' || this.fishing.fighting
     let speed = sprint && !this.crouch ? SPRINT_SPEED : this.crouch ? CROUCH_SPEED : WALK_SPEED
-    if (this.ads > 0.3 || (this.tool === 'rifle' && this.rightDown)) speed = AIM_SPEED
+    if (this.ads > 0.3 || (this.tool === 'rifle' && this.aimHeld)) speed = AIM_SPEED
     if (busy) speed = 0
     const dir = new Vector3(Math.sin(yaw) * f + Math.cos(yaw) * s, 0, Math.cos(yaw) * f - Math.sin(yaw) * s)
     const len = dir.length()
@@ -1212,7 +1246,7 @@ export class Game {
     p.y += (floor - p.y) * Math.min(1, dt * 18)
     const moved = Math.hypot(p.x - prevX, p.z - prevZ) / Math.max(1e-3, dt)
     this.moveSpeed += (moved - this.moveSpeed) * Math.min(1, dt * 8)
-    const faceCamera = this.fishing.busy || (this.tool === 'rifle' && (this.rightDown || this.rifleCooldown > 0.6))
+    const faceCamera = this.fishing.busy || (this.tool === 'rifle' && (this.aimHeld || this.rifleCooldown > 0.6))
     let target = this.facing
     if (faceCamera) target = yaw
     else if (Math.hypot(this.velocity.x, this.velocity.z) > 0.3) target = Math.atan2(this.velocity.x, this.velocity.z)
@@ -1288,7 +1322,7 @@ export class Game {
     if (stance === 'climb') hands = 'free'
     else if (this.mode === 'vehicle' && v && this.deckSeat === null && (v.kind === 'ATV' || !this.fishing.busy && (Math.abs(v.speed) > 1.2 || this.tool !== 'rod'))) hands = 'wheel'
     else if (this.mode === 'crew' && !this.fishing.busy && (this.crewBoat?.speed ?? 0) > 1.2) hands = 'free'
-    else if (this.tool === 'rifle') hands = this.rightDown && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
+    else if (this.tool === 'rifle') hands = this.aimHeld && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
     else if (st === 'charging' || st === 'flying') hands = 'cast'
     else if (st === 'reeling' || st === 'landing') hands = 'reel'
     else hands = 'rod'
@@ -1317,7 +1351,7 @@ export class Game {
     this.rifleRig.root.setEnabled(showRifle)
     if (showRifle) {
       const r = this.rifleRig.root
-      if (this.rightDown && document.pointerLockElement === this.canvas) {
+      if (this.aimHeld && document.pointerLockElement === this.canvas) {
         const torsoPitch = this.avatar.chest.rotation.x
         r.position.set(0.15, 0.4, 0.46 - this.recoil * 0.06)
         r.rotation.set(this.ctx.camera.rotation.x - torsoPitch - this.recoil * 0.12, 0, 0)
@@ -1328,8 +1362,34 @@ export class Game {
     }
   }
 
+  /** Shows the character creator with a front view of the hunter; resolves once it is saved. */
+  private makeCharacter(): Promise<void> {
+    return new Promise((resolve) => {
+      this.creating = true
+      const wear = (look: Look) => this.avatar.setOutfit([look.jacket, look.vest, look.cap, look.pants, look.pack])
+      this.creator.show(lookOf(this.progress.profile), {
+        preview: wear,
+        submit: (look) => this.progress.createCharacter(look),
+        done: () => {
+          this.creating = false
+          this.applyGear()
+          this.ctx.camera.rotation.set(0.18, this.facing, 0)
+          resolve()
+        },
+      })
+    })
+  }
+
   private placeCamera(): void {
     const cam = this.ctx.camera
+    if (this.creating) {
+      const ahead = new Vector3(Math.sin(this.facing), 0, Math.cos(this.facing))
+      const side = new Vector3(Math.cos(this.facing), 0, -Math.sin(this.facing))
+      const eye = this.foot.add(ahead.scale(2.7)).add(side.scale(-0.7)).add(new Vector3(0, 1.45, 0))
+      cam.position.copyFrom(eye)
+      cam.setTarget(this.foot.add(side.scale(-0.45)).add(new Vector3(0, 1.05, 0)))
+      return
+    }
     const yaw = cam.rotation.y
     const pitch = cam.rotation.x
     const fwd = new Vector3(Math.sin(yaw) * Math.cos(pitch), -Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch))
@@ -1364,7 +1424,7 @@ export class Game {
     const crouchK = this.mode === 'foot' && this.crouch ? 1 : 0
     const fishK = this.fishCam * this.fishCam * (3 - 2 * this.fishCam)
     const pivot = base.add(new Vector3(0, high ? 0.62 : 1.62 - crouchK * 0.45 + fishK * 0.4, 0))
-    const aimK = this.tool === 'rifle' && this.rightDown ? 1 : 0
+    const aimK = this.tool === 'rifle' && this.aimHeld ? 1 : 0
     let pos: Vector3
     if (high && this.mode === 'stand' && this.layout.firstPerson) {
       pos = this.avatar.root.position.add(new Vector3(0, HIP_HEIGHT + 0.66, 0))
@@ -1477,7 +1537,7 @@ export class Game {
     let prompt = ''
     if (!locked) prompt = this.hud.modalOpen ? '' : 'Click the view for mouse look · arrow keys also look around'
     else if (this.mode === 'climb') prompt = this.climbDir > 0 ? 'Climbing up…' : 'Climbing down…'
-    else if (this.mode === 'stand') prompt = this.tool === 'rifle' ? (this.ads < 0.5 ? 'Right-click to aim · E to climb down' : 'Shift to hold your breath') : 'Press 2 for the rifle · E to climb down'
+    else if (this.mode === 'stand') prompt = this.tool === 'rifle' ? (this.ads < 0.5 ? 'Right-click to aim (double right-click locks it) · E to climb down' : this.scopeLock ? 'Left-click to fire · Shift to hold your breath · right-click to lower' : 'Shift to hold your breath') : 'Press 2 for the rifle · E to climb down'
     else if (this.mode === 'crew') {
       const b = this.crewBoat
       prompt = fishPrompt || (!b || b.speed > 1.2 ? `${b?.name ?? 'The captain'} is driving — hold on` : b.anchored ? 'Left-click to cast · F to ask for the other seat · E near shore to step off' : 'Left-click to cast · E near shore to step off')
@@ -1495,7 +1555,8 @@ export class Game {
       else if (near) prompt = near.kind === 'ATV' ? (near.rig.root.name.startsWith('quad') ? 'E — ride the quad' : 'E — drive the UTV') : 'E — board the boat'
       else if (this.nearLadder()) prompt = `E — climb into the ${STAND_LAYOUTS[this.nearLadder()!.kind].name}`
       else if (this.tool === 'rod' && !this.fishing.busy) prompt = 'Hold left-click to load a cast, release to throw'
-      else if (this.tool === 'rifle' && this.ads < 0.5) prompt = 'Right-click to aim · Shift to hold your breath'
+      else if (this.tool === 'rifle' && this.ads < 0.5) prompt = 'Right-click to aim · double right-click to lock the scope'
+      else if (this.tool === 'rifle' && this.scopeLock) prompt = 'Left-click to fire · Shift to hold your breath · right-click to lower'
     }
     this.hud.setPrompt(prompt)
   }

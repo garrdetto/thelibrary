@@ -149,7 +149,7 @@ export class Hud {
   showCatchScores(specimen: Specimen, board: RecordBoard, placed: Record<string, number> | null, you: string): void {
     const wrap = el('catch-scores')
     wrap.replaceChildren()
-    const values = categoryValues(specimen.species, specimen.value, specimen.measures)
+    const values = categoryValues(specimen.species, specimen.value, specimen.seed, specimen.measures)
     let best: { rank: number; label: string } | null = null
     for (const c of categoriesFor(specimen.species)) {
       const value = values[c.id]
@@ -163,7 +163,7 @@ export class Hud {
   }
 
   get modalOpen(): boolean {
-    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false
+    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false || document.getElementById('creator')?.hidden === false
   }
 
   showBook(board: RecordBoard, you: string, onClose: () => void): void {
@@ -231,7 +231,7 @@ function scoreSection(c: RecordCategory, list: HighScore[], opts: { value?: numb
   }
   const state = document.createElement('small')
   state.className = 'score-state'
-  state.textContent = `State record ${formatRecord(c.id, c.state.value)} · ${c.state.note}`
+  state.textContent = `For reference, the Wisconsin mark: ${formatRecord(c.id, c.state.value)} · ${c.state.note}`
   box.append(head, ol, state)
   return box
 }

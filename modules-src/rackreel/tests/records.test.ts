@@ -53,3 +53,63 @@ test('live bait sits under a float, lures fish while reeled; bait sets the troph
   assert.equal(gearEffects(p.loadout).bait, BAIT_STYLE['bait-crawler'])
   assert.equal(gearEffects({ ...p.loadout, bait: 'bait-minnow' }).biteRate, 1.25)
 })
+
+test('bucks carry up to 20 points; anything more is a 0.005% freak rack', async () => {
+  const { FREAK_RACK_CHANCE, MAX_TYPICAL_POINTS, measure, mulberry32 } = await import('../systems/LootTableManager')
+  const rng = mulberry32(77)
+  let freaks = 0
+  let twenty = 0
+  const n = 2_000_000
+  for (let i = 0; i < n; i++) {
+    const value = 75 + rng() * 140
+    const pts = measure('whitetail', Math.round(value * 10) / 10, Math.floor(rng() * 2147483647)).points!
+    if (pts > MAX_TYPICAL_POINTS) freaks++
+    else if (pts === MAX_TYPICAL_POINTS) twenty++
+    assert.ok(pts >= 3 && pts <= MAX_TYPICAL_POINTS + 11)
+  }
+  assert.ok(twenty > 0, 'big racks reach 20 points')
+  assert.ok(freaks / n > FREAK_RACK_CHANCE * 0.5 && freaks / n < FREAK_RACK_CHANCE * 1.6, `freak rate ${freaks / n}`)
+  const avg = Array.from({ length: 2000 }, (_, i) => measure('whitetail', 115, i).points!).reduce((a, b) => a + b, 0) / 2000
+  assert.ok(avg > 7 && avg < 11, `an average buck carries about 8–10 points (${avg})`)
+})
+
+test('the same animal measures the same everywhere; a new seed gives a new rack', async () => {
+  const { measure } = await import('../systems/LootTableManager')
+  assert.deepEqual(measure('whitetail', 172.4, 99), measure('whitetail', 172.4, 99))
+  const racks = new Set(Array.from({ length: 50 }, (_, i) => JSON.stringify(measure('whitetail', 172.4, i))))
+  assert.ok(racks.size > 10)
+})
+
+test('everyone starts unverified; making a character verifies and dresses them', async () => {
+  const { CHARACTER_CHOICES, createCharacter, defaultProfile, normalizeProfile } = await import('../shared/Economy')
+  assert.equal(defaultProfile().verified, false)
+  assert.equal(normalizeProfile({ cash: 900 }).verified, false, 'older saves start unverified')
+  const p = defaultProfile()
+  assert.ok(createCharacter(p, { jacket: 'jacket-flannel', vest: 'vest-none', cap: 'cap-bucket', pants: 'pants-jeans', pack: 'pack-none' }) === null)
+  assert.equal(p.verified, true)
+  assert.equal(p.loadout.jacket, 'jacket-flannel')
+  assert.ok(p.owned.includes('pants-jeans'))
+  assert.equal(normalizeProfile(JSON.parse(JSON.stringify(p))).verified, true)
+  assert.ok(createCharacter(defaultProfile(), { jacket: 'jacket-camo', vest: 'vest-fishing', cap: 'cap-blaze', pants: 'pants-camo', pack: 'pack-none' }), 'gear with an effect is not handed out')
+  assert.ok(!CHARACTER_CHOICES.pants.includes('pants-waders'))
+})
+
+test('fish find a working bait a third sooner', async () => {
+  const { EncounterDirector, FISH_SPEEDUP, LINE_IN_WATER_RATE } = await import('../systems/EncounterDirector')
+  assert.ok(Math.abs(LINE_IN_WATER_RATE / 3 - FISH_SPEEDUP) < 1e-9 && FISH_SPEEDUP >= 1.33)
+  const d = new EncounterDirector(() => 0.5)
+  let t = 0
+  while (!d.update(0.1, { exploring: false, lineInWater: true, onLand: false })) t += 0.1
+  assert.ok(t < 120 / 3 / 1.3, `bite after ${t.toFixed(1)} s`)
+})
+
+test('cloth and wood patterns tile without seams', async () => {
+  const { fabricHeight, tileNoise, woodSample } = await import('../world/SurfacePatterns')
+  for (let v = 0; v < 1; v += 0.13) {
+    assert.ok(Math.abs(tileNoise(0, v, 5, 7, 3) - tileNoise(1, v, 5, 7, 3)) < 1e-9)
+    assert.ok(Math.abs(fabricHeight(0, v) - fabricHeight(1 - 1e-9, v)) < 0.05)
+    const a = woodSample(0, v, 4)
+    const b = woodSample(1 - 1e-9, v, 4)
+    assert.ok(Math.abs(a.shade - b.shade) < 0.05 && a.height >= 0 && a.height <= 1)
+  }
+})
