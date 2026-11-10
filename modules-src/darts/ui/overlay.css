@@ -141,8 +141,8 @@ button { cursor: pointer; }
 .d-book-times { color: var(--d-warn); font-size: 12px; text-align: right; }
 .d-book-you { margin: 8px 0 0 !important; font-size: 13px !important; color: var(--d-text) !important; }
 .d-book-note { margin: 6px 0 0 !important; font-size: 12px !important; color: var(--d-dim) !important; }
-.d-avg { position: absolute; right: 10px; bottom: 14px; width: min(250px, 40vw); background: var(--d-panel); border: 1px solid var(--d-line); border-radius: 12px; padding: 8px 10px; backdrop-filter: blur(6px); pointer-events: none; font-variant-numeric: tabular-nums; }
-.d-avg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--d-soft); margin-bottom: 4px; }
+.d-avg { position: absolute; right: 10px; bottom: 14px; width: min(290px, 42vw); background: var(--d-panel); border: 1px solid var(--d-line); border-radius: 12px; padding: 8px 10px; backdrop-filter: blur(6px); pointer-events: none; font-variant-numeric: tabular-nums; }
+.d-avg-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; white-space: nowrap; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--d-soft); margin-bottom: 4px; }
 .d-avg-unit { font-weight: 600; color: var(--d-dim); letter-spacing: .02em; text-transform: none; }
 .d-avg-rows { display: flex; flex-direction: column; gap: 4px; }
 .d-avg-row { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; border-left: 3px solid var(--card-color, var(--d-accent)); padding-left: 7px; }

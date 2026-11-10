@@ -221,21 +221,20 @@ async function boot(): Promise<void> {
     }
     return playerId === 'p1' && book.signedIn ? book.username : null
   }
-  const renderAverages = () => {
-    const state = session?.state ?? null
+  const renderAverages = (state: GameState | null = shown) => {
     if (state) {
       const members = state.players.map((player) => memberName(player.id)).filter((name): name is string => !!name)
       book.prepareAverages(state, members)
     }
     book.renderHud(state, (id) => (state ? playerColor(state, id) : ''), memberName, !!state && ranked() && countsForAverages(state))
   }
-  book.onChange = renderAverages
+  book.onChange = () => renderAverages()
 
   const render = (state: GameState) => {
     shown = state
     overlay.render(state, localIds)
     pub.setDisplay(String(currentPlayer(state).score))
-    renderAverages()
+    renderAverages(state)
   }
 
   /** A local leg that just ended goes to the signed-in player's record book (Player 1 at this screen); online rooms save their own. */
