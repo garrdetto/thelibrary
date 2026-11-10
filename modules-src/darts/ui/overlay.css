@@ -150,6 +150,32 @@ button { cursor: pointer; }
 .d-avg-value { font-weight: 800; font-size: 16px; text-align: right; }
 .d-avg-match { grid-column: 1 / -1; font-size: 11px; color: var(--d-dim); }
 .d-avg-foot { margin-top: 5px; font-size: 10.5px; color: var(--d-dim); }
+.d-scoreboard.is-compact { gap: 4px; }
+.d-scoreboard.is-compact .d-card { padding: 4px 10px; }
+.d-scoreboard.is-compact .d-card-score { font-size: clamp(18px, 3vw, 24px); }
+.d-scoreboard.is-compact .d-marks { margin-top: 2px; }
+.d-scoreboard.is-compact .d-mark b { height: 13px; line-height: 13px; font-size: 11px; }
+.d-card-team { color: var(--card-color, var(--d-soft)); font-weight: 600; }
+.d-note { font-size: 13px !important; color: var(--d-dim) !important; margin-top: 8px !important; }
+.d-teams { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-top: 10px; }
+.d-team { margin: 0; padding: 8px 10px 10px; border: 1px solid var(--d-line); border-left: 4px solid var(--card-color, var(--d-accent)); border-radius: 12px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.d-team legend { padding: 0 4px; }
+.d-team legend input { background: transparent; border: 0; border-bottom: 1px dashed var(--d-line); font-weight: 700; padding: 2px 0; width: 12ch; color: var(--card-color, var(--d-text)); }
+.d-person { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.d-person .d-field select, .d-person .d-field input[type="text"] { min-width: 0; width: 100%; }
+#tour-list { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.d-bracket-panel { width: min(760px, 100%); }
+.d-bracket { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; align-items: center; }
+.d-round { display: flex; flex-direction: column; justify-content: space-around; gap: 8px; height: 100%; }
+.d-round h3 { margin: 0; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--d-dim); font-weight: 600; }
+.d-match { border: 1px solid var(--d-line); border-radius: 10px; background: rgba(255,255,255,.03); overflow: hidden; }
+.d-match.is-next { box-shadow: 0 0 0 2px var(--d-warn); }
+.d-match-line { display: flex; gap: 6px; align-items: center; padding: 5px 8px; border-left: 3px solid var(--card-color, transparent); font-size: 13px; font-variant-numeric: tabular-nums; }
+.d-match-line + .d-match-line { border-top: 1px solid var(--d-line); }
+.d-match-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.d-match-line.is-winner { font-weight: 800; color: var(--d-good); }
+.d-match-line.is-out { color: var(--d-dim); }
+.d-bracket-note { margin-top: 12px !important; color: var(--d-text) !important; font-weight: 600; }
 .d-help { font-size: 13px; color: var(--d-dim); margin-top: 12px; line-height: 1.5; }
 .d-help kbd { background: rgba(255,255,255,.08); border: 1px solid var(--d-line); border-radius: 5px; padding: 0 5px; font-size: 12px; }
 
@@ -164,6 +190,8 @@ button { cursor: pointer; }
   .d-meter { width: 22px; padding: 4px; }
   .d-meter-label { display: none; }
   .d-panel { padding: 16px; }
+  .d-bracket { grid-template-columns: 1fr; }
+  .d-person { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

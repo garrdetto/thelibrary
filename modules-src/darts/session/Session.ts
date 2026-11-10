@@ -1,4 +1,4 @@
-/** Match sessions behind one interface: LocalSession runs the rules in the page (solo, against the computer, or pass-and-play) with its own seeded release error, timed turn changes and computer turns; OnlineSession forwards throws to the DartsRoom over the socket and replays what the room decides. */
+/** Match sessions behind one interface: LocalSession runs the rules in the page (solo, against the computer, pass-and-play, teams and tournament legs) with its own seeded release error, timed turn changes and computer turns; OnlineSession forwards throws to the DartsRoom over the socket and replays what the room decides. */
 import { config } from '../config'
 import { cpuThrow } from '../shared/Cpu'
 import type { Announcement, DartThrow, FlightParams, GameState, MatchConfig, RoomPlayerView, ThrowIntent } from '../shared/interfaces'
@@ -6,6 +6,9 @@ import { launch, simulate, type SpreadLevel } from '../shared/Physics'
 import { applyThrow, createMatch, currentPlayer, nextTurn, type SeatSpec } from '../shared/Rules'
 import { createRng, randomSeed } from '../shared/Rng'
 import type { DartsSocket } from '../net/Socket'
+
+/** Every person at the oche throws with the same steadiness, here and in online rooms; only the computer has levels. */
+export const HUMAN_LEVEL: SpreadLevel = 'normal'
 
 export interface SessionEvents {
   /** A dart was released: animate `flight`, then show `state` when it lands. */
@@ -38,7 +41,6 @@ export class LocalSession implements Session {
   constructor(
     private readonly matchConfig: MatchConfig,
     private readonly seats: SeatSpec[],
-    private readonly humanSpread: SpreadLevel,
     private readonly events: SessionEvents,
   ) {
     this.state = createMatch('local', matchConfig, seats)
@@ -52,7 +54,7 @@ export class LocalSession implements Session {
 
   throw(intent: ThrowIntent): void {
     if (!this.canThrow()) return
-    this.release(intent, this.humanSpread)
+    this.release(intent, HUMAN_LEVEL)
   }
 
   private release(intent: ThrowIntent, level: SpreadLevel): void {
