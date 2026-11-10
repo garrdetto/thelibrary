@@ -2,6 +2,11 @@ export const HERD_SIZE = 8
 export const HERD_SPAWN_MIN = 90
 export const HERD_SPAWN_MAX = 260
 export const HERD_DESPAWN = 380
+/** Every five minutes the deer run off the scene and a fresh batch enters at random spots. */
+export const HERD_TURNOVER_SECONDS = 300
+/** A deer that has been told to leave is gone after this long, or once it is `LEAVE_GONE` metres away. */
+export const LEAVE_SECONDS = 25
+export const LEAVE_GONE = 170
 export const BEAR_SHARE = 0.12
 export const BUCK_SHARE = 0.4
 export const PANIC_DISTANCE = 18

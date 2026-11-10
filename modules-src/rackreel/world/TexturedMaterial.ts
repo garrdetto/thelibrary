@@ -4,6 +4,7 @@ import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import type { Scene } from '@babylonjs/core/scene'
 import { modelFileUrl } from '../core/ModelLibrary'
+import { applyFabric } from './Surfaces'
 
 const WET = { specular: new Color3(0.42, 0.42, 0.4), power: 72 }
 
@@ -21,6 +22,7 @@ export function texturedMaterial(scene: Scene, file: string, cache: Map<string, 
   mat.ambientColor = new Color3(0.3, 0.3, 0.3)
   mat.backFaceCulling = false
   mat.twoSidedLighting = true
+  if (file.startsWith('hunter-') && file !== 'hunter-base') applyFabric(mat, scene)
   cache.set(key, mat)
   return mat
 }

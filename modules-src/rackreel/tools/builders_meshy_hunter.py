@@ -14,6 +14,7 @@ HUNTER_HATS = {'cap-blaze': 'hunter-cap-blaze', 'cap-camo': 'hunter-cap-camo', '
 HUNTER_PACK = 'hunter-pack'
 HUNTER_PACK_PANEL_Y = 0.1
 HUNTER_HAT_LIFT = {'cap-blaze': 0.06, 'cap-camo': 0.06, 'cap-bucket': 0.03}
+HUNTER_HAT_SCALE = 0.85
 HUNTER_HEM_SOURCE = 'hunter-flannel-none-jeans'
 HUNTER_HIP = 0.98
 HUNTER_BODY_TEXTURE = 1024
@@ -197,7 +198,7 @@ def fit_hat(bm, head_top, head_center, head_width, lift):
     z0, z1 = min(zs), max(zs)
     crown = [v.co for v in bm.verts if v.co.z > z0 + 0.55 * (z1 - z0)]
     cw = max(c.x for c in crown) - min(c.x for c in crown)
-    s = head_width * 1.2 / cw
+    s = head_width * 1.2 / cw * HUNTER_HAT_SCALE
     bmesh.ops.scale(bm, vec=(s, s, s), verts=bm.verts[:])
     crown = [v.co for v in bm.verts if v.co.z > (z0 + 0.55 * (z1 - z0)) * s]
     cx = (max(c.x for c in crown) + min(c.x for c in crown)) / 2
@@ -265,6 +266,10 @@ def build_hunter():
             slot = 'lower'
         elif j == 'hips' or j.startswith('thigh'):
             slot = 'upper' if z >= hem else 'lower'
+            if slot == 'upper' and j != 'hips':
+                # Jacket and vest hang from the hips: left on a thigh they would swing out with each step.
+                j = 'hips'
+                labels[f.index] = j
         else:
             slot = 'upper'
         slot_of[f.index] = slot
@@ -330,7 +335,7 @@ def build_hunter():
         if not meshy_source(src):
             continue
         hb, img = load_prop(src, rotate=True)
-        fit_hat(hb, head_top, head_center, head_width, HUNTER_HAT_LIFT.get(item, 0.025))
+        fit_hat(hb, head_top, head_center, head_width, HUNTER_HAT_LIFT.get(item, 0.025) * HUNTER_HAT_SCALE)
         m.add('head:' + item, piece_from_textured(hb), pivot=tuple(pivots['head']), material='tex:' + src, parent='head')
         hb.free()
         if img is not None:
