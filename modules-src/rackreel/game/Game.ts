@@ -4,6 +4,7 @@ import type { Material } from '@babylonjs/core/Materials/material'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { findLaunch, planHomeStunt } from '../systems/BowRoutes'
 import { Ray } from '@babylonjs/core/Culling/ray'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
@@ -203,7 +204,7 @@ export class Game {
     this.cabin = new Cabin(this.terrain, landmarks.spawn.add(inland.scale(18)), landmarks.spawnHeading)
     this.stands = findStandSites(this.terrain, landmarks.spawn, [this.cabin.root, landmarks.dock.start, landmarks.utv])
     this.stand = this.stands[0]
-    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5))])
+    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5)), ...this.jumpLane(landmarks.dock)])
     this.foliage.grassHoles.push({ x: this.cabin.root.x, z: this.cabin.root.z, r: 6.4 })
     for (const st of this.stands) {
       const r = st.kind === 'blind' ? 1.3 : 0.45
@@ -662,6 +663,16 @@ export class Game {
   private resume(): void {
     this.pauseMenu.hide()
     this.lock()
+  }
+
+  /** Keeps trees off Wild Man's line over the island so the boat flies clear on the way home. */
+  private jumpLane(dock: { start: Vector3; end: Vector3 }): Vector3[] {
+    const launch = findLaunch(this.terrain, { x: dock.start.x, z: dock.start.z }, { x: dock.end.x, z: dock.end.z })
+    const stunt = planHomeStunt(this.terrain, launch)
+    if (!stunt) return []
+    const out: Vector3[] = []
+    for (let s = stunt.takeoff; s <= stunt.touchdown; s += 6) out.push(new Vector3(stunt.entry.x + stunt.dir.x * s, 0, stunt.entry.z + stunt.dir.z * s))
+    return out
   }
 
   private openBook(): void {
@@ -1304,8 +1315,8 @@ export class Game {
     const aimingLook = this.ads > 0.5 || (this.mode === 'bowfish' && this.aimHeld)
     const lookScale = this.ads > 0.5 ? 0.3 * sens.aim : aimingLook ? sens.aim : sens.look
     if (this.mode === 'bowfish') cam.angularSensibility = 2200 / (aimingLook ? sens.aim : sens.look)
-    cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
-    cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
+    cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * (sens.invertX ? -1 : 1) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
+    cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * (sens.invertY ? -1 : 1) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
     const input = {
       throttle: active && !reeling && v ? this.key('KeyW') - this.key('KeyS') : 0,
       steer: active && !reeling && v ? this.key('KeyD') - this.key('KeyA') : 0,

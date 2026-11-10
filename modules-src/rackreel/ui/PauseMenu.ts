@@ -3,7 +3,13 @@ import type { OpenLobby } from '../game/Online'
 export interface Sensitivity {
   look: number
   aim: number
+  /** Mouse and arrow keys turn the view the other way left/right. */
+  invertX: boolean
+  /** Mouse and arrow keys tilt the view the other way up/down. */
+  invertY: boolean
 }
+
+export const DEFAULT_SENSITIVITY: Sensitivity = { look: 1, aim: 1, invertX: true, invertY: false }
 
 export interface PauseParty {
   status(): string
@@ -40,9 +46,14 @@ function clampSensitivity(value: unknown): number {
 export function loadSensitivity(): Sensitivity {
   try {
     const raw = JSON.parse(localStorage.getItem(SENSITIVITY_KEY) ?? '{}') as Partial<Sensitivity>
-    return { look: clampSensitivity(raw.look), aim: clampSensitivity(raw.aim) }
+    return {
+      look: clampSensitivity(raw.look),
+      aim: clampSensitivity(raw.aim),
+      invertX: typeof raw.invertX === 'boolean' ? raw.invertX : DEFAULT_SENSITIVITY.invertX,
+      invertY: typeof raw.invertY === 'boolean' ? raw.invertY : DEFAULT_SENSITIVITY.invertY,
+    }
   } catch {
-    return { look: 1, aim: 1 }
+    return { ...DEFAULT_SENSITIVITY }
   }
 }
 
@@ -111,13 +122,17 @@ export class PauseMenu {
     const s = hooks.sensitivity()
     const lookRow = this.slider('Mouse look', s.look, (v) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), look: v }))
     const aimRow = this.slider('Scope & bow aim', s.aim, (v) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), aim: v }))
+    const flipX = this.toggle('Flip left/right turning', s.invertX, (on) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), invertX: on }))
+    const flipY = this.toggle('Flip up/down looking', s.invertY, (on) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), invertY: on }))
     const reset = button('Reset to default')
     reset.addEventListener('click', () => {
-      this.hooks.setSensitivity({ look: 1, aim: 1 })
+      this.hooks.setSensitivity({ ...DEFAULT_SENSITIVITY })
       lookRow.set(1)
       aimRow.set(1)
+      flipX.set(DEFAULT_SENSITIVITY.invertX)
+      flipY.set(DEFAULT_SENSITIVITY.invertY)
     })
-    look.append(lookRow.row, aimRow.row, h('p', 'panel-note', 'Also changes how fast the arrow keys turn the view.'), reset)
+    look.append(lookRow.row, aimRow.row, flipX.row, flipY.row, h('p', 'panel-note', 'Also changes how the arrow keys turn the view.'), reset)
 
     this.party = h('section', 'panel-section')
     this.note = h('p', 'panel-note')
@@ -181,6 +196,17 @@ export class PauseMenu {
       input.value = String(v)
       out.textContent = `${v.toFixed(2)}×`
     } }
+  }
+
+  private toggle(label: string, value: boolean, change: (on: boolean) => void): { row: HTMLElement; set(on: boolean): void } {
+    const row = h('label', 'pause-switch')
+    const input = h('input')
+    input.type = 'checkbox'
+    input.setAttribute('role', 'switch')
+    input.checked = value
+    input.addEventListener('change', () => change(input.checked))
+    row.append(input, h('span', undefined, label))
+    return { row, set: (on) => { input.checked = on } }
   }
 
   private async run(task: () => Promise<unknown>, failure: string): Promise<void> {

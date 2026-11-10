@@ -56,7 +56,7 @@ export interface EngineContext {
   groundRay(ground: Mesh, x: number, z: number): { y: number; normal: Vector3 } | null
   setAds(amount: number, zoom?: number): void
   /** Mouse-look multipliers from the pause menu: `look` normally, `aim` through the scope or a drawn bow. */
-  sensitivity: { look: number; aim: number }
+  sensitivity: { look: number; aim: number; invertX: boolean; invertY: boolean }
   /** Re-aims the key light (sun or moon) and the shadow frame; `direction` points from the light toward the ground. */
   setSunDirection(direction: Vector3): void
 }
@@ -273,7 +273,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       Vector3.CrossToRef(sunDirection, right, up)
       up.normalize()
     },
-    sensitivity: { look: 1, aim: 1 },
+    sensitivity: { look: 1, aim: 1, invertX: true, invertY: false },
     setAds(amount, zoom = 1) {
       const { look, aim } = ctx.sensitivity
       camera.fov = 0.9 + (0.21 / zoom - 0.9) * amount
@@ -281,6 +281,14 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
     },
   }
   ray.length = 600
+
+  camera.inputs.removeByType('FreeCameraMouseInput')
+  document.addEventListener('mousemove', (e) => {
+    if (document.pointerLockElement !== canvas) return
+    const { invertX, invertY } = ctx.sensitivity
+    camera.cameraRotation.y += (e.movementX * (invertX ? -1 : 1)) / camera.angularSensibility
+    camera.cameraRotation.x += (e.movementY * (invertY ? -1 : 1)) / camera.angularSensibility
+  })
 
   addEventListener('resize', () => engine.resize())
   return ctx

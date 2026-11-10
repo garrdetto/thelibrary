@@ -19,7 +19,7 @@ import { Autopilot, SPEED, SPEED_STEPS, buildLoops, findLaunch } from '../system
 import type { Launch, Pt, RouteName } from '../systems/BowRoutes'
 import { ArrowShot, BOW, CARP, CarpFight, CarpSchool, arrowSpeed, holdShake } from '../systems/BowfishingMotion'
 import type { Carp } from '../systems/BowfishingMotion'
-import { chooseCheer } from '../systems/Cheers'
+import { blurtAt, chooseCheer } from '../systems/Cheers'
 import type { CheerTrigger } from '../systems/Cheers'
 import { WaterFx } from '../systems/FishingFx'
 import type { LootTableManager, Specimen } from '../systems/LootTableManager'
@@ -80,22 +80,24 @@ const WALK_SPEED = 1.7
 const AIM_WALK_SPEED = 0.6
 const LINE_POINTS = 26
 const FISH_LENGTH = 1.12
+/** Seconds between Wild Man's blurts on the water (a little random either way). */
+const BLURT_GAP = 22
+/** He soaks in the beaching for a moment before you step off. */
+const BEACH_PAUSE = 3.6
 
 const LINES = {
   wait: 'Carp don\'t show till dark, bud. Pull up a bucket.',
-  board: 'Ope, watch yer step, bud. Bow\'s up on the deck. Lights are on, let\'s go find some carp.',
+  board: 'WOOOOO! Watch yer step, bud. Bow\'s up on the deck. Lights are on, let\'s go find some carp.',
   white: 'White light. Best for seein\' \'em.',
   amber: 'Amber cuts through the murk. Fewer bugs too, you betcha.',
   off: 'Lights off. Can\'t shoot what ya can\'t see, bud.',
   over: 'Over the back! Water bends the light. They\'re deeper than they look.',
   under: 'Under \'im! Not quite that low, bud. Ten feet out, four inches under.',
-  heading: 'Alrighty, takin\' \'er in.',
+  heading: 'Alrighty, takin\' \'er in. Hang on to somethin\', bud!',
   dawn: 'Sun\'s comin\' up, carp are done.',
   running: 'Hang on, bud!',
   faster: 'Pushin\' a little quicker.',
   slower: 'Easin\' off.',
-  hold: 'Holdin\' up.',
-  go: 'Here we go.',
   island: 'Over to the island flats. Hang on, bud!',
   shore: 'Back to the shoreline.',
   bay: 'Back bay, under the interstate. Hang on!',
@@ -186,6 +188,11 @@ export class Bowfishing {
   private spraySplash = 0
   private flopTimer = 3
   private homeAnnounced = false
+  private homeTimer = 0
+  private blurtTimer = 9
+  private blurts = 0
+  private followLift = 0
+  private followDocked = true
 
   constructor(private readonly host: BowfishingHost) {
     const { ctx, terrain, models } = host
@@ -352,7 +359,7 @@ export class Bowfishing {
     if (!this.aboard) return undefined
     const p = this.pilot
     const d: [number, number] = [Math.round(this.deckPos.x * 100) / 100, Math.round(this.deckPos.z * 100) / 100]
-    if (this.role === 'owner') return { o: [p.x, p.z, p.heading, p.speed, LIGHT_ORDER.indexOf(this.lights), p.mode === 'docked' ? 1 : 0], s: this.slot, d }
+    if (this.role === 'owner') return { o: [p.x, p.z, p.heading, p.speed, LIGHT_ORDER.indexOf(this.lights), p.mode === 'docked' ? 1 : 0, Math.round(p.lift * 100) / 100], s: this.slot, d }
     if (this.role === 'crew' && this.trip) return { w: this.trip.id, s: this.slot, d }
     return undefined
   }
@@ -407,6 +414,8 @@ export class Bowfishing {
   private board(): void {
     this.aboard = true
     this.homeAnnounced = false
+    this.homeTimer = 0
+    this.blurtTimer = 12
     this.tubCount = 0
     this.tubPounds = 0
     this.streak = 0
@@ -501,7 +510,6 @@ export class Bowfishing {
     if (this.role === 'owner' && !this.shoved && code === 'Space') {
       this.shoved = true
       p.depart()
-      this.say(LINES.board, true)
       return true
     }
     switch (code) {
@@ -515,8 +523,9 @@ export class Bowfishing {
         this.say(LINES.slower, true)
         return true
       case 'Space':
+        if (p.homeward) return true
         p.hold = !p.hold
-        this.say(p.hold ? LINES.hold : LINES.go, true)
+        this.host.hud.toast(p.hold ? 'Holding up' : 'Moving again')
         return true
       case 'KeyF': {
         if (p.homeward) return true
@@ -531,7 +540,7 @@ export class Bowfishing {
       case 'Tab':
         if (p.mode === 'docked') this.endTrip()
         else if (!p.homeward) {
-          p.headHome()
+          p.sendItHome()
           this.say(LINES.heading, true)
         }
         return true
@@ -604,6 +613,7 @@ export class Bowfishing {
         this.fx.update(dt, cam)
       } else this.idleBoat(dt)
       this.wild.update(dt)
+      this.chatter(dt)
       return
     }
     const p = this.pilot
@@ -611,20 +621,34 @@ export class Bowfishing {
       this.followTrip(dt)
     } else {
       if (this.host.lighting.night < DAWN && !p.homeward) {
-        p.headHome()
+        p.sendItHome()
         this.say(LINES.dawn, true)
       }
       const events = p.update(dt, this.fightActive)
-      if (events.onPlane) {
+      if (events.onPlane && !p.homeward) {
         this.say(LINES.running, true)
         this.host.audio.whoosh()
       }
+      if (events.airborne) this.yell('sendIt')
+      if (events.splashdown) this.splashdown()
+      if (events.beached) this.yell('beached')
       if (events.arrived === 'docked' && p.homeward && !this.homeAnnounced) {
         this.homeAnnounced = true
-        this.endTrip()
-        return
+        if (events.beached) this.homeTimer = BEACH_PAUSE
+        else {
+          this.endTrip()
+          return
+        }
+      }
+      if (this.homeTimer > 0) {
+        this.homeTimer -= dt
+        if (this.homeTimer <= 0) {
+          this.endTrip()
+          return
+        }
       }
     }
+    this.chatter(dt)
     this.moveBoat(dt)
     this.walk(dt, input)
     const running = p.onPlane
@@ -651,9 +675,18 @@ export class Bowfishing {
   private followTrip(dt: number): void {
     const t = this.trip
     if (!t) return
-    const [x, z, h, speed, light, docked] = t.pose
+    const [x, z, h, speed, light, docked, lift = 0] = t.pose
     const p = this.pilot
     const k = Math.min(1, dt * 8)
+    if (this.aboard) {
+      if (lift > 1 && this.followLift <= 1 && speed > SPEED.push) this.yell('sendIt')
+      if (docked && !this.followDocked && lift > 0.2) this.yell('beached')
+    }
+    this.followLift = lift
+    this.followDocked = docked === 1
+    p.liftSlope = Math.max(-1, Math.min(1, (lift - p.lift) / Math.max(1e-3, Math.abs(speed) * dt)))
+    p.lift += (lift - p.lift) * k
+    p.beached = docked === 1 && lift > 0.2
     if (Math.hypot(x - p.x, z - p.z) > 30) {
       p.x = x
       p.z = z
@@ -670,11 +703,14 @@ export class Bowfishing {
 
   private idleBoat(dt: number): void {
     this.pilot.mode = 'docked'
-    const b = this.launch.boat
-    this.pilot.x = b.x
-    this.pilot.z = b.z
-    this.pilot.heading = this.launch.boatHeading
     this.pilot.speed = 0
+    if (!this.pilot.beached) {
+      const b = this.launch.boat
+      this.pilot.x = b.x
+      this.pilot.z = b.z
+      this.pilot.heading = this.launch.boatHeading
+      this.pilot.lift = 0
+    }
     this.moveBoat(dt)
     this.fx.update(dt, this.ctx.camera)
   }
@@ -686,19 +722,21 @@ export class Bowfishing {
     this.lastHeading = p.heading
     const plane = p.planing
     const climb = Math.min(1, Math.max(0, (p.speed - SPEED.push) / (SPEED.run - SPEED.push)))
-    const bowUp = (Math.sin(climb * Math.PI) ** 0.8) * 0.105 + climb * 0.026
+    const out = Math.min(1, p.lift / 0.25)
+    const air = p.airborne || (p.lift > 1 && p.speed > SPEED.push)
+    const bowUp = (Math.sin(climb * Math.PI) ** 0.8) * 0.105 * (1 - out) + climb * 0.026 + Math.atan(p.liftSlope) * (air ? 0.9 : 0.5) + (p.beached ? 0.07 : 0)
     const bankTarget = Math.max(-0.14, Math.min(0.14, -turn * Math.abs(p.speed) * 0.045))
-    this.pitch += (bowUp - this.pitch) * Math.min(1, dt * 2.5)
+    this.pitch += (bowUp - this.pitch) * Math.min(1, dt * (air ? 6 : 2.5))
     this.roll += (bankTarget - this.roll) * Math.min(1, dt * 2)
-    const calm = 1 - plane * 0.6
-    this.bob = (bufferedSine(t * 1.4) * 0.025 + bufferedSine(t * 2.3 + 1.7) * 0.012) * calm + plane * 0.06
+    const calm = (1 - plane * 0.6) * (1 - out)
+    this.bob = (bufferedSine(t * 1.4) * 0.025 + bufferedSine(t * 2.3 + 1.7) * 0.012) * calm + plane * 0.06 * (1 - out)
     const rollBob = (bufferedSine(t * 1.1 + 0.6) * 0.022 + bufferedSine(t * 1.9) * 0.008) * calm
     const pitchBob = bufferedSine(t * 1.3 + 2.1) * 0.012 * calm
-    this.boatRoot.position.set(p.x, this.bob, p.z)
+    this.boatRoot.position.set(p.x, this.bob + p.lift, p.z)
     Quaternion.FromEulerAnglesToRef(-this.pitch + pitchBob, p.heading, this.roll + rollBob, this.boatRoot.rotationQuaternion!)
     if (this.prop) this.prop.rotation.z += p.speed * dt * 9
     const world = this.boatRoot.computeWorldMatrix(true)
-    if (p.speed > 0.6) {
+    if (p.speed > 0.6 && p.lift < 0.3) {
       this.wakeTimer -= dt
       if (this.wakeTimer <= 0) {
         this.wakeTimer = p.onPlane ? 0.07 : 0.3
@@ -706,7 +744,7 @@ export class Bowfishing {
         this.fx.ring(stern.x, stern.z, 0.8 + p.speed * 0.12, p.onPlane ? 0.9 : 0.45, 1.8, 1)
       }
     }
-    if (p.onPlane) {
+    if (p.onPlane && p.lift < 0.3) {
       this.spraySplash -= dt
       if (this.spraySplash <= 0) {
         this.spraySplash = 0.05
@@ -917,7 +955,48 @@ export class Bowfishing {
     const id = chooseCheer(trigger)
     this.say(this.wild.celebrate(id), true)
     if (id === 'crazy' || id === 'meltdown') this.host.audio.whoop(true)
-    else if (id === 'hype') this.host.audio.whoop(false)
+    else if (id === 'hype' || id === 'stacking') this.host.audio.whoop(false)
+  }
+
+  /** The run home: off the island and up onto the bank. */
+  private yell(id: 'sendIt' | 'beached'): void {
+    this.say(this.wild.celebrate(id), true)
+    this.host.audio.whoop(true)
+    this.host.audio.whoosh()
+    this.blurtTimer = Math.max(this.blurtTimer, 8)
+    if (id === 'beached') {
+      const bow = this.worldPoint(new Vector3(0, 0.1, BOWBOAT.length * 0.4))
+      for (let i = 0; i < 6; i++) this.fx.splash(bow.add(new Vector3((Math.random() - 0.5) * 2.5, 0, (Math.random() - 0.5) * 2.5)), 0.9)
+    }
+  }
+
+  private splashdown(): void {
+    const world = this.boatRoot.computeWorldMatrix(true)
+    for (const z of [-3, 0, 3]) {
+      const at = Vector3.TransformCoordinates(new Vector3(0, 0, z), world)
+      at.y = 0
+      this.fx.splash(at, 1)
+      this.fx.ring(at.x, at.z, 3, 1, 2.4, 1)
+    }
+    this.host.audio.splash(true)
+  }
+
+  /** Wild Man talks on his own: a blurt every so often on the water, and now and then at his camp when you're close. */
+  private chatter(dt: number): void {
+    this.blurtTimer -= dt
+    if (this.blurtTimer > 0 || this.sayTimer > -4) return
+    const p = this.pilot
+    let near = this.aboard
+    if (!near && !this.trip) {
+      const at = this.host.player.root.position
+      near = Math.hypot(at.x - this.launch.camp.x, at.z - this.launch.camp.z) < CAMP_RANGE * 4
+    }
+    if (!near || this.fight || this.landing || (this.aboard && p.onPlane && !p.homeward)) {
+      this.blurtTimer = 2
+      return
+    }
+    this.say(blurtAt(this.blurts++), true)
+    this.blurtTimer = (this.aboard ? BLURT_GAP : BLURT_GAP * 1.6) * (0.75 + Math.random() * 0.6)
   }
 
   private updateFight(dt: number, reel: boolean): void {
@@ -1040,7 +1119,7 @@ export class Bowfishing {
     }
     const tier = this.host.tubCarp(specimen)
     this.host.audio.splash(false)
-    this.cheer({ kind: 'tubbed', lengthIn: specimen.lengthIn, record: tier > 0, streak: this.streak })
+    this.cheer({ kind: 'tubbed', lengthIn: specimen.lengthIn, record: tier > 0, streak: this.streak, total: this.tubCount })
     if (!tier) this.host.hud.toast(`${formatValue('carp', specimen.value)} carp (${formatPounds(specimen.weightLb)}) into the tub`)
   }
 
