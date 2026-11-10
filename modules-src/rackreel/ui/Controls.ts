@@ -18,8 +18,12 @@ export function parseControl(segment: string): ControlRow {
   let s = segment.trim()
   const arrows = /arrow keys/i.test(s)
   if (arrows) s = s.replace(/\s*(?:·\s*)?arrow keys\s*/i, ' ').trim()
-  let m = /^(hold\s+)?R or right-click\s+(?:to\s+)?(.*)$/i.exec(s)
-  if (m) return { keys: ['R', 'RMB'], text: capital(`${m[1] ? 'hold to ' : ''}${m[2]}`) }
+  let m = /^WASD\s+(.*)$/.exec(s)
+  if (m) return { keys: ['W', 'A', 'S', 'D'], text: capital(m[1]) }
+  m = /^double right-click\s+(.*)$/i.exec(s)
+  if (m) return { keys: ['RMB', 'RMB'], text: capital(m[1]) }
+  m = /^(hold\s+)?R or (left|right)-click\s+(?:to\s+)?(.*)$/i.exec(s)
+  if (m) return { keys: ['R', m[2].toLowerCase() === 'left' ? 'LMB' : 'RMB'], text: capital(`${m[1] ? 'hold to ' : ''}${m[3]}`) }
   m = /^(hold\s+)?left-click\s+(?:to\s+)?(.*)$/i.exec(s)
   if (m) return { keys: ['LMB'], text: capital(`${m[1] ? 'hold to ' : ''}${m[2]}`) }
   m = /^(hold\s+)?right-click\s+(?:to\s+)?(.*)$/i.exec(s)

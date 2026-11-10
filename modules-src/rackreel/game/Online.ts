@@ -33,7 +33,7 @@ export interface PlayerState {
   v?: { k: 'utv' | 'boat' | 'quad'; p: [number, number, number]; q: [number, number, number]; s: [number, number, number]; a?: 1; d?: DeckSeat }
   r?: { o: string; s: [number, number, number] }
   /** Night bowfishing on Wisco Wild Man's boat: the trip owner sends the boat (`o`: x, z, heading, speed, light mode, docked); crew send the owner's id (`w`); everyone sends their shooting spot (`s`). */
-  b?: { o?: [number, number, number, number, number, number]; w?: string; s: number }
+  b?: { o?: [number, number, number, number, number, number]; w?: string; s: number; d?: [number, number] }
 }
 
 export interface BowTrip {
@@ -72,6 +72,8 @@ interface Remote {
   tag: HTMLDivElement
   rod: ModelRig
   rifle: ModelRig
+  /** Smoothed feet on the bowfishing boat. */
+  deck?: Vector3
 }
 
 export interface OnlineHooks {
@@ -85,7 +87,8 @@ export interface OnlineHooks {
   /** Wisco Wild Man's boat, which party members on a bowfishing trip stand on. */
   bowBoat(): TransformNode
   /** Feet position of a bowfishing spot in boat space. */
-  bowSpot(slot: number): Vector3
+  /** A party member's feet on the bowfishing boat (boat space): where they walked to, or their shooting spot. */
+  bowSpot(slot: number, deck?: [number, number]): Vector3
 }
 
 const VEHICLE_MODEL: Record<string, ModelName> = { utv: 'utv', boat: 'boat', quad: 'quad' }
@@ -310,8 +313,10 @@ export class Online {
     const root = r.avatar.root
     if (s.b) {
       this.removeVehicle(r)
-      const spot = this.hooks.bowSpot(s.b.s)
-      this.seatOn(root, this.hooks.bowBoat(), [spot.x, spot.y + HIP_HEIGHT, spot.z], s.f)
+      const spot = this.hooks.bowSpot(s.b.s, s.b.d)
+      if (!r.deck || Vector3.Distance(r.deck, spot) > 3) r.deck = spot.clone()
+      else r.deck.addInPlace(spot.subtract(r.deck).scale(Math.min(1, dt * 10)))
+      this.seatOn(root, this.hooks.bowBoat(), [r.deck.x, r.deck.y + HIP_HEIGHT, r.deck.z], s.f)
     } else if (s.v) {
       if (r.vehicleKind !== s.v.k) {
         this.removeVehicle(r)

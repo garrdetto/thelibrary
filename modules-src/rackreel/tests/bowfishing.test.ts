@@ -144,3 +144,25 @@ test('carp run 10 to 30 inches and the long ones are rare', () => {
   assert.ok(short > long * 2.5, `${short} short vs ${long} long`)
   assert.equal(loot.pickSpecies('fish', 'marsh').id === 'carp', false)
 })
+
+test('carp lengths: 25 % over 15 in, 10 % over 20 in, 5 % over 25 in, the rest 10 to 15 in', () => {
+  const loot = new LootTableManager(mulberry32(7))
+  const n = 40000
+  let over15 = 0
+  let over20 = 0
+  let over25 = 0
+  let low = 0
+  let high = 0
+  for (let i = 0; i < n; i++) {
+    const len = loot.createSpecimen('carp').lengthIn
+    if (len > 15) over15++
+    if (len > 20) over20++
+    if (len > 25) over25++
+    if (len <= 15) (len < 12.5 ? low++ : high++)
+  }
+  const near = (count: number, share: number) => Math.abs(count / n - share) < 0.012
+  assert.ok(near(over15, 0.25), `${over15 / n} over 15 in`)
+  assert.ok(near(over20, 0.1), `${over20 / n} over 20 in`)
+  assert.ok(near(over25, 0.05), `${over25 / n} over 25 in`)
+  assert.ok(low > high, 'shorter carp are commoner inside the 10–15 in band')
+})
