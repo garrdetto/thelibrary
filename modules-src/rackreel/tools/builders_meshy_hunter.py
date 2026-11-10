@@ -17,8 +17,8 @@ HUNTER_HAT_LIFT = {'cap-blaze': 0.06, 'cap-camo': 0.06, 'cap-bucket': 0.03}
 HUNTER_HAT_SCALE = 0.85
 HUNTER_HEM_SOURCE = 'hunter-flannel-none-jeans'
 HUNTER_HIP = 0.98
-HUNTER_BODY_TEXTURE = 1024
-HUNTER_PROP_TEXTURE = 512
+HUNTER_BODY_TEXTURE = 1536
+HUNTER_PROP_TEXTURE = 1024
 BONE_JOINT = {
     'Hips': 'hips', 'Spine02': 'torso', 'Spine01': 'torso', 'Spine': 'torso', 'Shoulder': 'torso',
     'neck': 'head', 'Head': 'head', 'head_end': 'head', 'headfront': 'head',

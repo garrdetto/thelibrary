@@ -49,7 +49,7 @@ function fabricTexture(scene: Scene): RawTexture {
 
 /** Turns a garment material matte: no sheen, and a fine woven grain in both colour and relief. */
 export function applyFabric(mat: StandardMaterial, scene: Scene): void {
-  mat.specularColor = new Color3(0.012, 0.011, 0.01)
+  mat.specularColor = new Color3(0.006, 0.0055, 0.005)
   mat.specularPower = 6
   mat.ambientColor = new Color3(0.26, 0.26, 0.26)
   mat.diffuseColor = new Color3(0.9, 0.88, 0.86)

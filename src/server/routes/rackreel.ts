@@ -5,7 +5,7 @@ import { currentUser, requireUser } from '../auth.js'
 import { ensureRackreelTables, loadCategoryBoard, loadRackreelProfile, loadRecordBoard, resetRecordBoard, saveRackreelProfile, saveRecords } from '../rackreel.js'
 import { canResetRecords } from '../records.js'
 import { CATEGORY_BY_ID } from '../../../modules-src/rackreel/shared/Records'
-import { FISH_COOLDOWN_MS, GAME_COOLDOWN_MS, ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, purchase } from '../../../modules-src/rackreel/shared/Economy'
+import { ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, eventCooldown, purchase } from '../../../modules-src/rackreel/shared/Economy'
 import type { GameEvent, Slot } from '../../../modules-src/rackreel/shared/Economy'
 import { RECORD_BOOK_SEED, SPECIES_BY_ID, classify } from '../../../modules-src/rackreel/systems/LootTableManager'
 import type { SpeciesId } from '../../../modules-src/rackreel/systems/LootTableManager'
@@ -79,7 +79,7 @@ export async function rackreel(request: Request, env: Env) {
       ? { type: 'fish', species: input.species, trophy, boat: input.boat, legendary }
       : { type: 'game', species: input.species, doe, stand: input.stand, trophy, legendary }
     const last = input.action === 'fish' ? profile.lastFishAt : profile.lastGameAt
-    const accepted = now - last >= (input.action === 'fish' ? FISH_COOLDOWN_MS : GAME_COOLDOWN_MS)
+    const accepted = now - last >= eventCooldown(input.action, input.species)
     const result = applyEvent(profile, event, doe ? 0 : sizeShare(input.species, input.value), now)
     paid = result.paid
     completed = result.completed
