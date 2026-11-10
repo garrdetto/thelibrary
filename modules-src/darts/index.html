@@ -17,7 +17,7 @@
       </div>
       <div class="d-scoreboard" id="scoreboard" aria-live="polite"></div>
       <div class="d-meter-wrap" id="meter-wrap">
-        <div class="d-meter" id="meter" aria-hidden="true"><div class="d-meter-track"><div class="d-meter-band" id="meter-band"></div><div class="d-meter-fill" id="meter-fill"></div></div></div>
+        <div class="d-meter" id="meter" aria-hidden="true"><div class="d-meter-track"><div class="d-meter-band" id="meter-band"></div><div class="d-meter-fill" id="meter-fill"></div></div><div class="d-hmeter" id="hmeter" hidden><div class="d-hmeter-track"><div class="d-hmeter-band" id="hmeter-band"></div><div class="d-hmeter-mark" id="hmeter-mark"></div></div></div></div>
         <div class="d-meter-label" id="meter-label"></div>
       </div>
       <div class="d-announce" id="announce" role="status" aria-live="assertive"></div>
@@ -41,6 +41,13 @@
           <label><input type="radio" name="board" value="spider" checked /><span>Soft Tip</span></label>
         </div>
         <p class="d-note">A regulation board at 1.73 m, thrown from 2.37 m. Soft Tip: any bed can finish 301 and 501 with Double Bull on, and Cricket uses a split bull.</p>
+
+        <h2>Throw meter</h2>
+        <div class="d-seg" role="radiogroup" aria-label="Throw meter">
+          <label><input type="radio" name="meterStyle" value="classic" checked /><span>Classic</span></label>
+          <label><input type="radio" name="meterStyle" value="cross" /><span>Cross (test)</span></label>
+        </div>
+        <p class="d-note">Cross: let go to lock the height (miss high or low), then click again to stop the side meter (miss left or right).</p>
 
         <h2 id="format-title">Format</h2>
         <div class="d-seg" id="format-seg" role="radiogroup" aria-label="Format">
@@ -154,7 +161,7 @@
         <div class="d-setup-foot">
           <details class="d-help">
             <summary>How to throw</summary>
-            Click and hold on the board to aim (move to fine-tune) and a power meter swings; let go in the green band. Between the two white lines is Perfect and flies true, the rest of the green lands within seven holes, and in the red the dart drops (too soft) or rides high (too hard). Right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green, <kbd>Esc</kbd> cancels a throw, <kbd>P</kbd> or <kbd>Esc</kbd> pauses. The record book is below the board on this page (in pass &amp; play and tournaments, Player 1 is you; team matches aren't recorded).
+            Click and hold on the board to aim (move to fine-tune) and a power meter swings; let go in the green band. Between the two white lines is Perfect and flies true, the rest of the green misses slightly (more the further from the lines), and in the red the dart drops (too soft) or rides high (too hard). Right-click cancels. Keyboard: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> aim (<kbd>Shift</kbd> for fine), hold <kbd>Space</kbd> and release in the green, <kbd>Esc</kbd> cancels a throw. With the Cross (test) meter, letting go locks the height and a second click or <kbd>Space</kbd> stops the side meter; <kbd>P</kbd> or <kbd>Esc</kbd> pauses. The record book is below the board on this page (in pass &amp; play and tournaments, Player 1 is you; team matches aren't recorded).
           </details>
           <div class="d-actions">
             <button type="button" class="d-btn" id="resume-btn" hidden>Back to the oche</button>
@@ -178,6 +185,11 @@
         <div class="d-seg" role="radiogroup" aria-label="Board">
           <label><input type="radio" name="pauseBoard" value="steel" /><span>Steel Tip</span></label>
           <label><input type="radio" name="pauseBoard" value="spider" /><span>Soft Tip</span></label>
+        </div>
+        <h2>Throw meter</h2>
+        <div class="d-seg" role="radiogroup" aria-label="Throw meter">
+          <label><input type="radio" name="pauseMeter" value="classic" /><span>Classic</span></label>
+          <label><input type="radio" name="pauseMeter" value="cross" /><span>Cross (test)</span></label>
         </div>
         <div class="d-error" id="pause-error" role="status"></div>
       </div>

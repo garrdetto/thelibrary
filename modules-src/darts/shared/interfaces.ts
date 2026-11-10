@@ -179,6 +179,8 @@ export interface ThrowIntent {
   speed: number
   yaw: number
   wobble: number
+  /** Cross meter (test option) only: where the horizontal meter stopped, as a fraction of the ideal speed off its middle (negative left, positive right). */
+  cross?: number
 }
 
 /** Everything needed to replay one dart's flight on any screen: the release point and the velocity after human error. */

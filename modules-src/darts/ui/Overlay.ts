@@ -40,6 +40,26 @@ function meterRange(): { low: number; high: number } {
   return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
 }
 
+/** The side meter's width over the power meter's height, so a fraction of the ideal speed is the same length on both. */
+function sideScale(): number {
+  return (2 * METER.sideRange) / (config.gesture.chargeHigh - config.gesture.chargeLow)
+}
+
+/** Where a side reading (a fraction of the ideal speed, negative left) sits across the side meter, as a CSS percentage. */
+function sideAt(fraction: number): string {
+  return `${(Math.max(0, Math.min(1, (fraction + METER.sideRange) / (2 * METER.sideRange))) * 100).toFixed(3)}%`
+}
+
+/** The side meter's colours, left to right, from the same zones and blend as the power meter. */
+function sideGradient(): string {
+  const blend = METER.fade + (BAND - METER.fade) * 0.6
+  const stops: [string, number][] = [
+    ['#e8433a', -METER.sideRange], ['#e8433a', -BAND - TO_RED], ['#ffcf4a', -BAND], ['#ffcf4a', -blend], ['#90d15a', -METER.fade], ['#22d36a', -PERFECT * 0.4],
+    ['#22d36a', PERFECT * 0.4], ['#90d15a', METER.fade], ['#ffcf4a', blend], ['#ffcf4a', BAND], ['#e8433a', BAND + TO_RED], ['#e8433a', METER.sideRange],
+  ]
+  return `linear-gradient(to right, ${stops.map(([color, fraction]) => `${color} ${sideAt(fraction)}`).join(', ')})`
+}
+
 const MARK_GLYPHS = ['', '/', 'X', 'Ⓧ']
 
 export class Overlay {
@@ -65,7 +85,11 @@ export class Overlay {
   private queue: Announcement[] = []
 
   private readonly meterWrap = el<HTMLDivElement>('meter-wrap')
+  private readonly hmeter = el<HTMLDivElement>('hmeter')
+  private readonly hmeterMark = el<HTMLDivElement>('hmeter-mark')
   private meterSpot = ''
+  private cross = false
+  private sideShown = ''
   private fillShown = ''
   private labelShown = ''
 
@@ -73,15 +97,17 @@ export class Overlay {
   placeMeter(x: number, y: number, boardPx: number, width: number, height: number): void {
     if (!width || !height) return
     const meterHeight = Math.round(Math.min(height * 0.7, Math.max(140, boardPx * 0.8)))
-    const left = Math.round(Math.min(width - 44, Math.max(8, x + 14)))
+    const half = this.cross ? ((meterHeight - 12) * sideScale() + 12) / 2 : 17
+    const left = Math.round(Math.min(width - 27 - half, Math.max(8, x + 14 + half - 17)))
     const top = Math.round(Math.min(height - meterHeight / 2 - 8, Math.max(meterHeight / 2 + 8, y)))
-    const tight = left + 40 + 150 > width
-    const spot = `${left}:${top}:${meterHeight}:${tight}`
+    const tight = left + 23 + half + 150 > width
+    const spot = `${left}:${top}:${meterHeight}:${tight}:${this.cross}`
     if (spot === this.meterSpot) return
     this.meterSpot = spot
     this.meterWrap.style.setProperty('--meter-x', `${left}px`)
     this.meterWrap.style.setProperty('--meter-y', `${top}px`)
     this.meterWrap.style.setProperty('--meter-h', `${meterHeight}px`)
+    this.meterWrap.style.setProperty('--h-half', `${half}px`)
     this.meterWrap.classList.toggle('is-tight', tight)
   }
 
@@ -103,6 +129,12 @@ export class Overlay {
     style.setProperty('--tail-hi', at(BLEND_END))
     style.setProperty('--exact-lo', at(-PERFECT * METER.exact))
     style.setProperty('--exact-hi', at(PERFECT * METER.exact))
+    const sideBand = el<HTMLDivElement>('hmeter-band').style
+    sideBand.background = sideGradient()
+    sideBand.setProperty('--exact-lo', sideAt(-PERFECT * METER.exact))
+    sideBand.setProperty('--exact-hi', sideAt(PERFECT * METER.exact))
+    this.meterWrap.style.setProperty('--h-scale', String(sideScale()))
+    this.meterWrap.style.setProperty('--green-at', String((IDEAL_SPEED - low) / (high - low)))
     style.setProperty('--band-hi', at(BAND))
     style.setProperty('--red-hi', at(BAND + TO_RED))
     this.setPower(null)
@@ -137,7 +169,7 @@ export class Overlay {
       : statusText ?? (mine ? (state.players.length > 1 || player.members ? `${who} to throw` : 'Your throw') : `${who} is throwing`)
     this.renderThrows(player.currentRoundThrows)
     this.renderCheckout(state, player)
-    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? 'Hold to aim and power up · let go in the green · Space works too' : ''
+    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? (this.cross ? 'Hold to aim, let go in the green for height · click again in the green for line' : 'Hold to aim and power up · let go in the green · Space works too') : ''
   }
 
   private renderCards(state: GameState): void {
@@ -238,6 +270,38 @@ export class Overlay {
     if (label !== this.labelShown) {
       this.labelShown = label
       this.meterLabel.dataset.zone = zone
+      this.meterLabel.textContent = label
+    }
+  }
+
+  /** Turns the cross meter (test option) on or off: a side meter crossing the power meter at the green. */
+  setCross(on: boolean): void {
+    if (on === this.cross) return
+    this.cross = on
+    this.hmeter.hidden = !on
+    this.meterWrap.classList.toggle('is-cross', on)
+    this.meterSpot = ''
+  }
+
+  /** The side meter's live reading (a fraction of the ideal speed, negative left), or null when it isn't sweeping. */
+  setSide(side: number | null): void {
+    if (side === null) {
+      this.meterWrap.classList.remove('is-sweep')
+      this.sideShown = ''
+      return
+    }
+    this.meterWrap.classList.add('is-sweep')
+    const left = sideAt(side)
+    if (left !== this.sideShown) {
+      this.sideShown = left
+      this.hmeterMark.style.left = left
+    }
+    const zone = meterZone(IDEAL_SPEED * (1 + Math.abs(side)))
+    const words = { perfect: 'Perfect!', green: 'Great', yellow: 'Good', low: 'Wide', high: 'Wide' } as const
+    const label = `${words[zone]} · ${zone === 'perfect' ? 'centre' : side < 0 ? 'left' : 'right'}`
+    if (label !== this.labelShown) {
+      this.labelShown = label
+      this.meterLabel.dataset.zone = zone === 'high' ? 'low' : zone
       this.meterLabel.textContent = label
     }
   }

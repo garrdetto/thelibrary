@@ -144,6 +144,26 @@ function saveBoardStyle(style: BoardStyle): void {
   }
 }
 
+const METER_KEY = 'tl-darts-meter'
+
+type MeterStyle = 'classic' | 'cross'
+
+function savedMeterStyle(): MeterStyle {
+  try {
+    return localStorage.getItem(METER_KEY) === 'cross' ? 'cross' : 'classic'
+  } catch {
+    return 'classic'
+  }
+}
+
+function saveMeterStyle(style: MeterStyle): void {
+  try {
+    localStorage.setItem(METER_KEY, style)
+  } catch {
+    /* private mode */
+  }
+}
+
 const CPU_NAMES:Record<CpuLevel, string> = { pub: 'Pub regular', league: 'League player', county: 'County player', pro: 'Touring pro' }
 
 async function boot(): Promise<void> {
@@ -249,6 +269,9 @@ async function boot(): Promise<void> {
     power(speed) {
       overlay.setPower(speed)
     },
+    side(side) {
+      overlay.setSide(side)
+    },
     release(intent) {
       if (!session?.canThrow()) return
       sounds.unlock()
@@ -257,6 +280,23 @@ async function boot(): Promise<void> {
   })
   app.own(input)
   input.setAim(input.aimX, input.aimY)
+  const meterRadios = () => [...document.querySelectorAll<HTMLInputElement>('input[name="meterStyle"], input[name="pauseMeter"]')]
+  const applyMeter = (style: MeterStyle) => {
+    for (const radio of meterRadios()) radio.checked = radio.value === style
+    if (input.holding) input.interrupt()
+    input.cross = style === 'cross'
+    overlay.setCross(input.cross)
+    meterKey = ''
+    if (shown) overlay.render(shown, localIds)
+  }
+  for (const radio of meterRadios()) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return
+      const style: MeterStyle = radio.value === 'cross' ? 'cross' : 'classic'
+      saveMeterStyle(style)
+      applyMeter(style)
+    })
+  }
 
   const refreshHand = () => {
     const state = session?.state ?? null
@@ -804,6 +844,7 @@ async function boot(): Promise<void> {
   const stageSize = { width: container.clientWidth, height: container.clientHeight }
   const hudSize = { width: overlay.hud.clientWidth, height: overlay.hud.clientHeight }
   let meterKey = ''
+  applyMeter(savedMeterStyle())
   const sizes = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const target = entry.target === container ? stageSize : hudSize
