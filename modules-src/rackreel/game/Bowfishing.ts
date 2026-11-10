@@ -446,6 +446,11 @@ export class Bowfishing {
     }
   }
 
+  /** Respawn: ends the trip on the spot, wherever the boat is. */
+  abandon(): void {
+    if (this.aboard) this.endTrip()
+  }
+
   private endTrip(): void {
     this.aboard = false
     this.role = 'none'
