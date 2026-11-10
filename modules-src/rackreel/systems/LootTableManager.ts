@@ -69,6 +69,13 @@ export const BELOW_AVERAGE_SHARE = 0.6
 export const NEAR_RECORD_FRACTION = 0.95
 /** Bucks top out at 20 points; past that is a freak rack, 0.005% of bucks. */
 export const MAX_TYPICAL_POINTS = 20
+/** Carp length bands, inches: `upTo` is the cumulative share; the last band runs to the near-record window. `k` is how fast the longer ones thin out inside the band. */
+export const CARP_BANDS: readonly { from: number; to?: number; upTo: number; k: number }[] = [
+  { from: 10, to: 15, upTo: 0.75, k: 1.2 },
+  { from: 15, to: 20, upTo: 0.9, k: 1.6 },
+  { from: 20, to: 25, upTo: 0.95, k: 1.6 },
+  { from: 25, upTo: 1, k: 2.5 },
+]
 export const FREAK_RACK_CHANCE = 0.00005
 
 export const SPECIES: SpeciesTemplate[] = [
@@ -77,7 +84,7 @@ export const SPECIES: SpeciesTemplate[] = [
   { id: 'pike', name: 'Northern Pike', kind: 'fish', model: 'fish-pike', unit: 'lb', measure: 'Weight', min: 1.5, avg: 4.5, max: 14, habitats: ['weeds', 'marsh'], weight: 0.22, trophyAt: 14, fight: 0.7, facts: 'Pike spawn in flooded marsh as soon as the ice goes out and patrol the weed beds all summer.' },
   { id: 'smallmouth', name: 'Smallmouth Bass', kind: 'fish', model: 'fish-smallmouth', unit: 'lb', measure: 'Weight', min: 0.7, avg: 1.9, max: 5, habitats: ['rocks'], weight: 0.18, trophyAt: 5, fight: 0.6, facts: 'Bronze-sided bass of clear, rocky water; they hold where crayfish hide among boulders.' },
   { id: 'perch', name: 'Yellow Perch', kind: 'fish', model: 'fish-perch', unit: 'lb', measure: 'Weight', min: 0.15, avg: 0.45, max: 1.2, habitats: ['weeds', 'marsh', 'deep'], weight: 0.22, trophyAt: 1.2, fight: 0.25, facts: 'Perch school by size; find one and you have found a dozen. A key food for walleye and pike.' },
-  { id: 'carp', name: 'Common Carp', kind: 'fish', model: 'fish-carp', unit: 'in', measure: 'Length', min: 10, avg: 16, max: 26, cap: 30, habitats: ['marsh', 'weeds'], weight: 0, trophyAt: 26, fight: 0.8, facts: 'An invasive rough fish that roots up weed beds and muddies the water. Bowfishers take them at night on the shallow flats, which helps the native fish. Only taken with a bow, from Wisco Wild Man\'s boat.' },
+  { id: 'carp', name: 'Common Carp', kind: 'fish', model: 'fish-carp', unit: 'in', measure: 'Length', min: 10, avg: 13, max: 26, cap: 30, habitats: ['marsh', 'weeds'], weight: 0, trophyAt: 26, fight: 0.8, facts: 'An invasive rough fish that roots up weed beds and muddies the water. Bowfishers take them at night on the shallow flats, which helps the native fish. Only taken with a bow, from Wisco Wild Man\'s boat.' },
   { id: 'whitetail', name: 'White-tailed Deer', kind: 'game', model: 'deer', unit: 'in', measure: 'Antler score', min: 75, avg: 115, max: 160, habitats: ['forest', 'marsh'], weight: 0.75, trophyAt: 160, fight: 0, facts: 'Antlers grow and drop every year. The score adds beam length, tine length, inside spread and circumferences in inches.' },
   { id: 'blackbear', name: 'Black Bear', kind: 'game', model: 'bear', unit: 'lb', measure: 'Weight', min: 120, avg: 210, max: 400, habitats: ['forest'], weight: 0.25, trophyAt: 400, fight: 0, facts: 'Northern Wisconsin holds one of the densest black bear populations in the country. Record bears are ranked by skull size, length plus width.' },
 ]
@@ -233,6 +240,18 @@ export class LootTableManager {
     return avg + (trophyAt - avg) * decay(this.rng(), 4.5) * 0.999
   }
 
+  /**
+   * Carp by length band: 75 % run 10–15 in, 15 % 15–20 in, 5 % 20–25 in and 5 % over 25 in
+   * (so 25 % are over 15 in and 10 % over 20 in). Inside each band the longer ones are rarer,
+   * and the top band runs up to the near-record window, which stays at `RARITY` odds.
+   */
+  carpValue(template: SpeciesTemplate): number {
+    const u = this.rng()
+    const band = CARP_BANDS.find((b) => u < b.upTo) ?? CARP_BANDS[CARP_BANDS.length - 1]
+    const to = band.to ?? nearRecordAt(template.id)
+    return band.from + (to - band.from) * decay(this.rng(), band.k) * 0.999
+  }
+
   /** A trophy: from the trophy line up toward the near-record window, smaller ones commoner. */
   trophyValue(template: SpeciesTemplate): number {
     const top = nearRecordAt(template.id)
@@ -255,15 +274,17 @@ export class LootTableManager {
   createSpecimen(speciesId: SpeciesId, trophyOdds = 1): Specimen {
     const template = SPECIES_BY_ID[speciesId]
     const rolled = this.rollClass(trophyOdds)
+    const banded = speciesId === 'carp' && rolled !== 'record' && rolled !== 'near-record'
     let value = rolled === 'record' ? this.recordValue(template)
       : rolled === 'near-record' ? this.nearRecordValue(template)
-        : rolled === 'trophy' ? this.trophyValue(template)
-          : this.baselineValue(template)
+        : banded ? this.carpValue(template)
+          : rolled === 'trophy' ? this.trophyValue(template)
+            : this.baselineValue(template)
     value = round1(Math.max(template.min, value))
     const top = RECORD_BOOK_SEED[speciesId][0].value
     if (rolled === 'record') value = Math.max(value, round1(top + 0.1))
     else if (value > top) value = top
-    if (rolled === 'trophy') value = Math.max(value, template.trophyAt)
+    if (rolled === 'trophy' && !banded) value = Math.max(value, template.trophyAt)
     if (template.cap !== undefined) value = Math.min(value, template.cap)
     const sizeClass = classify(speciesId, value)
     const legendary = sizeClass === 'record' || sizeClass === 'near-record'

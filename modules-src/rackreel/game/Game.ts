@@ -56,7 +56,7 @@ import { ANCHOR_MAX_SPEED, BOARD_MAX_SPEED, BOARD_RANGE, CONSOLE_SEAT, DECK_SEAT
 import type { DeckSeat } from './BoatSeats'
 import type { RemoteBoat } from './Online'
 import { Bowfishing } from './Bowfishing'
-import { BOWBOAT } from './BowBoat'
+import { BOWBOAT, deckHeight } from './BowBoat'
 import { Clock, hourFromSearch } from '../systems/TimeOfDay'
 import { Lighting } from '../world/Lighting'
 import { buildHighway } from '../world/Highway'
@@ -124,6 +124,8 @@ export class Game {
   private keys = new Set<string>()
   private leftDown = false
   private rightDown = false
+  /** Left button pressed since the last frame while bowfishing: loose the arrow. */
+  private bowShoot = false
   /** Double right-click keeps the scope up without holding the button (for trackpads). */
   private scopeLock = false
   private lastRightAt = 0
@@ -272,7 +274,7 @@ export class Game {
       },
       localBoat: () => (this.vehicles.active === this.boat ? this.boat.root : null),
       bowBoat: () => this.bowfish.boatNode,
-      bowSpot: (slot) => BOWBOAT.spots[slot] ?? BOWBOAT.spots[0],
+      bowSpot: (slot, deck) => (deck ? new Vector3(deck[0], deckHeight(deck[1]), deck[1]) : BOWBOAT.spots[slot] ?? BOWBOAT.spots[0]),
     })
     this.online.id = this.sessionKey
     this.online.carry(this.avatar.root)
@@ -518,28 +520,32 @@ export class Game {
     document.addEventListener('pointerlockchange', () => {
       if (!document.pointerLockElement && this.playing && !this.hud.modalOpen) this.pause()
     })
-    document.addEventListener('pointerdown', (e) => {
+    document.addEventListener('mousedown', (e) => {
       if (!this.playing || this.hud.modalOpen || document.pointerLockElement !== this.canvas) return
       if (e.button === 0) {
         this.leftDown = true
-        if (this.mode === 'bowfish') return
+        if (this.mode === 'bowfish') {
+          this.bowShoot = true
+          return
+        }
         this.primaryDown()
       } else if (e.button === 2) {
         this.rightDown = true
         const now = performance.now()
+        const bow = this.mode === 'bowfish'
         if (this.scopeLock) {
           this.scopeLock = false
           this.lastRightAt = 0
-        } else if (this.tool === 'rifle' && now - this.lastRightAt < DOUBLE_CLICK_MS) {
+        } else if ((this.tool === 'rifle' || bow) && now - this.lastRightAt < DOUBLE_CLICK_MS) {
           this.scopeLock = true
           this.lastRightAt = 0
-          this.hud.toast('Scope locked on. Left-click to fire; right-click again to lower it.')
+          this.hud.toast(bow ? 'Bow locked up. Left-click to shoot; right-click again to lower it.' : 'Scope locked on. Left-click to fire; right-click again to lower it.')
         } else {
           this.lastRightAt = now
         }
       }
     })
-    document.addEventListener('pointerup', (e) => {
+    document.addEventListener('mouseup', (e) => {
       if (e.button === 0) {
         this.leftDown = false
         if (this.playing && this.mode !== 'bowfish') this.primaryUp()
@@ -992,8 +998,8 @@ export class Game {
     const stance = this.mode === 'vehicle' || this.mode === 'stand' || this.mode === 'crew' ? 'sit' : this.mode === 'climb' ? (this.climbT < this.layout.climbSplit ? 'climb' : 'sit') : 'stand'
     if (this.mode === 'bowfish') {
       const lo = this.progress.profile.loadout
-      const swivel = this.ctx.camera.rotation.y - this.bowfish.boatHeading
-      return { id: this.online.id, n: this.online.name, p: [this.foot.x, this.foot.y, this.foot.z], f: Math.atan2(Math.sin(swivel), Math.cos(swivel)), st: 'stand', h: this.bowfish.hands, sp: 0, c: false, cl: 0, ap: this.ctx.camera.rotation.x, o: [lo.jacket, lo.vest, lo.cap, lo.pants, lo.pack], b: this.bowfish.netState() }
+      const swivel = this.avatar.root.rotation.y
+      return { id: this.online.id, n: this.online.name, p: [this.foot.x, this.foot.y, this.foot.z], f: Math.atan2(Math.sin(swivel), Math.cos(swivel)), st: 'stand', h: this.bowfish.hands, sp: Math.round(this.bowfish.walkSpeed * 10) / 10, c: false, cl: 0, ap: this.ctx.camera.rotation.x, o: [lo.jacket, lo.vest, lo.cap, lo.pants, lo.pack], b: this.bowfish.netState() }
     }
     const at = this.mode === 'vehicle' || this.mode === 'crew' ? this.foot : r.position
     const state: PlayerState = {
@@ -1240,7 +1246,16 @@ export class Game {
     this.vehicles.update(dt, input)
     const bowfishing = this.mode === 'bowfish'
     this.bowfish.setParty(this.online.bowTrip(), this.online.bowSlots(), this.online.active && this.online.members.length > 0)
-    this.bowfish.update(dt, { draw: this.leftDown && locked, reel: (this.keys.has('KeyR') || this.rightDown) && active, locked })
+    const walkKeys = bowfishing && active
+    this.bowfish.update(dt, {
+      aim: bowfishing && this.aimHeld,
+      shoot: this.bowShoot,
+      reel: (this.keys.has('KeyR') || this.leftDown) && active,
+      locked,
+      forward: walkKeys ? this.key('KeyW') - this.key('KeyS') : 0,
+      right: walkKeys ? this.key('KeyD') - this.key('KeyA') : 0,
+    })
+    this.bowShoot = false
     if (bowfishing) this.bowfish.feet(this.foot)
     else if (v && !v.anchored) this.audio.engine(true, Math.abs(v.speed) / 16, v.kind === 'BOAT')
     else this.audio.engine(false, 0, false)
@@ -1248,9 +1263,9 @@ export class Game {
     this.hideOverlappedBoat()
     if (this.mode === 'vehicle' && v && this.deckSeat !== null) this.swivel = swivelToward(this.swivel, cam.rotation.y, v.heading, dt)
     const sprint = this.keys.has('ShiftLeft') || this.keys.has('ShiftRight')
-    const canAim = (this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle'
+    const canAim = ((this.mode === 'foot' || this.mode === 'stand') && this.tool === 'rifle') || bowfishing
     if (!canAim) this.scopeLock = false
-    const wantAds = canAim && this.aimHeld && locked
+    const wantAds = canAim && !bowfishing && this.aimHeld && locked
     this.ads += ((wantAds ? 1 : 0) - this.ads) * Math.min(1, dt * 10)
     if (!bowfishing) this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0, this.progress.effects.scopeZoom)
     this.gruntCooldown = Math.max(0, this.gruntCooldown - dt)

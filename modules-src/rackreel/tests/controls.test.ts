@@ -16,6 +16,13 @@ test('control hints become keycaps and labels', () => {
   assert.deepEqual(parseControls('Right-click to aim · Shift to hold your breath'), [{ keys: ['RMB'], text: 'Aim' }, { keys: ['Shift'], text: 'Hold your breath' }])
   assert.deepEqual(parseControls('Press 2 for the rifle · E to climb down'), [{ keys: ['2'], text: 'The rifle' }, { keys: ['E'], text: 'Climb down' }])
   assert.deepEqual(parseControls('Click the view for mouse look · arrow keys also look around'), [{ keys: ['LMB'], text: 'Mouse look' }, { keys: ['←', '↑', '↓', '→'], text: 'Also look around' }])
+  assert.deepEqual(parseControls('Right-click to aim · double right-click locks it · WASD walk the deck · T/G speed'), [
+    { keys: ['RMB'], text: 'Aim' },
+    { keys: ['RMB', 'RMB'], text: 'Locks it' },
+    { keys: ['W', 'A', 'S', 'D'], text: 'Walk the deck' },
+    { keys: ['T', 'G'], text: 'Speed' },
+  ])
+  assert.deepEqual(parseControls('Hold R or left-click to reel the arrow back'), [{ keys: ['R', 'LMB'], text: 'Hold to reel the arrow back' }])
   assert.deepEqual(parseControls('Climbing up…'), [{ keys: [], text: 'Climbing up…' }])
   assert.deepEqual(parseControls('Watch the bobber… R to reel in'), [{ keys: [], text: 'Watch the bobber… R to reel in' }])
   assert.deepEqual(parseControls(''), [])
