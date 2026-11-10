@@ -3,11 +3,12 @@ import type { CSSProperties } from 'react'
 import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play, Trophy } from 'lucide-react'
 import { isModuleAvailable, learningModules } from '@/lib/modules'
 import type { ModuleId } from '@/lib/modules'
-import { formatScore, isScoredModule, scoredModules } from '@/lib/module-scores'
+import type { ScoredModuleId } from '@/lib/module-scores'
+import { formatScore, isScoredModule, scoreBoardParent, scoredModules } from '@/lib/module-scores'
 
 type PopularBoard = { module: string; plays: number; records: { username: string; value: number }[] }
 
-type Slide = { id: ModuleId; title: string; subject: string; image: string; accent: string; records: PopularBoard['records']; metric: string; plays: number }
+type Slide = { id: ModuleId; board: ScoredModuleId; title: string; subject: string; image: string; accent: string; records: PopularBoard['records']; metric: string; plays: number }
 
 const rotateMs = 6000
 
@@ -25,10 +26,14 @@ export function HubSlideshow({ onLaunch, fallbackId }: { onLaunch: (id: ModuleId
     return () => { active = false }
   }, [])
 
+  const seen = new Set<string>()
   const slides: Slide[] = (boards ?? []).flatMap(board => {
-    const item = learningModules.find(entry => entry.id === board.module)
-    if (!item || !isModuleAvailable(item.id) || !isScoredModule(board.module) || !board.records.length) return []
-    return [{ id: item.id, title: item.title, subject: item.subject, image: item.image, accent: item.accent, records: board.records, metric: scoredModules[board.module].title, plays: board.plays }]
+    if (!isScoredModule(board.module)) return []
+    const boardId = board.module
+    const item = learningModules.find(entry => entry.id === scoreBoardParent(boardId))
+    if (!item || !isModuleAvailable(item.id) || !board.records.length || seen.has(item.id)) return []
+    seen.add(item.id)
+    return [{ id: item.id, board: boardId, title: item.title, subject: item.subject, image: item.image, accent: item.accent, records: board.records, metric: scoredModules[boardId].title, plays: board.plays }]
   })
   const fallback = learningModules.find(entry => entry.id === fallbackId) ?? learningModules[0]
   const count = slides.length
@@ -59,7 +64,7 @@ export function HubSlideshow({ onLaunch, fallbackId }: { onLaunch: (id: ModuleId
         <small>{current.subject} · {current.plays.toLocaleString()} results saved</small>
         <strong>{current.title}</strong>
         <ol aria-label={`${current.title} ${current.metric}`}>
-          {current.records.map((record, place) => <li key={`${record.username}-${place}`}><span>{place + 1}</span><em>{record.username}</em><b>{isScoredModule(current.id) ? formatScore(current.id, record.value) : record.value}</b></li>)}
+          {current.records.map((record, place) => <li key={`${record.username}-${place}`}><span>{place + 1}</span><em>{record.username}</em><b>{formatScore(current.board, record.value)}</b></li>)}
         </ol>
         <button type="button" className="hub-slide-play" onClick={() => onLaunch(current.id)}>Play {current.title} <ArrowRight size={14}/></button>
       </div>

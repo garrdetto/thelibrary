@@ -44,7 +44,8 @@ const PRESETS = [
   { match: /^(maplestreet\/town|sandlot3d\/ballpark_|shorttrack\/track_|botwreck\/arena|botwreck\/crates)/, name: 'static', join: true, simplify: 0, textureQuality: 92 },
   { match: /^shorttrack\/(crowd|trees)_/, name: 'instanced', join: false, simplify: 0, textureQuality: 92, compress: false },
   { match: /^hood\/furniture\.glb$/, name: 'props', join: true, flatten: false, palette: false, simplify: 0, textureQuality: 92 },
-  { match: /^(sandlot3d\/(athlete|field_detail)|hood\/(sim|vehicles))\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
+  { match: /^(sandlot3d\/(athlete|field_detail)|hood\/(sim|vehicles)|proskater\/board)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
+  { match: /^proskater\/skater\.glb$/, name: 'character', join: false, flatten: false, simplify: 0, textureQuality: 92 },
   { match: /^sandlot3d\//, name: 'figure', join: true, simplify: 0, textureQuality: 92 },
   { match: /./, name: 'rig', join: true, flatten: false, simplify: 0, textureQuality: 92 },
 ]
@@ -213,14 +214,27 @@ async function report() {
 
 /* ------------------------------------------------------------------ worker ------------------------------------------------------------------ */
 
+/** Uses the sharp build that @gltf-transform's ndarray-pixels loads, so Windows never maps two libvips builds into one process. */
+async function loadSharp() {
+  const { createRequire } = await import('node:module')
+  const { pathToFileURL } = await import('node:url')
+  try {
+    const fromFunctions = createRequire(createRequire(import.meta.url).resolve('@gltf-transform/functions'))
+    const fromPixels = createRequire(fromFunctions.resolve('ndarray-pixels'))
+    return (await import(pathToFileURL(fromPixels.resolve('sharp')).href)).default
+  } catch {
+    return (await import('sharp')).default
+  }
+}
+
 async function worker() {
-  const [{ Document, Logger, NodeIO, Extension, ExtensionProperty, PropertyType, TextureInfo, TextureChannel }, { ALL_EXTENSIONS, EXTMeshoptCompression, EXTTextureWebP }, fn, meshopt, sharp] =
+  const sharp = await loadSharp()
+  const [{ Document, Logger, NodeIO, Extension, ExtensionProperty, PropertyType, TextureInfo, TextureChannel }, { ALL_EXTENSIONS, EXTMeshoptCompression, EXTTextureWebP }, fn, meshopt] =
     await Promise.all([
       import('@gltf-transform/core'),
       import('@gltf-transform/extensions'),
       import('@gltf-transform/functions'),
       import('meshoptimizer'),
-      import('sharp').then((m) => m.default),
     ])
   const { MeshoptEncoder, MeshoptSimplifier } = meshopt
   await Promise.all([MeshoptEncoder.ready, MeshoptSimplifier.ready])

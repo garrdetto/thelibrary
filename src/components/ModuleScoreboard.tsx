@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { LoaderCircle, RefreshCw, Trophy } from 'lucide-react'
 import { postReset, useRecordResetTarget } from './AdminRecordReset'
 import { learningModules } from '@/lib/modules'
-import { formatScore, scoredModules } from '@/lib/module-scores'
+import { formatScore, scoreBoardParent, scoredModules } from '@/lib/module-scores'
 import type { ModuleScoreBoard, ScoredModuleId } from '@/lib/module-scores'
 
 type LoadState = 'loading' | 'ready' | 'error'
 
-export function ModuleScoreboard({ module, username }: { module: ScoredModuleId; username: string | null }) {
+export function ModuleScoreboard({ module, username, tabs }: { module: ScoredModuleId; username: string | null; tabs?: ReactNode }) {
   const config = scoredModules[module]
-  const info = learningModules.find(item => item.id === module)
+  const info = learningModules.find(item => item.id === scoreBoardParent(module))
   const [board, setBoard] = useState<ModuleScoreBoard | null>(null)
   const [state, setState] = useState<LoadState>('loading')
   const [refreshing, setRefreshing] = useState(false)
@@ -43,7 +43,7 @@ export function ModuleScoreboard({ module, username }: { module: ScoredModuleId;
 
   useRecordResetTarget({
     key: `scores:${module}`,
-    label: `${info?.title ?? 'module'} leaderboard`,
+    label: `${info?.title ?? 'module'}${scoreBoardParent(module) !== module ? ` ${config.title}` : ''} leaderboard`,
     description: `Every saved ${info?.title ?? ''} result will be deleted for all players.`,
     reset: async () => { await postReset('/api/module-scores', 'POST', { action: 'reset-records', module }); await load(true) },
   })
@@ -67,6 +67,7 @@ export function ModuleScoreboard({ module, username }: { module: ScoredModuleId;
         <button type="button" className="module-scores-refresh" onClick={() => void load(true)} disabled={state === 'loading' || refreshing} aria-label="Refresh leaderboard"><RefreshCw size={14} className={refreshing ? 'spin' : undefined}/> Refresh</button>
       </div>
     </header>
+    {tabs}
     {state === 'loading' && <p className="module-scores-status" role="status"><LoaderCircle size={16} className="spin"/> Loading the leaderboard…</p>}
     {state === 'error' && <p className="module-scores-status is-error" role="alert">The leaderboard is unavailable right now. <button type="button" onClick={() => void load()}>Try again</button></p>}
     {state === 'ready' && (records.length

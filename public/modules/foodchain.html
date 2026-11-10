@@ -90,6 +90,7 @@ function hud() {
   $('grow').style.width = Math.max(0, Math.min(100, (S.me.r - START_R) / (STAGE_R - START_R) * 100)) + '%';
 }
 function start() {
+  if (S && (mode === 'play' || mode === 'pause') && S.score > 0 && window.tlScores) tlScores.submit('foodchain', S.score);
   S = fresh(); mode = 'play'; overlay.classList.remove('show'); panel.focus();
   for (let i = 0; i < 9; i++) { spawnFish(i < 6); S.fish[S.fish.length - 1].x = rand(60, W - 60); }
   S.fish = S.fish.filter(f => Math.hypot(f.x - W / 2, f.y - H / 2) > 120);

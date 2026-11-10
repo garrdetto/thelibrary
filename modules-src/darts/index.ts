@@ -172,6 +172,7 @@ async function boot(): Promise<void> {
   let shown: GameState | null = null
   let localIds: Set<string> | null = null
   let currentSetup: Setup | null = null
+  let countUpKey = ''
   let lastLobbyMessage = ''
 
   const input = new ThrowInput(container, app.camera, {
@@ -249,6 +250,11 @@ async function boot(): Promise<void> {
     if (list.some((item) => item.kind === 'oneEighty' || item.kind === 'checkout' || item.kind === 'matchWon')) sounds.cheer()
   }
 
+  const rankedCountUp = (state: GameState): boolean =>
+    session?.kind === 'local' && !!currentSetup && currentSetup.spread !== 'easy' && state.players.length === 1 && state.config.rules.mode === 'countup' && state.config.rules.rounds === 8
+
+  const countUpRun = (): string => (countUpKey ||= `countup-${Date.now()}-${Math.random().toString(36).slice(2)}`)
+
   const finishNote = (state: GameState): string => {
     const mode = recordMode(state.config)
     const where = `the ${BOARD_NAMES[state.config.board === 'spider' ? 'spider' : 'steel']} record book`
@@ -256,7 +262,8 @@ async function boot(): Promise<void> {
     if (!currentSetup) return ''
     const rules = state.config.rules
     const notes: string[] = []
-    if (state.players.length === 1 && rules.mode === 'countup' && rules.rounds === 8 && currentSetup.spread !== 'easy') void Scores.submit(SCORE_MODULE, state.players[0].score)
+    if (rankedCountUp(state)) void Scores.submit(SCORE_MODULE, state.players[0].score, { key: countUpRun() })
+    countUpKey = ''
     if (currentSetup.spread === 'easy') notes.push('Easy steadiness is not ranked; play on Normal or Hard to post a record.')
     else if (mode && book.signedIn) {
       if (countsForAverages(state)) book.saveAverage(state, matchAverages(state).find((average) => average.playerId === 'p1'))
@@ -271,6 +278,7 @@ async function boot(): Promise<void> {
       hand.visible = false
       sounds.whoosh()
       recordLeg(state)
+      if (state.status === 'playing' && rankedCountUp(state)) Scores.progress(SCORE_MODULE, state.players[0].score, { key: countUpRun() })
       flights.throw(flight, color, () => {
         sounds.thunk(dart.multiplier === 0)
         render(state)
@@ -304,6 +312,7 @@ async function boot(): Promise<void> {
   }
 
   const leaveSession = () => {
+    countUpKey = ''
     session?.dispose()
     session = null
     shown = null
@@ -535,6 +544,7 @@ async function boot(): Promise<void> {
       return
     }
     flights.clear()
+    countUpKey = ''
     current.rematch()
     overlay.show('none')
     overlay.announceAll([{ kind: 'score', text: 'Restarted', playerId: '' }])
@@ -588,6 +598,7 @@ async function boot(): Promise<void> {
   })
   byId('results-again').addEventListener('click', () => {
     flights.clear()
+    countUpKey = ''
     session?.rematch()
     if (session?.kind === 'local') overlay.show('none')
   })

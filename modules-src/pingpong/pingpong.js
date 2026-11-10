@@ -691,7 +691,11 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+function closeCpuRun() {
+  if (M && M.state !== 'done' && M.pads && !M.pads[1].human && M.bestRally >= 2 && window.tlScores) window.tlScores.submit('pingpong', M.bestRally);
+}
 function startMatch() {
+  closeCpuRun();
   M = newMatch();
   M.pads[1].human = opts.mode !== 'cpu';
   M.firstServer = Math.random() < 0.5 ? 0 : 1;
@@ -859,6 +863,7 @@ window.addEventListener('message', (event) => {
   for (const o of document.querySelectorAll('#modeSeg button')) o.setAttribute('aria-pressed', String(o.dataset.mode === 'online'));
   opts.mode = 'online'; $('levelGroup').hidden = true; $('onlineGroup').hidden = false;
   if (M && M.state !== 'done') showMenu('Spin Rally', 'Opening an online room…', false);
+  closeCpuRun();
   M = null;
   net.host();
 });
