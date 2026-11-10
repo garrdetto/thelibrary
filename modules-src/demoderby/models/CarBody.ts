@@ -1,4 +1,4 @@
-/** Car model factory: a lofted 1970s full-size wagon or sedan (fender arches and flares, rocker and belt creases, hood crown, raked glass, pillars) at crush resolution, chrome bumpers that sag and fall off, sealed-beam lamps that break, grille, taillights, treaded tires on steel wheels that bend, go flat and come off, glass that cracks, a dark caged interior, the spray-painted number decals and a contact shadow. The paint is a node material that scrapes through to bare steel and soot where the shell has been hit (a per-vertex `wear` channel written by `dent`). Everything is in the chassis frame (forward is -Z, origin `centreHeight` above the ground). */
+/** Car model factory: a lofted 1970s full-size wagon or sedan (fender arches and flares, rocker and belt creases, hood crown, raked glass, pillars) at crush resolution, chrome bumpers that sag and fall off, a hood and trunk lid (or tailgate) that buckle and then tear off to show the engine bay or the load floor, an exhaust that drops, drags sparks and falls off, a frame that bends the whole shell into a banana, sealed-beam lamps that break, grille, taillights, treaded tires on steel wheels that bend, go flat and come off, glass that cracks, a dark caged interior, the spray-painted number decals and a contact shadow. The paint is a node material that scrapes through to bare steel and soot where the shell has been hit (a per-vertex `wear` channel written by `dent`). Everything is in the chassis frame (forward is -Z, origin `centreHeight` above the ground). */
 import * as THREE from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { paintById, type BodySpec } from '../config'
@@ -12,7 +12,7 @@ const { attribute, float, materialColor, materialRoughness, mix, smoothstep, tex
 
 export interface DetachedPart {
   object: THREE.Object3D
-  kind: 'bumper' | 'wheel'
+  kind: 'bumper' | 'wheel' | 'hood' | 'trunk' | 'exhaust'
 }
 
 export interface CarModel {
@@ -26,6 +26,8 @@ export interface CarModel {
   dent(point: THREE.Vector3, direction: THREE.Vector3, strength: number, spec: DentSpec): void
   /** Shows the component damage: bumpers sag then drop, the hood and tailgate buckle, lamps break, glass cracks, lost wheels disappear. Returns parts that came off, already moved into world space, for the debris. */
   showDamage(damage: CarDamage): DetachedPart[]
+  /** World position where a dragging exhaust scrapes the ground, or null when it is bolted up or gone. */
+  exhaustTip(target: THREE.Vector3): THREE.Vector3 | null
   dispose(): void
 }
 
@@ -532,6 +534,49 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     root.add(group)
   }
 
+  const exhaustSteel = new THREE.MeshStandardMaterial({ color: new THREE.Color('#5a4c42'), roughness: 0.7, metalness: 0.55 })
+  const exhaust = new THREE.Group()
+  exhaust.name = 'exhaust'
+  const exhaustLength = frame.tailZ + 0.05 - frame.bZ
+  exhaust.position.set(frame.half * 0.42, spec.sill - 0.06 - y0, frame.bZ)
+  const pipe = new THREE.Mesh(bar(new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, exhaustLength), 0.032), exhaustSteel)
+  const muffler = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.62, 14).rotateX(Math.PI / 2).translate(0, 0, exhaustLength * 0.42), exhaustSteel)
+  const tipDrop = new THREE.Mesh(bar(new THREE.Vector3(0, 0, exhaustLength), new THREE.Vector3(0, -0.05, exhaustLength + 0.08), 0.034), exhaustSteel)
+  pipe.castShadow = true
+  muffler.castShadow = true
+  exhaust.add(pipe, muffler, tipDrop)
+  root.add(exhaust)
+
+  const engineBay = new THREE.Group()
+  engineBay.name = 'engine-bay'
+  engineBay.visible = false
+  const bayFront = frame.noseZ + 0.32
+  const bayBack = frame.cowlZ - 0.12
+  const bayLength = bayBack - bayFront
+  const block = new THREE.Mesh(roundedBox(0.62, 0.34, bayLength * 0.62, 0.04), new THREE.MeshStandardMaterial({ color: new THREE.Color('#2b2d31'), roughness: 0.55, metalness: 0.6 }))
+  block.position.set(0, spec.noseTop - 0.26 - y0, bayFront + bayLength * 0.55)
+  const covers = new THREE.MeshStandardMaterial({ color: new THREE.Color(seed % 2 ? '#c0392b' : '#d2d4d6'), roughness: 0.3, metalness: seed % 2 ? 0.2 : 0.9 })
+  for (const side of [-1, 1]) {
+    const cover = new THREE.Mesh(roundedBox(0.16, 0.1, bayLength * 0.58, 0.03), covers)
+    cover.position.set(side * 0.2, spec.noseTop - 0.06 - y0, bayFront + bayLength * 0.55)
+    cover.rotation.z = side * 0.35
+    engineBay.add(cover)
+  }
+  const cleaner = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.08, 24), chrome)
+  cleaner.position.set(0, spec.noseTop + 0.02 - y0, bayFront + bayLength * 0.5)
+  const radiator = new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.62, 0.38, 0.07), new THREE.MeshStandardMaterial({ map: grilleMap(), color: new THREE.Color('#6f747a'), roughness: 0.5, metalness: 0.7 }))
+  radiator.position.set(0, spec.noseTop - 0.24 - y0, bayFront - 0.08)
+  const hoses = new THREE.Mesh(bar(new THREE.Vector3(0.18, spec.noseTop - 0.12 - y0, bayFront - 0.04), new THREE.Vector3(0.1, spec.noseTop - 0.14 - y0, bayFront + bayLength * 0.3), 0.03), dark)
+  block.castShadow = true
+  engineBay.add(block, cleaner, radiator, hoses)
+  root.add(engineBay)
+
+  const loadFloor = new THREE.Mesh(new THREE.BoxGeometry(spec.width * 0.78, 0.04, 0.9), dark)
+  loadFloor.name = 'load-floor'
+  loadFloor.visible = false
+  loadFloor.position.set(0, spec.sill + 0.22 - y0, frame.tailZ - 0.55)
+  root.add(loadFloor)
+
   const lampY = (spec.sill + spec.noseTop) / 2 + 0.1
   const lampZ = frame.noseZ - 0.015
   const lampXs = spec.quadLamps ? [0.58, 0.8] : [0.72]
@@ -762,7 +807,121 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     }
   }
 
-  const shown = { version: -1, bolts: { frontBumper: 0, rearBumper: 0 }, hood: 0, trunk: 0, lamps: [false, false, false, false], wheels: [false, false, false, false] }
+  const shown = { version: -1, bolts: { frontBumper: 0, rearBumper: 0 }, hood: 0, trunk: 0, exhaust: 0, bend: 0, lamps: [false, false, false, false], wheels: [false, false, false, false] }
+
+  const shift = (select: (x: number, y: number, z: number) => number, dx: number, dy: number, dz: number, darkTo: number | null): void => {
+    for (const part of deformables) {
+      const position = part.geometry.attributes.position as THREE.BufferAttribute
+      const array = position.array as Float32Array
+      let touched = false
+      for (let i = 0; i < position.count; i++) {
+        const k = select(part.original[i * 3], part.original[i * 3 + 1], part.original[i * 3 + 2])
+        if (k <= 0) continue
+        touched = true
+        for (const target of [array, part.original]) {
+          target[i * 3] += dx * k
+          target[i * 3 + 1] += dy * k
+          target[i * 3 + 2] += dz * k
+        }
+        if (darkTo !== null && part.colors) {
+          for (let c = 0; c < 3; c++) part.colors[i * 3 + c] = part.colors[i * 3 + c] * (1 - k) + darkTo * k
+        }
+        if (darkTo !== null && part.wear) part.wear[i] = Math.max(part.wear[i], 1.25 * k)
+      }
+      if (!touched) continue
+      position.needsUpdate = true
+      if (part.colors) (part.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true
+      if (part.wear) (part.geometry.attributes.wear as THREE.BufferAttribute).needsUpdate = true
+      part.geometry.computeVertexNormals()
+      part.geometry.computeBoundingSphere()
+    }
+  }
+  const lidPanel = (width: number, length: number, thickness: number): THREE.Mesh => {
+    const geometry = roundedBox(width, thickness, length, 0.02)
+    const count = geometry.attributes.position.count
+    const colors = new Float32Array(count * 3).fill(0.82)
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3))
+    const wear = new Float32Array(count)
+    for (let i = 0; i < count; i++) wear[i] = 0.55 + 0.6 * hashNoise(i, seed, 3)
+    geometry.setAttribute('wear', new THREE.BufferAttribute(wear, 1))
+    const mesh = new THREE.Mesh(geometry, paint)
+    mesh.castShadow = true
+    return mesh
+  }
+  const tearHood = (): THREE.Object3D => {
+    const z0 = frame.noseZ + 0.1
+    const z1 = frame.cowlZ - 0.03
+    const edge = frame.half * 0.82
+    shift((x, y, z) => {
+      if (z < z0 || z > z1 || y + y0 < spec.noseTop - 0.1 || Math.abs(x) > edge) return 0
+      return smoothstep01((edge - Math.abs(x)) / 0.16) * smoothstep01((z - z0) / 0.12) * smoothstep01((z1 - z) / 0.12)
+    }, 0, -0.24, 0, 0.07)
+    engineBay.visible = true
+    const piece = lidPanel(edge * 2, z1 - z0, 0.04)
+    piece.position.set(0, spec.noseTop + 0.08 - y0, (z0 + z1) / 2)
+    piece.rotation.set(0.25, 0.1, -0.08)
+    root.add(piece)
+    return detachWorld(piece)
+  }
+  const tearTrunk = (): THREE.Object3D => {
+    const edge = frame.half * 0.8
+    let piece: THREE.Mesh
+    if (spec.id === 'wagon') {
+      const bottom = spec.sill + 0.12
+      const top = spec.tailTop - 0.04
+      shift((x, y, z) => {
+        const height = y + y0
+        if (z < frame.tailZ - 0.04 || height < bottom || height > top || Math.abs(x) > edge) return 0
+        return smoothstep01((edge - Math.abs(x)) / 0.14) * smoothstep01((height - bottom) / 0.1) * smoothstep01((top - height) / 0.1)
+      }, 0, 0, -0.3, 0.08)
+      loadFloor.visible = true
+      piece = lidPanel(edge * 2, top - bottom, 0.05)
+      piece.rotation.set(Math.PI / 2 - 0.3, 0.12, 0.05)
+      piece.position.set(0, (top + bottom) / 2 - y0, frame.tailZ + 0.1)
+    } else {
+      const z0 = frame.tailGlassZ + 0.06
+      const z1 = frame.tailZ - 0.06
+      shift((x, y, z) => {
+        if (z < z0 || z > z1 || y + y0 < spec.tailTop - 0.1 || Math.abs(x) > edge) return 0
+        return smoothstep01((edge - Math.abs(x)) / 0.16) * smoothstep01((z - z0) / 0.1) * smoothstep01((z1 - z) / 0.1)
+      }, 0, -0.22, 0, 0.07)
+      loadFloor.visible = true
+      piece = lidPanel(edge * 2, z1 - z0, 0.04)
+      piece.position.set(0, spec.tailTop + 0.08 - y0, (z0 + z1) / 2)
+      piece.rotation.set(-0.22, -0.1, 0.06)
+    }
+    root.add(piece)
+    return detachWorld(piece)
+  }
+  const bendShell = (amount: number): void => {
+    const delta = amount - shown.bend
+    if (Math.abs(delta) < 0.004) return
+    shown.bend = amount
+    const span = spec.length
+    for (const part of deformables) {
+      const position = part.geometry.attributes.position as THREE.BufferAttribute
+      const array = position.array as Float32Array
+      for (let i = 0; i < position.count; i++) {
+        const t = clamp01((part.original[i * 3 + 2] - frame.noseZ) / span)
+        const arc = Math.sin(t * Math.PI)
+        const dx = delta * 0.17 * arc
+        const dy = -Math.abs(delta) * 0.05 * arc
+        array[i * 3] += dx
+        array[i * 3 + 1] += dy
+        part.original[i * 3] += dx
+        part.original[i * 3 + 1] += dy
+      }
+      position.needsUpdate = true
+      part.geometry.computeVertexNormals()
+      part.geometry.computeBoundingSphere()
+    }
+  }
+  const tipLocal = new THREE.Vector3(0, -0.05, exhaustLength + 0.08)
+  const exhaustTip = (target: THREE.Vector3): THREE.Vector3 | null => {
+    if (shown.exhaust !== 1 || exhaust.parent !== root) return null
+    exhaust.updateMatrixWorld(true)
+    return exhaust.localToWorld(target.copy(tipLocal))
+  }
   const scrapeSpec: DentSpec = { radius: 0.9, depth: 0.12, maxDepth: 0.5, darken: 0.2 }
   const detachWorld = (object: THREE.Object3D): THREE.Object3D => {
     root.updateMatrixWorld(true)
@@ -789,15 +948,27 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
       }
     }
     if (damage.lids.hood > shown.hood) {
+      if (shown.hood === 0) {
+        const hoodZ = (frame.noseZ + frame.cowlZ) / 2
+        dent(new THREE.Vector3(0, spec.noseTop + 0.04 - y0, hoodZ), new THREE.Vector3(0, 1, 0.15).normalize(), 0.9, scrapeSpec)
+      }
+      if (damage.lids.hood === 2) out.push({ object: tearHood(), kind: 'hood' })
       shown.hood = damage.lids.hood
-      const hoodZ = (frame.noseZ + frame.cowlZ) / 2
-      dent(new THREE.Vector3(0, spec.noseTop + 0.04 - y0, hoodZ), new THREE.Vector3(0, 1, 0.15).normalize(), 0.9, scrapeSpec)
     }
     if (damage.lids.trunk > shown.trunk) {
+      if (shown.trunk === 0) {
+        const trunkZ = (frame.tailGlassZ + frame.tailZ) / 2
+        dent(new THREE.Vector3(0, spec.tailTop + 0.02 - y0, trunkZ), new THREE.Vector3(0, 1, -0.15).normalize(), 0.8, scrapeSpec)
+      }
+      if (damage.lids.trunk === 2) out.push({ object: tearTrunk(), kind: 'trunk' })
       shown.trunk = damage.lids.trunk
-      const trunkZ = (frame.tailGlassZ + frame.tailZ) / 2
-      dent(new THREE.Vector3(0, spec.tailTop + 0.02 - y0, trunkZ), new THREE.Vector3(0, 1, -0.15).normalize(), 0.8, scrapeSpec)
     }
+    if (damage.exhaust > shown.exhaust) {
+      shown.exhaust = damage.exhaust
+      if (damage.exhaust === 1) exhaust.rotation.set(Math.atan2(Math.max(0.05, spec.sill - 0.09), exhaustLength), 0, 0.04)
+      else if (exhaust.parent === root) out.push({ object: detachWorld(exhaust), kind: 'exhaust' })
+    }
+    bendShell(damage.frameBend * Math.min(1, (1 - damage.frame / 100) * 1.6))
     damage.lamps.forEach((isBroken, i) => {
       if (!isBroken || shown.lamps[i]) return
       shown.lamps[i] = true
@@ -843,5 +1014,5 @@ export function createCar(spec: BodySpec, look: CarLook, seed = 0): CarModel {
     })
   }
 
-  return { root, body, decals, wheels, paint, shadow, dent, showDamage, dispose }
+  return { root, body, decals, wheels, paint, shadow, dent, showDamage, exhaustTip, dispose }
 }

@@ -6,7 +6,7 @@ import type { ParkRideCategory } from '@/lib/park-rides'
 /** How each built-in ride moves, so neighbours can be matched on motion as well as size. */
 const BUILTIN_MOTION: Record<string, CustomRideMotion['type']> = {
   carousel: 'spin', teacups: 'spin', ferris: 'wheel', swings: 'spin', bumper: 'bob', ship: 'swing', dropTower: 'drop', topSpin: 'swing', karts: 'bob',
-  zipper: 'wheel', gravitron: 'spin', waterslide: 'none', bodySlides: 'none', tubeSlides: 'none', familyRaft: 'none', bowlSlide: 'spin', funnelSlide: 'swing',
+  zipper: 'wheel', gravitron: 'spin', demoDerby: 'bob', waterslide: 'none', bodySlides: 'none', tubeSlides: 'none', familyRaft: 'none', bowlSlide: 'spin', funnelSlide: 'swing',
   halfPipe: 'swing', trapdoor: 'drop', matRacer: 'none', aquaLoop: 'wheel', surfRider: 'bob', splashPad: 'none', kiddieLagoon: 'none', bucketFort: 'none',
   lilyPads: 'bob', cliffJump: 'drop', pool: 'none', wavePool: 'bob',
 }

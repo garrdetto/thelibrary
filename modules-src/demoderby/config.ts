@@ -171,6 +171,24 @@ export interface ComponentDamageSpec {
   fireBurn: number
   /** Body and roof loss when a car rolls onto its lid. */
   rollLoss: number
+  /** Frame integrity lost per point of body loss (hits smaller than frameMinLoss leave the frame straight). */
+  frameShare: number
+  frameMinLoss: number
+  /** Corner integrity under which the crushed fender rubs its tire, and tire wear per metre rolled while it rubs. */
+  rubBelow: number
+  rubWear: number
+  /** Driveline integrity under which rear hits can strip a gear, and the chance per hit. */
+  gearLossBelow: number
+  gearChance: number
+  /** A front hit losing at least stallLoss can stall the engine (base chance) for about stallSeconds. */
+  stallLoss: number
+  stallChance: number
+  stallSeconds: number
+  /** Corner average under which the hood or trunk lid tears off. */
+  lidOff: number
+  /** Rear average under which the exhaust drops and drags, and tears off. */
+  exhaustDrag: number
+  exhaustOff: number
 }
 
 /** What damage does to the drive: grip, suspension, steering and power. */
@@ -193,6 +211,11 @@ export interface HandlingSpec {
   pullPerToe: number
   /** Drive force left with a dead driveline. */
   driveFloor: number
+  /** Rear-axle steer (rad) of a fully bent frame (the car crabs), and the drag of a bent frame. */
+  frameCrab: number
+  frameDrag: number
+  /** Rolling drag (brake units) of a fender rubbing its tire. */
+  rubDrag: number
 }
 
 export interface DamagePreset {
@@ -272,7 +295,7 @@ export interface ModuleConfig {
   damagePresets: readonly DamagePreset[]
   scoring: ScoringSpec
   heat: { minOpponents: number; maxOpponents: number; defaultOpponents: number; countdownSeconds: number; spawnRing: number; finishHoldSeconds: number }
-  camera: { chaseDistance: number; chaseHeight: number; lookAhead: number; stiffness: number; orbitSpeed: number; pitchMin: number; pitchMax: number; standPosition: readonly [number, number, number] }
+  camera: { chaseDistance: number; chaseHeight: number; lookAhead: number; stiffness: number; orbitSpeed: number; pitchMin: number; pitchMax: number; standPosition: readonly [number, number, number]; parkStandPosition: readonly [number, number, number] }
   dust: { count: number; life: number; size: number; color: string; slipSpeed: number }
   smoke: { count: number; life: number; size: number; color: string }
   sparks: { count: number; life: number; size: number; color: string }
@@ -497,6 +520,18 @@ export const config: ModuleConfig = {
       fireBelow: 10,
       fireBurn: 2.5,
       rollLoss: 14,
+      frameShare: 1.15,
+      frameMinLoss: 3,
+      rubBelow: 42,
+      rubWear: 0.9,
+      gearLossBelow: 42,
+      gearChance: 0.3,
+      stallLoss: 8,
+      stallChance: 0.22,
+      stallSeconds: 1.8,
+      lidOff: 16,
+      exhaustDrag: 58,
+      exhaustOff: 26,
     },
     handling: {
       bentGrip: 0.55,
@@ -510,6 +545,9 @@ export const config: ModuleConfig = {
       steerLoss: 0.45,
       pullPerToe: 0.5,
       driveFloor: 0.45,
+      frameCrab: 0.07,
+      frameDrag: 3,
+      rubDrag: 4,
     },
   },
   ai: [
@@ -524,7 +562,7 @@ export const config: ModuleConfig = {
   ],
   scoring: { hitPoints: 100, knockoutPoints: 250, winPoints: 1000, survivalPerSecond: 2 },
   heat: { minOpponents: 3, maxOpponents: 9, defaultOpponents: 6, countdownSeconds: 3, spawnRing: 0.78, finishHoldSeconds: 2.5 },
-  camera: { chaseDistance: 9.5, chaseHeight: 4.2, lookAhead: 2.5, stiffness: 5.5, orbitSpeed: 0.0045, pitchMin: 0.08, pitchMax: 0.9, standPosition: [-21, 10, -17] },
+  camera: { chaseDistance: 9.5, chaseHeight: 4.2, lookAhead: 2.5, stiffness: 5.5, orbitSpeed: 0.0045, pitchMin: 0.08, pitchMax: 0.9, standPosition: [-21, 10, -17], parkStandPosition: [31, 11, 7] },
   dust: { count: 900, life: 1.8, size: 1.1, color: '#b8946a', slipSpeed: 2.5 },
   smoke: { count: 600, life: 2.6, size: 1.2, color: '#4d4945' },
   sparks: { count: 500, life: 0.55, size: 0.09, color: '#ffc46b' },
@@ -591,6 +629,14 @@ export function damageFor(presetId: string): DamageSpec {
       bumperOff: Math.min(90, 100 - (100 - c.bumperOff) / k),
       lidOpen: Math.min(90, 100 - (100 - c.lidOpen) / k),
       lightBreak: Math.min(98, 100 - (100 - c.lightBreak) / k),
+      frameShare: c.frameShare * k,
+      rubBelow: Math.min(90, 100 - (100 - c.rubBelow) / k),
+      gearLossBelow: Math.min(90, 100 - (100 - c.gearLossBelow) / k),
+      gearChance: Math.min(1, c.gearChance * k),
+      stallChance: Math.min(1, c.stallChance * k),
+      lidOff: Math.min(80, 100 - (100 - c.lidOff) / k),
+      exhaustDrag: Math.min(95, 100 - (100 - c.exhaustDrag) / k),
+      exhaustOff: Math.min(85, 100 - (100 - c.exhaustOff) / k),
     },
   }
 }

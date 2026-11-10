@@ -1,4 +1,4 @@
-/** Opponent driving: picks targets by distance, weakness, an exposed flank and a wall to pin against; leads moving targets and aims at hurt corners and wheels; backs in to protect a hurt engine; dodges cars charging its flank; steers by the angle to its aim point (with its own bent-wheel pull taken out), lifts and brakes for tight turns, three-points out of hopeless angles, avoids wrecks and walls, and breaks out when stuck or not closing. Writes only the car's controls. */
+/** Opponent driving (and driving round stripped gears: a car with only reverse backs into everything): picks targets by distance, weakness, an exposed flank and a wall to pin against; leads moving targets and aims at hurt corners and wheels; backs in to protect a hurt engine; dodges cars charging its flank; steers by the angle to its aim point (with its own bent-wheel pull taken out), lifts and brakes for tight turns, three-points out of hopeless angles, avoids wrecks and walls, and breaks out when stuck or not closing. Writes only the car's controls. */
 import * as THREE from 'three/webgpu'
 import { config, type AiLevel } from '../config'
 import type { Vehicle } from './Vehicle'
@@ -157,6 +157,16 @@ function incoming(car: Vehicle, cars: readonly Vehicle[]): { threat: Vehicle; et
 }
 
 export function driveAi(brain: AiBrain, car: Vehicle, cars: readonly Vehicle[], arena: { halfL: number; halfW: number }, dt: number): void {
+  plan(brain, car, cars, arena, dt)
+  const controls = car.controls
+  const gears = car.gears
+  if ((controls.throttle > 0 && !gears.forward) || (controls.throttle < 0 && !gears.reverse)) {
+    controls.throttle = -controls.throttle * 0.85
+    controls.steer = -controls.steer
+  }
+}
+
+function plan(brain: AiBrain, car: Vehicle, cars: readonly Vehicle[], arena: { halfL: number; halfW: number }, dt: number): void {
   const controls = car.controls
   const level = brain.level
   if (!car.alive) {
@@ -173,6 +183,9 @@ export function driveAi(brain: AiBrain, car: Vehicle, cars: readonly Vehicle[], 
   const chosen = brain.targetId === null ? null : cars.find((other) => other.id === brain.targetId) ?? null
   const pull = car.steerPull
   const throttleCap = urgent(car) ? 1 : level.throttle
+  const onlyReverse = !car.gears.forward
+  if (onlyReverse) brain.approach = -1
+  else if (!car.gears.reverse) brain.approach = 1
 
   position.copy(car.pos)
   brain.anchorClock += dt
@@ -295,7 +308,7 @@ export function driveAi(brain: AiBrain, car: Vehicle, cars: readonly Vehicle[], 
   const tailClear = !blocked(car, cars, -1, arena)
   const speed = car.speed
 
-  const backIn = brain.approach < 0 && distance < 16 && tailClear
+  const backIn = brain.approach < 0 && (onlyReverse || (distance < 16 && tailClear))
   if (backIn) {
     const angle = Math.atan2(side, -ahead)
     if (Math.abs(angle) < 1.9) {

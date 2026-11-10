@@ -345,6 +345,22 @@ test('roller coasters provide two trains, custom car counts, and independent pai
   assert.equal(restored.trainColor, '#778899')
 })
 
+test('the Demo Derby is an Other ride on an 8 × 8 footprint (5 × 8 pad, 3 × 8 stands) seating 200', () => {
+  const def = FLAT_RIDES.demoDerby
+  assert.equal(def.category, 'other')
+  assert.deepEqual(def.size, [8, 8])
+  assert.equal(def.capacity, 200)
+  const state = parkFixture()
+  const made = applyCommand(state, { t: 'flat', ride: 'demoDerby', x: 30, y: 30, rot: 1 })
+  assert.equal(made.ok, true)
+  const ride = state.entities[made.id]
+  let covered = 0
+  for (let y = 26; y < 46; y++) for (let x = 26; x < 46; x++) if (state.map.obj[y * state.map.w + x] === ride.id) covered++
+  assert.equal(covered, 64)
+  assert.equal(rideSlots(ride).length, 7)
+  assert.equal(applyCommand(state, { t: 'flat', ride: 'demoDerby', x: 33, y: 33, rot: 0 }).ok, false)
+})
+
 test('rides resolve colors per slot from custom paint, park schemes, legacy fields and defaults', () => {
   const state = parkFixture()
   const park = state.parks[0]

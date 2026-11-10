@@ -65,10 +65,87 @@ test('a holed radiator cooks the engine under throttle until it catches fire', (
   assert.ok(news.some((item) => item.kind === 'fire'))
 })
 
+test('a hard T-bone bends the frame away from the hit and the car crabs', () => {
+  const damage = createDamage()
+  const news: string[] = []
+  for (let i = 0; i < 5; i++) for (const item of applyComponentHit(damage, wagon, config.damage, wagon.width / 2, 0, 0, 16, 200 + i)) news.push(item.kind)
+  assert.ok(damage.frame < 60, `frame ${damage.frame.toFixed(1)}`)
+  assert.ok(damage.frameBend < 0, 'a hit on the right sweeps the middle left')
+  assert.ok(news.includes('frame'))
+  const handling = handlingOf(damage, config.damage.handling)
+  assert.ok(handling.crab < 0, 'rear axle steers with the bend')
+  assert.ok(handling.drag > 0, 'a bent frame drags')
+  const light = createDamage()
+  applyComponentHit(light, wagon, config.damage, wagon.width / 2, 0, 0, 2, 9)
+  assert.equal(light.frame, 100, 'a tap leaves the frame straight')
+})
+
+test('a fender crushed onto its tire rubs, drags and shreds the tire as the car rolls', () => {
+  const damage = createDamage()
+  const news: { kind: string }[] = []
+  while (damage.panels.frontRight >= config.damage.component.rubBelow) news.push(...applyComponentHit(damage, wagon, config.damage, 0.3, 0.2, -wagon.length / 2, 6, news.length))
+  const rubbing = damage.wheels[1]
+  assert.ok(!rubbing.off && !rubbing.flat, 'the nose hits leave the wheel itself alone')
+  assert.ok(rubbing.rub, 'front-right fender rubs')
+  assert.ok(news.some((item) => item.kind === 'rub'))
+  assert.ok(handlingOf(damage, config.damage.handling).drag >= config.damage.handling.rubDrag)
+  const engine = { value: 100 }
+  const rolled: { kind: string }[] = []
+  for (let i = 0; i < 60 * 30 && !rubbing.flat; i++) stepComponents(damage, config.damage, engine, 0, 1 / 60, rolled as never[], 8 / 60)
+  assert.ok(rubbing.flat, 'tire shredded')
+  assert.ok(rolled.some((item) => item.kind === 'tire'))
+})
+
+test('rear hits on a hurt driveline strip one gear and never both', () => {
+  const damage = createDamage()
+  const news: { kind: string; gear?: string }[] = []
+  for (let i = 0; i < 80; i++) news.push(...(applyComponentHit(damage, wagon, config.damage, 0.3, 0, wagon.length / 2, 9, 300 + i) as { kind: string }[]))
+  assert.ok(!(damage.gears.forward && damage.gears.reverse), 'a gear is gone')
+  assert.ok(damage.gears.forward || damage.gears.reverse, 'one gear always survives')
+  assert.equal(news.filter((item) => item.kind === 'gear').length, 1)
+})
+
+test('a big front hit can stall the engine, which catches again after a moment', () => {
+  const damage = createDamage()
+  const news: { kind: string }[] = []
+  for (let i = 0; i < 40 && damage.stall <= 0; i++) news.push(...applyComponentHit(damage, wagon, config.damage, 0, 0, -wagon.length / 2, 14, 500 + i))
+  assert.ok(damage.stall > 0, 'stalled')
+  assert.ok(news.some((item) => item.kind === 'stall'))
+  const engine = { value: 100 }
+  const after: { kind: string }[] = []
+  for (let i = 0; i < 60 * 4; i++) stepComponents(damage, config.damage, engine, 1, 1 / 60, after as never[])
+  assert.equal(damage.stall, 0)
+  assert.ok(after.some((item) => item.kind === 'restart'))
+})
+
+test('a caved-in nose tears the hood off and a caved-in tail drops then tears off the exhaust', () => {
+  const damage = createDamage()
+  const news: { kind: string; state?: number; part?: string }[] = []
+  for (let i = 0; i < 40; i++) news.push(...(applyComponentHit(damage, wagon, config.damage, i % 2 ? 0.5 : -0.5, 0, -wagon.length / 2, 8, 700 + i) as never[]))
+  for (let i = 0; i < 40; i++) news.push(...(applyComponentHit(damage, wagon, config.damage, i % 2 ? 0.5 : -0.5, 0, wagon.length / 2, 8, 800 + i) as never[]))
+  assert.equal(damage.lids.hood, 2, 'hood gone')
+  assert.ok(news.some((item) => item.kind === 'lid' && item.part === 'hood' && item.state === 2))
+  assert.equal(damage.exhaust, 2, 'exhaust gone')
+  assert.ok(news.some((item) => item.kind === 'exhaust' && item.state === 1), 'it dragged first')
+})
+
 test('damage presets scale how hard hits land', () => {
   assert.ok(damageFor('brutal').maxHitDamage > damageFor('realistic').maxHitDamage)
   assert.ok(damageFor('light').maxHitDamage < damageFor('realistic').maxHitDamage)
   assert.ok(damageFor('brutal').component.bumperLoose > damageFor('light').component.bumperLoose)
+  assert.ok(damageFor('brutal').component.rubBelow > damageFor('light').component.rubBelow)
+  assert.ok(damageFor('brutal').component.lidOff < damageFor('brutal').component.lidOpen)
+})
+
+test('a stalled car and a car with no forward gear make no forward drive', async () => {
+  const stalled = await launch((car) => {
+    car.damage.stall = 10
+  }, 1.5)
+  assert.ok(stalled.speed < 1, `stalled car rolled to ${stalled.speed.toFixed(2)}`)
+  const stripped = await launch((car) => {
+    car.damage.gears.forward = false
+  }, 1.5)
+  assert.ok(stripped.speed < 1, `stripped car rolled to ${stripped.speed.toFixed(2)}`)
 })
 
 async function launch(setup: (car: Vehicle) => void, seconds: number): Promise<{ speed: number; drift: number }> {

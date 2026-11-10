@@ -20,6 +20,9 @@ export function createCar(): StubCarModel {
     showDamage() {
       return []
     },
+    exhaustTip() {
+      return null
+    },
     dispose() {},
   }
   return model

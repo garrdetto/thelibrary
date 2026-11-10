@@ -127,7 +127,7 @@ function rideSpecific(kind: string, m: RideModel, w: number, h: number) {
 
 /** Adds color slots and neon lights to a flat or water ride model. */
 export function decorateRide(kind: string, m: RideModel, w: number, h: number) {
-  if (kind === 'gravitron') return m
+  if (kind === 'gravitron' || kind === 'demoDerby') return m
   const remaps = REMAPS[kind]
   if (remaps) { slotify(m.base, remaps); for (const p of m.parts) slotify(p.builder, remaps) }
   rideSpecific(kind, m, w, h)

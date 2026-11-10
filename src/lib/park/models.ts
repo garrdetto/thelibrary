@@ -2,6 +2,7 @@ import { MeshBuilder, mat4, hexColor, STRIDE } from './gl'
 import type { Mat4, Vec3 } from './gl'
 import { M } from './materials'
 import { SLOT, LIGHTS, GLOW, bulb, bulbRing, bulbRun, neonTube, neonFrame, bulbText, bulbTextWidth } from './neon'
+import { demoDerbyModel } from './derbyModel'
 
 export const C = {
   white: hexColor('#f3f1ea'), cream: hexColor('#efe3c4'), wood: hexColor('#8a5a36'), darkWood: hexColor('#5e3d24'), steel: hexColor('#9aa3ad'), dark: hexColor('#33363c'),
@@ -469,6 +470,7 @@ export type RideModel = { base: MeshBuilder; parts: Part[] }
 const T = mat4.translation
 
 export function flatRideModel(kind: string, w: number, h: number): RideModel {
+  if (kind === 'demoDerby') return demoDerbyModel()
   const base = new MeshBuilder(), parts: Part[] = []
   const floor = (r: number, color: Vec3 = C.stone) => base.cylinder(null, 0, 0, 0, r, r, 0.4, 16, color)
   if (kind === 'carousel') {
