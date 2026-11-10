@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "name": "hunter-tank-fishvest",
+  "tasks": {
+    "retexture": {
+      "id": "01a1c749-bbde-73d1-b829-341b635a40c6",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T21:07:49.888Z",
+      "credits": 10
+    }
+  },
+  "credits": 10,
+  "createdAt": "2026-11-10T21:07:40.168Z",
+  "settings": {
+    "kind": "retexture",
+    "from": "hunter-base.glb",
+    "prompt": "Same man and face. Matte heather grey cotton sleeveless tank top (no jacket, no leather). The arms are bare human skin: sun-tanned skin with natural arm hair from the shoulders down to the hands. Over it, an open khaki-green mesh fishing vest with many small zip tackle pockets on the chest. Light khaki cotton chino pants, tan canvas boots. No logos, no text, no brand names."
+  },
+  "updatedAt": "2026-11-10T21:08:42.710Z",
+  "files": [
+    "assets-src/rackreel/meshy/hunter-tank-fishvest.glb"
+  ]
+}

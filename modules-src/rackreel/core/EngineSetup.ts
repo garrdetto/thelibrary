@@ -52,6 +52,7 @@ export interface EngineContext {
   unregisterDynamic(mesh: AbstractMesh): void
   setShadowFocus(target: Vector3): void
   buildCollisionOctree(colliders: TrunkCollider[]): Octree<TrunkCollider>
+  /** Trunks near (x, z). The array is reused by the next call, so finish with it first. */
   queryTrunks(x: number, z: number, radius: number): TrunkCollider[]
   enableTerrainOctree(ground: Mesh): void
   buildSelectionOctree(): void
@@ -197,6 +198,8 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
 
   const dynamic = new Set<AbstractMesh>()
   let collisionOctree: Octree<TrunkCollider> | null = null
+  const trunkProbe = new Vector3()
+  const trunkHits: TrunkCollider[] = []
   const texel = (SHADOW_EXTENT * 2) / SHADOW_MAP_SIZE
   const right = Vector3.Cross(Vector3.Up(), sunDirection).normalize()
   const up = Vector3.Cross(sunDirection, right).normalize()
@@ -250,11 +253,11 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       return octree
     },
     queryTrunks(x, z, radius) {
-      if (!collisionOctree) return []
-      const found = collisionOctree.intersects(new Vector3(x, 5, z), radius + 1, false)
-      const out: TrunkCollider[] = []
-      for (let i = 0; i < found.length; i++) out.push(found.data[i])
-      return out
+      trunkHits.length = 0
+      if (!collisionOctree) return trunkHits
+      const found = collisionOctree.intersects(trunkProbe.set(x, 5, z), radius + 1, false)
+      for (let i = 0; i < found.length; i++) trunkHits.push(found.data[i])
+      return trunkHits
     },
     enableTerrainOctree(ground) {
       ground.subdivide(64)

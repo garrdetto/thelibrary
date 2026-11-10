@@ -1,7 +1,7 @@
 import { CHARACTER_CHOICES, ITEM_BY_ID, LOOK_SLOTS } from '../shared/Economy'
 import type { Look, LookSlot } from '../shared/Economy'
 
-const SLOT_LABEL: Record<LookSlot, string> = { jacket: 'Jacket', vest: 'Vest', cap: 'Hat', pants: 'Pants', pack: 'Pack' }
+const SLOT_LABEL: Record<LookSlot, string> = { jacket: 'Top', vest: 'Vest', cap: 'Hat', pants: 'Pants', pack: 'Pack' }
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag)

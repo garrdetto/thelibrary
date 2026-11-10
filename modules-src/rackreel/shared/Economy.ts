@@ -36,15 +36,23 @@ export const ITEMS: Item[] = [
   { id: 'jacket-camo', name: 'Woodland camo jacket', slot: 'jacket', group: 'Clothing', price: 0, blurb: 'Breaks up your outline: deer notice you less in cover.' },
   { id: 'jacket-flannel', name: 'Red plaid flannel', slot: 'jacket', group: 'Clothing', price: 120, blurb: 'Classic northwoods wool.' },
   { id: 'jacket-canvas', name: 'Tan canvas coat', slot: 'jacket', group: 'Clothing', price: 160, blurb: 'Waxed duck canvas for wet days on the water.' },
+  { id: 'jacket-blaze', name: 'Blaze-orange parka', slot: 'jacket', group: 'Clothing', price: 150, blurb: 'Full blaze from collar to cuffs. Pair it with the blaze bibs to go all orange.' },
+  { id: 'jacket-angler', name: 'Ocean angler sun shirt', slot: 'jacket', group: 'Clothing', price: 70, blurb: 'Long-sleeve, lightweight and UV-cut for long days on the water.' },
+  { id: 'jacket-tank', name: 'Tank top', slot: 'jacket', group: 'Clothing', price: 25, blurb: 'Heather grey and sleeveless. Farmer\'s tan included.' },
   { id: 'vest-blaze', name: 'Blaze-orange vest', slot: 'vest', group: 'Clothing', price: 0, blurb: 'Seen by hunters, not by deer.' },
   { id: 'vest-fishing', name: 'Fishing vest', slot: 'vest', group: 'Clothing', price: 90, blurb: 'Pockets for tackle: bites come a little sooner.' },
   { id: 'vest-none', name: 'No vest', slot: 'vest', group: 'Clothing', price: 0, blurb: 'Just the jacket.' },
   { id: 'cap-blaze', name: 'Blaze cap', slot: 'cap', group: 'Clothing', price: 0, blurb: 'Blaze-orange ball cap.' },
   { id: 'cap-camo', name: 'Camo cap', slot: 'cap', group: 'Clothing', price: 40, blurb: 'Matches the jacket.' },
   { id: 'cap-bucket', name: 'Bucket hat', slot: 'cap', group: 'Clothing', price: 35, blurb: 'Keeps the sun off on the boat.' },
+  { id: 'cap-backwards', name: 'Backwards trucker cap', slot: 'cap', group: 'Clothing', price: 30, blurb: 'Navy and khaki mesh-back, bill to the back.' },
+  { id: 'cap-visor', name: 'Sun visor', slot: 'cap', group: 'Clothing', price: 30, blurb: 'Shade for the eyes, air for the head.' },
+  { id: 'cap-cowboy', name: 'Straw cowboy hat', slot: 'cap', group: 'Clothing', price: 85, blurb: 'A wide straw brim with a leather band.' },
   { id: 'pants-camo', name: 'Camo cargo pants', slot: 'pants', group: 'Clothing', price: 0, blurb: 'Quiet and tough.' },
   { id: 'pants-jeans', name: 'Work jeans', slot: 'pants', group: 'Clothing', price: 60, blurb: 'Faded denim.' },
   { id: 'pants-waders', name: 'Chest waders', slot: 'pants', group: 'Clothing', price: 220, blurb: 'Wade half again as deep to reach better water.' },
+  { id: 'pants-blaze', name: 'Blaze-orange bibs', slot: 'pants', group: 'Clothing', price: 110, blurb: 'Insulated blaze bib overalls for cold stands.' },
+  { id: 'pants-khaki', name: 'Khakis', slot: 'pants', group: 'Clothing', price: 50, blurb: 'Light cotton chinos for the dock and the boat.' },
   { id: 'pack-none', name: 'No pack', slot: 'pack', group: 'Clothing', price: 0, blurb: 'Travel light.' },
   { id: 'pack-hunting', name: 'Hunting pack', slot: 'pack', group: 'Clothing', price: 140, blurb: 'Room for a thermos and drag rope: +10% pay for deer.' },
 ]
@@ -315,10 +323,10 @@ export type Look = Record<LookSlot, string>
  * catalog. Whatever is picked is given free and worn.
  */
 export const CHARACTER_CHOICES: Record<LookSlot, string[]> = {
-  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas'],
+  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas', 'jacket-angler', 'jacket-tank'],
   vest: ['vest-blaze', 'vest-none'],
-  cap: ['cap-blaze', 'cap-camo', 'cap-bucket'],
-  pants: ['pants-camo', 'pants-jeans'],
+  cap: ['cap-blaze', 'cap-camo', 'cap-bucket', 'cap-backwards', 'cap-visor', 'cap-cowboy'],
+  pants: ['pants-camo', 'pants-jeans', 'pants-khaki'],
   pack: ['pack-none'],
 }
 

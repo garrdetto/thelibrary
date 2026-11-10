@@ -143,6 +143,10 @@ export class WaterFx {
   private readonly sprayCol: Float32Array
   private readonly right = new Vector3()
   private readonly up = new Vector3()
+  private readonly spareDrops: Drop[] = []
+  private readonly spareRipples: Ripple[] = []
+  private oldestDrop = 0
+  private oldestRipple = 0
   private dirty = true
 
   /**
@@ -168,8 +172,36 @@ export class WaterFx {
   ring(x: number, z: number, size: number, strength = 1, life = 1.6, wide = 0): void {
     const y = this.surfaceAt(x, z)
     if (y === null) return
-    if (this.ripples.length >= MAX_RIPPLES) this.ripples.shift()
-    this.ripples.push({ x, y: y + 0.006, z, age: 0, life, size: size * this.sizeAt(x, y, z), strength: Math.min(1, strength), wide })
+    const r = this.newRipple()
+    r.x = x
+    r.y = y + 0.006
+    r.z = z
+    r.age = 0
+    r.life = life
+    r.size = size * this.sizeAt(x, y, z)
+    r.strength = Math.min(1, strength)
+    r.wide = wide
+  }
+
+  /** A ripple slot: a spare one, or (when all are showing) the oldest-placed one, reused in place. */
+  private newRipple(): Ripple {
+    if (this.ripples.length < MAX_RIPPLES) {
+      const r = this.spareRipples.pop() ?? { x: 0, y: 0, z: 0, age: 0, life: 1, size: 1, strength: 1, wide: 0 }
+      this.ripples.push(r)
+      return r
+    }
+    this.oldestRipple = (this.oldestRipple + 1) % MAX_RIPPLES
+    return this.ripples[this.oldestRipple]
+  }
+
+  private newDrop(): Drop {
+    if (this.drops.length < MAX_DROPS) {
+      const d = this.spareDrops.pop() ?? { p: new Vector3(), v: new Vector3(), age: 0, life: 1, size: 0.03, bright: 1 }
+      this.drops.push(d)
+      return d
+    }
+    this.oldestDrop = (this.oldestDrop + 1) % MAX_DROPS
+    return this.drops[this.oldestDrop]
   }
 
   /** A burst of spray at `at`: `power` 0..1+ sets the drop count, speed and height. */
@@ -177,19 +209,18 @@ export class WaterFx {
     const count = Math.round(10 + power * 34)
     const k = this.sizeAt(at.x, Math.max(at.y, 0), at.z)
     const speedK = Math.sqrt(k)
+    const baseY = Math.max(at.y, 0) + 0.02
     for (let i = 0; i < count; i++) {
-      if (this.drops.length >= MAX_DROPS) this.drops.shift()
       const a = rand() * Math.PI * 2
       const out = (0.4 + rand() * 1.4) * (0.6 + power * 0.8)
       const upV = (1.2 + rand() * 2.6) * (0.55 + power * 0.75)
-      this.drops.push({
-        p: new Vector3(at.x + Math.cos(a) * 0.04, Math.max(at.y, 0) + 0.02, at.z + Math.sin(a) * 0.04),
-        v: new Vector3(Math.cos(a) * out * speedK, upV * speedK, Math.sin(a) * out * speedK),
-        age: 0,
-        life: 0.5 + rand() * 0.6,
-        size: (0.025 + rand() * 0.05) * (0.7 + power * 0.6) * k,
-        bright: 0.85 + rand() * 0.15,
-      })
+      const d = this.newDrop()
+      d.p.set(at.x + Math.cos(a) * 0.04, baseY, at.z + Math.sin(a) * 0.04)
+      d.v.set(Math.cos(a) * out * speedK, upV * speedK, Math.sin(a) * out * speedK)
+      d.age = 0
+      d.life = 0.5 + rand() * 0.6
+      d.size = (0.025 + rand() * 0.05) * (0.7 + power * 0.6) * k
+      d.bright = 0.85 + rand() * 0.15
     }
     this.ring(at.x, at.z, 0.55 + power * 1.1, 0.9, 1.4 + power * 0.6, 1)
     if (power > 0.5) this.ring(at.x, at.z, 0.35 + power * 0.6, 0.7, 1.0, 0.5)
@@ -197,15 +228,13 @@ export class WaterFx {
 
   /** Drops shaken off something leaving the water (a fish being lifted out). */
   drip(at: Vector3, rand: () => number = Math.random): void {
-    if (this.drops.length >= MAX_DROPS) this.drops.shift()
-    this.drops.push({
-      p: at.clone(),
-      v: new Vector3((rand() - 0.5) * 0.6, -0.2 - rand() * 0.5, (rand() - 0.5) * 0.6),
-      age: 0,
-      life: 0.9,
-      size: 0.018 + rand() * 0.02,
-      bright: 0.9,
-    })
+    const d = this.newDrop()
+    d.p.copyFrom(at)
+    d.v.set((rand() - 0.5) * 0.6, -0.2 - rand() * 0.5, (rand() - 0.5) * 0.6)
+    d.age = 0
+    d.life = 0.9
+    d.size = 0.018 + rand() * 0.02
+    d.bright = 0.9
   }
 
   get active(): boolean {
@@ -213,20 +242,28 @@ export class WaterFx {
   }
 
   update(dt: number, camera: Camera): void {
-    for (let i = this.ripples.length - 1; i >= 0; i--) {
-      const r = this.ripples[i]
+    const ripples = this.ripples
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const r = ripples[i]
       r.age += dt
-      if (r.age >= r.life) this.ripples.splice(i, 1)
+      if (r.age < r.life) continue
+      ripples[i] = ripples[ripples.length - 1]
+      ripples.pop()
+      this.spareRipples.push(r)
     }
-    for (let i = this.drops.length - 1; i >= 0; i--) {
-      const d = this.drops[i]
+    const drops = this.drops
+    const drag = Math.max(0, 1 - dt * 0.8)
+    for (let i = drops.length - 1; i >= 0; i--) {
+      const d = drops[i]
       d.age += dt
       d.v.y -= 9.8 * dt
-      d.v.scaleInPlace(Math.max(0, 1 - dt * 0.8))
-      d.p.addInPlace(d.v.scale(dt))
+      d.v.scaleInPlace(drag)
+      d.p.addInPlaceFromFloats(d.v.x * dt, d.v.y * dt, d.v.z * dt)
       if (d.age >= d.life || (d.p.y < -0.02 && d.v.y < 0)) {
-        if (d.p.y < 0.02 && d.size > 0.06 && this.ripples.length < MAX_RIPPLES - 8) this.ring(d.p.x, d.p.z, 0.08 + d.size, 0.35, 0.7)
-        this.drops.splice(i, 1)
+        if (d.p.y < 0.02 && d.size > 0.06 && ripples.length < MAX_RIPPLES - 8) this.ring(d.p.x, d.p.z, 0.08 + d.size, 0.35, 0.7)
+        drops[i] = drops[drops.length - 1]
+        drops.pop()
+        this.spareDrops.push(d)
       }
     }
     if (!this.active && !this.dirty) return

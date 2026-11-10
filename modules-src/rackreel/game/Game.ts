@@ -10,7 +10,7 @@ import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { Scores } from '../../../engine/net/Scores'
-import { EYE_HEIGHT, createEngineSetup } from '../core/EngineSetup'
+import { EYE_HEIGHT, SHADOW_EXTENT, createEngineSetup } from '../core/EngineSetup'
 import type { EngineContext } from '../core/EngineSetup'
 import { MODEL_NAMES, disposeRig, instantiate, loadModel, partMesh } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
@@ -38,6 +38,7 @@ import { STAND_CLIMB_SECONDS, STAND_LAYOUTS, findStandSites, standToWorld } from
 import type { StandSite } from '../world/TreeStand'
 import { buildDock, buildGround, buildSky, buildWater, findLandmarks } from '../world/World'
 import { Avatar, HIP_HEIGHT } from './Avatar'
+import { GearHands, placeRifle, placeRodInHand } from './Grips'
 import { Progress } from './Progress'
 import type { CatchReport, EarnReport } from './Progress'
 import { Panels } from '../ui/Panels'
@@ -83,6 +84,8 @@ const DOUBLE_CLICK_MS = 380
 const DROWNING_DEPTH = 1.2
 const ARROW_YAW_RATE = 2.1
 const ARROW_PITCH_RATE = 1.4
+/** Animals and remote players farther than this from the shadow focus don't cast (their shadows fall outside the map). */
+const SHADOW_CASTER_REACH = SHADOW_EXTENT + 35
 const ARROW_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'])
 
 export class Game {
@@ -174,6 +177,9 @@ export class Game {
   private crewBoat: RemoteBoat | null = null
   private crewAboard: string | null = null
   private handsNow: AvatarHands = 'rod'
+  private readonly gearHands = new GearHands()
+  private readonly floorProbe = new Vector3()
+  private dockMesh: AbstractMesh | null = null
   private dockEnd = new Vector3()
   private readonly clock = new Clock(hourFromSearch(location.search) ?? undefined)
   private lighting!: Lighting
@@ -249,6 +255,7 @@ export class Game {
     this.wildlife.onLegendSpawn = (a) => this.hud.toast(a.template.id === 'whitetail' ? 'Fresh rubs and scrapes: a record-class buck is roaming these woods' : `Fresh sign: a record-class ${SPECIES_BY_ID[a.template.id].name.toLowerCase()} is moving nearby`, 'big')
     this.wildlife.onLost = (a) => this.hud.toast(a.wounds ? 'The wounded animal is gone. Aim for the vitals behind the shoulder.' : `The ${a.template.name.toLowerCase()} slipped away.`)
     this.fishing = new Fishing(this.ctx, scene, this.terrain, this.loot, this.skill, (name) => this.models.get(name))
+    this.fishing.floorAt = (x, z) => this.catchFloor(x, z)
     this.fishing.onEvent = (e) => this.onFishing(e)
     this.minimap = new Minimap(this.terrain, document.getElementById('minimap')!)
     this.online = new Online(this.ctx, scene, this.models, {
@@ -496,14 +503,13 @@ export class Game {
     const { scene } = this.ctx
     this.rodRig = instantiate(this.models.get('rod')!, null, scene, reg)
     this.rodRig.root.parent = this.avatar.rightHand
-    this.rodRig.root.position.set(0.02, -0.31, 0.03)
-    this.rodRig.root.rotation.set(0.55, 0, 0)
+    placeRodInHand(this.rodRig.root)
     this.rodTip = new TransformNode('rod-tip', scene)
     this.rodTip.parent = this.rodRig.root
     this.rodTip.position.set(0, 0, 1.8)
     this.rodFx = new RodFx(this.ctx, scene, partMesh(this.models.get('rod')!, 'rod'), this.rodRig.root, this.rodTip, this.rodRig.meshes)
     this.rifleRig = instantiate(this.models.get('rifle')!, null, scene, reg)
-    this.rifleRig.root.parent = this.avatar.chest
+    this.rifleRig.root.parent = this.avatar.root
     this.rifleRig.root.setEnabled(false)
   }
 
@@ -1250,6 +1256,8 @@ export class Game {
     } else if (e.type === 'nibble') {
       this.audio.splash()
       this.hud.toast('Something is nibbling… wait for the bobber to go under.')
+    } else if (e.type === 'flop') {
+      if (e.wet) this.audio.splash()
     } else if (e.type === 'jump') {
       this.audio.splash(true)
       if (!this.jumpTold) this.hud.toast(`Jumper! ${SPECIES_BY_ID[e.specimen.species].name} clearing the water — keep the line tight.`)
@@ -1424,6 +1432,7 @@ export class Game {
     this.recoil = Math.max(0, this.recoil - dt * 5)
     this.placeAvatar(dt)
     this.rodFx.update(dt, this.fishing.rodBend, this.fishing.busy ? this.fishing.lineEnd : null, this.fishing.lineTaut, this.fishing.crankSpeed)
+    this.fishing.anglerAt.copyFrom(this.foot)
     this.fishing.update(dt, this.castOrigin(), (this.leftDown || this.keys.has('KeyR')) && locked)
     if (this.fishing.dragging) {
       this.dragTimer -= dt
@@ -1453,7 +1462,7 @@ export class Game {
     this.wildlife.maintain(dt, [focus, ...this.online.members.map((m) => m.at)])
     const watching = this.mode === 'foot' && (this.fishing.lineInWater || this.fishing.fighting || this.fishing.state === 'flying')
     this.fishCam += ((watching ? 1 : 0) - this.fishCam) * Math.min(1, dt * 2.5)
-    this.updateGear()
+    this.updateGear(dt)
     this.online.update(dt, this.playerState(), () => this.wildlife.snapshot())
     this.minimap.draw(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.mapMarkers())
     this.updateHud(dt, locked)
@@ -1462,8 +1471,8 @@ export class Game {
     const casterList = this.casterScratch
     casterList.length = 0
     for (const mesh of this.casters) casterList.push(mesh)
-    this.wildlife.collectCasters(casterList)
-    for (const mesh of this.online.casters()) casterList.push(mesh)
+    this.wildlife.collectCasters(casterList, focus, SHADOW_CASTER_REACH)
+    this.online.collectCasters(casterList, focus, SHADOW_CASTER_REACH)
     this.foliage.updateShadowCasters(focus, casterList)
     if (this.heroRig) {
       this.heroClock += dt
@@ -1557,10 +1566,17 @@ export class Game {
     return Vector3.Lerp(L.top.add(new Vector3(0, 0.02, 0.0)), L.seat.subtract(new Vector3(0, HIP_HEIGHT, 0)), f)
   }
 
+  /** What a landed fish drops onto: the deck you're standing on in a boat, else the dock, cabin floor or ground (water is 0). */
+  private catchFloor(x: number, z: number): number {
+    if (this.mode === 'vehicle' || this.mode === 'crew') return this.foot.y
+    const p = this.floorProbe.set(x, 0, z)
+    return Math.max(0, this.terrain.heightAt(x, z), this.onDock(p) ? 0.58 : -10, this.cabin.floorAt(p) ?? -10)
+  }
+
   private placeAvatar(dt: number): void {
     if (this.mode === 'bowfish') {
       this.bowfish.placePlayer(dt)
-      this.handsNow = 'free'
+      this.handsNow = this.bowfish.hands
       return
     }
     const root = this.avatar.root
@@ -1597,6 +1613,7 @@ export class Game {
     else if (this.tool === 'rifle') hands = this.aimHeld && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
     else if (st === 'charging' || st === 'flying') hands = 'cast'
     else if (st === 'reeling' || st === 'landing') hands = 'reel'
+    else if (this.fishing.busy) hands = 'fish'
     else hands = 'rod'
     this.handsNow = hands
     this.avatar.update(dt, {
@@ -1613,7 +1630,7 @@ export class Game {
     this.avatar.setVisible(this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson))
   }
 
-  private updateGear(): void {
+  private updateGear(dt: number): void {
     const v = this.vehicles.active
     const inStand = this.mode === 'stand' || this.mode === 'climb'
     const crewSlow = this.mode !== 'crew' || this.fishing.busy || (this.crewBoat?.speed ?? 0) < 1.2
@@ -1621,17 +1638,8 @@ export class Game {
     const showRifle = this.tool === 'rifle' && this.mode !== 'bowfish' && this.mode !== 'vehicle' && this.mode !== 'crew' && this.mode !== 'climb' && this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson)
     this.rodRig.root.setEnabled(showRod)
     this.rifleRig.root.setEnabled(showRifle)
-    if (showRifle) {
-      const r = this.rifleRig.root
-      if (this.aimHeld && document.pointerLockElement === this.canvas) {
-        const torsoPitch = this.avatar.chest.rotation.x
-        r.position.set(0.15, 0.4, 0.46 - this.recoil * 0.06)
-        r.rotation.set(this.ctx.camera.rotation.x - torsoPitch - this.recoil * 0.12, 0, 0)
-      } else {
-        r.position.set(0.04, 0.2, 0.24)
-        r.rotation.set(-0.95, 0.15, -0.75)
-      }
-    }
+    if (showRifle) placeRifle(this.rifleRig.root, this.avatar, this.handsNow === 'aim', this.ctx.camera.rotation.x, this.recoil)
+    if (this.mode !== 'bowfish') this.gearHands.apply(dt, this.avatar, this.handsNow, { rod: this.rodRig.root, rifle: this.rifleRig.root, crank: this.rodFx.crankPhase })
   }
 
   /** Shows the character creator with a front view of the hunter; resolves once it is saved. */
@@ -1765,12 +1773,13 @@ export class Game {
   }
 
   private onDock(p: Vector3): boolean {
-    const dock = this.ctx.scene.getMeshByName('dock')
+    const dock = this.dockMesh ?? (this.dockMesh = this.ctx.scene.getMeshByName('dock'))
     if (!dock) return false
-    const local = p.subtract(dock.position)
+    const lx = p.x - dock.position.x
+    const lz = p.z - dock.position.z
     const a = -dock.rotation.y
-    const x = local.x * Math.cos(a) + local.z * Math.sin(a)
-    const z = -local.x * Math.sin(a) + local.z * Math.cos(a)
+    const x = lx * Math.cos(a) + lz * Math.sin(a)
+    const z = -lx * Math.sin(a) + lz * Math.cos(a)
     const bb = dock.getBoundingInfo().boundingBox
     return Math.abs(x) < 1.0 && z > bb.minimum.z && z < bb.maximum.z
   }

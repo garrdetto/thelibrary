@@ -33,6 +33,7 @@ import type { Hud } from '../ui/Hud'
 import type { MapMarker } from '../ui/Minimap'
 import type { Lighting } from '../world/Lighting'
 import type { Terrain } from '../world/Terrain'
+import { ELBOW_POLES } from './Avatar'
 import type { Avatar } from './Avatar'
 import { BOWBOAT, FLOOD, LIGHT_COLORS, LIGHT_ORDER, clampToDeck, deckHeight } from './BowBoat'
 import type { LightMode } from './BowBoat'
@@ -75,6 +76,10 @@ const NIGHT_TO_FISH = 0.7
 const DAWN = 0.3
 const CAMP_RANGE = 3.4
 const DRAW_BACK = 0.5
+/** At full draw the bow hand is this far out from the shoulder along the aim: the arm all but straight, as in Meshy's archery clip. */
+const BOW_ARM_REACH = 0.6
+/** The drawing hand's palm sits this far behind the nock (fingers on the string). */
+const STRING_HAND = 0.045
 const MAX_TUB_RIGS = 16
 const CARP_POOL = 100
 const WALK_SPEED = 1.7
@@ -87,7 +92,6 @@ const BLURT_GAP = 22
 const BEACH_PAUSE = 3.6
 
 const LINES = {
-  wait: 'Carp don\'t show till dark, bud. Pull up a bucket.',
   board: 'WOOOOO! Watch yer step, bud. Bow\'s up on the deck. Lights are on, let\'s go find some carp.',
   white: 'White light. Best for seein\' \'em.',
   amber: 'Amber cuts through the murk. Fewer bugs too, you betcha.',
@@ -103,6 +107,7 @@ const LINES = {
   shore: 'Back to the shoreline.',
   bay: 'Back bay, under the interstate. Hang on!',
   landed: 'Uff da, what a night.',
+  tour: 'Bowfishin\'? You betcha. Grab that bow, bud, sun\'s down by the time we\'re off the launch.',
   wait4: 'Holler at yer buddies, bud. There\'s room for four on this rig. Space when we\'re ready to shove off.',
 }
 
@@ -189,6 +194,12 @@ export class Bowfishing {
   private spraySplash = 0
   private flopTimer = 3
   private homeAnnounced = false
+  private readonly liveCarp = new Set<number>()
+  private readonly usedRigs = new Set<ModelRig>()
+  private readonly gripAt = new Vector3()
+  private readonly stringAt = new Vector3()
+  private readonly scratch = new Vector3()
+  private readonly bowQuat = new Quaternion()
   private homeTimer = 0
   private blurtTimer = 9
   private blurts = 0
@@ -332,14 +343,27 @@ export class Bowfishing {
   campPrompt(foot: Vector3): string {
     if (!this.nearCamp(foot)) return ''
     if (this.trip) return this.tripAtLaunch() ? `E — climb aboard with ${this.trip.name} and Wild Man` : `Wild Man is out on the water with ${this.trip.name}`
-    return this.host.lighting.night >= NIGHT_TO_FISH ? 'E — go bowfishing with Wisco Wild Man' : 'E — wait with Wisco Wild Man until dark'
+    return this.host.lighting.night >= NIGHT_TO_FISH ? 'E — go bowfishing with Wisco Wild Man' : 'E — tell Wisco Wild Man you want to go bowfishing (it\'ll be dark by the time you shove off)'
   }
 
   /** Party state from Online: a party member's trip (if one owns the boat), the spots they've taken, and whether anyone else is in the party. */
   setParty(trip: BowTrip | null, taken: number[], party: boolean): void {
+    const started = this.role !== 'owner' && trip !== null && this.trip === null
     this.trip = this.role === 'owner' ? null : trip
     this.taken = taken
     this.party = party
+    if (started && this.host.lighting.night < NIGHT_TO_FISH) {
+      this.fallNight()
+      this.host.hud.toast(`${trip.name} is taking the party bowfishing with Wisco Wild Man. Night falls; meet at his launch.`)
+    }
+  }
+
+  /** Skips the clock ahead to full dark (a bowfishing tour only runs at night). */
+  private fallNight(): void {
+    const wait = hoursUntilDark(this.host.clock.hour)
+    if (wait <= 0) return
+    this.host.clock.set(this.host.clock.hour + wait)
+    this.host.lighting.update(true)
   }
 
   private tripAtLaunch(): boolean {
@@ -399,17 +423,15 @@ export class Bowfishing {
       this.say(`Climb aboard, bud. ${this.trip.name}'s callin' the shots tonight.`, true)
       return true
     }
-    if (this.host.lighting.night < NIGHT_TO_FISH) {
-      const wait = hoursUntilDark(this.host.clock.hour)
-      this.host.clock.set(this.host.clock.hour + wait)
-      this.host.lighting.update(true)
-      this.say(LINES.wait, true)
-      this.host.hud.toast(`You wait with Wild Man until ${this.host.clock.label}.`)
-      return false
-    }
+    const daytime = this.host.lighting.night < NIGHT_TO_FISH
+    if (daytime) this.fallNight()
     this.role = 'owner'
     this.slot = this.freeSlot() ?? 0
     this.board()
+    if (daytime) {
+      this.say(LINES.tour, true)
+      this.host.hud.toast(`Wild Man's bowfishing tour: night falls at ${this.host.clock.label}.`)
+    }
     return true
   }
 
@@ -467,7 +489,11 @@ export class Bowfishing {
     this.school.clear()
     for (const rig of this.carpRigs) rig.root.setEnabled(false)
     this.carpOf.clear()
-    for (const f of this.tub) f.rig.root.setEnabled(false)
+    for (const f of this.tub) {
+      f.rig.root.parent = null
+      f.rig.root.setEnabled(false)
+      this.carpRigs.push(f.rig)
+    }
     this.tub.length = 0
     this.host.hud.setTub(null)
     this.host.hud.setDraw(null, false)
@@ -866,20 +892,29 @@ export class Bowfishing {
 
   /** Puts the bow in the shooter's left hand, pointed along the aim while drawing or held low at the ready. Aiming then moves it in front of the eye (`fitBowToEye`). */
   private placeBow(dt: number, cam: UniversalCamera): void {
-    const hand = this.host.player.leftHand
-    const handPos = Vector3.TransformCoordinates(new Vector3(0.0, -0.27, 0.03), hand.computeWorldMatrix(true))
-    const aim = this.aimTarget(cam).subtract(handPos).normalize()
+    const player = this.host.player
     const drawing = this.bow === 'drawing'
+    const handPos = this.gripAt
+    if (drawing) {
+      const shoulder = player.joint('upperArmR')!.getAbsolutePosition()
+      const aim = this.aimTarget(cam).subtractInPlace(shoulder).normalize()
+      handPos.copyFrom(shoulder).addInPlace(aim.scaleInPlace(BOW_ARM_REACH * Math.min(1, 0.55 + this.draw)))
+    } else player.palm('left', handPos)
+    const aim = this.aimTarget(cam).subtractInPlace(handPos).normalize()
     const yaw = Math.atan2(aim.x, aim.z)
     const pitch = drawing ? Math.asin(Math.max(-1, Math.min(1, -aim.y))) : 0.6
     const cant = drawing ? 0.16 : 0.35
-    this.handPos.copyFrom(handPos)
-    const q = Quaternion.FromEulerAngles(pitch, yaw, cant)
+    const target = Quaternion.FromEulerAnglesToRef(pitch, yaw, cant, this.bowQuat)
     if (!this.handReady) {
-      this.handQ.copyFrom(q)
+      this.handQ.copyFrom(target)
+      this.handPos.copyFrom(handPos)
       this.handReady = true
-    } else Quaternion.SlerpToRef(this.handQ, q, Math.min(1, dt * 18), this.handQ)
-    this.bowHolder.position.copyFrom(handPos)
+    } else {
+      Quaternion.SlerpToRef(this.handQ, target, Math.min(1, dt * 18), this.handQ)
+      if (drawing) Vector3.LerpToRef(this.handPos, handPos, Math.min(1, dt * 18), this.handPos)
+      else this.handPos.copyFrom(handPos)
+    }
+    this.bowHolder.position.copyFrom(this.handPos)
     if (!this.bowHolder.rotationQuaternion) this.bowHolder.rotationQuaternion = new Quaternion()
     this.bowHolder.rotationQuaternion.copyFrom(this.handQ)
     const arrowJoint = this.bowRig.joints.get('arrow')
@@ -1113,16 +1148,16 @@ export class Bowfishing {
         rig.root.rotation.set(0, a + Math.PI / 2, Math.PI / 2 + (Math.random() - 0.5) * 0.4)
         rig.root.scaling.setAll(Math.min(carp.lengthM, 0.72) / FISH_LENGTH)
         this.tub.push({ rig, flop: 0 })
+        const pool = this.carpRigs.indexOf(rig)
+        if (pool >= 0) this.carpRigs.splice(pool, 1)
+        if (this.carpRigs.length < 8) {
+          const fresh = instantiate(this.host.models.get('fish-carp')!, null, this.ctx.scene, (m) => this.ctx.registerDynamic(m))
+          fresh.root.setEnabled(false)
+          this.carpRigs.push(fresh)
+        }
       } else {
         rig.root.parent = null
         rig.root.setEnabled(false)
-      }
-      const pool = this.carpRigs.indexOf(rig)
-      if (pool >= 0) this.carpRigs.splice(pool, 1)
-      if (this.carpRigs.length < 8 && rig.root.parent === this.boatRoot) {
-        const fresh = instantiate(this.host.models.get('fish-carp')!, null, this.ctx.scene, (m) => this.ctx.registerDynamic(m))
-        fresh.root.setEnabled(false)
-        this.carpRigs.push(fresh)
       }
     }
     const tier = this.host.tubCarp(specimen)
@@ -1160,12 +1195,15 @@ export class Bowfishing {
 
   private placeCarp(): void {
     const eye = this.ctx.camera.globalPosition
-    const live = new Set<number>()
+    const live = this.liveCarp
+    live.clear()
     for (const c of this.school.carp) {
       live.add(c.id)
       let rig = this.carpOf.get(c.id)
       if (!rig) {
-        const used = new Set(this.carpOf.values())
+        const used = this.usedRigs
+        used.clear()
+        for (const r of this.carpOf.values()) used.add(r)
         rig = this.carpRigs.find((r) => !used.has(r) && !this.tub.some((t) => t.rig === r) && this.landing?.rig !== r)
         if (!rig) continue
         this.carpOf.set(c.id, rig)
@@ -1263,6 +1301,23 @@ export class Bowfishing {
     root.rotation.set(0, now + turn * Math.min(1, dt * (walking ? 10 : 18)), 0)
     avatar.update(dt, { stance: 'stand', hands: this.bow === 'drawing' ? 'draw' : 'bow', speed: this.walkSpeed, crouch: false, castPower: 0, aimPitch: cam.rotation.x, climbPhase: 0 })
     avatar.setVisible(this.aimBlend < 0.55)
+    this.gripHands(dt)
+  }
+
+  /** Left palm on the riser, right hand on the string at the nock (or on the bow reel once the arrow is out). */
+  private gripHands(dt: number): void {
+    const avatar = this.host.player
+    this.bowHolder.computeWorldMatrix(true)
+    const m = this.bowRig.root.computeWorldMatrix(true)
+    const right = this.stringAt
+    let pole = ELBOW_POLES.right
+    if (this.bow === 'out') Vector3.TransformCoordinatesFromFloatsToRef(0.035, -0.1, 0.13, m, right)
+    else {
+      Vector3.TransformCoordinatesFromFloatsToRef(0, 0.03, -0.17 - DRAW_BACK * this.draw - STRING_HAND, m, right)
+      if (this.bow === 'drawing') pole = ELBOW_POLES.drawing
+    }
+    this.scratch.copyFrom(this.bowHolder.position)
+    avatar.solveHands(dt, right, this.bow === 'drawing' ? this.scratch : null, { right: pole, left: ELBOW_POLES.bowArm })
   }
 
   /** World position of the shooter's feet (for the minimap, wildlife and grass). */

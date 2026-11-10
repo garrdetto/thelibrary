@@ -28,6 +28,7 @@ export type FishingEvent =
   | { type: 'hooked'; specimen: Specimen }
   | { type: 'jump'; specimen: Specimen }
   | { type: 'landed'; specimen: Specimen }
+  | { type: 'flop'; wet: boolean }
   | { type: 'lost'; reason: 'snapped' | 'thrown' }
   | { type: 'reeled-in' }
 
@@ -37,9 +38,22 @@ export const RETRIEVE_SPEED = 3.25
 /** The cast is home once the float or lure is this close to the rod tip. */
 const RETRIEVE_HOME = 2.2
 const LAND_TIME = 1.15
+/** Seconds the landed fish flops on the deck, dock or bank (or in the shallows) before it is in hand. */
+export const FLOP_TIME = 2.4
 /** Fish models are about 1.12 units nose to tail; the mouth sits at +0.5 on the model's z axis. */
 const FISH_MODEL_LENGTH = 1.12
 const FISH_MOUTH = 0.5
+
+interface FlopHop {
+  t: number
+  length: number
+  height: number
+  rollFrom: number
+  rollTo: number
+  spin: number
+  dx: number
+  dz: number
+}
 
 export class Fishing {
   state: FishingState = 'idle'
@@ -54,6 +68,7 @@ export class Fishing {
   private leader: LinesMesh
   private readonly linePoints: Vector3[] = []
   private readonly leaderPoints = [new Vector3(), new Vector3()]
+  private readonly scratchSplash = new Vector3()
   private readonly from = new Vector3()
   private readonly target = new Vector3()
   private readonly landing = new Vector3()
@@ -84,7 +99,17 @@ export class Fishing {
   private lastSurge = 0
   private landClock = 0
   private readonly landFrom = new Vector3()
+  private readonly flopFrom = new Vector3()
   private dripTimer = 0
+  private flopClock = -1
+  private dropping = false
+  private hop: FlopHop = { t: 0, length: 0.3, height: 0.1, rollFrom: 0, rollTo: 0, spin: 0, dx: 0, dz: 0 }
+  private fishRoll = 0
+  private thrash = 0
+  private thrashSplash = 0
+  private readonly flopAt = new Vector3()
+  private flopFloor = 0
+  private flopWet = false
   private lostBobber = false
   private holding = false
   private lureDepth = 0
@@ -95,6 +120,10 @@ export class Fishing {
   bait: BaitStyle = { kind: 'live', nibbleScale: 1, hookWindow: 1.7, rate: 1, trophyOdds: 1, hint: '' }
   /** True while the angler is reeling an unhooked line back in. */
   retrieving = false
+  /** Where the angler stands, so a landed fish is swung in to flop at their feet. */
+  readonly anglerAt = new Vector3()
+  /** Height of whatever the landed fish drops onto at x, z: dock planks, boat deck or ground (water counts as 0). */
+  floorAt: (x: number, z: number) => number = (x, z) => Math.max(0, this.terrain.heightAt(x, z))
   onEvent: ((event: FishingEvent) => void) | null = null
 
   constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly terrain: Terrain, private readonly loot: LootTableManager, private readonly skill: SkillCheckManager, private readonly fishModel: (name: ModelName) => ModelTemplate | undefined, private readonly rand: () => number = Math.random) {
@@ -472,6 +501,10 @@ export class Fishing {
   }
 
   private disposeFish(): void {
+    this.flopClock = -1
+    this.dropping = false
+    this.thrash = 0
+    this.fishRoll = 0
     if (!this.fish) return
     disposeRig(this.fish, (m) => this.ctx.unregisterDynamic(m))
     this.fish = null
@@ -481,10 +514,15 @@ export class Fishing {
     if (!this.fish) return
     const root = this.fish.root
     root.position.copyFrom(this.fishPos)
-    root.rotation.set(-this.fishPitch, this.fishHeading, Math.sin(this.clock * 5) * 0.12)
+    const flopping = this.flopClock >= 0
+    const th = this.thrash
+    root.rotation.set(-this.fishPitch, this.fishHeading, flopping ? this.fishRoll : Math.sin(this.clock * (5 + th * 11)) * (0.12 + th * 0.5))
     const tail = this.fish.joints.get('tail')
     const tension = this.reel?.tension ?? 50
-    if (tail) tail.rotation.y = Math.sin(this.clock * (9 + tension * 0.08)) * (0.35 + (this.jumpClock >= 0 ? 0.3 : 0))
+    if (tail) {
+      if (flopping) tail.rotation.y = Math.sin(this.clock * 31) * 0.75 * (1 - this.flopClock / FLOP_TIME * 0.5)
+      else tail.rotation.y = Math.sin(this.clock * (9 + tension * 0.08 + th * 10)) * (0.35 + th * 0.3 + (this.jumpClock >= 0 ? 0.3 : 0))
+    }
   }
 
   private mouth(out: Vector3): Vector3 {
@@ -565,6 +603,15 @@ export class Fishing {
       this.fx.ring(bx, bz, 0.3 + speed * 0.12, 0.55, 1.0, 0.4)
       if (surfaceK > 0.3) this.fx.ring(this.fishPos.x, this.fishPos.z, 0.35 + len * 0.6, 0.45 * surfaceK, 1.2, 1)
     }
+    const thrashWant = this.jumpClock >= 0 ? 0 : surfaceK * Math.min(1, 0.45 + snap.surge / 30 + (snap.progress > 85 ? 0.35 : 0))
+    this.thrash += (thrashWant - this.thrash) * Math.min(1, dt * 4)
+    this.thrashSplash -= dt
+    if (this.thrash > 0.45 && this.thrashSplash <= 0) {
+      this.thrashSplash = 0.16 + this.rand() * 0.22
+      const side = (this.rand() - 0.5) * len * 0.6
+      this.fx.splash(this.scratchSplash.set(this.fishPos.x + Math.cos(this.fishHeading) * side, 0, this.fishPos.z - Math.sin(this.fishHeading) * side), 0.12 + this.thrash * 0.22, this.rand)
+      if (this.rand() < 0.5) this.fx.ring(this.fishPos.x, this.fishPos.z, 0.25 + len * 0.5, 0.6 * this.thrash, 0.9, 1)
+    }
     this.splashTimer -= dt
     if (surfaceK > 0.4 && this.jumpClock < 0 && this.splashTimer <= 0 && (snap.surge > 8 || this.rand() < 0.25)) {
       this.splashTimer = 0.28 + this.rand() * 0.35
@@ -602,6 +649,11 @@ export class Fishing {
 
   /** Swinging the fish out of the water and up to the rod tip. */
   private updateLanding(dt: number, rodTip: Vector3): void {
+    if (this.flopClock >= 0) {
+      this.updateFlop(dt, rodTip)
+      return
+    }
+    this.thrash = 0
     this.landClock += dt
     const t = Math.min(1, this.landClock / LAND_TIME)
     const lift = landingLift(t)
@@ -626,9 +678,94 @@ export class Fishing {
     this.leaderPoints[1].copyFrom(mouth)
     this.leader = CreateLines('leader', { points: this.leaderPoints, instance: this.leader })
     if (t < 1) return
+    this.startFlop()
+  }
+
+  /** The fish comes off the rod tip and drops between the rod and the angler's feet. */
+  private startFlop(): void {
+    const k = 0.6
+    const x = this.fishPos.x + (this.anglerAt.x - this.fishPos.x) * k
+    const z = this.fishPos.z + (this.anglerAt.z - this.fishPos.z) * k
+    const floor = this.floorAt(x, z)
+    this.flopWet = floor < 0.02 && this.terrain.depthAt(x, z) > 0.03
+    this.flopFloor = this.flopWet ? 0 : floor
+    this.flopAt.set(x, this.flopFloor, z)
+    this.flopClock = 0
+    this.flopFrom.copyFrom(this.fishPos)
+    this.dropping = true
+    this.fishPitch = 0
+    this.fishRoll = Math.PI / 2
+    this.nextHop(true)
+  }
+
+  private nextHop(first: boolean): void {
+    const energy = 1 - Math.min(1, this.flopClock / FLOP_TIME)
+    const h = this.hop
+    h.t = 0
+    h.length = first ? 0.42 : 0.2 + this.rand() * 0.2
+    h.height = first ? 0 : (0.05 + this.rand() * 0.16) * (0.35 + energy * 0.65)
+    h.rollFrom = this.fishRoll
+    const flip = this.rand() < 0.45 ? Math.PI : 0
+    h.rollTo = (this.rand() < 0.5 ? 1 : -1) * Math.PI / 2 + flip + (this.rand() - 0.5) * 0.35
+    h.spin = (this.rand() - 0.5) * 1.6 * energy
+    h.dx = (this.rand() - 0.5) * 0.14 * energy
+    h.dz = (this.rand() - 0.5) * 0.14 * energy
+  }
+
+  /** Flops on the floor (or thrashes in the shallows): short hops, rolling side to side, tail slapping, throwing water. */
+  private updateFlop(dt: number, rodTip: Vector3): void {
+    this.flopClock += dt
+    const len = this.fishScale * FISH_MODEL_LENGTH
+    const rest = this.flopFloor + (this.flopWet ? -len * 0.03 : len * 0.07)
+    const h = this.hop
+    h.t += dt
+    const u = Math.min(1, h.t / h.length)
+    if (this.dropping) {
+      Vector3.LerpToRef(this.flopFrom, this.flopAt, u, this.fishPos)
+      this.fishPos.y = this.flopFrom.y + (rest - this.flopFrom.y) * u * u
+    } else {
+      this.flopAt.x += h.dx * dt / h.length
+      this.flopAt.z += h.dz * dt / h.length
+      this.fishPos.set(this.flopAt.x, rest + 4 * h.height * u * (1 - u), this.flopAt.z)
+    }
+    this.fishRoll = h.rollFrom + (h.rollTo - h.rollFrom) * (u * u * (3 - 2 * u))
+    this.fishHeading += h.spin * dt / h.length
+    this.fishPitch = Math.sin(this.clock * 23) * 0.18 * (1 - u)
+    this.placeFish()
+    if (u >= 1) {
+      this.dropping = false
+      this.slap(len)
+      this.nextHop(false)
+    }
+    this.dripTimer -= dt
+    if (!this.flopWet && this.dripTimer <= 0) {
+      this.dripTimer = 0.09
+      this.fx.drip(this.scratchSplash.set(this.fishPos.x + (this.rand() - 0.5) * len * 0.4, this.fishPos.y + len * 0.05, this.fishPos.z + (this.rand() - 0.5) * len * 0.4), this.rand)
+    }
+    const mouth = this.mouth(this.scratchSplash)
+    Vector3.LerpToRef(mouth, rodTip, 0.35, this.bobber.position)
+    this.end.copyFrom(this.bobber.position)
+    this.leaderPoints[0].copyFrom(this.bobber.position)
+    this.leaderPoints[1].copyFrom(mouth)
+    this.leader = CreateLines('leader', { points: this.leaderPoints, instance: this.leader })
+    if (this.flopClock < FLOP_TIME) return
+    this.flopClock = -1
+    this.fishRoll = 0
     const specimen = this.hooked!
     this.finish()
     this.onEvent?.({ type: 'landed', specimen })
+  }
+
+  /** A hop lands: a splash and rings in the shallows, a spray of drops off the wet fish on a deck or bank. */
+  private slap(len: number): void {
+    const at = this.scratchSplash.set(this.fishPos.x, this.flopWet ? 0 : this.fishPos.y, this.fishPos.z)
+    if (this.flopWet) {
+      this.fx.splash(at, 0.22 + len * 0.5, this.rand)
+      this.fx.ring(at.x, at.z, 0.3 + len * 0.6, 0.8, 1.1, 1)
+    } else {
+      for (let i = 0; i < 5; i++) this.fx.drip(this.scratchSplash.set(this.fishPos.x + (this.rand() - 0.5) * len * 0.7, this.fishPos.y + 0.02, this.fishPos.z + (this.rand() - 0.5) * len * 0.7), this.rand)
+    }
+    this.onEvent?.({ type: 'flop', wet: this.flopWet })
   }
 
   private updateRetrieve(dt: number, rodTip: Vector3): void {

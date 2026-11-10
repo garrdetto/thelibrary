@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "hunter-hat-cowboy",
+  "tasks": {
+    "preview": {
+      "id": "01a1c543-0896-74f6-9107-a0451d43559c",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T11:41:09.973Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1c543-f3e1-7758-8eda-430e832b1fb2",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-10T11:42:09.444Z",
+      "credits": 10
+    }
+  },
+  "credits": 30,
+  "createdAt": "2026-11-10T11:41:06.710Z",
+  "settings": {
+    "kind": "text",
+    "prompt": "A single straw cowboy hat on its own, western style with a pinched crown, curved upturned brim and a brown leather hat band, no head, no person, game asset.",
+    "texture": "woven natural straw, dark brown leather band. No logos, no text, no brand names.",
+    "polycount": 6000
+  },
+  "updatedAt": "2026-11-10T11:42:43.469Z",
+  "files": [
+    "assets-src/rackreel/meshy/hunter-hat-cowboy.glb"
+  ]
+}

@@ -6,7 +6,7 @@ import { disposeRig, instantiate } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { PLAY_LIMIT, forestDensity } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
-import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, HERD_TURNOVER_SECONDS, LEAVE_GONE, LEAVE_SECONDS, SAFE_DISTANCE, fleeSpeed, react } from './Herd'
+import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, ABANDONED_DOWN_SECONDS, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, HERD_TURNOVER_SECONDS, LEAVE_GONE, LEAVE_SECONDS, SAFE_DISTANCE, fleeSpeed, react } from './Herd'
 import type { DeerMood } from './Herd'
 import { SPECIES_BY_ID, classify, measure } from './LootTableManager'
 import type { LootTableManager, SpeciesTemplate, Specimen } from './LootTableManager'
@@ -190,7 +190,7 @@ export class Wildlife {
     if (this.herdTimer > 0) return
     this.herdTimer = 2
     for (const a of [...this.animals]) {
-      if (a.state === 'down' || a.wounds > 0) continue
+      if (a.state === 'down' ? a.downTime < ABANDONED_DOWN_SECONDS : a.wounds > 0) continue
       if (list.every((q) => Vector3.Distance(a.position, q) > HERD_DESPAWN)) this.remove(a)
     }
     const living = this.living()
@@ -244,9 +244,10 @@ export class Wildlife {
     return this.collectCasters([])
   }
 
-  /** Appends every animal mesh to `out` without allocating. */
-  collectCasters(out: AbstractMesh[]): AbstractMesh[] {
+  /** Appends animal meshes to `out` without allocating: all of them, or only those within `reach` metres of `focus`. */
+  collectCasters(out: AbstractMesh[], focus?: Vector3, reach = Infinity): AbstractMesh[] {
     for (const a of this.animals) {
+      if (focus && (Math.abs(a.position.x - focus.x) > reach || Math.abs(a.position.z - focus.z) > reach)) continue
       for (const mesh of a.rig.meshes) out.push(mesh)
       if (a.antlers) for (const mesh of a.antlers.meshes) out.push(mesh)
     }

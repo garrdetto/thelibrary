@@ -13,6 +13,7 @@ import type { NetAnimal } from '../systems/Wildlife'
 import { Avatar, HIP_HEIGHT } from './Avatar'
 import type { AvatarHands, AvatarStance } from './Avatar'
 import { createAnchorLine } from './BoatSeats'
+import { GearHands, placeRifle, placeRodInHand } from './Grips'
 import type { DeckSeat } from './BoatSeats'
 
 export const RACKREEL_ROOM: RoomFormat = { prefix: 'tl-rackreel-', alphabet: 'ABCDEFGHJKMNPQRSTUVWXYZ23456789', length: 6, wireCase: 'lower' }
@@ -121,6 +122,13 @@ export class Online {
   private hostStates: Record<string, PlayerState> = {}
   private readonly tags: HTMLDivElement
   private readonly passengers = new Set<TransformNode>()
+  private readonly gearHands = new GearHands()
+  private memberList: { id: string; name: string; at: Vector3 }[] = []
+  private lastStatus = ''
+  private clock = 0
+  private readonly target = new Vector3()
+  private readonly head = new Vector3()
+  private readonly projected = new Vector3()
   private lobbyTimer = 0
   private lobbyCode = ''
   private readonly lobbyKey = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('')
@@ -206,8 +214,13 @@ export class Online {
     return this.room.open && !this.room.isHost
   }
 
+  /** Party members other than you; the list is rebuilt only when someone joins, leaves or renames. */
   get members(): { id: string; name: string; at: Vector3 }[] {
-    return [...this.remotes.entries()].map(([id, r]) => ({ id, name: r.state.n, at: r.shown }))
+    return this.memberList
+  }
+
+  private rebuildMembers(): void {
+    this.memberList = [...this.remotes.entries()].map(([id, r]) => ({ id, name: r.state.n, at: r.shown }))
   }
 
   describe(status: RoomStatus = this.room.status): string {
@@ -340,19 +353,24 @@ export class Online {
     this.statusTimer -= dt
     if (this.statusTimer <= 0) {
       this.statusTimer = 1
-      this.hooks.status(this.describe())
+      const text = this.describe()
+      if (text !== this.lastStatus) {
+        this.lastStatus = text
+        this.hooks.status(text)
+      }
     }
+    this.clock += dt
     for (const [, r] of this.remotes) this.animate(r, dt)
     this.positionTags()
   }
 
-  casters(): AbstractMesh[] {
-    const out: AbstractMesh[] = []
+  /** Adds remote players (and their vehicles) within `reach` metres of `focus` to the shadow casters. */
+  collectCasters(out: AbstractMesh[], focus: Vector3, reach: number): void {
     for (const r of this.remotes.values()) {
-      out.push(...r.avatar.meshes)
-      if (r.vehicle) out.push(...r.vehicle.meshes)
+      if (Math.abs(r.shown.x - focus.x) > reach || Math.abs(r.shown.z - focus.z) > reach) continue
+      for (const m of r.avatar.meshes) out.push(m)
+      if (r.vehicle) for (const m of r.vehicle.meshes) out.push(m)
     }
-    return out
   }
 
   private receive(m: NetMessage, from: string): void {
@@ -387,30 +405,34 @@ export class Online {
       const reg = (mesh: AbstractMesh) => this.ctx.registerDynamic(mesh)
       const rod = instantiate(this.models.get('rod')!, null, this.scene, reg)
       rod.root.parent = avatar.rightHand
-      rod.root.position.set(0.02, -0.31, 0.03)
-      rod.root.rotation.set(0.55, 0, 0)
+      placeRodInHand(rod.root)
       const rifle = instantiate(this.models.get('rifle')!, null, this.scene, reg)
-      rifle.root.parent = avatar.chest
+      rifle.root.parent = avatar.root
       r = { avatar, state: s, shown: new Vector3(...s.p), vehicle: null, vehicleKind: '', anchorLine: null, tag, rod, rifle }
       this.remotes.set(id, r)
       this.passengers.add(avatar.root)
+      this.rebuildMembers()
     }
+    const renamed = r.state.n !== s.n
     r.state = s
-    r.tag.textContent = s.n
+    if (renamed || r.tag.textContent !== s.n) {
+      r.tag.textContent = s.n
+      if (renamed) this.rebuildMembers()
+    }
     r.avatar.setOutfit(s.o)
   }
 
   private animate(r: Remote, dt: number): void {
     const s = r.state
-    const target = new Vector3(...s.p)
+    const target = this.target.set(s.p[0], s.p[1], s.p[2])
     if (Vector3.Distance(r.shown, target) > 25) r.shown.copyFrom(target)
-    else r.shown.addInPlace(target.subtract(r.shown).scale(Math.min(1, dt * 10)))
+    else Vector3.LerpToRef(r.shown, target, Math.min(1, dt * 10), r.shown)
     const root = r.avatar.root
     if (s.b) {
       this.removeVehicle(r)
       const spot = this.hooks.bowSpot(s.b.s, s.b.d)
       if (!r.deck || Vector3.Distance(r.deck, spot) > 3) r.deck = spot.clone()
-      else r.deck.addInPlace(spot.subtract(r.deck).scale(Math.min(1, dt * 10)))
+      else Vector3.LerpToRef(r.deck, spot, Math.min(1, dt * 10), r.deck)
       this.seatOn(root, this.hooks.bowBoat(), [r.deck.x, r.deck.y + HIP_HEIGHT, r.deck.z], s.f)
     } else if (s.v) {
       if (r.vehicleKind !== s.v.k) {
@@ -421,7 +443,7 @@ export class Online {
         if (s.v.k === 'boat') r.anchorLine = createAnchorLine(this.scene, r.vehicle.root)
       }
       const vr = r.vehicle!.root
-      vr.position.addInPlace(new Vector3(...s.v.p).subtract(vr.position).scale(Math.min(1, dt * 10)))
+      Vector3.LerpToRef(vr.position, this.target.set(s.v.p[0], s.v.p[1], s.v.p[2]), Math.min(1, dt * 10), vr.position)
       Quaternion.FromEulerAnglesToRef(s.v.q[1], s.v.q[0], s.v.q[2], vr.rotationQuaternion!)
       r.anchorLine?.setEnabled(s.v.a === 1)
       this.seatOn(root, vr, s.v.s, s.v.a === 1 ? s.f : 0)
@@ -436,17 +458,14 @@ export class Online {
         root.rotation.set(0, s.f, 0)
       }
     }
-    r.avatar.update(dt, { stance: s.st, hands: s.h, speed: s.sp, crouch: s.c, castPower: 0, aimPitch: s.ap, climbPhase: s.cl })
+    const crank = this.clock * 12
+    r.avatar.update(dt, { stance: s.st, hands: s.h, speed: s.sp, crouch: s.c, castPower: s.h === 'cast' ? 0.6 : 0, aimPitch: s.ap, climbPhase: s.cl, crankPhase: crank })
     const rifleOut = s.h === 'rifle' || s.h === 'aim'
     r.rod.root.setEnabled(!rifleOut && !s.b && s.h !== 'wheel' && s.st !== 'climb')
     r.rifle.root.setEnabled(rifleOut && s.st !== 'climb')
-    if (s.h === 'aim') {
-      r.rifle.root.position.set(0.15, 0.4, 0.46)
-      r.rifle.root.rotation.set(s.ap - r.avatar.chest.rotation.x, 0, 0)
-    } else {
-      r.rifle.root.position.set(0.04, 0.2, 0.24)
-      r.rifle.root.rotation.set(-0.95, 0.15, -0.75)
-    }
+    if (rifleOut) placeRifle(r.rifle.root, r.avatar, s.h === 'aim', s.ap, 0)
+    if (s.b) r.avatar.solveHands(dt, null, null)
+    else this.gearHands.apply(dt, r.avatar, s.h, { rod: r.rod.root, rifle: r.rifle.root, crank })
   }
 
   private seatOn(root: TransformNode, boat: TransformNode, seat: [number, number, number], swivel: number): void {
@@ -480,8 +499,8 @@ export class Online {
     const vp = cam.viewport.toGlobal(w, h)
     const transform = this.scene.getTransformMatrix()
     for (const r of this.remotes.values()) {
-      const head = r.avatar.root.getAbsolutePosition().add(new Vector3(0, 2.05, 0))
-      const p = Vector3.Project(head, Matrix.IdentityReadOnly, transform, vp)
+      const head = this.head.copyFrom(r.avatar.root.getAbsolutePosition()).addInPlaceFromFloats(0, 2.05, 0)
+      const p = Vector3.ProjectToRef(head, Matrix.IdentityReadOnly, transform, vp, this.projected)
       const visible = p.z > 0 && p.z < 1 && Vector3.Distance(head, cam.globalPosition) < 260
       r.tag.hidden = !visible
       if (visible) {
@@ -508,5 +527,6 @@ export class Online {
     disposeRig(r.rifle, (mesh) => this.ctx.unregisterDynamic(mesh))
     r.tag.remove()
     this.remotes.delete(id)
+    this.rebuildMembers()
   }
 }
