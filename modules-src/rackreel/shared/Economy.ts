@@ -18,10 +18,10 @@ export const ITEMS: Item[] = [
   { id: 'reel-pro', name: 'Tournament reel', slot: 'reel', group: 'Fishing', price: 640, blurb: 'Silky drag smooths out surges and retrieves fastest of all.' },
   { id: 'line-mono', name: '10 lb monofilament', slot: 'line', group: 'Fishing', price: 0, blurb: 'Stretchy and forgiving.' },
   { id: 'line-braid', name: '30 lb braid', slot: 'line', group: 'Fishing', price: 180, blurb: 'Takes far more strain before it snaps.' },
-  { id: 'bait-crawler', name: 'Nightcrawlers', slot: 'bait', group: 'Fishing', price: 0, blurb: 'Everything eats a worm, perch most of all.' },
-  { id: 'bait-minnow', name: 'Fathead minnows', slot: 'bait', group: 'Fishing', price: 60, blurb: 'Walleye and perch favorite; bites come sooner.' },
-  { id: 'bait-spinner', name: 'Inline spinners', slot: 'bait', group: 'Fishing', price: 90, blurb: 'Flash for smallmouth and pike.' },
-  { id: 'bait-bucktail', name: 'Muskie bucktails', slot: 'bait', group: 'Fishing', price: 220, blurb: 'Big blades for big fish: muskie and pike come calling.' },
+  { id: 'bait-crawler', name: 'Nightcrawlers', slot: 'bait', group: 'Fishing', price: 0, blurb: 'Live bait under a float. Everything eats a worm, perch most of all; mostly smaller fish.' },
+  { id: 'bait-minnow', name: 'Fathead minnows', slot: 'bait', group: 'Fishing', price: 60, blurb: 'Live bait under a float. Walleye and perch favorite; bites come sooner and you get longer to set the hook.' },
+  { id: 'bait-spinner', name: 'Inline spinners', slot: 'bait', group: 'Fishing', price: 90, blurb: 'A lure: reel it back to draw strikes. Flash for smallmouth and pike, and bigger fish than live bait.' },
+  { id: 'bait-bucktail', name: 'Muskie bucktails', slot: 'bait', group: 'Fishing', price: 220, blurb: 'A lure: keep it moving. Rare, sudden strikes, but the best odds of a trophy muskie or pike.' },
   { id: 'rifle-308', name: '.308 bolt rifle', slot: 'rifle', group: 'Hunting', price: 0, blurb: 'A proven deer rifle.' },
   { id: 'rifle-300', name: '.300 magnum', slot: 'rifle', group: 'Hunting', price: 900, blurb: 'Flatter and harder hitting: a larger margin on the vitals.' },
   { id: 'scope-3x9', name: '3–9× scope', slot: 'scope', group: 'Hunting', price: 0, blurb: 'Standard hunting glass.' },
@@ -99,10 +99,12 @@ export interface Profile {
   stats: { fish: number; deer: number; bears: number; records: number; earned: number }
   lastFishAt: number
   lastGameAt: number
+  /** True once the player has made their character. Everyone starts unverified, old saves included. */
+  verified: boolean
 }
 
 export function defaultProfile(): Profile {
-  const p: Profile = { cash: 250, owned: ITEMS.filter((i) => i.price === 0).map((i) => i.id), loadout: { ...STARTER }, tasks: [], taskCursor: 0, stats: { fish: 0, deer: 0, bears: 0, records: 0, earned: 0 }, lastFishAt: 0, lastGameAt: 0 }
+  const p: Profile = { cash: 250, owned: ITEMS.filter((i) => i.price === 0).map((i) => i.id), loadout: { ...STARTER }, tasks: [], taskCursor: 0, stats: { fish: 0, deer: 0, bears: 0, records: 0, earned: 0 }, lastFishAt: 0, lastGameAt: 0, verified: false }
   refillTasks(p)
   return p
 }
@@ -132,6 +134,7 @@ export function normalizeProfile(raw: unknown): Profile {
     stats: { fish: num(s.fish), deer: num(s.deer), bears: num(s.bears), records: num(s.records), earned: num(s.earned) },
     lastFishAt: num(r.lastFishAt),
     lastGameAt: num(r.lastGameAt),
+    verified: r.verified === true,
   }
   refillTasks(p)
   return p
@@ -229,6 +232,7 @@ export interface GearEffects {
   lineStrength: number
   biteRate: number
   baitBias: Record<string, number>
+  bait: BaitStyle
   vitalScale: number
   scopeZoom: number
   scopeSteady: number
@@ -246,14 +250,40 @@ const BAIT_BIAS: Record<string, Record<string, number>> = {
   'bait-bucktail': { muskie: 4.0, pike: 2.0, smallmouth: 0.6, walleye: 0.4, perch: 0.15 },
 }
 
+/**
+ * How each bait fishes. Live bait sits under a float: leave it still, wait out the nibbles and
+ * set the hook when the float goes under. Lures only draw strikes while they are being reeled
+ * back, and the strike gives a short window to set the hook.
+ */
+export interface BaitStyle {
+  kind: 'live' | 'lure'
+  /** Scales how long a fish mouths live bait before it takes the float under. */
+  nibbleScale: number
+  /** Seconds to set the hook once the fish has it. */
+  hookWindow: number
+  /** How quickly fish find it: live bait while it sits still, a lure while it moves. */
+  rate: number
+  /** Multiplier on the 2% trophy-fish odds (record odds are never changed). */
+  trophyOdds: number
+  hint: string
+}
+
+export const BAIT_STYLE: Record<string, BaitStyle> = {
+  'bait-crawler': { kind: 'live', nibbleScale: 1.35, hookWindow: 1.7, rate: 1, trophyOdds: 0.75, hint: 'Nightcrawler under a float: let it sit, wait out the nibbles, set the hook when the float goes under. Reeling it moves the worm away.' },
+  'bait-minnow': { kind: 'live', nibbleScale: 0.7, hookWindow: 2.2, rate: 1.25, trophyOdds: 1, hint: 'Minnow under a float: bites come sooner and the fish runs with it, so you get longer to set the hook.' },
+  'bait-spinner': { kind: 'lure', nibbleScale: 0, hookWindow: 1.0, rate: 1.4, trophyOdds: 1.25, hint: 'Spinner: hold R or left-click to work it back in. Fish only hit it while it is moving. Click the instant it strikes.' },
+  'bait-bucktail': { kind: 'lure', nibbleScale: 0, hookWindow: 0.8, rate: 0.8, trophyOdds: 1.75, hint: 'Bucktail: keep it moving with R or left-click. Strikes are rarer, sudden and short, but the fish run big.' },
+}
+
 export function gearEffects(l: Loadout): GearEffects {
   return {
     castRange: l.rod === 'rod-heavy' ? 1.33 : 1,
     reelSpeed: l.reel === 'reel-pro' ? 1.45 : l.reel === 'reel-baitcast' ? 1.25 : 1,
     surge: l.reel === 'reel-pro' ? 0.6 : 1,
     lineStrength: l.line === 'line-braid' ? 1.8 : 1,
-    biteRate: (l.bait === 'bait-minnow' ? 1.25 : 1) * (l.vest === 'vest-fishing' ? 1.1 : 1),
+    biteRate: (BAIT_STYLE[l.bait] ?? BAIT_STYLE['bait-crawler']).rate * (l.vest === 'vest-fishing' ? 1.1 : 1),
     baitBias: BAIT_BIAS[l.bait] ?? BAIT_BIAS['bait-crawler'],
+    bait: BAIT_STYLE[l.bait] ?? BAIT_STYLE['bait-crawler'],
     vitalScale: l.rifle === 'rifle-300' ? 1.25 : 1,
     scopeZoom: l.scope === 'scope-4x16' ? 1.7 : 1,
     scopeSteady: l.scope === 'scope-4x16' ? 0.7 : 1,
@@ -263,4 +293,38 @@ export function gearEffects(l: Loadout): GearEffects {
     utvPower: l.utvKit === 'utv-turbo' ? 1.3 : 1,
     call: l.call === 'call-grunt',
   }
+}
+
+export type LookSlot = 'jacket' | 'vest' | 'cap' | 'pants' | 'pack'
+export type Look = Record<LookSlot, string>
+
+/**
+ * What the character creator offers. Only looks: gear that changes how the hunt goes (the camo
+ * jacket's cover aside, which everyone starts with), like waders or the fishing vest, stays in the
+ * catalog. Whatever is picked is given free and worn.
+ */
+export const CHARACTER_CHOICES: Record<LookSlot, string[]> = {
+  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas'],
+  vest: ['vest-blaze', 'vest-none'],
+  cap: ['cap-blaze', 'cap-camo', 'cap-bucket'],
+  pants: ['pants-camo', 'pants-jeans'],
+  pack: ['pack-none'],
+}
+
+export const LOOK_SLOTS: LookSlot[] = ['jacket', 'vest', 'cap', 'pants', 'pack']
+
+export function lookOf(p: Profile): Look {
+  return { jacket: p.loadout.jacket, vest: p.loadout.vest, cap: p.loadout.cap, pants: p.loadout.pants, pack: p.loadout.pack }
+}
+
+/** Makes the character: checks every pick, gives and wears it, and marks the profile verified. */
+export function createCharacter(p: Profile, look: Look): string | null {
+  for (const slot of LOOK_SLOTS) if (!CHARACTER_CHOICES[slot].includes(look[slot])) return 'That outfit is not offered when making a character.'
+  for (const slot of LOOK_SLOTS) {
+    const id = look[slot]
+    if (!p.owned.includes(id)) p.owned.push(id)
+    p.loadout[slot] = id
+  }
+  p.verified = true
+  return null
 }

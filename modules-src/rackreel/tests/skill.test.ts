@@ -14,7 +14,37 @@ test('holding the reel forever strains and snaps the line', () => {
   assert.equal(snap.outcome, 'snapped')
 })
 
-test('never reeling lets the slack throw the hook', () => {
+test('letting go pauses the reel: no line is gained, and the fish stays on for a while', () => {
+  const skill = new SkillCheckManager(mulberry32(12))
+  skill.beginReel(0.5)
+  skill.setHolding(true)
+  let snap = skill.updateReel(0)
+  for (let i = 0; i < 60; i++) snap = skill.updateReel(1 / 60)
+  const afterHold = snap.progress
+  assert.ok(afterHold > 8, `one second of holding reels some line (${afterHold})`)
+  skill.setHolding(false)
+  for (let i = 0; i < 60 * 3; i++) snap = skill.updateReel(1 / 60)
+  assert.equal(snap.outcome, 'fighting')
+  assert.ok(snap.progress <= afterHold + 1e-6, 'nothing comes in while the reel is let go')
+  assert.ok(snap.tension > 15 && snap.tension < 40, `resting pull ${snap.tension}`)
+})
+
+test('reel progress grows with how long the reel is held', () => {
+  const held = (seconds: number) => {
+    const skill = new SkillCheckManager(() => 0.5)
+    skill.beginReel(0.4)
+    skill.setHolding(true)
+    let snap = skill.updateReel(0)
+    for (let i = 0; i < Math.round(seconds * 60); i++) snap = skill.updateReel(1 / 60)
+    return snap.progress
+  }
+  const short = held(0.5)
+  const long = held(2)
+  assert.ok(short > 8 && long > short * 1.8, `0.5 s ${short} vs 2 s ${long}`)
+  assert.ok(long < 100, 'a short hold never lands the fish')
+})
+
+test('never reeling lets the fish throw the hook', () => {
   const skill = new SkillCheckManager(mulberry32(6))
   skill.beginReel(0.5)
   skill.setHolding(false)
