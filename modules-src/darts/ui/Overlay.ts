@@ -92,6 +92,8 @@ export class Overlay {
     style.setProperty('--band-lo', at(-BAND))
     style.setProperty('--perfect-lo', at(-PERFECT))
     style.setProperty('--perfect-hi', at(PERFECT))
+    style.setProperty('--fade-lo', at(-METER.fade))
+    style.setProperty('--fade-hi', at(METER.fade))
     style.setProperty('--exact-lo', at(-PERFECT * METER.exact))
     style.setProperty('--exact-hi', at(PERFECT * METER.exact))
     style.setProperty('--band-hi', at(BAND))

@@ -101,10 +101,17 @@ test('meter: the yellow is wider and a release just past the green costs little'
   assert.ok(at(METER.band / METER.perfect) <= METER.yellowHoles + 1e-9)
 })
 
-test('meter: the Perfect window between the white lines is ±0.5 % of the ideal speed and lands exactly', () => {
+test('meter: the green is a third of ±1.7 %, fades to yellow before the band edge, and misses grow slowly', () => {
+  const at = (d: number) => meterReach(IDEAL_SPEED * (1 + d * METER.perfect), 'normal') / HOLE
+  assert.ok(Math.abs(METER.perfect - 0.017 / 3) < 1e-12)
+  assert.ok(METER.fade > METER.perfect && METER.fade < METER.band)
+  assert.ok(at(3) < 7.5, `a release at the old green edge reaches ${at(3).toFixed(2)} holes`)
+  for (let d = 1; d < METER.band / METER.perfect; d += 0.25) assert.ok(at(d + 0.25) >= at(d) - 1e-12)
+})
+
+test('meter: the Perfect window between the white lines keeps its share of the green and lands exactly', () => {
   const at = (d: number) => meterReach(IDEAL_SPEED * (1 + d * METER.perfect), 'hard')
-  assert.ok(Math.abs(METER.perfect * METER.exact - 0.005) < 1e-12)
-  assert.ok(Math.abs(METER.perfect - 0.017) < 1e-12, 'the green is 15 % narrower than the original ±2 %')
+  assert.ok(Math.abs(METER.perfect * METER.exact - 0.005 / 3) < 1e-12)
   const edge = METER.exact
   assert.equal(at(edge * 0.98), 0, 'inside the white lines lands on the aim')
   assert.equal(at(-edge * 0.98), 0)
