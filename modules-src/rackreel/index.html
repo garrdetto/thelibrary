@@ -79,6 +79,27 @@
       .book-grid li strong{color:var(--text)}
       .book-grid li.you strong{color:var(--ember)}
       .book-grid p{font-size:12px;margin-top:6px!important;color:var(--muted)!important}
+      .score-cat{display:grid;gap:3px;margin-top:8px;text-align:left}
+      .score-head{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--soft);text-transform:uppercase;letter-spacing:.6px}
+      .score-head b{font-weight:800}
+      .score-mine{color:var(--bone);font-weight:800;text-transform:none;letter-spacing:0}
+      .score-mine.placed{color:var(--ember)}
+      .score-cat ol{margin:0;padding-left:20px;display:grid;gap:2px;color:var(--soft);font-size:13px}
+      .score-cat li strong{color:var(--text)}
+      .score-cat li.you strong,.score-cat li.you{color:var(--ember)}
+      .score-cat li.empty{color:var(--muted);font-style:italic}
+      .score-state{color:var(--muted);font-size:11px}
+      .catch-scores{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:4px 14px;max-height:34vh;overflow:auto}
+      .catch-scores:empty{display:none}
+      .creator-screen{place-items:center end;background:linear-gradient(90deg,transparent 35%,rgba(8,8,7,.78))}
+      .creator-card{width:min(440px,100%);max-height:calc(100vh - 32px);overflow:auto}
+      .creator-body{display:grid;gap:10px}
+      .creator-group{border:1px solid var(--line);border-radius:12px;padding:8px 12px 12px;margin:0}
+      .creator-group legend{padding:0 6px;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--bronze)}
+      .creator-row{display:flex;flex-wrap:wrap;gap:6px}
+      .creator-pick{font-size:13px;padding:8px 12px}
+      .creator-pick[aria-checked="true"]{border-color:var(--ember);background:#3b2c18;color:var(--bone)}
+      .creator-status{min-height:1.2em;font-size:13px}
       .panel-screen{z-index:45}
       .panel-card{width:min(860px,100%);max-height:calc(100vh - 32px);overflow:auto;gap:12px}
       .panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
@@ -126,17 +147,17 @@
       <div class="rr-card">
         <img class="rr-logo" src="rackreel/logo.webp" alt="Rack & Reel" />
         <div class="rr-eyebrow">Upper Midwest field module · fishing &amp; hunting</div>
-        <p>Two hundred and fifty acres of northern Wisconsin: pine, birch and maple ridges in fall color, a cattail marsh and a twenty-acre lake with an island. Fish the weed edges and deep breaks, drive the trails in the UTV or take the boat out, and still-hunt the ridges for whitetails and black bear. Every animal is weighed or scored the moment it appears, and about one buck or fish in twenty-five is a record-book contender. Earn cash from every catch, tag and task, then outfit yourself at the log cabin.</p>
+        <p>Two hundred and fifty acres of northern Wisconsin: pine, birch and maple ridges in fall color, a cattail marsh and a twenty-acre lake with an island. Fish the weed edges and deep breaks, drive the trails in the UTV or take the boat out, and still-hunt the ridges for whitetails and black bear. Every animal is weighed or scored the moment it appears: most are around average, one in fifty is a trophy, and a near-record or a new state record is a once-in-a-lifetime find. Live bait fishes under a float; lures only draw strikes while you reel them. Earn cash from every catch, tag and task, then outfit yourself at the log cabin.</p>
         <div class="rr-keys">
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk or drive</div>
           <div><kbd>Mouse</kbd> or <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> Look around</div>
-          <div><kbd>Left</kbd> Cast / reel / fire</div>
-          <div><kbd>Right</kbd> Aim down sights</div>
+          <div><kbd>Left</kbd> Cast / fire · hold to reel</div>
+          <div><kbd>Right</kbd> Aim · double-click locks the scope</div>
           <div><kbd>1</kbd> Rod <kbd>2</kbd> Rifle</div>
           <div><kbd>E</kbd> Drive, board, climb, tag</div>
           <div><kbd>Shift</kbd> Sprint · hold breath</div>
           <div><kbd>C</kbd> Crouch <kbd>Space</kbd> Brake</div>
-          <div><kbd>R</kbd> Reel in <kbd>K</kbd> Record book</div>
+          <div>Hold <kbd>R</kbd> Reel in <kbd>K</kbd> High scores</div>
           <div><kbd>I</kbd> Inventory <kbd>G</kbd> Grunt call</div>
           <div><kbd>N</kbd> Map zoom <kbd>P</kbd> Hunting party</div>
           <div><kbd>Q</kbd> Anchor <kbd>F</kbd> Switch boat seat</div>
@@ -186,8 +207,9 @@
         <div class="stats">
           <div><small id="catch-l1">Length</small><strong id="catch-v1">22.4″</strong></div>
           <div><small>Trophy points</small><strong id="catch-points">120</strong></div>
-          <div><small>Record book</small><strong id="catch-rank">—</strong></div>
+          <div><small>High score</small><strong id="catch-rank">—</strong></div>
         </div>
+        <div class="catch-scores" id="catch-scores"></div>
         <p id="catch-fact"></p>
         <div class="rr-actions"><button class="rr-btn primary" id="catch-ok" type="button">Back to it</button></div>
       </div>
@@ -195,9 +217,9 @@
 
     <div id="book" class="rr-screen" hidden>
       <div class="rr-card">
-        <div class="rr-eyebrow">Northwoods record book · top three</div>
+        <div class="rr-eyebrow">Rack &amp; Reel high scores · top three</div>
         <h2>Record Book</h2>
-        <p>The all-time top three for each species. Land or tag anything bigger and your name goes in for this outing; trophy-class fish and game also post to the Trophy Room board under this module.</p>
+        <p>The top three anglers and hunters in every category the Wisconsin record keepers track. The real Wisconsin mark under each one is only a reference. A fish counts once it is reeled all the way in; a buck or bear counts once you walk within 10 yards of it. Sign in on the library to keep your place.</p>
         <div class="book-grid" id="book-grid"></div>
         <div class="rr-actions"><button class="rr-btn primary" id="book-close" type="button">Close</button></div>
       </div>

@@ -6,9 +6,9 @@ import { disposeRig, instantiate } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { PLAY_LIMIT, forestDensity } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
-import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, SAFE_DISTANCE, fleeSpeed, react } from './Herd'
+import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, HERD_TURNOVER_SECONDS, LEAVE_GONE, LEAVE_SECONDS, SAFE_DISTANCE, fleeSpeed, react } from './Herd'
 import type { DeerMood } from './Herd'
-import { SPECIES_BY_ID } from './LootTableManager'
+import { SPECIES_BY_ID, classify, measure } from './LootTableManager'
 import type { LootTableManager, SpeciesTemplate, Specimen } from './LootTableManager'
 
 export type AnimalState = DeerMood
@@ -32,6 +32,8 @@ export interface Animal {
   wounds: number
   goal: Vector3
   tagged: boolean
+  /** Seconds since the herd turned over and this animal started running off; -1 while it stays. */
+  leaving: number
   downTime: number
   lastDistance: number
   alarm: number
@@ -53,6 +55,7 @@ export interface NetAnimal {
   wt: number
   leg: boolean
   tp: number
+  sd?: number
   dt: number
 }
 
@@ -84,6 +87,9 @@ export class Wildlife {
   private targets = new Map<number, NetAnimal>()
   onLegendSpawn: ((animal: Animal) => void) | null = null
   onLost: ((animal: Animal) => void) | null = null
+  onTurnover: (() => void) | null = null
+  /** Counts down to the next herd turnover (`HERD_TURNOVER_SECONDS`). */
+  turnoverTimer = HERD_TURNOVER_SECONDS
 
   constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly terrain: Terrain, private readonly loot: LootTableManager, private readonly models: Map<ModelName, ModelTemplate>, private readonly rng: () => number = Math.random) {}
 
@@ -109,10 +115,77 @@ export class Wildlife {
     return at ? this.spawn(SPECIES_BY_ID.whitetail, at, false) : null
   }
 
+  /** A spot anywhere on the property, out of sight of every player but close enough to stay loaded. */
+  private randomSpot(players: Vector3[]): Vector3 | null {
+    const lim = PLAY_LIMIT - 30
+    for (let attempt = 0; attempt < 60; attempt++) {
+      const x = (this.rng() * 2 - 1) * lim
+      const z = (this.rng() * 2 - 1) * lim
+      if (!this.landAt(x, z)) continue
+      const p = new Vector3(x, this.terrain.heightAt(x, z), z)
+      const d = players.map((q) => Vector3.Distance(p, q))
+      if (d.some((v) => v < HERD_SPAWN_MIN) || d.every((v) => v > HERD_DESPAWN - 40)) continue
+      return p
+    }
+    return null
+  }
+
+  /** Every `HERD_TURNOVER_SECONDS` the deer on the property run off and a new batch walks in at random spots. */
+  private turnover(players: Vector3[]): void {
+    for (const a of this.animals) {
+      if (a.state === 'down' || a.wounds > 0 || a.leaving >= 0 || a.template.id !== 'whitetail') continue
+      let from = players[0]
+      for (const q of players) if (Vector3.Distance(a.position, q) < Vector3.Distance(a.position, from)) from = q
+      a.leaving = 0
+      a.alarm = 0
+      this.flee(a, from)
+      a.stateTime = LEAVE_SECONDS
+    }
+    let room = HERD_SIZE - this.living()
+    for (let tries = 0; room > 0 && tries < HERD_SIZE * 2; tries++) {
+      const at = this.randomSpot(players)
+      if (at) room -= this.spawnGroup(at, room)
+    }
+    this.onTurnover?.()
+  }
+
+  private living(): number {
+    return this.animals.filter((a) => a.state !== 'down' && a.leaving < 0).length
+  }
+
+  /** Puts a buck, a bear or a few does at `at`; returns how many animals it added. */
+  private spawnGroup(at: Vector3, room: number): number {
+    if (this.rng() < BEAR_SHARE && !this.animals.some((a) => a.template.id === 'blackbear')) {
+      this.spawn(SPECIES_BY_ID.blackbear, at, false)
+      return 1
+    }
+    if (this.rng() < BUCK_SHARE) {
+      this.spawn(SPECIES_BY_ID.whitetail, at, false)
+      return 1
+    }
+    const group = Math.min(room, 1 + Math.floor(this.rng() * 3))
+    const heading = this.rng() * Math.PI * 2
+    let added = 0
+    for (let i = 0; i < group; i++) {
+      const p = at.add(new Vector3((this.rng() - 0.5) * 12, 0, (this.rng() - 0.5) * 12))
+      if (!this.landAt(p.x, p.z)) continue
+      p.y = this.terrain.heightAt(p.x, p.z)
+      const doe = this.spawn(SPECIES_BY_ID.whitetail, p, true)
+      doe.heading = doe.desired = heading + (this.rng() - 0.5) * 0.8
+      added++
+    }
+    return Math.max(1, added)
+  }
+
   maintain(dt: number, players: Vector3 | Vector3[]): void {
     if (this.remote) return
     const list = Array.isArray(players) ? players : [players]
     const player = list[0]
+    this.turnoverTimer -= dt
+    if (this.turnoverTimer <= 0) {
+      this.turnoverTimer = HERD_TURNOVER_SECONDS
+      this.turnover(list)
+    }
     this.herdTimer -= dt
     if (this.herdTimer > 0) return
     this.herdTimer = 2
@@ -120,27 +193,11 @@ export class Wildlife {
       if (a.state === 'down' || a.wounds > 0) continue
       if (list.every((q) => Vector3.Distance(a.position, q) > HERD_DESPAWN)) this.remove(a)
     }
-    const living = this.animals.filter((a) => a.state !== 'down').length
+    const living = this.living()
     if (living >= HERD_SIZE) return
     const at = this.spawnSpot(player, null, HERD_SPAWN_MIN, HERD_SPAWN_MAX)
     if (!at) return
-    if (this.rng() < BEAR_SHARE && !this.animals.some((a) => a.template.id === 'blackbear')) {
-      this.spawn(SPECIES_BY_ID.blackbear, at, false)
-      return
-    }
-    if (this.rng() < BUCK_SHARE) {
-      this.spawn(SPECIES_BY_ID.whitetail, at, false)
-      return
-    }
-    const group = Math.min(HERD_SIZE - living, 1 + Math.floor(this.rng() * 3))
-    const heading = this.rng() * Math.PI * 2
-    for (let i = 0; i < group; i++) {
-      const p = at.add(new Vector3((this.rng() - 0.5) * 12, 0, (this.rng() - 0.5) * 12))
-      if (!this.landAt(p.x, p.z)) continue
-      p.y = this.terrain.heightAt(p.x, p.z)
-      const doe = this.spawn(SPECIES_BY_ID.whitetail, p, true)
-      doe.heading = doe.desired = heading + (this.rng() - 0.5) * 0.8
-    }
+    this.spawnGroup(at, HERD_SIZE - living)
   }
 
   spawn(template: SpeciesTemplate, position: Vector3, doe: boolean, given?: Specimen, id?: number): Animal {
@@ -151,6 +208,8 @@ export class Wildlife {
       specimen.value = 0
       specimen.trophyPoints = 0
       specimen.weightLb = Math.round(95 + this.rng() * 50)
+      specimen.sizeClass = 'average'
+      specimen.measures = {}
     }
     const model = this.models.get(template.model as ModelName)!
     const rig = instantiate(model, null, this.scene, (m) => this.ctx.registerDynamic(m))
@@ -174,7 +233,7 @@ export class Wildlife {
     const heading = this.rng() * Math.PI * 2
     const animal: Animal = {
       id: id ?? this.nextId++, template, specimen, rig, antlers, doe, position, heading, desired: heading, speed: 0, state: 'graze', stateTime: 2 + this.rng() * 5, fleeTime: 0,
-      gait: this.rng() * 10, scale, wounds: 0, goal: position.clone(), tagged: false, downTime: 0, lastDistance: Infinity, alarm: 0, scan: 2 + this.rng() * 4, scanYaw: 0, stomp: 0,
+      gait: this.rng() * 10, scale, wounds: 0, goal: position.clone(), tagged: false, leaving: -1, downTime: 0, lastDistance: Infinity, alarm: 0, scan: 2 + this.rng() * 4, scanYaw: 0, stomp: 0,
     }
     this.animals.push(animal)
     if (specimen.legendary) this.onLegendSpawn?.(animal)
@@ -288,7 +347,7 @@ export class Wildlife {
   snapshot(): NetAnimal[] {
     return this.animals.filter((a) => !a.tagged).map((a) => ({
       id: a.id, sp: a.template.id, doe: a.doe, x: Math.round(a.position.x * 100) / 100, z: Math.round(a.position.z * 100) / 100, h: Math.round(a.heading * 1000) / 1000,
-      v: Math.round(a.speed * 100) / 100, st: a.state, val: a.specimen.value, wt: a.specimen.weightLb, leg: a.specimen.legendary, tp: a.specimen.trophyPoints, dt: Math.round(a.downTime * 10) / 10,
+      v: Math.round(a.speed * 100) / 100, st: a.state, val: a.specimen.value, wt: a.specimen.weightLb, leg: a.specimen.legendary, tp: a.specimen.trophyPoints, sd: a.specimen.seed, dt: Math.round(a.downTime * 10) / 10,
     }))
   }
 
@@ -300,7 +359,7 @@ export class Wildlife {
       if (this.animals.some((a) => a.id === n.id)) continue
       const template = SPECIES_BY_ID[n.sp as keyof typeof SPECIES_BY_ID]
       if (!template) continue
-      const specimen: Specimen = { species: template.id, value: n.val, weightLb: n.wt, lengthIn: 0, legendary: n.leg, recordTier: this.loot.placement(template.id, n.val), trophyPoints: n.tp, serial: n.id + 100000 }
+      const specimen: Specimen = { species: template.id, value: n.val, weightLb: n.wt, lengthIn: 0, legendary: n.leg, recordTier: this.loot.placement(template.id, n.val), trophyPoints: n.tp, serial: n.id + 100000, sizeClass: n.doe ? 'average' : classify(template.id, n.val), measures: n.doe ? {} : measure(template.id, n.val, n.sd ?? 0), seed: n.sd ?? 0 }
       const a = this.spawn(template, new Vector3(n.x, this.terrain.heightAt(n.x, n.z), n.z), n.doe, specimen, n.id)
       a.heading = n.h
     }
@@ -351,14 +410,23 @@ export class Wildlife {
         if (a.tagged && a.downTime > 2) this.remove(a)
         continue
       }
-      if (a.alarm > 0) {
+      if (a.leaving >= 0) {
+        a.leaving += dt
+        if (a.leaving > LEAVE_SECONDS || (a.leaving > 4 && toPlayer > LEAVE_GONE)) {
+          this.remove(a)
+          continue
+        }
+        if (a.state !== 'flee') this.flee(a, player)
+        a.stateTime = Math.max(a.stateTime, 1)
+      }
+      if (a.alarm > 0 && a.leaving < 0) {
         a.alarm -= dt
         if (a.alarm <= 0) this.flee(a, player)
       }
       const approaching = toPlayer < a.lastDistance - 0.04
       a.lastDistance = toPlayer
       const hearing = (a.template.id === 'whitetail' ? 1 : 0.75) * this.detection
-      const decision = react(a.state, { distance: toPlayer, noise, approaching, cover: this.cover(a, player), hearing }, a.stateTime)
+      const decision = a.leaving >= 0 ? 'keep' : react(a.state, { distance: toPlayer, noise, approaching, cover: this.cover(a, player), hearing }, a.stateTime)
       if (decision === 'flee') this.flee(a, player)
       else if (decision === 'alert') {
         a.state = 'alert'

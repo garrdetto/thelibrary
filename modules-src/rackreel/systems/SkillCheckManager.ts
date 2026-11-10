@@ -11,6 +11,10 @@ export interface ReelTuning {
   holdTensionPerSecond: number
   holdProgressPerSecond: number
   relaxPerSecond: number
+  /** Where the line settles when you stop reeling: the drag holds the fish, no line is gained. */
+  restTension: number
+  /** Seconds without reeling before a fish works the hook loose. */
+  idleLimit: number
   slackFrictionPerPoint: number
   strainFrictionPerPoint: number
   surgeStrength: number
@@ -22,6 +26,8 @@ export const REEL_TUNING: ReelTuning = {
   holdTensionPerSecond: 22,
   holdProgressPerSecond: 7.5,
   relaxPerSecond: 24,
+  restTension: 24,
+  idleLimit: 20,
   slackFrictionPerPoint: 0.9,
   strainFrictionPerPoint: 1.6,
   surgeStrength: 30,
@@ -69,6 +75,7 @@ export class SkillCheckManager {
   private surge = 0
   private holding = false
   private slackTime = 0
+  private idleTime = 0
 
   aiming = false
   swayX = 0
@@ -92,6 +99,7 @@ export class SkillCheckManager {
     this.surgeTimer = 1 + this.rng() * 2
     this.surge = 0
     this.slackTime = 0
+    this.idleTime = 0
   }
 
   beginAiming(): void {
@@ -106,6 +114,7 @@ export class SkillCheckManager {
     this.aiming = false
   }
 
+  /** A single tap of the handle: a quarter turn of line, never a whole retrieve. */
   crank(): void {
     if (this.state !== 'FISH_REELING' || this.outcome !== 'fighting') return
     this.tension = Math.min(TENSION_MAX, this.tension + this.reel.crankTension * (0.7 + this.fightPower * 0.6))
@@ -128,10 +137,16 @@ export class SkillCheckManager {
       const pull = Math.sin(this.fightClock * 1.7 + this.surgePhase) * 6 * this.fightPower + this.surge
       this.tension += pull * dt * 2.2
       if (this.holding) {
+        this.idleTime = 0
         this.tension += this.reel.holdTensionPerSecond * (0.6 + this.fightPower * 0.7) * dt
         if (this.tension >= SLACK_LIMIT && this.tension <= STRAIN_LIMIT) this.progress += this.reel.holdProgressPerSecond / (0.6 + this.fightPower) * dt
       } else {
-        this.tension -= this.reel.relaxPerSecond * dt
+        // Letting go stops the reel where it is: the drag eases the line back to a resting pull.
+        this.idleTime += dt
+        const rest = this.reel.restTension
+        if (this.tension > rest) this.tension = Math.max(rest, this.tension - this.reel.relaxPerSecond * dt)
+        else this.tension = Math.min(rest, this.tension + this.reel.relaxPerSecond * 0.5 * dt)
+        if (this.idleTime > this.reel.idleLimit) this.outcome = 'thrown'
       }
       this.progress -= this.surge * 0.04 * dt
       this.tension = Math.max(TENSION_MIN, Math.min(TENSION_MAX, this.tension))

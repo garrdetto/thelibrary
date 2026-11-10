@@ -1,5 +1,7 @@
-import type { LootTableManager, Specimen, SpeciesId } from '../systems/LootTableManager'
-import { SPECIES, SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
+import type { Specimen } from '../systems/LootTableManager'
+import { SIZE_CLASS_LABEL, SPECIES, SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
+import { BOARD_SIZE, categoriesFor, categoryValues, formatRecord, rankOn } from '../shared/Records'
+import type { HighScore, RecordBoard, RecordCategory } from '../shared/Records'
 import type { ReelSnapshot } from '../systems/SkillCheckManager'
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T {
@@ -111,21 +113,25 @@ export class Hud {
     el('progress-bar').style.width = `${snap.progress}%`
     el('health-bar').style.width = `${snap.lineHealth}%`
     el('reel-pct').textContent = `${Math.round(snap.progress)}%`
-    el('reel-state').textContent = snap.strain ? 'Too tight — ease off!' : snap.slack ? 'Slack line — crank!' : 'Holding steady'
+    el('reel-state').textContent = snap.strain ? 'Too tight — ease off!' : snap.slack ? 'Slack line — reel!' : 'Holding steady'
   }
 
-  showCatch(specimen: Specimen, rank: number, onClose: () => void): void {
+  showCatch(specimen: Specimen, onClose: () => void): void {
     const t = SPECIES_BY_ID[specimen.species]
-    el('catch-name').textContent = t.name
-    el('catch-value').textContent = formatValue(specimen.species, specimen.value)
+    const doe = t.kind === 'game' && specimen.value === 0
+    el('catch-name').textContent = doe ? 'Whitetail doe' : t.name
+    el('catch-value').textContent = doe ? `${Math.round(specimen.weightLb)} lb` : formatValue(specimen.species, specimen.value)
     const tier = el('catch-tier')
     tier.className = `tier${specimen.legendary ? ' legend' : ''}`
-    tier.textContent = specimen.legendary ? 'Record-class trophy' : specimen.value >= t.trophyAt ? 'Trophy' : t.kind === 'fish' ? 'Keeper' : 'Tagged'
-    el('catch-l1').textContent = t.kind === 'fish' ? 'Length' : t.unit === 'in' ? 'Field weight' : 'Weight'
-    el('catch-v1').textContent = t.kind === 'fish' ? `${specimen.lengthIn.toFixed(1)}″` : `${Math.round(specimen.weightLb)} lb`
+    tier.textContent = doe ? 'Antlerless tag' : SIZE_CLASS_LABEL[specimen.sizeClass]
+    el('catch-l1').textContent = t.kind === 'fish' ? 'Length' : t.unit === 'in' ? 'Field dressed' : 'Skull'
+    el('catch-v1').textContent = t.kind === 'fish' ? `${specimen.lengthIn.toFixed(1)}″`
+      : t.unit === 'in' ? `${Math.round(specimen.weightLb)} lb`
+        : specimen.measures.skull ? formatRecord('blackbear.skull', specimen.measures.skull) : '—'
     el('catch-points').textContent = specimen.trophyPoints.toLocaleString()
-    el('catch-rank').textContent = rank ? `#${rank} all-time` : '—'
+    el('catch-rank').textContent = doe ? '—' : '…'
     el('catch-fact').textContent = t.facts
+    el('catch-scores').replaceChildren()
     const box = el('catch')
     box.hidden = false
     const ok = el<HTMLButtonElement>('catch-ok')
@@ -136,31 +142,32 @@ export class Hud {
     }
   }
 
-  get modalOpen(): boolean {
-    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false
+  /**
+   * The top three of every high-score category this animal counts toward, with its own
+   * measurement and placing. `placed` is null while the result is still being saved.
+   */
+  showCatchScores(specimen: Specimen, board: RecordBoard, placed: Record<string, number> | null, you: string): void {
+    const wrap = el('catch-scores')
+    wrap.replaceChildren()
+    const values = categoryValues(specimen.species, specimen.value, specimen.seed, specimen.measures)
+    let best: { rank: number; label: string } | null = null
+    for (const c of categoriesFor(specimen.species)) {
+      const value = values[c.id]
+      if (value === undefined) continue
+      const rank = placed ? placed[c.id] ?? 0 : rankOn(board[c.id] ?? [], value)
+      if (rank && (!best || rank < best.rank)) best = { rank, label: c.label }
+      wrap.append(scoreSection(c, board[c.id] ?? [], { value, rank, you, pending: !placed }))
+    }
+    if (!wrap.childElementCount) return
+    el('catch-rank').textContent = best ? `#${best.rank} ${best.label.toLowerCase()}` : placed ? 'Not top 3' : '…'
   }
 
-  showBook(loot: LootTableManager, you: Set<string>, onClose: () => void): void {
-    const grid = el('book-grid')
-    grid.replaceChildren()
-    for (const s of SPECIES) {
-      const section = document.createElement('section')
-      const h = document.createElement('h3')
-      h.textContent = `${s.name} · ${s.measure.toLowerCase()}`
-      const ol = document.createElement('ol')
-      for (const entry of loot.records[s.id as SpeciesId]) {
-        const li = document.createElement('li')
-        if (you.has(`${s.id}:${entry.value}:${entry.holder}`)) li.className = 'you'
-        const strong = document.createElement('strong')
-        strong.textContent = formatValue(s.id, entry.value)
-        li.append(strong, ` — ${entry.holder}, ${entry.place}, ${entry.year}`)
-        ol.append(li)
-      }
-      const p = document.createElement('p')
-      p.textContent = s.facts
-      section.append(h, ol, p)
-      grid.append(section)
-    }
+  get modalOpen(): boolean {
+    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false || document.getElementById('creator')?.hidden === false
+  }
+
+  showBook(board: RecordBoard, you: string, onClose: () => void): void {
+    this.renderBook(board, you)
     const box = el('book')
     box.hidden = false
     const close = el<HTMLButtonElement>('book-close')
@@ -171,7 +178,60 @@ export class Hud {
     }
   }
 
+  /** Redraws the open high-score book, e.g. once the latest board arrives from the server. */
+  renderBook(board: RecordBoard, you: string): void {
+    const grid = el('book-grid')
+    grid.replaceChildren()
+    for (const s of SPECIES) {
+      const section = document.createElement('section')
+      const h = document.createElement('h3')
+      h.textContent = s.name
+      section.append(h)
+      for (const c of categoriesFor(s.id)) section.append(scoreSection(c, board[c.id] ?? [], { you }))
+      const p = document.createElement('p')
+      p.textContent = s.facts
+      section.append(p)
+      grid.append(section)
+    }
+  }
+
   closeBook(): void {
     el('book').hidden = true
   }
+}
+
+function scoreSection(c: RecordCategory, list: HighScore[], opts: { value?: number; rank?: number; you: string; pending?: boolean }): HTMLElement {
+  const box = document.createElement('div')
+  box.className = 'score-cat'
+  const head = document.createElement('div')
+  head.className = 'score-head'
+  const label = document.createElement('b')
+  label.textContent = c.label
+  head.append(label)
+  if (opts.value !== undefined) {
+    const mine = document.createElement('span')
+    mine.className = `score-mine${opts.rank ? ' placed' : ''}`
+    mine.textContent = `${formatRecord(c.id, opts.value)}${opts.rank ? ` · #${opts.rank}${opts.pending ? '?' : ''}` : ''}`
+    head.append(mine)
+  }
+  const ol = document.createElement('ol')
+  for (let i = 0; i < BOARD_SIZE; i++) {
+    const li = document.createElement('li')
+    const entry = list[i]
+    if (entry) {
+      const strong = document.createElement('strong')
+      strong.textContent = formatRecord(c.id, entry.value)
+      li.append(strong, ` — ${entry.username}`)
+      if (entry.username === opts.you && (opts.value === undefined || entry.value === opts.value)) li.className = 'you'
+    } else {
+      li.className = 'empty'
+      li.textContent = 'Open — be the first'
+    }
+    ol.append(li)
+  }
+  const state = document.createElement('small')
+  state.className = 'score-state'
+  state.textContent = `For reference, the Wisconsin mark: ${formatRecord(c.id, c.state.value)} · ${c.state.note}`
+  box.append(head, ol, state)
+  return box
 }
