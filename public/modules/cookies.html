@@ -206,6 +206,7 @@ function frame(now) {
 }
 
 function start() {
+  if (S && (mode === 'play' || mode === 'pause') && S.baked >= 1 && window.tlScores) tlScores.submit('cookies', Math.floor(S.baked));
   S = fresh(); mode = 'play'; crumbs = []; pops = []; if (golden) { golden.remove(); golden = null; }
   overlay.classList.remove('show'); refresh(true); $('cookie').focus();
 }

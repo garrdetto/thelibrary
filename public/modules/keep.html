@@ -168,7 +168,7 @@ function renderShop() {
     box.appendChild(b);
   }
 }
-function start() { S = fresh(); held = null; $('shop').innerHTML = ''; startWave(); }
+function start() { if (S && (mode === 'play' || mode === 'pause' || mode === 'shop') && S.score > 0 && window.tlScores) tlScores.submit('keep', S.score); S = fresh(); held = null; $('shop').innerHTML = ''; startWave(); }
 
 function update(dt) {
   S.t += dt;

@@ -14,7 +14,7 @@ export const scoredModules = {
   mathrush: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 1_000_000, note: 'Saved when the sixty-second timer runs out.' },
   rackreel: { title: 'Trophy Room', metric: 'Trophy points', order: 'desc', unit: 'points', min: 1, max: 1_200, note: 'Trophy-class fish and game only, scored against the all-time record for the species (1,000 ties the record). Saved when you land the fish or tag the animal.' },
   demoderby: { title: 'Best Heats', metric: 'Points', order: 'desc', unit: 'points', min: 1, max: 1_000_000, note: 'Hits landed, knockouts, time survived and 1,000 for the win. Saved as you drive, so a heat cut short still counts, and finalized when you are knocked out or the heat ends.' },
-  darts: { title: 'Best Count Up', metric: 'Total', order: 'desc', unit: 'points', min: 1, max: 1_440, note: 'Solo Count Up over eight rounds (24 darts) on Normal or Hard steadiness. Saved when the eighth round ends.' },
+  darts: { title: 'Best Count Up', metric: 'Total', order: 'desc', unit: 'points', min: 1, max: 1_440, note: 'Solo Count Up over eight rounds (24 darts) on Normal or Hard steadiness. Saved as you throw, so a match cut short by closing the page or losing connection still counts, and finalized when the eighth round ends.' },
   foodchain: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you swim, so a dive you leave unfinished still counts, and finalized when your last life is eaten.' },
   keep: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you defend, so a siege you leave unfinished still counts, and finalized when the wall falls.' },
   giant: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 10_000_000, note: 'One ninety-second round. Saved as you toss, and finalized when the clock runs out.' },
@@ -22,9 +22,31 @@ export const scoredModules = {
   hotdog: { title: 'Richest Carts', metric: 'Cash', order: 'desc', unit: 'dollars', min: 1, max: 10_000_000, note: 'Cash on hand after the thirtieth day. Saved when the season ends.' },
   pingpong: { title: 'Longest Rallies', metric: 'Rally', order: 'desc', unit: 'hits', min: 2, max: 10_000, note: 'The longest rally in a match against the CPU, counting both players\' hits. Saved as you play, and finalized at match point.' },
   blockhead: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you play, so a siege you leave unfinished still counts, and finalized when the last player falls or you start a new siege.' },
+  'proskater-story': { title: 'Story Runs', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Story', note: 'The best score in one two-minute Story run at any park. Saved as you skate, so a run cut short by closing the page or losing connection still counts, and finalized when the clock runs out.' },
+  'proskater-blitz': { title: 'Timed Blitz', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Blitz', note: 'One minute at any park. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
+  'proskater-showdown': { title: 'Half-Pipe Showdown', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Showdown', note: 'Sixty seconds, with tricks started inside the half-pipe zone scoring double. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
+  'proskater-free': { title: 'Biggest Combos', metric: 'Combo', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Free Skate', note: 'The biggest single combo banked in Free Skate. Saved the moment the combo lands.' },
 } as const
 
 export type ScoredModuleId = keyof typeof scoredModules
+
+export const scoreBoardGroups: Partial<Record<string, ScoredModuleId[]>> = {
+  proskater: ['proskater-blitz', 'proskater-showdown', 'proskater-story', 'proskater-free'],
+}
+
+export function scoreBoardParent(module: ScoredModuleId): string {
+  const config = scoredModules[module]
+  return 'parent' in config ? config.parent : module
+}
+
+export function scoreBoardLabel(module: ScoredModuleId): string {
+  const config = scoredModules[module]
+  return 'label' in config ? config.label : config.title
+}
+
+export function hasScoreBoard(moduleId: string) {
+  return isScoredModule(moduleId) || Boolean(scoreBoardGroups[moduleId]?.length)
+}
 
 export type ModuleScore = { username: string; value: number; date: string }
 

@@ -1248,5 +1248,25 @@
   "matsBefore": 2,
   "matsAfter": 2,
   "preset": "rig"
+ },
+ "proskater/board.glb": {
+  "hash": "3883eaa15150992a05f748e081f2fc84a48b8ca8",
+  "before": 363136,
+  "after": 119328,
+  "primsBefore": 18,
+  "primsAfter": 9,
+  "matsBefore": 9,
+  "matsAfter": 9,
+  "preset": "slots"
+ },
+ "proskater/skater.glb": {
+  "hash": "8fa673a6d767bb80bfc08d9cecfb8f6de8e20dc2",
+  "before": 3741772,
+  "after": 727336,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "character"
  }
 }

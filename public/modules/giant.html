@@ -61,7 +61,7 @@ function add(points, x, y, label, color) {
   if (window.tlScores) tlScores.progress('giant', S.score);
   hud();
 }
-function start() { S = fresh(); held = null; mode = 'play'; overlay.classList.remove('show'); panel.focus(); hud(); }
+function start() { if (S && (mode === 'play' || mode === 'pause') && S.score > 0 && window.tlScores) tlScores.submit('giant', S.score); S = fresh(); held = null; mode = 'play'; overlay.classList.remove('show'); panel.focus(); hud(); }
 function over() {
   mode = 'over'; held = null; cv.classList.remove('grabbing');
   if (S.score > best) { best = S.score; store.set('giant-best', String(best)); }

@@ -162,14 +162,22 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
 .objpanel h4 { margin: 0 0 4px; font-size: 13px; letter-spacing: .2em; color: var(--accent-2); text-transform: uppercase; }
 .fps { position: absolute; left: 16px; top: 90px; font: 11px ui-monospace, monospace; color: var(--muted); background: rgba(0,0,0,.4); padding: 6px 8px; border-radius: 8px; white-space: pre; }
 
-/* ---------- touch controls ---------------------------------------------- */
-.touch { position: absolute; inset: auto 0 0 0; height: 0; pointer-events: none; }
-.touch .pad, .touch .acts { position: absolute; bottom: 90px; display: grid; gap: 8px; pointer-events: auto; }
-.touch .pad { left: 16px; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(2, 56px); }
-.touch .acts { right: 16px; grid-template-columns: repeat(2, 64px); }
-.touch button { border-radius: 16px; border: 1px solid var(--line); background: rgba(0,0,0,.42); font-weight: 800; font-size: 13px; user-select: none; -webkit-user-select: none; touch-action: none; }
-.touch button.on { background: rgba(255,122,26,.45); }
-@media (hover: hover) and (pointer: fine) { .touch { display: none; } }
+/* ---------- on-screen keys (keyboard legend + touch/mouse controls) ------- */
+.osd { --k: 44px; position: absolute; inset: auto 0 0 0; height: 0; pointer-events: none; }
+.osd-move, .osd-acts { position: absolute; bottom: 58px; display: grid; gap: 6px; pointer-events: auto; }
+.osd-move { left: 16px; grid-template-columns: repeat(3, var(--k)); grid-template-rows: repeat(2, var(--k)); }
+.osd-acts { right: 16px; grid-template-columns: repeat(4, var(--k)); grid-auto-rows: var(--k); }
+.osd .kc { display: grid; place-content: center; gap: 1px; padding: 0; border-radius: 9px; border: 1px solid rgba(255,255,255,.22); border-bottom-width: 3px; background: linear-gradient(180deg, rgba(40,46,60,.62), rgba(12,15,22,.62)); color: var(--text); user-select: none; -webkit-user-select: none; touch-action: none; box-shadow: 0 4px 12px rgba(0,0,0,.35); transition: transform .06s ease, background .06s ease; }
+.osd .kc b { font-size: 15px; font-weight: 900; line-height: 1; letter-spacing: .02em; }
+.osd .kc small { font-size: 8.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); line-height: 1.1; }
+.osd .kc.wide { grid-column: span 4; }
+.osd .kc.sm b { font-size: 12px; }
+.osd .kc.on { transform: translateY(2px); border-bottom-width: 1px; background: linear-gradient(180deg, rgba(255,122,26,.75), rgba(200,80,10,.7)); border-color: var(--accent); }
+.osd .kc.on small { color: #1a0d00; }
+.osd.off { display: none; }
+@media (hover: none), (pointer: coarse) { .osd { --k: 58px; } .osd .kc b { font-size: 18px; } }
+@media (max-width: 720px) { .osd { --k: 46px; } .osd-acts { grid-template-columns: repeat(4, var(--k)); } .hud .bl { bottom: 8px; } }
+@media (max-height: 520px) { .osd { --k: 38px; } .osd-move, .osd-acts { bottom: 40px; } .osd .kc small { display: none; } }
 
 /* ---------- overlays ---------------------------------------------------- */
 .overlay { display: grid; place-items: center; background: rgba(3,5,9,.62); backdrop-filter: blur(6px); padding: 20px; }
@@ -195,7 +203,7 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
   <section data-screen="title" class="backdrop">
     <div class="card">
       <div class="brand"><h1>PRO SKATER <span>AI</span></h1><span class="tag">Momentum · rotation · flow</span></div>
-      <p class="sub">Skate three original parks with real momentum: pump the half-pipe, ollie gaps, flip, grab, grind and link it all into combos. Progress is saved in this browser.</p>
+      <p class="sub">Skate three original parks, starting in the Cell Block C rec yard, with real momentum: pump the half-pipe, ollie gaps, flip, grab, grind and link it all into combos. Progress is saved in this browser; runs go on the library leaderboards.</p>
       <div class="wallet" id="wallet"></div>
       <div class="modes">
         <button class="mode" data-action="open-story"><span class="k">MODE A</span><h3>Story Mode</h3><p>Career chapters with park objectives. Earn cash and unlock the next park.</p></button>
@@ -205,6 +213,7 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
       </div>
       <div class="row">
         <button class="btn" data-action="open-decks">Deck shop</button>
+        <button class="btn" data-action="toggle-rank" id="rankBtn">Rank: Officer</button>
         <button class="btn" data-action="open-options">Options</button>
       </div>
     </div>
@@ -245,10 +254,12 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
         <div class="opt"><label for="optQuality">Render quality</label>
           <select id="optQuality">
             <option value="low">Low (fast, 1024 shadows)</option>
-            <option value="high">High (1080p cap, 2048 shadows)</option>
+            <option value="high">High (1080p detail, 2048 shadows)</option>
             <option value="ultra">Ultra (native resolution, 4096 shadows)</option>
           </select></div>
         <div class="opt"><label for="optVolume">Sound volume</label><input id="optVolume" type="range" min="0" max="1" step="0.05" /></div>
+        <div class="opt"><label for="optRank">Uniform rank</label><select id="optRank"><option value="officer">Officer (two chevrons)</option><option value="sergeant">Sergeant (three chevrons)</option></select></div>
+        <div class="opt"><label for="optKeys">On-screen keys</label><select id="optKeys"><option value="1">Show</option><option value="0">Hide</option></select></div>
         <div class="opt"><label for="optFps">Performance overlay</label><select id="optFps"><option value="0">Off</option><option value="1">On</option></select></div>
         <h3 style="margin:10px 0 0">Controls</h3>
         <ul class="keys">
@@ -258,8 +269,9 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
           <li><kbd>J</kbd> flip trick (+ direction)</li>
           <li><kbd>K</kbd> grab trick (hold, + direction)</li>
           <li><kbd>L</kbd> grind near a rail or ledge, manual on flat</li>
-          <li><kbd>J</kbd>+<kbd>K</kbd> special (meter full)</li>
-          <li><kbd>Tab</kbd> objectives · <kbd>Esc</kbd> pause</li>
+          <li><kbd>J</kbd>+<kbd>K</kbd> or <kbd>I</kbd> special (meter full): K2 Crashout, + <kbd>W</kbd> Suit-Up Slam, + <kbd>S</kbd> Icebox Invert</li>
+          <li><kbd>L</kbd> into a wall in the air: Write-Up Wallride</li>
+          <li><kbd>Tab</kbd> objectives · <kbd>Esc</kbd> pause · <kbd>H</kbd> on-screen keys</li>
         </ul>
         <h3 style="margin:10px 0 0">Diagnostics</h3>
         <div class="diag" id="diag">…</div>
@@ -293,15 +305,20 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
       <div class="balance hidden" id="hudBalance"><i></i></div>
     </div>
     <div class="popups" id="hudPopups" aria-live="polite"></div>
-    <div class="touch" id="touch">
-      <div class="pad">
-        <span></span><button data-key="up">▲</button><span></span>
-        <button data-key="left">◀</button><button data-key="down">▼</button><button data-key="right">▶</button>
+    <div class="osd" id="osd">
+      <div class="osd-move" role="group" aria-label="Movement keys">
+        <span></span><button class="kc" data-key="up" aria-label="W: push"><b>W</b><small>Push</small></button><span></span>
+        <button class="kc" data-key="left" aria-label="A: carve left"><b>A</b><small>Left</small></button><button class="kc" data-key="down" aria-label="S: brake"><b>S</b><small>Brake</small></button><button class="kc" data-key="right" aria-label="D: carve right"><b>D</b><small>Right</small></button>
       </div>
-      <div class="acts">
-        <button data-key="flip">FLIP</button><button data-key="grab">GRAB</button>
-        <button data-key="grind">GRIND</button><button data-key="ollie">OLLIE</button>
-        <button data-key="pause" style="grid-column:span 2">PAUSE</button>
+      <div class="osd-acts" role="group" aria-label="Trick keys">
+        <button class="kc" data-key="flip" aria-label="J: flip trick"><b>J</b><small>Flip</small></button>
+        <button class="kc" data-key="grab" aria-label="K: grab trick"><b>K</b><small>Grab</small></button>
+        <button class="kc" data-key="grind" aria-label="L: grind, manual or wallride"><b>L</b><small>Grind</small></button>
+        <button class="kc" data-key="special" aria-label="I: special"><b>I</b><small>Special</small></button>
+        <button class="kc wide" data-key="ollie" aria-label="Space: hold to crouch, release to ollie"><b>Space</b><small>Hold, release to ollie</small></button>
+        <button class="kc sm" data-key="objectives" aria-label="Tab: objectives"><b>Tab</b><small>Goals</small></button>
+        <button class="kc sm" data-key="pause" aria-label="Escape: pause"><b>Esc</b><small>Pause</small></button>
+        <button class="kc sm" data-key="keys" aria-label="H: hide on-screen keys"><b>H</b><small>Hide</small></button>
       </div>
     </div>
   </section>
@@ -325,6 +342,7 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
       <div class="modelabel" id="resMode"></div>
       <div class="big" id="resScore">0</div>
       <div class="newbest hidden" id="resBest">NEW PERSONAL BEST</div>
+      <p class="sub" id="resBoard" style="margin:6px 0 0"></p>
       <div class="stats" id="resStats"></div>
       <ul class="objlist" id="resObjs"></ul>
       <div class="row">
@@ -345,6 +363,7 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
   </section>
 </div>
 
+<script vite-ignore src="module-scores.js"></script>
 <script type="module">
 /* =============================================================================
    PRO SKATER AI — ENGINE
@@ -379,6 +398,9 @@ select { background: var(--panel-solid); color: var(--text); border: 1px solid v
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // §1 ─── CONFIG ───────────────────────────────────────────────────────────────
 /** All physics and scoring numbers live here so tuning never means hunting. */
@@ -428,6 +450,7 @@ const _v4 = new THREE.Vector3(), _v5 = new THREE.Vector3(), _v6 = new THREE.Vect
 const _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
 const _up = new THREE.Vector3(0, 1, 0);
 const _box = new THREE.Box3();
+const _m4 = new THREE.Matrix4();
 const _sphere = new THREE.Sphere();
 const _grad = { x: 0, z: 0 };                 // height-field gradient output
 const _hit = { d2: 0, t: 0, line: null };      // closest grind line output
@@ -530,7 +553,7 @@ function freshProfile() {
     equippedDeck: 'maple',
     records: { blitz: {}, showdown: {}, story: {} },
     stats: { runs: 0, tricksLanded: 0, bails: 0, lettersCollected: 0, bestCombo: 0, grindMeters: 0 },
-    settings: { quality: 'high', volume: 0.7, fps: false },
+    settings: { quality: 'high', volume: 0.7, fps: false, rank: 'officer', keys: true },
   };
 }
 
@@ -557,6 +580,8 @@ function normalizeProfile(raw) {
       quality: ['low', 'high', 'ultra'].includes(raw.settings?.quality) ? raw.settings.quality : 'high',
       volume: clamp(Number(raw.settings?.volume ?? 0.7) || 0, 0, 1),
       fps: Boolean(raw.settings?.fps),
+      rank: raw.settings?.rank === 'sergeant' ? 'sergeant' : 'officer',
+      keys: raw.settings?.keys !== false,
     },
   };
   if (!p.unlockedParks.includes('warehouse')) p.unlockedParks.unshift('warehouse');
@@ -638,9 +663,9 @@ const deckById = (id) => DECKS.find((d) => d.id === id) ?? DECKS[0];
  */
 const PARKS = {
   warehouse: {
-    id: 'warehouse', name: 'Rust Belt Warehouse', tagline: 'Concrete floor, plywood ramps and a center funbox.',
-    size: 64,
-    palette: { ground: 0xb8b2a8, ramp: 0xc9a476, side: 0x2f6f8f, coping: 0xd9dde3, wall: 0x6d4c41, sky: [0x8fb8e8, 0xf1d9b5], fog: 0xd8cbb8, sun: 0xfff0d6, accent: 0xff7a1a },
+    id: 'warehouse', name: 'Cell Block Yard', tagline: 'The rec yard behind Cell Block C: painted concrete, chain-link, razor wire and a center funbox.',
+    size: 64, theme: 'prison',
+    palette: { ground: 0xaeada6, ramp: 0xbfae8f, side: 0x4f5f73, coping: 0xd9dde3, wall: 0xd5d2c8, sky: [0x86a6cc, 0xe3dccd], fog: 0xd2d2cc, sun: 0xfff1dc, accent: 0xf2c318 },
     spawn: { x: -14, z: 3, heading: Math.PI / 2 },
     elements: [
       { type: 'halfpipe', x: 0, z: -21, rot: 0, W: 6, R: 3.4, cap: 80, len: 14, deck: 2.2 },
@@ -721,10 +746,10 @@ const PARK_ORDER = ['warehouse', 'rooftops', 'canyon'];
  *   special   land a special trick           manual   one manual ≥ target seconds
  */
 const CHAPTERS = [
-  { id: 'ch1', park: 'warehouse', title: 'Warm-Up at the Warehouse', blurb: 'Learn the park, find the letters and show the locals a clean kickflip.', rewardDeck: 'sunset', objectives: [
+  { id: 'ch1', park: 'warehouse', title: 'Yard Time at Cell Block C', blurb: 'Learn the yard, find the letters and show the tier a clean Chowhall Chop.', rewardDeck: 'sunset', objectives: [
     { id: 'score', type: 'score', target: 15000, label: 'Score 15,000 points', cash: 300 },
     { id: 'letters', type: 'letters', target: 5, label: 'Collect S-K-A-T-E', cash: 500 },
-    { id: 'funbox', type: 'funboxFlip', target: 1, label: 'Kickflip over the central funbox', cash: 400 },
+    { id: 'funbox', type: 'funboxFlip', target: 1, label: 'Chowhall Chop over the central funbox', cash: 400 },
     { id: 'grind', type: 'grind', target: 15, label: 'Grind 15 m in one run', cash: 300 },
     { id: 'combo', type: 'combo', target: 2500, label: 'Land a 2,500 point combo', cash: 500 },
   ] },
@@ -738,8 +763,8 @@ const CHAPTERS = [
   { id: 'ch3', park: 'canyon', title: 'Canyon Finals', blurb: 'The desert bowl is the final stage of the career. Bring everything.', rewardDeck: 'golden', objectives: [
     { id: 'score', type: 'score', target: 120000, label: 'Score 120,000 points', cash: 1000 },
     { id: 'letters', type: 'letters', target: 5, label: 'Collect S-K-A-T-E', cash: 1200 },
-    { id: 'special', type: 'special', target: 1, label: 'Land a special trick', cash: 1000 },
-    { id: 'manual', type: 'manual', target: 4, label: 'Hold a manual for 4 seconds', cash: 800 },
+    { id: 'special', type: 'special', target: 1, label: 'Land a special (K2 Crashout, Suit-Up Slam or Icebox Invert)', cash: 1000 },
+    { id: 'manual', type: 'manual', target: 4, label: 'Hold a Meat-Log Manual (or any manual) for 4 seconds', cash: 800 },
     { id: 'combo', type: 'combo', target: 30000, label: 'Land a 30,000 point combo', cash: 1500 },
   ] },
 ];
@@ -765,7 +790,45 @@ const QUALITY = {
  * and disposes them with the level. Physics always uses the analytic park
  * below, so a skatepark.glb is scenery around it, not collision.
  */
-const ASSET_MANIFEST = { skatepark: null /* '/modules/proskater/skatepark.glb' */, skater: null /* '/modules/proskater/skater.glb' */ };
+const ASSET_MANIFEST = { skatepark: null, skater: '/models/proskater/skater.glb', board: '/models/proskater/board.glb' };
+
+/**
+ * The rider (Meshy-generated and rigged, cleaned up in Blender) and the board (modelled in
+ * Blender) are parsed once and cloned per level, so leaving a park frees their GPU copies
+ * while the next park re-uploads from the same parsed data. `?models=0` keeps the
+ * procedural rider and board.
+ */
+const CharacterAssets = {
+  cache: new Map(),
+  enabled: new URLSearchParams(location.search).get('models') !== '0',
+  loader: null,
+  load(key) {
+    const url = ASSET_MANIFEST[key];
+    if (!url || !this.enabled) return Promise.resolve(null);
+    if (!this.cache.has(key)) {
+      this.loader ??= new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+      this.cache.set(key, this.loader.loadAsync(url).catch((err) => { console.warn(`[proskater] ${url} not loaded`, err); this.cache.delete(key); return null; }));
+    }
+    return this.cache.get(key);
+  },
+  rankTexture() {
+    this.sergeant ??= new THREE.TextureLoader().loadAsync('/modules/proskater/skater-sergeant.webp')
+      .then((t) => { t.flipY = false; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t; })
+      .catch((err) => { console.warn('[proskater] sergeant uniform not loaded', err); this.sergeant = undefined; return null; });
+    return this.sergeant;
+  },
+};
+
+/** One 128×512 canvas per deck graphic, drawn once (menus and boards reuse it). */
+const deckCanvases = new Map();
+function deckCanvas(deck) {
+  if (!deckCanvases.has(deck.id)) {
+    const c = document.createElement('canvas'); c.width = 128; c.height = 512;
+    deck.draw(c.getContext('2d'), 128, 512);
+    deckCanvases.set(deck.id, c);
+  }
+  return deckCanvases.get(deck.id);
+}
 
 // §6 ─── Textures (procedural PBR) ────────────────────────────────────────────
 /**
@@ -776,6 +839,7 @@ const ASSET_MANIFEST = { skatepark: null /* '/modules/proskater/skatepark.glb' *
  */
 const Textures = (() => {
   const cache = new Map();                       // key → { albedo, rough, normal } canvases
+  const basesByScope = new WeakMap();            // level scope → shared base textures
   let maxAniso = 8;
   function rng(seed) { return () => { seed |= 0; seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
   /** Tileable value noise: lattice wraps at `period` so the texture repeats seamlessly. */
@@ -854,16 +918,25 @@ const Textures = (() => {
     setAnisotropy(n) { maxAniso = n; },
     /** Returns fresh GPU textures (registered in `scope`) for one material. */
     pbr(kind, size, scope, repeat = 1) {
-      const c = canvases(kind, size);
-      return {
-        map: scope.track(finish(new THREE.CanvasTexture(c.albedo), true, repeat)),
-        roughnessMap: scope.track(finish(new THREE.CanvasTexture(c.rough), false, repeat)),
-        normalMap: scope.track(finish(new THREE.CanvasTexture(c.normal), false, repeat)),
-      };
+      // One upload per map per level: every material gets a clone that shares the base
+      // texture's Source (so the GPU copy is shared) with its own repeat.
+      let bases = basesByScope.get(scope);
+      if (!bases) { bases = new Map(); basesByScope.set(scope, bases); }
+      const key = `${kind}:${size}`;
+      if (!bases.has(key)) {
+        const c = canvases(kind, size);
+        bases.set(key, { map: finish(new THREE.CanvasTexture(c.albedo), true, 1), roughnessMap: finish(new THREE.CanvasTexture(c.rough), false, 1), normalMap: finish(new THREE.CanvasTexture(c.normal), false, 1) });
+      }
+      const b = bases.get(key), out = {};
+      for (const slot of ['map', 'roughnessMap', 'normalMap']) { const t = scope.track(b[slot].clone()); t.repeat.set(repeat, repeat); out[slot] = t; }
+      return out;
     },
     finish,
-    /** Warm the CPU cache during the loading screen. */
-    prepare(size) { for (const k of Object.keys(RECIPES)) canvases(k, size); },
+    /** Warm the CPU cache during the loading screen; canvases for other sizes are dropped. */
+    prepare(size) {
+      for (const key of [...cache.keys()]) if (!key.endsWith(`:${size}`)) cache.delete(key);
+      for (const k of Object.keys(RECIPES)) canvases(k, size);
+    },
   };
 })();
 
@@ -1080,10 +1153,11 @@ class Park {
     this.grindLines = [];
     this.halfPipeZone = null;                     // { box: Box3, coping, mesh }
     this.funbox = null;                           // central funbox element
+    this.texSize = quality.tex;
     this.#buildMaterials(quality);
     this.#buildGround();
     for (const el of this.elements) this.#buildElement(el);
-    this.#buildSurroundings();
+    if (def.theme === 'prison') this.#buildPrison(); else this.#buildSurroundings();
   }
 
   /** Ground height at world (x, z): max of 0 and every element profile. */
@@ -1144,6 +1218,7 @@ class Park {
     this.mats.ground.map.repeat.set(size / 8, size / 8);
     this.mats.ground.roughnessMap.repeat.set(size / 8, size / 8);
     this.mats.ground.normalMap.repeat.set(size / 8, size / 8);
+    macroVariation(this.mats.ground);
     const ground = new THREE.Mesh(geo, this.mats.ground); ground.receiveShadow = true; ground.name = 'ground';
     this.group.add(ground);
   }
@@ -1201,6 +1276,110 @@ class Park {
       this.halfPipeZone = { box, coping: el.zone.hTop, mesh };
     }
   }
+  /**
+   * Cell Block Yard: the starter park sits inside a prison yard. Two-tone painted perimeter
+   * walls with a yellow band, chain-link on top crowned with razor wire, two guard towers whose
+   * searchlights sweep the yard, a sliding gate, stencilled yard markings, and cell blocks
+   * beyond the walls. Everything is outside the skateable area, so physics never sees it.
+   */
+  #buildPrison() {
+    const S = this.def.size, half = S / 2, s = this.scope, g = this.group, size = this.texSize;
+    const std = (opts) => s.track(new THREE.MeshStandardMaterial(opts));
+    const H = 5.4, low = 1.5, t = 0.8;
+    const wallLow = std({ color: 0x59616b, roughness: 1, ...Textures.pbr('concrete', size, s, 3), normalScale: new THREE.Vector2(0.6, 0.6) });
+    const wallHigh = std({ color: 0xd5d2c8, roughness: 1, ...Textures.pbr('concrete', size, s, 4), normalScale: new THREE.Vector2(0.6, 0.6) });
+    const yellow = std({ color: 0xf2c318, roughness: 0.6 });
+    const steel = this.mats.metal;
+    macroVariation(wallLow); macroVariation(wallHigh);
+    for (const [axis, sign] of [['z', -1], ['z', 1], ['x', -1], ['x', 1]]) {
+      const len = S + t * 2, along = axis === 'z';
+      const place = (mesh, y) => { mesh.position.set(along ? 0 : sign * (half + t / 2), y, along ? sign * (half + t / 2) : 0); if (!along) mesh.rotation.y = Math.PI / 2; mesh.castShadow = mesh.receiveShadow = true; g.add(mesh); return mesh; };
+      place(new THREE.Mesh(s.track(new THREE.BoxGeometry(len, low, t)), wallLow), low / 2);
+      place(new THREE.Mesh(s.track(new THREE.BoxGeometry(len, H - low, t)), wallHigh), low + (H - low) / 2);
+      const band = place(new THREE.Mesh(s.track(new THREE.BoxGeometry(len, 0.22, t + 0.04)), yellow), low + 0.11); band.castShadow = false;
+      const cap = place(new THREE.Mesh(s.track(new THREE.BoxGeometry(len + 0.2, 0.18, t + 0.25)), wallLow), H + 0.09); cap.castShadow = true;
+      // Yard paint: a yellow line a metre and a half inside each wall.
+      const line = new THREE.Mesh(s.track(new THREE.PlaneGeometry(along ? S - 3 : 0.22, along ? 0.22 : S - 3)), yellow);
+      line.rotation.x = -Math.PI / 2; line.position.set(along ? 0 : sign * (half - 1.6), 0.006, along ? sign * (half - 1.6) : 0); line.receiveShadow = true; g.add(line);
+    }
+    // Chain-link fence on the wall tops, razor wire above it.
+    const fenceTex = s.track(Textures.finish(new THREE.CanvasTexture(chainLinkCanvas()), true, 1));
+    const fenceH = 2.3;
+    const fenceMat = std({ map: fenceTex, color: 0xb8bec6, metalness: 0.7, roughness: 0.45, alphaTest: 0.5, side: THREE.DoubleSide });
+    const wireMat = std({ color: 0xc9ced6, metalness: 1, roughness: 0.3 });
+    const postGeo = s.track(new THREE.CylinderGeometry(0.05, 0.05, fenceH + 0.5, 8)); postGeo.translate(0, (fenceH + 0.5) / 2, 0);
+    for (const [axis, sign] of [['z', -1], ['z', 1], ['x', -1], ['x', 1]]) {
+      const along = axis === 'z', len = S + 1.2, off = half + t / 2;
+      const fenceGeo = s.track(new THREE.PlaneGeometry(len, fenceH));
+      const uv = fenceGeo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * len / 0.9, uv.getY(i) * fenceH / 0.9);
+      const fence = new THREE.Mesh(fenceGeo, fenceMat);
+      fence.position.set(along ? 0 : sign * off, H + 0.18 + fenceH / 2, along ? sign * off : 0); if (!along) fence.rotation.y = Math.PI / 2;
+      fence.castShadow = true; g.add(fence);
+      for (let u = -len / 2; u <= len / 2 + 0.01; u += len / 16) {
+        const post = new THREE.Mesh(postGeo, steel); post.position.set(along ? u : sign * off, H + 0.18, along ? sign * off : u); post.castShadow = true; g.add(post);
+      }
+      const a = new THREE.Vector3(along ? -len / 2 : sign * off, H + 0.18 + fenceH + 0.42, along ? sign * off : -len / 2);
+      const b = new THREE.Vector3(along ? len / 2 : sign * off, a.y, along ? sign * off : len / 2);
+      const coil = new THREE.Mesh(s.track(new THREE.TubeGeometry(new HelixCurve(a, b, 0.32, Math.round(len / 0.38)), Math.round(len / 0.38) * 8, 0.011, 3, false)), wireMat);
+      coil.castShadow = false; g.add(coil);
+    }
+    // Sliding gate on the east wall.
+    const gateTex = s.track(Textures.finish(new THREE.CanvasTexture(gateCanvas()), true, 1));
+    const gate = new THREE.Mesh(s.track(new THREE.PlaneGeometry(7, 4.6)), std({ map: gateTex, color: 0x9aa3ad, metalness: 0.8, roughness: 0.4, alphaTest: 0.5, side: THREE.DoubleSide }));
+    gate.position.set(half - 0.02, 2.3, -12); gate.rotation.y = -Math.PI / 2; gate.castShadow = true; g.add(gate);
+    const stencil = new THREE.Mesh(s.track(new THREE.PlaneGeometry(9, 2.2)), std({ map: s.track(Textures.finish(new THREE.CanvasTexture(stencilCanvas('YARD C · SKATE ZONE')), true, 1)), transparent: true, depthWrite: false, roughness: 0.9 }));
+    stencil.position.set(0, 3.4, half - 0.01); stencil.rotation.y = Math.PI; g.add(stencil);
+    const stencil2 = stencil.clone(); stencil2.position.set(0, 3.4, -half + 0.01); stencil2.rotation.y = 0; g.add(stencil2);
+    // Wall-mounted floods along the inside of the walls.
+    const lampMat = std({ color: 0x2a2a2a, emissive: 0xfff3d0, emissiveIntensity: 1.4 });
+    const floodGeo = s.track(new THREE.BoxGeometry(0.7, 0.32, 0.4));
+    for (const [axis, sign] of [['z', -1], ['z', 1], ['x', -1], ['x', 1]]) {
+      for (let u = -half + 8; u <= half - 8; u += 16) {
+        const f = new THREE.Mesh(floodGeo, lampMat);
+        f.position.set(axis === 'z' ? u : sign * (half - 0.25), H - 0.4, axis === 'z' ? sign * (half - 0.25) : u);
+        f.rotation.y = axis === 'z' ? 0 : Math.PI / 2; g.add(f);
+      }
+    }
+    // Guard towers with sweeping searchlights.
+    this.searchlights = [];
+    const towerMat = wallHigh, roofMat = std({ color: 0x3b4148, roughness: 0.8 });
+    const glass = std({ color: 0x1d2c3d, roughness: 0.08, metalness: 0.4, emissive: 0x24364a, emissiveIntensity: 0.35 });
+    const beamMat = s.track(new THREE.MeshBasicMaterial({ color: 0xfff1c8, transparent: true, opacity: 0.035, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, fog: false }));
+    const beamGeo = s.track(new THREE.ConeGeometry(2.6, 34, 20, 1, true)); beamGeo.translate(0, -17, 0); beamGeo.rotateX(-Math.PI / 2);
+    for (const [sx, sz] of [[-1, -1], [1, 1]]) {
+      const x = sx * (half + 4), z = sz * (half + 4);
+      const shaft = new THREE.Mesh(s.track(new THREE.BoxGeometry(2.6, 10, 2.6)), towerMat); shaft.position.set(x, 5, z);
+      const deck = new THREE.Mesh(s.track(new THREE.BoxGeometry(5, 0.3, 5)), roofMat); deck.position.set(x, 10.1, z);
+      const cab = new THREE.Mesh(s.track(new THREE.BoxGeometry(4, 2.6, 4)), towerMat); cab.position.set(x, 11.55, z);
+      const band = new THREE.Mesh(s.track(new THREE.BoxGeometry(4.06, 1.1, 4.06)), glass); band.position.set(x, 11.8, z);
+      const roof = new THREE.Mesh(s.track(new THREE.ConeGeometry(3.6, 1.4, 4)), roofMat); roof.position.set(x, 13.55, z); roof.rotation.y = Math.PI / 4;
+      for (const m of [shaft, deck, cab, band, roof]) { m.castShadow = m.receiveShadow = true; g.add(m); }
+      const pivot = new THREE.Group(); pivot.position.set(x - sx * 2.2, 12.9, z - sz * 2.2); pivot.userData.dynamic = true;
+      const head = new THREE.Mesh(s.track(new THREE.CylinderGeometry(0.28, 0.36, 0.6, 14)), lampMat); head.rotation.x = Math.PI / 2; head.userData.dynamic = true;
+      const beam = new THREE.Mesh(beamGeo, beamMat); beam.renderOrder = 6;
+      pivot.add(head, beam); g.add(pivot);
+      this.searchlights.push({ pivot, base: Math.atan2(-x, -z), phase: sx > 0 ? 0 : Math.PI });
+    }
+    // Cell blocks beyond the walls.
+    const blockTex = s.track(Textures.finish(new THREE.CanvasTexture(cellBlockCanvas()), true, 1));
+    const blockMat = std({ map: blockTex, roughness: 0.92, emissiveMap: blockTex, emissive: 0x3a3428, emissiveIntensity: 0.25 });
+    const blocks = [[0, -(half + 20), 80, 15, 16, 0], [-(half + 22), 4, 62, 12, 14, Math.PI / 2], [half + 24, 10, 54, 18, 14, Math.PI / 2], [6, half + 30, 70, 11, 14, 0]];
+    for (const [x, z, w, h, d, rot] of blocks) {
+      const geo = s.track(new THREE.BoxGeometry(w, h, d)); geo.translate(0, h / 2, 0);
+      const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w / 8, uv.getY(i) * h / 8);
+      const m = new THREE.Mesh(geo, blockMat); m.position.set(x, 0, z); m.rotation.y = rot; m.castShadow = false; m.receiveShadow = true; g.add(m);
+      const parapet = new THREE.Mesh(s.track(new THREE.BoxGeometry(w + 0.6, 0.9, d + 0.6)), roofMat); parapet.position.set(x, h + 0.45, z); parapet.rotation.y = rot; g.add(parapet);
+    }
+  }
+  /** Sweeps the guard-tower searchlights; called once per rendered frame. */
+  update(time) {
+    if (!this.searchlights) return;
+    for (const l of this.searchlights) {
+      l.pivot.rotation.set(0, 0, 0);
+      l.pivot.rotateY(l.base + Math.sin(time * 0.35 + l.phase) * 0.7);
+      l.pivot.rotateX(0.42);
+    }
+  }
   /** Perimeter walls, light towers and a skyline (all outside the skateable area). */
   #buildSurroundings() {
     const S = this.def.size, h = 2.4, t = 0.6;
@@ -1240,6 +1419,64 @@ class Park {
     inst.castShadow = false; inst.receiveShadow = true;
     this.group.add(inst);
   }
+}
+
+
+/** A helix between two points: the razor-wire coils on the yard fence. */
+class HelixCurve extends THREE.Curve {
+  constructor(a, b, radius, turns) { super(); this.a = a; this.b = b; this.radius = radius; this.turns = turns; this.dir = b.clone().sub(a).normalize(); this.side = new THREE.Vector3().crossVectors(this.dir, _up).normalize(); }
+  getPoint(t, out = new THREE.Vector3()) {
+    const ang = t * this.turns * TAU;
+    return out.copy(this.a).lerp(this.b, t).addScaledVector(_up, Math.sin(ang) * this.radius).addScaledVector(this.side, Math.cos(ang) * this.radius);
+  }
+}
+function chainLinkCanvas() {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'); g.strokeStyle = '#fff'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(0, 32); g.lineTo(32, 0); g.lineTo(64, 32); g.lineTo(32, 64); g.closePath(); g.stroke();
+  g.beginPath(); g.moveTo(-32, 32); g.lineTo(0, 0); g.moveTo(64, 0); g.lineTo(96, 32); g.stroke();
+  return c;
+}
+function gateCanvas() {
+  const c = document.createElement('canvas'); c.width = 256; c.height = 168;
+  const g = c.getContext('2d'); g.fillStyle = '#fff';
+  g.fillRect(0, 0, 256, 10); g.fillRect(0, 158, 256, 10); g.fillRect(0, 76, 256, 8); g.fillRect(0, 0, 10, 168); g.fillRect(246, 0, 10, 168);
+  for (let x = 22; x < 246; x += 18) g.fillRect(x, 0, 5, 168);
+  return c;
+}
+function stencilCanvas(text) {
+  const c = document.createElement('canvas'); c.width = 1024; c.height = 250;
+  const g = c.getContext('2d'); g.font = '900 120px Impact, "Arial Black", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillStyle = 'rgba(30,38,52,0.88)'; g.fillText(text, 512, 128);
+  g.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 900; i++) { g.globalAlpha = Math.random() * 0.5; g.fillRect(Math.random() * 1024, Math.random() * 250, 2 + Math.random() * 6, 2 + Math.random() * 4); }
+  return c;
+}
+function cellBlockCanvas() {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d'); g.fillStyle = '#b9b5ab'; g.fillRect(0, 0, 128, 128);
+  g.fillStyle = 'rgba(0,0,0,0.08)'; for (let y = 0; y < 128; y += 16) g.fillRect(0, y, 128, 2);
+  for (let x = 12; x < 128; x += 32) for (let y = 14; y < 128; y += 32) {
+    g.fillStyle = Math.random() < 0.3 ? '#e8d9a8' : '#232a33'; g.fillRect(x, y, 8, 18);
+    g.fillStyle = '#7d828a'; g.fillRect(x + 2, y, 1, 18); g.fillRect(x + 5, y, 1, 18);
+  }
+  return c;
+}
+/** Breaks up texture tiling with large-scale grime keyed to world position (no extra textures). */
+function macroVariation(material) {
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nvarying vec2 vMacro;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nvMacro = (modelMatrix * vec4(transformed, 1.0)).xz + (modelMatrix * vec4(transformed, 1.0)).y;');
+    shader.fragmentShader = shader.fragmentShader.replace('#include <common>', `#include <common>
+varying vec2 vMacro;
+float mHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float mNoise(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(mHash(i), mHash(i + vec2(1.0, 0.0)), f.x), mix(mHash(i + vec2(0.0, 1.0)), mHash(i + vec2(1.0, 1.0)), f.x), f.y); }`)
+      .replace('#include <map_fragment>', `#include <map_fragment>
+{ float m = mNoise(vMacro * 0.06) * 0.6 + mNoise(vMacro * 0.23) * 0.4; float stain = smoothstep(0.78, 0.92, mNoise(vMacro * 0.41 + 17.0));
+  diffuseColor.rgb *= (0.9 + 0.16 * m) * (1.0 - 0.14 * stain); }`);
+  };
+  material.customProgramCacheKey = () => 'macro-variation';
+  return material;
 }
 
 // §9 ─── Collectibles: S-K-A-T-E letters + particle flash ─────────────────────
@@ -1423,20 +1660,28 @@ class SkaterRig {
       const foot = new THREE.Mesh(scope.track(new THREE.BoxGeometry(0.11, 0.07, 0.27)), mats.shoe); foot.castShadow = true; foot.position.set(0, -this.L2 - 0.02, 0); foot.rotation.y = Math.PI / 2 - side * 0.25; knee.add(foot);
       this.legs.push({ hip, knee, foot, side });
     }
-    this.pose = { crouch: 0, armsOut: 0.4, grab: 0, grabType: 0, lean: 0, bail: 0, push: 0, manual: 0 };
+    this.pose = { crouch: 0, armsOut: 0.4, grab: 0, grabType: 0, lean: 0, bail: 0, push: 0, manual: 0, invert: 0 };
+    this.stand = 0.95; this.ankleH = 0.06; this.footSpread = 0.2;
+    this.model = null; this.retarget = null; this.wheels = []; this.rank = 'officer';
   }
   #deckTexture(deck) {
-    const c = document.createElement('canvas'); c.width = 128; c.height = 512;
-    deck.draw(c.getContext('2d'), 128, 512);
-    return this.scope.track(Textures.finish(new THREE.CanvasTexture(c), true, 1));
+    const tex = Textures.finish(new THREE.CanvasTexture(deckCanvas(deck)), true, 1);
+    if (this.deckFlipY === false) tex.flipY = false;
+    return this.scope.track(tex);
   }
-  /** Analytic two-bone IK in the leg's x-y plane; knee bends toward −x (chest side). */
-  #solveLeg(leg, hipY, footX, footY) {
-    const dx = footX, dy = footY - hipY;
+  /**
+   * Analytic two-bone IK; knee bends toward −x (chest side). When the foot sits wider than
+   * the hip (the Meshy rider's narrow hips over a wide stance) the leg's plane splays about x.
+   */
+  #solveLeg(leg, hipY, footX, footY, footZ = leg.hip.position.z) {
+    const dz = footZ - leg.hip.position.z, dyRaw = footY - hipY;
+    const splay = Math.atan2(-dz, -dyRaw);
+    const dx = footX, dy = -Math.hypot(dyRaw, dz);
     const d = clamp(Math.hypot(dx, dy), 0.05, this.L1 + this.L2 - 0.001);
     const line = Math.atan2(dx, -dy);
     const alpha = Math.acos(clamp((this.L1 * this.L1 + d * d - this.L2 * this.L2) / (2 * this.L1 * d), -1, 1));
     const knee = Math.PI - Math.acos(clamp((this.L1 * this.L1 + this.L2 * this.L2 - d * d) / (2 * this.L1 * this.L2), -1, 1));
+    leg.hip.rotation.x = splay;
     leg.hip.rotation.z = line - alpha;
     leg.knee.rotation.z = knee;
     leg.foot.rotation.z = -(line - alpha) - knee;          // keep the shoe flat on the deck
@@ -1445,16 +1690,16 @@ class SkaterRig {
   apply(dt, time) {
     const p = this.pose;
     const deckTop = 0.105 + this.boardPivot.position.y;
-    const stand = 0.95, crouchDrop = 0.36 * p.crouch + 0.12 * p.grab;
-    const hipY = deckTop + stand - crouchDrop;
+    const crouchDrop = 0.36 * p.crouch + 0.12 * p.grab;
+    const hipY = deckTop + this.stand - crouchDrop;
     this.hips.position.set(0.04 * p.crouch, hipY, 0);
     this.spine.rotation.z = -0.35 * p.crouch - 0.25 * p.grab + p.lean * 0.2;
     this.spine.rotation.x = p.lean * 0.25;
     this.head.rotation.z = 0.3 * p.crouch;
     for (const leg of this.legs) {
-      let fy = deckTop - hipY + 0.06, fx = -0.02;
+      let fy = deckTop - hipY + this.ankleH, fx = -0.02;
       if (p.push > 0 && leg.side < 0) { fy -= 0.12 * p.push; fx += Math.sin(time * 9) * 0.22 * p.push; }
-      this.#solveLeg(leg, 0, fx - 0.04 * p.crouch, fy);
+      this.#solveLeg(leg, 0, fx - 0.04 * p.crouch, fy, leg.side * this.footSpread);
     }
     for (const arm of this.arms) {
       const out = p.armsOut + Math.sin(time * 2.1 + arm.side) * 0.05;
@@ -1467,11 +1712,169 @@ class SkaterRig {
         arm.elbow.rotation.z = -0.1;
       }
     }
-    this.body.rotation.z = p.bail * 1.3;
-    this.body.position.y = -p.bail * 0.6;
+    this.body.rotation.z = p.bail * 1.3 + p.invert * 2.7;
+    this.body.position.y = -p.bail * 0.6 + p.invert * 0.9;
     this.body.rotation.x = p.manual * 0.15;
+    if (this.retarget) this.#retargetPose();
   }
-  setDeck(deck) { const old = this.deckMaterial.map; this.deckMaterial.map = this.#deckTexture(deck); this.deckMaterial.needsUpdate = true; old?.dispose(); }
+  setDeck(deck) {
+    const old = this.deckMaterial.map;
+    this.deckMaterial.map = this.#deckTexture(deck);
+    this.deckMaterial.needsUpdate = true;
+    if (old) { this.scope.items.delete(old); old.dispose(); }
+  }
+  /** Rolls the Blender board's wheels with ground speed. */
+  spinWheels(speed, dt, grounded) {
+    if (!this.wheels.length || !grounded) return;
+    const turn = (speed / 0.027) * dt;
+    for (const w of this.wheels) w.rotation.x += turn;
+  }
+
+  /**
+   * Swaps in the Blender board and the Meshy rider. The procedural groups stay as an
+   * invisible driver skeleton: every frame the driver is posed exactly as before (IK feet,
+   * crouch, grabs, bails) and each rider bone copies its driver joint's rotation since the
+   * bind pose. Limb bones are first re-aimed from the rider's A-pose onto the driver's rest
+   * directions, so the two rest poses never have to match.
+   */
+  attach(models, rank) {
+    if (models.board) this.#attachBoard(models.board);
+    if (models.skater) this.#attachRider(models.skater);
+    if (this.model) this.setRank(rank);
+  }
+  #attachBoard(gltf) {
+    for (const child of this.board.children) child.visible = false;
+    const board = gltf.scene.clone(true);
+    board.name = 'board.glb';
+    board.traverse((o) => {
+      if (/^Wheel_/.test(o.name) && !/^Wheel_/.test(o.parent?.name ?? '')) this.wheels.push(o);
+      if (!o.isMesh) return;
+      o.castShadow = true; o.receiveShadow = false;
+      if (o.material?.name === 'DeckGraphic') o.material = this.deckMaterial;
+    });
+    this.deckMaterial.map.flipY = false; this.deckMaterial.map.needsUpdate = true;
+    this.deckFlipY = false;
+    this.board.add(board);
+  }
+  #attachRider(gltf) {
+    const model = cloneSkinned(gltf.scene);
+    model.name = 'skater.glb';
+    model.rotation.y = -Math.PI / 2;
+    const bones = new Map();
+    model.traverse((o) => {
+      if (o.isBone) bones.set(o.name, o);
+      if (o.isMesh) {
+        o.castShadow = true; o.receiveShadow = false; o.frustumCulled = false;
+        o.material = this.scope.track(o.material.clone());
+        o.material.envMapIntensity = 0.6;
+      }
+    });
+    const need = ['Hips', 'Spine02', 'Spine01', 'Spine', 'Head', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightArm', 'RightForeArm', 'RightHand', 'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'];
+    if (need.some((n) => !bones.has(n))) { console.warn('[proskater] rider rig is missing bones; keeping the procedural rider'); return; }
+    for (const child of this.body.children) child.traverse((o) => { if (o.isMesh) o.visible = false; });
+    this.tilt.add(model);
+    this.model = model;
+    // Proportions: the driver's legs, stance and standing height take the rider's measurements.
+    model.updateMatrixWorld(true);
+    const local = (name) => this.tilt.worldToLocal(bones.get(name).getWorldPosition(new THREE.Vector3()));
+    const hip = local('LeftUpLeg'), knee = local('LeftLeg'), ankle = local('LeftFoot'), rootY = this.tilt.worldToLocal(model.getWorldPosition(new THREE.Vector3())).y;
+    this.L1 = hip.distanceTo(knee); this.L2 = knee.distanceTo(ankle);
+    this.ankleH = ankle.y - rootY;
+    this.footSpread = 0.2;
+    const hipSpread = Math.abs(hip.z);
+    for (const leg of this.legs) leg.hip.position.z = leg.side * hipSpread;
+    const reach = Math.hypot(this.L1 + this.L2, 0) * 0.985;
+    this.stand = Math.sqrt(Math.max(0.1, reach * reach - (this.footSpread - hipSpread) ** 2)) + this.ankleH;
+    model.position.y = 0.105 + this.stand - hip.y;
+    // Bind: driver in its rest pose (straight limbs), rider in its bind pose.
+    this.#driverRest();
+    this.root.updateMatrixWorld(true);
+    const rootInv = new THREE.Quaternion();
+    const rootQ = () => this.root.getWorldQuaternion(rootInv).invert();
+    const inRoot = (obj) => rootQ().clone().multiply(obj.getWorldQuaternion(new THREE.Quaternion()));
+    const pos = (obj) => obj.getWorldPosition(new THREE.Vector3());
+    const dirOf = (a, b) => b.sub(a).applyQuaternion(rootQ()).normalize();
+    const arm = (side) => this.arms.find((a) => a.side === side), leg = (side) => this.legs.find((l) => l.side === side);
+    const handPoint = (elbow) => elbow.localToWorld(new THREE.Vector3(0, -0.27, 0));
+    const shinPoint = (knee) => knee.localToWorld(new THREE.Vector3(0, -this.L2, 0));
+    const entries = [
+      { bone: 'Hips', node: this.hips },
+      { bone: 'Spine02', node: this.spine, base: this.hips, f: 0.35 },
+      { bone: 'Spine01', node: this.spine, base: this.hips, f: 0.7 },
+      { bone: 'Spine', node: this.spine },
+      { bone: 'Head', node: this.head },
+    ];
+    for (const [prefix, side] of [['Left', 1], ['Right', -1]]) {
+      const a = arm(side), l = leg(side);
+      entries.push(
+        { bone: `${prefix}Arm`, node: a.shoulder, aim: [pos(a.shoulder), pos(a.elbow)], child: `${prefix}ForeArm` },
+        { bone: `${prefix}ForeArm`, node: a.elbow, aim: [pos(a.elbow), handPoint(a.elbow)], child: `${prefix}Hand` },
+        { bone: `${prefix}UpLeg`, node: l.hip, aim: [pos(l.hip), pos(l.knee)], child: `${prefix}Leg` },
+        { bone: `${prefix}Leg`, node: l.knee, aim: [pos(l.knee), shinPoint(l.knee)], child: `${prefix}Foot` },
+        { bone: `${prefix}Foot`, node: this.body, yaw: side > 0 ? 0.32 : 0.06 },
+      );
+    }
+    const list = [];
+    for (const e of entries) {
+      const bone = bones.get(e.bone);
+      const restBone = inRoot(bone);
+      let fix = new THREE.Quaternion();
+      if (e.aim) {
+        const driverDir = dirOf(e.aim[0], e.aim[1]);
+        const modelDir = dirOf(pos(bone), pos(bones.get(e.child)));
+        fix = new THREE.Quaternion().setFromUnitVectors(modelDir, driverDir);
+      }
+      if (e.yaw) fix.premultiply(new THREE.Quaternion().setFromAxisAngle(_up, e.yaw));
+      list.push({
+        bone, node: e.node, base: e.base ?? null, f: e.f ?? 1,
+        restNodeInv: inRoot(e.node).invert(), restBaseInv: e.base ? inRoot(e.base).invert() : null,
+        target: fix.multiply(restBone),
+      });
+    }
+    const hipsBone = bones.get('Hips');
+    this.retarget = { list, hipsBone, hipsOffset: this.hips.worldToLocal(pos(hipsBone)), q: [new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion(), new THREE.Quaternion()], v: new THREE.Vector3(), id: new THREE.Quaternion() };
+  }
+  /** Zeroes every driver joint (straight legs and arms) for the bind snapshot. */
+  #driverRest() {
+    for (const g of [this.body, this.hips, this.spine, this.head]) g.rotation.set(0, 0, 0);
+    this.body.position.set(0, 0, 0);
+    this.hips.position.set(0, 0.105 + this.stand, 0);
+    for (const a of this.arms) { a.shoulder.rotation.set(0, 0, 0); a.elbow.rotation.set(0, 0, 0); }
+    for (const l of this.legs) { l.hip.rotation.set(0, 0, 0); l.knee.rotation.set(0, 0, 0); }
+    this.tilt.quaternion.identity(); this.boardPivot.position.set(0, 0, 0); this.boardPivot.rotation.set(0, 0, 0);
+  }
+  #retargetPose() {
+    const R = this.retarget, [qRoot, qa, qb, qc] = R.q;
+    this.root.updateMatrixWorld(true);
+    this.root.getWorldQuaternion(qRoot);
+    const rootInv = qc.copy(qRoot).invert();
+    const hipsTarget = this.hips.localToWorld(R.v.copy(R.hipsOffset));
+    R.hipsBone.parent.updateWorldMatrix(true, false);
+    R.hipsBone.position.copy(R.hipsBone.parent.worldToLocal(hipsTarget));
+    for (const e of R.list) {
+      e.node.getWorldQuaternion(qa).premultiply(rootInv).multiply(e.restNodeInv);
+      if (e.base) {
+        e.base.getWorldQuaternion(qb).premultiply(rootInv).multiply(e.restBaseInv);
+        const rel = _q3.copy(qb).invert().multiply(qa);
+        qa.copy(qb).multiply(R.id.identity().slerp(rel, e.f));
+      }
+      qa.multiply(e.target).premultiply(qRoot);
+      e.bone.parent.getWorldQuaternion(qb);
+      e.bone.quaternion.copy(qb.invert().multiply(qa));
+    }
+  }
+  /** Officer (two chevrons, baked into the model) or Sergeant (three, a texture variant). */
+  async setRank(rank) {
+    this.rank = rank === 'sergeant' ? 'sergeant' : 'officer';
+    if (!this.model) return;
+    const mesh = []; this.model.traverse((o) => { if (o.isMesh) mesh.push(o); });
+    this.officerMap ??= mesh[0]?.material.map ?? null;
+    const map = this.rank === 'sergeant' ? await CharacterAssets.rankTexture() : this.officerMap;
+    if (!map || !this.model) return;
+    // Both uniforms belong to the level, so whichever one is off the body still leaves with it.
+    this.scope.track(this.officerMap); this.scope.track(map);
+    for (const m of mesh) { m.material.map = map; m.material.needsUpdate = true; }
+  }
 }
 
 // §11 ─── Input ───────────────────────────────────────────────────────────────
@@ -1482,7 +1885,7 @@ class SkaterRig {
  */
 const KEYMAP = {
   KeyW: 'up', ArrowUp: 'up', KeyS: 'down', ArrowDown: 'down', KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
-  Space: 'ollie', KeyJ: 'flip', KeyK: 'grab', KeyL: 'grind', KeyI: 'special', Tab: 'objectives', KeyO: 'objectives', Escape: 'pause', KeyP: 'pause', F3: 'debug',
+  Space: 'ollie', KeyJ: 'flip', KeyK: 'grab', KeyL: 'grind', KeyI: 'special', Tab: 'objectives', KeyO: 'objectives', Escape: 'pause', KeyP: 'pause', F3: 'debug', KeyH: 'keys',
 };
 class Input {
   constructor() {
@@ -1491,20 +1894,31 @@ class Input {
     addEventListener('keydown', (e) => { const a = KEYMAP[e.code]; if (!a) return; if (e.code === 'Tab' || e.code === 'Space' || e.code.startsWith('Arrow')) e.preventDefault(); if (!e.repeat) this.press(a); });
     addEventListener('keyup', (e) => { const a = KEYMAP[e.code]; if (a) this.release(a); });
     addEventListener('blur', () => { for (const a of [...this.held]) this.release(a); });
-    document.querySelectorAll('#touch [data-key]').forEach((btn) => {
+    this.keyCaps = new Map();
+    document.querySelectorAll('#osd [data-key]').forEach((btn) => {
       const a = btn.dataset.key;
-      btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); btn.classList.add('on'); this.press(a); });
-      const up = () => { btn.classList.remove('on'); this.release(a); };
-      btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up);
+      if (!this.keyCaps.has(a)) this.keyCaps.set(a, []);
+      this.keyCaps.get(a).push(btn);
+      btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); this.press(a); });
+      const up = () => this.release(a);
+      btn.addEventListener('pointerup', up); btn.addEventListener('pointercancel', up); btn.addEventListener('lostpointercapture', up);
     });
   }
+  #cap(a, on) { const caps = this.keyCaps.get(a); if (caps) for (const c of caps) c.classList.toggle('on', on); }
   press(a) {
     if (this.held.has(a)) return;
     const t = performance.now();
     this.held.add(a); this.pressQ.push({ a, t }); this.pressTime.set(a, t);
+    if (this.pressQ.length > 32) this.pressQ.splice(0, this.pressQ.length - 32);
+    this.#cap(a, true);
     this.uiHandlers.get(a)?.();
   }
-  release(a) { if (!this.held.delete(a)) return; this.releaseQ.push({ a, t: performance.now() }); }
+  release(a) {
+    if (!this.held.delete(a)) return;
+    this.#cap(a, false);
+    this.releaseQ.push({ a, t: performance.now() });
+    if (this.releaseQ.length > 32) this.releaseQ.splice(0, this.releaseQ.length - 32);
+  }
   down(a) { return this.held.has(a); }
   /**
    * Consumes one queued event of `a`. Events live 250 ms: long enough to
@@ -1533,7 +1947,7 @@ class Input {
     for (const d of ['up', 'down', 'left', 'right']) if (this.down(d) && this.recent(d, ms)) return d;
     return 'none';
   }
-  clear() { this.pressQ.length = 0; this.releaseQ.length = 0; }
+  clear() { this.pressQ.length = 0; this.releaseQ.length = 0; for (const a of [...this.held]) this.release(a); this.releaseQ.length = 0; }
   onUI(action, fn) { this.uiHandlers.set(action, fn); }
   /** Standard-mapping gamepad: A ollie, X flip, B grab, Y grind, Start pause, Back objectives. */
   pollGamepad() {
@@ -1557,18 +1971,26 @@ class Input {
 // §12 ─── Tricks ──────────────────────────────────────────────────────────────
 /** Trick tables. `dur` is the board animation length in seconds. */
 const FLIPS = {
-  none:  { name: 'Kickflip', pts: 100, dur: 0.42, axis: 'roll', dir: 1, kick: true },
-  left:  { name: 'Heelflip', pts: 100, dur: 0.42, axis: 'roll', dir: -1, kick: true },
-  down:  { name: 'Pop Shove-It', pts: 80, dur: 0.36, axis: 'yaw', dir: 1 },
+  none:  { name: 'Chowhall Chop', pts: 100, dur: 0.42, axis: 'roll', dir: 1, kick: true },
+  left:  { name: 'Chowhall Chop (Heel)', pts: 100, dur: 0.42, axis: 'roll', dir: -1, kick: true },
+  down:  { name: 'Shakedown Shuvit', pts: 80, dur: 0.36, axis: 'yaw', dir: 1 },
   up:    { name: 'Impossible', pts: 150, dur: 0.5, axis: 'pitch', dir: 1 },
-  right: { name: 'Varial Kickflip', pts: 160, dur: 0.5, axis: 'varial', dir: 1, kick: true },
+  right: { name: 'Solitary Spinner', pts: 160, dur: 0.55, axis: 'spin360', dir: 1 },
 };
 const GRABS = {
   none: { name: 'Indy', pts: 120, type: 0 }, up: { name: 'Nosegrab', pts: 130, type: 1 }, down: { name: 'Tailgrab', pts: 130, type: 2 },
   left: { name: 'Melon', pts: 140, type: 3 }, right: { name: 'Stalefish', pts: 150, type: 4 },
 };
-const GRINDS = { none: '50-50 Grind', up: 'Nosegrind', down: '5-0 Grind', left: 'Crooked Grind', right: 'Smith Grind' };
-const SPECIALS = { air: { name: 'Skyhook Flip', pts: 1600, dur: 0.85 }, grind: { name: 'Lightning Grind', pts: 1200 } };
+const GRINDS = { none: 'Seg-Session', up: 'Nosegrind', down: '5-0 Grind', left: 'Crooked Grind', right: 'Smith Grind' };
+/** Specials need a full meter: J+K (or I) in the air, with a direction for the other two. */
+const SPECIALS = {
+  air: { name: 'The K2 Crashout', pts: 1800, dur: 0.95, axis: 'special' },
+  up: { name: 'The Suit-Up Slam', pts: 1600, dur: 0.9, axis: 'suitup' },
+  down: { name: 'The Icebox Invert', pts: 1700, dur: 1.0, axis: 'invert' },
+  grind: { name: 'Lightning Grind', pts: 1200 },
+};
+const WALLRIDE = { name: 'The Write-Up Wallride', pts: 250 };
+const BIG_AIR = { name: 'The Major Misconduct', pts: 400, time: 1.25, gap: 7.5 };
 
 /**
  * The combo: a list of trick entries, each with points that may keep growing
@@ -1726,6 +2148,7 @@ class Skater {
   #enterAir(y, vy, ctx) {
     this.state = 'air'; this.pos.y = y; this.vy = vy; this.charge = 0;
     const a = this.air; a.time = 0; a.spin = 0; a.spinVel = 0; a.peakY = y; a.overFunbox = false; a.tricks.length = 0; a.firstTrick = null;
+    a.wallride = false; a.startX = this.pos.x; a.startZ = this.pos.z;
     a.inZone = this.park.inHalfPipeZone(this.pos);
     this.normal.set(0, 1, 0);
   }
@@ -1754,6 +2177,13 @@ class Skater {
     if (this.flip) { this.flip.t += dt; if (this.flip.t >= this.flip.dur) this.flip = null; }
     // Move.
     const ox = this.pos.x, oz = this.pos.z;
+    // Write-Up Wallride: hold L into a yard wall in the air to ride up it.
+    const lim = park.half - 0.35;
+    if (!a.wallride && (input.down('grind') || input.recent('grind', 250)) && this.speed > 3 && (Math.abs(this.pos.x) > lim || Math.abs(this.pos.z) > lim) && this.pos.y > 0.4) {
+      a.wallride = true; this.vy = Math.max(this.vy, 3.4); input.take('grind');
+      a.tricks.push(tricks.add(WALLRIDE.name, WALLRIDE.pts)); a.firstTrick ??= a.tricks[a.tricks.length - 1];
+      ctx.sfx.grind(true); setTimeout(() => ctx.sfx.grind(false), 220);
+    }
     this.vel.x *= 1 - 0.02 * dt; this.vel.z *= 1 - 0.02 * dt;
     this.pos.x += this.vel.x * dt; this.pos.z += this.vel.z * dt; this.pos.y += this.vy * dt;
     if (this.pos.y > a.peakY) a.peakY = this.pos.y;
@@ -1814,6 +2244,7 @@ class Skater {
       else tricks.add(`${deg} Spin`, deg * 0.9);
     }
     if (a.time > 0.7 && tricks.active) tricks.grow(tricks.entries[tricks.entries.length - 1], (a.time - 0.7) * 120);
+    if (a.time > BIG_AIR.time || Math.hypot(this.pos.x - a.startX, this.pos.z - a.startZ) > BIG_AIR.gap) tricks.add(BIG_AIR.name, BIG_AIR.pts);
     ctx.events.landed({ spin: deg, air: a, impact });
     ctx.sfx.land(Math.min(1, impact / 10));
     if (this.pendingSpecial) { this.pendingSpecial = false; ctx.events.special(); }
@@ -1836,8 +2267,9 @@ class Skater {
   }
 
   #startSpecial(ctx) {
-    const s = SPECIALS.air;
-    this.flip = { name: s.name, pts: s.pts, dur: s.dur, axis: 'special', dir: 1, t: 0 };
+    const dir = ctx.input.direction(400);
+    const s = dir === 'up' ? SPECIALS.up : dir === 'down' ? SPECIALS.down : SPECIALS.air;
+    this.flip = { name: s.name, pts: s.pts, dur: s.dur, axis: s.axis, dir: 1, t: 0 };
     const e = ctx.tricks.add(s.name, s.pts); this.air.tricks.push(e); this.air.firstTrick ??= e;
     ctx.tricks.special = 0; this.pendingSpecial = true;
     ctx.sfx.special();
@@ -1889,7 +2321,7 @@ class Skater {
   #startManual(ctx) {
     const m = this.manual; m.on = true; m.time = 0; m.balance = (Math.random() - 0.5) * 0.2;
     const nose = ctx.input.down('up');
-    m.entry = ctx.tricks.add(nose ? 'Nose Manual' : 'Manual', 50);
+    m.entry = ctx.tricks.add(nose ? 'The Meat-Log Manual' : 'Manual', 50);
   }
   #stepManual(dt, ctx) {
     const m = this.manual, input = ctx.input;
@@ -1944,7 +2376,10 @@ class Skater {
         case 'yaw': bp.rotation.y = Math.PI * e; break;
         case 'pitch': bp.rotation.x = turn; break;
         case 'varial': bp.rotation.y = Math.PI * e; bp.rotation.z = turn; break;
-        case 'special': bp.rotation.z = turn * 2; bp.rotation.y = turn; bp.position.y = Math.sin(Math.PI * k) * 0.5; break;
+        case 'special': bp.rotation.z = turn * 2; bp.rotation.y = turn * 2.5; bp.position.y = Math.sin(Math.PI * k) * 0.5; break;
+        case 'spin360': bp.rotation.y = TAU * e; break;
+        case 'suitup': bp.rotation.x = Math.sin(Math.PI * k) * 0.9; bp.position.y = Math.sin(Math.PI * k) * 0.55; break;
+        case 'invert': bp.rotation.z = Math.PI * e * 2; bp.position.y = Math.sin(Math.PI * k) * 0.35; break;
       }
     }
     if (this.state === 'bail') { bp.position.y = 0.05; bp.rotation.z = 2.4; bp.position.x = 0.45; }
@@ -1958,6 +2393,10 @@ class Skater {
     const bal = this.state === 'grind' ? this.grind.balance : this.manual.on ? this.manual.balance : 0;
     p.lean += (bal - p.lean) * damp(10, dt);
     p.bail += ((this.state === 'bail' ? 1 : 0) - p.bail) * damp(8, dt);
+    const suit = this.flip?.axis === 'suitup' ? Math.sin(Math.PI * clamp(this.flip.t / this.flip.dur, 0, 1)) : 0;
+    if (suit > 0) p.armsOut = Math.max(p.armsOut, 1 + suit * 0.9);
+    const inv = this.flip?.axis === 'invert' ? Math.sin(Math.PI * clamp(this.flip.t / this.flip.dur, 0, 1)) : 0;
+    p.invert = inv;
     p.push += ((this.pushing && this.state === 'ground' && this.charge === 0 ? 1 : 0) - p.push) * damp(8, dt);
     p.manual = this.manual.on ? 1 : 0;
     rig.board.rotation.x = this.manual.on ? -0.22 : 0;
@@ -1977,6 +2416,8 @@ class Session {
     this.mode = mode; this.park = park; this.chapter = chapter; this.profiles = profiles; this.hud = hud; this.sfx = sfx;
     this.time = mode.duration; this.elapsed = 0; this.score = 0; this.over = false; this.overtime = 0;
     this.run = { letters: new Set(), grind: 0, bestCombo: 0, maxSpin: 0, vertAir: 0, special: false, manualBest: 0, tricks: 0, bails: 0 };
+    this.board = `proskater-${mode.id}`;
+    this.boardValue = 0;
     this.completedNow = [];
     this.cashEarned = 0;
   }
@@ -1990,10 +2431,27 @@ class Session {
       if (this.time <= 0) { if (!tricks.active || (this.overtime += dt) > 8) this.finish(); }
     }
   }
+  /** The value this run puts on its leaderboard: the score, or the biggest combo in Free Skate. */
+  get leaderboardValue() { return Math.round(this.mode.scored ? this.score : this.run.bestCombo); }
+  /** Saves the run as it goes (tlScores keeps a local copy within a second and posts every 15 s and on page hide). */
+  #live() {
+    const v = this.leaderboardValue;
+    if (v <= this.boardValue) return;
+    this.boardValue = v;
+    window.tlScores?.progress(this.board, v);
+  }
+  /** Final save: the clock ran out, or the run was left early (menu, restart, next chapter). */
+  submitBoard() {
+    if (this.boardSubmitted) return;
+    this.boardSubmitted = true;
+    const v = this.leaderboardValue;
+    if (v > 0) window.tlScores?.submit(this.board, v);
+  }
   bank(value, combo) {
     if (this.over && !combo) return;
     this.score += value; this.run.tricks += combo;
     this.run.bestCombo = Math.max(this.run.bestCombo, value);
+    this.#live();
     this.check();
     if (this.time <= 0) this.finish();
   }
@@ -2007,7 +2465,7 @@ class Session {
   }
   /** Called after a combo containing a kickflip-family trick lands clean. */
   checkFunbox(entries, air) {
-    if (air?.overFunbox && entries.some((e) => /Kickflip/.test(e.name))) { this.funboxFlip = true; this.check(); }
+    if (air?.overFunbox && entries.some((e) => /Chowhall Chop/.test(e.name))) { this.funboxFlip = true; this.check(); }
   }
   special() { this.run.special = true; this.check(); }
   progress(o) {
@@ -2047,6 +2505,7 @@ class Session {
     p.stats.bestCombo = Math.max(p.stats.bestCombo, this.run.bestCombo);
     this.newBest = this.mode.scored ? this.profiles.record(this.mode.id, this.park.def.id, Math.round(this.score)) : false;
     this.profiles.save();
+    this.submitBoard();
     this.onFinish?.(this);
   }
 }
@@ -2173,6 +2632,114 @@ class Hud {
   }
 }
 
+/** A soft dark blob under the board that fades with height: grounds the rider without a second shadow map. */
+class ContactShadow {
+  constructor(scope) {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(0.55, 'rgba(0,0,0,0.22)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const tex = scope.track(new THREE.CanvasTexture(c));
+    const geo = scope.track(new THREE.PlaneGeometry(1.25, 1.25)); geo.rotateX(-Math.PI / 2);
+    this.material = scope.track(new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+    this.mesh = new THREE.Mesh(geo, this.material); this.mesh.name = 'contactShadow'; this.mesh.renderOrder = 2;
+  }
+  update(sk, park) {
+    const h = park.heightAt(sk.pos.x, sk.pos.z), above = Math.max(0, sk.pos.y - h);
+    const g = park.gradient(sk.pos.x, sk.pos.z);
+    this.mesh.position.set(sk.pos.x, h + 0.015, sk.pos.z);
+    this.mesh.quaternion.setFromUnitVectors(_up, _v3.set(-g.x, 1, -g.z).normalize());
+    this.mesh.rotateY(sk.heading);
+    const k = clamp(1 - above / 3, 0, 1);
+    this.material.opacity = k * (sk.state === 'bail' ? 0.4 : 1);
+    this.mesh.scale.set(0.55 + (1 - k) * 0.6, 1, 1 + (1 - k) * 0.4);
+  }
+}
+
+/** Pooled spark particles thrown off the trucks while grinding (no per-frame allocation). */
+class GrindSparks {
+  constructor(scope, count = 140) {
+    this.count = count; this.next = 0;
+    this.pos = new Float32Array(count * 3).fill(-50); this.vel = new Float32Array(count * 3); this.life = new Float32Array(count);
+    const geo = scope.track(new THREE.BufferGeometry());
+    geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    this.material = scope.track(new THREE.PointsMaterial({ size: 0.06, color: 0xffb347, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.points = new THREE.Points(geo, this.material); this.points.frustumCulled = false; this.points.visible = false; this.points.name = 'sparks';
+    this.alive = 0; this.carry = 0;
+  }
+  update(dt, sk) {
+    if (dt <= 0) return;
+    if (sk.state === 'grind') {
+      this.carry += dt * clamp(sk.grind.speed * 18, 30, 140);
+      const fx = Math.sin(sk.heading), fz = Math.cos(sk.heading);
+      while (this.carry >= 1) {
+        this.carry -= 1;
+        const i = this.next, j = i * 3; this.next = (this.next + 1) % this.count;
+        const along = Math.random() < 0.5 ? -0.27 : 0.27;
+        this.pos[j] = sk.pos.x + fx * along; this.pos[j + 1] = sk.pos.y + 0.03; this.pos[j + 2] = sk.pos.z + fz * along;
+        const back = -(1 + Math.random() * 2.5);
+        this.vel[j] = sk.vel.x * 0.15 + fx * back + (Math.random() - 0.5) * 1.6;
+        this.vel[j + 1] = 0.6 + Math.random() * 2.2;
+        this.vel[j + 2] = sk.vel.z * 0.15 + fz * back + (Math.random() - 0.5) * 1.6;
+        this.life[i] = 0.25 + Math.random() * 0.3;
+      }
+    } else this.carry = 0;
+    let alive = 0;
+    for (let i = 0; i < this.count; i++) {
+      if (this.life[i] <= 0) continue;
+      this.life[i] -= dt;
+      const j = i * 3;
+      if (this.life[i] <= 0) { this.pos[j + 1] = -50; continue; }
+      alive++;
+      this.vel[j + 1] -= 14 * dt;
+      this.pos[j] += this.vel[j] * dt; this.pos[j + 1] += this.vel[j + 1] * dt; this.pos[j + 2] += this.vel[j + 2] * dt;
+    }
+    this.points.visible = alive > 0;
+    if (alive || this.alive) this.points.geometry.attributes.position.needsUpdate = true;
+    this.alive = alive;
+  }
+}
+
+/**
+ * Static batching: every park mesh that never moves is merged per material and shadow flag,
+ * so a park draws in a few dozen calls instead of hundreds (in the shadow pass too). Source
+ * geometries no longer used are disposed straight away; the merged ones belong to the level scope.
+ */
+function batchStatic(group, scope) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const buckets = new Map(), victims = [];
+  group.traverse((o) => {
+    if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh || o.children.length || o.name === 'HALF_PIPE_ZONE' || Array.isArray(o.material) || o.material.transparent || o.userData.dynamic) return;
+    const attrs = Object.keys(o.geometry.attributes).sort().join(',');
+    if (attrs !== 'normal,position,uv') return;
+    const key = `${o.material.uuid}|${o.castShadow}|${o.receiveShadow}`;
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(o);
+  });
+  const sources = new Set();
+  for (const meshes of buckets.values()) {
+    if (meshes.length < 2) continue;
+    const parts = meshes.map((m) => {
+      sources.add(m.geometry);
+      const g = m.geometry.index ? m.geometry.toNonIndexed() : m.geometry.clone();
+      return g.applyMatrix4(_m4.multiplyMatrices(inv, m.matrixWorld));
+    });
+    const merged = mergeGeometries(parts, false);
+    parts.forEach((g) => g.dispose());
+    if (!merged) continue;
+    const batch = new THREE.Mesh(scope.track(merged), meshes[0].material);
+    batch.castShadow = meshes[0].castShadow; batch.receiveShadow = meshes[0].receiveShadow; batch.name = 'batch';
+    batch.matrixAutoUpdate = false;
+    group.add(batch);
+    victims.push(...meshes);
+  }
+  for (const m of victims) m.removeFromParent();
+  const stillUsed = new Set(); group.traverse((o) => { if (o.geometry) stillUsed.add(o.geometry); });
+  for (const g of sources) if (!stillUsed.has(g)) { scope.items.delete(g); g.dispose(); }
+  return victims.length;
+}
+
 // §17 ─── Renderer & Level ────────────────────────────────────────────────────
 /**
  * Lighting recipe for soft, never-black shadows:
@@ -2184,8 +2751,36 @@ class Hud {
  * shadow radius is the soft filter here, and shadow.intensity < 1 keeps the
  * darkest shadow lifted.
  */
+/** Gradient sky with a sun disc, a soft glow and drifting fbm clouds in one draw. */
+function skyMaterial(p) {
+  return new THREE.ShaderMaterial({
+    side: THREE.BackSide, depthWrite: false, fog: false,
+    uniforms: { top: { value: new THREE.Color(p.sky[0]) }, horizon: { value: new THREE.Color(p.sky[1]) }, sunDir: { value: new THREE.Vector3(-30, 46, 24).normalize() }, sunColor: { value: new THREE.Color(p.sun) } },
+    vertexShader: 'varying vec3 vDir; void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `uniform vec3 top; uniform vec3 horizon; uniform vec3 sunDir; uniform vec3 sunColor; varying vec3 vDir;
+float h1(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h1(i), h1(i + vec2(1, 0)), f.x), mix(h1(i + vec2(0, 1)), h1(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++) { v += a * n2(p); p *= 2.03; a *= 0.5; } return v; }
+void main() {
+  vec3 d = normalize(vDir); float h = max(d.y, 0.0);
+  vec3 col = mix(horizon, top, pow(h, 0.55));
+  float sd = max(dot(d, sunDir), 0.0);
+  col += sunColor * (pow(sd, 1400.0) * 8.0 + pow(sd, 10.0) * 0.22);
+  if (d.y > 0.0) {
+    vec2 uv = d.xz / (d.y + 0.2) * 1.4;
+    float c = smoothstep(0.5, 0.8, fbm(uv + vec2(3.0, 1.0))) * smoothstep(0.0, 0.3, d.y);
+    col = mix(col, mix(vec3(1.0), horizon, 0.3) * (0.92 + 0.12 * sd), c * 0.75);
+  }
+  col = mix(col, horizon * 0.9, smoothstep(0.0, -0.2, d.y));
+  gl_FragColor = vec4(col, 1.0);
+  #include <tonemapping_fragment>
+  #include <colorspace_fragment>
+}`,
+  });
+}
+
 class Level {
-  constructor(app, parkDef, modeDef) {
+  constructor(app, parkDef, modeDef, models = {}) {
     this.app = app; this.scope = new ResourceScope(parkDef.id);
     this.root = new THREE.Group(); this.root.name = 'level';
     const q = QUALITY[app.profiles.data.settings.quality];
@@ -2194,27 +2789,27 @@ class Level {
     const p = parkDef.palette;
     // Sky dome (vertex-coloured gradient sphere) + fog.
     const skyGeo = this.scope.track(new THREE.SphereGeometry(400, 32, 16));
-    const top = new THREE.Color(p.sky[0]), hor = new THREE.Color(p.sky[1]), colors = [];
-    const pos = skyGeo.attributes.position;
-    for (let i = 0; i < pos.count; i++) { const k = clamp(pos.getY(i) / 400, 0, 1); const c = hor.clone().lerp(top, Math.pow(k, 0.6)); colors.push(c.r, c.g, c.b); }
-    skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-    const sky = new THREE.Mesh(skyGeo, this.scope.track(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })));
+    const sky = new THREE.Mesh(skyGeo, this.scope.track(skyMaterial(p)));
     sky.name = 'sky'; this.root.add(sky);
     this.fog = new THREE.Fog(p.fog, 70, 260);
     // Lights.
-    const hemi = new THREE.HemisphereLight(p.sky[0], 0x6b5a48, 1.25); this.root.add(hemi);
+    const hemi = new THREE.HemisphereLight(p.sky[0], 0x6b6258, 1.4); this.root.add(hemi);
     const sun = new THREE.DirectionalLight(p.sun, 2.7);
     sun.position.set(-30, 46, 24); sun.target.position.set(0, 0, 0);
     sun.castShadow = true;
     sun.shadow.mapSize.set(q.shadow, q.shadow);
     const S = parkDef.size / 2 + 6;
     Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 5, far: 140 });
-    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035; sun.shadow.radius = q.shadow >= 2048 ? 4 : 2;
-    if ('intensity' in sun.shadow) sun.shadow.intensity = 0.82;
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.035; sun.shadow.radius = q.shadow >= 2048 ? 5 : 3;
+    if ('intensity' in sun.shadow) sun.shadow.intensity = 0.62;
     this.root.add(sun, sun.target);
     // Skater + optional collectibles.
     this.rig = new SkaterRig(this.scope, deckById(app.profiles.data.equippedDeck));
+    this.rig.attach(models, app.profiles.data.settings.rank);
     this.root.add(this.rig.root);
+    this.contact = new ContactShadow(this.scope); this.root.add(this.contact.mesh);
+    this.sparks = new GrindSparks(this.scope); this.root.add(this.sparks.points);
+    batchStatic(this.park.group, this.scope);
     this.skater = new Skater(this.park, parkDef.spawn);
     this.letters = modeDef.letters ? new LetterField(this.park, this.scope) : null;
     if (this.letters) this.root.add(this.letters.group);
@@ -2286,12 +2881,14 @@ class App {
   async boot() {
     await this.store.open();
     const user = await this.#libraryUser();
+    this.user = user;
     await this.profiles.load(user ? `user:${user}` : 'guest');
     this.sfx.setVolume(this.profiles.data.settings.volume);
     this.profiles.onChange(() => this.refreshMenus());
     this.#bindUI();
     this.refreshMenus();
     UI.show('title', { push: false });
+    document.getElementById('osd').classList.toggle('off', !this.profiles.data.settings.keys);
     this.renderer.setAnimationLoop(() => this.frame());
     window.__skater = this;                                   // debugging / automated checks
   }
@@ -2307,11 +2904,14 @@ class App {
   }
 
   resize() {
-    const q = QUALITY[this.profiles?.data.settings.quality ?? 'high'];
+    const tier = this.profiles?.data.settings.quality ?? 'high', q = QUALITY[tier];
     const w = innerWidth, h = innerHeight;
-    // Pixel budget: cap the drawing buffer at the tier's pixel count (1080p on High).
-    const dpr = Math.min(devicePixelRatio || 1, q.maxDpr, Math.sqrt(q.maxPixels / (w * h)));
-    this.renderer.setPixelRatio(Math.max(0.5, dpr));
+    // Pixel budget: High fills a 1080p budget (supersampling small frames up to 2×), Low stays
+    // at the screen's own density. `adapt` lowers it while frames are slow and restores it after.
+    const budget = Math.sqrt(q.maxPixels / (w * h));
+    const base = tier === 'low' ? Math.min(devicePixelRatio || 1, q.maxDpr, budget) : Math.min(q.maxDpr, Math.max(devicePixelRatio || 1, budget));
+    this.baseDpr = Math.max(0.5, base);
+    this.renderer.setPixelRatio(Math.max(0.5, this.baseDpr * (this.adaptScale ?? 1)));
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
   }
@@ -2328,8 +2928,10 @@ class App {
     this.unload();
     await step(20, 'Mixing concrete and cutting plywood…');
     Textures.prepare(QUALITY[this.profiles.data.settings.quality].tex);
+    await step(40, 'Lacing up the rider…');
+    const [skater, board] = await Promise.all([CharacterAssets.load('skater'), CharacterAssets.load('board')]);
     await step(55, `Building ${parkDef.name}…`);
-    this.level = new Level(this, parkDef, mode);
+    this.level = new Level(this, parkDef, mode, { skater, board });
     this.scene.add(this.level.root);
     this.scene.fog = this.level.fog;
     await this.level.loadOptionalAssets();
@@ -2342,14 +2944,17 @@ class App {
     this.tricks.inZone = () => this.level.park.inHalfPipeZone(this.level.skater.pos);
     this.session = new Session({ mode, park: this.level.park, chapter, profiles: this.profiles, hud: this.hud, sfx: this.sfx });
     this.session.onFinish = (s) => this.showResults(s);
+    try { if (window.parent !== window) window.parent.postMessage({ type: 'tl-score-board', module: this.session.board }, location.origin); } catch { /* not embedded */ }
     this.hud.configure(this.session);
     this.input.clear(); this.paused = false; this.acc = 0;
+    this.adaptive = { slow: -6, fast: 0 };
     UI.show('hud');
     this.canvas.focus({ preventScroll: true });
   }
   /** Leaves the level and purges every GPU resource it created. */
   unload() {
     this.sfx.stopAll();
+    this.session?.submitBoard();
     if (!this.level) return null;
     this.scene.fog = null;
     const mem = Unloader.purge(this.level.root, this.level.scope, this.renderer);
@@ -2358,9 +2963,9 @@ class App {
     this.lastPurge = mem;
     return mem;
   }
-  pause() { if (!this.session || this.session.over) return; this.paused = true; this.sfx.stopAll(); this.#renderObjList(document.getElementById('pauseObjList')); UI.show('pause'); }
+  pause() { if (!this.session || this.session.over) return; this.paused = true; this.pausedDrawn = false; this.sfx.stopAll(); this.#renderObjList(document.getElementById('pauseObjList')); UI.show('pause'); }
   resume() { this.paused = false; this.input.clear(); this.last = performance.now(); UI.show('hud'); this.canvas.focus({ preventScroll: true }); }
-  quit() { this.unload(); this.refreshMenus(); UI.history = []; UI.show('title', { push: false }); }
+  quit() { this.unload(); UI.history = []; UI.show('title', { push: false }); this.refreshMenus(); }
 
   // --- per-frame ------------------------------------------------------------
   frame() {
@@ -2376,7 +2981,13 @@ class App {
       this.time += dt;
     }
     const lv = this.level, sk = lv.skater;
+    if (this.paused && this.pausedDrawn) return;
+    this.pausedDrawn = this.paused;
     sk.syncRig(lv.rig, dt, this.time);
+    lv.rig.spinWheels(sk.speed, this.paused ? 0 : dt, sk.state === 'ground');
+    lv.contact.update(sk, lv.park);
+    lv.park.update(this.time);
+    lv.sparks.update(this.paused ? 0 : dt, sk);
     if (lv.letters) {
       const got = lv.letters.update(this.paused ? 0 : dt, this.time, _v5.copy(sk.pos).setY(sk.pos.y + 0.9));
       if (got && this.session) { this.session.letter(got); this.hud.letter(got); this.hud.popup(`${got}!`, 'gold'); this.sfx.chime(); this.hud.renderObjectives(this.session); }
@@ -2391,6 +3002,7 @@ class App {
     if (this.input.take('pause')) { this.pause(); return; }
     if (this.input.take('objectives')) this.hud.toggleObjectives();
     if (this.input.take('debug')) document.getElementById('hudFps').classList.toggle('hidden');
+    if (this.input.take('keys')) this.setKeys(!this.profiles.data.settings.keys);
     sk.step(dt, this.ctx);
     this.tricks.decay(dt);
     s?.update(dt, this.tricks);
@@ -2443,12 +3055,35 @@ class App {
     const f = this.fps; f.frames++; f.t += dt; f.worst = Math.max(f.worst, dt);
     if (f.t >= 0.5) {
       f.value = f.frames / f.t;
+      if (this.level && !this.paused && UI.current === 'hud') this.#adapt(f.value);
       const m = this.renderer.info;
       if (this.profiles.data.settings.fps || !this.hud.el.fps.classList.contains('hidden')) {
-        this.hud.el.fps.textContent = `${f.value.toFixed(0)} fps  worst ${(f.worst * 1000).toFixed(1)} ms\ncalls ${m.render.calls}  tris ${fmt(m.render.triangles)}\ngeo ${m.memory.geometries}  tex ${m.memory.textures}`;
+        this.hud.el.fps.textContent = `${f.value.toFixed(0)} fps  worst ${(f.worst * 1000).toFixed(1)} ms\ncalls ${m.render.calls}  tris ${fmt(m.render.triangles)}\ngeo ${m.memory.geometries}  tex ${m.memory.textures}\n${this.renderer.domElement.width}×${this.renderer.domElement.height} (${Math.round((this.adaptScale ?? 1) * 100)}%)`;
       }
       f.frames = 0; f.t = 0; f.worst = 0;
     }
+  }
+
+  setRank(rank) {
+    this.profiles.data.settings.rank = rank === 'sergeant' ? 'sergeant' : 'officer';
+    this.profiles.save();
+    this.level?.rig.setRank(this.profiles.data.settings.rank);
+  }
+  setKeys(show) {
+    this.profiles.data.settings.keys = show;
+    document.getElementById('osd').classList.toggle('off', !show);
+    this.profiles.save();
+  }
+
+  /** Adaptive resolution: −10% after a second below 50 fps, +5% after two seconds above 58. */
+  #adapt(fps) {
+    const a = this.adaptive ??= { slow: 0, fast: 0 };
+    this.adaptScale ??= 1;
+    if (fps < 50) { a.slow++; a.fast = 0; } else if (fps > 58) { a.fast++; a.slow = 0; } else { a.slow = a.fast = 0; }
+    let next = this.adaptScale;
+    if (a.slow >= 2 && next > 0.6) { next = Math.max(0.6, next - 0.1); a.slow = 0; }
+    if (a.fast >= 4 && next < 1) { next = Math.min(1, next + 0.05); a.fast = 0; }
+    if (next !== this.adaptScale) { this.adaptScale = next; this.renderer.setPixelRatio(Math.max(0.5, this.baseDpr * next)); }
   }
 
   // --- menus ----------------------------------------------------------------
@@ -2458,6 +3093,8 @@ class App {
     $('resMode').textContent = s.mode.label + ' · ' + s.park.def.name;
     $('resScore').textContent = s.mode.scored ? fmt(s.score) : 'Session over';
     $('resBest').classList.toggle('hidden', !s.newBest);
+    const board = { blitz: 'Timed Blitz', showdown: 'Half-Pipe Showdown', story: 'Story', free: 'Free Skate biggest combo' }[s.mode.id];
+    $('resBoard').textContent = !s.leaderboardValue ? '' : this.user ? `Saved to the ${board} leaderboard under the frame.` : `Sign in to the library to put this run on the ${board} leaderboard.`;
     const best = s.mode.scored ? (this.profiles.data.records[s.mode.id]?.[s.park.def.id] ?? 0) : 0;
     const stats = [['Best combo', fmt(s.run.bestCombo)], ['Tricks landed', s.run.tricks], ['Bails', s.run.bails], ['Grind', `${s.run.grind.toFixed(1)} m`]];
     if (s.mode.scored) stats.unshift(['Personal best', fmt(best)]);
@@ -2477,7 +3114,14 @@ class App {
     }
   }
   refreshMenus() {
+    // Saves happen mid-run (objectives); rebuilding hidden menus then is wasted work, so it waits.
+    if (['hud', 'loading'].includes(UI.current)) { this.menusDirty = true; return; }
+    this.menusDirty = false;
     const p = this.profiles.data;
+    document.getElementById('rankBtn').textContent = `Rank: ${p.settings.rank === 'sergeant' ? 'Sergeant' : 'Officer'}`;
+    document.getElementById('optRank').value = p.settings.rank;
+    document.getElementById('optKeys').value = p.settings.keys ? '1' : '0';
+    document.getElementById('osd').classList.toggle('off', !p.settings.keys);
     const wallet = `<span class="chip">Cash <b>$${fmt(p.cash)}</b></span><span class="chip">Earned <b>$${fmt(p.totalCashEarned)}</b></span><span class="chip">Chapter <b>${p.storyChapter + 1}/${CHAPTERS.length}</b></span><span class="chip">Parks <b>${p.unlockedParks.length}/${PARK_ORDER.length}</b></span>`;
     for (const id of ['wallet', 'storyWallet', 'deckWallet']) document.getElementById(id).innerHTML = wallet;
     // Story chapters.
@@ -2496,7 +3140,7 @@ class App {
     for (const d of DECKS) {
       const owned = p.ownedDecks.includes(d.id), eq = p.equippedDeck === d.id;
       const card = document.createElement('div'); card.className = `deck${eq ? ' equipped' : ''}`;
-      const cv = document.createElement('canvas'); cv.width = 128; cv.height = 512; d.draw(cv.getContext('2d'), 128, 512);
+      const cv = document.createElement('canvas'); cv.width = 128; cv.height = 512; cv.getContext('2d').drawImage(deckCanvas(d), 0, 0);
       const btn = document.createElement('button'); btn.className = `btn${owned ? '' : ' primary'}`;
       btn.textContent = eq ? 'Equipped' : owned ? 'Equip' : `Buy $${fmt(d.price)}`;
       btn.disabled = eq || (!owned && p.cash < d.price);
@@ -2545,12 +3189,15 @@ class App {
     on('quit', () => this.quit());
     on('next-chapter', () => { const i = CHAPTERS.indexOf(this.lastStart?.chapter); const n = CHAPTERS[i + 1]; if (n) this.start('story', n.park, n); });
     on('toggle-objectives', () => this.hud.toggleObjectives());
+    on('toggle-rank', () => this.setRank(this.profiles.data.settings.rank === 'sergeant' ? 'officer' : 'sergeant'));
     on('reset-profile', () => UI.show('confirm', { push: false }));
     on('cancel-reset', () => UI.show('options', { push: false }));
     on('confirm-reset', async () => { await this.profiles.reset(); this.sfx.setVolume(this.profiles.data.settings.volume); this.refreshMenus(); UI.show('options', { push: false }); });
     document.getElementById('optQuality').addEventListener('change', (e) => { this.profiles.data.settings.quality = e.target.value; this.profiles.save(); this.resize(); });
     document.getElementById('optVolume').addEventListener('input', (e) => { this.profiles.data.settings.volume = Number(e.target.value); this.sfx.setVolume(Number(e.target.value)); });
     document.getElementById('optVolume').addEventListener('change', () => this.profiles.save());
+    document.getElementById('optRank').addEventListener('change', (e) => this.setRank(e.target.value));
+    document.getElementById('optKeys').addEventListener('change', (e) => this.setKeys(e.target.value === '1'));
     document.getElementById('optFps').addEventListener('change', (e) => { this.profiles.data.settings.fps = e.target.value === '1'; this.hud.el.fps.classList.toggle('hidden', !this.profiles.data.settings.fps); this.profiles.save(); });
     // Esc in pause resumes; Esc in sub-menus goes back.
     addEventListener('keydown', (e) => {
