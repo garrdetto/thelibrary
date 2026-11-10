@@ -1,4 +1,4 @@
-import { FISH_COOLDOWN_MS, GAME_COOLDOWN_MS, applyEvent, createCharacter, applyPlaytime, defaultProfile, equip, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
+import { applyEvent, createCharacter, applyPlaytime, defaultProfile, equip, eventCooldown, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
 import { categoryValues, placeOn } from '../shared/Records'
 import type { RecordBoard } from '../shared/Records'
 import type { GameEvent, GearEffects, Look, Profile, Slot } from '../shared/Economy'
@@ -122,7 +122,7 @@ export class Progress {
     const doe = c.action === 'game' && c.doe
     const now = Date.now()
     const last = c.action === 'fish' ? this.profile.lastFishAt : this.profile.lastGameAt
-    const accepted = now - last >= (c.action === 'fish' ? FISH_COOLDOWN_MS : GAME_COOLDOWN_MS)
+    const accepted = now - last >= eventCooldown(c.action, c.species)
     const placed: Record<string, number> = {}
     if (accepted && !doe) {
       for (const [id, value] of Object.entries(categoryValues(c.species, c.value, c.seed))) {

@@ -1,41 +1,41 @@
 {
   "version": 1,
   "settings": {
-    "prompt": "a burly northern Wisconsin outdoorsman, mid-30s, short orange/blonde mullet (short on top and sides, longer at the back, down to the collar), thick blonde mustache, red-and-black buffalo plaid flannel with the sleeves rolled up, faded jeans, rubber boots, full body, A-pose, low-poly game asset, realistic proportions. No logos or real brands.",
+    "prompt": "A-pose full body realistic game character: a young northern Wisconsin outdoorsman in his early 20s standing straight, both arms hanging down at his sides away from the body, palms in. Realistic proportions and face, natural-sized eyes, fit build, thin blonde mustache, orange-blonde mullet short on top and sides and long at the back to the collar. Red-and-black buffalo plaid flannel shirt with sleeves rolled to the elbows, faded blue jeans, dark green rubber boots. Highly detailed realistic textures. No logos.",
     "target": "character",
-    "negative": "logos, text, weapons",
+    "negative": "logos, text, weapons, hands on hips, crossed arms, cartoon, anime, big eyes, chibi",
     "aiModel": "latest",
-    "polycount": 15000,
-    "texturePrompt": "sunburnt skin, wavy orange-blonde mullet hair to the collar, thick blonde horseshoe mustache, red and black buffalo check flannel, faded blue jeans, dark green rubber boots",
+    "polycount": 30000,
+    "texturePrompt": "photorealistic lightly tanned skin, natural eyes, thin blonde mustache, orange-blonde mullet, crisp red and black buffalo check flannel with visible weave and stitching, faded worn blue denim, dark green rubber boots with mud on the soles",
     "rig": true,
     "height": 1.8
   },
   "tasks": {
     "preview": {
-      "id": "01a1c302-931b-763a-be7d-031ee8a74cc3",
+      "id": "01a1c796-a155-7412-b373-d0a72df363d5",
       "status": "SUCCEEDED",
-      "startedAt": "2026-11-10T01:11:30.285Z",
+      "startedAt": "2026-11-10T22:31:43.047Z",
       "credits": 20
     },
     "refine": {
-      "id": "01a1c303-3fd0-74e0-a4a2-342ddb5b22a1",
+      "id": "01a1c797-7dbe-70f8-8596-1a3c1f437a58",
       "status": "SUCCEEDED",
-      "startedAt": "2026-11-10T01:12:14.802Z",
+      "startedAt": "2026-11-10T22:32:38.666Z",
       "credits": 10
     },
     "rig": {
-      "id": "01a1c303-b354-7038-8c09-9bbc48999de3",
+      "id": "01a1c798-1989-7632-9c73-bb662758887d",
       "status": "SUCCEEDED",
-      "startedAt": "2026-11-10T01:12:45.214Z",
+      "startedAt": "2026-11-10T22:33:19.620Z",
       "credits": 5
     }
   },
   "credits": 35,
   "files": [
-    "assets-src/models/_rackreel/wildman.glb"
+    "assets-src/models/_rackreel/wildman-v2.glb"
   ],
-  "createdAt": "2026-11-10T01:11:27.641Z",
+  "createdAt": "2026-11-10T22:31:39.216Z",
   "clips": [],
   "cleanup": "none",
-  "updatedAt": "2026-11-10T01:13:02.291Z"
+  "updatedAt": "2026-11-10T22:33:36.473Z"
 }

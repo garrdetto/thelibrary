@@ -14,12 +14,12 @@ export function texturedMaterial(scene: Scene, file: string, cache: Map<string, 
   if (existing) return existing
   const mat = new StandardMaterial(`rr-${file}`, scene)
   const texture = new Texture(modelFileUrl(`${file}.webp`), scene, { noMipmap: false, samplingMode: Texture.TRILINEAR_SAMPLINGMODE })
-  texture.anisotropicFilteringLevel = 4
+  texture.anisotropicFilteringLevel = 8
   mat.diffuseTexture = texture
   mat.diffuseColor = Color3.White()
   const wet = file.startsWith('fish-')
   const cloth = file.startsWith('hunter') || file === 'wildman'
-  mat.specularColor = wet ? WET.specular : cloth ? new Color3(0.015, 0.015, 0.015) : new Color3(0.05, 0.05, 0.05)
+  mat.specularColor = wet ? WET.specular : cloth ? new Color3(0.0075, 0.0075, 0.0075) : new Color3(0.05, 0.05, 0.05)
   mat.specularPower = wet ? WET.power : cloth ? 6 : 16
   mat.ambientColor = new Color3(0.3, 0.3, 0.3)
   mat.backFaceCulling = false

@@ -24,6 +24,7 @@ import type { CheerTrigger } from '../systems/Cheers'
 import { WaterFx } from '../systems/FishingFx'
 import type { LootTableManager, Specimen } from '../systems/LootTableManager'
 import { SPECIES_BY_ID, formatPounds, formatValue } from '../systems/LootTableManager'
+import { CARP_BOUNTY } from '../shared/Economy'
 import { apparentDepth } from '../systems/Refraction'
 import { HOUR_SECONDS, hoursUntilDark } from '../systems/TimeOfDay'
 import type { Clock } from '../systems/TimeOfDay'
@@ -202,6 +203,7 @@ export class Bowfishing {
     this.launch = findLaunch(terrain, dock.start, dock.end)
     const loops = buildLoops(terrain, { points: [{ x: host.parkedBoat.x, z: host.parkedBoat.z }, this.launch.boat], segments: [[dock.start, dock.end]] })
     this.pilot = new Autopilot(terrain, loops, this.launch)
+    this.pilot.hullLength = BOWBOAT.length
     const reg = (m: InstancedMesh) => ctx.registerDynamic(m)
     this.boatRig = instantiate(models.get('bowboat')!, null, scene, reg)
     this.boatRoot = this.boatRig.root
@@ -692,6 +694,7 @@ export class Bowfishing {
     p.liftSlope = Math.max(-1, Math.min(1, (lift - p.lift) / Math.max(1e-3, Math.abs(speed) * dt)))
     p.lift += (lift - p.lift) * k
     p.beached = docked === 1 && lift > 0.2
+    p.groundPitch = lift > 0.05 ? p.hullGround().pitch : 0
     if (Math.hypot(x - p.x, z - p.z) > 30) {
       p.x = x
       p.z = z
@@ -729,7 +732,7 @@ export class Bowfishing {
     const climb = Math.min(1, Math.max(0, (p.speed - SPEED.push) / (SPEED.run - SPEED.push)))
     const out = Math.min(1, p.lift / 0.25)
     const air = p.airborne || (p.lift > 1 && p.speed > SPEED.push)
-    const bowUp = (Math.sin(climb * Math.PI) ** 0.8) * 0.105 * (1 - out) + climb * 0.026 + Math.atan(p.liftSlope) * (air ? 0.9 : 0.5) + (p.beached ? 0.07 : 0)
+    const bowUp = (Math.sin(climb * Math.PI) ** 0.8) * 0.105 * (1 - out) + climb * 0.026 + Math.atan(p.liftSlope) * (air ? 0.9 : 0.5) + p.groundPitch + (p.beached ? 0.03 : 0)
     const bankTarget = Math.max(-0.14, Math.min(0.14, -turn * Math.abs(p.speed) * 0.045))
     this.pitch += (bowUp - this.pitch) * Math.min(1, dt * (air ? 6 : 2.5))
     this.roll += (bankTarget - this.roll) * Math.min(1, dt * 2)
@@ -1125,7 +1128,7 @@ export class Bowfishing {
     const tier = this.host.tubCarp(specimen)
     this.host.audio.splash(false)
     this.cheer({ kind: 'tubbed', lengthIn: specimen.lengthIn, record: tier > 0, streak: this.streak, total: this.tubCount })
-    if (!tier) this.host.hud.toast(`${formatValue('carp', specimen.value)} carp (${formatPounds(specimen.weightLb)}) into the tub`)
+    if (!tier) this.host.hud.toast(`${formatValue('carp', specimen.value)} carp (${formatPounds(specimen.weightLb)}) into the tub · +$${CARP_BOUNTY}`)
   }
 
   private updateTub(dt: number): void {

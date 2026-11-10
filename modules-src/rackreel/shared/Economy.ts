@@ -150,11 +150,21 @@ export function refillTasks(p: Profile): void {
   }
 }
 
-const FISH_BASE: Record<string, number> = { muskie: 90, walleye: 30, pike: 40, smallmouth: 34, perch: 12, carp: 16 }
+const FISH_BASE: Record<string, number> = { muskie: 90, walleye: 30, pike: 40, smallmouth: 34, perch: 12 }
+
+/** Every carp arrowed on a bowfishing trip pays this flat bounty, whatever its size, with no cooldown between fish. */
+export const CARP_BOUNTY = 5
+
+/** Milliseconds that must pass since the last catch or tag of the same kind before the next one pays. */
+export function eventCooldown(type: GameEvent['type'], species: string): number {
+  if (type === 'game') return GAME_COOLDOWN_MS
+  return species === 'carp' ? 0 : FISH_COOLDOWN_MS
+}
 
 export function payoutFor(e: GameEvent, sizeShare: number, loadout: Loadout): number {
   const share = Math.max(0, Math.min(1.5, sizeShare))
   if (e.type === 'fish') {
+    if (e.species === 'carp') return CARP_BOUNTY
     const base = FISH_BASE[e.species] ?? 20
     return Math.round(base * (1 + share * 1.5) * (e.trophy ? 2 : 1) * (e.legendary ? 3 : 1))
   }
@@ -169,7 +179,7 @@ export interface EarnResult {
 }
 
 export function applyEvent(p: Profile, e: GameEvent, sizeShare: number, now: number): EarnResult {
-  const cooldown = e.type === 'fish' ? FISH_COOLDOWN_MS : GAME_COOLDOWN_MS
+  const cooldown = eventCooldown(e.type, e.species)
   const last = e.type === 'fish' ? p.lastFishAt : p.lastGameAt
   if (now - last < cooldown) return { paid: 0, completed: [] }
   if (e.type === 'fish') p.lastFishAt = now
