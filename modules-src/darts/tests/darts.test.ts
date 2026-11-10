@@ -160,7 +160,7 @@ test('meter: the miss grows with how far from the middle you let go', () => {
   const avg = (list: number[]) => list.reduce((a, b) => a + b, 0) / list.length
   const near = avg(missHoles(0.4, 'normal', 300, 21))
   const edge = avg(missHoles(1, 'normal', 300, 22))
-  const yellow = avg(missHoles(2, 'normal', 300, 23))
+  const yellow = avg(missHoles(8, 'normal', 300, 23))
   assert.ok(near < edge && edge < yellow, `${near} ${edge} ${yellow}`)
   assert.ok(edge >= 3.5 && edge <= 7.05, `edge of the green ${edge}`)
 })

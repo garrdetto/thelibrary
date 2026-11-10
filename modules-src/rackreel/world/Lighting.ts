@@ -96,7 +96,7 @@ export class Lighting {
     ctx.scene.fogColor.copyFrom(this.fogColor)
     ctx.scene.fogDensity = FOG_DENSITY * (1 + n * 0.35)
     ctx.scene.clearColor = new Color4(this.fogColor.r, this.fogColor.g, this.fogColor.b, 1)
-    ctx.pipeline.imageProcessing.exposure = 1.08 + (1.42 - 1.08) * n
+    ctx.pipeline.imageProcessing.exposure = 1.08 + (1.42 * 1.05 - 1.08) * n
     ctx.pipeline.bloomThreshold = 0.92 - n * 0.22
     for (const mat of [this.skyMat, this.waterMat]) {
       mat.setVector3('sunDir', this.sunVec)
