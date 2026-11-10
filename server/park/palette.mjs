@@ -28,6 +28,7 @@ export const RIDE_SLOTS = {
   waterslide: [slot('main', 'Tubes', 'primary', '#1fb5b0'), LIGHTS(), GLOW('#4df0ff'), slot('tower', 'Tower', 'secondary', '#f3f1ea'), slot('deck', 'Deck', 'accent', '#efe3c4'), slot('trim', 'Trim', 'trim', '#f2c94c')],
   zipper: [slot('main', 'Pods', 'primary', '#e2513d'), LIGHTS(), GLOW('#4df0ff'), slot('boom', 'Boom', 'secondary', '#f3f1ea'), slot('frame', 'Frame', 'accent', '#9aa3ad'), slot('trim', 'Trim', 'trim', '#d8b24a')],
   gravitron: [slot('main', 'Saucer', 'primary', '#c24a2e'), LIGHTS('#ffc23a'), GLOW('#3b7bff'), slot('band', 'Saucer band', 'secondary', '#e0a63a'), slot('arch', 'Arch', 'accent', '#2f7fb4'), slot('chevrons', 'Chevrons', 'trim', '#f2a52a'), slot('sign', 'Name letters', 'lights', '#ffd34d'), slot('marqueeA', 'Marquee A', 'glow', '#ff3b3b'), slot('marqueeB', 'Marquee B', 'accent', '#37e05a')],
+  demoDerby: [slot('main', 'Grandstand roof', 'primary', '#c92f2a'), LIGHTS('#ffd34d'), GLOW('#ff7a3d'), slot('stands', 'Bleachers', 'secondary', '#2f6ea8'), slot('stripes', 'Barrier stripes', 'accent', '#f0a21a'), slot('towers', 'Light towers', 'trim', '#c9ccd1'), slot('sign', 'Sign letters', 'lights', '#ffd34d')],
 }
 
 const WATER_DEFAULTS = { wavePool: '#2f8fd0', bodySlides: '#e2513d', tubeSlides: '#3fae5c', familyRaft: '#f08a24', bowlSlide: '#9b51e0', funnelSlide: '#1fb5b0', halfPipe: '#e85d9b', trapdoor: '#d8432f', matRacer: '#f2c94c', aquaLoop: '#3a77d0', surfRider: '#2d3b55', splashPad: '#3a77d0', kiddieLagoon: '#f2c94c', bucketFort: '#f2c94c', lilyPads: '#3fae5c', cliffJump: '#d8432f' }

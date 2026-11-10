@@ -1,4 +1,4 @@
-/** Arena factory: the dirt floor with ruts and a normal map, the concrete barrier ring (with the collider boxes to match), bleachers with a built crowd, pennant strings, fair tents, light towers and a turning ferris wheel; no rules, only shapes. */
+/** Arena factory: the dirt floor with ruts and a normal map, the concrete barrier ring (with the collider boxes to match), bleachers with a built crowd, pennant strings, fair tents, light towers and a turning ferris wheel; no rules, only shapes. `fitToLot` trims the floor to the derby's lot and drops the fair dressing once the Thrill Park scenery stands around it. */
 import * as THREE from 'three/webgpu'
 import type { ModuleConfig } from '../config'
 import { createCrowd, type Seat } from './Crowd'
@@ -16,6 +16,8 @@ export interface ArenaModel {
   barriers: BarrierBox[]
   /** Advances the ferris wheel and the crowd sway. */
   update(dt: number): void
+  /** Shrinks the dirt floor to the lot (arena metres) and hides the fair tents, ferris wheel and grass ring, for when a park surrounds the pad. */
+  fitToLot(lot: { x0: number; x1: number; z0: number; z1: number }): void
   dispose(): void
 }
 
@@ -487,6 +489,18 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7, dirtSi
 
   let time = 0
   const wheelAngle = { value: 0 }
+  const fitToLot = (lot: { x0: number; x1: number; z0: number; z1: number }): void => {
+    const width = lot.x1 - lot.x0
+    const depth = lot.z1 - lot.z0
+    ground.scale.set(width / config.groundSize, depth / config.groundSize, 1)
+    ground.position.set((lot.x0 + lot.x1) / 2, 0, (lot.z0 + lot.z1) / 2)
+    dirt.repeat.set(width / 18, depth / 18)
+    dirtNormal.repeat.copy(dirt.repeat)
+    outfield.visible = false
+    tents.visible = false
+    wheelMount.visible = false
+  }
+
   const update = (dt: number): void => {
     time += dt
     wheelAngle.value += dt * 0.12
@@ -505,5 +519,5 @@ export function createArena(config: ModuleConfig['arena'], crowdSeed = 7, dirtSi
     pennants.dispose()
   }
 
-  return { root, barriers, update, dispose }
+  return { root, barriers, update, fitToLot, dispose }
 }

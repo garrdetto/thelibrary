@@ -13,6 +13,8 @@ export interface ChaseCamera {
   /** Moves the camera toward the target pose for this frame. */
   update(camera: THREE.PerspectiveCamera, target: THREE.Vector3, heading: THREE.Vector3, dt: number): void
   snap(): void
+  /** Moves the grandstand view (used once the Thrill Park stands around the pad, so the view looks across the pad into the park). */
+  setStand(position: readonly [number, number, number]): void
 }
 
 const spring = { value: 0, velocity: 0 }
@@ -40,6 +42,7 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
   let pitch = 0.32
   let turntable = 0
   let snapNext = true
+  let stand: readonly [number, number, number] = spec.standPosition
 
   const api: ChaseCamera = {
     mode: 'garage',
@@ -54,7 +57,7 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
     },
     update(camera, target, heading, dt) {
       if (api.mode === 'stand') {
-        goal.set(...spec.standPosition)
+        goal.set(...stand)
         goalLook.copy(target).lerp(ORIGIN, 0.35)
       } else if (api.mode === 'garage') {
         turntable += dt * 0.35
@@ -95,6 +98,10 @@ export function createChaseCamera(spec: ModuleConfig['camera']): ChaseCamera {
     },
     snap() {
       snapNext = true
+    },
+    setStand(next) {
+      stand = next
+      if (api.mode === 'stand') snapNext = true
     },
   }
   return api

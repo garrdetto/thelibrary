@@ -31,6 +31,8 @@ export interface GarageScreens {
   showResults(title: string, line: string, rows: ResultRow[], eyebrow: string, canWatch: boolean): void
   hideAll(): void
   setBestNote(text: string): void
+  /** Names the Thrill Park the arena stands in. */
+  setParkNote(text: string): void
   dispose(): void
 }
 
@@ -93,6 +95,7 @@ export function createGarage(initial: CarLook, handlers: GarageHandlers): Garage
   const opponents = byId<HTMLInputElement>('opponents-range')
   const opponentsText = byId<HTMLElement>('opponents-text')
   const bestNote = byId<HTMLElement>('best-note')
+  const parkNote = byId<HTMLElement>('park-note')
 
   const refreshers: (() => void)[] = []
   const changed = () => {
@@ -200,6 +203,10 @@ export function createGarage(initial: CarLook, handlers: GarageHandlers): Garage
     },
     setBestNote(text) {
       bestNote.textContent = text
+    },
+    setParkNote(text) {
+      parkNote.textContent = text
+      parkNote.hidden = !text
     },
     dispose() {
       numberInput.removeEventListener('input', onNumber)

@@ -1,15 +1,16 @@
-/** Demo Derby entry: boots the shared engine at a full-HD render floor with the tier's post chain, builds the fair arena, runs the garage preview, then the heat (player + AI field) with component damage, sparks, shrapnel, lost parts, fire, steam and tire marks, the HUD with its damage diagram, results and the board; lowers the render floor when frames run slow; freed on pagehide. */
+/** Demo Derby entry: boots the shared engine at a full-HD render floor with the tier's post chain, builds the fair arena, runs the garage preview, then the heat (player + AI field) with component damage, sparks, shrapnel, lost parts (bumpers, wheels, hoods, lids, exhausts), fire, steam, tire smoke from rubbing fenders, dragging-exhaust sparks, stall puffs and tire marks, the HUD with its damage diagram, results and the board; lowers the render floor when frames run slow; freed on pagehide. */
 import * as THREE from 'three/webgpu'
 import type RAPIER from '@dimforge/rapier3d-compat'
 import { App, Hud, Input, PhysicsWorld, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
 import { aiLevelById, bodyById, config, damageFor, paintById, type Action } from './config'
 import { createArena } from './models/Arena'
+import type { ParkScenery } from './models/ParkScenery'
 import { createDebris } from './models/Debris'
 import { createParticles } from './models/Particles'
 import { createTrackMarks } from './models/TrackMarks'
 import { createSky } from './models/Sky'
 import { createBrain, driveAi, type AiBrain } from './systems/Ai'
-import { createChaseCamera } from './systems/Camera'
+import { createChaseCamera, type ChaseCamera } from './systems/Camera'
 import { PANELS, type DamageNews } from './systems/Damage'
 import { Heat } from './systems/Heat'
 import { loadLook, opponentLook, saveLook, type CarLook } from './systems/Look'
@@ -19,7 +20,7 @@ import { createGarage, type HeatSettings, type ResultRow } from './ui/Garage'
 declare global {
   interface Window {
     __tlModule?: { app: App; backend: string; tier: string; steps: () => number }
-    __demoderby?: { cars: () => readonly Vehicle[] }
+    __demoderby?: { cars: () => readonly Vehicle[]; park: () => ParkScenery | null; camera: ChaseCamera }
   }
 }
 
@@ -112,6 +113,27 @@ async function boot(): Promise<void> {
   for (const system of [dust, smoke, steam, fire, sparks]) app.graph.add('fx', system.object)
   const halfL = config.arena.length / 2
   const halfW = config.arena.width / 2
+  let park: ParkScenery | null = null
+  let parkName = ''
+  let closing = false
+  const loadPark = async (): Promise<void> => {
+    try {
+      const { createParkScenery } = await import('./models/ParkScenery')
+      const scenery = await createParkScenery(quality.tier === 'low' ? 140 : 240)
+      if (closing) {
+        scenery.dispose()
+        return
+      }
+      arena.fitToLot(scenery.lot.module)
+      chase.setStand(config.camera.parkStandPosition)
+      app.graph.add('world', scenery.root)
+      park = app.own(scenery)
+      parkName = scenery.name
+      screens.setParkNote(`Tonight's heats run at ${scenery.name}, a Thrill Park built by ${scenery.owner}.`)
+    } catch (error) {
+      console.warn('[demoderby] park scenery failed', error)
+    }
+  }
   const debris = app.own(createDebris({ halfL, halfW }, config.debris.count, config.debris.life))
   app.graph.add('props', debris.root)
   const marks = app.own(createTrackMarks(config.arena.length + 2, config.arena.width + 2, tierLook.trackMarks))
@@ -275,7 +297,7 @@ async function boot(): Promise<void> {
     banner.hidden = false
     banner.classList.remove('is-warn')
     banner.textContent = 'Get set'
-    hud.toast(`${count} cars on the pad. Last one running wins.`)
+    hud.toast(`${count} cars on the pad${parkName ? ` at ${parkName}` : ''}. Last one running wins.`)
   }
 
   const showResults = (): void => {
@@ -319,6 +341,20 @@ async function boot(): Promise<void> {
         return 'Engine fire!'
       case 'bumper':
         return news.state === 2 ? `${news.part === 'frontBumper' ? 'Front' : 'Rear'} bumper torn off` : null
+      case 'lid':
+        return news.state === 2 ? (news.part === 'hood' ? 'Hood torn off' : 'Trunk lid torn off') : null
+      case 'frame':
+        return news.level < 25 ? 'Frame folded: the car crabs badly' : 'Frame bent: the car crabs sideways'
+      case 'rub':
+        return `Fender rubbing the ${corner[news.wheel]} tire`
+      case 'gear':
+        return news.gear === 'forward' ? 'Forward gear stripped: reverse only!' : 'Reverse gear stripped: forward only!'
+      case 'stall':
+        return 'Stalled! Cranking it over…'
+      case 'restart':
+        return 'Engine caught'
+      case 'exhaust':
+        return news.state === 2 ? 'Exhaust torn off' : 'Exhaust dragging'
       default:
         return null
     }
@@ -330,6 +366,7 @@ async function boot(): Promise<void> {
     for (const news of car.news.splice(0, car.news.length)) {
       if (news.kind === 'lamp' || news.kind === 'glass') debris.spray(car.pos.clone().setY(car.spec.belt), impactVelocity, news.kind === 'glass' ? 10 : 5, new THREE.Color('#cfd8de'))
       if (news.kind === 'tire') dust.burst(car.pos, impactVelocity, 12, 0.5, 2.5)
+      if (news.kind === 'stall') smoke.burst(car.pos.clone().addScaledVector(car.heading, car.spec.length * 0.36).setY(car.spec.noseTop + 0.2), impactVelocity, 10, 0.4, 0.8)
       if (car.isPlayer) {
         const text = newsText(news)
         if (text) hud.toast(text)
@@ -338,8 +375,9 @@ async function boot(): Promise<void> {
   }
   const integrityColour = (value: number): string => `hsl(${Math.round(Math.max(0, Math.min(100, value)) * 1.15)}deg 72% ${value <= 0 ? 18 : 46}%)`
   const showDiagram = (car: Vehicle): void => {
-    if (car.damage.version === diagramVersion) return
-    diagramVersion = car.damage.version
+    const shownVersion = car.damage.version * 2 + (car.stalled ? 1 : 0)
+    if (shownVersion === diagramVersion) return
+    diagramVersion = shownVersion
     for (const panel of PANELS) {
       const cell = diagramCells.get(panel)
       if (cell) cell.style.background = integrityColour(car.damage.panels[panel])
@@ -352,8 +390,15 @@ async function boot(): Promise<void> {
       cell.classList.toggle('is-flat', wheel.flat && !wheel.off)
     })
     const notes: string[] = []
+    if (car.stalled) notes.push('stalled')
     if (car.damage.radiator < 50) notes.push('radiator leaking')
     if (car.damage.driveline < 60) notes.push('driveline bent')
+    if (!car.gears.forward) notes.push('reverse only')
+    if (!car.gears.reverse) notes.push('no reverse')
+    if (car.damage.frame < 60) notes.push(car.damage.frame < 25 ? 'frame folded' : 'frame bent')
+    const rubbing = car.damage.wheels.filter((wheel) => wheel.rub && !wheel.flat).length
+    if (rubbing) notes.push(`fender rubbing${rubbing > 1 ? ` ×${rubbing}` : ''}`)
+    if (car.damage.exhaust === 1) notes.push('exhaust dragging')
     const flats = car.damage.wheels.filter((wheel) => wheel.flat && !wheel.off).length
     const lost = car.damage.wheels.filter((wheel) => wheel.off).length
     if (flats) notes.push(`${flats} flat${flats > 1 ? 's' : ''}`)
@@ -379,6 +424,7 @@ async function boot(): Promise<void> {
   const playerLookAt = new THREE.Vector3()
   const playerHeading = new THREE.Vector3(0, 0, -1)
   const emitVelocity = new THREE.Vector3()
+  const exhaustTip = new THREE.Vector3()
   let dragging = false
   container.addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'mouse' && event.button === 0) dragging = true
@@ -456,6 +502,7 @@ async function boot(): Promise<void> {
       shake *= Math.exp(-dt * 7)
     }
     arena.update(dt)
+    park?.update(dt)
     for (const car of cars) {
       const slip = car.sideSlip
       if (car.alive && slip > config.dust.slipSpeed) {
@@ -478,6 +525,20 @@ async function boot(): Promise<void> {
       const smoking = car.alive ? car.engine < config.damage.smokeBelow : car.outReason === 'wrecked'
       if (smoking && Math.random() < (car.alive ? 0.25 + (1 - car.engine / config.damage.smokeBelow) * 0.5 : 0.7)) smoke.emit(nose, emitVelocity.set(0, 0.4, 0), 0.6)
       if (car.damage.radiator < 50 && Math.random() < 0.5 * (1 - car.damage.radiator / 50) + 0.1) steam.emit(nose, emitVelocity.copy(car.heading).multiplyScalar(0.8), 0.5)
+      const rolling = car.speed
+      if (rolling > 1.5) {
+        for (let i = 0; i < 4; i++) {
+          const wheel = car.damage.wheels[i]
+          if (!wheel.rub || wheel.off || Math.random() > 0.12 + rolling * 0.03) continue
+          const ground = car.wheelGround(i)
+          if (ground) steam.emit(ground.setY(0.35), emitVelocity.set(0, 0.6, 0), 0.35)
+        }
+        const tip = car.model.exhaustTip(exhaustTip)
+        if (tip && Math.random() < 0.35 + rolling * 0.04) {
+          tip.y = 0.04
+          sparks.emit(tip, emitVelocity.copy(car.heading).multiplyScalar(-car.forwardSpeed * 0.4).setY(1.2), 0.35)
+        }
+      }
       if (car.damage.fire) {
         fire.emit(nose, emitVelocity.set(0, 0.4, 0), 0.6)
         if (Math.random() < 0.4) smoke.emit(nose.setY(nose.y + 0.6), emitVelocity.set(0, 1, 0), 0.5)
@@ -532,11 +593,13 @@ async function boot(): Promise<void> {
   chase.setMode('garage')
   screens.showGarage()
   app.start()
+  void loadPark()
   window.__tlModule = { app, backend: app.backend, tier: quality.tier, steps: () => steps }
-  window.__demoderby = { cars: () => cars }
+  window.__demoderby = { cars: () => cars, park: () => park, camera: chase }
   addEventListener(
     'pagehide',
     () => {
+      closing = true
       screens.dispose()
       clearField()
       if (preview) removeVehicle(preview)

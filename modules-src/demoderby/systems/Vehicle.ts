@@ -1,4 +1,4 @@
-/** One derby car: a Rapier chassis body with a raycast vehicle controller, its visual model, controls, damage (body, engine and every component in `Damage.ts`) and what it does to the drive, dents, the out-of-the-heat state and the idle clock. */
+/** One derby car: a Rapier chassis body with a raycast vehicle controller, its visual model, controls, damage (body, engine and every component in `Damage.ts`) and what it does to the drive (grip, springs, a crabbing bent frame, stripped gears, engine stalls), dents, the out-of-the-heat state and the idle clock. */
 import * as THREE from 'three/webgpu'
 import type RAPIER from '@dimforge/rapier3d-compat'
 import type { PhysicsWorld } from '../../../engine'
@@ -234,7 +234,9 @@ export class Vehicle {
     const target = this.alive ? this.controls.steer * lock + handling.pull : handling.pull
     const rate = tuning.steerRate * dt
     this.steerAngle += Math.max(-rate, Math.min(rate, target - this.steerAngle))
-    const throttle = this.alive ? this.controls.throttle : 0
+    const gears = this.damage.gears
+    const asked = this.alive ? this.controls.throttle : 0
+    const throttle = this.damage.stall > 0 || (asked > 0 && !gears.forward) || (asked < 0 && !gears.reverse) ? 0 : asked
     const torque = tuning.launchBoost + (tuning.topEndForce - tuning.launchBoost) * Math.min(1, Math.abs(forwardSpeed) / tuning.topSpeed)
     const top = tuning.topSpeed * (0.75 + 0.25 * handling.drive)
     let engineForce = 0
@@ -243,20 +245,21 @@ export class Vehicle {
     const braking = this.controls.brake && this.alive
     const brake = (braking ? tuning.brakeForce : throttle === 0 ? tuning.rollingBrake : 0) + handling.drag
     for (let i = 0; i < 4; i++) {
-      const steer = i < 2 ? -this.steerAngle - this.damage.wheels[i].toe : -this.damage.wheels[i].toe
+      const steer = i < 2 ? -this.steerAngle - this.damage.wheels[i].toe : -this.damage.wheels[i].toe + handling.crab
       this.controller.setWheelSteering(i, steer)
       this.controller.setWheelEngineForce(i, this.damage.wheels[i].off ? 0 : i >= 2 ? engineForce : engineForce * 0.15)
       this.controller.setWheelBrake(i, this.alive ? brake * (this.damage.wheels[i].off ? 2 : 1) : tuning.brakeForce * 0.6)
     }
     this.controller.updateVehicle(dt, undefined, undefined, filter)
     this.engineBox.value = this.engine
-    const burn = stepComponents(this.damage, this.rules, this.engineBox, this.alive ? throttle : 0, dt, this.news)
+    const burn = stepComponents(this.damage, this.rules, this.engineBox, this.alive ? throttle : 0, dt, this.news, speed * dt)
+    this.showParts()
     this.engine = this.engineBox.value
     if (burn > 0 && this.alive) {
       this.health = Math.max(0, this.health - burn)
       if (this.health <= 0) this.knockOut('wrecked')
     }
-    if (Math.abs(throttle) > 0.4 && speed < tuning.stuckSpeed) this.stuckClock += dt
+    if (Math.abs(asked) > 0.4 && speed < tuning.stuckSpeed) this.stuckClock += dt
     else this.stuckClock = Math.max(0, this.stuckClock - dt * 2)
     if (!this.upright) {
       this.flipClock += dt
@@ -302,9 +305,19 @@ export class Vehicle {
     this.showParts()
   }
 
-  /** The steering input that cancels the pull of bent front wheels (what a driver holds to go straight). */
+  /** The steering input that cancels the pull of bent front wheels and a crabbing frame (what a driver holds to go straight). */
   get steerPull(): number {
-    return this.handling.pull / Math.max(0.05, this.tuning.maxSteer * this.handling.steerScale)
+    return (this.handling.pull + this.handling.crab) / Math.max(0.05, this.tuning.maxSteer * this.handling.steerScale)
+  }
+
+  /** True while a stalled engine is cranking back to life. */
+  get stalled(): boolean {
+    return this.damage.stall > 0
+  }
+
+  /** Which ways the car can still drive (a stripped gear leaves only the other). */
+  get gears(): { forward: boolean; reverse: boolean } {
+    return this.damage.gears
   }
 
   /** Visual wheel state: camber, toe, flat and missing. */
