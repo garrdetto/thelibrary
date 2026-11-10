@@ -32,6 +32,14 @@ export interface PlayerState {
   o: string[]
   v?: { k: 'utv' | 'boat' | 'quad'; p: [number, number, number]; q: [number, number, number]; s: [number, number, number]; a?: 1; d?: DeckSeat }
   r?: { o: string; s: [number, number, number] }
+  /** Night bowfishing on Wisco Wild Man's boat: the trip owner sends the boat (`o`: x, z, heading, speed, light mode, docked); crew send the owner's id (`w`); everyone sends their shooting spot (`s`). */
+  b?: { o?: [number, number, number, number, number, number]; w?: string; s: number }
+}
+
+export interface BowTrip {
+  id: string
+  name: string
+  pose: [number, number, number, number, number, number]
 }
 
 export interface RemoteBoat {
@@ -74,6 +82,10 @@ export interface OnlineHooks {
   status(text: string): void
   seat(from: string): void
   localBoat(): TransformNode | null
+  /** Wisco Wild Man's boat, which party members on a bowfishing trip stand on. */
+  bowBoat(): TransformNode
+  /** Feet position of a bowfishing spot in boat space. */
+  bowSpot(slot: number): Vector3
 }
 
 const VEHICLE_MODEL: Record<string, ModelName> = { utv: 'utv', boat: 'boat', quad: 'quad' }
@@ -186,6 +198,22 @@ export class Online {
     return null
   }
 
+  /** A party member's bowfishing trip (they own Wild Man's boat right now), if any. */
+  bowTrip(): BowTrip | null {
+    for (const r of this.remotes.values()) {
+      const o = r.state.b?.o
+      if (o) return { id: r.state.id, name: r.state.n, pose: o }
+    }
+    return null
+  }
+
+  /** Bowfishing spots taken by party members. */
+  bowSlots(): number[] {
+    const out: number[] = []
+    for (const r of this.remotes.values()) if (r.state.b) out.push(r.state.b.s)
+    return out
+  }
+
   requestSeat(ownerId: string): void {
     this.room.send({ t: 'seat', to: ownerId, from: this.name })
   }
@@ -280,7 +308,11 @@ export class Online {
     if (Vector3.Distance(r.shown, target) > 25) r.shown.copyFrom(target)
     else r.shown.addInPlace(target.subtract(r.shown).scale(Math.min(1, dt * 10)))
     const root = r.avatar.root
-    if (s.v) {
+    if (s.b) {
+      this.removeVehicle(r)
+      const spot = this.hooks.bowSpot(s.b.s)
+      this.seatOn(root, this.hooks.bowBoat(), [spot.x, spot.y + HIP_HEIGHT, spot.z], s.f)
+    } else if (s.v) {
       if (r.vehicleKind !== s.v.k) {
         this.removeVehicle(r)
         r.vehicle = instantiate(this.models.get(VEHICLE_MODEL[s.v.k])!, null, this.scene, (mesh) => this.ctx.registerDynamic(mesh))
@@ -306,7 +338,7 @@ export class Online {
     }
     r.avatar.update(dt, { stance: s.st, hands: s.h, speed: s.sp, crouch: s.c, castPower: 0, aimPitch: s.ap, climbPhase: s.cl })
     const rifleOut = s.h === 'rifle' || s.h === 'aim'
-    r.rod.root.setEnabled(!rifleOut && s.h !== 'wheel' && s.st !== 'climb')
+    r.rod.root.setEnabled(!rifleOut && !s.b && s.h !== 'wheel' && s.st !== 'climb')
     r.rifle.root.setEnabled(rifleOut && s.st !== 'climb')
     if (s.h === 'aim') {
       r.rifle.root.position.set(0.15, 0.4, 0.46)

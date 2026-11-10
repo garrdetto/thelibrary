@@ -1,0 +1,541 @@
+/** Wisco Wild Man's routes and autopilot, renderer-free: loops along the 1.15 m depth contour around the lake shore and the island, runs across open water on plane, and the way home to his launch. */
+import { BAY, CHANNEL, ISLAND, LAKE_CENTER, bayCoord, bayRadius, lakeRadius } from '../world/Terrain'
+
+export interface Pt {
+  x: number
+  z: number
+}
+
+export interface WaterMap {
+  depthAt(x: number, z: number): number
+  heightAt(x: number, z: number): number
+}
+
+export interface Clearance {
+  points: Pt[]
+  segments: [Pt, Pt][]
+}
+
+export const ROUTE = {
+  contour: 1.15,
+  minDepth: 1.0,
+  spacing: 2,
+  clear: 6,
+  runDepth: 2.5,
+  corridor: 4,
+  lookahead: 4,
+  turnRate: 0.55,
+  runTurnRate: 0.25,
+  minPlaneLeg: 40,
+  offPlane: 25,
+}
+
+export const SPEED = { creep: 0.67, cruise: 1.34, push: 2.68, run: 13.4 }
+export const SPEED_STEPS = [SPEED.creep, SPEED.cruise, SPEED.push] as const
+export const PLANE_SECONDS = 4
+const PLANE_ACCEL = (SPEED.run - SPEED.cruise) / PLANE_SECONDS
+const OFF_PLANE_DECEL = (SPEED.run * SPEED.run - SPEED.cruise * SPEED.cruise) / (2 * ROUTE.offPlane)
+
+function smooth(e0: number, e1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
+  return t * t * (3 - 2 * t)
+}
+
+export function wrapAngle(a: number): number {
+  return Math.atan2(Math.sin(a), Math.cos(a))
+}
+
+export function segmentDistance(p: Pt, a: Pt, b: Pt): number {
+  const dx = b.x - a.x
+  const dz = b.z - a.z
+  const len2 = dx * dx + dz * dz
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2)) : 0
+  return Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t))
+}
+
+export function clearanceDistance(p: Pt, clear: Clearance): number {
+  let d = Infinity
+  for (const q of clear.points) d = Math.min(d, Math.hypot(p.x - q.x, p.z - q.z))
+  for (const [a, b] of clear.segments) d = Math.min(d, segmentDistance(p, a, b))
+  return d
+}
+
+function circularSmooth(values: number[], window: number): number[] {
+  const n = values.length
+  const out = new Array<number>(n)
+  for (let i = 0; i < n; i++) {
+    let s = 0
+    for (let k = -window; k <= window; k++) s += values[(i + k + n) % n]
+    out[i] = s / (window * 2 + 1)
+  }
+  return out
+}
+
+/** Resamples a closed polyline every `step` metres. */
+export function resampleLoop(points: Pt[], step: number): Pt[] {
+  const out: Pt[] = []
+  const n = points.length
+  let carry = 0
+  for (let i = 0; i < n; i++) {
+    const a = points[i]
+    const b = points[(i + 1) % n]
+    const len = Math.hypot(b.x - a.x, b.z - a.z)
+    let t = carry
+    while (t < len) {
+      const k = t / len
+      out.push({ x: a.x + (b.x - a.x) * k, z: a.z + (b.z - a.z) * k })
+      t += step
+    }
+    carry = t - len
+  }
+  return out
+}
+
+function settle(map: WaterMap, p: Pt, center: Pt, inward: boolean, clear: Clearance): Pt {
+  const dx = p.x - center.x
+  const dz = p.z - center.z
+  const len = Math.hypot(dx, dz) || 1
+  const sx = (inward ? -dx : dx) / len
+  const sz = (inward ? -dz : dz) / len
+  let q = { ...p }
+  for (let i = 0; i < 160; i++) {
+    if (map.depthAt(q.x, q.z) >= ROUTE.minDepth && clearanceDistance(q, clear) >= ROUTE.clear + 0.5) break
+    q = { x: q.x + sx * 0.5, z: q.z + sz * 0.5 }
+  }
+  return q
+}
+
+/**
+ * A loop along the depth contour around a centre. `inward` loops (the lake shore) march in from the bank until the water
+ * is deep enough; outward loops (the island) march out from the centre. Spots that are too shallow or too close to the
+ * dock or a parked boat are pushed toward deeper water, then the loop is smoothed and resampled every 2 m.
+ */
+export function contourLoop(map: WaterMap, center: Pt, inward: boolean, clear: Clearance, depth = ROUTE.contour, outer: (angle: number) => number = (a) => lakeRadius(a) * 1.12): Pt[] {
+  const samples = 240
+  const radii: number[] = []
+  for (let i = 0; i < samples; i++) {
+    const a = (i / samples) * Math.PI * 2
+    const cx = Math.cos(a)
+    const cz = Math.sin(a)
+    let r = inward ? outer(a) : 0
+    const stop = inward ? 0 : 140
+    let found = inward ? outer(a) * 0.55 : 60
+    if (inward) {
+      for (; r > stop; r -= 0.5) if (map.depthAt(center.x + cx * r, center.z + cz * r) >= depth) { found = r; break }
+    } else {
+      for (; r < stop; r += 0.5) if (map.depthAt(center.x + cx * r, center.z + cz * r) >= depth) { found = r; break }
+    }
+    radii.push(found)
+  }
+  const smoothR = circularSmooth(circularSmooth(radii, 4), 4)
+  let pts: Pt[] = smoothR.map((r, i) => {
+    const a = (i / samples) * Math.PI * 2
+    return { x: center.x + Math.cos(a) * r, z: center.z + Math.sin(a) * r }
+  })
+  for (let pass = 0; pass < 3; pass++) {
+    pts = pts.map((p) => settle(map, p, center, inward, clear))
+    const xs = circularSmooth(pts.map((p) => p.x), 2)
+    const zs = circularSmooth(pts.map((p) => p.z), 2)
+    pts = pts.map((_, i) => ({ x: xs[i], z: zs[i] }))
+  }
+  pts = pts.map((p) => settle(map, p, center, inward, clear))
+  return resampleLoop(resampleLoop(pts, ROUTE.spacing).map((p) => settle(map, p, center, inward, clear)), ROUTE.spacing).map((p) => settle(map, p, center, inward, clear))
+}
+
+export function shoreLoop(map: WaterMap, clear: Clearance): Pt[] {
+  return contourLoop(map, LAKE_CENTER, true, clear)
+}
+
+export function islandLoop(map: WaterMap, clear: Clearance): Pt[] {
+  return contourLoop(map, { x: ISLAND.x, z: ISLAND.z }, false, clear)
+}
+
+/** The back bay beyond the highway bridge: around the bay's own contour (its mouth bulges a little into the channel). */
+export function bayLoop(map: WaterMap, clear: Clearance): Pt[] {
+  return contourLoop(map, { x: BAY.x, z: BAY.z }, true, clear, ROUTE.contour, (a) => bayRadius(a) * 1.02)
+}
+
+export function buildLoops(map: WaterMap, clear: Clearance): Record<RouteName, Pt[]> {
+  return { shore: shoreLoop(map, clear), island: islandLoop(map, clear), bay: bayLoop(map, clear) }
+}
+
+/** Waypoints a deep-water run may bend through: a ring around the island and the length of the channel under the bridge. */
+export function deepWaypoints(map: WaterMap): Pt[] {
+  const out: Pt[] = []
+  for (const r of [ISLAND.r + 34, ISLAND.r + 54]) {
+    for (let k = 0; k < 18; k++) {
+      const ang = (k / 18) * Math.PI * 2
+      const v = { x: ISLAND.x + Math.cos(ang) * r, z: ISLAND.z + Math.sin(ang) * r }
+      if (map.depthAt(v.x, v.z) >= ROUTE.runDepth + 0.5) out.push(v)
+    }
+  }
+  const dx = CHANNEL.bx - CHANNEL.ax
+  const dz = CHANNEL.bz - CHANNEL.az
+  const len = Math.hypot(dx, dz)
+  for (const k of [-0.12, 0.05, 0.5, 0.92]) {
+    const v = { x: CHANNEL.ax + dx * k, z: CHANNEL.az + dz * k }
+    if (k < 0) {
+      v.x = CHANNEL.ax + (dx / len) * -20
+      v.z = CHANNEL.az + (dz / len) * -20
+    }
+    if (map.depthAt(v.x, v.z) >= ROUTE.runDepth + 0.5) out.push(v)
+  }
+  return out
+}
+
+export function nearestIndex(loop: Pt[], p: Pt, from = -1, window = 0): number {
+  let best = 0
+  let bestD = Infinity
+  const n = loop.length
+  const count = window > 0 && from >= 0 ? window * 2 + 1 : n
+  for (let k = 0; k < count; k++) {
+    const i = window > 0 && from >= 0 ? (from - window + k + n) % n : k
+    const d = (loop[i].x - p.x) ** 2 + (loop[i].z - p.z) ** 2
+    if (d < bestD) {
+      bestD = d
+      best = i
+    }
+  }
+  return best
+}
+
+/** True when the straight line a → b keeps at least `depth` of water everywhere within `corridor` metres of it. */
+export function deepLine(map: WaterMap, a: Pt, b: Pt, depth = ROUTE.runDepth, corridor = ROUTE.corridor): boolean {
+  const len = Math.hypot(b.x - a.x, b.z - a.z)
+  const steps = Math.max(2, Math.ceil(len / 2))
+  const nx = len > 0 ? -(b.z - a.z) / len : 0
+  const nz = len > 0 ? (b.x - a.x) / len : 0
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps
+    const x = a.x + (b.x - a.x) * t
+    const z = a.z + (b.z - a.z) * t
+    for (const o of [-corridor, 0, corridor]) if (map.depthAt(x + nx * o, z + nz * o) < depth) return false
+  }
+  return true
+}
+
+/** The nearest spot with deep water around it that the boat can reach from `p` without running aground. */
+export function nearestDeep(map: WaterMap, p: Pt, depth = ROUTE.runDepth + 0.8): Pt {
+  if (map.depthAt(p.x, p.z) >= depth && deepLine(map, p, p, depth - 0.8)) return { ...p }
+  for (let r = 3; r <= 120; r += 3) {
+    let best: Pt | null = null
+    let bestDepth = -Infinity
+    for (let k = 0; k < 32; k++) {
+      const a = (k / 32) * Math.PI * 2
+      const q = { x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r }
+      const d = map.depthAt(q.x, q.z)
+      if (d >= depth && deepLine(map, q, q, depth - 0.8) && deepLine(map, p, q, 0.55, 0) && d > bestDepth) {
+        best = q
+        bestDepth = d
+      }
+    }
+    if (best) return best
+  }
+  return { ...p }
+}
+
+/** A deep-water path from a to b: straight when it can be, otherwise the shortest bend through the island ring and the channel (Dijkstra over waypoints joined by deep lines). */
+export function deepPath(map: WaterMap, a: Pt, b: Pt, depth = ROUTE.runDepth, corridor = ROUTE.corridor): Pt[] | null {
+  if (deepLine(map, a, b, depth, Math.min(corridor, 1.5))) return [a, b]
+  const nodes = [a, b, ...deepWaypoints(map)]
+  const n = nodes.length
+  const dist = new Array<number>(n).fill(Infinity)
+  const prev = new Array<number>(n).fill(-1)
+  const done = new Array<boolean>(n).fill(false)
+  const edge = new Map<number, boolean>()
+  const ok = (i: number, j: number) => {
+    const key = i < j ? i * 1000 + j : j * 1000 + i
+    let v = edge.get(key)
+    if (v === undefined) {
+      v = deepLine(map, nodes[i], nodes[j], depth, i < 2 || j < 2 ? Math.min(corridor, 1.5) : corridor)
+      edge.set(key, v)
+    }
+    return v
+  }
+  dist[0] = 0
+  for (let step = 0; step < n; step++) {
+    let u = -1
+    for (let i = 0; i < n; i++) if (!done[i] && (u < 0 || dist[i] < dist[u])) u = i
+    if (u < 0 || dist[u] === Infinity) break
+    if (u === 1) break
+    done[u] = true
+    for (let v = 0; v < n; v++) {
+      if (done[v] || v === u) continue
+      const d = dist[u] + Math.hypot(nodes[u].x - nodes[v].x, nodes[u].z - nodes[v].z)
+      if (d < dist[v] && ok(u, v)) {
+        dist[v] = d
+        prev[v] = u
+      }
+    }
+  }
+  if (dist[1] === Infinity) return null
+  const path: Pt[] = []
+  for (let i = 1; i >= 0; i = prev[i]) path.unshift(nodes[i])
+  return path
+}
+
+export interface Leg {
+  to: Pt
+  plane: boolean
+  /** Final approach: creep the last few metres and stop on the point. */
+  stop?: boolean
+}
+
+/** Legs from `from` to `to`: out to deep water at cruise, across on plane (only on long legs through deep water), then in at cruise. */
+export function planTrip(map: WaterMap, from: Pt, to: Pt, stopAtEnd: boolean): Leg[] {
+  const start = nearestDeep(map, from)
+  const end = nearestDeep(map, to)
+  const legs: Leg[] = []
+  const far = Math.hypot(to.x - from.x, to.z - from.z)
+  if (far < ROUTE.minPlaneLeg || Math.hypot(end.x - start.x, end.z - start.z) < ROUTE.minPlaneLeg) {
+    legs.push({ to, plane: false, stop: stopAtEnd })
+    return legs
+  }
+  if (Math.hypot(start.x - from.x, start.z - from.z) > 1) legs.push({ to: start, plane: false })
+  const deep = deepPath(map, start, end)
+  const path = deep ?? deepPath(map, start, end, 0.6, 0) ?? [start, end]
+  for (let i = 1; i < path.length; i++) {
+    const len = Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z)
+    legs.push({ to: path[i], plane: deep !== null && len >= ROUTE.minPlaneLeg })
+  }
+  legs.push({ to, plane: false, stop: stopAtEnd })
+  return legs
+}
+
+export interface Launch {
+  shore: Pt
+  /** Where Wild Man sits on his cooler, on dry ground. */
+  camp: Pt
+  /** Where his boat waits, nosed in just off the bank. */
+  boat: Pt
+  boatHeading: number
+}
+
+/** Wild Man's launch: the nearest stretch of firm, dry shoreline 30–55 m from the dock, away from the marsh. */
+export function findLaunch(map: WaterMap, dockStart: Pt, dockEnd: Pt): Launch {
+  const dockAngle = Math.atan2(dockStart.z - LAKE_CENTER.z, dockStart.x - LAKE_CENTER.x)
+  let best: Launch | null = null
+  let bestScore = Infinity
+  for (let k = -80; k <= 80; k++) {
+    const a = dockAngle + k * 0.005
+    const cx = Math.cos(a)
+    const cz = Math.sin(a)
+    let shore: Pt | null = null
+    for (let r = lakeRadius(a) * 0.6; r < lakeRadius(a) * 1.6; r += 0.5) {
+      if (map.heightAt(LAKE_CENTER.x + cx * r, LAKE_CENTER.z + cz * r) > 0) {
+        shore = { x: LAKE_CENTER.x + cx * r, z: LAKE_CENTER.z + cz * r }
+        break
+      }
+    }
+    if (!shore) continue
+    const d = Math.hypot(shore.x - dockStart.x, shore.z - dockStart.z)
+    if (d < 30 || d > 55) continue
+    if (segmentDistance(shore, dockStart, dockEnd) < 25) continue
+    let camp: Pt | null = null
+    for (let s = 2; s < 14; s += 0.5) {
+      const q = { x: shore.x + cx * s, z: shore.z + cz * s }
+      if (map.heightAt(q.x, q.z) > 0.45) {
+        camp = q
+        break
+      }
+    }
+    if (!camp) continue
+    let boat: Pt | null = null
+    for (let s = 4; s < 40; s += 0.5) {
+      const q = { x: shore.x - cx * s, z: shore.z - cz * s }
+      if (map.depthAt(q.x, q.z) > 0.9) {
+        boat = q
+        break
+      }
+    }
+    if (!boat) continue
+    const steep = Math.abs(map.heightAt(camp.x, camp.z) - map.heightAt(shore.x, shore.z)) / Math.max(1, Math.hypot(camp.x - shore.x, camp.z - shore.z))
+    const reach = Math.hypot(boat.x - shore.x, boat.z - shore.z)
+    const score = d + steep * 40 + reach * 2
+    if (score < bestScore) {
+      bestScore = score
+      best = { shore, camp, boat, boatHeading: Math.atan2(cx, cz) + Math.PI / 2 }
+    }
+  }
+  if (best) return best
+  const fallback = { x: dockEnd.x + 8, z: dockEnd.z }
+  return { shore: fallback, camp: { x: dockStart.x + 6, z: dockStart.z }, boat: fallback, boatHeading: 0 }
+}
+
+export type PilotMode = 'docked' | 'loop' | 'travel'
+export type RouteName = 'shore' | 'island' | 'bay'
+export const ROUTE_ORDER: readonly RouteName[] = ['shore', 'island', 'bay']
+
+export interface PilotEvents {
+  /** The boat came off plane at the end of a run. */
+  offPlane?: boolean
+  /** The boat climbed onto plane. */
+  onPlane?: boolean
+  /** Reached the end of a trip leg list: joined a loop or docked. */
+  arrived?: 'loop' | 'docked'
+}
+
+export class Autopilot {
+  x: number
+  z: number
+  heading: number
+  speed = 0
+  /** Index into SPEED_STEPS. */
+  setting = 1
+  hold = false
+  route: RouteName = 'shore'
+  mode: PilotMode = 'docked'
+  homeward = false
+  private legs: Leg[] = []
+  private leg = 0
+  private index = 0
+  private planingNow = false
+
+  constructor(private readonly map: WaterMap, readonly loops: Record<RouteName, Pt[]>, readonly landing: Launch) {
+    this.x = landing.boat.x
+    this.z = landing.boat.z
+    this.heading = landing.boatHeading
+  }
+
+  get onPlane(): boolean {
+    return this.speed > SPEED.push + 1
+  }
+
+  /** 0..1 how far onto plane the boat is (bow-up, lights off, no carp). */
+  get planing(): number {
+    return smooth(SPEED.push + 0.5, SPEED.run * 0.7, this.speed)
+  }
+
+  get running(): boolean {
+    return this.mode === 'travel' && this.legs.some((l) => l.plane) && (this.planingNow || this.onPlane)
+  }
+
+  get travelling(): boolean {
+    return this.mode === 'travel'
+  }
+
+  get currentLegs(): readonly Leg[] {
+    return this.legs
+  }
+
+  /** Leave the launch for the nearest point on the shore loop. */
+  depart(): void {
+    this.route = 'shore'
+    this.homeward = false
+    this.travelTo(this.joinPoint('shore'), false)
+  }
+
+  switchRoute(): RouteName {
+    this.route = ROUTE_ORDER[(ROUTE_ORDER.indexOf(this.route) + 1) % ROUTE_ORDER.length]
+    this.homeward = false
+    this.travelTo(this.joinPoint(this.route), false)
+    return this.route
+  }
+
+  headHome(): void {
+    this.homeward = true
+    this.travelTo(this.landing.boat, true)
+  }
+
+  private joinPoint(route: RouteName): Pt {
+    const loop = this.loops[route]
+    const inside = route === 'bay' && bayCoord(this.x, this.z) > 0.9
+    const here = inside ? { x: BAY.x + (CHANNEL.ax - BAY.x) * 0.25, z: BAY.z + (CHANNEL.az - BAY.z) * 0.25 } : { x: this.x, z: this.z }
+    const i = nearestIndex(loop, here)
+    return loop[(i + 3) % loop.length]
+  }
+
+  private travelTo(to: Pt, stop: boolean): void {
+    this.legs = planTrip(this.map, { x: this.x, z: this.z }, to, stop)
+    this.leg = 0
+    this.mode = 'travel'
+    this.hold = false
+  }
+
+  private remainingOnLeg(): number {
+    const l = this.legs[this.leg]
+    return Math.hypot(l.to.x - this.x, l.to.z - this.z)
+  }
+
+  private steerToward(tx: number, tz: number, dt: number): number {
+    const want = Math.atan2(tx - this.x, tz - this.z)
+    const err = wrapAngle(want - this.heading)
+    const rate = ROUTE.turnRate + (ROUTE.runTurnRate - ROUTE.turnRate) * smooth(SPEED.cruise, SPEED.run, Math.abs(this.speed))
+    const turn = Math.max(-rate * dt, Math.min(rate * dt, err))
+    this.heading = wrapAngle(this.heading + turn)
+    return err
+  }
+
+  private approach(target: number, dt: number): void {
+    const v = this.speed
+    let rate: number
+    if (target > v) rate = v >= SPEED.push - 0.2 && target > SPEED.push ? PLANE_ACCEL : 0.9
+    else rate = v > SPEED.push + 0.5 ? OFF_PLANE_DECEL : 1.2
+    this.speed = target > v ? Math.min(target, v + rate * dt) : Math.max(target, v - rate * dt)
+  }
+
+  update(dt: number, fishOn: boolean): PilotEvents {
+    const events: PilotEvents = {}
+    const wasPlane = this.onPlane
+    if (this.mode === 'docked') {
+      this.approach(0, dt)
+    } else if (this.mode === 'loop') {
+      const loop = this.loops[this.route]
+      this.index = nearestIndex(loop, { x: this.x, z: this.z }, this.index, 12)
+      const ahead = Math.max(1, Math.round(Math.max(ROUTE.lookahead, Math.abs(this.speed) * 1.2) / ROUTE.spacing))
+      const target = loop[(this.index + ahead) % loop.length]
+      const err = this.steerToward(target.x, target.z, dt)
+      const base = this.hold || fishOn ? 0 : SPEED_STEPS[this.setting]
+      this.approach(base * (1 - 0.5 * Math.min(1, Math.abs(err) / 0.8)), dt)
+    } else {
+      const l = this.legs[this.leg]
+      const left = this.remainingOnLeg()
+      const err = this.steerToward(l.to.x, l.to.z, dt)
+      const brake = (this.speed * this.speed - SPEED.cruise * SPEED.cruise) / (2 * OFF_PLANE_DECEL) + 4
+      let target = SPEED.cruise
+      if (l.plane && Math.abs(err) < 0.25 && left > Math.max(ROUTE.offPlane, brake)) target = SPEED.run
+      if (l.stop && left < 8) target = Math.max(0.25, SPEED.creep * Math.min(1, left / 4))
+      if (this.hold && !l.plane) target = 0
+      this.planingNow = target === SPEED.run
+      this.approach(target, dt)
+      const reached = l.stop ? left < 1.2 : left < Math.max(2.5, Math.abs(this.speed) * dt * 2)
+      if (reached) {
+        this.leg++
+        if (this.leg >= this.legs.length) {
+          if (l.stop) {
+            this.mode = 'docked'
+            this.speed = Math.min(this.speed, SPEED.creep)
+            events.arrived = 'docked'
+          } else {
+            this.mode = 'loop'
+            this.index = nearestIndex(this.loops[this.route], { x: this.x, z: this.z })
+            events.arrived = 'loop'
+          }
+          this.planingNow = false
+        }
+      }
+    }
+    this.x += Math.sin(this.heading) * this.speed * dt
+    this.z += Math.cos(this.heading) * this.speed * dt
+    if (!wasPlane && this.onPlane) events.onPlane = true
+    if (wasPlane && !this.onPlane) events.offPlane = true
+    return events
+  }
+}
+
+/** The dock as `findLandmarks` in world/World.ts lays it out: from the bank at angle −0.9 out 16 m over the water. */
+export function dockLine(map: WaterMap): { start: Pt; end: Pt } {
+  const angle = -0.9
+  const radius = lakeRadius(angle)
+  const dx = Math.cos(angle)
+  const dz = Math.sin(angle)
+  let shoreDist = radius * 0.8
+  for (let d = radius * 0.7; d < radius * 1.5; d += 0.5) {
+    if (map.heightAt(LAKE_CENTER.x + dx * d, LAKE_CENTER.z + dz * d) > 0.6) {
+      shoreDist = d
+      break
+    }
+  }
+  const at = (d: number) => ({ x: LAKE_CENTER.x + dx * d, z: LAKE_CENTER.z + dz * d })
+  return { start: at(shoreDist + 2), end: at(shoreDist - 16) }
+}

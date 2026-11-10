@@ -5,7 +5,7 @@ import type { ModelRig } from '../core/ModelLibrary'
 export const HIP_HEIGHT = 0.98
 
 export type AvatarStance = 'stand' | 'sit' | 'climb'
-export type AvatarHands = 'rod' | 'cast' | 'reel' | 'rifle' | 'aim' | 'wheel' | 'free'
+export type AvatarHands = 'rod' | 'cast' | 'reel' | 'rifle' | 'aim' | 'wheel' | 'free' | 'bow' | 'draw'
 
 export interface AvatarPose {
   stance: AvatarStance
@@ -42,6 +42,15 @@ export class Avatar {
 
   get rightHand(): TransformNode {
     return this.j.foreArmL
+  }
+
+  /** The forearm that holds the bow (the hunter's left). */
+  get leftHand(): TransformNode {
+    return this.j.foreArmR
+  }
+
+  joint(name: string): TransformNode | undefined {
+    return this.j[name]
   }
 
   get chest(): TransformNode {
@@ -170,6 +179,26 @@ export class Avatar {
         set(j['upperArm' + Lh], -0.55, 0, -0.25)
         set(j['foreArm' + Lh], -1.35)
         break
+      case 'bow': {
+        const p = Math.max(-0.4, Math.min(1.1, pose.aimPitch))
+        set(j['upperArm' + Lh], -0.75 + p * 0.35, 0.15, -0.12)
+        set(j['foreArm' + Lh], -0.35, 0)
+        set(j['upperArm' + R], -0.45 + p * 0.2, -0.25, 0.1)
+        set(j['foreArm' + R], -1.3, 0.2)
+        set(j.torso, torsoX + 0.06 + p * 0.12, torsoY, 0)
+        set(j.head, p * 0.45)
+        break
+      }
+      case 'draw': {
+        const p = Math.max(-0.6, Math.min(1.2, pose.aimPitch))
+        set(j['upperArm' + Lh], -1.52 + p, 0.12, -0.08)
+        set(j['foreArm' + Lh], -0.08, 0)
+        set(j['upperArm' + R], -1.5 + p, 0, 1.15)
+        set(j['foreArm' + R], -2.25, 0)
+        set(j.torso, torsoX + p * 0.18, torsoY - 0.2, 0)
+        set(j.head, p * 0.6, -0.05)
+        break
+      }
       case 'aim':
         set(j['upperArm' + R], -1.15 - pose.aimPitch, 0.0, 0.75)
         set(j['foreArm' + R], -1.05, 0.0)

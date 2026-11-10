@@ -1,6 +1,7 @@
 import type { LootTableManager, Specimen, SpeciesId } from '../systems/LootTableManager'
-import { SPECIES, SPECIES_BY_ID, formatValue } from '../systems/LootTableManager'
+import { SPECIES, SPECIES_BY_ID, formatPounds, formatValue } from '../systems/LootTableManager'
 import type { ReelSnapshot } from '../systems/SkillCheckManager'
+import { parseControls } from './Controls'
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T {
   const node = document.getElementById(id)
@@ -65,13 +66,63 @@ export class Hud {
     if (text && this.legend.textContent !== text) this.legend.textContent = text
   }
 
+  /** The current controls, shown as keycaps and labels in the see-through panel on the left. */
   setPrompt(text: string): void {
     if (text === this.lastPrompt) return
     this.lastPrompt = text
     this.prompt.textContent = text
+    const panel = el('controls')
+    panel.replaceChildren()
+    for (const row of parseControls(text)) {
+      const line = document.createElement('div')
+      line.className = row.keys.length ? 'ctl' : 'ctl note'
+      for (const key of row.keys) {
+        const cap = document.createElement('kbd')
+        if (key === 'LMB' || key === 'RMB') {
+          cap.className = 'mouse'
+          cap.textContent = key === 'LMB' ? 'Left click' : 'Right click'
+        } else cap.textContent = key
+        line.append(cap)
+      }
+      const label = document.createElement('span')
+      label.textContent = row.text
+      line.append(label)
+      panel.append(line)
+    }
+    panel.hidden = !text
   }
 
-  toast(text: string, kind: '' | 'big' | 'warn' = ''): void {
+  setClock(text: string): void {
+    const node = el('clock-time')
+    if (node.textContent !== text) node.textContent = text
+  }
+
+  setTub(count: number | null, pounds = 0): void {
+    const chip = el('tub')
+    chip.hidden = count === null
+    if (count === null) return
+    el('tub-count').textContent = String(count)
+    el('tub-weight').textContent = String(Math.round(pounds))
+  }
+
+  setDraw(fraction: number | null, ready: boolean): void {
+    const meter = el('draw')
+    meter.hidden = fraction === null
+    if (fraction === null) return
+    el('draw-bar').style.width = `${Math.round(fraction * 100)}%`
+    el('draw-pct').textContent = ready ? `${Math.round(fraction * 100)}%` : 'Too little to shoot'
+  }
+
+  setDot(on: boolean): void {
+    el('dot').hidden = !on
+  }
+
+  /** Wisco Wild Man talking. */
+  say(text: string): void {
+    this.toast(`Wild Man: “${text}”`, 'say')
+  }
+
+  toast(text: string, kind: '' | 'big' | 'warn' | 'say' = ''): void {
     const node = document.createElement('div')
     node.className = `toast ${kind}`
     node.textContent = text
@@ -121,8 +172,9 @@ export class Hud {
     const tier = el('catch-tier')
     tier.className = `tier${specimen.legendary ? ' legend' : ''}`
     tier.textContent = specimen.legendary ? 'Record-class trophy' : specimen.value >= t.trophyAt ? 'Trophy' : t.kind === 'fish' ? 'Keeper' : 'Tagged'
-    el('catch-l1').textContent = t.kind === 'fish' ? 'Length' : t.unit === 'in' ? 'Field weight' : 'Weight'
-    el('catch-v1').textContent = t.kind === 'fish' ? `${specimen.lengthIn.toFixed(1)}″` : `${Math.round(specimen.weightLb)} lb`
+    const byLength = t.kind === 'fish' && t.unit === 'in'
+    el('catch-l1').textContent = byLength ? 'Weight' : t.kind === 'fish' ? 'Length' : t.unit === 'in' ? 'Field weight' : 'Weight'
+    el('catch-v1').textContent = byLength ? formatPounds(specimen.weightLb) : t.kind === 'fish' ? `${specimen.lengthIn.toFixed(1)}″` : `${Math.round(specimen.weightLb)} lb`
     el('catch-points').textContent = specimen.trophyPoints.toLocaleString()
     el('catch-rank').textContent = rank ? `#${rank} all-time` : '—'
     el('catch-fact').textContent = t.facts

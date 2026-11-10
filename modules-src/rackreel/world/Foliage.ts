@@ -9,7 +9,7 @@ import '@babylonjs/core/Meshes/thinInstanceMesh'
 import '@babylonjs/core/Rendering/boundingBoxRenderer'
 import type { EngineContext, TrunkCollider } from '../core/EngineSetup'
 import type { ModelName, ModelTemplate } from '../core/ModelLibrary'
-import { HALF, Terrain, fbm, forestDensity, lakeCoord, marshWeight, trailOffset } from './Terrain'
+import { HALF, HIGHWAY, Terrain, fbm, forestDensity, highwayCoord, lakeCoord, marshWeight, trailOffset } from './Terrain'
 
 export const STAND_SIZE = 128
 export const STANDS = Math.round((HALF * 2) / STAND_SIZE)
@@ -141,7 +141,7 @@ export class Foliage {
           if (roll < 0.18 + marsh * 0.6) this.pushMatrix(scatter.cattail.matrices, x, h - 0.05, z, roll * 40, 0.8 + hash(cx, cz, 14) * 0.5)
           continue
         }
-        if (h < 0.9 || !this.clear(x, z, 6) || trailOffset(x, z) < 3) continue
+        if (h < 0.9 || !this.clear(x, z, 6) || trailOffset(x, z) < 3 || highwayCoord(x, z).across < HIGHWAY.halfWidth + 3) continue
         const density = forestDensity(x, z)
         if (roll < density * 0.32) {
           this.pushMatrix(scatter.fern.matrices, x, h - 0.05, z, roll * 60, 0.75 + hash(cx, cz, 15) * 0.7)
@@ -248,6 +248,7 @@ export class Foliage {
         if (d2 > r * r) continue
         const h = this.terrain.heightAt(x, z)
         if (h < 0.55) continue
+        if (highwayCoord(x, z).across < HIGHWAY.halfWidth + 1.5) continue
         if (this.grassHoles.some((g) => (g.x - x) ** 2 + (g.z - z) ** 2 < g.r * g.r)) continue
         const density = forestDensity(x, z)
         const want = (0.78 - density * 0.62) * (trailOffset(x, z) < 2.4 ? 0.1 : 1) * (1 - Math.sqrt(d2) / r * 0.45)
