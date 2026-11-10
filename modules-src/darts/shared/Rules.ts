@@ -2,6 +2,7 @@
 import { label, spokenLabel } from './Board'
 import type {
   Announcement,
+  BoardKind,
   CpuLevel,
   CricketTarget,
   DartThrow,
@@ -53,10 +54,11 @@ export function normalizeConfig(config: MatchConfig): MatchConfig {
   const whole = (value: number, min: number, max: number, fallback: number) => (Number.isInteger(value) && value >= min && value <= max ? value : fallback)
   const rules = config.rules
   let clean: ModeConfig
+  const board: BoardKind = config.board === 'spider' ? 'spider' : 'steel'
   if (rules.mode === 'x01') clean = { mode: 'x01', start: [301, 501, 701].includes(rules.start) ? rules.start : 501, doubleIn: !!rules.doubleIn, doubleOut: !!rules.doubleOut, doubleBull: !!rules.doubleBull }
   else if (rules.mode === 'cricket') clean = { mode: 'cricket', scoring: rules.scoring !== false, roundLimit: whole(rules.roundLimit, 5, 50, 20) }
   else clean = { mode: 'countup', rounds: whole(rules.rounds, 1, 20, 8) }
-  return { rules: clean, legsPerSet: whole(config.legsPerSet, 1, 11, 1), setsToWin: whole(config.setsToWin, 1, 7, 1) }
+  return { rules: clean, legsPerSet: whole(config.legsPerSet, 1, 11, 1), setsToWin: whole(config.setsToWin, 1, 7, 1), board }
 }
 
 export function createMatch(roomId: string, config: MatchConfig, seats: readonly SeatSpec[]): GameState {
@@ -203,6 +205,7 @@ function applyCricket(state: GameState, player: Player, dart: DartThrow, list: A
         if (player.marks[target] === 3) say(list, 'closed', `${target === 25 ? 'Bull' : target} closed`, player.id)
       } else if (rules.scoring && opponents.some((other) => other.marks[target] < 3)) {
         player.score += target
+        player.stats.marks++
       }
     }
   }
@@ -316,7 +319,7 @@ export function applyThrow(input: GameState, playerId: string, thrown: DartThrow
   return { state, announcements: list, turnOver: true }
 }
 
-/** Moves on from `turnEnd` (next player's turn) or `legOver` (fresh leg, the next player starts). Returns the input unchanged in any other status. */
+/** Moves on from `turnEnd` (next player's turn) or `legOver` (fresh leg, the next player starts; `history` only ever holds the leg being played, so the state stays small however long the match runs). Returns the input unchanged in any other status. */
 export function nextTurn(input: GameState): { state: GameState; announcements: Announcement[] } {
   if (input.status !== 'turnEnd' && input.status !== 'legOver') return { state: input, announcements: [] }
   const state = clone(input)
@@ -332,6 +335,7 @@ export function nextTurn(input: GameState): { state: GameState; announcements: A
     } else state.legs.current++
     state.legStarter = (state.legStarter + 1) % n
     state.round = 1
+    state.history = []
     state.legWinnerId = null
     for (const player of state.players) {
       player.score = startScore(state.config.rules)

@@ -145,6 +145,7 @@ export class OnlineSession implements Session {
   players: RoomPlayerView[] = []
   restartVotes: string[] = []
   private pending = false
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null
   private busyUntil = 0
   private readonly off: (() => void)[] = []
 
@@ -211,7 +212,11 @@ export class OnlineSession implements Session {
     if (!this.canThrow() || !this.state) return
     this.pending = true
     this.socket.throwDart(intent, this.state.version)
-    setTimeout(() => { this.pending = false }, 4000)
+    if (this.pendingTimer) clearTimeout(this.pendingTimer)
+    this.pendingTimer = setTimeout(() => {
+      this.pendingTimer = null
+      this.pending = false
+    }, 4000)
   }
 
   start(): void {
@@ -227,6 +232,8 @@ export class OnlineSession implements Session {
   }
 
   dispose(): void {
+    if (this.pendingTimer) clearTimeout(this.pendingTimer)
+    this.pendingTimer = null
     for (const off of this.off) off()
     this.socket.leave()
   }
