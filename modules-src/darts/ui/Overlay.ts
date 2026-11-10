@@ -28,7 +28,7 @@ export function playerColor(state: GameState, playerId: string): string {
 
 /** Half-width of the band where the green fades to yellow, as a fraction of the ideal speed; past it the meter turns red. */
 const BAND = METER.band
-/** Half-width of the solid green: anywhere in it lands within seven holes of the aim; between the two white lines inside it (`METER.exact` of the way out) is Perfect and lands on the aim point. */
+/** Half-width of the solid green: anywhere in it lands within seven holes of the aim; between the two white lines (`METER.exact` of it out, a little past its edge) is Perfect and lands on the aim point. */
 const PERFECT = METER.perfect
 /** How far past the yellow (as a fraction of the ideal speed) the meter is fully red. */
 const TO_RED = 0.05
