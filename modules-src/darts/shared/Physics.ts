@@ -40,7 +40,7 @@ export const HOLE = HOLE_PITCH_MM / 1000
 /**
  * The power meter, as fractions of IDEAL_SPEED off the ideal: `perfect` is the half-width of the solid green (a third of the earlier ±1.7 %), `fade` where
  * the green has faded fully to yellow, and `band` the half-width of the yellow; past it the meter runs on into red. A release `d` green half-widths from the middle misses the aim point by at
- * most `reach(d)`: nothing up to `exact` (the Perfect window between the meter's two white lines, the same share of the green as before), then growing in a straight line to `greenHoles` holes
+ * most `reach(d)`: nothing up to `exact` (the Perfect window between the meter's two white lines, twice the earlier share of the green), then growing in a straight line to `greenHoles` holes
  * at the edge of the green (never more, at any steadiness), on through the yellow to `yellowHoles` at the edge of the band (easing in slowly, so a release well past the green still lands close), and staying there in
  * the red, where the extra speed also drops (soft) or lifts (hard) the dart. The actual miss is between half and all of the reach, in any direction.
  * `levelScale` tightens (Easy) or widens (Hard) the reach.
@@ -49,7 +49,7 @@ export const METER = {
   perfect: 0.017 / 3,
   fade: 0.03,
   band: 0.085,
-  exact: 0.005 / 0.017,
+  exact: 0.01 / 0.017,
   greenHoles: 7,
   yellowHoles: 16,
   levelScale: { easy: 0.75, normal: 1, hard: 1.25 } as Record<PlayerLevel, number>,
