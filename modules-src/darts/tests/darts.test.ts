@@ -176,7 +176,7 @@ test('meter: outside the white lines a dart is less likely to land dead on, but 
   assert.ok(Math.max(...far) <= METER.yellowHoles * 1.25 + 0.1, `worst ${Math.max(...far)}`)
 })
 
-test('meter: zones run perfect, then yellow, then red, with the white lines just past the solid green', () => {
+test('meter: zones run perfect, then yellow, then red, with the white lines just inside the solid green', () => {
   assert.equal(meterZone(IDEAL_SPEED), 'perfect')
   assert.equal(meterZone(IDEAL_SPEED * (1 + METER.perfect * 0.6)), 'perfect')
   assert.equal(meterZone(IDEAL_SPEED * (1 - METER.perfect * METER.exact * 0.98)), 'perfect')
