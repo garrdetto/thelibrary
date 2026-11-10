@@ -163,7 +163,17 @@ test('meter: the miss grows with how far from the middle you let go', () => {
   const edge = avg(missHoles(2, 'normal', 300, 22))
   const yellow = avg(missHoles(8, 'normal', 300, 23))
   assert.ok(near < edge && edge < yellow, `${near} ${edge} ${yellow}`)
-  assert.ok(edge >= 3.5 && edge <= 7.5, `two green half-widths out ${edge}`)
+  assert.ok(edge >= 1.5 && edge <= 5, `two green half-widths out ${edge}`)
+})
+
+test('meter: outside the white lines a dart is less likely to land dead on, but never thrown far off', () => {
+  const line = METER.exact
+  const share = (list: number[]) => list.filter((m) => m < 0.05).length / list.length
+  const near = missHoles(line + 0.1, 'normal', 400, 51)
+  const far = missHoles(10, 'normal', 400, 52)
+  assert.ok(share(near) > 0.4 && share(near) < 0.8, `just past the lines ${share(near)}`)
+  assert.ok(share(far) < share(near) && share(far) > 0, `deep in the yellow ${share(far)}`)
+  assert.ok(Math.max(...far) <= METER.yellowHoles * 1.25 + 0.1, `worst ${Math.max(...far)}`)
 })
 
 test('meter: zones run perfect, then yellow, then red, with the white lines just past the solid green', () => {
