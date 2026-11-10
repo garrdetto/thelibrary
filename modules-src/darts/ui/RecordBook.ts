@@ -1,10 +1,7 @@
-/** The record book on the page: the setup form's per-board, per-format board (fewest darts or highest Count Up with how many times each player hit their best, plus the top five all-time averages), the in-match "All-Time Averages" panel at the lower right, and saving a local player's finished legs and matches to `/api/darts-records` (online rooms save their own results on the server). */
+/** The record book link: tells the page's record book under the frame (`src/components/DartsRecordBoard.tsx`) which board and format the setup form shows and when a result was saved, draws the in-match "All-Time Averages" panel at the lower right, and saves a local player's finished legs and matches to `/api/darts-records` (online rooms save their own results on the server). */
 import type { BoardKind, GameState } from '../shared/interfaces'
 import {
-  AVERAGE_MIN_DARTS,
   BOARD_NAMES,
-  MODE_NAMES,
-  RECORD_LIMITS,
   averageMode,
   averageUnit,
   boardOf,
@@ -20,17 +17,7 @@ const API = '/api/darts-records'
 const BOARD_TTL_MS = 30_000
 const RETRY_MS = [3000, 10_000, 30_000]
 
-export interface BookEntry { username: string; value: number; times: number; date: string }
-export interface AverageEntry { username: string; darts: number; total: number; matches: number; average: number }
-export interface BookData {
-  board: BoardKind
-  mode: RecordMode
-  records: BookEntry[]
-  averages: AverageEntry[]
-  you: { best: number | null; times: number; darts: number; total: number; matches: number } | null
-  signedIn: boolean
-  username: string | null
-}
+interface Viewer { signedIn: boolean; username: string | null }
 type Totals = { darts: number; total: number; matches: number }
 
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text?: string): HTMLElementTagNameMap[K] {
@@ -44,8 +31,10 @@ function runId(): string {
   return crypto.randomUUID()
 }
 
-function recordText(mode: RecordMode, value: number): string {
-  return mode === 'countup' ? `${value.toLocaleString()} pts` : `${value} darts`
+/** Tells the library page (when the module runs in its frame) which record book tab to show, and whether a result was just saved there. */
+function notifyPage(board: BoardKind, mode: RecordMode | null, saved: boolean): void {
+  if (window.parent === window) return
+  window.parent.postMessage({ type: 'tl-darts', board, mode, saved }, window.location.origin)
 }
 
 export interface AverageRow {
@@ -58,11 +47,10 @@ export interface AverageRow {
 }
 
 export class RecordBook {
-  private readonly cache = new Map<string, { at: number; data: Promise<BookData | null> }>()
+  private viewer: { at: number; data: Promise<Viewer | null> } | null = null
   private readonly stored = new Map<string, Totals>()
   private storedKey = ''
   private storedLoading: Promise<void> | null = null
-  private shownKey = ''
   private readonly timers = new Set<ReturnType<typeof setTimeout>>()
   private readonly controller = new AbortController()
   username: string | null = null
@@ -71,111 +59,55 @@ export class RecordBook {
   /** Called when saved averages arrive, so the panel can redraw. */
   onChange: (() => void) | null = null
 
-  constructor(
-    private readonly panel: HTMLElement,
-    private readonly hud: HTMLElement,
-  ) {}
+  constructor(private readonly hud: HTMLElement) {}
 
-  private load(board: BoardKind, mode: RecordMode, fresh = false): Promise<BookData | null> {
-    const key = `${board}:${mode}`
-    const hit = this.cache.get(key)
-    if (hit && !fresh && performance.now() - hit.at < BOARD_TTL_MS) return hit.data
+  private loadViewer(board: BoardKind, mode: RecordMode, fresh = false): Promise<Viewer | null> {
+    if (this.viewer && !fresh && performance.now() - this.viewer.at < BOARD_TTL_MS) return this.viewer.data
     const data = fetch(`${API}?board=${board}&mode=${mode}`, { credentials: 'same-origin', signal: this.controller.signal })
-      .then((response) => (response.ok ? (response.json() as Promise<BookData>) : null))
-      .then((book) => {
-        if (book) {
-          this.username = book.username
-          this.signedIn = book.signedIn
+      .then((response) => (response.ok ? (response.json() as Promise<Viewer>) : null))
+      .then((viewer) => {
+        if (viewer) {
+          this.username = viewer.username
+          this.signedIn = viewer.signedIn
         }
-        return book
+        return viewer
       })
       .catch(() => null)
-    this.cache.set(key, { at: performance.now(), data })
+    this.viewer = { at: performance.now(), data }
     return data
   }
 
-  /** Fills the setup form's record book for a board and format (`mode` null hides it: 701 and the off-standard formats keep no records). */
+  /** Points the page's record book at the setup form's board and format (`mode` null: 701 and the off-standard formats keep no records) and reads who is signed in. */
   async show(board: BoardKind, mode: RecordMode | null, fresh = false): Promise<void> {
-    const key = mode ? `${board}:${mode}` : ''
-    this.shownKey = key
-    this.panel.hidden = !mode
+    if (mode) notifyPage(board, mode, false)
+    await this.loadViewer(board, mode ?? '501', fresh)
+  }
+
+  /** Asks the page's record book to reload after a result was saved on the server (online rooms), a moment after the leg ends. */
+  refreshPage(board: BoardKind, mode: RecordMode | null, delayMs = 0): void {
     if (!mode) return
-    if (!this.panel.childElementCount || fresh) this.panel.replaceChildren(make('p', 'd-book-note', 'Loading the record book…'))
-    const book = await this.load(board, mode, fresh)
-    if (this.shownKey !== key) return
-    this.panel.replaceChildren(...this.bookNodes(board, mode, book))
+    const timer = setTimeout(() => {
+      this.timers.delete(timer)
+      notifyPage(board, mode, true)
+    }, delayMs)
+    this.timers.add(timer)
   }
 
-  private bookNodes(board: BoardKind, mode: RecordMode, book: BookData | null): HTMLElement[] {
-    const nodes: HTMLElement[] = []
-    const fewest = RECORD_LIMITS[mode].order === 'asc'
-    nodes.push(make('div', 'd-book-title', `${MODE_NAMES[mode]} · ${BOARD_NAMES[board]}`))
-    if (!book) {
-      nodes.push(make('p', 'd-book-note', 'The record book could not be loaded right now.'))
-      return nodes
-    }
-    const columns = make('div', 'd-book-cols')
-    const best = make('div', 'd-book-col')
-    best.append(make('h3', '', fewest ? 'Fewest darts' : 'Highest totals'))
-    if (!book.records.length) best.append(make('p', 'd-book-note', fewest ? 'No legs saved yet. Finish one to set the mark.' : 'No totals saved yet.'))
-    else {
-      const list = make('ol', 'd-book-list')
-      book.records.forEach((entry, index) => {
-        const item = make('li', entry.username === book.username ? 'is-you' : '')
-        item.append(make('span', 'd-book-rank', String(index + 1)), make('span', 'd-book-name', entry.username), make('span', 'd-book-value', recordText(mode, entry.value)))
-        const times = make('span', 'd-book-times', entry.times > 1 ? `×${entry.times}` : '')
-        times.title = entry.times > 1 ? `Done ${entry.times} times` : 'Done once'
-        item.append(times)
-        list.append(item)
-      })
-      best.append(list)
-    }
-    columns.append(best)
-    const average = mode === 'countup' ? null : (mode as AverageMode)
-    if (average) {
-      const col = make('div', 'd-book-col')
-      col.append(make('h3', '', `All-time averages (${averageUnit(average)})`))
-      if (!book.averages.length) col.append(make('p', 'd-book-note', `No one has ${AVERAGE_MIN_DARTS} counted darts here yet.`))
-      else {
-        const list = make('ol', 'd-book-list')
-        book.averages.forEach((entry, index) => {
-          const item = make('li', entry.username === book.username ? 'is-you' : '')
-          item.append(make('span', 'd-book-rank', String(index + 1)), make('span', 'd-book-name', entry.username), make('span', 'd-book-value', entry.average.toFixed(2)))
-          const darts = make('span', 'd-book-times', `${entry.darts.toLocaleString()}d`)
-          darts.title = `${entry.darts.toLocaleString()} darts over ${entry.matches} ${entry.matches === 1 ? 'match' : 'matches'}`
-          item.append(darts)
-          list.append(item)
-        })
-        col.append(list)
-      }
-      columns.append(col)
-    }
-    nodes.push(columns)
-    const you = book.you
-    if (you) {
-      const parts: string[] = []
-      parts.push(you.best !== null ? `Your best: ${recordText(mode, you.best)}${you.times > 1 ? ` (×${you.times})` : ''}` : 'No best saved yet')
-      if (average) parts.push(you.darts ? `your average ${formatAverage(average, you.darts, you.total)} ${averageUnit(average)} over ${you.darts.toLocaleString()} darts` : 'no counted average yet')
-      nodes.push(make('p', 'd-book-you', parts.join(' · ')))
-    } else nodes.push(make('p', 'd-book-note', 'Sign in to the library to put your legs in the record book.'))
-    nodes.push(make('p', 'd-book-note', average
-      ? `Every leg counts, alone, against anyone or in a tournament (team matches don't). Averages count when two people play each other, or against the Pro computer.`
-      : `Eight-round Count Up totals count, alone or against anyone (team matches don't).`))
-    return nodes
-  }
-
-  private post(body: Record<string, unknown>, attempt = 0): void {
+  private post(body: Record<string, unknown>, attempt = 0, done?: () => void): void {
     const send = () =>
       fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), keepalive: true })
         .then((response) => {
-          if (response.ok || response.status === 400 || response.status === 401 || response.status === 403) return
+          if (response.ok || response.status === 400 || response.status === 401 || response.status === 403) {
+            if (response.ok) done?.()
+            return
+          }
           throw new Error(`HTTP ${response.status}`)
         })
         .catch(() => {
           if (attempt >= RETRY_MS.length) return
           const timer = setTimeout(() => {
             this.timers.delete(timer)
-            this.post(body, attempt + 1)
+            this.post(body, attempt + 1, done)
           }, RETRY_MS[attempt])
           this.timers.add(timer)
         })
@@ -188,8 +120,8 @@ export class RecordBook {
     const board = boardOf(state.config)
     for (const result of results) {
       if (result.playerId !== playerId) continue
-      this.post({ action: 'leg', board, mode: result.mode, value: result.value, run: runId() })
-      this.cache.delete(`${board}:${result.mode}`)
+      const mode = result.mode
+      this.post({ action: 'leg', board, mode, value: result.value, run: runId() }, 0, () => notifyPage(board, mode, true))
     }
   }
 
@@ -197,8 +129,8 @@ export class RecordBook {
   saveAverage(state: GameState, average: MatchAverage | undefined): void {
     if (!this.signedIn || !average || average.darts <= 0) return
     const board = boardOf(state.config)
-    this.post({ action: 'average', board, mode: average.mode, darts: average.darts, total: average.total, run: runId() })
-    this.cache.delete(`${board}:${average.mode}`)
+    const mode = average.mode
+    this.post({ action: 'average', board, mode, darts: average.darts, total: average.total, run: runId() }, 0, () => notifyPage(board, mode, true))
   }
 
   /** Forgets the loaded totals so the next match reads them again (with the match that just finished saved). */
