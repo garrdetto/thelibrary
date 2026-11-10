@@ -38,7 +38,7 @@ import type { StandSite } from '../world/TreeStand'
 import { buildDock, buildGround, buildSky, buildWater, findLandmarks } from '../world/World'
 import { Avatar, HIP_HEIGHT } from './Avatar'
 import { Progress } from './Progress'
-import type { CatchReport } from './Progress'
+import type { CatchReport, EarnReport } from './Progress'
 import { Panels } from '../ui/Panels'
 import type { PanelTab } from '../ui/Panels'
 import { Cabin } from '../world/Cabin'
@@ -59,6 +59,8 @@ type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand' | 'crew'
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
 const GLOSSY = new Set(['utv', 'boat', 'rod', 'rifle', 'fish-muskie', 'fish-pike', 'fish-walleye', 'fish-smallmouth', 'fish-perch'])
 const MODULE_ID = 'rackreel'
+/** A downed buck or bear counts once the hunter is within 10 yards of it. */
+const TAG_RANGE = 10 * 0.9144
 const WALK_SPEED = 2.5
 const SPRINT_SPEED = 5.2
 const CROUCH_SPEED = 1.2
@@ -127,7 +129,9 @@ export class Game {
   private recoil = 0
   private swayApplied = { x: 0, y: 0 }
   private bag: Specimen[] = []
-  private yourRecords = new Set<string>()
+  private baitHintShown = false
+  /** Animals this player put down, which tag themselves once the hunter walks within 10 yards. */
+  private myKills = new Set<number>()
   private materials = new Map<string, Material>()
   private sessionKey = Math.random().toString(36).slice(2, 10)
   private signTimer = 0
@@ -259,6 +263,7 @@ export class Game {
       leave: () => this.online.leave(),
     }
     void this.progress.load().then(() => {
+      void this.progress.loadRecords()
       this.online.name = this.progress.username || `Guest-${this.sessionKey.slice(0, 4)}`
     })
     this.online.name = `Guest-${this.sessionKey.slice(0, 4)}`
@@ -383,6 +388,11 @@ export class Game {
     this.skill.sway.adsAmplitude = SWAY_TUNING.adsAmplitude * fx.scopeSteady
     this.fishing.castRange = fx.castRange
     this.fishing.bias = fx.baitBias
+    this.fishing.reelSpeed = fx.reelSpeed
+    if (this.fishing.bait !== fx.bait) {
+      this.fishing.bait = fx.bait
+      this.baitHintShown = false
+    }
     this.wildlife.detection = fx.detection
     this.wildlife.vitalScale = fx.vitalScale
     for (const v of this.vehicles.vehicles) v.power = v.kind === 'BOAT' ? fx.boatPower : v.rig.root.name.startsWith('quad') ? 1.15 : fx.utvPower
@@ -434,7 +444,7 @@ export class Game {
       this.hud.toast(`${this.stands.filter((st) => st.kind === 'ladder').length} ladder stands and a box blind are marked on the map; the nearest is ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
     }
     document.getElementById('start-btn')!.addEventListener('click', start)
-    document.getElementById('book-btn')!.addEventListener('click', () => this.hud.showBook(this.loot, this.yourRecords, () => undefined))
+    document.getElementById('book-btn')!.addEventListener('click', () => this.showRecords(() => undefined))
     this.canvas.addEventListener('click', () => {
       if (this.playing && !this.hud.modalOpen && document.pointerLockElement !== this.canvas) this.lock()
     })
@@ -468,7 +478,7 @@ export class Game {
       else if (e.code === 'Digit2') this.setTool('rifle')
       else if (e.code === 'KeyE') this.interact()
       else if (e.code === 'KeyC') this.crouch = !this.crouch
-      else if (e.code === 'KeyR') this.fishing.cancel()
+      else if (e.code === 'KeyR' && this.fishing.state === 'bite') this.fishing.setHook()
       else if (e.code === 'KeyM') this.audio.setMuted(!this.audio.muted)
       else if (e.code === 'KeyK') this.openBook()
       else if (e.code === 'KeyI') this.openPanel('gear', this.mode === 'foot' ? this.cabin.spotNear(this.foot) : null)
@@ -505,7 +515,14 @@ export class Game {
 
   private openBook(): void {
     document.exitPointerLock()
-    this.hud.showBook(this.loot, this.yourRecords, () => this.lock())
+    this.showRecords(() => this.lock())
+  }
+
+  private showRecords(onClose: () => void): void {
+    this.hud.showBook(this.progress.board, this.progress.scoreName, onClose)
+    void this.progress.loadRecords().then((board) => {
+      if (!document.getElementById('book')?.hidden) this.hud.renderBook(board, this.progress.scoreName)
+    })
   }
 
   private setTool(tool: Tool): void {
@@ -545,7 +562,7 @@ export class Game {
       this.velocity.setAll(0)
       return
     }
-    const down = this.wildlife.nearestDown(this.foot, 3.8)
+    const down = this.wildlife.nearestDown(this.foot, TAG_RANGE)
     if (down) {
       this.tag(down)
       return
@@ -783,16 +800,7 @@ export class Game {
       this.fishing.setHook()
       return
     }
-    if (this.fishing.state === 'nibble') {
-      this.hud.toast('Not yet — wait for the bobber to go under.')
-      return
-    }
-    if (this.fishing.state === 'landing') return
-    if (this.fishing.state === 'reeling') {
-      this.skill.crank()
-      this.audio.click()
-      return
-    }
+    if (this.fishing.state === 'landing' || this.fishing.state === 'reeling' || this.fishing.state === 'nibble') return
     const v = this.vehicles.active
     if (this.tool === 'rod') {
       if (this.mode === 'climb' || this.mode === 'stand') {
@@ -807,10 +815,7 @@ export class Game {
         this.hud.toast('Hold on until the boat slows down.', 'warn')
         return
       }
-      if (this.fishing.state === 'waiting') {
-        this.hud.toast('Line is out. Wait for the bobber to go down, or press R to reel in.')
-        return
-      }
+      if (this.fishing.busy) return
       this.fishing.startCharge()
     } else if (this.mode !== 'climb') {
       this.fire()
@@ -862,8 +867,9 @@ export class Game {
     const yards = Math.round(Vector3.Distance(this.foot, shot.animal.position) * 1.094)
     if (this.online.isGuest) this.online.sendShot(shot.animal.id, shot.vital, origin)
     const down = this.wildlife.hit(shot.animal, shot.vital, origin)
+    if (down) this.myKills.add(shot.animal.id)
     if (down && this.mode === 'stand') this.standKills.add(shot.animal.id)
-    const climbHint = this.mode === 'stand' ? ' Climb down (E) and walk up to tag it.' : ' Walk up and press E to tag it.'
+    const climbHint = this.mode === 'stand' ? ' Climb down (E) and walk within 10 yards to tag it.' : ' Walk within 10 yards to tag it.'
     if (down) this.hud.toast(`Clean ${shot.vital ? 'vital' : 'follow-up'} hit at ${yards} yd.${climbHint}`, 'big')
     else this.hud.toast(`Hit at ${yards} yd but high or back. It ran — a second hit will put it down.`, 'warn')
   }
@@ -872,6 +878,7 @@ export class Game {
     animal.tagged = true
     this.online.sendTag(animal.id)
     this.online.announce(animal.doe ? 'filled an antlerless tag.' : `tagged a ${animal.template.id === 'whitetail' ? 'buck' : animal.template.name.toLowerCase()} — ${fmtValue(animal.specimen.species, animal.specimen.value)}${animal.specimen.legendary ? ', a record!' : ''}`)
+    this.myKills.delete(animal.id)
     if (animal.doe) {
       this.bag.push(animal.specimen)
       this.hud.setBag(this.bag.length, this.bag.reduce((a, s) => a + s.trophyPoints, 0))
@@ -879,8 +886,8 @@ export class Game {
       void this.earn({ action: 'game', species: 'whitetail', value: 0, legendary: false, doe: true, stand: this.standKills.has(animal.id) })
       return
     }
-    void this.earn({ action: 'game', species: animal.specimen.species, value: animal.specimen.value, legendary: animal.specimen.legendary, doe: false, stand: this.standKills.has(animal.id) })
-    this.recordSpecimen(animal.specimen)
+    const report = this.earn({ action: 'game', species: animal.specimen.species, value: animal.specimen.value, legendary: animal.specimen.legendary, doe: false, stand: this.standKills.has(animal.id) })
+    this.recordSpecimen(animal.specimen, report)
   }
 
   private playerState(): PlayerState {
@@ -918,10 +925,11 @@ export class Game {
     return out
   }
 
-  private async earn(report: CatchReport): Promise<void> {
+  private async earn(report: CatchReport): Promise<EarnReport> {
     const result = await this.progress.report(report)
     if (result.paid > 0) this.hud.toast(`+$${result.paid.toLocaleString()} · cash $${this.progress.profile.cash.toLocaleString()}`, 'big')
     for (const t of result.completed) this.hud.toast(`Task complete: ${t.text} (+$${t.reward})`, 'big')
+    return result
   }
 
   private grunt(): void {
@@ -942,21 +950,44 @@ export class Game {
     } else this.hud.toast('Nothing answers the call. Try again later.')
   }
 
-  private recordSpecimen(specimen: Specimen): void {
+  private recordSpecimen(specimen: Specimen, report: Promise<EarnReport>): void {
     this.bag.push(specimen)
-    const tier = this.loot.claim(specimen, 'You', this.placeName())
-    if (tier) {
-      this.yourRecords.add(`${specimen.species}:${specimen.value}:You`)
-      this.audio.chime()
-    }
+    this.loot.claim(specimen, 'You', this.placeName())
     const points = this.bag.reduce((a, s) => a + s.trophyPoints, 0)
     this.hud.setBag(this.bag.length, points)
     if (this.loot.isTrophy(specimen)) void Scores.submit(MODULE_ID, specimen.trophyPoints, { key: `${this.sessionKey}-${specimen.serial}` })
     document.exitPointerLock()
-    this.hud.showCatch(specimen, tier, () => {
+    this.hud.showCatch(specimen, () => {
       this.clearHero()
       this.lock()
     })
+    this.hud.showCatchScores(specimen, this.progress.board, null, this.progress.scoreName)
+    void report.then((r) => {
+      this.hud.showCatchScores(specimen, this.progress.board, r.placed, this.progress.scoreName)
+      const ranks = Object.values(r.placed)
+      if (!ranks.length) return
+      this.audio.chime()
+      const top = Math.min(...ranks)
+      const name = SPECIES_BY_ID[specimen.species].name.toLowerCase()
+      this.hud.toast(top === 1 ? `New #1 high score for ${name}!` : `Your ${name} made the top three (#${top}).`, 'big')
+      if (top === 1) this.online.announce(`took the #1 high score for ${name}!`)
+    })
+  }
+
+  /** Bucks and bears this player shot tag themselves once the hunter walks within 10 yards. */
+  private autoTag(): void {
+    if (this.hud.modalOpen || this.panels.open || !this.myKills.size) return
+    const v = this.vehicles.active
+    const onGround = this.mode === 'foot' || (this.mode === 'vehicle' && v?.kind === 'ATV')
+    if (!onGround) return
+    const at = this.mode === 'vehicle' && v ? v.position : this.foot
+    for (const a of this.wildlife.animals) {
+      if (a.state !== 'down' || a.tagged || !this.myKills.has(a.id)) continue
+      if (Math.hypot(a.position.x - at.x, a.position.z - at.z) <= TAG_RANGE) {
+        this.tag(a)
+        return
+      }
+    }
   }
 
   private onFishing(e: FishingEvent): void {
@@ -964,6 +995,10 @@ export class Game {
     if (e.type === 'splash') {
       this.audio.splash()
       if (!e.inWater) this.hud.toast('Too shallow there — cast out past the weeds.', 'warn')
+      else if (!this.baitHintShown) {
+        this.baitHintShown = true
+        this.hud.toast(this.fishing.bait.hint)
+      }
     } else if (e.type === 'nibble') {
       this.audio.splash()
       this.hud.toast('Something is nibbling… wait for the bobber to go under.')
@@ -974,20 +1009,20 @@ export class Game {
     } else if (e.type === 'bite') {
       this.director.rearm('fish')
       this.audio.splash()
-      this.hud.toast('Bobber down! Click to set the hook!', 'big')
+      this.hud.toast(e.lure ? 'Strike! Click or press R to set the hook — fast!' : 'Bobber down! Click or press R to set the hook!', 'big')
     } else if (e.type === 'missed') {
-      this.hud.toast('It spit the bait. Stay ready.')
+      this.hud.toast(e.pulled ? 'You pulled the bait away from it. Leave live bait still until the float goes under.' : this.fishing.bait.kind === 'lure' ? 'Too slow — it let go of the lure. Keep working it.' : 'It spit the bait. Stay ready.')
     } else if (e.type === 'hooked') {
       this.audio.splash(true)
       this.jumpTold = false
       if (e.specimen.legendary) this.hud.toast('This one is heavy… a record-class fish!', 'big')
-      else this.hud.toast('Fish on! Hold or click to reel — keep the needle in the green.')
+      else this.hud.toast('Fish on! Hold left-click or R to reel; let go to ease off. Keep the needle in the green.')
     } else if (e.type === 'landed') {
       this.audio.splash(true)
       this.online.announce(`landed a ${fmtValue(e.specimen.species, e.specimen.value)} ${SPECIES_BY_ID[e.specimen.species].name.toLowerCase()}${e.specimen.legendary ? ' — a record!' : ''}`)
-      void this.earn({ action: 'fish', species: e.specimen.species, value: e.specimen.value, legendary: e.specimen.legendary, boat: this.vehicles.active?.kind === 'BOAT' || this.mode === 'crew' })
+      const report = this.earn({ action: 'fish', species: e.specimen.species, value: e.specimen.value, legendary: e.specimen.legendary, boat: this.vehicles.active?.kind === 'BOAT' || this.mode === 'crew' })
       this.showHero(e.specimen)
-      this.recordSpecimen(e.specimen)
+      this.recordSpecimen(e.specimen, report)
     } else if (e.type === 'lost') {
       this.hud.toast(e.reason === 'snapped' ? 'Snap! Too much tension broke the line.' : 'The hook pulled free on slack line.', 'warn')
     }
@@ -1088,7 +1123,7 @@ export class Game {
     this.recoil = Math.max(0, this.recoil - dt * 5)
     this.placeAvatar(dt)
     this.rodFx.update(dt, this.fishing.rodBend, this.fishing.busy ? this.fishing.lineEnd : null, this.fishing.lineTaut, this.fishing.crankSpeed)
-    this.fishing.update(dt, this.castOrigin(), this.leftDown && locked)
+    this.fishing.update(dt, this.castOrigin(), (this.leftDown || this.keys.has('KeyR')) && locked)
     if (this.fishing.dragging) {
       this.dragTimer -= dt
       if (this.dragTimer <= 0) {
@@ -1099,9 +1134,12 @@ export class Game {
     const noise = this.onDeck ? 0.12 : this.mode === 'vehicle' ? 1.4 : this.mode === 'stand' ? 0.03 : this.mode === 'climb' ? 0.5 : this.moveSpeed < 0.3 ? 0.04 : this.crouch ? 0.15 : sprint ? 1 : 0.45
     const focus = v ? v.position : this.foot
     this.wildlife.update(dt, [{ p: focus, noise }, ...this.online.members.map((m) => ({ p: m.at, noise: 0.35 }))])
+    this.autoTag()
     const exploring = this.mode === 'stand' || (v ? Math.abs(v.speed) > 1 : this.mode === 'crew' ? (this.crewBoat?.speed ?? 0) > 1 : this.moveSpeed > 0.5)
     const onLand = (!v || v.kind === 'ATV') && this.mode !== 'crew'
-    const signal = this.director.update(dt, { exploring, lineInWater: this.fishing.lineInWater, onLand, fishRate: this.progress.effects.biteRate })
+    const lure = this.fishing.bait.kind === 'lure'
+    const baitWorking = this.fishing.lineInWater && (lure ? this.fishing.retrieving : !this.fishing.retrieving)
+    const signal = this.director.update(dt, { exploring, lineInWater: baitWorking, onLand, fishRate: this.progress.effects.biteRate })
     if (signal === 'fish') this.fishing.bite()
     else if (signal === 'game') {
       this.director.rearm('game')
@@ -1429,11 +1467,13 @@ export class Game {
       this.hud.setActivity(this.fishing.lineInWater ? (fishLeft < 15 ? 'Fish circling' : 'Line out') : gameLeft < 30 ? 'Fresh sign' : this.wildlife.animals.length ? 'Animal nearby' : 'Quiet')
     }
     const st = this.fishing.state
-    const fishPrompt = st === 'bite' ? 'Click to set the hook!'
-      : st === 'nibble' ? 'Nibble… wait for the bobber to go under'
-        : st === 'waiting' ? 'Watch the bobber… R to reel in'
-          : st === 'landing' ? 'Swinging it in…'
-            : ''
+    const lure = this.fishing.bait.kind === 'lure'
+    const fishPrompt = st === 'bite' ? (lure ? 'Strike! Click to set the hook!' : 'Click to set the hook!')
+      : st === 'nibble' ? 'Nibble… keep still and wait for the float to go under'
+        : st === 'waiting' ? (lure ? (this.fishing.retrieving ? 'Working the lure… let go to pause' : 'Hold left-click or R to work the lure in') : (this.fishing.retrieving ? 'Reeling in… let go to stop' : 'Watch the float… hold R to reel in'))
+          : st === 'reeling' ? 'Hold left-click or R to reel · let go to ease off'
+            : st === 'landing' ? 'Swinging it in…'
+              : ''
     let prompt = ''
     if (!locked) prompt = this.hud.modalOpen ? '' : 'Click the view for mouse look · arrow keys also look around'
     else if (this.mode === 'climb') prompt = this.climbDir > 0 ? 'Climbing up…' : 'Climbing down…'
@@ -1445,7 +1485,7 @@ export class Game {
       const idle = v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy
       prompt = fishPrompt || (!idle ? '' : v.anchored ? 'Left-click to cast · F to switch seats · Q to pull the anchor' : 'Left-click to cast · Q to drop anchor · E near shore to step out')
     } else {
-      const down = this.wildlife.nearestDown(this.foot, 3.8)
+      const down = this.wildlife.nearestDown(this.foot, TAG_RANGE)
       const near = this.nearOwnVehicle()
       const ride = this.nearRemoteBoat()
       if (down) prompt = `E — tag the ${down.doe ? "doe" : down.template.id === "whitetail" ? "buck" : down.template.name.toLowerCase()}`

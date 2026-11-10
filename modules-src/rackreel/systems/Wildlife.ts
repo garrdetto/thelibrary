@@ -8,7 +8,7 @@ import { PLAY_LIMIT, forestDensity } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
 import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, SAFE_DISTANCE, fleeSpeed, react } from './Herd'
 import type { DeerMood } from './Herd'
-import { SPECIES_BY_ID } from './LootTableManager'
+import { SPECIES_BY_ID, classify, measure } from './LootTableManager'
 import type { LootTableManager, SpeciesTemplate, Specimen } from './LootTableManager'
 
 export type AnimalState = DeerMood
@@ -151,6 +151,8 @@ export class Wildlife {
       specimen.value = 0
       specimen.trophyPoints = 0
       specimen.weightLb = Math.round(95 + this.rng() * 50)
+      specimen.sizeClass = 'average'
+      specimen.measures = {}
     }
     const model = this.models.get(template.model as ModelName)!
     const rig = instantiate(model, null, this.scene, (m) => this.ctx.registerDynamic(m))
@@ -300,7 +302,7 @@ export class Wildlife {
       if (this.animals.some((a) => a.id === n.id)) continue
       const template = SPECIES_BY_ID[n.sp as keyof typeof SPECIES_BY_ID]
       if (!template) continue
-      const specimen: Specimen = { species: template.id, value: n.val, weightLb: n.wt, lengthIn: 0, legendary: n.leg, recordTier: this.loot.placement(template.id, n.val), trophyPoints: n.tp, serial: n.id + 100000 }
+      const specimen: Specimen = { species: template.id, value: n.val, weightLb: n.wt, lengthIn: 0, legendary: n.leg, recordTier: this.loot.placement(template.id, n.val), trophyPoints: n.tp, serial: n.id + 100000, sizeClass: n.doe ? 'average' : classify(template.id, n.val), measures: n.doe ? {} : measure(template.id, n.val) }
       const a = this.spawn(template, new Vector3(n.x, this.terrain.heightAt(n.x, n.z), n.z), n.doe, specimen, n.id)
       a.heading = n.h
     }

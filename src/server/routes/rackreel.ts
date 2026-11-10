@@ -2,10 +2,10 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { HttpError, json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
-import { ensureRackreelTables, loadRackreelProfile, saveRackreelProfile } from '../rackreel.js'
-import { ITEM_BY_ID, applyEvent, applyPlaytime, equip, purchase } from '../../../modules-src/rackreel/shared/Economy'
+import { ensureRackreelTables, loadRackreelProfile, loadRecordBoard, resetRecordBoard, saveRackreelProfile, saveRecords } from '../rackreel.js'
+import { FISH_COOLDOWN_MS, GAME_COOLDOWN_MS, ITEM_BY_ID, applyEvent, applyPlaytime, equip, purchase } from '../../../modules-src/rackreel/shared/Economy'
 import type { GameEvent, Slot } from '../../../modules-src/rackreel/shared/Economy'
-import { RECORD_BOOK_SEED, SPECIES_BY_ID } from '../../../modules-src/rackreel/systems/LootTableManager'
+import { RECORD_BOOK_SEED, SPECIES_BY_ID, classify } from '../../../modules-src/rackreel/systems/LootTableManager'
 import type { SpeciesId } from '../../../modules-src/rackreel/systems/LootTableManager'
 
 const slots = ['rod', 'reel', 'line', 'bait', 'rifle', 'scope', 'call', 'scent', 'motor', 'utvKit', 'jacket', 'vest', 'cap', 'pants', 'pack'] as const
@@ -17,6 +17,7 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('tick') }),
   z.object({ action: z.literal('buy'), item: z.string().min(1).max(40) }),
   z.object({ action: z.literal('equip'), slot: z.enum(slots), item: z.string().max(40) }),
+  z.object({ action: z.literal('reset-records') }),
 ])
 
 function sizeShare(species: SpeciesId, value: number): number {
@@ -34,6 +35,7 @@ function plausible(species: SpeciesId, value: number, legendary: boolean): boole
 export async function rackreel(request: Request, env: Env) {
   await ensureRackreelTables(env)
   if (request.method === 'GET') {
+    if (new URL(request.url).searchParams.has('records')) return json({ records: await loadRecordBoard(env) })
     const user = await currentUser(request, env)
     if (!user) return json({ signedIn: false })
     const { profile } = await loadRackreelProfile(env, user.id, user.username)
@@ -44,21 +46,32 @@ export async function rackreel(request: Request, env: Env) {
   const user = await requireUser(request, env, 'Sign in to save your cash and gear.')
   const input = actions.parse(await readJson(request, 2000))
   const now = Date.now()
+  if (input.action === 'reset-records') {
+    if (!user.isAdmin) return json({ error: 'Only the administrator can reset the high scores.' }, 403)
+    await resetRecordBoard(env)
+    return json({ reset: true, records: {} })
+  }
   const { profile, updatedAt } = await loadRackreelProfile(env, user.id, user.username)
   let paid = 0
   let completed: { id: string; text: string; reward: number }[] = []
+  let records: { board: Record<string, unknown>; placed: Record<string, number> } | null = null
   if (input.action === 'fish' || input.action === 'game') {
     const template = SPECIES_BY_ID[input.species]
     if (template.kind !== (input.action === 'fish' ? 'fish' : 'game')) throw new HttpError(400, 'That species does not belong there.')
     const doe = input.action === 'game' && input.doe
     if (!doe && !plausible(input.species, input.value, input.legendary)) throw new HttpError(400, 'That size is not possible here.')
-    const trophy = !doe && (input.legendary || input.value >= template.trophyAt)
+    const sizeClass = classify(input.species, input.value)
+    const legendary = !doe && (sizeClass === 'near-record' || sizeClass === 'record')
+    const trophy = !doe && (legendary || input.value >= template.trophyAt)
     const event: GameEvent = input.action === 'fish'
-      ? { type: 'fish', species: input.species, trophy, boat: input.boat, legendary: input.legendary }
-      : { type: 'game', species: input.species, doe, stand: input.stand, trophy, legendary: !doe && input.legendary }
+      ? { type: 'fish', species: input.species, trophy, boat: input.boat, legendary }
+      : { type: 'game', species: input.species, doe, stand: input.stand, trophy, legendary }
+    const last = input.action === 'fish' ? profile.lastFishAt : profile.lastGameAt
+    const accepted = now - last >= (input.action === 'fish' ? FISH_COOLDOWN_MS : GAME_COOLDOWN_MS)
     const result = applyEvent(profile, event, doe ? 0 : sizeShare(input.species, input.value), now)
     paid = result.paid
     completed = result.completed
+    if (accepted && !doe) records = await saveRecords(env, user.id, user.username, input.species, input.value, now)
   } else if (input.action === 'tick') {
     paid = applyPlaytime(profile, (now - updatedAt) / 60000)
   } else if (input.action === 'buy') {
@@ -70,5 +83,5 @@ export async function rackreel(request: Request, env: Env) {
     if (error) throw new HttpError(400, error)
   }
   await saveRackreelProfile(env, user.id, user.username, profile, now)
-  return json({ profile, paid, completed })
+  return json({ profile, paid, completed, ...(records ? { records: records.board, placed: records.placed } : {}) })
 }
