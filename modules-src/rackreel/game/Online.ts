@@ -93,6 +93,23 @@ export interface OnlineHooks {
 
 const VEHICLE_MODEL: Record<string, ModelName> = { utv: 'utv', boat: 'boat', quad: 'quad' }
 
+const LOBBY_API = '/api/rackreel-lobbies'
+const LOBBY_HEARTBEAT = 20
+
+export interface OpenLobby {
+  code: string
+  host: string
+  players: number
+}
+
+/** Parties whose hosts switched Open lobby on, newest first. */
+export async function fetchLobbies(): Promise<OpenLobby[]> {
+  const response = await fetch(LOBBY_API, { credentials: 'same-origin', cache: 'no-store' })
+  if (!response.ok) throw new Error('Lobby list unavailable')
+  const body = await response.json() as { lobbies?: OpenLobby[] }
+  return Array.isArray(body.lobbies) ? body.lobbies : []
+}
+
 export class Online {
   readonly room: PeerRoom<NetMessage>
   private readonly remotes = new Map<string, Remote>()
@@ -102,23 +119,81 @@ export class Online {
   private hostStates: Record<string, PlayerState> = {}
   private readonly tags: HTMLDivElement
   private readonly passengers = new Set<TransformNode>()
+  private lobbyTimer = 0
+  private lobbyCode = ''
+  private readonly lobbyKey = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => (b % 36).toString(36)).join('')
+  /** The host listed this party in the open lobbies on the start screen. */
+  lobbyOpen = false
   name = 'Guest'
   id = ''
 
   constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly models: Map<ModelName, ModelTemplate>, private readonly hooks: OnlineHooks) {
     this.room = new PeerRoom<NetMessage>(RACKREEL_ROOM, { hostAttempts: 5, rejoinSeconds: 3, maxPeers: PARTY_MAX - 1 }, {
       message: (m, from) => this.receive(m, from),
-      join: () => this.hooks.status(this.describe()),
-      leave: (peer) => {
-        this.drop(peer)
-        delete this.hostStates[peer]
+      join: () => {
+        this.publishLobby()
         this.hooks.status(this.describe())
       },
-      status: (s) => this.hooks.status(this.describe(s)),
+      leave: (peer) => {
+        if (this.room.isHost) this.drop(peer)
+        else for (const id of [...this.remotes.keys()]) this.drop(id)
+        delete this.hostStates[peer]
+        this.publishLobby()
+        this.hooks.status(this.describe())
+      },
+      status: (s) => {
+        if (s === 'error' || s === 'idle') this.closeLobby()
+        this.hooks.status(this.describe(s))
+      },
     })
     this.tags = document.createElement('div')
     this.tags.className = 'hud name-tags'
     document.body.append(this.tags)
+    addEventListener('pagehide', () => this.closeLobby())
+  }
+
+  get isHost(): boolean {
+    return this.room.open && this.room.isHost
+  }
+
+  /** Lists (or unlists) this party for anyone on the start screen. Opens a party first when there isn't one. */
+  async setLobbyOpen(open: boolean): Promise<void> {
+    if (!open) {
+      this.closeLobby()
+      this.hooks.status(this.describe())
+      return
+    }
+    if (this.isGuest) throw new Error('Only the party host can open the lobby.')
+    if (!this.isHost) await this.host()
+    this.lobbyOpen = true
+    this.publishLobby()
+    this.hooks.status(this.describe())
+  }
+
+  private publishLobby(): void {
+    this.lobbyTimer = LOBBY_HEARTBEAT
+    if (!this.lobbyOpen || !this.isHost) return
+    this.lobbyCode = this.room.code
+    void fetch(LOBBY_API, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'open', code: this.room.code, key: this.lobbyKey, players: Math.min(PARTY_MAX, this.room.peers.length + 1), guest: this.name.startsWith('Guest-') ? this.name : undefined }),
+    }).catch(() => undefined)
+  }
+
+  private closeLobby(): void {
+    const code = this.lobbyCode
+    this.lobbyOpen = false
+    this.lobbyCode = ''
+    if (!code) return
+    void fetch(LOBBY_API, {
+      method: 'POST',
+      credentials: 'same-origin',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'close', code, key: this.lobbyKey }),
+    }).catch(() => undefined)
   }
 
   get active(): boolean {
@@ -138,7 +213,7 @@ export class Online {
     if (status === 'opening' || status === 'connecting') return 'Connecting…'
     if (status === 'error') return 'Could not reach the party. Check the code and try again.'
     if (status === 'disconnected') return 'Lost the host — trying to rejoin…'
-    return `Party ${this.room.code} · ${this.remotes.size + 1} of ${PARTY_MAX}`
+    return `Party ${this.room.code} · ${this.remotes.size + 1} of ${PARTY_MAX}${this.lobbyOpen ? ' · open lobby' : ''}`
   }
 
   async host(): Promise<string> {
@@ -149,6 +224,20 @@ export class Online {
 
   async join(code: string): Promise<void> {
     await this.room.join(code)
+  }
+
+  /** Joins and waits until the host answers; rejects when the code doesn't connect. */
+  async joinAndWait(code: string, timeoutMs = 15000): Promise<void> {
+    await this.room.join(code)
+    const deadline = performance.now() + timeoutMs
+    while (this.room.status === 'connecting') {
+      if (performance.now() > deadline) break
+      await new Promise((resolve) => setTimeout(resolve, 150))
+    }
+    if (this.room.status !== 'connected') {
+      this.leave()
+      throw new Error('That party did not answer.')
+    }
   }
 
   leave(): void {
@@ -241,6 +330,10 @@ export class Online {
         this.herdTimer = 0.25
         this.room.send({ t: 'herd', a: herd() })
       }
+    }
+    if (this.lobbyOpen) {
+      this.lobbyTimer -= dt
+      if (this.lobbyTimer <= 0) this.publishLobby()
     }
     this.statusTimer -= dt
     if (this.statusTimer <= 0) {

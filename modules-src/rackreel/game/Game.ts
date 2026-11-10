@@ -47,8 +47,9 @@ import type { PanelTab } from '../ui/Panels'
 import { Cabin } from '../world/Cabin'
 import { Minimap } from '../ui/Minimap'
 import type { MapMarker } from '../ui/Minimap'
-import { Online } from './Online'
+import { Online, fetchLobbies } from './Online'
 import type { PlayerState } from './Online'
+import { LobbyBrowser, PauseMenu, loadSensitivity, saveSensitivity } from '../ui/PauseMenu'
 import { formatValue as fmtValue } from '../systems/LootTableManager'
 import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
@@ -132,6 +133,9 @@ export class Game {
   private ads = 0
   private crouch = false
   private playing = false
+  private headingOut = false
+  private pauseMenu!: PauseMenu
+  private lobbies!: LobbyBrowser
   private time = 0
   private mode: PlayerMode = 'foot'
   private readonly foot = new Vector3()
@@ -266,6 +270,7 @@ export class Game {
           this.wildlife.remote = false
         }
         this.panels?.refresh()
+        this.pauseMenu?.refresh()
       },
       seat: (from) => {
         if (this.mode !== 'vehicle' || this.vehicles.active !== this.boat || this.deckSeat === null) return
@@ -278,6 +283,7 @@ export class Game {
     })
     this.online.id = this.sessionKey
     this.online.carry(this.avatar.root)
+    this.ctx.sensitivity = loadSensitivity()
     const cam = this.ctx.camera
     cam.keysUp = []
     cam.keysDown = []
@@ -301,7 +307,7 @@ export class Game {
       code: () => (this.online.active ? this.online.room.code : ''),
       members: () => this.online.members.map((m) => m.name),
       host: () => this.online.host(),
-      join: (code) => this.online.join(code),
+      join: (code) => this.online.joinAndWait(code),
       leave: () => this.online.leave(),
     }
     void this.progress.load().then(() => {
@@ -323,6 +329,7 @@ export class Game {
     this.hud.setLoading(1, 'Ready')
     document.getElementById('loading')!.hidden = true
     document.getElementById('start')!.hidden = false
+    if (!this.headingOut) this.lobbies.start()
     ;(document.getElementById('start-btn') as HTMLButtonElement).focus()
   }
 
@@ -498,6 +505,9 @@ export class Game {
 
   private bindInput(): void {
     const start = async () => {
+      if (this.playing || this.headingOut) return
+      this.headingOut = true
+      this.lobbies.stop()
       document.getElementById('start')!.hidden = true
       await this.progress.ready
       if (!this.progress.profile.verified) {
@@ -513,6 +523,55 @@ export class Game {
     }
     document.getElementById('start-btn')!.addEventListener('click', () => void start())
     document.getElementById('book-btn')!.addEventListener('click', () => this.showRecords(() => undefined))
+    const startCard = document.querySelector('#start .rr-card') as HTMLElement
+    this.lobbies = new LobbyBrowser(startCard, startCard.querySelector('.rr-actions'), {
+      list: () => fetchLobbies(),
+      join: async (code) => {
+        await this.online.joinAndWait(code)
+        this.hud.toast(`Joined party ${this.online.room.code}. Your friends are marked on the map.`, 'big')
+        await start()
+      },
+    })
+    this.pauseMenu = new PauseMenu({
+      resume: () => this.resume(),
+      inventory: () => {
+        this.pauseMenu.hide()
+        this.panels.openAt('gear', this.mode === 'foot' ? this.cabin.spotNear(this.foot) : null, () => this.pause())
+      },
+      records: () => {
+        this.pauseMenu.hide()
+        this.showRecords(() => this.pause())
+      },
+      sensitivity: () => ({ ...this.ctx.sensitivity }),
+      setSensitivity: (s) => {
+        this.ctx.sensitivity = s
+        saveSensitivity(s)
+      },
+      party: {
+        status: () => this.online.describe(),
+        code: () => (this.online.active ? this.online.room.code : ''),
+        isHost: () => this.online.isHost,
+        isGuest: () => this.online.isGuest,
+        members: () => this.online.members.map((m) => m.name),
+        lobbyOpen: () => this.online.lobbyOpen,
+        host: () => this.online.host(),
+        setLobby: (open) => this.online.setLobbyOpen(open),
+        join: (code) => this.online.joinAndWait(code),
+        leave: () => this.online.leave(),
+      },
+    })
+    addEventListener('keydown', (e) => {
+      if (e.code !== 'Escape' || !this.playing) return
+      if (this.pauseMenu.open) {
+        e.preventDefault()
+        this.resume()
+        return
+      }
+      if (this.hud.modalOpen) return
+      e.preventDefault()
+      if (document.pointerLockElement === this.canvas) document.exitPointerLock()
+      else this.pause()
+    })
     this.canvas.addEventListener('click', () => {
       if (this.playing && !this.hud.modalOpen && document.pointerLockElement !== this.canvas) this.lock()
     })
@@ -597,6 +656,12 @@ export class Game {
     this.leftDown = false
     this.rightDown = false
     this.hud.setPrompt('Paused — click the view to carry on')
+    if (this.playing && !this.hud.modalOpen) this.pauseMenu.show()
+  }
+
+  private resume(): void {
+    this.pauseMenu.hide()
+    this.lock()
   }
 
   private openBook(): void {
@@ -1235,7 +1300,10 @@ export class Game {
     const active = !this.hud.modalOpen
     const v = this.vehicles.active
     const reeling = this.fishing.fighting
-    const lookScale = this.ads > 0.5 ? 0.3 : 1
+    const sens = this.ctx.sensitivity
+    const aimingLook = this.ads > 0.5 || (this.mode === 'bowfish' && this.aimHeld)
+    const lookScale = this.ads > 0.5 ? 0.3 * sens.aim : aimingLook ? sens.aim : sens.look
+    if (this.mode === 'bowfish') cam.angularSensibility = 2200 / (aimingLook ? sens.aim : sens.look)
     cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
     cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
     const input = {
