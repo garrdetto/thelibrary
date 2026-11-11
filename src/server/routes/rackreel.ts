@@ -5,7 +5,7 @@ import { currentUser, requireUser } from '../auth.js'
 import { ensureRackreelTables, loadCategoryBoard, loadRackreelProfile, loadRecordBoard, resetRecordBoard, saveRackreelProfile, saveRecords } from '../rackreel.js'
 import { canResetRecords } from '../records.js'
 import { CATEGORY_BY_ID } from '../../../modules-src/rackreel/shared/Records'
-import { ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, eventCooldown, purchase } from '../../../modules-src/rackreel/shared/Economy'
+import { ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, eventCooldown, makeover, purchase } from '../../../modules-src/rackreel/shared/Economy'
 import type { GameEvent, Slot } from '../../../modules-src/rackreel/shared/Economy'
 import { RECORD_BOOK_SEED, SPECIES_BY_ID, classify } from '../../../modules-src/rackreel/systems/LootTableManager'
 import type { SpeciesId } from '../../../modules-src/rackreel/systems/LootTableManager'
@@ -14,6 +14,11 @@ const slots = ['rod', 'reel', 'line', 'bait', 'rifle', 'scope', 'call', 'scent',
 const speciesIds = Object.keys(SPECIES_BY_ID) as [SpeciesId, ...SpeciesId[]]
 
 const seedSchema = z.number().int().min(0).max(2147483647).default(0)
+const slider = z.number().finite().min(-1).max(1)
+const appearanceSchema = z.object({
+  face: z.string().max(20), hair: z.string().max(20), beard: z.string().max(20),
+  jaw: slider, chin: slider, nose: slider, brow: slider, cheeks: slider, height: slider, build: slider, shoulders: slider,
+})
 
 const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('fish'), species: z.enum(speciesIds), value: z.number().finite().positive(), legendary: z.boolean(), boat: z.boolean(), seed: seedSchema }),
@@ -21,7 +26,8 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('tick') }),
   z.object({ action: z.literal('buy'), item: z.string().min(1).max(40) }),
   z.object({ action: z.literal('equip'), slot: z.enum(slots), item: z.string().max(40) }),
-  z.object({ action: z.literal('create-character'), look: z.object({ jacket: z.string().max(40), vest: z.string().max(40), cap: z.string().max(40), pants: z.string().max(40), pack: z.string().max(40) }) }),
+  z.object({ action: z.literal('create-character'), look: z.object({ jacket: z.string().max(40), vest: z.string().max(40), cap: z.string().max(40), pants: z.string().max(40), pack: z.string().max(40) }), appearance: appearanceSchema.optional() }),
+  z.object({ action: z.literal('makeover'), appearance: appearanceSchema }),
   z.object({ action: z.literal('reset-records'), category: z.string().max(40).refine((id) => id in CATEGORY_BY_ID).optional(), password: z.string().min(1).max(128).optional() }),
 ])
 
@@ -88,7 +94,10 @@ export async function rackreel(request: Request, env: Env) {
     paid = applyPlaytime(profile, (now - updatedAt) / 60000)
   } else if (input.action === 'create-character') {
     if (profile.verified) throw new HttpError(400, 'Your character is already made. Change clothes at the cabin armoire.')
-    const error = createCharacter(profile, input.look)
+    const error = createCharacter(profile, input.look, input.appearance)
+    if (error) throw new HttpError(400, error)
+  } else if (input.action === 'makeover') {
+    const error = makeover(profile, input.appearance)
     if (error) throw new HttpError(400, error)
   } else if (input.action === 'buy') {
     if (!ITEM_BY_ID[input.item]) throw new HttpError(400, 'That item is not in the catalog.')

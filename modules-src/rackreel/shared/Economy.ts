@@ -1,3 +1,6 @@
+import { APPEARANCE_VERSION, DEFAULT_APPEARANCE, normalizeAppearance } from './Appearance'
+import type { Appearance } from './Appearance'
+
 export type Slot = 'rod' | 'reel' | 'line' | 'bait' | 'rifle' | 'scope' | 'call' | 'scent' | 'motor' | 'utvKit' | 'jacket' | 'vest' | 'cap' | 'pants' | 'pack'
 export type ShopGroup = 'Fishing' | 'Hunting' | 'Boats & vehicles' | 'Clothing'
 
@@ -110,10 +113,14 @@ export interface Profile {
   lastGameAt: number
   /** True once the player has made their character. Everyone starts unverified, old saves included. */
   verified: boolean
+  /** Face, hair, beard, face shape and body size. */
+  appearance: Appearance
+  /** The `APPEARANCE_VERSION` this player last set their look at; lower than the current one earns a single free change. */
+  fitted: number
 }
 
 export function defaultProfile(): Profile {
-  const p: Profile = { cash: 250, owned: ITEMS.filter((i) => i.price === 0).map((i) => i.id), loadout: { ...STARTER }, tasks: [], taskCursor: 0, stats: { fish: 0, deer: 0, bears: 0, records: 0, earned: 0 }, lastFishAt: 0, lastGameAt: 0, verified: false }
+  const p: Profile = { cash: 250, owned: ITEMS.filter((i) => i.price === 0).map((i) => i.id), loadout: { ...STARTER }, tasks: [], taskCursor: 0, stats: { fish: 0, deer: 0, bears: 0, records: 0, earned: 0 }, lastFishAt: 0, lastGameAt: 0, verified: false, appearance: { ...DEFAULT_APPEARANCE }, fitted: 0 }
   refillTasks(p)
   return p
 }
@@ -144,6 +151,8 @@ export function normalizeProfile(raw: unknown): Profile {
     lastFishAt: num(r.lastFishAt),
     lastGameAt: num(r.lastGameAt),
     verified: r.verified === true,
+    appearance: normalizeAppearance(r.appearance),
+    fitted: Math.max(0, Math.floor(num(r.fitted))),
   }
   refillTasks(p)
   return p
@@ -336,14 +345,30 @@ export function lookOf(p: Profile): Look {
   return { jacket: p.loadout.jacket, vest: p.loadout.vest, cap: p.loadout.cap, pants: p.loadout.pants, pack: p.loadout.pack }
 }
 
-/** Makes the character: checks every pick, gives and wears it, and marks the profile verified. */
-export function createCharacter(p: Profile, look: Look): string | null {
+/** Makes the character: checks every pick, gives and wears it, sets the look, and marks the profile verified. */
+export function createCharacter(p: Profile, look: Look, appearance?: unknown): string | null {
   for (const slot of LOOK_SLOTS) if (!CHARACTER_CHOICES[slot].includes(look[slot])) return 'That outfit is not offered when making a character.'
   for (const slot of LOOK_SLOTS) {
     const id = look[slot]
     if (!p.owned.includes(id)) p.owned.push(id)
     p.loadout[slot] = id
   }
+  p.appearance = normalizeAppearance(appearance)
+  p.fitted = APPEARANCE_VERSION
   p.verified = true
+  return null
+}
+
+/** True when a made character is owed its one free change of face, hair and build. */
+export function owedMakeover(p: Profile): boolean {
+  return p.verified && p.fitted < APPEARANCE_VERSION
+}
+
+/** The one free change of look for a character made before the current options existed. */
+export function makeover(p: Profile, appearance: unknown): string | null {
+  if (!p.verified) return 'Make your character first.'
+  if (p.fitted >= APPEARANCE_VERSION) return 'You have already updated your look.'
+  p.appearance = normalizeAppearance(appearance)
+  p.fitted = APPEARANCE_VERSION
   return null
 }

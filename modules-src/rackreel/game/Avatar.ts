@@ -2,6 +2,10 @@ import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { disposeSkinned } from '../core/SkinnedModel'
+import { bodyScale, sameAppearance } from '../shared/Appearance'
+import type { Appearance } from '../shared/Appearance'
+import { isNeutral, shapeFace } from '../systems/FaceShape'
+import type { HeadPaint } from './HeadPaint'
 import type { AvatarRig, SkinRig } from '../core/SkinnedModel'
 import { HUNTER_ARMS, solveArm } from '../systems/ArmReach'
 import type { ArmChain, Vec3 } from '../systems/ArmReach'
@@ -84,6 +88,13 @@ export class Avatar {
   private gaitPhase = 0
   private idleClock = 0
   private backBlend = 0
+  private look: Appearance | null = null
+  private tall = 1
+  private headKey = ''
+  private headPaint: HeadPaint | null = null
+  private lookTurn = 0
+  private faceScratch: Float32Array | null = null
+  private gone = false
 
   constructor(readonly rig: AvatarRig) {
     this.root = rig.root
@@ -158,8 +169,45 @@ export class Avatar {
     for (const m of this.meshes) m.isVisible = visible
   }
 
+  /**
+   * Gives the skinned hunter a face, hair and beard from the painted heads, a face shape and a body size. The body
+   * grows from the hips (so a seat still fits) and the standing hip height follows; the head keeps its size whatever
+   * the build.
+   */
+  setAppearance(a: Appearance, paint: HeadPaint): void {
+    const skin = this.skin
+    if (!skin || (this.look && sameAppearance(this.look, a))) return
+    const before = this.look
+    this.look = { ...a }
+    const size = bodyScale(a)
+    this.tall = size.height
+    this.j.hips.scaling.set(size.height * size.build, size.height, size.height * size.build)
+    this.j.spine2.scaling.set(size.shoulders, 1, 1)
+    this.j.neck.scaling.set(1 / (size.build * size.shoulders), 1, 1 / size.build)
+    if (isNeutral(a)) skin.shapeFace(null)
+    else {
+      this.faceScratch ??= new Float32Array(skin.faceBase.length)
+      skin.shapeFace(shapeFace(skin.faceBase, skin.meta.head, a, this.faceScratch))
+    }
+    if (before && before.face === a.face && before.hair === a.hair && before.beard === a.beard) return
+    const turn = ++this.lookTurn
+    this.headPaint = paint
+    void paint.acquire(a.face, a.hair, a.beard).then((head) => {
+      if (turn !== this.lookTurn || this.gone) {
+        paint.release(head.key)
+        return
+      }
+      skin.paintHead(head.material)
+      paint.release(this.headKey)
+      this.headKey = head.key
+    }, () => undefined)
+  }
+
   /** Frees the rig. Unparent anything riding a hand first. */
   dispose(unregister?: (mesh: AbstractMesh) => void): void {
+    this.gone = true
+    this.headPaint?.release(this.headKey)
+    this.headKey = ''
     if (this.skin) {
       disposeSkinned(this.rig, unregister)
       return
@@ -432,7 +480,7 @@ export class Avatar {
     }
     const hips = this.j.hips
     const hw = this.clipWeight[0]
-    if (posed) hips.position.set(lerp(this.hipRest.x, blend.hips[0], hw), lerp(this.hipRest.y, blend.hips[1], hw), lerp(this.hipRest.z, blend.hips[2], hw))
+    if (posed) hips.position.set(lerp(this.hipRest.x, blend.hips[0], hw), lerp(this.hipRest.y, blend.hips[1] * this.tall, hw), lerp(this.hipRest.z, blend.hips[2], hw))
     else hips.position.copyFrom(this.hipRest)
   }
 
