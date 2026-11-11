@@ -1,4 +1,5 @@
 import { Constants } from '@babylonjs/core/Engines/constants'
+import { ShaderLanguage } from '@babylonjs/core/Materials/shaderLanguage'
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
@@ -149,7 +150,11 @@ export function buildGround(ctx: EngineContext, terrain: Terrain): Mesh {
 export function buildSky(ctx: EngineContext): { mesh: Mesh; material: ShaderMaterial } {
   const { scene } = ctx
   const mesh = CreateSphere('sky', { diameter: 2000, segments: 24, sideOrientation: Mesh.BACKSIDE }, scene)
-  const material = new ShaderMaterial('sky-mat', scene, 'rrSky', { attributes: ['position'], uniforms: ['worldViewProjection', 'sunDir', 'moonDir', 'night', 'glow', 'time'] })
+  const material = new ShaderMaterial('sky-mat', scene, 'rrSky', {
+    attributes: ['position'],
+    uniforms: ['worldViewProjection', 'sunDir', 'moonDir', 'night', 'glow', 'time'],
+    shaderLanguage: ctx.engine.isWebGPU ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
+  })
   material.setVector3('sunDir', ctx.sunDirection.scale(-1))
   material.setVector3('moonDir', ctx.sunDirection.clone())
   material.setFloat('night', 0)
@@ -187,6 +192,7 @@ export function buildWater(ctx: EngineContext, terrain: Terrain): { mesh: Mesh; 
     uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
     samplers: ['depthMap'],
     needAlphaBlending: true,
+    shaderLanguage: ctx.engine.isWebGPU ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
   })
   material.setTexture('depthMap', depthMap)
   material.setVector3('sunDir', ctx.sunDirection.scale(-1))

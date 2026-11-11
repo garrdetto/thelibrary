@@ -16,6 +16,6 @@ async function boot(): Promise<void> {
 
 boot().catch((error: unknown) => {
   const status = document.getElementById('load-text')
-  if (status) status.textContent = 'This learning module could not start on this device. It needs WebGL2.'
+  if (status) status.textContent = 'This learning module could not start on this device. It needs WebGPU or WebGL2.'
   console.error(error)
 })

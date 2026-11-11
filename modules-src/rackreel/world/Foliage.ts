@@ -1,20 +1,22 @@
 import type { Material } from '@babylonjs/core/Materials/material'
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
-import { Color3 } from '@babylonjs/core/Maths/math.color'
+import type { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
-import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import '@babylonjs/core/Meshes/thinInstanceMesh'
 import '@babylonjs/core/Rendering/boundingBoxRenderer'
 import type { EngineContext, TrunkCollider } from '../core/EngineSetup'
 import type { ModelName, ModelTemplate } from '../core/ModelLibrary'
+import { FloatBatch, composeInstance, crownColor, hash, writeTint } from './FoliagePlacement'
+import type { GrassHole, Rgb, TreeKind } from './FoliagePlacement'
+import type { FoliageLook, FoliageMaterial, FoliageShading } from './FoliageShader'
+import { GrassField } from './GrassField'
+import { linkGeometry } from './SharedGeometry'
 import { HALF, HIGHWAY, Terrain, fbm, forestDensity, highwayCoord, lakeCoord, marshWeight, trailOffset } from './Terrain'
 
 export const STAND_SIZE = 128
 export const STANDS = Math.round((HALF * 2) / STAND_SIZE)
-export const GRASS_RADIUS = 72
-export const GRASS_CAPACITY = 16000
 const SHADOW_STAND_RADIUS = 150
 const FLAGS = new URLSearchParams(typeof location === 'undefined' ? '' : location.search)
 const USE_OCCLUSION = FLAGS.get('occ') !== '0'
@@ -22,13 +24,19 @@ const USE_LOD = FLAGS.get('lod') !== '0'
 const USE_FREEZE = FLAGS.get('freeze') !== '0'
 const USE_PARENT = FLAGS.get('parent') !== '0'
 
-type TreeKind = 'pine' | 'hardwood' | 'birch'
+const TREE_KINDS: readonly TreeKind[] = ['pine', 'hardwood', 'birch']
 type Scatter = 'fern' | 'rock' | 'log' | 'cattail'
-
-interface Batch {
-  matrices: number[]
-  colors: number[] | null
+const SCATTER: readonly Scatter[] = ['fern', 'rock', 'log', 'cattail']
+const SCATTER_PARTS: Record<Scatter, [ModelName, string]> = { fern: ['fern', 'fronds'], rock: ['rock', 'rock'], log: ['log', 'log'], cattail: ['cattail', 'reeds'] }
+const SCATTER_CUTOFF: Record<Scatter, number> = { fern: 120, rock: 340, log: 220, cattail: 170 }
+const LOD_MODEL: Record<TreeKind, ModelName> = { pine: 'pine-lo', hardwood: 'hardwood-lo', birch: 'birch-lo' }
+/** Trunk and crown of a kind share one sway, so the crown stays on the trunk; only the crown's leaves shiver. */
+const TREE_SWAY: Record<TreeKind, Pick<FoliageLook, 'threshold' | 'range' | 'sway' | 'speed' | 'ripple'>> = {
+  pine: { threshold: 1.2, range: 15, sway: 0.26, speed: 0.9, ripple: 0.05 },
+  hardwood: { threshold: 1.0, range: 11, sway: 0.2, speed: 0.8, ripple: 0.05 },
+  birch: { threshold: 1.0, range: 10.5, sway: 0.3, speed: 1.0, ripple: 0.05 },
 }
+const WHITE: Rgb = [1, 1, 1]
 
 interface Stand {
   node: TransformNode
@@ -37,47 +45,25 @@ interface Stand {
   meshes: Mesh[]
 }
 
-function hash(x: number, z: number, salt: number): number {
-  let h = Math.imul(Math.floor(x) ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(Math.floor(z) + salt * 7919, 0xc2b2ae35)
-  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d)
-  h = Math.imul(h ^ (h >>> 12), 0x297a2d39)
-  return ((h ^ (h >>> 15)) >>> 0) / 4294967296
-}
-
-const HARDWOOD_COLORS: [number, number, number][] = [
-  [0.48, 0.62, 0.26], [0.42, 0.56, 0.22], [0.55, 0.64, 0.28], [1.0, 0.52, 0.14], [0.95, 0.3, 0.1], [1.0, 0.78, 0.24], [0.86, 0.42, 0.12], [0.62, 0.66, 0.24],
-]
-const BIRCH_COLORS: [number, number, number][] = [[0.95, 0.86, 0.3], [0.7, 0.78, 0.3], [1.0, 0.72, 0.2]]
-
 export class Foliage {
   readonly stands: Stand[] = []
   readonly colliders: TrunkCollider[] = []
-  readonly grassHoles: { x: number; z: number; r: number }[] = []
-  readonly grass: Mesh
-  private readonly grassMatrices = new Float32Array(GRASS_CAPACITY * 16)
-  private grassCenter = new Vector3(1e9, 0, 1e9)
+  readonly grassHoles: GrassHole[] = []
+  readonly grass: GrassField
   private shadowStands = new Set<Stand>()
   private extraCount = -1
-  private lastExtra: AbstractMesh[] = []
+  private readonly lastExtra: AbstractMesh[] = []
   private nearScratch = new Set<Stand>()
-  private readonly tints = new Map<string, Material>()
-  private readonly tmp = Matrix.Identity()
-  private readonly q = new Quaternion()
-  private readonly s = new Vector3()
-  private readonly p = new Vector3()
+  private primed = false
+  private readonly treeMatrices: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(4096), hardwood: new FloatBatch(4096), birch: new FloatBatch(1024) }
+  private readonly trunkTints: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(1024), hardwood: new FloatBatch(1024), birch: new FloatBatch(256) }
+  private readonly crownTints: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(1024), hardwood: new FloatBatch(1024), birch: new FloatBatch(256) }
+  private readonly scatterMatrices: Record<Scatter, FloatBatch> = { fern: new FloatBatch(4096), rock: new FloatBatch(256), log: new FloatBatch(256), cattail: new FloatBatch(4096) }
+  private readonly scatterTints: Record<Scatter, FloatBatch> = { fern: new FloatBatch(1024), rock: new FloatBatch(16), log: new FloatBatch(16), cattail: new FloatBatch(1024) }
 
-  constructor(private readonly ctx: EngineContext, private readonly terrain: Terrain, private readonly models: Map<ModelName, ModelTemplate>, private readonly keepClear: Vector3[]) {
+  constructor(private readonly ctx: EngineContext, private readonly terrain: Terrain, private readonly models: Map<ModelName, ModelTemplate>, private readonly keepClear: Vector3[], private readonly shading: FoliageShading) {
     for (let sj = 0; sj < STANDS; sj++) for (let si = 0; si < STANDS; si++) this.buildStand(si, sj)
-    const grassTemplate = this.models.get('grass')!.parts.get('blades')!.mesh
-    this.grass = new Mesh('grass-ring', ctx.scene)
-    grassTemplate.geometry!.copy('grass-ring-geo').applyToMesh(this.grass)
-    this.grass.material = grassTemplate.material
-    this.grass.isPickable = false
-    this.grass.receiveShadows = true
-    this.grass.alwaysSelectAsActiveMesh = true
-    this.grass.thinInstanceSetBuffer('matrix', this.grassMatrices, 16, false)
-    this.grass.thinInstanceCount = 0
-    ctx.registerDynamic(this.grass)
+    this.grass = new GrassField(ctx, terrain, this.models.get('grass')!.parts.get('blades')!.mesh, shading, this.grassHoles)
   }
 
   private clear(x: number, z: number, r: number): boolean {
@@ -85,21 +71,33 @@ export class Foliage {
     return true
   }
 
-  private pushMatrix(list: number[], x: number, y: number, z: number, yaw: number, scale: number, tiltX = 0, tiltZ = 0, sy = scale): void {
-    Quaternion.FromEulerAnglesToRef(tiltX, yaw, tiltZ, this.q)
-    this.s.set(scale, sy, scale)
-    this.p.set(x, y, z)
-    Matrix.ComposeToRef(this.s, this.q, this.p, this.tmp)
-    const m = this.tmp.m
-    for (let i = 0; i < 16; i++) list.push(m[i])
+  private trunkMaterial(kind: TreeKind): FoliageMaterial {
+    return this.shading.material(`${kind}-trunk`, { ...TREE_SWAY[kind], ambient: 0.3 })
+  }
+
+  private crownMaterial(kind: TreeKind): FoliageMaterial {
+    const source = this.models.get(kind)!.parts.get('crown')!.mesh.material as StandardMaterial
+    return this.shading.material(`${kind}-crown`, { ...TREE_SWAY[kind], flutter: 0.035, twoSided: true, translucency: 0.25, ambient: 0, texture: source.diffuseTexture ?? undefined })
+  }
+
+  private scatterMaterial(kind: Scatter, source: Mesh): Material {
+    if (kind === 'fern') return this.shading.material('fern', { threshold: 0.04, range: 0.5, sway: 0.07, speed: 1.6, ripple: 0.3, flutter: 0.008, twoSided: true, upward: 0.3, translucency: 0.2, ambient: 0.3 })
+    if (kind === 'cattail') return this.shading.material('cattail', { threshold: 0.1, range: 1.7, sway: 0.17, speed: 1.3, ripple: 0.25, flutter: 0.004, twoSided: true, upward: 0.2, translucency: 0.15, ambient: 0.3 })
+    return source.material!
   }
 
   private buildStand(si: number, sj: number): void {
     const x0 = -HALF + si * STAND_SIZE
     const z0 = -HALF + sj * STAND_SIZE
-    const trunks: Record<TreeKind, Batch> = { pine: { matrices: [], colors: null }, hardwood: { matrices: [], colors: null }, birch: { matrices: [], colors: null } }
-    const crowns = new Map<string, Batch>()
-    const scatter: Record<Scatter, Batch> = { fern: { matrices: [], colors: null }, rock: { matrices: [], colors: null }, log: { matrices: [], colors: null }, cattail: { matrices: [], colors: null } }
+    for (const kind of TREE_KINDS) {
+      this.treeMatrices[kind].reset()
+      this.trunkTints[kind].reset()
+      this.crownTints[kind].reset()
+    }
+    for (const kind of SCATTER) {
+      this.scatterMatrices[kind].reset()
+      this.scatterTints[kind].reset()
+    }
     const treeCell = 6.5
     for (let gz = 0; gz < STAND_SIZE / treeCell; gz++) {
       for (let gx = 0; gx < STAND_SIZE / treeCell; gx++) {
@@ -116,12 +114,16 @@ export class Foliage {
         const kind: TreeKind = pick < 0.12 ? 'birch' : zone + (pick - 0.5) * 0.5 > -0.05 ? 'pine' : 'hardwood'
         const scale = 0.72 + hash(cx, cz, 5) * 0.55
         const yaw = hash(cx, cz, 6) * Math.PI * 2
-        const tint = kind === 'hardwood' ? Math.floor(hash(cx, cz, 10) * HARDWOOD_COLORS.length) : kind === 'birch' ? Math.floor(hash(cx, cz, 10) * BIRCH_COLORS.length) : 0
-        const key = `${kind}:${tint}`
-        if (!crowns.has(key)) crowns.set(key, { matrices: [], colors: null })
-        const before = trunks[kind].matrices.length
-        this.pushMatrix(trunks[kind].matrices, x, h - 0.15, z, yaw, scale, (hash(cx, cz, 7) - 0.5) * 0.06, (hash(cx, cz, 8) - 0.5) * 0.06, scale * (0.9 + hash(cx, cz, 9) * 0.25))
-        crowns.get(key)!.matrices.push(...trunks[kind].matrices.slice(before))
+        const matrices = this.treeMatrices[kind]
+        const at = matrices.reserve(16)
+        composeInstance(matrices.data, at, x, h - 0.15, z, yaw, scale, scale * (0.9 + hash(cx, cz, 9) * 0.25), scale, (hash(cx, cz, 7) - 0.5) * 0.06, (hash(cx, cz, 8) - 0.5) * 0.06)
+        const phase = hash(cx, cz, 50)
+        const trunk = this.trunkTints[kind]
+        const trunkAt = trunk.reserve(4)
+        writeTint(trunk.data, trunkAt, WHITE, cx, cz, 31, 0.14, phase)
+        const crown = this.crownTints[kind]
+        const crownAt = crown.reserve(4)
+        writeTint(crown.data, crownAt, crownColor(kind, cx, cz), cx, cz, 41, kind === 'pine' ? 0.16 : 0.12, phase)
         const r = (kind === 'birch' ? 0.25 : kind === 'pine' ? 0.34 : 0.42) * scale + 0.25
         this.colliders.push({ x, z, r, min: new Vector3(x - r, h - 1, z - r), max: new Vector3(x + r, h + 12, z + r) })
       }
@@ -138,80 +140,76 @@ export class Foliage {
         const { s, angle } = lakeCoord(x, z)
         if (h > -0.5 && h < 0.7 && s > 0.85 && s < 1.6) {
           const marsh = marshWeight(angle)
-          if (roll < 0.18 + marsh * 0.6) this.pushMatrix(scatter.cattail.matrices, x, h - 0.05, z, roll * 40, 0.8 + hash(cx, cz, 14) * 0.5)
+          if (roll < 0.18 + marsh * 0.6) this.scatter('cattail', cx, cz, x, h - 0.05, z, roll * 40, 0.8 + hash(cx, cz, 14) * 0.5)
           continue
         }
         if (h < 0.9 || !this.clear(x, z, 6) || trailOffset(x, z) < 3 || highwayCoord(x, z).across < HIGHWAY.halfWidth + 3) continue
         const density = forestDensity(x, z)
         if (roll < density * 0.32) {
-          this.pushMatrix(scatter.fern.matrices, x, h - 0.05, z, roll * 60, 0.75 + hash(cx, cz, 15) * 0.7)
+          this.scatter('fern', cx, cz, x, h - 0.05, z, roll * 60, 0.75 + hash(cx, cz, 15) * 0.7)
         } else if (roll > 0.993 - this.terrain.slopeAt(x, z) * 0.02) {
           const sc = 0.5 + hash(cx, cz, 16) * 1.3
-          this.pushMatrix(scatter.rock.matrices, x, h - 0.25 * sc, z, roll * 90, sc, 0, 0, sc * (0.7 + hash(cx, cz, 17) * 0.5))
+          this.scatter('rock', cx, cz, x, h - 0.25 * sc, z, roll * 90, sc, sc * (0.7 + hash(cx, cz, 17) * 0.5))
           const r = 1.05 * sc
           this.colliders.push({ x, z, r, min: new Vector3(x - r, h - 1, z - r), max: new Vector3(x + r, h + 2, z + r) })
         } else if (roll > 0.985 && density > 0.5) {
-          this.pushMatrix(scatter.log.matrices, x, h - 0.05, z, roll * 70, 0.8 + hash(cx, cz, 18) * 0.4)
+          this.scatter('log', cx, cz, x, h - 0.05, z, roll * 70, 0.8 + hash(cx, cz, 18) * 0.4)
         }
       }
     }
     const node = new TransformNode(`stand_${si}_${sj}`, this.ctx.scene)
     const stand: Stand = { node, center: new Vector3(x0 + STAND_SIZE / 2, 0, z0 + STAND_SIZE / 2), casters: [], meshes: [] }
-    const lodNames: Record<TreeKind, ModelName> = { pine: 'pine-lo', hardwood: 'hardwood-lo', birch: 'birch-lo' }
-    const addTree = (name: string, kind: TreeKind, part: string, batch: Batch, tint: string | null) => {
-      const hi = this.thinMesh(stand, name, kind, part, batch, tint)
-      const lo = this.thinMesh(stand, `${name}-lo`, lodNames[kind], part, batch, tint, true)
-      if (USE_LOD) {
-        hi.addLODLevel(115, lo)
-        hi.addLODLevel(640, null)
-      } else lo.setEnabled(false)
-      stand.casters.push(hi)
+    for (const kind of TREE_KINDS) {
+      if (!this.treeMatrices[kind].length) continue
+      const matrices = this.treeMatrices[kind].toArray()
+      this.addTree(stand, kind, 'trunk', matrices, this.trunkTints[kind].toArray(), this.trunkMaterial(kind))
+      this.addTree(stand, kind, 'crown', matrices, this.crownTints[kind].toArray(), this.crownMaterial(kind))
     }
-    for (const kind of Object.keys(trunks) as TreeKind[]) if (trunks[kind].matrices.length) addTree(`${kind}-trunk`, kind, 'trunk', trunks[kind], null)
-    for (const [key, batch] of crowns) addTree(`${key.replace(':', '-')}-crown`, key.split(':')[0] as TreeKind, 'crown', batch, key)
-    const cutoffs: Record<Scatter, number> = { fern: 120, rock: 340, log: 220, cattail: 170 }
-    const parts: Record<Scatter, [ModelName, string]> = { fern: ['fern', 'fronds'], rock: ['rock', 'rock'], log: ['log', 'log'], cattail: ['cattail', 'reeds'] }
-    for (const kind of Object.keys(scatter) as Scatter[]) {
-      const batch = scatter[kind]
-      if (!batch.matrices.length) continue
-      const mesh = this.thinMesh(stand, kind, parts[kind][0], parts[kind][1], batch, null)
-      if (USE_LOD) mesh.addLODLevel(cutoffs[kind], null)
-      if (kind === 'rock' || kind === 'log') stand.casters.push(mesh)
+    for (const kind of SCATTER) {
+      const batch = this.scatterMatrices[kind]
+      if (!batch.length) continue
+      const [model, part] = SCATTER_PARTS[kind]
+      const source = this.models.get(model)!.parts.get(part)!.mesh
+      const swaying = kind === 'fern' || kind === 'cattail'
+      const mesh = this.thinMesh(stand, kind, source, batch.toArray(), swaying ? this.scatterTints[kind].toArray() : null, this.scatterMaterial(kind, source))
+      if (USE_LOD) mesh.addLODLevel(SCATTER_CUTOFF[kind], null)
+      if (!swaying) stand.casters.push(mesh)
     }
     this.stands.push(stand)
   }
 
-  private crownMaterial(key: string, base: Material): Material {
-    const cacheKey = `${key}|${base.name}`
-    const found = this.tints.get(cacheKey)
-    if (found) return found
-    const [kind, index] = key.split(':')
-    const c = kind === 'hardwood' ? HARDWOOD_COLORS[Number(index)] : kind === 'birch' ? BIRCH_COLORS[Number(index)] : ([1, 1, 1] as [number, number, number])
-    const src = base as StandardMaterial
-    const mat = new StandardMaterial(`crown-${key}-${src.name}`, this.ctx.scene)
-    mat.diffuseTexture = src.diffuseTexture
-    mat.specularColor = src.specularColor.clone()
-    mat.ambientColor = src.ambientColor.clone()
-    mat.backFaceCulling = src.backFaceCulling
-    mat.twoSidedLighting = src.twoSidedLighting
-    mat.transparencyMode = src.transparencyMode
-    mat.alphaCutOff = src.alphaCutOff
-    mat.useAlphaFromDiffuseTexture = src.useAlphaFromDiffuseTexture
-    mat.diffuseColor = new Color3(c[0], c[1], c[2])
-    this.tints.set(cacheKey, mat)
-    return mat
+  private scatter(kind: Scatter, cx: number, cz: number, x: number, y: number, z: number, yaw: number, scale: number, sy = scale): void {
+    const matrices = this.scatterMatrices[kind]
+    const at = matrices.reserve(16)
+    composeInstance(matrices.data, at, x, y, z, yaw, scale, sy, scale)
+    if (kind !== 'fern' && kind !== 'cattail') return
+    const tints = this.scatterTints[kind]
+    const tintAt = tints.reserve(4)
+    writeTint(tints.data, tintAt, WHITE, cx, cz, kind === 'fern' ? 61 : 71, 0.22, hash(cx, cz, 60))
   }
 
-  private thinMesh(stand: Stand, name: string, model: ModelName, part: string, batch: Batch, tint: string | null, isLod = false): Mesh {
-    const source = this.models.get(model)!.parts.get(part)!.mesh
+  private addTree(stand: Stand, kind: TreeKind, part: string, matrices: Float32Array, tints: Float32Array, material: Material): void {
+    const hi = this.thinMesh(stand, `${kind}-${part}`, this.models.get(kind)!.parts.get(part)!.mesh, matrices, tints, material)
+    const lo = this.thinMesh(stand, `${kind}-${part}-lo`, this.models.get(LOD_MODEL[kind])!.parts.get(part)!.mesh, matrices, tints, material, true)
+    if (USE_LOD) {
+      hi.addLODLevel(115, lo)
+      hi.addLODLevel(640, null)
+    } else lo.setEnabled(false)
+    stand.casters.push(hi)
+  }
+
+  private thinMesh(stand: Stand, name: string, source: Mesh, matrices: Float32Array, tints: Float32Array | null, material: Material, isLod = false): Mesh {
     const mesh = new Mesh(`${stand.node.name}-${name}`, this.ctx.scene)
-    source.geometry!.copy(`${mesh.name}-geo`).applyToMesh(mesh)
-    mesh.material = tint ? this.crownMaterial(tint, source.material!) : source.material
+    linkGeometry(source, mesh)
+    mesh.material = material
     if (USE_PARENT) mesh.parent = stand.node
     mesh.isPickable = false
     mesh.receiveShadows = true
-    mesh.thinInstanceSetBuffer('matrix', new Float32Array(batch.matrices), 16, true)
-    mesh.thinInstanceRefreshBoundingInfo(false)
+    mesh.thinInstanceSetBuffer('matrix', matrices, 16, true)
+    if (tints) {
+      mesh.thinInstanceRegisterAttribute('instanceColor', 4)
+      mesh.thinInstanceSetBuffer('instanceColor', tints, 4, true)
+    }
     if (!isLod && USE_OCCLUSION) {
       mesh.occlusionType = AbstractMesh.OCCLUSION_TYPE_OPTIMISTIC
       mesh.occlusionQueryAlgorithmType = AbstractMesh.OCCLUSION_ALGORITHM_TYPE_CONSERVATIVE
@@ -222,48 +220,17 @@ export class Foliage {
       mesh.doNotSyncBoundingInfo = true
     }
     stand.meshes.push(mesh)
+    this.shading.lightProbe ??= mesh
     return mesh
   }
 
   updateGrass(center: Vector3): void {
-    const dx = center.x - this.grassCenter.x
-    const dz = center.z - this.grassCenter.z
-    if (dx * dx + dz * dz < 14 * 14) return
-    this.grassCenter.copyFrom(center)
-    const cell = 1.05
-    const r = GRASS_RADIUS
-    const x0 = Math.floor((center.x - r) / cell)
-    const x1 = Math.floor((center.x + r) / cell)
-    const z0 = Math.floor((center.z - r) / cell)
-    const z1 = Math.floor((center.z + r) / cell)
-    let count = 0
-    const out = this.grassMatrices
-    for (let gz = z0; gz <= z1 && count < GRASS_CAPACITY; gz++) {
-      for (let gx = x0; gx <= x1 && count < GRASS_CAPACITY; gx++) {
-        const x = (gx + hash(gx, gz, 21)) * cell
-        const z = (gz + hash(gx, gz, 22)) * cell
-        const ddx = x - center.x
-        const ddz = z - center.z
-        const d2 = ddx * ddx + ddz * ddz
-        if (d2 > r * r) continue
-        const h = this.terrain.heightAt(x, z)
-        if (h < 0.55) continue
-        if (highwayCoord(x, z).across < HIGHWAY.halfWidth + 1.5) continue
-        if (this.grassHoles.some((g) => (g.x - x) ** 2 + (g.z - z) ** 2 < g.r * g.r)) continue
-        const density = forestDensity(x, z)
-        const want = (0.78 - density * 0.62) * (trailOffset(x, z) < 2.4 ? 0.1 : 1) * (1 - Math.sqrt(d2) / r * 0.45)
-        if (hash(gx, gz, 23) > want) continue
-        const sc = 0.7 + hash(gx, gz, 24) * 0.8
-        Quaternion.FromEulerAnglesToRef(0, hash(gx, gz, 25) * 6.283, 0, this.q)
-        this.s.set(sc, sc * (0.8 + hash(gx, gz, 26) * 0.6), sc)
-        this.p.set(x, h - 0.03, z)
-        Matrix.ComposeToRef(this.s, this.q, this.p, this.tmp)
-        this.tmp.copyToArray(out, count * 16)
-        count++
-      }
+    if (this.primed) {
+      this.grass.update(center)
+      return
     }
-    this.grass.thinInstanceCount = count
-    this.grass.thinInstanceBufferUpdated('matrix')
+    this.primed = true
+    this.grass.prime(center)
   }
 
   updateShadowCasters(focus: Vector3, extra: AbstractMesh[]): void {
@@ -282,8 +249,13 @@ export class Foliage {
     if (changed || !map.renderList || map.renderList.length === 0) {
       this.nearScratch = this.shadowStands
       this.shadowStands = near
-      this.lastExtra = extra.slice()
-      const list: AbstractMesh[] = extra.slice()
+      const last = this.lastExtra
+      last.length = extra.length
+      const list: AbstractMesh[] = []
+      for (let i = 0; i < extra.length; i++) {
+        last[i] = extra[i]
+        list.push(extra[i])
+      }
       for (const stand of near) for (const mesh of stand.casters) list.push(mesh)
       map.renderList = list
     }
@@ -292,5 +264,17 @@ export class Foliage {
   forceShadowRefresh(): void {
     this.shadowStands = new Set()
     this.extraCount = -1
+  }
+
+  dispose(): void {
+    this.grass.dispose()
+    for (const stand of this.stands) {
+      for (const mesh of stand.meshes) mesh.dispose()
+      stand.node.dispose()
+    }
+    this.stands.length = 0
+    this.shadowStands.clear()
+    this.nearScratch.clear()
+    this.lastExtra.length = 0
   }
 }
