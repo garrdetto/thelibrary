@@ -46,7 +46,7 @@ export const HOLE = HOLE_PITCH_MM / 1000
  * lines, growing to `greenEdgeHoles` holes at the edge of the green (`floorSpread` to all of it), then holding. On top of that, `nearMissChance` of
  * the darts outside the lines miss by a few holes (`nearMissHoles`, low to high), so a dart that just misses the white lines often leaves the bull.
  * Past the green a dart can also miss further, with `meterMissChance` (from `lineMissChance` at the green edge up to `bandMissChance` at the band
- * edge), by `missFloor` to all of the reach, in any direction. Every miss distance here is 20 % bigger than it first was. The cross meter (`ThrowIntent.cross`, a test option) has no chance in it: the
+ * edge), by `missFloor` to all of the reach, in any direction. Every miss distance here is 40 % bigger than it first was. The cross meter (`ThrowIntent.cross`, a test option) has no chance in it: the
  * vertical reading misses high or low and the horizontal one left or right, each by `crossDistance`, with `sideRedHoles` more per 5 % into the red sideways.
  * `levelScale` tightens (Easy) or widens (Hard) the reach.
  */
@@ -57,17 +57,17 @@ export const METER = {
   exact: 0.00625 / 0.017,
   reachLine: 0.02 / 0.017,
   lineRamp: 0.4,
-  greenHoles: 8.4,
-  yellowHoles: 14.4,
-  lineMissChance: 0.49,
+  greenHoles: 9.8,
+  yellowHoles: 16.8,
+  lineMissChance: 0.57,
   bandMissChance: 1,
   missFloor: 0.4,
-  greenEdgeHoles: 2.4,
+  greenEdgeHoles: 2.8,
   floorSpread: 0.8,
-  nearMissChance: 0.4,
-  nearMissHoles: [4.8, 7.2] as readonly [number, number],
+  nearMissChance: 0.47,
+  nearMissHoles: [5.6, 8.4] as readonly [number, number],
   sideRange: 0.15,
-  sideRedHoles: 9.6,
+  sideRedHoles: 11.2,
   levelScale: { easy: 0.75, normal: 1, hard: 1.25 } as Record<PlayerLevel, number>,
 } as const
 
