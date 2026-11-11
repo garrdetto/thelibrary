@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Autopilot, ROUTE, SPEED, STUNT, buildLoops, clearanceDistance, dockLine, findLaunch, nearestIndex, planHomeStunt } from '../systems/BowRoutes'
+import { Autopilot, ROUTE, SPEED, STUNT, buildLoops, clearanceDistance, dockLine, findLaunch, nearestIndex, planHomeStunt, shoreDistance } from '../systems/BowRoutes'
 import type { RouteName } from '../systems/BowRoutes'
 import { HIGHWAY, ISLAND, Terrain, highwayCoord } from '../world/Terrain'
 
@@ -30,6 +30,18 @@ test('every loop stays in boat water and clear of the dock and the parked boat',
   }
   const ring = loops.island.map((p) => Math.hypot(p.x - ISLAND.x, p.z - ISLAND.z))
   assert.ok(Math.min(...ring) > ISLAND.r * 0.5 && Math.max(...ring) < ISLAND.r * 3, 'the island loop circles the island')
+})
+
+test('every loop keeps the boat 5 to 10 yards off the water\'s edge, hugging the shore most of the way', () => {
+  for (const [name, loop] of Object.entries(loops)) {
+    const gaps = loop.map((p) => shoreDistance(terrain, p, 40))
+    for (let i = 0; i < loop.length; i++) assert.ok(gaps[i] >= ROUTE.shoreGapMin, `${name} point ${i} is ${gaps[i]} m off the shore`)
+    const sorted = [...gaps].sort((a, b) => a - b)
+    const median = sorted[Math.floor(sorted.length / 2)]
+    assert.ok(median >= 4.5 && median <= 9.2, `${name} runs ${median} m off the shore on a typical stretch`)
+    const inBand = gaps.filter((g) => g <= 9.2).length / gaps.length
+    assert.ok(inBand >= 0.7, `${name} is within 10 yards of the shore only ${Math.round(inBand * 100)}% of the way`)
+  }
 })
 
 function drive(ap: Autopilot, seconds: number, until?: (e: ReturnType<Autopilot['update']>) => boolean) {

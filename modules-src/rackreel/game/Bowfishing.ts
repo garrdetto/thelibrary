@@ -15,6 +15,7 @@ import type { EngineContext } from '../core/EngineSetup'
 import { instantiate, partMesh } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import type { Audio } from '../systems/Audio'
+import { WILD_LINES, clipIdFor } from '../systems/Voice'
 import { Autopilot, SPEED, SPEED_STEPS, buildLoops, findLaunch } from '../systems/BowRoutes'
 import type { Launch, Pt, RouteName } from '../systems/BowRoutes'
 import { ArrowShot, BOW, CARP, CarpFight, CarpSchool, arrowSpeed, holdShake } from '../systems/BowfishingMotion'
@@ -38,6 +39,7 @@ import type { Avatar } from './Avatar'
 import { BOWBOAT, FLOOD, LIGHT_COLORS, LIGHT_ORDER, clampToDeck, deckHeight } from './BowBoat'
 import type { LightMode } from './BowBoat'
 import { SIGHT_EYE, mountBowSight } from './BowSight'
+import { WildVoice } from './WildVoice'
 import { WildMan } from './WildMan'
 import type { BowTrip, PlayerState } from './Online'
 import type { AvatarHands } from './Avatar'
@@ -91,25 +93,7 @@ const BLURT_GAP = 22
 /** He soaks in the beaching for a moment before you step off. */
 const BEACH_PAUSE = 3.6
 
-const LINES = {
-  board: 'WOOOOO! Watch yer step, bud. Bow\'s up on the deck. Lights are on, let\'s go find some carp.',
-  white: 'White light. Best for seein\' \'em.',
-  amber: 'Amber cuts through the murk. Fewer bugs too, you betcha.',
-  off: 'Lights off. Can\'t shoot what ya can\'t see, bud.',
-  over: 'Over the back! Water bends the light. They\'re deeper than they look.',
-  under: 'Under \'im! Not quite that low, bud. Ten feet out, four inches under.',
-  heading: 'Alrighty, takin\' \'er in. Hang on to somethin\', bud!',
-  dawn: 'Sun\'s comin\' up, carp are done.',
-  running: 'Hang on, bud!',
-  faster: 'Pushin\' a little quicker.',
-  slower: 'Easin\' off.',
-  island: 'Over to the island flats. Hang on, bud!',
-  shore: 'Back to the shoreline.',
-  bay: 'Back bay, under the interstate. Hang on!',
-  landed: 'Uff da, what a night.',
-  tour: 'Bowfishin\'? You betcha. Grab that bow, bud, sun\'s down by the time we\'re off the launch.',
-  wait4: 'Holler at yer buddies, bud. There\'s room for four on this rig. Space when we\'re ready to shove off.',
-}
+const LINES = WILD_LINES
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
@@ -203,6 +187,7 @@ export class Bowfishing {
   private homeTimer = 0
   private blurtTimer = 9
   private blurts = 0
+  private readonly voice: WildVoice
   private followLift = 0
   private followDocked = true
 
@@ -214,6 +199,7 @@ export class Bowfishing {
     this.launch = findLaunch(terrain, dock.start, dock.end)
     const loops = buildLoops(terrain, { points: [{ x: host.parkedBoat.x, z: host.parkedBoat.z }, this.launch.boat], segments: [[dock.start, dock.end]] })
     this.pilot = new Autopilot(terrain, loops, this.launch)
+    this.voice = new WildVoice(host.audio)
     this.pilot.hullLength = BOWBOAT.length
     const reg = (m: InstancedMesh) => ctx.registerDynamic(m)
     this.boatRig = instantiate(models.get('bowboat')!, null, scene, reg)
@@ -267,9 +253,7 @@ export class Bowfishing {
       this.carpRigs.push(rig)
     }
     this.flood.excludedMeshes = [...new Set([...this.boatRig.meshes, ...this.wild.meshes, ...host.player.meshes, ...this.bowRig.meshes].map((m) => ('sourceMesh' in m ? m.sourceMesh : m)))]
-    void mountBowSight(scene, this.bowRig.root).then((meshes) => {
-      for (const m of meshes) this.flood.excludedMeshes.push(m)
-    })
+    for (const m of mountBowSight(scene, this.bowRig.root)) this.flood.excludedMeshes.push(m)
     this.buildCamp()
     this.placeAtCamp()
   }
@@ -336,8 +320,11 @@ export class Bowfishing {
     return this.draw
   }
 
+  /** Within reach of Wild Man at his camp (asked every frame on foot, so his recordings are fetched by the time the player presses E). */
   nearCamp(foot: Vector3): boolean {
-    return !this.aboard && Math.hypot(foot.x - this.launch.camp.x, foot.z - this.launch.camp.z) < CAMP_RANGE
+    const near = !this.aboard && Math.hypot(foot.x - this.launch.camp.x, foot.z - this.launch.camp.z) < CAMP_RANGE
+    if (near) this.voice.preload()
+    return near
   }
 
   campPrompt(foot: Vector3): string {
@@ -399,10 +386,12 @@ export class Bowfishing {
     return null
   }
 
-  private say(line: string, force = false): void {
-    if (!force && this.sayTimer > 0) return
+  /** Wild Man says a line: shown in the HUD and, when it's recorded, heard. Returns true when the recording played. */
+  private say(line: string, force = false, clip = clipIdFor(line)): boolean {
+    if (!force && this.sayTimer > 0) return false
     this.sayTimer = 1.4
     this.host.hud.say(line)
+    return this.voice.say(clip)
   }
 
   /** E at the camp: wait for dark, or climb aboard. Returns true when the player boards. */
@@ -420,7 +409,7 @@ export class Bowfishing {
       this.role = 'crew'
       this.slot = slot
       this.board()
-      this.say(`Climb aboard, bud. ${this.trip.name}'s callin' the shots tonight.`, true)
+      this.say(`Climb aboard, bud. ${this.trip.name}'s callin' the shots tonight.`, true, 'line-crew')
       return true
     }
     const daytime = this.host.lighting.night < NIGHT_TO_FISH
@@ -436,6 +425,7 @@ export class Bowfishing {
   }
 
   private board(): void {
+    this.voice.preload()
     this.aboard = true
     this.homeAnnounced = false
     this.homeTimer = 0
@@ -991,20 +981,18 @@ export class Bowfishing {
     this.fx.splash(new Vector3(carp.x, 0, carp.z), 0.8)
     this.host.audio.splash(true)
     this.cheer({ kind: 'hit' })
-    this.host.audio.whoop(false)
   }
 
   private cheer(trigger: CheerTrigger): void {
     const id = chooseCheer(trigger)
-    this.say(this.wild.celebrate(id), true)
+    if (this.say(this.wild.celebrate(id), true)) return
     if (id === 'crazy' || id === 'meltdown') this.host.audio.whoop(true)
-    else if (id === 'hype' || id === 'stacking') this.host.audio.whoop(false)
+    else if (id === 'hype' || id === 'stacking' || id === 'stoned') this.host.audio.whoop(false)
   }
 
   /** The run home: off the island and up onto the bank. */
   private yell(id: 'sendIt' | 'beached'): void {
-    this.say(this.wild.celebrate(id), true)
-    this.host.audio.whoop(true)
+    if (!this.say(this.wild.celebrate(id), true)) this.host.audio.whoop(true)
     this.host.audio.whoosh()
     this.blurtTimer = Math.max(this.blurtTimer, 8)
     if (id === 'beached') {
