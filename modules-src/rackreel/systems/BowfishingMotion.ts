@@ -15,8 +15,8 @@ export interface Vec {
 
 export const CARP = {
   target: 78,
-  /** Water magnifies what's under it by about a third, so carp look (and take an arrow) this much longer than they are. */
-  look: 1.33,
+  /** Water magnifies what's under it by about a third, and they read 20% bigger again on top of that, so carp look (and take an arrow) this much longer than they are. */
+  look: 1.6,
   spawnMin: 9,
   spawnMax: 56,
   despawn: 84,
@@ -31,7 +31,7 @@ export const CARP = {
   fleeTimeMax: 2,
   hullSpook: 2.4,
   splashSpook: 1.6,
-  hitShare: 0.13,
+  hitShare: 0.156,
   nearMiss: 0.45,
 }
 

@@ -32,15 +32,37 @@ test('every loop stays in boat water and clear of the dock and the parked boat',
   assert.ok(Math.min(...ring) > ISLAND.r * 0.5 && Math.max(...ring) < ISLAND.r * 3, 'the island loop circles the island')
 })
 
-test('every loop keeps the boat 5 to 10 yards off the water\'s edge, hugging the shore most of the way', () => {
+test('every loop keeps the boat\'s side 5 to 10 yards off the water\'s edge, hugging the shore most of the way', () => {
   for (const [name, loop] of Object.entries(loops)) {
     const gaps = loop.map((p) => shoreDistance(terrain, p, 40))
     for (let i = 0; i < loop.length; i++) assert.ok(gaps[i] >= ROUTE.shoreGapMin, `${name} point ${i} is ${gaps[i]} m off the shore`)
-    const sorted = [...gaps].sort((a, b) => a - b)
+    const sides = gaps.map((g) => g - ROUTE.halfBeam)
+    const sorted = [...sides].sort((a, b) => a - b)
     const median = sorted[Math.floor(sorted.length / 2)]
-    assert.ok(median >= 4.5 && median <= 9.2, `${name} runs ${median} m off the shore on a typical stretch`)
-    const inBand = gaps.filter((g) => g <= 9.2).length / gaps.length
+    assert.ok(median >= 4.6 && median <= 9.2, `${name} runs its side ${median} m off the shore on a typical stretch`)
+    const inBand = sides.filter((g) => g <= 9.2).length / sides.length
     assert.ok(inBand >= 0.7, `${name} is within 10 yards of the shore only ${Math.round(inBand * 100)}% of the way`)
+  }
+})
+
+test('driving each loop, the hull\'s sides stay at least 5 yards off the bank', () => {
+  for (const name of ['shore', 'island', 'bay'] as RouteName[]) {
+    const ap = new Autopilot(terrain, loops, launch)
+    ap.depart()
+    while (ap.route !== name) {
+      drive(ap, 300)
+      ap.switchRoute()
+    }
+    drive(ap, 300)
+    let closest = Infinity
+    for (let i = 0; i < 30 * 400; i++) {
+      ap.update(1 / 30, false)
+      if (i % 10) continue
+      const rx = Math.cos(ap.heading)
+      const rz = -Math.sin(ap.heading)
+      for (const side of [-1, 1]) closest = Math.min(closest, shoreDistance(terrain, { x: ap.x + rx * ROUTE.halfBeam * side, z: ap.z + rz * ROUTE.halfBeam * side }, 20))
+    }
+    assert.ok(closest >= 4.57, `${name}: the hull passed ${closest} m from the bank`)
   }
 })
 

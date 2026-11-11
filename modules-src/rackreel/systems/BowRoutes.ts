@@ -1,4 +1,4 @@
-/** Wisco Wild Man's routes and autopilot, renderer-free: loops that hug the lake shore and the island from `ROUTE.shoreGap` metres out (about 7 yards, never closer than 5) in water at least `ROUTE.contour` deep, runs across open water on plane, and the way home to his launch. */
+/** Wisco Wild Man's routes and autopilot, renderer-free: loops that hug the lake shore and the island with the hull's side 5–10 yards off the bank (`ROUTE.shoreGap` metres from the centreline, never closer than `ROUTE.shoreGapMin`) in water at least `ROUTE.contour` deep, runs across open water on plane, and the way home to his launch. */
 import { BAY, CHANNEL, ISLAND, LAKE_CENTER, bayCoord, bayRadius, lakeRadius } from '../world/Terrain'
 
 export interface Pt {
@@ -19,9 +19,11 @@ export interface Clearance {
 export const ROUTE = {
   contour: 0.7,
   minDepth: 0.6,
-  /** How far the boat's centreline keeps from the water's edge on a loop (metres); `shoreGapMin` is the hard floor once the loop is smoothed. */
-  shoreGap: 6.5,
-  shoreGapMin: 5.0,
+  /** How far the boat's centreline keeps from the water's edge on a loop (metres): the hull's side then runs about 8 yards off the bank. `shoreGapMin` is the hard floor once the loop is smoothed. */
+  shoreGap: 9,
+  shoreGapMin: 7.5,
+  /** Half the hull's width at the gunwale, so gaps can be measured from the boat's side rather than its centreline. */
+  halfBeam: 1.6,
   /** How far a smoothed loop point may be nudged back toward the shore where the smoothing swung it wide (metres). */
   hug: 10,
   spacing: 2,
@@ -262,9 +264,20 @@ export function deepLine(map: WaterMap, a: Pt, b: Pt, depth = ROUTE.runDepth, co
   return true
 }
 
+/** True when there is at least `depth` of water everywhere within `radius` metres of `p` (sampled on two rings). */
+export function deepAround(map: WaterMap, p: Pt, depth: number, radius = ROUTE.corridor): boolean {
+  for (const r of [radius / 2, radius]) {
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2
+      if (map.depthAt(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r) < depth) return false
+    }
+  }
+  return true
+}
+
 /** The nearest spot with deep water around it that the boat can reach from `p` without running aground. */
 export function nearestDeep(map: WaterMap, p: Pt, depth = ROUTE.runDepth + 0.8): Pt {
-  if (map.depthAt(p.x, p.z) >= depth && deepLine(map, p, p, depth - 0.8)) return { ...p }
+  if (map.depthAt(p.x, p.z) >= depth && deepAround(map, p, depth - 0.8)) return { ...p }
   for (let r = 3; r <= 120; r += 3) {
     let best: Pt | null = null
     let bestDepth = -Infinity
@@ -272,7 +285,7 @@ export function nearestDeep(map: WaterMap, p: Pt, depth = ROUTE.runDepth + 0.8):
       const a = (k / 32) * Math.PI * 2
       const q = { x: p.x + Math.cos(a) * r, z: p.z + Math.sin(a) * r }
       const d = map.depthAt(q.x, q.z)
-      if (d >= depth && deepLine(map, q, q, depth - 0.8) && deepLine(map, p, q, 0.55, 0) && d > bestDepth) {
+      if (d >= depth && deepAround(map, q, depth - 0.8) && deepLine(map, p, q, 0.55, 0) && d > bestDepth) {
         best = q
         bestDepth = d
       }

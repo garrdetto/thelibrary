@@ -592,12 +592,26 @@ export class Game {
       if (document.pointerLockElement === this.canvas) document.exitPointerLock()
       else this.pause()
     })
-    this.canvas.addEventListener('click', () => {
-      if (this.playing && !this.hud.modalOpen && document.pointerLockElement !== this.canvas) this.lock()
+    this.canvas.addEventListener('mousedown', (e) => {
+      if (!this.playing || this.hud.modalOpen || document.pointerLockElement === this.canvas) return
+      this.lock()
+      if (e.button === 2) this.rightDown = true
     })
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault())
     document.addEventListener('pointerlockchange', () => {
-      if (!document.pointerLockElement && this.playing && !this.hud.modalOpen) this.pause()
+      if (document.pointerLockElement === this.canvas) {
+        this.bowShoot = false
+        this.lastRightAt = 0
+        this.pauseMenu.hide()
+      } else if (this.playing && !this.hud.modalOpen) this.pause()
+    })
+    document.addEventListener('pointerlockerror', () => {
+      if (!this.playing) return
+      if (this.hud.modalOpen) return
+      this.pause()
+    })
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') this.releaseInput()
     })
     document.addEventListener('mousedown', (e) => {
       if (!this.playing || this.hud.modalOpen || document.pointerLockElement !== this.canvas) return
@@ -654,11 +668,17 @@ export class Game {
       else if (e.code === 'KeyF') this.switchSeat()
     })
     addEventListener('keyup', (e) => this.keys.delete(e.code))
-    addEventListener('blur', () => {
-      this.keys.clear()
-      this.leftDown = false
-      this.rightDown = false
-    })
+    addEventListener('blur', () => this.releaseInput())
+  }
+
+  /** Lets go of every key and button and lowers a locked-up bow or scope, so nothing is left held down after the page loses focus. */
+  private releaseInput(): void {
+    this.keys.clear()
+    this.leftDown = false
+    this.rightDown = false
+    this.scopeLock = false
+    this.bowShoot = false
+    this.lastRightAt = 0
   }
 
   private lock(): void {
@@ -672,9 +692,7 @@ export class Game {
   }
 
   private pause(): void {
-    this.keys.clear()
-    this.leftDown = false
-    this.rightDown = false
+    this.releaseInput()
     this.hud.setPrompt('Paused — click the view to carry on')
     if (this.playing && !this.hud.modalOpen) this.pauseMenu.show()
   }
