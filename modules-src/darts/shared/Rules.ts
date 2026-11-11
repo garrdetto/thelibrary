@@ -182,6 +182,14 @@ function allClosed(player: Player): boolean {
   return CRICKET_TARGETS.every((target) => player.marks[target] >= 3)
 }
 
+/** Soft-tip machine awards for a turn in 301, 501 or Count Up: 100 or more is a Low Ton, exactly 150 a Hat Trick, more than 150 a High Ton. */
+export function softTipAward(scored: number): { kind: 'lowTon' | 'hatTrick' | 'highTon'; text: string } | null {
+  if (scored === 150) return { kind: 'hatTrick', text: 'HAT TRICK!' }
+  if (scored > 150) return { kind: 'highTon', text: 'HIGH TON!' }
+  if (scored >= 100) return { kind: 'lowTon', text: 'LOW TON!' }
+  return null
+}
+
 function say(list: Announcement[], kind: Announcement['kind'], text: string, playerId: string): void {
   list.push({ kind, text, playerId })
 }
@@ -374,7 +382,10 @@ export function applyThrow(input: GameState, playerId: string, thrown: DartThrow
 
   const record = finishTurn(state, player, bust)
   state.history.push(record)
-  if (!bust && !won && state.gameMode !== 'cricket') {
+  if (!bust && !won && state.gameMode !== 'cricket' && state.config.board === 'spider') {
+    const award = softTipAward(record.scored)
+    if (award) say(list, award.kind, award.text, player.id)
+  } else if (!bust && !won && state.gameMode !== 'cricket') {
     if (record.scored === 180) say(list, 'oneEighty', 'One hundred and eighty!', player.id)
     else if (record.scored >= 100) say(list, 'ton', `Ton${record.scored > 100 ? ` ${record.scored}` : ''}!`, player.id)
   }

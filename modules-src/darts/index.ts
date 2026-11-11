@@ -358,7 +358,7 @@ async function boot(): Promise<void> {
   const announce = (list: Announcement[]) => {
     overlay.announceAll(list)
     if (list.some((item) => item.kind === 'bust')) sounds.bust()
-    if (list.some((item) => item.kind === 'oneEighty' || item.kind === 'checkout' || item.kind === 'matchWon')) sounds.cheer()
+    if (list.some((item) => item.kind === 'oneEighty' || item.kind === 'highTon' || item.kind === 'hatTrick' || item.kind === 'checkout' || item.kind === 'matchWon')) sounds.cheer()
   }
 
   const rankedCountUp = (state: GameState): boolean =>
