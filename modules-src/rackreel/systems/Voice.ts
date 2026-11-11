@@ -1,5 +1,5 @@
 /** Everything Wisco Wild Man says, renderer-free, with one clip id per line so `scripts/rackreel-voice.mjs` can record him and `game/WildVoice.ts` can play him back. The trip lines live here; cheers and blurts come from `Cheers.ts`. */
-import { BLURTS, CHEERS } from './Cheers'
+import { BLURTS, CHEERS, MISS_LINES } from './Cheers'
 
 export const WILD_LINES = {
   board: 'WOOOOO! Watch yer step, bud. Bow\'s up on the deck. Lights are on, let\'s go find some carp.',
@@ -9,6 +9,7 @@ export const WILD_LINES = {
   over: 'Over the back! Water bends the light. They\'re deeper than they look.',
   under: 'Under \'im! Not quite that low, bud. Ten feet out, four inches under.',
   heading: 'Alrighty, takin\' \'er in. Hang on to somethin\', bud!',
+  holdTight: 'Hold tight boys!',
   dawn: 'Sun\'s comin\' up, carp are done.',
   running: 'Hang on, bud!',
   faster: 'Pushin\' a little quicker.',
@@ -39,6 +40,9 @@ export function voiceClips(): VoiceClip[] {
   for (const [key, text] of Object.entries(WILD_LINES)) clips.push({ id: `line-${key}`, text })
   for (const [key, cheer] of Object.entries(CHEERS)) clips.push({ id: `cheer-${key}`, text: cheer.line })
   BLURTS.forEach((text, i) => clips.push({ id: `blurt-${String(i).padStart(2, '0')}`, text }))
+  MISS_LINES.forEach((text, i) => {
+    if (text !== CHEERS.miss.line) clips.push({ id: `miss-${String(i).padStart(2, '0')}`, text })
+  })
   return clips
 }
 

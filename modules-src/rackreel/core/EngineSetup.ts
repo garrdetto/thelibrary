@@ -285,7 +285,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
       Vector3.CrossToRef(sunDirection, right, up)
       up.normalize()
     },
-    sensitivity: { look: 1, aim: 1, invertX: true, invertY: false },
+    sensitivity: { look: 1, aim: 1, invertX: false, invertY: false },
     lookSensibility: 2200,
     setAds(amount, zoom = 1) {
       const { look, aim } = ctx.sensitivity
@@ -295,15 +295,16 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   }
   ray.length = 600
 
+  /** How the mouse turns the view, always: the look settings' flips only change the arrow keys. */
+  const MOUSE_TURN = { x: -1, y: 1 }
   camera.inputs.removeByType('FreeCameraMouseInput')
   document.addEventListener('mousemove', (e) => {
     if (document.pointerLockElement !== canvas) return
-    const { invertX, invertY } = ctx.sensitivity
     const divisor = Number.isFinite(ctx.lookSensibility) && ctx.lookSensibility > 1 ? ctx.lookSensibility : 2200
     const dx = Number.isFinite(e.movementX) ? e.movementX : 0
     const dy = Number.isFinite(e.movementY) ? e.movementY : 0
-    camera.cameraRotation.y += (dx * (invertX ? -1 : 1)) / divisor
-    camera.cameraRotation.x += (dy * (invertY ? -1 : 1)) / divisor
+    camera.cameraRotation.y += (dx * MOUSE_TURN.x) / divisor
+    camera.cameraRotation.x += (dy * MOUSE_TURN.y) / divisor
   })
   scene.onBeforeRenderObservable.add(() => {
     const r = camera.rotation

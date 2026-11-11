@@ -3,6 +3,9 @@ import type { Audio } from '../systems/Audio'
 
 type Manifest = Record<string, string>
 
+/** How long before a manifest that couldn't be read is fetched again (`preload` is called every frame near his camp and on boarding). */
+const MANIFEST_RETRY_MS = 20000
+
 export class WildVoice {
   private manifest: Manifest | null | undefined
   private manifestLoad: Promise<void> | null = null
@@ -12,15 +15,20 @@ export class WildVoice {
 
   constructor(private readonly audio: Audio, private readonly base = '/modules/rackreel/voice/') {}
 
-  /** Fetches the manifest and every clip, once. */
+  /** Fetches the manifest (fresh, never from the browser's cache) and every clip, once; a manifest that couldn't be read is tried again after `MANIFEST_RETRY_MS`. */
   preload(): void {
     if (this.manifestLoad) return
-    this.manifestLoad = fetch(`${this.base}manifest.json`)
+    this.manifestLoad = fetch(`${this.base}manifest.json`, { cache: 'no-cache' })
       .then(async (res) => (res.ok ? ((await res.json()) as Manifest) : null))
       .catch(() => null)
       .then((manifest) => {
         this.manifest = manifest
-        if (!manifest) return
+        if (!manifest) {
+          setTimeout(() => {
+            this.manifestLoad = null
+          }, MANIFEST_RETRY_MS)
+          return
+        }
         for (const id of Object.keys(manifest)) void this.load(id)
       })
   }

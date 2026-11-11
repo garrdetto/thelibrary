@@ -20,7 +20,7 @@ import { Autopilot, SPEED, SPEED_STEPS, buildLoops, findLaunch } from '../system
 import type { Launch, Pt, RouteName } from '../systems/BowRoutes'
 import { ArrowShot, BOW, CARP, CarpFight, CarpSchool, arrowSpeed, holdShake } from '../systems/BowfishingMotion'
 import type { Carp } from '../systems/BowfishingMotion'
-import { blurtAt, chooseCheer } from '../systems/Cheers'
+import { blurtAt, chooseCheer, missLineAt } from '../systems/Cheers'
 import type { CheerId, CheerTrigger } from '../systems/Cheers'
 import { WaterFx } from '../systems/FishingFx'
 import type { LootTableManager, Specimen } from '../systems/LootTableManager'
@@ -194,6 +194,7 @@ export class Bowfishing {
   private homeTimer = 0
   private blurtTimer = 9
   private blurts = 0
+  private misses = 0
   private readonly voice: WildVoice
   private followLift = 0
   private followDocked = true
@@ -571,7 +572,7 @@ export class Bowfishing {
         if (p.mode === 'docked') this.endTrip()
         else if (!p.homeward) {
           p.sendItHome()
-          this.say(LINES.heading, true)
+          if (!this.say(LINES.holdTight, true)) this.host.audio.whoop(true)
         }
         return true
       case 'KeyL': {
@@ -992,10 +993,10 @@ export class Bowfishing {
     this.missedDone.add(a)
     this.streak = 0
     const id = chooseCheer({ kind: 'miss' })
-    const line = this.wild.celebrate(id)
+    this.wild.celebrate(id)
     if (Math.random() >= CHEER_SHARE) return
     if (this.nearMiss) this.say(this.nearMiss.over ? LINES.over : LINES.under, true)
-    else this.say(line, true)
+    else this.say(missLineAt(this.misses++), true)
   }
 
   private stone(carp: Carp<Specimen>): void {

@@ -31,7 +31,7 @@ export const CARP = {
   fleeTimeMax: 2,
   hullSpook: 2.4,
   splashSpook: 1.6,
-  hitShare: 0.195,
+  hitShare: 0.244,
   nearMiss: 0.45,
 }
 

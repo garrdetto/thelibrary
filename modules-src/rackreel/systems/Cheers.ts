@@ -45,6 +45,32 @@ export function chooseCheer(trigger: CheerTrigger): CheerId {
   }
 }
 
+/** What he hollers when a shot misses clean (near misses get the over/under hint instead); cycled by `missLineAt` so they don't repeat back to back. */
+export const MISS_LINES: readonly string[] = [
+  'Next one.',
+  'Ope! That carp just flipped you the fin, bud!',
+  'Holy buckets, you missed him by a country mile!',
+  'You shot a hole clean through the lake, congrats!',
+  "That fish is laughin' at ya, bud. I can hear it!",
+  "Ya couldn't hit a cow's butt with a banjo!",
+  "Ope, she's gone. Down to the bottom tellin' all her buddies!",
+  'Uff da! Aim at the fish, not the moon!',
+  'Missed him? He was the size of a canoe, bud!',
+  "Woo, that arrow's halfway to Milwaukee!",
+  'Shake it off, crack a cold one, and send another!',
+  "That's a warning shot. Now he knows we mean business!",
+  'Dang, bud, you got buck fever on a carp!',
+  "The lake ate it! Reel 'er in and let 'er rip again!",
+  'Even my grandma hits those, and she shoots left-handed!',
+  'Ope, scared him into next week. Plenty more where he came from!',
+]
+
+/** The miss line for the `n`th miss of the night. */
+export function missLineAt(n: number): string {
+  const len = MISS_LINES.length
+  return MISS_LINES[(n * 5 + Math.floor(n / len)) % len]
+}
+
 /** Things Wisco Wild Man just blurts out on the water, every so often, for no reason at all. */
 export const BLURTS: readonly string[] = [
   'Put the ole sneaky on \'em.',
