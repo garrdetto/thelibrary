@@ -1240,13 +1240,13 @@
   "preset": "rig"
  },
  "darts/dart-soft.glb": {
-  "hash": "4657a187b80a5346ddb8b7ff8530fd798edd33a7",
-  "before": 4587992,
-  "after": 602912,
-  "primsBefore": 2,
-  "primsAfter": 2,
-  "matsBefore": 2,
-  "matsAfter": 2,
+  "hash": "b28a803d1a8a9411d50981bea07f3a8d745637ae",
+  "before": 479440,
+  "after": 141208,
+  "primsBefore": 4,
+  "primsAfter": 4,
+  "matsBefore": 4,
+  "matsAfter": 4,
   "preset": "rig"
  },
  "proskater/board.glb": {
@@ -1268,15 +1268,5 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "character"
- },
- "rackreel/bow-sight.glb": {
-  "hash": "5175bad575aedb0fa45b401bc38b3fbe11f43ab7",
-  "before": 5458812,
-  "after": 853528,
-  "primsBefore": 1,
-  "primsAfter": 1,
-  "matsBefore": 1,
-  "matsAfter": 1,
-  "preset": "rig"
  }
 }

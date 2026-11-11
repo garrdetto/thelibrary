@@ -1,9 +1,8 @@
-/** Darts for both boards: Meshy-made steel-tip and soft-tip models (`/models/darts/dart-steel.glb`, `dart-soft.glb`, fitted by `tools/fit-dart.py`) whose `flight` material takes the thrower's colour (the soft-tip point is straightened and drawn in black plastic by `SoftTip.ts`), with a lathe-built steel-tip dart until they load (or with `?dartModels=0`). The tip sits at the origin and the dart points along −z, so orienting it to a velocity is one quaternion. */
+/** Darts for both boards: the Meshy-made steel-tip model (`/models/darts/dart-steel.glb`, fitted by `tools/fit-dart.py`) whose `flight` material takes the thrower's colour, and the Blender-built soft-tip model (`dart-soft.glb`, `tools/build-soft-dart.py`: black point, gunmetal barrel, four white flights on a `flight-white` material that stays white), with a lathe-built steel-tip dart until they load (or with `?dartModels=0`). The tip sits at the origin and the dart points along −z, so orienting it to a velocity is one quaternion. */
 import * as THREE from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import type { BoardStyle } from './BoardTexture'
-import { applySoftTip, createSoftTipMaterial } from './SoftTip'
 
 export interface DartKit {
   create(color: string): THREE.Group
@@ -123,7 +122,6 @@ export function createDartKit(): DartKit {
         (Object.keys(MODEL_URLS) as BoardStyle[]).map(async (key) => {
           try {
             const gltf = await loader.loadAsync(MODEL_URLS[key])
-            if (key === 'spider') applySoftTip(gltf.scene, createSoftTipMaterial())
             models.set(key, gltf.scene)
             version++
           } catch (error) {
