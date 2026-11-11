@@ -12,9 +12,11 @@ import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
+import { VertexBuffer } from '@babylonjs/core/Buffers/buffer'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import type { ArmChain } from '../systems/ArmReach'
+import type { HeadFrame } from '../systems/FaceShape'
 import type { Clip } from '../systems/Locomotion'
 import { modelFileUrl } from './ModelLibrary'
 
@@ -51,6 +53,7 @@ export interface SkinMeta {
   arms: Record<'L' | 'R', ArmChain>
   hip: number
   height: number
+  head: HeadFrame
   wear: { upper: Record<string, string>; lower: Record<string, string> }
 }
 
@@ -69,6 +72,8 @@ export interface SkinnedTemplate {
   clips: Map<string, Clip>
   meta: SkinMeta
   material: (tag: string) => Material
+  /** The face part's vertex positions as modelled, for the face-shape sliders to start from. */
+  faceBase: Float32Array
 }
 
 /** The skinned side of a rig: its skeleton, clips and what it can wear. */
@@ -80,6 +85,12 @@ export interface SkinRig {
   meta: SkinMeta
   /** Dresses the rig: `items` are catalog ids (a jacket, a vest, pants, a cap, a pack). */
   wear(items: string[]): void
+  /** The face part's positions as modelled. Never write to it. */
+  faceBase: Float32Array
+  /** Reshapes this rig's face (it gets a copy of the geometry the first time), or puts the modelled shape back with null. */
+  shapeFace(positions: Float32Array | null): void
+  /** The head's material: a painted head for this rig, or null for the model's own. */
+  paintHead(material: Material | null): void
 }
 
 /** What `Avatar` poses: named joint nodes under a root, the meshes they carry, and the skinned side when there is one. */
@@ -106,6 +117,7 @@ export async function loadSkinned(scene: Scene, name: string, material: (tag: st
   const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 8, headerLength))) as { joints: JointHeader[]; parts: PartHeader[]; clips: ClipHeader[]; meta: SkinMeta }
   const dataStart = 8 + headerLength
   const parts: SkinPart[] = []
+  let faceBase = new Float32Array(0)
   for (const part of header.parts) {
     const v = part.vertices
     let at = dataStart + part.offset
@@ -128,6 +140,7 @@ export async function loadSkinned(scene: Scene, name: string, material: (tag: st
         matricesWeights[i * 4 + k] = skin[i * 8 + 4 + k] / 255
       }
     }
+    if (part.name === 'face') faceBase = positions.slice()
     const mesh = new Mesh(`${name}:${part.name}`, scene)
     const data = new VertexData()
     data.positions = positions
@@ -158,7 +171,7 @@ export async function loadSkinned(scene: Scene, name: string, material: (tag: st
     absolute.push(abs)
     bindLocal.push(j.parent < 0 ? abs.clone() : abs.multiply(Matrix.Invert(absolute[j.parent])))
   }
-  return { name, joints: header.joints, bindLocal, parts, clips, meta: header.meta, material }
+  return { name, joints: header.joints, bindLocal, parts, clips, meta: header.meta, material, faceBase }
 }
 
 export function instantiateSkinned(template: SkinnedTemplate, scene: Scene, register?: (mesh: AbstractMesh) => void): AvatarRig {
@@ -207,7 +220,23 @@ export function instantiateSkinned(template: SkinnedTemplate, scene: Scene, regi
     if (top) partMeshes.get('upper')!.material = template.material(top)
     if (bottom) partMeshes.get('lower')!.material = template.material(bottom)
   }
-  return { root, joints, meshes, partMeshes, skin: { skeleton, order, clips: template.clips, meta: template.meta, wear } }
+  const face = partMeshes.get('face') as Mesh
+  const faceTag = template.parts.find((part) => part.name === 'face')!.material
+  let reshaped = false
+  const shapeFace = (positions: Float32Array | null) => {
+    if (!positions && !reshaped) return
+    if (!reshaped) {
+      face.makeGeometryUnique()
+      face.setVerticesData(VertexBuffer.PositionKind, positions ?? template.faceBase, true)
+      reshaped = true
+      return
+    }
+    face.updateVerticesData(VertexBuffer.PositionKind, positions ?? template.faceBase)
+  }
+  const paintHead = (material: Material | null) => {
+    face.material = material ?? template.material(faceTag)
+  }
+  return { root, joints, meshes, partMeshes, skin: { skeleton, order, clips: template.clips, meta: template.meta, wear, faceBase: template.faceBase, shapeFace, paintHead } }
 }
 
 /** Frees a rig made by `instantiateSkinned`: its meshes, joints and skeleton. Unparent anything it carries first. */

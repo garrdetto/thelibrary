@@ -11,6 +11,8 @@ import { disposeRig, instantiate } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { instantiateSkinned } from '../core/SkinnedModel'
 import type { SkinnedTemplate } from '../core/SkinnedModel'
+import { unpackAppearance } from '../shared/Appearance'
+import type { HeadPaint } from './HeadPaint'
 import type { NetAnimal } from '../systems/Wildlife'
 import { Avatar, HIP_HEIGHT } from './Avatar'
 import type { AvatarHands, AvatarStance } from './Avatar'
@@ -33,6 +35,8 @@ export interface PlayerState {
   cl: number
   ap: number
   o: string[]
+  /** Face, hair, beard, face shape and body size, packed by `packAppearance`. */
+  k?: string
   v?: { k: 'utv' | 'boat' | 'quad'; p: [number, number, number]; q: [number, number, number]; s: [number, number, number]; a?: 1; d?: DeckSeat }
   r?: { o: string; s: [number, number, number] }
   /** Night bowfishing on Wisco Wild Man's boat: the trip owner sends the boat (`o`: x, z, heading, speed, light mode, docked, and the hull's lift over the island jump or up on the bank); crew send the owner's id (`w`); everyone sends their shooting spot (`s`). */
@@ -70,6 +74,8 @@ export type NetMessage =
 interface Remote {
   avatar: Avatar
   state: PlayerState
+  /** The packed appearance last applied to the avatar. */
+  look?: string
   shown: Vector3
   vehicle: ModelRig | null
   vehicleKind: string
@@ -139,7 +145,7 @@ export class Online {
   name = 'Guest'
   id = ''
 
-  constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly models: Map<ModelName, ModelTemplate>, private readonly hunter: SkinnedTemplate, private readonly hooks: OnlineHooks) {
+  constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly models: Map<ModelName, ModelTemplate>, private readonly hunter: SkinnedTemplate, private readonly paint: HeadPaint, private readonly hooks: OnlineHooks) {
     this.room = new PeerRoom<NetMessage>(RACKREEL_ROOM, { hostAttempts: 5, rejoinSeconds: 3, maxPeers: PARTY_MAX - 1 }, {
       message: (m, from) => this.receive(m, from),
       join: () => {
@@ -421,6 +427,10 @@ export class Online {
       if (renamed) this.rebuildMembers()
     }
     r.avatar.setOutfit(s.o)
+    if (r.look !== s.k) {
+      r.look = s.k
+      r.avatar.setAppearance(unpackAppearance(s.k), this.paint)
+    }
   }
 
   private animate(r: Remote, dt: number): void {

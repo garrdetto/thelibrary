@@ -45,7 +45,11 @@ import { Progress } from './Progress'
 import type { CatchReport, EarnReport } from './Progress'
 import { Panels } from '../ui/Panels'
 import { CharacterCreator } from '../ui/CharacterCreator'
-import { lookOf } from '../shared/Economy'
+import type { CreatorMode, CreatorTab } from '../ui/CharacterCreator'
+import { packAppearance } from '../shared/Appearance'
+import type { Appearance } from '../shared/Appearance'
+import { HeadPaint } from './HeadPaint'
+import { lookOf, owedMakeover } from '../shared/Economy'
 import type { Look } from '../shared/Economy'
 import type { PanelTab } from '../ui/Panels'
 import { Cabin } from '../world/Cabin'
@@ -159,8 +163,10 @@ export class Game {
   private bag: Specimen[] = []
   private baitHintShown = false
   private readonly creator = new CharacterCreator()
-  /** The camera faces the hunter while the character creator is open. */
+  /** The camera faces the hunter while the character creator is open: close on the face, or back for the whole body. */
   private creating = false
+  private creatorTab: CreatorTab = 'face'
+  private headPaint!: HeadPaint
   /** Animals this player put down, which tag themselves once the hunter walks within 10 yards. */
   private myKills = new Set<number>()
   private materials = new Map<string, Material>()
@@ -212,6 +218,7 @@ export class Game {
       this.hud.setLoading(0.1 + (loaded / MODEL_NAMES.length) * 0.5, `Bringing in the ${name.replace('fish-', '').replace('-lo', '').replace('treestand', 'tree stand')}…`)
     }))
     this.hunter = await hunter
+    this.headPaint = new HeadPaint(scene, (head) => texturedMaterial(scene, `hunter-head-${head}`, this.materials))
     this.hud.setLoading(0.65, 'Planting the woods…')
     await nextFrame()
     const landmarks = findLandmarks(this.terrain)
@@ -263,7 +270,7 @@ export class Game {
     this.fishing.floorAt = (x, z) => this.catchFloor(x, z)
     this.fishing.onEvent = (e) => this.onFishing(e)
     this.minimap = new Minimap(this.terrain, document.getElementById('minimap')!)
-    this.online = new Online(this.ctx, scene, this.models, this.hunter, {
+    this.online = new Online(this.ctx, scene, this.models, this.hunter, this.headPaint, {
       herd: (list) => {
         if (!this.wildlife.remote) {
           this.wildlife.clearAll()
@@ -471,6 +478,7 @@ export class Game {
     const fx = this.progress.effects
     const l = this.progress.profile.loadout
     this.avatar.setOutfit([l.jacket, l.vest, l.cap, l.pants, l.pack])
+    this.avatar.setAppearance(this.progress.profile.appearance, this.headPaint)
     const r = this.skill.reel
     r.crankProgress = REEL_TUNING.crankProgress * fx.reelSpeed
     r.holdProgressPerSecond = REEL_TUNING.holdProgressPerSecond * fx.reelSpeed
@@ -531,8 +539,11 @@ export class Game {
       document.getElementById('start')!.hidden = true
       await this.progress.ready
       if (!this.progress.profile.verified) {
-        await this.makeCharacter()
+        await this.makeCharacter('create')
         if (this.progress.signedIn) this.hud.toast('Character saved to your account. Welcome to the northwoods.', 'big')
+      } else if (owedMakeover(this.progress.profile)) {
+        await this.makeCharacter('makeover')
+        this.hud.toast('Looking sharp. Your new look is saved.', 'big')
       }
       this.respawn('')
       this.playing = true
@@ -1168,12 +1179,12 @@ export class Game {
     if (this.mode === 'bowfish') {
       const lo = this.progress.profile.loadout
       const swivel = this.avatar.root.rotation.y
-      return { id: this.online.id, n: this.online.name, p: [this.foot.x, this.foot.y, this.foot.z], f: Math.atan2(Math.sin(swivel), Math.cos(swivel)), st: 'stand', h: this.bowfish.hands, sp: Math.round(this.bowfish.walkSpeed * 10) / 10, c: false, cl: 0, ap: this.ctx.camera.rotation.x, o: [lo.jacket, lo.vest, lo.cap, lo.pants, lo.pack], b: this.bowfish.netState() }
+      return { id: this.online.id, n: this.online.name, p: [this.foot.x, this.foot.y, this.foot.z], f: Math.atan2(Math.sin(swivel), Math.cos(swivel)), st: 'stand', h: this.bowfish.hands, sp: Math.round(this.bowfish.walkSpeed * 10) / 10, c: false, cl: 0, ap: this.ctx.camera.rotation.x, o: [lo.jacket, lo.vest, lo.cap, lo.pants, lo.pack], k: packAppearance(this.progress.profile.appearance), b: this.bowfish.netState() }
     }
     const at = this.mode === 'vehicle' || this.mode === 'crew' ? this.foot : r.position
     const state: PlayerState = {
       id: this.online.id, n: this.online.name, p: [at.x, at.y, at.z], f: this.onDeck ? this.swivel : this.facing, st: stance, h: this.handsNow, sp: this.moveSpeed, c: this.crouch, cl: this.climbT * 9, ap: this.ctx.camera.rotation.x,
-      o: [l.jacket, l.vest, l.cap, l.pants, l.pack],
+      o: [l.jacket, l.vest, l.cap, l.pants, l.pack], k: packAppearance(this.progress.profile.appearance),
     }
     const seat = this.seatLocal()
     if (v && seat) {
@@ -1667,13 +1678,24 @@ export class Game {
   }
 
   /** Shows the character creator with a front view of the hunter; resolves once it is saved. */
-  private makeCharacter(): Promise<void> {
+  private makeCharacter(mode: CreatorMode): Promise<void> {
     return new Promise((resolve) => {
       this.creating = true
-      const wear = (look: Look) => this.avatar.setOutfit([look.jacket, look.vest, look.cap, look.pants, look.pack])
-      this.creator.show(lookOf(this.progress.profile), {
-        preview: wear,
-        submit: (look) => this.progress.createCharacter(look),
+      const wear = (look: Look, appearance: Appearance) => {
+        this.avatar.setOutfit([look.jacket, look.vest, this.creatorTab === 'face' ? 'cap-none' : look.cap, look.pants, look.pack])
+        this.avatar.setAppearance(appearance, this.headPaint)
+      }
+      let shown: { look: Look; appearance: Appearance } | null = null
+      this.creator.show({ look: lookOf(this.progress.profile), appearance: this.progress.profile.appearance }, mode, {
+        preview: (look, appearance) => {
+          shown = { look, appearance }
+          wear(look, appearance)
+        },
+        focus: (tab) => {
+          this.creatorTab = tab
+          if (shown) wear(shown.look, shown.appearance)
+        },
+        submit: (look, appearance) => (mode === 'create' ? this.progress.createCharacter(look, appearance) : this.progress.makeover(appearance)),
         done: () => {
           this.creating = false
           this.applyGear()
@@ -1689,9 +1711,14 @@ export class Game {
     if (this.creating) {
       const ahead = new Vector3(Math.sin(this.facing), 0, Math.cos(this.facing))
       const side = new Vector3(Math.cos(this.facing), 0, -Math.sin(this.facing))
-      const eye = this.foot.add(ahead.scale(2.7)).add(side.scale(-0.7)).add(new Vector3(0, 1.45, 0))
-      cam.position.copyFrom(eye)
-      cam.setTarget(this.foot.add(side.scale(-0.45)).add(new Vector3(0, 1.05, 0)))
+      const close = this.creatorTab === 'face'
+      const head = this.avatar.joint('head')?.getAbsolutePosition().y ?? this.foot.y + 1.6
+      const eye = close
+        ? new Vector3(this.foot.x, head + 0.1, this.foot.z).addInPlace(ahead.scale(0.95)).addInPlace(side.scale(-0.2))
+        : this.foot.add(ahead.scale(2.7)).add(side.scale(-0.7)).add(new Vector3(0, 1.45, 0))
+      const target = close ? new Vector3(this.foot.x, head + 0.07, this.foot.z).addInPlace(side.scale(-0.13)) : this.foot.add(side.scale(-0.45)).add(new Vector3(0, 1.05, 0))
+      Vector3.LerpToRef(cam.position, eye, Math.min(1, this.ctx.engine.getDeltaTime() / 180), cam.position)
+      cam.setTarget(target)
       return
     }
     const yaw = cam.rotation.y
