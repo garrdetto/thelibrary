@@ -500,7 +500,7 @@ export class FoliageShading {
     this.lightMatrix.copyFrom(shadows.getTransformMatrix())
     const camera = scene.activeCamera
     if (camera) this.depthValues.set(sun.getDepthMinZ(camera), sun.getDepthMinZ(camera) + sun.getDepthMaxZ(camera))
-    this.shadowInfo.set(shadows.getDarkness(), shadows.depthScale, shadows.frustumEdgeFalloff, map && sun.shadowEnabled ? 1 : 0)
+    this.shadowInfo.set(shadows.getDarkness(), shadows.depthScale, shadows.frustumEdgeFalloff, map && sun.shadowEnabled && scene.shadowsEnabled ? 1 : 0)
     const swap = map !== this.shadowTexture
     this.shadowTexture = map
     const ambient = scene.ambientColor
