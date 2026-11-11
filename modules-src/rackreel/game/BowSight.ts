@@ -1,12 +1,10 @@
-/** The bow's sight, built in code: a thin round housing on a short bar off the riser, a see-through lens inside it, and one fibre-optic pin standing up from the bottom of the ring to a glowing point at its centre. Aiming looks through the ring from `SIGHT_EYE`, so the point sits on the target. */
+/** The bow's sight, built in code: a thin round housing on a short bar off the riser, open with no lens, and a tiny glowing arrow standing up from the bottom of the ring with its tip at the centre. Aiming looks through the ring from `SIGHT_EYE`, so the arrow's tip sits on the target. */
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder'
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder'
-import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder'
-import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder'
 import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
@@ -20,11 +18,10 @@ export const SIGHT_EYE = new Vector3(0.045, 0.125, -0.74)
 /** Outer diameter of the housing, and how thick its wall is. */
 export const RING_DIAMETER = 0.062
 const RING_TUBE = 0.0032
-/** The lens is clear glass: all but invisible, with just a glint off its face (mesh visibility, which this scene blends; material alpha isn't honoured here). */
-const LENS_VISIBILITY = 0.12
-/** The pin: a fibre from the bottom of the ring up to the centre, ending in a bright bead. */
-const PIN_RADIUS = 0.0006
-const PIN_BEAD = 0.0017
+/** The pin: a thin glowing shaft from the bottom of the ring up to an arrowhead whose tip is the ring's centre. */
+const PIN_RADIUS = 0.0005
+const HEAD_LENGTH = 0.0056
+const HEAD_WIDTH = 0.0044
 const PIN_GLOW = new Color3(0.35, 1.0, 0.25)
 
 /** Builds the sight onto `bow` (the bow rig's root) and returns its meshes. */
@@ -55,40 +52,23 @@ export function mountBowSight(scene: Scene, bow: TransformNode): AbstractMesh[] 
   ring.parent = mount
   ring.rotation.x = Math.PI / 2
 
-  const glass = new StandardMaterial('rr-bow-sight-glass', scene)
-  glass.diffuseColor = new Color3(0.9, 0.92, 0.94)
-  glass.specularColor = Color3.White()
-  glass.specularPower = 200
-  glass.emissiveColor = new Color3(0.04, 0.04, 0.045)
-  glass.backFaceCulling = false
-  glass.twoSidedLighting = true
-  const lens = CreateDisc('bow-sight-lens', { radius: RING_DIAMETER / 2 - RING_TUBE * 0.9, tessellation: 48 }, scene)
-  lens.material = glass
-  lens.parent = mount
-  lens.visibility = LENS_VISIBILITY
-  lens.alphaIndex = 2
-
-  const fibre = new StandardMaterial('rr-bow-sight-fibre', scene)
-  fibre.diffuseColor = new Color3(0.12, 0.3, 0.1)
-  fibre.emissiveColor = PIN_GLOW.scale(0.35)
-  fibre.specularColor = Color3.Black()
-  const pinLength = RING_DIAMETER / 2 - RING_TUBE / 2
-  const pin = CreateCylinder('bow-sight-pin', { height: pinLength, diameter: PIN_RADIUS * 2, tessellation: 8 }, scene)
-  pin.material = fibre
-  pin.parent = mount
-  pin.position.set(0, -pinLength / 2, 0.004)
-
   const glow = new StandardMaterial('rr-bow-sight-glow', scene)
   glow.diffuseColor = Color3.Black()
   glow.specularColor = Color3.Black()
   glow.emissiveColor = PIN_GLOW
   glow.disableLighting = true
-  const bead = CreateSphere('bow-sight-bead', { diameter: PIN_BEAD * 2, segments: 8 }, scene)
-  bead.material = glow
-  bead.parent = mount
-  bead.position.set(0, 0, 0.004)
+  const shaftLength = RING_DIAMETER / 2 - RING_TUBE / 2 - HEAD_LENGTH
+  const pin = CreateCylinder('bow-sight-pin', { height: shaftLength, diameter: PIN_RADIUS * 2, tessellation: 8 }, scene)
+  pin.material = glow
+  pin.parent = mount
+  pin.position.set(0, -HEAD_LENGTH - shaftLength / 2, 0.004)
+  const head = CreateCylinder('bow-sight-head', { height: HEAD_LENGTH, diameterTop: 0, diameterBottom: HEAD_WIDTH, tessellation: 4 }, scene)
+  head.material = glow
+  head.parent = mount
+  head.position.set(0, -HEAD_LENGTH / 2, 0.004)
+  head.rotation.y = Math.PI / 4
 
-  const meshes: Mesh[] = [bar, post, ring, lens, pin, bead]
+  const meshes: Mesh[] = [bar, post, ring, pin, head]
   for (const m of meshes) {
     m.isPickable = false
     m.alwaysSelectAsActiveMesh = true

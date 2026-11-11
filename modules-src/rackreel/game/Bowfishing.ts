@@ -21,7 +21,7 @@ import type { Launch, Pt, RouteName } from '../systems/BowRoutes'
 import { ArrowShot, BOW, CARP, CarpFight, CarpSchool, arrowSpeed, holdShake } from '../systems/BowfishingMotion'
 import type { Carp } from '../systems/BowfishingMotion'
 import { blurtAt, chooseCheer } from '../systems/Cheers'
-import type { CheerTrigger } from '../systems/Cheers'
+import type { CheerId, CheerTrigger } from '../systems/Cheers'
 import { WaterFx } from '../systems/FishingFx'
 import type { LootTableManager, Specimen } from '../systems/LootTableManager'
 import { SPECIES_BY_ID, formatPounds, formatValue } from '../systems/LootTableManager'
@@ -82,6 +82,10 @@ const DRAW_BACK = 0.5
 const BOW_ARM_REACH = 0.6
 /** The drawing hand's palm sits this far behind the nock (fingers on the string). */
 const STRING_HAND = 0.045
+/** Carrying the bow at the ready, the way a bowfisher watches the water: the bow arm out in front and down, from the bow shoulder in the shooter's own frame (out to the left, forward, down). */
+const CARRY_GRIP = { out: 0.34, forward: 0.36, down: 0.32 }
+/** The carried bow stands nearly upright with the nocked arrow pointed at the water ahead, its top limb leaned out away from the body. */
+const CARRY_POSE = { pitch: 0.34, yaw: -0.5, cant: -0.32 }
 const MAX_TUB_RIGS = 16
 const CARP_POOL = 100
 const WALK_SPEED = 1.7
@@ -89,7 +93,10 @@ const AIM_WALK_SPEED = 0.6
 const LINE_POINTS = 26
 const FISH_LENGTH = 1.12
 /** Seconds between Wild Man's blurts on the water (a little random either way). */
-const BLURT_GAP = 22
+const BLURT_GAP = 44
+/** Share of routine hits, misses and tubbed carp he says something about; the big moments in `ALWAYS_SAID` always get a line. */
+const CHEER_SHARE = 0.5
+const ALWAYS_SAID: ReadonlySet<CheerId> = new Set<CheerId>(['crazy', 'meltdown', 'stacking', 'sendIt', 'beached'])
 /** He soaks in the beaching for a moment before you step off. */
 const BEACH_PAUSE = 3.6
 
@@ -690,7 +697,7 @@ export class Bowfishing {
     this.host.audio.engine(true, Math.abs(p.speed) / 14, true)
     this.host.hud.setTub(this.tubCount, this.tubPounds)
     this.host.hud.setDraw(this.bow === 'drawing' ? this.draw : null, this.draw >= BOW.minDraw)
-    this.host.hud.setDot(input.locked && this.bow !== 'out' && !running)
+    this.host.hud.setDot(input.locked && this.bow !== 'out' && !running && this.aimBlend < 0.3)
     void terrain
   }
 
@@ -880,6 +887,26 @@ export class Bowfishing {
     return Vector3.TransformNormal(new Vector3(0, 0, 1), this.bowRig.root.computeWorldMatrix(true)).normalize()
   }
 
+  /** Which way the shooter's body faces in the world (radians, about y). */
+  private bodyYaw(): number {
+    const f = Vector3.TransformNormal(Vector3.Forward(), this.host.player.root.computeWorldMatrix(true))
+    return Math.atan2(f.x, f.z)
+  }
+
+  /** Where the bow hand carries the bow at the ready: down at the left hip, a little forward, measured from the bow shoulder. */
+  private carryGrip(out: Vector3): Vector3 {
+    return this.fromShoulder('upperArmR', CARRY_GRIP, -1, out)
+  }
+
+  /** A point from one shoulder in the shooter's own frame: `side` -1 is out to the left, 1 out to the right. */
+  private fromShoulder(joint: string, at: { out: number; forward: number; down: number }, side: number, out: Vector3): Vector3 {
+    const shoulder = this.host.player.joint(joint)!.getAbsolutePosition()
+    const yaw = this.bodyYaw()
+    const fx = Math.sin(yaw)
+    const fz = Math.cos(yaw)
+    return out.set(shoulder.x + fx * at.forward + fz * at.out * side, shoulder.y - at.down, shoulder.z + fz * at.forward - fx * at.out * side)
+  }
+
   /** Puts the bow in the shooter's left hand, pointed along the aim while drawing or held low at the ready. Aiming then moves it in front of the eye (`fitBowToEye`). */
   private placeBow(dt: number, cam: UniversalCamera): void {
     const player = this.host.player
@@ -889,11 +916,12 @@ export class Bowfishing {
       const shoulder = player.joint('upperArmR')!.getAbsolutePosition()
       const aim = this.aimTarget(cam).subtractInPlace(shoulder).normalize()
       handPos.copyFrom(shoulder).addInPlace(aim.scaleInPlace(BOW_ARM_REACH * Math.min(1, 0.55 + this.draw)))
-    } else player.palm('left', handPos)
+    } else this.carryGrip(handPos)
     const aim = this.aimTarget(cam).subtractInPlace(handPos).normalize()
-    const yaw = Math.atan2(aim.x, aim.z)
-    const pitch = drawing ? Math.asin(Math.max(-1, Math.min(1, -aim.y))) : 0.6
-    const cant = drawing ? 0.16 : 0.35
+    const body = this.bodyYaw()
+    const yaw = drawing ? Math.atan2(aim.x, aim.z) : body + CARRY_POSE.yaw
+    const pitch = drawing ? Math.asin(Math.max(-1, Math.min(1, -aim.y))) : CARRY_POSE.pitch
+    const cant = drawing ? 0.16 : CARRY_POSE.cant
     const target = Quaternion.FromEulerAnglesToRef(pitch, yaw, cant, this.bowQuat)
     if (!this.handReady) {
       this.handQ.copyFrom(target)
@@ -965,6 +993,7 @@ export class Bowfishing {
     this.streak = 0
     const id = chooseCheer({ kind: 'miss' })
     const line = this.wild.celebrate(id)
+    if (Math.random() >= CHEER_SHARE) return
     if (this.nearMiss) this.say(this.nearMiss.over ? LINES.over : LINES.under, true)
     else this.say(line, true)
   }
@@ -985,7 +1014,9 @@ export class Bowfishing {
 
   private cheer(trigger: CheerTrigger): void {
     const id = chooseCheer(trigger)
-    if (this.say(this.wild.celebrate(id), true)) return
+    const line = this.wild.celebrate(id)
+    if (!ALWAYS_SAID.has(id) && Math.random() >= CHEER_SHARE) return
+    if (this.say(line, true)) return
     if (id === 'crazy' || id === 'meltdown') this.host.audio.whoop(true)
     else if (id === 'hype' || id === 'stacking' || id === 'stoned') this.host.audio.whoop(false)
   }
@@ -1305,7 +1336,7 @@ export class Bowfishing {
       if (this.bow === 'drawing') pole = ELBOW_POLES.drawing
     }
     this.scratch.copyFrom(this.bowHolder.position)
-    avatar.solveHands(dt, right, this.bow === 'drawing' ? this.scratch : null, { right: pole, left: ELBOW_POLES.bowArm })
+    avatar.solveHands(dt, right, this.scratch, { right: pole, left: ELBOW_POLES.bowArm })
   }
 
   /** World position of the shooter's feet (for the minimap, wildlife and grass). */
