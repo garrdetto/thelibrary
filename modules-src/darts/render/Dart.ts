@@ -17,7 +17,7 @@ export interface DartKit {
 
 const MODEL_URLS: Record<BoardStyle, string> = {
   steel: '/models/darts/dart-steel.glb',
-  spider: '/models/darts/dart-soft.glb',
+  spider: '/models/darts/dart-soft.glb?v=2',
 }
 
 const AXIS = new THREE.Vector3(0, 0, -1)
