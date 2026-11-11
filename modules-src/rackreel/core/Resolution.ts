@@ -3,7 +3,7 @@
  * When the frame rate stays under `LOW_FPS` the render size steps down (never below `MIN_LINES`) and steps back up once it stays over
  * `HIGH_FPS`; the HUD and post-processing always run at the canvas size. `?res=720|1080|1440|native` pins a size for testing; 1080p and 1440p screens both render at native size.
  */
-import type { Engine } from '@babylonjs/core/Engines/engine'
+import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 
 export const TARGET_LINES = 1440
 export const MIN_LINES = 720
@@ -35,7 +35,7 @@ export function renderLines(cssLines: number, devicePixelRatio: number, cap: num
   return Math.max(floor, Math.min(native, cap) / Math.max(1, slow))
 }
 
-export function attachResolution(engine: Engine, canvas: HTMLCanvasElement): Resolution {
+export function attachResolution(engine: AbstractEngine, canvas: HTMLCanvasElement): Resolution {
   const param = new URLSearchParams(location.search).get('res')
   const pinnedLines = param === 'native' ? Infinity : param && Number.isFinite(Number(param)) && Number(param) >= 360 ? Number(param) : 0
   const cap = pinnedLines || TARGET_LINES

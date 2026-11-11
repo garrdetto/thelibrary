@@ -1,5 +1,7 @@
 import { Constants } from '@babylonjs/core/Engines/constants'
+import { ShaderStore } from '@babylonjs/core/Engines/shaderStore'
 import { Effect } from '@babylonjs/core/Materials/effect'
+import { ShaderLanguage } from '@babylonjs/core/Materials/shaderLanguage'
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
@@ -73,6 +75,52 @@ void main() {
   gl_FragColor = vec4(vColor.rgb, a);
 }`
 
+const quadVertexWgsl = /* wgsl */ `
+attribute position: vec3f;
+attribute uv: vec2f;
+attribute color: vec4f;
+uniform viewProjection: mat4x4f;
+varying vUv: vec2f;
+varying vColor: vec4f;
+@vertex
+fn main(input: VertexInputs) -> FragmentInputs {
+  vertexOutputs.vUv = vertexInputs.uv * 2.0 - 1.0;
+  vertexOutputs.vColor = vertexInputs.color;
+  vertexOutputs.position = uniforms.viewProjection * vec4f(vertexInputs.position, 1.0);
+}`
+
+ShaderStore.ShadersStoreWGSL.rrRippleVertexShader = quadVertexWgsl
+ShaderStore.ShadersStoreWGSL.rrSprayVertexShader = quadVertexWgsl
+
+ShaderStore.ShadersStoreWGSL.rrRippleFragmentShader = /* wgsl */ `
+varying vUv: vec2f;
+varying vColor: vec4f;
+@fragment
+fn main(input: FragmentInputs) -> FragmentOutputs {
+  let r = length(fragmentInputs.vUv);
+  if (r > 1.0) {
+    discard;
+  }
+  let tone = fragmentInputs.vColor;
+  let w = mix(0.07, 0.15, tone.g);
+  let outer = 1.0 - smoothstep(0.0, w, abs(r - 0.84));
+  let inner = (1.0 - smoothstep(0.0, w * 0.8, abs(r - 0.58))) * 0.5 * tone.b;
+  fragmentOutputs.color = vec4f(vec3f(0.9, 0.95, 0.97), (outer + inner) * tone.a);
+}`
+
+ShaderStore.ShadersStoreWGSL.rrSprayFragmentShader = /* wgsl */ `
+varying vUv: vec2f;
+varying vColor: vec4f;
+@fragment
+fn main(input: FragmentInputs) -> FragmentOutputs {
+  let r = length(fragmentInputs.vUv);
+  let a = (1.0 - smoothstep(0.25, 1.0, r)) * fragmentInputs.vColor.a;
+  if (a < 0.01) {
+    discard;
+  }
+  fragmentOutputs.color = vec4f(fragmentInputs.vColor.rgb, a);
+}`
+
 interface Ripple {
   x: number
   y: number
@@ -124,6 +172,7 @@ function fxMaterial(name: string, shader: string, scene: Scene, additive: boolea
     attributes: ['position', 'uv', 'color'],
     uniforms: ['viewProjection'],
     needAlphaBlending: true,
+    shaderLanguage: scene.getEngine().isWebGPU ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
   })
   mat.backFaceCulling = false
   mat.disableDepthWrite = true

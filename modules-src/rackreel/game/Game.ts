@@ -195,7 +195,7 @@ export class Game {
   constructor(private readonly canvas: HTMLCanvasElement) {}
 
   async start(): Promise<void> {
-    this.ctx = createEngineSetup(this.canvas)
+    this.ctx = await createEngineSetup(this.canvas)
     const { scene } = this.ctx
     this.hud.setLoading(0.05, 'Carving the lake basin…')
     await nextFrame()
@@ -349,6 +349,7 @@ export class Game {
     scene.onBeforeCameraRenderObservable.add(() => this.afterCameraMove())
     scene.onAfterCameraRenderObservable.add(() => this.removeSway())
     this.ctx.engine.runRenderLoop(() => this.frame())
+    this.ctx.watchFirstFrame()
     await this.prewarmSpawns()
     this.hud.setLoading(1, 'Ready')
     document.getElementById('loading')!.hidden = true

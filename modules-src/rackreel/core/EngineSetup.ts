@@ -1,6 +1,5 @@
 import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera'
-import { Engine } from '@babylonjs/core/Engines/engine'
-import '@babylonjs/core/Engines/Extensions/engine.query'
+import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
@@ -19,6 +18,8 @@ import '@babylonjs/core/Rendering/boundingBoxRenderer'
 import { DefaultRenderingPipeline } from '@babylonjs/core/PostProcesses/RenderPipeline/Pipelines/defaultRenderingPipeline'
 import '@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent'
 import { Scene } from '@babylonjs/core/scene'
+import type { Backend } from './Backend'
+import { createEngine } from './EngineBoot'
 import { attachResolution } from './Resolution'
 import type { Resolution } from './Resolution'
 
@@ -39,7 +40,11 @@ export interface TrunkCollider {
 }
 
 export interface EngineContext {
-  engine: Engine
+  engine: AbstractEngine
+  /** Which Babylon engine is drawing: WebGPU when the browser has it, WebGL2 otherwise or with `?gpu=webgl`. */
+  backend: Backend
+  /** Call when the render loop starts (`core/EngineBoot.ts`). */
+  watchFirstFrame(): void
   scene: Scene
   camera: UniversalCamera
   sun: DirectionalLight
@@ -71,8 +76,8 @@ export interface EngineContext {
   resolution: Resolution
 }
 
-export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
-  const engine = new Engine(canvas, true, { stencil: false, preserveDrawingBuffer: false, powerPreference: 'high-performance', antialias: false, adaptToDeviceRatio: false }, false)
+export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<EngineContext> {
+  const { engine, backend, watchFirstFrame } = await createEngine(canvas)
   engine.enableOfflineSupport = false
   const resolution = attachResolution(engine, canvas)
 
@@ -211,6 +216,8 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
 
   const ctx: EngineContext = {
     engine,
+    backend,
+    watchFirstFrame,
     scene,
     camera,
     sun,
