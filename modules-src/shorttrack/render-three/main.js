@@ -10,6 +10,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from '../shorttrack-numbers.js';
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from '../prison-speedway.js';
 import { batchStatic } from '../../_shared/static-batch.js';
+import { loadEngineAudio, createEngineVoice } from './engine-audio.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-schemes.js';
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
 import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
@@ -1291,7 +1292,7 @@ function netTick(dt){
   else if(player)sendHost({t:'s',s:stateOf(player)});
 }
 
-// ===================== AUDIO (synthesized, no files) =====================
+// ===================== AUDIO (ElevenLabs engine loops, synthesized fallback) =====================
 const AU={ctx:null,on:store.get('sts_snd',true)};
 function audioInit(){
   if(AU.ctx){if(AU.ctx.state==='suspended')AU.ctx.resume();return;}
@@ -1307,6 +1308,10 @@ function audioInit(){
   AU.tg=gain(0);loop().connect(filt('bandpass',1150,2.5)).connect(AU.tg).connect(M);
   AU.o1=osc('sawtooth');AU.og=gain(0);AU.o1.connect(filt('lowpass',1000,1)).connect(AU.og).connect(M);
   AU.cg=gain(0.02);loop().connect(filt('lowpass',500,0.7)).connect(AU.cg).connect(M);
+  engineLoad(ctx);
+}
+function engineLoad(ctx){
+  loadEngineAudio(ctx,new URL('shorttrack-audio/',location.href)).then(a=>{AU.me=createEngineVoice(ctx,a,AU.master);AU.near=createEngineVoice(ctx,a,AU.master);}).catch(()=>{});
 }
 function toggleMute(){AU.on=!AU.on;store.set('sts_snd',AU.on);if(AU.master)AU.master.gain.value=AU.on?0.7:0;toast(AU.on?'Sound on':'Sound muted');if(!AU.on&&window.speechSynthesis)speechSynthesis.cancel();}
 function crashSnd(v,dist){
@@ -1321,14 +1326,16 @@ function audioUpdate(){
   if(!AU.ctx)return;const t=AU.ctx.currentTime,inRace=!!player&&mode!=='menu'&&mode!=='garage'&&mode!=='lobby';
   const c=inRace?player:null,rpm=c?rpmOf(c):1050+Math.sin(t*3)*40,f=rpm/15;
   AU.e1.frequency.setTargetAtTime(f,t,0.04);AU.e2.frequency.setTargetAtTime(f/2,t,0.04);
-  AU.ef.frequency.setTargetAtTime(c&&c.thr?2400:800,t,0.08);AU.eg.gain.setTargetAtTime(c?(c.thr?0.13:0.08):0.04,t,0.08);
+  AU.ef.frequency.setTargetAtTime(c&&c.thr?2400:800,t,0.08);AU.eg.gain.setTargetAtTime(AU.me?0:c?(c.thr?0.13:0.08):0.04,t,0.08);
+  if(AU.me)AU.me.set(t,rpm,c&&c.thr?1:0,c?0.55:0.3,1,12000);
   AU.tg.gain.setTargetAtTime(c?clamp((c.slip-2.5)/12,0,0.3):0,t,0.05);
   AU.cg.gain.setTargetAtTime(inRace?0.05:0.02,t,0.3);
   let near=null,nd=1e9;if(c)cars.forEach(o=>{if(o===c||!o.vis)return;const d=Math.hypot(o.x-camera.position.x,o.z-camera.position.z);if(d<nd){nd=d;near=o;}});
   if(near&&nd<150){const dx=camera.position.x-near.x,dz=camera.position.z-near.z,d=Math.max(1,nd);
     const vs=((near.vx-c.vx)*dx+(near.vz-c.vz)*dz)/d,dop=343/Math.max(200,343-vs);
-    AU.o1.frequency.setTargetAtTime(rpmOf(near)/15*dop,t,0.05);AU.og.gain.setTargetAtTime(Math.min(0.12,2.2/(d+8)),t,0.08);}
-  else AU.og.gain.setTargetAtTime(0,t,0.1);
+    if(AU.near){AU.og.gain.setTargetAtTime(0,t,0.1);AU.near.set(t,rpmOf(near),near.thr?1:0,Math.min(0.5,9/(d+8)),dop,clamp(9000/(1+d*0.08),900,9000));}
+    else{AU.o1.frequency.setTargetAtTime(rpmOf(near)/15*dop,t,0.05);AU.og.gain.setTargetAtTime(Math.min(0.12,2.2/(d+8)),t,0.08);}}
+  else{AU.og.gain.setTargetAtTime(0,t,0.1);if(AU.near)AU.near.set(t,0,0,0,1,1000);}
 }
 
 // ===================== ENVIRONMENT / QUALITY =====================
