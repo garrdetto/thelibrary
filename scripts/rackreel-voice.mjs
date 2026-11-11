@@ -6,7 +6,7 @@
  *   node scripts/rackreel-voice.mjs [--provider elevenlabs|gemini] [--force] [--only line-board,cheer-sendIt] [--voice <name or id>] [--model <id>]
  *
  * ElevenLabs (ELEVENLABS_API_KEY): the default when its key is set. `--voice` is a voice name from the account's voice
- * library or a voice id (default "Chris"); `--model` defaults to eleven_v3, which reads the [excited] audio tag the
+ * library (the part before " - " is enough) or a voice id (default "Charlie"); `--model` defaults to eleven_v3, which reads the [excited] audio tag the
  * script puts in front of every line. Clips come back as 64 kbit/s MP3 and are stored as-is.
  *
  * Gemini (GEMINI_API_KEY): `--voice` is a prebuilt voice (default Fenrir), `--model` a TTS model (default
@@ -40,7 +40,7 @@ if (!key) {
   console.error(`${provider === 'elevenlabs' ? 'ELEVENLABS_API_KEY' : 'GEMINI_API_KEY'} is not set; nothing recorded.`)
   process.exit(2)
 }
-const voiceName = flag('--voice') ?? (provider === 'elevenlabs' ? 'Chris' : 'Fenrir')
+const voiceName = flag('--voice') ?? (provider === 'elevenlabs' ? 'Charlie' : 'Fenrir')
 const model = flag('--model') ?? (provider === 'elevenlabs' ? 'eleven_v3' : 'gemini-2.5-flash-preview-tts')
 
 const tmp = mkdtempSync(join(tmpdir(), 'rackreel-voice-'))
@@ -80,7 +80,8 @@ async function resolveVoice() {
   if (/^[A-Za-z0-9]{20,}$/.test(voiceName)) return voiceName
   const res = await retrying('ElevenLabs', () => fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } }))
   const { voices = [] } = await res.json()
-  const hit = voices.find((v) => v.name?.toLowerCase() === voiceName.toLowerCase())
+  const want = voiceName.toLowerCase()
+  const hit = voices.find((v) => v.name?.toLowerCase() === want) ?? voices.find((v) => v.name?.toLowerCase().split(' - ')[0].trim() === want)
   if (!hit) {
     const names = voices.map((v) => v.name).filter(Boolean).sort().join(', ')
     throw new Error(`No voice named "${voiceName}" in this account. Available: ${names || 'none'}. Pass --voice <name> or a voice id.`)
