@@ -2,9 +2,8 @@ import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera'
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine'
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
-import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
+import type { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
-import { RenderTargetTexture } from '@babylonjs/core/Materials/Textures/renderTargetTexture'
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
@@ -21,6 +20,9 @@ import { Scene } from '@babylonjs/core/scene'
 import type { Backend } from './Backend'
 import { createEngine } from './EngineBoot'
 import { attachResolution } from './Resolution'
+import { createShadowLayers } from './ShadowLayers'
+import type { ShadowLayers } from './ShadowLayers'
+import { needsRecentre } from './ShadowPolicy'
 import type { Resolution } from './Resolution'
 
 export const SHADOW_MAP_SIZE = 2048
@@ -51,10 +53,13 @@ export interface EngineContext {
   sky: HemisphericLight
   sunDirection: Vector3
   shadows: ShadowGenerator
+  /** The sun's shadows as a cached layer of fixed casters and a layer of movers (`core/ShadowLayers.ts`). */
+  shadowLayers: ShadowLayers
   pipeline: DefaultRenderingPipeline
   collisionOctree: Octree<TrunkCollider> | null
   registerDynamic(mesh: AbstractMesh): void
   unregisterDynamic(mesh: AbstractMesh): void
+  /** Centres the shadow frame near `target`. It follows in steps (`SHADOW_RECENTRE`), so standing or strolling does not redraw the woods' shadows. */
   setShadowFocus(target: Vector3): void
   buildCollisionOctree(colliders: TrunkCollider[]): Octree<TrunkCollider>
   /** Trunks near (x, z). The array is reused by the next call, so finish with it first. */
@@ -138,52 +143,8 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
   sky.groundColor = new Color3(0.4, 0.37, 0.29)
   sky.specular = Color3.Black()
 
-  const shadows = new ShadowGenerator(SHADOW_MAP_SIZE, sun, true)
-  shadows.useBlurCloseExponentialShadowMap = true
-  shadows.blurKernel = 8
-  shadows.blurScale = 2
-  shadows.depthScale = 60
-  shadows.bias = 0.0006
-  shadows.normalBias = 0.012
-  shadows.setDarkness(0.62)
-  shadows.forceBackFacesOnly = false
-  shadows.frustumEdgeFalloff = 0.25
-  const shadowMap = shadows.getShadowMap()!
-  shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE
-  let shadowSnapshot = new Float32Array(0)
-  let shadowList: AbstractMesh[] | null = null
-  const shadowSun = new Vector3(Number.NaN, 0, 0)
-  scene.onBeforeRenderTargetsRenderObservable.add(() => {
-    const list = shadowMap.renderList
-    if (!list) return
-    let dirty = list !== shadowList || !sun.position.equals(shadowSun)
-    const size = list.length * 17
-    if (shadowSnapshot.length !== size) {
-      shadowSnapshot = new Float32Array(size)
-      dirty = true
-    }
-    let at = 0
-    for (let i = 0; i < list.length; i++) {
-      const mesh = list[i]
-      const shown = mesh.isEnabled() && mesh.isVisible ? 1 : 0
-      if (shown && mesh.skeleton) dirty = true
-      if (shadowSnapshot[at] !== shown) {
-        shadowSnapshot[at] = shown
-        dirty = true
-      }
-      at++
-      const m = mesh.computeWorldMatrix().m
-      for (let k = 0; k < 16; k++, at++) {
-        if (shadowSnapshot[at] !== m[k]) {
-          shadowSnapshot[at] = m[k]
-          dirty = true
-        }
-      }
-    }
-    shadowList = list
-    shadowSun.copyFrom(sun.position)
-    if (dirty) shadowMap.resetRefreshCounter()
-  })
+  const shadowLayers = createShadowLayers(scene, sun, SHADOW_MAP_SIZE)
+  const shadows = shadowLayers.shadows
 
   const pipeline = new DefaultRenderingPipeline('grade', true, scene, [camera])
   pipeline.samples = 1
@@ -212,6 +173,8 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
   const scratchUp = Vector3.Up()
   const ray = new Ray(Vector3.Zero(), new Vector3(0, -1, 0), 600)
   const focusScratch = new Vector3()
+  const shadowFocus = new Vector3(Number.NaN, 0, 0)
+  let reaimed = true
   const axisScratch = new Vector3()
 
   const ctx: EngineContext = {
@@ -224,6 +187,7 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
     sky,
     sunDirection,
     shadows,
+    shadowLayers,
     pipeline,
     resolution,
     collisionOctree,
@@ -241,6 +205,9 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
       }
     },
     setShadowFocus(target) {
+      if (!reaimed && !needsRecentre(shadowFocus, target)) return
+      reaimed = false
+      shadowFocus.copyFrom(target)
       const a = Math.round(Vector3.Dot(target, right) / texel) * texel
       const b = Math.round(Vector3.Dot(target, up) / texel) * texel
       const c = Vector3.Dot(target, sunDirection)
@@ -292,6 +259,7 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
       right.normalize()
       Vector3.CrossToRef(sunDirection, right, up)
       up.normalize()
+      reaimed = true
     },
     sensitivity: { look: 1, aim: 1, invertX: false, invertY: false },
     lookSensibility: 2200,

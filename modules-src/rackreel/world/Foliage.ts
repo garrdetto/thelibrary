@@ -51,8 +51,7 @@ export class Foliage {
   readonly grassHoles: GrassHole[] = []
   readonly grass: GrassField
   private shadowStands = new Set<Stand>()
-  private extraCount = -1
-  private readonly lastExtra: AbstractMesh[] = []
+  private shadowsStale = true
   private nearScratch = new Set<Stand>()
   private primed = false
   private readonly treeMatrices: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(4096), hardwood: new FloatBatch(4096), birch: new FloatBatch(1024) }
@@ -233,7 +232,8 @@ export class Foliage {
     this.grass.prime(center)
   }
 
-  updateShadowCasters(focus: Vector3, extra: AbstractMesh[]): void {
+  /** Trees, rocks and logs near `focus` go to the cached shadow layer; `moving` (the hunter, animals, vehicles) to the layer redrawn as they move. */
+  updateShadowCasters(focus: Vector3, moving: AbstractMesh[]): void {
     const near = this.nearScratch
     near.clear()
     for (const stand of this.stands) {
@@ -241,29 +241,22 @@ export class Foliage {
       const dz = Math.max(Math.abs(stand.center.z - focus.z) - STAND_SIZE / 2, 0)
       if (dx * dx + dz * dz < SHADOW_STAND_RADIUS * SHADOW_STAND_RADIUS) near.add(stand)
     }
-    let changed = near.size !== this.shadowStands.size || extra.length !== this.extraCount
-    this.extraCount = extra.length
+    let changed = this.shadowsStale || near.size !== this.shadowStands.size
     if (!changed) for (const s of near) if (!this.shadowStands.has(s)) changed = true
-    if (!changed) for (let i = 0; i < extra.length; i++) if (this.lastExtra[i] !== extra[i]) { changed = true; break }
-    const map = this.ctx.shadows.getShadowMap()!
-    if (changed || !map.renderList || map.renderList.length === 0) {
+    const layers = this.ctx.shadowLayers
+    if (changed) {
+      this.shadowsStale = false
       this.nearScratch = this.shadowStands
       this.shadowStands = near
-      const last = this.lastExtra
-      last.length = extra.length
-      const list: AbstractMesh[] = []
-      for (let i = 0; i < extra.length; i++) {
-        last[i] = extra[i]
-        list.push(extra[i])
-      }
-      for (const stand of near) for (const mesh of stand.casters) list.push(mesh)
-      map.renderList = list
+      const fixed: AbstractMesh[] = []
+      for (const stand of near) for (const mesh of stand.casters) fixed.push(mesh)
+      layers.setFixed(fixed)
     }
+    layers.setMoving(moving)
   }
 
   forceShadowRefresh(): void {
-    this.shadowStands = new Set()
-    this.extraCount = -1
+    this.shadowsStale = true
   }
 
   dispose(): void {
@@ -275,6 +268,5 @@ export class Foliage {
     this.stands.length = 0
     this.shadowStands.clear()
     this.nearScratch.clear()
-    this.lastExtra.length = 0
   }
 }

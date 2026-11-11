@@ -58,7 +58,7 @@ import { Minimap } from '../ui/Minimap'
 import type { MapMarker } from '../ui/Minimap'
 import { Online, fetchLobbies } from './Online'
 import type { PlayerState } from './Online'
-import { LobbyBrowser, PauseMenu, loadSensitivity, saveSensitivity } from '../ui/PauseMenu'
+import { LobbyBrowser, PauseMenu, loadGraphics, loadSensitivity, saveGraphics, saveSensitivity } from '../ui/PauseMenu'
 import { formatValue as fmtValue } from '../systems/LootTableManager'
 import type { CabinSpot } from '../world/Cabin'
 import type { AvatarHands, AvatarStance } from './Avatar'
@@ -315,6 +315,7 @@ export class Game {
     this.online.id = this.sessionKey
     this.online.carry(this.avatar.root)
     this.ctx.sensitivity = loadSensitivity()
+    this.ctx.shadowLayers.setEnabled(loadGraphics().shadows)
     const cam = this.ctx.camera
     cam.keysUp = []
     cam.keysDown = []
@@ -586,6 +587,11 @@ export class Game {
       setSensitivity: (s) => {
         this.ctx.sensitivity = s
         saveSensitivity(s)
+      },
+      graphics: () => ({ shadows: this.ctx.shadowLayers.enabled }),
+      setGraphics: (g) => {
+        this.ctx.shadowLayers.setEnabled(g.shadows)
+        saveGraphics(g)
       },
       party: {
         status: () => this.online.describe(),

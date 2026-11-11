@@ -24,6 +24,31 @@ export interface PauseParty {
   leave(): void
 }
 
+/** View options kept per device, like the look settings. */
+export interface Graphics {
+  shadows: boolean
+}
+
+export const DEFAULT_GRAPHICS: Graphics = { shadows: true }
+const GRAPHICS_KEY = 'tl-rackreel-graphics'
+
+export function loadGraphics(): Graphics {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GRAPHICS_KEY) ?? '{}') as Partial<Graphics>
+    return { shadows: typeof raw.shadows === 'boolean' ? raw.shadows : DEFAULT_GRAPHICS.shadows }
+  } catch {
+    return { ...DEFAULT_GRAPHICS }
+  }
+}
+
+export function saveGraphics(g: Graphics): void {
+  try {
+    localStorage.setItem(GRAPHICS_KEY, JSON.stringify(g))
+  } catch {
+    return
+  }
+}
+
 export interface PauseHooks {
   resume(): void
   inventory(): void
@@ -31,6 +56,8 @@ export interface PauseHooks {
   respawn(): void
   sensitivity(): Sensitivity
   setSensitivity(s: Sensitivity): void
+  graphics(): Graphics
+  setGraphics(g: Graphics): void
   party: PauseParty
 }
 
@@ -139,6 +166,11 @@ export class PauseMenu {
     })
     look.append(lookRow.row, aimRow.row, flipX.row, flipY.row, h('p', 'panel-note', 'The mouse always turns the view the same way; these only flip the arrow keys.'), reset)
 
+    const graphics = h('section', 'panel-section')
+    graphics.append(h('h3', undefined, 'Graphics'))
+    const shadowRow = this.toggle('Shadows', hooks.graphics().shadows, (on) => this.hooks.setGraphics({ ...this.hooks.graphics(), shadows: on }))
+    graphics.append(shadowRow.row, h('p', 'panel-note', 'Turn shadows off for a smoother picture on a slower computer.'))
+
     this.party = h('section', 'panel-section')
     this.note = h('p', 'panel-note')
     this.note.setAttribute('aria-live', 'polite')
@@ -153,7 +185,7 @@ export class PauseMenu {
     respawn.addEventListener('click', () => this.hooks.respawn())
     actions.append(inventory, records, respawn)
 
-    card.append(head, look, this.party, this.note, actions)
+    card.append(head, look, graphics, this.party, this.note, actions)
     this.root.append(card)
     document.body.append(this.root)
     this.root.addEventListener('keydown', (e) => {
