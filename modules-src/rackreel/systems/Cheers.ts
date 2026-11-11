@@ -9,12 +9,12 @@ export type CheerTrigger =
   | { kind: 'tearOff' }
 
 export const CHEERS: Record<CheerId, { duration: number; line: string }> = {
-  stoned: { duration: 1.2, line: 'Stoned him! Reel \'er in!' },
+  stoned: { duration: 1.2, line: 'OHH!!! Stoned him! Reel \'er in!' },
   tubbed: { duration: 1.0, line: 'Into the tub!' },
   crazy: { duration: 3.5, line: 'Absolute tank. WOOOOO!' },
   meltdown: { duration: 5, line: 'WOOOOO! ABSOLUTE TANK! THAT\'S A WALL-HANGER, BUD!' },
-  hype: { duration: 2, line: 'Yer on fire tonight!' },
-  stacking: { duration: 2, line: 'Stacking \'em up!' },
+  hype: { duration: 2, line: 'OHH!!! Yer on fire tonight!' },
+  stacking: { duration: 2, line: 'Stacking \'em up! Woooohooooo!!' },
   miss: { duration: 1, line: 'Next one.' },
   tearOff: { duration: 1.2, line: 'Ya cranked through his run.' },
   sendIt: { duration: 2.6, line: 'WOOOOOO!! YEAHHHHH!!!' },
@@ -49,7 +49,7 @@ export function chooseCheer(trigger: CheerTrigger): CheerId {
 export const MISS_LINES: readonly string[] = [
   'Next one.',
   'Ope! That carp just flipped you the fin, bud!',
-  'Holy buckets, you missed him by a country mile!',
+  'OHH!!! Holy buckets, you missed him by a country mile!',
   'You shot a hole clean through the lake, congrats!',
   "That fish is laughin' at ya, bud. I can hear it!",
   "Ya couldn't hit a cow's butt with a banjo!",
@@ -71,26 +71,33 @@ export function missLineAt(n: number): string {
   return MISS_LINES[(n * 5 + Math.floor(n / len)) % len]
 }
 
+/** What he hollers when a carp is reeled in and lands in the tub (the bigger moments have their own cheers); cycled by `tubLineAt`. */
+export const TUB_LINES: readonly string[] = [
+  'Into the tub!',
+  "Get 'em, stink nuts!!! WOOOOO!! Hahahaha!",
+  'OHH!!! Look at the lips on that thing!!! WOOOOO!',
+]
+
+/** The tub line for the `n`th ordinary carp landed on a trip. */
+export function tubLineAt(n: number): string {
+  return TUB_LINES[n % TUB_LINES.length]
+}
+
 /** Things Wisco Wild Man just blurts out on the water, every so often, for no reason at all. */
 export const BLURTS: readonly string[] = [
   'Put the ole sneaky on \'em.',
   'WOOOOO! Smell that lake, bud!',
   'Carp don\'t stand a chance tonight!',
   'This boat\'s held together with zip ties and prayers. Runs like a dream!',
-  'Ain\'t nothin\' better than a cold one and a full tub.',
+  'Ain\'t nothin\' better than a cold one and a full tub. Woooohooooo!!',
   'Shhh! Put the ole sneaky on \'em... WOOOOO!',
   'My cousin Dale shot a forty-pounder here. Well, he says he did.',
   'If it swims, it\'s fair game, bud!',
-  'Ya see that swirl? That\'s a hog, I tell ya!',
+  'OHH!!! Ya see that swirl? That\'s a hog, I tell ya!',
   'Lights on, brains off! WOOOOO!',
-  'Grandpappy always said, aim low and holler loud!',
   'I got mud in my boots and I ain\'t even mad about it!',
-  'Back home they call me the Carp Whisperer. I whisper "WOOOOO!"',
-  'Keep yer eyes peeled and yer arrows wet!',
-  'Bud, I was born for this!',
+  'Bud, I was born for this! Woooohooooo!!',
   'Mosquitoes out here are big enough to tow the boat!',
-  'Ain\'t no tub big enough, bud. Ain\'t no tub big enough!',
-  'Quiet now... quiet... WOOOOO! Sorry, couldn\'t help it.',
 ]
 
 /** The blurt for the n-th time he pipes up: walks the list in a scrambled but repeat-free order. */

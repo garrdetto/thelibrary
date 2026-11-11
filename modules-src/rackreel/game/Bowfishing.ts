@@ -20,7 +20,7 @@ import { Autopilot, SPEED, SPEED_STEPS, buildLoops, findLaunch } from '../system
 import type { Launch, Pt, RouteName } from '../systems/BowRoutes'
 import { ArrowShot, BOW, CARP, CarpFight, CarpSchool, arrowSpeed, holdShake } from '../systems/BowfishingMotion'
 import type { Carp } from '../systems/BowfishingMotion'
-import { blurtAt, chooseCheer, missLineAt } from '../systems/Cheers'
+import { blurtAt, chooseCheer, missLineAt, tubLineAt } from '../systems/Cheers'
 import type { CheerId, CheerTrigger } from '../systems/Cheers'
 import { WaterFx } from '../systems/FishingFx'
 import type { LootTableManager, Specimen } from '../systems/LootTableManager'
@@ -94,9 +94,9 @@ const LINE_POINTS = 26
 const FISH_LENGTH = 1.12
 /** Seconds between Wild Man's blurts on the water (a little random either way). */
 const BLURT_GAP = 44
-/** Share of routine hits, misses and tubbed carp he says something about; the big moments in `ALWAYS_SAID` always get a line. */
+/** Share of routine hits and misses he says something about; the big moments in `ALWAYS_SAID` always get a line. */
 const CHEER_SHARE = 0.5
-const ALWAYS_SAID: ReadonlySet<CheerId> = new Set<CheerId>(['crazy', 'meltdown', 'stacking', 'sendIt', 'beached'])
+const ALWAYS_SAID: ReadonlySet<CheerId> = new Set<CheerId>(['tubbed', 'crazy', 'meltdown', 'stacking', 'sendIt', 'beached'])
 /** He soaks in the beaching for a moment before you step off. */
 const BEACH_PAUSE = 3.6
 
@@ -195,6 +195,7 @@ export class Bowfishing {
   private blurtTimer = 9
   private blurts = 0
   private misses = 0
+  private tubLines = 0
   private readonly voice: WildVoice
   private followLift = 0
   private followDocked = true
@@ -651,10 +652,7 @@ export class Bowfishing {
     if (this.role === 'crew') {
       this.followTrip(dt)
     } else {
-      if (this.host.lighting.night < DAWN && !p.homeward) {
-        p.sendItHome()
-        this.say(LINES.dawn, true)
-      }
+      if (this.host.lighting.night < DAWN && !p.homeward) p.sendItHome()
       const events = p.update(dt, this.fightActive)
       if (events.onPlane && !p.homeward) {
         this.say(LINES.running, true)
@@ -1015,7 +1013,8 @@ export class Bowfishing {
 
   private cheer(trigger: CheerTrigger): void {
     const id = chooseCheer(trigger)
-    const line = this.wild.celebrate(id)
+    const cheerLine = this.wild.celebrate(id)
+    const line = id === 'tubbed' ? tubLineAt(this.tubLines++) : cheerLine
     if (!ALWAYS_SAID.has(id) && Math.random() >= CHEER_SHARE) return
     if (this.say(line, true)) return
     if (id === 'crazy' || id === 'meltdown') this.host.audio.whoop(true)

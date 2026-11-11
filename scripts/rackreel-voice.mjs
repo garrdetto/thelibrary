@@ -1,13 +1,13 @@
 /**
  * Records Wisco Wild Man: every line in modules-src/rackreel/systems/Voice.ts is read aloud and written to
  * public/modules/rackreel/voice/, with manifest.json mapping clip ids to files for game/WildVoice.ts.
- * Clips that already exist are kept unless --force is given.
+ * Clips that already exist are kept unless --force is given; a full run (no --only) drops clips whose lines are gone.
  *
  *   node scripts/rackreel-voice.mjs [--provider elevenlabs|gemini] [--force] [--only line-board,cheer-sendIt] [--voice <name or id>] [--model <id>]
  *
  * ElevenLabs (ELEVENLABS_API_KEY): the default when its key is set. `--voice` is a voice name from the account's voice
- * library (the part before " - " is enough) or a voice id (default "Charlie"); `--model` defaults to eleven_v3, which reads the [excited] audio tag the
- * script puts in front of every line. Clips come back as 64 kbit/s MP3 and are stored as-is.
+ * library (the part before " - " is enough) or a voice id (default WMNqbmDbWYAXCWtmTvj5, the owner's "Wild Man2" instant clone; the account also has an untrained professional voice of the same name); `--model` defaults to eleven_v3, which reads the audio tags
+ * from each clip's `spoken` text (VOICE_TAGS, or the line's own tags in SPOKEN). Clips come back as 64 kbit/s MP3 and are stored as-is.
  *
  * Gemini (GEMINI_API_KEY): `--voice` is a prebuilt voice (default Fenrir), `--model` a TTS model (default
  * gemini-2.5-flash-preview-tts); the VOICE_STYLE brief is sent with each line. Gemini returns 24 kHz 16-bit mono PCM;
@@ -40,7 +40,7 @@ if (!key) {
   console.error(`${provider === 'elevenlabs' ? 'ELEVENLABS_API_KEY' : 'GEMINI_API_KEY'} is not set; nothing recorded.`)
   process.exit(2)
 }
-const voiceName = flag('--voice') ?? (provider === 'elevenlabs' ? 'Charlie' : 'Fenrir')
+const voiceName = flag('--voice') ?? (provider === 'elevenlabs' ? 'WMNqbmDbWYAXCWtmTvj5' : 'Fenrir')
 const model = flag('--model') ?? (provider === 'elevenlabs' ? 'eleven_v3' : 'gemini-2.5-flash-preview-tts')
 
 const tmp = mkdtempSync(join(tmpdir(), 'rackreel-voice-'))
@@ -89,12 +89,12 @@ async function resolveVoice() {
   return hit.voice_id
 }
 
-async function synthesizeEleven(text) {
+async function synthesizeEleven(text, spoken) {
   voiceId ??= await resolveVoice()
   const url = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_64`
   const v3 = model.startsWith('eleven_v3')
   const body = {
-    text: v3 ? `[excited] ${text}` : text,
+    text: v3 ? spoken : text,
     model_id: model,
     voice_settings: v3 ? { stability: 0.0, use_speaker_boost: true } : { stability: 0.35, similarity_boost: 0.8, style: 0.6, use_speaker_boost: true },
   }
@@ -154,11 +154,21 @@ for (const clip of clips) {
   const have = manifest[clip.id]
   if (!force && have && existsSync(join(outDir, have))) continue
   console.log(`${clip.id}: ${clip.text}`)
-  const file = store(clip.id, await synthesize(clip.text))
+  const file = store(clip.id, await synthesize(clip.text, clip.spoken))
   if (have && have !== file && existsSync(join(outDir, have))) rmSync(join(outDir, have))
   manifest[clip.id] = file
   made++
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
   await new Promise((r) => setTimeout(r, 400))
+}
+if (!only) {
+  const keep = new Set(lines.voiceClips().map((c) => c.id))
+  for (const [id, file] of Object.entries(manifest)) {
+    if (keep.has(id)) continue
+    if (existsSync(join(outDir, file))) rmSync(join(outDir, file))
+    delete manifest[id]
+    console.log(`dropped ${id}`)
+  }
+  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
 }
 console.log(`${made} clip${made === 1 ? '' : 's'} recorded as ${ext} (${Object.keys(manifest).length} in the manifest, ${provider} voice ${voiceName}, ${model}).`)
