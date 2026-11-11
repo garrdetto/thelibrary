@@ -1,4 +1,4 @@
-/** Wisco Wild Man's routes and autopilot, renderer-free: loops along the 1.15 m depth contour around the lake shore and the island, runs across open water on plane, and the way home to his launch. */
+/** Wisco Wild Man's routes and autopilot, renderer-free: loops that hug the lake shore and the island from `ROUTE.shoreGap` metres out (about 7 yards, never closer than 5) in water at least `ROUTE.contour` deep, runs across open water on plane, and the way home to his launch. */
 import { BAY, CHANNEL, ISLAND, LAKE_CENTER, bayCoord, bayRadius, lakeRadius } from '../world/Terrain'
 
 export interface Pt {
@@ -17,8 +17,13 @@ export interface Clearance {
 }
 
 export const ROUTE = {
-  contour: 1.15,
-  minDepth: 1.0,
+  contour: 0.7,
+  minDepth: 0.6,
+  /** How far the boat's centreline keeps from the water's edge on a loop (metres); `shoreGapMin` is the hard floor once the loop is smoothed. */
+  shoreGap: 6.5,
+  shoreGapMin: 5.0,
+  /** How far a smoothed loop point may be nudged back toward the shore where the smoothing swung it wide (metres). */
+  hug: 10,
   spacing: 2,
   clear: 6,
   runDepth: 2.5,
@@ -28,6 +33,8 @@ export const ROUTE = {
   runTurnRate: 0.25,
   minPlaneLeg: 40,
   offPlane: 25,
+  /** The first stretch of a run is driven at cruise so the boat is lined up on the deep line before it gets on plane. */
+  lineUp: 15,
 }
 
 export const SPEED = { creep: 0.67, cruise: 1.34, push: 2.68, run: 13.4 }
@@ -53,6 +60,22 @@ export function segmentDistance(p: Pt, a: Pt, b: Pt): number {
   const len2 = dx * dx + dz * dz
   const t = len2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2)) : 0
   return Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t))
+}
+
+/** Distance from `p` to the nearest water's edge (where the bottom reaches the surface), looked for in rings out to `limit` metres; `limit` when none is that close. */
+export function shoreDistance(map: WaterMap, p: Pt, limit = ROUTE.shoreGap): number {
+  for (let r = 0.5; r < limit; r += 0.5) {
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2
+      if (map.depthAt(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r) <= 0) return r
+    }
+  }
+  return limit
+}
+
+/** A loop point the boat may run through: deep enough, clear of the dock and parked boats, and `gap` off the shore. */
+export function boatWater(map: WaterMap, p: Pt, clear: Clearance, depth: number, gap: number): boolean {
+  return map.depthAt(p.x, p.z) >= depth && clearanceDistance(p, clear) >= ROUTE.clear + 0.5 && shoreDistance(map, p, gap) >= gap
 }
 
 export function clearanceDistance(p: Pt, clear: Clearance): number {
@@ -93,6 +116,22 @@ export function resampleLoop(points: Pt[], step: number): Pt[] {
   return out
 }
 
+/** Nudges a loop point back toward the shore (away from `center` on inward loops) as long as it stays in boat water `ROUTE.shoreGap` off the edge, so a smoothed loop still hugs the inside of coves. */
+function hug(map: WaterMap, p: Pt, center: Pt, inward: boolean, clear: Clearance): Pt {
+  const dx = p.x - center.x
+  const dz = p.z - center.z
+  const len = Math.hypot(dx, dz) || 1
+  const sx = (inward ? dx : -dx) / len
+  const sz = (inward ? dz : -dz) / len
+  let q = p
+  for (let d = 0.5; d <= ROUTE.hug; d += 0.5) {
+    const n = { x: p.x + sx * d, z: p.z + sz * d }
+    if (!boatWater(map, n, clear, ROUTE.contour, ROUTE.shoreGap)) break
+    q = n
+  }
+  return q
+}
+
 function settle(map: WaterMap, p: Pt, center: Pt, inward: boolean, clear: Clearance): Pt {
   const dx = p.x - center.x
   const dz = p.z - center.z
@@ -101,16 +140,17 @@ function settle(map: WaterMap, p: Pt, center: Pt, inward: boolean, clear: Cleara
   const sz = (inward ? -dz : dz) / len
   let q = { ...p }
   for (let i = 0; i < 160; i++) {
-    if (map.depthAt(q.x, q.z) >= ROUTE.minDepth && clearanceDistance(q, clear) >= ROUTE.clear + 0.5) break
+    if (boatWater(map, q, clear, ROUTE.minDepth, ROUTE.shoreGapMin)) break
     q = { x: q.x + sx * 0.5, z: q.z + sz * 0.5 }
   }
   return q
 }
 
 /**
- * A loop along the depth contour around a centre. `inward` loops (the lake shore) march in from the bank until the water
- * is deep enough; outward loops (the island) march out from the centre. Spots that are too shallow or too close to the
- * dock or a parked boat are pushed toward deeper water, then the loop is smoothed and resampled every 2 m.
+ * A loop around a centre that hugs the shore from `ROUTE.shoreGap` out. `inward` loops (the lake shore) march in from the
+ * bank until the water is deep enough and the edge is far enough away; outward loops (the island) march out from the
+ * centre. Spots that are too shallow, too close to the shore or too close to the dock or a parked boat are pushed toward
+ * deeper water, then the loop is smoothed and resampled every 2 m.
  */
 export function contourLoop(map: WaterMap, center: Pt, inward: boolean, clear: Clearance, depth = ROUTE.contour, outer: (angle: number) => number = (a) => lakeRadius(a) * 1.12): Pt[] {
   const samples = 240
@@ -123,9 +163,9 @@ export function contourLoop(map: WaterMap, center: Pt, inward: boolean, clear: C
     const stop = inward ? 0 : 140
     let found = inward ? outer(a) * 0.55 : 60
     if (inward) {
-      for (; r > stop; r -= 0.5) if (map.depthAt(center.x + cx * r, center.z + cz * r) >= depth) { found = r; break }
+      for (; r > stop; r -= 0.5) if (boatWater(map, { x: center.x + cx * r, z: center.z + cz * r }, clear, depth, ROUTE.shoreGap)) { found = r; break }
     } else {
-      for (; r < stop; r += 0.5) if (map.depthAt(center.x + cx * r, center.z + cz * r) >= depth) { found = r; break }
+      for (; r < stop; r += 0.5) if (boatWater(map, { x: center.x + cx * r, z: center.z + cz * r }, clear, depth, ROUTE.shoreGap)) { found = r; break }
     }
     radii.push(found)
   }
@@ -138,6 +178,12 @@ export function contourLoop(map: WaterMap, center: Pt, inward: boolean, clear: C
     pts = pts.map((p) => settle(map, p, center, inward, clear))
     const xs = circularSmooth(pts.map((p) => p.x), 2)
     const zs = circularSmooth(pts.map((p) => p.z), 2)
+    pts = pts.map((_, i) => ({ x: xs[i], z: zs[i] }))
+  }
+  pts = pts.map((p) => hug(map, p, center, inward, clear))
+  {
+    const xs = circularSmooth(pts.map((p) => p.x), 1)
+    const zs = circularSmooth(pts.map((p) => p.z), 1)
     pts = pts.map((_, i) => ({ x: xs[i], z: zs[i] }))
   }
   pts = pts.map((p) => settle(map, p, center, inward, clear))
@@ -406,8 +452,16 @@ export function planTrip(map: WaterMap, from: Pt, to: Pt, stopAtEnd: boolean): L
   const deep = deepPath(map, start, end)
   const path = deep ?? deepPath(map, start, end, 0.6, 0) ?? [start, end]
   for (let i = 1; i < path.length; i++) {
-    const len = Math.hypot(path[i].x - path[i - 1].x, path[i].z - path[i - 1].z)
-    legs.push({ to: path[i], plane: deep !== null && len >= ROUTE.minPlaneLeg })
+    const a = path[i - 1]
+    const b = path[i]
+    let len = Math.hypot(b.x - a.x, b.z - a.z)
+    const plane = deep !== null && len >= ROUTE.minPlaneLeg
+    if (plane && legs.length === 0 && len > ROUTE.lineUp + ROUTE.minPlaneLeg) {
+      const t = ROUTE.lineUp / len
+      legs.push({ to: { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }, plane: false })
+      len -= ROUTE.lineUp
+    }
+    legs.push({ to: b, plane })
   }
   legs.push({ to, plane: false, stop: stopAtEnd })
   return legs

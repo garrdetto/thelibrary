@@ -5,6 +5,8 @@ export class Audio {
   private engineGain: GainNode | null = null
   private noise: AudioBuffer | null = null
   private wind: GainNode | null = null
+  private voice: GainNode | null = null
+  private talking: AudioBufferSourceNode | null = null
   muted = false
 
   unlock(): void {
@@ -21,6 +23,9 @@ export class Audio {
     this.master = ctx.createGain()
     this.master.gain.value = 0.55
     this.master.connect(ctx.destination)
+    this.voice = ctx.createGain()
+    this.voice.gain.value = 1.5
+    this.voice.connect(this.master)
     const len = ctx.sampleRate * 2
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate)
     const data = this.noise.getChannelData(0)
@@ -46,6 +51,30 @@ export class Audio {
     this.wind.gain.value = 0.035
     windSrc.connect(windFilter).connect(this.wind).connect(this.master)
     windSrc.start()
+  }
+
+  /** Decodes a recorded clip once the context exists (null before the first click, or for a file the browser can't read). */
+  async decode(data: ArrayBuffer): Promise<AudioBuffer | null> {
+    if (!this.ctx) return null
+    try {
+      return await this.ctx.decodeAudioData(data)
+    } catch {
+      return null
+    }
+  }
+
+  /** Wild Man talking: one line at a time, the previous one cut off. */
+  speak(buffer: AudioBuffer): void {
+    if (!this.ctx || !this.voice) return
+    this.talking?.stop()
+    const src = this.ctx.createBufferSource()
+    src.buffer = buffer
+    src.connect(this.voice)
+    src.onended = () => {
+      if (this.talking === src) this.talking = null
+    }
+    src.start()
+    this.talking = src
   }
 
   setMuted(muted: boolean): void {
