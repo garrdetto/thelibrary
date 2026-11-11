@@ -15,6 +15,13 @@ export function texturedMaterial(scene: Scene, file: string, cache: Map<string, 
   const texture = new Texture(modelFileUrl(`${file}.webp`), scene, { noMipmap: false, samplingMode: Texture.TRILINEAR_SAMPLINGMODE })
   texture.anisotropicFilteringLevel = 8
   mat.diffuseTexture = texture
+  finishTextured(mat, file)
+  cache.set(key, mat)
+  return mat
+}
+
+/** The finish every textured part shares: two-sided, with a wet sheen for fish and next to none for cloth and skin. */
+export function finishTextured(mat: StandardMaterial, file: string): void {
   mat.diffuseColor = Color3.White()
   const wet = file.startsWith('fish-')
   const cloth = file.startsWith('hunter') || file === 'wildman'
@@ -23,6 +30,4 @@ export function texturedMaterial(scene: Scene, file: string, cache: Map<string, 
   mat.ambientColor = new Color3(0.3, 0.3, 0.3)
   mat.backFaceCulling = false
   mat.twoSidedLighting = true
-  cache.set(key, mat)
-  return mat
 }

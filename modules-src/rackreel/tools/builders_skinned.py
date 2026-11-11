@@ -1,6 +1,7 @@
 """The skinned hunter (`hunter.rrs`): Meshy's rigged mesh kept whole and weighted to its 22-joint skeleton, split only
 into the face, the upper garment and the lower garment so each can wear its own texture, with the hats and the pack
-riding the head and the torso. Clips come from `hunter-clips.json` (see `ingest-hunter.py`).
+riding the head and the torso. Clips come from `hunter-clips.json` (see `ingest-hunter.py`). The face reads the head
+atlas (the rig's second UV set), so a head texture is a small image of its own and faces, hair and beards can be mixed.
 
 Every joint is stored axis-aligned at a reference pose (the bind pose with the arms hanging at the sides), so a joint
 turn means the same thing it does on the 11-joint rigid rigs: `Avatar`'s hand-written poses and the arm reach apply
@@ -119,9 +120,9 @@ def smooth_head(bm, weights, head_joints):
     return len(head)
 
 
-def skinned_part(bm, weights, faces=None):
+def skinned_part(bm, weights, faces=None, uv=None):
     """Triangles of `faces` (all when None) as flat vertex streams: a vertex is split where its UVs differ."""
-    uv = bm.loops.layers.uv.active
+    uv = uv or bm.loops.layers.uv[0]
     n0 = bm.verts.layers.float_vector.get('n0')
     pos, nor, uvs, skin, tris = [], [], [], [], []
     index = {}
@@ -221,8 +222,10 @@ def model_texture(name):
 
 def skin_slots(bm, dominant, names, head_z, hem_pixels, collar_pixels):
     """Face index → 'face', 'upper' or 'lower'. The hem is the height that best parts the red shirt from the blue jeans in
-    one outfit; the collar is whatever turns blaze orange on the neck in another."""
-    uv = bm.loops.layers.uv.active
+    one outfit; the collar is whatever turns blaze orange on the neck in another. A face the head atlas does not cover
+    can never be skin."""
+    uv = bm.loops.layers.uv[0]
+    head_uv = bm.loops.layers.uv[1]
     samples = []
     for f in bm.faces:
         j = names[dominant[f.index]]
@@ -254,6 +257,9 @@ def skin_slots(bm, dominant, names, head_z, hem_pixels, collar_pixels):
         else:
             slots[f.index] = 'upper'
     smooth_labels(slots, face_neighbors(bm), rounds=4)
+    for f in bm.faces:
+        if slots[f.index] == 'face' and max(abs(c) for l in f.loops for c in l[head_uv].uv) < 1e-6:
+            slots[f.index] = 'upper'
     return slots, hem
 
 
@@ -316,8 +322,8 @@ def build_skinned_hunter():
     parts = []
     for slot in ('face', 'upper', 'lower'):
         faces = {i for i, s in slots.items() if s == slot}
-        part = skinned_part(bm, weights, faces)
-        part.update(name=slot, material='tex:hunter-base')
+        part = skinned_part(bm, weights, faces, bm.loops.layers.uv[1] if slot == 'face' else None)
+        part.update(name=slot, material='tex:hunter-head-base' if slot == 'face' else 'tex:hunter-base')
         parts.append(part)
 
     face_verts = [v.co.copy() for f in bm.faces if slots[f.index] == 'face' for v in f.verts]
@@ -326,6 +332,11 @@ def build_skinned_hunter():
     head_center = Vector((sum(c.x for c in crown) / len(crown), sum(c.y for c in crown) / len(crown), 0))
     band = [c for c in face_verts if head_top - 0.13 < c.z < head_top - 0.05]
     head_width = max(c.x for c in band) - min(c.x for c in band)
+    nose = max((c for c in face_verts if abs(c.x) < 0.02), key=lambda c: c.y)
+    chin = min(c.z for c in face_verts if abs(c.x) < 0.02 and c.y > nose.y - 0.03)
+    axis = bind[names.index('head')]
+    head_frame = {'top': round(head_top, 4), 'chin': round(chin, 4), 'nose': [round(nose.x, 4), round(nose.z, 4), round(nose.y, 4)],
+                  'centre': [round(float(axis[0]), 4), round(float(axis[2]), 4)], 'half': round(max(abs(c.x - float(axis[0])) for c in face_verts), 4)}
     torso_back = [v.co.y for f in bm.faces if slots[f.index] == 'upper' and names[dominant[f.index]] in ('torso', 'spine1', 'spine2') for v in f.verts if 1.1 < v.co.z < 1.35]
     shoulder_z = float(bind[names.index('upperArmL')][1])
     hands = {}
@@ -410,9 +421,9 @@ def build_skinned_hunter():
         arms[side] = {'elbow': [round(float(c), 4) for c in rest[fore] - rest[up]], 'palm': [round(float(c), 4) for c in hands[side] - rest[fore]]}
     upper = {jacket + '+' + vest: 'tex:' + tex for (jacket, vest), tex in HUNTER_COMBOS.items()}
     lower = {pants: 'tex:' + tex for pants, tex in HUNTER_PANTS.items()}
-    meta = {'arms': arms, 'hip': round(float(rest[hips][1]), 4), 'height': round(head_top, 4), 'wear': {'upper': upper, 'lower': lower}}
+    meta = {'arms': arms, 'hip': round(float(rest[hips][1]), 4), 'height': round(head_top, 4), 'head': head_frame, 'wear': {'upper': upper, 'lower': lower}}
     write_skinned('hunter', joints, parts, clips, meta)
-    print('hunter hem', round(hem, 3), 'head', round(head_top, 3), 'smoothed', smoothed, 'arms', arms)
+    print('hunter hem', round(hem, 3), 'head', head_frame, 'smoothed', smoothed, 'arms', arms)
 
 
 build_hunter = build_skinned_hunter

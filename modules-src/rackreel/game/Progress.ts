@@ -1,4 +1,5 @@
-import { applyEvent, createCharacter, applyPlaytime, defaultProfile, equip, eventCooldown, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
+import type { Appearance } from '../shared/Appearance'
+import { applyEvent, createCharacter, applyPlaytime, defaultProfile, equip, eventCooldown, gearEffects, makeover, normalizeProfile, owedMakeover, purchase } from '../shared/Economy'
 import { categoryValues, placeOn } from '../shared/Records'
 import type { RecordBoard } from '../shared/Records'
 import type { GameEvent, GearEffects, Look, Profile, Slot } from '../shared/Economy'
@@ -62,14 +63,30 @@ export class Progress {
   ready: Promise<void> = Promise.resolve()
 
   /** Makes the character and marks the profile verified, on the server when signed in. */
-  async createCharacter(look: Look): Promise<string | null> {
+  async createCharacter(look: Look, appearance: Appearance): Promise<string | null> {
     if (this.signedIn) {
-      const data = await this.post({ action: 'create-character', look }).catch(() => ({ error: 'The cabin could not be reached. Try again.' }) as PostReply)
+      const data = await this.post({ action: 'create-character', look, appearance }).catch(() => ({ error: 'The cabin could not be reached. Try again.' }) as PostReply)
       if (data.error) return data.error
       this.adopt(data.profile)
       return null
     }
-    const error = createCharacter(this.profile, look)
+    const error = createCharacter(this.profile, look, appearance)
+    this.onChange?.()
+    return error
+  }
+
+  /** The one free change of face, hair and build for a character made earlier, on the server when signed in. */
+  async makeover(appearance: Appearance): Promise<string | null> {
+    if (this.signedIn) {
+      const data = await this.post({ action: 'makeover', appearance }).catch(() => ({ error: 'The cabin could not be reached. Try again.' }) as PostReply)
+      if (data.error) {
+        await this.load()
+        return owedMakeover(this.profile) ? data.error : null
+      }
+      this.adopt(data.profile)
+      return null
+    }
+    const error = makeover(this.profile, appearance)
     this.onChange?.()
     return error
   }
