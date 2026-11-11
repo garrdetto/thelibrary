@@ -296,7 +296,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
   ray.length = 600
 
   /** How the mouse turns the view, always: the look settings' flips only change the arrow keys. */
-  const MOUSE_TURN = { x: -1, y: 1 }
+  const MOUSE_TURN = { x: 1, y: 1 }
   camera.inputs.removeByType('FreeCameraMouseInput')
   document.addEventListener('mousemove', (e) => {
     if (document.pointerLockElement !== canvas) return
