@@ -21,7 +21,7 @@ import type { Launch, Pt, RouteName } from '../systems/BowRoutes'
 import { ArrowShot, BOW, CARP, CarpFight, CarpSchool, arrowSpeed, holdShake } from '../systems/BowfishingMotion'
 import type { Carp } from '../systems/BowfishingMotion'
 import { blurtAt, chooseCheer } from '../systems/Cheers'
-import type { CheerTrigger } from '../systems/Cheers'
+import type { CheerId, CheerTrigger } from '../systems/Cheers'
 import { WaterFx } from '../systems/FishingFx'
 import type { LootTableManager, Specimen } from '../systems/LootTableManager'
 import { SPECIES_BY_ID, formatPounds, formatValue } from '../systems/LootTableManager'
@@ -93,7 +93,10 @@ const AIM_WALK_SPEED = 0.6
 const LINE_POINTS = 26
 const FISH_LENGTH = 1.12
 /** Seconds between Wild Man's blurts on the water (a little random either way). */
-const BLURT_GAP = 22
+const BLURT_GAP = 44
+/** Share of routine hits, misses and tubbed carp he says something about; the big moments in `ALWAYS_SAID` always get a line. */
+const CHEER_SHARE = 0.5
+const ALWAYS_SAID: ReadonlySet<CheerId> = new Set<CheerId>(['crazy', 'meltdown', 'stacking', 'sendIt', 'beached'])
 /** He soaks in the beaching for a moment before you step off. */
 const BEACH_PAUSE = 3.6
 
@@ -990,6 +993,7 @@ export class Bowfishing {
     this.streak = 0
     const id = chooseCheer({ kind: 'miss' })
     const line = this.wild.celebrate(id)
+    if (Math.random() >= CHEER_SHARE) return
     if (this.nearMiss) this.say(this.nearMiss.over ? LINES.over : LINES.under, true)
     else this.say(line, true)
   }
@@ -1010,7 +1014,9 @@ export class Bowfishing {
 
   private cheer(trigger: CheerTrigger): void {
     const id = chooseCheer(trigger)
-    if (this.say(this.wild.celebrate(id), true)) return
+    const line = this.wild.celebrate(id)
+    if (!ALWAYS_SAID.has(id) && Math.random() >= CHEER_SHARE) return
+    if (this.say(line, true)) return
     if (id === 'crazy' || id === 'meltdown') this.host.audio.whoop(true)
     else if (id === 'hype' || id === 'stacking' || id === 'stoned') this.host.audio.whoop(false)
   }
