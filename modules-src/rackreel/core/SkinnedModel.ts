@@ -39,6 +39,18 @@ interface PartHeader {
   item?: string
 }
 
+interface TuckHeader {
+  item: string
+  count: number
+  offset: number
+}
+
+/** The head vertices a hat would show through, and how far each moves to sit under it (x, y, z per vertex). */
+export interface HatTuck {
+  index: Uint16Array
+  move: Float32Array
+}
+
 interface ClipHeader {
   name: string
   seconds: number
@@ -74,6 +86,7 @@ export interface SkinnedTemplate {
   material: (tag: string) => Material
   /** The face part's vertex positions as modelled, for the face-shape sliders to start from. */
   faceBase: Float32Array
+  tucks: Map<string, HatTuck>
 }
 
 /** The skinned side of a rig: its skeleton, clips and what it can wear. */
@@ -87,6 +100,8 @@ export interface SkinRig {
   wear(items: string[]): void
   /** The face part's positions as modelled. Never write to it. */
   faceBase: Float32Array
+  /** Per hat id: the head vertices that tuck in under it. */
+  tucks: Map<string, HatTuck>
   /** Reshapes this rig's face (it gets a copy of the geometry the first time), or puts the modelled shape back with null. */
   shapeFace(positions: Float32Array | null): void
   /** The head's material: a painted head for this rig, or null for the model's own. */
@@ -114,7 +129,7 @@ export async function loadSkinned(scene: Scene, name: string, material: (tag: st
   const magic = String.fromCharCode(view.getUint8(0), view.getUint8(1), view.getUint8(2), view.getUint8(3))
   if (magic !== 'RRS1') throw new Error(`Bad model ${name}`)
   const headerLength = view.getUint32(4, true)
-  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 8, headerLength))) as { joints: JointHeader[]; parts: PartHeader[]; clips: ClipHeader[]; meta: SkinMeta }
+  const header = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 8, headerLength))) as { joints: JointHeader[]; parts: PartHeader[]; clips: ClipHeader[]; tucks?: TuckHeader[]; meta: SkinMeta }
   const dataStart = 8 + headerLength
   const parts: SkinPart[] = []
   let faceBase = new Float32Array(0)
@@ -162,6 +177,12 @@ export async function loadSkinned(scene: Scene, name: string, material: (tag: st
     const rot = new Int16Array(buffer.slice(at + c.frames * 12, at + c.frames * 12 + c.frames * joints * 8))
     clips.set(c.name, { name: c.name, seconds: c.seconds, frames: c.frames, loop: c.loop, speed: c.speed, hips, rot })
   }
+  const tucks = new Map<string, HatTuck>()
+  for (const t of header.tucks ?? []) {
+    const at = dataStart + t.offset
+    const moves = at + Math.ceil((t.count * 2) / 4) * 4
+    tucks.set(t.item, { index: new Uint16Array(buffer.slice(at, at + t.count * 2)), move: new Float32Array(buffer.slice(moves, moves + t.count * 12)) })
+  }
   const absolute: Matrix[] = []
   const bindLocal: Matrix[] = []
   const one = Vector3.One()
@@ -171,7 +192,7 @@ export async function loadSkinned(scene: Scene, name: string, material: (tag: st
     absolute.push(abs)
     bindLocal.push(j.parent < 0 ? abs.clone() : abs.multiply(Matrix.Invert(absolute[j.parent])))
   }
-  return { name, joints: header.joints, bindLocal, parts, clips, meta: header.meta, material, faceBase }
+  return { name, joints: header.joints, bindLocal, parts, clips, meta: header.meta, material, faceBase, tucks }
 }
 
 export function instantiateSkinned(template: SkinnedTemplate, scene: Scene, register?: (mesh: AbstractMesh) => void): AvatarRig {
@@ -236,7 +257,7 @@ export function instantiateSkinned(template: SkinnedTemplate, scene: Scene, regi
   const paintHead = (material: Material | null) => {
     face.material = material ?? template.material(faceTag)
   }
-  return { root, joints, meshes, partMeshes, skin: { skeleton, order, clips: template.clips, meta: template.meta, wear, faceBase: template.faceBase, shapeFace, paintHead } }
+  return { root, joints, meshes, partMeshes, skin: { skeleton, order, clips: template.clips, meta: template.meta, wear, faceBase: template.faceBase, tucks: template.tucks, shapeFace, paintHead } }
 }
 
 /** Frees a rig made by `instantiateSkinned`: its meshes, joints and skeleton. Unparent anything it carries first. */

@@ -94,6 +94,7 @@ export class Avatar {
   private headPaint: HeadPaint | null = null
   private lookTurn = 0
   private faceScratch: Float32Array | null = null
+  private hat = ''
   private gone = false
 
   constructor(readonly rig: AvatarRig) {
@@ -156,6 +157,12 @@ export class Avatar {
     this.wearKey = key
     if (this.skin) {
       this.skin.wear(wear)
+      const tucks = this.skin.tucks
+      const hat = wear.find((item) => tucks.has(item)) ?? ''
+      if (hat !== this.hat) {
+        this.hat = hat
+        this.refreshFace()
+      }
       return
     }
     for (const [name, mesh] of this.rig.partMeshes) {
@@ -184,11 +191,7 @@ export class Avatar {
     this.j.hips.scaling.set(size.height * size.build, size.height, size.height * size.build)
     this.j.spine2.scaling.set(size.shoulders, 1, 1)
     this.j.neck.scaling.set(1 / (size.build * size.shoulders), 1, 1 / size.build)
-    if (isNeutral(a)) skin.shapeFace(null)
-    else {
-      this.faceScratch ??= new Float32Array(skin.faceBase.length)
-      skin.shapeFace(shapeFace(skin.faceBase, skin.meta.head, a, this.faceScratch))
-    }
+    this.refreshFace()
     if (before && before.face === a.face && before.hair === a.hair && before.beard === a.beard) return
     const turn = ++this.lookTurn
     this.headPaint = paint
@@ -201,6 +204,30 @@ export class Avatar {
       paint.release(this.headKey)
       this.headKey = head.key
     }, () => undefined)
+  }
+
+  /** The face as the sliders shape it, with the hair tucked in under whatever hat is worn. */
+  private refreshFace(): void {
+    const skin = this.skin
+    if (!skin) return
+    const tuck = skin.tucks.get(this.hat)
+    const shaped = this.look !== null && !isNeutral(this.look)
+    if (!shaped && !tuck) {
+      skin.shapeFace(null)
+      return
+    }
+    const out = (this.faceScratch ??= new Float32Array(skin.faceBase.length))
+    if (shaped) shapeFace(skin.faceBase, skin.meta.head, this.look!, out)
+    else out.set(skin.faceBase)
+    if (tuck) {
+      for (let i = 0; i < tuck.index.length; i++) {
+        const at = tuck.index[i] * 3
+        out[at] += tuck.move[i * 3]
+        out[at + 1] += tuck.move[i * 3 + 1]
+        out[at + 2] += tuck.move[i * 3 + 2]
+      }
+    }
+    skin.shapeFace(out)
   }
 
   /** Frees the rig. Unparent anything riding a hand first. */
