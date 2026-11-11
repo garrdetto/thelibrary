@@ -694,7 +694,7 @@ export class Bowfishing {
     this.host.audio.engine(true, Math.abs(p.speed) / 14, true)
     this.host.hud.setTub(this.tubCount, this.tubPounds)
     this.host.hud.setDraw(this.bow === 'drawing' ? this.draw : null, this.draw >= BOW.minDraw)
-    this.host.hud.setDot(input.locked && this.bow !== 'out' && !running)
+    this.host.hud.setDot(input.locked && this.bow !== 'out' && !running && this.aimBlend < 0.3)
     void terrain
   }
 
