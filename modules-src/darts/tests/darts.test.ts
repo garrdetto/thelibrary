@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { RADII, SECTORS, label, ringAt, scoreAt, sectorAt, targetPoint, toPolar } from '../shared/Board'
+import { RADII, SECTORS, SOFT_RADII, label, ringAt, scoreAt, sectorAt, targetPoint, toPolar } from '../shared/Board'
 import { cpuThrow } from '../shared/Cpu'
 import type { DartThrow, GameState, MatchConfig, Multiplier } from '../shared/interfaces'
 import { HOLE, IDEAL_SPEED, METER, RELEASE, SPREAD, aimDirection, launch, meterReach, meterZone, simulate, throwDart, crossDistance } from '../shared/Physics'
@@ -74,6 +74,24 @@ test('radial thresholds give the right bed', () => {
   assert.equal(ringAt(RADII.doubleInner), 'double')
   assert.equal(ringAt(RADII.doubleOuter), 'double')
   assert.equal(ringAt(RADII.doubleOuter + 0.01), 'miss')
+})
+
+test('soft-tip doubles and triples are a quarter deeper than steel and score that way', () => {
+  assert.equal(SOFT_RADII.tripleOuter - SOFT_RADII.tripleInner, (RADII.tripleOuter - RADII.tripleInner) * 1.25)
+  assert.equal(SOFT_RADII.doubleOuter - SOFT_RADII.doubleInner, (RADII.doubleOuter - RADII.doubleInner) * 1.25)
+  assert.equal(SOFT_RADII.doubleOuter, RADII.doubleOuter)
+  assert.equal(ringAt(98.5, 'spider'), 'triple')
+  assert.equal(ringAt(98.5), 'singleInner')
+  assert.equal(ringAt(107.5, 'spider'), 'triple')
+  assert.equal(ringAt(107.5), 'singleOuter')
+  assert.equal(ringAt(161, 'spider'), 'double')
+  assert.equal(ringAt(161), 'singleOuter')
+  assert.equal(scoreAt(0, 0.1075, 0, 'spider').scoreValue, 60)
+  assert.equal(scoreAt(0, 0.1075).scoreValue, 20)
+  const t20 = targetPoint(20, 3, 'spider')
+  assert.equal(scoreAt(t20.x, t20.y, 0, 'spider').scoreValue, 60)
+  const d20 = targetPoint(20, 2, 'spider')
+  assert.equal(scoreAt(d20.x, d20.y, 0, 'spider').scoreValue, 40)
 })
 
 test('scoring a point on the face', () => {

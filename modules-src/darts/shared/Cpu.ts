@@ -56,7 +56,7 @@ export function chooseBed(state: GameState, player: Player): string {
 export function cpuThrow(state: GameState, player: Player, rng: Rng): CpuChoice {
   const bed = chooseBed(state, player)
   const { sector, multiplier } = parseBed(bed)
-  const point = targetPoint(sector, multiplier)
+  const point = targetPoint(sector, multiplier, state.config.board === 'spider' ? 'spider' : 'steel')
   const steady = STEADINESS[player.cpuLevel]
   return {
     bed,

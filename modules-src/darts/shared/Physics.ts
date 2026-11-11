@@ -1,6 +1,6 @@
 /** Dart flight: a throw intent becomes a launch velocity, and a fixed-step integrator with gravity and quadratic air drag finds where it meets the board plane. A player's throw is judged by where the power meter stopped: the exact middle of the green lands on the aim point, anywhere in the green lands within seven holes of it, and the further out (yellow, then red) the further it can miss (`meterReach`). The computer keeps its own Gaussian release error by skill. Board space: metres, origin at the bull, x right, y up, z towards the thrower. */
 import { BULL_HEIGHT, HOLE_PITCH_MM, OCHE_DISTANCE, RADII, scoreAt } from './Board'
-import type { DartThrow, FlightParams, ThrowIntent, Vec3 } from './interfaces'
+import type { BoardKind, DartThrow, FlightParams, ThrowIntent, Vec3 } from './interfaces'
 import { gaussian, type Rng } from './Rng'
 
 export const GRAVITY = 9.81
@@ -151,7 +151,7 @@ function step(p: number[], v: number[], dt: number): void {
 }
 
 /** Flies a dart until it crosses the board plane (z = 0) or the floor, interpolating the exact crossing inside the last step. */
-export function simulate(flight: FlightParams, samples?: FlightSample[], sampleEvery = 1 / 240): Impact {
+export function simulate(flight: FlightParams, samples?: FlightSample[], sampleEvery = 1 / 240, board: BoardKind = 'steel'): Impact {
   const p = [...flight.origin]
   const v = [...flight.velocity]
   let t = 0
@@ -172,7 +172,7 @@ export function simulate(flight: FlightParams, samples?: FlightSample[], sampleE
       const seconds = t - STEP + STEP * f
       if (point[1] < FLOOR_Y) break
       samples?.push({ t: seconds, p: point, v: velocity })
-      return { point, seconds, reachedBoard: true, velocity, dart: scoreAt(point[0], point[1], 0) }
+      return { point, seconds, reachedBoard: true, velocity, dart: scoreAt(point[0], point[1], 0, board) }
     }
     if (p[1] <= FLOOR_Y) {
       const f = (prevP[1] - FLOOR_Y) / (prevP[1] - p[1])
@@ -325,9 +325,9 @@ function playerLaunch(clean: ThrowIntent, level: PlayerLevel, rng: Rng, origin: 
 }
 
 /** Launch plus flight in one call: what a released dart scores. */
-export function throwDart(intent: ThrowIntent, level: SpreadLevel, rng: Rng): { flight: FlightParams; impact: Impact } {
+export function throwDart(intent: ThrowIntent, level: SpreadLevel, rng: Rng, board: BoardKind = 'steel'): { flight: FlightParams; impact: Impact } {
   const flight = launch(intent, level, rng)
-  return { flight, impact: simulate(flight) }
+  return { flight, impact: simulate(flight, undefined, undefined, board) }
 }
 
 /** True if a board-space point is on the face of the board (scoring area or number ring), where a dart can stick. */

@@ -16,6 +16,10 @@ export interface DartsConfig {
     /** Square texture size in pixels for the face, roughness/metal and bump maps (2048 keeps every wire sharp at 1080p and above). */
     textureSize: number
     lowTextureSize: number
+    /** Face size on the high and ultra tiers, so the soft-tip holes stay crisp at 1440p. */
+    highTextureSize: number
+    /** Lowest drawing-buffer height on the high and ultra tiers (supersamples smaller views up to the pixel-ratio cap). */
+    renderHeightFloor: number
     thickness: number
     surroundRadius: number
     surroundDepth: number
@@ -59,7 +63,7 @@ export const config: DartsConfig = {
     },
     post: { enabled: true, effects: { bloom: { strength: 0.18, radius: 0.35, threshold: 0.92 }, vignette: 0.32 } },
   },
-  board: { textureSize: 2048, lowTextureSize: 1024, thickness: 0.038, surroundRadius: 0.33, surroundDepth: 0.03 },
+  board: { textureSize: 2048, lowTextureSize: 1024, highTextureSize: 4096, renderHeightFloor: 1440, thickness: 0.038, surroundRadius: 0.33, surroundDepth: 0.03 },
   room: { wall: '#3b1f1a', wallTrim: '#24120d', floor: '#5a3a24', oche: '#d9c9a3', cabinet: '#4a2a17' },
   camera: { eyeHeight: 1.62, distanceBehindOche: 0.3, boardHalfExtent: 0.3, minFov: 12, maxFov: 34 },
   gesture: {

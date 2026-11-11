@@ -1,5 +1,5 @@
 /** Regulation board geometry and polar scoring: radial thresholds in millimetres, the clockwise number ring from 20 at the top, and the score of any point on the face. */
-import type { DartThrow, Multiplier, Ring, Vec3 } from './interfaces'
+import type { BoardKind, DartThrow, Multiplier, Ring, Vec3 } from './interfaces'
 
 /** Clockwise from straight up. */
 export const SECTORS = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5] as const
@@ -16,6 +16,15 @@ export const RADII = {
   numberRing: 196,
   board: 225.5,
 } as const
+
+export type BoardRadii = { readonly [K in keyof typeof RADII]: number }
+
+/** The soft-tip board's beds: its doubles and triples are moulded 10 mm deep (a quarter deeper than the steel board's 8 mm) so three rows of full-size tip holes fit, with the double ring keeping its outer edge. */
+export const SOFT_RADII: BoardRadii = { ...RADII, tripleInner: 98, tripleOuter: 108, doubleInner: 160, doubleOuter: 170 }
+
+export function radiiFor(board: BoardKind = 'steel'): BoardRadii {
+  return board === 'spider' ? SOFT_RADII : RADII
+}
 
 /** Centre-to-centre distance between neighbouring tip holes on the soft-tip board, in millimetres. */
 export const HOLE_PITCH_MM = 3.4
@@ -41,7 +50,8 @@ export function sectorAt(angle: number): number {
   return SECTORS[Math.floor(shifted / SECTOR_DEGREES) % SECTORS.length]
 }
 
-export function ringAt(radius: number): Ring {
+export function ringAt(radius: number, board: BoardKind = 'steel'): Ring {
+  const RADII = radiiFor(board)
   if (radius <= RADII.innerBull) return 'innerBull'
   if (radius <= RADII.outerBull) return 'outerBull'
   if (radius < RADII.tripleInner) return 'singleInner'
@@ -52,9 +62,9 @@ export function ringAt(radius: number): Ring {
 }
 
 /** Scores a point on the face. `x`/`y` are metres from the bull in board space; `z` is kept so the dart can be drawn where it stuck. */
-export function scoreAt(x: number, y: number, z = 0): DartThrow {
+export function scoreAt(x: number, y: number, z = 0, board: BoardKind = 'steel'): DartThrow {
   const { radius, angle } = toPolar(x * 1000, y * 1000)
-  const ring = ringAt(radius)
+  const ring = ringAt(radius, board)
   const wedge = sectorAt(angle)
   let sector: number = wedge
   let multiplier: Multiplier = 1
@@ -91,7 +101,8 @@ export function scoreAt(x: number, y: number, z = 0): DartThrow {
 }
 
 /** The board-space centre (metres) of a named bed, used by the computer opponent and the checkout hints. */
-export function targetPoint(sector: number, multiplier: Multiplier): { x: number; y: number } {
+export function targetPoint(sector: number, multiplier: Multiplier, board: BoardKind = 'steel'): { x: number; y: number } {
+  const RADII = radiiFor(board)
   if (sector === 25) return { x: 0, y: multiplier === 2 ? 0 : (RADII.innerBull + RADII.outerBull) / 2000 }
   const index = SECTORS.indexOf(sector as (typeof SECTORS)[number])
   if (index < 0) return { x: 0, y: 0 }

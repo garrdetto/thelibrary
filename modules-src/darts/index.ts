@@ -183,6 +183,8 @@ async function boot(): Promise<void> {
   }
   const quality = resolveQuality(config.engine.quality, app.backend)
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
+  const sharp = quality.tier === 'high' || quality.tier === 'ultra'
+  if (sharp) app.setRenderHeightFloor(config.board.renderHeightFloor)
   app.own(applyEnvironment(app.scene, config.engine.environment))
   const lighting = app.own(createLighting(config.engine.lighting, { ...quality.settings, shadows: false }))
   lighting.follow(new THREE.Vector3(0, BULL_HEIGHT, 0))
@@ -190,7 +192,7 @@ async function boot(): Promise<void> {
   app.own(createPost(app, config.engine.post, quality.settings))
 
   const pub = createPub(app.renderer, app.scene, {
-    textureSize: quality.tier === 'low' ? config.board.lowTextureSize : config.board.textureSize,
+    textureSize: quality.tier === 'low' ? config.board.lowTextureSize : sharp ? config.board.highTextureSize : config.board.textureSize,
     shadows: quality.settings.shadows,
     shadowMapSize: Math.min(2048, quality.settings.shadowMapSize),
     style: savedBoardStyle(),
