@@ -10,6 +10,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { NUM_FONTS, NUM_STYLES, NUM_PRESETS, NUM_SPOTS, NUM_FONT_IDS, NUM_STYLE_IDS, numFontOf, numFontReady, loadNumFont, drawNumberArt, drawNumberPreview, numberCapped, numberSize, buildNumberMeshes, makeNumberTexture, makeNumberMaterial } from '../shorttrack-numbers.js';
 import { buildPrisonSet, buildPrisonInfield, PRISON_CROWD, PRISON_STANDS } from '../prison-speedway.js';
 import { batchStatic } from '../../_shared/static-batch.js';
+import { loadEngineAudio, createEngineVoice } from './engine-audio.js';
 import { ICONIC_FIELD, ICONIC, drawSchemeSide, drawSchemeHood } from '../iconic-schemes.js';
 import { createAdaptiveResolution } from '../../_shared/adaptive-resolution.js';
 import { loadCustomCars, customGeo, customCarEntries, customCarReady, ensureCustomCar, buildCustomCar, mountCustomNumbers, repaintCustomCar, vehicleGarage } from '../custom-cars.js';
@@ -1309,32 +1310,8 @@ function audioInit(){
   AU.cg=gain(0.02);loop().connect(filt('lowpass',500,0.7)).connect(AU.cg).connect(M);
   engineLoad(ctx);
 }
-const ENG_NORM=0.3,engSmooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
-function seamLoop(ctx,buf){
-  const sr=buf.sampleRate,d=buf.getChannelData(0),F=Math.round(sr*0.12),n=d.length,out=ctx.createBuffer(1,n-F,sr),o=out.getChannelData(0);
-  for(let i=0;i<n-F;i++)o[i]=d[i];for(let i=0;i<F;i++){const a=i/F*Math.PI/2;o[i]=d[i]*Math.sin(a)+d[n-F+i]*Math.cos(a);}
-  let s=0;for(let i=0;i<o.length;i++)s+=o[i]*o[i];return {buf:out,rms:Math.sqrt(s/o.length)||1};
-}
-function engineVoice(ctx,layers,dest){
-  const lp=ctx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=18000;lp.Q.value=0.5;const out=ctx.createGain();out.gain.value=0;lp.connect(out).connect(dest);
-  const L={};for(const l of layers){const src=ctx.createBufferSource();src.buffer=l.buf;src.loop=true;const g=ctx.createGain();g.gain.value=0;src.connect(g).connect(lp);src.start(0,Math.random()*l.buf.duration);L[l.id]={src,g,k:ENG_NORM/l.rms};}
-  return {L,lp,out,load:0};
-}
 function engineLoad(ctx){
-  const base=new URL('shorttrack-audio/',location.href);
-  fetch(new URL('manifest.json',base)).then(r=>{if(!r.ok)throw new Error('engine '+r.status);return r.json();})
-    .then(m=>Promise.all(m.layers.map(l=>fetch(new URL(l.file,base)).then(r=>r.arrayBuffer()).then(b=>ctx.decodeAudioData(b)).then(b=>({...l,...seamLoop(ctx,b)})))))
-    .then(layers=>{if(!['idle','low','mid','high','off'].every(id=>layers.some(l=>l.id===id)))return;AU.me=engineVoice(ctx,layers,AU.master);AU.near=engineVoice(ctx,layers,AU.master);})
-    .catch(()=>{});
-}
-function engineSet(v,rpm,thr,vol,dop,cutoff,t){
-  v.load+=(thr-v.load)*0.12;
-  const x=clamp((rpm-3000)/6750,0,1),idle=1-engSmooth(1400,3000,rpm),run=1-idle,rate=clamp(Math.pow(Math.max(rpm,2000)/6000,0.45),0.75,1.2)*dop;
-  const lo=Math.cos(Math.min(1,x*2)*Math.PI/2),hi=Math.sin(Math.max(0,x*2-1)*Math.PI/2),mid=x<0.5?Math.sin(x*2*Math.PI/2):Math.cos((x*2-1)*Math.PI/2);
-  const on=Math.sqrt(v.load),off=Math.sqrt(1-v.load);
-  const w={idle:idle,low:run*on*Math.max(lo,0.45),mid:run*on*mid,high:run*on*hi,off:run*off*(0.6+0.4*x)};
-  for(const id in v.L){const l=v.L[id];l.g.gain.setTargetAtTime(w[id]*l.k,t,0.05);l.src.playbackRate.setTargetAtTime(id==='idle'?clamp(rpm/1100,0.85,1.6)*dop:id==='off'?rate*0.92:rate,t,0.04);}
-  v.out.gain.setTargetAtTime(vol,t,0.08);v.lp.frequency.setTargetAtTime(cutoff,t,0.1);
+  loadEngineAudio(ctx,new URL('shorttrack-audio/',location.href)).then(a=>{AU.me=createEngineVoice(ctx,a,AU.master);AU.near=createEngineVoice(ctx,a,AU.master);}).catch(()=>{});
 }
 function toggleMute(){AU.on=!AU.on;store.set('sts_snd',AU.on);if(AU.master)AU.master.gain.value=AU.on?0.7:0;toast(AU.on?'Sound on':'Sound muted');if(!AU.on&&window.speechSynthesis)speechSynthesis.cancel();}
 function crashSnd(v,dist){
@@ -1350,15 +1327,15 @@ function audioUpdate(){
   const c=inRace?player:null,rpm=c?rpmOf(c):1050+Math.sin(t*3)*40,f=rpm/15;
   AU.e1.frequency.setTargetAtTime(f,t,0.04);AU.e2.frequency.setTargetAtTime(f/2,t,0.04);
   AU.ef.frequency.setTargetAtTime(c&&c.thr?2400:800,t,0.08);AU.eg.gain.setTargetAtTime(AU.me?0:c?(c.thr?0.13:0.08):0.04,t,0.08);
-  if(AU.me)engineSet(AU.me,rpm,c&&c.thr?1:0,c?0.55:0.3,1,7000,t);
+  if(AU.me)AU.me.set(t,rpm,c&&c.thr?1:0,c?0.55:0.3,1,12000);
   AU.tg.gain.setTargetAtTime(c?clamp((c.slip-2.5)/12,0,0.3):0,t,0.05);
   AU.cg.gain.setTargetAtTime(inRace?0.05:0.02,t,0.3);
   let near=null,nd=1e9;if(c)cars.forEach(o=>{if(o===c||!o.vis)return;const d=Math.hypot(o.x-camera.position.x,o.z-camera.position.z);if(d<nd){nd=d;near=o;}});
   if(near&&nd<150){const dx=camera.position.x-near.x,dz=camera.position.z-near.z,d=Math.max(1,nd);
     const vs=((near.vx-c.vx)*dx+(near.vz-c.vz)*dz)/d,dop=343/Math.max(200,343-vs);
-    if(AU.near){AU.og.gain.setTargetAtTime(0,t,0.1);engineSet(AU.near,rpmOf(near),near.thr?1:0,Math.min(0.5,9/(d+8)),dop,clamp(9000/(1+d*0.08),900,9000),t);}
+    if(AU.near){AU.og.gain.setTargetAtTime(0,t,0.1);AU.near.set(t,rpmOf(near),near.thr?1:0,Math.min(0.5,9/(d+8)),dop,clamp(9000/(1+d*0.08),900,9000));}
     else{AU.o1.frequency.setTargetAtTime(rpmOf(near)/15*dop,t,0.05);AU.og.gain.setTargetAtTime(Math.min(0.12,2.2/(d+8)),t,0.08);}}
-  else{AU.og.gain.setTargetAtTime(0,t,0.1);if(AU.near)AU.near.out.gain.setTargetAtTime(0,t,0.1);}
+  else{AU.og.gain.setTargetAtTime(0,t,0.1);if(AU.near)AU.near.set(t,0,0,0,1,1000);}
 }
 
 // ===================== ENVIRONMENT / QUALITY =====================

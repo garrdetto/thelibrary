@@ -1,34 +1,10 @@
 {
-  "layers": [
-    {
-      "id": "idle",
-      "rpm": 1100,
-      "load": 0,
-      "file": "engine-idle.mp3"
-    },
-    {
-      "id": "low",
-      "rpm": 3500,
-      "load": 1,
-      "file": "engine-low.mp3"
-    },
-    {
-      "id": "mid",
-      "rpm": 5800,
-      "load": 1,
-      "file": "engine-mid.mp3"
-    },
-    {
-      "id": "high",
-      "rpm": 8000,
-      "load": 1,
-      "file": "engine-high.mp3"
-    },
-    {
-      "id": "off",
-      "rpm": 5500,
-      "load": 0,
-      "file": "engine-off.mp3"
-    }
-  ]
+  "idle": { "file": "engine-idle.mp3" },
+  "pull": {
+    "file": "engine-pull.mp3",
+    "from": 148,
+    "to": 236,
+    "points": [0.09, 0.29, 0.69, 0.99, 1.29, 1.69, 2.19, 2.79, 3.29, 4.89, 6.19],
+    "rms": [0.121, 0.185, 0.206, 0.226, 0.259, 0.269, 0.316, 0.33, 0.365, 0.421, 0.412]
+  }
 }
