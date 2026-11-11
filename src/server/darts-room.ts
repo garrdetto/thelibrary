@@ -282,7 +282,7 @@ export class DartsRoom {
     const state = this.state
     if (!state || state.status !== 'playing' || state.currentTurnPlayerId !== seat.id || state.version !== version) return
     const flight = launch(intent, 'normal', createRng(randomSeed()))
-    const impact = simulate(flight)
+    const impact = simulate(flight, undefined, undefined, boardOf(state.config))
     const result = applyThrow(state, seat.id, impact.dart)
     this.state = result.state
     if (result.turnOver) this.record(result.state)

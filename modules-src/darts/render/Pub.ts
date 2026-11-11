@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu'
 import { bakeEnvironment, type BakedEnvironment } from '../../../engine'
 import { config } from '../config'
-import { BULL_HEIGHT, OCHE_DISTANCE, RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
+import { BULL_HEIGHT, OCHE_DISTANCE, RADII, SECTORS, SECTOR_DEGREES, SOFT_RADII } from '../shared/Board'
 import { createRng } from '../shared/Rng'
 import { createBoardTextures, type BoardStyle, type BoardTextures } from './BoardTexture'
 
@@ -290,7 +290,7 @@ export function createPub(renderer: THREE.WebGPURenderer, scene: THREE.Scene, op
   const wireMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#e4e7ec'), roughness: 0.16, metalness: 1 }))
   buildSpider(steelBoard, wireMaterial, 0.00058, 6)
   const plasticSpiderMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#f2f3f5'), roughness: 0.38, metalness: 0 }))
-  buildSpider(spiderBoard, plasticSpiderMaterial, 0.00082, 8, ringRadii.filter((radius) => radius !== RADII.innerBull))
+  buildSpider(spiderBoard, plasticSpiderMaterial, 0.00082, 8, [SOFT_RADII.outerBull, SOFT_RADII.tripleInner, SOFT_RADII.tripleOuter, SOFT_RADII.doubleInner, SOFT_RADII.doubleOuter])
 
   const housingMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#121214'), roughness: 0.38, metalness: 0.1 }))
   const housingRedMaterial = keepMat(new THREE.MeshStandardMaterial({ color: new THREE.Color('#d0162a'), roughness: 0.32, metalness: 0.15 }))

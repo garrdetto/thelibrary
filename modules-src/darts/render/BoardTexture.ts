@@ -1,6 +1,6 @@
-/** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes in rows that follow the rings (three rows in each double and triple), a raised white plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
+/** Procedural board textures drawn on canvas at regulation proportions, in two styles. Steel-tip bristle: alternating black/cream singles, red/green doubles and trebles, both bulls, sisal fibre, the wire spider and a bold, outlined number ring. Spider 360 3000 soft-tip: red and black moulded segments perforated with tip holes in rows that follow the rings (three rows of full-size holes in each double and triple, which are moulded a quarter deeper than steel), a raised white plastic spider, a wide black catch ring with white numbers and a red trim. Each style gets a colour face, a packed roughness/metal map (G = roughness, B = metalness) and a normal map that raises the spider and numbers (and sinks the soft-tip holes). */
 import * as THREE from 'three/webgpu'
-import { HOLE_PITCH_MM, RADII, SECTORS, SECTOR_DEGREES } from '../shared/Board'
+import { HOLE_PITCH_MM, RADII, SECTORS, SECTOR_DEGREES, SOFT_RADII } from '../shared/Board'
 import { createRng } from '../shared/Rng'
 
 export type BoardStyle = 'steel' | 'spider'
@@ -93,7 +93,7 @@ function ring(p: Painter, radius: number, widthMm: number, style: string): void 
 const WIRE_RADII = [RADII.innerBull, RADII.outerBull, RADII.tripleInner, RADII.tripleOuter, RADII.doubleInner, RADII.doubleOuter] as const
 const WIRE_MM = 1.15
 const SPIDER_MM = 1.7
-const SPIDER_RADII = WIRE_RADII.filter((radius) => radius !== RADII.innerBull)
+const SPIDER_RADII = [SOFT_RADII.outerBull, SOFT_RADII.tripleInner, SOFT_RADII.tripleOuter, SOFT_RADII.doubleInner, SOFT_RADII.doubleOuter] as const
 
 /** Draws the spider: six rings and twenty radial dividers from the outer bull to the double ring, in `style` (colour on the face, white on the masks). */
 function spider(p: Painter, style: string, widthMm = WIRE_MM, radii: readonly number[] = WIRE_RADII): void {
@@ -186,19 +186,19 @@ function sisal(p: Painter, seed: number): void {
 const HOLE_PITCH = HOLE_PITCH_MM
 const HOLE_RADIUS = 1.05
 
-/** Each soft-tip band as moulded: its inner and outer radius and how many rows of holes it carries (three in every double and triple; the singles fill with rows at the hole pitch). */
+/** Each soft-tip band as moulded: its inner and outer radius and how many rows of holes it carries (three rows of full-size holes in every double and triple; the singles fill with rows at the hole pitch). */
 const HOLE_BANDS: readonly { inner: number; outer: number; rows?: number; sectors: boolean }[] = [
-  { inner: RADII.outerBull, outer: RADII.tripleInner, sectors: true },
-  { inner: RADII.tripleInner, outer: RADII.tripleOuter, rows: 3, sectors: true },
-  { inner: RADII.tripleOuter, outer: RADII.doubleInner, sectors: true },
-  { inner: RADII.doubleInner, outer: RADII.doubleOuter, rows: 3, sectors: true },
+  { inner: SOFT_RADII.outerBull, outer: SOFT_RADII.tripleInner, sectors: true },
+  { inner: SOFT_RADII.tripleInner, outer: SOFT_RADII.tripleOuter, rows: 3, sectors: true },
+  { inner: SOFT_RADII.tripleOuter, outer: SOFT_RADII.doubleInner, sectors: true },
+  { inner: SOFT_RADII.doubleInner, outer: SOFT_RADII.doubleOuter, rows: 3, sectors: true },
   { inner: RADII.innerBull, outer: RADII.outerBull, rows: 2, sectors: false },
 ]
 
-/** Soft-tip holes in polar rows that follow the rings, laid out segment by segment between the spider's dividers, so every bed holds whole rows of evenly spaced tip holes (three rows in the doubles and triples, a centre hole and a ring in the inner bull). Built as one path per layer (rims, then holes). */
+/** Soft-tip holes in polar rows that follow the rings, laid out segment by segment between the spider's dividers, so every bed holds whole rows of evenly spaced tip holes (three rows of the same holes in the doubles and triples, a centre hole and a ring in the inner bull). Built as one path per layer (rims, then holes). */
 function holes(p: Painter, fill: string, rim: string | null): void {
   const { ctx, cx, cy, scale } = p
-  const gap = SPIDER_MM / 2 + 0.45
+  const gap = SPIDER_MM / 2 + 0.3
   const centres: number[] = []
   const radii: number[] = []
   const add = (r: number, angle: number, size: number) => {
@@ -212,8 +212,8 @@ function holes(p: Painter, fill: string, rim: string | null): void {
     const span = outer - inner
     const rows = band.rows ?? Math.max(1, Math.round(span / HOLE_PITCH))
     const step = span / rows
-    const size = Math.min(HOLE_RADIUS, step * 0.4)
-    const pitch = band.rows ? Math.min(HOLE_PITCH, step * 1.15) : HOLE_PITCH
+    const size = band.rows ? HOLE_RADIUS : Math.min(HOLE_RADIUS, step * 0.4)
+    const pitch = HOLE_PITCH
     for (let row = 0; row < rows; row++) {
       const r = inner + step * (row + 0.5)
       if (!band.sectors) {
@@ -289,10 +289,10 @@ function drawSpiderFace(size: number): HTMLCanvasElement {
     const even = i % 2 === 0
     const single = even ? SPIDER_COLORS.black : SPIDER_COLORS.red
     const bed = even ? SPIDER_COLORS.red : SPIDER_COLORS.black
-    wedge(p, RADII.outerBull, RADII.tripleInner, from, to, single)
-    wedge(p, RADII.tripleInner, RADII.tripleOuter, from, to, bed)
-    wedge(p, RADII.tripleOuter, RADII.doubleInner, from, to, single)
-    wedge(p, RADII.doubleInner, RADII.doubleOuter, from, to, bed)
+    wedge(p, SOFT_RADII.outerBull, SOFT_RADII.tripleInner, from, to, single)
+    wedge(p, SOFT_RADII.tripleInner, SOFT_RADII.tripleOuter, from, to, bed)
+    wedge(p, SOFT_RADII.tripleOuter, SOFT_RADII.doubleInner, from, to, single)
+    wedge(p, SOFT_RADII.doubleInner, SOFT_RADII.doubleOuter, from, to, bed)
   }
   disc(p, RADII.outerBull, SPIDER_COLORS.red)
   disc(p, RADII.innerBull, SPIDER_COLORS.black)
@@ -407,12 +407,12 @@ function texture(canvas: HTMLCanvasElement, srgb: boolean, anisotropy: number): 
   return map
 }
 
-/** Builds the three board maps for a style at `size` pixels square (the normal map at half size, which is plenty for raised wires). */
+/** Builds the three board maps for a style at `size` pixels square (the steel normal map at half size, which is plenty for raised wires; the soft-tip one at full size so every hole keeps its edge). */
 export function createBoardTextures(size: number, anisotropy = 8, style: BoardStyle = 'steel'): BoardTextures {
   const spiderStyle = style === 'spider'
   const color = texture(spiderStyle ? drawSpiderFace(size) : drawSteelFace(size), true, anisotropy)
   const roughnessMetal = texture(spiderStyle ? drawSpiderRoughnessMetal(size) : drawSteelRoughnessMetal(size), false, anisotropy)
-  const heightSize = Math.max(512, size / 2)
+  const heightSize = spiderStyle ? size : Math.max(512, size / 2)
   const normal = texture(normalFromHeight(spiderStyle ? drawSpiderHeight(heightSize) : drawSteelHeight(heightSize), spiderStyle ? 1.6 : 2.2), false, anisotropy)
   return {
     color,
