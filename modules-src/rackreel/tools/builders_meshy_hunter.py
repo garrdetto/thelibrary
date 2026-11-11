@@ -23,12 +23,8 @@ HUNTER_PANTS = {'pants-camo': 'hunter-base', 'pants-jeans': 'hunter-flannel-none
 HUNTER_HATS = {'cap-blaze': 'hunter-cap-blaze', 'cap-camo': 'hunter-cap-camo', 'cap-bucket': 'hunter-cap-bucket',
                'cap-backwards': 'hunter-cap-backwards', 'cap-cowboy': 'hunter-hat-cowboy', 'cap-visor': 'hunter-hat-visor'}
 HUNTER_HAT_BACKWARDS = {'cap-backwards'}
-HUNTER_HAT_FIT = {'cap-cowboy': 1.0, 'cap-visor': 1.22}
-HUNTER_HAT_FORWARD = {'cap-visor': 0.055}
 HUNTER_PACK = 'hunter-pack'
 HUNTER_PACK_PANEL_Y = 0.1
-HUNTER_HAT_LIFT = {'cap-blaze': 0.06, 'cap-camo': 0.095, 'cap-bucket': 0.09, 'cap-backwards': 0.06, 'cap-cowboy': 0.075, 'cap-visor': -0.02}
-HUNTER_HAT_SCALE = 0.85
 HUNTER_HIP = 0.98
 HUNTER_BODY_TEXTURE = 1536
 HUNTER_PROP_TEXTURE = 1024
@@ -184,18 +180,6 @@ def load_prop(name, rotate):
     return bm, image
 
 
-def fit_hat(bm, head_top, head_center, head_width, lift, fit=1.0):
-    zs = [v.co.z for v in bm.verts]
-    z0, z1 = min(zs), max(zs)
-    crown = [v.co for v in bm.verts if v.co.z > z0 + 0.55 * (z1 - z0)]
-    cw = max(c.x for c in crown) - min(c.x for c in crown)
-    s = head_width * 1.2 / cw * HUNTER_HAT_SCALE * fit
-    bmesh.ops.scale(bm, vec=(s, s, s), verts=bm.verts[:])
-    crown = [v.co for v in bm.verts if v.co.z > (z0 + 0.55 * (z1 - z0)) * s]
-    cx = (max(c.x for c in crown) + min(c.x for c in crown)) / 2
-    cy = (max(c.y for c in crown) + min(c.y for c in crown)) / 2
-    top = max(v.co.z for v in bm.verts)
-    bmesh.ops.translate(bm, vec=(head_center.x - cx, head_center.y - cy, head_top + lift - top), verts=bm.verts[:])
 
 
 def fit_pack(bm, back_y, top_z):

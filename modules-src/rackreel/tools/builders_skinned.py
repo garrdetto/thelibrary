@@ -3,6 +3,9 @@ into the face, the upper garment and the lower garment so each can wear its own 
 riding the head and the torso. Clips come from `hunter-clips.json` (see `ingest-hunter.py`). The face reads the head
 atlas (the rig's second UV set), so a head texture is a small image of its own and faces, hair and beards can be mixed.
 
+Hats are sized to the head's own width and depth where a hat band sits (`SKIN_HAT_FIT`), and each comes with a tuck: the
+head vertices that would show through it, with how far to pull each one in so the hair sits under the hat.
+
 Every joint is stored axis-aligned at a reference pose (the bind pose with the arms hanging at the sides), so a joint
 turn means the same thing it does on the 11-joint rigid rigs: `Avatar`'s hand-written poses and the arm reach apply
 unchanged. The turn from the bind pose to that reference lives in each joint's bind matrix, never in the vertices."""
@@ -24,6 +27,18 @@ SKIN_HEM_TEXTURE = 'hunter-flannel-none-jeans'
 SKIN_COLLAR_TEXTURE = 'hunter-blaze-full'
 SKIN_HEAD_RELAX = 2
 SKIN_HEAD_NORMAL_RELAX = 8
+SKIN_CAP_FIT = {'width': 1.07, 'depth': 1.06, 'rim': 0.098, 'tall': 0.8}
+SKIN_HAT_FIT = {
+    'cap-blaze': SKIN_CAP_FIT,
+    'cap-camo': SKIN_CAP_FIT,
+    'cap-backwards': SKIN_CAP_FIT,
+    'cap-bucket': {'width': 1.07, 'depth': 1.06, 'rim': 0.135, 'tall': 0.74},
+    'cap-cowboy': {'width': 1.07, 'depth': 1.06, 'rim': 0.108, 'tall': 0.8},
+    'cap-visor': {'width': 1.14, 'depth': 1.24, 'rim': 0.125, 'tilt': -0.2, 'forward': 0.012},
+}
+SKIN_HAT_BAND = (0.12, 0.05)
+SKIN_HAT_CENTRE_DROP = 0.11
+SKIN_HAT_TUCK = 0.006
 
 
 def skin_axes(k):
@@ -150,6 +165,72 @@ def rigid_part(piece, joint):
     return {'pos': list(piece.pos), 'nor': list(piece.nor), 'uv': list(piece.uv), 'skin': [[(joint, 1.0)]] * len(piece.pos), 'tris': list(piece.tris)}
 
 
+def head_band(points, head_top):
+    """Centre, width and depth of the head where a hat band sits."""
+    band = [p for p in points if head_top - SKIN_HAT_BAND[0] < p.z < head_top - SKIN_HAT_BAND[1]]
+    xs = [p.x for p in band]
+    ys = [p.y for p in band]
+    return (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2, max(xs) - min(xs), max(ys) - min(ys)
+
+
+def fit_skin_hat(hb, band, head_top, fit):
+    """Sizes a hat's crown to the head's width and depth (each its own scale), centres it over the band and sets how far
+    below the top of the head its rim sits at the sides. Returns how far its top clears the head."""
+    zs = [v.co.z for v in hb.verts]
+    z0, z1 = min(zs), max(zs)
+    cut = z0 + 0.55 * (z1 - z0)
+    crown = [v.co for v in hb.verts if v.co.z > cut]
+    sx = band[2] * fit['width'] / (max(c.x for c in crown) - min(c.x for c in crown))
+    sy = band[3] * fit['depth'] / (max(c.y for c in crown) - min(c.y for c in crown))
+    sz = (sx + sy) / 2 * fit.get('tall', 1.0)
+    bmesh.ops.scale(hb, vec=(sx, sy, sz), verts=hb.verts[:])
+    if fit.get('tilt'):
+        bmesh.ops.rotate(hb, verts=hb.verts[:], cent=(0, 0, 0), matrix=Matrix.Rotation(fit['tilt'], 3, 'X'))
+    crown = [v.co for v in hb.verts if v.co.z > cut * sz]
+    cx = (max(c.x for c in crown) + min(c.x for c in crown)) / 2
+    cy = (max(c.y for c in crown) + min(c.y for c in crown)) / 2
+    rim = min(v.co.z for v in hb.verts if abs(v.co.y - cy) < 0.03)
+    bmesh.ops.translate(hb, vec=(band[0] - cx, band[1] - cy + fit.get('forward', 0.0), head_top - fit['rim'] - rim), verts=hb.verts[:])
+    return max(v.co.z for v in hb.verts) - head_top
+
+
+def tuck_under_hat(points, hb, centre):
+    """Head vertices that a hat's surface lies between them and the middle of the skull are showing through it: each is
+    pulled back along that line to just inside the hat's innermost surface. Returns {vertex index: move}."""
+    tree = BVHTree.FromBMesh(hb)
+    moves = {}
+    for i, p in enumerate(points):
+        to = centre - p
+        reach = to.length
+        if reach < 1e-4:
+            continue
+        d = to / reach
+        travelled = 0.0
+        inner = None
+        while travelled < reach:
+            hit, _, _, dist = tree.ray_cast(p + d * travelled, d, reach - travelled)
+            if hit is None:
+                break
+            inner = travelled + dist
+            travelled = inner + 0.0015
+        if inner is not None:
+            moves[i] = d * min(reach, inner + SKIN_HAT_TUCK)
+    return moves
+
+
+def pack_tuck(moves):
+    order = sorted(moves)
+    chunk = bytearray()
+    for i in order:
+        chunk += struct.pack('<H', i)
+    while len(chunk) % 4:
+        chunk += b'\0'
+    for i in order:
+        m = moves[i]
+        chunk += struct.pack('<3f', m.x, m.z, m.y)
+    return bytes(chunk)
+
+
 def pack_part(part):
     chunk = bytearray()
     for (x, y, z) in part['pos']:
@@ -175,8 +256,8 @@ def pack_part(part):
     return bytes(chunk), wide
 
 
-def write_skinned(name, joints, parts, clips, meta):
-    header = {'name': name, 'joints': joints, 'parts': [], 'clips': [], 'meta': meta}
+def write_skinned(name, joints, parts, clips, meta, tucks):
+    header = {'name': name, 'joints': joints, 'parts': [], 'clips': [], 'tucks': [], 'meta': meta}
     blobs = []
     offset = 0
     for part in parts:
@@ -196,6 +277,11 @@ def write_skinned(name, joints, parts, clips, meta):
             chunk += b'\0'
         header['clips'].append({'name': clip['name'], 'seconds': clip['seconds'], 'frames': clip['frames'], 'loop': clip['loop'], 'speed': clip['speed'], 'offset': offset, 'bytes': len(chunk)})
         blobs.append(bytes(chunk))
+        offset += len(chunk)
+    for item, moves in tucks.items():
+        chunk = pack_tuck(moves)
+        header['tucks'].append({'item': item, 'count': len(moves), 'offset': offset, 'bytes': len(chunk)})
+        blobs.append(chunk)
         offset += len(chunk)
     hj = json.dumps(header, separators=(',', ':')).encode('utf8')
     while (len(hj) + 8) % 4:
@@ -328,10 +414,6 @@ def build_skinned_hunter():
 
     face_verts = [v.co.copy() for f in bm.faces if slots[f.index] == 'face' for v in f.verts]
     head_top = max(c.z for c in face_verts)
-    crown = [c for c in face_verts if c.z > head_top - 0.09]
-    head_center = Vector((sum(c.x for c in crown) / len(crown), sum(c.y for c in crown) / len(crown), 0))
-    band = [c for c in face_verts if head_top - 0.13 < c.z < head_top - 0.05]
-    head_width = max(c.x for c in band) - min(c.x for c in band)
     nose = max((c for c in face_verts if abs(c.x) < 0.02), key=lambda c: c.y)
     chin = min(c.z for c in face_verts if abs(c.x) < 0.02 and c.y > nose.y - 0.03)
     axis = bind[names.index('head')]
@@ -347,13 +429,18 @@ def build_skinned_hunter():
         hands[side] = rest[h] + ref[h] @ (centre - bind[h])
     bm.free()
 
+    face_points = [Vector(p) for p in parts[0]['pos']]
+    band = head_band(face_points, head_top)
+    skull = Vector((band[0], band[1], head_top - SKIN_HAT_CENTRE_DROP))
+    tucks = {}
     for item, src in HUNTER_HATS.items():
         if not meshy_source(src):
             continue
         hb, img = load_prop(src, rotate=item not in HUNTER_HAT_BACKWARDS)
-        fit_hat(hb, head_top, head_center, head_width, HUNTER_HAT_LIFT.get(item, 0.025) * HUNTER_HAT_SCALE, HUNTER_HAT_FIT.get(item, 1.0))
-        if item in HUNTER_HAT_FORWARD:
-            bmesh.ops.translate(hb, vec=(0, HUNTER_HAT_FORWARD[item], 0), verts=hb.verts[:])
+        clear = fit_skin_hat(hb, band, head_top, SKIN_HAT_FIT[item])
+        tucks[item] = tuck_under_hat(face_points, hb, skull)
+        deepest = max((m.length for m in tucks[item].values()), default=0.0)
+        print('hat', item, 'top clears the head by', round(clear, 4), 'tucks', len(tucks[item]), 'head vertices, deepest', round(deepest, 4))
         part = rigid_part(piece_from_textured(hb), names.index('head'))
         part.update(name='hat:' + item, material='tex:' + src, item=item)
         parts.append(part)
@@ -422,7 +509,7 @@ def build_skinned_hunter():
     upper = {jacket + '+' + vest: 'tex:' + tex for (jacket, vest), tex in HUNTER_COMBOS.items()}
     lower = {pants: 'tex:' + tex for pants, tex in HUNTER_PANTS.items()}
     meta = {'arms': arms, 'hip': round(float(rest[hips][1]), 4), 'height': round(head_top, 4), 'head': head_frame, 'wear': {'upper': upper, 'lower': lower}}
-    write_skinned('hunter', joints, parts, clips, meta)
+    write_skinned('hunter', joints, parts, clips, meta, tucks)
     print('hunter hem', round(hem, 3), 'head', head_frame, 'smoothed', smoothed, 'arms', arms)
 
 
