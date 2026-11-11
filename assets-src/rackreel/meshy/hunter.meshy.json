@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "name": "hunter",
+  "createdAt": "2026-11-11",
+  "note": "The skinned hunter. Design image → image-to-3D (meshy-t2.5 smart topology, 30,000 triangles, meshy-7 PBR 4K) → rig (walking and running included) → four library clips. Every outfit is a meshy-7 retexture of the same mesh on its original UVs, so one geometry wears them all.",
+  "tasks": {
+    "design": { "kind": "text-to-image", "id": "01a1cbc6-5567-7539-b05c-1c55beaa2015", "credits": 9 },
+    "hunter-base": { "kind": "image-to-3d", "id": "01a1cbc7-0b39-7386-9bbf-9bbd6b65fdef", "credits": 15 },
+    "rig": { "kind": "rigging", "id": "01a1cbc8-784d-77fc-ab0e-a848cfa35611", "credits": 5 },
+    "moves": { "kind": "animations", "id": "01a1cbcc-6326-77b4-9187-244b6db2a61c", "credits": 12, "actions": { "616": "Cautious_Crouch_Walk_Forward_inplace", "679": "Walk_Backward_inplace", "0": "Idle (a look-around, not used)", "258": "CrouchLookAroundBow (not used)" } },
+    "idle": { "kind": "animations", "id": "01a1cbe4-49a3-70f9-9198-cfeb13e00988", "credits": 3, "actions": { "251": "Idle_11" } },
+    "hunter-flannel-none-jeans": { "kind": "retexture", "id": "01a1cbcc-655c-73ae-982b-8041e6dd3466", "credits": 10 },
+    "hunter-camo-fishing-jeans": { "kind": "retexture", "id": "01a1cbcf-12af-701c-9d30-f0b86e10353f", "credits": 10 },
+    "hunter-camo-none-waders": { "kind": "retexture", "id": "01a1cbcf-1e9b-7191-8b51-73afaab426ff", "credits": 10 },
+    "hunter-flannel-blaze-camo": { "kind": "retexture", "id": "01a1cbcf-2899-7143-b41d-2da5f6214914", "credits": 10 },
+    "hunter-flannel-fishing-waders": { "kind": "retexture", "id": "01a1cbcf-3253-75fc-b8e4-b9fd367e48c3", "credits": 10 },
+    "hunter-canvas-blaze-jeans": { "kind": "retexture", "id": "01a1cbcf-4109-73b8-b90c-bdd1609d70e1", "credits": 10 },
+    "hunter-canvas-fishing-camo": { "kind": "retexture", "id": "01a1cbcf-49a5-74cf-88ff-c0b385a025dd", "credits": 10 },
+    "hunter-canvas-none-waders": { "kind": "retexture", "id": "01a1cbcf-555f-721a-90f1-c2ea869998fd", "credits": 10 },
+    "hunter-blaze-full": { "kind": "retexture", "id": "01a1cbcf-c933-757d-9be1-d0e9f0d1ed5f", "credits": 10 },
+    "hunter-angler-blazevest": { "kind": "retexture", "id": "01a1cbcf-d364-7322-aa88-e3d9151ec696", "credits": 10 },
+    "hunter-angler-fishvest": { "kind": "retexture", "id": "01a1cbcf-de92-7376-ba3e-3b28a58d78bd", "credits": 10 },
+    "hunter-angler-khaki": { "kind": "retexture", "id": "01a1cbcf-eb8c-779a-af16-b2a24c66e357", "credits": 10 },
+    "hunter-tank-blazevest": { "kind": "retexture", "id": "01a1cbcf-f4c0-775b-a94c-0ec033e01075", "credits": 10 },
+    "hunter-tank-fishvest": { "kind": "retexture", "id": "01a1cbcf-fd71-757e-83db-78c591cc4ca2", "credits": 10 },
+    "hunter-tank-khaki": { "kind": "retexture", "id": "01a1cbd0-0602-7378-95fd-080a5ab73d68", "credits": 10 }
+  },
+  "credits": 194
+}

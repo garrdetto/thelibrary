@@ -9,6 +9,8 @@ import type { RoomFormat } from '../../../engine/net/RoomFormats'
 import type { EngineContext } from '../core/EngineSetup'
 import { disposeRig, instantiate } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
+import { instantiateSkinned } from '../core/SkinnedModel'
+import type { SkinnedTemplate } from '../core/SkinnedModel'
 import type { NetAnimal } from '../systems/Wildlife'
 import { Avatar, HIP_HEIGHT } from './Avatar'
 import type { AvatarHands, AvatarStance } from './Avatar'
@@ -137,7 +139,7 @@ export class Online {
   name = 'Guest'
   id = ''
 
-  constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly models: Map<ModelName, ModelTemplate>, private readonly hooks: OnlineHooks) {
+  constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly models: Map<ModelName, ModelTemplate>, private readonly hunter: SkinnedTemplate, private readonly hooks: OnlineHooks) {
     this.room = new PeerRoom<NetMessage>(RACKREEL_ROOM, { hostAttempts: 5, rejoinSeconds: 3, maxPeers: PARTY_MAX - 1 }, {
       message: (m, from) => this.receive(m, from),
       join: () => {
@@ -397,15 +399,14 @@ export class Online {
   private upsert(id: string, s: PlayerState): void {
     let r = this.remotes.get(id)
     if (!r) {
-      const rig = instantiate(this.models.get('hunter')!, null, this.scene, (mesh) => this.ctx.registerDynamic(mesh))
-      const avatar = new Avatar(rig)
+      const avatar = new Avatar(instantiateSkinned(this.hunter, this.scene, (mesh) => this.ctx.registerDynamic(mesh)))
       const tag = document.createElement('div')
       tag.className = 'name-tag'
       this.tags.append(tag)
       const reg = (mesh: AbstractMesh) => this.ctx.registerDynamic(mesh)
       const rod = instantiate(this.models.get('rod')!, null, this.scene, reg)
       rod.root.parent = avatar.rightHand
-      placeRodInHand(rod.root)
+      placeRodInHand(rod.root, avatar)
       const rifle = instantiate(this.models.get('rifle')!, null, this.scene, reg)
       rifle.root.parent = avatar.root
       r = { avatar, state: s, shown: new Vector3(...s.p), vehicle: null, vehicleKind: '', anchorLine: null, tag, rod, rifle }
@@ -518,11 +519,7 @@ export class Online {
     this.removeVehicle(r)
     this.passengers.delete(r.avatar.root)
     r.avatar.root.parent = null
-    for (const m of r.avatar.meshes) {
-      this.ctx.unregisterDynamic(m)
-      m.dispose()
-    }
-    r.avatar.root.dispose()
+    r.avatar.dispose((mesh) => this.ctx.unregisterDynamic(mesh))
     disposeRig(r.rod, (mesh) => this.ctx.unregisterDynamic(mesh))
     disposeRig(r.rifle, (mesh) => this.ctx.unregisterDynamic(mesh))
     r.tag.remove()

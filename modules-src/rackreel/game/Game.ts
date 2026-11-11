@@ -14,6 +14,8 @@ import { EYE_HEIGHT, SHADOW_EXTENT, createEngineSetup } from '../core/EngineSetu
 import type { EngineContext } from '../core/EngineSetup'
 import { MODEL_NAMES, disposeRig, instantiate, loadModel, partMesh } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
+import { instantiateSkinned, loadSkinned } from '../core/SkinnedModel'
+import type { SkinnedTemplate } from '../core/SkinnedModel'
 import { Audio } from '../systems/Audio'
 import { EncounterDirector } from '../systems/EncounterDirector'
 import { Fishing } from '../systems/Fishing'
@@ -94,6 +96,7 @@ export class Game {
   private ground!: Mesh
   private foliage!: Foliage
   private models = new Map<ModelName, ModelTemplate>()
+  private hunter!: SkinnedTemplate
   private vehicles!: VehicleController
   private wildlife!: Wildlife
   private fishing!: Fishing
@@ -202,11 +205,13 @@ export class Game {
     buildHighway(this.ctx, this.terrain)
     this.weeds = new Weeds(this.ctx, this.terrain)
     let loaded = 0
+    const hunter = loadSkinned(scene, 'hunter', (tag) => texturedMaterial(scene, tag.slice(4), this.materials))
     await Promise.all(MODEL_NAMES.map(async (name) => {
       this.models.set(name, await loadModel(scene, name, (model, part, tag) => this.materialFor(model, part, tag)))
       loaded++
       this.hud.setLoading(0.1 + (loaded / MODEL_NAMES.length) * 0.5, `Bringing in the ${name.replace('fish-', '').replace('-lo', '').replace('treestand', 'tree stand')}…`)
     }))
+    this.hunter = await hunter
     this.hud.setLoading(0.65, 'Planting the woods…')
     await nextFrame()
     const landmarks = findLandmarks(this.terrain)
@@ -235,7 +240,7 @@ export class Game {
     this.spawnHeading = landmarks.spawnHeading
     this.anchorLine = createAnchorLine(scene, this.boat.root)
     this.dockEnd.copyFrom(landmarks.dock.end)
-    this.avatar = new Avatar(instantiate(this.models.get('hunter')!, null, scene, reg))
+    this.avatar = new Avatar(instantiateSkinned(this.hunter, scene, reg))
     this.buildGear(reg)
     this.bowfish = new Bowfishing({
       ctx: this.ctx, terrain: this.terrain, models: this.models, hud: this.hud, audio: this.audio, loot: this.loot, lighting: this.lighting, clock: this.clock,
@@ -258,7 +263,7 @@ export class Game {
     this.fishing.floorAt = (x, z) => this.catchFloor(x, z)
     this.fishing.onEvent = (e) => this.onFishing(e)
     this.minimap = new Minimap(this.terrain, document.getElementById('minimap')!)
-    this.online = new Online(this.ctx, scene, this.models, {
+    this.online = new Online(this.ctx, scene, this.models, this.hunter, {
       herd: (list) => {
         if (!this.wildlife.remote) {
           this.wildlife.clearAll()
@@ -503,7 +508,7 @@ export class Game {
     const { scene } = this.ctx
     this.rodRig = instantiate(this.models.get('rod')!, null, scene, reg)
     this.rodRig.root.parent = this.avatar.rightHand
-    placeRodInHand(this.rodRig.root)
+    placeRodInHand(this.rodRig.root, this.avatar)
     this.rodTip = new TransformNode('rod-tip', scene)
     this.rodTip.parent = this.rodRig.root
     this.rodTip.position.set(0, 0, 1.8)
@@ -1644,6 +1649,7 @@ export class Game {
       climbPhase: this.climbT * 9,
       crankPhase: this.rodFx.crankPhase,
       rodLoad: this.fishing.rodBend,
+      backing: this.mode === 'foot' && this.velocity.x * Math.sin(this.facing) + this.velocity.z * Math.cos(this.facing) < -0.25,
     })
     this.avatar.setVisible(this.ads < 0.55 && !(this.mode === 'stand' && this.layout.firstPerson))
   }

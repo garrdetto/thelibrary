@@ -2,8 +2,8 @@ import { Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Avatar, AvatarHands } from './Avatar'
 
-/** The rod sits in the right palm (measured from the Meshy rig in Blender), blank angled up out of the fist. */
-export const ROD_IN_HAND = { position: new Vector3(-0.022, -0.37, 0.032), pitch: 0.55 }
+/** The rod sits in the right palm, blank angled up out of the fist: where its grip rides from the palm's centre (forearm frame), and its tilt. */
+export const ROD_IN_HAND = { fromPalm: new Vector3(0.005, 0.021, 0.001), pitch: 0.55 }
 /** Where the left hand cups the rod butt for a two-handed cast (rod frame). */
 export const ROD_BUTT = new Vector3(0, -0.012, -0.205)
 /** The reel's crank hub and knob arm (rod frame), matching the reel `RodFx` builds. */
@@ -25,8 +25,9 @@ export const RIFLE_SHOULDERED = new Vector3(0.09, 1.46, -0.12)
 /** Rifle carried at port arms across the chest, muzzle up and left (avatar frame position and pitch/yaw/roll). */
 export const RIFLE_CARRY = { position: new Vector3(0.05, 1.2, 0.27), pitch: -0.95, yaw: -0.4, roll: -0.45 }
 
-export function placeRodInHand(rodRoot: TransformNode): void {
-  rodRoot.position.copyFrom(ROD_IN_HAND.position)
+export function placeRodInHand(rodRoot: TransformNode, avatar: Avatar): void {
+  const palm = avatar.palmOffset('right')
+  rodRoot.position.set(palm[0] + ROD_IN_HAND.fromPalm.x, palm[1] + ROD_IN_HAND.fromPalm.y, palm[2] + ROD_IN_HAND.fromPalm.z)
   rodRoot.rotationQuaternion = null
   rodRoot.rotation.set(ROD_IN_HAND.pitch, 0, 0)
 }

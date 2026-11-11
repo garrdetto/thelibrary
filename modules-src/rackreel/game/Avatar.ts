@@ -1,10 +1,13 @@
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
-import type { ModelRig } from '../core/ModelLibrary'
+import { disposeSkinned } from '../core/SkinnedModel'
+import type { AvatarRig, SkinRig } from '../core/SkinnedModel'
 import { HUNTER_ARMS, solveArm } from '../systems/ArmReach'
-import type { Vec3 } from '../systems/ArmReach'
+import type { ArmChain, Vec3 } from '../systems/ArmReach'
 import { legPose, walkGait } from '../systems/Gait'
+import { addClip, createGaitMix, createPose, finishPose, gaitMix, gaitSet, resetPose, stepPhase } from '../systems/Locomotion'
+import type { GaitSet } from '../systems/Locomotion'
 
 export const HIP_HEIGHT = 0.98
 
@@ -24,6 +27,8 @@ export interface AvatarPose {
   crankPhase?: number
   /** Rod load 0..1 while fighting a fish: the angler leans back and lifts the rod. */
   rodLoad?: number
+  /** True while the feet carry the body backwards (facing the camera's way and backing up). */
+  backing?: boolean
 }
 
 /** Which way each elbow points while a hand is placed, in the torso's frame. */
@@ -41,7 +46,10 @@ export const ELBOW_POLES = {
 export const SIDE_ON = { aim: { hips: 0.3, torso: 0.52 }, draw: { hips: 0.45, torso: 0.8 } } as const
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t
+const IDENTITY = Quaternion.Identity()
 const ARM_JOINTS = ['upperArmL', 'foreArmL', 'upperArmR', 'foreArmR'] as const
+const LEG_JOINTS = ['thighL', 'shinL', 'thighR', 'shinR'] as const
+const ARM_CHAIN = /^(shoulder|upperArm|foreArm|hand)([LR])$/
 
 export class Avatar {
   readonly root: TransformNode
@@ -62,16 +70,46 @@ export class Avatar {
   private readonly local = new Vector3()
   private readonly chain: TransformNode[] = []
   private wearKey = ''
+  private readonly skin: SkinRig | null
+  private readonly arms: Record<'L' | 'R', ArmChain>
+  private readonly gaits: GaitSet | null = null
+  private readonly mix = createGaitMix()
+  private readonly clipPose = createPose(0)
+  private readonly clipWeight = new Float32Array(0)
+  private readonly armSide = new Int8Array(0)
+  private readonly composed: Quaternion[] = []
+  private readonly jointIndex = new Map<TransformNode, number>()
+  private readonly clipQuat = new Quaternion()
+  private readonly hipRest = new Vector3()
+  private gaitPhase = 0
+  private idleClock = 0
+  private backBlend = 0
 
-  constructor(readonly rig: ModelRig) {
+  constructor(readonly rig: AvatarRig) {
     this.root = rig.root
     this.meshes = rig.meshes
+    this.skin = rig.skin ?? null
+    this.arms = this.skin?.meta.arms ?? HUNTER_ARMS
     for (const [name, node] of rig.joints) {
       this.j[name] = node
-      if (!name.includes(':')) this.fk.set(node, node.rotation.clone())
+      if (!name.includes(':')) this.fk.set(node, this.skin ? Vector3.Zero() : node.rotation.clone())
     }
     for (const name of ARM_JOINTS) this.ikQuat.set(this.j[name], new Quaternion())
     this.hipBase = this.j.hips.position.y
+    this.hipRest.copyFrom(this.j.hips.position)
+    if (this.skin) {
+      const n = this.skin.order.length
+      this.gaits = gaitSet(this.skin.clips)
+      this.clipPose = createPose(n)
+      this.clipWeight = new Float32Array(n)
+      this.armSide = new Int8Array(n)
+      this.skin.order.forEach((node, i) => {
+        const arm = ARM_CHAIN.exec(node.name.slice(node.name.lastIndexOf('-') + 1))
+        this.armSide[i] = arm ? (arm[2] === 'L' ? 1 : 2) : 0
+        this.composed.push(new Quaternion())
+        this.jointIndex.set(node, i)
+      })
+    }
   }
 
   /** The forearm that holds the rod and the rifle's grip (the hunter's right). */
@@ -105,6 +143,10 @@ export class Avatar {
     const key = wear.join('|')
     if (key === this.wearKey) return
     this.wearKey = key
+    if (this.skin) {
+      this.skin.wear(wear)
+      return
+    }
     for (const [name, mesh] of this.rig.partMeshes) {
       const i = name.indexOf(':')
       if (i < 0) continue
@@ -116,8 +158,26 @@ export class Avatar {
     for (const m of this.meshes) m.isVisible = visible
   }
 
+  /** Frees the rig. Unparent anything riding a hand first. */
+  dispose(unregister?: (mesh: AbstractMesh) => void): void {
+    if (this.skin) {
+      disposeSkinned(this.rig, unregister)
+      return
+    }
+    for (const m of this.meshes) {
+      unregister?.(m)
+      m.dispose()
+    }
+    this.root.dispose()
+  }
+
   cast(): void {
     this.castSnap = 1
+  }
+
+  /** Palm centre of the hunter's right (`right`) or left hand in its forearm's frame, from the elbow. */
+  palmOffset(hand: 'right' | 'left'): Vec3 {
+    return this.arms[hand === 'right' ? 'L' : 'R'].palm
   }
 
   /** Palm centre of the hunter's right (`right`) or left hand in world space, after this frame's pose. */
@@ -125,7 +185,7 @@ export class Avatar {
     const side = hand === 'right' ? 'L' : 'R'
     const fore = this.j['foreArm' + side]
     this.refresh(fore)
-    const p = HUNTER_ARMS[side].palm
+    const p = this.arms[side].palm
     return Vector3.TransformCoordinatesFromFloatsToRef(p[0], p[1], p[2], fore.getWorldMatrix(), out)
   }
 
@@ -144,21 +204,30 @@ export class Avatar {
     this.crouchBlend += ((pose.crouch && pose.stance === 'stand' ? 1 : 0) - this.crouchBlend) * Math.min(1, dt * 8)
     this.castSnap = Math.max(0, this.castSnap - dt * 2.2)
     const c = this.crouchBlend
+    const skin = this.skin
     const run = Math.min(1, pose.speed / 5)
     const moving = pose.speed > 0.15
     const gait = walkGait(pose.speed, c)
-    if (pose.stance === 'stand') this.phase += (pose.speed / gait.stride) * Math.PI * 2 * dt
+    if (pose.stance === 'stand' && !skin) this.phase += (pose.speed / gait.stride) * Math.PI * 2 * dt
     const p = this.phase
     const amp = gait.amp
-    const swing = lerp(0.42, 0.75, run) * amp
-    const breathe = Math.sin(this.clock * 1.6) * 0.012
+    const swing = skin ? 0 : lerp(0.42, 0.75, run) * amp
+    const breathe = skin ? 0 : Math.sin(this.clock * 1.6) * 0.012
     const sideOn = pose.stance === 'stand' ? (pose.hands === 'aim' ? SIDE_ON.aim : pose.hands === 'draw' ? SIDE_ON.draw : null) : null
     let hipY = this.hipBase
     let torsoX = breathe
     let torsoY = 0
     let hipYaw = 0
     let headX = 0
-    if (pose.stance === 'stand') {
+    if (pose.stance === 'stand' && skin) {
+      for (const name of LEG_JOINTS) set(j[name], 0)
+      if (sideOn) {
+        hipYaw = sideOn.hips
+        torsoY = sideOn.torso
+      } else if (pose.hands === 'rifle' || pose.hands === 'fish' || pose.hands === 'reel') {
+        torsoY = 0.14
+      }
+    } else if (pose.stance === 'stand') {
       const legK = moving ? Math.min(1, dt * 30) : k
       const setLeg = (node: TransformNode, x: number) => {
         const r = this.fk.get(node)!
@@ -199,7 +268,7 @@ export class Avatar {
       }
       torsoX = 0.12
     }
-    j.hips.position.y = hipY
+    if (!skin) j.hips.position.y = hipY
     set(j.hips, 0, hipYaw, 0)
     set(j.torso, torsoX, torsoY, 0)
     const turned = this.fk.get(j.hips)!.y + this.fk.get(j.torso)!.y
@@ -214,7 +283,7 @@ export class Avatar {
       set(j['foreArm' + R], -0.35)
       set(j['upperArm' + Lh], -2.5 + Math.sin(cp) * 0.35, 0, -0.1)
       set(j['foreArm' + Lh], -0.35)
-      this.applyFk()
+      this.applyPose(dt, pose)
       return
     }
     switch (pose.hands) {
@@ -227,8 +296,13 @@ export class Avatar {
       case 'rod':
         set(j['upperArm' + R], -0.25 + armSwing(R) * 0.3, 0, 0.12)
         set(j['foreArm' + R], -1.15)
-        set(j['upperArm' + Lh], armSwing(Lh), 0, -0.05)
-        set(j['foreArm' + Lh], -0.2 - Math.max(0, -armSwing(Lh)) * 0.6)
+        if (skin) {
+          set(j['upperArm' + Lh], 0)
+          set(j['foreArm' + Lh], 0)
+        } else {
+          set(j['upperArm' + Lh], armSwing(Lh), 0, -0.05)
+          set(j['foreArm' + Lh], -0.2 - Math.max(0, -armSwing(Lh)) * 0.6)
+        }
         break
       case 'fish':
         set(j['upperArm' + R], -0.42 + armSwing(R) * 0.15, -0.2, 0.08)
@@ -290,12 +364,76 @@ export class Avatar {
         set(j['foreArm' + Lh], -0.55, 0)
         break
       default:
-        set(j['upperArm' + R], armSwing(R), 0, 0.06)
-        set(j['foreArm' + R], -0.2 - Math.max(0, -armSwing(R)) * 0.6)
-        set(j['upperArm' + Lh], armSwing(Lh), 0, -0.06)
-        set(j['foreArm' + Lh], -0.2 - Math.max(0, -armSwing(Lh)) * 0.6)
+        if (skin && pose.stance === 'stand') {
+          for (const name of ARM_JOINTS) set(j[name], 0)
+        } else {
+          set(j['upperArm' + R], armSwing(R), 0, 0.06)
+          set(j['foreArm' + R], -0.2 - Math.max(0, -armSwing(R)) * 0.6)
+          set(j['upperArm' + Lh], armSwing(Lh), 0, -0.06)
+          set(j['foreArm' + Lh], -0.2 - Math.max(0, -armSwing(Lh)) * 0.6)
+        }
     }
-    this.applyFk()
+    this.applyPose(dt, pose)
+  }
+
+  private applyPose(dt: number, pose: AvatarPose): void {
+    if (this.skin) this.applySkinned(dt, pose, this.skin)
+    else this.applyFk()
+  }
+
+  /**
+   * The skinned body: clips move everything while standing (legs, hips, spine, and whichever arms carry nothing), and
+   * the hand-written joint turns above are applied on top, so a rod carry or a rifle hold rides the walk. Seated and
+   * climbing, the clips fade out and the hand-written pose stands alone.
+   */
+  private applySkinned(dt: number, pose: AvatarPose, skin: SkinRig): void {
+    const standing = pose.stance === 'stand'
+    this.backBlend += ((pose.backing ? 1 : 0) - this.backBlend) * Math.min(1, dt * 6)
+    const mix = gaitMix(standing ? pose.speed : 0, this.crouchBlend, this.backBlend, this.gaits!, this.mix)
+    this.gaitPhase = stepPhase(this.gaitPhase, mix, dt)
+    this.idleClock += dt
+    const clips = skin.clips
+    const blend = this.clipPose
+    resetPose(blend)
+    const add = (name: string, phase: number, weight: number) => {
+      const clip = clips.get(name)
+      if (clip) addClip(blend, clip, phase, weight)
+    }
+    const idle = clips.get('idle')
+    add('idle', idle ? this.idleClock / idle.seconds : 0, mix.idle)
+    add('walk', this.gaitPhase, mix.walk)
+    add('run', this.gaitPhase, mix.run)
+    add('crouchWalk', this.gaitPhase, mix.crouchWalk)
+    add('walkBack', this.gaitPhase, mix.walkBack)
+    const posed = finishPose(blend)
+    const rate = Math.min(1, dt * 9)
+    const freeR = pose.hands === 'free'
+    const freeL = pose.hands === 'free' || pose.hands === 'rod'
+    const body = standing && posed ? 1 : 0
+    const order = skin.order
+    for (let i = 0; i < order.length; i++) {
+      const node = order[i]
+      const side = this.armSide[i]
+      const want = side === 0 ? body : (side === 1 ? freeR : freeL) ? body * (1 - 0.65 * this.crouchBlend) : 0
+      const w = (this.clipWeight[i] += (want - this.clipWeight[i]) * rate)
+      const r = this.fk.get(node)!
+      const q = this.composed[i]
+      Quaternion.FromEulerAnglesToRef(r.x, r.y, r.z, q)
+      if (w > 0.002 && posed) {
+        const c = this.clipQuat.set(blend.rot[i * 4], blend.rot[i * 4 + 1], blend.rot[i * 4 + 2], blend.rot[i * 4 + 3])
+        Quaternion.SlerpToRef(IDENTITY, c, w, c)
+        c.multiplyToRef(q, q)
+      }
+      if (!this.ikQuat.has(node)) node.rotationQuaternion!.copyFrom(q)
+    }
+    for (const name of ARM_JOINTS) {
+      const node = this.j[name]
+      if (this.reachWeight[name.endsWith('L') ? 'L' : 'R'] === 0) node.rotationQuaternion!.copyFrom(this.composed[this.jointIndex.get(node)!])
+    }
+    const hips = this.j.hips
+    const hw = this.clipWeight[0]
+    if (posed) hips.position.set(lerp(this.hipRest.x, blend.hips[0], hw), lerp(this.hipRest.y, blend.hips[1], hw), lerp(this.hipRest.z, blend.hips[2], hw))
+    else hips.position.copyFrom(this.hipRest)
   }
 
   /**
@@ -321,14 +459,14 @@ export class Avatar {
       return
     }
     if (target) {
-      const torso = this.j.torso
-      this.refresh(torso)
-      torso.getWorldMatrix().invertToRef(this.inverse)
+      const base = upper.parent as TransformNode
+      this.refresh(base)
+      base.getWorldMatrix().invertToRef(this.inverse)
       Vector3.TransformCoordinatesToRef(target, this.inverse, this.local)
       this.local.subtractInPlace(upper.position)
       const q = this.ikQuat.get(upper)!
       const f = this.ikQuat.get(fore)!
-      const solved = solveArm(HUNTER_ARMS[side], [this.local.x, this.local.y, this.local.z], [pole.x, pole.y, pole.z] as Vec3)
+      const solved = solveArm(this.arms[side], [this.local.x, this.local.y, this.local.z], [pole.x, pole.y, pole.z] as Vec3)
       q.set(solved.upper[0], solved.upper[1], solved.upper[2], solved.upper[3])
       f.set(solved.fore[0], solved.fore[1], solved.fore[2], solved.fore[3])
     }
@@ -338,13 +476,18 @@ export class Avatar {
 
   private blend(node: TransformNode, w: number): void {
     const r = this.fk.get(node)!
-    Quaternion.FromEulerAnglesToRef(r.x, r.y, r.z, this.fkQuat)
+    if (this.skin) this.fkQuat.copyFrom(this.composed[this.jointIndex.get(node)!])
+    else Quaternion.FromEulerAnglesToRef(r.x, r.y, r.z, this.fkQuat)
     Quaternion.SlerpToRef(this.fkQuat, this.ikQuat.get(node)!, w, this.ikTarget)
     if (!node.rotationQuaternion) node.rotationQuaternion = new Quaternion()
     node.rotationQuaternion.copyFrom(this.ikTarget)
   }
 
   private release(node: TransformNode): void {
+    if (this.skin) {
+      node.rotationQuaternion!.copyFrom(this.composed[this.jointIndex.get(node)!])
+      return
+    }
     if (!node.rotationQuaternion) return
     node.rotationQuaternion = null
     node.rotation.copyFrom(this.fk.get(node)!)

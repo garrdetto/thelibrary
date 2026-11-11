@@ -161,6 +161,7 @@ export function createEngineSetup(canvas: HTMLCanvasElement): EngineContext {
     for (let i = 0; i < list.length; i++) {
       const mesh = list[i]
       const shown = mesh.isEnabled() && mesh.isVisible ? 1 : 0
+      if (shown && mesh.skeleton) dirty = true
       if (shadowSnapshot[at] !== shown) {
         shadowSnapshot[at] = shown
         dirty = true

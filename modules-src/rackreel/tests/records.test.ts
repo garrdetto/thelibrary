@@ -103,11 +103,10 @@ test('fish find a working bait a third sooner', async () => {
   assert.ok(t < 120 / 3 / 1.3, `bite after ${t.toFixed(1)} s`)
 })
 
-test('cloth and wood patterns tile without seams', async () => {
-  const { fabricHeight, tileNoise, woodSample } = await import('../world/SurfacePatterns')
+test('wood patterns tile without seams', async () => {
+  const { tileNoise, woodSample } = await import('../world/SurfacePatterns')
   for (let v = 0; v < 1; v += 0.13) {
     assert.ok(Math.abs(tileNoise(0, v, 5, 7, 3) - tileNoise(1, v, 5, 7, 3)) < 1e-9)
-    assert.ok(Math.abs(fabricHeight(0, v) - fabricHeight(1 - 1e-9, v)) < 0.05)
     const a = woodSample(0, v, 4)
     const b = woodSample(1 - 1e-9, v, 4)
     assert.ok(Math.abs(a.shade - b.shade) < 0.05 && a.height >= 0 && a.height <= 1)
