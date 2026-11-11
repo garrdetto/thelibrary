@@ -49,7 +49,7 @@ class EngineVoice extends AudioWorkletProcessor {
     this.hop = this.grainLength >> 1
     this.window = new Float32Array(this.grainLength)
     for (let i = 0; i < this.grainLength; i++) this.window[i] = Math.sin((Math.PI * i) / (this.grainLength - 1)) ** 2
-    this.lastStart = Math.min(this.pull.length / sampleRate, this.points[this.points.length - 1]) - GRAIN * 1.25
+    this.lastStart = Math.min(this.pull.length / sampleRate, o.end) - GRAIN * 1.25
     this.grains = [0, 1, 2].map(() => ({ position: 0, rate: 1, age: this.grainLength }))
     this.untilNext = 0
     this.offset = -1
