@@ -6,7 +6,7 @@ import os
 import random
 import struct
 import sys
-from mathutils import Matrix, Vector, noise
+from mathutils import Matrix, Quaternion, Vector, noise
 from mathutils.bvhtree import BVHTree
 
 ARGS = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
@@ -860,6 +860,7 @@ exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_qua
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_blind.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_hunter.py'), encoding='utf8').read(), globals())
+exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_skinned.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_animals.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_meshy_vehicles.py'), encoding='utf8').read(), globals())
 exec(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'builders_bowfish.py'), encoding='utf8').read(), globals())

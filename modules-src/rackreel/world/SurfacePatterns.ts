@@ -1,4 +1,4 @@
-/** Tiling procedural patterns (0..1 coordinates, wrap seamlessly) for cloth and wood. */
+/** Tiling procedural patterns (0..1 coordinates, wrap seamlessly) for wood. */
 
 function hash(x: number, y: number, seed: number): number {
   let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(seed, 2147483647)
@@ -20,20 +20,6 @@ export function tileNoise(u: number, v: number, px: number, py: number, seed: nu
   const a = w(0, 0) + (w(1, 0) - w(0, 0)) * sx
   const b = w(0, 1) + (w(1, 1) - w(0, 1)) * sx
   return a + (b - a) * sy
-}
-
-/** Plain-weave cloth: alternating over-under threads with a little slub, 0..1. */
-export function fabricHeight(u: number, v: number): number {
-  const threads = 16
-  const tu = u * threads
-  const tv = v * threads
-  const warp = Math.abs(Math.sin(tu * Math.PI))
-  const weft = Math.abs(Math.sin(tv * Math.PI))
-  const over = (Math.floor(tu) + Math.floor(tv)) % 2 === 0
-  const weave = over ? 0.55 * warp + 0.25 * weft : 0.25 * warp + 0.55 * weft
-  const slub = tileNoise(u, v, 32, 32, 7) * 0.2
-  const crumple = tileNoise(u, v, 4, 4, 11) * 0.65 + tileNoise(u, v, 9, 9, 13) * 0.35
-  return Math.max(0, Math.min(1, (weave + slub) * 0.12 + crumple * 0.88))
 }
 
 /**

@@ -79,7 +79,8 @@ test('both hands reach the rifle on the shoulder and at port arms', () => {
 })
 
 test('the left hand can reach the rod butt and the reel knob from the right hand', () => {
-  const rodRoot = ROD_IN_HAND.position
+  const palm = HUNTER_ARMS.L.palm
+  const rodRoot = new Vector3(palm[0] + ROD_IN_HAND.fromPalm.x, palm[1] + ROD_IN_HAND.fromPalm.y, palm[2] + ROD_IN_HAND.fromPalm.z)
   const q = Quaternion.FromEulerAngles(ROD_IN_HAND.pitch, 0, 0)
   const span = (local: Vector3) => len(sub(inAvatar(rodRoot, q, local), HUNTER_ARMS.L.palm))
   assert.ok(span(ROD_BUTT) < 0.3, 'the butt is a hand span below the grip')

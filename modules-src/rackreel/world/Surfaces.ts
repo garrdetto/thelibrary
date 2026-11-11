@@ -1,64 +1,14 @@
-import { DetailMapConfiguration } from '@babylonjs/core/Materials/material.detailMapConfiguration'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import type { Scene } from '@babylonjs/core/scene'
-import { fabricHeight, woodSample } from './SurfacePatterns'
+import { woodSample } from './SurfacePatterns'
 
-/** Cloth and wood surfaces built in the page, so flat colours read as fabric and timber instead of plastic. */
+/** Wood surfaces built in the page, so flat colours read as timber instead of plastic. */
 
-const FABRIC_SIZE = 128
 const WOOD_W = 512
 const WOOD_H = 256
-
-const fabricCache = new WeakMap<Scene, RawTexture>()
-
-/**
- * A tiling woven-cloth detail map (R albedo, G normal Y, B roughness, A normal X, as Babylon's
- * detail maps expect), laid over the garment textures at a fine scale.
- */
-function fabricTexture(scene: Scene): RawTexture {
-  const cached = fabricCache.get(scene)
-  if (cached) return cached
-  const n = FABRIC_SIZE
-  const h = new Float32Array(n * n)
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) h[y * n + x] = fabricHeight(x / n, y / n)
-  const data = new Uint8Array(n * n * 4)
-  const at = (x: number, y: number) => h[((y + n) % n) * n + ((x + n) % n)]
-  for (let y = 0; y < n; y++) {
-    for (let x = 0; x < n; x++) {
-      const dx = (at(x + 1, y) - at(x - 1, y)) * 2.2
-      const dy = (at(x, y + 1) - at(x, y - 1)) * 2.2
-      const i = (y * n + x) * 4
-      data[i] = Math.round(255 * (0.5 + (h[y * n + x] - 0.5) * 0.7))
-      data[i + 1] = Math.round(255 * Math.max(0, Math.min(1, 0.5 - dy * 0.5)))
-      data[i + 2] = 200
-      data[i + 3] = Math.round(255 * Math.max(0, Math.min(1, 0.5 - dx * 0.5)))
-    }
-  }
-  const tex = RawTexture.CreateRGBATexture(data, n, n, scene, true, false, Texture.TRILINEAR_SAMPLINGMODE)
-  tex.wrapU = Texture.WRAP_ADDRESSMODE
-  tex.wrapV = Texture.WRAP_ADDRESSMODE
-  tex.uScale = 7
-  tex.vScale = 7
-  tex.anisotropicFilteringLevel = 4
-  fabricCache.set(scene, tex)
-  return tex
-}
-
-/** Turns a garment material matte: no sheen, and a fine woven grain in both colour and relief. */
-export function applyFabric(mat: StandardMaterial, scene: Scene): void {
-  mat.specularColor = new Color3(0.006, 0.0055, 0.005)
-  mat.specularPower = 6
-  mat.ambientColor = new Color3(0.26, 0.26, 0.26)
-  mat.diffuseColor = new Color3(0.9, 0.88, 0.86)
-  const detail = (mat as StandardMaterial & { detailMap?: DetailMapConfiguration }).detailMap ?? new DetailMapConfiguration(mat)
-  detail.texture = fabricTexture(scene)
-  detail.isEnabled = true
-  detail.diffuseBlendLevel = 0.6
-  detail.bumpLevel = 1
-}
 
 function woodTexture(scene: Scene, vertical: boolean, seed: number, tone: [number, number, number]): { color: RawTexture; normal: RawTexture } {
   const w = vertical ? WOOD_H : WOOD_W
