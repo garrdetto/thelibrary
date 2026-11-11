@@ -12,6 +12,28 @@ function el<T extends HTMLElement>(id: string): T {
   return node as T
 }
 
+const AWARD_LENGTH = 1.6
+const HAT_SVG =
+  '<svg viewBox="0 0 64 56" aria-hidden="true"><ellipse cx="32" cy="47" rx="30" ry="7" fill="#1747b8"/><path d="M14 46 L17 8 Q32 2 47 8 L50 46 Q32 52 14 46 Z" fill="#2a6dff"/><path d="M15.4 30 Q32 35 48.6 30 L49.2 38 Q32 44 14.8 38 Z" fill="#0d2f86"/><path d="M21 10 Q24 8 27 8 L25 44 Q22 44 19 43 Z" fill="#8fb6ff" opacity=".45"/><ellipse cx="32" cy="8" rx="15" ry="4" fill="#4d8bff"/></svg>'
+
+/** The soft-tip turn awards: LOW TON! and HIGH TON! burst in with a glow, HAT TRICK! drops three blue top hats in above the words. */
+function award(kind: 'lowTon' | 'hatTrick' | 'highTon', text: string): HTMLDivElement {
+  const box = make('div', `d-award is-${kind}`)
+  box.style.setProperty('--award-ms', `${Math.round(config.timing.announceMs * AWARD_LENGTH)}ms`)
+  if (kind === 'hatTrick') {
+    const hats = make('div', 'd-award-hats')
+    for (let i = 0; i < 3; i++) {
+      const hat = make('div', 'd-award-hat')
+      hat.style.setProperty('--hat-i', String(i))
+      hat.innerHTML = HAT_SVG
+      hats.append(hat)
+    }
+    box.append(hats)
+  }
+  box.append(make('div', 'd-award-text', text))
+  return box
+}
+
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag)
   if (className) node.className = className
@@ -310,7 +332,7 @@ export class Overlay {
   announceAll(list: Announcement[]): void {
     if (!list.length) return
     const rank: Record<Announcement['kind'], number> = {
-      matchWon: 10, setWon: 9, legWon: 8, checkout: 7, bust: 7, oneEighty: 6, ton: 5, innerBull: 4, closed: 4, triple: 3, bull: 3, opened: 3, notOpened: 2, double: 2, miss: 1, score: 0,
+      matchWon: 10, setWon: 9, legWon: 8, checkout: 7, bust: 7, oneEighty: 6, hatTrick: 6, highTon: 6, ton: 5, lowTon: 5, innerBull: 4, closed: 4, triple: 3, bull: 3, opened: 3, notOpened: 2, double: 2, miss: 1, score: 0,
     }
     const best = [...list].sort((a, b) => rank[b.kind] - rank[a.kind])[0]
     if (rank[best.kind] === 0 && best.text.length < 4) return
@@ -322,6 +344,12 @@ export class Overlay {
     const item = this.queue.shift()
     if (!item) {
       this.announceTimer = null
+      return
+    }
+    if (item.kind === 'lowTon' || item.kind === 'hatTrick' || item.kind === 'highTon') {
+      this.announce.replaceChildren(award(item.kind, item.text))
+      const wait = this.queue.length ? config.timing.announceMs : config.timing.announceMs * AWARD_LENGTH
+      this.announceTimer = setTimeout(() => this.next(), wait)
       return
     }
     const span = make('span', '', item.text)

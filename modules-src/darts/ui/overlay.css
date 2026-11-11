@@ -98,6 +98,22 @@ button { cursor: pointer; }
 .d-announce span.is-bust { color: #ff6b6b; }
 .d-announce span.is-big { color: var(--d-warn); }
 .d-announce span.is-win { color: var(--d-good); }
+.d-award { display: flex; flex-direction: column; align-items: center; gap: 4px; animation: d-award-out var(--award-ms, 2400ms) ease-in forwards; }
+.d-award-text { font-size: clamp(38px, 9vw, 88px); font-weight: 900; font-style: italic; letter-spacing: 0.02em; white-space: nowrap; color: #fff; -webkit-text-stroke: 2px rgba(0,0,0,.55); animation: d-award-slam calc(var(--award-ms, 2400ms) * 0.3) cubic-bezier(.2,1.6,.4,1) both, d-award-glow 0.5s ease-in-out calc(var(--award-ms, 2400ms) * 0.25) 3 alternate; }
+.d-award.is-lowTon .d-award-text { color: var(--d-warn); --glow: rgba(255,207,74,.85); }
+.d-award.is-highTon .d-award-text { color: #ff6a3d; --glow: rgba(255,90,40,.9); }
+.d-award.is-hatTrick .d-award-text { color: #6fa4ff; --glow: rgba(60,130,255,.9); }
+.d-award-text { text-shadow: 0 0 18px var(--glow, rgba(255,255,255,.6)), 0 4px 24px rgba(0,0,0,.7); }
+.d-award-hats { display: flex; gap: clamp(8px, 2vw, 20px); }
+.d-award-hat { width: clamp(52px, 10vw, 96px); animation: d-hat-drop calc(var(--award-ms, 2400ms) * 0.28) cubic-bezier(.3,1.5,.5,1) both; animation-delay: calc(var(--hat-i) * 0.16s); filter: drop-shadow(0 6px 10px rgba(0,0,0,.6)); }
+.d-award-hat:nth-child(1) { rotate: -12deg; }
+.d-award-hat:nth-child(3) { rotate: 12deg; }
+.d-award-hat svg { display: block; width: 100%; height: auto; }
+@keyframes d-award-slam { 0% { transform: scale(2.6); opacity: 0; } 60% { transform: scale(.94); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes d-award-glow { from { filter: brightness(1); } to { filter: brightness(1.45); } }
+@keyframes d-hat-drop { 0% { transform: translateY(-140%) scale(.7); opacity: 0; } 70% { transform: translateY(6%) scale(1.04); opacity: 1; } 100% { transform: none; opacity: 1; } }
+@keyframes d-award-out { 0%, 82% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-18px); } }
+
 @keyframes d-pop {
   0% { transform: scale(.6); opacity: 0; }
   12% { transform: scale(1.08); opacity: 1; }
@@ -207,6 +223,8 @@ button { cursor: pointer; }
 
 @media (prefers-reduced-motion: reduce) {
   .d-announce span { animation: d-fade var(--announce-ms, 1500ms) linear forwards; }
+  .d-award { animation: d-fade var(--award-ms, 2400ms) linear forwards; }
+  .d-award-text, .d-award-hat { animation: none; }
   .d-card, .d-btn, .d-meter { transition: none; }
   @keyframes d-fade { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 }

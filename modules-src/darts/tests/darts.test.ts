@@ -307,6 +307,36 @@ test('double in: nothing counts until a double', () => {
   assert.equal(state.players[0].opened, true)
 })
 
+test('soft tip: 100+ is a Low Ton, exactly 150 a Hat Trick, above 150 a High Ton; steel tip keeps the Ton call', () => {
+  const soft = (rules: MatchConfig['rules']): MatchConfig => ({ rules, legsPerSet: 1, setsToWin: 1, board: 'spider' })
+  const turn = (config: MatchConfig, darts: DartThrow[]) => {
+    let r = applyThrow(createMatch('t', config, [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }]), 'a', darts[0])
+    for (const dart of darts.slice(1)) r = applyThrow(r.state, 'a', dart)
+    return r.announcements.map((a) => a.kind)
+  }
+  const x01Soft = soft({ mode: 'x01', start: 501, doubleIn: false, doubleOut: false, doubleBull: true })
+  const countUp = soft({ mode: 'countup', rounds: 8 })
+  for (const config of [x01Soft, countUp, soft({ mode: 'x01', start: 301, doubleIn: false, doubleOut: false, doubleBull: true })]) {
+    assert.ok(turn(config, [bed(20, 3), bed(20, 1), bed(20, 1)]).includes('lowTon'), '100 is a Low Ton')
+    assert.ok(turn(config, [bed(25, 2), bed(25, 2), bed(25, 2)]).includes('hatTrick'), '150 is a Hat Trick')
+    assert.ok(turn(config, [bed(20, 3), bed(20, 3), bed(20, 1)]).includes('lowTon'), '140 is a Low Ton')
+    assert.ok(turn(config, [bed(20, 3), bed(20, 3), bed(25, 2)]).includes('highTon'), '170 is a High Ton')
+    assert.ok(turn(config, [bed(20, 3), bed(20, 3), bed(20, 3)]).includes('highTon'), '180 is a High Ton')
+    const quiet = turn(config, [bed(20, 3), bed(5, 1), bed(1, 1)])
+    assert.ok(!quiet.some((k) => k === 'lowTon' || k === 'hatTrick' || k === 'highTon'), '66 gets nothing')
+  }
+  assert.ok(turn(x01Soft, [bed(19, 3), bed(18, 3), bed(20, 2)]).includes('highTon'), '151 is a High Ton')
+  assert.ok(turn(x01Soft, [bed(20, 3), bed(19, 3), bed(20, 1)]).includes('lowTon'), '137 is a Low Ton')
+  const bustState = createMatch('t', x01Soft, [{ id: 'a', name: 'A' }])
+  bustState.players[0].score = 120
+  bustState.players[0].turnStartScore = 120
+  let r = applyThrow(bustState, 'a', bed(20, 3))
+  r = applyThrow(r.state, 'a', bed(20, 3))
+  assert.ok(!r.announcements.some((a) => a.kind === 'lowTon' || a.kind === 'highTon' || a.kind === 'hatTrick'), 'a bust earns no award')
+  const steel = turn(x01(501, false, true), [bed(20, 3), bed(20, 3), bed(20, 1)])
+  assert.ok(steel.includes('ton') && !steel.includes('highTon'), 'steel tip still calls a Ton')
+})
+
 test('180 is announced and counted', () => {
   const state = createMatch('t', x01(501, false, true), [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }])
   let r = applyThrow(state, 'a', bed(20, 3))
