@@ -2,8 +2,8 @@
  * Records the Short Track Showdown engine sounds with the ElevenLabs sound-effects model into
  * public/modules/shorttrack-audio/: `engine-idle.mp3` (a seamless idle loop) and `engine-pull.mp3` (one continuous
  * full-throttle pull, low rpm to redline, no shifts). `render-three/engine-audio.js` time-stretches the pull so the
- * engine follows the car's rpm, using the pitch map in manifest.json (`from`/`to` Hz, and `points`/`rms`: the time and
- * level at eleven evenly spaced log-pitch steps from `from` to `to`).
+ * engine follows the car's rpm, using the pitch map in manifest.json (`from`/`to` Hz, `points`/`rms`: the time and
+ * level at eleven evenly spaced log-pitch steps from `from` to `to`, and `end`: where the usable pull stops, in seconds).
  *
  *   node --env-file=<file with ELEVENLABS_API_KEY> scripts/shorttrack-engine-sfx.mjs [--only idle,pull] [--out <dir>]
  *

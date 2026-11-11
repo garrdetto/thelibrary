@@ -31,7 +31,7 @@ export async function loadEngineAudio(ctx, baseUrl) {
   URL.revokeObjectURL(url)
   return {
     idle: seamLoop(idle),
-    pull: { data: pull.getChannelData(0), points: manifest.pull.points, rms: manifest.pull.rms, ratio: manifest.pull.to / manifest.pull.from },
+    pull: { data: pull.getChannelData(0), end: manifest.pull.end ?? manifest.pull.points[manifest.pull.points.length - 1], points: manifest.pull.points, rms: manifest.pull.rms, ratio: manifest.pull.to / manifest.pull.from },
   }
 }
 
@@ -40,7 +40,7 @@ export function createEngineVoice(ctx, assets, destination) {
     numberOfInputs: 0,
     numberOfOutputs: 1,
     outputChannelCount: [1],
-    processorOptions: { pull: assets.pull.data, points: assets.pull.points, rms: assets.pull.rms, ratio: assets.pull.ratio, idle: assets.idle.data, idleRms: assets.idle.rms },
+    processorOptions: { pull: assets.pull.data, end: assets.pull.end, points: assets.pull.points, rms: assets.pull.rms, ratio: assets.pull.ratio, idle: assets.idle.data, idleRms: assets.idle.rms },
   })
   const filter = ctx.createBiquadFilter()
   filter.type = 'lowpass'
