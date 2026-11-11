@@ -1,4 +1,4 @@
-/** Wisco Wild Man's routes and autopilot, renderer-free: loops that hug the lake shore and the island with the hull's side 5�10 yards off the bank (`ROUTE.shoreGap` metres from the centreline, never closer than `ROUTE.shoreGapMin`) in water at least `ROUTE.contour` deep, runs across open water on plane, and the way home to his launch. */
+/** Wisco Wild Man's routes and autopilot, renderer-free: loops that hug the lake shore and the island with the hull's side 5–10 yards off the bank (`ROUTE.shoreGap` metres from the centreline, never closer than `ROUTE.shoreGapMin`) in water at least `ROUTE.contour` deep, runs across open water on plane, and the way home to his launch. */
 import { BAY, CHANNEL, ISLAND, LAKE_CENTER, bayCoord, bayRadius, lakeRadius } from '../world/Terrain'
 
 export interface Pt {
@@ -24,6 +24,8 @@ export const ROUTE = {
   shoreGapMin: 7.5,
   /** Half the hull's width at the gunwale, so gaps can be measured from the boat's side rather than its centreline. */
   halfBeam: 1.6,
+  /** Where the bank starts to the eye: cattails grow anywhere shallower than this (world/Foliage.ts), so gaps are measured from this depth, not the water's edge. */
+  reedDepth: 0.5,
   /** How far a smoothed loop point may be nudged back toward the shore where the smoothing swung it wide (metres). */
   hug: 10,
   spacing: 2,
@@ -64,12 +66,12 @@ export function segmentDistance(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t))
 }
 
-/** Distance from `p` to the nearest water's edge (where the bottom reaches the surface), looked for in rings out to `limit` metres; `limit` when none is that close. */
-export function shoreDistance(map: WaterMap, p: Pt, limit = ROUTE.shoreGap): number {
+/** Distance from `p` to the nearest visible bank (the reed line, water shallower than `edge`), looked for in rings out to `limit` metres; `limit` when none is that close. */
+export function shoreDistance(map: WaterMap, p: Pt, limit = ROUTE.shoreGap, edge = ROUTE.reedDepth): number {
   for (let r = 0.5; r < limit; r += 0.5) {
     for (let k = 0; k < 24; k++) {
       const a = (k / 24) * Math.PI * 2
-      if (map.depthAt(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r) <= 0) return r
+      if (map.depthAt(p.x + Math.cos(a) * r, p.z + Math.sin(a) * r) <= edge) return r
     }
   }
   return limit
@@ -344,7 +346,14 @@ export interface Leg {
   send?: boolean
   /** Runs up onto the bank at speed and slides to a stop on `to`. */
   beach?: boolean
+  /** Whips the boat round onto this leg's line: a hard, sliding turn at speed before flooring it again. */
+  whip?: boolean
+  /** The line over the island: the hull follows the jump's arc here. */
+  jump?: boolean
 }
+
+/** The sharp spin onto the island line on the way home: how fast the bow comes round, how fast the slide catches up with it, and how much speed he keeps through it. */
+export const WHIP = { turnRate: 3.2, grip: 2.2, keep: 0.55, lined: 0.12, sharp: 0.35, pass: 8 }
 
 /** Wild Man's way home: a straight run over the island (`entry` → `exit`, airborne from `takeoff` to `touchdown`), then still wide open onto the bank at `beach`. */
 export interface HomeStunt {
@@ -584,6 +593,11 @@ export class Autopilot {
   private leg = 0
   private index = 0
   private planingNow = false
+  /** Which way the hull is actually moving: the heading, except while it slides through a whip turn. */
+  private course = 0
+  /** In a whip turn: the bow swings faster than the boat changes direction. */
+  whipping = false
+  private sliding = false
   private stuntPlan: HomeStunt | null | undefined
   private flying = false
   private slide: number | null = null
@@ -592,6 +606,7 @@ export class Autopilot {
     this.x = landing.boat.x
     this.z = landing.boat.z
     this.heading = landing.boatHeading
+    this.course = this.heading
   }
 
   get onPlane(): boolean {
@@ -652,7 +667,7 @@ export class Autopilot {
     this.travelTo(this.landing.boat, true)
   }
 
-  /** Wild Man's way home: wide open over the island, then straight up onto the bank beside his camp. Falls back to `headHome` when no line over the island fits. */
+  /** Wild Man's way home: floored from wherever he is to the run-up spot (through deep water), whipped round onto the line over the island, wide open over it, then straight up onto the bank beside his camp. Falls back to `headHome` when no line over the island fits. */
   sendItHome(): void {
     const st = this.homeStunt
     if (!st) {
@@ -660,9 +675,9 @@ export class Autopilot {
       return
     }
     this.homeward = true
-    const legs = planTrip(this.map, { x: this.x, z: this.z }, st.setup, false)
-    legs.push({ to: st.entry, plane: false })
-    legs.push({ to: st.exit, plane: false, send: true })
+    const legs: Leg[] = planTrip(this.map, { x: this.x, z: this.z }, st.setup, false).map((l) => ({ to: l.to, plane: false, send: true }))
+    legs.push({ to: st.entry, plane: false, send: true, whip: true, jump: true })
+    legs.push({ to: st.exit, plane: false, send: true, jump: true })
     legs.push({ to: st.beach, plane: false, send: true, beach: true })
     this.legs = legs
     this.leg = 0
@@ -692,10 +707,10 @@ export class Autopilot {
     return Math.hypot(l.to.x - this.x, l.to.z - this.z)
   }
 
-  private steerToward(tx: number, tz: number, dt: number): number {
+  private steerToward(tx: number, tz: number, dt: number, whip = false): number {
     const want = Math.atan2(tx - this.x, tz - this.z)
     const err = wrapAngle(want - this.heading)
-    const rate = ROUTE.turnRate + (ROUTE.runTurnRate - ROUTE.turnRate) * smooth(SPEED.cruise, SPEED.run, Math.abs(this.speed))
+    const rate = whip ? WHIP.turnRate : ROUTE.turnRate + (ROUTE.runTurnRate - ROUTE.turnRate) * smooth(SPEED.cruise, SPEED.run, Math.abs(this.speed))
     const turn = Math.max(-rate * dt, Math.min(rate * dt, err))
     this.heading = wrapAngle(this.heading + turn)
     return err
@@ -725,11 +740,14 @@ export class Autopilot {
     } else {
       const l = this.legs[this.leg]
       const left = this.remainingOnLeg()
-      const err = this.slide === null ? this.steerToward(l.to.x, l.to.z, dt) : 0
+      const aim = Math.abs(wrapAngle(Math.atan2(l.to.x - this.x, l.to.z - this.z) - this.heading))
+      const whip = !!l.send && !l.beach && (!!l.whip || aim > WHIP.sharp) && aim > WHIP.lined
+      this.whipping = whip
+      const err = this.slide === null ? this.steerToward(l.to.x, l.to.z, dt, whip) : 0
       const brake = (this.speed * this.speed - SPEED.cruise * SPEED.cruise) / (2 * OFF_PLANE_DECEL) + 4
       let target = SPEED.cruise
       if (l.plane && Math.abs(err) < 0.25 && left > Math.max(ROUTE.offPlane, brake)) target = SPEED.run
-      if (l.send) target = SPEED.run
+      if (l.send) target = whip ? SPEED.run * WHIP.keep : SPEED.run
       if (l.stop && left < 8) target = Math.max(0.25, SPEED.creep * Math.min(1, left / 4))
       if (this.hold && !l.plane && !l.send) target = 0
       this.planingNow = target === SPEED.run
@@ -748,7 +766,8 @@ export class Autopilot {
         this.settle(dt, events)
         return events
       }
-      const reached = l.beach ? false : l.stop ? left < 1.2 : left < Math.max(2.5, Math.abs(this.speed) * dt * 2)
+      const next = this.legs[this.leg + 1]
+      const reached = l.beach ? false : l.stop ? left < 1.2 : left < Math.max(l.send && next?.send && !l.whip ? WHIP.pass : 2.5, Math.abs(this.speed) * dt * 2)
       if (reached) {
         this.leg++
         if (this.leg >= this.legs.length) {
@@ -765,8 +784,16 @@ export class Autopilot {
         }
       }
     }
-    this.x += Math.sin(this.heading) * this.speed * dt
-    this.z += Math.cos(this.heading) * this.speed * dt
+    if (this.mode !== 'travel' || !this.legs[this.leg]?.send) this.whipping = false
+    if (this.whipping) this.sliding = true
+    if (this.sliding) {
+      const slip = wrapAngle(this.heading - this.course)
+      this.course = wrapAngle(this.course + Math.sign(slip) * Math.min(Math.abs(slip), WHIP.grip * dt))
+      if (!this.whipping && Math.abs(slip) < 0.05) this.sliding = false
+    }
+    if (!this.sliding) this.course = this.heading
+    this.x += Math.sin(this.course) * this.speed * dt
+    this.z += Math.cos(this.course) * this.speed * dt
     if (!wasPlane && this.onPlane) events.onPlane = true
     if (wasPlane && !this.onPlane) events.offPlane = true
     this.settle(dt, events)
@@ -779,7 +806,7 @@ export class Autopilot {
     let lift = 0
     const st = this.stuntPlan
     const l = this.legs[this.leg]
-    if (st && this.homeward && this.mode === 'travel' && l?.send && !l.beach) {
+    if (st && this.homeward && this.mode === 'travel' && l?.jump) {
       lift = stuntArc(st, (this.x - st.entry.x) * st.dir.x + (this.z - st.entry.z) * st.dir.z).lift
     }
     const flying = lift > 0.3

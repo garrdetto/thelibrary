@@ -1405,8 +1405,8 @@ export class Game {
     const aimingLook = this.ads > 0.5 || (this.mode === 'bowfish' && this.aimHeld)
     const lookScale = this.ads > 0.5 ? 0.3 * sens.aim : aimingLook ? sens.aim : sens.look
     if (this.mode === 'bowfish') this.ctx.lookSensibility = 2200 / (aimingLook ? sens.aim : sens.look)
-    cam.rotation.y += (this.key('ArrowRight') - this.key('ArrowLeft')) * (sens.invertX ? -1 : 1) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
-    cam.rotation.x += (this.key('ArrowDown') - this.key('ArrowUp')) * (sens.invertY ? -1 : 1) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
+    cam.rotation.y += (this.key('ArrowLeft') - this.key('ArrowRight')) * (sens.invertX ? -1 : 1) * ARROW_YAW_RATE * lookScale * dt * (active ? 1 : 0)
+    cam.rotation.x += (this.key('ArrowUp') - this.key('ArrowDown')) * (sens.invertY ? -1 : 1) * ARROW_PITCH_RATE * lookScale * dt * (active ? 1 : 0)
     const input = {
       throttle: active && !reeling && v ? this.key('KeyW') - this.key('KeyS') : 0,
       steer: active && !reeling && v ? this.key('KeyD') - this.key('KeyA') : 0,

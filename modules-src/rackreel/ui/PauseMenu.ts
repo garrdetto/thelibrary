@@ -3,13 +3,13 @@ import type { OpenLobby } from '../game/Online'
 export interface Sensitivity {
   look: number
   aim: number
-  /** Mouse and arrow keys turn the view the other way left/right. */
+  /** The arrow keys turn the view the other way left/right (the mouse never changes). Off: Left shows more to the right. */
   invertX: boolean
-  /** Mouse and arrow keys tilt the view the other way up/down. */
+  /** The arrow keys tilt the view the other way (the mouse never changes). Off: Up looks further down. */
   invertY: boolean
 }
 
-export const DEFAULT_SENSITIVITY: Sensitivity = { look: 1, aim: 1, invertX: true, invertY: false }
+export const DEFAULT_SENSITIVITY: Sensitivity = { look: 1, aim: 1, invertX: false, invertY: false }
 
 export interface PauseParty {
   status(): string
@@ -34,7 +34,9 @@ export interface PauseHooks {
   party: PauseParty
 }
 
-const SENSITIVITY_KEY = 'tl-rackreel-sensitivity'
+/** The flips used to move the mouse too; the new key starts everyone on the arrow-key defaults while keeping their speeds from the old one. */
+const SENSITIVITY_KEY = 'tl-rackreel-sensitivity-2'
+const OLD_SENSITIVITY_KEY = 'tl-rackreel-sensitivity'
 export const SENSITIVITY_MIN = 0.2
 export const SENSITIVITY_MAX = 3
 
@@ -46,7 +48,9 @@ function clampSensitivity(value: unknown): number {
 /** Mouse-look settings are a preference for this device, like the module's other view options. */
 export function loadSensitivity(): Sensitivity {
   try {
-    const raw = JSON.parse(localStorage.getItem(SENSITIVITY_KEY) ?? '{}') as Partial<Sensitivity>
+    const saved = localStorage.getItem(SENSITIVITY_KEY)
+    const old = saved ? null : (JSON.parse(localStorage.getItem(OLD_SENSITIVITY_KEY) ?? '{}') as Partial<Sensitivity>)
+    const raw = old ? { look: old.look, aim: old.aim } : (JSON.parse(saved ?? '{}') as Partial<Sensitivity>)
     return {
       look: clampSensitivity(raw.look),
       aim: clampSensitivity(raw.aim),
@@ -123,8 +127,8 @@ export class PauseMenu {
     const s = hooks.sensitivity()
     const lookRow = this.slider('Mouse look', s.look, (v) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), look: v }))
     const aimRow = this.slider('Scope & bow aim', s.aim, (v) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), aim: v }))
-    const flipX = this.toggle('Flip left/right turning', s.invertX, (on) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), invertX: on }))
-    const flipY = this.toggle('Flip up/down looking', s.invertY, (on) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), invertY: on }))
+    const flipX = this.toggle('Flip arrow-key turning', s.invertX, (on) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), invertX: on }))
+    const flipY = this.toggle('Flip arrow-key up/down', s.invertY, (on) => this.hooks.setSensitivity({ ...this.hooks.sensitivity(), invertY: on }))
     const reset = button('Reset to default')
     reset.addEventListener('click', () => {
       this.hooks.setSensitivity({ ...DEFAULT_SENSITIVITY })
@@ -133,7 +137,7 @@ export class PauseMenu {
       flipX.set(DEFAULT_SENSITIVITY.invertX)
       flipY.set(DEFAULT_SENSITIVITY.invertY)
     })
-    look.append(lookRow.row, aimRow.row, flipX.row, flipY.row, h('p', 'panel-note', 'Also changes how the arrow keys turn the view.'), reset)
+    look.append(lookRow.row, aimRow.row, flipX.row, flipY.row, h('p', 'panel-note', 'The mouse always turns the view the same way; these only flip the arrow keys.'), reset)
 
     this.party = h('section', 'panel-section')
     this.note = h('p', 'panel-note')

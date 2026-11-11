@@ -148,20 +148,34 @@ test('the way home sends it over the island at full speed and beaches beside the
   assert.ok(stunt, 'a line over the island fits')
   assert.ok(stunt.peak > 2 && stunt.touchdown - stunt.takeoff < STUNT.maxSpan, `arc ${stunt.peak} m high over ${stunt.touchdown - stunt.takeoff} m`)
   assert.ok(Math.hypot(stunt.beach.x - launch.camp.x, stunt.beach.z - launch.camp.z) > 6, 'beaches clear of the cooler')
-  for (const start of [{ x: -150, z: 120 }, { x: 150, z: 20 }, { x: 40, z: 60 }]) {
+  const starts: [RouteName, { x: number; z: number }][] = [['shore', { x: -150, z: 120 }], ['shore', { x: 150, z: 20 }], ['shore', { x: 40, z: 60 }], ['bay', { x: 0, z: 0 }]]
+  for (const [route, start] of starts) {
     const ap = new Autopilot(terrain, loops, launch)
-    const p = loops.shore[nearestIndex(loops.shore, start)]
+    const p = loops[route][nearestIndex(loops[route], start)]
     ap.x = p.x
     ap.z = p.z
     ap.mode = 'loop'
+    ap.route = route
     ap.sendItHome()
+    let whipped = false
+    let run = 0
+    let runTime = 0
+    let grounded = 0
     let airborne = 0
     let airSpeed = 0
     let beached = false
     let maxLift = 0
     let clipped = 0
     for (let i = 0; i < 600 * 30; i++) {
+      const bx = ap.x
+      const bz = ap.z
       const e = ap.update(1 / 30, false)
+      if (ap.whipping) whipped = true
+      if (!airborne) {
+        run += Math.hypot(ap.x - bx, ap.z - bz)
+        runTime += 1 / 30
+        if (ap.lift < 0.05 && terrain.depthAt(ap.x, ap.z) < 0.3) grounded++
+      }
       if (e.airborne) {
         airborne++
         airSpeed = ap.speed
@@ -174,6 +188,9 @@ test('the way home sends it over the island at full speed and beaches beside the
       }
     }
     assert.equal(airborne, 1, `takes off once from ${start.x},${start.z}`)
+    assert.ok(whipped, `whips round onto the island line from ${start.x},${start.z}`)
+    assert.ok(run / runTime > SPEED.run * 0.6, `floors it to the island from ${start.x},${start.z} (${(run / runTime).toFixed(1)} m/s average)`)
+    assert.equal(grounded, 0, `stays in the water on the way to the jump from ${start.x},${start.z}`)
     assert.ok(airSpeed > SPEED.run - 0.5, `full speed at takeoff (${airSpeed})`)
     assert.ok(maxLift > stunt.peak - 0.5, `clears the island (${maxLift})`)
     assert.equal(clipped, 0, 'never below the ground')
