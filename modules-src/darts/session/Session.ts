@@ -60,7 +60,7 @@ export class LocalSession implements Session {
   private release(intent: ThrowIntent, level: SpreadLevel): void {
     const player = currentPlayer(this.state)
     const flight = launch(intent, level, this.rng)
-    const impact = simulate(flight)
+    const impact = simulate(flight, undefined, undefined, this.state.config.board === 'spider' ? 'spider' : 'steel')
     const result = applyThrow(this.state, player.id, impact.dart)
     this.state = result.state
     const flightMs = impact.seconds * 1000 + 120

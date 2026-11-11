@@ -27,6 +27,8 @@ import type * as THREE from 'three'
 type AnyMaterial = THREE.Material & Partial<THREE.MeshPhysicalMaterial & THREE.SpriteMaterial & THREE.PointsMaterial & { map: THREE.Texture | null }>
 
 type Entry = {
+  /** How far the geometry reaches from the object's origin, in local units; -1 when it is never skipped for size. */
+  reach: number
   object: THREE.Object3D
   mesh: Mesh | null
   materials: PBRMaterial[]
@@ -79,6 +81,13 @@ function indicesOf(g: THREE.BufferGeometry): Uint32Array | Uint16Array {
   return out
 }
 
+function reachOf(g: THREE.BufferGeometry): number {
+  if (!g.attributes.position) return -1
+  if (!g.boundingSphere) g.computeBoundingSphere()
+  const s = g.boundingSphere
+  return s && Number.isFinite(s.radius) ? s.radius + s.center.length() : -1
+}
+
 const plainColor = (c: THREE.Color | undefined, k = 1): Color3 => (c ? new Color3(c.r * k, c.g * k, c.b * k) : new Color3(1, 1, 1))
 
 export type BridgeHooks = {
@@ -99,6 +108,9 @@ export class ThreeBridge {
   readonly skipped = new Set<string>()
   /** Meshes that cast shadows this frame (the presenter hands them to its shadow generator). */
   readonly casters = new Set<Mesh>()
+  /** Where the main camera is, and the smallest reach-to-distance ratio still drawn (0 draws everything). */
+  readonly viewer = new Vector3()
+  detail = 0
 
   constructor(private scene: Scene, private environment: () => { intensity: number; scale: number }, private hooks: BridgeHooks = {}) {}
 
@@ -120,6 +132,18 @@ export class ThreeBridge {
     }
   }
 
+  /**
+   * Whether a part would cover only a few pixels from the viewer: its reach over its distance is under `detail`.
+   * A car is some thirty parts, and trim, lenses and wheel pieces of the cars far down the track cost a draw each.
+   */
+  private tooSmall(o: THREE.Object3D, reach: number): boolean {
+    if (this.detail <= 0) return false
+    const e = o.matrixWorld.elements, v = this.viewer
+    const scale = Math.max(e[0] * e[0] + e[1] * e[1] + e[2] * e[2], e[4] * e[4] + e[5] * e[5] + e[6] * e[6], e[8] * e[8] + e[9] * e[9] + e[10] * e[10])
+    const dx = e[12] - v.x, dy = e[13] - v.y, dz = e[14] - v.z
+    return reach * reach * scale < this.detail * this.detail * (dx * dx + dy * dy + dz * dz)
+  }
+
   private visit(o: THREE.Object3D, parentVisible: boolean): void {
     const visible = parentVisible && o.visible
     if (isMesh(o) || isSprite(o) || isPoints(o) || isLines(o)) {
@@ -139,6 +163,10 @@ export class ThreeBridge {
     if (!mesh) return
     mesh.isVisible = visible
     if (!visible) return
+    if (entry.reach >= 0 && this.tooSmall(o, entry.reach)) {
+      mesh.isVisible = false
+      return
+    }
     this.updateTransform(o, entry, mesh)
     if (entry.geometry) this.updateGeometry(entry, mesh)
     if (isInstanced(o)) this.updateInstances(o, entry, mesh)
@@ -150,7 +178,7 @@ export class ThreeBridge {
   }
 
   private create(o: THREE.Object3D): Entry {
-    const entry: Entry = { object: o, mesh: null, materials: [], geometry: null, versions: new Map(), index: -1, matrix: new Float32Array(16), instanceVersion: -1, colorVersion: -1, count: -1, vertexColors: false, points: false, seen: this.frame }
+    const entry: Entry = { reach: -1, object: o, mesh: null, materials: [], geometry: null, versions: new Map(), index: -1, matrix: new Float32Array(16), instanceVersion: -1, colorVersion: -1, count: -1, vertexColors: false, points: false, seen: this.frame }
     const raw = (o as THREE.Mesh).material
     const mats = (Array.isArray(raw) ? raw : [raw]) as AnyMaterial[]
     if (mats.some((m) => flag(m, 'isShaderMaterial'))) {
@@ -174,6 +202,7 @@ export class ThreeBridge {
       entry.geometry = (o as THREE.Mesh).geometry
       entry.vertexColors = mats.some((m) => m.vertexColors)
       this.buildGeometry(entry, mesh, mats.length)
+      if (o.frustumCulled && !isInstanced(o)) entry.reach = reachOf(entry.geometry)
     }
     if (!o.frustumCulled || isInstanced(o)) mesh.alwaysSelectAsActiveMesh = true
     entry.materials = mats.map((m) => this.material(m, o))
@@ -262,6 +291,7 @@ export class ThreeBridge {
       entry.geometry = (entry.object as THREE.Mesh).geometry
       entry.versions.clear()
       this.buildGeometry(entry, mesh, entry.materials.length)
+      if (entry.reach >= 0) entry.reach = reachOf(entry.geometry)
       return
     }
     const kinds: [string, string, number][] = [['position', VertexBuffer.PositionKind, 3], ['normal', VertexBuffer.NormalKind, 3], ['uv', VertexBuffer.UVKind, 2], ['color', VertexBuffer.ColorKind, 4]]
