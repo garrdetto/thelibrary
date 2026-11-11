@@ -113,6 +113,14 @@ export type ThreeInputs = {
   towers: THREE.Object3D[]
 }
 
+/** Parts whose reach is under this share of their distance are left out of the main view (a few pixels at 720p). */
+const VIEW_DETAIL = 0.005
+/** The same for the rear-view mirror, which is 128 pixels tall. */
+const MIRROR_DETAIL = 0.025
+/** Beyond SHADOW_DETAIL_RANGE metres from the camera, casters with a smaller radius (metres) are left out of the shadow map: trim, lenses and wheel pieces whose shadow falls inside the body's. */
+const SHADOW_SMALL = 0.7
+const SHADOW_DETAIL_RANGE = 8
+
 type CrowdUniforms = { uTime: { value: number }; uLift: { value: number } }
 
 /**
@@ -148,6 +156,7 @@ export class Presenter {
   private dome: Mesh | null = null
   private pixelRatio = 1
   private mirrorOn = false
+  private mirrorDrawn = -2
   private envIntensity = 1
   private envScale = 1
 
@@ -208,6 +217,10 @@ export class Presenter {
     this.mirror.activeCamera = this.mirrorCamera
     this.mirror.samples = 2
     this.mirror.gammaSpace = false
+    this.mirror.refreshRate = 2
+    this.mirror.onAfterRenderObservable.add(() => {
+      this.mirrorDrawn = this.status.frames
+    })
     this.mirrorQuad = this.makeMirrorQuad()
   }
 
@@ -403,6 +416,9 @@ export class Presenter {
     t.mirrorCam.updateMatrixWorld()
     this.envIntensity = o.night ? 0 : (t.scene.environmentIntensity ?? 1) * CAL.env
     this.envScale = (o.night ? CAL.nightPaint : CAL.paint) * CAL.env
+    const eye = t.camera.matrixWorld.elements
+    this.bridge.viewer.set(eye[12], eye[13], eye[14])
+    this.bridge.detail = VIEW_DETAIL * Math.tan((t.camera.fov * Math.PI) / 360) / Math.tan(Math.PI / 6)
     this.bridge.sync(t.scene)
     this.debris?.update()
     this.camera.copyFrom(t.camera)
@@ -475,6 +491,7 @@ export class Presenter {
         continue
       }
       const sphere = mesh.getBoundingInfo().boundingSphere, r = sphere.radiusWorld
+      if (r < SHADOW_SMALL && Vector3.DistanceSquared(sphere.centerWorld, this.camera.position) > SHADOW_DETAIL_RANGE * SHADOW_DETAIL_RANGE) continue
       Vector3.TransformCoordinatesToRef(sphere.centerWorld, this.lightView, this.local)
       const depth = -this.local.z
       if (this.local.x + r < sc.left || this.local.x - r > sc.right || this.local.y + r < sc.bottom || this.local.y - r > sc.top || depth + r < sc.near || depth - r > sc.far) continue
@@ -488,7 +505,8 @@ export class Presenter {
     const out: Mesh[] = [], c = this.camera.position
     for (const mesh of this.bridge.casters) {
       const sphere = mesh.getBoundingInfo().boundingSphere
-      if (mesh.alwaysSelectAsActiveMesh || Vector3.Distance(sphere.centerWorld, c) - sphere.radiusWorld < range) out.push(mesh)
+      const distance = Vector3.Distance(sphere.centerWorld, c)
+      if (mesh.alwaysSelectAsActiveMesh || (distance - sphere.radiusWorld < range && (sphere.radiusWorld >= SHADOW_SMALL || distance <= SHADOW_DETAIL_RANGE))) out.push(mesh)
     }
     return out
   }
@@ -501,7 +519,11 @@ export class Presenter {
     const out: Mesh[] = []
     for (const m of this.scene.meshes) {
       if (!(m.layerMask & SCENE_LAYER) || !m.isVisible || !m.isEnabled() || m === this.mirrorQuad) continue
-      if (m.alwaysSelectAsActiveMesh || m.infiniteDistance || m.isInFrustum(this.mirrorPlanes)) out.push(m as Mesh)
+      if (m.alwaysSelectAsActiveMesh || m.infiniteDistance) out.push(m as Mesh)
+      else if (m.isInFrustum(this.mirrorPlanes)) {
+        const sphere = m.getBoundingInfo().boundingSphere
+        if (sphere.radiusWorld >= MIRROR_DETAIL * Vector3.Distance(sphere.centerWorld, this.mirrorCamera.position)) out.push(m as Mesh)
+      }
     }
     return out
   }
@@ -528,8 +550,10 @@ export class Presenter {
       this.mirrorQuad.isVisible = on
     }
     if (!o.mirror) return
-    this.mirrorCamera.copyFrom(t.mirrorCam)
-    setRenderList(this.mirror, this.inMirrorView())
+    if (this.status.frames - this.mirrorDrawn !== 1) {
+      this.mirrorCamera.copyFrom(t.mirrorCam)
+      setRenderList(this.mirror, this.inMirrorView())
+    }
     const canvas = this.engine.getRenderingCanvas()!, cw = canvas.clientWidth || 1, ch = canvas.clientHeight || 1
     const r = o.mirror, cam = t.camera, e = cam.matrixWorld.elements, d = cam.near * 2
     const hh = d * Math.tan((cam.fov * Math.PI) / 360), hw = hh * (cw / ch)
