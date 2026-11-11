@@ -1,12 +1,13 @@
 /** Weed beds in the shallows: short bushy coontail-style clumps on the bottom mixed with long streamers that reach the top and lie along the surface. Placed in patches wherever the water is 0.3–2.4 m deep (the flats, the island shelf, the channel banks and the back bay), thin-instanced per 40 m cell and shown only near the camera. */
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
-import { Color3 } from '@babylonjs/core/Maths/math.color'
-import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import type { Material } from '@babylonjs/core/Materials/material'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import '@babylonjs/core/Meshes/thinInstanceMesh'
 import type { Scene } from '@babylonjs/core/scene'
 import type { EngineContext } from '../core/EngineSetup'
+import { FloatBatch, composeInstance } from './FoliagePlacement'
+import type { FoliageShading } from './FoliageShader'
+import { linkGeometry } from './SharedGeometry'
 import { BAY, LAKE_CENTER, Terrain, fbm } from './Terrain'
 
 const CELL = 40
@@ -84,7 +85,7 @@ function longClump(): Strip {
   return out
 }
 
-function stripMesh(name: string, strip: Strip, scene: Scene, material: StandardMaterial): Mesh {
+function stripMesh(name: string, strip: Strip, scene: Scene, material: Material): Mesh {
   const mesh = new Mesh(name, scene)
   const data = new VertexData()
   data.positions = strip.positions
@@ -109,32 +110,31 @@ interface Cell {
 
 export class Weeds {
   private readonly cells: Cell[] = []
+  private readonly sources: Mesh[] = []
   readonly count: { short: number; long: number } = { short: 0, long: 0 }
 
-  constructor(ctx: EngineContext, terrain: Terrain) {
+  constructor(ctx: EngineContext, terrain: Terrain, shading: FoliageShading) {
     const { scene } = ctx
-    const material = new StandardMaterial('weeds-mat', scene)
-    material.diffuseColor = Color3.White()
-    material.specularColor = new Color3(0.03, 0.04, 0.02)
-    material.ambientColor = new Color3(0.35, 0.35, 0.35)
-    material.backFaceCulling = false
-    material.twoSidedLighting = true
+    const material = shading.material('weeds', { threshold: 0.05, range: 1, sway: 0.07, speed: 0.7, ripple: 0.2, twoSided: true, ambient: 0.35, shadowed: false })
     const shortSrc = stripMesh('weed-short', shortClump(), scene, material)
     const longSrc = stripMesh('weed-long', longClump(), scene, material)
     shortSrc.setEnabled(false)
     longSrc.setEnabled(false)
+    this.sources.push(shortSrc, longSrc)
     const x0 = Math.min(LAKE_CENTER.x - 250, BAY.x - 90)
     const x1 = Math.max(LAKE_CENTER.x + 250, BAY.x + 90)
     const z0 = Math.min(LAKE_CENTER.z - 250, BAY.z - 90)
     const z1 = Math.max(LAKE_CENTER.z + 250, BAY.z + 90)
-    const q = new Quaternion()
-    const s = new Vector3()
-    const p = new Vector3()
-    const m = new Matrix()
+    const shortM = new FloatBatch(4096)
+    const longM = new FloatBatch(4096)
+    const shortC = new FloatBatch(1024)
+    const longC = new FloatBatch(1024)
     for (let cz = z0; cz < z1; cz += CELL) {
       for (let cx = x0; cx < x1; cx += CELL) {
-        const shortM: number[] = []
-        const longM: number[] = []
+        shortM.reset()
+        longM.reset()
+        shortC.reset()
+        longC.reset()
         for (let gz = cz; gz < cz + CELL; gz += SPACING) {
           for (let gx = cx; gx < cx + CELL; gx += SPACING) {
             const x = gx + hash(gx, gz, 1) * SPACING
@@ -144,42 +144,52 @@ export class Weeds {
             const patch = fbm(x * 0.045 + 5, z * 0.045 - 9, 3, 41) + (depth < 1.8 ? 0.2 : -0.05)
             if (patch < -0.04 || hash(gx, gz, 3) > Math.min(0.92, (patch + 0.04) * 2.4)) continue
             const long = hash(gx, gz, 4) < 0.38 && depth < 2.1
-            Quaternion.FromEulerAnglesToRef(0, hash(gx, gz, 5) * Math.PI * 2, 0, q)
-            const ground = -depth
-            if (long) {
-              s.set(1, depth + 0.005, 1)
-            } else {
-              const hgt = Math.min(depth - 0.08, depth * (0.3 + hash(gx, gz, 6) * 0.35) + 0.12)
-              const wide = 0.8 + hash(gx, gz, 7) * 0.7
-              s.set(wide, Math.max(0.12, hgt), wide)
+            const yaw = hash(gx, gz, 5) * Math.PI * 2
+            let wide = 1
+            let tall = depth + 0.005
+            if (!long) {
+              tall = Math.max(0.12, Math.min(depth - 0.08, depth * (0.3 + hash(gx, gz, 6) * 0.35) + 0.12))
+              wide = 0.8 + hash(gx, gz, 7) * 0.7
             }
-            p.set(x, ground - 0.02, z)
-            Matrix.ComposeToRef(s, q, p, m)
-            const target = long ? longM : shortM
-            for (let k = 0; k < 16; k++) target.push(m.m[k])
+            const matrices = long ? longM : shortM
+            const at = matrices.reserve(16)
+            composeInstance(matrices.data, at, x, -depth - 0.02, z, yaw, wide, tall, wide)
+            const tints = long ? longC : shortC
+            const c = tints.reserve(4)
+            const light = 0.86 + hash(gx, gz, 8) * 0.28
+            tints.data[c] = light * (0.94 + hash(gx, gz, 9) * 0.12)
+            tints.data[c + 1] = light
+            tints.data[c + 2] = light * (0.9 + hash(gx, gz, 10) * 0.2)
+            tints.data[c + 3] = hash(gx, gz, 11)
           }
         }
         if (!shortM.length && !longM.length) continue
         const meshes: Mesh[] = []
-        for (const [src, mats] of [[shortSrc, shortM], [longSrc, longM]] as const) {
-          if (!mats.length) continue
-          const mesh = src.clone(`${src.name}-${cx}-${cz}`)
-          mesh.makeGeometryUnique()
+        for (const [src, matrices, tints] of [[shortSrc, shortM, shortC], [longSrc, longM, longC]] as const) {
+          if (!matrices.length) continue
+          const mesh = new Mesh(`${src.name}-${cx}-${cz}`, scene)
+          linkGeometry(src, mesh)
+          mesh.material = material
+          mesh.isPickable = false
+          mesh.receiveShadows = false
           mesh.setEnabled(false)
-          mesh.thinInstanceSetBuffer('matrix', new Float32Array(mats), 16, true)
-          mesh.thinInstanceRefreshBoundingInfo(false)
+          mesh.thinInstanceSetBuffer('matrix', matrices.toArray(), 16, true)
+          mesh.thinInstanceRegisterAttribute('instanceColor', 4)
+          mesh.thinInstanceSetBuffer('instanceColor', tints.toArray(), 4, true)
           mesh.freezeWorldMatrix()
+          mesh.doNotSyncBoundingInfo = true
           mesh.alwaysSelectAsActiveMesh = false
+          shading.lightProbe ??= mesh
           meshes.push(mesh)
-          if (src === shortSrc) this.count.short += mats.length / 16
-          else this.count.long += mats.length / 16
+          if (src === shortSrc) this.count.short += matrices.length / 16
+          else this.count.long += matrices.length / 16
         }
         this.cells.push({ x: cx + CELL / 2, z: cz + CELL / 2, meshes, shown: false })
       }
     }
   }
 
-  update(camera: Vector3): void {
+  update(camera: { x: number; z: number }): void {
     for (const c of this.cells) {
       const d = Math.hypot(c.x - camera.x, c.z - camera.z)
       const show = c.shown ? d < HIDE : d < SHOW
@@ -187,5 +197,12 @@ export class Weeds {
       c.shown = show
       for (const m of c.meshes) m.setEnabled(show)
     }
+  }
+
+  dispose(): void {
+    for (const c of this.cells) for (const m of c.meshes) m.dispose()
+    this.cells.length = 0
+    for (const m of this.sources) m.dispose()
+    this.sources.length = 0
   }
 }

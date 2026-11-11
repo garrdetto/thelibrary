@@ -30,6 +30,7 @@ import { Wildlife } from '../systems/Wildlife'
 import type { Animal } from '../systems/Wildlife'
 import { Hud, compassWord } from '../ui/Hud'
 import { Foliage } from '../world/Foliage'
+import { FoliageShading } from '../world/FoliageShader'
 import { foliageMaterial } from '../world/FoliageTextures'
 import { creatureMaterial } from '../world/CreatureTextures'
 import { texturedMaterial } from '../world/TexturedMaterial'
@@ -95,6 +96,7 @@ export class Game {
   private terrain!: Terrain
   private ground!: Mesh
   private foliage!: Foliage
+  private shading!: FoliageShading
   private models = new Map<ModelName, ModelTemplate>()
   private hunter!: SkinnedTemplate
   private vehicles!: VehicleController
@@ -203,7 +205,8 @@ export class Game {
     this.waterMat = buildWater(this.ctx, this.terrain).material
     this.lighting = new Lighting(this.ctx, this.skyMat, this.waterMat, this.clock)
     buildHighway(this.ctx, this.terrain)
-    this.weeds = new Weeds(this.ctx, this.terrain)
+    this.shading = new FoliageShading(this.ctx)
+    this.weeds = new Weeds(this.ctx, this.terrain, this.shading)
     let loaded = 0
     const hunter = loadSkinned(scene, 'hunter', (tag) => texturedMaterial(scene, tag.slice(4), this.materials))
     await Promise.all(MODEL_NAMES.map(async (name) => {
@@ -220,7 +223,7 @@ export class Game {
     this.cabin = new Cabin(this.terrain, landmarks.spawn.add(inland.scale(18)), landmarks.spawnHeading)
     this.stands = findStandSites(this.terrain, landmarks.spawn, [this.cabin.root, landmarks.dock.start, landmarks.utv])
     this.stand = this.stands[0]
-    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5)), ...this.jumpLane(landmarks.dock)])
+    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5)), ...this.jumpLane(landmarks.dock)], this.shading)
     this.foliage.grassHoles.push({ x: this.cabin.root.x, z: this.cabin.root.z, r: 6.4 })
     for (const st of this.stands) {
       const r = st.kind === 'blind' ? 1.3 : 0.45
