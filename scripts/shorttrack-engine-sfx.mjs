@@ -29,8 +29,8 @@ const BASE =
 const LAYERS = [
   { id: 'idle', rpm: 1100, load: 0, prompt: `${BASE}. Engine idling in the pits at about 1100 rpm, choppy loping idle, recorded close behind the car.` },
   { id: 'low', rpm: 3500, load: 1, prompt: `${BASE}. Engine pulling hard under full throttle at a steady 3500 rpm, deep thundering exhaust, recorded from in-car.` },
-  { id: 'mid', rpm: 5800, load: 1, influence: 0.85, prompt: 'Seamless loop of a mean, angry V8 race car engine at wide-open throttle, steady 5800 rpm. Open straight pipes, lumpy race cam, deep chest-pounding rumble with a raw raspy barking snarl, heavy and violent like a stock car under full power. Recorded close behind the exhaust. Constant rpm, no revving, no tires, no crowd, no music.' },
-  { id: 'high', rpm: 8000, load: 1, influence: 0.85, prompt: 'Seamless loop of a ferocious V8 race car engine flat out at a steady 8000 rpm. Open straight pipes, savage raspy metallic howl with a thick bassy V8 growl underneath, angry and aggressive like a stock car screaming down the straightaway. Recorded close behind the exhaust. Constant rpm, no revving, no tires, no crowd, no music.' },
+  { id: 'mid', rpm: 5800, load: 1, influence: 0.6, prompt: 'Close recording of an American V8 race car engine at full throttle, steady medium rpm: loud, deep, throaty, muscular exhaust roar, rich low harmonics, the classic thundering sound of a stock car racing engine. Constant pitch, seamless loop, no revving, no tires, no crowd, no music.' },
+  { id: 'high', rpm: 8000, load: 1, influence: 0.6, prompt: 'Onboard recording of a NASCAR stock car flat out down the straightaway: big-block V8 at high rpm, a loud full-bodied roar with deep bass underneath, powerful and smooth, steady constant engine speed, seamless loop, no gear shifts, no tires, no crowd, no music.' },
   { id: 'off', rpm: 5500, load: 0, prompt: `${BASE}. Driver off the throttle into the corner at about 5500 rpm, engine coasting on overrun with exhaust burble and crackle, recorded from in-car.` },
 ]
 

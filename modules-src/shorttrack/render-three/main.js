@@ -1329,10 +1329,10 @@ function engineLoad(ctx){
 }
 function engineSet(v,rpm,thr,vol,dop,cutoff,t){
   v.load+=(thr-v.load)*0.12;
-  const x=clamp((rpm-3000)/6750,0,1),idle=1-engSmooth(1400,3000,rpm),run=1-idle,rate=clamp(Math.pow(Math.max(rpm,2000)/6000,0.65),0.5,1.5)*dop;
+  const x=clamp((rpm-3000)/6750,0,1),idle=1-engSmooth(1400,3000,rpm),run=1-idle,rate=clamp(Math.pow(Math.max(rpm,2000)/6000,0.45),0.75,1.2)*dop;
   const lo=Math.cos(Math.min(1,x*2)*Math.PI/2),hi=Math.sin(Math.max(0,x*2-1)*Math.PI/2),mid=x<0.5?Math.sin(x*2*Math.PI/2):Math.cos((x*2-1)*Math.PI/2);
   const on=Math.sqrt(v.load),off=Math.sqrt(1-v.load);
-  const w={idle:idle,low:run*on*lo,mid:run*on*mid,high:run*on*hi,off:run*off*(0.6+0.4*x)};
+  const w={idle:idle,low:run*on*Math.max(lo,0.45),mid:run*on*mid,high:run*on*hi,off:run*off*(0.6+0.4*x)};
   for(const id in v.L){const l=v.L[id];l.g.gain.setTargetAtTime(w[id]*l.k,t,0.05);l.src.playbackRate.setTargetAtTime(id==='idle'?clamp(rpm/1100,0.85,1.6)*dop:id==='off'?rate*0.92:rate,t,0.04);}
   v.out.gain.setTargetAtTime(vol,t,0.08);v.lp.frequency.setTargetAtTime(cutoff,t,0.1);
 }
@@ -1350,7 +1350,7 @@ function audioUpdate(){
   const c=inRace?player:null,rpm=c?rpmOf(c):1050+Math.sin(t*3)*40,f=rpm/15;
   AU.e1.frequency.setTargetAtTime(f,t,0.04);AU.e2.frequency.setTargetAtTime(f/2,t,0.04);
   AU.ef.frequency.setTargetAtTime(c&&c.thr?2400:800,t,0.08);AU.eg.gain.setTargetAtTime(AU.me?0:c?(c.thr?0.13:0.08):0.04,t,0.08);
-  if(AU.me)engineSet(AU.me,rpm,c&&c.thr?1:0,c?0.55:0.3,1,18000,t);
+  if(AU.me)engineSet(AU.me,rpm,c&&c.thr?1:0,c?0.55:0.3,1,7000,t);
   AU.tg.gain.setTargetAtTime(c?clamp((c.slip-2.5)/12,0,0.3):0,t,0.05);
   AU.cg.gain.setTargetAtTime(inRace?0.05:0.02,t,0.3);
   let near=null,nd=1e9;if(c)cars.forEach(o=>{if(o===c||!o.vis)return;const d=Math.hypot(o.x-camera.position.x,o.z-camera.position.z);if(d<nd){nd=d;near=o;}});
