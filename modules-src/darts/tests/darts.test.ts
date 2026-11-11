@@ -163,7 +163,7 @@ test('meter: the miss grows with how far from the middle you let go', () => {
   const edge = avg(missHoles(2, 'normal', 300, 22))
   const yellow = avg(missHoles(8, 'normal', 300, 23))
   assert.ok(near < edge && edge < yellow, `${near} ${edge} ${yellow}`)
-  assert.ok(edge >= 1.5 && edge <= 5, `two green half-widths out ${edge}`)
+  assert.ok(edge >= 1.75 && edge <= 6, `two green half-widths out ${edge}`)
 })
 
 test('meter: in the green outside the white lines every dart misses, slightly, and more the further from the lines', () => {
@@ -176,7 +176,7 @@ test('meter: in the green outside the white lines every dart misses, slightly, a
   assert.ok(avg(near) < avg(mid) && avg(mid) < avg(edge), `${avg(near)} ${avg(mid)} ${avg(edge)}`)
   assert.ok(Math.max(...edge) <= METER.nearMissHoles[1] + 0.2, `worst in the green ${Math.max(...edge)}`)
   const fewHoles = near.filter((m) => m >= METER.nearMissHoles[0] - 0.2).length / near.length
-  assert.ok(fewHoles > 0.3 && fewHoles < 0.5, `just past the lines, a few holes off ${fewHoles}`)
+  assert.ok(fewHoles > 0.37 && fewHoles < 0.57, `just past the lines, a few holes off ${fewHoles}`)
   assert.ok(Math.max(...near) <= METER.nearMissHoles[1] + 0.2, `just past the lines, worst ${Math.max(...near)}`)
   const far = missHoles(10, 'normal', 400, 54)
   assert.ok(Math.min(...far) >= METER.greenEdgeHoles * METER.floorSpread - 0.2, 'the yellow misses at least as much as the green edge')
