@@ -4,7 +4,7 @@ import { useThree } from '@react-three/fiber'
 import { BufferAttribute, BufferGeometry, Points, PointsMaterial } from 'three'
 import type { Mesh, Object3D } from 'three'
 import { BodySmoother } from './bodySmooth'
-import type { AutoPlan, DetectReport, Px, SelectionReport, SmoothSettings } from './bodySmooth'
+import type { AutoPlan, DetectReport, Px, SelectionReport, SmoothSettings, TextureReport } from './bodySmooth'
 
 /** What the editor can ask of the smoother inside the canvas. */
 export type SmootherApi = {
@@ -18,6 +18,8 @@ export type SmootherApi = {
   preview: (settings: SmoothSettings) => void
   compare: (original: boolean) => void
   shadeSmooth: (creaseDeg: number) => void
+  flattenTextures: () => TextureReport
+  softenTextures: (strength: number) => TextureReport
   apply: () => void
   cancel: () => void
   undo: () => void
@@ -63,6 +65,8 @@ export function DentSmoother({ scene, api }: { scene: Object3D; api: MutableRefO
       preview: settings => { pending = settings; if (!frame) frame = requestAnimationFrame(() => { frame = 0; flush() }) },
       compare: original => { flush(); smoother.compare(original); invalidate() },
       shadeSmooth: creaseDeg => { flush(); smoother.shadeSmooth(creaseDeg); invalidate() },
+      flattenTextures: () => { pending = null; flush(); return after(smoother.flattenTextures()) },
+      softenTextures: strength => { pending = null; flush(); return after(smoother.softenTextures(strength)) },
       apply: () => { flush(); smoother.apply(); invalidate() },
       cancel: () => { pending = null; flush(); smoother.cancel(); invalidate() },
       undo: () => { pending = null; flush(); smoother.undo(); invalidate() },

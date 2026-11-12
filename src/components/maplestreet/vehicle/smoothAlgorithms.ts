@@ -18,22 +18,50 @@ function movable(topo: Topology, links: number[][], c: number) {
   return !topo.boundary[c] && !!links[c]?.length
 }
 
+/**
+ * Steady surface directions for each point: the vertex normals averaged with
+ * their neighbours a few times, so one noisy triangle can't tip them.
+ */
+export function guideNormals(topo: Topology, base: Float32Array, rounds = 2) {
+  let n = clusterNormals(topo, base)
+  for (let r = 0; r < rounds; r++) {
+    const next = new Float32Array(n.length)
+    for (let c = 0; c < topo.clusters.length; c++) {
+      let x = n[c * 3], y = n[c * 3 + 1], z = n[c * 3 + 2]
+      for (const k of topo.neighbours[c]) {
+        const d = n[c * 3] * n[k * 3] + n[c * 3 + 1] * n[k * 3 + 1] + n[c * 3 + 2] * n[k * 3 + 2]
+        if (d < 0.5) continue
+        x += n[k * 3]; y += n[k * 3 + 1]; z += n[k * 3 + 2]
+      }
+      const l = Math.hypot(x, y, z) || 1
+      next[c * 3] = x / l; next[c * 3 + 1] = y / l; next[c * 3 + 2] = z / l
+    }
+    n = next
+  }
+  return n
+}
+
+/** Moves point c by (dx,dy,dz)·k, keeping only the part along its surface normal so the point never slides across the surface (which drags and stretches the texture). */
+function push(p: Float32Array, normals: Float32Array, c: number, dx: number, dy: number, dz: number, k: number) {
+  const nx = normals[c * 3], ny = normals[c * 3 + 1], nz = normals[c * 3 + 2]
+  const along = (dx * nx + dy * ny + dz * nz) * k
+  p[c * 3] += along * nx; p[c * 3 + 1] += along * ny; p[c * 3 + 2] += along * nz
+}
+
 /** In-place over-relaxation toward the neighbours; the unselected rim stays fixed, so the patch settles into the surface around it. */
-function relax(p: Float32Array, links: number[][], order: number[], passes: number) {
+function relax(p: Float32Array, normals: Float32Array, links: number[][], order: number[], passes: number) {
   for (let i = 0; i < passes; i++) {
     for (const c of order) {
       const near = links[c]
       let x = 0, y = 0, z = 0
       for (const n of near) { x += p[n * 3]; y += p[n * 3 + 1]; z += p[n * 3 + 2] }
-      p[c * 3] += RELAX * (x / near.length - p[c * 3])
-      p[c * 3 + 1] += RELAX * (y / near.length - p[c * 3 + 1])
-      p[c * 3 + 2] += RELAX * (z / near.length - p[c * 3 + 2])
+      push(p, normals, c, x / near.length - p[c * 3], y / near.length - p[c * 3 + 1], z / near.length - p[c * 3 + 2], RELAX)
     }
   }
 }
 
 /** Taubin λ|μ smoothing: a shrink step then an inflate step, so bumps go but the volume stays. */
-export function taubin(p: Float32Array, links: number[][], order: number[], passes: number) {
+export function taubin(p: Float32Array, normals: Float32Array, links: number[][], order: number[], passes: number) {
   const d = new Float32Array(order.length * 3)
   for (let i = 0; i < passes; i++) {
     for (const factor of [TAUBIN_LAMBDA, TAUBIN_MU]) {
@@ -46,8 +74,7 @@ export function taubin(p: Float32Array, links: number[][], order: number[], pass
         d[k * 3 + 2] = z / near.length - p[c * 3 + 2]
       }
       for (let k = 0; k < order.length; k++) {
-        const c = order[k]
-        p[c * 3] += factor * d[k * 3]; p[c * 3 + 1] += factor * d[k * 3 + 1]; p[c * 3 + 2] += factor * d[k * 3 + 2]
+        push(p, normals, order[k], d[k * 3], d[k * 3 + 1], d[k * 3 + 2], factor)
       }
     }
   }
@@ -59,7 +86,7 @@ export function taubin(p: Float32Array, links: number[][], order: number[], pass
  * moved to fit the filtered normals. Flat and gently curved panels come out
  * smooth while edges sharper than the crease angle keep their line.
  */
-function clean(topo: Topology, p: Float32Array, weight: Float32Array, creaseDeg: number, passes: number) {
+function clean(topo: Topology, p: Float32Array, guide: Float32Array, weight: Float32Array, creaseDeg: number, passes: number) {
   const geo = faceGeometry(topo, p)
   const faceCount = topo.faces.length / 3
   const active: number[] = []
@@ -132,7 +159,7 @@ function clean(topo: Topology, p: Float32Array, weight: Float32Array, creaseDeg:
         x += nx * d; y += ny * d; z += nz * d; count++
       }
       if (!count) continue
-      p[c * 3] += x / count; p[c * 3 + 1] += y / count; p[c * 3 + 2] += z / count
+      push(p, guide, c, x / count, y / count, z / count, 1)
     }
   }
 }
@@ -141,12 +168,13 @@ function clean(topo: Topology, p: Float32Array, weight: Float32Array, creaseDeg:
 export function smoothPositions(topo: Topology, base: Float32Array, weight: Float32Array, method: SmoothMethod, passes: number, creaseDeg: number) {
   const p = Float32Array.from(base)
   const steps = Math.max(1, Math.min(SMOOTH_METHODS[method].passesMax, Math.round(passes)))
-  if (method === 'clean') { clean(topo, p, weight, creaseDeg, steps); return p }
+  const guide = guideNormals(topo, base)
+  if (method === 'clean') { clean(topo, p, guide, weight, creaseDeg, steps); return p }
   const links = creaseLinks(topo, clusterNormals(topo, base), creaseDeg, c => weight[c] > 0)
   const order: number[] = []
   for (let c = 0; c < weight.length; c++) if (weight[c] > 0 && movable(topo, links, c)) order.push(c)
-  if (method === 'fill') relax(p, links, order, steps)
-  else taubin(p, links, order, steps)
+  if (method === 'fill') relax(p, guide, links, order, steps)
+  else taubin(p, guide, links, order, steps)
   return p
 }
 
@@ -161,7 +189,7 @@ export function bumpDepths(topo: Topology, base: Float32Array, creaseDeg: number
   const order: number[] = []
   for (let c = 0; c < topo.clusters.length; c++) if (movable(topo, links, c)) order.push(c)
   const q = Float32Array.from(base)
-  taubin(q, links, order, 40)
+  taubin(q, guideNormals(topo, base), links, order, 40)
   const depth = new Float32Array(topo.clusters.length)
   for (let c = 0; c < depth.length; c++) {
     depth[c] = Math.abs((base[c * 3] - q[c * 3]) * normals[c * 3] + (base[c * 3 + 1] - q[c * 3 + 1]) * normals[c * 3 + 1] + (base[c * 3 + 2] - q[c * 3 + 2]) * normals[c * 3 + 2])
