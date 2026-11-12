@@ -32,6 +32,10 @@ export interface CabinLayout {
   clearRadius: number
 }
 
+const SPOT_IDS: readonly CabinSpot[] = ['wardrobe', 'rack', 'desk']
+/** The first walls in a layout are the building's own shell; the rest fence the porch and the garage. */
+const SHELL_WALLS = 5
+
 function layout(model: CabinLayout['model'], w: number, d: number, garageWidth: number, store: string | null): CabinLayout {
   const hw = w / 2
   const hd = d / 2
@@ -94,8 +98,8 @@ export class Cabin {
   readonly heading: number
   private readonly c: number
   private readonly s: number
-  private readonly scratchA = new Vector3()
-  private readonly scratchB = new Vector3()
+  private readonly probe = new Vector3()
+  private readonly probeB = new Vector3()
 
   constructor(readonly terrain: Terrain, center: Vector3, heading: number, readonly layout: CabinLayout = CABIN) {
     this.heading = heading
@@ -121,7 +125,7 @@ export class Cabin {
     return new Vector3(w.x, this.root.y + local.y, w.z)
   }
 
-  toLocal(p: Vector3, out: Vector3 = new Vector3()): Vector3 {
+  toLocal(p: Vector3, out = new Vector3()): Vector3 {
     const dx = p.x - this.root.x
     const dz = p.z - this.root.z
     return out.set(dx * this.c - dz * this.s, p.y - this.root.y, dx * this.s + dz * this.c)
@@ -132,18 +136,21 @@ export class Cabin {
   }
 
   inside(p: Vector3): boolean {
-    const l = this.toLocal(p, this.scratchA)
+    return this.insideLocal(this.toLocal(p, this.probe))
+  }
+
+  private insideLocal(l: Vector3): boolean {
     return Math.abs(l.x) < this.layout.halfW - 0.1 && Math.abs(l.z) < this.layout.halfD - 0.1
   }
 
   near(p: Vector3, r: number): boolean {
-    const l = this.toLocal(p, this.scratchA)
+    const l = this.toLocal(p, this.probe)
     const east = this.layout.garage?.x1 ?? this.layout.halfW
     return l.x > -this.layout.halfW - r && l.x < east + r && l.z > -this.layout.halfD - r && l.z < this.layout.halfD + 3 + r
   }
 
   floorAt(p: Vector3): number | null {
-    const l = this.toLocal(p, this.scratchA)
+    const l = this.toLocal(p, this.probe)
     const { halfW: hw, halfD: hd } = this.layout
     const porch = hd + 2.25
     if (Math.abs(l.x) <= hw + 0.15 && l.z >= -hd - 0.1 && l.z <= porch) return this.root.y + CABIN_FLOOR
@@ -176,7 +183,7 @@ export class Cabin {
 
   collide(p: Vector3, radius: number): void {
     if (!this.near(p, 2)) return
-    const l = this.toLocal(p, this.scratchA)
+    const l = this.toLocal(p, this.probe)
     for (const w of this.layout.walls) {
       const ex = w.bx - w.ax
       const ez = w.bz - w.az
@@ -202,30 +209,32 @@ export class Cabin {
         else l.z += Math.sign(dz || 1) * pz
       }
     }
-    const w = this.toWorldXZ(l.x, l.z)
-    p.x = w.x
-    p.z = w.z
+    const lx = l.x
+    const lz = l.z
+    p.x = this.root.x + lx * this.c + lz * this.s
+    p.z = this.root.z - lx * this.s + lz * this.c
   }
 
   segmentBlocked(a: Vector3, b: Vector3): boolean {
-    const la = this.toLocal(a, this.scratchA)
-    const lb = this.toLocal(b, this.scratchB)
-    for (let k = 0; k < 5; k++) {
-      const w = this.layout.walls[k]
+    const la = this.toLocal(a, this.probe)
+    const lb = this.toLocal(b, this.probeB)
+    for (let i = 0; i < SHELL_WALLS; i++) {
+      const w = this.layout.walls[i]
       if (segmentsCross(la.x, la.z, lb.x, lb.z, w.ax, w.az, w.bx, w.bz)) return true
     }
-    return Math.max(la.y, lb.y) > CABIN_FLOOR + 2.6 && (this.inside(a) !== this.inside(b))
+    return Math.max(la.y, lb.y) > CABIN_FLOOR + 2.6 && this.insideLocal(la) !== this.insideLocal(lb)
   }
 
   spotNear(p: Vector3, range = 1.3): CabinSpot | null {
-    const l = this.toLocal(p, this.scratchA)
+    const l = this.toLocal(p, this.probe)
     let best: CabinSpot | null = null
     let bestD = range
-    for (const [id, s] of Object.entries(this.layout.spots) as [CabinSpot, CabinLayout['spots'][CabinSpot]][]) {
+    for (let i = 0; i < SPOT_IDS.length; i++) {
+      const s = this.layout.spots[SPOT_IDS[i]]
       const d = Math.hypot(l.x - s.x, l.z - s.z)
       if (d < bestD) {
         bestD = d
-        best = id
+        best = SPOT_IDS[i]
       }
     }
     return best

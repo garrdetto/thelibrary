@@ -162,6 +162,7 @@ export function buildSky(ctx: EngineContext): { mesh: Mesh; material: ShaderMate
   material.setFloat('time', 0)
   material.backFaceCulling = false
   material.disableDepthWrite = true
+  material.freeze()
   mesh.material = material
   mesh.infiniteDistance = true
   mesh.applyFog = false
@@ -207,6 +208,7 @@ export function buildWater(ctx: EngineContext, terrain: Terrain): { mesh: Mesh; 
   material.setFloat('worldSize', WORLD_SIZE)
   material.alphaMode = Constants.ALPHA_COMBINE
   material.backFaceCulling = false
+  material.freeze()
   mesh.material = material
   mesh.isPickable = false
   mesh.alphaIndex = 0

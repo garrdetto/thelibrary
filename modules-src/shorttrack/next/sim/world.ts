@@ -21,8 +21,8 @@ export type RaceState = {
 
 /** Things the simulation reports for the renderer, the sound and the network to act on. */
 export type SimEvent =
-  | { t: 'sparks'; x: number; y: number; z: number; n: number; vx: number; vz: number }
-  | { t: 'impact'; id: string; x: number; y: number; z: number; v: number; vx: number; vz: number }
+  | { t: 'sparks'; x: number; y: number; z: number; n: number; vx: number; vz: number; nx: number; nz: number; k: 'wall' | 'car' }
+  | { t: 'impact'; id: string; x: number; y: number; z: number; v: number; vx: number; vz: number; nx: number; nz: number; k: 'wall' | 'car' }
   | { t: 'damage'; id: string; lp: [number, number, number]; dir: [number, number, number]; amt: number; zone: Zone }
   | { t: 'lap'; id: string; ms: number }
   | { t: 'reset'; id: string }

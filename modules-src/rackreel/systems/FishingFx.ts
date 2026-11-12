@@ -177,6 +177,7 @@ function fxMaterial(name: string, shader: string, scene: Scene, additive: boolea
   mat.backFaceCulling = false
   mat.disableDepthWrite = true
   mat.alphaMode = additive ? Constants.ALPHA_ADD : Constants.ALPHA_COMBINE
+  mat.freeze()
   return mat
 }
 
