@@ -4,16 +4,22 @@ import { HttpError, json } from '../http'
 import { currentUser } from '../auth'
 
 const WORLD_NAME = 'maple-street'
+export const FOX_LAKE_WORLD_NAME = 'fox-lake'
 const guestParams = z.object({ guest: z.string().regex(/^[A-Za-z0-9]{12,64}$/), name: z.string().max(64).optional() })
 
-function worldStub(env: Env) {
+/** Classic Fox Plains' world, or Fox Lake's own (`?world=foxlake`): same rules, separate players, lots and money. */
+function worldStub(env: Env, world: string | null) {
+  if (world === 'foxlake') {
+    if (!env.FOX_LAKE_WORLD) throw new HttpError(503, 'Fox Lake online is not available right now.')
+    return env.FOX_LAKE_WORLD.get(env.FOX_LAKE_WORLD.idFromName(FOX_LAKE_WORLD_NAME))
+  }
   if (!env.MAPLE_WORLD) throw new HttpError(503, 'Fox Plains online is not available right now.')
   return env.MAPLE_WORLD.get(env.MAPLE_WORLD.idFromName(WORLD_NAME))
 }
 
 export async function maplestreet(request: Request, env: Env) {
   const url = new URL(request.url)
-  const stub = worldStub(env)
+  const stub = worldStub(env, url.searchParams.get('world'))
 
   if (request.headers.get('upgrade')?.toLowerCase() !== 'websocket') {
     if (request.method !== 'GET') throw new HttpError(405, 'This request is not allowed.')

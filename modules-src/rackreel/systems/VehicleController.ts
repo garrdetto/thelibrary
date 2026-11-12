@@ -3,13 +3,26 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { EngineContext } from '../core/EngineSetup'
 import type { ModelRig } from '../core/ModelLibrary'
-import { PLAY_LIMIT, WATER_LEVEL } from '../world/Terrain'
+import { WATER_LEVEL } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
 import { bufferedSine } from './Waves'
 
 export { bufferedSine, SINE_BUFFER } from './Waves'
 
-export type VehicleMode = 'NONE' | 'ATV' | 'BOAT'
+export type VehicleMode = 'NONE' | VehicleKind
+export type VehicleKind = 'ATV' | 'BOAT' | 'CAR'
+
+/**
+ * A vehicle a host world simulates itself (Fox Lake's town cars run on Rapier).
+ * `step` drives it for one frame and writes the vehicle's position (scene
+ * coordinates), heading, pitch, roll and speed; the controller then leaves its
+ * transform alone.
+ */
+export interface ExternalDriver {
+  step(dt: number, input: DriveInput, vehicle: Vehicle): void
+  /** Stops it where it is (the driver got out). */
+  park?(vehicle: Vehicle): void
+}
 
 export interface DriveInput {
   throttle: number
@@ -52,8 +65,11 @@ export const BOAT_TUNING = {
 }
 
 export interface Vehicle {
-  kind: 'ATV' | 'BOAT'
+  kind: VehicleKind
   rig: ModelRig
+  /** Shown on the HUD for host-world vehicles ("Maple Hauler"). */
+  label?: string
+  external?: ExternalDriver
   root: TransformNode
   position: Vector3
   heading: number
@@ -72,10 +88,20 @@ export interface Vehicle {
   anchored: boolean
 }
 
+const PARKED_INPUT: DriveInput = { throttle: 0, steer: 0, brake: true }
+/** A parked UTV or quad whose height and lean changed less than this in a frame (metres, radians) has settled on its springs. */
+const REST_SLACK = 1e-3
+/** Below this (m/s) with the brake on, all that is left is the nudge a slope gives each frame, which would otherwise creep it downhill. */
+const REST_SPEED = 0.25
+/** ...and its springs are moving slower than this (m/s). */
+const REST_BOUNCE = 0.01
+
 export class VehicleController {
   mode: VehicleMode = 'NONE'
   active: Vehicle | null = null
   readonly vehicles: Vehicle[] = []
+  /** Parked UTVs and quads that have settled: they skip the wheel ray-casts until someone climbs on or they are moved. */
+  private readonly parked = new Set<Vehicle>()
   private readonly wheelLocal = [
     { name: 'wheelFL', x: 0.62, z: 1.0 },
     { name: 'wheelFR', x: -0.62, z: 1.0 },
@@ -83,7 +109,31 @@ export class VehicleController {
     { name: 'wheelBR', x: -0.62, z: -0.95 },
   ]
 
+  /** A host world's solid things (buildings, walls) that land vehicles bump into. */
+  obstacle: ((x: number, z: number, radius: number) => boolean) | null = null
+  /** A built floor under (x, z) above the terrain (Fox Outfitters' garage), or null. */
+  floor: ((x: number, z: number) => number | null) | null = null
+
   constructor(private readonly ctx: EngineContext, private readonly terrain: Terrain, private readonly ground: Mesh) {}
+
+  /** Adds a vehicle simulated by a host world. `root` is drawn and placed by the driver. */
+  addExternal(root: TransformNode, driver: ExternalDriver, position: Vector3, heading: number, seat: Vector3, exitSide: Vector3, label: string): Vehicle {
+    const vehicle: Vehicle = {
+      kind: 'CAR', rig: { root, joints: new Map(), meshes: [], partMeshes: new Map() }, root, label, external: driver,
+      position: position.clone(), heading, speed: 0, steer: 0, pitch: 0, roll: 0, vy: 0, slopeAngle: 0, wheelSpin: 0,
+      seat: seat.clone(), exitSide: exitSide.clone(), clock: 0, occupied: false, power: 1, anchored: false,
+    }
+    this.vehicles.push(vehicle)
+    return vehicle
+  }
+
+  /** Takes a vehicle out of the world (a host world put it away). */
+  remove(vehicle: Vehicle): void {
+    if (this.active === vehicle) this.release()
+    this.parked.delete(vehicle)
+    const i = this.vehicles.indexOf(vehicle)
+    if (i >= 0) this.vehicles.splice(i, 1)
+  }
 
   add(kind: 'ATV' | 'BOAT', rig: ModelRig, position: Vector3, heading: number): Vehicle {
     const root = rig.root
@@ -132,6 +182,7 @@ export class VehicleController {
     v.occupied = false
     v.anchored = false
     v.speed = 0
+    v.external?.park?.(v)
     this.active = null
     this.mode = 'NONE'
     spot.y = this.terrain.heightAt(spot.x, spot.z)
@@ -144,6 +195,7 @@ export class VehicleController {
     if (v) {
       v.occupied = false
       v.speed = 0
+      v.external?.park?.(v)
     }
     this.active = null
     this.mode = 'NONE'
@@ -160,6 +212,7 @@ export class VehicleController {
     v.roll = 0
     v.vy = 0
     v.anchored = false
+    this.parked.delete(v)
     this.applyTransform(v)
   }
 
@@ -188,9 +241,25 @@ export class VehicleController {
   update(dt: number, input: DriveInput): void {
     for (const v of this.vehicles) {
       v.clock += dt
-      const drive = v === this.active && !v.anchored ? input : { throttle: 0, steer: 0, brake: true }
-      if (v.kind === 'ATV') this.updateAtv(v, dt, drive)
-      else this.updateBoat(v, dt, drive)
+      if (v === this.active) this.parked.delete(v)
+      else if (this.parked.has(v)) continue
+      const drive = v === this.active && !v.anchored ? input : PARKED_INPUT
+      if (v.external) {
+        v.external.step(dt, drive, v)
+        continue
+      }
+      if (v.kind === 'ATV') {
+        const y = v.position.y
+        const pitch = v.pitch
+        const roll = v.roll
+        this.updateAtv(v, dt, drive)
+        const still = Math.abs(v.speed) < REST_SPEED && Math.abs(v.vy) < REST_BOUNCE && Math.abs(v.position.y - y) < REST_SLACK && Math.abs(v.pitch - pitch) < REST_SLACK && Math.abs(v.roll - roll) < REST_SLACK
+        if (still && v !== this.active) {
+          v.speed = 0
+          v.vy = 0
+          this.parked.add(v)
+        }
+      } else this.updateBoat(v, dt, drive)
       this.applyTransform(v)
     }
   }
@@ -200,8 +269,10 @@ export class VehicleController {
     const s = Math.sin(v.heading)
     const wx = x + lx * c + lz * s
     const wz = z - lx * s + lz * c
+    const built = this.floor?.(wx, wz) ?? null
     const hit = this.ctx.groundRay(this.ground, wx, wz)
-    if (hit) return { y: hit.y, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z }
+    if (hit && (built === null || hit.y >= built)) return { y: hit.y, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z }
+    if (built !== null) return { y: Math.max(built, hit?.y ?? this.terrain.heightAt(wx, wz)), nx: 0, ny: 1, nz: 0 }
     return { y: this.terrain.heightAt(wx, wz), nx: 0, ny: 1, nz: 0 }
   }
 
@@ -230,7 +301,7 @@ export class VehicleController {
     let nz = v.position.z + fz * v.speed * dt
     const probeX = nx + fx * Math.sign(v.speed) * 1.1
     const probeZ = nz + fz * Math.sign(v.speed) * 1.1
-    const blocked = this.trunkBlocked(probeX, probeZ, 0.7) || this.terrain.depthAt(probeX, probeZ) > T.wadeDepth || Math.abs(probeX) > PLAY_LIMIT || Math.abs(probeZ) > PLAY_LIMIT
+    const blocked = this.trunkBlocked(probeX, probeZ, 0.7) || this.terrain.depthAt(probeX, probeZ) > T.wadeDepth || !this.terrain.inBounds(probeX, probeZ) || (this.obstacle?.(probeX, probeZ, 0.9) ?? false)
     const climb = this.terrain.slopeAt(probeX, probeZ)
     const uphill = this.terrain.heightAt(probeX, probeZ) > this.terrain.heightAt(nx, nz)
     if (blocked || (climb > T.maxClimb && uphill && Math.abs(v.speed) > 0.2)) {
@@ -313,6 +384,7 @@ export class VehicleController {
   }
 
   private applyTransform(v: Vehicle): void {
+    if (v.external) return
     v.root.position.copyFrom(v.position)
     Quaternion.FromEulerAnglesToRef(v.pitch, v.heading, v.roll, v.root.rotationQuaternion!)
   }

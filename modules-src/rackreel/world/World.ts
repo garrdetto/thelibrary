@@ -34,7 +34,7 @@ function mixColor(a: number[], b: number[], t: number): number[] {
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]
 }
 
-function detailTexture(scene: Scene): DynamicTexture {
+export function detailTexture(scene: Scene): DynamicTexture {
   const size = 256
   const tex = new DynamicTexture('ground-detail', { width: size, height: size }, scene, true)
   const ctx = tex.getContext() as CanvasRenderingContext2D
@@ -162,6 +162,7 @@ export function buildSky(ctx: EngineContext): { mesh: Mesh; material: ShaderMate
   material.setFloat('time', 0)
   material.backFaceCulling = false
   material.disableDepthWrite = true
+  material.freeze()
   mesh.material = material
   mesh.infiniteDistance = true
   mesh.applyFog = false
@@ -207,6 +208,7 @@ export function buildWater(ctx: EngineContext, terrain: Terrain): { mesh: Mesh; 
   material.setFloat('worldSize', WORLD_SIZE)
   material.alphaMode = Constants.ALPHA_COMBINE
   material.backFaceCulling = false
+  material.freeze()
   mesh.material = material
   mesh.isPickable = false
   mesh.alphaIndex = 0

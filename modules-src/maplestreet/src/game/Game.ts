@@ -19,7 +19,7 @@ import { vehicleRole } from '../../shared/Vehicles';
 import { decodeCells, gameDays } from '../../shared/Mowing';
 import type { ClientMsg, Job, MowStroke, PlayerSnap, ServerMsg, VehicleKind } from '../../shared/Protocol';
 import { DAY_LENGTH_SEC } from '../../shared/RoomLogic';
-import { DEPOT, GAS_STATION, LotDef, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS, ShopDoor, SPAWN } from '../../shared/WorldLayout';
+import { DEPOT, GAS_STATION, inTownWorld, LotDef, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS, ShopDoor, SPAWN } from '../../shared/WorldLayout';
 import { BuildController } from '../build/BuildController';
 import { NIGHT_GLOW_MATERIALS } from '../build/Furniture';
 import { HouseManager } from '../build/HouseManager';
@@ -348,7 +348,7 @@ export class Game {
       }
       case 'snap':
         this.serverHours = m.hours;
-        this.remotes.ingest(m.time, m.players, m.vehicles);
+        this.remotes.ingest(m.time, m.players.filter(inTownWorld), m.vehicles.filter(inTownWorld));
         break;
       case 'build': {
         this.houses.apply(m.op, m.actorId, m.actorName);

@@ -62,6 +62,8 @@ export interface BowfishingHost {
   announce(text: string): void
   /** The trip ended at the launch; the player stands at `at`. */
   tripEnded(at: Vector3, facing: number): void
+  /** Tours run at any hour (Fox Lake shares one clock with everyone, so nobody can skip to dark). */
+  anyHour?: boolean
 }
 
 type BowState = 'ready' | 'drawing' | 'out'
@@ -189,7 +191,17 @@ export class Bowfishing {
   private spraySplash = 0
   private flopTimer = 3
   private homeAnnounced = false
-  private readonly liveCarp = new Set<number>()
+  /** The frame each carp was last in the school, so the ones that have left can give their model back. */
+  private readonly carpSeen = new Map<number, number>()
+  private carpFrame = 0
+  private readonly retireCarp = (frame: number, id: number): void => {
+    if (frame === this.carpFrame) return
+    this.carpSeen.delete(id)
+    const rig = this.carpOf.get(id)
+    if (!rig) return
+    this.carpOf.delete(id)
+    rig.root.setEnabled(false)
+  }
   private readonly usedRigs = new Set<ModelRig>()
   private readonly gripAt = new Vector3()
   private readonly stringAt = new Vector3()
@@ -343,7 +355,7 @@ export class Bowfishing {
   campPrompt(foot: Vector3): string {
     if (!this.nearCamp(foot)) return ''
     if (this.trip) return this.tripAtLaunch() ? `E — climb aboard with ${this.trip.name} and Wild Man` : `Wild Man is out on the water with ${this.trip.name}`
-    return this.host.lighting.night >= NIGHT_TO_FISH ? 'E — go bowfishing with Wisco Wild Man' : 'E — tell Wisco Wild Man you want to go bowfishing (it\'ll be dark by the time you shove off)'
+    return this.host.anyHour || this.host.lighting.night >= NIGHT_TO_FISH ? 'E — go bowfishing with Wisco Wild Man' : 'E — tell Wisco Wild Man you want to go bowfishing (it\'ll be dark by the time you shove off)'
   }
 
   /** Party state from Online: a party member's trip (if one owns the boat), the spots they've taken, and whether anyone else is in the party. */
@@ -352,7 +364,7 @@ export class Bowfishing {
     this.trip = this.role === 'owner' ? null : trip
     this.taken = taken
     this.party = party
-    if (started && this.host.lighting.night < NIGHT_TO_FISH) {
+    if (started && !this.host.anyHour && this.host.lighting.night < NIGHT_TO_FISH) {
       this.fallNight()
       this.host.hud.toast(`${trip.name} is taking the party bowfishing with Wisco Wild Man. Night falls; meet at his launch.`)
     }
@@ -426,7 +438,7 @@ export class Bowfishing {
       this.say(`Climb aboard, bud. ${this.trip.name}'s callin' the shots tonight.`, PATIENCE.greeting, 'line-crew')
       return true
     }
-    const daytime = this.host.lighting.night < NIGHT_TO_FISH
+    const daytime = !this.host.anyHour && this.host.lighting.night < NIGHT_TO_FISH
     if (daytime) this.fallNight()
     this.role = 'owner'
     this.slot = this.freeSlot() ?? 0
@@ -491,6 +503,7 @@ export class Bowfishing {
     this.school.clear()
     for (const rig of this.carpRigs) rig.root.setEnabled(false)
     this.carpOf.clear()
+    this.carpSeen.clear()
     for (const f of this.tub) {
       f.rig.root.parent = null
       f.rig.root.setEnabled(false)
@@ -656,7 +669,7 @@ export class Bowfishing {
     if (this.role === 'crew') {
       this.followTrip(dt)
     } else {
-      if (this.host.lighting.night < DAWN && !p.homeward) p.sendItHome()
+      if (!this.host.anyHour && this.host.lighting.night < DAWN && !p.homeward) p.sendItHome()
       const events = p.update(dt, this.fightActive)
       if (events.onPlane && !p.homeward) {
         this.say(LINES.running)
@@ -1218,10 +1231,12 @@ export class Bowfishing {
 
   private placeCarp(): void {
     const eye = this.ctx.camera.globalPosition
-    const live = this.liveCarp
-    live.clear()
-    for (const c of this.school.carp) {
-      live.add(c.id)
+    const seen = this.carpSeen
+    const frame = ++this.carpFrame
+    const carp = this.school.carp
+    for (let i = 0; i < carp.length; i++) {
+      const c = carp[i]
+      seen.set(c.id, frame)
       let rig = this.carpOf.get(c.id)
       if (!rig) {
         const used = this.usedRigs
@@ -1235,7 +1250,9 @@ export class Bowfishing {
         rig.root.setEnabled(true)
       }
       const d = -c.y
-      const D = Math.hypot(c.x - eye.x, c.z - eye.z)
+      const ex = c.x - eye.x
+      const ez = c.z - eye.z
+      const D = Math.sqrt(ex * ex + ez * ez)
       const a = d > 0 ? apparentDepth(Math.max(0.05, eye.y), d, D) : d
       const scale = (c.lengthM * (d > 0 ? CARP.look : 1)) / FISH_LENGTH
       rig.root.position.set(c.x, -a, c.z)
@@ -1244,11 +1261,7 @@ export class Bowfishing {
       const tail = rig.joints.get('tail')
       if (tail) tail.rotation.y = Math.sin(c.tail) * (c.mode === 'flee' || c.hooked ? 0.45 : 0.25)
     }
-    for (const [id, rig] of this.carpOf) {
-      if (live.has(id)) continue
-      this.carpOf.delete(id)
-      rig.root.setEnabled(false)
-    }
+    if (seen.size !== carp.length) seen.forEach(this.retireCarp)
   }
 
   private mapToEye(p: Vector3, eye: Vector3): Vector3 {

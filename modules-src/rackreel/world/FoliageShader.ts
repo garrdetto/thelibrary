@@ -53,6 +53,10 @@ uniform vec4 fade;
 uniform vec4 shape;
 uniform mat4 lightMatrix;
 uniform vec2 depthValues;
+#ifdef WEAR
+uniform sampler2D wearSampler;
+uniform vec4 wearArea;
+#endif
 varying vec3 vPositionW;
 varying vec3 vNormalW;
 varying vec4 vColor;
@@ -70,6 +74,12 @@ void main() {
 #endif
   vec3 origin = finalWorld[3].xyz;
   float keep = 1.0 - smoothstep(0.0, 1.0, (distance(origin.xz, fade.xy) - fade.z) * fade.w);
+  vec3 wornTint = vec3(1.0);
+#ifdef WEAR
+  float worn = textureLod(wearSampler, (origin.xz - wearArea.xy) * wearArea.z, 0.0).r * wearArea.w;
+  keep *= 1.0 - smoothstep(0.004, 0.05, worn) * 0.45 - smoothstep(0.25, 0.9, worn) * 0.52;
+  wornTint = mix(vec3(1.0), vec3(0.8, 0.74, 0.5), smoothstep(0.004, 0.4, worn));
+#endif
   vec3 local = vec3(position.x * shape.x, position.y * keep, position.z * shape.x);
   vec4 worldPos = finalWorld * vec4(local, 1.0);
   vPositionFromLight = lightMatrix * worldPos;
@@ -87,7 +97,7 @@ void main() {
   worldPos.y -= abs(push) * 0.3 * min(lift, 1.0);
   vPositionW = worldPos.xyz;
   vNormalW = normalize(mat3(finalWorld) * normal);
-  vColor = vec4(tint.rgb, 1.0);
+  vColor = vec4(tint.rgb * wornTint, 1.0);
 #ifdef VERTEXCOLOR
   vColor.rgb *= color.rgb;
 #endif
@@ -205,6 +215,11 @@ uniform fade: vec4f;
 uniform shape: vec4f;
 uniform lightMatrix: mat4x4f;
 uniform depthValues: vec2f;
+#ifdef WEAR
+var wearSamplerSampler: sampler;
+var wearSampler: texture_2d<f32>;
+uniform wearArea: vec4f;
+#endif
 varying vPositionW: vec3f;
 varying vNormalW: vec3f;
 varying vColor: vec4f;
@@ -223,7 +238,13 @@ fn main(input: VertexInputs) -> FragmentInputs {
 #endif
   let position = vertexInputs.position;
   let origin = finalWorld[3].xyz;
-  let keep = 1.0 - smoothstep(0.0, 1.0, (distance(origin.xz, uniforms.fade.xy) - uniforms.fade.z) * uniforms.fade.w);
+  var keep = 1.0 - smoothstep(0.0, 1.0, (distance(origin.xz, uniforms.fade.xy) - uniforms.fade.z) * uniforms.fade.w);
+  var wornTint = vec3f(1.0);
+#ifdef WEAR
+  let worn = textureSampleLevel(wearSampler, wearSamplerSampler, (origin.xz - uniforms.wearArea.xy) * uniforms.wearArea.z, 0.0).r * uniforms.wearArea.w;
+  keep = keep * (1.0 - smoothstep(0.004, 0.05, worn) * 0.45 - smoothstep(0.25, 0.9, worn) * 0.52);
+  wornTint = mix(vec3f(1.0), vec3f(0.8, 0.74, 0.5), smoothstep(0.004, 0.4, worn));
+#endif
   let local = vec3f(position.x * uniforms.shape.x, position.y * keep, position.z * uniforms.shape.x);
   var worldPos = finalWorld * vec4f(local, 1.0);
   let fromLight = uniforms.lightMatrix * worldPos;
@@ -242,7 +263,7 @@ fn main(input: VertexInputs) -> FragmentInputs {
   worldPos = vec4f(worldPos.x + sway.x, worldPos.y - abs(push) * 0.3 * min(lift, 1.0), worldPos.z + sway.y, worldPos.w);
   vertexOutputs.vPositionW = worldPos.xyz;
   vertexOutputs.vNormalW = normalize(mat3x3f(finalWorld[0].xyz, finalWorld[1].xyz, finalWorld[2].xyz) * vertexInputs.normal);
-  var shade = tint.rgb;
+  var shade = tint.rgb * wornTint;
 #ifdef VERTEXCOLOR
   shade = shade * vertexInputs.color.rgb;
 #endif
@@ -377,6 +398,8 @@ export interface FoliageLook {
   /** Multiplies the scene ambient, as `ambientColor` does on a standard material. */
   ambient?: number
   texture?: BaseTexture
+  /** Flattened and yellowed where tyres have worn the ground (`FoliageShading.useWear`). */
+  wear?: boolean
   /** Uses the grass ring's shared distance fade. */
   fades?: boolean
   /** Sideways scale of the local mesh (far grass draws fewer, wider blades). */
@@ -390,7 +413,7 @@ const NO_FADE = new Vector4(0, 0, 1e9, 1)
 const MAX_LIGHTS = 4
 const UNIFORMS = [
   'world', 'viewProjection', 'cameraPosition', 'time', 'wind', 'windDir', 'fade', 'shape', 'lightMatrix', 'depthValues',
-  'sunDir', 'sunColor', 'skyDir', 'skyColor', 'groundColor', 'ambient', 'point0', 'point0Color', 'point1', 'point1Color', 'shadowInfo',
+  'sunDir', 'sunColor', 'skyDir', 'skyColor', 'groundColor', 'ambient', 'point0', 'point0Color', 'point1', 'point1Color', 'shadowInfo', 'wearArea',
 ]
 
 /** Builds the foliage materials and feeds them the clock and the scene's lights once a frame. */
@@ -416,6 +439,7 @@ export class FoliageShading {
   private readonly wgsl: boolean
   private shadowTexture: Nullable<BaseTexture> = null
   private observer: Nullable<Observer<Scene>>
+  private wear: { texture: BaseTexture; area: Vector4 } | null = null
 
   constructor(private readonly ctx: EngineContext) {
     this.scene = ctx.scene
@@ -423,6 +447,11 @@ export class FoliageShading {
     this.observer = this.scene.onBeforeRenderObservable.add(() => this.update())
     this.scene.onDisposeObservable.addOnce(() => this.dispose())
     this.update()
+  }
+
+  /** The ground-wear texture the `wear` looks read (set before those materials are made). */
+  useWear(texture: BaseTexture, area: Vector4): void {
+    this.wear = { texture, area }
   }
 
   material(name: string, look: FoliageLook): FoliageMaterial {
@@ -437,6 +466,11 @@ export class FoliageShading {
       attributes.push('uv')
     }
     if (look.twoSided) defines.push('#define TWOSIDED')
+    const wear = look.wear ? this.wear : null
+    if (wear) {
+      defines.push('#define WEAR')
+      samplers.push('wearSampler')
+    }
     if (this.ctx.shadows.getShadowMap()?.textureType !== Constants.TEXTURETYPE_UNSIGNED_BYTE) defines.push('#define SHADOWFLOAT')
     if (this.scene.imageProcessingConfiguration.applyByPostProcess) defines.push('#define LINEAROUT')
     const mat = new FoliageMaterial(`rr-foliage-${name}`, this.scene, SHADER, {
@@ -475,8 +509,13 @@ export class FoliageShading {
     mat.setVector4('shadowInfo', this.shadowInfo)
     mat.setFloat('time', this.time)
     if (this.shadowTexture) mat.setTexture('shadowSampler', this.shadowTexture)
+    if (wear) {
+      mat.setTexture('wearSampler', wear.texture)
+      mat.setVector4('wearArea', wear.area)
+    }
     const ambient = this.scene.ambientColor
     mat.ambient.set(ambient.r * mat.ambientScale, ambient.g * mat.ambientScale, ambient.b * mat.ambientScale)
+    mat.freeze()
     this.materials.push(mat)
     this.byName.set(name, mat)
     return mat

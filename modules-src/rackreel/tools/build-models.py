@@ -892,7 +892,7 @@ BUILDERS = {
     'pine': build_pine, 'hardwood': build_hardwood, 'birch': build_birch, 'grass': build_grass, 'fern': build_fern,
     'cattail': build_cattail, 'rock': build_rock, 'log': build_log, 'deer': build_deer, 'antlers': build_antlers,
     'bear': build_bear, 'hunter': build_hunter, 'utv': build_utv, 'boat': build_boat, 'rod': build_rod,
-    'rifle': build_rifle, 'bobber': build_bobber, 'treestand': build_treestand, 'cabin': build_cabin, 'quad': build_quad, 'boxblind': build_boxblind,
+    'rifle': build_rifle, 'bobber': build_bobber, 'treestand': build_treestand, 'cabin': build_cabin, 'outfitters': lambda: build_cabin('outfitters', OUTFITTERS_W, OUTFITTERS_D, True, OUTFITTERS_WINDOWS), 'quad': build_quad, 'boxblind': build_boxblind,
     'bowboat': build_bowboat, 'wildman': build_wildman, 'bow': build_bow,
 }
 for kind, spec in FISH.items():

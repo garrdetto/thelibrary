@@ -34,6 +34,16 @@ export async function saveRackreelProfile(env: Env, userId: string, username: st
     .bind(userId, username, JSON.stringify(profile), updatedAt).run()
 }
 
+/**
+ * Saves `profile` only if nobody else saved since `updatedAt` (the shared-wallet move must happen once).
+ * Returns false when another request got there first.
+ */
+export async function saveRackreelProfileIfUnchanged(env: Env, userId: string, profile: Profile, updatedAt: number, now: number): Promise<boolean> {
+  const result = await env.DB.prepare('UPDATE rackreel_profiles SET data = ?, updated_at = ? WHERE user_id = ? AND updated_at = ?')
+    .bind(JSON.stringify(profile), now, userId, updatedAt).run()
+  return (result.meta?.changes ?? 0) > 0
+}
+
 let recordsReady: Promise<unknown> | null = null
 
 /** Every placing catch, one row per category, like the site's other record books. */

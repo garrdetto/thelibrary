@@ -49,10 +49,12 @@ export class Foliage {
   readonly stands: Stand[] = []
   readonly colliders: TrunkCollider[] = []
   readonly grassHoles: GrassHole[] = []
+  /** A host world's fixed shadow casters near `focus`. Return the same array until the set changes. */
+  hostCasters: ((focus: Vector3) => readonly AbstractMesh[]) | null = null
+  private hostList: readonly AbstractMesh[] | null = null
   readonly grass: GrassField
   private shadowStands = new Set<Stand>()
   private shadowsStale = true
-  private nearScratch = new Set<Stand>()
   private primed = false
   private readonly treeMatrices: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(4096), hardwood: new FloatBatch(4096), birch: new FloatBatch(1024) }
   private readonly trunkTints: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(1024), hardwood: new FloatBatch(1024), birch: new FloatBatch(256) }
@@ -177,6 +179,51 @@ export class Foliage {
     this.stands.push(stand)
   }
 
+  /**
+   * Trees a host world places itself (Fox Lake's yards and the forest ring
+   * around town), built like the lake country's stands: same models, sway,
+   * tints, far versions and cached shadows. Trunk colliders are the host's.
+   */
+  plantTrees(spots: readonly { x: number; y: number; z: number; kind: TreeKind; scale: number; yaw: number }[]): void {
+    const cells = new Map<string, typeof spots[number][]>()
+    for (const s of spots) {
+      const key = `${Math.floor(s.x / STAND_SIZE)},${Math.floor(s.z / STAND_SIZE)}`
+      let list = cells.get(key)
+      if (!list) cells.set(key, (list = []))
+      list.push(s)
+    }
+    for (const [key, list] of cells) {
+      for (const kind of TREE_KINDS) {
+        this.treeMatrices[kind].reset()
+        this.trunkTints[kind].reset()
+        this.crownTints[kind].reset()
+      }
+      for (const t of list) {
+        const cx = Math.round(t.x * 10) / 10
+        const cz = Math.round(t.z * 10) / 10
+        const matrices = this.treeMatrices[t.kind]
+        const at = matrices.reserve(16)
+        composeInstance(matrices.data, at, t.x, t.y - 0.15, t.z, t.yaw, t.scale, t.scale * (0.9 + hash(cx, cz, 9) * 0.25), t.scale, (hash(cx, cz, 7) - 0.5) * 0.06, (hash(cx, cz, 8) - 0.5) * 0.06)
+        const phase = hash(cx, cz, 50)
+        const trunk = this.trunkTints[t.kind]
+        writeTint(trunk.data, trunk.reserve(4), WHITE, cx, cz, 31, 0.14, phase)
+        const crown = this.crownTints[t.kind]
+        writeTint(crown.data, crown.reserve(4), crownColor(t.kind, cx, cz), cx, cz, 41, t.kind === 'pine' ? 0.16 : 0.12, phase)
+      }
+      const [ci, cj] = key.split(',').map(Number)
+      const node = new TransformNode(`hosted_${ci}_${cj}`, this.ctx.scene)
+      const stand: Stand = { node, center: new Vector3((ci + 0.5) * STAND_SIZE, 0, (cj + 0.5) * STAND_SIZE), casters: [], meshes: [] }
+      for (const kind of TREE_KINDS) {
+        if (!this.treeMatrices[kind].length) continue
+        const matrices = this.treeMatrices[kind].toArray()
+        this.addTree(stand, kind, 'trunk', matrices, this.trunkTints[kind].toArray(), this.trunkMaterial(kind))
+        this.addTree(stand, kind, 'crown', matrices, this.crownTints[kind].toArray(), this.crownMaterial(kind))
+      }
+      this.stands.push(stand)
+    }
+    this.shadowsStale = true
+  }
+
   private scatter(kind: Scatter, cx: number, cz: number, x: number, y: number, z: number, yaw: number, scale: number, sy = scale): void {
     const matrices = this.scatterMatrices[kind]
     const at = matrices.reserve(16)
@@ -232,24 +279,37 @@ export class Foliage {
     this.grass.prime(center)
   }
 
+  private nearFocus(stand: Stand, focus: Vector3): boolean {
+    const dx = Math.max(Math.abs(stand.center.x - focus.x) - STAND_SIZE / 2, 0)
+    const dz = Math.max(Math.abs(stand.center.z - focus.z) - STAND_SIZE / 2, 0)
+    return dx * dx + dz * dz < SHADOW_STAND_RADIUS * SHADOW_STAND_RADIUS
+  }
+
   /** Trees, rocks and logs near `focus` go to the cached shadow layer; `moving` (the hunter, animals, vehicles) to the layer redrawn as they move. */
   updateShadowCasters(focus: Vector3, moving: AbstractMesh[]): void {
-    const near = this.nearScratch
-    near.clear()
-    for (const stand of this.stands) {
-      const dx = Math.max(Math.abs(stand.center.x - focus.x) - STAND_SIZE / 2, 0)
-      const dz = Math.max(Math.abs(stand.center.z - focus.z) - STAND_SIZE / 2, 0)
-      if (dx * dx + dz * dz < SHADOW_STAND_RADIUS * SHADOW_STAND_RADIUS) near.add(stand)
+    const stands = this.stands
+    const current = this.shadowStands
+    let count = 0
+    let changed = this.shadowsStale
+    for (let i = 0; i < stands.length; i++) {
+      if (!this.nearFocus(stands[i], focus)) continue
+      count++
+      if (!current.has(stands[i])) changed = true
     }
-    let changed = this.shadowsStale || near.size !== this.shadowStands.size
-    if (!changed) for (const s of near) if (!this.shadowStands.has(s)) changed = true
+    const hosted = this.hostCasters?.(focus) ?? null
+    if (hosted !== this.hostList) changed = true
+    this.hostList = hosted
     const layers = this.ctx.shadowLayers
-    if (changed) {
+    if (changed || count !== current.size) {
       this.shadowsStale = false
-      this.nearScratch = this.shadowStands
-      this.shadowStands = near
+      current.clear()
       const fixed: AbstractMesh[] = []
-      for (const stand of near) for (const mesh of stand.casters) fixed.push(mesh)
+      for (let i = 0; i < stands.length; i++) {
+        if (!this.nearFocus(stands[i], focus)) continue
+        current.add(stands[i])
+        for (const mesh of stands[i].casters) fixed.push(mesh)
+      }
+      if (hosted) for (const mesh of hosted) fixed.push(mesh)
       layers.setFixed(fixed)
     }
     layers.setMoving(moving)
@@ -267,6 +327,5 @@ export class Foliage {
     }
     this.stands.length = 0
     this.shadowStands.clear()
-    this.nearScratch.clear()
   }
 }

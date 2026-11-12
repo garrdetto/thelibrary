@@ -159,6 +159,23 @@ export class NeighborhoodLogic {
     this.io.broadcast({ t: 'toast', text: returning ? `${name} is back in Fox Plains` : `${name} moved into the neighborhood` }, sessionId);
   }
 
+  /**
+   * The one wallet a member shares with Rack & Reel and Fox Lake: credits (or, with a negative `delta`, debits)
+   * their money from outside the world. A member who never played Fox Plains gets an account first. Never
+   * overdraws: returns the new balance, or null when there isn't enough money.
+   */
+  adjustMoney(key: string, name: string, delta: number): number | null {
+    if (!Number.isFinite(delta)) return null;
+    let acc = this.accounts[key];
+    if (!acc) acc = this.accounts[key] = newAccount(Math.random().toString(36).slice(2, 12), key, name.replace(/[<>&"]/g, '').slice(0, 24) || 'Neighbor', '#3a7bd5');
+    if (acc.money + delta < 0) return null;
+    acc.money = Math.round((acc.money + delta) * 100) / 100;
+    if (delta > 0) acc.earned += delta;
+    this.dirty.accounts.add(key);
+    for (const [id, s] of this.sessions) if (s.key === key && !s.superseded) this.sendAccount(id, acc);
+    return acc.money;
+  }
+
   /** Accounts the persistent world loads lazily from storage before a join. */
   hasAccount(key: string) { return !!this.accounts[key]; }
   addAccount(acc: Account) { this.accounts[acc.key] = normalizeAccount(acc); }

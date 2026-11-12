@@ -1,0 +1,380 @@
+{
+  "spots": {
+    "town-main-st": {
+      "p50": 29.1,
+      "p95": 97,
+      "meshes": 3607,
+      "active": 556,
+      "materials": 239,
+      "textures": 309,
+      "geometries": 3151,
+      "heapMB": 335,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 135,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 108,
+          "meshesOn": 1278
+        }
+      }
+    },
+    "downtown": {
+      "p50": 30.1,
+      "p95": 53.8,
+      "meshes": 3617,
+      "active": 260,
+      "materials": 243,
+      "textures": 312,
+      "geometries": 3154,
+      "heapMB": 352,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 181,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 128,
+          "meshesOn": 1461
+        }
+      }
+    },
+    "county-road": {
+      "p50": 23,
+      "p95": 44.3,
+      "meshes": 3437,
+      "active": 188,
+      "materials": 212,
+      "textures": 294,
+      "geometries": 3126,
+      "heapMB": 352,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 206,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 116,
+          "meshesOn": 1361
+        }
+      }
+    },
+    "seam-to-town": {
+      "p50": 30.1,
+      "p95": 82.6,
+      "meshes": 3451,
+      "active": 580,
+      "materials": 212,
+      "textures": 294,
+      "geometries": 3126,
+      "heapMB": 345,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 137,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 111,
+          "meshesOn": 1336
+        }
+      }
+    },
+    "lake-dock": {
+      "p50": 26.7,
+      "p95": 70.7,
+      "meshes": 3431,
+      "active": 455,
+      "materials": 212,
+      "textures": 294,
+      "geometries": 3126,
+      "heapMB": 364,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 135,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 71,
+          "meshesOn": 897
+        }
+      }
+    },
+    "vehicles-outfit": {
+      "p50": 26.8,
+      "p95": 70.9,
+      "meshes": 3543,
+      "active": 387,
+      "materials": 231,
+      "textures": 306,
+      "geometries": 3144,
+      "heapMB": 302,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 152,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 110,
+          "meshesOn": 1301
+        }
+      }
+    },
+    "outfit-hoodie": {
+      "p50": 28.5,
+      "p95": 58.2,
+      "meshes": 3565,
+      "active": 312,
+      "materials": 236,
+      "textures": 309,
+      "geometries": 3147,
+      "heapMB": 310,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 152,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 109,
+          "meshesOn": 1290
+        }
+      }
+    },
+    "casino-outside": {
+      "p50": 30.1,
+      "p95": 60.8,
+      "meshes": 3707,
+      "active": 352,
+      "materials": 257,
+      "textures": 313,
+      "geometries": 3166,
+      "heapMB": 319,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 633,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 130,
+          "meshesOn": 1500
+        }
+      }
+    },
+    "casino-inside": {
+      "p50": 27.1,
+      "p95": 65.9,
+      "meshes": 3685,
+      "active": 288,
+      "materials": 253,
+      "textures": 312,
+      "geometries": 3163,
+      "heapMB": 319,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 693,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 129,
+          "meshesOn": 1488
+        }
+      }
+    },
+    "casino-slots": {
+      "p50": 41.2,
+      "p95": 74.8,
+      "meshes": 3685,
+      "active": 424,
+      "materials": 253,
+      "textures": 315,
+      "geometries": 3163,
+      "heapMB": 317,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 886,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 129,
+          "meshesOn": 1488
+        }
+      }
+    },
+    "town-night": {
+      "p50": 46,
+      "p95": 85.3,
+      "meshes": 3577,
+      "active": 551,
+      "materials": 238,
+      "textures": 311,
+      "geometries": 3149,
+      "heapMB": 344,
+      "backend": "webgpu",
+      "town": {
+        "net": "Solo — unlimited money",
+        "status": "offline",
+        "neighbors": 0,
+        "colliders": {
+          "on": 152,
+          "total": 13733
+        },
+        "cars": [
+          "custom:bundled-maple-hauler",
+          "trailer",
+          "mower"
+        ],
+        "culled": {
+          "groups": 218,
+          "on": 111,
+          "meshesOn": 1314
+        }
+      }
+    }
+  },
+  "leak": {
+    "laps": [
+      {
+        "meshes": 3587,
+        "materials": 241,
+        "textures": 303,
+        "geometries": 3151,
+        "heapMB": 342
+      },
+      {
+        "meshes": 3599,
+        "materials": 242,
+        "textures": 304,
+        "geometries": 3152,
+        "heapMB": 320
+      },
+      {
+        "meshes": 3607,
+        "materials": 239,
+        "textures": 303,
+        "geometries": 3149,
+        "heapMB": 332
+      },
+      {
+        "meshes": 3555,
+        "materials": 235,
+        "textures": 302,
+        "geometries": 3146,
+        "heapMB": 334
+      },
+      {
+        "meshes": 3599,
+        "materials": 241,
+        "textures": 302,
+        "geometries": 3152,
+        "heapMB": 321
+      }
+    ],
+    "growth": {
+      "meshes": 0.003345413994981879,
+      "materials": 0,
+      "textures": -0.0033003300330033004,
+      "geometries": 0.00031735956839098697
+    }
+  },
+  "errors": []
+}

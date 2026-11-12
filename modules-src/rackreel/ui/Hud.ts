@@ -43,7 +43,7 @@ export class Hud {
     el('mode').textContent = mode
   }
 
-  setTool(tool: 'rod' | 'rifle'): void {
+  setTool(tool: 'rod' | 'rifle' | 'none'): void {
     for (const chip of document.querySelectorAll<HTMLElement>('#tools .chip')) chip.setAttribute('aria-current', String(chip.dataset.tool === tool))
   }
 
@@ -215,7 +215,7 @@ export class Hud {
   }
 
   get modalOpen(): boolean {
-    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false || document.getElementById('creator')?.hidden === false || document.getElementById('pause')?.hidden === false
+    return !el('catch').hidden || !el('book').hidden || document.getElementById('panel')?.hidden === false || document.getElementById('creator')?.hidden === false || document.getElementById('pause')?.hidden === false || document.querySelector('[data-host-modal]:not([hidden])') !== null
   }
 
   showBook(board: RecordBoard, you: string, onClose: () => void): void {

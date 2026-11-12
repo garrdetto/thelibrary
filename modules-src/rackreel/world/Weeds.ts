@@ -115,7 +115,7 @@ export class Weeds {
 
   constructor(ctx: EngineContext, terrain: Terrain, shading: FoliageShading) {
     const { scene } = ctx
-    const material = shading.material('weeds', { threshold: 0.05, range: 1, sway: 0.07, speed: 0.7, ripple: 0.2, twoSided: true, ambient: 0.35, shadowed: false })
+    const material = shading.material('weeds', { threshold: 0.05, range: 1, sway: 0.07, speed: 0.7, ripple: 0.2, twoSided: true, ambient: 0.35, shadowed: false, wear: true })
     const shortSrc = stripMesh('weed-short', shortClump(), scene, material)
     const longSrc = stripMesh('weed-long', longClump(), scene, material)
     shortSrc.setEnabled(false)

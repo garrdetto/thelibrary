@@ -6,6 +6,40 @@ export const WATER_LEVEL = 0
 export const PLAY_LIMIT = HALF - 34
 export const LAKE_CENTER = { x: 10, z: 30 }
 
+/** Which edges of the square carry the 42 m rim of hills. +z is north. */
+export interface Rim {
+  north: boolean
+  south: boolean
+  east: boolean
+  west: boolean
+}
+
+/**
+ * The shape of the map. Standalone Rack & Reel is the square ringed by hills on
+ * every side. A host world (Fox Lake) can open edges: an open edge blends down
+ * to `outsideHeight` instead of rising, and `outside` answers for the land
+ * beyond the square.
+ */
+export interface TerrainShape {
+  rim: Rim
+  outsideHeight: number
+  outside?: OutsideLand
+}
+
+/** Land beyond the square, supplied by a host world. */
+export interface OutsideLand {
+  /** True when (x, z) is walkable or drivable land of the host world, `margin` metres in from its edge. */
+  contains(x: number, z: number, margin: number): boolean
+  heightAt(x: number, z: number): number
+  /** True where meadow grass grows out there (off roads, yards and floors). */
+  grassAt?(x: number, z: number): boolean
+}
+
+export const STANDALONE_SHAPE: TerrainShape = { rim: { north: true, south: true, east: true, west: true }, outsideHeight: 0 }
+
+/** How far an open edge's blend reaches in from the edge. */
+export const OPEN_EDGE_BLEND = 110
+
 function hash2(ix: number, iz: number, seed: number): number {
   let h = Math.imul(ix, 374761393) + Math.imul(iz, 668265263) + Math.imul(seed, 982451653)
   h = Math.imul(h ^ (h >>> 13), 1274126177)
@@ -123,16 +157,17 @@ export function highwayCoord(x: number, z: number): { t: number; across: number 
 }
 
 const GRADE_STEP = 4
-let gradeTable: Float32Array | null = null
+const gradeTables = new WeakMap<TerrainShape, Float32Array>()
 
 /** Height of the road surface along the highway: the land smoothed over ±48 m, climbing at 5 % to the bridge deck. */
-export function highwayGrade(t: number): number {
+export function highwayGrade(t: number, shape: TerrainShape = STANDALONE_SHAPE): number {
+  let gradeTable = gradeTables.get(shape)
   if (!gradeTable) {
     const n = Math.ceil((HIGHWAY.reach * 2) / GRADE_STEP) + 1
     const base = new Float32Array(n)
     for (let i = 0; i < n; i++) {
       const tt = -HIGHWAY.reach + i * GRADE_STEP
-      base[i] = baseHeight(HIGHWAY.x + HIGHWAY.dx * tt, HIGHWAY.z + HIGHWAY.dz * tt)
+      base[i] = baseHeight(HIGHWAY.x + HIGHWAY.dx * tt, HIGHWAY.z + HIGHWAY.dz * tt, shape)
     }
     gradeTable = new Float32Array(n)
     const w = 12
@@ -148,6 +183,7 @@ export function highwayGrade(t: number): number {
       const ramp = HIGHWAY.deck - Math.max(0, Math.abs(tt) - HIGHWAY.span / 2) * 0.05
       gradeTable[i] = Math.max(sum / count, ramp)
     }
+    gradeTables.set(shape, gradeTable)
   }
   const u = (Math.max(-HIGHWAY.reach, Math.min(HIGHWAY.reach, t)) + HIGHWAY.reach) / GRADE_STEP
   const i = Math.min(gradeTable.length - 2, Math.floor(u))
@@ -155,17 +191,17 @@ export function highwayGrade(t: number): number {
   return gradeTable[i] + (gradeTable[i + 1] - gradeTable[i]) * f
 }
 
-export function rawHeight(x: number, z: number): number {
-  let h = baseHeight(x, z)
+export function rawHeight(x: number, z: number, shape: TerrainShape = STANDALONE_SHAPE): number {
+  let h = baseHeight(x, z, shape)
   const road = highwayCoord(x, z)
   if (road.across < HIGHWAY.halfWidth + 18 && Math.abs(road.t) > HIGHWAY.span / 2 - 1) {
     const w = 1 - smoothstep(HIGHWAY.halfWidth + 1, HIGHWAY.halfWidth + 18, road.across)
-    h += (highwayGrade(road.t) - 0.25 - h) * w
+    h += (highwayGrade(road.t, shape) - 0.25 - h) * w
   }
   return h
 }
 
-function baseHeight(x: number, z: number): number {
+function baseHeight(x: number, z: number, shape: TerrainShape): number {
   const { s, angle } = lakeCoord(x, z)
   const hills = fbm(x * 0.0042 + 3.1, z * 0.0042 - 1.7, 4, 1) * 34 + fbm(x * 0.016, z * 0.016, 3, 5) * 5
   const marsh = marshWeight(angle)
@@ -189,9 +225,21 @@ function baseHeight(x: number, z: number): number {
     const floor = -1.1 - 3.4 * Math.pow(Math.max(0, 1 - db), 2.6) - (fbm(x * 0.04, z * 0.04, 3, 17) * 0.5 + 0.2) * smoothstep(0.95, 0.5, db)
     h = Math.min(h, floor + 4.4 * smoothstep(0.82, 1.18, db) + 30 * smoothstep(1.18, 1.9, db))
   }
-  const edge = Math.max(Math.abs(x), Math.abs(z))
-  h += smoothstep(HALF - 90, HALF - 4, edge) * 42
-  return h
+  return shapeEdges(h, x, z, shape)
+}
+
+function shapeEdges(h: number, x: number, z: number, shape: TerrainShape): number {
+  const { rim } = shape
+  if (rim.north && rim.south && rim.east && rim.west) return h + smoothstep(HALF - 90, HALF - 4, Math.max(Math.abs(x), Math.abs(z))) * 42
+  let rimEdge = -Infinity
+  let openEdge = -Infinity
+  for (const [on, d] of [[rim.north, z], [rim.south, -z], [rim.east, x], [rim.west, -x]] as const) {
+    if (on) rimEdge = Math.max(rimEdge, d)
+    else openEdge = Math.max(openEdge, d)
+  }
+  const open = smoothstep(HALF - OPEN_EDGE_BLEND, HALF, openEdge)
+  const rimmed = h + smoothstep(HALF - 90, HALF - 4, rimEdge) * 42 * (1 - open)
+  return rimmed + (Math.max(shape.outsideHeight, Math.min(rimmed, shape.outsideHeight + 1.5)) - rimmed) * open
 }
 
 /** 0 on open water, the channel and the highway; 1 well clear of them. */
@@ -216,16 +264,53 @@ export class Terrain {
   readonly heights: Float32Array
   readonly verts = GRID + 1
 
-  constructor() {
+  constructor(readonly shape: TerrainShape = STANDALONE_SHAPE) {
     this.heights = new Float32Array(this.verts * this.verts)
     for (let j = 0; j < this.verts; j++) {
       for (let i = 0; i < this.verts; i++) {
-        this.heights[j * this.verts + i] = rawHeight(-HALF + i * CELL, -HALF + j * CELL)
+        this.heights[j * this.verts + i] = rawHeight(-HALF + i * CELL, -HALF + j * CELL, shape)
       }
     }
   }
 
+  /** True inside the square (beyond its play limit) or on the host world's land. */
+  inSquare(x: number, z: number): boolean {
+    return Math.abs(x) <= HALF && Math.abs(z) <= HALF
+  }
+
+  /** True where the player and land vehicles may go, `margin` metres in from the edge. */
+  inBounds(x: number, z: number, margin = 0): boolean {
+    const lim = PLAY_LIMIT - margin
+    if (Math.abs(x) <= lim && Math.abs(z) <= lim) return true
+    const outside = this.shape.outside
+    if (!outside) return false
+    if (outside.contains(x, z, margin)) return true
+    const { rim } = this.shape
+    const edge = HALF + 1
+    if (Math.abs(x) <= lim && ((!rim.north && z > 0 && z <= edge) || (!rim.south && z < 0 && z >= -edge))) return true
+    if (Math.abs(z) <= lim && ((!rim.east && x > 0 && x <= edge) || (!rim.west && x < 0 && x >= -edge))) return true
+    return false
+  }
+
+  /** Moves `p` back inside the bounds when a step took it out (to `fromX`, `fromZ`, or the square's limit). */
+  confine(p: { x: number; z: number }, fromX: number, fromZ: number): void {
+    if (this.inBounds(p.x, p.z)) return
+    if (!this.shape.outside) {
+      p.x = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.x))
+      p.z = Math.max(-PLAY_LIMIT, Math.min(PLAY_LIMIT, p.z))
+      return
+    }
+    if (this.inBounds(p.x, fromZ)) p.z = fromZ
+    else if (this.inBounds(fromX, p.z)) p.x = fromX
+    else {
+      p.x = fromX
+      p.z = fromZ
+    }
+  }
+
   heightAt(x: number, z: number): number {
+    const outside = this.shape.outside
+    if (outside && (Math.abs(x) > HALF || Math.abs(z) > HALF)) return outside.heightAt(x, z)
     const gx = Math.min(GRID - 1e-4, Math.max(0, (x + HALF) / CELL))
     const gz = Math.min(GRID - 1e-4, Math.max(0, (z + HALF) / CELL))
     const i = Math.floor(gx)

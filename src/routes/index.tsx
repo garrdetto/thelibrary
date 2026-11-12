@@ -44,8 +44,8 @@ const navigation = [
   { id: 'lyrics', label: 'Lyric studio', icon: Music2 },
   { id: 'voice', label: 'Voice generator', icon: AudioLines },
 ] as const
-const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxplains2: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers }
-const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxplains2: 'room', fairway: 'room', party: 'room', angler: 'room', rackreel: 'room', pingpong: 'room', darts: 'room' }
+const moduleIcons: Record<ModuleId, typeof Trophy> = { park: Sparkles, park2: RollerCoaster, sandlot3d: Trophy, sandlot: Trophy, botwreck: Bot, pool: CircleDot, racing: Flag, oval: Gauge, chess: Crown, checkers: Disc, '2048': Hash, helicopter: Plane, shorttrack: Gauge, maplestreet: House, foxlake: House, fairway: Flag, darts: Target, demoderby: CarFront, bushleague: Trophy, alphabet: Keyboard, tetradrop: Layers, bubbles: CircleDot, sudoku: Grid3x3, minesweeper: Bomb, blockhead: Crosshair, songmaker: Mic2, party: PartyPopper, angler: Fish, rackreel: Crosshair, county: Plane, hood: House, lens: ScanFace, foodchain: Fish, keep: Castle, giant: Hand, cookies: Cookie, hotdog: Store, pingpong: CircleDot, proskater: Trophy, recall: Layers }
+const inviteKinds: Partial<Record<ModuleId, InviteKind>> = { sandlot: 'room', chess: 'room', checkers: 'room', pool: 'pool', racing: 'link', oval: 'link', shorttrack: 'room', maplestreet: 'room', foxlake: 'room', fairway: 'room', party: 'room', angler: 'room', rackreel: 'room', pingpong: 'room', darts: 'room' }
 const activityLabels: Record<string, string> = Object.fromEntries(learningModules.map(item => [item.id, `In ${item.title}`]))
 const playLinks = embeddedModules.filter(item => isModuleAvailable(item.id)).map(item => ({ id: item.id, label: item.title, src: item.src }))
 type StudioView = StudioMode | 'voice'
@@ -135,7 +135,7 @@ function Studio() {
     if (window.location.hash === '#park') setView('park')
     if (window.location.hash === '#park2') setView('park2')
     if (window.location.hash === '#lens') setView('lens')
-    const playHash = window.location.hash.replace(/^#module-/, '')
+    const playHash = window.location.hash.replace(/^#module-/, '').replace(/^foxplains2$/, 'foxlake')
     if (window.location.hash.startsWith('#module-') && isPlayId(playHash)) setView(playHash)
   }, [])
 

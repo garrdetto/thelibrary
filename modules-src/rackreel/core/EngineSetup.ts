@@ -41,6 +41,9 @@ export interface TrunkCollider {
   max: Vector3
 }
 
+/** What `queryTrunks` returns when nothing is near. Emptying the reused list instead would drop its storage, and the next query would allocate it again. */
+const NO_TRUNKS: TrunkCollider[] = []
+
 export interface EngineContext {
   engine: AbstractEngine
   /** Which Babylon engine is drawing: WebGPU when the browser has it, WebGL2 otherwise or with `?gpu=webgl`. */
@@ -228,10 +231,12 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
       return octree
     },
     queryTrunks(x, z, radius) {
-      trunkHits.length = 0
-      if (!collisionOctree) return trunkHits
+      if (!collisionOctree) return NO_TRUNKS
       const found = collisionOctree.intersects(trunkProbe.set(x, 5, z), radius + 1, false)
-      for (let i = 0; i < found.length; i++) trunkHits.push(found.data[i])
+      const count = found.length
+      if (count === 0) return NO_TRUNKS
+      for (let i = 0; i < count; i++) trunkHits[i] = found.data[i]
+      trunkHits.length = count
       return trunkHits
     },
     enableTerrainOctree(ground) {

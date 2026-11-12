@@ -6,7 +6,7 @@ import type { GameEvent, GearEffects, Look, Profile, Slot } from '../shared/Econ
 import { SPECIES_BY_ID } from '../systems/LootTableManager'
 import type { SpeciesId } from '../systems/LootTableManager'
 
-const API = new URL('/api/rackreel', location.href).href
+const API_PATH = '/api/rackreel'
 
 export interface EarnReport {
   paid: number
@@ -31,6 +31,15 @@ export class Progress {
   /** The shared top three for every high-score category (guests keep theirs in this tab only). */
   board: RecordBoard = {}
   private playClock = 0
+  /** `/api/rackreel` for this game's profile: standalone Rack & Reel, or a game with its own profile (Fox Lake). */
+  private api = new URL(API_PATH, location.href).href
+
+  /** Keeps this player's profile apart from standalone Rack & Reel's (a fresh start in that game). */
+  useProfile(game: string): void {
+    const u = new URL(API_PATH, location.href)
+    u.searchParams.set('game', game)
+    this.api = u.href
+  }
 
   /** The name high-score entries are filed under for this player. */
   get scoreName(): string {
@@ -39,7 +48,7 @@ export class Progress {
 
   async loadRecords(): Promise<RecordBoard> {
     try {
-      const res = await fetch(`${API}?records=1`, { credentials: 'same-origin' })
+      const res = await fetch(`${API_PATH}?records=1`, { credentials: 'same-origin' })
       if (res.ok) {
         const data = await res.json() as { records?: RecordBoard }
         const server = data.records ?? {}
@@ -98,7 +107,7 @@ export class Progress {
 
   private async loadProfile(): Promise<void> {
     try {
-      const res = await fetch(API, { credentials: 'same-origin' })
+      const res = await fetch(this.api, { credentials: 'same-origin' })
       if (!res.ok) return
       const data = await res.json() as { signedIn: boolean; username?: string; profile?: unknown }
       if (data.signedIn && data.profile) {
@@ -113,7 +122,7 @@ export class Progress {
   }
 
   private async post(body: Record<string, unknown>): Promise<PostReply> {
-    const res = await fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    const res = await fetch(this.api, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
     const data = await res.json().catch(() => ({})) as PostReply
     if (!res.ok) return { error: data.error ?? 'The trading post could not be reached.' }
     return data

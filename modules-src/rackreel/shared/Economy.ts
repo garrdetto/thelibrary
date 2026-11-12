@@ -56,8 +56,23 @@ export const ITEMS: Item[] = [
   { id: 'pants-waders', name: 'Chest waders', slot: 'pants', group: 'Clothing', price: 220, blurb: 'Wade half again as deep to reach better water.' },
   { id: 'pants-blaze', name: 'Blaze-orange bibs', slot: 'pants', group: 'Clothing', price: 110, blurb: 'Insulated blaze bib overalls for cold stands.' },
   { id: 'pants-khaki', name: 'Khakis', slot: 'pants', group: 'Clothing', price: 50, blurb: 'Light cotton chinos for the dock and the boat.' },
+  { id: 'jacket-tee-white', name: 'White T-shirt', slot: 'jacket', group: 'Clothing', price: 20, blurb: 'A plain white cotton tee.' },
+  { id: 'jacket-tee-black', name: 'Black T-shirt', slot: 'jacket', group: 'Clothing', price: 20, blurb: 'A plain black cotton tee.' },
+  { id: 'jacket-tee-navy', name: 'Navy T-shirt', slot: 'jacket', group: 'Clothing', price: 20, blurb: 'A plain navy cotton tee.' },
+  { id: 'jacket-tee-heather', name: 'Grey T-shirt', slot: 'jacket', group: 'Clothing', price: 20, blurb: 'A plain heather grey cotton tee.' },
+  { id: 'jacket-hoodie-grey', name: 'Grey hoodie', slot: 'jacket', group: 'Clothing', price: 45, blurb: 'A soft pullover hoodie, hood down.' },
+  { id: 'jacket-hoodie-black', name: 'Black hoodie', slot: 'jacket', group: 'Clothing', price: 45, blurb: 'A soft black pullover hoodie, hood down.' },
+  { id: 'jacket-oxford', name: 'Oxford shirt', slot: 'jacket', group: 'Clothing', price: 55, blurb: 'A light blue button-down, tucked in.' },
+  { id: 'jacket-polo', name: 'Green polo', slot: 'jacket', group: 'Clothing', price: 35, blurb: 'A forest green pique polo.' },
+  { id: 'jacket-denim', name: 'Denim jacket', slot: 'jacket', group: 'Clothing', price: 90, blurb: 'A classic blue trucker jacket over a white tee.' },
+  { id: 'jacket-sweater', name: 'Cable-knit sweater', slot: 'jacket', group: 'Clothing', price: 75, blurb: 'A cream wool crewneck for cool evenings.' },
+  { id: 'cap-none', name: 'No hat', slot: 'cap', group: 'Clothing', price: 0, blurb: 'Bare-headed.' },
+  { id: 'pants-darkjeans', name: 'Dark jeans', slot: 'pants', group: 'Clothing', price: 50, blurb: 'Dark indigo denim.' },
+  { id: 'pants-chinos', name: 'Chinos', slot: 'pants', group: 'Clothing', price: 45, blurb: 'Tan cotton chinos with a leather belt.' },
+  { id: 'pants-joggers', name: 'Joggers', slot: 'pants', group: 'Clothing', price: 35, blurb: 'Heather grey sweatpants with cuffed ankles.' },
+  { id: 'pants-shorts', name: 'Cargo shorts', slot: 'pants', group: 'Clothing', price: 30, blurb: 'Khaki cargo shorts for summer days.' },
   { id: 'pack-none', name: 'No pack', slot: 'pack', group: 'Clothing', price: 0, blurb: 'Travel light.' },
-  { id: 'pack-hunting', name: 'Hunting pack', slot: 'pack', group: 'Clothing', price: 140, blurb: 'Room for a thermos and drag rope: +10% pay for deer.' },
+  { id: 'pack-hunting', name: 'Hunting pack', slot: 'pack', group: 'Clothing', price: 140, blurb: 'Room for a thermos and a drag rope.' },
 ]
 
 export const ITEM_BY_ID: Record<string, Item> = Object.fromEntries(ITEMS.map((i) => [i.id, i]))
@@ -117,6 +132,11 @@ export interface Profile {
   appearance: Appearance
   /** The `APPEARANCE_VERSION` this player last set their look at; lower than the current one earns a single free change. */
   fitted: number
+  /**
+   * True once this account's cash has moved into the one wallet it shares with Fox Plains and Fox Lake. From then on
+   * the server keeps the balance in the shared world and `cash` is only filled in for the response.
+   */
+  walletMerged?: boolean
 }
 
 export function defaultProfile(): Profile {
@@ -154,6 +174,7 @@ export function normalizeProfile(raw: unknown): Profile {
     appearance: normalizeAppearance(r.appearance),
     fitted: Math.max(0, Math.floor(num(r.fitted))),
   }
+  if (r.walletMerged === true) p.walletMerged = true
   refillTasks(p)
   return p
 }
@@ -170,7 +191,10 @@ export function refillTasks(p: Profile): void {
 const FISH_BASE: Record<string, number> = { muskie: 90, walleye: 30, pike: 40, smallmouth: 34, perch: 12 }
 
 /** Every carp arrowed on a bowfishing trip pays this flat bounty, whatever its size, with no cooldown between fish. */
-export const CARP_BOUNTY = 5
+export const CARP_BOUNTY = 10
+/** Every deer tagged (buck or doe) and every bear pays a flat bounty, whatever its size. */
+export const DEER_BOUNTY = 50
+export const BEAR_BOUNTY = 100
 
 /** Milliseconds that must pass since the last catch or tag of the same kind before the next one pays. */
 export function eventCooldown(type: GameEvent['type'], species: string): number {
@@ -178,16 +202,14 @@ export function eventCooldown(type: GameEvent['type'], species: string): number 
   return species === 'carp' ? 0 : FISH_COOLDOWN_MS
 }
 
-export function payoutFor(e: GameEvent, sizeShare: number, loadout: Loadout): number {
+export function payoutFor(e: GameEvent, sizeShare: number, _loadout: Loadout): number {
   const share = Math.max(0, Math.min(1.5, sizeShare))
   if (e.type === 'fish') {
     if (e.species === 'carp') return CARP_BOUNTY
     const base = FISH_BASE[e.species] ?? 20
     return Math.round(base * (1 + share * 1.5) * (e.trophy ? 2 : 1) * (e.legendary ? 3 : 1))
   }
-  const base = e.species === 'blackbear' ? 260 : e.doe ? 60 : 180
-  const pack = loadout.pack === 'pack-hunting' ? 1.1 : 1
-  return Math.round(base * (e.doe ? 1 : 1 + share * 1.5) * (e.trophy ? 1.8 : 1) * (e.legendary ? 3 : 1) * pack)
+  return e.species === 'blackbear' ? BEAR_BOUNTY : DEER_BOUNTY
 }
 
 export interface EarnResult {
@@ -332,10 +354,10 @@ export type Look = Record<LookSlot, string>
  * catalog. Whatever is picked is given free and worn.
  */
 export const CHARACTER_CHOICES: Record<LookSlot, string[]> = {
-  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas', 'jacket-angler', 'jacket-tank'],
+  jacket: ['jacket-camo', 'jacket-flannel', 'jacket-canvas', 'jacket-angler', 'jacket-tank', 'jacket-tee-white', 'jacket-tee-black', 'jacket-tee-navy', 'jacket-tee-heather', 'jacket-hoodie-grey', 'jacket-polo'],
   vest: ['vest-blaze', 'vest-none'],
-  cap: ['cap-blaze', 'cap-camo', 'cap-bucket', 'cap-backwards', 'cap-visor', 'cap-cowboy'],
-  pants: ['pants-camo', 'pants-jeans', 'pants-khaki'],
+  cap: ['cap-blaze', 'cap-camo', 'cap-bucket', 'cap-backwards', 'cap-visor', 'cap-cowboy', 'cap-none'],
+  pants: ['pants-camo', 'pants-jeans', 'pants-khaki', 'pants-darkjeans', 'pants-chinos', 'pants-joggers', 'pants-shorts'],
   pack: ['pack-none'],
 }
 

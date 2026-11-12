@@ -20,11 +20,13 @@ export function guestKey(): string {
 
 export const guestName = () => `Guest-${guestKey().slice(0, 5)}`;
 
-export function worldEndpoint(): string | null {
+/** The shared world's socket; `world` picks another world on the same rules (Fox Lake has its own town). */
+export function worldEndpoint(world?: 'foxlake'): string | null {
   if (location.protocol !== 'https:' && location.protocol !== 'http:') return null;
   const u = new URL('/api/maplestreet', location.href);
   u.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
   u.searchParams.set('guest', guestKey());
+  if (world) u.searchParams.set('world', world);
   return u.toString();
 }
 

@@ -2,11 +2,12 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { HttpError, json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
-import { ensureRackreelTables, loadCategoryBoard, loadRackreelProfile, loadRecordBoard, resetRecordBoard, saveRackreelProfile, saveRecords } from '../rackreel.js'
+import { ensureRackreelTables, loadCategoryBoard, loadRackreelProfile, loadRecordBoard, resetRecordBoard, saveRackreelProfile, saveRackreelProfileIfUnchanged, saveRecords } from '../rackreel.js'
+import { adjustSharedWallet } from '../shared-wallet.js'
 import { canResetRecords } from '../records.js'
 import { CATEGORY_BY_ID } from '../../../modules-src/rackreel/shared/Records'
 import { ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, eventCooldown, makeover, purchase } from '../../../modules-src/rackreel/shared/Economy'
-import type { GameEvent, Slot } from '../../../modules-src/rackreel/shared/Economy'
+import type { GameEvent, Profile, Slot } from '../../../modules-src/rackreel/shared/Economy'
 import { RECORD_BOOK_SEED, SPECIES_BY_ID, classify } from '../../../modules-src/rackreel/systems/LootTableManager'
 import type { SpeciesId } from '../../../modules-src/rackreel/systems/LootTableManager'
 
@@ -43,6 +44,46 @@ function plausible(species: SpeciesId, value: number, legendary: boolean): boole
   return legendary || value >= t.min * 0.95
 }
 
+const MONEY_ACTIONS = new Set(['fish', 'game', 'tick', 'buy', 'makeover'])
+
+/** Fox Lake keeps a profile of its own per player (a fresh start), stored beside the standalone one. */
+function profileKey(userId: string, foxLake: boolean): string {
+  return foxLake ? `foxlake:${userId}` : userId
+}
+
+/**
+ * Fox Lake's profile: its cash is the player's Fox Lake town money (one balance with the town's jobs and the casino).
+ * The first time, the profile's own
+ * cash moves into it (exactly once: the profile is claimed with a conditional save before the credit, and put back
+ * if the credit fails). Returns null when the shared world can't be reached; an unmerged profile then keeps using
+ * its own cash.
+ */
+async function sharedBalance(env: Env, user: { id: string; username: string }, profile: Profile, updatedAt: number): Promise<{ balance: number | null; updatedAt: number }> {
+  const key = profileKey(user.id, true)
+  if (profile.walletMerged) {
+    const read = await adjustSharedWallet(env, user, 0)
+    return { balance: read.ok ? read.balance : null, updatedAt }
+  }
+  const cash = profile.cash
+  const now = Math.max(Date.now(), updatedAt + 1)
+  const claimed: Profile = { ...profile, cash: 0, walletMerged: true }
+  if (!await saveRackreelProfileIfUnchanged(env, key, claimed, updatedAt, now)) {
+    const fresh = await loadRackreelProfile(env, key, user.username)
+    Object.assign(profile, fresh.profile)
+    if (!profile.walletMerged) return { balance: null, updatedAt: fresh.updatedAt }
+    const read = await adjustSharedWallet(env, user, 0)
+    return { balance: read.ok ? read.balance : null, updatedAt: fresh.updatedAt }
+  }
+  const moved = await adjustSharedWallet(env, user, cash)
+  if (!moved.ok) {
+    await saveRackreelProfile(env, key, user.username, profile, now + 1)
+    return { balance: null, updatedAt: now + 1 }
+  }
+  profile.cash = 0
+  profile.walletMerged = true
+  return { balance: moved.balance, updatedAt: now }
+}
+
 export async function rackreel(request: Request, env: Env) {
   await ensureRackreelTables(env)
   if (request.method === 'GET') {
@@ -56,12 +97,18 @@ export async function rackreel(request: Request, env: Env) {
     }
     const user = await currentUser(request, env)
     if (!user) return json({ signedIn: false })
-    const { profile } = await loadRackreelProfile(env, user.id, user.username)
-    return json({ signedIn: true, username: user.username, profile })
+    const foxLake = params.get('game') === 'foxlake'
+    const loaded = await loadRackreelProfile(env, profileKey(user.id, foxLake), user.username)
+    const profile = loaded.profile
+    if (!foxLake) return json({ signedIn: true, username: user.username, profile, wallet: 'own' })
+    const { balance } = await sharedBalance(env, user, profile, loaded.updatedAt)
+    return json({ signedIn: true, username: user.username, profile: { ...profile, cash: balance ?? (profile.walletMerged ? 0 : profile.cash) }, wallet: profile.walletMerged ? (balance === null ? 'unavailable' : 'shared') : 'own' })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   requireSameOrigin(request)
   const user = await requireUser(request, env, 'Sign in to save your cash and gear.')
+  const foxLake = new URL(request.url).searchParams.get('game') === 'foxlake'
+  const key = profileKey(user.id, foxLake)
   const input = actions.parse(await readJson(request, 2000))
   const now = Date.now()
   if (input.action === 'reset-records') {
@@ -69,7 +116,14 @@ export async function rackreel(request: Request, env: Env) {
     await resetRecordBoard(env, input.category)
     return json({ reset: true, records: {} })
   }
-  const { profile, updatedAt } = await loadRackreelProfile(env, user.id, user.username)
+  const loaded = await loadRackreelProfile(env, key, user.username)
+  const profile = loaded.profile
+  const shared = foxLake ? await sharedBalance(env, user, profile, loaded.updatedAt) : { balance: null, updatedAt: loaded.updatedAt }
+  const updatedAt = shared.updatedAt
+  const merged = foxLake && profile.walletMerged === true
+  if (merged && shared.balance === null && MONEY_ACTIONS.has(input.action)) throw new HttpError(503, 'Your Fox Lake wallet can\'t be reached right now. Try again in a moment.')
+  const before = merged ? (shared.balance ?? 0) : profile.cash
+  if (merged) profile.cash = before
   let paid = 0
   let completed: { id: string; text: string; reward: number }[] = []
   let records: { board: Record<string, unknown>; placed: Record<string, number> } | null = null
@@ -107,6 +161,16 @@ export async function rackreel(request: Request, env: Env) {
     const error = equip(profile, input.slot as Slot, input.item)
     if (error) throw new HttpError(400, error)
   }
-  await saveRackreelProfile(env, user.id, user.username, profile, now)
-  return json({ profile, paid, completed, ...(records ? { records: records.board, placed: records.placed } : {}) })
+  let balance = profile.cash
+  if (merged) {
+    const delta = profile.cash - before
+    if (delta !== 0) {
+      const applied = await adjustSharedWallet(env, user, delta)
+      if (!applied.ok) throw new HttpError(applied.reason === 'refused' ? 400 : 503, applied.reason === 'refused' ? 'Not enough cash.' : 'Your Fox Lake wallet can\'t be reached right now. Try again in a moment.')
+      balance = applied.balance
+    } else balance = before
+    profile.cash = 0
+  }
+  await saveRackreelProfile(env, key, user.username, profile, now)
+  return json({ profile: { ...profile, cash: balance }, paid, completed, wallet: merged ? 'shared' : 'own', ...(records ? { records: records.board, placed: records.placed } : {}) })
 }

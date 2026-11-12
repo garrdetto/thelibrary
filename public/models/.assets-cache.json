@@ -770,13 +770,13 @@
   "preset": "static"
  },
  "maplestreet/vehicles/atv.glb": {
-  "hash": "51f739a6d6117c59f39179b833452c76eba42a63",
-  "before": 145968,
-  "after": 16888,
-  "primsBefore": 19,
-  "primsAfter": 8,
-  "matsBefore": 8,
-  "matsAfter": 4,
+  "hash": "b448a28f2d8d9d947638e6aa012c9efd925f7840",
+  "before": 770304,
+  "after": 420016,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
   "preset": "rig"
  },
  "maplestreet/vehicles/coupe.glb": {
@@ -790,23 +790,23 @@
   "preset": "rig"
  },
  "maplestreet/vehicles/golfcart.glb": {
-  "hash": "153ff9ba0e57024da55b6f2a56ad0396d7b011f3",
-  "before": 170148,
-  "after": 16824,
-  "primsBefore": 20,
-  "primsAfter": 8,
-  "matsBefore": 10,
-  "matsAfter": 4,
+  "hash": "dd9d003f70f3f8e4158402cdfbd71a6383762852",
+  "before": 747580,
+  "after": 401268,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
   "preset": "rig"
  },
  "maplestreet/vehicles/mower.glb": {
-  "hash": "3cc4b78176af614fbe02d19954888ba9d67849da",
-  "before": 142856,
-  "after": 15600,
-  "primsBefore": 18,
-  "primsAfter": 7,
-  "matsBefore": 8,
-  "matsAfter": 3,
+  "hash": "645f9a7026e852d0db37563dd557639aa5f64d9a",
+  "before": 791772,
+  "after": 420028,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
   "preset": "rig"
  },
  "maplestreet/vehicles/hdtruck.glb": {
@@ -820,13 +820,13 @@
   "preset": "rig"
  },
  "maplestreet/vehicles/trailer.glb": {
-  "hash": "51dc1fa9e0f106f8a3fd6f06db6a4cdfff778a3c",
-  "before": 83676,
-  "after": 14236,
-  "primsBefore": 10,
-  "primsAfter": 5,
-  "matsBefore": 7,
-  "matsAfter": 3,
+  "hash": "752f774746f1c4251ed5f04e536a9e0157d01df9",
+  "before": 616616,
+  "after": 351912,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
   "preset": "rig"
  },
  "maplestreet/vehicles/sedan.glb": {
@@ -840,13 +840,13 @@
   "preset": "rig"
  },
  "maplestreet/vehicles/zeroturn.glb": {
-  "hash": "44565ef6f15746d3ef9de1d48e35ba64163250aa",
-  "before": 182432,
-  "after": 18624,
-  "primsBefore": 18,
-  "primsAfter": 7,
-  "matsBefore": 8,
-  "matsAfter": 3,
+  "hash": "807f4a74e479b741602ccc97f4ad13da2e863111",
+  "before": 809928,
+  "after": 478040,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
   "preset": "rig"
  },
  "maplestreet/vehicles/truck.glb": {
