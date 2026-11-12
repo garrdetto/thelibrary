@@ -75,8 +75,10 @@ export const BLACKJACK = {
   seats: [-0.9, -0.45, 0, 0.45, 0.9].map((a): Seat => ({ x: 116 + Math.sin(a) * 2.55, y: CASINO.floorY + CHAIR_HIP, z: 78.6 - Math.cos(a) * 2.55, yaw: -a })),
 } as const
 
-export const BET_STEPS = [0.4, 0.8, 1.2, 2, 4, 8, 20, 40, 80] as const
-export const BLACKJACK_BETS = [5, 10, 25, 50, 100, 250, 500] as const
+/** Slot bets per spin: the house limit is $5. */
+export const BET_STEPS = [0.4, 0.8, 1.2, 2, 3, 4, 5] as const
+/** Blackjack opening bets: the table limit is $200 (doubling or splitting can put more on the felt). */
+export const BLACKJACK_BETS = [5, 10, 25, 50, 100, 200] as const
 
 export function insideCasino(x: number, z: number, margin = 0): boolean {
   return x > CASINO.x0 - margin && x < CASINO.x1 + margin && z > CASINO.z0 - margin && z < CASINO.z1 + margin

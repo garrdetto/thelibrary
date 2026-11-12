@@ -44,6 +44,16 @@ export class CasinoHost {
     buildCasino(root, mats, physics)
   }
 
+  /** Where the money is: the online Fox Lake world (by account or this browser's guest key) or the solo town. */
+  configureWallet(online: boolean, guest: string): void {
+    this.client.configure(online, guest)
+  }
+
+  /** The town's balance for this player; not taken while seated, where the cage keeps the count until you stand. */
+  syncMoney(money: number): void {
+    if (!this.session) this.client.sync(money)
+  }
+
   async ready(host: GameHost): Promise<void> {
     this.host = host
     const scene = host.ctx.scene

@@ -134,16 +134,18 @@ export class WorldServer {
   }
 
   /**
-   * The merged wallet (Rack & Reel and Fox Lake share a member's Fox Plains money): applies `delta` to the
-   * member's balance and saves. Returns the new balance, or null when a debit would overdraw.
+   * A player's town money paid or charged from outside the world (Fox Lake's lake country and casino use its
+   * world's money): applies `delta` to the balance and saves. Returns the new balance, or null when a debit would overdraw. With `create` false
+   * (guests), a player who never joined has no wallet: returns undefined.
    */
-  async wallet(identity: Identity, delta: number): Promise<number | null> {
+  async wallet(identity: Identity, delta: number, create = true): Promise<number | null | undefined> {
     await this.ready();
     const logic = this.logic!;
     if (!logic.hasAccount(identity.key)) {
       const stored = await this.storage.get<Account>(`${K.acct}${identity.key}`);
       if (stored && !logic.hasAccount(identity.key)) logic.addAccount(stored);
     }
+    if (!create && !logic.hasAccount(identity.key)) return undefined;
     const balance = logic.adjustMoney(identity.key, identity.name, delta);
     if (balance !== null) await this.save();
     return balance;

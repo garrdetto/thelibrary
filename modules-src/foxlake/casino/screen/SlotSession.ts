@@ -52,7 +52,6 @@ export class SlotSession {
     this.reels.setStops(display.def.strips.map((s) => Math.floor(s.length / 3)))
     this.ui = this.buildUi()
     addEventListener('keydown', this.keyHandler)
-    this.client.refill()
     this.draw()
     this.display.drawTopper(this.bet)
   }
@@ -96,7 +95,7 @@ export class SlotSession {
     el.dataset.hostModal = '1'
     el.innerHTML = `
       <div class="slot-bar">
-        <div class="slot-cell"><span>${this.client.fun ? 'FUN MONEY' : 'WALLET'}</span><b data-credit></b></div>
+        <div class="slot-cell"><span>${this.client.label}</span><b data-credit></b></div>
         <button type="button" data-act="less" aria-label="Lower bet">−</button>
         <div class="slot-cell"><span>BET</span><b data-bet></b></div>
         <button type="button" data-act="more" aria-label="Raise bet">+</button>
@@ -104,7 +103,7 @@ export class SlotSession {
         <button type="button" data-act="max">MAX BET</button>
         <button type="button" class="leave" data-act="leave">STAND UP</button>
       </div>
-      <p class="slot-help">Space spins · Esc stands up${this.client.fun ? ' · Sign in to play for your wallet' : ''}</p>`
+      <p class="slot-help">Space spins · Esc stands up</p>`
     el.addEventListener('click', (e) => {
       const act = (e.target as HTMLElement).closest('button')?.dataset.act
       if (act === 'spin') void this.spin()
@@ -183,7 +182,7 @@ export class SlotSession {
   }
 
   /**
-   * Debug and screenshots: plays a fun-money outcome that starts `kind` (found
+   * Debug and screenshots: plays an unpaid outcome that starts `kind` (found
    * by spinning the math here; no wallet, no server, nothing paid).
    */
   async demo(kind: Feature['kind']): Promise<void> {

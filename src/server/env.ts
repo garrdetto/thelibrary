@@ -28,6 +28,7 @@ export type Env = {
   DB: D1Database
   FILES: KVNamespace
   MAPLE_WORLD?: DurableObjectNamespace
+  FOX_LAKE_WORLD?: DurableObjectNamespace
   ANGLER_LAKE?: DurableObjectNamespace
   BUSHLEAGUE_MATCH?: DurableObjectNamespace
   HOOD_LOT?: DurableObjectNamespace

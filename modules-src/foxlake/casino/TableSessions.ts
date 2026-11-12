@@ -38,7 +38,6 @@ export class BlackjackSession {
   private readonly keys = (e: KeyboardEvent) => { if (e.code === 'Escape') this.close() }
 
   constructor(private readonly client: CasinoClient, private readonly toast: (t: string) => void, private readonly onLeave: () => void) {
-    this.client.refill()
     this.el = document.createElement('div')
     this.el.id = 'bj-ui'
     this.el.dataset.hostModal = '1'
@@ -86,7 +85,7 @@ export class BlackjackSession {
           <div class="bj-row hand${live && v!.active === i ? ' active' : ''}"><span class="bj-label">YOU ${h.total || ''}${results[i] ? ` · ${results[i].toUpperCase()}` : ''}</span><div class="bj-cards">${h.cards.map(cardHtml).join('')}</div>${h.bet ? `<span class="bj-chip">${money(h.bet)}</span>` : ''}</div>`).join('')}
       </div>
       <div class="bj-bar">
-        <div class="slot-cell"><span>${this.client.fun ? 'FUN MONEY' : 'WALLET'}</span><b>${this.client.balance === null ? '—' : money(this.client.balance)}</b></div>
+        <div class="slot-cell"><span>${this.client.label}</span><b>${this.client.balance === null ? '—' : money(this.client.balance)}</b></div>
         <div class="bj-chips">${BLACKJACK_BETS.map((b) => `<button type="button" class="chip-btn${b === this.bet ? ' on' : ''}" data-chip="${b}" ${live ? 'disabled' : ''}>${b}</button>`).join('')}</div>
         <button type="button" data-act="deal" ${live || this.busy ? 'disabled' : ''}>DEAL</button>
         <button type="button" data-act="hit" ${can('hit') ? '' : 'disabled'}>HIT</button>
@@ -116,7 +115,7 @@ export class BarSession {
     this.el = document.createElement('div')
     this.el.id = 'bar-ui'
     this.el.dataset.hostModal = '1'
-    this.el.innerHTML = `<div class="bj-bar"><div class="slot-cell"><span>${this.client.fun ? 'FUN MONEY' : 'WALLET'}</span><b data-credit></b></div>
+    this.el.innerHTML = `<div class="bj-bar"><div class="slot-cell"><span>${this.client.label}</span><b data-credit></b></div>
       <button type="button" data-act="beer">ORDER A BEER · ${money(BAR.beerPrice)}</button>
       <button type="button" class="leave" data-act="leave">STAND UP</button></div>`
     this.el.addEventListener('click', (e) => {

@@ -3,7 +3,7 @@
  * styles, each in two original themes. A spin resolves completely here: the
  * base spin, then whatever feature it starts, every step recorded so the
  * screen can replay it. The server runs this with a cryptographic RNG; the
- * same code plays guests' fun-money spins in the browser.
+ * same code plays solo-town spins in the browser.
  *
  * Styles (rules researched from the real cabinets; themes, names, symbols and
  * art are this game's own):

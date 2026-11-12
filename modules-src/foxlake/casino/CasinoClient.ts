@@ -1,67 +1,85 @@
 /**
- * The casino cage: signed-in players play for their wallet through
- * /api/casino (spins and hands decided on the server); guests and solo play
- * run the same rules here with fun money that is never saved.
+ * The casino cage. Everyone plays with their own Fox Lake money, the same
+ * balance their town jobs and the lake country pay into: online, spins, hands
+ * and beers are decided and paid on the server (`/api/casino`, signed-in
+ * players by account, guests by this browser's town key); playing the town on
+ * this device (solo), the same rules run here against the solo town's money.
  */
 import { cryptoRng } from './math/rng'
 import { MACHINE_BY_ID, playSpin, type MachineState, type SpinResult } from './math/machines'
 import { act, deal, publicView, type Action, type BlackjackView, type Table } from './math/blackjack'
 import { BAR } from './CasinoLayout'
 
-const FUN_START = 1000
+const GUEST_HEADER = 'x-foxlake-guest'
 
 export class CasinoClient {
   signedIn = false
-  /** The wallet (signed in) or fun money (guests). */
+  /** The player's Fox Lake money (null until it is known). */
   balance: number | null = null
-  private readonly local = typeof location === 'undefined' || !/^https?:$/.test(location.protocol) || new URLSearchParams(location.search).has('solo')
+  private online = false
+  private guest = ''
   private readonly rng = cryptoRng()
   private readonly states = new Map<string, MachineState>()
   private table: Table | null = null
 
-  get fun(): boolean {
-    return !this.signedIn
+  /** Online (the shared Fox Lake world) or solo, and this browser's town guest key. */
+  configure(online: boolean, guest: string): void {
+    this.online = online
+    this.guest = guest
+  }
+
+  /** What the credit meter is called. */
+  get label(): string {
+    return this.signedIn ? 'WALLET' : 'TOWN CASH'
+  }
+
+  /** The town's word on the balance (account updates from the world). */
+  sync(money: number): void {
+    this.balance = money
+  }
+
+  private headers(json = false): Record<string, string> {
+    const h: Record<string, string> = { [GUEST_HEADER]: this.guest }
+    if (json) h['content-type'] = 'application/json'
+    return h
   }
 
   async refresh(): Promise<void> {
-    if (this.local) {
-      this.balance ??= FUN_START
-      return
-    }
+    if (!this.online) return
     try {
-      const res = await fetch('/api/casino', { credentials: 'same-origin', cache: 'no-store' })
+      const res = await fetch('/api/casino', { credentials: 'same-origin', cache: 'no-store', headers: this.headers() })
       const data = (await res.json()) as { signedIn?: boolean; balance?: number | null }
       this.signedIn = Boolean(data.signedIn)
-      this.balance = this.signedIn ? data.balance ?? null : this.balance ?? FUN_START
+      if (typeof data.balance === 'number') this.balance = data.balance
     } catch {
-      this.balance ??= FUN_START
+      /* the town's account update still sets the balance */
     }
   }
 
   private async post<T>(body: Record<string, unknown>): Promise<T> {
-    const res = await fetch('/api/casino', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+    const res = await fetch('/api/casino', { method: 'POST', credentials: 'same-origin', headers: this.headers(true), body: JSON.stringify(body) })
     const data = (await res.json().catch(() => ({}))) as T & { error?: string }
     if (!res.ok) throw new Error(data.error ?? 'The cage is closed right now.')
     return data
   }
 
+  private take(amount: number, what: string): void {
+    if (this.balance === null) throw new Error('Your money hasn\'t loaded yet. Try again in a moment.')
+    if (this.balance < amount) throw new Error(`Not enough money ${what}.`)
+    this.balance = Math.round((this.balance - amount) * 100) / 100
+  }
+
   async spin(machine: string, bet: number): Promise<SpinResult> {
-    if (this.signedIn) {
+    if (this.online) {
       const r = await this.post<{ result: SpinResult; balance: number | null }>({ action: 'spin', machine, bet })
       if (r.balance !== null) this.balance = r.balance
       return r.result
     }
-    const def = MACHINE_BY_ID[machine]
-    if ((this.balance ?? 0) < bet) throw new Error('Out of fun money. Stand up and sit back down for a fresh $1,000.')
-    const result = playSpin(def, bet, this.rng, this.states.get(machine) ?? {})
+    this.take(bet, 'for that bet')
+    const result = playSpin(MACHINE_BY_ID[machine], bet, this.rng, this.states.get(machine) ?? {})
     this.states.set(machine, result.state)
-    this.balance = Math.round(((this.balance ?? 0) - bet + result.totalWin) * 100) / 100
+    this.balance = Math.round(((this.balance ?? 0) + result.totalWin) * 100) / 100
     return result
-  }
-
-  /** Tops guests back up when they sit down broke. */
-  refill(): void {
-    if (this.fun && (this.balance ?? 0) < 1) this.balance = FUN_START
   }
 
   meters(machine: string): MachineState['meters'] {
@@ -69,32 +87,35 @@ export class CasinoClient {
   }
 
   async drink(): Promise<void> {
-    if (this.signedIn) {
+    if (this.online) {
       const r = await this.post<{ balance: number }>({ action: 'drink' })
       this.balance = r.balance
       return
     }
-    if ((this.balance ?? 0) < BAR.beerPrice) throw new Error('Not enough fun money for a beer.')
-    this.balance = (this.balance ?? 0) - BAR.beerPrice
+    this.take(BAR.beerPrice, 'for a beer')
   }
 
   async blackjack(action: 'deal' | Action, bet = 0): Promise<BlackjackView> {
-    if (this.signedIn) {
+    if (this.online) {
       const r = await this.post<{ table: BlackjackView; balance: number | null }>(action === 'deal' ? { action: 'bj-deal', bet } : { action: 'bj-act', act: action })
       if (r.balance !== null) this.balance = r.balance
-      else if (action === 'deal') this.balance = (this.balance ?? 0) - bet
+      else if (action === 'deal' && this.balance !== null) this.balance -= bet
       return r.table
     }
     if (action === 'deal') {
-      if ((this.balance ?? 0) < bet) throw new Error('Not enough fun money for that bet.')
-      this.balance = (this.balance ?? 0) - bet
+      this.take(bet, 'for that bet')
       this.table = deal(bet, this.rng, this.table?.shoe ?? null)
     } else {
       if (!this.table) throw new Error('Place a bet first.')
+      const before = structuredClone(this.table)
       const stake = act(this.table, action, this.rng)
       if (stake === null) throw new Error('You can\'t do that with this hand.')
-      if (stake > (this.balance ?? 0)) throw new Error('Not enough fun money to cover that.')
-      this.balance = (this.balance ?? 0) - stake
+      try {
+        this.take(stake, 'to cover that')
+      } catch (error) {
+        this.table = before
+        throw error
+      }
     }
     if (this.table.phase === 'settled') this.balance = (this.balance ?? 0) + this.table.payout
     return publicView(this.table)

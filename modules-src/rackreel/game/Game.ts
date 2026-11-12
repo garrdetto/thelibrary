@@ -149,6 +149,8 @@ export interface GameOptions {
    * them at the rack (1 or 2 there), carries only that one, and swaps only back at the rack.
    */
   gearAtCabin?: boolean
+  /** A profile of this game's own on the server (cash, gear, character) instead of standalone Rack & Reel's. */
+  profile?: string
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -284,6 +286,7 @@ export class Game {
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly options: GameOptions = {}) {
     this.ext = options.extension ?? null
+    if (options.profile) this.progress.useProfile(options.profile)
   }
 
   /** The running game as a host world sees it. */

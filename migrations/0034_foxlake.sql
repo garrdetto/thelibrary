@@ -10,3 +10,8 @@ CREATE TABLE IF NOT EXISTS casino_machine_state (
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, machine)
 );
+CREATE TABLE IF NOT EXISTS foxlake_world (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);

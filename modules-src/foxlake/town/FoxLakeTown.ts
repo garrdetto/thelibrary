@@ -9,10 +9,9 @@
  * town's cars run on Fox Plains' Rapier physics (same handling), which also
  * holds the lake country as a heightfield so a car can drive out to the lake.
  *
- * It joins the one shared Fox Plains world (/api/maplestreet), so lots,
- * houses, money and neighbors are shared with classic Fox Plains; players out
- * in the country are hidden from classic, which has no land there. The shared
- * world's clock drives the sky.
+ * It joins Fox Lake's own shared world (/api/maplestreet?world=foxlake): the
+ * same rules and town as Fox Plains, but its own players, lots, houses and
+ * money, so everyone starts fresh here. The shared world's clock drives the sky.
  */
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
@@ -31,14 +30,14 @@ import type { TreeSpot } from '../fp/world/Town'
 import { Downtown } from '../fp/world/Downtown'
 import { Houses } from '../fp/world/Houses'
 import { OfflineTransport } from '../../maplestreet/src/net/OfflineTransport'
-import { WorldTransport, worldEndpoint } from '../../maplestreet/src/net/WorldTransport'
+import { WorldTransport, guestKey, worldEndpoint } from '../../maplestreet/src/net/WorldTransport'
 import type { NetStatus, Transport } from '../../maplestreet/src/net/Transport'
 import { randomId, store } from '../../maplestreet/src/core/Storage'
 import type { ClientMsg, MowStroke, PlayerSnap, ServerMsg } from '../../maplestreet/shared/Protocol'
 import type { BuildOp, LotState } from '../../maplestreet/shared/BuildRules'
 import type { Account } from '../../maplestreet/shared/Economy'
 import { STARTER_TRUCK, VEHICLES } from '../../maplestreet/shared/Economy'
-import { ROADS, ROAD_NAMES, SHOP_DOORS, SHOP_RADIUS, SPAWN, makeLots, type LotDef } from '../../maplestreet/shared/WorldLayout'
+import { ROADS, ROAD_NAMES, SHOP_DOORS, SHOP_RADIUS, SPAWN, lotPrice, makeLots, type LotDef } from '../../maplestreet/shared/WorldLayout'
 import { decodeCells, gameDays } from '../../maplestreet/shared/Mowing'
 import { Cars } from './Cars'
 import { Neighbors } from './Neighbors'
@@ -56,7 +55,6 @@ const CULL_REACH = 640
 const TOWN_CELL = 192
 const MAX_STEPS = 4
 const NET_HZ = 15
-const CLASSIC = 'Fox Plains (classic)'
 const GARAGE_KEY = 'KeyV'
 const HOME_KEY = 'KeyH'
 const GO_HOME_COOLDOWN_MS = 15 * 60 * 1000
@@ -114,6 +112,7 @@ export class FoxLakeTown implements GameExtension {
   private readonly _deck = new Vector3()
   private extraKind: string | null = null
   private hudAcc = 0
+  private buildSeq = 0
   /** Far town cells and far lake-country stands are switched off (the fog hides them). */
   private readonly culler = new RegionCuller(CULL_REACH)
   private readonly casino = new CasinoHost()
@@ -238,7 +237,7 @@ export class FoxLakeTown implements GameExtension {
     }
     try {
       if (this.opts.mode === 'world') {
-        const url = worldEndpoint()
+        const url = worldEndpoint('foxlake')
         if (!url) throw new Error('The shared world needs this page to be opened from the site')
         await attempt(new WorldTransport(url))
       } else await attempt(new OfflineTransport())
@@ -252,6 +251,7 @@ export class FoxLakeTown implements GameExtension {
       this.host.hud.toast(`${(e as Error).message || 'Connection failed'}: playing the town on your own on this device`)
       await attempt(new OfflineTransport())
     }
+    this.casino.configureWallet(this.net instanceof WorldTransport, guestKey())
     this.opts.onRoom?.(this.net instanceof WorldTransport ? 'WORLD' : null, this.net?.label ?? 'Solo')
   }
 
@@ -289,7 +289,7 @@ export class FoxLakeTown implements GameExtension {
             this.cars.parkAtHome(home)
             if (!this.host.playing || zoneAt(this.host.player.z) === 'town') this.standAtHome(home)
             this.host.hud.toast(`Welcome home to Fox Lake, ${m.account.name}. Lot ${home.id} is right where you left it.`)
-          } else this.host.hud.toast(`Welcome to Fox Lake, ${m.account.name}! Lots are bought in ${CLASSIC}; the lake is down East Ave and the county road.`)
+          } else this.host.hud.toast(`Welcome to Fox Lake, ${m.account.name}! Walk onto a lot for sale to buy it; the lake is down East Ave and the county road.`)
         }
         break
       }
@@ -339,6 +339,7 @@ export class FoxLakeTown implements GameExtension {
     this.account = acc
     this.cars.restyle(acc)
     this.hud.setAccount(acc, this.host.progress.signedIn)
+    this.casino.syncMoney(acc.money)
   }
 
   private homeLot(): (LotState & LotDef) | null {
@@ -513,6 +514,17 @@ export class FoxLakeTown implements GameExtension {
 
   // ------------------------------------------------------------ interactions
 
+  /** The lot for sale you're standing on, on foot in town. */
+  private lotForSale(): LotState | null {
+    if (this.host.driving || zoneAt(this.host.player.z) !== 'town') return null
+    const t = this.townPosition()
+    for (const lot of Object.values(this.houses.world?.lots ?? {})) {
+      if (lot.owner) continue
+      if (t.x >= lot.x && t.x <= lot.x + lot.w && t.z >= lot.z && t.z <= lot.z + lot.d) return lot
+    }
+    return null
+  }
+
   private nearDoor() {
     const t = this.townPosition()
     let best: (typeof SHOP_DOORS)[number] | null = null
@@ -533,15 +545,23 @@ export class FoxLakeTown implements GameExtension {
     if (seat) return seat
     const door = this.nearDoor()
     if (door) return door.kind === 'clothing' ? `E — ${door.name}: try on outfits` : `E — ${door.name}`
+    const lot = this.lotForSale()
+    if (lot) return `E — Buy lot ${lot.id} for $${lotPrice(lot).toLocaleString()}`
     return ''
   }
 
   interact(): boolean {
     if (zoneAt(this.host.player.z) === 'town' && this.casino.interact()) return true
     const door = zoneAt(this.host.player.z) === 'town' ? this.nearDoor() : null
-    if (!door) return false
-    if (door.kind === 'clothing') this.host.openWardrobe()
-    else this.host.hud.toast(`${door.name} is open in ${CLASSIC} for now. Your money is the same in both.`)
+    if (door) {
+      if (door.kind === 'clothing') this.host.openWardrobe()
+      else this.host.hud.toast(`${door.name} isn't open in Fox Lake yet.`)
+      return true
+    }
+    const lot = this.lotForSale()
+    if (!lot) return false
+    if ((this.account?.money ?? 0) < lotPrice(lot)) this.host.hud.toast(`Lot ${lot.id} costs $${lotPrice(lot).toLocaleString()}. Mow lawns and hunt and fish the lake country to save up.`, 'warn')
+    else this.send({ t: 'build', seq: ++this.buildSeq, op: { op: 'buyLot', lotId: lot.id } })
     return true
   }
 
@@ -580,7 +600,7 @@ export class FoxLakeTown implements GameExtension {
   private goHome(): void {
     const home = this.homeLot()
     if (!home) {
-      this.host.hud.toast(`You don't have a home yet. Lots are bought in ${CLASSIC}.`)
+      this.host.hud.toast(`You don't have a home yet. Walk onto a lot for sale in town to buy one.`)
       return
     }
     const key = `maplestreet/go-home/${this.account?.id ?? 'guest'}`

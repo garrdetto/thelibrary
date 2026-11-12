@@ -1,4 +1,4 @@
-import type { Env } from './env'
+import type { DurableObjectNamespace, Env } from './env'
 import { HttpError } from './http'
 import { requireUser } from './auth'
 
@@ -8,13 +8,15 @@ export async function requireMapleAdmin(request: Request, env: Env, message = 'S
   return user
 }
 
-/** Tells the shared-world Durable Object to re-register published items and vehicles. */
+/** Tells the shared-world Durable Objects (Fox Plains and Fox Lake) to re-register published items and vehicles. */
 export async function refreshWorldCatalog(env: Env) {
-  if (!env.MAPLE_WORLD) return
-  try {
-    const stub = env.MAPLE_WORLD.get(env.MAPLE_WORLD.idFromName('maple-street'))
-    await stub.fetch(new Request('https://maple-world/catalog', { method: 'POST' }))
-  } catch (error) {
-    console.error('Fox Plains catalog refresh failed', error)
-  }
+  const worlds: [DurableObjectNamespace | undefined, string][] = [[env.MAPLE_WORLD, 'maple-street'], [env.FOX_LAKE_WORLD, 'fox-lake']]
+  await Promise.all(worlds.map(async ([ns, name]) => {
+    if (!ns) return
+    try {
+      await ns.get(ns.idFromName(name)).fetch(new Request('https://maple-world/catalog', { method: 'POST' }))
+    } catch (error) {
+      console.error(`${name} catalog refresh failed`, error)
+    }
+  }))
 }

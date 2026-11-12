@@ -2,7 +2,7 @@ import handler from '@tanstack/react-start/server-entry'
 import { handleApi } from './server/api'
 import type { Env } from './server/env'
 
-export { MapleStreetWorld } from './server/maplestreet-world'
+export { FoxLakeWorld, MapleStreetWorld } from './server/maplestreet-world'
 export { AnglerLake } from './server/angler-lake'
 export { BushLeagueMatch } from './server/bushleague-match'
 export { HoodLot } from './server/hood-lot'
