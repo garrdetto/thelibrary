@@ -46,6 +46,14 @@ function subtract(a: Rect, b: Rect): Rect[] {
 const subtractAll = (a: Rect, cuts: Rect[]) => cuts.reduce<Rect[]>((pieces, c) => pieces.flatMap(p => subtract(p, c)), [a]);
 
 function rng(seed: number) { return () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }; }
+/**
+ * Every lit material asks the lamp pool whether it is ready, once a frame for each of its sub-meshes, and the pool
+ * answers by checking its own proxy material again. Unfrozen, that material builds and joins its list of shader
+ * defines on every one of those checks; they never change after the first, so it is frozen.
+ */
+function freezeLampProxy(lamps: ClusteredLightContainer) {
+  (lamps as unknown as { _proxyMaterial?: { freeze(): void } })._proxyMaterial?.freeze();
+}
 
 const ROAD_Y = 0.02, LINE_Y = 0.032, WALK_H = 0.12, DRIVE_Y = 0.035, LAWN_Y = 0.012;
 
@@ -476,7 +484,7 @@ export class Town {
       l.shadowEnabled = false;
       pool.push(l);
     }
-    try { new ClusteredLightContainer('street-lamps', pool, scene); } catch (e) { console.warn('[foxplains2] clustered lights unavailable', e); }
+    try { freezeLampProxy(new ClusteredLightContainer('street-lamps', pool, scene)); } catch (e) { console.warn('[foxplains2] clustered lights unavailable', e); }
     this.lightPool = pool;
   }
 
