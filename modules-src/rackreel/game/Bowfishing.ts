@@ -97,6 +97,10 @@ const BLURT_GAP = 44
 /** Share of routine hits and misses he says something about; the big moments in `ALWAYS_SAID` always get a line. */
 const CHEER_SHARE = 0.5
 const ALWAYS_SAID: ReadonlySet<CheerId> = new Set<CheerId>(['tubbed', 'crazy', 'meltdown', 'stacking', 'sendIt', 'beached'])
+/** How long a line may wait for the one he's on to end, seconds, before it's no longer worth saying (he never talks over himself): greetings and goodbyes, big moments, everyday reactions, and blurts, which never wait. */
+const PATIENCE = { greeting: 8, moment: 4, reaction: 2.5, blurt: 0 }
+/** The cheers that count as big moments. */
+const BIG_MOMENTS: ReadonlySet<CheerId> = new Set<CheerId>(['crazy', 'meltdown', 'hype', 'stacking', 'sendIt', 'beached'])
 /** He soaks in the beaching for a moment before you step off. */
 const BEACH_PAUSE = 3.6
 
@@ -395,12 +399,13 @@ export class Bowfishing {
     return null
   }
 
-  /** Wild Man says a line: shown in the HUD and, when it's recorded, heard. Returns true when the recording played. */
-  private say(line: string, force = false, clip = clipIdFor(line)): boolean {
-    if (!force && this.sayTimer > 0) return false
+  /** Wild Man says a line: shown in the HUD and, when it's recorded, heard. He says one line at a time: while he's talking, this one waits for him to finish when that's within `patience` seconds (the HUD shows it as he starts) and otherwise is only shown. Returns false when there's no recording to play. */
+  private say(line: string, patience = PATIENCE.reaction, clip = clipIdFor(line)): boolean {
     this.sayTimer = 1.4
-    this.host.hud.say(line)
-    return this.voice.say(clip)
+    const show = () => this.host.hud.say(line)
+    const spoken = this.voice.say(clip, patience, show)
+    if (spoken !== 'held') show()
+    return spoken !== 'unrecorded'
   }
 
   /** E at the camp: wait for dark, or climb aboard. Returns true when the player boards. */
@@ -418,18 +423,16 @@ export class Bowfishing {
       this.role = 'crew'
       this.slot = slot
       this.board()
-      this.say(`Climb aboard, bud. ${this.trip.name}'s callin' the shots tonight.`, true, 'line-crew')
+      this.say(`Climb aboard, bud. ${this.trip.name}'s callin' the shots tonight.`, PATIENCE.greeting, 'line-crew')
       return true
     }
     const daytime = this.host.lighting.night < NIGHT_TO_FISH
     if (daytime) this.fallNight()
     this.role = 'owner'
     this.slot = this.freeSlot() ?? 0
+    if (daytime) this.say(LINES.tour, PATIENCE.greeting)
     this.board()
-    if (daytime) {
-      this.say(LINES.tour, true)
-      this.host.hud.toast(`Wild Man's bowfishing tour: night falls at ${this.host.clock.label}.`)
-    }
+    if (daytime) this.host.hud.toast(`Wild Man's bowfishing tour: night falls at ${this.host.clock.label}.`)
     return true
   }
 
@@ -462,7 +465,7 @@ export class Bowfishing {
     if (this.role === 'owner') {
       this.shoved = !this.party
       if (this.shoved) this.pilot.depart()
-      this.say(this.party ? LINES.wait4 : LINES.board, true)
+      this.say(this.party ? LINES.wait4 : LINES.board, PATIENCE.greeting)
       this.host.announce(this.party ? 'is bowfishing with Wisco Wild Man. Room for four on the boat; meet at his launch.' : 'headed out bowfishing with Wisco Wild Man.')
     } else {
       this.host.announce('climbed aboard Wild Man\'s boat.')
@@ -498,7 +501,7 @@ export class Bowfishing {
     this.host.hud.setDraw(null, false)
     this.host.hud.setDot(false)
     this.host.hud.toast(`Night's tally: ${this.tubCount} carp, ${Math.round(this.tubPounds)} lb.`, 'big')
-    this.say(LINES.landed, true)
+    this.say(LINES.landed, PATIENCE.greeting)
     this.placeAtCamp()
     const p = this.host.player.root
     p.setParent(null)
@@ -548,11 +551,11 @@ export class Bowfishing {
       case 'KeyT':
         if (p.setting < SPEED_STEPS.length - 1) p.setting++
         p.hold = false
-        this.say(LINES.faster, true)
+        this.say(LINES.faster)
         return true
       case 'KeyG':
         if (p.setting > 0) p.setting--
-        this.say(LINES.slower, true)
+        this.say(LINES.slower)
         return true
       case 'Space':
         if (p.homeward) return true
@@ -562,7 +565,7 @@ export class Bowfishing {
       case 'KeyF': {
         if (p.homeward) return true
         const route: RouteName = p.switchRoute()
-        this.say(route === 'island' ? LINES.island : route === 'bay' ? LINES.bay : LINES.shore, true)
+        this.say(route === 'island' ? LINES.island : route === 'bay' ? LINES.bay : LINES.shore)
         return true
       }
       case 'KeyE':
@@ -573,12 +576,12 @@ export class Bowfishing {
         if (p.mode === 'docked') this.endTrip()
         else if (!p.homeward) {
           p.sendItHome()
-          if (!this.say(LINES.holdTight, true)) this.host.audio.whoop(true)
+          if (!this.say(LINES.holdTight, PATIENCE.moment)) this.voice.holler(true)
         }
         return true
       case 'KeyL': {
         this.lights = LIGHT_ORDER[(LIGHT_ORDER.indexOf(this.lights) + 1) % LIGHT_ORDER.length]
-        this.say(LINES[this.lights], true)
+        this.say(LINES[this.lights])
         this.host.audio.click()
         return true
       }
@@ -622,6 +625,7 @@ export class Bowfishing {
   update(dt: number, input: BowInput): void {
     this.clock += dt
     this.sayTimer -= dt
+    this.voice.update()
     const cam = this.ctx.camera
     const terrain = this.host.terrain
     if (this.role === 'crew' && !this.trip) {
@@ -655,7 +659,7 @@ export class Bowfishing {
       if (this.host.lighting.night < DAWN && !p.homeward) p.sendItHome()
       const events = p.update(dt, this.fightActive)
       if (events.onPlane && !p.homeward) {
-        this.say(LINES.running, true)
+        this.say(LINES.running)
         this.host.audio.whoosh()
       }
       if (events.airborne) this.yell('sendIt')
@@ -803,7 +807,7 @@ export class Bowfishing {
     if (input.shoot && input.locked) {
       if (running) {
         if (this.runSaid <= 0) {
-          this.say(LINES.running, true)
+          this.say(LINES.running)
           this.runSaid = 3
         }
       } else if (this.bow === 'drawing') this.shootQueued = true
@@ -993,8 +997,8 @@ export class Bowfishing {
     const id = chooseCheer({ kind: 'miss' })
     this.wild.celebrate(id)
     if (Math.random() >= CHEER_SHARE) return
-    if (this.nearMiss) this.say(this.nearMiss.over ? LINES.over : LINES.under, true)
-    else this.say(missLineAt(this.misses++), true)
+    if (this.nearMiss) this.say(this.nearMiss.over ? LINES.over : LINES.under)
+    else this.say(missLineAt(this.misses++))
   }
 
   private stone(carp: Carp<Specimen>): void {
@@ -1016,14 +1020,14 @@ export class Bowfishing {
     const cheerLine = this.wild.celebrate(id)
     const line = id === 'tubbed' ? tubLineAt(this.tubLines++) : cheerLine
     if (!ALWAYS_SAID.has(id) && Math.random() >= CHEER_SHARE) return
-    if (this.say(line, true)) return
-    if (id === 'crazy' || id === 'meltdown') this.host.audio.whoop(true)
-    else if (id === 'hype' || id === 'stacking' || id === 'stoned') this.host.audio.whoop(false)
+    if (this.say(line, BIG_MOMENTS.has(id) ? PATIENCE.moment : PATIENCE.reaction)) return
+    if (id === 'crazy' || id === 'meltdown') this.voice.holler(true)
+    else if (id === 'hype' || id === 'stacking' || id === 'stoned') this.voice.holler(false)
   }
 
   /** The run home: off the island and up onto the bank. */
   private yell(id: 'sendIt' | 'beached'): void {
-    if (!this.say(this.wild.celebrate(id), true)) this.host.audio.whoop(true)
+    if (!this.say(this.wild.celebrate(id), PATIENCE.moment)) this.voice.holler(true)
     this.host.audio.whoosh()
     this.blurtTimer = Math.max(this.blurtTimer, 8)
     if (id === 'beached') {
@@ -1046,7 +1050,7 @@ export class Bowfishing {
   /** Wild Man talks on his own: a blurt every so often on the water, and now and then at his camp when you're close. */
   private chatter(dt: number): void {
     this.blurtTimer -= dt
-    if (this.blurtTimer > 0 || this.sayTimer > -4) return
+    if (this.blurtTimer > 0 || this.sayTimer > -4 || this.voice.quiet < 4) return
     const p = this.pilot
     let near = this.aboard
     if (!near && !this.trip) {
@@ -1057,7 +1061,7 @@ export class Bowfishing {
       this.blurtTimer = 2
       return
     }
-    this.say(blurtAt(this.blurts++), true)
+    this.say(blurtAt(this.blurts++), PATIENCE.blurt)
     this.blurtTimer = (this.aboard ? BLURT_GAP : BLURT_GAP * 1.6) * (0.75 + Math.random() * 0.6)
   }
 
