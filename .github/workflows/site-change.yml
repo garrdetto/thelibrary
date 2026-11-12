@@ -21,6 +21,9 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write
+  checks: read
+  issues: write
 
 concurrency:
   group: site-change
@@ -41,7 +44,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 50
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Check laptop tools
@@ -74,8 +77,11 @@ jobs:
 
       # On GitHub, Claude uses the API key (or subscription token) secret. On the
       # laptop it uses the Claude account signed in there instead (`claude` → /login).
+      # GH_TOKEN lets Claude use git and gh (pull requests, branches, checks, merging);
+      # run.mjs hands it to git through a credential helper so nothing is saved to disk.
       - name: Ask Claude
         env:
+          GH_TOKEN: ${{ secrets.CLAUDE_GITHUB_TOKEN || github.token }}
           ANTHROPIC_API_KEY: ${{ runner.environment != 'self-hosted' && secrets.ANTHROPIC_API_KEY || '' }}
           CLAUDE_CODE_OAUTH_TOKEN: ${{ runner.environment != 'self-hosted' && secrets.CLAUDE_CODE_OAUTH_TOKEN || '' }}
           SITE_CHANGES_LOCAL_LOGIN: ${{ runner.environment == 'self-hosted' && '1' || '' }}

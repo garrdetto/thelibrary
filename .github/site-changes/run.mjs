@@ -13,7 +13,8 @@ const SYSTEM = `You are Claude, working on "the library" website, whose reposito
 
 How to work:
 - Read AGENTS.md first and follow its conventions, platform rules and site rules.
-- Do what the administrator asks completely, in the code. Do not commit, push, or create branches: the workflow opens a pull request with your edits after you finish, the "modules" check builds it, and merges to main deploy the site automatically.
+- Do what the administrator asks completely. For a change to the site's code, edit the files in this checkout and leave them uncommitted: the workflow opens a pull request with your edits after you finish, the "modules" check builds it, and merges to main deploy the site automatically.
+- You have full git and GitHub access: \`git\` (fetch, checkout, merge, commit, push) and \`gh\` (\`gh pr\`, \`gh run\`, \`gh api\`) are signed in to the repository (\`$GITHUB_REPOSITORY\`) through GH_TOKEN. When the administrator asks about existing pull requests, branches, checks, merges or workflow runs, do that work directly: e.g. fetch a pull request's branch, merge origin/main into it and resolve every conflict keeping both sides' intent, rebuild and retest, push, wait for its "modules" check (\`gh api repos/$GITHUB_REPOSITORY/commits/<sha>/check-runs\`, job logs with \`gh run view --log-failed\`), fix failures, then squash-merge (\`gh pr merge <n> --squash\`). Never push straight to main; changes reach main through pull requests. When you're done with other branches, run \`git checkout main\` so this checkout is back where it started; any uncommitted edits left there are published as a new pull request.
 - If you changed code, run \`pnpm build\` and fix every error before you finish.
 - If the message is a question, or needs no code change, answer it without editing files.
 - If the request is unclear, or would destroy data (dropping tables, deleting accounts or records, removing secrets), make no edits and ask one short clarifying question instead.
@@ -35,9 +36,10 @@ Your final message is shown to the administrator as your chat reply. Write it in
 
 const TOOLS = [
   'Read', 'Edit', 'MultiEdit', 'Write', 'Glob', 'Grep', 'TodoWrite', 'WebSearch', 'WebFetch',
-  'Bash(pnpm:*)', 'Bash(bun:*)', 'Bash(node:*)', 'Bash(blender:*)', 'Bash(npx tsc:*)', 'Bash(ls:*)', 'Bash(git diff:*)', 'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git show:*)',
-  'Bash(pnpm *)', 'Bash(bun *)', 'Bash(node *)', 'Bash(blender *)', 'Bash(npx tsc *)', 'Bash(ls *)', 'Bash(git diff *)', 'Bash(git status *)', 'Bash(git log *)', 'Bash(git show *)',
+  'Bash', 'NotebookEdit', 'Task', 'Agent',
 ].join(',')
+
+const GIT_CREDENTIAL_HELPER = '!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f'
 
 function loadState() {
   return existsSync(STATE) ? JSON.parse(readFileSync(STATE, 'utf8')) : {}
@@ -108,6 +110,9 @@ function describeTool(name, input = {}) {
     if (/meshy-generate\.mjs/.test(command)) return /--dry-run|--list-animations|--help/.test(command) ? 'Planning a 3D model' : 'Generating a 3D model with Meshy (this takes a few minutes)'
     if (/\bpnpm (run )?assets\b/.test(command)) return 'Optimising 3D models'
     if (/^blender\b/.test(command)) return 'Working on a model in Blender'
+    if (/\bgh pr merge\b|\/merge\b/.test(command)) return 'Merging a pull request'
+    if (/\bgh (pr|api|run)\b/.test(command)) return 'Checking GitHub'
+    if (/^git (push|fetch|pull|merge|checkout|commit)\b/.test(command)) return `Running git ${command.split(/\s+/)[1]}`
     return `Running ${command.split('\n')[0].slice(0, 90)}`
   }
   if (name === 'WebSearch' || name === 'WebFetch') return 'Looking something up'
@@ -143,7 +148,8 @@ async function askClaude() {
   const job = await response.json()
   const localLogin = process.env.SITE_CHANGES_LOCAL_LOGIN === '1'
   const billing = process.env.ANTHROPIC_API_KEY ? 'api' : process.env.CLAUDE_CODE_OAUTH_TOKEN || localLogin ? 'subscription' : null
-  saveState({ job, billing })
+  const startHead = git('rev-parse', 'HEAD')
+  saveState({ job, billing, startHead })
 
   if (job.mode === 'revert') {
     await report({ status: 'running', progress: 'Undoing the earlier change' })
@@ -159,7 +165,14 @@ async function askClaude() {
     env.SITE_URL = new URL(CALLBACK_URL).origin
     env.SITE_MESHY_TOKEN = `sc.${JOB_ID}.${createHmac('sha256', SITE_CHANGES_SECRET).update(`meshy:${JOB_ID}`).digest('hex')}`
   }
-  for (const key of ['SITE_CHANGES_SECRET', 'GH_TOKEN', 'GITHUB_TOKEN', 'CALLBACK_URL', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) delete env[key]
+  for (const key of ['SITE_CHANGES_SECRET', 'GITHUB_TOKEN', 'CALLBACK_URL', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']) delete env[key]
+  if (env.GH_TOKEN) {
+    const index = Number(env.GIT_CONFIG_COUNT ?? 0) || 0
+    env[`GIT_CONFIG_KEY_${index}`] = 'credential.https://github.com.helper'
+    env[`GIT_CONFIG_VALUE_${index}`] = GIT_CREDENTIAL_HELPER
+    env.GIT_CONFIG_COUNT = String(index + 1)
+    env.GIT_TERMINAL_PROMPT = '0'
+  }
   env.BASH_DEFAULT_TIMEOUT_MS ??= String(10 * 60 * 1000)
   env.BASH_MAX_TIMEOUT_MS ??= String(30 * 60 * 1000)
   const args = ['-p', buildPrompt(job), '--output-format', 'stream-json', '--verbose', '--permission-mode', 'acceptEdits', '--allowedTools', TOOLS, '--append-system-prompt', SYSTEM, '--max-turns', '150']
@@ -205,7 +218,7 @@ async function askClaude() {
 
   const reply = (result.final?.result ?? result.lastText ?? '').trim()
   const costUsd = typeof result.final?.total_cost_usd === 'number' ? result.final.total_cost_usd : undefined
-  saveState({ job, billing, reply, costUsd })
+  saveState({ job, billing, startHead, reply, costUsd })
   if (!result.final || result.final.is_error || result.code !== 0) {
     const why = result.final?.subtype === 'error_max_turns' ? 'Claude ran out of steps before finishing.'
       : localLogin && !result.final ? 'Claude couldn\'t start on your laptop. Open Ubuntu, run `claude`, sign in with /login, then try again.'
@@ -222,6 +235,15 @@ async function publish() {
   const base = { costUsd, billing }
   git('config', 'user.name', 'Claude (site changes)')
   git('config', 'user.email', '41898283+github-actions[bot]@users.noreply.github.com')
+  if (state.startHead && git('rev-parse', 'HEAD') !== state.startHead) {
+    run('git', ['merge', '--abort'])
+    run('git', ['rebase', '--abort'])
+    const back = run('git', ['checkout', state.startHead])
+    if (!back.ok) {
+      run('git', ['checkout', '--force', state.startHead])
+      run('git', ['clean', '-fd'])
+    }
+  }
 
   if (job.mode === 'revert') {
     const reverted = run('git', ['revert', '--no-edit', job.target])
