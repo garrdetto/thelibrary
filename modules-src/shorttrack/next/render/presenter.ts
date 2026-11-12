@@ -39,6 +39,8 @@ import { TIERS, settingsOf, tierOf, toneMapOf } from './quality'
 import type { Tier, TierSettings } from './quality'
 import { CrowdPlugin, SurfaceDetail, crowdPhases } from './surface'
 import { Debris } from './debris'
+import { SparkStreaks } from './sparks'
+import type { SparkField } from './sparkField'
 import { bakeEnvironmentCube, bakeSky, directionAt, makeSkyFunction, skyDome } from './sky'
 import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
 import type { SkyParams } from './sky'
@@ -111,6 +113,8 @@ export type ThreeInputs = {
   ground: [number, number, number]
   /** The night light tower glows: Phase 3 hangs a spot light at each one. */
   towers: THREE.Object3D[]
+  /** Contact sparks, simulated by the module and drawn here as streaks. */
+  sparks?: SparkField
 }
 
 /** Parts whose reach is under this share of their distance are left out of the main view (a few pixels at 720p). */
@@ -152,6 +156,7 @@ export class Presenter {
   private readonly bridge: ThreeBridge
   private readonly mirror: RenderTargetTexture
   private readonly mirrorQuad: Mesh
+  private readonly sparks: SparkStreaks
   private inputs: ThreeInputs | null = null
   private dome: Mesh | null = null
   private pixelRatio = 1
@@ -222,6 +227,7 @@ export class Presenter {
       this.mirrorDrawn = this.status.frames
     })
     this.mirrorQuad = this.makeMirrorQuad()
+    this.sparks = new SparkStreaks(scene, materialIp, SCENE_LAYER)
   }
 
   /**
@@ -421,6 +427,7 @@ export class Presenter {
     this.bridge.detail = VIEW_DETAIL * Math.tan((t.camera.fov * Math.PI) / 360) / Math.tan(Math.PI / 6)
     this.bridge.sync(t.scene)
     this.debris?.update()
+    if (t.sparks) this.sparks.draw(t.sparks, t.camera, this.engine.getRenderHeight())
     this.camera.copyFrom(t.camera)
     this.syncLights(t, o)
     this.syncFog(t)

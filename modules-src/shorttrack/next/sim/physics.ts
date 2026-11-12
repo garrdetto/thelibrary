@@ -153,7 +153,8 @@ export function walls(w: World, c: SimCar): void {
     c.vz *= fr
     c.av += 0.14 * ((worst.pz - c.z) * jx - (worst.px - c.x) * jz)
     if (vn > 1.2) impact(w, c, worst.px, worst.pz, -nx, -nz, vn, 'wall')
-  } else if (speedOf(c) > 12 && w.rand() < 0.25) w.events.push({ t: 'sparks', x: worst.px, y: T.heightAt(worst.s, HW) + 0.4, z: worst.pz, n: 2, vx: c.vx, vz: c.vz })
+    else if (speedOf(c) > 12) w.events.push({ t: 'sparks', x: worst.px, y: T.heightAt(worst.s, HW) + 0.4, z: worst.pz, n: 1, vx: c.vx, vz: c.vz, nx: -nx, nz: -nz, k: 'wall' })
+  } else if (speedOf(c) > 12 && w.rand() < 0.25) w.events.push({ t: 'sparks', x: worst.px, y: T.heightAt(worst.s, HW) + 0.4, z: worst.pz, n: 2, vx: c.vx, vz: c.vz, nx: -nx, nz: -nz, k: 'wall' })
 }
 
 export function collidePair(w: World, a: SimCar, b: SimCar): void {
@@ -214,7 +215,7 @@ export function collidePair(w: World, a: SimCar, b: SimCar): void {
     if (hit > 2.2) {
       impact(w, a, best.px, best.pz, best.nx, best.nz, hit, 'car')
       impact(w, b, best.px, best.pz, -best.nx, -best.nz, hit, 'car')
-    } else if (speedOf(a) > 10 && w.rand() < 0.3) w.events.push({ t: 'sparks', x: best.px, y: T.heightAt(a.tp.s, a.tp.lat) + 0.5, z: best.pz, n: 2, vx: a.vx, vz: a.vz })
+    } else if (speedOf(a) > 10 && w.rand() < 0.3) w.events.push({ t: 'sparks', x: best.px, y: T.heightAt(a.tp.s, a.tp.lat) + 0.5, z: best.pz, n: 2, vx: a.vx, vz: a.vz, nx: best.nx, nz: best.nz, k: 'car' })
   }
 }
 
@@ -226,7 +227,7 @@ export function impact(w: World, c: SimCar, px: number, pz: number, ix: number, 
   const amt = Math.max(0, v - (kind === 'car' ? 2 : 1.3)) * (kind === 'car' ? 2.6 : 3.3) * CFG.damageScale
   if (c.local && amt > 0.3) damageCar(w, c, [lx, 0.55, lz], [dlx, 0, dlz], amt, zone)
   if (kind === 'car' && !c.local) return
-  w.events.push({ t: 'impact', id: c.id, x: px, y: w.track.heightAt(c.tp.s, c.tp.lat) + 0.45, z: pz, v, vx: c.vx, vz: c.vz })
+  w.events.push({ t: 'impact', id: c.id, x: px, y: w.track.heightAt(c.tp.s, c.tp.lat) + 0.45, z: pz, v, vx: c.vx, vz: c.vz, nx: ix, nz: iz, k: kind })
 }
 
 export function damageCar(w: World, c: SimCar, lp: [number, number, number], dir: [number, number, number], amt: number, zone: Zone): void {
