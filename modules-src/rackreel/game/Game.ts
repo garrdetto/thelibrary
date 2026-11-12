@@ -72,7 +72,7 @@ import { Lighting } from '../world/Lighting'
 import { buildHighway } from '../world/Highway'
 import { Weeds } from '../world/Weeds'
 
-type Tool = 'rod' | 'rifle'
+type Tool = 'rod' | 'rifle' | 'none'
 export type PlayerMode = 'foot' | 'vehicle' | 'climb' | 'stand' | 'crew' | 'bowfish'
 
 /** What a host world (Fox Lake) can reach in the running game. */
@@ -104,6 +104,10 @@ export interface GameHost {
   enterVehicle(v: Vehicle): void
   /** Opens the wardrobe (outfits from the Rack & Reel catalog). */
   openWardrobe(): void
+  /** Sits the player down at `at` (the seat, at hip height) facing `facing`, or stands them back up (null). They can't walk while seated. */
+  setPerch(perch: { at: Vector3; facing: number } | null): void
+  /** Holds the camera at `eye` looking at `target` (a slot machine screen, a card table), or hands it back (null). */
+  setCameraShot(shot: { eye: Vector3; target: Vector3 } | null): void
   /** Adds a mesh to the sun's moving shadow casters near the player. */
   addCaster(mesh: AbstractMesh): void
   removeCaster(mesh: AbstractMesh): void
@@ -140,6 +144,11 @@ export interface GameOptions {
   extension?: GameExtension
   /** Wild Man's tours run at any hour (Fox Lake). */
   bowfishAnyHour?: boolean
+  /**
+   * The rod and the rifle live on the cabin's gear rack (Fox Lake): the player heads out empty-handed, takes one of
+   * them at the rack (1 or 2 there), carries only that one, and swaps only back at the rack.
+   */
+  gearAtCabin?: boolean
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -204,6 +213,12 @@ export class Game {
   private heroClock = 0
   private heroLight: DirectionalLight | null = null
   private tool: Tool = 'rod'
+  /** A host world's seat (a bar stool, a slot machine chair): the player sits there and doesn't walk. */
+  private perch: { at: Vector3; facing: number } | null = null
+  /** A host world's fixed camera (a slot machine screen, the blackjack table). */
+  private cameraShot: { eye: Vector3; target: Vector3 } | null = null
+  /** With `gearAtCabin`: the one tool the player took from the rack (null until they take one). */
+  private carried: 'rod' | 'rifle' | null = null
   private keys = new Set<string>()
   private leftDown = false
   private rightDown = false
@@ -298,6 +313,17 @@ export class Game {
       teleport: (at, facing) => game.placeOnFoot(at, facing),
       enterVehicle: (v) => game.enterVehicle(v),
       openWardrobe: () => game.openPanel('wardrobe', null),
+      setPerch: (perch) => {
+        game.perch = perch
+        if (perch) {
+          game.foot.copyFrom(perch.at).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
+          game.facing = perch.facing
+          game.velocity.setAll(0)
+        }
+      },
+      setCameraShot: (shot) => {
+        game.cameraShot = shot
+      },
       addCaster: (mesh) => { if (!game.casters.includes(mesh)) game.casters.push(mesh) },
       removeCaster: (mesh) => {
         const i = game.casters.indexOf(mesh)
@@ -368,6 +394,7 @@ export class Game {
       announce: (text) => this.online.announce(text),
       tripEnded: (at, facing) => {
         this.mode = 'foot'
+        this.restoreCarried()
         this.foot.copyFrom(at)
         this.facing = facing
         this.velocity.setAll(0)
@@ -789,8 +816,8 @@ export class Game {
       if (e.repeat) return
       if (this.mode === 'bowfish' && this.bowfish.key(e.code)) return
       if (this.mode === 'bowfish' && (e.code === 'KeyR' || e.code === 'KeyI' || e.code === 'KeyF')) return
-      if (e.code === 'Digit1') this.setTool('rod')
-      else if (e.code === 'Digit2') this.setTool('rifle')
+      if (e.code === 'Digit1') this.pickTool('rod')
+      else if (e.code === 'Digit2') this.pickTool('rifle')
       else if (e.code === 'KeyE') this.interact()
       else if (e.code === 'KeyC') this.crouch = !this.crouch
       else if (e.code === 'KeyR' && this.fishing.state === 'bite') this.fishing.setHook()
@@ -862,6 +889,7 @@ export class Game {
     root.setEnabled(true)
     this.avatar.setVisible(true)
     this.mode = 'foot'
+    this.restoreCarried()
     this.deckSeat = null
     this.crewOf = null
     this.crewBoat = null
@@ -893,6 +921,7 @@ export class Game {
     root.setEnabled(true)
     this.avatar.setVisible(true)
     this.mode = 'foot'
+    this.restoreCarried()
     this.deckSeat = null
     this.anchorLine.setEnabled(false)
     this.velocity.setAll(0)
@@ -940,6 +969,33 @@ export class Game {
     return this.rightDown || this.scopeLock
   }
 
+  /** 1 or 2. With `gearAtCabin` the rod and rifle are only taken (and swapped) at the cabin's gear rack. */
+  private pickTool(tool: 'rod' | 'rifle'): void {
+    if (!this.options.gearAtCabin) {
+      this.setTool(tool)
+      return
+    }
+    const name = tool === 'rod' ? 'rod and reel' : 'rifle'
+    if (this.mode === 'foot' && this.cabin.spotNear(this.foot, 2.4) === 'rack') {
+      if (this.carried === tool) return
+      const had = this.carried
+      this.carried = tool
+      this.setTool(tool)
+      this.hud.toast(had ? `You hang the ${had === 'rod' ? 'rod' : 'rifle'} back on the rack and take the ${name}.` : `You take the ${name} off the rack.`)
+      return
+    }
+    if (this.carried === tool) {
+      if (this.tool !== tool) this.setTool(tool)
+      return
+    }
+    this.hud.toast(this.carried ? `You're carrying the ${this.carried === 'rod' ? 'rod and reel' : 'rifle'}. The ${name} is on the gear rack at the cabin: swap there.` : `Your ${name} is on the gear rack at the cabin. Go grab it there.`, 'warn')
+  }
+
+  /** Puts the carried tool back in hand after a vehicle or boat ride (with `gearAtCabin`). */
+  private restoreCarried(): void {
+    if (this.options.gearAtCabin) this.setTool(this.carried ?? 'none')
+  }
+
   private setTool(tool: Tool): void {
     this.scopeLock = false
     if (this.fishing.busy && tool !== 'rod') this.fishing.cancel()
@@ -949,6 +1005,12 @@ export class Game {
     }
     this.tool = tool
     this.hud.setTool(tool)
+  }
+
+  /** A vehicle wants the rifle put away: with `gearAtCabin` it is stowed (not swapped for a rod the player never took). */
+  private stowRifle(): void {
+    if (this.tool !== 'rifle') return
+    this.setTool(this.options.gearAtCabin ? 'none' : 'rod')
   }
 
   private interact(): void {
@@ -982,6 +1044,7 @@ export class Game {
       }
       this.avatar.root.parent = null
       this.mode = 'foot'
+      this.restoreCarried()
       this.deckSeat = null
       this.anchorLine.setEnabled(false)
       this.foot.copyFrom(spot)
@@ -1033,8 +1096,7 @@ export class Game {
 
   private enterVehicle(v: Vehicle): void {
     if (this.fishing.busy) this.fishing.cancel()
-    if (v.kind === 'ATV' && this.tool === 'rifle') this.setTool('rod')
-    if (this.tool === 'rifle') this.setTool('rod')
+    this.stowRifle()
     this.vehicles.enter(v)
     this.mode = 'vehicle'
     this.deckSeat = v.anchored ? 0 : null
@@ -1160,6 +1222,7 @@ export class Game {
     this.avatar.root.setParent(null)
     this.avatar.root.rotationQuaternion = null
     this.mode = 'foot'
+    this.restoreCarried()
     this.crewOf = null
     this.crewBoat = null
     this.velocity.setAll(0)
@@ -1228,6 +1291,10 @@ export class Game {
     }
     if (this.fishing.state === 'landing' || this.fishing.state === 'reeling' || this.fishing.state === 'nibble') return
     const v = this.vehicles.active
+    if (this.tool === 'none') {
+      if (this.options.gearAtCabin && !this.carried && this.mode === 'foot') this.hud.toast('Your rod and rifle are on the gear rack at the cabin. Take one there with 1 or 2.')
+      return
+    }
     if (this.tool === 'rod') {
       if (this.mode === 'climb' || this.mode === 'stand') {
         this.hud.toast('Climb down to fish. The stand is for the rifle.', 'warn')
@@ -1603,7 +1670,8 @@ export class Game {
     if (!bowfishing) this.ctx.setAds(this.ads > 0.55 ? (this.ads - 0.55) / 0.45 : 0, this.progress.effects.scopeZoom)
     this.gruntCooldown = Math.max(0, this.gruntCooldown - dt)
     void this.progress.update(dt, active && !this.panels.open)
-    if (this.mode === 'foot') {
+    if (this.mode === 'foot' && this.perch) this.moveSpeed = 0
+    else if (this.mode === 'foot') {
       this.walk(dt, active, sprint)
       this.checkDrowning()
     } else if (this.mode === 'climb') this.climb(dt)
@@ -1778,7 +1846,11 @@ export class Game {
     } else {
       root.rotationQuaternion = null
       root.rotation.set(0, this.facing, 0)
-      if (this.mode === 'foot') root.position.copyFrom(this.foot)
+      if (this.mode === 'foot' && this.perch) {
+        root.position.copyFrom(this.perch.at).addInPlaceFromFloats(0, -HIP_HEIGHT, 0)
+        root.rotation.set(0, this.perch.facing, 0)
+        stance = 'sit'
+      } else if (this.mode === 'foot') root.position.copyFrom(this.foot)
       else if (this.mode === 'climb') {
         root.position.copyFrom(standToWorld(this.stand, this.climbLocal()))
         stance = this.climbT < this.layout.climbSplit ? 'climb' : 'sit'
@@ -1795,6 +1867,7 @@ export class Game {
     else if (this.mode === 'vehicle' && v && this.deckSeat === null && (v.kind === 'ATV' || !this.fishing.busy && (Math.abs(v.speed) > 1.2 || this.tool !== 'rod'))) hands = 'wheel'
     else if (this.mode === 'crew' && !this.fishing.busy && (this.crewBoat?.speed ?? 0) > 1.2) hands = 'free'
     else if (this.tool === 'rifle') hands = this.aimHeld && document.pointerLockElement === this.canvas ? 'aim' : 'rifle'
+    else if (this.tool === 'none') hands = 'free'
     else if (st === 'charging' || st === 'flying') hands = 'cast'
     else if (st === 'reeling' || st === 'landing') hands = 'reel'
     else if (this.fishing.busy) hands = 'fish'
@@ -1858,6 +1931,11 @@ export class Game {
 
   private placeCamera(): void {
     const cam = this.ctx.camera
+    if (this.cameraShot) {
+      Vector3.LerpToRef(cam.position, this.cameraShot.eye, Math.min(1, this.ctx.engine.getDeltaTime() / 160), cam.position)
+      cam.setTarget(this.cameraShot.target)
+      return
+    }
     if (this.creating) {
       const ahead = new Vector3(Math.sin(this.facing), 0, Math.cos(this.facing))
       const side = new Vector3(Math.cos(this.facing), 0, -Math.sin(this.facing))
@@ -2042,6 +2120,7 @@ export class Game {
       else if (hosted) prompt = hosted
       else if (down) prompt = `E — tag the ${down.doe ? "doe" : down.template.id === "whitetail" ? "buck" : down.template.name.toLowerCase()}`
       else if (fishPrompt) prompt = fishPrompt
+      else if (this.options.gearAtCabin && this.cabin.spotNear(this.foot, 2.4) === 'rack') prompt = `1 — ${this.carried === 'rod' ? 'carrying the rod and reel' : 'take the rod and reel'} · 2 — ${this.carried === 'rifle' ? 'carrying the rifle' : 'take the rifle'} · E — gear`
       else if (this.cabin.spotNear(this.foot)) prompt = this.cabin.spotLabel(this.cabin.spotNear(this.foot)!)
       else if (ride && (!near || Vector3.Distance(this.foot, ride.root.position) < Vector3.Distance(this.foot, near.position))) prompt = ride.crew ? `${ride.name}'s boat is full` : `E — climb aboard ${ride.name}'s boat`
       else if (near) prompt = near.kind === 'CAR' ? `E — drive the ${near.label ?? 'car'}` : near.kind === 'ATV' ? (near.rig.root.name.startsWith('quad') ? 'E — ride the quad' : 'E — drive the UTV') : 'E — board the boat'

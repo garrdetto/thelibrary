@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { ACTIVE_TASKS, CARP_BOUNTY, FISH_COOLDOWN_MS, ITEMS, applyEvent, defaultProfile, equip, eventCooldown, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
+import { ACTIVE_TASKS, BEAR_BOUNTY, CARP_BOUNTY, DEER_BOUNTY, FISH_COOLDOWN_MS, ITEMS, payoutFor, STARTER, applyEvent, defaultProfile, equip, eventCooldown, gearEffects, normalizeProfile, purchase } from '../shared/Economy'
 
 test('a new profile starts with cash, starter gear and three tasks', () => {
   const p = defaultProfile()
@@ -29,6 +29,16 @@ test('every carp pays the flat bounty with no cooldown, whatever its size', () =
   assert.equal(p.cash, cash + CARP_BOUNTY * 2)
   assert.equal(eventCooldown('fish', 'carp'), 0)
   assert.equal(eventCooldown('fish', 'walleye'), FISH_COOLDOWN_MS)
+})
+
+test('carp pay $10, every deer $50 and every bear $100, whatever their size', () => {
+  assert.equal(CARP_BOUNTY, 10)
+  assert.equal(DEER_BOUNTY, 50)
+  assert.equal(BEAR_BOUNTY, 100)
+  const buck = payoutFor({ type: 'game', species: 'whitetail', doe: false, stand: true, trophy: true, legendary: true }, 1.4, STARTER)
+  const doe = payoutFor({ type: 'game', species: 'whitetail', doe: true, stand: false, trophy: false, legendary: false }, 0, STARTER)
+  const bear = payoutFor({ type: 'game', species: 'blackbear', doe: false, stand: false, trophy: false, legendary: false }, 0.2, STARTER)
+  assert.deepEqual([buck, doe, bear], [50, 50, 100])
 })
 
 test('finishing a task pays its reward and a new task replaces it', () => {

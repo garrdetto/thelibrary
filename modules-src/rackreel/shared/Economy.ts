@@ -72,7 +72,7 @@ export const ITEMS: Item[] = [
   { id: 'pants-joggers', name: 'Joggers', slot: 'pants', group: 'Clothing', price: 35, blurb: 'Heather grey sweatpants with cuffed ankles.' },
   { id: 'pants-shorts', name: 'Cargo shorts', slot: 'pants', group: 'Clothing', price: 30, blurb: 'Khaki cargo shorts for summer days.' },
   { id: 'pack-none', name: 'No pack', slot: 'pack', group: 'Clothing', price: 0, blurb: 'Travel light.' },
-  { id: 'pack-hunting', name: 'Hunting pack', slot: 'pack', group: 'Clothing', price: 140, blurb: 'Room for a thermos and drag rope: +10% pay for deer.' },
+  { id: 'pack-hunting', name: 'Hunting pack', slot: 'pack', group: 'Clothing', price: 140, blurb: 'Room for a thermos and a drag rope.' },
 ]
 
 export const ITEM_BY_ID: Record<string, Item> = Object.fromEntries(ITEMS.map((i) => [i.id, i]))
@@ -191,7 +191,10 @@ export function refillTasks(p: Profile): void {
 const FISH_BASE: Record<string, number> = { muskie: 90, walleye: 30, pike: 40, smallmouth: 34, perch: 12 }
 
 /** Every carp arrowed on a bowfishing trip pays this flat bounty, whatever its size, with no cooldown between fish. */
-export const CARP_BOUNTY = 5
+export const CARP_BOUNTY = 10
+/** Every deer tagged (buck or doe) and every bear pays a flat bounty, whatever its size. */
+export const DEER_BOUNTY = 50
+export const BEAR_BOUNTY = 100
 
 /** Milliseconds that must pass since the last catch or tag of the same kind before the next one pays. */
 export function eventCooldown(type: GameEvent['type'], species: string): number {
@@ -199,16 +202,14 @@ export function eventCooldown(type: GameEvent['type'], species: string): number 
   return species === 'carp' ? 0 : FISH_COOLDOWN_MS
 }
 
-export function payoutFor(e: GameEvent, sizeShare: number, loadout: Loadout): number {
+export function payoutFor(e: GameEvent, sizeShare: number, _loadout: Loadout): number {
   const share = Math.max(0, Math.min(1.5, sizeShare))
   if (e.type === 'fish') {
     if (e.species === 'carp') return CARP_BOUNTY
     const base = FISH_BASE[e.species] ?? 20
     return Math.round(base * (1 + share * 1.5) * (e.trophy ? 2 : 1) * (e.legendary ? 3 : 1))
   }
-  const base = e.species === 'blackbear' ? 260 : e.doe ? 60 : 180
-  const pack = loadout.pack === 'pack-hunting' ? 1.1 : 1
-  return Math.round(base * (e.doe ? 1 : 1 + share * 1.5) * (e.trophy ? 1.8 : 1) * (e.legendary ? 3 : 1) * pack)
+  return e.species === 'blackbear' ? BEAR_BOUNTY : DEER_BOUNTY
 }
 
 export interface EarnResult {
