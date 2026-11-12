@@ -7,16 +7,26 @@
  * Doors: u is back→front, v is bottom→top of the box (side view).
  * Hood and trunk: u is back→front, v is the centerline (0) to the outer edge (1)
  * of the half width; the other half is the mirror image.
- * Lamps: u runs inner→outer across a LAMP_W plate, v bottom→top over LAMP_H.
+ * Lamps: u runs inner→outer across a LAMP_W plate, v bottom→top over LAMP_H
+ * (or the traced lamp's own size in `headSize` / `tailSize`).
  */
 export interface ShapePoint { u: number; v: number }
 export type Shape = ShapePoint[];
-export interface LampShapes { head?: Shape; tail?: Shape }
+/** Plate size in metres for a lamp traced on the model (missing: LAMP_W × LAMP_H). */
+export interface LampSize { w: number; h: number }
+export interface LampShapes { head?: Shape; tail?: Shape; headSize?: LampSize; tailSize?: LampSize }
 
 export const SHAPE_LIMITS = { minPoints: 3, maxPoints: 32 } as const;
 export const LAMP_W = 0.5;
 export const LAMP_H = 0.3;
 export const LAMP_DEPTH = 0.06;
+export const LAMP_SIZE_LIMITS = { min: 0.02, max: 2 } as const;
+
+const isLampSize = (z: unknown): z is LampSize => {
+  const o = z as LampSize;
+  const ok = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n >= LAMP_SIZE_LIMITS.min && n <= LAMP_SIZE_LIMITS.max;
+  return !!o && typeof o === 'object' && ok(o.w) && ok(o.h);
+};
 
 export function area(s: Shape) {
   let a = 0;
@@ -31,7 +41,8 @@ export const isValidShape = (s: unknown): s is Shape =>
 
 export const isValidLampShapes = (s: unknown): s is LampShapes => {
   const o = s as LampShapes;
-  return !!o && typeof o === 'object' && (o.head === undefined || isValidShape(o.head)) && (o.tail === undefined || isValidShape(o.tail));
+  return !!o && typeof o === 'object' && (o.head === undefined || isValidShape(o.head)) && (o.tail === undefined || isValidShape(o.tail))
+    && (o.headSize === undefined || isLampSize(o.headSize)) && (o.tailSize === undefined || isLampSize(o.tailSize));
 };
 
 /** Even-odd point-in-polygon test. */
@@ -79,9 +90,10 @@ export function triangulate(s: Shape): number[] {
  * triangle corners (x, y, z, …) facing both ways. `side` 1 is the right-hand
  * lamp at the point's z; −1 is its mirror image.
  */
-export function lampTriangles(p: { x: number; y: number; z: number }, shape: Shape, side: 1 | -1): number[] {
+export function lampTriangles(p: { x: number; y: number; z: number }, shape: Shape, side: 1 | -1, size?: LampSize): number[] {
   const tris = triangulate(shape);
-  const at = (pt: ShapePoint, x: number) => [x, p.y + (pt.v - 0.5) * LAMP_H, side * (p.z + (pt.u - 0.5) * LAMP_W)];
+  const w = size?.w ?? LAMP_W, h = size?.h ?? LAMP_H;
+  const at = (pt: ShapePoint, x: number) => [x, p.y + (pt.v - 0.5) * h, side * (p.z + (pt.u - 0.5) * w)];
   const front = p.x + LAMP_DEPTH / 2, back = p.x - LAMP_DEPTH / 2;
   const out: number[] = [];
   const push = (...v: number[][]) => { for (const c of v) out.push(c[0], c[1], c[2]); };

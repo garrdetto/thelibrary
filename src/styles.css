@@ -1282,6 +1282,10 @@ body{background:var(--paper);color:var(--tone-0)}
 .ms-veh-shape-head{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .ms-veh-shape-pad{width:100%;max-width:420px;aspect-ratio:280/180;cursor:crosshair;touch-action:none;outline:none;border-radius:8px}
 .ms-veh-shape-pad:focus-visible{box-shadow:0 0 0 2px var(--lib-accent,#f2b544)}
+.ms-veh-lamp{display:grid;gap:8px;padding-top:10px;border-top:1px solid var(--lib-line,var(--border))}
+.ms-veh-trace{display:grid;gap:6px}
+.ms-veh-trace-pad{width:100%;background:#e8ebef;cursor:crosshair;touch-action:none;outline:none;border-radius:8px}
+.ms-veh-trace-pad:focus-visible{box-shadow:0 0 0 2px var(--lib-accent,#f2b544)}
 .ms-veh-readout{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));column-gap:20px}
 .ms-veh-warn{margin:0;padding:8px 12px;border-radius:10px;border:1px solid color-mix(in srgb,#f2b544 50%,transparent);background:color-mix(in srgb,#f2b544 12%,transparent);font-size:13px}
 .ms-veh-note{margin:0;font-size:12px;line-height:1.5;color:var(--lib-muted,inherit)}

@@ -44,8 +44,7 @@ export function groundTriangles(scene: Object3D, ground: Matrix4, maxTriangles =
 const MARGIN = 0.25
 const LONG_SIDE = 768
 
-/** Four orthographic renders of the model in the ground frame, with the metre bounds of each image. */
-export function renderViews(scene: Object3D, ground: Matrix4): { images: Record<ViewName, string>; frames: Record<ViewName, ViewFrame> } {
+function stageFor(scene: Object3D, ground: Matrix4) {
   const holder = new Group()
   holder.matrixAutoUpdate = false
   holder.matrix.copy(ground)
@@ -57,40 +56,66 @@ export function renderViews(scene: Object3D, ground: Matrix4): { images: Record<
   stage.updateMatrixWorld(true)
   const box = new Box3().setFromObject(holder)
   const far = Math.max(box.max.length(), box.min.length()) + 20
+  return { stage, box, far }
+}
 
-  const frames: Record<ViewName, ViewFrame> = {
+function framesFor(box: Box3): Record<ViewName, ViewFrame> {
+  return {
     side: { view: 'side', left: box.min.x - MARGIN, right: box.max.x + MARGIN, top: box.max.y + MARGIN, bottom: Math.min(0, box.min.y) - MARGIN },
     top: { view: 'top', left: box.min.x - MARGIN, right: box.max.x + MARGIN, top: -box.min.z + MARGIN, bottom: -box.max.z - MARGIN },
     front: { view: 'front', left: -box.max.z - MARGIN, right: -box.min.z + MARGIN, top: box.max.y + MARGIN, bottom: Math.min(0, box.min.y) - MARGIN },
     rear: { view: 'rear', left: box.min.z - MARGIN, right: box.max.z + MARGIN, top: box.max.y + MARGIN, bottom: Math.min(0, box.min.y) - MARGIN },
   }
-  const eyes: Record<ViewName, { eye: [number, number, number]; up: [number, number, number] }> = {
+}
+
+function eyesFor(far: number): Record<ViewName, { eye: [number, number, number]; up: [number, number, number] }> {
+  return {
     side: { eye: [0, 0, far], up: [0, 1, 0] },
     top: { eye: [0, far, 0], up: [0, 0, -1] },
     front: { eye: [far, 0, 0], up: [0, 1, 0] },
     rear: { eye: [-far, 0, 0], up: [0, 1, 0] },
   }
+}
 
+function shoot(renderer: WebGLRenderer, stage: Scene, f: ViewFrame, eye: { eye: [number, number, number]; up: [number, number, number] }, far: number, longSide: number, type: string) {
+  const w = f.right - f.left, h = f.top - f.bottom
+  const width = w >= h ? longSide : Math.max(64, Math.round((longSide * w) / h))
+  const height = w >= h ? Math.max(64, Math.round((longSide * h) / w)) : longSide
+  renderer.setSize(width, height, false)
+  const camera = new OrthographicCamera(f.left, f.right, f.top, f.bottom, 0.05, far * 2)
+  camera.up.set(...eye.up)
+  camera.position.set(...eye.eye)
+  camera.lookAt(0, 0, 0)
+  camera.updateMatrixWorld(true)
+  renderer.render(stage, camera)
+  return renderer.domElement.toDataURL(type, 0.9)
+}
+
+/** Four orthographic renders of the model in the ground frame, with the metre bounds of each image. */
+export function renderViews(scene: Object3D, ground: Matrix4): { images: Record<ViewName, string>; frames: Record<ViewName, ViewFrame> } {
+  const { stage, box, far } = stageFor(scene, ground)
+  const frames = framesFor(box)
+  const eyes = eyesFor(far)
   const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
   const images = {} as Record<ViewName, string>
   try {
-    for (const view of ['side', 'top', 'front', 'rear'] as const) {
-      const f = frames[view]
-      const w = f.right - f.left, h = f.top - f.bottom
-      const width = w >= h ? LONG_SIDE : Math.max(64, Math.round((LONG_SIDE * w) / h))
-      const height = w >= h ? Math.max(64, Math.round((LONG_SIDE * h) / w)) : LONG_SIDE
-      renderer.setSize(width, height, false)
-      const camera = new OrthographicCamera(f.left, f.right, f.top, f.bottom, 0.05, far * 2)
-      camera.up.set(...eyes[view].up)
-      camera.position.set(...eyes[view].eye)
-      camera.lookAt(0, 0, 0)
-      camera.updateMatrixWorld(true)
-      renderer.render(stage, camera)
-      images[view] = renderer.domElement.toDataURL('image/jpeg', 0.85)
-    }
+    for (const view of ['side', 'top', 'front', 'rear'] as const) images[view] = shoot(renderer, stage, frames[view], eyes[view], far, LONG_SIDE, 'image/jpeg')
   } finally {
     renderer.dispose()
     renderer.forceContextLoss()
   }
   return { images, frames }
+}
+
+/** One sharp orthographic render (for tracing lamps), with its metre bounds. */
+export function renderView(scene: Object3D, ground: Matrix4, view: ViewName, longSide = 2048): { image: string; frame: ViewFrame } {
+  const { stage, box, far } = stageFor(scene, ground)
+  const frame = framesFor(box)[view]
+  const renderer = new WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+  try {
+    return { image: shoot(renderer, stage, frame, eyesFor(far)[view], far, longSide, 'image/png'), frame }
+  } finally {
+    renderer.dispose()
+    renderer.forceContextLoss()
+  }
 }

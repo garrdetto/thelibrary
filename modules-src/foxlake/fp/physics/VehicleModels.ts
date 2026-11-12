@@ -41,7 +41,7 @@ import { meshesOf, type Assets, type ModelInstance, instantiate } from '../core/
 import { BODY_EXTENTS, TUNING, type VehicleTuning } from '../../../maplestreet/shared/Vehicles';
 import { BUNDLED_VEHICLES } from '../../../maplestreet/shared/BundledVehicles';
 import { customVehicleRecord, type CustomVehicleRecord } from '../../../maplestreet/shared/CustomVehicles';
-import { lampTriangles, type Shape } from '../../../maplestreet/shared/Shapes';
+import { lampTriangles, type LampSize, type Shape } from '../../../maplestreet/shared/Shapes';
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
 import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
@@ -431,7 +431,7 @@ class View implements VehicleView {
         if (!this.paintMats.includes(c)) { this.paintMats.push(c); this.paintSources.set(c, src); }
       }
     }
-    const lamp = (pts: { x: number; y: number; z: number }[], color: [number, number, number], list: PBRMaterial[], sx: number, sy: number, sz: number, shape?: Shape) => {
+    const lamp = (pts: { x: number; y: number; z: number }[], color: [number, number, number], list: PBRMaterial[], sx: number, sy: number, sz: number, shape?: Shape, size?: LampSize) => {
       if (!pts.length) return;
       const mat = pbr(`lamp-${this.kind}`, scene);
       mat.albedoColor = lin3([color[0] * 0.3, color[1] * 0.3, color[2] * 0.3]); mat.emissiveColor = lin3(color); mat.emissiveIntensity = 0; mat.roughness = 0.1;
@@ -440,7 +440,7 @@ class View implements VehicleView {
       const mb = new MeshBuilder();
       for (const p of pts) for (const side of (p.z === 0 ? [1] : [1, -1]) as (1 | -1)[]) {
         if (!shape) { mb.box(p.x - sx / 2, p.y - sy / 2, p.z * side - sz / 2, p.x + sx / 2, p.y + sy / 2, p.z * side + sz / 2); continue; }
-        const t = lampTriangles(p, shape, side);
+        const t = lampTriangles(p, shape, side, size);
         for (let i = 0; i < t.length; i += 9) {
           const a = [t[i], t[i + 1], t[i + 2]], b = [t[i + 3], t[i + 4], t[i + 5]], c = [t[i + 6], t[i + 7], t[i + 8]];
           const nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]), ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]), nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
@@ -455,8 +455,8 @@ class View implements VehicleView {
       mesh.material = mat;
       mesh.parent = this.root;
     };
-    lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head);
-    lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail);
+    lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize);
+    lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize);
     this.applyStyle();
   }
 

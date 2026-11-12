@@ -54,6 +54,9 @@ export type Draft = {
   parts: VehicleParts
   /** Custom headlight and taillight outlines (mirrored to both sides). */
   lampShapes: LampShapes
+  /** Whether the game adds its own glowing headlight and taillight plates (off: the model's own lamps only). */
+  headOn: boolean
+  tailOn: boolean
   maxTriangles: number
   maxTexture: number
 }
@@ -138,6 +141,8 @@ export function newDraft(template: DriveTemplate, raw: Size3 | null, previous?: 
     removeWheels: previous?.removeWheels ?? true,
     parts: previous?.parts ?? { doors: [], hood: null, trunk: null },
     lampShapes: previous?.lampShapes ?? {},
+    headOn: previous?.headOn ?? true,
+    tailOn: previous?.tailOn ?? true,
     maxTriangles: previous?.maxTriangles ?? 120000,
     maxTexture: previous?.maxTexture ?? 2048,
   }
@@ -163,6 +168,15 @@ export function solvedEngine(d: Draft) {
   const to = accelTargetMph(top)
   const engine = solveDrive({ mass: d.mass, axles: d.axles }, { topSpeedMph: top, zeroToMph: to, zeroToSeconds: d.zeroToSeconds })
   return { ...engine, zeroToMph: to }
+}
+
+/** Outlines worth publishing: only for lamps that are on, and a size only with its outline. */
+function lampShapesOf(d: Draft): LampShapes | undefined {
+  const out: LampShapes = {}
+  const l = d.lampShapes
+  if (d.headOn && l.head) { out.head = l.head; if (l.headSize) out.headSize = l.headSize }
+  if (d.tailOn && l.tail) { out.tail = l.tail; if (l.tailSize) out.tailSize = l.tailSize }
+  return out.head || out.tail ? out : undefined
 }
 
 /** The publishable spec for a draft whose turned, scaled model size is `size`. */
@@ -200,14 +214,14 @@ export function draftSpec(d: Draft, raw: Size3, center: { x: number; z: number; 
       hitch: d.hitch,
       cam: { dist: r2(Math.max(4, base.cam.dist * (length / (BODY_EXTENTS[d.template].front - BODY_EXTENTS[d.template].rear)))), height: r2(Math.max(1.6, base.cam.height * (height / BODY_EXTENTS[d.template].height))) },
     },
-    lights: { head: [d.head], tail: [d.tail] },
+    lights: { head: d.headOn ? [d.head] : [], tail: d.tailOn ? [d.tail] : [] },
     paint: d.paint,
     targets: { topSpeedMph: d.topSpeedMph, zeroToMph: engine.zeroToMph, zeroToSeconds: d.zeroToSeconds },
     dealer: d.dealer,
     traffic: { ...d.traffic, driver: d.traffic.driver.trim() || d.name.trim() },
     wheelsRemoved: d.removeWheels,
     ...(d.parts.doors.length || d.parts.hood || d.parts.trunk ? { parts: d.parts } : {}),
-    ...(d.lampShapes.head || d.lampShapes.tail ? { lampShapes: d.lampShapes } : {}),
+    ...(lampShapesOf(d) ? { lampShapes: lampShapesOf(d) } : {}),
   }
 }
 
@@ -241,6 +255,8 @@ export function draftFromRecord(v: CustomVehicleRecord, raw: Size3, center: { x:
     removeWheels: v.wheelsRemoved,
     parts: v.parts ? { doors: v.parts.doors.map(d => ({ ...d })), hood: v.parts.hood ? { ...v.parts.hood } : null, trunk: v.parts.trunk ? { ...v.parts.trunk } : null } : { doors: [], hood: null, trunk: null },
     lampShapes: { ...(v.lampShapes ?? {}) },
+    headOn: v.lights.head.length > 0,
+    tailOn: v.lights.tail.length > 0,
     maxTriangles: 120000,
     maxTexture: 2048,
   }
