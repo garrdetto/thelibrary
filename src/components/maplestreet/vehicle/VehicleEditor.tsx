@@ -23,6 +23,8 @@ import type { SmootherApi } from './DentSmoother'
 import type { Draft, DriveTemplate, MarkerId, ReferenceKind } from './draft'
 import type { ShrinkReport } from './modelTools'
 import { ShapeDesigner } from './ShapeDesigner'
+import { LampTracer } from './LampTracer'
+import type { TracedLamp } from './LampTracer'
 import { TestDrive } from './TestDrive'
 import { VehicleStage } from './VehicleStage'
 import type { ModelInfo } from './VehicleStage'
@@ -90,6 +92,7 @@ export default function VehicleEditor() {
   const [lasso, setLasso] = useState(false)
   const [selection, setSelection] = useState<SelectionReport | null>(null)
   const [smooth, setSmooth] = useState<SmoothSettings>(DEFAULT_SMOOTH)
+  const [tracing, setTracing] = useState<'head' | 'tail' | null>(null)
   const [, bodyChanged] = useReducer((n: number) => n + 1, 0)
 
   const patch = useCallback((changes: Partial<Draft>) => { setDraft(current => ({ ...current, ...changes })); setMeasured(null) }, [])
@@ -147,7 +150,7 @@ export default function VehicleEditor() {
 
   function refit(template: DriveTemplate, scale?: number, yaw = draft.yaw) {
     if (!info) { setDraft(current => newDraft(template, null, { name: current.name })); return }
-    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, parts: current.parts, lampShapes: current.lampShapes, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
+    setDraft(current => newDraft(template, info.raw, { name: current.name, yaw, scale, shiftX: current.shiftX, lift: current.lift, paint: current.paint, traffic: current.traffic, removeWheels: current.removeWheels, parts: current.parts, lampShapes: current.lampShapes, headOn: current.headOn, tailOn: current.tailOn, maxTriangles: current.maxTriangles, maxTexture: current.maxTexture, ...(template === current.template ? { dealer: current.dealer } : {}) }))
     setMeasured(null)
   }
 
@@ -438,7 +441,7 @@ export default function VehicleEditor() {
           <button type="button" className="ms-veh-suggest" onClick={() => void suggestPoints()} disabled={!info || !!busy} title="Find the wheels from the model's shape and ask AI for the seat, lights and hitch">{busy === 'suggest' ? <LoaderCircle className="spin" size={14}/> : <WandSparkles size={14} aria-hidden/>} {busy === 'suggest' ? 'Finding points…' : 'Suggest points'}</button>
           <div className="ms-veh-markers" role="group" aria-label="Drag a marker">
             <Move3d size={14} aria-hidden/>
-            {MARKERS.filter(m => m.id !== 'hitch' || draft.hitch).map(m => <button key={m.id} type="button" aria-pressed={selected === m.id} className={selected === m.id ? 'is-active' : ''} onClick={() => setSelected(selected === m.id ? null : m.id)} disabled={!info}>{m.label}</button>)}
+            {MARKERS.filter(m => (m.id !== 'hitch' || draft.hitch) && (m.id !== 'head' || draft.headOn) && (m.id !== 'tail' || draft.tailOn)).map(m => <button key={m.id} type="button" aria-pressed={selected === m.id} className={selected === m.id ? 'is-active' : ''} onClick={() => setSelected(selected === m.id ? null : m.id)} disabled={!info}>{m.label}</button>)}
           </div>
         </div>
 
@@ -519,13 +522,35 @@ export default function VehicleEditor() {
         {step === 'markers' && <fieldset>
           <legend>Seat, lights and hitch</legend>
           <p className="ms-veh-note">Pick a marker above the preview to drag it, or type exact positions (meters from the body’s center; forward is +).</p>
-          {(['seat', 'head', 'tail'] as const).map(key => <div key={key} className="ms-veh-xyz">
-            <strong>{key === 'seat' ? 'Driver seat' : key === 'head' ? 'Headlights' : 'Taillights'}</strong>
-            {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft[key][axis]} onChange={v => patch({ [key]: { ...draft[key], [axis]: v } } as Partial<Draft>)}/>)}
-          </div>)}
+          <div className="ms-veh-xyz">
+            <strong>Driver seat</strong>
+            {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft.seat[axis]} onChange={v => patch({ seat: { ...draft.seat, [axis]: v } })}/>)}
+          </div>
           <label className="ms-veh-inline"><input type="checkbox" checked={!!draft.hitch} onChange={event => patch({ hitch: event.target.checked ? { x: r3(-(length || 4) / 2 - 0.15), y: -0.25 } : null })}/> Tow hitch for the trailer</label>
-          <ShapeDesigner title="Headlight shape" axis="left" hint="Seen from the front, around the headlight marker." shape={draft.lampShapes.head} onChange={shape => patch({ lampShapes: { ...draft.lampShapes, head: shape } })}/>
-          <ShapeDesigner title="Taillight shape" axis="left" hint="Seen from the back, around the taillight marker." shape={draft.lampShapes.tail} onChange={shape => patch({ lampShapes: { ...draft.lampShapes, tail: shape } })}/>
+          {(['head', 'tail'] as const).map(key => {
+            const on = key === 'head' ? draft.headOn : draft.tailOn
+            const sizeKey = key === 'head' ? 'headSize' : 'tailSize'
+            const name = key === 'head' ? 'headlight' : 'taillight'
+            const traced = !!draft.lampShapes[sizeKey]
+            return <div key={key} className="ms-veh-lamp">
+              <label className="ms-veh-inline"><input type="checkbox" checked={on} onChange={event => { patch(key === 'head' ? { headOn: event.target.checked } : { tailOn: event.target.checked }); if (!event.target.checked && tracing === key) setTracing(null); if (!event.target.checked && selected === key) setSelected(null) }}/> <strong>Glowing {name}s</strong></label>
+              {!on && <p className="ms-veh-note">Off: the game adds no {name} of its own, so only the model’s own {name}s show (they won’t light up at night{key === 'tail' ? ' or when braking' : ''}).</p>}
+              {on && <>
+                <div className="ms-veh-xyz">
+                  {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft[key][axis]} onChange={v => patch({ [key]: { ...draft[key], [axis]: v } } as Partial<Draft>)}/>)}
+                </div>
+                <p className="ms-veh-note">{draft.lampShapes[key] ? (traced ? `Traced on the model: ${Math.round(draft.lampShapes[sizeKey]!.w * 100)} × ${Math.round(draft.lampShapes[sizeKey]!.h * 100)} cm, ${draft.lampShapes[key]!.length} corners.` : `Custom outline, ${draft.lampShapes[key]!.length} corners.`) : `Default: a small glowing box at the ${name} marker.`}</p>
+                <div className="ms-veh-pair">
+                  <button type="button" onClick={() => setTracing(tracing === key ? null : key)} aria-pressed={tracing === key} disabled={!info || !modelScene.current}><Pipette size={14} aria-hidden/> {draft.lampShapes[key] ? `Retrace the ${name}` : `Trace the ${name} on the model`}</button>
+                  {draft.lampShapes[key] && <button type="button" onClick={() => patch({ lampShapes: { ...draft.lampShapes, [key]: undefined, [sizeKey]: undefined } })}><Undo2 size={14} aria-hidden/> Back to the default box</button>}
+                </div>
+                {tracing === key && info && modelScene.current && <LampTracer kind={key} scene={modelScene.current} draft={draft} center={info.center} drop={draftRideHeight(draft, length) - draft.lift}
+                  onApply={(lamp: TracedLamp) => patch({ [key]: lamp.point, lampShapes: { ...draft.lampShapes, [key]: lamp.shape, [sizeKey]: lamp.size } } as Partial<Draft>)}
+                  onClose={() => setTracing(null)}/>}
+                {tracing !== key && <ShapeDesigner title={`${key === 'head' ? 'Headlight' : 'Taillight'} shape by hand`} axis="left" hint={`Seen from the ${key === 'head' ? 'front' : 'back'}, around the ${name} marker.`} shape={draft.lampShapes[key]} onChange={shape => patch({ lampShapes: { ...draft.lampShapes, [key]: shape, ...(shape ? {} : { [sizeKey]: undefined }) } })}/>}
+              </>}
+            </div>
+          })}
         </fieldset>}
 
         {step === 'markers' && <fieldset>

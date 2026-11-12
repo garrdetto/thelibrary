@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { BUNDLED_VEHICLES } from '../../modules-src/maplestreet/shared/BundledVehicles'
 import { BRAND_PATTERN, DRIVE_TEMPLATES, MAX_DOOR_ROWS, TRAFFIC_COUNT_MAX, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
-import { isValidShape, SHAPE_LIMITS } from '../../modules-src/maplestreet/shared/Shapes'
+import { isValidShape, LAMP_SIZE_LIMITS, SHAPE_LIMITS } from '../../modules-src/maplestreet/shared/Shapes'
 import type { Env } from './env'
 import { getAsset, insertAsset, listAssets, statusFrom, updateAsset, type AssetFiles, type AssetRow, type AssetStatus } from './maplestreet-assets'
 
@@ -31,6 +31,8 @@ const axleSchema = z.object({
 }).strict()
 
 const shapeSchema = z.array(z.object({ u: n(0, 1), v: n(0, 1) }).strict()).min(SHAPE_LIMITS.minPoints).max(SHAPE_LIMITS.maxPoints).refine(isValidShape, 'That outline is too small or not a closed shape.')
+
+const lampSize = z.object({ w: n(LAMP_SIZE_LIMITS.min, LAMP_SIZE_LIMITS.max), h: n(LAMP_SIZE_LIMITS.min, LAMP_SIZE_LIMITS.max) }).strict()
 
 const partBox = z.object({ front: n(-10, 10), back: n(-10, 10), bottom: n(-10, 10), top: n(-10, 10), drop: z.boolean().optional(), shape: shapeSchema.optional() }).strict().refine(b => b.front > b.back && b.top > b.bottom, 'A part box needs its front ahead of its back and its top above its bottom.')
 
@@ -75,7 +77,7 @@ export const vehicleSpecSchema = z.object({
     hood: partBox.nullable(),
     trunk: partBox.nullable(),
   }).strict().optional(),
-  lampShapes: z.object({ head: shapeSchema.optional(), tail: shapeSchema.optional() }).strict().optional(),
+  lampShapes: z.object({ head: shapeSchema.optional(), tail: shapeSchema.optional(), headSize: lampSize.optional(), tailSize: lampSize.optional() }).strict().optional(),
 }).strict()
 
 export const bundledVehicle = (id: string) => BUNDLED_VEHICLES.find(vehicle => vehicle.id === id) ?? null

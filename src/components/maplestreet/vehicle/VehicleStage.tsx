@@ -3,8 +3,10 @@ import type { MutableRefObject, ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
 import { Grid, Html, OrbitControls, TransformControls, useGLTF } from '@react-three/drei'
-import { Box3, BoxGeometry, CanvasTexture, Color, EdgesGeometry, Mesh, MeshStandardMaterial, Vector3 } from 'three'
+import { Box3, BoxGeometry, BufferGeometry, CanvasTexture, Float32BufferAttribute, Color, EdgesGeometry, Mesh, MeshStandardMaterial, Vector3 } from 'three'
 import type { Group, Material, Object3D, Texture } from 'three'
+import { lampTriangles } from '../../../../modules-src/maplestreet/shared/Shapes'
+import type { LampSize, Shape } from '../../../../modules-src/maplestreet/shared/Shapes'
 import { recolorPixels } from '../../../../modules-src/maplestreet/shared/PaintMask'
 import { BODY_EXTENTS, BUILTIN_TUNING, rideHeight } from '../../../../modules-src/maplestreet/shared/Vehicles'
 import type { Draft, MarkerId, ReferenceKind, Size3 } from './draft'
@@ -234,23 +236,25 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
     if (!target || !selected) return
     props.onMarker(selected, { x: target.position.x, y: target.position.y, z: target.position.z })
   }
-  const lamp = (p: { x: number; y: number; z: number }, color: string) => [1, -1].map(side => <mesh key={side} position={[p.x, p.y, p.z * side]}>
-    <boxGeometry args={[0.05, 0.11, 0.22]}/>
-    <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.4}/>
-  </mesh>)
+  const lamp = (p: { x: number; y: number; z: number }, color: string, shape?: Shape, size?: LampSize) => (p.z === 0 ? [1] : [1, -1]).map(side => shape
+    ? <LampPlate key={side} p={p} side={side as 1 | -1} shape={shape} size={size} color={color}/>
+    : <mesh key={side} position={[p.x, p.y, p.z * side]}>
+      <boxGeometry args={[0.05, 0.11, 0.22]}/>
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.4}/>
+    </mesh>)
   return <>
     <group position={[0, ride, 0]}>
       <VehicleModel url={props.url} draft={draft} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick} onScene={props.onScene} smoother={props.smoother}/>
       {draft.axles.map((a, i) => [1, -1].map(side => <Wheel key={`${i}${side}`} radius={a.radius} width={a.width} position={[a.x, wheelCenterY, a.halfTrack * side]}/>))}
       <group position={[draft.seat.x, draft.seat.y, draft.seat.z]}><SeatedFigure/></group>
-      {lamp(draft.head, '#fff4d6')}
-      {lamp(draft.tail, '#ff1a1a')}
+      {draft.headOn && lamp(draft.head, '#fff4d6', draft.lampShapes.head, draft.lampShapes.headSize)}
+      {draft.tailOn && lamp(draft.tail, '#ff1a1a', draft.lampShapes.tail, draft.lampShapes.tailSize)}
       {draft.hitch && <mesh position={[draft.hitch.x, draft.hitch.y, 0]}><sphereGeometry args={[0.05, 12, 10]}/><meshStandardMaterial color="#dadada" metalness={1} roughness={0.15}/></mesh>}
       <Marker id="front" position={pos('front')} selected={selected === 'front'} onSelect={props.onSelect} color="#5cd17a"/>
       <Marker id="rear" position={pos('rear')} selected={selected === 'rear'} onSelect={props.onSelect} color="#5cd17a"/>
       <Marker id="seat" position={pos('seat')} selected={selected === 'seat'} onSelect={props.onSelect} color="#4aa3ff"/>
-      <Marker id="head" position={pos('head')} selected={selected === 'head'} onSelect={props.onSelect} color="#fff4a8"/>
-      <Marker id="tail" position={pos('tail')} selected={selected === 'tail'} onSelect={props.onSelect} color="#ff6a6a"/>
+      {draft.headOn && <Marker id="head" position={pos('head')} selected={selected === 'head'} onSelect={props.onSelect} color="#fff4a8"/>}
+      {draft.tailOn && <Marker id="tail" position={pos('tail')} selected={selected === 'tail'} onSelect={props.onSelect} color="#ff6a6a"/>}
       <PartBoxes draft={draft} width={width}/>
       {draft.hitch && <Marker id="hitch" position={pos('hitch')} selected={selected === 'hitch'} onSelect={props.onSelect} color="#c9a0ff"/>}
       {selected && <group ref={setTarget} position={pos(selected)}/>}
@@ -263,6 +267,17 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
     {props.reference && <ReferenceOutline kind={props.reference} offsetZ={props.overlap ? 0 : width / 2 + BODY_EXTENTS[props.reference].width / 2 + 0.8}/>}
     <Resident z={-(width / 2 + 1.1)}/>
   </>
+}
+
+function LampPlate({ p, side, shape, size, color }: { p: { x: number; y: number; z: number }; side: 1 | -1; shape: Shape; size?: LampSize; color: string }) {
+  const geometry = useMemo(() => {
+    const geo = new BufferGeometry()
+    geo.setAttribute('position', new Float32BufferAttribute(lampTriangles(p, shape, side, size), 3))
+    geo.computeVertexNormals()
+    return geo
+  }, [p.x, p.y, p.z, side, shape, size?.w, size?.h])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  return <mesh geometry={geometry}><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.4}/></mesh>
 }
 
 export function VehicleStage(props: Props) {
