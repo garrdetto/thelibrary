@@ -477,6 +477,7 @@ export class FoliageShading {
     if (this.shadowTexture) mat.setTexture('shadowSampler', this.shadowTexture)
     const ambient = this.scene.ambientColor
     mat.ambient.set(ambient.r * mat.ambientScale, ambient.g * mat.ambientScale, ambient.b * mat.ambientScale)
+    mat.freeze()
     this.materials.push(mat)
     this.byName.set(name, mat)
     return mat

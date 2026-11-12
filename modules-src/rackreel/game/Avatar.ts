@@ -581,8 +581,8 @@ export class Avatar {
   /** Recomputes the world matrices from the root down to `node`, so a pose set this frame is read back exactly. */
   private refresh(node: TransformNode): void {
     const chain = this.chain
-    chain.length = 0
-    for (let n: TransformNode | null = node; n; n = n.parent as TransformNode | null) chain.push(n)
-    for (let i = chain.length - 1; i >= 0; i--) chain[i].computeWorldMatrix(true)
+    let depth = 0
+    for (let n: TransformNode | null = node; n; n = n.parent as TransformNode | null) chain[depth++] = n
+    for (let i = depth - 1; i >= 0; i--) chain[i].computeWorldMatrix(true)
   }
 }

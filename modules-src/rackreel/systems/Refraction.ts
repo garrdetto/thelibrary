@@ -11,8 +11,9 @@ export function surfaceCrossing(h: number, d: number, D: number, n = WATER_INDEX
   let hi = D
   for (let i = 0; i < 60; i++) {
     const x = (lo + hi) / 2
-    const sinAir = x / Math.hypot(x, h)
-    const sinWater = (D - x) / Math.hypot(D - x, d)
+    const far = D - x
+    const sinAir = x / Math.sqrt(x * x + h * h)
+    const sinWater = far / Math.sqrt(far * far + d * d)
     if (sinAir - n * sinWater > 0) hi = x
     else lo = x
   }

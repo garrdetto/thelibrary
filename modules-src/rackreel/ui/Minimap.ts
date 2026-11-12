@@ -73,10 +73,12 @@ export class Minimap {
     return this.zoom === 2 ? 'Map: whole property' : `Map: ${Math.round(RANGES[this.zoom] * 1.094)} yd`
   }
 
-  draw(dt: number, x: number, z: number, yaw: number, facing: number, markers: MapMarker[]): void {
+  /** `markersNow` is asked for the markers only on the frames the map is redrawn (ten times a second). */
+  draw(dt: number, x: number, z: number, yaw: number, facing: number, markersNow: () => MapMarker[]): void {
     this.timer -= dt
     if (this.timer > 0) return
     this.timer = 0.1
+    const markers = markersNow()
     const g = this.g
     const W = this.canvas.width
     const range = RANGES[this.zoom]

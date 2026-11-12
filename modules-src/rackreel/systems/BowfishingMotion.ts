@@ -234,9 +234,13 @@ export class CarpSchool<T = unknown> {
     const fx = Math.sin(boat.heading)
     const fz = Math.cos(boat.heading)
     const h = boat.length / 2
-    const a = { x: boat.x + fx * h, y: 0, z: boat.z + fz * h }
-    const b = { x: boat.x - fx * h, y: 0, z: boat.z - fz * h }
-    return segmentGap({ x: c.x, y: 0, z: c.z }, { x: c.x, y: 0, z: c.z }, a, b).distance
+    const ax = boat.x + fx * h
+    const az = boat.z + fz * h
+    const dx = boat.x - fx * h - ax
+    const dz = boat.z - fz * h - az
+    const e = dx * dx + dz * dz
+    const t = e <= 1e-12 ? 0 : clamp((dx * (c.x - ax) + dz * (c.z - az)) / e, 0, 1)
+    return Math.hypot(c.x - (ax + dx * t), 0, c.z - (az + dz * t))
   }
 
   update(dt: number, boat: BoatPose, spawning: boolean): void {
