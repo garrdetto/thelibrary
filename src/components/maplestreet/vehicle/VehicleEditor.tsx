@@ -530,6 +530,7 @@ export default function VehicleEditor() {
           {(['head', 'tail'] as const).map(key => {
             const on = key === 'head' ? draft.headOn : draft.tailOn
             const sizeKey = key === 'head' ? 'headSize' : 'tailSize'
+            const depthKey = key === 'head' ? 'headDepth' : 'tailDepth'
             const name = key === 'head' ? 'headlight' : 'taillight'
             const traced = !!draft.lampShapes[sizeKey]
             return <div key={key} className="ms-veh-lamp">
@@ -539,15 +540,15 @@ export default function VehicleEditor() {
                 <div className="ms-veh-xyz">
                   {(['x', 'y', 'z'] as const).map(axis => <Num key={axis} label={axis.toUpperCase()} value={draft[key][axis]} onChange={v => patch({ [key]: { ...draft[key], [axis]: v } } as Partial<Draft>)}/>)}
                 </div>
-                <p className="ms-veh-note">{draft.lampShapes[key] ? (traced ? `Traced on the model: ${Math.round(draft.lampShapes[sizeKey]!.w * 100)} × ${Math.round(draft.lampShapes[sizeKey]!.h * 100)} cm, ${draft.lampShapes[key]!.length} corners.` : `Custom outline, ${draft.lampShapes[key]!.length} corners.`) : `Default: a small glowing box at the ${name} marker.`}</p>
+                <p className="ms-veh-note">{draft.lampShapes[key] ? (traced ? `Traced on the model: ${Math.round(draft.lampShapes[sizeKey]!.w * 100)} × ${Math.round(draft.lampShapes[sizeKey]!.h * 100)} cm, ${draft.lampShapes[key]!.length} corners${draft.lampShapes[depthKey] ? ', shaped to the body' : ', flat'}.` : `Custom outline, ${draft.lampShapes[key]!.length} corners.`) : `Default: a small glowing box at the ${name} marker.`}</p>
                 <div className="ms-veh-pair">
                   <button type="button" onClick={() => setTracing(tracing === key ? null : key)} aria-pressed={tracing === key} disabled={!info || !modelScene.current}><Pipette size={14} aria-hidden/> {draft.lampShapes[key] ? `Retrace the ${name}` : `Trace the ${name} on the model`}</button>
-                  {draft.lampShapes[key] && <button type="button" onClick={() => patch({ lampShapes: { ...draft.lampShapes, [key]: undefined, [sizeKey]: undefined } })}><Undo2 size={14} aria-hidden/> Back to the default box</button>}
+                  {draft.lampShapes[key] && <button type="button" onClick={() => patch({ lampShapes: { ...draft.lampShapes, [key]: undefined, [sizeKey]: undefined, [depthKey]: undefined } })}><Undo2 size={14} aria-hidden/> Back to the default box</button>}
                 </div>
                 {tracing === key && info && modelScene.current && <LampTracer kind={key} scene={modelScene.current} draft={draft} center={info.center} drop={draftRideHeight(draft, length) - draft.lift}
-                  onApply={(lamp: TracedLamp) => patch({ [key]: lamp.point, lampShapes: { ...draft.lampShapes, [key]: lamp.shape, [sizeKey]: lamp.size } } as Partial<Draft>)}
+                  onApply={(lamp: TracedLamp) => patch({ [key]: lamp.point, lampShapes: { ...draft.lampShapes, [key]: lamp.shape, [sizeKey]: lamp.size, [depthKey]: lamp.depth } } as Partial<Draft>)}
                   onClose={() => setTracing(null)}/>}
-                {tracing !== key && <ShapeDesigner title={`${key === 'head' ? 'Headlight' : 'Taillight'} shape by hand`} axis="left" hint={`Seen from the ${key === 'head' ? 'front' : 'back'}, around the ${name} marker.`} shape={draft.lampShapes[key]} onChange={shape => patch({ lampShapes: { ...draft.lampShapes, [key]: shape, ...(shape ? {} : { [sizeKey]: undefined }) } })}/>}
+                {tracing !== key && <ShapeDesigner title={`${key === 'head' ? 'Headlight' : 'Taillight'} shape by hand`} axis="left" hint={`Seen from the ${key === 'head' ? 'front' : 'back'}, around the ${name} marker.`} shape={draft.lampShapes[key]} onChange={shape => patch({ lampShapes: { ...draft.lampShapes, [key]: shape, ...(shape ? {} : { [sizeKey]: undefined, [depthKey]: undefined }) } })}/>}
               </>}
             </div>
           })}

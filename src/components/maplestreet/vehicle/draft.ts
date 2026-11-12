@@ -174,8 +174,8 @@ export function solvedEngine(d: Draft) {
 function lampShapesOf(d: Draft): LampShapes | undefined {
   const out: LampShapes = {}
   const l = d.lampShapes
-  if (d.headOn && l.head) { out.head = l.head; if (l.headSize) out.headSize = l.headSize }
-  if (d.tailOn && l.tail) { out.tail = l.tail; if (l.tailSize) out.tailSize = l.tailSize }
+  if (d.headOn && l.head) { out.head = l.head; if (l.headSize) out.headSize = l.headSize; if (l.headSize && l.headDepth) out.headDepth = l.headDepth }
+  if (d.tailOn && l.tail) { out.tail = l.tail; if (l.tailSize) out.tailSize = l.tailSize; if (l.tailSize && l.tailDepth) out.tailDepth = l.tailDepth }
   return out.head || out.tail ? out : undefined
 }
 
