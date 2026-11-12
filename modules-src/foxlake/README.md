@@ -42,9 +42,26 @@ The town and your cars are on Rapier (`fp/physics/Physics.ts`): the flat town gr
 
 Signed-in players have one wallet shared by Fox Lake, classic Fox Plains and Rack & Reel: the Fox Plains world holds it (`RoomLogic.adjustMoney`, the Durable Object's `/wallet`), and `/api/rackreel` pays and charges it (`src/server/shared-wallet.ts`). A player's old Rack & Reel cash moves in once. Guests keep separate town and lake cash.
 
+## Northwoods Lodge Casino & Bar (`casino/`)
+
+A walk-in casino on the north-east corner of East Ave and South St (town coordinates in `CasinoLayout.ts`), Fox Lake only (classic Fox Plains has woods there).
+
+- **Building** (`CasinoBuilding.ts`, `CabinetModel.ts`): brick shell with the doorway and canopy on South St, carpet, a coffered ceiling with light panels, the bar (counter, brass rail, back bar with lit bottle shelves, pendant lamps, eight stools), the blackjack table and ten upright video-slot cabinets (plinth, lower door, bill acceptor, ticket printer, card reader, lit button deck, chrome-trimmed screen bezel with speaker grilles, topper, candle light, LED edges) with slot chairs. It is built with the town's builders and colliders, so it is culled, shadowed and solid like the rest of town.
+- **Displays** (`screen/MachineDisplay.ts`): each cabinet's portrait screen and topper are self-lit textures in scene space: an attract page when idle; while playing, the header (title, meters), the reel window and CREDIT / BET / WIN; jackpot plaques on the topper at the current bet.
+- **Math layer** (`math/`, no Babylon or DOM): `rng.ts` (crypto on the server, seeded for tests), `reels.ts` (strips, stops, 1,024/243-ways wins with multiplying wilds), `lines.ts` (25/20 lines), `machines.ts` (the ten machines; a spin resolves completely into a timeline the screen replays), `blackjack.ts` (six decks, S17, 3:2, double, one split). `node scripts/casino-sim.mjs [spins]` prints each machine's return, base share, feature frequency and average feature win; `scale` in each definition sets the return (about 94%).
+- **The ten machines**, five game styles in two original themes each (rules researched from the real cabinets; names, symbols and art are this game's own): link Hold & Spin (Northern Lights Link, Gold Pan Link), house-building free games with a storm blowdown (Lodge Builders, Hay Day Barns), gold-head 1,024-ways free games (Moose Gold, Mustang Gold), the same with the Revolution wheel (Moose Gold Revolution, Mustang Gold Revolution), and gem collectors with Cash Collect, free games and a jackpot pick (Bigfoot Bucks, Lake Monster Loot).
+- **Animation layer** (`screen/ReelSet.ts`, `screen/SlotSession.ts`): reels are strip textures moved by an `AnimationGroup` (wind-up, motion-blurred spin, staggered stops with overshoot, anticipation on reels that could complete a feature); wins pulse framed cells; features play on an overlay and on extra planes (the Revolution wheel is a disc rotated by an animation). `SlotSession.demo(kind)` plays a fun-money outcome with a given feature (debug and screenshots).
+- **Money** (`CasinoClient.ts`, `src/server/routes/casino.ts`): signed-in players play for the shared wallet; spins, hands and beers are decided and paid on the server (`/api/casino`: stake taken first, winnings after; blackjack tables and collector meters in D1). Guests play for fun money ($1,000, never saved).
+- **Tables** (`TableSessions.ts`): blackjack and the bar as overlays while the camera looks at the table or the bartender; a beer ($5) appears on the counter.
+- **Seating** uses Rack & Reel's host hooks: `setPerch` (sit, no walking), `setCameraShot` (fixed camera), and `data-host-modal` overlays (Rack & Reel's input pauses while one is open). At a machine the view is first person.
+
+## Gear and bounties
+
+Fox Lake starts Rack & Reel with `gearAtCabin`: the rod and rifle hang on the cabin's gear rack; 1 or 2 at the rack takes one (swapping the other back); away from the rack you carry only that one. Bounties are flat everywhere: $10 a carp, $50 a deer, $100 a bear (`shared/Economy.ts`).
+
 ## Controls
 
-Rack & Reel's, plus E at your car (drive), at shops (Maple Threads opens the wardrobe), V to bring out another of your vehicles, H to go home (every 15 minutes).
+Rack & Reel's, plus E at your car (drive), at shops (Maple Threads opens the wardrobe), at a slot machine, bar stool or blackjack seat, V to bring out another of your vehicles, H to go home (every 15 minutes). 1 and 2 only work at the cabin's gear rack.
 
 ## Debugging
 

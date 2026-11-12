@@ -46,6 +46,8 @@ import { TownGfx } from './TownGfx'
 import { GROUND_RECT, buildConnector, buildTownGround, fillerTrees } from './TownGround'
 import { TownHud } from './TownHud'
 import { RegionCuller } from '../core/RegionCuller'
+import { CasinoHost, CASINO_NAME } from '../casino/CasinoHost'
+import { CASINO } from '../casino/CasinoLayout'
 import { STAND_SIZE } from '../../rackreel/world/Foliage'
 import { TOWN_OFFSET, TOWN_SQUARE, connectorDistance, headingToTownYaw, sceneToTown, townToScene, zoneAt, CONNECTOR } from '../region'
 
@@ -114,6 +116,7 @@ export class FoxLakeTown implements GameExtension {
   private hudAcc = 0
   /** Far town cells and far lake-country stands are switched off (the fog hides them). */
   private readonly culler = new RegionCuller(CULL_REACH)
+  private readonly casino = new CasinoHost()
 
   constructor(private readonly opts: TownOptions) {}
 
@@ -139,12 +142,15 @@ export class FoxLakeTown implements GameExtension {
       ground: false,
       trees: (spots) => this.plantTownTrees(spots),
       keepClear: (x, z) => {
+        const c = CASINO.clear
+        if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) return true
         const s = townToScene(x, 0, z, this._t)
         return connectorDistance(s.x, s.z) < 9
       },
     })
     new Downtown(this.physics, this.mats)
     this.houses = new Houses(this.physics, this.mats, this.assets)
+    this.casino.build(this.root, this.mats, this.physics)
     this.models = new VehicleModels(this.assets)
     const ground = buildTownGround(scene, host.terrain)
     const road = buildConnector(scene, host.terrain)
@@ -212,6 +218,7 @@ export class FoxLakeTown implements GameExtension {
     const trailer = this.cars.add('trailer', SPAWN.x - 3, SPAWN.z, 0, null)
     truck.fp.hitch(trailer.fp)
     this.cars.add('mower', SPAWN.x + 4, SPAWN.z + 6, 0, null)
+    await this.casino.ready(host)
     addEventListener('keydown', (e) => this.key(e))
     this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
@@ -395,6 +402,7 @@ export class FoxLakeTown implements GameExtension {
     this.houses.update(dt, focus)
     this.neighbors.update(dt, night, focus)
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
+    this.casino.update(dt)
     const yaw = this.host.ctx.camera.rotation.y
     this.hud.updateMap(dt, zoneAt(this.host.player.z) === 'town', focus, { x: Math.sin(yaw), y: -Math.cos(yaw) }, this.houses.world, this.account?.id ?? null)
     this.netAcc += dt
@@ -492,6 +500,7 @@ export class FoxLakeTown implements GameExtension {
 
   placeName(x: number, z: number): string | null {
     if (z < HALF) return null
+    if (this.casino.contains(x, z)) return CASINO_NAME
     if (connectorDistance(x, z) < 8) return 'County Road'
     const t = sceneToTown(x, 0, z, this._t)
     if (t.x < TOWN_SQUARE.x0 - TOWN_OFFSET.x + 40 || Math.abs(t.z) > 330 || t.x > 590 || t.x < -410) return 'Fox Lake woods'
@@ -520,12 +529,15 @@ export class FoxLakeTown implements GameExtension {
 
   prompt(): string {
     if (zoneAt(this.host.player.z) !== 'town') return ''
+    const seat = this.casino.prompt()
+    if (seat) return seat
     const door = this.nearDoor()
     if (door) return door.kind === 'clothing' ? `E — ${door.name}: try on outfits` : `E — ${door.name}`
     return ''
   }
 
   interact(): boolean {
+    if (zoneAt(this.host.player.z) === 'town' && this.casino.interact()) return true
     const door = zoneAt(this.host.player.z) === 'town' ? this.nearDoor() : null
     if (!door) return false
     if (door.kind === 'clothing') this.host.openWardrobe()

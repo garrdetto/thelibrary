@@ -44,6 +44,11 @@ async function credit(env: Env, user: User, amount: number): Promise<number> {
 
 const settled = (t: Table): boolean => t.phase === 'settled'
 
+async function readBalance(env: Env, user: User): Promise<number | null> {
+  const r = await adjustSharedWallet(env, user, 0)
+  return r.ok ? r.balance : null
+}
+
 async function loadTable(env: Env, user: User): Promise<Table | null> {
   const row = await env.DB.prepare('SELECT data FROM casino_tables WHERE user_id = ?').bind(user.id).first<{ data: string }>()
   if (!row) return null
@@ -104,7 +109,7 @@ export async function casino(request: Request, env: Env) {
       await env.DB.prepare('INSERT INTO casino_machine_state (user_id, machine, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, machine) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at')
         .bind(user.id, def.id, JSON.stringify(result.state), Date.now()).run()
     }
-    const balance = result.totalWin > 0 ? await credit(env, user, result.totalWin) : (await adjustSharedWallet(env, user, 0) as { balance?: number }).balance ?? null
+    const balance = result.totalWin > 0 ? await credit(env, user, result.totalWin) : await readBalance(env, user)
     return json({ result, balance })
   }
   await ensureTables(env)
@@ -117,7 +122,7 @@ export async function casino(request: Request, env: Env) {
     let balance: number | null = null
     if (settled(table) && table.payout > 0) balance = await credit(env, user, table.payout)
     await saveTable(env, user, table)
-    return json({ table: publicView(table), balance })
+    return json({ table: publicView(table), balance: balance ?? (await readBalance(env, user)) })
   }
   const table = await loadTable(env, user)
   if (!table || table.phase !== 'player') throw new HttpError(400, 'Place a bet to deal a new hand.')
@@ -135,5 +140,5 @@ export async function casino(request: Request, env: Env) {
   let balance: number | null = null
   if (settled(table) && table.payout > 0) balance = await credit(env, user, table.payout)
   await saveTable(env, user, table)
-  return json({ table: publicView(table), balance })
+  return json({ table: publicView(table), balance: balance ?? (await readBalance(env, user)) })
 }

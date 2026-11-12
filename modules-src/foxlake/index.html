@@ -146,6 +146,41 @@
       .name-tag i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
       .fl-title{margin:0;text-align:center;font:800 clamp(34px,6vw,60px)/1 var(--head);letter-spacing:.02em;color:var(--bone);text-shadow:0 10px 24px rgba(0,0,0,.55)}
       .fl-sub{margin:6px 0 14px;text-align:center;color:var(--soft)}
+      #slot-ui,#bar-ui{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:40;width:min(980px,calc(100% - 32px));pointer-events:auto}
+      #bj-ui{position:fixed;inset:auto 0 16px 0;z-index:40;display:grid;gap:10px;justify-items:center;padding:0 16px;pointer-events:auto}
+      .slot-bar,.bj-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:10px;padding:12px 14px;border-radius:18px;background:linear-gradient(180deg,#2a2018,#120d08);border:2px solid #c9a14a;box-shadow:0 12px 30px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,240,200,.25)}
+      .slot-bar button,.bj-bar button{min-height:46px;min-width:46px;padding:0 16px;border-radius:12px;border:2px solid #f2d27a;background:linear-gradient(180deg,#fff0b8,#d4a53a 55%,#8a6018);color:#2a1600;font:900 16px "Arial Black",Inter,sans-serif;cursor:pointer;box-shadow:0 4px 0 #5a3a08}
+      .slot-bar button:active,.bj-bar button:active{transform:translateY(2px);box-shadow:0 2px 0 #5a3a08}
+      .slot-bar button:focus-visible,.bj-bar button:focus-visible{outline:3px solid #fff;outline-offset:2px}
+      .slot-bar button.spin{min-width:120px;min-height:58px;border-radius:999px;background:radial-gradient(circle at 50% 35%,#a8ffb0,#20b040 60%,#0a5a18);border-color:#c8ffd0;color:#fff;text-shadow:0 2px 0 #0a3a10;font-size:20px;box-shadow:0 5px 0 #063010,0 0 22px rgba(80,255,120,.55)}
+      .slot-bar button.leave,.bj-bar button.leave{background:linear-gradient(180deg,#e8e0d0,#9a9080);border-color:#fff}
+      .bj-bar button:disabled{opacity:.4;cursor:default}
+      .slot-cell{display:grid;justify-items:center;min-width:110px;padding:4px 10px;border-radius:10px;background:#000;border:1px solid #5a4a2a}
+      .slot-cell span{font:700 11px Inter,sans-serif;letter-spacing:.12em;color:#c8b890}
+      .slot-cell b{font:900 20px "Arial Black",sans-serif;color:#fff}
+      .slot-help{margin:6px 0 0;text-align:center;color:#e8dcc0;font-size:12px;text-shadow:0 1px 2px #000}
+      .bj-felt{position:relative;width:min(760px,100%);min-height:250px;padding:18px 18px 12px;border-radius:0 0 380px 380px / 0 0 160px 160px;background:radial-gradient(ellipse at 50% 0%,#1f8a52,#0b5a32 60%,#063a20);border:10px solid #4a2a14;box-shadow:inset 0 0 40px rgba(0,0,0,.5),0 14px 30px rgba(0,0,0,.6)}
+      .bj-arc{text-align:center;font:800 12px Georgia,serif;letter-spacing:.14em;color:rgba(255,236,170,.8);margin-bottom:6px}
+      .bj-row{display:flex;align-items:center;gap:14px;margin:6px 0}
+      .bj-row.active .bj-label{color:#fff3a0}
+      .bj-label{width:150px;font:800 13px Inter,sans-serif;color:#e8f0e0;letter-spacing:.06em}
+      .bj-cards{display:flex;min-height:96px}
+      .bj-chip{margin-left:auto;display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:radial-gradient(circle,#c8202a 0 54%,#fff 55% 60%,transparent 61%),repeating-conic-gradient(#c8202a 0 15deg,#fff 15deg 30deg);border:4px solid #c8202a;font:900 12px Inter,sans-serif;color:#fff;text-shadow:0 1px 2px #000}
+      .card{position:relative;width:66px;height:94px;margin-left:calc(var(--i) * -18px);border-radius:7px;background:linear-gradient(160deg,#fff,#f1ece0);border:1px solid #bbb;box-shadow:0 3px 8px rgba(0,0,0,.45);color:#111;font-family:Georgia,serif;animation:deal .25s ease-out}
+      .card:first-child{margin-left:0}
+      .card.red{color:#c0101a}
+      .card .tl,.card .br{position:absolute;font:700 14px/1 Georgia,serif;text-align:center}
+      .card .tl{left:5px;top:5px}.card .br{right:5px;bottom:5px;transform:rotate(180deg)}
+      .card .pip{position:absolute;transform:translate(-50%,-50%);font-size:15px}
+      .card .face{position:absolute;inset:18px 12px;display:grid;place-items:center;border:1px solid currentColor;border-radius:4px;font-size:30px;background:linear-gradient(180deg,#fff8e0,#f0d8a0)}
+      .card .face i{position:absolute;top:2px;left:4px;font-size:12px;font-style:normal}
+      .card.back{background:repeating-linear-gradient(45deg,#8a1a24 0 6px,#a82a34 6px 12px);border:4px solid #fff}
+      .bj-chips{display:flex;gap:6px}
+      .chip-btn{min-width:48px!important;border-radius:50%!important;padding:0!important;height:48px;background:radial-gradient(circle,#1a4ab8 0 54%,#fff 55% 60%,transparent 61%),repeating-conic-gradient(#1a4ab8 0 15deg,#fff 15deg 30deg)!important;color:#fff!important;border:3px solid #1a4ab8!important;box-shadow:none!important;font:900 13px Inter,sans-serif!important;text-shadow:0 1px 2px #000}
+      .chip-btn.on{transform:translateY(-4px);box-shadow:inset 0 0 0 7px #fff,0 0 14px #ffe060!important}
+      @keyframes deal{from{transform:translate(120px,-80px) rotate(14deg);opacity:0}to{transform:none;opacity:1}}
+      @media (prefers-reduced-motion:reduce){.card{animation:none}}
+      @media (max-width:640px){.slot-cell{min-width:84px}.bj-label{width:96px}.card{width:50px;height:72px}}
       .name-tag{position:absolute;transform:translate(-50%,-100%);padding:2px 8px;border-radius:999px;background:rgba(14,30,40,.75);border:1px solid rgba(127,208,255,.6);color:#e9f6ff;font:700 12px Inter,system-ui,sans-serif;white-space:nowrap}
       .pause-screen{z-index:46}
       .pause-card{width:min(620px,100%);max-height:calc(100vh - 32px);overflow:auto;gap:12px}
@@ -198,6 +233,9 @@
           <div><kbd>E</kbd> Drive your car, shops, Maple Threads</div>
           <div><kbd>V</kbd> Bring out another of your vehicles</div>
           <div><kbd>H</kbd> Go home (every 15 minutes)</div>
+          <div><kbd>E</kbd> Sit at a slot machine, the bar or blackjack (Northwoods Lodge Casino, East Ave &amp; South St)</div>
+          <div class="rr-keys-title">Gear</div>
+          <div>Your rod and rifle hang on the cabin's gear rack: <kbd>1</kbd> or <kbd>2</kbd> there to take one</div>
           <div class="rr-keys-title">Out at the lake</div>
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk or drive</div>
           <div><kbd>Mouse</kbd> or <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> Look around</div>

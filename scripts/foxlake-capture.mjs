@@ -23,6 +23,9 @@ const SPOTS = [
   { name: 'lake-dock', hour: 18, at: null, facing: null, pitch: 0.15 },
   { name: 'vehicles-outfit', hour: 14, at: [-474, 1128], facing: 0.55, pitch: 0.18, outfit: ['jacket-tee-white', 'vest-none', 'cap-none', 'pants-darkjeans', 'pack-none'] },
   { name: 'outfit-hoodie', hour: 14, at: [-474, 1128], facing: 2.6, pitch: 0.18, outfit: ['jacket-hoodie-grey', 'vest-none', 'cap-backwards', 'pants-joggers', 'pack-none'] },
+  { name: 'casino-outside', hour: 19, at: [-240, 1098], facing: Math.PI, pitch: 0.12 },
+  { name: 'casino-inside', hour: 15, at: [-240, 1082], facing: Math.PI, pitch: 0.18 },
+  { name: 'casino-slots', hour: 15, at: [-250, 1078], facing: -Math.PI / 2, pitch: 0.12 },
   { name: 'town-night', hour: 21.5, at: [-468, 1147], facing: Math.PI * 0.5, pitch: 0.1 },
 ]
 
@@ -94,6 +97,56 @@ for (const spot of SPOTS) {
   await page.screenshot({ path: join(outDir, `${spot.name}.png`) })
   console.log(spot.name, JSON.stringify(report.spots[spot.name]))
 }
+
+for (const [name, idx] of [['slot-machine', 4], ['slot-link', 0], ['slot-house', 2]]) {
+  await page.evaluate(async (i) => {
+    const town = window.__foxlake.town
+    const casino = town.casino
+    const h = window.__foxlake.game.host()
+    const spot = casino.displays[i].spot
+    const p = h.player.clone()
+    const sx = spot.seat.x - 356
+    const sz = 1152 - spot.seat.z
+    p.set(sx, 0, sz)
+    h.teleport(p, 0)
+    casino.interact()
+    await new Promise((r) => setTimeout(r, 1200))
+    for (let n = 0; n < 3; n++) await casino.session.spin()
+  }, idx)
+  await page.waitForTimeout(1500)
+  await page.screenshot({ path: join(outDir, `${name}.png`) })
+  await page.evaluate(() => window.__foxlake.town.casino.session?.close())
+}
+for (const [name, idx, kind, after] of [['bonus-holdspin', 0, 'holdspin', 4200], ['bonus-wheel', 7, 'freegames', 3800], ['bonus-houses', 2, 'houses', 9000], ['bonus-collect', 8, 'cashcollect', 3500], ['bonus-pick', 9, 'jackpotpick', 6000], ['bonus-gold', 4, 'freegames', 9000]]) {
+  await page.evaluate(async ([i, k]) => {
+    const casino = window.__foxlake.town.casino
+    const h = window.__foxlake.game.host()
+    const spot = casino.displays[i].spot
+    const p = h.player.clone()
+    p.set(spot.seat.x - 356, 0, 1152 - spot.seat.z)
+    h.teleport(p, 0)
+    casino.interact()
+    await new Promise((r) => setTimeout(r, 1000))
+    void casino.session.demo(k)
+  }, [idx, kind])
+  await page.waitForTimeout(after)
+  await page.screenshot({ path: join(outDir, `${name}.png`) })
+  await page.evaluate(() => window.__foxlake.town.casino.session?.close())
+  await page.waitForTimeout(400)
+}
+await page.evaluate(async () => {
+  const town = window.__foxlake.town
+  const h = window.__foxlake.game.host()
+  const p = h.player.clone()
+  p.set(116 - 356, 0, 1152 - 76.1)
+  h.teleport(p, 0)
+  town.casino.interact()
+  await new Promise((r) => setTimeout(r, 1200))
+  await town.casino.session.act('deal')
+})
+await page.waitForTimeout(1500)
+await page.screenshot({ path: join(outDir, 'blackjack.png') })
+await page.evaluate(() => { const s = window.__foxlake.town.casino.session; if (s) { s.view = null; s.close() } })
 
 await goTo({ hour: 17.6, at: [-430, 1158], facing: Math.PI * 0.42, pitch: 0.06 })
 await page.addStyleTag({ content: '.hud,#prompt,#controls,#town-tags{visibility:hidden!important}' })

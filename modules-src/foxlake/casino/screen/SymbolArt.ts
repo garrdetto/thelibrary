@@ -168,7 +168,12 @@ export function drawSymbol(g: Ctx, s: SymbolStyle, x: number, y: number, w: numb
     g.lineWidth = m * 0.015
     g.strokeStyle = '#3c2402'
     g.stroke()
-    g.font = `900 ${Math.round(bh * 0.72)}px "Arial Black","Impact",sans-serif`
+    let fs = Math.round(bh * 0.72)
+    g.font = `900 ${fs}px "Arial Black","Impact",sans-serif`
+    while (g.measureText(s.caption!).width > w * 0.7 && fs > 6) {
+      fs--
+      g.font = `900 ${fs}px "Arial Black","Impact",sans-serif`
+    }
     g.fillStyle = '#3a1300'
     g.fillText(s.caption!, cx, by + bh * 0.04)
   }
