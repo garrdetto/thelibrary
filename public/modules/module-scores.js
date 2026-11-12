@@ -29,7 +29,7 @@
       for (var id in data) if (!data[id] || now - data[id].at > MAX_AGE) delete data[id];
       for (var key in runs) {
         var r = runs[key];
-        if (r.value > r.saved) data[r.run] = { module: r.module, value: r.value, at: now };
+        if (r.value > r.saved) data[r.run] = { module: r.module, value: r.value, detail: r.detail, at: now };
         else delete data[r.run];
       }
       if (Object.keys(data).length) localStorage.setItem(STORE, JSON.stringify(data)); else localStorage.removeItem(STORE);
@@ -42,8 +42,10 @@
     if (Date.now() - localAt >= LOCAL_MS) writeOutbox();
     else if (!localTimer) localTimer = setTimeout(writeOutbox, LOCAL_MS);
   }
-  function post(module, value, run) {
-    var body = JSON.stringify({ action: 'score', module: module, value: value, run: run });
+  function post(module, value, run, detail) {
+    var payload = { action: 'score', module: module, value: value, run: run };
+    if (typeof detail === 'string' && /^[a-z]{1,16}$/.test(detail)) payload.detail = detail;
+    var body = JSON.stringify(payload);
     return fetch('/api/module-scores', { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: body })
       .then(function (response) { return { ok: response.ok, retry: response.status >= 500 || response.status === 429 }; })
       .catch(function () { return { ok: false, retry: true }; });
@@ -51,7 +53,7 @@
   function send(r) {
     var value = r.value;
     r.sentAt = Date.now();
-    return post(r.module, value, r.run).then(function (result) {
+    return post(r.module, value, r.run, r.detail).then(function (result) {
       if (result.ok || !result.retry) { r.saved = Math.max(r.saved, value); if (r.value <= r.saved) forget(r.run); }
       notify(r.module, result.ok);
       return result.ok;
@@ -64,6 +66,7 @@
     if (!r) {
       r = runs[key] = { module: module, run: UUID.test(tag) ? tag.toLowerCase() : runId(), value: 0, saved: 0, sentAt: 0, timer: 0 };
     }
+    if (options && typeof options.detail === 'string') r.detail = options.detail.toLowerCase();
     return { key: key, run: r, keyed: !!(options && options.key) };
   }
   function clean(value) {
@@ -108,7 +111,7 @@
       var item = data[run];
       if (live[run] || !item || !UUID.test(run) || Date.now() - item.at > MAX_AGE) continue;
       (function (run, item) {
-        jobs.push(post(item.module, clean(item.value), run).then(function (result) {
+        jobs.push(post(item.module, clean(item.value), run, item.detail).then(function (result) {
           if (result.ok || !result.retry) forget(run);
           if (result.ok) notify(item.module, true);
         }));
