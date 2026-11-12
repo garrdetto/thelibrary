@@ -28,7 +28,7 @@ export type WildLineId = keyof typeof WILD_LINES
 /** How the recordings are read. */
 export const VOICE_STYLE = 'Energetic redneck fishing guide from northern Wisconsin, mid-20s, loud and fired up, thick Upper-Midwest accent, hollering with a big grin like he just saw a monster carp. Fast, punchy delivery; the WOOOOOs are long, full-throated whoops.'
 
-/** ElevenLabs v3 audio tags put in front of every line unless `SPOKEN` reads it another way: he's hollering and hyped nearly all the time. */
+/** ElevenLabs audio tags put in front of every line unless `SPOKEN` reads it another way: he's hollering and hyped nearly all the time. */
 export const VOICE_TAGS = '[excited][screaming]'
 
 /** Lines read with their own tags (the quiet ones), keyed by clip id; the HUD still shows the plain text. */

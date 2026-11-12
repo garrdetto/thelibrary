@@ -63,7 +63,12 @@ export class Audio {
     }
   }
 
-  /** Wild Man talking: one line at a time, the previous one cut off. */
+  /** The audio clock, seconds (0 before the first click). */
+  get time(): number {
+    return this.ctx?.currentTime ?? 0
+  }
+
+  /** Wild Man talking. `WildVoice` only starts a line once the last one has ended; should two ever meet here, the earlier one is stopped rather than talked over. */
   speak(buffer: AudioBuffer): void {
     if (!this.ctx || !this.voice) return
     this.talking?.stop()
@@ -150,9 +155,9 @@ export class Audio {
     this.burst(0.5, 3200, 0.09, 'bandpass')
   }
 
-  /** Wild Man hollering: a voiced glide up and down through a vowel formant, with vibrato. `big` makes it longer and wilder. */
-  whoop(big = false): void {
-    if (!this.ctx || !this.master) return
+  /** Wild Man hollering: a voiced glide up and down through a vowel formant, with vibrato. `big` makes it longer and wilder. Returns how long it lasts, seconds (0 when nothing sounded). */
+  whoop(big = false): number {
+    if (!this.ctx || !this.master) return 0
     const ctx = this.ctx
     const now = ctx.currentTime
     const len = big ? 1.5 : 0.75
@@ -187,6 +192,7 @@ export class Audio {
     vib.start(now)
     o.stop(now + len + 0.05)
     vib.stop(now + len + 0.05)
+    return len
   }
 
   chime(): void {
