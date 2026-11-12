@@ -70,7 +70,7 @@ import type { RemoteBoat } from './Online'
 import { Bowfishing } from './Bowfishing'
 import { BOWBOAT, deckHeight } from './BowBoat'
 import { Clock, hourFromSearch } from '../systems/TimeOfDay'
-import { Lighting } from '../world/Lighting'
+import { Lighting, type LightingLook } from '../world/Lighting'
 import { buildHighway } from '../world/Highway'
 import { Weeds } from '../world/Weeds'
 
@@ -155,6 +155,8 @@ export interface GameOptions {
   profile?: string
   /** Fox Lake's bigger Fox Outfitters, with the side-by-side in its open garage, in place of the cabin. */
   outfitters?: boolean
+  /** A host world's own picture: lighter shadows, a brighter night and matte characters (Fox Lake). */
+  look?: LightingLook
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -364,7 +366,7 @@ export class Game {
     this.ground = buildGround(this.ctx, this.terrain)
     this.skyMat = buildSky(this.ctx).material
     this.waterMat = buildWater(this.ctx, this.terrain).material
-    this.lighting = new Lighting(this.ctx, this.skyMat, this.waterMat, this.clock)
+    this.lighting = new Lighting(this.ctx, this.skyMat, this.waterMat, this.clock, this.options.look)
     buildHighway(this.ctx, this.terrain)
     this.shading = new FoliageShading(this.ctx)
     this.wear = new GroundWear(this.ctx, this.terrain)
