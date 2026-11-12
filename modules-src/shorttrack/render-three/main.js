@@ -25,6 +25,8 @@ import { createCar } from '../next/sim/car';
 import { TM } from '../truck-model.js';
 import { PROTOCOL_VERSION, ROOM_PREFIX, helloAccepted, VERSION_MISMATCH, PHYSICS_MISMATCH } from '../next/net/protocol';
 import { place as simPlace, resetCar as simResetCar } from '../next/sim/physics';
+import { SparkField, sparkColor } from '../next/render/sparkField';
+import { ENGINE_IDLE_RPM, createEngineVoice } from './engine-voice.js';
 import { createWorld, standings as simStandings, simulate as simSimulate, raceControl, updateBoosts, beginRace as simBeginRace, buildGrid, formV, forgetFormV } from '../next/sim/race';
 
 // ===================== UTILS =====================
@@ -440,18 +442,19 @@ function seedMarks(n){const r=rng(77);
     _o.quaternion.setFromRotationMatrix(_m);_o.position.set(c.x+c.nx*lat,heightAt(s2,lat)+0.02,c.z+c.nz*lat);_o.scale.set(0.8+r()*0.6,1,len);_o.updateMatrix();
     markMesh.setMatrixAt(markIdx,_o.matrix);markIdx=(markIdx+1)%MARKS;markTotal=Math.min(MARKS,markTotal+1);}
   markMesh.count=markTotal;markMesh.instanceMatrix.needsUpdate=true;}
-const SPN=500,spPos=new Float32Array(SPN*3),spCol=new Float32Array(SPN*3),spVel=new Float32Array(SPN*3),spLife=new Float32Array(SPN);
-const spGeo=new THREE.BufferGeometry();spGeo.setAttribute('position',new THREE.BufferAttribute(spPos,3));spGeo.setAttribute('color',new THREE.BufferAttribute(spCol,3));
-const sparks=new THREE.Points(spGeo,new THREE.PointsMaterial({size:0.22,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
-sparks.frustumCulled=false;scene.add(sparks);let spI=0;
-function spawnSparks(x,y,z,n,vx,vz){for(let k=0;k<n;k++){const i=spI;spI=(spI+1)%SPN;spPos[i*3]=x;spPos[i*3+1]=y;spPos[i*3+2]=z;spVel[i*3]=vx*0.6+(Math.random()-0.5)*8;spVel[i*3+1]=Math.random()*5;spVel[i*3+2]=vz*0.6+(Math.random()-0.5)*8;spLife[i]=0.3+Math.random()*0.5;}}
+// Sparks: next/render/sparkField.ts simulates them (streaks, bounces, cooling, forking). The next renderer draws the
+// field itself (next/render/sparks.ts); the classic renderer draws each spark as a thin line.
+const SPARKS=new SparkField(),spGround={x:0,y:0,z:0,nx:0,ny:1,nz:0},spEye=new THREE.Vector3(),spEyeV=new THREE.Vector3();
+const spLines=GPU?null:(()=>{const g=new THREE.BufferGeometry();for(const k of ['position','color'])g.setAttribute(k,new THREE.BufferAttribute(new Float32Array(SPARKS.capacity*6),3));
+  const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));l.frustumCulled=false;scene.add(l);return l;})();
+function sparkGround(x,z){const tp=toTrack(x,z),lat=clamp(tp.lat,-HW-AP,HW);normalAt(tp.s,lat,_v);spGround.x=x;spGround.y=heightAt(tp.s,lat);spGround.z=z;spGround.nx=_v.x;spGround.ny=_v.y;spGround.nz=_v.z;return spGround;}
 function updSparks(dt){
-  for(let i=0;i<SPN;i++){
-    if(spLife[i]<=0){spCol[i*3]=spCol[i*3+1]=spCol[i*3+2]=0;continue;}
-    spLife[i]-=dt;spVel[i*3+1]-=12*dt;spPos[i*3]+=spVel[i*3]*dt;spPos[i*3+1]+=spVel[i*3+1]*dt;spPos[i*3+2]+=spVel[i*3+2]*dt;
-    const l=Math.max(0,spLife[i])*2;spCol[i*3]=l;spCol[i*3+1]=0.6*l;spCol[i*3+2]=0.15*l;
-  }
-  spGeo.attributes.position.needsUpdate=true;spGeo.attributes.color.needsUpdate=true;
+  SPARKS.update(dt);if(!spLines)return;
+  if(dt>0){spEyeV.copy(camera.position).sub(spEye).divideScalar(dt);if(spEyeV.lengthSq()>22500)spEyeV.set(0,0,0);}spEye.copy(camera.position);
+  const g=spLines.geometry,pos=g.attributes.position.array,col=g.attributes.color.array;let n=0;
+  for(let i=0;i<SPARKS.capacity;i++){if(SPARKS.life[i]<=0)continue;const a=n*6;SPARKS.tail(i,spEyeV.x,spEyeV.y,spEyeV.z,pos,a);pos[a+3]=SPARKS.pos[i*3];pos[a+4]=SPARKS.pos[i*3+1];pos[a+5]=SPARKS.pos[i*3+2];
+    sparkColor(SPARKS.life[i]/SPARKS.span[i],SPARKS.glow[i]*0.2,col,a+3);col[a]=col[a+3]*0.3;col[a+1]=col[a+4]*0.24;col[a+2]=col[a+5]*0.15;n++;}
+  g.setDrawRange(0,n*2);g.attributes.position.needsUpdate=true;g.attributes.color.needsUpdate=true;
 }
 const SMN=100,smoke=[];let smI=0;
 for(let i=0;i<SMN;i++){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:smokeTex,transparent:true,depthWrite:false,opacity:0}));s.visible=false;scene.add(s);smoke.push({s,life:0,max:1,vx:0,vy:0,vz:0,size:1,op:0.4});}
@@ -1079,8 +1082,8 @@ class Car{
 // plays it and sends it on.
 function drainSim(){
   for(const e of WORLD.events){
-    if(e.t==='sparks')spawnSparks(e.x,e.y,e.z,e.n,e.vx,e.vz);
-    else if(e.t==='impact'){const c=cars.get(e.id);spawnSparks(e.x,e.y,e.z,Math.min(50,Math.floor(e.v*4)),e.vx,e.vz);if(e.v>6)spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);
+    if(e.t==='sparks')SPARKS.scrape(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.k,e.n,sparkGround(e.x,e.z));
+    else if(e.t==='impact'){const c=cars.get(e.id);SPARKS.burst(e.x,e.y,e.z,e.vx,e.vz,e.nx,e.nz,e.v,e.k==='car'?0.5:1,sparkGround(e.x,e.z));if(e.v>6)spawnSmoke(e.x,e.y,e.z,e.vx,e.vz,false,1.6);
       if(GPU&&GPU.debris&&e.v>=7){const tp=toTrack(e.x,e.z);GPU.debris.spawn(e.x,e.y,e.z,normalAt(tp.s,tp.lat,_v),e.vx,e.vz,e.v,c&&c.lv?c.lv.primary:undefined);}
       const now=performance.now();if(c&&now-c.sndT>150){c.sndT=now;crashSnd(e.v,camera.position.distanceTo(_v.set(e.x,e.y,e.z)));}}
     else if(e.t==='damage'){const c=cars.get(e.id);if(c)deformCar(c,e.lp,e.dir,e.amt);
@@ -1291,7 +1294,7 @@ function netTick(dt){
   else if(player)sendHost({t:'s',s:stateOf(player)});
 }
 
-// ===================== AUDIO (ElevenLabs engine loops, synthesized fallback) =====================
+// ===================== AUDIO (synthesized: engine-voice.js is the engine, the rest is filtered noise) =====================
 const AU={ctx:null,on:store.get('sts_snd',true)};
 function audioInit(){
   if(AU.ctx){if(AU.ctx.state==='suspended')AU.ctx.resume();return;}
@@ -1299,13 +1302,10 @@ function audioInit(){
   const M=ctx.createGain();M.gain.value=AU.on?0.7:0;M.connect(ctx.destination);AU.master=M;
   const nb=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;AU.noise=nb;
   const loop=()=>{const s=ctx.createBufferSource();s.buffer=nb;s.loop=true;s.start();return s;};
-  const osc=t=>{const o=ctx.createOscillator();o.type=t;o.start();return o;};
   const filt=(t,f,q)=>{const b=ctx.createBiquadFilter();b.type=t;b.frequency.value=f;b.Q.value=q||1;return b;};
   const gain=v=>{const g=ctx.createGain();g.gain.value=v;return g;};
-  AU.e1=osc('sawtooth');AU.e2=osc('square');AU.ef=filt('lowpass',900,3);AU.eg=gain(0);
-  AU.e1.connect(AU.ef);AU.e2.connect(gain(0.45)).connect(AU.ef);AU.ef.connect(AU.eg).connect(M);
+  AU.engine=createEngineVoice(ctx,M,nb);AU.rival=createEngineVoice(ctx,M,nb);
   AU.tg=gain(0);loop().connect(filt('bandpass',1150,2.5)).connect(AU.tg).connect(M);
-  AU.o1=osc('sawtooth');AU.og=gain(0);AU.o1.connect(filt('lowpass',1000,1)).connect(AU.og).connect(M);
   AU.cg=gain(0.02);loop().connect(filt('lowpass',500,0.7)).connect(AU.cg).connect(M);
 }
 function toggleMute(){AU.on=!AU.on;store.set('sts_snd',AU.on);if(AU.master)AU.master.gain.value=AU.on?0.7:0;toast(AU.on?'Sound on':'Sound muted');if(!AU.on&&window.speechSynthesis)speechSynthesis.cancel();}
@@ -1316,20 +1316,19 @@ function crashSnd(v,dist){
   g.gain.setValueAtTime(vol*0.9,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.35+v*0.02);
   src.connect(f).connect(g).connect(AU.master);src.start(t,Math.random());src.stop(t+0.9);
 }
-const ENGINE_PITCH=17;
+const ENGINE_GAIN={on:0.2,off:0.12,idle:0.06,rival:0.17};
 const rpmOf=c=>3000+Math.min(1,Math.abs(c.vf)/62)*6400+(c.thr?350:0);
 function audioUpdate(){
   if(!AU.ctx)return;const t=AU.ctx.currentTime,inRace=!!player&&mode!=='menu'&&mode!=='garage'&&mode!=='lobby';
-  const c=inRace?player:null,rpm=c?rpmOf(c):1050+Math.sin(t*3)*40,f=rpm/ENGINE_PITCH;
-  AU.e1.frequency.setTargetAtTime(f,t,0.04);AU.e2.frequency.setTargetAtTime(f/2,t,0.04);
-  AU.ef.frequency.setTargetAtTime(c&&c.thr?2400:800,t,0.08);AU.eg.gain.setTargetAtTime(c?(c.thr?0.13:0.08):0.04,t,0.08);
+  const c=inRace?player:null;
+  AU.engine.set(c?rpmOf(c):ENGINE_IDLE_RPM+Math.sin(t*3)*60,c&&c.thr?1:0,c?(c.thr?ENGINE_GAIN.on:ENGINE_GAIN.off):ENGINE_GAIN.idle,t);
   AU.tg.gain.setTargetAtTime(c?clamp((c.slip-2.5)/12,0,0.3):0,t,0.05);
   AU.cg.gain.setTargetAtTime(inRace?0.05:0.02,t,0.3);
   let near=null,nd=1e9;if(c)cars.forEach(o=>{if(o===c||!o.vis)return;const d=Math.hypot(o.x-camera.position.x,o.z-camera.position.z);if(d<nd){nd=d;near=o;}});
   if(near&&nd<150){const dx=camera.position.x-near.x,dz=camera.position.z-near.z,d=Math.max(1,nd);
     const vs=((near.vx-c.vx)*dx+(near.vz-c.vz)*dz)/d,dop=343/Math.max(200,343-vs);
-    AU.o1.frequency.setTargetAtTime(rpmOf(near)/ENGINE_PITCH*dop,t,0.05);AU.og.gain.setTargetAtTime(Math.min(0.12,2.2/(d+8)),t,0.08);}
-  else AU.og.gain.setTargetAtTime(0,t,0.1);
+    AU.rival.set(rpmOf(near),0.5,Math.min(ENGINE_GAIN.rival,ENGINE_GAIN.rival*18/(d+8)),t,dop);}
+  else AU.rival.fade(t);
 }
 
 // ===================== ENVIRONMENT / QUALITY =====================
@@ -1361,7 +1360,7 @@ mirrorRT.texture.repeat.x=-1;mirrorRT.texture.offset.x=1;   // flip like a real 
 const ovScene=new THREE.Scene(),ovCam=new THREE.OrthographicCamera(0,1,1,0,-1,1);
 const ovQuad=new THREE.Mesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({map:mirrorRT.texture,depthTest:false,depthWrite:false}));ovScene.add(ovQuad);
 const MIRROR={x:0,y:11,w:0,h:0};
-if(GPU)GPU.attach({scene,camera,mirrorCam,sun,hemi,skyDay,sky:{turbidity:DAY.turbidity,rayleigh:DAY.rayleigh,mie:DAY.mie,mieG:DAY.mieG,sun:[...DAY.sunDir]},ground:new THREE.Color(0x4f5a2c).toArray(),towers});
+if(GPU)GPU.attach({scene,camera,mirrorCam,sun,hemi,skyDay,sky:{turbidity:DAY.turbidity,rayleigh:DAY.rayleigh,mie:DAY.mie,mieG:DAY.mieG,sun:[...DAY.sunDir]},ground:new THREE.Color(0x4f5a2c).toArray(),towers,sparks:SPARKS});
 function resize(){
   const w=wrap.clientWidth,h=wrap.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();
   composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(w,h);
@@ -1681,7 +1680,7 @@ function playerCtl(){return {thr:!!(keys.ArrowUp||keys.KeyW),brk:!!(keys.ArrowDo
 // ===================== MAIN LOOP =====================
 // ?autopilot=1 hands the player's car to the AI (scripts/shorttrack-play.mjs drives real laps with it)
 const AUTOPILOT=new URLSearchParams(location.search).get('autopilot')==='1';
-const CLASSIC_STATUS={track:TRACK_ID,frames:0,physics:WORLD.model,get debris(){return GPU&&GPU.debris?GPU.debris.count:0;}};window.__stClassic=CLASSIC_STATUS;
+const CLASSIC_STATUS={track:TRACK_ID,frames:0,physics:WORLD.model,get debris(){return GPU&&GPU.debris?GPU.debris.count:0;},get sparks(){return SPARKS.live;}};window.__stClassic=CLASSIC_STATUS;
 const STEP=1/120;let acc=0,lastT=performance.now(),hudT=0,crowdHype=0.6,pylonT=0;
 function simulate(dt){
   // rolling start: the AI drives every car (the player's too) in formation until the green flag drops
