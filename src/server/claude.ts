@@ -5,10 +5,17 @@ const API_URL = 'https://api.anthropic.com/v1/messages'
 const API_VERSION = '2023-06-01'
 const WEB_SEARCH_TOOL = 'web_search_20260318'
 
-export const CHAT_MODEL = 'claude-sonnet-5-5'
-export const LYRICS_MODEL = 'claude-opus-5-5'
-export const IMAGE_DIRECTOR_MODEL = 'claude-sonnet-5-5'
-export const RESEARCH_MODEL = 'claude-sonnet-5-5'
+const FALLBACK_BETA = 'server-side-fallback-2026-07-01'
+const THINKING_ROOM = 24000
+
+export const STUDIO_MODEL = 'claude-opus-5-5'
+export const STUDIO_EFFORT: ClaudeEffort = 'high'
+export const CHAT_MODEL = STUDIO_MODEL
+export const LYRICS_MODEL = STUDIO_MODEL
+export const IMAGE_MODEL = STUDIO_MODEL
+export const RESEARCH_MODEL = STUDIO_MODEL
+
+export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type ClaudeImageType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
 export type ClaudeBlock =
@@ -27,6 +34,7 @@ export type ClaudeRequest = {
   maxTokens: number
   tools?: ClaudeTool[]
   forceTool?: string
+  effort?: ClaudeEffort
   webSearch?: number
   timeoutMs?: number
   signal?: AbortSignal
@@ -37,30 +45,27 @@ export function claudeReady(env: Env) {
   return env.ANTHROPIC_API_KEY
 }
 
-function modelFor(env: Env, fallback: string) {
-  if (fallback === CHAT_MODEL && env.CLAUDE_CHAT_MODEL) return env.CLAUDE_CHAT_MODEL
-  if (fallback === LYRICS_MODEL && env.CLAUDE_LYRICS_MODEL) return env.CLAUDE_LYRICS_MODEL
-  return fallback
-}
-
 export async function claude(env: Env, request: ClaudeRequest): Promise<ClaudeResponse> {
   const key = claudeReady(env)
   const tools: unknown[] = [...(request.tools ?? [])]
   if (request.webSearch) tools.push({ type: WEB_SEARCH_TOOL, name: 'web_search', max_uses: request.webSearch })
+  const system: { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }[] = [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }]
+  if (request.forceTool) system.push({ type: 'text', text: `Always answer by calling the ${request.forceTool} tool exactly once, and write nothing outside it.` })
   const body = {
-    model: modelFor(env, request.model),
-    max_tokens: request.maxTokens,
-    system: [{ type: 'text', text: request.system, cache_control: { type: 'ephemeral' } }],
+    model: request.model,
+    max_tokens: request.maxTokens + (request.effort ? THINKING_ROOM : 0),
+    system,
     messages: request.messages,
-    ...(tools.length ? { tools } : {}),
-    ...(request.forceTool ? { tool_choice: { type: 'tool', name: request.forceTool } } : {}),
+    fallbacks: 'default',
+    ...(request.effort ? { output_config: { effort: request.effort } } : {}),
+    ...(tools.length ? { tools, tool_choice: { type: 'auto' } } : {}),
   }
-  const timeout = AbortSignal.timeout(request.timeoutMs ?? 90000)
+  const timeout = AbortSignal.timeout(request.timeoutMs ?? 240000)
   let response: Response
   try {
     response = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': API_VERSION },
+      headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': API_VERSION, 'anthropic-beta': FALLBACK_BETA },
       body: JSON.stringify(body),
       signal: request.signal ? AbortSignal.any([timeout, request.signal]) : timeout,
     })

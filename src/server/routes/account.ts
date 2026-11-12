@@ -130,7 +130,7 @@ export async function accountSettings(request: Request, env: Env) {
 }
 
 const adminInput = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('update'), id: z.string().uuid(), username: usernameField, pages: z.array(z.enum(studioPages)).max(3) }).strict(),
+  z.object({ action: z.literal('update'), id: z.string().uuid(), username: usernameField, pages: z.array(z.enum(studioPages)).max(studioPages.length) }).strict(),
   z.object({ action: z.literal('set-admin'), id: z.string().uuid(), admin: z.boolean() }).strict(),
   z.object({ action: z.literal('reset-password'), id: z.string().uuid() }).strict(),
   z.object({ action: z.literal('delete'), id: z.string().uuid() }).strict(),

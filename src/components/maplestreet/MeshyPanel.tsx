@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
-import { LoaderCircle, Sparkles, X } from 'lucide-react'
+import { LoaderCircle, Sparkles, Trash2, X } from 'lucide-react'
 import { estimateCredits, MESHY_AI_MODELS, NEGATIVE_DEFAULTS, POLYCOUNT_DEFAULTS, POLYCOUNT_RANGE, PREVIEW_COUNT_MAX, PROMPT_HELPERS } from '@/lib/meshy'
 import type { MeshyAiModel, MeshyJob, MeshyStatus, MeshyTarget } from '@/lib/meshy'
-import { meshyCancel, meshyHide, meshyImage, meshyJobs, meshyModelFile, meshyRefine, meshyRemesh, meshyRetexture, meshyStatus, meshyText } from '@/lib/meshy-client'
+import { meshyCancel, meshyDelete, meshyHide, meshyImage, meshyJobs, meshyModelFile, meshyRefine, meshyRemesh, meshyRetexture, meshyStatus, meshyText } from '@/lib/meshy-client'
 import type { MeshySource } from '@/lib/meshy-client'
 import { NumberInput } from '../admin/NumberInput'
 
@@ -121,6 +121,13 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
     }
   }
 
+  function deleteJob(job: MeshyJob, running: boolean) {
+    const what = `this ${KIND_LABEL[job.kind].toLowerCase()} job (“${job.prompt.length > 60 ? `${job.prompt.slice(0, 60)}…` : job.prompt}”)`
+    const stop = running ? ' Meshy stops working on it and doesn’t refund credits for tasks that already started.' : ''
+    if (!window.confirm(`Delete ${what} and its stored model?${stop} Items, vehicles and rides you already published from it keep their own copy. This can’t be undone.`)) return
+    void run(`delete-${job.id}`, () => meshyDelete(job.id), 'Deleted the job and its stored model.')
+  }
+
   const previewCost = estimateCredits({ kind: 'preview', model: aiModel, count })
   const imageCost = estimateCredits({ kind: 'image', model: aiModel, texture })
   const enough = (cost: number) => status?.balance == null || status.balance >= cost
@@ -206,7 +213,8 @@ export function MeshyPanel({ target, sources, onOpen }: Props) {
             {done && job.kind !== 'preview' && <button type="button" disabled={!!busy} onClick={() => void run(`remesh-${job.id}`, () => meshyRemesh(target, { jobId: job.id }, polycount), `Remeshing to ${polycount.toLocaleString()} polygons.`)}>Remesh to {polycount.toLocaleString()} · {credits(estimateCredits({ kind: 'remesh' }))}</button>}
             {done && <button type="button" className="ms-meshy-open" disabled={!!busy} onClick={() => void open(job)}>{busy === `open-${job.id}` ? <LoaderCircle className="spin" size={14}/> : null} Open in editor</button>}
             {running && <button type="button" disabled={!!busy} onClick={() => void run(`cancel-${job.id}`, () => meshyCancel(job.id), 'Canceled. Meshy doesn’t refund credits for tasks that already started.')}>Cancel</button>}
-            {!running && <button type="button" aria-label="Remove from list" disabled={!!busy} onClick={() => void run(`hide-${job.id}`, () => meshyHide(job.id), 'Removed from the list.')}><X size={14} aria-hidden/></button>}
+            <button type="button" aria-label={`Delete this ${KIND_LABEL[job.kind].toLowerCase()} job and its stored model`} disabled={!!busy} onClick={() => deleteJob(job, running)}>{busy === `delete-${job.id}` ? <LoaderCircle className="spin" size={14} aria-hidden/> : <Trash2 size={14} aria-hidden/>} Delete</button>
+            {!running && <button type="button" aria-label="Remove from list (keeps the stored model)" title="Remove from list (keeps the stored model)" disabled={!!busy} onClick={() => void run(`hide-${job.id}`, () => meshyHide(job.id), 'Removed from the list.')}><X size={14} aria-hidden/></button>}
           </div>
         </li>
       })}

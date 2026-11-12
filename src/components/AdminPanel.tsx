@@ -1,12 +1,12 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { Car, FerrisWheel, Flag, Gauge, Image, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Settings2, ShieldCheck, Sparkles, Trophy, Users } from 'lucide-react'
+import { AudioLines, Car, FerrisWheel, Flag, Gauge, Image, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Settings2, ShieldCheck, Sparkles, Trophy, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
 import { LibraryArrange } from './admin/LibraryArrange'
 
-export type StudioId = 'chat' | 'image' | 'lyrics'
+export type StudioId = 'chat' | 'image' | 'lyrics' | 'voice'
 
 const MapleStreetItemEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./maplestreet/MapleStreetItemEditor'))
 const ParkRideCreator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./park/rides/RideCreator'))
@@ -24,9 +24,10 @@ type Area = (typeof areas)[number]['id']
 const sections = [
   { id: 'overview', area: 'site', group: 'Dashboard', label: 'Overview', icon: LayoutDashboard, title: 'Overview', blurb: 'Everything you manage on the library at a glance.' },
   { id: 'library', area: 'site', group: 'Library', label: 'Module order', icon: LayoutGrid, title: 'Module order', blurb: 'Arrange the homepage library and sidebar, pick the featured module and hide modules you are not ready to show.' },
-  { id: 'chat', area: 'site', group: 'Studios', label: 'AI Chat', icon: MessageCircle, title: 'AI Chat', blurb: 'Talk ideas through with Claude.' },
-  { id: 'image', area: 'site', group: 'Studios', label: 'Image Studio', icon: Image, title: 'Image Studio', blurb: 'Create and edit pictures from a description.' },
-  { id: 'lyrics', area: 'site', group: 'Studios', label: 'Lyric Studio', icon: Music2, title: 'Lyric Studio', blurb: 'Write, fine-tune and revamp song lyrics.' },
+  { id: 'chat', area: 'site', group: 'Studios', label: 'AI Chat', icon: MessageCircle, title: 'AI Chat', blurb: 'Talk ideas through with Claude Opus 5.5.' },
+  { id: 'image', area: 'site', group: 'Studios', label: 'Image Studio', icon: Image, title: 'Image Studio', blurb: 'Claude Opus 5.5 draws and edits vector pictures from a description.' },
+  { id: 'lyrics', area: 'site', group: 'Studios', label: 'Lyric Studio', icon: Music2, title: 'Lyric Studio', blurb: 'Write, fine-tune and revamp song lyrics with Claude Opus 5.5.' },
+  { id: 'voice', area: 'site', group: 'Studios', label: 'Voice Generator', icon: AudioLines, title: 'Voice Generator', blurb: 'Design, remix and delete ElevenLabs voices, then hear them read your own text.' },
   { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
   { id: 'changes', area: 'site', group: 'Site', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
   { id: 'maplestreet', area: 'modules', group: 'Fox Plains', label: 'Items', icon: Package, title: 'Fox Plains items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
@@ -37,7 +38,7 @@ const sections = [
   { id: 'park-rides', area: 'modules', group: 'Thrill Park', label: 'Ride creator', icon: FerrisWheel, title: 'Thrill Park ride creator', blurb: 'Generate rides with Meshy, set how they move and what they cost, and publish them to every park’s build menu.' },
 ] as const
 type Section = (typeof sections)[number]['id']
-const studioIds: readonly string[] = ['chat', 'image', 'lyrics']
+const studioIds: readonly string[] = ['chat', 'image', 'lyrics', 'voice']
 const isStudio = (id: string): id is StudioId => studioIds.includes(id)
 
 function sectionFromHash(): Section {

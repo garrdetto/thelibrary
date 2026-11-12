@@ -10,8 +10,8 @@ export function json(body: unknown, status = 200, extra?: Record<string, string>
   return Response.json(body, { status, headers: { ...baseHeaders, ...extra } })
 }
 
-export function binary(data: ArrayBuffer | Uint8Array<ArrayBuffer>, contentType: string) {
-  return new Response(data, { headers: { ...baseHeaders, 'Content-Type': contentType } })
+export function binary(data: ArrayBuffer | Uint8Array<ArrayBuffer>, contentType: string, extra?: Record<string, string>) {
+  return new Response(data, { headers: { ...baseHeaders, 'Content-Type': contentType, ...extra } })
 }
 
 export function requireSameOrigin(request: Request) {

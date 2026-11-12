@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { SongSettings } from '../lib/studio-types'
 import type { Env } from './env'
 import type { ClaudeTool } from './claude'
-import { RESEARCH_MODEL, claude, textOf, toolInput } from './claude'
+import { RESEARCH_MODEL, STUDIO_EFFORT, claude, textOf, toolInput } from './claude'
 import { NO_CODE_RULE } from './code-guard'
 
 export type SongRecord = { title: string; content: string }
@@ -86,7 +86,7 @@ export async function researchStyle(env: Env, settings: SongSettings) {
   const targets = [settings.artist ? `the artist "${settings.artist}"` : '', settings.customGenre ? `the music genre "${settings.customGenre}"` : ''].filter(Boolean).join(' and ')
   const request = `Research the songwriting style of ${targets}. Write compact notes for a lyricist covering: typical subject matter and attitude, everyday vocabulary and slang, how explicit the language usually is, rhyme habits (end, internal, multisyllabic), flow and cadence, line length, song structure, hooks and ad-libs, and what makes it sound authentic rather than generic. Describe techniques only. Never quote or paraphrase actual lyrics. Under 280 words, plain text, no code.`
   const system = 'You are a music researcher who writes short factual notes for a songwriter. Plain text only. Never include lyrics, code or markup.'
-  const ask = (withSearch: boolean) => claude(env, { model: RESEARCH_MODEL, system, messages: [{ role: 'user', content: request }], maxTokens: 1500, timeoutMs: 25000, ...(withSearch ? { webSearch: 3 } : {}) })
+  const ask = (withSearch: boolean) => claude(env, { model: RESEARCH_MODEL, effort: STUDIO_EFFORT, system, messages: [{ role: 'user', content: request }], maxTokens: 1500, timeoutMs: 180000, ...(withSearch ? { webSearch: 3 } : {}) })
   try { return textOf(await ask(true)).slice(0, 3000) } catch {
     try { return textOf(await ask(false)).slice(0, 3000) } catch { return '' }
   }

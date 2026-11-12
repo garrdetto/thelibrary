@@ -1,4 +1,4 @@
-import { WorldServer, type WorldStorage } from '../../modules-src/maplestreet/shared/WorldServer'
+import { WORLD_GENERATION, WorldServer, type WorldStorage } from '../../modules-src/maplestreet/shared/WorldServer'
 import type { Identity } from '../../modules-src/maplestreet/shared/RoomLogic'
 import { registerCustomItems } from '../../modules-src/maplestreet/shared/CustomItems'
 import type { Env } from './env'
@@ -13,6 +13,13 @@ declare const WebSocketPair: { new (): { 0: WebSocket; 1: ServerSocket } }
 
 const PUT_BATCH = 50
 const TABLE = 'CREATE TABLE IF NOT EXISTS maplestreet_world (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL)'
+
+/** Whether any saved lot or account of the current world mentions `text` (such as a quoted `custom:<id>` catalog id). */
+export async function worldMentions(env: Env, text: string) {
+  await env.DB.prepare(TABLE).run()
+  const row = await env.DB.prepare('SELECT key FROM maplestreet_world WHERE key LIKE ? AND instr(value, ?) > 0 LIMIT 1').bind(`${WORLD_GENERATION}%`, text).first<{ key: string }>()
+  return row !== null
+}
 
 function d1Storage(env: Env): WorldStorage {
   let ready: Promise<unknown> | null = null
@@ -64,6 +71,11 @@ export class MapleStreetWorld {
     if (path === '/catalog' && request.method === 'POST') {
       registerCustomItems(await listStoreItems(this.env))
       registerCustomVehicles(await listStoreVehicles(this.env))
+      return Response.json({ ok: true })
+    }
+    if (path === '/save' && request.method === 'POST') {
+      await this.world.ready()
+      await this.world.save()
       return Response.json({ ok: true })
     }
     if (path === '/status') {

@@ -4,7 +4,7 @@ import { HttpError, parseStored } from './http'
 export const ADMIN_USERNAME = 'stoegbauer'
 export const OWNER_LEVEL = 2
 export const ADMIN_LEVEL = 1
-export const studioPages = ['chat', 'image', 'lyrics'] as const
+export const studioPages = ['chat', 'image', 'lyrics', 'voice'] as const
 export type StudioPage = (typeof studioPages)[number]
 export type AccountSettings = { theme?: string; lobbySound?: boolean }
 

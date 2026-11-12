@@ -30,6 +30,7 @@ import { scoreNotices } from './routes/score-notices'
 import { siteChanges } from './routes/site-changes'
 import { songmaker } from './routes/songmaker'
 import { asset, learning, library, lyricPresets, studio } from './routes/studio'
+import { voice } from './routes/voice'
 
 const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
   '/api/pool-account': poolAccount,
@@ -70,6 +71,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/learning': learning,
   '/api/lyric-presets': lyricPresets,
   '/api/songmaker': songmaker,
+  '/api/voice': voice,
 }
 
 export async function handleApi(request: Request, env: Env) {

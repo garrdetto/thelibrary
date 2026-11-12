@@ -86,6 +86,7 @@ type JobRow = {
   thumbnail_url: string | null
   model_bytes: number | null
   error: string | null
+  created_by: string
   created_at: number
   updated_at: number
 }
@@ -142,6 +143,27 @@ export async function setJob(env: Env, id: string, changes: Partial<{ status: Me
   if (!keys.length) return
   const sets = [...keys.map(k => `${k} = ?`), 'updated_at = ?']
   await env.DB.prepare(`UPDATE meshy_jobs SET ${sets.join(', ')} WHERE id = ?`).bind(...keys.map(k => changes[k] ?? null), Date.now(), id).run()
+}
+
+/** Removes a job's row and stored model; jobs made from it keep their own task ids and models and just lose the parent link. */
+export async function deleteJob(env: Env, id: string) {
+  await env.DB.batch([
+    env.DB.prepare('UPDATE meshy_jobs SET parent_id = NULL WHERE parent_id = ?').bind(id),
+    env.DB.prepare('DELETE FROM meshy_jobs WHERE id = ?').bind(id),
+  ])
+  await env.FILES.delete(MESHY_MODEL_KEY(id))
+}
+
+/** Whether the site-change run that created a job is still queued or running (and may still use the job). */
+export async function creatorRunActive(env: Env, createdBy: string) {
+  const runId = createdBy.match(/^site-change:([0-9a-f-]{36})$/i)?.[1]
+  if (!runId) return false
+  try {
+    const row = await env.DB.prepare('SELECT status FROM site_changes WHERE id = ?').bind(runId.toLowerCase()).first<{ status: string }>()
+    return row?.status === 'queued' || row?.status === 'running'
+  } catch {
+    return false
+  }
 }
 
 /** Downloads a finished task's .glb into KV so it outlives Meshy's expiring links. */

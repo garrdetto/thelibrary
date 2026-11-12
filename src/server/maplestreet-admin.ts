@@ -8,6 +8,21 @@ export async function requireMapleAdmin(request: Request, env: Env, message = 'S
   return user
 }
 
+/** Asks the shared-world Durable Object to write its unsaved lots and accounts to D1 now. */
+export async function saveWorld(env: Env) {
+  if (!env.MAPLE_WORLD) return
+  const failed = new HttpError(503, 'Fox Plains couldn’t be checked right now. Please try again shortly.')
+  let response: Response
+  try {
+    const stub = env.MAPLE_WORLD.get(env.MAPLE_WORLD.idFromName('maple-street'))
+    response = await stub.fetch(new Request('https://maple-world/save', { method: 'POST' }))
+  } catch (error) {
+    console.error('Fox Plains save failed', error)
+    throw failed
+  }
+  if (!response.ok) throw failed
+}
+
 /** Tells the shared-world Durable Object to re-register published items and vehicles. */
 export async function refreshWorldCatalog(env: Env) {
   if (!env.MAPLE_WORLD) return
