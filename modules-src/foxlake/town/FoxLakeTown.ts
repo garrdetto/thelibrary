@@ -221,6 +221,8 @@ export class FoxLakeTown implements GameExtension {
     addEventListener('keydown', (e) => this.key(e))
     this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
+    const casino = this.casino.center()
+    this.culler.addGroup(this.casino.staticMeshes(), casino.x, casino.z, 24)
     this.culler.update(0, host.ctx.camera.globalPosition, true)
     await this.connect()
   }
@@ -518,7 +520,9 @@ export class FoxLakeTown implements GameExtension {
   private lotForSale(): LotState | null {
     if (this.host.driving || zoneAt(this.host.player.z) !== 'town') return null
     const t = this.townPosition()
-    for (const lot of Object.values(this.houses.world?.lots ?? {})) {
+    const lots = this.houses.world?.lots
+    for (const id in lots) {
+      const lot = lots[id]
       if (lot.owner) continue
       if (t.x >= lot.x && t.x <= lot.x + lot.w && t.z >= lot.z && t.z <= lot.z + lot.d) return lot
     }

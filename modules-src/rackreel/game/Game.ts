@@ -53,7 +53,9 @@ import { HeadPaint } from './HeadPaint'
 import { lookOf, owedMakeover } from '../shared/Economy'
 import type { Look } from '../shared/Economy'
 import type { PanelTab } from '../ui/Panels'
-import { Cabin } from '../world/Cabin'
+import { CABIN, Cabin, FOX_OUTFITTERS } from '../world/Cabin'
+import { buildStoreSign } from '../world/StoreSign'
+import { CAR_WHEELS, GroundWear, QUAD_WHEELS, UTV_WHEELS, WearPlugin } from '../world/GroundWear'
 import { Minimap } from '../ui/Minimap'
 import type { MapMarker } from '../ui/Minimap'
 import { Online, fetchLobbies } from './Online'
@@ -151,6 +153,8 @@ export interface GameOptions {
   gearAtCabin?: boolean
   /** A profile of this game's own on the server (cash, gear, character) instead of standalone Rack & Reel's. */
   profile?: string
+  /** Fox Lake's bigger Fox Outfitters, with the side-by-side in its open garage, in place of the cabin. */
+  outfitters?: boolean
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -179,6 +183,8 @@ export class Game {
   private ground!: Mesh
   private foliage!: Foliage
   private shading!: FoliageShading
+  /** Tyre marks and worn two-tracks on the lake country's ground. */
+  private wear!: GroundWear
   private models = new Map<ModelName, ModelTemplate>()
   private hunter!: SkinnedTemplate
   private vehicles!: VehicleController
@@ -347,13 +353,22 @@ export class Game {
     this.lighting = new Lighting(this.ctx, this.skyMat, this.waterMat, this.clock)
     buildHighway(this.ctx, this.terrain)
     this.shading = new FoliageShading(this.ctx)
+    this.wear = new GroundWear(this.ctx, this.terrain)
+    this.shading.useWear(this.wear.texture, this.wear.area)
+    const terrainMat = this.ground.material as StandardMaterial
+    terrainMat.unfreeze()
+    new WearPlugin(terrainMat, this.wear)
+    terrainMat.freeze()
     this.weeds = new Weeds(this.ctx, this.terrain, this.shading)
     let loaded = 0
     const hunter = loadSkinned(scene, 'hunter', (tag) => texturedMaterial(scene, tag.slice(4), this.materials))
-    await Promise.all(MODEL_NAMES.map(async (name) => {
+    const cabinLayout = this.options.outfitters ? FOX_OUTFITTERS : CABIN
+    const names: ModelName[] = MODEL_NAMES.filter((name) => name !== 'cabin')
+    names.push(cabinLayout.model)
+    await Promise.all(names.map(async (name) => {
       this.models.set(name, await loadModel(scene, name, (model, part, tag) => this.materialFor(model, part, tag)))
       loaded++
-      this.hud.setLoading(0.1 + (loaded / MODEL_NAMES.length) * 0.5, `Bringing in the ${name.replace('fish-', '').replace('-lo', '').replace('treestand', 'tree stand')}…`)
+      this.hud.setLoading(0.1 + (loaded / names.length) * 0.5, `Bringing in the ${name.replace('fish-', '').replace('-lo', '').replace('treestand', 'tree stand')}…`)
     }))
     this.hunter = await hunter
     this.headPaint = new HeadPaint(scene, (head) => texturedMaterial(scene, `hunter-head-${head}`, this.materials))
@@ -362,11 +377,11 @@ export class Game {
     const landmarks = findLandmarks(this.terrain)
     buildDock(this.ctx, landmarks)
     const inland = new Vector3(-Math.sin(landmarks.spawnHeading), 0, -Math.cos(landmarks.spawnHeading))
-    this.cabin = new Cabin(this.terrain, landmarks.spawn.add(inland.scale(18)), landmarks.spawnHeading)
+    this.cabin = new Cabin(this.terrain, landmarks.spawn.add(inland.scale(cabinLayout.garage ? 22 : 18)), landmarks.spawnHeading, cabinLayout)
     this.stands = findStandSites(this.terrain, landmarks.spawn, [this.cabin.root, landmarks.dock.start, landmarks.utv])
     this.stand = this.stands[0]
-    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-9, 0, 1.5)), ...this.jumpLane(landmarks.dock)], this.shading)
-    this.foliage.grassHoles.push({ x: this.cabin.root.x, z: this.cabin.root.z, r: 6.4 })
+    this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-cabinLayout.halfW - 5, 0, 1.5)), ...this.garageApproach(), ...this.jumpLane(landmarks.dock)], this.shading)
+    this.foliage.grassHoles.push({ x: this.cabin.root.x, z: this.cabin.root.z, r: cabinLayout.clearRadius })
     for (const st of this.stands) {
       const r = st.kind === 'blind' ? 1.3 : 0.45
       this.foliage.colliders.push({ x: st.tree.x, z: st.tree.z, r, min: st.tree.add(new Vector3(-r, -1, -r)), max: st.tree.add(new Vector3(r, st.kind === 'blind' ? 2.9 : 16, r)) })
@@ -380,7 +395,9 @@ export class Game {
     this.buildCabin(reg)
     this.vehicles = new VehicleController(this.ctx, this.terrain, this.ground)
     if (this.ext?.obstacle) this.vehicles.obstacle = (x, z, r) => this.ext!.obstacle!(x, z, r)
-    this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), landmarks.utv, landmarks.utvHeading)
+    if (cabinLayout.garage) this.vehicles.floor = (x, z) => this.cabin.garageFloorAt(x, z)
+    const garaged = this.cabin.garageSpot()
+    this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), garaged?.position ?? landmarks.utv, garaged?.heading ?? landmarks.utvHeading)
     this.boat = this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
     this.boatHome.copyFrom(landmarks.boat)
     this.boatHomeHeading = landmarks.boatHeading
@@ -604,8 +621,13 @@ export class Game {
     }
   }
 
+  /** What the player's base is called in messages. */
+  private get home(): string {
+    return this.options.outfitters ? 'Fox Outfitters' : 'the cabin'
+  }
+
   private buildCabin(reg: (m: AbstractMesh) => void): void {
-    this.cabinRig = instantiate(this.models.get('cabin')!, null, this.ctx.scene, reg)
+    this.cabinRig = instantiate(this.models.get(this.cabin.layout.model)!, null, this.ctx.scene, reg)
     this.cabinRig.root.position.copyFrom(this.cabin.root)
     this.cabinRig.root.rotation.y = this.cabin.heading
     const lamp = new PointLight('cabin-lamp', this.cabin.toWorld(new Vector3(0.4, 2.4, 0.3)), this.ctx.scene)
@@ -613,10 +635,30 @@ export class Game {
     lamp.specular = new Color3(0.3, 0.25, 0.18)
     lamp.intensity = 1.7
     lamp.range = 8.5
-    const stove = new PointLight('cabin-stove', this.cabin.toWorld(new Vector3(-3.0, 0.9, -0.8)), this.ctx.scene)
+    const stove = new PointLight('cabin-stove', this.cabin.toWorld(new Vector3(-this.cabin.layout.halfW + 1.0, 0.9, -0.8)), this.ctx.scene)
     stove.diffuse = new Color3(1.0, 0.5, 0.2)
     stove.intensity = 0.5
     stove.range = 3.5
+    buildStoreSign(this.ctx.scene, this.cabin)
+  }
+
+  /** Every land vehicle's wheels press tyre marks into the ground they roll over; the wear map uploads what changed. */
+  private wearGround(dt: number): void {
+    for (const v of this.vehicles.vehicles) {
+      if (v.kind === 'BOAT') continue
+      const wheels = v.kind === 'CAR' ? CAR_WHEELS : v.rig.root.name.startsWith('quad') ? QUAD_WHEELS : UTV_WHEELS
+      const airborne = v.position.y - this.terrain.heightAt(v.position.x, v.position.z) > 1.4
+      this.wear.roll(v, v.position.x, v.position.z, v.heading, wheels, airborne)
+    }
+    this.wear.update(dt)
+  }
+
+  /** Keeps trees off the drive out of the garage bay. */
+  private garageApproach(): Vector3[] {
+    const g = this.cabin.layout.garage
+    if (!g) return []
+    const x = (g.x0 + g.x1) / 2
+    return [4, 9, 14].map((d) => this.cabin.toWorld(new Vector3(x, 0, g.z1 + d)))
   }
 
   private applyGear(): void {
@@ -720,7 +762,7 @@ export class Game {
         this.showRecords(() => this.pause())
       },
       respawn: () => {
-        this.respawn('Back at the cabin.')
+        this.respawn(`Back at ${this.home}.`)
         this.resume()
       },
       sensitivity: () => ({ ...this.ctx.sensitivity }),
@@ -877,7 +919,7 @@ export class Game {
     this.fishCam = 0
     this.ctx.setAds(0, this.progress.effects.scopeZoom)
     if (this.mode === 'bowfish') this.bowfish.abandon()
-    if (this.mode === 'crew') this.online.announce('headed back to the cabin.')
+    if (this.mode === 'crew') this.online.announce(`headed back to ${this.home}.`)
     if (this.mode === 'vehicle' || this.vehicles.active) {
       const v = this.vehicles.active
       this.vehicles.release()
@@ -942,7 +984,7 @@ export class Game {
     if (this.mode !== 'foot' || !this.playing) return
     const p = this.foot
     if (this.onDock(p) || this.cabin.floorAt(p) !== null) return
-    if (this.terrain.depthAt(p.x, p.z) > Math.max(DROWNING_DEPTH, this.progress.effects.wadeDepth + 0.3)) this.respawn('You ended up in deep water, so you are back at the cabin.')
+    if (this.terrain.depthAt(p.x, p.z) > Math.max(DROWNING_DEPTH, this.progress.effects.wadeDepth + 0.3)) this.respawn(`You ended up in deep water, so you are back at ${this.home}.`)
   }
 
   /** Keeps trees off Wild Man's line over the island so the boat flies clear on the way home. */
@@ -991,7 +1033,7 @@ export class Game {
       if (this.tool !== tool) this.setTool(tool)
       return
     }
-    this.hud.toast(this.carried ? `You're carrying the ${this.carried === 'rod' ? 'rod and reel' : 'rifle'}. The ${name} is on the gear rack at the cabin: swap there.` : `Your ${name} is on the gear rack at the cabin. Go grab it there.`, 'warn')
+    this.hud.toast(this.carried ? `You're carrying the ${this.carried === 'rod' ? 'rod and reel' : 'rifle'}. The ${name} is on the gear rack at ${this.home}: swap there.` : `Your ${name} is on the gear rack at ${this.home}. Go grab it there.`, 'warn')
   }
 
   /** Puts the carried tool back in hand after a vehicle or boat ride (with `gearAtCabin`). */
@@ -1295,7 +1337,7 @@ export class Game {
     if (this.fishing.state === 'landing' || this.fishing.state === 'reeling' || this.fishing.state === 'nibble') return
     const v = this.vehicles.active
     if (this.tool === 'none') {
-      if (this.options.gearAtCabin && !this.carried && this.mode === 'foot') this.hud.toast('Your rod and rifle are on the gear rack at the cabin. Take one there with 1 or 2.')
+      if (this.options.gearAtCabin && !this.carried && this.mode === 'foot') this.hud.toast(`Your rod and rifle are on the gear rack at ${this.home}. Take one there with 1 or 2.`)
       return
     }
     if (this.tool === 'rod') {
@@ -1437,7 +1479,7 @@ export class Game {
 
   private grunt(): void {
     if (!this.progress.effects.call) {
-      this.hud.toast('No grunt call in your pocket. Buy one from the catalog at the cabin, then equip it at the gear rack.', 'warn')
+      this.hud.toast(`No grunt call in your pocket. Buy one from the catalog at ${this.home}, then equip it at the gear rack.`, 'warn')
       return
     }
     if (this.gruntCooldown > 0) {
@@ -1647,6 +1689,7 @@ export class Game {
       brake: this.keys.has('Space'),
     }
     this.vehicles.update(dt, input)
+    this.wearGround(dt)
     const bowfishing = this.mode === 'bowfish'
     this.bowfish.setParty(this.online.bowTrip(), this.online.bowSlots(), this.online.active && this.online.members.length > 0)
     const walkKeys = bowfishing && active

@@ -218,14 +218,17 @@ function fixModelMaterials(model: TransformNode) {
   }
 }
 
-/** Recolored copies of textures keyed by texture, key color, tolerance and paint. */
-const paintCache = new Map<string, Promise<Texture | null>>();
-function maskedTexture(map: BaseTexture, key: string, tolerance: number, paint: string): Promise<Texture | null> {
+/**
+ * Recolored copies of textures keyed by texture, key color, tolerance and paint, shared by every vehicle painted
+ * alike and disposed when the last one using a copy is repainted or removed.
+ */
+const paintCache = new Map<string, { tex: Promise<Texture | null>; users: number }>();
+function maskedTexture(map: BaseTexture, key: string, tolerance: number, paint: string): { id: string; tex: Promise<Texture | null> } {
   const size = map.getSize();
   const id = `${map.uniqueId}|${size.width}x${size.height}|${key}|${tolerance}|${paint}`;
-  let p = paintCache.get(id);
-  if (!p) {
-    p = (async () => {
+  let entry = paintCache.get(id);
+  if (!entry) {
+    const tex = (async () => {
       const px = await map.readPixels(0, 0, null, true, true);
       if (!px || !size.width) return null;
       const data = new Uint8ClampedArray(px.buffer, px.byteOffset, px.byteLength);
@@ -239,9 +242,18 @@ function maskedTexture(map: BaseTexture, key: string, tolerance: number, paint: 
       t.wrapU = src.wrapU; t.wrapV = src.wrapV;
       return t;
     })().catch(() => null);
-    paintCache.set(id, p);
+    entry = { tex, users: 0 };
+    paintCache.set(id, entry);
   }
-  return p;
+  entry.users++;
+  return { id, tex: entry.tex };
+}
+
+function releasePaint(id: string): void {
+  const entry = paintCache.get(id);
+  if (!entry || --entry.users > 0) return;
+  paintCache.delete(id);
+  void entry.tex.then(t => t?.dispose());
 }
 
 /**
@@ -286,6 +298,8 @@ class View implements VehicleView {
   private model: ModelInstance | null = null;
   private paintMats: PBRMaterial[] = [];
   private paintSources = new Map<PBRMaterial, BaseTexture | null>();
+  /** The shared recolored texture each paint material holds (released on repaint or destroy). */
+  private readonly heldPaint = new Map<PBRMaterial, string>();
   /** Materials this view made (paint copies, lamps, multi-materials): freed in `destroy`. */
   private owned: Material[] = [];
   private style: CarStyle | null = null;
@@ -501,12 +515,22 @@ class View implements VehicleView {
     const key = this.styleKey;
     for (const m of this.paintMats) {
       const src = this.paintSources.get(m) ?? null;
+      const held = this.heldPaint.get(m);
       if (rec?.paint.mode === 'color' && src) {
-        void maskedTexture(src, rec.paint.key, rec.paint.tolerance, color).then(t => { if (t && !this.destroyed && this.styleKey === key) m.albedoTexture = t; });
+        const painted = maskedTexture(src, rec.paint.key, rec.paint.tolerance, color);
+        this.heldPaint.set(m, painted.id);
+        void painted.tex.then(t => {
+          if (t && !this.destroyed && this.styleKey === key) m.albedoTexture = t;
+          if (held) releasePaint(held);
+        });
       } else if (rec?.paint.mode === 'material' && src) {
         m.albedoColor = lin3([r, g, b]);
       } else {
         m.albedoTexture = null;
+        if (held) {
+          this.heldPaint.delete(m);
+          releasePaint(held);
+        }
         const k = 1 - wear * 0.25;
         m.albedoColor = lin3([r * k + 0.44 * (1 - k), g * k + 0.42 * (1 - k), b * k + 0.39 * (1 - k)]);
       }
@@ -536,6 +560,8 @@ class View implements VehicleView {
     this.owned.length = 0;
     this.paintMats.length = 0;
     this.paintSources.clear();
+    for (const id of this.heldPaint.values()) releasePaint(id);
+    this.heldPaint.clear();
   }
 }
 

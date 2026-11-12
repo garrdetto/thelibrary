@@ -9,6 +9,7 @@
  */
 import type RAPIER from '@dimforge/rapier3d-compat'
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Viewport } from '@babylonjs/core/Maths/math.viewport'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
@@ -66,10 +67,12 @@ class SnapBuffer<T> {
 }
 
 interface RemoteVehicle { kind: string; owner: string; buf: SnapBuffer<VehicleSnap>; seen: number; view: VehicleView | null; body: RAPIER.RigidBody | null; fresh: boolean; spin: number[]; style: VehicleSnap['style'] }
-interface RemotePlayer { name: string; color: string; npc: boolean; avatar: Avatar | null; buf: SnapBuffer<PlayerSnap>; seen: number; tag: HTMLDivElement | null; outfit: string[]; shown: Vector3; facing: number }
+interface RemotePlayer { name: string; color: string; npc: boolean; avatar: Avatar | null; buf: SnapBuffer<PlayerSnap>; seen: number; tag: HTMLDivElement | null; tagShown: boolean; outfit: string[]; shown: Vector3; facing: number }
 
 const _p = new Vector3()
 const _s = new Vector3()
+const _proj = new Vector3()
+const _screen = { x: 0, y: 0 }
 const _seat = new Vector3()
 const _fwd = new Vector3()
 const _qa = new Quaternion()
@@ -99,7 +102,8 @@ export class Neighbors {
   private vehicles = new Map<string, RemoteVehicle>()
   private clockOffset: number | null = null
   private tags: HTMLDivElement
-  readonly ownerNames = new Map<string, string>()
+  private readonly viewport = new Viewport(0, 0, 1, 1)
+  private viewScale = 1
 
   constructor(private readonly physics: Physics, private readonly models: VehicleModels, private readonly host: NeighborHost, private readonly selfId: () => string | null) {
     this.tags = document.createElement('div')
@@ -114,12 +118,6 @@ export class Neighbors {
     return n
   }
 
-  /** Names of real neighbors, for the HUD. */
-  names(): string[] {
-    const out: string[] = []
-    for (const p of this.players.values()) if (!p.npc) out.push(p.name)
-    return out
-  }
 
   ingest(time: number, players: PlayerSnap[], vehicles: VehicleSnap[]): void {
     const offset = time - Date.now()
@@ -130,10 +128,9 @@ export class Neighbors {
       if (p.id === me) continue
       let rp = this.players.get(p.id)
       if (!rp) {
-        rp = { name: p.name, color: p.color, npc: isNpc(p.id), avatar: null, buf: new SnapBuffer(), seen: now, tag: null, outfit: OUTFITS[hashName(p.name) % OUTFITS.length], shown: new Vector3(), facing: 0 }
+        rp = { name: p.name, color: p.color, npc: isNpc(p.id), avatar: null, buf: new SnapBuffer(), seen: now, tag: null, tagShown: false, outfit: OUTFITS[hashName(p.name) % OUTFITS.length], shown: new Vector3(), facing: 0 }
         this.players.set(p.id, rp)
       }
-      this.ownerNames.set(p.id, p.name)
       rp.buf.push(time, p)
       rp.seen = now
     }
@@ -213,6 +210,7 @@ export class Neighbors {
 
   update(dt: number, night: number, focus: { x: number; z: number }): void {
     if (this.clockOffset === null) return
+    this.measureView()
     const t = Date.now() + this.clockOffset - INTERP_DELAY_MS
     for (const rv of this.vehicles.values()) {
       const last = rv.buf.latest
@@ -322,7 +320,10 @@ export class Neighbors {
     const visible = at && (at.x - cam.x) ** 2 + (at.z - cam.z) ** 2 < TAG_RANGE * TAG_RANGE
     const screen = visible ? this.toScreen(_s.set(at.x, at.y + lift, at.z)) : null
     if (!screen) {
-      if (rp.tag) rp.tag.style.display = 'none'
+      if (rp.tag && rp.tagShown) {
+        rp.tag.style.display = 'none'
+        rp.tagShown = false
+      }
       return
     }
     if (!rp.tag) {
@@ -333,20 +334,29 @@ export class Neighbors {
       rp.tag.append(dot, document.createTextNode(rp.name))
       this.tags.appendChild(rp.tag)
     }
-    rp.tag.style.display = ''
+    if (!rp.tagShown) {
+      rp.tag.style.display = ''
+      rp.tagShown = true
+    }
     rp.tag.style.transform = `translate(${screen.x.toFixed(1)}px, ${screen.y.toFixed(1)}px) translate(-50%, -100%)`
   }
 
-  private toScreen(p: Vector3): { x: number; y: number } | null {
+  /** Reads the canvas size once a frame (reading it per tag after a style write forces a layout each time). */
+  private measureView(): void {
     const engine = this.host.scene.getEngine()
     const w = engine.getRenderWidth()
     const h = engine.getRenderHeight()
-    const vp = this.host.camera.viewport.toGlobal(w, h)
-    const out = Vector3.Project(p, Matrix.IdentityReadOnly, this.host.scene.getTransformMatrix(), vp)
-    if (out.z < 0 || out.z > 1) return null
+    this.host.camera.viewport.toGlobalToRef(w, h, this.viewport)
     const canvas = engine.getRenderingCanvas()
-    const scale = canvas ? canvas.clientWidth / w : 1
-    return { x: out.x * scale, y: out.y * scale }
+    this.viewScale = canvas ? canvas.clientWidth / w : 1
+  }
+
+  private toScreen(p: Vector3): { x: number; y: number } | null {
+    Vector3.ProjectToRef(p, Matrix.IdentityReadOnly, this.host.scene.getTransformMatrix(), this.viewport, _proj)
+    if (_proj.z < 0 || _proj.z > 1) return null
+    _screen.x = _proj.x * this.viewScale
+    _screen.y = _proj.y * this.viewScale
+    return _screen
   }
 
   dispose(): void {

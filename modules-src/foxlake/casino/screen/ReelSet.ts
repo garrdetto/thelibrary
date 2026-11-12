@@ -27,6 +27,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Scene } from '@babylonjs/core/scene'
 import { drawSymbol, roundRect, type SymbolStyle } from './SymbolArt'
+import { acquireStrips, releaseStrips } from './StripCache'
 
 const FPS = 60
 const MAX_TEX = 8192
@@ -34,6 +35,8 @@ const MAX_TEX = 8192
 export interface ReelSetOptions {
   rows: number
   strips: readonly (readonly string[])[]
+  /** Names this machine's strips so their textures are drawn once and reused (StripCache). */
+  cacheKey: string
   styles: Readonly<Record<string, SymbolStyle>>
   /** Size of the reel window in metres. */
   width: number
@@ -75,8 +78,7 @@ export class ReelSet {
     this.cellH = o.height / o.rows
     o.strips.forEach((strip, i) => {
       const px = Math.max(64, Math.min(192, Math.floor(MAX_TEX / strip.length)))
-      const sharp = this.stripTexture(`reel-${i}`, strip, px, false)
-      const blur = this.stripTexture(`reel-${i}-blur`, strip, px, true)
+      const [sharp, blur] = acquireStrips(`${o.cacheKey}:${i}`, () => this.stripTextures(`${o.cacheKey}-${i}`, strip, px))
       const mat = new StandardMaterial(`reel-${i}-mat`, scene)
       mat.disableLighting = true
       mat.emissiveTexture = sharp
@@ -108,6 +110,7 @@ export class ReelSet {
         mesh.position.set(this.reels[r].mesh.position.x, o.height / 2 - this.cellH * (row + 0.5), -0.004)
         mesh.material = mat
         mesh.isPickable = false
+        mesh.setEnabled(false)
         this.frames.push({ mesh, mat })
       }
     }
@@ -125,10 +128,6 @@ export class ReelSet {
     mesh.isPickable = false
     mesh.setEnabled(false)
     this.overlay = { mesh, mat, tex }
-  }
-
-  get reelCount(): number {
-    return this.reels.length
   }
 
   /** The cell size in overlay pixels and the overlay's drawing context, for feature boards. */
@@ -150,16 +149,9 @@ export class ReelSet {
     for (const r of this.reels) r.mesh.setEnabled(on)
   }
 
-  private stripTexture(name: string, strip: readonly string[], px: number, blurred: boolean): DynamicTexture {
-    const tex = new DynamicTexture(name, { width: px, height: px * strip.length }, this.scene, true)
-    const g = tex.getContext() as CanvasRenderingContext2D
+  /** One strip drawn once into the sharp texture and smeared nine times into the blurred one (no mipmaps: it only shows moving). */
+  private stripTextures(name: string, strip: readonly string[], px: number): DynamicTexture[] {
     const H = px * strip.length
-    const back = g.createLinearGradient(0, 0, px, 0)
-    back.addColorStop(0, this.o.reelBack[1])
-    back.addColorStop(0.5, this.o.reelBack[0])
-    back.addColorStop(1, this.o.reelBack[1])
-    g.fillStyle = back
-    g.fillRect(0, 0, px, H)
     const art = document.createElement('canvas')
     art.width = px
     art.height = H
@@ -168,13 +160,28 @@ export class ReelSet {
       const style = this.o.styles[sym]
       if (style) drawSymbol(a, style, 0, i * px, px, px)
     })
-    if (blurred) {
+    const make = (suffix: string, mips: boolean, paint: (g: CanvasRenderingContext2D) => void) => {
+      const tex = new DynamicTexture(`${name}${suffix}`, { width: px, height: H }, this.scene, mips)
+      const g = tex.getContext() as CanvasRenderingContext2D
+      const back = g.createLinearGradient(0, 0, px, 0)
+      back.addColorStop(0, this.o.reelBack[1])
+      back.addColorStop(0.5, this.o.reelBack[0])
+      back.addColorStop(1, this.o.reelBack[1])
+      g.fillStyle = back
+      g.fillRect(0, 0, px, H)
+      paint(g)
+      tex.update(true)
+      return tex
+    }
+    const sharp = make('', true, (g) => g.drawImage(art, 0, 0))
+    const blur = make('-blur', false, (g) => {
       g.globalAlpha = 0.22
       for (let k = -4; k <= 4; k++) g.drawImage(art, 0, k * px * 0.09)
       g.globalAlpha = 1
-    } else g.drawImage(art, 0, 0)
-    tex.update(true)
-    return tex
+    })
+    art.width = 0
+    art.height = 0
+    return [sharp, blur]
   }
 
   private drawFrame(): DynamicTexture {
@@ -282,6 +289,7 @@ export class ReelSet {
     for (const [r, row] of cells) {
       const f = this.frames[r * this.o.rows + row]
       if (!f) continue
+      f.mesh.setEnabled(true)
       const a = new Animation('pulse-a', 'alpha', FPS, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CYCLE)
       a.setKeys([{ frame: 0, value: 0.35 }, { frame: frames / 2, value: 1 }, { frame: frames, value: 0.35 }])
       const s = new Animation('pulse-s', 'scaling', FPS, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CYCLE)
@@ -301,18 +309,18 @@ export class ReelSet {
     for (const f of this.frames) {
       f.mat.alpha = 0
       f.mesh.scaling.setAll(1)
+      f.mesh.setEnabled(false)
     }
   }
 
   dispose(): void {
     this.group?.dispose()
     this.stopPulse()
-    for (const r of this.reels) {
-      r.sharp.dispose()
-      r.blur.dispose()
+    this.reels.forEach((r, i) => {
+      releaseStrips(`${this.o.cacheKey}:${i}`)
       r.mat.dispose()
       r.mesh.dispose()
-    }
+    })
     for (const f of this.frames) {
       f.mat.dispose()
       f.mesh.dispose()

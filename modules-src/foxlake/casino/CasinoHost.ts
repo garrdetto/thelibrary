@@ -10,7 +10,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder'
 import { CreatePlane } from '@babylonjs/core/Meshes/Builders/planeBuilder'
-import type { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { GameHost } from '../../rackreel/game/Game'
 import { Avatar } from '../../rackreel/game/Avatar'
@@ -29,6 +29,10 @@ import { SlotSession } from './screen/SlotSession'
 import { BarSession, BlackjackSession } from './TableSessions'
 
 export const CASINO_NAME = 'Northwoods Lodge Casino & Bar'
+
+const STAFF_POSE = { stance: 'stand', hands: 'free', speed: 0, crouch: false, castPower: 0, aimPitch: 0, climbPhase: 0 } as const
+/** Past this distance from the casino the bartender and dealer are not animated (they can't be seen). */
+const STAFF_RANGE = 70
 
 export class CasinoHost {
   private readonly displays: MachineDisplay[] = []
@@ -122,10 +126,6 @@ export class CasinoHost {
     avatar.root.position.set(p.x, p.y, p.z)
     avatar.root.rotation.set(0, townYawToHeading(at.yaw), 0)
     return avatar
-  }
-
-  get seated(): boolean {
-    return this.session !== null
   }
 
   /** True when a scene point is inside the casino. */
@@ -235,7 +235,24 @@ export class CasinoHost {
   }
 
   update(dt: number): void {
-    for (const a of this.staff) a.update(dt, { stance: 'stand', hands: 'free', speed: 0, crouch: false, castPower: 0, aimPitch: 0, climbPhase: 0 })
+    const cam = this.host.ctx.camera.globalPosition
+    const c = this.center()
+    if (Math.hypot(cam.x - c.x, cam.z - c.z) > STAFF_RANGE) return
+    for (const a of this.staff) a.update(dt, STAFF_POSE)
+  }
+
+  /** The building's middle in scene coordinates. */
+  center(): { x: number; z: number } {
+    return townToScene((CASINO.x0 + CASINO.x1) / 2, 0, (CASINO.z0 + CASINO.z1) / 2)
+  }
+
+  /** The screens and signs (static once built): the town culls them with the building. */
+  staticMeshes(): Mesh[] {
+    const out: Mesh[] = []
+    for (const d of this.displays) out.push(...d.staticMeshes())
+    for (const e of this.extras) if (e instanceof Mesh) out.push(e)
+    for (const m of out) m.freezeWorldMatrix()
+    return out
   }
 
   dispose(): void {

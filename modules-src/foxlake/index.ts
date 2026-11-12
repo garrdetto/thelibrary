@@ -106,7 +106,7 @@ async function boot(): Promise<void> {
     if (roomCode) postRoom(roomCode)
     else inviteRequested = true
   })
-  const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake' })
+  const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true })
   window.__foxlake = { game, town }
   await game.start()
 }

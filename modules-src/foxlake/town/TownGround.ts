@@ -16,7 +16,7 @@ import type { Terrain } from '../../rackreel/world/Terrain'
 import { detailTexture } from '../../rackreel/world/World'
 import { roadTexture } from '../../rackreel/world/Highway'
 import { MAP_BOUNDS } from '../../maplestreet/shared/WorldLayout'
-import { TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, connectorDistance, connectorPath, sceneToTown } from '../region'
+import { TOWN_SQUARE, TOWN_Y, connectorDistance, connectorPath, sceneToTown } from '../region'
 
 /** The ground covers the town square and the strip between it and the lake country's north-east corner. */
 export const GROUND_RECT = { x0: TOWN_SQUARE.x0, x1: HALF + 8, z0: HALF - 4, z1: TOWN_SQUARE.z1 } as const
@@ -181,4 +181,3 @@ export function fillerTrees(): { x: number; z: number; scale: number; yaw: numbe
   return out
 }
 
-export const GROUND_LEVEL = TOWN_OFFSET.y

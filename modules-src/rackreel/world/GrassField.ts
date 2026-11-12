@@ -66,7 +66,7 @@ export class GrassField {
     this.tierBlades = TIER_BLADES.map((share) => Math.max(1, Math.round(this.bladeCount * share)))
     this.tierIndexCount = this.tierBlades.map((blades) => ordered.ends[blades - 1])
     this.materials = TIER_WIDEN.map((widen, tier) => shading.material(`grass-${tier}`, {
-      threshold: 0.03, range: 0.5, sway: 0.2, speed: 1.9, ripple: 0.33, flutter: 0.012, twoSided: true, upward: 0.4, translucency: 0.2, ambient: 0.3, fades: true, widen,
+      threshold: 0.03, range: 0.5, sway: 0.2, speed: 1.9, ripple: 0.33, flutter: 0.012, twoSided: true, upward: 0.4, translucency: 0.2, ambient: 0.3, fades: true, widen, wear: true,
     }))
     shading.fade.set(0, 0, GRASS.fadeStart, 1 / (GRASS.fadeEnd - GRASS.fadeStart))
     this.restored = ctx.engine.onContextRestoredObservable.add(() => this.reset())

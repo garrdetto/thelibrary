@@ -86,7 +86,14 @@ export interface Vehicle {
   occupied: boolean
   power: number
   anchored: boolean
+  /** Frames a parked land vehicle has sat still; once settled it is not simulated until someone drives it. */
+  resting?: number
 }
+
+/** No throttle, no steering, brakes on: every vehicle nobody is driving. */
+const IDLE: DriveInput = { throttle: 0, steer: 0, brake: true }
+/** A parked ATV settles on its wheels within this many frames and is then left alone. */
+const REST_FRAMES = 45
 
 export class VehicleController {
   mode: VehicleMode = 'NONE'
@@ -101,6 +108,8 @@ export class VehicleController {
 
   /** A host world's solid things (buildings, walls) that land vehicles bump into. */
   obstacle: ((x: number, z: number, radius: number) => boolean) | null = null
+  /** A built floor under (x, z) above the terrain (Fox Outfitters' garage), or null. */
+  floor: ((x: number, z: number) => number | null) | null = null
 
   constructor(private readonly ctx: EngineContext, private readonly terrain: Terrain, private readonly ground: Mesh) {}
 
@@ -199,6 +208,7 @@ export class VehicleController {
     v.roll = 0
     v.vy = 0
     v.anchored = false
+    v.resting = 0
     this.applyTransform(v)
   }
 
@@ -227,12 +237,18 @@ export class VehicleController {
   update(dt: number, input: DriveInput): void {
     for (const v of this.vehicles) {
       v.clock += dt
-      const drive = v === this.active && !v.anchored ? input : { throttle: 0, steer: 0, brake: true }
+      const driven = v === this.active && !v.anchored
+      const drive = driven ? input : IDLE
       if (v.external) {
         v.external.step(dt, drive, v)
         continue
       }
-      if (v.kind === 'ATV') this.updateAtv(v, dt, drive)
+      if (v.kind === 'ATV') {
+        const still = !driven && Math.abs(v.speed) < 0.02 && Math.abs(v.vy) < 0.02
+        v.resting = still ? (v.resting ?? 0) + 1 : 0
+        if (v.resting > REST_FRAMES) continue
+        this.updateAtv(v, dt, drive)
+      }
       else this.updateBoat(v, dt, drive)
       this.applyTransform(v)
     }
@@ -243,8 +259,10 @@ export class VehicleController {
     const s = Math.sin(v.heading)
     const wx = x + lx * c + lz * s
     const wz = z - lx * s + lz * c
+    const built = this.floor?.(wx, wz) ?? null
     const hit = this.ctx.groundRay(this.ground, wx, wz)
-    if (hit) return { y: hit.y, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z }
+    if (hit && (built === null || hit.y >= built)) return { y: hit.y, nx: hit.normal.x, ny: hit.normal.y, nz: hit.normal.z }
+    if (built !== null) return { y: Math.max(built, hit?.y ?? this.terrain.heightAt(wx, wz)), nx: 0, ny: 1, nz: 0 }
     return { y: this.terrain.heightAt(wx, wz), nx: 0, ny: 1, nz: 0 }
   }
 

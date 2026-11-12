@@ -19,7 +19,6 @@ import { TUNING } from '../../maplestreet/shared/Vehicles'
 import type { Account } from '../../maplestreet/shared/Economy'
 import type { LotDef } from '../../maplestreet/shared/WorldLayout'
 import type { VehicleKind, VehicleSnap } from '../../maplestreet/shared/Protocol'
-import { townToScene } from '../region'
 
 export interface Car {
   kind: string
@@ -32,6 +31,7 @@ const _f = new Vector3()
 
 export class Cars implements ExternalDriver {
   readonly list = new Map<string, Car>()
+  private readonly byRr = new Map<RrVehicle, Car>()
   private readonly parking: Parking
   onImpact: ((kind: string, dv: number, at: { x: number; y: number; z: number }) => void) | null = null
 
@@ -60,6 +60,7 @@ export class Cars implements ExternalDriver {
     const rr = this.controller.addExternal(seat, this, new Vector3(), 0, new Vector3(s.z, s.y + 0.1, s.x), new Vector3(-(P.chassis.hz + 0.9), 0, 0), label)
     const car: Car = { kind, fp, rr, seat }
     this.list.set(kind, car)
+    this.byRr.set(rr, car)
     this.sync(car)
     return car
   }
@@ -68,6 +69,7 @@ export class Cars implements ExternalDriver {
     const car = this.list.get(kind)
     if (!car) return
     this.controller.remove(car.rr)
+    this.byRr.delete(car.rr)
     car.fp.dispose()
     car.seat.dispose()
     this.list.delete(kind)
@@ -77,23 +79,16 @@ export class Cars implements ExternalDriver {
     for (const kind of [...this.list.keys()]) this.remove(kind)
   }
 
-  /** Rack & Reel's controller drives a car for one frame: input goes to the car, its pose comes back. */
+  /** Rack & Reel's controller drives a car for one frame: input goes to the car (its pose was synced after this frame's physics). */
   step(_dt: number, input: DriveInput, v: RrVehicle): void {
-    const car = this.byVehicle(v)
-    if (!car) return
-    const fp = car.fp
-    if (v.occupied) fp.input = { throttle: input.throttle, steer: -input.steer, brake: 0, handbrake: input.brake }
-    this.sync(car)
+    if (!v.occupied) return
+    const car = this.byRr.get(v)
+    if (car) car.fp.input = { throttle: input.throttle, steer: -input.steer, brake: 0, handbrake: input.brake }
   }
 
   park(v: RrVehicle): void {
-    const car = this.byVehicle(v)
+    const car = this.byRr.get(v)
     if (car) car.fp.input = { throttle: 0, steer: 0, brake: 1, handbrake: true }
-  }
-
-  private byVehicle(v: RrVehicle): Car | null {
-    for (const c of this.list.values()) if (c.rr === v) return c
-    return null
   }
 
   /** Copies the car's interpolated pose into its Rack & Reel record and seat stand-in. */
@@ -178,11 +173,4 @@ export class Cars implements ExternalDriver {
   dispose(): void {
     this.clear()
   }
-}
-
-export function sceneSpot(lot: LotDef): Vector3 {
-  const dir = lot.front === '+z' ? 1 : -1
-  const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z
-  const p = townToScene(lot.x + 8, 0, frontZ - dir * 2)
-  return new Vector3(p.x, p.y, p.z)
 }

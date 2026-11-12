@@ -54,6 +54,8 @@ export class MachineDisplay {
   private readonly meshes: Mesh[] = []
   private readonly mats: StandardMaterial[] = []
   private jackpotFlash: Jackpot | null = null
+  /** The playing page's sky and title, painted once (they never change) and copied in on every redraw. */
+  private playBase: HTMLCanvasElement | null = null
 
   constructor(private readonly scene: Scene, readonly spot: MachineSpot, readonly def: MachineDef, readonly theme: MachineTheme) {
     this.node = new TransformNode(`machine-${def.id}`, scene)
@@ -168,6 +170,7 @@ export class MachineDisplay {
 
   /** The idle page: title, a fan of the theme's symbols, PLAY ME. */
   drawAttract(): void {
+    this.playBase = null
     const g = this.screenTex.getContext() as CanvasRenderingContext2D
     const { w, h } = SCREEN_PX
     this.sky(g, w, h)
@@ -198,8 +201,15 @@ export class MachineDisplay {
   drawPlay(info: PlayInfo): void {
     const g = this.screenTex.getContext() as CanvasRenderingContext2D
     const { w, h } = SCREEN_PX
-    this.sky(g, w, h)
-    this.title(g, w, h * 0.065, 46)
+    if (!this.playBase) {
+      this.playBase = document.createElement('canvas')
+      this.playBase.width = w
+      this.playBase.height = h
+      const b = this.playBase.getContext('2d')!
+      this.sky(b, w, h)
+      this.title(b, w, h * 0.065, 46)
+    }
+    g.drawImage(this.playBase, 0, 0)
     g.textAlign = 'center'
     g.textBaseline = 'middle'
     if (info.heads) this.drawHeads(g, w, h, info.heads)
@@ -337,6 +347,11 @@ export class MachineDisplay {
       })
     })
     this.topperTex.update(true)
+  }
+
+  /** The cabinet's screen and topper planes (fixed in place). */
+  staticMeshes(): readonly Mesh[] {
+    return this.meshes
   }
 
   dispose(): void {

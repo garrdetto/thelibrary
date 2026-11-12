@@ -70,9 +70,18 @@ def wall_spans(length, openings, z):
     return spans
 
 
-def build_cabin():
-    m = Model('cabin', ao_dist=0.9, ao_strength=0.6)
-    W, D, F = CABIN_W, CABIN_D, CABIN_FLOOR
+OUTFITTERS_W = 12.0
+OUTFITTERS_D = 8.0
+GARAGE_W = 6.0
+GARAGE_FLOOR = 0.2
+GARAGE_WALL = 2.75
+OUTFITTERS_WINDOWS = [(-4.6, -3.6), (-2.5, -1.5), (1.5, 2.5), (3.6, 4.6)]
+
+
+def build_cabin(name='cabin', W=CABIN_W, D=CABIN_D, garage=False, front_windows=FRONT_WINDOWS):
+    """The log cabin; with `garage`, Fox Lake's Fox Outfitters: bigger, with store shelving and an open garage bay on the east side."""
+    m = Model(name, ao_dist=0.9, ao_strength=0.6)
+    F = CABIN_FLOOR
     stone = lambda co, n: mix((0.42, 0.41, 0.38), (0.25, 0.25, 0.24), n3(Vector(co) * 3, 1) * 0.5 + 0.5 + max(0.0, n[2]) * -0.2)
     planks = lambda co, n: mix((0.55, 0.38, 0.22), (0.36, 0.23, 0.12), (int((co[0] + 10) / 0.16) % 3) / 3 * 0.6 + n3(Vector((co[0] * 3, co[1] * 0.4, 0)), 1) * 0.3 + 0.2)
     porch_c = lambda co, n: mix((0.5, 0.42, 0.32), (0.32, 0.26, 0.19), (int((co[0] + 10) / 0.14) % 2) * 0.35 + n3(Vector((co[0] * 0.5, co[1] * 4, 0)), 1) * 0.3 + 0.2)
@@ -98,7 +107,7 @@ def build_cabin():
         add(rounded_box((0.06, 0.62, 0.3), at=(side * 0.82, D / 2 + 2.45, 0.15), bevel=0.01), trim)
 
     walls = [
-        ('front', (0, D / 2, 0), 0.0, W, [(DOOR[0], DOOR[1], 0, DOOR[2])] + [(a, b, WIN_Z[0], WIN_Z[1]) for a, b in FRONT_WINDOWS]),
+        ('front', (0, D / 2, 0), 0.0, W, [(DOOR[0], DOOR[1], 0, DOOR[2])] + [(a, b, WIN_Z[0], WIN_Z[1]) for a, b in front_windows]),
         ('back', (0, -D / 2, 0), 0.0, W, [(a, b, WIN_Z[0], WIN_Z[1]) for a, b in BACK_WINDOWS]),
         ('left', (-W / 2, 0, 0), math.pi / 2, D, [(a, b, WIN_Z[0], WIN_Z[1]) for a, b in SIDE_WINDOWS]),
         ('right', (W / 2, 0, 0), math.pi / 2, D, [(a, b, WIN_Z[0] - 0.1, WIN_Z[1]) for a, b in SIDE_WINDOWS]),
@@ -286,15 +295,19 @@ def build_cabin():
         add(rounded_box((0.25, 1.2, 0.03), at=(-W / 2 + 0.25, 1.6, F + 1.4 + k * 0.42), bevel=0.005), trim)
         for j in range(4):
             add(cone(0.05, 0.045, 0.16, 10, at=(-W / 2 + 0.25, 1.15 + j * 0.3, F + 1.415 + k * 0.42)), lambda co, n, j=j: [(0.5, 0.65, 0.4), (0.7, 0.3, 0.15), (0.85, 0.75, 0.35), (0.4, 0.2, 0.3)][j])
-    for k in range(3):
-        for j in range(5 - k):
-            y = -D / 2 + 0.7 + j * 0.23 + k * 0.115
-            for p in log_piece((W / 2 + 0.55, y, 0.11 + k * 0.2), (W / 2 + 1.05, y, 0.11 + k * 0.2), 0.1, steps_per_m=2, seed=k * 5 + j):
-                add(p)
-    block = cone(0.24, 0.26, 0.45, 18, at=(W / 2 + 1.0, 0.6, 0.0))
-    add(block, wood((0.55, 0.4, 0.25), (0.35, 0.22, 0.12)))
-    add(tube([(W / 2 + 1.0, 0.6, 0.45), (W / 2 + 1.12, 0.62, 0.95)], [0.018, 0.016], 6), wood((0.6, 0.45, 0.28), (0.45, 0.32, 0.18)))
-    add(rounded_box((0.16, 0.02, 0.12), at=(W / 2 + 1.0, 0.6, 0.49), bevel=0.005), lambda co, n: (0.6, 0.6, 0.62))
+    if garage:
+        build_garage(add, W, D, stone, trim, iron)
+        build_store_shelves(add, W, D, trim)
+    else:
+        for k in range(3):
+            for j in range(5 - k):
+                y = -D / 2 + 0.7 + j * 0.23 + k * 0.115
+                for p in log_piece((W / 2 + 0.55, y, 0.11 + k * 0.2), (W / 2 + 1.05, y, 0.11 + k * 0.2), 0.1, steps_per_m=2, seed=k * 5 + j):
+                    add(p)
+        block = cone(0.24, 0.26, 0.45, 18, at=(W / 2 + 1.0, 0.6, 0.0))
+        add(block, wood((0.55, 0.4, 0.25), (0.35, 0.22, 0.12)))
+        add(tube([(W / 2 + 1.0, 0.6, 0.45), (W / 2 + 1.12, 0.62, 0.95)], [0.018, 0.016], 6), wood((0.6, 0.45, 0.28), (0.45, 0.32, 0.18)))
+        add(rounded_box((0.16, 0.02, 0.12), at=(W / 2 + 1.0, 0.6, 0.49), bevel=0.005), lambda co, n: (0.6, 0.6, 0.62))
     for cx in (-2.2, 2.2):
         cy = D / 2 + 1.3
         add(rounded_box((0.6, 0.55, 0.05), at=(cx, cy, F + 0.38), bevel=0.01, rot=Matrix.Rotation(-0.15, 4, 'X')), lambda co, n: (0.25, 0.4, 0.3))
@@ -302,3 +315,93 @@ def build_cabin():
         for s in (-1, 1):
             add(rounded_box((0.08, 0.7, 0.04), at=(cx + s * 0.34, cy, F + 0.55), bevel=0.01), lambda co, n: (0.23, 0.38, 0.28))
     write_model(m)
+
+
+def build_garage(add, W, D, stone, trim, iron):
+    """The open garage bay on the east side where the side-by-side sits: concrete pad, log back and side walls, a lean-to
+    roof, a header beam with the sign board, and a workbench, pegboard, drum and spare tyre inside."""
+    x0, x1 = W / 2, W / 2 + GARAGE_W
+    cx = (x0 + x1) / 2
+    G = GARAGE_FLOOR
+    concrete = lambda co, n: mix((0.56, 0.55, 0.52), (0.42, 0.41, 0.39), n3(Vector(co) * 1.6, 1) * 0.5 + 0.5 + (0.25 if abs(math.sin(co[1] * math.pi / 2.0)) < 0.02 else 0.0))
+    add(rounded_box((GARAGE_W + 0.1, D + 0.6, 0.8), at=(cx, 0.3, G - 0.4), bevel=0.03), concrete)
+    add(rounded_box((GARAGE_W - 0.3, 1.1, 0.06), at=(cx, D / 2 + 0.45, G - 0.02), bevel=0.02, rot=Matrix.Rotation(-0.12, 4, 'X')), concrete)
+    courses = int(GARAGE_WALL / LOG_STEP)
+    for c in range(courses):
+        z = G + LOG_R + c * LOG_STEP
+        for p in log_piece((x0 + 0.2, -D / 2, z), (x1 + 0.35, -D / 2, z), LOG_R, seed=c * 2.7 + 11):
+            add(p)
+        zs = z + LOG_STEP / 2
+        if zs < G + GARAGE_WALL:
+            for p in log_piece((x1, -D / 2 - 0.35, zs), (x1, D / 2 + 0.1, zs), LOG_R, seed=c * 1.9 + 23):
+                add(p)
+    top = G + GARAGE_WALL
+    for p in log_piece((x1, D / 2, G), (x1, D / 2, top + 0.15), 0.16, seed=31):
+        add(p)
+    for p in log_piece((x0 + 0.1, D / 2 + 0.05, top), (x1 + 0.2, D / 2 + 0.05, top), 0.17, seed=37):
+        add(p)
+    board = rounded_box((GARAGE_W - 0.5, 0.08, 0.62), at=(cx, D / 2 + 0.24, top - 0.42), bevel=0.02)
+    add(board, lambda co, n: mix((0.3, 0.18, 0.09), (0.2, 0.11, 0.05), (int((co[2] + 10) / 0.155) % 2) * 0.5 + 0.2) if n[1] < 0.6 else (0.24, 0.14, 0.07))
+    for sx in (cx - (GARAGE_W - 0.5) / 2 - 0.05, cx + (GARAGE_W - 0.5) / 2 + 0.05):
+        add(rounded_box((0.1, 0.12, 0.7), at=(sx, D / 2 + 0.24, top - 0.42), bevel=0.02), iron)
+    slope = math.atan2(0.3, GARAGE_W)
+    roof = rounded_box((GARAGE_W + 0.9, D + 1.5, 0.12), bevel=0.02)
+    xform(roof, Matrix.Translation((cx + 0.2, 0.35, top + 0.32)) @ Matrix.Rotation(slope, 4, 'Y'))
+
+    def roof_col(co, n):
+        if n[2] > 0.3:
+            seam = abs(math.sin(co[1] * math.pi / 0.42)) < 0.08
+            c = mix((0.2, 0.3, 0.22), (0.27, 0.38, 0.28), n3(Vector(co) * 2, 1) * 0.5 + 0.5)
+            return mix(c, (0.12, 0.18, 0.13), 0.6) if seam else c
+        return mix((0.58, 0.42, 0.26), (0.42, 0.29, 0.16), (int((co[0] + 10) / 0.14) % 2) * 0.4)
+    add(roof, roof_col)
+    for k in range(4):
+        y = -D / 2 + 0.3 + k * (D - 0.2) / 3
+        add(rounded_box((GARAGE_W + 0.3, 0.14, 0.18), at=(cx, y, top + 0.16), bevel=0.03), trim)
+    bench_y = -D / 2 + 0.5
+    add(rounded_box((2.4, 0.7, 0.07), at=(cx - 0.6, bench_y, G + 0.92), bevel=0.01), wood((0.55, 0.4, 0.24), (0.4, 0.27, 0.14)))
+    for lx in (-1.1, 1.1):
+        for ly in (-0.28, 0.28):
+            add(rounded_box((0.07, 0.07, 0.9), at=(cx - 0.6 + lx, bench_y + ly, G + 0.45), bevel=0.01), trim)
+    add(rounded_box((2.3, 0.6, 0.04), at=(cx - 0.6, bench_y, G + 0.25), bevel=0.01), trim)
+    add(rounded_box((2.4, 0.04, 1.0), at=(cx - 0.6, -D / 2 + 0.17, G + 1.65), bevel=0.01), lambda co, n: mix((0.62, 0.5, 0.34), (0.5, 0.39, 0.25), 0.4 if (int(co[0] * 25) + int(co[2] * 25)) % 5 == 0 else 0.0))
+    for k, (tx, tz, col) in enumerate(((-1.5, 1.85, (0.75, 0.12, 0.1)), (-1.1, 1.5, (0.15, 0.25, 0.6)), (-0.6, 1.9, (0.2, 0.2, 0.22)), (-0.1, 1.45, (0.85, 0.65, 0.1)), (0.3, 1.8, (0.6, 0.6, 0.62)))):
+        add(rounded_box((0.06, 0.04, 0.32), at=(cx + tx, -D / 2 + 0.21, G + tz), bevel=0.01, rot=Matrix.Rotation((k - 2) * 0.12, 4, 'Y')), lambda co, n, col=col: col)
+    for k, col in enumerate(((0.75, 0.1, 0.08), (0.2, 0.35, 0.2))):
+        add(rounded_box((0.42, 0.25, 0.22), at=(cx - 1.3 + k * 0.6, bench_y, G + 1.07), bevel=0.02), lambda co, n, col=col: col if n[2] < 0.7 else mix(col, (0.1, 0.1, 0.1), 0.4))
+    dx_, dy_ = x1 - 0.55, -D / 2 + 0.6
+    add(cone(0.29, 0.29, 0.88, 22, at=(dx_, dy_, G)), lambda co, n: (0.12, 0.3, 0.55) if abs(co[2] - G - 0.3) > 0.03 and abs(co[2] - G - 0.6) > 0.03 else (0.08, 0.2, 0.38))
+    tyre = cone(0.34, 0.34, 0.22, 24, at=(0, 0, -0.11))
+    xform(tyre, Matrix.Translation((x1 - 0.32, -0.6, G + 0.36)) @ Matrix.Rotation(math.pi / 2, 4, 'Y') @ Matrix.Rotation(0.15, 4, 'X'))
+    add(tyre, lambda co, n: (0.07, 0.07, 0.075))
+    for k in range(2):
+        add(rounded_box((0.3, 1.6, 0.03), at=(x1 - 0.32, 1.4, G + 1.2 + k * 0.5), bevel=0.005), trim)
+        for j in range(4):
+            add(cone(0.08, 0.08, 0.22, 12, at=(x1 - 0.32, 0.8 + j * 0.4, G + 1.215 + k * 0.5)), lambda co, n, j=j, k=k: [(0.75, 0.12, 0.1), (0.85, 0.7, 0.15), (0.2, 0.45, 0.25), (0.6, 0.6, 0.62)][(j + k) % 4])
+
+
+def build_store_shelves(add, W, D, trim):
+    """A free-standing store gondola and a wall rack of goods: Fox Outfitters sells what the catalog lists."""
+    F = CABIN_FLOOR
+    gx, gy = -3.6, 1.6
+    add(rounded_box((1.9, 0.55, 0.06), at=(gx, gy, F + 0.12), bevel=0.01), trim)
+    add(rounded_box((1.9, 0.05, 1.5), at=(gx, gy, F + 0.85), bevel=0.01), trim)
+    for side in (-1, 1):
+        add(rounded_box((0.05, 0.55, 1.5), at=(gx + side * 0.95, gy, F + 0.85), bevel=0.01), trim)
+    palette = [(0.72, 0.14, 0.1), (0.2, 0.36, 0.22), (0.85, 0.68, 0.18), (0.25, 0.3, 0.5), (0.55, 0.4, 0.25), (0.9, 0.5, 0.12)]
+    for k, z in enumerate((0.45, 0.85, 1.25)):
+        add(rounded_box((1.86, 0.5, 0.03), at=(gx, gy, F + z), bevel=0.005), trim)
+        for side in (-1, 1):
+            for j in range(6):
+                col = palette[(j + k * 2 + (side > 0)) % len(palette)]
+                h = 0.16 + ((j * 7 + k * 3) % 4) * 0.035
+                add(rounded_box((0.24, 0.17, h), at=(gx - 0.75 + j * 0.3, gy + side * 0.14, F + z + 0.015 + h / 2), bevel=0.012), lambda co, n, col=col: col if n[2] < 0.7 else mix(col, (1, 1, 1), 0.2))
+    wy = -D / 2 + 0.3
+    for x in (-5.6, -4.0):
+        add(rounded_box((0.06, 0.35, 2.0), at=(x, wy, F + 1.0), bevel=0.01), trim)
+    for z in (0.6, 1.2, 1.8):
+        add(rounded_box((1.66, 0.33, 0.03), at=(-4.8, wy, F + z), bevel=0.005), trim)
+        for j in range(5):
+            col = palette[(j + int(z * 10)) % len(palette)]
+            add(rounded_box((0.25, 0.22, 0.2), at=(-5.45 + j * 0.32, wy, F + z + 0.115), bevel=0.012), lambda co, n, col=col: col)
+

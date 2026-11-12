@@ -48,10 +48,13 @@ export class SlotSession {
   private closed = false
 
   constructor(private readonly scene: Scene, private readonly display: MachineDisplay, private readonly client: CasinoClient, private readonly toast: (text: string) => void, private readonly onLeave: () => void) {
-    this.reels = this.makeReels(display.def.strips)
+    this.reels = this.makeReels(display.def.strips, 'base')
     this.reels.setStops(display.def.strips.map((s) => Math.floor(s.length / 3)))
     this.ui = this.buildUi()
     addEventListener('keydown', this.keyHandler)
+    setTimeout(() => {
+      if (!this.closed && !this.busy) void this.free
+    }, 900)
     this.draw()
     this.display.drawTopper(this.bet)
   }
@@ -64,13 +67,23 @@ export class SlotSession {
     return this.display.def
   }
 
-  private makeReels(strips: string[][]): ReelSet {
+  /** The free-games reels, made once (hidden) shortly after sitting down rather than in the middle of a feature. */
+  private get free(): ReelSet {
+    if (!this.freeReels) {
+      this.freeReels = this.makeReels(this.def.freeStrips, 'free')
+      this.freeReels.showReels(false)
+    }
+    return this.freeReels
+  }
+
+  private makeReels(strips: string[][], which: 'base' | 'free'): ReelSet {
     if (this.closed) throw new Error('closed')
     const win = reelWindow(this.def.rows)
     const s = this.display.screen
     const W = 0.62
     const H = 0.92
-    const set = new ReelSet(this.scene, s, { rows: this.def.rows, strips, styles: this.display.theme.symbols, width: win.w * W, height: win.h * H, reelBack: this.display.theme.reelBack })
+    const cacheKey = `${this.def.id}:${which}`
+    const set = new ReelSet(this.scene, s, { cacheKey, rows: this.def.rows, strips, styles: this.display.theme.symbols, width: win.w * W, height: win.h * H, reelBack: this.display.theme.reelBack })
     set.node.position.set(0, H / 2 - (win.y + win.h / 2) * H, -0.004)
     return set
   }
@@ -320,8 +333,7 @@ export class SlotSession {
     if (f.wheel?.length) await this.wheel(f.wheel)
     if (this.closed) return
     const gold = this.def.family === 'gold' || this.def.family === 'goldwheel'
-    this.freeReels ??= this.makeReels(this.def.freeStrips)
-    const set = this.freeReels
+    const set = this.free
     this.reels.showReels(false)
     set.showReels(true)
     this.message = `${f.awarded} FREE GAMES!`
@@ -482,8 +494,7 @@ export class SlotSession {
 
   private async houses(f: Extract<Feature, { kind: 'houses' }>, base: SpinStep): Promise<void> {
     if (this.closed) return
-    this.freeReels ??= this.makeReels(this.def.freeStrips)
-    const set = this.freeReels
+    const set = this.free
     const frames0: Record<string, number> = {}
     base.grid.forEach((col, r) => col.forEach((s, row) => { if (s === 'H') frames0[`${r},${row}`] = 1 }))
     const paintFrames = (frames: Record<string, number>, prizes: Map<string, string> = new Map(), gone: Set<string> = new Set()) => {
