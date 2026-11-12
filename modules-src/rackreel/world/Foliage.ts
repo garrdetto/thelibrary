@@ -52,7 +52,6 @@ export class Foliage {
   readonly grass: GrassField
   private shadowStands = new Set<Stand>()
   private shadowsStale = true
-  private nearScratch = new Set<Stand>()
   private primed = false
   private readonly treeMatrices: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(4096), hardwood: new FloatBatch(4096), birch: new FloatBatch(1024) }
   private readonly trunkTints: Record<TreeKind, FloatBatch> = { pine: new FloatBatch(1024), hardwood: new FloatBatch(1024), birch: new FloatBatch(256) }
@@ -232,24 +231,33 @@ export class Foliage {
     this.grass.prime(center)
   }
 
+  private nearFocus(stand: Stand, focus: Vector3): boolean {
+    const dx = Math.max(Math.abs(stand.center.x - focus.x) - STAND_SIZE / 2, 0)
+    const dz = Math.max(Math.abs(stand.center.z - focus.z) - STAND_SIZE / 2, 0)
+    return dx * dx + dz * dz < SHADOW_STAND_RADIUS * SHADOW_STAND_RADIUS
+  }
+
   /** Trees, rocks and logs near `focus` go to the cached shadow layer; `moving` (the hunter, animals, vehicles) to the layer redrawn as they move. */
   updateShadowCasters(focus: Vector3, moving: AbstractMesh[]): void {
-    const near = this.nearScratch
-    near.clear()
-    for (const stand of this.stands) {
-      const dx = Math.max(Math.abs(stand.center.x - focus.x) - STAND_SIZE / 2, 0)
-      const dz = Math.max(Math.abs(stand.center.z - focus.z) - STAND_SIZE / 2, 0)
-      if (dx * dx + dz * dz < SHADOW_STAND_RADIUS * SHADOW_STAND_RADIUS) near.add(stand)
+    const stands = this.stands
+    const current = this.shadowStands
+    let count = 0
+    let changed = this.shadowsStale
+    for (let i = 0; i < stands.length; i++) {
+      if (!this.nearFocus(stands[i], focus)) continue
+      count++
+      if (!current.has(stands[i])) changed = true
     }
-    let changed = this.shadowsStale || near.size !== this.shadowStands.size
-    if (!changed) for (const s of near) if (!this.shadowStands.has(s)) changed = true
     const layers = this.ctx.shadowLayers
-    if (changed) {
+    if (changed || count !== current.size) {
       this.shadowsStale = false
-      this.nearScratch = this.shadowStands
-      this.shadowStands = near
+      current.clear()
       const fixed: AbstractMesh[] = []
-      for (const stand of near) for (const mesh of stand.casters) fixed.push(mesh)
+      for (let i = 0; i < stands.length; i++) {
+        if (!this.nearFocus(stands[i], focus)) continue
+        current.add(stands[i])
+        for (const mesh of stands[i].casters) fixed.push(mesh)
+      }
       layers.setFixed(fixed)
     }
     layers.setMoving(moving)
@@ -267,6 +275,5 @@ export class Foliage {
     }
     this.stands.length = 0
     this.shadowStands.clear()
-    this.nearScratch.clear()
   }
 }

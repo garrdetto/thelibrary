@@ -29,6 +29,16 @@ export function detectRadius(s: Pick<Senses, 'noise' | 'cover' | 'hearing'>): nu
   return (14 + 72 * s.noise) * s.hearing * (1 - 0.45 * s.cover)
 }
 
+/**
+ * False when `react` gives the same answer whatever the cover is, so the caller can skip working the cover out: the
+ * animal is down, wounded or already running, inside the panic ring, or further away than it could notice anyone in
+ * the open. Call it with `s.cover` at 0.
+ */
+export function coverMatters(mood: DeerMood, s: Senses): boolean {
+  if (mood === 'down' || mood === 'wounded' || mood === 'flee') return false
+  return s.distance >= PANIC_DISTANCE && s.distance < (14 + 72 * s.noise) * s.hearing
+}
+
 export function react(mood: DeerMood, s: Senses, alertLeft: number): 'flee' | 'alert' | 'calm' | 'keep' {
   if (mood === 'down' || mood === 'wounded') return 'keep'
   if (mood === 'flee') return s.distance > SAFE_DISTANCE ? 'calm' : 'keep'

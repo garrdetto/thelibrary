@@ -38,12 +38,21 @@ const SPOTS: Record<CabinSpot, { x: number; z: number; label: string }> = {
   rack: { x: 1.1, z: -2.25, label: 'E — gear rack: pick your rod, bait and rifle' },
   desk: { x: 2.85, z: 1.2, label: 'E — trading desk: catalog and task board' },
 }
+const SPOT_IDS = Object.keys(SPOTS) as CabinSpot[]
+/** The first walls in `WALLS` are the cabin's own shell; the rest fence the porch. */
+const SHELL_WALLS = 5
+
+function insideLocal(l: Vector3): boolean {
+  return Math.abs(l.x) < CABIN_HALF_W - 0.1 && Math.abs(l.z) < CABIN_HALF_D - 0.1
+}
 
 export class Cabin {
   readonly root: Vector3
   readonly heading: number
   private readonly c: number
   private readonly s: number
+  private readonly probe = new Vector3()
+  private readonly probeB = new Vector3()
 
   constructor(readonly terrain: Terrain, center: Vector3, heading: number) {
     this.heading = heading
@@ -66,10 +75,10 @@ export class Cabin {
     return new Vector3(w.x, this.root.y + local.y, w.z)
   }
 
-  toLocal(p: Vector3): Vector3 {
+  toLocal(p: Vector3, out = new Vector3()): Vector3 {
     const dx = p.x - this.root.x
     const dz = p.z - this.root.z
-    return new Vector3(dx * this.c - dz * this.s, p.y - this.root.y, dx * this.s + dz * this.c)
+    return out.set(dx * this.c - dz * this.s, p.y - this.root.y, dx * this.s + dz * this.c)
   }
 
   get frontDoor(): Vector3 {
@@ -77,17 +86,16 @@ export class Cabin {
   }
 
   inside(p: Vector3): boolean {
-    const l = this.toLocal(p)
-    return Math.abs(l.x) < CABIN_HALF_W - 0.1 && Math.abs(l.z) < CABIN_HALF_D - 0.1
+    return insideLocal(this.toLocal(p, this.probe))
   }
 
   near(p: Vector3, r: number): boolean {
-    const l = this.toLocal(p)
+    const l = this.toLocal(p, this.probe)
     return Math.abs(l.x) < CABIN_HALF_W + r && l.z > -CABIN_HALF_D - r && l.z < 6 + r
   }
 
   floorAt(p: Vector3): number | null {
-    const l = this.toLocal(p)
+    const l = this.toLocal(p, this.probe)
     if (Math.abs(l.x) <= 4.15 && l.z >= -3.1 && l.z <= 5.25) return this.root.y + CABIN_FLOOR
     if (Math.abs(l.x) <= 0.85 && l.z > 5.25 && l.z < 6.0) return this.root.y + CABIN_FLOOR * (1 - (l.z - 5.25) / 0.75)
     return null
@@ -95,7 +103,7 @@ export class Cabin {
 
   collide(p: Vector3, radius: number): void {
     if (!this.near(p, 2)) return
-    const l = this.toLocal(p)
+    const l = this.toLocal(p, this.probe)
     for (const w of WALLS) {
       const ex = w.bx - w.ax
       const ez = w.bz - w.az
@@ -121,29 +129,32 @@ export class Cabin {
         else l.z += Math.sign(dz || 1) * pz
       }
     }
-    const w = this.toWorldXZ(l.x, l.z)
-    p.x = w.x
-    p.z = w.z
+    const lx = l.x
+    const lz = l.z
+    p.x = this.root.x + lx * this.c + lz * this.s
+    p.z = this.root.z - lx * this.s + lz * this.c
   }
 
   segmentBlocked(a: Vector3, b: Vector3): boolean {
-    const la = this.toLocal(a)
-    const lb = this.toLocal(b)
-    for (const w of WALLS.slice(0, 5)) {
+    const la = this.toLocal(a, this.probe)
+    const lb = this.toLocal(b, this.probeB)
+    for (let i = 0; i < SHELL_WALLS; i++) {
+      const w = WALLS[i]
       if (segmentsCross(la.x, la.z, lb.x, lb.z, w.ax, w.az, w.bx, w.bz)) return true
     }
-    return Math.max(la.y, lb.y) > CABIN_FLOOR + 2.6 && (this.inside(a) !== this.inside(b))
+    return Math.max(la.y, lb.y) > CABIN_FLOOR + 2.6 && insideLocal(la) !== insideLocal(lb)
   }
 
   spotNear(p: Vector3, range = 1.3): CabinSpot | null {
-    const l = this.toLocal(p)
+    const l = this.toLocal(p, this.probe)
     let best: CabinSpot | null = null
     let bestD = range
-    for (const [id, s] of Object.entries(SPOTS) as [CabinSpot, typeof SPOTS[CabinSpot]][]) {
+    for (let i = 0; i < SPOT_IDS.length; i++) {
+      const s = SPOTS[SPOT_IDS[i]]
       const d = Math.hypot(l.x - s.x, l.z - s.z)
       if (d < bestD) {
         bestD = d
-        best = id
+        best = SPOT_IDS[i]
       }
     }
     return best

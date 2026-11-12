@@ -72,10 +72,20 @@ export interface Vehicle {
   anchored: boolean
 }
 
+const PARKED_INPUT: DriveInput = { throttle: 0, steer: 0, brake: true }
+/** A parked UTV or quad whose height and lean changed less than this in a frame (metres, radians) has settled on its springs. */
+const REST_SLACK = 1e-3
+/** Below this (m/s) with the brake on, all that is left is the nudge a slope gives each frame, which would otherwise creep it downhill. */
+const REST_SPEED = 0.25
+/** ...and its springs are moving slower than this (m/s). */
+const REST_BOUNCE = 0.01
+
 export class VehicleController {
   mode: VehicleMode = 'NONE'
   active: Vehicle | null = null
   readonly vehicles: Vehicle[] = []
+  /** Parked UTVs and quads that have settled: they skip the wheel ray-casts until someone climbs on or they are moved. */
+  private readonly parked = new Set<Vehicle>()
   private readonly wheelLocal = [
     { name: 'wheelFL', x: 0.62, z: 1.0 },
     { name: 'wheelFR', x: -0.62, z: 1.0 },
@@ -160,6 +170,7 @@ export class VehicleController {
     v.roll = 0
     v.vy = 0
     v.anchored = false
+    this.parked.delete(v)
     this.applyTransform(v)
   }
 
@@ -188,9 +199,21 @@ export class VehicleController {
   update(dt: number, input: DriveInput): void {
     for (const v of this.vehicles) {
       v.clock += dt
-      const drive = v === this.active && !v.anchored ? input : { throttle: 0, steer: 0, brake: true }
-      if (v.kind === 'ATV') this.updateAtv(v, dt, drive)
-      else this.updateBoat(v, dt, drive)
+      if (v === this.active) this.parked.delete(v)
+      else if (this.parked.has(v)) continue
+      const drive = v === this.active && !v.anchored ? input : PARKED_INPUT
+      if (v.kind === 'ATV') {
+        const y = v.position.y
+        const pitch = v.pitch
+        const roll = v.roll
+        this.updateAtv(v, dt, drive)
+        const still = Math.abs(v.speed) < REST_SPEED && Math.abs(v.vy) < REST_BOUNCE && Math.abs(v.position.y - y) < REST_SLACK && Math.abs(v.pitch - pitch) < REST_SLACK && Math.abs(v.roll - roll) < REST_SLACK
+        if (still && v !== this.active) {
+          v.speed = 0
+          v.vy = 0
+          this.parked.add(v)
+        }
+      } else this.updateBoat(v, dt, drive)
       this.applyTransform(v)
     }
   }

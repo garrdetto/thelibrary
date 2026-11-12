@@ -6,8 +6,8 @@ import { disposeRig, instantiate } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { PLAY_LIMIT, forestDensity } from '../world/Terrain'
 import type { Terrain } from '../world/Terrain'
-import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, ABANDONED_DOWN_SECONDS, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, HERD_TURNOVER_SECONDS, LEAVE_GONE, LEAVE_SECONDS, SAFE_DISTANCE, fleeSpeed, react } from './Herd'
-import type { DeerMood } from './Herd'
+import { ALARM_RADIUS, BEAR_SHARE, BUCK_SHARE, ABANDONED_DOWN_SECONDS, HERD_DESPAWN, HERD_SIZE, HERD_SPAWN_MAX, HERD_SPAWN_MIN, HERD_TURNOVER_SECONDS, LEAVE_GONE, LEAVE_SECONDS, SAFE_DISTANCE, coverMatters, fleeSpeed, react } from './Herd'
+import type { DeerMood, Senses } from './Herd'
 import { SPECIES_BY_ID, classify, measure } from './LootTableManager'
 import type { LootTableManager, SpeciesTemplate, Specimen } from './LootTableManager'
 
@@ -72,6 +72,9 @@ const BODY: Record<string, { y: number; z: number; r: number }[]> = {
   blackbear: [{ y: 0.9, z: 0.0, r: 0.55 }, { y: 0.92, z: -0.45, r: 0.5 }, { y: 1.0, z: 0.95, r: 0.3 }],
 }
 const WALK_PHASE: Record<string, number> = { legBL: 0, legFL: 0.25, legBR: 0.5, legFR: 0.75 }
+const WALK_LEGS = Object.keys(WALK_PHASE)
+const FRONT_LEGS = ['legFL', 'legFR']
+const BACK_LEGS = ['legBL', 'legBR']
 
 function wrapAngle(a: number): number {
   return Math.atan2(Math.sin(a), Math.cos(a))
@@ -79,6 +82,8 @@ function wrapAngle(a: number): number {
 
 export class Wildlife {
   readonly animals: Animal[] = []
+  private readonly herdScratch: (Animal | null)[] = []
+  private readonly senses: Senses = { distance: 0, noise: 0, approaching: false, cover: 0, hearing: 0 }
   private nextId = 1
   private herdTimer = 0
   detection = 1
@@ -341,8 +346,9 @@ export class Wildlife {
   }
 
   private cover(a: Animal, player: Vector3): number {
-    const mid = a.position.add(player).scale(0.5)
-    return Math.min(1, forestDensity(mid.x, mid.z) * 0.8 + forestDensity(a.position.x, a.position.z) * 0.3)
+    const midX = (a.position.x + player.x) * 0.5
+    const midZ = (a.position.z + player.z) * 0.5
+    return Math.min(1, forestDensity(midX, midZ) * 0.8 + forestDensity(a.position.x, a.position.z) * 0.3)
   }
 
   snapshot(): NetAnimal[] {
@@ -398,10 +404,15 @@ export class Wildlife {
       this.followRemote(dt)
       return
     }
-    for (const a of [...this.animals]) {
+    const herd = this.herdScratch
+    const count = this.animals.length
+    for (let i = 0; i < count; i++) herd[i] = this.animals[i]
+    for (let index = 0; index < count; index++) {
+      const a = herd[index]!
+      herd[index] = null
       a.stateTime -= dt
       let nearest = listeners[0]
-      for (const l of listeners) if (Vector3.Distance(a.position, l.p) < Vector3.Distance(a.position, nearest.p)) nearest = l
+      for (let i = 1; i < listeners.length; i++) if (Vector3.Distance(a.position, listeners[i].p) < Vector3.Distance(a.position, nearest.p)) nearest = listeners[i]
       const player = nearest.p
       const noise = nearest.noise
       const toPlayer = Vector3.Distance(a.position, player)
@@ -427,7 +438,17 @@ export class Wildlife {
       const approaching = toPlayer < a.lastDistance - 0.04
       a.lastDistance = toPlayer
       const hearing = (a.template.id === 'whitetail' ? 1 : 0.75) * this.detection
-      const decision = a.leaving >= 0 ? 'keep' : react(a.state, { distance: toPlayer, noise, approaching, cover: this.cover(a, player), hearing }, a.stateTime)
+      let decision: ReturnType<typeof react> = 'keep'
+      if (a.leaving < 0) {
+        const senses = this.senses
+        senses.distance = toPlayer
+        senses.noise = noise
+        senses.approaching = approaching
+        senses.hearing = hearing
+        senses.cover = 0
+        if (coverMatters(a.state, senses)) senses.cover = this.cover(a, player)
+        decision = react(a.state, senses, a.stateTime)
+      }
       if (decision === 'flee') this.flee(a, player)
       else if (decision === 'alert') {
         a.state = 'alert'
@@ -486,7 +507,11 @@ export class Wildlife {
         const lookX = nx + fx * look
         const lookZ = nz + fz * look
         let blocked = this.terrain.heightAt(lookX, lookZ) < 0.4 || Math.abs(lookX) > PLAY_LIMIT - 10 || Math.abs(lookZ) > PLAY_LIMIT - 10
-        for (const t of this.ctx.queryTrunks(lookX, lookZ, 1)) if ((t.x - lookX) ** 2 + (t.z - lookZ) ** 2 < (t.r + 0.8) ** 2) blocked = true
+        const trunks = this.ctx.queryTrunks(lookX, lookZ, 1)
+        for (let i = 0; i < trunks.length; i++) {
+          const t = trunks[i]
+          if ((t.x - lookX) ** 2 + (t.z - lookZ) ** 2 < (t.r + 0.8) ** 2) blocked = true
+        }
         if (blocked) {
           a.desired = a.heading + (wrapAngle(a.desired - a.heading) >= 0 ? 1 : -1) * 1.2
           a.heading += (wrapAngle(a.desired - a.heading) >= 0 ? 1 : -1) * Math.min(1, dt * 4)
@@ -522,19 +547,21 @@ export class Wildlife {
       root.position.y += air * 0.55 * a.scale
       pitch += Math.cos(p) * 0.22
       const reach = Math.sin(p - 0.4)
-      for (const name of ['legFL', 'legFR']) {
-        const j = a.rig.joints.get(name)
-        if (j) j.rotation.x = -0.75 * reach + (name === 'legFR' ? 0.08 : 0)
+      for (let i = 0; i < FRONT_LEGS.length; i++) {
+        const j = a.rig.joints.get(FRONT_LEGS[i])
+        if (j) j.rotation.x = -0.75 * reach + (FRONT_LEGS[i] === 'legFR' ? 0.08 : 0)
       }
-      for (const name of ['legBL', 'legBR']) {
-        const j = a.rig.joints.get(name)
-        if (j) j.rotation.x = 0.85 * reach + (name === 'legBR' ? 0.08 : 0)
+      for (let i = 0; i < BACK_LEGS.length; i++) {
+        const j = a.rig.joints.get(BACK_LEGS[i])
+        if (j) j.rotation.x = 0.85 * reach + (BACK_LEGS[i] === 'legBR' ? 0.08 : 0)
       }
     } else {
       const cadence = speed < 0.05 ? 0 : speed < 2 ? speed * 0.95 : 1.9 + speed * 0.35
       a.gait += dt * cadence * Math.PI * 2
       const amp = speed < 0.05 ? 0 : 0.32 + trot * 0.25
-      for (const [name, phase] of Object.entries(WALK_PHASE)) {
+      for (let i = 0; i < WALK_LEGS.length; i++) {
+        const name = WALK_LEGS[i]
+        const phase = WALK_PHASE[name]
         const j = a.rig.joints.get(name)
         if (!j) continue
         const ph = trot > 0.5 ? (name === 'legFL' || name === 'legBR' ? 0 : 0.5) : phase
