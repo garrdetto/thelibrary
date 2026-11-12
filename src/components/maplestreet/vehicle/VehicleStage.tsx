@@ -6,7 +6,7 @@ import { Grid, Html, OrbitControls, TransformControls, useGLTF } from '@react-th
 import { Box3, BoxGeometry, BufferGeometry, CanvasTexture, Float32BufferAttribute, Color, EdgesGeometry, Mesh, MeshStandardMaterial, Vector3 } from 'three'
 import type { Group, Material, Object3D, Texture } from 'three'
 import { lampTriangles } from '../../../../modules-src/maplestreet/shared/Shapes'
-import type { LampSize, Shape } from '../../../../modules-src/maplestreet/shared/Shapes'
+import type { LampDepth, LampSize, Shape } from '../../../../modules-src/maplestreet/shared/Shapes'
 import { recolorPixels } from '../../../../modules-src/maplestreet/shared/PaintMask'
 import { BODY_EXTENTS, BUILTIN_TUNING, rideHeight } from '../../../../modules-src/maplestreet/shared/Vehicles'
 import type { Draft, MarkerId, ReferenceKind, Size3 } from './draft'
@@ -236,8 +236,8 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
     if (!target || !selected) return
     props.onMarker(selected, { x: target.position.x, y: target.position.y, z: target.position.z })
   }
-  const lamp = (p: { x: number; y: number; z: number }, color: string, shape?: Shape, size?: LampSize) => (p.z === 0 ? [1] : [1, -1]).map(side => shape
-    ? <LampPlate key={side} p={p} side={side as 1 | -1} shape={shape} size={size} color={color}/>
+  const lamp = (p: { x: number; y: number; z: number }, color: string, out: 1 | -1, shape?: Shape, size?: LampSize, depth?: LampDepth) => (p.z === 0 ? [1] : [1, -1]).map(side => shape
+    ? <LampPlate key={side} p={p} side={side as 1 | -1} shape={shape} size={size} depth={depth} out={out} color={color}/>
     : <mesh key={side} position={[p.x, p.y, p.z * side]}>
       <boxGeometry args={[0.05, 0.11, 0.22]}/>
       <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.4}/>
@@ -247,8 +247,8 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
       <VehicleModel url={props.url} draft={draft} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick} onScene={props.onScene} smoother={props.smoother}/>
       {draft.axles.map((a, i) => [1, -1].map(side => <Wheel key={`${i}${side}`} radius={a.radius} width={a.width} position={[a.x, wheelCenterY, a.halfTrack * side]}/>))}
       <group position={[draft.seat.x, draft.seat.y, draft.seat.z]}><SeatedFigure/></group>
-      {draft.headOn && lamp(draft.head, '#fff4d6', draft.lampShapes.head, draft.lampShapes.headSize)}
-      {draft.tailOn && lamp(draft.tail, '#ff1a1a', draft.lampShapes.tail, draft.lampShapes.tailSize)}
+      {draft.headOn && lamp(draft.head, '#fff4d6', 1, draft.lampShapes.head, draft.lampShapes.headSize, draft.lampShapes.headDepth)}
+      {draft.tailOn && lamp(draft.tail, '#ff1a1a', -1, draft.lampShapes.tail, draft.lampShapes.tailSize, draft.lampShapes.tailDepth)}
       {draft.hitch && <mesh position={[draft.hitch.x, draft.hitch.y, 0]}><sphereGeometry args={[0.05, 12, 10]}/><meshStandardMaterial color="#dadada" metalness={1} roughness={0.15}/></mesh>}
       <Marker id="front" position={pos('front')} selected={selected === 'front'} onSelect={props.onSelect} color="#5cd17a"/>
       <Marker id="rear" position={pos('rear')} selected={selected === 'rear'} onSelect={props.onSelect} color="#5cd17a"/>
@@ -269,13 +269,13 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
   </>
 }
 
-function LampPlate({ p, side, shape, size, color }: { p: { x: number; y: number; z: number }; side: 1 | -1; shape: Shape; size?: LampSize; color: string }) {
+function LampPlate({ p, side, shape, size, depth, out, color }: { p: { x: number; y: number; z: number }; side: 1 | -1; shape: Shape; size?: LampSize; depth?: LampDepth; out: 1 | -1; color: string }) {
   const geometry = useMemo(() => {
     const geo = new BufferGeometry()
-    geo.setAttribute('position', new Float32BufferAttribute(lampTriangles(p, shape, side, size), 3))
+    geo.setAttribute('position', new Float32BufferAttribute(lampTriangles(p, shape, side, size, depth, out), 3))
     geo.computeVertexNormals()
     return geo
-  }, [p.x, p.y, p.z, side, shape, size?.w, size?.h])
+  }, [p.x, p.y, p.z, side, shape, size?.w, size?.h, depth, out])
   useEffect(() => () => geometry.dispose(), [geometry])
   return <mesh geometry={geometry}><meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.4}/></mesh>
 }
