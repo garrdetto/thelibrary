@@ -62,6 +62,8 @@ export interface BowfishingHost {
   announce(text: string): void
   /** The trip ended at the launch; the player stands at `at`. */
   tripEnded(at: Vector3, facing: number): void
+  /** Tours run at any hour (Fox Lake shares one clock with everyone, so nobody can skip to dark). */
+  anyHour?: boolean
 }
 
 type BowState = 'ready' | 'drawing' | 'out'
@@ -343,7 +345,7 @@ export class Bowfishing {
   campPrompt(foot: Vector3): string {
     if (!this.nearCamp(foot)) return ''
     if (this.trip) return this.tripAtLaunch() ? `E — climb aboard with ${this.trip.name} and Wild Man` : `Wild Man is out on the water with ${this.trip.name}`
-    return this.host.lighting.night >= NIGHT_TO_FISH ? 'E — go bowfishing with Wisco Wild Man' : 'E — tell Wisco Wild Man you want to go bowfishing (it\'ll be dark by the time you shove off)'
+    return this.host.anyHour || this.host.lighting.night >= NIGHT_TO_FISH ? 'E — go bowfishing with Wisco Wild Man' : 'E — tell Wisco Wild Man you want to go bowfishing (it\'ll be dark by the time you shove off)'
   }
 
   /** Party state from Online: a party member's trip (if one owns the boat), the spots they've taken, and whether anyone else is in the party. */
@@ -352,7 +354,7 @@ export class Bowfishing {
     this.trip = this.role === 'owner' ? null : trip
     this.taken = taken
     this.party = party
-    if (started && this.host.lighting.night < NIGHT_TO_FISH) {
+    if (started && !this.host.anyHour && this.host.lighting.night < NIGHT_TO_FISH) {
       this.fallNight()
       this.host.hud.toast(`${trip.name} is taking the party bowfishing with Wisco Wild Man. Night falls; meet at his launch.`)
     }
@@ -426,7 +428,7 @@ export class Bowfishing {
       this.say(`Climb aboard, bud. ${this.trip.name}'s callin' the shots tonight.`, PATIENCE.greeting, 'line-crew')
       return true
     }
-    const daytime = this.host.lighting.night < NIGHT_TO_FISH
+    const daytime = !this.host.anyHour && this.host.lighting.night < NIGHT_TO_FISH
     if (daytime) this.fallNight()
     this.role = 'owner'
     this.slot = this.freeSlot() ?? 0
@@ -656,7 +658,7 @@ export class Bowfishing {
     if (this.role === 'crew') {
       this.followTrip(dt)
     } else {
-      if (this.host.lighting.night < DAWN && !p.homeward) p.sendItHome()
+      if (!this.host.anyHour && this.host.lighting.night < DAWN && !p.homeward) p.sendItHome()
       const events = p.update(dt, this.fightActive)
       if (events.onPlane && !p.homeward) {
         this.say(LINES.running)

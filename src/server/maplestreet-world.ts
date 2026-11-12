@@ -66,6 +66,14 @@ export class MapleStreetWorld {
       registerCustomVehicles(await listStoreVehicles(this.env))
       return Response.json({ ok: true })
     }
+    if (path === '/wallet' && request.method === 'POST') {
+      const body = (await request.json().catch(() => null)) as { key?: unknown; name?: unknown; delta?: unknown } | null
+      if (!body || typeof body.key !== 'string' || !body.key.startsWith('member:') || typeof body.name !== 'string' || typeof body.delta !== 'number' || !Number.isFinite(body.delta) || Math.abs(body.delta) > 10_000_000) {
+        return Response.json({ error: 'bad wallet request' }, { status: 400 })
+      }
+      const balance = await this.world.wallet({ key: body.key, name: body.name, member: true }, body.delta)
+      return balance === null ? Response.json({ refused: true }, { status: 409 }) : Response.json({ balance })
+    }
     if (path === '/status') {
       await this.world.ready()
       return Response.json(this.world.status(), { headers: { 'cache-control': 'no-store' } })

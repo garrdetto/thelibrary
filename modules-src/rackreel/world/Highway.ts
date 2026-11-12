@@ -39,7 +39,7 @@ function onSpan(t: number): boolean {
 }
 
 function surfaceAt(terrain: Terrain, across: number, t: number): number {
-  const g = highwayGrade(t)
+  const g = highwayGrade(t, terrain.shape)
   if (onSpan(t)) return g
   const p = highwayPoint(across, t)
   return Math.max(g, terrain.heightAt(p.x, p.z)) + 0.05
@@ -123,7 +123,7 @@ function toMesh(name: string, b: Builder, scene: Scene): Mesh {
   return mesh
 }
 
-function roadTexture(scene: Scene): DynamicTexture {
+export function roadTexture(scene: Scene): DynamicTexture {
   const w = 256
   const h = 512
   const tex = new DynamicTexture('highway-road', { width: w, height: h }, scene, true)

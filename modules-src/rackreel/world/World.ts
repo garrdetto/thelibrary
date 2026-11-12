@@ -34,7 +34,7 @@ function mixColor(a: number[], b: number[], t: number): number[] {
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]
 }
 
-function detailTexture(scene: Scene): DynamicTexture {
+export function detailTexture(scene: Scene): DynamicTexture {
   const size = 256
   const tex = new DynamicTexture('ground-detail', { width: size, height: size }, scene, true)
   const ctx = tex.getContext() as CanvasRenderingContext2D

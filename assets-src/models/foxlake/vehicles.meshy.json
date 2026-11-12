@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "name": "foxlake-vehicles",
+  "createdAt": "2026-11-11",
+  "note": "Remakes of the Fox Plains built-in vehicles that were still simple low-poly bodies (the sedan, coupe, pickup, heavy-duty truck and Maple Hauler already draw from Meshy scans). Text-to-3D smart topology (meshy-t2.5) previews, textured with refine, then cleaned in Blender by modules-src/foxlake/tools/build-vehicles.py to the built-in's body extents, +x forward, with wheel pivots at the axles.",
+  "tasks": {
+    "golfcart": {
+      "kind": "text-to-3d",
+      "preview": "01a1cdca-a49b-73d3-8baa-0f48757860e0",
+      "credits": 15,
+      "refine": "01a1cdcd-e500-739e-ae84-bedfddfc04c6"
+    },
+    "atv": {
+      "kind": "text-to-3d",
+      "preview": "01a1cdca-adf2-7501-a7ad-3d390499cdba",
+      "credits": 15,
+      "refine": "01a1cdcd-ef9f-71ca-8c39-e3403f220ac3"
+    },
+    "zeroturn": {
+      "kind": "text-to-3d",
+      "preview": "01a1cdca-b63a-7134-8010-c3c3223e52d8",
+      "credits": 15,
+      "refine": "01a1cdcd-f7f9-730d-ace2-e4bb34d7fc8c"
+    },
+    "mower": {
+      "kind": "text-to-3d",
+      "preview": "01a1cdca-bf7e-73f9-a4e2-b04a388402ab",
+      "credits": 15,
+      "refine": "01a1cdce-0072-7672-8168-b4a642861181"
+    },
+    "trailer": {
+      "kind": "text-to-3d",
+      "preview": "01a1cdca-c903-75b2-9db0-9ddaf4166e9e",
+      "credits": 15,
+      "refine": "01a1cdce-0872-72fc-b5d0-888f5d35a6c0"
+    }
+  },
+  "credits": 75
+}

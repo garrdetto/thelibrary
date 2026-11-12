@@ -218,6 +218,7 @@ export class GrassBuilder {
         const z = (gz + hash(gx, gz, 22)) * cell
         const h = terrain.heightAt(x, z)
         if (h < GRASS.minHeight) continue
+        if (!terrain.inSquare(x, z) && !(terrain.shape.outside?.grassAt?.(x, z) ?? false)) continue
         const px = x - HIGHWAY.x
         const pz = z - HIGHWAY.z
         if (Math.abs(px * HIGHWAY.dz - pz * HIGHWAY.dx) < roadEdge) continue

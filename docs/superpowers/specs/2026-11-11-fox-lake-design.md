@@ -20,7 +20,8 @@ Fox Lake is one Babylon.js game that joins the Fox Plains town and Rack & Reel's
 | Clothing | More plain, everyday outfits in addition to the hunting and fishing ones. |
 | Money | One merged wallet everywhere: Fox Plains money and Rack & Reel cash become one balance, in Fox Lake, classic Fox Plains and standalone Rack & Reel. |
 | Rendering | Rack & Reel's environment methods and renderer, and the town rebuilt the way Rack & Reel's world is built, so the whole map looks consistent. |
-| Assets | Vehicles and world objects remade with Blender and Meshy (they look low quality, have broken geometry and render with bad materials). |
+| Assets | Vehicles and world objects fixed (they look low quality, have broken geometry and render with bad materials). Meshy only for vehicles and outfits for now; everything else is Blender. |
+| Carp bowfishing | Allowed during the day too in Fox Lake. |
 | Quality bar | Kept optimized, and every phase checks for leaks and bottlenecks. |
 
 ## Architecture
@@ -100,7 +101,7 @@ modules-src/
 - **Country positions:** `WorldServer` accepts player and vehicle positions anywhere inside `WORLD_BOUNDS`. Snapshots add `zone: 'town' | 'country'`. Classic Fox Plains hides anyone with `zone: 'country'`, since it has no terrain there. Classic players can't leave the town bounds, as today.
 - **Seeing each other in the country:** everyone in the country sees everyone else there through the shared world: walking, driving, boat and UTV poses, held gear.
 - **Group play:** shared boats, Wild Man's night bowfishing tours and a party's deer herd keep Rack & Reel's party system (`rrkit/play` Online over PeerJS, up to 4, invite codes, open lobbies). Fox Lake's Esc menu offers Invite, Open lobby and Join by code like Rack & Reel's, and a party only forms among Fox Lake players. Outside a party, wildlife is local to each player, as in solo Rack & Reel.
-- **Time of day:** the country uses the shared world's clock. Wild Man's tours start after dark on that clock, and the "skip to dark" shortcut is removed in Fox Lake, because the shared clock can't be skipped for one player.
+- **Time of day:** the country uses the shared world's clock. Wild Man's carp bowfishing tours run at any hour in Fox Lake, day or night, so nobody needs to skip the clock (the "skip to dark" step is dropped in Fox Lake; standalone Rack & Reel keeps it).
 
 ### Merged wallet
 
@@ -115,8 +116,8 @@ modules-src/
 
 1. **Audit:** list every model in `public/models/maplestreet/` (vehicles, houses, town, characters, furniture) and the Fox Plains 2 primitive builds (mower, tires, rims), with its defects: scale against the physics spec, wheel and axle pivots, holes and normals, materials.
 2. **Blender repair:** scripted fixes in `assets-src/foxlake/tools/` for scale to the physics dimensions, wheel separation and pivots at the axles, closed meshes, recalculated normals, and glass and paint material slots. Output goes to `assets-src/models/foxlake/`, then `pnpm assets`.
-3. **Meshy for what can't be repaired:** a priced list goes to the owner before any credits are spent. Hero vehicles use meshy-7.1 geometry with meshy-7 textures (about 30 credits each); props use meshy-t2 with meshy-n1 (about 15 each); outfit retextures cost 10 each. Each Meshy model is cleaned in Blender to the same dimensions and pivots, so physics and handling don't change. Task ids are recorded next to the sources, as `hunter.meshy.json` does today.
-4. **Rough budget, for planning only:** about 9 vehicles × 30 = 270, about 20 plain outfits × 10 = 200, about 15 props × 15 = 225, so about 700 credits. The real number comes with the priced list.
+3. **Meshy, vehicles and outfits only for now** (owner decision 2026-11-11; props, buildings and furniture stay Blender builds): a priced list goes to the owner before any credits are spent. Hero vehicles use meshy-7.1 geometry with meshy-7 textures (about 30 credits each); props use meshy-t2 with meshy-n1 (about 15 each); outfit retextures cost 10 each. Each Meshy model is cleaned in Blender to the same dimensions and pivots, so physics and handling don't change. Task ids are recorded next to the sources, as `hunter.meshy.json` does today.
+4. **Budget:** about 9 vehicles × 30 = 270 and about 20 plain outfits × 10 = 200, so about 470 credits. The owner approved spending without a separate priced list.
 
 ## Performance, leaks and bottlenecks
 
@@ -149,7 +150,7 @@ Each phase is its own implementation plan and pull request, merged only with the
 1. **rrkit extraction.** Move the shared code out of `modules-src/rackreel/` with no behaviour change. Add `Region` to terrain. Rack & Reel's tests pass, and before/after screenshots at fixed spots and hours match.
 2. **Fox Lake shell.** Rename and move Fox Plains 2 to `foxlake`, add the module entry and redirect, boot on `rrkit` EngineSetup with the shared clock, and register both regions with streaming, the seam and the connector road. The town is still drawn with the old pieces at this point. Perf and leak gates are established here.
 3. **Town rebuilt with Rack & Reel methods.** Blender builders for the downtown and town props, ground, roads, lawns with mowing, foliage, houses on rrkit surfaces, lamps and signs. The Fox Plains 2 sky, ground plugin and lighting are removed.
-4. **Character and clothing.** The hunter and creator in Fox Lake, looks read from the Rack & Reel profile, the classic look sent for classic Fox Plains, and Maple Threads selling the Rack & Reel catalog. The everyday outfits come after the owner approves the priced Meshy list.
+4. **Character and clothing.** The hunter and creator in Fox Lake, looks read from the Rack & Reel profile, the classic look sent for classic Fox Plains, and Maple Threads selling the Rack & Reel catalog. Everyday outfits are Meshy retextures.
 5. **Country gameplay and multiplayer.** Fishing, hunting, boats, UTV, quad, Wild Man and wildlife running in the world. `zone` in snapshots and hiding in classic. The party bridge.
 6. **Merged wallet.** The Durable Object wallet RPC, `/api/rackreel` switched over, the one-time migration, and the same balance shown in all three games.
 7. **Assets.** Audit, Blender repair, priced Meshy list, then Meshy remakes with Blender clean-up.
@@ -178,10 +179,23 @@ Phases 3 and 4 can run in parallel after phase 2. Phase 6 doesn't depend on rend
 | The wallet merge changes live balances | Idempotent, flag-keyed migration that only credits (never debits); covered by tests; the Durable Object remains the one authority. |
 | The shared clock and Rack & Reel's timing differ | The clock source is a parameter of rrkit time of day; standalone keeps its clock, Fox Lake follows the world. |
 | Classic Fox Plains sees out-of-bounds players | `zone` field plus hiding in classic; covered by the shared-world check. |
-| Meshy spending | Nothing is spent without the owner approving a priced list. |
+| Meshy spending | Limited to vehicles and outfits, about 470 credits; balance checked before each batch. |
 
 ## Out of scope
 
 - Build and Buy, shops, bank, dealer, body shop windows and the town map inside Fox Lake. These still live in classic Fox Plains, as they do for Fox Plains 2 now, and the side panel keeps linking to it.
 - Kestrel County changes.
 - Changes to standalone Rack & Reel gameplay, other than the shared wallet and the new Everyday outfits.
+
+## As built (2026-11-11)
+
+What shipped differs from the plan above in these ways; `modules-src/foxlake/README.md` describes the result.
+
+- **No separate `rrkit/` folder.** Fox Lake runs Rack & Reel's own `Game` with a host-world extension (`GameExtension`, `GameOptions`), so every Rack & Reel system is shared by import, not moved. Rack & Reel gained small opt-in hooks: region-aware terrain (`TerrainShape`), external vehicles, `Foliage.plantTrees` and `hostCasters`, a grass mask outside the square and any-hour bowfishing. Standalone Rack & Reel passes none of them and its terrain is unchanged (tested).
+- **Placement.** The town sits north of the lake country (scene z > 512), mirrored in z into the scene, with East Ave running south into the county road and the interstate.
+- **Town drawing.** Fox Plains 2's town builders (`fp/`) build the geometry, because the layout and every house must match the shared world exactly. Rack & Reel's renderer, light, sky, fog, shadow layers, foliage and ground method draw it.
+- **Cars** keep Fox Plains' Rapier physics; boats, UTV and quad keep Rack & Reel's controller.
+- **Group play** uses Rack & Reel's party system unchanged. Parties use the same room codes and lake-country coordinates as standalone Rack & Reel, so a Fox Lake player and a Rack & Reel player should be able to join one party. That has not been tested across the two games yet.
+- **Wallet.** The merge flag lives in the Rack & Reel profile JSON (`walletMerged`), so no D1 migration was needed.
+- **Assets.** Meshy was used for 10 everyday outfits (100 credits) and the five vehicles that were still low-poly: golf cart, ATV, zero-turn, riding mower and trailer (75 credits). The sedan, coupe, pickup, heavy-duty truck and Maple Hauler were already Meshy scans. The new vehicles' wheels are part of the body and do not spin.
+- **Not yet done:** fuel and deliveries in Fox Lake (classic Fox Plains still has them), spinning wheels on the five new vehicles, the visible-window performance budget (see `docs/foxlake/PERF.md`), and remote players' Rack & Reel looks (neighbors outside your party draw with an everyday outfit picked from their name).

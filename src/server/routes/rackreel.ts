@@ -2,11 +2,12 @@ import { z } from 'zod'
 import type { Env } from '../env.js'
 import { HttpError, json, readJson, requireSameOrigin } from '../http.js'
 import { currentUser, requireUser } from '../auth.js'
-import { ensureRackreelTables, loadCategoryBoard, loadRackreelProfile, loadRecordBoard, resetRecordBoard, saveRackreelProfile, saveRecords } from '../rackreel.js'
+import { ensureRackreelTables, loadCategoryBoard, loadRackreelProfile, loadRecordBoard, resetRecordBoard, saveRackreelProfile, saveRackreelProfileIfUnchanged, saveRecords } from '../rackreel.js'
+import { adjustSharedWallet } from '../shared-wallet.js'
 import { canResetRecords } from '../records.js'
 import { CATEGORY_BY_ID } from '../../../modules-src/rackreel/shared/Records'
 import { ITEM_BY_ID, applyEvent, applyPlaytime, createCharacter, equip, eventCooldown, makeover, purchase } from '../../../modules-src/rackreel/shared/Economy'
-import type { GameEvent, Slot } from '../../../modules-src/rackreel/shared/Economy'
+import type { GameEvent, Profile, Slot } from '../../../modules-src/rackreel/shared/Economy'
 import { RECORD_BOOK_SEED, SPECIES_BY_ID, classify } from '../../../modules-src/rackreel/systems/LootTableManager'
 import type { SpeciesId } from '../../../modules-src/rackreel/systems/LootTableManager'
 
@@ -43,6 +44,39 @@ function plausible(species: SpeciesId, value: number, legendary: boolean): boole
   return legendary || value >= t.min * 0.95
 }
 
+const MONEY_ACTIONS = new Set(['fish', 'game', 'tick', 'buy', 'makeover'])
+
+/**
+ * The balance of the one wallet this member shares with Fox Plains and Fox Lake. The first time, the profile's own
+ * cash moves into it (exactly once: the profile is claimed with a conditional save before the credit, and put back
+ * if the credit fails). Returns null when the shared world can't be reached; an unmerged profile then keeps using
+ * its own cash.
+ */
+async function sharedBalance(env: Env, user: { id: string; username: string }, profile: Profile, updatedAt: number): Promise<{ balance: number | null; updatedAt: number }> {
+  if (profile.walletMerged) {
+    const read = await adjustSharedWallet(env, user, 0)
+    return { balance: read.ok ? read.balance : null, updatedAt }
+  }
+  const cash = profile.cash
+  const now = Math.max(Date.now(), updatedAt + 1)
+  const claimed: Profile = { ...profile, cash: 0, walletMerged: true }
+  if (!await saveRackreelProfileIfUnchanged(env, user.id, claimed, updatedAt, now)) {
+    const fresh = await loadRackreelProfile(env, user.id, user.username)
+    Object.assign(profile, fresh.profile)
+    if (!profile.walletMerged) return { balance: null, updatedAt: fresh.updatedAt }
+    const read = await adjustSharedWallet(env, user, 0)
+    return { balance: read.ok ? read.balance : null, updatedAt: fresh.updatedAt }
+  }
+  const moved = await adjustSharedWallet(env, user, cash)
+  if (!moved.ok) {
+    await saveRackreelProfile(env, user.id, user.username, profile, now + 1)
+    return { balance: null, updatedAt: now + 1 }
+  }
+  profile.cash = 0
+  profile.walletMerged = true
+  return { balance: moved.balance, updatedAt: now }
+}
+
 export async function rackreel(request: Request, env: Env) {
   await ensureRackreelTables(env)
   if (request.method === 'GET') {
@@ -56,8 +90,10 @@ export async function rackreel(request: Request, env: Env) {
     }
     const user = await currentUser(request, env)
     if (!user) return json({ signedIn: false })
-    const { profile } = await loadRackreelProfile(env, user.id, user.username)
-    return json({ signedIn: true, username: user.username, profile })
+    const loaded = await loadRackreelProfile(env, user.id, user.username)
+    const { balance } = await sharedBalance(env, user, loaded.profile, loaded.updatedAt)
+    const profile = loaded.profile
+    return json({ signedIn: true, username: user.username, profile: { ...profile, cash: balance ?? (profile.walletMerged ? 0 : profile.cash) }, wallet: profile.walletMerged ? (balance === null ? 'unavailable' : 'shared') : 'own' })
   }
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   requireSameOrigin(request)
@@ -69,7 +105,14 @@ export async function rackreel(request: Request, env: Env) {
     await resetRecordBoard(env, input.category)
     return json({ reset: true, records: {} })
   }
-  const { profile, updatedAt } = await loadRackreelProfile(env, user.id, user.username)
+  const loaded = await loadRackreelProfile(env, user.id, user.username)
+  const profile = loaded.profile
+  const shared = await sharedBalance(env, user, profile, loaded.updatedAt)
+  const updatedAt = shared.updatedAt
+  const merged = profile.walletMerged === true
+  if (merged && shared.balance === null && MONEY_ACTIONS.has(input.action)) throw new HttpError(503, 'Your wallet is shared with Fox Plains, which can\'t be reached right now. Try again in a moment.')
+  const before = merged ? (shared.balance ?? 0) : profile.cash
+  if (merged) profile.cash = before
   let paid = 0
   let completed: { id: string; text: string; reward: number }[] = []
   let records: { board: Record<string, unknown>; placed: Record<string, number> } | null = null
@@ -107,6 +150,16 @@ export async function rackreel(request: Request, env: Env) {
     const error = equip(profile, input.slot as Slot, input.item)
     if (error) throw new HttpError(400, error)
   }
+  let balance = profile.cash
+  if (merged) {
+    const delta = profile.cash - before
+    if (delta !== 0) {
+      const applied = await adjustSharedWallet(env, user, delta)
+      if (!applied.ok) throw new HttpError(applied.reason === 'refused' ? 400 : 503, applied.reason === 'refused' ? 'Not enough cash.' : 'Your shared wallet can\'t be reached right now. Try again in a moment.')
+      balance = applied.balance
+    } else balance = before
+    profile.cash = 0
+  }
   await saveRackreelProfile(env, user.id, user.username, profile, now)
-  return json({ profile, paid, completed, ...(records ? { records: records.board, placed: records.placed } : {}) })
+  return json({ profile: { ...profile, cash: balance }, paid, completed, wallet: merged ? 'shared' : 'own', ...(records ? { records: records.board, placed: records.placed } : {}) })
 }

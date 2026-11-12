@@ -30,6 +30,7 @@ MODELS = os.path.abspath(os.path.join(HERE, '../../../public/modules/rackreel/mo
 CLIP_FPS = 30
 COLOR_SIZE = 2048
 BARE_ARMS = {'hunter-tank-khaki', 'hunter-tank-blazevest', 'hunter-tank-fishvest'}
+ONLY_TEXTURES = set(os.environ.get('HUNTER_ONLY', '').split(',')) - {''}
 ARM_BONES = ('Arm', 'ForeArm', 'Hand')
 HEAD_BONES = ('Head', 'neck', 'head_end', 'headfront')
 HEAD_SIZE = 1024
@@ -251,7 +252,7 @@ def ingest_textures():
     print('skin', [round(float(c), 3) for c in skin], 'arm texels', int(mask.sum()))
     for name in sorted(os.listdir(CACHE)):
         color = os.path.join(CACHE, name, 'base_color.png')
-        if not os.path.isfile(color) or name.startswith('head-'):
+        if not os.path.isfile(color) or name.startswith('head-') or (ONLY_TEXTURES and name not in ONLY_TEXTURES):
             continue
         image, px = load_pixels(color, COLOR_SIZE)
         if name in BARE_ARMS:

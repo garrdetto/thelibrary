@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "name": "hunter-everyday",
+  "createdAt": "2026-11-11",
+  "note": "Everyday outfits for Rack & Reel and Fox Lake: meshy-7 retextures of the hunter base mesh (hunter.meshy.json, task hunter-base) on its original UVs, so the one rigged geometry wears them. Each is a top with a pair of trousers baked in; the new trousers (dark jeans, chinos, joggers, cargo shorts) come from the outfits marked pants.",
+  "tasks": {
+    "hunter-tee-white": { "kind": "retexture", "id": "01a1cdc9-54af-76d2-bc39-c5394d2c267b", "credits": 10, "top": "jacket-tee-white", "pants": "pants-darkjeans" },
+    "hunter-tee-black": { "kind": "retexture", "id": "01a1cdc9-5e7f-77d8-a165-99bbf8191c25", "credits": 10, "top": "jacket-tee-black", "pants": "pants-chinos" },
+    "hunter-tee-navy": { "kind": "retexture", "id": "01a1cdc9-6632-747e-a713-3dd8e665109d", "credits": 10, "top": "jacket-tee-navy", "pants": "pants-joggers" },
+    "hunter-tee-heather": { "kind": "retexture", "id": "01a1cdc9-6e25-7715-90c0-515071fe5ad9", "credits": 10, "top": "jacket-tee-heather", "pants": "pants-shorts" },
+    "hunter-hoodie-grey": { "kind": "retexture", "id": "01a1cdc9-763f-717a-a01b-a2c59b91e243", "credits": 10, "top": "jacket-hoodie-grey" },
+    "hunter-hoodie-black": { "kind": "retexture", "id": "01a1cdc9-7f13-7629-8dbc-914e08c091cd", "credits": 10, "top": "jacket-hoodie-black" },
+    "hunter-oxford": { "kind": "retexture", "id": "01a1cdc9-879d-7069-952d-a1466d2bcdc1", "credits": 10, "top": "jacket-oxford" },
+    "hunter-polo": { "kind": "retexture", "id": "01a1cdc9-9071-7285-b238-8f8025e8ee92", "credits": 10, "top": "jacket-polo" },
+    "hunter-denim": { "kind": "retexture", "id": "01a1cdc9-9721-7585-8af7-1b5766ff965d", "credits": 10, "top": "jacket-denim" },
+    "hunter-sweater": { "kind": "retexture", "id": "01a1cdc9-a031-741b-81d3-c801e96b6745", "credits": 10, "top": "jacket-sweater" }
+  },
+  "credits": 100
+}

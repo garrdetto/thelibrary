@@ -133,6 +133,22 @@ export class WorldServer {
     };
   }
 
+  /**
+   * The merged wallet (Rack & Reel and Fox Lake share a member's Fox Plains money): applies `delta` to the
+   * member's balance and saves. Returns the new balance, or null when a debit would overdraw.
+   */
+  async wallet(identity: Identity, delta: number): Promise<number | null> {
+    await this.ready();
+    const logic = this.logic!;
+    if (!logic.hasAccount(identity.key)) {
+      const stored = await this.storage.get<Account>(`${K.acct}${identity.key}`);
+      if (stored && !logic.hasAccount(identity.key)) logic.addAccount(stored);
+    }
+    const balance = logic.adjustMoney(identity.key, identity.name, delta);
+    if (balance !== null) await this.save();
+    return balance;
+  }
+
   private spend(id: string) {
     const b = this.budget.get(id);
     if (!b) return false;

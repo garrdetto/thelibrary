@@ -31,6 +31,8 @@ export const LOTS_PER_SIDE = 5;
 export const ROAD_W = 10;
 export const SIDEWALK_W = 2;
 export const WORLD_HALF = 640;
+/** True inside the town's square. Fox Lake players out in its lake country (beyond the square) are hidden here, where there is no land under them. */
+export const inTownWorld = (p: { x: number; z: number }) => Math.abs(p.x) <= WORLD_HALF && Math.abs(p.z) <= WORLD_HALF;
 
 const ROW_X0 = -(LOT_W * LOTS_PER_SIDE) / 2;          // -80
 const MAIN_FRONT = 7;                                 // lots start just past the sidewalk
