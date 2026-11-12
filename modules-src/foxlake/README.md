@@ -1,6 +1,6 @@
 # Fox Lake (source)
 
-Source for `public/modules/foxlake.html`, module id `foxlake`. Fox Lake is one world made of two places: the shared Fox Plains town (every player's lot, house, car and neighbor, the same ones classic Fox Plains shows) and Rack & Reel's Bear Paw Lake country south of it, joined by a county road. It replaced Fox Plains 2 (`#module-foxplains2` redirects here). Rack & Reel stays a standalone game; classic Fox Plains keeps sharing the town.
+Source for `public/modules/foxlake.html`, module id `foxlake`. Fox Lake is one world made of two places: a Fox Plains town (lots, houses, cars and neighbors, built by the same rules as classic Fox Plains) and Rack & Reel's Bear Paw Lake country south of it, joined by a county road. It replaced Fox Plains 2 (`#module-foxplains2` redirects here). Every player starts fresh in Fox Lake: it has its own shared world, its own money and its own Rack & Reel profile, and classic Fox Plains and standalone Rack & Reel keep theirs.
 
 Design and decisions: `docs/superpowers/specs/2026-11-11-fox-lake-design.md`. Performance and leak results: `docs/foxlake/PERF.md`.
 
@@ -8,11 +8,13 @@ Design and decisions: `docs/superpowers/specs/2026-11-11-fox-lake-design.md`. Pe
 
 Fox Lake **is** Rack & Reel's game (`modules-src/rackreel/game/Game.ts`) with a host-world extension. Everything the lake country does in Rack & Reel works here unchanged, because it is the same code: the renderer and its tone mapping, cached sun and moon shadows, sky and fog, terrain, water, foliage and grass, the skinned hunter and the character creator, fishing, hunting, the boat, UTV and quad, Wild Man's carp bowfishing, wildlife, the record books and the hunting party.
 
-`index.ts` starts `new Game(canvas, { terrain, extension, bowfishAnyHour: true })`:
+`index.ts` starts `new Game(canvas, { terrain, extension, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true })`:
 
 - `terrain`: `new Terrain(FOX_LAKE_SHAPE)` (`region.ts`). The lake country's north edge has no rim of hills; it blends down to the town's ground (`TOWN_Y`), and land beyond the square is the town's (`TOWN_LAND`). Standalone Rack & Reel uses `STANDALONE_SHAPE` (every edge rimmed), so its heights are unchanged.
 - `extension`: `FoxLakeTown` (`town/FoxLakeTown.ts`), Rack & Reel's `GameExtension` hook (build, ready, update, collide, obstacle, interact, prompt, spawn, place name; the shared world drives the clock).
 - `bowfishAnyHour`: Wild Man takes you carp bowfishing at any hour. Fox Lake shares one clock with everyone, so nobody can skip to dark.
+- `profile: 'foxlake'`: Rack & Reel's progress (character, gear, cash) is a separate profile (`/api/rackreel?game=foxlake`, stored as `foxlake:<user id>`), so Fox Lake starts fresh and standalone Rack & Reel is untouched.
+- `outfitters`: Fox Outfitters (`world/Cabin.ts` `FOX_OUTFITTERS`, model `outfitters`) replaces the cabin: a bigger log store with shelving, the gear rack, wardrobe and counter, and an open garage bay on the east side where the side-by-side is parked on a concrete floor the wheels ride on. The FOX OUTFITTERS board over the bay is `world/StoreSign.ts`.
 
 ### Coordinates (`region.ts`)
 
@@ -22,7 +24,7 @@ The scene uses Rack & Reel's coordinates (left-handed, +x east, +z north, the la
 scene = (town.x - 356, town.y + 2, 1152 - town.z)
 ```
 
-East Ave (town x = 87) runs south out of town and becomes the county road (`CONNECTOR`, `town/TownGround.ts`), which meets the interstate where it leaves the lake country's north edge. Snapshots sent to the shared world are in town coordinates; out in the lake country that is beyond the town's square, and classic Fox Plains hides anyone there (`inTownWorld` in `maplestreet/shared/WorldLayout.ts`).
+East Ave (town x = 87) runs south out of town and becomes the county road (`CONNECTOR`, `town/TownGround.ts`), which meets the interstate where it leaves the lake country's north edge. Snapshots sent to the shared world are in town coordinates. Fox Lake's world is its own Durable Object (`FoxLakeWorld`, `/api/maplestreet?world=foxlake`, saved in the `foxlake_world` table), so its players never appear in classic Fox Plains.
 
 ### The town (`fp/`, `town/`)
 
@@ -40,7 +42,9 @@ The town and your cars are on Rapier (`fp/physics/Physics.ts`): the flat town gr
 
 ### Money
 
-Signed-in players have one wallet shared by Fox Lake, classic Fox Plains and Rack & Reel: the Fox Plains world holds it (`RoomLogic.adjustMoney`, the Durable Object's `/wallet`), and `/api/rackreel` pays and charges it (`src/server/shared-wallet.ts`). A player's old Rack & Reel cash moves in once. Guests keep separate town and lake cash.
+A signed-in player has one Fox Lake balance: Fox Lake's world holds it (`RoomLogic.adjustMoney`, the Durable Object's `/wallet`), town jobs pay into it, and `/api/rackreel?game=foxlake` (bounties, the catalog) and `/api/casino` pay and charge it (`src/server/shared-wallet.ts`). The Fox Lake profile's starting cash moves in once. Classic Fox Plains and standalone Rack & Reel money are separate. Guests play the casino with their town cash (by this browser's guest key); their lake cash is kept in the tab.
+
+Lots are bought in Fox Lake itself: walk onto a lot for sale and press E.
 
 ## Northwoods Lodge Casino & Bar (`casino/`)
 
@@ -51,13 +55,22 @@ A walk-in casino on the north-east corner of East Ave and South St (town coordin
 - **Math layer** (`math/`, no Babylon or DOM): `rng.ts` (crypto on the server, seeded for tests), `reels.ts` (strips, stops, 1,024/243-ways wins with multiplying wilds), `lines.ts` (25/20 lines), `machines.ts` (the ten machines; a spin resolves completely into a timeline the screen replays), `blackjack.ts` (six decks, S17, 3:2, double, one split). `node scripts/casino-sim.mjs [spins]` prints each machine's return, base share, feature frequency and average feature win; `scale` in each definition sets the return (about 94%).
 - **The ten machines**, five game styles in two original themes each (rules researched from the real cabinets; names, symbols and art are this game's own): link Hold & Spin (Northern Lights Link, Gold Pan Link), house-building free games with a storm blowdown (Lodge Builders, Hay Day Barns), gold-head 1,024-ways free games (Moose Gold, Mustang Gold), the same with the Revolution wheel (Moose Gold Revolution, Mustang Gold Revolution), and gem collectors with Cash Collect, free games and a jackpot pick (Bigfoot Bucks, Lake Monster Loot).
 - **Animation layer** (`screen/ReelSet.ts`, `screen/SlotSession.ts`): reels are strip textures moved by an `AnimationGroup` (wind-up, motion-blurred spin, staggered stops with overshoot, anticipation on reels that could complete a feature); wins pulse framed cells; features play on an overlay and on extra planes (the Revolution wheel is a disc rotated by an animation). `SlotSession.demo(kind)` plays a fun-money outcome with a given feature (debug and screenshots).
-- **Money** (`CasinoClient.ts`, `src/server/routes/casino.ts`): signed-in players play for the shared wallet; spins, hands and beers are decided and paid on the server (`/api/casino`: stake taken first, winnings after; blackjack tables and collector meters in D1). Guests play for fun money ($1,000, never saved).
+- **Money** (`CasinoClient.ts`, `src/server/routes/casino.ts`): everyone plays with their own Fox Lake money (signed in: the account's; guests: their town cash). Spins, hands and beers are decided and paid on the server (`/api/casino`: stake taken first, winnings after; blackjack tables and collector meters in D1). Solo town play runs the same rules in the page.
+- **Limits** (`CasinoLayout.ts`): slots $0.40 to $5 a spin; blackjack $5 to $200 opening bets; a beer is $5.
 - **Tables** (`TableSessions.ts`): blackjack and the bar as overlays while the camera looks at the table or the bartender; a beer ($5) appears on the counter.
 - **Seating** uses Rack & Reel's host hooks: `setPerch` (sit, no walking), `setCameraShot` (fixed camera), and `data-host-modal` overlays (Rack & Reel's input pauses while one is open). At a machine the view is first person.
 
+## Tyre marks and two-tracks
+
+`rackreel/world/GroundWear.ts`: every wheel of every land vehicle presses the 33 cm cell under it on the lake country's ground, a 3072 x 3072 byte map uploaded in small rectangles. The terrain (`WearPlugin`) darkens and flattens pressed grass and turns it to bare dirt where wear is high, and the grass and weeds (`wear` foliage look) flatten and yellow over the same cells. One pass leaves two pressed tracks; dirt starts after about 17 passes over a line and the ruts are bare after about 40. Wear lasts for the session.
+
+## World map
+
+`docs/foxlake/map/index.html` is an interactive map of the whole world, drawn from the game's layout (`tools/map-data.ts`) and its landmarks (`docs/foxlake/map/landmarks.json`). Rebuild it with `node scripts/foxlake-map.mjs`.
+
 ## Gear and bounties
 
-Fox Lake starts Rack & Reel with `gearAtCabin`: the rod and rifle hang on the cabin's gear rack; 1 or 2 at the rack takes one (swapping the other back); away from the rack you carry only that one. Bounties are flat everywhere: $10 a carp, $50 a deer, $100 a bear (`shared/Economy.ts`).
+Fox Lake starts Rack & Reel with `gearAtCabin`: the rod and rifle hang on the gear rack in Fox Outfitters; 1 or 2 at the rack takes one (swapping the other back); away from the rack you carry only that one. Bounties are flat everywhere: $10 a carp, $50 a deer, $100 a bear (`shared/Economy.ts`).
 
 ## Controls
 

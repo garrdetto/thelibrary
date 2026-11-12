@@ -1,0 +1,593 @@
+<title>Fox Lake World Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a survey-sheet map filling the left, a field-guide panel on the right (stacked under the map on phones). */
+:root {
+  --bg: #e6ebe3;
+  --panel: #f4f7f1;
+  --ink: #1b2620;
+  --muted: #56645b;
+  --line: #c3cdc4;
+  --accent: #c4561c;
+  --accent-ink: #ffffff;
+  --chip: #e3e9df;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111714; --panel: #18201c; --ink: #e2e9e3; --muted: #98a69d; --line: #2c3731; --accent: #f08a3c; --accent-ink: #1a0f06; --chip: #222c27;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111714; --panel: #18201c; --ink: #e2e9e3; --muted: #98a69d; --line: #2c3731; --accent: #f08a3c; --accent-ink: #1a0f06; --chip: #222c27;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; }
+.wrap { display: flex; flex-direction: column; height: 100%; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 12px; box-sizing: border-box; gap: 12px; }
+header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 30px; letter-spacing: 0.02em; margin: 0; text-transform: uppercase; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); max-width: 70ch; }
+.main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; }
+.mapbox { position: relative; min-width: 0; min-height: 420px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #2b4430; }
+canvas#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+canvas#map.drag { cursor: grabbing; }
+.ctrls { position: absolute; top: 10px; right: 10px; display: flex; flex-direction: column; gap: 6px; }
+.ctrls button { width: 34px; height: 34px; border-radius: 5px; border: 1px solid rgba(0,0,0,0.35); background: rgba(250,250,246,0.92); color: #1b2620; font: 600 18px var(--body); cursor: pointer; }
+.ctrls button:focus-visible, .panel button:focus-visible, .panel input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.readout { position: absolute; left: 10px; bottom: 10px; font: 12px var(--mono); color: #f2f4ee; background: rgba(15,22,18,0.72); padding: 5px 8px; border-radius: 4px; font-variant-numeric: tabular-nums; pointer-events: none; }
+.tip { position: absolute; pointer-events: none; background: rgba(250,250,246,0.97); color: #1b2620; border: 1px solid rgba(0,0,0,0.25); border-radius: 5px; padding: 7px 9px; font-size: 13px; max-width: 240px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); }
+.tip b { display: block; font-family: var(--display); font-size: 16px; letter-spacing: 0.02em; }
+.tip span { color: #4c5a51; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px; overflow: auto; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.panel h2 { font-family: var(--display); font-weight: 600; font-size: 15px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+.layers { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.layers label { display: flex; align-items: center; gap: 7px; font-size: 13px; cursor: pointer; }
+.layers input { accent-color: var(--accent); }
+#q { width: 100%; box-sizing: border-box; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); color: var(--ink); font: 14px var(--body); }
+.places { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.places .grp { font-family: var(--display); font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 8px 0 2px; }
+.places button { display: flex; justify-content: space-between; gap: 8px; text-align: left; background: none; border: 0; color: var(--ink); padding: 5px 6px; border-radius: 4px; font: 13px var(--body); cursor: pointer; }
+.places button:hover { background: var(--chip); }
+.places button small { color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; font-size: 12.5px; }
+.legend div { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.sw { width: 16px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,0.25); flex: none; }
+.facts { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 0; }
+.facts b { color: var(--ink); font-weight: 600; }
+@media (max-width: 820px) {
+  .main { grid-template-columns: 1fr; grid-template-rows: 68vh auto; }
+  .wrap { height: auto; }
+  .panel { overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Fox Lake World Map</h1>
+    <p>The whole world in game metres: the town in the north, the county road south to the interstate, and Bear Paw Lake's country around the lake. Drag to pan, scroll or pinch to zoom, hover anything for details.</p>
+  </header>
+  <div class="main">
+    <div class="mapbox" id="mapbox">
+      <canvas id="map" aria-label="Map of the Fox Lake world" role="img"></canvas>
+      <div class="ctrls">
+        <button type="button" id="zin" aria-label="Zoom in">+</button>
+        <button type="button" id="zout" aria-label="Zoom out">−</button>
+        <button type="button" id="zfit" aria-label="Show the whole world">⤢</button>
+      </div>
+      <div class="readout" id="readout">x —  z —</div>
+      <div class="tip" id="tip" hidden></div>
+    </div>
+    <aside class="panel">
+      <section>
+        <h2>Layers</h2>
+        <div class="layers" id="layers"></div>
+      </section>
+      <section>
+        <h2>Places</h2>
+        <input id="q" type="search" placeholder="Find a place, street or lot" autocomplete="off">
+        <div class="places" id="places"></div>
+      </section>
+      <section>
+        <h2>Legend</h2>
+        <div class="legend" id="legend"></div>
+      </section>
+      <section>
+        <h2>The world at a glance</h2>
+        <p class="facts" id="facts"></p>
+      </section>
+    </aside>
+  </div>
+</div>
+
+<script id="map-data" type="application/json">/*DATA*/</script>
+<script>
+(() => {
+  const DATA = JSON.parse(document.getElementById('map-data').textContent)
+  const S = DATA.static, D = DATA.dynamic
+  const T = S.town
+  const canvas = document.getElementById('map')
+  const box = document.getElementById('mapbox')
+  const tip = document.getElementById('tip')
+  const readout = document.getElementById('readout')
+  const g = canvas.getContext('2d')
+
+  const PAL = {
+    water0: [146, 190, 205], water1: [38, 86, 116], shore: [206, 190, 146], marsh: [134, 150, 92], meadow: [168, 184, 106],
+    forest: [80, 116, 68], trail: [178, 152, 106], rock: [150, 146, 138], highway: [70, 72, 76],
+    town: '#b9c58e', ring: '#3d5f37', road: '#55595d', roadEdge: '#2f3235', lot: '#cfdba4', lotEdge: '#8ea064', county: '#5c6064',
+  }
+  const KIND_NAMES = { water: 'Bear Paw Lake', shore: 'Lakeshore', marsh: 'Cattail Marsh', meadow: 'Oak Opening', forest: 'Pine Ridge', trail: 'Two-track trail', rock: 'Granite Bluff', highway: 'Interstate' }
+
+  const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
+  const N = S.size, STEP = S.step, HALF = S.half
+  const kind = b64(S.raster.kind), height = b64(S.raster.height), forest = b64(S.raster.forest)
+
+  const terrainImg = (() => {
+    const R = 4
+    const W = N * R
+    const c = document.createElement('canvas')
+    c.width = W
+    c.height = W
+    const ctx = c.getContext('2d')
+    const img = ctx.createImageData(W, W)
+    const hAt = (i, j) => height[Math.min(N - 1, Math.max(0, j)) * N + Math.min(N - 1, Math.max(0, i))]
+    const hBil = (fx, fz) => {
+      const i = Math.floor(fx), j = Math.floor(fz), u = fx - i, v = fz - j
+      return (hAt(i, j) * (1 - u) + hAt(i + 1, j) * u) * (1 - v) + (hAt(i, j + 1) * (1 - u) + hAt(i + 1, j + 1) * u) * v
+    }
+    const range = S.heightRange[1] - S.heightRange[0]
+    for (let y = 0; y < W; y++) {
+      for (let x = 0; x < W; x++) {
+        const fx = x / R - 0.5, fz = (W - 1 - y) / R - 0.5
+        const ci = Math.min(N - 1, Math.max(0, Math.round(fx))), cj = Math.min(N - 1, Math.max(0, Math.round(fz)))
+        const k = kind[cj * N + ci]
+        const name = S.kinds[k]
+        const h = hBil(fx, fz)
+        const dx = hBil(fx + 0.5, fz) - hBil(fx - 0.5, fz)
+        const dz = hBil(fx, fz + 0.5) - hBil(fx, fz - 0.5)
+        const meters = S.heightRange[0] + (h / 255) * range
+        let col
+        if (name === 'water') {
+          const t = Math.min(1, Math.max(0, -meters / 10))
+          col = PAL.water0.map((a, n) => a + (PAL.water1[n] - a) * t)
+        } else {
+          col = PAL[name] || PAL.meadow
+          if (name === 'forest' || name === 'meadow') {
+            const f = forest[cj * N + ci] / 255
+            col = col.map((a, n) => a * (1 - f * 0.28) + (name === 'meadow' ? PAL.forest[n] * f * 0.28 : 0))
+          }
+          const shade = 1 + (-dx * 0.7 + dz * 0.7) * (range / 255) * 0.9
+          col = col.map((a) => a * Math.max(0.62, Math.min(1.3, shade)))
+        }
+        const p = (y * W + x) * 4
+        img.data[p] = col[0]; img.data[p + 1] = col[1]; img.data[p + 2] = col[2]; img.data[p + 3] = 255
+      }
+    }
+    ctx.putImageData(img, 0, 0)
+    return c
+  })()
+
+  const placeLabels = (() => {
+    const out = []
+    for (const name of ['marsh', 'rock', 'forest', 'meadow']) {
+      const k = S.kinds.indexOf(name)
+      const sat = new Int32Array((N + 1) * (N + 1))
+      for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) sat[(j + 1) * (N + 1) + i + 1] = (kind[j * N + i] === k ? 1 : 0) + sat[j * (N + 1) + i + 1] + sat[(j + 1) * (N + 1) + i] - sat[j * (N + 1) + i]
+      const r = 9
+      let best = -1, bi = 0, bj = 0
+      for (let j = r; j < N - r; j++) for (let i = r; i < N - r; i++) {
+        const s = sat[(j + r + 1) * (N + 1) + i + r + 1] - sat[(j - r) * (N + 1) + i + r + 1] - sat[(j + r + 1) * (N + 1) + i - r] + sat[(j - r) * (N + 1) + i - r]
+        if (s > best) { best = s; bi = i; bj = j }
+      }
+      if (best > 30) out.push({ name: KIND_NAMES[name], x: -HALF + (bi + 0.5) * STEP, z: -HALF + (bj + 0.5) * STEP })
+    }
+    return out
+  })()
+
+  const ranges = (() => {
+    const xs = [-HALF, HALF, S.townSquare.x0 + 300, S.townSquare.x1], zs = [-HALF, HALF, S.townSquare.z1 - 300]
+    return { x0: Math.min(...xs), x1: Math.max(...xs), z0: Math.min(...zs), z1: Math.max(...zs) }
+  })()
+
+  const view = { cx: 0, cz: 0, scale: 1 }
+  let W = 0, H = 0, dpr = 1
+  const fit = () => {
+    view.cx = (ranges.x0 + ranges.x1) / 2
+    view.cz = (ranges.z0 + ranges.z1) / 2
+    view.scale = Math.min(W / (ranges.x1 - ranges.x0), H / (ranges.z1 - ranges.z0)) * 0.94
+  }
+  const sx = (x) => (x - view.cx) * view.scale + W / 2
+  const sy = (z) => (view.cz - z) * view.scale + H / 2
+  const wx = (px) => (px - W / 2) / view.scale + view.cx
+  const wz = (py) => view.cz - (py - H / 2) / view.scale
+
+  const layers = { terrain: true, grid: true, roads: true, lots: true, buildings: true, labels: true, landmarks: true, stands: true }
+  const LAYER_NAMES = { terrain: 'Terrain', grid: '100 m grid', roads: 'Roads', lots: 'Lots', buildings: 'Buildings', labels: 'Labels', landmarks: 'Landmarks', stands: 'Stands & blinds' }
+
+  const rectPath = (r) => { g.beginPath(); g.rect(sx(r.x - r.w / 2), sy(r.z + r.d / 2), r.w * view.scale, r.d * view.scale) }
+  const polyPath = (pts, close) => { g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(sx(p.x), sy(p.z)) : g.moveTo(sx(p.x), sy(p.z))); if (close) g.closePath() }
+  const label = (text, x, z, o = {}) => {
+    const size = o.size ?? 13
+    g.save()
+    g.translate(sx(x), sy(z))
+    if (o.rot) g.rotate(o.rot)
+    g.font = `${o.italic ? 'italic ' : ''}${o.weight ?? 600} ${size}px ${o.font ?? '"Barlow Condensed","Arial Narrow",sans-serif'}`
+    g.textAlign = o.align ?? 'center'
+    g.textBaseline = 'middle'
+    g.lineJoin = 'round'
+    g.lineWidth = o.halo ?? 3.5
+    g.strokeStyle = o.haloColor ?? 'rgba(248,248,240,0.9)'
+    g.strokeText(text, 0, 0)
+    g.fillStyle = o.color ?? '#1d2721'
+    g.fillText(text, 0, 0)
+    g.restore()
+  }
+  const marker = (x, z, color, glyph, r = 9) => {
+    const X = sx(x), Y = sy(z)
+    g.beginPath(); g.arc(X, Y, r, 0, Math.PI * 2)
+    g.fillStyle = color; g.fill()
+    g.lineWidth = 2; g.strokeStyle = '#fbfaf3'; g.stroke()
+    g.fillStyle = '#ffffff'; g.font = `700 ${Math.round(r * 1.15)}px "IBM Plex Sans",sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'
+    g.fillText(glyph, X, Y + 0.5)
+  }
+
+  const SHOP_COLORS = { dealer: '#3b5d8a', diner: '#b8463a', bank: '#6a5b2e', clothing: '#8a4a8e', cafe: '#3f6b5a', grocery: '#4f7d2f', hardware: '#c96f2c', gas: '#c23b2a' }
+  const SHOP_GLYPH = { dealer: 'C', diner: 'D', bank: '$', clothing: 'T', cafe: 'K', grocery: 'G', hardware: 'H', gas: 'F' }
+
+  const draw = () => {
+    g.setTransform(dpr, 0, 0, dpr, 0, 0)
+    g.fillStyle = '#2b4430'
+    g.fillRect(0, 0, W, H)
+    const ts = S.townSquare
+    g.fillStyle = PAL.ring
+    g.fillRect(sx(ts.x0), sy(ts.z1), (ts.x1 - ts.x0) * view.scale, (ts.z1 - ts.z0) * view.scale)
+    const ring = 30
+    g.fillStyle = PAL.town
+    g.fillRect(sx(ts.x0 + ring), sy(ts.z1 - ring), (ts.x1 - ts.x0 - ring * 2) * view.scale, (ts.z1 - ts.z0 - ring) * view.scale)
+    if (layers.terrain) {
+      g.imageSmoothingEnabled = view.scale < 3
+      g.drawImage(terrainImg, sx(-HALF), sy(HALF), HALF * 2 * view.scale, HALF * 2 * view.scale)
+    } else {
+      g.fillStyle = '#a9b889'
+      g.fillRect(sx(-HALF), sy(HALF), HALF * 2 * view.scale, HALF * 2 * view.scale)
+      polyPath(S.lake.shoreline, true); g.fillStyle = '#6f9fb6'; g.fill()
+    }
+    if (layers.grid) {
+      const step = view.scale > 2.5 ? 50 : view.scale > 0.6 ? 100 : 250
+      g.lineWidth = 1
+      g.strokeStyle = 'rgba(20,30,24,0.16)'
+      g.beginPath()
+      for (let x = Math.ceil(wx(0) / step) * step; x < wx(W); x += step) { g.moveTo(Math.round(sx(x)) + 0.5, 0); g.lineTo(Math.round(sx(x)) + 0.5, H) }
+      for (let z = Math.ceil(wz(H) / step) * step; z < wz(0); z += step) { g.moveTo(0, Math.round(sy(z)) + 0.5); g.lineTo(W, Math.round(sy(z)) + 0.5) }
+      g.stroke()
+      g.font = '500 10px "IBM Plex Mono",monospace'
+      g.fillStyle = 'rgba(248,248,240,0.85)'
+      g.textBaseline = 'top'
+      g.textAlign = 'left'
+      for (let x = Math.ceil(wx(0) / step) * step; x < wx(W); x += step) g.fillText(`${x}`, sx(x) + 3, 4)
+      g.textBaseline = 'bottom'
+      for (let z = Math.ceil(wz(H) / step) * step; z < wz(0); z += step) g.fillText(`${z}`, 4, sy(z) - 2)
+    }
+    if (layers.roads) {
+      const hw = S.highway
+      const [a, b] = hw.ends
+      const roadLine = (pts, width, color, edge) => {
+        polyPath(pts, false)
+        g.lineCap = 'round'; g.lineJoin = 'round'
+        g.strokeStyle = edge; g.lineWidth = Math.max(2.5, width * view.scale + 2); g.stroke()
+        g.strokeStyle = color; g.lineWidth = Math.max(1.5, width * view.scale); g.stroke()
+      }
+      roadLine([a, b], hw.halfWidth * 2, '#4b4d51', '#25272a')
+      if (view.scale > 0.9) {
+        polyPath([a, b], false); g.setLineDash([6, 8]); g.strokeStyle = '#e9d36a'; g.lineWidth = 1; g.stroke(); g.setLineDash([])
+      }
+      g.beginPath()
+      g.moveTo(sx(S.connector.path[0].x), sy(S.connector.path[0].z))
+      for (const p of S.connector.path) g.lineTo(sx(p.x), sy(p.z))
+      g.lineCap = 'round'; g.lineJoin = 'round'
+      g.strokeStyle = '#2a2c2f'; g.lineWidth = Math.max(2.5, 12 * view.scale); g.stroke()
+      g.strokeStyle = PAL.county; g.lineWidth = Math.max(1.5, 10 * view.scale); g.stroke()
+      for (const c of T.curves) roadLine(c.pts, c.width, PAL.road, PAL.roadEdge)
+      for (const r of T.roads) { rectPath({ ...r, w: r.w + 1.6, d: r.d + 1.6 }); g.fillStyle = PAL.roadEdge; g.fill() }
+      for (const r of T.roads) { rectPath(r); g.fillStyle = PAL.road; g.fill() }
+      const br = hw.bridge
+      if (view.scale > 0.35) {
+        const dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz)
+        const ux = dx / L, uz = dz / L
+        polyPath([{ x: br.x - ux * br.span / 2, z: br.z - uz * br.span / 2 }, { x: br.x + ux * br.span / 2, z: br.z + uz * br.span / 2 }], false)
+        g.strokeStyle = '#d7d2c6'; g.lineWidth = Math.max(3, (hw.halfWidth * 2 + 4) * view.scale); g.lineCap = 'butt'; g.stroke()
+        polyPath([{ x: br.x - ux * br.span / 2, z: br.z - uz * br.span / 2 }, { x: br.x + ux * br.span / 2, z: br.z + uz * br.span / 2 }], false)
+        g.strokeStyle = '#4b4d51'; g.lineWidth = Math.max(1.5, hw.halfWidth * 2 * view.scale); g.stroke()
+      }
+    }
+    if (layers.lots && view.scale > 0.45) {
+      for (const l of T.lots) {
+        rectPath({ ...l, w: l.w - 1, d: l.d - 1 })
+        g.fillStyle = PAL.lot; g.fill()
+        g.lineWidth = 1; g.strokeStyle = PAL.lotEdge; g.stroke()
+        if (view.scale > 1.6) {
+          label(l.id, l.x, l.z + 4, { size: 13, weight: 700, color: '#3e4f2c', halo: 2.5 })
+          if (view.scale > 2.6) label(`$${l.price.toLocaleString()}`, l.x, l.z - 5, { size: 11, weight: 500, color: '#55663c', halo: 2 })
+        }
+      }
+    }
+    if (layers.buildings) {
+      for (const bd of T.buildings) {
+        rectPath(bd); g.fillStyle = bd.color; g.fill()
+        g.lineWidth = 1; g.strokeStyle = 'rgba(20,20,20,0.55)'; g.stroke()
+      }
+      rectPath(T.gas.canopy); g.fillStyle = '#e8e2d2'; g.fill(); g.strokeStyle = '#a3291c'; g.lineWidth = 1.5; g.stroke()
+      rectPath(T.gas.store); g.fillStyle = '#cfc7b4'; g.fill(); g.strokeStyle = 'rgba(20,20,20,0.55)'; g.lineWidth = 1; g.stroke()
+      rectPath(T.depot); g.fillStyle = '#8b8378'; g.fill(); g.stroke()
+      rectPath(T.casino); g.fillStyle = '#7b2c5d'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#f0b6dc'; g.stroke()
+      if (view.scale > 2.2 && layers.labels) {
+        g.font = '600 11px "Barlow Condensed","Arial Narrow",sans-serif'
+        for (const bd of T.buildings) if (g.measureText(bd.name).width < bd.w * view.scale - 4) label(bd.name, bd.x, bd.z, { size: 11, weight: 600, halo: 2.5 })
+      }
+    }
+    if (layers.landmarks) {
+      const o = D.outfitters
+      polyPath(o.porch, true); g.fillStyle = '#b08856'; g.fill()
+      polyPath(o.store, true); g.fillStyle = '#7a4e2a'; g.fill(); g.strokeStyle = '#2d1a0b'; g.lineWidth = 1.5; g.stroke()
+      if (o.garage) { polyPath(o.garage, true); g.fillStyle = '#a7a59d'; g.fill(); g.strokeStyle = '#3c3a35'; g.stroke() }
+      polyPath([S.dock.start, S.dock.end], false); g.strokeStyle = '#8a6a43'; g.lineWidth = Math.max(3, 2.4 * view.scale); g.lineCap = 'butt'; g.stroke()
+      const mk = view.scale > 1.2 ? 10 : 8
+      marker(o.center.x, o.center.z, '#c4561c', 'F', mk)
+      marker(D.boat.x, D.boat.z, '#2e6b8f', 'B', mk - 1)
+      marker(D.launch.camp.x, D.launch.camp.z, '#a8361d', 'W', mk - 1)
+      marker(D.utv.x, D.utv.z, '#3d6e3a', 'U', mk - 2)
+      for (const s of T.shops) marker(s.x, s.z, SHOP_COLORS[s.kind] ?? '#555', SHOP_GLYPH[s.kind] ?? '•', view.scale > 1.2 ? 8 : 6)
+      marker(T.casino.x, T.casino.z, '#7b2c5d', '♠', view.scale > 1.2 ? 10 : 8)
+      marker(T.spawn.x, T.spawn.z, '#24476b', 'S', 7)
+    }
+    if (layers.stands) {
+      D.stands.forEach((s, i) => {
+        const X = sx(s.x), Y = sy(s.z), r = view.scale > 1.2 ? 8 : 6
+        g.beginPath()
+        if (s.kind === 'blind') g.rect(X - r, Y - r, r * 2, r * 2)
+        else { g.moveTo(X, Y - r * 1.15); g.lineTo(X + r, Y + r * 0.8); g.lineTo(X - r, Y + r * 0.8); g.closePath() }
+        g.fillStyle = '#e8701f'; g.fill(); g.strokeStyle = '#fbfaf3'; g.lineWidth = 2; g.stroke()
+        if (layers.labels && view.scale > 0.5) label(`${s.kind === 'blind' ? 'Box blind' : 'Ladder stand'} ${i + 1}`, s.x, s.z - 14 / view.scale, { size: 12 })
+      })
+    }
+    if (layers.labels) {
+      label('Bear Paw Lake', S.lake.center.x, S.lake.center.z, { size: Math.max(16, Math.min(34, 22 * Math.sqrt(view.scale))), italic: true, weight: 600, color: '#123a52', haloColor: 'rgba(210,232,240,0.85)' })
+      for (const p of placeLabels) label(p.name, p.x, p.z, { size: 15, italic: true, weight: 600, color: '#24341f', haloColor: 'rgba(235,240,220,0.8)' })
+      const [a, b] = S.highway.ends
+      const ang = Math.atan2(-(b.z - a.z), b.x - a.x)
+      const mid = { x: a.x + (b.x - a.x) * 0.22, z: a.z + (b.z - a.z) * 0.22 }
+      label('INTERSTATE', mid.x, mid.z, { size: 13, weight: 700, rot: ang > Math.PI / 2 || ang < -Math.PI / 2 ? ang + Math.PI : ang, color: '#f3efe2', haloColor: 'rgba(30,32,35,0.9)' })
+      label('Bridge', S.highway.bridge.x + 30, S.highway.bridge.z - 30, { size: 12 })
+      const cp = S.connector.path[Math.floor(S.connector.path.length * 0.7)]
+      label('COUNTY ROAD', cp.x + 16 / view.scale + 6, cp.z, { size: 13, weight: 700, rot: -Math.PI / 2, color: '#f3efe2', haloColor: 'rgba(30,32,35,0.9)' })
+      label('TOWN OF FOX LAKE', T.spawn.x + 40, S.townSquare.z1 - 60, { size: Math.max(16, Math.min(30, 20 * Math.sqrt(view.scale))), weight: 700, color: '#1d2a1c', haloColor: 'rgba(225,232,205,0.85)' })
+      if (view.scale > 0.5) {
+        const seen = new Set()
+        for (const r of T.roads) {
+          if (!r.name || seen.has(r.name)) continue
+          seen.add(r.name)
+          const vertical = r.d > r.w
+          const along = vertical ? r.d : r.w
+          if (along * view.scale < 60) continue
+          label(r.name, r.x + (vertical ? 0 : -r.w * 0.18), r.z + (vertical ? r.d * 0.12 : 0), { size: 12, weight: 600, rot: vertical ? -Math.PI / 2 : 0, color: '#f6f3e8', haloColor: 'rgba(40,42,45,0.85)' })
+        }
+        for (const c of T.curves) { const p = c.pts[Math.floor(c.pts.length / 2)]; label(c.name, p.x, p.z + 9, { size: 12 }) }
+      }
+      if (layers.landmarks) {
+        label('FOX OUTFITTERS', D.outfitters.center.x, D.outfitters.center.z + 22 / Math.max(0.4, view.scale) * 0.6 + 8, { size: 14, weight: 700, color: '#5a2c0c' })
+        if (view.scale > 0.8) {
+          label('Dock', S.dock.end.x - 12, S.dock.end.z + 6, { size: 12 })
+          label("Wild Man's camp", D.launch.camp.x - 4, D.launch.camp.z - 14, { size: 12, align: 'right' })
+          label('Northwoods Lodge Casino & Bar', T.casino.x, T.casino.z - T.casino.d / 2 - 10 / view.scale - 4, { size: 13, weight: 700, color: '#5a1440' })
+        }
+      }
+    }
+    const bar = (() => { const want = 120 / view.scale; const p = Math.pow(10, Math.floor(Math.log10(want))); return [1, 2, 5, 10].map((m) => m * p).filter((v) => v <= want).pop() || p })()
+    const bx = W - 20 - bar * view.scale, by = H - 22
+    g.fillStyle = 'rgba(15,22,18,0.72)'; g.fillRect(bx - 8, by - 18, bar * view.scale + 16, 30)
+    g.fillStyle = '#f2f4ee'; g.fillRect(bx, by, bar * view.scale, 4)
+    g.font = '500 11px "IBM Plex Mono",monospace'; g.textAlign = 'center'; g.textBaseline = 'bottom'
+    g.fillText(`${bar} m`, bx + (bar * view.scale) / 2, by - 3)
+    g.save(); g.translate(W - 30, 64)
+    g.beginPath(); g.moveTo(0, -16); g.lineTo(7, 6); g.lineTo(0, 1); g.lineTo(-7, 6); g.closePath()
+    g.fillStyle = '#f7f5ec'; g.fill(); g.strokeStyle = 'rgba(0,0,0,0.5)'; g.lineWidth = 1; g.stroke()
+    g.font = '700 12px "Barlow Condensed",sans-serif'; g.fillStyle = '#f7f5ec'; g.textBaseline = 'top'; g.fillText('N', 0, 9)
+    g.restore()
+  }
+
+  let queued = false
+  const redraw = () => { if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; draw() }) } }
+  const resize = () => {
+    const r = box.getBoundingClientRect()
+    W = Math.max(1, r.width); H = Math.max(1, r.height)
+    dpr = Math.min(2, window.devicePixelRatio || 1)
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr)
+    if (!view.init) { fit(); view.init = true }
+    redraw()
+  }
+  new ResizeObserver(resize).observe(box)
+
+  const clampScale = (s) => Math.min(14, Math.max(0.12, s))
+  const zoomAt = (px, py, f) => {
+    const x = wx(px), z = wz(py)
+    view.scale = clampScale(view.scale * f)
+    view.cx = x - (px - W / 2) / view.scale
+    view.cz = z + (py - H / 2) / view.scale
+    redraw()
+  }
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); const r = canvas.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * 0.0016)) }, { passive: false })
+  const pointers = new Map()
+  let pinch = null
+  canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); canvas.classList.add('drag'); tip.hidden = true })
+  canvas.addEventListener('pointerup', (e) => { pointers.delete(e.pointerId); pinch = null; if (!pointers.size) canvas.classList.remove('drag') })
+  canvas.addEventListener('pointercancel', (e) => { pointers.delete(e.pointerId); pinch = null })
+  canvas.addEventListener('pointermove', (e) => {
+    const r = canvas.getBoundingClientRect()
+    const px = e.clientX - r.left, py = e.clientY - r.top
+    readout.textContent = `x ${wx(px).toFixed(0).padStart(5)}   z ${wz(py).toFixed(0).padStart(5)}   ${(1 / view.scale).toFixed(2)} m/px`
+    const prev = pointers.get(e.pointerId)
+    if (!prev) { hover(px, py); return }
+    if (pointers.size === 2) {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      const [p1, p2] = [...pointers.values()]
+      const d = Math.hypot(p1.x - p2.x, p1.y - p2.y)
+      if (pinch) zoomAt((p1.x + p2.x) / 2 - r.left, (p1.y + p2.y) / 2 - r.top, d / pinch)
+      pinch = d
+      return
+    }
+    view.cx -= (e.clientX - prev.x) / view.scale
+    view.cz += (e.clientY - prev.y) / view.scale
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    redraw()
+  })
+  canvas.addEventListener('pointerleave', () => { tip.hidden = true })
+  canvas.addEventListener('dblclick', (e) => { const r = canvas.getBoundingClientRect(); zoomAt(e.clientX - r.left, e.clientY - r.top, 2) })
+  document.getElementById('zin').onclick = () => zoomAt(W / 2, H / 2, 1.6)
+  document.getElementById('zout').onclick = () => zoomAt(W / 2, H / 2, 1 / 1.6)
+  document.getElementById('zfit').onclick = () => { fit(); redraw() }
+  canvas.tabIndex = 0
+  canvas.addEventListener('keydown', (e) => {
+    const step = 80 / view.scale
+    if (e.key === 'ArrowLeft') view.cx -= step; else if (e.key === 'ArrowRight') view.cx += step
+    else if (e.key === 'ArrowUp') view.cz += step; else if (e.key === 'ArrowDown') view.cz -= step
+    else if (e.key === '+' || e.key === '=') return zoomAt(W / 2, H / 2, 1.4)
+    else if (e.key === '-') return zoomAt(W / 2, H / 2, 1 / 1.4)
+    else return
+    e.preventDefault(); redraw()
+  })
+
+  const inRect = (r, x, z) => Math.abs(x - r.x) <= r.w / 2 && Math.abs(z - r.z) <= r.d / 2
+  const hits = () => {
+    const out = []
+    const o = D.outfitters
+    out.push({ x: o.center.x, z: o.center.z, r: 14, title: 'Fox Outfitters', body: 'Your base in the lake country: gear rack (take the rod or the rifle here), wardrobe, the counter with the catalog and task board, and the open garage where the side-by-side is parked.' })
+    out.push({ x: D.boat.x, z: D.boat.z, r: 8, title: 'Boat', body: 'Moored at the end of the dock.' })
+    out.push({ x: S.dock.start.x, z: S.dock.start.z, r: 8, title: 'Dock', body: 'The fishing dock below Fox Outfitters.' })
+    out.push({ x: D.launch.camp.x, z: D.launch.camp.z, r: 10, title: "Wild Man's camp", body: 'The launch for carp bowfishing on his jon boat. In Fox Lake he goes out at any hour. Carp pay $10 each.' })
+    out.push({ x: D.utv.x, z: D.utv.z, r: 7, title: 'Side-by-side', body: 'Parked in the Fox Outfitters garage.' })
+    D.stands.forEach((s, i) => out.push({ x: s.x, z: s.z, r: 9, title: `${s.kind === 'blind' ? 'Box blind' : 'Ladder stand'} ${i + 1}`, body: 'Deer pay $50, bears $100.' }))
+    out.push({ x: T.casino.x, z: T.casino.z, rect: T.casino, title: 'Northwoods Lodge Casino & Bar', body: 'Ten video slots (up to $5 a spin), blackjack ($5–$200 a hand) and the lodge bar ($5 beer). Plays with your Fox Lake money.' })
+    for (const s of T.shops) out.push({ x: s.x, z: s.z, r: 7, title: s.name, body: s.kind === 'clothing' ? 'Opens the wardrobe.' : 'Shop door.' })
+    out.push({ x: T.spawn.x, z: T.spawn.z, r: 7, title: 'Town spawn', body: 'Where new players arrive in town.' })
+    for (const b of T.buildings) out.push({ x: b.x, z: b.z, rect: b, title: b.name, body: `${b.kind[0].toUpperCase()}${b.kind.slice(1)} · ${b.w} × ${b.d} m` })
+    out.push({ x: T.depot.x, z: T.depot.z, rect: T.depot, title: 'Depot', body: 'The delivery depot on Main St.' })
+    out.push({ x: T.gas.canopy.x, z: T.gas.canopy.z, rect: T.gas.canopy, title: 'Gas & Go', body: 'Four pumps under the canopy and a mini-mart.' })
+    for (const l of T.lots) out.push({ x: l.x, z: l.z, rect: l, lot: true, title: `Lot ${l.id}`, body: `${l.w} × ${l.d} m · $${l.price.toLocaleString()} · walk onto it in town and press E to buy` })
+    for (const r of T.roads) if (r.name) out.push({ x: r.x, z: r.z, rect: r, road: true, title: r.name, body: `${Math.round(Math.max(r.w, r.d))} m long` })
+    return out
+  }
+  const HITS = hits()
+  const hover = (px, py) => {
+    const x = wx(px), z = wz(py)
+    let best = null
+    for (const h of HITS) if (!h.rect && Math.hypot(x - h.x, z - h.z) * view.scale < Math.max(10, h.r * view.scale)) { best = h; break }
+    if (!best && layers.buildings) best = HITS.find((h) => h.rect && !h.lot && !h.road && inRect(h.rect, x, z)) ?? null
+    if (!best && layers.lots) best = HITS.find((h) => h.lot && inRect(h.rect, x, z)) ?? null
+    if (!best && layers.roads) best = HITS.find((h) => h.road && inRect(h.rect, x, z)) ?? null
+    if (!best) { tip.hidden = true; return }
+    tip.innerHTML = ''
+    const b = document.createElement('b'); b.textContent = best.title
+    const s = document.createElement('span'); s.textContent = best.body
+    tip.append(b, s)
+    tip.hidden = false
+    const tx = Math.min(W - 250, px + 14), ty = Math.min(H - 90, py + 14)
+    tip.style.left = `${Math.max(6, tx)}px`; tip.style.top = `${Math.max(6, ty)}px`
+  }
+
+  const flyTo = (x, z, scale) => {
+    const from = { ...view }, to = { cx: x, cz: z, scale: scale ?? Math.max(view.scale, 2.2) }
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce) { Object.assign(view, to); redraw(); return }
+    const t0 = performance.now()
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / 650), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2
+      view.cx = from.cx + (to.cx - from.cx) * e; view.cz = from.cz + (to.cz - from.cz) * e
+      view.scale = Math.exp(Math.log(from.scale) + (Math.log(to.scale) - Math.log(from.scale)) * e)
+      draw()
+      if (k < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }
+
+  const PLACES = [
+    ['Lake country', [
+      ['Fox Outfitters', D.outfitters.center, 3.2],
+      ['Dock and boat', S.dock.end, 3.2],
+      ["Wild Man's camp", D.launch.camp, 3.2],
+      ['Bear Paw Lake', S.lake.center, 0.7],
+      ['Interstate bridge', S.highway.bridge, 1.6],
+      ...placeLabels.map((p) => [p.name, p, 1.2]),
+      ...D.stands.map((s, i) => [`${s.kind === 'blind' ? 'Box blind' : 'Ladder stand'} ${i + 1}`, s, 3]),
+    ]],
+    ['Town', [
+      ['Northwoods Lodge Casino & Bar', T.casino, 3.4],
+      ['Downtown', { x: -170, z: 1152 }, 1.8],
+      ...T.shops.map((s) => [s.name, s, 3.6]),
+      ['Town spawn', T.spawn, 3],
+      ['Depot', T.depot, 3],
+    ]],
+    ['Streets', [...new Map(T.roads.filter((r) => r.name).map((r) => [r.name, [r.name, r, 1.8]])).values(), ...T.curves.map((c) => [c.name, c.pts[Math.floor(c.pts.length / 2)], 1.8]), ['County Road', S.connector.path[Math.floor(S.connector.path.length / 2)], 1.2]]],
+    ['Lots', T.lots.map((l) => [`Lot ${l.id}`, l, 3.2, `$${(l.price / 1000).toFixed(0)}k`])],
+  ]
+  const placesEl = document.getElementById('places')
+  const renderPlaces = (q) => {
+    placesEl.innerHTML = ''
+    const needle = q.trim().toLowerCase()
+    for (const [grp, list] of PLACES) {
+      const items = list.filter(([n]) => !needle || n.toLowerCase().includes(needle))
+      if (!items.length || (grp === 'Lots' && !needle)) continue
+      const h = document.createElement('div'); h.className = 'grp'; h.textContent = grp; placesEl.append(h)
+      for (const [name, at, scale, extra] of items) {
+        const b = document.createElement('button'); b.type = 'button'
+        const t = document.createElement('span'); t.textContent = name
+        const c = document.createElement('small'); c.textContent = extra ?? `${Math.round(at.x)}, ${Math.round(at.z)}`
+        b.append(t, c)
+        b.onclick = () => flyTo(at.x, at.z, scale)
+        placesEl.append(b)
+      }
+    }
+    if (!needle) { const n = document.createElement('div'); n.className = 'grp'; n.textContent = `Lots (${T.lots.length}): search "lot" or an id like N3`; placesEl.append(n) }
+  }
+  document.getElementById('q').addEventListener('input', (e) => renderPlaces(e.target.value))
+  renderPlaces('')
+
+  const layersEl = document.getElementById('layers')
+  for (const [k, name] of Object.entries(LAYER_NAMES)) {
+    const l = document.createElement('label')
+    const i = document.createElement('input'); i.type = 'checkbox'; i.checked = layers[k]; i.id = `layer-${k}`
+    i.onchange = () => { layers[k] = i.checked; redraw() }
+    l.append(i, document.createTextNode(name)); layersEl.append(l)
+  }
+
+  const rgb = (a) => `rgb(${a.join(',')})`
+  const legend = [
+    ['Deep water', rgb(PAL.water1)], ['Shallows', rgb(PAL.water0)], ['Lakeshore', rgb(PAL.shore)], ['Cattail Marsh', rgb(PAL.marsh)],
+    ['Oak Opening (meadow)', rgb(PAL.meadow)], ['Pine Ridge (forest)', rgb(PAL.forest)], ['Two-track trail', rgb(PAL.trail)], ['Granite Bluff', rgb(PAL.rock)],
+    ['Town streets', PAL.road], ['Lot for sale', PAL.lot], ['Town forest ring', PAL.ring], ['Casino', '#7b2c5d'],
+  ]
+  const legendEl = document.getElementById('legend')
+  for (const [n, c] of legend) { const d = document.createElement('div'); const s = document.createElement('span'); s.className = 'sw'; s.style.background = c; d.append(s, document.createTextNode(n)); legendEl.append(d) }
+  const marks = [['F', '#c4561c', 'Fox Outfitters'], ['W', '#a8361d', "Wild Man's camp"], ['B', '#2e6b8f', 'Boat'], ['▲', '#e8701f', 'Ladder stand'], ['■', '#e8701f', 'Box blind'], ['♠', '#7b2c5d', 'Casino']]
+  for (const [gl, c, n] of marks) { const d = document.createElement('div'); const s = document.createElement('span'); s.className = 'sw'; s.style.cssText = `background:${c};color:#fff;font:700 9px sans-serif;display:grid;place-items:center;border-radius:50%`; s.textContent = gl; d.append(s, document.createTextNode(n)); legendEl.append(d) }
+
+  const water = kind.reduce((n, k) => n + (S.kinds[k] === 'water' ? 1 : 0), 0) * STEP * STEP
+  document.getElementById('facts').innerHTML = ''
+  const facts = [
+    ['Lake country', `${HALF * 2} × ${HALF * 2} m around Bear Paw Lake, about ${(water / 10000).toFixed(0)} ha of open water`],
+    ['Town', `${T.roads.length + T.curves.length} streets, ${T.lots.length} lots, ${T.buildings.length} buildings, ${T.shops.length} shop doors`],
+    ['Getting there', 'East Ave runs south out of town into the county road, which meets the interstate at the lake country\'s north edge'],
+    ['Heights', `${S.heightRange[0].toFixed(0)} m (lake bed) to ${S.heightRange[1].toFixed(0)} m (the ridges)`],
+    ['Coordinates', 'Game metres, as the game reports positions: +x east, +z north'],
+  ]
+  const factsEl = document.getElementById('facts')
+  facts.forEach(([k, v], i) => { const b = document.createElement('b'); b.textContent = `${k}: `; factsEl.append(b, document.createTextNode(v)); if (i < facts.length - 1) factsEl.append(document.createElement('br')) })
+})()
+</script>

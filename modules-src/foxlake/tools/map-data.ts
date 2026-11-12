@@ -5,6 +5,7 @@
  */
 import { HALF, HIGHWAY, LAKE_CENTER, Terrain, forestDensity, highwayCoord, lakeRadius } from '../../rackreel/world/Terrain'
 import { onHighway } from '../../rackreel/world/Highway'
+import { findLandmarks } from '../../rackreel/world/World'
 import { BUILDINGS, CIVIC, CURVES, DEPOT, GAS_STATION, ROADS, ROAD_NAMES, SHOP_DOORS, SPAWN, lotPrice, makeLots, type LotDef } from '../../maplestreet/shared/WorldLayout'
 import { CASINO } from '../casino/CasinoLayout'
 import { CONNECTOR, FOX_LAKE_SHAPE, TOWN_SQUARE, connectorPath, townToScene } from '../region'
@@ -69,7 +70,12 @@ for (let a = 0; a < 360; a += 3) {
   shoreline.push({ x: LAKE_CENTER.x + Math.cos(ang) * r, z: LAKE_CENTER.z + Math.sin(ang) * r })
 }
 
+const marks = findLandmarks(terrain)
+const xz = (v: { x: number; z: number }) => ({ x: Math.round(v.x * 10) / 10, z: Math.round(v.z * 10) / 10 })
+
 const data = {
+  dock: { start: xz(marks.dock.start), end: xz(marks.dock.end) },
+  places: { water: 'Bear Paw Lake', shore: 'Lakeshore', marsh: 'Cattail Marsh', meadow: 'Oak Opening', forest: 'Pine Ridge', trail: 'Two-track trail', rock: 'Granite Bluff', highway: 'Interstate' },
   step: STEP,
   half: HALF,
   size: N,
