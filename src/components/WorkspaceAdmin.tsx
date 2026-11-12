@@ -4,7 +4,7 @@ import { Search } from 'lucide-react'
 type Account = { id: string; username: string; pages: string[]; isAdmin: boolean; isOwner: boolean; needsPassword: boolean; originalUsername: string }
 type Filter = 'all' | 'admins' | 'studio' | 'reset'
 const filters: { id: Filter; label: string }[] = [{ id: 'all', label: 'Everyone' }, { id: 'admins', label: 'Administrators' }, { id: 'studio', label: 'Studio access' }, { id: 'reset', label: 'Password reset pending' }]
-const pages = [{ id: 'chat', label: 'AI chat' }, { id: 'image', label: 'Image studio' }, { id: 'lyrics', label: 'Lyric studio' }]
+const pages = [{ id: 'chat', label: 'AI chat' }, { id: 'image', label: 'Image studio' }, { id: 'lyrics', label: 'Lyric studio' }, { id: 'voice', label: 'Voice generator' }]
 
 async function adminRequest(body: unknown) {
   const response = await fetch('/api/workspace-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })

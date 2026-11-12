@@ -58,6 +58,11 @@ export async function updateStoreVehicle(id: string, changes: { active?: boolean
   return ((await response.json()) as { vehicle: CustomVehicleRecord }).vehicle
 }
 
+export async function deleteStoreVehicle(id: string): Promise<void> {
+  const response = await fetch(ENDPOINT, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+  if (!response.ok) throw new Error(await readError(response))
+}
+
 export type SuggestedPoint = { x: number; y: number } | null
 export type SuggestedBox = { x0: number; y0: number; x1: number; y1: number } | null
 export type SuggestedParts = { seat: { side: SuggestedPoint; top: SuggestedPoint }; head: { side: SuggestedPoint; front: SuggestedPoint }; tail: { side: SuggestedPoint; rear: SuggestedPoint }; hitch: { side: SuggestedPoint }; boxes?: { frontDoor: SuggestedBox; rearDoor: SuggestedBox; hood: SuggestedBox; trunk: SuggestedBox } }

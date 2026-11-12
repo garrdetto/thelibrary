@@ -125,6 +125,17 @@ export async function updateAsset(env: Env, kind: AssetKind, id: string, changes
   return result.meta.changes
 }
 
+const LEGACY_TABLES: Partial<Record<AssetKind, string>> = { item: 'maplestreet_items', vehicle: 'maplestreet_vehicles' }
+
+/** Removes an asset row, and its older per-kind copy so the back-fill can't bring it back. */
+export async function deleteAsset(env: Env, kind: AssetKind, id: string) {
+  await ensureAssetsTable(env)
+  const legacy = LEGACY_TABLES[kind]
+  if (legacy) await env.DB.prepare(`DELETE FROM ${legacy} WHERE id = ?`).bind(id).run()
+  const result = await env.DB.prepare('DELETE FROM maplestreet_assets WHERE id = ? AND kind = ?').bind(id, kind).run()
+  return result.meta.changes
+}
+
 /** Maps the editors' older `active` flag onto a status, so both kinds of request keep working. */
 export function statusFrom(changes: { active?: boolean; status?: AssetStatus }): AssetStatus | undefined {
   if (changes.status) return changes.status

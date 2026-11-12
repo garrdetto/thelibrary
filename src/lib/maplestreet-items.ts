@@ -67,3 +67,8 @@ export async function updateStoreItem(id: string, changes: { active?: boolean; s
   if (!response.ok) throw new Error(await readError(response))
   return ((await response.json()) as { item: CustomItemRecord }).item
 }
+
+export async function deleteStoreItem(id: string): Promise<void> {
+  const response = await fetch(ENDPOINT, { method: 'DELETE', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+  if (!response.ok) throw new Error(await readError(response))
+}

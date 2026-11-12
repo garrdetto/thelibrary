@@ -36,14 +36,13 @@ export type Env = {
   ADMIN_PASSWORD?: string
   GEMINI_API_KEY?: string
   ANTHROPIC_API_KEY?: string
-  CLAUDE_CHAT_MODEL?: string
-  CLAUDE_LYRICS_MODEL?: string
   SITE_CHANGES_GITHUB_TOKEN?: string
   SITE_CHANGES_SECRET?: string
   SITE_CHANGES_REPO?: string
   /** Label of the self-hosted GitHub Actions runner on the admin's laptop (default msi-laptop). */
   SITE_CHANGES_RUNNER_LABEL?: string
   ANTHROPIC_ADMIN_KEY?: string
+  ELEVENLABS_API_KEY?: string
   MESHY_API_KEY?: string
   /** Development only: point the Meshy client at a local stand-in. */
   MESHY_API_BASE?: string

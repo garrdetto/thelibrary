@@ -5,9 +5,10 @@ import { LoaderCircle, RotateCw, Upload } from 'lucide-react'
 import { CATALOG_FUNCS, CATALOG_ROOMS } from '../../../modules-src/maplestreet/shared/Catalog'
 import type { CatalogFunc, CatalogRoom } from '../../../modules-src/maplestreet/shared/Catalog'
 import { CUSTOM_LIMITS, footprintFromSize } from '../../../modules-src/maplestreet/shared/CustomItems'
-import { fetchStoreItems, publishStoreItem, updateStoreItem } from '@/lib/maplestreet-items'
+import { deleteStoreItem, fetchStoreItems, publishStoreItem, updateStoreItem } from '@/lib/maplestreet-items'
 import type { AssetStatus, CustomItemRecord, Vector3Like } from '@/lib/maplestreet-items'
 import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from './AssetStatusActions'
+import { DeleteAssetButton } from './DeleteAssetButton'
 import { DevModeCanvas } from './DevModeCanvas'
 import type { DevModeState } from './DevModeCanvas'
 import { EditableModel, clampScale } from './EditableModel'
@@ -48,6 +49,8 @@ export default function MapleStreetItemEditor() {
   const [status, setStatus] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [items, setItems] = useState<CustomItemRecord[] | null>(null)
   const [listError, setListError] = useState<string | null>(null)
+  const [listNotice, setListNotice] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
   const editorRef = useRef<HTMLFormElement>(null)
 
@@ -138,6 +141,21 @@ export default function MapleStreetItemEditor() {
     }
   }
 
+  async function deleteItem(item: CustomItemRecord) {
+    setDeleting(item.id)
+    setListError(null)
+    setListNotice(null)
+    try {
+      await deleteStoreItem(item.id)
+      setItems(current => current?.filter(entry => entry.id !== item.id) ?? null)
+      setListNotice(`Deleted “${item.name}”.`)
+    } catch (error) {
+      setListError((error as Error).message)
+    } finally {
+      setDeleting(null)
+    }
+  }
+
   const meshySources: MeshySourceOption[] = (items ?? []).map(item => ({ label: item.name, source: { itemId: item.id } }))
 
   const ready = !!file && !!footprint && !oversize && name.trim().length >= CUSTOM_LIMITS.nameMin
@@ -203,9 +221,10 @@ export default function MapleStreetItemEditor() {
     <MeshyPanel target="furniture" sources={meshySources} onOpen={opened => { editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); openFile(opened) }}/>
 
     <h2>Your items</h2>
-    <p>Retiring takes an item out of the Buy catalog. Houses that already own it keep it.</p>
+    <p>Retiring takes an item out of the Buy catalog. Houses that already own it keep it. Drafts can always be deleted; a published or retired item can be deleted only while no house has placed one.</p>
     <DevInstanceNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadItems()}>Retry</button></p>}
+    {listNotice && <p role="status" className="ms-items-ok">{listNotice}</p>}
     {items === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading items…</p>}
     {items?.length === 0 && <p>Nothing published yet.</p>}
     {!!items?.length && <ul className="ms-items-list">
@@ -217,6 +236,7 @@ export default function MapleStreetItemEditor() {
         <AssetStatusBadge status={statusOf(item)}/>
         <a href={item.modelUrl} download>Model</a>
         <AssetStatusActions status={statusOf(item)} onChange={next => void setItemStatus(item, next)}/>
+        <DeleteAssetButton label={`the item “${item.name}”`} detail={statusOf(item) === 'draft' ? 'Its model file is removed too.' : 'Its model file is removed too. If players have placed one, you’ll be asked to retire it instead.'} busy={deleting === item.id} disabled={!!deleting} onDelete={() => void deleteItem(item)}/>
       </li>)}
     </ul>}
   </section>

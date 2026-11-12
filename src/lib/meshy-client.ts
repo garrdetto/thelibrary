@@ -36,6 +36,7 @@ export const meshyRig = (jobId: string, height = 1.85) => post<{ ids: string[] }
 export const meshyAnimate = (jobId: string, actionId: number, label: string) => post<{ ids: string[] }>({ action: 'animate', jobId, actionId, label })
 export const meshyCancel =(jobId: string) => post<{ ok: true }>({ action: 'cancel', jobId })
 export const meshyHide = (jobId: string) => post<{ ok: true }>({ action: 'hide', jobId })
+export const meshyDelete = (jobId: string) => post<{ ok: true }>({ action: 'delete', jobId })
 
 export async function meshyModelFile(jobId: string, name = 'meshy-model.glb'): Promise<File> {
   const response = await fetch(`${ENDPOINT}?model=${encodeURIComponent(jobId)}`, { credentials: 'same-origin' })

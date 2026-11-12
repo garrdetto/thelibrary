@@ -6,6 +6,7 @@ import { inspectModel } from '../gltf-check'
 import { refreshWorldCatalog, requireMapleAdmin } from '../maplestreet-admin'
 import { assetStatusSchema, wantsDrafts } from '../maplestreet-assets'
 import { currentUser } from '../auth'
+import { deleteMapleAsset } from '../maplestreet-asset-delete'
 import { BUNDLED_ID_PATTERN, bundledVehicle, ensureBundledOverride, getStoreVehicle, insertStoreVehicle, listStoreVehicles, replaceStoreVehicle, updateStoreVehicle, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
 
 const idSchema = z.string().uuid()
@@ -17,6 +18,7 @@ const updateSchema = z.object({
   name: vehicleNameSchema.optional(),
   spec: vehicleSpecSchema.optional(),
 }).strict()
+const deleteSchema = z.object({ id: anyIdSchema }).strict()
 
 function check<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value)
@@ -116,6 +118,13 @@ async function update(request: Request, env: Env) {
   return json({ vehicle: await getStoreVehicle(env, input.id) })
 }
 
+async function remove(request: Request, env: Env) {
+  await requireAdmin(request, env)
+  const { id } = check(deleteSchema, await readJson(request, 2000))
+  if (bundledVehicle(id)) throw new HttpError(400, 'Built-in vehicles can’t be deleted. Retire it instead.')
+  return deleteMapleAsset(env, 'vehicle', id, [VEHICLE_MODEL_KEY(id), VEHICLE_WHEEL_KEY(id)])
+}
+
 export async function maplestreetVehicles(request: Request, env: Env) {
   const url = new URL(request.url)
   if (request.method === 'GET') {
@@ -129,5 +138,6 @@ export async function maplestreetVehicles(request: Request, env: Env) {
   requireSameOrigin(request)
   if (request.method === 'POST') return publish(request, env)
   if (request.method === 'PATCH') return update(request, env)
+  if (request.method === 'DELETE') return remove(request, env)
   return json({ error: 'Method not allowed.' }, 405)
 }

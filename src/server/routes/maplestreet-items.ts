@@ -7,6 +7,7 @@ import { inspectModel } from '../gltf-check'
 import { ITEM_MODEL_KEY, getStoreItem, insertStoreItem, listStoreItems, storeItemSchema, updateStoreItem } from '../maplestreet-items'
 import { assetStatusSchema, wantsDrafts } from '../maplestreet-assets'
 import { currentUser } from '../auth'
+import { deleteMapleAsset } from '../maplestreet-asset-delete'
 
 const idSchema = z.string().uuid()
 const updateSchema = z.object({
@@ -16,6 +17,7 @@ const updateSchema = z.object({
   name: storeItemSchema.shape.name.optional(),
   price: storeItemSchema.shape.price.optional(),
 }).strict()
+const deleteSchema = z.object({ id: idSchema }).strict()
 
 const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to manage Fox Plains items.')
 const isAdmin = async (request: Request, env: Env) => (await currentUser(request, env))?.isAdmin === true
@@ -88,6 +90,12 @@ async function update(request: Request, env: Env) {
   return json({ item: await getStoreItem(env, input.id) })
 }
 
+async function remove(request: Request, env: Env) {
+  await requireAdmin(request, env)
+  const { id } = deleteSchema.parse(await readJson(request, 2000))
+  return deleteMapleAsset(env, 'item', id, [ITEM_MODEL_KEY(id)])
+}
+
 export async function maplestreetItems(request: Request, env: Env) {
   const url = new URL(request.url)
   if (request.method === 'GET') {
@@ -99,5 +107,6 @@ export async function maplestreetItems(request: Request, env: Env) {
   requireSameOrigin(request)
   if (request.method === 'POST') return publish(request, env)
   if (request.method === 'PATCH') return update(request, env)
+  if (request.method === 'DELETE') return remove(request, env)
   return json({ error: 'Method not allowed.' }, 405)
 }

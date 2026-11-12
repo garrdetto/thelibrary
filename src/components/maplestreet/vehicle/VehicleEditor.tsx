@@ -7,9 +7,10 @@ import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/Custo
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import { BUNDLED_VEHICLES } from '../../../../modules-src/maplestreet/shared/BundledVehicles'
 import { BODY_EXTENTS, BUILTIN_TUNING } from '../../../../modules-src/maplestreet/shared/Vehicles'
-import { fetchStoreVehicleFiles, fetchStoreVehicles, publishStoreVehicle, suggestVehicleParts, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
+import { deleteStoreVehicle, fetchStoreVehicleFiles, fetchStoreVehicles, publishStoreVehicle, suggestVehicleParts, updateStoreVehicle } from '@/lib/maplestreet-vehicles'
 import type { AssetStatus } from '@/lib/maplestreet-vehicles'
 import { AssetStatusActions, AssetStatusBadge, DevInstanceNote, statusOf, submitStatus } from '../AssetStatusActions'
+import { DeleteAssetButton } from '../DeleteAssetButton'
 import { MeshyPanel } from '../MeshyPanel'
 import type { MeshySourceOption } from '../MeshyPanel'
 import { defaultPart, PART_LABEL, partOf, withPart } from './draft'
@@ -72,6 +73,8 @@ export default function VehicleEditor() {
   const [status, setStatus] = useState<{ tone: 'ok' | 'error'; text: string } | null>(null)
   const [vehicles, setVehicles] = useState<CustomVehicleRecord[] | null>(null)
   const [listError, setListError] = useState<string | null>(null)
+  const [listNotice, setListNotice] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
   const [drive, setDrive] = useState<{ record: CustomVehicleRecord; urls: string[] } | null>(null)
   const [measured, setMeasured] = useState<{ topMph: number; time: number | null } | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -310,6 +313,18 @@ export default function VehicleEditor() {
       const next = await updateStoreVehicle(vehicle.id, changes)
       setVehicles(current => current?.some(v => v.id === next.id) ? current.map(v => v.id === next.id ? next : v) : [...(current ?? []), next])
     } catch (error) { setListError((error as Error).message) }
+  }
+
+  async function deleteVehicle(vehicle: CustomVehicleRecord) {
+    setDeleting(vehicle.id); setListError(null); setListNotice(null)
+    try {
+      await deleteStoreVehicle(vehicle.id)
+      setVehicles(current => current?.filter(v => v.id !== vehicle.id) ?? null)
+      if (editing?.id === vehicle.id) { pendingRecord.current = null; setEditing(null) }
+      setListNotice(`Deleted “${vehicle.name}”.`)
+    } catch (error) {
+      setListError((error as Error).message)
+    } finally { setDeleting(null) }
   }
 
   async function openRecord(v: CustomVehicleRecord) {
@@ -595,9 +610,10 @@ export default function VehicleEditor() {
     {drive && <TestDrive record={drive.record} onClose={() => setDrive(null)} onResult={result => setMeasured({ topMph: result.topMph, time: result.time })}/>}
 
     {view === 'library' && <>
-    <p className="adm-help">These are all the vehicles in the game right now, including the ones that ship with it. Change the price, dealer and traffic settings here. Retiring takes a vehicle off the dealer lot and out of traffic; players who already own it keep it in their garage.</p>
+    <p className="adm-help">These are all the vehicles in the game right now, including the ones that ship with it. Change the price, dealer and traffic settings here. Retiring takes a vehicle off the dealer lot and out of traffic; players who already own it keep it in their garage. Drafts can always be deleted; a published or retired vehicle can be deleted only while nobody owns one, and built-in vehicles can only be retired.</p>
     <DevInstanceNote/>
     {listError && <p role="alert" className="ms-items-error">{listError} <button type="button" onClick={() => void loadVehicles()}>Retry</button></p>}
+    {listNotice && <p role="status" className="ms-items-ok">{listNotice}</p>}
     {vehicles === null && !listError && <p role="status"><LoaderCircle className="spin" size={16}/> Loading vehicles…</p>}
     {!!allVehicles?.length && <ul className="ms-items-list">
       {allVehicles.map(v => <li key={v.id} className={statusOf(v) === 'retired' ? 'is-retired' : statusOf(v) === 'draft' ? 'is-draft' : ''}>
@@ -612,6 +628,7 @@ export default function VehicleEditor() {
         <button type="button" onClick={() => void openRecord(v)} disabled={!!busy} title="Open this vehicle in the editor to smooth its body or change any setting">{busy === 'open' && editing?.id !== v.id ? <LoaderCircle className="spin" size={12}/> : <SquarePen size={12} aria-hidden/>} Edit</button>
         <a href={v.modelUrl} download>Model</a>
         <AssetStatusActions status={statusOf(v)} onChange={next => void change(v, { status: next })}/>
+        {!v.id.startsWith('bundled-') && <DeleteAssetButton label={`the vehicle “${v.name}”`} detail={statusOf(v) === 'draft' ? 'Its model files are removed too.' : 'Its model files are removed too. If players own one, you’ll be asked to retire it instead.'} busy={deleting === v.id} disabled={!!deleting || !!busy} onDelete={() => void deleteVehicle(v)}/>}
       </li>)}
     </ul>}
     </>}

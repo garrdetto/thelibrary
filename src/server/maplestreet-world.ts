@@ -1,4 +1,4 @@
-import { WorldServer, type WorldStorage } from '../../modules-src/maplestreet/shared/WorldServer'
+import { WORLD_GENERATION, WorldServer, type WorldStorage } from '../../modules-src/maplestreet/shared/WorldServer'
 import type { Identity } from '../../modules-src/maplestreet/shared/RoomLogic'
 import { registerCustomItems } from '../../modules-src/maplestreet/shared/CustomItems'
 import type { Env } from './env'
@@ -13,6 +13,14 @@ declare const WebSocketPair: { new (): { 0: WebSocket; 1: ServerSocket } }
 
 const PUT_BATCH = 50
 
+/** Whether any saved lot or account of the current world mentions `text` (such as a quoted `custom:<id>` catalog id). */
+export async function worldMentions(env: Env, text: string) {
+  await env.DB.prepare(TABLE).run()
+  const row = await env.DB.prepare('SELECT key FROM maplestreet_world WHERE key LIKE ? AND instr(value, ?) > 0 LIMIT 1').bind(`${WORLD_GENERATION}%`, text).first<{ key: string }>()
+  return row !== null
+}
+
+function d1Storage(env: Env): WorldStorage {
 /** A world's saved state, one D1 table per world (`maplestreet_world` for classic Fox Plains). */
 function d1Storage(env: Env, name: string): WorldStorage {
   let ready: Promise<unknown> | null = null
@@ -66,6 +74,10 @@ export class MapleStreetWorld {
       registerCustomVehicles(await listStoreVehicles(this.env))
       return Response.json({ ok: true })
     }
+    if (path === '/save' && request.method === 'POST') {
+      await this.world.ready()
+      await this.world.save()
+      return Response.json({ ok: true })
     if (path === '/wallet' && request.method === 'POST') {
       const body = (await request.json().catch(() => null)) as { key?: unknown; name?: unknown; delta?: unknown } | null
       const member = typeof body?.key === 'string' && body.key.startsWith('member:')

@@ -8,7 +8,7 @@ import { VEHICLE_MODEL_KEY } from '../maplestreet-vehicles'
 import { RIDE_SOURCE_KEY } from '../park-rides'
 import { CAR_MODEL_KEY } from '../shorttrack-cars'
 import { siteChangeRun } from '../site-change-token'
-import { ensureJobModel, getJobRow, insertJob, isFinal, listJobRows, MESHY_MODEL_KEY, meshyConfigured, meshyFetch, refreshJob, setJob, TASK_PATHS, toJob } from '../meshy'
+import { creatorRunActive, deleteJob, ensureJobModel, getJobRow, insertJob, isFinal, listJobRows, MESHY_MODEL_KEY, meshyConfigured, meshyFetch, refreshJob, setJob, TASK_PATHS, toJob } from '../meshy'
 
 const REFRESH_PER_LIST = 6
 const DATA_URI_LIMIT = 8 * 1024 * 1024
@@ -35,6 +35,7 @@ const actionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('animate'), jobId: z.string().uuid(), actionId: z.number().int().min(0).max(100_000), label: z.string().trim().min(1).max(80) }).strict(),
   z.object({ action: z.literal('cancel'), jobId: z.string().uuid() }).strict(),
   z.object({ action: z.literal('hide'), jobId: z.string().uuid() }).strict(),
+  z.object({ action: z.literal('delete'), jobId: z.string().uuid() }).strict(),
 ])
 
 const requireAdmin = (request: Request, env: Env) => requireMapleAdmin(request, env, 'Sign in as the administrator to use Meshy.')
@@ -114,7 +115,7 @@ async function startTask(env: Env, kind: MeshyJobKind, body: Record<string, unkn
 
 async function act(request: Request, env: Env, user: { id: string }) {
   const input = actionSchema.parse(await readJson(request, 7_500_000))
-  if (!meshyConfigured(env) && input.action !== 'hide') throw new HttpError(503, 'Meshy isn’t connected yet.')
+  if (!meshyConfigured(env) && input.action !== 'hide' && input.action !== 'delete') throw new HttpError(503, 'Meshy isn’t connected yet.')
   const record = async (kind: MeshyJobKind, tgt: MeshyTarget, taskId: string, parentId: string | null, text: string, options: unknown, credits: number) => {
     const id = crypto.randomUUID()
     await insertJob(env, { id, kind, target: tgt, taskId, parentId, prompt: text, options, credits, createdBy: user.id })
@@ -190,6 +191,21 @@ async function act(request: Request, env: Env, user: { id: string }) {
     }
     case 'hide': {
       await setJob(env, input.jobId, { hidden: 1 })
+      return json({ ok: true })
+    }
+    case 'delete': {
+      if (user.id.startsWith('site-change:')) throw new HttpError(403, 'Only the administrator can delete Meshy models.')
+      const row = await getJobRow(env, input.jobId)
+      if (!row) return json({ error: 'Job not found.' }, 404)
+      if (await creatorRunActive(env, row.created_by)) throw new HttpError(409, 'A site change run is still using this model. Delete it after the run finishes.')
+      if (!isFinal(row.status) && meshyConfigured(env)) {
+        try {
+          await meshyFetch(env, `${TASK_PATHS[row.kind]}/${encodeURIComponent(row.task_id)}`, { method: 'DELETE' })
+        } catch (error) {
+          if (!(error instanceof HttpError) || ![404, 409].includes(error.status)) throw error
+        }
+      }
+      await deleteJob(env, row.id)
       return json({ ok: true })
     }
   }
