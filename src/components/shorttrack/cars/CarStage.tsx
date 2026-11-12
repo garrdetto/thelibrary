@@ -86,6 +86,7 @@ function CarModel({ url, draft, onInfo, picking, onPick, onScene, smoother, onPl
       if (!mesh.isMesh) return
       mesh.castShadow = true; mesh.receiveShadow = true
       originals.current.set(mesh, mesh.material)
+      mesh.userData.msSourceMaterial = mesh.material
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) if (m.name) names.add(m.name)
     })
     const box = new Box3().setFromObject(scene)

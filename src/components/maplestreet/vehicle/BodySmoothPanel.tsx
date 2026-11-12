@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { MutableRefObject } from 'react'
-import { Check, Eye, Lasso, Maximize2, Minimize2, ScanSearch, Sparkles, SquareDashed, SunMedium, Undo2, WandSparkles, X } from 'lucide-react'
+import { Brush, Check, Eye, Layers, Lasso, Maximize2, Minimize2, ScanSearch, Sparkles, SquareDashed, SunMedium, Undo2, WandSparkles, X } from 'lucide-react'
 import { DEFAULT_SMOOTH, SMOOTH_LIMITS, SMOOTH_METHODS } from './bodySmooth'
 import type { DetectReport, Px, SelectionReport, SmoothMethod, SmoothSettings } from './bodySmooth'
 import type { SmootherApi } from './DentSmoother'
@@ -66,6 +66,7 @@ type PanelState = ReturnType<typeof useBodySmoothing>['panel']
 export function BodySmoothPanel({ state, disabled, onStartLasso, savedNote }: { state: PanelState; disabled: boolean; onStartLasso: () => void; savedNote: string }) {
   const { smoother, lasso, setLasso, selection, setSelection, smooth, tune, scan, setScan, heat, setHeat, bumpMm, setBumpMm, busy, run, picked, refreshHeat, setStatus, onBodyChanged, setSmooth } = state
   const [comparing, setComparing] = useState(false)
+  const [paintSoft, setPaintSoft] = useState(0.5)
   const api = smoother.current
   const bodyEdits = api?.edits ?? 0
   const undoDepth = api?.undoDepth ?? 0
@@ -109,6 +110,18 @@ export function BodySmoothPanel({ state, disabled, onStartLasso, savedNote }: { 
   function keep() { run('keep', () => api?.apply(), finish) }
   function undo() { run('undo', () => api?.undo(), finish) }
   function shade() { run('shade', () => api?.shadeSmooth(smooth.creaseDeg), () => { finish(); setStatus({ tone: 'ok', text: 'Shading re-smoothed over the whole body. Edges sharper than the crease angle stay crisp. Undo puts the old shading back.' }) }) }
+  function flatten() {
+    run('flatten', () => api?.flattenTextures(), result => {
+      finish()
+      setStatus(result?.changed ? { tone: 'ok', text: `Removed the bump texture from ${result.changed} ${result.changed === 1 ? 'material' : 'materials'}. The grainy, hammered look it painted on the body is gone; the shape itself is unchanged. Undo brings it back.` } : { tone: 'ok', text: 'This model has no bump texture, so there was nothing to remove.' })
+    })
+  }
+  function soften() {
+    run('soften', () => api?.softenTextures(paintSoft), result => {
+      finish()
+      setStatus(result?.changed ? { tone: 'ok', text: `Evened out the paint on ${result.changed} ${result.changed === 1 ? 'texture' : 'textures'}. Blotches and speckles are smoothed while trim, windows and decals keep their edges. Press it again to soften more, or Undo.` } : { tone: 'ok', text: 'This model has no colour texture to soften.' })
+    })
+  }
   function clear() { api?.cancel(); setSelection(null); setLasso(false) }
   function compare(on: boolean) { if (!selection || comparing === on) return; setComparing(on); api?.compare(on) }
 
@@ -116,12 +129,20 @@ export function BodySmoothPanel({ state, disabled, onStartLasso, savedNote }: { 
 
   return <fieldset className="ms-veh-body">
     <legend>Body smoothing</legend>
-    <p className="ms-veh-note">Generated bodies come out grainy and lumpy. Start with <strong>Auto smooth</strong>, or scan for rough spots and choose where to smooth yourself. Everything previews first and nothing changes until you keep it.</p>
+    <p className="ms-veh-note">Generated bodies come out grainy and lumpy. Start with <strong>Remove painted-on bumps</strong> and <strong>Smooth shading</strong>, then <strong>Auto smooth</strong> for lumps in the shape itself. Points only move in or out of the surface, never sideways, so the paint and decals stay where they are. Shape smoothing previews first and nothing changes until you keep it.</p>
 
     <div className="ms-veh-pair">
       <button type="button" className="ms-veh-suggest" onClick={autoSmooth} disabled={off} title="Measure the whole body and smooth just the rough areas, keeping panel lines and trim">{busy === 'auto' ? <Sparkles className="spin" size={14} aria-hidden/> : <WandSparkles size={14} aria-hidden/>} {busy === 'auto' ? 'Smoothing…' : 'Auto smooth'}</button>
       <button type="button" onClick={shade} disabled={off} title="Re-shade the whole body smoothly; edges sharper than the crease angle stay crisp"><SunMedium size={14} aria-hidden/> Smooth shading</button>
     </div>
+
+    <h4 className="ms-veh-subhead">Smooth the surface texture</h4>
+    <p className="ms-veh-note">Much of the roughness on generated cars is painted into the textures, not the shape: a bump texture that makes the paint look hammered, and blotchy colour. Moving the body's points can't fix that; these can.</p>
+    <div className="ms-veh-pair">
+      <button type="button" onClick={flatten} disabled={off} title="Remove the bump (normal) texture that makes the paint look grainy and hammered"><Layers size={14} aria-hidden/> {busy === 'flatten' ? 'Removing…' : 'Remove painted-on bumps'}</button>
+      <button type="button" onClick={soften} disabled={off} title="Even out blotchy, speckled paint while keeping sharp lines"><Brush size={14} aria-hidden/> {busy === 'soften' ? 'Softening…' : 'Soften blotchy paint'}</button>
+    </div>
+    <Slider label="Paint softening" min={0} max={1} step={0.05} value={paintSoft} onChange={setPaintSoft} display={`${Math.round(paintSoft * 100)}%`}/>
 
     <h4 className="ms-veh-subhead">Find dents and bumps</h4>
     <div className="ms-veh-pair">

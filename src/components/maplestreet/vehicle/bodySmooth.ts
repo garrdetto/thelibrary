@@ -4,9 +4,11 @@ import { clusterNormals, topology, writeVertexNormals } from './meshTopology'
 import type { Topology } from './meshTopology'
 import { bumpDepths, SMOOTH_METHODS, smoothPositions, spread } from './smoothAlgorithms'
 import type { SmoothMethod } from './smoothAlgorithms'
+import { bodyMaterials, flattenTextureBumps, softenPaint } from './textureSmooth'
+import type { TextureReport } from './textureSmooth'
 
 export { SMOOTH_METHODS }
-export type { SmoothMethod }
+export type { SmoothMethod, TextureReport }
 
 /** A point in canvas pixels, measured from the stage's top-left corner. */
 export type Px = { x: number; y: number }
@@ -125,7 +127,7 @@ function percentile(values: number[], q: number) {
 /** Smooths a loaded body: by lasso, by detected rough spots, or all over, with undo. */
 export class BodySmoother {
   private targets: Target[] = []
-  private undoStack: { mesh: Mesh; base: Float32Array; normals: Float32Array | null }[][] = []
+  private undoStack: (() => void)[] = []
   private selection: Target[] = []
   private markers: Object3D[] = []
   private heatMarkers: Object3D[] = []
@@ -405,8 +407,35 @@ export class BodySmoother {
   }
 
   private remember(targets: Target[]) {
-    this.undoStack.push(targets.map(t => ({ mesh: t.mesh, base: Float32Array.from(t.base), normals: t.baseNormals ? Float32Array.from(t.baseNormals) : null })))
+    const saved = targets.map(t => ({ target: t, base: Float32Array.from(t.base), normals: t.baseNormals ? Float32Array.from(t.baseNormals) : null }))
+    this.pushUndo(() => {
+      for (const { target, base, normals } of saved) {
+        target.base = base
+        target.baseNormals = normals
+        writePositions(target, base, normals)
+      }
+    })
+  }
+
+  private pushUndo(step: () => void) {
+    this.undoStack.push(step)
     if (this.undoStack.length > 12) this.undoStack.shift()
+  }
+
+  /** Takes the bump (normal) maps off the body's materials, so painted-in bumpiness no longer catches the light. */
+  flattenTextures(): TextureReport {
+    this.cancel()
+    const result = flattenTextureBumps(bodyMaterials(this.root))
+    if (result.changed) { this.pushUndo(result.undo); this.changed(1) }
+    return result
+  }
+
+  /** Evens out blotchy, grainy paint in the body's colour textures while keeping sharp lines (trim, windows, decals). */
+  softenTextures(strength: number): TextureReport {
+    this.cancel()
+    const result = softenPaint(bodyMaterials(this.root), strength)
+    if (result.changed) { this.pushUndo(result.undo); this.changed(1) }
+    return result
   }
 
   private changed(step: 1 | -1) {
@@ -463,13 +492,7 @@ export class BodySmoother {
     this.cancel()
     const last = this.undoStack.pop()
     if (!last) return
-    for (const { mesh, base, normals } of last) {
-      const target = this.targets.find(t => t.mesh === mesh)
-      if (!target) continue
-      target.base = base
-      target.baseNormals = normals
-      writePositions(target, base, normals)
-    }
+    last()
     this.changed(-1)
   }
 
