@@ -1,7 +1,7 @@
 import { Component, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import { useGLTF } from '@react-three/drei'
-import { Check, ChevronLeft, ChevronRight, Gauge, Lasso, LoaderCircle, Move3d, Pipette, Plus, RotateCw, Ruler, SquarePen, Undo2, Upload, WandSparkles, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Gauge, Lasso, LoaderCircle, Move3d, Pipette, Plus, RotateCw, Ruler, SquarePen, Undo2, Upload, WandSparkles } from 'lucide-react'
 import type { Object3D } from 'three'
 import { TRAFFIC_ROUTES } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
@@ -16,8 +16,8 @@ import type { MeshySourceOption } from '../MeshyPanel'
 import { defaultPart, PART_LABEL, partOf, withPart } from './draft'
 import type { PartKey } from './draft'
 import { DRIVE_TEMPLATES, draftFromRecord, draftRecord, draftRideHeight, draftSpec, fmtLen, LIMITS, newDraft, REFERENCE_KINDS, REFERENCE_LABEL, ROUTE_LABEL, sizeWarnings, solvedEngine, suspensionFor, TEMPLATE_LABEL, templatePerformance, turnedSize } from './draft'
-import { DEFAULT_SMOOTH, exportScene, SMOOTH_LIMITS } from './bodySmooth'
-import type { Px, SelectionReport, SmoothSettings } from './bodySmooth'
+import { exportScene } from './bodySmooth'
+import { BodySmoothPanel, useBodySmoothing } from './BodySmoothPanel'
 import { SmoothOverlay } from './DentSmoother'
 import type { SmootherApi } from './DentSmoother'
 import type { Draft, DriveTemplate, MarkerId, ReferenceKind } from './draft'
@@ -89,11 +89,10 @@ export default function VehicleEditor() {
   const [editing, setEditing] = useState<CustomVehicleRecord | null>(null)
   const pendingRecord = useRef<CustomVehicleRecord | null>(null)
   const smoother = useRef<SmootherApi | null>(null)
-  const [lasso, setLasso] = useState(false)
-  const [selection, setSelection] = useState<SelectionReport | null>(null)
-  const [smooth, setSmooth] = useState<SmoothSettings>(DEFAULT_SMOOTH)
   const [tracing, setTracing] = useState<'head' | 'tail' | null>(null)
   const [, bodyChanged] = useReducer((n: number) => n + 1, 0)
+  const body = useBodySmoothing(smoother, setStatus, bodyChanged)
+  const { lasso, setLasso, setSelection, closeLasso } = body
 
   const patch = useCallback((changes: Partial<Draft>) => { setDraft(current => ({ ...current, ...changes })); setMeasured(null) }, [])
 
@@ -120,7 +119,7 @@ export default function VehicleEditor() {
     if (!/\.(glb|gltf)$/i.test(chosen.name)) { setStatus({ tone: 'error', text: 'Choose a .glb or .gltf file.' }); return }
     if (chosen.size > 60 * 1024 * 1024) { setStatus({ tone: 'error', text: 'That file is over 60 MB. Remesh it in Meshy or reduce it before uploading.' }); return }
     fitted.current = false
-    setLasso(false); setSelection(null); bodyChanged()
+    body.reset(); bodyChanged()
     setInfo(null)
     setFile(chosen)
     setUrl(URL.createObjectURL(chosen))
@@ -350,45 +349,11 @@ export default function VehicleEditor() {
   function startNew() {
     pendingRecord.current = null
     setEditing(null); setFile(null); setUrl(null); setWheelFile(null); setInfo(null); setReport(null); setMeasured(null); setStatus(null)
-    setLasso(false); setSelection(null); bodyChanged()
+    body.reset(); bodyChanged()
     fitted.current = false
     setDraft(newDraft('sedan', null)); setReference('sedan'); setStep('placement')
   }
 
-  function closeLasso(polygon: Px[]) {
-    setLasso(false)
-    const api = smoother.current
-    if (!api) return
-    const report = api.select(polygon, smooth.featherPx)
-    if (!report.vertices) { setSelection(null); setStatus({ tone: 'error', text: 'Nothing inside that loop faces the camera. Turn the preview so the dent faces you and draw the loop over the body itself.' }); return }
-    setStatus(null)
-    setSelection(report)
-    api.preview(smooth)
-  }
-
-  function tune(changes: Partial<SmoothSettings>) {
-    const next = { ...smooth, ...changes }
-    setSmooth(next)
-    if (smoother.current?.hasSelection) smoother.current.preview(next)
-  }
-
-  function applySmoothing() {
-    smoother.current?.apply()
-    setSelection(null); bodyChanged(); setReport(null)
-  }
-
-  function clearSmoothing() {
-    smoother.current?.cancel()
-    setSelection(null); setLasso(false)
-  }
-
-  function undoSmoothing() {
-    smoother.current?.undo()
-    setSelection(null); bodyChanged(); setReport(null)
-  }
-
-  const bodyEdits = smoother.current?.edits ?? 0
-  const undoDepth = smoother.current?.undoDepth ?? 0
 
   const specOf = (v: CustomVehicleRecord): CustomVehicleSpec => ({ template: v.template, model: v.model, physics: v.physics, lights: v.lights, paint: v.paint, targets: v.targets, dealer: v.dealer, traffic: v.traffic, wheelsRemoved: v.wheelsRemoved, ...(v.parts ? { parts: v.parts } : {}), ...(v.lampShapes ? { lampShapes: v.lampShapes } : {}) })
 
@@ -472,22 +437,7 @@ export default function VehicleEditor() {
           <Num label="Lift off the road" suffix="m" value={draft.lift} onChange={lift => patch({ lift })}/>
         </fieldset>}
 
-        {step === 'body' && <fieldset>
-          <legend>Body dents</legend>
-          <p className="ms-veh-note">Turn the preview until a dent faces you, draw a loop around it, then raise the strength. Only the surface facing the camera moves, edges sharper than the crease angle (panel lines, trim, window frames) stay put, and the loop’s edge blends in so the rest of the design is untouched.</p>
-          <button type="button" onClick={() => { setSelected(null); setPicking(false); setLasso(current => !current) }} aria-pressed={lasso} disabled={!info}><Lasso size={14} aria-hidden/> {lasso ? 'Drawing… (Esc to stop)' : selection ? 'Draw around another dent' : 'Draw around a dent'}</button>
-          {selection && <p className="ms-veh-note" role="status">{selection.vertices.toLocaleString()} vertices selected on {selection.meshes} {selection.meshes === 1 ? 'part' : 'parts'}. The preview updates as you move the sliders.</p>}
-          <Slider label="Strength" min={0} max={1} step={0.01} value={smooth.strength} onChange={strength => tune({ strength })} display={`${Math.round(smooth.strength * 100)}%`}/>
-          <Slider label="Passes (wider dents need more)" min={1} max={SMOOTH_LIMITS.passesMax} step={1} value={smooth.passes} onChange={passes => tune({ passes })} display={String(smooth.passes)}/>
-          <Slider label="Keep creases sharper than" min={SMOOTH_LIMITS.creaseMin} max={SMOOTH_LIMITS.creaseMax} step={1} value={smooth.creaseDeg} onChange={creaseDeg => tune({ creaseDeg })} display={`${smooth.creaseDeg}°`}/>
-          <Slider label="Feather (applies when you draw the next loop)" min={0} max={SMOOTH_LIMITS.featherMax} step={1} value={smooth.featherPx} onChange={featherPx => tune({ featherPx })} display={`${smooth.featherPx} px`}/>
-          <div className="ms-veh-pair">
-            <button type="button" onClick={applySmoothing} disabled={!selection}><Check size={14} aria-hidden/> Keep this smoothing</button>
-            <button type="button" onClick={clearSmoothing} disabled={!selection && !lasso}><X size={14} aria-hidden/> Clear selection</button>
-          </div>
-          <button type="button" onClick={undoSmoothing} disabled={!undoDepth}><Undo2 size={14} aria-hidden/> Undo last smoothing{undoDepth ? ` (${undoDepth})` : ''}</button>
-          {bodyEdits > 0 && <p className="ms-veh-note" role="status">{bodyEdits} smoothing {bodyEdits === 1 ? 'pass is' : 'passes are'} kept. They’re baked into the model when you test drive, save or publish.</p>}
-        </fieldset>}
+        {step === 'body' && <BodySmoothPanel state={body.panel} disabled={!info} onStartLasso={() => { setSelected(null); setPicking(false) }} savedNote="They’re baked into the model when you test drive, save or publish."/>}
 
         {step === 'drive' && <fieldset>
           <legend>Drives like</legend>
