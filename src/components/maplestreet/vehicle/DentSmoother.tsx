@@ -4,25 +4,38 @@ import { useThree } from '@react-three/fiber'
 import { BufferAttribute, BufferGeometry, Points, PointsMaterial } from 'three'
 import type { Mesh, Object3D } from 'three'
 import { BodySmoother } from './bodySmooth'
-import type { Px, SelectionReport, SmoothSettings } from './bodySmooth'
+import type { AutoPlan, DetectReport, Px, SelectionReport, SmoothSettings } from './bodySmooth'
 
 /** What the editor can ask of the smoother inside the canvas. */
 export type SmootherApi = {
   select: (polygon: Px[], featherPx: number) => SelectionReport
+  selectAll: () => SelectionReport
+  selectMarked: (thresholdMm: number) => SelectionReport
+  resize: (mode: 'grow' | 'shrink') => SelectionReport
+  analyse: (creaseDeg: number) => DetectReport
+  showHeat: (thresholdMm: number | null) => { spots: number; share: number }
+  autoPlan: (settings: SmoothSettings) => AutoPlan | null
   preview: (settings: SmoothSettings) => void
+  compare: (original: boolean) => void
+  shadeSmooth: (creaseDeg: number) => void
   apply: () => void
   cancel: () => void
   undo: () => void
   readonly hasSelection: boolean
+  readonly analysed: boolean
   readonly undoDepth: number
   readonly edits: number
 }
 
-function marker(_mesh: Mesh, positions: Float32Array): Object3D {
+function marker(_mesh: Mesh, positions: Float32Array, colors: Float32Array | null): Object3D {
   const geometry = new BufferGeometry()
   geometry.setAttribute('position', new BufferAttribute(positions, 3))
-  const points = new Points(geometry, new PointsMaterial({ color: '#f2b544', size: 3.5, sizeAttenuation: false, depthTest: true, transparent: true, opacity: 0.9 }))
-  points.renderOrder = 8
+  if (colors) geometry.setAttribute('color', new BufferAttribute(colors, 3))
+  const material = colors
+    ? new PointsMaterial({ vertexColors: true, size: 3, sizeAttenuation: false, depthTest: true, transparent: true, opacity: 0.85 })
+    : new PointsMaterial({ color: '#5ad1ff', size: 3.5, sizeAttenuation: false, depthTest: true, transparent: true, opacity: 0.9 })
+  const points = new Points(geometry, material)
+  points.renderOrder = colors ? 7 : 8
   return points
 }
 
@@ -35,18 +48,31 @@ export function DentSmoother({ scene, api }: { scene: Object3D; api: MutableRefO
   view.current = { camera, size }
   useEffect(() => {
     const smoother = new BodySmoother(scene, marker)
+    let frame = 0
+    let pending: SmoothSettings | null = null
+    const flush = () => { if (frame) cancelAnimationFrame(frame); frame = 0; if (pending) { smoother.preview(pending); pending = null; invalidate() } }
+    const after = <T,>(result: T) => { invalidate(); return result }
     const current: SmootherApi = {
-      select: (polygon, featherPx) => { const r = smoother.select(polygon, view.current.camera, view.current.size, featherPx); invalidate(); return r },
-      preview: settings => { smoother.preview(settings); invalidate() },
-      apply: () => { smoother.apply(); invalidate() },
-      cancel: () => { smoother.cancel(); invalidate() },
-      undo: () => { smoother.undo(); invalidate() },
+      select: (polygon, featherPx) => { flush(); return after(smoother.select(polygon, view.current.camera, view.current.size, featherPx)) },
+      selectAll: () => { flush(); return after(smoother.selectAll()) },
+      selectMarked: thresholdMm => { flush(); return after(smoother.selectMarked(thresholdMm)) },
+      resize: mode => { flush(); return after(smoother.resize(mode)) },
+      analyse: creaseDeg => { flush(); return after(smoother.analyse(creaseDeg)) },
+      showHeat: thresholdMm => after(smoother.showHeat(thresholdMm)),
+      autoPlan: settings => { flush(); return after(smoother.autoPlan(settings)) },
+      preview: settings => { pending = settings; if (!frame) frame = requestAnimationFrame(() => { frame = 0; flush() }) },
+      compare: original => { flush(); smoother.compare(original); invalidate() },
+      shadeSmooth: creaseDeg => { flush(); smoother.shadeSmooth(creaseDeg); invalidate() },
+      apply: () => { flush(); smoother.apply(); invalidate() },
+      cancel: () => { pending = null; flush(); smoother.cancel(); invalidate() },
+      undo: () => { pending = null; flush(); smoother.undo(); invalidate() },
       get hasSelection() { return smoother.hasSelection },
+      get analysed() { return smoother.analysed },
       get undoDepth() { return smoother.undoDepth },
       get edits() { return smoother.edits },
     }
     api.current = current
-    return () => { smoother.dispose(); if (api.current === current) api.current = null }
+    return () => { if (frame) cancelAnimationFrame(frame); smoother.dispose(); if (api.current === current) api.current = null }
   }, [scene, api, invalidate])
   return null
 }
@@ -81,8 +107,8 @@ export function SmoothOverlay({ onClose, onCancel }: { onClose: (polygon: Px[]) 
   const nearFirst = hover && first && points.length >= 3 && Math.hypot(hover.x - first.x, hover.y - first.y) < CLOSE_PX
   return <svg ref={ref} className="ms-veh-lasso" tabIndex={0} role="application" aria-label="Draw a selection around the dented area: click to add corners, click the first corner or press Enter to close it, Escape to start over."
     onPointerDown={down} onPointerMove={event => setHover(at(event))} onPointerLeave={() => setHover(null)} onDoubleClick={event => { event.preventDefault(); close(points) }} onKeyDown={key} onContextMenu={event => event.preventDefault()}>
-    {points.length > 0 && <polyline points={hover && !nearFirst ? `${path} ${hover.x},${hover.y}` : path} fill="rgba(242,181,68,.12)" stroke="#f2b544" strokeWidth={1.5} strokeDasharray="6 4"/>}
-    {points.length >= 3 && hover && <line x1={hover.x} y1={hover.y} x2={first.x} y2={first.y} stroke="#f2b544" strokeWidth={1} strokeOpacity={0.5}/>}
-    {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={i === 0 && nearFirst ? 7 : 4} fill={i === 0 ? '#ffffff' : '#f2b544'} stroke="#14181d" strokeWidth={1.5}/>)}
+    {points.length > 0 && <polyline points={hover && !nearFirst ? `${path} ${hover.x},${hover.y}` : path} fill="rgba(90,209,255,.12)" stroke="#5ad1ff" strokeWidth={1.5} strokeDasharray="6 4"/>}
+    {points.length >= 3 && hover && <line x1={hover.x} y1={hover.y} x2={first.x} y2={first.y} stroke="#5ad1ff" strokeWidth={1} strokeOpacity={0.5}/>}
+    {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={i === 0 && nearFirst ? 7 : 4} fill={i === 0 ? '#ffffff' : '#5ad1ff'} stroke="#14181d" strokeWidth={1.5}/>)}
   </svg>
 }

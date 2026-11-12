@@ -1289,6 +1289,7 @@ body{background:var(--paper);color:var(--tone-0)}
 .ms-veh-readout{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));column-gap:20px}
 .ms-veh-warn{margin:0;padding:8px 12px;border-radius:10px;border:1px solid color-mix(in srgb,#f2b544 50%,transparent);background:color-mix(in srgb,#f2b544 12%,transparent);font-size:13px}
 .ms-veh-note{margin:0;font-size:12px;line-height:1.5;color:var(--lib-muted,inherit)}
+.ms-veh-subhead{margin:6px 0 0;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--lib-muted,inherit)}
 .ms-veh-pair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .ms-veh-axle,.ms-veh-xyz{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;padding-top:6px;border-top:1px solid var(--lib-line,var(--border))}
 .ms-veh-xyz{grid-template-columns:repeat(3,minmax(0,1fr))}
