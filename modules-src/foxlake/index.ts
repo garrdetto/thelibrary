@@ -20,6 +20,9 @@ declare global {
   }
 }
 
+/** Lighter shadows than Rack & Reel's, a night 15 % brighter, and matte characters. */
+const FOX_LAKE_LOOK = { shadowDarkness: 0.74, nightBrightness: 1.15, matteCharacters: true }
+
 const online = location.protocol === 'https:' || location.protocol === 'http:'
 
 function tagColor(name: string): string {
@@ -106,7 +109,7 @@ async function boot(): Promise<void> {
     if (roomCode) postRoom(roomCode)
     else inviteRequested = true
   })
-  const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true })
+  const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK })
   window.__foxlake = { game, town }
   await game.start()
 }
