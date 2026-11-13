@@ -3,7 +3,7 @@
  * Panel button can toggle it with a same-origin `tl-dev-panel` message, as in
  * Fox Plains and Kestrel County): spawn any registered vehicle for yourself or
  * beside another player, see and remove the spawned ones, teleport to a place
- * or a player, and give cash. It only draws and asks; FoxLakeDev does the
+ * or a player, give cash, and trace a scanned vehicle's windows (WindowTrace.ts). It only draws and asks; FoxLakeDev does the
  * work, and the shared world decides whether each request is allowed.
  *
  * The panel is a `data-host-modal` overlay, so Rack & Reel's own input pauses
@@ -25,8 +25,11 @@ export interface PlayerChoice {
   name: string
 }
 
-/** A request the panel started: `sent` waits for the world's answer, `done` is finished here, `refused` never left. */
-export type Outcome = { state: 'sent' } | { state: 'done'; text: string; close?: boolean } | { state: 'refused'; text: string }
+/**
+ * A request the panel started: `sent` waits for the world's answer, `done` is finished here, `refused` never left.
+ * `close: 'free'` closes the panel without taking the mouse back (another tool takes over the screen).
+ */
+export type Outcome = { state: 'sent' } | { state: 'done'; text: string; close?: boolean | 'free' } | { state: 'refused'; text: string }
 
 export interface DevActions {
   /** May this player open the panel right now. */
@@ -43,6 +46,8 @@ export interface DevActions {
   goToPlace(id: string): Outcome
   goHome(): Outcome
   goToPlayer(id: string): Outcome
+  /** Opens Trace windows on the vehicle you are in, or the nearest one. */
+  traceWindows(): Outcome
 }
 
 const ANSWER_TIMEOUT_MS = 6000
@@ -99,7 +104,7 @@ export class DevPanel {
     this.status.setAttribute('role', 'status')
     this.status.setAttribute('aria-live', 'polite')
 
-    root.append(head, this.note, this.status, this.spawnSection(), this.teleportSection(), this.cashSection())
+    root.append(head, this.note, this.status, this.spawnSection(), this.teleportSection(), this.cashSection(), this.traceSection())
     document.body.append(root)
 
     addEventListener('keydown', (e) => {
@@ -137,7 +142,8 @@ export class DevPanel {
     if (this.open) this.toggle(false)
   }
 
-  toggle(force?: boolean): void {
+  /** `free`: close without locking the mouse again. */
+  toggle(force?: boolean, free = false): void {
     const open = force ?? !this.open
     if (open === this.open) return
     if (open) {
@@ -152,7 +158,7 @@ export class DevPanel {
     this.root.hidden = true
     clearInterval(this.timer)
     this.settle()
-    if (!this.canvas) return
+    if (!this.canvas || free) return
     this.canvas.focus()
     try {
       const lock = this.canvas.requestPointerLock() as unknown as Promise<void> | undefined
@@ -188,7 +194,7 @@ export class DevPanel {
     if (outcome.state === 'refused') return this.say(outcome.text, true)
     if (outcome.state === 'done') {
       this.say(outcome.text)
-      if (outcome.close) this.toggle(false)
+      if (outcome.close) this.toggle(false, outcome.close === 'free')
       return
     }
     source.disabled = true
@@ -247,6 +253,18 @@ export class DevPanel {
       this.run(give, () => this.actions.cash(this.cashTo.value || ME, Number(this.amount.value)))
     })
     section.append(el('h3', '', 'Give cash'), form)
+    return section
+  }
+
+  private traceSection(): HTMLElement {
+    const section = el('section')
+    const trace = button('Trace windows', true)
+    trace.addEventListener('click', () => this.run(trace, () => this.actions.traceWindows()))
+    section.append(
+      el('h3', '', 'Vehicle windows'),
+      el('p', '', 'Fix where the glass is on a scanned vehicle: the one you are in, or the nearest one within 25 m. Draw loops over the windows, then save; every player sees the fixed windows.'),
+      trace,
+    )
     return section
   }
 

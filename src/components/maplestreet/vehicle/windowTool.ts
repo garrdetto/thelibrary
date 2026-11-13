@@ -2,6 +2,7 @@ import { BufferAttribute, BufferGeometry, DoubleSide, Matrix3, Matrix4, Mesh, Me
 import type { Camera, Material, Object3D, Texture } from 'three'
 import { detectVehicleWindows, glassMask } from '../../../../modules-src/maplestreet/shared/WindowDetect'
 import type { GlassMask, WindowMesh } from '../../../../modules-src/maplestreet/shared/WindowDetect'
+import { pointInPolygon } from '../../../../modules-src/maplestreet/shared/VehicleGlass'
 import type { Px } from './bodySmooth'
 import { fullIndex, setFullIndex } from './displayIndex'
 
@@ -135,14 +136,7 @@ export class WindowTool {
     this.ensureParts()
     const minX = Math.min(...polygon.map(p => p.x)), maxX = Math.max(...polygon.map(p => p.x))
     const minY = Math.min(...polygon.map(p => p.y)), maxY = Math.max(...polygon.map(p => p.y))
-    const inside = (x: number, y: number) => {
-      let hit = false
-      for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const a = polygon[i], b = polygon[j]
-        if ((a.y > y) !== (b.y > y) && x < ((b.x - a.x) * (y - a.y)) / (b.y - a.y) + a.x) hit = !hit
-      }
-      return hit
-    }
+    const inside = (x: number, y: number) => pointInPolygon(x, y, polygon)
     const eye = camera.getWorldPosition(new Vector3())
     const forward = camera.getWorldDirection(new Vector3())
     const perspective = (camera as { isPerspectiveCamera?: boolean }).isPerspectiveCamera === true

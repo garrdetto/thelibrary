@@ -48,15 +48,11 @@ export function playerColor(state: GameState, playerId: string): string {
   return config.dart.flightColors[index % config.dart.flightColors.length]
 }
 
-/** Half-width of the band where the green fades to yellow, as a fraction of the ideal speed; past it the meter turns red. */
-const BAND = METER.band
-/** Half-width of the solid green: anywhere in it lands within seven holes of the aim; between the two white lines (`METER.exact` of it out, just inside its edge) is Perfect and lands on the aim point. */
-const PERFECT = METER.perfect
 /** How far past the yellow (as a fraction of the ideal speed) the meter is fully red. */
 const TO_RED = 0.05
-/** The green → yellow blend is drawn wider than the zones: yellow starts tinting the green at this fraction of the solid green's half-width, the colour is half-way at `METER.fade`, and green tints the yellow out to `BLEND_END`. Drawing only; the zones are unchanged. */
+/** The green → yellow blend is drawn wider than the zones: yellow starts tinting the green at this fraction of the solid green's half-width, the colour is half-way at `METER.fade`, and green tints the yellow out to `blendEnd()`. Drawing only; the zones are unchanged. */
 const BLEND_START = 0.4
-const BLEND_END = METER.fade + (BAND - METER.fade) * 0.6
+const blendEnd = () => METER.fade + (METER.band - METER.fade) * 0.6
 
 function meterRange(): { low: number; high: number } {
   return { low: IDEAL_SPEED * config.gesture.chargeLow, high: IDEAL_SPEED * config.gesture.chargeHigh }
@@ -74,10 +70,10 @@ function sideAt(fraction: number): string {
 
 /** The side meter's colours, left to right, from the same zones and blend as the power meter. */
 function sideGradient(): string {
-  const blend = METER.fade + (BAND - METER.fade) * 0.6
+  const blend = blendEnd()
   const stops: [string, number][] = [
-    ['#e8433a', -METER.sideRange], ['#e8433a', -BAND - TO_RED], ['#ffcf4a', -BAND], ['#ffcf4a', -blend], ['#90d15a', -METER.fade], ['#22d36a', -PERFECT * 0.4],
-    ['#22d36a', PERFECT * 0.4], ['#90d15a', METER.fade], ['#ffcf4a', blend], ['#ffcf4a', BAND], ['#e8433a', BAND + TO_RED], ['#e8433a', METER.sideRange],
+    ['#e8433a', -METER.sideRange], ['#e8433a', -METER.band - TO_RED], ['#ffcf4a', -METER.band], ['#ffcf4a', -blend], ['#90d15a', -METER.fade], ['#22d36a', -METER.perfect * 0.4],
+    ['#22d36a', METER.perfect * 0.4], ['#90d15a', METER.fade], ['#ffcf4a', blend], ['#ffcf4a', METER.band], ['#e8433a', METER.band + TO_RED], ['#e8433a', METER.sideRange],
   ]
   return `linear-gradient(to right, ${stops.map(([color, fraction]) => `${color} ${sideAt(fraction)}`).join(', ')})`
 }
@@ -139,26 +135,26 @@ export class Overlay {
     const style = this.meterBand.style
     style.bottom = '0'
     style.height = '100%'
-    style.setProperty('--red-lo', at(-BAND - TO_RED))
-    style.setProperty('--band-lo', at(-BAND))
-    style.setProperty('--perfect-lo', at(-PERFECT))
-    style.setProperty('--perfect-hi', at(PERFECT))
-    style.setProperty('--blend-lo', at(-PERFECT * BLEND_START))
-    style.setProperty('--blend-hi', at(PERFECT * BLEND_START))
+    style.setProperty('--red-lo', at(-METER.band - TO_RED))
+    style.setProperty('--band-lo', at(-METER.band))
+    style.setProperty('--perfect-lo', at(-METER.perfect))
+    style.setProperty('--perfect-hi', at(METER.perfect))
+    style.setProperty('--blend-lo', at(-METER.perfect * BLEND_START))
+    style.setProperty('--blend-hi', at(METER.perfect * BLEND_START))
     style.setProperty('--fade-lo', at(-METER.fade))
     style.setProperty('--fade-hi', at(METER.fade))
-    style.setProperty('--tail-lo', at(-BLEND_END))
-    style.setProperty('--tail-hi', at(BLEND_END))
-    style.setProperty('--exact-lo', at(-PERFECT * METER.exact))
-    style.setProperty('--exact-hi', at(PERFECT * METER.exact))
+    style.setProperty('--tail-lo', at(-blendEnd()))
+    style.setProperty('--tail-hi', at(blendEnd()))
+    style.setProperty('--exact-lo', at(-METER.perfect * METER.exact))
+    style.setProperty('--exact-hi', at(METER.perfect * METER.exact))
     const sideBand = el<HTMLDivElement>('hmeter-band').style
     sideBand.background = sideGradient()
-    sideBand.setProperty('--exact-lo', sideAt(-PERFECT * METER.exact))
-    sideBand.setProperty('--exact-hi', sideAt(PERFECT * METER.exact))
+    sideBand.setProperty('--exact-lo', sideAt(-METER.perfect * METER.exact))
+    sideBand.setProperty('--exact-hi', sideAt(METER.perfect * METER.exact))
     this.meterWrap.style.setProperty('--h-scale', String(sideScale()))
     this.meterWrap.style.setProperty('--green-at', String((IDEAL_SPEED - low) / (high - low)))
-    style.setProperty('--band-hi', at(BAND))
-    style.setProperty('--red-hi', at(BAND + TO_RED))
+    style.setProperty('--band-hi', at(METER.band))
+    style.setProperty('--red-hi', at(METER.band + TO_RED))
     this.setPower(null)
     this.announce.style.setProperty('--announce-ms', `${config.timing.announceMs}ms`)
   }
@@ -191,7 +187,7 @@ export class Overlay {
       : statusText ?? (mine ? (state.players.length > 1 || player.members ? `${who} to throw` : 'Your throw') : `${who} is throwing`)
     this.renderThrows(player.currentRoundThrows)
     this.renderCheckout(state, player)
-    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? 'Hold to aim, let go in the green for height · click again in the green for line · Space works too' : ''
+    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? (this.cross ? 'Hold to aim, let go in the green for height · click again in the green for line · Space works too' : 'Hold to aim and power up · let go in the green · Space works too') : ''
   }
 
   private renderCards(state: GameState): void {
@@ -296,7 +292,7 @@ export class Overlay {
     }
   }
 
-  /** Turns the cross meter on or off: a side meter crossing the power meter at the green. The page always runs it on. */
+  /** Turns the cross meter on or off: a side meter crossing the power meter at the green. Off is the classic one-stage meter, which the administrator can offer (`meter.classic` in shared/Settings). */
   setCross(on: boolean): void {
     if (on === this.cross) return
     this.cross = on

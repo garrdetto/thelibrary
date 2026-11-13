@@ -1,6 +1,7 @@
 /**
  * Fox Lake's developer tools on the client: the F8 panel (DevPanel.ts), the
- * spawned vehicles anyone can drive (SharedCars.ts) and the teleports. Town
+ * spawned vehicles anyone can drive (SharedCars.ts), the teleports and the
+ * Trace windows tool (WindowTrace.ts). Town
  * (town/FoxLakeTown.ts) hands it the shared world's messages and a few hooks.
  *
  * The world says who may use the panel (`welcome.dev`: an administrator's
@@ -23,6 +24,7 @@ import { DevPanel, type DevActions, type Outcome, type PlayerChoice, type Vehicl
 import { FOX_LAKE_PLACES, type Place } from './Places'
 import { restingPose, spotsAround, yawFromHeading, yawFromTownYaw } from './Placement'
 import { SharedCars, type SpawnedRow } from './SharedCars'
+import { WindowTrace } from './WindowTrace'
 
 export interface DevHooks {
   host: GameHost
@@ -38,6 +40,8 @@ export interface DevHooks {
 }
 
 const DRY = 0.25
+/** How far away (m) a vehicle can be for Trace windows. */
+const TRACE_REACH = 25
 const GROUPS = ['Built-in', 'Bundled', 'Published', 'Retired']
 const isNpc = (id: string) => id.startsWith('npc-')
 
@@ -45,6 +49,7 @@ export class FoxLakeDev implements DevActions {
   readonly cars: SharedCars
   private readonly panel: DevPanel
   private readonly parking: Parking
+  private readonly trace: WindowTrace
   private snaps: PlayerSnap[] = []
   private dev = false
   private offline = false
@@ -53,6 +58,10 @@ export class FoxLakeDev implements DevActions {
     this.cars = new SharedCars(hooks)
     this.parking = new Parking(hooks.physics)
     this.panel = new DevPanel(this, hooks.host.ctx.engine.getRenderingCanvas(), () => this.dev && hooks.host.playing && !hooks.host.hud.modalOpen)
+    this.trace = new WindowTrace(hooks.host, (text) => {
+      hooks.host.hud.toast(text)
+      hooks.host.ctx.engine.getRenderingCanvas()?.focus()
+    })
   }
 
   // ------------------------------------------------------------ town hooks
@@ -86,6 +95,7 @@ export class FoxLakeDev implements DevActions {
 
   update(dt: number, night: number): void {
     this.cars.update(dt, night)
+    this.trace.update()
     this.panel.update()
   }
 
@@ -102,7 +112,7 @@ export class FoxLakeDev implements DevActions {
   }
 
   debug(): Record<string, unknown> {
-    return { allowed: this.dev, solo: this.offline, open: this.panel.open, ...this.cars.debug() }
+    return { allowed: this.dev, solo: this.offline, open: this.panel.open, tracing: this.trace.active, ...this.cars.debug() }
   }
 
   // ------------------------------------------------------------ panel data
@@ -198,6 +208,21 @@ export class FoxLakeDev implements DevActions {
     const at = townToScene(p.x, p.y, p.z)
     const side = { x: at.x + 2.2 * Math.cos(p.yaw), z: at.z + 2.2 * Math.sin(p.yaw) }
     return this.goTo(side.x, side.z, Math.atan2(at.x - side.x, at.z - side.z), p.name)
+  }
+
+  /** Trace windows on the vehicle the administrator is in, or the nearest drawn one within TRACE_REACH. */
+  traceWindows(): Outcome {
+    const { host, models } = this.hooks
+    const at = host.driving ? host.driving.position : host.player
+    let best: { view: ReturnType<VehicleModels['views']>[number]; d: number } | null = null
+    for (const view of models.views()) {
+      if (!view.root.isEnabled()) continue
+      const d = Vector3.Distance(view.root.getAbsolutePosition(), at)
+      if (d <= TRACE_REACH && (!best || d < best.d)) best = { view, d }
+    }
+    if (!best) return { state: 'refused', text: `There is no vehicle within ${TRACE_REACH} m. Walk up to one (or spawn one) and try again.` }
+    const why = this.trace.start(best.view)
+    return why ? { state: 'refused', text: why } : { state: 'done', text: 'Tracing windows.', close: 'free' }
   }
 
   // ------------------------------------------------------------ the ground

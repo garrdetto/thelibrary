@@ -3,7 +3,9 @@ import * as THREE from 'three/webgpu'
 import { App, HubBridge, Scores, applyEnvironment, createLighting, createPost, resolveQuality } from '../../engine'
 import { config } from './config'
 import { DartsSocket, roomInfo } from './net/Socket'
-import { isBoardStyle, type BoardStyle } from './render/BoardTexture'
+import { applyBoardColors, isBoardStyle, type BoardStyle } from './render/BoardTexture'
+import { loadDartsSettings } from './net/Settings'
+import { applyMeterSettings, meterChoice, type DartsSettings } from './shared/Settings'
 import { createDartKit, aimDart } from './render/Dart'
 import { createPub } from './render/Pub'
 import { LocalSession, OnlineSession, type Session } from './session/Session'
@@ -127,12 +129,12 @@ const TEAM_PLAY_NOTES: Record<TeamPlay, string> = {
 
 const BOARD_KEY = 'tl-darts-board-v2'
 
-function savedBoardStyle(): BoardStyle {
+function savedBoardStyle(fallback: BoardStyle): BoardStyle {
   try {
     const value = localStorage.getItem(BOARD_KEY)
-    return isBoardStyle(value) ? value : 'spider'
+    return isBoardStyle(value) ? value : fallback
   } catch {
-    return 'spider'
+    return fallback
   }
 }
 
@@ -144,11 +146,43 @@ function saveBoardStyle(style: BoardStyle): void {
   }
 }
 
+const METER_KEY = 'tl-darts-meter-v2'
+
+type MeterStyle = 'classic' | 'cross'
+
+function savedMeterStyle(): MeterStyle | null {
+  try {
+    const value = localStorage.getItem(METER_KEY)
+    return value === 'classic' || value === 'cross' ? value : null
+  } catch {
+    return null
+  }
+}
+
+function saveMeterStyle(style: MeterStyle): void {
+  try {
+    localStorage.setItem(METER_KEY, style)
+  } catch {
+    /* private mode */
+  }
+}
+
+/** Puts the administrator's settings in place before anything is built: the meter's zones (shared with the online room), its swing timing, the flight colours and the board colours. */
+function applySettings(settings: DartsSettings): void {
+  applyMeterSettings(settings.meter)
+  config.gesture.chargeSeconds = settings.meter.chargeSeconds
+  config.gesture.chargeLow = settings.meter.chargeLow
+  config.gesture.chargeHigh = settings.meter.chargeHigh
+  config.dart.flightColors = [...settings.darts.flightColors]
+  applyBoardColors(settings.steel, settings.spider)
+}
+
 const CPU_NAMES:Record<CpuLevel, string> = { pub: 'Pub regular', league: 'League player', county: 'County player', pro: 'Touring pro' }
 
 async function boot(): Promise<void> {
   const container = byId<HTMLDivElement>('stage')
   document.title = `${config.meta.title} · the library`
+  const settingsLoad = loadDartsSettings()
 
   const app = await App.create({ container, config: config.engine })
   if (app.backend === 'webgpu') {
@@ -183,16 +217,18 @@ async function boot(): Promise<void> {
   app.graph.add('world', lighting.root)
   app.own(createPost(app, config.engine.post, quality.settings))
 
+  const settings = await settingsLoad
+  applySettings(settings)
   const pub = createPub(app.renderer, app.scene, {
     textureSize: quality.tier === 'low' ? config.board.lowTextureSize : sharp ? config.board.highTextureSize : config.board.textureSize,
     shadows: quality.settings.shadows,
     shadowMapSize: Math.min(2048, quality.settings.shadowMapSize),
-    style: savedBoardStyle(),
+    style: savedBoardStyle(settings.defaults.board),
   })
   app.own(pub)
   app.graph.add('world', pub.root)
 
-  const kit = createDartKit()
+  const kit = createDartKit(settings.darts)
   kit.setStyle(pub.style)
   app.own(kit)
   void kit.loadModels()
@@ -282,8 +318,27 @@ async function boot(): Promise<void> {
   })
   app.own(input)
   input.setAim(input.aimX, input.aimY)
-  input.cross = true
-  overlay.setCross(true)
+  const meterOptions = meterChoice(settings.meter.classic)
+  const meterRadios = () => [...document.querySelectorAll<HTMLInputElement>('input[name="meterStyle"], input[name="pauseMeter"]')]
+  byId('meter-choice').hidden = !meterOptions.offered
+  byId('pause-meter-choice').hidden = !meterOptions.offered
+  byId('classic-help').hidden = settings.meter.classic === 'off'
+  const applyMeter = (style: MeterStyle) => {
+    for (const radio of meterRadios()) radio.checked = radio.value === style
+    if (input.holding) input.interrupt()
+    input.cross = style === 'cross'
+    overlay.setCross(input.cross)
+    meterKey = ''
+    if (shown) overlay.render(shown, localIds)
+  }
+  for (const radio of meterRadios()) {
+    radio.addEventListener('change', () => {
+      if (!radio.checked || !meterOptions.offered) return
+      const style: MeterStyle = radio.value === 'classic' ? 'classic' : 'cross'
+      saveMeterStyle(style)
+      applyMeter(style)
+    })
+  }
 
   const refreshHand = () => {
     const state = session?.state ?? null
@@ -699,10 +754,11 @@ async function boot(): Promise<void> {
   }
   const boardDefaults = (style: BoardStyle) => {
     const field = (name: string) => form.elements.namedItem(name) as HTMLInputElement
-    field('doubleOut').checked = style === 'steel'
-    field('doubleBull').checked = true
+    field('doubleOut').checked = style === 'steel' ? settings.defaults.doubleOutSteel : settings.defaults.doubleOutSoft
+    field('doubleBull').checked = settings.defaults.doubleBull
   }
   boardDefaults(pub.style)
+  ;(form.elements.namedItem('cpuLevel') as HTMLSelectElement).value = settings.defaults.cpuLevel
   const showBook = (fresh = false) => {
     const setup = readSetup(form)
     void book.show(setup.match.board ?? 'steel', recordMode(setup.match), fresh)
@@ -831,6 +887,7 @@ async function boot(): Promise<void> {
   const stageSize = { width: container.clientWidth, height: container.clientHeight }
   const hudSize = { width: overlay.hud.clientWidth, height: overlay.hud.clientHeight }
   let meterKey = ''
+  applyMeter(meterOptions.offered ? savedMeterStyle() ?? meterOptions.fallback : meterOptions.fallback)
   const sizes = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const target = entry.target === container ? stageSize : hudSize

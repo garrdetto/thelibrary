@@ -9,8 +9,11 @@
  *  - it faces sideways rather than up or down,
  *  - on the sides of the body it faces outward.
  *
- * The result is then cleaned up across shared edges and small patches are
- * dropped. Renderer-free: positions are in the chassis frame (x forward, y up,
+ * The result is then cleaned up across shared edges: lone hits go, small
+ * patches (dark trim, shadows) are dropped and small holes inside a pane
+ * (reflections painted into the glass) are filled, so panes come out whole
+ * instead of as scattered triangles. `tidyWindows` runs the last two on any
+ * flag list (a traced one too). Renderer-free: positions are in the chassis frame (x forward, y up,
  * z right, metres) and colours are 0..1 sRGB.
  */
 
@@ -40,6 +43,8 @@ export interface WindowOptions {
   fillShare: number;
   /** Connected patches smaller than this (m²) are dropped. */
   minPatchArea: number;
+  /** Body patches ringed by glass and smaller than this (m²) become glass. */
+  maxHoleArea: number;
   /** Fewer window triangles than this counts as no windows found. */
   minTriangles: number;
 }
@@ -60,6 +65,7 @@ export const WINDOW_DEFAULTS: WindowOptions = {
   passes: 2,
   fillShare: 0.66,
   minPatchArea: 0.06,
+  maxHoleArea: 0.25,
   minTriangles: 24,
 };
 
@@ -220,6 +226,13 @@ function cleanUp(flags: Uint8Array, area: Float32Array, near: Int32Array, o: Win
       if (glass >= 2 && glass / around >= o.fillShare) flags[t] = 1;
     }
   }
+  dropIslands(flags, area, near, o.minPatchArea);
+  fillHoles(flags, area, near, o.maxHoleArea);
+}
+
+/** Connected glass patches smaller than `minArea` go back to body. */
+function dropIslands(flags: Uint8Array, area: Float32Array, near: Int32Array, minArea: number) {
+  const count = flags.length;
   const seen = new Uint8Array(count);
   const stack: number[] = [], patch: number[] = [];
   for (let start = 0; start < count; start++) {
@@ -234,8 +247,68 @@ function cleanUp(flags: Uint8Array, area: Float32Array, near: Int32Array, o: Win
       total += area[t];
       for (let e = 0; e < 3; e++) { const n = near[t * 3 + e]; if (n >= 0 && flags[n] && !seen[n]) { seen[n] = 1; stack.push(n); } }
     }
-    if (total < o.minPatchArea) for (const t of patch) flags[t] = 0;
+    if (total < minArea) for (const t of patch) flags[t] = 0;
   }
+}
+
+/**
+ * Body patches whose every edge leads to glass (no open mesh edge, at least one glass neighbour) and smaller than
+ * `maxArea` become glass: specks of reflection painted into a pane. Separate closed pieces never touch glass, and
+ * the body around the windows is one big patch, so neither is filled.
+ */
+function fillHoles(flags: Uint8Array, area: Float32Array, near: Int32Array, maxArea: number) {
+  const count = flags.length;
+  const seen = new Uint8Array(count);
+  const stack: number[] = [], patch: number[] = [];
+  for (let start = 0; start < count; start++) {
+    if (flags[start] || seen[start]) continue;
+    let total = 0, open = false, glass = false;
+    patch.length = 0;
+    stack.push(start);
+    seen[start] = 1;
+    while (stack.length) {
+      const t = stack.pop()!;
+      patch.push(t);
+      total += area[t];
+      for (let e = 0; e < 3; e++) {
+        const n = near[t * 3 + e];
+        if (n < 0) { open = true; continue; }
+        if (flags[n]) { glass = true; continue; }
+        if (!seen[n]) { seen[n] = 1; stack.push(n); }
+      }
+    }
+    if (glass && !open && total < maxArea) for (const t of patch) flags[t] = 1;
+  }
+}
+
+function triangleAreas(mesh: Pick<WindowMesh, 'positions' | 'indices'>, count: number): Float32Array {
+  const area = new Float32Array(count);
+  const p = mesh.positions, index = mesh.indices ?? null;
+  for (let t = 0; t < count; t++) {
+    const a = index ? index[t * 3] : t * 3, b = index ? index[t * 3 + 1] : t * 3 + 1, c = index ? index[t * 3 + 2] : t * 3 + 2;
+    const ux = p[b * 3] - p[a * 3], uy = p[b * 3 + 1] - p[a * 3 + 1], uz = p[b * 3 + 2] - p[a * 3 + 2];
+    const vx = p[c * 3] - p[a * 3], vy = p[c * 3 + 1] - p[a * 3 + 1], vz = p[c * 3 + 2] - p[a * 3 + 2];
+    area[t] = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+  }
+  return area;
+}
+
+/**
+ * Cleans a flag list in place without growing or shrinking pane edges: glass patches smaller than `minPatchArea`
+ * are dropped and holes smaller than `maxHoleArea` filled. Positions in metres. Returns how many flags changed.
+ */
+export function tidyWindows(mesh: Pick<WindowMesh, 'positions' | 'indices'>, flags: Uint8Array, options: Partial<Pick<WindowOptions, 'minPatchArea' | 'maxHoleArea'>> = {}): number {
+  const o = { ...WINDOW_DEFAULTS, ...options };
+  const count = Math.min(flags.length, triangleCount({ ...mesh, uvs: null, mask: null }));
+  const before = Uint8Array.from(flags);
+  const area = triangleAreas(mesh, count);
+  const near = neighbours({ ...mesh, uvs: null, mask: null }, count);
+  const own = flags.length === count ? flags : flags.subarray(0, count);
+  dropIslands(own, area, near, o.minPatchArea);
+  fillHoles(own, area, near, o.maxHoleArea);
+  let changed = 0;
+  for (let t = 0; t < flags.length; t++) if (flags[t] !== before[t]) changed++;
+  return changed;
 }
 
 function detect(mesh: WindowMesh, o: WindowOptions, bounds: BodyBounds) {

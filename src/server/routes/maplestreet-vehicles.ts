@@ -7,7 +7,7 @@ import { refreshWorldCatalog, requireMapleAdmin } from '../maplestreet-admin'
 import { assetStatusSchema, wantsDrafts } from '../maplestreet-assets'
 import { currentUser } from '../auth'
 import { deleteMapleAsset } from '../maplestreet-asset-delete'
-import { BUNDLED_ID_PATTERN, bundledVehicle, ensureBundledOverride, getStoreVehicle, insertStoreVehicle, listStoreVehicles, replaceStoreVehicle, updateStoreVehicle, VEHICLE_HD_KEY, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
+import { BUNDLED_ID_PATTERN, bundledVehicle, ensureBundledOverride, getStoreVehicle, insertStoreVehicle, listStoreVehicles, replaceStoreVehicle, setStoreVehicleGlass, storedVehicleGlass, updateStoreVehicle, VEHICLE_HD_KEY, VEHICLE_MODEL_KEY, VEHICLE_WHEEL_KEY, vehicleGlassSchema, vehicleNameSchema, vehicleSpecSchema } from '../maplestreet-vehicles'
 
 const idSchema = z.string().uuid()
 const anyIdSchema = z.union([idSchema, z.string().regex(BUNDLED_ID_PATTERN)])
@@ -19,6 +19,10 @@ const updateSchema = z.object({
   spec: vehicleSpecSchema.optional(),
 }).strict()
 const deleteSchema = z.object({ id: anyIdSchema }).strict()
+/** Traced windows from Fox Lake's developer panel; null goes back to the automatic detection. */
+const glassUpdateSchema = z.object({ id: anyIdSchema, glass: vehicleGlassSchema.nullable() }).strict()
+const UPDATE_LIMIT = 64 * 1024
+const GLASS_UPDATE_LIMIT = 1024 * 1024
 
 function check<T>(schema: z.ZodType<T>, value: unknown): T {
   const result = schema.safeParse(value)
@@ -79,6 +83,7 @@ async function publish(request: Request, env: Env) {
   const form = await request.formData()
   const name = check(vehicleNameSchema, form.get('name'))
   const spec = check(vehicleSpecSchema, parseJsonField(form, 'spec')) as CustomVehicleSpec
+  delete spec.glass
   const model = await readModel(form.get('model'), VEHICLE_LIMITS.modelBytes, 'Vehicle models')
   if (!model) throw new HttpError(400, 'Choose a .glb or .gltf model to publish.')
   const wheel = await readModel(form.get('wheel'), VEHICLE_LIMITS.wheelBytes, 'Wheel models')
@@ -123,12 +128,29 @@ async function saveOver(env: Env, id: string, userId: string, name: string, spec
 
 async function update(request: Request, env: Env) {
   const user = await requireAdmin(request, env)
-  const input = check(updateSchema, await readJson(request, 64 * 1024))
+  const body = await readJson(request, GLASS_UPDATE_LIMIT)
+  if (body && typeof body === 'object' && 'glass' in body && !('spec' in body)) return updateGlass(env, user.id, check(glassUpdateSchema, body))
+  if (JSON.stringify(body).length > UPDATE_LIMIT) throw new HttpError(413, 'That update is too large.')
+  const input = check(updateSchema, body)
   if (bundledVehicle(input.id)) {
     if (input.status === 'draft') throw new HttpError(400, 'Built-in vehicles can’t be turned into drafts. Retire it instead.')
     await ensureBundledOverride(env, input.id, user.id)
   }
-  const changed = await updateStoreVehicle(env, input.id, { active: input.active, status: input.status, name: input.name, spec: input.spec as CustomVehicleSpec | undefined })
+  const spec = input.spec as CustomVehicleSpec | undefined
+  if (spec && !spec.glass) {
+    const kept = await storedVehicleGlass(env, input.id)
+    if (kept) spec.glass = kept
+  }
+  const changed = await updateStoreVehicle(env, input.id, { active: input.active, status: input.status, name: input.name, spec })
+  if (!changed) return json({ error: 'Vehicle not found.' }, 404)
+  await refreshWorldCatalog(env)
+  return json({ vehicle: await getStoreVehicle(env, input.id) })
+}
+
+/** Saves or clears the windows traced in Fox Lake's developer panel. Bundled vehicles get their override row first. */
+async function updateGlass(env: Env, userId: string, input: z.infer<typeof glassUpdateSchema>) {
+  if (bundledVehicle(input.id)) await ensureBundledOverride(env, input.id, userId)
+  const changed = await setStoreVehicleGlass(env, input.id, input.glass)
   if (!changed) return json({ error: 'Vehicle not found.' }, 404)
   await refreshWorldCatalog(env)
   return json({ vehicle: await getStoreVehicle(env, input.id) })

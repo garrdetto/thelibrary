@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { AudioLines, Car, FerrisWheel, Flag, Gauge, Image, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Settings2, ShieldCheck, Sparkles, Trophy, Users } from 'lucide-react'
+import { AudioLines, Car, FerrisWheel, Flag, Gauge, Image, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Settings2, ShieldCheck, Sparkles, Target, Trophy, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
@@ -13,6 +13,7 @@ const ParkRideCreator = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.
 const MapleStreetVehicleEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./maplestreet/vehicle/VehicleEditor'))
 const ShortTrackCarEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./shorttrack/cars/CarEditor'))
 const ShortTrackHandling = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./shorttrack/HandlingSettings'))
+const DartsSettings = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./darts/DartsSettings'))
 const BushLeagueAssets = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./bushleague/BushLeagueAssets'))
 
 const areas = [
@@ -35,6 +36,7 @@ const sections = [
   { id: 'shorttrack-cars', area: 'modules', group: 'Short Track Showdown', label: 'Race cars', icon: Flag, title: 'Short Track race cars', blurb: 'Generate car bodies with Meshy, fit wheels, paint and race numbers, and publish them to the Short Track Showdown vehicle list.' },
   { id: 'shorttrack-handling', area: 'modules', group: 'Short Track Showdown', label: 'Handling', icon: Gauge, title: 'Short Track handling', blurb: 'Grip, power, brakes and steering for each track. Changes apply to every driver and the AI field from their next race.' },
   { id: 'bushleague', area: 'modules', group: 'Bush League Baseball', label: 'Assets', icon: Trophy, title: 'Bush League Baseball assets', blurb: 'Generate players, gear, park props and mascots with Meshy from the committed prompt list, then refine, rig, animate and download them for the Blender clean-up.' },
+  { id: 'darts', area: 'modules', group: 'Darts', label: 'Settings', icon: Target, title: 'Darts settings', blurb: 'Tune the throw meter, offer or hide the classic meter, and pick the colours of both boards and the darts.' },
   { id: 'park-rides', area: 'modules', group: 'Thrill Park', label: 'Ride creator', icon: FerrisWheel, title: 'Thrill Park ride creator', blurb: 'Generate rides with Meshy, set how they move and what they cost, and publish them to every park’s build menu.' },
 ] as const
 type Section = (typeof sections)[number]['id']
@@ -130,6 +132,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
         {section === 'shorttrack-cars' && <Suspense fallback={<Loading text="Opening the car editor…"/>}><ShortTrackCarEditor/></Suspense>}
         {section === 'shorttrack-handling' && <Suspense fallback={<Loading text="Opening the handling settings…"/>}><ShortTrackHandling/></Suspense>}
         {section === 'bushleague' && <Suspense fallback={<Loading text="Opening the asset batch…"/>}><BushLeagueAssets/></Suspense>}
+        {section === 'darts' && <Suspense fallback={<Loading text="Opening the Darts settings…"/>}><DartsSettings/></Suspense>}
         {section === 'park-rides' && <Suspense fallback={<Loading text="Opening the ride creator…"/>}><ParkRideCreator/></Suspense>}
       </div>
     </div>

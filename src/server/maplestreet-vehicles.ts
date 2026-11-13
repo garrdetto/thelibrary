@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { BUNDLED_VEHICLES } from '../../modules-src/maplestreet/shared/BundledVehicles'
 import { BRAND_PATTERN, DRIVE_TEMPLATES, MAX_DOOR_ROWS, TRAFFIC_COUNT_MAX, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
+import { GLASS_LIMITS, GLASS_RUNS_PATTERN, isValidVehicleGlass, type VehicleGlass } from '../../modules-src/maplestreet/shared/VehicleGlass'
 import { isValidShape, LAMP_DEPTH_LIMIT, LAMP_GRID, LAMP_SIZE_LIMITS, LAMP_STYLE_LIMITS, SHAPE_LIMITS } from '../../modules-src/maplestreet/shared/Shapes'
 import type { Env } from './env'
 import { getAsset, insertAsset, listAssets, statusFrom, updateAsset, type AssetFiles, type AssetRow, type AssetStatus } from './maplestreet-assets'
@@ -39,6 +40,17 @@ const lampDepth = z.array(n(-LAMP_DEPTH_LIMIT, LAMP_DEPTH_LIMIT)).length(LAMP_GR
 const lampStyle = z.object({ kind: z.enum(['flat', '3d']), bulge: n(0, LAMP_STYLE_LIMITS.bulgeMax), recess: n(LAMP_STYLE_LIMITS.recessMin, LAMP_STYLE_LIMITS.recessMax), rim: n(LAMP_STYLE_LIMITS.rimMin, LAMP_STYLE_LIMITS.rimMax), cut: z.boolean() }).strict()
 
 const partBox = z.object({ front: n(-10, 10), back: n(-10, 10), bottom: n(-10, 10), top: n(-10, 10), drop: z.boolean().optional(), shape: shapeSchema.optional() }).strict().refine(b => b.front > b.back && b.top > b.bottom, 'A part box needs its front ahead of its back and its top above its bottom.')
+
+const glassPartSchema = z.object({
+  mesh: z.number().int().min(0).max(GLASS_LIMITS.meshIndex),
+  tris: z.number().int().min(1).max(GLASS_LIMITS.tris),
+  verts: z.number().int().min(3).max(GLASS_LIMITS.verts),
+  runs: z.string().max(GLASS_LIMITS.runsChars).regex(GLASS_RUNS_PATTERN),
+}).strict()
+
+/** Traced windows (modules-src/maplestreet/shared/VehicleGlass.ts). */
+export const vehicleGlassSchema = z.object({ v: z.literal(1), parts: z.array(glassPartSchema).max(GLASS_LIMITS.parts) }).strict()
+  .refine(isValidVehicleGlass, 'The traced windows don’t fit the model. Trace them again.')
 
 export const vehicleSpecSchema = z.object({
   template: z.enum(DRIVE_TEMPLATES),
@@ -82,6 +94,7 @@ export const vehicleSpecSchema = z.object({
     trunk: partBox.nullable(),
   }).strict().optional(),
   lampShapes: z.object({ head: shapeSchema.optional(), tail: shapeSchema.optional(), headSize: lampSize.optional(), tailSize: lampSize.optional(), headDepth: lampDepth.optional(), tailDepth: lampDepth.optional(), headStyle: lampStyle.optional(), tailStyle: lampStyle.optional() }).strict().optional(),
+  glass: vehicleGlassSchema.optional(),
 }).strict()
 
 export const bundledVehicle = (id: string) => BUNDLED_VEHICLES.find(vehicle => vehicle.id === id) ?? null
@@ -135,6 +148,26 @@ export async function ensureBundledOverride(env: Env, id: string, createdBy: str
 
 export async function updateStoreVehicle(env: Env, id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; spec?: CustomVehicleSpec }) {
   return updateAsset(env, 'vehicle', id, { name: changes.name, status: statusFrom(changes), spec: changes.spec })
+}
+
+/**
+ * Saves (or, with null, removes) a vehicle's traced windows, keeping the rest of its spec. The asset's version goes
+ * up like any other edit, so pages pick the change up with the record.
+ */
+export async function setStoreVehicleGlass(env: Env, id: string, glass: VehicleGlass | null) {
+  const asset = await getAsset(env, 'vehicle', id)
+  if (!asset || !asset.spec || typeof asset.spec !== 'object') return 0
+  const spec = { ...(asset.spec as CustomVehicleSpec) }
+  if (glass) spec.glass = glass
+  else delete spec.glass
+  return updateAsset(env, 'vehicle', id, { spec })
+}
+
+/** The traced windows already stored for a vehicle, if any. */
+export async function storedVehicleGlass(env: Env, id: string): Promise<VehicleGlass | undefined> {
+  const asset = await getAsset(env, 'vehicle', id)
+  const glass = (asset?.spec as CustomVehicleSpec | undefined)?.glass
+  return glass && isValidVehicleGlass(glass) ? glass : undefined
 }
 
 /**

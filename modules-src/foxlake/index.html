@@ -229,6 +229,23 @@
       .fl-dev-grid{display:flex;flex-wrap:wrap;gap:6px}
       .fl-dev-cash{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end}
       @media (max-width:640px){.fl-dev{top:8px;right:8px;width:calc(100vw - 16px);max-height:calc(100vh - 16px)}.fl-dev-cash{grid-template-columns:1fr}}
+      .fl-trace{position:fixed;inset:0;z-index:44}
+      .fl-trace[hidden]{display:none}
+      .fl-trace-sketch{position:absolute;inset:0;width:100%;height:100%;cursor:crosshair;touch-action:none}
+      .fl-trace-bar{position:absolute;top:14px;left:14px;display:grid;gap:9px;width:min(340px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;padding:13px 15px 15px;border-radius:14px;background:rgba(22,20,17,.94);border:1px solid rgba(201,155,90,.5);box-shadow:0 24px 60px -24px #000}
+      .fl-trace-bar h2{margin:0;font:800 17px var(--head);color:var(--bone)}
+      .fl-trace-bar p{margin:0;color:var(--soft);font-size:12.5px}
+      .fl-trace-modes{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
+      .fl-trace-modes legend{padding:0 4px;font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--bronze)}
+      .fl-trace-bar label{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;color:var(--text);cursor:pointer}
+      .fl-trace-bar input:focus-visible{outline:3px solid var(--ember);outline-offset:2px}
+      .fl-trace-options{display:grid;gap:5px}
+      .fl-trace-grid{display:flex;flex-wrap:wrap;gap:6px}
+      .fl-trace-bar .rr-btn{padding:6px 11px;font-size:12.5px}
+      .fl-trace-bar .rr-btn[hidden]{display:none}
+      .fl-trace-status{min-height:1.4em;font-weight:700;color:var(--good)!important}
+      .fl-trace-status.warn{color:#ffb39a!important}
+      @media (max-width:640px){.fl-trace-bar{top:8px;left:8px;width:calc(100vw - 16px);max-height:45vh}}
       .pause-controls{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px}.pause-control{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text)}.pause-keys{display:inline-flex;gap:3px;flex:none;min-width:72px}.pause-keys kbd.mouse{font-size:10px;text-transform:uppercase;letter-spacing:.3px}
       .pause-card{width:min(620px,100%);max-height:calc(100vh - 32px);overflow:auto;gap:12px}
       .pause-head{display:flex;justify-content:space-between;align-items:center;gap:12px}

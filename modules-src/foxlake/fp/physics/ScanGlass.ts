@@ -1,15 +1,24 @@
 /**
  * Clear glass for scanned vehicles. A Meshy or photo scan has its windows
  * painted into the body texture, so they read as flat dark panels. Each body
- * triangle is classified once per geometry: it is a window when its texture
- * under it is glass-coloured (dark and grey, or a grey-blue sky reflection),
- * it sits in the greenhouse band of the body (above the beltline, below the
- * roof), faces sideways rather than up or down, and on the sides faces
- * outward. Lone hits are dropped and small gaps filled across shared edges.
+ * triangle is classified once per geometry by the shared detector
+ * (maplestreet/shared/WindowDetect.ts, the same one the vehicle editor uses):
+ * glass-coloured texture, in the greenhouse band, facing sideways and, on the
+ * sides, outward; then lone hits and small patches are dropped and small holes
+ * in a pane filled. When the administrator traced the windows in the
+ * developer panel (the vehicle's `glass`, maplestreet/shared/VehicleGlass.ts),
+ * that list is used instead.
+ *
  * The window triangles move to the end of the index buffer and draw as a
  * second submesh in clear glass; a clone of the body draws only its back
  * faces in a dark upholstery colour, which is the cab's interior seen through
  * the glass.
+ *
+ * Triangles keep their number from the model file (`rememberTriangles`, called
+ * before anything cuts or reorders the index buffer), so traced glass stays on
+ * the right faces after the lamp cut and the reorder here. `reglaze` redoes a
+ * geometry's split with new flags and updates every mesh drawing it, which is
+ * how the trace tool previews its edits.
  */
 import { Matrix, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
@@ -23,38 +32,22 @@ import type { Geometry } from '@babylonjs/core/Meshes/geometry';
 import type { Material } from '@babylonjs/core/Materials/material';
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Scene } from '@babylonjs/core/scene';
+import { detectWindows, isGlassColor, type GlassMask } from '../../../maplestreet/shared/WindowDetect';
 
-/** The greenhouse band, as a fraction of the body's height from its lowest point. */
-const BAND = { low: 0.55, high: 0.95 } as const;
-const MIN_WINDOW_TRIS = 24;
 /** The cab interior is drawn from the body's upper part only (from this fraction of its height) and only as long as the windows, so gaps in a scan's bed, hood or sills don't show it. */
 const INTERIOR_FROM = 0.42;
 /**
- * Where each triangle's texture is read (barycentric weights): its centre and three points pulled in from the
- * corners, never the corners themselves, which sit on the atlas islands' edges next to dark padding.
+ * Where each triangle's texture is read: its centre and three points pulled 60 % of the way in from the corners
+ * (barycentric 0.6/0.2/0.2), never the corners themselves, which sit on the atlas islands' edges next to dark padding.
  */
-const INSIDE = [[1 / 3, 1 / 3, 1 / 3], [0.6, 0.2, 0.2], [0.2, 0.6, 0.2], [0.2, 0.2, 0.6]] as const;
-/** The smallest window pane kept, in square metres of the body. */
-const MIN_PANE_AREA = 0.06;
-
-interface Mask {
-  width: number;
-  height: number;
-  glass: Uint8Array;
-}
-
-const masks = new Map<string, Promise<Mask | null>>();
+const DETECT = { cornerPull: 0.6 } as const;
 
 /** 1 where a texel looks like window glass. */
-export function glassTexel(r: number, g: number, b: number): boolean {
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-  const sat = max > 0 ? (max - min) / max : 0;
-  if (lum < 0.2 && sat < 0.38) return true;
-  return lum < 0.5 && sat < 0.42 && b >= r + 0.02 && b >= g - 0.02;
-}
+export const glassTexel = (r: number, g: number, b: number): boolean => isGlassColor(r, g, b);
 
-function maskOf(tex: BaseTexture): Promise<Mask | null> {
+const masks = new Map<string, Promise<GlassMask | null>>();
+
+function maskOf(tex: BaseTexture): Promise<GlassMask | null> {
   const size = tex.getSize();
   const id = `${tex.uniqueId}|${size.width}x${size.height}`;
   let m = masks.get(id);
@@ -65,21 +58,12 @@ function maskOf(tex: BaseTexture): Promise<Mask | null> {
       const data = new Uint8Array(px.buffer, px.byteOffset, px.byteLength);
       const glass = new Uint8Array(size.width * size.height);
       for (let i = 0; i < glass.length; i++) glass[i] = glassTexel(data[i * 4] / 255, data[i * 4 + 1] / 255, data[i * 4 + 2] / 255) ? 1 : 0;
-      return { width: size.width, height: size.height, glass };
+      return { width: size.width, height: size.height, data: glass };
     })().catch(() => null);
     masks.set(id, m);
   }
   return m;
 }
-
-function sample(mask: Mask, u: number, v: number): number {
-  const x = Math.min(mask.width - 1, Math.max(0, Math.floor((u - Math.floor(u)) * mask.width)));
-  const y = Math.min(mask.height - 1, Math.max(0, Math.floor((v - Math.floor(v)) * mask.height)));
-  return mask.glass[y * mask.width + x];
-}
-
-/** The window triangles of one geometry (by triangle index), or null when it has no clear greenhouse. */
-const splits = new WeakMap<Geometry, Split | null>();
 
 /** Index counts after the reorder: [lower body][upper body][glass]. */
 interface Split {
@@ -87,152 +71,134 @@ interface Split {
   body: number;
 }
 
-/**
- * Reorders `mesh`'s index buffer so window triangles come last and returns how many indices are body, or null when
- * the mesh has no windows. `toBody` maps the mesh's local positions into the vehicle's chassis frame (x forward, y up).
- */
-function split(mesh: Mesh, mask: Mask, toBody: Matrix, bounds: { min: Vector3; max: Vector3 }): Split | null {
-  const geo = mesh.geometry;
-  if (!geo) return null;
-  if (splits.has(geo)) return splits.get(geo)!;
-  const idx = mesh.getIndices();
+/** What is known about one shared body geometry. */
+interface GeoState {
+  /** The index buffer as it came in the model file. */
+  pristine: Uint32Array;
+  /** Pristine triangle number of each "a,b,c" index triple (built when first needed). */
+  ids: Map<string, number> | null;
+  /** Positions and normals in the chassis frame, the body's bounds and the colour mask, from the first glazing. */
+  frame: { world: Float32Array; normals: Float32Array | null; uvs: Float32Array | null; mask: GlassMask | null; minY: number; height: number; midZ: number } | null;
+  /** Glass flags over the pristine triangles, as drawn now. */
+  flags: Uint8Array | null;
+  /** True when `flags` came from a trace rather than the detector. */
+  traced: boolean;
+  split: Split | null;
+  /** Every mesh that draws this geometry and was glazed (or tried). */
+  users: Set<Mesh>;
+}
+
+const geos = new WeakMap<Geometry, GeoState>();
+
+/** Keeps each body mesh's file triangle order; call as soon as the model is instanced, before any cut or reorder. */
+export function rememberTriangles(meshes: readonly Mesh[]): void {
+  for (const mesh of meshes) {
+    const geo = mesh.geometry;
+    if (!geo || geos.has(geo)) continue;
+    const idx = mesh.getIndices();
+    if (!idx) continue;
+    geos.set(geo, { pristine: Uint32Array.from(idx), ids: null, frame: null, flags: null, traced: false, split: null, users: new Set() });
+  }
+}
+
+const tripleKey = (a: number, b: number, c: number) => `${a},${b},${c}`;
+
+function idsOf(state: GeoState): Map<string, number> {
+  if (state.ids) return state.ids;
+  const ids = new Map<string, number>();
+  const p = state.pristine;
+  for (let t = 0; t * 3 + 2 < p.length; t++) {
+    const key = tripleKey(p[t * 3], p[t * 3 + 1], p[t * 3 + 2]);
+    if (!ids.has(key)) ids.set(key, t);
+  }
+  state.ids = ids;
+  return ids;
+}
+
+/** The body mesh's triangles as the model file numbers them, or null when it was never remembered. */
+export function pristineIndices(mesh: Mesh): Uint32Array | null {
+  return (mesh.geometry && geos.get(mesh.geometry)?.pristine) || null;
+}
+
+/** The glass flags drawn now, over the file's triangles (null before glazing has run), and whether they were traced. */
+export function currentGlass(mesh: Mesh): { flags: Uint8Array; traced: boolean } | null {
+  const state = mesh.geometry ? geos.get(mesh.geometry) : undefined;
+  if (!state?.frame) return null;
+  return { flags: state.flags ? Uint8Array.from(state.flags) : new Uint8Array(state.pristine.length / 3), traced: state.traced };
+}
+
+/** The detector's flags over the file's triangles, ignoring any trace (null before glazing has run). */
+export function detectedGlass(mesh: Mesh): Uint8Array | null {
+  const state = mesh.geometry ? geos.get(mesh.geometry) : undefined;
+  return state?.frame ? detect(state) : null;
+}
+
+/** Chassis-frame positions of the file's vertices (metres), for measuring areas (null before glazing has run). */
+export function bodyPositions(mesh: Mesh): Float32Array | null {
+  return (mesh.geometry && geos.get(mesh.geometry)?.frame?.world) || null;
+}
+
+function measure(mesh: Mesh, toBody: Matrix, bounds: { min: Vector3; max: Vector3 }, mask: GlassMask | null): GeoState['frame'] {
   const pos = mesh.getVerticesData(VertexBuffer.PositionKind);
-  const uv = mesh.getVerticesData(VertexBuffer.UVKind);
+  if (!pos) return null;
   const nv = mesh.getVerticesData(VertexBuffer.NormalKind);
-  let out: Split | null = null;
-  if (idx && pos && uv && nv) {
-    const tris = idx.length / 3;
-    const n = pos.length / 3;
-    const world = new Float32Array(n * 3);
-    const p = new Vector3();
-    for (let i = 0; i < n; i++) {
-      Vector3.TransformCoordinatesFromFloatsToRef(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], toBody, p);
-      world[i * 3] = p.x; world[i * 3 + 1] = p.y; world[i * 3 + 2] = p.z;
-    }
-    const height = bounds.max.y - bounds.min.y || 1;
-    const midZ = (bounds.min.z + bounds.max.z) / 2;
-    const candidate = new Uint8Array(tris);
-    const area = new Float32Array(tris);
-    const hits = new Uint8Array(tris);
-    const nrm = new Vector3(), vn = new Vector3(), e1 = new Vector3(), e2 = new Vector3();
-    for (let t = 0; t < tris; t++) {
-      const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
-      e1.set(world[b * 3] - world[a * 3], world[b * 3 + 1] - world[a * 3 + 1], world[b * 3 + 2] - world[a * 3 + 2]);
-      e2.set(world[c * 3] - world[a * 3], world[c * 3 + 1] - world[a * 3 + 1], world[c * 3 + 2] - world[a * 3 + 2]);
-      area[t] = Vector3.Cross(e1, e2).length() / 2;
-      const cy = (world[a * 3 + 1] + world[b * 3 + 1] + world[c * 3 + 1]) / 3;
-      const h = (cy - bounds.min.y) / height;
-      if (h < BAND.low || h > BAND.high) continue;
-      nrm.set(0, 0, 0);
-      for (const k of [a, b, c]) {
-        Vector3.TransformNormalFromFloatsToRef(nv[k * 3], nv[k * 3 + 1], nv[k * 3 + 2], toBody, vn);
-        nrm.addInPlace(vn);
-      }
-      const len = nrm.length();
-      if (len < 1e-9) continue;
-      nrm.scaleInPlace(1 / len);
-      if (Math.abs(nrm.y) > 0.82) continue;
-      const cz = (world[a * 3 + 2] + world[b * 3 + 2] + world[c * 3 + 2]) / 3;
-      if (Math.abs(nrm.z) > 0.55 && nrm.z * (cz - midZ) <= 0) continue;
-      candidate[t] = 1;
-      let n = 0;
-      for (const [wa, wb, wc] of INSIDE) n += sample(mask, uv[a * 2] * wa + uv[b * 2] * wb + uv[c * 2] * wc, uv[a * 2 + 1] * wa + uv[b * 2 + 1] * wb + uv[c * 2 + 1] * wc);
-      hits[t] = n;
-    }
-    const nb = neighbours(idx, world, n);
-    const win = new Uint8Array(tris);
-    for (let t = 0; t < tris; t++) if (candidate[t] && hits[t] >= INSIDE.length - 1) win[t] = 1;
-    clean(win, nb);
-    dropSpecks(win, nb, area);
-    let count = 0;
-    for (let t = 0; t < tris; t++) count += win[t];
-    if (count >= MIN_WINDOW_TRIS) {
-      let cab0 = Infinity, cab1 = -Infinity;
-      for (let t = 0; t < tris; t++) {
-        if (!win[t]) continue;
-        for (let e = 0; e < 3; e++) {
-          const x = world[idx[t * 3 + e] * 3];
-          cab0 = Math.min(cab0, x);
-          cab1 = Math.max(cab1, x);
-        }
-      }
-      cab0 -= 0.3;
-      cab1 += 0.3;
-      const lower: number[] = [], upper: number[] = [], glass: number[] = [];
-      for (let t = 0; t < tris; t++) {
-        const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
-        const h = ((world[a * 3 + 1] + world[b * 3 + 1] + world[c * 3 + 1]) / 3 - bounds.min.y) / height;
-        const x = (world[a * 3] + world[b * 3] + world[c * 3]) / 3;
-        (win[t] ? glass : h < INTERIOR_FROM || x < cab0 || x > cab1 ? lower : upper).push(a, b, c);
-      }
-      geo.setIndices(lower.concat(upper, glass), geo.getTotalVertices());
-      out = { lower: lower.length, body: lower.length + upper.length };
+  const uv = mesh.getVerticesData(VertexBuffer.UVKind);
+  const n = pos.length / 3;
+  const world = new Float32Array(n * 3);
+  const normals = nv ? new Float32Array(n * 3) : null;
+  const p = new Vector3();
+  for (let i = 0; i < n; i++) {
+    Vector3.TransformCoordinatesFromFloatsToRef(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2], toBody, p);
+    world[i * 3] = p.x; world[i * 3 + 1] = p.y; world[i * 3 + 2] = p.z;
+    if (normals && nv) {
+      Vector3.TransformNormalFromFloatsToRef(nv[i * 3], nv[i * 3 + 1], nv[i * 3 + 2], toBody, p);
+      normals[i * 3] = p.x; normals[i * 3 + 1] = p.y; normals[i * 3 + 2] = p.z;
     }
   }
-  splits.set(geo, out);
-  return out;
+  return { world, normals, uvs: uv ? Float32Array.from(uv) : null, mask, minY: bounds.min.y, height: bounds.max.y - bounds.min.y || 1, midZ: (bounds.min.z + bounds.max.z) / 2 };
 }
 
-/** Triangles sharing an edge (vertices welded by position, since scans split them along UV seams). */
-function neighbours(idx: ArrayLike<number>, world: Float32Array, verts: number): number[][] {
-  const weld = new Int32Array(verts);
-  const seen = new Map<string, number>();
-  for (let i = 0; i < verts; i++) {
-    const key = `${Math.round(world[i * 3] * 400)},${Math.round(world[i * 3 + 1] * 400)},${Math.round(world[i * 3 + 2] * 400)}`;
-    let w = seen.get(key);
-    if (w === undefined) { w = i; seen.set(key, i); }
-    weld[i] = w;
-  }
+function detect(state: GeoState): Uint8Array {
+  const f = state.frame!;
+  if (!f.mask || !f.uvs) return new Uint8Array(state.pristine.length / 3);
+  return detectWindows({ positions: f.world, normals: f.normals, uvs: f.uvs, indices: state.pristine, mask: f.mask }, DETECT, { minY: f.minY, maxY: f.minY + f.height, midZ: f.midZ });
+}
+
+/** Reorders the geometry's current triangles into [lower body][upper body][glass] for `state.flags`; null when nothing is glass. */
+function resplit(geo: Geometry, state: GeoState): Split | null {
+  const f = state.frame!, flags = state.flags!;
+  const idx = geo.getIndices();
+  if (!idx) return null;
+  const ids = idsOf(state);
+  const world = f.world;
   const tris = idx.length / 3;
-  const edges = new Map<string, number[]>();
+  const win = new Uint8Array(tris);
+  let count = 0;
   for (let t = 0; t < tris; t++) {
+    const id = ids.get(tripleKey(idx[t * 3], idx[t * 3 + 1], idx[t * 3 + 2]));
+    if (id !== undefined && flags[id]) { win[t] = 1; count++; }
+  }
+  if (!count) return null;
+  let cab0 = Infinity, cab1 = -Infinity;
+  for (let t = 0; t < tris; t++) {
+    if (!win[t]) continue;
     for (let e = 0; e < 3; e++) {
-      const a = weld[idx[t * 3 + e]], b = weld[idx[t * 3 + ((e + 1) % 3)]];
-      const key = a < b ? `${a},${b}` : `${b},${a}`;
-      let list = edges.get(key);
-      if (!list) edges.set(key, (list = []));
-      list.push(t);
+      const x = world[idx[t * 3 + e] * 3];
+      cab0 = Math.min(cab0, x);
+      cab1 = Math.max(cab1, x);
     }
   }
-  const nb: number[][] = Array.from({ length: tris }, () => []);
-  for (const list of edges.values()) for (const t of list) for (const u of list) if (u !== t) nb[t].push(u);
-  return nb;
-}
-
-/** Drops window triangles with no window neighbour and fills body triangles mostly ringed by windows, twice. */
-function clean(win: Uint8Array, nb: number[][]): void {
-  const tris = win.length;
-  for (let pass = 0; pass < 2; pass++) {
-    const next = win.slice();
-    for (let t = 0; t < tris; t++) {
-      let w = 0;
-      for (const u of nb[t]) w += win[u];
-      if (win[t] && w === 0) next[t] = 0;
-      else if (!win[t] && nb[t].length >= 2 && w >= nb[t].length - 1 && w >= 2) next[t] = 1;
-    }
-    win.set(next);
+  cab0 -= 0.3;
+  cab1 += 0.3;
+  const lower: number[] = [], upper: number[] = [], glass: number[] = [];
+  for (let t = 0; t < tris; t++) {
+    const a = idx[t * 3], b = idx[t * 3 + 1], c = idx[t * 3 + 2];
+    const h = ((world[a * 3 + 1] + world[b * 3 + 1] + world[c * 3 + 1]) / 3 - f.minY) / f.height;
+    const x = (world[a * 3] + world[b * 3] + world[c * 3]) / 3;
+    (win[t] ? glass : h < INTERIOR_FROM || x < cab0 || x > cab1 ? lower : upper).push(a, b, c);
   }
-}
-
-/** Drops connected window patches smaller than a hand (dark smudges and trim on the body, not panes). */
-function dropSpecks(win: Uint8Array, nb: number[][], area: Float32Array): void {
-  const seen = new Uint8Array(win.length);
-  const stack: number[] = [];
-  const patch: number[] = [];
-  for (let t = 0; t < win.length; t++) {
-    if (!win[t] || seen[t]) continue;
-    patch.length = 0;
-    let total = 0;
-    stack.push(t);
-    seen[t] = 1;
-    while (stack.length) {
-      const k = stack.pop()!;
-      patch.push(k);
-      total += area[k];
-      for (const u of nb[k]) if (win[u] && !seen[u]) { seen[u] = 1; stack.push(u); }
-    }
-    if (total < MIN_PANE_AREA) for (const k of patch) win[k] = 0;
-  }
+  geo.setIndices(lower.concat(upper, glass), geo.getTotalVertices());
+  return { lower: lower.length, body: lower.length + upper.length };
 }
 
 const glassMats = new WeakMap<Scene, PBRMaterial>();
@@ -268,6 +234,55 @@ function cabin(scene: Scene): PBRMaterial {
   return m;
 }
 
+/** A glazed mesh's multi-material and interior clone. */
+interface Dressed { multi: MultiMaterial; paint: Material; inside: Mesh }
+const dressed = new WeakMap<Mesh, Dressed>();
+
+function wholeMesh(mesh: Mesh) {
+  mesh.subMeshes = [];
+  new SubMesh(0, 0, mesh.getTotalVertices(), 0, mesh.getTotalIndices(), mesh);
+}
+
+/**
+ * Draws `mesh` with `split`: glass as a second submesh and the interior clone, made on first use. `owned` collects new
+ * materials and interiors for the vehicle that asked; without it they are freed with the mesh.
+ */
+function dress(mesh: Mesh, split: Split | null, owned: Glazed | null): void {
+  if (mesh.isDisposed()) return;
+  const was = dressed.get(mesh);
+  const total = mesh.getTotalIndices(), verts = mesh.getTotalVertices();
+  if (!split) {
+    if (!was) return;
+    mesh.material = was.multi.subMaterials[0] ?? was.paint;
+    wholeMesh(mesh);
+    was.inside.dispose();
+    dressed.delete(mesh);
+    return;
+  }
+  let d = was;
+  if (!d) {
+    const paint = mesh.material;
+    if (!paint || paint instanceof MultiMaterial) return;
+    const scene = mesh.getScene();
+    const multi = new MultiMaterial(`${mesh.name}-glazed`, scene);
+    multi.subMaterials.push(paint, clearGlass(scene));
+    mesh.material = multi;
+    const inside = mesh.clone(`${mesh.name}-cabin`, mesh.parent, true) as Mesh;
+    inside.material = cabin(scene);
+    inside.receiveShadows = false;
+    inside.isPickable = false;
+    d = { multi, paint, inside };
+    dressed.set(mesh, d);
+    if (owned) { owned.owned.push(multi); owned.interiors.push(inside); }
+    else mesh.onDisposeObservable.addOnce(() => multi.dispose(false, false));
+  }
+  mesh.subMeshes = [];
+  new SubMesh(0, 0, verts, 0, split.body, mesh);
+  new SubMesh(1, 0, verts, split.body, total - split.body, mesh);
+  d.inside.subMeshes = [];
+  new SubMesh(0, 0, verts, split.lower, split.body - split.lower, d.inside);
+}
+
 export interface Glazed {
   /** Materials this call made for the vehicle (the multi-materials), to dispose with it. */
   owned: Material[];
@@ -277,10 +292,11 @@ export interface Glazed {
 
 /**
  * Glazes a scanned body under `holder` (the record's model transform, in the chassis frame). `textures` is each
- * body mesh's original colour map (before any repaint). Resolves once the masks are read; does nothing for meshes
- * already disposed or without windows.
+ * body mesh's original colour map (before any repaint); `traced` holds the administrator's glass for a mesh, over its
+ * file triangles, which replaces the detector. Resolves once the masks are read; does nothing for meshes already
+ * disposed.
  */
-export async function glazeScan(holder: TransformNode, textures: Map<Mesh, BaseTexture>, alive: () => boolean): Promise<Glazed> {
+export async function glazeScan(holder: TransformNode, textures: Map<Mesh, BaseTexture>, alive: () => boolean, traced: Map<Mesh, Uint8Array> = new Map()): Promise<Glazed> {
   const result: Glazed = { owned: [], interiors: [] };
   const meshes = [...textures.keys()];
   if (!meshes.length) return result;
@@ -302,31 +318,41 @@ export async function glazeScan(holder: TransformNode, textures: Map<Mesh, BaseT
     }
   }
   meshes.forEach((mesh, i) => {
-    const mask = read[i];
     const m = toBody.get(mesh);
-    if (!mask || !m || mesh.isDisposed()) return;
-    const cut = split(mesh, mask, m, bounds);
-    if (cut === null) return;
-    const body = cut.body;
-    const scene = mesh.getScene();
-    const total = mesh.getTotalIndices();
-    const verts = mesh.getTotalVertices();
-    const paint = mesh.material;
-    if (!paint || paint instanceof MultiMaterial) return;
-    const multi = new MultiMaterial(`${mesh.name}-glazed`, scene);
-    multi.subMaterials.push(paint, clearGlass(scene));
-    result.owned.push(multi);
-    mesh.material = multi;
-    mesh.subMeshes = [];
-    new SubMesh(0, 0, verts, 0, body, mesh);
-    new SubMesh(1, 0, verts, body, total - body, mesh);
-    const inside = mesh.clone(`${mesh.name}-cabin`, mesh.parent, true) as Mesh;
-    inside.material = cabin(scene);
-    inside.subMeshes = [];
-    new SubMesh(0, 0, verts, cut.lower, body - cut.lower, inside);
-    inside.receiveShadows = false;
-    inside.isPickable = false;
-    result.interiors.push(inside);
+    const geo = mesh.geometry;
+    if (!m || !geo || mesh.isDisposed()) return;
+    rememberTriangles([mesh]);
+    const state = geos.get(geo);
+    if (!state) return;
+    state.users.add(mesh);
+    if (!state.frame) {
+      state.frame = measure(mesh, m, bounds, read[i]);
+      if (!state.frame) return;
+      const mine = traced.get(mesh);
+      state.traced = !!mine && mine.length === state.pristine.length / 3;
+      state.flags = state.traced ? Uint8Array.from(mine!) : detect(state);
+      state.split = resplit(geo, state);
+    }
+    dress(mesh, state.split, result);
   });
   return result;
+}
+
+/**
+ * Redraws `mesh`'s geometry with new glass flags over its file triangles (null goes back to the detector) on every
+ * vehicle drawing it. Returns false when the mesh was never glazed.
+ */
+export function reglaze(mesh: Mesh, flags: Uint8Array | null): boolean {
+  const geo = mesh.geometry;
+  const state = geo ? geos.get(geo) : undefined;
+  if (!geo || !state?.frame) return false;
+  const tris = state.pristine.length / 3;
+  state.traced = !!flags && flags.length === tris;
+  state.flags = state.traced ? Uint8Array.from(flags!) : detect(state);
+  state.split = resplit(geo, state);
+  for (const user of [...state.users]) {
+    if (user.isDisposed()) { state.users.delete(user); continue; }
+    dress(user, state.split, null);
+  }
+  return true;
 }
