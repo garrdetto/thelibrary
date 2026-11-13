@@ -155,6 +155,11 @@ export class Neighbors {
     for (const [id] of this.vehicles) if (id.startsWith(`${sessionId}:`)) this.removeVehicle(id)
   }
 
+  /** Stops drawing one vehicle at once (the player took over a spawned one and now simulates it; dev/SharedCars.ts). */
+  dropVehicle(id: string): void {
+    this.removeVehicle(id)
+  }
+
   clear(): void {
     for (const id of [...this.players.keys()]) this.removePlayer(id)
     for (const id of [...this.vehicles.keys()]) this.removeVehicle(id)

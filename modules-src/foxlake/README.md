@@ -74,17 +74,30 @@ A walk-in casino on the north-east corner of East Ave and South St (town coordin
 
 `docs/foxlake/map/index.html` is an interactive map of the whole world, drawn from the game's layout (`tools/map-data.ts`) and its landmarks (`docs/foxlake/map/landmarks.json`). Rebuild it with `node scripts/foxlake-map.mjs`.
 
+## Developer panel (`dev/`)
+
+F8 opens it for a site administrator (the Esc menu lists the key for them; the site's Developer Panel button can toggle it with a same-origin `tl-dev-panel` message, and `?panel=1` opens it once you head out). For everyone else F8 does nothing. The shared world decides who that is: the Worker reads the session (`src/server/routes/maplestreet.ts`, `isAdmin`), the Durable Object carries it on the socket's identity, the world tells the page with `welcome.dev`, and it checks every `dev` message against the same flag (`maplestreet/shared/DevTools.ts`), so a hand-made message from anyone else is refused. Only Fox Lake's world turns the tools on (`FoxLakeWorld`, `WorldServer`'s `devTools`); classic Fox Plains ignores the messages.
+
+- **Spawn a vehicle** (`FoxLakeDev.spawn`, `Placement.ts`): every registered vehicle that drives (built-in, bundled, published and retired; trailers are left out), a few metres in front of you or beside a chosen player. The page picks a clear, dry spot and lays the vehicle on the slope; the world accepts it within 30 m of that player, twelve at a time.
+- **Spawned vehicles belong to nobody** and are in nobody's garage. The world keeps each one in its snapshots like any other vehicle (`owner` is the driver's session, or `shared` while parked), so `town/Neighbors.ts` draws it. E beside a parked one asks the world for it (`shared` `claim`); the world gives it to the first to ask within reach, one driver per vehicle and one spawned vehicle per driver. That player's page swaps the snapshot car for a real Fox Plains Rapier car driven through Rack & Reel's vehicle controller (`SharedCars.ts`) and reports its pose with each state message (`state.s`). Getting out lets it roll to a stop and hands it back (`release`); it stays parked there for everyone. A driver who disconnects leaves it parked where it was.
+- **Five minutes**: the world removes a spawned vehicle five minutes after it was spawned, for everyone at once. One that is being driven then stays until its driver gets out. The panel lists the live ones with their time left and a Remove now button.
+- **Teleport**: `Places.ts` is the list (`{ id, label, x, z }` in scene coordinates; add a row to add a place), plus Home and every player in the world. It puts you on foot at the nearest safe ground the way H does; a vehicle you were in stays where it was.
+- **Give cash**: a whole amount up to $1,000,000 to yourself or a player in the world, through `RoomLogic.adjustMoney`, so it is the same balance the lake country and the casino use; the world saves it at once and the recipient's wallet chip updates over the socket. A guest's town cash (kept under their browser's guest key) is changed the same way and the panel says so; their lake cash lives in their own tab and cannot be changed from here.
+- **Solo** (`?solo=1`): the same rules run in the page, so the panel is open to whoever plays ("Solo: changes stay on this device"). Solo money is unlimited, so there is nothing to give.
+
+Spawned vehicles carry no paint, damage, fuel or hitch, and a spawned mower does not cut grass or earn mowing pay.
+
 ## Gear and bounties
 
 Fox Lake starts Rack & Reel with `gearAtCabin`: the rod and rifle hang on the gear rack in Fox Outfitters; 1 or 2 at the rack takes one (swapping the other back); away from the rack you carry only that one. Bounties are flat everywhere: $10 a carp, $50 a deer, $100 a bear (`shared/Economy.ts`).
 
 ## Controls
 
-Rack & Reel's, plus E at your car (drive), at shops (Maple Threads opens the wardrobe), at a slot machine, bar stool or blackjack seat, V to bring out another of your vehicles, H to go home (every 15 minutes), Ctrl for the full map and directions. The Esc menu lists every control (`BASE_CONTROLS` in `rackreel/ui/PauseMenu.ts` plus `FoxLakeTown.controls`). 1 and 2 only work at the cabin's gear rack.
+Rack & Reel's, plus E at your car (drive), at shops (Maple Threads opens the wardrobe), at a slot machine, bar stool or blackjack seat, V to bring out another of your vehicles, H to go home (every 15 minutes), Ctrl for the full map and directions, and F8 for the developer panel (administrators). The Esc menu lists every control (`BASE_CONTROLS` in `rackreel/ui/PauseMenu.ts` plus `FoxLakeTown.controls`). 1 and 2 only work at the cabin's gear rack.
 
 ## Debugging
 
-`window.__foxlake.town.debug()` (connection, neighbors, colliders, cars, culling), `window.__foxlake.game.host()`. `?solo=1` plays the town on this device; `?hour=21` pins the sky. `node scripts/foxlake-capture.mjs [baseUrl] [outDir]` loads the built page in Chrome, takes screenshots at fixed spots with frame-time and scene counts, and walks town → lake → town five times to check that mesh, material and texture counts stay flat.
+`window.__foxlake.town.debug()` (connection, neighbors, colliders, cars, culling), `window.__foxlake.town.dev.debug()` (panel access, spawned vehicles, the one being driven), `window.__foxlake.game.host()`. `?solo=1` plays the town on this device; `?hour=21` pins the sky. `node scripts/foxlake-capture.mjs [baseUrl] [outDir]` loads the built page in Chrome, takes screenshots at fixed spots with frame-time and scene counts, and walks town → lake → town five times to check that mesh, material and texture counts stay flat.
 
 ## Assets
 

@@ -51,6 +51,7 @@ import { CasinoHost, CASINO_NAME } from '../casino/CasinoHost'
 import { CASINO } from '../casino/CasinoLayout'
 import { STAND_SIZE } from '../../rackreel/world/Foliage'
 import { TOWN_OFFSET, TOWN_SQUARE, connectorDistance, headingToTownYaw, sceneToTown, townToScene, zoneAt, CONNECTOR } from '../region'
+import { FoxLakeDev } from '../dev/FoxLakeDev'
 
 const STEP = 1 / 60
 const CULL_REACH = 640
@@ -119,6 +120,8 @@ export class FoxLakeTown implements GameExtension {
   /** Far town cells and far lake-country stands are switched off (the fog hides them). */
   private readonly culler = new RegionCuller(CULL_REACH)
   private readonly casino = new CasinoHost()
+  /** The developer panel and the spawned vehicles anyone can drive (dev/). */
+  dev: FoxLakeDev | null = null
 
   constructor(private readonly opts: TownOptions) {}
 
@@ -215,6 +218,7 @@ export class FoxLakeTown implements GameExtension {
       register: (mesh) => host.ctx.registerDynamic(mesh),
       unregister: (mesh) => host.ctx.unregisterDynamic(mesh),
     }, () => this.selfId)
+    this.dev = new FoxLakeDev({ host, physics: this.physics, models: this.models, send: (m) => this.send(m), self: () => this.selfId, dropRemote: (id) => this.neighbors.dropVehicle(id), home: () => this.spawn() })
     await Promise.all([STARTER_TRUCK, 'trailer', 'mower'].map((k) => this.models.preload(k).catch(() => null)))
     const truck = this.cars.add(STARTER_TRUCK, SPAWN.x + 4, SPAWN.z, 0, null)
     const trailer = this.cars.add('trailer', SPAWN.x - 3, SPAWN.z, 0, null)
@@ -261,7 +265,7 @@ export class FoxLakeTown implements GameExtension {
         const url = worldEndpoint('foxlake')
         if (!url) throw new Error('The shared world needs this page to be opened from the site')
         await attempt(new WorldTransport(url))
-      } else await attempt(new OfflineTransport())
+      } else await attempt(new OfflineTransport({ devTools: true }))
     } catch (e) {
       console.warn('[foxlake] falling back to solo:', e)
       try {
@@ -287,6 +291,7 @@ export class FoxLakeTown implements GameExtension {
   }
 
   private onServer(m: ServerMsg): void {
+    this.dev?.onServer(m, this.net instanceof OfflineTransport)
     switch (m.t) {
       case 'welcome': {
         this.selfId = m.you
@@ -391,7 +396,9 @@ export class FoxLakeTown implements GameExtension {
       speed: drivingCar ? 0 : Math.min(20, this.host.driving ? Math.abs(this.host.driving.speed) : 0),
       vehicleId: drivingCar ? `${me}:${drivingCar.fp.id}` : null,
     }
-    this.send({ t: 'state', p, v: this.cars.snapshots(me) })
+    const state: ClientMsg & { t: 'state' } = { t: 'state', p, v: this.cars.snapshots(me) }
+    this.dev?.stamp(state)
+    this.send(state)
   }
 
   /** Where the player is, in the shared world's (town) coordinates. Out in the lake country that is beyond the town's square, which classic Fox Plains hides. */
@@ -417,6 +424,7 @@ export class FoxLakeTown implements GameExtension {
     this.cars.syncAll()
     const night = this.host.lighting.night
     this.cars.visuals(night)
+    this.dev?.update(dt, night)
     this.mats.setNight(night)
     this.gfx.update(night, this.host.clock.sky.glow)
     const focus = this.townFocus()
@@ -567,6 +575,8 @@ export class FoxLakeTown implements GameExtension {
   }
 
   prompt(): string {
+    const spawned = this.dev?.prompt()
+    if (spawned) return spawned
     if (zoneAt(this.host.player.z) !== 'town') return ''
     const seat = this.casino.prompt()
     if (seat) return seat
@@ -578,6 +588,7 @@ export class FoxLakeTown implements GameExtension {
   }
 
   interact(): boolean {
+    if (this.dev?.interact()) return true
     if (zoneAt(this.host.player.z) === 'town' && this.casino.interact()) return true
     const door = zoneAt(this.host.player.z) === 'town' ? this.nearDoor() : null
     if (door) {
@@ -652,6 +663,7 @@ export class FoxLakeTown implements GameExtension {
       { keys: ['Ctrl'], text: 'Full map: click a spot for turn-by-turn directions' },
       { keys: ['V'], text: 'Bring out your next vehicle' },
       { keys: ['H'], text: 'Go home (every 15 minutes)' },
+      ...(this.dev?.controls() ?? []),
     ]
   }
 

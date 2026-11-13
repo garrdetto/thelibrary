@@ -62,7 +62,8 @@ export class WorldServer {
   private lastTick = 0;
   private nextId = 1;
 
-  constructor(private storage: WorldStorage) {}
+  /** `devTools`: administrators (by their host-verified identity) may use the developer tools in this world (Fox Lake). */
+  constructor(private storage: WorldStorage, private opts: { devTools?: boolean } = {}) {}
 
   /** Loads the world from storage once (seeding a fresh neighborhood the first time). */
   ready(): Promise<void> {
@@ -81,7 +82,7 @@ export class WorldServer {
     this.logic = new NeighborhoodLogic({
       send: (to, msg) => this.deliver(to, msg),
       broadcast: (msg, except) => this.broadcast(msg, except),
-    }, saved, { clock: 'wall' });
+    }, saved, { clock: 'wall', ...(this.opts.devTools ? { devTools: 'admin' as const } : {}) });
     await this.save();                                    // persists the seed on first boot
   }
 
@@ -122,6 +123,8 @@ export class WorldServer {
         }
         if (!joined) return;
         try { logic.message(id, msg); } catch (e) { console.warn('[maplestreet] bad message', e); }
+        // A developer cash gift is real money: write it now instead of at the next checkpoint.
+        if (this.opts.devTools && msg.t === 'dev') void this.save().catch(e => console.warn('[maplestreet] save failed', e));
       },
       onClose: () => {
         if (!this.sockets.delete(id)) return;

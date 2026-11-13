@@ -20,8 +20,12 @@ declare global {
   }
 }
 
-/** Light sun shadows, shaded sides lifted by a stronger sky fill, a night 15 % brighter, and matte characters. */
-const FOX_LAKE_LOOK = { shadowDarkness: 0.9, fill: 1.4, nightBrightness: 1.15, matteCharacters: true }
+/**
+ * A soft, even picture: a gentler sun with a stronger sky fill, so lit and shaded sides sit close together and nothing
+ * falls into murk; faint sun shadows; a night 15 % brighter; matte characters that return less light and don't glow.
+ * All of it is light levels, so it costs no draw calls, textures or shadow passes.
+ */
+const FOX_LAKE_LOOK = { shadowDarkness: 0.93, key: 0.8, fill: 1.65, nightBrightness: 1.15, matteCharacters: true, characterDiffuse: 0.8, characterLift: 0 }
 /** Half Rack & Reel's shadow map: the town has far more casters, and the soft blurred shadows hide the coarser texels. */
 const FOX_LAKE_SHADOW_MAP = 1024
 

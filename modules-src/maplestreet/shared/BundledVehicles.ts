@@ -455,7 +455,7 @@ export const BUNDLED_VEHICLES: readonly CustomVehicleRecord[] = [
       material: '',
       key: '#b20a29',
       tolerance: 0.2,
-      color: '#b20a29'
+      color: '#5e0d14'
     },
     targets: {
       topSpeedMph: 63,

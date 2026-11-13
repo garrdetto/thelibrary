@@ -42,6 +42,11 @@ export interface LightingLook {
   matteCharacters?: boolean
   /** Multiplies the sky fill, ground bounce and ambient that light the sides the sun misses: 1.35 lifts shaded sides by a third. */
   fill?: number
+  /** Multiplies the sun and moon: under 1 the lit side is less harsh, so with a higher `fill` the lit and shaded sides sit closer together. */
+  key?: number
+  /** Matte characters only: how much of the light their surfaces return (default 0.94) and their daytime glow (default 0.035). Lower both when people read as lit from inside. */
+  characterDiffuse?: number
+  characterLift?: number
 }
 
 function smooth(e0: number, e1: number, x: number): number {
@@ -100,6 +105,7 @@ export class Lighting {
       sun.diffuse.copyFrom(DAY.moon)
       sun.intensity = 0.42 * moonK
     }
+    sun.intensity *= this.look.key ?? 1
     sun.specular.copyFrom(sun.diffuse).scaleInPlace(0.3)
     const n = s.night
     const sky = ctx.sky
@@ -132,13 +138,14 @@ export class Lighting {
       this.liftedFor = n
       this.materialCount = ctx.scene.materials.length
       const matte = !!this.look.matteCharacters
-      const lift = CHARACTER_NIGHT_LIFT * n + (matte ? MATTE_LIFT * (1 - n) : 0)
+      const diffuse = this.look.characterDiffuse ?? MATTE_DIFFUSE
+      const lift = CHARACTER_NIGHT_LIFT * n + (matte ? (this.look.characterLift ?? MATTE_LIFT) * (1 - n) : 0)
       for (const mat of ctx.scene.materials) {
         if (!(mat instanceof StandardMaterial) || !CHARACTER_MATERIAL.test(mat.name)) continue
         mat.emissiveColor.set(lift, lift, lift * 1.08)
         if (!matte) continue
         mat.specularColor.set(0, 0, 0)
-        mat.diffuseColor.set(MATTE_DIFFUSE, MATTE_DIFFUSE, MATTE_DIFFUSE)
+        mat.diffuseColor.set(diffuse, diffuse, diffuse)
         mat.ambientColor.set(MATTE_AMBIENT, MATTE_AMBIENT, MATTE_AMBIENT)
       }
     }

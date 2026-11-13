@@ -45,6 +45,10 @@ import { lampTriangles, type LampDepth, type LampSize, type Shape } from '../../
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
 import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
+import { carEnvTexture } from './CarEnv';
+import { addLamps3d, cutBehindLamps } from './LampView';
+import { lamps3d } from '../../../maplestreet/shared/LampCut';
+import { PAINT_FINISH, dressPaint, smoothScanNormals, type PaintJob } from './CarPaint';
 
 /** Built-in kinds drawn from primitives rather than a .glb. */
 const PROCEDURAL = new Set<string>();
@@ -237,6 +241,8 @@ function clearGlass(m: PBRMaterial) {
   m.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
   m.backFaceCulling = true;
   m.needDepthPrePass = true;
+  const env = carEnvTexture();
+  if (env) m.reflectionTexture = env;
 }
 
 /**
@@ -319,6 +325,10 @@ class View implements VehicleView {
   private model: ModelInstance | null = null;
   private paintMats: PBRMaterial[] = [];
   private paintSources = new Map<PBRMaterial, BaseTexture | null>();
+  /** Scanned body materials dressed as real paint (CarPaint.ts); they take their colour as a uniform, not a recoloured picture. */
+  private jobs: PaintJob[] = [];
+  /** Lamps with no outline of their own: plain glowing blocks at the markers. By day they would only hide the lamps the scan already shows, so they draw when lit. */
+  private plainLamps: { mesh: Mesh; tail: boolean }[] = [];
   /** The shared recolored texture each paint material holds (released on repaint or destroy). */
   private readonly heldPaint = new Map<PBRMaterial, string>();
   /** Materials this view made (paint copies, lamps, multi-materials): freed in `destroy`. */
@@ -337,6 +347,8 @@ class View implements VehicleView {
   /** Wheel nodes per axle; `axles` overrides where they sit and how big they draw (realistic stand-in bodies). */
   addWheels(custom: boolean, axles = this.tuning.axles) {
     const P = this.tuning, M = wheelMats(), scene = gfx().scene;
+    const env = carEnvTexture();
+    if (env && M.rim.reflectionTexture !== env) { M.rim.reflectionTexture = env; M.rubber.reflectionTexture = env; }
     axles.forEach((a, ai) => {
       for (const side of [1, -1]) {
         const steer = new TransformNode('wheel', scene);
@@ -482,6 +494,7 @@ class View implements VehicleView {
         if (!this.paintMats.includes(c)) { this.paintMats.push(c); this.paintSources.set(c, src); }
       }
     }
+    if (inst) this.dressScan(inst.root, r, seen);
     const lamp = (pts: { x: number; y: number; z: number }[], color: [number, number, number], list: PBRMaterial[], sx: number, sy: number, sz: number, shape?: Shape, size?: LampSize, depth?: LampDepth, out = 1) => {
       if (!pts.length) return;
       const mat = pbr(`lamp-${this.kind}`, scene);
@@ -507,10 +520,29 @@ class View implements VehicleView {
       mesh.material = mat;
       mesh.parent = this.root;
       mesh.receiveShadows = false;
+      if (!shape) { mesh.setEnabled(false); this.plainLamps.push({ mesh, tail: out < 0 }); }
     };
-    lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize, r.lampShapes?.headDepth, 1);
-    lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize, r.lampShapes?.tailDepth, -1);
+    const lamps = lamps3d(r.lights, r.lampShapes);
+    if (inst && lamps.length) cutBehindLamps(meshesOf(inst.root).filter((m): m is Mesh => m instanceof Mesh), lamps, this.root, `${r.id}|${r.updatedAt}`);
+    addLamps3d(this.root, lamps, this.head, this.tail, this.owned);
+    if (r.lampShapes?.headStyle?.kind !== '3d') lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize, r.lampShapes?.headDepth, 1);
+    if (r.lampShapes?.tailStyle?.kind !== '3d') lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize, r.lampShapes?.tailDepth, -1);
     this.applyStyle();
+  }
+
+  /** A scanned body (one textured mesh) gets real paint: an even colour under a clear coat, and smooth normals (CarPaint.ts). */
+  private dressScan(model: TransformNode, r: CustomVehicleRecord, seen: Set<Material>) {
+    if (r.paint.mode === 'material') return;
+    const exact = r.paint.mode === 'color';
+    for (const mesh of meshesOf(model)) {
+      const m = mesh.material;
+      if (!(mesh instanceof Mesh) || !(m instanceof PBRMaterial) || !m.albedoTexture || glassMats.has(m) || glowing(m)) continue;
+      const src = this.paintSources.get(m) ?? m.albedoTexture;
+      smoothScanNormals(mesh, Math.cbrt(Math.abs(mesh.computeWorldMatrix(true).determinant())));
+      const c = this.own(m, seen);
+      if (this.jobs.some(j => j.material === c)) continue;
+      this.jobs.push(dressPaint(c, src, { color: exact ? r.paint.key : r.paint.color, tolerance: r.paint.tolerance, exact }, () => !this.destroyed));
+    }
   }
 
   /** The riding mower, built from primitives (MowerModel.ts) instead of a downloaded body. */
@@ -540,6 +572,8 @@ class View implements VehicleView {
   private own(m: PBRMaterial, seen: Set<Material>) {
     if (seen.has(m)) return m;
     const c = shallowClone(m, `${m.name}-own`);
+    const env = carEnvTexture();
+    if (env) c.reflectionTexture = env;
     seen.add(c);
     this.owned.push(c);
     const swap = (mesh: AbstractMesh) => {
@@ -560,13 +594,19 @@ class View implements VehicleView {
 
   private applyStyle() {
     const s = this.style, P = this.tuning;
-    const color = s?.color ?? `#${P.paint.toString(16).padStart(6, '0')}`;
+    const rec = this.rec ?? customVehicleRecord(this.kind);
+    const factory = `#${P.paint.toString(16).padStart(6, '0')}`;
+    /** A car still wearing its scan's own colour (never repainted) shows the showroom colour, so a change to that reaches cars saved before it. */
+    const stock = !!s?.color && rec?.paint.mode === 'color' && s.color.toLowerCase() === rec.paint.key.toLowerCase();
+    const color = s?.color && !stock ? s.color : factory;
     const f = FINISH[s?.finish ?? 'metallic'] ?? FINISH.metallic;
     const wear = Math.min(1, Math.max(0, s?.damage ?? 0));
-    const rec = this.rec ?? customVehicleRecord(this.kind);
     const [r, g, b] = hex(color);
     const key = this.styleKey;
+    const paintable = rec?.paint.mode === 'color';
+    for (const j of this.jobs) j.paint(paintable ? color : null, PAINT_FINISH[s?.finish ?? 'metallic'] ?? PAINT_FINISH.metallic, wear);
     for (const m of this.paintMats) {
+      if (this.jobs.some(j => j.material === m)) continue;
       const src = this.paintSources.get(m) ?? null;
       const held = this.heldPaint.get(m);
       if (rec?.paint.mode === 'color' && src) {
@@ -600,6 +640,7 @@ class View implements VehicleView {
     const key = `${night > 0.3 ? 1 : 0}${braking ? 1 : 0}`;
     if (key === this.lampState) return;
     this.lampState = key;
+    for (const l of this.plainLamps) l.mesh.setEnabled(night > 0.3 || (l.tail && braking));
     for (const m of this.head) m.emissiveIntensity = night > 0.3 ? 4 : 0.05;
     for (const m of this.tail) m.emissiveIntensity = braking ? 6 : night > 0.3 ? 2 : 0.25;
   }
@@ -612,6 +653,7 @@ class View implements VehicleView {
     for (const m of this.owned) m.dispose(false, false);
     this.owned.length = 0;
     this.paintMats.length = 0;
+    this.jobs.length = 0;
     this.paintSources.clear();
     for (const id of this.heldPaint.values()) releasePaint(id);
     this.heldPaint.clear();

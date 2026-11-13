@@ -15,6 +15,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { Scene } from '@babylonjs/core/scene'
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { GfxHost } from '../fp/core/Geo'
+import { bakeCarEnv, disposeCarEnv, refreshCarEnv } from '../fp/physics/CarEnv'
 import { sceneToTown } from '../region'
 
 const CELL = 128
@@ -94,6 +95,7 @@ export class TownGfx implements GfxHost {
     this.scene.environmentTexture = probe.cubeTexture
     this.scene.environmentIntensity = ENV_DAY
     this.probe = probe
+    bakeCarEnv(this.scene, sky)
   }
 
   /** Re-bakes the sky cube when night or the sunset glow has moved on noticeably. */
@@ -103,10 +105,12 @@ export class TownGfx implements GfxHost {
     this.lastNight = night
     this.lastGlow = glow
     this.probe.cubeTexture.resetRefreshCounter()
+    refreshCarEnv()
     this.scene.environmentIntensity = ENV_DAY - night * 0.75
   }
 
   dispose(): void {
+    disposeCarEnv()
     this.probe?.dispose()
     this.probe = null
     this.cells.clear()
