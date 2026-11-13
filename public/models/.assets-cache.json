@@ -1288,5 +1288,15 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"
+ },
+ "foxlake/hood-furniture.glb": {
+  "hash": "fc456efca78fa3302078a7dfc9f3c936162cc5c6",
+  "before": 6516992,
+  "after": 2987908,
+  "primsBefore": 588,
+  "primsAfter": 588,
+  "matsBefore": 333,
+  "matsAfter": 333,
+  "preset": "props"
  }
 }

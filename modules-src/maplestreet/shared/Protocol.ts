@@ -12,6 +12,7 @@ import type { ServiceOrder } from './BodyShop';
 export type { VehicleKind } from './Vehicles';
 import type { VehicleKind } from './Vehicles';
 import type { FreightJob } from './Freight';
+import type { FoxHome, HomeOp } from './HoodHomes';
 
 export interface PlayerSnap {
   id: string;            // session id
@@ -76,6 +77,8 @@ export type ClientMsg =
   /** Fox Lake freight: take a load off the dispatch board, load it at its pickup, deliver it, or give it up. */
   | { t: 'freight'; a: 'take'; load: string }
   | { t: 'freight'; a: 'load' | 'deliver' | 'cancel' }
+  /** Fox Lake: one step of The Hood's home builder on your own lot (`start` turns the lot's house into a Hood home). */
+  | { t: 'home'; seq: number; lotId: string; op: HomeOp }
   | { t: 'bye' };
 
 export type ServerMsg =
@@ -87,6 +90,8 @@ export type ServerMsg =
   | { t: 'mow'; by: string; strokes: MowStroke[] }
   | { t: 'job'; job: Job | null; note?: string }
   | { t: 'freight'; job: FreightJob | null; note?: string; paid?: number }
+  | { t: 'home'; seq: number; by: string; lotId: string; home: FoxHome; cost: number }
+  | { t: 'homeRejected'; seq: number; lotId: string; reason: string }
   | { t: 'newDay'; day: number }
   | { t: 'left'; id: string }
   | { t: 'toast'; text: string };

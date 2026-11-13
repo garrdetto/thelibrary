@@ -13,6 +13,7 @@
 import { CATALOG, CatalogItem, footprint, SWATCHES } from './Catalog';
 import { COST } from './Economy';
 import { LotDef, lotPrice } from './WorldLayout';
+import { sanitizeHome, type FoxHome } from './HoodHomes';
 
 export const LEVEL_HEIGHT = 3.0;
 export const FOUNDATION_H = 0.25;
@@ -50,6 +51,8 @@ export interface LotBuild {
   objects: Record<string, PlacedObject>;
   roofs: Record<string, Roof>;
   pools: Record<string, Pool>;
+  /** A Fox Lake home built with The Hood's builder (shared/HoodHomes.ts); when set it replaces the walls, floors, objects, roofs and pools above. */
+  hood?: FoxHome;
 }
 
 export interface LotState extends LotDef { owner: string | null; ownerName: string | null }
@@ -96,6 +99,11 @@ export function emptyBuild(): LotBuild {
 export function normalizeBuild(b: LotBuild): LotBuild {
   b.walls ??= {}; b.floors ??= {}; b.objects ??= {}; b.roofs ??= {}; b.pools ??= {};
   for (const id in b.objects) if (!own(CATALOG, b.objects[id].catalogId)) delete b.objects[id];
+  if (b.hood !== undefined) {
+    const home = sanitizeHome(b.hood);
+    if (home) b.hood = home;
+    else delete b.hood;
+  }
   return b;
 }
 

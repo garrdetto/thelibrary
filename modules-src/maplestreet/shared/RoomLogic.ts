@@ -18,6 +18,7 @@ import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } fr
 import { vehicleRole } from './Vehicles';
 import { addCrash, cleanCar, newCar } from './Cars';
 import { findLoad, rigTruck, siteOf, STOP_RADIUS, type FreightJob } from './Freight';
+import { applyHomeOp, starterHome, type HomeOp } from './HoodHomes';
 
 const RIG_TRAILER = { dryvan: 'dry van', flatbed: 'flatbed', logger: 'log trailer', tanker: 'tanker', dumptruck: 'dump truck' } as const;
 import { applyOrder, atBodyShop, BODY_SHOP, cleanOrder, inBay, quote } from './BodyShop';
@@ -268,6 +269,7 @@ export class NeighborhoodLogic {
       case 'mow': this.handleMow(sessionId, s, acc, msg.strokes); break;
       case 'jobRequest': this.issueJob(sessionId, s); break;
       case 'freight': this.handleFreight(sessionId, s, acc, msg); break;
+      case 'home': this.handleHome(sessionId, acc, msg.seq, msg.lotId, msg.op); break;
       case 'jobProgress': this.progressJob(sessionId, s, acc, msg.jobId); break;
       case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item, msg.car); break;
       case 'refuel': this.handleRefuel(sessionId, s, acc, msg.kind, msg.gallons); break;
@@ -318,6 +320,38 @@ export class NeighborhoodLogic {
       this.io.broadcast({ t: 'build', seq: n, by: sessionId, actorId: acc.id, actorName: acc.name, op });
     }
     this.sendAccount(sessionId, acc);
+  }
+
+  /**
+   * One step of The Hood's home builder on the sender's own lot. The first step (or `start`) turns the lot's house
+   * into The Hood's starter home, free. Every step is checked and priced by The Hood's own rules against the owner's
+   * money; refunds come back. The whole home goes out to everyone, so every client draws the same house.
+   */
+  private handleHome(sessionId: string, acc: Account, seq: unknown, lotId: unknown, op: unknown) {
+    const n = typeof seq === 'number' && Number.isFinite(seq) ? seq : 0;
+    const id = typeof lotId === 'string' ? lotId : '';
+    const reject = (reason: string) => this.io.send(sessionId, { t: 'homeRejected', seq: n, lotId: id, reason });
+    if (!own(this.world.lots, id) || !own(this.world.builds, id)) return reject('Unknown lot');
+    const lot = this.world.lots[id];
+    if (lot.owner !== acc.id) return reject(lot.owner ? `This is ${lot.ownerName ?? 'another player'}'s home` : 'Buy this lot before building');
+    if (!op || typeof op !== 'object') return reject('Invalid request');
+    const b = this.world.builds[id];
+    if (!b.hood) {
+      b.hood = starterHome();
+      b.walls = {}; b.floors = {}; b.objects = {}; b.roofs = {}; b.pools = {};
+    }
+    let cost = 0;
+    const step = op as HomeOp;
+    if (step.op !== 'start') {
+      const result = applyHomeOp(b.hood, step, this.unlimited ? Infinity : acc.money);
+      if (!result.ok) return reject(result.error ?? 'You can\'t build that there.');
+      cost = result.cost;
+      if (!this.unlimited) acc.money = Math.round(acc.money - cost);
+    }
+    this.world.version++;
+    this.dirty.lots.add(id);
+    this.io.broadcast({ t: 'home', seq: n, by: sessionId, lotId: id, home: b.hood, cost });
+    if (cost) this.sendAccount(sessionId, acc);
   }
 
   private handleMow(sessionId: string, s: Session, acc: Account, strokes: unknown) {

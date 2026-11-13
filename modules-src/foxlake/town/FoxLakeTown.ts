@@ -46,6 +46,7 @@ import { GROUND_RECT, buildConnector, buildFreightRoads, buildLakeRoad, buildTow
 import { buildFreightSites } from '../trucking/FreightSites'
 import { Fleet } from '../trucking/Fleet'
 import { Dispatch } from '../trucking/Dispatch'
+import { HomeBuilder } from '../homes/HomeBuilder'
 import { LANDING, MILL, YARD } from '../../maplestreet/shared/Freight'
 import { Wading } from './Wading'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
@@ -143,6 +144,7 @@ export class FoxLakeTown implements GameExtension {
   private wading: Wading | null = null
   private signs: RoadsideSigns | null = null
   private fleet: Fleet | null = null
+  private builder: HomeBuilder | null = null
   private dispatch: Dispatch | null = null
 
   constructor(private readonly opts: TownOptions) {}
@@ -321,6 +323,19 @@ export class FoxLakeTown implements GameExtension {
       scene: host.ctx.scene,
       groundAt: (x, z) => host.terrain.heightAt(x, z),
     }, this.fleet)
+    this.builder = new HomeBuilder({
+      scene: host.ctx.scene,
+      engine: host.ctx.engine,
+      camera: host.ctx.camera,
+      canvas: host.ctx.engine.getRenderingCanvas()!,
+      mats: this.mats,
+      houses: this.houses,
+      townRoot: this.root,
+      funds: () => this.account?.money ?? 0,
+      send: (lotId, op) => this.send({ t: 'home', seq: ++this.buildSeq, lotId, op }),
+      setCameraShot: (shot) => host.setCameraShot(shot),
+      toast: (text) => host.hud.toast(text),
+    })
     addEventListener('keydown', (e) => this.key(e))
     this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
@@ -412,8 +427,18 @@ export class FoxLakeTown implements GameExtension {
         this.houses.apply(m.op as BuildOp, m.actorId, m.actorName)
         if (m.op.op === 'buyLot') {
           this.town.setLotOwner(m.op.lotId, m.actorId)
-          this.host.hud.toast(m.actorId === this.account?.id ? `Lot ${m.op.lotId} is yours!` : `${m.actorName} bought lot ${m.op.lotId}`)
+          const mine = m.actorId === this.account?.id
+          this.host.hud.toast(mine ? `Lot ${m.op.lotId} is yours! Stand on it and press E to build and buy.` : `${m.actorName} bought lot ${m.op.lotId}`)
+          if (mine) this.send({ t: 'home', seq: ++this.buildSeq, lotId: m.op.lotId, op: { op: 'start' } })
         }
+        break
+      case 'home':
+        this.houses.setHome(m.lotId, m.home)
+        this.builder?.onHome(m.lotId, m.by === this.selfId)
+        break
+      case 'homeRejected':
+        if (this.builder?.isOpen) this.builder.onRejected(m.reason)
+        else this.host.hud.toast(m.reason, 'warn')
         break
       case 'buildRejected':
         this.host.hud.toast(m.reason, 'warn')
@@ -520,6 +545,7 @@ export class FoxLakeTown implements GameExtension {
     this.casino.update(dt)
     this.fleet?.update(dt)
     this.dispatch?.update(dt)
+    this.builder?.update(dt)
     this.map?.update(dt)
     this.netAcc += dt
     if (this.netAcc >= 1 / NET_HZ) {
@@ -692,7 +718,17 @@ export class FoxLakeTown implements GameExtension {
     if (door) return door.kind === 'clothing' ? `E — ${door.name}: try on outfits` : `E — ${door.name}`
     const lot = this.lotForSale()
     if (lot) return `E — Buy lot ${lot.id} for $${lotPrice(lot).toLocaleString()}`
+    if (this.onMyLot()) return 'E — Build and buy: walls, rooms, doors, windows, exterior design, furniture'
     return ''
+  }
+
+  /** Your own lot, when you're standing on it on foot in town. */
+  private onMyLot() {
+    if (this.host.driving || zoneAt(this.host.player.z) !== 'town') return null
+    const home = this.homeLot()
+    if (!home) return null
+    const t = this.townPosition()
+    return t.x >= home.x && t.x <= home.x + home.w && t.z >= home.z && t.z <= home.z + home.d ? home : null
   }
 
   interact(): boolean {
@@ -710,6 +746,11 @@ export class FoxLakeTown implements GameExtension {
     if (door) {
       if (door.kind === 'clothing') this.host.openWardrobe()
       else this.host.hud.toast(`${door.name} isn't open in Fox Lake yet.`)
+      return true
+    }
+    const mine = this.onMyLot()
+    if (mine && this.builder) {
+      this.builder.open(mine)
       return true
     }
     const lot = this.lotForSale()
@@ -802,6 +843,7 @@ export class FoxLakeTown implements GameExtension {
     return [
       { keys: ['Ctrl'], text: 'Full map: click a place or a spot for turn-by-turn directions' },
       { keys: ['N'], text: 'Zoom the corner map' },
+      { keys: ['E'], text: 'On your lot: build and buy (The Hood\'s home builder; Esc leaves)' },
       { keys: ['T'], text: 'Couple or drop a trailer (tractor or pickup)' },
       { keys: ['B'], text: 'Raise or lower the dump body (dump truck)' },
       { keys: ['L'], text: 'Load or unload freight at a stop' },

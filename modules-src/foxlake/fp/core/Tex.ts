@@ -255,6 +255,18 @@ const R: Record<string, () => Recipe> = {
   bark: () => ({ size: 128, tile: 1.2, bump: 3, gloss: 0.08, paint: (_x, _y, u, v) => { const n = fbm(u * 4, v * 0.5, 16, 4, 201); const k = 0.6 + n * 0.5; return [clamp01(k), clamp01(k), clamp01(k), n]; } }),
   garage: () => ({ size: 256, tile: 1, bump: 2, gloss: 0.4, paint: (_x, _y, _u, v) => { const f = (v * 4) % 1; const k = 0.92 + (f < 0.06 ? -0.25 : f > 0.94 ? 0.06 : 0); return [k, k, k, f]; } }),
   metal: () => ({ size: 128, tile: 2, bump: 0.6, gloss: 0.55, metal: 0.8, paint: (_x, _y, u, v) => { const n = fbm(u * 6, v, 16, 3, 211); const k = 0.85 + n * 0.12; return [k, k, k, n]; } }),
+  // Furniture wood: long grain lines bent by slow noise, a few darker rays.
+  grain: () => ({ size: 256, tile: 1, bump: 0.8, gloss: 0.42, paint: (x, y, u, v) => {
+    const w = fbm(u * 0.6, v * 3, 8, 4, 221), line = Math.sin((v * 34 + w * 9) * Math.PI) * 0.5 + 0.5, fleck = hash(x >> 3, y, 22);
+    const k = 0.8 + line * 0.14 + w * 0.08 - (fleck > 0.97 ? 0.08 : 0);
+    return [clamp01(k), clamp01(k * 0.98), clamp01(k * 0.95), line];
+  } }),
+  // Upholstery: a fine basket weave with a soft nap.
+  fabric: () => ({ size: 256, tile: 1, bump: 1.1, gloss: 0.04, paint: (x, y, u, v) => {
+    const weave = ((x >> 2) + (y >> 2)) % 2 ? 0.94 : 1, nap = fbm(u, v, 24, 3, 231), s = hash(x, y, 24);
+    const k = weave * (0.88 + nap * 0.08 + s * 0.05);
+    return [k, k, k, weave < 1 ? 0.25 : 0.75];
+  } }),
 };
 
 // ---------------------------------------------------------------- facade windows

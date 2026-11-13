@@ -10,6 +10,12 @@
  * and their GPU buffers are freed) and swaps only that lot's colliders and
  * furniture. Furniture only shows near you (it is all indoors), and models
  * are clones that share one upload.
+ *
+ * A lot with a Fox Lake home (`LotBuild.hood`, The Hood's builder) is drawn by
+ * `homes/HomeMesher.ts` into the same cell meshes, its furniture from The
+ * Hood's catalog (`homes/HoodFurniture.ts`, shown within 60 m since much of it
+ * stands in the yard). The home being edited is drawn on its own, with its
+ * walls cut or lowered and its roof off, until editing stops.
  */
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import type { Material } from '@babylonjs/core/Materials/material';
@@ -24,12 +30,19 @@ import {
   type BuildOp, type LotBuild, type Opening, type Roof, type Wall, type WorldState,
 } from '../../../maplestreet/shared/BuildRules';
 import { CATALOG, footprint } from '../../../maplestreet/shared/Catalog';
+import { HOME_W, frameYaw, gridToTown, homeFrame, type FoxHome } from '../../../maplestreet/shared/HoodHomes';
+import { objectDef } from '../../../hood/shared/Catalog';
+import { footprintSize } from '../../../hood/shared/Lot';
+import { HOME_BASE_Y, HomeMesher, STANDING, type HomeView } from '../../homes/HomeMesher';
+import { HOOD_FURNITURE_URL, HoodFurniture } from '../../homes/HoodFurniture';
 
 const T = 0.16, H = T / 2;
 /** Furniture models are cloned in only within this distance and dropped beyond it plus a margin. */
 const FURNITURE_KEEP = 12;
-interface Placement { holder: TransformNode; url: string; custom: (typeof CATALOG)[string]['custom'] }
-interface LotView { furniture: TransformNode | null; placements: Placement[]; models: ModelInstance[]; loaded: boolean; cx: number; cz: number; cell: string }
+interface Placement { holder: TransformNode; url: string; custom: (typeof CATALOG)[string]['custom']; hood?: string }
+interface LotView { furniture: TransformNode | null; placements: Placement[]; models: ModelInstance[]; loaded: boolean; cx: number; cz: number; cell: string; radius: number }
+/** Hood homes show their furniture from further away: much of it is out in the yard. */
+const HOME_FURNITURE_RADIUS = 60;
 type Paint = { m: Material; c: RGB };
 const WHITE_RGB: RGB = [1, 1, 1];
 const FURNITURE_RADIUS = 28;
@@ -75,10 +88,52 @@ export class Houses {
   private cellMeshes = new Map<string, Mesh[]>();
   private pending = new Set<string>();
   private furnTimer = 0;
+  private readonly homes: HomeMesher;
+  readonly hoodFurniture: HoodFurniture;
+  private editing: { id: string; view: HomeView; key: string; meshes: Mesh[] } | null = null;
 
   constructor(private physics: Physics, private mats: Mats, private assets: Assets) {
     this.root = new TransformNode('houses', mats.scene);
     this.root.parent = hostRoot();
+    this.homes = new HomeMesher(mats);
+    this.hoodFurniture = new HoodFurniture(assets, mats);
+  }
+
+  /** The Fox Lake home on a lot, if it has one. */
+  home(lotId: string): FoxHome | null {
+    return this.world?.builds[lotId]?.hood ?? null;
+  }
+
+  /** The authority's latest home for a lot. */
+  setHome(lotId: string, home: FoxHome) {
+    const b = this.world?.builds[lotId];
+    if (!b) return;
+    b.hood = home;
+    b.walls = {}; b.floors = {}; b.objects = {}; b.roofs = {}; b.pools = {};
+    this.pending.add(lotId);
+  }
+
+  /** Draws `lotId`'s home on its own (walls and roof per `view`) while it is edited; null puts it back in its cell. */
+  setEditing(lotId: string | null, view: HomeView = STANDING) {
+    const prev = this.editing;
+    if (prev?.id === lotId) return this.setEditView(view);
+    if (prev) {
+      for (const m of prev.meshes) m.dispose(false, false);
+      this.pending.add(prev.id);
+    }
+    this.editing = lotId ? { id: lotId, view, key: viewKey(view), meshes: [] } : null;
+    if (lotId) this.pending.add(lotId);
+  }
+
+  /** A new view of the edited home (re-meshed only when it changes what is drawn). */
+  setEditView(view: HomeView) {
+    const e = this.editing;
+    if (!e) return;
+    const key = viewKey(view);
+    if (key === e.key) return;
+    e.view = view; e.key = key;
+    const lot = this.world?.lots[e.id], home = this.home(e.id);
+    if (lot && home) this.meshEditing(lot, home, null);
   }
 
   setWorld(w: WorldState) {
@@ -173,12 +228,14 @@ export class Houses {
       const collide = fresh ? (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, prop = false) => {
         colliders.push({ cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, cz: (z0 + z1) / 2, hx: Math.abs(x1 - x0) / 2, hy: Math.abs(y1 - y0) / 2, hz: Math.abs(z1 - z0) / 2, prop });
       } : ignore;
-      this.meshLot(b, get, collide);
+      if (b.hood && this.editing?.id === id) this.meshEditing(lot, b.hood, fresh ? collide : null);
+      else if (b.hood) this.homes.mesh(b.hood, homeFrame(lot), get, fresh ? collide : null);
+      else this.meshLot(b, get, collide);
       if (!fresh) continue;
       const placements: Placement[] = [];
-      const furniture = this.furniture(b, collide, placements);
+      const furniture = b.hood ? this.homeFurniture(lot, b.hood, collide, placements) : this.furniture(b, collide, placements);
       this.physics.setLotColliders(id, colliders);
-      this.lots.set(id, { furniture, placements, models: [], loaded: false, cx: lot.x + lot.w / 2, cz: lot.z + lot.d / 2, cell });
+      this.lots.set(id, { furniture, placements, models: [], loaded: false, cx: lot.x + lot.w / 2, cz: lot.z + lot.d / 2, cell, radius: b.hood ? HOME_FURNITURE_RADIUS : FURNITURE_RADIUS });
     }
     const meshes: Mesh[] = [];
     const proxies = new ShadowProxies(CELL);
@@ -192,6 +249,49 @@ export class Houses {
     }
     meshes.push(...proxies.flush(this.root, `houses:${cell}`));
     if (meshes.length) this.cellMeshes.set(cell, meshes);
+  }
+
+  /** The edited home on its own meshes, drawn with the editing view. */
+  private meshEditing(lot: { id: string; x: number; z: number; w: number; d: number; front: '+z' | '-z' }, home: FoxHome, collide: Parameters<HomeMesher['mesh']>[3]) {
+    const e = this.editing;
+    if (!e) return;
+    for (const m of e.meshes) m.dispose(false, false);
+    e.meshes = [];
+    const parts = new Map<Material, MeshBuilder>();
+    const get = (m: Material) => { let mb = parts.get(m); if (!mb) parts.set(m, (mb = new MeshBuilder())); return mb; };
+    this.homes.mesh(home, homeFrame(lot), get, collide, e.view);
+    for (const [material, mb] of parts) {
+      if (mb.empty) continue;
+      const mesh = mb.toMesh(`home-edit:${lot.id}`, true);
+      mesh.parent = this.root;
+      finishMesh(mesh, material, { cast: true, static: true });
+      e.meshes.push(mesh);
+    }
+  }
+
+  /** Holders and colliders for a Hood home's catalog items; the models are cloned in when you come near. */
+  private homeFurniture(lot: { x: number; z: number; w: number; d: number; front: '+z' | '-z' }, home: FoxHome, collide: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, prop?: boolean) => void, placements: Placement[]) {
+    const frame = homeFrame(lot), yaw = frameYaw(frame);
+    const floored = new Set(home.floors.map(([i]) => i));
+    const group = new TransformNode('home-furniture', this.mats.scene);
+    for (const o of home.objects) {
+      const def = objectDef(o.def);
+      if (!def) continue;
+      const [fw, fd] = footprintSize(def, o.r);
+      const t = gridToTown(frame, o.x + fw / 2, o.z + fd / 2);
+      const y = HOME_BASE_Y + (floored.has(o.x + o.z * HOME_W) ? 0.03 : 0);
+      const holder = new TransformNode(o.def, this.mats.scene);
+      holder.parent = group;
+      holder.position.set(t.x, y, t.z);
+      holder.rotation.y = yaw - (o.r * Math.PI) / 2;
+      placements.push({ holder, url: HOOD_FURNITURE_URL, custom: undefined, hood: o.def });
+      if (!def.flat && def.height > 0.3) collide(t.x - fw * 0.42, y, t.z - fd * 0.42, t.x + fw * 0.42, y + def.height, t.z + fd * 0.42, true);
+    }
+    if (!placements.length) { group.dispose(); return null; }
+    void this.hoodFurniture.load();
+    group.setEnabled(false);
+    group.parent = this.root;
+    return group;
   }
 
   private meshLot(b: LotBuild, get: (m: Material) => MeshBuilder, collide: (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, prop?: boolean) => void) {
@@ -432,6 +532,16 @@ export class Houses {
   private loadFurniture(l: LotView) {
     l.loaded = true;
     for (const p of l.placements) {
+      if (p.hood) {
+        const id = p.hood;
+        void this.hoodFurniture.load().then(ok => {
+          if (!ok || !l.loaded || p.holder.isDisposed() || p.holder.getChildren().length) return;
+          const node = this.hoodFurniture.make(id, p.holder);
+          if (!node) return;
+          for (const m of node.getChildMeshes(false)) { m.computeWorldMatrix(true); m.freezeWorldMatrix(); }
+        });
+        continue;
+      }
       void this.assets.instance(p.url, { shadows: false }).then(inst => {
         if (!inst) return;
         if (!l.loaded || p.holder.isDisposed()) { inst.entries.dispose(); inst.root.dispose(); return; }
@@ -461,7 +571,7 @@ export class Houses {
   /** One clone of every furniture model in town, for the warm-up to draw (dispose them afterwards). */
   async warmModels(): Promise<ModelInstance[]> {
     const urls = new Set<string>();
-    for (const l of this.lots.values()) for (const p of l.placements) urls.add(p.url);
+    for (const l of this.lots.values()) for (const p of l.placements) if (!p.hood) urls.add(p.url);
     const list = await Promise.all([...urls].map(u => this.assets.instance(u, { shadows: false })));
     return list.filter((m): m is ModelInstance => !!m);
   }
@@ -477,16 +587,19 @@ export class Houses {
     this.furnTimer -= dt;
     if (this.furnTimer > 0) return added;
     this.furnTimer = 0.25;
-    const r2 = FURNITURE_RADIUS * FURNITURE_RADIUS, far2 = (FURNITURE_RADIUS + FURNITURE_KEEP) ** 2;
     let loads = 1;
     for (const l of this.lots.values()) {
       if (!l.furniture) continue;
       const d2 = (l.cx - focus.x) ** 2 + (l.cz - focus.z) ** 2;
-      const near = d2 < r2;
+      const near = d2 < l.radius * l.radius;
       if (near && !l.loaded && loads > 0) { loads--; this.loadFurniture(l); added = true; }
-      else if (!near && l.loaded && d2 > far2) this.unloadFurniture(l);
+      else if (!near && l.loaded && d2 > (l.radius + FURNITURE_KEEP) ** 2) this.unloadFurniture(l);
       if (near !== l.furniture.isEnabled(false)) l.furniture.setEnabled(near);
     }
     return added;
   }
+}
+
+function viewKey(v: HomeView): string {
+  return `${v.walls}|${v.roof}|${v.walls === 'cut' && v.camera ? `${Math.round(v.camera.gx / 4)},${Math.round(v.camera.gz / 4)}` : ''}`;
 }
