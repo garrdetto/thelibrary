@@ -11,6 +11,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import type { Scene } from '@babylonjs/core/scene'
+import { FOX_LAKE_WOODS_FLOOR } from '../../foxlake/look'
 import { fbm } from '../../rackreel/world/Terrain'
 import { detailTexture } from '../../rackreel/world/World'
 import { COVER } from '../data/MapData'
@@ -23,8 +24,9 @@ const mown: Rgb = [0.36, 0.47, 0.2]
 const meadow: Rgb = [0.42, 0.47, 0.22]
 const dry: Rgb = [0.56, 0.52, 0.3]
 const stubble: Rgb = [0.62, 0.56, 0.36]
-const needles: Rgb = [0.33, 0.27, 0.17]
-const moss: Rgb = [0.25, 0.32, 0.14]
+const rgb = (c: readonly number[]): Rgb => [c[0], c[1], c[2]]
+const needles = rgb(FOX_LAKE_WOODS_FLOOR.needles)
+const moss = rgb(FOX_LAKE_WOODS_FLOOR.moss)
 const marsh: Rgb = [0.36, 0.38, 0.2]
 const sand: Rgb = [0.62, 0.55, 0.42]
 const lakebed: Rgb = [0.36, 0.32, 0.22]
@@ -75,7 +77,7 @@ export function groundSink(clear: number): number {
 export function buildGround(scene: Scene, land: TelloLand): Mesh[] {
   const mat = new StandardMaterial('tello-ground-mat', scene)
   mat.diffuseTexture = detailTexture(scene)
-  mat.specularColor = new Color3(0.02, 0.02, 0.02)
+  mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.4, 0.4, 0.4)
   mat.freeze()
   const out: Mesh[] = []

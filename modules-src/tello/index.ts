@@ -8,6 +8,7 @@ import { Game } from '../rackreel/game/Game'
 import { store } from '../maplestreet/src/core/Storage'
 import { isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../maplestreet/shared/CustomVehicles'
 import { BUNDLED_VEHICLES } from '../maplestreet/shared/BundledVehicles'
+import { FOX_LAKE_LOOK, FOX_LAKE_SHADOW_MAP } from '../foxlake/look'
 import { loadMap } from './data/MapData'
 import { TelloLand, TelloTerrain } from './region'
 import { TelloTown } from './town/TelloTown'
@@ -17,11 +18,6 @@ declare global {
     __tello?: { game: Game; town: TelloTown; land: TelloLand }
   }
 }
-
-/** Fox Lake's picture: light sun shadows, shaded sides lifted by a stronger sky fill, a night 15 % brighter, and matte characters. */
-const LOOK = { shadowDarkness: 0.9, fill: 1.4, nightBrightness: 1.15, matteCharacters: true }
-/** Half Rack & Reel's shadow map, as in Fox Lake: a town has far more casters, and the soft shadows hide the coarser texels. */
-const SHADOW_MAP = 1024
 
 const online = location.protocol === 'https:' || location.protocol === 'http:'
 const BUNDLED_IDS = new Set(BUNDLED_VEHICLES.map((r) => r.id))
@@ -56,7 +52,7 @@ async function boot(): Promise<void> {
   const [map] = await Promise.all([loadMap(new URL('./tello/', location.href).href), registerVehicles()])
   const land = new TelloLand(map.doc, map.grids)
   const town = new TelloTown(land)
-  const game = new Game(canvas, { terrain: new TelloTerrain(land), extension: town, gearAtCabin: true, profile: 'tello', look: LOOK, shadowMapSize: SHADOW_MAP })
+  const game = new Game(canvas, { terrain: new TelloTerrain(land), extension: town, gearAtCabin: true, profile: 'tello', look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP })
   window.__tello = { game, town, land }
   await game.start()
 }

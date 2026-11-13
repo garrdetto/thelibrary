@@ -104,7 +104,7 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: Physics
     door: mats.textured('door', 'planks', { color: 0x6b4a2e, tile: 1 }),
     garage: mats.textured('garage', 'garage', { color: 0xf0eee8 }),
     glass: mats.glass('glass-house', 0xa9c3d1, 0.38),
-    lit: mats.plain('t-window-lit', { color: 0x38424b, gloss: 0.8, emissive: 0xffc98a, emissiveIntensity: 0 }),
+    lit: mats.plain('t-window-lit', { color: 0x38424b, gloss: 0.8, keepGloss: true, emissive: 0xffc98a, emissiveIntensity: 0 }),
     store: mats.facade('store'),
     civic: mats.facade('brick'),
     post: mats.plain('t-post', { color: 0xe6e6e2, gloss: 0.45 }),

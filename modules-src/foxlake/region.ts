@@ -19,6 +19,7 @@ import type { OutsideLand, TerrainShape } from '../rackreel/world/Terrain'
 import { MAP_BOUNDS, WORLD_HALF } from '../maplestreet/shared/WorldLayout'
 import { HIGHWAY_GAPS, LAKE_ROAD_APRON, carveLakeRoad, lakeRoadPath } from './country/Roads'
 import { ROADSIDE, lotRect } from './roadside/RoadsideLayout'
+import { FOX_LAKE_WOODS_FLOOR } from './look'
 
 /** Ground level of the town in the scene (above the lake, level with the interstate's north end). */
 export const TOWN_Y = 2
@@ -215,9 +216,6 @@ export const TOWN_LAND: OutsideLand = {
     return rectDistance(x, z, BUILT_UP) > 4 && roadClear(x, z) > 0.8
   },
 }
-
-/** A lighter needle-and-leaf-litter floor than the lake country's own, so the ground under the woods reads as forest floor, not scorched earth. */
-const FOX_LAKE_WOODS_FLOOR = { needles: [0.47, 0.4, 0.27], moss: [0.37, 0.44, 0.22] }
 
 const rawFox = (x: number, z: number) => rawHeight(x, z, FOX_LAKE_SHAPE)
 

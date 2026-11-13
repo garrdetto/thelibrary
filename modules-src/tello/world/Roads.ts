@@ -35,7 +35,7 @@ function surface(scene: Scene, name: string, texture: Texture, tint?: Color3): S
   const mat = new StandardMaterial(`tello-${name}`, scene)
   mat.diffuseTexture = texture
   if (tint) mat.diffuseColor = tint
-  mat.specularColor = new Color3(0.04, 0.04, 0.04)
+  mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.35, 0.35, 0.35)
   mat.backFaceCulling = false
   mat.zOffset = -2
@@ -251,7 +251,7 @@ export function buildBridges(scene: Scene, land: TelloLand, cast: (mesh: Mesh) =
   const mat = new StandardMaterial('tello-bridge', scene)
   mat.diffuseTexture = detailTexture(scene)
   mat.diffuseColor = new Color3(0.66, 0.65, 0.62)
-  mat.specularColor = new Color3(0.03, 0.03, 0.03)
+  mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.35, 0.35, 0.35)
   mat.backFaceCulling = false
   const data = new VertexData()

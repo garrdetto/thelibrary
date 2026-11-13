@@ -12,6 +12,7 @@ import { store } from '../maplestreet/src/core/Storage'
 import { isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../maplestreet/shared/CustomVehicles'
 import { isValidRecord, registerCustomItems, type CustomItemRecord } from '../maplestreet/shared/CustomItems'
 import { BUNDLED_VEHICLES } from '../maplestreet/shared/BundledVehicles'
+import { FOX_LAKE_LOOK, FOX_LAKE_SHADOW_MAP } from './look'
 import { FOX_LAKE_SHAPE } from './region'
 import { FoxLakeTown } from './town/FoxLakeTown'
 
@@ -20,19 +21,6 @@ declare global {
     __foxlake?: { game: Game; town: FoxLakeTown }
   }
 }
-
-/**
- * A soft, even picture: a gentler sun with a stronger sky fill, so lit and shaded sides sit close together and nothing
- * falls into murk; very faint sun shadows (0.979: 30 % of the earlier 0.93's strength); a night about 32 % brighter
- * than Rack & Reel's (1.15 × 1.15); and matte characters in their own colours (plain materials, not the physically
- * based cloth, which washed people out to grey under the town's sky light).
- * The ground and roads get a share of their own colour back (`groundLift`), so the dark needle-and-moss floor under
- * the woods, slopes facing away from the sun and the ground at night never fall to a burnt-looking black.
- * All of it is light levels, so it costs no draw calls, textures or shadow passes.
- */
-const FOX_LAKE_LOOK = { shadowDarkness: 0.979, key: 0.8, fill: 1.65, nightBrightness: 1.32, matteCharacters: true, groundLift: { day: 0.22, night: 0.3 } }
-/** Half Rack & Reel's shadow map: the town has far more casters, and the soft blurred shadows hide the coarser texels. */
-const FOX_LAKE_SHADOW_MAP = 1024
 
 const online = location.protocol === 'https:' || location.protocol === 'http:'
 

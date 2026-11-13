@@ -4,7 +4,7 @@ Source for `public/modules/tello.html`, module id `tello`. Tello is Montello, Wi
 
 ## How it is put together
 
-Tello runs on Fox Lake's engine. `index.ts` starts Rack & Reel's `Game` with `{ terrain: new TelloTerrain(land), extension: new TelloTown(land), gearAtCabin: true, profile: 'tello', look, shadowMapSize }` (the same look and shadow map Fox Lake passes), so these are the same code as Fox Lake and are never forked here:
+Tello runs on Fox Lake's engine. `index.ts` starts Rack & Reel's `Game` with `{ terrain: new TelloTerrain(land), extension: new TelloTown(land), gearAtCabin: true, profile: 'tello', look, shadowMapSize }` (`FOX_LAKE_LOOK` and `FOX_LAKE_SHADOW_MAP` imported from `foxlake/look.ts`, so Tello's lighting always matches Fox Lake's), so these are the same code as Fox Lake and are never forked here:
 
 - the renderer, tone mapping, sky, sun and moon, fog and cached shadows (`rackreel/core`, `rackreel/world/Lighting.ts`)
 - the skinned hunter, his animations, the character creator and wardrobe (`rackreel/game/Avatar.ts`)
