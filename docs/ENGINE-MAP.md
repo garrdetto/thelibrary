@@ -413,6 +413,15 @@ A fishing and hunting module on one 1,024 m square of northern Wisconsin (lake w
 - `shared/Protocol.ts` — message protocol types — every transport, `RoomLogic`, `WorldServer`.
 - `colyseus-server/index.ts`, `NeighborhoodRoom.ts` — optional Node room on the shared logic — run separately.
 
+### tello — Tello (`modules-src/tello/`, Babylon.js 9.34 WebGPU, WebGL2 fallback)
+Montello, Wisconsin at 1:1 as a host world on Rack & Reel's game, with Fox Lake's town builders, physics and vehicles (details in `modules-src/tello/README.md`).
+- `modules-src/tello/index.html`, `index.ts` — page shell and boot — `vite.modules.ts` (→ `public/modules/tello.html`).
+- `data/MapData.ts` — the baked map files' types and loader. `region.ts` — frames, `TelloLand`, `TelloTerrain`, the projection.
+- `world/Ground.ts`, `Water.ts`, `Roads.ts`, `Buildings.ts`, `Poly.ts` — ground, water, roads and bridges, buildings, polygon helpers.
+- `town/TelloTown.ts` — the `GameExtension`. `town/TelloMap.ts`, `town/Routes.ts` — maps and directions.
+- `tools/bake_map.py` — bakes `public/modules/tello/montello.bin` and `montello.json` from open data.
+- `tests/map.test.ts` — `scripts/tello-tests.mjs` in `pnpm test`. `scripts/tello-capture.mjs` — screenshots and frame times in Chrome.
+
 ### foxlake — Fox Lake (`modules-src/foxlake/`, Babylon.js 9.34 WebGPU, WebGL2 fallback; replaced Fox Plains 2)
 Rack & Reel's game with the shared Fox Plains town mounted north of the lake country (details in `modules-src/foxlake/README.md`). Everything that doesn't draw for the town is imported from `modules-src/maplestreet/`; everything for the lake country is Rack & Reel's own code.
 - `modules-src/foxlake/index.html` — page shell (Rack & Reel's, with the town's chips) — `vite.modules.ts` (→ `public/modules/foxlake.html`).

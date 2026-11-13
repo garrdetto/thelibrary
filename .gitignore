@@ -33,3 +33,6 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+public/modules/tello.html
+.tello-cache/

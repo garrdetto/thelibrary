@@ -39,7 +39,7 @@ export const defaultCategories: ModuleCategory[] = [
 const defaultAssignments: Partial<Record<ModuleId, string[]>> = {
   sandlot3d: ['sports'], sandlot: ['sports'], fairway: ['sports'], darts: ['sports'], bushleague: ['sports'], proskater: ['sports'], pingpong: ['sports'], pool: ['sports'],
   shorttrack: ['racing'], racing: ['racing'], oval: ['racing'], demoderby: ['racing'], botwreck: ['racing'], county: ['racing', 'worlds'],
-  maplestreet: ['worlds'], foxlake: ['worlds', 'outdoors'], hood: ['worlds'], park: ['worlds', 'business'], park2: ['worlds', 'business'],
+  maplestreet: ['worlds'], foxlake: ['worlds', 'outdoors'], tello: ['worlds', 'racing'], hood: ['worlds'], park: ['worlds', 'business'], park2: ['worlds', 'business'],
   angler: ['outdoors'], rackreel: ['outdoors'],
   cookies: ['business'], hotdog: ['business'],
   chess: ['puzzles'], checkers: ['puzzles'], '2048': ['puzzles'], tetradrop: ['puzzles'], sudoku: ['puzzles'], minesweeper: ['puzzles'], recall: ['puzzles'], greible: ['puzzles'], bubbles: ['puzzles'],

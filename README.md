@@ -77,6 +77,10 @@ A 3D neighborhood simulation in one persistent shared world. New neighbors pick 
 
 Around town you can drive pickups (with a trailer), a heavy-duty crew cab, a muscle coupe, a sedan, a golf cart, a four-wheeler and riding or zero-turn mowers, mow striped lawns, haul deliveries, eat downtown, fill up at the gas station and borrow from a bank with a $50,000 loan cap. Other players can never change your lot. The shared world runs on a Durable Object with its state in D1. Solo play works fully offline, and private rooms use a PeerJS code. The page is generated from `modules-src/maplestreet/`; rebuild it with `bun modules-src/maplestreet/build.mjs`.
 
+## Tello
+
+Montello, Wisconsin at full size, built from real survey data on the same engine as Fox Lake: the lidar ground, every mapped road and bridge, Buffalo Lake, Lake Montello and the Fox River at their own levels, and every building on its real footprint. Walk it or drive the Fox Plains vehicles, and use the map (Ctrl) for directions along the real streets. The map files in `public/modules/tello/` are baked by `modules-src/tello/tools/bake_map.py` from OpenStreetMap (© OpenStreetMap contributors, ODbL), USGS 3DEP lidar, USDA NAIP imagery and Microsoft building footprints (ODbL). Details in `modules-src/tello/README.md`.
+
 ## Multiplayer
 
 Live pool and racing run on the Node service in `server/` (deployed on Railway). Set its `FRONTEND_ORIGIN` to this site's origin, for example `https://thelibrary.garrdetto.workers.dev`. The site's `VITE_POOL_SERVER_URL` build variable points at the Railway URL.

@@ -7,6 +7,7 @@
     "modules-src/angler/**/*.ts",
     "modules-src/foxplains2/**/*.ts",
     "modules-src/foxlake/**/*.ts",
+    "modules-src/tello/**/*.ts",
     "modules-src/county/**/*.ts",
     "modules-src/bushleague/**/*.ts",
     "modules-src/hood/**/*.ts",
@@ -24,6 +25,7 @@
     "modules-src/hood/tests/**",
     "modules-src/rackreel/tests/**",
     "modules-src/foxlake/tests/**",
+    "modules-src/tello/tests/**",
     "modules-src/foxlake/*.old",
     "modules-src/darts/tests/**"
   ],
