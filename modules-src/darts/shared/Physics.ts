@@ -40,7 +40,7 @@ export const HOLE = HOLE_PITCH_MM / 1000
 /**
  * The power meter, as fractions of IDEAL_SPEED off the ideal: `perfect` is the half-width of the solid green (a third of the earlier ±1.7 %), `fade` where
  * the green has faded fully to yellow, and `band` the half-width of the yellow; past it the meter runs on into red. A release `d` green half-widths from the middle misses the aim point by at
- * most `reach(d)`: nothing up to `exact` (the Perfect window between the meter's two white lines, ±0.21 %, well inside the solid green), then measured from the lines as if they sat at `reachLine` (±0.67 %): `greenHoles` holes
+ * most `reach(d)`: nothing up to `exact` (the Perfect window between the meter's two white lines, ±0.24 % (15 % wider than the earlier ±0.21 %), well inside the solid green), then measured from the lines as if they sat at `reachLine` (±0.67 %): `greenHoles` holes
  * at `reachLine`'s edge of the green, on through the yellow (the reach eases in from nothing over `lineRamp` green half-widths past the lines) to `yellowHoles` at the edge of the band (easing in slowly, so a release well past the green still lands close), and staying there in
  * the red, where the extra speed also drops (soft) or lifts (hard) the dart. Outside the lines every dart misses by at least `meterFloor`: nothing at the
  * lines, growing to `greenEdgeHoles` holes at the edge of the green (`floorSpread` to all of it), then holding. On top of that, `nearMissChance` of
@@ -54,7 +54,7 @@ export const METER = {
   perfect: 0.017 / 3,
   fade: 0.03,
   band: 0.085,
-  exact: 0.00625 / 0.017,
+  exact: (0.00625 * 1.15) / 0.017,
   reachLine: 0.02 / 0.017,
   lineRamp: 0.4,
   greenHoles: 9.8,
