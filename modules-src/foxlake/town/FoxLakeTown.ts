@@ -792,7 +792,7 @@ const ROADSIDE_GREETING: Record<RoadsidePlace['kind'], (p: RoadsidePlace) => str
 function countryAsphalt(scene: import('@babylonjs/core/scene').Scene, name: string, texture: import('@babylonjs/core/Materials/Textures/baseTexture').BaseTexture): StandardMaterial {
   const mat = new StandardMaterial(`fox-lake-${name}`, scene)
   mat.diffuseTexture = texture
-  mat.specularColor = new Color3(0.04, 0.04, 0.04)
+  mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.35, 0.35, 0.35)
   return mat
 }

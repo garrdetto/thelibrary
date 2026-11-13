@@ -20,7 +20,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import type { Material } from '@babylonjs/core/Materials/material';
 import { ChunkedBuilders, MeshBuilder, hostRoot, meshEntity, hexRGB, mixRGB, disposeNode, finishMesh, type RGB } from '../core/Geo';
-import { pbr, type Mats } from '../core/Tex';
+import { pbr, ruledRoughness, type Mats } from '../core/Tex';
 import type { GroundLook } from '../core/GroundShader';
 import type { Physics } from '../physics/Physics';
 import {
@@ -523,7 +523,7 @@ export class Town {
     g.fillText('FOR', 128, 52); g.fillText('SALE', 128, 108);
     this.signFace = pbr('sign-face', this.mats.scene);
     this.signFace.albedoTexture = this.mats.canvasTexture('for-sale', c);
-    this.signFace.roughness = 0.7;
+    this.signFace.roughness = ruledRoughness(0.3);
     this.signPost = this.mats.plain('sign-post', { color: 0xe8e2d4, gloss: 0.3 });
   }
 

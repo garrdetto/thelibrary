@@ -11,7 +11,7 @@ import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Constants } from '@babylonjs/core/Engines/constants';
 import { ChunkedBuilders, MeshBuilder, hostRoot, hexRGB, mixRGB, finishMesh, scaleRGB, type RGB } from '../core/Geo';
-import { lin3, pbr, type Mats } from '../core/Tex';
+import { lin3, pbr, ruledRoughness, type Mats } from '../core/Tex';
 import type { Physics } from '../physics/Physics';
 import { BUILDINGS, CIVIC, DEPOT, GAS_STATION, SHOP_DOORS, TOWN_SQUARE_RECT, isShopKind, type Building } from '../../../maplestreet/shared/WorldLayout';
 import { BODY_SHOP, BODY_SHOP_BAYS } from '../../../maplestreet/shared/BodyShop';
@@ -61,7 +61,7 @@ export class Downtown {
     this.chunks.flush(this.root, 'downtown');
     const sm = pbr('shop-signs', mats.scene);
     const tex = mats.canvasTexture('shop-signs', this.signs.canvas);
-    sm.albedoTexture = tex; sm.emissiveTexture = tex; sm.emissiveColor = new Color3(1, 1, 1); sm.emissiveIntensity = 0.15; sm.roughness = 0.6;
+    sm.albedoTexture = tex; sm.emissiveTexture = tex; sm.emissiveColor = new Color3(1, 1, 1); sm.emissiveIntensity = 0.15; sm.roughness = ruledRoughness(0.42);
     mats.nightGlow.push({ m: sm, k: 1.4 });
     const signs = this.signMesh.toMesh('shop-signs');
     signs.parent = this.root;
@@ -216,7 +216,7 @@ export class Downtown {
     stone.cylinder(s.cx, 0.12, s.cz, 0.7, 0.5, 2.8, 16, true);
     stone.cylinder(s.cx, 2.9, s.cz, 1.8, 1.6, 0.25, 20, true);
     this.physics.addStaticCylinder(s.cx, 0.5, s.cz, 0.4, 5);
-    const water = this.mats.plain('fountain-water', { color: 0x2b6f86, gloss: 0.95, metal: 0.1 });
+    const water = this.mats.plain('fountain-water', { keepGloss: true, color: 0x2b6f86, gloss: 0.95, metal: 0.1 });
     this.chunks.get(s.cx, s.cz, water, { cast: false }).cylinder(s.cx, 0.12, s.cz, 4.6, 4.6, 0.55, 28, true);
     const leaves = this.chunks.get(s.cx, s.cz, this.mats.plain('leaves', { vcolor: true, gloss: 0.18 }), { colors: true });
     const bark = this.chunks.get(s.cx, s.cz, this.mats.textured('bark', 'bark', { color: 0x6b5a48 }));

@@ -48,9 +48,32 @@ export const HOLE = HOLE_PITCH_MM / 1000
  * Past the green a dart can also miss further, with `meterMissChance` (from `lineMissChance` at the green edge up to `bandMissChance` at the band
  * edge), by `missFloor` to all of the reach, in any direction. Every miss distance here is 40 % bigger than it first was. The cross meter (`ThrowIntent.cross`, what every person throws with) has no chance in it: the
  * vertical reading misses high or low and the horizontal one left or right, each by `crossDistance`, with `sideRedHoles` more per 5 % into the red sideways.
- * `levelScale` tightens (Easy) or widens (Hard) the reach.
+ * `levelScale` tightens (Easy) or widens (Hard) the reach. `redScale` scales how much the speed past the band drops or lifts the dart.
+ * The administrator can retune the zones and miss distances (`shared/Settings.ts`, `applyMeterSettings`), so this object is mutable; the values here are the defaults.
  */
-export const METER = {
+export interface MeterTuning {
+  perfect: number
+  fade: number
+  band: number
+  exact: number
+  reachLine: number
+  lineRamp: number
+  greenHoles: number
+  yellowHoles: number
+  lineMissChance: number
+  bandMissChance: number
+  missFloor: number
+  greenEdgeHoles: number
+  floorSpread: number
+  nearMissChance: number
+  nearMissHoles: readonly [number, number]
+  sideRange: number
+  sideRedHoles: number
+  redScale: number
+  levelScale: Record<PlayerLevel, number>
+}
+
+export const METER: MeterTuning = {
   perfect: 0.017 / 3,
   fade: 0.03,
   band: 0.085,
@@ -65,11 +88,12 @@ export const METER = {
   greenEdgeHoles: 2.8,
   floorSpread: 0.8,
   nearMissChance: 0.47,
-  nearMissHoles: [5.6, 8.4] as readonly [number, number],
+  nearMissHoles: [5.6, 8.4],
   sideRange: 0.15,
   sideRedHoles: 11.2,
-  levelScale: { easy: 0.75, normal: 1, hard: 1.25 } as Record<PlayerLevel, number>,
-} as const
+  redScale: 1,
+  levelScale: { easy: 0.75, normal: 1, hard: 1.25 },
+}
 
 export function isPlayerLevel(level: SpreadLevel): level is PlayerLevel {
   return (PLAYER_LEVELS as readonly string[]).includes(level)
@@ -318,7 +342,7 @@ function playerLaunch(clean: ThrowIntent, level: PlayerLevel, rng: Rng, origin: 
   const offsetY = miss.y
   const ideal = aimDirection(clean.aimX + offsetX, clean.aimY + offsetY, origin)
   const off = clean.speed / IDEAL_SPEED - 1
-  const beyond = Math.sign(off) * Math.max(0, Math.abs(off) - METER.band)
+  const beyond = Math.sign(off) * Math.max(0, Math.abs(off) - METER.band) * METER.redScale
   const speed = clamp(IDEAL_SPEED * (1 + beyond), MIN_SPEED, MAX_SPEED)
   const dir = turn(ideal, clean.yaw, 0)
   return { origin, velocity: [dir[0] * speed, dir[1] * speed, dir[2] * speed] }

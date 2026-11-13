@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu'
 import { HOLE_PITCH_MM, RADII, SECTORS, SECTOR_DEGREES, SOFT_RADII } from '../shared/Board'
 import { createRng } from '../shared/Rng'
+import { DEFAULT_SETTINGS, type SpiderColors, type SteelColors } from '../shared/Settings'
 
 export type BoardStyle = 'steel' | 'spider'
 
@@ -14,25 +15,27 @@ export function isBoardStyle(value: unknown): value is BoardStyle {
   return value === 'steel' || value === 'spider'
 }
 
-export const BOARD_COLORS = {
-  black: '#141312',
-  cream: '#f1e4c2',
-  red: '#d01f30',
-  green: '#0f8a4f',
-  sisal: '#1a1816',
-  wire: '#e6e9ee',
-  number: '#ffffff',
-  numberEdge: '#050505',
-} as const
+/** Steel-tip face colours; the administrator's settings replace them before the board is drawn (`applyBoardColors`). */
+export const BOARD_COLORS: SteelColors & { sisal: string } = { ...DEFAULT_SETTINGS.steel, sisal: '#1a1816' }
 
-export const SPIDER_COLORS = {
-  black: '#141416',
-  red: '#d0162a',
-  catch: '#0c0c0e',
-  spider: '#eef0f2',
-  number: '#ffffff',
-  trim: '#e3192f',
-} as const
+/** Soft-tip face and housing colours. */
+export const SPIDER_COLORS: SpiderColors = { ...DEFAULT_SETTINGS.spider }
+
+/** Uses the administrator's board colours for every board drawn from now on. */
+export function applyBoardColors(steel: SteelColors, spider: SpiderColors): void {
+  Object.assign(BOARD_COLORS, steel)
+  Object.assign(SPIDER_COLORS, spider)
+}
+
+/** Colours for the board's 3D parts (wires, plastic spider, housing). The metal wires and plastic spider are a shade off the face's drawn colours as built, so the built shades stay until the admin picks another colour. */
+export function boardPartColors(): { wire: string; plasticSpider: string; housing: string; housingTrim: string } {
+  return {
+    wire: BOARD_COLORS.wire === DEFAULT_SETTINGS.steel.wire ? '#e4e7ec' : BOARD_COLORS.wire,
+    plasticSpider: SPIDER_COLORS.spider === DEFAULT_SETTINGS.spider.spider ? '#f2f3f5' : SPIDER_COLORS.spider,
+    housing: SPIDER_COLORS.housing,
+    housingTrim: SPIDER_COLORS.housingTrim,
+  }
+}
 
 export interface BoardTextures {
   color: THREE.CanvasTexture

@@ -44,7 +44,8 @@ import { customVehicleRecord, type CustomVehicleRecord } from '../../../maplestr
 import { lampTriangles, type LampDepth, type LampSize, type Shape } from '../../../maplestreet/shared/Shapes';
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
-import { glazeScan } from './ScanGlass';
+import { glazeScan, pristineIndices, rememberTriangles } from './ScanGlass';
+import { tracedFlags } from '../../../maplestreet/shared/VehicleGlass';
 import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
 import { carEnvTexture } from './CarEnv';
 import { microBump } from '../../../rackreel/world/MicroBump';
@@ -109,6 +110,18 @@ function sharpenScan(model: TransformNode) {
 /** `lift` raises the wheel above the axle line when the model draws it there (wheels split out in Blender keep their own centre). */
 export interface WheelView { steer: TransformNode; spin: TransformNode; axle: number; side: number; caster: boolean; lift: number }
 
+/** A scanned body the developer panel's Trace windows tool can work on. */
+export interface GlassBody {
+  /** The record the glass is saved on: the published or bundled vehicle (a built-in's realistic stand-in saves on its bundled record). */
+  recordId: string;
+  name: string;
+  /** Every mesh of the model, in the order traced glass numbers them; `scanned` are the ones that can hold glass. */
+  meshes: Mesh[];
+  scanned: Mesh[];
+  /** The record's model transform (the chassis frame's model space). */
+  holder: TransformNode;
+}
+
 export interface VehicleView {
   readonly kind: string;
   readonly tuning: VehicleTuning;
@@ -119,6 +132,8 @@ export interface VehicleView {
   styleKey: string;
   setStyle(style: CarStyle | null | undefined): void;
   setLamps(night: number, braking: boolean): void;
+  /** The scanned body behind this view, once loaded; null for built-in low-poly bodies, whose glass is modelled. */
+  glassBody(): GlassBody | null;
   destroy(): void;
 }
 
@@ -345,6 +360,9 @@ class View implements VehicleView {
   private rec: CustomVehicleRecord | null = null;
   private lampState = '';
   private destroyed = false;
+  private glass: GlassBody | null = null;
+  /** Called once when the view is destroyed (VehicleModels' list of live views). */
+  onDestroy: (() => void) | null = null;
 
   constructor(readonly kind: string, readonly tuning: VehicleTuning) {
     this.root = new TransformNode(`vehicle-${kind}`, gfx().scene);
@@ -480,12 +498,19 @@ class View implements VehicleView {
     holder.rotation.y = (r.model.yaw * Math.PI) / 180;
     holder.scaling.setAll(r.model.scale);
     const scanned = new Map<Mesh, BaseTexture>();
+    const traced = new Map<Mesh, Uint8Array>();
     if (inst) {
       sharpenScan(inst.root); fixModelMaterials(inst.root); inst.root.parent = holder;
-      for (const mesh of meshesOf(inst.root)) {
+      const all = meshesOf(inst.root).filter((m): m is Mesh => m instanceof Mesh);
+      rememberTriangles(all);
+      all.forEach((mesh, i) => {
         const m = mesh.material;
-        if (mesh instanceof Mesh && m instanceof PBRMaterial && m.albedoTexture && !glassMats.has(m) && !glowing(m)) scanned.set(mesh, m.albedoTexture);
-      }
+        if (!(m instanceof PBRMaterial) || !m.albedoTexture || glassMats.has(m) || glowing(m)) return;
+        scanned.set(mesh, m.albedoTexture);
+        const flags = tracedFlags(r.glass, i, (pristineIndices(mesh)?.length ?? 0) / 3, mesh.getTotalVertices());
+        if (flags) traced.set(mesh, flags);
+      });
+      this.glass = { recordId: r.id, name: r.name, meshes: all, scanned: [...scanned.keys()], holder };
     }
     else {
       const c = r.physics.chassis, s = 1 / r.model.scale;
@@ -542,7 +567,7 @@ class View implements VehicleView {
     if (r.lampShapes?.headStyle?.kind !== '3d') lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize, r.lampShapes?.headDepth, 1);
     if (r.lampShapes?.tailStyle?.kind !== '3d') lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize, r.lampShapes?.tailDepth, -1);
     this.applyStyle();
-    if (scanned.size && glazeScans) void glazeScan(holder, scanned, () => !this.destroyed).then(g => { if (this.destroyed) for (const m of g.owned) m.dispose(); else this.owned.push(...g.owned); });
+    if (scanned.size && glazeScans) void glazeScan(holder, scanned, () => !this.destroyed, traced).then(g => { if (this.destroyed) for (const m of g.owned) m.dispose(); else this.owned.push(...g.owned); });
   }
 
   /** A scanned body (one textured mesh) gets real paint: an even colour under a clear coat, and smooth normals (CarPaint.ts). */
@@ -660,8 +685,14 @@ class View implements VehicleView {
     for (const m of this.tail) m.emissiveIntensity = braking ? 6 : night > 0.3 ? 2 : 0.25;
   }
 
+  glassBody(): GlassBody | null {
+    return this.destroyed ? null : this.glass;
+  }
+
   destroy() {
+    if (!this.destroyed) { this.onDestroy?.(); this.onDestroy = null; }
     this.destroyed = true;
+    this.glass = null;
     this.model?.entries.dispose();
     this.model = null;
     this.root.dispose(false, false);
@@ -692,7 +723,14 @@ function authoredFrame(inst: ModelInstance) {
 }
 
 export class VehicleModels {
+  private readonly live = new Set<VehicleView>();
+
   constructor(private assets: Assets) {}
+
+  /** Every vehicle view drawn now (own cars, neighbors', traffic and spawned ones). */
+  views(): VehicleView[] {
+    return [...this.live];
+  }
 
   /** Starts loading every model a kind needs (call early for the vehicles you own); resolves once it has. */
   preload(kind: string): Promise<unknown> {
@@ -706,6 +744,8 @@ export class VehicleModels {
   build(kind: string, style?: CarStyle | null): VehicleView {
     const tuning = TUNING[kind] ?? TUNING.sedan;
     const view = new View(kind, tuning);
+    this.live.add(view);
+    view.onDestroy = () => this.live.delete(view);
     const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
     const procedural = !rec && PROCEDURAL.has(kind);
     view.addWheels(!!rec || procedural, rec?.physics.axles);

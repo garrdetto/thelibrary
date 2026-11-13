@@ -109,7 +109,7 @@ export function buildTownGround(scene: Scene, terrain: Terrain): Mesh {
   data.applyToMesh(mesh, false)
   const mat = new StandardMaterial('town-ground-mat', scene)
   mat.diffuseTexture = detailTexture(scene)
-  mat.specularColor = new Color3(0.02, 0.02, 0.02)
+  mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.4, 0.4, 0.4)
   mat.freeze()
   mesh.material = mat
@@ -171,7 +171,7 @@ function roadMaterial(scene: Scene): StandardMaterial {
   const tex = countyRoadTexture(scene)
   tex.wrapV = Texture.WRAP_ADDRESSMODE
   mat.diffuseTexture = tex
-  mat.specularColor = new Color3(0.04, 0.04, 0.04)
+  mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.35, 0.35, 0.35)
   mat.backFaceCulling = false
   mat.zOffset = -2

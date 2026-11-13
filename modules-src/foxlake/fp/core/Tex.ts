@@ -308,7 +308,19 @@ function facade(scene: Scene, kind: 'office' | 'brick' | 'store') {
 
 // ---------------------------------------------------------------- material library
 
-export interface MatOpts { color?: number | [number, number, number]; gloss?: number; metal?: number; vcolor?: boolean; emissive?: number; emissiveIntensity?: number; opacity?: number; twoSided?: boolean; tile?: number; bump?: number; unlit?: boolean }
+/**
+ * Gloss rule (AGENTS.md, Fox Lake): surfaces that shouldn't shine (road, concrete, ground, brick, wood, roofing,
+ * cloth) get no gloss at all, and surfaces that should (tile, marble, varnished floors, metal, paint) get
+ * `GLOSS_SHARE` of the gloss they would normally have. Water and glass keep theirs (`keepGloss`, `glass()`).
+ */
+export const GLOSS_SHARE = 0.15;
+const MATTE_SURFACES = new Set(['grass', 'lawn', 'asphalt', 'concrete', 'curb', 'gravel', 'dirt', 'brick', 'siding', 'boards', 'stucco', 'stone', 'shingles', 'roofFlat', 'carpet', 'slate', 'deck', 'patio', 'damask', 'stripe', 'bark', 'garage']);
+/** The gloss a surface kind is drawn with under the gloss rule. */
+export function surfaceGloss(kind: string, gloss: number): number { return MATTE_SURFACES.has(kind) ? 0 : gloss * GLOSS_SHARE; }
+/** Roughness for a plain material's normal gloss, under the gloss rule. */
+export function ruledRoughness(gloss: number, keep = false): number { return 1 - gloss * (keep ? 1 : GLOSS_SHARE) * 0.96; }
+
+export interface MatOpts { keepGloss?: boolean; color?: number | [number, number, number]; gloss?: number; metal?: number; vcolor?: boolean; emissive?: number; emissiveIntensity?: number; opacity?: number; twoSided?: boolean; tile?: number; bump?: number; unlit?: boolean }
 
 interface Surface { painted: GlossOnly; map: RawTexture; normal: RawTexture; recipe: Recipe; rough: Map<string, RawTexture> }
 
@@ -316,7 +328,7 @@ interface Surface { painted: GlossOnly; map: RawTexture; normal: RawTexture; rec
 export function pbr(name: string, scene: Scene) {
   const m = new PBRMaterial(name, scene);
   m.metallic = 0;
-  m.roughness = 0.6;
+  m.roughness = ruledRoughness(0.42);
   m.useRadianceOverAlpha = true;
   m.useSpecularOverAlpha = true;
   m.enableSpecularAntiAliasing = true;
@@ -400,7 +412,7 @@ export class Mats {
     const m = pbr(name, this.scene);
     const tile = o.tile ?? s.recipe.tile;
     const metal = o.metal ?? s.recipe.metal ?? 0;
-    const gloss = o.gloss ?? s.recipe.gloss;
+    const gloss = o.keepGloss ? (o.gloss ?? s.recipe.gloss) : surfaceGloss(kind as string, o.gloss ?? s.recipe.gloss);
     m.albedoTexture = view(s.map, tile, `${name}-a`);
     m.bumpTexture = view(s.normal, tile, `${name}-n`);
     m.bumpTexture.level = o.bump ?? 1;
@@ -421,7 +433,7 @@ export class Mats {
     if (hit) return hit;
     const m = pbr(name, this.scene);
     m.metallic = o.metal ?? 0;
-    m.roughness = 1 - (o.gloss ?? 0.35) * 0.96;
+    m.roughness = ruledRoughness(o.gloss ?? 0.35, o.keepGloss);
     this.tint(m, o);
     this.mats.set(name, m);
     return m;
@@ -448,7 +460,7 @@ export class Mats {
     if (hit) return hit;
     const f = facade(this.scene, kind);
     const m = pbr(name, this.scene);
-    m.metallic = 0.05; m.roughness = kind === 'office' ? 0.38 : 0.62;
+    m.metallic = 0.05; m.roughness = ruledRoughness(kind === 'office' ? 0.65 : 0.4);
     const tile = (t: RawTexture) => { t.uScale = 1 / 12; t.vScale = 1 / 14.4; return t; };
     m.albedoTexture = tile(f.map); m.bumpTexture = tile(f.normal); m.bumpTexture.level = 0.8;
     m.emissiveTexture = tile(f.glow); m.emissiveColor = new Color3(1, 0.65, 0.3); m.emissiveIntensity = 0;

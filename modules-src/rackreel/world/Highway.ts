@@ -275,14 +275,14 @@ export function buildHighway(ctx: EngineContext, terrain: Terrain): HighwayMeshe
   const roadMesh = toMesh('highway-road', road, scene)
   const roadMat = new StandardMaterial('highway-road-mat', scene)
   roadMat.diffuseTexture = roadTexture(scene)
-  roadMat.specularColor = new Color3(0.04, 0.04, 0.04)
+  roadMat.specularColor = Color3.Black()
   roadMat.ambientColor = new Color3(0.35, 0.35, 0.35)
   roadMat.backFaceCulling = false
   roadMesh.material = roadMat
   const concreteMesh = toMesh('highway-concrete', concrete, scene)
   const concreteMat = new StandardMaterial('highway-concrete-mat', scene)
   concreteMat.diffuseColor = new Color3(0.62, 0.6, 0.56)
-  concreteMat.specularColor = new Color3(0.03, 0.03, 0.03)
+  concreteMat.specularColor = Color3.Black()
   concreteMat.ambientColor = new Color3(0.35, 0.35, 0.35)
   concreteMat.backFaceCulling = false
   concreteMesh.material = concreteMat

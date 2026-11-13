@@ -1,8 +1,9 @@
-/** Darts for both boards: the Meshy-made steel-tip model (`/models/darts/dart-steel.glb`, fitted by `tools/fit-dart.py`) whose `flight` material takes the thrower's colour, and the Blender-built soft-tip model (`dart-soft.glb`, `tools/build-soft-dart.py`: black point, gunmetal barrel, four white flights on a `flight-white` material that stays white), with a lathe-built steel-tip dart until they load (or with `?dartModels=0`). The tip sits at the origin and the dart points along −z, so orienting it to a velocity is one quaternion. */
+/** Darts for both boards: the Meshy-made steel-tip model (`/models/darts/dart-steel.glb`, fitted by `tools/fit-dart.py`) whose `flight` material takes the thrower's colour, and the Blender-built soft-tip model (`dart-soft.glb`, `tools/build-soft-dart.py`: black point, gunmetal barrel, four white flights on a `flight-white` material that stays white), with a lathe-built steel-tip dart until they load (or with `?dartModels=0`). The administrator's dart colours and barrel finishes (`DartLook` in shared/Settings) are put on the loaded models' materials once (`restyle`); parts left at their defaults keep the model's own material. The tip sits at the origin and the dart points along −z, so orienting it to a velocity is one quaternion. */
 import * as THREE from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import type { BoardStyle } from './BoardTexture'
+import { DEFAULT_SETTINGS, FINISH_ROUGHNESS, type DartFinish, type DartLook } from '../shared/Settings'
 
 export interface DartKit {
   create(color: string): THREE.Group
@@ -54,16 +55,77 @@ function flightShape(): THREE.Shape {
   return shape
 }
 
-export function createDartKit(): DartKit {
+function finishOf(material: THREE.MeshStandardMaterial, finish: DartFinish): void {
+  if (finish === 'stock') return
+  material.roughnessMap = null
+  material.roughness = FINISH_ROUGHNESS[finish]
+}
+
+/** The administrator's dart colours on a loaded model's materials (`look` from shared/Settings). Parts left at their default colour and a `stock` finish keep the model's own material untouched. Soft-tip flights renamed `flight` take each player's colour like the steel-tip ones. */
+function styledMaterial(material: THREE.Material, style: BoardStyle, look: DartLook): THREE.Material {
+  const base = DEFAULT_SETTINGS.darts
+  const standard = material as THREE.MeshStandardMaterial
+  if (!standard.isMeshStandardMaterial || material.name === 'flight') return material
+  if (style === 'steel') {
+    if (look.steelTint === base.steelTint && look.steelFinish === 'stock') return material
+    const out = standard.clone()
+    if (look.steelTint !== base.steelTint) out.color.multiply(new THREE.Color(look.steelTint))
+    finishOf(out, look.steelFinish)
+    return out
+  }
+  const parts: Record<string, { color: string; fallback: string; finish?: DartFinish }> = {
+    barrel: { color: look.softBarrel, fallback: base.softBarrel, finish: look.softFinish },
+    shaft: { color: look.softShaft, fallback: base.softShaft },
+    tip: { color: look.softTip, fallback: base.softTip },
+    'flight-white': { color: look.softFlight, fallback: base.softFlight },
+  }
+  const part = parts[material.name]
+  if (!part) return material
+  const player = material.name === 'flight-white' && look.softPlayerFlights
+  const finish = part.finish ?? 'stock'
+  if (part.color === part.fallback && finish === 'stock' && !player) return material
+  const out = standard.clone()
+  if (player) out.name = 'flight'
+  else if (part.color !== part.fallback) out.color.set(part.color)
+  finishOf(out, finish)
+  return out
+}
+
+function restyle(template: THREE.Object3D, style: BoardStyle, look: DartLook): void {
+  const swapped = new Map<THREE.Material, THREE.Material>()
+  template.traverse((node) => {
+    const mesh = node as THREE.Mesh
+    if (!mesh.isMesh) return
+    const swap = (material: THREE.Material) => {
+      let next = swapped.get(material)
+      if (!next) {
+        next = styledMaterial(material, style, look)
+        swapped.set(material, next)
+      }
+      return next
+    }
+    mesh.material = Array.isArray(mesh.material) ? mesh.material.map(swap) : swap(mesh.material)
+  })
+  for (const [from, to] of swapped) if (from !== to) from.dispose()
+}
+
+export function createDartKit(look: DartLook = DEFAULT_SETTINGS.darts): DartKit {
   const pointGeometry = lathe([[0, 0], [0.002, 0.0006], [0.012, 0.00095], [0.028, 0.0011], [0.0305, 0.0011]], 12)
   const barrelGeometry = lathe(barrelProfile(), 28)
   const shaftGeometry = lathe([[0.0755, 0.0016], [0.078, 0.0018], [0.12, 0.0018], [0.123, 0.0021], [0.126, 0.0016]], 16)
   const finGeometry = new THREE.ShapeGeometry(flightShape(), 6)
   finGeometry.rotateY(-Math.PI / 2)
   finGeometry.translate(0, 0, 0.119)
+  let shaftTint = ''
   const steel = new THREE.MeshStandardMaterial({ color: new THREE.Color('#c9ced6'), metalness: 1, roughness: 0.18 })
   const tungsten = new THREE.MeshStandardMaterial({ color: new THREE.Color('#8b9097'), metalness: 1, roughness: 0.32 })
+  if (look.steelTint !== DEFAULT_SETTINGS.darts.steelTint) {
+    tungsten.color.multiply(new THREE.Color(look.steelTint))
+    shaftTint = look.steelTint
+  }
+  finishOf(tungsten, look.steelFinish)
   const shaft = new THREE.MeshStandardMaterial({ color: new THREE.Color('#1c1f26'), metalness: 0.6, roughness: 0.3 })
+  if (shaftTint) shaft.color.multiply(new THREE.Color(shaftTint))
   const flightMaterials = new Map<string, THREE.MeshStandardMaterial>()
   const flightMaterial = (color: string) => {
     let material = flightMaterials.get(color)
@@ -122,6 +184,7 @@ export function createDartKit(): DartKit {
         (Object.keys(MODEL_URLS) as BoardStyle[]).map(async (key) => {
           try {
             const gltf = await loader.loadAsync(MODEL_URLS[key])
+            restyle(gltf.scene, key, look)
             models.set(key, gltf.scene)
             version++
           } catch (error) {

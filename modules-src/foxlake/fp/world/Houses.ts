@@ -200,7 +200,7 @@ export class Houses {
     for (const id in b.roofs) this.roof(b, b.roofs[id], get);
     for (const id in b.pools) {
       const p = b.pools[id];
-      get(this.mats.plain('pool-water', { color: 0x1f8fb3, gloss: 0.96, metal: 0.05, opacity: 0.82 })).flat(p.x0 + 0.3, p.z0 + 0.3, p.x1 - 0.3, p.z1 - 0.3, 0.06);
+      get(this.mats.plain('pool-water', { keepGloss: true, color: 0x1f8fb3, gloss: 0.96, metal: 0.05, opacity: 0.82 })).flat(p.x0 + 0.3, p.z0 + 0.3, p.x1 - 0.3, p.z1 - 0.3, 0.06);
       const coping = get(this.mats.textured('f-patio', 'patio', { color: 0xcabca6 }));
       coping.box(p.x0, 0, p.z0, p.x1, 0.1, p.z0 + 0.3); coping.box(p.x0, 0, p.z1 - 0.3, p.x1, 0.1, p.z1);
       coping.box(p.x0, 0, p.z0 + 0.3, p.x0 + 0.3, 0.1, p.z1 - 0.3); coping.box(p.x1 - 0.3, 0, p.z0 + 0.3, p.x1, 0.1, p.z1 - 0.3);

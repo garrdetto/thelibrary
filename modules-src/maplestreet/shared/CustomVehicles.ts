@@ -14,6 +14,7 @@ import { isAssetStatus, type AssetStatus } from './Assets';
 import { BUNDLED_VEHICLES } from './BundledVehicles';
 import { refreshDealer, VEHICLES, type VehicleSpec } from './Economy';
 import { isValidLampShapes, isValidShape, type LampShapes, type Shape } from './Shapes';
+import type { VehicleGlass } from './VehicleGlass';
 import { CUSTOM_VEHICLE_PREFIX, TUNING, type AxleTuning, type CustomVehicleKind, type VehicleTuning } from './Vehicles';
 
 export const DRIVE_TEMPLATES = ['sedan', 'truck', 'coupe', 'hdtruck', 'golfcart', 'atv'] as const;
@@ -127,6 +128,11 @@ export interface CustomVehicleSpec {
   parts?: VehicleParts;
   /** Custom headlight and taillight outlines, mirrored to both sides. */
   lampShapes?: LampShapes;
+  /**
+   * Windows traced by the administrator in Fox Lake's developer panel (VehicleGlass.ts): which triangles of the
+   * scanned body are glass, used instead of the automatic detection. Dropped when a new model is saved.
+   */
+  glass?: VehicleGlass;
 }
 
 /** The public shape returned by GET /api/maplestreet-vehicles. */
@@ -159,6 +165,16 @@ export let customVehiclesVersion = 0;
 
 const RECORDS = new Map<string, CustomVehicleRecord>();
 export const customVehicleRecord = (kind: string) => RECORDS.get(kind);
+
+/** Swaps the traced windows of a registered record on this page (after the administrator saved them); null removes them. */
+export function setCustomVehicleGlass(kind: string, glass: VehicleGlass | null): boolean {
+  const r = RECORDS.get(kind);
+  if (!r) return false;
+  const next: CustomVehicleRecord = { ...r };
+  if (glass) next.glass = glass; else delete next.glass;
+  RECORDS.set(kind, next);
+  return true;
+}
 
 export function tuningFromRecord(r: CustomVehicleRecord): VehicleTuning {
   const p = r.physics;

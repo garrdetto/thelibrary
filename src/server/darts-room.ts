@@ -7,6 +7,9 @@ import { createRng } from '../../modules-src/darts/shared/Rng'
 import { LEG_PAUSE_MS, RECONNECT_MS, ROOM_SEATS, TURN_PAUSE_MS, TURN_TIMEOUT_MS } from '../../modules-src/darts/shared/Room'
 import { boardOf, countsForAverages, legJustEnded, legResults, matchAverages } from '../../modules-src/darts/shared/Records'
 import { saveDartsAverage, saveDartsLeg } from './darts-records.js'
+import { readDartsSettings } from './darts-settings.js'
+import { applyMeterSettings, DEFAULT_SETTINGS } from '../../modules-src/darts/shared/Settings'
+import type { MeterSettings } from '../../modules-src/darts/shared/Settings'
 
 type ServerSocket = WebSocket & { accept(): void }
 
@@ -85,6 +88,9 @@ export class DartsRoom {
   private pauseTimer: ReturnType<typeof setTimeout> | null = null
   private restartVotes = new Set<string>()
   private restartTimer: ReturnType<typeof setTimeout> | null = null
+  /** The admin's meter tuning, read when the room opens, so every throw here lands where the players' meters said. */
+  private meter: MeterSettings = DEFAULT_SETTINGS.meter
+  private meterLoaded = false
 
   constructor(_state: unknown, private readonly env: Env) {}
 
@@ -98,6 +104,10 @@ export class DartsRoom {
     if (!identity) return new Response('Missing identity.', { status: 400 })
     const mode = url.searchParams.get('mode')
     const code = url.searchParams.get('code') ?? ''
+    if (!this.meterLoaded || (mode === 'create' && !this.seats.length)) {
+      this.meter = await readDartsSettings(this.env).then(({ settings }) => settings.meter, () => DEFAULT_SETTINGS.meter)
+      this.meterLoaded = true
+    }
     let seat = this.seats.find((item) => item.key === identity.key)
     if (!seat) {
       if (mode === 'create') {
@@ -281,6 +291,7 @@ export class DartsRoom {
   private throwDart(seat: Seat, intent: { aimX: number; aimY: number; speed: number; yaw: number; wobble: number; cross?: number }, version: number): void {
     const state = this.state
     if (!state || state.status !== 'playing' || state.currentTurnPlayerId !== seat.id || state.version !== version) return
+    applyMeterSettings(this.meter)
     const flight = launch(intent, 'normal', createRng(randomSeed()))
     const impact = simulate(flight, undefined, undefined, boardOf(state.config))
     const result = applyThrow(state, seat.id, impact.dart)
