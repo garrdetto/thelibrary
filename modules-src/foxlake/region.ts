@@ -17,7 +17,7 @@
 import { HALF, HIGHWAY, PLAY_LIMIT, fbm, rawHeight } from '../rackreel/world/Terrain'
 import type { OutsideLand, TerrainShape } from '../rackreel/world/Terrain'
 import { MAP_BOUNDS, WORLD_HALF } from '../maplestreet/shared/WorldLayout'
-import { HIGHWAY_GAPS, LAKE_ROAD_APRON, carveLakeRoad, lakeRoadPath } from './country/Roads'
+import { FREIGHT_GROUNDS, FREIGHT_ROADS, HIGHWAY_GAPS, LAKE_ROAD_APRON, carveLakeRoad, freightRoadPath, lakeRoadPath } from './country/Roads'
 import { ROADSIDE, lotRect } from './roadside/RoadsideLayout'
 
 /** Ground level of the town in the scene (above the lake, level with the interstate's north end). */
@@ -136,7 +136,7 @@ function rectDistance(x: number, z: number, r: { x0: number; x1: number; z0: num
 
 // ---------------------------------------------------------------- roads and lots: a distance field
 
-const FIELD = { x0: -360, z0: -150, x1: 360, z1: 905, cell: 2 } as const
+const FIELD = { x0: -380, z0: -150, x1: 360, z1: 1200, cell: 2 } as const
 const FIELD_W = Math.ceil((FIELD.x1 - FIELD.x0) / FIELD.cell) + 1
 const FIELD_H = Math.ceil((FIELD.z1 - FIELD.z0) / FIELD.cell) + 1
 let field: Float32Array | null = null
@@ -163,6 +163,10 @@ function buildField(): Float32Array {
   for (const p of [...lakeRoadPath(2), ...connectorPath(2)]) stamp(f, p.x, p.z, p.w / 2 + REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
   const a = LAKE_ROAD_APRON
   stamp(f, a.x, a.z, a.r + REACH, (x, z) => Math.hypot(x - a.x, z - a.z) - a.r)
+  for (let i = 0; i < FREIGHT_ROADS.length; i++) for (const p of freightRoadPath(i, 2)) stamp(f, p.x, p.z, p.w / 2 + REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
+  for (const r of [FREIGHT_GROUNDS.yard, FREIGHT_GROUNDS.mill]) stamp(f, (r.x0 + r.x1) / 2, (r.z0 + r.z1) / 2, Math.max(r.x1 - r.x0, r.z1 - r.z0) / 2 + REACH, (x, z) => rectDistance(x, z, r))
+  const L = FREIGHT_GROUNDS.landing
+  stamp(f, L.x, L.z, L.r + REACH, (x, z) => Math.hypot(x - L.x, z - L.z) - L.r)
   for (const place of ROADSIDE) {
     const r = lotRect(place)
     const c = townToScene(r.cx, 0, r.cz)

@@ -17,6 +17,9 @@ import { cleanLook, keepOutfit } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
 import { vehicleRole } from './Vehicles';
 import { addCrash, cleanCar, newCar } from './Cars';
+import { findLoad, rigTruck, siteOf, STOP_RADIUS, type FreightJob } from './Freight';
+
+const RIG_TRAILER = { dryvan: 'dry van', flatbed: 'flatbed', logger: 'log trailer', tanker: 'tanker', dumptruck: 'dump truck' } as const;
 import { applyOrder, atBodyShop, BODY_SHOP, cleanOrder, inBay, quote } from './BodyShop';
 
 export interface LogicIO {
@@ -57,6 +60,8 @@ interface Session {
   player: PlayerSnap | null;
   vehicles: VehicleSnap[];
   job: Job | null;
+  /** The Fox Lake freight load this player is running. */
+  freight?: FreightJob | null;
   lastSeen: number;
   /** A newer connection for the same account took over: this one no longer appears in the world. */
   superseded?: boolean;
@@ -262,6 +267,7 @@ export class NeighborhoodLogic {
       }
       case 'mow': this.handleMow(sessionId, s, acc, msg.strokes); break;
       case 'jobRequest': this.issueJob(sessionId, s); break;
+      case 'freight': this.handleFreight(sessionId, s, acc, msg); break;
       case 'jobProgress': this.progressJob(sessionId, s, acc, msg.jobId); break;
       case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item, msg.car); break;
       case 'refuel': this.handleRefuel(sessionId, s, acc, msg.kind, msg.gallons); break;
@@ -339,6 +345,46 @@ export class NeighborhoodLogic {
       acc.money += pay; acc.earned += pay;
       this.sendAccount(sessionId, acc);
     }
+  }
+
+  /**
+   * Fox Lake freight (shared/Freight.ts). Taking a load needs nothing; loading and delivering need the player
+   * driving the load's truck (a tractor with the right trailer hitched, or the dump truck) at the stop.
+   */
+  private handleFreight(sessionId: string, s: Session, acc: Account, msg: Extract<ClientMsg, { t: 'freight' }>) {
+    const send = (job: FreightJob | null, note?: string, paid?: number) => this.io.send(sessionId, { t: 'freight', job, note, paid });
+    if (msg.a === 'take') {
+      if (s.freight) return send(s.freight, 'Finish or cancel the load you have first.');
+      const load = typeof msg.load === 'string' ? findLoad(msg.load, Date.now()) : null;
+      if (!load) return send(null, 'That load has been taken off the board.');
+      s.freight = { ...load, stage: 'toPickup' };
+      return send(s.freight, `${load.label}: pick it up at ${siteOf(load.from)?.name ?? 'the yard'}.`);
+    }
+    const job = s.freight;
+    if (!job) return send(null);
+    if (msg.a === 'cancel') {
+      s.freight = null;
+      return send(null, 'Load cancelled.');
+    }
+    const truck = s.vehicles.find(v => v.id === s.player?.vehicleId);
+    if (!truck || (truck.kind as string) !== rigTruck(job.rig)) return send(job, job.rig === 'dumptruck' ? 'This load needs the dump truck.' : 'This load needs the tractor.');
+    if (job.rig !== 'dumptruck' && !s.vehicles.some(v => v.hitchedTo === truck.id && (v.kind as string) === job.rig)) return send(job, `Hitch the ${RIG_TRAILER[job.rig]} first (T at its kingpin).`);
+    const stop = siteOf(msg.a === 'load' ? job.from : job.to);
+    if (!stop || Math.hypot(truck.x - stop.x, truck.z - stop.z) > STOP_RADIUS + (job.rig === 'dumptruck' ? 0 : 10)) return send(job, `Drive to ${stop?.name ?? 'the stop'} first.`);
+    if (msg.a === 'load') {
+      if (job.stage !== 'toPickup') return send(job);
+      job.stage = 'toDrop';
+      return send(job, `Loaded. Deliver to ${siteOf(job.to)?.name ?? 'the drop'}.`);
+    }
+    if (job.stage !== 'toDrop') return send(job, 'Load up first.');
+    const pay = Math.round(job.pay * (acc.upgrades.includes('license') ? 1.2 : 1));
+    if (!this.unlimited) {
+      acc.money += pay;
+      acc.earned += pay;
+    }
+    s.freight = null;
+    send(null, `Delivered ${job.label.toLowerCase()} to ${siteOf(job.to)?.name ?? 'the drop'}: +$${pay.toLocaleString()}`, pay);
+    this.sendAccount(sessionId, acc);
   }
 
   private issueJob(sessionId: string, s: Session) {

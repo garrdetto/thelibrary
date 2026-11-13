@@ -15,7 +15,9 @@ import type { MapMarker } from '../../rackreel/ui/Minimap'
 import { BUILDINGS, CIVIC, CURVES, DEPOT, GAS_STATION, ROADS, ROAD_NAMES, SHOP_DOORS, makeLots, type LotDef } from '../../maplestreet/shared/WorldLayout'
 import { CASINO } from '../casino/CasinoLayout'
 import { BUILT_UP, TOWN_SQUARE, connectorPath, inTownSquare, outsideHeight, sceneToTown, townToScene } from '../region'
-import { LAKE_ROAD_APRON, highwayAt, HIGHWAY_END_T, lakeRoadPath } from '../country/Roads'
+import { FREIGHT_GROUNDS, FREIGHT_ROADS, LAKE_ROAD_APRON, highwayAt, HIGHWAY_END_T, lakeRoadPath } from '../country/Roads'
+import { FREIGHT_SITES, LANDING, MILL, YARD } from '../../maplestreet/shared/Freight'
+import { BOARD_SPOT } from '../trucking/Dispatch'
 import { ROADSIDE, doorSpot, lotRect, placeFrame, type RoadsideKind } from '../roadside/RoadsideLayout'
 import { woodsAt } from './TownGround'
 import { CASINO_NAME } from '../casino/CasinoHost'
@@ -24,7 +26,7 @@ export const ATLAS = { x0: -1000, x1: 524, z0: -520, z1: 1796, m: 2 } as const
 const COLS = Math.round((ATLAS.x1 - ATLAS.x0) / ATLAS.m)
 const ROWS = Math.round((ATLAS.z1 - ATLAS.z0) / ATLAS.m)
 
-export type PoiKind = 'outfitters' | 'dock' | 'camp' | 'stand' | 'blind' | 'shop' | 'casino' | 'gas' | 'motel' | 'bar' | 'cabin' | 'civic' | 'depot' | 'home' | 'landmark' | 'hotel'
+export type PoiKind = 'outfitters' | 'dock' | 'camp' | 'stand' | 'blind' | 'shop' | 'casino' | 'gas' | 'motel' | 'bar' | 'cabin' | 'civic' | 'depot' | 'home' | 'landmark' | 'hotel' | 'freight' | 'site'
 
 export interface Poi {
   id: string
@@ -93,6 +95,8 @@ const ICON: Record<PoiKind, { color: string; glyph: string }> = {
   home: { color: '#ffd34d', glyph: '⌂' },
   landmark: { color: '#3c5a3a', glyph: '◆' },
   hotel: { color: '#6a4a8a', glyph: 'H' },
+  freight: { color: '#13314f', glyph: '🚚' },
+  site: { color: '#f26a1b', glyph: '⚒' },
 }
 
 const SHOP_NAMES: Record<string, string> = { dealer: 'Car dealer', diner: 'Diner', bank: 'Bank', clothing: 'Clothing: try on outfits', cafe: 'Café', grocery: 'Grocery', hardware: 'Hardware store', gas: 'Gas station' }
@@ -177,6 +181,7 @@ export class Atlas {
     for (const c of CURVES) this.streets.push({ name: c.name, width: c.width, kind: 'street', pts: c.pts.filter((_, i) => i % 3 === 0 || i === c.pts.length - 1).map((p) => scene(p.x, p.z)) })
     this.streets.push({ name: 'County Road', width: 10, kind: 'county', pts: connectorPath(6) })
     this.streets.push({ name: 'Lake Road', width: 8, kind: 'lake', pts: [highwayAt(-250, 0), ...lakeRoadPath(6)] })
+    for (const r of FREIGHT_ROADS) this.streets.push({ name: r.name === 'Main St' ? '' : r.name, width: r.width, kind: 'lake', pts: r.pts.map((p) => ({ x: p.x, z: p.z })) })
     const hw: { x: number; z: number }[] = []
     for (let t = HIGHWAY_END_T; t <= HIGHWAY.reach; t += 8) {
       const p = highwayAt(t, 0)
@@ -215,6 +220,30 @@ export class Atlas {
       this.pois.push({ id: p.id, name: p.name, kind, x: door.x, z: door.z, to: door, tier: p.kind === 'cabin' ? 2 : 1, group: 'County Road', note: p.blurb })
     }
 
+    const G = FREIGHT_GROUNDS
+    const rect = (r: { x0: number; x1: number; z0: number; z1: number }) => [{ x: r.x0, z: r.z0 }, { x: r.x1, z: r.z0 }, { x: r.x1, z: r.z1 }, { x: r.x0, z: r.z1 }]
+    this.roadsideLots.push({ pts: rect(G.yard), surface: 'gravel' }, { pts: rect(G.mill), surface: 'gravel' })
+    const circle: { x: number; z: number }[] = []
+    for (let i = 0; i < 24; i++) circle.push({ x: G.landing.x + Math.cos((i / 24) * Math.PI * 2) * G.landing.r, z: G.landing.z + Math.sin((i / 24) * Math.PI * 2) * G.landing.r })
+    this.roadsideLots.push({ pts: circle, surface: 'gravel' })
+    for (const [cx, cz, sx, sz, fill, name] of [[16, 554.5, 28, 13, '#9aa1a8', 'Dock warehouse'], [41.5, 553, 11, 8, '#d8d2c4', 'Dispatch office'], [606, -13, 18, 38, '#9aa1a8', 'Sawmill']] as const) this.buildings.push({ pts: townRect(cx, cz, sx, sz), fill, name })
+    for (const z of [605, 616]) {
+      const c = scene(55.8, z)
+      const ring: { x: number; z: number }[] = []
+      for (let i = 0; i < 16; i++) ring.push({ x: c.x + Math.cos((i / 16) * Math.PI * 2) * 3.2, z: c.z + Math.sin((i / 16) * Math.PI * 2) * 3.2 })
+      this.buildings.push({ pts: ring, fill: '#e6e8ea' })
+    }
+    const board = scene(BOARD_SPOT.x, BOARD_SPOT.z)
+    this.pois.push({ id: 'freight', name: 'Fox Lake Freight & Gravel', kind: 'freight', x: board.x, z: board.z, to: scene(YARD.gate.x - 6, YARD.gate.z), tier: 1, group: 'County Road', note: 'Dispatch board: trucking and dump truck jobs. The fleet parks here.' })
+    const mill = scene((MILL.x0 + MILL.x1) / 2, 0)
+    this.pois.push({ id: 'sawmill', name: 'Fox Plains Sawmill', kind: 'freight', x: mill.x, z: mill.z, to: scene(MILL.x0 + 4, 0), tier: 1, group: 'Town', note: 'Logs in, lumber out.' })
+    const landing = scene(LANDING.x, LANDING.z)
+    this.pois.push({ id: 'landing', name: 'Pine Ridge landing', kind: 'freight', x: landing.x, z: landing.z, to: landing, tier: 2, group: 'Lake country', note: 'Logging landing: saw logs for the mill.' })
+    for (const s of FREIGHT_SITES) {
+      if (!s.id.startsWith('site-') && s.id !== 'roadworks') continue
+      const p = scene(s.x, s.z)
+      this.pois.push({ id: `freight-${s.id}`, name: s.name, kind: 'site', x: p.x, z: p.z, to: p, tier: 3, group: s.id === 'roadworks' ? 'Lake country' : 'Town', note: 'Building materials and gravel deliveries.' })
+    }
     for (const d of SHOP_DOORS) {
       const p = scene(d.x, d.z)
       const kind: PoiKind = d.kind === 'gas' ? 'gas' : 'shop'

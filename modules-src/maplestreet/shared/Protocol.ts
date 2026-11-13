@@ -11,6 +11,7 @@ import type { ServiceOrder } from './BodyShop';
 
 export type { VehicleKind } from './Vehicles';
 import type { VehicleKind } from './Vehicles';
+import type { FreightJob } from './Freight';
 
 export interface PlayerSnap {
   id: string;            // session id
@@ -72,6 +73,9 @@ export type ClientMsg =
   | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
   | { t: 'use'; lotId: string; objectId: string }
   | { t: 'look'; look: Look }
+  /** Fox Lake freight: take a load off the dispatch board, load it at its pickup, deliver it, or give it up. */
+  | { t: 'freight'; a: 'take'; load: string }
+  | { t: 'freight'; a: 'load' | 'deliver' | 'cancel' }
   | { t: 'bye' };
 
 export type ServerMsg =
@@ -82,6 +86,7 @@ export type ServerMsg =
   | { t: 'account'; account: Account; note?: string }
   | { t: 'mow'; by: string; strokes: MowStroke[] }
   | { t: 'job'; job: Job | null; note?: string }
+  | { t: 'freight'; job: FreightJob | null; note?: string; paid?: number }
   | { t: 'newDay'; day: number }
   | { t: 'left'; id: string }
   | { t: 'toast'; text: string };

@@ -10,13 +10,16 @@
 import { HIGHWAY, highwayCoord, highwayGrade, rawHeight, type Terrain, type TerrainShape } from '../../rackreel/world/Terrain'
 import type { Physics } from '../fp/physics/Physics'
 import { TOWN_Y, sceneToTown } from '../region'
-import { barrierSegments, lakeRoadHeight, type BarrierSegment } from './Roads'
+import { barrierSegments, nearestLakeRoad, type BarrierSegment } from './Roads'
 
 /** The road surface under (x, z) where a road covers the lake country, or null. */
 export function roadSurface(shape: TerrainShape, terrain: Terrain, x: number, z: number): number | null {
   const { t, across } = highwayCoord(x, z)
   if (across < HIGHWAY.halfWidth + 0.6 && Math.abs(t) < HIGHWAY.reach && Math.abs(t) > HIGHWAY.span / 2 + 1) return Math.max(highwayGrade(t, shape), terrain.heightAt(x, z)) + 0.05
-  if ((shape.roadClear?.(x, z) ?? 1) < 0.3 && x > 100 && z < 60) return lakeRoadHeight(x, z, (a, b) => rawHeight(a, b, shape)) + 0.06
+  if ((shape.roadClear?.(x, z) ?? 1) < 0.3 && x > 100 && z < 60) {
+    const r = nearestLakeRoad(x, z, (a, b) => rawHeight(a, b, shape))
+    if (r.d < r.half + 0.3) return r.y + 0.06
+  }
   return null
 }
 

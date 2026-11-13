@@ -1268,5 +1268,25 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "character"
+ },
+ "maplestreet/vehicles/semi.glb": {
+  "hash": "f2b55481b479d5d221401e592b032984472898d9",
+  "before": 16418084,
+  "after": 3477592,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "maplestreet/vehicles/dumptruck.glb": {
+  "hash": "390d588e3278514ea2bff262928a79f735f6ca5d",
+  "before": 16030208,
+  "after": 3517652,
+  "primsBefore": 2,
+  "primsAfter": 2,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
  }
 }

@@ -57,7 +57,16 @@ const BUILTIN_VEHICLES: Record<BuiltinVehicleKind, VehicleSpec> = {
   trailer:  { kind: 'trailer', name: 'Utility Trailer', price: 0, tank: 0, mpg: 0, fuel: 'none' },
 };
 /** Every registered vehicle: built-ins plus admin-published ones (shared/CustomVehicles.ts). */
-export const VEHICLES: Record<string, VehicleSpec> = { ...BUILTIN_VEHICLES };
+/** The Fox Lake freight fleet (shared/FleetVehicles.ts): company rigs, never for sale or in a garage. */
+const FLEET_VEHICLES: Record<string, VehicleSpec> = {
+  dumptruck: { kind: 'dumptruck' as VehicleKind, name: 'Tandem Dump Truck', price: 0, tank: 75, mpg: 6, fuel: 'gas', forSale: false, paintable: false },
+  semi: { kind: 'semi' as VehicleKind, name: 'Long-Nose Tractor', price: 0, tank: 150, mpg: 6.5, fuel: 'gas', forSale: false, paintable: false },
+  dryvan: { kind: 'dryvan' as VehicleKind, name: '53 ft Dry Van', price: 0, tank: 0, mpg: 0, fuel: 'none', forSale: false },
+  flatbed: { kind: 'flatbed' as VehicleKind, name: '48 ft Flatbed', price: 0, tank: 0, mpg: 0, fuel: 'none', forSale: false },
+  logger: { kind: 'logger' as VehicleKind, name: 'Log Trailer', price: 0, tank: 0, mpg: 0, fuel: 'none', forSale: false },
+  tanker: { kind: 'tanker' as VehicleKind, name: 'Fuel Tanker', price: 0, tank: 0, mpg: 0, fuel: 'none', forSale: false },
+};
+export const VEHICLES: Record<string, VehicleSpec> = { ...BUILTIN_VEHICLES, ...FLEET_VEHICLES };
 /** The pickup every neighbor gets on arrival: the bundled Maple Hauler (shared/BundledVehicles.ts). */
 export const STARTER_TRUCK: VehicleKind = 'custom:bundled-maple-hauler';
 export const STARTER_GARAGE: VehicleKind[] = [STARTER_TRUCK, 'trailer', 'mower'];

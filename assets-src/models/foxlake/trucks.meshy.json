@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "foxlake-trucks",
+  "createdAt": "2026-11-13",
+  "note": "The freight fleet's two powered rigs. Reference images from text (nano-banana-pro, no logos or lettering), then image-to-3D (meshy-7.1 geometry, meshy-7 PBR texture, 2K). Turned, scaled to 1.06 m tires, wheels cut out and the dump body split by modules-src/foxlake/tools/build-trucks.mjs into assets-src/models/maplestreet/vehicles/<kind>.glb.",
+  "tasks": {
+    "dumptruck": {
+      "kind": "image-to-3d",
+      "image": "01a1d48e-673e-7617-9627-72b2bc628a0e",
+      "model": "01a1d48f-ff88-76aa-a5f8-cf3f7c9c421e",
+      "credits": 39
+    },
+    "semi": {
+      "kind": "image-to-3d",
+      "image": "01a1d48e-684e-746a-bff8-748abc757f31",
+      "model": "01a1d490-0ca4-7717-ae16-e1b232fb4d2d",
+      "credits": 39
+    }
+  },
+  "credits": 78
+}

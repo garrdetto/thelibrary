@@ -209,6 +209,11 @@ export class WorldMap {
     this.guide(route, p.along)
   }
 
+  /** Routes to a scene point with a name (a freight stop), for the banner and the minimap. */
+  routeToPoint(x: number, z: number, name: string): void {
+    this.go({ x, z }, name)
+  }
+
   /** Routes to a place (its door or the road in front of it). */
   routeTo(poi: Poi): void {
     this.go(poi.to, poi.name)

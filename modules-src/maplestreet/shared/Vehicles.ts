@@ -6,6 +6,8 @@
  * source. Convention: chassis local +X = forward, +Y = up, +Z = right; SI units.
  */
 
+import { FLEET_TUNING } from './FleetVehicles';
+
 export const BUILTIN_VEHICLE_KINDS = ['truck', 'hdtruck', 'coupe', 'sedan', 'golfcart', 'atv', 'mower', 'zeroturn', 'trailer'] as const;
 export type BuiltinVehicleKind = (typeof BUILTIN_VEHICLE_KINDS)[number];
 export const CUSTOM_VEHICLE_PREFIX = 'custom:';
@@ -15,7 +17,13 @@ export type VehicleKind = BuiltinVehicleKind | CustomVehicleKind;
 export const isCustomVehicleKind = (kind: string): kind is CustomVehicleKind => kind.startsWith(CUSTOM_VEHICLE_PREFIX);
 export const isBuiltinVehicleKind = (kind: string): kind is BuiltinVehicleKind => (BUILTIN_VEHICLE_KINDS as readonly string[]).includes(kind);
 
-export interface AxleTuning { x: number; radius: number; width: number; halfTrack: number; steer: boolean; drive: boolean; caster?: boolean }
+export interface AxleTuning {
+  x: number; radius: number; width: number; halfTrack: number; steer: boolean; drive: boolean; caster?: boolean;
+  /** Dual wheels each side (trucks and trailers): drawn as two tires. */
+  dual?: boolean;
+  /** A semi-trailer's landing gear: struts that touch down only when the trailer is dropped, never rolling. */
+  leg?: boolean;
+}
 
 export interface VehicleTuning {
   kind: VehicleKind;
@@ -49,6 +57,8 @@ export interface VehicleTuning {
   paint: number;
   /** Haulers can run delivery jobs; mowers cut grass. */
   role?: 'hauler' | 'mower';
+  /** A tipping body: hinge at (pivotX, pivotY) in the chassis frame, raised up to maxAngle radians. */
+  dump?: { pivotX: number; pivotY: number; maxAngle: number };
 }
 
 export const BUILTIN_TUNING: Record<BuiltinVehicleKind, VehicleTuning> = {
@@ -151,7 +161,7 @@ export const BUILTIN_TUNING: Record<BuiltinVehicleKind, VehicleTuning> = {
 };
 
 /** Every registered vehicle's tuning: built-ins plus published `custom:` vehicles. */
-export const TUNING: Record<string, VehicleTuning> = { ...BUILTIN_TUNING };
+export const TUNING: Record<string, VehicleTuning> = { ...BUILTIN_TUNING, ...FLEET_TUNING };
 
 export function tuningOf(kind: string): VehicleTuning | undefined {
   return TUNING[kind];

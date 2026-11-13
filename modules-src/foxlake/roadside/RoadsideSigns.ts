@@ -15,7 +15,7 @@ import type { Scene } from '@babylonjs/core/scene'
 import { townToScene, townYawToHeading } from '../region'
 import { ROADSIDE, placeFrame, placeToTown, type RoadsidePlace } from './RoadsideLayout'
 
-interface SignStyle {
+export interface SignStyle {
   kind: 'board' | 'neon'
   bg?: string
   fg: string
@@ -91,80 +91,84 @@ export class RoadsideSigns {
 
   /** A sign at town (x, y, z) whose lettering faces town yaw `yaw`, w x h metres. */
   private sign(text: string, style: SignStyle, x: number, y: number, z: number, yaw: number, w: number, h: number): void {
-    const scene = this.scene
-    const node = new TransformNode(`roadside-sign-${text}`, scene)
-    node.parent = this.root
-    const p = townToScene(x, y, z)
-    node.position.set(p.x, p.y, p.z)
-    node.rotation.y = townYawToHeading(yaw) + Math.PI
-    const width = 1024
-    const height = Math.max(64, Math.round((width * h) / w))
-    const tex = new DynamicTexture(`roadside-sign-${text}`, { width, height }, scene, true)
-    tex.hasAlpha = true
-    const g = tex.getContext() as CanvasRenderingContext2D
-    g.clearRect(0, 0, width, height)
-    const font = style.font ?? '"Arial Black","Impact",sans-serif'
-    const mainH = style.sub ? height * 0.58 : height
-    if (style.kind === 'board') {
-      g.fillStyle = style.bg ?? '#ffffff'
-      g.fillRect(0, 0, width, height)
-      if (style.border) {
-        g.strokeStyle = style.border
-        g.lineWidth = Math.max(6, height * 0.05)
-        g.strokeRect(g.lineWidth, g.lineWidth, width - g.lineWidth * 2, height - g.lineWidth * 2)
-      }
-    }
-    g.textAlign = 'center'
-    g.textBaseline = 'middle'
-    const fit = (t: string, max: number, room: number) => {
-      let size = Math.round(max)
-      g.font = `900 ${size}px ${font}`
-      while (g.measureText(t).width > room && size > 12) {
-        size -= 2
-        g.font = `900 ${size}px ${font}`
-      }
-    }
-    const room = width * 0.88
-    if (style.kind === 'neon') {
-      fit(text, mainH * 0.7, room)
-      for (const [blur, alpha] of [[36, 0.6], [16, 0.9], [4, 1]] as const) {
-        g.shadowColor = style.fg
-        g.shadowBlur = blur
-        g.globalAlpha = alpha
-        g.fillStyle = blur > 4 ? style.fg : '#ffffff'
-        g.fillText(text, width / 2, mainH / 2)
-      }
-      g.globalAlpha = 1
-      g.shadowBlur = 0
-    } else {
-      fit(text, mainH * 0.62, room)
-      g.fillStyle = style.fg
-      g.fillText(text, width / 2, mainH / 2 + (style.sub ? height * 0.04 : 0))
-      if (style.sub) {
-        fit(style.sub, height * 0.26, room)
-        g.fillText(style.sub, width / 2, height * 0.76)
-      }
-    }
-    tex.update(true)
-    const mat = new StandardMaterial(`roadside-sign-${text}`, scene)
-    if (style.kind === 'neon') {
-      mat.disableLighting = true
-      mat.emissiveTexture = tex
-      mat.opacityTexture = tex
-    } else {
-      mat.diffuseTexture = tex
-      mat.emissiveColor = new Color3(0.18, 0.17, 0.15)
-      mat.specularColor = new Color3(0.05, 0.05, 0.05)
-    }
-    const plane = CreatePlane(`roadside-sign-${text}`, { width: w, height: h }, scene)
-    plane.parent = node
-    plane.material = mat
-    plane.isPickable = false
-    this.disposables.push(plane, mat, tex, node)
+    this.disposables.push(...buildSign(this.scene, this.root, text, style, x, y, z, yaw, w, h))
   }
 
   dispose(): void {
     for (const d of this.disposables) d.dispose()
     this.root.dispose()
   }
+}
+
+/** A sign at town (x, y, z) whose lettering faces town yaw `yaw`, w x h metres. */
+export function buildSign(scene: Scene, parent: TransformNode, text: string, style: SignStyle, x: number, y: number, z: number, yaw: number, w: number, h: number): { dispose(): void }[] {
+  const node = new TransformNode(`roadside-sign-${text}`, scene)
+  node.parent = parent
+  const p = townToScene(x, y, z)
+  node.position.set(p.x, p.y, p.z)
+  node.rotation.y = townYawToHeading(yaw) + Math.PI
+  const width = 1024
+  const height = Math.max(64, Math.round((width * h) / w))
+  const tex = new DynamicTexture(`roadside-sign-${text}`, { width, height }, scene, true)
+  tex.hasAlpha = true
+  const g = tex.getContext() as CanvasRenderingContext2D
+  g.clearRect(0, 0, width, height)
+  const font = style.font ?? '"Arial Black","Impact",sans-serif'
+  const mainH = style.sub ? height * 0.58 : height
+  if (style.kind === 'board') {
+    g.fillStyle = style.bg ?? '#ffffff'
+    g.fillRect(0, 0, width, height)
+    if (style.border) {
+      g.strokeStyle = style.border
+      g.lineWidth = Math.max(6, height * 0.05)
+      g.strokeRect(g.lineWidth, g.lineWidth, width - g.lineWidth * 2, height - g.lineWidth * 2)
+    }
+  }
+  g.textAlign = 'center'
+  g.textBaseline = 'middle'
+  const fit = (t: string, max: number, room: number) => {
+    let size = Math.round(max)
+    g.font = `900 ${size}px ${font}`
+    while (g.measureText(t).width > room && size > 12) {
+      size -= 2
+      g.font = `900 ${size}px ${font}`
+    }
+  }
+  const room = width * 0.88
+  if (style.kind === 'neon') {
+    fit(text, mainH * 0.7, room)
+    for (const [blur, alpha] of [[36, 0.6], [16, 0.9], [4, 1]] as const) {
+      g.shadowColor = style.fg
+      g.shadowBlur = blur
+      g.globalAlpha = alpha
+      g.fillStyle = blur > 4 ? style.fg : '#ffffff'
+      g.fillText(text, width / 2, mainH / 2)
+    }
+    g.globalAlpha = 1
+    g.shadowBlur = 0
+  } else {
+    fit(text, mainH * 0.62, room)
+    g.fillStyle = style.fg
+    g.fillText(text, width / 2, mainH / 2 + (style.sub ? height * 0.04 : 0))
+    if (style.sub) {
+      fit(style.sub, height * 0.26, room)
+      g.fillText(style.sub, width / 2, height * 0.76)
+    }
+  }
+  tex.update(true)
+  const mat = new StandardMaterial(`roadside-sign-${text}`, scene)
+  if (style.kind === 'neon') {
+    mat.disableLighting = true
+    mat.emissiveTexture = tex
+    mat.opacityTexture = tex
+  } else {
+    mat.diffuseTexture = tex
+    mat.emissiveColor = new Color3(0.18, 0.17, 0.15)
+    mat.specularColor = new Color3(0.05, 0.05, 0.05)
+  }
+  const plane = CreatePlane(`roadside-sign-${text}`, { width: w, height: h }, scene)
+  plane.parent = node
+  plane.material = mat
+  plane.isPickable = false
+  return [plane, mat, tex, node]
 }

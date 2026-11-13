@@ -139,6 +139,8 @@ export interface GameExtension {
   interact?(): boolean
   /** The on-foot prompt, or '' for none. */
   prompt?(): string
+  /** A prompt while driving (a host world's vehicle work: hitching, loading, dumping), or '' for none. */
+  drivePrompt?(): string
   /** Where the player starts and respawns, or null for the cabin door. */
   spawn?(): { at: Vector3; facing: number } | null
   /** The name shown for where the player is, or null to use the lake country's names. */
@@ -2237,7 +2239,7 @@ export class Game {
       prompt = fishPrompt || (!b || b.speed > 1.2 ? `${b?.name ?? 'The captain'} is driving — hold on` : b.anchored ? 'Left-click to cast · F to ask for the other seat · E near shore to step off' : 'Left-click to cast · E near shore to step off')
     } else if (v) {
       const idle = v.kind === 'BOAT' && Math.abs(v.speed) < 1.2 && !this.fishing.busy
-      prompt = fishPrompt || (!idle ? '' : v.anchored ? 'Left-click to cast · F to switch seats · Q to pull the anchor' : 'Left-click to cast · Q to drop anchor · E near shore to step out')
+      prompt = fishPrompt || (this.ext?.drivePrompt?.() ?? '') || (!idle ? '' : v.anchored ? 'Left-click to cast · F to switch seats · Q to pull the anchor' : 'Left-click to cast · Q to drop anchor · E near shore to step out')
     } else {
       const down = this.wildlife.nearestDown(this.foot, TAG_RANGE)
       const near = this.nearOwnVehicle()

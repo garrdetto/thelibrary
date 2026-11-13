@@ -220,3 +220,37 @@ export function hitsBarrier(segs: readonly BarrierSegment[], x: number, z: numbe
   }
   return false
 }
+
+// ---------------------------------------------------------------- freight roads
+
+/**
+ * Short roads to the freight sites (shared/Freight.ts), scene coordinates: Freight Rd from the county road's bend into
+ * the yard, Main St on east past Shoreline Dr into the sawmill, and Pine Ridge Rd off the Lake Road to the logging
+ * landing. Every one meets another road, so the network stays connected.
+ */
+export const FREIGHT_ROADS: readonly { name: string; width: number; pts: { x: number; z: number }[] }[] = [
+  { name: 'Freight Rd', width: 9, pts: [{ x: -299, z: 570 }, { x: -266, z: 570 }] },
+  { name: 'Main St', width: 10, pts: [{ x: 194, z: 1152 }, { x: 236, z: 1152 }] },
+  { name: 'Pine Ridge Rd', width: 7, pts: [{ x: 262, z: -42 }, { x: 284, z: -55 }, { x: 306, z: -74 }, { x: 330, z: -94 }] },
+]
+
+/** Freight yard, sawmill and landing grounds in scene coordinates (kept level and clear of trees and grass). */
+export const FREIGHT_GROUNDS = {
+  yard: { x0: -365, x1: -295, z0: 530, z1: 606 },
+  mill: { x0: 219, x1: 260, z0: 1116, z1: 1188 },
+  landing: { x: 334, z: -100, r: 26 },
+} as const
+
+/** A freight road's centreline every `step` metres, with its width. */
+export function freightRoadPath(i: number, step = 3): PathPoint[] {
+  const r = FREIGHT_ROADS[i]
+  const out: PathPoint[] = []
+  for (let k = 0; k < r.pts.length - 1; k++) {
+    const a = r.pts[k], b = r.pts[k + 1]
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.z - a.z) / step))
+    for (let j = 0; j < n; j++) out.push({ x: a.x + ((b.x - a.x) * j) / n, z: a.z + ((b.z - a.z) * j) / n, w: r.width })
+  }
+  const last = r.pts[r.pts.length - 1]
+  out.push({ x: last.x, z: last.z, w: r.width })
+  return out
+}

@@ -13,6 +13,23 @@ import { ROADS, curveDistance } from '../../maplestreet/shared/WorldLayout'
 import { CONNECTOR, TOWN_SQUARE, connectorDistance, inTownSquare, roadClear, sceneToTown } from '../region'
 import { HIGHWAY_GAPS } from '../country/Roads'
 import { roadsideAt } from '../roadside/RoadsideLayout'
+import { FREIGHT_GROUNDS, FREIGHT_ROADS } from '../country/Roads'
+
+/** On one of the freight roads (scene coordinates). */
+function freightRoad(x: number, z: number): boolean {
+  for (const r of FREIGHT_ROADS) for (let i = 0; i + 1 < r.pts.length; i++) {
+    const a = r.pts[i], b = r.pts[i + 1]
+    const dx = b.x - a.x, dz = b.z - a.z
+    const t = Math.max(0, Math.min(1, ((x - a.x) * dx + (z - a.z) * dz) / (dx * dx + dz * dz)))
+    if (Math.hypot(a.x + dx * t - x, a.z + dz * t - z) < r.width / 2 + 1.5) return true
+  }
+  return false
+}
+
+function inFreightGround(x: number, z: number): boolean {
+  const { yard, mill } = FREIGHT_GROUNDS
+  return (x > yard.x0 && x < yard.x1 && z > yard.z0 && z < yard.z1) || (x > mill.x0 && x < mill.x1 && z > mill.z0 && z < mill.z1)
+}
 
 export const ROUTE_CELL = 6
 
@@ -124,8 +141,9 @@ export class RouteGrid {
     const t = sceneToTown(x, 0, z)
     for (const r of ROADS) if (Math.abs(t.x - r.cx) < r.sx / 2 && Math.abs(t.z - r.cz) < r.sz / 2) return KIND.road
     if (curveDistance(t.x, t.z) < 3.5) return KIND.road
+    if (freightRoad(x, z)) return KIND.road
     if (this.world.blocked(t.x, t.z)) return KIND.building
-    if (roadsideAt(t.x, t.z)) return KIND.lot
+    if (roadsideAt(t.x, t.z) || inFreightGround(x, z)) return KIND.lot
     return KIND.lawn
   }
 

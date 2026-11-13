@@ -34,6 +34,8 @@ export class Cars implements ExternalDriver {
   private readonly byRr = new Map<RrVehicle, Car>()
   private readonly parking: Parking
   onImpact: ((kind: string, dv: number, at: { x: number; y: number; z: number }) => void) | null = null
+  /** Company vehicles (the freight fleet) that stay where they are when your cars go home. */
+  stayPut: (kind: string) => boolean = () => false
   /** True while a car's engine is flooded (Wading): it gets no throttle. */
   flooded: (car: Car) => boolean = () => false
 
@@ -131,7 +133,7 @@ export class Cars implements ExternalDriver {
     const reserved: Footprint[] = []
     let slot = 0
     for (const [kind, car] of this.list) {
-      if (car === this.driving()) continue
+      if (car === this.driving() || this.stayPut(kind)) continue
       if (kind === STARTER_TRUCK) this.parkVehicle(car.fp, lot.x + 4, frontZ - dir * 4.5, yaw, reserved)
       else if (kind !== 'trailer') this.parkVehicle(car.fp, lot.x + 8.6 + slot++ * 3.4, frontZ - dir * 5.5, yaw, reserved)
     }
@@ -152,7 +154,14 @@ export class Cars implements ExternalDriver {
   /** The vehicle snapshots the shared world relays (your cars as everyone else sees them). */
   snapshots(me: string): VehicleSnap[] {
     const out: VehicleSnap[] = []
-    for (const c of this.list.values()) out.push({ ...c.fp.snapshot(me), id: `${me}:${c.fp.id}`, hitchedTo: c.fp.towedBy ? `${me}:${c.fp.towedBy.id}` : null })
+    const driving = this.driving()
+    const order = [...this.list.values()].sort((a, b) => rank(b) - rank(a))
+    function rank(c: Car): number {
+      if (c === driving) return 3
+      if (driving && c.fp.towedBy === driving.fp) return 2
+      return c.fp.speed > 0.5 ? 1 : 0
+    }
+    for (const c of order) out.push({ ...c.fp.snapshot(me), id: `${me}:${c.fp.id}`, hitchedTo: c.fp.towedBy ? `${me}:${c.fp.towedBy.id}` : null })
     return out.slice(0, 3)
   }
 

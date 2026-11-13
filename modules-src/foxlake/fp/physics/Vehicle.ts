@@ -41,6 +41,8 @@ export class Vehicle {
   private pedal = 0;
   private readonly wheelbase: number;
   input: DriveInput = { throttle: 0, steer: 0, brake: 0, handbrake: false };
+  /** How hard this vehicle is braking (0..1), passed to the trailer it tows. */
+  brakeLevel = 0;
   trailer: Vehicle | null = null;
   towedBy: Vehicle | null = null;
   private joint: RAPIER.ImpulseJoint | null = null;
@@ -147,7 +149,7 @@ export class Vehicle {
     const P = this.preset;
     this.checkImpact();
     const speed = this.speed;
-    const raw = this.towedBy ? (_towed.brake = this.towedBy.input.brake, _towed) : this.input;
+    const raw = this.towedBy ? (_towed.brake = Math.max(this.towedBy.input.brake, this.towedBy.brakeLevel), _towed) : this.input;
     let inp = raw;
     if (this.empty) { _empty.steer = raw.steer; _empty.brake = raw.brake; _empty.handbrake = raw.handbrake; _empty.throttle = 0; inp = _empty; }
     if (this.mpm && Math.abs(inp.throttle) > 0.05) this.fuel = Math.max(0, this.fuel - Math.abs(speed) * dt * this.mpm * (0.6 + 0.4 * Math.abs(inp.throttle)) - dt * this.mpm * 2);
@@ -178,6 +180,8 @@ export class Vehicle {
       brake = Math.max(brake, P.brake * (v > 2 ? 0.035 : 0.12));
     }
 
+    this.brakeLevel = brakeForce > 0 ? Math.min(1, brake / brakeForce) : 0;
+
     if (P.zeroTurn) {
       const av = this.body.angvel();
       const wantYaw = inp.steer * (1.9 - Math.min(1, Math.abs(speed) / P.topSpeed) * 0.8);
@@ -206,7 +210,8 @@ export class Vehicle {
         this.ctrl.setWheelSteering(i, a.steer ? ack : 0);
         this.ctrl.setWheelEngineForce(i, a.drive ? engine : 0);
         const hb = inp.handbrake && !a.steer ? P.brake * 1.5 : 0;
-        this.ctrl.setWheelBrake(i, Math.max(brake, hb));
+        const parked = P.tongue && !this.towedBy ? P.brake : 0;
+        this.ctrl.setWheelBrake(i, a.leg ? P.brake * 4 : Math.max(brake, hb, parked));
         if (!a.steer && !a.caster && P.engineForce > 0) this.ctrl.setWheelSideFrictionStiffness(i, inp.handbrake && v > 3 ? P.sideStiffness * 0.45 : P.sideStiffness);
       }
     }
@@ -257,6 +262,11 @@ export class Vehicle {
   }
 
   get position() { const t = this.body.translation(); return { x: t.x, y: t.y, z: t.z }; }
+
+  /** Extra mass carried (a trailer's or dump body's load), in kilograms. */
+  setLoad(kg: number) {
+    this.body.setAdditionalMass(Math.max(0, kg), true);
+  }
 
   reset() {
     this.quiet();

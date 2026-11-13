@@ -45,6 +45,8 @@ import { lampTriangles, type LampDepth, type LampSize, type Shape } from '../../
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
 import { glazeScan } from './ScanGlass';
+import { trailerCargo, trailerMaterials, trailerMeshes, trailerSharedMaterials, type CargoKind } from './TrailerModels';
+import { isFleetKind, isSemiTrailer, type SemiTrailerKind } from '../../../maplestreet/shared/FleetVehicles';
 import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
 
 /** Built-in kinds drawn from primitives rather than a .glb. */
@@ -114,6 +116,10 @@ export interface VehicleView {
   styleKey: string;
   setStyle(style: CarStyle | null | undefined): void;
   setLamps(night: number, braking: boolean): void;
+  /** Fleet trailers: show a load on the deck (lumber, steel, pallets, logs), or none. */
+  setCargo?(cargo: CargoKind | null): void;
+  /** The dump truck: tips the body, 0 down to 1 fully raised. */
+  setDump?(t: number): void;
   destroy(): void;
 }
 
@@ -179,6 +185,67 @@ function wheelMesh(radius: number, width: number) {
   w = { tire: t, rim: r };
   wheelMeshes.set(key, w);
   return w;
+}
+
+/**
+ * A truck wheel: a tall, square-shouldered 22.5 in tire with tread blocks and a polished disc wheel with ten hand
+ * holes, ten lug nuts on the hub and a hub cap, the disc's face on +Z (left wheels turn it outward).
+ */
+function truckWheelMesh(radius: number, width: number) {
+  const key = `truck|${radius.toFixed(3)}|${width.toFixed(3)}`;
+  let w = wheelMeshes.get(key);
+  if (w) return w;
+  const axleZ = Matrix.RotationX(Math.PI / 2);
+  const R = radius, h = width / 2, Ri = R * 0.55;
+  const tire = new MeshBuilder().transform(axleZ);
+  tire.lathe([
+    [Ri, -h * 0.92], [R * 0.82, -h], [R * 0.95, -h * 0.98], [R * 0.99, -h * 0.88], [R, -h * 0.7],
+    [R, h * 0.7], [R * 0.99, h * 0.88], [R * 0.95, h * 0.98], [R * 0.82, h], [Ri, h * 0.92],
+  ], 40, true);
+  tire.lathe([[Ri * 0.99, h * 0.92], [Ri * 0.99, -h * 0.92]], 40, true);
+  for (let i = 0; i < 40; i++) {
+    tire.transform(Matrix.RotationY((i / 40) * Math.PI * 2).multiply(axleZ));
+    tire.box(R * 0.985, -h * 0.62, -R * 0.035, R * 1.012, h * 0.62, R * 0.035);
+  }
+  const rim = new MeshBuilder().transform(axleZ);
+  rim.color = [0.86, 0.87, 0.89];
+  rim.lathe([[Ri * 1.03, h * 0.94], [Ri * 0.98, h * 1.0], [Ri * 0.93, h * 0.92], [Ri * 0.86, h * 0.55], [Ri * 0.5, h * 0.35], [Ri * 0.42, h * 0.5]], 36, false);
+  rim.color = [0.2, 0.21, 0.23];
+  for (let i = 0; i < 10; i++) {
+    rim.transform(Matrix.RotationY((i * 36 * Math.PI) / 180).multiply(axleZ));
+    rim.cylinder(Ri * 0.7, h * 0.4, 0, Ri * 0.1, Ri * 0.1, h * 0.06, 10, false);
+  }
+  rim.transform(axleZ);
+  rim.color = [0.78, 0.79, 0.8];
+  rim.lathe([[Ri * 0.42, h * 0.5], [Ri * 0.3, h * 0.55], [Ri * 0.26, h * 0.9], [Ri * 0.14, h * 1.08], [0.0001, h * 1.1]], 24, true);
+  rim.color = [0.55, 0.56, 0.58];
+  for (let i = 0; i < 10; i++) {
+    rim.transform(Matrix.RotationY((i * 36 * Math.PI) / 180).multiply(axleZ));
+    rim.cylinder(Ri * 0.36, h * 0.52, 0, Ri * 0.045, Ri * 0.038, h * 0.12, 6, true);
+  }
+  rim.transform(axleZ);
+  rim.color = [0.3, 0.31, 0.33];
+  rim.lathe([[0.0001, -h * 0.85], [Ri * 0.98, -h * 0.85], [Ri * 0.98, h * 0.92]], 32, false);
+  const t = tire.toMesh(`tire-${key}`), r = rim.toMesh(`rim-${key}`, true);
+  t.setEnabled(false); r.setEnabled(false);
+  w = { tire: t, rim: r };
+  wheelMeshes.set(key, w);
+  return w;
+}
+
+/** A heap of gravel in the dump body (hinge frame), rough and rounded over the sides like a real load. */
+function gravelHeap(hinge: TransformNode, box: { x0: number; x1: number; y0: number; y1: number; hz: number }) {
+  const b = new MeshBuilder();
+  const len = box.x1 - box.x0, floor = box.y0 + 0.45, wall = box.y1 - box.y0;
+  b.box(box.x0 + 0.35, floor, -box.hz + 0.2, box.x1 - len * 0.12, floor + wall * 0.42, box.hz - 0.2);
+  const cx = box.x0 + len * 0.45;
+  b.blob(cx, floor + wall * 0.42, 0, len * 0.38, wall * 0.32, box.hz - 0.25, 7, 0.16, [0.46, 0.43, 0.38], 4);
+  const mesh = b.toMesh('gravel-heap');
+  mesh.material = trailerSharedMaterials().gravel;
+  mesh.parent = hinge;
+  mesh.receiveShadows = true;
+  gfx().addCaster(mesh);
+  return mesh as unknown as TransformNode;
 }
 
 /** A drawable clone of a template mesh (shared geometry) under `parent`. */
@@ -333,6 +400,11 @@ class View implements VehicleView {
   private rec: CustomVehicleRecord | null = null;
   private lampState = '';
   private destroyed = false;
+  private trailerKind: SemiTrailerKind | null = null;
+  private cargoKind: CargoKind | null = null;
+  private cargoNode: TransformNode | null = null;
+  private hinge: TransformNode | null = null;
+  private bedBox: { x0: number; x1: number; y0: number; y1: number; hz: number } | null = null;
 
   constructor(readonly kind: string, readonly tuning: VehicleTuning) {
     this.root = new TransformNode(`vehicle-${kind}`, gfx().scene);
@@ -349,13 +421,19 @@ class View implements VehicleView {
         steer.position.set(a.x, P.wheelY - P.suspension.rest, a.halfTrack * side);
         const spin = new TransformNode('spin', scene);
         spin.parent = steer;
-        if (custom) {
-          const w = wheelMesh(a.radius, a.width);
-          const holder = new TransformNode('tire', scene);
-          holder.parent = spin;
-          if (side < 0) holder.rotation.y = Math.PI;
-          cloneOf(w.tire, holder, M.rubber, false);
-          cloneOf(w.rim, holder, M.rim, false);
+        if (custom && !a.leg) {
+          const truck = a.radius >= 0.45;
+          const tireW = a.dual ? a.width / 2 - 0.015 : a.width;
+          const w = truck ? truckWheelMesh(a.radius, tireW) : wheelMesh(a.radius, a.width);
+          for (const offset of a.dual ? [a.width / 4, -a.width / 4] : [0]) {
+            const holder = new TransformNode('tire', scene);
+            holder.parent = spin;
+            holder.position.z = offset * side;
+            if (side < 0) holder.rotation.y = Math.PI;
+            if (a.dual && offset < 0) holder.rotation.y += Math.PI;
+            cloneOf(w.tire, holder, M.rubber, false);
+            cloneOf(w.rim, holder, M.rim, false);
+          }
         }
         this.wheels.push({ steer, spin, axle: ai, side, caster: !!a.caster, lift: 0 });
       }
@@ -389,6 +467,83 @@ class View implements VehicleView {
       mesh.position.setAll(0);
     }
     return true;
+  }
+
+  /** A fleet semi-trailer, drawn from TrailerModels.ts: paint and tail lamps are its own, the rest shared. */
+  fillTrailer(kind: SemiTrailerKind) {
+    const S = trailerSharedMaterials(), own = trailerMaterials(kind);
+    const holder = new TransformNode(`trailer-${kind}`, gfx().scene);
+    for (const [part, mesh] of trailerMeshes(kind)) {
+      const mat = part === 'paint' ? own.paint : part === 'tail' ? own.tail : S[part];
+      cloneOf(mesh, holder, mat, part !== 'tail' && part !== 'amber' && part !== 'tape');
+    }
+    this.trailerKind = kind;
+    this.adopt(null, holder);
+    this.owned.push(own.paint, own.tail);
+    this.paintMats.push(own.paint);
+    this.tail.push(own.tail);
+    this.applyStyle();
+  }
+
+  setCargo(cargo: CargoKind | null) {
+    if (cargo === this.cargoKind) return;
+    this.cargoKind = cargo;
+    this.cargoNode?.dispose(false, false);
+    this.cargoNode = null;
+    if (this.hinge && this.bedBox) {
+      if (cargo === 'gravel') this.cargoNode = gravelHeap(this.hinge, this.bedBox);
+      return;
+    }
+    const kind = this.trailerKind;
+    const parts = kind && cargo ? trailerCargo(kind, cargo) : null;
+    if (!parts) return;
+    const S = trailerSharedMaterials();
+    const node = new TransformNode('cargo', gfx().scene);
+    node.parent = this.root;
+    for (const [part, mesh] of parts) {
+      const mat = part === 'paint' || part === 'tail' ? S.dark : S[part];
+      cloneOf(mesh, node, mat, true);
+    }
+    this.cargoNode = node;
+  }
+
+  /** Fleet trucks: windows to clear glass, and the dump body hung on a hinge at its rear bottom edge. */
+  private fleetBody(model: TransformNode) {
+    const scanned = new Map<Mesh, BaseTexture>();
+    for (const mesh of meshesOf(model)) {
+      const m = mesh.material;
+      if (mesh instanceof Mesh && !/dumpbed/.test(mesh.name) && m instanceof PBRMaterial && m.albedoTexture) scanned.set(mesh, m.albedoTexture);
+    }
+    const bed = meshesOf(model).find(m => /dumpbed/.test(m.name));
+    if (bed && this.tuning.dump) {
+      this.root.computeWorldMatrix(true);
+      const inv = this.root.getWorldMatrix().clone().invert();
+      bed.computeWorldMatrix(true);
+      bed.refreshBoundingInfo({});
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = 0;
+      for (const c of bed.getBoundingInfo().boundingBox.vectorsWorld) {
+        const p = Vector3.TransformCoordinates(c, inv);
+        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); maxZ = Math.max(maxZ, Math.abs(p.z));
+      }
+      const hinge = new TransformNode('dump-hinge', gfx().scene);
+      hinge.parent = this.root;
+      hinge.position.set(minX + 0.15, minY + 0.05, 0);
+      hinge.computeWorldMatrix(true);
+      bed.setParent(hinge);
+      this.hinge = hinge;
+      this.bedBox = { x0: minX - hinge.position.x, x1: maxX - hinge.position.x, y0: minY - hinge.position.y, y1: maxY - hinge.position.y, hz: maxZ };
+    }
+    if (scanned.size && glazeScans) void glazeScan(model, scanned, () => !this.destroyed).then(g => { if (this.destroyed) for (const m of g.owned) m.dispose(); else this.owned.push(...g.owned); });
+  }
+
+  fleetBodyOf(model: TransformNode) {
+    this.fleetBody(model);
+  }
+
+  setDump(t: number) {
+    const max = this.tuning.dump?.maxAngle ?? 0;
+    if (this.hinge) this.hinge.rotation.z = Math.max(0, Math.min(1, t)) * max;
   }
 
   /** Built-in body: wheel pivots at the axles move onto our spin nodes; the rest is the body. */
@@ -654,7 +809,7 @@ export class VehicleModels {
   preload(kind: string): Promise<unknown> {
     const tuning = TUNING[kind] ?? TUNING.sedan;
     const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
-    if (!rec && PROCEDURAL.has(kind)) return Promise.resolve();
+    if (!rec && (PROCEDURAL.has(kind) || isSemiTrailer(kind))) return Promise.resolve();
     return this.assets.container(rec ? rec.modelUrl : `/models/maplestreet/vehicles/${kind}.glb`);
   }
 
@@ -664,9 +819,10 @@ export class VehicleModels {
     const view = new View(kind, tuning);
     const rec = customVehicleRecord(kind) ?? standIn(kind, tuning);
     const procedural = !rec && PROCEDURAL.has(kind);
-    view.addWheels(!!rec || procedural, rec?.physics.axles);
+    view.addWheels(!!rec || procedural || isFleetKind(kind), rec?.physics.axles);
     view.setStyle(style ?? null);
     if (procedural) { view.fillMower(); return view; }
+    if (isSemiTrailer(kind)) { view.fillTrailer(kind); return view; }
     const url = rec ? rec.modelUrl : `/models/maplestreet/vehicles/${TUNING[kind] ? kind : 'sedan'}.glb`;
     const fill = (c: Parameters<typeof instantiate>[0] | null) => {
       if ((view as unknown as { destroyed: boolean }).destroyed) return;
@@ -674,6 +830,7 @@ export class VehicleModels {
       if (inst) authoredFrame(inst);
       if (rec) view.fillCustom(inst, rec);
       else if (inst) view.fillBuiltin(inst);
+      if (inst && !rec && isFleetKind(kind)) view.fleetBodyOf(inst.root);
       gfx().warm?.(1);
     };
     const ready = this.assets.ready(url);

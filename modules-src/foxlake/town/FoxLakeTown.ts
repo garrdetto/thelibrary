@@ -42,7 +42,11 @@ import { decodeCells, gameDays } from '../../maplestreet/shared/Mowing'
 import { Cars } from './Cars'
 import { Neighbors } from './Neighbors'
 import { TownGfx } from './TownGfx'
-import { GROUND_RECT, buildConnector, buildLakeRoad, buildTownGround, fillerTrees } from './TownGround'
+import { GROUND_RECT, buildConnector, buildFreightRoads, buildLakeRoad, buildTownGround, fillerTrees } from './TownGround'
+import { buildFreightSites } from '../trucking/FreightSites'
+import { Fleet } from '../trucking/Fleet'
+import { Dispatch } from '../trucking/Dispatch'
+import { LANDING, MILL, YARD } from '../../maplestreet/shared/Freight'
 import { Wading } from './Wading'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
@@ -138,6 +142,8 @@ export class FoxLakeTown implements GameExtension {
   private barriers: BarrierSegment[] = []
   private wading: Wading | null = null
   private signs: RoadsideSigns | null = null
+  private fleet: Fleet | null = null
+  private dispatch: Dispatch | null = null
 
   constructor(private readonly opts: TownOptions) {}
 
@@ -171,20 +177,23 @@ export class FoxLakeTown implements GameExtension {
         const c = CASINO.clear
         if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) return true
         if (roadsideAt(x, z, 5)) return true
+        if (x > YARD.x0 - 6 && x < YARD.x1 + 6 && z > YARD.z0 - 6 && z < YARD.z1 + 6) return true
+        if (x > MILL.x0 - 6 && x < MILL.x1 + 6 && z > MILL.z0 - 6 && z < MILL.z1 + 6) return true
         const s = townToScene(x, 0, z, this._t)
-        return connectorDistance(s.x, s.z) < 9
+        return connectorDistance(s.x, s.z) < 9 || roadClear(s.x, s.z) < 4
       },
     })
     new Downtown(this.physics, this.mats)
     this.houses = new Houses(this.physics, this.mats, this.assets)
     this.casino.build(this.root, this.mats, this.physics)
     buildRoadside(this.root, this.mats, this.physics, asphalt('roadside-asphalt'))
+    buildFreightSites(this.root, scene, this.mats, this.physics, (x, z) => host.terrain.heightAt(x, z))
     this.signs = new RoadsideSigns(scene)
     this.models = new VehicleModels(this.assets)
     const ground = buildTownGround(scene, host.terrain)
     const road = buildConnector(scene, host.terrain)
     const lakeRoad = buildLakeRoad(scene, host.terrain)
-    this.freezeStatic([ground, road, ...lakeRoad])
+    this.freezeStatic([ground, road, ...lakeRoad, ...buildFreightRoads(scene, host.terrain)])
     buildBarricade(scene, FOX_LAKE_SHAPE, host.terrain)
     host.foliage.plantTrees(fillerTrees().map((t) => ({ ...t, y: host.terrain.heightAt(t.x, t.z) })))
     host.foliage.hostCasters = (focus) => (focus.z > HALF - 120 ? this.gfx.near(focus) : EMPTY)
@@ -273,6 +282,9 @@ export class FoxLakeTown implements GameExtension {
     await this.casino.ready(host)
     this.wading = new Wading(host.terrain, this.cars, (text) => host.hud.toast(text, 'warn'))
     this.cars.flooded = (car) => this.wading?.flooded(car) ?? false
+    this.cars.stayPut = (kind) => Fleet.isFleet(kind)
+    this.fleet = new Fleet(this.cars, (text) => host.hud.toast(text))
+    this.fleet.spawn()
     const dock = findLandmarks(host.terrain).dock.start
     this.atlas = new Atlas(host.terrain, host.mapMarkers(), { x: dock.x, z: dock.z })
     const lotState = (lot: LotDef) => {
@@ -299,6 +311,16 @@ export class FoxLakeTown implements GameExtension {
       toast: (text) => host.hud.toast(text),
       canvas: host.ctx.engine.getRenderingCanvas(),
     })
+    this.dispatch = new Dispatch({
+      send: (m) => this.send(m),
+      toast: (text) => host.hud.toast(text),
+      routeTo: (x, z, name) => this.map?.routeToPoint(x, z, name),
+      clearRoute: () => this.map?.clear(),
+      where: () => this.townPosition(),
+      driving: () => !!host.driving,
+      scene: host.ctx.scene,
+      groundAt: (x, z) => host.terrain.heightAt(x, z),
+    }, this.fleet)
     addEventListener('keydown', (e) => this.key(e))
     this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
@@ -416,6 +438,9 @@ export class FoxLakeTown implements GameExtension {
       case 'job':
         if (m.note) this.host.hud.toast(m.note)
         break
+      case 'freight':
+        this.dispatch?.onJob(m.job, m.note, m.paid)
+        break
     }
   }
 
@@ -493,6 +518,8 @@ export class FoxLakeTown implements GameExtension {
     this.neighbors.update(dt, night, focus)
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
     this.casino.update(dt)
+    this.fleet?.update(dt)
+    this.dispatch?.update(dt)
     this.map?.update(dt)
     this.netAcc += dt
     if (this.netAcc >= 1 / NET_HZ) {
@@ -594,13 +621,17 @@ export class FoxLakeTown implements GameExtension {
 
   placeName(x: number, z: number): string | null {
     if (z < HALF) {
-      if (roadClear(x, z) < 3 && z < 60 && x > 100) return 'Lake Road'
+      const tl = sceneToTown(x, 0, z, this._t)
+      if (Math.hypot(tl.x - LANDING.x, tl.z - LANDING.z) < LANDING.r) return 'Pine Ridge landing'
+      if (roadClear(x, z) < 3 && z < 60 && x > 100) return x > 266 && z < -40 ? 'Pine Ridge Rd' : 'Lake Road'
       return null
     }
     if (this.casino.contains(x, z)) return CASINO_NAME
     const t = sceneToTown(x, 0, z, this._t)
     const place = roadsideAt(t.x, t.z, 2)
     if (place) return place.name
+    if (t.x > YARD.x0 && t.x < YARD.x1 && t.z > YARD.z0 && t.z < YARD.z1) return 'Fox Lake Freight & Gravel'
+    if (t.x > MILL.x0 && t.x < MILL.x1 && t.z > MILL.z0 && t.z < MILL.z1) return 'Fox Plains Sawmill'
     if (connectorDistance(x, z) < 8) return 'County Road'
     if (t.x < TOWN_SQUARE.x0 - TOWN_OFFSET.x + 40 || Math.abs(t.z) > 330 || t.x > 590 || t.x < -410) return 'Fox Lake woods'
     for (let i = 0; i < ROADS.length; i++) {
@@ -656,6 +687,7 @@ export class FoxLakeTown implements GameExtension {
     if (seat) return seat
     const stop = this.roadsideDoor()
     if (stop) return `E — ${stop.name}`
+    if (this.dispatch?.nearBoard()) return 'E — Dispatch board: take a load'
     const door = this.nearDoor()
     if (door) return door.kind === 'clothing' ? `E — ${door.name}: try on outfits` : `E — ${door.name}`
     const lot = this.lotForSale()
@@ -665,6 +697,10 @@ export class FoxLakeTown implements GameExtension {
 
   interact(): boolean {
     if (zoneAt(this.host.player.z) === 'town' && this.casino.interact()) return true
+    if (zoneAt(this.host.player.z) === 'town' && this.dispatch?.nearBoard()) {
+      this.dispatch.show()
+      return true
+    }
     const stop = zoneAt(this.host.player.z) === 'town' ? this.roadsideDoor() : null
     if (stop) {
       this.host.hud.toast(ROADSIDE_GREETING[stop.kind](stop))
@@ -688,6 +724,9 @@ export class FoxLakeTown implements GameExtension {
     if (e.code === 'ControlLeft' || e.code === 'ControlRight') this.map?.show()
     else if (e.code === GARAGE_KEY) this.swapGarageVehicle()
     else if (e.code === HOME_KEY) this.goHome()
+    else if (e.code === 'KeyT') this.fleet?.toggleHitch()
+    else if (e.code === 'KeyB') this.fleet?.toggleDump()
+    else if (e.code === 'KeyL') this.dispatch?.press()
   }
 
   /** V: brings out the next vehicle you own (beside the pickup and trailer), parked at home or downtown. */
@@ -738,6 +777,16 @@ export class FoxLakeTown implements GameExtension {
     this.host.hud.toast('Home sweet home. Your vehicles are where you left them.')
   }
 
+  /** While driving: loading and dumping at a freight stop, or coupling a trailer that's in reach. */
+  drivePrompt(): string {
+    const job = this.dispatch?.prompt() ?? ''
+    if (job) return job
+    const car = this.cars?.driving()
+    if (car?.kind === 'semi' && !car.fp.trailer && Math.abs(car.fp.speed) < 2) return 'T — Couple a trailer (back the fifth wheel under its kingpin)'
+    if (car?.kind === 'dumptruck' && Math.abs(car.fp.speed) < 1) return 'B — Raise or lower the dump body'
+    return ''
+  }
+
   /** The corner map is Fox Lake's own atlas everywhere (Rack & Reel's is hidden). */
   drawMinimap(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: () => MapMarker[]): boolean {
     if (!this.minimap) return false
@@ -753,6 +802,9 @@ export class FoxLakeTown implements GameExtension {
     return [
       { keys: ['Ctrl'], text: 'Full map: click a place or a spot for turn-by-turn directions' },
       { keys: ['N'], text: 'Zoom the corner map' },
+      { keys: ['T'], text: 'Couple or drop a trailer (tractor or pickup)' },
+      { keys: ['B'], text: 'Raise or lower the dump body (dump truck)' },
+      { keys: ['L'], text: 'Load or unload freight at a stop' },
       { keys: ['V'], text: 'Bring out your next vehicle' },
       { keys: ['H'], text: 'Go home (every 15 minutes)' },
     ]

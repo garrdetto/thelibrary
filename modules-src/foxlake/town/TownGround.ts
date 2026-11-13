@@ -19,7 +19,7 @@ import { detailTexture } from '../../rackreel/world/World'
 import { countyRoadTexture } from '../../rackreel/world/Highway'
 import { MAP_BOUNDS } from '../../maplestreet/shared/WorldLayout'
 import { BUILT_UP, CONNECTOR, FOX_LAKE_SHAPE, TOWN_SQUARE, TOWN_Y, connectorDistance, connectorPath, roadClear, sceneToTown } from '../region'
-import { LAKE_ROAD_APRON, lakeRoadHeight, lakeRoadPath, type PathPoint } from '../country/Roads'
+import { FREIGHT_ROADS, LAKE_ROAD_APRON, freightRoadPath, lakeRoadHeight, lakeRoadPath, type PathPoint } from '../country/Roads'
 
 /** The ground covers the town square and the strip between it and the lake country's north-east corner. */
 export const GROUND_RECT = { x0: TOWN_SQUARE.x0, x1: HALF + 8, z0: HALF - 4, z1: TOWN_SQUARE.z1 } as const
@@ -184,6 +184,11 @@ export function buildConnector(scene: Scene, terrain: Terrain): Mesh {
   const start = CONNECTOR.start
   const lip = (x: number, z: number) => 0.25 * (1 - smoothstep(4, 36, Math.hypot(x - start.x, z - start.z)))
   return roadRibbon(scene, 'county-road', connectorPath(4), (x, z) => Math.max(terrain.heightAt(x, z), TOWN_Y) + 0.06 + lip(x, z))
+}
+
+/** Freight Rd, Main St on to the sawmill and Pine Ridge Rd to the landing (country/Roads.ts `FREIGHT_ROADS`). */
+export function buildFreightRoads(scene: Scene, terrain: Terrain): Mesh[] {
+  return FREIGHT_ROADS.map((_, i) => roadRibbon(scene, `freight-road-${i}`, freightRoadPath(i, 3), (x, z) => Math.max(terrain.heightAt(x, z), TOWN_Y) + 0.06))
 }
 
 const raw = (x: number, z: number) => rawHeight(x, z, FOX_LAKE_SHAPE)
