@@ -110,7 +110,7 @@ Fox Lake starts Rack & Reel with `gearAtCabin`: the rod and rifle hang on the ge
 
 ## Controls
 
-Rack & Reel's, plus E at your car (drive), at shops (Maple Threads opens the wardrobe), at the roadside places, at a slot machine, bar stool or blackjack seat, V to bring out another of your vehicles, H to go home (every 15 minutes), Ctrl for the full map and directions, N to zoom the corner map. The Esc menu lists every control (`BASE_CONTROLS` in `rackreel/ui/PauseMenu.ts` plus `FoxLakeTown.controls`). 1 and 2 only work at the cabin's gear rack. Rack & Reel's, plus E at your car (drive), at shops (Maple Threads opens the wardrobe), at a slot machine, bar stool or blackjack seat, V to bring out another of your vehicles, H to go home (every 15 minutes), Ctrl for the full map and directions, and F8 for the developer panel (administrators).
+Rack & Reel's, plus E at your car (drive), at shops (Maple Threads opens the wardrobe), at the roadside places, at a slot machine, bar stool or blackjack seat, V to bring out another of your vehicles, H to go home (every 15 minutes), Ctrl for the full map and directions, N to zoom the corner map. The Esc menu lists every control (`BASE_CONTROLS` in `rackreel/ui/PauseMenu.ts` plus `FoxLakeTown.controls`). 1 and 2 only work at the cabin's gear rack. F8 opens the developer panel (administrators).
 
 ## Debugging
 
