@@ -111,7 +111,8 @@ export class GroundWear {
     const g = this.terrain.groundAt(x, z)
     if (g === 'water' || g === 'rock') return false
     const { t, across } = highwayCoord(x, z)
-    return !onHighway(across, t)
+    if (onHighway(across, t)) return false
+    return (this.terrain.shape.roadClear?.(x, z) ?? 1) > 0
   }
 
   /** Presses `amount` into the cell under (x, z): one tyre's width. */

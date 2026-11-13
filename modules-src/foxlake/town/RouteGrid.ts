@@ -7,20 +7,25 @@
  * cheapest path, which is simplified into straight legs and turned into
  * spoken-style steps ("Turn left onto Elm St").
  */
-import { HALF, PLAY_LIMIT, highwayCoord, type Terrain } from '../../rackreel/world/Terrain'
+import { HALF, HIGHWAY, PLAY_LIMIT, highwayCoord, type Terrain } from '../../rackreel/world/Terrain'
 import { onHighway } from '../../rackreel/world/Highway'
 import { ROADS, curveDistance } from '../../maplestreet/shared/WorldLayout'
-import { CONNECTOR, TOWN_SQUARE, connectorDistance, inTownSquare, sceneToTown } from '../region'
+import { CONNECTOR, TOWN_SQUARE, connectorDistance, inTownSquare, roadClear, sceneToTown } from '../region'
+import { HIGHWAY_GAPS } from '../country/Roads'
+import { roadsideAt } from '../roadside/RoadsideLayout'
 
 export const ROUTE_CELL = 6
 
-export const KIND = { blocked: 0, water: 1, forest: 2, meadow: 3, trail: 4, highway: 5, connector: 6, road: 7, lawn: 8, building: 9, marsh: 10, rock: 11 } as const
+export const KIND = { blocked: 0, water: 1, forest: 2, meadow: 3, trail: 4, highway: 5, connector: 6, road: 7, lawn: 8, building: 9, marsh: 10, rock: 11, lake: 12, lot: 13, rail: 14 } as const
 export type Kind = (typeof KIND)[keyof typeof KIND]
 
 const COST: Record<number, number> = {
   [KIND.blocked]: Infinity,
   [KIND.water]: Infinity,
   [KIND.building]: Infinity,
+  [KIND.rail]: Infinity,
+  [KIND.lake]: 1,
+  [KIND.lot]: 1.4,
   [KIND.road]: 1,
   [KIND.highway]: 1,
   [KIND.connector]: 1,
@@ -104,7 +109,10 @@ export class RouteGrid {
       if (Math.abs(x) > PLAY_LIMIT || z < -PLAY_LIMIT) return KIND.blocked
       const h = highwayCoord(x, z)
       const ground = this.world.terrain.groundAt(x, z)
+      if (h.across < HIGHWAY.halfWidth - 0.5 && Math.abs(h.t) < HIGHWAY.reach && this.world.terrain.heightAt(x, z) > -0.3) return KIND.highway
+      if (onHighway(h.across, h.t) && Math.abs(h.t) > HIGHWAY.span / 2 && !HIGHWAY_GAPS.some((g) => g.side === -1 && h.t > g.t0 - 3 && h.t < g.t1 + 3)) return KIND.rail
       if (onHighway(h.across, h.t) && this.world.terrain.heightAt(x, z) > -0.3) return KIND.highway
+      if (x > 100 && z < 60 && roadClear(x, z) < 1) return KIND.lake
       if (ground === 'water') return KIND.water
       if (ground === 'trail') return KIND.trail
       if (ground === 'forest') return KIND.forest
@@ -117,6 +125,7 @@ export class RouteGrid {
     for (const r of ROADS) if (Math.abs(t.x - r.cx) < r.sx / 2 && Math.abs(t.z - r.cz) < r.sz / 2) return KIND.road
     if (curveDistance(t.x, t.z) < 3.5) return KIND.road
     if (this.world.blocked(t.x, t.z)) return KIND.building
+    if (roadsideAt(t.x, t.z)) return KIND.lot
     return KIND.lawn
   }
 
@@ -252,7 +261,7 @@ export class RouteGrid {
       const x = a.x + (b.x - a.x) * t
       const z = a.z + (b.z - a.z) * t
       const kind = this.kindAt(x, z)
-      const name = kind === KIND.road ? this.world.streetName(x, z) : kind === KIND.connector ? 'County Road' : kind === KIND.highway ? 'the interstate' : kind === KIND.trail ? 'the trail' : ''
+      const name = kind === KIND.road ? this.world.streetName(x, z) : kind === KIND.connector ? 'County Road' : kind === KIND.lake ? 'Lake Road' : kind === KIND.highway ? 'the interstate' : kind === KIND.trail ? 'the trail' : ''
       counts.set(name ?? '', (counts.get(name ?? '') ?? 0) + 1)
     }
     let best = ''

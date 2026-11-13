@@ -103,6 +103,8 @@ export interface GameHost {
   readonly avatarRoot: TransformNode
   /** The vehicle the player is in, if any. */
   readonly driving: Vehicle | null
+  /** What the minimap marks right now: the cabin or store, stands and blinds, vehicles, your party, downed game, Wild Man. */
+  mapMarkers(): MapMarker[]
   /** Puts the player on foot at `at`, facing `facing`, out of any vehicle. */
   teleport(at: Vector3, facing: number): void
   enterVehicle(v: Vehicle): void
@@ -143,6 +145,13 @@ export interface GameExtension {
   placeName?(x: number, z: number): string | null
   /** The host world's own keys, listed in the Esc menu after Rack & Reel's. */
   controls?(): ControlRow[]
+  /**
+   * Draws the corner map in place of Rack & Reel's (player feet, camera yaw, facing, the live markers, asked only
+   * when drawn). Return false to fall back to Rack & Reel's map.
+   */
+  drawMinimap?(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: () => MapMarker[]): boolean
+  /** N: cycles the host world's corner map zoom; returns the toast. */
+  cycleMinimapZoom?(): string
 }
 
 export interface GameOptions {
@@ -343,6 +352,7 @@ export class Game {
       get keys() { return game.keys },
       get avatarRoot() { return game.avatar.root },
       get driving() { return game.vehicles?.active ?? null },
+      mapMarkers: () => game.mapMarkers(),
       teleport: (at, facing) => game.placeOnFoot(at, facing),
       enterVehicle: (v) => game.enterVehicle(v),
       openWardrobe: () => game.openPanel('wardrobe', null),
@@ -904,7 +914,7 @@ export class Game {
       else if (e.code === 'KeyK') this.openBook()
       else if (e.code === 'KeyI') this.openPanel('gear', this.mode === 'foot' ? this.cabin.spotNear(this.foot) : null)
       else if (e.code === 'KeyG') this.grunt()
-      else if (e.code === 'KeyN') this.hud.toast(this.minimap.cycleZoom())
+      else if (e.code === 'KeyN') this.hud.toast(this.ext?.cycleMinimapZoom?.() ?? this.minimap.cycleZoom())
       else if (e.code === 'KeyP') this.openPanel('party', null)
       else if (e.code === 'KeyQ') this.toggleAnchor()
       else if (e.code === 'KeyF') this.switchSeat()
@@ -1807,7 +1817,7 @@ export class Game {
     this.fishCam += ((watching ? 1 : 0) - this.fishCam) * Math.min(1, dt * 2.5)
     this.updateGear(dt)
     if (this.online.active) this.online.update(dt, this.playerState(), this.herdSnapshot)
-    this.minimap.draw(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.markersNow)
+    if (!this.ext?.drawMinimap?.(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.markersNow)) this.minimap.draw(dt, this.foot.x, this.foot.z, cam.rotation.y, v ? v.heading : this.facing, this.markersNow)
     this.updateHud(dt, locked)
     this.foliage.updateGrass(focus)
     this.ctx.setShadowFocus(focus)

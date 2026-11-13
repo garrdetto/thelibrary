@@ -42,15 +42,29 @@ import { decodeCells, gameDays } from '../../maplestreet/shared/Mowing'
 import { Cars } from './Cars'
 import { Neighbors } from './Neighbors'
 import { TownGfx } from './TownGfx'
-import { GROUND_RECT, buildConnector, buildTownGround, fillerTrees } from './TownGround'
+import { GROUND_RECT, buildConnector, buildLakeRoad, buildTownGround, fillerTrees } from './TownGround'
+import { Wading } from './Wading'
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+import { Color3 } from '@babylonjs/core/Maths/math.color'
+import { asphaltTexture } from '../../rackreel/world/Highway'
+import { buildRoadside } from '../roadside/RoadsideBuild'
+import { RoadsideSigns } from '../roadside/RoadsideSigns'
+import { ROADSIDE, doorSpot, roadsideAt, type RoadsidePlace } from '../roadside/RoadsideLayout'
+import { addRoadColliders, roadSurface } from '../country/RoadPhysics'
+import { buildBarricade } from '../country/Barricade'
+import { hitsBarrier, type BarrierSegment } from '../country/Roads'
 import { TownHud } from './TownHud'
 import { WorldMap } from './WorldMap'
+import { Atlas } from './Atlas'
+import { FoxMinimap } from './FoxMinimap'
+import { findLandmarks } from '../../rackreel/world/World'
+import type { MapMarker } from '../../rackreel/ui/Minimap'
 import type { ControlRow } from '../../rackreel/ui/Controls'
 import { RegionCuller } from '../core/RegionCuller'
 import { CasinoHost, CASINO_NAME } from '../casino/CasinoHost'
 import { CASINO } from '../casino/CasinoLayout'
 import { STAND_SIZE } from '../../rackreel/world/Foliage'
-import { TOWN_OFFSET, TOWN_SQUARE, connectorDistance, headingToTownYaw, sceneToTown, townToScene, zoneAt, CONNECTOR } from '../region'
+import { FOX_LAKE_SHAPE, TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, connectorDistance, headingToTownYaw, outsideHeight, roadClear, sceneToTown, townToScene, zoneAt, CONNECTOR } from '../region'
 import { FoxLakeDev } from '../dev/FoxLakeDev'
 
 const STEP = 1 / 60
@@ -96,6 +110,8 @@ export class FoxLakeTown implements GameExtension {
   private neighbors!: Neighbors
   private hud!: TownHud
   private map: WorldMap | null = null
+  private atlas: Atlas | null = null
+  private minimap: FoxMinimap | null = null
   private net: Transport | null = null
   private netStatus: NetStatus = 'connecting'
   private selfId: string | null = null
@@ -122,6 +138,9 @@ export class FoxLakeTown implements GameExtension {
   private readonly casino = new CasinoHost()
   /** The developer panel and the spawned vehicles anyone can drive (dev/). */
   dev: FoxLakeDev | null = null
+  private barriers: BarrierSegment[] = []
+  private wading: Wading | null = null
+  private signs: RoadsideSigns | null = null
 
   constructor(private readonly opts: TownOptions) {}
 
@@ -141,14 +160,20 @@ export class FoxLakeTown implements GameExtension {
     host.hud.setLoading(0.7, 'Laying out Fox Plains…')
     this.physics = await Physics.create()
     this.addCountryHeightfield()
+    this.addOutsideHeightfield()
+    this.barriers = addRoadColliders(this.physics, host.terrain, FOX_LAKE_SHAPE)
     this.assets = new Assets(scene)
     this.mats = new Mats(scene)
+    const asphaltTex = asphaltTexture(scene, 10)
+    const asphalt = (name: string) => countryAsphalt(scene, name, asphaltTex)
     this.town = new Town(this.physics, this.mats, {
       ground: false,
+      asphalt,
       trees: (spots) => this.plantTownTrees(spots),
       keepClear: (x, z) => {
         const c = CASINO.clear
         if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) return true
+        if (roadsideAt(x, z, 5)) return true
         const s = townToScene(x, 0, z, this._t)
         return connectorDistance(s.x, s.z) < 9
       },
@@ -156,17 +181,24 @@ export class FoxLakeTown implements GameExtension {
     new Downtown(this.physics, this.mats)
     this.houses = new Houses(this.physics, this.mats, this.assets)
     this.casino.build(this.root, this.mats, this.physics)
+    buildRoadside(this.root, this.mats, this.physics, asphalt('roadside-asphalt'))
+    this.signs = new RoadsideSigns(scene)
     this.models = new VehicleModels(this.assets)
     const ground = buildTownGround(scene, host.terrain)
     const road = buildConnector(scene, host.terrain)
-    this.freezeStatic([ground, road])
+    const lakeRoad = buildLakeRoad(scene, host.terrain)
+    this.freezeStatic([ground, road, ...lakeRoad])
+    buildBarricade(scene, FOX_LAKE_SHAPE, host.terrain)
     host.foliage.plantTrees(fillerTrees().map((t) => ({ ...t, y: host.terrain.heightAt(t.x, t.z) })))
     host.foliage.hostCasters = (focus) => (focus.z > HALF - 120 ? this.gfx.near(focus) : EMPTY)
     host.foliage.grassHoles.push({ x: CONNECTOR.start.x, z: CONNECTOR.start.z, r: 14 })
     this.hud = new TownHud()
   }
 
-  /** The lake country as a Rapier heightfield (town coordinates), so a car can drive out to the lake. */
+  /**
+   * The lake country as a Rapier heightfield (town coordinates), so a car can drive out to the lake; lifted to the
+   * interstate's and the Lake Road's surfaces where they cover it, so wheels ride on the asphalt.
+   */
   private addCountryHeightfield(): void {
     const terrain = this.host.terrain
     const n = GRID
@@ -174,11 +206,29 @@ export class FoxLakeTown implements GameExtension {
     for (let j = 0; j <= n; j++) {
       for (let i = 0; i <= n; i++) {
         const sceneZ = HALF - j * CELL
-        heights[i + j * (n + 1)] = terrain.heights[Math.round((sceneZ + HALF) / CELL) * (n + 1) + i] - TOWN_OFFSET.y
+        const sceneX = -HALF + i * CELL
+        const ground = terrain.heights[Math.round((sceneZ + HALF) / CELL) * (n + 1) + i]
+        const road = roadSurface(FOX_LAKE_SHAPE, terrain, sceneX, sceneZ)
+        heights[i + j * (n + 1)] = Math.max(ground, road ?? -Infinity) - TOWN_OFFSET.y
       }
     }
     const centre = sceneToTown(0, 0, 0)
     this.physics.addHeightfield(n, n * CELL, heights, centre.x, centre.z)
+  }
+
+  /** The rolling land around town (region.ts `outsideHeight`) as a heightfield over the town square, 4 m apart. */
+  private addOutsideHeightfield(): void {
+    const n = 320
+    const size = 1280
+    const step = size / n
+    const heights = new Float32Array((n + 1) * (n + 1))
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        const s = townToScene(-size / 2 + i * step, 0, -size / 2 + j * step, this._t)
+        heights[i + j * (n + 1)] = outsideHeight(s.x, s.z) - TOWN_Y
+      }
+    }
+    this.physics.addHeightfield(n, size, heights, 0, 0)
   }
 
   private plantTownTrees(spots: TreeSpot[]): void {
@@ -188,7 +238,7 @@ export class FoxLakeTown implements GameExtension {
       if (p.x < GROUND_RECT.x0 + 4 || p.z > GROUND_RECT.z1 - 4) continue
       const hash = Math.abs(Math.sin(s.x * 12.9898 + s.z * 78.233) * 43758.5453) % 1
       const kind = s.kind === 'spruce' ? 'pine' : s.kind === 'linden' && hash < 0.35 ? 'birch' : 'hardwood'
-      out.push({ x: p.x, y: p.y, z: p.z, kind, scale: s.s * 0.82, yaw: (s.yaw * Math.PI) / 180 })
+      out.push({ x: p.x, y: this.host.terrain.heightAt(p.x, p.z), z: p.z, kind, scale: s.s * 0.82, yaw: (s.yaw * Math.PI) / 180 })
     }
     this.host.foliage.plantTrees(out)
   }
@@ -225,7 +275,19 @@ export class FoxLakeTown implements GameExtension {
     truck.fp.hitch(trailer.fp)
     this.cars.add('mower', SPAWN.x + 4, SPAWN.z + 6, 0, null)
     await this.casino.ready(host)
+    this.wading = new Wading(host.terrain, this.cars, (text) => host.hud.toast(text, 'warn'))
+    this.cars.flooded = (car) => this.wading?.flooded(car) ?? false
+    const dock = findLandmarks(host.terrain).dock.start
+    this.atlas = new Atlas(host.terrain, host.mapMarkers(), { x: dock.x, z: dock.z })
+    const lotState = (lot: LotDef) => {
+      const owner = this.houses.world?.lots[lot.id]?.owner
+      return owner ? (owner === this.account?.id ? 'mine' : 'owned') : 'sale'
+    }
+    this.minimap = new FoxMinimap(this.atlas, () => this.map?.current ?? null, lotState)
     this.map = new WorldMap({
+      atlas: this.atlas,
+      markers: () => host.mapMarkers(),
+      lot: lotState,
       world: {
         terrain: host.terrain,
         blocked: (x, z) => this.physics.blocked(x, z, 0, 1),
@@ -246,6 +308,12 @@ export class FoxLakeTown implements GameExtension {
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
     const casino = this.casino.center()
     this.culler.addGroup(this.casino.staticMeshes(), casino.x, casino.z, 24)
+    if (this.signs) {
+      for (const p of ROADSIDE) {
+        const d = townToScene(doorSpot(p).x, 0, doorSpot(p).z)
+        this.culler.addGroup(this.signs.root.getChildMeshes(false).filter((m) => Math.hypot(m.getAbsolutePosition().x - d.x, m.getAbsolutePosition().z - d.z) < 40), d.x, d.z, 40)
+      }
+    }
     this.culler.update(0, host.ctx.camera.globalPosition, true)
     await this.connect()
   }
@@ -434,8 +502,6 @@ export class FoxLakeTown implements GameExtension {
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
     this.casino.update(dt)
     this.map?.update(dt)
-    const yaw = this.host.ctx.camera.rotation.y
-    this.hud.updateMap(dt, zoneAt(this.host.player.z) === 'town', focus, { x: Math.sin(yaw), y: -Math.cos(yaw) }, this.houses.world, this.account?.id ?? null)
     this.netAcc += dt
     if (this.netAcc >= 1 / NET_HZ) {
       this.netAcc = 0
@@ -466,6 +532,7 @@ export class FoxLakeTown implements GameExtension {
     pts.push({ x: t.x, z: t.z })
     this.cars.focusPoints(pts)
     this.physics.stream(pts, dt)
+    this.wading?.step(dt)
     this.physics.step(dt)
     this.mowStep()
   }
@@ -515,6 +582,7 @@ export class FoxLakeTown implements GameExtension {
   }
 
   obstacle(x: number, z: number, r: number): boolean {
+    if (hitsBarrier(this.barriers, x, z, r, this.host.terrain.heightAt(x, z))) return true
     if (z < HALF - 8) return false
     const t = sceneToTown(x, TOWN_OFFSET.y, z, this._t)
     return this.physics.blocked(t.x, t.z, 0, r)
@@ -533,10 +601,15 @@ export class FoxLakeTown implements GameExtension {
   }
 
   placeName(x: number, z: number): string | null {
-    if (z < HALF) return null
+    if (z < HALF) {
+      if (roadClear(x, z) < 3 && z < 60 && x > 100) return 'Lake Road'
+      return null
+    }
     if (this.casino.contains(x, z)) return CASINO_NAME
-    if (connectorDistance(x, z) < 8) return 'County Road'
     const t = sceneToTown(x, 0, z, this._t)
+    const place = roadsideAt(t.x, t.z, 2)
+    if (place) return place.name
+    if (connectorDistance(x, z) < 8) return 'County Road'
     if (t.x < TOWN_SQUARE.x0 - TOWN_OFFSET.x + 40 || Math.abs(t.z) > 330 || t.x > 590 || t.x < -410) return 'Fox Lake woods'
     for (let i = 0; i < ROADS.length; i++) {
       const r = ROADS[i]
@@ -574,12 +647,25 @@ export class FoxLakeTown implements GameExtension {
     return best
   }
 
+  /** The roadside place whose door you're standing at, on foot. */
+  private roadsideDoor(): RoadsidePlace | null {
+    if (this.host.driving) return null
+    const t = this.townPosition()
+    for (const p of ROADSIDE) {
+      const d = doorSpot(p)
+      if (Math.hypot(t.x - d.x, t.z - d.z) < 3.2) return p
+    }
+    return null
+  }
+
   prompt(): string {
     const spawned = this.dev?.prompt()
     if (spawned) return spawned
     if (zoneAt(this.host.player.z) !== 'town') return ''
     const seat = this.casino.prompt()
     if (seat) return seat
+    const stop = this.roadsideDoor()
+    if (stop) return `E — ${stop.name}`
     const door = this.nearDoor()
     if (door) return door.kind === 'clothing' ? `E — ${door.name}: try on outfits` : `E — ${door.name}`
     const lot = this.lotForSale()
@@ -590,6 +676,11 @@ export class FoxLakeTown implements GameExtension {
   interact(): boolean {
     if (this.dev?.interact()) return true
     if (zoneAt(this.host.player.z) === 'town' && this.casino.interact()) return true
+    const stop = zoneAt(this.host.player.z) === 'town' ? this.roadsideDoor() : null
+    if (stop) {
+      this.host.hud.toast(ROADSIDE_GREETING[stop.kind](stop))
+      return true
+    }
     const door = zoneAt(this.host.player.z) === 'town' ? this.nearDoor() : null
     if (door) {
       if (door.kind === 'clothing') this.host.openWardrobe()
@@ -658,9 +749,21 @@ export class FoxLakeTown implements GameExtension {
     this.host.hud.toast('Home sweet home. Your vehicles are where you left them.')
   }
 
+  /** The corner map is Fox Lake's own atlas everywhere (Rack & Reel's is hidden). */
+  drawMinimap(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: () => MapMarker[]): boolean {
+    if (!this.minimap) return false
+    this.minimap.draw(dt, x, z, cameraYaw, facing, markers)
+    return true
+  }
+
+  cycleMinimapZoom(): string {
+    return this.minimap?.cycleZoom() ?? ''
+  }
+
   controls(): ControlRow[] {
     return [
-      { keys: ['Ctrl'], text: 'Full map: click a spot for turn-by-turn directions' },
+      { keys: ['Ctrl'], text: 'Full map: click a place or a spot for turn-by-turn directions' },
+      { keys: ['N'], text: 'Zoom the corner map' },
       { keys: ['V'], text: 'Bring out your next vehicle' },
       { keys: ['H'], text: 'Go home (every 15 minutes)' },
       ...(this.dev?.controls() ?? []),
@@ -677,6 +780,22 @@ export class FoxLakeTown implements GameExtension {
 }
 
 const EMPTY: readonly AbstractMesh[] = []
+
+const ROADSIDE_GREETING: Record<RoadsidePlace['kind'], (p: RoadsidePlace) => string> = {
+  cabin: (p) => `${p.name} is locked up tight. ${p.blurb}`,
+  gas: (p) => `${p.name}: "Pumps are on, the bait's fresh and the coffee's hot." ${p.blurb}`,
+  motel: (p) => `${p.name}: the office bell rings, but nobody's at the desk yet. ${p.blurb}`,
+  bar: (p) => `${p.name}: the jukebox is on and the grill's warming up. ${p.blurb}`,
+}
+
+/** Every street and lot in Fox Lake in the lake country's asphalt (the interstate's grit), tiled every 10 m. */
+function countryAsphalt(scene: import('@babylonjs/core/scene').Scene, name: string, texture: import('@babylonjs/core/Materials/Textures/baseTexture').BaseTexture): StandardMaterial {
+  const mat = new StandardMaterial(`fox-lake-${name}`, scene)
+  mat.diffuseTexture = texture
+  mat.specularColor = new Color3(0.04, 0.04, 0.04)
+  mat.ambientColor = new Color3(0.35, 0.35, 0.35)
+  return mat
+}
 
 function homeSpot(lot: LotDef): { x: number; z: number; yaw: number } {
   const dir = lot.front === '+z' ? 1 : -1
