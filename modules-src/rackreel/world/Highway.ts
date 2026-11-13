@@ -123,11 +123,8 @@ function toMesh(name: string, b: Builder, scene: Scene): Mesh {
   return mesh
 }
 
-export function roadTexture(scene: Scene): DynamicTexture {
-  const w = 256
-  const h = 512
-  const tex = new DynamicTexture('highway-road', { width: w, height: h }, scene, true)
-  const g = tex.getContext() as CanvasRenderingContext2D
+/** The interstate's asphalt: dark grey grit with the odd lighter stone, the same for every road surface built from it. */
+function paintAsphalt(g: CanvasRenderingContext2D, w: number, h: number): void {
   const img = g.createImageData(w, h)
   for (let i = 0; i < w * h; i++) {
     const n = Math.random() * 26 + (Math.random() < 0.02 ? 30 : 0)
@@ -137,6 +134,14 @@ export function roadTexture(scene: Scene): DynamicTexture {
     img.data[i * 4 + 3] = 255
   }
   g.putImageData(img, 0, 0)
+}
+
+export function roadTexture(scene: Scene): DynamicTexture {
+  const w = 256
+  const h = 512
+  const tex = new DynamicTexture('highway-road', { width: w, height: h }, scene, true)
+  const g = tex.getContext() as CanvasRenderingContext2D
+  paintAsphalt(g, w, h)
   const x = (u: number) => u * w
   g.fillStyle = 'rgba(150,148,140,0.35)'
   g.fillRect(0, 0, x(0.07), h)
@@ -154,6 +159,46 @@ export function roadTexture(scene: Scene): DynamicTexture {
   tex.update(true)
   tex.wrapU = Texture.CLAMP_ADDRESSMODE
   tex.wrapV = Texture.WRAP_ADDRESSMODE
+  tex.anisotropicFilteringLevel = 8
+  return tex
+}
+
+/** The same asphalt for a two-lane road (u across it): worn shoulders, white edge lines and a double yellow centre line. */
+export function countyRoadTexture(scene: Scene): DynamicTexture {
+  const w = 256
+  const h = 512
+  const tex = new DynamicTexture('county-road', { width: w, height: h }, scene, true)
+  const g = tex.getContext() as CanvasRenderingContext2D
+  paintAsphalt(g, w, h)
+  const x = (u: number) => u * w
+  g.fillStyle = 'rgba(150,148,140,0.3)'
+  g.fillRect(0, 0, x(0.05), h)
+  g.fillRect(x(0.95), 0, x(0.05), h)
+  g.fillStyle = 'rgba(30,30,32,0.25)'
+  for (const u of [0.2, 0.32, 0.68, 0.8]) g.fillRect(x(u), 0, x(0.05), h)
+  g.fillStyle = '#e9e7df'
+  g.fillRect(x(0.06), 0, 4, h)
+  g.fillRect(x(0.94) - 4, 0, 4, h)
+  g.fillStyle = '#e2b53c'
+  g.fillRect(x(0.5) - 6, 0, 4, h)
+  g.fillRect(x(0.5) + 2, 0, 4, h)
+  tex.update(true)
+  tex.wrapU = Texture.CLAMP_ADDRESSMODE
+  tex.wrapV = Texture.WRAP_ADDRESSMODE
+  tex.anisotropicFilteringLevel = 8
+  return tex
+}
+
+/** The plain asphalt (no markings), tiling both ways, for streets and lots laid in world units: one tile per `tile` metres. */
+export function asphaltTexture(scene: Scene, tile = 10): DynamicTexture {
+  const size = 256
+  const tex = new DynamicTexture('asphalt', { width: size, height: size }, scene, true)
+  paintAsphalt(tex.getContext() as CanvasRenderingContext2D, size, size)
+  tex.update(true)
+  tex.wrapU = Texture.WRAP_ADDRESSMODE
+  tex.wrapV = Texture.WRAP_ADDRESSMODE
+  tex.uScale = 1 / tile
+  tex.vScale = 1 / tile
   tex.anisotropicFilteringLevel = 8
   return tex
 }
@@ -184,13 +229,30 @@ export function buildHighway(ctx: EngineContext, terrain: Terrain): HighwayMeshe
     }
   }
   const concrete = builder()
+  const gaps = terrain.shape.highwayGaps ?? []
+  /** `sweep` with the host world's openings in this barrier left out. */
+  const run = (b: Builder, profile: [number, number][], t0: number, t1: number, side: -1 | 0 | 1, center: number) => {
+    let spans: [number, number][] = [[t0, t1]]
+    for (const g of gaps) {
+      if (g.side !== side) continue
+      spans = spans.flatMap(([a, c]) => (g.t1 <= a || g.t0 >= c ? [[a, c] as [number, number]] : ([[a, g.t0], [g.t1, c]] as [number, number][]).filter(([u, v]) => v - u > 1)))
+    }
+    for (const [a, c] of spans) sweep(b, terrain, profile, a, c, center)
+  }
   const jersey: [number, number][] = [[-0.32, 0], [-0.26, 0.08], [-0.12, 0.3], [-0.1, 0.82], [0.1, 0.82], [0.12, 0.3], [0.26, 0.08], [0.32, 0]]
-  sweep(concrete, terrain, jersey, -HIGHWAY.reach, HIGHWAY.reach, 0)
+  run(concrete, jersey, -HIGHWAY.reach, HIGHWAY.reach, 0, 0)
   for (const side of [-1, 1]) sweep(concrete, terrain, jersey, -HIGHWAY.span / 2 - 4, HIGHWAY.span / 2 + 4, side * (hw - 0.35))
   const rail: [number, number][] = [[-0.04, 0.55], [0.04, 0.55], [0.04, 0.78], [-0.04, 0.78], [-0.04, 0.55]]
-  for (const side of [-1, 1]) {
-    sweep(concrete, terrain, rail, -HIGHWAY.reach, -HIGHWAY.span / 2 - 4, side * (hw + 0.4))
-    sweep(concrete, terrain, rail, HIGHWAY.span / 2 + 4, HIGHWAY.reach, side * (hw + 0.4))
+  const post: [number, number][] = [[-0.07, 0], [0.07, 0], [0.07, 0.62], [-0.07, 0.62], [-0.07, 0]]
+  for (const side of [-1, 1] as const) {
+    run(concrete, rail, -HIGHWAY.reach, -HIGHWAY.span / 2 - 4, side, side * (hw + 0.4))
+    run(concrete, rail, HIGHWAY.span / 2 + 4, HIGHWAY.reach, side, side * (hw + 0.4))
+    if (gaps.length) {
+      for (let t = -HIGHWAY.reach; t < HIGHWAY.reach; t += 4) {
+        if (Math.abs(t) < HIGHWAY.span / 2 + 4 || gaps.some((g) => g.side === side && t > g.t0 - 0.5 && t < g.t1 + 0.5)) continue
+        run(concrete, post, t, t + 0.16, side, side * (hw + 0.46))
+      }
+    }
   }
   const deck = HIGHWAY.deck
   const s = HIGHWAY.span / 2

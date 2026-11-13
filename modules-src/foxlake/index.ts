@@ -11,6 +11,7 @@ import { guestName } from '../maplestreet/src/net/WorldTransport'
 import { store } from '../maplestreet/src/core/Storage'
 import { isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../maplestreet/shared/CustomVehicles'
 import { isValidRecord, registerCustomItems, type CustomItemRecord } from '../maplestreet/shared/CustomItems'
+import { BUNDLED_VEHICLES } from '../maplestreet/shared/BundledVehicles'
 import { FOX_LAKE_SHAPE } from './region'
 import { FoxLakeTown } from './town/FoxLakeTown'
 
@@ -68,6 +69,16 @@ async function fetchList<T>(url: string, field: string, valid: (r: unknown) => r
   }
 }
 
+/**
+ * Fox Lake always draws the game's own bundled vehicles (the Maple Hauler and the rest, ids `bundled-*`): a record
+ * re-published from the vehicle editor with a bundled id replaces it in Fox Plains, but not here.
+ */
+const BUNDLED_IDS = new Set(BUNDLED_VEHICLES.map((r) => r.id))
+
+function keepBundled(list: CustomVehicleRecord[]): CustomVehicleRecord[] {
+  return list.filter((r) => !BUNDLED_IDS.has(r.id))
+}
+
 /** Published vehicles and items, with the same offline caches as Fox Plains. */
 async function registerPublished(): Promise<void> {
   const VK = 'maplestreet/custom-vehicles/v1'
@@ -78,7 +89,7 @@ async function registerPublished(): Promise<void> {
   ])
   if (vehicles) store.set(VK, JSON.stringify(vehicles))
   if (items) store.set(IK, JSON.stringify(items))
-  registerCustomVehicles(vehicles ?? (store.json<unknown[]>(VK) ?? []).filter(isValidVehicleRecord))
+  registerCustomVehicles(keepBundled(vehicles ?? (store.json<unknown[]>(VK) ?? []).filter(isValidVehicleRecord)))
   registerCustomItems(items ?? (store.json<unknown[]>(IK) ?? []).filter(isValidRecord))
 }
 

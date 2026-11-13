@@ -14,9 +14,11 @@
  * East Ave (town x = 87) runs south out of town into the lake country's
  * interstate, which leaves the square's open north edge at about x = -261.
  */
-import { HALF, HIGHWAY, PLAY_LIMIT } from '../rackreel/world/Terrain'
+import { HALF, HIGHWAY, PLAY_LIMIT, fbm, rawHeight } from '../rackreel/world/Terrain'
 import type { OutsideLand, TerrainShape } from '../rackreel/world/Terrain'
-import { WORLD_HALF } from '../maplestreet/shared/WorldLayout'
+import { MAP_BOUNDS, WORLD_HALF } from '../maplestreet/shared/WorldLayout'
+import { HIGHWAY_GAPS, LAKE_ROAD_APRON, carveLakeRoad, lakeRoadPath } from './country/Roads'
+import { ROADSIDE, lotRect } from './roadside/RoadsideLayout'
 
 /** Ground level of the town in the scene (above the lake, level with the interstate's north end). */
 export const TOWN_Y = 2
@@ -117,23 +119,114 @@ function connectorSamples(): { x: number; z: number; w: number }[] {
   return (samples ??= connectorPath(3))
 }
 
+/** The built-up town (lots, streets, downtown) in scene coordinates, where the ground stays flat. */
+export const BUILT_UP = {
+  x0: MAP_BOUNDS.x0 + TOWN_OFFSET.x - 6,
+  x1: MAP_BOUNDS.x1 + TOWN_OFFSET.x + 6,
+  z0: TOWN_OFFSET.z - MAP_BOUNDS.z1 - 6,
+  z1: TOWN_OFFSET.z - MAP_BOUNDS.z0 + 6,
+} as const
+
+function rectDistance(x: number, z: number, r: { x0: number; x1: number; z0: number; z1: number }): number {
+  const dx = Math.max(r.x0 - x, 0, x - r.x1)
+  const dz = Math.max(r.z0 - z, 0, z - r.z1)
+  if (dx > 0 || dz > 0) return Math.hypot(dx, dz)
+  return -Math.min(x - r.x0, r.x1 - x, z - r.z0, r.z1 - z)
+}
+
+// ---------------------------------------------------------------- roads and lots: a distance field
+
+const FIELD = { x0: -360, z0: -150, x1: 360, z1: 905, cell: 2 } as const
+const FIELD_W = Math.ceil((FIELD.x1 - FIELD.x0) / FIELD.cell) + 1
+const FIELD_H = Math.ceil((FIELD.z1 - FIELD.z0) / FIELD.cell) + 1
+let field: Float32Array | null = null
+
+function stamp(f: Float32Array, cx: number, cz: number, reach: number, dist: (x: number, z: number) => number): void {
+  const i0 = Math.max(0, Math.floor((cx - reach - FIELD.x0) / FIELD.cell))
+  const i1 = Math.min(FIELD_W - 1, Math.ceil((cx + reach - FIELD.x0) / FIELD.cell))
+  const j0 = Math.max(0, Math.floor((cz - reach - FIELD.z0) / FIELD.cell))
+  const j1 = Math.min(FIELD_H - 1, Math.ceil((cz + reach - FIELD.z0) / FIELD.cell))
+  for (let j = j0; j <= j1; j++) {
+    const z = FIELD.z0 + j * FIELD.cell
+    for (let i = i0; i <= i1; i++) {
+      const d = dist(FIELD.x0 + i * FIELD.cell, z)
+      const k = j * FIELD_W + i
+      if (d < f[k]) f[k] = d
+    }
+  }
+}
+
+/** Metres to the edge of the county road, the Lake Road (and its apron) or a roadside lot; ~Infinity far from them. */
+function buildField(): Float32Array {
+  const f = new Float32Array(FIELD_W * FIELD_H).fill(1e6)
+  const REACH = 14
+  for (const p of [...lakeRoadPath(2), ...connectorPath(2)]) stamp(f, p.x, p.z, p.w / 2 + REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
+  const a = LAKE_ROAD_APRON
+  stamp(f, a.x, a.z, a.r + REACH, (x, z) => Math.hypot(x - a.x, z - a.z) - a.r)
+  for (const place of ROADSIDE) {
+    const r = lotRect(place)
+    const c = townToScene(r.cx, 0, r.cz)
+    const rect = { x0: c.x - r.sx / 2, x1: c.x + r.sx / 2, z0: c.z - r.sz / 2, z1: c.z + r.sz / 2 }
+    stamp(f, c.x, c.z, Math.max(r.sx, r.sz) / 2 + REACH, (x, z) => rectDistance(x, z, rect))
+  }
+  return f
+}
+
+/** Metres from (x, z) to the nearest county road, Lake Road or roadside lot edge (negative on them). */
+export function roadClear(x: number, z: number): number {
+  if (x < FIELD.x0 || x > FIELD.x1 || z < FIELD.z0 || z > FIELD.z1) return 1e6
+  const f = (field ??= buildField())
+  const u = (x - FIELD.x0) / FIELD.cell
+  const v = (z - FIELD.z0) / FIELD.cell
+  const i = Math.min(FIELD_W - 2, Math.floor(u))
+  const j = Math.min(FIELD_H - 2, Math.floor(v))
+  const fu = u - i
+  const fv = v - j
+  const k = j * FIELD_W + i
+  const a = f[k] + (f[k + 1] - f[k]) * fu
+  const b = f[k + FIELD_W] + (f[k + FIELD_W + 1] - f[k + FIELD_W]) * fu
+  return a + (b - a) * fv
+}
+
+// ---------------------------------------------------------------- the land around town
+
+/** Gentle wooded hills around Fox Plains: flat in town, on the roads and lots, rising over 70 m away from them. */
+export function outsideHeight(x: number, z: number): number {
+  const town = rectDistance(x, z, BUILT_UP)
+  if (town < 12) return TOWN_Y
+  const road = roadClear(x, z)
+  const flat = Math.min(town - 12, road - 10)
+  if (flat <= 0) return TOWN_Y
+  const amp = smooth(Math.min(1, flat / 75))
+  const hills = (fbm(x * 0.0065 + 5.3, z * 0.0065 - 2.1, 3, 91) * 0.5 + 0.5) * 7 + fbm(x * 0.028, z * 0.028, 2, 92) * 0.7
+  return TOWN_Y + Math.max(0, hills) * amp
+}
+
 /** The town and its forest ring, as land beyond the lake country's square. */
 export const TOWN_LAND: OutsideLand = {
   contains(x, z, margin) {
     if (inTownSquare(x, z, margin)) return true
     return z > HALF - 2 && z < TOWN_SQUARE.z0 + 2 && Math.abs(x) < PLAY_LIMIT - margin
   },
-  heightAt() {
-    return TOWN_Y
+  heightAt(x, z) {
+    return outsideHeight(x, z)
+  },
+  grassAt(x, z) {
+    return rectDistance(x, z, BUILT_UP) > 4 && roadClear(x, z) > 0.8
   },
 }
 
+const rawFox = (x: number, z: number) => rawHeight(x, z, FOX_LAKE_SHAPE)
 
-/** Rack & Reel's map with its north edge open onto the town. */
+/** Rack & Reel's map with its north edge open onto the town, the Lake Road carved in and the interstate opened for it. */
 export const FOX_LAKE_SHAPE: TerrainShape = {
   rim: { north: false, south: true, east: true, west: true },
   outsideHeight: TOWN_Y,
   outside: TOWN_LAND,
+  outsideHeightAt: outsideHeight,
+  roadClear,
+  carve: (x, z, h) => carveLakeRoad(x, z, h, rawFox),
+  highwayGaps: HIGHWAY_GAPS,
 }
 
 /** Which part of Fox Lake a scene point is in. */

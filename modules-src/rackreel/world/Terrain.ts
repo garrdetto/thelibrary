@@ -24,6 +24,20 @@ export interface TerrainShape {
   rim: Rim
   outsideHeight: number
   outside?: OutsideLand
+  /** The host world's ground height at (x, z) beyond an open edge, when it isn't flat at `outsideHeight`; open edges blend to it. */
+  outsideHeightAt?(x: number, z: number): number
+  /** Metres from (x, z) to the edge of the nearest host-world road or lot (negative on it): trees, rocks, ferns and grass keep off. */
+  roadClear?(x: number, z: number): number
+  /** Reshapes the lake country's height `h` at (x, z) for a host world's road bed; applied to the height grid. */
+  carve?(x: number, z: number, h: number): number
+  /** Openings in the interstate's barriers where a host world's road joins it: side -1 (south-west rail), 0 (median), 1 (north-east rail), between t0 and t1 along it. */
+  highwayGaps?: readonly HighwayGap[]
+}
+
+export interface HighwayGap {
+  side: -1 | 0 | 1
+  t0: number
+  t1: number
 }
 
 /** Land beyond the square, supplied by a host world. */
@@ -159,7 +173,15 @@ export function highwayCoord(x: number, z: number): { t: number; across: number 
 const GRADE_STEP = 4
 const gradeTables = new WeakMap<TerrainShape, Float32Array>()
 
-/** Height of the road surface along the highway: the land smoothed over ±48 m, climbing at 5 % to the bridge deck. */
+/** 1 where the highway reaches an open edge (it eases down to the host world's ground there), 0 well inside. */
+function openEdgeWeight(x: number, z: number, shape: TerrainShape): number {
+  const { rim } = shape
+  let edge = -Infinity
+  for (const [on, d] of [[rim.north, z], [rim.south, -z], [rim.east, x], [rim.west, -x]] as const) if (!on) edge = Math.max(edge, d)
+  return edge === -Infinity ? 0 : smoothstep(HALF - 70, HALF - 8, edge)
+}
+
+/** Height of the road surface along the highway: the land smoothed over ±48 m, climbing at 5 % to the bridge deck, easing to the ground beyond an open edge. */
 export function highwayGrade(t: number, shape: TerrainShape = STANDALONE_SHAPE): number {
   let gradeTable = gradeTables.get(shape)
   if (!gradeTable) {
@@ -182,6 +204,13 @@ export function highwayGrade(t: number, shape: TerrainShape = STANDALONE_SHAPE):
       const tt = -HIGHWAY.reach + i * GRADE_STEP
       const ramp = HIGHWAY.deck - Math.max(0, Math.abs(tt) - HIGHWAY.span / 2) * 0.05
       gradeTable[i] = Math.max(sum / count, ramp)
+      const open = openEdgeWeight(HIGHWAY.x + HIGHWAY.dx * tt, HIGHWAY.z + HIGHWAY.dz * tt, shape)
+      if (open > 0) {
+        const px = HIGHWAY.x + HIGHWAY.dx * tt
+        const pz = HIGHWAY.z + HIGHWAY.dz * tt
+        const outside = shape.outsideHeightAt ? shape.outsideHeightAt(px, pz) : shape.outsideHeight
+        gradeTable[i] += (outside + 0.25 - gradeTable[i]) * open
+      }
     }
     gradeTables.set(shape, gradeTable)
   }
@@ -239,7 +268,9 @@ function shapeEdges(h: number, x: number, z: number, shape: TerrainShape): numbe
   }
   const open = smoothstep(HALF - OPEN_EDGE_BLEND, HALF, openEdge)
   const rimmed = h + smoothstep(HALF - 90, HALF - 4, rimEdge) * 42 * (1 - open)
-  return rimmed + (Math.max(shape.outsideHeight, Math.min(rimmed, shape.outsideHeight + 1.5)) - rimmed) * open
+  const outside = open > 0 && shape.outsideHeightAt ? shape.outsideHeightAt(x, z) : shape.outsideHeight
+  const lift = 1.5 * (1 - smoothstep(HALF - 24, HALF, openEdge))
+  return rimmed + (Math.max(outside, Math.min(rimmed, outside + lift)) - rimmed) * open
 }
 
 /** 0 on open water, the channel and the highway; 1 well clear of them. */
@@ -268,7 +299,10 @@ export class Terrain {
     this.heights = new Float32Array(this.verts * this.verts)
     for (let j = 0; j < this.verts; j++) {
       for (let i = 0; i < this.verts; i++) {
-        this.heights[j * this.verts + i] = rawHeight(-HALF + i * CELL, -HALF + j * CELL, shape)
+        const x = -HALF + i * CELL
+        const z = -HALF + j * CELL
+        const h = rawHeight(x, z, shape)
+        this.heights[j * this.verts + i] = shape.carve ? shape.carve(x, z, h) : h
       }
     }
   }

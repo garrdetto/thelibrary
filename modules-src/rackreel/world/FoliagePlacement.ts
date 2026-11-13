@@ -207,6 +207,7 @@ export class GrassBuilder {
     const gz0 = cz * cells
     const inv = 1 / GRASS.lattice
     const roadEdge = HIGHWAY.halfWidth + 1.5
+    const roadClear = terrain.shape.roadClear
     const { matrices, colors } = out
     const capacity = Math.min(matrices.length >> 4, colors.length >> 2)
     let count = 0
@@ -222,6 +223,7 @@ export class GrassBuilder {
         const px = x - HIGHWAY.x
         const pz = z - HIGHWAY.z
         if (Math.abs(px * HIGHWAY.dz - pz * HIGHWAY.dx) < roadEdge) continue
+        if (roadClear && roadClear(x, z) < 0.8) continue
         let clear = true
         for (let k = 0; k < near.length; k++) {
           const hole = near[k]

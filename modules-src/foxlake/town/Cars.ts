@@ -34,6 +34,8 @@ export class Cars implements ExternalDriver {
   private readonly byRr = new Map<RrVehicle, Car>()
   private readonly parking: Parking
   onImpact: ((kind: string, dv: number, at: { x: number; y: number; z: number }) => void) | null = null
+  /** True while a car's engine is flooded (Wading): it gets no throttle. */
+  flooded: (car: Car) => boolean = () => false
 
   constructor(private readonly scene: Scene, private readonly physics: Physics, private readonly models: VehicleModels, private readonly controller: VehicleController) {
     this.parking = new Parking(physics)
@@ -83,7 +85,7 @@ export class Cars implements ExternalDriver {
   step(_dt: number, input: DriveInput, v: RrVehicle): void {
     if (!v.occupied) return
     const car = this.byRr.get(v)
-    if (car) car.fp.input = { throttle: input.throttle, steer: -input.steer, brake: 0, handbrake: input.brake }
+    if (car) car.fp.input = { throttle: this.flooded(car) ? 0 : input.throttle, steer: -input.steer, brake: 0, handbrake: input.brake }
   }
 
   park(v: RrVehicle): void {

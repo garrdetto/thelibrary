@@ -72,6 +72,12 @@ export class Foliage {
     return true
   }
 
+  /** True within `pad` metres of a host world's road or lot (TerrainShape.roadClear). */
+  private roadNear(x: number, z: number, pad: number): boolean {
+    const clear = this.terrain.shape.roadClear
+    return clear ? clear(x, z) < pad : false
+  }
+
   private trunkMaterial(kind: TreeKind): FoliageMaterial {
     return this.shading.material(`${kind}-trunk`, { ...TREE_SWAY[kind], ambient: 0.3 })
   }
@@ -108,7 +114,7 @@ export class Foliage {
         const z = cz + hash(cx, cz, 2) * treeCell
         const density = forestDensity(x, z)
         const h = this.terrain.heightAt(x, z)
-        if (h < 0.9 || this.terrain.slopeAt(x, z) > 0.75 || !this.clear(x, z, 11)) continue
+        if (h < 0.9 || this.terrain.slopeAt(x, z) > 0.75 || !this.clear(x, z, 11) || this.roadNear(x, z, 4)) continue
         if (hash(cx, cz, 3) > density * 0.92 + 0.012) continue
         const zone = fbm(x * 0.006 + 40, z * 0.006 - 13, 3, 61)
         const pick = hash(cx, cz, 4)
@@ -144,7 +150,7 @@ export class Foliage {
           if (roll < 0.18 + marsh * 0.6) this.scatter('cattail', cx, cz, x, h - 0.05, z, roll * 40, 0.8 + hash(cx, cz, 14) * 0.5)
           continue
         }
-        if (h < 0.9 || !this.clear(x, z, 6) || trailOffset(x, z) < 3 || highwayCoord(x, z).across < HIGHWAY.halfWidth + 3) continue
+        if (h < 0.9 || !this.clear(x, z, 6) || trailOffset(x, z) < 3 || highwayCoord(x, z).across < HIGHWAY.halfWidth + 3 || this.roadNear(x, z, 2.5)) continue
         const density = forestDensity(x, z)
         if (roll < density * 0.32) {
           this.scatter('fern', cx, cz, x, h - 0.05, z, roll * 60, 0.75 + hash(cx, cz, 15) * 0.7)
