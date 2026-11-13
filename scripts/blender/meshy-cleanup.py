@@ -9,9 +9,14 @@ What it does, in order:
      tall or --size metres along its longest side (rest pose for rigged models).
   3. Static models: bakes every transform into the vertices, so the export is plain meshes at the origin.
      Rigged models keep their armature, skin and clips under one root node that carries the fix.
-  4. Decimates to --max-tris triangles (collapse, applied before the armature so skins survive).
-  5. Renames animation clips ("Casual_Walk=walk,Idle=idle") so modules can look them up by short name.
-  6. Exports <name>.glb, or <name>-lod0.glb, -lod1 … at the --lods triangle counts.
+  4. Smooths the shading (scripts/blender/smooth_normals.py): welds Meshy's triangle soup (Merge by Distance), shades
+     smooth, keeps creases over --smooth-angle degrees sharp (Auto Smooth) and applies weighted normals, so curved
+     panels have no flat-shaded facets or broken normals. --no-smooth skips it; meshes with shape keys are left alone.
+     With --wheels N (vehicles) the N wheels become `wheel-<n>` objects centred on their own axle (Origin to Geometry).
+  5. Decimates to --max-tris triangles (collapse, applied before the armature so skins survive), then re-applies the
+     crease and weighted normals on the reduced mesh.
+  6. Renames animation clips ("Casual_Walk=walk,Idle=idle") so modules can look them up by short name.
+  7. Exports <name>.glb, or <name>-lod0.glb, -lod1 … at the --lods triangle counts.
 
 Then `pnpm assets` optimises it into public/models/ (meshopt, WebP).
 """
@@ -23,6 +28,9 @@ import sys
 import bpy
 import numpy as np
 from mathutils import Matrix
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from smooth_normals import smooth_object, split_wheels  # noqa: E402
 
 
 def log(message):
@@ -40,6 +48,9 @@ def parse():
     parser.add_argument("--max-tris", type=int, dest="max_tris")
     parser.add_argument("--lods", default="")
     parser.add_argument("--clips", default="")
+    parser.add_argument("--no-smooth", action="store_true", dest="no_smooth")
+    parser.add_argument("--smooth-angle", type=float, default=40.0, dest="smooth_angle")
+    parser.add_argument("--wheels", type=int, default=0)
     return parser.parse_args(argv)
 
 
@@ -172,6 +183,21 @@ def decimate(budget):
     return triangles(objects)
 
 
+def smoothable(obj):
+    return not (obj.data.shape_keys and len(obj.data.shape_keys.key_blocks) > 1)
+
+
+def smooth(args, weld):
+    if args.no_smooth:
+        return
+    for obj in meshes():
+        if not smoothable(obj):
+            continue
+        before, after = smooth_object(obj, angle=args.smooth_angle, weld=weld)
+        if weld:
+            log(f"smoothed {obj.name}: {before:,} -> {after:,} vertices after welding")
+
+
 def rename_clips(spec):
     if not spec:
         return
@@ -234,6 +260,11 @@ def main():
     size = hi - lo
     log(f"placed {size[0]:.2f} × {size[1]:.2f} × {size[2]:.2f} m (scale {scale:.3f}), feet at {lo[2]:.3f}")
     rename_clips(args.clips)
+    smooth(args, 0.0005)
+    if args.wheels and not rigged:
+        body = max(meshes(), key=lambda o: len(o.data.vertices))
+        found = split_wheels(body, args.wheels, log=log)
+        log(f"split {len(found)} of {args.wheels} wheels")
 
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
@@ -241,11 +272,14 @@ def main():
     if lods:
         for level, budget in enumerate(lods):
             count = decimate(budget)
+            smooth(args, 0)
             path = os.path.join(out, f"{args.name}-lod{level}.glb")
             export(path)
             log(f"wrote {os.path.relpath(path)} ({count:,} triangles)")
     else:
         count = decimate(args.max_tris) if args.max_tris else triangles(meshes())
+        if args.max_tris:
+            smooth(args, 0)
         path = os.path.join(out, f"{args.name}.glb")
         export(path)
         log(f"wrote {os.path.relpath(path)} ({count:,} triangles)")

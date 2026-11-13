@@ -770,11 +770,11 @@
   "preset": "static"
  },
  "maplestreet/vehicles/atv.glb": {
-  "hash": "b448a28f2d8d9d947638e6aa012c9efd925f7840",
-  "before": 770304,
-  "after": 420016,
-  "primsBefore": 1,
-  "primsAfter": 1,
+  "hash": "7e73ee52dbc3af8823c308d09b8916e269d1984a",
+  "before": 819076,
+  "after": 444404,
+  "primsBefore": 5,
+  "primsAfter": 5,
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"
@@ -790,21 +790,21 @@
   "preset": "rig"
  },
  "maplestreet/vehicles/golfcart.glb": {
-  "hash": "dd9d003f70f3f8e4158402cdfbd71a6383762852",
-  "before": 747580,
-  "after": 401268,
-  "primsBefore": 1,
-  "primsAfter": 1,
+  "hash": "065d7de5f417753419f539bf5d05ba64c10ba35e",
+  "before": 784616,
+  "after": 420868,
+  "primsBefore": 5,
+  "primsAfter": 5,
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"
  },
  "maplestreet/vehicles/mower.glb": {
-  "hash": "645f9a7026e852d0db37563dd557639aa5f64d9a",
-  "before": 791772,
-  "after": 420028,
-  "primsBefore": 1,
-  "primsAfter": 1,
+  "hash": "0a4526f99a22bbeb1eb38fd242db35c0cf88f379",
+  "before": 835808,
+  "after": 442344,
+  "primsBefore": 5,
+  "primsAfter": 5,
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"
@@ -820,11 +820,11 @@
   "preset": "rig"
  },
  "maplestreet/vehicles/trailer.glb": {
-  "hash": "752f774746f1c4251ed5f04e536a9e0157d01df9",
-  "before": 616616,
-  "after": 351912,
-  "primsBefore": 1,
-  "primsAfter": 1,
+  "hash": "5c56fee20629eb88332333e5cce77f900755b459",
+  "before": 614860,
+  "after": 351884,
+  "primsBefore": 3,
+  "primsAfter": 3,
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"
@@ -840,11 +840,11 @@
   "preset": "rig"
  },
  "maplestreet/vehicles/zeroturn.glb": {
-  "hash": "807f4a74e479b741602ccc97f4ad13da2e863111",
-  "before": 809928,
-  "after": 478040,
-  "primsBefore": 1,
-  "primsAfter": 1,
+  "hash": "d0f224b20f9955865ddc440a5d0f1821313b5032",
+  "before": 811072,
+  "after": 479416,
+  "primsBefore": 5,
+  "primsAfter": 5,
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"

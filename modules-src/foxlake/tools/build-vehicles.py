@@ -9,7 +9,12 @@ is joined into one mesh, turned so its front points along +x (they come in facin
 its length matches the built-in's body and centred across the track, and set down so its lowest point sits on the
 ground under the built-in's wheels. Materials keep Meshy's color, normal, metal and roughness maps; textures are
 capped at 1024 px. The result replaces assets-src/models/maplestreet/vehicles/<kind>.glb, which `pnpm assets`
-optimizes into public/models/. Wheels stay part of the body (physics are the built-in's; nothing else changes).
+optimizes into public/models/. Physics are the built-in's; nothing else changes.
+
+Meshy exports triangle soup, so the body is welded, shaded smooth with creases over 40 degrees kept sharp and given
+weighted normals (scripts/blender/smooth_normals.py), and each wheel is split into a `wheel-<n>` object with its
+origin at the wheel's centre; Fox Lake (fp/physics/VehicleModels.ts) spins and steers each one on that centre.
+The same pass can be run on an existing body with scripts/blender/vehicle-fix.py.
 """
 import bpy
 import json
@@ -17,6 +22,9 @@ import math
 import os
 import sys
 from mathutils import Matrix, Vector
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../scripts/blender')))
+from smooth_normals import smooth_object, split_wheels  # noqa: E402
 
 ARGS = sys.argv[sys.argv.index('--') + 1:]
 CACHE = os.path.abspath(ARGS[0])
@@ -85,7 +93,8 @@ def build(kind, spec):
         for node in mat.node_tree.nodes:
             if node.type == 'TEX_IMAGE' and node.image and max(node.image.size) > TEXTURE:
                 node.image.scale(TEXTURE, TEXTURE)
-    bpy.ops.object.shade_smooth_by_angle(angle=math.radians(40))
+    smooth_object(obj, angle=40.0)
+    split_wheels(obj, 2 * len(spec['axles']))
     os.makedirs(OUT, exist_ok=True)
     out = os.path.join(OUT, kind + '.glb')
     bpy.ops.export_scene.gltf(filepath=out, export_format='GLB', use_selection=False, export_apply=True, export_yup=True, export_image_format='WEBP')

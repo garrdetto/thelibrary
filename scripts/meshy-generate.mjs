@@ -75,6 +75,9 @@ const USAGE = `Usage: node scripts/meshy-generate.mjs --prompt "<text>" --name <
   --size <m>             scale a prop so its longest side is this many metres
   --max-tris <n>         decimate to at most this many triangles in Blender
   --lods <a,b,c>         write LOD files at these triangle counts instead (<name>-lod0.glb …)
+  --wheels <n>           vehicles: split the n wheels into centred wheel-<k> parts that spin on their own axle
+  --smooth-angle <deg>   creases sharper than this stay sharp when the shading is smoothed (default 40)
+  --no-smooth            keep Meshy's normals as they are (the clean-up welds and smooths them by default)
   --cleanup <mode>       auto | generic | bushleague-player | bushleague-prop | none (default auto: generic when Blender is installed)
   --max-credits <n>      refuse to start above this estimate (default MESHY_MAX_CREDITS or 150)
   --dry-run              print the plan and estimate, spend nothing
@@ -91,7 +94,7 @@ const { values: opt } = parseArgs({
     prompt: { type: 'string' }, name: { type: 'string' }, out: { type: 'string' }, target: { type: 'string', default: 'furniture' },
     negative: { type: 'string' }, 'ai-model': { type: 'string', default: 'latest' }, polycount: { type: 'string' }, 'texture-prompt': { type: 'string' },
     rig: { type: 'boolean', default: false }, height: { type: 'string' }, animate: { type: 'string' }, size: { type: 'string' },
-    'max-tris': { type: 'string' }, lods: { type: 'string' }, cleanup: { type: 'string', default: 'auto' }, 'max-credits': { type: 'string' },
+    'max-tris': { type: 'string' }, wheels: { type: 'string' }, 'smooth-angle': { type: 'string' }, 'no-smooth': { type: 'boolean' }, lods: { type: 'string' }, cleanup: { type: 'string', default: 'auto' }, 'max-credits': { type: 'string' },
     'dry-run': { type: 'boolean', default: false }, fresh: { type: 'boolean', default: false }, 'list-animations': { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   },
@@ -173,6 +176,8 @@ const num = (flag, min, max) => {
 const polycount = Math.round(num('polycount', 500, 300000) ?? POLYCOUNT[opt.target])
 const sizeM = num('size', 0.05, 200)
 const maxTris = num('max-tris', 200, 1000000)
+const wheelCount = num('wheels', 1, 12)
+const smoothAngle = num('smooth-angle', 1, 180)
 const maxCredits = Number(opt['max-credits'] ?? process.env.MESHY_MAX_CREDITS ?? 150)
 const lods = opt.lods ? opt.lods.split(',').map((n) => Math.round(Number(n.trim()))) : []
 if (lods.some((n) => !Number.isFinite(n) || n < 100)) fail('--lods must be triangle counts like 15000,5000,1500.')
@@ -335,6 +340,9 @@ if (mode === 'generic') {
   if (sizeM) args.push('--size', String(sizeM))
   if (maxTris) args.push('--max-tris', String(maxTris))
   if (lods.length) args.push('--lods', lods.join(','))
+  if (wheelCount) args.push('--wheels', String(Math.round(wheelCount)))
+  if (smoothAngle) args.push('--smooth-angle', String(smoothAngle))
+  if (opt['no-smooth']) args.push('--no-smooth')
   if (clipNames.length) args.push('--clips', clipNames.map((c) => `${c.meshyName}=${c.label}`).join(','))
   const run = spawnSync(blender.bin, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 20 * 60 * 1000 })
   const log = `${run.stdout ?? ''}\n${run.stderr ?? ''}`

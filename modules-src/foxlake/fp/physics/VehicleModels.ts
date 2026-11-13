@@ -100,7 +100,8 @@ function sharpenScan(model: TransformNode) {
   }
 }
 
-export interface WheelView { steer: TransformNode; spin: TransformNode; axle: number; side: number; caster: boolean }
+/** `lift` raises the wheel above the axle line when the model draws it there (wheels split out in Blender keep their own centre). */
+export interface WheelView { steer: TransformNode; spin: TransformNode; axle: number; side: number; caster: boolean; lift: number }
 
 export interface VehicleView {
   readonly kind: string;
@@ -215,6 +216,7 @@ function fixModelMaterials(model: TransformNode) {
     m.useRadianceOverAlpha = true; m.useSpecularOverAlpha = true;
     m.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
     m.backFaceCulling = true;
+    m.needDepthPrePass = true;
   }
 }
 
@@ -331,16 +333,46 @@ class View implements VehicleView {
           cloneOf(w.tire, holder, M.rubber, false);
           cloneOf(w.rim, holder, M.rim, false);
         }
-        this.wheels.push({ steer, spin, axle: ai, side, caster: !!a.caster });
+        this.wheels.push({ steer, spin, axle: ai, side, caster: !!a.caster, lift: 0 });
       }
     });
+  }
+
+  /**
+   * Wheels split out of a scan in Blender (`wheel-<n>` nodes, origin at the wheel's centre: scripts/blender/vehicle-fix.py)
+   * hang on the nearest steer/spin pivot, which moves to that centre, so each wheel turns on its own axle where the
+   * model drew it instead of wobbling around the physics axle.
+   */
+  private hangSplitWheels(model: TransformNode): boolean {
+    const P = this.tuning, base = P.wheelY - P.suspension.rest;
+    const split = model.getChildMeshes(false).filter(m => /^wheel-\d+/.test(m.name) && m.getTotalVertices() > 0);
+    if (!split.length) return false;
+    const free = [...this.wheels];
+    for (const mesh of split) {
+      const p = mesh.position;
+      let best = -1, bestD = Infinity;
+      free.forEach((w, i) => {
+        const a = P.axles[w.axle];
+        if (Math.sign(p.z || 1) !== w.side) return;
+        const d = Math.abs(p.x - a.x) + Math.abs(p.z - a.halfTrack * w.side);
+        if (d < bestD) { bestD = d; best = i; }
+      });
+      if (best < 0) continue;
+      const w = free.splice(best, 1)[0];
+      w.lift = p.y - base;
+      w.steer.position.set(p.x, base + w.lift, p.z);
+      mesh.parent = w.spin;
+      mesh.position.setAll(0);
+    }
+    return true;
   }
 
   /** Built-in body: wheel pivots at the axles move onto our spin nodes; the rest is the body. */
   fillBuiltin(inst: ModelInstance) {
     const model = inst.root, P = this.tuning;
     const pivots: TransformNode[] = [];
-    for (const node of model.getDescendants(false)) {
+    const split = this.hangSplitWheels(model);
+    for (const node of split ? [] : model.getDescendants(false)) {
       const n = node as TransformNode;
       if (!n.position || n === model) continue;
       const p = n.position;
@@ -435,6 +467,7 @@ class View implements VehicleView {
       if (!pts.length) return;
       const mat = pbr(`lamp-${this.kind}`, scene);
       mat.albedoColor = lin3([color[0] * 0.3, color[1] * 0.3, color[2] * 0.3]); mat.emissiveColor = lin3(color); mat.emissiveIntensity = 0; mat.roughness = 0.1;
+      mat.zOffset = -2; mat.zOffsetUnits = -4;
       list.push(mat);
       this.owned.push(mat);
       const mb = new MeshBuilder();
@@ -454,6 +487,7 @@ class View implements VehicleView {
       const mesh = mb.toMesh('lamps');
       mesh.material = mat;
       mesh.parent = this.root;
+      mesh.receiveShadows = false;
     };
     lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize, r.lampShapes?.headDepth, 1);
     lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize, r.lampShapes?.tailDepth, -1);
@@ -565,6 +599,22 @@ class View implements VehicleView {
   }
 }
 
+/**
+ * Babylon's glTF loader hangs a model under `__root__` turned 180° and mirrored in z, to bring glTF's right-handed
+ * axes into Babylon's left-handed scene; together that is x -> -x. Vehicles are built in the town's own right-handed
+ * chassis frame (x forward, like the glTF file, the vehicle editor and Fox Plains), which the town root mirrors into
+ * the scene once, so that extra flip drew every body back to front: nose at the tail, wheels off their arches and the
+ * game's lamp lenses poking out of the trunk. Vehicle models keep the file's axes instead.
+ */
+function authoredFrame(inst: ModelInstance) {
+  for (const node of inst.entries.rootNodes) {
+    if (!node.name.startsWith('__root__') || !(node instanceof TransformNode)) continue;
+    node.rotationQuaternion = Quaternion.Identity();
+    node.rotation.setAll(0);
+    node.scaling.setAll(1);
+  }
+}
+
 export class VehicleModels {
   constructor(private assets: Assets) {}
 
@@ -589,6 +639,7 @@ export class VehicleModels {
     const fill = (c: Parameters<typeof instantiate>[0] | null) => {
       if ((view as unknown as { destroyed: boolean }).destroyed) return;
       const inst = c ? instantiate(c, url, true) : null;
+      if (inst) authoredFrame(inst);
       if (rec) view.fillCustom(inst, rec);
       else if (inst) view.fillBuiltin(inst);
       gfx().warm?.(1);

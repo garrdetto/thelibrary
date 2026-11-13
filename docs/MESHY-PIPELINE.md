@@ -27,7 +27,7 @@ Site changes prompt ──► site-change.yml (GitHub, or your laptop with "Run 
 | Refine (PBR textures) | 10 | `--texture-prompt` adds texturing direction |
 | Rig | 5 | Humanoid, two-legged characters only (`--target character` or `ballplayer`), facing +Z |
 | Animate | 3 per clip | Up to 10 library clips in one file: `--animate idle,walk,wave` or action ids; `--list-animations` shows them |
-| Blender clean-up | 0 | Ground, centre, `--height` / `--size`, `--max-tris`, `--lods`; Bush League folders use `scripts/blender/bushleague/cleanup.py` |
+| Blender clean-up | 0 | Ground, centre, `--height` / `--size`, smooth shading (welds Meshy's triangle soup, Shade Smooth, creases over `--smooth-angle` 40° kept sharp, Weighted Normals; `--no-smooth` skips it), `--wheels <n>` for vehicles (each wheel a `wheel-<k>` part with its origin at its centre), `--max-tris`, `--lods`; Bush League folders use `scripts/blender/bushleague/cleanup.py` |
 
 - Output: `assets-src/models/<module>/…/<name>.glb` (or `<name>-lod0.glb` …) plus `<name>.meshy.json`, the record of the prompt, settings, Meshy task ids and credits. Raw downloads stay in `.meshy-cache/` (git-ignored).
 - Clips are renamed to their short names (`idle`, `walk`, `wave`), so modules play them by name.
