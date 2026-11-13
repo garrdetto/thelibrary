@@ -6,6 +6,7 @@
  * this device instead of the shared world.
  */
 import { Game } from '../rackreel/game/Game'
+import { setPhysicalCharacters } from '../rackreel/world/TexturedMaterial'
 import { Terrain } from '../rackreel/world/Terrain'
 import { guestName } from '../maplestreet/src/net/WorldTransport'
 import { store } from '../maplestreet/src/core/Storage'
@@ -126,6 +127,7 @@ async function boot(): Promise<void> {
     if (roomCode) postRoom(roomCode)
     else inviteRequested = true
   })
+  setPhysicalCharacters(true)
   const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP })
   window.__foxlake = { game, town }
   await game.start()

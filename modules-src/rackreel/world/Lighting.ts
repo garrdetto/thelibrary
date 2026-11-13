@@ -1,5 +1,6 @@
 /** Applies the clock to the scene: the key light follows the sun and then the full moon, and the fill, ambient, fog, exposure, sky and lake blend toward a moonlit blue night. */
 import type { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
@@ -141,6 +142,11 @@ export class Lighting {
       const diffuse = this.look.characterDiffuse ?? MATTE_DIFFUSE
       const lift = CHARACTER_NIGHT_LIFT * n + (matte ? (this.look.characterLift ?? MATTE_LIFT) * (1 - n) : 0)
       for (const mat of ctx.scene.materials) {
+        if (mat instanceof PBRMaterial && CHARACTER_MATERIAL.test(mat.name)) {
+          mat.albedoColor.set(diffuse, diffuse, diffuse)
+          mat.emissiveColor.set(lift * 0.5, lift * 0.5, lift * 0.54)
+          continue
+        }
         if (!(mat instanceof StandardMaterial) || !CHARACTER_MATERIAL.test(mat.name)) continue
         mat.emissiveColor.set(lift, lift, lift * 1.08)
         if (!matte) continue

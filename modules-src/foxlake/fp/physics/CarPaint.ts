@@ -34,6 +34,7 @@ import type { Geometry } from '@babylonjs/core/Meshes/geometry';
 import type { Mesh } from '@babylonjs/core/Meshes/mesh';
 import type { Scene } from '@babylonjs/core/scene';
 import { carEnvTexture } from './CarEnv';
+import { microBump } from '../../../rackreel/world/MicroBump';
 
 /** How a finish looks: the paint layer's roughness and metal, and the clear coat over it. */
 export interface PaintFinish { rough: number; metal: number; coat: number; coatRough: number }
@@ -50,6 +51,9 @@ const FLATTEN = 0.85;
 const AUTO_TOLERANCE = 0.2;
 const HINT_REACH = 0.3;
 const MIN_SHARE = 0.04;
+/** The faint orange-peel grain in the clear coat: how often it repeats across the body picture, and how deep it reads. */
+const PEEL_REPEAT = 90;
+const PEEL_DEPTH = 0.035;
 const CREASE_DEG = 38;
 /** The stretch of surface, in metres, that normals are averaged over. */
 const SMOOTH_REACH = 0.07;
@@ -390,6 +394,12 @@ export function dressPaint(material: PBRMaterial, albedo: BaseTexture, hint: Pai
     cc.indexOfRefraction = 1.5;
     cc.texture = mask.tex;
     cc.useRoughnessFromMainTexture = false;
+    if (!cc.bumpTexture) {
+      const peel = microBump(scene, 'grain').clone();
+      peel.uScale = PEEL_REPEAT; peel.vScale = PEEL_REPEAT; peel.level = PEEL_DEPTH;
+      cc.bumpTexture = peel;
+      material.onDisposeObservable.addOnce(() => peel.dispose());
+    }
     material.metallic = Math.max(material.metallic ?? 0, finish.metal);
   };
 

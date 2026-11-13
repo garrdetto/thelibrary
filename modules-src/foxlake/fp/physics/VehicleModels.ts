@@ -47,6 +47,7 @@ import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
 import { glazeScan } from './ScanGlass';
 import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
 import { carEnvTexture } from './CarEnv';
+import { microBump } from '../../../rackreel/world/MicroBump';
 import { addLamps3d, cutBehindLamps } from './LampView';
 import { lamps3d } from '../../../maplestreet/shared/LampCut';
 import { PAINT_FINISH, dressPaint, smoothScanNormals, type PaintJob } from './CarPaint';
@@ -141,7 +142,8 @@ let sharedMats: { rubber: PBRMaterial; rim: PBRMaterial } | null = null;
 function wheelMats() {
   if (sharedMats) return sharedMats;
   const scene = gfx().scene;
-  const rubber = opaque(pbr('tire-rubber', scene)); rubber.albedoColor = new Color3(0.0035, 0.0035, 0.004); rubber.metallic = 0; rubber.roughness = 0.72;
+  const rubber = opaque(pbr('tire-rubber', scene)); rubber.albedoColor = new Color3(0.0035, 0.0035, 0.004); rubber.metallic = 0; rubber.roughness = 0.86;
+  const tread = microBump(scene, 'grain').clone(); tread.uScale = 14; tread.vScale = 14; tread.level = 0.55; rubber.bumpTexture = tread;
   const rim = opaque(pbr('rim-metal', scene)); rim.metallic = 0.9; rim.roughness = 0.24;
   sharedMats = { rubber, rim };
   return sharedMats;
