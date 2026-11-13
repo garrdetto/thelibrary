@@ -40,6 +40,8 @@ export interface LightingLook {
   nightBrightness?: number
   /** Characters with no sheen at all and a softer fill, so cloth and skin never read as shiny or metallic. */
   matteCharacters?: boolean
+  /** Multiplies the sky fill, ground bounce and ambient that light the sides the sun misses: 1.35 lifts shaded sides by a third. */
+  fill?: number
 }
 
 function smooth(e0: number, e1: number, x: number): number {
@@ -105,6 +107,12 @@ export class Lighting {
     Color3.LerpToRef(DAY.skyDiffuse, NIGHT.skyDiffuse, n, sky.diffuse)
     Color3.LerpToRef(DAY.skyGround, NIGHT.skyGround, n, sky.groundColor)
     Color3.LerpToRef(DAY.ambient, NIGHT.ambient, n, ctx.scene.ambientColor)
+    const fill = this.look.fill ?? 1
+    if (fill !== 1) {
+      sky.intensity *= fill
+      sky.groundColor.scaleInPlace(fill)
+      ctx.scene.ambientColor.scaleInPlace(fill)
+    }
     Color3.LerpToRef(FOG_COLOR, DUSK_FOG, s.glow * 0.7, this.tmp)
     Color3.LerpToRef(this.tmp, NIGHT.fog, n, this.fogColor)
     ctx.scene.fogColor.copyFrom(this.fogColor)

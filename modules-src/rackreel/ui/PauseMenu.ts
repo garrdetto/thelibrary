@@ -1,4 +1,5 @@
 import type { OpenLobby } from '../game/Online'
+import type { ControlRow } from './Controls'
 
 export interface Sensitivity {
   look: number
@@ -58,8 +59,34 @@ export interface PauseHooks {
   setSensitivity(s: Sensitivity): void
   graphics(): Graphics
   setGraphics(g: Graphics): void
+  /** A host world's own keys, listed after Rack & Reel's (Fox Lake's map, garage and go-home). */
+  controls?(): ControlRow[]
   party: PauseParty
 }
+
+/** Every key the module answers to, shown in the Esc menu; `LMB` / `RMB` are mouse buttons. */
+export const BASE_CONTROLS: ControlRow[] = [
+  { keys: ['W', 'A', 'S', 'D'], text: 'Walk, or drive a vehicle or boat' },
+  { keys: ['Mouse'], text: 'Look around (click the view first)' },
+  { keys: ['←', '↑', '↓', '→'], text: 'Look around with the keys' },
+  { keys: ['Shift'], text: 'Run' },
+  { keys: ['C'], text: 'Crouch' },
+  { keys: ['E'], text: 'Use, talk, board, get in or out' },
+  { keys: ['1', '2'], text: 'Rod or rifle' },
+  { keys: ['LMB'], text: 'Cast or shoot; hold to reel' },
+  { keys: ['RMB'], text: 'Raise the scope or bow (double-click locks it)' },
+  { keys: ['R'], text: 'Set the hook, or hold to reel' },
+  { keys: ['Space'], text: 'Brake' },
+  { keys: ['Q'], text: 'Drop or lift the anchor' },
+  { keys: ['F'], text: 'Switch seats' },
+  { keys: ['I'], text: 'Inventory' },
+  { keys: ['K'], text: 'Record book' },
+  { keys: ['P'], text: 'Hunting party' },
+  { keys: ['N'], text: 'Zoom the corner map' },
+  { keys: ['G'], text: 'Grunt call' },
+  { keys: ['M'], text: 'Sound on or off' },
+  { keys: ['Esc'], text: 'This menu' },
+]
 
 /** The flips used to move the mouse too; the new key starts everyone on the arrow-key defaults while keeping their speeds from the old one. */
 const SENSITIVITY_KEY = 'tl-rackreel-sensitivity-2'
@@ -127,11 +154,12 @@ function codeInput(): HTMLInputElement {
   return input
 }
 
-/** The Esc menu: resume, look sensitivity, inviting players, the open-lobby switch and Respawn at the cabin. */
+/** The Esc menu: resume, every control, look sensitivity, inviting players, the open-lobby switch and Respawn at the cabin. */
 export class PauseMenu {
   private readonly root: HTMLDivElement
   private readonly party: HTMLElement
   private readonly note: HTMLParagraphElement
+  private readonly controlList = h('div', 'pause-controls')
   private busy = false
 
   constructor(private readonly hooks: PauseHooks) {
@@ -148,6 +176,10 @@ export class PauseMenu {
     resume.addEventListener('click', () => this.hooks.resume())
     const head = h('div', 'pause-head')
     head.append(title, resume)
+
+    const keys = h('section', 'panel-section')
+    keys.append(h('h3', undefined, 'Controls'))
+    keys.append(this.controlList)
 
     const look = h('section', 'panel-section')
     look.append(h('h3', undefined, 'Sensitivity controls'))
@@ -185,7 +217,7 @@ export class PauseMenu {
     respawn.addEventListener('click', () => this.hooks.respawn())
     actions.append(inventory, records, respawn)
 
-    card.append(head, look, graphics, this.party, this.note, actions)
+    card.append(head, keys, look, graphics, this.party, this.note, actions)
     this.root.append(card)
     document.body.append(this.root)
     this.root.addEventListener('keydown', (e) => {
@@ -202,6 +234,7 @@ export class PauseMenu {
   }
 
   show(): void {
+    this.renderControls()
     this.note.textContent = ''
     this.root.hidden = false
     this.render()
@@ -210,6 +243,17 @@ export class PauseMenu {
 
   hide(): void {
     this.root.hidden = true
+  }
+
+  private renderControls(): void {
+    const rows = [...BASE_CONTROLS, ...(this.hooks.controls?.() ?? [])]
+    this.controlList.replaceChildren(...rows.map((c) => {
+      const row = h('div', 'pause-control')
+      const caps = h('span', 'pause-keys')
+      for (const k of c.keys) caps.append(h('kbd', k === 'LMB' || k === 'RMB' || k === 'Mouse' ? 'mouse' : undefined, k === 'LMB' ? 'Left click' : k === 'RMB' ? 'Right click' : k))
+      row.append(caps, h('span', undefined, c.text))
+      return row
+    }))
   }
 
   refresh(): void {

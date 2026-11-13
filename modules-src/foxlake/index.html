@@ -183,6 +183,19 @@
       @media (max-width:640px){.slot-cell{min-width:84px}.bj-label{width:96px}.card{width:50px;height:72px}}
       .name-tag{position:absolute;transform:translate(-50%,-100%);padding:2px 8px;border-radius:999px;background:rgba(14,30,40,.75);border:1px solid rgba(127,208,255,.6);color:#e9f6ff;font:700 12px Inter,system-ui,sans-serif;white-space:nowrap}
       .pause-screen{z-index:46}
+      .fl-map{position:fixed;inset:0;z-index:60;display:grid;grid-template-rows:auto 1fr;gap:10px;padding:16px;background:rgba(12,10,8,.92)}
+      .fl-map[hidden]{display:none}
+      .fl-map-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+      .fl-map-head h2{margin:0;font:800 20px var(--head);color:var(--bone)}
+      .fl-map-info{margin:0;flex:1;min-width:200px;color:var(--soft);font-weight:600;font-size:13px}
+      .fl-map-view{width:100%;height:100%;min-height:0;border-radius:12px;border:1px solid var(--line);cursor:crosshair;background:#12100d}
+      .fl-directions{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:30;display:flex;align-items:center;gap:12px;max-width:min(560px,calc(100vw - 32px));padding:10px 16px 10px 12px;border-radius:14px;background:rgba(18,40,70,.9);border:1px solid rgba(120,190,255,.45);color:#f2f7ff;box-shadow:0 6px 20px rgba(0,0,0,.35);pointer-events:none}
+      .fl-directions[hidden]{display:none}
+      .fl-dir-arrow{display:grid;place-items:center;flex:none;width:40px;height:40px;border-radius:10px;background:#4fb3ff;color:#06203a;font:900 26px Inter,system-ui,sans-serif}
+      .fl-dir-body{display:grid;gap:2px}
+      .fl-dir-text{font:800 16px Inter,system-ui,sans-serif}
+      .fl-dir-left{font-weight:600;font-size:12px;opacity:.8}
+      .pause-controls{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px}.pause-control{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text)}.pause-keys{display:inline-flex;gap:3px;flex:none;min-width:72px}.pause-keys kbd.mouse{font-size:10px;text-transform:uppercase;letter-spacing:.3px}
       .pause-card{width:min(620px,100%);max-height:calc(100vh - 32px);overflow:auto;gap:12px}
       .pause-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
       .pause-slider{display:grid;grid-template-columns:150px 1fr 56px;align-items:center;gap:10px;color:var(--soft);font-weight:700;font-size:13px}

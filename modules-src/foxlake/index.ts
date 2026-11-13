@@ -20,8 +20,8 @@ declare global {
   }
 }
 
-/** Shadows half as dark as before (0.74 -> 0.87), a night 15 % brighter, and matte characters. */
-const FOX_LAKE_LOOK = { shadowDarkness: 0.87, nightBrightness: 1.15, matteCharacters: true }
+/** Light sun shadows, shaded sides lifted by a stronger sky fill, a night 15 % brighter, and matte characters. */
+const FOX_LAKE_LOOK = { shadowDarkness: 0.9, fill: 1.4, nightBrightness: 1.15, matteCharacters: true }
 /** Half Rack & Reel's shadow map: the town has far more casters, and the soft blurred shadows hide the coarser texels. */
 const FOX_LAKE_SHADOW_MAP = 1024
 
