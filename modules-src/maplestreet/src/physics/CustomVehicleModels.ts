@@ -8,6 +8,8 @@
 import * as THREE from 'three/webgpu';
 import { cutParts } from './CutParts';
 import { lampTriangles, type LampDepth, type LampSize, type Shape } from '../../shared/Shapes';
+import { lampParts } from '../../shared/Lamps3d';
+import { cutTriangles, lampCuts, lamps3d, type Lamp3d, type LampCut } from '../../shared/LampCut';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -104,6 +106,8 @@ function installPreset(r: CustomVehicleRecord) {
 
 function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: VehicleLights): THREE.Group {
   const g = new THREE.Group();
+  const lamps = lamps3d(r.lights, r.lampShapes);
+  const cuts = lampCuts(lamps);
   // `detail` holds the full model (and, once cut, its opening doors); the LOD levels sit beside it.
   const detail = new THREE.Group();
   detail.userData.keep = true;
@@ -124,6 +128,7 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
     applyPaint(copy, r, paint);
     copy.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = true; o.userData.keep = true; } });
     holder.add(copy);
+    if (cuts.length) cutBehindLamps(g, copy, cuts, `${r.id}|${r.updatedAt}`);
     const sources = lodSources(g, copy);
     g.userData.partRig = cutParts(detail, r.parts, r.physics.chassis.hz);
     (g.userData.onFill as (() => void) | undefined)?.();
@@ -131,9 +136,96 @@ function buildBody(r: CustomVehicleRecord, paint: THREE.Material, lights: Vehicl
   };
   if (ready.has(r.modelUrl)) fill(ready.get(r.modelUrl)!);
   else { holder.add(placeholder(r)); void loadScene(r.modelUrl).then(fill); }
-  addLamps(g, r.lights.head, lights.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize, r.lampShapes?.headDepth, 1);
-  addLamps(g, r.lights.tail, lights.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize, r.lampShapes?.tailDepth, -1);
+  if (!lamps.some(l => l.kind === 'head')) addLamps(g, r.lights.head, lights.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize, r.lampShapes?.headDepth, 1);
+  if (!lamps.some(l => l.kind === 'tail')) addLamps(g, r.lights.tail, lights.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize, r.lampShapes?.tailDepth, -1);
+  addLamps3d(g, lamps, lights);
   return g;
+}
+
+const LAMP_MATS = {
+  reflector: new THREE.MeshStandardMaterial({ color: 0xe9edf2, metalness: 1, roughness: 0.14, side: THREE.DoubleSide }),
+  reflectorRed: new THREE.MeshStandardMaterial({ color: 0xdca3a3, metalness: 1, roughness: 0.16, side: THREE.DoubleSide }),
+  bezel: new THREE.MeshStandardMaterial({ color: 0x2b2e33, metalness: 1, roughness: 0.32, side: THREE.DoubleSide }),
+  lensClear: new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0, roughness: 0.04, transparent: true, opacity: 0.18, depthWrite: false }),
+  lensRed: new THREE.MeshStandardMaterial({ color: 0xc81414, metalness: 0, roughness: 0.06, transparent: true, opacity: 0.55, depthWrite: false }),
+};
+const LAMP_PIECES = ['housing', 'glow', 'bezel', 'lens'] as const;
+
+/**
+ * 3D lamps (LampStyle `3d`): a chrome reflector bowl set into the body, the
+ * bulbs that glow with the vehicle's lights, a clear (head) or red (tail) lens
+ * and a dark trim ring. Each kind's lamps share one mesh per piece.
+ */
+function addLamps3d(g: THREE.Group, lamps: Lamp3d[], lights: VehicleLights) {
+  for (const kind of ['head', 'tail'] as const) {
+    const built = lamps.filter(l => l.kind === kind).map(l => lampParts(l.p, l.shape, l.side, l.size, l.depth, l.facing, l.style));
+    if (!built.length) continue;
+    for (const piece of LAMP_PIECES) {
+      const positions: number[] = [], normals: number[] = [];
+      for (const lamp of built) {
+        for (const v of lamp[piece].positions) positions.push(v);
+        for (const v of lamp[piece].normals) normals.push(v);
+      }
+      if (!positions.length) continue;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
+      const mat = piece === 'glow' ? lights[kind]
+        : piece === 'housing' ? (kind === 'tail' ? LAMP_MATS.reflectorRed : LAMP_MATS.reflector)
+        : piece === 'bezel' ? LAMP_MATS.bezel
+        : kind === 'tail' ? LAMP_MATS.lensRed : LAMP_MATS.lensClear;
+      const mesh = new THREE.Mesh(geo, mat);
+      if (piece !== 'glow') mesh.userData.keep = true;
+      if (piece === 'lens') mesh.renderOrder = 2;
+      g.add(mesh);
+    }
+  }
+}
+
+const floatPositions = new WeakMap<object, Float32Array>();
+const lampCutCache = new WeakMap<THREE.BufferGeometry, { key: string; geo: THREE.BufferGeometry }>();
+
+/** A geometry's positions as plain numbers (published models store them packed). */
+function positionsOf(geo: THREE.BufferGeometry): ArrayLike<number> {
+  const position = geo.getAttribute('position');
+  if (position instanceof THREE.BufferAttribute && position.array instanceof Float32Array && !position.normalized) return position.array;
+  let plain = floatPositions.get(position);
+  if (!plain) {
+    plain = new Float32Array(position.count * 3);
+    for (let i = 0; i < position.count; i++) { plain[i * 3] = position.getX(i); plain[i * 3 + 1] = position.getY(i); plain[i * 3 + 2] = position.getZ(i); }
+    floatPositions.set(position, plain);
+  }
+  return plain;
+}
+
+/**
+ * Drops the body's triangles that lie behind a 3D lamp's lens, so the lamp
+ * painted on the scan never shows through the new one. The loaded model is
+ * shared between copies, so each mesh gets a geometry of its own that reuses
+ * the model's vertex buffers with a shorter triangle list (worked out once).
+ */
+function cutBehindLamps(body: THREE.Object3D, model: THREE.Object3D, cuts: LampCut[], key: string) {
+  body.updateMatrixWorld(true);
+  const inv = body.matrixWorld.clone().invert();
+  const m = new THREE.Matrix4();
+  model.traverse(o => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || mesh.geometry.groups.length > 1) return;
+    const src = mesh.geometry;
+    const hit = lampCutCache.get(src);
+    if (hit?.key === key) { mesh.geometry = hit.geo; return; }
+    const kept = cutTriangles(positionsOf(src), src.index ? src.index.array : null, m.multiplyMatrices(inv, mesh.matrixWorld).elements, cuts);
+    let geo = src;
+    if (kept) {
+      geo = new THREE.BufferGeometry();
+      for (const name of Object.keys(src.attributes)) geo.setAttribute(name, src.attributes[name]);
+      geo.setIndex(new THREE.BufferAttribute(kept, 1));
+      geo.boundingBox = src.boundingBox?.clone() ?? null;
+      geo.boundingSphere = src.boundingSphere?.clone() ?? null;
+    }
+    lampCutCache.set(src, { key, geo });
+    mesh.geometry = geo;
+  });
 }
 
 /** Distances (m from the camera) where a published vehicle drops to the next level of detail. */

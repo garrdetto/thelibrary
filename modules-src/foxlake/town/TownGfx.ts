@@ -5,21 +5,20 @@
  * registry. Here the casters are kept per 128 m cell (town coordinates) and
  * handed to Rack & Reel's cached shadow layer when they are near the player,
  * so standing still in town redraws no shadows at all. The town's PBR
- * materials light from an environment cube baked from Rack & Reel's own sky
+ * materials light from an environment cube baked from Rack & Reel's own sky over a lit ground and tree line (fp/physics/CarEnv.ts)
  * (re-baked when the sky has changed enough), so the town and the lake share
  * one sun, one sky and one tone mapping.
  */
-import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { Scene } from '@babylonjs/core/scene'
 import type { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { GfxHost } from '../fp/core/Geo'
+import { bakeCarEnv, carEnvTexture, disposeCarEnv, refreshCarEnv } from '../fp/physics/CarEnv'
 import { sceneToTown } from '../region'
 
 const CELL = 128
 const NEAR = 190
-const PROBE_SIZE = 64
 /** Sky light on the town's PBR surfaces by day: high enough that the shaded side of a house or car isn't murky. */
 const ENV_DAY = 1.15
 
@@ -29,7 +28,7 @@ export class TownGfx implements GfxHost {
   private nearList: AbstractMesh[] = []
   private nearKey = ''
   private dirty = true
-  private probe: ReflectionProbe | null = null
+  private baked = false
   private lastNight = -1
   private lastGlow = -1
 
@@ -86,29 +85,26 @@ export class TownGfx implements GfxHost {
 
   /** Bakes Rack & Reel's sky into the scene's environment cube, which the town's PBR materials light from. */
   bakeSky(sky: Mesh): void {
-    if (this.probe) return
-    const probe = new ReflectionProbe('town-sky-env', PROBE_SIZE, this.scene, true, true)
-    probe.renderList!.push(sky)
-    probe.refreshRate = 0
-    probe.position.set(0, 40, 0)
-    this.scene.environmentTexture = probe.cubeTexture
+    if (this.baked) return
+    this.baked = true
+    bakeCarEnv(this.scene, sky)
+    this.scene.environmentTexture = carEnvTexture()
     this.scene.environmentIntensity = ENV_DAY
-    this.probe = probe
   }
 
   /** Re-bakes the sky cube when night or the sunset glow has moved on noticeably. */
   update(night: number, glow: number): void {
-    if (!this.probe) return
+    if (!this.baked) return
     if (Math.abs(night - this.lastNight) < 0.04 && Math.abs(glow - this.lastGlow) < 0.06) return
     this.lastNight = night
     this.lastGlow = glow
-    this.probe.cubeTexture.resetRefreshCounter()
+    refreshCarEnv()
     this.scene.environmentIntensity = ENV_DAY - night * 0.75
   }
 
   dispose(): void {
-    this.probe?.dispose()
-    this.probe = null
+    disposeCarEnv()
+    this.baked = false
     this.cells.clear()
     this.cellOf.clear()
     this.nearList = []

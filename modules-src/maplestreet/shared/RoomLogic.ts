@@ -18,6 +18,7 @@ import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } fr
 import { vehicleRole } from './Vehicles';
 import { addCrash, cleanCar, newCar } from './Cars';
 import { applyOrder, atBodyShop, BODY_SHOP, cleanOrder, inBay, quote } from './BodyShop';
+import { DevTools } from './DevTools';
 
 export interface LogicIO {
   send(sessionId: string, msg: ServerMsg): void;
@@ -34,8 +35,8 @@ export interface Persisted {
   epochDay?: number;
 }
 
-/** Server-verified identity (persistent world). Overrides what the client claims. */
-export interface Identity { key: string; name: string; member: boolean }
+/** Server-verified identity (persistent world). Overrides what the client claims. `admin`: a site administrator, who may use a world's developer tools. */
+export interface Identity { key: string; name: string; member: boolean; admin?: boolean }
 
 export interface LogicOptions {
   /**
@@ -46,6 +47,12 @@ export interface LogicOptions {
   clock?: 'sim' | 'wall';
   /** Solo play: money never runs out (and nobody needs a loan). */
   unlimitedMoney?: boolean;
+  /**
+   * Developer tools (shared/DevTools.ts: spawned vehicles anyone can drive, cash gifts). Off unless set, as in
+   * classic Fox Plains. 'admin': only sessions whose host-verified identity is an administrator may use them.
+   * 'all': every session may (solo play on one device).
+   */
+  devTools?: 'admin' | 'all';
 }
 
 const USE_COOLDOWN_MS = 20_000;
@@ -60,6 +67,8 @@ interface Session {
   lastSeen: number;
   /** A newer connection for the same account took over: this one no longer appears in the world. */
   superseded?: boolean;
+  /** May use the world's developer tools (set once on joining, from the host-verified identity). */
+  admin: boolean;
 }
 
 export const DAY_LENGTH_SEC = 24 * 60;   // one in-game day = 24 real minutes
@@ -76,6 +85,8 @@ export class NeighborhoodLogic {
   private snapAcc = 0;
   private readonly wallClock: boolean;
   private readonly unlimited: boolean;
+  private readonly devAccess: 'admin' | 'all' | null;
+  private readonly dev: DevTools | null;
   /** Persistence hints for the persistent world: what changed since the last save. */
   readonly dirty = { lots: new Set<string>(), accounts: new Set<string>(), meta: false };
 
@@ -102,6 +113,17 @@ export class NeighborhoodLogic {
     }
     this.wallClock = opts.clock === 'wall';
     this.unlimited = !!opts.unlimitedMoney;
+    this.devAccess = opts.devTools ?? null;
+    this.dev = this.devAccess ? new DevTools({
+      send: (to, msg) => this.io.send(to, msg),
+      broadcast: msg => this.io.broadcast(msg),
+      locate: id => {
+        const s = this.sessions.get(id), at = s && !s.superseded ? this.position(s) : null;
+        return s && at ? { id, key: s.key, name: this.accounts[s.key].name, x: at.x, y: at.y, z: at.z } : null;
+      },
+      pay: (key, name, amount) => this.adjustMoney(key, name, amount),
+      unlimitedMoney: this.unlimited,
+    }) : null;
     this.accounts = saved?.accounts ?? {};
     for (const k in this.accounts) normalizeAccount(this.accounts[k]);
     this.epochDay = saved?.epochDay ?? Math.floor(Date.now() / 1000 / DAY_LENGTH_SEC);
@@ -150,12 +172,15 @@ export class NeighborhoodLogic {
       other.superseded = true;
       other.player = null;
       other.vehicles = [];
+      this.dev?.dropped(id);
       this.io.broadcast({ t: 'left', id }, sessionId);
     }
-    this.sessions.set(sessionId, { key, player: null, vehicles: [], job: null, lastSeen: Date.now() });
+    const admin = this.devAccess === 'all' || (this.devAccess === 'admin' && identity?.admin === true);
+    this.sessions.set(sessionId, { key, player: null, vehicles: [], job: null, lastSeen: Date.now(), admin });
 
     const mowed = this.coverageCodes();
-    this.io.send(sessionId, { t: 'welcome', you: sessionId, world: this.world, account: this.publicAccount(acc), hours: this.hours, day: this.day, mowed });
+    this.io.send(sessionId, { t: 'welcome', you: sessionId, world: this.world, account: this.publicAccount(acc), hours: this.hours, day: this.day, mowed, ...(admin ? { dev: true } : {}) });
+    this.dev?.greet(sessionId);
     this.io.broadcast({ t: 'toast', text: returning ? `${name} is back in Fox Plains` : `${name} moved into the neighborhood` }, sessionId);
   }
 
@@ -186,6 +211,7 @@ export class NeighborhoodLogic {
     if (!s) return;
     this.dirty.accounts.add(s.key);
     this.sessions.delete(sessionId);
+    this.dev?.dropped(sessionId);
     // The newest connection left while an older one is still open: that one shows up again on its next state.
     if (!s.superseded) {
       let newest: Session | null = null;
@@ -239,6 +265,7 @@ export class NeighborhoodLogic {
             hitchedTo: typeof v.hitchedTo === 'string' ? `${sessionId}:${v.hitchedTo.split(':').pop()!.slice(0, 12)}` : null,
             style: acc.cars[v.kind as VehicleKind] ?? null,
           }));
+        this.dev?.driven(sessionId, s.player, p?.vehicleId, msg.s);
         break;
       }
       case 'build': this.handleBuild(sessionId, acc, msg.seq, [msg.op]); break;
@@ -288,6 +315,8 @@ export class NeighborhoodLogic {
         this.sendAccount(sessionId, acc);
         break;
       }
+      case 'shared': this.dev?.shared(sessionId, msg); break;
+      case 'dev': this.dev?.admin(sessionId, s.admin, msg); break;
       case 'bye': this.leave(sessionId); break;
     }
   }
@@ -523,6 +552,7 @@ export class NeighborhoodLogic {
 
   tick(dtSec: number): void {
     this.decayNeeds(dtSec);
+    this.dev?.tick();
     if (this.wallClock) {
       this.hours = this.wallHours();
       const d = this.wallDay();
@@ -539,6 +569,7 @@ export class NeighborhoodLogic {
     const players: PlayerSnap[] = [];
     const vehicles: VehicleSnap[] = [];
     this.sessions.forEach(s => { if (s.player) players.push(s.player); vehicles.push(...s.vehicles); });
+    this.dev?.snapshots(vehicles);
     this.io.broadcast({ t: 'snap', time: Date.now(), hours: this.hours, players, vehicles });
   }
 

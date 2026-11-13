@@ -20,7 +20,35 @@ export interface LampSize { w: number; h: number }
  * lamp's u/v box (row by v, bottom first). The lens then follows the body.
  */
 export type LampDepth = number[];
-export interface LampShapes { head?: Shape; tail?: Shape; headSize?: LampSize; tailSize?: LampSize; headDepth?: LampDepth; tailDepth?: LampDepth }
+/**
+ * How a lamp is built. `flat` (or no style) is the thin glowing plate. `3d` is
+ * a real lamp: a reflector bowl recessed into the body with bulbs in it, a
+ * domed lens over the opening and a trim ring around its edge.
+ */
+export interface LampStyle {
+  kind: 'flat' | '3d';
+  /** How far the middle of the lens stands proud of the body, metres. */
+  bulge: number;
+  /** How deep the reflector bowl goes behind the body's surface, metres. */
+  recess: number;
+  /** Width of the trim ring around the lens, metres. It covers the edge of the opening cut into the body. */
+  rim: number;
+  /** Cut the body's own surface away behind the lens, so none of it shows through the light. */
+  cut: boolean;
+}
+export interface LampShapes { head?: Shape; tail?: Shape; headSize?: LampSize; tailSize?: LampSize; headDepth?: LampDepth; tailDepth?: LampDepth; headStyle?: LampStyle; tailStyle?: LampStyle }
+
+export const LAMP_STYLE_LIMITS = { bulgeMax: 0.08, recessMin: 0.01, recessMax: 0.25, rimMin: 0.004, rimMax: 0.06 } as const;
+export const DEFAULT_LAMP_STYLE: LampStyle = { kind: '3d', bulge: 0.012, recess: 0.06, rim: 0.016, cut: true };
+/** The outline of a lamp that has none of its own: the whole plate. */
+export const LAMP_BOX: Shape = [{ u: 0, v: 0 }, { u: 1, v: 0 }, { u: 1, v: 1 }, { u: 0, v: 1 }];
+
+export const isLampStyle = (s: unknown): s is LampStyle => {
+  const o = s as LampStyle, L = LAMP_STYLE_LIMITS;
+  const within = (n: unknown, min: number, max: number) => typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
+  return !!o && typeof o === 'object' && (o.kind === 'flat' || o.kind === '3d') && within(o.bulge, 0, L.bulgeMax)
+    && within(o.recess, L.recessMin, L.recessMax) && within(o.rim, L.rimMin, L.rimMax) && typeof o.cut === 'boolean';
+};
 
 export const SHAPE_LIMITS = { minPoints: 3, maxPoints: 32 } as const;
 export const LAMP_W = 0.5;
@@ -56,7 +84,8 @@ export const isValidLampShapes = (s: unknown): s is LampShapes => {
   const o = s as LampShapes;
   return !!o && typeof o === 'object' && (o.head === undefined || isValidShape(o.head)) && (o.tail === undefined || isValidShape(o.tail))
     && (o.headSize === undefined || isLampSize(o.headSize)) && (o.tailSize === undefined || isLampSize(o.tailSize))
-    && (o.headDepth === undefined || isLampDepth(o.headDepth)) && (o.tailDepth === undefined || isLampDepth(o.tailDepth));
+    && (o.headDepth === undefined || isLampDepth(o.headDepth)) && (o.tailDepth === undefined || isLampDepth(o.tailDepth))
+    && (o.headStyle === undefined || isLampStyle(o.headStyle)) && (o.tailStyle === undefined || isLampStyle(o.tailStyle));
 };
 
 /** Bilinear height from a depth grid at (u, v) in 0..1. */

@@ -29,14 +29,14 @@ export async function maplestreet(request: Request, env: Env) {
 
   if (request.headers.get('origin') !== url.origin) throw new HttpError(403, 'This request is not allowed.')
   const user = await currentUser(request, env)
-  let identity: { key: string; name: string; member: boolean }
+  let identity: { key: string; name: string; member: boolean; admin: boolean }
   if (user) {
-    identity = { key: `member:${user.id}`, name: user.username, member: true }
+    identity = { key: `member:${user.id}`, name: user.username, member: true, admin: user.isAdmin }
   } else {
     const parsed = guestParams.safeParse({ guest: url.searchParams.get('guest') ?? '', name: url.searchParams.get('name') ?? undefined })
     if (!parsed.success) throw new HttpError(400, 'Please reload the page and try again.')
     const guest = parsed.data.guest
-    identity = { key: `guest:${guest}`, name: `Guest-${guest.slice(0, 5)}`, member: false }
+    identity = { key: `guest:${guest}`, name: `Guest-${guest.slice(0, 5)}`, member: false, admin: false }
   }
 
   const headers = new Headers(request.headers)

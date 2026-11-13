@@ -5,16 +5,15 @@
  * that painting as it is; a mix is drawn once into a texture of its own and shared by everyone wearing it.
  */
 import type { Material } from '@babylonjs/core/Materials/material'
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
 import type { Scene } from '@babylonjs/core/scene'
 import { modelFileUrl } from '../core/ModelLibrary'
-import { finishTextured } from '../world/TexturedMaterial'
+import { paintedMaterial } from '../world/TexturedMaterial'
 
 const SIZE = 1024
 
 interface Mix {
-  material: StandardMaterial
+  material: Material
   texture: DynamicTexture
 }
 
@@ -131,9 +130,7 @@ export class HeadPaint {
     if (beard !== face) lay(chin, masks.beard)
     texture.update(true)
     texture.anisotropicFilteringLevel = 8
-    const material = new StandardMaterial(`rr-head-${key}`, this.scene)
-    material.diffuseTexture = texture
-    finishTextured(material, 'hunter-head')
+    const material = paintedMaterial(this.scene, `rr-head-${key}`, texture, 'hunter-head')
     return { material, texture }
   }
 }

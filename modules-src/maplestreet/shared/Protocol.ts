@@ -37,6 +37,22 @@ export interface VehicleSnap {
   style?: CarStyle | null;
 }
 
+/**
+ * A vehicle an administrator spawned for anyone to drive (shared/DevTools.ts). It travels in snapshots as a
+ * VehicleSnap whose `owner` is its driver's session id, or 'shared' while it is parked.
+ */
+export interface SharedVehicleInfo {
+  id: string;
+  kind: VehicleKind;
+  /** Session id of whoever is driving it, or null while it is parked. */
+  driver: string | null;
+  /** Milliseconds until it disappears; 0 once its time is up and it is only waiting for its driver to get out. */
+  left: number;
+}
+
+/** Where a spawned vehicle is put: its chassis centre and rotation, in world coordinates. */
+export interface SpawnPose { x: number; y: number; z: number; qx: number; qy: number; qz: number; qw: number }
+
 export interface Job {
   id: string;
   kind: 'delivery';
@@ -55,7 +71,8 @@ export interface JoinOptions { key: string; name: string; color: string; body?: 
 
 export type ClientMsg =
   | { t: 'hello'; opts: JoinOptions }
-  | { t: 'state'; p: PlayerSnap; v: VehicleSnap[] }
+  /** `s`: the spawned vehicle this client is driving (only its driver's report is used). */
+  | { t: 'state'; p: PlayerSnap; v: VehicleSnap[]; s?: VehicleSnap }
   | { t: 'build'; seq: number; op: BuildOp }
   | { t: 'builds'; seq: number; ops: BuildOp[] }
   | { t: 'loan'; amount: number }
@@ -72,10 +89,20 @@ export type ClientMsg =
   | { t: 'fuel'; levels: Partial<Record<VehicleKind, number>> }
   | { t: 'use'; lotId: string; objectId: string }
   | { t: 'look'; look: Look }
+  /** Get into (claim) or out of (release) a spawned vehicle. The authority allows one driver at a time. */
+  | { t: 'shared'; op: 'claim' | 'release'; id: string }
+  /**
+   * Developer tools, for administrators only (the authority checks the session, not this message): spawn a vehicle
+   * beside a player (`to` is a session id, or 'me'), remove one, or give a player cash.
+   */
+  | { t: 'dev'; op: 'spawn'; kind: VehicleKind; to: string; at: SpawnPose }
+  | { t: 'dev'; op: 'remove'; id: string }
+  | { t: 'dev'; op: 'cash'; to: string; amount: number }
   | { t: 'bye' };
 
 export type ServerMsg =
-  | { t: 'welcome'; you: string; world: WorldState; account: Account; hours: number; day: number; mowed: Record<string, string> }
+  /** `dev`: this session may use the world's developer tools. */
+  | { t: 'welcome'; you: string; world: WorldState; account: Account; hours: number; day: number; mowed: Record<string, string>; dev?: boolean }
   | { t: 'snap'; time: number; hours: number; players: PlayerSnap[]; vehicles: VehicleSnap[] }
   | { t: 'build'; seq: number; by: string; actorId: string; actorName: string; op: BuildOp }
   | { t: 'buildRejected'; seq: number; reason: string }
@@ -84,4 +111,8 @@ export type ServerMsg =
   | { t: 'job'; job: Job | null; note?: string }
   | { t: 'newDay'; day: number }
   | { t: 'left'; id: string }
+  /** Every spawned vehicle, sent on arrival and whenever one is spawned, taken, left, removed or expires. */
+  | { t: 'shared'; vehicles: SharedVehicleInfo[] }
+  /** The answer to a `dev` message. */
+  | { t: 'dev'; ok: boolean; text: string }
   | { t: 'toast'; text: string };

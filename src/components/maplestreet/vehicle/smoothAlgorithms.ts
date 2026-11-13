@@ -215,3 +215,49 @@ export function spread(topo: Topology, weight: Float32Array, mode: 'grow' | 'shr
   }
   return out
 }
+
+export type BumpLevel = 'light' | 'normal' | 'strong'
+
+/** One-click bump removal: how far a point may move (millimetres on a full-size car) and how hard the surface is cleaned. */
+export const BUMP_LEVELS: Record<BumpLevel, { label: string; capMm: number; passes: number }> = {
+  light: { label: 'Light', capMm: 2, passes: 6 },
+  normal: { label: 'Normal', capMm: 4, passes: 12 },
+  strong: { label: 'Strong', capMm: 8, passes: 20 },
+}
+
+/**
+ * Bump removal that cannot change the shape. The whole surface is cleaned with
+ * creases kept, each point's move is measured along its surface normal, the
+ * average move is taken out so the body neither shrinks nor swells, and no
+ * point ends up more than `cap` (local units) from where it started.
+ */
+export function smoothCapped(topo: Topology, base: Float32Array, passes: number, creaseDeg: number, cap: number) {
+  const count = topo.clusters.length
+  const weight = new Float32Array(count).fill(1)
+  const cleaned = smoothPositions(topo, base, weight, 'clean', passes, creaseDeg)
+  const guide = guideNormals(topo, base)
+  const move = new Float32Array(count)
+  let sum = 0, movers = 0
+  for (let c = 0; c < count; c++) {
+    const d = (cleaned[c * 3] - base[c * 3]) * guide[c * 3] + (cleaned[c * 3 + 1] - base[c * 3 + 1]) * guide[c * 3 + 1] + (cleaned[c * 3 + 2] - base[c * 3 + 2]) * guide[c * 3 + 2]
+    if (!Number.isFinite(d) || d === 0) continue
+    move[c] = d
+    sum += d
+    movers++
+  }
+  const drift = movers ? sum / movers : 0
+  const limit = Math.max(0, cap)
+  const positions = Float32Array.from(base)
+  let moved = 0, largest = 0
+  for (let c = 0; c < count; c++) {
+    if (move[c] === 0) continue
+    const d = Math.max(-limit, Math.min(limit, move[c] - drift))
+    if (d === 0) continue
+    positions[c * 3] += guide[c * 3] * d
+    positions[c * 3 + 1] += guide[c * 3 + 1] * d
+    positions[c * 3 + 2] += guide[c * 3 + 2] * d
+    moved++
+    largest = Math.max(largest, Math.abs(d))
+  }
+  return { positions, moved, largest }
+}

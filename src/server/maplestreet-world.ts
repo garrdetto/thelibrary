@@ -47,7 +47,7 @@ function d1Storage(env: Env, name: string): WorldStorage {
 function parseIdentity(header: string | null): Identity | null {
   try {
     const value = JSON.parse(header ?? '') as Identity
-    return typeof value.key === 'string' && typeof value.name === 'string' ? { key: value.key, name: value.name, member: Boolean(value.member) } : null
+    return typeof value.key === 'string' && typeof value.name === 'string' ? { key: value.key, name: value.name, member: Boolean(value.member), admin: value.admin === true } : null
   } catch {
     return null
   }
@@ -56,9 +56,9 @@ function parseIdentity(header: string | null): Identity | null {
 export class MapleStreetWorld {
   private readonly world: WorldServer
 
-  constructor(state: DurableState, private readonly env: Env, table = 'maplestreet_world') {
+  constructor(state: DurableState, private readonly env: Env, table = 'maplestreet_world', devTools = false) {
     const storage = d1Storage(env, table)
-    this.world = new WorldServer(storage)
+    this.world = new WorldServer(storage, { devTools })
     void state.blockConcurrencyWhile(async () => {
       registerCustomItems(await listStoreItems(env))
       registerCustomVehicles(await listStoreVehicles(env))
@@ -113,9 +113,12 @@ export class MapleStreetWorld {
   }
 }
 
-/** Fox Lake's own town: the same world rules as Fox Plains with its own players, lots and money (a fresh start). */
+/**
+ * Fox Lake's own town: the same world rules as Fox Plains with its own players, lots and money (a fresh start), plus
+ * the developer tools (spawned vehicles, cash gifts) for sockets the Worker identified as an administrator's.
+ */
 export class FoxLakeWorld extends MapleStreetWorld {
   constructor(state: DurableState, env: Env) {
-    super(state, env, 'foxlake_world')
+    super(state, env, 'foxlake_world', true)
   }
 }
