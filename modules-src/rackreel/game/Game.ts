@@ -12,6 +12,7 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { Scores } from '../../../engine/net/Scores'
 import { EYE_HEIGHT, SHADOW_EXTENT, createEngineSetup } from '../core/EngineSetup'
 import type { EngineContext } from '../core/EngineSetup'
+import { perfModeFromSearch } from '../core/PerfTrend'
 import { MODEL_NAMES, disposeRig, instantiate, loadModel, partMesh } from '../core/ModelLibrary'
 import type { ModelName, ModelRig, ModelTemplate } from '../core/ModelLibrary'
 import { instantiateSkinned, loadSkinned } from '../core/SkinnedModel'
@@ -367,6 +368,11 @@ export class Game {
 
   async start(): Promise<void> {
     this.ctx = await createEngineSetup(this.canvas, this.options.shadowMapSize)
+    const perfMode = perfModeFromSearch(location.search)
+    if (perfMode !== 'off') {
+      const ctx = this.ctx
+      void import('../core/PerfOverlay').then(({ attachPerfOverlay }) => attachPerfOverlay(ctx, perfMode))
+    }
     const { scene } = this.ctx
     this.hud.setLoading(0.05, 'Carving the lake basin…')
     await nextFrame()
