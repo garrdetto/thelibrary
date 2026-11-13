@@ -217,10 +217,11 @@ function dartAnnouncement(list: Announcement[], dart: DartThrow, playerId: strin
   else say(list, 'score', label(dart), playerId)
 }
 
-/** With Double Bull on in x01, an outer-bull dart scores 50 and counts as a double, like the inner bull. */
-export function scoredDart(rules: ModeConfig, dart: DartThrow): DartThrow {
-  if (rules.mode !== 'x01' || !rules.doubleBull || dart.ring !== 'outerBull') return dart
-  return { ...dart, multiplier: 2, scoreValue: 50 }
+/** An outer-bull dart scores 50 and counts as a double, like the inner bull, with Double Bull on in x01 and always in Count Up on the soft-tip board. */
+export function scoredDart(rules: ModeConfig, dart: DartThrow, board: BoardKind = 'steel'): DartThrow {
+  if (dart.ring !== 'outerBull') return dart
+  const doubleBull = (rules.mode === 'x01' && !!rules.doubleBull) || (rules.mode === 'countup' && board === 'spider')
+  return doubleBull ? { ...dart, multiplier: 2, scoreValue: 50 } : dart
 }
 
 function applyX01(state: GameState, player: Player, dart: DartThrow, list: Announcement[]): { bust: boolean; won: boolean } {
@@ -358,7 +359,7 @@ function legWon(state: GameState, winner: Player, list: Announcement[]): void {
  */
 export function applyThrow(input: GameState, playerId: string, thrown: DartThrow): ThrowResult {
   if (input.status !== 'playing' || input.currentTurnPlayerId !== playerId) return { state: input, announcements: [], turnOver: false }
-  const dart = scoredDart(input.config.rules, thrown)
+  const dart = scoredDart(input.config.rules, thrown, input.config.board)
   const state = clone(input)
   const player = currentPlayer(state)
   const list: Announcement[] = []

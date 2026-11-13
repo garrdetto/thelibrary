@@ -355,6 +355,16 @@ test('soft tip: 100+ is a Low Ton, exactly 150 a Hat Trick, above 150 a High Ton
   assert.ok(steel.includes('ton') && !steel.includes('highTon'), 'steel tip still calls a Ton')
 })
 
+test('soft-tip Count Up scores both bulls 50; steel-tip Count Up keeps the outer bull at 25', () => {
+  const outer = { ...bed(25, 1), ring: 'outerBull' as const }
+  const countUp = (board: MatchConfig['board']): MatchConfig => ({ rules: { mode: 'countup', rounds: 8 }, legsPerSet: 1, setsToWin: 1, board })
+  const after = (config: MatchConfig, dart: DartThrow) => applyThrow(createMatch('t', config, [{ id: 'a', name: 'A' }]), 'a', dart).state.players[0].score
+  assert.equal(after(countUp('spider'), outer), 50)
+  assert.equal(after(countUp('spider'), bed(25, 2)), 50)
+  assert.equal(after(countUp('steel'), outer), 25)
+  assert.equal(after(countUp('steel'), bed(25, 2)), 50)
+})
+
 test('180 is announced and counted', () => {
   const state = createMatch('t', x01(501, false, true), [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }])
   let r = applyThrow(state, 'a', bed(20, 3))
