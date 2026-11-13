@@ -1,5 +1,6 @@
 import type { Scene } from '@babylonjs/core/scene'
 import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader'
+import '@babylonjs/core/Loading/loadingScreen'
 import { MeshoptCompression } from '@babylonjs/core/Meshes/Compression/meshoptCompression'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
@@ -55,6 +56,7 @@ async function appendModel(scene: Scene, url: string, name: string): Promise<Loa
   const nodesBefore = new Set<Node>(scene.transformNodes)
   const groupsBefore = new Set(scene.animationGroups)
   const { rootUrl, fileName } = splitUrl(url)
+  SceneLoader.ShowLoadingScreen = false
   await SceneLoader.AppendAsync(rootUrl, fileName, scene)
 
   const meshes = scene.meshes.filter(mesh => !meshesBefore.has(mesh))

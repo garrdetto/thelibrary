@@ -4,10 +4,11 @@ import { Server } from 'socket.io'
 import { z } from 'zod'
 import { attachRacing } from './racing.mjs'
 import { attachPark } from './park.mjs'
+import { attachArena } from './arena.mjs'
 
 const origins = (process.env.FRONTEND_ORIGIN || '').split(',').map(value => value.trim()).filter(Boolean)
 const trustedOrigins = origins.length ? origins : ['https://thelibrary.garrdetto.workers.dev']
-const version = 'pool-lobby 8-ball v60'
+const version = 'pool-lobby 8-ball v61'
 const routes = { '/': 'Pool lobby server is running.', '/health': 'ok', '/version': version }
 const http = createServer((req, res) => { const body = routes[req.url]; res.writeHead(body ? 200 : 404); res.end(body ?? 'Not found') })
 const io = new Server(http, { cors: { origin: trustedOrigins }, allowRequest: (req, done) => done(null, trustedOrigins.includes(req.headers.origin)), maxHttpBufferSize: 196608, perMessageDeflate: { threshold: 8192 } })
@@ -21,6 +22,7 @@ const racing = attachRacing(io, origins, {
 })
 
 attachPark(io, origins)
+attachArena(io, origins)
 
 const LOBBY = 'lobby'
 const INVITE_TTL = 30000

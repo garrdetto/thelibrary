@@ -1,4 +1,4 @@
-import type { WeaponSpec } from '../../shared/weapons.mjs'
+import type { WeaponSpec } from '../../../../server/arena/weapons.mjs'
 
 const MAX_ROUNDS_PER_FRAME = 4
 const BLOOM_PER_ROUND = 0.0035

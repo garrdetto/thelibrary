@@ -12,7 +12,7 @@ import {
   type ArenaShot,
   type ArenaSpawn,
   type ArenaState,
-} from '../../shared/protocol.mjs'
+} from '../../../../server/arena/protocol.mjs'
 
 export interface ArenaConnection {
   readonly selfId: () => string | null
@@ -34,8 +34,9 @@ export interface ConnectionHandlers {
   respawn(respawn: ArenaRespawn): void
 }
 
-export function serverAddress(search: string): string | null {
-  const value = new URLSearchParams(search).get('server')
+const DEFAULT_SERVER = 'https://thelibrary-production.up.railway.app'
+
+function origin(value: string | null | undefined): string | null {
   if (!value) return null
   try {
     const url = new URL(value)
@@ -43,6 +44,13 @@ export function serverAddress(search: string): string | null {
   } catch {
     return null
   }
+}
+
+export function serverAddress(search: string): string | null {
+  const params = new URLSearchParams(search)
+  if (params.has('solo')) return null
+  if (params.has('server')) return origin(params.get('server'))
+  return origin(import.meta.env.VITE_POOL_SERVER_URL) ?? DEFAULT_SERVER
 }
 
 export function connectArena(address: string, name: string, handlers: ConnectionHandlers): ArenaConnection {
@@ -78,7 +86,7 @@ export function connectArena(address: string, name: string, handlers: Connection
   socket.on(ArenaEvent.death, (death: ArenaDeath) => handlers.death(death))
   socket.on(ArenaEvent.respawn, (respawn: ArenaRespawn) => handlers.respawn(respawn))
   socket.on('disconnect', () => { id = null; team = null; handlers.status('Offline') })
-  socket.on('connect_error', () => handlers.status('Could not reach the arena server'))
+  socket.on('connect_error', () => handlers.status('Multiplayer offline · solo practice'))
 
   return {
     selfId: () => id,

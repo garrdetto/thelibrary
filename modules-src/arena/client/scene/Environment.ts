@@ -8,19 +8,25 @@ import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator'
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent'
-import { GlowLayer } from '@babylonjs/core/Layers/glowLayer'
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { fbm, smoothstep } from './Noise'
 
 export interface ArenaEnvironment {
   sun: DirectionalLight
   shadows: ShadowGenerator
-  glow: GlowLayer
   skybox: Mesh
 }
 
-const FACE_SIZE = 256
+export const SUN_DIRECTION = new Vector3(-0.7, 0.85, 0.3).normalize()
+export const HAZE = new Color3(0.7, 0.78, 0.86)
+
+const FACE_SIZE = 512
 const FACES = ['px', 'py', 'pz', 'nx', 'ny', 'nz'] as const
+const ZENITH = [58, 112, 196]
+const HORIZON = [192, 212, 232]
+const GROUND_HAZE = [176, 190, 200]
+const SUN_GLOW = [255, 232, 196]
 
 function faceDirection(face: typeof FACES[number], u: number, v: number): [number, number, number] {
   switch (face) {
@@ -33,55 +39,67 @@ function faceDirection(face: typeof FACES[number], u: number, v: number): [numbe
   }
 }
 
-function hash(x: number, y: number, seed: number): number {
-  let h = Math.imul(x * 374761393 + y * 668265263 + seed * 2147483647, 1274126177)
-  h = Math.imul(h ^ (h >>> 13), 1103515245)
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296
+function skyColor(dx: number, dy: number, dz: number, out: number[]): void {
+  const sun = Math.max(0, dx * SUN_DIRECTION.x + dy * SUN_DIRECTION.y + dz * SUN_DIRECTION.z)
+  if (dy < 0) {
+    const fade = Math.min(1, -dy * 6)
+    for (let channel = 0; channel < 3; channel++) out[channel] = HORIZON[channel] * (1 - fade) + GROUND_HAZE[channel] * fade
+    return
+  }
+  const height = Math.pow(dy, 0.42)
+  const halo = Math.pow(sun, 10) * 0.32 + Math.pow(sun, 300) * 0.9
+  for (let channel = 0; channel < 3; channel++) {
+    out[channel] = HORIZON[channel] * (1 - height) + ZENITH[channel] * height + SUN_GLOW[channel] * halo
+  }
+  if (dy < 0.012) return
+  const lift = 1 / (dy + 0.06)
+  const cx = dx * lift * 0.55 + 11
+  const cz = dz * lift * 0.55 - 4
+  const shape = fbm(cx, cz, 5, 5)
+  const wisps = fbm(cx * 3.1 + 40, cz * 3.1, 9, 3)
+  const density = smoothstep(0.5, 0.74, shape * 0.85 + wisps * 0.15) * smoothstep(0.012, 0.16, dy)
+  if (density <= 0) return
+  const lit = 0.84 + Math.pow(sun, 3) * 0.2 - smoothstep(0.62, 0.9, shape) * 0.22
+  const cover = density * 0.94
+  for (let channel = 0; channel < 3; channel++) {
+    const cloud = (248 - channel * 2) * lit + SUN_GLOW[channel] * Math.pow(sun, 24) * 0.25
+    out[channel] = out[channel] * (1 - cover) + cloud * cover
+  }
 }
 
-function paintFace(face: typeof FACES[number], index: number): string {
+function paintFace(face: typeof FACES[number]): string {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = FACE_SIZE
   const context = canvas.getContext('2d') as CanvasRenderingContext2D
   const image = context.createImageData(FACE_SIZE, FACE_SIZE)
-  const zenith = [6, 10, 28]
-  const horizon = [42, 74, 120]
-  const glow = [120, 210, 255]
+  const color = [0, 0, 0]
   for (let py = 0; py < FACE_SIZE; py++) {
     for (let px = 0; px < FACE_SIZE; px++) {
-      const [dx, dy, dz] = faceDirection(face, (px + 0.5) / FACE_SIZE * 2 - 1, (py + 0.5) / FACE_SIZE * 2 - 1)
-      const length = Math.hypot(dx, dy, dz)
-      const up = dy / length
-      const height = Math.max(0, up)
-      const blend = Math.pow(height, 0.55)
-      const band = Math.exp(-Math.pow(up * 9, 2)) * 0.55
-      const sunward = Math.max(0, (-dx * 0.5 + dz * 0.3 + dy * 0.4) / length)
-      const halo = Math.pow(sunward, 18) * 0.6
+      const [x, y, z] = faceDirection(face, (px + 0.5) / FACE_SIZE * 2 - 1, (py + 0.5) / FACE_SIZE * 2 - 1)
+      const length = Math.hypot(x, y, z)
+      skyColor(x / length, y / length, z / length, color)
       const offset = (py * FACE_SIZE + px) * 4
-      for (let channel = 0; channel < 3; channel++) {
-        let value = horizon[channel] * (1 - blend) + zenith[channel] * blend
-        value += glow[channel] * (band + halo)
-        if (up < 0) value *= 0.35 + 0.65 * (1 + up)
-        image.data[offset + channel] = Math.min(255, value)
-      }
+      image.data[offset] = Math.min(255, color[0])
+      image.data[offset + 1] = Math.min(255, color[1])
+      image.data[offset + 2] = Math.min(255, color[2])
       image.data[offset + 3] = 255
-      if (up > 0.08 && hash(px, py, index) > 0.9975) {
-        const twinkle = 150 + hash(py, px, index + 7) * 105
-        image.data[offset] = image.data[offset + 1] = image.data[offset + 2] = twinkle
-      }
     }
   }
   context.putImageData(image, 0, 0)
   return canvas.toDataURL('image/png')
 }
 
-function createSkybox(scene: Scene): Mesh {
-  const urls = FACES.map((face, index) => paintFace(face, index))
-  const texture = CubeTexture.CreateFromImages(urls, scene, true)
-  texture.coordinatesMode = Texture.SKYBOX_MODE
+function createSky(scene: Scene): Mesh {
+  const urls = FACES.map(face => paintFace(face))
+  const environment = CubeTexture.CreateFromImages(urls, scene, false)
+  scene.environmentTexture = environment
+  scene.environmentIntensity = 1
+
+  const backdrop = CubeTexture.CreateFromImages(urls, scene, true)
+  backdrop.coordinatesMode = Texture.SKYBOX_MODE
   const material = new StandardMaterial('arena-sky', scene)
   material.backFaceCulling = false
-  material.reflectionTexture = texture
+  material.reflectionTexture = backdrop
   material.diffuseColor = Color3.Black()
   material.specularColor = Color3.Black()
   material.disableLighting = true
@@ -94,36 +112,33 @@ function createSkybox(scene: Scene): Mesh {
 }
 
 export function createEnvironment(scene: Scene): ArenaEnvironment {
-  scene.clearColor = new Color4(0.02, 0.03, 0.07, 1)
-  scene.ambientColor = new Color3(0.25, 0.28, 0.35)
+  scene.clearColor = new Color4(HAZE.r, HAZE.g, HAZE.b, 1)
+  scene.ambientColor = new Color3(0.3, 0.32, 0.36)
   scene.fogMode = Scene.FOGMODE_EXP2
-  scene.fogDensity = 0.0035
-  scene.fogColor = new Color3(0.12, 0.2, 0.32)
+  scene.fogDensity = 0.0017
+  scene.fogColor = HAZE.clone()
 
-  const skybox = createSkybox(scene)
+  const skybox = createSky(scene)
 
   const fill = new HemisphericLight('arena-fill', new Vector3(0, 1, 0), scene)
-  fill.intensity = 0.45
-  fill.diffuse = new Color3(0.62, 0.74, 0.95)
-  fill.groundColor = new Color3(0.14, 0.12, 0.16)
+  fill.intensity = 0.65
+  fill.diffuse = new Color3(0.72, 0.82, 1)
+  fill.groundColor = new Color3(0.5, 0.46, 0.38)
   fill.specular = Color3.Black()
 
-  const sun = new DirectionalLight('arena-sun', new Vector3(0.45, -1, -0.3).normalize(), scene)
-  sun.position = new Vector3(-60, 110, 40)
-  sun.intensity = 1.25
+  const sun = new DirectionalLight('arena-sun', SUN_DIRECTION.scale(-1), scene)
+  sun.position = SUN_DIRECTION.scale(150)
+  sun.intensity = 3.8
   sun.diffuse = new Color3(1, 0.95, 0.86)
   sun.shadowMinZ = 1
-  sun.shadowMaxZ = 260
+  sun.shadowMaxZ = 340
 
   const shadows = new ShadowGenerator(2048, sun)
   shadows.usePercentageCloserFiltering = true
-  shadows.filteringQuality = ShadowGenerator.QUALITY_MEDIUM
-  shadows.bias = 0.0008
+  shadows.filteringQuality = ShadowGenerator.QUALITY_HIGH
+  shadows.bias = 0.0006
   shadows.normalBias = 0.02
-  shadows.darkness = 0.25
+  shadows.darkness = 0
 
-  const glow = new GlowLayer('arena-glow', scene, { mainTextureRatio: 0.5, blurKernelSize: 48 })
-  glow.intensity = 0.85
-
-  return { sun, shadows, glow, skybox }
+  return { sun, shadows, skybox }
 }

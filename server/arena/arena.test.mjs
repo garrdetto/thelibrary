@@ -1,13 +1,25 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { createServer } from 'node:http'
+import { Server } from 'socket.io'
 import { io as connect } from 'socket.io-client'
-import { createArenaServer } from '../server/index.mjs'
-import { cleanPose, cleanShot, judgeHit } from '../server/arena.mjs'
-import { ARENA_MAX_HEALTH, ARENA_NAMESPACE, ArenaEvent } from '../shared/protocol.mjs'
-import { WEAPONS } from '../shared/weapons.mjs'
+import { attachArena, cleanPose, cleanShot, judgeHit } from '../arena.mjs'
+import { ARENA_MAX_HEALTH, ARENA_NAMESPACE, ArenaEvent } from './protocol.mjs'
+import { WEAPONS } from './weapons.mjs'
 
 const once = (socket, event) => new Promise(resolve => socket.once(event, resolve))
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
+
+async function startServer(options) {
+  const http = createServer()
+  const io = new Server(http)
+  const arena = attachArena(io, [], options)
+  await new Promise(resolve => http.listen(0, resolve))
+  return {
+    port: http.address().port,
+    close: () => new Promise(resolve => { arena.close(); io.close(() => resolve()) }),
+  }
+}
 
 test('poses are cleaned and bounded', () => {
   assert.equal(cleanPose({ x: 999, y: 0, z: 0, yaw: 0 }), null)
@@ -30,11 +42,9 @@ test('hits must lie on the ray and on the target', () => {
   assert.equal(judgeHit(shooter, { x: 0, y: 0, z: 150 }, outOfRange), null)
 })
 
-test('Express + socket.io server: join, 20 Hz state, shooting, damage, death and respawn', async () => {
-  const server = createArenaServer({ arenaOptions: { respawnMs: 150 } })
-  const port = await server.listen(0)
-  const health = await fetch(`http://localhost:${port}/health`).then(response => response.text())
-  assert.equal(health, 'ok')
+test('/arena namespace on the shared socket.io server: join, 20 Hz state, shooting, damage, death and respawn', async () => {
+  const server = await startServer({ respawnMs: 150 })
+  const { port } = server
 
   const url = `http://localhost:${port}${ARENA_NAMESPACE}`
   const blue = connect(url, { transports: ['websocket'] })

@@ -7,4 +7,5 @@ startArena(stage).catch((error: unknown) => {
   const box = document.getElementById('error') as HTMLDivElement
   box.textContent = 'This browser could not start the 3D view. Try another browser or turn on hardware acceleration.'
   box.style.display = 'grid'
+  document.body.classList.remove('loading')
 })
