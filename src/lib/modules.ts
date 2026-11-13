@@ -32,6 +32,7 @@ export const embeddedModules = [
   { id: 'cookies', title: 'Cookie Factory', src: '/modules/cookies.html' },
   { id: 'hotdog', title: 'Corner Cart', src: '/modules/hotdog.html' },
   { id: 'pingpong', title: 'Spin Rally', src: '/modules/pingpong.html' },
+  { id: 'arena', title: 'Vector Arena', src: '/modules/arena.html' },
   { id: 'songmaker', title: 'Song Maker', src: '/modules/songmaker.html' },
   { id: 'party', title: 'Skill Party', src: '/modules/party.html' },
 ] as const
@@ -105,5 +106,6 @@ export const learningModules: LearningModule[] = [
   { id: 'cookies', title: 'Cookie Factory', subject: 'Exponential growth', group: 'Math', summary: 'Bake, reinvest and grow your output in five minutes.', modes: ['Solo'], image: '/images/modules/cookies.webp', accent: '#f2a541' },
   { id: 'hotdog', title: 'Corner Cart', subject: 'Supply, demand & pricing', group: 'Strategy', summary: 'Run a hot-dog cart for thirty days and grow your cash.', modes: ['Solo'], image: '/images/modules/hotdog.webp', accent: '#ff7a3d' },
   { id: 'pingpong', title: 'Spin Rally', subject: 'Spin & the Magnus effect', group: 'Physics', summary: 'Table tennis where topspin, backspin and sidespin really curve the ball.', modes: ['Solo vs CPU', '2 on 1 screen', 'Online room'], image: '/images/modules/pingpong.webp', accent: '#ff5a36' },
+  { id: 'arena', title: 'Vector Arena', subject: 'Gravity, collisions & level design', group: 'Physics', summary: 'Walk, sprint and jump through a symmetrical sci-fi arena of ramps, platforms, cover and glowing energy lights.', modes: ['Solo', '3D'], image: '/images/modules/arena.webp', accent: '#38e1ff' },
   { id: 'party', title: 'Skill Party', subject: 'Reaction, aim & recall', group: 'Precision', summary: 'Skill contests for up to four players with a running scoreboard.', modes: ['Solo vs CPU', '2–4 on 1 screen', 'Online room'], image: '/images/modules/party.webp', accent: '#ffcf4a' },
 ]
