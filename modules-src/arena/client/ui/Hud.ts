@@ -1,5 +1,5 @@
 import type { WeaponReadout } from '../weapons/WeaponSystem'
-import { ARENA_MAX_HEALTH } from '../../shared/protocol.mjs'
+import { ARENA_MAX_HEALTH } from '../../../../server/arena/protocol.mjs'
 
 const FEED_LIMIT = 4
 const FEED_LIFE = 5000
@@ -11,6 +11,7 @@ function element<T extends HTMLElement>(id: string): T | null {
 export class Hud {
   private readonly weaponName = element('weapon-name')
   private readonly ammo = element('weapon-ammo')
+  private readonly rounds = element('weapon-rounds')
   private readonly reload = element<HTMLDivElement>('weapon-reload')
   private readonly health = element<HTMLDivElement>('health-fill')
   private readonly healthText = element('health-text')
@@ -26,11 +27,15 @@ export class Hud {
 
   weapon(readout: WeaponReadout): void {
     if (this.weaponName && this.weaponName.textContent !== readout.name) this.weaponName.textContent = readout.name
-    const ammo = readout.reloading ? 'Reloading' : `${readout.ammo} / ${readout.magazine}`
+    const ammo = readout.reloading ? 'Reloading' : String(readout.ammo)
     if (this.ammo && ammo !== this.lastAmmo) {
       this.ammo.textContent = ammo
       this.ammo.classList.toggle('low', !readout.reloading && readout.ammo <= Math.ceil(readout.magazine / 5))
       this.lastAmmo = ammo
+      if (this.rounds) {
+        this.rounds.style.setProperty('--magazine', String(readout.magazine))
+        this.rounds.style.setProperty('--share', String(readout.reloading ? 0 : readout.ammo / readout.magazine))
+      }
     }
     if (this.reload) this.reload.style.transform = `scaleX(${readout.reloading ? readout.reloadProgress : 0})`
     if (this.crosshair) this.crosshair.style.setProperty('--gap', `${Math.round(4 + readout.spread * 260)}px`)

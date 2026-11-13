@@ -64,13 +64,13 @@ export class WeaponEffects {
     this.flash.renderingGroupId = VIEW_LAYER
     this.flash.start()
 
-    const sparkTexture = glowTexture(scene, 'impact-spark', 'rgba(255,255,255,1)', 'rgba(127,240,255,0.8)')
+    const sparkTexture = glowTexture(scene, 'impact-spark', 'rgba(255,255,255,1)', 'rgba(255,200,120,0.8)')
     this.sparks = new ParticleSystem('impact-sparks', 160, scene)
     this.sparks.particleTexture = sparkTexture
     this.sparks.emitter = this.sparkOrigin
-    this.sparks.color1 = new Color4(0.8, 1, 1, 1)
+    this.sparks.color1 = new Color4(1, 0.9, 0.6, 1)
     this.sparks.color2 = new Color4(1, 0.85, 0.5, 1)
-    this.sparks.colorDead = new Color4(0.2, 0.4, 1, 0)
+    this.sparks.colorDead = new Color4(0.6, 0.3, 0.1, 0)
     this.sparks.minSize = 0.03
     this.sparks.maxSize = 0.09
     this.sparks.minLifeTime = 0.12
@@ -117,7 +117,7 @@ export class WeaponEffects {
     const n = normal ?? Vector3.Up()
     this.sparks.direction1 = n.add(new Vector3(-0.6, -0.2, -0.6))
     this.sparks.direction2 = n.add(new Vector3(0.6, 0.8, 0.6))
-    this.sparks.color1 = player ? new Color4(1, 0.35, 0.3, 1) : new Color4(0.8, 1, 1, 1)
+    this.sparks.color1 = player ? new Color4(1, 0.35, 0.3, 1) : new Color4(1, 0.9, 0.6, 1)
     this.sparks.manualEmitCount = player ? 18 : 10
   }
 

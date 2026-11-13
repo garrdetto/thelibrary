@@ -8,8 +8,8 @@ import {
   ARENA_SPAWNS,
   ARENA_TICK_HZ,
   ArenaEvent,
-} from '../shared/protocol.mjs'
-import { WEAPONS, roundsPerSecond } from '../shared/weapons.mjs'
+} from './arena/protocol.mjs'
+import { WEAPONS, roundsPerSecond } from './arena/weapons.mjs'
 
 const NAME_PATTERN = /^[a-zA-Z0-9_-]{3,20}$/
 const BOUNDS = { x: 40, yMin: -40, yMax: 40, z: 64 }

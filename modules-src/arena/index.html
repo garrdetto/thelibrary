@@ -5,65 +5,83 @@
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Vector Arena · the library</title>
     <style>
-      html,body{margin:0;height:100%;background:#05070f;color:#e9effc;overflow:hidden;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+      :root{--hud:#cfe6ff;--hud-dim:rgba(207,230,255,.35);--hud-glow:rgba(120,180,255,.55);--panel:rgba(8,18,30,.55);--warn:#ff6a55;--ally:#ffe078}
+      html,body{margin:0;height:100%;background:#b3c7da;color:var(--hud);overflow:hidden;font-family:Bahnschrift,"DIN Alternate","Segoe UI",system-ui,sans-serif}
       #stage{position:relative;width:100%;height:100%}
-      #stage canvas{display:block;width:100%;height:100%;outline:none;touch-action:none}
-      #hud{position:absolute;left:16px;top:14px;pointer-events:none;text-shadow:0 1px 3px #000}
-      #hud h1{margin:0;font-size:18px;letter-spacing:.12em;text-transform:uppercase;color:#7ff0ff}
-      #hud p{margin:4px 0 0;font-size:13px;opacity:.85}
-      #status{position:absolute;right:16px;top:14px;font-size:12px;opacity:.8;pointer-events:none}
-      #crosshair{--gap:6px;position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;opacity:0;transition:opacity .2s}
-      #crosshair i{position:absolute;background:#7ff0ff;box-shadow:0 0 6px #38e1ff}
-      #crosshair i:nth-child(1),#crosshair i:nth-child(2){width:2px;height:8px;left:-1px}
-      #crosshair i:nth-child(3),#crosshair i:nth-child(4){height:2px;width:8px;top:-1px}
-      #crosshair i:nth-child(1){bottom:var(--gap)}
-      #crosshair i:nth-child(2){top:var(--gap)}
-      #crosshair i:nth-child(3){right:var(--gap)}
-      #crosshair i:nth-child(4){left:var(--gap)}
-      body.locked #crosshair{opacity:.9}
+      #stage canvas#view{display:block;width:100%;height:100%;outline:none;touch-action:none}
+      .hud{position:absolute;pointer-events:none;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+      #hud{left:16px;top:14px}
+      #hud h1{margin:0;font-size:15px;font-weight:600;letter-spacing:.22em;text-transform:uppercase}
+      #hud p{margin:4px 0 0;font-size:12px;opacity:.8}
+      body.locked #hud p{display:none}
+      #vitals{left:50%;top:16px;width:min(360px,60vw);transform:translateX(-50%)}
+      #vitals .label{display:flex;justify-content:space-between;font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.85}
+      .bar{position:relative;height:10px;margin-top:4px;background:var(--panel);border:1px solid var(--hud-dim);clip-path:polygon(6px 0,100% 0,calc(100% - 6px) 100%,0 100%)}
+      .bar div{height:100%;transform-origin:left center;background:linear-gradient(180deg,#e6f3ff,#7fb4ff);box-shadow:0 0 10px var(--hud-glow)}
+      #health-fill{-webkit-mask:repeating-linear-gradient(90deg,#000 0 calc(10% - 2px),transparent calc(10% - 2px) 10%);mask:repeating-linear-gradient(90deg,#000 0 calc(10% - 2px),transparent calc(10% - 2px) 10%)}
+      .bar div.low{background:linear-gradient(180deg,#ffb3a6,var(--warn))}
+      #arsenal{right:16px;top:14px;min-width:180px;text-align:right}
+      #weapon-name{font-size:11px;letter-spacing:.18em;text-transform:uppercase;opacity:.85}
+      #weapon-ammo{font-size:30px;font-weight:600;line-height:1.05;font-variant-numeric:tabular-nums}
+      #weapon-ammo.low{color:var(--warn)}
+      #weapon-rounds{--share:1;--magazine:32;position:relative;width:170px;height:12px;margin:4px 0 0 auto}
+      #weapon-rounds::before,#weapon-rounds::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,currentColor 0 calc(100% / var(--magazine) - 2px),transparent calc(100% / var(--magazine) - 2px) calc(100% / var(--magazine)))}
+      #weapon-rounds::before{opacity:.22}
+      #weapon-rounds::after{clip-path:inset(0 calc((1 - var(--share)) * 100%) 0 0)}
+      #arsenal .bar{width:170px;margin-left:auto;height:4px}
+      #arsenal .bar div{transform:scaleX(0)}
+      #arsenal small{display:block;font-size:11px;opacity:.65;margin-top:6px}
+      #tracker{left:16px;bottom:16px;width:150px;height:150px}
+      #killfeed{left:16px;bottom:178px;font-size:13px}
+      #killfeed div{background:var(--panel);padding:4px 10px;margin-top:4px;border-left:2px solid var(--hud)}
+      #status{right:16px;bottom:16px;font-size:12px;letter-spacing:.08em;opacity:.85}
+      #crosshair{--gap:6px;left:50%;top:50%;width:0;height:0;opacity:0;transition:opacity .2s}
+      #crosshair::before{content:"";position:absolute;left:calc(-1 * var(--gap) - 4px);top:calc(-1 * var(--gap) - 4px);width:calc(2 * var(--gap) + 8px);height:calc(2 * var(--gap) + 8px);border:1.5px solid var(--hud);border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,.6);box-sizing:border-box;opacity:.75}
+      #crosshair::after{content:"";position:absolute;left:-1.5px;top:-1.5px;width:3px;height:3px;border-radius:50%;background:var(--hud)}
+      #crosshair i{position:absolute;background:var(--hud);box-shadow:0 0 3px rgba(0,0,0,.7)}
+      #crosshair i:nth-child(1),#crosshair i:nth-child(2){width:2px;height:6px;left:-1px}
+      #crosshair i:nth-child(3),#crosshair i:nth-child(4){height:2px;width:6px;top:-1px}
+      #crosshair i:nth-child(1){bottom:calc(var(--gap) + 5px)}
+      #crosshair i:nth-child(2){top:calc(var(--gap) + 5px)}
+      #crosshair i:nth-child(3){right:calc(var(--gap) + 5px)}
+      #crosshair i:nth-child(4){left:calc(var(--gap) + 5px)}
+      body.locked #crosshair{opacity:.95}
       body.dead #crosshair{opacity:0}
-      #hitmarker{position:absolute;left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;pointer-events:none;opacity:0}
+      #hitmarker{left:50%;top:50%;width:22px;height:22px;margin:-11px 0 0 -11px;opacity:0}
       #hitmarker::before,#hitmarker::after{content:"";position:absolute;left:10px;top:0;width:2px;height:22px;background:#fff;transform:rotate(45deg);box-shadow:0 0 4px #000}
       #hitmarker::after{transform:rotate(-45deg)}
       #hitmarker.show{opacity:1}
       #hitmarker.head::before,#hitmarker.head::after{background:#ffd34d}
-      #hitmarker.kill::before,#hitmarker.kill::after{background:#ff5a5a}
-      #damage{position:absolute;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 140px rgba(255,40,40,.75);transition:opacity .2s}
+      #hitmarker.kill::before,#hitmarker.kill::after{background:var(--warn)}
+      #damage{inset:0;opacity:0;box-shadow:inset 0 0 160px rgba(255,50,30,.7);transition:opacity .2s}
       #damage.show{opacity:1;transition:none}
-      #vitals{position:absolute;left:16px;bottom:18px;width:220px;pointer-events:none;text-shadow:0 1px 3px #000}
-      #vitals .label{display:flex;justify-content:space-between;font-size:12px;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
-      .bar{height:8px;margin-top:4px;background:rgba(5,10,24,.7);border:1px solid rgba(127,240,255,.35);border-radius:4px;overflow:hidden}
-      .bar div{height:100%;transform-origin:left center;background:linear-gradient(90deg,#38e1ff,#7ff0ff)}
-      .bar div.low{background:linear-gradient(90deg,#ff4d4d,#ff8a5a)}
-      #arsenal{position:absolute;right:16px;bottom:18px;min-width:200px;text-align:right;pointer-events:none;text-shadow:0 1px 3px #000}
-      #weapon-name{font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:#7ff0ff}
-      #weapon-ammo{font-size:26px;font-weight:600;font-variant-numeric:tabular-nums}
-      #weapon-ammo.low{color:#ff8a5a}
-      #arsenal .bar div{transform:scaleX(0)}
-      #arsenal small{display:block;font-size:11px;opacity:.7;margin-top:4px}
-      #killfeed{position:absolute;right:16px;top:40px;font-size:13px;text-align:right;pointer-events:none}
-      #killfeed div{background:rgba(5,10,24,.65);padding:4px 8px;border-radius:6px;margin-top:4px}
-      #dead{position:absolute;inset:0;display:none;place-items:center;font-size:20px;letter-spacing:.08em;text-transform:uppercase;color:#ff8a8a;background:rgba(40,0,0,.35);pointer-events:none}
+      #dead{inset:0;display:none;place-items:center;font-size:20px;letter-spacing:.14em;text-transform:uppercase;color:#ffd0c8;background:rgba(30,6,4,.35)}
       #dead.show{display:grid}
-      #prompt{position:absolute;inset:auto 0 28px 0;text-align:center;font-size:14px;pointer-events:none}
-      #prompt span{background:rgba(5,10,24,.72);border:1px solid rgba(127,240,255,.35);padding:8px 14px;border-radius:8px}
+      #prompt{inset:auto 0 32px 0;text-align:center;font-size:14px}
+      #prompt span{background:var(--panel);border:1px solid var(--hud-dim);padding:8px 16px}
       body.locked #prompt{display:none}
-      #error{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:24px}
+      #loading{inset:0;display:none;place-items:center;font-size:14px;letter-spacing:.24em;text-transform:uppercase;background:linear-gradient(#5d82b8,#b3c7da)}
+      body.loading #loading{display:grid}
+      body.loading #prompt{display:none}
+      #error{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:24px;color:#0d1520}
+      @media (max-width:640px){#tracker{width:110px;height:110px}#killfeed{bottom:136px}#weapon-ammo{font-size:24px}#weapon-rounds,#arsenal .bar{width:130px}#vitals{top:56px}}
       @media (prefers-reduced-motion: reduce){#crosshair,#damage{transition:none}}
     </style>
   </head>
-  <body>
+  <body class="loading">
     <div id="stage">
-      <div id="hud"><h1>Vector Arena</h1><p>WASD move · Mouse look · Space jump · Shift sprint</p><p>Click fire · 1 / 2, Q or wheel switch · R reload</p></div>
-      <div id="status" aria-live="polite"></div>
-      <div id="crosshair" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-      <div id="hitmarker" aria-hidden="true"></div>
-      <div id="damage" aria-hidden="true"></div>
-      <div id="killfeed" aria-live="polite"></div>
-      <div id="vitals"><div class="label"><span>Health</span><span id="health-text">100</span></div><div class="bar"><div id="health-fill"></div></div></div>
-      <div id="arsenal"><div id="weapon-name">Assault Rifle</div><div id="weapon-ammo">32 / 32</div><div class="bar"><div id="weapon-reload"></div></div><small>1 Assault Rifle · 2 Battle Rifle</small></div>
-      <div id="dead" role="status"></div>
-      <div id="prompt"><span>Click the arena to look around · Esc releases the mouse</span></div>
+      <div id="hud" class="hud"><h1>Vector Arena</h1><p>WASD move · Mouse look · Space jump · Shift sprint</p><p>Click fire · 1 / 2, Q or wheel switch · R reload</p></div>
+      <div id="vitals" class="hud"><div class="label"><span>Health</span><span id="health-text">100</span></div><div class="bar"><div id="health-fill"></div></div></div>
+      <div id="arsenal" class="hud"><div id="weapon-name">Assault Rifle</div><div id="weapon-ammo">32</div><div id="weapon-rounds" aria-hidden="true"></div><div class="bar"><div id="weapon-reload"></div></div><small>1 Assault Rifle · 2 Battle Rifle</small></div>
+      <canvas id="tracker" class="hud" aria-label="Motion tracker" role="img"></canvas>
+      <div id="killfeed" class="hud" aria-live="polite"></div>
+      <div id="status" class="hud" aria-live="polite"></div>
+      <div id="crosshair" class="hud" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <div id="hitmarker" class="hud" aria-hidden="true"></div>
+      <div id="damage" class="hud" aria-hidden="true"></div>
+      <div id="dead" class="hud" role="status"></div>
+      <div id="prompt" class="hud"><span>Click the arena to look around · Esc releases the mouse</span></div>
+      <div id="loading" class="hud" role="status">Loading the arena…</div>
       <div id="error" role="alert"></div>
     </div>
     <script type="module" src="./index.ts"></script>
