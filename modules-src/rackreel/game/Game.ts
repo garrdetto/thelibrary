@@ -72,6 +72,7 @@ import { Bowfishing } from './Bowfishing'
 import { BOWBOAT, deckHeight } from './BowBoat'
 import { Clock, hourFromSearch } from '../systems/TimeOfDay'
 import { Lighting, type LightingLook } from '../world/Lighting'
+import type { ControlRow } from '../ui/Controls'
 import { buildHighway } from '../world/Highway'
 import { Weeds } from '../world/Weeds'
 
@@ -140,6 +141,8 @@ export interface GameExtension {
   spawn?(): { at: Vector3; facing: number } | null
   /** The name shown for where the player is, or null to use the lake country's names. */
   placeName?(x: number, z: number): string | null
+  /** The host world's own keys, listed in the Esc menu after Rack & Reel's. */
+  controls?(): ControlRow[]
 }
 
 export interface GameOptions {
@@ -800,6 +803,7 @@ export class Game {
         this.ctx.sensitivity = s
         saveSensitivity(s)
       },
+      controls: () => this.ext?.controls?.() ?? [],
       graphics: () => ({ shadows: this.ctx.shadowLayers.enabled }),
       setGraphics: (g) => {
         this.ctx.shadowLayers.setEnabled(g.shadows)

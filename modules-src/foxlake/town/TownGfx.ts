@@ -20,6 +20,8 @@ import { sceneToTown } from '../region'
 const CELL = 128
 const NEAR = 190
 const PROBE_SIZE = 64
+/** Sky light on the town's PBR surfaces by day: high enough that the shaded side of a house or car isn't murky. */
+const ENV_DAY = 1.15
 
 export class TownGfx implements GfxHost {
   private readonly cells = new Map<string, Set<AbstractMesh>>()
@@ -90,7 +92,7 @@ export class TownGfx implements GfxHost {
     probe.refreshRate = 0
     probe.position.set(0, 40, 0)
     this.scene.environmentTexture = probe.cubeTexture
-    this.scene.environmentIntensity = 0.85
+    this.scene.environmentIntensity = ENV_DAY
     this.probe = probe
   }
 
@@ -101,7 +103,7 @@ export class TownGfx implements GfxHost {
     this.lastNight = night
     this.lastGlow = glow
     this.probe.cubeTexture.resetRefreshCounter()
-    this.scene.environmentIntensity = 0.85 - night * 0.6
+    this.scene.environmentIntensity = ENV_DAY - night * 0.75
   }
 
   dispose(): void {

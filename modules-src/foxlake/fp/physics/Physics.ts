@@ -270,6 +270,41 @@ export class Physics {
     return moved;
   }
 
+  private walkerShape: RAPIER.Capsule | null = null;
+  private walkerKey = '';
+  private readonly vehicleHits: RAPIER.Collider[] = [];
+
+  /**
+   * Pushes a standing walker (feet at `y`, `height` tall, radius `r`) out of
+   * every vehicle it overlaps, yours and the neighbours' (vehicles move, so
+   * they aren't among the static solids), in the horizontal plane. Returns
+   * true when it moved. A walker standing on a vehicle isn't pushed off.
+   */
+  pushOutVehicles(p: { x: number; z: number }, y: number, r: number, height = 1.75): boolean {
+    const half = Math.max(0.05, height / 2 - r);
+    const key = `${half}|${r}`;
+    if (!this.walkerShape || this.walkerKey !== key) { this.walkerShape = new RAPIER.Capsule(half, r); this.walkerKey = key; }
+    const shape = this.walkerShape;
+    const pos = { x: p.x, y: y + height / 2, z: p.z }, rot = { x: 0, y: 0, z: 0, w: 1 };
+    const hits = this.vehicleHits;
+    hits.length = 0;
+    this.world.intersectionsWithShape(pos, rot, shape, c => { hits.push(c); return true; }, undefined, groups(CG.CHARACTER, CG.VEHICLE | CG.REMOTE));
+    let moved = false;
+    for (const c of hits) {
+      const contact = c.contactShape(shape, pos, rot, 0);
+      if (!contact || contact.distance >= 0) continue;
+      const n = contact.normal1, h = Math.hypot(n.x, n.z);
+      if (h < 0.35) continue;
+      const push = Math.min(1, -contact.distance / h);
+      pos.x += (n.x / h) * push;
+      pos.z += (n.z / h) * push;
+      moved = true;
+    }
+    p.x = pos.x;
+    p.z = pos.z;
+    return moved;
+  }
+
   /** True when a circle of radius `r` at (x, z), from `y` up, overlaps a static solid taller than a curb. */
   blocked(x: number, z: number, y: number, r: number): boolean {
     const probe = { x, z };

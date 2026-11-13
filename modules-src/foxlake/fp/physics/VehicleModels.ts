@@ -116,7 +116,10 @@ export interface VehicleView {
   destroy(): void;
 }
 
-const FINISH = { gloss: { metal: 0.15, gloss: 0.82, cc: 1 }, metallic: { metal: 0.55, gloss: 0.74, cc: 1 }, matte: { metal: 0.05, gloss: 0.28, cc: 0 } } as const;
+/** Paint finishes: low metal so bodies read as painted steel under a glossy clear coat (which keeps the bright HDR highlights), not chrome. */
+const FINISH = { gloss: { metal: 0.02, gloss: 0.84, cc: 1 }, metallic: { metal: 0.16, gloss: 0.78, cc: 1 }, matte: { metal: 0, gloss: 0.28, cc: 0 } } as const;
+/** Most metal an authored (uploaded or built-in) body panel may keep; chrome trim on rims is ours and unaffected. */
+const BODY_METAL_CAP = 0.25;
 const hex = (h: string | number) => { const n = typeof h === 'number' ? h : parseInt(h.slice(1), 16); return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255] as [number, number, number]; };
 
 function opaque(m: PBRMaterial) {
@@ -188,36 +191,52 @@ function cloneOf(src: Mesh, parent: TransformNode, material: Material, cast = tr
 }
 
 const isGlass = (m: PBRMaterial) => m.transparencyMode === PBRMaterial.PBRMATERIAL_ALPHABLEND || m.transparencyMode === PBRMaterial.PBRMATERIAL_ALPHATESTANDBLEND;
+const GLASS_NAME = /glass|window|windshield|windscreen|glazing/i;
+/** Lamp lenses glow; they stay as authored instead of turning into window glass. */
+const glowing = (m: PBRMaterial) => !!m.emissiveTexture || m.emissiveColor.r + m.emissiveColor.g + m.emissiveColor.b > 0.05;
 
 /**
  * glTF materials as they come out of the asset pipeline: palette-merged, so a
  * blended material is a whole greenhouse of glass and every opaque one still
  * carries the palette's alpha. Opaque parts are forced opaque with depth
- * writes and back-face culling (no sorting against the glass); glass becomes
- * a dielectric with reflections that don't fade with its alpha, so windows
- * read as tinted glass instead of holes. Shared materials are fixed once.
+ * writes and back-face culling (no sorting against the glass) and keep at most
+ * BODY_METAL_CAP of metal. Every window (blended materials, and opaque ones
+ * named as glass or windows) is replaced by clear glass: a nearly colourless,
+ * mostly see-through dielectric whose sky reflections don't fade with its
+ * alpha. Shared materials are fixed once.
  */
 const fixed = new WeakSet<Material>();
+const glassMats = new WeakSet<Material>();
 function fixModelMaterials(model: TransformNode) {
   for (const mesh of meshesOf(model)) {
     const m = mesh.material;
     if (!(m instanceof PBRMaterial)) continue;
-    if (isGlass(m)) (mesh as Mesh).useVertexColors = false;
+    const glass = glassMats.has(m) || (!fixed.has(m) && (isGlass(m) || GLASS_NAME.test(m.name)) && !glowing(m));
+    if (glass) (mesh as Mesh).useVertexColors = false;
     if (fixed.has(m)) continue;
     fixed.add(m);
-    if (!isGlass(m)) { opaque(m); continue; }
-    m.opacityTexture = null;
-    m.albedoTexture = null;
-    m.useAlphaFromAlbedoTexture = false;
-    m.albedoColor = new Color3(0.0028, 0.0037, 0.0048);
-    m.metallicTexture = null; m.reflectivityTexture = null; m.microSurfaceTexture = null;
-    m.metallic = 0; m.roughness = 0.06;
-    m.alpha = 0.86;
-    m.useRadianceOverAlpha = true; m.useSpecularOverAlpha = true;
-    m.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
-    m.backFaceCulling = true;
-    m.needDepthPrePass = true;
+    if (!glass) {
+      opaque(m);
+      m.metallic = Math.min(m.metallic ?? 1, BODY_METAL_CAP);
+      continue;
+    }
+    glassMats.add(m);
+    clearGlass(m);
   }
+}
+
+function clearGlass(m: PBRMaterial) {
+  m.opacityTexture = null;
+  m.albedoTexture = null;
+  m.useAlphaFromAlbedoTexture = false;
+  m.albedoColor = new Color3(0.82, 0.88, 0.9);
+  m.metallicTexture = null; m.reflectivityTexture = null; m.microSurfaceTexture = null; m.bumpTexture = null;
+  m.metallic = 0; m.roughness = 0.03;
+  m.alpha = 0.14;
+  m.useRadianceOverAlpha = true; m.useSpecularOverAlpha = true;
+  m.transparencyMode = PBRMaterial.PBRMATERIAL_ALPHABLEND;
+  m.backFaceCulling = true;
+  m.needDepthPrePass = true;
 }
 
 /**

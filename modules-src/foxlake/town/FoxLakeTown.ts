@@ -44,6 +44,8 @@ import { Neighbors } from './Neighbors'
 import { TownGfx } from './TownGfx'
 import { GROUND_RECT, buildConnector, buildTownGround, fillerTrees } from './TownGround'
 import { TownHud } from './TownHud'
+import { WorldMap } from './WorldMap'
+import type { ControlRow } from '../../rackreel/ui/Controls'
 import { RegionCuller } from '../core/RegionCuller'
 import { CasinoHost, CASINO_NAME } from '../casino/CasinoHost'
 import { CASINO } from '../casino/CasinoLayout'
@@ -92,6 +94,7 @@ export class FoxLakeTown implements GameExtension {
   private cars!: Cars
   private neighbors!: Neighbors
   private hud!: TownHud
+  private map: WorldMap | null = null
   private net: Transport | null = null
   private netStatus: NetStatus = 'connecting'
   private selfId: string | null = null
@@ -218,6 +221,22 @@ export class FoxLakeTown implements GameExtension {
     truck.fp.hitch(trailer.fp)
     this.cars.add('mower', SPAWN.x + 4, SPAWN.z + 6, 0, null)
     await this.casino.ready(host)
+    this.map = new WorldMap({
+      world: {
+        terrain: host.terrain,
+        blocked: (x, z) => this.physics.blocked(x, z, 0, 1),
+        streetName: (x, z) => {
+          const name = this.placeName(x, z)
+          return name && name !== 'Fox Plains' && name !== 'Fox Lake woods' && name !== CASINO_NAME ? name : null
+        },
+      },
+      where: () => {
+        const v = host.driving
+        return v ? { x: v.position.x, z: v.position.z, heading: v.heading } : { x: host.player.x, z: host.player.z, heading: host.facing }
+      },
+      toast: (text) => host.hud.toast(text),
+      canvas: host.ctx.engine.getRenderingCanvas(),
+    })
     addEventListener('keydown', (e) => this.key(e))
     this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
@@ -406,6 +425,7 @@ export class FoxLakeTown implements GameExtension {
     this.neighbors.update(dt, night, focus)
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
     this.casino.update(dt)
+    this.map?.update(dt)
     const yaw = this.host.ctx.camera.rotation.y
     this.hud.updateMap(dt, zoneAt(this.host.player.z) === 'town', focus, { x: Math.sin(yaw), y: -Math.cos(yaw) }, this.houses.world, this.account?.id ?? null)
     this.netAcc += dt
@@ -473,11 +493,14 @@ export class FoxLakeTown implements GameExtension {
 
   // ------------------------------------------------------------ the walker
 
+  /** Town solids near town, and parked or moving vehicles anywhere (cars can drive out into the lake country). */
   collide(p: Vector3, r: number): void {
-    if (p.z < HALF - 8) return
+    if (!this.physics) return
     const t = sceneToTown(p.x, p.y, p.z, this._t)
     const q = { x: t.x, z: t.z }
-    if (!this.physics.pushOut(q, t.y, r)) return
+    const hitStatic = p.z >= HALF - 8 && this.physics.pushOut(q, t.y, r)
+    const hitVehicle = this.physics.pushOutVehicles(q, t.y, r)
+    if (!hitStatic && !hitVehicle) return
     const s = townToScene(q.x, t.y, q.z, this._t)
     p.x = s.x
     p.z = s.z
@@ -571,7 +594,8 @@ export class FoxLakeTown implements GameExtension {
 
   private key(e: KeyboardEvent): void {
     if (!this.host.playing || e.repeat || this.host.hud.modalOpen) return
-    if (e.code === GARAGE_KEY) this.swapGarageVehicle()
+    if (e.code === 'ControlLeft' || e.code === 'ControlRight') this.map?.show()
+    else if (e.code === GARAGE_KEY) this.swapGarageVehicle()
     else if (e.code === HOME_KEY) this.goHome()
   }
 
@@ -621,6 +645,14 @@ export class FoxLakeTown implements GameExtension {
     store.set(key, String(Date.now()))
     this.standAtHome(home)
     this.host.hud.toast('Home sweet home. Your vehicles are where you left them.')
+  }
+
+  controls(): ControlRow[] {
+    return [
+      { keys: ['Ctrl'], text: 'Full map: click a spot for turn-by-turn directions' },
+      { keys: ['V'], text: 'Bring out your next vehicle' },
+      { keys: ['H'], text: 'Go home (every 15 minutes)' },
+    ]
   }
 
   get roomCode(): string | null {
