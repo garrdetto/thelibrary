@@ -44,6 +44,7 @@ import { customVehicleRecord, type CustomVehicleRecord } from '../../../maplestr
 import { lampTriangles, type LampDepth, type LampSize, type Shape } from '../../../maplestreet/shared/Shapes';
 import { carStyleKey, type CarStyle } from '../../../maplestreet/shared/Cars';
 import { recolorPixels } from '../../../maplestreet/shared/PaintMask';
+import { glazeScan } from './ScanGlass';
 import { mowerMaterials, mowerMeshes, mowerSharedMaterials, type MowerPart } from './MowerModel';
 
 /** Built-in kinds drawn from primitives rather than a .glb. */
@@ -207,6 +208,10 @@ const glowing = (m: PBRMaterial) => !!m.emissiveTexture || m.emissiveColor.r + m
  */
 const fixed = new WeakSet<Material>();
 const glassMats = new WeakSet<Material>();
+
+/** Painted-on windows of scanned bodies turn into clear glass (ScanGlass); a host world can switch it off. */
+let glazeScans = true;
+export function setScanGlass(on: boolean): void { glazeScans = on; }
 function fixModelMaterials(model: TransformNode) {
   for (const mesh of meshesOf(model)) {
     const m = mesh.material;
@@ -460,7 +465,14 @@ class View implements VehicleView {
     holder.position.set(r.model.x, r.model.y, r.model.z);
     holder.rotation.y = (r.model.yaw * Math.PI) / 180;
     holder.scaling.setAll(r.model.scale);
-    if (inst) { sharpenScan(inst.root); fixModelMaterials(inst.root); inst.root.parent = holder; }
+    const scanned = new Map<Mesh, BaseTexture>();
+    if (inst) {
+      sharpenScan(inst.root); fixModelMaterials(inst.root); inst.root.parent = holder;
+      for (const mesh of meshesOf(inst.root)) {
+        const m = mesh.material;
+        if (mesh instanceof Mesh && m instanceof PBRMaterial && m.albedoTexture && !glassMats.has(m) && !glowing(m)) scanned.set(mesh, m.albedoTexture);
+      }
+    }
     else {
       const c = r.physics.chassis, s = 1 / r.model.scale;
       const box = CreateBox('body-box', { size: 1 }, scene);
@@ -511,6 +523,7 @@ class View implements VehicleView {
     lamp(r.lights.head, [1, 0.96, 0.86], this.head, 0.05, 0.11, 0.24, r.lampShapes?.head, r.lampShapes?.headSize, r.lampShapes?.headDepth, 1);
     lamp(r.lights.tail, [1, 0.08, 0.06], this.tail, 0.05, 0.12, 0.2, r.lampShapes?.tail, r.lampShapes?.tailSize, r.lampShapes?.tailDepth, -1);
     this.applyStyle();
+    if (scanned.size && glazeScans) void glazeScan(holder, scanned, () => !this.destroyed).then(g => { if (this.destroyed) for (const m of g.owned) m.dispose(); else this.owned.push(...g.owned); });
   }
 
   /** The riding mower, built from primitives (MowerModel.ts) instead of a downloaded body. */

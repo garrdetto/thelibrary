@@ -18,6 +18,7 @@ import { Constants } from '@babylonjs/core/Engines/constants';
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import type { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
+import type { Material } from '@babylonjs/core/Materials/material';
 import { ChunkedBuilders, MeshBuilder, hostRoot, meshEntity, hexRGB, mixRGB, disposeNode, finishMesh, type RGB } from '../core/Geo';
 import { pbr, type Mats } from '../core/Tex';
 import type { GroundLook } from '../core/GroundShader';
@@ -119,6 +120,8 @@ export interface TownOptions {
   ground?: boolean;
   /** Extra places to keep woodland off (a road out of town). */
   keepClear?: (x: number, z: number) => boolean;
+  /** Makes the street surface by name (Fox Lake uses the lake country's asphalt for every road); default the town's own. */
+  asphalt?: (name: string) => Material;
 }
 const SPECIES: Species[] = ['maple', 'linden', 'spruce'];
 
@@ -226,7 +229,7 @@ export class Town {
   // ------------------------------------------------------------ roads
 
   private buildRoads() {
-    const asphalt = this.mats.ground('asphalt', 'asphalt', ASPHALT_LOOK);
+    const asphalt = this.opts.asphalt?.('asphalt') ?? this.mats.ground('asphalt', 'asphalt', ASPHALT_LOOK);
     const paintMat = this.mats.plain('road-paint', { gloss: 0.4, vcolor: true });
     paintMat.zOffset = -1; paintMat.zOffsetUnits = -2;
     const chunks = new ChunkedBuilders(256);
@@ -281,7 +284,7 @@ export class Town {
     });
 
     // Curved streets: ribbons along their centerlines (drawn over the straight asphalt where they join).
-    const curveMat = this.mats.ground('asphalt-curve', 'asphalt', ASPHALT_LOOK);
+    const curveMat = this.opts.asphalt?.('asphalt-curve') ?? this.mats.ground('asphalt-curve', 'asphalt', ASPHALT_LOOK);
     curveMat.zOffset = -0.5; curveMat.zOffsetUnits = -1;
     for (const c of CURVES) {
       for (let i = 0; i < c.pts.length - 1; i += 40) {

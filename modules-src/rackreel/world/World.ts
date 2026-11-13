@@ -78,6 +78,7 @@ export function buildGround(ctx: EngineContext, terrain: Terrain): Mesh {
   const marsh = [0.36, 0.38, 0.2]
   const rock = [0.45, 0.44, 0.41]
   const trail = [0.44, 0.36, 0.25]
+  const shoulder = [0.43, 0.39, 0.31]
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const k = j * n + i
@@ -97,6 +98,8 @@ export function buildGround(ctx: EngineContext, terrain: Terrain): Mesh {
       c = mixColor(c, mixColor(needles, moss, varN * 0.8), smoothstep(0.25, 0.65, forest))
       c = mixColor(c, marsh, marshWeight(angle) * smoothstep(2.0, 1.2, s))
       if (s > 1.2) c = mixColor(trail, c, smoothstep(1.4, 3.6, trailOffset(x, z)))
+      const road = terrain.shape.roadClear?.(x, z) ?? Infinity
+      if (road < 4) c = mixColor(shoulder, c, smoothstep(0, 4, road))
       c = mixColor(c, rock, smoothstep(0.5, 0.8, slope))
       c = mixColor(c, sand, smoothstep(1.4, 0.4, h) * (1 - marshWeight(angle) * 0.8))
       c = mixColor(c, mud, smoothstep(0.6, -0.2, h) * marshWeight(angle))
