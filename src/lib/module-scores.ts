@@ -22,6 +22,9 @@ export const scoredModules = {
   hotdog: { title: 'Richest Carts', metric: 'Cash', order: 'desc', unit: 'dollars', min: 1, max: 10_000_000, note: 'Cash on hand after the thirtieth day. Saved when the season ends.' },
   pingpong: { title: 'Longest Rallies', metric: 'Rally', order: 'desc', unit: 'hits', min: 2, max: 10_000, note: 'The longest rally in a match against the CPU, counting both players\' hits. Saved as you play, and finalized at match point.' },
   blockhead: { title: 'High Scores', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 100_000_000, note: 'Saved as you play, so a siege you leave unfinished still counts, and finalized when the last player falls or you start a new siege.' },
+  'greible-6': { title: 'Fastest 6-letter words', metric: 'Time', order: 'asc', unit: 'ms', decimals: 2, detail: 'Word', min: 1_000, max: 3_600_000, parent: 'greible', label: '6 letters', note: 'The clock starts on your first letter and stops when the word is solved. Saved only when you find the word.' },
+  'greible-7': { title: 'Fastest 7-letter words', metric: 'Time', order: 'asc', unit: 'ms', decimals: 2, detail: 'Word', min: 1_000, max: 3_600_000, parent: 'greible', label: '7 letters', note: 'The clock starts on your first letter and stops when the word is solved. Saved only when you find the word.' },
+  'greible-8': { title: 'Fastest 8-letter words', metric: 'Time', order: 'asc', unit: 'ms', decimals: 2, detail: 'Word', min: 1_000, max: 3_600_000, parent: 'greible', label: '8 letters', note: 'The clock starts on your first letter and stops when the word is solved. Saved only when you find the word.' },
   'proskater-story': { title: 'Story Runs', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Story', note: 'The best score in one two-minute Story run at any park. Saved as you skate, so a run cut short by closing the page or losing connection still counts, and finalized when the clock runs out.' },
   'proskater-blitz': { title: 'Timed Blitz', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Blitz', note: 'One minute at any park. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
   'proskater-showdown': { title: 'Half-Pipe Showdown', metric: 'Score', order: 'desc', unit: 'points', min: 1, max: 50_000_000, parent: 'proskater', label: 'Showdown', note: 'Sixty seconds, with tricks started inside the half-pipe zone scoring double. Saved as you skate, so a run cut short still counts, and finalized when the clock runs out.' },
@@ -31,6 +34,7 @@ export const scoredModules = {
 export type ScoredModuleId = keyof typeof scoredModules
 
 export const scoreBoardGroups: Partial<Record<string, ScoredModuleId[]>> = {
+  greible: ['greible-6', 'greible-7', 'greible-8'],
   proskater: ['proskater-blitz', 'proskater-showdown', 'proskater-story', 'proskater-free'],
 }
 
@@ -48,7 +52,7 @@ export function hasScoreBoard(moduleId: string) {
   return isScoredModule(moduleId) || Boolean(scoreBoardGroups[moduleId]?.length)
 }
 
-export type ModuleScore = { username: string; value: number; date: string }
+export type ModuleScore = { username: string; value: number; date: string; detail?: string | null }
 
 export type ModuleScoreBoard = { module: ScoredModuleId; records: ModuleScore[]; personalBest: number | null; signedIn: boolean }
 
@@ -56,16 +60,21 @@ export function isScoredModule(value: string): value is ScoredModuleId {
   return Object.prototype.hasOwnProperty.call(scoredModules, value)
 }
 
-export function formatDuration(ms: number) {
+export function formatDuration(ms: number, decimals = 3) {
   const minutes = Math.floor(ms / 60_000)
-  const seconds = ((ms % 60_000) / 1000).toFixed(3)
-  return minutes ? `${minutes}:${seconds.padStart(6, '0')}` : `${seconds} s`
+  const seconds = ((ms % 60_000) / 1000).toFixed(decimals)
+  return minutes ? `${minutes}:${seconds.padStart(decimals + 3, '0')}` : `${seconds} s`
+}
+
+export function scoreDetailLabel(module: ScoredModuleId): string | null {
+  const config = scoredModules[module]
+  return 'detail' in config ? config.detail : null
 }
 
 export function formatScore(module: ScoredModuleId, value: number) {
   const unit = scoredModules[module].unit
   if (unit === 'meters') return `${value.toLocaleString()} m`
-  if (unit === 'ms') return formatDuration(value)
+  if (unit === 'ms') { const config = scoredModules[module]; return formatDuration(value, 'decimals' in config ? config.decimals : 3) }
   if (unit === 'wpm') return `${value.toLocaleString()} wpm`
   if (unit === 'dollars') return `$${value.toLocaleString()}`
   if (unit === 'hits') return `${value.toLocaleString()} hits`

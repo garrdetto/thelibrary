@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import { LoaderCircle, RefreshCw, Trophy } from 'lucide-react'
 import { postReset, useRecordResetTarget } from './AdminRecordReset'
 import { learningModules } from '@/lib/modules'
-import { formatScore, scoreBoardParent, scoredModules } from '@/lib/module-scores'
+import { formatScore, scoreBoardParent, scoreDetailLabel, scoredModules } from '@/lib/module-scores'
 import type { ModuleScoreBoard, ScoredModuleId } from '@/lib/module-scores'
 
 type LoadState = 'loading' | 'ready' | 'error'
@@ -50,6 +50,7 @@ export function ModuleScoreboard({ module, username, tabs }: { module: ScoredMod
 
 
   const records = board?.records ?? []
+  const detailLabel = scoreDetailLabel(module)
   const mine = username?.toLowerCase()
   const myRank = mine ? records.findIndex(record => record.username.toLowerCase() === mine) : -1
 
@@ -72,8 +73,8 @@ export function ModuleScoreboard({ module, username, tabs }: { module: ScoredMod
     {state === 'error' && <p className="module-scores-status is-error" role="alert">The leaderboard is unavailable right now. <button type="button" onClick={() => void load()}>Try again</button></p>}
     {state === 'ready' && (records.length
       ? <div className="module-scores-scroll"><table>
-          <thead><tr><th scope="col">Rank</th><th scope="col">Username</th><th scope="col">{config.metric}</th><th scope="col">Date (UTC)</th></tr></thead>
-          <tbody>{records.map((record, index) => <tr key={`${record.username}:${record.date}:${index}`} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th><td>{formatScore(module, record.value)}</td><td>{record.date.slice(0, 10)}</td></tr>)}</tbody>
+          <thead><tr><th scope="col">Rank</th><th scope="col">Username</th>{detailLabel && <th scope="col">{detailLabel}</th>}<th scope="col">{config.metric}</th><th scope="col">Date (UTC)</th></tr></thead>
+          <tbody>{records.map((record, index) => <tr key={`${record.username}:${record.date}:${index}`} className={mine && record.username.toLowerCase() === mine ? 'is-mine' : undefined}><td>{String(index + 1).padStart(2, '0')}</td><th scope="row">{record.username}</th>{detailLabel && <td className="module-scores-detail">{record.detail ? record.detail.toUpperCase() : '—'}</td>}<td>{formatScore(module, record.value)}</td><td>{record.date.slice(0, 10)}</td></tr>)}</tbody>
         </table></div>
       : <p className="module-scores-status">No results on the board yet. {username ? 'Yours could be the first.' : 'Sign in and set the first one.'}</p>)}
   </section>

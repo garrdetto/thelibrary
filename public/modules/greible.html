@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Greible</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="module-base.css">
+<style>
+  main { --width: 640px; }
+  :root { --hit: #3fae5a; --near: #d9a92a; --miss: #3a4358; --tile: var(--cell); }
+  @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --miss: #8a93a6; } }
+  h1 { background: linear-gradient(135deg, #5fd068, #d9c22a); -webkit-background-clip: text; background-clip: text; }
+  .hud { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .lengths { display: flex; gap: 6px; }
+  .lengths button[aria-pressed="true"] { background: linear-gradient(135deg, #5fd068, #3fae5a); color: #061018; border-color: transparent; font-weight: 800; }
+  .lcd { min-width: 120px; padding: 6px 14px; border-radius: 10px; background: var(--cell); border: 1px solid var(--line); font: 600 26px "JetBrains Mono", monospace; text-align: center; font-variant-numeric: tabular-nums; }
+  .lcd.run { color: var(--accent); }
+  .lcd.done { color: var(--good); }
+  .grid { display: grid; gap: 6px; justify-content: center; margin: 4px auto 12px; }
+  .row { display: grid; gap: 6px; grid-template-columns: repeat(var(--n), var(--size)); }
+  .row.shake { animation: shake .4s; }
+  .tile { width: var(--size); height: var(--size); display: flex; align-items: center; justify-content: center; border: 2px solid var(--line); border-radius: 8px; background: var(--tile); font: 700 calc(var(--size) * .58) Rajdhani, sans-serif; text-transform: uppercase; user-select: none; }
+  .tile.filled { border-color: var(--muted); animation: pop .1s; }
+  .tile.hit, .tile.near, .tile.miss { color: #fff; border-color: transparent; animation: flip .45s ease both; animation-delay: calc(var(--i) * 70ms); }
+  .tile.hit { background: var(--hit); } .tile.near { background: var(--near); } .tile.miss { background: var(--miss); }
+  .row.won .tile { animation: hop .5s ease both; animation-delay: calc(var(--i) * 70ms + 300ms); }
+  @keyframes shake { 0%,100% { transform: none } 20%,60% { transform: translateX(-6px) } 40%,80% { transform: translateX(6px) } }
+  @keyframes pop { 50% { transform: scale(1.08) } }
+  @keyframes flip { 0% { transform: rotateX(0) } 50% { transform: rotateX(90deg) } 100% { transform: rotateX(0) } }
+  @keyframes hop { 40% { transform: translateY(-10px) } }
+  .msg { min-height: 22px; text-align: center; color: var(--warn); font-weight: 600; font-size: 14px; margin: 0 0 8px; }
+  .keys { display: grid; gap: 6px; user-select: none; }
+  .keys div { display: flex; gap: 5px; justify-content: center; }
+  .keys button { flex: 1 1 0; max-width: 46px; height: 52px; padding: 0; font: 700 16px Inter, sans-serif; text-transform: uppercase; background: var(--cell); touch-action: manipulation; }
+  .keys button.wide { max-width: 76px; flex: 1.6 1 0; font-size: 12px; }
+  .keys button.hit { background: var(--hit); color: #fff; border-color: transparent; }
+  .keys button.near { background: var(--near); color: #fff; border-color: transparent; }
+  .keys button.miss { background: var(--miss); color: #fff; opacity: .75; border-color: transparent; }
+  .overlay .word { font: 700 34px Rajdhani, sans-serif; letter-spacing: 6px; color: #fff; }
+  .overlay .time { font: 600 22px "JetBrains Mono", monospace; color: #8ff0a4; }
+  @media (max-width: 480px) { .keys button { height: 46px; font-size: 14px; } .lcd { font-size: 20px; min-width: 96px; } }
+  @media (prefers-reduced-motion: reduce) { .tile, .row { animation: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header class="top"><h1>Greible</h1><div class="stats"><div class="stat"><span>BEST</span><b id="best">—</b></div><div class="stat"><span>SOLVED</span><b id="solved">0</b></div><div class="stat"><span>STREAK</span><b id="streak">0</b></div></div></header>
+  <section class="panel" id="panel">
+    <div class="hud">
+      <div class="lengths" role="group" aria-label="Word length">
+        <button type="button" data-n="6" aria-pressed="false">6 letters</button>
+        <button type="button" data-n="7" aria-pressed="false">7 letters</button>
+        <button type="button" data-n="8" aria-pressed="false">8 letters</button>
+      </div>
+      <button type="button" id="newWord">New word</button>
+      <div class="lcd" id="clock" aria-label="Time">0:00.00</div>
+    </div>
+    <p class="msg" id="msg" role="status" aria-live="polite"></p>
+    <div class="grid" id="grid" aria-label="Guesses"></div>
+    <div class="keys" id="keys" aria-label="Keyboard"></div>
+    <div class="overlay" id="overlay"><h2 id="ovTitle">Solved!</h2><div class="word" id="ovWord"></div><div class="time" id="ovTime"></div><p id="ovText"></p><div><button class="primary" id="again">Next word</button><button id="close">View board</button></div></div>
+  </section>
+  <footer>Find the hidden word. Pick <b>6</b>, <b>7</b> or <b>8 letters</b>; you get one more guess than the word has letters. Every guess must be a real word. After each guess the tiles turn <b style="color:var(--hit)">green</b> for the right letter in the right spot, <b style="color:var(--near)">gold</b> for a letter that is in the word somewhere else, and grey for a letter that isn't in it. The clock starts on your first letter and stops when you solve it. Each length has its own leaderboard below, showing the word and your time; sign in to save yours. Keys: type letters, <kbd>Enter</kbd> to guess, <kbd>Backspace</kbd> to erase.</footer>
+</main>
+<script src="module-scores.js"></script>
+<script>
+'use strict';
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* storage unavailable */ } } };
+const $ = id => document.getElementById(id);
+const LENGTHS = [6, 7, 8], RECENT = 60;
+const lists = {};
+let n = LENGTHS.includes(Number(store.get('greible-length'))) ? Number(store.get('greible-length')) : 6;
+let answer = '', rows = [], current = '', done = false, busy = false, startAt = 0, endAt = 0, timer = 0, loadToken = 0;
+const keyState = {};
+
+function fmt(ms) {
+  const cs = Math.floor(ms / 10), m = Math.floor(cs / 6000), s = ((cs % 6000) / 100).toFixed(2);
+  return m + ':' + s.padStart(5, '0');
+}
+function fmtShort(ms) { return ms < 60000 ? (Math.floor(ms / 10) / 100).toFixed(2) + ' s' : fmt(ms); }
+
+function loadList(len) {
+  if (lists[len]) return lists[len];
+  const get = name => fetch('greible/' + name + '-' + len + '.txt').then(r => { if (!r.ok) throw new Error('missing'); return r.text(); }).then(t => t.split(/\s+/).filter(w => /^[a-z]+$/.test(w) && w.length === len));
+  lists[len] = Promise.all([get('answers'), get('words')]).then(([answers, words]) => ({ answers, words: new Set(words.concat(answers)) }));
+  lists[len].catch(() => { delete lists[len]; });
+  return lists[len];
+}
+
+function pickAnswer(answers) {
+  let recent = [];
+  try { recent = JSON.parse(store.get('greible-recent-' + n) || '[]'); } catch (e) { recent = []; }
+  const fresh = answers.filter(w => !recent.includes(w));
+  const pool = fresh.length ? fresh : answers;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  recent.push(pick);
+  store.set('greible-recent-' + n, JSON.stringify(recent.slice(-RECENT)));
+  return pick;
+}
+
+function stats() {
+  const best = Number(store.get('greible-best-' + n)) || 0;
+  $('best').textContent = best ? fmtShort(best) : '—';
+  $('solved').textContent = store.get('greible-solved-' + n) || '0';
+  $('streak').textContent = store.get('greible-streak-' + n) || '0';
+}
+
+function say(text) { $('msg').textContent = text; }
+
+function buildGrid() {
+  const grid = $('grid');
+  const width = Math.min(window.innerWidth * 0.94, 600);
+  const size = Math.max(30, Math.min(54, Math.floor((width - (n - 1) * 6) / n)));
+  grid.style.setProperty('--n', n);
+  grid.style.setProperty('--size', size + 'px');
+  grid.innerHTML = '';
+  for (let r = 0; r < n + 1; r++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'Guess ' + (r + 1));
+    for (let c = 0; c < n; c++) { const t = document.createElement('div'); t.className = 'tile'; t.style.setProperty('--i', c); row.appendChild(t); }
+    grid.appendChild(row);
+  }
+}
+
+function buildKeys() {
+  const keys = $('keys');
+  keys.innerHTML = '';
+  ['qwertyuiop', 'asdfghjkl', '+zxcvbnm-'].forEach(line => {
+    const div = document.createElement('div');
+    for (const ch of line) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      if (ch === '+') { b.textContent = 'Enter'; b.className = 'wide'; b.dataset.key = 'Enter'; }
+      else if (ch === '-') { b.textContent = '⌫'; b.className = 'wide'; b.dataset.key = 'Backspace'; b.setAttribute('aria-label', 'Backspace'); }
+      else { b.textContent = ch; b.dataset.key = ch; b.id = 'key-' + ch; }
+      div.appendChild(b);
+    }
+    keys.appendChild(div);
+  });
+}
+
+function paintRow(r) {
+  const row = $('grid').children[r];
+  if (!row) return;
+  const text = r === rows.length ? current : (rows[r] ? rows[r].word : '');
+  [...row.children].forEach((t, i) => {
+    t.textContent = text[i] || '';
+    t.className = 'tile' + (text[i] ? ' filled' : '');
+    if (rows[r]) { t.className = 'tile ' + rows[r].marks[i]; t.setAttribute('aria-label', text[i] + ' ' + ({ hit: 'correct spot', near: 'in the word', miss: 'not in the word' })[rows[r].marks[i]]); }
+    else t.removeAttribute('aria-label');
+  });
+}
+
+function score(guess) {
+  const marks = Array(n).fill('miss'), left = {};
+  for (let i = 0; i < n; i++) { if (guess[i] === answer[i]) marks[i] = 'hit'; else left[answer[i]] = (left[answer[i]] || 0) + 1; }
+  for (let i = 0; i < n; i++) if (marks[i] !== 'hit' && left[guess[i]]) { marks[i] = 'near'; left[guess[i]]--; }
+  return marks;
+}
+
+function paintKeys() {
+  document.querySelectorAll('#keys button[id]').forEach(b => { b.className = keyState[b.dataset.key] || ''; });
+}
+
+function tick() {
+  const now = endAt || (startAt ? performance.now() : 0);
+  const clock = $('clock');
+  clock.textContent = fmt(startAt ? now - startAt : 0);
+  clock.className = 'lcd' + (endAt ? ' done' : startAt ? ' run' : '');
+  if (startAt && !endAt) timer = requestAnimationFrame(tick);
+}
+
+async function newRound() {
+  const token = ++loadToken;
+  cancelAnimationFrame(timer);
+  done = true; busy = false; rows = []; current = ''; startAt = 0; endAt = 0;
+  for (const k in keyState) delete keyState[k];
+  $('overlay').classList.remove('show');
+  document.querySelectorAll('.lengths button').forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.n) === n)));
+  stats(); buildGrid(); paintKeys(); tick();
+  say('Loading words…');
+  try {
+    const list = await loadList(n);
+    if (token !== loadToken) return;
+    answer = pickAnswer(list.answers);
+    done = false;
+    say('');
+  } catch (e) {
+    if (token !== loadToken) return;
+    say('The word list could not load. Check your connection and press New word.');
+  }
+  try { if (window.parent !== window) window.parent.postMessage({ type: 'tl-score-board', module: 'greible-' + n }, window.location.origin); } catch (e) { /* not embedded */ }
+}
+
+function shake() {
+  const row = $('grid').children[rows.length];
+  if (!row) return;
+  row.classList.remove('shake'); void row.offsetWidth; row.classList.add('shake');
+}
+
+async function submitGuess() {
+  if (current.length < n) { say('Not enough letters.'); shake(); return; }
+  const list = await loadList(n);
+  if (!list.words.has(current)) { say('Not in the word list.'); shake(); return; }
+  const marks = score(current), word = current;
+  rows.push({ word, marks });
+  current = '';
+  const rank = { miss: 1, near: 2, hit: 3 };
+  for (let i = 0; i < n; i++) { const prev = keyState[word[i]]; if (!prev || rank[marks[i]] > rank[prev]) keyState[word[i]] = marks[i]; }
+  paintRow(rows.length - 1);
+  busy = true;
+  setTimeout(() => { busy = false; paintKeys(); }, n * 70 + 450);
+  if (word === answer) win();
+  else if (rows.length >= n + 1) lose();
+  else say('');
+}
+
+function win() {
+  endAt = performance.now();
+  done = true;
+  const ms = Math.max(10, Math.round((endAt - startAt) / 10) * 10);
+  tick();
+  $('grid').children[rows.length - 1].classList.add('won');
+  const bestKey = 'greible-best-' + n, prev = Number(store.get(bestKey)) || 0;
+  const record = !prev || ms < prev;
+  if (record) store.set(bestKey, String(ms));
+  store.set('greible-solved-' + n, String((Number(store.get('greible-solved-' + n)) || 0) + 1));
+  store.set('greible-streak-' + n, String((Number(store.get('greible-streak-' + n)) || 0) + 1));
+  stats();
+  let saveNote = '';
+  if (window.tlScores && ms >= 1000) window.tlScores.submit('greible-' + n, ms, { detail: answer });
+  else if (ms < 1000) saveNote = ' Times under one second are not saved.';
+  say('');
+  setTimeout(() => {
+    $('ovTitle').textContent = record ? 'New best!' : 'Solved!';
+    $('ovWord').textContent = answer.toUpperCase();
+    $('ovTime').textContent = fmtShort(ms);
+    $('ovText').textContent = 'Found in ' + rows.length + ' of ' + (n + 1) + ' guesses.' + saveNote;
+    $('overlay').classList.add('show');
+    $('again').focus();
+  }, n * 70 + 900);
+}
+
+function lose() {
+  done = true;
+  endAt = performance.now();
+  tick();
+  store.set('greible-streak-' + n, '0');
+  stats();
+  setTimeout(() => {
+    $('ovTitle').textContent = 'Out of guesses';
+    $('ovWord').textContent = answer.toUpperCase();
+    $('ovTime').textContent = '';
+    $('ovText').textContent = 'That was the word. Your streak for ' + n + ' letters starts over.';
+    $('overlay').classList.add('show');
+    $('again').focus();
+  }, n * 70 + 500);
+}
+
+function press(key) {
+  if (done || busy) return;
+  if (key === 'Enter') { void submitGuess(); return; }
+  if (key === 'Backspace') { current = current.slice(0, -1); paintRow(rows.length); return; }
+  if (/^[a-z]$/.test(key) && current.length < n) {
+    if (!startAt) { startAt = performance.now(); tick(); }
+    current += key; say(''); paintRow(rows.length);
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if ($('overlay').classList.contains('show')) return;
+  const target = e.target;
+  if (target && target.tagName === 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) {
+    if (target.closest('#keys')) { e.preventDefault(); press(target.dataset.key); }
+    return;
+  }
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (key === 'Enter' || key === 'Backspace' || /^[a-z]$/.test(key)) { e.preventDefault(); press(key); }
+});
+$('keys').addEventListener('click', e => { const b = e.target.closest('button'); if (b && e.detail !== 0) { press(b.dataset.key); b.blur(); } });
+document.querySelectorAll('.lengths button').forEach(b => b.addEventListener('click', () => {
+  const next = Number(b.dataset.n);
+  if (next === n && !done) return;
+  if (!done && startAt && rows.length && !confirm('Switching length gives up this word. Switch anyway?')) return;
+  n = next; store.set('greible-length', String(n)); b.blur(); void newRound();
+}));
+$('newWord').addEventListener('click', () => {
+  if (!done && startAt && !confirm('Give up this word and start a new one?')) return;
+  if (!done && startAt) store.set('greible-streak-' + n, '0');
+  $('newWord').blur(); void newRound();
+});
+$('again').addEventListener('click', () => void newRound());
+$('close').addEventListener('click', () => $('overlay').classList.remove('show'));
+let resizeTimer = 0;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { buildGrid(); for (let r = 0; r <= rows.length && r <= n; r++) paintRow(r); }, 120); });
+
+buildKeys();
+void newRound();
+</script>
+</body>
+</html>
