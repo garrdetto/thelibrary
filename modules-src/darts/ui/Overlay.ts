@@ -191,7 +191,7 @@ export class Overlay {
       : statusText ?? (mine ? (state.players.length > 1 || player.members ? `${who} to throw` : 'Your throw') : `${who} is throwing`)
     this.renderThrows(player.currentRoundThrows)
     this.renderCheckout(state, player)
-    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? (this.cross ? 'Hold to aim, let go in the green for height · click again in the green for line' : 'Hold to aim and power up · let go in the green · Space works too') : ''
+    this.hint.textContent = mine && state.status === 'playing' && !player.cpu ? 'Hold to aim, let go in the green for height · click again in the green for line · Space works too' : ''
   }
 
   private renderCards(state: GameState): void {
@@ -296,7 +296,7 @@ export class Overlay {
     }
   }
 
-  /** Turns the cross meter (test option) on or off: a side meter crossing the power meter at the green. */
+  /** Turns the cross meter on or off: a side meter crossing the power meter at the green. The page always runs it on. */
   setCross(on: boolean): void {
     if (on === this.cross) return
     this.cross = on

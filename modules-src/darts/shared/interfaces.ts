@@ -182,7 +182,7 @@ export interface ThrowIntent {
   speed: number
   yaw: number
   wobble: number
-  /** Cross meter (test option) only: where the horizontal meter stopped, as a fraction of the ideal speed off its middle (negative left, positive right). */
+  /** Cross meter only (every person's throw; the computer leaves it out): where the horizontal meter stopped, as a fraction of the ideal speed off its middle (negative left, positive right). */
   cross?: number
 }
 

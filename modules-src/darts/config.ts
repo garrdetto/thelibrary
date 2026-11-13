@@ -20,6 +20,8 @@ export interface DartsConfig {
     highTextureSize: number
     /** Lowest drawing-buffer height on the high and ultra tiers (supersamples smaller views up to the pixel-ratio cap). */
     renderHeightFloor: number
+    /** Below this frame rate for three seconds the render floor steps down (1080, then off). */
+    slowFps: number
     thickness: number
     surroundRadius: number
     surroundDepth: number
@@ -30,7 +32,7 @@ export interface DartsConfig {
     touchAimOffsetPx: number
     keyboardStepM: number
     keyboardFineM: number
-    /** Seconds for the power meter to swing from empty to full and back. */
+    /** Seconds for the height meter to swing from empty to full and back (the side meter sweeps at the same pace). */
     chargeSeconds: number
     /** Launch speed at the bottom and top of the meter, as fractions of the ideal speed. */
     chargeLow: number
@@ -63,14 +65,14 @@ export const config: DartsConfig = {
     },
     post: { enabled: true, effects: { bloom: { strength: 0.18, radius: 0.35, threshold: 0.92 }, vignette: 0.32 } },
   },
-  board: { textureSize: 2048, lowTextureSize: 1024, highTextureSize: 4096, renderHeightFloor: 1440, thickness: 0.038, surroundRadius: 0.33, surroundDepth: 0.03 },
+  board: { textureSize: 2048, lowTextureSize: 1024, highTextureSize: 4096, renderHeightFloor: 1440, slowFps: 45, thickness: 0.038, surroundRadius: 0.33, surroundDepth: 0.03 },
   room: { wall: '#3b1f1a', wallTrim: '#24120d', floor: '#5a3a24', oche: '#d9c9a3', cabinet: '#4a2a17' },
   camera: { eyeHeight: 1.62, distanceBehindOche: 0.3, boardHalfExtent: 0.3, minFov: 12, maxFov: 34 },
   gesture: {
     touchAimOffsetPx: 64,
     keyboardStepM: 0.005,
     keyboardFineM: 0.001,
-    chargeSeconds: 1.6,
+    chargeSeconds: 1.76,
     chargeLow: 0.7,
     chargeHigh: 1.2,
     holdWobble: 0.12,

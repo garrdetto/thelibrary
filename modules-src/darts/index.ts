@@ -144,26 +144,6 @@ function saveBoardStyle(style: BoardStyle): void {
   }
 }
 
-const METER_KEY = 'tl-darts-meter'
-
-type MeterStyle = 'classic' | 'cross'
-
-function savedMeterStyle(): MeterStyle {
-  try {
-    return localStorage.getItem(METER_KEY) === 'cross' ? 'cross' : 'classic'
-  } catch {
-    return 'classic'
-  }
-}
-
-function saveMeterStyle(style: MeterStyle): void {
-  try {
-    localStorage.setItem(METER_KEY, style)
-  } catch {
-    /* private mode */
-  }
-}
-
 const CPU_NAMES:Record<CpuLevel, string> = { pub: 'Pub regular', league: 'League player', county: 'County player', pro: 'Touring pro' }
 
 async function boot(): Promise<void> {
@@ -184,7 +164,19 @@ async function boot(): Promise<void> {
   const quality = resolveQuality(config.engine.quality, app.backend)
   app.setPixelRatioCap(quality.settings.pixelRatioCap)
   const sharp = quality.tier === 'high' || quality.tier === 'ultra'
-  if (sharp) app.setRenderHeightFloor(config.board.renderHeightFloor)
+  let renderFloor = sharp ? config.board.renderHeightFloor : 0
+  if (renderFloor) app.setRenderHeightFloor(renderFloor)
+  let slowFor = 0
+  /** Supersampling to 1440 lines is the heaviest thing the page does; on a device that can't keep up it steps down to 1080, then to the screen's own resolution. */
+  const adaptResolution = (dt: number) => {
+    const rate = app.frameRate
+    if (!renderFloor || !rate) return
+    slowFor = rate < config.board.slowFps ? slowFor + dt : Math.max(0, slowFor - dt * 0.5)
+    if (slowFor < 3) return
+    slowFor = 0
+    renderFloor = renderFloor > 1080 ? 1080 : 0
+    app.setRenderHeightFloor(renderFloor)
+  }
   app.own(applyEnvironment(app.scene, config.engine.environment))
   const lighting = app.own(createLighting(config.engine.lighting, { ...quality.settings, shadows: false }))
   lighting.follow(new THREE.Vector3(0, BULL_HEIGHT, 0))
@@ -236,8 +228,16 @@ async function boot(): Promise<void> {
   app.graph.add('fx', reticle)
   app.own({ dispose() { reticleMaterial.dispose(); reticleRing.dispose(); reticleDot.dispose() } })
 
+  /** The dart in hand follows the aim every frame; its shadow would only fall on the floor behind the oche, and casting one made the board lamp's shadow map redraw on every mouse move. */
+  const handDart = (color: string) => {
+    const dart = kit.create(color)
+    dart.traverse((node) => {
+      node.castShadow = false
+    })
+    return dart
+  }
   let handColor = config.dart.flightColors[0]
-  let hand = kit.create(handColor)
+  let hand = handDart(handColor)
   let handVersion = kit.version
   app.graph.add('props', hand)
   const handWorld = new THREE.Vector3(RELEASE[0], RELEASE[1] + BULL_HEIGHT, RELEASE[2])
@@ -282,23 +282,8 @@ async function boot(): Promise<void> {
   })
   app.own(input)
   input.setAim(input.aimX, input.aimY)
-  const meterRadios = () => [...document.querySelectorAll<HTMLInputElement>('input[name="meterStyle"], input[name="pauseMeter"]')]
-  const applyMeter = (style: MeterStyle) => {
-    for (const radio of meterRadios()) radio.checked = radio.value === style
-    if (input.holding) input.interrupt()
-    input.cross = style === 'cross'
-    overlay.setCross(input.cross)
-    meterKey = ''
-    if (shown) overlay.render(shown, localIds)
-  }
-  for (const radio of meterRadios()) {
-    radio.addEventListener('change', () => {
-      if (!radio.checked) return
-      const style: MeterStyle = radio.value === 'cross' ? 'cross' : 'classic'
-      saveMeterStyle(style)
-      applyMeter(style)
-    })
-  }
+  input.cross = true
+  overlay.setCross(true)
 
   const refreshHand = () => {
     const state = session?.state ?? null
@@ -312,7 +297,7 @@ async function boot(): Promise<void> {
       handVersion = kit.version
       const visible = hand.visible
       hand.removeFromParent()
-      hand = kit.create(color)
+      hand = handDart(color)
       hand.visible = visible
       app.graph.add('props', hand)
       placeHand(input.aimX, input.aimY)
@@ -846,7 +831,6 @@ async function boot(): Promise<void> {
   const stageSize = { width: container.clientWidth, height: container.clientHeight }
   const hudSize = { width: overlay.hud.clientWidth, height: overlay.hud.clientHeight }
   let meterKey = ''
-  applyMeter(savedMeterStyle())
   const sizes = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const target = entry.target === container ? stageSize : hudSize
@@ -881,6 +865,7 @@ async function boot(): Promise<void> {
     placeMeter()
     flights.update(Math.min(dt, 0.1))
     refreshHand()
+    adaptResolution(dt)
   })
 
   await app.prewarm()
