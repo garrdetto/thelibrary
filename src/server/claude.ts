@@ -8,13 +8,6 @@ const WEB_SEARCH_TOOL = 'web_search_20260318'
 const FALLBACK_BETA = 'server-side-fallback-2026-07-01'
 const THINKING_ROOM = 24000
 
-export const STUDIO_MODEL = 'claude-opus-5-5'
-export const STUDIO_EFFORT: ClaudeEffort = 'high'
-export const CHAT_MODEL = STUDIO_MODEL
-export const LYRICS_MODEL = STUDIO_MODEL
-export const IMAGE_MODEL = STUDIO_MODEL
-export const RESEARCH_MODEL = STUDIO_MODEL
-
 export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type ClaudeImageType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
@@ -95,20 +88,4 @@ export function toolInput<T>(response: ClaudeResponse, name: string): T | null {
 
 export function stoppedForSafety(response: ClaudeResponse) {
   return response.stop_reason === 'refusal'
-}
-
-export function asClaudeImage(mime: string | null | undefined): ClaudeImageType | null {
-  const type = (mime || 'image/png').toLowerCase()
-  return type === 'image/png' || type === 'image/jpeg' || type === 'image/webp' || type === 'image/gif' ? type : null
-}
-
-export function alternate(messages: { role: 'user' | 'assistant'; content: string }[]): ClaudeMessage[] {
-  const merged: { role: 'user' | 'assistant'; content: string }[] = []
-  for (const message of messages) {
-    const last = merged[merged.length - 1]
-    if (last && last.role === message.role) last.content = `${last.content}\n\n${message.content}`
-    else merged.push({ ...message })
-  }
-  while (merged.length && merged[0].role !== 'user') merged.shift()
-  return merged
 }

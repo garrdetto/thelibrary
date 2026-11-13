@@ -24,9 +24,9 @@ type Area = (typeof areas)[number]['id']
 const sections = [
   { id: 'overview', area: 'site', group: 'Dashboard', label: 'Overview', icon: LayoutDashboard, title: 'Overview', blurb: 'Everything you manage on the library at a glance.' },
   { id: 'library', area: 'site', group: 'Library', label: 'Module order', icon: LayoutGrid, title: 'Module order', blurb: 'Arrange the homepage library and sidebar, pick the featured module and hide modules you are not ready to show.' },
-  { id: 'chat', area: 'site', group: 'Studios', label: 'AI Chat', icon: MessageCircle, title: 'AI Chat', blurb: 'Talk ideas through with Claude Opus 5.5.' },
-  { id: 'image', area: 'site', group: 'Studios', label: 'Image Studio', icon: Image, title: 'Image Studio', blurb: 'Claude Opus 5.5 draws and edits vector pictures from a description.' },
-  { id: 'lyrics', area: 'site', group: 'Studios', label: 'Lyric Studio', icon: Music2, title: 'Lyric Studio', blurb: 'Write, fine-tune and revamp song lyrics with Claude Opus 5.5.' },
+  { id: 'chat', area: 'site', group: 'Studios', label: 'AI Chat', icon: MessageCircle, title: 'AI Chat', blurb: 'Talk ideas through with Gemini.' },
+  { id: 'image', area: 'site', group: 'Studios', label: 'Image Studio', icon: Image, title: 'Image Studio', blurb: 'Create and edit pictures from a description with Gemini.' },
+  { id: 'lyrics', area: 'site', group: 'Studios', label: 'Lyric Studio', icon: Music2, title: 'Lyric Studio', blurb: 'Write, fine-tune and revamp song lyrics with Gemini.' },
   { id: 'voice', area: 'site', group: 'Studios', label: 'Voice Generator', icon: AudioLines, title: 'Voice Generator', blurb: 'Design, remix and delete ElevenLabs voices, then hear them read your own text.' },
   { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
   { id: 'changes', area: 'site', group: 'Site', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
