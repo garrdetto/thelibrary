@@ -1,0 +1,6 @@
+{
+  "id": "arena",
+  "title": "Vector Arena",
+  "accent": "#38e1ff",
+  "modes": ["solo", "online"]
+}

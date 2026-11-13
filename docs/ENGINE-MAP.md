@@ -643,6 +643,18 @@ A separate 4 × 4 km world (airport and helicopters to come) in a glossy realist
 - `modules-src/pingpong/index.ts` — entry; provides `window.Peer`, imports `pingpong.js` — `index.html`.
 - `modules-src/pingpong/pingpong.js` — table tennis in metres (x across, y along the table, z up): ball flight with gravity plus topspin and sidespin accelerations (`stepBall`), table bounce with spin kick, net and net-cord, `solve` aims a stroke at a landing point over the net, strokes (`STROKES`: drive, loop, chop, smash, drop, comet, stretch) with error from contact quality, stroke risk and incoming spin, serves found by simulating candidate tosses, rules (`handleEvents`: fault, let, double bounce, net, out, winner; sets to 11 win by 2, serve every two points), CPU levels (`LEVELS`: reaction, speed, quality, unforced and pressure errors; `predict` plans the intercept), dash and stretch saves, perspective canvas renderer flipped for the far player, PeerJS rooms `tl-pingpong-<code>` (host simulates; guest sends its paddle and stroke keys, host sends 30 Hz snapshots), `tl-host`/`tl-room` invites, longest rally vs CPU to `pingpong` scores — `index.ts`.
 
+### arena — Vector Arena (`modules-src/arena/`, Babylon.js 9.34 WebGL2, not on `engine/`; details in its `README.md`)
+- `modules-src/arena/index.html` — page shell, HUD, crosshair and pointer-lock prompt — `vite.modules.ts` (→ `public/modules/arena.html`).
+- `modules-src/arena/index.ts` — entry; starts `client/main.ts` and shows an error card if the 3D view can't start — `index.html`.
+- `modules-src/arena/client/main.ts` — Babylon `Engine` and `Scene` with `collisionsEnabled` and `gravity` (−20 m/s²), builds environment, materials and map, first-person player, optional online play from `?server=<origin>`, ring and glow animation (off with reduced motion), `window.__arena` — `index.ts`.
+- `modules-src/arena/client/scene/Environment.ts` — procedural cube skybox painted on six canvases (`CubeTexture.CreateFromImages`), hemispheric fill, directional sun with a 2048 PCF `ShadowGenerator`, `GlowLayer`, exponential fog — `main.ts`.
+- `modules-src/arena/client/scene/Materials.ts` — `StandardMaterial`s: floor, hull, panel, cover, trim and emissive energy (blue, red, white) — `main.ts`.
+- `modules-src/arena/client/scene/Arena.ts` — the map from boxes, cylinders and tori, mirrored across x = 0 and z = 0: floor, perimeter walls with glowing bands and bevelled corners, overhead beams, two bases (deck at `BASE_DECK` 4 m, `rampZ` ramps, cover, back wall, side bridges), side catwalks with ramps, raised centre platform with four ramps and the energy pylon and rings, mid-field cover. Every map mesh has `checkCollisions`; `spawn(team)` — `main.ts`.
+- `modules-src/arena/client/player/FirstPerson.ts` — hidden ellipsoid body moved by `moveWithCollisions` with `scene.gravity`, ground and ceiling detection, jump, sprint, fall-out respawn; `UniversalCamera` mouse look with pointer lock — `main.ts`.
+- `modules-src/arena/client/net/Connection.ts`, `RemotePlayers.ts` — socket.io-client to the `/arena` namespace, 10 Hz pose sends, team-coloured capsules for other players — `main.ts`.
+- `modules-src/arena/shared/protocol.mjs` (+ `.d.mts`) — namespace, events and limits for client and server.
+- `modules-src/arena/server/arena.mjs` — `attachArena(io, origins)`: `/arena` Socket.IO namespace (teams, pose validation, 10 Hz state). Not yet attached to the Railway service.
+
 ### party — Skill Party
 - `modules-src/party/index.html` — page shell and all styles — `vite.modules.ts` (→ `public/modules/party.html`).
 - `modules-src/party/index.ts` — entry; provides `window.Peer`, imports `party.js` — `index.html`.
