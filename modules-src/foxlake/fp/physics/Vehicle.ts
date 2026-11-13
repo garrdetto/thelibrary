@@ -227,7 +227,7 @@ export class Vehicle {
     for (let i = 0; i < wheels.length; i++) {
       const w = wheels[i];
       const len = this.ctrl.wheelSuspensionLength(i) ?? P.suspension.rest;
-      w.steer.position.y = P.wheelY - len;
+      w.steer.position.y = P.wheelY - len + w.lift;
       w.steer.rotation.y = w.caster ? this.casterAngle() : this.ctrl.wheelSteering(i) ?? 0;
       w.spin.rotation.z = -(this.ctrl.wheelRotation(i) ?? 0);
     }

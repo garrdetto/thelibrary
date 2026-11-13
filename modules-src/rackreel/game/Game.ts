@@ -157,6 +157,8 @@ export interface GameOptions {
   outfitters?: boolean
   /** A host world's own picture: lighter shadows, a brighter night and matte characters (Fox Lake). */
   look?: LightingLook
+  /** Shadow map size in texels (Rack & Reel's own is `SHADOW_MAP_SIZE`, 2048); a host world with more casters can pass less. */
+  shadowMapSize?: number
 }
 
 const TWO_SIDED = new Set(['grass', 'fern', 'cattail'])
@@ -268,6 +270,8 @@ export class Game {
   private signTimer = 0
   private placeTimer = 0
   private casters: AbstractMesh[] = []
+  /** Movers a host world added (its vehicles); only the ones near the shadow focus cast. */
+  private hostCasters: AbstractMesh[] = []
   private readonly casterScratch: AbstractMesh[] = []
   private readonly listenerScratch: { p: Vector3; noise: number }[] = []
   private readonly rangeScratch: Vector3[] = []
@@ -349,16 +353,20 @@ export class Game {
       setCameraShot: (shot) => {
         game.cameraShot = shot
       },
-      addCaster: (mesh) => { if (!game.casters.includes(mesh)) game.casters.push(mesh) },
+      addCaster: (mesh) => {
+        if (game.hostCasters.includes(mesh)) return
+        game.hostCasters.push(mesh)
+        game.ctx.shadowLayers.markTight(mesh)
+      },
       removeCaster: (mesh) => {
-        const i = game.casters.indexOf(mesh)
-        if (i >= 0) game.casters.splice(i, 1)
+        const i = game.hostCasters.indexOf(mesh)
+        if (i >= 0) game.hostCasters.splice(i, 1)
       },
     }
   }
 
   async start(): Promise<void> {
-    this.ctx = await createEngineSetup(this.canvas)
+    this.ctx = await createEngineSetup(this.canvas, this.options.shadowMapSize)
     const { scene } = this.ctx
     this.hud.setLoading(0.05, 'Carving the lake basin…')
     await nextFrame()
@@ -1797,6 +1805,11 @@ export class Game {
     const own = this.casters
     for (let i = 0; i < own.length; i++) casterList[i] = own[i]
     casterList.length = own.length
+    const hosted = this.hostCasters
+    for (let i = 0; i < hosted.length; i++) {
+      const at = hosted[i].absolutePosition
+      if (Math.abs(at.x - focus.x) <= SHADOW_CASTER_REACH && Math.abs(at.z - focus.z) <= SHADOW_CASTER_REACH) casterList.push(hosted[i])
+    }
     this.wildlife.collectCasters(casterList, focus, SHADOW_CASTER_REACH)
     this.online.collectCasters(casterList, focus, SHADOW_CASTER_REACH)
     this.foliage.updateShadowCasters(focus, casterList)

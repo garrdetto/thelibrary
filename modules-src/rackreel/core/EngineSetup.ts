@@ -84,7 +84,7 @@ export interface EngineContext {
   resolution: Resolution
 }
 
-export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<EngineContext> {
+export async function createEngineSetup(canvas: HTMLCanvasElement, shadowMapSize = SHADOW_MAP_SIZE): Promise<EngineContext> {
   const { engine, backend, watchFirstFrame } = await createEngine(canvas)
   engine.enableOfflineSupport = false
   const resolution = attachResolution(engine, canvas)
@@ -146,7 +146,7 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
   sky.groundColor = new Color3(0.4, 0.37, 0.29)
   sky.specular = Color3.Black()
 
-  const shadowLayers = createShadowLayers(scene, sun, SHADOW_MAP_SIZE)
+  const shadowLayers = createShadowLayers(scene, sun, shadowMapSize)
   const shadows = shadowLayers.shadows
 
   const pipeline = new DefaultRenderingPipeline('grade', true, scene, [camera])
@@ -170,7 +170,7 @@ export async function createEngineSetup(canvas: HTMLCanvasElement): Promise<Engi
   let collisionOctree: Octree<TrunkCollider> | null = null
   const trunkProbe = new Vector3()
   const trunkHits: TrunkCollider[] = []
-  const texel = (SHADOW_EXTENT * 2) / SHADOW_MAP_SIZE
+  const texel = (SHADOW_EXTENT * 2) / shadowMapSize
   const right = Vector3.Cross(Vector3.Up(), sunDirection).normalize()
   const up = Vector3.Cross(sunDirection, right).normalize()
   const scratchUp = Vector3.Up()

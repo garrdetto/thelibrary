@@ -20,8 +20,10 @@ declare global {
   }
 }
 
-/** Lighter shadows than Rack & Reel's, a night 15 % brighter, and matte characters. */
-const FOX_LAKE_LOOK = { shadowDarkness: 0.74, nightBrightness: 1.15, matteCharacters: true }
+/** Shadows half as dark as before (0.74 -> 0.87), a night 15 % brighter, and matte characters. */
+const FOX_LAKE_LOOK = { shadowDarkness: 0.87, nightBrightness: 1.15, matteCharacters: true }
+/** Half Rack & Reel's shadow map: the town has far more casters, and the soft blurred shadows hide the coarser texels. */
+const FOX_LAKE_SHADOW_MAP = 1024
 
 const online = location.protocol === 'https:' || location.protocol === 'http:'
 
@@ -109,7 +111,7 @@ async function boot(): Promise<void> {
     if (roomCode) postRoom(roomCode)
     else inviteRequested = true
   })
-  const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK })
+  const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP })
   window.__foxlake = { game, town }
   await game.start()
 }

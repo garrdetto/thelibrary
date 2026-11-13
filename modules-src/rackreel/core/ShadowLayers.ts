@@ -30,6 +30,8 @@ export interface ShadowLayers {
   setFixed(list: AbstractMesh[]): void
   /** Casters that may move; compared with the last list, so the same scratch array can be passed every frame. */
   setMoving(list: AbstractMesh[]): void
+  /** Movers that also receive their own shadow (vehicles): redrawn at the near slack at any distance, so their self-shadow never lags and jumps. */
+  markTight(mesh: AbstractMesh): void
   /** Turns shadow casting and receiving on or off for the whole scene. */
   setEnabled(on: boolean): void
   readonly enabled: boolean
@@ -83,7 +85,7 @@ export function createShadowLayers(scene: Scene, sun: DirectionalLight, size: nu
   tune(cache)
   const shadows = new ShadowGenerator(size, sun, true)
   shadows.useBlurCloseExponentialShadowMap = true
-  shadows.blurKernel = 8
+  shadows.blurKernel = Math.max(2, Math.round((8 * size) / 2048))
   shadows.blurScale = 2
   tune(shadows)
   shadows.setDarkness(0.62)
@@ -118,6 +120,7 @@ export function createShadowLayers(scene: Scene, sun: DirectionalLight, size: nu
   let spare = new Map<Skeleton, Float32Array>()
   const lightAt = new Vector3(Number.NaN, 0, 0)
   const lightAim = new Vector3()
+  const tight = new WeakSet<AbstractMesh>()
 
   cacheMap.onAfterRenderObservable.add(() => {
     cacheDrawn = true
@@ -152,7 +155,7 @@ export function createShadowLayers(scene: Scene, sun: DirectionalLight, size: nu
       if (snapshot[at] !== visible) return true
       if (!visible) continue
       const world = mesh.computeWorldMatrix().m
-      const slack = eye ? slackAt(Math.hypot(world[12] - eye.x, world[13] - eye.y, world[14] - eye.z)) : 1
+      const slack = tight.has(mesh) ? 1 : eye ? slackAt(Math.hypot(world[12] - eye.x, world[13] - eye.y, world[14] - eye.z)) : 1
       if (drifted(snapshot, world, at + 1, slack)) return true
       const skeleton = mesh.skeleton
       if (!skeleton) continue
@@ -222,6 +225,9 @@ export function createShadowLayers(scene: Scene, sun: DirectionalLight, size: nu
       if (same) return
       map.renderList = list.slice()
       movingStale = true
+    },
+    markTight(mesh) {
+      tight.add(mesh)
     },
     setEnabled(on) {
       if (on === enabled) return
