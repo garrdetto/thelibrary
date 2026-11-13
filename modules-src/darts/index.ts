@@ -79,6 +79,7 @@ function readSetup(form: HTMLFormElement): Setup {
     rotation: [0, 1, 2].map((i) => String(data.get(`tourLeg${i}`) ?? '501')).map((mode) => (isRotationMode(mode) ? mode : '501')),
     doubleIn: data.get('doubleIn') === 'on',
     doubleOut: data.get('doubleOut') === 'on',
+    masterOut: data.get('masterOut') === 'on',
     doubleBull: data.get('doubleBull') === 'on',
     cricketScoring: data.get('cricketPoints') === 'on',
     cricketRounds: Number(data.get('cricketRounds') ?? 20),

@@ -29,7 +29,7 @@ interface Seat extends DartsIdentity {
 const finite = z.number().finite()
 const configSchema = z.object({
   rules: z.discriminatedUnion('mode', [
-    z.object({ mode: z.literal('x01'), start: z.union([z.literal(301), z.literal(501), z.literal(701)]), doubleIn: z.boolean(), doubleOut: z.boolean(), doubleBull: z.boolean().optional() }),
+    z.object({ mode: z.literal('x01'), start: z.union([z.literal(301), z.literal(501), z.literal(701)]), doubleIn: z.boolean(), doubleOut: z.boolean(), masterOut: z.boolean().optional(), doubleBull: z.boolean().optional() }),
     z.object({ mode: z.literal('cricket'), scoring: z.boolean(), roundLimit: z.number().int().min(5).max(50) }),
     z.object({ mode: z.literal('countup'), rounds: z.number().int().min(1).max(20) }),
   ]),

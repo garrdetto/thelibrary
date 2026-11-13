@@ -64,7 +64,7 @@ export function normalizeConfig(config: MatchConfig): MatchConfig {
   const rules = config.rules
   let clean: ModeConfig
   const board: BoardKind = config.board === 'spider' ? 'spider' : 'steel'
-  if (rules.mode === 'x01') clean = { mode: 'x01', start: [301, 501, 701].includes(rules.start) ? rules.start : 501, doubleIn: !!rules.doubleIn, doubleOut: !!rules.doubleOut, doubleBull: !!rules.doubleBull }
+  if (rules.mode === 'x01') clean = { mode: 'x01', start: [301, 501, 701].includes(rules.start) ? rules.start : 501, doubleIn: !!rules.doubleIn, doubleOut: !!rules.doubleOut && !rules.masterOut, ...(rules.masterOut ? { masterOut: true } : {}), doubleBull: !!rules.doubleBull }
   else if (rules.mode === 'cricket') clean = { mode: 'cricket', scoring: rules.scoring !== false, roundLimit: whole(rules.roundLimit, 5, 50, 20) }
   else clean = { mode: 'countup', rounds: whole(rules.rounds, 1, 20, 8) }
   const normal: MatchConfig = { rules: clean, legsPerSet: whole(config.legsPerSet, 1, 11, 1), setsToWin: whole(config.setsToWin, 1, 7, 1), board }
@@ -238,7 +238,10 @@ function applyX01(state: GameState, player: Player, dart: DartThrow, list: Annou
   const before = player.score
   if (rules.doubleOut && isFinishingDouble(before)) player.stats.doublesTried++
   const after = before - dart.scoreValue
-  const bust = after < 0 || (rules.doubleOut && after === 1) || (after === 0 && rules.doubleOut && !isDouble(dart))
+  const master = !!rules.masterOut
+  const restricted = rules.doubleOut || master
+  const finisher = isDouble(dart) || (master && dart.multiplier === 3)
+  const bust = after < 0 || (restricted && after === 1) || (after === 0 && restricted && !finisher)
   if (bust) {
     player.score = player.turnStartScore
     say(list, 'bust', 'Bust!', player.id)
@@ -512,10 +515,12 @@ const FINISHES: { name: string; value: number }[] = [
   { name: 'Bull', value: 50 },
 ]
 
-/** The usual checkout route for a score with the darts left (doubles to finish under double-out), or null when it can't be finished this turn. Among the shortest routes it picks the one with the friendliest finish (D20, D16, D8 first) and the most common set-up darts. */
-export function checkoutRoute(score: number, darts: number, doubleOut: boolean): string[] | null {
+const MASTER_FINISHES = [...FINISHES, ...BEDS.filter((bed) => bed.name.startsWith('T'))]
+
+/** The usual checkout route for a score with the darts left (doubles to finish under double-out, doubles, triples or the bull under master out), or null when it can't be finished this turn. Among the shortest routes it picks the one with the friendliest finish (D20, D16, D8 first) and the most common set-up darts. */
+export function checkoutRoute(score: number, darts: number, doubleOut: boolean, masterOut = false): string[] | null {
   if (!Number.isInteger(score) || score <= 0 || darts <= 0 || score > 180) return null
-  const finishes = doubleOut ? FINISHES : [...FINISHES, ...BEDS]
+  const finishes = masterOut ? MASTER_FINISHES : doubleOut ? FINISHES : [...FINISHES, ...BEDS]
   const setup = [...BEDS, ...FINISHES]
   for (let used = 1; used <= Math.min(darts, 3); used++) {
     let best: { route: string[]; cost: number } | null = null
@@ -559,7 +564,7 @@ export function modeLabel(config: MatchConfig): string {
   const rules = config.rules
   const teams = config.teamPlay === 'stacked' ? ' · teams, shared score' : config.teamPlay === 'regular' ? ' · teams' : ''
   const match = (config.setsToWin > 1 ? ` · first to ${config.setsToWin} sets of ${config.legsPerSet}` : config.legsPerSet > 1 ? ` · first to ${config.legsPerSet} legs` : '') + teams
-  if (rules.mode === 'x01') return `${rules.start}${rules.doubleIn ? ' · double in' : ''}${rules.doubleOut ? ' · double out' : ' · straight out'}${match}`
+  if (rules.mode === 'x01') return `${rules.start}${rules.doubleIn ? ' · double in' : ''}${rules.masterOut ? ' · master out' : rules.doubleOut ? ' · double out' : ' · straight out'}${match}`
   if (rules.mode === 'cricket') return `Cricket${rules.scoring ? '' : ' · no points'} · ${rules.roundLimit} rounds${match}`
   return `Count Up · ${rules.rounds} rounds${match}`
 }

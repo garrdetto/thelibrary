@@ -258,7 +258,7 @@ export class Overlay {
       return
     }
     const left = DARTS_PER_TURN - player.currentRoundThrows.length
-    const route = checkoutRoute(player.score, left, rules.doubleOut)
+    const route = checkoutRoute(player.score, left, rules.doubleOut, !!rules.masterOut)
     this.checkout.hidden = !route
     if (route) this.checkout.textContent = `Checkout ${player.score}: ${route.join(' · ')}`
   }

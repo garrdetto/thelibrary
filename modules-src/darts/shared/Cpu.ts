@@ -24,10 +24,10 @@ function x01Bed(state: GameState, player: Player): string {
   const rules = state.config.rules
   if (rules.mode !== 'x01') return 'T20'
   if (!player.opened) return 'D20'
-  const route = checkoutRoute(player.score, dartsLeft(state), rules.doubleOut)
+  const route = checkoutRoute(player.score, dartsLeft(state), rules.doubleOut, !!rules.masterOut)
   if (route) return route[0]
   if (player.score <= 60) {
-    const route2 = checkoutRoute(player.score, 3, rules.doubleOut)
+    const route2 = checkoutRoute(player.score, 3, rules.doubleOut, !!rules.masterOut)
     if (route2) return route2[0]
   }
   return 'T20'

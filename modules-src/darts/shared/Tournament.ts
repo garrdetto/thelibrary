@@ -24,6 +24,7 @@ export interface TournamentRules {
   rotation: RotationMode[]
   doubleIn: boolean
   doubleOut: boolean
+  masterOut?: boolean
   doubleBull: boolean
   cricketScoring: boolean
   cricketRounds: number
@@ -100,7 +101,7 @@ export function nextLegMode(tournament: Tournament, match: TournamentMatch): Rot
 export function rulesFor(mode: RotationMode, rules: Omit<TournamentRules, 'rotation'>): ModeConfig {
   if (mode === 'cricket') return { mode: 'cricket', scoring: rules.cricketScoring, roundLimit: rules.cricketRounds }
   if (mode === 'countup') return { mode: 'countup', rounds: rules.countupRounds }
-  return { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: rules.doubleIn, doubleOut: rules.doubleOut, doubleBull: rules.board === 'spider' && rules.doubleBull }
+  return { mode: 'x01', start: mode === '301' ? 301 : 501, doubleIn: rules.doubleIn, doubleOut: rules.doubleOut && !rules.masterOut, ...(rules.masterOut ? { masterOut: true } : {}), doubleBull: rules.board === 'spider' && rules.doubleBull }
 }
 
 /** One leg of a tournament match, played as its own single-leg match. */
