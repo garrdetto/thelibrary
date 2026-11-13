@@ -4,7 +4,7 @@ import { RADII, SECTORS, SOFT_RADII, label, ringAt, scoreAt, sectorAt, targetPoi
 import { cpuThrow } from '../shared/Cpu'
 import type { DartThrow, GameState, MatchConfig, Multiplier } from '../shared/interfaces'
 import { HOLE, IDEAL_SPEED, METER, RELEASE, SPREAD, aimDirection, launch, meterReach, meterZone, simulate, throwDart, crossDistance } from '../shared/Physics'
-import { applyThrow, checkoutRoute, createMatch, forfeitTurn, nextTurn, removePlayer } from '../shared/Rules'
+import { applyThrow, checkoutRoute, createMatch, forfeitTurn, nextTurn, normalizeConfig, removePlayer } from '../shared/Rules'
 import { createRng, gaussian } from '../shared/Rng'
 import { isRoomCode, roomCode } from '../shared/Room'
 
@@ -44,6 +44,25 @@ test('Double Bull scores the outer bull as a 50 double in x01', () => {
   const result = applyThrow(finish, 'a', outer)
   assert.equal(result.state.players[0].score, 0)
   assert.equal(result.state.status, 'finished')
+})
+
+test('master out finishes on a triple, double or bull and busts on a single', () => {
+  const master: MatchConfig = { rules: { mode: 'x01', start: 301, doubleIn: false, doubleOut: true, masterOut: true }, legsPerSet: 1, setsToWin: 1 }
+  const at = (score: number) => {
+    const state = createMatch('t', master, [{ id: 'a', name: 'A' }])
+    state.players[0].score = score
+    state.players[0].turnStartScore = score
+    return state
+  }
+  assert.equal(applyThrow(at(60), 'a', bed(20, 3)).state.status, 'finished')
+  assert.equal(applyThrow(at(40), 'a', bed(20, 2)).state.status, 'finished')
+  assert.equal(applyThrow(at(50), 'a', bed(25, 2)).state.status, 'finished')
+  const single = applyThrow(at(20), 'a', bed(20, 1)).state
+  assert.notEqual(single.status, 'finished')
+  assert.equal(single.players[0].score, 20)
+  assert.equal(normalizeConfig(master).rules.mode === 'x01' && normalizeConfig(master).rules.doubleOut, false)
+  assert.deepEqual(checkoutRoute(57, 1, true, true), ['T19'])
+  assert.equal(checkoutRoute(57, 1, true, false), null)
 })
 
 test('polar form measures clockwise from straight up', () => {
