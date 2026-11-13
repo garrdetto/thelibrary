@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import type { SongSettings } from '../lib/studio-types'
 import type { Env } from './env'
-import type { ClaudeTool } from './claude'
-import { RESEARCH_MODEL, STUDIO_EFFORT, claude, textOf, toolInput } from './claude'
+import type { StudioSchema } from './studio-ai'
+import { askStudio } from './studio-ai'
 import { NO_CODE_RULE } from './code-guard'
 
 export type SongRecord = { title: string; content: string }
@@ -59,10 +59,9 @@ export function keptLineShare(lyrics: string, previousSong: string) {
 export type SongDraft = { title: string; lyrics: string }
 export type SongReply = { declined: true; reason: string } | { declined: false; song: SongDraft | null }
 
-export const songTool: ClaudeTool = {
+export const songSchema: StudioSchema = {
   name: 'submit_song',
-  description: 'Return the finished song, or decline when the request is not for song lyrics (for example code, scripts or markup).',
-  input_schema: {
+  schema: {
     type: 'object',
     properties: {
       declined: { type: 'boolean', description: 'true only when the request is for code or anything other than song lyrics' },
@@ -74,8 +73,8 @@ export const songTool: ClaudeTool = {
   },
 }
 
-export function readSong(response: Parameters<typeof toolInput>[0]): SongReply {
-  const input = toolInput<{ declined?: boolean; reason?: string; title?: string; lyrics?: string }>(response, songTool.name)
+export function readSong(data: unknown): SongReply {
+  const input = data as { declined?: boolean; reason?: string; title?: string; lyrics?: string } | null
   if (input?.declined) return { declined: true, reason: (input.reason || '').trim().slice(0, 300) }
   try {
     return { declined: false, song: z.object({ title: z.string().trim().min(1).max(180), lyrics: z.string().min(20).max(20000) }).parse(input) }
@@ -86,9 +85,9 @@ export async function researchStyle(env: Env, settings: SongSettings) {
   const targets = [settings.artist ? `the artist "${settings.artist}"` : '', settings.customGenre ? `the music genre "${settings.customGenre}"` : ''].filter(Boolean).join(' and ')
   const request = `Research the songwriting style of ${targets}. Write compact notes for a lyricist covering: typical subject matter and attitude, everyday vocabulary and slang, how explicit the language usually is, rhyme habits (end, internal, multisyllabic), flow and cadence, line length, song structure, hooks and ad-libs, and what makes it sound authentic rather than generic. Describe techniques only. Never quote or paraphrase actual lyrics. Under 280 words, plain text, no code.`
   const system = 'You are a music researcher who writes short factual notes for a songwriter. Plain text only. Never include lyrics, code or markup.'
-  const ask = (withSearch: boolean) => claude(env, { model: RESEARCH_MODEL, effort: STUDIO_EFFORT, system, messages: [{ role: 'user', content: request }], maxTokens: 1500, timeoutMs: 180000, ...(withSearch ? { webSearch: 3 } : {}) })
-  try { return textOf(await ask(true)).slice(0, 3000) } catch {
-    try { return textOf(await ask(false)).slice(0, 3000) } catch { return '' }
+  const ask = async (withSearch: boolean) => (await askStudio(env, { system, messages: [{ role: 'user', content: request }], maxTokens: 4000, webSearch: withSearch })).text
+  try { return (await ask(true)).slice(0, 3000) || (await ask(false)).slice(0, 3000) } catch {
+    try { return (await ask(false)).slice(0, 3000) } catch { return '' }
   }
 }
 
@@ -118,7 +117,7 @@ export function songwriterInstruction(explicit: boolean) {
   return `You are the Lyric Studio, a songwriter that writes in real, plain, logical language. Your only job is writing song lyrics. Your lyrics read like a real person saying what happened and how they feel, in the words they would actually use out loud.
 
 ${NO_CODE_RULE}
-If the brief asks for code or anything other than song lyrics, call submit_song with declined true, a one-sentence reason, and empty title and lyrics. A song about someone's job or daily life is fine, including a tech job, but the lyrics themselves must contain plain spoken words only.
+If the brief asks for code or anything other than song lyrics, reply with declined true, a one-sentence reason, and empty title and lyrics. A song about someone's job or daily life is fine, including a tech job, but the lyrics themselves must contain plain spoken words only.
 
 PLAIN LANGUAGE IS THE TOP RULE. You must never get creative with phrases. All of these are mandatory:
 - Write literally. Say exactly what is happening and what the person feels, in ordinary words and normal sentence order, the way someone would tell a friend.
@@ -156,5 +155,5 @@ Before returning, silently check the whole song for NEW and REVAMP, or only the 
 2. Check every detail against the topic and scene. Remove anything off-topic, assumed, impossible or contradictory.
 3. Check each rhyming pair: both lines plain, logical and relevant, with an audible rhyme and a natural cadence.
 4. For REVISE, confirm the title and every untouched line are unchanged.
-Do not output this review. Return the song only through submit_song.`
+Do not output this review. Return the song only as the submit_song JSON (declined, reason, title, lyrics).`
 }
