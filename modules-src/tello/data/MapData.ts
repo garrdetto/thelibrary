@@ -24,10 +24,18 @@ export interface Frame {
 /** 0 highway (lined), 1 street, 2 lane (driveways, aisles), 3 gravel, 4 walk (concrete), 5 trail (dirt). */
 export type RoadKind = 0 | 1 | 2 | 3 | 4 | 5
 export interface RoadData { k: RoadKind; w: number; n: string; c: string; p: number[] }
-export interface BridgeData { r: number; k: RoadKind; w: number; y: number; p: number[] }
+/** `y` the deck height; `m` set when it was measured in the lidar point cloud. */
+export interface BridgeData { r: number; k: RoadKind; w: number; y: number; p: number[]; m?: 1 }
 export type BuildingKind = 'house' | 'garage' | 'shed' | 'store' | 'industrial' | 'civic' | 'church' | 'canopy'
-/** `p` the footprint ring, `r` rectangles (cx, cz, half length, half width, yaw) for roofs and colliders, `f` floor height, `l` lowest ground at the walls, `h` wall height. */
-export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string }
+/**
+ * `p` the footprint ring; `f` floor height; `l` lowest ground at the walls; `h` the main block's eave above the floor;
+ * `m` set when the roof was measured in the lidar point cloud. `r` the rectangles the footprint is covered with, for
+ * roofs and colliders: centre x, centre z, half size along its first axis, half size along its second, yaw of the
+ * first axis, roof type (see `ROOF`), eave and ridge in metres above the floor.
+ */
+export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string; m?: 1 }
+/** Roof types: a gable's ridge runs along the rectangle's first or second axis; a shed's high side is toward the named axis. */
+export const ROOF = { unmeasured: -1, flat: 0, gableFirst: 1, gableSecond: 2, hip: 3, shedPlusSecond: 4, shedMinusSecond: 5, shedPlusFirst: 6, shedMinusFirst: 7 } as const
 export interface LotData { f: number; p: number[] }
 export interface Poi { n: string; k: string; x: number; z: number }
 
@@ -63,10 +71,11 @@ export interface MapGrids {
   canopy: Uint8Array
   /** Signed distance to pavement and walls in quarter metres (negative on them), 2 m apart. */
   clear: Int8Array
-  /** Trees: position in decimetres from the map's south-west corner, and kind (top two bits: 0 pine, 1 hardwood, 2 birch) with scale (low six bits). */
+  /** Trees, one per crown in the lidar: position in decimetres from the map's south-west corner, kind (top two bits of `treeS`: 0 pine, 1 hardwood, 2 birch) and height in quarter metres. */
   treeX: Uint16Array
   treeZ: Uint16Array
   treeS: Uint8Array
+  treeH: Uint8Array
 }
 
 interface Section { name: string; type: 'u16' | 'u8' | 'i8'; side: number; count: number; offset: number; bytes: number }
@@ -94,8 +103,8 @@ export function parseGrids(bytes: Uint8Array): MapGrids {
     if (s.name === 'ground') side = s.side
     if (s.name === 'clear') fineSide = s.side
   }
-  for (const name of ['ground', 'water', 'cover', 'tone', 'canopy', 'clear', 'treeX', 'treeZ', 'treeS']) if (!out[name]) throw new Error(`Tello map file has no ${name}`)
-  return { side, fineSide, ground: out.ground as Uint16Array, water: out.water as Uint16Array, cover: out.cover as Uint8Array, tone: out.tone as Uint8Array, canopy: out.canopy as Uint8Array, clear: out.clear as Int8Array, treeX: out.treeX as Uint16Array, treeZ: out.treeZ as Uint16Array, treeS: out.treeS as Uint8Array }
+  for (const name of ['ground', 'water', 'cover', 'tone', 'canopy', 'clear', 'treeX', 'treeZ', 'treeS', 'treeH']) if (!out[name]) throw new Error(`Tello map file has no ${name}`)
+  return { side, fineSide, ground: out.ground as Uint16Array, water: out.water as Uint16Array, cover: out.cover as Uint8Array, tone: out.tone as Uint8Array, canopy: out.canopy as Uint8Array, clear: out.clear as Int8Array, treeX: out.treeX as Uint16Array, treeZ: out.treeZ as Uint16Array, treeS: out.treeS as Uint8Array, treeH: out.treeH as Uint8Array }
 }
 
 async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {

@@ -1,6 +1,6 @@
 # Tello (source)
 
-Source for `public/modules/tello.html`, module id `tello`. Tello is Montello, Wisconsin at 1:1, built from real survey data: the lidar ground, every mapped road, bridge, lake, river and pond, and every building on its real footprint. You walk it or drive it and get directions on the map. It runs on this device only (no shared world).
+Source for `public/modules/tello.html`, module id `tello`. Tello is Montello, Wisconsin at 1:1, built from real survey data: the lidar ground, every mapped road, bridge, lake, river and pond, every building on its real footprint under its measured roof, and every tree at its measured height. You walk it or drive it and get directions on the map. It runs on this device only (no shared world).
 
 ## How it is put together
 
@@ -28,7 +28,7 @@ Rack & Reel's own lake country still stands in its square around the scene's ori
 - `world/Ground.ts`: vertex-coloured ground 4 m apart in 256 m meshes, coloured by the lake country's palette from the real ground cover.
 - `world/Water.ts`: a surface mesh over the wet cells that follows the level grid (Buffalo Lake 234.81 m, Lake Montello 238.71 m, the Fox River below the dam 233.28 m), drawn with `rrWater`.
 - `world/Roads.ts`: ribbons for every road by class (lined highway asphalt, plain streets and driveways, gravel, concrete walks, dirt trails), junction patches, parking lots, and bridge decks with railings.
-- `world/Buildings.ts`: walls from each footprint; gable, flat or metal roofs and colliders from the rectangles the bake covered it with; windows and doors; merged per material and 128 m cell.
+- `world/Buildings.ts`: walls from each footprint up to each block's measured eave; the measured roof on each rectangle (gable along either axis, hip, single slope or flat); colliders from the same rectangles; windows and doors sized to the wall; merged per material and 128 m cell.
 - `town/TelloTown.ts`: the `GameExtension`: builds all of the above, the Rapier heightfield and edge walls, trees and their trunks, the cars, wading and towing, place names, keys.
 - `town/TelloMap.ts`, `town/Routes.ts`: the corner map, the full map (Ctrl) and directions over the real road network.
 
@@ -37,24 +37,32 @@ Rack & Reel's own lake country still stands in its square around the scene's ori
 `public/modules/tello/montello.bin` and `montello.json` are baked and committed; the page never reaches an outside service. Re-bake with:
 
 ```sh
-python3 modules-src/tello/tools/bake_map.py            # needs numpy, scipy, pillow, pyproj, shapely
+python3 modules-src/tello/tools/bake_map.py            # needs numpy, scipy, pillow, pyproj, shapely, laspy[lazrs]
 ```
 
-It downloads into `.tello-cache/` (git-ignored) and writes both files. `--debug <dir>` also writes a picture of the cover, roads and buildings.
+It downloads into `.tello-cache/` (git-ignored, about 800 MB with the point cloud) and writes both files. `--debug <dir>` also writes a picture of the cover, roads and buildings.
 
 | Layer | Source |
 | --- | --- |
 | Roads, water outlines, land use, places, some buildings | OpenStreetMap (© OpenStreetMap contributors, ODbL) |
 | Ground height and water levels | USGS 3DEP bare-earth lidar |
-| Tree crowns and ground cover | USDA NAIP aerial imagery with near infrared |
-| Most building footprints and heights | Microsoft Global ML Building Footprints (ODbL) |
+| Roof shape, eave and ridge height of each building; buildings no footprint source has; bridge deck heights; every tree and its height | The 2018 FEMA/USGS lidar point cloud of Marquette County (25 one-kilometre tiles, about 4 points per square metre, from NOAA Digital Coast's open bucket) |
+| Ground cover | USDA NAIP aerial imagery with near infrared |
+| Most building footprints | Microsoft Global ML Building Footprints (ODbL) |
 
-What the bake does: finds each water body's level in the lidar and carves a bed under it; lays every road's bed level across the road and smooths it along; makes long water crossings bridges and short ones culverts; levels a yard under every building and parking lot; merges OpenStreetMap's buildings with Microsoft's and covers each footprint with rectangles for roofs and colliders; marks tree crowns in the photo (green in near infrared and rough with crown shadows) and plants a tree under them, thinner in the far woods.
+What the bake does: finds each water body's level in the lidar and carves a bed under it; lays every road's bed level across the road and smooths it along; makes long water crossings bridges (at the deck height the point cloud shows) and short ones culverts; levels a yard under every building and parking lot; merges OpenStreetMap's buildings with Microsoft's and covers each footprint with rectangles for roofs and colliders.
+
+From the point cloud (`load_lidar`, one-metre rasters plus the last returns over buildings):
+
+- **Roofs** (`measure_roofs`, `fit_roof`): the last returns on each rectangle are fitted with a flat roof, a gable along either axis (the ridge tried at nine offsets), a hip and a single slope; the best fit gives the roof type and the eave and ridge heights. 1,617 of 1,680 buildings are measured; the rest (built since 2018, or hidden) get a roof by their kind.
+- **Missing buildings** (`find_buildings`): patches at least 2.2 m up whose surface is solid (one return per pulse) and planar, clear of mapped footprints, roads and water: 31 outbuildings the footprint sources lack.
+- **Trees** (`detect_trees`): one tree at every crown top in the canopy height model, with its real height (median 16 m, tallest 34 m). Crowns that let little through to the ground in the leaf-off survey are conifers. Every tree near buildings is kept; farther out only the tallest in each patch, so the far woods stay drawable: 67,999 trees.
+- **Woods on the ground**: ground cover under crowns comes from the same canopy model.
 
 ### What is exact and what is not
 
-- **Exact to the data:** the lie of the land (lidar, sampled 4 m apart), water levels, every mapped road's line and class, shorelines, each building's place, footprint and approximate height, where the woods are.
-- **Not real:** what buildings look like (no open data has facades, so they wear Fox Lake's finishes by type), road widths where OpenStreetMap has none (set by class), individual trees (placed under real crowns, species guessed), lake depths (a bed sloped from the shore), signs, fences and street furniture.
+- **Exact to the data:** the lie of the land (lidar, sampled 4 m apart), water levels, every mapped road's line and class, shorelines, each building's place and footprint, its roof type and its eave and ridge heights as they stood in spring 2018, bridge deck heights, and each tree's place and height.
+- **Not real:** what walls, windows and doors look like (no open data has facades, so they wear Fox Lake's finishes by type), roof colours, dormers, porches and chimneys, road widths where OpenStreetMap has none (set by class), tree species beyond conifer or broadleaf, lake depths (a bed sloped from the shore), signs, fences and street furniture. Anything built or cut down since 2018 is as it was then; 38 footprints had no building under them in 2018 and keep a roof by their kind.
 - **Bounds:** a 4,096 m square that holds the whole city limits. The edge is a wall.
 
 ## Controls
@@ -63,6 +71,6 @@ Rack & Reel's walking and driving, plus E (drive), V (bring out the next vehicle
 
 ## Checks
 
-- `node scripts/tello-tests.mjs` (in `pnpm test`): the map files, the frame and projection, water levels, road beds, bridges, buildings, trees, triangulation and routing.
+- `node scripts/tello-tests.mjs` (in `pnpm test`): the map files, the frame and projection, water levels, road beds, bridges, buildings, measured roofs, trees and their heights, triangulation and routing.
 - `node scripts/tello-capture.mjs [baseUrl] [outDir] [spots]`: loads the built page in Chrome and saves screenshots with frame times at fixed spots.
 - `window.__tello.town.debug()`.

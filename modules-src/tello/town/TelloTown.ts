@@ -44,6 +44,8 @@ const GARAGE_KEY = 'KeyV'
 const HOME_KEY = 'KeyH'
 const TREE_KINDS = ['pine', 'hardwood', 'birch'] as const
 const TREE_RADIUS = [0.34, 0.42, 0.25]
+/** Each tree model's height at scale 1, so a tree stands as tall as the lidar measured it. */
+const TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]
 const TREE_CELL = 16
 const NAME_CELL = 64
 /** Water this deep under a car slows it; this deep floods the engine and it is towed back to dry ground. */
@@ -183,7 +185,7 @@ export class TelloTown implements GameExtension {
       const x = land.x0 + treeX[i] / 10
       const z = land.z0 + treeZ[i] / 10
       const kind = Math.min(2, treeS[i] >> 6)
-      const scale = 0.6 + (treeS[i] & 63) * 0.0125
+      const scale = this.treeScale(i)
       const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453
       spots.push({ x: land.toSceneX(x), y: land.groundAt(x, z), z: land.toSceneZ(z), kind: TREE_KINDS[kind], scale, yaw: (h - Math.floor(h)) * Math.PI * 2 })
       const key = this.treeKey(x, z)
@@ -198,9 +200,15 @@ export class TelloTown implements GameExtension {
     return (Math.floor(x / TREE_CELL) + 4096) * 8192 + Math.floor(z / TREE_CELL) + 4096
   }
 
+  /** The model scale that makes tree `i` its measured height. */
+  private treeScale(i: number): number {
+    const g = this.land.grids
+    return Math.min(2.6, Math.max(0.3, g.treeH[i] / 4 / TREE_MODEL_HEIGHT[Math.min(2, g.treeS[i] >> 6)]))
+  }
+
   private trunk(i: number): { x: number; z: number; r: number } {
     const g = this.land.grids
-    return { x: this.land.x0 + g.treeX[i] / 10, z: this.land.z0 + g.treeZ[i] / 10, r: TREE_RADIUS[Math.min(2, g.treeS[i] >> 6)] * (0.6 + (g.treeS[i] & 63) * 0.0125) + 0.2 }
+    return { x: this.land.x0 + g.treeX[i] / 10, z: this.land.z0 + g.treeZ[i] / 10, r: TREE_RADIUS[Math.min(2, g.treeS[i] >> 6)] * this.treeScale(i) + 0.2 }
   }
 
   /** Trunks become solid for cars as anything that drives comes within about 50 m of them. */
@@ -252,10 +260,12 @@ export class TelloTown implements GameExtension {
     const spawn = this.spawn()
     host.teleport(spawn.at, spawn.facing)
     host.ctx.camera.rotation.set(0.18, spawn.facing, 0)
-    // Rack & Reel's lake country stands sealed and out of sight far to the south: everything left in it (its ground,
-    // water, cabin, boats, stands and Wild Man's camp) is switched off for good, now that the player has left it.
+    // Rack & Reel's lake country stands sealed and out of sight far to the south: its scenery (ground, water, cabin,
+    // boats, stands, game and Wild Man's camp) is switched off for good. Chosen by name as well as by place, so
+    // nothing of the player's (whose meshes can still report the origin right after the move) is caught.
+    const countryNames = /^(terrain|water|dock|highway|bridge|weed|cabin|boat|bowboat|utv|treestand|boxblind|deer|bear|antlers|fish-|wildman|wild-|fx-)/
     const country = scene.meshes.filter((m) => {
-      if (m.infiniteDistance || !m.isEnabled()) return false
+      if (m.infiniteDistance || !m.isEnabled() || !countryNames.test(m.name)) return false
       const c = m.getBoundingInfo().boundingBox.centerWorld
       return Math.hypot(c.x, c.z) < 760
     })

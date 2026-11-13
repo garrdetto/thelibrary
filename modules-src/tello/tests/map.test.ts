@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { test } from 'node:test'
 import { HALF, PLAY_LIMIT } from '../../rackreel/world/Terrain'
-import { COVER, isGzip, parseGrids, type MapDoc } from '../data/MapData'
+import { COVER, ROOF, isGzip, parseGrids, type MapDoc } from '../data/MapData'
 import { EDGE_MARGIN, TelloLand, TelloTerrain, lonLatToUtm, utmToLonLat } from '../region'
 import { pointInRing, polylineLength, resample, signedArea, triangulate } from '../world/Poly'
 import { bridgeSolids, junctions } from '../world/Roads'
@@ -137,7 +137,7 @@ test('buildings: one for every footprint, on dry ground, with roofs and collider
   for (const k of ['house', 'garage', 'store', 'industrial']) assert.ok(kinds.has(k as never))
   let wetOnes = 0
   for (const b of doc.buildings) {
-    assert.ok(b.p.length >= 6 && b.r.length >= 1 && b.h >= 2)
+    assert.ok(b.p.length >= 6 && b.r.length >= 1 && b.h >= 1.6)
     assert.ok(Math.abs(signedArea(b.p)) >= 8, 'a real footprint')
     const [cx, cz, hx, hz] = b.r[0]
     assert.ok(hx > 0.9 && hz > 0.9)
@@ -152,7 +152,53 @@ test('buildings: one for every footprint, on dry ground, with roofs and collider
   assert.ok(named.includes('Montello Theatre'))
 })
 
-test('trees stand on dry land off the pavement; meadow grass keeps off roads, lawns and water', () => {
+test('roofs come from the lidar: almost every building is measured, with a sane eave and ridge on each block', () => {
+  const measured = doc.buildings.filter((b) => b.m)
+  assert.ok(measured.length > doc.buildings.length * 0.92, `${measured.length} of ${doc.buildings.length} roofs measured`)
+  const types = new Map<number, number>()
+  for (const b of doc.buildings) {
+    for (const r of b.r) {
+      assert.equal(r.length, 8, 'each block carries its roof type, eave and ridge')
+      const [, , , , , type, eave, ridge] = r
+      assert.ok(type >= ROOF.unmeasured && type <= ROOF.shedMinusFirst)
+      if (type === ROOF.unmeasured) continue
+      assert.ok(eave >= 1.6 && eave < 30, `eave ${eave}`)
+      assert.ok(ridge >= eave && ridge < 40, `ridge ${ridge} over eave ${eave}`)
+      if (type === ROOF.flat) assert.equal(ridge, eave)
+      else assert.ok(ridge - eave >= 0.25, 'a pitched roof rises')
+    }
+    types.set(b.r[0][5], (types.get(b.r[0][5]) ?? 0) + 1)
+    if (b.m) assert.equal(b.h, b.r[0][6], 'the wall height is the main block\'s measured eave')
+  }
+  const gables = (types.get(ROOF.gableFirst) ?? 0) + (types.get(ROOF.gableSecond) ?? 0)
+  assert.ok(gables > doc.buildings.length * 0.5, 'most of Montello is gabled')
+  assert.ok((types.get(ROOF.flat) ?? 0) > 60 && (types.get(ROOF.hip) ?? 0) > 10, 'and it has flat and hip roofs too')
+  const houses = measured.filter((b) => b.k === 'house').map((b) => b.h).sort((a, c) => a - c)
+  const median = houses[Math.floor(houses.length / 2)]
+  assert.ok(median > 2.4 && median < 4.2, `the median house eave is ${median} m`)
+  const theatre = doc.buildings.find((b) => b.n === 'Montello Theatre')!
+  assert.ok(theatre.m && theatre.h > 4, `the theatre stands ${theatre.h} m to its roof`)
+  assert.ok(doc.bridges.filter((b) => b.m).length >= 5, 'bridge decks are measured too')
+})
+
+test('every tree is a crown in the lidar with its own height, on dry land off the pavement; meadow grass keeps off roads, lawns and water', () => {
+  assert.equal(grids.treeH.length, grids.treeX.length)
+  const heights = Array.from(grids.treeH, (h) => h / 4).sort((a, c) => a - c)
+  assert.ok(heights[0] >= 3 && heights[heights.length - 1] <= 45, `trees stand ${heights[0]} to ${heights[heights.length - 1]} m`)
+  const mid = heights[Math.floor(heights.length / 2)]
+  assert.ok(mid > 9 && mid < 22, `the median tree is ${mid} m`)
+  let pines = 0
+  for (let i = 0; i < grids.treeS.length; i++) if (grids.treeS[i] >> 6 === 0) pines++
+  assert.ok(pines > grids.treeS.length * 0.08 && pines < grids.treeS.length * 0.6, `${pines} conifers`)
+  for (const b of doc.buildings.slice(0, 400)) {
+    const [cx, cz] = b.r[0]
+    for (let i = 0; i < grids.treeX.length; i += 11) {
+      const dx = land.x0 + grids.treeX[i] / 10 - cx
+      const dz = land.z0 + grids.treeZ[i] / 10 - cz
+      if (Math.abs(dx) < 1 && Math.abs(dz) < 1) assert.fail('a tree stands inside a building')
+    }
+  }
+
   let bad = 0
   for (let i = 0; i < grids.treeX.length; i += 7) {
     const x = land.x0 + grids.treeX[i] / 10

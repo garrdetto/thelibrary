@@ -4,19 +4,22 @@ Bakes Montello, Wisconsin into Tello's map files.
 
   python3 modules-src/tello/tools/bake_map.py [--cache .tello-cache] [--debug out_dir]
 
-Sources (downloaded into the cache on first run, reused after that):
+Sources (downloaded into the cache on first run, about 800 MB, reused after that):
   - OpenStreetMap (roads, water, land use, places, some buildings), (c) OpenStreetMap contributors, ODbL.
-  - USGS 3DEP bare-earth lidar elevation, public domain.
-  - USDA NAIP aerial imagery with near infrared (via USGS), public domain: tree cover and ground cover.
-  - Microsoft Global ML Building Footprints (with heights), ODbL: the buildings OpenStreetMap lacks.
+  - USGS 3DEP bare-earth lidar elevation, public domain: the ground and the water levels.
+  - The 2018 FEMA/USGS lidar point cloud of Marquette County (the survey the bare-earth model was made from), from
+    NOAA Digital Coast's open bucket, public domain: each building's roof shape, eave and ridge height, buildings
+    no footprint source has, bridge deck heights, and every tree with its height.
+  - USDA NAIP aerial imagery with near infrared (via USGS), public domain: ground cover.
+  - Microsoft Global ML Building Footprints, ODbL: the footprints OpenStreetMap lacks.
 
 Outputs (committed, read by the page and by the tests):
   public/modules/tello/montello.bin    grids, 4 m apart: ground height, water surface, bridge decks,
-                                       ground cover, distance to pavement, and the trees
-  public/modules/tello/montello.json   roads, buildings, water bodies, places and the frame
+                                       ground cover, distance to pavement, and the trees with their heights
+  public/modules/tello/montello.json   roads, bridges, buildings with their measured roofs, places and the frame
 
 The frame: x east and z north in metres from the origin (near City Hall), UTM zone 16N, 1 unit = 1 m.
-Needs numpy, scipy, pillow, pyproj and shapely.
+Needs numpy, scipy, pillow, pyproj, shapely and laspy[lazrs].
 """
 import argparse, gzip, json, math, os, struct, sys, urllib.request
 import xml.etree.ElementTree as ET
@@ -351,7 +354,7 @@ def collect_roads(osm):
                           'bridge': tags.get('bridge') in ('yes', 'viaduct'), 'oneway': tags.get('oneway') == 'yes', 'class': hw})
     return roads
 
-def grade_roads(roads, dem, ground, level_ext, wet, mask_f):
+def grade_roads(roads, dem, ground, level_ext, wet, mask_f, last1=None):
     """
     Lays every road's bed into `ground` (shipped grid): level across the road at the centreline's smoothed lidar
     height, easing back to the land over the shoulders. A long water crossing becomes a level bridge deck (the
@@ -390,9 +393,18 @@ def grade_roads(roads, dem, ground, level_ext, wet, mask_f):
             water = float(np.max(sample(level_ext, xs[a:b + 1], zs[a:b + 1], CELL)))
             if span >= 9 or road['bridge']:
                 top = max(left, right, water + (1.3 if drivable else 0.9))
+                measured = False
+                if last1 is not None:
+                    # The real deck: the last returns along the span that stand clear of the water.
+                    ci = np.clip((xs[a:b + 1] - X0).astype(int), 0, N1 - 1); cj = np.clip((zs[a:b + 1] - Z0).astype(int), 0, N1 - 1)
+                    deck = last1[cj, ci]
+                    deck = deck[(deck > water + 0.6) & (deck < water + 14)]
+                    if deck.size >= max(3, 0.4 * (b - a + 1)):
+                        top = float(np.median(deck))
+                        measured = True
                 prof[a0:b0 + 1] = top
                 is_deck[a0:b0 + 1] = True
-                bridges.append({'road': road, 'a': a0, 'b': b0, 'y': top})
+                bridges.append({'road': road, 'a': a0, 'b': b0, 'y': top, 'measured': measured})
             else:
                 for m in range(a0, b0 + 1):
                     t = (m - a0) / max(1, b0 - a0)
@@ -643,6 +655,22 @@ def collect_buildings(osm, ms, water, roads, dem):
                        'floor': float(np.median(base)), 'area': area, 'seed': seed, 'src': b['src'], 'tags': tags})
     return result
 
+def lidar_building(poly, dem):
+    """A building the point cloud shows but no footprint source has: an outbuilding, usually."""
+    poly = poly.simplify(0.3)
+    rects, share = roof_rects(poly)
+    if not rects:
+        return None
+    area = poly.area
+    c = poly.centroid
+    kind = 'shed' if area < 38 else 'garage' if area < 85 else 'industrial' if area > 700 else 'house'
+    ex = np.array(poly.exterior.coords)
+    ring = [(float(x), float(z)) for x, z in ex[:-1]]
+    if Polygon(ring).exterior.is_ccw is False:
+        ring.reverse()
+    return {'poly': poly, 'ring': ring, 'kind': kind, 'wall': 2.6, 'rects': rects, 'share': share, 'name': '', 'floor': float(np.median(sample(dem, ex[:, 0], ex[:, 1]))),
+            'area': area, 'seed': int(abs(c.x * 7.31 + c.y * 3.17) * 10) % 100000, 'src': 'lidar', 'tags': {}}
+
 def pads(buildings, lots, ground, lock):
     """Levels the ground under each building and parking lot (a graded yard), leaving road beds (`lock`) alone."""
     n = NC
@@ -678,47 +706,293 @@ def pads(buildings, lots, ground, lock):
         item['floor'] = float(max(item['floor'], np.percentile(edge, 80))) + 0.12
         item['low'] = float(edge.min())
 
+# ---------------------------------------------------------------- lidar point cloud
+LIDAR_LIST = 'https://noaa-nos-coastal-lidar-pds.s3.amazonaws.com/laz/geoid18/9015/urllist_wi2018_3county_m9015.txt'
+N1 = SIZE   # one-metre cells a side
+
+def lidar_tiles(cache):
+    """The 2018 FEMA/USGS point cloud tiles (1 km, UTM 16N, NAVD88 metres) that cover the map, from NOAA's open bucket."""
+    listing = fetch(LIDAR_LIST, f'{cache}/lidar/urllist.txt')
+    want = {(e, n) for e in range((E0 + X0) // 1000, (E0 + X1) // 1000 + 1) for n in range((N0 + Z0) // 1000, (N0 + Z1) // 1000 + 1)}
+    out = []
+    with open(listing) as f:
+        for line in f:
+            url = line.strip()
+            if not url.endswith('.copc.laz'):
+                continue
+            tile = url.rsplit('_', 1)[-1].split('.')[0]      # 16TCP312851
+            if len(tile) == 11 and tile.startswith('16TCP') and (int(tile[5:8]), int(tile[8:11]) + 4000) in want:
+                out.append(fetch(url, f"{cache}/lidar/{url.rsplit('/', 1)[-1]}", timeout=1500))
+    if len(out) != len(want):
+        raise SystemExit(f'expected {len(want)} lidar tiles, found {len(out)}')
+    return out
+
+def cell_reduce(idx, values, size, fn, fill):
+    """Per-cell reduction (fn = np.maximum or np.add) of `values` at flat cell indices `idx`."""
+    out = np.full(size, fill, np.float32)
+    if idx.size == 0:
+        return out
+    order = np.argsort(idx, kind='stable')
+    si = idx[order]
+    starts = np.flatnonzero(np.r_[True, si[1:] != si[:-1]])
+    out[si[starts]] = fn.reduceat(values[order], starts)
+    return out
+
+def load_lidar(cache, keep_mask):
+    """
+    The point cloud as one-metre rasters (row 0 = south): `top` the highest above-ground return, `last` the highest
+    last return (the roof under an overhanging tree), `count` above-ground returns, `multi` those from pulses with
+    more than one return (leaves and branches, not roofs) and `ground` ground returns. Also returns the above-ground
+    last returns that fall on `keep_mask` cells (the buildings), as an (n, 3) array of map x, map z, elevation.
+    Noise and water classes are dropped.
+    """
+    import laspy
+    stamp = f'{cache}/lidar_rasters_{int(keep_mask.sum())}.npz'
+    if os.path.exists(stamp):
+        z = np.load(stamp)
+        return {k: z[k] for k in ('top', 'last', 'count', 'multi', 'ground')}, z['points']
+    n = N1
+    top = np.full(n * n, -1e9, np.float32); last = np.full(n * n, -1e9, np.float32)
+    count = np.zeros(n * n, np.float32); multi = np.zeros(n * n, np.float32); ground = np.zeros(n * n, np.float32)
+    kept = []
+    flat_keep = keep_mask.ravel()
+    for path in lidar_tiles(cache):
+        las = laspy.read(path)
+        x = np.asarray(las.x) - E0; y = np.asarray(las.y) - N0; z = np.asarray(las.z).astype(np.float32)
+        cls = np.asarray(las.classification); rn = np.asarray(las.return_number); nr = np.asarray(las.number_of_returns)
+        inside = (x >= X0) & (x < X1) & (y >= Z0) & (y < Z1)
+        idx = ((y[inside] - Z0).astype(np.int64)) * n + (x[inside] - X0).astype(np.int64)
+        x = x[inside]; y = y[inside]; z = z[inside]; cls = cls[inside]; rn = rn[inside]; nr = nr[inside]
+        g = (cls == 2) | (cls == 20)
+        ground += cell_reduce(idx[g], np.ones(int(g.sum()), np.float32), n * n, np.add, 0)
+        a = cls == 1
+        top = np.maximum(top, cell_reduce(idx[a], z[a], n * n, np.maximum, -1e9))
+        count += cell_reduce(idx[a], np.ones(int(a.sum()), np.float32), n * n, np.add, 0)
+        m = a & (nr > 1)
+        multi += cell_reduce(idx[m], np.ones(int(m.sum()), np.float32), n * n, np.add, 0)
+        l = a & (rn == nr)
+        last = np.maximum(last, cell_reduce(idx[l], z[l], n * n, np.maximum, -1e9))
+        k = l & flat_keep[idx]
+        kept.append(np.stack([x[k].astype(np.float32), y[k].astype(np.float32), z[k]], axis=1))
+    rasters = {'top': top.reshape(n, n), 'last': last.reshape(n, n), 'count': count.reshape(n, n), 'multi': multi.reshape(n, n), 'ground': ground.reshape(n, n)}
+    points = np.concatenate(kept) if kept else np.zeros((0, 3), np.float32)
+    np.savez(stamp, points=points, **rasters)
+    return rasters, points
+
+def cell_dem(dem):
+    """The bare-earth height at every one-metre cell centre."""
+    c = X0 + np.arange(N1) + 0.5
+    r = Z0 + np.arange(N1) + 0.5
+    gx, gz = np.meshgrid(c, r)
+    return sample(dem, gx.ravel(), gz.ravel()).reshape(N1, N1).astype(np.float32)
+
+# Roof types: 0 flat, 1 gable with the ridge along the rectangle's first axis, 2 gable with the ridge along its second
+# axis, 3 hip, 4..7 a single slope whose high side is toward +second, -second, +first, -first axis. -1 = not measured.
+ROOF_UNKNOWN = -1
+
+def fit_roof(du, dv, h, hx, hz):
+    """The roof shape that best explains points (du, dv along the rectangle's axes, h above the floor): (type, eave, ridge)."""
+    def solve(feature):
+        a = np.stack([np.ones_like(h), feature], axis=1)
+        keep = np.ones(h.size, bool)
+        coef = np.array([float(np.median(h)), 0.0])
+        for _ in range(3):
+            coef, *_ = np.linalg.lstsq(a[keep], h[keep], rcond=None)
+            res = h - a @ coef
+            mad = np.median(np.abs(res[keep] - np.median(res[keep]))) + 0.03
+            keep = np.abs(res) < 3.5 * 1.4826 * mad
+            if keep.sum() < 6:
+                keep[:] = True
+                break
+        res = (h - a @ coef)[keep]
+        return coef, float(np.sqrt(np.mean(res * res)))
+    flat_level = float(np.median(h))
+    flat_rms = float(np.sqrt(np.mean(np.minimum((h - flat_level) ** 2, 4.0))))
+    def ridge(across, half):
+        # The ridge is rarely dead centre under the footprint: try it at nine offsets and keep the best.
+        best_fit = None
+        for off in np.linspace(-0.45, 0.45, 9) * half:
+            fit = solve(-np.abs(across - off))
+            if best_fit is None or fit[1] < best_fit[1]:
+                best_fit = fit
+        return best_fit
+    fits = {}
+    fits[1] = (ridge(dv, hz), hz)                     # ridge along first axis: falls away across the second
+    fits[2] = (ridge(du, hx), hx)
+    long_first = hx >= hz
+    reach = (np.maximum(np.abs(dv), np.abs(du) - (hx - hz)) if long_first else np.maximum(np.abs(du), np.abs(dv) - (hz - hx)))
+    fits[3] = (solve(-np.maximum(reach, 0)), min(hx, hz))
+    fits[4] = (solve(dv), hz); fits[6] = (solve(du), hx)
+    best = None
+    for kind, ((coef, rms), half) in fits.items():
+        slope = float(coef[1])
+        if kind in (1, 2, 3):
+            if slope < 0.1 or slope > 2.2:
+                continue
+            score = rms * (1.0 if kind != 3 else 1.12)
+            eave = float(coef[0] - slope * half); ridge = float(coef[0])
+        else:
+            if abs(slope) < 0.07 or abs(slope) > 1.2:
+                continue
+            score = rms * 1.35
+            eave = float(coef[0] - abs(slope) * half); ridge = float(coef[0] + abs(slope) * half)
+            if slope < 0:
+                kind += 1
+        if best is None or score < best[0]:
+            best = (score, kind, eave, ridge, rms)
+    if best is None or flat_rms < 0.22 or flat_rms < best[4] * 1.15 or best[2] < 1.2 or best[3] - best[2] < 0.3:
+        return 0, flat_level, flat_level
+    return best[1], best[2], best[3]
+
+def measure_roofs(buildings, points, nlast, dem):
+    """
+    Each building's real roof from the point cloud: per covering rectangle its type, eave and ridge (metres above
+    the building's own ground), from the last returns on it. Sets `roofs` (parallel to `rects`), `wall` (the main
+    block's eave) and `seen` (the share of the footprint standing above 1.6 m in 2018).
+    """
+    order = np.lexsort((np.floor(points[:, 0] / 16), np.floor(points[:, 1] / 16)))
+    pts = points[order]
+    key = (np.floor(pts[:, 1] / 16).astype(np.int64) + 4096) * 8192 + np.floor(pts[:, 0] / 16).astype(np.int64) + 4096
+    uniq, starts = np.unique(key, return_index=True)
+    ends = np.r_[starts[1:], key.size]
+    bins = {int(k): (int(a), int(b)) for k, a, b in zip(uniq, starts, ends)}
+    measured = 0
+    for b in buildings:
+        poly = b['poly']
+        minx, minz, maxx, maxz = poly.bounds
+        base = float(np.median(sample(dem, *np.array(poly.exterior.coords).T)))
+        i0 = max(0, int(minx - X0)); i1 = min(N1, int(maxx - X0) + 1); j0 = max(0, int(minz - Z0)); j1 = min(N1, int(maxz - Z0) + 1)
+        sub = nlast[j0:j1, i0:i1]
+        if sub.size:
+            gx, gz = np.meshgrid(X0 + np.arange(i0, i1) + 0.5, Z0 + np.arange(j0, j1) + 0.5)
+            from shapely import contains_xy
+            inside = contains_xy(poly, gx, gz)
+            b['seen'] = float((sub[inside] > 1.6).mean()) if inside.any() else 0.0
+        else:
+            inside = None
+            b['seen'] = 0.0
+        chunks = []
+        for bj in range(int(math.floor(minz / 16)), int(math.floor(maxz / 16)) + 1):
+            for bi in range(int(math.floor(minx / 16)), int(math.floor(maxx / 16)) + 1):
+                span = bins.get((bj + 4096) * 8192 + bi + 4096)
+                if span:
+                    chunks.append(pts[span[0]:span[1]])
+        near = np.concatenate(chunks) if chunks else np.zeros((0, 3), np.float32)
+        if near.shape[0] < 8 and inside is not None and inside.any():
+            # No stored points (a building found in the lidar itself): use the raster's cells as points.
+            sel = inside & (sub > 1.6)
+            near = np.stack([gx[sel], gz[sel], sub[sel] + base], axis=1).astype(np.float32) if sel.any() else near
+        roofs = []
+        for (cx, cz, hx, hz, yaw) in b['rects']:
+            c = math.cos(yaw); sn = math.sin(yaw)
+            dx = near[:, 0] - cx; dz = near[:, 1] - cz
+            du = dx * c + dz * sn; dv = -dx * sn + dz * c
+            h = near[:, 2] - base
+            sel = (np.abs(du) <= hx - 0.2) & (np.abs(dv) <= hz - 0.2) & (h > 1.5) & (h < 40)
+            if sel.sum() < max(10, 0.6 * hx * hz * 4):
+                roofs.append((ROOF_UNKNOWN, 0.0, 0.0))
+                continue
+            kind, eave, ridge = fit_roof(du[sel], dv[sel], h[sel].astype(np.float64), hx, hz)
+            roofs.append((kind, max(1.6, eave), max(1.6, ridge)))
+        b['roofs'] = roofs
+        b['base'] = base
+        if roofs and roofs[0][0] != ROOF_UNKNOWN:
+            b['wall'] = float(roofs[0][1])
+            measured += 1
+    return measured
+
+def find_buildings(nlast, ndsm, count, multi, taken, water_f, road_sdf1):
+    """
+    Buildings the footprint sources miss, straight from the point cloud: patches at least 2.2 m up whose surface is
+    solid (one return per pulse) and planar, clear of mapped footprints, roads and water. Returns polygons.
+    """
+    share = multi / np.maximum(count, 1)
+    d2x = np.abs(np.roll(nlast, 1, 1) + np.roll(nlast, -1, 1) - 2 * nlast)
+    d2z = np.abs(np.roll(nlast, 1, 0) + np.roll(nlast, -1, 0) - 2 * nlast)
+    planar = (d2x < 0.3) & (d2z < 0.3)
+    solid = (nlast > 2.2) & (nlast < 25) & (share < 0.3) & (ndsm - nlast < 0.7) & (count > 0)
+    water1 = np.repeat(np.repeat(water_f[:-1, :-1], 2, 0), 2, 1)
+    cand = solid & ~taken & ~water1 & (road_sdf1 > 0.5)
+    cand = ndimage.binary_opening(cand, structure=np.ones((3, 3)))
+    labels, n = ndimage.label(cand)
+    out = []
+    if n == 0:
+        return out
+    idx = np.arange(1, n + 1)
+    area = ndimage.sum(cand, labels, idx)
+    flat = ndimage.sum(planar & cand, labels, idx)
+    slices = ndimage.find_objects(labels)
+    from shapely.geometry import MultiPoint
+    for k, sl in enumerate(slices):
+        if area[k] < 22 or area[k] > 4000 or flat[k] / area[k] < 0.62:
+            continue
+        js, is_ = np.nonzero(labels[sl] == k + 1)
+        xs = X0 + sl[1].start + is_ + 0.5; zs = Z0 + sl[0].start + js + 0.5
+        rect = MultiPoint(list(zip(xs, zs))).minimum_rotated_rectangle
+        if rect.geom_type != 'Polygon':
+            continue
+        rect = rect.buffer(0.5, join_style=2)
+        c = list(rect.exterior.coords)
+        side = sorted([math.hypot(c[1][0] - c[0][0], c[1][1] - c[0][1]), math.hypot(c[2][0] - c[1][0], c[2][1] - c[1][1])])
+        if area[k] / rect.area < 0.62 or side[0] < 3.2 or side[1] / side[0] > 6:
+            continue
+        out.append(rect)
+    return out
+
+TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]   # pine, hardwood, birch at scale 1
+
+def detect_trees(ndsm, count, ground, blocked, sdf_f, bldg_dist_f, rng):
+    """
+    Individual trees from the canopy height model: one at every crown top, with its real height. Dense crowns with
+    little ground showing through in the leaf-off survey are conifers. Every tree near buildings is kept; farther
+    out only the tallest in each patch, so the far woods stay drawable.
+    Returns (x, z, kind, height) and the cleaned canopy height model.
+    """
+    chm = np.where(blocked, 0, ndsm).astype(np.float32)
+    med = ndimage.median_filter(chm, 3)
+    chm = np.where(chm - med > 4, med, chm)             # wires and stray high returns
+    smooth = ndimage.gaussian_filter(chm, 1.0)
+    peak = (ndimage.maximum_filter(smooth, 5) == smooth) & (smooth > 3.0)
+    js, is_ = np.nonzero(peak)
+    height = ndimage.maximum_filter(chm, 3)[js, is_]
+    x = X0 + is_ + 0.5 + (rng.random(is_.size) - 0.5) * 0.6
+    z = Z0 + js + 0.5 + (rng.random(js.size) - 0.5) * 0.6
+    far = sample(bldg_dist_f, x, z)
+    clear = sample(sdf_f, x, z)
+    ok = (clear > 1.3) & (height > 3.0) & (height < 45)
+    x, z, height, far, js, is_ = x[ok], z[ok], height[ok], far[ok], js[ok], is_[ok]
+    order = np.argsort(-height)
+    taken = {}
+    keep = np.zeros(height.size, bool)
+    for k in order:
+        gap = 2.2 + 0.17 * height[k] if far[k] < 150 else (9.0 if far[k] < 450 else 13.0)
+        cell = 14.0
+        ci = int(x[k] // cell); cj = int(z[k] // cell)
+        clash = False
+        for a in (ci - 1, ci, ci + 1):
+            for b in (cj - 1, cj, cj + 1):
+                for (ox, oz) in taken.get((a, b), ()):
+                    if (ox - x[k]) ** 2 + (oz - z[k]) ** 2 < gap * gap:
+                        clash = True
+                        break
+                if clash:
+                    break
+            if clash:
+                break
+        if clash:
+            continue
+        keep[k] = True
+        taken.setdefault((ci, cj), []).append((x[k], z[k]))
+    x, z, height, js, is_ = x[keep], z[keep], height[keep], js[keep], is_[keep]
+    g = ndimage.uniform_filter(ground, 5); c = ndimage.uniform_filter(count, 5)
+    through = (g / np.maximum(g + c, 1e-3))[js, is_]
+    conifer = (through < 0.2) & (height > 5)
+    kind = np.where(conifer, 0, np.where((rng.random(x.size) < 0.12) & (height < 17), 2, 1)).astype(np.uint8)
+    return x, z, kind, height.astype(np.float32), chm
+
 # ---------------------------------------------------------------- cover and trees
 # 0 meadow, 1 lawn, 2 woods, 3 marsh, 4 sand or bare, 5 lot, 6 field, 7 water
 COVER = ['meadow', 'lawn', 'woods', 'marsh', 'bare', 'lot', 'field', 'water']
-
-def tree_cover(naip):
-    """True where the aerial photo shows tree crowns (fine grid): green in near infrared and rough with crown shadows."""
-    R, G, NIR = naip[..., 0], naip[..., 1], naip[..., 3]
-    ndvi = (NIR - R) / (NIR + R + 1)
-    m = ndimage.uniform_filter(G, 7)
-    sd = np.sqrt(np.maximum(0, ndimage.uniform_filter(G * G, 7) - m * m))
-    tree = (ndimage.uniform_filter(ndvi, 7) > 0.13) & (ndimage.uniform_filter(sd, 5) > 12.5)
-    tree = ndimage.binary_closing(tree, iterations=1)
-    return ndimage.uniform_filter(tree.astype(np.float32), 5) > 0.5, ndvi
-
-def plant_trees(canopy_f, naip, sdf_f, mask_f, bldg_dist_f, rng):
-    """Tree spots under the crowns in the photo: denser near town, thinned in the far woods, darker crowns as pines."""
-    G7 = ndimage.uniform_filter(naip[..., 1], 7)
-    dens = ndimage.uniform_filter(canopy_f.astype(np.float32), 3)
-    base = 7.0
-    xs = np.arange(X0 + 24, X1 - 24, base)
-    zs = np.arange(Z0 + 24, Z1 - 24, base)
-    gx, gz = np.meshgrid(xs, zs)
-    px = (gx + rng.random(gx.shape) * base).ravel()
-    pz = (gz + rng.random(gz.shape) * base).ravel()
-    d = sample(dens, px, pz)
-    clear = sample(sdf_f, px, pz)
-    wet = sample(mask_f.astype(np.float32), px, pz)
-    far = sample(bldg_dist_f, px, pz)
-    spacing = np.where(far < 150, 7.0, np.where(far < 450, 9.0, 13.0))
-    keep = (d > 0.55) & (clear > 2.4) & (wet < 0.05) & (rng.random(px.shape) < (base / spacing) ** 2)
-    px, pz, spacing = px[keep], pz[keep], spacing[keep]
-    dark = sample(G7, px, pz)
-    patch = ndimage.gaussian_filter(rng.random((NF // 16 + 2, NF // 16 + 2)), 2)
-    patch = (patch - patch.min()) / (patch.max() - patch.min())
-    pz_i = np.clip(((pz - Z0) / FINE / 16).astype(int), 0, patch.shape[0] - 1)
-    px_i = np.clip(((px - X0) / FINE / 16).astype(int), 0, patch.shape[1] - 1)
-    pine_p = np.clip((104 - dark) / 22, 0.08, 0.85) * (0.45 + 1.1 * patch[pz_i, px_i])
-    roll = rng.random(px.shape)
-    kind = np.where(roll < pine_p, 0, np.where(rng.random(px.shape) < 0.1, 2, 1))   # 0 pine, 1 hardwood, 2 birch
-    scale = (0.8 + rng.random(px.shape) * 0.45) * np.sqrt(spacing / 7.0)
-    return px, pz, kind.astype(np.uint8), scale
 
 def classify(naip, ndvi, canopy_f, mask_f, sdf_f, bldg_dist_f, zones, wet, level_ext, ground):
     """Ground cover and a dryness tone for each shipped node."""
@@ -790,6 +1064,25 @@ def collect_pois(osm, bodies):
 
 # ---------------------------------------------------------------- output
 BASE = 228.0   # elevation (m) of y = 0, below the deepest river bed
+
+def building_out(b):
+    """One building for the JSON: each rectangle carries its roof type and its eave and ridge above the floor."""
+    lift = b['base'] - b['floor']          # the lidar measured from the natural ground; the floor sits on the graded yard
+    rects = []
+    for (cx, cz, hx, hz, yaw), (kind, eave, ridge) in zip(b['rects'], b['roofs']):
+        if kind == ROOF_UNKNOWN:
+            rects.append([round(cx, 1), round(cz, 1), round(hx, 2), round(hz, 2), round(yaw, 4), -1, 0, 0])
+        else:
+            e = round(max(1.6, eave + lift), 2)
+            top = e if kind == 0 else round(max(e + 0.3, ridge + lift), 2)
+            rects.append([round(cx, 1), round(cz, 1), round(hx, 2), round(hz, 2), round(yaw, 4), kind, e, top])
+    known = rects[0][5] >= 0
+    out = {'k': b['kind'], 'h': round(rects[0][6] if known else b['wall'], 2), 'f': round(b['floor'] - BASE, 2), 'l': round(b['low'] - BASE, 2), 's': b['seed'], 'p': flat(b['ring']), 'r': rects}
+    if b['name']:
+        out['n'] = b['name']
+    if known:
+        out['m'] = 1
+    return out
 
 def flat(pts, digits=1):
     out = []
@@ -871,11 +1164,24 @@ def main():
 
     # Roads, then yards and lots.
     roads = collect_roads(osm)
-    ground, bridges, culvert, road_w = grade_roads(roads, dem, ground, level_ext, wet, mask_f)
-    wet = wet & ~culvert
-    depth = np.where(wet, depth, 0)
     ms = ms_buildings(cache)
     buildings = collect_buildings(osm, ms, water, roads, dem)
+
+    # The 2018 point cloud: what stands on the ground. Roofs, buildings no footprint source has, bridge decks, trees.
+    lid, roof_points = load_lidar(cache, raster([b['poly'].buffer(1.0) for b in buildings], 1, N1) > 0)
+    dem1 = cell_dem(dem)
+    ndsm = np.clip(np.where(lid['top'] > -1e8, lid['top'], dem1) - dem1, 0, 80).astype(np.float32)
+    nlast = np.clip(np.where(lid['last'] > -1e8, lid['last'], dem1) - dem1, 0, 80).astype(np.float32)
+    road_dist1 = ndimage.distance_transform_edt(~(raster([LineString(r['pts']).buffer(r['width'] / 2) for r in roads], 1, N1) > 0)).astype(np.float32)
+    extra = find_buildings(nlast, ndsm, lid['count'], lid['multi'], raster([b['poly'].buffer(2.0) for b in buildings], 1, N1) > 0, mask_f, road_dist1)
+    inner = WORLD.buffer(-24)
+    found = [b for b in (lidar_building(p, dem) for p in extra if inner.contains(p.centroid)) if b]
+    buildings += found
+    measured = measure_roofs(buildings, roof_points, nlast, dem)
+
+    ground, bridges, culvert, road_w = grade_roads(roads, dem, ground, level_ext, wet, mask_f, lid['last'])
+    wet = wet & ~culvert
+    depth = np.where(wet, depth, 0)
     lots = []
     for tags, g in osm.polygons(lambda t: t.get('amenity') == 'parking'):
         if isinstance(g, list) or not WORLD.buffer(-30).contains(g.centroid) or g.geom_type != 'Polygon':
@@ -888,18 +1194,26 @@ def main():
     ground = np.where(wet, np.minimum(ground, level_ext - depth), ground)
 
     # Hard surfaces (1 m raster): distance to pavement and walls, for grass, trees and shoulders.
-    N1 = SIZE + 1
+    NH = SIZE + 1
     hard_geoms = [LineString(r['pts']).buffer(r['width'] / 2, cap_style=1) for r in roads]
     hard_geoms += [b['poly'] for b in buildings] + [l['poly'] for l in lots]
-    hard = raster(hard_geoms, 1, N1) > 0
+    hard = raster(hard_geoms, 1, NH) > 0
     sdf1 = (ndimage.distance_transform_edt(~hard) - ndimage.distance_transform_edt(hard)).astype(np.float32)
     sdf_f = sdf1[::2, ::2]
     bldg = raster([b['poly'] for b in buildings if b['kind'] not in ('shed',)], FINE, NF) > 0
     bldg_dist_f = (ndimage.distance_transform_edt(~bldg) * FINE).astype(np.float32)
 
-    # Cover and trees.
-    canopy_f, ndvi = tree_cover(naip)
-    canopy_f = canopy_f & ~mask_f & (sdf_f > 0.5)
+    # Trees and cover: every crown in the point cloud, and the ground under them.
+    R, NIR = naip[..., 0], naip[..., 3]
+    ndvi = (NIR - R) / (NIR + R + 1)
+    water1 = np.repeat(np.repeat(mask_f[:-1, :-1], 2, 0), 2, 1)
+    blocked = (raster([b['poly'].buffer(1.5) for b in buildings], 1, N1) > 0) | water1 | (lid['count'] == 0)
+    for b in bridges:
+        line = LineString(b['road']['dense'][b['a']:b['b'] + 1])
+        blocked |= raster([line.buffer(b['road']['width'] / 2 + 2.5)], 1, N1) > 0
+    tx, tz, tk, th, chm = detect_trees(ndsm, lid['count'], lid['ground'], blocked, sdf_f, bldg_dist_f, rng)
+    crowns = (chm > 3.0).reshape(N1 // 2, 2, N1 // 2, 2).max(axis=(1, 3))
+    canopy_f = np.pad(crowns, ((0, 1), (0, 1)), mode='edge') & ~mask_f & (sdf_f > 0.5)
     def zone(test):
         polys = [g for _t, g in osm.polygons(test) if not isinstance(g, list)]
         return unary_union(polys).intersection(WORLD) if polys else Polygon()
@@ -910,7 +1224,6 @@ def main():
         'lot': unary_union([l['poly'] for l in lots]) if lots else Polygon(),
     }
     cover, tone, canopy = classify(naip, ndvi, canopy_f, mask_f, sdf_f, bldg_dist_f, zones, wet, level_ext, ground)
-    tx, tz, tk, ts = plant_trees(canopy_f, naip, sdf_f, mask_f, bldg_dist_f, rng)
     pois = collect_pois(osm, bodies)
 
     # ---- write
@@ -920,10 +1233,11 @@ def main():
     clear = np.clip(np.round(sdf_f * 4), -127, 127).astype('i1')
     tree_x = np.round((tx - X0) * 10).astype('<u2')
     tree_z = np.round((tz - Z0) * 10).astype('<u2')
-    tree_s = (tk.astype(np.uint8) << 6 | np.clip(np.round((ts - 0.6) / 0.0125), 0, 63).astype(np.uint8)).astype('u1')
+    tree_s = (tk.astype(np.uint8) << 6).astype('u1')
+    tree_h = np.clip(np.round(th * 4), 1, 255).astype('u1')
     raw = write_bin(os.path.join(args.out, 'montello.bin'), [
         ('ground', 'u16', NC, g16), ('water', 'u16', NC, w16), ('cover', 'u8', NC, cover), ('tone', 'u8', NC, tone), ('canopy', 'u8', NC, canopy),
-        ('clear', 'i8', NF, clear), ('treeX', 'u16', 0, tree_x), ('treeZ', 'u16', 0, tree_z), ('treeS', 'u8', 0, tree_s),
+        ('clear', 'i8', NF, clear), ('treeX', 'u16', 0, tree_x), ('treeZ', 'u16', 0, tree_z), ('treeS', 'u8', 0, tree_s), ('treeH', 'u8', 0, tree_h),
     ])
     road_index = {id(r): i for i, r in enumerate(roads)}
     doc = {
@@ -931,27 +1245,34 @@ def main():
         'name': 'Montello, Wisconsin',
         'frame': {'lon': ORIGIN_LONLAT[0], 'lat': ORIGIN_LONLAT[1], 'utmZone': 16, 'utmE': E0, 'utmN': N0, 'x0': X0, 'z0': Z0, 'size': SIZE, 'cell': CELL, 'fine': FINE, 'base': BASE},
         'roads': [{'k': r['kind'], 'w': round(r['width'], 1), 'n': r['name'] or r['ref'], 'c': r['class'], 'p': flat(r['pts'])} for r in roads],
-        'bridges': [{'r': road_index[id(b['road'])], 'k': b['road']['kind'], 'w': round(b['road']['width'], 1), 'y': round(b['y'] - BASE, 2),
+        'bridges': [{'r': road_index[id(b['road'])], 'k': b['road']['kind'], 'w': round(b['road']['width'], 1), 'y': round(b['y'] - BASE, 2), **({'m': 1} if b['measured'] else {}),
                      'p': flat(b['road']['dense'][b['a']:b['b'] + 1])} for b in bridges],
-        'buildings': [{'k': b['kind'], 'h': round(b['wall'], 1), 'f': round(b['floor'] - BASE, 2), 'l': round(b['low'] - BASE, 2), 's': b['seed'], 'p': flat(b['ring']),
-                       'r': [[round(cx, 1), round(cz, 1), round(hx, 2), round(hz, 2), round(yaw, 4)] for cx, cz, hx, hz, yaw in b['rects']],
-                       **({'n': b['name']} if b['name'] else {})} for b in buildings],
+        'buildings': [building_out(b) for b in buildings],
         'lots': [{'f': round(l['floor'] - BASE, 2), 'p': flat(list(l['poly'].exterior.coords)[:-1])} for l in lots],
         'pois': pois,
         'sources': [
             'Roads, water, land use and places © OpenStreetMap contributors (ODbL)',
             'Elevation: USGS 3D Elevation Program lidar',
-            'Tree and ground cover from USDA NAIP aerial imagery',
-            'Building footprints and heights: OpenStreetMap and Microsoft Global ML Building Footprints (ODbL)',
+            'Ground cover from USDA NAIP aerial imagery',
+            'Building footprints: OpenStreetMap and Microsoft Global ML Building Footprints (ODbL)',
+            'Roof shapes, building and tree heights, bridge decks: 2018 FEMA/USGS lidar point cloud (NOAA Digital Coast)',
         ],
     }
     kinds = {}
     for b in buildings:
         kinds[b['kind']] = kinds.get(b['kind'], 0) + 1
+    roof_names = {-1: 'unmeasured', 0: 'flat', 1: 'gable', 2: 'gable', 3: 'hip', 4: 'shed', 5: 'shed', 6: 'shed', 7: 'shed'}
+    roof_kinds = {}
+    for b in buildings:
+        name = roof_names[b['roofs'][0][0]]
+        roof_kinds[name] = roof_kinds.get(name, 0) + 1
     doc['stats'] = {
         'roads': len(roads), 'roadKm': round(sum(LineString(r['pts']).length for r in roads) / 1000, 1), 'bridges': len(bridges),
-        'buildings': len(buildings), 'buildingsFromOsm': sum(1 for b in buildings if b['src'] == 'osm'), 'buildingKinds': kinds,
-        'waterBodies': len(bodies), 'waterShare': round(float(wet.mean()), 4), 'trees': int(tx.size), 'lots': len(lots), 'places': len(pois),
+        'bridgesMeasured': sum(1 for b in bridges if b['measured']),
+        'buildings': len(buildings), 'buildingsFromOsm': sum(1 for b in buildings if b['src'] == 'osm'), 'buildingsFromLidar': len(found), 'buildingKinds': kinds,
+        'roofsMeasured': measured, 'roofKinds': roof_kinds, 'buildingsNotStandingIn2018': sum(1 for b in buildings if b['seen'] < 0.2),
+        'waterBodies': len(bodies), 'waterShare': round(float(wet.mean()), 4), 'trees': int(tx.size), 'treeKinds': [int((tk == k).sum()) for k in range(3)],
+        'treeHeightMedian': round(float(np.median(th)), 1), 'treeHeightMax': round(float(th.max()), 1), 'lots': len(lots), 'places': len(pois),
         'lowest': round(float(ground.min() - BASE), 2), 'highest': round(float(ground.max() - BASE), 2),
     }
     with open(os.path.join(args.out, 'montello.json'), 'w') as f:
@@ -959,7 +1280,7 @@ def main():
     print(json.dumps(doc['stats'], indent=1))
     print('montello.bin', os.path.getsize(os.path.join(args.out, 'montello.bin')), 'bytes packed,', raw, 'raw; montello.json', os.path.getsize(os.path.join(args.out, 'montello.json')))
     if args.debug:
-        debug_images(args.debug, cover, ground, wet, roads, buildings, (tx, tz, tk, ts))
+        debug_images(args.debug, cover, ground, wet, roads, buildings, (tx, tz, tk, th))
 
 if __name__ == '__main__':
     main()

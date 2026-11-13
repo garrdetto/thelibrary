@@ -79,7 +79,7 @@ Around town you can drive pickups (with a trailer), a heavy-duty crew cab, a mus
 
 ## Tello
 
-Montello, Wisconsin at full size, built from real survey data on the same engine as Fox Lake: the lidar ground, every mapped road and bridge, Buffalo Lake, Lake Montello and the Fox River at their own levels, and every building on its real footprint. Walk it or drive the Fox Plains vehicles, and use the map (Ctrl) for directions along the real streets. The map files in `public/modules/tello/` are baked by `modules-src/tello/tools/bake_map.py` from OpenStreetMap (© OpenStreetMap contributors, ODbL), USGS 3DEP lidar, USDA NAIP imagery and Microsoft building footprints (ODbL). Details in `modules-src/tello/README.md`.
+Montello, Wisconsin at full size, built from real survey data on the same engine as Fox Lake: the lidar ground, every mapped road and bridge, Buffalo Lake, Lake Montello and the Fox River at their own levels, every building on its real footprint under the roof the 2018 lidar point cloud measured on it, and every tree at its measured height. Walk it or drive the Fox Plains vehicles, and use the map (Ctrl) for directions along the real streets. The map files in `public/modules/tello/` are baked by `modules-src/tello/tools/bake_map.py` from OpenStreetMap (© OpenStreetMap contributors, ODbL), USGS 3DEP lidar and the 2018 FEMA/USGS lidar point cloud, USDA NAIP imagery and Microsoft building footprints (ODbL). Details in `modules-src/tello/README.md`.
 
 ## Multiplayer
 
