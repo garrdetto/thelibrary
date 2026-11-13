@@ -32,7 +32,16 @@ export interface TerrainShape {
   carve?(x: number, z: number, h: number): number
   /** Openings in the interstate's barriers where a host world's road joins it: side -1 (south-west rail), 0 (median), 1 (north-east rail), between t0 and t1 along it. */
   highwayGaps?: readonly HighwayGap[]
+  /** The woods floor's colours (linear 0..1) when the host world wants them lighter than the lake country's own `WOODS_FLOOR`. */
+  woodsFloor?: WoodsFloor
 }
+
+export interface WoodsFloor {
+  needles: readonly number[]
+  moss: readonly number[]
+}
+
+export const WOODS_FLOOR: WoodsFloor = { needles: [0.33, 0.27, 0.17], moss: [0.25, 0.32, 0.14] }
 
 export interface HighwayGap {
   side: -1 | 0 | 1

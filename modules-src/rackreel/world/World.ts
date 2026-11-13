@@ -17,7 +17,7 @@ import type { EngineContext } from '../core/EngineSetup'
 import { FOG_COLOR, FOG_DENSITY } from '../core/EngineSetup'
 import './Shaders'
 import { woodMaterial } from './Surfaces'
-import { CELL, GRID, HALF, LAKE_CENTER, Terrain, WORLD_SIZE, fbm, forestDensity, lakeCoord, lakeRadius, marshWeight, smoothstep, trailOffset } from './Terrain'
+import { CELL, GRID, HALF, LAKE_CENTER, Terrain, WOODS_FLOOR, WORLD_SIZE, fbm, forestDensity, lakeCoord, lakeRadius, marshWeight, smoothstep, trailOffset } from './Terrain'
 
 export interface Landmarks {
   dock: { start: Vector3; end: Vector3; heading: number }
@@ -29,7 +29,7 @@ export interface Landmarks {
   utvHeading: number
 }
 
-function mixColor(a: number[], b: number[], t: number): number[] {
+function mixColor(a: readonly number[], b: readonly number[], t: number): number[] {
   const k = Math.min(1, Math.max(0, t))
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]
 }
@@ -73,8 +73,7 @@ export function buildGround(ctx: EngineContext, terrain: Terrain): Mesh {
   const lakebed = [0.36, 0.32, 0.22]
   const meadow = [0.42, 0.47, 0.22]
   const meadowDry = [0.56, 0.52, 0.3]
-  const needles = [0.33, 0.27, 0.17]
-  const moss = [0.25, 0.32, 0.14]
+  const { needles, moss } = terrain.shape.woodsFloor ?? WOODS_FLOOR
   const marsh = [0.36, 0.38, 0.2]
   const rock = [0.45, 0.44, 0.41]
   const trail = [0.44, 0.36, 0.25]
