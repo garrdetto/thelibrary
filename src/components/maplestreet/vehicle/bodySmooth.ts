@@ -2,13 +2,14 @@ import { Box3, BufferAttribute, Matrix3, Vector3 } from 'three'
 import type { BufferGeometry, Camera, Material, Mesh, Object3D } from 'three'
 import { clusterNormals, topology, writeVertexNormals } from './meshTopology'
 import type { Topology } from './meshTopology'
-import { bumpDepths, SMOOTH_METHODS, smoothPositions, spread } from './smoothAlgorithms'
-import type { SmoothMethod } from './smoothAlgorithms'
+import { BUMP_LEVELS, bumpDepths, SMOOTH_METHODS, smoothCapped, smoothPositions, spread } from './smoothAlgorithms'
+import type { BumpLevel, SmoothMethod } from './smoothAlgorithms'
+import { withFullIndices } from './displayIndex'
 import { bodyMaterials, flattenTextureBumps, softenPaint } from './textureSmooth'
 import type { TextureReport } from './textureSmooth'
 
-export { SMOOTH_METHODS }
-export type { SmoothMethod, TextureReport }
+export { BUMP_LEVELS, SMOOTH_METHODS }
+export type { BumpLevel, SmoothMethod, TextureReport }
 
 /** A point in canvas pixels, measured from the stage's top-left corner. */
 export type Px = { x: number; y: number }
@@ -51,6 +52,7 @@ type Target = {
 export type SelectionReport = { vertices: number; meshes: number }
 export type DetectReport = { roughShare: number; spots: number; worstMm: number; typicalMm: number }
 export type AutoPlan = { settings: SmoothSettings; selection: SelectionReport; share: number; typicalMm: number }
+export type BumpReport = { moved: number; largestMm: number; capMm: number }
 export type MarkerKind = 'selection' | 'heat'
 
 function clusterPositions(topo: Topology, pos: BufferAttribute) {
@@ -232,16 +234,44 @@ export class BodySmoother {
     return target.mesh.matrixWorld.getMaxScaleOnAxis() || 1
   }
 
-  /** Measures how rough every part of the body is. Depths are millimetres on a full-size car. */
-  analyse(creaseDeg: number): DetectReport {
-    this.cancel()
+  /** The body's diagonal in world units; depths are scaled as if it were a full-size car's. */
+  private diagonal() {
     this.root.updateMatrixWorld(true)
     const box = new Box3()
     for (const target of this.targets) {
       target.mesh.geometry.computeBoundingBox()
       box.union(target.mesh.geometry.boundingBox!.clone().applyMatrix4(target.mesh.matrixWorld))
     }
-    const diag = box.isEmpty() ? 1 : box.getSize(new Vector3()).length() || 1
+    return box.isEmpty() ? 1 : box.getSize(new Vector3()).length() || 1
+  }
+
+  /**
+   * Flattens random lumps over the whole body in one step and re-shades it.
+   * Creases stay, and no point moves more than the level's cap.
+   */
+  smoothBumps(level: BumpLevel, creaseDeg: number): BumpReport {
+    this.cancel()
+    const { capMm, passes } = BUMP_LEVELS[level]
+    const diag = this.diagonal()
+    this.remember(this.targets)
+    let moved = 0, largestMm = 0
+    for (const target of this.targets) {
+      const toMm = (this.worldScale(target) / diag) * REFERENCE_MM
+      const result = smoothCapped(target.topo, target.base, passes, creaseDeg, capMm / toMm)
+      target.base = result.positions
+      target.baseNormals = normalsFor(target, target.base, creaseDeg, null)
+      writePositions(target, target.base, target.baseNormals)
+      moved += result.moved
+      largestMm = Math.max(largestMm, result.largest * toMm)
+    }
+    this.changed(1)
+    return { moved, largestMm, capMm }
+  }
+
+  /** Measures how rough every part of the body is. Depths are millimetres on a full-size car. */
+  analyse(creaseDeg: number): DetectReport {
+    this.cancel()
+    const diag = this.diagonal()
     const sample: number[] = []
     let rough = 0, total = 0, worst = 0
     for (const target of this.targets) {
@@ -513,11 +543,14 @@ export async function exportScene(root: Object3D): Promise<Uint8Array> {
     if (mesh.isMesh && mesh.userData.msOriginalMaterial) { swapped.push({ mesh, preview: mesh.material }); mesh.material = mesh.userData.msOriginalMaterial as Material | Material[] }
   })
   for (const h of helpers) h.object.removeFromParent()
+  const notes: { node: Object3D; userData: Record<string, unknown> }[] = []
+  root.traverse(node => { notes.push({ node, userData: node.userData }); node.userData = {} })
   try {
-    const result = await new GLTFExporter().parseAsync(root, { binary: true, onlyVisible: false })
+    const result = await withFullIndices(root, () => new GLTFExporter().parseAsync(root, { binary: true, onlyVisible: false }))
     if (!(result instanceof ArrayBuffer)) throw new Error('The model could not be exported.')
     return new Uint8Array(result)
   } finally {
+    for (const { node, userData } of notes) node.userData = userData
     for (const { mesh, preview } of swapped) mesh.material = preview
     for (const h of helpers) h.parent.add(h.object)
   }

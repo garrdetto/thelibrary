@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MutableRefObject, ReactNode } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { Canvas, useThree } from '@react-three/fiber'
 import type { ThreeEvent } from '@react-three/fiber'
 import { Grid, Html, OrbitControls, TransformControls, useGLTF } from '@react-three/drei'
-import { Box3, BoxGeometry, BufferGeometry, CanvasTexture, Float32BufferAttribute, Color, EdgesGeometry, Mesh, MeshStandardMaterial, Vector3 } from 'three'
+import { Box3, BoxGeometry, BufferAttribute, BufferGeometry, CanvasTexture, Float32BufferAttribute, Color, DoubleSide, EdgesGeometry, Matrix4, Mesh, MeshStandardMaterial, Vector3 } from 'three'
 import type { Group, Material, Object3D, Texture } from 'three'
+import { cutTriangles, lampCuts, lamps3d } from '../../../../modules-src/maplestreet/shared/LampCut'
+import type { Lamp3d, LampCut } from '../../../../modules-src/maplestreet/shared/LampCut'
+import { lampParts } from '../../../../modules-src/maplestreet/shared/Lamps3d'
+import type { LampMesh } from '../../../../modules-src/maplestreet/shared/Lamps3d'
 import { lampTriangles } from '../../../../modules-src/maplestreet/shared/Shapes'
 import type { LampDepth, LampSize, Shape } from '../../../../modules-src/maplestreet/shared/Shapes'
 import { recolorPixels } from '../../../../modules-src/maplestreet/shared/PaintMask'
@@ -13,6 +17,10 @@ import type { Draft, MarkerId, ReferenceKind, Size3 } from './draft'
 import { draftRideHeight, suspensionFor, turnedCenter, turnedSize } from './draft'
 import { DentSmoother } from './DentSmoother'
 import type { SmootherApi } from './DentSmoother'
+import { fullIndex, onFullIndexChange, setDisplayIndex } from './displayIndex'
+import { groundMatrix } from './suggestRender'
+import { WindowWorker } from './WindowsPanel'
+import type { WindowsApi } from './WindowsPanel'
 
 const RESIDENT_URL = '/models/maplestreet/characters/resident.glb'
 const RESIDENT_HEIGHT = 1.75
@@ -33,6 +41,8 @@ type Props = {
   onScene?: (scene: Object3D | null) => void
   /** Filled in once the model is open; the Body step smooths dents through it. */
   smoother?: MutableRefObject<SmootherApi | null>
+  /** Filled in once the model is open; the Windows tool works through it. */
+  windows?: MutableRefObject<WindowsApi | null>
   /** Holds the camera still while a selection is being drawn over the canvas. */
   locked?: boolean
 }
@@ -73,8 +83,41 @@ export function maskedMap(map: Texture, key: string, tolerance: number, color: s
   return tex
 }
 
-function VehicleModel({ url, draft, onInfo, picking, onPick, onScene, smoother }: { url: string; draft: Draft; onInfo: Props['onInfo']; picking: boolean; onPick: Props['onPick']; onScene?: Props['onScene']; smoother?: Props['smoother'] }) {
+const floatPositions = new WeakMap<object, Float32Array>()
+
+/** A geometry's positions as plain numbers (published models store them packed). */
+function positionsOf(geometry: BufferGeometry): ArrayLike<number> {
+  const position = geometry.getAttribute('position')
+  if (position instanceof BufferAttribute && position.array instanceof Float32Array && !position.normalized) return position.array
+  let plain = floatPositions.get(position)
+  if (!plain) {
+    plain = new Float32Array(position.count * 3)
+    for (let i = 0; i < position.count; i++) { plain[i * 3] = position.getX(i); plain[i * 3 + 1] = position.getY(i); plain[i * 3 + 2] = position.getZ(i) }
+    floatPositions.set(position, plain)
+  }
+  return plain
+}
+
+/** Hides, in the preview only, the body's triangles that lie behind a 3D lamp's lens; the saved model keeps them. */
+function hideBehindLamps(scene: Object3D, holder: Group, cuts: LampCut[]) {
+  if (!holder.parent) return
+  holder.parent.updateWorldMatrix(true, true)
+  const toChassis = new Matrix4().copy(holder.parent.matrixWorld).invert()
+  const m = new Matrix4()
+  scene.traverse(node => {
+    const mesh = node as Mesh
+    if (!mesh.isMesh || node.userData.msHelper || !mesh.geometry?.getAttribute('position')) return
+    if (!cuts.length) { setDisplayIndex(mesh.geometry, null); return }
+    const kept = cutTriangles(positionsOf(mesh.geometry), fullIndex(mesh.geometry)?.array ?? null, m.multiplyMatrices(toChassis, mesh.matrixWorld).elements, cuts)
+    setDisplayIndex(mesh.geometry, kept ? new BufferAttribute(kept, 1) : null)
+  })
+}
+
+function VehicleModel({ url, draft, cuts, onInfo, picking, onPick, onScene, smoother, windows }: { url: string; draft: Draft; cuts: LampCut[]; onInfo: Props['onInfo']; picking: boolean; onPick: Props['onPick']; onScene?: Props['onScene']; smoother?: Props['smoother']; windows?: Props['windows'] }) {
   const { scene } = useGLTF(url, false, true)
+  const invalidate = useThree(state => state.invalidate)
+  const holder = useRef<Group>(null)
+  const toBody = useRef<() => Matrix4>(() => new Matrix4())
   useEffect(() => { onScene?.(scene); return () => onScene?.(null) }, [scene, onScene])
   const originals = useRef(new Map<Object3D, Material | Material[]>())
   const info = useMemo<ModelInfo | null>(() => {
@@ -111,7 +154,19 @@ function VehicleModel({ url, draft, onInfo, picking, onPick, onScene, smoother }
     }
   }, [draft.paint])
 
+  const placed = info ? `${draft.scale}|${draft.yaw}|${draft.shiftX}|${draft.lift}|${draftRideHeight(draft, turnedSize(info.raw, draft.yaw).x * draft.scale)}` : ''
+  useEffect(() => {
+    const apply = () => { if (holder.current) { hideBehindLamps(scene, holder.current, cuts); invalidate() } }
+    apply()
+    const stop = onFullIndexChange(apply)
+    return () => {
+      stop()
+      scene.traverse(node => { const mesh = node as Mesh; if (mesh.isMesh && mesh.geometry) setDisplayIndex(mesh.geometry, null) })
+    }
+  }, [scene, cuts, placed, invalidate])
+
   if (!info) return null
+  toBody.current = () => groundMatrix(draft, info.center)
   const turned = turnedCenter(info.center, draft.yaw)
   const length = turnedSize(info.raw, draft.yaw).x * draft.scale
   const ride = draftRideHeight(draft, length)
@@ -125,9 +180,33 @@ function VehicleModel({ url, draft, onInfo, picking, onPick, onScene, smoother }
     const src = (Array.isArray(original) ? original[index] : original ?? mats[index]) as MeshStandardMaterial
     onPick({ material: src?.name ?? '', color: samplePixel(src?.map ?? null, event.uv) ?? (src?.color ? `#${src.color.getHexString()}` : null) })
   }
-  return <group position={[-turned.x * draft.scale + draft.shiftX, -ride + draft.lift - info.center.minY * draft.scale, -turned.z * draft.scale]} rotation-y={(draft.yaw * Math.PI) / 2} scale={draft.scale} onClick={click}>
+  return <group ref={holder} position={[-turned.x * draft.scale + draft.shiftX, -ride + draft.lift - info.center.minY * draft.scale, -turned.z * draft.scale]} rotation-y={(draft.yaw * Math.PI) / 2} scale={draft.scale} onClick={click}>
     <primitive object={scene}/>
     {smoother && <DentSmoother scene={scene} api={smoother}/>}
+    {windows && <WindowWorker scene={scene} api={windows} toBody={toBody}/>}
+  </group>
+}
+
+function lampGeometry(part: LampMesh) {
+  const geometry = new BufferGeometry()
+  geometry.setAttribute('position', new Float32BufferAttribute(part.positions, 3))
+  geometry.setAttribute('normal', new Float32BufferAttribute(part.normals, 3))
+  return geometry
+}
+
+/** One 3D lamp as the games build it: a reflector bowl in the body, a glowing bulb, a lens over the opening and a trim ring. */
+function Lamp3dPreview({ lamp }: { lamp: Lamp3d }) {
+  const parts = useMemo(() => {
+    const built = lampParts(lamp.p, lamp.shape, lamp.side, lamp.size, lamp.depth, lamp.facing, lamp.style)
+    return { housing: lampGeometry(built.housing), glow: lampGeometry(built.glow), bezel: lampGeometry(built.bezel), lens: lampGeometry(built.lens) }
+  }, [lamp])
+  useEffect(() => () => { for (const geometry of Object.values(parts)) geometry.dispose() }, [parts])
+  const tail = lamp.kind === 'tail'
+  return <group>
+    <mesh geometry={parts.housing}><meshStandardMaterial color={tail ? '#e6b4b4' : '#eef1f5'} metalness={0.35} roughness={0.18} side={DoubleSide}/></mesh>
+    <mesh geometry={parts.glow}><meshStandardMaterial color={tail ? '#ff2a2a' : '#fff4d6'} emissive={tail ? '#ff1a1a' : '#fff4d6'} emissiveIntensity={1.6}/></mesh>
+    <mesh geometry={parts.bezel}><meshStandardMaterial color="#2b2e33" metalness={0.5} roughness={0.3} side={DoubleSide}/></mesh>
+    <mesh geometry={parts.lens} renderOrder={4}><meshStandardMaterial color={tail ? '#d21a1a' : '#ffffff'} transparent opacity={tail ? 0.5 : 0.16} roughness={0.05} depthWrite={false}/></mesh>
   </group>
 }
 
@@ -236,6 +315,9 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
     if (!target || !selected) return
     props.onMarker(selected, { x: target.position.x, y: target.position.y, z: target.position.z })
   }
+  const lamps = useMemo(() => lamps3d({ head: draft.headOn ? [draft.head] : [], tail: draft.tailOn ? [draft.tail] : [] }, draft.lampShapes), [draft.head, draft.tail, draft.headOn, draft.tailOn, draft.lampShapes])
+  const cuts = useMemo(() => lampCuts(lamps), [lamps])
+  const flat = (kind: 'head' | 'tail') => (kind === 'head' ? draft.headOn : draft.tailOn) && (kind === 'head' ? draft.lampShapes.headStyle : draft.lampShapes.tailStyle)?.kind !== '3d'
   const lamp = (p: { x: number; y: number; z: number }, color: string, out: 1 | -1, shape?: Shape, size?: LampSize, depth?: LampDepth) => (p.z === 0 ? [1] : [1, -1]).map(side => shape
     ? <LampPlate key={side} p={p} side={side as 1 | -1} shape={shape} size={size} depth={depth} out={out} color={color}/>
     : <mesh key={side} position={[p.x, p.y, p.z * side]}>
@@ -244,11 +326,12 @@ function ChassisScene(props: Props & { info: ModelInfo | null; setInfo: (info: M
     </mesh>)
   return <>
     <group position={[0, ride, 0]}>
-      <VehicleModel url={props.url} draft={draft} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick} onScene={props.onScene} smoother={props.smoother}/>
+      <VehicleModel url={props.url} draft={draft} cuts={cuts} onInfo={props.setInfo} picking={props.picking} onPick={props.onPick} onScene={props.onScene} smoother={props.smoother} windows={props.windows}/>
       {draft.axles.map((a, i) => [1, -1].map(side => <Wheel key={`${i}${side}`} radius={a.radius} width={a.width} position={[a.x, wheelCenterY, a.halfTrack * side]}/>))}
       <group position={[draft.seat.x, draft.seat.y, draft.seat.z]}><SeatedFigure/></group>
-      {draft.headOn && lamp(draft.head, '#fff4d6', 1, draft.lampShapes.head, draft.lampShapes.headSize, draft.lampShapes.headDepth)}
-      {draft.tailOn && lamp(draft.tail, '#ff1a1a', -1, draft.lampShapes.tail, draft.lampShapes.tailSize, draft.lampShapes.tailDepth)}
+      {flat('head') && lamp(draft.head, '#fff4d6', 1, draft.lampShapes.head, draft.lampShapes.headSize, draft.lampShapes.headDepth)}
+      {flat('tail') && lamp(draft.tail, '#ff1a1a', -1, draft.lampShapes.tail, draft.lampShapes.tailSize, draft.lampShapes.tailDepth)}
+      {lamps.map(item => <Lamp3dPreview key={`${item.kind}${item.side}`} lamp={item}/>)}
       {draft.hitch && <mesh position={[draft.hitch.x, draft.hitch.y, 0]}><sphereGeometry args={[0.05, 12, 10]}/><meshStandardMaterial color="#dadada" metalness={1} roughness={0.15}/></mesh>}
       <Marker id="front" position={pos('front')} selected={selected === 'front'} onSelect={props.onSelect} color="#5cd17a"/>
       <Marker id="rear" position={pos('rear')} selected={selected === 'rear'} onSelect={props.onSelect} color="#5cd17a"/>

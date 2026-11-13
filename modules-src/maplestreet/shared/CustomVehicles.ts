@@ -37,6 +37,14 @@ export const VEHICLE_LIMITS = {
   topSpeedMphMax: 200,
   modelBytes: 15 * 1024 * 1024,
   wheelBytes: 3 * 1024 * 1024,
+  /** The HD texture pack; Workers KV values stop at 25 MiB. */
+  hdBytes: 24 * 1024 * 1024,
+  trianglesDefault: 150_000,
+  trianglesMax: 300_000,
+  /** Longest texture side in the base model, which loads first. */
+  baseTexture: 1024,
+  /** Longest texture side in the HD pack. */
+  hdTexture: 4096,
 } as const;
 
 /**
@@ -127,6 +135,13 @@ export interface CustomVehicleRecord extends CustomVehicleSpec {
   name: string;
   modelUrl: string;
   wheelUrl: string | null;
+  /**
+   * The HD pack: a tiny .glb whose materials carry this model's textures at
+   * full resolution, matched to the model's materials by name. Games load the
+   * model first and swap these in when the vehicle is close. Missing on older
+   * records and on vehicles whose textures already fit the base model.
+   */
+  hdUrl?: string | null;
   active: boolean;
   /** Missing on records cached before drafts existed: those were all published or retired. */
   status?: AssetStatus;
@@ -231,6 +246,7 @@ export function isValidVehicleRecord(r: unknown): r is CustomVehicleRecord {
     && typeof o.name === 'string' && o.name.length >= 1 && o.name.length <= VEHICLE_LIMITS.nameMax
     && typeof o.modelUrl === 'string' && o.modelUrl.length < 512
     && (o.wheelUrl === null || (typeof o.wheelUrl === 'string' && o.wheelUrl.length < 512))
+    && (o.hdUrl === undefined || o.hdUrl === null || (typeof o.hdUrl === 'string' && o.hdUrl.length < 512))
     && typeof o.active === 'boolean'
     && (o.status === undefined || isAssetStatus(o.status))
     && (DRIVE_TEMPLATES as readonly string[]).includes(o.template)

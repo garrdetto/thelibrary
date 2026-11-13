@@ -21,21 +21,22 @@ export async function fetchStoreVehicles(): Promise<CustomVehicleRecord[]> {
 }
 
 /** Publishes a new vehicle, or with `id` saves a new model, name, spec and status over an existing one. */
-export async function publishStoreVehicle(input: { id?: string; name: string; spec: CustomVehicleSpec; model: Blob; wheel: Blob | null; status: 'draft' | 'published' }): Promise<CustomVehicleRecord> {
+export async function publishStoreVehicle(input: { id?: string; name: string; spec: CustomVehicleSpec; model: Blob; wheel: Blob | null; hd?: Blob | null; status: 'draft' | 'published' }): Promise<CustomVehicleRecord> {
   const form = new FormData()
   if (input.id) form.append('id', input.id)
   form.append('name', input.name)
   form.append('spec', JSON.stringify(input.spec))
   form.append('model', input.model, 'vehicle.glb')
   if (input.wheel) form.append('wheel', input.wheel, 'wheel.glb')
+  if (input.hd) form.append('hd', input.hd, 'hd.glb')
   form.append('status', input.status)
   const response = await fetch(ENDPOINT, { method: 'POST', body: form, credentials: 'same-origin' })
   if (!response.ok) throw new Error(await readError(response))
   return ((await response.json()) as { vehicle: CustomVehicleRecord }).vehicle
 }
 
-/** Downloads a published vehicle's model (and wheel) as files the editor can open and re-publish. */
-export async function fetchStoreVehicleFiles(record: CustomVehicleRecord): Promise<{ model: File; wheel: File | null }> {
+/** Downloads a published vehicle's model (with its wheel and HD texture pack) as files the editor can open and re-publish. */
+export async function fetchStoreVehicleFiles(record: CustomVehicleRecord): Promise<{ model: File; wheel: File | null; hd: File | null }> {
   const load = async (url: string, name: string) => {
     const response = await fetch(url, { credentials: 'same-origin' })
     if (!response.ok) throw new Error('That vehicle’s model could not be downloaded.')
@@ -43,8 +44,12 @@ export async function fetchStoreVehicleFiles(record: CustomVehicleRecord): Promi
     const ext = type.includes('json') || /\.gltf(\?|$)/i.test(url) ? 'gltf' : 'glb'
     return new File([await response.blob()], `${name}.${ext}`, { type })
   }
-  const [model, wheel] = await Promise.all([load(record.modelUrl, record.id), record.wheelUrl ? load(record.wheelUrl, `${record.id}-wheel`) : Promise.resolve(null)])
-  return { model, wheel }
+  const [model, wheel, hd] = await Promise.all([
+    load(record.modelUrl, record.id),
+    record.wheelUrl ? load(record.wheelUrl, `${record.id}-wheel`) : Promise.resolve(null),
+    record.hdUrl ? load(record.hdUrl, `${record.id}-hd`).catch(() => null) : Promise.resolve(null),
+  ])
+  return { model, wheel, hd }
 }
 
 export async function updateStoreVehicle(id: string, changes: { active?: boolean; status?: AssetStatus; name?: string; spec?: CustomVehicleSpec }): Promise<CustomVehicleRecord> {

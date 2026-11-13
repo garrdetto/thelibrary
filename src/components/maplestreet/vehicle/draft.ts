@@ -1,6 +1,7 @@
 import { DRIVE_TEMPLATES, VEHICLE_LIMITS, BRAND_PATTERN } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
 import type { CustomVehicleRecord, CustomVehicleSpec, DriveTemplate, Point3, TrafficRoute, VehicleParts, PartBox } from '../../../../modules-src/maplestreet/shared/CustomVehicles'
-import type { LampShapes } from '../../../../modules-src/maplestreet/shared/Shapes'
+import { DEFAULT_LAMP_STYLE, LAMP_STYLE_LIMITS } from '../../../../modules-src/maplestreet/shared/Shapes'
+import type { LampShapes, LampStyle } from '../../../../modules-src/maplestreet/shared/Shapes'
 import { ECONOMY_TEMPLATES } from './templates'
 import { accelTargetMph, MPH_TO_MS, predictDrive, solveDrive } from '../../../../modules-src/maplestreet/shared/VehicleDrive'
 import { BODY_EXTENTS, BUILTIN_TUNING, rideHeight } from '../../../../modules-src/maplestreet/shared/Vehicles'
@@ -26,6 +27,16 @@ export function templatePerformance(template: DriveTemplate) {
 }
 
 export type MarkerId = 'front' | 'rear' | 'seat' | 'head' | 'tail' | 'hitch'
+
+/** How much texture detail a published vehicle carries. The model itself always loads fast; the sharper textures come as a separate HD pack. */
+export type Quality = 'best' | 'balanced' | 'small'
+export const QUALITY: Record<Quality, { label: string; hint: string; hdTexture: number }> = {
+  best: { label: 'Best (4K)', hint: 'Sharpest paint and trim up close. The big textures load after the vehicle appears.', hdTexture: VEHICLE_LIMITS.hdTexture },
+  balanced: { label: 'Balanced (2K)', hint: 'Still crisp, with about a quarter of the download.', hdTexture: 2048 },
+  small: { label: 'Small (1K)', hint: 'Smallest download. Fine for small or distant vehicles.', hdTexture: 0 },
+}
+
+export const newLampStyle = (): LampStyle => ({ ...DEFAULT_LAMP_STYLE })
 
 export type Draft = {
   name: string
@@ -58,7 +69,7 @@ export type Draft = {
   headOn: boolean
   tailOn: boolean
   maxTriangles: number
-  maxTexture: number
+  quality: Quality
 }
 
 const r2 = (v: number) => Math.round(v * 1000) / 1000
@@ -140,11 +151,11 @@ export function newDraft(template: DriveTemplate, raw: Size3 | null, previous?: 
     traffic: previous?.traffic ?? { enabled: false, driver: '', route: 'ringA', mph: template === 'golfcart' ? 13 : 24 },
     removeWheels: previous?.removeWheels ?? true,
     parts: previous?.parts ?? { doors: [], hood: null, trunk: null },
-    lampShapes: previous?.lampShapes ?? {},
+    lampShapes: previous?.lampShapes ?? { headStyle: newLampStyle(), tailStyle: newLampStyle() },
     headOn: previous?.headOn ?? true,
     tailOn: previous?.tailOn ?? true,
-    maxTriangles: previous?.maxTriangles ?? 120000,
-    maxTexture: previous?.maxTexture ?? 2048,
+    maxTriangles: previous?.maxTriangles ?? VEHICLE_LIMITS.trianglesDefault,
+    quality: previous?.quality ?? 'best',
   }
 }
 
@@ -170,13 +181,25 @@ export function solvedEngine(d: Draft) {
   return { ...engine, zeroToMph: to }
 }
 
-/** Outlines worth publishing: only for lamps that are on, and a size only with its outline. */
+const within = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
+
+/** A lamp style as it is published: only for 3D lamps, with every number inside the limits the games accept. */
+function publishedStyle(style: LampStyle | undefined): LampStyle | undefined {
+  if (style?.kind !== '3d') return undefined
+  const L = LAMP_STYLE_LIMITS
+  return { kind: '3d', bulge: r2(within(style.bulge, 0, L.bulgeMax)), recess: r2(within(style.recess, L.recessMin, L.recessMax)), rim: r2(within(style.rim, L.rimMin, L.rimMax)), cut: style.cut }
+}
+
+/** Outlines and styles worth publishing: only for lamps that are on, a size only with its outline, a style only for a 3D lamp. */
 function lampShapesOf(d: Draft): LampShapes | undefined {
   const out: LampShapes = {}
   const l = d.lampShapes
   if (d.headOn && l.head) { out.head = l.head; if (l.headSize) out.headSize = l.headSize; if (l.headSize && l.headDepth) out.headDepth = l.headDepth }
   if (d.tailOn && l.tail) { out.tail = l.tail; if (l.tailSize) out.tailSize = l.tailSize; if (l.tailSize && l.tailDepth) out.tailDepth = l.tailDepth }
-  return out.head || out.tail ? out : undefined
+  const headStyle = d.headOn ? publishedStyle(l.headStyle) : undefined, tailStyle = d.tailOn ? publishedStyle(l.tailStyle) : undefined
+  if (headStyle) out.headStyle = headStyle
+  if (tailStyle) out.tailStyle = tailStyle
+  return Object.keys(out).length ? out : undefined
 }
 
 /** The publishable spec for a draft whose turned, scaled model size is `size`. */
@@ -257,8 +280,8 @@ export function draftFromRecord(v: CustomVehicleRecord, raw: Size3, center: { x:
     lampShapes: { ...(v.lampShapes ?? {}) },
     headOn: v.lights.head.length > 0,
     tailOn: v.lights.tail.length > 0,
-    maxTriangles: 120000,
-    maxTexture: 2048,
+    maxTriangles: VEHICLE_LIMITS.trianglesDefault,
+    quality: 'best',
   }
   draft.lift = r2(v.model.y + draftRideHeight(draft, length) + center.minY * scale)
   return draft

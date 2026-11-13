@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { MutableRefObject } from 'react'
-import { Brush, Check, Eye, Layers, Lasso, Maximize2, Minimize2, ScanSearch, Sparkles, SquareDashed, SunMedium, Undo2, WandSparkles, X } from 'lucide-react'
-import { DEFAULT_SMOOTH, SMOOTH_LIMITS, SMOOTH_METHODS } from './bodySmooth'
-import type { DetectReport, Px, SelectionReport, SmoothMethod, SmoothSettings } from './bodySmooth'
+import { Brush, Check, Eye, Layers, Lasso, LoaderCircle, Maximize2, Minimize2, ScanSearch, Sparkles, SquareDashed, SunMedium, Undo2, WandSparkles, X } from 'lucide-react'
+import { BUMP_LEVELS, DEFAULT_SMOOTH, SMOOTH_LIMITS, SMOOTH_METHODS } from './bodySmooth'
+import type { BumpLevel, DetectReport, Px, SelectionReport, SmoothMethod, SmoothSettings } from './bodySmooth'
 import type { SmootherApi } from './DentSmoother'
 
 type Status = { tone: 'ok' | 'error'; text: string } | null
@@ -15,7 +15,7 @@ function Slider({ label, value, onChange, min, max, step, display }: { label: st
   return <label className="ms-veh-slider">{label} <output>{display}</output><input type="range" min={min} max={max} step={step} value={value} onChange={event => onChange(Number(event.target.value))}/></label>
 }
 
-/** The Body step's state, shared by the vehicle and race car editors; the editor draws the lasso overlay with `closeLasso`. */
+/** The body clean-up state, shared by the vehicle and race car editors; the editor draws the lasso overlay with `closeLasso`. */
 export function useBodySmoothing(smoother: MutableRefObject<SmootherApi | null>, setStatus: (status: Status) => void, onBodyChanged: () => void) {
   const [lasso, setLasso] = useState(false)
   const [selection, setSelection] = useState<SelectionReport | null>(null)
@@ -24,6 +24,7 @@ export function useBodySmoothing(smoother: MutableRefObject<SmootherApi | null>,
   const [heat, setHeat] = useState<{ spots: number; share: number } | null>(null)
   const [bumpMm, setBumpMm] = useState(DEFAULT_BUMP_MM)
   const [busy, setBusy] = useState<string | null>(null)
+  const [level, setLevel] = useState<BumpLevel>('normal')
 
   const run = <T,>(label: string, work: () => T, done: (result: T) => void) => {
     setBusy(label)
@@ -58,19 +59,30 @@ export function useBodySmoothing(smoother: MutableRefObject<SmootherApi | null>,
 
   function reset() { setLasso(false); setSelection(null); setScan(null); setHeat(null) }
 
-  return { lasso, setLasso, selection, setSelection, closeLasso, reset, panel: { smoother, lasso, setLasso, selection, setSelection, smooth, tune, scan, setScan, heat, setHeat, bumpMm, setBumpMm, busy, run, picked, refreshHeat, setStatus, onBodyChanged, setSmooth } }
+  return { lasso, setLasso, selection, setSelection, closeLasso, reset, panel: { smoother, lasso, setLasso, selection, setSelection, smooth, tune, scan, setScan, heat, setHeat, bumpMm, setBumpMm, busy, run, picked, refreshHeat, setStatus, onBodyChanged, setSmooth, level, setLevel } }
 }
 
 type PanelState = ReturnType<typeof useBodySmoothing>['panel']
 
 export function BodySmoothPanel({ state, disabled, onStartLasso, savedNote }: { state: PanelState; disabled: boolean; onStartLasso: () => void; savedNote: string }) {
-  const { smoother, lasso, setLasso, selection, setSelection, smooth, tune, scan, setScan, heat, setHeat, bumpMm, setBumpMm, busy, run, picked, refreshHeat, setStatus, onBodyChanged, setSmooth } = state
+  const { smoother, lasso, setLasso, selection, setSelection, smooth, tune, scan, setScan, heat, setHeat, bumpMm, setBumpMm, busy, run, picked, refreshHeat, setStatus, onBodyChanged, setSmooth, level, setLevel } = state
   const [comparing, setComparing] = useState(false)
   const [paintSoft, setPaintSoft] = useState(0.5)
   const api = smoother.current
   const bodyEdits = api?.edits ?? 0
   const undoDepth = api?.undoDepth ?? 0
   const off = disabled || !!busy
+
+  function smoothBumps() {
+    if (!api) return
+    run('bumps', () => api.smoothBumps(level, smooth.creaseDeg), report => {
+      setSelection(null); onBodyChanged()
+      if (heat) refreshHeat()
+      setStatus(report.moved
+        ? { tone: 'ok', text: `Smoothed the bumps. Nothing moved more than ${mm(Math.min(report.largestMm, report.capMm))} mm, so creases, arches and trim keep their shape. Press Undo if you liked it better before.` }
+        : { tone: 'ok', text: 'This body is already smooth. Nothing was changed.' })
+    })
+  }
 
   function autoSmooth() {
     if (!api) return
@@ -79,7 +91,7 @@ export function BodySmoothPanel({ state, disabled, onStartLasso, savedNote }: { 
       setSmooth(plan.settings)
       setSelection(plan.selection)
       if (heat) refreshHeat()
-      setStatus({ tone: 'ok', text: `Auto smooth found rough surface on about ${pct(plan.share)} of the body (typical bump ${mm(plan.typicalMm)} mm) and is previewing an edge-keeping clean-up there. Keep it, adjust the sliders, or clear it.` })
+      setStatus({ tone: 'ok', text: `Found rough surface on about ${pct(plan.share)} of the body (typical bump ${mm(plan.typicalMm)} mm) and is previewing a clean-up there. Keep it, adjust the sliders, or clear it.` })
     })
   }
 
@@ -119,7 +131,7 @@ export function BodySmoothPanel({ state, disabled, onStartLasso, savedNote }: { 
   function soften() {
     run('soften', () => api?.softenTextures(paintSoft), result => {
       finish()
-      setStatus(result?.changed ? { tone: 'ok', text: `Evened out the paint on ${result.changed} ${result.changed === 1 ? 'texture' : 'textures'}. Blotches and speckles are smoothed while trim, windows and decals keep their edges. Press it again to soften more, or Undo.` } : { tone: 'ok', text: 'This model has no colour texture to soften.' })
+      setStatus(result?.changed ? { tone: 'ok', text: `Blurred the paint on ${result.changed} ${result.changed === 1 ? 'texture' : 'textures'}. Speckles are evened out, and fine detail is softer too. Undo puts the sharp paint back.` } : { tone: 'ok', text: 'This model has no colour texture to soften.' })
     })
   }
   function clear() { api?.cancel(); setSelection(null); setLasso(false) }
@@ -128,60 +140,72 @@ export function BodySmoothPanel({ state, disabled, onStartLasso, savedNote }: { 
   const method = SMOOTH_METHODS[smooth.method]
 
   return <fieldset className="ms-veh-body">
-    <legend>Body smoothing</legend>
-    <p className="ms-veh-note">Generated bodies come out grainy and lumpy. Start with <strong>Remove painted-on bumps</strong> and <strong>Smooth shading</strong>, then <strong>Auto smooth</strong> for lumps in the shape itself. Points only move in or out of the surface, never sideways, so the paint and decals stay where they are. Shape smoothing previews first and nothing changes until you keep it.</p>
-
-    <div className="ms-veh-pair">
-      <button type="button" className="ms-veh-suggest" onClick={autoSmooth} disabled={off} title="Measure the whole body and smooth just the rough areas, keeping panel lines and trim">{busy === 'auto' ? <Sparkles className="spin" size={14} aria-hidden/> : <WandSparkles size={14} aria-hidden/>} {busy === 'auto' ? 'Smoothing…' : 'Auto smooth'}</button>
-      <button type="button" onClick={shade} disabled={off} title="Re-shade the whole body smoothly; edges sharper than the crease angle stay crisp"><SunMedium size={14} aria-hidden/> Smooth shading</button>
+    <legend>Smooth out bumps</legend>
+    <p className="ms-veh-note">Flattens the random lumps a scanned body comes with. Creases, panel lines and trim stay sharp, and no part of the body moves more than a few millimetres.</p>
+    <div className="ms-veh-choice" role="radiogroup" aria-label="How strongly to smooth">
+      {(Object.keys(BUMP_LEVELS) as BumpLevel[]).map(id => <label key={id} className={level === id ? 'is-active' : ''}>
+        <input type="radio" name="ms-veh-bump-level" value={id} checked={level === id} disabled={off} onChange={() => setLevel(id)}/> {BUMP_LEVELS[id].label}
+      </label>)}
     </div>
-
-    <h4 className="ms-veh-subhead">Smooth the surface texture</h4>
-    <p className="ms-veh-note">Much of the roughness on generated cars is painted into the textures, not the shape: a bump texture that makes the paint look hammered, and blotchy colour. Moving the body's points can't fix that; these can.</p>
     <div className="ms-veh-pair">
-      <button type="button" onClick={flatten} disabled={off} title="Remove the bump (normal) texture that makes the paint look grainy and hammered"><Layers size={14} aria-hidden/> {busy === 'flatten' ? 'Removing…' : 'Remove painted-on bumps'}</button>
-      <button type="button" onClick={soften} disabled={off} title="Even out blotchy, speckled paint while keeping sharp lines"><Brush size={14} aria-hidden/> {busy === 'soften' ? 'Softening…' : 'Soften blotchy paint'}</button>
+      <button type="button" className="ms-veh-suggest" onClick={smoothBumps} disabled={off}>{busy === 'bumps' ? <LoaderCircle className="spin" size={14} aria-hidden/> : <WandSparkles size={14} aria-hidden/>} {busy === 'bumps' ? 'Smoothing…' : 'Smooth out bumps'}</button>
+      <button type="button" onClick={undo} disabled={off || !undoDepth}><Undo2 size={14} aria-hidden/> Undo{undoDepth ? ` (${undoDepth})` : ''}</button>
     </div>
-    <Slider label="Paint softening" min={0} max={1} step={0.05} value={paintSoft} onChange={setPaintSoft} display={`${Math.round(paintSoft * 100)}%`}/>
-
-    <h4 className="ms-veh-subhead">Find dents and bumps</h4>
-    <div className="ms-veh-pair">
-      <button type="button" onClick={scanBody} disabled={off}><ScanSearch size={14} aria-hidden/> {busy === 'scan' ? 'Scanning…' : scan ? 'Scan again' : 'Scan the body'}</button>
-      <button type="button" onClick={() => api && picked(api.selectMarked(bumpMm), 'No spots are marked at this depth. Lower “Mark bumps deeper than”.')} disabled={off || !heat}><SquareDashed size={14} aria-hidden/> Select marked spots</button>
-    </div>
-    <label className="ms-veh-inline"><input type="checkbox" checked={!!heat} disabled={off} onChange={event => toggleHeat(event.target.checked)}/> Show rough spots on the model (yellow to red)</label>
-    <Slider label="Mark bumps deeper than" min={SMOOTH_LIMITS.bumpMin} max={SMOOTH_LIMITS.bumpMax} step={0.1} value={bumpMm} onChange={setThreshold} display={`${bumpMm.toFixed(1)} mm`}/>
-    {scan && heat && <p className="ms-veh-note" role="status">{heat.spots.toLocaleString()} rough {heat.spots === 1 ? 'spot' : 'spots'} marked, covering {pct(heat.share)} of the surface. Typical bump {mm(scan.typicalMm)} mm, deepest {mm(scan.worstMm)} mm (measured as if the model were a full-size car).</p>}
-
-    <h4 className="ms-veh-subhead">Choose where to smooth</h4>
-    <div className="ms-veh-pair">
-      <button type="button" onClick={() => { onStartLasso(); setLasso(current => !current) }} aria-pressed={lasso} disabled={off}><Lasso size={14} aria-hidden/> {lasso ? 'Drawing… (Esc to stop)' : 'Draw around a dent'}</button>
-      <button type="button" onClick={() => api && picked(api.selectAll(), 'This model has no surfaces to smooth.')} disabled={off}><Maximize2 size={14} aria-hidden/> Whole body</button>
-      <button type="button" onClick={() => api && setSelection(api.resize('grow'))} disabled={off || !selection}><Maximize2 size={14} aria-hidden/> Grow selection</button>
-      <button type="button" onClick={() => api && setSelection(api.resize('shrink'))} disabled={off || !selection}><Minimize2 size={14} aria-hidden/> Shrink selection</button>
-    </div>
-    <Slider label="Loop edge blend (next loop you draw)" min={0} max={SMOOTH_LIMITS.featherMax} step={1} value={smooth.featherPx} onChange={featherPx => tune({ featherPx })} display={`${smooth.featherPx} px`}/>
-    {selection && <p className="ms-veh-note" role="status">{selection.vertices.toLocaleString()} vertices selected on {selection.meshes} {selection.meshes === 1 ? 'part' : 'parts'} (blue dots). The preview updates as you change the settings.</p>}
-
-    <h4 className="ms-veh-subhead">How to smooth</h4>
-    <label>Method<select value={smooth.method} onChange={event => tune({ method: event.target.value as SmoothMethod })}>
-      {(Object.keys(SMOOTH_METHODS) as SmoothMethod[]).map(id => <option key={id} value={id}>{SMOOTH_METHODS[id].label}</option>)}
-    </select></label>
-    <p className="ms-veh-note">{method.help}</p>
-    <Slider label="Strength" min={0} max={1} step={0.01} value={smooth.strength} onChange={strength => tune({ strength })} display={`${Math.round(smooth.strength * 100)}%`}/>
-    <Slider label={smooth.method === 'clean' ? 'Passes (rougher surfaces need more)' : 'Passes (wider dents need more)'} min={1} max={method.passesMax} step={1} value={Math.min(smooth.passes, method.passesMax)} onChange={passes => tune({ passes })} display={String(Math.min(smooth.passes, method.passesMax))}/>
-    <Slider label="Keep creases sharper than" min={SMOOTH_LIMITS.creaseMin} max={SMOOTH_LIMITS.creaseMax} step={1} value={smooth.creaseDeg} onChange={creaseDeg => tune({ creaseDeg })} display={`${smooth.creaseDeg}°`}/>
-    <button type="button" className={comparing ? 'is-active' : ''} disabled={!selection} aria-pressed={comparing}
-      onPointerDown={() => compare(true)} onPointerUp={() => compare(false)} onPointerLeave={() => compare(false)}
-      onKeyDown={event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); compare(true) } }} onKeyUp={() => compare(false)} onBlur={() => compare(false)}>
-      <Eye size={14} aria-hidden/> Hold to see the original
-    </button>
-
-    <div className="ms-veh-pair">
-      <button type="button" onClick={keep} disabled={off || !selection}><Check size={14} aria-hidden/> Keep this smoothing</button>
-      <button type="button" onClick={clear} disabled={off || (!selection && !lasso)}><X size={14} aria-hidden/> Clear selection</button>
-    </div>
-    <button type="button" onClick={undo} disabled={off || !undoDepth}><Undo2 size={14} aria-hidden/> Undo last change{undoDepth ? ` (${undoDepth})` : ''}</button>
     {bodyEdits > 0 && <p className="ms-veh-note" role="status">{bodyEdits} body {bodyEdits === 1 ? 'change is' : 'changes are'} kept. {savedNote}</p>}
+
+    <details className="ms-veh-more">
+      <summary>More tools</summary>
+      <div className="ms-veh-more-body">
+        <p className="ms-veh-note">For one stubborn dent or a special case. These preview first and nothing changes until you keep it.</p>
+        <div className="ms-veh-pair">
+          <button type="button" onClick={autoSmooth} disabled={off} title="Measure the whole body and preview a clean-up of just the rough areas">{busy === 'auto' ? <Sparkles className="spin" size={14} aria-hidden/> : <WandSparkles size={14} aria-hidden/>} {busy === 'auto' ? 'Measuring…' : 'Preview rough areas only'}</button>
+          <button type="button" onClick={shade} disabled={off} title="Re-shade the whole body smoothly; edges sharper than the crease angle stay crisp"><SunMedium size={14} aria-hidden/> Smooth shading only</button>
+        </div>
+
+        <h4 className="ms-veh-subhead">Find dents and bumps</h4>
+        <div className="ms-veh-pair">
+          <button type="button" onClick={scanBody} disabled={off}><ScanSearch size={14} aria-hidden/> {busy === 'scan' ? 'Scanning…' : scan ? 'Scan again' : 'Scan the body'}</button>
+          <button type="button" onClick={() => api && picked(api.selectMarked(bumpMm), 'No spots are marked at this depth. Lower “Mark bumps deeper than”.')} disabled={off || !heat}><SquareDashed size={14} aria-hidden/> Select marked spots</button>
+        </div>
+        <label className="ms-veh-inline"><input type="checkbox" checked={!!heat} disabled={off} onChange={event => toggleHeat(event.target.checked)}/> Show rough spots on the model (yellow to red)</label>
+        <Slider label="Mark bumps deeper than" min={SMOOTH_LIMITS.bumpMin} max={SMOOTH_LIMITS.bumpMax} step={0.1} value={bumpMm} onChange={setThreshold} display={`${bumpMm.toFixed(1)} mm`}/>
+        {scan && heat && <p className="ms-veh-note" role="status">{heat.spots.toLocaleString()} rough {heat.spots === 1 ? 'spot' : 'spots'} marked, covering {pct(heat.share)} of the surface. Typical bump {mm(scan.typicalMm)} mm, deepest {mm(scan.worstMm)} mm (measured as if the model were a full-size car).</p>}
+
+        <h4 className="ms-veh-subhead">Choose where to smooth</h4>
+        <div className="ms-veh-pair">
+          <button type="button" onClick={() => { onStartLasso(); setLasso(current => !current) }} aria-pressed={lasso} disabled={off}><Lasso size={14} aria-hidden/> {lasso ? 'Drawing… (Esc to stop)' : 'Draw around a dent'}</button>
+          <button type="button" onClick={() => api && picked(api.selectAll(), 'This model has no surfaces to smooth.')} disabled={off}><Maximize2 size={14} aria-hidden/> Whole body</button>
+          <button type="button" onClick={() => api && setSelection(api.resize('grow'))} disabled={off || !selection}><Maximize2 size={14} aria-hidden/> Grow selection</button>
+          <button type="button" onClick={() => api && setSelection(api.resize('shrink'))} disabled={off || !selection}><Minimize2 size={14} aria-hidden/> Shrink selection</button>
+        </div>
+        <Slider label="Loop edge blend (next loop you draw)" min={0} max={SMOOTH_LIMITS.featherMax} step={1} value={smooth.featherPx} onChange={featherPx => tune({ featherPx })} display={`${smooth.featherPx} px`}/>
+        {selection && <p className="ms-veh-note" role="status">{selection.vertices.toLocaleString()} points selected on {selection.meshes} {selection.meshes === 1 ? 'part' : 'parts'} (blue dots). The preview updates as you change the settings.</p>}
+
+        <h4 className="ms-veh-subhead">How to smooth the selection</h4>
+        <label>Method<select value={smooth.method} onChange={event => tune({ method: event.target.value as SmoothMethod })}>
+          {(Object.keys(SMOOTH_METHODS) as SmoothMethod[]).map(id => <option key={id} value={id}>{SMOOTH_METHODS[id].label}</option>)}
+        </select></label>
+        <p className="ms-veh-note">{method.help}</p>
+        <Slider label="Strength" min={0} max={1} step={0.01} value={smooth.strength} onChange={strength => tune({ strength })} display={`${Math.round(smooth.strength * 100)}%`}/>
+        <Slider label={smooth.method === 'clean' ? 'Passes (rougher surfaces need more)' : 'Passes (wider dents need more)'} min={1} max={method.passesMax} step={1} value={Math.min(smooth.passes, method.passesMax)} onChange={passes => tune({ passes })} display={String(Math.min(smooth.passes, method.passesMax))}/>
+        <Slider label="Keep creases sharper than" min={SMOOTH_LIMITS.creaseMin} max={SMOOTH_LIMITS.creaseMax} step={1} value={smooth.creaseDeg} onChange={creaseDeg => tune({ creaseDeg })} display={`${smooth.creaseDeg}°`}/>
+        <button type="button" className={comparing ? 'is-active' : ''} disabled={!selection} aria-pressed={comparing}
+          onPointerDown={() => compare(true)} onPointerUp={() => compare(false)} onPointerLeave={() => compare(false)}
+          onKeyDown={event => { if (event.key === ' ' || event.key === 'Enter') { event.preventDefault(); compare(true) } }} onKeyUp={() => compare(false)} onBlur={() => compare(false)}>
+          <Eye size={14} aria-hidden/> Hold to see the original
+        </button>
+        <div className="ms-veh-pair">
+          <button type="button" onClick={keep} disabled={off || !selection}><Check size={14} aria-hidden/> Keep this smoothing</button>
+          <button type="button" onClick={clear} disabled={off || (!selection && !lasso)}><X size={14} aria-hidden/> Clear selection</button>
+        </div>
+
+        <h4 className="ms-veh-subhead">Textures</h4>
+        <button type="button" onClick={flatten} disabled={off} title="Take off the bump texture that makes the paint look grainy and hammered"><Layers size={14} aria-hidden/> {busy === 'flatten' ? 'Removing…' : 'Remove the painted-on bump texture'}</button>
+        <p className="ms-veh-note">Only if the paint looks hammered or grainy even on a smooth body. The shape is not changed.</p>
+        <button type="button" onClick={soften} disabled={off}><Brush size={14} aria-hidden/> {busy === 'soften' ? 'Blurring…' : 'Soften blotchy paint (blurs detail)'}</button>
+        <Slider label="Paint softening" min={0} max={1} step={0.05} value={paintSoft} onChange={setPaintSoft} display={`${Math.round(paintSoft * 100)}%`}/>
+        <p className="ms-veh-note">Be careful with this one: it blurs the colour texture. Speckles go, but small lettering, badges and thin lines get softer as well, and the vehicle can end up looking smudged. Leave it alone unless the paint is badly blotchy.</p>
+      </div>
+    </details>
   </fieldset>
 }

@@ -1,15 +1,17 @@
 import { z } from 'zod'
 import { BUNDLED_VEHICLES } from '../../modules-src/maplestreet/shared/BundledVehicles'
 import { BRAND_PATTERN, DRIVE_TEMPLATES, MAX_DOOR_ROWS, TRAFFIC_COUNT_MAX, TRAFFIC_ROUTES, VEHICLE_LIMITS, type CustomVehicleRecord, type CustomVehicleSpec } from '../../modules-src/maplestreet/shared/CustomVehicles'
-import { isValidShape, LAMP_DEPTH_LIMIT, LAMP_GRID, LAMP_SIZE_LIMITS, SHAPE_LIMITS } from '../../modules-src/maplestreet/shared/Shapes'
+import { isValidShape, LAMP_DEPTH_LIMIT, LAMP_GRID, LAMP_SIZE_LIMITS, LAMP_STYLE_LIMITS, SHAPE_LIMITS } from '../../modules-src/maplestreet/shared/Shapes'
 import type { Env } from './env'
 import { getAsset, insertAsset, listAssets, statusFrom, updateAsset, type AssetFiles, type AssetRow, type AssetStatus } from './maplestreet-assets'
 
 export const VEHICLE_MODEL_KEY = (id: string) => `maplestreet-vehicle/${id}`
 export const VEHICLE_WHEEL_KEY = (id: string) => `maplestreet-vehicle/${id}/wheel`
+export const VEHICLE_HD_KEY = (id: string) => `maplestreet-vehicle/${id}/hd`
 /** The version keeps the immutable cache honest when the admin saves a new model over a vehicle. */
 export const vehicleModelUrl = (id: string, version = 1) => `/api/maplestreet-vehicles?model=${id}&v=${version}`
 export const vehicleWheelUrl = (id: string, version = 1) => `/api/maplestreet-vehicles?wheel=${id}&v=${version}`
+export const vehicleHdUrl = (id: string, version = 1) => `/api/maplestreet-vehicles?hd=${id}&v=${version}`
 export const BUNDLED_ID_PATTERN = /^bundled-[a-z0-9-]{1,60}$/
 
 const n = (min: number, max: number) => z.number().finite().min(min).max(max)
@@ -34,6 +36,7 @@ const shapeSchema = z.array(z.object({ u: n(0, 1), v: n(0, 1) }).strict()).min(S
 
 const lampSize = z.object({ w: n(LAMP_SIZE_LIMITS.min, LAMP_SIZE_LIMITS.max), h: n(LAMP_SIZE_LIMITS.min, LAMP_SIZE_LIMITS.max) }).strict()
 const lampDepth = z.array(n(-LAMP_DEPTH_LIMIT, LAMP_DEPTH_LIMIT)).length(LAMP_GRID * LAMP_GRID)
+const lampStyle = z.object({ kind: z.enum(['flat', '3d']), bulge: n(0, LAMP_STYLE_LIMITS.bulgeMax), recess: n(LAMP_STYLE_LIMITS.recessMin, LAMP_STYLE_LIMITS.recessMax), rim: n(LAMP_STYLE_LIMITS.rimMin, LAMP_STYLE_LIMITS.rimMax), cut: z.boolean() }).strict()
 
 const partBox = z.object({ front: n(-10, 10), back: n(-10, 10), bottom: n(-10, 10), top: n(-10, 10), drop: z.boolean().optional(), shape: shapeSchema.optional() }).strict().refine(b => b.front > b.back && b.top > b.bottom, 'A part box needs its front ahead of its back and its top above its bottom.')
 
@@ -78,7 +81,7 @@ export const vehicleSpecSchema = z.object({
     hood: partBox.nullable(),
     trunk: partBox.nullable(),
   }).strict().optional(),
-  lampShapes: z.object({ head: shapeSchema.optional(), tail: shapeSchema.optional(), headSize: lampSize.optional(), tailSize: lampSize.optional(), headDepth: lampDepth.optional(), tailDepth: lampDepth.optional() }).strict().optional(),
+  lampShapes: z.object({ head: shapeSchema.optional(), tail: shapeSchema.optional(), headSize: lampSize.optional(), tailSize: lampSize.optional(), headDepth: lampDepth.optional(), tailDepth: lampDepth.optional(), headStyle: lampStyle.optional(), tailStyle: lampStyle.optional() }).strict().optional(),
 }).strict()
 
 export const bundledVehicle = (id: string) => BUNDLED_VEHICLES.find(vehicle => vehicle.id === id) ?? null
@@ -97,6 +100,7 @@ function toRecord(asset: AssetRow): CustomVehicleRecord | null {
     name: asset.name,
     modelUrl: asset.files.model ? vehicleModelUrl(asset.id, asset.version) : bundled ? bundled.modelUrl : vehicleModelUrl(asset.id, asset.version),
     wheelUrl: asset.files.wheel ? vehicleWheelUrl(asset.id, asset.version) : bundled ? bundled.wheelUrl : null,
+    hdUrl: asset.files.hd ? vehicleHdUrl(asset.id, asset.version) : asset.files.model ? null : bundled?.hdUrl ?? null,
     active: asset.status !== 'retired',
     status: asset.status,
     updatedAt: asset.updatedAt,
@@ -114,9 +118,12 @@ export async function getStoreVehicle(env: Env, id: string): Promise<CustomVehic
   return asset ? toRecord(asset) : null
 }
 
-export async function insertStoreVehicle(env: Env, id: string, name: string, spec: CustomVehicleSpec, model: { type: string; bytes: number }, wheel: { type: string; bytes: number } | null, createdBy: string, status: AssetStatus = 'published') {
+type StoredFile = { type: string; bytes: number }
+
+export async function insertStoreVehicle(env: Env, id: string, name: string, spec: CustomVehicleSpec, model: StoredFile, wheel: StoredFile | null, createdBy: string, status: AssetStatus = 'published', hd: StoredFile | null = null) {
   const files: AssetFiles = { model: { key: VEHICLE_MODEL_KEY(id), type: model.type, bytes: model.bytes } }
   if (wheel) files.wheel = { key: VEHICLE_WHEEL_KEY(id), type: wheel.type, bytes: wheel.bytes }
+  if (hd) files.hd = { key: VEHICLE_HD_KEY(id), type: hd.type, bytes: hd.bytes }
   await insertAsset(env, { id, kind: 'vehicle', name, status, spec, files, createdBy })
 }
 
@@ -130,11 +137,16 @@ export async function updateStoreVehicle(env: Env, id: string, changes: { active
   return updateAsset(env, 'vehicle', id, { name: changes.name, status: statusFrom(changes), spec: changes.spec })
 }
 
-/** Saves a new model (and optionally a new wheel) over an existing vehicle along with its name, spec and status. */
-export async function replaceStoreVehicle(env: Env, id: string, name: string, spec: CustomVehicleSpec, model: { type: string; bytes: number }, wheel: { type: string; bytes: number } | null, status: AssetStatus) {
+/**
+ * Saves a new model (and optionally a new wheel) over an existing vehicle along with its name, spec and status.
+ * The HD pack belongs to the model it was made from, so the old one is dropped unless a new one comes with it.
+ */
+export async function replaceStoreVehicle(env: Env, id: string, name: string, spec: CustomVehicleSpec, model: StoredFile, wheel: StoredFile | null, status: AssetStatus, hd: StoredFile | null = null) {
   const asset = await getAsset(env, 'vehicle', id)
   if (!asset) return 0
   const files: AssetFiles = { ...asset.files, model: { key: VEHICLE_MODEL_KEY(id), type: model.type, bytes: model.bytes } }
   if (wheel) files.wheel = { key: VEHICLE_WHEEL_KEY(id), type: wheel.type, bytes: wheel.bytes }
+  if (hd) files.hd = { key: VEHICLE_HD_KEY(id), type: hd.type, bytes: hd.bytes }
+  else delete files.hd
   return updateAsset(env, 'vehicle', id, { name, spec, status, files })
 }

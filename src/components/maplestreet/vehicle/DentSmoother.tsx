@@ -4,7 +4,7 @@ import { useThree } from '@react-three/fiber'
 import { BufferAttribute, BufferGeometry, Points, PointsMaterial } from 'three'
 import type { Mesh, Object3D } from 'three'
 import { BodySmoother } from './bodySmooth'
-import type { AutoPlan, DetectReport, Px, SelectionReport, SmoothSettings, TextureReport } from './bodySmooth'
+import type { AutoPlan, BumpLevel, BumpReport, DetectReport, Px, SelectionReport, SmoothSettings, TextureReport } from './bodySmooth'
 
 /** What the editor can ask of the smoother inside the canvas. */
 export type SmootherApi = {
@@ -15,6 +15,7 @@ export type SmootherApi = {
   analyse: (creaseDeg: number) => DetectReport
   showHeat: (thresholdMm: number | null) => { spots: number; share: number }
   autoPlan: (settings: SmoothSettings) => AutoPlan | null
+  smoothBumps: (level: BumpLevel, creaseDeg: number) => BumpReport
   preview: (settings: SmoothSettings) => void
   compare: (original: boolean) => void
   shadeSmooth: (creaseDeg: number) => void
@@ -62,6 +63,7 @@ export function DentSmoother({ scene, api }: { scene: Object3D; api: MutableRefO
       analyse: creaseDeg => { flush(); return after(smoother.analyse(creaseDeg)) },
       showHeat: thresholdMm => after(smoother.showHeat(thresholdMm)),
       autoPlan: settings => { flush(); return after(smoother.autoPlan(settings)) },
+      smoothBumps: (level, creaseDeg) => { pending = null; flush(); return after(smoother.smoothBumps(level, creaseDeg)) },
       preview: settings => { pending = settings; if (!frame) frame = requestAnimationFrame(() => { frame = 0; flush() }) },
       compare: original => { flush(); smoother.compare(original); invalidate() },
       shadeSmooth: creaseDeg => { flush(); smoother.shadeSmooth(creaseDeg); invalidate() },
@@ -84,7 +86,7 @@ export function DentSmoother({ scene, api }: { scene: Object3D; api: MutableRefO
 const CLOSE_PX = 10
 
 /** The polygon lasso drawn over the stage: click to add corners, click the first corner (or double-click) to close, Escape to start over. */
-export function SmoothOverlay({ onClose, onCancel }: { onClose: (polygon: Px[]) => void; onCancel: () => void }) {
+export function SmoothOverlay({ onClose, onCancel, label = 'Draw a selection around the dented area' }: { onClose: (polygon: Px[]) => void; onCancel: () => void; label?: string }) {
   const [points, setPoints] = useState<Px[]>([])
   const [hover, setHover] = useState<Px | null>(null)
   const ref = useRef<SVGSVGElement>(null)
@@ -109,7 +111,7 @@ export function SmoothOverlay({ onClose, onCancel }: { onClose: (polygon: Px[]) 
   const path = points.map(p => `${p.x},${p.y}`).join(' ')
   const first = points[0]
   const nearFirst = hover && first && points.length >= 3 && Math.hypot(hover.x - first.x, hover.y - first.y) < CLOSE_PX
-  return <svg ref={ref} className="ms-veh-lasso" tabIndex={0} role="application" aria-label="Draw a selection around the dented area: click to add corners, click the first corner or press Enter to close it, Escape to start over."
+  return <svg ref={ref} className="ms-veh-lasso" tabIndex={0} role="application" aria-label={`${label}: click to add corners, click the first corner or press Enter to close it, Escape to start over.`}
     onPointerDown={down} onPointerMove={event => setHover(at(event))} onPointerLeave={() => setHover(null)} onDoubleClick={event => { event.preventDefault(); close(points) }} onKeyDown={key} onContextMenu={event => event.preventDefault()}>
     {points.length > 0 && <polyline points={hover && !nearFirst ? `${path} ${hover.x},${hover.y}` : path} fill="rgba(90,209,255,.12)" stroke="#5ad1ff" strokeWidth={1.5} strokeDasharray="6 4"/>}
     {points.length >= 3 && hover && <line x1={hover.x} y1={hover.y} x2={first.x} y2={first.y} stroke="#5ad1ff" strokeWidth={1} strokeOpacity={0.5}/>}

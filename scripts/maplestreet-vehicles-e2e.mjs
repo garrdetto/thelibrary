@@ -3,8 +3,11 @@
  * server (pnpm dev) and the Meshy stand-in (node scripts/meshy-mock.mjs):
  *
  *   1. Meshy: text → previews → refine → remesh, cancel, balance and costs.
- *   2. Admin → Fox Plains vehicles: open the Meshy model in the editor,
- *      match it to the sedan, test-drive it on the game physics, publish it.
+ *   2. Admin → Fox Plains vehicles: open the Meshy model in the editor and
+ *      walk its six steps (Model & size, Clean up, Lights, Wheels & driving,
+ *      Paint, Publish): match it to the sedan, smooth out bumps, find the
+ *      windows and lights, test-drive it on the game physics, publish it
+ *      with its HD texture pack.
  *   3. Solo Fox Plains: buy it at Maple Motors, drive it, see it in traffic.
  *   4. Shared world (Durable Object): the same vehicle is valid there too.
  *
@@ -97,6 +100,10 @@ try {
   const before = await page.locator('.ms-veh-readout').innerText()
   log('model loaded:', before.replace(/\s+/g, ' '))
   assert(/Length\s+4\.9\d m/.test(before) && /Width\s+[12]\.\d\d m/.test(before), 'a model that faces +Z is turned nose-forward and sized like a sedan on load')
+  const step = async name => { await page.locator('.adm-steps button', { hasText: name }).click(); await sleep(300) }
+  const idle = () => page.waitForFunction(() => !document.querySelector('.ms-items-fields .spin'), null, { timeout: 180000 })
+  const note = async () => (await page.locator('.ms-veh-status').last().innerText({ timeout: 3000 }).catch(() => '')).replace(/\s+/g, ' ')
+  assert((await page.locator('.adm-steps button').count()) === 6, 'the editor has six steps')
   await page.getByRole('button', { name: /Match size of sedan/ }).click()
   await sleep(500)
   const readout = await page.locator('.ms-veh-readout').innerText()
@@ -104,11 +111,25 @@ try {
   assert(Math.abs(length - 4.92) < 0.05, `"Match size of sedan" scales it to the sedan's length (${length} m)`)
   assert(/Wheel diameter\s+0\.68 m/.test(readout), 'wheel diameter readout matches the sedan (0.68 m)')
   await page.getByLabel('Name', { exact: true }).fill('Sage Wagon')
+
+  await step('Clean up')
+  await page.getByRole('button', { name: 'Smooth out bumps' }).click()
+  await idle()
+  assert(/Smoothed the bumps|already smooth/.test(await note()), `one button smooths the body (${await note()})`)
+  await page.getByRole('button', { name: 'Find windows' }).click()
+  await idle()
+  log('windows:', await note() || 'marked on the model')
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+
+  await step('Lights')
+  assert(await page.getByLabel(/3D light/).first().isChecked(), 'new vehicles start with 3D lights')
+  await page.getByRole('button', { name: 'Find the lights for me' }).click()
+  await idle()
+  log('lights:', await note())
+
+  await step('Wheels & driving')
   await page.getByLabel('Top speed (mph)').fill('72')
   await page.getByLabel(/0–60 mph \(s\)/).fill('11')
-  await page.getByLabel('Drives around town').check()
-  await page.getByLabel('Driver name').fill('Wanda Sage')
-  await page.getByLabel(/^Price/).fill('14500')
   await page.screenshot({ path: join(OUT, 'vehicle-editor.png'), timeout: 60000 }).catch(() => log('(editor screenshot skipped)'))
 
   await page.getByRole('button', { name: 'Test drive' }).click()
@@ -122,9 +143,15 @@ try {
   await page.screenshot({ path: join(OUT, 'test-drive.png'), timeout: 60000 }).catch(() => log('(test drive screenshot skipped)'))
   await drive.getByRole('button', { name: 'Close test drive' }).click()
 
-  await page.getByRole('button', { name: 'Shrink and check size' }).click()
-  const report = await page.getByText(/ → .* triangles/).innerText({ timeout: 30000 })
-  assert(/baked-in wheel triangles removed/.test(report), `upload is shrunk and baked-in wheels are cut (${report})`)
+  await step('Publish')
+  await page.getByLabel('Drives around town').check()
+  await page.getByLabel(/^Price/).fill('14500')
+  await page.locator('details.ms-veh-more summary').click()
+  await page.getByLabel('Driver name').fill('Wanda Sage')
+  assert(await page.getByLabel(/Best \(4K\)/).isChecked(), 'quality starts at Best (4K)')
+  await page.getByRole('button', { name: 'Check the download size' }).click()
+  const report = (await page.locator('.ms-veh-sizes').innerText({ timeout: 120000 })).replace(/\s+/g, ' ')
+  assert(/baked-in wheel triangles removed/.test(report), `upload is packed and baked-in wheels are cut (${report})`)
   await page.getByRole('button', { name: 'Publish vehicle' }).click()
   await page.locator('.ms-items-fields .ms-items-ok, .ms-items-fields .ms-items-error').last().waitFor({ timeout: 30000 })
   const publishMessage = await page.locator('.ms-items-fields .ms-items-ok, .ms-items-fields .ms-items-error').last().innerText()
@@ -132,6 +159,12 @@ try {
   const { vehicles } = await (await api.get('/api/maplestreet-vehicles')).json()
   const wagon = vehicles.filter(v => v.name === 'Sage Wagon').at(-1)
   assert(wagon && wagon.dealer.price === 14500 && wagon.traffic.enabled && wagon.wheelsRemoved, 'vehicle is published with dealer and traffic settings')
+  assert(wagon.lampShapes?.headStyle?.kind === '3d' && wagon.lampShapes?.tailStyle?.kind === '3d', 'the 3D lamp styles are saved in the spec')
+  assert(wagon.hdUrl === null || /\?hd=/.test(wagon.hdUrl), `the record carries its HD pack (${wagon.hdUrl ?? 'none: textures already fit the base model'})`)
+  if (wagon.hdUrl) {
+    const pack = await api.get(wagon.hdUrl)
+    assert(pack.ok() && /immutable/.test(pack.headers()['cache-control'] ?? ''), 'the HD pack is served with the immutable cache')
+  }
   const brand = await api.patch('/api/maplestreet-vehicles', { headers, data: { id: wagon.id, name: 'Mustang Wagon' } })
   assert(brand.status() === 400, 'brand names are refused')
   const kind = `custom:${wagon.id}`
