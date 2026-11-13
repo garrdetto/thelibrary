@@ -37,6 +37,7 @@ class ArenaBuilder {
   private finish(mesh: Mesh, material: Material, shadow: boolean): Mesh {
     mesh.material = material
     mesh.checkCollisions = true
+    mesh.metadata = { arenaSolid: true }
     mesh.receiveShadows = true
     if (shadow) this.shadows.addShadowCaster(mesh)
     mesh.freezeWorldMatrix()
@@ -62,6 +63,7 @@ class ArenaBuilder {
     mesh.position.set(x, y, z)
     mesh.material = material
     mesh.checkCollisions = true
+    mesh.metadata = { arenaSolid: true }
     this.meshes.push(mesh)
     return mesh
   }
