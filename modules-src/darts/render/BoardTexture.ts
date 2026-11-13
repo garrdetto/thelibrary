@@ -419,9 +419,14 @@ export function createBoardTextures(size: number, anisotropy = 8, style: BoardSt
     roughnessMetal,
     normal,
     dispose() {
-      color.dispose()
-      roughnessMetal.dispose()
-      normal.dispose()
+      for (const map of [color, roughnessMetal, normal]) {
+        map.dispose()
+        const canvas = map.image as HTMLCanvasElement | null
+        if (canvas) {
+          canvas.width = 0
+          canvas.height = 0
+        }
+      }
     },
   }
 }

@@ -10,6 +10,8 @@ interface Flying {
   samples: FlightSample[]
   impact: Impact
   t: number
+  /** Index of the flight sample at or before `t`, so playback never rescans from the start. */
+  cursor: number
   phase: 'air' | 'stuck' | 'falling' | 'floor'
   stuckAt: number
   fallVelocity: number
@@ -45,7 +47,7 @@ export class DartFlights {
     world(flight.origin, mesh.position)
     aimDart(mesh, flight.velocity)
     this.parent.add(mesh)
-    this.darts.push({ mesh, samples, impact, t: 0, phase: 'air', stuckAt: 0, fallVelocity: 0, rest: new THREE.Quaternion(), done: onLand ?? null })
+    this.darts.push({ mesh, samples, impact, t: 0, cursor: 0, phase: 'air', stuckAt: 0, fallVelocity: 0, rest: new THREE.Quaternion(), done: onLand ?? null })
     return impact
   }
 
@@ -74,8 +76,9 @@ export class DartFlights {
       this.land(dart)
       return
     }
-    let i = 0
+    let i = dart.cursor
     while (i < samples.length - 2 && samples[i + 1].t < dart.t) i++
+    dart.cursor = i
     const a = samples[i]
     const b = samples[i + 1]
     const f = (dart.t - a.t) / Math.max(1e-6, b.t - a.t)
@@ -89,6 +92,7 @@ export class DartFlights {
     const { impact } = dart
     const done = dart.done
     dart.done = null
+    dart.samples = []
     if (impact.reachedBoard && onBoardFace(impact.point[0], impact.point[1])) {
       tmpV.set(impact.velocity[0], impact.velocity[1], impact.velocity[2]).normalize()
       world(impact.point, dart.mesh.position).addScaledVector(tmpV, PENETRATION)

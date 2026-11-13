@@ -1,4 +1,4 @@
-/** The throw: click (or touch) and hold on the board to aim, and a power meter swings from soft to hard and back; let go to throw at the speed it shows. The meter fades green → yellow → red: the exact middle of the green lands on the aim point, anywhere in the green within seven holes of it, and the further out you let go the further it can miss (`meterReach` in shared/Physics); in the red it also drops (early) or rises (late). Moving while holding fine-tunes the aim (touch aims a little above the finger); right-click, Escape or a cancelled touch drops the throw. Keyboard: arrows aim (Shift for fine steps), hold Space and release. With `cross` on (the cross meter test option) letting go only locks the height: a side meter then sweeps left and right, and the next click, tap or Space press throws, missing left or right by where it stopped (`crossMiss`). */
+/** The throw: click (or touch) and hold on the board to aim, and a power meter swings from soft to hard and back; let go to throw at the speed it shows. The meter fades green → yellow → red: the exact middle of the green lands on the aim point, anywhere in the green within seven holes of it, and the further out you let go the further it can miss (`meterReach` in shared/Physics); in the red it also drops (early) or rises (late). Moving while holding fine-tunes the aim (touch aims a little above the finger); right-click, Escape or a cancelled touch drops the throw. Keyboard: arrows aim (Shift for fine steps), hold Space and release. With `cross` on (the cross meter, the only meter the page shows) letting go only locks the height: a side meter then sweeps left and right, and the next click, tap or Space press throws, missing left or right by where it stopped (`crossMiss`). */
 import * as THREE from 'three/webgpu'
 import { config } from '../config'
 import { BULL_HEIGHT } from '../shared/Board'
@@ -44,8 +44,8 @@ export function sideFromSweep(seconds: number): number {
 
 export class ThrowInput {
   enabled = false
-  /** The cross meter test option: a height lock, then a side sweep. */
-  cross = false
+  /** The cross meter: a height lock, then a side sweep (the page always uses it). */
+  cross = true
   aimX = 0
   aimY = 0.103
   private pointerId: number | null = null
