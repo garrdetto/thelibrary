@@ -5,8 +5,11 @@ import { createEnvironment } from './scene/Environment'
 import { createMaterials } from './scene/Materials'
 import { buildArena } from './scene/Arena'
 import { createFirstPerson } from './player/FirstPerson'
-import { connectArena, serverAddress } from './net/Connection'
+import { connectArena, serverAddress, type ArenaConnection } from './net/Connection'
 import { RemotePlayers } from './net/RemotePlayers'
+import { WeaponSystem } from './weapons/WeaponSystem'
+import { Hud } from './ui/Hud'
+import { ARENA_MAX_HEALTH } from '../shared/protocol.mjs'
 
 const GRAVITY = -20
 
@@ -44,17 +47,81 @@ export async function startArena(stage: HTMLElement): Promise<void> {
   scene.activeCamera = player.camera
 
   const status = document.getElementById('status')
+  const hud = new Hud()
+  hud.setHealth(ARENA_MAX_HEALTH)
   const remotes = new RemotePlayers(scene, materials, environment.shadows)
+  const names = new Map<string, string>()
+  const nameOf = (id: string) => names.get(id) ?? 'a player'
   const address = serverAddress(location.search)
-  const connection = address
+
+  let weapons: WeaponSystem | null = null
+  const setAlive = (alive: boolean) => {
+    player.alive = alive
+    weapons?.setEnabled(alive)
+  }
+
+  const connection: ArenaConnection | null = address
     ? connectArena(address, await libraryName(), {
         status: text => { if (status) status.textContent = text },
-        welcome: team => player.respawn(arena.spawn(team).position, arena.spawn(team).yaw),
-        players: list => remotes.sync(list),
+        welcome: (_team, spawn) => {
+          player.respawn(new Vector3(spawn.x, spawn.y, spawn.z), spawn.yaw)
+          setAlive(true)
+          weapons?.refill()
+          hud.setHealth(ARENA_MAX_HEALTH)
+        },
+        players: list => {
+          for (const other of list) names.set(other.id, other.name)
+          remotes.sync(list)
+        },
+        self: self => {
+          names.set(self.id, 'you')
+          hud.setHealth(self.health)
+        },
         left: id => remotes.remove(id),
+        shot: shot => {
+          const from = new Vector3(shot.origin.x, shot.origin.y - 0.15, shot.origin.z)
+          const to = new Vector3(shot.end.x, shot.end.y, shot.end.z)
+          weapons?.effects.tracer(from, to)
+          weapons?.effects.impact(to, null, false)
+        },
+        damage: damage => {
+          const self = connection?.selfId()
+          if (damage.target === self) hud.setHealth(damage.health)
+          else if (damage.attacker === self) hud.hit(damage.headshot, damage.health <= 0)
+        },
+        death: death => {
+          const self = connection?.selfId()
+          if (death.id === self) {
+            setAlive(false)
+            hud.setDead(true, nameOf(death.by))
+          } else {
+            remotes.setAlive(death.id, false)
+          }
+          hud.announce(`${death.by === self ? 'You' : nameOf(death.by)} eliminated ${death.id === self ? 'you' : nameOf(death.id)}`)
+        },
+        respawn: respawn => {
+          const position = new Vector3(respawn.x, respawn.y, respawn.z)
+          if (respawn.id === connection?.selfId()) {
+            player.respawn(position, respawn.yaw)
+            setAlive(true)
+            weapons?.refill()
+            hud.setHealth(respawn.health)
+            hud.setDead(false)
+          } else {
+            remotes.teleport(respawn.id, position)
+            remotes.setAlive(respawn.id, true)
+          }
+        },
       })
     : null
   if (!address && status) status.textContent = 'Solo'
+
+  weapons = new WeaponSystem(scene, player.camera, player, canvas, {
+    shoot: request => connection?.shoot(request),
+    team: () => connection?.team() ?? null,
+    hit: (_target, headshot) => hud.hit(headshot),
+  })
+  void weapons.load()
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   let clock = 0
@@ -62,8 +129,10 @@ export async function startArena(stage: HTMLElement): Promise<void> {
     const dt = Math.min(engine.getDeltaTime() / 1000, 0.05)
     clock += dt
     player.update(dt)
+    weapons?.update(dt)
     remotes.update(dt)
-    connection?.send(player.pose())
+    if (weapons) hud.weapon(weapons.readout())
+    connection?.send({ ...player.pose(), action: weapons?.action ?? 'idle', weapon: weapons?.weapon ?? 'assault' })
     if (reduceMotion) return
     arena.rings.forEach((ring, index) => {
       ring.position.y = 4 + index * 1.8 + Math.sin(clock * 1.6 + index) * 0.25
@@ -75,6 +144,6 @@ export async function startArena(stage: HTMLElement): Promise<void> {
 
   window.addEventListener('resize', () => engine.resize())
   window.addEventListener('pagehide', () => connection?.close())
-  ;(window as unknown as { __arena?: unknown }).__arena = { engine, scene, player, arena }
+  ;(window as unknown as { __arena?: unknown }).__arena = { engine, scene, player, arena, weapons }
   engine.runRenderLoop(() => scene.render())
 }

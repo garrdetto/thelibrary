@@ -1268,5 +1268,25 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "character"
+ },
+ "arena/weapons/assault-rifle.glb": {
+  "hash": "2d13e5747def64c7fc69cc3cf0d2a27763502826",
+  "before": 6513604,
+  "after": 1320932,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
+ },
+ "arena/weapons/battle-rifle.glb": {
+  "hash": "45c5c0e8275ef13067bd42aecd43caaff95c5cc5",
+  "before": 7196356,
+  "after": 1625916,
+  "primsBefore": 1,
+  "primsAfter": 1,
+  "matsBefore": 1,
+  "matsAfter": 1,
+  "preset": "rig"
  }
 }

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "settings": {
+    "prompt": "futuristic sci-fi battle rifle, long precise barrel with angular muzzle brake, olive green and white armored panels over black metal, magnified scope on top rail, straight box magazine, clean hard-surface game asset",
+    "target": "furniture",
+    "negative": "floor, background, text, logos",
+    "aiModel": "latest",
+    "polycount": 8000,
+    "texturePrompt": "",
+    "rig": false,
+    "height": null
+  },
+  "tasks": {
+    "preview": {
+      "id": "01a1d301-f928-75bf-83f5-635aca26162c",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-13T03:44:46.775Z",
+      "credits": 20
+    },
+    "refine": {
+      "id": "01a1d302-94c7-7029-862e-769893b8e506",
+      "status": "SUCCEEDED",
+      "startedAt": "2026-11-13T03:45:24.242Z",
+      "credits": 10
+    }
+  },
+  "credits": 30,
+  "files": [
+    "assets-src/models/arena/weapons/battle-rifle.glb"
+  ],
+  "createdAt": "2026-11-13T03:44:43.553Z",
+  "clips": [],
+  "cleanup": "generic (Blender 5.2.3)",
+  "updatedAt": "2026-11-13T03:45:58.985Z"
+}
