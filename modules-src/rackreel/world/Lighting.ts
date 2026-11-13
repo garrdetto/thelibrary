@@ -48,7 +48,11 @@ export interface LightingLook {
   /** Matte characters only: how much of the light their surfaces return (default 0.94) and their daytime glow (default 0.035). Lower both when people read as lit from inside. */
   characterDiffuse?: number
   characterLift?: number
+  /** Adds back a share of the ground's and roads' own colour (0.2 is a fifth) by day and at full night, so shaded woods floors and night ground never read as black. */
+  groundLift?: { day: number; night: number }
 }
+
+const GROUND_MATERIAL = /^(terrain-mat|town-ground-mat|county-road-mat|highway-road-mat|highway-concrete-mat)$/
 
 function smooth(e0: number, e1: number, x: number): number {
   const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)))
@@ -141,7 +145,16 @@ export class Lighting {
       const matte = !!this.look.matteCharacters
       const diffuse = this.look.characterDiffuse ?? MATTE_DIFFUSE
       const lift = CHARACTER_NIGHT_LIFT * n + (matte ? (this.look.characterLift ?? MATTE_LIFT) * (1 - n) : 0)
+      const ground = this.look.groundLift
+      const groundLift = ground ? ground.day + (ground.night - ground.day) * n : 0
       for (const mat of ctx.scene.materials) {
+        if (ground && mat instanceof StandardMaterial && GROUND_MATERIAL.test(mat.name)) {
+          const frozen = mat.isFrozen
+          if (frozen) mat.unfreeze()
+          mat.emissiveColor.set(groundLift, groundLift, groundLift * 1.04)
+          if (frozen) mat.freeze()
+          continue
+        }
         if (mat instanceof PBRMaterial && CHARACTER_MATERIAL.test(mat.name)) {
           mat.albedoColor.set(diffuse, diffuse, diffuse)
           mat.emissiveColor.set(lift * 0.5, lift * 0.5, lift * 0.54)

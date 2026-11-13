@@ -13,7 +13,7 @@ import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import type { Scene } from '@babylonjs/core/scene'
-import { HALF, fbm, rawHeight, smoothstep } from '../../rackreel/world/Terrain'
+import { HALF, WOODS_FLOOR, fbm, rawHeight, smoothstep } from '../../rackreel/world/Terrain'
 import type { Terrain } from '../../rackreel/world/Terrain'
 import { detailTexture } from '../../rackreel/world/World'
 import { countyRoadTexture } from '../../rackreel/world/Highway'
@@ -28,11 +28,10 @@ const CELL = 4
 const mown = [0.36, 0.47, 0.2]
 const meadow = [0.42, 0.47, 0.22]
 const dry = [0.56, 0.52, 0.3]
-const needles = [0.33, 0.27, 0.17]
-const moss = [0.25, 0.32, 0.14]
+const { needles, moss } = FOX_LAKE_SHAPE.woodsFloor ?? WOODS_FLOOR
 const shoulder = [0.43, 0.39, 0.31]
 
-function mix(a: number[], b: number[], t: number): number[] {
+function mix(a: readonly number[], b: readonly number[], t: number): number[] {
   const k = Math.min(1, Math.max(0, t))
   return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]
 }

@@ -26,9 +26,11 @@ declare global {
  * falls into murk; very faint sun shadows (0.979: 30 % of the earlier 0.93's strength); a night about 32 % brighter
  * than Rack & Reel's (1.15 × 1.15); and matte characters in their own colours (plain materials, not the physically
  * based cloth, which washed people out to grey under the town's sky light).
+ * The ground and roads get a share of their own colour back (`groundLift`), so the dark needle-and-moss floor under
+ * the woods, slopes facing away from the sun and the ground at night never fall to a burnt-looking black.
  * All of it is light levels, so it costs no draw calls, textures or shadow passes.
  */
-const FOX_LAKE_LOOK = { shadowDarkness: 0.979, key: 0.8, fill: 1.65, nightBrightness: 1.32, matteCharacters: true }
+const FOX_LAKE_LOOK = { shadowDarkness: 0.979, key: 0.8, fill: 1.65, nightBrightness: 1.32, matteCharacters: true, groundLift: { day: 0.22, night: 0.3 } }
 /** Half Rack & Reel's shadow map: the town has far more casters, and the soft blurred shadows hide the coarser texels. */
 const FOX_LAKE_SHADOW_MAP = 1024
 

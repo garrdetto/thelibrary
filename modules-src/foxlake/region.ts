@@ -216,6 +216,9 @@ export const TOWN_LAND: OutsideLand = {
   },
 }
 
+/** A lighter needle-and-leaf-litter floor than the lake country's own, so the ground under the woods reads as forest floor, not scorched earth. */
+const FOX_LAKE_WOODS_FLOOR = { needles: [0.47, 0.4, 0.27], moss: [0.37, 0.44, 0.22] }
+
 const rawFox = (x: number, z: number) => rawHeight(x, z, FOX_LAKE_SHAPE)
 
 /** Rack & Reel's map with its north edge open onto the town, the Lake Road carved in and the interstate opened for it. */
@@ -227,6 +230,7 @@ export const FOX_LAKE_SHAPE: TerrainShape = {
   roadClear,
   carve: (x, z, h) => carveLakeRoad(x, z, h, rawFox),
   highwayGaps: HIGHWAY_GAPS,
+  woodsFloor: FOX_LAKE_WOODS_FLOOR,
 }
 
 /** Which part of Fox Lake a scene point is in. */
