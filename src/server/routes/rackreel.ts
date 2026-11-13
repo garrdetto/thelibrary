@@ -46,9 +46,9 @@ function plausible(species: SpeciesId, value: number, legendary: boolean): boole
 
 const MONEY_ACTIONS = new Set(['fish', 'game', 'tick', 'buy', 'makeover'])
 
-/** Fox Lake keeps a profile of its own per player (a fresh start), stored beside the standalone one. */
-function profileKey(userId: string, foxLake: boolean): string {
-  return foxLake ? `foxlake:${userId}` : userId
+/** Fox Lake and Tello each keep a profile of their own per player (a fresh start), stored beside the standalone one. */
+function profileKey(userId: string, foxLake: boolean, tello = false): string {
+  return foxLake ? `foxlake:${userId}` : tello ? `tello:${userId}` : userId
 }
 
 /**
@@ -98,7 +98,7 @@ export async function rackreel(request: Request, env: Env) {
     const user = await currentUser(request, env)
     if (!user) return json({ signedIn: false })
     const foxLake = params.get('game') === 'foxlake'
-    const loaded = await loadRackreelProfile(env, profileKey(user.id, foxLake), user.username)
+    const loaded = await loadRackreelProfile(env, profileKey(user.id, foxLake, params.get('game') === 'tello'), user.username)
     const profile = loaded.profile
     if (!foxLake) return json({ signedIn: true, username: user.username, profile, wallet: 'own' })
     const { balance } = await sharedBalance(env, user, profile, loaded.updatedAt)
@@ -107,8 +107,9 @@ export async function rackreel(request: Request, env: Env) {
   if (request.method !== 'POST') return json({ error: 'Method not allowed.' }, 405)
   requireSameOrigin(request)
   const user = await requireUser(request, env, 'Sign in to save your cash and gear.')
-  const foxLake = new URL(request.url).searchParams.get('game') === 'foxlake'
-  const key = profileKey(user.id, foxLake)
+  const game = new URL(request.url).searchParams.get('game')
+  const foxLake = game === 'foxlake'
+  const key = profileKey(user.id, foxLake, game === 'tello')
   const input = actions.parse(await readJson(request, 2000))
   const now = Date.now()
   if (input.action === 'reset-records') {

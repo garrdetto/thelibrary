@@ -152,6 +152,8 @@ export interface GameExtension {
   drawMinimap?(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: () => MapMarker[]): boolean
   /** N: cycles the host world's corner map zoom; returns the toast. */
   cycleMinimapZoom?(): string
+  /** The line shown when play starts, in place of Rack & Reel's own about its stands ('' for none). */
+  greeting?(): string
 }
 
 export interface GameOptions {
@@ -780,6 +782,11 @@ export class Game {
       this.hud.showPlaying(true)
       this.audio.unlock()
       this.lock()
+      const greeting = this.ext?.greeting?.()
+      if (greeting !== undefined) {
+        if (greeting) this.hud.toast(greeting)
+        return
+      }
       const d = this.stand.tree.subtract(this.foot)
       this.hud.toast(`${this.stands.filter((st) => st.kind === 'ladder').length} ladder stands and a box blind are marked on the map; the nearest is ${Math.round(d.length() * 1.094)} yd to the ${compassWord(Math.atan2(d.x, d.z))}. Arrow keys look around.`)
     }

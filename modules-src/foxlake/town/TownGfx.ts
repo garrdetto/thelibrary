@@ -33,7 +33,8 @@ export class TownGfx implements GfxHost {
   private lastGlow = -1
 
   /** `moving` takes casters that move (vehicles, signs that come and go): Rack & Reel redraws those as they drift. */
-  constructor(readonly scene: Scene, private readonly moving: (mesh: AbstractMesh, add: boolean) => void) {}
+  /** `toTown` turns a scene point into the host town's own coordinates (Fox Lake's by default; Tello passes its own). */
+  constructor(readonly scene: Scene, private readonly moving: (mesh: AbstractMesh, add: boolean) => void, private readonly toTown: (x: number, y: number, z: number) => { x: number; z: number } = sceneToTown) {}
 
   addCaster(m: AbstractMesh): void {
     if (this.cellOf.has(m)) return
@@ -43,7 +44,7 @@ export class TownGfx implements GfxHost {
       return
     }
     const c = m.getBoundingInfo().boundingBox.centerWorld
-    const p = sceneToTown(c.x, c.y, c.z)
+    const p = this.toTown(c.x, c.y, c.z)
     const key = `${Math.floor(p.x / CELL)},${Math.floor(p.z / CELL)}`
     let set = this.cells.get(key)
     if (!set) this.cells.set(key, (set = new Set()))
@@ -66,7 +67,7 @@ export class TownGfx implements GfxHost {
 
   /** The town's casters near `focus` (scene coordinates); the same array until the set changes. */
   near(focus: Vector3): readonly AbstractMesh[] {
-    const p = sceneToTown(focus.x, focus.y, focus.z)
+    const p = this.toTown(focus.x, focus.y, focus.z)
     const r = Math.ceil(NEAR / CELL)
     const ci = Math.floor(p.x / CELL)
     const cj = Math.floor(p.z / CELL)
