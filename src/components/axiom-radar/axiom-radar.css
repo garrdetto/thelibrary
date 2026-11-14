@@ -544,3 +544,5 @@ div.radar-delta { display: grid; gap: 1px; }
 @media (max-width: 900px) { .radar-verdict-groups { grid-template-columns: 1fr; } }
 .radar-factor-penalty { color: var(--radar-down); }
 .radar-penalty-reasons { font-size: 10px; line-height: 1.4; }
+.radar-part-detail { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); font-weight: 400; }
+.radar-tooltip-cuts { display: block; margin-top: 4px; color: var(--radar-down); font-size: 10px; line-height: 1.4; white-space: normal; }

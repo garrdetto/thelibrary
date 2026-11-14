@@ -8,10 +8,11 @@ It is a standalone page at `/admin/axiom-radar` with its own header and none of 
 
 ```
 Your machine:   axiom-worker (PM2)
-                  ├─ discovery        DexScreener + RugCheck, every 20 s
+                  ├─ discovery        DexScreener + RugCheck + Jupiter movers, every 20 s
+                  ├─ jupiter          holder counts and growth, top-holder and dev shares, who is trading, every 4 s
                   ├─ axiom-collector  Playwright, Axiom viewer counts, snapshots every 10 s
                   ├─ wallet-tracker   Helius, runner wallets
-                  ├─ scoring          setup score, paper trades, weight recalibration
+                  ├─ scoring          mover score, paper trades
                   ├─ data/axiom-tracker.db (SQLite, WAL)
                   └─ site-publisher   POST https://thelibrary.garrdetto.workers.dev/api/admin/axiom/ingest
                                        Authorization: Bearer AXIOM_RADAR_TOKEN
@@ -181,13 +182,16 @@ What the history says about stops: price stops rarely sell where they are set. W
 
 ## Model reference
 
-- **Which coins are tracked**: DexScreener (latest profiles, boosts, takeovers, searches), GeckoTerminal (new and trending Solana pools) and every coin on your Axiom Pulse feed a watchlist. Coins must pass the enabled requirements in Settings (defaults: 5 m volume ≥ $3k, ≥ 40 trades, liquidity ≥ $3k, buys > 40%; no age or viewer limit). Pulse coins skip the market requirements by default. Up to 60 coins (setting) are kept, ranked by live viewers; pinned coins are always kept.
+- **Which coins are tracked**: DexScreener (latest profiles, boosts, takeovers, searches), GeckoTerminal (new and trending Solana pools), Jupiter (trending, most traded and most organic over 5 minutes) and every coin on your Axiom Pulse feed a watchlist. Coins caught in a bot-driven climb are dropped for 30 minutes unless pinned. Coins must pass the enabled requirements in Settings (defaults: 5 m volume ≥ $3k, ≥ 40 trades, liquidity ≥ $3k, buys > 40%; no age or viewer limit). Pulse coins skip the market requirements by default. Up to 60 coins (setting) are kept, ranked by live viewers; pinned coins are always kept.
 - **Pulse card data** (through the bridge, every second): viewers, holders, the dev's migrated/created record, top-10 %, dev % (or dev sold), snipers %, insiders %, bundlers %, fees paid, trades, volume and market cap.
-- **Quality checklist**: top 10 under 25% (fail over 40%), dev under 5%, snipers under 10%, insiders under 10%, bundlers under 10%, fees paid of at least 3 SOL per $100K market cap (under 1 fails: likely fake volume), dev record (fails when under 5% of 10+ coins migrated), holders ≥ 500, and mint/freeze authority revoked (RugCheck). These are common trader rules of thumb, not guarantees.
-- **Setup score (0–100)**: weighted average of viewer growth, active viewers, smart holders, 5 m buy pressure, and safety & holder quality. Missing features are left out.
+- **Jupiter data** (`jupiter.ts`, no key, every 4 seconds, works with the Pulse tab closed): holder count and holders gained per minute, top-10 % and dev %, and for the last 5 minutes how many wallets traded and how many of them only bought.
+- **Holder limits** (`holderLimits` in `mover-score.ts`): a coin scores 15 or less and gets no signal when the top 10 hold more than 30%, the dev holds anything, or snipers, insiders, bundlers or linked wallet groups hold more than 10%. The numbers come from the Pulse card while it is fresh, otherwise the higher of RugCheck and Jupiter. A coin with no holder numbers yet cannot score above 45. Axiom's fresh-wallet figure is not read yet.
+- **Quality checklist**: the same holder limits, plus fees paid of at least 3 SOL per $100K market cap (under 1 fails: likely fake volume), dev record (fails when under 5% of 10+ coins migrated), holders ≥ 500, and mint/freeze authority revoked (RugCheck). These are common trader rules of thumb, not guarantees.
+- **Mover score (0–100)** (`mover-score.ts`): price with real buying (40: 1 m and 5 m gain, buy share, number of buys), viewer growth (25), holder growth (20) and buyers shared with coins that ran (15), plus 10 when viewers and holders are both growing. When one of the two crowd counts is missing it is estimated from the other at 70%. The score is then capped for coins that are falling, flat, barely bought, losing viewers, older than 6 hours or very large, and by the holder limits. The adaptive weights on the Paper trades tab no longer feed the score.
+- **Bot-driven climbs**: a coin is flagged when, over 5 minutes, at least 85% of 50 or more trading wallets only bought (a handful of wallets do all the selling), or when 3 minutes of same-sized buys under $60 at a fixed buy share lift the price with no pullback. Flagged coins score 10 or less, get no signal, are never marked good coins, and are hidden unless pinned. In the tracker's first day these climbs made up a quarter to a half of the top-scored coins, because the tracker stopped following them before they were pulled.
 - **Buy signal**: score, 1 m gain, 5 m gain and viewers all above the buy rules, no warnings, and (optionally) no red flags. **Watch**: surging viewers, score, 5 m gain or smart holders.
 - **Smart holders**: RugCheck's top holders are stored per coin. A coin becomes "good" at $500K market cap with $20K liquidity, 2.5x since first tracked, or a paper-trade win. Wallets holding the set number of good coins are smart holders.
-- **Paper trades**: opened once per mint on a Buy signal (or score ≥ 75); price checked at +5, +15 and +30 minutes; +15% at 15 minutes is a win. Every 10 decided trades the weights shift toward features stronger in winners.
+- **Paper trades**: opened once per mint on a Buy signal (or score ≥ 75); price checked at +5, +15 and +30 minutes; +15% at 15 minutes is a win. Every 10 decided trades the weights shift toward features stronger in winners; they are shown for reference and no longer change the score.
 - Snapshots older than 24 h and holder records older than 7 days are pruned hourly.
 
 ## Paper-trading bot

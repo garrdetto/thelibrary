@@ -32,6 +32,8 @@ export type RadarHolderTraits = { top10: number | null; dev: number | null; snip
 
 export type RadarHolderRisk = { blocked: boolean; multiplier: number; reasons: string[] }
 
+export type RadarScorePart = { key: 'viewers' | 'holders' | 'momentum' | 'buyers' | 'together'; label: string; points: number; max: number; detail: string; available: boolean }
+
 export type RadarGainWindow = 's5' | 's15' | 's30' | 'm1'
 export type RadarGainWindows = Record<RadarGainWindow, number | null>
 
@@ -69,6 +71,8 @@ export type RadarToken = {
   rawScore?: number
   holderRisk?: RadarHolderRisk | null
   scoreCuts?: string[]
+  scoreParts?: RadarScorePart[]
+  botClimb?: boolean
   researchScore?: number | null
   holderTraits?: RadarHolderTraits | null
   factors: RadarFactor[]
@@ -177,12 +181,12 @@ export type RadarPayload = {
   adviceStudy?: RadarAdviceStudy | null
 }
 
-export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'scoreCuts'>
+export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice' | 'holderTraits' | 'holderRisk' | 'score' | 'rawScore' | 'scoreCuts' | 'scoreParts' | 'botClimb'>
 
 export type RadarLivePatch = { at: number; tokens: Record<string, RadarLiveFigures> }
 
 export function liveFiguresOf(token: RadarToken): RadarLiveFigures {
-  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice, holderTraits: token.holderTraits, holderRisk: token.holderRisk, score: token.score, scoreCuts: token.scoreCuts }
+  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice, holderTraits: token.holderTraits, holderRisk: token.holderRisk, score: token.score, rawScore: token.rawScore, scoreCuts: token.scoreCuts, scoreParts: token.scoreParts, botClimb: token.botClimb }
 }
 
 export function applyLivePatch(payload: RadarPayload, patch: RadarLivePatch): RadarPayload {

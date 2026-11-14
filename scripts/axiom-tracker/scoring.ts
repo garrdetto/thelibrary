@@ -128,8 +128,9 @@ export async function runScoringCycle(database: TrackerDatabase) {
   markGoodCoins(database, tokens, now)
   const evaluated = await evaluatePaperTrades(database, now)
   const recalibrated = maybeRecalibrate(database)
-  const top = tokens[0]
-  recordHeartbeat(database, 'scoring', 'ok', `${tokens.length} scored${top ? `, top ${top.symbol} ${top.score}` : ''}`)
+  const top = tokens.reduce<RadarToken | null>((best, token) => !best || token.score > best.score ? token : best, null)
+  const hidden = [...trackerState.botClimbs.values()].filter(entry => entry.until > now).length
+  recordHeartbeat(database, 'scoring', 'ok', `${tokens.length} scored${top ? `, top ${top.symbol} ${top.score}` : ''}${hidden ? `, ${hidden} bot-driven climb${hidden === 1 ? '' : 's'} hidden` : ''}`)
   if (opened || evaluated || recalibrated) logger.info('Scoring cycle', { scored: tokens.length, opened, evaluated, recalibrated })
 }
 

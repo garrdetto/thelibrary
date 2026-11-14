@@ -1,9 +1,10 @@
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { bestPairByMint, fetchDiscoverySources, fetchPairsForMints, readMarket, socialsOf, type DexPair } from './dexscreener.js'
 import { saveAssessment } from './holder-refresh.js'
+import { jupiterMoverMints } from './jupiter.js'
 import { assessToken } from './rugcheck.js'
 import { createLogger, errorMessage, isMainModule, runLoop, trackerConfig } from './runtime.js'
-import { trackerState, type ActiveCandidate } from './state.js'
+import { activeBotClimb, trackerState, type ActiveCandidate } from './state.js'
 import { radarSettings } from './settings-store.js'
 import { safetyLevel } from './model.js'
 import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
@@ -80,8 +81,8 @@ async function enrichCandidates(database: TrackerDatabase, candidates: ActiveCan
 
 export async function runDiscoveryCycle(database: TrackerDatabase) {
   const now = Date.now()
-  const sources = await fetchDiscoverySources()
-  for (const mint of sources.mints) if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
+  const [sources, jupiterMints] = await Promise.all([fetchDiscoverySources(), jupiterMoverMints().catch(() => [] as string[])])
+  for (const mint of [...sources.mints, ...jupiterMints]) if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
   for (const candidate of trackerState.active) trackerState.watchlist.set(candidate.mint, trackerState.watchlist.get(candidate.mint) ?? now)
   for (const [mint, seenAt] of trackerState.pulse) {
     if (now - seenAt > pulseWindowMs) trackerState.pulse.delete(mint)
@@ -100,6 +101,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   const eligible: DexPair[] = []
   for (const [mint, pair] of best) {
     if (pinned.has(mint)) { eligible.push(pair); continue }
+    if (activeBotClimb(mint, now)) continue
     if (pair.pairCreatedAt && now - pair.pairCreatedAt > maxAgeMs) continue
     const onPulse = trackerState.pulse.has(mint)
     if (!(onPulse && settings.pulseBypassesMarket) && !passesMarketRequirements(pair, settings)) continue
@@ -129,7 +131,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
 
   const enriched = await enrichCandidates(database, trackerState.active)
   recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} tracked of ${best.size} coins checked`)
-  logger.info('Discovery cycle complete', { sourced: sources.mints.length, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, onPulse: trackerState.pulse.size, active: trackerState.active.length, enriched, sourceFailures: sources.failures })
+  logger.info('Discovery cycle complete', { sourced: sources.mints.length, fromJupiter: jupiterMints.length, botClimbsSkipped: trackerState.botClimbs.size, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, onPulse: trackerState.pulse.size, active: trackerState.active.length, enriched, sourceFailures: sources.failures })
 }
 
 export function startDiscovery(database: TrackerDatabase, signal: AbortSignal) {
