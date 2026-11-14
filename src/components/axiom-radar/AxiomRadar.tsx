@@ -1,8 +1,12 @@
+import { AxiomLink, CoinName, onActivate } from './AxiomLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, BellOff, BellRing, Brain, Flame, List, Palette, Radar, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
-import { defaultRadarSettings, radarThemePresets, type RadarSettings, type RadarTheme, type RadarThemePreset } from '@/lib/axiom-radar-settings'
-import type { RadarToken } from '@/lib/axiom-radar-types'
+import { Bell, BellOff, BellRing, Brain, ChevronDown, Flame, FlaskConical, Gem, List, ListChecks, Radar, Rocket, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
+import { defaultRadarSettings, type RadarSettings, type RadarTheme } from '@/lib/axiom-radar-settings'
+import type { RadarGainWindow, RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatPercent, formatSigned, relativeSeconds } from './format'
+import { EarlyRunners, ExplodeView, WatchListView } from './LearnedViews'
+import { MakerView, type MakerSort } from './MakerView'
+import { ResearchView } from './ResearchView'
 import { MoversView } from './MoversView'
 import { PaperTrades } from './PaperTrades'
 import { PicksView } from './PicksView'
@@ -15,13 +19,17 @@ import { saveRadarSettings, useRadarFeed } from './useRadarFeed'
 import { WalletsView } from './WalletsView'
 import './axiom-radar.css'
 
-type RadarTab = 'picks' | 'coins' | 'movers' | 'wallets' | 'paper' | 'settings'
+type RadarTab = 'picks' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'paper' | 'settings'
 type RadarFilter = 'all' | 'surge' | 'buy' | 'watch' | 'holders' | 'clean' | 'pinned'
 type RadarToast = { id: string; kind: 'surge' | 'buy'; mint: string; text: string; at: number }
 
 const tabs: Array<{ id: RadarTab; label: string; icon: typeof Radar }> = [
   { id: 'picks', label: 'Picks', icon: Sparkles },
   { id: 'coins', label: 'All coins', icon: List },
+  { id: 'explode', label: 'Could explode', icon: Rocket },
+  { id: 'maker', label: 'Millionaire Maker', icon: Gem },
+  { id: 'watchlist', label: 'Watch List', icon: ListChecks },
+  { id: 'research', label: 'Research Info', icon: FlaskConical },
   { id: 'movers', label: 'Top movers', icon: TrendingUp },
   { id: 'wallets', label: 'Smart wallets', icon: Wallet },
   { id: 'paper', label: 'Paper trades', icon: Brain },
@@ -36,6 +44,13 @@ const filters: Array<{ id: RadarFilter; label: string; test: (token: RadarToken)
   { id: 'holders', label: '🐋 Smart holders', test: token => token.runnerWallets > 0 },
   { id: 'clean', label: '🛡️ No red flags', test: token => token.quality.score !== null && !token.alerts.length && !token.quality.checks.some(check => check.status === 'fail') },
   { id: 'pinned', label: '⭐ Pinned', test: token => token.pinned },
+]
+
+const gainWindows: Array<{ id: RadarGainWindow; label: string; spoken: string; suffix: string }> = [
+  { id: 's5', label: '5s', spoken: '5 seconds', suffix: ' in 5s' },
+  { id: 's15', label: '15s', spoken: '15 seconds', suffix: ' in 15s' },
+  { id: 's30', label: '30s', spoken: '30 seconds', suffix: ' in 30s' },
+  { id: 'm1', label: '1m', spoken: 'minute', suffix: '/min' },
 ]
 
 const alertCooldownMs = { surge: 120_000, buy: 300_000 }
@@ -81,6 +96,11 @@ export function AxiomRadar() {
   const [saveError, setSaveError] = useState('')
   const [chartWindow, setChartWindow] = useState<ChartWindow>('m5')
   const [previewTheme, setPreviewTheme] = useState<RadarTheme | null>(null)
+  const [showHealth, setShowHealth] = useState(false)
+  const [gainMode, setGainMode] = useState<'viewers' | 'holders'>('viewers')
+  const [gainWindow, setGainWindow] = useState<RadarGainWindow>('m1')
+  const [makerFilters, setMakerFilters] = useState<string[] | null>(null)
+  const [makerSort, setMakerSort] = useState<MakerSort>('match')
   const audioRef = useRef<AudioContext | null>(null)
   const seededRef = useRef(false)
   const previousRef = useRef({ surge: new Set<string>(), buy: new Set<string>() })
@@ -180,8 +200,6 @@ export function AxiomRadar() {
       .sort((first, second) => Number(second.pinned) - Number(first.pinned) || (sortValue(first, sort.key) - sortValue(second, sort.key)) * multiplier || second.score - first.score)
   }, [tokens, filter, query, sort])
 
-  const gainers = useMemo(() => tokens.filter(token => (token.viewersPerMin ?? 0) > 0).sort((first, second) => (second.viewersPerMin ?? 0) - (first.viewersPerMin ?? 0)).slice(0, 3), [tokens])
-  const mostWatched = useMemo(() => tokens.filter(token => token.viewers !== null).sort((first, second) => (second.viewers ?? 0) - (first.viewers ?? 0))[0], [tokens])
   const buyCount = tokens.filter(token => token.signal === 'buy').length
   const watchCount = tokens.filter(token => token.signal === 'watch').length
   const found = selected ? tokens.find(token => token.mint === selected) ?? null : null
@@ -197,12 +215,23 @@ export function AxiomRadar() {
     : workerStatus === 'live' ? { tone: 'up', label: 'Live' }
     : workerStatus === 'stale' ? { tone: 'warn', label: 'Tracker stale' }
     : { tone: 'down', label: 'Tracker offline' }
-  const cadence = connection === 'local' ? 'every second, direct from this PC' : connection === 'streaming' ? 'every 3 seconds, through the site' : connection === 'polling' ? 'every 3 seconds' : ''
+  const cadence = connection === 'local' ? 'every second, direct from this PC' : connection === 'streaming' ? 'viewers every second, through the site' : connection === 'polling' ? 'every 3 seconds' : ''
   const hasViewerData = tokens.some(token => token.viewers !== null)
+  const hasHolderData = tokens.some(token => token.pulse?.holders !== null && token.pulse?.holders !== undefined)
+  const gainSpan = gainWindows.find(item => item.id === gainWindow) ?? gainWindows[3]
+  const topGainers = useMemo(() => {
+    const gainOf = (token: RadarToken) => {
+      const measured = token.gains?.[gainMode][gainWindow]
+      if (measured !== undefined && measured !== null) return measured
+      return gainWindow === 'm1' ? (gainMode === 'viewers' ? token.viewersPerMin : token.holdersPerMin) ?? null : null
+    }
+    return tokens.map(token => ({ token, gain: gainOf(token) })).filter(entry => (entry.gain ?? 0) > 0).sort((first, second) => (second.gain ?? 0) - (first.gain ?? 0)).slice(0, 3)
+  }, [tokens, gainMode, gainWindow])
+  const components = payload?.components ?? []
+  const componentState = (component: (typeof components)[number]) => component.status === 'disabled' ? 'off' : now - component.updatedAt > 90_000 ? 'stale' : component.status === 'ok' ? 'ok' : 'warn'
+  const problems = components.filter(component => ['stale', 'warn'].includes(componentState(component)))
 
   return <section className="radar-page-body">
-    <p className="radar-intro">Coins ranked by live Axiom viewers, with price moves from 30 seconds to 10 minutes, holder-quality checks, smart holders, and buy and watch signals from rules you control. Signals only: nothing here places a trade.</p>
-
     <div className="radar-controls">
       <span className={`radar-live ${badge.tone}`} role="status">
         <span className="radar-live-dot" aria-hidden="true"/>
@@ -210,21 +239,17 @@ export function AxiomRadar() {
         <small className="tabular">{receivedAt ? `updated ${relativeSeconds(receivedAt, now)}` : 'waiting for data'}{cadence ? ` · ${cadence}` : ''}</small>
       </span>
       {connection === 'error' && <button type="button" className="secondary-button" onClick={retry}><RefreshCw size={13}/> Retry</button>}
-      <button type="button" className={`radar-toggle ${sound ? 'on' : ''}`} aria-pressed={sound} onClick={toggleSound}>{sound ? <Bell size={14}/> : <BellOff size={14}/>} Sound alerts</button>
-      <button type="button" className={`radar-toggle ${desktopAlerts ? 'on' : ''}`} aria-pressed={desktopAlerts} onClick={() => void toggleDesktopAlerts()}><BellRing size={14}/> Desktop alerts</button>
-      <label className="radar-theme-select">
-        <Palette size={14} aria-hidden="true"/><span className="sr-only">Colour theme</span>
-        <select value={settings.theme.preset} onChange={event => void persist({ ...settings, theme: { ...settings.theme, preset: event.target.value as RadarThemePreset } })}>
-          <option value="site">Site theme</option>
-          {radarThemePresets.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
-          <option value="custom">Custom colours</option>
-        </select>
-      </label>
+      {components.length > 0 && <button type="button" className={`radar-health ${problems.length ? 'warn' : 'ok'}`} aria-expanded={showHealth} aria-controls="radar-health-list" onClick={() => setShowHealth(value => !value)}>
+        <span className="radar-live-dot" aria-hidden="true"/>{problems.length ? `${problems.length} tracker ${problems.length === 1 ? 'issue' : 'issues'}` : 'Tracker healthy'}<ChevronDown size={13} aria-hidden="true" className={showHealth ? 'open' : ''}/>
+      </button>}
+      <span className="radar-controls-spacer" aria-hidden="true"/>
+      <button type="button" className={`radar-icon-toggle ${sound ? 'on' : ''}`} aria-pressed={sound} aria-label="Sound alerts" title="Sound alerts" onClick={toggleSound}>{sound ? <Bell size={15}/> : <BellOff size={15}/>}</button>
+      <button type="button" className={`radar-icon-toggle ${desktopAlerts ? 'on' : ''}`} aria-pressed={desktopAlerts} aria-label="Desktop alerts" title="Desktop alerts" onClick={() => void toggleDesktopAlerts()}><BellRing size={15}/></button>
     </div>
 
-    {payload && payload.components.length > 0 && <ul className="radar-components" aria-label="Tracker components">
-      {payload.components.map(component => <li key={component.component} className={component.status === 'disabled' ? 'off' : now - component.updatedAt > 90_000 ? 'stale' : component.status === 'ok' ? 'ok' : 'warn'} title={component.detail ?? undefined}>
-        <span aria-hidden="true"/>{component.component}: {component.status}
+    {showHealth && components.length > 0 && <ul id="radar-health-list" className="radar-components" aria-label="Tracker components">
+      {components.map(component => <li key={component.component} className={componentState(component)}>
+        <span aria-hidden="true"/>{component.component}<small>{component.detail ?? component.status}</small>
       </li>)}
     </ul>}
 
@@ -236,43 +261,65 @@ export function AxiomRadar() {
     <div className="radar-toasts" role="log" aria-live="assertive" aria-label="Alerts">
       {liveToasts.map(toast => <div key={toast.id} className={`radar-toast ${toast.kind}`}>
         <button type="button" className="radar-toast-body" onClick={() => onOpen(toast.mint)}>{toast.kind === 'surge' ? '🔥' : '🟢'} {toast.text}</button>
+        <AxiomLink pairAddress={tokens.find(token => token.mint === toast.mint)?.pairAddress} symbol={toast.text.split(' ')[0]} size={16}/>
         <button type="button" className="radar-icon-button" aria-label="Dismiss alert" onClick={() => setToasts(current => current.filter(item => item.id !== toast.id))}><X size={14}/></button>
       </div>)}
     </div>
 
     {payload && <>
       <section className="radar-top3" aria-labelledby="radar-top3-title">
-        <h2 id="radar-top3-title"><Flame size={16} aria-hidden="true"/> Gaining viewers fastest<small>{payload.components.find(component => component.component === 'extension-intake')?.detail ?? ''}</small></h2>
-        {gainers.length === 0 ? <p className="radar-empty-line">{hasViewerData ? 'No tracked coin is gaining viewers right now.' : 'Waiting for viewer counts. Keep Axiom Pulse open in Chrome with the Axiom Radar Bridge extension.'}</p>
-          : <ol>{gainers.map((token, index) => <li key={token.mint}>
-            <button type="button" className={token.viewerSurge ? 'surging' : ''} onClick={() => onOpen(token.mint)} aria-label={`${token.symbol}, ${token.viewers} viewers, ${formatSigned(token.viewersPerMin)} per minute. Open details`}>
+        <div className="radar-top3-head">
+          <h2 id="radar-top3-title"><Flame size={16} aria-hidden="true"/> {gainMode === 'viewers' ? 'Gaining viewers fastest' : 'Gaining holders fastest'}</h2>
+          <div className="radar-top3-pickers">
+            <div className="radar-window-picker" role="group" aria-label="Rank the fastest gainers by">
+              <button type="button" aria-pressed={gainMode === 'viewers'} className={gainMode === 'viewers' ? 'active' : ''} onClick={() => setGainMode('viewers')}>Viewers</button>
+              <button type="button" aria-pressed={gainMode === 'holders'} className={gainMode === 'holders' ? 'active' : ''} onClick={() => setGainMode('holders')}>Holders</button>
+            </div>
+            <div className="radar-window-picker" role="group" aria-label="Measure the gain over">
+              <span>Gain over</span>
+              {gainWindows.map(item => <button key={item.id} type="button" aria-pressed={gainWindow === item.id} className={gainWindow === item.id ? 'active' : ''} onClick={() => setGainWindow(item.id)}>{item.label}</button>)}
+            </div>
+          </div>
+        </div>
+        {topGainers.length === 0 ? <p className="radar-empty-line">{gainMode === 'holders'
+          ? hasHolderData ? `No tracked coin gained holders in the last ${gainSpan.spoken}.` : 'Waiting for holder counts. They come from the coins shown on your Axiom Pulse, so keep Pulse open.'
+          : hasViewerData ? `No tracked coin gained viewers in the last ${gainSpan.spoken}.` : 'Waiting for viewer counts. Keep Axiom Pulse open in Chrome with the Axiom Radar Bridge extension.'}</p>
+          : <ol>{topGainers.map(({ token, gain }, index) => <li key={token.mint}>
+            <div role="button" tabIndex={0} className={`radar-row-button ${gainMode === 'viewers' && token.viewerSurge ? 'surging' : ''}`} onClick={() => onOpen(token.mint)} onKeyDown={onActivate(() => onOpen(token.mint))} aria-label={gainMode === 'viewers'
+              ? `${token.symbol}, ${token.viewers} viewers, ${formatSigned(gain)} in the last ${gainSpan.spoken}. Open details`
+              : `${token.symbol}, ${token.pulse?.holders ?? 'unknown'} holders, ${formatSigned(gain)} in the last ${gainSpan.spoken}. Open details`}>
               <span className="radar-top3-rank tabular">{index + 1}</span>
               <TokenIcon token={token}/>
-              <span className="radar-top3-name"><strong>{token.symbol}</strong><small>{token.viewerSurge ? 'This coin is gaining viewers quickly' : 'Viewers rising'}</small></span>
+              <span className="radar-top3-name"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><small>{gainMode === 'holders' ? `${formatCount(token.viewers)} watching` : token.viewerSurge ? 'This coin is gaining viewers quickly' : 'Viewers rising'}</small></span>
               <PriceSpark points={sparkPoints(token, chartWindow)} width={84} height={30}/>
-              <span className="radar-top3-count"><strong className="tabular">{formatCount(token.viewers)}</strong><small className="tabular radar-delta up">{formatSigned(token.viewersPerMin)}/min</small></span>
-            </button>
+              <span className="radar-top3-count"><strong className="tabular">{formatCount(gainMode === 'viewers' ? token.viewers : token.pulse?.holders)}</strong><small className="tabular radar-delta up">{formatSigned(gain)}{gainSpan.suffix}</small></span>
+            </div>
+            <AxiomLink pairAddress={token.pairAddress} symbol={token.symbol} size={16}/>
           </li>)}</ol>}
       </section>
 
-      <div className="radar-kpis">
-        <div className="radar-kpi"><span>Coins tracked</span><strong className="tabular">{tokens.length}</strong><small>{tokens.filter(token => token.onPulse).length} on your Pulse</small></div>
-        <div className="radar-kpi"><span>Most watched</span><strong className="tabular">{mostWatched ? formatCount(mostWatched.viewers) : '—'}</strong><small>{mostWatched ? mostWatched.symbol : 'No viewer data yet'}</small></div>
-        <div className="radar-kpi"><span>Recommended buys</span><strong className="tabular">{buyCount}</strong><small>{watchCount} to watch</small></div>
-        <div className="radar-kpi"><span>Paper-trade win rate</span><strong className="tabular">{formatPercent(payload.kpis.winRate, 0)}</strong><small>{payload.kpis.completedTrades} completed</small></div>
-      </div>
+      <p className="radar-stats" aria-label="Radar summary">
+        <span><strong className="tabular">{tokens.length}</strong> coins</span>
+        <span><strong className="tabular">{tokens.filter(token => token.onPulse).length}</strong> on Pulse</span>
+        <span><strong className="tabular">{buyCount}</strong> buy · <strong className="tabular">{watchCount}</strong> watch</span>
+        <span>Paper win rate <strong className="tabular">{formatPercent(payload.kpis.winRate, 0)}</strong> of {payload.kpis.completedTrades}</span>
+      </p>
 
       <div className="radar-tabbar">
       <div className="radar-tabs" role="tablist" aria-label="Axiom Radar views">
         {tabs.map(item => <button key={item.id} type="button" role="tab" id={`radar-tab-${item.id}`} aria-controls="radar-panel" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>
-          <item.icon size={14} aria-hidden="true"/> {item.label}{item.id === 'picks' && buyCount > 0 && <span className="radar-tab-count tabular">{buyCount}</span>}
+          <item.icon size={14} aria-hidden="true"/> {item.label}{item.id === 'picks' && buyCount > 0 && <span className="radar-tab-count tabular">{buyCount}</span>}{item.id === 'explode' && (payload.explosions?.candidates.length ?? 0) > 0 && <span className="radar-tab-count tabular">{payload.explosions?.candidates.length}</span>}
         </button>)}
       </div>
       <ChartWindowPicker value={chartWindow} onChange={setChartWindow} label="Chart previews"/>
       </div>
 
       <div id="radar-panel" role="tabpanel" aria-labelledby={`radar-tab-${tab}`}>
-        {tab === 'picks' && <PicksView tokens={tokens} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/>}
+        {tab === 'picks' && <div className="radar-picks"><EarlyRunners payload={payload} tokens={tokens} onOpen={onOpen}/><PicksView tokens={tokens} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/></div>}
+        {tab === 'explode' && <ExplodeView payload={payload} tokens={tokens} now={now} onOpen={onOpen}/>}
+        {tab === 'maker' && <MakerView payload={payload} tokens={tokens} onOpen={onOpen} filters={makerFilters} onFilters={setMakerFilters} sort={makerSort} onSort={setMakerSort}/>}
+        {tab === 'research' && <ResearchView payload={payload} tokens={tokens} onOpen={onOpen}/>}
+        {tab === 'watchlist' && <WatchListView payload={payload} tokens={tokens} now={now} onOpen={onOpen}/>}
         {tab === 'coins' && <>
           <div className="radar-filters">
             <div className="radar-chips" role="group" aria-label="Quick filters">

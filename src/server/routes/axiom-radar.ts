@@ -13,6 +13,7 @@ const liveWindowMs = 75_000
 const offlineAfterMs = 5 * 60_000
 const watchingWindowMs = 30_000
 const streamIntervalMs = 3_000
+const liveIntervalMs = 1_000
 const streamWindowMs = 55_000
 
 const ingestInput = z.object({
@@ -24,9 +25,10 @@ const ingestInput = z.object({
     model: z.object({}).passthrough(),
     paper: z.object({}).passthrough(),
     components: z.array(z.object({}).passthrough()).max(30),
-  }).passthrough(),
+  }).passthrough().optional(),
+  live: z.object({ at: z.number(), tokens: z.record(z.string().regex(mintPattern), z.object({}).passthrough()) }).strict().optional(),
   details: z.record(z.string().regex(mintPattern), z.object({}).passthrough()).optional(),
-}).strict()
+}).strict().refine(input => input.payload !== undefined || input.live !== undefined)
 
 export async function tokenMatches(request: Request, env: Env) {
   const expected = env.AXIOM_RADAR_TOKEN?.trim()
@@ -47,7 +49,8 @@ async function ingest(request: Request, env: Env) {
   const parsed = ingestInput.safeParse(JSON.parse(await readText(request, ingestLimit)))
   if (!parsed.success) return json({ error: 'The radar update could not be read.' }, 400)
   const now = Date.now()
-  await writeRadarState(env, 'payload', JSON.stringify(parsed.data.payload), now)
+  if (parsed.data.payload) await writeRadarState(env, 'payload', JSON.stringify(parsed.data.payload), now)
+  if (parsed.data.live) await writeRadarState(env, 'live', JSON.stringify(parsed.data.live), now)
   if (parsed.data.details) await writeRadarState(env, 'details', JSON.stringify(parsed.data.details), now)
   const [viewed, settings] = await Promise.all([readRadarState(env, 'viewed'), savedSettings(env)])
   return json({ ok: true, watching: Boolean(viewed && now - viewed.updated_at < watchingWindowMs), settings })
@@ -112,11 +115,22 @@ function stream(request: Request, env: Env) {
       const until = Date.now() + streamWindowMs
       controller.enqueue(encoder.encode('retry: 1500\n\n'))
       try {
+        let payloadSentAt = 0
+        let liveSeenAt = 0
         while (!request.signal.aborted) {
-          await markRadarViewed(env)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ ...await currentPayload(env), savedSettings: await savedSettings(env), source: 'relay' })}\n\n`))
-          if (Date.now() + streamIntervalMs > until) break
-          await new Promise(resolve => setTimeout(resolve, streamIntervalMs))
+          if (Date.now() - payloadSentAt >= streamIntervalMs) {
+            payloadSentAt = Date.now()
+            await markRadarViewed(env)
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ ...await currentPayload(env), savedSettings: await savedSettings(env), source: 'relay' })}\n\n`))
+          } else {
+            const live = await readRadarState(env, 'live')
+            if (live && live.updated_at > liveSeenAt && Date.now() - live.updated_at < 10_000) {
+              liveSeenAt = live.updated_at
+              controller.enqueue(encoder.encode(`event: live\ndata: ${live.value}\n\n`))
+            }
+          }
+          if (Date.now() + liveIntervalMs > until) break
+          await new Promise(resolve => setTimeout(resolve, liveIntervalMs))
         }
       } catch (error) {
         console.error('Axiom Radar stream failed', error)

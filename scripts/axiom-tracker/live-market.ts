@@ -1,13 +1,13 @@
 import type { TrackerDatabase } from './db.js'
 import { bestPairByMint, readMarket, type DexPair } from './dexscreener.js'
 import { chunk, createLogger, errorMessage, fetchJson, sleep } from './runtime.js'
-import { activeCandidates, trackerState } from './state.js'
+import { activeCandidates, freshViewerCount, trackerState } from './state.js'
 
 const logger = createLogger('live-market')
 const tickIntervalMs = 1_000
 const tickHistoryMs = 11 * 60_000
 
-export type MarketTick = { t: number; price: number | null; viewers: number | null; liquidity: number | null; marketCap: number | null; holders: number | null }
+export type MarketTick = { t: number; price: number | null; viewers: number | null; liquidity: number | null; marketCap: number | null; holders: number | null; buys: number | null }
 
 export const marketTicks = new Map<string, MarketTick[]>()
 
@@ -15,10 +15,9 @@ function recordTicks(now: number) {
   for (const candidate of trackerState.active) {
     const market = trackerState.market.get(candidate.mint)
     if (!market) continue
-    const viewer = trackerState.viewers.get(candidate.mint)
     const ticks = marketTicks.get(candidate.mint) ?? []
     const card = trackerState.pulseCards.get(candidate.mint)
-    ticks.push({ t: now, price: market.priceUsd, viewers: viewer && now - viewer.at < 30_000 ? viewer.count : null, liquidity: market.liquidityUsd, marketCap: market.marketCap, holders: card && now - card.seenAt < 60_000 ? card.holders : null })
+    ticks.push({ t: now, price: market.priceUsd, viewers: freshViewerCount(candidate.mint, now, 30_000), liquidity: market.liquidityUsd, marketCap: market.marketCap, holders: card && now - card.seenAt < 60_000 ? card.holders : null, buys: market.buys5m })
     while (ticks.length && now - ticks[0].t > tickHistoryMs) ticks.shift()
     marketTicks.set(candidate.mint, ticks)
   }
@@ -44,10 +43,10 @@ async function fetchMarketsFast(mints: string[]) {
 export function startLiveMarket(database: TrackerDatabase, signal: AbortSignal) {
   logger.info('Refreshing prices every second for tracked coins')
   const now = Date.now()
-  const rows = database.prepare('SELECT mint, price_usd, viewers, liquidity_usd, market_cap, timestamp FROM snapshots WHERE timestamp >= ? ORDER BY timestamp ASC').all(now - tickHistoryMs) as Array<{ mint: string; price_usd: number | null; viewers: number | null; liquidity_usd: number | null; market_cap: number | null; timestamp: number }>
+  const rows = database.prepare('SELECT mint, price_usd, viewers, liquidity_usd, market_cap, buys_5m, timestamp FROM snapshots WHERE timestamp >= ? ORDER BY timestamp ASC').all(now - tickHistoryMs) as Array<{ mint: string; price_usd: number | null; viewers: number | null; liquidity_usd: number | null; market_cap: number | null; buys_5m: number | null; timestamp: number }>
   for (const row of rows) {
     const ticks = marketTicks.get(row.mint) ?? []
-    ticks.push({ t: row.timestamp, price: row.price_usd, viewers: row.viewers, liquidity: row.liquidity_usd, marketCap: row.market_cap, holders: null })
+    ticks.push({ t: row.timestamp, price: row.price_usd, viewers: row.viewers, liquidity: row.liquidity_usd, marketCap: row.market_cap, holders: null, buys: row.buys_5m })
     marketTicks.set(row.mint, ticks)
   }
   const ticker = setInterval(() => recordTicks(Date.now()), tickIntervalMs)

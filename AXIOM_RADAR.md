@@ -148,6 +148,37 @@ The ecosystem file is an ES module that exports `apps`. PM2 loads it with `requi
 
 The tracker refreshes prices from DexScreener and records viewers every second. When the page is open in a browser **on the PC running the tracker**, it reads `http://127.0.0.1:8791/live/stream` directly and updates every second (Chrome may ask once for permission to reach local apps; allow it). Anywhere else it falls back to the site relay, which updates every 3 seconds. The local feed only answers this site's origin and only GET requests.
 
+## Exit and rebuy advice (for trading bots)
+
+Every coin in the payload carries `advice`, re-computed every 3 seconds and sent with the per-second `live` figures. It is `null` for the first minute after the tracker starts.
+
+```
+advice: {
+  exit: 'hold' | 'tighten' | 'exit'
+  exitReasons: string[]        // plain-English, with the numbers behind each one
+  rebuy: 'ok' | 'wait' | 'never'
+  rebuyReasons: string[]
+  signs: string[]              // keys of the warning signs that are on, see adviceStudy.signs
+  highPrice: number | null     // highest price held for two readings while tracked
+  drawdownPct: number | null   // how far the price is below highPrice
+  crashed: boolean             // fell 75% from its high or had liquidity pulled, and is still 30%+ down
+}
+```
+
+How to use it:
+
+- `exit: 'exit'`: sell. The coin crashed, has a Radar warning, or shows a sign that at least doubled the chance of a 20% fall in the next 5 minutes in the tracker's own history.
+- `exit: 'tighten'`: momentum is fading. Take profit or pull stops in; do not add.
+- `rebuy: 'never'`: the coin crashed or has a warning. Do not buy it again, whatever the score says.
+- `rebuy: 'wait'`: it shows warning signs now, or it is far enough below its high that most coins like it did not make a new high. Wait for `ok`.
+- A held coin that disappears from the payload has left the radar. Treat that as `tighten` at least: the tracker stopped seeing the volume, trades or liquidity it requires.
+
+`payload.adviceStudy` lists every warning sign with how often it was seen, what share of coins fell or rose 20% in the next 5 minutes, and whether it is in use (`level`). `advice.ts` re-tests all of them every 15 minutes, so a sign that stops predicting falls drops out, and one that starts working is picked up. Price dips alone are tested and currently not used: in this history coins bounced after them more often than they kept falling.
+
+What the history says about stops: price stops rarely sell where they are set. When a stop did trigger in a backtest of the tracker's past picks, the sale averaged about 70% below the entry, because these coins fall faster than prices arrive. Size positions for that, and lean on `advice.exit` rather than a tight stop.
+
+`follow-up.ts` keeps reading prices for up to 150 coins after they leave the radar (every 30 seconds, no viewer counts), so the research can see what happened after a sale. Until a day of that has built up, treat the advice as an early read.
+
 ## Model reference
 
 - **Which coins are tracked**: DexScreener (latest profiles, boosts, takeovers, searches), GeckoTerminal (new and trending Solana pools) and every coin on your Axiom Pulse feed a watchlist. Coins must pass the enabled requirements in Settings (defaults: 5 m volume ≥ $3k, ≥ 40 trades, liquidity ≥ $3k, buys > 40%; no age or viewer limit). Pulse coins skip the market requirements by default. Up to 60 coins (setting) are kept, ranked by live viewers; pinned coins are always kept.

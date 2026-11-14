@@ -1,3 +1,4 @@
+import { AxiomLink, CoinName } from './AxiomLink'
 import type { KeyboardEvent } from 'react'
 import { Eye, Sparkles, TriangleAlert } from 'lucide-react'
 import type { RadarToken } from '@/lib/axiom-radar-types'
@@ -16,7 +17,7 @@ export function PickCard({ token, chartWindow, onOpen, onTogglePin }: CardProps)
   return <article className={`radar-pick ${token.signal ?? ''} ${token.alerts.length ? 'alerting' : ''}`} tabIndex={0} role="button" aria-label={`${token.symbol}. Open details`} onClick={() => onOpen(token.mint)} onKeyDown={open}>
     <header>
       <TokenIcon token={token}/>
-      <div className="radar-pick-name"><strong>{token.symbol}</strong><small title={token.name}>{token.name}</small></div>
+      <div className="radar-pick-name"><span className="radar-name-line"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/></span><small title={token.name}>{token.name}</small></div>
       <ScoreBadge token={token}/>
       <PinButton token={token} onTogglePin={onTogglePin}/>
     </header>

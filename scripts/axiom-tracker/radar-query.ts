@@ -3,7 +3,8 @@ import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
 import { marketTicks, tickAt, type MarketTick } from './live-market.js'
 import { assessQuality } from './pulse-cards.js'
 import { radarSettings } from './settings-store.js'
-import { trackerState } from './state.js'
+import { learnerState, withLearning } from './learner-state.js'
+import { freshViewerCount, trackerState } from './state.js'
 import type { TrackerDatabase } from './db.js'
 import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
 
@@ -53,6 +54,7 @@ type PaperRow = {
   id: number
   mint: string
   symbol: string
+  pair_address: string | null
   entry_price: number
   entry_mcap: number | null
   setup_score: number
@@ -129,17 +131,28 @@ function viewerGainPerMinute(ticks: MarketTick[], viewers: number | null, now: n
   return Math.round(((viewers - earliest.viewers) * 60_000) / (now - earliest.t))
 }
 
+function holderGainPerMinute(ticks: MarketTick[], holders: number | null, now: number) {
+  if (holders === null) return null
+  const earliest = ticks.find(tick => tick.holders !== null && now - tick.t <= 300_000)
+  if (!earliest || now - earliest.t < 45_000) return null
+  return Math.round(((holders - (earliest.holders as number)) / ((now - earliest.t) / 60_000)) * 10) / 10
+}
+
 function liveFigures(mint: string, now: number) {
   const ticks = marketTicks.get(mint) ?? []
   const latest = ticks.at(-1)
   const price = latest?.price ?? null
-  const viewer = trackerState.viewers.get(mint)
-  const viewers = viewer && now - viewer.at < 60_000 ? viewer.count : null
+  const viewers = freshViewerCount(mint, now)
   const card = trackerState.pulseCards.get(mint)
   const pulse = card && now - card.seenAt < 120_000 ? card : null
   const minuteAgo = tickAt(ticks, now - 60_000, 8_000, 'viewers')
   const fiveMinutesAgo = tickAt(ticks, now - 300_000, 25_000, 'viewers')
   const holdersBefore = tickAt(ticks, now - 300_000, 40_000, 'holders')
+  const gainOver = (field: 'viewers' | 'holders', current: number | null, spanMs: number, tolerance: number) => {
+    const before = current === null ? null : tickAt(ticks, now - spanMs, tolerance, field)
+    return current === null || before === null ? null : current - before
+  }
+  const gainsFor = (field: 'viewers' | 'holders', current: number | null) => ({ s5: gainOver(field, current, 5_000, 2_000), s15: gainOver(field, current, 15_000, 3_000), s30: gainOver(field, current, 30_000, 4_000), m1: gainOver(field, current, 60_000, 8_000) })
   return {
     price,
     viewers,
@@ -156,6 +169,8 @@ function liveFigures(mint: string, now: number) {
     viewersDelta1m: viewers !== null && minuteAgo !== null ? viewers - minuteAgo : null,
     viewersDelta5m: viewers !== null && fiveMinutesAgo !== null ? viewers - fiveMinutesAgo : null,
     holdersChange5m: pulse?.holders !== null && pulse?.holders !== undefined && holdersBefore !== null ? pulse.holders - holdersBefore : null,
+    holdersPerMin: holderGainPerMinute(ticks, pulse?.holders ?? null, now),
+    gains: { viewers: gainsFor('viewers', viewers), holders: gainsFor('holders', pulse?.holders ?? null) },
   }
 }
 
@@ -280,6 +295,8 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     viewersPerMin: live.viewersPerMin,
     viewerSurge: false,
     holdersChange5m: live.holdersChange5m,
+    holdersPerMin: live.holdersPerMin,
+    gains: live.gains,
     pulse: live.pulse,
     quality,
     viewerRank: null,
@@ -326,11 +343,12 @@ export function buildRadarTokens(database: TrackerDatabase, weights: RadarWeight
 const returnOf = (price: number | null, entry: number) => price === null || entry <= 0 ? null : price / entry - 1
 
 function paperTrades(database: TrackerDatabase) {
-  const rows = database.prepare('SELECT id, mint, symbol, entry_price, entry_mcap, setup_score, price_5m, price_15m, price_30m, status, created_at FROM paper_trades ORDER BY created_at DESC LIMIT 200').all() as PaperRow[]
+  const rows = database.prepare('SELECT p.id, p.mint, p.symbol, t.pair_address, p.entry_price, p.entry_mcap, p.setup_score, p.price_5m, p.price_15m, p.price_30m, p.status, p.created_at FROM paper_trades p LEFT JOIN tokens t ON t.mint = p.mint ORDER BY p.created_at DESC LIMIT 200').all() as PaperRow[]
   const trades: RadarPaperTrade[] = rows.map(row => ({
     id: row.id,
     mint: row.mint,
     symbol: row.symbol,
+    pairAddress: row.pair_address,
     entryPrice: row.entry_price,
     entryMcap: row.entry_mcap,
     setupScore: row.setup_score,
@@ -372,24 +390,24 @@ function smartWallets(database: TrackerDatabase, minRunnerHits: number): RadarWa
     ORDER BY runnerHits DESC, updatedAt DESC LIMIT 40
   `).all(minRunnerHits) as Array<{ wallet: string; runnerHits: number; updatedAt: number }>
   const holdings = database.prepare(`
-    SELECT h.mint, COALESCE(t.symbol, g.symbol, '???') AS symbol, h.pct, g.mint IS NOT NULL AS good, h.updated_at AS timestamp FROM holders h
+    SELECT h.mint, COALESCE(t.symbol, g.symbol, '???') AS symbol, t.pair_address AS pairAddress, h.pct, g.mint IS NOT NULL AS good, h.updated_at AS timestamp FROM holders h
     LEFT JOIN tokens t ON t.mint = h.mint LEFT JOIN good_coins g ON g.mint = h.mint
     WHERE h.wallet = ? ORDER BY good DESC, h.updated_at DESC LIMIT 8
   `)
   const buyers = database.prepare('SELECT wallet, runner_hits AS runnerHits, updated_at AS updatedAt FROM smart_wallets WHERE runner_hits >= ? ORDER BY runner_hits DESC, updated_at DESC LIMIT 20').all(minRunnerHits) as Array<{ wallet: string; runnerHits: number; updatedAt: number }>
   const entries = database.prepare(`
-    SELECT we.mint, COALESCE(t.symbol, '???') AS symbol, we.timestamp FROM wallet_entries we
+    SELECT we.mint, COALESCE(t.symbol, '???') AS symbol, t.pair_address AS pairAddress, we.timestamp FROM wallet_entries we
     LEFT JOIN tokens t ON t.mint = we.mint WHERE we.wallet = ? ORDER BY we.timestamp DESC LIMIT 8
   `)
   return [
-    ...holders.map(wallet => ({ ...wallet, source: 'holder' as const, entries: (holdings.all(wallet.wallet) as Array<{ mint: string; symbol: string; pct: number | null; good: number; timestamp: number }>).map(entry => ({ ...entry, good: entry.good === 1 })) })),
-    ...buyers.map(wallet => ({ ...wallet, source: 'early-buyer' as const, entries: (entries.all(wallet.wallet) as Array<{ mint: string; symbol: string; timestamp: number }>).map(entry => ({ ...entry, pct: null, good: false })) })),
+    ...holders.map(wallet => ({ ...wallet, source: 'holder' as const, entries: (holdings.all(wallet.wallet) as Array<{ mint: string; symbol: string; pairAddress: string | null; pct: number | null; good: number; timestamp: number }>).map(entry => ({ ...entry, good: entry.good === 1 })) })),
+    ...buyers.map(wallet => ({ ...wallet, source: 'early-buyer' as const, entries: (entries.all(wallet.wallet) as Array<{ mint: string; symbol: string; pairAddress: string | null; timestamp: number }>).map(entry => ({ ...entry, pct: null, good: false })) })),
   ]
 }
 
 export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): RadarPayload {
   const model = loadModelState(database)
-  const tokens = buildRadarTokens(database, model.weights, now)
+  const tokens = buildRadarTokens(database, model.weights, now).map(withLearning)
   const components = componentStatuses(database)
   const workerSeenAt = components.length ? Math.max(...components.map(component => component.updatedAt)) : null
   const status = workerSeenAt && now - workerSeenAt < 30_000 ? 'live' : workerSeenAt && now - workerSeenAt < 5 * 60_000 ? 'stale' : 'offline'
@@ -418,6 +436,10 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     settings: radarSettings(),
     wallets: smartWallets(database, radarSettings().wallets.minRunnerHits),
     walletTracking: process.env.HELIUS_API_KEY?.trim() ? 'on' : 'no-key',
+    learner: learnerState.summary,
+    explosions: learnerState.explosions,
+    winners: learnerState.winners,
+    adviceStudy: learnerState.adviceStudy,
   }
 }
 
@@ -447,7 +469,7 @@ export function buildTokenDetail(database: TrackerDatabase, mint: string, now = 
   `).all(mint, settings.wallets.minRunnerHits) as RadarWalletEntry[]
   const [built] = finalize([buildToken(token, recent, all.at(-1), runners, model.weights, now, settings)], settings)
   return {
-    token: built,
+    token: withLearning(built),
     history: toHistory(downsample(all, 360)),
     live: (marketTicks.get(mint) ?? []).map(tick => ({ t: tick.t, price: tick.price, viewers: tick.viewers })),
     entries: [...holders, ...buyers],

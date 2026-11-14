@@ -14,7 +14,8 @@
     "preview": "vite preview",
     "deploy": "pnpm build && wrangler deploy",
     "axiom:worker": "tsx scripts/axiom-tracker/index.ts",
-    "axiom:login": "tsx scripts/axiom-tracker/axiom-collector.ts --login"
+    "axiom:login": "tsx scripts/axiom-tracker/axiom-collector.ts --login",
+    "axiom:chrome": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/axiom-tracker/radar-chrome.ps1"
   },
   "dependencies": {
     "@babylonjs/core": "9.34.0",

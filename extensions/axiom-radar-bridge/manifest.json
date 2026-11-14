@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Axiom Radar Bridge",
-  "version": "1.3.0",
-  "description": "Sends the viewer counts shown on the Axiom tabs you open to the Axiom Radar tracker running on this computer.",
+  "version": "1.5.1",
+  "description": "Sends the viewer counts shown on Axiom Pulse to the Axiom Radar tracker on this computer, and keeps the Pulse tab updating in the background.",
   "permissions": [
     "storage"
   ],

@@ -1,3 +1,4 @@
+import { AxiomLink, CoinName, onActivate } from './AxiomLink'
 import type { RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatSigned, formatUsd } from './format'
 import { PriceSpark, sparkPoints, type ChartWindow } from './PriceSpark'
@@ -15,13 +16,14 @@ function Board({ title, caption, rows, window, onOpen }: { title: string; captio
     <div className="panel-heading"><h2>{title}</h2><span className="panel-caption">{caption}</span></div>
     {rows.length === 0 ? <p className="radar-muted">Not enough data yet.</p> : <ol>
       {rows.map(({ token, value, tone }, index) => <li key={token.mint}>
-        <button type="button" onClick={() => onOpen(token.mint)} aria-label={`${token.symbol} ${value}. Open details`}>
+        <div role="button" tabIndex={0} className="radar-row-button" onClick={() => onOpen(token.mint)} onKeyDown={onActivate(() => onOpen(token.mint))} aria-label={`${token.symbol} ${value}. Open details`}>
           <span className="radar-rank tabular">{index + 1}</span>
           <TokenIcon token={token}/>
-          <span className="radar-board-name"><strong>{token.symbol}</strong><small className="tabular">{formatCount(token.viewers)} watching · {formatUsd(token.marketCap)}</small></span>
+          <span className="radar-board-name"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><small className="tabular">{formatCount(token.viewers)} watching · {formatUsd(token.marketCap)}</small></span>
           <PriceSpark points={sparkPoints(token, window)} width={70} height={26}/>
           <strong className={`tabular radar-delta ${tone}`}>{value}</strong>
-        </button>
+        </div>
+        <AxiomLink pairAddress={token.pairAddress} symbol={token.symbol} size={16}/>
       </li>)}
     </ol>}
   </section>

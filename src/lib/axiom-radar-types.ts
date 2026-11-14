@@ -1,4 +1,5 @@
 import { defaultRadarSettings, type RadarSettings } from './axiom-radar-settings'
+import type { RadarAdvice, RadarAdviceStudy, RadarExplode, RadarExplosionSummary, RadarLearnerSummary, RadarMaker, RadarOutlook, RadarWinnersSummary } from './axiom-radar-learner'
 
 export const radarFeatureKeys = ['viewerVelocity', 'activeViewers', 'runnerWallets', 'buyPressure', 'safety'] as const
 export type RadarFeatureKey = typeof radarFeatureKeys[number]
@@ -26,6 +27,9 @@ export type RadarFactor = {
 export type RadarHistoryPoint = { t: number; viewers: number | null; marketCap: number | null; priceUsd: number | null }
 
 export type RadarSocials = { twitter: string | null; telegram: string | null; website: string | null }
+
+export type RadarGainWindow = 's5' | 's15' | 's30' | 'm1'
+export type RadarGainWindows = Record<RadarGainWindow, number | null>
 
 export type RadarToken = {
   mint: string
@@ -65,6 +69,8 @@ export type RadarToken = {
   viewersPerMin: number | null
   viewerSurge: boolean
   holdersChange5m: number | null
+  holdersPerMin?: number | null
+  gains?: { viewers: RadarGainWindows; holders: RadarGainWindows }
   pulse: RadarPulseMetrics | null
   quality: { score: number | null; checks: RadarQualityCheck[] }
   viewerRank: number | null
@@ -73,12 +79,17 @@ export type RadarToken = {
   alerts: string[]
   pinned: boolean
   onPulse: boolean
+  outlook?: RadarOutlook | null
+  explode?: RadarExplode | null
+  maker?: RadarMaker | null
+  advice?: RadarAdvice | null
 }
 
 export type RadarPaperTrade = {
   id: number
   mint: string
   symbol: string
+  pairAddress: string | null
   entryPrice: number
   entryMcap: number | null
   setupScore: number
@@ -123,7 +134,7 @@ export type RadarWallet = {
   runnerHits: number
   source: 'holder' | 'early-buyer'
   updatedAt: number
-  entries: Array<{ mint: string; symbol: string; pct: number | null; good: boolean; timestamp: number }>
+  entries: Array<{ mint: string; symbol: string; pairAddress: string | null; pct: number | null; good: boolean; timestamp: number }>
 }
 
 export type RadarPayload = {
@@ -151,6 +162,23 @@ export type RadarPayload = {
   wallets: RadarWallet[]
   walletTracking: 'on' | 'no-key'
   source?: 'local' | 'relay'
+  learner?: RadarLearnerSummary | null
+  explosions?: RadarExplosionSummary | null
+  winners?: RadarWinnersSummary | null
+  adviceStudy?: RadarAdviceStudy | null
+}
+
+export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice'>
+
+export type RadarLivePatch = { at: number; tokens: Record<string, RadarLiveFigures> }
+
+export function liveFiguresOf(token: RadarToken): RadarLiveFigures {
+  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice }
+}
+
+export function applyLivePatch(payload: RadarPayload, patch: RadarLivePatch): RadarPayload {
+  if (patch.at < payload.generatedAt) return payload
+  return { ...payload, tokens: payload.tokens.map(token => patch.tokens[token.mint] ? { ...token, ...patch.tokens[token.mint] } : token) }
 }
 
 export type RadarWalletEntry = { wallet: string; runnerHits: number; entryMcap: number | null; pct?: number | null; timestamp: number }

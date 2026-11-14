@@ -1,7 +1,11 @@
+import { startAdvice } from './advice.js'
 import { startAxiomCollector } from './axiom-collector.js'
+import { startExplosions } from './bursts.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
 import { startExtensionIntake } from './extension-intake.js'
+import { startFollowUp } from './follow-up.js'
+import { startLearner } from './learner.js'
 import { startLiveMarket } from './live-market.js'
 import { createLogger, errorMessage, runLoop } from './runtime.js'
 import { startScoring } from './scoring.js'
@@ -37,6 +41,10 @@ const tasks = [
   startScoring(database, controller.signal),
   startSitePublisher(database, controller.signal),
   startExtensionIntake(database, controller.signal),
+  startLearner(database, controller.signal),
+  startExplosions(database, controller.signal),
+  startFollowUp(database, controller.signal),
+  startAdvice(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {
     const removed = pruneSnapshots(database)
     database.pragma('wal_checkpoint(PASSIVE)')

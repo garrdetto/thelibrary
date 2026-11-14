@@ -1,6 +1,14 @@
 const statusLine = document.getElementById('status')
 const trackedLine = document.getElementById('tracked')
 const portInput = document.getElementById('port')
+const cycleInput = document.getElementById('cycle')
+const missingLine = document.getElementById('missing')
+
+chrome.storage.local.get(['cycleMissing', 'missingViewers']).then(({ cycleMissing = true, missingViewers }) => {
+  cycleInput.checked = cycleMissing
+  missingLine.textContent = typeof missingViewers === 'number' ? `${missingViewers} tracked coin${missingViewers === 1 ? '' : 's'} not on screen in Pulse right now.` : ''
+})
+cycleInput.addEventListener('change', () => chrome.storage.local.set({ cycleMissing: cycleInput.checked }))
 
 function ago(timestamp) {
   const seconds = Math.round((Date.now() - timestamp) / 1000)

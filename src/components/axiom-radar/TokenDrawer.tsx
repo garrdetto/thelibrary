@@ -1,8 +1,11 @@
+import { AxiomLink, CoinName } from './AxiomLink'
 import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { axiomUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { CandleChart } from './CandleChart'
+import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
 import { fetchTokenDetail } from './useRadarFeed'
@@ -68,7 +71,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       <header className="radar-drawer-header">
         <div>
           <span className="section-eyebrow">{formatAge(live.ageMinutes).toUpperCase()} OLD{live.viewerRank ? ` · #${live.viewerRank} BY VIEWERS` : ''}</span>
-          <h2 id="radar-drawer-title">{live.symbol} <small>{live.name}</small></h2>
+          <h2 id="radar-drawer-title"><CoinName pairAddress={live.pairAddress} symbol={live.symbol}/> <AxiomLink pairAddress={live.pairAddress} symbol={live.symbol} size={18}/> <small>{live.name}</small></h2>
           <div className="radar-drawer-links">
             <a href={axiomUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">Axiom<ExternalLink size={11}/></a>
             <a href={dexScreenerUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">DexScreener<ExternalLink size={11}/></a>
@@ -99,7 +102,12 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       </section>
 
       <section className="radar-drawer-section">
-        <h3>Live chart <small>price and viewers{fast ? ', updating every second' : ''}</small></h3>
+        <h3>Market cap chart <small>candles, live</small></h3>
+        <CandleChart pairAddress={live.pairAddress} livePrice={live.priceUsd} marketCap={live.marketCap} symbol={live.symbol}/>
+      </section>
+
+      <section className="radar-drawer-section">
+        <h3>Live viewers <small>with price{fast ? ', updating every second' : ''}</small></h3>
         <ChartWindowPicker value={span} onChange={setSpan} label="Show the last"/>
         {ticks.length < 2
           ? <p className="radar-muted">{detail ? 'Collecting live ticks. The line appears within a few seconds.' : <><LoaderCircle size={14} className="spin"/> Loading the live chart…</>}</p>
@@ -112,19 +120,37 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
                 <YAxis yAxisId="viewers" orientation="right" stroke="var(--muted)" fontSize={10} tickLine={false} width={40} allowDecimals={false} domain={['auto', 'auto']}/>
                 <Tooltip contentStyle={tooltipStyle} labelFormatter={value => clockWithSeconds(Number(value))} formatter={(value, name) => [name === 'Price' ? formatPrice(Number(value)) : formatCount(Number(value)), name]}/>
                 <Legend wrapperStyle={{ fontSize: 11 }}/>
-                <Line yAxisId="price" type="monotone" dataKey="price" name="Price" stroke="var(--radar-accent)" strokeWidth={2} dot={false} connectNulls isAnimationActive={false}/>
-                <Line yAxisId="viewers" type="monotone" dataKey="viewers" name="Viewers" stroke="var(--green)" strokeWidth={1.6} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false}/>
+                <Line yAxisId="viewers" type="stepAfter" dataKey="viewers" name="Viewers" stroke="var(--green)" strokeWidth={2.2} dot={false} connectNulls isAnimationActive={false}/>
+                <Line yAxisId="price" type="monotone" dataKey="price" name="Price" stroke="var(--radar-accent)" strokeWidth={1.4} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false}/>
               </LineChart>
             </ResponsiveContainer>
           </div>}
       </section>
 
-      <section className="radar-drawer-section">
-        <h3>Candles <small>DexScreener, live</small></h3>
-        <div className="radar-chart-embed">
-          <iframe title={`${live.symbol} DexScreener chart`} src={dexScreenerEmbedUrl(live.pairAddress)} loading="lazy" referrerPolicy="no-referrer"/>
-        </div>
-      </section>
+      {live.advice && <section className={`radar-drawer-section radar-advice ${live.advice.exit}`}>
+        <h3>Exit and rebuy advice <small>from tested warning signs</small></h3>
+        <dl className="radar-facts">
+          <div><dt>If you hold it</dt><dd>{live.advice.exit === 'exit' ? 'Get out' : live.advice.exit === 'tighten' ? 'Be careful, tighten up' : 'No warning signs'}</dd></div>
+          <div><dt>Buying again</dt><dd>{live.advice.rebuy === 'never' ? 'Do not rebuy' : live.advice.rebuy === 'wait' ? 'Wait' : 'No reason not to'}</dd></div>
+          <div><dt>Below its high</dt><dd className="tabular">{live.advice.drawdownPct === null ? '—' : `${live.advice.drawdownPct}%`}</dd></div>
+        </dl>
+        {live.advice.exitReasons.length > 0 && <ul className="radar-learn-list">{live.advice.exitReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+        {live.advice.rebuyReasons.length > 0 && <ul className="radar-learn-list">{live.advice.rebuyReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+      </section>}
+
+      {(live.outlook || live.explode || live.maker) && <section className="radar-drawer-section radar-drawer-learned">
+        <h3>What the learner sees <small>from past coins like this one</small></h3>
+        <dl className="radar-facts">
+          <div><dt>Chance to double</dt><dd className="tabular">{chanceLabel(live.outlook?.runnerChance)}</dd></div>
+          <div><dt>Usual crash time</dt><dd className="tabular">{live.outlook?.expectedLifeMinutes == null ? '—' : `${live.outlook.expectedLifeMinutes} min after launch`}</dd></div>
+          <div><dt>Typical peak</dt><dd className="tabular">{live.outlook?.expectedPeakMultiple == null ? '—' : `${live.outlook.expectedPeakMultiple}x from first sight`}</dd></div>
+          <div><dt>Chance to explode</dt><dd className="tabular">{live.explode ? chanceLabel(live.explode.chance) : '—'}</dd></div>
+          <div><dt>Match to past winners</dt><dd className="tabular">{chanceLabel(live.maker?.chance)}</dd></div>
+          <div><dt>Winner wallets in</dt><dd className="tabular">{live.maker?.winnerWallets ?? '—'}</dd></div>
+        </dl>
+        {outlookLine(live) && <p className="radar-learn-timing">{outlookLine(live)}</p>}
+        <ReasonChips reasons={live.outlook?.reasons ?? []}/>
+      </section>}
 
       <section className="radar-drawer-section">
         <h3>Quality checklist <QualityBadge token={live}/></h3>
@@ -183,11 +209,11 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       <section className="radar-drawer-section">
         <h3>Smart holders in this coin</h3>
         {!detail ? <p className="radar-muted"><LoaderCircle size={14} className="spin"/> Loading wallets…</p>
-          : detail.entries.length === 0 ? <p className="radar-muted">No smart holders found in this coin yet.</p>
+          : largestHoldingsFirst(detail.entries).length === 0 ? <p className="radar-muted">No smart holders found in this coin yet.</p>
           : <div className="radar-table-wrap">
             <table className="radar-mini-table">
               <thead><tr><th scope="col">Wallet</th><th scope="col">Good coins</th><th scope="col">Holds</th><th scope="col">Seen</th></tr></thead>
-              <tbody>{detail.entries.map(entry => <tr key={`${entry.wallet}-${entry.timestamp}`}>
+              <tbody>{largestHoldingsFirst(detail.entries).map(entry => <tr key={`${entry.wallet}-${entry.timestamp}`}>
                 <td><a href={solscanAccountUrl(entry.wallet)} target="_blank" rel="noopener noreferrer" className="mono">{shortAddress(entry.wallet)}</a></td>
                 <td className="tabular">🐋 {entry.runnerHits}</td>
                 <td className="tabular">{entry.pct !== null && entry.pct !== undefined ? `${entry.pct.toFixed(1)}%` : entry.entryMcap !== null ? `in at ${formatUsd(entry.entryMcap)}` : '—'}</td>

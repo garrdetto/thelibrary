@@ -1,16 +1,22 @@
+import { AxiomLink } from './AxiomLink'
 import { ExternalLink } from 'lucide-react'
 import type { RadarPayload } from '@/lib/axiom-radar-types'
-import { relativeSeconds, shortAddress, solscanAccountUrl } from './format'
+import { compareHoldings, largestHoldingsFirst, relativeSeconds, shortAddress, solscanAccountUrl } from './format'
 
 export function WalletsView({ payload, now, onOpen }: { payload: RadarPayload; now: number; onOpen: (mint: string) => void }) {
   const tracked = new Set(payload.tokens.map(token => token.mint))
-  const holders = payload.wallets.filter(wallet => wallet.source === 'holder')
+  const pairs = new Map(payload.tokens.map(token => [token.mint, token.pairAddress]))
+  const holders = payload.wallets
+    .filter(wallet => wallet.source === 'holder')
+    .map(wallet => ({ ...wallet, entries: largestHoldingsFirst(wallet.entries) }))
+    .filter(wallet => wallet.entries.length > 0)
+    .sort((first, second) => compareHoldings(first.entries[0].pct, second.entries[0].pct) || second.runnerHits - first.runnerHits)
   const buyers = payload.wallets.filter(wallet => wallet.source === 'early-buyer')
   const minimum = payload.settings.wallets.minRunnerHits
   return <div className="radar-wallets">
     <section className="radar-card">
       <div className="panel-heading"><h2>Smart holders</h2><span className="panel-caption">{holders.length} WALLETS</span></div>
-      <p className="radar-note">Wallets found among the top holders of at least {minimum} good coins. A coin counts as good once it passes $500K market cap, climbs 2.5x after being tracked, or wins a paper trade. Coins these wallets hold show a 🐋 on the radar.</p>
+      <p className="radar-note" title="A coin counts as good once it passes $500K market cap, climbs 2.5x after being tracked, or wins a paper trade.">Top holders of at least {minimum} good coins, biggest holdings first. Coins they hold show a 🐋 on the radar.</p>
       {holders.length === 0 ? <p className="radar-muted">No wallet qualifies yet. The list fills in as tracked coins prove themselves; it usually takes a few hours of running.</p>
         : <ul className="radar-wallet-list">{holders.map(wallet => <li key={wallet.wallet}>
           <div className="radar-wallet-head">
@@ -18,9 +24,9 @@ export function WalletsView({ payload, now, onOpen }: { payload: RadarPayload; n
             <strong className="tabular">🐋 {wallet.runnerHits} good coins</strong>
             <small>seen {relativeSeconds(wallet.updatedAt, now)}</small>
           </div>
-          <div className="radar-wallet-coins">{wallet.entries.map(entry => tracked.has(entry.mint)
-            ? <button key={entry.mint} type="button" className={entry.good ? 'good' : ''} onClick={() => onOpen(entry.mint)}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</button>
-            : <span key={entry.mint} className={entry.good ? 'good' : ''}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</span>)}</div>
+          <div className="radar-wallet-coins">{wallet.entries.map(entry => <span key={entry.mint} className="radar-wallet-coin">{tracked.has(entry.mint)
+            ? <button type="button" className={entry.good ? 'good' : ''} onClick={() => onOpen(entry.mint)}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</button>
+            : <span className={entry.good ? 'good' : ''}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</span>}<AxiomLink pairAddress={entry.pairAddress ?? pairs.get(entry.mint)} symbol={entry.symbol}/></span>)}</div>
         </li>)}</ul>}
     </section>
     <section className="radar-card">
@@ -34,7 +40,7 @@ export function WalletsView({ payload, now, onOpen }: { payload: RadarPayload; n
             <strong className="tabular">🐋 early in {wallet.runnerHits} runners</strong>
             <small>updated {relativeSeconds(wallet.updatedAt, now)}</small>
           </div>
-          <div className="radar-wallet-coins">{wallet.entries.map(entry => <span key={entry.mint}>{entry.symbol}<small>{relativeSeconds(entry.timestamp, now)}</small></span>)}</div>
+          <div className="radar-wallet-coins">{wallet.entries.map(entry => <span key={entry.mint} className="radar-wallet-coin"><span>{entry.symbol}<small>{relativeSeconds(entry.timestamp, now)}</small></span><AxiomLink pairAddress={entry.pairAddress ?? pairs.get(entry.mint)} symbol={entry.symbol}/></span>)}</div>
         </li>)}</ul>}
     </section>
   </div>

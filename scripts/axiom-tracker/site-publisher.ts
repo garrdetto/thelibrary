@@ -1,11 +1,12 @@
-import type { RadarHistoryPoint, RadarPayload, RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
+import { liveFiguresOf, type RadarHistoryPoint, type RadarPayload, type RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
 import { applyRadarSettings } from './settings-store.js'
 
 const logger = createLogger('site-publisher')
-const watchingIntervalMs = 3_000
+const watchingIntervalMs = 1_000
+const watchingPayloadMs = 3_000
 const idleIntervalMs = 20_000
 const watchingDetailsMs = 15_000
 const idleDetailsMs = 120_000
@@ -43,21 +44,35 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
   return (async () => {
     let watching = false
     let lastDetailsAt = 0
+    let lastPayloadAt = 0
+    let liveSupported = true
+    let liveRetryAt = 0
     let failures = 0
     while (!signal.aborted) {
       const started = Date.now()
       try {
-        const payload = compactPayload(buildRadarPayload(database))
-        const detailsDue = started - lastDetailsAt >= (watching ? watchingDetailsMs : idleDetailsMs)
-        let body = JSON.stringify(detailsDue ? { payload, details: collectDetails(database, payload, 180) } : { payload })
-        if (body.length > maxBodyBytes && detailsDue) body = JSON.stringify({ payload, details: collectDetails(database, payload, 60) })
-        if (body.length > maxBodyBytes) body = JSON.stringify({ payload })
+        const full = buildRadarPayload(database)
+        if (!liveSupported && started >= liveRetryAt) liveSupported = true
+        const live = watching && liveSupported ? { at: full.generatedAt, tokens: Object.fromEntries(full.tokens.map(token => [token.mint, liveFiguresOf(token)])) } : undefined
+        const payloadDue = !live || started - lastPayloadAt >= watchingPayloadMs
+        const payload = compactPayload(full)
+        const detailsDue = payloadDue && started - lastDetailsAt >= (watching ? watchingDetailsMs : idleDetailsMs)
+        let body = !payloadDue ? JSON.stringify({ live }) : JSON.stringify(detailsDue ? { payload, live, details: collectDetails(database, payload, 180) } : { payload, live })
+        if (body.length > maxBodyBytes && detailsDue) body = JSON.stringify({ payload, live, details: collectDetails(database, payload, 60) })
+        if (body.length > maxBodyBytes) body = JSON.stringify({ payload, live })
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body, signal: AbortSignal.timeout(15_000) })
         const result = await response.json().catch(() => ({})) as { watching?: boolean; error?: string; settings?: unknown }
         if (result.settings) applyRadarSettings(result.settings)
+        if (response.status === 400 && live) {
+          liveSupported = false
+          liveRetryAt = started + 10 * 60_000
+          logger.info('The site does not take per-second updates yet; sending every 3 seconds until it is redeployed')
+          continue
+        }
         if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`)
         if (detailsDue && body.includes('"details"')) lastDetailsAt = started
-        if (Boolean(result.watching) !== watching) logger.info(result.watching ? 'An admin is watching; sending every 3 seconds' : 'Nobody is watching; sending every 20 seconds')
+        if (payloadDue) lastPayloadAt = started
+        if (Boolean(result.watching) !== watching) logger.info(result.watching ? 'An admin is watching; sending viewers every second' : 'Nobody is watching; sending every 20 seconds')
         watching = Boolean(result.watching)
         failures = 0
         recordHeartbeat(database, 'site-publisher', 'ok', `${payload.tokens.length} coins sent${watching ? ', admin watching' : ''}`)
@@ -66,7 +81,7 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
         recordHeartbeat(database, 'site-publisher', 'error', errorMessage(error))
         if (failures === 1 || failures % 10 === 0) logger.warn('Could not send the radar update to the site', { error: errorMessage(error), failures })
       }
-      const interval = failures ? Math.min(60_000, 5_000 * failures) : watching ? watchingIntervalMs : idleIntervalMs
+      const interval = failures ? Math.min(60_000, 5_000 * failures) : !watching ? idleIntervalMs : liveSupported ? watchingIntervalMs : watchingPayloadMs
       await sleep(Math.max(250, interval - (Date.now() - started)), signal)
     }
   })()

@@ -124,7 +124,7 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
     }
     if (mint) counts.set(mint, card.viewers)
   }
-  for (const [mint, count] of counts) trackerState.viewers.set(mint, { count, at: now, source: 'extension' })
+  for (const [mint, count] of counts) trackerState.viewers.set(mint, { count, at: now, source: mint === pageMint && !input.cards?.length ? 'page' : 'extension' })
   return counts.size
 }
 
@@ -145,7 +145,13 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       if (site && url.pathname.startsWith('/live/')) return serveLive(database, request, response, site, url)
       if (!trustedOrigin(request)) return send(response, 403, { error: 'Only the Axiom Radar extension may send reports.' })
       if (request.method === 'GET' && url.pathname === '/extension/status') {
-        return send(response, 200, { ok: true, tracked: activeCandidates(database).map(candidate => ({ mint: candidate.mint, pairAddress: candidate.pairAddress, symbol: candidate.symbol })) })
+        const now = Date.now()
+        const tracked = activeCandidates(database).map(candidate => ({ mint: candidate.mint, pairAddress: candidate.pairAddress, symbol: candidate.symbol }))
+        const missing = tracked.filter(candidate => {
+          const viewer = trackerState.viewers.get(candidate.mint)
+          return !viewer || (viewer.source === 'page' ? now - viewer.at > 60_000 : now - viewer.at > 20_000)
+        })
+        return send(response, 200, { ok: true, tracked, missing })
       }
       if (request.method === 'POST' && url.pathname === '/extension/sample') {
         const body = await readBody(request)

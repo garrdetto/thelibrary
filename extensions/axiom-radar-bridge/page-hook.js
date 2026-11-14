@@ -1,4 +1,14 @@
 (() => {
+  if (location.pathname.startsWith('/pulse') || location.pathname.startsWith('/meme/')) {
+    try {
+      Object.defineProperty(Document.prototype, 'hidden', { configurable: true, get: () => false })
+      Object.defineProperty(Document.prototype, 'visibilityState', { configurable: true, get: () => 'visible' })
+      for (const type of ['visibilitychange', 'webkitvisibilitychange']) {
+        document.addEventListener(type, event => event.stopImmediatePropagation(), true)
+        window.addEventListener(type, event => event.stopImmediatePropagation(), true)
+      }
+    } catch { }
+  }
   const Native = window.WebSocket
   if (!Native || Native.axiomRadarWrapped) return
   const interesting = /viewer|watch|online|concurrent/i
