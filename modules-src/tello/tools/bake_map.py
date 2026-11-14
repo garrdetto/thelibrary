@@ -1087,7 +1087,6 @@ def collect_pois(osm, bodies):
 # ---------------------------------------------------------------- city limits
 
 PLAY_PAD = 1609.344  # how far past the city limits you may walk and drive: a mile, so the roads out of town reach places like Foxtails
-LINK_PAD = 32.0      # half-width of the strip along State Highway 23 out to the map's east edge (Fox Lake's road comes in there)
 LINK_ROAD = 'State Highway 23'
 VIS_PAD = 240.0      # how far past that the ground, water and woods are still drawn
 CITY_PAD = 8.0       # buildings whose footprint centre lies this close to the playable area are built
@@ -1104,10 +1103,9 @@ def city_limits(osm):
     raise SystemExit('The City of Montello boundary is missing from the OpenStreetMap extract')
 
 def playable_area(city, roads):
-    """The city limits widened by a mile, plus State Highway 23 from there out to the map's east edge (Fox Lake's road)."""
+    """The city limits widened by a mile; State Highway 23 (`link`) is where Fox Lake's road comes in at its edge."""
     link = max((r for r in roads if LINK_ROAD in (r['name'], r['ref'])), key=lambda r: max(x for x, _z in r['pts']))
-    road = LineString(link['pts']).intersection(WORLD)
-    area = unary_union([city.buffer(PLAY_PAD), road.difference(city).buffer(LINK_PAD)]).intersection(WORLD)
+    area = city.buffer(PLAY_PAD).intersection(WORLD)
     if area.geom_type != 'Polygon':
         area = max(area.geoms, key=lambda g: g.area)
     return Polygon(area.exterior).simplify(1.0), link

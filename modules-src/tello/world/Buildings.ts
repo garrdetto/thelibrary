@@ -90,6 +90,9 @@ function edgesOf(p: number[]): Edge[] {
 
 export interface BuildStats { buildings: number; colliders: number }
 
+/** Buildings are merged per material in squares this wide (metres): a few hundred meshes for the whole town. */
+export const BUILDING_CELL = 384
+
 /** A building built on its own (not merged into its cell) so it can come down: its node and its solids. */
 export interface ApartBuilding {
   node: TransformNode
@@ -101,7 +104,7 @@ export interface ApartBuilding {
  * are built on their own and returned, so they can be taken down when the lot is bought.
  */
 export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticSink, land: TelloLand, apart: ReadonlySet<number> = new Set()): BuildStats & { apart: Map<number, ApartBuilding> } {
-  const merged = new ChunkedBuilders(128)
+  const merged = new ChunkedBuilders(BUILDING_CELL)
   const separate = new Map<number, { chunks: ChunkedBuilders; solids: unknown[] }>()
   const M = {
     siding: mats.textured('h-siding', 'siding', { vcolor: true }),

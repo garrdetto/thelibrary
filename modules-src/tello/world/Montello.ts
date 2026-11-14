@@ -20,7 +20,7 @@ import { buildGround, GROUND_CHUNK } from './Ground'
 import { Water } from './Water'
 import { bridgeSolids, buildBridges, buildRoads } from './Roads'
 import { buildStreetPaint } from './StreetPaint'
-import { buildBuildings, type ApartBuilding } from './Buildings'
+import { BUILDING_CELL, buildBuildings, type ApartBuilding } from './Buildings'
 import { buildBarricades } from './Barricades'
 import { buildStorefronts } from './Storefronts'
 import { buildStreetDressing } from './StreetDressing'
@@ -117,7 +117,7 @@ export class Montello {
 
   /** Hands the town's static meshes to the culler (call once the builders have frozen them). */
   ready(): void {
-    this.s.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), 192)
+    this.s.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), BUILDING_CELL)
   }
 
   update(dt: number): void {

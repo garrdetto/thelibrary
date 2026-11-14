@@ -30,7 +30,8 @@ export interface MapOptions {
 
 export class TelloMap {
   private readonly land: TelloLand
-  private readonly base: HTMLCanvasElement
+  /** The town's picture, painted the first time a map is drawn (a host world that draws its own map never needs it). */
+  private picture: HTMLCanvasElement | null = null
   private readonly mini: HTMLCanvasElement
   private readonly miniG: CanvasRenderingContext2D
   private readonly graph: RoadGraph
@@ -49,7 +50,6 @@ export class TelloMap {
   constructor(private readonly opts: MapOptions) {
     this.land = opts.land
     this.graph = new RoadGraph(this.land.doc.roads)
-    this.base = paintMontelloBase(this.land, { vectors: true })
     const holder = opts.embedded ? null : document.getElementById('minimap')
     this.mini = document.createElement('canvas')
     this.mini.className = 'fl-minimap'
@@ -88,7 +88,8 @@ export class TelloMap {
     g.scale(v.s, v.s)
     g.translate(-v.cx, v.cz)
     g.imageSmoothingEnabled = true
-    g.drawImage(this.base, land.x0, -(land.z0 + land.size), land.size, land.size)
+    this.picture ??= paintMontelloBase(land, { vectors: true })
+    g.drawImage(this.picture, land.x0, -(land.z0 + land.size), land.size, land.size)
     if (this.route) {
       const p = this.route.pts
       g.lineCap = 'round'
