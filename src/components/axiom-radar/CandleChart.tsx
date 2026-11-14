@@ -71,10 +71,15 @@ function timeLabel(t: number, seconds: number) {
 
 const changeOf = (candle: Candle) => candle.open > 0 ? candle.close / candle.open - 1 : 0
 
-export function CandleChart({ pairAddress, livePrice, symbol }: { pairAddress: string; livePrice: number | null; symbol: string }) {
+export function CandleChart({ pairAddress, livePrice, marketCap, symbol }: { pairAddress: string; livePrice: number | null; marketCap: number | null; symbol: string }) {
   const [interval, setIntervalId] = useState<CandleInterval>('m1')
   const [zoom, setZoom] = useState(2)
   const [logScale, setLogScale] = useState(true)
+  const [showPrice, setShowPrice] = useState(false)
+  const supply = livePrice !== null && livePrice > 0 && marketCap !== null && marketCap > 0 ? marketCap / livePrice : null
+  const asMarketCap = supply !== null && !showPrice
+  const factor = asMarketCap ? supply : 1
+  const show = (value: number | null | undefined) => asMarketCap ? formatUsd(value) : formatPrice(value)
   const [candles, setCandles] = useState<Candle[] | null>(null)
   const [error, setError] = useState('')
   const [active, setActive] = useState<number | null>(null)
@@ -106,7 +111,7 @@ export function CandleChart({ pairAddress, livePrice, symbol }: { pairAddress: s
     return () => { controller.abort(); if (timer) clearTimeout(timer) }
   }, [pairAddress, spec])
 
-  const merged = useMemo(() => candles ? withLivePrice(candles, livePrice, spec.seconds, Date.now()) : [], [candles, livePrice, spec.seconds])
+  const merged = useMemo(() => (candles ? withLivePrice(candles, livePrice, spec.seconds, Date.now()) : []).map(candle => factor === 1 ? candle : { ...candle, open: candle.open * factor, high: candle.high * factor, low: candle.low * factor, close: candle.close * factor }), [candles, livePrice, spec.seconds, factor])
   const visible = merged.slice(-zoomLevels[zoom])
   const plotWidth = width - axisWidth
   const step = visible.length ? plotWidth / visible.length : plotWidth
@@ -160,6 +165,10 @@ export function CandleChart({ pairAddress, livePrice, symbol }: { pairAddress: s
         {intervals.map(item => <button key={item.id} type="button" aria-pressed={interval === item.id} className={interval === item.id ? 'active' : ''} onClick={() => setIntervalId(item.id)}>{item.label}</button>)}
       </div>
       <div className="radar-candle-tools">
+        {supply !== null && <div className="radar-window-picker" role="group" aria-label="Chart value">
+          <button type="button" aria-pressed={asMarketCap} className={asMarketCap ? 'active' : ''} onClick={() => setShowPrice(false)}>Market cap</button>
+          <button type="button" aria-pressed={!asMarketCap} className={!asMarketCap ? 'active' : ''} onClick={() => setShowPrice(true)}>Price</button>
+        </div>}
         <button type="button" className={`radar-toggle ${logScale ? 'on' : ''}`} aria-pressed={logScale} onClick={() => setLogScale(value => !value)}>Log scale</button>
         <button type="button" className="radar-icon-button" aria-label="Zoom out, show more candles" disabled={zoom === zoomLevels.length - 1} onClick={() => setZoom(value => Math.min(zoomLevels.length - 1, value + 1))}><Minus size={14}/></button>
         <button type="button" className="radar-icon-button" aria-label="Zoom in, show fewer candles" disabled={zoom === 0} onClick={() => setZoom(value => Math.max(0, value - 1))}><Plus size={14}/></button>
@@ -168,10 +177,10 @@ export function CandleChart({ pairAddress, livePrice, symbol }: { pairAddress: s
 
     {focus && <p className="radar-candle-readout tabular" aria-live="polite">
       <span>{timeLabel(focus.t, spec.seconds)}{active === null ? ' · live' : ''}</span>
-      <span>O <strong>{formatPrice(focus.open)}</strong></span>
-      <span>H <strong>{formatPrice(focus.high)}</strong></span>
-      <span>L <strong>{formatPrice(focus.low)}</strong></span>
-      <span>C <strong className={focus.close >= focus.open ? 'radar-delta up' : 'radar-delta down'}>{formatPrice(focus.close)}</strong></span>
+      <span>O <strong>{show(focus.open)}</strong></span>
+      <span>H <strong>{show(focus.high)}</strong></span>
+      <span>L <strong>{show(focus.low)}</strong></span>
+      <span>C <strong className={focus.close >= focus.open ? 'radar-delta up' : 'radar-delta down'}>{show(focus.close)}</strong></span>
       <span>{changeOf(focus) >= 0 ? '+' : ''}{(changeOf(focus) * 100).toFixed(1)}%</span>
       <span>Vol <strong>{formatUsd(focus.volume)}</strong></span>
     </p>}
@@ -180,11 +189,11 @@ export function CandleChart({ pairAddress, livePrice, symbol }: { pairAddress: s
       {!candles ? <p className="radar-muted">{error || <><LoaderCircle size={14} className="spin"/> Loading candles…</>}</p>
         : !visible.length || !scale ? <p className="radar-muted">No trades in this range yet.</p>
         : <svg width={width} height={chartHeight} viewBox={`0 0 ${width} ${chartHeight}`} role="img" tabIndex={0}
-          aria-label={`${symbol} ${spec.label} candles, ${visible.length} shown. Last price ${formatPrice(last?.close)}${rangeChange === null ? '' : `, ${rangeChange >= 0 ? 'up' : 'down'} ${Math.abs(rangeChange * 100).toFixed(1)}% over the range`}. Use the left and right arrow keys to read each candle.`}
+          aria-label={`${symbol} ${spec.label} ${asMarketCap ? 'market cap' : 'price'} candles, ${visible.length} shown. Latest ${show(last?.close)}${rangeChange === null ? '' : `, ${rangeChange >= 0 ? 'up' : 'down'} ${Math.abs(rangeChange * 100).toFixed(1)}% over the range`}. Use the left and right arrow keys to read each candle.`}
           onPointerMove={onPointerMove} onPointerLeave={() => setActive(null)} onKeyDown={onKeyDown}>
           {scale.ticks.map(tick => <g key={tick}>
             <line x1={0} x2={plotWidth} y1={scale.y(tick)} y2={scale.y(tick)} className="radar-candle-grid"/>
-            <text x={plotWidth + 6} y={scale.y(tick) + 3} className="radar-candle-axis">{formatPrice(tick)}</text>
+            <text x={plotWidth + 6} y={scale.y(tick) + 3} className="radar-candle-axis">{show(tick)}</text>
           </g>)}
           {visible.map((candle, index) => {
             const x = index * step + step / 2
@@ -202,7 +211,7 @@ export function CandleChart({ pairAddress, livePrice, symbol }: { pairAddress: s
           {last && <g>
             <line x1={0} x2={plotWidth} y1={scale.y(last.close)} y2={scale.y(last.close)} className="radar-candle-last"/>
             <rect x={plotWidth + 2} y={scale.y(last.close) - 8} width={axisWidth - 4} height={16} rx={3} className={last.close >= last.open ? 'radar-candle-tag up' : 'radar-candle-tag down'}/>
-            <text x={plotWidth + 6} y={scale.y(last.close) + 4} className="radar-candle-tag-text">{formatPrice(last.close)}</text>
+            <text x={plotWidth + 6} y={scale.y(last.close) + 4} className="radar-candle-tag-text">{show(last.close)}</text>
           </g>}
           {active !== null && visible[active] && <line x1={active * step + step / 2} x2={active * step + step / 2} y1={0} y2={volumeBottom} className="radar-candle-cross"/>}
         </svg>}

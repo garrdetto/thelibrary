@@ -5,6 +5,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
 import { axiomUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
 import { CandleChart } from './CandleChart'
+import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
 import { fetchTokenDetail } from './useRadarFeed'
@@ -101,12 +102,12 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       </section>
 
       <section className="radar-drawer-section">
-        <h3>Price chart <small>candles, live</small></h3>
-        <CandleChart pairAddress={live.pairAddress} livePrice={live.priceUsd} symbol={live.symbol}/>
+        <h3>Market cap chart <small>candles, live</small></h3>
+        <CandleChart pairAddress={live.pairAddress} livePrice={live.priceUsd} marketCap={live.marketCap} symbol={live.symbol}/>
       </section>
 
       <section className="radar-drawer-section">
-        <h3>Live ticks <small>price and viewers{fast ? ', updating every second' : ''}</small></h3>
+        <h3>Live viewers <small>with price{fast ? ', updating every second' : ''}</small></h3>
         <ChartWindowPicker value={span} onChange={setSpan} label="Show the last"/>
         {ticks.length < 2
           ? <p className="radar-muted">{detail ? 'Collecting live ticks. The line appears within a few seconds.' : <><LoaderCircle size={14} className="spin"/> Loading the live chart…</>}</p>
@@ -119,12 +120,26 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
                 <YAxis yAxisId="viewers" orientation="right" stroke="var(--muted)" fontSize={10} tickLine={false} width={40} allowDecimals={false} domain={['auto', 'auto']}/>
                 <Tooltip contentStyle={tooltipStyle} labelFormatter={value => clockWithSeconds(Number(value))} formatter={(value, name) => [name === 'Price' ? formatPrice(Number(value)) : formatCount(Number(value)), name]}/>
                 <Legend wrapperStyle={{ fontSize: 11 }}/>
-                <Line yAxisId="price" type="monotone" dataKey="price" name="Price" stroke="var(--radar-accent)" strokeWidth={2} dot={false} connectNulls isAnimationActive={false}/>
-                <Line yAxisId="viewers" type="monotone" dataKey="viewers" name="Viewers" stroke="var(--green)" strokeWidth={1.6} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false}/>
+                <Line yAxisId="viewers" type="stepAfter" dataKey="viewers" name="Viewers" stroke="var(--green)" strokeWidth={2.2} dot={false} connectNulls isAnimationActive={false}/>
+                <Line yAxisId="price" type="monotone" dataKey="price" name="Price" stroke="var(--radar-accent)" strokeWidth={1.4} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false}/>
               </LineChart>
             </ResponsiveContainer>
           </div>}
       </section>
+
+      {(live.outlook || live.explode || live.maker) && <section className="radar-drawer-section radar-drawer-learned">
+        <h3>What the learner sees <small>from past coins like this one</small></h3>
+        <dl className="radar-facts">
+          <div><dt>Chance to double</dt><dd className="tabular">{chanceLabel(live.outlook?.runnerChance)}</dd></div>
+          <div><dt>Usual crash time</dt><dd className="tabular">{live.outlook?.expectedLifeMinutes == null ? '—' : `${live.outlook.expectedLifeMinutes} min after launch`}</dd></div>
+          <div><dt>Typical peak</dt><dd className="tabular">{live.outlook?.expectedPeakMultiple == null ? '—' : `${live.outlook.expectedPeakMultiple}x from first sight`}</dd></div>
+          <div><dt>Chance to explode</dt><dd className="tabular">{live.explode ? chanceLabel(live.explode.chance) : '—'}</dd></div>
+          <div><dt>Match to past winners</dt><dd className="tabular">{chanceLabel(live.maker?.chance)}</dd></div>
+          <div><dt>Winner wallets in</dt><dd className="tabular">{live.maker?.winnerWallets ?? '—'}</dd></div>
+        </dl>
+        {outlookLine(live) && <p className="radar-learn-timing">{outlookLine(live)}</p>}
+        <ReasonChips reasons={live.outlook?.reasons ?? []}/>
+      </section>}
 
       <section className="radar-drawer-section">
         <h3>Quality checklist <QualityBadge token={live}/></h3>

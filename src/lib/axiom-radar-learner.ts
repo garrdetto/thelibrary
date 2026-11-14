@@ -80,7 +80,11 @@ export const radarOutlookPhaseLabels: Record<RadarOutlookPhase, string> = {
   overdue: 'Past the usual crash time',
 }
 
-export type RadarMaker = { chance: number | null; winnerWallets: number; reasons: RadarOutlookReason[] }
+export type RadarMaker = { chance: number | null; winnerWallets: number; reasons: RadarOutlookReason[]; passes: string[] }
+
+export type RadarResearchRule = { key: string; label: string; winnerRate: number; otherRate: number }
+
+export type RadarEarlyNumbers = { viewers: number | null; buys5m: number | null; volume5m: number | null; marketCap: number | null; ageAtSight: number | null; buyRatio: number | null }
 
 export type RadarWinner = {
   mint: string
@@ -94,6 +98,9 @@ export type RadarWinner = {
   status: 'running' | 'crashed' | 'faded' | 'holding'
   lifeMinutes: number | null
   winnerWallets: number
+  early: RadarEarlyNumbers
+  matched: string[]
+  crashKind: string | null
 }
 
 export type RadarWinnerWallet = { wallet: string; hits: number; averagePct: number | null; coins: Array<{ mint: string; symbol: string; pairAddress: string | null }> }
@@ -106,6 +113,9 @@ export type RadarWinnersSummary = {
   flaggedHitRate: number | null
   minimumMultiple: number
   top: RadarWinner[]
+  jumps: RadarWinner[]
+  rules: RadarResearchRule[]
+  ladder: { start: number; base: number; steps: Array<{ target: number; count: number }> }
   traits: string[]
   story: string[]
   wallets: RadarWinnerWallet[]

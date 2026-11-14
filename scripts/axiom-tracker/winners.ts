@@ -3,7 +3,7 @@ import type { RadarToken } from '../../src/lib/axiom-radar-types.js'
 import type { TrackerDatabase } from './db.js'
 import { lifecycleSpecs, lifecycleStart, readFeatures, type LifecycleRow } from './learner.js'
 import { learnerState } from './learner-state.js'
-import { chanceOf, holdoutAccuracy, median, splitInsights, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues } from './logistic.js'
+import { chanceOf, holdoutAccuracy, median, passesRule, splitRules, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues, type SplitRule } from './logistic.js'
 
 const minimumMultiple = 3
 const minimumPeakMcap = 50_000
@@ -11,7 +11,20 @@ const maximumStartMcap = 1_000_000
 const maximumMultiple = 1_000
 const minimumSamples = 30
 const poolShare = 15
+const ladderStart = 40_000
+const ladderTargets = [50_000, 100_000, 200_000, 500_000, 1_000_000]
 const sharedAccounts = new Set(['5Q544fKrFoe6tsEbD7S8EmxGTJYAKtTVhAW5Q5pge4j1', 'GpMZbSM2GgvTKHJirzeGfMFoaZ8UR2X7F4v8vHTvxFbL', 'TSLvdd1pWpHVjahSpsvCXUbgwsL3JAcvokwaKt1eokM'])
+
+const winnersSchema = `
+CREATE TABLE IF NOT EXISTS winner_wallets (
+  mint TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  pct REAL,
+  saved_at INTEGER NOT NULL,
+  PRIMARY KEY (mint, wallet)
+);
+CREATE INDEX IF NOT EXISTS winner_wallets_wallet ON winner_wallets (wallet);
+`
 
 type WinnerRow = LifecycleRow & { pair_address: string | null }
 export type WinnersModel = {
@@ -20,6 +33,8 @@ export type WinnersModel = {
   labels: boolean[]
   hitRate: number | null
   winners: WinnerRow[]
+  rows: WinnerRow[]
+  rules: SplitRule[]
   walletCoins: Map<string, Map<string, number | null>>
 }
 
@@ -32,13 +47,17 @@ const isWinner = (row: LifecycleRow) => {
 const money = (value: number) => value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(1)}M` : value >= 1_000 ? `$${Math.round(value / 1_000)}K` : `$${Math.round(value)}`
 
 export function loadWinnersModel(database: TrackerDatabase): WinnersModel {
+  database.exec(winnersSchema)
   const rows = database.prepare('SELECT l.*, t.pair_address FROM coin_lifecycles l LEFT JOIN tokens t ON t.mint = l.mint ORDER BY l.first_seen_at ASC').all() as WinnerRow[]
   const winners = rows.filter(isWinner).sort((first, second) => (second.peak_mcap ?? 0) - (first.peak_mcap ?? 0))
   const training = rows.filter(row => row.features_json !== null && (row.outcome !== 'open' || isWinner(row)))
   const values = training.map(row => JSON.parse(row.features_json as string) as FeatureValues)
   const labels = training.map(isWinner)
   const walletCoins = new Map<string, Map<string, number | null>>()
-  const holders = database.prepare('SELECT wallet, pct FROM holders WHERE mint = ? AND (pct IS NULL OR pct < ?)')
+  const keep = database.prepare('INSERT OR IGNORE INTO winner_wallets (mint, wallet, pct, saved_at) SELECT mint, wallet, pct, ? FROM holders WHERE mint = ?')
+  const holders = database.prepare('SELECT wallet, pct FROM winner_wallets WHERE mint = ? AND (pct IS NULL OR pct < ?)')
+  const savedAt = Date.now()
+  database.transaction(() => { for (const winner of winners) keep.run(savedAt, winner.mint) })()
   for (const winner of winners) {
     for (const holder of holders.all(winner.mint, poolShare) as Array<{ wallet: string; pct: number | null }>) {
       if (sharedAccounts.has(holder.wallet)) continue
@@ -47,7 +66,7 @@ export function loadWinnersModel(database: TrackerDatabase): WinnersModel {
       walletCoins.set(holder.wallet, coins)
     }
   }
-  return { classifier: trainClassifier(lifecycleSpecs, values, labels, minimumSamples), values, labels, hitRate: holdoutAccuracy(lifecycleSpecs, values, labels, minimumSamples)?.flaggedHitRate ?? null, winners, walletCoins }
+  return { classifier: trainClassifier(lifecycleSpecs, values, labels, minimumSamples), values, labels, hitRate: holdoutAccuracy(lifecycleSpecs, values, labels, minimumSamples)?.flaggedHitRate ?? null, winners, rows, rules: splitRules(lifecycleSpecs, values, labels), walletCoins }
 }
 
 function sharedWalletCount(model: WinnersModel, wallets: string[], mint: string) {
@@ -90,19 +109,23 @@ function story(model: WinnersModel) {
 }
 
 export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, tokens: RadarToken[], now = Date.now()) {
-  const holdersOf = database.prepare('SELECT wallet FROM holders WHERE mint = ? AND (pct IS NULL OR pct < ?)')
-  const wallets = (mint: string) => (holdersOf.all(mint, poolShare) as Array<{ wallet: string }>).map(row => row.wallet)
-  const maker = new Map<string, { chance: number | null; winnerWallets: number; reasons: Array<{ label: string; good: boolean }> }>()
+  const holdersOf = database.prepare('SELECT wallet FROM holders WHERE mint = ? AND (pct IS NULL OR pct < ?) UNION SELECT wallet FROM winner_wallets WHERE mint = ? AND (pct IS NULL OR pct < ?)')
+  const wallets = (mint: string) => (holdersOf.all(mint, poolShare, mint, poolShare) as Array<{ wallet: string }>).map(row => row.wallet)
+  const maker = new Map<string, { chance: number | null; winnerWallets: number; reasons: Array<{ label: string; good: boolean }>; passes: string[] }>()
   for (const token of tokens) {
-    const vector = vectorOf(model.classifier, lifecycleSpecs, readFeatures(token))
-    maker.set(token.mint, { chance: model.classifier.ready ? chanceOf(model.classifier, vector) : null, winnerWallets: sharedWalletCount(model, wallets(token.mint), token.mint), reasons: topReasons(model.classifier, lifecycleSpecs, vector) })
+    const values = readFeatures(token)
+    const vector = vectorOf(model.classifier, lifecycleSpecs, values)
+    maker.set(token.mint, { chance: model.classifier.ready ? chanceOf(model.classifier, vector) : null, winnerWallets: sharedWalletCount(model, wallets(token.mint), token.mint), reasons: topReasons(model.classifier, lifecycleSpecs, vector), passes: model.rules.filter(rule => passesRule(rule, values)).map(rule => rule.key) })
   }
   learnerState.maker = maker
   const rank = (mint: string) => {
     const entry = maker.get(mint)
     return entry ? (entry.chance ?? 0.1) * (1 + 0.2 * Math.min(3, entry.winnerWallets)) : 0
   }
-  const top: RadarWinner[] = model.winners.slice(0, 25).map(row => ({
+  const describe = (row: WinnerRow): RadarWinner => {
+    const early = row.features_json ? JSON.parse(row.features_json) as FeatureValues : {}
+    const pick = (key: string) => typeof early[key] === 'number' && Number.isFinite(early[key]) ? early[key] as number : null
+    return {
     mint: row.mint,
     symbol: row.symbol,
     pairAddress: row.pair_address,
@@ -114,7 +137,14 @@ export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, 
     status: row.rugged_at !== null ? 'crashed' : row.outcome === 'open' ? 'running' : row.outcome === 'survived' ? 'holding' : 'faded',
     lifeMinutes: row.rugged_at === null ? null : Math.round((row.rugged_at - lifecycleStart(row)) / 60_000),
     winnerWallets: sharedWalletCount(model, wallets(row.mint), row.mint),
-  }))
+    early: { viewers: pick('viewers'), buys5m: pick('buys5m'), volume5m: pick('volume5m'), marketCap: pick('marketCap'), ageAtSight: pick('ageAtSight'), buyRatio: pick('buyRatio') },
+    matched: model.rules.filter(rule => passesRule(rule, early)).map(rule => rule.label),
+    crashKind: row.rug_kind,
+    }
+  }
+  const top = model.winners.slice(0, 40).map(describe)
+  const jumps = model.winners.slice().sort((first, second) => multipleOf(second) - multipleOf(first)).slice(0, 60).map(describe)
+  const lowStart = model.rows.filter(row => row.first_mcap !== null && row.first_mcap <= ladderStart && multipleOf(row) <= maximumMultiple)
   const symbols = new Map(model.winners.map(row => [row.mint, row]))
   const summary: RadarWinnersSummary = {
     ready: model.classifier.ready,
@@ -124,7 +154,10 @@ export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, 
     flaggedHitRate: model.hitRate,
     minimumMultiple,
     top,
-    traits: splitInsights(lifecycleSpecs, model.values, model.labels, 'became big winners'),
+    jumps,
+    rules: model.rules.map(rule => ({ key: rule.key, label: rule.label, winnerRate: rule.rate, otherRate: rule.otherRate })),
+    ladder: { start: ladderStart, base: lowStart.length, steps: ladderTargets.map(target => ({ target, count: lowStart.filter(row => (row.peak_mcap ?? 0) >= target).length })) },
+    traits: model.rules.slice(0, 5).map(rule => `${rule.label}: ${Math.round(rule.rate * 100)}% became big winners, vs ${Math.round(rule.otherRate * 100)}% otherwise`),
     story: story(model),
     wallets: [...model.walletCoins].filter(([, coins]) => coins.size >= 2).sort((first, second) => second[1].size - first[1].size).slice(0, 30).map(([wallet, coins]) => {
       const shares = [...coins.values()].filter((value): value is number => value !== null)

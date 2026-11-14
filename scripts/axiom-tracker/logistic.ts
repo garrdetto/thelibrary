@@ -98,8 +98,10 @@ export function topReasons(classifier: Classifier, specs: readonly FeatureSpec[]
     .map(entry => ({ label: `${entry.value > 0 ? 'High' : 'Low'} ${specs[entry.index].label.toLowerCase()}`, good: entry.contribution > 0 }))
 }
 
-export function splitInsights(specs: readonly FeatureSpec[], rows: FeatureValues[], labels: boolean[], outcome: string, limit = 5) {
-  const results: Array<{ text: string; strength: number }> = []
+export type SplitRule = { key: string; feature: string; label: string; above: boolean; cut: number; rate: number; otherRate: number; strength: number }
+
+export function splitRules(specs: readonly FeatureSpec[], rows: FeatureValues[], labels: boolean[]): SplitRule[] {
+  const results: SplitRule[] = []
   for (const spec of specs) {
     const known = rows.map((row, index) => ({ value: row[spec.key], label: labels[index] })).filter((entry): entry is { value: number; label: boolean } => typeof entry.value === 'number' && Number.isFinite(entry.value))
     if (known.length < 30) continue
@@ -113,10 +115,18 @@ export function splitInsights(specs: readonly FeatureSpec[], rows: FeatureValues
     const smaller = Math.min(rate(high), rate(low))
     if (Math.abs(difference) < 0.08 && !(Math.abs(difference) >= 0.02 && larger >= smaller * 1.6)) continue
     const shown = cut === 0 ? '0' : Math.abs(cut) >= 100 ? Math.round(cut).toLocaleString('en-US') : Math.abs(cut) >= 10 ? cut.toFixed(0) : cut.toFixed(2)
-    results.push({
-      text: `${spec.label} ${difference > 0 ? 'above' : 'at or below'} ${shown}: ${Math.round(Math.max(rate(high), rate(low)) * 100)}% ${outcome}, vs ${Math.round(Math.min(rate(high), rate(low)) * 100)}% otherwise`,
-      strength: Math.abs(difference) / Math.max(0.05, larger),
-    })
+    const above = difference > 0
+    results.push({ key: `${spec.key}:${above ? 'above' : 'below'}`, feature: spec.key, label: `${spec.label} ${above ? 'above' : 'at or below'} ${shown}`, above, cut, rate: larger, otherRate: smaller, strength: Math.abs(difference) / Math.max(0.05, larger) })
   }
-  return results.sort((first, second) => second.strength - first.strength).slice(0, limit).map(item => item.text)
+  return results.sort((first, second) => second.strength - first.strength)
+}
+
+export function passesRule(rule: SplitRule, values: FeatureValues) {
+  const value = values[rule.feature]
+  if (typeof value !== 'number' || !Number.isFinite(value)) return false
+  return rule.above ? value > rule.cut : value <= rule.cut
+}
+
+export function splitInsights(specs: readonly FeatureSpec[], rows: FeatureValues[], labels: boolean[], outcome: string, limit = 5) {
+  return splitRules(specs, rows, labels).slice(0, limit).map(rule => `${rule.label}: ${Math.round(rule.rate * 100)}% ${outcome}, vs ${Math.round(rule.otherRate * 100)}% otherwise`)
 }

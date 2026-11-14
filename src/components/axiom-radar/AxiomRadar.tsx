@@ -1,9 +1,12 @@
 import { AxiomLink } from './AxiomLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, BellOff, BellRing, Brain, ChevronDown, Flame, List, Radar, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
+import { Bell, BellOff, BellRing, Brain, ChevronDown, Flame, FlaskConical, Gem, List, ListChecks, Radar, Rocket, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
 import { defaultRadarSettings, type RadarSettings, type RadarTheme } from '@/lib/axiom-radar-settings'
 import type { RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatPercent, formatSigned, relativeSeconds } from './format'
+import { EarlyRunners, ExplodeView, WatchListView } from './LearnedViews'
+import { MakerView, type MakerSort } from './MakerView'
+import { ResearchView } from './ResearchView'
 import { MoversView } from './MoversView'
 import { PaperTrades } from './PaperTrades'
 import { PicksView } from './PicksView'
@@ -16,13 +19,17 @@ import { saveRadarSettings, useRadarFeed } from './useRadarFeed'
 import { WalletsView } from './WalletsView'
 import './axiom-radar.css'
 
-type RadarTab = 'picks' | 'coins' | 'movers' | 'wallets' | 'paper' | 'settings'
+type RadarTab = 'picks' | 'coins' | 'explode' | 'maker' | 'watchlist' | 'research' | 'movers' | 'wallets' | 'paper' | 'settings'
 type RadarFilter = 'all' | 'surge' | 'buy' | 'watch' | 'holders' | 'clean' | 'pinned'
 type RadarToast = { id: string; kind: 'surge' | 'buy'; mint: string; text: string; at: number }
 
 const tabs: Array<{ id: RadarTab; label: string; icon: typeof Radar }> = [
   { id: 'picks', label: 'Picks', icon: Sparkles },
   { id: 'coins', label: 'All coins', icon: List },
+  { id: 'explode', label: 'Could explode', icon: Rocket },
+  { id: 'maker', label: 'Millionaire Maker', icon: Gem },
+  { id: 'watchlist', label: 'Watch List', icon: ListChecks },
+  { id: 'research', label: 'Research Info', icon: FlaskConical },
   { id: 'movers', label: 'Top movers', icon: TrendingUp },
   { id: 'wallets', label: 'Smart wallets', icon: Wallet },
   { id: 'paper', label: 'Paper trades', icon: Brain },
@@ -83,6 +90,8 @@ export function AxiomRadar() {
   const [chartWindow, setChartWindow] = useState<ChartWindow>('m5')
   const [previewTheme, setPreviewTheme] = useState<RadarTheme | null>(null)
   const [showHealth, setShowHealth] = useState(false)
+  const [makerFilters, setMakerFilters] = useState<string[] | null>(null)
+  const [makerSort, setMakerSort] = useState<MakerSort>('match')
   const audioRef = useRef<AudioContext | null>(null)
   const seededRef = useRef(false)
   const previousRef = useRef({ surge: new Set<string>(), buy: new Set<string>() })
@@ -265,14 +274,18 @@ export function AxiomRadar() {
       <div className="radar-tabbar">
       <div className="radar-tabs" role="tablist" aria-label="Axiom Radar views">
         {tabs.map(item => <button key={item.id} type="button" role="tab" id={`radar-tab-${item.id}`} aria-controls="radar-panel" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>
-          <item.icon size={14} aria-hidden="true"/> {item.label}{item.id === 'picks' && buyCount > 0 && <span className="radar-tab-count tabular">{buyCount}</span>}
+          <item.icon size={14} aria-hidden="true"/> {item.label}{item.id === 'picks' && buyCount > 0 && <span className="radar-tab-count tabular">{buyCount}</span>}{item.id === 'explode' && (payload.explosions?.candidates.length ?? 0) > 0 && <span className="radar-tab-count tabular">{payload.explosions?.candidates.length}</span>}
         </button>)}
       </div>
       <ChartWindowPicker value={chartWindow} onChange={setChartWindow} label="Chart previews"/>
       </div>
 
       <div id="radar-panel" role="tabpanel" aria-labelledby={`radar-tab-${tab}`}>
-        {tab === 'picks' && <PicksView tokens={tokens} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/>}
+        {tab === 'picks' && <div className="radar-picks"><EarlyRunners payload={payload} tokens={tokens} onOpen={onOpen}/><PicksView tokens={tokens} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/></div>}
+        {tab === 'explode' && <ExplodeView payload={payload} tokens={tokens} now={now} onOpen={onOpen}/>}
+        {tab === 'maker' && <MakerView payload={payload} tokens={tokens} onOpen={onOpen} filters={makerFilters} onFilters={setMakerFilters} sort={makerSort} onSort={setMakerSort}/>}
+        {tab === 'research' && <ResearchView payload={payload} tokens={tokens} onOpen={onOpen}/>}
+        {tab === 'watchlist' && <WatchListView payload={payload} tokens={tokens} now={now} onOpen={onOpen}/>}
         {tab === 'coins' && <>
           <div className="radar-filters">
             <div className="radar-chips" role="group" aria-label="Quick filters">
