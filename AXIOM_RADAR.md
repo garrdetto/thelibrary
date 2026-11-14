@@ -7,28 +7,28 @@ Open it in the admin console under **Site → Tools → Axiom Radar** (`/#admin/
 ## How it fits together
 
 ```
-Browser (admin) ──► Cloudflare Worker  /api/admin/axiom/data | /stream
-                     │  checks the tl_session admin session
-                     │  adds  Authorization: Bearer AXIOM_RADAR_TOKEN
-                     ▼
-                Cloudflare Tunnel (https://radar-api.example.com)
-                     ▼
-Your machine:   axiom-worker (PM2)  ── local API on 127.0.0.1:8790
+Your machine:   axiom-worker (PM2)
                   ├─ discovery        DexScreener + RugCheck, every 20 s
                   ├─ axiom-collector  Playwright, Axiom viewer counts, snapshots every 10 s
                   ├─ wallet-tracker   Helius, runner wallets
                   ├─ scoring          setup score, paper trades, weight recalibration
-                  └─ data/axiom-tracker.db (SQLite, WAL)
+                  ├─ data/axiom-tracker.db (SQLite, WAL)
+                  └─ site-publisher   POST https://thelibrary.garrdetto.workers.dev/api/admin/axiom/ingest
+                                       Authorization: Bearer AXIOM_RADAR_TOKEN
+                     ▼
+Cloudflare Worker  stores the latest update in D1 axiom_radar_state
+                     ▼
+Browser (admin) ──► /api/admin/axiom/data | /stream  (tl_session admin check)
 ```
 
 | Piece | Where |
 | --- | --- |
-| Worker suite | `scripts/axiom-tracker/` (`index.ts` runs everything; `api-server.ts` is the local API) |
-| Site proxy route | `src/server/routes/axiom-radar.ts` (registered in `src/server/api.ts`) |
+| Worker suite | `scripts/axiom-tracker/` (`index.ts` runs everything; `site-publisher.ts` pushes to the site) |
+| Site routes | `src/server/routes/axiom-radar.ts` and `src/server/axiom-radar-store.ts` (registered in `src/server/api.ts`) |
 | Admin UI | `src/components/axiom-radar/`, the `axiom-radar` section in `src/components/AdminPanel.tsx`, and `src/routes/admin.axiom-radar.tsx` |
 | Shared types | `src/lib/axiom-radar-types.ts` |
 
-The tracker's data stays on your machine. The site never stores it: it checks that the visitor is an administrator, then relays the request to the tracker over the tunnel with the shared token. The tracker API rejects anything without that token and listens only on `127.0.0.1` unless you change `AXIOM_API_HOST`.
+The tracker only makes outbound HTTPS requests, so nothing on your machine is exposed and no tunnel or domain is needed. The site keeps one copy of the latest radar data and per-coin details in D1 (`axiom_radar_state`, created on first use). While an administrator has the radar open, the tracker sends every 3 seconds; otherwise every 20 seconds.
 
 ## 1. Install
 
@@ -46,7 +46,7 @@ cp .env.example .env
 
 In `.env`, set:
 
-- `AXIOM_RADAR_TOKEN`: a long random secret (at least 24 characters). For example, generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
+- `AXIOM_RADAR_TOKEN`: a long random secret (at least 24 characters), also set as a Worker secret in step 4. For example, generate one with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
 - `HELIUS_API_KEY`: from https://dashboard.helius.dev. Without it, runner-wallet tracking is disabled and the rest still runs.
 - `SOLANA_RPC_URL`: optional; defaults to Helius mainnet RPC.
 
@@ -72,56 +72,21 @@ Foreground, for a quick check:
 pnpm axiom:worker
 ```
 
-Each module can also run alone with `npx tsx scripts/axiom-tracker/<module>.ts` (`discovery`, `axiom-collector`, `wallet-tracker`, `scoring`, `api-server`).
+Each module can also run alone with `npx tsx scripts/axiom-tracker/<module>.ts` (`discovery`, `axiom-collector`, `wallet-tracker`, `scoring`, `site-publisher`).
 
 Logs are one JSON object per line (`time`, `level`, `component`, `message`, plus fields). Set `AXIOM_DEBUG=1` for per-cycle debug lines.
 
-## 4. Expose the tracker API with Cloudflare Tunnel
+## 4. Connect the site
 
-Install `cloudflared` (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/), then:
-
-```bash
-cloudflared tunnel login
-```
-
-```bash
-cloudflared tunnel create axiom-radar
-```
-
-```bash
-cloudflared tunnel route dns axiom-radar radar-api.example.com
-```
-
-Create `~/.cloudflared/config.yml` (Windows: `%USERPROFILE%\.cloudflared\config.yml`):
-
-```yaml
-tunnel: axiom-radar
-credentials-file: /home/you/.cloudflared/<TUNNEL-ID>.json
-ingress:
-  - hostname: radar-api.example.com
-    service: http://127.0.0.1:8790
-  - service: http_status:404
-```
-
-Check it from another machine: `https://radar-api.example.com/health` returns `{"ok":true}`, and `/api/admin/axiom/data` returns `401` without the token.
-
-## 5. Connect the site
-
-Point the Worker at the tunnel and give it the same token:
+Give the Worker the same token as `AXIOM_RADAR_TOKEN` in `.env`:
 
 ```bash
 npx wrangler secret put AXIOM_RADAR_TOKEN
 ```
 
-Add the origin as a Worker variable, either in the Cloudflare dashboard (Workers → thelibrary → Settings → Variables) or in `wrangler.jsonc` under `vars`:
+The tracker sends to `https://thelibrary.garrdetto.workers.dev` unless `AXIOM_SITE_ORIGIN` says otherwise. Until the first update arrives, the radar shows "The tracker has not sent any data yet."
 
-```jsonc
-"vars": { "AXIOM_RADAR_ORIGIN": "https://radar-api.example.com" }
-```
-
-Until both are set, the radar shows "The tracker is not connected to this site yet."
-
-## 6. Run everything under PM2
+## 5. Run the worker under PM2
 
 ```bash
 npm install -g pm2
@@ -135,12 +100,7 @@ pm2 start ecosystem.axiom.config.js
 pm2 save
 ```
 
-This starts:
-
-- `axiom-worker`: `tsx scripts/axiom-tracker/index.ts`, restarted with exponential backoff.
-- `axiom-tunnel`: `cloudflared tunnel --no-autoupdate run axiom-radar` (set `AXIOM_TUNNEL_NAME` to use another tunnel name). Remove this entry if you run cloudflared as a system service instead (`cloudflared service install`).
-
-The site itself stays on Cloudflare Workers and is not part of PM2.
+This starts `axiom-worker` (`tsx scripts/axiom-tracker/index.ts`), restarted with exponential backoff.
 
 Useful commands:
 

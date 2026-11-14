@@ -44,9 +44,7 @@ export type Env = {
   ANTHROPIC_ADMIN_KEY?: string
   ELEVENLABS_API_KEY?: string
   MESHY_API_KEY?: string
-  /** Public HTTPS origin of the self-hosted Axiom Radar tracker API (a Cloudflare Tunnel hostname). */
-  AXIOM_RADAR_ORIGIN?: string
-  /** Shared secret the tracker API requires (same value as the worker's AXIOM_RADAR_TOKEN). */
+  /** Shared secret the self-hosted Axiom Radar tracker sends to /api/admin/axiom/ingest (same value as its AXIOM_RADAR_TOKEN). */
   AXIOM_RADAR_TOKEN?: string
   /** Development only: point the Meshy client at a local stand-in. */
   MESHY_API_BASE?: string
