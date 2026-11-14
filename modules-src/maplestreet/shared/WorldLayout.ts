@@ -256,7 +256,7 @@ export const CURB_CUTS: RectXZ[] = [
   { cx: 205, cz: -59, sx: 30, sz: 4 },         // Maple Body & Wheel apron (shared/BodyShop.ts)
 ];
 
-export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank' | 'clothing';
+export type ShopKind = 'gas' | 'dealer' | 'diner' | 'cafe' | 'grocery' | 'hardware' | 'bank' | 'clothing' | 'bar';
 
 /** Buildings that are scenery: no shop door. */
 export const SCENERY_KINDS = ['office', 'apartments', 'fire', 'police', 'retail', 'hotel', 'cinema', 'townhall', 'library'] as const;

@@ -9,12 +9,13 @@
  */
 import { applyOp, emptyBuild, levelBase, makeWorld, normalizeBuild, opCost, own, validateOp, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
-import { Account, availableCredit, clampNeed, isPaintable, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
+import { Account, availableCredit, clampNeed, isPaintable, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FIRE_BASE_PAY, FIRE_HOSE_SECONDS, FIRE_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
 import { seedNeighborhood, upgradeSeed } from './Seed';
 import { decodeCells, encodeCells, gameDays, LawnCells, mowCells, sweepGrown } from './Mowing';
-import type { ClientMsg, Job, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
+import type { ClientMsg, Job, JobOffer, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
 import { cleanLook, keepOutfit } from './Wardrobe';
 import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
+import { MONTELLO_DEPOT, MONTELLO_FIRE_STATION, MONTELLO_HOMES, MONTELLO_PUMPS, MONTELLO_SHOPS, MONTELLO_STREETS } from './MontelloPlaces';
 import { vehicleRole } from './Vehicles';
 import { addCrash, cleanCar, newCar } from './Cars';
 import { applyOrder, atBodyShop, BODY_SHOP, cleanOrder, inBay, quote } from './BodyShop';
@@ -288,7 +289,7 @@ export class NeighborhoodLogic {
         break;
       }
       case 'mow': this.handleMow(sessionId, s, acc, msg.strokes); break;
-      case 'jobRequest': this.issueJob(sessionId, s); break;
+      case 'jobRequest': this.issueJob(sessionId, s, msg.kind); break;
       case 'jobProgress': this.progressJob(sessionId, s, acc, msg.jobId); break;
       case 'buy': this.handleBuy(sessionId, s, acc, msg.shop, msg.item, msg.car); break;
       case 'refuel': this.handleRefuel(sessionId, s, acc, msg.kind, msg.gallons); break;
@@ -370,8 +371,9 @@ export class NeighborhoodLogic {
     }
   }
 
-  private issueJob(sessionId: string, s: Session) {
-    if (s.job) return this.io.send(sessionId, { t: 'job', job: s.job, note: 'Finish your current delivery first' });
+  private issueJob(sessionId: string, s: Session, offer?: JobOffer) {
+    if (s.job) return this.io.send(sessionId, { t: 'job', job: s.job, note: s.job.kind === 'fire' ? 'Finish the call you are on first' : 'Finish your current delivery first' });
+    if (offer === 'montello' || offer === 'fire') return this.issueMontelloJob(sessionId, s, offer);
     const lots = Object.values(this.world.lots);
     const lot = lots[Math.floor(Math.random() * lots.length)];
     const drop = { x: lot.x + 5, z: lot.front === '+z' ? lot.z + lot.d - 2 : lot.z + 2, lotId: lot.id };
@@ -385,13 +387,59 @@ export class NeighborhoodLogic {
     this.io.send(sessionId, { t: 'job', job: s.job });
   }
 
+  /** A Montello job: a delivery from Kwik Trip to a house, or a fire call from the fire station to a house on fire. */
+  private issueMontelloJob(sessionId: string, s: Session, offer: 'montello' | 'fire') {
+    const start = offer === 'fire' ? MONTELLO_FIRE_STATION : MONTELLO_DEPOT;
+    const homes = MONTELLO_HOMES.length / 3;
+    if (!start || !homes) return this.io.send(sessionId, { t: 'toast', text: 'No work in Montello right now' });
+    const pos = this.position(s);
+    if (!pos || Math.hypot(pos.x - start.x, pos.z - start.z) > 30) return this.io.send(sessionId, { t: 'toast', text: `Ask for work at ${start.name}` });
+    let k = Math.floor(Math.random() * homes);
+    // A house at least 150 m out, so the job is a drive.
+    for (let tries = 0; tries < 20 && Math.hypot(MONTELLO_HOMES[k * 3] - start.x, MONTELLO_HOMES[k * 3 + 1] - start.z) < 150; tries++) k = Math.floor(Math.random() * homes);
+    const drop = { x: MONTELLO_HOMES[k * 3], z: MONTELLO_HOMES[k * 3 + 1], lotId: `mt-home-${k}` };
+    const dist = Math.hypot(drop.x - start.x, drop.z - start.z);
+    const fire = offer === 'fire';
+    s.job = {
+      id: Math.random().toString(36).slice(2, 10),
+      kind: fire ? 'fire' : 'delivery', area: 'montello', stage: 'toPickup',
+      pickup: { x: start.x, z: start.z }, drop, street: MONTELLO_STREETS[MONTELLO_HOMES[k * 3 + 2]] || undefined,
+      pay: Math.round(fire ? FIRE_BASE_PAY + dist * FIRE_PAY_PER_M : DELIVERY_BASE_PAY + dist * DELIVERY_PAY_PER_M),
+    };
+    this.io.send(sessionId, { t: 'job', job: s.job, note: fire ? `Fire call: a house is burning on ${s.job.street || 'the north side'}. Gear up at the station and go!` : undefined });
+  }
+
+  private progressFire(sessionId: string, s: Session, acc: Account, job: Job) {
+    const pos = this.position(s);
+    if (!pos) return;
+    if (job.stage === 'toPickup') {
+      if (Math.hypot(pos.x - job.pickup.x, pos.z - job.pickup.z) > 30) return;
+      job.stage = 'toDrop';
+      return this.io.send(sessionId, { t: 'job', job, note: `Geared up. Get to the fire on ${job.street || 'the marked street'}` });
+    }
+    if (Math.hypot(pos.x - job.drop.x, pos.z - job.drop.z) > 35) return;
+    const now = Date.now();
+    if (job.stage === 'toDrop') {
+      job.stage = 'onScene';
+      job.since = now;
+      return this.io.send(sessionId, { t: 'job', job, note: 'On scene. Hold the hose on the fire until it is out' });
+    }
+    if (now - (job.since ?? now) < FIRE_HOSE_SECONDS * 1000) return;
+    acc.money += job.pay; acc.earned += job.pay;
+    s.job = null;
+    this.io.send(sessionId, { t: 'job', job: null, note: `Fire's out. Montello thanks you: +$${job.pay}` });
+    this.sendAccount(sessionId, acc);
+  }
+
   private progressJob(sessionId: string, s: Session, acc: Account, jobId: string) {
     const job = s.job;
     if (!job || job.id !== jobId) return;
+    if (job.kind === 'fire') return this.progressFire(sessionId, s, acc, job);
     const truck = s.vehicles.find(v => vehicleRole(v.kind) === 'hauler' && s.player?.vehicleId === v.id);
     if (!truck) return this.io.send(sessionId, { t: 'toast', text: 'Deliveries need the pickup truck' });
     const target = job.stage === 'toPickup' ? job.pickup : job.drop;
-    if (Math.hypot(truck.x - target.x, truck.z - target.z) > 8) return;  // authority checks position
+    // Montello's drop is a house's front step, set back from the street, so the truck may stop a little further off.
+    if (Math.hypot(truck.x - target.x, truck.z - target.z) > (job.area === 'montello' ? 14 : 8)) return;  // authority checks position
     if (job.stage === 'toPickup') {
       job.stage = 'toDrop';
       this.io.send(sessionId, { t: 'job', job, note: 'Cargo loaded — deliver it to the marked house' });
@@ -421,7 +469,7 @@ export class NeighborhoodLogic {
   }
 
   private handleBuy(sessionId: string, s: Session, acc: Account, shopId: unknown, itemId: unknown, car?: unknown) {
-    const door = SHOP_DOORS.find(d => d.id === shopId);
+    const door = SHOP_DOORS.find(d => d.id === shopId) ?? MONTELLO_SHOPS.find(d => d.id === shopId);
     if (!door) return;
     const pos = this.position(s);
     if (!pos || Math.hypot(pos.x - door.x, pos.z - door.z) > SHOP_RADIUS + 2) return this.sendAccount(sessionId, acc, `Walk up to ${door.name} first`);
@@ -447,7 +495,7 @@ export class NeighborhoodLogic {
   private handleRefuel(sessionId: string, s: Session, acc: Account, kind: VehicleKind, gallons: unknown) {
     if (!acc.garage.includes(kind) || !VEHICLES[kind] || VEHICLES[kind].fuel === 'none') return;
     const pos = this.position(s);
-    if (!pos || !GAS_STATION.pumps.some(p => Math.hypot(p.x - pos.x, p.z - pos.z) < PUMP_RADIUS + 1)) return this.sendAccount(sessionId, acc, 'Pull up to a pump at Gas & Go');
+    if (!pos || ![...GAS_STATION.pumps, ...MONTELLO_PUMPS].some(p => Math.hypot(p.x - pos.x, p.z - pos.z) < PUMP_RADIUS + 1)) return this.sendAccount(sessionId, acc, 'Pull up to a fuel pump');
     const want = Math.max(0, Math.min(Number(gallons) || 0, VEHICLES[kind].tank - (acc.fuel[kind] ?? 0)));
     const affordable = Math.min(want, acc.money / FUEL_PRICE);
     if (affordable < 0.05) return this.sendAccount(sessionId, acc, want < 0.05 ? 'The tank is already full' : 'Not enough money for fuel');

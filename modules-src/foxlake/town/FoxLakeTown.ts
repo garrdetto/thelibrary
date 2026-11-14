@@ -37,7 +37,7 @@ import type { ClientMsg, MowStroke, PlayerSnap, ServerMsg } from '../../maplestr
 import type { BuildOp, LotState } from '../../maplestreet/shared/BuildRules'
 import type { Account } from '../../maplestreet/shared/Economy'
 import { STARTER_TRUCK, VEHICLES } from '../../maplestreet/shared/Economy'
-import { ROADS, ROAD_NAMES, SHOP_DOORS, SHOP_RADIUS, SPAWN, lotPrice, makeLots, type LotDef } from '../../maplestreet/shared/WorldLayout'
+import { ROADS, ROAD_NAMES, SPAWN, lotPrice, makeLots, type LotDef } from '../../maplestreet/shared/WorldLayout'
 import { decodeCells, gameDays } from '../../maplestreet/shared/Mowing'
 import { Cars } from './Cars'
 import { Neighbors } from './Neighbors'
@@ -69,6 +69,7 @@ import { FoxLakeDev } from '../dev/FoxLakeDev'
 import { NorthWorld } from '../montello/NorthWorld'
 import type { MontelloLink } from '../montello/Link'
 import { TelloMap } from '../../tello/town/TelloMap'
+import { Places } from '../places/Places'
 
 const STEP = 1 / 60
 const CULL_REACH = 640
@@ -120,6 +121,8 @@ export class FoxLakeTown implements GameExtension {
   /** Montello and the road to it, and Montello's own map (shown while you are north of Fox Plains' square). */
   private north: NorthWorld | null = null
   private northMap: TelloMap | null = null
+  /** Shops, bars, banks, pumps and paid work in Fox Plains and Montello (places/). */
+  private places: Places | null = null
   private net: Transport | null = null
   private netStatus: NetStatus = 'connecting'
   private selfId: string | null = null
@@ -331,6 +334,16 @@ export class FoxLakeTown implements GameExtension {
         canvas: host.ctx.engine.getRenderingCanvas(),
       })
     }
+    this.places = new Places({
+      host,
+      cars: this.cars,
+      send: (m) => this.send(m),
+      account: () => this.account,
+      land: this.north?.link.land ?? null,
+      map: () => this.map,
+      northMap: () => this.northMap,
+      inNorth: () => this.inNorth(),
+    })
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
     const casino = this.casino.center()
     this.culler.addGroup(this.casino.staticMeshes(), casino.x, casino.z, 24)
@@ -445,7 +458,8 @@ export class FoxLakeTown implements GameExtension {
         this.host.hud.toast(m.text)
         break
       case 'job':
-        if (m.note) this.host.hud.toast(m.note)
+        if (this.places) this.places.onJob(m.job, m.note)
+        else if (m.note) this.host.hud.toast(m.note)
         break
     }
   }
@@ -460,6 +474,7 @@ export class FoxLakeTown implements GameExtension {
     this.cars.restyle(acc)
     this.hud.setAccount(acc, this.host.progress.signedIn)
     this.casino.syncMoney(acc.money)
+    this.places?.onAccount(acc)
   }
 
   private homeLot(): (LotState & LotDef) | null {
@@ -530,6 +545,7 @@ export class FoxLakeTown implements GameExtension {
     this.map?.update(dt)
     this.north?.update(dt)
     this.northMap?.update(dt)
+    this.places?.update(dt)
     this.netAcc += dt
     if (this.netAcc >= 1 / NET_HZ) {
       this.netAcc = 0
@@ -666,20 +682,6 @@ export class FoxLakeTown implements GameExtension {
     return null
   }
 
-  private nearDoor() {
-    const t = this.townPosition()
-    let best: (typeof SHOP_DOORS)[number] | null = null
-    let bd = SHOP_RADIUS
-    for (const d of SHOP_DOORS) {
-      const dd = Math.hypot(t.x - d.x, t.z - d.z)
-      if (dd < bd) {
-        bd = dd
-        best = d
-      }
-    }
-    return best
-  }
-
   /** The roadside place whose door you're standing at, on foot. */
   private roadsideDoor(): RoadsidePlace | null {
     if (this.host.driving) return null
@@ -699,8 +701,8 @@ export class FoxLakeTown implements GameExtension {
     if (seat) return seat
     const stop = this.roadsideDoor()
     if (stop) return `E — ${stop.name}`
-    const door = this.nearDoor()
-    if (door) return door.kind === 'clothing' ? `E — ${door.name}: try on outfits` : `E — ${door.name}`
+    const place = this.places?.prompt()
+    if (place) return place
     const lot = this.lotForSale()
     if (lot) return `E — Buy lot ${lot.id} for $${lotPrice(lot).toLocaleString()}`
     return ''
@@ -714,12 +716,7 @@ export class FoxLakeTown implements GameExtension {
       this.host.hud.toast(ROADSIDE_GREETING[stop.kind](stop))
       return true
     }
-    const door = zoneAt(this.host.player.z) === 'town' ? this.nearDoor() : null
-    if (door) {
-      if (door.kind === 'clothing') this.host.openWardrobe()
-      else this.host.hud.toast(`${door.name} isn't open in Fox Lake yet.`)
-      return true
-    }
+    if (zoneAt(this.host.player.z) === 'town' && this.places?.interact()) return true
     const lot = this.lotForSale()
     if (!lot) return false
     if ((this.account?.money ?? 0) < lotPrice(lot)) this.host.hud.toast(`Lot ${lot.id} costs $${lotPrice(lot).toLocaleString()}. Mow lawns and hunt and fish the lake country to save up.`, 'warn')

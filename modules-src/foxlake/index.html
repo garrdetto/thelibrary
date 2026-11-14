@@ -207,6 +207,21 @@
       .fl-dir-body{display:grid;gap:2px}
       .fl-dir-text{font:800 16px Inter,system-ui,sans-serif}
       .fl-dir-left{font-weight:600;font-size:12px;opacity:.8}
+      .fl-place-card{width:min(640px,100%)}
+      .fl-place-titles{display:grid;gap:4px;min-width:0}
+      .fl-place-titles h2{overflow-wrap:anywhere}
+      .fl-place-card .panel-row .rr-btn{flex:none;min-width:116px}
+      .fl-place-card .rr-btn:disabled{opacity:.45;cursor:default;border-color:var(--line);background:var(--panel)}
+      .fl-bank-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+      .fl-bank-fact{display:grid;gap:2px;padding:8px 10px;border-radius:9px;background:#26211a;border:1px solid var(--line)}
+      .fl-bank-fact small{color:var(--muted);font-size:12px}
+      .fl-bank-fact strong{font:800 18px var(--head);color:var(--bone)}
+      .fl-bank-terms{color:var(--soft);font-size:12px}
+      .fl-bank-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+      .fl-bank-label{width:64px;font-weight:800;color:var(--soft)}
+      .chip.fl-job{border-color:rgba(255,160,90,.55);max-width:min(420px,calc(100vw - 32px))}
+      .chip.fl-job b{color:#ffd9a8}
+      @media (max-width:560px){.fl-bank-facts{grid-template-columns:1fr}.fl-place-card .panel-row{flex-wrap:wrap}}
       .fl-dev{position:fixed;top:14px;right:14px;z-index:44;display:grid;gap:10px;align-content:start;width:min(390px,calc(100vw - 28px));max-height:calc(100vh - 28px);overflow:auto;padding:14px 16px 16px;border-radius:14px;background:rgba(22,20,17,.95);border:1px solid rgba(201,155,90,.5);box-shadow:0 24px 60px -24px #000;-webkit-user-select:text;user-select:text}
       .fl-dev:focus{outline:none}
       .fl-dev-head{display:flex;align-items:center;justify-content:space-between;gap:10px}

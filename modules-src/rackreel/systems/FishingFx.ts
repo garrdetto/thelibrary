@@ -144,7 +144,7 @@ interface Drop {
 const MAX_RIPPLES = 64
 const MAX_DROPS = 240
 
-function quadMesh(name: string, count: number, scene: Scene): { mesh: Mesh; positions: Float32Array; colors: Float32Array } {
+export function quadMesh(name: string, count: number, scene: Scene): { mesh: Mesh; positions: Float32Array; colors: Float32Array } {
   const positions = new Float32Array(count * 12)
   const colors = new Float32Array(count * 16)
   const uvs = new Float32Array(count * 8)
@@ -167,7 +167,7 @@ function quadMesh(name: string, count: number, scene: Scene): { mesh: Mesh; posi
   return { mesh, positions, colors }
 }
 
-function fxMaterial(name: string, shader: string, scene: Scene, additive: boolean): ShaderMaterial {
+export function fxMaterial(name: string, shader: string, scene: Scene, additive: boolean): ShaderMaterial {
   const mat = new ShaderMaterial(name, scene, shader, {
     attributes: ['position', 'uv', 'color'],
     uniforms: ['viewProjection'],

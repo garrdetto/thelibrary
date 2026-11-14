@@ -15,6 +15,11 @@ export const LOAN_DAILY_RATE = 0.02;
 export const MOW_PAY_PER_M2 = 0.75;     // paid only for lawns you don't own
 export const DELIVERY_BASE_PAY = 350;
 export const DELIVERY_PAY_PER_M = 2.2;
+/** A Montello fire call: a base for turning out plus the drive from the station. */
+export const FIRE_BASE_PAY = 600;
+export const FIRE_PAY_PER_M = 1.5;
+/** Seconds on scene before a fire is out. */
+export const FIRE_HOSE_SECONDS = 12;
 
 export const COST = {
   wall: 75, halfWall: 45, fence: 30, privacyFence: 55, railing: 40,
@@ -88,6 +93,16 @@ export const SHOP_ITEMS: Record<string, ShopItem[]> = {
   gas: [
     { id: 'snack', name: 'Trail mix & jerky', price: 6, blurb: 'Hunger +15', needs: { hunger: 15 } },
     { id: 'energy', name: 'Energy drink', price: 4, blurb: 'Energy +15', needs: { energy: 15 } },
+    { id: 'donut', name: 'Glazed donut', price: 2, blurb: 'Hunger +10, Fun +4', needs: { hunger: 10, fun: 4 } },
+    { id: 'pizza', name: 'Hot pizza slice', price: 4, blurb: 'Hunger +22', needs: { hunger: 22 } },
+    { id: 'gas-coffee', name: 'Fresh coffee', price: 2, blurb: 'Energy +18', needs: { energy: 18 } },
+  ],
+  bar: [
+    { id: 'tap', name: 'Draft beer', price: 5, blurb: 'Fun +12', needs: { fun: 12 } },
+    { id: 'old-fashioned', name: 'Brandy old fashioned', price: 8, blurb: 'Fun +20', needs: { fun: 20 } },
+    { id: 'curds', name: 'Fried cheese curds', price: 9, blurb: 'Hunger +25, Fun +5', needs: { hunger: 25, fun: 5 } },
+    { id: 'fish-fry', name: 'Friday fish fry', price: 15, blurb: 'Hunger +50, Fun +10', needs: { hunger: 50, fun: 10 } },
+    { id: 'root-beer', name: 'Root beer', price: 3, blurb: 'Energy +8, Fun +4', needs: { energy: 8, fun: 4 } },
   ],
   diner: [
     { id: 'burger', name: 'Double burger platter', price: 14, blurb: 'Hunger +45', needs: { hunger: 45 } },

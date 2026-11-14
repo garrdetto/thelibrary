@@ -24,7 +24,7 @@ const ROAD_STYLE: readonly { color: string; casing: string; scale: number }[] = 
   { color: '#e8e4d6', casing: '', scale: 1 },
   { color: '#b99a6a', casing: '', scale: 1 },
 ]
-const POI_COLOR: Record<string, string> = { fuel: '#ffb347', food: '#ff8f6b', lodging: '#c7a6ff', school: '#ffd966', civic: '#8fd0ff', church: '#ffffff', park: '#9fe08a', shop: '#f6c1e0', water: '#a9dcff' }
+const POI_COLOR: Record<string, string> = { fuel: '#ffb347', food: '#ff8f6b', bar: '#e8a24a', bank: '#7fe0c0', fire: '#ff5a4a', landmark: '#ffe58a', lodging: '#c7a6ff', school: '#ffd966', civic: '#8fd0ff', church: '#ffffff', park: '#9fe08a', shop: '#f6c1e0', water: '#a9dcff' }
 
 interface View { cx: number; cz: number; s: number; rot: number; W: number; H: number }
 
@@ -382,7 +382,7 @@ export class TelloMap {
     view.setAttribute('aria-label', 'Map. Drag to pan, scroll to zoom, click for directions. Arrow keys pan, plus and minus zoom.')
     const list = document.createElement('div')
     list.className = 'fl-map-places'
-    const groups: [string, string[]][] = [['Lakes and rivers', ['water']], ['Parks and sights', ['park']], ['Food and lodging', ['food', 'lodging']], ['Shops and fuel', ['shop', 'fuel']], ['Schools and public buildings', ['school', 'civic', 'church']]]
+    const groups: [string, string[]][] = [['Lakes and rivers', ['water']], ['Parks and sights', ['park', 'landmark']], ['Food, bars and lodging', ['food', 'bar', 'lodging']], ['Shops, banks and fuel', ['shop', 'bank', 'fuel']], ['Schools and public buildings', ['school', 'civic', 'fire', 'church']]]
     for (const [label, kinds] of groups) {
       const pois = this.land.doc.pois.filter((p) => kinds.includes(p.k)).sort((a, b) => a.n.localeCompare(b.n))
       if (!pois.length) continue
@@ -502,6 +502,11 @@ export class TelloMap {
     }
     this.draw(view.getContext('2d')!, { cx: this.center.x, cz: this.center.z, s: this.scale * dpr, rot: 0, W, H }, false, dpr, this.opts.where())
     if (this.info) this.info.textContent = this.goal && this.route ? `Directions to ${this.goal.name}: ${distance(this.route.length)} by road.` : this.goal ? `${this.goal.name} is marked; no road reaches it.` : 'Drag to pan, scroll to zoom. Click a spot or pick a place for directions.'
+  }
+
+  /** Directions to a spot (map coordinates), as if it were picked on the map, or clears them (null). */
+  navigate(goal: { x: number; z: number; name: string } | null): void {
+    this.setGoal(goal)
   }
 
   private setGoal(goal: { x: number; z: number; name: string } | null): void {
