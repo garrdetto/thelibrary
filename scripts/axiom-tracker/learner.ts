@@ -99,7 +99,7 @@ export function readFeatures(token: RadarToken): FeatureValues {
     ageAtSight: token.ageMinutes,
     viewers: token.viewers,
     viewerGrowth: token.viewersPerMin,
-    holders: token.pulse?.holders ?? null,
+    holders: token.holderTraits?.holders ?? token.pulse?.holders ?? null,
     holderGrowth: token.holdersChange5m,
     buyRatio: token.buyRatio,
     buys5m: token.buys5m,
@@ -107,11 +107,11 @@ export function readFeatures(token: RadarToken): FeatureValues {
     liquidity: token.liquidityUsd,
     marketCap: token.marketCap,
     priceMove5m: token.priceChange.m5,
-    top10: token.pulse?.top10Pct ?? token.safety.top10Pct,
-    dev: token.pulse ? (token.pulse.devSold ? 0 : token.pulse.devPct) : null,
-    snipers: token.pulse?.snipersPct ?? null,
-    insiders: token.pulse?.insidersPct ?? null,
-    bundlers: token.pulse?.bundlersPct ?? null,
+    top10: token.holderTraits?.top10 ?? token.pulse?.top10Pct ?? token.safety.top10Pct,
+    dev: token.holderTraits?.dev ?? null,
+    snipers: token.holderTraits?.snipers ?? null,
+    insiders: token.holderTraits?.insiders ?? null,
+    bundlers: token.holderTraits?.bundlers ?? null,
     smartWallets: token.runnerWallets,
     quality: token.quality.score,
   }
@@ -261,11 +261,12 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
       const price = token.priceUsd
       if (!price || price <= 0) continue
       const row = find.get(token.mint) as LifecycleRow | undefined
-      if (row && token.pulse) {
+      if (row && token.holderTraits) {
+        const seen = token.holderTraits
         const known = row.traits_json ? JSON.parse(row.traits_json) as Record<string, number | null> : {}
         const worst = (key: string, value: number | null) => value === null ? known[key] ?? null : Math.max(known[key] ?? 0, value)
-        const next = { top10: worst('top10', token.pulse.top10Pct), dev: worst('dev', token.pulse.devSold ? 0 : token.pulse.devPct), snipers: worst('snipers', token.pulse.snipersPct), insiders: worst('insiders', token.pulse.insidersPct), bundlers: worst('bundlers', token.pulse.bundlersPct) }
-        const holdersPeak = Math.max(row.holders_peak ?? 0, token.pulse.holders ?? 0) || null
+        const next = { top10: worst('top10', seen.top10), dev: worst('dev', seen.dev), snipers: worst('snipers', seen.snipers), insiders: worst('insiders', seen.insiders), bundlers: worst('bundlers', seen.bundlers), linked: worst('linked', seen.linked) }
+        const holdersPeak = Math.max(row.holders_peak ?? 0, seen.holders ?? 0) || null
         const encoded = JSON.stringify(next)
         if (encoded !== row.traits_json || holdersPeak !== row.holders_peak) traits.run(encoded, holdersPeak, token.mint)
       }
@@ -339,7 +340,7 @@ export function runLearnerCycle(database: TrackerDatabase, model: Model, now = D
     survival: survivalCurve(database, now),
     insights: splitInsights(lifecycleSpecs, model.samples.map(sample => sample.values), model.samples.map(sample => sample.runner), 'became runners'),
     earlyPicks: tokens
-      .filter(token => token.ageMinutes <= earlyAgeMinutes && token.alerts.length === 0 && token.priceUsd !== null)
+      .filter(token => token.ageMinutes <= earlyAgeMinutes && token.alerts.length === 0 && !token.holderRisk?.blocked && token.priceUsd !== null)
       .map(token => ({ mint: token.mint, rank: learnerState.predictions.get(token.mint)?.runnerChance ?? token.score / 100 }))
       .sort((first, second) => second.rank - first.rank)
       .slice(0, 6)

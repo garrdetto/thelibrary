@@ -43,6 +43,10 @@ export function formatClock(timestamp: number) {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+export function holderCount(token: { holderTraits?: { holders: number | null } | null; pulse: { holders: number | null } | null }) {
+  return token.holderTraits?.holders ?? token.pulse?.holders ?? null
+}
+
 export function shortAddress(address: string) {
   return `${address.slice(0, 4)}…${address.slice(-4)}`
 }

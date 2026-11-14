@@ -12,6 +12,7 @@ export const trackerState = {
   watchlist: new Map<string, number>(),
   pulse: new Map<string, number>(),
   pulseCards: new Map<string, RadarPulseMetrics>(),
+  holderCounts: new Map<string, { count: number; at: number }>(),
 }
 
 export function activeCandidates(database: TrackerDatabase): ActiveCandidate[] {
