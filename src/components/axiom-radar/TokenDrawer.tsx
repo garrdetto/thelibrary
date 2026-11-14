@@ -194,16 +194,22 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
 
       <section className="radar-drawer-section">
         <h3>Score breakdown</h3>
-        {live.researchScore !== null && live.researchScore !== undefined && <p className="radar-note">Led by the research: {live.researchScore} from the learned chance to at least double, blended with the live factors below, then cut for bad holder numbers or weak movement.</p>}
+        {live.scoreParts && <p className="radar-note">How strongly it is moving now: viewer growth, holder growth and price with real buying, plus buyers shared with coins that ran. High holder percentages, bot-driven climbs and coins that are not moving are capped.</p>}
         <ul className="radar-factors">
-          {live.factors.map(factor => <li key={factor.key} className={factor.available ? '' : 'muted'}>
-            <span>{factor.label}</span>
-            <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${Math.round(factor.value * 100)}%` }}/></span>
-            <span className="tabular">{factor.available ? `+${factor.contribution.toFixed(1)}` : 'no data'}</span>
-          </li>)}
+          {live.scoreParts
+            ? live.scoreParts.map(part => <li key={part.key} className={part.available ? '' : 'muted'}>
+              <span>{part.label}<small className="radar-part-detail">{part.detail}</small></span>
+              <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${Math.round((part.points / part.max) * 100)}%` }}/></span>
+              <span className="tabular">{part.available ? `${part.points.toFixed(1)} of ${part.max}` : 'no data'}</span>
+            </li>)
+            : live.factors.map(factor => <li key={factor.key} className={factor.available ? '' : 'muted'}>
+              <span>{factor.label}</span>
+              <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${Math.round(factor.value * 100)}%` }}/></span>
+              <span className="tabular">{factor.available ? `+${factor.contribution.toFixed(1)}` : 'no data'}</span>
+            </li>)}
           {live.rawScore !== undefined && live.score < live.rawScore && <li className="radar-factor-penalty">
-            <span>Score cuts</span>
-            <span className="radar-penalty-reasons">{[...(live.holderRisk?.reasons ?? []), ...(live.scoreCuts ?? [])].join(' · ')}</span>
+            <span>{live.scoreParts ? `Capped at ${live.score}` : 'Score cuts'}</span>
+            <span className="radar-penalty-reasons">{(live.scoreParts ? live.scoreCuts ?? [] : [...(live.holderRisk?.reasons ?? []), ...(live.scoreCuts ?? [])]).join(' · ')}</span>
             <span className="tabular">{live.score - live.rawScore}</span>
           </li>}
         </ul>

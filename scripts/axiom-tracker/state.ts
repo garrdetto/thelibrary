@@ -5,7 +5,28 @@ import { trackerConfig } from './runtime.js'
 
 export type ActiveCandidate = { mint: string; pairAddress: string; symbol: string; momentum: number }
 
+export type JupiterReading = {
+  holders: number | null
+  holdersPerMin: number | null
+  holderChange5mPct: number | null
+  top10Pct: number | null
+  devPct: number | null
+  devMigrations: number | null
+  devMints: number | null
+  buys5m: number | null
+  sells5m: number | null
+  traders5m: number | null
+  netBuyers5m: number | null
+  organicScore: number | null
+  launchpad: string | null
+  readAt: number
+}
+
+export const botClimbHoldMs = 30 * 60_000
+
 export const trackerState = {
+  jupiter: new Map<string, JupiterReading>(),
+  botClimbs: new Map<string, { until: number; reason: string }>(),
   active: [] as ActiveCandidate[],
   market: new Map<string, MarketReading>(),
   viewers: new Map<string, { count: number; at: number; source: 'websocket' | 'page' | 'extension' }>(),
@@ -13,6 +34,15 @@ export const trackerState = {
   pulse: new Map<string, number>(),
   pulseCards: new Map<string, RadarPulseMetrics>(),
   holderCounts: new Map<string, { count: number; at: number }>(),
+}
+
+/** A coin caught in a manufactured climb stays flagged for half an hour, so a gap in the readings does not bring it back. */
+export function activeBotClimb(mint: string, now: number) {
+  const entry = trackerState.botClimbs.get(mint)
+  if (!entry) return null
+  if (entry.until > now) return entry
+  trackerState.botClimbs.delete(mint)
+  return null
 }
 
 export function activeCandidates(database: TrackerDatabase): ActiveCandidate[] {

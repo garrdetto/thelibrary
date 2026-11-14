@@ -47,11 +47,17 @@ export function ScoreBadge({ token, large = false }: { token: RadarToken; large?
   return <span className={`radar-score ${scoreTier(token.score)} ${large ? 'large' : ''}`} tabIndex={0} aria-describedby={tooltipId} onClick={event => event.stopPropagation()}>
     <strong className="tabular">{token.score}</strong>
     <span role="tooltip" id={tooltipId} className="radar-tooltip">
-      <b>Setup score {token.score}/100</b>
-      {token.factors.map(factor => <span key={factor.key} className={factor.available ? '' : 'muted'}>
-        <span>{factor.label}</span>
-        <span className="tabular">{factor.available ? `${Math.round(factor.value * 100)}% × ${factor.weight.toFixed(2)} → ${factor.contribution.toFixed(1)}` : 'no data'}</span>
-      </span>)}
+      <b>Mover score {token.score}/100</b>
+      {token.scoreParts
+        ? token.scoreParts.map(part => <span key={part.key} className={part.available ? '' : 'muted'}>
+          <span>{part.label}</span>
+          <span className="tabular">{part.available ? `${part.points.toFixed(1)} of ${part.max}` : 'no data'}</span>
+        </span>)
+        : token.factors.map(factor => <span key={factor.key} className={factor.available ? '' : 'muted'}>
+          <span>{factor.label}</span>
+          <span className="tabular">{factor.available ? `${Math.round(factor.value * 100)}% × ${factor.weight.toFixed(2)} → ${factor.contribution.toFixed(1)}` : 'no data'}</span>
+        </span>)}
+      {token.scoreParts && token.scoreCuts?.length ? <span className="radar-tooltip-cuts">Capped: {token.scoreCuts.slice(0, 3).join(' · ')}</span> : null}
     </span>
   </span>
 }
