@@ -35,6 +35,7 @@ import { siteChanges } from './routes/site-changes'
 import { songmaker } from './routes/songmaker'
 import { asset, learning, library, lyricPresets, studio } from './routes/studio'
 import { voice } from './routes/voice'
+import { axiomRadar } from './routes/axiom-radar'
 
 const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
   '/api/pool-account': poolAccount,
@@ -80,6 +81,9 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/lyric-presets': lyricPresets,
   '/api/songmaker': songmaker,
   '/api/voice': voice,
+  '/api/admin/axiom/data': axiomRadar,
+  '/api/admin/axiom/stream': axiomRadar,
+  '/api/admin/axiom/ingest': axiomRadar,
 }
 
 export async function handleApi(request: Request, env: Env) {

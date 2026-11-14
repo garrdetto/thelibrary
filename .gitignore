@@ -36,3 +36,8 @@ __pycache__/
 
 public/modules/tello.html
 .tello-cache/
+
+# Axiom Radar tracker
+data/*.db*
+data/*.log*
+axiom-session/
