@@ -39,6 +39,9 @@ const TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]
 const TREE_CELL = 16
 const NAME_CELL = 64
 const WALL_HEIGHT = 30
+/** How far past what is seen the ground stays solid (the play grid reads no further out than 254 m), and how deep it sinks beyond. */
+const GROUND_REACH = 8
+const SUNK = 80
 
 export interface MontelloSetup {
   host: GameHost
@@ -123,13 +126,22 @@ export class Montello {
     this.falls?.update(dt)
   }
 
-  /** The ground as one Rapier heightfield. */
+  /**
+   * The ground as one Rapier heightfield, sunk out of the way past what is seen of Montello, so a host world's own land
+   * can lie inside the map's square there.
+   */
   private addGround(): void {
     const land = this.land
     const n = land.side - 1
     const heights = new Float32Array(land.side * land.side)
     const ground = land.grids.ground
-    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) heights[i + j * land.side] = ground[(n - j) * land.side + i] / 100
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        const row = n - j
+        const seen = land.seen(land.x0 + i * land.cell, land.z0 + row * land.cell, -GROUND_REACH)
+        heights[i + j * land.side] = ground[row * land.side + i] / 100 - (seen ? 0 : SUNK)
+      }
+    }
     this.sink.addHeightfield(n, land.size, heights, land.x0 + land.size / 2, -(land.z0 + land.size / 2))
   }
 

@@ -24,6 +24,8 @@ export const CELL = 512
 const LIFT: Record<RoadKind, number> = { 0: 0.06, 1: 0.05, 2: 0.04, 3: 0.035, 4: 0.15, 5: 0.03 }
 /** Streets at least this wide (metres) get the neighbourhood street's centre line. */
 const NEIGHBOURHOOD_MIN_WIDTH = 5.5
+/** Roads are drawn out to this far inside the edge of what is seen past the playable area (the ground stops at the edge). */
+const ROAD_SEEN = 16
 const JUNCTION_LIFT = 0.07
 
 export interface Batch { positions: number[]; uvs: number[]; indices: number[] }
@@ -135,7 +137,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
     // Pieces of up to 64 m, each in the batch of the cell it starts in, so far stretches of a long road are culled.
     for (let s0 = 0; s0 < n - 1; s0 += 16) {
       const s1 = Math.min(n - 1, s0 + 16)
-      if (!land.seen(stations[s0].x, stations[s0].z, -40) && !land.seen(stations[s1].x, stations[s1].z, -40)) continue
+      if (!land.seen(stations[s0].x, stations[s0].z, ROAD_SEEN) && !land.seen(stations[s1].x, stations[s1].z, ROAD_SEEN)) continue
       const batch = batchOf(batches, `${kind}|${Math.floor(stations[s0].x / CELL)},${Math.floor(stations[s0].z / CELL)}`)
       for (let i = s0; i <= s1; i++) {
         const st = stations[i]
@@ -173,7 +175,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
   }
   // Junction patches: a disc as wide as the widest road meeting there.
   for (const j of junctions(land)) {
-    if (!land.seen(j.x, j.z, -40)) continue
+    if (!land.seen(j.x, j.z, ROAD_SEEN)) continue
     const b = batchOf(batches, `6|${Math.floor(j.x / CELL)},${Math.floor(j.z / CELL)}`)
     const c = b.positions.length / 3
     const r = j.r + 0.15
