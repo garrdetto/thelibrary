@@ -9,7 +9,7 @@ const logger = createLogger('axiom-collector')
 const axiomOrigin = 'https://axiom.trade'
 const sessionDirectory = resolve(process.env.AXIOM_SESSION_DIR ?? 'axiom-session')
 const debugLogPath = resolve('data/axiom-ws-debug.log')
-const viewerFreshnessMs = 60_000
+const viewerFreshnessMs = 90_000
 const slotDwellMs = 30_000
 const silentSlotReloadMs = 45_000
 const viewerKeyPattern = /^(viewers?|viewer_?count|viewers_?count|live_?viewers|watchers?|watching|watch_?count|active_?(users|viewers)|online(_?count)?|users_?online|user_?count|concurrent)$/i
@@ -33,7 +33,7 @@ function writeDebugFrame(source: string, payload: string) {
   } catch { }
 }
 
-function parseFrame(payload: string | Buffer): unknown {
+export function parseFrame(payload: string | Buffer): unknown {
   const text = typeof payload === 'string' ? payload : payload.toString('utf8')
   if (!text || text.length > 2_000_000) return null
   const trimmed = text.replace(/^\d+/, '').trim()
@@ -275,7 +275,7 @@ export function startAxiomCollector(database: TrackerDatabase, signal: AbortSign
   const cycle = async () => {
     const now = Date.now()
     candidateIndex = activeCandidates(database)
-    if (!context && now >= nextLaunchAt) {
+    if (trackerConfig.collector === 'browser' && !context && now >= nextLaunchAt) {
       try {
         await launch()
       } catch (error) {
@@ -301,13 +301,16 @@ export function startAxiomCollector(database: TrackerDatabase, signal: AbortSign
       warnedChallengeAt = now
       logger.warn('Axiom served a Cloudflare challenge to the collector browser, so no viewer data is arriving. Refresh the session with `pnpm axiom:login`, or run the collector in a visible window with AXIOM_HEADLESS=0. Snapshots continue with market data only.')
     }
-    const collectorStatus = !context ? 'market-only' : now - lastViewerAt < 60_000 ? 'ok' : challenged ? 'cloudflare-challenge' : 'no-viewers'
+    const latestViewerAt = Math.max(lastViewerAt, ...[...trackerState.viewers.values()].map(viewer => viewer.at), 0)
+    const collectorStatus = trackerConfig.collector === 'off' ? 'market-only'
+      : trackerConfig.collector === 'extension' ? (now - latestViewerAt < viewerFreshnessMs ? 'ok' : 'waiting-for-extension')
+      : !context ? 'market-only' : now - lastViewerAt < 60_000 ? 'ok' : challenged ? 'cloudflare-challenge' : 'no-viewers'
     recordHeartbeat(database, 'axiom-collector', collectorStatus, `${result.written} snapshots, ${result.withViewers} with viewers`)
     logger.debug('Snapshot cycle', result)
   }
 
   signal.addEventListener('abort', () => { void closeContext() }, { once: true })
-  logger.info('Starting Axiom collector', { sessionDirectory, pages: trackerConfig.axiomPages, intervalMs: trackerConfig.snapshotIntervalMs })
+  logger.info('Starting Axiom collector', { mode: trackerConfig.collector, sessionDirectory, pages: trackerConfig.axiomPages, intervalMs: trackerConfig.snapshotIntervalMs })
   return runLoop('axiom-collector', trackerConfig.snapshotIntervalMs, cycle, logger, signal).finally(closeContext)
 }
 

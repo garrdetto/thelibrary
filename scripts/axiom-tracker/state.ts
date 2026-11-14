@@ -7,7 +7,7 @@ export type ActiveCandidate = { mint: string; pairAddress: string; symbol: strin
 export const trackerState = {
   active: [] as ActiveCandidate[],
   market: new Map<string, MarketReading>(),
-  viewers: new Map<string, { count: number; at: number; source: 'websocket' | 'page' }>(),
+  viewers: new Map<string, { count: number; at: number; source: 'websocket' | 'page' | 'extension' }>(),
   watchlist: new Map<string, number>(),
 }
 

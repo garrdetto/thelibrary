@@ -52,19 +52,27 @@ In `.env`, set:
 
 `better-sqlite3` is a native module. pnpm is allowed to build it (`pnpm.onlyBuiltDependencies` in `package.json`). If it still fails to load, run `pnpm rebuild better-sqlite3`.
 
-## 2. Save the Axiom session once
+## 2. Get Axiom viewer counts
+
+Axiom sits behind Cloudflare, which challenges browsers that are driven by automation. The radar does not try to get around that. There are two ways to collect viewer counts:
+
+### Recommended: the Axiom Radar Bridge extension in your own Chrome
+
+1. Set `AXIOM_COLLECTOR=extension` in `.env` and restart the worker. The automated browser is not started; the tracker listens on `127.0.0.1:8791` (`AXIOM_EXTENSION_PORT`) and accepts reports only from a Chrome extension.
+2. In Chrome, open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked**, and select the `extensions/axiom-radar-bridge` folder.
+3. Open https://axiom.trade yourself (you pass Cloudflare as a person) and keep the Pulse page or token pages open. Every 5 seconds the extension sends the viewer count shown on each Axiom tab, plus any viewer fields in the page's own live messages, to the tracker. It never clicks or navigates.
+
+The extension's toolbar popup shows when it last sent and which coins the tracker is watching. Counts only arrive for coins whose data your open Axiom tabs receive, so keep the Pulse page and the token pages you care about open. Chrome slows timers in background tabs, so counts from tabs left in the background update less often.
+
+### Automated browser (`AXIOM_COLLECTOR=browser`, the default)
 
 ```bash
 pnpm axiom:login
 ```
 
-A visible Chromium window opens at https://axiom.trade using the persistent profile in `./axiom-session`. Sign in with your wallet or account, then close the window. The headless collector reuses that session. Run this again whenever the session expires.
+A visible browser opens at https://axiom.trade using the persistent profile in `./axiom-session`. Sign in, then close the window; the collector reuses that session headlessly. If Windows refuses to start Playwright's downloaded Chromium (`spawn UNKNOWN`), set `AXIOM_BROWSER_CHANNEL=chrome` (or `msedge`). If Cloudflare challenges the automated browser, the **axiom-collector** chip on the radar shows `cloudflare-challenge` and snapshots continue with market data only; switch to the extension.
 
-If Windows refuses to start Playwright's downloaded Chromium (`spawn UNKNOWN`), set `AXIOM_BROWSER_CHANNEL=chrome` (or `msedge`) in `.env` to use the installed browser for both login and collection, with its own profile in `./axiom-session`. Without the setting, the tracker tries the bundled Chromium, then Chrome, then Edge.
-
-Axiom sits behind Cloudflare, and Cloudflare may challenge headless browsers. When that happens, the worker logs a warning, the **axiom-collector** chip on the radar shows `cloudflare-challenge`, and snapshots continue with market data only (no viewer counts). If that keeps happening, run the collector in a visible window with your saved session by setting `AXIOM_HEADLESS=0` in `.env`. The radar does not try to bypass bot checks.
-
-Axiom does not document its WebSocket messages, so the collector parses frames heuristically: it looks for viewer-count fields next to a tracked mint or pair address, and falls back to reading the visible "viewers" label on the token page. If the counts stay empty, set `AXIOM_DEBUG_WS=1`, let it run for a minute, and inspect `data/axiom-ws-debug.log` to adjust `viewerKeyPattern` in `scripts/axiom-tracker/axiom-collector.ts`.
+Axiom does not document its WebSocket messages, so viewer counts are found heuristically: viewer-count fields next to a tracked mint or pair address, or the visible "viewers" label on a token page. If counts stay empty, set `AXIOM_DEBUG_WS=1` (browser mode) and inspect `data/axiom-ws-debug.log` to adjust `viewerKeyPattern` in `scripts/axiom-tracker/axiom-collector.ts`.
 
 ## 3. Run the worker
 
@@ -74,7 +82,7 @@ Foreground, for a quick check:
 pnpm axiom:worker
 ```
 
-Each module can also run alone with `npx tsx scripts/axiom-tracker/<module>.ts` (`discovery`, `axiom-collector`, `wallet-tracker`, `scoring`, `site-publisher`).
+Each module can also run alone with `npx tsx scripts/axiom-tracker/<module>.ts` (`discovery`, `axiom-collector`, `wallet-tracker`, `scoring`, `site-publisher`, `extension-intake`).
 
 Logs are one JSON object per line (`time`, `level`, `component`, `message`, plus fields). Set `AXIOM_DEBUG=1` for per-cycle debug lines.
 

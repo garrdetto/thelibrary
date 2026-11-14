@@ -1,6 +1,7 @@
 import { startAxiomCollector } from './axiom-collector.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
+import { startExtensionIntake } from './extension-intake.js'
 import { createLogger, errorMessage, runLoop } from './runtime.js'
 import { startScoring } from './scoring.js'
 import { startSitePublisher } from './site-publisher.js'
@@ -33,6 +34,7 @@ const tasks = [
   startWalletTracker(database, controller.signal),
   startScoring(database, controller.signal),
   startSitePublisher(database, controller.signal),
+  startExtensionIntake(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {
     const removed = pruneSnapshots(database)
     database.pragma('wal_checkpoint(PASSIVE)')

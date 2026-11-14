@@ -22,6 +22,8 @@ export const trackerConfig = {
   axiomPages: Math.max(1, Math.min(12, Number(process.env.AXIOM_PAGES) || 6)),
   debugWebSockets: process.env.AXIOM_DEBUG_WS === '1',
   headless: process.env.AXIOM_HEADLESS !== '0',
+  collector: (['browser', 'extension', 'off'].includes(process.env.AXIOM_COLLECTOR ?? '') ? process.env.AXIOM_COLLECTOR : 'browser') as 'browser' | 'extension' | 'off',
+  extensionPort: Number(process.env.AXIOM_EXTENSION_PORT) || 8791,
 }
 
 type LogLevel = 'info' | 'warn' | 'error' | 'debug'
