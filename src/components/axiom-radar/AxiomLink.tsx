@@ -10,6 +10,17 @@ export function AxiomMark({ size = 14 }: { size?: number }) {
   </svg>
 }
 
+export const onActivate = (action: () => void) => (event: KeyboardEvent) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  action()
+}
+
+export function CoinName({ pairAddress, symbol }: { pairAddress: string | null | undefined; symbol: string }) {
+  if (!pairAddress) return <strong>{symbol}</strong>
+  return <a className="radar-coin-name" href={axiomUrl(pairAddress)} target="_blank" rel="noopener noreferrer" title={`Open ${symbol} on Axiom`} onClick={stop} onKeyDown={stop}><strong>{symbol}</strong></a>
+}
+
 export function AxiomLink({ pairAddress, symbol, size = 14 }: { pairAddress: string | null | undefined; symbol: string; size?: number }) {
   if (!pairAddress) return null
   return <a className="radar-axiom-link" href={axiomUrl(pairAddress)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${symbol} on Axiom`} title={`Open ${symbol} on Axiom`} onClick={stop} onKeyDown={stop}>

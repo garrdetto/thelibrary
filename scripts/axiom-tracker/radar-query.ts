@@ -131,6 +131,13 @@ function viewerGainPerMinute(ticks: MarketTick[], viewers: number | null, now: n
   return Math.round(((viewers - earliest.viewers) * 60_000) / (now - earliest.t))
 }
 
+function holderGainPerMinute(ticks: MarketTick[], holders: number | null, now: number) {
+  if (holders === null) return null
+  const earliest = ticks.find(tick => tick.holders !== null && now - tick.t <= 300_000)
+  if (!earliest || now - earliest.t < 45_000) return null
+  return Math.round(((holders - (earliest.holders as number)) / ((now - earliest.t) / 60_000)) * 10) / 10
+}
+
 function liveFigures(mint: string, now: number) {
   const ticks = marketTicks.get(mint) ?? []
   const latest = ticks.at(-1)
@@ -157,6 +164,7 @@ function liveFigures(mint: string, now: number) {
     viewersDelta1m: viewers !== null && minuteAgo !== null ? viewers - minuteAgo : null,
     viewersDelta5m: viewers !== null && fiveMinutesAgo !== null ? viewers - fiveMinutesAgo : null,
     holdersChange5m: pulse?.holders !== null && pulse?.holders !== undefined && holdersBefore !== null ? pulse.holders - holdersBefore : null,
+    holdersPerMin: holderGainPerMinute(ticks, pulse?.holders ?? null, now),
   }
 }
 
@@ -281,6 +289,7 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     viewersPerMin: live.viewersPerMin,
     viewerSurge: false,
     holdersChange5m: live.holdersChange5m,
+    holdersPerMin: live.holdersPerMin,
     pulse: live.pulse,
     quality,
     viewerRank: null,

@@ -1,6 +1,6 @@
 import { ExternalLink, ListChecks, Rocket, Timer, Users } from 'lucide-react'
 import type { RadarPayload, RadarToken } from '@/lib/axiom-radar-types'
-import { AxiomLink } from './AxiomLink'
+import { AxiomLink, CoinName } from './AxiomLink'
 import { formatClock, formatUsd, relativeSeconds, shortAddress, solscanAccountUrl } from './format'
 import { LearnStat, LearnedCoin, chanceLabel } from './LearnedCoin'
 
@@ -70,7 +70,7 @@ export function ExplodeView({ payload, tokens, now, onOpen }: ViewProps) {
         {summary.recent.length === 0 ? <p className="radar-muted">None recorded yet.</p> : <div className="radar-table-wrap"><table className="radar-mini-table">
           <thead><tr><th scope="col">Coin</th><th scope="col">When</th><th scope="col">Viewers</th><th scope="col">To 100</th><th scope="col">Price peak</th></tr></thead>
           <tbody>{summary.recent.map(item => <tr key={`${item.mint}-${item.startedAt}`}>
-            <td><strong>{item.symbol}</strong> <AxiomLink pairAddress={item.pairAddress} symbol={item.symbol}/></td>
+            <td><CoinName pairAddress={item.pairAddress} symbol={item.symbol}/> <AxiomLink pairAddress={item.pairAddress} symbol={item.symbol}/></td>
             <td className="tabular">{formatClock(item.startedAt)}</td>
             <td className="tabular">{item.startViewers} → {item.peakViewers}</td>
             <td className="tabular">{item.secondsTo100 === null ? '—' : `${item.secondsTo100}s`}</td>
@@ -96,7 +96,7 @@ export function WatchListView({ payload, tokens, onOpen }: ViewProps) {
       {summary.top.length === 0 ? <p className="radar-empty-line">No tracked coin has grown that much yet.</p> : <div className="radar-table-wrap"><table className="radar-mini-table radar-watchlist">
         <thead><tr><th scope="col">Coin</th><th scope="col">First seen at</th><th scope="col">Peak</th><th scope="col">Growth</th><th scope="col">Time to peak</th><th scope="col">What happened</th><th scope="col">Shared wallets</th></tr></thead>
         <tbody>{summary.top.map(coin => <tr key={coin.mint}>
-          <td>{live.has(coin.mint) ? <button type="button" className="radar-link-button" onClick={() => onOpen(coin.mint)}><strong>{coin.symbol}</strong></button> : <strong>{coin.symbol}</strong>} <AxiomLink pairAddress={coin.pairAddress} symbol={coin.symbol}/></td>
+          <td><CoinName pairAddress={coin.pairAddress} symbol={coin.symbol}/> <AxiomLink pairAddress={coin.pairAddress} symbol={coin.symbol}/>{live.has(coin.mint) && <button type="button" className="radar-link-button radar-details-button" onClick={() => onOpen(coin.mint)}>details</button>}</td>
           <td className="tabular">{formatUsd(coin.firstMcap)} <small>{formatClock(coin.firstSeenAt)}</small></td>
           <td className="tabular"><strong>{formatUsd(coin.peakMcap)}</strong></td>
           <td className="tabular radar-delta up">{coin.multiple}x</td>

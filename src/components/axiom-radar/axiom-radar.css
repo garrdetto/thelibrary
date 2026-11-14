@@ -232,9 +232,9 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-top3 { border: 1px solid var(--border); border-radius: 12px; background: var(--radar-card); padding: 14px 16px 16px; margin-bottom: 14px; }
 .radar-top3 h2 { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; margin: 0 0 10px; }
 .radar-top3 ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.radar-top3 li > button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--tone-1); color: var(--tone-0); min-width: 0; }
-.radar-top3 li > button:hover { border-color: var(--green); }
-.radar-top3 li > button.surging { border-color: color-mix(in oklab, var(--radar-warn) 60%, transparent); background: color-mix(in oklab, var(--radar-warn) 9%, var(--tone-1)); }
+.radar-top3 li > .radar-row-button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; background: var(--tone-1); color: var(--tone-0); min-width: 0; }
+.radar-top3 li > .radar-row-button:hover { border-color: var(--green); }
+.radar-top3 li > .radar-row-button.surging { border-color: color-mix(in oklab, var(--radar-warn) 60%, transparent); background: color-mix(in oklab, var(--radar-warn) 9%, var(--tone-1)); }
 .radar-top3-rank { font-family: 'Manrope', sans-serif; font-size: 18px; font-weight: 700; color: var(--muted); width: 16px; flex-shrink: 0; }
 .radar-top3-name { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .radar-top3-name strong { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -294,12 +294,12 @@ div.radar-delta { display: grid; gap: 1px; }
 
 .radar-movers { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
 .radar-board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.radar-board li > button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 7px 6px; border-radius: 8px; color: var(--tone-0); min-width: 0; }
-.radar-board li > button:hover { background: var(--radar-soft); }
+.radar-board li > .radar-row-button { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 7px 6px; border-radius: 8px; color: var(--tone-0); min-width: 0; }
+.radar-board li > .radar-row-button:hover { background: var(--radar-soft); }
 .radar-board-name { display: grid; gap: 1px; flex: 1; min-width: 0; }
 .radar-board-name strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .radar-board-name small { font-size: 10px; color: var(--muted); }
-.radar-board li > button > strong { font-size: 13px; flex-shrink: 0; }
+.radar-board li > .radar-row-button > strong { font-size: 13px; flex-shrink: 0; }
 
 .radar-wallets { display: grid; gap: 14px; }
 .radar-wallets .radar-note { margin: 0 0 14px; }
@@ -470,7 +470,7 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-axiom-link:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
 .radar-token-line .radar-axiom-link, .radar-pick-name .radar-axiom-link { margin-left: 2px; }
 .radar-top3 li, .radar-board li, .radar-toast { display: flex; align-items: center; gap: 6px; }
-.radar-top3 li > button, .radar-board li > button { flex: 1; min-width: 0; }
+.radar-top3 li > .radar-row-button, .radar-board li > .radar-row-button { flex: 1; min-width: 0; }
 .radar-wallet-coin { display: inline-flex; align-items: center; gap: 4px; }
 .radar-learn { display: grid; gap: 18px; }
 .radar-learn-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -537,3 +537,14 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-study-body { padding: 0 14px 14px; }
 .radar-study-links { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; font-size: 11px; }
 .radar-maker-actions { display: inline-flex; gap: 8px; }
+.radar-top3-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.radar-top3-head h2 { margin: 0; }
+.radar-row-button { cursor: pointer; box-sizing: border-box; }
+.radar-row-button:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.radar-coin-name { color: inherit; text-decoration: none; justify-self: start; max-width: 100%; min-width: 0; border-radius: 4px; }
+.radar-coin-name strong { display: block; }
+.radar-coin-name:hover strong { text-decoration: underline; text-decoration-color: var(--radar-accent); text-underline-offset: 3px; }
+.radar-name-line { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.radar-name-line .radar-coin-name { flex: 0 1 auto; }
+.radar-mini-table .radar-coin-name, .radar-study-list .radar-coin-name, .radar-drawer-header .radar-coin-name { display: inline-block; vertical-align: middle; }
+.radar-details-button { margin-left: 8px; font-size: 10px; color: var(--muted); }

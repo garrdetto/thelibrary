@@ -1,7 +1,7 @@
 import { FlaskConical } from 'lucide-react'
 import type { RadarEarlyNumbers } from '@/lib/axiom-radar-learner'
 import type { RadarPayload, RadarToken } from '@/lib/axiom-radar-types'
-import { AxiomLink } from './AxiomLink'
+import { AxiomLink, CoinName } from './AxiomLink'
 import { formatClock, formatCount, formatUsd } from './format'
 import { LearnStat } from './LearnedCoin'
 import { RunTimingPanel } from './LearnedViews'
@@ -73,7 +73,7 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
       {winners.jumps.length === 0 ? <p className="radar-muted">No tracked coin has grown {winners.minimumMultiple}x yet.</p> : <ul className="radar-study-list">{winners.jumps.map(coin => <li key={coin.mint}>
         <details>
           <summary>
-            <strong>{coin.symbol}</strong>
+            <CoinName pairAddress={coin.pairAddress} symbol={coin.symbol}/>
             <span className="tabular radar-delta up">{coin.multiple}x</span>
             <span className="tabular">{formatUsd(coin.firstMcap)} → {formatUsd(coin.peakMcap)}</span>
             {coin.multiple >= 10 && coin.peakMcap >= 200_000 && <span className="radar-tag">10x to $200K+</span>}

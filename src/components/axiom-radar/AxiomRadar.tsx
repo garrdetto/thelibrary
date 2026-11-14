@@ -1,4 +1,4 @@
-import { AxiomLink } from './AxiomLink'
+import { AxiomLink, CoinName, onActivate } from './AxiomLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, BellOff, BellRing, Brain, ChevronDown, Flame, FlaskConical, Gem, List, ListChecks, Radar, Rocket, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
 import { defaultRadarSettings, type RadarSettings, type RadarTheme } from '@/lib/axiom-radar-settings'
@@ -90,6 +90,7 @@ export function AxiomRadar() {
   const [chartWindow, setChartWindow] = useState<ChartWindow>('m5')
   const [previewTheme, setPreviewTheme] = useState<RadarTheme | null>(null)
   const [showHealth, setShowHealth] = useState(false)
+  const [gainMode, setGainMode] = useState<'viewers' | 'holders'>('viewers')
   const [makerFilters, setMakerFilters] = useState<string[] | null>(null)
   const [makerSort, setMakerSort] = useState<MakerSort>('match')
   const audioRef = useRef<AudioContext | null>(null)
@@ -209,6 +210,9 @@ export function AxiomRadar() {
     : { tone: 'down', label: 'Tracker offline' }
   const cadence = connection === 'local' ? 'every second, direct from this PC' : connection === 'streaming' ? 'viewers every second, through the site' : connection === 'polling' ? 'every 3 seconds' : ''
   const hasViewerData = tokens.some(token => token.viewers !== null)
+  const hasHolderData = tokens.some(token => token.pulse?.holders !== null && token.pulse?.holders !== undefined)
+  const holderGainers = useMemo(() => tokens.filter(token => (token.holdersPerMin ?? 0) > 0).sort((first, second) => (second.holdersPerMin ?? 0) - (first.holdersPerMin ?? 0)).slice(0, 3), [tokens])
+  const topGainers = gainMode === 'viewers' ? gainers : holderGainers
   const components = payload?.components ?? []
   const componentState = (component: (typeof components)[number]) => component.status === 'disabled' ? 'off' : now - component.updatedAt > 90_000 ? 'stale' : component.status === 'ok' ? 'ok' : 'warn'
   const problems = components.filter(component => ['stale', 'warn'].includes(componentState(component)))
@@ -250,16 +254,28 @@ export function AxiomRadar() {
 
     {payload && <>
       <section className="radar-top3" aria-labelledby="radar-top3-title">
-        <h2 id="radar-top3-title"><Flame size={16} aria-hidden="true"/> Gaining viewers fastest</h2>
-        {gainers.length === 0 ? <p className="radar-empty-line">{hasViewerData ? 'No tracked coin is gaining viewers right now.' : 'Waiting for viewer counts. Keep Axiom Pulse open in Chrome with the Axiom Radar Bridge extension.'}</p>
-          : <ol>{gainers.map((token, index) => <li key={token.mint}>
-            <button type="button" className={token.viewerSurge ? 'surging' : ''} onClick={() => onOpen(token.mint)} aria-label={`${token.symbol}, ${token.viewers} viewers, ${formatSigned(token.viewersPerMin)} per minute. Open details`}>
+        <div className="radar-top3-head">
+          <h2 id="radar-top3-title"><Flame size={16} aria-hidden="true"/> {gainMode === 'viewers' ? 'Gaining viewers fastest' : 'Gaining holders fastest'}</h2>
+          <div className="radar-window-picker" role="group" aria-label="Rank the fastest gainers by">
+            <button type="button" aria-pressed={gainMode === 'viewers'} className={gainMode === 'viewers' ? 'active' : ''} onClick={() => setGainMode('viewers')}>Viewers</button>
+            <button type="button" aria-pressed={gainMode === 'holders'} className={gainMode === 'holders' ? 'active' : ''} onClick={() => setGainMode('holders')}>Holders</button>
+          </div>
+        </div>
+        {topGainers.length === 0 ? <p className="radar-empty-line">{gainMode === 'holders'
+          ? hasHolderData ? 'No tracked coin is gaining holders right now.' : 'Waiting for holder counts. They come from the coins shown on your Axiom Pulse, so keep Pulse open.'
+          : hasViewerData ? 'No tracked coin is gaining viewers right now.' : 'Waiting for viewer counts. Keep Axiom Pulse open in Chrome with the Axiom Radar Bridge extension.'}</p>
+          : <ol>{topGainers.map((token, index) => <li key={token.mint}>
+            <div role="button" tabIndex={0} className={`radar-row-button ${gainMode === 'viewers' && token.viewerSurge ? 'surging' : ''}`} onClick={() => onOpen(token.mint)} onKeyDown={onActivate(() => onOpen(token.mint))} aria-label={gainMode === 'viewers'
+              ? `${token.symbol}, ${token.viewers} viewers, ${formatSigned(token.viewersPerMin)} per minute. Open details`
+              : `${token.symbol}, ${token.pulse?.holders ?? 'unknown'} holders, ${formatSigned(token.holdersPerMin)} per minute. Open details`}>
               <span className="radar-top3-rank tabular">{index + 1}</span>
               <TokenIcon token={token}/>
-              <span className="radar-top3-name"><strong>{token.symbol}</strong><small>{token.viewerSurge ? 'This coin is gaining viewers quickly' : 'Viewers rising'}</small></span>
+              <span className="radar-top3-name"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><small>{gainMode === 'holders' ? `${formatCount(token.viewers)} watching` : token.viewerSurge ? 'This coin is gaining viewers quickly' : 'Viewers rising'}</small></span>
               <PriceSpark points={sparkPoints(token, chartWindow)} width={84} height={30}/>
-              <span className="radar-top3-count"><strong className="tabular">{formatCount(token.viewers)}</strong><small className="tabular radar-delta up">{formatSigned(token.viewersPerMin)}/min</small></span>
-            </button>
+              {gainMode === 'viewers'
+                ? <span className="radar-top3-count"><strong className="tabular">{formatCount(token.viewers)}</strong><small className="tabular radar-delta up">{formatSigned(token.viewersPerMin)}/min</small></span>
+                : <span className="radar-top3-count"><strong className="tabular">{formatCount(token.pulse?.holders)}</strong><small className="tabular radar-delta up">{formatSigned(token.holdersPerMin)}/min</small></span>}
+            </div>
             <AxiomLink pairAddress={token.pairAddress} symbol={token.symbol} size={16}/>
           </li>)}</ol>}
       </section>

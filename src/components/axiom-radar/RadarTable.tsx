@@ -1,4 +1,4 @@
-import { AxiomLink } from './AxiomLink'
+import { AxiomLink, CoinName } from './AxiomLink'
 import { memo, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, ExternalLink, Globe, Send, Star, TriangleAlert, Twitter } from 'lucide-react'
 import { Line, LineChart, YAxis } from 'recharts'
@@ -177,7 +177,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
               <PinButton token={token} onTogglePin={onTogglePin}/>
               <TokenIcon token={token}/>
               <div className="radar-token-text">
-                <div className="radar-token-line"><strong>{token.symbol}</strong><AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/><span className="radar-age tabular">{formatAge(token.ageMinutes)}</span>{token.onPulse && <span className="radar-tag" title="On your Axiom Pulse">Pulse</span>}{token.runnerWallets > 0 && <span className="radar-tag" title="Smart wallets holding">🐋 {token.runnerWallets}</span>}{token.alerts.length > 0 && <span className="radar-alert-icon" title={token.alerts.join(' · ')}><TriangleAlert size={13}/></span>}</div>
+                <div className="radar-token-line"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/><span className="radar-age tabular">{formatAge(token.ageMinutes)}</span>{token.onPulse && <span className="radar-tag" title="On your Axiom Pulse">Pulse</span>}{token.runnerWallets > 0 && <span className="radar-tag" title="Smart wallets holding">🐋 {token.runnerWallets}</span>}{token.alerts.length > 0 && <span className="radar-alert-icon" title={token.alerts.join(' · ')}><TriangleAlert size={13}/></span>}</div>
                 <div className="radar-token-line radar-token-actions">
                   <span className="radar-token-name" title={token.name}>{token.name}</span>
                   <CopyMint mint={token.mint}/>

@@ -66,6 +66,7 @@ export type RadarToken = {
   viewersPerMin: number | null
   viewerSurge: boolean
   holdersChange5m: number | null
+  holdersPerMin?: number | null
   pulse: RadarPulseMetrics | null
   quality: { score: number | null; checks: RadarQualityCheck[] }
   viewerRank: number | null

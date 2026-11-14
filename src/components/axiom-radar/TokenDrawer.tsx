@@ -1,4 +1,4 @@
-import { AxiomLink } from './AxiomLink'
+import { AxiomLink, CoinName } from './AxiomLink'
 import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -71,7 +71,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       <header className="radar-drawer-header">
         <div>
           <span className="section-eyebrow">{formatAge(live.ageMinutes).toUpperCase()} OLD{live.viewerRank ? ` · #${live.viewerRank} BY VIEWERS` : ''}</span>
-          <h2 id="radar-drawer-title">{live.symbol} <AxiomLink pairAddress={live.pairAddress} symbol={live.symbol} size={18}/> <small>{live.name}</small></h2>
+          <h2 id="radar-drawer-title"><CoinName pairAddress={live.pairAddress} symbol={live.symbol}/> <AxiomLink pairAddress={live.pairAddress} symbol={live.symbol} size={18}/> <small>{live.name}</small></h2>
           <div className="radar-drawer-links">
             <a href={axiomUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">Axiom<ExternalLink size={11}/></a>
             <a href={dexScreenerUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">DexScreener<ExternalLink size={11}/></a>

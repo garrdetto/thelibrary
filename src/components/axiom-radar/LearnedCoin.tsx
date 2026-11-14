@@ -3,7 +3,7 @@ import { Eye } from 'lucide-react'
 import type { RadarOutlookReason } from '@/lib/axiom-radar-learner'
 import { radarOutlookPhaseLabels } from '@/lib/axiom-radar-learner'
 import type { RadarToken } from '@/lib/axiom-radar-types'
-import { AxiomLink } from './AxiomLink'
+import { AxiomLink, CoinName } from './AxiomLink'
 import { formatAge, formatCount, formatSigned, formatUsd } from './format'
 import { TokenIcon, changeClass } from './RadarTable'
 
@@ -31,7 +31,7 @@ export function LearnedCoin({ token, headline, headlineLabel, reasons, onOpen, c
   return <article className="radar-learn-coin" tabIndex={0} role="button" aria-label={`${token.symbol}, ${headlineLabel} ${headline}. Open details`} onClick={() => onOpen(token.mint)} onKeyDown={open}>
     <header>
       <TokenIcon token={token}/>
-      <div className="radar-pick-name"><strong>{token.symbol} <AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/></strong><small className="tabular">{formatAge(token.ageMinutes)} old · {formatUsd(token.marketCap)} mc</small></div>
+      <div className="radar-pick-name"><span className="radar-name-line"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/></span><small className="tabular">{formatAge(token.ageMinutes)} old · {formatUsd(token.marketCap)} mc</small></div>
       <div className="radar-learn-headline"><strong className="tabular">{headline}</strong><small>{headlineLabel}</small></div>
     </header>
     <div className="radar-pick-stats">
