@@ -192,7 +192,7 @@ export function buildWater(ctx: EngineContext, terrain: Terrain): { mesh: Mesh; 
   mesh.position.set(LAKE_CENTER.x + 40, 0, LAKE_CENTER.z + 60)
   const material = new ShaderMaterial('water-mat', scene, 'rrWater', {
     attributes: ['position'],
-    uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
+    uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'mapOrigin', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
     samplers: ['depthMap'],
     needAlphaBlending: true,
     shaderLanguage: ctx.engine.isWebGPU ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,

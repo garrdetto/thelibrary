@@ -97,6 +97,7 @@ uniform vec3 fogColor;
 uniform float fogDensity;
 uniform float time;
 uniform float worldSize;
+uniform vec2 mapOrigin;
 uniform sampler2D depthMap;
 uniform vec3 lampPos;
 uniform vec3 lampDir;
@@ -120,7 +121,7 @@ vec2 waveGrad(vec2 p) {
   return g;
 }
 void main() {
-  vec2 uv = (vWorld.xz + worldSize * 0.5) / worldSize;
+  vec2 uv = (vWorld.xz - mapOrigin + worldSize * 0.5) / worldSize;
   float depth = texture2D(depthMap, uv).r * 24.0;
   if (depth < 0.001) discard;
   vec3 V = normalize(cameraPos - vWorld);
@@ -260,6 +261,7 @@ uniform fogColor: vec3f;
 uniform fogDensity: f32;
 uniform time: f32;
 uniform worldSize: f32;
+uniform mapOrigin: vec2f;
 var depthMapSampler: sampler;
 var depthMap: texture_2d<f32>;
 uniform lampPos: vec3f;
@@ -282,7 +284,7 @@ fn waveGrad(p: vec2f) -> vec2f {
 @fragment
 fn main(input: FragmentInputs) -> FragmentOutputs {
   let at = fragmentInputs.vWorld;
-  let uv = (at.xz + uniforms.worldSize * 0.5) / uniforms.worldSize;
+  let uv = (at.xz - uniforms.mapOrigin + uniforms.worldSize * 0.5) / uniforms.worldSize;
   let depth = textureSample(depthMap, depthMapSampler, uv).r * 24.0;
   if (depth < 0.001) {
     discard;

@@ -13,7 +13,7 @@ import { ShaderLanguage } from '@babylonjs/core/Materials/shaderLanguage'
 import { ShaderMaterial } from '@babylonjs/core/Materials/shaderMaterial'
 import { RawTexture } from '@babylonjs/core/Materials/Textures/rawTexture'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector'
+import { Vector2, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { VertexData } from '@babylonjs/core/Meshes/mesh.vertexData'
 import type { EngineContext } from '../../rackreel/core/EngineSetup'
@@ -58,15 +58,13 @@ export class Water {
 
   constructor(private readonly ctx: EngineContext, land: TelloLand) {
     const { scene } = ctx
-    const whole = (v: number) => Math.abs(v / land.size - Math.round(v / land.size)) < 1e-6
-    if (!whole(land.offset.x + land.x0 + land.size / 2) || !whole(land.offset.z + land.z0 + land.size / 2)) throw new Error('Tello must sit a whole map width from the origin')
     const cells = land.side - 1
     const depthMap = RawTexture.CreateRGBATexture(depthBytes(land), cells, cells, scene, false, false, Texture.BILINEAR_SAMPLINGMODE)
     depthMap.wrapU = Texture.WRAP_ADDRESSMODE
     depthMap.wrapV = Texture.WRAP_ADDRESSMODE
     const material = new ShaderMaterial('tello-water-mat', scene, 'rrWater', {
       attributes: ['position'],
-      uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
+      uniforms: ['world', 'viewProjection', 'cameraPos', 'fogColor', 'fogDensity', 'time', 'worldSize', 'mapOrigin', 'sunDir', 'moonDir', 'night', 'glow', 'lampPos', 'lampDir', 'lampColor'],
       samplers: ['depthMap'],
       needAlphaBlending: true,
       shaderLanguage: ctx.engine.isWebGPU ? ShaderLanguage.WGSL : ShaderLanguage.GLSL,
@@ -84,6 +82,7 @@ export class Water {
     material.setColor3('fogColor', FOG_COLOR)
     material.setFloat('fogDensity', FOG_DENSITY)
     material.setFloat('worldSize', land.size)
+    material.setVector2('mapOrigin', new Vector2(land.offset.x + land.x0 + land.size / 2, land.offset.z + land.z0 + land.size / 2))
     material.alphaMode = Constants.ALPHA_COMBINE
     material.backFaceCulling = false
     this.material = material
