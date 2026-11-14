@@ -148,6 +148,11 @@ function liveFigures(mint: string, now: number) {
   const minuteAgo = tickAt(ticks, now - 60_000, 8_000, 'viewers')
   const fiveMinutesAgo = tickAt(ticks, now - 300_000, 25_000, 'viewers')
   const holdersBefore = tickAt(ticks, now - 300_000, 40_000, 'holders')
+  const gainOver = (field: 'viewers' | 'holders', current: number | null, spanMs: number, tolerance: number) => {
+    const before = current === null ? null : tickAt(ticks, now - spanMs, tolerance, field)
+    return current === null || before === null ? null : current - before
+  }
+  const gainsFor = (field: 'viewers' | 'holders', current: number | null) => ({ s5: gainOver(field, current, 5_000, 2_000), s15: gainOver(field, current, 15_000, 3_000), s30: gainOver(field, current, 30_000, 4_000), m1: gainOver(field, current, 60_000, 8_000) })
   return {
     price,
     viewers,
@@ -165,6 +170,7 @@ function liveFigures(mint: string, now: number) {
     viewersDelta5m: viewers !== null && fiveMinutesAgo !== null ? viewers - fiveMinutesAgo : null,
     holdersChange5m: pulse?.holders !== null && pulse?.holders !== undefined && holdersBefore !== null ? pulse.holders - holdersBefore : null,
     holdersPerMin: holderGainPerMinute(ticks, pulse?.holders ?? null, now),
+    gains: { viewers: gainsFor('viewers', viewers), holders: gainsFor('holders', pulse?.holders ?? null) },
   }
 }
 
@@ -290,6 +296,7 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     viewerSurge: false,
     holdersChange5m: live.holdersChange5m,
     holdersPerMin: live.holdersPerMin,
+    gains: live.gains,
     pulse: live.pulse,
     quality,
     viewerRank: null,

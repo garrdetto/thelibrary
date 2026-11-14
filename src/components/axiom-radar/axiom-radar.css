@@ -548,3 +548,4 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-name-line .radar-coin-name { flex: 0 1 auto; }
 .radar-mini-table .radar-coin-name, .radar-study-list .radar-coin-name, .radar-drawer-header .radar-coin-name { display: inline-block; vertical-align: middle; }
 .radar-details-button { margin-left: 8px; font-size: 10px; color: var(--muted); }
+.radar-top3-pickers { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

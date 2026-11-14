@@ -28,6 +28,9 @@ export type RadarHistoryPoint = { t: number; viewers: number | null; marketCap: 
 
 export type RadarSocials = { twitter: string | null; telegram: string | null; website: string | null }
 
+export type RadarGainWindow = 's5' | 's15' | 's30' | 'm1'
+export type RadarGainWindows = Record<RadarGainWindow, number | null>
+
 export type RadarToken = {
   mint: string
   pairAddress: string
@@ -67,6 +70,7 @@ export type RadarToken = {
   viewerSurge: boolean
   holdersChange5m: number | null
   holdersPerMin?: number | null
+  gains?: { viewers: RadarGainWindows; holders: RadarGainWindows }
   pulse: RadarPulseMetrics | null
   quality: { score: number | null; checks: RadarQualityCheck[] }
   viewerRank: number | null
@@ -162,12 +166,12 @@ export type RadarPayload = {
   winners?: RadarWinnersSummary | null
 }
 
-export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange'>
+export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin'>
 
 export type RadarLivePatch = { at: number; tokens: Record<string, RadarLiveFigures> }
 
 export function liveFiguresOf(token: RadarToken): RadarLiveFigures {
-  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange }
+  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin }
 }
 
 export function applyLivePatch(payload: RadarPayload, patch: RadarLivePatch): RadarPayload {
