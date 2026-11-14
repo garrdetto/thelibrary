@@ -1,4 +1,4 @@
-import { radarFeatureKeys, type RadarWeights } from '../../src/lib/axiom-radar-types.js'
+import { radarFeatureKeys, type RadarToken, type RadarWeights } from '../../src/lib/axiom-radar-types.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { fetchMarketsForMints } from './dexscreener.js'
 import { radarThresholds, recalibrateWeights, type TrainingSample } from './model.js'
@@ -23,9 +23,9 @@ function openPaperTrades(database: TrackerDatabase, weights: RadarWeights, now: 
   `)
   let opened = 0
   for (const token of tokens) {
-    if (token.score < radarThresholds.paperTradeScore || !token.priceUsd || !token.lastSnapshotAt || now - token.lastSnapshotAt > 60_000) continue
+    if ((token.signal !== 'buy' && token.score < radarThresholds.paperTradeScore) || !token.priceUsd || !token.lastSnapshotAt || now - token.lastSnapshotAt > 60_000) continue
     const features = Object.fromEntries(token.factors.map(factor => [factor.key, factor.available ? factor.value : null]))
-    const reasons = { score: token.score, features, factors: token.factors, viewers: token.viewers, viewersDelta5m: token.viewersDelta5m, runnerWallets: token.runnerWallets, buyRatio: token.buyRatio, weights }
+    const reasons = { score: token.score, signal: token.signal, signalReasons: token.signalReasons, features, factors: token.factors, viewers: token.viewers, viewersDelta5m: token.viewersDelta5m, runnerWallets: token.runnerWallets, buyRatio: token.buyRatio, quality: token.quality.score, weights }
     const result = insert.run(token.mint, token.symbol, token.priceUsd, token.marketCap, token.score, JSON.stringify(reasons), now)
     if (result.changes) {
       opened += 1
@@ -72,7 +72,10 @@ async function evaluatePaperTrades(database: TrackerDatabase, now: number) {
       if (price === null && now - due > 10 * 60_000) price = lastKnownPrice(database, trade.mint) ?? 0
       if (price === null) break
       changes[checkpoint.column] = price
-      if (checkpoint.column === 'price_15m') changes.status = price / trade.entry_price - 1 >= radarThresholds.winReturn ? 'win' : 'loss'
+      if (checkpoint.column === 'price_15m') {
+        changes.status = price / trade.entry_price - 1 >= radarThresholds.winReturn ? 'win' : 'loss'
+        if (changes.status === 'win') markGoodCoin(database, trade.mint, trade.symbol, 'Paper trade won (+15% in 15m)')
+      }
     }
     const columns = Object.keys(changes)
     if (!columns.length) continue
@@ -101,10 +104,28 @@ function maybeRecalibrate(database: TrackerDatabase) {
   return true
 }
 
+function markGoodCoin(database: TrackerDatabase, mint: string, symbol: string, reason: string) {
+  const result = database.prepare('INSERT OR IGNORE INTO good_coins (mint, symbol, reason, marked_at) VALUES (?, ?, ?, ?)').run(mint, symbol, reason, Date.now())
+  if (result.changes) logger.info('Marked a good coin', { mint, symbol, reason })
+}
+
+let goodCoinCheckAt = 0
+function markGoodCoins(database: TrackerDatabase, tokens: RadarToken[], now: number) {
+  if (now - goodCoinCheckAt < 60_000) return
+  goodCoinCheckAt = now
+  const firstPrice = database.prepare('SELECT price_usd FROM snapshots WHERE mint = ? AND price_usd IS NOT NULL ORDER BY timestamp ASC LIMIT 1')
+  for (const token of tokens) {
+    if ((token.marketCap ?? 0) >= 500_000 && (token.liquidityUsd ?? 0) >= 20_000) { markGoodCoin(database, token.mint, token.symbol, 'Market cap over $500K'); continue }
+    const first = (firstPrice.get(token.mint) as { price_usd: number } | undefined)?.price_usd
+    if (first && token.priceUsd && token.priceUsd >= first * 2.5 && (token.liquidityUsd ?? 0) >= 10_000) markGoodCoin(database, token.mint, token.symbol, 'Up 2.5x since first tracked')
+  }
+}
+
 export async function runScoringCycle(database: TrackerDatabase) {
   const now = Date.now()
   const model = loadModelState(database)
   const { tokens, opened } = openPaperTrades(database, model.weights, now)
+  markGoodCoins(database, tokens, now)
   const evaluated = await evaluatePaperTrades(database, now)
   const recalibrated = maybeRecalibrate(database)
   const top = tokens[0]

@@ -1,5 +1,5 @@
 const frames = []
-const reportIntervalMs = 5000
+const reportIntervalMs = 1000
 let sampleResolver = null
 
 window.addEventListener('message', event => {
@@ -69,7 +69,11 @@ function eyeCards() {
     if (!card) continue
     const { pairAddress, mint } = addressesIn(card)
     if (!short && !pairAddress && !mint) continue
-    cards.push({ viewers, pairAddress, mint, short })
+    let full = card
+    for (let depth = 0; depth < 10 && full.parentElement && full.parentElement.querySelectorAll('i.ri-eye-line').length === 1; depth++) full = full.parentElement
+    const lines = (full.innerText ?? '').split('\n').map(line => line.trim()).filter(Boolean).slice(0, 60).map(line => line.slice(0, 60))
+    const icons = Array.from(full.querySelectorAll('i[class*="ri-"]'), node => (node.getAttribute('class') ?? '').split(/\s+/).find(name => name.startsWith('ri-')) ?? '').filter(Boolean).slice(0, 40)
+    cards.push({ viewers, pairAddress, mint, short, lines, icons })
     if (cards.length >= 300) break
   }
   return cards
@@ -124,11 +128,17 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   return true
 })
 
-setInterval(() => {
+let lastReportAt = 0
+
+function report() {
+  lastReportAt = Date.now()
   const pairAddress = pairFromUrl()
   const batch = frames.splice(0, 200)
   const cards = pairAddress ? [] : eyeCards()
   if (!pairAddress && !batch.length && !cards.length) return
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
   chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards } }).catch(() => undefined)
-}, reportIntervalMs)
+}
+
+setInterval(() => { if (Date.now() - lastReportAt >= reportIntervalMs) report() }, reportIntervalMs)
+new MutationObserver(() => { if (Date.now() - lastReportAt >= reportIntervalMs) report() }).observe(document.documentElement, { subtree: true, childList: true, characterData: true })

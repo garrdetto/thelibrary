@@ -6,6 +6,9 @@ import { extractViewerCounts, parseFrame } from './axiom-collector.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { createLogger, errorMessage, isMainModule, solanaAddressPattern, trackerConfig } from './runtime.js'
 import { activeCandidates, trackerState } from './state.js'
+import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
+import { compactPayload } from './site-publisher.js'
+import { parsePulseCard } from './pulse-cards.js'
 
 const logger = createLogger('extension-intake')
 const bodyLimit = 2_000_000
@@ -20,15 +23,60 @@ const report = z.object({
     pairAddress: z.string().regex(solanaAddressPattern).nullable(),
     mint: z.string().regex(solanaAddressPattern).nullable(),
     short: z.object({ prefix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/), suffix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/) }).nullable(),
+    lines: z.array(z.string().max(60)).max(60).optional(),
+    icons: z.array(z.string().max(80)).max(40).optional(),
   }).strict()).max(300).default([]),
 }).strict()
 
 export type ExtensionReport = z.input<typeof report>
 
-function trustedOrigin(request: IncomingMessage) {
-  const origin = request.headers.origin ?? ''
+const siteOrigins = new Set([(process.env.AXIOM_SITE_ORIGIN?.trim() || 'https://thelibrary.garrdetto.workers.dev').replace(/\/$/, ''), 'http://localhost:3000'])
+const liveIntervalMs = 1_000
+
+function localHost(request: IncomingMessage) {
   const host = (request.headers.host ?? '').split(':')[0]
-  return origin.startsWith('chrome-extension://') && (host === '127.0.0.1' || host === 'localhost')
+  return host === '127.0.0.1' || host === 'localhost'
+}
+
+function trustedOrigin(request: IncomingMessage) {
+  return (request.headers.origin ?? '').startsWith('chrome-extension://') && localHost(request)
+}
+
+function siteOrigin(request: IncomingMessage) {
+  const origin = request.headers.origin ?? ''
+  return localHost(request) && siteOrigins.has(origin) ? origin : null
+}
+
+function liveHeaders(origin: string) {
+  return { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Private-Network': 'true', 'Access-Control-Allow-Methods': 'GET, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin', 'Cache-Control': 'no-store' }
+}
+
+function serveLive(database: TrackerDatabase, request: IncomingMessage, response: ServerResponse, origin: string, url: URL) {
+  if (request.method === 'OPTIONS') {
+    response.writeHead(204, liveHeaders(origin))
+    response.end()
+    return
+  }
+  if (url.pathname === '/live/stream') {
+    response.writeHead(200, { ...liveHeaders(origin), 'Content-Type': 'text/event-stream; charset=utf-8', Connection: 'keep-alive' })
+    response.write('retry: 1000\n\n')
+    const push = () => {
+      try { response.write(`data: ${JSON.stringify({ ...compactPayload(buildRadarPayload(database)), source: 'local' })}\n\n`) } catch (error) { logger.warn('Live stream payload failed', { error: errorMessage(error) }) }
+    }
+    push()
+    const timer = setInterval(push, liveIntervalMs)
+    request.on('close', () => clearInterval(timer))
+    return
+  }
+  if (url.pathname === '/live/data') {
+    const mint = url.searchParams.get('mint')
+    const body = mint === null ? { ...compactPayload(buildRadarPayload(database)), source: 'local' } : solanaAddressPattern.test(mint) ? buildTokenDetail(database, mint) : null
+    response.writeHead(body ? 200 : 404, { ...liveHeaders(origin), 'Content-Type': 'application/json; charset=utf-8' })
+    response.end(JSON.stringify(body ?? { error: 'Not found.' }))
+    return
+  }
+  response.writeHead(404, liveHeaders(origin))
+  response.end()
 }
 
 function readBody(request: IncomingMessage) {
@@ -64,6 +112,7 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
   }
   for (const card of input.cards ?? []) {
     if (card.mint) {
+      if (card.lines?.length) trackerState.pulseCards.set(card.mint, parsePulseCard(card.lines, card.viewers, now))
       trackerState.pulse.set(card.mint, now)
       trackerState.viewers.set(card.mint, { count: card.viewers, at: now, source: 'extension' })
     }
@@ -85,13 +134,14 @@ function send(response: ServerResponse, status: number, body: unknown) {
 }
 
 export function startExtensionIntake(database: TrackerDatabase, signal: AbortSignal) {
-  if (trackerConfig.collector !== 'extension') return Promise.resolve()
   let reports = 0
   let lastReportAt = 0
   const server = createServer(async (request, response) => {
     try {
-      if (!trustedOrigin(request)) return send(response, 403, { error: 'Only the Axiom Radar extension may send reports.' })
       const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+      const site = siteOrigin(request)
+      if (site && url.pathname.startsWith('/live/')) return serveLive(database, request, response, site, url)
+      if (!trustedOrigin(request)) return send(response, 403, { error: 'Only the Axiom Radar extension may send reports.' })
       if (request.method === 'GET' && url.pathname === '/extension/status') {
         return send(response, 200, { ok: true, tracked: activeCandidates(database).map(candidate => ({ mint: candidate.mint, pairAddress: candidate.pairAddress, symbol: candidate.symbol })) })
       }

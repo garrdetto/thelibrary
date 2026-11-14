@@ -2,6 +2,7 @@ import { startAxiomCollector } from './axiom-collector.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
 import { startExtensionIntake } from './extension-intake.js'
+import { startLiveMarket } from './live-market.js'
 import { createLogger, errorMessage, runLoop } from './runtime.js'
 import { startScoring } from './scoring.js'
 import { startSitePublisher } from './site-publisher.js'
@@ -30,6 +31,7 @@ recordHeartbeat(database, 'orchestrator', 'ok', `pid ${process.pid}`)
 
 const tasks = [
   startDiscovery(database, controller.signal),
+  startLiveMarket(database, controller.signal),
   startAxiomCollector(database, controller.signal),
   startWalletTracker(database, controller.signal),
   startScoring(database, controller.signal),

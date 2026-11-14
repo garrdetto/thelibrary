@@ -1,6 +1,6 @@
 import type { Env } from './env.js'
 
-export type RadarStateKey = 'payload' | 'details' | 'viewed'
+export type RadarStateKey = 'payload' | 'details' | 'viewed' | 'settings'
 
 let tableReady: Promise<unknown> | null = null
 function ensureRadarTable(env: Env) {

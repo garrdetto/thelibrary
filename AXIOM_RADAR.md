@@ -1,8 +1,8 @@
 # Axiom Radar
 
-An admin-only tool that ranks Solana launches under five hours old by live Axiom viewer momentum, runner-wallet entries, buy pressure and RugCheck safety. It also runs a paper-trading loop that recalibrates its own scoring weights. It is signals only: nothing places a real order.
+A private, admin-only page that ranks coins by live Axiom viewers and shows price moves over 30 seconds, 1, 5 and 10 minutes, holder-quality checks from the Axiom Pulse cards, smart-holder tracking, and Buy and Watch signals from rules you set. A paper-trading loop scores the signals and tunes the score weights. It is signals only: nothing places a real order.
 
-Open it in the admin console under **Site → Tools → Axiom Radar** (`/#admin/axiom-radar`), or full screen at `/admin/axiom-radar`.
+It is a standalone page at `/admin/axiom-radar` with its own header and none of the site's navigation. The **Axiom Radar** entry in the admin console (Site → Tools) opens it.
 
 ## How it fits together
 
@@ -58,11 +58,11 @@ Axiom sits behind Cloudflare, which challenges browsers that are driven by autom
 
 ### Recommended: the Axiom Radar Bridge extension in your own Chrome
 
-1. Set `AXIOM_COLLECTOR=extension` in `.env` and restart the worker. The automated browser is not started; the tracker listens on `127.0.0.1:8791` (`AXIOM_EXTENSION_PORT`) and accepts reports only from a Chrome extension.
+1. Set `AXIOM_COLLECTOR=extension` in `.env` and restart the worker. The automated browser is not started. The tracker listens on `127.0.0.1:8791` (`AXIOM_EXTENSION_PORT`) and accepts reports only from a Chrome extension.
 2. In Chrome, open `chrome://extensions`, turn on **Developer mode**, choose **Load unpacked**, and select the `extensions/axiom-radar-bridge` folder.
-3. Open https://axiom.trade yourself (you pass Cloudflare as a person) and keep the Pulse page or token pages open. Every 5 seconds the extension sends the viewer count shown on each Axiom tab, plus any viewer fields in the page's own live messages, to the tracker. It never clicks or navigates.
+3. Open https://axiom.trade yourself (you pass Cloudflare as a person) and keep the Pulse page or token pages open. Every second the extension sends what each visible Pulse card shows (viewers, holders, dev record, holder percentages, fees, trades) to the tracker. It never clicks or navigates.
 
-The extension's toolbar popup shows when it last sent and which coins the tracker is watching. Counts only arrive for coins whose data your open Axiom tabs receive, so keep the Pulse page and the token pages you care about open. Chrome slows timers in background tabs, so counts from tabs left in the background update less often.
+The extension's toolbar popup shows when it last sent and which coins the tracker is watching. Counts only arrive for coins whose data your open Axiom tabs receive, so keep the Pulse page and the token pages you care about open. Chrome only draws the Pulse cards that fit on screen and slows hidden tabs, so keep Pulse visible in its own window (a taller window shows more cards) for the freshest counts.
 
 ### Automated browser (`AXIOM_COLLECTOR=browser`, the default)
 
@@ -130,14 +130,32 @@ To start on boot: on Linux or macOS run `pm2 startup` and follow its printed com
 
 The ecosystem file is an ES module that exports `apps`. PM2 loads it with `require()`, which needs Node 20.19+ or 22.12+.
 
+## The page
+
+- **Gaining viewers fastest**: the three coins whose viewer count is climbing fastest right now, with live counts. A coin is flagged "gaining viewers quickly" when its viewers-per-minute gain is large for its own size (at least 10% and +5 a minute on Normal) or far above the other tracked coins. Sensitivity is a setting, not a fixed threshold.
+- **Picks**: Recommended buys (coins passing every buy rule), Coins to watch, and Warnings (liquidity pulled, a sharp dump, risky authorities).
+- **All coins**: every tracked coin ranked by viewers, with viewers per minute, the four price-change windows, score, quality and filters. The star pins a coin so it is always tracked.
+- **Top movers**: biggest price gainers per window and biggest viewer gainers.
+- **Smart wallets**: wallets among the top holders of several good coins (and, with a Helius key, early buyers of runners).
+- **Paper trades**: simulated trades opened on each Buy signal, win rate and the adaptive weights.
+- **Settings**: toggle and tune every requirement and rule. Saved to D1 on the site; the tracker picks them up on its next push (seconds while the page is open).
+- Clicking a coin opens details: a live price-and-viewers chart from 1-second ticks, DexScreener candles, the quality checklist, score breakdown and smart holders.
+- Sound and desktop alerts fire for new viewer surges and new Buy signals.
+
+### Update speed
+
+The tracker refreshes prices from DexScreener and records viewers every second. When the page is open in a browser **on the PC running the tracker**, it reads `http://127.0.0.1:8791/live/stream` directly and updates every second (Chrome may ask once for permission to reach local apps; allow it). Anywhere else it falls back to the site relay, which updates every 3 seconds. The local feed only answers this site's origin and only GET requests.
+
 ## Model reference
 
-- **Discovery** (every 20 s): DexScreener latest profiles, boosts, community takeovers and searches feed a watchlist. A pair must be younger than 5 h, with 5 m volume ≥ $3k, ≥ 40 transactions, liquidity ≥ $3k and buys > 40% (override with `AXIOM_MIN_VOLUME_5M`, `AXIOM_MIN_TXNS_5M`, `AXIOM_MIN_LIQUIDITY`, `AXIOM_MIN_BUY_RATIO`). The top 30 by momentum are tracked (`AXIOM_MAX_CANDIDATES`). New candidates are enriched through RugCheck (`api.rugcheck.xyz/v1/tokens/<mint>/report/summary`, plus the full report for authorities and top-10 holders).
-- **Collector** (every 10 s): writes a snapshot per tracked coin with viewers, price, market cap, liquidity, 5 m volume and buys/sells.
-- **Wallet tracker**: when a tracked coin reaches $500k market cap or 3× its first recorded price, its first ~150 transactions are parsed through Helius and up to 40 early buyers are recorded in `smart_wallets` (`runner_hits + 1`). Wallets with `runner_hits ≥ 2` are polled for swaps, and buys of coins under 5 h old are stored in `wallet_entries`.
-- **Setup score (0–100)**: a weighted average of five features in 0–1: 5 m viewer velocity (+50 viewers = 1), active viewers (log scale, 500 = 1), runner wallets (3 = 1), 5 m buy ratio (45% to 75%) and RugCheck safety. Features with no data are left out of the average.
-- **Paper trades**: opened once per mint at score ≥ 75, at the latest price. The price is checked at +5, +15 and +30 minutes, and a return of +15% or more at 15 minutes is a win. Every 10 decided trades, each weight is multiplied by `exp(0.8 × (mean feature in wins − mean in losses))`, clamped to 0.2–3, and renormalised to sum to 5.
-- Snapshots older than 24 h are pruned hourly.
+- **Which coins are tracked**: DexScreener (latest profiles, boosts, takeovers, searches), GeckoTerminal (new and trending Solana pools) and every coin on your Axiom Pulse feed a watchlist. Coins must pass the enabled requirements in Settings (defaults: 5 m volume ≥ $3k, ≥ 40 trades, liquidity ≥ $3k, buys > 40%; no age or viewer limit). Pulse coins skip the market requirements by default. Up to 60 coins (setting) are kept, ranked by live viewers; pinned coins are always kept.
+- **Pulse card data** (through the bridge, every second): viewers, holders, the dev's migrated/created record, top-10 %, dev % (or dev sold), snipers %, insiders %, bundlers %, fees paid, trades, volume and market cap.
+- **Quality checklist**: top 10 under 25% (fail over 40%), dev under 5%, snipers under 10%, insiders under 10%, bundlers under 10%, fees paid of at least 3 SOL per $100K market cap (under 1 fails: likely fake volume), dev record (fails when under 5% of 10+ coins migrated), holders ≥ 500, and mint/freeze authority revoked (RugCheck). These are common trader rules of thumb, not guarantees.
+- **Setup score (0–100)**: weighted average of viewer growth, active viewers, smart holders, 5 m buy pressure, and safety & holder quality. Missing features are left out.
+- **Buy signal**: score, 1 m gain, 5 m gain and viewers all above the buy rules, no warnings, and (optionally) no red flags. **Watch**: surging viewers, score, 5 m gain or smart holders.
+- **Smart holders**: RugCheck's top holders are stored per coin. A coin becomes "good" at $500K market cap with $20K liquidity, 2.5x since first tracked, or a paper-trade win. Wallets holding the set number of good coins are smart holders.
+- **Paper trades**: opened once per mint on a Buy signal (or score ≥ 75); price checked at +5, +15 and +30 minutes; +15% at 15 minutes is a win. Every 10 decided trades the weights shift toward features stronger in winners.
+- Snapshots older than 24 h and holder records older than 7 days are pruned hourly.
 
 ## Data files
 

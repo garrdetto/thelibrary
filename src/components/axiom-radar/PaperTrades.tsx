@@ -15,7 +15,7 @@ export function PaperTrades({ payload, now }: { payload: RadarPayload; now: numb
   const completed = paper.stats.wins + paper.stats.losses
   return <div className="radar-paper">
     <div className="radar-kpis">
-      <div className="radar-kpi"><span>Open paper trades</span><strong className="tabular">{paper.stats.open}</strong><small>Opened automatically at score ≥ 75</small></div>
+      <div className="radar-kpi"><span>Open paper trades</span><strong className="tabular">{paper.stats.open}</strong><small>Opened on each Buy signal or score ≥ 75</small></div>
       <div className="radar-kpi"><span>Win rate (+15% at 15m)</span><strong className="tabular">{formatPercent(paper.stats.winRate, 0)}</strong><small>{paper.stats.wins} wins · {paper.stats.losses} losses</small></div>
       <div className="radar-kpi"><span>Average 15m return</span><strong className={`tabular radar-delta ${returnClass(paper.stats.averageReturn15m)}`}>{formatReturn(paper.stats.averageReturn15m)}</strong><small>Equal stake per trade</small></div>
       <div className="radar-kpi"><span>Model samples</span><strong className="tabular">{model.sampleCount}</strong><small>Next recalibration at {Math.floor(completed / 10) * 10 + 10} trades</small></div>
@@ -62,7 +62,7 @@ export function PaperTrades({ payload, now }: { payload: RadarPayload; now: numb
 
     <section className="radar-card">
       <div className="panel-heading"><span className="number-tag">03</span><h2>Simulated trade history</h2><span className="panel-caption">PAPER ONLY · NO ORDERS ARE PLACED</span></div>
-      {paper.trades.length === 0 ? <p className="radar-muted">No paper trades yet. One opens automatically the first time a coin reaches a setup score of 75.</p>
+      {paper.trades.length === 0 ? <p className="radar-muted">No paper trades yet. One opens automatically the first time a coin becomes a recommended buy or reaches a setup score of 75.</p>
         : <div className="radar-table-wrap">
           <table className="radar-mini-table">
             <thead><tr><th scope="col">Opened</th><th scope="col">Token</th><th scope="col">Score</th><th scope="col">Entry MCap</th><th scope="col">+5m</th><th scope="col">+15m</th><th scope="col">+30m</th><th scope="col">Result</th></tr></thead>

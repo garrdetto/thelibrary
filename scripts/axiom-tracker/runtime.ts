@@ -14,7 +14,7 @@ export const trackerConfig = {
   maxPairAgeMs: 5 * 60 * 60 * 1000,
   discoveryIntervalMs: 20_000,
   snapshotIntervalMs: 10_000,
-  scoringIntervalMs: 10_000,
+  scoringIntervalMs: 5_000,
   runnerScanIntervalMs: 60_000,
   walletSwapIntervalMs: 30_000,
   maxCandidates: envNumber('AXIOM_MAX_CANDIDATES', 30),
