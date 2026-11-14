@@ -322,7 +322,6 @@ export class FoxLakeTown implements GameExtension {
     addEventListener('keydown', (e) => this.key(e))
     this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
     if (this.north) {
-      this.north.ready()
       const land = this.north.link.land
       this.northMap = new TelloMap({
         land,
@@ -549,6 +548,7 @@ export class FoxLakeTown implements GameExtension {
     this.casino.update(dt)
     this.map?.update(dt)
     this.north?.update(dt)
+    this.startMontello(dt)
     this.northMap?.update(dt)
     this.places?.update(dt)
     this.netAcc += dt
@@ -826,6 +826,24 @@ export class FoxLakeTown implements GameExtension {
     if (!this.minimap) return false
     this.minimap.draw(dt, x, z, cameraYaw, facing, markers)
     return true
+  }
+
+  private montelloWait = 6
+
+  /**
+   * Builds Montello once the game is running: a few seconds after you start, at once if you head for Highway 23 or
+   * your home is in Montello. Until then a barrier closes the highway at Montello's edge.
+   */
+  private startMontello(dt: number): void {
+    const north = this.north
+    if (!north || north.townReady || !this.host.playing) return
+    this.montelloWait -= dt
+    const at = this.host.driving?.position ?? this.host.player
+    const home = this.homeLot()
+    const near = at.x < TOWN_SQUARE.x0 + 400 || (home?.y !== undefined)
+    if (this.montelloWait > 0 && !near) return
+    this.montelloWait = Infinity
+    void north.buildTown().catch((e) => console.warn('[foxlake] Montello could not be built', e))
   }
 
   /** True west of Fox Plains' square: on Highway 23 through the woods, or in Montello. */

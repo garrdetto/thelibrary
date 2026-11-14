@@ -55,6 +55,29 @@ export class NorthWorld {
     this.montello = new Montello(land, { host: s.host, physics: s.physics, shift, mats: s.mats, gfx: s.gfx, culler: s.culler, openExit: link.exit, lotHouses: new Set(MONTELLO_LOTS.map((l) => l.scan ?? -1)) })
   }
 
+  /** A barrier across the highway at Montello's edge while the town is still being built (cars would fall through). */
+  private gate: unknown = null
+  private town: Promise<void> | null = null
+
+  /** True once Montello itself is built. */
+  get townReady(): boolean {
+    return this.gate === null && this.town !== null
+  }
+
+  /**
+   * Builds Montello itself (buildings, storefronts, its ground, water and trees), once, after the game has started, so
+   * the loading screen only waits for Fox Plains and the highway. The barrier across the highway comes down when done.
+   */
+  buildTown(progress: (share: number, text: string) => void = () => {}): Promise<void> {
+    this.town ??= this.montello.build(progress).then(() => {
+      this.montello.ready()
+      if (this.gate) this.s.physics.removeStatic(this.gate as Parameters<Physics['removeStatic']>[0])
+      this.gate = null
+    })
+    return this.town
+  }
+
+  /** The highway and its woods, the heightfield under them and the walls (Montello itself comes later, `buildTown`). */
   async build(progress: (share: number, text: string) => void): Promise<void> {
     const { scene } = this.s.host.ctx
     progress(0, 'Clearing Highway 23…')
@@ -67,11 +90,12 @@ export class NorthWorld {
       const b = m.getBoundingInfo().boundingBox
       this.s.culler.addGroup([m], b.centerWorld.x, b.centerWorld.z, Math.hypot(b.extendSizeWorld.x, b.extendSizeWorld.z))
     }
-    await this.montello.build((share, text) => progress(0.1 + share * 0.9, text))
-  }
-
-  ready(): void {
-    this.montello.ready()
+    const end = this.link.road[this.link.road.length - 1]
+    const before = this.link.road[this.link.road.length - 3]
+    const len = Math.hypot(end.x - before.x, end.z - before.z) || 1
+    const across = { x: (end.z - before.z) / len, z: -(end.x - before.x) / len }
+    this.gate = this.wall({ x: end.x - across.x * LINK_WALL, z: end.z - across.z * LINK_WALL }, { x: end.x + across.x * LINK_WALL, z: end.z + across.z * LINK_WALL })
+    progress(1, 'Highway 23 is open')
   }
 
   update(dt: number): void {
@@ -253,16 +277,16 @@ export class NorthWorld {
     this.wall({ x: edge, z: gap[1] }, { x: edge, z: TOWN_SQUARE.z1 })
   }
 
-  private wall(a: { x: number; z: number }, b: { x: number; z: number }): void {
+  private wall(a: { x: number; z: number }, b: { x: number; z: number }): unknown {
     const len = Math.hypot(b.x - a.x, b.z - a.z)
-    if (len < 0.1) return
+    if (len < 0.1) return null
     const terrain = this.s.host.terrain
     const mx = (a.x + b.x) / 2
     const mz = (a.z + b.z) / 2
     const low = Math.min(terrain.heightAt(a.x, a.z), terrain.heightAt(b.x, b.z), terrain.heightAt(mx, mz))
     const c = sceneToTown(mx, low - 4 + WALL_HEIGHT / 2, mz, this._t)
     // The town frame mirrors z, so a scene direction (dx, dz) is (dx, -dz) there.
-    this.s.physics.addStaticBox({ cx: c.x, cy: c.y, cz: c.z, hx: len / 2 + 0.5, hy: WALL_HEIGHT / 2, hz: 0.5, rotY: Math.atan2(b.z - a.z, b.x - a.x) })
+    return this.s.physics.addStaticBox({ cx: c.x, cy: c.y, cz: c.z, hx: len / 2 + 0.5, hy: WALL_HEIGHT / 2, hz: 0.5, rotY: Math.atan2(b.z - a.z, b.x - a.x) })
   }
 
   /** Mixed woods either side of the road: solid near it (where you can walk and drive), scenery further out. */
