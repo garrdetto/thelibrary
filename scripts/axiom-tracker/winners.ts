@@ -59,6 +59,7 @@ function judge(row: WinnerRow, topHoldersPct: number | null): Verdict {
   over('snipers', 20, 'Sniped', 'Snipers held')
   over('insiders', 25, 'Insider heavy', 'Insiders held')
   over('dev', 10, 'Dev heavy', 'The dev held')
+  over('linked', 25, 'Linked wallets', 'Wallet groups funded together held')
   const concentration = typeof traits.top10 === 'number' ? traits.top10 : topHoldersPct
   if (concentration !== null && concentration > 40) flag('Concentrated holders', `Top 10 wallets held ${Math.round(concentration)}% of supply`)
   if (row.mint_auth === 1) flag('Risky token settings', 'Mint authority was still enabled')
@@ -203,7 +204,7 @@ export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, 
       const shares = [...coins.values()].filter((value): value is number => value !== null)
       return { wallet, hits: coins.size, averagePct: shares.length ? Math.round((shares.reduce((total, value) => total + value, 0) / shares.length) * 100) / 100 : null, coins: [...coins.keys()].slice(0, 6).map(mint => ({ mint, symbol: symbols.get(mint)?.symbol ?? '???', pairAddress: symbols.get(mint)?.pair_address ?? null })) }
     }),
-    candidates: tokens.filter(token => token.alerts.length === 0 && (token.marketCap ?? 0) < 5_000_000 && rank(token.mint) > 0).sort((first, second) => rank(second.mint) - rank(first.mint)).slice(0, 12).map(token => token.mint),
+    candidates: tokens.filter(token => token.alerts.length === 0 && !token.holderRisk?.blocked && (token.marketCap ?? 0) < 5_000_000 && rank(token.mint) > 0).sort((first, second) => rank(second.mint) - rank(first.mint)).slice(0, 12).map(token => token.mint),
     updatedAt: now,
   }
   learnerState.winners = summary

@@ -566,3 +566,5 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-verdict-group.negative .radar-study-status { color: var(--radar-down); }
 .radar-negative-list { color: var(--radar-down); margin-bottom: 10px; }
 @media (max-width: 900px) { .radar-verdict-groups { grid-template-columns: 1fr; } }
+.radar-factor-penalty { color: var(--radar-down); }
+.radar-penalty-reasons { font-size: 10px; line-height: 1.4; }

@@ -1,5 +1,6 @@
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { bestPairByMint, fetchDiscoverySources, fetchPairsForMints, readMarket, socialsOf, type DexPair } from './dexscreener.js'
+import { saveAssessment } from './holder-refresh.js'
 import { assessToken } from './rugcheck.js'
 import { createLogger, errorMessage, isMainModule, runLoop, trackerConfig } from './runtime.js'
 import { trackerState, type ActiveCandidate } from './state.js'
@@ -65,20 +66,10 @@ function upsertTokens(database: TrackerDatabase, pairs: DexPair[], boosted: Set<
 async function enrichCandidates(database: TrackerDatabase, candidates: ActiveCandidate[]) {
   const now = Date.now()
   const due = candidates.filter(candidate => now - (enrichedAt.get(candidate.mint) ?? 0) > enrichmentRefreshMs).slice(0, enrichmentsPerCycle)
-  const update = database.prepare('UPDATE tokens SET rug_score = ?, mint_auth = ?, freeze_auth = ?, top10_pct = ? WHERE mint = ?')
   for (const candidate of due) {
     enrichedAt.set(candidate.mint, now)
     try {
-      const assessment = await assessToken(candidate.mint)
-      const flag = (value: boolean | null) => value === null ? null : value ? 1 : 0
-      update.run(assessment.rugScore, flag(assessment.mintAuthority), flag(assessment.freezeAuthority), assessment.top10Pct, candidate.mint)
-      if (assessment.holders.length) {
-        database.transaction(() => {
-          database.prepare('DELETE FROM holders WHERE mint = ?').run(candidate.mint)
-          const insert = database.prepare('INSERT OR REPLACE INTO holders (mint, wallet, pct, updated_at) VALUES (?, ?, ?, ?)')
-          for (const holder of assessment.holders) insert.run(candidate.mint, holder.wallet, holder.pct, now)
-        })()
-      }
+      saveAssessment(database, candidate.mint, await assessToken(candidate.mint), now)
     } catch (error) {
       enrichedAt.set(candidate.mint, now - enrichmentRefreshMs + 2 * 60_000)
       logger.warn('RugCheck enrichment failed', { mint: candidate.mint, error: errorMessage(error) })

@@ -1,4 +1,4 @@
-import type { RadarPulseMetrics, RadarQualityCheck } from '../../src/lib/axiom-radar-types.js'
+import type { RadarHolderTraits, RadarPulseMetrics, RadarQualityCheck } from '../../src/lib/axiom-radar-types.js'
 
 const agePattern = /^\d+(s|m|h|d|w|mo|y)$/
 const percentPattern = /^(\d+(?:\.\d+)?)%$/
@@ -59,6 +59,7 @@ export function parsePulseCard(lines: string[], viewers: number | null, seenAt: 
 
 type QualityInput = {
   pulse: RadarPulseMetrics | null
+  traits?: RadarHolderTraits | null
   marketCap: number | null
   rugTop10Pct: number | null
   mintAuthority: boolean | null
@@ -71,12 +72,20 @@ const band = (value: number, passBelow: number, failAbove: number): RadarQuality
 export function assessQuality(input: QualityInput) {
   const checks: Array<RadarQualityCheck & { weight: number }> = []
   const pulse = input.pulse
-  const top10 = pulse?.top10Pct ?? input.rugTop10Pct
+  const traits = input.traits
+  const top10 = traits ? traits.top10 : pulse?.top10Pct ?? null
+  const dev = traits ? traits.dev : pulse?.devPct ?? null
+  const snipers = traits ? traits.snipers : pulse?.snipersPct ?? null
+  const insiders = traits ? traits.insiders : pulse?.insidersPct ?? null
+  const bundlers = traits ? traits.bundlers : pulse?.bundlersPct ?? null
+  const linked = traits?.linked ?? null
+  const holderCount = traits ? traits.holders : pulse?.holders ?? null
   if (top10 !== null && top10 !== undefined) checks.push({ label: 'Top 10 holders', status: band(top10, 25, 40), detail: `${top10.toFixed(0)}% of supply (healthy under 25%)`, weight: 2 })
-  if (pulse?.devPct !== null && pulse?.devPct !== undefined) checks.push({ label: 'Dev holding', status: band(pulse.devPct, 5, 10), detail: pulse.devSold ? 'Dev has sold' : `${pulse.devPct.toFixed(0)}% (healthy under 5%)`, weight: 1.5 })
-  if (pulse?.snipersPct !== null && pulse?.snipersPct !== undefined) checks.push({ label: 'Snipers', status: band(pulse.snipersPct, 10, 20), detail: `${pulse.snipersPct.toFixed(0)}% (healthy under 10%)`, weight: 1 })
-  if (pulse?.insidersPct !== null && pulse?.insidersPct !== undefined) checks.push({ label: 'Insiders', status: band(pulse.insidersPct, 10, 25), detail: `${pulse.insidersPct.toFixed(0)}% (healthy under 10%)`, weight: 1.5 })
-  if (pulse?.bundlersPct !== null && pulse?.bundlersPct !== undefined) checks.push({ label: 'Bundlers', status: band(pulse.bundlersPct, 10, 25), detail: `${pulse.bundlersPct.toFixed(0)}% (healthy under 10%)`, weight: 1.5 })
+  if (dev !== null) checks.push({ label: 'Dev holding', status: band(dev, 5, 10), detail: pulse?.devSold ? 'Dev has sold' : `${dev.toFixed(0)}% (healthy under 5%)`, weight: 1.5 })
+  if (snipers !== null) checks.push({ label: 'Snipers', status: band(snipers, 10, 20), detail: `${snipers.toFixed(0)}% (healthy under 10%)`, weight: 1 })
+  if (insiders !== null) checks.push({ label: 'Insiders', status: band(insiders, 10, 25), detail: `${insiders.toFixed(0)}% (healthy under 10%)`, weight: 1.5 })
+  if (bundlers !== null) checks.push({ label: 'Bundlers', status: band(bundlers, 10, 25), detail: `${bundlers.toFixed(0)}% (healthy under 10%)`, weight: 1.5 })
+  if (linked !== null) checks.push({ label: 'Linked wallets', status: band(linked, 10, 25), detail: `${linked.toFixed(0)}% held by wallet groups funded together (healthy under 10%)`, weight: 1.5 })
   const marketCap = pulse?.marketCap ?? input.marketCap
   if (pulse?.feesSol !== null && pulse?.feesSol !== undefined && marketCap && marketCap > 0) {
     const perHundredK = pulse.feesSol / (marketCap / 100_000)
@@ -87,13 +96,19 @@ export function assessQuality(input: QualityInput) {
     const status = pulse.devCreated >= 10 && rate < 0.05 ? 'fail' : rate >= 0.3 || (pulse.devCreated <= 3 && pulse.devMigrated >= 1) ? 'pass' : 'warn'
     checks.push({ label: 'Dev track record', status, detail: `${pulse.devMigrated} of ${pulse.devCreated} coins by this dev migrated`, weight: 1 })
   }
-  if (pulse?.holders !== null && pulse?.holders !== undefined) checks.push({ label: 'Holders', status: pulse.holders >= 500 ? 'pass' : pulse.holders >= 150 ? 'warn' : 'fail', detail: `${pulse.holders.toLocaleString()} holders`, weight: 1 })
+  if (holderCount !== null && holderCount !== undefined) checks.push({ label: 'Holders', status: holderCount >= 500 ? 'pass' : holderCount >= 150 ? 'warn' : 'fail', detail: `${holderCount.toLocaleString()} holders`, weight: 1 })
   if (input.mintAuthority !== null) checks.push({ label: 'Mint authority', status: input.mintAuthority ? 'fail' : 'pass', detail: input.mintAuthority ? 'Still enabled: more supply can be created' : 'Revoked', weight: 2 })
   if (input.freezeAuthority !== null) checks.push({ label: 'Freeze authority', status: input.freezeAuthority ? 'fail' : 'pass', detail: input.freezeAuthority ? 'Still enabled: wallets can be frozen' : 'Revoked', weight: 2 })
   const totalWeight = checks.reduce((total, check) => total + check.weight, 0)
   const earned = checks.reduce((total, check) => total + check.weight * (check.status === 'pass' ? 1 : check.status === 'warn' ? 0.5 : 0), 0)
+  const holderLabels: Record<string, string> = { 'Top 10 holders': 'Top 10 wallets hold', 'Dev holding': 'Dev holds', Snipers: 'Snipers hold', Insiders: 'Insiders hold', Bundlers: 'Bundlers hold', 'Linked wallets': 'Linked wallet groups hold' }
+  const values: Record<string, number | null> = { 'Top 10 holders': top10, 'Dev holding': dev, Snipers: snipers, Insiders: insiders, Bundlers: bundlers, 'Linked wallets': linked }
+  const risky = checks.filter(check => check.label in holderLabels && check.status !== 'pass')
+  const blocked = risky.some(check => check.status === 'fail')
+  const multiplier = Math.max(0.2, risky.reduce((total, check) => total * (check.status === 'fail' ? 0.45 : 0.8), 1))
   return {
     score: totalWeight ? Math.round((earned / totalWeight) * 100) : null,
     checks: checks.map(({ label, status, detail }) => ({ label, status, detail })),
+    holderRisk: { blocked, multiplier: Math.round(multiplier * 100) / 100, reasons: risky.map(check => `${holderLabels[check.label]} ${Math.round(values[check.label] ?? 0)}%${check.status === 'fail' ? '' : ' (elevated)'}`) },
   }
 }

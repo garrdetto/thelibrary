@@ -17,7 +17,8 @@ function recordTicks(now: number) {
     if (!market) continue
     const ticks = marketTicks.get(candidate.mint) ?? []
     const card = trackerState.pulseCards.get(candidate.mint)
-    ticks.push({ t: now, price: market.priceUsd, viewers: freshViewerCount(candidate.mint, now, 30_000), liquidity: market.liquidityUsd, marketCap: market.marketCap, holders: card && now - card.seenAt < 60_000 ? card.holders : null, buys: market.buys5m })
+    const holderCount = trackerState.holderCounts.get(candidate.mint)
+    ticks.push({ t: now, price: market.priceUsd, viewers: freshViewerCount(candidate.mint, now, 30_000), liquidity: market.liquidityUsd, marketCap: market.marketCap, holders: card && now - card.seenAt < 60_000 ? card.holders : holderCount && now - holderCount.at < 60_000 ? holderCount.count : null, buys: market.buys5m })
     while (ticks.length && now - ticks[0].t > tickHistoryMs) ticks.shift()
     marketTicks.set(candidate.mint, ticks)
   }

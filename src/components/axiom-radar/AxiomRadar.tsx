@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, BellOff, BellRing, Brain, ChevronDown, Flame, FlaskConical, Gem, List, ListChecks, Radar, Rocket, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
 import { defaultRadarSettings, type RadarSettings, type RadarTheme } from '@/lib/axiom-radar-settings'
 import type { RadarGainWindow, RadarToken } from '@/lib/axiom-radar-types'
-import { formatCount, formatPercent, formatSigned, relativeSeconds } from './format'
+import { formatCount, formatPercent, formatSigned, holderCount, relativeSeconds } from './format'
 import { EarlyRunners, ExplodeView, WatchListView } from './LearnedViews'
 import { MakerView, type MakerSort } from './MakerView'
 import { ResearchView } from './ResearchView'
@@ -217,7 +217,7 @@ export function AxiomRadar() {
     : { tone: 'down', label: 'Tracker offline' }
   const cadence = connection === 'local' ? 'every second, direct from this PC' : connection === 'streaming' ? 'viewers every second, through the site' : connection === 'polling' ? 'every 3 seconds' : ''
   const hasViewerData = tokens.some(token => token.viewers !== null)
-  const hasHolderData = tokens.some(token => token.pulse?.holders !== null && token.pulse?.holders !== undefined)
+  const hasHolderData = tokens.some(token => holderCount(token) !== null)
   const gainSpan = gainWindows.find(item => item.id === gainWindow) ?? gainWindows[3]
   const topGainers = useMemo(() => {
     const gainOf = (token: RadarToken) => {
@@ -282,17 +282,17 @@ export function AxiomRadar() {
           </div>
         </div>
         {topGainers.length === 0 ? <p className="radar-empty-line">{gainMode === 'holders'
-          ? hasHolderData ? `No tracked coin gained holders in the last ${gainSpan.spoken}.` : 'Waiting for holder counts. They come from the coins shown on your Axiom Pulse, so keep Pulse open.'
+          ? hasHolderData ? `No tracked coin gained holders in the last ${gainSpan.spoken}.` : 'Waiting for holder counts. They arrive within a few seconds of a coin being tracked.'
           : hasViewerData ? `No tracked coin gained viewers in the last ${gainSpan.spoken}.` : 'Waiting for viewer counts. Keep Axiom Pulse open in Chrome with the Axiom Radar Bridge extension.'}</p>
           : <ol>{topGainers.map(({ token, gain }, index) => <li key={token.mint}>
             <div role="button" tabIndex={0} className={`radar-row-button ${gainMode === 'viewers' && token.viewerSurge ? 'surging' : ''}`} onClick={() => onOpen(token.mint)} onKeyDown={onActivate(() => onOpen(token.mint))} aria-label={gainMode === 'viewers'
               ? `${token.symbol}, ${token.viewers} viewers, ${formatSigned(gain)} in the last ${gainSpan.spoken}. Open details`
-              : `${token.symbol}, ${token.pulse?.holders ?? 'unknown'} holders, ${formatSigned(gain)} in the last ${gainSpan.spoken}. Open details`}>
+              : `${token.symbol}, ${holderCount(token) ?? 'unknown'} holders, ${formatSigned(gain)} in the last ${gainSpan.spoken}. Open details`}>
               <span className="radar-top3-rank tabular">{index + 1}</span>
               <TokenIcon token={token}/>
               <span className="radar-top3-name"><CoinName pairAddress={token.pairAddress} symbol={token.symbol}/><small>{gainMode === 'holders' ? `${formatCount(token.viewers)} watching` : token.viewerSurge ? 'This coin is gaining viewers quickly' : 'Viewers rising'}</small></span>
               <PriceSpark points={sparkPoints(token, chartWindow)} width={84} height={30}/>
-              <span className="radar-top3-count"><strong className="tabular">{formatCount(gainMode === 'viewers' ? token.viewers : token.pulse?.holders)}</strong><small className="tabular radar-delta up">{formatSigned(gain)}{gainSpan.suffix}</small></span>
+              <span className="radar-top3-count"><strong className="tabular">{formatCount(gainMode === 'viewers' ? token.viewers : holderCount(token))}</strong><small className="tabular radar-delta up">{formatSigned(gain)}{gainSpan.suffix}</small></span>
             </div>
             <AxiomLink pairAddress={token.pairAddress} symbol={token.symbol} size={16}/>
           </li>)}</ol>}

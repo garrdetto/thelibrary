@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { axiomUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
 import { CandleChart } from './CandleChart'
 import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
@@ -160,13 +160,14 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
             <strong>{check.label}</strong>
             <span>{check.detail}</span>
           </li>)}</ul>}
-        {pulse && <dl className="radar-facts">
-          <div><dt>Holders</dt><dd className="tabular">{formatCount(pulse.holders)} {live.holdersChange5m !== null && <small className={`radar-delta ${changeClass(live.holdersChange5m)}`}>{formatSigned(live.holdersChange5m)} in 5m</small>}</dd></div>
-          <div><dt>Fees paid</dt><dd className="tabular">{pulse.feesSol === null ? '—' : `${pulse.feesSol.toFixed(1)} SOL`}</dd></div>
-          <div><dt>Trades</dt><dd className="tabular">{formatCount(pulse.txCount)}</dd></div>
-          <div><dt>Top 10 / dev</dt><dd className="tabular">{percentLabel(pulse.top10Pct)} / {pulse.devSold ? 'sold' : percentLabel(pulse.devPct)}</dd></div>
-          <div><dt>Snipers / insiders</dt><dd className="tabular">{percentLabel(pulse.snipersPct)} / {percentLabel(pulse.insidersPct)}</dd></div>
-          <div><dt>Bundlers</dt><dd className="tabular">{percentLabel(pulse.bundlersPct)}</dd></div>
+        {(live.holderTraits || pulse) && <dl className="radar-facts">
+          <div><dt>Holders</dt><dd className="tabular">{formatCount(holderCount(live))} {live.holdersPerMin !== null && live.holdersPerMin !== undefined && <small className={`radar-delta ${changeClass(live.holdersPerMin)}`}>{formatSigned(live.holdersPerMin)}/min</small>}</dd></div>
+          <div><dt>Top 10 / dev</dt><dd className="tabular">{percentLabel(live.holderTraits?.top10 ?? pulse?.top10Pct)} / {pulse?.devSold ? 'sold' : percentLabel(live.holderTraits?.dev ?? pulse?.devPct)}</dd></div>
+          <div><dt>Snipers / insiders</dt><dd className="tabular">{percentLabel(live.holderTraits?.snipers ?? pulse?.snipersPct)} / {percentLabel(live.holderTraits?.insiders ?? pulse?.insidersPct)}</dd></div>
+          <div><dt>Bundlers</dt><dd className="tabular">{percentLabel(live.holderTraits?.bundlers ?? pulse?.bundlersPct)}</dd></div>
+          <div><dt>Linked wallet groups</dt><dd className="tabular">{percentLabel(live.holderTraits?.linked)}</dd></div>
+          {pulse && <div><dt>Fees paid</dt><dd className="tabular">{pulse.feesSol === null ? '—' : `${pulse.feesSol.toFixed(1)} SOL`}</dd></div>}
+          {pulse && <div><dt>Trades</dt><dd className="tabular">{formatCount(pulse.txCount)}</dd></div>}
         </dl>}
       </section>
 
@@ -198,7 +199,14 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
             <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${Math.round(factor.value * 100)}%` }}/></span>
             <span className="tabular">{factor.available ? `+${factor.contribution.toFixed(1)}` : 'no data'}</span>
           </li>)}
+          {live.holderRisk && live.rawScore !== undefined && <li className="radar-factor-penalty">
+            <span>Holder penalty</span>
+            <span className="radar-penalty-reasons">{live.holderRisk.reasons.join(' · ')}</span>
+            <span className="tabular">{live.score - live.rawScore}</span>
+          </li>}
         </ul>
+        {live.holderRisk?.blocked && <p className="radar-pick-alert" role="note">Kept out of every recommendation while these holder numbers stay this high.</p>}
+        {live.holderTraits?.checkedAt && <p className="radar-note">Holder numbers last checked {relativeSeconds(live.holderTraits.checkedAt, Date.now())}.</p>}
         <dl className="radar-facts">
           <div><dt>RugCheck risk score</dt><dd className="tabular">{live.safety.rugScore ?? '—'}</dd></div>
           <div><dt>Mint authority</dt><dd className={live.safety.mintAuthority ? 'radar-bad' : ''}>{authorityLabel(live.safety.mintAuthority)}</dd></div>

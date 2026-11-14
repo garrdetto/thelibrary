@@ -316,7 +316,7 @@ export function runExplosionCycle(database: TrackerDatabase, model: Model, holde
   }
   learnerState.explode = predictions
   const candidates = tokens
-    .filter(token => predictions.has(token.mint) && token.alerts.length === 0)
+    .filter(token => predictions.has(token.mint) && token.alerts.length === 0 && !token.holderRisk?.blocked)
     .sort((first, second) => (predictions.get(second.mint)?.chance ?? 0) - (predictions.get(first.mint)?.chance ?? 0))
     .slice(0, 12)
     .map(token => token.mint)
