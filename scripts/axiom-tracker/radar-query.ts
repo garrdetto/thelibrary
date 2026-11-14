@@ -217,6 +217,8 @@ function classify(token: RadarToken, settings: RadarSettings, liquidityChange1m:
   ]
   if (buyRules.requireSafe) buyChecks.push([redFlags.length === 0 && token.safety.level !== 'risky', 'No red flags'])
   if (token.holderRisk?.blocked) return { signal: null, reasons: [] as string[], alerts }
+  const rising = (token.priceChange.m5 ?? (token.priceChange.m1 !== null ? token.priceChange.m1 * 2 : null) ?? 0) > 0 && (token.buys5m ?? 0) >= 40 && (token.buyRatio ?? 0) >= 0.45 && token.ageMinutes <= 360 && (token.marketCap ?? 0) <= 20_000_000
+  if (!rising) return { signal: null, reasons: [] as string[], alerts }
   if (!alerts.length && buyChecks.every(([passed]) => passed)) {
     const reasons = buyChecks.map(([, reason]) => reason)
     if (token.viewerSurge) reasons.push('Gaining viewers quickly')
@@ -288,6 +290,30 @@ function holderTraitsFor(database: TrackerDatabase, token: TokenRow, now: number
   return result
 }
 
+/** A coin only keeps its score while it is actually rising on real buying. Flat, falling, dead, old or long-established coins are cut and capped. */
+function momentumCut(input: { s30: number | null; m1: number | null; m5: number | null; buys: number | null; sells: number | null; ageMinutes: number; marketCap: number | null }) {
+  const reasons: string[] = []
+  let multiplier = 1
+  let cap = 100
+  const move = input.m5 ?? (input.m1 !== null ? input.m1 * 2 : input.s30 !== null ? input.s30 * 3 : null)
+  if (move === null) { multiplier *= 0.6; cap = Math.min(cap, 45); reasons.push('No price trend measured yet') }
+  else if (move <= -10) { multiplier *= 0.25; cap = Math.min(cap, 20); reasons.push(`Falling ${Math.abs(move).toFixed(0)}%`) }
+  else if (move <= 0) { multiplier *= 0.4; cap = Math.min(cap, 30); reasons.push('Not rising') }
+  else if (move < 5) { multiplier *= 0.65; cap = Math.min(cap, 50); reasons.push(`Barely rising (+${move.toFixed(1)}%)`) }
+  else if (move < 15) multiplier *= 0.9
+  if (input.m1 !== null && input.m1 <= -8 && move !== null && move > 0) { multiplier *= 0.6; cap = Math.min(cap, 45); reasons.push(`Dropped ${Math.abs(input.m1).toFixed(0)}% in the last minute`) }
+  const buys = input.buys ?? 0
+  if (buys < 10) { multiplier *= 0.2; cap = Math.min(cap, 15); reasons.push('Almost no buys') }
+  else if (buys < 40) { multiplier *= 0.5; cap = Math.min(cap, 30); reasons.push(`Only ${buys} buys in 5 minutes`) }
+  else if (buys < 100) multiplier *= 0.85
+  const trades = buys + (input.sells ?? 0)
+  if (trades >= 20 && buys / trades < 0.45) { multiplier *= 0.6; cap = Math.min(cap, 40); reasons.push('More sells than buys') }
+  if (input.ageMinutes > 360) { multiplier *= 0.4; cap = Math.min(cap, 30); reasons.push('Older than 6 hours') }
+  else if (input.ageMinutes > 120) { multiplier *= 0.7; reasons.push('Older than 2 hours') }
+  if ((input.marketCap ?? 0) > 20_000_000) { multiplier *= 0.3; cap = Math.min(cap, 20); reasons.push('Established large token') }
+  return { multiplier, cap, reasons, stalled: cap <= 30 }
+}
+
 function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: SnapshotRow | undefined, runners: number, weights: RadarWeights, now: number, settings: RadarSettings, traits: RadarHolderTraits | null): BuiltToken {
   const latest = snapshots.at(-1) ?? fallback
   const live = liveFigures(token.mint, now)
@@ -303,6 +329,10 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
   const { holderRisk, ...quality } = assessQuality({ pulse: live.pulse, traits, marketCap, rugTop10Pct: token.top10_pct, mintAuthority: safety.mintAuthority, freezeAuthority: safety.freezeAuthority })
   const { score: rawScore, factors } = scoreSetup({ ...safety, viewers, viewersDelta5m: delta5m, viewersPerMin: live.viewersPerMin, quality: quality.score, runnerWallets: runners, buys5m: buys, sells5m: sells }, weights)
   const transactions = (buys ?? 0) + (sells ?? 0)
+  const runnerChance = learnerState.predictions.get(token.mint)?.runnerChance ?? null
+  const researchScore = runnerChance === null ? null : Math.round(Math.min(100, runnerChance * 135))
+  const baseScore = researchScore === null ? rawScore : Math.round(researchScore * 0.7 + rawScore * 0.3)
+  const momentum = momentumCut({ s30: live.priceChange.s30, m1: live.priceChange.m1, m5: live.priceChange.m5, buys, sells, ageMinutes: Math.max(0, Math.round((now - token.pair_created_at) / 60_000)), marketCap })
   const built: RadarToken = {
     mint: token.mint,
     pairAddress: token.pair_address,
@@ -327,8 +357,10 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     sells5m: sells,
     buyRatio: transactions ? (buys ?? 0) / transactions : null,
     safety: { level: safetyLevel(safety), ...safety },
-    score: holderRisk.blocked ? Math.min(40, Math.round(rawScore * holderRisk.multiplier)) : Math.round(rawScore * holderRisk.multiplier),
-    rawScore,
+    score: Math.min(momentum.cap, holderRisk.blocked ? 30 : 100, Math.round(baseScore * holderRisk.multiplier * momentum.multiplier)),
+    scoreCuts: momentum.reasons,
+    researchScore,
+    rawScore: baseScore,
     holderRisk: holderRisk.reasons.length ? holderRisk : null,
     holderTraits: traits,
     factors,

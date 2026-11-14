@@ -193,15 +193,16 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
 
       <section className="radar-drawer-section">
         <h3>Score breakdown</h3>
+        {live.researchScore !== null && live.researchScore !== undefined && <p className="radar-note">Led by the research: {live.researchScore} from the learned chance to at least double, blended with the live factors below, then cut for bad holder numbers or weak movement.</p>}
         <ul className="radar-factors">
           {live.factors.map(factor => <li key={factor.key} className={factor.available ? '' : 'muted'}>
             <span>{factor.label}</span>
             <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${Math.round(factor.value * 100)}%` }}/></span>
             <span className="tabular">{factor.available ? `+${factor.contribution.toFixed(1)}` : 'no data'}</span>
           </li>)}
-          {live.holderRisk && live.rawScore !== undefined && <li className="radar-factor-penalty">
-            <span>Holder penalty</span>
-            <span className="radar-penalty-reasons">{live.holderRisk.reasons.join(' · ')}</span>
+          {live.rawScore !== undefined && live.score < live.rawScore && <li className="radar-factor-penalty">
+            <span>Score cuts</span>
+            <span className="radar-penalty-reasons">{[...(live.holderRisk?.reasons ?? []), ...(live.scoreCuts ?? [])].join(' · ')}</span>
             <span className="tabular">{live.score - live.rawScore}</span>
           </li>}
         </ul>
