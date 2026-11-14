@@ -87,6 +87,8 @@ export type LifecycleRow = {
   peak_mcap: number | null
   peak_mcap_at: number | null
   last_mcap: number | null
+  traits_json: string | null
+  holders_peak: number | null
 }
 type Sample = { values: FeatureValues; runner: boolean; rugged: boolean; lifeMinutes: number | null; peakMinutes: number; peakMultiple: number }
 type Model = { classifier: Classifier; samples: Sample[]; holdout: ReturnType<typeof holdoutAccuracy> }
@@ -252,12 +254,21 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
     first_mcap = COALESCE(first_mcap, ?), peak_mcap = ?, peak_mcap_at = ?, last_mcap = ? WHERE mint = ?`)
   const close = database.prepare('UPDATE coin_lifecycles SET outcome = ?, closed_at = ?, rugged_at = COALESCE(rugged_at, ?), rug_kind = COALESCE(rug_kind, ?) WHERE mint = ?')
   const grow = database.prepare('UPDATE coin_lifecycles SET peak_mcap_at = CASE WHEN ? > COALESCE(peak_mcap, 0) THEN ? ELSE peak_mcap_at END, peak_mcap = MAX(COALESCE(peak_mcap, 0), ?), last_mcap = ? WHERE mint = ?')
+  const traits = database.prepare('UPDATE coin_lifecycles SET traits_json = ?, holders_peak = ? WHERE mint = ?')
   let closed = 0
   database.transaction(() => {
     for (const token of tokens) {
       const price = token.priceUsd
       if (!price || price <= 0) continue
       const row = find.get(token.mint) as LifecycleRow | undefined
+      if (row && token.pulse) {
+        const known = row.traits_json ? JSON.parse(row.traits_json) as Record<string, number | null> : {}
+        const worst = (key: string, value: number | null) => value === null ? known[key] ?? null : Math.max(known[key] ?? 0, value)
+        const next = { top10: worst('top10', token.pulse.top10Pct), dev: worst('dev', token.pulse.devSold ? 0 : token.pulse.devPct), snipers: worst('snipers', token.pulse.snipersPct), insiders: worst('insiders', token.pulse.insidersPct), bundlers: worst('bundlers', token.pulse.bundlersPct) }
+        const holdersPeak = Math.max(row.holders_peak ?? 0, token.pulse.holders ?? 0) || null
+        const encoded = JSON.stringify(next)
+        if (encoded !== row.traits_json || holdersPeak !== row.holders_peak) traits.run(encoded, holdersPeak, token.mint)
+      }
       if (!row) {
         insert.run(token.mint, token.symbol, token.pairCreatedAt || now, now, price, price, now, token.liquidityUsd, price, now, token.marketCap, token.marketCap, now, token.marketCap)
         continue
@@ -341,6 +352,9 @@ export function runLearnerCycle(database: TrackerDatabase, model: Model, now = D
 
 export function prepareLearner(database: TrackerDatabase) {
   database.exec(learnerSchema)
+  const columns = new Set((database.prepare('PRAGMA table_info(coin_lifecycles)').all() as Array<{ name: string }>).map(column => column.name))
+  if (!columns.has('traits_json')) database.exec('ALTER TABLE coin_lifecycles ADD COLUMN traits_json TEXT')
+  if (!columns.has('holders_peak')) database.exec('ALTER TABLE coin_lifecycles ADD COLUMN holders_peak INTEGER')
   const added = backfill(database)
   if (added) logger.info('Learned from stored history', { coins: added })
   return loadModel(database)

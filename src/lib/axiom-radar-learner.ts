@@ -101,6 +101,10 @@ export type RadarWinner = {
   early: RadarEarlyNumbers
   matched: string[]
   crashKind: string | null
+  verdict: 'positive' | 'negative'
+  negatives: string[]
+  holdersPeak: number | null
+  topHoldersPct: number | null
 }
 
 export type RadarWinnerWallet = { wallet: string; hits: number; averagePct: number | null; coins: Array<{ mint: string; symbol: string; pairAddress: string | null }> }
@@ -114,6 +118,10 @@ export type RadarWinnersSummary = {
   minimumMultiple: number
   top: RadarWinner[]
   jumps: RadarWinner[]
+  positives: number
+  negatives: number
+  negativeBreakdown: Array<{ label: string; count: number }>
+  separators: string[]
   rules: RadarResearchRule[]
   ladder: { start: number; base: number; steps: Array<{ target: number; count: number }> }
   traits: string[]

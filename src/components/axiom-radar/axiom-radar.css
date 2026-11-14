@@ -555,3 +555,14 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-delta.warn { color: var(--radar-warn); }
 .radar-muted-cell { color: var(--muted); }
 .radar-rebuy-list { margin-top: 14px; }
+.radar-verdict-breakdown { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+.radar-verdict-separators { margin-top: 16px; }
+.radar-verdict-separators h3, .radar-verdict-group h3 { font-size: 13px; font-weight: 600; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+.radar-verdict-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 18px; }
+.radar-verdict-group { min-width: 0; border-top: 3px solid var(--border); padding-top: 12px; }
+.radar-verdict-group.positive { border-top-color: var(--radar-up); }
+.radar-verdict-group.negative { border-top-color: var(--radar-down); }
+.radar-verdict-group .radar-note { margin: 0 0 10px; }
+.radar-verdict-group.negative .radar-study-status { color: var(--radar-down); }
+.radar-negative-list { color: var(--radar-down); margin-bottom: 10px; }
+@media (max-width: 900px) { .radar-verdict-groups { grid-template-columns: 1fr; } }

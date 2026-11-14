@@ -69,29 +69,45 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
     </section>}
 
     {winners && <section className="radar-card">
-      <div className="panel-heading"><h2>Biggest jumps studied</h2><span className="panel-caption">{winners.jumps.length} COINS</span></div>
-      <p className="radar-note">Kept permanently, including coins that later crashed. Open a coin to see what was recorded about it.</p>
-      {winners.jumps.length === 0 ? <p className="radar-muted">No tracked coin has grown {winners.minimumMultiple}x yet.</p> : <ul className="radar-study-list">{winners.jumps.map(coin => <li key={coin.mint}>
-        <details>
-          <summary>
-            <CoinName pairAddress={coin.pairAddress} symbol={coin.symbol}/>
-            <span className="tabular radar-delta up">{coin.multiple}x</span>
-            <span className="tabular">{formatUsd(coin.firstMcap)} → {formatUsd(coin.peakMcap)}</span>
-            {coin.multiple >= 10 && coin.peakMcap >= 200_000 && <span className="radar-tag">10x to $200K+</span>}
-            <span className={`radar-study-status ${coin.status}`}>{statusLabels[coin.status]}</span>
-          </summary>
-          <div className="radar-study-body">
-            <p className="radar-study-links"><AxiomLink pairAddress={coin.pairAddress} symbol={coin.symbol} size={16}/>{live.has(coin.mint) && <button type="button" className="radar-link-button" onClick={() => onOpen(coin.mint)}>Open live details</button>}</p>
-            <ul className="radar-learn-list">
-              <li>First seen {formatClock(coin.firstSeenAt)} at {formatUsd(coin.firstMcap)}, peaked at {formatUsd(coin.peakMcap)} after {coin.minutesToPeak} minutes ({coin.multiple}x).</li>
-              <li>One minute in: {earlyLine(coin.early)}.</li>
-              <li>{coin.status === 'crashed' ? `Crashed${coin.lifeMinutes !== null ? ` ${coin.lifeMinutes} minutes after launch` : ''}${coin.crashKind ? ` (${coin.crashKind})` : ''}.` : coin.status === 'running' ? 'Still being tracked and has not crashed.' : coin.status === 'holding' ? 'Held its value for the 4 hours it was watched.' : 'Faded off the radar without a sharp crash.'}</li>
-              <li>{coin.winnerWallets ? `${coin.winnerWallets} of its top holders also held another winner.` : 'None of its recorded top holders held another winner.'}</li>
-              <li>{coin.matched.length ? `Research findings it matched early: ${coin.matched.join('; ')}.` : 'It matched none of the current research findings early on, so it is a pattern the research does not explain yet.'}</li>
-            </ul>
+      <div className="panel-heading"><h2>Biggest jumps studied</h2><span className="panel-caption">{winners.positives} POSITIVE · {winners.negatives} NEGATIVE</span></div>
+      <p className="radar-note">Every coin that grew {winners.minimumMultiple}x or more is kept permanently and sorted into two groups. A coin is negative if it crashed, gave back most of its gain, was bundled, sniped or insider heavy, had a few wallets holding most of the supply, or had risky token settings, however many holders or however big a gain it showed. Open a coin to see what was recorded about it.</p>
+      {winners.negativeBreakdown.length > 0 && <p className="radar-verdict-breakdown">{winners.negativeBreakdown.map(item => <span key={item.label} className="radar-tag">{item.label} <strong className="tabular">{item.count}</strong></span>)}</p>}
+      {winners.separators.length > 0 && <div className="radar-verdict-separators">
+        <h3>What separated the positives from the negatives</h3>
+        <ul className="radar-learn-list">{winners.separators.map(item => <li key={item}>{item}</li>)}</ul>
+      </div>}
+      <div className="radar-verdict-groups">
+        {(['positive', 'negative'] as const).map(verdict => {
+          const group = winners.jumps.filter(coin => coin.verdict === verdict)
+          return <div key={verdict} className={`radar-verdict-group ${verdict}`}>
+            <h3>{verdict === 'positive' ? 'Positive coins' : 'Negative coins'} <span className="tabular">{group.length}</span></h3>
+            <p className="radar-note">{verdict === 'positive' ? 'Grew and showed none of the negative traits. These are the patterns worth finding again.' : 'Grew, but with traits that mark a coin to avoid or to get out of early.'}</p>
+            {group.length === 0 ? <p className="radar-muted">{verdict === 'positive' ? 'No studied coin has stayed clean yet.' : 'None yet.'}</p> : <ul className="radar-study-list">{group.map(coin => <li key={coin.mint}>
+              <details>
+                <summary>
+                  <CoinName pairAddress={coin.pairAddress} symbol={coin.symbol}/>
+                  <span className="tabular radar-delta up">{coin.multiple}x</span>
+                  <span className="tabular">{formatUsd(coin.firstMcap)} → {formatUsd(coin.peakMcap)}</span>
+                  {coin.multiple >= 10 && coin.peakMcap >= 200_000 && <span className="radar-tag">10x to $200K+</span>}
+                  <span className={`radar-study-status ${coin.status}`}>{verdict === 'negative' ? coin.negatives[0] : statusLabels[coin.status]}</span>
+                </summary>
+                <div className="radar-study-body">
+                  <p className="radar-study-links"><AxiomLink pairAddress={coin.pairAddress} symbol={coin.symbol} size={16}/>{live.has(coin.mint) && <button type="button" className="radar-link-button" onClick={() => onOpen(coin.mint)}>Open live details</button>}</p>
+                  {coin.negatives.length > 0 && <ul className="radar-learn-list radar-negative-list">{coin.negatives.map(item => <li key={item}>{item}</li>)}</ul>}
+                  <ul className="radar-learn-list">
+                    <li>First seen {formatClock(coin.firstSeenAt)} at {formatUsd(coin.firstMcap)}, peaked at {formatUsd(coin.peakMcap)} after {coin.minutesToPeak} minutes ({coin.multiple}x).</li>
+                    <li>One minute in: {earlyLine(coin.early)}.</li>
+                    <li>{coin.holdersPeak ? `Most holders seen: ${formatCount(coin.holdersPeak)}.` : 'Holder count was not recorded (the coin was not on your Pulse).'}{coin.topHoldersPct !== null ? ` Its top 10 wallets held ${Math.round(coin.topHoldersPct)}% of supply.` : ''}</li>
+                    <li>{coin.status === 'crashed' ? `Crashed${coin.lifeMinutes !== null ? ` ${coin.lifeMinutes} minutes after launch` : ''}${coin.crashKind ? ` (${coin.crashKind})` : ''}.` : coin.status === 'running' ? 'Still being tracked and has not crashed.' : coin.status === 'holding' ? 'Held its value for the 4 hours it was watched.' : 'Faded off the radar without a sharp crash.'}</li>
+                    <li>{coin.winnerWallets ? `${coin.winnerWallets} of its top holders also held another winner.` : 'None of its recorded top holders held another winner.'}</li>
+                    <li>{coin.matched.length ? `Research findings it matched early: ${coin.matched.join('; ')}.` : 'It matched none of the current research findings early on, so it is a pattern the research does not explain yet.'}</li>
+                  </ul>
+                </div>
+              </details>
+            </li>)}</ul>}
           </div>
-        </details>
-      </li>)}</ul>}
+        })}
+      </div>
     </section>}
 
     {advice && <section className="radar-card">

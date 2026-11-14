@@ -3,6 +3,7 @@ import type { RadarToken } from '../../src/lib/axiom-radar-types.js'
 import type { TrackerDatabase } from './db.js'
 import { lifecycleSpecs, lifecycleStart, readFeatures, type LifecycleRow } from './learner.js'
 import { learnerState } from './learner-state.js'
+import { safetyLevel } from './model.js'
 import { chanceOf, holdoutAccuracy, median, passesRule, splitRules, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues, type SplitRule } from './logistic.js'
 
 const minimumMultiple = 3
@@ -26,7 +27,8 @@ CREATE TABLE IF NOT EXISTS winner_wallets (
 CREATE INDEX IF NOT EXISTS winner_wallets_wallet ON winner_wallets (wallet);
 `
 
-type WinnerRow = LifecycleRow & { pair_address: string | null }
+type WinnerRow = LifecycleRow & { pair_address: string | null; rug_score: number | null; mint_auth: number | null; freeze_auth: number | null; top10_pct: number | null }
+type Verdict = { negatives: string[]; kinds: string[]; topHoldersPct: number | null }
 export type WinnersModel = {
   classifier: Classifier
   values: FeatureValues[]
@@ -34,6 +36,7 @@ export type WinnersModel = {
   hitRate: number | null
   winners: WinnerRow[]
   rows: WinnerRow[]
+  verdicts: Map<string, Verdict>
   rules: SplitRule[]
   walletCoins: Map<string, Map<string, number | null>>
 }
@@ -44,11 +47,31 @@ const isWinner = (row: LifecycleRow) => {
   return (row.first_mcap ?? Infinity) < maximumStartMcap && (row.peak_mcap ?? 0) >= minimumPeakMcap && multiple >= minimumMultiple && multiple <= maximumMultiple
 }
 
+function judge(row: WinnerRow, topHoldersPct: number | null): Verdict {
+  const negatives: string[] = []
+  const kinds: string[] = []
+  const flag = (kind: string, text: string) => { kinds.push(kind); negatives.push(text) }
+  if (row.rugged_at !== null) flag('Crashed', `Crashed ${Math.round((row.rugged_at - lifecycleStart(row)) / 60_000)} minutes after launch${row.rug_kind ? ` (${row.rug_kind})` : ''}`)
+  else if (row.outcome !== 'open' && row.last_price <= row.peak_price * 0.4) flag('Gave back its gain', `Ended ${Math.round((1 - row.last_price / row.peak_price) * 100)}% below its peak`)
+  const traits = row.traits_json ? JSON.parse(row.traits_json) as Record<string, number | null> : {}
+  const over = (key: string, limit: number, kind: string, label: string) => { const value = traits[key]; if (typeof value === 'number' && value > limit) flag(kind, `${label} ${Math.round(value)}% of supply`) }
+  over('bundlers', 25, 'Bundled', 'Bundlers held')
+  over('snipers', 20, 'Sniped', 'Snipers held')
+  over('insiders', 25, 'Insider heavy', 'Insiders held')
+  over('dev', 10, 'Dev heavy', 'The dev held')
+  const concentration = typeof traits.top10 === 'number' ? traits.top10 : topHoldersPct
+  if (concentration !== null && concentration > 40) flag('Concentrated holders', `Top 10 wallets held ${Math.round(concentration)}% of supply`)
+  if (row.mint_auth === 1) flag('Risky token settings', 'Mint authority was still enabled')
+  if (row.freeze_auth === 1) flag('Risky token settings', 'Freeze authority was still enabled')
+  if (row.rug_score !== null && safetyLevel({ rugScore: row.rug_score, mintAuthority: row.mint_auth === null ? null : row.mint_auth === 1, freezeAuthority: row.freeze_auth === null ? null : row.freeze_auth === 1, top10Pct: null }) === 'risky') flag('RugCheck risky', 'RugCheck rated it risky')
+  return { negatives, kinds: [...new Set(kinds)], topHoldersPct: concentration }
+}
+
 const money = (value: number) => value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(1)}M` : value >= 1_000 ? `$${Math.round(value / 1_000)}K` : `$${Math.round(value)}`
 
 export function loadWinnersModel(database: TrackerDatabase): WinnersModel {
   database.exec(winnersSchema)
-  const rows = database.prepare('SELECT l.*, t.pair_address FROM coin_lifecycles l LEFT JOIN tokens t ON t.mint = l.mint ORDER BY l.first_seen_at ASC').all() as WinnerRow[]
+  const rows = database.prepare('SELECT l.*, t.pair_address, t.rug_score, t.mint_auth, t.freeze_auth, t.top10_pct FROM coin_lifecycles l LEFT JOIN tokens t ON t.mint = l.mint ORDER BY l.first_seen_at ASC').all() as WinnerRow[]
   const winners = rows.filter(isWinner).sort((first, second) => (second.peak_mcap ?? 0) - (first.peak_mcap ?? 0))
   const training = rows.filter(row => row.features_json !== null && (row.outcome !== 'open' || isWinner(row)))
   const values = training.map(row => JSON.parse(row.features_json as string) as FeatureValues)
@@ -66,7 +89,12 @@ export function loadWinnersModel(database: TrackerDatabase): WinnersModel {
       walletCoins.set(holder.wallet, coins)
     }
   }
-  return { classifier: trainClassifier(lifecycleSpecs, values, labels, minimumSamples), values, labels, hitRate: holdoutAccuracy(lifecycleSpecs, values, labels, minimumSamples)?.flaggedHitRate ?? null, winners, rows, rules: splitRules(lifecycleSpecs, values, labels), walletCoins }
+  const verdicts = new Map<string, Verdict>()
+  for (const winner of winners) {
+    const shares = (holders.all(winner.mint, poolShare) as Array<{ wallet: string; pct: number | null }>).filter(holder => !sharedAccounts.has(holder.wallet)).map(holder => holder.pct ?? 0).sort((first, second) => second - first).slice(0, 10)
+    verdicts.set(winner.mint, judge(winner, shares.length >= 5 ? Math.round(shares.reduce((total, value) => total + value, 0) * 10) / 10 : null))
+  }
+  return { verdicts, classifier: trainClassifier(lifecycleSpecs, values, labels, minimumSamples), values, labels, hitRate: holdoutAccuracy(lifecycleSpecs, values, labels, minimumSamples)?.flaggedHitRate ?? null, winners, rows, rules: splitRules(lifecycleSpecs, values, labels), walletCoins }
 }
 
 function sharedWalletCount(model: WinnersModel, wallets: string[], mint: string) {
@@ -140,10 +168,18 @@ export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, 
     early: { viewers: pick('viewers'), buys5m: pick('buys5m'), volume5m: pick('volume5m'), marketCap: pick('marketCap'), ageAtSight: pick('ageAtSight'), buyRatio: pick('buyRatio') },
     matched: model.rules.filter(rule => passesRule(rule, early)).map(rule => rule.label),
     crashKind: row.rug_kind,
+    verdict: (model.verdicts.get(row.mint)?.negatives.length ?? 0) > 0 ? 'negative' : 'positive',
+    negatives: model.verdicts.get(row.mint)?.negatives ?? [],
+    holdersPeak: row.holders_peak,
+    topHoldersPct: model.verdicts.get(row.mint)?.topHoldersPct ?? null,
     }
   }
   const top = model.winners.slice(0, 40).map(describe)
-  const jumps = model.winners.slice().sort((first, second) => multipleOf(second) - multipleOf(first)).slice(0, 60).map(describe)
+  const jumps = model.winners.slice().sort((first, second) => multipleOf(second) - multipleOf(first)).slice(0, 80).map(describe)
+  const isPositive = (row: WinnerRow) => (model.verdicts.get(row.mint)?.negatives.length ?? 0) === 0
+  const studied = model.winners.filter(row => row.features_json !== null)
+  const kinds = new Map<string, number>()
+  for (const verdict of model.verdicts.values()) for (const kind of verdict.kinds) kinds.set(kind, (kinds.get(kind) ?? 0) + 1)
   const lowStart = model.rows.filter(row => row.first_mcap !== null && row.first_mcap <= ladderStart && multipleOf(row) <= maximumMultiple)
   const symbols = new Map(model.winners.map(row => [row.mint, row]))
   const summary: RadarWinnersSummary = {
@@ -155,6 +191,10 @@ export function runWinnersCycle(database: TrackerDatabase, model: WinnersModel, 
     minimumMultiple,
     top,
     jumps,
+    positives: model.winners.filter(isPositive).length,
+    negatives: model.winners.filter(row => !isPositive(row)).length,
+    negativeBreakdown: [...kinds].sort((first, second) => second[1] - first[1]).map(([label, count]) => ({ label, count })),
+    separators: splitRules(lifecycleSpecs, studied.map(row => JSON.parse(row.features_json as string) as FeatureValues), studied.map(isPositive)).slice(0, 5).map(rule => `${rule.label}: ${Math.round(rule.rate * 100)}% stayed positive, vs ${Math.round(rule.otherRate * 100)}% otherwise`),
     rules: model.rules.map(rule => ({ key: rule.key, label: rule.label, winnerRate: rule.rate, otherRate: rule.otherRate })),
     ladder: { start: ladderStart, base: lowStart.length, steps: ladderTargets.map(target => ({ target, count: lowStart.filter(row => (row.peak_mcap ?? 0) >= target).length })) },
     traits: model.rules.slice(0, 5).map(rule => `${rule.label}: ${Math.round(rule.rate * 100)}% became big winners, vs ${Math.round(rule.otherRate * 100)}% otherwise`),

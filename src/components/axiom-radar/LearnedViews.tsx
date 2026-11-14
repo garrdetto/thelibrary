@@ -92,9 +92,9 @@ export function WatchListView({ payload, tokens, onOpen }: ViewProps) {
   return <div className="radar-learn">
     <section aria-labelledby="radar-watchlist-title">
       <div className="radar-section-head"><h2 id="radar-watchlist-title"><ListChecks size={16} aria-hidden="true"/> Watch List <span className="tabular">{summary.top.length}</span></h2>
-        <p>The coins this tracker watched grow the most: at least {summary.minimumMultiple}x from where it first saw them, ranked by the biggest market cap they reached.</p></div>
+        <p>The coins this tracker watched grow the most: at least {summary.minimumMultiple}x from where it first saw them, ranked by the biggest market cap they reached. {summary.positives} are positive and {summary.negatives} are negative; Research Info shows why.</p></div>
       {summary.top.length === 0 ? <p className="radar-empty-line">No tracked coin has grown that much yet.</p> : <div className="radar-table-wrap"><table className="radar-mini-table radar-watchlist">
-        <thead><tr><th scope="col">Coin</th><th scope="col">First seen at</th><th scope="col">Peak</th><th scope="col">Growth</th><th scope="col">Time to peak</th><th scope="col">What happened</th><th scope="col">Shared wallets</th></tr></thead>
+        <thead><tr><th scope="col">Coin</th><th scope="col">First seen at</th><th scope="col">Peak</th><th scope="col">Growth</th><th scope="col">Time to peak</th><th scope="col">What happened</th><th scope="col">Shared wallets</th><th scope="col">Verdict</th></tr></thead>
         <tbody>{summary.top.map(coin => <tr key={coin.mint}>
           <td><CoinName pairAddress={coin.pairAddress} symbol={coin.symbol}/> <AxiomLink pairAddress={coin.pairAddress} symbol={coin.symbol}/>{live.has(coin.mint) && <button type="button" className="radar-link-button radar-details-button" onClick={() => onOpen(coin.mint)}>details</button>}</td>
           <td className="tabular">{formatUsd(coin.firstMcap)} <small>{formatClock(coin.firstSeenAt)}</small></td>
@@ -103,6 +103,7 @@ export function WatchListView({ payload, tokens, onOpen }: ViewProps) {
           <td className="tabular">{coin.minutesToPeak} min</td>
           <td>{statusLabels[coin.status]}{coin.lifeMinutes !== null ? ` at ${coin.lifeMinutes} min` : ''}</td>
           <td className="tabular">{coin.winnerWallets || '—'}</td>
+          <td className={coin.verdict === 'negative' ? 'radar-delta down' : 'radar-delta up'} title={coin.negatives.join(' · ') || undefined}>{coin.verdict === 'negative' ? `Negative: ${coin.negatives[0]}` : 'Positive'}</td>
         </tr>)}</tbody>
       </table></div>}
     </section>

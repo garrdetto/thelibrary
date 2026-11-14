@@ -29,7 +29,7 @@ function researchFilters(payload: RadarPayload): MakerFilter[] {
     { key: 'early-phase', label: 'Still early in its run', detail: 'Less than half way to when similar coins usually crashed', test: token => token.outlook?.phase === 'early' },
     { key: 'young', label: 'Under 30 minutes old', detail: 'Winners were usually found within minutes of launch', test: token => token.ageMinutes <= 30 },
     { key: 'small', label: 'Market cap under $40K', detail: 'The range the biggest jumps started from', test: token => token.marketCap !== null && token.marketCap < 40_000 },
-    { key: 'clean', label: 'No red flags', detail: 'No rug-style alerts and no failed holder checks', test: token => token.alerts.length === 0 && !token.quality.checks.some(check => check.status === 'fail') },
+    { key: 'clean', label: 'No negative characteristics', detail: 'No crash, no warnings, and no failed holder checks such as bundlers, snipers, insiders or concentrated wallets', test: token => token.alerts.length === 0 && !token.advice?.crashed && !token.quality.checks.some(check => check.status === 'fail') },
   ]
 }
 
