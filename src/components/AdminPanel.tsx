@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from 'react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { AudioLines, Car, FerrisWheel, Flag, Gauge, Image, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Settings2, ShieldCheck, Sparkles, Target, Trophy, Users } from 'lucide-react'
+import { AudioLines, Car, FerrisWheel, Flag, Gauge, Image, ImageUp, LayoutDashboard, LayoutGrid, LoaderCircle, MessageCircle, Music2, Package, Settings2, ShieldCheck, Sparkles, Target, Trophy, Users } from 'lucide-react'
 import { WorkspaceAdmin } from './WorkspaceAdmin'
 import { SiteChanges } from './SiteChanges'
 import { AdminOverview } from './admin/AdminOverview'
@@ -14,6 +14,7 @@ const MapleStreetVehicleEditor = lazy<ComponentType>(() => import.meta.env.SSR ?
 const ShortTrackCarEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./shorttrack/cars/CarEditor'))
 const ShortTrackHandling = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./shorttrack/HandlingSettings'))
 const DartsSettings = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./darts/DartsSettings'))
+const ImageEditor = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./admin/ImageEditor'))
 const BushLeagueAssets = lazy<ComponentType>(() => import.meta.env.SSR ? Promise.resolve({ default: () => null }) : import('./bushleague/BushLeagueAssets'))
 
 const areas = [
@@ -31,6 +32,7 @@ const sections = [
   { id: 'voice', area: 'site', group: 'Studios', label: 'Voice Generator', icon: AudioLines, title: 'Voice Generator', blurb: 'Design, remix and delete ElevenLabs voices, then hear them read your own text.' },
   { id: 'people', area: 'site', group: 'Accounts', label: 'People & permissions', icon: Users, title: 'People & permissions', blurb: 'Choose who can use each studio. Passwords are never shown; reset one if someone forgets theirs.' },
   { id: 'changes', area: 'site', group: 'Site', label: 'Site changes', icon: Sparkles, title: 'Site changes', blurb: 'Ask Claude to change the site, follow each run and publish or undo the result.' },
+  { id: 'image-editor', area: 'site', group: 'Tools', label: 'Image editor', icon: ImageUp, title: 'Image editor', blurb: 'Upload images in bulk, select text to remove, rewrite or fill with Gemini, and save them as numbered files: name1, name2 and on until you change the name.' },
   { id: 'maplestreet', area: 'modules', group: 'Fox Plains', label: 'Items', icon: Package, title: 'Fox Plains items', blurb: 'Publish Buy-mode furniture and props to the shared town.' },
   { id: 'vehicles', area: 'modules', group: 'Fox Plains', label: 'Vehicles', icon: Car, title: 'Fox Plains vehicles', blurb: 'Build, tune and publish vehicles for the dealer lot and neighbor traffic.' },
   { id: 'shorttrack-cars', area: 'modules', group: 'Short Track Showdown', label: 'Race cars', icon: Flag, title: 'Short Track race cars', blurb: 'Generate car bodies with Meshy, fit wheels, paint and race numbers, and publish them to the Short Track Showdown vehicle list.' },
@@ -127,6 +129,7 @@ export function AdminPanel({ studio, children, onOpenStudio, onOpenSection }: { 
         {studio && children}
         {section === 'people' && <WorkspaceAdmin/>}
         {section === 'changes' && <SiteChanges/>}
+        {section === 'image-editor' && <Suspense fallback={<Loading text="Opening the image editor…"/>}><ImageEditor/></Suspense>}
         {section === 'maplestreet' && <Suspense fallback={<Loading text="Opening the item editor…"/>}><MapleStreetItemEditor/></Suspense>}
         {section === 'vehicles' && <Suspense fallback={<Loading text="Opening the vehicle editor…"/>}><MapleStreetVehicleEditor/></Suspense>}
         {section === 'shorttrack-cars' && <Suspense fallback={<Loading text="Opening the car editor…"/>}><ShortTrackCarEditor/></Suspense>}
