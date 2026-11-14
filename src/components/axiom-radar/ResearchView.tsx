@@ -25,6 +25,7 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
   const winners = payload.winners
   const explosions = payload.explosions
   const learner = payload.learner
+  const advice = payload.adviceStudy
   if (!winners && !explosions && !learner) return <p className="radar-empty-line">Research has not reported yet. It starts a minute or two after the tracker on your PC restarts with this update.</p>
   const live = new Set(tokens.map(token => token.mint))
   return <div className="radar-learn">
@@ -91,6 +92,24 @@ export function ResearchView({ payload, tokens, onOpen }: { payload: RadarPayloa
           </div>
         </details>
       </li>)}</ul>}
+    </section>}
+
+    {advice && <section className="radar-card">
+      <div className="panel-heading"><h2>When to get out, and when not to buy again</h2><span className="panel-caption">RE-TESTED {formatClock(advice.updatedAt)}</span></div>
+      <p className="radar-note">Each warning sign is tested against what coins did in the next 5 minutes. A sign is only used for advice when the numbers back it. Normally {advice.baseline.fell20Pct}% of coins fall 20%+ within 5 minutes and {advice.baseline.rose20Pct}% rise 20%+.</p>
+      <div className="radar-table-wrap"><table className="radar-mini-table">
+        <thead><tr><th scope="col">Warning sign</th><th scope="col">Used as</th><th scope="col">Times seen</th><th scope="col">Fell 20%+</th><th scope="col">Rose 20%+</th><th scope="col">Typical next 5 min</th></tr></thead>
+        <tbody>{advice.signs.map(sign => <tr key={sign.key}>
+          <td>{sign.label}</td>
+          <td className={sign.level === 'exit' ? 'radar-delta down' : sign.level === 'tighten' ? 'radar-delta warn' : 'radar-muted-cell'}>{sign.level === 'exit' ? 'Get out' : sign.level === 'tighten' ? 'Be careful' : sign.samples < 20 ? 'Not enough data' : 'Not used'}</td>
+          <td className="tabular">{sign.samples}</td>
+          <td className="tabular">{sign.fell20Pct === null ? '—' : `${sign.fell20Pct}%`}</td>
+          <td className="tabular">{sign.rose20Pct === null ? '—' : `${sign.rose20Pct}%`}</td>
+          <td className="tabular">{sign.medianNext5mPct === null ? '—' : `${sign.medianNext5mPct > 0 ? '+' : ''}${sign.medianNext5mPct}%`}</td>
+        </tr>)}</tbody>
+      </table></div>
+      <ul className="radar-learn-list radar-rebuy-list">{advice.rebuy.map(entry => <li key={entry.dropPct}>After falling {entry.dropPct}% from its high: {entry.newHighPct === null ? 'not enough coins seen yet' : `${entry.newHighPct}% made a new high within 30 minutes`} ({entry.samples} coins).</li>)}</ul>
+      <p className="radar-note">{advice.unknownSharePct}% of warning moments could not be scored because the coin left the radar before 5 minutes passed. The tracker now keeps following coins after they leave, so this shrinks and the results get more reliable over the next day.</p>
     </section>}
 
     <RunTimingPanel payload={payload}/>

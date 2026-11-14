@@ -127,6 +127,17 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           </div>}
       </section>
 
+      {live.advice && <section className={`radar-drawer-section radar-advice ${live.advice.exit}`}>
+        <h3>Exit and rebuy advice <small>from tested warning signs</small></h3>
+        <dl className="radar-facts">
+          <div><dt>If you hold it</dt><dd>{live.advice.exit === 'exit' ? 'Get out' : live.advice.exit === 'tighten' ? 'Be careful, tighten up' : 'No warning signs'}</dd></div>
+          <div><dt>Buying again</dt><dd>{live.advice.rebuy === 'never' ? 'Do not rebuy' : live.advice.rebuy === 'wait' ? 'Wait' : 'No reason not to'}</dd></div>
+          <div><dt>Below its high</dt><dd className="tabular">{live.advice.drawdownPct === null ? '—' : `${live.advice.drawdownPct}%`}</dd></div>
+        </dl>
+        {live.advice.exitReasons.length > 0 && <ul className="radar-learn-list">{live.advice.exitReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+        {live.advice.rebuyReasons.length > 0 && <ul className="radar-learn-list">{live.advice.rebuyReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+      </section>}
+
       {(live.outlook || live.explode || live.maker) && <section className="radar-drawer-section radar-drawer-learned">
         <h3>What the learner sees <small>from past coins like this one</small></h3>
         <dl className="radar-facts">

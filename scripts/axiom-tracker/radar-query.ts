@@ -439,6 +439,7 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     learner: learnerState.summary,
     explosions: learnerState.explosions,
     winners: learnerState.winners,
+    adviceStudy: learnerState.adviceStudy,
   }
 }
 

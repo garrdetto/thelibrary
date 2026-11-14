@@ -549,3 +549,9 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-mini-table .radar-coin-name, .radar-study-list .radar-coin-name, .radar-drawer-header .radar-coin-name { display: inline-block; vertical-align: middle; }
 .radar-details-button { margin-left: 8px; font-size: 10px; color: var(--muted); }
 .radar-top3-pickers { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.radar-advice.exit { border-left: 3px solid var(--radar-down); padding-left: 12px; }
+.radar-advice.tighten { border-left: 3px solid var(--radar-warn); padding-left: 12px; }
+.radar-advice .radar-learn-list { margin-top: 10px; }
+.radar-delta.warn { color: var(--radar-warn); }
+.radar-muted-cell { color: var(--muted); }
+.radar-rebuy-list { margin-top: 14px; }

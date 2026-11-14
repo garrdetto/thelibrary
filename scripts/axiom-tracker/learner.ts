@@ -173,7 +173,7 @@ function outlookFor(model: Model, token: RadarToken, fallbackLife: number | null
 }
 
 function crashKind(price: number, peak: number, liquidity: number | null, maxLiquidity: number | null) {
-  if (maxLiquidity !== null && maxLiquidity > 2_000 && liquidity !== null && liquidity <= maxLiquidity * liquidityPull) return 'liquidity pulled'
+  if (maxLiquidity !== null && maxLiquidity > 2_000 && liquidity !== null && liquidity <= maxLiquidity * liquidityPull && price <= peak * 0.7) return 'liquidity pulled'
   return price <= peak * rugDrop ? 'dumped' : null
 }
 
@@ -277,6 +277,21 @@ function trackLifecycles(database: TrackerDatabase, tokens: RadarToken[], now: n
       const kind = row.rugged_at === null ? crashKind(price, peak, token.liquidityUsd, maxLiquidity) : null
       if (kind) logger.info('Coin crashed', { mint: token.mint, symbol: token.symbol, kind, minutesAlive: Math.round((now - lifecycleStart(row)) / 60_000) })
       update.run(peak, held > row.peak_price ? now : row.peak_at, maxLiquidity, price, now, capture, recovered ? null : row.rugged_at ?? (kind ? now : null), recovered ? null : row.rug_kind ?? kind, token.marketCap, peakMcap, peakMcap !== null && peakMcap > (row.peak_mcap ?? 0) ? now : row.peak_mcap_at, token.marketCap ?? row.last_mcap, token.mint)
+    }
+    const live = new Set(tokens.map(token => token.mint))
+    for (const [mint, reading] of learnerState.followed) {
+      if (live.has(mint) || now - reading.at > 60_000) continue
+      const row = find.get(mint) as LifecycleRow | undefined
+      if (!row || row.outcome !== 'open' || reading.at <= row.last_at) continue
+      const held = Math.min(reading.price, row.last_price)
+      const peak = Math.max(row.peak_price, held)
+      const heldMcap = reading.marketCap === null ? null : Math.min(reading.marketCap, row.last_mcap ?? reading.marketCap)
+      const peakMcap = Math.max(row.peak_mcap ?? 0, heldMcap ?? 0) || null
+      const maxLiquidity = Math.max(row.max_liquidity ?? 0, reading.liquidity ?? 0) || null
+      const recovered = row.rugged_at !== null && held > row.peak_price
+      const kind = row.rugged_at === null ? crashKind(reading.price, peak, reading.liquidity, maxLiquidity) : null
+      if (kind) logger.info('Coin crashed after leaving the radar', { mint, symbol: row.symbol, kind, minutesAlive: Math.round((now - lifecycleStart(row)) / 60_000) })
+      update.run(peak, held > row.peak_price ? reading.at : row.peak_at, maxLiquidity, reading.price, reading.at, null, recovered ? null : row.rugged_at ?? (kind ? reading.at : null), recovered ? null : row.rug_kind ?? kind, reading.marketCap, peakMcap, peakMcap !== null && peakMcap > (row.peak_mcap ?? 0) ? reading.at : row.peak_mcap_at, reading.marketCap ?? row.last_mcap, mint)
     }
     for (const row of database.prepare("SELECT * FROM coin_lifecycles WHERE outcome = 'open'").all() as LifecycleRow[]) {
       if (row.rugged_at !== null && now - row.rugged_at >= closeAfterRugMs) { close.run('rug', now, null, null, row.mint); closed += 1 }

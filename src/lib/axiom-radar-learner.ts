@@ -122,3 +122,24 @@ export type RadarWinnersSummary = {
   candidates: string[]
   updatedAt: number
 }
+
+export type RadarAdvice = {
+  exit: 'hold' | 'tighten' | 'exit'
+  exitReasons: string[]
+  rebuy: 'ok' | 'wait' | 'never'
+  rebuyReasons: string[]
+  signs: string[]
+  highPrice: number | null
+  drawdownPct: number | null
+  crashed: boolean
+}
+
+export type RadarWarningSign = { key: string; label: string; level: 'exit' | 'tighten' | 'none'; samples: number; fell20Pct: number | null; rose20Pct: number | null; medianNext5mPct: number | null }
+
+export type RadarAdviceStudy = {
+  baseline: { samples: number; fell20Pct: number | null; rose20Pct: number | null; medianNext5mPct: number | null }
+  signs: RadarWarningSign[]
+  rebuy: Array<{ dropPct: number; samples: number; newHighPct: number | null }>
+  unknownSharePct: number
+  updatedAt: number
+}

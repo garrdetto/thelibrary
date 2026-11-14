@@ -1,5 +1,5 @@
 import { defaultRadarSettings, type RadarSettings } from './axiom-radar-settings'
-import type { RadarExplode, RadarExplosionSummary, RadarLearnerSummary, RadarMaker, RadarOutlook, RadarWinnersSummary } from './axiom-radar-learner'
+import type { RadarAdvice, RadarAdviceStudy, RadarExplode, RadarExplosionSummary, RadarLearnerSummary, RadarMaker, RadarOutlook, RadarWinnersSummary } from './axiom-radar-learner'
 
 export const radarFeatureKeys = ['viewerVelocity', 'activeViewers', 'runnerWallets', 'buyPressure', 'safety'] as const
 export type RadarFeatureKey = typeof radarFeatureKeys[number]
@@ -82,6 +82,7 @@ export type RadarToken = {
   outlook?: RadarOutlook | null
   explode?: RadarExplode | null
   maker?: RadarMaker | null
+  advice?: RadarAdvice | null
 }
 
 export type RadarPaperTrade = {
@@ -164,14 +165,15 @@ export type RadarPayload = {
   learner?: RadarLearnerSummary | null
   explosions?: RadarExplosionSummary | null
   winners?: RadarWinnersSummary | null
+  adviceStudy?: RadarAdviceStudy | null
 }
 
-export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin'>
+export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange' | 'gains' | 'holdersPerMin' | 'advice'>
 
 export type RadarLivePatch = { at: number; tokens: Record<string, RadarLiveFigures> }
 
 export function liveFiguresOf(token: RadarToken): RadarLiveFigures {
-  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin }
+  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange, gains: token.gains, holdersPerMin: token.holdersPerMin, advice: token.advice }
 }
 
 export function applyLivePatch(payload: RadarPayload, patch: RadarLivePatch): RadarPayload {
