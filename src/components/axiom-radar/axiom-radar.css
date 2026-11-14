@@ -428,3 +428,16 @@ div.radar-delta { display: grid; gap: 1px; }
 @media (max-width: 900px) { .radar-theme-colors { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .radar-window-picker { width: 100%; justify-content: space-between; } .radar-window-picker button { flex: 1; justify-content: center; } }
 .radar-top3 h2 small { margin-left: auto; font-weight: 400; font-size: 10px; color: var(--muted); }
+.radar-controls-spacer { flex: 1; }
+.radar-health { display: inline-flex; align-items: center; gap: 7px; width: auto; border: 1px solid var(--border); background: var(--radar-card); color: var(--muted); border-radius: 999px; padding: 7px 11px; font-size: 11px; }
+.radar-health.ok .radar-live-dot { background: var(--radar-up); }
+.radar-health.warn { color: var(--tone-0); border-color: var(--radar-warn); }
+.radar-health.warn .radar-live-dot { background: var(--radar-warn); }
+.radar-health svg { transition: transform .15s ease; }
+.radar-health svg.open { transform: rotate(180deg); }
+.radar-icon-toggle { display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--border); background: var(--radar-card); color: var(--muted); border-radius: 50%; }
+.radar-icon-toggle.on { color: var(--tone-0); border-color: var(--green); background: color-mix(in oklab, var(--green) 10%, var(--radar-card)); }
+.radar-components li small { margin-left: 4px; }
+.radar-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 14px; font-size: 11px; color: var(--muted); }
+.radar-stats strong { color: var(--tone-0); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .radar-health svg { transition: none; } }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
 import { fetchTokenDetail } from './useRadarFeed'
@@ -183,11 +183,11 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       <section className="radar-drawer-section">
         <h3>Smart holders in this coin</h3>
         {!detail ? <p className="radar-muted"><LoaderCircle size={14} className="spin"/> Loading wallets…</p>
-          : detail.entries.length === 0 ? <p className="radar-muted">No smart holders found in this coin yet.</p>
+          : largestHoldingsFirst(detail.entries).length === 0 ? <p className="radar-muted">No smart holders found in this coin yet.</p>
           : <div className="radar-table-wrap">
             <table className="radar-mini-table">
               <thead><tr><th scope="col">Wallet</th><th scope="col">Good coins</th><th scope="col">Holds</th><th scope="col">Seen</th></tr></thead>
-              <tbody>{detail.entries.map(entry => <tr key={`${entry.wallet}-${entry.timestamp}`}>
+              <tbody>{largestHoldingsFirst(detail.entries).map(entry => <tr key={`${entry.wallet}-${entry.timestamp}`}>
                 <td><a href={solscanAccountUrl(entry.wallet)} target="_blank" rel="noopener noreferrer" className="mono">{shortAddress(entry.wallet)}</a></td>
                 <td className="tabular">🐋 {entry.runnerHits}</td>
                 <td className="tabular">{entry.pct !== null && entry.pct !== undefined ? `${entry.pct.toFixed(1)}%` : entry.entryMcap !== null ? `in at ${formatUsd(entry.entryMcap)}` : '—'}</td>

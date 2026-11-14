@@ -47,6 +47,18 @@ export function shortAddress(address: string) {
   return `${address.slice(0, 4)}…${address.slice(-4)}`
 }
 
+export function hasVisibleHolding(pct: number | null | undefined) {
+  return pct === null || pct === undefined || Number(pct.toFixed(1)) > 0
+}
+
+export function compareHoldings(first: number | null | undefined, second: number | null | undefined) {
+  return (second ?? -1) - (first ?? -1)
+}
+
+export function largestHoldingsFirst<Entry extends { pct?: number | null }>(entries: Entry[]) {
+  return entries.filter(entry => hasVisibleHolding(entry.pct)).sort((first, second) => compareHoldings(first.pct, second.pct))
+}
+
 export function relativeSeconds(timestamp: number | null, now: number) {
   if (!timestamp) return 'never'
   const seconds = Math.max(0, Math.round((now - timestamp) / 1000))

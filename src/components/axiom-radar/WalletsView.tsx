@@ -1,16 +1,20 @@
 import { ExternalLink } from 'lucide-react'
 import type { RadarPayload } from '@/lib/axiom-radar-types'
-import { relativeSeconds, shortAddress, solscanAccountUrl } from './format'
+import { compareHoldings, largestHoldingsFirst, relativeSeconds, shortAddress, solscanAccountUrl } from './format'
 
 export function WalletsView({ payload, now, onOpen }: { payload: RadarPayload; now: number; onOpen: (mint: string) => void }) {
   const tracked = new Set(payload.tokens.map(token => token.mint))
-  const holders = payload.wallets.filter(wallet => wallet.source === 'holder')
+  const holders = payload.wallets
+    .filter(wallet => wallet.source === 'holder')
+    .map(wallet => ({ ...wallet, entries: largestHoldingsFirst(wallet.entries) }))
+    .filter(wallet => wallet.entries.length > 0)
+    .sort((first, second) => compareHoldings(first.entries[0].pct, second.entries[0].pct) || second.runnerHits - first.runnerHits)
   const buyers = payload.wallets.filter(wallet => wallet.source === 'early-buyer')
   const minimum = payload.settings.wallets.minRunnerHits
   return <div className="radar-wallets">
     <section className="radar-card">
       <div className="panel-heading"><h2>Smart holders</h2><span className="panel-caption">{holders.length} WALLETS</span></div>
-      <p className="radar-note">Wallets found among the top holders of at least {minimum} good coins. A coin counts as good once it passes $500K market cap, climbs 2.5x after being tracked, or wins a paper trade. Coins these wallets hold show a 🐋 on the radar.</p>
+      <p className="radar-note" title="A coin counts as good once it passes $500K market cap, climbs 2.5x after being tracked, or wins a paper trade.">Top holders of at least {minimum} good coins, biggest holdings first. Coins they hold show a 🐋 on the radar.</p>
       {holders.length === 0 ? <p className="radar-muted">No wallet qualifies yet. The list fills in as tracked coins prove themselves; it usually takes a few hours of running.</p>
         : <ul className="radar-wallet-list">{holders.map(wallet => <li key={wallet.wallet}>
           <div className="radar-wallet-head">
