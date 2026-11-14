@@ -185,25 +185,34 @@ export class MontelloLink {
 
   /** True on Montello's map. */
   onMap(x: number, z: number): boolean {
-    return this.land.holdsScene(x, z)
+    return this.owns(x, z)
+  }
+
+  /**
+   * True where Montello's land is: the playable area and the band seen past it. Its map's square reaches further, and
+   * may hold Fox Plains' own land where it lies close, so Fox Lake asks this rather than the square.
+   */
+  owns(x: number, z: number): boolean {
+    const land = this.land
+    return land.holdsScene(x, z) && land.seen(land.toMapX(x), land.toMapZ(z))
   }
 
   heightAt(x: number, z: number): number {
-    if (this.land.holdsScene(x, z)) return this.montello.heightAt(x, z)
+    if (this.owns(x, z)) return this.montello.heightAt(x, z)
     if (x >= TOWN_SQUARE.x0) return outsideHeight(x, z)
     return this.corridorHeight(x, z)
   }
 
   roadClear(x: number, z: number): number {
     const land = this.land
-    if (land.holdsScene(x, z)) return land.clearAt(land.toMapX(x), land.toMapZ(z))
+    if (this.owns(x, z)) return land.clearAt(land.toMapX(x), land.toMapZ(z))
     const n = this.near(x, z, this._n)
     const own = n.d - n.w / 2
     return x >= TOWN_SQUARE.x0 ? Math.min(roadClear(x, z), own) : own
   }
 
   grassAt(x: number, z: number): boolean {
-    if (this.land.holdsScene(x, z)) return this.montello.grassAt?.(x, z) ?? false
+    if (this.owns(x, z)) return this.montello.grassAt?.(x, z) ?? false
     if (x >= TOWN_SQUARE.x0) return TOWN_LAND.grassAt?.(x, z) ?? false
     const n = this.near(x, z, this._n)
     const clear = n.d - n.w / 2
@@ -235,13 +244,13 @@ export class FoxLakeTerrain extends Terrain {
 
   override depthAt(x: number, z: number): number {
     const land = this.link?.land
-    if (land && land.holdsScene(x, z)) return land.depthAt(land.toMapX(x), land.toMapZ(z))
+    if (land && this.link?.owns(x, z)) return land.depthAt(land.toMapX(x), land.toMapZ(z))
     return super.depthAt(x, z)
   }
 
   override groundAt(x: number, z: number): Ground {
     const land = this.link?.land
-    return (land && montelloGround(land, x, z)) || super.groundAt(x, z)
+    return (land && this.link?.owns(x, z) && montelloGround(land, x, z)) || super.groundAt(x, z)
   }
 }
 

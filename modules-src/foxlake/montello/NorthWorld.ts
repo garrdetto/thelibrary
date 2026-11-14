@@ -109,7 +109,7 @@ export class NorthWorld {
 
   /** Pushes a walker (scene point) out of the trunks of Montello and the corridor; true when it moved. */
   pushTrees(p: { x: number; z: number }, r: number): boolean {
-    if (this.link.land.holdsScene(p.x, p.z)) return this.montello.pushTrees(p, r)
+    if (this.link.owns(p.x, p.z)) return this.montello.pushTrees(p, r)
     if (p.x > TOWN_SQUARE.x0 + 4) return false
     let hit = false
     for (let i = -1; i <= 1; i++) {
@@ -136,7 +136,7 @@ export class NorthWorld {
   placeName(x: number, z: number): string | null {
     const link = this.link
     const land = link.land
-    if (land.holdsScene(x, z) && land.playable(land.toMapX(x), land.toMapZ(z))) return this.montello.placeName(x, z)
+    if (link.owns(x, z) && land.playable(land.toMapX(x), land.toMapZ(z))) return this.montello.placeName(x, z)
     const n = link.near(x, z)
     if (n.d - n.w / 2 < 6) return LINK_NAME
     return x < TOWN_SQUARE.x0 ? 'Fox Lake woods' : null
@@ -231,7 +231,7 @@ export class NorthWorld {
         const x = x0 + i * CELL
         const z = z0 + size - j * CELL
         let h: number
-        if (land.holdsScene(x, z + CELL) && land.holdsScene(x, z)) h = land.groundAt(land.toMapX(x), land.toMapZ(z)) - 3
+        if (link.owns(x, z + CELL) && link.owns(x, z)) h = land.groundAt(land.toMapX(x), land.toMapZ(z)) - 3
         else if (x >= TOWN_SQUARE.x0 + CELL) h = outsideHeight(x, z) - (z >= TOWN_SQUARE.z0 && z <= TOWN_SQUARE.z1 ? 3 : 0)
         else h = link.corridorHeight(x, z)
         heights[i + j * (n + 1)] = h - TOWN_OFFSET.y

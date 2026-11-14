@@ -682,7 +682,7 @@ export class FoxLakeTown implements GameExtension {
   /** True where lots are sold: in Fox Plains, or in Montello. */
   private onLotLand(): boolean {
     const at = this.host.player
-    return zoneAt(at.z) === 'town' || !!this.north?.link.land.holdsScene(at.x, at.z)
+    return zoneAt(at.z) === 'town' || !!this.north?.link.owns(at.x, at.z)
   }
 
   /** The lot for sale you're standing on, on foot in town or in Montello. */
@@ -745,7 +745,7 @@ export class FoxLakeTown implements GameExtension {
     const land = link.land
     const last = link.road[link.road.length - 1]
     return {
-      holds: (x, z) => land.holdsScene(x, z),
+      holds: (x, z) => link.owns(x, z),
       beyondTown: () => this.beyondTown(),
       navigate: (goal) => this.northMap?.navigate(goal ? { x: land.toMapX(goal.x), z: land.toMapZ(goal.z), name: goal.name } : null),
       line: () => {
@@ -854,7 +854,7 @@ export class FoxLakeTown implements GameExtension {
 
   private zone(): 'town' | 'country' | 'road' | 'montello' {
     const at = this.host.driving?.position ?? this.host.player
-    if (this.north?.link.land.holdsScene(at.x, at.z)) return 'montello'
+    if (this.north?.link.owns(at.x, at.z)) return 'montello'
     if (this.north?.link.beyondTown(at.x, at.z)) return 'road'
     return zoneAt(at.z)
   }
