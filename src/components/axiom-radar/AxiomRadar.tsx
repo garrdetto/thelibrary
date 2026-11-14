@@ -1,3 +1,4 @@
+import { AxiomLink } from './AxiomLink'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Bell, BellOff, BellRing, Brain, ChevronDown, Flame, List, Radar, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
 import { defaultRadarSettings, type RadarSettings, type RadarTheme } from '@/lib/axiom-radar-settings'
@@ -197,7 +198,7 @@ export function AxiomRadar() {
     : workerStatus === 'live' ? { tone: 'up', label: 'Live' }
     : workerStatus === 'stale' ? { tone: 'warn', label: 'Tracker stale' }
     : { tone: 'down', label: 'Tracker offline' }
-  const cadence = connection === 'local' ? 'every second, direct from this PC' : connection === 'streaming' ? 'every 3 seconds, through the site' : connection === 'polling' ? 'every 3 seconds' : ''
+  const cadence = connection === 'local' ? 'every second, direct from this PC' : connection === 'streaming' ? 'viewers every second, through the site' : connection === 'polling' ? 'every 3 seconds' : ''
   const hasViewerData = tokens.some(token => token.viewers !== null)
   const components = payload?.components ?? []
   const componentState = (component: (typeof components)[number]) => component.status === 'disabled' ? 'off' : now - component.updatedAt > 90_000 ? 'stale' : component.status === 'ok' ? 'ok' : 'warn'
@@ -233,6 +234,7 @@ export function AxiomRadar() {
     <div className="radar-toasts" role="log" aria-live="assertive" aria-label="Alerts">
       {liveToasts.map(toast => <div key={toast.id} className={`radar-toast ${toast.kind}`}>
         <button type="button" className="radar-toast-body" onClick={() => onOpen(toast.mint)}>{toast.kind === 'surge' ? '🔥' : '🟢'} {toast.text}</button>
+        <AxiomLink pairAddress={tokens.find(token => token.mint === toast.mint)?.pairAddress} symbol={toast.text.split(' ')[0]} size={16}/>
         <button type="button" className="radar-icon-button" aria-label="Dismiss alert" onClick={() => setToasts(current => current.filter(item => item.id !== toast.id))}><X size={14}/></button>
       </div>)}
     </div>
@@ -249,6 +251,7 @@ export function AxiomRadar() {
               <PriceSpark points={sparkPoints(token, chartWindow)} width={84} height={30}/>
               <span className="radar-top3-count"><strong className="tabular">{formatCount(token.viewers)}</strong><small className="tabular radar-delta up">{formatSigned(token.viewersPerMin)}/min</small></span>
             </button>
+            <AxiomLink pairAddress={token.pairAddress} symbol={token.symbol} size={16}/>
           </li>)}</ol>}
       </section>
 

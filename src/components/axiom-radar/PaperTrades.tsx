@@ -1,3 +1,4 @@
+import { AxiomLink } from './AxiomLink'
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { radarFeatureKeys, radarFeatureLabels, type RadarPayload } from '@/lib/axiom-radar-types'
 import { formatClock, formatPercent, formatReturn, formatUsd, relativeSeconds } from './format'
@@ -11,6 +12,7 @@ function returnClass(value: number | null) {
 
 export function PaperTrades({ payload, now }: { payload: RadarPayload; now: number }) {
   const { paper, model } = payload
+  const pairs = new Map(payload.tokens.map(token => [token.mint, token.pairAddress]))
   const maxWeight = Math.max(...radarFeatureKeys.map(key => model.weights[key]), 1)
   const completed = paper.stats.wins + paper.stats.losses
   return <div className="radar-paper">
@@ -68,7 +70,7 @@ export function PaperTrades({ payload, now }: { payload: RadarPayload; now: numb
             <thead><tr><th scope="col">Opened</th><th scope="col">Token</th><th scope="col">Score</th><th scope="col">Entry MCap</th><th scope="col">+5m</th><th scope="col">+15m</th><th scope="col">+30m</th><th scope="col">Result</th></tr></thead>
             <tbody>{paper.trades.map(trade => <tr key={trade.id}>
               <td className="tabular">{formatClock(trade.createdAt)}</td>
-              <td><strong>{trade.symbol}</strong></td>
+              <td><strong>{trade.symbol}</strong> <AxiomLink pairAddress={trade.pairAddress ?? pairs.get(trade.mint)} symbol={trade.symbol}/></td>
               <td className="tabular">{Math.round(trade.setupScore)}</td>
               <td className="tabular">{formatUsd(trade.entryMcap)}</td>
               <td className={`tabular radar-delta ${returnClass(trade.return5m)}`}>{formatReturn(trade.return5m)}</td>

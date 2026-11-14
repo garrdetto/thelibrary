@@ -1,3 +1,4 @@
+import { AxiomLink } from './AxiomLink'
 import type { RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatSigned, formatUsd } from './format'
 import { PriceSpark, sparkPoints, type ChartWindow } from './PriceSpark'
@@ -22,6 +23,7 @@ function Board({ title, caption, rows, window, onOpen }: { title: string; captio
           <PriceSpark points={sparkPoints(token, window)} width={70} height={26}/>
           <strong className={`tabular radar-delta ${tone}`}>{value}</strong>
         </button>
+        <AxiomLink pairAddress={token.pairAddress} symbol={token.symbol} size={16}/>
       </li>)}
     </ol>}
   </section>

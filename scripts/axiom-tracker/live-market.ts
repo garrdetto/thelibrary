@@ -1,7 +1,7 @@
 import type { TrackerDatabase } from './db.js'
 import { bestPairByMint, readMarket, type DexPair } from './dexscreener.js'
 import { chunk, createLogger, errorMessage, fetchJson, sleep } from './runtime.js'
-import { activeCandidates, trackerState } from './state.js'
+import { activeCandidates, freshViewerCount, trackerState } from './state.js'
 
 const logger = createLogger('live-market')
 const tickIntervalMs = 1_000
@@ -15,10 +15,9 @@ function recordTicks(now: number) {
   for (const candidate of trackerState.active) {
     const market = trackerState.market.get(candidate.mint)
     if (!market) continue
-    const viewer = trackerState.viewers.get(candidate.mint)
     const ticks = marketTicks.get(candidate.mint) ?? []
     const card = trackerState.pulseCards.get(candidate.mint)
-    ticks.push({ t: now, price: market.priceUsd, viewers: viewer && now - viewer.at < 30_000 ? viewer.count : null, liquidity: market.liquidityUsd, marketCap: market.marketCap, holders: card && now - card.seenAt < 60_000 ? card.holders : null })
+    ticks.push({ t: now, price: market.priceUsd, viewers: freshViewerCount(candidate.mint, now, 30_000), liquidity: market.liquidityUsd, marketCap: market.marketCap, holders: card && now - card.seenAt < 60_000 ? card.holders : null })
     while (ticks.length && now - ticks[0].t > tickHistoryMs) ticks.shift()
     marketTicks.set(candidate.mint, ticks)
   }

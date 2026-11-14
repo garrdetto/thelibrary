@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RadarSettings } from '@/lib/axiom-radar-settings'
-import type { RadarPayload, RadarTokenDetail } from '@/lib/axiom-radar-types'
+import { applyLivePatch, type RadarLivePatch, type RadarPayload, type RadarTokenDetail } from '@/lib/axiom-radar-types'
 
 export type RadarConnection = 'connecting' | 'local' | 'streaming' | 'polling' | 'error'
 
@@ -74,6 +74,14 @@ export function useRadarFeed() {
           setConnection('streaming')
         } catch { }
       }
+      relay.addEventListener('live', event => {
+        if (localAvailable || disposed) return
+        try {
+          const patch = JSON.parse((event as MessageEvent<string>).data) as RadarLivePatch
+          setPayload(current => current ? applyLivePatch(current, patch) : current)
+          setReceivedAt(Date.now())
+        } catch { }
+      })
       relay.onerror = () => {
         streamFailures += 1
         if (streamFailures >= 3 && relay) {

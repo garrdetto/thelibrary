@@ -1,11 +1,12 @@
-import type { RadarHistoryPoint, RadarPayload, RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
+import { liveFiguresOf, type RadarHistoryPoint, type RadarPayload, type RadarTokenDetail } from '../../src/lib/axiom-radar-types.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
 import { applyRadarSettings } from './settings-store.js'
 
 const logger = createLogger('site-publisher')
-const watchingIntervalMs = 3_000
+const watchingIntervalMs = 1_000
+const watchingPayloadMs = 3_000
 const idleIntervalMs = 20_000
 const watchingDetailsMs = 15_000
 const idleDetailsMs = 120_000
@@ -43,21 +44,26 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
   return (async () => {
     let watching = false
     let lastDetailsAt = 0
+    let lastPayloadAt = 0
     let failures = 0
     while (!signal.aborted) {
       const started = Date.now()
       try {
-        const payload = compactPayload(buildRadarPayload(database))
-        const detailsDue = started - lastDetailsAt >= (watching ? watchingDetailsMs : idleDetailsMs)
-        let body = JSON.stringify(detailsDue ? { payload, details: collectDetails(database, payload, 180) } : { payload })
-        if (body.length > maxBodyBytes && detailsDue) body = JSON.stringify({ payload, details: collectDetails(database, payload, 60) })
-        if (body.length > maxBodyBytes) body = JSON.stringify({ payload })
+        const full = buildRadarPayload(database)
+        const live = watching ? { at: full.generatedAt, tokens: Object.fromEntries(full.tokens.map(token => [token.mint, liveFiguresOf(token)])) } : undefined
+        const payloadDue = !watching || started - lastPayloadAt >= watchingPayloadMs
+        const payload = compactPayload(full)
+        const detailsDue = payloadDue && started - lastDetailsAt >= (watching ? watchingDetailsMs : idleDetailsMs)
+        let body = !payloadDue ? JSON.stringify({ live }) : JSON.stringify(detailsDue ? { payload, live, details: collectDetails(database, payload, 180) } : { payload, live })
+        if (body.length > maxBodyBytes && detailsDue) body = JSON.stringify({ payload, live, details: collectDetails(database, payload, 60) })
+        if (body.length > maxBodyBytes) body = JSON.stringify({ payload, live })
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body, signal: AbortSignal.timeout(15_000) })
         const result = await response.json().catch(() => ({})) as { watching?: boolean; error?: string; settings?: unknown }
         if (result.settings) applyRadarSettings(result.settings)
         if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`)
         if (detailsDue && body.includes('"details"')) lastDetailsAt = started
-        if (Boolean(result.watching) !== watching) logger.info(result.watching ? 'An admin is watching; sending every 3 seconds' : 'Nobody is watching; sending every 20 seconds')
+        if (payloadDue) lastPayloadAt = started
+        if (Boolean(result.watching) !== watching) logger.info(result.watching ? 'An admin is watching; sending viewers every second' : 'Nobody is watching; sending every 20 seconds')
         watching = Boolean(result.watching)
         failures = 0
         recordHeartbeat(database, 'site-publisher', 'ok', `${payload.tokens.length} coins sent${watching ? ', admin watching' : ''}`)

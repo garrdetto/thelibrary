@@ -1,8 +1,10 @@
+import { AxiomLink } from './AxiomLink'
 import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { axiomUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { CandleChart } from './CandleChart'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
 import { fetchTokenDetail } from './useRadarFeed'
@@ -68,7 +70,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       <header className="radar-drawer-header">
         <div>
           <span className="section-eyebrow">{formatAge(live.ageMinutes).toUpperCase()} OLD{live.viewerRank ? ` · #${live.viewerRank} BY VIEWERS` : ''}</span>
-          <h2 id="radar-drawer-title">{live.symbol} <small>{live.name}</small></h2>
+          <h2 id="radar-drawer-title">{live.symbol} <AxiomLink pairAddress={live.pairAddress} symbol={live.symbol} size={18}/> <small>{live.name}</small></h2>
           <div className="radar-drawer-links">
             <a href={axiomUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">Axiom<ExternalLink size={11}/></a>
             <a href={dexScreenerUrl(live.pairAddress)} target="_blank" rel="noopener noreferrer">DexScreener<ExternalLink size={11}/></a>
@@ -99,7 +101,12 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       </section>
 
       <section className="radar-drawer-section">
-        <h3>Live chart <small>price and viewers{fast ? ', updating every second' : ''}</small></h3>
+        <h3>Price chart <small>candles, live</small></h3>
+        <CandleChart pairAddress={live.pairAddress} livePrice={live.priceUsd} symbol={live.symbol}/>
+      </section>
+
+      <section className="radar-drawer-section">
+        <h3>Live ticks <small>price and viewers{fast ? ', updating every second' : ''}</small></h3>
         <ChartWindowPicker value={span} onChange={setSpan} label="Show the last"/>
         {ticks.length < 2
           ? <p className="radar-muted">{detail ? 'Collecting live ticks. The line appears within a few seconds.' : <><LoaderCircle size={14} className="spin"/> Loading the live chart…</>}</p>
@@ -117,13 +124,6 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
               </LineChart>
             </ResponsiveContainer>
           </div>}
-      </section>
-
-      <section className="radar-drawer-section">
-        <h3>Candles <small>DexScreener, live</small></h3>
-        <div className="radar-chart-embed">
-          <iframe title={`${live.symbol} DexScreener chart`} src={dexScreenerEmbedUrl(live.pairAddress)} loading="lazy" referrerPolicy="no-referrer"/>
-        </div>
       </section>
 
       <section className="radar-drawer-section">

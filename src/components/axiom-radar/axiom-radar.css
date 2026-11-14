@@ -441,3 +441,34 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-stats { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 14px; font-size: 11px; color: var(--muted); }
 .radar-stats strong { color: var(--tone-0); font-weight: 600; }
 @media (prefers-reduced-motion: reduce) { .radar-health svg { transition: none; } }
+.radar-candles { display: grid; gap: 8px; }
+.radar-candle-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.radar-candle-tools { display: inline-flex; align-items: center; gap: 6px; }
+.radar-candle-tools .radar-icon-button:disabled { opacity: .4; cursor: default; }
+.radar-candle-readout { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; font-size: 11px; color: var(--muted); min-height: 17px; }
+.radar-candle-readout strong { color: var(--tone-0); font-weight: 600; }
+.radar-candle-box { width: 100%; min-height: 120px; border: 1px solid var(--border); border-radius: 10px; background: var(--radar-card); overflow: hidden; }
+.radar-candle-box > p { padding: 16px; margin: 0; }
+.radar-candle-box svg { display: block; width: 100%; height: auto; touch-action: pan-y; }
+.radar-candle-box svg:focus-visible { outline: 2px solid var(--green); outline-offset: -2px; }
+.radar-candle-grid { stroke: var(--border); stroke-dasharray: 3 3; }
+.radar-candle-axis { fill: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.radar-candle-wick { stroke-width: 1; }
+.radar-candles .up .radar-candle-wick { stroke: var(--radar-up); }
+.radar-candles .down .radar-candle-wick { stroke: var(--radar-down); }
+.radar-candles .up .radar-candle-body { fill: var(--radar-up); }
+.radar-candles .down .radar-candle-body { fill: var(--radar-down); }
+.radar-candles .up .radar-candle-volume { fill: color-mix(in oklab, var(--radar-up) 35%, transparent); }
+.radar-candles .down .radar-candle-volume { fill: color-mix(in oklab, var(--radar-down) 35%, transparent); }
+.radar-candle-last { stroke: var(--muted); stroke-dasharray: 2 3; }
+.radar-candle-tag.up { fill: var(--radar-up); }
+.radar-candle-tag.down { fill: var(--radar-down); }
+.radar-candle-tag-text { fill: #fff; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.radar-candle-cross { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 2 2; pointer-events: none; }
+.radar-axiom-link { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; color: var(--radar-accent); border-radius: 5px; line-height: 0; flex-shrink: 0; }
+.radar-axiom-link:hover { color: var(--tone-0); }
+.radar-axiom-link:focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
+.radar-token-line .radar-axiom-link, .radar-pick-name .radar-axiom-link { margin-left: 2px; }
+.radar-top3 li, .radar-board li, .radar-toast { display: flex; align-items: center; gap: 6px; }
+.radar-top3 li > button, .radar-board li > button { flex: 1; min-width: 0; }
+.radar-wallet-coin { display: inline-flex; align-items: center; gap: 4px; }

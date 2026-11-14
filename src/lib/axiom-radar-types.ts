@@ -79,6 +79,7 @@ export type RadarPaperTrade = {
   id: number
   mint: string
   symbol: string
+  pairAddress: string | null
   entryPrice: number
   entryMcap: number | null
   setupScore: number
@@ -123,7 +124,7 @@ export type RadarWallet = {
   runnerHits: number
   source: 'holder' | 'early-buyer'
   updatedAt: number
-  entries: Array<{ mint: string; symbol: string; pct: number | null; good: boolean; timestamp: number }>
+  entries: Array<{ mint: string; symbol: string; pairAddress: string | null; pct: number | null; good: boolean; timestamp: number }>
 }
 
 export type RadarPayload = {
@@ -151,6 +152,19 @@ export type RadarPayload = {
   wallets: RadarWallet[]
   walletTracking: 'on' | 'no-key'
   source?: 'local' | 'relay'
+}
+
+export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange'>
+
+export type RadarLivePatch = { at: number; tokens: Record<string, RadarLiveFigures> }
+
+export function liveFiguresOf(token: RadarToken): RadarLiveFigures {
+  return { viewers: token.viewers, viewersPerMin: token.viewersPerMin, viewerSurge: token.viewerSurge, priceUsd: token.priceUsd, marketCap: token.marketCap, priceChange: token.priceChange }
+}
+
+export function applyLivePatch(payload: RadarPayload, patch: RadarLivePatch): RadarPayload {
+  if (patch.at < payload.generatedAt) return payload
+  return { ...payload, tokens: payload.tokens.map(token => patch.tokens[token.mint] ? { ...token, ...patch.tokens[token.mint] } : token) }
 }
 
 export type RadarWalletEntry = { wallet: string; runnerHits: number; entryMcap: number | null; pct?: number | null; timestamp: number }

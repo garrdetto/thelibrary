@@ -39,3 +39,11 @@ export function latestMarket(database: TrackerDatabase, mint: string): MarketRea
   `).get(mint) as MarketReading | undefined
   return row ?? null
 }
+
+export const viewerFreshnessMs = { live: 60_000, page: 180_000 }
+
+export function freshViewerCount(mint: string, now: number, liveWindowMs = viewerFreshnessMs.live) {
+  const viewer = trackerState.viewers.get(mint)
+  if (!viewer) return null
+  return now - viewer.at < (viewer.source === 'page' ? viewerFreshnessMs.page : liveWindowMs) ? viewer.count : null
+}

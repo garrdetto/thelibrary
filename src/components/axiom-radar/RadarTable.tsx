@@ -1,8 +1,9 @@
+import { AxiomLink } from './AxiomLink'
 import { memo, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, ExternalLink, Globe, Send, Star, TriangleAlert, Twitter } from 'lucide-react'
 import { Line, LineChart, YAxis } from 'recharts'
 import type { RadarHistoryPoint, RadarSafetyLevel, RadarToken } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd } from './format'
+import { dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd } from './format'
 import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
 
 export type RadarSortKey = 'score' | 'viewers' | 'viewersPerMin' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
@@ -126,7 +127,6 @@ function SortHeader({ label, sortKey, sort, onSort, className }: { label: string
 
 export function LaunchLinks({ token }: { token: RadarToken }) {
   return <div className="radar-launch">
-    <a href={axiomUrl(token.pairAddress)} target="_blank" rel="noopener noreferrer" onClick={stop} aria-label={`Open ${token.symbol} on Axiom`}>Axiom<ExternalLink size={11}/></a>
     <a href={dexScreenerUrl(token.pairAddress)} target="_blank" rel="noopener noreferrer" onClick={stop} aria-label={`Open ${token.symbol} on DexScreener`}>Dex<ExternalLink size={11}/></a>
   </div>
 }
@@ -177,7 +177,7 @@ export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onToggle
               <PinButton token={token} onTogglePin={onTogglePin}/>
               <TokenIcon token={token}/>
               <div className="radar-token-text">
-                <div className="radar-token-line"><strong>{token.symbol}</strong><span className="radar-age tabular">{formatAge(token.ageMinutes)}</span>{token.onPulse && <span className="radar-tag" title="On your Axiom Pulse">Pulse</span>}{token.runnerWallets > 0 && <span className="radar-tag" title="Smart wallets holding">🐋 {token.runnerWallets}</span>}{token.alerts.length > 0 && <span className="radar-alert-icon" title={token.alerts.join(' · ')}><TriangleAlert size={13}/></span>}</div>
+                <div className="radar-token-line"><strong>{token.symbol}</strong><AxiomLink pairAddress={token.pairAddress} symbol={token.symbol}/><span className="radar-age tabular">{formatAge(token.ageMinutes)}</span>{token.onPulse && <span className="radar-tag" title="On your Axiom Pulse">Pulse</span>}{token.runnerWallets > 0 && <span className="radar-tag" title="Smart wallets holding">🐋 {token.runnerWallets}</span>}{token.alerts.length > 0 && <span className="radar-alert-icon" title={token.alerts.join(' · ')}><TriangleAlert size={13}/></span>}</div>
                 <div className="radar-token-line radar-token-actions">
                   <span className="radar-token-name" title={token.name}>{token.name}</span>
                   <CopyMint mint={token.mint}/>

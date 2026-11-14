@@ -1,9 +1,11 @@
+import { AxiomLink } from './AxiomLink'
 import { ExternalLink } from 'lucide-react'
 import type { RadarPayload } from '@/lib/axiom-radar-types'
 import { compareHoldings, largestHoldingsFirst, relativeSeconds, shortAddress, solscanAccountUrl } from './format'
 
 export function WalletsView({ payload, now, onOpen }: { payload: RadarPayload; now: number; onOpen: (mint: string) => void }) {
   const tracked = new Set(payload.tokens.map(token => token.mint))
+  const pairs = new Map(payload.tokens.map(token => [token.mint, token.pairAddress]))
   const holders = payload.wallets
     .filter(wallet => wallet.source === 'holder')
     .map(wallet => ({ ...wallet, entries: largestHoldingsFirst(wallet.entries) }))
@@ -22,9 +24,9 @@ export function WalletsView({ payload, now, onOpen }: { payload: RadarPayload; n
             <strong className="tabular">🐋 {wallet.runnerHits} good coins</strong>
             <small>seen {relativeSeconds(wallet.updatedAt, now)}</small>
           </div>
-          <div className="radar-wallet-coins">{wallet.entries.map(entry => tracked.has(entry.mint)
-            ? <button key={entry.mint} type="button" className={entry.good ? 'good' : ''} onClick={() => onOpen(entry.mint)}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</button>
-            : <span key={entry.mint} className={entry.good ? 'good' : ''}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</span>)}</div>
+          <div className="radar-wallet-coins">{wallet.entries.map(entry => <span key={entry.mint} className="radar-wallet-coin">{tracked.has(entry.mint)
+            ? <button type="button" className={entry.good ? 'good' : ''} onClick={() => onOpen(entry.mint)}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</button>
+            : <span className={entry.good ? 'good' : ''}>{entry.symbol}{entry.pct !== null && <small className="tabular">{entry.pct.toFixed(1)}%</small>}</span>}<AxiomLink pairAddress={entry.pairAddress ?? pairs.get(entry.mint)} symbol={entry.symbol}/></span>)}</div>
         </li>)}</ul>}
     </section>
     <section className="radar-card">
@@ -38,7 +40,7 @@ export function WalletsView({ payload, now, onOpen }: { payload: RadarPayload; n
             <strong className="tabular">🐋 early in {wallet.runnerHits} runners</strong>
             <small>updated {relativeSeconds(wallet.updatedAt, now)}</small>
           </div>
-          <div className="radar-wallet-coins">{wallet.entries.map(entry => <span key={entry.mint}>{entry.symbol}<small>{relativeSeconds(entry.timestamp, now)}</small></span>)}</div>
+          <div className="radar-wallet-coins">{wallet.entries.map(entry => <span key={entry.mint} className="radar-wallet-coin"><span>{entry.symbol}<small>{relativeSeconds(entry.timestamp, now)}</small></span><AxiomLink pairAddress={entry.pairAddress ?? pairs.get(entry.mint)} symbol={entry.symbol}/></span>)}</div>
         </li>)}</ul>}
     </section>
   </div>
