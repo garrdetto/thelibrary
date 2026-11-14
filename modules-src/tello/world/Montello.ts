@@ -26,6 +26,7 @@ import { buildStorefronts } from './Storefronts'
 import { buildStreetDressing } from './StreetDressing'
 import { buildIntersection, type Intersection } from './Intersection'
 import { buildFalls, type Falls } from './Falls'
+import { buildCornerGarage } from './CornerGarage'
 import { buildLandmarks } from './Landmarks'
 import { KIT_URL, ModelKit } from './Kit'
 import { roadIndex, roadNameAt } from '../town/Routes'
@@ -37,8 +38,6 @@ const TREE_RADIUS = [0.34, 0.42, 0.25]
 const TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]
 const TREE_CELL = 16
 const NAME_CELL = 64
-/** Ends of the walls at the playable area's edge closer than this to the map's south edge leave County Highway F open. */
-const LINK_EDGE = 0.8
 const WALL_HEIGHT = 30
 
 export interface MontelloSetup {
@@ -49,8 +48,8 @@ export interface MontelloSetup {
   mats: Mats
   gfx: TownGfx
   culler: RegionCuller
-  /** Leaves the playable area open where County Highway F meets the map's south edge (Fox Lake's road comes in there). */
-  openLink: boolean
+  /** Leaves the playable area's edge open within `r` metres of this spot (map coordinates), where a host world's road comes in. */
+  openExit: { x: number; z: number; r: number } | null
 }
 
 export class Montello {
@@ -87,9 +86,10 @@ export class Montello {
     progress(0.4, 'Raising the town…')
     const [downtownKit, quarryKit] = await Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
     buildBuildings(this.root, s.mats, this.sink, land)
-    buildBarricades(this.root, s.mats, this.sink, land)
+    buildBarricades(this.root, s.mats, this.sink, land, s.openExit)
     buildStorefronts(this.root, s.mats, land, downtownKit)
     buildLandmarks(this.root, s.mats, this.sink, land)
+    buildCornerGarage(this.root, s.mats, this.sink, land)
     buildStreetDressing(this.root, s.mats, this.sink, land)
     this.junction = buildIntersection(this.root, s.mats, this.sink, land)
     this.falls = buildFalls(this.root, s.mats, this.sink, land, quarryKit)
@@ -133,17 +133,17 @@ export class Montello {
     const land = this.land
     const ring = land.doc.limits.play
     const n = ring.length / 2
-    const south = land.z0
+    const open = this.s.openExit
     for (let k = 0; k < n; k++) {
       const ax = ring[k * 2]
       const az = ring[k * 2 + 1]
       const bx = ring[((k + 1) % n) * 2]
       const bz = ring[((k + 1) % n) * 2 + 1]
-      if (this.s.openLink && az - south < LINK_EDGE && bz - south < LINK_EDGE) continue
       const len = Math.hypot(bx - ax, bz - az)
       if (len < 0.05) continue
       const mx = (ax + bx) / 2
       const mz = (az + bz) / 2
+      if (open && Math.hypot(mx - open.x, mz - open.z) < open.r) continue
       const ground = Math.min(land.groundAt(ax, az), land.groundAt(bx, bz), land.groundAt(mx, mz))
       this.sink.addStaticBox({ cx: mx, cy: ground - 4 + WALL_HEIGHT / 2, cz: -mz, hx: len / 2 + 0.4, hy: WALL_HEIGHT / 2, hz: 0.5, rotY: Math.atan2(bz - az, bx - ax) })
     }

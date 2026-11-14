@@ -11,8 +11,8 @@
  *   the deck was, and the river under it was filled in): the deck is set level with the street, widened over both
  *   sidewalks, the approaches are filled to it and the channel is dug out under it (`fixBridge`).
  */
-import type { BridgeData, BuildingData, MapDoc, MapGrids, RoadData } from './MapData'
-import { BUILDING_HEIGHTS, EXTRA_BUILDINGS } from './Downtown'
+import { COVER, type BridgeData, type BuildingData, type MapDoc, type MapGrids, type RoadData } from './MapData'
+import { BUILDING_HEIGHTS, CORNER_GARAGE, EXTRA_BUILDINGS } from './Downtown'
 import { pointInRing, resample } from '../world/Poly'
 
 /** Lane and parking lane, metres: one lane each way plus a parking lane along each curb. */
@@ -135,8 +135,15 @@ export function fixMainSplit(doc: MapDoc): boolean {
 // ---------------------------------------------------------------- the West Montello Street bridge
 
 /** The Montello River's course under the bridge, south to north (map x, z), and the channel's half widths. */
-const CHANNEL = [79.4, 1.5, 77.7, 14.8, 72.6, 28.5]
+export const CHANNEL = [79.4, 1.5, 77.7, 14.8, 72.6, 28.5]
+/** The bed at the channel's ends, where it meets the river's own bed, and under the deck, deep enough to read as the river. */
 const CHANNEL_BED = 4.9
+const CHANNEL_DEEP = 2.6
+/** How far from the street's centre line the bed stays deep, and where it is back up to the river's own. */
+const DEEP_REACH = 9
+const SHALLOW_REACH = 16
+/** Half the river between the abutment walls under the deck (from the channel's line). */
+export const ABUTMENT = 4.6
 const CHANNEL_HALF = 3.9
 const CHANNEL_WALL = 1.2
 const CHANNEL_WET = 7.5
@@ -185,11 +192,15 @@ export function fixBridge(doc: MapDoc, grids: MapGrids): BridgeData | null {
       const g = grids.ground[k] / 100
       if (d <= CHANNEL_WET && grids.water[k] === 0 && z > CHANNEL[1] && z < CHANNEL[5]) grids.water[k] = Math.round(water * 100)
       if (d <= CHANNEL_HALF + CHANNEL_WALL && z > CHANNEL[1] - 2 && z < CHANNEL[5] + 2) {
-        // The bed, walled up to the abutments.
-        const bed = CHANNEL_BED + Math.max(0, d - CHANNEL_HALF) * 3
+        // The bed: deep under the deck, rising to the river's own bed toward the channel's ends, walled up to the abutments.
+        // It is the river's, not a lawn: no mown grass, no meadow planted on it.
+        const deep = 1 - Math.min(1, Math.max(0, (across - DEEP_REACH) / (SHALLOW_REACH - DEEP_REACH)))
+        const bed = CHANNEL_BED + (CHANNEL_DEEP - CHANNEL_BED) * deep + Math.max(0, d - CHANNEL_HALF) * 3
         if (bed < g) grids.ground[k] = Math.round(bed * 100)
+        if (grids.water[k] > grids.ground[k]) grids.cover[k] = COVER.water
         continue
       }
+      if (d <= CHANNEL_WET && across < DEEP_REACH && z > CHANNEL[1] && z < CHANNEL[5] && grids.water[k] > grids.ground[k]) grids.cover[k] = COVER.water
       // The approaches: filled up to the line between the street's level either side of the river.
       if (across < 10 && along > -APPROACH - 2 && along < len + APPROACH + 2) {
         const target = chord(Math.min(len + APPROACH, Math.max(-APPROACH, along))) - 0.04 - Math.max(0, across - 7) * 0.3
@@ -388,6 +399,7 @@ export function fixStreets(doc: MapDoc, grids: MapGrids): void {
   fixMainSplit(doc)
   fixBridge(doc, grids)
   fixBuildings(doc, grids)
+  addLots(doc, grids)
   paveProfiles(doc, grids, townProfiles(doc))
 }
 
@@ -434,6 +446,25 @@ export function fixBuildings(doc: MapDoc, grids: MapGrids): void {
       }
     }
   })
+}
+
+/** The paved lots the map is missing (the corner garage's, from the owner's photo): a slab at the highest ground under its corners. */
+export function addLots(doc: MapDoc, grids: MapGrids): void {
+  const f = doc.frame
+  const ground = (x: number, z: number) => grids.ground[Math.round((z - f.z0) / f.cell) * grids.side + Math.round((x - f.x0) / f.cell)] / 100
+  for (const ring of [CORNER_GARAGE.lot]) {
+    if (doc.lots.some((l) => l.p.length === ring.length && l.p.every((v, i) => Math.abs(v - ring[i]) < 0.01))) continue
+    const heights: number[] = []
+    for (let k = 0; k < ring.length; k += 2) heights.push(ground(ring[k], ring[k + 1]))
+    doc.lots.push({ f: Math.round((Math.max(...heights) + 0.02) * 100) / 100, p: [...ring] })
+    const n = grids.fineSide, step = f.fine
+    const xs = ring.filter((_v, k) => k % 2 === 0), zs = ring.filter((_v, k) => k % 2 === 1)
+    for (let j = Math.floor((Math.min(...zs) - f.z0) / step); j <= Math.ceil((Math.max(...zs) - f.z0) / step); j++) {
+      for (let k = Math.floor((Math.min(...xs) - f.x0) / step); k <= Math.ceil((Math.max(...xs) - f.x0) / step); k++) {
+        if (pointInRing(ring, f.x0 + k * step, f.z0 + j * step)) grids.clear[j * n + k] = Math.min(grids.clear[j * n + k], -1)
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------- the light

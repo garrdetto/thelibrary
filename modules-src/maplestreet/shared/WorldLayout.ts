@@ -115,7 +115,7 @@ export const CURVES: CurveRoad[] = [
 ];
 
 /** Where Main Street meets Hollow Bend (the centerline crossing z = 0). */
-const MAIN_WEST_X = (() => {
+export const MAIN_WEST_X = (() => {
   const h = CURVES[1].pts;
   for (let i = 1; i < h.length; i++) if (Math.sign(h[i - 1].z) !== Math.sign(h[i].z)) return Math.round(h[i].x);
   return -360;

@@ -7,8 +7,11 @@
  * drawn at any zoom: every road with its casing and centre line (town streets,
  * the curved lanes, the county road, the Lake Road, the interstate and its
  * bridge, the trail around the lake), lots, buildings, the roadside places and
- * labels for streets, areas and places. Scene coordinates throughout (+x east,
- * +z north).
+ * labels for streets, areas and places. West of the town the map runs on along
+ * State Highway 23 through the woods to Montello, whose ground is Tello's own
+ * picture of the city (tello/town/MapBase.ts) with its streets, buildings, lots
+ * and places drawn as vectors here like Fox Plains'. Scene coordinates
+ * throughout (+x east, +z north).
  */
 import { HALF, HIGHWAY, LAKE_CENTER, PLAY_LIMIT, WATER_LEVEL, fbm, forestDensity, lakeCoord, lakeRadius, marshWeight, type Terrain } from '../../rackreel/world/Terrain'
 import type { MapMarker } from '../../rackreel/ui/Minimap'
@@ -19,10 +22,14 @@ import { LAKE_ROAD_APRON, highwayAt, HIGHWAY_END_T, lakeRoadPath } from '../coun
 import { ROADSIDE, doorSpot, lotRect, placeFrame, type RoadsideKind } from '../roadside/RoadsideLayout'
 import { woodsAt } from './TownGround'
 import { CASINO_NAME } from '../casino/CasinoHost'
+import { MONTELLO_FIRE_STATION, MONTELLO_SHOPS } from '../../maplestreet/shared/MontelloPlaces'
+import { buildingFill, paintMontelloBase } from '../../tello/town/MapBase'
+import type { MontelloLink } from '../montello/Link'
 
+/** The painted raster's extent around Fox Plains and the lake country; with Montello it runs north to Montello's edge. */
 export const ATLAS = { x0: -1000, x1: 524, z0: -520, z1: 1796, m: 2 } as const
-const COLS = Math.round((ATLAS.x1 - ATLAS.x0) / ATLAS.m)
-const ROWS = Math.round((ATLAS.z1 - ATLAS.z0) / ATLAS.m)
+/** Montello's streets are drawn this far past its playable edge (where the barricades stand). */
+const MONTELLO_ROAD_REACH = 60
 
 export type PoiKind = 'outfitters' | 'dock' | 'camp' | 'stand' | 'blind' | 'shop' | 'casino' | 'gas' | 'motel' | 'bar' | 'cabin' | 'civic' | 'depot' | 'home' | 'landmark' | 'hotel'
 
@@ -36,7 +43,7 @@ export interface Poi {
   to: { x: number; z: number }
   /** 1: labelled at every zoom; 2: from town zoom; 3: close up only. */
   tier: 1 | 2 | 3
-  group: 'Town' | 'County Road' | 'Lake country'
+  group: 'Town' | 'County Road' | 'Lake country' | 'Montello'
   note?: string
 }
 
@@ -73,7 +80,7 @@ interface Street {
   name: string
   pts: { x: number; z: number }[]
   width: number
-  kind: 'street' | 'county' | 'lake' | 'interstate' | 'trail'
+  kind: 'street' | 'county' | 'lake' | 'interstate' | 'trail' | 'gravel' | 'walk'
 }
 
 const ICON: Record<PoiKind, { color: string; glyph: string }> = {
@@ -93,6 +100,15 @@ const ICON: Record<PoiKind, { color: string; glyph: string }> = {
   home: { color: '#ffd34d', glyph: '⌂' },
   landmark: { color: '#3c5a3a', glyph: '◆' },
   hotel: { color: '#6a4a8a', glyph: 'H' },
+}
+
+/** Montello's baked road classes as map styles: highways, streets, more streets, gravel, walks, dirt trails. */
+const MONTELLO_ROAD_KIND: readonly Street['kind'][] = ['county', 'street', 'street', 'gravel', 'walk', 'trail']
+/** Montello's mapped places (beyond its working shops) by kind, and how close you must zoom to see them. */
+const MONTELLO_POI_KIND: Record<string, { kind: PoiKind; tier: 2 | 3 }> = {
+  fuel: { kind: 'gas', tier: 2 }, food: { kind: 'shop', tier: 3 }, bar: { kind: 'bar', tier: 3 }, bank: { kind: 'shop', tier: 3 }, shop: { kind: 'shop', tier: 3 },
+  lodging: { kind: 'motel', tier: 2 }, fire: { kind: 'civic', tier: 2 }, school: { kind: 'civic', tier: 3 }, civic: { kind: 'civic', tier: 3 }, church: { kind: 'civic', tier: 3 },
+  park: { kind: 'landmark', tier: 3 }, landmark: { kind: 'landmark', tier: 2 },
 }
 
 const SHOP_NAMES: Record<string, string> = { dealer: 'Car dealer', diner: 'Diner', bank: 'Bank', clothing: 'Clothing: try on outfits', cafe: 'Café', grocery: 'Grocery', hardware: 'Hardware store', gas: 'Gas station' }
@@ -144,16 +160,42 @@ export class Atlas {
   private readonly areaLabels: { name: string; x: number; z: number; size: number; color: string; halo: string; minS: number; maxS: number }[] = []
   private progress = 0
   private readonly ready: Promise<void>
+  /** The painted raster's extent (scene metres) and size (pixels). */
+  private readonly ext: { x0: number; x1: number; z0: number; z1: number; m: number }
+  private readonly cols: number
+  private readonly rows: number
+  /** Montello's ground (Tello's picture of it) and where it lies in the scene; null without Montello. */
+  private readonly montello: { base: HTMLCanvasElement; x0: number; z0: number; size: number } | null = null
 
-  constructor(private readonly terrain: Terrain, markers: MapMarker[], dock: { x: number; z: number } | null) {
+  constructor(private readonly terrain: Terrain, markers: MapMarker[], dock: { x: number; z: number } | null, private readonly north: MontelloLink | null = null) {
+    const x0 = north ? Math.min(ATLAS.x0, Math.floor(north.box.x0 / ATLAS.m) * ATLAS.m) : ATLAS.x0
+    const x1 = ATLAS.x1
+    const z0 = north ? Math.min(ATLAS.z0, Math.floor(north.box.z0 / ATLAS.m) * ATLAS.m) : ATLAS.z0
+    const z1 = north ? Math.max(ATLAS.z1, Math.ceil(north.box.z1 / ATLAS.m) * ATLAS.m) : ATLAS.z1
+    this.ext = { x0, x1, z0, z1, m: ATLAS.m }
+    this.cols = Math.round((x1 - x0) / ATLAS.m)
+    this.rows = Math.round((z1 - z0) / ATLAS.m)
     this.base = document.createElement('canvas')
-    this.base.width = COLS
-    this.base.height = ROWS
+    this.base.width = this.cols
+    this.base.height = this.rows
     const g = this.base.getContext('2d')!
     g.fillStyle = `rgb(${PAL.beyond.join(',')})`
-    g.fillRect(0, 0, COLS, ROWS)
+    g.fillRect(0, 0, this.cols, this.rows)
+    if (north) {
+      const land = north.land
+      this.montello = { base: paintMontelloBase(land, { vectors: false, fade: 0.6 }), x0: land.toSceneX(land.x0), z0: land.toSceneZ(land.z0), size: land.size }
+    }
     this.collect(markers, dock)
+    if (north) this.collectMontello(north)
     this.ready = this.paint()
+  }
+
+  /** The middle of Montello's city limits (scene coordinates), or null without Montello. */
+  get montelloCenter(): { x: number; z: number } | null {
+    const land = this.north?.land
+    if (!land) return null
+    const c = flatCentroid(land.doc.limits.city)
+    return { x: land.toSceneX(c.x), z: land.toSceneZ(c.z) }
   }
 
   /** Resolves once the raster is fully painted (it is painted a slice per frame after loading). */
@@ -258,21 +300,82 @@ export class Atlas {
     this.areaLabels.push({ name: 'Downtown', x: scene(300, 0).x + 30, z: scene(300, 0).z + 70, size: 15, color: '#3a2a1a', halo: 'rgba(245,238,220,.85)', minS: 0.45, maxS: 99 })
   }
 
+  /** Highway 23, and Montello's streets, lots, buildings, places and names, in scene coordinates. */
+  private collectMontello(north: MontelloLink): void {
+    const land = north.land
+    const road = [...north.road.filter((_p, i) => i % 3 === 0 || i === north.road.length - 1), ...north.inward]
+    this.streets.push({ name: 'Highway 23', width: 10, kind: 'county', pts: road.map((p) => ({ x: p.x, z: p.z })) })
+    const near = (x: number, z: number) => land.seen(x, z, land.doc.limits.seen - MONTELLO_ROAD_REACH)
+    for (const r of land.doc.roads) {
+      let run: { x: number; z: number }[] = []
+      const flush = () => {
+        if (run.length > 1) this.streets.push({ name: r.k <= 2 ? r.n : '', width: r.w, kind: MONTELLO_ROAD_KIND[r.k] ?? 'street', pts: run })
+        run = []
+      }
+      for (let k = 0; k + 1 < r.p.length; k += 2) {
+        if (near(r.p[k], r.p[k + 1])) run.push({ x: land.toSceneX(r.p[k]), z: land.toSceneZ(r.p[k + 1]) })
+        else flush()
+      }
+      flush()
+    }
+    const ringPts = (p: number[]) => {
+      const out: { x: number; z: number }[] = []
+      for (let k = 0; k + 1 < p.length; k += 2) out.push({ x: land.toSceneX(p[k]), z: land.toSceneZ(p[k + 1]) })
+      return out
+    }
+    for (const lot of land.doc.lots) {
+      const c = flatCentroid(lot.p)
+      if (land.playable(c.x, c.z)) this.roadsideLots.push({ pts: ringPts(lot.p), surface: 'asphalt' })
+    }
+    for (const b of land.doc.buildings) this.buildings.push({ pts: ringPts(b.p), fill: buildingFill(b.k), name: b.n })
+
+    const named = new Set<string>()
+    for (const shop of MONTELLO_SHOPS) {
+      const p = scene(shop.x, shop.z)
+      const kind: PoiKind = shop.kind === 'gas' ? 'gas' : shop.kind === 'bar' ? 'bar' : 'shop'
+      const what = shop.id === 'mt-kwik-trip' ? 'Gas, groceries and Montello deliveries' : SHOP_NAMES[shop.kind] ?? (shop.kind === 'bar' ? 'Bar' : '')
+      this.pois.push({ id: shop.id, name: shop.name, kind, x: p.x, z: p.z, to: p, tier: 2, group: 'Montello', note: [what, shop.street].filter(Boolean).join(' · ') || undefined })
+      named.add(shop.name.toLowerCase())
+    }
+    const fire = scene(MONTELLO_FIRE_STATION.x, MONTELLO_FIRE_STATION.z)
+    this.pois.push({ id: 'mt-fire', name: MONTELLO_FIRE_STATION.name, kind: 'civic', x: fire.x, z: fire.z, to: fire, tier: 2, group: 'Montello', note: 'Volunteers report here for fire calls.' })
+    named.add(MONTELLO_FIRE_STATION.name.toLowerCase())
+    land.doc.pois.forEach((poi, i) => {
+      if (!poi.n || named.has(poi.n.toLowerCase())) return
+      const x = land.toSceneX(poi.x)
+      const z = land.toSceneZ(poi.z)
+      if (poi.k === 'water') {
+        if (land.seen(poi.x, poi.z)) this.areaLabels.push({ name: poi.n, x, z, size: 15, color: '#123a52', halo: 'rgba(210,232,240,.85)', minS: 0.12, maxS: 99 })
+        return
+      }
+      const style = MONTELLO_POI_KIND[poi.k]
+      if (!style || !land.playable(poi.x, poi.z)) return
+      named.add(poi.n.toLowerCase())
+      this.pois.push({ id: `mt-poi-${i}`, name: poi.n, kind: style.kind, x, z, to: { x, z }, tier: style.tier, group: 'Montello' })
+    })
+    const c = this.montelloCenter!
+    this.areaLabels.push({ name: 'MONTELLO', x: c.x, z: c.z + 260, size: 26, color: '#1d2a1c', halo: 'rgba(235,240,215,.88)', minS: 0, maxS: 1.1 })
+    const mid = north.road[Math.floor(north.road.length * 0.55)]
+    this.areaLabels.push({ name: 'Fox Lake Woods', x: mid.x - 90, z: mid.z, size: 14, color: '#e8eedb', halo: 'rgba(20,34,22,.7)', minS: 0.2, maxS: 99 })
+  }
+
   // ------------------------------------------------------------ raster
 
   private heightAt(x: number, z: number): number {
     if (Math.abs(x) <= HALF && Math.abs(z) <= HALF) return this.terrain.heightAt(x, z)
+    if (this.north && x < TOWN_SQUARE.x0) return this.north.heightAt(x, z)
     return outsideHeight(x, z)
   }
 
   private async paint(): Promise<void> {
     const g = this.base.getContext('2d')!
+    const { cols: COLS, rows: ROWS, ext } = this
     const heights = new Float32Array(COLS * ROWS)
     const slice = 48
     for (let j0 = 0; j0 < ROWS; j0 += slice) {
       for (let j = j0; j < Math.min(ROWS, j0 + slice); j++) {
-        const z = ATLAS.z1 - (j + 0.5) * ATLAS.m
-        for (let i = 0; i < COLS; i++) heights[j * COLS + i] = this.heightAt(ATLAS.x0 + (i + 0.5) * ATLAS.m, z)
+        const z = ext.z1 - (j + 0.5) * ext.m
+        for (let i = 0; i < COLS; i++) heights[j * COLS + i] = this.heightAt(ext.x0 + (i + 0.5) * ext.m, z)
       }
       this.progress = (j0 / ROWS) * 0.3
       await frame()
@@ -282,9 +385,9 @@ export class Atlas {
       const img = g.createImageData(COLS, rows)
       for (let r = 0; r < rows; r++) {
         const j = j0 + r
-        const z = ATLAS.z1 - (j + 0.5) * ATLAS.m
+        const z = ext.z1 - (j + 0.5) * ext.m
         for (let i = 0; i < COLS; i++) {
-          const x = ATLAS.x0 + (i + 0.5) * ATLAS.m
+          const x = ext.x0 + (i + 0.5) * ext.m
           const c = this.pixel(heights, i, j, x, z)
           const o = (r * COLS + i) * 4
           img.data[o] = c[0]
@@ -301,6 +404,7 @@ export class Atlas {
   }
 
   private pixel(heights: Float32Array, i: number, j: number, x: number, z: number): number[] {
+    const { cols: COLS, rows: ROWS } = this
     const k = j * COLS + i
     const h = heights[k]
     const hl = heights[j * COLS + Math.max(0, i - 1)]
@@ -309,7 +413,7 @@ export class Atlas {
     const hd = heights[Math.min(ROWS - 1, j + 1) * COLS + i]
     const inSquare = Math.abs(x) <= HALF && Math.abs(z) <= HALF
     const inTown = inTownSquare(x, z, -24) || (z > HALF - 2 && z < TOWN_SQUARE.z0 + 2 && Math.abs(x) < PLAY_LIMIT)
-    const playable = (inSquare && Math.abs(x) < PLAY_LIMIT + 8 && Math.abs(z) < PLAY_LIMIT + 8) || inTown || (z > HALF - 40 && z <= HALF && Math.abs(x) < PLAY_LIMIT)
+    const playable = (inSquare && Math.abs(x) < PLAY_LIMIT + 8 && Math.abs(z) < PLAY_LIMIT + 8) || inTown || (z > HALF - 40 && z <= HALF && Math.abs(x) < PLAY_LIMIT) || !!this.north?.inCorridor(x, z, -12)
     let c: number[]
     if (inSquare && h < WATER_LEVEL - 0.35) {
       const d = Math.min(1, (WATER_LEVEL - h) / 9)
@@ -320,7 +424,14 @@ export class Atlas {
       return c
     }
     let woods = 0
-    if (inSquare) {
+    const north = this.north
+    if (north && x < TOWN_SQUARE.x0) {
+      const n = north.near(x, z)
+      const clear = n.d - n.w / 2
+      woods = clear < 3 ? 0 : Math.min(1, (clear - 3) / 14) * (0.7 + 0.45 * (fbm(x * 0.0065 + 11, z * 0.0065 - 4, 3, 21) * 0.5 + 0.5))
+      c = mix(PAL.meadow, PAL.dry, fbm(x * 0.012, z * 0.012, 3, 41) + 0.4)
+      c = mix(c, PAL.forest, Math.min(1, woods * 1.3))
+    } else if (inSquare) {
       const f = forestDensity(x, z)
       woods = f
       const { s, angle } = lakeCoord(x, z)
@@ -328,7 +439,7 @@ export class Atlas {
       c = mix(c, PAL.forest, Math.min(1, f * 1.4))
       c = mix(c, PAL.marsh, marshWeight(angle) * (s < 1.9 ? 1 : 0) * (h < 1.4 ? 1 : 0))
       if (h < 0.9) c = mix(c, PAL.shore, 0.55)
-      const slope = Math.hypot(hr - hl, hd - hu) / (4 * ATLAS.m)
+      const slope = Math.hypot(hr - hl, hd - hu) / (4 * this.ext.m)
       c = mix(c, PAL.rock, Math.min(1, Math.max(0, (slope - 0.45) * 3)))
     } else {
       const t = sceneToTown(x, 0, z)
@@ -396,18 +507,29 @@ export class Atlas {
   }
 
   private drawBase(g: CanvasRenderingContext2D, vis: Rect): void {
-    const x0 = Math.max(ATLAS.x0, vis.x0)
-    const x1 = Math.min(ATLAS.x1, vis.x1)
-    const z0 = Math.max(ATLAS.z0, vis.z0)
-    const z1 = Math.min(ATLAS.z1, vis.z1)
-    if (x1 <= x0 || z1 <= z0) return
-    const sx = (x0 - ATLAS.x0) / ATLAS.m
-    const sy = (ATLAS.z1 - z1) / ATLAS.m
-    const sw = (x1 - x0) / ATLAS.m
-    const sh = (z1 - z0) / ATLAS.m
+    const ext = this.ext
+    const x0 = Math.max(ext.x0, vis.x0)
+    const x1 = Math.min(ext.x1, vis.x1)
+    const z0 = Math.max(ext.z0, vis.z0)
+    const z1 = Math.min(ext.z1, vis.z1)
     g.imageSmoothingEnabled = true
     g.imageSmoothingQuality = 'high'
-    g.drawImage(this.base, sx, sy, sw, sh, x0, -z1, x1 - x0, z1 - z0)
+    if (x1 > x0 && z1 > z0) {
+      const sx = (x0 - ext.x0) / ext.m
+      const sy = (ext.z1 - z1) / ext.m
+      const sw = (x1 - x0) / ext.m
+      const sh = (z1 - z0) / ext.m
+      g.drawImage(this.base, sx, sy, sw, sh, x0, -z1, x1 - x0, z1 - z0)
+    }
+    const m = this.montello
+    if (!m) return
+    const mx0 = Math.max(m.x0, vis.x0)
+    const mx1 = Math.min(m.x0 + m.size, vis.x1)
+    const mz0 = Math.max(m.z0, vis.z0)
+    const mz1 = Math.min(m.z0 + m.size, vis.z1)
+    if (mx1 <= mx0 || mz1 <= mz0) return
+    const k = m.base.width / m.size
+    g.drawImage(m.base, (mx0 - m.x0) * k, (m.z0 + m.size - mz1) * k, (mx1 - mx0) * k, (mz1 - mz0) * k, mx0, -mz1, mx1 - mx0, mz1 - mz0)
   }
 
   private poly(g: CanvasRenderingContext2D, pts: { x: number; z: number }[], close: boolean): void {
@@ -447,10 +569,29 @@ export class Atlas {
   private drawStreets(g: CanvasRenderingContext2D, vis: Rect, px: number, s: number): void {
     g.lineCap = 'round'
     g.lineJoin = 'round'
-    const order: Street['kind'][] = ['trail', 'interstate', 'county', 'lake', 'street']
+    const order: Street['kind'][] = ['walk', 'trail', 'gravel', 'interstate', 'county', 'lake', 'street']
     for (const kind of order) {
+      if (kind === 'walk' && s < 1.2) continue
       for (const st of this.streets) {
         if (st.kind !== kind || !within(st.pts, vis)) continue
+        if (kind === 'walk') {
+          this.poly(g, st.pts, false)
+          g.strokeStyle = 'rgba(226,222,208,.9)'
+          g.lineWidth = Math.max(1.2 * px, st.width)
+          g.stroke()
+          continue
+        }
+        if (kind === 'gravel') {
+          this.poly(g, st.pts, false)
+          g.strokeStyle = '#6b5d43'
+          g.lineWidth = Math.max(3.4 * px, st.width + 1.6 * px)
+          g.stroke()
+          this.poly(g, st.pts, false)
+          g.strokeStyle = '#c9b792'
+          g.lineWidth = Math.max(2 * px, st.width)
+          g.stroke()
+          continue
+        }
         if (kind === 'trail') {
           this.poly(g, st.pts, false)
           g.setLineDash([6 * px, 5 * px])
@@ -711,6 +852,17 @@ function centroid(pts: { x: number; z: number }[]): { x: number; z: number } {
     z += p.z
   }
   return { x: x / pts.length, z: z / pts.length }
+}
+
+function flatCentroid(p: number[]): { x: number; z: number } {
+  let x = 0
+  let z = 0
+  const n = Math.max(1, p.length / 2)
+  for (let k = 0; k + 1 < p.length; k += 2) {
+    x += p[k]
+    z += p[k + 1]
+  }
+  return { x: x / n, z: z / n }
 }
 
 function frame(): Promise<void> {

@@ -1,5 +1,5 @@
 /**
- * Fox Lake's north: County Road F through the woods and Montello at its end, built into Fox Lake's scene and
+ * Fox Lake's south-west: State Highway 23 through the woods and Montello at its end, built into Fox Lake's scene and
  * Rapier world. Montello itself is Tello's own builder (tello/world/Montello.ts) with its physics shifted into Fox
  * Plains' town frame; this file adds the corridor between: its ground, the road, the woods, the heightfield under
  * them and the invisible walls that keep cars on the land.
@@ -20,7 +20,7 @@ import { roadRibbon } from '../town/TownGround'
 import { FOX_LAKE_WOODS_FLOOR } from '../look'
 import { TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, outsideHeight, sceneToTown } from '../region'
 import { Montello } from '../../tello/world/Montello'
-import { LINK_SEEN, LINK_WALL, type MontelloLink } from './Link'
+import { LINK_NAME, LINK_SEEN, LINK_WALL, type MontelloLink } from './Link'
 
 const CELL = 4
 const TREE_STEP = 8
@@ -51,14 +51,14 @@ export class NorthWorld {
     const land = link.land
     // Tello's town frame (map x, height, -map z) to Fox Plains' town frame: both hang from mirrored roots, so it is a move.
     const shift = { x: land.offset.x - TOWN_OFFSET.x, y: -TOWN_OFFSET.y, z: TOWN_OFFSET.z - land.offset.z }
-    this.montello = new Montello(land, { host: s.host, physics: s.physics, shift, mats: s.mats, gfx: s.gfx, culler: s.culler, openLink: true })
+    this.montello = new Montello(land, { host: s.host, physics: s.physics, shift, mats: s.mats, gfx: s.gfx, culler: s.culler, openExit: link.exit })
   }
 
   async build(progress: (share: number, text: string) => void): Promise<void> {
     const { scene } = this.s.host.ctx
-    progress(0, 'Clearing County Road F…')
+    progress(0, 'Clearing Highway 23…')
     const ground = this.buildGround(scene)
-    const road = roadRibbon(scene, 'county-road-f', this.link.road, (x, z) => this.s.host.terrain.heightAt(x, z) + 0.06)
+    const road = roadRibbon(scene, 'highway-23', this.link.road, (x, z) => this.s.host.terrain.heightAt(x, z) + 0.06)
     this.addHeightfield()
     this.addWalls()
     this.plantWoods()
@@ -85,7 +85,7 @@ export class NorthWorld {
   /** Pushes a walker (scene point) out of the trunks of Montello and the corridor; true when it moved. */
   pushTrees(p: { x: number; z: number }, r: number): boolean {
     if (this.link.land.holdsScene(p.x, p.z)) return this.montello.pushTrees(p, r)
-    if (p.z < TOWN_SQUARE.z1 - 4) return false
+    if (p.x > TOWN_SQUARE.x0 + 4) return false
     let hit = false
     for (let i = -1; i <= 1; i++) {
       for (let j = -1; j <= 1; j++) {
@@ -107,23 +107,30 @@ export class NorthWorld {
     return hit
   }
 
-  /** The place name north of Fox Plains' square, or on County Road F inside it; null elsewhere. */
+  /** The place name west of Fox Plains' square, or on Highway 23 inside it; null elsewhere. */
   placeName(x: number, z: number): string | null {
     const link = this.link
-    if (link.land.holdsScene(x, z)) return this.montello.placeName(x, z)
+    const land = link.land
+    if (land.holdsScene(x, z) && land.playable(land.toMapX(x), land.toMapZ(z))) return this.montello.placeName(x, z)
     const n = link.near(x, z)
-    if (n.d - n.w / 2 < 6) return 'County Road F'
-    return z > TOWN_SQUARE.z1 ? 'Fox Lake woods' : null
+    if (n.d - n.w / 2 < 6) return LINK_NAME
+    return x < TOWN_SQUARE.x0 ? 'Fox Lake woods' : null
   }
 
-  /** Woods floor and the road's grassy verges, north of the square up to Montello's edge, as far as the woods are drawn. */
+  /** True where Montello draws its own ground (its playable area and the band seen past it). */
+  private montelloDraws(x: number, z: number, pad = 0): boolean {
+    const land = this.link.land
+    return land.holdsScene(x, z) && land.seen(land.toMapX(x), land.toMapZ(z), pad)
+  }
+
+  /** Woods floor and the road's grassy verges, west of the square to where Montello's own ground starts, as far as the woods are drawn. */
   private buildGround(scene: Scene): Mesh[] {
     const link = this.link
     const terrain = this.s.host.terrain
     const x0 = link.box.x0
-    const x1 = link.box.x1
-    const z0 = TOWN_SQUARE.z1 - 4
-    const z1 = link.edgeZ
+    const x1 = TOWN_SQUARE.x0 + 4
+    const z0 = link.box.z0
+    const z1 = link.box.z1
     const nx = Math.ceil((x1 - x0) / CELL)
     const nz = Math.ceil((z1 - z0) / CELL)
     const vx = nx + 1
@@ -136,10 +143,10 @@ export class NorthWorld {
     for (let j = 0; j < vz; j++) {
       for (let i = 0; i < vx; i++) {
         const k = j * vx + i
-        const x = x0 + i * CELL
-        const z = Math.min(z1, z0 + j * CELL)
+        const x = Math.min(x1, x0 + i * CELL)
+        const z = z0 + j * CELL
         const n = link.near(x, z, near)
-        keep[k] = n.d < LINK_SEEN ? 1 : 0
+        keep[k] = n.d < LINK_SEEN && !this.montelloDraws(x, z, 12) ? 1 : 0
         positions[k * 3] = x
         positions[k * 3 + 1] = terrain.heightAt(x, z) - 0.04
         positions[k * 3 + 2] = z
@@ -168,7 +175,7 @@ export class NorthWorld {
     data.normals = normals
     data.colors = colors
     data.uvs = uvs
-    const mesh = new Mesh('county-road-f-ground', scene)
+    const mesh = new Mesh('highway-23-ground', scene)
     data.applyToMesh(mesh, false)
     const mat = new StandardMaterial('tello-link-ground', scene)
     mat.diffuseTexture = detailTexture(scene)
@@ -189,8 +196,8 @@ export class NorthWorld {
     const link = this.link
     const land = link.land
     const x0 = link.box.x0 - 8
-    const z0 = TOWN_SQUARE.z1 - 12
-    const size = Math.ceil(Math.max(link.box.x1 + 8 - x0, link.edgeZ + 24 - z0) / CELL) * CELL
+    const z0 = link.box.z0 - 8
+    const size = Math.ceil(Math.max(TOWN_SQUARE.x0 + 12 - x0, link.box.z1 + 8 - z0) / CELL) * CELL
     const n = size / CELL
     const heights = new Float32Array((n + 1) * (n + 1))
     // Heightfield rows run along +z of the town frame, which is south in the scene.
@@ -200,7 +207,7 @@ export class NorthWorld {
         const z = z0 + size - j * CELL
         let h: number
         if (land.holdsScene(x, z + CELL) && land.holdsScene(x, z)) h = land.groundAt(land.toMapX(x), land.toMapZ(z)) - 3
-        else if (z <= TOWN_SQUARE.z1 - CELL) h = outsideHeight(x, z) - (x >= TOWN_SQUARE.x0 && x <= TOWN_SQUARE.x1 ? 3 : 0)
+        else if (x >= TOWN_SQUARE.x0 + CELL) h = outsideHeight(x, z) - (z >= TOWN_SQUARE.z0 && z <= TOWN_SQUARE.z1 ? 3 : 0)
         else h = link.corridorHeight(x, z)
         heights[i + j * (n + 1)] = h - TOWN_OFFSET.y
       }
@@ -209,10 +216,10 @@ export class NorthWorld {
     this.s.physics.addHeightfield(n, size, heights, c.x, c.z)
   }
 
-  /** Walls either side of the road from Fox Plains' square to Montello's, and along the square's north edge beside it. */
+  /** Walls either side of the road from Fox Plains' square to Montello's walls, and along the square's west edge beside it. */
   private addWalls(): void {
     const link = this.link
-    const guide = link.road.filter((p) => p.z > TOWN_SQUARE.z1 - 2)
+    const guide = [...link.road.filter((p) => p.x < TOWN_SQUARE.x0 + 2), ...link.inward]
     const sides: { x: number; z: number }[][] = [[], []]
     for (let k = 0; k < guide.length; k++) {
       const a = guide[Math.max(0, k - 1)]
@@ -223,26 +230,26 @@ export class NorthWorld {
       sides[0].push({ x: guide[k].x + nx * LINK_WALL, z: guide[k].z + nz * LINK_WALL })
       sides[1].push({ x: guide[k].x - nx * LINK_WALL, z: guide[k].z - nz * LINK_WALL })
     }
-    const last = guide[guide.length - 1]
-    const dir = { x: last.x - guide[guide.length - 2].x, z: last.z - guide[guide.length - 2].z }
-    const dl = Math.hypot(dir.x, dir.z) || 1
-    // On past the map's edge to meet Montello's own walls round County Highway F.
-    const beyond = (link.edgeZ + 6 - last.z) / (dir.z / dl)
+    const land = link.land
+    // The walls stop where they meet Montello's own walls round its playable area.
+    const inside = (q: { x: number; z: number }) => land.holdsScene(q.x, q.z) && land.playable(land.toMapX(q.x), land.toMapZ(q.z), 2)
     for (const side of sides) {
-      const end = side[side.length - 1]
-      side.push({ x: end.x + (dir.x / dl) * beyond, z: end.z + (dir.z / dl) * beyond })
       let from = side[0]
       for (let k = 1; k < side.length; k++) {
         const to = side[k]
+        if (inside(to)) {
+          this.wall(from, to)
+          break
+        }
         if (Math.hypot(to.x - from.x, to.z - from.z) < WALL_STEP && k < side.length - 1) continue
         this.wall(from, to)
         from = to
       }
     }
-    const gap = [sides[0][0].x, sides[1][0].x].sort((a, b) => a - b)
-    const edge = TOWN_SQUARE.z1 - 1
-    this.wall({ x: TOWN_SQUARE.x0, z: edge }, { x: gap[0], z: edge })
-    this.wall({ x: gap[1], z: edge }, { x: Math.max(TOWN_SQUARE.x1, link.box.x1), z: edge })
+    const gap = [sides[0][0].z, sides[1][0].z].sort((a, b) => a - b)
+    const edge = TOWN_SQUARE.x0 + 1
+    this.wall({ x: edge, z: TOWN_SQUARE.z0 }, { x: edge, z: gap[0] })
+    this.wall({ x: edge, z: gap[1] }, { x: edge, z: TOWN_SQUARE.z1 })
   }
 
   private wall(a: { x: number; z: number }, b: { x: number; z: number }): void {
@@ -263,12 +270,13 @@ export class NorthWorld {
     const terrain = this.s.host.terrain
     const spots: { x: number; y: number; z: number; kind: 'pine' | 'hardwood' | 'birch'; scale: number; yaw: number }[] = []
     const near = { d: 0, s: 0, w: 0 }
-    for (let x = link.box.x0; x < link.box.x1; x += TREE_STEP) {
-      for (let z = TOWN_SQUARE.z1 + 2; z < link.edgeZ - 2; z += TREE_STEP) {
+    for (let x = link.box.x0; x < TOWN_SQUARE.x0 - 2; x += TREE_STEP) {
+      for (let z = link.box.z0; z < link.box.z1; z += TREE_STEP) {
         const h = hash(x, z)
         if (h < 0.22) continue
         const px = x + (hash(x + 1.7, z) - 0.5) * TREE_STEP * 0.9
         const pz = z + (hash(x, z + 2.3) - 0.5) * TREE_STEP * 0.9
+        if (px > TOWN_SQUARE.x0 - 2 || this.montelloDraws(px, pz)) continue
         const n = link.near(px, pz, near)
         const clear = n.d - n.w / 2
         if (clear < 9 || n.d > LINK_SEEN - 4) continue

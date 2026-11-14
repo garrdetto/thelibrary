@@ -1,6 +1,7 @@
 /**
  * Where a road leaves Montello's city limits it is closed: an orange-and-white striped barricade on posts across the
- * lanes, just inside the invisible wall at the playable area's edge.
+ * lanes, just inside the invisible wall at the playable area's edge; and where County Highway F's strip of the
+ * playable area meets the map's south edge. A host world's way in (`open`, map coordinates) stays open.
  */
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { ChunkedBuilders, hexRGB } from '../../foxlake/fp/core/Geo'
@@ -14,12 +15,16 @@ const WHITE = hexRGB(0xf2f0ea)
 const SETBACK = 3
 const STRIPE = 0.6
 
-export function buildBarricades(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand): number {
+export function buildBarricades(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand, open: { x: number; z: number; r: number } | null = null): number {
   const chunks = new ChunkedBuilders(256)
   const boards = mats.plain('tello-barricade', { vcolor: true, gloss: 0.3 })
   const posts = mats.plain('tello-barricade-post', { color: 0xd9d6cf, gloss: 0.2 })
   let count = 0
-  for (const exit of land.doc.limits.exits) {
+  const link = land.doc.limits.link
+  const exits = [...land.doc.limits.exits]
+  if (link.length >= 4) exits.push({ x: link[0], z: link[1] + SETBACK + 1, h: Math.atan2(link[0] - link[2], link[1] - link[3]), w: 8.2 })
+  for (const exit of exits) {
+    if (open && Math.hypot(exit.x - open.x, exit.z - open.z) < open.r + 20) continue
     const ox = Math.sin(exit.h)
     const oz = Math.cos(exit.h)
     const mx = exit.x - ox * SETBACK

@@ -1,6 +1,9 @@
 /**
  * Ctrl's full map of Fox Lake (the town, the county road and its places, the
- * Lake Road and the lake country) and the turn-by-turn directions it starts.
+ * Lake Road, the lake country, and Highway 23 south-west to Montello) and the
+ * turn-by-turn directions it starts. Directions to or within Montello follow
+ * Montello's own road network (`NorthRoutes`); between the towns they lead to
+ * Highway 23 and pick up again at its other end.
  * The map is the shared atlas (Atlas.ts): it opens centred on you, zoomed in,
  * and pans by dragging and zooms with the wheel or the buttons. Click a place
  * (or pick it from the list beside the map) to be routed to its door; click
@@ -11,7 +14,7 @@
  */
 import type { MapMarker } from '../../rackreel/ui/Minimap'
 import type { LotDef } from '../../maplestreet/shared/WorldLayout'
-import { Atlas, unscreen, type Poi, type View } from './Atlas'
+import { Atlas, unscreen, type Poi, type RouteLine, type View } from './Atlas'
 import { RouteGrid, formatDistance, progressOn, type Route, type RouteWorld, type Step } from './RouteGrid'
 
 const ARRIVE_RADIUS = 22
@@ -26,6 +29,21 @@ const ARROWS: Record<Step['turn'], string> = {
   start: '↑', straight: '↑', left: '↰', right: '↱', 'slight-left': '↖', 'slight-right': '↗', 'sharp-left': '↶', 'sharp-right': '↷', arrive: '⚑',
 }
 
+/** Montello's directions, for a world with Montello south-west of Fox Plains along Highway 23. Scene coordinates. */
+export interface NorthRoutes {
+  /** True on Montello's map. */
+  holds(x: number, z: number): boolean
+  /** True west of Fox Plains' square: on Highway 23 or in Montello. */
+  beyondTown(): boolean
+  /** Starts (or, with null, clears) directions along Montello's roads to a spot. */
+  navigate(goal: { x: number; z: number; name: string } | null): void
+  /** Montello's directions being followed, as a line for the maps, or null. */
+  line(): RouteLine | null
+  /** Highway 23's ends: at Main Street in Fox Plains, and at Montello's edge. */
+  foxPlainsEnd: { x: number; z: number }
+  montelloEnd: { x: number; z: number }
+}
+
 export interface MapHost {
   world: RouteWorld
   atlas: Atlas
@@ -35,6 +53,7 @@ export interface MapHost {
   canvas: HTMLCanvasElement | null
   markers(): MapMarker[]
   lot(lot: LotDef): 'mine' | 'owned' | 'sale' | null
+  north?: NorthRoutes | null
 }
 
 export class WorldMap {
@@ -50,6 +69,8 @@ export class WorldMap {
   private readonly list: HTMLDivElement
   private route: Route | null = null
   private goalName: string | null = null
+  /** A goal at the other end of Highway 23, picked up once you cross into that half of the map. */
+  private pending: { goal: { x: number; z: number }; name: string | null; side: 'montello' | 'foxplains' } | null = null
   private rerouteIn = 0
   private shownText = ''
   private frame = 0
@@ -142,9 +163,9 @@ export class WorldMap {
     return !this.root.hidden
   }
 
-  /** The route being followed (drawn on the minimap too), or null. */
-  get current(): Route | null {
-    return this.route
+  /** The route being followed (drawn on the minimap too), or null: Fox Lake's, or Montello's while you are there. */
+  get current(): RouteLine | null {
+    return this.route ?? this.host.north?.line() ?? null
   }
 
   toggle(): void {
@@ -180,15 +201,23 @@ export class WorldMap {
     this.goalName = null
     this.banner.hidden = true
     this.shownText = ''
+    if (this.pending) this.host.north?.navigate(null)
+    this.pending = null
   }
 
   /** Every frame: follows the player along the route, re-routes when they stray, and clears on arrival. */
   update(dt: number): void {
     if (this.open && ++this.frame % 6 === 0) this.redraw()
+    if (this.pending && this.handOff()) return
     const route = this.route
     if (!route || !this.grid) return
     const me = this.host.where()
     if (Math.hypot(me.x - route.goal.x, me.z - route.goal.z) < ARRIVE_RADIUS) {
+      if (this.pending) {
+        this.route = null
+        this.corridorBanner(this.pending.side)
+        return
+      }
       const name = this.goalName
       this.clear()
       this.host.toast(name ? `You have arrived at ${name}.` : 'You have arrived.')
@@ -219,7 +248,65 @@ export class WorldMap {
     this.go({ x, z }, name)
   }
 
+  /** Crossing Highway 23 with a goal at its other end: the directions switch to that half's roads. True once handed off. */
+  private handOff(): boolean {
+    const north = this.host.north
+    const pending = this.pending
+    if (!north || !pending) return false
+    const there = pending.side === 'montello' ? north.beyondTown() : !north.beyondTown()
+    if (!there) {
+      if (!this.route) this.corridorBanner(pending.side)
+      return false
+    }
+    this.pending = null
+    this.route = null
+    this.banner.hidden = true
+    this.shownText = ''
+    if (pending.side === 'montello') north.navigate({ x: pending.goal.x, z: pending.goal.z, name: pending.name ?? 'the spot you marked' })
+    else {
+      north.navigate(null)
+      this.go(pending.goal, pending.name)
+    }
+    return true
+  }
+
+  private corridorBanner(side: 'montello' | 'foxplains'): void {
+    const text = side === 'montello' ? 'Follow Highway 23 west to Montello' : 'Follow Highway 23 east to Fox Plains'
+    this.banner.hidden = false
+    if (text !== this.shownText) {
+      this.shownText = text
+      this.bannerText.textContent = text
+      this.bannerArrow.textContent = ARROWS.straight
+    }
+    this.bannerLeft.textContent = `Then on to ${this.pending?.name ?? 'your spot'} · Ctrl for the map`
+  }
+
   private go(goal: { x: number; z: number }, name: string | null): void {
+    const north = this.host.north
+    if (north) {
+      this.clear()
+      north.navigate(null)
+      const goalNorth = north.holds(goal.x, goal.z)
+      const meNorth = north.beyondTown()
+      if (goalNorth && meNorth) {
+        north.navigate({ x: goal.x, z: goal.z, name: name ?? 'the spot you marked' })
+        this.redraw()
+        return
+      }
+      if (goalNorth || meNorth) {
+        this.pending = { goal, name, side: goalNorth ? 'montello' : 'foxplains' }
+        if (meNorth) north.navigate({ x: north.montelloEnd.x, z: north.montelloEnd.z, name: 'Highway 23' })
+        else this.routeOnly(north.foxPlainsEnd, 'Highway 23')
+        this.host.toast(goalNorth ? `${name ?? 'That spot'} is in Montello: take Highway 23 west from the end of Main St.` : `${name ?? 'That spot'} is in Fox Lake: take Highway 23 east out of Montello to Fox Plains.`)
+        if (!this.route) this.corridorBanner(this.pending.side)
+        this.redraw()
+        return
+      }
+    }
+    this.routeOnly(goal, name)
+  }
+
+  private routeOnly(goal: { x: number; z: number }, name: string | null): void {
     this.grid ??= new RouteGrid(this.host.world)
     const route = this.grid.route(this.host.where(), goal)
     if (!route) {
@@ -352,7 +439,7 @@ export class WorldMap {
       if (!list) groups.set(p.group, (list = []))
       list.push(p)
     }
-    for (const name of ['County Road', 'Lake country', 'Town']) {
+    for (const name of ['County Road', 'Lake country', 'Town', 'Montello']) {
       const list = groups.get(name)
       if (!list?.length) continue
       const h = document.createElement('h3')

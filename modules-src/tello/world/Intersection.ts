@@ -2,7 +2,8 @@
  * The light where Main Street meets State Highway 23 (West Montello Street to the west, East Montello Street to the
  * east), from the owner's drive through it: the grass island between Main Street's two legs with its yellow curb and
  * keep-right sign, mast-arm signals on the north corners and a post-mounted signal between them, the route sign
- * assembly in front of the falls and the two-way arrow; the green guide sign on Main Street; and the stone parapets
+ * assembly in front of the falls and the two-way arrow; the green guide sign on Main Street; the stone abutments the
+ * Montello River runs between under the West Montello Street bridge; and the stone parapets
  * with iron railings on the West Montello Street bridge.
  *
  * Built in Tello's town frame (x east, z south) under the mirrored town root. The signals run a fixed cycle.
@@ -14,7 +15,7 @@ import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { ChunkedBuilders, finishMesh, hexRGB, MeshBuilder } from '../../foxlake/fp/core/Geo'
 import type { Mats } from '../../foxlake/fp/core/Tex'
-import { mainIsland, offsetLine, signalPhase, type SignalGroup, type SignalLamp } from '../data/Streets'
+import { ABUTMENT, CHANNEL, mainIsland, offsetLine, signalPhase, type SignalGroup, type SignalLamp } from '../data/Streets'
 import type { TelloLand } from '../region'
 import { PARAPET_H, PARAPET_T } from './Roads'
 import type { StaticSink } from './Sink'
@@ -95,6 +96,7 @@ export function buildIntersection(root: TransformNode, mats: Mats, sink: StaticS
   const guideZ = -62
   board(kit, sink, guideX(land, guideZ), h(guideX(land, guideZ), guideZ), guideZ, [0, -1], M.guide, 2.3, 1.2, 2.2, true)
   parapets(kit, land)
+  abutments(kit, land)
   chunks.flush(root, 'tello-junction')
   const lamps = new Map<string, Mesh>()
   for (const [key, b] of kit.lit) {
@@ -467,3 +469,41 @@ function parapets(kit: Kit, land: TelloLand): void {
     }
   }
 }
+
+/**
+ * The West Montello Street bridge's abutments: rock-faced stone walls along both banks of the Montello River under the
+ * deck, from below the water up to the deck's beam, so the river runs between them and no bank shows under the bridge.
+ */
+function abutments(kit: Kit, land: TelloLand): void {
+  const bridge = land.doc.bridges.find((b) => b.s && land.doc.roads[b.r]?.n === 'West Montello Street')
+  if (!bridge) return
+  const p = bridge.p
+  const ax = p[0], az = p[1], bx = p[p.length - 2], bz = p[p.length - 1]
+  const len = Math.hypot(bx - ax, bz - az) || 1
+  const ux = (bx - ax) / len, uz = (bz - az) / len
+  const reach = bridge.w / 2 + 0.6
+  const across = (x: number, z: number) => -(x - ax) * uz + (z - az) * ux
+  const water = land.waterAt(ax + (bx - ax) / 2, az + (bz - az) / 2) ?? 5.6
+  const color = hexRGB(0x9a8f80)
+  for (const side of [1, -1]) {
+    const line = offsetLine(CHANNEL, side * ABUTMENT)
+    for (let k = 0; k + 3 < line.length; k += 2) {
+      let x0 = line[k], z0 = line[k + 1], x1 = line[k + 2], z1 = line[k + 3]
+      const a0 = across(x0, z0), a1 = across(x1, z1)
+      if ((a0 > reach && a1 > reach) || (a0 < -reach && a1 < -reach)) continue
+      const clip = (t: number) => [x0 + (x1 - x0) * t, z0 + (z1 - z0) * t]
+      const t0 = a0 === a1 ? 0 : Math.max(0, Math.min(1, ((a0 > a1 ? reach : -reach) - a0) / (a1 - a0)))
+      const t1 = a0 === a1 ? 1 : Math.max(0, Math.min(1, ((a0 > a1 ? -reach : reach) - a0) / (a1 - a0)))
+      ;[[x0, z0], [x1, z1]] = [clip(Math.min(t0, t1)), clip(Math.max(t0, t1))]
+      const l = Math.hypot(x1 - x0, z1 - z0)
+      if (l < 0.2) continue
+      const mx = (x0 + x1) / 2, mz = (z0 + z1) / 2
+      const yaw = -Math.atan2(-(z1 - z0), x1 - x0)
+      const low = water - 1.6, high = bridge.y - 0.55
+      const stone = kit.chunks.get(mx, -mz, kit.M.stone, { colors: true })
+      stone.orientedBox(mx, (low + high) / 2, -mz, l / 2, (high - low) / 2, 0.45, yaw, { color })
+      stone.orientedBox(mx, water + 0.05, -mz, l / 2 + 0.02, 0.08, 0.5, yaw, { color: hexRGB(0x6f6a5f) })
+    }
+  }
+}
+

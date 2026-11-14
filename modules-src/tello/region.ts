@@ -45,7 +45,8 @@ export class TelloLand {
   readonly offset: XZ
   private readonly decks: Deck[] = []
 
-  constructor(readonly doc: MapDoc, readonly grids: MapGrids) {
+  /** `at` is where the middle of the map lies in the scene: by default a whole map width north of the origin (Tello). */
+  constructor(readonly doc: MapDoc, readonly grids: MapGrids, at?: XZ) {
     fixStreets(doc, grids)
     const f = doc.frame
     this.frame = f
@@ -54,7 +55,8 @@ export class TelloLand {
     this.x0 = f.x0
     this.z0 = f.z0
     this.size = f.size
-    this.offset = { x: -(f.x0 + f.size / 2), z: f.size - (f.z0 + f.size / 2) }
+    const centre = at ?? { x: 0, z: f.size }
+    this.offset = { x: centre.x - (f.x0 + f.size / 2), z: centre.z - (f.z0 + f.size / 2) }
     for (const b of doc.bridges) this.decks.push(deckOf(b))
   }
 

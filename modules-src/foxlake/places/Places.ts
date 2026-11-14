@@ -57,7 +57,7 @@ export interface PlacesHooks {
   land: TelloLand | null
   map: () => WorldMap | null
   northMap: () => TelloMap | null
-  inNorth(): boolean
+  beyondTown(): boolean
 }
 
 export class Places {
@@ -69,7 +69,7 @@ export class Places {
   constructor(private readonly hooks: PlacesHooks) {
     const toast = (text: string, kind: '' | 'warn' = '') => hooks.host.hud.toast(text, kind)
     this.fuel = new Fuel({ cars: hooks.cars, send: hooks.send, account: hooks.account, toast })
-    this.jobs = new Jobs({ host: hooks.host, cars: hooks.cars, send: hooks.send, land: hooks.land, map: hooks.map, northMap: hooks.northMap, inNorth: hooks.inNorth })
+    this.jobs = new Jobs({ host: hooks.host, cars: hooks.cars, send: hooks.send, land: hooks.land, map: hooks.map, northMap: hooks.northMap, beyondTown: hooks.beyondTown })
     this.panel = new PlacePanel({
       send: hooks.send,
       account: hooks.account,

@@ -29,7 +29,7 @@ export function buildLandmarks(root: TransformNode, mats: Mats, sink: StaticSink
 }
 
 /** A footprint's edge whose outside faces `face` (map) most squarely, its ends left to right as seen from outside. */
-function facingEdge(p: number[], face: [number, number]): { ax: number; az: number; bx: number; bz: number; ox: number; oz: number; len: number } | null {
+export function facingEdge(p: number[], face: [number, number]): { ax: number; az: number; bx: number; bz: number; ox: number; oz: number; len: number } | null {
   const n = p.length / 2
   let area = 0
   for (let k = 0; k < n; k++) area += p[k * 2] * p[((k + 1) % n) * 2 + 1] - p[((k + 1) % n) * 2] * p[k * 2 + 1]
@@ -238,7 +238,7 @@ function flagCanvas(): HTMLCanvasElement {
   return c
 }
 
-function textured(mats: Mats, name: string, canvas: HTMLCanvasElement): Material {
+export function textured(mats: Mats, name: string, canvas: HTMLCanvasElement): Material {
   const m = mats.plain(name, { gloss: 0.1 }) as PBRMaterial
   m.albedoTexture = mats.canvasTexture(name, canvas)
   return m

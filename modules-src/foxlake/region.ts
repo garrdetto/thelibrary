@@ -13,10 +13,13 @@
  *
  * East Ave (town x = 87) runs south out of town into the lake country's
  * interstate, which leaves the square's open north edge at about x = -261.
+ * Montello (Tello's map of the real city) lies south-west of the town, a whole
+ * map width west of the origin (`MONTELLO_AT`), and State Highway 23 runs to it
+ * from Main Street's west end (`LINK_ROAD`).
  */
 import { HALF, HIGHWAY, PLAY_LIMIT, fbm, rawHeight } from '../rackreel/world/Terrain'
 import type { OutsideLand, TerrainShape } from '../rackreel/world/Terrain'
-import { MAP_BOUNDS, WORLD_HALF } from '../maplestreet/shared/WorldLayout'
+import { MAIN_WEST_X, MAP_BOUNDS, WORLD_HALF } from '../maplestreet/shared/WorldLayout'
 import { HIGHWAY_GAPS, LAKE_ROAD_APRON, carveLakeRoad, lakeRoadPath } from './country/Roads'
 import { ROADSIDE, lotRect } from './roadside/RoadsideLayout'
 import { FOX_LAKE_WOODS_FLOOR } from './look'
@@ -24,6 +27,14 @@ import { FOX_LAKE_WOODS_FLOOR } from './look'
 /** Ground level of the town in the scene (above the lake, level with the interstate's north end). */
 export const TOWN_Y = 2
 export const TOWN_OFFSET = { x: -356, y: TOWN_Y, z: HALF + WORLD_HALF } as const
+
+/**
+ * Where the middle of Montello's map lies in the scene: a whole map width (4096 m) west of the origin, which puts the
+ * city south-west of Fox Plains (Rack & Reel's water shader reads Montello's depth map through a repeating texture, so
+ * the map must sit a whole number of map widths from the origin). scripts/montello-places.mjs keeps its own copy; a
+ * test keeps them equal.
+ */
+export const MONTELLO_AT = { x: -4096, z: 0 } as const
 
 export interface XYZ {
   x: number
@@ -121,41 +132,42 @@ function connectorSamples(): { x: number; z: number; w: number }[] {
 }
 
 /**
- * County Road F, the road north to Montello (modules-src/tello): from East Ave's north end it runs north out through
- * the forest ring, then sweeps north-east to Montello's map edge, where it becomes the real County Highway F. `join`
- * and `joinDir` are County Highway F's first point and direction in Tello's baked map, in scene coordinates (the map
- * sits a whole map width north of the origin); a test keeps them in step with montello.json.
+ * State Highway 23 between Fox Plains and Montello (modules-src/tello): from Main Street's west end at Hollow Bend it
+ * runs west out through the forest ring, swings south-west through the woods and comes into Montello from the east,
+ * where it becomes the real State Highway 23 at the end of the baked road just past the map's east edge. `join` and
+ * `joinDir` are that last baked point and the road's direction there, pointing out of Montello, in scene coordinates
+ * (with Montello at `MONTELLO_AT`); a test keeps them in step with montello.json.
  */
-export const NORTH_ROAD = (() => {
-  const start = townToScene(87, 0, -267)
-  return { start, bendZ: start.z + 240, join: { x: 394.8, z: 2018 }, joinDir: { x: 0.6209, z: 0.7839 }, width: 10, joinWidth: 8.2, reach: 260 }
+export const LINK_ROAD = (() => {
+  const start = townToScene(MAIN_WEST_X, 0, 0)
+  const leave = { x: -WORLD_HALF + TOWN_OFFSET.x - 30, z: start.z }
+  return { start, leave, join: { x: -2018, z: -257.2 }, joinDir: { x: 0.7193, z: 0.6946 }, width: 10, joinWidth: 9.4, reach: 620 }
 })()
 
-/** Points along County Road F from East Ave to Montello's edge, every `step` metres, with the road's width there. */
-export function northRoadPath(step = 4): { x: number; z: number; w: number }[] {
-  const { start, bendZ, join, joinDir, width, joinWidth, reach } = NORTH_ROAD
+/** Points along Highway 23 from Main Street to Montello's map edge, every `step` metres, with the road's width there. */
+export function linkRoadPath(step = 4): { x: number; z: number; w: number }[] {
+  const { start, leave, join, joinDir, width, joinWidth, reach } = LINK_ROAD
   const out: { x: number; z: number; w: number }[] = []
-  for (let z = start.z; z < bendZ; z += step) out.push({ x: start.x, z, w: width })
-  const a = { x: start.x, z: bendZ }
-  const c1 = { x: a.x, z: a.z + reach }
-  const c2 = { x: join.x - joinDir.x * reach, z: join.z - joinDir.z * reach }
-  const n = Math.max(8, Math.ceil((Math.hypot(join.x - a.x, join.z - a.z) * 1.3) / step))
+  for (let x = start.x; x > leave.x; x -= step) out.push({ x, z: start.z, w: width })
+  const c1 = { x: leave.x - reach, z: leave.z }
+  const c2 = { x: join.x + joinDir.x * reach, z: join.z + joinDir.z * reach }
+  const n = Math.max(8, Math.ceil((Math.hypot(join.x - leave.x, join.z - leave.z) * 1.4) / step))
   for (let i = 0; i <= n; i++) {
     const t = i / n
     const u = 1 - t
-    const x = u * u * u * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * join.x
-    const z = u * u * u * a.z + 3 * u * u * t * c1.z + 3 * u * t * t * c2.z + t * t * t * join.z
+    const x = u * u * u * leave.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * join.x
+    const z = u * u * u * leave.z + 3 * u * u * t * c1.z + 3 * u * t * t * c2.z + t * t * t * join.z
     out.push({ x, z, w: width + (joinWidth - width) * smooth(t) })
   }
   return out
 }
 
-let northSamples: { x: number; z: number; w: number }[] | null = null
+let linkSamples: { x: number; z: number; w: number }[] | null = null
 
-/** Distance from (x, z) to County Road F's edge (sampled; fine for placement). */
-export function northRoadDistance(x: number, z: number): number {
+/** Distance from (x, z) to Highway 23's edge (sampled; fine for placement). */
+export function linkRoadDistance(x: number, z: number): number {
   let best = Infinity
-  for (const p of (northSamples ??= northRoadPath(3))) best = Math.min(best, Math.hypot(p.x - x, p.z - z) - p.w / 2)
+  for (const p of (linkSamples ??= linkRoadPath(3))) best = Math.min(best, Math.hypot(p.x - x, p.z - z) - p.w / 2)
   return best
 }
 
@@ -176,8 +188,8 @@ function rectDistance(x: number, z: number, r: { x0: number; x1: number; z0: num
 
 // ---------------------------------------------------------------- roads and lots: a distance field
 
-const NORTH_REACH = 90
-const FIELD = { x0: -360, z0: -150, x1: 360, z1: TOWN_OFFSET.z + WORLD_HALF + 8, cell: 2 } as const
+const LINK_REACH = 90
+const FIELD = { x0: -WORLD_HALF + TOWN_OFFSET.x - LINK_REACH - 10, z0: -150, x1: 360, z1: TOWN_OFFSET.z + WORLD_HALF + 8, cell: 2 } as const
 const FIELD_W = Math.ceil((FIELD.x1 - FIELD.x0) / FIELD.cell) + 1
 const FIELD_H = Math.ceil((FIELD.z1 - FIELD.z0) / FIELD.cell) + 1
 let field: Float32Array | null = null
@@ -202,8 +214,8 @@ function buildField(): Float32Array {
   const f = new Float32Array(FIELD_W * FIELD_H).fill(1e6)
   const REACH = 14
   for (const p of [...lakeRoadPath(2), ...connectorPath(2)]) stamp(f, p.x, p.z, p.w / 2 + REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
-  // County Road F runs through the forest ring, so its distances reach as far as the hills take to rise (outsideHeight).
-  for (const p of northRoadPath(2).filter((q) => q.z < FIELD.z1 + NORTH_REACH)) stamp(f, p.x, p.z, p.w / 2 + NORTH_REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
+  // Highway 23 runs through the forest ring, so its distances reach as far as the hills take to rise (outsideHeight).
+  for (const p of linkRoadPath(2).filter((q) => q.x > FIELD.x0 - LINK_REACH)) stamp(f, p.x, p.z, p.w / 2 + LINK_REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
   const a = LAKE_ROAD_APRON
   stamp(f, a.x, a.z, a.r + REACH, (x, z) => Math.hypot(x - a.x, z - a.z) - a.r)
   for (const place of ROADSIDE) {

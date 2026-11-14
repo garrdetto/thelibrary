@@ -1,22 +1,26 @@
 """
 Blender build of Tello's detailed downtown and quarry pieces (run with `blender -b -P` or as `python3` with the `bpy`
-module, then `pnpm assets`):
+module, then `pnpm assets`; after `--`, `kit` or `quarry` builds just that file):
 
   assets-src/models/tello/downtown-kit.glb  storefront details the page lays onto every front: a bracketed cornice
                                             with modillions, scroll brackets, arched and flat window hoods, double-hung
-                                            window frames, stone sills, cast-iron pilasters, a panelled shop door and a
-                                            bell-cast turret roof with its finial.
+                                            window frames, stone sills, cast-iron pilasters, a panelled shop door, a
+                                            bell-cast turret roof with its finial, and from the owner's photos: a
+                                            corner oriel's carved knee brace and flat crown, a bowed bay window, an oval
+                                            sign plaque's frame, a brick pier's corbelled cap, a shingled mansard
+                                            awning section, a porch column and an iron grille vent.
   assets-src/models/tello/quarry.glb        the falls across from the light (granite cliff in blocky tiers, three
                                             cascades down chutes, foam, the pool, its cut-stone wall and the wishing
                                             well), three quarry-wall faces and a small falls for the granite park.
 
 Every object is a root node named for the part. Material names are slots the page paints: trim, wall, stone, door,
-shingle, metal, granite, wetrock, wallstone, water, foam, pool, wood. Blender's front view looks along +Y, so parts face
+shingle, metal, granite, wetrock, wallstone, water, foam, pool, wood, glass, brick. Blender's front view looks along +Y, so parts face
 -Y (the glTF +Z the page's fronts face). Units are metres. Deterministic: random streams are seeded.
 """
 import math
 import os
 import random
+import sys
 
 import bpy  # noqa: I001  (first: the bpy module puts bmesh and mathutils on the path)
 import bmesh
@@ -29,7 +33,7 @@ SLOT_COLORS = {
     'trim': (0.9, 0.88, 0.82), 'wall': (0.8, 0.7, 0.55), 'stone': (0.78, 0.74, 0.66), 'door': (0.23, 0.18, 0.14),
     'shingle': (0.4, 0.38, 0.36), 'metal': (0.1, 0.1, 0.11), 'granite': (0.62, 0.42, 0.36), 'wetrock': (0.38, 0.24, 0.2),
     'wallstone': (0.48, 0.41, 0.34), 'water': (0.9, 0.95, 0.97), 'foam': (1, 1, 1), 'pool': (0.08, 0.13, 0.12),
-    'wood': (0.42, 0.29, 0.19),
+    'wood': (0.42, 0.29, 0.19), 'glass': (0.22, 0.26, 0.29), 'brick': (0.62, 0.32, 0.24),
 }
 
 
@@ -350,6 +354,197 @@ def turret_roof():
     return p.finish(bevel=0.0, smooth_angle=50, uv_scale=2.0)
 
 
+def solid_strip(p, pts, half, slot):
+    """A strip of quads along points [(out, up), ...] (each pair the inner and outer edge), half as thick as wide in X."""
+    for i in range(len(pts) - 1):
+        (a0, a1), (b0, b1) = pts[i], pts[i + 1]
+        quad = [a0, b0, b1, a1]
+        c = [Vector((x, -d, z)) for (d, z) in quad for x in (-half, half)]
+        for f in [(0, 2, 4, 6), (7, 5, 3, 1), (0, 1, 3, 2), (2, 3, 5, 4), (4, 5, 7, 6), (6, 7, 1, 0)]:
+            p.face([c[k] for k in f], slot)
+
+
+def oriel_bracket():
+    """A carved knee brace under a corner oriel: a back plate, a top arm, a curved strut and a drop; 1 out and 1.3 down."""
+    p = Part('oriel-bracket')
+    t = 0.09
+    p.box(-t, -0.14, -1.3, t, 0.0, 0.0, 'trim')
+    p.box(-t, -1.0, -0.16, t, 0.0, 0.0, 'trim')
+    p.box(-t - 0.02, -1.05, -0.22, t + 0.02, -0.9, 0.02, 'trim')
+    seg = 14
+    pts = []
+    for i in range(seg + 1):
+        a = math.pi / 2 * i / seg
+        pts.append(((1.0 - 0.84 * math.cos(a), -1.3 + 0.84 * math.sin(a)), (1.0 - 0.98 * math.cos(a), -1.3 + 0.98 * math.sin(a))))
+    solid_strip(p, pts, t * 0.8, 'trim')
+    for (d, z, r) in [(0.22, -0.32, 0.075), (0.66, -0.12, 0.06)]:
+        bm = bmesh.new()
+        bmesh.ops.create_cone(bm, cap_ends=True, segments=14, radius1=r, radius2=r, depth=2 * t + 0.04)
+        p.merge(bm, 'trim', matrix=Matrix.Translation((0, -d, z)) @ Matrix.Rotation(math.pi / 2, 4, 'Y'))
+        bm.free()
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=10, radius1=0.07, radius2=0.0, depth=0.22)
+    p.merge(bm, 'trim', matrix=Matrix.Translation((0, -0.07, -1.41)) @ Matrix.Rotation(math.pi, 4, 'X'))
+    bm.free()
+    return p.finish(bevel=0.006)
+
+
+def oriel_cap():
+    """The flat-topped crown of a corner oriel: an eight-sided frieze, dentils and a projecting cornice, radius 1, 0.5 tall."""
+    p = Part('oriel-cap')
+    seg = 8
+    ring = lambda r, z: [Vector((math.cos((k + 0.5) / seg * 2 * math.pi) * r, math.sin((k + 0.5) / seg * 2 * math.pi) * r, z)) for k in range(seg)]
+    prof = [(1.0, 0.0), (1.0, 0.22), (1.05, 0.24), (1.05, 0.3), (1.12, 0.34), (1.2, 0.42), (1.2, 0.5), (0.0, 0.5)]
+    rings = [ring(r, z) for r, z in prof]
+    for i in range(len(rings) - 1):
+        for k in range(seg):
+            j = (k + 1) % seg
+            p.face([rings[i][k], rings[i][j], rings[i + 1][j], rings[i + 1][k]], 'trim')
+    p.face(list(reversed(ring(1.0, 0.0))), 'trim')
+    for k in range(seg * 3):
+        a = (k + 0.5) / (seg * 3) * 2 * math.pi
+        m = Matrix.Translation((math.cos(a) * 1.04, math.sin(a) * 1.04, 0.18)) @ Matrix.Rotation(a, 4, 'Z')
+        p.box(-0.05, -0.035, -0.035, 0.05, 0.035, 0.035, 'trim', matrix=m)
+    return p.finish(bevel=0.003, smooth_angle=30)
+
+
+def bay_curved():
+    """A bowed bay window 2.4 wide at the wall and 0.55 deep, 2.35 tall: a panel under the sashes, five glazed facets on
+    a curve with mullions and rails, and a cap that rolls out over it."""
+    p = Part('bay-curved')
+    n = 5
+    W, D = 1.2, 0.55
+    R = (W * W + D * D) / (2 * D)
+    a_max = math.asin(W / R)
+    pts = []
+    for i in range(n + 1):
+        a = -a_max + 2 * a_max * i / n
+        pts.append((math.sin(a) * R, -(math.cos(a) * R - (R - D))))
+    z_base, z_sill, z_head, z_top = 0.0, 0.45, 2.05, 2.35
+    for i in range(n):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        p.face([Vector((x0, y0, z_base)), Vector((x1, y1, z_base)), Vector((x1, y1, z_sill)), Vector((x0, y0, z_sill))], 'wall')
+        p.face([Vector((x0, y0 * 0.97, z_sill)), Vector((x1, y1 * 0.97, z_sill)), Vector((x1, y1 * 0.97, z_head)), Vector((x0, y0 * 0.97, z_head))], 'glass')
+        p.face([Vector((x0, y0, z_head)), Vector((x1, y1, z_head)), Vector((x1, y1, z_top)), Vector((x0, y0, z_top))], 'trim')
+        mid = (z_sill + z_head) / 2
+        for z0, z1 in [(z_sill - 0.06, z_sill + 0.05), (mid - 0.03, mid + 0.03), (z_head - 0.06, z_head + 0.01)]:
+            p.face([Vector((x0, y0 - 0.03, z0)), Vector((x1, y1 - 0.03, z0)), Vector((x1, y1 - 0.03, z1)), Vector((x0, y0 - 0.03, z1))], 'trim')
+    for x, y in pts:
+        p.box(x - 0.05, y - 0.05, z_sill, x + 0.05, y + 0.02, z_head, 'trim')
+    for z, out, h in [(z_top, 0.12, 0.12), (z_base, 0.06, -0.1)]:
+        low = [Vector((x, y, z)) for x, y in pts]
+        top = [Vector((x * (1 + out / R), y - out, z)) for x, y in pts]
+        up = [Vector((v.x, v.y, z + h)) for v in top]
+        cap = [Vector((v.x, 0.0, z + h)) for v in up]
+        for i in range(n):
+            p.face([low[i], low[i + 1], top[i + 1], top[i]], 'trim')
+            p.face([top[i], top[i + 1], up[i + 1], up[i]], 'trim')
+            p.face([up[i], up[i + 1], cap[i + 1], cap[i]], 'trim')
+    return p.finish(bevel=0.0, smooth_angle=40)
+
+
+def marquee_oval():
+    """The moulded frame of an oval sign plaque, 1 wide and 0.54 tall (the page lays the lettered face inside)."""
+    p = Part('marquee-oval')
+    seg = 40
+    prof = [(0.44, 0.22, 0.0), (0.44, 0.22, 0.05), (0.47, 0.245, 0.08), (0.5, 0.27, 0.06), (0.52, 0.29, 0.0)]
+    rings = [[Vector((math.cos(2 * math.pi * k / seg) * a, -d, math.sin(2 * math.pi * k / seg) * b)) for k in range(seg)] for a, b, d in prof]
+    for i in range(len(rings) - 1):
+        for k in range(seg):
+            j = (k + 1) % seg
+            p.face([rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]], 'trim')
+    return p.finish(bevel=0.0, smooth_angle=60)
+
+
+def pier_cap():
+    """A brick pier's corbelled cap for a pier 1 wide and 1 deep: courses stepping out under a cap course, 0.62 tall."""
+    p = Part('pier-cap')
+    z = 0.0
+    for out, h in [(0.05, 0.12), (0.1, 0.12), (0.15, 0.14), (0.2, 0.16), (0.12, 0.08)]:
+        p.box(-0.5 - out, -1.0 - out, z, 0.5 + out, 0.0, z + h, 'brick')
+        z += h
+    for k in range(4):
+        x = -0.375 + k * 0.25
+        p.box(x - 0.06, -1.06, -0.14, x + 0.06, -1.0, 0.0, 'brick')
+    return p.finish(bevel=0.004)
+
+
+def awning_mansard():
+    """One metre of a shingled mansard awning: staggered courses of shingles down the slope from the wall (0.96 up, 0.12
+    out) to the lip (1.25 out), a fascia board along the lip and the soffit under it."""
+    p = Part('awning-mansard')
+    top = (0.12, 0.96)
+    low = (1.25, 0.0)
+    courses = 7
+    lift = 0.025
+    for i in range(courses):
+        t0, t1 = i / courses, (i + 1) / courses
+        d0, z0 = top[0] + (low[0] - top[0]) * t0, top[1] + (low[1] - top[1]) * t0
+        d1, z1 = top[0] + (low[0] - top[0]) * t1, top[1] + (low[1] - top[1]) * t1
+        shift = 0.125 if i % 2 else 0.0
+        for k in range(5):
+            x0, x1 = max(0.0, k * 0.25 - shift), min(1.0, k * 0.25 + 0.25 - shift)
+            if x1 - x0 < 0.01:
+                continue
+            a, b = Vector((x0, -d0, z0)), Vector((x1, -d0, z0))
+            c, d = Vector((x1, -d1 - lift, z1 - lift * 0.4)), Vector((x0, -d1 - lift, z1 - lift * 0.4))
+            p.face([d, c, b, a], 'shingle')
+            p.face([d, c, Vector((x1, -d1, z1)), Vector((x0, -d1, z1))], 'shingle')
+    p.box(0.0, -1.3, -0.14, 1.0, -1.22, 0.04, 'trim')
+    p.face([Vector((0, -1.24, -0.12)), Vector((1, -1.24, -0.12)), Vector((1, -0.12, -0.12)), Vector((0, -0.12, -0.12))], 'trim')
+    return p.finish(bevel=0.0, smooth_angle=20)
+
+
+def porch_column():
+    """A tapered round porch column 2.4 tall with a square plinth, a torus base and a capital under a square abacus."""
+    p = Part('porch-column')
+    p.box(-0.14, -0.14, 0.0, 0.14, 0.14, 0.12, 'trim')
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=16, radius1=0.11, radius2=0.085, depth=2.02)
+    p.merge(bm, 'trim', matrix=Matrix.Translation((0, 0, 0.18 + 1.01)))
+    bm.free()
+    for z, r, h in [(0.15, 0.13, 0.06), (2.22, 0.11, 0.05)]:
+        bm = bmesh.new()
+        bmesh.ops.create_cone(bm, cap_ends=True, segments=16, radius1=r, radius2=r, depth=h)
+        p.merge(bm, 'trim', matrix=Matrix.Translation((0, 0, z)))
+        bm.free()
+    p.box(-0.15, -0.15, 2.26, 0.15, 0.15, 2.4, 'trim')
+    return p.finish(bevel=0.0, smooth_angle=50)
+
+
+def grille_vent():
+    """An iron grille vent set in a frieze, 0.7 wide and 0.3 tall: a frame and a diamond lattice."""
+    p = Part('grille-vent')
+    W, H = 0.35, 0.15
+    p.box(-W - 0.04, -0.03, -H - 0.04, W + 0.04, 0.0, -H, 'trim')
+    p.box(-W - 0.04, -0.03, H, W + 0.04, 0.0, H + 0.04, 'trim')
+    p.box(-W - 0.04, -0.03, -H, -W, 0.0, H, 'trim')
+    p.box(W, -0.03, -H, W + 0.04, 0.0, H, 'trim')
+    p.face([Vector((-W, 0.005, -H)), Vector((W, 0.005, -H)), Vector((W, 0.005, H)), Vector((-W, 0.005, H))], 'metal')
+    for s in (-1, 1):
+        for k in range(-8, 9):
+            c = k * 0.07
+            ends = []
+            for z in (-H, H):
+                x = c + s * z
+                if -W <= x <= W:
+                    ends.append((x, z))
+            for x in (-W, W):
+                z = (x - c) * s
+                if -H < z < H:
+                    ends.append((x, z))
+            if len(ends) < 2:
+                continue
+            (xa, za), (xb, zb) = ends[0], ends[1]
+            L = math.hypot(xb - xa, zb - za)
+            if L < 0.02:
+                continue
+            ang = math.atan2(zb - za, xb - xa)
+            m = Matrix.Translation(((xa + xb) / 2, -0.012, (za + zb) / 2)) @ Matrix.Rotation(-ang, 4, 'Y')
+            p.box(-L / 2, -0.012, -0.008, L / 2, 0.0, 0.008, 'metal', matrix=m)
+    return p.finish(bevel=0.0)
+
+
 def build_kit():
     reset()
     cornice()
@@ -361,6 +556,14 @@ def build_kit():
     pilaster()
     door()
     turret_roof()
+    oriel_bracket()
+    oriel_cap()
+    bay_curved()
+    marquee_oval()
+    pier_cap()
+    awning_mansard()
+    porch_column()
+    grille_vent()
     export(os.path.join(OUT, 'downtown-kit.glb'))
 
 
@@ -652,5 +855,8 @@ def export(path):
 
 
 if __name__ == '__main__' or True:
-    build_kit()
-    build_quarry()
+    wanted = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else ['kit', 'quarry']
+    if 'kit' in wanted:
+        build_kit()
+    if 'quarry' in wanted:
+        build_quarry()

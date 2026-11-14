@@ -15,6 +15,7 @@ import { FOX_LAKE_LOOK, FOX_LAKE_SHADOW_MAP } from './look'
 import { loadMap } from '../tello/data/MapData'
 import { TelloLand } from '../tello/region'
 import { FoxLakeTerrain, MontelloLink } from './montello/Link'
+import { MONTELLO_AT } from './region'
 import { FoxLakeTown } from './town/FoxLakeTown'
 
 declare global {
@@ -90,11 +91,11 @@ async function registerPublished(): Promise<void> {
   registerCustomItems(items ?? (store.json<unknown[]>(IK) ?? []).filter(isValidRecord))
 }
 
-/** Montello (Tello's map of the real city), north of Fox Plains along County Road F; Fox Lake runs without it if it can't load. */
+/** Montello (Tello's map of the real city), south-west of Fox Plains along State Highway 23; Fox Lake runs without it if it can't load. */
 async function loadMontello(): Promise<MontelloLink | null> {
   try {
     const map = await loadMap(new URL('./tello/', location.href).href)
-    return new MontelloLink(new TelloLand(map.doc, map.grids))
+    return new MontelloLink(new TelloLand(map.doc, map.grids, MONTELLO_AT))
   } catch (e) {
     console.warn('[foxlake] Montello could not load:', e)
     return null

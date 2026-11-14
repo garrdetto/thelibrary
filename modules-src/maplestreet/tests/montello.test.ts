@@ -43,7 +43,7 @@ test('Montello has its bars, its bank, Kwik Trip with pumps, the fire station an
   assert.equal(MONTELLO_HOMES.length % 3, 0);
   assert.ok(MONTELLO_HOMES.length / 3 > 300, 'hundreds of houses to deliver to');
   for (let i = 2; i < MONTELLO_HOMES.length; i += 3) assert.ok(MONTELLO_STREETS[MONTELLO_HOMES[i]] !== undefined);
-  for (const s of MONTELLO_SHOPS) assert.ok(s.z < -1400 && s.z > -3600, `${s.name} lies north of Fox Plains along County Road F`);
+  for (const s of MONTELLO_SHOPS) assert.ok(s.x < -1700 && s.x > -6000 && s.z > 0, `${s.name} lies south-west of Fox Plains along State Highway 23`);
 });
 
 test('a Montello bar serves you only at its door, and charges for it', () => {

@@ -20,7 +20,7 @@ import type { StaticSink } from './Sink'
 import { ROOF, type BuildingData } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { triangulate } from './Poly'
-import { knownFronts } from '../data/Downtown'
+import { dressedWalls, knownFronts } from '../data/Downtown'
 
 const SIDING = [0xf1eee6, 0xe6dfcf, 0xd9d4c7, 0xbfc6c9, 0x9db199, 0x8fa3b5, 0xc9b79a, 0xd8c98f, 0x9c4a3c, 0x6f7f8c, 0xb7b0a2, 0xe9e2c8, 0x7d8f7a, 0xa8998a]
 const BRICK = [0xb8573f, 0xa5503c, 0xc27a5a, 0xe2d6c2]
@@ -121,7 +121,7 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
     const cz = -b.r[0][1]
     const get = (m: Material, colors = false, cast = true) => chunks.get(cx, cz, m, { colors, cast })
     // A building matched to the owner's photos wears its front's finish and colour all round (Storefronts.ts dresses the front).
-    const known = b.k === 'store' || b.k === 'civic' || b.k === 'house' ? knownFronts(b.r[0][0], b.r[0][1])[0]?.style : undefined
+    const known = b.k === 'store' || b.k === 'civic' || b.k === 'house' ? knownFronts(b.r[0][0], b.r[0][1])[0]?.style ?? dressedWalls(b.r[0][0], b.r[0][1]) : undefined
     const facade = !known && (b.k === 'store' || b.k === 'civic')
     const commercial = facade || b.k === 'industrial'
     const floor = b.f
@@ -141,7 +141,7 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
     let wall: MeshBuilder
     let color: RGB
     if (known) {
-      const finish = { brick: M.brick, stucco: M.stucco, paint: M.paint, stone: M.stone, siding: M.siding }[known.upper]
+      const finish = { brick: M.brick, stucco: M.stucco, paint: M.paint, stone: M.stone, siding: M.siding, boards: M.boards }[known.upper]
       wall = get(finish, true)
       color = hexRGB(known.wall)
     } else if (facade) {

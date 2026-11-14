@@ -29,4 +29,4 @@ export class TownHud {
   }
 }
 
-const ZONE_NAMES = { town: 'Fox Plains', country: 'Bear Paw Lake country', road: 'County Road F', montello: 'Montello' } as const
+const ZONE_NAMES = { town: 'Fox Plains', country: 'Bear Paw Lake country', road: 'State Highway 23', montello: 'Montello' } as const
