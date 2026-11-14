@@ -250,3 +250,30 @@ test('directions follow the road network, and streets answer to their names', ()
   assert.equal(roadNameAt(doc.roads, index, 64, main.p[mid], main.p[mid + 1]), 'Main Street')
   assert.ok(junctions(land).length > 100)
 })
+
+test('only the City of Montello is built: buildings inside the limits, the edge walled, roads closed where they leave', () => {
+  const limits = doc.limits
+  assert.ok(limits.city.length >= 60 && limits.play.length >= 60, 'the limits are real outlines')
+  const city = limits.city
+  for (const b of doc.buildings) {
+    const at = pointInRing(city, b.r[0][0], b.r[0][1])
+    if (!at) assert.ok(land.playAt(b.r[0][0], b.r[0][1]) > -12, `building ${b.n ?? b.k} at ${b.r[0][0]}, ${b.r[0][1]} hugs the limits`)
+  }
+  assert.ok(doc.buildings.length > 1000 && doc.buildings.length < 1500, `${doc.buildings.length} buildings in town`)
+  assert.ok(doc.buildings.filter((b) => b.rc).length > doc.buildings.length * 0.85, 'roof colours from the aerial photo')
+  assert.ok(limits.exits.length >= 8, 'roads leaving town are closed')
+  for (const e of limits.exits) assert.ok(Math.abs(land.playAt(e.x, e.z)) < 6, 'each closure sits on the edge')
+  // The play grid agrees with the outline.
+  let checked = 0
+  for (let i = 0; i < 2000; i++) {
+    const x = land.x0 + 20 + ((i * 7919) % 4056)
+    const z = land.z0 + 20 + ((i * 104729) % 4056)
+    const d = land.playAt(x, z)
+    if (Math.abs(d) < 12) continue
+    assert.equal(d > 0, pointInRing(limits.play, x, z), `play grid at ${x}, ${z}`)
+    checked++
+  }
+  assert.ok(checked > 1500)
+  assert.ok(!terrain.inBounds(land.toSceneX(-2300), land.toSceneZ(2400)), 'Kilby Lake country is outside the city')
+  assert.ok(terrain.inBounds(land.toSceneX(0), land.toSceneZ(0), 2), 'downtown is in town')
+})

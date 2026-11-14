@@ -33,11 +33,19 @@ export type BuildingKind = 'house' | 'garage' | 'shed' | 'store' | 'industrial' 
  * roofs and colliders: centre x, centre z, half size along its first axis, half size along its second, yaw of the
  * first axis, roof type (see `ROOF`), eave and ridge in metres above the floor.
  */
-export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string; m?: 1 }
+export interface BuildingData { k: BuildingKind; h: number; f: number; l: number; s: number; p: number[]; r: number[][]; n?: string; m?: 1; rc?: string }
 /** Roof types: a gable's ridge runs along the rectangle's first or second axis; a shed's high side is toward the named axis. */
 export const ROOF = { unmeasured: -1, flat: 0, gableFirst: 1, gableSecond: 2, hip: 3, shedPlusSecond: 4, shedMinusSecond: 5, shedPlusFirst: 6, shedMinusFirst: 7 } as const
 export interface LotData { f: number; p: number[] }
 export interface Poi { n: string; k: string; x: number; z: number }
+/** A road leaving the playable area: where it crosses the edge and the way out (heading, 0 = north). */
+export interface RoadExit { x: number; z: number; h: number; w: number }
+/**
+ * Only the City of Montello is built. `city` is its boundary, `play` the area you may walk and drive (the limits
+ * widened by `pad`, plus County Highway F out to the map's south edge, where Fox Lake's road comes in), and the
+ * ground, water and woods are drawn `seen` metres past that.
+ */
+export interface Limits { city: number[]; play: number[]; exits: RoadExit[]; link: number[]; pad: number; seen: number }
 
 export interface MapDoc {
   version: number
@@ -48,6 +56,7 @@ export interface MapDoc {
   buildings: BuildingData[]
   lots: LotData[]
   pois: Poi[]
+  limits: Limits
   sources: string[]
   stats: Record<string, unknown>
 }
@@ -76,6 +85,8 @@ export interface MapGrids {
   treeZ: Uint16Array
   treeS: Uint8Array
   treeH: Uint8Array
+  /** Signed distance to the playable area's edge in 2 m steps (positive inside), on the 4 m grid. */
+  play: Int8Array
 }
 
 interface Section { name: string; type: 'u16' | 'u8' | 'i8'; side: number; count: number; offset: number; bytes: number }
@@ -103,8 +114,8 @@ export function parseGrids(bytes: Uint8Array): MapGrids {
     if (s.name === 'ground') side = s.side
     if (s.name === 'clear') fineSide = s.side
   }
-  for (const name of ['ground', 'water', 'cover', 'tone', 'canopy', 'clear', 'treeX', 'treeZ', 'treeS', 'treeH']) if (!out[name]) throw new Error(`Tello map file has no ${name}`)
-  return { side, fineSide, ground: out.ground as Uint16Array, water: out.water as Uint16Array, cover: out.cover as Uint8Array, tone: out.tone as Uint8Array, canopy: out.canopy as Uint8Array, clear: out.clear as Int8Array, treeX: out.treeX as Uint16Array, treeZ: out.treeZ as Uint16Array, treeS: out.treeS as Uint8Array, treeH: out.treeH as Uint8Array }
+  for (const name of ['ground', 'water', 'cover', 'tone', 'canopy', 'clear', 'treeX', 'treeZ', 'treeS', 'treeH', 'play']) if (!out[name]) throw new Error(`Tello map file has no ${name}`)
+  return { side, fineSide, ground: out.ground as Uint16Array, water: out.water as Uint16Array, cover: out.cover as Uint8Array, tone: out.tone as Uint8Array, canopy: out.canopy as Uint8Array, clear: out.clear as Int8Array, treeX: out.treeX as Uint16Array, treeZ: out.treeZ as Uint16Array, treeS: out.treeS as Uint8Array, treeH: out.treeH as Uint8Array, play: out.play as Int8Array }
 }
 
 async function gunzip(bytes: Uint8Array): Promise<Uint8Array> {

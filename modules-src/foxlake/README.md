@@ -62,6 +62,26 @@ A signed-in player has one Fox Lake balance: Fox Lake's world holds it (`RoomLog
 
 Lots are bought in Fox Lake itself: walk onto a lot for sale and press E.
 
+## Montello and County Road F (`montello/`)
+
+North of Fox Plains lies Montello, Wisconsin: Tello's map of the real city, inside its city limits, built by Tello's
+own code (`tello/world/Montello.ts`). County Road F leaves East Ave's north end, runs north out through the forest ring
+and sweeps north-east through the woods, climbing about 25 m to Montello's level, until it becomes the real County
+Highway F at the map's south edge (`NORTH_ROAD`, `northRoadPath` in `region.ts`; a test keeps the join in step with
+`montello.json`).
+
+- `index.ts` loads Tello's map with the page. `MontelloLink` (`montello/Link.ts`) joins the land: Montello's ground on
+  its map, Fox Plains' land up to the square's north edge, and between them the corridor (a distance field to the
+  road, the road's climbing profile, the forest ring's own hills, settling onto Montello's ground near its edge). Its
+  `outside()` and `shape()` feed Rack & Reel's terrain; `FoxLakeTerrain` adds Montello's water depths and ground types.
+- `NorthWorld` (`montello/NorthWorld.ts`) builds the corridor (ground, road, woods, heightfield, invisible walls either
+  side of the road and along the square's north edge) and Montello. Montello's solids are laid out in Tello's town
+  frame and moved into Fox Plains' (`shiftedPhysics`); both frames hang from mirrored roots, so it is a translation.
+- North of the square the corner map and the Ctrl map are Montello's (`TelloMap`), the status line says County Road F
+  or Montello, and place names come from Montello's streets, places and waters.
+- Online, players in Montello are ordinary neighbors: their town coordinates are just far north. Classic Fox Plains
+  hides them, as it hides the lake country.
+
 ## Northwoods Lodge Casino & Bar (`casino/`)
 
 A walk-in casino on the north-east corner of East Ave and South St (town coordinates in `CasinoLayout.ts`), Fox Lake only (classic Fox Plains has woods there).

@@ -21,10 +21,12 @@ export class TownHud {
     if (this.lakeCash) this.lakeCash.hidden = signedIn
   }
 
-  setStatus(net: string, neighbors: number, zone: 'town' | 'country'): void {
-    const text = `${zone === 'town' ? 'Fox Plains' : 'Bear Paw Lake country'} · ${neighbors} neighbor${neighbors === 1 ? '' : 's'} · ${net}`
+  setStatus(net: string, neighbors: number, zone: 'town' | 'country' | 'road' | 'montello'): void {
+    const text = `${ZONE_NAMES[zone]} · ${neighbors} neighbor${neighbors === 1 ? '' : 's'} · ${net}`
     if (text === this.lastStatus || !this.status) return
     this.lastStatus = text
     this.status.textContent = text
   }
 }
+
+const ZONE_NAMES = { town: 'Fox Plains', country: 'Bear Paw Lake country', road: 'County Road F', montello: 'Montello' } as const

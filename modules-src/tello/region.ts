@@ -162,6 +162,21 @@ export class TelloLand {
     return (a + (b - a) * fz) / 4
   }
 
+  /** Metres inside (+) or outside (-) the playable area: the city limits widened a little, and County Highway F to the map's edge. */
+  playAt(x: number, z: number): number {
+    return this.node(this.grids.play, x, z) * 2
+  }
+
+  /** True where you may walk and drive, `margin` metres in from the playable area's edge. */
+  playable(x: number, z: number, margin = 0): boolean {
+    return this.inside(x, z, 2) && this.playAt(x, z) > margin
+  }
+
+  /** True where Montello is drawn: the playable area and the ground, water and woods you can see past it. */
+  seen(x: number, z: number, pad = 0): boolean {
+    return this.inside(x, z) && this.playAt(x, z) > pad - this.doc.limits.seen
+  }
+
   slopeAt(x: number, z: number): number {
     const e = this.cell
     const dx = this.groundAt(x + e, z) - this.groundAt(x - e, z)
@@ -171,7 +186,7 @@ export class TelloLand {
 
   /** Meadow grass grows on open, unpaved, unmown ground; thinly under the trees. */
   grassAt(x: number, z: number): boolean {
-    if (!this.inside(x, z, 4)) return false
+    if (!this.inside(x, z, 4) || !this.seen(x, z, 20)) return false
     const cover = this.coverAt(x, z)
     if (cover === COVER.water || cover === COVER.lawn || cover === COVER.lot || cover === COVER.bare) return false
     if (this.clearAt(x, z) < 0.9) return false
@@ -198,7 +213,7 @@ export class TelloLand {
   /** The land as Rack & Reel's terrain sees it (scene coordinates). */
   outside(): OutsideLand {
     return {
-      contains: (x, z, margin) => this.holdsScene(x, z, EDGE_MARGIN + margin),
+      contains: (x, z, margin) => this.holdsScene(x, z, EDGE_MARGIN + margin) && this.playable(x - this.offset.x, z - this.offset.z, margin),
       heightAt: (x, z) => (this.holdsScene(x, z) ? this.heightAt(x - this.offset.x, z - this.offset.z) : 0),
       grassAt: (x, z) => this.grassAt(x - this.offset.x, z - this.offset.z),
     }
@@ -244,16 +259,21 @@ export class TelloTerrain extends Terrain {
   }
 
   override groundAt(x: number, z: number): Ground {
-    if (!this.land.holdsScene(x, z)) return super.groundAt(x, z)
-    const mx = x - this.land.offset.x
-    const mz = z - this.land.offset.z
-    if (this.land.depthAt(mx, mz) > 0.3) return 'water'
-    const cover = this.land.coverAt(mx, mz)
-    if (cover === COVER.marsh) return 'marsh'
-    if (cover === COVER.woods) return 'forest'
-    if (cover === COVER.bare) return 'shore'
-    return 'meadow'
+    return montelloGround(this.land, x, z) ?? super.groundAt(x, z)
   }
+}
+
+/** What Rack & Reel stands on at a scene point on Tello's map (null off it): water, marsh, woods, shore or meadow. */
+export function montelloGround(land: TelloLand, x: number, z: number): Ground | null {
+  if (!land.holdsScene(x, z)) return null
+  const mx = x - land.offset.x
+  const mz = z - land.offset.z
+  if (land.depthAt(mx, mz) > 0.3) return 'water'
+  const cover = land.coverAt(mx, mz)
+  if (cover === COVER.marsh) return 'marsh'
+  if (cover === COVER.woods) return 'forest'
+  if (cover === COVER.bare) return 'shore'
+  return 'meadow'
 }
 
 // ---------------------------------------------------------------- projection

@@ -59,6 +59,17 @@ From the point cloud (`load_lidar`, one-metre rasters plus the last returns over
 - **Trees** (`detect_trees`): one tree at every crown top in the canopy height model, with its real height (median 16 m, tallest 34 m). Crowns that let little through to the ground in the leaf-off survey are conifers. Every tree near buildings is kept; farther out only the tallest in each patch, so the far woods stay drawable: 67,999 trees.
 - **Woods on the ground**: ground cover under crowns comes from the same canopy model.
 
+### City limits
+
+Only the City of Montello is built. The bake reads the city's boundary from OpenStreetMap (relation, admin level 8,
+holes filled) and ships it with the playable area, the limits widened by 30 m plus County Highway F out to the map's
+south edge (where Fox Lake's County Road F comes in): `limits` in the JSON (`city`, `play`, the road `exits`, the
+`link`) and the signed-distance grid `play` in the bin. Buildings outside the limits are dropped; ground, water, roads
+and the lidar woods are drawn only `seen` (240 m) past the playable edge (`TelloLand.seen`); invisible walls follow the
+edge (`Montello.addWalls`), and every road that leaves it ends at a striped barricade (`world/Barricades.ts`). Every
+roof takes its colour from the NAIP aerial photo (`rc`, the median of the bare pixels inside the footprint, darkened a
+fifth for the haze by `aerialRoof`).
+
 ### What is exact and what is not
 
 - **Exact to the data:** the lie of the land (lidar, sampled 4 m apart), water levels, every mapped road's line and class, shorelines, each building's place and footprint, its roof type and its eave and ridge heights as they stood in spring 2018, bridge deck heights, and each tree's place and height.

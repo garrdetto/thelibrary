@@ -29,25 +29,14 @@ import { RegionCuller } from '../../foxlake/core/RegionCuller'
 import { STARTER_TRUCK, VEHICLES } from '../../maplestreet/shared/Economy'
 import { TUNING } from '../../maplestreet/shared/Vehicles'
 import type { TelloLand } from '../region'
-import { EDGE_MARGIN } from '../region'
-import { buildGround, GROUND_CHUNK } from '../world/Ground'
-import { Water } from '../world/Water'
-import { bridgeSolids, buildBridges, buildRoads } from '../world/Roads'
-import { buildBuildings } from '../world/Buildings'
 import { TelloMap } from './TelloMap'
-import { roadIndex, roadNameAt } from './Routes'
+import { Montello } from '../world/Montello'
 
 const STEP = 1 / 60
 const MAX_STEPS = 4
 const CULL_REACH = 640
 const GARAGE_KEY = 'KeyV'
 const HOME_KEY = 'KeyH'
-const TREE_KINDS = ['pine', 'hardwood', 'birch'] as const
-const TREE_RADIUS = [0.34, 0.42, 0.25]
-/** Each tree model's height at scale 1, so a tree stands as tall as the lidar measured it. */
-const TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]
-const TREE_CELL = 16
-const NAME_CELL = 64
 /** Water this deep under a car slows it; this deep floods the engine and it is towed back to dry ground. */
 const WADE_DRAG_DEPTH = 0.25
 const FLOOD_DEPTH = 0.85
@@ -67,14 +56,11 @@ export class TelloTown implements GameExtension {
   private assets!: Assets
   private models!: VehicleModels
   private cars!: Cars
-  private water!: Water
+  private montello!: Montello
   private map: TelloMap | null = null
   private acc = 0
   private readonly culler = new RegionCuller(CULL_REACH)
   private readonly focusPts: { x: number; z: number }[] = []
-  private readonly treeCells = new Map<number, number[]>()
-  private readonly treeSolid = new Set<number>()
-  private readonly nameIndex: Map<number, number[]>
   private readonly wet = new Map<Car, Wet>()
   private extraKind: string | null = null
   private home: { x: number; z: number; heading: number }
@@ -82,7 +68,6 @@ export class TelloTown implements GameExtension {
   private lastStatus = ''
 
   constructor(private readonly land: TelloLand) {
-    this.nameIndex = roadIndex(land.doc.roads, NAME_CELL)
     this.home = this.findHome()
   }
 
@@ -134,102 +119,12 @@ export class TelloTown implements GameExtension {
     this.root.computeWorldMatrix(true)
     setHostRoot(this.root)
     this.physics = await Physics.create()
-    this.addGround()
     this.assets = new Assets(scene)
     this.mats = new Mats(scene)
-    const ground = buildGround(scene, land)
-    this.water = new Water(host.ctx, land)
-    const roads = buildRoads(scene, land)
-    const bridges = buildBridges(scene, land, (mesh) => this.gfx.addCaster(mesh))
-    for (const b of bridgeSolids(land)) this.physics.addStaticBox({ cx: b.x, cy: b.y, cz: -b.z, hx: b.across, hy: b.up, hz: b.along, rotY: Math.atan2(Math.sin(b.heading), -Math.cos(b.heading)) })
-    host.hud.setLoading(0.76, 'Raising the town…')
-    await new Promise((r) => requestAnimationFrame(r))
-    buildBuildings(this.root, this.mats, this.physics, land)
-    host.hud.setLoading(0.8, 'Planting the trees…')
-    await new Promise((r) => requestAnimationFrame(r))
-    this.plantTrees()
+    this.montello = new Montello(land, { host, physics: this.physics, shift: { x: 0, y: 0, z: 0 }, mats: this.mats, gfx: this.gfx, culler: this.culler, openLink: false })
+    await this.montello.build((share, text) => host.hud.setLoading(0.7 + share * 0.1, text))
     this.models = new VehicleModels(this.assets)
     host.foliage.hostCasters = (focus) => (land.holdsScene(focus.x, focus.z) ? this.gfx.near(focus) : EMPTY)
-    const chunk = GROUND_CHUNK * land.cell
-    for (const m of [...ground, ...this.water.meshes]) {
-      const c = m.getBoundingInfo().boundingBox.centerWorld
-      this.culler.addGroup([m], c.x, c.z, chunk * 0.71)
-    }
-    for (const m of [...roads, ...bridges]) {
-      const b = m.getBoundingInfo().boundingBox
-      this.culler.addGroup([m], b.centerWorld.x, b.centerWorld.z, Math.hypot(b.extendSizeWorld.x, b.extendSizeWorld.z))
-    }
-  }
-
-  /** The ground as one Rapier heightfield (town coordinates), walled at the map's edge. */
-  private addGround(): void {
-    const land = this.land
-    const n = land.side - 1
-    const heights = new Float32Array(land.side * land.side)
-    const ground = land.grids.ground
-    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) heights[i + j * land.side] = ground[(n - j) * land.side + i] / 100
-    const cx = land.x0 + land.size / 2
-    const cz = -(land.z0 + land.size / 2)
-    this.physics.addHeightfield(n, land.size, heights, cx, cz)
-    const half = land.size / 2 - EDGE_MARGIN + 8
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      this.physics.addStaticBox({ cx: cx + dx * (half + 1), cy: 30, cz: cz + dz * (half + 1), hx: dx ? 1 : half + 2, hy: 60, hz: dz ? 1 : half + 2 })
-    }
-  }
-
-  private plantTrees(): void {
-    const land = this.land
-    const { treeX, treeZ, treeS } = land.grids
-    const spots: { x: number; y: number; z: number; kind: 'pine' | 'hardwood' | 'birch'; scale: number; yaw: number }[] = []
-    for (let i = 0; i < treeX.length; i++) {
-      const x = land.x0 + treeX[i] / 10
-      const z = land.z0 + treeZ[i] / 10
-      const kind = Math.min(2, treeS[i] >> 6)
-      const scale = this.treeScale(i)
-      const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453
-      spots.push({ x: land.toSceneX(x), y: land.groundAt(x, z), z: land.toSceneZ(z), kind: TREE_KINDS[kind], scale, yaw: (h - Math.floor(h)) * Math.PI * 2 })
-      const key = this.treeKey(x, z)
-      let list = this.treeCells.get(key)
-      if (!list) this.treeCells.set(key, (list = []))
-      list.push(i)
-    }
-    this.host.foliage.plantTrees(spots)
-  }
-
-  private treeKey(x: number, z: number): number {
-    return (Math.floor(x / TREE_CELL) + 4096) * 8192 + Math.floor(z / TREE_CELL) + 4096
-  }
-
-  /** The model scale that makes tree `i` its measured height. */
-  private treeScale(i: number): number {
-    const g = this.land.grids
-    return Math.min(2.6, Math.max(0.3, g.treeH[i] / 4 / TREE_MODEL_HEIGHT[Math.min(2, g.treeS[i] >> 6)]))
-  }
-
-  private trunk(i: number): { x: number; z: number; r: number } {
-    const g = this.land.grids
-    return { x: this.land.x0 + g.treeX[i] / 10, z: this.land.z0 + g.treeZ[i] / 10, r: TREE_RADIUS[Math.min(2, g.treeS[i] >> 6)] * this.treeScale(i) + 0.2 }
-  }
-
-  /** Trunks become solid for cars as anything that drives comes within about 50 m of them. */
-  private solidTrees(points: readonly { x: number; z: number }[]): void {
-    for (const p of points) {
-      const mx = p.x
-      const mz = -p.z
-      for (let i = -3; i <= 3; i++) {
-        for (let j = -3; j <= 3; j++) {
-          const key = this.treeKey(mx + i * TREE_CELL, mz + j * TREE_CELL)
-          if (this.treeSolid.has(key)) continue
-          this.treeSolid.add(key)
-          const list = this.treeCells.get(key)
-          if (!list) continue
-          for (const t of list) {
-            const tr = this.trunk(t)
-            this.physics.addStaticCylinder(tr.x, this.land.groundAt(tr.x, tr.z) + 2, -tr.z, 2.6, tr.r)
-          }
-        }
-      }
-    }
   }
 
   // ------------------------------------------------------------ ready
@@ -244,7 +139,7 @@ export class TelloTown implements GameExtension {
     const fx = Math.sin(h.heading)
     const fz = Math.cos(h.heading)
     this.park(this.cars.add(STARTER_TRUCK, 0, 0, 0, null), h.x + fx * 7, h.z + fz * 7, h.heading)
-    this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), 192)
+    this.montello.ready()
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
     this.map = new TelloMap({
       land: this.land,
@@ -302,7 +197,7 @@ export class TelloTown implements GameExtension {
     this.cars.visuals(night)
     this.mats.setNight(night)
     this.gfx.update(night, this.host.clock.sky.glow)
-    this.water.update(dt, this.host.lighting)
+    this.montello.update(dt)
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
     this.map?.update(dt)
     this.statusAcc -= dt
@@ -326,7 +221,7 @@ export class TelloTown implements GameExtension {
     pts.push({ x: this.townX(p.x), z: this.townZ(p.z) })
     const drive = pts.length
     this.cars.focusPoints(pts)
-    this.solidTrees(pts.slice(drive))
+    this.montello.solidTrees(pts.slice(drive))
     this.physics.stream(pts, dt)
     this.wade(dt)
     this.physics.step(dt)
@@ -340,7 +235,7 @@ export class TelloTown implements GameExtension {
       const p = car.fp.position
       const depth = this.land.depthAt(p.x, -p.z)
       const body = car.fp.body
-      const off = !this.land.inside(p.x, -p.z, EDGE_MARGIN - 10) || p.y < this.land.groundAt(p.x, -p.z) - 3
+      const off = !this.land.playable(p.x, -p.z, -12) || p.y < this.land.groundAt(p.x, -p.z) - 3
       if (depth < 0.05 && !off) {
         const f = car.fp.forward()
         if (Math.abs(car.fp.speed) < 25) w.dry = { x: p.x, z: -p.z, yaw: Math.atan2(f.x, -f.z) }
@@ -353,7 +248,7 @@ export class TelloTown implements GameExtension {
         body.setLinvel({ x: v.x * (1 - k), y: v.y, z: v.z * (1 - k) }, true)
       }
       if (depth > FLOOD_DEPTH || off) {
-        if (w.flooded === 0 && this.cars.driving() === car) this.host.hud.toast(off ? 'That is the edge of the map. A tow truck is setting you back on the road.' : 'The engine flooded. A tow truck is pulling you back to dry ground.', 'warn')
+        if (w.flooded === 0 && this.cars.driving() === car) this.host.hud.toast(off ? 'That is the edge of the city limits. A tow truck is setting you back on the road.' : 'The engine flooded. A tow truck is pulling you back to dry ground.', 'warn')
         w.flooded += dt
         if (w.flooded > TOW_AFTER || off) {
           const spot = w.dry ?? { x: this.home.x, z: this.home.z, yaw: this.home.heading }
@@ -371,30 +266,11 @@ export class TelloTown implements GameExtension {
     const q = { x: this.townX(p.x), z: this.townZ(p.z) }
     const hitStatic = this.physics.pushOut(q, p.y, r)
     const hitVehicle = this.physics.pushOutVehicles(q, p.y, r)
-    let mx = q.x
-    let mz = -q.z
-    let hitTree = false
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        const list = this.treeCells.get(this.treeKey(mx + i * TREE_CELL, mz + j * TREE_CELL))
-        if (!list) continue
-        for (const t of list) {
-          const tr = this.trunk(t)
-          const dx = mx - tr.x
-          const dz = mz - tr.z
-          const d = Math.hypot(dx, dz)
-          const min = tr.r + r
-          if (d < min && d > 1e-4) {
-            mx = tr.x + (dx / d) * min
-            mz = tr.z + (dz / d) * min
-            hitTree = true
-          }
-        }
-      }
-    }
+    const s = { x: this.land.toSceneX(q.x), z: this.land.toSceneZ(-q.z) }
+    const hitTree = this.montello.pushTrees(s, r)
     if (!hitStatic && !hitVehicle && !hitTree) return
-    p.x = this.land.toSceneX(mx)
-    p.z = this.land.toSceneZ(mz)
+    p.x = s.x
+    p.z = s.z
   }
 
   obstacle(x: number, z: number, r: number): boolean {
@@ -412,39 +288,7 @@ export class TelloTown implements GameExtension {
   }
 
   placeName(x: number, z: number): string | null {
-    if (!this.land.holdsScene(x, z)) return 'Montello'
-    const mx = this.land.toMapX(x)
-    const mz = this.land.toMapZ(z)
-    const road = roadNameAt(this.land.doc.roads, this.nameIndex, NAME_CELL, mx, mz)
-    if (road) return road
-    let near: string | null = null
-    let bd = 70
-    for (const poi of this.land.doc.pois) {
-      if (poi.k === 'water') continue
-      const d = Math.hypot(poi.x - mx, poi.z - mz)
-      if (d < bd) {
-        bd = d
-        near = poi.n
-      }
-    }
-    if (near) return near
-    const level = this.land.waterAt(mx, mz)
-    if (level !== null) {
-      // The named water at this level (each lake and river reach has its own), nearest first.
-      let water = 'The water'
-      let best = Infinity
-      for (const poi of this.land.doc.pois) {
-        if (poi.k !== 'water') continue
-        const at = this.land.waterAt(poi.x, poi.z)
-        const score = Math.hypot(poi.x - mx, poi.z - mz) + (at !== null && Math.abs(at - level) < 0.12 ? 0 : 5000)
-        if (score < best) {
-          best = score
-          water = poi.n
-        }
-      }
-      return water
-    }
-    return 'Montello'
+    return this.montello.placeName(x, z)
   }
 
   // ------------------------------------------------------------ keys and maps
@@ -518,6 +362,6 @@ export class TelloTown implements GameExtension {
 
   /** For the console and the capture script. */
   debug(): Record<string, unknown> {
-    return { colliders: this.physics.streamStats(), culling: this.culler.stats(), cars: [...this.cars.list.keys()], home: this.home, treeCellsSolid: this.treeSolid.size }
+    return { colliders: this.physics.streamStats(), culling: this.culler.stats(), cars: [...this.cars.list.keys()], home: this.home, treeCellsSolid: this.montello.solidTreeCells }
   }
 }

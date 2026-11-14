@@ -106,6 +106,7 @@ export class Water {
         for (let j = cj; j < Math.min(cells, cj + CHUNK); j++) {
           for (let i = ci; i < Math.min(cells, ci + CHUNK); i++) {
             if (!water[j * n + i] || !water[j * n + i + 1] || !water[(j + 1) * n + i] || !water[(j + 1) * n + i + 1]) continue
+            if (!land.seen(land.x0 + i * land.cell, land.z0 + j * land.cell, -20)) continue
             const a = vertex(i, j)
             const b = vertex(i + 1, j)
             const c = vertex(i, j + 1)
