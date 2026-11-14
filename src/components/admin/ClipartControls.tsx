@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import { Dices, ImagePlus, Lock, RotateCcw, Save, Trash2, Unlock, X } from 'lucide-react'
-import { CLIPART_GROUPS, CLIPART_PRESETS, CLIPART_SLIDERS, DEFAULT_NEGATIVE, DEFAULT_PROMPT, ENGINES, NEGATIVE_LIMIT, PROMPT_LIMIT, closestResolution, engineInfo } from '@/lib/clipart'
-import type { ClipartSettings, ClipartSliderKey, EngineId, SavedPreset } from '@/lib/clipart'
+import { CLIPART_GROUPS, CLIPART_PRESETS, CLIPART_TOUCH_LEVELS, ENGINES, NEGATIVE_LIMIT, PROMPT_LIMIT, closestResolution, defaultNegative, defaultPrompt, engineInfo, visibleSliders } from '@/lib/clipart'
+import type { ClipartFinish, ClipartSettings, ClipartSliderKey, EngineId, SavedPreset } from '@/lib/clipart'
 import type { EngineStatus } from '@/lib/clipart-client'
 
 export type Reference = { name: string; src: string; dataUrl: string }
@@ -36,6 +36,8 @@ export function ClipartControls({ controls, onChange, engines, saved, onSavePres
   const [saveError, setSaveError] = useState('')
   const referenceInput = useRef<HTMLInputElement>(null)
   const engine = engineInfo(controls.engine)
+  const finish: ClipartFinish = CLIPART_PRESETS.find(item => item.id === controls.presetId)?.finish ?? 'clipart'
+  const sliders = visibleSliders(finish)
   const set = (patch: Partial<Controls>) => onChange({ ...controls, ...patch, savedId: 'settings' in patch || 'prompt' in patch || 'negative' in patch ? null : controls.savedId })
   const setSlider = (key: ClipartSliderKey, value: number) => set({ settings: { ...controls.settings, [key]: value } })
 
@@ -46,7 +48,9 @@ export function ClipartControls({ controls, onChange, engines, saved, onSavePres
 
   function applyPreset(id: string) {
     const preset = CLIPART_PRESETS.find(item => item.id === id)!
-    onChange({ ...controls, presetId: id, savedId: null, settings: { ...preset.settings, resolution: closestResolution(engine, preset.settings.resolution) } })
+    const prompt = controls.prompt === defaultPrompt(finish) ? defaultPrompt(preset.finish) : controls.prompt
+    const negative = controls.negative === defaultNegative(finish) ? defaultNegative(preset.finish) : controls.negative
+    onChange({ ...controls, presetId: id, savedId: null, prompt, negative, settings: { ...preset.settings, resolution: closestResolution(engine, preset.settings.resolution) } })
   }
 
   function applySaved(preset: SavedPreset) {
@@ -116,9 +120,17 @@ export function ClipartControls({ controls, onChange, engines, saved, onSavePres
       </>}
     </section>
 
-    {CLIPART_GROUPS.map(group => <details key={group.id} className="cg-card cg-group" open={group.id === 'detail' || group.id === 'clipart'}>
+    {finish === 'photo' && <section className="cg-card">
+      <h3 id="cg-touch-label">Clipart touch</h3>
+      <div className="cg-touch" role="group" aria-labelledby="cg-touch-label">
+        {CLIPART_TOUCH_LEVELS.map(level => <button key={level.value} type="button" aria-pressed={controls.settings.clipartTouch === level.value} className={controls.settings.clipartTouch === level.value ? 'is-active' : ''} onClick={() => set({ settings: { ...controls.settings, clipartTouch: level.value } })}><strong>{level.label}</strong><small>{level.hint}</small></button>)}
+      </div>
+      <small className="cg-hint">This preset keeps the photo and skips the clipart style controls. It sharpens definition and brings out texture; pick a strength to add the faintest clipart finish.</small>
+    </section>}
+
+    {CLIPART_GROUPS.filter(group => finish === 'clipart' || group.id !== 'clipart').map(group => <details key={group.id} className="cg-card cg-group" open={group.id === 'detail' || group.id === 'clipart'}>
       <summary>{group.label}</summary>
-      {CLIPART_SLIDERS.filter(slider => slider.group === group.id).map(slider => {
+      {sliders.filter(slider => slider.group === group.id).map(slider => {
         const value = controls.settings[slider.key]
         return <div key={slider.key} className="cg-slider">
           <label htmlFor={`cg-${slider.key}`}>{slider.label}</label>
@@ -135,9 +147,9 @@ export function ClipartControls({ controls, onChange, engines, saved, onSavePres
     </details>)}
 
     <section className="cg-card">
-      <div className="cg-head-row"><h3><label htmlFor="cg-prompt">Prompt</label></h3><button type="button" className="cg-link" onClick={() => set({ prompt: DEFAULT_PROMPT })}><RotateCcw size={12}/> Default</button></div>
+      <div className="cg-head-row"><h3><label htmlFor="cg-prompt">Prompt</label></h3><button type="button" className="cg-link" onClick={() => set({ prompt: defaultPrompt(finish) })}><RotateCcw size={12}/> Default</button></div>
       <textarea id="cg-prompt" rows={5} maxLength={PROMPT_LIMIT} value={controls.prompt} onChange={event => set({ prompt: event.target.value })}/>
-      <div className="cg-head-row"><h3><label htmlFor="cg-negative">Negative prompt</label></h3><button type="button" className="cg-link" onClick={() => set({ negative: DEFAULT_NEGATIVE })}><RotateCcw size={12}/> Default</button></div>
+      <div className="cg-head-row"><h3><label htmlFor="cg-negative">Negative prompt</label></h3><button type="button" className="cg-link" onClick={() => set({ negative: defaultNegative(finish) })}><RotateCcw size={12}/> Default</button></div>
       <textarea id="cg-negative" rows={3} maxLength={NEGATIVE_LIMIT} value={controls.negative} onChange={event => set({ negative: event.target.value })}/>
       {engine.numeric && <small className="cg-hint">This engine reads about 75 words, so the strongest sliders go first; the rest steer strength, guidance and steps.</small>}
     </section>

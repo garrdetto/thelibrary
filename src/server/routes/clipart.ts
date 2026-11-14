@@ -3,12 +3,12 @@ import type { Env } from '../env.js'
 import { HttpError, binary, json, parseStored, readJson, requireSameOrigin } from '../http.js'
 import { requireUser } from '../auth.js'
 import { ClipartLimit, ClipartRefused, RESULT_TTL_SECONDS, decodeDataUrl, ensureClipartTable, generateClipart, recordJob } from '../clipart.js'
-import { CLIPART_PRESETS, CLIPART_SLIDER_KEYS, ENGINES, ENGINE_IDS, NEGATIVE_LIMIT, PROMPT_LIMIT, SAVED_PRESET_LIMIT, closestResolution, engineInfo, normalizeSettings, outputSize } from '../../lib/clipart'
+import { CLIPART_PRESETS, CLIPART_SLIDER_KEYS, CLIPART_TOUCH_MAX, ENGINES, ENGINE_IDS, NEGATIVE_LIMIT, PROMPT_LIMIT, SAVED_PRESET_LIMIT, closestResolution, engineInfo, normalizeSettings, outputSize } from '../../lib/clipart'
 import type { EngineId, SavedPreset } from '../../lib/clipart'
 
 const PRESETS_KEY = 'clipart-presets'
 const dataUrl = z.string().max(14_000_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/)
-const settingsSchema = z.object(Object.fromEntries([...CLIPART_SLIDER_KEYS.map(key => [key, z.number().min(0).max(100)]), ['resolution', z.number().int().min(256).max(2048)]])).strict()
+const settingsSchema = z.object(Object.fromEntries([...CLIPART_SLIDER_KEYS.map(key => [key, z.number().min(0).max(100)]), ['resolution', z.number().int().min(256).max(2048)], ['clipartTouch', z.number().int().min(0).max(CLIPART_TOUCH_MAX).default(0)]])).strict()
 
 const generateSchema = z.object({
   action: z.literal('generate'),
