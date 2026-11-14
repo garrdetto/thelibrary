@@ -3,6 +3,7 @@ import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
 import { marketTicks, tickAt, type MarketTick } from './live-market.js'
 import { assessQuality } from './pulse-cards.js'
 import { radarSettings } from './settings-store.js'
+import { learnerState, withLearning } from './learner-state.js'
 import { freshViewerCount, trackerState } from './state.js'
 import type { TrackerDatabase } from './db.js'
 import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
@@ -390,7 +391,7 @@ function smartWallets(database: TrackerDatabase, minRunnerHits: number): RadarWa
 
 export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): RadarPayload {
   const model = loadModelState(database)
-  const tokens = buildRadarTokens(database, model.weights, now)
+  const tokens = buildRadarTokens(database, model.weights, now).map(withLearning)
   const components = componentStatuses(database)
   const workerSeenAt = components.length ? Math.max(...components.map(component => component.updatedAt)) : null
   const status = workerSeenAt && now - workerSeenAt < 30_000 ? 'live' : workerSeenAt && now - workerSeenAt < 5 * 60_000 ? 'stale' : 'offline'
@@ -419,6 +420,9 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     settings: radarSettings(),
     wallets: smartWallets(database, radarSettings().wallets.minRunnerHits),
     walletTracking: process.env.HELIUS_API_KEY?.trim() ? 'on' : 'no-key',
+    learner: learnerState.summary,
+    explosions: learnerState.explosions,
+    winners: learnerState.winners,
   }
 }
 
@@ -448,7 +452,7 @@ export function buildTokenDetail(database: TrackerDatabase, mint: string, now = 
   `).all(mint, settings.wallets.minRunnerHits) as RadarWalletEntry[]
   const [built] = finalize([buildToken(token, recent, all.at(-1), runners, model.weights, now, settings)], settings)
   return {
-    token: built,
+    token: withLearning(built),
     history: toHistory(downsample(all, 360)),
     live: (marketTicks.get(mint) ?? []).map(tick => ({ t: tick.t, price: tick.price, viewers: tick.viewers })),
     entries: [...holders, ...buyers],

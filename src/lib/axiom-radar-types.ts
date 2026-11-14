@@ -1,4 +1,5 @@
 import { defaultRadarSettings, type RadarSettings } from './axiom-radar-settings'
+import type { RadarExplode, RadarExplosionSummary, RadarLearnerSummary, RadarMaker, RadarOutlook, RadarWinnersSummary } from './axiom-radar-learner'
 
 export const radarFeatureKeys = ['viewerVelocity', 'activeViewers', 'runnerWallets', 'buyPressure', 'safety'] as const
 export type RadarFeatureKey = typeof radarFeatureKeys[number]
@@ -73,6 +74,9 @@ export type RadarToken = {
   alerts: string[]
   pinned: boolean
   onPulse: boolean
+  outlook?: RadarOutlook | null
+  explode?: RadarExplode | null
+  maker?: RadarMaker | null
 }
 
 export type RadarPaperTrade = {
@@ -152,6 +156,9 @@ export type RadarPayload = {
   wallets: RadarWallet[]
   walletTracking: 'on' | 'no-key'
   source?: 'local' | 'relay'
+  learner?: RadarLearnerSummary | null
+  explosions?: RadarExplosionSummary | null
+  winners?: RadarWinnersSummary | null
 }
 
 export type RadarLiveFigures = Pick<RadarToken, 'viewers' | 'viewersPerMin' | 'viewerSurge' | 'priceUsd' | 'marketCap' | 'priceChange'>
