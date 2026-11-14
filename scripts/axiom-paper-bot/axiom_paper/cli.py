@@ -173,6 +173,16 @@ def show_settings(args: argparse.Namespace) -> int:
     return 0
 
 
+def use_utf8_output() -> None:
+    """Coin names can hold any characters. A piped log (PM2, a file) on Windows would otherwise fail on them."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    use_utf8_output()
     args = parse(argv)
     return {"run": run, "status": status, "reset": reset, "settings": show_settings}[args.command](args)
