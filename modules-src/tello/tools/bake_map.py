@@ -24,6 +24,7 @@ Needs numpy, scipy, pillow, pyproj, shapely and laspy[lazrs].
 import argparse, gzip, json, math, os, struct, sys, urllib.request
 import xml.etree.ElementTree as ET
 import numpy as np
+import shapely
 from PIL import Image, ImageDraw
 from pyproj import Transformer
 from scipy import ndimage
@@ -1063,6 +1064,83 @@ def collect_pois(osm, bodies):
     return out
 
 # ---------------------------------------------------------------- output
+
+# ---------------------------------------------------------------- city limits
+
+PLAY_PAD = 30.0      # how far past the city limits you may walk and drive
+LINK_PAD = 32.0      # half-width of the strip along County Highway F out to the map's south edge (Fox Lake's road comes in there)
+VIS_PAD = 240.0      # how far past that the ground, water and woods are still drawn
+CITY_PAD = 8.0       # buildings whose footprint centre lies this close to the limits are built
+
+def city_limits(osm):
+    """The City of Montello's boundary (OpenStreetMap relation, admin level 8): its largest part, holes filled."""
+    for members, tags in osm.relations:
+        if tags.get('boundary') != 'administrative' or tags.get('admin_level') != '8' or tags.get('name') != 'Montello':
+            continue
+        lines = [LineString(osm.pts(ref)) for kind, ref, _role in members if kind == 'way' and ref in osm.ways and len(osm.ways[ref][0]) >= 2]
+        parts = list(polygonize(linemerge(lines)))
+        if parts:
+            return Polygon(max(parts, key=lambda g: g.area).exterior)
+    raise SystemExit('The City of Montello boundary is missing from the OpenStreetMap extract')
+
+def playable_area(city, roads):
+    """The city limits widened a little, plus County Highway F from the limits out to the map's south edge."""
+    link = next(r for r in roads if (r['name'] or r['ref']) == 'County Highway F' and min(z for _x, z in r['pts']) < Z0 + 10)
+    road = LineString(link['pts']).intersection(WORLD)
+    area = unary_union([city.buffer(PLAY_PAD), road.difference(city).buffer(LINK_PAD)]).intersection(WORLD)
+    if area.geom_type != 'Polygon':
+        area = max(area.geoms, key=lambda g: g.area)
+    return Polygon(area.exterior).simplify(1.0), link
+
+def signed_distance(area):
+    """Metres inside (+) or outside (-) the area at the shipped grid's nodes."""
+    inside = raster([area]) > 0
+    sd = (ndimage.distance_transform_edt(inside) - ndimage.distance_transform_edt(~inside)) * FINE
+    return sd[::2, ::2]
+
+def roof_colour(poly, naip, ndvi):
+    """The roof's colour in the aerial photo: the median of the bare (not leafy) pixels inside the footprint, as #rrggbb."""
+    inner = poly.buffer(-1.2)
+    if inner.is_empty or inner.area < 6:
+        inner = poly
+    x0, z0, x1, z1 = inner.bounds
+    xs = np.arange(math.floor((x0 - X0) / FINE), math.ceil((x1 - X0) / FINE) + 1)
+    zs = np.arange(math.floor((z0 - Z0) / FINE), math.ceil((z1 - Z0) / FINE) + 1)
+    xs = xs[(xs >= 0) & (xs < NF)]
+    zs = zs[(zs >= 0) & (zs < NF)]
+    if not len(xs) or not len(zs):
+        return None
+    I, J = np.meshgrid(xs, zs)
+    hit = shapely.contains_xy(inner, X0 + I * FINE, Z0 + J * FINE)
+    if hit.sum() < 4:
+        return None
+    px = naip[J[hit], I[hit], :3]
+    bare = ndvi[J[hit], I[hit]] < 0.12
+    if bare.sum() >= max(4, 0.35 * hit.sum()):
+        px = px[bare]
+    r, g, b = (int(round(float(v))) for v in np.median(px, axis=0))
+    return f'#{r:02x}{g:02x}{b:02x}'
+
+def road_exits(roads, area, link):
+    """Where drivable roads leave the playable area (not County Highway F at the map's edge): the spot and the way out."""
+    out = []
+    edge = area.exterior
+    for r in roads:
+        if r is link or r['kind'] > 2:
+            continue
+        line = LineString(r['pts'])
+        cross = line.intersection(edge)
+        for c in getattr(cross, 'geoms', [cross]):
+            if c.is_empty or c.geom_type != 'Point':
+                continue
+            s = line.project(c)
+            a = line.interpolate(max(0.0, s - 3)); b = line.interpolate(min(line.length, s + 3))
+            dx, dz = b.x - a.x, b.y - a.y
+            if area.contains(Point(b.x, b.y)):
+                dx, dz = -dx, -dz
+            out.append({'x': round(c.x, 1), 'z': round(c.y, 1), 'h': round(math.atan2(dx, dz), 3), 'w': round(r['width'], 1)})
+    return out
+
 BASE = 228.0   # elevation (m) of y = 0, below the deepest river bed
 
 def building_out(b):
@@ -1080,6 +1158,8 @@ def building_out(b):
     out = {'k': b['kind'], 'h': round(rects[0][6] if known else b['wall'], 2), 'f': round(b['floor'] - BASE, 2), 'l': round(b['low'] - BASE, 2), 's': b['seed'], 'p': flat(b['ring']), 'r': rects}
     if b['name']:
         out['n'] = b['name']
+    if b.get('roof_rgb'):
+        out['rc'] = b['roof_rgb']
     if known:
         out['m'] = 1
     return out
@@ -1226,6 +1306,23 @@ def main():
     cover, tone, canopy = classify(naip, ndvi, canopy_f, mask_f, sdf_f, bldg_dist_f, zones, wet, level_ext, ground)
     pois = collect_pois(osm, bodies)
 
+    # Only the city limits are built: the playable area, the woods you can see past it, and everything outside cut away.
+    city = city_limits(osm)
+    play, link = playable_area(city, roads)
+    play_sd = signed_distance(play)
+    seen = play.buffer(VIS_PAD)
+    near_city = city.buffer(CITY_PAD)
+    buildings = [b for b in buildings if near_city.contains(b['poly'].representative_point())]
+    for b in buildings:
+        b['roof_rgb'] = roof_colour(b['poly'], naip, ndvi)
+    keep = sample(play_sd, tx, tz, CELL) > -VIS_PAD
+    tx, tz, tk, th = tx[keep], tz[keep], tk[keep], th[keep]
+    roads = [r for r in roads if LineString(r['pts']).intersects(seen)]
+    bridges = [b for b in bridges if any(b['road'] is r for r in roads)]
+    lots = [l for l in lots if seen.intersects(l['poly'])]
+    pois = [p for p in pois if seen.contains(Point(p['x'], p['z'])) or p['k'] == 'water']
+    exits = road_exits(roads, play, link)
+
     # ---- write
     g16 = np.clip(np.round((ground - BASE) * 100), 0, 65535).astype('<u2')
     near = ndimage.maximum_filter(wet.astype(np.uint8), 5) > 0
@@ -1237,7 +1334,7 @@ def main():
     tree_h = np.clip(np.round(th * 4), 1, 255).astype('u1')
     raw = write_bin(os.path.join(args.out, 'montello.bin'), [
         ('ground', 'u16', NC, g16), ('water', 'u16', NC, w16), ('cover', 'u8', NC, cover), ('tone', 'u8', NC, tone), ('canopy', 'u8', NC, canopy),
-        ('clear', 'i8', NF, clear), ('treeX', 'u16', 0, tree_x), ('treeZ', 'u16', 0, tree_z), ('treeS', 'u8', 0, tree_s), ('treeH', 'u8', 0, tree_h),
+        ('clear', 'i8', NF, clear), ('play', 'i8', NC, np.clip(np.round(play_sd / 2), -127, 127).astype('i1')), ('treeX', 'u16', 0, tree_x), ('treeZ', 'u16', 0, tree_z), ('treeS', 'u8', 0, tree_s), ('treeH', 'u8', 0, tree_h),
     ])
     road_index = {id(r): i for i, r in enumerate(roads)}
     doc = {
@@ -1250,12 +1347,15 @@ def main():
         'buildings': [building_out(b) for b in buildings],
         'lots': [{'f': round(l['floor'] - BASE, 2), 'p': flat(list(l['poly'].exterior.coords)[:-1])} for l in lots],
         'pois': pois,
+        'limits': {'city': flat(list(city.simplify(1.0).exterior.coords)[:-1]), 'play': flat(list(play.exterior.coords)[:-1]), 'exits': exits,
+                   'link': flat(LineString(link['pts']).intersection(WORLD).coords), 'pad': PLAY_PAD, 'seen': VIS_PAD},
         'sources': [
             'Roads, water, land use and places © OpenStreetMap contributors (ODbL)',
             'Elevation: USGS 3D Elevation Program lidar',
             'Ground cover from USDA NAIP aerial imagery',
             'Building footprints: OpenStreetMap and Microsoft Global ML Building Footprints (ODbL)',
             'Roof shapes, building and tree heights, bridge decks: 2018 FEMA/USGS lidar point cloud (NOAA Digital Coast)',
+            'Roof colours: USDA NAIP aerial imagery; city limits © OpenStreetMap contributors (ODbL)',
         ],
     }
     kinds = {}
@@ -1273,6 +1373,7 @@ def main():
         'roofsMeasured': measured, 'roofKinds': roof_kinds, 'buildingsNotStandingIn2018': sum(1 for b in buildings if b['seen'] < 0.2),
         'waterBodies': len(bodies), 'waterShare': round(float(wet.mean()), 4), 'trees': int(tx.size), 'treeKinds': [int((tk == k).sum()) for k in range(3)],
         'treeHeightMedian': round(float(np.median(th)), 1), 'treeHeightMax': round(float(th.max()), 1), 'lots': len(lots), 'places': len(pois),
+        'roofColours': sum(1 for b in buildings if b.get('roof_rgb')), 'cityKm2': round(city.area / 1e6, 2), 'playKm2': round(play.area / 1e6, 2), 'exits': len(exits),
         'lowest': round(float(ground.min() - BASE), 2), 'highest': round(float(ground.max() - BASE), 2),
     }
     with open(os.path.join(args.out, 'montello.json'), 'w') as f:

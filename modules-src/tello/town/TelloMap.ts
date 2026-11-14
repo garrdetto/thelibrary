@@ -70,6 +70,11 @@ export class TelloMap {
     this.miniG = this.mini.getContext('2d')!
   }
 
+  /** The corner-map canvas (a host world with its own corner map shows one at a time). */
+  get element(): HTMLCanvasElement {
+    return this.mini
+  }
+
   get open(): boolean {
     return !!this.root && !this.root.hidden
   }
@@ -106,10 +111,13 @@ export class TelloMap {
           r *= shade; gg *= shade; b *= shade
         }
         const o = ((n - 1 - j) * n + i) * 4
-        img.data[o] = r
-        img.data[o + 1] = gg
-        img.data[o + 2] = b
-        img.data[o + 3] = 255
+        // Outside the city limits the woods and water fade, then stop where nothing more is drawn.
+        const play = land.grids.play[k] * 2
+        const dim = play >= 0 ? 1 : 0.5
+        img.data[o] = r * dim
+        img.data[o + 1] = gg * dim
+        img.data[o + 2] = b * dim
+        img.data[o + 3] = play > -land.doc.limits.seen ? 255 : 0
       }
     }
     sg.putImageData(img, 0, 0)
@@ -146,6 +154,15 @@ export class TelloMap {
       this.ring(g, b.p, px, pz, true)
       g.stroke()
     }
+    g.globalCompositeOperation = 'destination-in'
+    g.drawImage(small, 0, 0, BASE_PX, BASE_PX)
+    g.globalCompositeOperation = 'source-over'
+    g.setLineDash([10, 6])
+    g.strokeStyle = 'rgba(255,240,200,.75)'
+    g.lineWidth = 2
+    this.ring(g, land.doc.limits.city, px, pz, false)
+    g.stroke()
+    g.setLineDash([])
     return canvas
   }
 

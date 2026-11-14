@@ -16,7 +16,7 @@ import type { Material } from '@babylonjs/core/Materials/material'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { ChunkedBuilders, hexRGB, type MeshBuilder, type RGB } from '../../foxlake/fp/core/Geo'
 import type { Mats } from '../../foxlake/fp/core/Tex'
-import type { Physics } from '../../foxlake/fp/physics/Physics'
+import type { StaticSink } from './Sink'
 import { ROOF, type BuildingData } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { triangulate } from './Poly'
@@ -89,7 +89,7 @@ function edgesOf(p: number[]): Edge[] {
 
 export interface BuildStats { buildings: number; colliders: number }
 
-export function buildBuildings(root: TransformNode, mats: Mats, physics: Physics, land: TelloLand): BuildStats {
+export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticSink, land: TelloLand): BuildStats {
   const chunks = new ChunkedBuilders(128)
   const M = {
     siding: mats.textured('h-siding', 'siding', { vcolor: true }),
@@ -181,7 +181,7 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: Physics
     // Roofs.
     const tin = b.k === 'industrial' || (b.k === 'shed' && rand(b.s, 2) >= 0.5)
     const pitched = get(tin ? M.tin : M.shingles, true)
-    const tone = hexRGB(tin ? pick([0x8d9296, 0x6f7a7c, 0x7a4a40, 0x5d6f62, 0xb9bdbf], b.s, 5) : pick(ROOF_TONES, b.s, 5))
+    const tone = hexRGB(b.rc ? aerialRoof(b.rc) : tin ? pick([0x8d9296, 0x6f7a7c, 0x7a4a40, 0x5d6f62, 0xb9bdbf], b.s, 5) : pick(ROOF_TONES, b.s, 5))
     const under = get(M.paint, true)
     const over = b.k === 'shed' ? 0.2 : commercial ? 0.25 : 0.38
     if (oneCap) {
@@ -277,6 +277,18 @@ function at(r: Roof, u: number, v: number, y: number): V3 {
 }
 
 /** The roof and its painted underside for one slope. */
+/**
+ * A roof's colour from the aerial photo (#rrggbb). The photo is taken through haze in full sun, so it reads lighter
+ * and greyer than the shingles are: darkened a fifth and given back a little of its colour.
+ */
+export function aerialRoof(hex: string): number {
+  const v = parseInt(hex.slice(1), 16)
+  const rgb = [(v >> 16) & 255, (v >> 8) & 255, v & 255]
+  const grey = (rgb[0] + rgb[1] + rgb[2]) / 3
+  const [r, g, b] = rgb.map((c) => Math.round(Math.min(255, Math.max(0, (grey + (c - grey) * 1.25) * 0.8))))
+  return (r << 16) | (g << 8) | b
+}
+
 function slope(roof: MeshBuilder, under: MeshBuilder, pts: V3[], toward: V3, tone: RGB): void {
   const uv = pts.map((p, i) => (i === 0 ? [0, 0] : [Math.hypot(p[0] - pts[0][0], p[2] - pts[0][2]), p[1] - pts[0][1]]))
   facing(roof, pts, toward, uv, tone)
@@ -411,7 +423,7 @@ function openings(b: BuildingData, edges: Edge[], floor: number, roofs: Roof[], 
 }
 
 /** A fuel canopy: a white slab with a coloured band on four posts. */
-function canopy(b: BuildingData, floor: number, height: number, slab: MeshBuilder, post: MeshBuilder, physics: Physics): void {
+function canopy(b: BuildingData, floor: number, height: number, slab: MeshBuilder, post: MeshBuilder, physics: StaticSink): void {
   const [mx, mz, hx, hz, yaw] = b.r[0]
   const top = floor + height
   slab.orientedBox(mx, top - 0.3, -mz, hx, 0.3, hz, yaw, { color: hexRGB(0xf1f1ee) })

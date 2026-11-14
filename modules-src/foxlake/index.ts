@@ -6,14 +6,15 @@
  * this device instead of the shared world.
  */
 import { Game } from '../rackreel/game/Game'
-import { Terrain } from '../rackreel/world/Terrain'
 import { guestName } from '../maplestreet/src/net/WorldTransport'
 import { store } from '../maplestreet/src/core/Storage'
 import { isValidVehicleRecord, registerCustomVehicles, type CustomVehicleRecord } from '../maplestreet/shared/CustomVehicles'
 import { isValidRecord, registerCustomItems, type CustomItemRecord } from '../maplestreet/shared/CustomItems'
 import { BUNDLED_VEHICLES } from '../maplestreet/shared/BundledVehicles'
 import { FOX_LAKE_LOOK, FOX_LAKE_SHADOW_MAP } from './look'
-import { FOX_LAKE_SHAPE } from './region'
+import { loadMap } from '../tello/data/MapData'
+import { TelloLand } from '../tello/region'
+import { FoxLakeTerrain, MontelloLink } from './montello/Link'
 import { FoxLakeTown } from './town/FoxLakeTown'
 
 declare global {
@@ -89,6 +90,17 @@ async function registerPublished(): Promise<void> {
   registerCustomItems(items ?? (store.json<unknown[]>(IK) ?? []).filter(isValidRecord))
 }
 
+/** Montello (Tello's map of the real city), north of Fox Plains along County Road F; Fox Lake runs without it if it can't load. */
+async function loadMontello(): Promise<MontelloLink | null> {
+  try {
+    const map = await loadMap(new URL('./tello/', location.href).href)
+    return new MontelloLink(new TelloLand(map.doc, map.grids))
+  } catch (e) {
+    console.warn('[foxlake] Montello could not load:', e)
+    return null
+  }
+}
+
 function postRoom(code: string): void {
   try {
     if (window.parent !== window) window.parent.postMessage({ type: 'tl-room', code }, location.origin)
@@ -100,7 +112,7 @@ function postRoom(code: string): void {
 async function boot(): Promise<void> {
   const canvas = document.getElementById('scene') as HTMLCanvasElement | null
   if (!canvas) throw new Error('Missing #scene')
-  const [name] = await Promise.all([signedInName(), registerPublished()])
+  const [name, north] = await Promise.all([signedInName(), loadMontello(), registerPublished()])
   const solo = new URLSearchParams(location.search).has('solo')
   let roomCode: string | null = null
   let inviteRequested = false
@@ -112,13 +124,14 @@ async function boot(): Promise<void> {
       roomCode = code
       if (inviteRequested && code) postRoom(code)
     },
+    north,
   })
   addEventListener('message', (e) => {
     if (e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return
     if (roomCode) postRoom(roomCode)
     else inviteRequested = true
   })
-  const game = new Game(canvas, { terrain: new Terrain(FOX_LAKE_SHAPE), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP })
+  const game = new Game(canvas, { terrain: new FoxLakeTerrain(north), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP })
   window.__foxlake = { game, town }
   await game.start()
 }

@@ -64,8 +64,11 @@ import { RegionCuller } from '../core/RegionCuller'
 import { CasinoHost, CASINO_NAME } from '../casino/CasinoHost'
 import { CASINO } from '../casino/CasinoLayout'
 import { STAND_SIZE } from '../../rackreel/world/Foliage'
-import { FOX_LAKE_SHAPE, TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, connectorDistance, headingToTownYaw, outsideHeight, roadClear, sceneToTown, townToScene, zoneAt, CONNECTOR } from '../region'
+import { FOX_LAKE_SHAPE, TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, connectorDistance, headingToTownYaw, outsideHeight, roadClear, sceneToTown, townToScene, zoneAt, CONNECTOR, northRoadDistance } from '../region'
 import { FoxLakeDev } from '../dev/FoxLakeDev'
+import { NorthWorld } from '../montello/NorthWorld'
+import type { MontelloLink } from '../montello/Link'
+import { TelloMap } from '../../tello/town/TelloMap'
 
 const STEP = 1 / 60
 const CULL_REACH = 640
@@ -93,6 +96,8 @@ export interface TownOptions {
   mode: 'world' | 'offline'
   /** Called when the shared world (or solo) is joined: the room code for invites, and a label. */
   onRoom?: (code: string | null, label: string) => void
+  /** Montello and County Road F north of town (null when Tello's map could not load). */
+  north?: MontelloLink | null
 }
 
 export class FoxLakeTown implements GameExtension {
@@ -112,6 +117,9 @@ export class FoxLakeTown implements GameExtension {
   private map: WorldMap | null = null
   private atlas: Atlas | null = null
   private minimap: FoxMinimap | null = null
+  /** Montello and the road to it, and Montello's own map (shown while you are north of Fox Plains' square). */
+  private north: NorthWorld | null = null
+  private northMap: TelloMap | null = null
   private net: Transport | null = null
   private netStatus: NetStatus = 'connecting'
   private selfId: string | null = null
@@ -175,7 +183,7 @@ export class FoxLakeTown implements GameExtension {
         if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) return true
         if (roadsideAt(x, z, 5)) return true
         const s = townToScene(x, 0, z, this._t)
-        return connectorDistance(s.x, s.z) < 9
+        return connectorDistance(s.x, s.z) < 9 || northRoadDistance(s.x, s.z) < 9
       },
     })
     new Downtown(this.physics, this.mats)
@@ -192,6 +200,10 @@ export class FoxLakeTown implements GameExtension {
     host.foliage.plantTrees(fillerTrees().map((t) => ({ ...t, y: host.terrain.heightAt(t.x, t.z) })))
     host.foliage.hostCasters = (focus) => (focus.z > HALF - 120 ? this.gfx.near(focus) : EMPTY)
     host.foliage.grassHoles.push({ x: CONNECTOR.start.x, z: CONNECTOR.start.z, r: 14 })
+    if (this.opts.north) {
+      this.north = new NorthWorld(this.opts.north, { host, physics: this.physics, mats: this.mats, gfx: this.gfx, culler: this.culler })
+      await this.north.build((share, text) => host.hud.setLoading(0.72 + share * 0.12, text))
+    }
     this.hud = new TownHud()
   }
 
@@ -305,6 +317,20 @@ export class FoxLakeTown implements GameExtension {
     })
     addEventListener('keydown', (e) => this.key(e))
     this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
+    if (this.north) {
+      this.north.ready()
+      const land = this.north.link.land
+      this.northMap = new TelloMap({
+        land,
+        where: () => {
+          const v = host.driving
+          const at = v ? v.position : host.player
+          return { x: land.toMapX(at.x), z: land.toMapZ(at.z), heading: v ? v.heading : host.facing }
+        },
+        toast: (text) => host.hud.toast(text),
+        canvas: host.ctx.engine.getRenderingCanvas(),
+      })
+    }
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
     const casino = this.casino.center()
     this.culler.addGroup(this.casino.staticMeshes(), casino.x, casino.z, 24)
@@ -502,6 +528,8 @@ export class FoxLakeTown implements GameExtension {
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
     this.casino.update(dt)
     this.map?.update(dt)
+    this.north?.update(dt)
+    this.northMap?.update(dt)
     this.netAcc += dt
     if (this.netAcc >= 1 / NET_HZ) {
       this.netAcc = 0
@@ -516,7 +544,7 @@ export class FoxLakeTown implements GameExtension {
     if (this.hudAcc <= 0) {
       this.hudAcc = 0.5
       const reconnecting = this.netStatus === 'offline' && !(this.net instanceof OfflineTransport)
-      this.hud.setStatus(this.net ? `${this.net.label}${reconnecting ? ' (reconnecting)' : ''}` : 'Connecting', this.neighbors.count, zoneAt(this.host.player.z))
+      this.hud.setStatus(this.net ? `${this.net.label}${reconnecting ? ' (reconnecting)' : ''}` : 'Connecting', this.neighbors.count, this.zone())
     }
   }
 
@@ -531,6 +559,7 @@ export class FoxLakeTown implements GameExtension {
     const t = this.townPosition()
     pts.push({ x: t.x, z: t.z })
     this.cars.focusPoints(pts)
+    this.north?.focus(pts)
     this.physics.stream(pts, dt)
     this.wading?.step(dt)
     this.physics.step(dt)
@@ -575,17 +604,19 @@ export class FoxLakeTown implements GameExtension {
     const q = { x: t.x, z: t.z }
     const hitStatic = p.z >= HALF - 8 && this.physics.pushOut(q, t.y, r)
     const hitVehicle = this.physics.pushOutVehicles(q, t.y, r)
-    if (!hitStatic && !hitVehicle) return
-    const s = townToScene(q.x, t.y, q.z, this._t)
-    p.x = s.x
-    p.z = s.z
+    if (hitStatic || hitVehicle) {
+      const s = townToScene(q.x, t.y, q.z, this._t)
+      p.x = s.x
+      p.z = s.z
+    }
+    this.north?.pushTrees(p, r)
   }
 
   obstacle(x: number, z: number, r: number): boolean {
     if (hitsBarrier(this.barriers, x, z, r, this.host.terrain.heightAt(x, z))) return true
     if (z < HALF - 8) return false
     const t = sceneToTown(x, TOWN_OFFSET.y, z, this._t)
-    return this.physics.blocked(t.x, t.z, 0, r)
+    return this.physics.blocked(t.x, t.z, this.host.terrain.heightAt(x, z) - TOWN_OFFSET.y, r)
   }
 
   spawn(): { at: Vector3; facing: number } | null {
@@ -601,6 +632,8 @@ export class FoxLakeTown implements GameExtension {
   }
 
   placeName(x: number, z: number): string | null {
+    const north = this.north?.placeName(x, z)
+    if (north) return north
     if (z < HALF) {
       if (roadClear(x, z) < 3 && z < 60 && x > 100) return 'Lake Road'
       return null
@@ -695,8 +728,17 @@ export class FoxLakeTown implements GameExtension {
   }
 
   private key(e: KeyboardEvent): void {
-    if (!this.host.playing || e.repeat || this.host.hud.modalOpen) return
-    if (e.code === 'ControlLeft' || e.code === 'ControlRight') this.map?.show()
+    if (e.repeat) return
+    const ctrl = e.code === 'ControlLeft' || e.code === 'ControlRight'
+    if (this.northMap?.open) {
+      if (ctrl) this.northMap.hide()
+      return
+    }
+    if (!this.host.playing || this.host.hud.modalOpen) return
+    if (ctrl) {
+      if (this.inNorth()) this.northMap?.show()
+      else this.map?.show()
+    }
     else if (e.code === GARAGE_KEY) this.swapGarageVehicle()
     else if (e.code === HOME_KEY) this.goHome()
   }
@@ -752,11 +794,34 @@ export class FoxLakeTown implements GameExtension {
   /** The corner map is Fox Lake's own atlas everywhere (Rack & Reel's is hidden). */
   drawMinimap(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: () => MapMarker[]): boolean {
     if (!this.minimap) return false
+    const north = this.northMap && this.north && this.inNorth() ? this.northMap : null
+    this.minimap.element.style.display = north ? 'none' : ''
+    if (this.northMap) this.northMap.element.style.display = north ? '' : 'none'
+    if (north && this.north) {
+      const land = this.north.link.land
+      const here = this.host.driving?.position
+      north.drawMini(dt, land.toMapX(here?.x ?? x), land.toMapZ(here?.z ?? z), cameraYaw, facing, markers().filter((m) => m.kind === 'friend'), (m) => (land.holdsScene(m.x, m.z) ? { x: land.toMapX(m.x), z: land.toMapZ(m.z) } : null))
+      return true
+    }
     this.minimap.draw(dt, x, z, cameraYaw, facing, markers)
     return true
   }
 
+  /** True north of Fox Plains' square: on County Road F through the woods, or in Montello. */
+  private inNorth(): boolean {
+    const at = this.host.driving?.position ?? this.host.player
+    return !!this.north && at.z > TOWN_SQUARE.z1 - 8
+  }
+
+  private zone(): 'town' | 'country' | 'road' | 'montello' {
+    const at = this.host.driving?.position ?? this.host.player
+    if (this.north?.link.land.holdsScene(at.x, at.z)) return 'montello'
+    if (this.north && at.z > TOWN_SQUARE.z1 - 8) return 'road'
+    return zoneAt(at.z)
+  }
+
   cycleMinimapZoom(): string {
+    if (this.northMap && this.inNorth()) return this.northMap.cycleZoom()
     return this.minimap?.cycleZoom() ?? ''
   }
 

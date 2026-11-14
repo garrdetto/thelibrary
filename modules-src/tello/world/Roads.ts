@@ -125,6 +125,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
     // Pieces of up to 64 m, each in the batch of the cell it starts in, so far stretches of a long road are culled.
     for (let s0 = 0; s0 < n - 1; s0 += 16) {
       const s1 = Math.min(n - 1, s0 + 16)
+      if (!land.seen(stations[s0].x, stations[s0].z, -40) && !land.seen(stations[s1].x, stations[s1].z, -40)) continue
       const batch = batchOf(batches, `${road.k}|${Math.floor(stations[s0].x / CELL)},${Math.floor(stations[s0].z / CELL)}`)
       for (let i = s0; i <= s1; i++) {
         const st = stations[i]
@@ -143,6 +144,7 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
   }
   // Junction patches: a disc as wide as the widest road meeting there.
   for (const j of junctions(land)) {
+    if (!land.seen(j.x, j.z, -40)) continue
     const b = batchOf(batches, `6|${Math.floor(j.x / CELL)},${Math.floor(j.z / CELL)}`)
     const c = b.positions.length / 3
     const r = j.r + 0.15

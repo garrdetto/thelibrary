@@ -3,9 +3,10 @@
  * heads out, then stands at fixed spots, saving a screenshot and the frame time, draw and memory counts for each.
  * The last pass walks town -> lake -> town five times and reports whether mesh, material and texture counts grew.
  *
- *   node scripts/foxlake-capture.mjs [baseUrl] [outDir]
+ *   node scripts/foxlake-capture.mjs [baseUrl] [outDir] [spot,spot]
  *
  * baseUrl serves public/ (default http://127.0.0.1:3200). Results go to outDir (default docs/foxlake/captures).
+ * Naming spots takes only those (and skips the casino and leak passes). Set FOXLAKE_SOFTWARE=1 to render without a GPU.
  */
 import { chromium } from 'playwright'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -13,6 +14,7 @@ import { join, resolve } from 'node:path'
 
 const base = process.argv[2] ?? 'http://127.0.0.1:3200'
 const outDir = resolve(process.argv[3] ?? 'docs/foxlake/captures')
+const only = (process.argv[4] ?? '').split(',').filter(Boolean)
 mkdirSync(outDir, { recursive: true })
 
 const SPOTS = [
@@ -27,9 +29,15 @@ const SPOTS = [
   { name: 'casino-inside', hour: 15, at: [-240, 1082], facing: Math.PI, pitch: 0.18 },
   { name: 'casino-slots', hour: 15, at: [-250, 1078], facing: -Math.PI / 2, pitch: 0.12 },
   { name: 'town-night', hour: 21.5, at: [-468, 1147], facing: Math.PI * 0.5, pitch: 0.1 },
-]
+  { name: 'county-road-f', hour: 15, at: [-99, 1834], facing: 1.25, pitch: 0.1 },
+  { name: 'into-montello', hour: 16, at: [372, 1990], facing: 0.68, pitch: 0.08 },
+  { name: 'montello-main-street', hour: 15, at: [405.4, 3579.9], facing: 1.27, pitch: 0.12 },
+  { name: 'montello-downtown', hour: 16, at: [602, 3638], facing: Math.PI * 0.5, pitch: 0.1 },
+  { name: 'montello-night', hour: 21.5, at: [405.4, 3579.9], facing: 1.27, pitch: 0.1 },
+].filter((s) => !only.length || only.includes(s.name))
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--use-angle=d3d11'] })
+const software = process.env.FOXLAKE_SOFTWARE === '1'
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: software ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--enable-unsafe-webgpu', '--ignore-gpu-blocklist', '--use-angle=d3d11'] })
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 } })
 const errors = []
 page.on('pageerror', (e) => errors.push(String(e)))
@@ -48,13 +56,13 @@ await page.evaluate(async () => {
 })
 await page.addStyleTag({ content: '#pause{display:none!important}' })
 
-const stats = async () => page.evaluate(async () => {
+const stats = async () => page.evaluate(async (frames) => {
   const { game } = window.__foxlake
   const h = game.host()
   const { engine, scene } = h.ctx
   const times = []
   let last = performance.now()
-  for (let i = 0; i < 90; i++) {
+  for (let i = 0; i < frames; i++) {
     await new Promise((r) => requestAnimationFrame(r))
     const now = performance.now()
     times.push(now - last)
@@ -64,7 +72,7 @@ const stats = async () => page.evaluate(async () => {
   const p = (q) => Math.round(times[Math.floor(times.length * q)] * 10) / 10
   const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : null
   return { p50: p(0.5), p95: p(0.95), meshes: scene.meshes.length, active: scene.getActiveMeshes().length, materials: scene.materials.length, textures: scene.textures.length, geometries: scene.geometries.length, heapMB: mem, backend: engine.isWebGPU ? 'webgpu' : 'webgl2', town: window.__foxlake.town.debug() }
-})
+}, software ? 12 : 90)
 
 const goTo = async (spot) => page.evaluate(async (s) => {
   const { game } = window.__foxlake
@@ -96,6 +104,12 @@ for (const spot of SPOTS) {
   report.spots[spot.name] = await stats()
   await page.screenshot({ path: join(outDir, `${spot.name}.png`) })
   console.log(spot.name, JSON.stringify(report.spots[spot.name]))
+}
+if (only.length) {
+  writeFileSync(join(outDir, 'report.json'), JSON.stringify(report, null, 1))
+  console.log('errors', errors.length ? errors : 'none')
+  await browser.close()
+  process.exit(0)
 }
 
 for (const [name, idx] of [['slot-machine', 4], ['slot-link', 0], ['slot-house', 2]]) {

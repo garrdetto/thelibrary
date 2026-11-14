@@ -120,6 +120,45 @@ function connectorSamples(): { x: number; z: number; w: number }[] {
   return (samples ??= connectorPath(3))
 }
 
+/**
+ * County Road F, the road north to Montello (modules-src/tello): from East Ave's north end it runs north out through
+ * the forest ring, then sweeps north-east to Montello's map edge, where it becomes the real County Highway F. `join`
+ * and `joinDir` are County Highway F's first point and direction in Tello's baked map, in scene coordinates (the map
+ * sits a whole map width north of the origin); a test keeps them in step with montello.json.
+ */
+export const NORTH_ROAD = (() => {
+  const start = townToScene(87, 0, -267)
+  return { start, bendZ: start.z + 240, join: { x: 394.8, z: 2018 }, joinDir: { x: 0.6209, z: 0.7839 }, width: 10, joinWidth: 8.2, reach: 260 }
+})()
+
+/** Points along County Road F from East Ave to Montello's edge, every `step` metres, with the road's width there. */
+export function northRoadPath(step = 4): { x: number; z: number; w: number }[] {
+  const { start, bendZ, join, joinDir, width, joinWidth, reach } = NORTH_ROAD
+  const out: { x: number; z: number; w: number }[] = []
+  for (let z = start.z; z < bendZ; z += step) out.push({ x: start.x, z, w: width })
+  const a = { x: start.x, z: bendZ }
+  const c1 = { x: a.x, z: a.z + reach }
+  const c2 = { x: join.x - joinDir.x * reach, z: join.z - joinDir.z * reach }
+  const n = Math.max(8, Math.ceil((Math.hypot(join.x - a.x, join.z - a.z) * 1.3) / step))
+  for (let i = 0; i <= n; i++) {
+    const t = i / n
+    const u = 1 - t
+    const x = u * u * u * a.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * join.x
+    const z = u * u * u * a.z + 3 * u * u * t * c1.z + 3 * u * t * t * c2.z + t * t * t * join.z
+    out.push({ x, z, w: width + (joinWidth - width) * smooth(t) })
+  }
+  return out
+}
+
+let northSamples: { x: number; z: number; w: number }[] | null = null
+
+/** Distance from (x, z) to County Road F's edge (sampled; fine for placement). */
+export function northRoadDistance(x: number, z: number): number {
+  let best = Infinity
+  for (const p of (northSamples ??= northRoadPath(3))) best = Math.min(best, Math.hypot(p.x - x, p.z - z) - p.w / 2)
+  return best
+}
+
 /** The built-up town (lots, streets, downtown) in scene coordinates, where the ground stays flat. */
 export const BUILT_UP = {
   x0: MAP_BOUNDS.x0 + TOWN_OFFSET.x - 6,
@@ -137,7 +176,8 @@ function rectDistance(x: number, z: number, r: { x0: number; x1: number; z0: num
 
 // ---------------------------------------------------------------- roads and lots: a distance field
 
-const FIELD = { x0: -360, z0: -150, x1: 360, z1: 905, cell: 2 } as const
+const NORTH_REACH = 90
+const FIELD = { x0: -360, z0: -150, x1: 360, z1: TOWN_OFFSET.z + WORLD_HALF + 8, cell: 2 } as const
 const FIELD_W = Math.ceil((FIELD.x1 - FIELD.x0) / FIELD.cell) + 1
 const FIELD_H = Math.ceil((FIELD.z1 - FIELD.z0) / FIELD.cell) + 1
 let field: Float32Array | null = null
@@ -162,6 +202,8 @@ function buildField(): Float32Array {
   const f = new Float32Array(FIELD_W * FIELD_H).fill(1e6)
   const REACH = 14
   for (const p of [...lakeRoadPath(2), ...connectorPath(2)]) stamp(f, p.x, p.z, p.w / 2 + REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
+  // County Road F runs through the forest ring, so its distances reach as far as the hills take to rise (outsideHeight).
+  for (const p of northRoadPath(2).filter((q) => q.z < FIELD.z1 + NORTH_REACH)) stamp(f, p.x, p.z, p.w / 2 + NORTH_REACH, (x, z) => Math.hypot(x - p.x, z - p.z) - p.w / 2)
   const a = LAKE_ROAD_APRON
   stamp(f, a.x, a.z, a.r + REACH, (x, z) => Math.hypot(x - a.x, z - a.z) - a.r)
   for (const place of ROADSIDE) {
@@ -173,7 +215,7 @@ function buildField(): Float32Array {
   return f
 }
 
-/** Metres from (x, z) to the nearest county road, Lake Road or roadside lot edge (negative on them). */
+/** Metres from (x, z) to the nearest county road (either), Lake Road or roadside lot edge (negative on them). */
 export function roadClear(x: number, z: number): number {
   if (x < FIELD.x0 || x > FIELD.x1 || z < FIELD.z0 || z > FIELD.z1) return 1e6
   const f = (field ??= buildField())
@@ -191,6 +233,11 @@ export function roadClear(x: number, z: number): number {
 
 // ---------------------------------------------------------------- the land around town
 
+/** The rise of the wooded hills above the roads' level at (x, z), 0 to about 8 m. */
+export function woodsHills(x: number, z: number): number {
+  return Math.max(0, (fbm(x * 0.0065 + 5.3, z * 0.0065 - 2.1, 3, 91) * 0.5 + 0.5) * 7 + fbm(x * 0.028, z * 0.028, 2, 92) * 0.7)
+}
+
 /** Gentle wooded hills around Fox Plains: flat in town, on the roads and lots, rising over 70 m away from them. */
 export function outsideHeight(x: number, z: number): number {
   const town = rectDistance(x, z, BUILT_UP)
@@ -199,8 +246,7 @@ export function outsideHeight(x: number, z: number): number {
   const flat = Math.min(town - 12, road - 10)
   if (flat <= 0) return TOWN_Y
   const amp = smooth(Math.min(1, flat / 75))
-  const hills = (fbm(x * 0.0065 + 5.3, z * 0.0065 - 2.1, 3, 91) * 0.5 + 0.5) * 7 + fbm(x * 0.028, z * 0.028, 2, 92) * 0.7
-  return TOWN_Y + Math.max(0, hills) * amp
+  return TOWN_Y + woodsHills(x, z) * amp
 }
 
 /** The town and its forest ring, as land beyond the lake country's square. */

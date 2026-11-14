@@ -93,6 +93,7 @@ export function buildGround(scene: Scene, land: TelloLand): Mesh[] {
       const colors = new Float32Array(vx * vz * 4)
       const uvs = new Float32Array(vx * vz * 2)
       const indices = new Uint32Array(nx * nz * 6)
+      const seen = new Uint8Array(vx * vz)
       for (let j = 0; j < vz; j++) {
         for (let i = 0; i < vx; i++) {
           const k = j * vx + i
@@ -100,6 +101,7 @@ export function buildGround(scene: Scene, land: TelloLand): Mesh[] {
           const mz = land.z0 + (cj + j) * step
           const x = land.toSceneX(mx)
           const z = land.toSceneZ(mz)
+          seen[k] = land.seen(mx, mz) ? 1 : 0
           positions[k * 3] = x
           positions[k * 3 + 1] = land.groundAt(mx, mz) - groundSink(land.clearAt(mx, mz))
           positions[k * 3 + 2] = z
@@ -116,6 +118,7 @@ export function buildGround(scene: Scene, land: TelloLand): Mesh[] {
       for (let j = 0; j < nz; j++) {
         for (let i = 0; i < nx; i++) {
           const a = j * vx + i
+          if (!seen[a] && !seen[a + 1] && !seen[a + vx] && !seen[a + vx + 1]) continue
           indices[t++] = a
           indices[t++] = a + 1
           indices[t++] = a + vx
@@ -124,11 +127,13 @@ export function buildGround(scene: Scene, land: TelloLand): Mesh[] {
           indices[t++] = a + 1
         }
       }
+      if (t === 0) continue
+      const used = indices.subarray(0, t)
       const normals = new Float32Array(positions.length)
-      VertexData.ComputeNormals(positions, indices, normals, { useRightHandedSystem: false })
+      VertexData.ComputeNormals(positions, used, normals, { useRightHandedSystem: false })
       const data = new VertexData()
       data.positions = positions
-      data.indices = indices
+      data.indices = used
       data.normals = normals
       data.colors = colors
       data.uvs = uvs

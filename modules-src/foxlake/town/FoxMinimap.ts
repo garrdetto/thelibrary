@@ -17,6 +17,10 @@ export class FoxMinimap {
   private readonly canvas: HTMLCanvasElement
   private readonly g: CanvasRenderingContext2D
   private zoom = 1
+
+  get element(): HTMLCanvasElement {
+    return this.canvas
+  }
   private timer = 0
 
   constructor(private readonly atlas: Atlas, private readonly route: () => RouteLine | null, private readonly lot: (lot: LotDef) => 'mine' | 'owned' | 'sale' | null) {
