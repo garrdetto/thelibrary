@@ -9,6 +9,7 @@ export const trackerState = {
   market: new Map<string, MarketReading>(),
   viewers: new Map<string, { count: number; at: number; source: 'websocket' | 'page' | 'extension' }>(),
   watchlist: new Map<string, number>(),
+  pulse: new Map<string, number>(),
 }
 
 export function activeCandidates(database: TrackerDatabase): ActiveCandidate[] {

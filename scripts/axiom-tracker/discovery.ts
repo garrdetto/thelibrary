@@ -5,7 +5,9 @@ import { createLogger, errorMessage, isMainModule, runLoop, trackerConfig } from
 import { trackerState, type ActiveCandidate } from './state.js'
 
 const logger = createLogger('discovery')
-const watchlistLimit = 300
+const watchlistLimit = 400
+const pulseWindowMs = 3 * 60_000
+const pulseLimit = 40
 const enrichmentsPerCycle = 4
 const enrichmentRefreshMs = 30 * 60_000
 const enrichedAt = new Map<string, number>()
@@ -80,8 +82,12 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   const sources = await fetchDiscoverySources()
   for (const mint of sources.mints) if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
   for (const candidate of trackerState.active) trackerState.watchlist.set(candidate.mint, trackerState.watchlist.get(candidate.mint) ?? now)
+  for (const [mint, seenAt] of trackerState.pulse) {
+    if (now - seenAt > pulseWindowMs) trackerState.pulse.delete(mint)
+    else if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
+  }
   for (const [mint, firstSeen] of trackerState.watchlist) if (now - firstSeen > trackerConfig.maxPairAgeMs) trackerState.watchlist.delete(mint)
-  const watched = [...trackerState.watchlist.entries()].sort((first, second) => second[1] - first[1]).slice(0, watchlistLimit).map(([mint]) => mint)
+  const watched = [...new Set([...trackerState.pulse.keys(), ...[...trackerState.watchlist.entries()].sort((first, second) => second[1] - first[1]).map(([mint]) => mint)])].slice(0, watchlistLimit)
 
   const best = bestPairByMint(await fetchPairsForMints(watched))
   const young: DexPair[] = []
@@ -90,7 +96,11 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
     else young.push(pair)
   }
   const qualified = young.filter(pair => passesLaunchFilter(pair, now))
-  const ranked = qualified.map(pair => ({ pair, momentum: momentumOf(pair, now) })).sort((first, second) => second.momentum - first.momentum).slice(0, trackerConfig.maxCandidates)
+  const byMomentum = (pairs: DexPair[]) => pairs.map(pair => ({ pair, momentum: momentumOf(pair, now) })).sort((first, second) => second.momentum - first.momentum)
+  const rankedQualified = byMomentum(qualified).slice(0, trackerConfig.maxCandidates)
+  const chosen = new Set(rankedQualified.map(entry => entry.pair.baseToken.address))
+  const fromPulse = byMomentum(young.filter(pair => trackerState.pulse.has(pair.baseToken.address) && !chosen.has(pair.baseToken.address))).slice(0, pulseLimit)
+  const ranked = [...rankedQualified, ...fromPulse]
 
   upsertTokens(database, ranked.map(entry => entry.pair), sources.boosted, now)
   trackerState.active = ranked.map(({ pair, momentum }) => ({ mint: pair.baseToken.address, pairAddress: pair.pairAddress, symbol: pair.baseToken.symbol ?? '???', momentum }))
@@ -99,7 +109,7 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
 
   const enriched = await enrichCandidates(database, trackerState.active)
   recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} active of ${young.length} young pairs`)
-  logger.info('Discovery cycle complete', { sourced: sources.mints.length, watched: watched.length, young: young.length, qualified: qualified.length, active: trackerState.active.length, enriched, sourceFailures: sources.failures })
+  logger.info('Discovery cycle complete', { sourced: sources.mints.length, watched: watched.length, young: young.length, qualified: qualified.length, fromPulse: fromPulse.length, onPulse: trackerState.pulse.size, active: trackerState.active.length, enriched, sourceFailures: sources.failures })
 }
 
 export function startDiscovery(database: TrackerDatabase, signal: AbortSignal) {

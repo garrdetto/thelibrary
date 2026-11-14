@@ -63,6 +63,10 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
     for (const [mint, count] of extractViewerCounts(frame, resolveMint, fallback)) counts.set(mint, Math.max(count, counts.get(mint) ?? 0))
   }
   for (const card of input.cards ?? []) {
+    if (card.mint) {
+      trackerState.pulse.set(card.mint, now)
+      trackerState.viewers.set(card.mint, { count: card.viewers, at: now, source: 'extension' })
+    }
     let mint = (card.pairAddress && resolveMint(card.pairAddress)) || (card.mint && resolveMint(card.mint)) || null
     if (!mint && card.short) {
       const { prefix, suffix } = card.short
@@ -103,6 +107,10 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       const parsed = report.safeParse(JSON.parse(await readBody(request)))
       if (!parsed.success) return send(response, 400, { error: 'Report could not be read.' })
       const matched = applyExtensionReport(database, parsed.data)
+      if (process.env.AXIOM_DEBUG_CARDS === '1') {
+        mkdirSync(resolve('data'), { recursive: true })
+        writeFileSync(resolve('data/axiom-last-cards.json'), JSON.stringify({ at: Date.now(), url: parsed.data.url, matched, cards: parsed.data.cards }, null, 1))
+      }
       reports += 1
       lastReportAt = Date.now()
       return send(response, 200, { ok: true, matched })
