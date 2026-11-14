@@ -101,11 +101,28 @@ export function writeSnapshots(database: TrackerDatabase) {
   return { written: candidates.length, withViewers }
 }
 
-export async function runLogin() {
+async function launchContext(headless: boolean, viewport: { width: number; height: number } | null) {
   const { chromium } = await import('playwright')
   mkdirSync(sessionDirectory, { recursive: true })
+  const preferred = process.env.AXIOM_BROWSER_CHANNEL?.trim()
+  const channels = preferred ? [preferred] : ['bundled', 'chrome', 'msedge']
+  let lastError: unknown = null
+  for (const channel of channels) {
+    try {
+      const context = await chromium.launchPersistentContext(sessionDirectory, { headless, viewport, ...(channel === 'bundled' || channel === 'chromium' ? {} : { channel }) })
+      if (channel !== channels[0]) logger.warn('Using a fallback browser; set AXIOM_BROWSER_CHANNEL so login and collection share it', { channel })
+      return context
+    } catch (error) {
+      lastError = error
+      logger.warn('Browser launch failed', { channel, error: errorMessage(error).split(/\r?\n/)[0] })
+    }
+  }
+  throw lastError
+}
+
+export async function runLogin() {
   logger.info('Opening Axiom for one-time login. Sign in, then close the browser window to save the session.', { sessionDirectory })
-  const context = await chromium.launchPersistentContext(sessionDirectory, { headless: false, viewport: null })
+  const context = await launchContext(false, null)
   const page = context.pages()[0] ?? await context.newPage()
   await page.goto(axiomOrigin, { waitUntil: 'domcontentloaded' }).catch(error => logger.warn('Initial navigation failed', { error: errorMessage(error) }))
   await new Promise<void>(resolveClose => context.on('close', () => resolveClose()))
@@ -177,9 +194,7 @@ export function startAxiomCollector(database: TrackerDatabase, signal: AbortSign
   }
 
   const launch = async () => {
-    const { chromium } = await import('playwright')
-    mkdirSync(sessionDirectory, { recursive: true })
-    const launched = await chromium.launchPersistentContext(sessionDirectory, { headless: trackerConfig.headless, viewport: { width: 1440, height: 900 } })
+    const launched = await launchContext(trackerConfig.headless, { width: 1440, height: 900 })
     launched.on('close', () => {
       if (context === launched) {
         logger.warn('Browser context closed unexpectedly; will relaunch')

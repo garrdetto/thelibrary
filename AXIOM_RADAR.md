@@ -60,6 +60,8 @@ pnpm axiom:login
 
 A visible Chromium window opens at https://axiom.trade using the persistent profile in `./axiom-session`. Sign in with your wallet or account, then close the window. The headless collector reuses that session. Run this again whenever the session expires.
 
+If Windows refuses to start Playwright's downloaded Chromium (`spawn UNKNOWN`), set `AXIOM_BROWSER_CHANNEL=chrome` (or `msedge`) in `.env` to use the installed browser for both login and collection, with its own profile in `./axiom-session`. Without the setting, the tracker tries the bundled Chromium, then Chrome, then Edge.
+
 Axiom sits behind Cloudflare, and Cloudflare may challenge headless browsers. When that happens, the worker logs a warning, the **axiom-collector** chip on the radar shows `cloudflare-challenge`, and snapshots continue with market data only (no viewer counts). If that keeps happening, run the collector in a visible window with your saved session by setting `AXIOM_HEADLESS=0` in `.env`. The radar does not try to bypass bot checks.
 
 Axiom does not document its WebSocket messages, so the collector parses frames heuristically: it looks for viewer-count fields next to a tracked mint or pair address, and falls back to reading the visible "viewers" label on the token page. If the counts stay empty, set `AXIOM_DEBUG_WS=1`, let it run for a minute, and inspect `data/axiom-ws-debug.log` to adjust `viewerKeyPattern` in `scripts/axiom-tracker/axiom-collector.ts`.
