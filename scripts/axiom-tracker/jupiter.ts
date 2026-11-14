@@ -8,6 +8,23 @@ const refreshMs = 4_000
 const holderHistoryMs = 6 * 60_000
 const readingTtlMs = 60_000
 const perRequest = 100
+const requestGapMs = 1_200
+const moverListMs = 60_000
+
+let requestChain: Promise<unknown> = Promise.resolve()
+let lastRequestAt = 0
+
+/** Jupiter's free feed allows about one request a second, so every call waits its turn. */
+function jupiterFetch<T>(path: string, timeoutMs: number): Promise<T> {
+  const run = requestChain.then(async () => {
+    const wait = lastRequestAt + requestGapMs - Date.now()
+    if (wait > 0) await sleep(wait)
+    lastRequestAt = Date.now()
+    return fetchJson<T>(`${jupiterApi}/${path}`, { retries: 0, timeoutMs })
+  })
+  requestChain = run.catch(() => undefined)
+  return run
+}
 
 type JupiterStats = { holderChange?: number; numBuys?: number; numSells?: number; numTraders?: number; numNetBuyers?: number }
 type JupiterToken = {
@@ -20,6 +37,7 @@ type JupiterToken = {
 }
 
 const holderHistory = new Map<string, Array<{ t: number; holders: number }>>()
+const moverList = { at: 0, mints: [] as string[] }
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : null
 
 function holdersPerMinute(mint: string, holders: number | null, now: number) {
@@ -61,7 +79,8 @@ function toReading(token: JupiterToken, now: number): JupiterReading {
 }
 
 export async function refreshJupiter(mints: string[], now = Date.now()) {
-  const groups = await Promise.all(chunk(mints, perRequest).map(group => fetchJson<JupiterToken[]>(`${jupiterApi}/search?query=${group.join(',')}`, { retries: 0, timeoutMs: 6_000 })))
+  const groups: JupiterToken[][] = []
+  for (const group of chunk(mints, perRequest)) groups.push(await jupiterFetch<JupiterToken[]>(`search?query=${group.join(',')}`, 6_000))
   let read = 0
   for (const token of groups.flatMap(group => Array.isArray(group) ? group : [])) {
     if (typeof token.id !== 'string' || !mints.includes(token.id)) continue
@@ -80,14 +99,20 @@ export function jupiterReading(mint: string, now: number) {
 }
 
 /** Coins Jupiter lists as trending or most traded over the last 5 minutes, to widen what the radar watches without the Pulse tab. */
-export async function jupiterMoverMints() {
-  const lists = await Promise.allSettled(['toptrending/5m', 'toptraded/5m', 'toporganicscore/5m'].map(path => fetchJson<JupiterToken[]>(`${jupiterApi}/${path}?limit=50`, { retries: 0, timeoutMs: 8_000 })))
+export async function jupiterMoverMints(now = Date.now()) {
+  if (now - moverList.at < moverListMs) return moverList.mints
+  moverList.at = now
   const mints = new Set<string>()
-  for (const list of lists) {
-    if (list.status !== 'fulfilled' || !Array.isArray(list.value)) continue
-    for (const token of list.value) if (typeof token.id === 'string' && solanaAddressPattern.test(token.id)) mints.add(token.id)
+  for (const path of ['toptrending/5m', 'toptraded/5m', 'toporganicscore/5m']) {
+    try {
+      const list = await jupiterFetch<JupiterToken[]>(`${path}?limit=50`, 8_000)
+      for (const token of Array.isArray(list) ? list : []) if (typeof token.id === 'string' && solanaAddressPattern.test(token.id)) mints.add(token.id)
+    } catch (error) {
+      logger.debug('Jupiter mover list failed', { path, error: errorMessage(error) })
+    }
   }
-  return [...mints]
+  if (mints.size) moverList.mints = [...mints]
+  return moverList.mints
 }
 
 /** Reads holder counts, holder growth, top-holder and dev shares and who is trading for every tracked coin, every few seconds, from Jupiter's public token feed. */
