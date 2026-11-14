@@ -1,6 +1,7 @@
 import { AxiomLink, CoinName } from './AxiomLink'
 import { Area, AreaChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { radarFeatureKeys, radarFeatureLabels, type RadarPayload } from '@/lib/axiom-radar-types'
+import { BotAccount } from './BotAccount'
 import { formatClock, formatPercent, formatReturn, formatUsd, relativeSeconds } from './format'
 
 const tooltipStyle = { background: 'var(--tone-82)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11, color: 'var(--tone-0)' }
@@ -16,6 +17,7 @@ export function PaperTrades({ payload, now }: { payload: RadarPayload; now: numb
   const maxWeight = Math.max(...radarFeatureKeys.map(key => model.weights[key]), 1)
   const completed = paper.stats.wins + paper.stats.losses
   return <div className="radar-paper">
+    <BotAccount now={now}/>
     <div className="radar-kpis">
       <div className="radar-kpi"><span>Open paper trades</span><strong className="tabular">{paper.stats.open}</strong><small>Opened on each Buy signal or score ≥ 75</small></div>
       <div className="radar-kpi"><span>Win rate (+15% at 15m)</span><strong className="tabular">{formatPercent(paper.stats.winRate, 0)}</strong><small>{paper.stats.wins} wins · {paper.stats.losses} losses</small></div>
