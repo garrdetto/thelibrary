@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import json
 import math
 import os
@@ -40,6 +41,37 @@ def clean(key: str, value: Any) -> Any:
         return dial["default"]
     number = min(dial["max"], max(dial["min"], value))
     return int(number) if float(number).is_integer() else float(number)
+
+
+TRUE_WORDS = {"true", "on", "yes", "1"}
+FALSE_WORDS = {"false", "off", "no", "0"}
+
+
+def parse_value(key: str, text: str) -> Any:
+    """A dial's value from what someone typed (8, 30%, on, safe), cleaned and clamped. Raises ValueError with a plain reason."""
+    dial = DIAL_BY_KEY.get(key)
+    if dial is None:
+        close = difflib.get_close_matches(key, list(DIAL_BY_KEY), n=3, cutoff=0.5)
+        raise ValueError(f"There is no dial called {key}." + (f" Did you mean {', '.join(close)}?" if close else ""))
+    word = text.strip().casefold()
+    if dial["type"] == "toggle":
+        if word in TRUE_WORDS:
+            return True
+        if word in FALSE_WORDS:
+            return False
+        raise ValueError(f"{dial['label']} takes on or off.")
+    if dial["type"] == "choice":
+        for choice, label in dial["choices"]:
+            if word in (choice.casefold(), label.casefold()):
+                return choice
+        raise ValueError(f"{dial['label']} takes one of: {', '.join(choice for choice, _ in dial['choices'])}.")
+    try:
+        number = float(word.replace(",", "").replace("$", "").rstrip("%"))
+    except ValueError:
+        number = math.nan
+    if not math.isfinite(number):
+        raise ValueError(f"{dial['label']} takes a number from {dial['min']} to {dial['max']}.")
+    return clean(key, number)
 
 
 def normalize(raw: Mapping[str, Any] | None) -> Values:
@@ -99,10 +131,14 @@ def save_file(path: Path, values: Mapping[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def _shown(value: Any) -> Any:
+    return ("on" if value else "off") if isinstance(value, bool) else value
+
+
 def describe_changes(before: Mapping[str, Any], after: Mapping[str, Any]) -> list[str]:
     changes = []
     for dial in DIALS:
         key = dial["key"]
         if before.get(key) != after.get(key):
-            changes.append(f"{dial['label']}: {before.get(key)} to {after.get(key)}")
+            changes.append(f"{dial['label']}: {_shown(before.get(key))} to {_shown(after.get(key))}")
     return changes

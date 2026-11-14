@@ -20,25 +20,55 @@ python scripts/axiom-paper-bot/run.py --env ../thelibrary-axiom-radar/.env
 
 The live view shows the account, open positions, the last trades, the coins closest to a buy with what is holding each one back, and an activity log. Keys: **P** pauses or resumes buying, **F** closes every position, **Q** quits.
 
-Other commands:
+## Commands
+
+Every action is also a command, and each works whether or not the bot is running:
+
+| Command | What it does |
+| --- | --- |
+| `run.py status` | The account, open positions and recent trades |
+| `run.py settings` | Every dial and its value |
+| `run.py set <dial> <value> ...` | Change dials, for example `set risk.strength 7 exit.stop_loss_pct 30`. A running bot picks the change up within seconds |
+| `run.py pause` / `run.py resume` | Stop or allow new buys. Open positions are still managed while paused |
+| `run.py flatten` | Sell every coin the bot holds |
+| `run.py reset [--cash 2500] [--yes]` | Wipe every pretend trade and start the account again |
+| `run.py logs [lines]` | The bot's recent PM2 log lines |
+| `run.py console` | Open the prompt console (below) |
+
+`flatten` and `reset` reach a running bot through `data/paper-bot.inbox.json`, which the bot reads once and removes.
+
+## Running in the background
+
+`scripts/axiom-paper-bot/ecosystem.config.cjs` runs the bot (`axiom-paper-bot`, one log line per event) and the prompt console (`axiom-bot-console`) under PM2. Set `AXIOM_BOT_ENV` to the tracker's `.env` first when that file is not in this repo:
 
 ```bash
-python scripts/axiom-paper-bot/run.py status
+pm2 start scripts/axiom-paper-bot/ecosystem.config.cjs
 ```
 
 ```bash
-python scripts/axiom-paper-bot/run.py settings
+pm2 save
 ```
+
+Start PM2 processes from your own terminal, not from inside another tool: PM2 keeps a copy of the environment it was started from.
+
+## Prompt console
+
+A local page where you say what you want in plain words and Claude writes the commands:
 
 ```bash
-python scripts/axiom-paper-bot/run.py reset --cash 2500
+python scripts/axiom-paper-bot/run.py console
 ```
 
-To keep it running in the background with PM2 (one line per event instead of the live view):
+It opens `http://127.0.0.1:8793/` in your browser. Type a request such as "be more careful and only hold three coins" or "show the last 30 log lines". Claude answers with the commands, and each one appears with its output, like a terminal.
 
-```bash
-pm2 start scripts/axiom-paper-bot/run.py --name axiom-paper-bot --interpreter python -- --no-dashboard
-```
+- **Runs straight away:** reading the account, settings and logs, changing dials, pausing and resuming.
+- **Waits for your click:** selling everything, resetting the account, starting, stopping or restarting a PM2 process, and any command that is not one of the bot's own (those run in PowerShell).
+- **Typing commands yourself:** `bot status`, `bot set risk.strength 7`, `pm2 status`, or `!` followed by any command. These do not need Claude.
+- **Ask me before every command** makes every command wait.
+
+Claude is reached through the Claude Code command line (`claude`) already on the PC, with every tool turned off: it only writes text, and the console checks and runs the commands. It needs a one-time sign-in: run `claude`, type `/login`, and finish in the browser. Set `AXIOM_CONSOLE_MODEL` to change the model (default `haiku`).
+
+The console listens on this PC only, and its requests need a private key kept in `data/console-key.json`, so other websites and other machines cannot use it. Anyone who can already use your PC and read that file can.
 
 ## The dials
 
@@ -98,9 +128,11 @@ The bot stops buying (and keeps managing what it holds) when: buying is paused, 
 | `axiom_paper/ledger.py` | The account in SQLite at `data/axiom-paper.db` |
 | `axiom_paper/site.py`, `prices.py` | The site sync call and DexScreener prices |
 | `axiom_paper/dashboard.py`, `cli.py` | The live view and the commands |
-| `tests/test_bot.py` | `python -m unittest discover -s scripts/axiom-paper-bot/tests` |
+| `axiom_paper/console.py`, `console.html` | The prompt console: local server, Claude translator, command checks, and the page |
+| `ecosystem.config.cjs` | PM2 processes for the bot and the console |
+| `tests/test_bot.py`, `tests/test_console.py` | `python -m unittest discover -s scripts/axiom-paper-bot/tests` |
 
-`data/paper-bot.toml`, `data/axiom-paper.db*` and `data/axiom-paper.lock` are git-ignored. Delete the database to start with no history, or use `reset`.
+`data/paper-bot.toml`, `data/axiom-paper.db*`, `data/axiom-paper.lock`, `data/paper-bot.inbox.json` and `data/console-key.json` are git-ignored. Delete the database to start with no history, or use `reset`.
 
 ## Site requests
 
