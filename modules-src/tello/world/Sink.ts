@@ -15,11 +15,13 @@ export interface StaticSink {
   addStaticBox(b: StaticBox): unknown
   addStaticCylinder(x: number, y: number, z: number, halfH: number, r: number): unknown
   addHeightfield(n: number, size: number, heights: Float32Array, cx: number, cz: number): void
+  /** Takes out a solid one of the `add` calls returned. */
+  removeStatic(c: unknown): void
 }
 
 /** The physics world seen through Tello's town frame. */
 export function shiftedPhysics(physics: Physics, s: Shift): StaticSink {
-  if (!s.x && !s.y && !s.z) return physics
+  if (!s.x && !s.y && !s.z) return { addStaticBox: (b) => physics.addStaticBox(b), addStaticCylinder: (x, y, z, h, r) => physics.addStaticCylinder(x, y, z, h, r), addHeightfield: (n, size, heights, cx, cz) => physics.addHeightfield(n, size, heights, cx, cz), removeStatic: (c) => physics.removeStatic(c as Parameters<Physics['removeStatic']>[0]) }
   return {
     addStaticBox: (b) => physics.addStaticBox({ ...b, cx: b.cx + s.x, cy: b.cy + s.y, cz: b.cz + s.z }),
     addStaticCylinder: (x, y, z, halfH, r) => physics.addStaticCylinder(x + s.x, y + s.y, z + s.z, halfH, r),
@@ -27,6 +29,7 @@ export function shiftedPhysics(physics: Physics, s: Shift): StaticSink {
       const lifted = s.y ? heights.map((h) => h + s.y) : heights
       physics.addHeightfield(n, size, lifted, cx + s.x, cz + s.z)
     },
+    removeStatic: (c) => physics.removeStatic(c as Parameters<Physics['removeStatic']>[0]),
   }
 }
 

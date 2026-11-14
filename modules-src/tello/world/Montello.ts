@@ -20,7 +20,7 @@ import { buildGround, GROUND_CHUNK } from './Ground'
 import { Water } from './Water'
 import { bridgeSolids, buildBridges, buildRoads } from './Roads'
 import { buildStreetPaint } from './StreetPaint'
-import { buildBuildings } from './Buildings'
+import { buildBuildings, type ApartBuilding } from './Buildings'
 import { buildBarricades } from './Barricades'
 import { buildStorefronts } from './Storefronts'
 import { buildStreetDressing } from './StreetDressing'
@@ -50,6 +50,8 @@ export interface MontelloSetup {
   culler: RegionCuller
   /** Leaves the playable area's edge open within `r` metres of this spot (map coordinates), where a host world's road comes in. */
   openExit: { x: number; z: number; r: number } | null
+  /** Houses (Tello building indexes) on lots a player can buy: built on their own, so they come down when bought. */
+  lotHouses?: ReadonlySet<number>
 }
 
 export class Montello {
@@ -61,6 +63,8 @@ export class Montello {
   private readonly treeCells = new Map<number, number[]>()
   private readonly treeSolid = new Set<number>()
   private readonly nameIndex: Map<number, number[]>
+  private lotHouses = new Map<number, ApartBuilding>()
+  private readonly cleared = new Set<number>()
 
   constructor(readonly land: TelloLand, private readonly s: MontelloSetup) {
     this.root = new TransformNode('tello-town', s.host.ctx.scene)
@@ -85,7 +89,8 @@ export class Montello {
     for (const b of bridgeSolids(land)) this.sink.addStaticBox({ cx: b.x, cy: b.y, cz: -b.z, hx: b.across, hy: b.up, hz: b.along, rotY: Math.atan2(Math.sin(b.heading), -Math.cos(b.heading)) })
     progress(0.4, 'Raising the town…')
     const [downtownKit, quarryKit] = await Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
-    buildBuildings(this.root, s.mats, this.sink, land)
+    this.lotHouses = buildBuildings(this.root, s.mats, this.sink, land, s.lotHouses).apart
+    for (const index of this.cleared) this.clearHouse(index)
     buildBarricades(this.root, s.mats, this.sink, land, s.openExit)
     buildStorefronts(this.root, s.mats, land, downtownKit)
     buildLandmarks(this.root, s.mats, this.sink, land)
@@ -179,6 +184,16 @@ export class Montello {
   }
 
   /** Trunks become solid for cars as anything that drives comes within about 50 m of them (points in the physics frame). */
+  /** Takes down the scanned house on a lot that has been bought (a building index from `lotHouses`), solids and all. */
+  clearHouse(index: number): void {
+    this.cleared.add(index)
+    const house = this.lotHouses.get(index)
+    if (!house) return
+    house.node.setEnabled(false)
+    for (const solid of house.solids) this.sink.removeStatic(solid)
+    house.solids.length = 0
+  }
+
   solidTrees(points: readonly { x: number; z: number }[]): void {
     const { shift } = this.s
     for (const p of points) {

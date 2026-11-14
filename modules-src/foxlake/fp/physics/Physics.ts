@@ -311,6 +311,12 @@ export class Physics {
     return this.pushOut(probe, y, r, 1.4);
   }
 
+  /** Takes a static collider out of the world (one `addStaticBox` or `addStaticCylinder` returned). */
+  removeStatic(c: RAPIER.Collider) {
+    this.unregister(c);
+    this.world.removeCollider(c, false);
+  }
+
   setLotColliders(lotId: string, boxes: StaticBox[]) {
     for (const c of this.lotColliders.get(lotId) ?? []) { this.unregister(c); this.world.removeCollider(c, false); }
     this.lotColliders.set(lotId, boxes.map(b => this.addStaticBox(b)));

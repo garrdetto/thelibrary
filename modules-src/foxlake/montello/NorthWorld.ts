@@ -20,6 +20,7 @@ import { roadRibbon } from '../town/TownGround'
 import { FOX_LAKE_WOODS_FLOOR } from '../look'
 import { TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, outsideHeight, sceneToTown } from '../region'
 import { Montello } from '../../tello/world/Montello'
+import { MONTELLO_LOTS } from '../../maplestreet/shared/MontelloPlaces'
 import { LINK_NAME, LINK_SEEN, LINK_WALL, type MontelloLink } from './Link'
 
 const CELL = 4
@@ -51,7 +52,7 @@ export class NorthWorld {
     const land = link.land
     // Tello's town frame (map x, height, -map z) to Fox Plains' town frame: both hang from mirrored roots, so it is a move.
     const shift = { x: land.offset.x - TOWN_OFFSET.x, y: -TOWN_OFFSET.y, z: TOWN_OFFSET.z - land.offset.z }
-    this.montello = new Montello(land, { host: s.host, physics: s.physics, shift, mats: s.mats, gfx: s.gfx, culler: s.culler, openExit: link.exit })
+    this.montello = new Montello(land, { host: s.host, physics: s.physics, shift, mats: s.mats, gfx: s.gfx, culler: s.culler, openExit: link.exit, lotHouses: new Set(MONTELLO_LOTS.map((l) => l.scan ?? -1)) })
   }
 
   async build(progress: (share: number, text: string) => void): Promise<void> {

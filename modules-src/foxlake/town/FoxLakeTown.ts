@@ -410,6 +410,7 @@ export class FoxLakeTown implements GameExtension {
         this.nowDays()
         this.neighbors.clear()
         this.houses.setWorld(m.world)
+        for (const id in m.world.lots) this.clearScannedHouse(m.world.lots[id])
         for (const id in m.world.lots) {
           const lot = m.world.lots[id]
           this.town.setLotOwner(id, lot.owner)
@@ -436,6 +437,8 @@ export class FoxLakeTown implements GameExtension {
         this.houses.apply(m.op as BuildOp, m.actorId, m.actorName)
         if (m.op.op === 'buyLot') {
           this.town.setLotOwner(m.op.lotId, m.actorId)
+          const bought = this.houses.world?.lots[m.op.lotId]
+          if (bought) this.clearScannedHouse(bought)
           this.host.hud.toast(m.actorId === this.account?.id ? `Lot ${m.op.lotId} is yours!` : `${m.actorName} bought lot ${m.op.lotId}`)
         }
         break
@@ -671,9 +674,20 @@ export class FoxLakeTown implements GameExtension {
 
   // ------------------------------------------------------------ interactions
 
-  /** The lot for sale you're standing on, on foot in town. */
+  /** A bought Montello lot's scanned house comes down, so its owner can build their own. */
+  private clearScannedHouse(lot: LotState): void {
+    if (lot.owner && lot.scan !== undefined) this.north?.montello.clearHouse(lot.scan)
+  }
+
+  /** True where lots are sold: in Fox Plains, or in Montello. */
+  private onLotLand(): boolean {
+    const at = this.host.player
+    return zoneAt(at.z) === 'town' || !!this.north?.link.land.holdsScene(at.x, at.z)
+  }
+
+  /** The lot for sale you're standing on, on foot in town or in Montello. */
   private lotForSale(): LotState | null {
-    if (this.host.driving || zoneAt(this.host.player.z) !== 'town') return null
+    if (this.host.driving || !this.onLotLand()) return null
     const t = this.townPosition()
     const lots = this.houses.world?.lots
     for (const id in lots) {
@@ -698,7 +712,7 @@ export class FoxLakeTown implements GameExtension {
   prompt(): string {
     const spawned = this.dev?.prompt()
     if (spawned) return spawned
-    if (zoneAt(this.host.player.z) !== 'town') return ''
+    if (!this.onLotLand()) return ''
     const seat = this.casino.prompt()
     if (seat) return seat
     const stop = this.roadsideDoor()

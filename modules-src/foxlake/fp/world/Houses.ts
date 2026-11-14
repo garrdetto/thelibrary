@@ -127,7 +127,8 @@ export class Houses {
 
   // ------------------------------------------------------------ meshing
 
-  private cellOf(cx: number, cz: number) { return `${Math.floor(cx / CELL)},${Math.floor(cz / CELL)}`; }
+  /** The mesh cell a lot belongs to; lots raised off the town's ground (Montello's) are grouped by their height too. */
+  private cellOf(cx: number, cz: number, lift = 0) { return `${Math.floor(cx / CELL)},${Math.floor(cz / CELL)}${lift ? `@${lift}` : ''}`; }
 
   /** Applies every pending lot change: re-meshes each touched cell once. Returns true if anything changed. */
   private flush(): boolean {
@@ -146,7 +147,7 @@ export class Houses {
       }
       const lot = w.lots[id], b = w.builds[id];
       if (!lot || !b) { this.physics.setLotColliders(id, []); continue; }
-      const cell = this.cellOf(lot.x + lot.w / 2, lot.z + lot.d / 2);
+      const cell = this.cellOf(lot.x + lot.w / 2, lot.z + lot.d / 2, lot.y ?? 0);
       let members = this.cellLots.get(cell);
       if (!members) this.cellLots.set(cell, (members = new Set()));
       members.add(id);
@@ -165,18 +166,20 @@ export class Houses {
     const parts = new Map<Material, MeshBuilder>();
     const get = (m: Material) => { let mb = parts.get(m); if (!mb) parts.set(m, (mb = new MeshBuilder())); return mb; };
     const ignore = () => {};
+    const lift = Number(cell.split('@')[1] ?? 0) || 0;
     for (const id of this.cellLots.get(cell) ?? []) {
       const lot = w.lots[id], b = w.builds[id];
       if (!lot || !b) continue;
       const fresh = changed.has(id);
       const colliders: StaticBox[] = [];
       const collide = fresh ? (x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, prop = false) => {
-        colliders.push({ cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, cz: (z0 + z1) / 2, hx: Math.abs(x1 - x0) / 2, hy: Math.abs(y1 - y0) / 2, hz: Math.abs(z1 - z0) / 2, prop });
+        colliders.push({ cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 + lift, cz: (z0 + z1) / 2, hx: Math.abs(x1 - x0) / 2, hy: Math.abs(y1 - y0) / 2, hz: Math.abs(z1 - z0) / 2, prop });
       } : ignore;
       this.meshLot(b, get, collide);
       if (!fresh) continue;
       const placements: Placement[] = [];
       const furniture = this.furniture(b, collide, placements);
+      if (furniture) furniture.position.y = lift;
       this.physics.setLotColliders(id, colliders);
       this.lots.set(id, { furniture, placements, models: [], loaded: false, cx: lot.x + lot.w / 2, cz: lot.z + lot.d / 2, cell });
     }
@@ -186,11 +189,14 @@ export class Houses {
       if (mb.empty) continue;
       const mesh = mb.toMesh(`houses:${cell}`, true);
       mesh.parent = this.root;
+      mesh.position.y = lift;
       finishMesh(mesh, material, { cast: false, static: true });
       meshes.push(mesh);
       if (material.alpha >= 1) proxies.addTo(cell, mb);
     }
-    meshes.push(...proxies.flush(this.root, `houses:${cell}`));
+    const shadows = proxies.flush(this.root, `houses:${cell}`);
+    if (lift) for (const m of shadows) { m.unfreezeWorldMatrix(); m.position.y = lift; m.computeWorldMatrix(true); m.freezeWorldMatrix(); }
+    meshes.push(...shadows);
     if (meshes.length) this.cellMeshes.set(cell, meshes);
   }
 
