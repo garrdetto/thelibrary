@@ -30,7 +30,7 @@ const ingestInput = z.object({
   details: z.record(z.string().regex(mintPattern), z.object({}).passthrough()).optional(),
 }).strict().refine(input => input.payload !== undefined || input.live !== undefined)
 
-async function tokenMatches(request: Request, env: Env) {
+export async function tokenMatches(request: Request, env: Env) {
   const expected = env.AXIOM_RADAR_TOKEN?.trim()
   const header = request.headers.get('authorization') ?? ''
   if (!expected || expected.length < 24 || !header.startsWith('Bearer ')) return false

@@ -41,4 +41,6 @@ public/modules/tello.html
 data/*.db*
 data/*.log*
 data/*.json
+data/*.toml
+data/*.lock
 axiom-session/
