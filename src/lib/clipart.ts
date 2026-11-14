@@ -66,6 +66,7 @@ const preset = (id: string, name: string, style: string, sdStyle: string, change
 
 export const CLIPART_PRESETS: ClipartPreset[] = [
   preset('realistic-hd', 'Realistic HD Clipart', 'premium realistic HD clipart illustration with photographic detail, clean illustrated edges, rich natural colours and bright, balanced lighting', 'realistic hd clipart illustration', {}),
+  preset('defined-photo', 'Defined Photo Clipart (10%)', 'crisp, sharply defined version of the photograph with a light detailed-clipart finish: about 90% photographic and 10% clipart, with tightened edges, cleaner surfaces and slightly more defined shapes', 'crisp defined photo, subtle detailed clipart finish', { clipartIntensity: 10, illustrationStrength: 10, digitalPainting: 5, outlineDefinition: 15, cleanEdges: 85, edgeDefinition: 92, sharpness: 88, clarity: 88, photoRealism: 95, realisticTextures: 92, materialRealism: 92, fineDetail: 90, noiseReduction: 75, vibrance: 55, richness: 55, saturation: 52, contrast: 58, shadowBrightness: 62 }),
   preset('ultra-detailed', 'Ultra Detailed Clipart', 'ultra-detailed clipart illustration where every surface, texture and small object is rendered with obsessive precision', 'ultra detailed clipart illustration', { overallDetail: 100, fineDetail: 100, textureDetail: 95, architecturalDetail: 98, objectDetail: 98, edgeDefinition: 90, sharpness: 88, clarity: 88, clipartIntensity: 70 }),
   preset('photoreal', 'Photorealistic Illustration', 'photorealistic illustration that looks almost like the photograph but is fully repainted with cleaner surfaces and perfect light', 'photorealistic digital illustration', { photoRealism: 95, realisticTextures: 95, materialRealism: 95, shadowRealism: 88, clipartIntensity: 30, illustrationStrength: 40, outlineDefinition: 5, digitalPainting: 30, vibrance: 52, saturation: 50 }),
   preset('pro-digital', 'Professional Digital Illustration', 'professional digital illustration with painterly shading, controlled brushwork and an editorial finish', 'professional digital painting illustration', { digitalPainting: 80, illustrationStrength: 82, clipartIntensity: 55, photoRealism: 60, outlineDefinition: 20, richness: 68 }),
@@ -120,7 +121,9 @@ export function buildPrompt({ settings, preset, prompt, negative, hasReference }
   const lines = [
     `Transform ${hasReference ? 'image 0 (the photograph)' : 'the photograph'} into a ${preset.style}.`,
     'Preservation rules (mandatory): keep the exact composition, framing and camera perspective; keep the same subject, buildings, structures, vehicles, trees, grass, roads and objects in the same places and proportions; reproduce signs and lettering with exactly the same words and spelling; do not add, remove or invent any objects; recreate windows, trees, grass, roads, vehicles and architectural details faithfully with improved clarity.',
-    'It must look like detailed professional clipart, not a filtered photograph and not a basic or childish cartoon.',
+    settings.clipartIntensity <= 25
+      ? `Keep it about ${100 - settings.clipartIntensity}% photographic with only a light detailed-clipart finish (about ${settings.clipartIntensity}%): more defined edges, crisper detail and cleaner surfaces, never a cartoon and never a heavy filter.`
+      : 'It must look like detailed professional clipart, not a filtered photograph and not a basic or childish cartoon.',
     'Style controls:',
     ...CLIPART_SLIDERS.map(slider => `- ${sliderInstruction(slider, settings[slider.key])}`),
   ]
