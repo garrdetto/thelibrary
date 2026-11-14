@@ -3,9 +3,9 @@ import type { Env } from '../env.js'
 import { json, parseStored, readJson, readText, requireSameOrigin } from '../http.js'
 import { currentUser } from '../auth.js'
 import { markRadarViewed, readRadarState } from '../axiom-radar-store.js'
-import { readBotState, writeBotState } from '../axiom-bot-store.js'
+import { mergeBotState, readBotState, writeBotState } from '../axiom-bot-store.js'
 import { tokenMatches } from './axiom-radar.js'
-import { defaultBotValues, normalizeBotValues, type BotCommand, type BotReport, type BotSettings, type BotView } from '../../lib/axiom-bot.js'
+import { cleanBotPatch, defaultBotValues, normalizeBotValues, type BotCommand, type BotReport, type BotSettings, type BotView } from '../../lib/axiom-bot.js'
 
 const syncLimit = 400_000
 const onlineWindowMs = 60_000
@@ -110,9 +110,8 @@ async function saveSettings(request: Request, env: Env) {
   const parsed = settingsInput.safeParse(await readJson(request, 20_000))
   if (!parsed.success) return json({ error: 'Those bot settings could not be read.' }, 400)
   const now = Date.now()
-  const settings: BotSettings = { values: normalizeBotValues(parsed.data.values), updatedAt: now }
-  await writeBotState(env, 'bot-settings', JSON.stringify(settings), now)
-  return json({ settings })
+  await mergeBotState(env, 'bot-settings', JSON.stringify({ values: cleanBotPatch(parsed.data.values), updatedAt: now }), now)
+  return json({ settings: await savedSettings(env) })
 }
 
 async function sendCommand(request: Request, env: Env) {
@@ -129,7 +128,7 @@ async function sendCommand(request: Request, env: Env) {
  * The Axiom paper-trading bot (`scripts/axiom-paper-bot`, Python, on the owner's machine).
  * POST `/api/admin/axiom/bot/sync` (server-to-server, `Authorization: Bearer AXIOM_RADAR_TOKEN`): the bot sends its report and any dials
  * changed in its settings file, and receives the latest Radar payload, dials saved on the page and pending commands.
- * GET `/api/admin/axiom/bot` (admin) returns the dials and the bot's last report; PUT `/bot/settings` saves the dials;
+ * GET `/api/admin/axiom/bot` (admin) returns the dials and the bot's last report; PUT `/bot/settings` merges the dials it is sent into the saved ones;
  * POST `/bot/command` `{ action: 'flatten' | 'reset' }` asks the bot to close every position or start the account again.
  */
 export async function axiomBot(request: Request, env: Env) {

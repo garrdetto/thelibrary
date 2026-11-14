@@ -30,6 +30,35 @@ export function normalizeBotValues(input: unknown): BotValues {
 
 export const defaultBotValues: BotValues = normalizeBotValues(null)
 
+/** Only the dials present in `input`, each cleaned; unknown keys are dropped. */
+export function cleanBotPatch(input: Record<string, unknown>): BotValues {
+  return Object.fromEntries(botDials.filter(dial => dial.key in input).map(dial => [dial.key, cleanBotValue(dial, input[dial.key])]))
+}
+
+/** The dials shown first on the Trading bot tab. */
+export const botQuickDials = ['risk.strength', 'entry.signal', 'entry.min_score', 'risk.position_pct', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'account.starting_cash']
+
+const balancedStyle: BotValues = Object.fromEntries(
+  ['risk.strength', 'entry.signal', 'entry.min_score', 'entry.safety', 'entry.max_failed_checks', 'entry.radar_advice', 'risk.max_open_positions', 'exit.on_tighten', 'exit.left_radar'].map(key => [key, defaultBotValues[key]]),
+)
+
+/** Starting points for the dials. Each style sets the same handful of dials and leaves the rest alone. */
+export const botPresets: Array<{ id: string; label: string; summary: string; values: BotValues }> = [
+  {
+    id: 'careful',
+    label: 'Careful',
+    summary: 'Small bets on the cleanest recommended buys, three coins at most. Sells as soon as the Radar says momentum is fading.',
+    values: { ...balancedStyle, 'risk.strength': 3, 'entry.min_score': 75, 'entry.safety': 'safe', 'entry.max_failed_checks': 0, 'risk.max_open_positions': 3, 'exit.on_tighten': 'sell_all', 'exit.left_radar': 'sell' },
+  },
+  { id: 'balanced', label: 'Balanced', summary: 'The defaults: recommended buys only, modest bets, wide stops, and a tighter stop when momentum fades.', values: balancedStyle },
+  {
+    id: 'bold',
+    label: 'Bold',
+    summary: 'Bigger bets on buys and watched coins, up to eight at once, and only the Radar\'s never-rebuy advice blocks a buy. Loses faster when wrong.',
+    values: { ...balancedStyle, 'risk.strength': 8, 'entry.signal': 'buy_or_watch', 'entry.min_score': 60, 'entry.max_failed_checks': 2, 'entry.radar_advice': 'never_only', 'risk.max_open_positions': 8 },
+  },
+]
+
 export type BotPosition = {
   id: number
   mint: string

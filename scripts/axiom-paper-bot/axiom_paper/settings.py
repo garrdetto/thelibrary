@@ -20,7 +20,7 @@ Values = dict[str, Any]
 FILE_HEADER = (
     "# Axiom paper-trading bot settings.\n"
     "# Edit and save: the running bot picks changes up within a few seconds.\n"
-    "# The same dials are on the Radar page (Settings, Paper-trading bot). The most recent change wins.\n"
+    "# The same dials are on the Radar page (Trading bot tab). The most recent change wins.\n"
 )
 
 

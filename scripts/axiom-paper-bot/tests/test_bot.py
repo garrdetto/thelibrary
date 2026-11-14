@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
+import io
 import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from axiom_paper import broker, strategy
+from axiom_paper import broker, cli, strategy
 from axiom_paper import settings as dials
 from axiom_paper.engine import Engine
 from axiom_paper.ledger import Ledger
@@ -136,6 +138,17 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(len(dials.DIAL_BY_KEY), len(dials.DIALS))
         groups = {group["id"] for group in dials.GROUPS}
         self.assertTrue(all(dial["key"].split(".")[0] in groups for dial in dials.DIALS))
+
+
+class OutputTests(unittest.TestCase):
+    def test_coin_names_in_any_script_survive_a_piped_log(self) -> None:
+        raw = io.BytesIO()
+        piped = io.TextIOWrapper(raw, encoding="cp1252")
+        with mock.patch.object(sys, "stdout", piped), mock.patch.object(sys, "stderr", io.TextIOWrapper(io.BytesIO(), encoding="cp1252")):
+            cli.use_utf8_output()
+            print("Bought 猫币🚀: $20.00")
+            piped.flush()
+        self.assertEqual(raw.getvalue().decode("utf-8").strip(), "Bought 猫币🚀: $20.00")
 
 
 class BrokerTests(unittest.TestCase):
