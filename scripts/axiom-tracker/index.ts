@@ -1,9 +1,9 @@
-import { startApiServer } from './api-server.js'
 import { startAxiomCollector } from './axiom-collector.js'
 import { closeTrackerDatabase, openTrackerDatabase, pruneSnapshots, recordHeartbeat, trackerDatabasePath } from './db.js'
 import { startDiscovery } from './discovery.js'
 import { createLogger, errorMessage, runLoop } from './runtime.js'
 import { startScoring } from './scoring.js'
+import { startSitePublisher } from './site-publisher.js'
 import { startWalletTracker } from './wallet-tracker.js'
 
 const logger = createLogger('orchestrator')
@@ -32,7 +32,7 @@ const tasks = [
   startAxiomCollector(database, controller.signal),
   startWalletTracker(database, controller.signal),
   startScoring(database, controller.signal),
-  startApiServer(database, controller.signal),
+  startSitePublisher(database, controller.signal),
   runLoop('maintenance', 60 * 60_000, async () => {
     const removed = pruneSnapshots(database)
     database.pragma('wal_checkpoint(PASSIVE)')
