@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, NamedTuple
 
 from .models import Coin, Position
 
@@ -11,6 +11,12 @@ Settings = Mapping[str, Any]
 
 SAFETY_ALLOWED = {"safe": {"safe"}, "caution": {"safe", "caution"}}
 PHASES_SKIPPED = {"overdue": {"overdue"}, "late": {"late", "overdue"}}
+
+
+class Exit(NamedTuple):
+    reason: str
+    share: float
+    urgent: bool = False
 
 
 def _money(value: float) -> str:
@@ -50,6 +56,16 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float) -> str 
         return "no buy or watch signal"
     if s["entry.skip_warnings"] and coin.alerts:
         return f"warning: {coin.alerts[0]}"
+    if s["entry.radar_advice"] != "ignore":
+        if coin.advice_rebuy == "never":
+            return f"Radar says never rebuy: {coin.rebuy_advice_reason or 'it crashed or has a warning'}"
+        if s["entry.radar_advice"] == "follow":
+            if coin.advice_exit == "exit":
+                return f"Radar says exit: {coin.exit_advice_reason or 'a warning sign is on'}"
+            if coin.advice_rebuy == "wait":
+                return f"Radar says wait: {coin.rebuy_advice_reason or 'warning signs are on'}"
+            if coin.advice_exit == "tighten":
+                return f"Radar says momentum is fading: {coin.exit_advice_reason or 'a warning sign is on'}"
     allowed = SAFETY_ALLOWED.get(s["entry.safety"])
     if allowed is not None and coin.safety not in allowed:
         return f"safety is {coin.safety}"
@@ -133,35 +149,52 @@ def position_size(coin: Coin, settings: Settings, equity: float, cash: float, ex
     return size, limit
 
 
-def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: int) -> tuple[str, float] | None:
-    """(reason, share of the open position to sell) when a sell rule fires, else None."""
+def tightened(coin: Coin | None, settings: Settings, left_radar: bool) -> bool:
+    """True while the position should be held on the tighter trailing stop."""
+    if left_radar:
+        return settings["exit.left_radar"] == "tighten"
+    return bool(coin and settings["exit.follow_radar_advice"] and coin.advice_exit == "tighten")
+
+
+def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: int, left_radar: bool = False) -> Exit | None:
+    """The reason and the share of the open position to sell when a sell rule fires, else None."""
     s = settings
     gain_pct = position.gain() * 100
     peak_gain_pct = (position.peak_price / position.entry_spot - 1) * 100
     held = position.held_minutes(now)
     if (now - position.last_price_at) / 60_000 >= s["exit.no_price_minutes"]:
-        return "No price", 1.0
+        return Exit("No price", 1.0)
     if s["exit.sell_on_warning"] and coin and coin.alerts:
-        return f"Radar warning: {coin.alerts[0]}", 1.0
+        return Exit(f"Radar warning: {coin.alerts[0]}", 1.0, True)
+    if s["exit.follow_radar_advice"] and coin and coin.advice_exit == "exit":
+        return Exit(f"Radar says exit: {coin.exit_advice_reason or 'a warning sign is on'}", 1.0, True)
+    if left_radar and s["exit.left_radar"] == "sell":
+        return Exit("Left the Radar", 1.0, True)
     if s["exit.stop_loss_pct"] > 0 and gain_pct <= -s["exit.stop_loss_pct"]:
-        return "Stop loss", 1.0
+        return Exit("Stop loss", 1.0, True)
     if position.target_done and s["exit.breakeven_after_target"] and gain_pct <= 0:
-        return "Back to entry after target", 1.0
+        return Exit("Back to entry after target", 1.0, True)
+    if tightened(coin, s, left_radar) and s["exit.on_tighten"] != "ignore":
+        why = "Left the Radar" if left_radar else f"Radar says momentum is fading: {coin.exit_advice_reason or 'a warning sign is on'}" if coin else "Momentum is fading"
+        if s["exit.on_tighten"] == "sell_all":
+            return Exit(why, 1.0)
+        if position.last_price <= position.peak_price * (1 - s["exit.tighten_trailing_pct"] / 100):
+            return Exit(f"Tightened trailing stop. {why}", 1.0, True)
     if s["exit.take_profit_pct"] > 0 and not position.target_done and gain_pct >= s["exit.take_profit_pct"]:
-        return "Profit target", s["exit.take_profit_sell_pct"] / 100
+        return Exit("Profit target", s["exit.take_profit_sell_pct"] / 100)
     if s["exit.trailing_stop_pct"] > 0 and peak_gain_pct >= s["exit.trailing_start_pct"]:
         if position.last_price <= position.peak_price * (1 - s["exit.trailing_stop_pct"] / 100):
-            return "Trailing stop", 1.0
+            return Exit("Trailing stop", 1.0, True)
     if coin:
         if s["exit.min_score"] > 0 and coin.score < s["exit.min_score"]:
-            return f"Score fell to {coin.score:.0f}", 1.0
+            return Exit(f"Score fell to {coin.score:.0f}", 1.0)
         if s["exit.viewer_drop_pct"] > 0 and coin.viewers is not None and position.peak_viewers:
             if coin.viewers <= position.peak_viewers * (1 - s["exit.viewer_drop_pct"] / 100):
-                return "Viewers fell", 1.0
+                return Exit("Viewers fell", 1.0)
         if s["exit.sell_when_overdue"] and coin.phase == "overdue":
-            return "Past the usual crash time", 1.0
+            return Exit("Past the usual crash time", 1.0)
     if s["exit.stall_minutes"] > 0 and held >= s["exit.stall_minutes"] and gain_pct < s["exit.stall_min_gain_pct"]:
-        return "Stalled", 1.0
+        return Exit("Stalled", 1.0)
     if s["exit.max_hold_minutes"] > 0 and held >= s["exit.max_hold_minutes"]:
-        return "Held too long", 1.0
+        return Exit("Held too long", 1.0)
     return None

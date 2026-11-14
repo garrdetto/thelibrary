@@ -37,8 +37,9 @@ def buy(spot: float, spend_usd: float, liquidity: float | None, settings: Mappin
     return Fill(qty=into_pool / price, price=price, gross_usd=into_pool, fee_usd=fee, net_usd=spend_usd, impact_pct=impact * 100)
 
 
-def sell(spot: float, qty: float, liquidity: float | None, modelled: bool, settings: Mapping[str, Any]) -> Fill:
-    """Sell `qty` coins. `modelled` is false for coins bought with no liquidity figure, which skip price impact."""
+def sell(spot: float, qty: float, liquidity: float | None, modelled: bool, settings: Mapping[str, Any], urgent: bool = False) -> Fill:
+    """Sell `qty` coins. `modelled` is false for coins bought with no liquidity figure, which skip price impact.
+    `urgent` sells (stops and exits into a falling market) pay the extra stop slippage as well."""
     value = qty * spot
     impact = 0.0
     price = spot
@@ -51,6 +52,8 @@ def sell(spot: float, qty: float, liquidity: float | None, modelled: bool, setti
             impact = value / quote
             price = spot / (1 + impact)
     price *= 1 - settings["costs.extra_slippage_pct"] / 100
+    if urgent:
+        price *= 1 - settings["costs.stop_slippage_pct"] / 100
     gross = qty * price
     fee = min(gross, gross * settings["costs.fee_pct"] / 100 + settings["costs.network_fee_usd"])
     return Fill(qty=qty, price=price, gross_usd=gross, fee_usd=fee, net_usd=gross - fee, impact_pct=impact * 100)

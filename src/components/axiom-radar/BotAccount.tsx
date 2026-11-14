@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Bot, CirclePause, CirclePlay, LoaderCircle, RotateCcw, XCircle } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { BotCommand, BotReport } from '@/lib/axiom-bot'
+import { AxiomLink, CoinName } from './AxiomLink'
 import { formatClock, formatPrice, relativeSeconds } from './format'
 import { useBot } from './useBot'
 import './axiom-bot.css'
@@ -14,6 +15,7 @@ const signedDollars = (value: number) => `${value >= 0 ? '+' : '-'}${dollars(Mat
 const signedPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
 const toneOf = (value: number) => value > 0 ? 'up' : value < 0 ? 'down' : ''
 const heldFor = (minutes: number) => minutes < 90 ? `${Math.round(minutes)}m` : `${(minutes / 60).toFixed(1)}h`
+const adviceLabels: Record<string, string> = { tighten: 'Radar: fading', exit: 'Radar: exit', left: 'Left the Radar' }
 
 function ConfirmButton({ label, confirmLabel, icon, busy, disabled, onConfirm }: { label: string; confirmLabel: string; icon: React.ReactNode; busy: boolean; disabled: boolean; onConfirm: () => void }) {
   const [armed, setArmed] = useState(false)
@@ -123,7 +125,7 @@ export function BotAccount({ now }: { now: number }) {
               <table className="radar-mini-table">
                 <thead><tr><th scope="col">Token</th><th scope="col">Bought</th><th scope="col">Cost</th><th scope="col">Value</th><th scope="col">Profit</th><th scope="col">Price move</th><th scope="col">Best</th><th scope="col">Stop</th><th scope="col">Score</th></tr></thead>
                 <tbody>{report.positions.map(position => <tr key={position.id}>
-                  <td><strong>{position.symbol}</strong>{position.targetDone && <span className="radar-bot-tag">{position.openPct}% left</span>}</td>
+                  <td><CoinName pairAddress={position.pairAddress} symbol={position.symbol}/> <AxiomLink pairAddress={position.pairAddress} symbol={position.symbol}/>{position.targetDone && <span className="radar-bot-tag">{position.openPct}% left</span>}{position.advice && adviceLabels[position.advice] && <span className="radar-bot-tag warn">{adviceLabels[position.advice]}</span>}</td>
                   <td className="tabular">{formatClock(position.openedAt)}</td>
                   <td className="tabular">{dollars(position.costUsd)}</td>
                   <td className="tabular">{dollars(position.valueUsd)}</td>
@@ -145,7 +147,7 @@ export function BotAccount({ now }: { now: number }) {
                 <thead><tr><th scope="col">Sold</th><th scope="col">Token</th><th scope="col">Cost</th><th scope="col">Profit</th><th scope="col">Held</th><th scope="col">Score</th><th scope="col">Why it sold</th><th scope="col">Result</th></tr></thead>
                 <tbody>{report.trades.map(trade => <tr key={trade.id}>
                   <td className="tabular">{trade.closedAt ? formatClock(trade.closedAt) : '—'}</td>
-                  <td><strong>{trade.symbol}</strong></td>
+                  <td><CoinName pairAddress={trade.pairAddress} symbol={trade.symbol}/> <AxiomLink pairAddress={trade.pairAddress} symbol={trade.symbol}/></td>
                   <td className="tabular">{dollars(trade.costUsd)}</td>
                   <td className={`tabular radar-delta ${toneOf(trade.pnlUsd)}`}>{signedDollars(trade.pnlUsd)} ({signedPercent(trade.pnlPct)})</td>
                   <td className="tabular">{heldFor(trade.holdMinutes)}</td>

@@ -130,12 +130,14 @@ def build(engine: Engine, settings_path: str, keys: bool) -> list[list[Segment]]
         for row in rows:
             held = minutes((now - row["openedAt"]) / 60_000)
             name = row["symbol"] + (" ½" if row["targetDone"] else "")
+            radar = {"tighten": "  Radar: fading", "exit": "  Radar: exit", "left": "  left the Radar"}.get(row["advice"], "")
             lines.append([
                 ("  " + fit(name, 12) + fit(held, 7) + fit(money(row["costUsd"]), 11, True) + fit(money(row["valueUsd"]), 11, True), ""),
                 (fit(f"{signed_money(row['pnlUsd'])} ({row['pnlPct']:+.1f}%)", 22, True), tone(row["pnlUsd"])),
                 (fit(f"{row['gainPct']:+.1f}%", 9, True), tone(row["gainPct"])),
                 (fit(f"{row['peakGainPct']:+.1f}%", 9, True), "dim"),
                 ("   " + price(row["stopPrice"]), "dim"),
+                (radar, "warn"),
             ])
     lines.append([])
     lines.append([(" LAST TRADES", "bold")])

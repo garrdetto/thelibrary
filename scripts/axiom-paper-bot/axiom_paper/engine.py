@@ -352,6 +352,10 @@ class Engine:
                 return f"sold recently, {left:.0f} min of cooldown left"
         if self.ledger.buys_since(now - 86_400_000, coin.mint) >= s["entry.max_buys_per_coin"]:
             return "bought the most times allowed in 24 hours"
+        if s["entry.rebuy_above_high"] and last_closed:
+            old_high = self.ledger.last_exit_high(coin.mint)
+            if old_high and coin.price is not None and coin.price <= old_high:
+                return "still below its high from when the bot sold it"
         return None
 
     def consider_entries(self) -> None:
@@ -422,19 +426,27 @@ class Engine:
         self._after_trade()
         return None
 
+    def left_radar(self, position: Position) -> bool:
+        """True when the latest fresh Radar reading no longer lists a coin the bot holds."""
+        age = self.feed_age()
+        return bool(self.coins) and position.mint not in self.coins and age is not None and age <= self.values["entry.max_data_age_seconds"]
+
     def manage_positions(self) -> None:
         now = self.now()
         for position in list(self.positions):
-            signal = strategy.exit_signal(position, self.coins.get(position.mint), self.values, now)
+            signal = strategy.exit_signal(position, self.coins.get(position.mint), self.values, now, self.left_radar(position))
             if signal is not None:
-                self._sell(position, signal[1], signal[0], now)
+                self._sell(position, signal.share, signal.reason, now, signal.urgent)
 
-    def _sell(self, position: Position, share: float, reason: str, now: int) -> None:
+    def _sell(self, position: Position, share: float, reason: str, now: int, urgent: bool = False) -> None:
         whole = share >= 0.999
         qty = position.qty_open if whole else position.qty_open * share
-        fill = broker.sell(position.last_price, qty, position.last_liquidity, bool(position.entry_liquidity), self.values)
+        fill = broker.sell(position.last_price, qty, position.last_liquidity, bool(position.entry_liquidity), self.values, urgent)
         if reason == "Profit target":
             position.target_done = True
+        if whole:
+            coin = self.coins.get(position.mint)
+            position.exit_high = max(position.peak_price, coin.high_price if coin and coin.high_price else 0.0)
         gain = position.gain() * 100
         self.ledger.record_sell(position, fill, position.last_price, reason, now)
         if position.status == "closed":
@@ -498,13 +510,17 @@ class Engine:
             stops.append(position.entry_spot)
         if s["exit.trailing_stop_pct"] > 0 and position.peak_price >= position.entry_spot * (1 + s["exit.trailing_start_pct"] / 100):
             stops.append(position.peak_price * (1 - s["exit.trailing_stop_pct"] / 100))
+        if s["exit.on_tighten"] == "tighten_stop" and strategy.tightened(self.coins.get(position.mint), s, self.left_radar(position)):
+            stops.append(position.peak_price * (1 - s["exit.tighten_trailing_pct"] / 100))
         return max(stops) if stops else None
 
     def position_rows(self) -> list[dict[str, Any]]:
         rows = []
         for position in self.positions:
             value = broker.open_value(position, self.values)
+            coin = self.coins.get(position.mint)
             rows.append({
+                "advice": "left" if self.left_radar(position) else coin.advice_exit if coin else None,
                 "id": position.id, "mint": position.mint, "symbol": position.symbol, "pairAddress": position.pair,
                 "openedAt": position.opened_at, "entryPrice": position.entry_spot, "price": position.last_price,
                 "costUsd": round(position.cost_usd, 2), "valueUsd": round(value, 2),

@@ -19,6 +19,14 @@ from axiom_paper.models import Coin, Position
 from axiom_paper.prices import Quote
 
 
+PINNED = {"risk.position_pct": 3, "exit.stop_loss_pct": 12, "exit.trailing_stop_pct": 15, "exit.trailing_start_pct": 10, "costs.stop_slippage_pct": 0}
+
+
+def pinned() -> dict[str, Any]:
+    """The defaults with the dials these tests do their sums on held still, so retuning a default does not break them."""
+    return dials.normalize({**dials.defaults(), **PINNED})
+
+
 def token(mint: str = "MintA", **changes: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "mint": mint, "pairAddress": f"pair-{mint}", "symbol": mint.upper(), "priceUsd": 0.001, "score": 80, "signal": "buy",
@@ -79,7 +87,7 @@ class Harness:
     def __init__(self, **overrides: Any):
         self.folder = tempfile.TemporaryDirectory()
         self.settings_path = Path(self.folder.name) / "paper-bot.toml"
-        values = dials.defaults()
+        values = pinned()
         values.update({"entry.confirm_pulls": 1, "bot.poll_seconds": 3})
         values.update(overrides)
         dials.save_file(self.settings_path, dials.normalize(values))
@@ -132,7 +140,14 @@ class SettingsTests(unittest.TestCase):
 
 class BrokerTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.s = dials.defaults()
+        self.s = pinned()
+
+    def test_stop_sells_pay_extra_slippage(self) -> None:
+        calm = broker.sell(1.0, 100.0, 50_000.0, True, self.s)
+        self.s["costs.stop_slippage_pct"] = 5
+        self.assertAlmostEqual(broker.sell(1.0, 100.0, 50_000.0, True, self.s).net_usd, calm.net_usd)
+        rushed = broker.sell(1.0, 100.0, 50_000.0, True, self.s, urgent=True)
+        self.assertAlmostEqual(rushed.gross_usd, calm.gross_usd * 0.95)
 
     def test_buy_pays_fees_impact_and_slippage(self) -> None:
         fill = broker.buy(1.0, 100.0, 20_000.0, self.s)
@@ -159,7 +174,54 @@ class BrokerTests(unittest.TestCase):
 
 class StrategyTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.s = dials.defaults()
+        self.s = pinned()
+
+    def fired(self, held: Position, coin: Coin | None, now: int, left_radar: bool = False) -> tuple[str, float] | None:
+        signal = strategy.exit_signal(held, coin, self.s, now, left_radar)
+        return None if signal is None else (signal.reason, signal.share)
+
+    def test_radar_advice_blocks_buys(self) -> None:
+        never = {"exit": "hold", "rebuy": "never", "rebuyReasons": ["Fell 80% from its high"], "exitReasons": []}
+        wait = {"exit": "hold", "rebuy": "wait", "rebuyReasons": ["Viewers are 30% below their high"], "exitReasons": []}
+        fading = {"exit": "tighten", "rebuy": "ok", "rebuyReasons": [], "exitReasons": ["Buys fell 35% in 2 minutes"]}
+        self.assertIsNone(self.block(advice={"exit": "hold", "rebuy": "ok"}))
+        self.assertEqual(self.block(advice=never), "Radar says never rebuy: Fell 80% from its high")
+        self.assertEqual(self.block(advice=wait), "Radar says wait: Viewers are 30% below their high")
+        self.assertIn("momentum is fading", self.block(advice=fading) or "")
+        self.assertIn("Radar says exit", self.block(advice={"exit": "exit", "rebuy": "ok"}) or "")
+        self.s["entry.radar_advice"] = "never_only"
+        self.assertIsNone(self.block(advice=wait))
+        self.assertIsNone(self.block(advice=fading))
+        self.assertIn("never rebuy", self.block(advice=never) or "")
+        self.s["entry.radar_advice"] = "ignore"
+        self.assertIsNone(self.block(advice=never))
+
+    def test_radar_advice_sells_and_tightens(self) -> None:
+        minute = 60_000
+        leave = Coin.from_token(token(advice={"exit": "exit", "rebuy": "never", "exitReasons": ["Viewers fell 25% in 2 minutes"]}))
+        signal = strategy.exit_signal(position(last_price=1.05, last_price_at=minute), leave, self.s, minute)
+        assert signal is not None
+        self.assertEqual((signal.reason, signal.share, signal.urgent), ("Radar says exit: Viewers fell 25% in 2 minutes", 1.0, True))
+        fading = Coin.from_token(token(advice={"exit": "tighten", "rebuy": "wait", "exitReasons": ["Buys fell 35% in 2 minutes"]}))
+        self.assertIsNone(self.fired(position(last_price=1.03, peak_price=1.08, last_price_at=minute), fading, minute))
+        tight = self.fired(position(last_price=0.97, peak_price=1.08, last_price_at=minute), fading, minute)
+        self.assertEqual(tight, ("Tightened trailing stop. Radar says momentum is fading: Buys fell 35% in 2 minutes", 1.0))
+        self.assertIsNone(self.fired(position(last_price=0.97, peak_price=1.08, last_price_at=minute), Coin.from_token(token()), minute))
+        self.s["exit.on_tighten"] = "sell_all"
+        self.assertEqual(self.fired(position(last_price=1.03, peak_price=1.08, last_price_at=minute), fading, minute), ("Radar says momentum is fading: Buys fell 35% in 2 minutes", 1.0))
+        self.s["exit.follow_radar_advice"] = False
+        self.assertIsNone(self.fired(position(last_price=1.05, last_price_at=minute), leave, minute))
+
+    def test_a_coin_that_leaves_the_radar_is_tightened_or_sold(self) -> None:
+        minute = 60_000
+        held = position(last_price=0.96, peak_price=1.08, last_price_at=minute)
+        self.assertIsNone(self.fired(held, None, minute))
+        self.assertEqual(self.fired(held, None, minute, left_radar=True), ("Tightened trailing stop. Left the Radar", 1.0))
+        self.assertIsNone(self.fired(position(last_price=1.05, peak_price=1.08, last_price_at=minute), None, minute, left_radar=True))
+        self.s["exit.left_radar"] = "sell"
+        self.assertEqual(self.fired(position(last_price=1.05, peak_price=1.08, last_price_at=minute), None, minute, left_radar=True), ("Left the Radar", 1.0))
+        self.s["exit.left_radar"] = "ignore"
+        self.assertIsNone(self.fired(held, None, minute, left_radar=True))
 
     def block(self, **changes: Any) -> str | None:
         return strategy.entry_block(Coin.from_token(token(**changes)), self.s, 5)
@@ -225,18 +287,18 @@ class StrategyTests(unittest.TestCase):
 
     def test_exit_rules(self) -> None:
         minute = 60_000
-        self.assertIsNone(strategy.exit_signal(position(), None, self.s, minute))
-        self.assertEqual(strategy.exit_signal(position(last_price=0.87), None, self.s, minute), ("Stop loss", 1.0))
-        self.assertEqual(strategy.exit_signal(position(last_price=1.45, peak_price=1.45), None, self.s, minute), ("Profit target", 0.5))
-        self.assertEqual(strategy.exit_signal(position(last_price=1.2, peak_price=1.45), None, self.s, minute), ("Trailing stop", 1.0))
-        self.assertEqual(strategy.exit_signal(position(last_price=0.99, peak_price=1.05, target_done=True), None, self.s, minute), ("Back to entry after target", 1.0))
-        self.assertEqual(strategy.exit_signal(position(last_price=1.01, last_price_at=16 * minute), None, self.s, 16 * minute), ("Stalled", 1.0))
-        self.assertEqual(strategy.exit_signal(position(last_price=1.06, peak_price=1.08, last_price_at=61 * minute), None, self.s, 61 * minute), ("Held too long", 1.0))
-        self.assertEqual(strategy.exit_signal(position(last_price=1.06, last_price_at=0), None, self.s, 6 * minute), ("No price", 1.0))
+        self.assertIsNone(self.fired(position(), None, minute))
+        self.assertEqual(self.fired(position(last_price=0.87), None, minute), ("Stop loss", 1.0))
+        self.assertEqual(self.fired(position(last_price=1.45, peak_price=1.45), None, minute), ("Profit target", 0.5))
+        self.assertEqual(self.fired(position(last_price=1.2, peak_price=1.45), None, minute), ("Trailing stop", 1.0))
+        self.assertEqual(self.fired(position(last_price=0.99, peak_price=1.05, target_done=True), None, minute), ("Back to entry after target", 1.0))
+        self.assertEqual(self.fired(position(last_price=1.01, last_price_at=16 * minute), None, 16 * minute), ("Stalled", 1.0))
+        self.assertEqual(self.fired(position(last_price=1.06, peak_price=1.08, last_price_at=61 * minute), None, 61 * minute), ("Held too long", 1.0))
+        self.assertEqual(self.fired(position(last_price=1.06, last_price_at=0), None, 6 * minute), ("No price", 1.0))
         warned = Coin.from_token(token(alerts=["Price dumped 25% in 30s"]))
-        self.assertEqual(strategy.exit_signal(position(last_price=1.06), warned, self.s, minute), ("Radar warning: Price dumped 25% in 30s", 1.0))
+        self.assertEqual(self.fired(position(last_price=1.06), warned, minute), ("Radar warning: Price dumped 25% in 30s", 1.0))
         self.s["exit.viewer_drop_pct"] = 50
-        self.assertEqual(strategy.exit_signal(position(last_price=1.06), Coin.from_token(token(viewers=40)), self.s, minute), ("Viewers fell", 1.0))
+        self.assertEqual(self.fired(position(last_price=1.06), Coin.from_token(token(viewers=40)), minute), ("Viewers fell", 1.0))
 
 
 class EngineTests(unittest.TestCase):
@@ -324,7 +386,7 @@ class EngineTests(unittest.TestCase):
         bot.close()
 
     def test_loss_streak_takes_a_break(self) -> None:
-        bot = Harness(**{"risk.loss_streak": 2, "entry.cooldown_minutes": 0, "entry.max_buys_per_coin": 9, "risk.daily_loss_limit_pct": 0})
+        bot = Harness(**{"risk.loss_streak": 2, "entry.cooldown_minutes": 0, "entry.max_buys_per_coin": 9, "risk.daily_loss_limit_pct": 0, "entry.rebuy_above_high": False})
         for _ in range(2):
             bot.pull(token())
             bot.pull(token(priceUsd=0.0008, signal=None))
@@ -406,6 +468,39 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(again.ledger.cash, cash)
         again.step()
         self.assertEqual(len(again.positions), 1)
+        bot.close()
+
+    def test_radar_exit_advice_sells_and_blocks_the_rebuy(self) -> None:
+        bot = Harness(**{"entry.cooldown_minutes": 0, "entry.max_buys_per_coin": 9, "costs.stop_slippage_pct": 5})
+        bot.pull(token())
+        self.assertEqual(len(bot.engine.positions), 1)
+        bot.pull(token(priceUsd=0.00105, advice={"exit": "exit", "rebuy": "never", "exitReasons": ["Viewers fell 25% in 2 minutes"], "highPrice": 0.0011}))
+        self.assertEqual(bot.engine.positions, [])
+        trade = bot.engine.trade_rows()[0]
+        self.assertEqual(trade["reason"], "Radar says exit: Viewers fell 25% in 2 minutes")
+        self.assertLess(trade["pnlPct"], -4)
+        bot.pull(token(priceUsd=0.00105, advice={"exit": "hold", "rebuy": "never", "rebuyReasons": ["It crashed"]}))
+        self.assertEqual(bot.engine.positions, [])
+        self.assertEqual(bot.engine.candidates[0]["reason"], "Radar says never rebuy: It crashed")
+        bot.pull(token(priceUsd=0.00108, advice={"exit": "hold", "rebuy": "ok"}))
+        self.assertEqual(bot.engine.positions, [])
+        self.assertEqual(bot.engine.candidates[0]["reason"], "still below its high from when the bot sold it")
+        bot.pull(token(priceUsd=0.00112, advice={"exit": "hold", "rebuy": "ok"}))
+        self.assertEqual(len(bot.engine.positions), 1)
+        bot.close()
+
+    def test_a_held_coin_that_leaves_the_radar_goes_on_a_tight_stop(self) -> None:
+        bot = Harness()
+        bot.pull(token("MintA"), token("MintB", score=50))
+        self.assertEqual([held.mint for held in bot.engine.positions], ["MintA"])
+        bot.quotes["MintA"] = Quote(0.00108, 60_000.0)
+        bot.pull(token("MintB", score=50))
+        self.assertEqual(bot.engine.position_rows()[0]["advice"], "left")
+        self.assertEqual(len(bot.engine.positions), 1)
+        bot.quotes["MintA"] = Quote(0.00096, 60_000.0)
+        bot.pull(token("MintB", score=50))
+        self.assertEqual(bot.engine.positions, [])
+        self.assertEqual(bot.engine.trade_rows()[0]["reason"], "Tightened trailing stop. Left the Radar")
         bot.close()
 
     def test_a_slow_site_does_not_hold_up_the_loop(self) -> None:

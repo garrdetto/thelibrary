@@ -16,6 +16,7 @@
 .radar-bot-log li span:first-child { color: var(--muted); font-size: 10px; }
 .radar-bot-subhead { margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 12px; font-weight: 600; }
 .radar-bot-tag { margin-left: 8px; font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; }
+.radar-bot-tag.warn { color: var(--radar-warn); border-color: color-mix(in oklab, var(--radar-warn) 45%, transparent); }
 .radar-bot-dials { align-items: start; }
 .radar-bot-dials .radar-toggle-row { margin-top: 16px; }
 .radar-bot-slider { grid-column: 1 / -1; }

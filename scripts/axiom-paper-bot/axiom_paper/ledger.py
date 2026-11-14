@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS positions (
   cost_usd REAL NOT NULL, proceeds_usd REAL NOT NULL DEFAULT 0, fees_usd REAL NOT NULL DEFAULT 0,
   entry_liquidity REAL, last_liquidity REAL, peak_price REAL NOT NULL, peak_viewers REAL,
   last_price REAL NOT NULL, last_price_at INTEGER NOT NULL, target_done INTEGER NOT NULL DEFAULT 0, score REAL NOT NULL DEFAULT 0,
-  status TEXT NOT NULL DEFAULT 'open', closed_at INTEGER, exit_reason TEXT, entry_json TEXT NOT NULL DEFAULT '{}'
+  status TEXT NOT NULL DEFAULT 'open', closed_at INTEGER, exit_reason TEXT, exit_high REAL, entry_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS positions_status ON positions (status, closed_at);
 CREATE INDEX IF NOT EXISTS positions_mint ON positions (mint, opened_at);
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, t INTEG
 POSITION_COLUMNS = (
     "mint", "symbol", "pair", "opened_at", "entry_spot", "entry_price", "qty", "qty_open", "cost_usd", "proceeds_usd", "fees_usd",
     "entry_liquidity", "last_liquidity", "peak_price", "peak_viewers", "last_price", "last_price_at", "target_done", "score",
-    "status", "closed_at", "exit_reason",
+    "status", "closed_at", "exit_reason", "exit_high",
 )
 
 
@@ -118,6 +118,10 @@ class Ledger:
     def last_closed_at(self, mint: str) -> int | None:
         return self.db.execute("SELECT MAX(closed_at) FROM positions WHERE mint = ? AND status = 'closed'", (mint,)).fetchone()[0]
 
+    def last_exit_high(self, mint: str) -> float | None:
+        row = self.db.execute("SELECT exit_high FROM positions WHERE mint = ? AND status = 'closed' ORDER BY closed_at DESC, id DESC LIMIT 1", (mint,)).fetchone()
+        return row["exit_high"] if row else None
+
     def record_buy(self, position: Position, fill: Fill, now: int) -> Position:
         with self._transaction():
             cursor = self.db.execute(
@@ -148,8 +152,8 @@ class Ledger:
 
     def _save(self, position: Position) -> None:
         self.db.execute(
-            "UPDATE positions SET qty_open = ?, proceeds_usd = ?, fees_usd = ?, last_liquidity = ?, peak_price = ?, peak_viewers = ?, last_price = ?, last_price_at = ?, target_done = ?, status = ?, closed_at = ?, exit_reason = ? WHERE id = ?",
-            (position.qty_open, position.proceeds_usd, position.fees_usd, position.last_liquidity, position.peak_price, position.peak_viewers, position.last_price, position.last_price_at, int(position.target_done), position.status, position.closed_at, position.exit_reason, position.id),
+            "UPDATE positions SET qty_open = ?, proceeds_usd = ?, fees_usd = ?, last_liquidity = ?, peak_price = ?, peak_viewers = ?, last_price = ?, last_price_at = ?, target_done = ?, status = ?, closed_at = ?, exit_reason = ?, exit_high = ? WHERE id = ?",
+            (position.qty_open, position.proceeds_usd, position.fees_usd, position.last_liquidity, position.peak_price, position.peak_viewers, position.last_price, position.last_price_at, int(position.target_done), position.status, position.closed_at, position.exit_reason, position.exit_high, position.id),
         )
 
     def _fill(self, position_id: int, now: int, side: str, spot: float, fill: Fill, reason: str) -> None:

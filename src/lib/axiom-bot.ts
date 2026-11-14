@@ -48,6 +48,8 @@ export type BotPosition = {
   stopPrice: number | null
   targetDone: boolean
   score: number
+  /** The Radar's exit advice for the coin: hold, tighten or exit, or `left` once it is off the Radar. */
+  advice?: string | null
 }
 
 export type BotTrade = {

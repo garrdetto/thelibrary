@@ -53,13 +53,24 @@ The Paper trades tab on the Radar page shows the bot's account, positions and tr
 | --- | --- |
 | Bot | Buying on or off, how often to pull, the fast feed, live price checks |
 | Account | Starting cash for the next reset |
-| When to buy | Radar signal, score, price gains, viewers, liquidity, market cap, volume, buy share, age, safety, quality, warnings, confirmation pulls, cooldown |
+| When to buy | Radar signal, score, price gains, viewers, liquidity, market cap, volume, buy share, age, safety, quality, warnings, the Radar's buy advice, rebuys only above the old high, confirmation pulls, cooldown |
 | Learned predictions | Runner, could-explode and big-winner chances, and crash timing from the Radar's learner |
 | Risk and bet size | Risk strength, bet per trade, caps, open coins, exposure, daily loss limit, drawdown stop, loss-streak break, buys per hour |
-| When to sell | Stop loss, profit target and share sold, entry protection, trailing stop, time limits, score, viewers, warnings |
-| Costs and realism | Trading fee, network fee, price impact, extra slippage |
+| When to sell | Stop loss, profit target and share sold, entry protection, trailing stop, time limits, score, viewers, warnings, the Radar's exit advice, fading momentum, coins that leave the Radar |
+| Costs and realism | Trading fee, network fee, price impact, extra slippage, extra slippage on stop sells |
 
 **Risk strength** (1 to 10) scales every bet and how much of the account can be in coins at once. 5 uses the numbers as written, 10 doubles them, 1 uses a fifth. The largest-single-bet cap and the liquidity cap still apply at any strength.
+
+## The Radar's advice
+
+Each coin carries `advice` from the tracker's own study of which warning signs came before falls (see `AXIOM_RADAR.md`, Exit and rebuy advice). The bot reads it and never hardcodes which signs matter:
+
+- `exit: 'exit'` sells the position (**Sell when the Radar says exit**).
+- `exit: 'tighten'`, or a held coin leaving the Radar, puts the position on the tighter **Trailing stop while tightened** at once (or sells it, or does nothing, by the dials). The bot never adds to a position.
+- `rebuy: 'never'` blocks a buy; `rebuy: 'wait'`, `exit` and `tighten` block it too under the default **Radar buy advice**. This applies to first buys as well as rebuys.
+- After the bot sells a coin it buys it again only above its high at the time of that sale (**Rebuy only above the old high**).
+
+That study found coins often bounce after a price dip and that stops rarely sell where they are set, so the default stop loss and trailing stop are wide (25%), the default bet is small (2% of the account), and stop sells pay extra slippage (5%).
 
 The learned rules use `outlook`, `explode` and `maker` on each coin. When the tracker does not send them, those rules pass or skip the coin according to **When a prediction is not ready**.
 
@@ -68,6 +79,7 @@ The learned rules use `outlook`, `explode` and `maker` on each coin. When the tr
 - A buy spends the bet in total, fees included. The price paid is the market price plus price impact plus extra slippage.
 - Price impact follows a constant-product pool: a buy of $B against a pool with $Q on the quote side pays `spot x (1 + B/Q)`, and a sale worth $V receives `spot / (1 + V/Q)`. Q is half the coin's liquidity figure. A pulled pool pays almost nothing.
 - With **Live prices for open positions** on, the bot checks the price on DexScreener at the moment of a buy and every few seconds while it holds a coin, so stops react between pulls. A buy is cancelled when the live price is already 15% under the Radar's reading.
+- Stop loss, trailing stop, Radar exit and warning sells pay **Extra slippage on stop and exit sells** on top, because these coins fall faster than prices arrive.
 - Stops and targets measure the market price move since the buy. Profit and loss count everything: fees, impact and slippage on both sides.
 - Open positions are valued at what they would fetch if sold now.
 

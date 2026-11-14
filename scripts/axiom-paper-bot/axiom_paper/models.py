@@ -17,6 +17,10 @@ def _chance(source: Any, key: str) -> float | None:
     return number(source.get(key)) if isinstance(source, dict) else None
 
 
+def _first(values: Any) -> str | None:
+    return str(values[0])[:140] if isinstance(values, list) and values else None
+
+
 @dataclass(frozen=True)
 class Coin:
     mint: str
@@ -45,6 +49,11 @@ class Coin:
     maker_chance: float | None
     phase: str | None
     minutes_left: float | None
+    advice_exit: str | None = None
+    advice_rebuy: str | None = None
+    exit_advice_reason: str | None = None
+    rebuy_advice_reason: str | None = None
+    high_price: float | None = None
 
     @staticmethod
     def from_token(token: dict[str, Any]) -> "Coin":
@@ -53,6 +62,7 @@ class Coin:
         quality = token.get("quality") if isinstance(token.get("quality"), dict) else {}
         checks = quality.get("checks") if isinstance(quality.get("checks"), list) else []
         outlook = token.get("outlook") if isinstance(token.get("outlook"), dict) else {}
+        advice = token.get("advice") if isinstance(token.get("advice"), dict) else {}
         buy_ratio = number(token.get("buyRatio"))
         price = number(token.get("priceUsd"))
         return Coin(
@@ -82,6 +92,11 @@ class Coin:
             maker_chance=_chance(token.get("maker"), "chance"),
             phase=outlook.get("phase") if outlook.get("phase") in ("early", "running", "late", "overdue") else None,
             minutes_left=number(outlook.get("minutesLeft")),
+            advice_exit=advice.get("exit") if advice.get("exit") in ("hold", "tighten", "exit") else None,
+            advice_rebuy=advice.get("rebuy") if advice.get("rebuy") in ("ok", "wait", "never") else None,
+            exit_advice_reason=_first(advice.get("exitReasons")),
+            rebuy_advice_reason=_first(advice.get("rebuyReasons")),
+            high_price=number(advice.get("highPrice")),
         )
 
     def entry_facts(self) -> dict[str, Any]:
@@ -92,7 +107,7 @@ class Coin:
             "ageMinutes": self.age_minutes, "gain1m": self.gain_1m, "gain5m": self.gain_5m, "safety": self.safety,
             "quality": self.quality, "failedChecks": self.failed_checks, "smartHolders": self.smart_holders,
             "runnerChance": self.runner_chance, "explodeChance": self.explode_chance, "makerChance": self.maker_chance,
-            "phase": self.phase, "minutesLeft": self.minutes_left,
+            "phase": self.phase, "minutesLeft": self.minutes_left, "adviceExit": self.advice_exit, "adviceRebuy": self.advice_rebuy,
         }
 
 
@@ -121,6 +136,7 @@ class Position:
     status: str = "open"
     closed_at: int | None = None
     exit_reason: str | None = None
+    exit_high: float | None = None
     entry: dict[str, Any] = field(default_factory=dict)
 
     def gain(self, price: float | None = None) -> float:

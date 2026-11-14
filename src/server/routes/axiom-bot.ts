@@ -33,7 +33,7 @@ const reportInput = z.object({
   }),
   positions: z.array(z.object({
     id: finite, mint: text(60), symbol: text(40), pairAddress: text(60).nullable(), openedAt: finite, entryPrice: finite, price: finite, costUsd: finite,
-    valueUsd: finite, pnlUsd: finite, pnlPct: finite, gainPct: finite, peakGainPct: finite, openPct: finite, stopPrice: maybe, targetDone: z.boolean(), score: finite,
+    valueUsd: finite, pnlUsd: finite, pnlPct: finite, gainPct: finite, peakGainPct: finite, openPct: finite, stopPrice: maybe, targetDone: z.boolean(), score: finite, advice: text(20).nullable().optional(),
   })).max(60),
   trades: z.array(z.object({
     id: finite, mint: text(60), symbol: text(40), pairAddress: text(60).nullable(), openedAt: finite, closedAt: maybe, costUsd: finite, proceedsUsd: finite,
