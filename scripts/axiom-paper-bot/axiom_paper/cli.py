@@ -90,6 +90,9 @@ def run(args: argparse.Namespace) -> int:
     try:
         if args.once:
             engine.step()
+            if not engine.error:
+                engine.report_due = True
+                engine.sync()
             if engine.error:
                 print(engine.error, file=sys.stderr)
             print_account(engine)
