@@ -53,14 +53,26 @@ export interface SharedVehicleInfo {
 /** Where a spawned vehicle is put: its chassis centre and rotation, in world coordinates. */
 export interface SpawnPose { x: number; y: number; z: number; qx: number; qy: number; qz: number; qw: number }
 
+/**
+ * A paid job. Deliveries run from the freight depot (Fox Plains) or Kwik Trip (Montello, `area`) to a house; fire calls
+ * start at Montello's fire station, then a house on fire, where the crew has to stay on scene (`onScene`) to put it out.
+ */
 export interface Job {
   id: string;
-  kind: 'delivery';
+  kind: 'delivery' | 'fire';
+  area?: 'montello';
   pickup: { x: number; z: number };
   drop: { x: number; z: number; lotId: string };
+  /** The street, for the job card. */
+  street?: string;
   pay: number;
-  stage: 'toPickup' | 'toDrop';
+  stage: 'toPickup' | 'toDrop' | 'onScene';
+  /** When the crew reached the fire (ms, the authority's clock). */
+  since?: number;
 }
+
+/** The jobs on offer: Fox Plains deliveries, Montello deliveries and Montello fire calls. */
+export type JobOffer = 'delivery' | 'montello' | 'fire';
 
 export interface MowStroke { lotId: string; x: number; z: number; hx: number; hz: number; width: number; len: number }
 
@@ -78,7 +90,7 @@ export type ClientMsg =
   | { t: 'loan'; amount: number }
   | { t: 'repay'; amount: number }
   | { t: 'mow'; strokes: MowStroke[] }
-  | { t: 'jobRequest' }
+  | { t: 'jobRequest'; kind?: JobOffer }
   | { t: 'jobProgress'; jobId: string }
   | { t: 'buy'; shop: string; item: string; car?: CarStyle }
   | { t: 'refuel'; kind: VehicleKind; gallons: number }

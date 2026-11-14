@@ -214,6 +214,11 @@ export class WorldMap {
     this.go(poi.to, poi.name)
   }
 
+  /** Routes to a spot in scene coordinates, with a name for the directions. */
+  routeToScene(x: number, z: number, name: string): void {
+    this.go({ x, z }, name)
+  }
+
   private go(goal: { x: number; z: number }, name: string | null): void {
     this.grid ??= new RouteGrid(this.host.world)
     const route = this.grid.route(this.host.where(), goal)

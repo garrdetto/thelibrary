@@ -1024,30 +1024,48 @@ def classify(naip, ndvi, canopy_f, mask_f, sdf_f, bldg_dist_f, zones, wet, level
 
 # ---------------------------------------------------------------- places
 POI_KIND = [
+    ('landmark', lambda t: t.get('man_made') in ('water_tower', 'tower') and t.get('tower:type') != 'communication' or t.get('waterway') == 'waterfall'),
+    ('bar', lambda t: t.get('amenity') in ('bar', 'pub', 'biergarten')),
+    ('bank', lambda t: t.get('amenity') == 'bank'),
+    ('fire', lambda t: t.get('amenity') == 'fire_station'),
     ('fuel', lambda t: t.get('amenity') == 'fuel' or t.get('shop') == 'convenience'),
-    ('food', lambda t: t.get('amenity') in ('restaurant', 'bar', 'pub', 'cafe', 'fast_food') or t.get('shop') == 'confectionery'),
+    ('food', lambda t: t.get('amenity') in ('restaurant', 'cafe', 'fast_food', 'ice_cream') or t.get('shop') == 'confectionery'),
     ('lodging', lambda t: t.get('tourism') in ('motel', 'hotel', 'camp_site')),
     ('school', lambda t: t.get('amenity') == 'school'),
     ('civic', lambda t: t.get('amenity') in ('townhall', 'police', 'fire_station', 'post_office', 'courthouse', 'social_facility') or 'office' in t and t.get('office') == 'government'),
     ('church', lambda t: t.get('amenity') == 'place_of_worship'),
     ('park', lambda t: t.get('leisure') in ('park', 'pitch', 'slipway') or t.get('tourism') in ('attraction', 'artwork') or t.get('landuse') == 'cemetery' or t.get('amenity') == 'grave_yard'),
-    ('shop', lambda t: 'shop' in t or t.get('amenity') in ('bank', 'cinema', 'veterinary') or 'office' in t or t.get('leisure') == 'dance'),
+    ('shop', lambda t: 'shop' in t or t.get('amenity') in ('cinema', 'veterinary', 'pharmacy') or 'office' in t or t.get('leisure') == 'dance'),
 ]
+
+LANDMARK_NAMES = {'water_tower': 'Montello water tower', 'tower': 'Tower', 'waterfall': 'Waterfall'}
+
+def poi_type(tags):
+    """The place's own OpenStreetMap type: its amenity, shop, man-made or waterway value."""
+    for key in ('amenity', 'shop', 'man_made', 'waterway', 'tourism', 'leisure', 'office'):
+        if tags.get(key):
+            return tags[key] if key in ('amenity', 'man_made', 'waterway') else f'{key}:{tags[key]}'
+    return ''
 
 def collect_pois(osm, bodies):
     out = []
     seen = set()
     def add(name, tags, x, z):
-        if not name or not (X0 + 30 < x < X1 - 30 and Z0 + 30 < z < Z1 - 30):
+        if not (X0 + 30 < x < X1 - 30 and Z0 + 30 < z < Z1 - 30):
             return
         kind = next((k for k, test in POI_KIND if test(tags)), None)
         if kind is None:
             return
+        t = poi_type(tags)
+        if not name:
+            if kind != 'landmark':
+                return
+            name = LANDMARK_NAMES.get(tags.get('man_made') or tags.get('waterway'), 'Landmark')
         key = (name, round(x / 40), round(z / 40))
         if key in seen:
             return
         seen.add(key)
-        out.append({'n': name, 'k': kind, 'x': round(x, 1), 'z': round(z, 1)})
+        out.append({'n': name, 'k': kind, 't': t, 'x': round(x, 1), 'z': round(z, 1)})
     for nid, tags in osm.node_tags.items():
         add(tags.get('name'), tags, *osm.nodes[nid])
     for wid, (refs, tags) in osm.ways.items():
@@ -1139,6 +1157,75 @@ def road_exits(roads, area, link):
             if area.contains(Point(b.x, b.y)):
                 dx, dz = -dx, -dz
             out.append({'x': round(c.x, 1), 'z': round(c.y, 1), 'h': round(math.atan2(dx, dz), 3), 'w': round(r['width'], 1)})
+    return out
+
+
+def street_side(poly, roads, near=60.0):
+    """The point on a footprint's edge facing the nearest drivable road, the outward heading there, and the road."""
+    c = poly.representative_point()
+    best = None
+    for r in roads:
+        if r['kind'] > 2:
+            continue
+        line = LineString(r['pts'])
+        if line.distance(c) > near + 40:
+            continue
+        d = line.distance(poly)
+        if d <= near and (best is None or d < best[0]):
+            best = (d, line, r)
+    if best is None:
+        return None
+    _d, line, road = best
+    on_road = line.interpolate(line.project(c))
+    edge = poly.exterior
+    door = edge.interpolate(edge.project(on_road))
+    dx, dz = on_road.x - door.x, on_road.y - door.y
+    if math.hypot(dx, dz) < 0.1:
+        dx, dz = on_road.x - c.x, on_road.y - c.y
+    return door, math.atan2(dx, dz), road
+
+def doors(pois, buildings, roads):
+    """Each place in or beside a building gets a front door on the street side (`d`: x, z, heading out); fuel stations their pumps."""
+    from shapely.strtree import STRtree
+    polys = [b['poly'] for b in buildings]
+    tree = STRtree(polys)
+    for p in pois:
+        if p['k'] in ('water', 'park', 'landmark'):
+            continue
+        pt = Point(p['x'], p['z'])
+        hits = [i for i in tree.query(pt.buffer(25)) if buildings[i]['kind'] not in ('canopy', 'shed', 'garage')]
+        if not hits:
+            continue
+        i = min(hits, key=lambda k: polys[k].distance(pt))
+        side = street_side(polys[i], roads)
+        if not side:
+            continue
+        door, heading, road = side
+        p['d'] = [round(door.x + math.sin(heading) * 1.4, 1), round(door.y + math.cos(heading) * 1.4, 1), round(heading, 3)]
+        p['s'] = road['name'] or road['ref'] or ''
+        if p['k'] == 'fuel':
+            canopies = [b for b in buildings if b['kind'] == 'canopy' and b['poly'].distance(pt) < 60]
+            if canopies:
+                cx, cz, hx, hz, yaw = min(canopies, key=lambda b: b['poly'].distance(pt))['rects'][0]
+                c, sn = math.cos(yaw), math.sin(yaw)
+                pumps = []
+                for a in (-0.45, 0.45):
+                    for b in (-0.3, 0.3):
+                        lx, lz = a * hx * 2, b * hz * 2
+                        pumps.append([round(cx + lx * c - lz * sn, 1), round(cz + lx * sn + lz * c, 1)])
+                p['pumps'] = pumps
+
+def home_doors(buildings, roads):
+    """Every house's front step on the street side, with its street: x, z, heading out (flat), and street names by index."""
+    out = []
+    for b in buildings:
+        if b['kind'] != 'house':
+            continue
+        side = street_side(b['poly'], roads, 45.0)
+        if not side:
+            continue
+        door, heading, road = side
+        out.append([round(door.x + math.sin(heading) * 1.6, 1), round(door.y + math.cos(heading) * 1.6, 1), round(heading, 3), road['name'] or road['ref'] or ''])
     return out
 
 BASE = 228.0   # elevation (m) of y = 0, below the deepest river bed
@@ -1322,6 +1409,8 @@ def main():
     lots = [l for l in lots if seen.intersects(l['poly'])]
     pois = [p for p in pois if seen.contains(Point(p['x'], p['z'])) or p['k'] == 'water']
     exits = road_exits(roads, play, link)
+    doors(pois, buildings, roads)
+    homes = home_doors(buildings, roads)
 
     # ---- write
     g16 = np.clip(np.round((ground - BASE) * 100), 0, 65535).astype('<u2')
@@ -1347,6 +1436,7 @@ def main():
         'buildings': [building_out(b) for b in buildings],
         'lots': [{'f': round(l['floor'] - BASE, 2), 'p': flat(list(l['poly'].exterior.coords)[:-1])} for l in lots],
         'pois': pois,
+        'homes': homes,
         'limits': {'city': flat(list(city.simplify(1.0).exterior.coords)[:-1]), 'play': flat(list(play.exterior.coords)[:-1]), 'exits': exits,
                    'link': flat(LineString(link['pts']).intersection(WORLD).coords), 'pad': PLAY_PAD, 'seen': VIS_PAD},
         'sources': [
