@@ -10,7 +10,7 @@ async function call<T>(path: string, init?: { method: string; body: unknown }): 
   return body
 }
 
-/** Polls the bot's dials and last report from the site, and saves dials and commands for the bot to pick up. */
+/** Polls the bot's dials and last report from the site, and saves dials and commands for the bot to pick up. A save sends only the dials given; the site keeps the rest. */
 export function useBot() {
   const [view, setView] = useState<BotView | null>(null)
   const [error, setError] = useState('')

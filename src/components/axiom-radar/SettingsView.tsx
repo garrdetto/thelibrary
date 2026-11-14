@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, LoaderCircle, RotateCcw } from 'lucide-react'
 import { defaultRadarSettings, radarRequirementInfo, radarThemeColorInfo, radarThemeColors, radarThemePresets, type RadarSettings, type RadarTheme, type RadarThemeColors, type RadarThemePreset } from '@/lib/axiom-radar-settings'
-import { BotSettings } from './BotSettings'
 import { relativeSeconds } from './format'
 import { NumberField, Toggle } from './SettingsFields'
 
@@ -30,7 +29,7 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
   ]
   const applied = settings.updatedAt !== null && activeUpdatedAt === settings.updatedAt
 
-  return <><form className="radar-settings" onSubmit={event => { event.preventDefault(); onSave(form); setDirty(false); onPreviewTheme(null) }}>
+  return <form className="radar-settings" onSubmit={event => { event.preventDefault(); onSave(form); setDirty(false); onPreviewTheme(null) }}>
     <section className="radar-card">
       <div className="panel-heading"><span className="number-tag">01</span><h2>Which coins are tracked</h2><span className="panel-caption">TURN A REQUIREMENT OFF TO IGNORE IT</span></div>
       <div className="radar-requirements">
@@ -105,5 +104,4 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
       </p>
     </div>
   </form>
-  <BotSettings now={now}/></>
 }

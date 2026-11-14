@@ -1,78 +1,26 @@
-import { useEffect, useState } from 'react'
-import { Bot, CirclePause, CirclePlay, LoaderCircle, RotateCcw, XCircle } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import type { BotCommand, BotReport } from '@/lib/axiom-bot'
 import { AxiomLink, CoinName } from './AxiomLink'
-import { formatClock, formatPrice, relativeSeconds } from './format'
+import { BotControls, botStatus, dollars, signedDollars, signedPercent, toneOf } from './BotControls'
+import { formatClock, formatPrice } from './format'
 import { useBot } from './useBot'
 import './axiom-bot.css'
 
 const tooltipStyle = { background: 'var(--tone-82)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11, color: 'var(--tone-0)' }
-const confirmWindowMs = 4_000
-
-const dollars = (value: number) => `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-const signedDollars = (value: number) => `${value >= 0 ? '+' : '-'}${dollars(Math.abs(value))}`
-const signedPercent = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
-const toneOf = (value: number) => value > 0 ? 'up' : value < 0 ? 'down' : ''
 const heldFor = (minutes: number) => minutes < 90 ? `${Math.round(minutes)}m` : `${(minutes / 60).toFixed(1)}h`
 const adviceLabels: Record<string, string> = { tighten: 'Radar: fading', exit: 'Radar: exit', left: 'Left the Radar' }
 
-function ConfirmButton({ label, confirmLabel, icon, busy, disabled, onConfirm }: { label: string; confirmLabel: string; icon: React.ReactNode; busy: boolean; disabled: boolean; onConfirm: () => void }) {
-  const [armed, setArmed] = useState(false)
-  useEffect(() => {
-    if (!armed) return
-    const timer = setTimeout(() => setArmed(false), confirmWindowMs)
-    return () => clearTimeout(timer)
-  }, [armed])
-  return <button type="button" className={`secondary-button ${armed ? 'radar-bot-armed' : ''}`} disabled={disabled || busy} onClick={() => { if (armed) { setArmed(false); onConfirm() } else setArmed(true) }}>
-    {busy ? <LoaderCircle size={13} className="spin"/> : icon}{armed ? confirmLabel : label}
-  </button>
-}
-
-function statusOf(report: BotReport | null, online: boolean, lastSeen: string): { tone: string; label: string } {
-  if (!report) return { tone: '', label: 'Not started' }
-  if (!online) return { tone: 'down', label: `Not running, last seen ${lastSeen}` }
-  if (report.status === 'running') return { tone: 'up', label: 'Buying' }
-  if (report.status === 'paused') return { tone: 'warn', label: 'Paused' }
-  return { tone: 'warn', label: `Not buying: ${report.note ?? 'waiting'}` }
-}
-
 export function BotAccount({ now }: { now: number }) {
-  const { view, error, loading, receivedAt, refresh, saveSettings, sendCommand } = useBot()
-  const [busy, setBusy] = useState<'' | 'pause' | keyof BotCommand>('')
-  const [notice, setNotice] = useState('')
+  const bot = useBot()
+  const { view, error, loading } = bot
   const report = view?.report ?? null
-  const online = view?.online ?? false
-  const lastSeen = view?.reportedAt ? relativeSeconds(view.reportedAt + (receivedAt - view.now), now) : 'never'
-  const status = statusOf(report, online, lastSeen)
-  const buying = view ? view.settings.values['bot.enabled'] !== false : true
-
-  const act = async (kind: 'pause' | keyof BotCommand, action: () => Promise<unknown>, done: string) => {
-    setBusy(kind)
-    setNotice('')
-    try {
-      await action()
-      setNotice(done)
-      void refresh()
-    } catch (failure) {
-      setNotice(failure instanceof Error ? failure.message : 'That did not go through. Try again.')
-    } finally {
-      setBusy('')
-    }
-  }
+  const status = botStatus(bot, now)
 
   return <>
     <div className="radar-section-head radar-bot-head">
       <h2><Bot size={17} aria-hidden="true"/> Paper-trading bot <span className={`radar-bot-chip ${status.tone}`}>{status.label}</span></h2>
-      <p>The Python bot on your PC buys and sells the Radar's picks with pretend money, by the dials in Settings. Results include fees, slippage and price impact. Nothing here places a real order.</p>
-      {view && <div className="radar-bot-controls">
-        <button type="button" className="secondary-button" disabled={busy !== ''} onClick={() => void act('pause', () => saveSettings({ ...view.settings.values, 'bot.enabled': !buying }), buying ? 'Buying is paused. Open positions are still managed.' : 'Buying is back on.')}>
-          {busy === 'pause' ? <LoaderCircle size={13} className="spin"/> : buying ? <CirclePause size={13}/> : <CirclePlay size={13}/>}{buying ? 'Pause buying' : 'Resume buying'}
-        </button>
-        <ConfirmButton label="Close all positions" confirmLabel="Click again to close all" icon={<XCircle size={13}/>} busy={busy === 'flatten'} disabled={busy !== '' || !report?.positions.length} onConfirm={() => void act('flatten', () => sendCommand('flatten'), online ? 'Sent. The bot sells everything on its next pull.' : 'Saved. The bot is not running, so nothing was sold.')}/>
-        <ConfirmButton label="Reset account" confirmLabel="Click again to wipe every trade" icon={<RotateCcw size={13}/>} busy={busy === 'reset'} disabled={busy !== ''} onConfirm={() => void act('reset', () => sendCommand('reset'), online ? 'Sent. The account starts again on the bot\'s next pull.' : 'Saved. The bot is not running, so start it within 10 minutes for the reset to apply.')}/>
-        <p role="status" className="radar-muted">{notice}</p>
-      </div>}
+      <p>The Python bot on your PC buys and sells the Radar's picks with pretend money, by the dials in the Trading bot tab. Results include fees, slippage and price impact. Nothing here places a real order.</p>
+      <BotControls bot={bot}/>
     </div>
 
     {loading ? <p className="radar-empty-line" role="status">Loading the bot's account…</p>

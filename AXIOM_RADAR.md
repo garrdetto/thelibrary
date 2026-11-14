@@ -198,7 +198,7 @@ What the history says about stops: price stops rarely sell where they are set. W
 python scripts/axiom-paper-bot/run.py
 ```
 
-It pulls the Radar from the site with the tracker's `AXIOM_RADAR_TOKEN`, so there is nothing new to set up. Its dials (buy thresholds, risk strength, bet size, stops, costs) are in `data/paper-bot.toml` and on this page under **Settings → Paper-trading bot**; the most recent change wins. The **Paper trades** tab shows its account, positions and trades. Details are in `scripts/axiom-paper-bot/README.md`.
+It pulls the Radar from the site with the tracker's `AXIOM_RADAR_TOKEN`, so there is nothing new to set up. Its dials (buy thresholds, risk strength, bet size, stops, costs) are in `data/paper-bot.toml` and on this page in the **Trading bot** tab, with Careful, Balanced and Bold starting styles, buttons to pause buying, close every position and reset the account, and a Save bar that says when the bot has the change; the most recent change wins. The **Paper trades** tab shows its account, positions and trades. Details are in `scripts/axiom-paper-bot/README.md`.
 
 ## Data files
 
