@@ -95,12 +95,16 @@ export function runLoop(name: string, intervalMs: number, task: () => Promise<vo
     let failures = 0
     while (!signal.aborted) {
       const started = Date.now()
+      let watchdog: ReturnType<typeof setTimeout> | undefined
       try {
-        await task()
+        const limitMs = Math.max(90_000, intervalMs * 6)
+        await Promise.race([task(), new Promise<never>((_, reject) => { watchdog = setTimeout(() => reject(new Error(`${name} cycle hung for ${Math.round(limitMs / 1000)}s and was abandoned`)), limitMs) })])
         failures = 0
       } catch (error) {
         failures += 1
         logger.error(`${name} cycle failed`, { error: errorMessage(error), failures })
+      } finally {
+        clearTimeout(watchdog)
       }
       const backoff = failures ? Math.min(intervalMs * 2 ** Math.min(failures, 4), 5 * 60_000) : intervalMs
       await sleep(Math.max(250, backoff - (Date.now() - started)), signal)
