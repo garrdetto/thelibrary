@@ -5,6 +5,7 @@ import { learnerState } from './learner-state.js'
 import { marketTicks, type MarketTick } from './live-market.js'
 import { chanceOf, holdoutAccuracy, median, splitInsights, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues } from './logistic.js'
 import { buildRadarTokens, loadModelState } from './radar-query.js'
+import { researchResetAt } from './research-meta.js'
 import { createLogger, runLoop } from './runtime.js'
 
 const logger = createLogger('explosions')
@@ -151,7 +152,7 @@ function saveWallets(database: TrackerDatabase, burstId: number, mint: string) {
 }
 
 function backfill(database: TrackerDatabase) {
-  if ((database.prepare('SELECT COUNT(*) AS count FROM radar_bursts').get() as { count: number }).count) return 0
+  if ((database.prepare('SELECT COUNT(*) AS count FROM radar_bursts').get() as { count: number }).count || researchResetAt(database)) return 0
   const tokens = new Map((database.prepare('SELECT mint, symbol, pair_created_at FROM tokens').all() as Array<{ mint: string; symbol: string; pair_created_at: number }>).map(token => [token.mint, token]))
   const insert = database.prepare(`INSERT INTO radar_bursts (mint, symbol, kind, started_at, start_viewers, gain, seconds, start_price, features_json, peak_viewers, reached_at, peak_price, outcome, closed_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)

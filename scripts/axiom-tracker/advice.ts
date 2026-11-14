@@ -5,6 +5,7 @@ import { learnerState } from './learner-state.js'
 import { marketTicks, tickAt } from './live-market.js'
 import { median } from './logistic.js'
 import { buildRadarTokens, loadModelState } from './radar-query.js'
+import { researchResetAt } from './research-meta.js'
 import { createLogger, runLoop } from './runtime.js'
 
 const logger = createLogger('advice')
@@ -97,8 +98,9 @@ function levelOf(sign: RadarWarningSign, baseline: RadarWarningSign): RadarWarni
 
 async function runStudy(database: TrackerDatabase): Promise<Study> {
   const launched = new Map((database.prepare('SELECT mint, pair_created_at FROM tokens').all() as Array<{ mint: string; pair_created_at: number }>).map(row => [row.mint, row.pair_created_at]))
-  const mints = (database.prepare('SELECT DISTINCT mint FROM snapshots').all() as Array<{ mint: string }>).map(row => row.mint)
-  const series = database.prepare('SELECT viewers, price_usd AS price, liquidity_usd AS liquidity, volume_5m AS volume, buys_5m AS buys, sells_5m AS sells, timestamp AS t FROM snapshots WHERE mint = ? AND price_usd > 0 ORDER BY timestamp ASC')
+  const since = researchResetAt(database)
+  const mints = (database.prepare('SELECT DISTINCT mint FROM snapshots WHERE timestamp >= ?').all(since) as Array<{ mint: string }>).map(row => row.mint)
+  const series = database.prepare('SELECT viewers, price_usd AS price, liquidity_usd AS liquidity, volume_5m AS volume, buys_5m AS buys, sells_5m AS sells, timestamp AS t FROM snapshots WHERE mint = ? AND price_usd > 0 AND timestamp >= ? ORDER BY timestamp ASC')
   const outcomes = new Map<string, Outcome[]>(signs.map(sign => [sign.key, []]))
   const baseline: Outcome[] = []
   const rebuy = new Map(rebuyDrops.map(drop => [drop, { samples: 0, newHigh: 0 }]))
@@ -106,7 +108,7 @@ async function runStudy(database: TrackerDatabase): Promise<Study> {
   let measured = 0
   for (let item = 0; item < mints.length; item++) {
     if (item % 25 === 24) await new Promise(resolve => setImmediate(resolve))
-    const rows = series.all(mints[item]) as SnapshotRow[]
+    const rows = series.all(mints[item], since) as SnapshotRow[]
     if (rows.length < 12) continue
     const created = launched.get(mints[item]) ?? 0
     const active = new Set<string>()

@@ -4,6 +4,7 @@ import { recordHeartbeat, type TrackerDatabase } from './db.js'
 import { learnerState } from './learner-state.js'
 import { chanceOf, holdoutAccuracy, median, nearestRows, splitInsights, topReasons, trainClassifier, vectorOf, type Classifier, type FeatureValues } from './logistic.js'
 import { buildRadarTokens, loadModelState } from './radar-query.js'
+import { researchResetAt } from './research-meta.js'
 import { createLogger, runLoop } from './runtime.js'
 import { loadWinnersModel, runWinnersCycle } from './winners.js'
 
@@ -181,7 +182,7 @@ function crashKind(price: number, peak: number, liquidity: number | null, maxLiq
 
 function backfill(database: TrackerDatabase) {
   const existing = (database.prepare('SELECT COUNT(*) AS count FROM coin_lifecycles').get() as { count: number }).count
-  if (existing) return 0
+  if (existing || researchResetAt(database)) return 0
   const tokens = new Map((database.prepare('SELECT mint, symbol, pair_created_at FROM tokens').all() as Array<{ mint: string; symbol: string; pair_created_at: number }>).map(token => [token.mint, token]))
   const insert = database.prepare(`INSERT OR IGNORE INTO coin_lifecycles (mint, symbol, launched_at, first_seen_at, first_price, features_json, peak_price, peak_at, max_liquidity, last_price, last_at, rugged_at, rug_kind, first_mcap, peak_mcap, peak_mcap_at, last_mcap)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)

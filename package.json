@@ -15,6 +15,7 @@
     "deploy": "pnpm build && wrangler deploy",
     "axiom:worker": "tsx scripts/axiom-tracker/index.ts",
     "axiom:login": "tsx scripts/axiom-tracker/axiom-collector.ts --login",
+    "axiom:reset-research": "tsx scripts/axiom-tracker/reset-research.ts",
     "axiom:chrome": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/axiom-tracker/radar-chrome.ps1"
   },
   "dependencies": {
