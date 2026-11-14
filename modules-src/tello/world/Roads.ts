@@ -16,16 +16,17 @@ import { asphaltTexture, countyRoadTexture } from '../../rackreel/world/Highway'
 import { detailTexture } from '../../rackreel/world/World'
 import type { BridgeData, RoadKind } from '../data/MapData'
 import type { TelloLand } from '../region'
+import { isMainLeg, PROFILE_STEP, townProfiles } from '../data/Streets'
 import { resample, triangulate } from './Poly'
 
-const CELL = 512
+export const CELL = 512
 /** How far each kind of surface sits above the ground it is draped on. */
 const LIFT: Record<RoadKind, number> = { 0: 0.06, 1: 0.05, 2: 0.04, 3: 0.035, 4: 0.045, 5: 0.03 }
 const JUNCTION_LIFT = 0.07
 
-interface Batch { positions: number[]; uvs: number[]; indices: number[] }
+export interface Batch { positions: number[]; uvs: number[]; indices: number[] }
 
-function batchOf(map: Map<string, Batch>, key: string): Batch {
+export function batchOf(map: Map<string, Batch>, key: string): Batch {
   let b = map.get(key)
   if (!b) map.set(key, (b = { positions: [], uvs: [], indices: [] }))
   return b
@@ -42,7 +43,7 @@ function surface(scene: Scene, name: string, texture: Texture, tint?: Color3): S
   return mat
 }
 
-function toMesh(scene: Scene, name: string, b: Batch, mat: StandardMaterial): Mesh {
+export function toMesh(scene: Scene, name: string, b: Batch, mat: StandardMaterial): Mesh {
   const normals: number[] = []
   VertexData.ComputeNormals(b.positions, b.indices, normals, { useRightHandedSystem: false })
   for (let i = 1; i < normals.length; i += 3) {
@@ -103,12 +104,17 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
   }
   const batches = new Map<string, Batch>()
   const h = (x: number, z: number) => land.heightAt(x, z)
+  const profiles = townProfiles(land.doc)
   for (const road of land.doc.roads) {
-    const pts = resample(road.p, 4)
+    // Downtown streets are plain asphalt at their own width; StreetPaint lays their lines.
+    const prof = profiles.get(road)
+    const town = !!prof || isMainLeg(road)
+    const pts = prof ? prof.pts : resample(road.p, town ? PROFILE_STEP : 4)
     const n = pts.length / 2
-    const half = road.w / 2
+    const halfAt = (i: number) => (prof ? prof.half[i] : road.w / 2)
+    const kind: RoadKind = town ? 1 : road.k
     const lift = LIFT[road.k]
-    const worldUv = road.k !== 0
+    const worldUv = kind !== 0
     const stations: { x: number; z: number; sx: number; sz: number; along: number }[] = []
     let along = 0
     for (let i = 0; i < n; i++) {
@@ -126,9 +132,10 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
     for (let s0 = 0; s0 < n - 1; s0 += 16) {
       const s1 = Math.min(n - 1, s0 + 16)
       if (!land.seen(stations[s0].x, stations[s0].z, -40) && !land.seen(stations[s1].x, stations[s1].z, -40)) continue
-      const batch = batchOf(batches, `${road.k}|${Math.floor(stations[s0].x / CELL)},${Math.floor(stations[s0].z / CELL)}`)
+      const batch = batchOf(batches, `${kind}|${Math.floor(stations[s0].x / CELL)},${Math.floor(stations[s0].z / CELL)}`)
       for (let i = s0; i <= s1; i++) {
         const st = stations[i]
+        const half = halfAt(i)
         for (const side of [-1, 0, 1]) {
           const px = st.x + st.sx * side * half
           const pz = st.z + st.sz * side * half
@@ -182,7 +189,11 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
 // ---------------------------------------------------------------- bridges
 
 /** A box of a bridge in map coordinates: centre, half sizes (across, up, along) and the heading of its length (atan2(dx, dz north)). */
-export interface BridgeBox { x: number; y: number; z: number; across: number; up: number; along: number; heading: number; part: 'deck' | 'rail' }
+export interface BridgeBox { x: number; y: number; z: number; across: number; up: number; along: number; heading: number; part: 'deck' | 'rail'; stone?: boolean }
+
+/** A town bridge's parapet: a stone wall with an iron railing on it (half thickness, and height to the rail's top). */
+export const PARAPET_T = 0.2
+export const PARAPET_H = 1.15
 
 /** The straight runs of a bridge's centreline. */
 function runs(b: BridgeData): { ax: number; az: number; bx: number; bz: number }[] {
@@ -211,7 +222,7 @@ export function bridgeSolids(land: TelloLand): BridgeBox[] {
   for (const b of land.doc.bridges) {
     const drivable = b.k <= 3
     const half = b.w / 2 + (drivable ? 0.9 : 0.35)
-    const railH = drivable ? 0.45 : 0.55
+    const railH = b.s ? PARAPET_H / 2 : drivable ? 0.45 : 0.55
     for (const r of runs(b)) {
       const len = Math.hypot(r.bx - r.ax, r.bz - r.az)
       if (len < 0.5) continue
@@ -221,7 +232,8 @@ export function bridgeSolids(land: TelloLand): BridgeBox[] {
       out.push({ x: cx, y: b.y - 0.3, z: cz, across: half, up: 0.3, along: len / 2 + 0.3, heading, part: 'deck' })
       const sx = Math.cos(heading)
       const sz = -Math.sin(heading)
-      for (const side of [-1, 1]) out.push({ x: cx + sx * side * (half - 0.12), y: b.y + railH, z: cz + sz * side * (half - 0.12), across: 0.12, up: railH, along: len / 2 + 0.3, heading, part: 'rail' })
+      const t = b.s ? PARAPET_T : 0.12
+      for (const side of [-1, 1]) out.push({ x: cx + sx * side * (half - t), y: b.y + railH, z: cz + sz * side * (half - t), across: t, up: railH, along: len / 2 + 0.3, heading, part: 'rail', stone: !!b.s })
     }
   }
   return out
@@ -232,6 +244,7 @@ export function buildBridges(scene: Scene, land: TelloLand, cast: (mesh: Mesh) =
   if (!boxes.length) return []
   const b: Batch = { positions: [], uvs: [], indices: [] }
   for (const box of boxes) {
+    if (box.stone) continue
     const c = Math.cos(box.heading)
     const s = Math.sin(box.heading)
     const base = b.positions.length / 3

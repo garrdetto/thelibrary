@@ -19,6 +19,7 @@ import { STANDALONE_SHAPE, Terrain } from '../rackreel/world/Terrain'
 import type { Ground, OutsideLand, TerrainShape } from '../rackreel/world/Terrain'
 import { COVER } from './data/MapData'
 import type { BridgeData, Frame, MapDoc, MapGrids } from './data/MapData'
+import { fixStreets } from './data/Streets'
 
 /** How far in from the map's edge anyone may go. */
 export const EDGE_MARGIN = 36
@@ -45,6 +46,7 @@ export class TelloLand {
   private readonly decks: Deck[] = []
 
   constructor(readonly doc: MapDoc, readonly grids: MapGrids) {
+    fixStreets(doc, grids)
     const f = doc.frame
     this.frame = f
     this.side = grids.side

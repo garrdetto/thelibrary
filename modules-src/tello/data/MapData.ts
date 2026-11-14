@@ -24,8 +24,8 @@ export interface Frame {
 /** 0 highway (lined), 1 street, 2 lane (driveways, aisles), 3 gravel, 4 walk (concrete), 5 trail (dirt). */
 export type RoadKind = 0 | 1 | 2 | 3 | 4 | 5
 export interface RoadData { k: RoadKind; w: number; n: string; c: string; p: number[] }
-/** `y` the deck height; `m` set when it was measured in the lidar point cloud. */
-export interface BridgeData { r: number; k: RoadKind; w: number; y: number; p: number[]; m?: 1 }
+/** `y` the deck height; `m` set when it was measured in the lidar point cloud; `s` a town bridge with stone parapets (set at load). */
+export interface BridgeData { r: number; k: RoadKind; w: number; y: number; p: number[]; m?: 1; s?: 1 }
 export type BuildingKind = 'house' | 'garage' | 'shed' | 'store' | 'industrial' | 'civic' | 'church' | 'canopy'
 /**
  * `p` the footprint ring; `f` floor height; `l` lowest ground at the walls; `h` the main block's eave above the floor;

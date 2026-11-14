@@ -19,8 +19,14 @@ import type { TelloLand } from '../region'
 import { buildGround, GROUND_CHUNK } from './Ground'
 import { Water } from './Water'
 import { bridgeSolids, buildBridges, buildRoads } from './Roads'
+import { buildStreetPaint } from './StreetPaint'
 import { buildBuildings } from './Buildings'
 import { buildBarricades } from './Barricades'
+import { buildStorefronts } from './Storefronts'
+import { buildStreetDressing } from './StreetDressing'
+import { buildIntersection, type Intersection } from './Intersection'
+import { buildFalls, type Falls } from './Falls'
+import { buildLandmarks } from './Landmarks'
 import { roadIndex, roadNameAt } from '../town/Routes'
 import { shiftedPhysics, type Shift, type StaticSink } from './Sink'
 
@@ -50,6 +56,8 @@ export class Montello {
   readonly root: TransformNode
   private readonly sink: StaticSink
   private water: Water | null = null
+  private junction: Intersection | null = null
+  private falls: Falls | null = null
   private readonly treeCells = new Map<number, number[]>()
   private readonly treeSolid = new Set<number>()
   private readonly nameIndex: Map<number, number[]>
@@ -72,13 +80,18 @@ export class Montello {
     this.addWalls()
     const ground = buildGround(scene, land)
     this.water = new Water(s.host.ctx, land)
-    const roads = buildRoads(scene, land)
+    const roads = [...buildRoads(scene, land), ...buildStreetPaint(scene, land)]
     const bridges = buildBridges(scene, land, (mesh) => s.gfx.addCaster(mesh))
     for (const b of bridgeSolids(land)) this.sink.addStaticBox({ cx: b.x, cy: b.y, cz: -b.z, hx: b.across, hy: b.up, hz: b.along, rotY: Math.atan2(Math.sin(b.heading), -Math.cos(b.heading)) })
     progress(0.4, 'Raising the town…')
     await frame()
     buildBuildings(this.root, s.mats, this.sink, land)
     buildBarricades(this.root, s.mats, this.sink, land)
+    buildStorefronts(this.root, s.mats, land)
+    buildLandmarks(this.root, s.mats, this.sink, land)
+    buildStreetDressing(this.root, s.mats, this.sink, land)
+    this.junction = buildIntersection(this.root, s.mats, this.sink, land)
+    this.falls = buildFalls(this.root, s.mats, this.sink, land)
     progress(0.8, 'Planting the trees…')
     await frame()
     this.plantTrees()
@@ -100,6 +113,8 @@ export class Montello {
 
   update(dt: number): void {
     this.water?.update(dt, this.s.host.lighting)
+    this.junction?.update(dt)
+    this.falls?.update(dt)
   }
 
   /** The ground as one Rapier heightfield. */
