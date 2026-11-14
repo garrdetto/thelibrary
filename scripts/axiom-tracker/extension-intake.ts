@@ -1,4 +1,6 @@
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { resolve } from 'node:path'
 import { z } from 'zod'
 import { extractViewerCounts, parseFrame } from './axiom-collector.js'
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
@@ -13,9 +15,15 @@ const report = z.object({
   pairAddress: z.string().regex(solanaAddressPattern).nullable(),
   pageViewers: z.number().int().min(0).max(1_000_000).nullable(),
   frames: z.array(z.string().max(60_000)).max(200),
+  cards: z.array(z.object({
+    viewers: z.number().int().min(0).max(1_000_000),
+    pairAddress: z.string().regex(solanaAddressPattern).nullable(),
+    mint: z.string().regex(solanaAddressPattern).nullable(),
+    short: z.object({ prefix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/), suffix: z.string().regex(/^[1-9A-HJ-NP-Za-km-z]{3,8}$/) }).nullable(),
+  }).strict()).max(300).default([]),
 }).strict()
 
-export type ExtensionReport = z.infer<typeof report>
+export type ExtensionReport = z.input<typeof report>
 
 function trustedOrigin(request: IncomingMessage) {
   const origin = request.headers.origin ?? ''
@@ -54,6 +62,15 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
     const fallback = pageMint && input.pairAddress && text.includes(input.pairAddress) ? pageMint : null
     for (const [mint, count] of extractViewerCounts(frame, resolveMint, fallback)) counts.set(mint, Math.max(count, counts.get(mint) ?? 0))
   }
+  for (const card of input.cards ?? []) {
+    let mint = (card.pairAddress && resolveMint(card.pairAddress)) || (card.mint && resolveMint(card.mint)) || null
+    if (!mint && card.short) {
+      const { prefix, suffix } = card.short
+      const matches = candidates.filter(candidate => (candidate.mint.startsWith(prefix) && candidate.mint.endsWith(suffix)) || (candidate.pairAddress.startsWith(prefix) && candidate.pairAddress.endsWith(suffix)))
+      if (matches.length === 1) mint = matches[0].mint
+    }
+    if (mint) counts.set(mint, card.viewers)
+  }
   for (const [mint, count] of counts) trackerState.viewers.set(mint, { count, at: now, source: 'extension' })
   return counts.size
 }
@@ -73,6 +90,14 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       const url = new URL(request.url ?? '/', 'http://127.0.0.1')
       if (request.method === 'GET' && url.pathname === '/extension/status') {
         return send(response, 200, { ok: true, tracked: activeCandidates(database).map(candidate => ({ mint: candidate.mint, pairAddress: candidate.pairAddress, symbol: candidate.symbol })) })
+      }
+      if (request.method === 'POST' && url.pathname === '/extension/sample') {
+        const body = await readBody(request)
+        const samplePath = resolve('data/axiom-bridge-sample.json')
+        mkdirSync(resolve('data'), { recursive: true })
+        writeFileSync(samplePath, body)
+        logger.info('Saved diagnostic sample from the extension', { samplePath, bytes: body.length })
+        return send(response, 200, { ok: true })
       }
       if (request.method !== 'POST' || url.pathname !== '/extension/report') return send(response, 404, { error: 'Not found.' })
       const parsed = report.safeParse(JSON.parse(await readBody(request)))

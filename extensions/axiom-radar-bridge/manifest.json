@@ -1,14 +1,41 @@
 {
   "manifest_version": 3,
   "name": "Axiom Radar Bridge",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Sends the viewer counts shown on the Axiom tabs you open to the Axiom Radar tracker running on this computer.",
-  "permissions": ["storage"],
-  "host_permissions": ["http://127.0.0.1/*"],
-  "background": { "service_worker": "background.js" },
-  "content_scripts": [
-    { "matches": ["https://axiom.trade/*"], "js": ["page-hook.js"], "run_at": "document_start", "world": "MAIN" },
-    { "matches": ["https://axiom.trade/*"], "js": ["content.js"], "run_at": "document_idle" }
+  "permissions": [
+    "storage"
   ],
-  "action": { "default_title": "Axiom Radar Bridge", "default_popup": "popup.html" }
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "https://axiom.trade/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://axiom.trade/*"
+      ],
+      "js": [
+        "page-hook.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://axiom.trade/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "Axiom Radar Bridge",
+    "default_popup": "popup.html"
+  }
 }

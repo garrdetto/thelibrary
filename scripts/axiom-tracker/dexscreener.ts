@@ -44,6 +44,15 @@ async function searchMints(query: string) {
   return (result.pairs ?? []).filter(pair => pair.chainId === 'solana').map(pair => pair.baseToken.address)
 }
 
+type GeckoPools = { data?: Array<{ relationships?: { base_token?: { data?: { id?: string } } } }> }
+
+async function geckoMints(path: string) {
+  const result = await fetchJson<GeckoPools>(`https://api.geckoterminal.com/api/v2/networks/solana/${path}`, { retries: 1 })
+  return (result.data ?? []).map(pool => pool.relationships?.base_token?.data?.id?.replace(/^solana_/, '')).filter((mint): mint is string => Boolean(mint))
+}
+
+let geckoPage = 0
+
 export async function fetchDiscoverySources() {
   const sources = await Promise.allSettled([
     listingMints('/token-profiles/latest/v1'),
@@ -52,7 +61,10 @@ export async function fetchDiscoverySources() {
     listingMints('/community-takeovers/latest/v1'),
     searchMints('pump'),
     searchMints('SOL'),
+    geckoMints(`new_pools?page=${(geckoPage % 5) + 1}`),
+    geckoMints('trending_pools?duration=1h'),
   ])
+  geckoPage += 1
   const mints = new Set<string>()
   const boosted = new Set<string>()
   sources.forEach((source, index) => {
