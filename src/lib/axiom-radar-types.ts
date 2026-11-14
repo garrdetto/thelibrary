@@ -1,13 +1,15 @@
+import { defaultRadarSettings, type RadarSettings } from './axiom-radar-settings'
+
 export const radarFeatureKeys = ['viewerVelocity', 'activeViewers', 'runnerWallets', 'buyPressure', 'safety'] as const
 export type RadarFeatureKey = typeof radarFeatureKeys[number]
 export type RadarWeights = Record<RadarFeatureKey, number>
 
 export const radarFeatureLabels: Record<RadarFeatureKey, string> = {
-  viewerVelocity: '5m viewer velocity',
+  viewerVelocity: 'Viewer growth',
   activeViewers: 'Active viewers',
-  runnerWallets: 'Runner wallet entries',
+  runnerWallets: 'Smart holders',
   buyPressure: '5m buy pressure',
-  safety: 'RugCheck safety',
+  safety: 'Safety & holder quality',
 }
 
 export type RadarSafetyLevel = 'safe' | 'caution' | 'risky' | 'unknown'
@@ -58,6 +60,19 @@ export type RadarToken = {
   score: number
   factors: RadarFactor[]
   lastSnapshotAt: number | null
+  priceChange: { s30: number | null; m1: number | null; m5: number | null; m10: number | null }
+  spark: { fast: number[]; slow: number[] }
+  viewersPerMin: number | null
+  viewerSurge: boolean
+  holdersChange5m: number | null
+  pulse: RadarPulseMetrics | null
+  quality: { score: number | null; checks: RadarQualityCheck[] }
+  viewerRank: number | null
+  signal: 'buy' | 'watch' | null
+  signalReasons: string[]
+  alerts: string[]
+  pinned: boolean
+  onPulse: boolean
 }
 
 export type RadarPaperTrade = {
@@ -84,6 +99,33 @@ export type RadarModelState = {
 
 export type RadarComponentStatus = { component: string; status: string; detail: string | null; updatedAt: number }
 
+export type RadarPulseMetrics = {
+  holders: number | null
+  devMigrated: number | null
+  devCreated: number | null
+  top10Pct: number | null
+  devPct: number | null
+  devSold: boolean
+  snipersPct: number | null
+  insidersPct: number | null
+  bundlersPct: number | null
+  feesSol: number | null
+  txCount: number | null
+  volume: number | null
+  marketCap: number | null
+  seenAt: number
+}
+
+export type RadarQualityCheck = { label: string; status: 'pass' | 'warn' | 'fail'; detail: string }
+
+export type RadarWallet = {
+  wallet: string
+  runnerHits: number
+  source: 'holder' | 'early-buyer'
+  updatedAt: number
+  entries: Array<{ mint: string; symbol: string; pct: number | null; good: boolean; timestamp: number }>
+}
+
 export type RadarPayload = {
   status: 'live' | 'stale' | 'offline'
   message: string | null
@@ -104,13 +146,21 @@ export type RadarPayload = {
     stats: { open: number; wins: number; losses: number; winRate: number | null; averageReturn15m: number | null }
     pnl: Array<{ t: number; cumulative: number; symbol: string }>
   }
+  settings: RadarSettings
+  savedSettings?: RadarSettings | null
+  wallets: RadarWallet[]
+  walletTracking: 'on' | 'no-key'
+  source?: 'local' | 'relay'
 }
 
-export type RadarWalletEntry = { wallet: string; runnerHits: number; entryMcap: number | null; timestamp: number }
+export type RadarWalletEntry = { wallet: string; runnerHits: number; entryMcap: number | null; pct?: number | null; timestamp: number }
+
+export type RadarLivePoint = { t: number; price: number | null; viewers: number | null }
 
 export type RadarTokenDetail = {
   token: RadarToken
   history: RadarHistoryPoint[]
+  live: RadarLivePoint[]
   entries: RadarWalletEntry[]
 }
 
@@ -125,5 +175,8 @@ export function emptyRadarPayload(message: string, status: RadarPayload['status'
     kpis: { tracked: 0, fastestSurge: null, runnerSignals: 0, winRate: null, completedTrades: 0 },
     model: { weights: { viewerVelocity: 1, activeViewers: 1, runnerWallets: 1, buyPressure: 1, safety: 1 }, winRate: null, sampleCount: 0, updatedAt: null, history: [] },
     paper: { trades: [], stats: { open: 0, wins: 0, losses: 0, winRate: null, averageReturn15m: null }, pnl: [] },
+    settings: defaultRadarSettings,
+    wallets: [],
+    walletTracking: 'no-key',
   }
 }

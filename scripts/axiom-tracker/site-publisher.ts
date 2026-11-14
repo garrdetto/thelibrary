@@ -2,6 +2,7 @@ import type { RadarHistoryPoint, RadarPayload, RadarTokenDetail } from '../../sr
 import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { createLogger, errorMessage, isMainModule, sleep } from './runtime.js'
+import { applyRadarSettings } from './settings-store.js'
 
 const logger = createLogger('site-publisher')
 const watchingIntervalMs = 3_000
@@ -16,7 +17,7 @@ function thin<T>(items: T[], limit: number) {
   return Array.from({ length: limit }, (_, index) => items[Math.min(items.length - 1, Math.round(index * step))])
 }
 
-function compactPayload(payload: RadarPayload): RadarPayload {
+export function compactPayload(payload: RadarPayload): RadarPayload {
   return { ...payload, tokens: payload.tokens.map(token => ({ ...token, history: thin<RadarHistoryPoint>(token.history, 45) })) }
 }
 
@@ -24,7 +25,7 @@ function collectDetails(database: TrackerDatabase, payload: RadarPayload, histor
   const details: Record<string, RadarTokenDetail> = {}
   for (const token of payload.tokens) {
     const detail = buildTokenDetail(database, token.mint)
-    if (detail) details[token.mint] = { ...detail, history: thin(detail.history, historyLimit), token: { ...detail.token, history: thin(detail.token.history, 45) } }
+    if (detail) details[token.mint] = { ...detail, history: thin(detail.history, historyLimit), live: thin(detail.live, 90), token: { ...detail.token, history: thin(detail.token.history, 45), spark: { fast: [], slow: [] } } }
   }
   return details
 }
@@ -52,7 +53,8 @@ export function startSitePublisher(database: TrackerDatabase, signal: AbortSigna
         if (body.length > maxBodyBytes && detailsDue) body = JSON.stringify({ payload, details: collectDetails(database, payload, 60) })
         if (body.length > maxBodyBytes) body = JSON.stringify({ payload })
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body, signal: AbortSignal.timeout(15_000) })
-        const result = await response.json().catch(() => ({})) as { watching?: boolean; error?: string }
+        const result = await response.json().catch(() => ({})) as { watching?: boolean; error?: string; settings?: unknown }
+        if (result.settings) applyRadarSettings(result.settings)
         if (!response.ok) throw new Error(result.error ?? `HTTP ${response.status}`)
         if (detailsDue && body.includes('"details"')) lastDetailsAt = started
         if (Boolean(result.watching) !== watching) logger.info(result.watching ? 'An admin is watching; sending every 3 seconds' : 'Nobody is watching; sending every 20 seconds')

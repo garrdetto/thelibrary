@@ -90,6 +90,22 @@ CREATE TABLE IF NOT EXISTS runner_scans (
   scanned_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS holders (
+  mint TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  pct REAL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (mint, wallet)
+);
+CREATE INDEX IF NOT EXISTS holders_wallet ON holders (wallet);
+
+CREATE TABLE IF NOT EXISTS good_coins (
+  mint TEXT PRIMARY KEY,
+  symbol TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  marked_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS worker_heartbeat (
   component TEXT PRIMARY KEY,
   status TEXT NOT NULL,
@@ -130,5 +146,6 @@ export function recordHeartbeat(database: TrackerDatabase, component: string, st
 }
 
 export function pruneSnapshots(database: TrackerDatabase, olderThanMs = 24 * 60 * 60 * 1000) {
+  database.prepare('DELETE FROM holders WHERE updated_at < ?').run(Date.now() - 7 * 24 * 60 * 60 * 1000)
   return database.prepare('DELETE FROM snapshots WHERE timestamp < ?').run(Date.now() - olderThanMs).changes
 }

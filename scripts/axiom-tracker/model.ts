@@ -15,6 +15,8 @@ export type SafetyInput = { rugScore: number | null; mintAuthority: boolean | nu
 export type ScoreInput = SafetyInput & {
   viewers: number | null
   viewersDelta5m: number | null
+  viewersPerMin?: number | null
+  quality?: number | null
   runnerWallets: number
   buys5m: number | null
   sells5m: number | null
@@ -40,14 +42,35 @@ export function safetyLevel(input: SafetyInput): RadarSafetyLevel {
   return 'risky'
 }
 
+function viewerVelocity(input: ScoreInput) {
+  const viewers = input.viewers ?? 0
+  const parts: number[] = []
+  if (input.viewersDelta5m !== null) {
+    const before = Math.max(1, viewers - Math.max(0, input.viewersDelta5m))
+    parts.push(0.5 * clamp(input.viewersDelta5m / 60) + 0.5 * clamp(input.viewersDelta5m / before / 0.5))
+  }
+  if (input.viewersPerMin !== null && input.viewersPerMin !== undefined) {
+    const before = Math.max(1, viewers - Math.max(0, input.viewersPerMin))
+    parts.push(0.5 * clamp(input.viewersPerMin / 15) + 0.5 * clamp(input.viewersPerMin / before / 0.15))
+  }
+  return parts.length ? Math.max(...parts) : null
+}
+
+function combinedSafety(input: ScoreInput) {
+  const rug = safetyFactor(input)
+  const quality = input.quality === null || input.quality === undefined ? null : clamp(input.quality / 100)
+  if (rug === null) return quality
+  return quality === null ? rug : (rug + quality) / 2
+}
+
 export function featureVector(input: ScoreInput): Record<RadarFeatureKey, number | null> {
   const transactions = (input.buys5m ?? 0) + (input.sells5m ?? 0)
   return {
-    viewerVelocity: input.viewersDelta5m === null ? null : clamp(input.viewersDelta5m / 50),
+    viewerVelocity: viewerVelocity(input),
     activeViewers: input.viewers === null ? null : clamp(Math.log10(1 + input.viewers) / Math.log10(501)),
     runnerWallets: clamp(input.runnerWallets / 3),
     buyPressure: transactions ? clamp(((input.buys5m ?? 0) / transactions - 0.45) / 0.3) : null,
-    safety: safetyFactor(input),
+    safety: combinedSafety(input),
   }
 }
 
@@ -67,7 +90,7 @@ export function scoreSetup(input: ScoreInput, weights: RadarWeights) {
 export function viewerDeltas(points: Array<{ timestamp: number; viewers: number | null }>, now: number) {
   const withViewers = points.filter(point => point.viewers !== null) as Array<{ timestamp: number; viewers: number }>
   const latest = withViewers.at(-1)
-  if (!latest || now - latest.timestamp > 90_000) return { viewers: latest?.viewers ?? null, delta1m: null, delta5m: null, pct5m: null }
+  if (!latest || now - latest.timestamp > 90_000) return { viewers: latest && now - latest.timestamp <= 180_000 ? latest.viewers : null, delta1m: null, delta5m: null, pct5m: null }
   const nearest = (target: number, tolerance: number) => {
     let best: { timestamp: number; viewers: number } | null = null
     for (const point of withViewers) {

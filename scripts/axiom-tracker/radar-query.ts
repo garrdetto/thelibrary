@@ -1,9 +1,14 @@
-import type { RadarComponentStatus, RadarHistoryPoint, RadarModelState, RadarPaperTrade, RadarPayload, RadarSocials, RadarToken, RadarTokenDetail, RadarWalletEntry, RadarWeights } from '../../src/lib/axiom-radar-types.js'
+import type { RadarComponentStatus, RadarHistoryPoint, RadarModelState, RadarPaperTrade, RadarPayload, RadarSocials, RadarToken, RadarTokenDetail, RadarWallet, RadarWalletEntry, RadarWeights } from '../../src/lib/axiom-radar-types.js'
+import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
+import { marketTicks, tickAt, type MarketTick } from './live-market.js'
+import { assessQuality } from './pulse-cards.js'
+import { radarSettings } from './settings-store.js'
+import { trackerState } from './state.js'
 import type { TrackerDatabase } from './db.js'
 import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
 
-const maxPairAgeMs = 5 * 60 * 60 * 1000
-const activeWindowMs = 5 * 60_000
+const detailWindowMs = 6 * 60 * 60 * 1000
+const activeWindowMs = 90_000
 const historyWindowMs = 16 * 60_000
 
 type TokenRow = {
@@ -87,29 +92,163 @@ export function loadModelState(database: TrackerDatabase): RadarModelState {
 }
 
 function runnerCounts(database: TrackerDatabase, mints: string[]) {
-  if (!mints.length) return new Map<string, number>()
-  const rows = database.prepare(`
+  const counts = new Map<string, number>()
+  if (!mints.length) return counts
+  const minHits = radarSettings().wallets.minRunnerHits
+  const list = JSON.stringify(mints)
+  const buyers = database.prepare(`
     SELECT we.mint, COUNT(*) AS count FROM wallet_entries we
     JOIN smart_wallets sw ON sw.wallet = we.wallet
-    WHERE sw.runner_hits >= 2 AND we.mint IN (SELECT value FROM json_each(?))
+    WHERE sw.runner_hits >= ? AND we.mint IN (SELECT value FROM json_each(?))
     GROUP BY we.mint
-  `).all(JSON.stringify(mints)) as Array<{ mint: string; count: number }>
-  return new Map(rows.map(row => [row.mint, row.count]))
+  `).all(minHits, list) as Array<{ mint: string; count: number }>
+  const holders = database.prepare(`
+    SELECT h.mint, COUNT(*) AS count FROM holders h
+    WHERE h.mint IN (SELECT value FROM json_each(?))
+      AND (SELECT COUNT(*) FROM holders other JOIN good_coins g ON g.mint = other.mint WHERE other.wallet = h.wallet AND other.mint <> h.mint) >= ?
+    GROUP BY h.mint
+  `).all(list, minHits) as Array<{ mint: string; count: number }>
+  for (const row of [...buyers, ...holders]) counts.set(row.mint, (counts.get(row.mint) ?? 0) + row.count)
+  return counts
 }
 
 function toHistory(rows: SnapshotRow[]): RadarHistoryPoint[] {
   return rows.map(row => ({ t: row.timestamp, viewers: row.viewers, marketCap: row.market_cap, priceUsd: row.price_usd }))
 }
 
-function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: SnapshotRow | undefined, runners: number, weights: RadarWeights, now: number): RadarToken {
-  const latest = snapshots.at(-1) ?? fallback
-  const deltas = viewerDeltas(snapshots, now)
-  const safety = { rugScore: token.rug_score, mintAuthority: flag(token.mint_auth), freezeAuthority: flag(token.freeze_auth), top10Pct: token.top10_pct }
-  const buys = latest?.buys_5m ?? null
-  const sells = latest?.sells_5m ?? null
-  const { score, factors } = scoreSetup({ ...safety, viewers: deltas.viewers, viewersDelta5m: deltas.delta5m, runnerWallets: runners, buys5m: buys, sells5m: sells }, weights)
-  const transactions = (buys ?? 0) + (sells ?? 0)
+function percentChange(current: number | null, previous: number | null) {
+  return current !== null && previous !== null && previous > 0 ? Math.round(((current - previous) / previous) * 10_000) / 100 : null
+}
+
+function viewerGainPerMinute(ticks: MarketTick[], viewers: number | null, now: number) {
+  if (viewers === null) return null
+  const minuteAgo = tickAt(ticks, now - 60_000, 8_000, 'viewers')
+  if (minuteAgo !== null) return viewers - minuteAgo
+  const earliest = ticks.find(tick => tick.viewers !== null && now - tick.t <= 60_000)
+  if (!earliest || earliest.viewers === null || now - earliest.t < 20_000) return null
+  return Math.round(((viewers - earliest.viewers) * 60_000) / (now - earliest.t))
+}
+
+function liveFigures(mint: string, now: number) {
+  const ticks = marketTicks.get(mint) ?? []
+  const latest = ticks.at(-1)
+  const price = latest?.price ?? null
+  const viewer = trackerState.viewers.get(mint)
+  const viewers = viewer && now - viewer.at < 60_000 ? viewer.count : null
+  const card = trackerState.pulseCards.get(mint)
+  const pulse = card && now - card.seenAt < 120_000 ? card : null
+  const minuteAgo = tickAt(ticks, now - 60_000, 8_000, 'viewers')
+  const fiveMinutesAgo = tickAt(ticks, now - 300_000, 25_000, 'viewers')
+  const holdersBefore = tickAt(ticks, now - 300_000, 40_000, 'holders')
   return {
+    price,
+    viewers,
+    pulse,
+    market: trackerState.market.get(mint) ?? null,
+    priceChange: {
+      s30: percentChange(price, tickAt(ticks, now - 30_000, 4_000, 'price')),
+      m1: percentChange(price, tickAt(ticks, now - 60_000, 6_000, 'price')),
+      m5: percentChange(price, tickAt(ticks, now - 300_000, 20_000, 'price')),
+      m10: percentChange(price, tickAt(ticks, now - 600_000, 30_000, 'price')),
+    },
+    liquidityChange1m: percentChange(latest?.liquidity ?? null, tickAt(ticks, now - 60_000, 6_000, 'liquidity')),
+    viewersPerMin: viewerGainPerMinute(ticks, viewers, now),
+    viewersDelta1m: viewers !== null && minuteAgo !== null ? viewers - minuteAgo : null,
+    viewersDelta5m: viewers !== null && fiveMinutesAgo !== null ? viewers - fiveMinutesAgo : null,
+    holdersChange5m: pulse?.holders !== null && pulse?.holders !== undefined && holdersBefore !== null ? pulse.holders - holdersBefore : null,
+  }
+}
+
+const sparkPrice = (price: number) => Number(price.toPrecision(6))
+
+/** Price series for chart previews: `fast` is one point a second for the last minute, `slow` one every 5 seconds for 10 minutes. */
+function sparkSeries(ticks: MarketTick[], now: number) {
+  const fast: number[] = []
+  const slow: number[] = []
+  let bucket = -1
+  for (const tick of ticks) {
+    if (tick.price === null) continue
+    if (now - tick.t <= 60_000) fast.push(sparkPrice(tick.price))
+    const current = Math.floor(tick.t / 5_000)
+    if (current === bucket) slow[slow.length - 1] = sparkPrice(tick.price)
+    else { slow.push(sparkPrice(tick.price)); bucket = current }
+  }
+  return { fast: fast.slice(-60), slow: slow.slice(-120) }
+}
+
+type BuiltToken = { token: RadarToken; liquidityChange1m: number | null }
+
+const surgeLevels = { 1: { gain: 8, percent: 15, sigma: 2 }, 2: { gain: 5, percent: 10, sigma: 1.5 }, 3: { gain: 3, percent: 6, sigma: 1 } } as const
+
+function classify(token: RadarToken, settings: RadarSettings, liquidityChange1m: number | null) {
+  const alerts: string[] = []
+  if (liquidityChange1m !== null && liquidityChange1m <= -30) alerts.push(`Liquidity fell ${Math.abs(liquidityChange1m).toFixed(0)}% in 1m`)
+  if (token.priceChange.s30 !== null && token.priceChange.s30 <= -20) alerts.push(`Price dumped ${Math.abs(token.priceChange.s30).toFixed(0)}% in 30s`)
+  if (token.safety.mintAuthority) alerts.push('Mint authority still enabled')
+  if (token.safety.freezeAuthority) alerts.push('Freeze authority still enabled')
+  const redFlags = token.quality.checks.filter(check => check.status === 'fail').map(check => check.label)
+  const buyRules = settings.buy
+  const buyChecks: Array<[boolean, string]> = [
+    [token.score >= buyRules.minScore, `Score ${token.score} (need ${buyRules.minScore})`],
+    [(token.priceChange.m1 ?? -Infinity) >= buyRules.minGain1mPercent, `Up ${token.priceChange.m1?.toFixed(1)}% in 1m`],
+    [(token.priceChange.m5 ?? -Infinity) >= buyRules.minGain5mPercent, `Up ${token.priceChange.m5?.toFixed(1)}% in 5m`],
+    [(token.viewers ?? 0) >= buyRules.minViewers, `${token.viewers ?? 0} watching on Axiom`],
+  ]
+  if (buyRules.requireSafe) buyChecks.push([redFlags.length === 0 && token.safety.level !== 'risky', 'No red flags'])
+  if (!alerts.length && buyChecks.every(([passed]) => passed)) {
+    const reasons = buyChecks.map(([, reason]) => reason)
+    if (token.viewerSurge) reasons.push('Gaining viewers quickly')
+    return { signal: 'buy' as const, reasons, alerts }
+  }
+  const watchReasons: string[] = []
+  if (token.viewerSurge) watchReasons.push(`Gaining viewers quickly (+${token.viewersPerMin}/min)`)
+  if (token.score >= settings.watch.minScore) watchReasons.push(`Score ${token.score}`)
+  if ((token.priceChange.m5 ?? -Infinity) >= settings.watch.minGain5mPercent) watchReasons.push(`Up ${token.priceChange.m5?.toFixed(1)}% in 5m`)
+  if (token.runnerWallets > 0) watchReasons.push(`${token.runnerWallets} smart holder${token.runnerWallets === 1 ? '' : 's'}`)
+  if (!watchReasons.length) return { signal: null, reasons: [] as string[], alerts }
+  if (redFlags.length) watchReasons.push(`Red flags: ${redFlags.join(', ')}`)
+  if (alerts.length) watchReasons.push('Has warnings: check before buying')
+  return { signal: 'watch' as const, reasons: watchReasons, alerts }
+}
+
+function finalize(entries: BuiltToken[], settings: RadarSettings) {
+  const level = surgeLevels[settings.surgeSensitivity]
+  const gains = entries.map(entry => entry.token.viewersPerMin).filter((gain): gain is number => gain !== null)
+  const mean = gains.length ? gains.reduce((total, gain) => total + gain, 0) / gains.length : 0
+  const deviation = gains.length ? Math.sqrt(gains.reduce((total, gain) => total + (gain - mean) ** 2, 0) / gains.length) : 0
+  for (const { token, liquidityChange1m } of entries) {
+    const gain = token.viewersPerMin
+    if (gain !== null && gain >= level.gain) {
+      const before = Math.max(1, (token.viewers ?? 0) - gain)
+      const outlier = gains.length >= 5 && gain >= mean + level.sigma * deviation && gain >= level.gain * 2
+      token.viewerSurge = (gain / before) * 100 >= level.percent || outlier
+    }
+    const verdict = classify(token, settings, liquidityChange1m)
+    token.signal = verdict.signal
+    token.signalReasons = verdict.reasons
+    token.alerts = verdict.alerts
+  }
+  const tokens = entries.map(entry => entry.token)
+  tokens.filter(token => token.viewers !== null).sort((first, second) => (second.viewers ?? 0) - (first.viewers ?? 0)).forEach((token, index) => { token.viewerRank = index + 1 })
+  return tokens
+}
+
+function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: SnapshotRow | undefined, runners: number, weights: RadarWeights, now: number, settings: RadarSettings): BuiltToken {
+  const latest = snapshots.at(-1) ?? fallback
+  const live = liveFigures(token.mint, now)
+  const stored = viewerDeltas(snapshots, now)
+  const viewers = live.viewers ?? stored.viewers
+  const delta1m = live.viewers !== null ? live.viewersDelta1m : stored.delta1m
+  const delta5m = live.viewers !== null ? live.viewersDelta5m ?? stored.delta5m : stored.delta5m
+  const pct5m = delta5m !== null && viewers !== null && viewers - delta5m > 0 ? Math.round((delta5m / (viewers - delta5m)) * 1000) / 10 : stored.pct5m
+  const safety = { rugScore: token.rug_score, mintAuthority: flag(token.mint_auth), freezeAuthority: flag(token.freeze_auth), top10Pct: token.top10_pct }
+  const buys = live.market?.buys5m ?? latest?.buys_5m ?? null
+  const sells = live.market?.sells5m ?? latest?.sells_5m ?? null
+  const marketCap = live.market?.marketCap ?? latest?.market_cap ?? null
+  const quality = assessQuality({ pulse: live.pulse, marketCap, rugTop10Pct: token.top10_pct, mintAuthority: safety.mintAuthority, freezeAuthority: safety.freezeAuthority })
+  const { score, factors } = scoreSetup({ ...safety, viewers, viewersDelta5m: delta5m, viewersPerMin: live.viewersPerMin, quality: quality.score, runnerWallets: runners, buys5m: buys, sells5m: sells }, weights)
+  const transactions = (buys ?? 0) + (sells ?? 0)
+  const built: RadarToken = {
     mint: token.mint,
     pairAddress: token.pair_address,
     symbol: token.symbol,
@@ -119,24 +258,38 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     ageMinutes: Math.max(0, Math.round((now - token.pair_created_at) / 60_000)),
     socials: parseSocials(token.socials_json),
     isBoosted: token.is_boosted === 1,
-    viewers: deltas.viewers,
-    viewersDelta1m: deltas.delta1m,
-    viewersDelta5m: deltas.delta5m,
-    viewersPct5m: deltas.pct5m,
+    viewers,
+    viewersDelta1m: delta1m,
+    viewersDelta5m: delta5m,
+    viewersPct5m: pct5m,
     history: toHistory(snapshots.filter(row => row.timestamp >= now - 15 * 60_000)),
     runnerWallets: runners,
-    priceUsd: latest?.price_usd ?? null,
-    marketCap: latest?.market_cap ?? null,
-    liquidityUsd: latest?.liquidity_usd ?? null,
-    volume5m: latest?.volume_5m ?? null,
+    priceUsd: live.price ?? latest?.price_usd ?? null,
+    marketCap,
+    liquidityUsd: live.market?.liquidityUsd ?? latest?.liquidity_usd ?? null,
+    volume5m: live.market?.volume5m ?? latest?.volume_5m ?? null,
     buys5m: buys,
     sells5m: sells,
     buyRatio: transactions ? (buys ?? 0) / transactions : null,
     safety: { level: safetyLevel(safety), ...safety },
     score,
     factors,
-    lastSnapshotAt: latest?.timestamp ?? null,
+    lastSnapshotAt: live.market?.readAt ?? latest?.timestamp ?? null,
+    priceChange: live.priceChange,
+    spark: sparkSeries(marketTicks.get(token.mint) ?? [], now),
+    viewersPerMin: live.viewersPerMin,
+    viewerSurge: false,
+    holdersChange5m: live.holdersChange5m,
+    pulse: live.pulse,
+    quality,
+    viewerRank: null,
+    signal: null,
+    signalReasons: [],
+    alerts: [],
+    pinned: settings.pinned.includes(token.mint),
+    onPulse: trackerState.pulse.has(token.mint),
   }
+  return { token: built, liquidityChange1m: live.liquidityChange1m }
 }
 
 function latestSnapshots(database: TrackerDatabase, mints: string[]) {
@@ -150,7 +303,7 @@ function latestSnapshots(database: TrackerDatabase, mints: string[]) {
 }
 
 export function buildRadarTokens(database: TrackerDatabase, weights: RadarWeights, now = Date.now()): RadarToken[] {
-  const tokens = database.prepare('SELECT * FROM tokens WHERE pair_created_at >= ? AND last_seen_at >= ?').all(now - maxPairAgeMs, now - activeWindowMs) as TokenRow[]
+  const tokens = database.prepare('SELECT * FROM tokens WHERE last_seen_at >= ?').all(now - activeWindowMs) as TokenRow[]
   if (!tokens.length) return []
   const mints = tokens.map(token => token.mint)
   const snapshotRows = database.prepare(`
@@ -163,12 +316,11 @@ export function buildRadarTokens(database: TrackerDatabase, weights: RadarWeight
     list.push(row)
     byMint.set(row.mint, list)
   }
-  const missing = mints.filter(mint => !byMint.has(mint))
-  const fallbacks = latestSnapshots(database, missing)
+  const fallbacks = latestSnapshots(database, mints.filter(mint => !byMint.has(mint)))
   const runners = runnerCounts(database, mints)
-  return tokens
-    .map(token => buildToken(token, byMint.get(token.mint) ?? [], fallbacks.get(token.mint), runners.get(token.mint) ?? 0, weights, now))
-    .sort((first, second) => second.score - first.score || (second.volume5m ?? 0) - (first.volume5m ?? 0))
+  const settings = radarSettings()
+  const entries = tokens.map(token => buildToken(token, byMint.get(token.mint) ?? [], fallbacks.get(token.mint), runners.get(token.mint) ?? 0, weights, now, settings))
+  return finalize(entries, settings).sort((first, second) => Number(second.pinned) - Number(first.pinned) || (second.viewers ?? -1) - (first.viewers ?? -1) || second.score - first.score)
 }
 
 const returnOf = (price: number | null, entry: number) => price === null || entry <= 0 ? null : price / entry - 1
@@ -213,6 +365,28 @@ function componentStatuses(database: TrackerDatabase) {
   return database.prepare('SELECT component, status, detail, updated_at AS updatedAt FROM worker_heartbeat ORDER BY component').all() as RadarComponentStatus[]
 }
 
+function smartWallets(database: TrackerDatabase, minRunnerHits: number): RadarWallet[] {
+  const holders = database.prepare(`
+    SELECT h.wallet, COUNT(*) AS runnerHits, MAX(h.updated_at) AS updatedAt FROM holders h
+    JOIN good_coins g ON g.mint = h.mint GROUP BY h.wallet HAVING COUNT(*) >= ?
+    ORDER BY runnerHits DESC, updatedAt DESC LIMIT 40
+  `).all(minRunnerHits) as Array<{ wallet: string; runnerHits: number; updatedAt: number }>
+  const holdings = database.prepare(`
+    SELECT h.mint, COALESCE(t.symbol, g.symbol, '???') AS symbol, h.pct, g.mint IS NOT NULL AS good, h.updated_at AS timestamp FROM holders h
+    LEFT JOIN tokens t ON t.mint = h.mint LEFT JOIN good_coins g ON g.mint = h.mint
+    WHERE h.wallet = ? ORDER BY good DESC, h.updated_at DESC LIMIT 8
+  `)
+  const buyers = database.prepare('SELECT wallet, runner_hits AS runnerHits, updated_at AS updatedAt FROM smart_wallets WHERE runner_hits >= ? ORDER BY runner_hits DESC, updated_at DESC LIMIT 20').all(minRunnerHits) as Array<{ wallet: string; runnerHits: number; updatedAt: number }>
+  const entries = database.prepare(`
+    SELECT we.mint, COALESCE(t.symbol, '???') AS symbol, we.timestamp FROM wallet_entries we
+    LEFT JOIN tokens t ON t.mint = we.mint WHERE we.wallet = ? ORDER BY we.timestamp DESC LIMIT 8
+  `)
+  return [
+    ...holders.map(wallet => ({ ...wallet, source: 'holder' as const, entries: (holdings.all(wallet.wallet) as Array<{ mint: string; symbol: string; pct: number | null; good: number; timestamp: number }>).map(entry => ({ ...entry, good: entry.good === 1 })) })),
+    ...buyers.map(wallet => ({ ...wallet, source: 'early-buyer' as const, entries: (entries.all(wallet.wallet) as Array<{ mint: string; symbol: string; timestamp: number }>).map(entry => ({ ...entry, pct: null, good: false })) })),
+  ]
+}
+
 export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): RadarPayload {
   const model = loadModelState(database)
   const tokens = buildRadarTokens(database, model.weights, now)
@@ -222,8 +396,8 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
   const surge = tokens.filter(token => token.viewersDelta5m !== null).sort((first, second) => (second.viewersDelta5m ?? 0) - (first.viewersDelta5m ?? 0))[0]
   const runnerSignals = (database.prepare(`
     SELECT COUNT(*) AS count FROM wallet_entries we JOIN smart_wallets sw ON sw.wallet = we.wallet
-    WHERE sw.runner_hits >= 2 AND we.timestamp >= ?
-  `).get(now - 60 * 60_000) as { count: number }).count
+    WHERE sw.runner_hits >= ? AND we.timestamp >= ?
+  `).get(radarSettings().wallets.minRunnerHits, now - 60 * 60_000) as { count: number }).count
   const paper = paperTrades(database)
   return {
     status,
@@ -241,6 +415,9 @@ export function buildRadarPayload(database: TrackerDatabase, now = Date.now()): 
     },
     model,
     paper,
+    settings: radarSettings(),
+    wallets: smartWallets(database, radarSettings().wallets.minRunnerHits),
+    walletTracking: process.env.HELIUS_API_KEY?.trim() ? 'on' : 'no-key',
   }
 }
 
@@ -254,17 +431,26 @@ export function buildTokenDetail(database: TrackerDatabase, mint: string, now = 
   const token = database.prepare('SELECT * FROM tokens WHERE mint = ?').get(mint) as TokenRow | undefined
   if (!token) return null
   const model = loadModelState(database)
-  const all = database.prepare('SELECT mint, viewers, price_usd, market_cap, liquidity_usd, volume_5m, buys_5m, sells_5m, timestamp FROM snapshots WHERE mint = ? AND timestamp >= ? ORDER BY timestamp ASC').all(mint, now - maxPairAgeMs - 60 * 60_000) as SnapshotRow[]
+  const settings = radarSettings()
+  const all = database.prepare('SELECT mint, viewers, price_usd, market_cap, liquidity_usd, volume_5m, buys_5m, sells_5m, timestamp FROM snapshots WHERE mint = ? AND timestamp >= ? ORDER BY timestamp ASC').all(mint, now - detailWindowMs) as SnapshotRow[]
   const recent = all.filter(row => row.timestamp >= now - historyWindowMs)
   const runners = runnerCounts(database, [mint]).get(mint) ?? 0
-  const entries = database.prepare(`
+  const buyers = database.prepare(`
     SELECT we.wallet, sw.runner_hits AS runnerHits, we.entry_mcap AS entryMcap, we.timestamp FROM wallet_entries we
     JOIN smart_wallets sw ON sw.wallet = we.wallet WHERE we.mint = ? ORDER BY we.timestamp ASC
   `).all(mint) as RadarWalletEntry[]
+  const holders = database.prepare(`
+    SELECT * FROM (
+      SELECT h.wallet, (SELECT COUNT(*) FROM holders other JOIN good_coins g ON g.mint = other.mint WHERE other.wallet = h.wallet AND other.mint <> h.mint) AS runnerHits,
+        NULL AS entryMcap, h.pct, h.updated_at AS timestamp FROM holders h WHERE h.mint = ?
+    ) WHERE runnerHits >= ? ORDER BY runnerHits DESC LIMIT 20
+  `).all(mint, settings.wallets.minRunnerHits) as RadarWalletEntry[]
+  const [built] = finalize([buildToken(token, recent, all.at(-1), runners, model.weights, now, settings)], settings)
   return {
-    token: buildToken(token, recent, all.at(-1), runners, model.weights, now),
+    token: built,
     history: toHistory(downsample(all, 360)),
-    entries,
+    live: (marketTicks.get(mint) ?? []).map(tick => ({ t: tick.t, price: tick.price, viewers: tick.viewers })),
+    entries: [...holders, ...buyers],
   }
 }
 

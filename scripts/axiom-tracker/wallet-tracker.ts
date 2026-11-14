@@ -2,6 +2,7 @@ import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db
 import { bestPairByMint, fetchPairsForMints, socialsOf } from './dexscreener.js'
 import { chunk, createLogger, errorMessage, fetchJson, isMainModule, runLoop, solanaAddressPattern, trackerConfig } from './runtime.js'
 import { latestMarket, trackerState } from './state.js'
+import { radarSettings } from './settings-store.js'
 
 const logger = createLogger('wallet-tracker')
 const heliusApi = process.env.HELIUS_API_BASE ?? 'https://api.helius.xyz'
@@ -133,7 +134,7 @@ async function ensureYoungTokens(database: TrackerDatabase, mints: string[]) {
     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?) ON CONFLICT (mint) DO NOTHING
   `)
   for (const [mint, pair] of best) {
-    if (!pair.pairCreatedAt || now - pair.pairCreatedAt > trackerConfig.maxPairAgeMs) continue
+    if (!pair.pairCreatedAt) continue
     insert.run(mint, pair.pairAddress, (pair.baseToken.symbol ?? '???').slice(0, 24), (pair.baseToken.name ?? 'Unknown').slice(0, 80), pair.info?.imageUrl ?? null, pair.pairCreatedAt, JSON.stringify(socialsOf(pair)), now)
     known.set(mint, pair.pairCreatedAt)
     if (!trackerState.market.has(mint)) trackerState.watchlist.set(mint, now)
@@ -145,7 +146,7 @@ let walletCursor = 0
 const lastSwapSeen = new Map<string, number>()
 
 async function monitorSmartWallets(database: TrackerDatabase, key: string) {
-  const wallets = (database.prepare('SELECT wallet FROM smart_wallets WHERE runner_hits >= 2 ORDER BY runner_hits DESC, updated_at DESC LIMIT 200').all() as Array<{ wallet: string }>).map(row => row.wallet)
+  const wallets = (database.prepare('SELECT wallet FROM smart_wallets WHERE runner_hits >= ? ORDER BY runner_hits DESC, updated_at DESC LIMIT 200').all(radarSettings().wallets.minRunnerHits) as Array<{ wallet: string }>).map(row => row.wallet)
   if (!wallets.length) return { checked: 0, entries: 0 }
   const batch = Array.from({ length: Math.min(walletsPerSwapCycle, wallets.length) }, (_, index) => wallets[(walletCursor + index) % wallets.length])
   walletCursor = (walletCursor + batch.length) % wallets.length
@@ -174,7 +175,7 @@ async function monitorSmartWallets(database: TrackerDatabase, key: string) {
   let entries = 0
   for (const buy of buys) {
     const createdAt = ages.get(buy.mint)
-    if (!createdAt || buy.timestamp - createdAt > trackerConfig.maxPairAgeMs || buy.timestamp < createdAt - 60_000) continue
+    if (!createdAt || buy.timestamp < createdAt - 60_000) continue
     const result = insert.run(buy.mint, buy.wallet, latestMarket(database, buy.mint)?.marketCap ?? null, buy.timestamp)
     if (result.changes) {
       entries += 1
@@ -194,7 +195,7 @@ export function startWalletTracker(database: TrackerDatabase, signal: AbortSigna
   logger.info('Starting runner wallet tracker', { runnerMarketCap: trackerConfig.runnerMarketCap, runnerMultiple: trackerConfig.runnerMultiple })
   const scans = runLoop('runner-scan', trackerConfig.runnerScanIntervalMs, async () => {
     const scanned = await scanRunners(database, key)
-    const wallets = (database.prepare('SELECT COUNT(*) AS count FROM smart_wallets WHERE runner_hits >= 2').get() as { count: number }).count
+    const wallets = (database.prepare('SELECT COUNT(*) AS count FROM smart_wallets WHERE runner_hits >= ?').get(radarSettings().wallets.minRunnerHits) as { count: number }).count
     recordHeartbeat(database, 'wallet-tracker', 'ok', `${wallets} runner wallets${scanned ? `, scanned ${scanned}` : ''}`)
   }, logger, signal)
   const swaps = runLoop('smart-wallet-swaps', trackerConfig.walletSwapIntervalMs, async () => {

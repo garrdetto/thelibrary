@@ -3,22 +3,27 @@ import { bestPairByMint, fetchDiscoverySources, fetchPairsForMints, readMarket, 
 import { assessToken } from './rugcheck.js'
 import { createLogger, errorMessage, isMainModule, runLoop, trackerConfig } from './runtime.js'
 import { trackerState, type ActiveCandidate } from './state.js'
+import { radarSettings } from './settings-store.js'
+import { safetyLevel } from './model.js'
+import type { RadarSettings } from '../../src/lib/axiom-radar-settings.js'
 
 const logger = createLogger('discovery')
-const watchlistLimit = 300
-const enrichmentsPerCycle = 4
+const watchlistLimit = 400
+const watchlistTtlMs = 6 * 60 * 60_000
+const pulseWindowMs = 3 * 60_000
+const enrichmentsPerCycle = 5
 const enrichmentRefreshMs = 30 * 60_000
 const enrichedAt = new Map<string, number>()
 
-export function passesLaunchFilter(pair: DexPair, now = Date.now()) {
+export function passesMarketRequirements(pair: DexPair, settings: RadarSettings) {
   const buys = pair.txns?.m5?.buys ?? 0
   const sells = pair.txns?.m5?.sells ?? 0
   const transactions = buys + sells
-  return Boolean(pair.pairCreatedAt && pair.pairCreatedAt >= now - trackerConfig.maxPairAgeMs)
-    && (pair.volume?.m5 ?? 0) >= trackerConfig.minVolume5m
-    && transactions >= trackerConfig.minTxns5m
-    && (pair.liquidity?.usd ?? 0) >= trackerConfig.minLiquidityUsd
-    && buys / transactions > trackerConfig.minBuyRatio
+  if (settings.minVolume5m.enabled && (pair.volume?.m5 ?? 0) < settings.minVolume5m.value) return false
+  if (settings.minTxns5m.enabled && transactions < settings.minTxns5m.value) return false
+  if (settings.minLiquidity.enabled && (pair.liquidity?.usd ?? 0) < settings.minLiquidity.value) return false
+  if (settings.minBuyPercent.enabled && (!transactions || (buys / transactions) * 100 <= settings.minBuyPercent.value)) return false
+  return true
 }
 
 export function momentumOf(pair: DexPair, now = Date.now()) {
@@ -67,6 +72,13 @@ async function enrichCandidates(database: TrackerDatabase, candidates: ActiveCan
       const assessment = await assessToken(candidate.mint)
       const flag = (value: boolean | null) => value === null ? null : value ? 1 : 0
       update.run(assessment.rugScore, flag(assessment.mintAuthority), flag(assessment.freezeAuthority), assessment.top10Pct, candidate.mint)
+      if (assessment.holders.length) {
+        database.transaction(() => {
+          database.prepare('DELETE FROM holders WHERE mint = ?').run(candidate.mint)
+          const insert = database.prepare('INSERT OR REPLACE INTO holders (mint, wallet, pct, updated_at) VALUES (?, ?, ?, ?)')
+          for (const holder of assessment.holders) insert.run(candidate.mint, holder.wallet, holder.pct, now)
+        })()
+      }
     } catch (error) {
       enrichedAt.set(candidate.mint, now - enrichmentRefreshMs + 2 * 60_000)
       logger.warn('RugCheck enrichment failed', { mint: candidate.mint, error: errorMessage(error) })
@@ -80,17 +92,44 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   const sources = await fetchDiscoverySources()
   for (const mint of sources.mints) if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
   for (const candidate of trackerState.active) trackerState.watchlist.set(candidate.mint, trackerState.watchlist.get(candidate.mint) ?? now)
-  for (const [mint, firstSeen] of trackerState.watchlist) if (now - firstSeen > trackerConfig.maxPairAgeMs) trackerState.watchlist.delete(mint)
-  const watched = [...trackerState.watchlist.entries()].sort((first, second) => second[1] - first[1]).slice(0, watchlistLimit).map(([mint]) => mint)
+  for (const [mint, seenAt] of trackerState.pulse) {
+    if (now - seenAt > pulseWindowMs) trackerState.pulse.delete(mint)
+    else if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
+  }
+  const settings = radarSettings()
+  const pinned = new Set(settings.pinned)
+  for (const mint of pinned) if (!trackerState.watchlist.has(mint)) trackerState.watchlist.set(mint, now)
+  for (const [mint, firstSeen] of trackerState.watchlist) if (now - firstSeen > watchlistTtlMs && !pinned.has(mint) && !trackerState.pulse.has(mint)) trackerState.watchlist.delete(mint)
+  const watched = [...new Set([...pinned, ...trackerState.pulse.keys(), ...[...trackerState.watchlist.entries()].sort((first, second) => second[1] - first[1]).map(([mint]) => mint)])].slice(0, watchlistLimit)
 
   const best = bestPairByMint(await fetchPairsForMints(watched))
-  const young: DexPair[] = []
+  const maxAgeMs = settings.maxAgeHours.enabled ? settings.maxAgeHours.value * 3_600_000 : Number.POSITIVE_INFINITY
+  const safety = database.prepare('SELECT mint, rug_score, mint_auth, freeze_auth, top10_pct FROM tokens WHERE mint IN (SELECT value FROM json_each(?))').all(JSON.stringify([...best.keys()])) as Array<{ mint: string; rug_score: number | null; mint_auth: number | null; freeze_auth: number | null; top10_pct: number | null }>
+  const safetyByMint = new Map(safety.map(row => [row.mint, row]))
+  const eligible: DexPair[] = []
   for (const [mint, pair] of best) {
-    if (!pair.pairCreatedAt || pair.pairCreatedAt < now - trackerConfig.maxPairAgeMs) trackerState.watchlist.delete(mint)
-    else young.push(pair)
+    if (pinned.has(mint)) { eligible.push(pair); continue }
+    if (pair.pairCreatedAt && now - pair.pairCreatedAt > maxAgeMs) continue
+    const onPulse = trackerState.pulse.has(mint)
+    if (!(onPulse && settings.pulseBypassesMarket) && !passesMarketRequirements(pair, settings)) continue
+    const viewers = trackerState.viewers.get(mint)
+    if (settings.minViewers.enabled && (!viewers || now - viewers.at > 60_000 || viewers.count < settings.minViewers.value)) continue
+    if (settings.safeOnly) {
+      const row = safetyByMint.get(mint)
+      const level = row ? safetyLevel({ rugScore: row.rug_score, mintAuthority: row.mint_auth === null ? null : row.mint_auth === 1, freezeAuthority: row.freeze_auth === null ? null : row.freeze_auth === 1, top10Pct: row.top10_pct }) : 'unknown'
+      if (level !== 'safe' && level !== 'unknown') continue
+    }
+    eligible.push(pair)
   }
-  const qualified = young.filter(pair => passesLaunchFilter(pair, now))
-  const ranked = qualified.map(pair => ({ pair, momentum: momentumOf(pair, now) })).sort((first, second) => second.momentum - first.momentum).slice(0, trackerConfig.maxCandidates)
+  const viewerCount = (mint: string) => {
+    const viewer = trackerState.viewers.get(mint)
+    return viewer && now - viewer.at < 60_000 ? viewer.count : -1
+  }
+  const ranked = eligible
+    .map(pair => ({ pair, momentum: momentumOf(pair, now) }))
+    .sort((first, second) => Number(pinned.has(second.pair.baseToken.address)) - Number(pinned.has(first.pair.baseToken.address)) || viewerCount(second.pair.baseToken.address) - viewerCount(first.pair.baseToken.address) || second.momentum - first.momentum)
+    .slice(0, settings.maxCoins)
+  const fromPulse = ranked.filter(entry => trackerState.pulse.has(entry.pair.baseToken.address))
 
   upsertTokens(database, ranked.map(entry => entry.pair), sources.boosted, now)
   trackerState.active = ranked.map(({ pair, momentum }) => ({ mint: pair.baseToken.address, pairAddress: pair.pairAddress, symbol: pair.baseToken.symbol ?? '???', momentum }))
@@ -98,8 +137,8 @@ export async function runDiscoveryCycle(database: TrackerDatabase) {
   for (const mint of trackerState.market.keys()) if (!ranked.some(entry => entry.pair.baseToken.address === mint)) trackerState.market.delete(mint)
 
   const enriched = await enrichCandidates(database, trackerState.active)
-  recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} active of ${young.length} young pairs`)
-  logger.info('Discovery cycle complete', { sourced: sources.mints.length, watched: watched.length, young: young.length, qualified: qualified.length, active: trackerState.active.length, enriched, sourceFailures: sources.failures })
+  recordHeartbeat(database, 'discovery', 'ok', `${trackerState.active.length} tracked of ${best.size} coins checked`)
+  logger.info('Discovery cycle complete', { sourced: sources.mints.length, watched: watched.length, checked: best.size, eligible: eligible.length, fromPulse: fromPulse.length, onPulse: trackerState.pulse.size, active: trackerState.active.length, enriched, sourceFailures: sources.failures })
 }
 
 export function startDiscovery(database: TrackerDatabase, signal: AbortSignal) {

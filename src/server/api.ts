@@ -84,6 +84,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/admin/axiom/data': axiomRadar,
   '/api/admin/axiom/stream': axiomRadar,
   '/api/admin/axiom/ingest': axiomRadar,
+  '/api/admin/axiom/settings': axiomRadar,
 }
 
 export async function handleApi(request: Request, env: Env) {

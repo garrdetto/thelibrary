@@ -1,4 +1,5 @@
 import type { TrackerDatabase } from './db.js'
+import type { RadarPulseMetrics } from '../../src/lib/axiom-radar-types.js'
 import type { MarketReading } from './dexscreener.js'
 import { trackerConfig } from './runtime.js'
 
@@ -9,6 +10,8 @@ export const trackerState = {
   market: new Map<string, MarketReading>(),
   viewers: new Map<string, { count: number; at: number; source: 'websocket' | 'page' | 'extension' }>(),
   watchlist: new Map<string, number>(),
+  pulse: new Map<string, number>(),
+  pulseCards: new Map<string, RadarPulseMetrics>(),
 }
 
 export function activeCandidates(database: TrackerDatabase): ActiveCandidate[] {
@@ -18,10 +21,10 @@ export function activeCandidates(database: TrackerDatabase): ActiveCandidate[] {
     SELECT t.mint, t.pair_address AS pairAddress, t.symbol,
       COALESCE((SELECT s.volume_5m FROM snapshots s WHERE s.mint = t.mint ORDER BY s.timestamp DESC LIMIT 1), 0) AS momentum
     FROM tokens t
-    WHERE t.pair_created_at >= ? AND t.last_seen_at >= ?
+    WHERE t.last_seen_at >= ?
     ORDER BY momentum DESC
     LIMIT ?
-  `).all(now - trackerConfig.maxPairAgeMs, now - 5 * 60_000, trackerConfig.maxCandidates) as ActiveCandidate[]
+  `).all(now - 5 * 60_000, trackerConfig.maxCandidates) as ActiveCandidate[]
   return rows
 }
 

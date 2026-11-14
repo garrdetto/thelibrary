@@ -5,18 +5,23 @@ if (existsSync('.env')) {
   try { process.loadEnvFile('.env') } catch { }
 }
 
+function envNumber(name: string, fallback: number) {
+  const value = Number(process.env[name])
+  return Number.isFinite(value) && value >= 0 && process.env[name]?.trim() ? value : fallback
+}
+
 export const trackerConfig = {
   maxPairAgeMs: 5 * 60 * 60 * 1000,
   discoveryIntervalMs: 20_000,
   snapshotIntervalMs: 10_000,
-  scoringIntervalMs: 10_000,
+  scoringIntervalMs: 5_000,
   runnerScanIntervalMs: 60_000,
   walletSwapIntervalMs: 30_000,
-  maxCandidates: 30,
-  minVolume5m: 15_000,
-  minTxns5m: 150,
-  minLiquidityUsd: 8_000,
-  minBuyRatio: 0.45,
+  maxCandidates: envNumber('AXIOM_MAX_CANDIDATES', 30),
+  minVolume5m: envNumber('AXIOM_MIN_VOLUME_5M', 3_000),
+  minTxns5m: envNumber('AXIOM_MIN_TXNS_5M', 40),
+  minLiquidityUsd: envNumber('AXIOM_MIN_LIQUIDITY', 3_000),
+  minBuyRatio: envNumber('AXIOM_MIN_BUY_RATIO', 0.4),
   runnerMarketCap: 500_000,
   runnerMultiple: 3,
   axiomPages: Math.max(1, Math.min(12, Number(process.env.AXIOM_PAGES) || 6)),
