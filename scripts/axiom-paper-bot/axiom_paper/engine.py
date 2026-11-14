@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import threading
 import time
 import tomllib
@@ -54,13 +55,15 @@ class _Call:
 
 
 class Engine:
-    def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, clock: Callable[[], float] = time.time, background: bool = False):
+    def __init__(self, ledger: Ledger, site: Any, settings_path: Path | None, *, price_source: PriceSource = fetch_prices, clock: Callable[[], float] = time.time, background: bool = False, observer: bool = False):
         self.ledger = ledger
         self.site = site
         self.settings_path = settings_path
+        self.inbox_path = settings_path.with_suffix(".inbox.json") if settings_path else None
         self.price_source = price_source
         self.clock = clock
         self.background = background
+        self.observer = observer
         self._call: _Call | None = None
         self.values = dials.defaults()
         self.settings_stamp = int(ledger.get("settings_stamp", 0))
@@ -102,6 +105,12 @@ class Engine:
     def _load_settings(self) -> None:
         path = self.settings_path
         if path is None:
+            return
+        if self.observer:
+            try:
+                self.values = dials.load_file(path)
+            except (OSError, tomllib.TOMLDecodeError):
+                pass
             return
         if not path.exists():
             dials.save_file(path, self.values)
@@ -169,6 +178,31 @@ class Engine:
             self.settings_stamp = self.site_time()
             self.push_settings = True
             self.ledger.set("settings_stamp", self.settings_stamp)
+
+    def check_inbox(self) -> None:
+        """Orders left for the running bot by the command line (flatten, reset), read once and removed."""
+        path = self.inbox_path
+        if path is None or not path.exists():
+            return
+        try:
+            orders = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            orders = None
+        try:
+            path.unlink()
+        except OSError:
+            return
+        if not isinstance(orders, dict):
+            return
+        now = self.now()
+
+        def fresh(stamp: Any) -> bool:
+            return isinstance(stamp, (int, float)) and not isinstance(stamp, bool) and 0 <= now - stamp <= COMMAND_WINDOW_MS
+
+        if fresh(orders.get("flatten")):
+            self.flatten("Closed from the command line")
+        if fresh(orders.get("reset")):
+            self.reset_account(number(orders.get("cash")))
 
     def feed_age(self) -> float | None:
         if self.feed_age_base is None:
@@ -479,8 +513,8 @@ class Engine:
             self._sell(position, 1.0, reason, now)
         return len(positions)
 
-    def reset_account(self) -> None:
-        self.ledger.reset(self.values["account.starting_cash"], self.now())
+    def reset_account(self, cash: float | None = None) -> None:
+        self.ledger.reset(self.values["account.starting_cash"] if cash is None else dials.clean("account.starting_cash", cash), self.now())
         self.positions = []
         self.streaks = {}
         self._report_soon()
@@ -571,6 +605,7 @@ class Engine:
         """One pass of the loop. Safe to call as often as once or twice a second."""
         moment = self.clock()
         self.check_settings_file()
+        self.check_inbox()
         if self.background:
             fresh = self._sync_in_background()
         elif moment >= self.next_sync:
