@@ -67,25 +67,26 @@ export function ImageEditorStage({ canvas, selection, onSelect, onApply, busy, b
     event.preventDefault()
   }
 
-  function move(event: PointerEvent<HTMLDivElement>) {
-    const current = drag.current
-    if (!current) return
-    const at = point(event)
+  function dragged(current: Drag, at: { x: number; y: number }): Rect {
     if (current.kind === 'move') {
       const { origin } = current
-      onSelect({ ...origin, x: Math.round(clamp(origin.x + at.x - current.x, 0, width - origin.w)), y: Math.round(clamp(origin.y + at.y - current.y, 0, height - origin.h)) })
-    } else if (current.kind === 'resize') {
-      onSelect(clampRect({ x: current.anchorX, y: current.anchorY, w: at.x - current.anchorX, h: at.y - current.anchorY }, width, height))
-    } else {
-      onSelect(clampRect({ x: current.x, y: current.y, w: at.x - current.x, h: at.y - current.y }, width, height))
+      return { ...origin, x: Math.round(clamp(origin.x + at.x - current.x, 0, width - origin.w)), y: Math.round(clamp(origin.y + at.y - current.y, 0, height - origin.h)) }
     }
+    if (current.kind === 'resize') return clampRect({ x: current.anchorX, y: current.anchorY, w: at.x - current.anchorX, h: at.y - current.anchorY }, width, height)
+    return clampRect({ x: current.x, y: current.y, w: at.x - current.x, h: at.y - current.y }, width, height)
+  }
+
+  function move(event: PointerEvent<HTMLDivElement>) {
+    if (drag.current) onSelect(dragged(drag.current, point(event)))
   }
 
   function up(event: PointerEvent<HTMLDivElement>) {
-    if (!drag.current) return
+    const current = drag.current
+    if (!current) return
     drag.current = null
     if (frame.current?.hasPointerCapture(event.pointerId)) frame.current.releasePointerCapture(event.pointerId)
-    if (selection && (selection.w < MIN_SIZE || selection.h < MIN_SIZE)) onSelect(null)
+    const rect = event.type === 'pointercancel' ? selection : dragged(current, point(event))
+    onSelect(rect && rect.w >= MIN_SIZE && rect.h >= MIN_SIZE ? rect : null)
   }
 
   function key(event: KeyboardEvent<HTMLDivElement>) {
