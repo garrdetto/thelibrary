@@ -1,8 +1,9 @@
-"""Command line: run the bot, show its account, reset it, or print the dials."""
+"""Command line: run the bot, show its account, change its dials, send it orders, and open the prompt console."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -23,7 +24,8 @@ DEFAULT_DB = REPO / "data" / "axiom-paper.db"
 
 def parse(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="axiom-paper-bot", description="Trades the Axiom Radar feed with pretend money. Nothing here places a real order.")
-    parser.add_argument("command", nargs="?", default="run", choices=["run", "status", "reset", "settings"], help="run (default), status, reset or settings")
+    parser.add_argument("command", nargs="?", default="run", choices=["run", "status", "settings", "set", "pause", "resume", "flatten", "reset", "logs", "console"], help="run (default), status, settings, set <dial> <value>, pause, resume, flatten, reset, logs [lines] or console")
+    parser.add_argument("rest", nargs="*", help="with set: pairs of dial and value; with logs: how many lines")
     parser.add_argument("--env", type=Path, help="a .env file holding AXIOM_RADAR_TOKEN and AXIOM_SITE_ORIGIN (default: .env here or in the repo)")
     parser.add_argument("--origin", help="the site to pull from (overrides AXIOM_SITE_ORIGIN)")
     parser.add_argument("--settings", type=Path, default=DEFAULT_SETTINGS, help=f"the settings file (default {DEFAULT_SETTINGS})")
@@ -33,6 +35,8 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--once", action="store_true", help="pull once, act on it, print the account and stop")
     parser.add_argument("--cash", type=float, help="with reset: the new starting cash")
     parser.add_argument("--yes", action="store_true", help="with reset: do not ask first")
+    parser.add_argument("--port", type=int, default=8793, help="with console: the local port (default 8793)")
+    parser.add_argument("--no-open", action="store_true", help="with console: do not open the browser")
     parser.add_argument("--version", action="version", version=VERSION)
     return parser.parse_args(argv)
 
@@ -139,30 +143,119 @@ def status(args: argparse.Namespace) -> int:
         return 0
     ledger = Ledger(args.db)
     try:
-        print_account(Engine(ledger, None, args.settings if args.settings.exists() else None))
+        print_account(Engine(ledger, None, args.settings if args.settings.exists() else None, observer=True))
     finally:
         ledger.close()
     return 0
 
 
+def send_to_running_bot(settings: Path, order: dict[str, Any]) -> None:
+    """Leave an order where the running bot looks on every pass. It reads the file once and removes it."""
+    path = settings.with_suffix(".inbox.json")
+    try:
+        orders = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        orders = {}
+    if not isinstance(orders, dict):
+        orders = {}
+    orders.update(order)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(orders), encoding="utf-8")
+    os.replace(temporary, path)
+
+
 def reset(args: argparse.Namespace) -> int:
-    lock = hold_lock(args.db)
-    if lock is None:
-        print("The bot is running. Stop it first, or use Reset account on the Radar page.", file=sys.stderr)
-        return 2
+    values = dials.load_file(args.settings) if args.settings.exists() else dials.defaults()
+    cash = dials.clean("account.starting_cash", args.cash) if args.cash is not None else values["account.starting_cash"]
     if not args.yes and input("This wipes every pretend trade and starts the account again. Type RESET to go ahead: ").strip() != "RESET":
         print("Nothing was changed.")
         return 0
+    now = int(time.time() * 1000)
+    lock = hold_lock(args.db)
+    if lock is None:
+        send_to_running_bot(args.settings, {"reset": now, "cash": cash})
+        print(f"Sent. The running bot starts the account again with {money(cash)} within a second or two.")
+        return 0
     ledger = Ledger(args.db)
     try:
-        values = dials.load_file(args.settings) if args.settings.exists() else dials.defaults()
-        cash = dials.clean("account.starting_cash", args.cash) if args.cash is not None else values["account.starting_cash"]
-        ledger.reset(cash, int(time.time() * 1000))
+        ledger.reset(cash, now)
         print(f"The account starts again with {money(cash)}.")
     finally:
         ledger.close()
         lock.close()
     return 0
+
+
+def flatten(args: argparse.Namespace) -> int:
+    lock = hold_lock(args.db)
+    if lock is None:
+        send_to_running_bot(args.settings, {"flatten": int(time.time() * 1000)})
+        print("Sent. The running bot sells every coin it holds within a second or two.")
+        return 0
+    try:
+        if not args.db.exists():
+            print("There is no account yet. Start the bot first.")
+            return 0
+        ledger = Ledger(args.db)
+        try:
+            closed = Engine(ledger, None, args.settings if args.settings.exists() else None, observer=True).flatten("Closed from the command line")
+            print(f"Sold {closed} position{'' if closed == 1 else 's'} at the last known prices." if closed else "The bot holds no coins.")
+        finally:
+            ledger.close()
+    finally:
+        lock.close()
+    return 0
+
+
+def set_dials(args: argparse.Namespace, pairs: list[tuple[str, str]] | None = None) -> int:
+    if pairs is None:
+        if not args.rest or len(args.rest) % 2:
+            print("Give pairs of dial and value, for example: set risk.strength 7 exit.stop_loss_pct 30", file=sys.stderr)
+            return 2
+        pairs = list(zip(args.rest[0::2], args.rest[1::2]))
+    values = dials.load_file(args.settings) if args.settings.exists() else dials.defaults()
+    before = dict(values)
+    for key, text in pairs:
+        try:
+            values[key] = dials.parse_value(key, text)
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+    changes = dials.describe_changes(before, values)
+    if not changes:
+        print("Nothing changed: the dials already have those values.")
+        return 0
+    dials.save_file(args.settings, values)
+    for change in changes:
+        print(change)
+    print("Saved. A running bot picks this up within a few seconds.")
+    return 0
+
+
+def logs(args: argparse.Namespace) -> int:
+    count = int(args.rest[0]) if args.rest and args.rest[0].isdigit() else 30
+    folder = Path.home() / ".pm2" / "logs"
+    shown = False
+    for name, title in (("axiom-paper-bot-out.log", ""), ("axiom-paper-bot-error.log", "Errors")):
+        path = folder / name
+        if not path.exists() or not path.stat().st_size:
+            continue
+        with path.open("rb") as handle:
+            handle.seek(max(0, path.stat().st_size - 200_000))
+            lines = handle.read().decode("utf-8", "replace").splitlines()[-count:]
+        if title:
+            print(f"--- {title}")
+        print("\n".join(lines))
+        shown = True
+    if not shown:
+        print("There is no PM2 log for the bot yet. It appears once the bot runs under PM2 as axiom-paper-bot.")
+    return 0
+
+
+def console(args: argparse.Namespace) -> int:
+    from .console import serve
+    return serve(args.settings, args.db, args.port, not args.no_open)
 
 
 def show_settings(args: argparse.Namespace) -> int:
@@ -185,4 +278,9 @@ def use_utf8_output() -> None:
 def main(argv: list[str] | None = None) -> int:
     use_utf8_output()
     args = parse(argv)
-    return {"run": run, "status": status, "reset": reset, "settings": show_settings}[args.command](args)
+    commands = {
+        "run": run, "status": status, "settings": show_settings, "set": set_dials, "reset": reset, "flatten": flatten, "logs": logs, "console": console,
+        "pause": lambda a: set_dials(a, [("bot.enabled", "off")]),
+        "resume": lambda a: set_dials(a, [("bot.enabled", "on")]),
+    }
+    return commands[args.command](args)

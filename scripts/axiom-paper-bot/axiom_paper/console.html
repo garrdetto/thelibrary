@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="generator" content="axiom-bot-console">
+<title>Axiom bot console</title>
+<style>
+  :root { color-scheme: dark; --bg: #0a1628; --panel: #11213d; --soft: #0d1a31; --text: #e8f1ff; --muted: #8ea6c9; --border: #22395f; --accent: #6cc4ff; --up: #3ddc97; --down: #ff6b7a; --warn: #f5b84a; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; display: flex; flex-direction: column; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 18px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.2px; }
+  h1 small { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+  .chip.up { color: var(--text); } .chip.up::before { background: var(--up); }
+  .chip.warn { color: var(--text); } .chip.warn::before { background: var(--warn); }
+  .chip.down { color: var(--text); } .chip.down::before { background: var(--down); }
+  .account { width: 100%; margin: 0; font: 12px/1.5 var(--mono); color: var(--muted); white-space: pre-wrap; }
+  .banner { margin: 12px 18px 0; padding: 12px 14px; border: 1px solid color-mix(in oklab, var(--warn) 50%, var(--border)); border-radius: 10px; background: color-mix(in oklab, var(--warn) 8%, var(--panel)); font-size: 13px; }
+  .banner code { font-family: var(--mono); background: var(--soft); border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px; user-select: all; }
+  .banner button { margin-left: 8px; }
+  main { flex: 1; min-height: 0; overflow-y: auto; padding: 16px 18px; }
+  #log { display: grid; gap: 14px; max-width: 980px; margin: 0 auto; }
+  .empty { color: var(--muted); font-size: 13px; }
+  .turn { display: grid; gap: 8px; }
+  .you { font-weight: 600; overflow-wrap: anywhere; }
+  .you::before { content: "You  "; color: var(--accent); font-weight: 600; }
+  .say { color: var(--text); overflow-wrap: anywhere; }
+  .say::before { content: "Claude  "; color: var(--up); font-weight: 600; }
+  .say.error { color: var(--down); } .say.error::before { content: ""; }
+  .step { border: 1px solid var(--border); border-radius: 10px; background: var(--soft); overflow: hidden; }
+  .line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 9px 12px; font: 13px/1.5 var(--mono); }
+  .line code { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; }
+  .line code::before { content: "> "; color: var(--muted); }
+  .tag { font: 11px/1.4 system-ui, sans-serif; color: var(--muted); white-space: nowrap; }
+  .tag.ok { color: var(--up); } .tag.bad { color: var(--down); } .tag.wait { color: var(--warn); }
+  .note { padding: 0 12px 9px; font-size: 12px; color: var(--muted); }
+  pre { margin: 0; padding: 10px 12px; border-top: 1px solid var(--border); background: #060d1c; font: 12px/1.5 var(--mono); white-space: pre; max-height: 420px; overflow: auto; }
+  button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--muted); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06213a; font-weight: 600; }
+  button.danger { border-color: var(--warn); color: var(--warn); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  footer { border-top: 1px solid var(--border); background: var(--panel); padding: 12px 18px 14px; }
+  .inner { max-width: 980px; margin: 0 auto; display: grid; gap: 8px; }
+  .ideas { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ideas button { font-size: 12px; padding: 4px 10px; border-radius: 999px; color: var(--muted); }
+  form { display: flex; gap: 8px; align-items: flex-end; }
+  textarea { flex: 1; min-width: 0; resize: none; min-height: 44px; max-height: 160px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--soft); color: var(--text); font: inherit; }
+  .hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 12px; color: var(--muted); }
+  .hint label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .hint code { font-family: var(--mono); color: var(--text); }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .spin { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--muted); border-top-color: transparent; border-radius: 50%; animation: turn .8s linear infinite; vertical-align: -1px; }
+  @keyframes turn { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  @media (max-width: 640px) { .chips { margin-left: 0; } form { flex-direction: column; align-items: stretch; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Axiom bot console <small id="version"></small></h1>
+  <div class="chips" aria-label="Status">
+    <span class="chip" id="chip-bot">Bot: checking</span>
+    <span class="chip" id="chip-tracker">Tracker: checking</span>
+    <span class="chip" id="chip-claude">Claude: checking</span>
+  </div>
+  <pre class="account" id="account" aria-label="Account"></pre>
+</header>
+<div class="banner" id="banner" hidden role="status"></div>
+<main>
+  <div id="log" role="log" aria-live="polite" aria-label="Console">
+    <p class="empty" id="empty">Say what you want the bot to do. Claude writes the commands, and each one appears here with its output. Pretend money only: nothing here places a real order.</p>
+  </div>
+</main>
+<footer>
+  <div class="inner">
+    <div class="ideas" id="ideas" aria-label="Examples"></div>
+    <form id="form">
+      <label class="sr" for="prompt">Your request</label>
+      <textarea id="prompt" rows="1" placeholder="For example: be more careful and only hold three coins" autocomplete="off"></textarea>
+      <button class="primary" type="submit" id="send">Send</button>
+    </form>
+    <div class="hint">
+      <label><input type="checkbox" id="ask-all"> Ask me before every command</label>
+      <span>Enter sends, Shift+Enter adds a line. Type a command yourself with <code>bot status</code> or <code>!your command</code>.</span>
+    </div>
+  </div>
+</footer>
+<script>
+const $ = id => document.getElementById(id)
+const store = { get(name) { try { return localStorage.getItem(name) } catch { return null } }, set(name, value) { try { localStorage.setItem(name, value) } catch {} } }
+const hashKey = location.hash.match(/k=([\w-]+)/)
+if (hashKey) { store.set('axiom-console-key', hashKey[1]); history.replaceState(null, '', location.pathname) }
+const key = hashKey ? hashKey[1] : store.get('axiom-console-key') || ''
+const ideas = ['Show my account', 'Pause buying', 'Resume buying', 'Be more careful', 'Take bigger risks', 'Show the last 30 log lines', 'Restart the bot', 'What is my stop loss?']
+const past = []
+let pastAt = 0
+let busy = false
+
+function el(tag, className, text) {
+  const node = document.createElement(tag)
+  if (className) node.className = className
+  if (text !== undefined) node.textContent = text
+  return node
+}
+
+async function api(path, body) {
+  const response = await fetch(path, { method: body ? 'POST' : 'GET', headers: { 'X-Console-Key': key, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined })
+  const data = await response.json().catch(() => ({}))
+  if (!response.ok) throw Object.assign(new Error(data.error || 'The console did not answer. Check that it is still running.'), { signIn: Boolean(data.signIn) })
+  return data
+}
+
+function chip(id, tone, text) {
+  const node = $(id)
+  node.className = `chip ${tone}`
+  node.textContent = text
+}
+
+function showClaude(claude) {
+  const tone = claude.ready === true ? 'up' : claude.ready === false ? 'warn' : ''
+  chip('chip-claude', tone, claude.ready === true ? 'Claude: ready' : claude.ready === false ? 'Claude: not available' : 'Claude: checking')
+  const banner = $('banner')
+  banner.hidden = claude.ready !== false
+  if (claude.ready === false) {
+    banner.replaceChildren(el('span', '', claude.detail + ' '))
+    const again = el('button', '', 'Check again')
+    again.type = 'button'
+    again.onclick = async () => { again.disabled = true; again.textContent = 'Checking…'; try { showClaude((await api('/api/check', {})).claude) } catch (error) { again.disabled = false; again.textContent = 'Check again' } }
+    banner.append(again)
+  }
+}
+
+async function refresh() {
+  try {
+    const state = await api('/api/state')
+    $('version').textContent = `v${state.version}`
+    const bot = state.bot
+    if (!state.pm2) chip('chip-bot', '', 'Bot: PM2 not found')
+    else if (!bot) chip('chip-bot', 'down', 'Bot: not in PM2')
+    else if (bot.status !== 'online') chip('chip-bot', 'down', `Bot: ${bot.status}`)
+    else chip('chip-bot', state.paused ? 'warn' : 'up', state.paused ? 'Bot: running, buying paused' : 'Bot: running')
+    const tracker = state.tracker
+    chip('chip-tracker', tracker && tracker.status === 'online' ? 'up' : tracker ? 'down' : '', tracker ? `Tracker: ${tracker.status === 'online' ? 'running' : tracker.status}` : 'Tracker: not in PM2')
+    $('account').textContent = state.account
+    showClaude(state.claude)
+  } catch (error) {
+    chip('chip-bot', 'down', 'Console: not answering')
+    $('account').textContent = error.message
+  }
+}
+
+function scrollDown() { const main = document.querySelector('main'); main.scrollTop = main.scrollHeight }
+
+function addStep(turn, step) {
+  const box = el('div', 'step')
+  const line = el('div', 'line')
+  line.append(el('code', '', step.command))
+  const tag = el('span', 'tag', '')
+  line.append(tag)
+  box.append(line)
+  turn.append(box)
+  return { box, line, tag }
+}
+
+function decide(view, step) {
+  return new Promise(resolve => {
+    view.tag.className = 'tag wait'
+    view.tag.textContent = 'Waiting for you'
+    if (step.note) view.box.append(el('div', 'note', step.note))
+    const run = el('button', step.kind === 'shell' || /reset|flatten|stop/.test(step.command) ? 'danger' : 'primary', 'Run')
+    const skip = el('button', '', 'Skip')
+    run.type = skip.type = 'button'
+    const done = answer => { run.remove(); skip.remove(); resolve(answer) }
+    run.onclick = () => done(true)
+    skip.onclick = () => done(false)
+    view.line.append(run, skip)
+    run.focus()
+    scrollDown()
+  })
+}
+
+async function runPlan(turn, plan) {
+  for (let index = 0; index < plan.steps.length; index++) {
+    const step = plan.steps[index]
+    const view = addStep(turn, step)
+    if (step.kind !== 'error' && (step.approval || $('ask-all').checked) && !(await decide(view, step))) {
+      view.tag.className = 'tag'
+      view.tag.textContent = 'Skipped'
+      continue
+    }
+    view.tag.className = 'tag'
+    view.tag.replaceChildren(el('span', 'spin'), document.createTextNode(' Running'))
+    let result
+    try { result = await api('/api/run', { id: plan.id, index }) } catch (error) { result = { ok: false, output: error.message, seconds: 0 } }
+    view.tag.className = `tag ${result.ok ? 'ok' : 'bad'}`
+    view.tag.textContent = result.ok ? `Done in ${result.seconds}s` : step.kind === 'error' ? 'Not run' : `Failed${result.exit === null || result.exit === undefined ? '' : ` (exit ${result.exit})`}`
+    view.box.append(el('pre', '', result.output))
+    scrollDown()
+    if (!result.ok && index < plan.steps.length - 1) {
+      turn.append(el('div', 'say error', 'Stopped there, so the commands after it were not run.'))
+      break
+    }
+  }
+}
+
+async function send(text) {
+  text = text.trim()
+  if (!text || busy) return
+  busy = true
+  $('send').disabled = true
+  $('empty')?.remove()
+  past.push(text)
+  pastAt = past.length
+  const turn = el('div', 'turn')
+  turn.append(el('div', 'you', text))
+  const thinking = el('div', 'tag')
+  thinking.append(el('span', 'spin'), document.createTextNode(text.startsWith('!') || /^(bot|pm2)\b/i.test(text) ? ' Reading the command' : ' Claude is writing the commands'))
+  turn.append(thinking)
+  $('log').append(turn)
+  scrollDown()
+  try {
+    const plan = await api('/api/ask', { prompt: text })
+    thinking.remove()
+    if (plan.say) turn.append(el('div', 'say', plan.say))
+    if (!plan.steps.length && !plan.say) turn.append(el('div', 'say', 'There was nothing to run for that.'))
+    await runPlan(turn, plan)
+  } catch (error) {
+    thinking.remove()
+    turn.append(el('div', 'say error', error.message))
+    if (error.signIn) refresh()
+  }
+  busy = false
+  $('send').disabled = false
+  scrollDown()
+  refresh()
+  $('prompt').focus()
+}
+
+const prompt = $('prompt')
+const fit = () => { prompt.style.height = 'auto'; prompt.style.height = `${Math.min(160, prompt.scrollHeight)}px` }
+prompt.addEventListener('input', fit)
+prompt.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); $('form').requestSubmit() }
+  else if (event.key === 'ArrowUp' && !prompt.value && past.length) { event.preventDefault(); pastAt = Math.max(0, pastAt - 1); prompt.value = past[pastAt]; fit() }
+})
+$('form').addEventListener('submit', event => { event.preventDefault(); const text = prompt.value; prompt.value = ''; fit(); send(text) })
+for (const idea of ideas) { const button = el('button', '', idea); button.type = 'button'; button.onclick = () => send(idea); $('ideas').append(button) }
+$('ask-all').checked = store.get('axiom-console-ask-all') === '1'
+$('ask-all').addEventListener('change', event => store.set('axiom-console-ask-all', event.target.checked ? '1' : '0'))
+if (!key) { $('banner').hidden = false; $('banner').textContent = 'This page needs its private key. Open it with: python scripts/axiom-paper-bot/run.py console' }
+refresh()
+setInterval(() => { if (!document.hidden) refresh() }, 15000)
+prompt.focus()
+</script>
+</body>
+</html>
