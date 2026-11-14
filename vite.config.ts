@@ -14,7 +14,7 @@ const config = defineConfig({
   plugins: [
     modelAssets(),
     learningModules(),
-    cloudflare({ viteEnvironment: { name: 'ssr' } }),
+    cloudflare({ viteEnvironment: { name: 'ssr' }, remoteBindings: process.env.TL_REMOTE_BINDINGS === '1' }),
     viteTsConfigPaths({
       projects: ['./tsconfig.json'],
     }),
