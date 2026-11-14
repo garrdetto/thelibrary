@@ -50,8 +50,8 @@ export const RESOLUTIONS = [512, 768, 1024, 1280] as const
 
 export const DEFAULT_PROMPT = 'Create an ultra-detailed realistic HD clipart illustration. Preserve the original composition, architecture, objects, signs, and recognizable details. Use realistic textures, clean illustrated edges, natural colors, bright balanced lighting, and professional digital illustration quality.'
 export const DEFAULT_NEGATIVE = 'blurry details, distorted architecture, incorrect lettering, cartoonish proportions, oversaturated colors, artificial textures, unwanted objects, composition changes'
-export const PHOTO_PROMPT = 'Keep this a real photograph, only sharper and more defined. Bring out fine surface texture and micro-contrast in every material, tighten edges, and keep natural colors and lighting.'
-export const PHOTO_NEGATIVE = 'blurry details, smeared textures, plastic skin, waxy surfaces, distorted architecture, incorrect lettering, oversaturated colors, halos, unwanted objects, composition changes'
+export const PHOTO_PROMPT = 'Keep this a real photograph, only sharper and more defined. Bring out fine surface texture in every material, tighten edges, keep shadows open and bright, keep natural colors and lighting, and leave all text exactly as it is.'
+export const PHOTO_NEGATIVE = 'blurry details, smeared textures, plastic skin, waxy surfaces, dark crushed shadows, heavy contrast, distorted architecture, changed or misspelled text, oversaturated colors, halos, unwanted objects, composition changes'
 export const defaultPrompt = (finish: ClipartFinish) => finish === 'photo' ? PHOTO_PROMPT : DEFAULT_PROMPT
 export const defaultNegative = (finish: ClipartFinish) => finish === 'photo' ? PHOTO_NEGATIVE : DEFAULT_NEGATIVE
 
@@ -62,6 +62,7 @@ export const CLIPART_TOUCH_LEVELS = [
   { value: 8, label: 'Slight', hint: '≈8% clipart' },
 ] as const
 export const CLIPART_TOUCH_MAX = 10
+export const TEXT_RULE = 'Text rule (mandatory): every piece of text, lettering, numbers, logos and signage must stay exactly as in the photograph: the same words, spelling, characters, font, size, colour, spacing and position. Do not redraw, retype, restyle, translate, correct, complete or invent any text; where text is small or blurry, leave it exactly as it appears instead of guessing letters.'
 export const PROMPT_LIMIT = 1200
 export const NEGATIVE_LIMIT = 600
 
@@ -80,7 +81,7 @@ const preset = (id: string, name: string, style: string, sdStyle: string, change
 export const CLIPART_PRESETS: ClipartPreset[] = [
   preset('realistic-hd', 'Realistic HD Clipart', 'premium realistic HD clipart illustration with photographic detail, clean illustrated edges, rich natural colours and bright, balanced lighting', 'realistic hd clipart illustration', {}),
   preset('defined-photo', 'Defined Photo Clipart (10%)', 'crisp, sharply defined version of the photograph with a light detailed-clipart finish: about 90% photographic and 10% clipart, with tightened edges, cleaner surfaces and slightly more defined shapes', 'crisp defined photo, subtle detailed clipart finish', { clipartIntensity: 10, illustrationStrength: 10, digitalPainting: 5, outlineDefinition: 15, cleanEdges: 85, edgeDefinition: 92, sharpness: 88, clarity: 88, photoRealism: 95, realisticTextures: 92, materialRealism: 92, fineDetail: 90, noiseReduction: 75, vibrance: 55, richness: 55, saturation: 52, contrast: 58, shadowBrightness: 62 }),
-  preset('defined-texture', 'Defined Textured Photo (no clipart)', 'sharper, more defined and more richly textured version of the same photograph, still unmistakably a real photo, with crisp edges, strong micro-contrast and tactile surface detail in every material', 'sharp highly detailed photograph, crisp textures, high micro-contrast', { overallDetail: 92, fineDetail: 92, textureDetail: 95, architecturalDetail: 88, objectDetail: 88, edgeDefinition: 92, photoRealism: 100, realisticTextures: 98, materialRealism: 95, naturalLighting: 82, shadowRealism: 82, vibrance: 54, richness: 56, saturation: 52, contrast: 58, shadowBrightness: 58, highlightBrightness: 52, hdEnhancement: 92, sharpness: 90, clarity: 92, noiseReduction: 45, clipartTouch: 0 }, 'photo'),
+  preset('defined-texture', 'Defined Textured Photo (no clipart)', 'sharper, more defined and more richly textured version of the same photograph, still unmistakably a real photo, with crisp edges, strong micro-contrast and tactile surface detail in every material', 'sharp highly detailed photograph, crisp textures, high micro-contrast', { overallDetail: 92, fineDetail: 92, textureDetail: 95, architecturalDetail: 88, objectDetail: 88, edgeDefinition: 92, photoRealism: 100, realisticTextures: 98, materialRealism: 95, naturalLighting: 82, shadowRealism: 60, vibrance: 54, richness: 56, saturation: 52, contrast: 50, shadowBrightness: 72, highlightBrightness: 52, hdEnhancement: 92, sharpness: 90, clarity: 92, noiseReduction: 45, clipartTouch: 0 }, 'photo'),
   preset('ultra-detailed', 'Ultra Detailed Clipart', 'ultra-detailed clipart illustration where every surface, texture and small object is rendered with obsessive precision', 'ultra detailed clipart illustration', { overallDetail: 100, fineDetail: 100, textureDetail: 95, architecturalDetail: 98, objectDetail: 98, edgeDefinition: 90, sharpness: 88, clarity: 88, clipartIntensity: 70 }),
   preset('photoreal', 'Photorealistic Illustration', 'photorealistic illustration that looks almost like the photograph but is fully repainted with cleaner surfaces and perfect light', 'photorealistic digital illustration', { photoRealism: 95, realisticTextures: 95, materialRealism: 95, shadowRealism: 88, clipartIntensity: 30, illustrationStrength: 40, outlineDefinition: 5, digitalPainting: 30, vibrance: 52, saturation: 50 }),
   preset('pro-digital', 'Professional Digital Illustration', 'professional digital illustration with painterly shading, controlled brushwork and an editorial finish', 'professional digital painting illustration', { digitalPainting: 80, illustrationStrength: 82, clipartIntensity: 55, photoRealism: 60, outlineDefinition: 20, richness: 68 }),
@@ -142,15 +143,17 @@ export function clipartTouchInstruction(touch: number) {
 function buildPhotoPrompt({ settings, preset, prompt, negative, hasReference }: PromptInput) {
   const lines = [
     `Enhance ${hasReference ? 'image 0 (the photograph)' : 'the photograph'} into a ${preset.style}. The result must still be a photograph, not an illustration.`,
-    'Preservation rules (mandatory): keep the exact composition, framing and camera perspective; keep the same subject, buildings, structures, vehicles, trees, grass, roads and objects in the same places and proportions; reproduce signs and lettering with exactly the same words and spelling; do not add, remove or invent any objects.',
-    'Definition and texture: resolve fine detail and edges more clearly than the original; bring out the real surface texture of every material (brick, wood grain, bark, foliage, fabric, asphalt, metal, stone, skin) with strong micro-contrast; avoid smoothing, smearing or waxy surfaces.',
+    'Preservation rules (mandatory): keep the exact composition, framing and camera perspective; keep the same subject, buildings, structures, vehicles, trees, grass, roads and objects in the same places and proportions; do not add, remove or invent any objects.',
+    TEXT_RULE,
+    'Definition and texture: resolve fine detail and edges more clearly than the original; bring out the real surface texture of every material (brick, wood grain, bark, foliage, fabric, asphalt, metal, stone, skin) with fine local detail that never darkens the image; avoid smoothing, smearing or waxy surfaces.',
+    ...(settings.shadowBrightness >= 50 ? ['Shadows (mandatory): keep every shadow open, soft and at least as bright as in the original photograph, with detail visible inside it; never deepen, blacken or crush shadows, and never add new or darker shadows.'] : []),
     clipartTouchInstruction(settings.clipartTouch),
     'Photo controls:',
     ...visibleSliders('photo').map(slider => `- ${sliderInstruction(slider, settings[slider.key])}`),
   ]
   if (hasReference) lines.push('Image 1 is a reference only: match its colour treatment, detail level, texture, lighting and sharpness. Never copy its subject, objects, text or layout into the result.')
   if (prompt.trim()) lines.push(`Additional direction: ${prompt.trim()}`)
-  const avoid = [negative.trim(), settings.clipartTouch <= 0 ? 'clipart, cartoon, illustration, painting, vector art, outlines, flat colours' : 'cartoon, outlines, flat colours', 'watermarks, borders, frames, added text'].filter(Boolean).join(', ')
+  const avoid = [negative.trim(), settings.clipartTouch <= 0 ? 'clipart, cartoon, illustration, painting, vector art, outlines, flat colours' : 'cartoon, outlines, flat colours', settings.shadowBrightness >= 50 ? 'dark or crushed shadows' : '', 'changed, retyped or misspelled text, watermarks, borders, frames, added text'].filter(Boolean).join(', ')
   lines.push(`Avoid: ${avoid}.`)
   return lines.join('\n')
 }
@@ -161,6 +164,7 @@ export function buildPrompt(input: PromptInput) {
   const lines = [
     `Transform ${hasReference ? 'image 0 (the photograph)' : 'the photograph'} into a ${preset.style}.`,
     'Preservation rules (mandatory): keep the exact composition, framing and camera perspective; keep the same subject, buildings, structures, vehicles, trees, grass, roads and objects in the same places and proportions; reproduce signs and lettering with exactly the same words and spelling; do not add, remove or invent any objects; recreate windows, trees, grass, roads, vehicles and architectural details faithfully with improved clarity.',
+    TEXT_RULE,
     settings.clipartIntensity <= 25
       ? `Keep it about ${100 - settings.clipartIntensity}% photographic with only a light detailed-clipart finish (about ${settings.clipartIntensity}%): more defined edges, crisper detail and cleaner surfaces, never a cartoon and never a heavy filter.`
       : 'It must look like detailed professional clipart, not a filtered photograph and not a basic or childish cartoon.',
@@ -187,8 +191,8 @@ export function buildCompactPrompt({ settings, preset, prompt, negative }: Promp
   const touch = photo && settings.clipartTouch > 0 ? 'subtle clean illustrated edges' : ''
   const positive = [preset.sdStyle, prompt.trim().split(/[.\n]/)[0]?.slice(0, 160), ...ranked, touch, 'same composition as the photo'].filter(Boolean).join(', ')
   const avoid = visibleSliders(preset.finish).flatMap(slider => slider.kind === 'level' && 'avoid' in slider && settings[slider.key] <= 25 ? [slider.avoid] : [])
-  const photoAvoid = photo ? [settings.clipartTouch <= 0 ? 'clipart, illustration, painting, vector art, outlines, flat colors' : 'outlines, flat colors', 'smooth plastic, waxy skin'] : []
-  return { prompt: positive.slice(0, 600), negative: [negative.trim(), 'cartoon, childish, watermark, text artifacts', ...photoAvoid, ...avoid].filter(Boolean).join(', ').slice(0, 600) }
+  const photoAvoid = photo ? [settings.clipartTouch <= 0 ? 'clipart, illustration, painting, vector art, outlines, flat colors' : 'outlines, flat colors', 'smooth plastic, waxy skin', settings.shadowBrightness >= 50 ? 'dark shadows' : ''].filter(Boolean) : []
+  return { prompt: positive.slice(0, 600), negative: [negative.trim(), 'cartoon, childish, watermark, text artifacts, altered text, garbled letters', ...photoAvoid, ...avoid].filter(Boolean).join(', ').slice(0, 600) }
 }
 
 export function diffusionParams(settings: ClipartSettings, finish: ClipartFinish = 'clipart') {
