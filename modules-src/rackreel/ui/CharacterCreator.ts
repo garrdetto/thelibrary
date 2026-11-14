@@ -1,12 +1,12 @@
 import { BEARDS, BODY_SLIDERS, DEFAULT_APPEARANCE, FACES, HAIR, SHAPE_SLIDERS, SLIDER_LABEL } from '../shared/Appearance'
 import type { Appearance, BodySlider, HeadOption, ShapeSlider } from '../shared/Appearance'
-import { CHARACTER_CHOICES, ITEM_BY_ID, LOOK_SLOTS } from '../shared/Economy'
+import { CHARACTER_CHOICES, ITEM_BY_ID, LOOK_SLOTS, outfitChoices } from '../shared/Economy'
 import type { Look, LookSlot } from '../shared/Economy'
 
 const SLOT_LABEL: Record<LookSlot, string> = { jacket: 'Top', vest: 'Vest', cap: 'Hat', pants: 'Pants', pack: 'Pack' }
 
 export type CreatorTab = 'face' | 'body' | 'clothes'
-/** `create` makes a new character; `makeover` is the one free change of face, hair and build for a character made earlier. */
+/** `create` makes a new character; `makeover` is the one free change of face, hair, build and outfit for a character made earlier. */
 export type CreatorMode = 'create' | 'makeover'
 
 const TAB_LABEL: Record<CreatorTab, string> = { face: 'Face', body: 'Body', clothes: 'Clothes' }
@@ -21,7 +21,7 @@ const COPY: Record<CreatorMode, { eyebrow: string; title: string; intro: string;
   makeover: {
     eyebrow: 'New this season',
     title: 'Update your look',
-    intro: 'Faces, hair, beards and body sizes are new. Set yours now: this change can be made once, and your clothes stay as they are.',
+    intro: 'Pick a new face, hair, build and any outfit in the catalog. This change is free and can be made once; the clothes you pick are yours to keep.',
     confirm: 'Save my look',
     saving: 'Saving your look…',
   },
@@ -120,7 +120,7 @@ export class CharacterCreator {
 
   private renderTabs(): void {
     this.tabs.replaceChildren()
-    const list: CreatorTab[] = this.mode === 'create' ? ['face', 'body', 'clothes'] : ['face', 'body']
+    const list: CreatorTab[] = ['face', 'body', 'clothes']
     for (const tab of list) {
       const b = h('button', 'rr-btn creator-tab', TAB_LABEL[tab])
       b.type = 'button'
@@ -154,7 +154,7 @@ export class CharacterCreator {
       this.body.append(this.sliders('Body', BODY_SLIDERS))
     } else {
       for (const slot of LOOK_SLOTS) {
-        const choices = CHARACTER_CHOICES[slot]
+        const choices = this.mode === 'create' ? CHARACTER_CHOICES[slot] : outfitChoices(slot)
         if (choices.length < 2) continue
         const options = choices.map((id) => ({ id, name: ITEM_BY_ID[id]?.name ?? id }))
         this.body.append(this.picker(SLOT_LABEL[slot], options, this.look[slot], (id) => (this.look[slot] = id)))

@@ -2036,7 +2036,7 @@ export class Game {
           this.creatorTab = tab
           if (shown) wear(shown.look, shown.appearance)
         },
-        submit: (look, appearance) => (mode === 'create' ? this.progress.createCharacter(look, appearance) : this.progress.makeover(appearance)),
+        submit: (look, appearance) => (mode === 'create' ? this.progress.createCharacter(look, appearance) : this.progress.makeover(appearance, look)),
         done: () => {
           this.creating = false
           this.applyGear()

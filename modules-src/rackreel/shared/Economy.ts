@@ -386,10 +386,25 @@ export function owedMakeover(p: Profile): boolean {
   return p.verified && p.fitted < APPEARANCE_VERSION
 }
 
-/** The one free change of look for a character made before the current options existed. */
-export function makeover(p: Profile, appearance: unknown): string | null {
+/** Every outfit in the catalog for a clothing slot: the free change of look may pick any of them. */
+export function outfitChoices(slot: LookSlot): string[] {
+  return ITEMS.filter((i) => i.slot === slot).map((i) => i.id)
+}
+
+/**
+ * The one free change of look for a character made before the current options existed: face, hair and build, and
+ * (with `look`) any outfit in the catalog, which is then the player's to keep and wear.
+ */
+export function makeover(p: Profile, appearance: unknown, look?: Look): string | null {
   if (!p.verified) return 'Make your character first.'
   if (p.fitted >= APPEARANCE_VERSION) return 'You have already updated your look.'
+  if (look) {
+    for (const slot of LOOK_SLOTS) if (!outfitChoices(slot).includes(look[slot])) return 'That outfit is not in the catalog.'
+    for (const slot of LOOK_SLOTS) {
+      if (!p.owned.includes(look[slot])) p.owned.push(look[slot])
+      p.loadout[slot] = look[slot]
+    }
+  }
   p.appearance = normalizeAppearance(appearance)
   p.fitted = APPEARANCE_VERSION
   return null

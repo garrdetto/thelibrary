@@ -28,7 +28,7 @@ const actions = z.discriminatedUnion('action', [
   z.object({ action: z.literal('buy'), item: z.string().min(1).max(40) }),
   z.object({ action: z.literal('equip'), slot: z.enum(slots), item: z.string().max(40) }),
   z.object({ action: z.literal('create-character'), look: z.object({ jacket: z.string().max(40), vest: z.string().max(40), cap: z.string().max(40), pants: z.string().max(40), pack: z.string().max(40) }), appearance: appearanceSchema.optional() }),
-  z.object({ action: z.literal('makeover'), appearance: appearanceSchema }),
+  z.object({ action: z.literal('makeover'), appearance: appearanceSchema, look: z.object({ jacket: z.string().max(40), vest: z.string().max(40), cap: z.string().max(40), pants: z.string().max(40), pack: z.string().max(40) }).optional() }),
   z.object({ action: z.literal('reset-records'), category: z.string().max(40).refine((id) => id in CATEGORY_BY_ID).optional(), password: z.string().min(1).max(128).optional() }),
 ])
 
@@ -152,7 +152,7 @@ export async function rackreel(request: Request, env: Env) {
     const error = createCharacter(profile, input.look, input.appearance)
     if (error) throw new HttpError(400, error)
   } else if (input.action === 'makeover') {
-    const error = makeover(profile, input.appearance)
+    const error = makeover(profile, input.appearance, input.look)
     if (error) throw new HttpError(400, error)
   } else if (input.action === 'buy') {
     if (!ITEM_BY_ID[input.item]) throw new HttpError(400, 'That item is not in the catalog.')
