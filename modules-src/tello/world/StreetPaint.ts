@@ -1,5 +1,7 @@
 /**
- * The paint on downtown Montello's streets: a double yellow centre line, and on each side the white line along the
+ * Downtown Montello's sidewalks and street paint. Every downtown street has a raised sidewalk from the curb to the
+ * building fronts (ten feet; on West Montello Street a five-foot walk along the curb and the storefront apron behind
+ * it), dropping to a curb cut at alleys and driveways and stopping at cross streets. The paint: a double yellow centre line, and on each side the white line along the
  * parking lane with a tick at every stall, or a white edge line where there's no room to park. Lines stop short of
  * every cross street and break for alleys and driveways. At the light where Main Street meets State Highway 23 there
  * are stop bars on each approach and ladder crosswalks across West Montello Street and both of Main Street's legs.
@@ -9,7 +11,8 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { Scene } from '@babylonjs/core/scene'
 import type { RoadData } from '../data/MapData'
-import { isMainLeg, LANE, LEG_WIDTH, townProfiles, type StreetProfile } from '../data/Streets'
+import { CURB, CURB_WALK, isMainLeg, LANE, LEG_WIDTH, townProfiles, type StreetProfile } from '../data/Streets'
+import { detailTexture } from '../../rackreel/world/World'
 import type { TelloLand } from '../region'
 import { batchOf, CELL, toMesh, type Batch } from './Roads'
 
@@ -18,26 +21,39 @@ const LINE = 0.11
 const STALL = 6.7
 const TICK = 1.9
 
-type Paint = 'white' | 'yellow'
+type Paint = 'white' | 'yellow' | 'walk' | 'apron' | 'curb'
+/** The street's own lift (highway class), and the sidewalk's top above it. */
+const ROAD = 0.06
+const WALK = ROAD + CURB
 
 interface Gap { x: number; z: number; r: number; full: boolean }
 
 export function buildStreetPaint(scene: Scene, land: TelloLand): Mesh[] {
   const profiles = townProfiles(land.doc)
   const batches = new Map<string, Batch>()
-  const h = (x: number, z: number) => land.heightAt(x, z) + LIFT
-  const quad = (paint: Paint, c: [number, number][]) => {
+  const quad: Quad = (paint, c, lift = LIFT, ys) => {
     const b = batchOf(batches, `${paint}|${Math.floor(c[0][0] / CELL)},${Math.floor(c[0][1] / CELL)}`)
     const v = b.positions.length / 3
-    for (const [x, z] of c) {
-      b.positions.push(land.toSceneX(x), h(x, z), land.toSceneZ(z))
-      b.uvs.push(x, z)
-    }
+    c.forEach(([x, z], k) => {
+      b.positions.push(land.toSceneX(x), ys ? land.heightAt(x, z) + ys[k] : land.heightAt(x, z) + lift, land.toSceneZ(z))
+      b.uvs.push(x, z + (ys ? ys[k] : 0))
+    })
     b.indices.push(v, v + 1, v + 2, v, v + 2, v + 3)
   }
-  for (const [road, prof] of profiles) paintStreet(prof, gapsFor(land, road), quad)
+  for (const [road, prof] of profiles) {
+    const gaps = gapsFor(land, road)
+    paintStreet(prof, gaps, quad)
+    sidewalks(prof, gaps, quad, road.n === 'West Montello Street')
+  }
   for (const m of junctionMarks(land)) quad('white', m)
-  const mats: Record<Paint, StandardMaterial> = { white: paint(scene, 'white', new Color3(0.86, 0.86, 0.84)), yellow: paint(scene, 'yellow', new Color3(0.86, 0.66, 0.16)) }
+  const concrete = detailTexture(scene)
+  const mats: Record<Paint, StandardMaterial> = {
+    white: paint(scene, 'white', new Color3(0.86, 0.86, 0.84)),
+    yellow: paint(scene, 'yellow', new Color3(0.86, 0.66, 0.16)),
+    walk: paint(scene, 'walk', new Color3(0.74, 0.73, 0.7), concrete),
+    apron: paint(scene, 'apron', new Color3(0.6, 0.5, 0.45), concrete),
+    curb: paint(scene, 'curb', new Color3(0.82, 0.81, 0.78), concrete),
+  }
   const out: Mesh[] = []
   for (const [key, b] of batches) {
     if (!b.indices.length) continue
@@ -46,9 +62,10 @@ export function buildStreetPaint(scene: Scene, land: TelloLand): Mesh[] {
   return out
 }
 
-function paint(scene: Scene, name: string, color: Color3): StandardMaterial {
+function paint(scene: Scene, name: string, color: Color3, texture?: StandardMaterial['diffuseTexture']): StandardMaterial {
   const mat = new StandardMaterial(`tello-paint-${name}`, scene)
   mat.diffuseColor = color
+  if (texture) mat.diffuseTexture = texture
   mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.35, 0.35, 0.35)
   mat.backFaceCulling = false
@@ -76,7 +93,9 @@ function gapsFor(land: TelloLand, road: RoadData): Gap[] {
   return out
 }
 
-function paintStreet(prof: StreetProfile, gaps: Gap[], quad: (paint: Paint, c: [number, number][]) => void): void {
+type Quad = (paint: Paint, c: [number, number][], lift?: number, ys?: number[]) => void
+
+function paintStreet(prof: StreetProfile, gaps: Gap[], quad: Quad): void {
   const { pts, half, parking } = prof
   const n = pts.length / 2
   const frames: { x: number; z: number; sx: number; sz: number; tx: number; tz: number; along: number }[] = []
@@ -194,4 +213,41 @@ function junctionMarks(land: TelloLand): [number, number][][] {
   bar(eastLeg, 118.8, 21.9, 11, -LEG_WIDTH / 2 + 0.3, LEG_WIDTH / 2 - 0.3)
   ladder(westLeg, 102.9, 20.4, 9.5, LEG_WIDTH / 2)
   return out
+}
+
+/** Raised sidewalks with a curb along both sides of a downtown street. */
+function sidewalks(prof: StreetProfile, gaps: Gap[], quad: Quad, apronStreet: boolean): void {
+  const { pts, half } = prof
+  const n = pts.length / 2
+  const frame = (i: number) => {
+    const a = Math.max(0, i - 1), c = Math.min(n - 1, i + 1)
+    const dx = pts[c * 2] - pts[a * 2], dz = pts[c * 2 + 1] - pts[a * 2 + 1]
+    const len = Math.hypot(dx, dz) || 1
+    return { x: pts[i * 2], z: pts[i * 2 + 1], sx: -dz / len, sz: dx / len }
+  }
+  const crossing = (x: number, z: number) => gaps.some((g) => g.full && Math.hypot(g.x - x, g.z - z) < g.r)
+  const cut = (x: number, z: number) => gaps.some((g) => !g.full && Math.hypot(g.x - x, g.z - z) < g.r)
+  for (let i = 0; i < n - 1; i++) {
+    const a = frame(i), b = frame(i + 1)
+    for (const side of [1, -1]) {
+      const outer = side > 0 ? prof.outerL : prof.outerR
+      const at = (f: typeof a, off: number): [number, number] => [f.x + f.sx * side * off, f.z + f.sz * side * off]
+      const ha = half[i], hb = half[i + 1]
+      if (crossing(...at(a, ha + 1)) || crossing(...at(b, hb + 1))) continue
+      const low = cut(...at(a, ha + 1)) || cut(...at(b, hb + 1))
+      const top = low ? ROAD + 0.03 : WALK
+      // Curb: the face up from the street and a lighter top along the edge.
+      if (!low) {
+        quad('curb', [at(a, ha), at(b, hb), at(b, hb), at(a, ha)], 0, [ROAD, ROAD, WALK, WALK])
+        quad('curb', [at(a, ha), at(b, hb), at(b, hb + 0.15), at(a, ha + 0.15)], top)
+      }
+      const walkA = apronStreet ? Math.min(outer[i], ha + CURB_WALK) : outer[i]
+      const walkB = apronStreet ? Math.min(outer[i + 1], hb + CURB_WALK) : outer[i + 1]
+      const e = low ? 0 : 0.15
+      quad('walk', [at(a, ha + e), at(b, hb + e), at(b, walkB), at(a, walkA)], top)
+      if (apronStreet && outer[i] > walkA + 0.1 && outer[i + 1] > walkB + 0.1) quad('apron', [at(a, walkA), at(b, walkB), at(b, outer[i + 1]), at(a, outer[i])], top)
+      // The walk's outer edge steps down to the ground (inside the wall where it meets a building).
+      quad('curb', [at(a, outer[i]), at(b, outer[i + 1]), at(b, outer[i + 1]), at(a, outer[i])], 0, [top, top, -0.05, -0.05])
+    }
+  }
 }

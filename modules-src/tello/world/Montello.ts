@@ -27,6 +27,7 @@ import { buildStreetDressing } from './StreetDressing'
 import { buildIntersection, type Intersection } from './Intersection'
 import { buildFalls, type Falls } from './Falls'
 import { buildLandmarks } from './Landmarks'
+import { KIT_URL, ModelKit } from './Kit'
 import { roadIndex, roadNameAt } from '../town/Routes'
 import { shiftedPhysics, type Shift, type StaticSink } from './Sink'
 
@@ -84,14 +85,14 @@ export class Montello {
     const bridges = buildBridges(scene, land, (mesh) => s.gfx.addCaster(mesh))
     for (const b of bridgeSolids(land)) this.sink.addStaticBox({ cx: b.x, cy: b.y, cz: -b.z, hx: b.across, hy: b.up, hz: b.along, rotY: Math.atan2(Math.sin(b.heading), -Math.cos(b.heading)) })
     progress(0.4, 'Raising the town…')
-    await frame()
+    const [downtownKit, quarryKit] = await Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
     buildBuildings(this.root, s.mats, this.sink, land)
     buildBarricades(this.root, s.mats, this.sink, land)
-    buildStorefronts(this.root, s.mats, land)
+    buildStorefronts(this.root, s.mats, land, downtownKit)
     buildLandmarks(this.root, s.mats, this.sink, land)
     buildStreetDressing(this.root, s.mats, this.sink, land)
     this.junction = buildIntersection(this.root, s.mats, this.sink, land)
-    this.falls = buildFalls(this.root, s.mats, this.sink, land)
+    this.falls = buildFalls(this.root, s.mats, this.sink, land, quarryKit)
     progress(0.8, 'Planting the trees…')
     await frame()
     this.plantTrees()

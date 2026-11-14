@@ -47,6 +47,7 @@ const PRESETS = [
   { match: /^(sandlot3d\/(athlete|field_detail)|hood\/(sim|vehicles)|proskater\/board)\.glb$/, name: 'slots', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /^proskater\/skater\.glb$/, name: 'character', join: false, flatten: false, simplify: 0, textureQuality: 92 },
   { match: /^sandlot3d\//, name: 'figure', join: true, simplify: 0, textureQuality: 92 },
+  { match: /^tello\//, name: 'kit', join: false, flatten: false, palette: false, keepAttributes: true, simplify: 0, textureQuality: 92 },
   { match: /./, name: 'rig', join: true, flatten: false, simplify: 0, textureQuality: 92 },
 ]
 

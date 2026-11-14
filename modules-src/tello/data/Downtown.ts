@@ -49,6 +49,10 @@ export interface FrontStyle {
   marquee?: string
   /** Put the sign board high on the upper wall instead of over the display windows. */
   signAt?: 'top'
+  /** Where the shop entries are, as shares of the front (0 to 1, left to right seen from the street), from the owner's photos. */
+  doors?: number[]
+  /** The narrow door to the stairs up on a two-storey front: at the left end (the usual), the right end, or none. */
+  stairDoor?: 'left' | 'right' | 'none'
   /** Cornice, window hoods, frames and sills. */
   trim: number
   hoods: 'arch' | 'flat'
@@ -127,7 +131,7 @@ export const MAIN_STREET_FRONTS: readonly KnownFront[] = [
     at: [92, 2.4],
     street: 'Main Street',
     note: 'The corner building: cream brick with red trim and cornice, a shingled bay, and a corner turret with a spire over West Montello Street',
-    style: { wall: 0xdac798, upper: 'brick', ground: 'glass', groundColor: 0x9a8f7c, trim: 0x8f2f25, hoods: 'flat', cornice: 'brackets', bay: true, turret: 'auto', turretColor: 0xe2d3aa },
+    style: { wall: 0xdac798, upper: 'brick', ground: 'glass', groundColor: 0x9a8f7c, trim: 0x8f2f25, hoods: 'flat', cornice: 'brackets', bay: true, turret: 'auto', turretColor: 0xe2d3aa, doors: [0.33, 0.9], stairDoor: 'none' },
   },
   {
     at: [92, 2.4],
@@ -153,7 +157,7 @@ export const MAIN_STREET_FRONTS: readonly KnownFront[] = [
   {
     at: [138.9, -23.5],
     note: 'The long buff block, north part: segmental brick arches, a corbelled frieze with lattice panels, stone veneer below a yellow ribbed metal awning',
-    style: { wall: 0xc9ae7b, upper: 'brick', ground: 'stone', groundColor: 0xd8cfba, trim: 0xe9dfc8, hoods: 'arch', cornice: 'corbel', band: 0x9a8356, awning: { kind: 'panel', color: 0xcfad45 } },
+    style: { wall: 0xc9ae7b, upper: 'brick', ground: 'stone', groundColor: 0xd8cfba, trim: 0xe9dfc8, hoods: 'arch', cornice: 'corbel', band: 0x9a8356, awning: { kind: 'panel', color: 0xcfad45 }, doors: [0.47] },
   },
   {
     at: [140.2, -35.6],

@@ -21,7 +21,7 @@ import { resample, triangulate } from './Poly'
 
 export const CELL = 512
 /** How far each kind of surface sits above the ground it is draped on. */
-const LIFT: Record<RoadKind, number> = { 0: 0.06, 1: 0.05, 2: 0.04, 3: 0.035, 4: 0.045, 5: 0.03 }
+const LIFT: Record<RoadKind, number> = { 0: 0.06, 1: 0.05, 2: 0.04, 3: 0.035, 4: 0.15, 5: 0.03 }
 const JUNCTION_LIFT = 0.07
 
 export interface Batch { positions: number[]; uvs: number[]; indices: number[] }
@@ -146,6 +146,24 @@ export function buildRoads(scene: Scene, land: TelloLand): Mesh[] {
         if (i === s0) continue
         const v = batch.positions.length / 3 - 3
         batch.indices.push(v - 3, v, v - 2, v - 2, v, v + 1, v - 2, v + 1, v - 1, v - 1, v + 1, v + 2)
+      }
+      // Sidewalks are raised: a curb face down to the ground along both edges.
+      if (road.k === 4) {
+        const curb = batchOf(batches, `4|${Math.floor(stations[s0].x / CELL)},${Math.floor(stations[s0].z / CELL)}`)
+        for (let i = s0; i < s1; i++) {
+          for (const side of [-1, 1]) {
+            const a = stations[i], b = stations[i + 1]
+            const ha = halfAt(i), hb = halfAt(i + 1)
+            const ax = a.x + a.sx * side * ha, az = a.z + a.sz * side * ha
+            const bx = b.x + b.sx * side * hb, bz = b.z + b.sz * side * hb
+            const v = curb.positions.length / 3
+            for (const [x, z, y] of [[ax, az, h(ax, az) + lift], [bx, bz, h(bx, bz) + lift], [bx, bz, h(bx, bz) - 0.05], [ax, az, h(ax, az) - 0.05]]) {
+              curb.positions.push(land.toSceneX(x), y, land.toSceneZ(z))
+              curb.uvs.push(x, z + y)
+            }
+            curb.indices.push(v, v + 1, v + 2, v, v + 2, v + 3)
+          }
+        }
       }
     }
   }

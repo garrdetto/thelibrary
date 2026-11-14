@@ -40,6 +40,11 @@ const SPOTS = [
   { name: 'main-street-from-the-split', hour: 15, at: [112, 0], facing: 2.36, pitch: 0.03 },
   { name: 'main-street-south-of-the-alley', hour: 15, at: [125, -40], facing: 2.64, pitch: 0.03 },
   { name: 'east-montello-theatre', hour: 15, at: [200, 24], facing: 3.03, pitch: 0.03 },
+  { name: 'storefronts-close', hour: 15, at: [34, 4.5], facing: 2.75, pitch: -0.08 },
+  { name: 'corner-turret-close', hour: 15, at: [101, 14], facing: -2.6, pitch: -0.12 },
+  { name: 'quarry-pond', hour: 15, at: [214, 34], facing: 0.15, pitch: 0.06 },
+  { name: 'municipal-building', hour: 15, at: [-99, 13], facing: -1.62, pitch: 0.02 },
+  { name: 'quarry-river-pool', hour: 15, at: [104, 44], facing: 1.15, pitch: 0.06 },
 ].filter((s) => !only.length || only.includes(s.name))
 
 const software = process.env.TELLO_SOFTWARE === '1'

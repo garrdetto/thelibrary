@@ -1288,5 +1288,25 @@
   "matsBefore": 1,
   "matsAfter": 1,
   "preset": "rig"
+ },
+ "tello/downtown-kit.glb": {
+  "hash": "16b57ff78c0dced0dd16abb3093883fb8527b310",
+  "before": 486952,
+  "after": 201016,
+  "primsBefore": 14,
+  "primsAfter": 14,
+  "matsBefore": 5,
+  "matsAfter": 5,
+  "preset": "kit"
+ },
+ "tello/quarry.glb": {
+  "hash": "824e1dbc9282842293851a7c6de743916fd1c1b4",
+  "before": 3726584,
+  "after": 1532424,
+  "primsBefore": 16,
+  "primsAfter": 16,
+  "matsBefore": 8,
+  "matsAfter": 8,
+  "preset": "kit"
  }
 }
