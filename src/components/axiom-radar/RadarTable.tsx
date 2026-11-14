@@ -3,6 +3,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Check, Copy, ExternalLink, Globe, Send
 import { Line, LineChart, YAxis } from 'recharts'
 import type { RadarHistoryPoint, RadarSafetyLevel, RadarToken } from '@/lib/axiom-radar-types'
 import { axiomUrl, dexScreenerUrl, formatAge, formatCount, formatSigned, formatUsd } from './format'
+import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
 
 export type RadarSortKey = 'score' | 'viewers' | 'viewersPerMin' | 's30' | 'm1' | 'm5' | 'm10' | 'marketCap' | 'volume5m' | 'ageMinutes'
 export type RadarSort = { key: RadarSortKey; direction: 'asc' | 'desc' }
@@ -132,6 +133,7 @@ export function LaunchLinks({ token }: { token: RadarToken }) {
 
 type RadarTableProps = {
   tokens: RadarToken[]
+  chartWindow: ChartWindow
   sort: RadarSort
   onSort: (key: RadarSortKey) => void
   onOpen: (mint: string) => void
@@ -139,7 +141,7 @@ type RadarTableProps = {
   selected: string | null
 }
 
-export function RadarTable({ tokens, sort, onSort, onOpen, onTogglePin, selected }: RadarTableProps) {
+export function RadarTable({ tokens, chartWindow, sort, onSort, onOpen, onTogglePin, selected }: RadarTableProps) {
   const openWithKeyboard = (event: KeyboardEvent<HTMLTableRowElement>, mint: string) => {
     if (event.target !== event.currentTarget) return
     if (event.key === 'Enter' || event.key === ' ') {
@@ -161,6 +163,7 @@ export function RadarTable({ tokens, sort, onSort, onOpen, onTogglePin, selected
           <SortHeader label="1m" sortKey="m1" sort={sort} onSort={onSort} className="radar-col-change"/>
           <SortHeader label="5m" sortKey="m5" sort={sort} onSort={onSort} className="radar-col-change"/>
           <SortHeader label="10m" sortKey="m10" sort={sort} onSort={onSort} className="radar-col-change"/>
+          <th scope="col">Price chart · {chartWindows.find(item => item.key === chartWindow)?.label}</th>
           <SortHeader label="MCap / Liq" sortKey="marketCap" sort={sort} onSort={onSort}/>
           <SortHeader label="5m vol · buys" sortKey="volume5m" sort={sort} onSort={onSort}/>
           <th scope="col">Quality</th>
@@ -190,6 +193,7 @@ export function RadarTable({ tokens, sort, onSort, onOpen, onTogglePin, selected
           <td><div className="radar-viewers">{token.viewerRank && <span className="radar-rank-chip tabular">#{token.viewerRank}</span>}<span className="tabular">{formatCount(token.viewers)}</span>{token.viewerSurge && <span className="radar-surge" title="Gaining viewers quickly" role="img" aria-label="Gaining viewers quickly">🔥</span>}<ViewerSparkline history={token.history}/></div></td>
           <td><div className="radar-stack tabular"><strong className={`radar-delta ${changeClass(token.viewersPerMin)}`}>{formatSigned(token.viewersPerMin)}</strong><small>{formatSigned(token.viewersDelta5m)} in 5m</small></div></td>
           {(['s30', 'm1', 'm5', 'm10'] as const).map(window => <td key={window} className="radar-col-change"><span className={`radar-delta tabular ${changeClass(token.priceChange[window])}`}>{formatChange(token.priceChange[window])}</span></td>)}
+          <td><PriceSpark points={sparkPoints(token, chartWindow)} width={112} height={32}/></td>
           <td><div className="radar-stack tabular"><strong>{formatUsd(token.marketCap)}</strong><small>{formatUsd(token.liquidityUsd)} liq</small></div></td>
           <td><div className="radar-stack tabular"><strong>{formatUsd(token.volume5m)}</strong><BuySellBar buys={token.buys5m} sells={token.sells5m}/></div></td>
           <td><QualityBadge token={token}/></td>

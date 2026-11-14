@@ -8,7 +8,7 @@ import type { TrackerDatabase } from './db.js'
 import { defaultWeights, radarThresholds, safetyLevel, scoreSetup, viewerDeltas } from './model.js'
 
 const detailWindowMs = 6 * 60 * 60 * 1000
-const activeWindowMs = 5 * 60_000
+const activeWindowMs = 90_000
 const historyWindowMs = 16 * 60_000
 
 type TokenRow = {
@@ -159,6 +159,23 @@ function liveFigures(mint: string, now: number) {
   }
 }
 
+const sparkPrice = (price: number) => Number(price.toPrecision(6))
+
+/** Price series for chart previews: `fast` is one point a second for the last minute, `slow` one every 5 seconds for 10 minutes. */
+function sparkSeries(ticks: MarketTick[], now: number) {
+  const fast: number[] = []
+  const slow: number[] = []
+  let bucket = -1
+  for (const tick of ticks) {
+    if (tick.price === null) continue
+    if (now - tick.t <= 60_000) fast.push(sparkPrice(tick.price))
+    const current = Math.floor(tick.t / 5_000)
+    if (current === bucket) slow[slow.length - 1] = sparkPrice(tick.price)
+    else { slow.push(sparkPrice(tick.price)); bucket = current }
+  }
+  return { fast: fast.slice(-60), slow: slow.slice(-120) }
+}
+
 type BuiltToken = { token: RadarToken; liquidityChange1m: number | null }
 
 const surgeLevels = { 1: { gain: 8, percent: 15, sigma: 2 }, 2: { gain: 5, percent: 10, sigma: 1.5 }, 3: { gain: 3, percent: 6, sigma: 1 } } as const
@@ -259,6 +276,7 @@ function buildToken(token: TokenRow, snapshots: SnapshotRow[], fallback: Snapsho
     factors,
     lastSnapshotAt: live.market?.readAt ?? latest?.timestamp ?? null,
     priceChange: live.priceChange,
+    spark: sparkSeries(marketTicks.get(token.mint) ?? [], now),
     viewersPerMin: live.viewersPerMin,
     viewerSurge: false,
     holdersChange5m: live.holdersChange5m,
@@ -431,7 +449,7 @@ export function buildTokenDetail(database: TrackerDatabase, mint: string, now = 
   return {
     token: built,
     history: toHistory(downsample(all, 360)),
-    live: downsample(marketTicks.get(mint) ?? [], 300).map(tick => ({ t: tick.t, price: tick.price, viewers: tick.viewers })),
+    live: (marketTicks.get(mint) ?? []).map(tick => ({ t: tick.t, price: tick.price, viewers: tick.viewers })),
     entries: [...holders, ...buyers],
   }
 }

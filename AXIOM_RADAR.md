@@ -141,6 +141,8 @@ The ecosystem file is an ES module that exports `apps`. PM2 loads it with `requi
 - **Settings**: toggle and tune every requirement and rule. Saved to D1 on the site; the tracker picks them up on its next push (seconds while the page is open).
 - Clicking a coin opens details: a live price-and-viewers chart from 1-second ticks, DexScreener candles, the quality checklist, score breakdown and smart holders.
 - Sound and desktop alerts fire for new viewer surges and new Buy signals.
+- **Chart previews**: every coin shows a small live price chart. The 30s / 1m / 5m / 10m switch beside the tabs sets the time span for all previews, and the details panel has its own switch for the live chart.
+- **Appearance** (in Settings, or the palette menu at the top): follow the site theme, or use Dark blue & light blue, Dark blue & neon green, Black & light grey, or your own eight colours. Saved with the other settings.
 
 ### Update speed
 

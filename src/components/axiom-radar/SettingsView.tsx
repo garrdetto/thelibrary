@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Check, LoaderCircle, RotateCcw } from 'lucide-react'
-import { defaultRadarSettings, radarRequirementInfo, type RadarSettings } from '@/lib/axiom-radar-settings'
+import { defaultRadarSettings, radarRequirementInfo, radarThemeColorInfo, radarThemeColors, radarThemePresets, type RadarSettings, type RadarTheme, type RadarThemeColors, type RadarThemePreset } from '@/lib/axiom-radar-settings'
 import { relativeSeconds } from './format'
 
 type SettingsViewProps = {
@@ -10,6 +10,7 @@ type SettingsViewProps = {
   error: string
   now: number
   onSave: (settings: RadarSettings) => void
+  onPreviewTheme: (theme: RadarTheme | null) => void
 }
 
 function NumberField({ id, label, hint, value, step = 1, min = 0, max, disabled, onChange }: { id: string; label: string; hint?: string; value: number; step?: number; min?: number; max?: number; disabled?: boolean; onChange: (value: number) => void }) {
@@ -26,14 +27,22 @@ function Toggle({ id, label, hint, checked, onChange }: { id: string; label: str
   </label>
 }
 
-export function SettingsView({ settings, activeUpdatedAt, saving, error, now, onSave }: SettingsViewProps) {
+export function SettingsView({ settings, activeUpdatedAt, saving, error, now, onSave, onPreviewTheme }: SettingsViewProps) {
   const [form, setForm] = useState(settings)
   const [dirty, setDirty] = useState(false)
   useEffect(() => { if (!dirty) setForm(settings) }, [settings, dirty])
   const change = (next: RadarSettings) => { setForm(next); setDirty(true) }
+  const changeTheme = (theme: RadarTheme) => { change({ ...form, theme }); onPreviewTheme(theme) }
+  useEffect(() => () => onPreviewTheme(null), [onPreviewTheme])
+  const themeColors: RadarThemeColors = radarThemeColors(form.theme) ?? form.theme.custom
+  const themeOptions: Array<{ id: RadarThemePreset; label: string; colors: RadarThemeColors | null }> = [
+    { id: 'site', label: 'Match the site theme', colors: null },
+    ...radarThemePresets,
+    { id: 'custom', label: 'Custom colours', colors: form.theme.custom },
+  ]
   const applied = settings.updatedAt !== null && activeUpdatedAt === settings.updatedAt
 
-  return <form className="radar-settings" onSubmit={event => { event.preventDefault(); onSave(form); setDirty(false) }}>
+  return <form className="radar-settings" onSubmit={event => { event.preventDefault(); onSave(form); setDirty(false); onPreviewTheme(null) }}>
     <section className="radar-card">
       <div className="panel-heading"><span className="number-tag">01</span><h2>Which coins are tracked</h2><span className="panel-caption">TURN A REQUIREMENT OFF TO IGNORE IT</span></div>
       <div className="radar-requirements">
@@ -79,9 +88,26 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
       </div>
     </section>
 
+    <section className="radar-card">
+      <div className="panel-heading"><span className="number-tag">04</span><h2>Appearance</h2><span className="panel-caption">COLOURS FOR THIS PAGE ONLY</span></div>
+      <div className="radar-theme-presets" role="radiogroup" aria-label="Colour theme">
+        {themeOptions.map(option => <button key={option.id} type="button" role="radio" aria-checked={form.theme.preset === option.id} className={form.theme.preset === option.id ? 'active' : ''} onClick={() => changeTheme({ ...form.theme, preset: option.id })}>
+          <span className="radar-theme-swatch" aria-hidden="true">{option.colors ? [option.colors.background, option.colors.panel, option.colors.accent, option.colors.up].map((color, index) => <i key={index} style={{ background: color }}/>) : <i className="site"/>}</span>
+          {option.label}
+        </button>)}
+      </div>
+      <p className="radar-note">Change any colour below to build your own theme. It starts from the theme selected above and switches to Custom colours.</p>
+      <div className="radar-theme-colors">
+        {radarThemeColorInfo.map(info => <label key={info.key} htmlFor={`theme-${info.key}`}>
+          <input id={`theme-${info.key}`} type="color" value={themeColors[info.key]} onChange={event => changeTheme({ preset: 'custom', custom: { ...themeColors, [info.key]: event.target.value } })}/>
+          <span>{info.label}<small className="mono">{themeColors[info.key]}</small></span>
+        </label>)}
+      </div>
+    </section>
+
     <div className="radar-settings-actions">
       <button type="submit" className="primary-button" disabled={saving || !dirty}>{saving ? <LoaderCircle size={15} className="spin"/> : <Check size={15}/>}{saving ? 'Saving…' : 'Save settings'}</button>
-      <button type="button" className="secondary-button" disabled={saving} onClick={() => change({ ...defaultRadarSettings, pinned: form.pinned, updatedAt: form.updatedAt })}><RotateCcw size={13}/> Reset to defaults</button>
+      <button type="button" className="secondary-button" disabled={saving} onClick={() => { change({ ...defaultRadarSettings, pinned: form.pinned, updatedAt: form.updatedAt }); onPreviewTheme(defaultRadarSettings.theme) }}><RotateCcw size={13}/> Reset to defaults</button>
       <p role="status" className="radar-muted">
         {error ? <span className="radar-bad">{error}</span>
           : dirty ? 'Unsaved changes.'

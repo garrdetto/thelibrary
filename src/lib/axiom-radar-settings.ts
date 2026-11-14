@@ -1,5 +1,33 @@
 export type RadarRequirement = { enabled: boolean; value: number }
 
+export type RadarThemeColors = { background: string; panel: string; text: string; muted: string; border: string; accent: string; up: string; down: string }
+export type RadarThemePreset = 'site' | 'ocean' | 'neon' | 'mono' | 'custom'
+export type RadarTheme = { preset: RadarThemePreset; custom: RadarThemeColors }
+
+export const radarThemeColorInfo: Array<{ key: keyof RadarThemeColors; label: string }> = [
+  { key: 'background', label: 'Background' },
+  { key: 'panel', label: 'Panels and cards' },
+  { key: 'text', label: 'Text' },
+  { key: 'muted', label: 'Secondary text' },
+  { key: 'border', label: 'Borders' },
+  { key: 'accent', label: 'Accent and buttons' },
+  { key: 'up', label: 'Gains' },
+  { key: 'down', label: 'Losses' },
+]
+
+export const radarThemePresets: Array<{ id: Exclude<RadarThemePreset, 'site' | 'custom'>; label: string; colors: RadarThemeColors }> = [
+  { id: 'ocean', label: 'Dark blue & light blue', colors: { background: '#0a1628', panel: '#11213d', text: '#e8f1ff', muted: '#8ea6c9', border: '#22395f', accent: '#6cc4ff', up: '#3ddc97', down: '#ff6b7a' } },
+  { id: 'neon', label: 'Dark blue & neon green', colors: { background: '#060d1f', panel: '#0d1830', text: '#eafff0', muted: '#8296b8', border: '#1b2c50', accent: '#39ff14', up: '#39ff14', down: '#ff4d6d' } },
+  { id: 'mono', label: 'Black & light grey', colors: { background: '#050505', panel: '#131313', text: '#ececec', muted: '#9b9b9b', border: '#2b2b2b', accent: '#d6d6d6', up: '#4ade80', down: '#f87171' } },
+]
+
+/** The colours a theme resolves to, or null when the radar follows the site theme. */
+export function radarThemeColors(theme: RadarTheme): RadarThemeColors | null {
+  if (theme.preset === 'site') return null
+  if (theme.preset === 'custom') return theme.custom
+  return radarThemePresets.find(preset => preset.id === theme.preset)?.colors ?? null
+}
+
 export type RadarSettings = {
   maxAgeHours: RadarRequirement
   minViewers: RadarRequirement
@@ -15,6 +43,7 @@ export type RadarSettings = {
   surgeSensitivity: 1 | 2 | 3
   wallets: { minRunnerHits: number }
   pinned: string[]
+  theme: RadarTheme
   updatedAt: number | null
 }
 
@@ -33,6 +62,7 @@ export const defaultRadarSettings: RadarSettings = {
   surgeSensitivity: 2,
   wallets: { minRunnerHits: 2 },
   pinned: [],
+  theme: { preset: 'site', custom: { background: '#0a1628', panel: '#11213d', text: '#e8f1ff', muted: '#8ea6c9', border: '#22395f', accent: '#6cc4ff', up: '#3ddc97', down: '#ff6b7a' } },
   updatedAt: null,
 }
 
@@ -82,6 +112,13 @@ export function normalizeRadarSettings(value: unknown): RadarSettings {
   settings.surgeSensitivity = input.surgeSensitivity === 1 || input.surgeSensitivity === 3 ? input.surgeSensitivity : 2
   settings.wallets = { minRunnerHits: Math.round(clampNumber(wallets.minRunnerHits, defaults.wallets.minRunnerHits, 1, 20)) }
   settings.pinned = Array.isArray(input.pinned) ? [...new Set(input.pinned.filter((mint): mint is string => typeof mint === 'string' && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)))].slice(0, 50) : []
+  const theme = (input.theme && typeof input.theme === 'object' ? input.theme : {}) as Partial<RadarTheme>
+  const custom = (theme.custom && typeof theme.custom === 'object' ? theme.custom : {}) as Partial<RadarThemeColors>
+  const hex = (value: unknown, fallback: string) => typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value.toLowerCase() : fallback
+  settings.theme = {
+    preset: theme.preset === 'ocean' || theme.preset === 'neon' || theme.preset === 'mono' || theme.preset === 'custom' ? theme.preset : 'site',
+    custom: Object.fromEntries(radarThemeColorInfo.map(({ key }) => [key, hex(custom[key], defaults.theme.custom[key])])) as RadarThemeColors,
+  }
   settings.updatedAt = typeof input.updatedAt === 'number' ? input.updatedAt : null
   return settings
 }

@@ -61,6 +61,7 @@ export type RadarToken = {
   factors: RadarFactor[]
   lastSnapshotAt: number | null
   priceChange: { s30: number | null; m1: number | null; m5: number | null; m10: number | null }
+  spark: { fast: number[]; slow: number[] }
   viewersPerMin: number | null
   viewerSurge: boolean
   holdersChange5m: number | null

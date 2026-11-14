@@ -2,13 +2,12 @@ import type { KeyboardEvent } from 'react'
 import { Eye, Sparkles, TriangleAlert } from 'lucide-react'
 import type { RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatSigned, formatUsd } from './format'
-import { LaunchLinks, PinButton, QualityBadge, ScoreBadge, TokenIcon, ViewerSparkline, changeClass, formatChange } from './RadarTable'
+import { PriceSpark, chartWindows, sparkPoints, type ChartWindow } from './PriceSpark'
+import { LaunchLinks, PinButton, QualityBadge, ScoreBadge, TokenIcon, changeClass, formatChange } from './RadarTable'
 
-const windows = [['s30', '30s'], ['m1', '1m'], ['m5', '5m'], ['m10', '10m']] as const
+type CardProps = { token: RadarToken; chartWindow: ChartWindow; onOpen: (mint: string) => void; onTogglePin: (mint: string) => void }
 
-type CardProps = { token: RadarToken; onOpen: (mint: string) => void; onTogglePin: (mint: string) => void }
-
-export function PickCard({ token, onOpen, onTogglePin }: CardProps) {
+export function PickCard({ token, chartWindow, onOpen, onTogglePin }: CardProps) {
   const open = (event: KeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) return
     event.preventDefault()
@@ -28,33 +27,33 @@ export function PickCard({ token, onOpen, onTogglePin }: CardProps) {
       <QualityBadge token={token}/>
     </div>
     <div className="radar-pick-changes">
-      {windows.map(([key, label]) => <span key={key}><small>{label}</small><strong className={`tabular radar-delta ${changeClass(token.priceChange[key])}`}>{formatChange(token.priceChange[key])}</strong></span>)}
-      <ViewerSparkline history={token.history} field="priceUsd"/>
+      {chartWindows.map(({ key, label }) => <span key={key} className={key === chartWindow ? 'active' : ''}><small>{label}</small><strong className={`tabular radar-delta ${changeClass(token.priceChange[key])}`}>{formatChange(token.priceChange[key])}</strong></span>)}
     </div>
+    <div className="radar-pick-chart"><PriceSpark points={sparkPoints(token, chartWindow)} width={280} height={58} fluid/></div>
     {token.signalReasons.length > 0 && <ul className="radar-pick-reasons">{token.signalReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
     {token.alerts.length > 0 && <p className="radar-pick-alert"><TriangleAlert size={13} aria-hidden="true"/>{token.alerts.join(' · ')}</p>}
     <LaunchLinks token={token}/>
   </article>
 }
 
-export function PicksView({ tokens, onOpen, onTogglePin }: { tokens: RadarToken[]; onOpen: (mint: string) => void; onTogglePin: (mint: string) => void }) {
+export function PicksView({ tokens, chartWindow, onOpen, onTogglePin }: { tokens: RadarToken[]; chartWindow: ChartWindow; onOpen: (mint: string) => void; onTogglePin: (mint: string) => void }) {
   const buys = tokens.filter(token => token.signal === 'buy').sort((first, second) => second.score - first.score)
   const watch = tokens.filter(token => token.signal === 'watch').sort((first, second) => Number(second.viewerSurge) - Number(first.viewerSurge) || second.score - first.score).slice(0, 12)
   const warnings = tokens.filter(token => token.alerts.length > 0 && token.signal !== 'watch').slice(0, 6)
   return <div className="radar-picks">
     <section aria-labelledby="radar-buys-title">
       <div className="radar-section-head"><h2 id="radar-buys-title"><Sparkles size={16} aria-hidden="true"/> Recommended buys <span className="tabular">{buys.length}</span></h2><p>Coins that pass every buy rule in Settings right now. These are signals from your rules, not financial advice.</p></div>
-      {buys.length ? <div className="radar-pick-grid">{buys.map(token => <PickCard key={token.mint} token={token} onOpen={onOpen} onTogglePin={onTogglePin}/>)}</div>
+      {buys.length ? <div className="radar-pick-grid">{buys.map(token => <PickCard key={token.mint} token={token} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/>)}</div>
         : <p className="radar-empty-line">No coin passes every buy rule at the moment. Loosen the rules in Settings, or check Coins to watch.</p>}
     </section>
     <section aria-labelledby="radar-watch-title">
       <div className="radar-section-head"><h2 id="radar-watch-title"><Eye size={16} aria-hidden="true"/> Coins to watch <span className="tabular">{watch.length}</span></h2><p>Gaining viewers quickly, scoring well, moving up, or held by smart holders, but not yet passing every buy rule.</p></div>
-      {watch.length ? <div className="radar-pick-grid">{watch.map(token => <PickCard key={token.mint} token={token} onOpen={onOpen} onTogglePin={onTogglePin}/>)}</div>
+      {watch.length ? <div className="radar-pick-grid">{watch.map(token => <PickCard key={token.mint} token={token} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/>)}</div>
         : <p className="radar-empty-line">Nothing stands out yet. Keep Axiom Pulse open so viewer counts keep flowing.</p>}
     </section>
     {warnings.length > 0 && <section aria-labelledby="radar-warn-title">
       <div className="radar-section-head"><h2 id="radar-warn-title"><TriangleAlert size={16} aria-hidden="true"/> Warnings <span className="tabular">{warnings.length}</span></h2><p>Tracked coins showing rug-style behaviour: liquidity pulled, a sharp dump, or risky token authorities.</p></div>
-      <div className="radar-pick-grid">{warnings.map(token => <PickCard key={token.mint} token={token} onOpen={onOpen} onTogglePin={onTogglePin}/>)}</div>
+      <div className="radar-pick-grid">{warnings.map(token => <PickCard key={token.mint} token={token} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/>)}</div>
     </section>}
   </div>
 }

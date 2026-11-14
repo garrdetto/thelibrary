@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Bell, BellOff, BellRing, Brain, Flame, List, Radar, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
-import { defaultRadarSettings, type RadarSettings } from '@/lib/axiom-radar-settings'
+import { Bell, BellOff, BellRing, Brain, Flame, List, Palette, Radar, RefreshCw, Search, Settings2, Sparkles, TrendingUp, Wallet, X } from 'lucide-react'
+import { defaultRadarSettings, radarThemePresets, type RadarSettings, type RadarTheme, type RadarThemePreset } from '@/lib/axiom-radar-settings'
 import type { RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatPercent, formatSigned, relativeSeconds } from './format'
 import { MoversView } from './MoversView'
 import { PaperTrades } from './PaperTrades'
 import { PicksView } from './PicksView'
+import { ChartWindowPicker, PriceSpark, sparkPoints, type ChartWindow } from './PriceSpark'
+import { applyRadarTheme } from './theme'
 import { RadarTable, TokenIcon, sortValue, type RadarSort, type RadarSortKey } from './RadarTable'
 import { SettingsView } from './SettingsView'
 import { TokenDrawer } from './TokenDrawer'
@@ -77,6 +79,8 @@ export function AxiomRadar() {
   const [draft, setDraft] = useState<RadarSettings | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
+  const [chartWindow, setChartWindow] = useState<ChartWindow>('m5')
+  const [previewTheme, setPreviewTheme] = useState<RadarTheme | null>(null)
   const audioRef = useRef<AudioContext | null>(null)
   const seededRef = useRef(false)
   const previousRef = useRef({ surge: new Set<string>(), buy: new Set<string>() })
@@ -85,6 +89,9 @@ export function AxiomRadar() {
 
   const settings = draft ?? payload?.savedSettings ?? payload?.settings ?? defaultRadarSettings
   const tokens = useMemo(() => (payload?.tokens ?? []).map(token => token.pinned === settings.pinned.includes(token.mint) ? token : { ...token, pinned: settings.pinned.includes(token.mint) }), [payload, settings.pinned])
+
+  const themeKey = JSON.stringify(previewTheme ?? settings.theme)
+  useEffect(() => applyRadarTheme(JSON.parse(themeKey) as RadarTheme), [themeKey])
 
   const persist = useCallback(async (next: RadarSettings) => {
     setDraft(next)
@@ -205,6 +212,14 @@ export function AxiomRadar() {
       {connection === 'error' && <button type="button" className="secondary-button" onClick={retry}><RefreshCw size={13}/> Retry</button>}
       <button type="button" className={`radar-toggle ${sound ? 'on' : ''}`} aria-pressed={sound} onClick={toggleSound}>{sound ? <Bell size={14}/> : <BellOff size={14}/>} Sound alerts</button>
       <button type="button" className={`radar-toggle ${desktopAlerts ? 'on' : ''}`} aria-pressed={desktopAlerts} onClick={() => void toggleDesktopAlerts()}><BellRing size={14}/> Desktop alerts</button>
+      <label className="radar-theme-select">
+        <Palette size={14} aria-hidden="true"/><span className="sr-only">Colour theme</span>
+        <select value={settings.theme.preset} onChange={event => void persist({ ...settings, theme: { ...settings.theme, preset: event.target.value as RadarThemePreset } })}>
+          <option value="site">Site theme</option>
+          {radarThemePresets.map(preset => <option key={preset.id} value={preset.id}>{preset.label}</option>)}
+          <option value="custom">Custom colours</option>
+        </select>
+      </label>
     </div>
 
     {payload && payload.components.length > 0 && <ul className="radar-components" aria-label="Tracker components">
@@ -234,6 +249,7 @@ export function AxiomRadar() {
               <span className="radar-top3-rank tabular">{index + 1}</span>
               <TokenIcon token={token}/>
               <span className="radar-top3-name"><strong>{token.symbol}</strong><small>{token.viewerSurge ? 'This coin is gaining viewers quickly' : 'Viewers rising'}</small></span>
+              <PriceSpark points={sparkPoints(token, chartWindow)} width={84} height={30}/>
               <span className="radar-top3-count"><strong className="tabular">{formatCount(token.viewers)}</strong><small className="tabular radar-delta up">{formatSigned(token.viewersPerMin)}/min</small></span>
             </button>
           </li>)}</ol>}
@@ -246,14 +262,17 @@ export function AxiomRadar() {
         <div className="radar-kpi"><span>Paper-trade win rate</span><strong className="tabular">{formatPercent(payload.kpis.winRate, 0)}</strong><small>{payload.kpis.completedTrades} completed</small></div>
       </div>
 
+      <div className="radar-tabbar">
       <div className="radar-tabs" role="tablist" aria-label="Axiom Radar views">
         {tabs.map(item => <button key={item.id} type="button" role="tab" id={`radar-tab-${item.id}`} aria-controls="radar-panel" aria-selected={tab === item.id} className={tab === item.id ? 'active' : ''} onClick={() => setTab(item.id)}>
           <item.icon size={14} aria-hidden="true"/> {item.label}{item.id === 'picks' && buyCount > 0 && <span className="radar-tab-count tabular">{buyCount}</span>}
         </button>)}
       </div>
+      <ChartWindowPicker value={chartWindow} onChange={setChartWindow} label="Chart previews"/>
+      </div>
 
       <div id="radar-panel" role="tabpanel" aria-labelledby={`radar-tab-${tab}`}>
-        {tab === 'picks' && <PicksView tokens={tokens} onOpen={onOpen} onTogglePin={onTogglePin}/>}
+        {tab === 'picks' && <PicksView tokens={tokens} chartWindow={chartWindow} onOpen={onOpen} onTogglePin={onTogglePin}/>}
         {tab === 'coins' && <>
           <div className="radar-filters">
             <div className="radar-chips" role="group" aria-label="Quick filters">
@@ -268,7 +287,7 @@ export function AxiomRadar() {
             </label>
           </div>
           {visible.length > 0
-            ? <RadarTable tokens={visible} sort={sort} onSort={onSort} onOpen={onOpen} onTogglePin={onTogglePin} selected={selected}/>
+            ? <RadarTable tokens={visible} chartWindow={chartWindow} sort={sort} onSort={onSort} onOpen={onOpen} onTogglePin={onTogglePin} selected={selected}/>
             : <div className="radar-empty">
               <Radar size={36} strokeWidth={1}/>
               <h3>{tokens.length ? 'No coins match these filters.' : workerStatus === 'offline' ? 'The radar is quiet.' : 'Scanning for coins…'}</h3>
@@ -279,11 +298,11 @@ export function AxiomRadar() {
         {tab === 'movers' && <MoversView tokens={tokens} onOpen={onOpen}/>}
         {tab === 'wallets' && <WalletsView payload={payload} now={now} onOpen={onOpen}/>}
         {tab === 'paper' && <PaperTrades payload={payload} now={now}/>}
-        {tab === 'settings' && <SettingsView settings={settings} activeUpdatedAt={payload.settings.updatedAt} saving={saving} error={saveError} now={now} onSave={next => void persist(next)}/>}
+        {tab === 'settings' && <SettingsView settings={settings} activeUpdatedAt={payload.settings.updatedAt} saving={saving} error={saveError} now={now} onSave={next => void persist(next)} onPreviewTheme={setPreviewTheme}/>}
       </div>
     </>}
 
-    {selectedToken && <TokenDrawer token={selectedToken} fast={connection === 'local'} onClose={onClose} onTogglePin={onTogglePin}/>}
+    {selectedToken && <TokenDrawer token={selectedToken} chartWindow={chartWindow} fast={connection === 'local'} onClose={onClose} onTogglePin={onTogglePin}/>}
   </section>
 }
 

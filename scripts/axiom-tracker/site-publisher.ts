@@ -25,7 +25,7 @@ function collectDetails(database: TrackerDatabase, payload: RadarPayload, histor
   const details: Record<string, RadarTokenDetail> = {}
   for (const token of payload.tokens) {
     const detail = buildTokenDetail(database, token.mint)
-    if (detail) details[token.mint] = { ...detail, history: thin(detail.history, historyLimit), live: thin(detail.live, 60), token: { ...detail.token, history: thin(detail.token.history, 45) } }
+    if (detail) details[token.mint] = { ...detail, history: thin(detail.history, historyLimit), live: thin(detail.live, 90), token: { ...detail.token, history: thin(detail.token.history, 45), spark: { fast: [], slow: [] } } }
   }
   return details
 }

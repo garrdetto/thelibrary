@@ -1,5 +1,6 @@
 import type { RadarToken } from '@/lib/axiom-radar-types'
 import { formatCount, formatSigned, formatUsd } from './format'
+import { PriceSpark, sparkPoints, type ChartWindow } from './PriceSpark'
 import { TokenIcon, changeClass, formatChange } from './RadarTable'
 
 const boards = [
@@ -9,7 +10,7 @@ const boards = [
   { key: 'm10', label: 'Last 10 minutes' },
 ] as const
 
-function Board({ title, caption, rows, onOpen }: { title: string; caption: string; rows: Array<{ token: RadarToken; value: string; tone: string }>; onOpen: (mint: string) => void }) {
+function Board({ title, caption, rows, window, onOpen }: { title: string; caption: string; rows: Array<{ token: RadarToken; value: string; tone: string }>; window: ChartWindow; onOpen: (mint: string) => void }) {
   return <section className="radar-card radar-board">
     <div className="panel-heading"><h2>{title}</h2><span className="panel-caption">{caption}</span></div>
     {rows.length === 0 ? <p className="radar-muted">Not enough data yet.</p> : <ol>
@@ -18,6 +19,7 @@ function Board({ title, caption, rows, onOpen }: { title: string; caption: strin
           <span className="radar-rank tabular">{index + 1}</span>
           <TokenIcon token={token}/>
           <span className="radar-board-name"><strong>{token.symbol}</strong><small className="tabular">{formatCount(token.viewers)} watching · {formatUsd(token.marketCap)}</small></span>
+          <PriceSpark points={sparkPoints(token, window)} width={70} height={26}/>
           <strong className={`tabular radar-delta ${tone}`}>{value}</strong>
         </button>
       </li>)}
@@ -34,8 +36,8 @@ export function MoversView({ tokens, onOpen }: { tokens: RadarToken[]; onOpen: (
         .sort((first, second) => (second.priceChange[board.key] ?? 0) - (first.priceChange[board.key] ?? 0))
         .slice(0, 8)
         .map(token => ({ token, value: formatChange(token.priceChange[board.key]), tone: changeClass(token.priceChange[board.key]) }))
-      return <Board key={board.key} title={board.label} caption="BIGGEST PRICE GAIN" rows={rows} onOpen={onOpen}/>
+      return <Board key={board.key} title={board.label} caption="BIGGEST PRICE GAIN" rows={rows} window={board.key} onOpen={onOpen}/>
     })}
-    <Board title="Viewers gained per minute" caption="ATTENTION" rows={viewerGainers.map(token => ({ token, value: `${formatSigned(token.viewersPerMin)}/min`, tone: 'up' }))} onOpen={onOpen}/>
+    <Board title="Viewers gained per minute" caption="ATTENTION" rows={viewerGainers.map(token => ({ token, value: `${formatSigned(token.viewersPerMin)}/min`, tone: 'up' }))} window="m1" onOpen={onOpen}/>
   </div>
 }

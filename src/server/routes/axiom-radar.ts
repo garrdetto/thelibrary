@@ -59,6 +59,7 @@ async function savedSettings(env: Env): Promise<RadarSettings | null> {
   try { return normalizeRadarSettings(JSON.parse(row.value)) } catch { return null }
 }
 
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/)
 const requirementInput = z.object({ enabled: z.boolean(), value: z.number().finite() }).strict()
 const settingsInput = z.object({
   maxAgeHours: requirementInput,
@@ -75,6 +76,10 @@ const settingsInput = z.object({
   surgeSensitivity: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   wallets: z.object({ minRunnerHits: z.number().finite() }).strict(),
   pinned: z.array(z.string().regex(mintPattern)).max(50),
+  theme: z.object({
+    preset: z.enum(['site', 'ocean', 'neon', 'mono', 'custom']),
+    custom: z.object({ background: hexColor, panel: hexColor, text: hexColor, muted: hexColor, border: hexColor, accent: hexColor, up: hexColor, down: hexColor }).strict(),
+  }).strict(),
   updatedAt: z.number().nullable().optional(),
 }).strict()
 

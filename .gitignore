@@ -40,4 +40,5 @@ public/modules/tello.html
 # Axiom Radar tracker
 data/*.db*
 data/*.log*
+data/*.json
 axiom-session/

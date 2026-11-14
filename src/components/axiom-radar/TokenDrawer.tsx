@@ -3,6 +3,7 @@ import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
 import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
+import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
 import { fetchTokenDetail } from './useRadarFeed'
 
@@ -12,9 +13,10 @@ const percentLabel = (value: number | null | undefined) => value === null || val
 const windows = [['s30', '30 seconds'], ['m1', '1 minute'], ['m5', '5 minutes'], ['m10', '10 minutes']] as const
 const clockWithSeconds = (value: number) => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-type TokenDrawerProps = { token: RadarToken; fast: boolean; onClose: () => void; onTogglePin: (mint: string) => void }
+type TokenDrawerProps = { token: RadarToken; chartWindow: ChartWindow; fast: boolean; onClose: () => void; onTogglePin: (mint: string) => void }
 
-export function TokenDrawer({ token, fast, onClose, onTogglePin }: TokenDrawerProps) {
+export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: TokenDrawerProps) {
+  const [span, setSpan] = useState<ChartWindow>(chartWindow)
   const [detail, setDetail] = useState<RadarTokenDetail | null>(null)
   const [error, setError] = useState('')
   const closeRef = useRef<HTMLButtonElement>(null)
@@ -56,7 +58,9 @@ export function TokenDrawer({ token, fast, onClose, onTogglePin }: TokenDrawerPr
 
   const live = fast && detail ? { ...detail.token, pinned: token.pinned } : token
   const history = detail?.history ?? token.history
-  const ticks = (detail?.live ?? []).filter(point => point.price !== null || point.viewers !== null)
+  const allTicks = (detail?.live ?? []).filter(point => point.price !== null || point.viewers !== null)
+  const newest = allTicks.at(-1)?.t ?? 0
+  const ticks = allTicks.filter(point => point.t >= newest - chartWindowMs[span])
   const pulse = live.pulse
   return <div className="radar-drawer-layer">
     <button type="button" className="radar-drawer-backdrop" aria-label="Close details" tabIndex={-1} onClick={onClose}/>
@@ -95,7 +99,8 @@ export function TokenDrawer({ token, fast, onClose, onTogglePin }: TokenDrawerPr
       </section>
 
       <section className="radar-drawer-section">
-        <h3>Live chart <small>price and viewers, last 10 minutes{fast ? ', every second' : ''}</small></h3>
+        <h3>Live chart <small>price and viewers{fast ? ', updating every second' : ''}</small></h3>
+        <ChartWindowPicker value={span} onChange={setSpan} label="Show the last"/>
         {ticks.length < 2
           ? <p className="radar-muted">{detail ? 'Collecting live ticks. The line appears within a few seconds.' : <><LoaderCircle size={14} className="spin"/> Loading the live chart…</>}</p>
           : <div className="radar-chart-box">
