@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent } from 'react'
-import { AlertTriangle, CheckSquare, Download, FileArchive, ImagePlus, Pause, Play, RotateCw, Save, Square, Trash2, Upload, Wand2, X, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckSquare, Download, FileArchive, ImagePlus, Images, Pause, Play, RotateCw, Save, Square, Trash2, Upload, Wand2, X, XCircle } from 'lucide-react'
 import { CLIPART_PRESETS, DEFAULT_ENGINE, DEFAULT_NEGATIVE, DEFAULT_PRESET_ID, DEFAULT_PROMPT, closestResolution, engineInfo } from '@/lib/clipart'
 import type { EngineId, SavedPreset } from '@/lib/clipart'
 import { ClipartError, EXPORT_FORMATS, convertBlob, deleteClipartPreset, encodeForEngine, exportName, fetchClipartStatus, fetchResult, imageSize, requestClipart, saveClipartPreset } from '@/lib/clipart-client'
@@ -253,6 +253,37 @@ export default function ClipartGenerator() {
     }
   }
 
+  async function saveAll() {
+    const done = items.filter(item => item.result)
+    if (!done.length) return
+    const used = new Map<string, number>()
+    const files: File[] = []
+    try {
+      for (const [index, item] of done.entries()) {
+        setExporting(`Preparing ${index + 1} of ${done.length}…`)
+        const blob = await convertBlob(await fetchResult(item.result!.url), format)
+        let name = exportName(item.name, ext)
+        const count = used.get(name) ?? 0
+        used.set(name, count + 1)
+        if (count) name = name.replace(/(\.[a-z]+)$/, `-${count + 1}$1`)
+        files.push(new File([blob], name, { type: blob.type || format }))
+      }
+      if (window.matchMedia('(pointer: coarse)').matches && navigator.canShare?.({ files })) {
+        setExporting('')
+        try { await navigator.share({ files }) } catch (error) { if (!(error instanceof DOMException && error.name === 'AbortError')) throw error }
+        return
+      }
+      for (const [index, file] of files.entries()) {
+        setExporting(`Saving ${index + 1} of ${files.length}…`)
+        downloadBlob(file, file.name)
+        await new Promise(resolve => setTimeout(resolve, 400))
+      }
+      setExporting(files.length > 1 ? `Saved ${files.length} images. If only one arrived, allow multiple downloads for this site when your browser asks.` : '')
+    } catch (error) {
+      setExporting(error instanceof Error ? error.message : 'The images could not be saved.')
+    }
+  }
+
   async function exportZip() {
     const done = items.filter(item => item.result)
     if (!done.length) return
@@ -307,6 +338,7 @@ export default function ClipartGenerator() {
       <div className="cg-export" role="group" aria-label="Export">
         <select aria-label="Export format" value={format} onChange={event => setFormat(event.target.value as ExportType)}>{EXPORT_FORMATS.map(entry => <option key={entry.type} value={entry.type}>{entry.label}</option>)}</select>
         <button type="button" className="cg-btn" disabled={!current?.result} onClick={() => void exportOne(current)}><Download size={15}/> Export</button>
+        <button type="button" className="cg-btn" disabled={!counts.done} onClick={() => void saveAll()}><Images size={15}/> Save all ({counts.done})</button>
         <button type="button" className="cg-btn" disabled={!counts.done} onClick={() => void exportZip()}><FileArchive size={15}/> ZIP all ({counts.done})</button>
         <label className="cg-check is-disabled" title="None of the connected engines return a transparent background."><input type="checkbox" disabled/> Transparent</label>
       </div>
