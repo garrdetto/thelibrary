@@ -16,6 +16,7 @@ import { ChunkedBuilders, finishMesh, hexRGB, MeshBuilder, type RGB } from '../.
 import type { Mats } from '../../foxlake/fp/core/Tex'
 import type { TelloLand } from '../region'
 import type { StaticSink } from './Sink'
+import { place, type ModelKit } from './Kit'
 
 /** The pool's extent (map x, z) and the cliff behind it. */
 const POOL = { x0: 111.4, x1: 130.6, z0: 31.5, z1: 36.6 }
@@ -35,11 +36,11 @@ export class Falls {
   }
 }
 
-export function buildFalls(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand): Falls | null {
+export function buildFalls(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand, kit: ModelKit | null = null): Falls | null {
   if (!land.doc.pois.some((p) => p.k === 'landmark' && /waterfall/i.test(p.n) && Math.hypot(p.x - 120.9, p.z - 34.9) < 8)) return null
   const chunks = new ChunkedBuilders(128)
   const M = {
-    granite: mats.textured('tello-granite', 'stone', { vcolor: true }),
+    granite: mats.textured('tello-granite', 'stucco', { vcolor: true, tile: 0.6 }),
     wall: mats.textured('tello-stone', 'stone', { vcolor: true }),
     wood: mats.textured('tello-logs', 'planks', { vcolor: true }),
     shingles: mats.textured('roof-shingles', 'shingles', { vcolor: true }),
@@ -49,7 +50,44 @@ export function buildFalls(root: TransformNode, mats: Mats, sink: StaticSink, la
   const street = land.heightAt((POOL.x0 + POOL.x1) / 2, POOL.z0 - 1)
   const water = street + 0.25
   const cx = (POOL.x0 + POOL.x1) / 2
+  const sheet = new MeshBuilder()
+  const foam = new MeshBuilder()
+  sink.addStaticBox({ cx, cy: water, cz: -POOL.z0 + 0.25, hx: (POOL.x1 - POOL.x0) / 2 + 0.5, hy: 0.8, hz: 0.25, rotY: 0 })
+  // A solid core so nobody walks into the rock.
+  sink.addStaticBox({ cx, cy: water + 3.5, cz: -(POOL.z0 + 7.6), hx: 11, hy: 3.5, hz: 3.4, rotY: 0 })
+  if (kit?.has('falls-rock')) {
+    // The Blender model: its front line is the pool's front, at the water.
+    const at = place(cx, water, -POOL.z0)
+    const rock = () => chunks.get(cx, -POOL.z1, M.granite, { colors: true })
+    kit.put('falls-rock', at, rock, (_s, own) => own ?? GRANITE[0])
+    kit.put('falls-wetrock', at, rock, (_s, own) => own ?? hexRGB(0x6a4239))
+    kit.put('falls-wall', at, () => chunks.get(cx, -POOL.z0, M.wall, { colors: true }), (_s, own) => own ?? hexRGB(0x7d6a58))
+    kit.put('falls-well', at, (slot) => chunks.get(cx - 13, -POOL.z0, slot === 'wood' ? M.wood : slot === 'shingle' ? M.shingles : M.wall, { colors: true }), (slot, own) => (slot === 'wood' ? hexRGB(0x6b4a30) : slot === 'shingle' ? hexRGB(0x5a4232) : own ?? hexRGB(0x8a7a66)))
+    kit.put('falls-pool', at, () => chunks.get(cx, -POOL.z0, M.pool, { cast: false }), () => WHITE)
+    kit.put('falls-water', at, () => sheet, () => WHITE)
+    kit.put('falls-foam', at, () => foam, () => WHITE)
+  } else proceduralFalls(chunks, M, land, water, sheet, foam)
+  if (kit) quarry(chunks, M, land, kit, sheet, foam)
+  const streams: Texture[] = []
+  const sheetMat = waterMaterial(mats, 'tello-falls-stream', streaks(), 0.78)
+  const foamMat = waterMaterial(mats, 'tello-falls-foam', foamTexture(), 0.75)
+  streams.push(sheetMat.albedoTexture as Texture)
+  for (const [b, mat, name] of [[sheet, sheetMat, 'stream'], [foam, foamMat, 'foam']] as [MeshBuilder, PBRMaterial, string][]) {
+    if (b.empty) continue
+    const mesh = b.toMesh(`tello-falls-${name}`)
+    mesh.parent = root
+    finishMesh(mesh, mat, { cast: false, static: true })
+  }
+  for (const [x0, x1, z] of [[99.5, 106.8, 31.3], [131.4, 141.5, 31.6]] as [number, number, number][]) fence(chunks, M.iron, land, x0, x1, z)
+  chunks.flush(root, 'tello-falls')
+  return new Falls(streams)
+}
 
+const WHITE: RGB = [1, 1, 1]
+
+/** The built-in falls, for when the Blender model can't be loaded. */
+function proceduralFalls(chunks: ChunkedBuilders, M: Record<string, Material>, land: TelloLand, water: number, sheet: MeshBuilder, foam: MeshBuilder): void {
+  const cx = (POOL.x0 + POOL.x1) / 2
   // The pool and the wall in front of it.
   const pool = chunks.get(cx, -POOL.z0, M.pool, { cast: false })
   pool.flat(POOL.x0, -POOL.z1 - 3, POOL.x1, -POOL.z0, water, 1)
@@ -62,7 +100,6 @@ export function buildFalls(root: TransformNode, mats: Mats, sink: StaticSink, la
   }
   wall.box(POOL.x0 - 0.5, water - 0.6, -POOL.z1 - 1.5, POOL.x0, wallTop(POOL.x0, POOL.z0), -POOL.z0, { color: stone })
   wall.box(POOL.x1, water - 0.6, -POOL.z1 - 1.5, POOL.x1 + 0.5, wallTop(POOL.x1, POOL.z0), -POOL.z0, { color: stone })
-  sink.addStaticBox({ cx, cy: water, cz: -POOL.z0 + 0.25, hx: (POOL.x1 - POOL.x0) / 2 + 0.5, hy: 0.8, hz: 0.25, rotY: 0 })
 
   // The cliff: tiers of granite boulders stepping back and up from the water.
   const rock = chunks.get(cx, -POOL.z1, M.granite, { colors: true })
@@ -105,31 +142,69 @@ export function buildFalls(root: TransformNode, mats: Mats, sink: StaticSink, la
     seed++
     rock.blob(mx, water + c.steps[0][1] - 0.3, -(POOL.z0 + c.steps[0][0] + 1.4), w + 0.6, 1.0, 1.5, seed, 0.18, GRANITE[seed % GRANITE.length])
   }
-  // A solid core so nobody walks into the rock.
-  sink.addStaticBox({ cx, cy: water + 3.5, cz: -(POOL.z0 + 7.6), hx: 11, hy: 3.5, hz: 3.4, rotY: 0 })
-
   // The water: streaming sheets down the rock, foam where they land.
-  const streams: Texture[] = []
-  const sheet = new MeshBuilder()
   for (const c of CASCADES) cascade(sheet, c, water)
-  const foam = new MeshBuilder()
   for (const c of CASCADES) {
     const base = c.steps[c.steps.length - 1][0]
     foam.flat(c.x0 - 0.6, -(POOL.z0 + base + 0.2), c.x1 + 0.6, -(POOL.z0 + base - 1.4), water + 0.02, 1)
   }
-  const sheetMat = waterMaterial(mats, 'tello-falls-stream', streaks(), 0.78)
-  const foamMat = waterMaterial(mats, 'tello-falls-foam', foamTexture(), 0.75)
-  streams.push(sheetMat.albedoTexture as Texture)
-  for (const [b, mat, name] of [[sheet, sheetMat, 'stream'], [foam, foamMat, 'foam']] as [MeshBuilder, PBRMaterial, string][]) {
-    const mesh = b.toMesh(`tello-falls-${name}`)
-    mesh.parent = root
-    finishMesh(mesh, mat, { cast: false, static: true })
-  }
-
   wishingWell(chunks, M, 108.0, land.heightAt(108.0, 32.8), 32.8)
-  for (const [x0, x1, z] of [[99.5, 106.8, 31.3], [131.4, 141.5, 31.6]] as [number, number, number][]) fence(chunks, M.iron, land, x0, x1, z)
-  chunks.flush(root, 'tello-falls')
-  return new Falls(streams)
+}
+
+/**
+ * The granite park: Blender quarry faces along every steep shore of the river pool and the quarry pond (facing the
+ * water, as tall as the bank), and a small falls where each of the park's other waterfalls is mapped.
+ */
+function quarry(chunks: ChunkedBuilders, M: Record<string, Material>, land: TelloLand, kit: ModelKit, sheet: MeshBuilder, foam: MeshBuilder): void {
+  const step = land.cell
+  const shore: { x: number; z: number; level: number; rise: number; dx: number; dz: number }[] = []
+  for (let z = 40; z <= 150; z += step) {
+    for (let x = 96; x <= 250; x += step) {
+      const level = land.waterAt(x, z)
+      if (level === null || Math.hypot(x - 121, z - 36) < 16) continue
+      let rise = 0, dx = 0, dz = 0
+      for (let j = -2; j <= 2; j++) {
+        for (let i = -2; i <= 2; i++) {
+          const px = x + i * step, pz = z + j * step
+          if (land.waterAt(px, pz) !== null) continue
+          const r = land.groundAt(px, pz) - level
+          if (r < 2) continue
+          rise = Math.max(rise, r)
+          dx += i * r
+          dz += j * r
+        }
+      }
+      if (rise < 2) continue
+      const len = Math.hypot(dx, dz) || 1
+      shore.push({ x, z, level, rise, dx: dx / len, dz: dz / len })
+    }
+  }
+  shore.sort((a, b) => b.rise - a.rise)
+  const picked: typeof shore = []
+  for (const s of shore) {
+    if (picked.length >= 48) break
+    if (picked.some((p) => Math.hypot(p.x - s.x, p.z - s.z) < 9)) continue
+    picked.push(s)
+  }
+  const rock = (x: number, z: number) => () => chunks.get(x, -z, M.granite, { colors: true })
+  const tall: [string, number][] = [['quarry-wall-c', 4.5], ['quarry-wall-a', 6.5], ['quarry-wall-b', 8.5]]
+  for (const s of picked) {
+    const [name, h] = s.rise < 3.5 ? tall[0] : s.rise < 6 ? tall[1] : tall[2]
+    // Face the water: the part's front (+z) points away from the bank, in the town frame (z flips).
+    const fx = -s.dx, fz = s.dz
+    const x = s.x + s.dx * 2.2, z = s.z + s.dz * 2.2
+    const sy = Math.min(1.4, Math.max(0.5, (s.rise + 1.2) / h))
+    kit.put(name, place(x, s.level - 0.8, -z, 1, sy, 1, Math.atan2(fx, fz)), rock(x, z), (_s, own) => own ?? GRANITE[0])
+  }
+  for (const poi of land.doc.pois) {
+    if (poi.k !== 'landmark' || !/waterfall/i.test(poi.n) || Math.hypot(poi.x - 120.9, poi.z - 34.9) < 8) continue
+    const near = shore.reduce<(typeof shore)[number] | null>((best, s) => (Math.hypot(s.x - poi.x, s.z - poi.z) < (best ? Math.hypot(best.x - poi.x, best.z - poi.z) : 30) ? s : best), null)
+    if (!near) continue
+    const at = place(near.x + near.dx * 1.6, near.level - 0.1, -(near.z + near.dz * 1.6), 1, 1, 1, Math.atan2(-near.dx, near.dz))
+    kit.put('small-falls-rock', at, rock(near.x, near.z), (_s, own) => own ?? GRANITE[0])
+    kit.put('small-falls-water', at, () => sheet, () => WHITE)
+    kit.put('small-falls-foam', at, () => foam, () => WHITE)
+  }
 }
 
 function hash(n: number): number {

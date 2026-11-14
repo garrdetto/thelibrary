@@ -19,12 +19,223 @@ import type { StaticSink } from './Sink'
 /** The marquee: where it stands (map), the way its face looks (map) and its board. */
 const MARQUEE = { x: 94.8, z: 30.6, face: [0.8, -0.6] as [number, number], w: 4.6, h: 1.2, bottom: 2.7 }
 
-export function buildLandmarks(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand): { mural: boolean } {
+export function buildLandmarks(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand): { mural: boolean; hall: boolean } {
   const chunks = new ChunkedBuilders(128)
   const mural = muralWall(chunks, mats, land)
   marquee(chunks, mats, sink, land)
+  const hall = municipalBuilding(chunks, mats, sink, land)
   chunks.flush(root, 'tello-landmarks')
-  return { mural }
+  return { mural, hall }
+}
+
+/** A footprint's edge whose outside faces `face` (map) most squarely, its ends left to right as seen from outside. */
+function facingEdge(p: number[], face: [number, number]): { ax: number; az: number; bx: number; bz: number; ox: number; oz: number; len: number } | null {
+  const n = p.length / 2
+  let area = 0
+  for (let k = 0; k < n; k++) area += p[k * 2] * p[((k + 1) % n) * 2 + 1] - p[((k + 1) % n) * 2] * p[k * 2 + 1]
+  const ccw = area > 0
+  let best = -Infinity, out: ReturnType<typeof facingEdge> = null
+  for (let k = 0; k < n; k++) {
+    const j = (k + 1) % n
+    let ax = p[k * 2], az = p[k * 2 + 1], bx = p[j * 2], bz = p[j * 2 + 1]
+    const len = Math.hypot(bx - ax, bz - az)
+    if (len < 4) continue
+    const ox = (ccw ? bz - az : az - bz) / len, oz = (ccw ? ax - bx : bx - ax) / len
+    const score = ox * face[0] + oz * face[1] + len * 0.01
+    if (score <= best) continue
+    best = score
+    if ((bx - ax) * oz - (bz - az) * ox > 0) [ax, az, bx, bz] = [bx, bz, ax, az]
+    out = { ax, az, bx, bz, ox, oz, len }
+  }
+  return out
+}
+
+/**
+ * Montello's municipal building, from the owner's photos: brown brick, "MONTELLO MUNICIPAL BUILDING" on a raised brick
+ * panel, glass entry doors, the Police Dept. bay with a little gabled porch, a tan block band along the top, and the
+ * fire station's taller block with three white bay doors ("MONTELLO", the fire department's cross, "FIRE"), yellow
+ * bollards and a concrete apron to the street, two flagpoles and black iron fence along the lawn.
+ */
+function municipalBuilding(chunks: ChunkedBuilders, mats: Mats, sink: StaticSink, land: TelloLand): boolean {
+  const b = land.doc.buildings.find((x) => x.n === 'Montello Fire Department')
+  if (!b) return false
+  const e = facingEdge(b.p, [1, 0])
+  if (!e) return false
+  const L = e.len
+  const dxT = (e.bx - e.ax) / L, dzT = -(e.bz - e.az) / L
+  const frame = Matrix.Compose(Vector3.One(), Quaternion.RotationAxis(Vector3.Up(), Math.atan2(-dzT, dxT)), new Vector3(e.ax, b.f, -e.az))
+  const at = { x: e.ax, z: -e.az }
+  const M = {
+    brick: mats.textured('h-brick', 'brick', { vcolor: true }),
+    block: mats.textured('t-metal-wall', 'metal', { vcolor: true, tile: 2.2, metal: 0.25, gloss: 0.35 }),
+    paint: mats.plain('h-paint', { vcolor: true, gloss: 0.22 }),
+    lit: mats.plain('t-window-lit', { color: 0x38424b, gloss: 0.8, keepGloss: true, emissive: 0xffc98a, emissiveIntensity: 0 }),
+    iron: mats.plain('tello-lamp-iron', { color: 0x1c1e22, gloss: 0.3 }),
+    pole: mats.plain('tello-signal-pole', { color: 0x8a8d90, gloss: 0.3, metal: 0.6 }),
+    letters: textured(mats, 'tello-hall-letters', hallLetters()),
+    doors: textured(mats, 'tello-hall-doors', bayDoors()),
+    flag: textured(mats, 'tello-hall-flag', flagCanvas()),
+  }
+  const used = new Set<ReturnType<ChunkedBuilders['get']>>()
+  const get = (m: Material, colors = true) => {
+    const bb = chunks.get(at.x, at.z, m, { colors })
+    if (!used.has(bb)) {
+      used.add(bb)
+      bb.transform(frame)
+    }
+    return bb
+  }
+  const brick = hexRGB(0x8c5a3e), dark = hexRGB(0x6e452f), tan = hexRGB(0xb39a78), white = hexRGB(0xf2f1ec)
+  const br = get(M.brick), blk = get(M.block), t = get(M.paint), glass = get(M.lit, false)
+  const x = (share: number) => share * L
+  const fire0 = x(0.5)
+  // The office wing: brick to the band, the tan block band along the top.
+  br.box(0, 0, 0, fire0, 3.0, 0.08, { color: brick })
+  blk.box(0, 3.0, 0, fire0, 4.0, 0.08, { color: tan })
+  t.box(-0.05, 4.0, -0.05, fire0, 4.12, 0.16, { color: hexRGB(0x7d7466) })
+  // "MONTELLO MUNICIPAL BUILDING" on a raised panel, and "POLICE DEPT." on its own bay, both a little taller.
+  const lr = { u0: 0, v0: 0, u1: 1, v1: 0.5 }
+  const pr = { u0: 0, v0: 0.5, u1: 1, v1: 1 }
+  const raised = (x0: number, x1: number, top: number, r: { u0: number; v0: number; u1: number; v1: number }) => {
+    br.box(x0, 0, 0, x1, top, 0.35, { color: dark })
+    t.box(x0 - 0.06, top, -0.05, x1 + 0.06, top + 0.12, 0.42, { color: hexRGB(0x7d7466) })
+    get(M.letters).quad([[x0 + 0.25, top - 2.1, 0.36], [x1 - 0.25, top - 2.1, 0.36], [x1 - 0.25, top - 0.35, 0.36], [x0 + 0.25, top - 0.35, 0.36]], [0, 0, 1], [[r.u0, r.v1], [r.u1, r.v1], [r.u1, r.v0], [r.u0, r.v0]])
+  }
+  raised(x(0.02), x(0.17), 4.7, lr)
+  raised(x(0.33), x(0.42), 4.7, pr)
+  // Glass entry, windows, piers.
+  const entry0 = x(0.19), entry1 = x(0.27)
+  glass.quad([[entry0, 0, 0.1], [entry1, 0, 0.1], [entry1, 2.9, 0.1], [entry0, 2.9, 0.1]], [0, 0, 1], [[0, 1], [1, 1], [1, 0], [0, 0]])
+  for (let xx = entry0; xx <= entry1 + 0.01; xx += (entry1 - entry0) / 4) t.box(xx - 0.05, 0, 0.08, xx + 0.05, 2.9, 0.16, { color: white })
+  t.box(entry0, 2.2, 0.08, entry1, 2.28, 0.16, { color: white })
+  t.box(entry0 - 0.05, 2.85, 0.08, entry1 + 0.05, 2.95, 0.17, { color: white })
+  for (const [w0, w1] of [[x(0.285), x(0.325)], [x(0.43), x(0.485)]]) {
+    glass.quad([[w0, 0.9, 0.1], [w1, 0.9, 0.1], [w1, 2.7, 0.1], [w0, 2.7, 0.1]], [0, 0, 1], [[0, 1], [1, 1], [1, 0], [0, 0]])
+    t.box(w0 - 0.06, 0.8, 0.06, w1 + 0.06, 0.9, 0.2, { color: white })
+    t.box((w0 + w1) / 2 - 0.03, 0.9, 0.08, (w0 + w1) / 2 + 0.03, 2.7, 0.14, { color: white })
+  }
+  // The police door with its gabled porch.
+  const pd = x(0.375)
+  t.box(pd - 0.5, 0, 0.36, pd + 0.5, 2.2, 0.4, { color: hexRGB(0x4a3a2c) })
+  for (const s2 of [-1, 1]) t.box(pd + s2 * 0.95 - 0.06, 0, 1.4, pd + s2 * 0.95 + 0.06, 2.5, 1.52, { color: hexRGB(0x6b4a30) })
+  t.face([pd - 1.15, 2.5, 1.7], [pd + 1.15, 2.5, 1.7], [pd, 3.15, 1.7], [pd, 3.15, 1.7], [[0, 1], [1, 1], [0.5, 0], [0.5, 0]], hexRGB(0x6b4a30))
+  t.face([pd - 1.15, 2.5, 1.7], [pd, 3.15, 1.7], [pd, 3.15, 0.36], [pd - 1.15, 2.5, 0.36], [[0, 0], [1, 0], [1, 1], [0, 1]], hexRGB(0x5a4232))
+  t.face([pd, 3.15, 1.7], [pd + 1.15, 2.5, 1.7], [pd + 1.15, 2.5, 0.36], [pd, 3.15, 0.36], [[0, 0], [1, 0], [1, 1], [0, 1]], hexRGB(0x5a4232))
+  // The fire station: taller block, brick piers, tan band with small windows, three white bay doors.
+  br.box(fire0, b.h - 0.2, -12, L, 5.9, 0, { color: brick })
+  const piers = [0.5, 0.645, 0.805, 0.965]
+  for (const s2 of piers) br.box(x(s2) - 0.35, 0, 0, x(s2) + 0.35, 6.05, 0.3, { color: dark })
+  br.box(x(0.965) + 0.35, 0, 0, L, 6.05, 0.3, { color: dark })
+  blk.box(fire0, 4.2, 0.02, L, 5.9, 0.12, { color: tan })
+  t.box(fire0 - 0.05, 5.9, -0.05, L + 0.05, 6.05, 0.36, { color: hexRGB(0x7d7466) })
+  const doorW = Math.min(4.2, x(0.14)), doorH = 3.9
+  const centres = [0.5725, 0.725, 0.885]
+  centres.forEach((c, i) => {
+    const cx = x(c)
+    br.box(cx - doorW / 2 - 0.15, 0, 0.02, cx + doorW / 2 + 0.15, 4.2, 0.1, { color: brick })
+    get(M.doors).quad([[cx - doorW / 2, 0, 0.12], [cx + doorW / 2, 0, 0.12], [cx + doorW / 2, doorH, 0.12], [cx - doorW / 2, doorH, 0.12]], [0, 0, 1], [[i / 3, 1], [(i + 1) / 3, 1], [(i + 1) / 3, 0], [i / 3, 0]])
+    glass.quad([[cx - 0.7, 4.75, 0.13], [cx + 0.7, 4.75, 0.13], [cx + 0.7, 5.15, 0.13], [cx - 0.7, 5.15, 0.13]], [0, 0, 1], [[0, 1], [1, 1], [1, 0], [0, 0]])
+    for (const s2 of [-1, 1]) {
+      const bx = cx + s2 * (doorW / 2 + 0.55)
+      t.cylinder(bx, 0, 0.9, 0.12, 0.12, 1.1, 10, true, hexRGB(0xe6b521))
+    }
+  })
+  // The apron out to the street and two flagpoles on the lawn.
+  const pole = get(M.pole)
+  for (const [px, pz, h] of [[x(0.4), 6.5, 11], [x(0.62), 9.5, 10]] as [number, number, number][]) {
+    pole.cylinder(px, 0, pz, 0.09, 0.05, h, 10, true)
+    pole.cylinder(px, h, pz, 0.12, 0.12, 0.12, 8, true)
+  }
+  get(M.flag).quad([[x(0.4) + 0.08, 8.9, 6.5], [x(0.4) + 2.0, 8.9, 6.5], [x(0.4) + 2.0, 10.0, 6.5], [x(0.4) + 0.08, 10.0, 6.5]], [0, 0, 1], [[0, 1], [1, 1], [1, 0], [0, 0]])
+  get(M.flag).quad([[x(0.4) + 2.0, 8.9, 6.5], [x(0.4) + 0.08, 8.9, 6.5], [x(0.4) + 0.08, 10.0, 6.5], [x(0.4) + 2.0, 10.0, 6.5]], [0, 0, -1], [[1, 1], [0, 1], [0, 0], [1, 0]])
+  const iron = get(M.iron, false)
+  for (const [f0, f1, fz] of [[0.02, 0.185, 3.6], [0.28, 0.33, 3.6]] as [number, number, number][]) {
+    iron.box(x(f0), 0.1, fz, x(f1), 0.14, fz + 0.04)
+    iron.box(x(f0), 1.0, fz, x(f1), 1.04, fz + 0.04)
+    for (let fx = x(f0); fx <= x(f1); fx += 0.13) iron.box(fx - 0.012, 0, fz + 0.008, fx + 0.012, 1.15, fz + 0.032)
+  }
+  for (const bb of used) bb.transform(null)
+  void sink
+  return true
+}
+
+function hallLetters(): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = 512
+  c.height = 1024
+  const g = c.getContext('2d')!
+  for (const [y0, lines] of [[0, ['MONTELLO', 'MUNICIPAL', 'BUILDING']], [512, ['POLICE', 'DEPT.']]] as [number, string[]][]) {
+    g.fillStyle = '#6e452f'
+    g.fillRect(0, y0, 512, 512)
+    g.fillStyle = '#f4f1ea'
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.font = `bold ${lines.length === 3 ? 96 : 120}px Arial, Helvetica, sans-serif`
+    lines.forEach((t, i) => g.fillText(t, 256, y0 + 512 * ((i + 0.5) / lines.length)))
+  }
+  return c
+}
+
+/** Three white sectional bay doors side by side: panels, a window row, MONTELLO, the cross, FIRE. */
+function bayDoors(): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = 1536
+  c.height = 512
+  const g = c.getContext('2d')!
+  for (let i = 0; i < 3; i++) {
+    const x0 = i * 512
+    g.fillStyle = '#f3f3ef'
+    g.fillRect(x0, 0, 512, 512)
+    g.strokeStyle = '#c9c9c3'
+    g.lineWidth = 4
+    for (let r = 1; r < 5; r++) {
+      g.beginPath()
+      g.moveTo(x0, r * 102)
+      g.lineTo(x0 + 512, r * 102)
+      g.stroke()
+    }
+    g.fillStyle = '#2a2d31'
+    for (let k = 0; k < 4; k++) g.fillRect(x0 + 40 + k * 116, 226, 84, 34)
+    g.fillStyle = '#16181b'
+    g.textAlign = 'center'
+    g.textBaseline = 'middle'
+    g.font = 'bold 74px Arial, Helvetica, sans-serif'
+    if (i === 0) g.fillText('MONTELLO', x0 + 256, 120)
+    if (i === 2) g.fillText('FIRE', x0 + 256, 120)
+    if (i === 1) {
+      g.fillStyle = '#b3241c'
+      g.beginPath()
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2
+        const ca = Math.cos(a), sa = Math.sin(a)
+        const pt = (r: number, w: number) => [x0 + 256 + ca * r - sa * w, 120 + sa * r + ca * w]
+        const [p1, p2, p3, p4] = [pt(18, -14), pt(78, -40), pt(78, 40), pt(18, 14)]
+        g.moveTo(p1[0], p1[1]); g.lineTo(p2[0], p2[1]); g.lineTo(p3[0], p3[1]); g.lineTo(p4[0], p4[1])
+      }
+      g.fill()
+      g.fillStyle = '#f3f3ef'
+      g.beginPath()
+      g.arc(x0 + 256, 120, 24, 0, Math.PI * 2)
+      g.fill()
+    }
+  }
+  return c
+}
+
+function flagCanvas(): HTMLCanvasElement {
+  const c = document.createElement('canvas')
+  c.width = 380
+  c.height = 200
+  const g = c.getContext('2d')!
+  for (let i = 0; i < 13; i++) {
+    g.fillStyle = i % 2 ? '#ffffff' : '#b22234'
+    g.fillRect(0, (i * 200) / 13, 380, 200 / 13 + 1)
+  }
+  g.fillStyle = '#3c3b6e'
+  g.fillRect(0, 0, 152, 108)
+  g.fillStyle = '#ffffff'
+  for (let r = 0; r < 9; r++) for (let k = 0; k < (r % 2 ? 5 : 6); k++) g.fillRect(10 + k * 25 + (r % 2 ? 12 : 0), 6 + r * 11, 4, 4)
+  return c
 }
 
 function textured(mats: Mats, name: string, canvas: HTMLCanvasElement): Material {

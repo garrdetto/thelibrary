@@ -16,13 +16,19 @@ import { BUILDING_HEIGHTS, EXTRA_BUILDINGS } from './Downtown'
 import { pointInRing, resample } from '../world/Poly'
 
 /** Lane and parking lane, metres: one lane each way plus a parking lane along each curb. */
-export const LANE = 3.5
-export const PARKING = 2.6
+export const LANE = 3.3
+export const PARKING = 2.4
 export const STREET_HALF = LANE + PARKING
 /** A street narrower than this has no room to park. */
-export const PARKING_MIN_HALF = 5.6
-/** Sidewalk kept between the curb and a building's wall. */
-const SIDEWALK_MIN = 2.1
+export const PARKING_MIN_HALF = 5.2
+/** From a building's wall to the curb: ten feet on Main and East Montello Street. */
+export const SIDEWALK = 3.05
+/** West Montello Street's sidewalk: five feet before the curb (any room left up to the fronts is the storefront apron). */
+export const CURB_WALK = 1.52
+/** The sidewalk's width on a street. */
+export const sidewalkOf = (name: string) => (name === 'West Montello Street' ? CURB_WALK : SIDEWALK)
+/** The curb's height above the street. */
+export const CURB = 0.15
 /** Stations of a street profile, metres apart. */
 export const PROFILE_STEP = 2
 
@@ -228,6 +234,9 @@ export interface StreetProfile {
   half: Float32Array
   /** True where there's room to park. */
   parking: Uint8Array
+  /** How far the sidewalk reaches from the centre line on the left and right (to the wall when it's close). */
+  outerL: Float32Array
+  outerR: Float32Array
 }
 
 /** The cross-section of every downtown street: full town width where the buildings leave room, the baked width elsewhere. */
@@ -238,7 +247,10 @@ export function streetProfiles(doc: MapDoc): Map<RoadData, StreetProfile> {
     if (!isTownStreet(road) || isMainLeg(road)) continue
     const pts = resample(road.p, PROFILE_STEP)
     const n = pts.length / 2
+    const walk = sidewalkOf(road.n)
     const raw = new Float32Array(n)
+    const roomL = new Float32Array(n).fill(14)
+    const roomR = new Float32Array(n).fill(14)
     for (let i = 0; i < n; i++) {
       const x = pts[i * 2], z = pts[i * 2 + 1]
       if (!inCore(x, z)) {
@@ -249,8 +261,9 @@ export function streetProfiles(doc: MapDoc): Map<RoadData, StreetProfile> {
       const dx = pts[c * 2] - pts[a * 2], dz = pts[c * 2 + 1] - pts[a * 2 + 1]
       const len = Math.hypot(dx, dz) || 1
       const sx = -dz / len, sz = dx / len
-      const room = Math.min(rayToWalls(walls, x, z, sx, sz), rayToWalls(walls, x, z, -sx, -sz))
-      raw[i] = Math.min(STREET_HALF, Math.max(road.w / 2, room - SIDEWALK_MIN))
+      roomL[i] = rayToWalls(walls, x, z, sx, sz)
+      roomR[i] = rayToWalls(walls, x, z, -sx, -sz)
+      raw[i] = Math.min(STREET_HALF, Math.max(road.w / 2, Math.min(roomL[i], roomR[i]) - walk))
     }
     // Narrow for a whole building's length, then ease back out over a few metres.
     const win = 3
@@ -271,7 +284,14 @@ export function streetProfiles(doc: MapDoc): Map<RoadData, StreetProfile> {
       half[i] = s / c
       parking[i] = half[i] >= PARKING_MIN_HALF ? 1 : 0
     }
-    out.set(road, { pts, half, parking })
+    // The pavement runs from the curb to the wall where a building is near, or the sidewalk's width out where none is.
+    const outer = (room: number, h: number) => (room - h <= 6 ? room + 0.15 : h + walk)
+    const outerL = new Float32Array(n), outerR = new Float32Array(n)
+    for (let i = 0; i < n; i++) {
+      outerL[i] = outer(roomL[i], half[i])
+      outerR[i] = outer(roomR[i], half[i])
+    }
+    out.set(road, { pts, half, parking, outerL, outerR })
   }
   return out
 }
@@ -333,7 +353,7 @@ export function paveProfiles(doc: MapDoc, grids: MapGrids, profiles: Map<RoadDat
     const m = prof.half.length
     for (let s = 0; s < m; s++) {
       const x = prof.pts[s * 2], z = prof.pts[s * 2 + 1]
-      const h = prof.half[s]
+      const h = Math.max(prof.outerL[s], prof.outerR[s])
       const r = Math.ceil((h + 1) / step)
       const ci = Math.round((x - f.x0) / step), cj = Math.round((z - f.z0) / step)
       for (let j = cj - r; j <= cj + r; j++) {

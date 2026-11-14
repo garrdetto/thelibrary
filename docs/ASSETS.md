@@ -9,17 +9,22 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | shorttrack/track_bullring.glb | 11.57 | 2.53 | 174 → 26 | 58 → 18 |
 | shorttrack/track_dells.glb | 11.52 | 2.52 | 126 → 24 | 52 → 18 |
 | maplestreet/town/neighborhood.glb | 8.57 | 1.50 | 214 → 41 | 71 → 29 |
+| arena/weapons/battle-rifle.glb | 7.20 | 1.63 | 1 → 1 | 1 → 1 |
+| arena/weapons/assault-rifle.glb | 6.51 | 1.32 | 1 → 1 | 1 → 1 |
+| hood/vehicles.glb | 5.64 | 1.69 | 417 → 333 | 28 → 28 |
 | maplestreet/houses/house_N4.glb | 5.40 | 0.63 | 66 → 15 | 55 → 15 |
 | maplestreet/houses/house_N2.glb | 5.39 | 0.59 | 63 → 16 | 55 → 16 |
 | maplestreet/houses/house_N8.glb | 5.32 | 0.61 | 60 → 14 | 49 → 14 |
-| hood/vehicles.glb | 5.64 | 1.69 | 417 → 333 | 28 → 28 |
 | maplestreet/houses/house_S5.glb | 5.28 | 0.56 | 57 → 13 | 49 → 13 |
 | maplestreet/houses/house_S2.glb | 4.92 | 0.55 | 58 → 14 | 52 → 14 |
 | maplestreet/houses/house_S7.glb | 4.83 | 0.54 | 58 → 14 | 52 → 14 |
 | maplestreet/town/downtown.glb | 4.43 | 0.83 | 93 → 46 | 86 → 46 |
+| darts/dart-steel.glb | 4.12 | 0.46 | 2 → 2 | 2 → 2 |
 | sandlot3d/ballpark_dome.glb | 4.03 | 1.63 | 92 → 19 | 52 → 15 |
 | hood/sim.glb | 3.88 | 0.92 | 16 → 16 | 13 → 13 |
+| proskater/skater.glb | 3.74 | 0.73 | 1 → 1 | 1 → 1 |
 | sandlot3d/ballpark_stadium.glb | 3.29 | 1.22 | 64 → 19 | 43 → 14 |
+| tello/quarry.glb | 3.23 | 1.25 | 19 → 19 | 8 → 8 |
 | shorttrack/truck_race_lod0.glb | 3.06 | 0.89 | 29 → 29 | 15 → 15 |
 | shorttrack/truck_livery_1.glb | 2.98 | 0.62 | 187 → 36 | 25 → 16 |
 | shorttrack/truck_livery_3.glb | 2.77 | 0.55 | 187 → 36 | 25 → 16 |
@@ -38,27 +43,30 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | shorttrack/crowd_dirt.glb | 1.07 | 1.06 | 4 → 4 | 4 → 1 |
 | shorttrack/truck_race_lod1.glb | 1.04 | 0.33 | 29 → 29 | 15 → 15 |
 | sandlot3d/athlete.glb | 0.92 | 0.23 | 12 → 12 | 12 → 12 |
+| maplestreet/vehicles/mower.glb | 0.84 | 0.44 | 5 → 5 | 1 → 1 |
+| maplestreet/vehicles/atv.glb | 0.82 | 0.44 | 5 → 5 | 1 → 1 |
+| maplestreet/vehicles/zeroturn.glb | 0.81 | 0.48 | 5 → 5 | 1 → 1 |
+| maplestreet/vehicles/golfcart.glb | 0.78 | 0.42 | 5 → 5 | 1 → 1 |
 | shorttrack/car_slm_lod1.glb | 0.68 | 0.21 | 12 → 8 | 6 → 4 |
+| maplestreet/vehicles/trailer.glb | 0.61 | 0.35 | 3 → 3 | 1 → 1 |
 | shorttrack/pace_car_lod1.glb | 0.54 | 0.19 | 15 → 15 | 9 → 9 |
 | maplestreet/vehicles/sedan.glb | 0.50 | 0.09 | 19 → 9 | 9 → 5 |
 | maplestreet/vehicles/coupe.glb | 0.49 | 0.09 | 19 → 9 | 9 → 5 |
+| tello/downtown-kit.glb | 0.49 | 0.20 | 14 → 14 | 5 → 5 |
+| darts/dart-soft.glb | 0.48 | 0.14 | 4 → 4 | 4 → 4 |
 | maplestreet/vehicles/hdtruck.glb | 0.43 | 0.07 | 21 → 10 | 10 → 6 |
 | maplestreet/vehicles/truck.glb | 0.40 | 0.07 | 20 → 9 | 9 → 5 |
+| proskater/board.glb | 0.36 | 0.12 | 18 → 9 | 9 → 9 |
 | shorttrack/truck_race_lod2.glb | 0.35 | 0.14 | 29 → 29 | 15 → 15 |
 | shorttrack/wheel_race_lod0.glb | 0.25 | 0.09 | 4 → 4 | 4 → 4 |
 | shorttrack/car_slm_lod2.glb | 0.19 | 0.07 | 12 → 8 | 6 → 4 |
-| maplestreet/vehicles/zeroturn.glb | 0.18 | 0.02 | 18 → 7 | 8 → 3 |
 | maplestreet/furniture/flowerBed.glb | 0.18 | 0.03 | 38 → 6 | 7 → 3 |
-| maplestreet/vehicles/golfcart.glb | 0.17 | 0.02 | 20 → 8 | 10 → 4 |
-| maplestreet/vehicles/atv.glb | 0.15 | 0.02 | 19 → 8 | 8 → 4 |
 | shorttrack/pace_car_lod2.glb | 0.15 | 0.07 | 11 → 11 | 8 → 8 |
-| maplestreet/vehicles/mower.glb | 0.14 | 0.02 | 18 → 7 | 8 → 3 |
 | shorttrack/props_kit.glb | 0.12 | 0.06 | 11 → 11 | 8 → 8 |
 | maplestreet/characters/resident.glb | 0.10 | 0.03 | 12 → 5 | 5 → 1 |
 | shorttrack/wheel_race_lod1.glb | 0.10 | 0.04 | 4 → 4 | 4 → 4 |
 | botwreck/crates.glb | 0.09 | 0.01 | 49 → 2 | 2 → 2 |
 | maplestreet/furniture/plant.glb | 0.09 | 0.01 | 11 → 3 | 3 → 3 |
-| maplestreet/vehicles/trailer.glb | 0.08 | 0.01 | 10 → 5 | 7 → 3 |
 | maplestreet/furniture/bookshelf.glb | 0.08 | 0.01 | 44 → 2 | 6 → 1 |
 | maplestreet/furniture/diningSet.glb | 0.08 | 0.01 | 30 → 8 | 3 → 3 |
 | botwreck/arena.glb | 0.08 | 0.03 | 11 → 6 | 7 → 6 |
@@ -127,7 +135,7 @@ Output of `pnpm assets:report` after `pnpm assets --force` on the sources in `as
 | maplestreet/furniture/divingBoard.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/mirror.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
 | maplestreet/furniture/wallTv.glb | 0.00 | 0.00 | 2 → 2 | 2 → 2 |
-| **Total (122)** | **196.13** | **35.97** | | |
+| **Total (131)** | **231.04** | **45.57** | | |
 
 ## Bush League Baseball budgets
 

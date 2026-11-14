@@ -19,6 +19,7 @@ import type { Mats } from '../../foxlake/fp/core/Tex'
 import type { BuildingData } from '../data/MapData'
 import { DOWNTOWN_BOX, DOWNTOWN_STREETS, FRONT_REACH, defaultFront, knownFronts, type FrontStyle } from '../data/Downtown'
 import type { TelloLand } from '../region'
+import { place, type ModelKit } from './Kit'
 import { SignAtlas, type SignRect } from './SignAtlas'
 
 
@@ -140,7 +141,12 @@ function signWidth(len: number, text: string): number {
   return Math.min(len - 0.8, Math.max(3, text.length * 0.42))
 }
 
-export function buildStorefronts(root: TransformNode, mats: Mats, land: TelloLand): DowntownStats {
+/** The Blender detail kit while fronts are being built (null: the simpler built-in shapes). */
+let KIT: ModelKit | null = null
+const KIT_COLORS = { stone: hexRGB(0xd9d1c0), door: hexRGB(0x3a2e24), shingle: hexRGB(0x6c6862), metal: hexRGB(0x1c1e22) }
+
+export function buildStorefronts(root: TransformNode, mats: Mats, land: TelloLand, kit: ModelKit | null = null): DowntownStats {
+  KIT = kit
   const atlas = new SignAtlas()
   const fronts: Front[] = planFronts(land).map((p) => ({
     ...p,
@@ -166,6 +172,7 @@ export function buildStorefronts(root: TransformNode, mats: Mats, land: TelloLan
   }
   const chunks = new ChunkedBuilders(128)
   for (const f of fronts) buildFront(f, chunks, M, atlas)
+  KIT = null
   chunks.flush(root, 'tello-storefronts')
   return { fronts: fronts.length, signs: atlas.count }
 }
@@ -193,6 +200,18 @@ class FrontKit {
   done(): void {
     for (const b of this.used) b.transform(null)
   }
+}
+
+/** Lays a kit part into the front (true when the kit has it); trim-slot surfaces take `trim`. */
+function kitPut(kit: FrontKit, M: Mat, name: string, m: Matrix, trim: RGB): boolean {
+  if (!KIT?.has(name)) return false
+  KIT.put(
+    name,
+    m,
+    (slot) => (slot === 'stone' ? kit.get(M.stone) : slot === 'metal' ? kit.get(M.iron, false) : slot === 'shingle' ? kit.get(M.shingles) : kit.get(M.paint)),
+    (slot) => (slot === 'stone' ? KIT_COLORS.stone : slot === 'door' ? KIT_COLORS.door : slot === 'shingle' ? KIT_COLORS.shingle : slot === 'metal' ? KIT_COLORS.metal : trim),
+  )
+  return true
 }
 
 function darker(c: RGB, k: number): RGB {
@@ -294,7 +313,7 @@ function buildFront(f: Front, chunks: ChunkedBuilders, M: Mat, atlas: SignAtlas)
   else if (s.ground === 'logs') logFront(kit, M, L, g, base, trim)
   else if (s.ground === 'stone') stoneFront(kit, M, L, g, base, trim)
   else if (s.ground === 'boards') boardFront(kit, M, L, g, base, piers, trim)
-  else shopFront(kit, M, L, g, base, trim, s.ground === 'brick' ? M.brick : null)
+  else shopFront(kit, M, L, g, base, trim, s.ground === 'brick' ? M.brick : null, s, two)
 
   // Awning, then the sign: on the awning's slope, or a board over the display windows.
   let signY = g - 0.86
@@ -379,7 +398,14 @@ function upperWindow(kit: FrontKit, M: Mat, cx: number, w: number, sill: number,
   const rect = arch ? h - w / 2 : h
   const fill = blind ? hexRGB(0x5a2e28) : undefined
   panel(glass, x0, sill, x1, sill + rect, 0.07, fill)
-  if (arch) halfDisc(glass, cx, sill + rect, w / 2, 0.07, 9, fill)
+  if (arch) halfDisc(glass, cx, sill + rect, w / 2, 0.07, 18, fill)
+  if (KIT?.has('window')) {
+    kitPut(kit, M, 'window', place(cx, sill, 0.07, w, rect / 1.6, 1), trim)
+    kitPut(kit, M, 'sill', place(cx, sill - 0.09, 0.05, (w + 0.3) / 1.3, 1, 1), trim)
+    if (arch) kitPut(kit, M, 'hood-arch', place(cx, sill + rect, 0.05, w, w, 1), upper === 'brick' ? darker(wall, 0.82) : trim)
+    else kitPut(kit, M, 'hood-flat', place(cx, sill + h + 0.02, 0.03, w, 1, 1), trim)
+    return
+  }
   t.box(x0 - 0.07, sill, 0.04, x0, sill + rect, 0.13, { color: trim })
   t.box(x1, sill, 0.04, x1 + 0.07, sill + rect, 0.13, { color: trim })
   t.box(x0 - 0.04, sill + rect * 0.5 - 0.03, 0.05, x1 + 0.04, sill + rect * 0.5 + 0.03, 0.11, { color: trim })
@@ -432,6 +458,16 @@ function cornice(kit: FrontKit, M: Mat, L: number, H: number, s: FrontStyle, tri
     }
     return
   }
+  if (s.cornice === 'brackets' && KIT?.has('cornice')) {
+    const n = Math.max(1, Math.round(L / 1.2))
+    const seg = (L + 0.16) / n
+    for (let i = 0; i < n; i++) kitPut(kit, M, 'cornice', place(-0.08 + i * seg, H - 0.52, 0, seg, 1, 1), trim)
+    const nb = Math.max(2, Math.round(L / 1.25))
+    for (let i = 0; i <= nb; i++) kitPut(kit, M, 'bracket', place(Math.min(L - 0.12, Math.max(0.12, (L * i) / nb)), H - 0.34, 0), trim)
+    t.box(0, H - 0.9, 0, L, H - 0.52, 0.06, { color: trim })
+    if (s.band) t.box(0, H - 1.12, 0.05, L, H - 0.9, 0.09, { color: hexRGB(s.band) })
+    return
+  }
   if (s.cornice === 'simple') {
     t.box(-0.04, H - 0.24, 0, L + 0.04, H, 0.2, { color: trim })
     t.box(0, H - 0.42, 0, L, H - 0.24, 0.1, { color: trim })
@@ -448,19 +484,32 @@ function cornice(kit: FrontKit, M: Mat, L: number, H: number, s: FrontStyle, tri
   if (s.band) t.box(0, H - 1.12, 0.05, L, H - 0.9, 0.09, { color: hexRGB(s.band) })
 }
 
-/** Display windows, a recessed door and a kick plate between corner piers. */
-function shopFront(kit: FrontKit, M: Mat, L: number, g: number, base: RGB, trim: RGB, brick: Material | null): void {
+/**
+ * The street storey of a shop: display windows on a kick plate between corner piers, an entry in the middle of each
+ * shop bay (one bay per seven or eight metres of front, or where `doors` puts them from the owner's photos), and on a
+ * two-storey building the narrow door to the stairs up, at one end (`stairDoor`).
+ */
+function shopFront(kit: FrontKit, M: Mat, L: number, g: number, base: RGB, trim: RGB, brick: Material | null, s: FrontStyle, two: boolean): void {
   const t = kit.get(M.paint)
   const glass = kit.get(M.lit, false)
   const pierMat = brick ? kit.get(brick) : t
   pierMat.box(0, 0, 0, 0.42, g, 0.18, { color: base })
   pierMat.box(L - 0.42, 0, 0, L, g, 0.18, { color: base })
+  if (KIT?.has('pilaster-shaft')) {
+    for (const x of [0.21, L - 0.21]) {
+      kitPut(kit, M, 'pilaster-base', place(x, 0, 0.18), trim)
+      kitPut(kit, M, 'pilaster-shaft', place(x, 0.3, 0.18, 1, Math.max(0.2, g - 0.56), 1), trim)
+      kitPut(kit, M, 'pilaster-cap', place(x, g - 0.26, 0.18), trim)
+    }
+  }
   if (brick) panel(kit.get(brick), 0.42, 0, L - 0.42, g, 0.06, base)
   const top = g - 0.95
-  const doorW = 1.05
-  const doorX = L > 7 ? L * 0.32 : L * 0.5
-  const d0 = doorX - doorW / 2, d1 = doorX + doorW / 2
-  for (const [x0, x1] of [[0.42, d0 - 0.1], [d1 + 0.1, L - 0.42]]) {
+  const doors = entryPlan(L, s, two)
+  // Display windows in every run between doors.
+  let from = 0.42
+  for (const d of [...doors, { x: L - 0.42 + 0.1 + 0.5, w: 1, stair: false }]) {
+    const x0 = from, x1 = d.x - d.w / 2 - 0.12
+    from = d.x + d.w / 2 + 0.12
     if (x1 - x0 < 0.4) continue
     t.box(x0, 0, 0.0, x1, 0.55, 0.16, { color: base })
     panel(glass, x0 + 0.06, 0.55, x1 - 0.06, top, 0.09)
@@ -473,13 +522,44 @@ function shopFront(kit: FrontKit, M: Mat, L: number, g: number, base: RGB, trim:
       t.box(x - 0.04, 0.55, 0.07, x + 0.04, top, 0.15, { color: trim })
     }
   }
-  t.box(d0 - 0.12, 0, 0.0, d0, top, 0.18, { color: trim })
-  t.box(d1, 0, 0.0, d1 + 0.12, top, 0.18, { color: trim })
-  panel(t, d0, 0, d1, 2.25, 0.075, hexRGB(0x3a2e24))
-  panel(glass, d0 + 0.18, 1.0, d1 - 0.18, 2.0, 0.08)
-  t.box(d0, 2.25, 0.04, d1, 2.37, 0.16, { color: trim })
-  if (top - 2.45 > 0.2) panel(glass, d0 + 0.05, 2.4, d1 - 0.05, top - 0.08, 0.09)
+  for (const d of doors) {
+    const d0 = d.x - d.w / 2, d1 = d.x + d.w / 2
+    t.box(d0 - 0.12, 0, 0.0, d0, top, 0.18, { color: trim })
+    t.box(d1, 0, 0.0, d1 + 0.12, top, 0.18, { color: trim })
+    if (d.stair) {
+      // The stair door: solid, panelled, with a transom light over it.
+      panel(t, d0, 0, d1, 2.2, 0.075, hexRGB(0x4a3a2c))
+      t.box(d0 + 0.1, 0.25, 0.08, d1 - 0.1, 0.95, 0.1, { color: hexRGB(0x5a4836) })
+      t.box(d0 + 0.1, 1.15, 0.08, d1 - 0.1, 2.0, 0.1, { color: hexRGB(0x5a4836) })
+    } else if (KIT?.has('door')) {
+      panel(glass, d0 + 0.1, 1.0, d1 - 0.1, 2.15, 0.07)
+      kitPut(kit, M, 'door', place(d.x, 0, 0.075, d.w / 0.98, 1, 1), trim)
+    } else {
+      panel(t, d0, 0, d1, 2.25, 0.075, hexRGB(0x3a2e24))
+      panel(glass, d0 + 0.18, 1.0, d1 - 0.18, 2.0, 0.08)
+    }
+    t.box(d0, 2.25, 0.04, d1, 2.37, 0.16, { color: trim })
+    if (top - 2.45 > 0.2) panel(glass, d0 + 0.05, 2.4, d1 - 0.05, top - 0.08, 0.09)
+  }
   t.box(0.42, top, 0.04, L - 0.42, g, 0.1, { color: darker(base, 1.1) })
+}
+
+/** Where a shop front's doors go, left to right seen from the street. */
+export function entryPlan(L: number, s: FrontStyle, two: boolean): { x: number; w: number; stair: boolean }[] {
+  const out: { x: number; w: number; stair: boolean }[] = []
+  let a = 0.42, b = L - 0.42
+  const stair = two && L >= 5.5 ? s.stairDoor ?? 'left' : 'none'
+  if (stair === 'left') {
+    out.push({ x: a + 0.12 + 0.45, w: 0.9, stair: true })
+    a += 1.25
+  } else if (stair === 'right') {
+    out.push({ x: b - 0.12 - 0.45, w: 0.9, stair: true })
+    b -= 1.25
+  }
+  const bays = Math.max(1, Math.round((b - a) / 7.5))
+  const shares = s.doors ?? Array.from({ length: bays }, (_v, i) => (a + ((b - a) * (i + 0.5)) / bays) / L)
+  for (const share of shares) out.push({ x: Math.min(b - 0.65, Math.max(a + 0.65, share * L)), w: 1.05, stair: false })
+  return out.sort((p, q) => p.x - q.x)
 }
 
 /** Yahooz's front: round logs laid up the street storey, windows and the door set in them. */
@@ -635,8 +715,10 @@ function turret(kit: FrontKit, M: Mat, end: number, g: number, H: number, s: Fro
   t.cylinder(cx, g + 0.12, cz, r + 0.12, r + 0.12, 0.16, 8, true, trim)
   body.cylinder(cx, g + 0.28, cz, r, r, H - g - 0.3, 8, true, skin)
   t.cylinder(cx, H - 0.1, cz, r + 0.16, r + 0.16, 0.34, 8, true, trim)
-  kit.get(M.shingles).cylinder(cx, H + 0.24, cz, r + 0.22, 0.04, 3.2, 8, true, hexRGB(0x6c6862))
-  kit.get(M.iron, false).cylinder(cx, H + 3.3, cz, 0.035, 0.01, 1.3, 6, true)
+  if (!kitPut(kit, M, 'turret-roof', place(cx, H + 0.24, cz, r + 0.2, 3.2, r + 0.2), trim)) {
+    kit.get(M.shingles).cylinder(cx, H + 0.24, cz, r + 0.22, 0.04, 3.2, 8, true, hexRGB(0x6c6862))
+    kit.get(M.iron, false).cylinder(cx, H + 3.3, cz, 0.035, 0.01, 1.3, 6, true)
+  }
   const outward = Math.atan2(1, side)
   const apothem = r * Math.cos(Math.PI / 8) + 0.015
   for (let i = 0; i < 8; i++) {
