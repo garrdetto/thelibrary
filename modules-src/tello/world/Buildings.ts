@@ -20,6 +20,7 @@ import type { StaticSink } from './Sink'
 import { ROOF, type BuildingData } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { triangulate } from './Poly'
+import { knownFronts } from '../data/Downtown'
 
 const SIDING = [0xf1eee6, 0xe6dfcf, 0xd9d4c7, 0xbfc6c9, 0x9db199, 0x8fa3b5, 0xc9b79a, 0xd8c98f, 0x9c4a3c, 0x6f7f8c, 0xb7b0a2, 0xe9e2c8, 0x7d8f7a, 0xa8998a]
 const BRICK = [0xb8573f, 0xa5503c, 0xc27a5a, 0xe2d6c2]
@@ -106,6 +107,8 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
     glass: mats.glass('glass-house', 0xa9c3d1, 0.38),
     lit: mats.plain('t-window-lit', { color: 0x38424b, gloss: 0.8, keepGloss: true, emissive: 0xffc98a, emissiveIntensity: 0 }),
     store: mats.facade('store'),
+    stucco: mats.textured('tello-stucco', 'stucco', { vcolor: true }),
+    stone: mats.textured('tello-stone', 'stone', { vcolor: true }),
     civic: mats.facade('brick'),
     post: mats.plain('t-post', { color: 0xe6e6e2, gloss: 0.45 }),
   }
@@ -117,7 +120,9 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
     const cx = b.r[0][0]
     const cz = -b.r[0][1]
     const get = (m: Material, colors = false, cast = true) => chunks.get(cx, cz, m, { colors, cast })
-    const facade = b.k === 'store' || b.k === 'civic'
+    // A building matched to the owner's photos wears its front's finish and colour all round (Storefronts.ts dresses the front).
+    const known = b.k === 'store' || b.k === 'civic' || b.k === 'house' ? knownFronts(b.r[0][0], b.r[0][1])[0]?.style : undefined
+    const facade = !known && (b.k === 'store' || b.k === 'civic')
     const commercial = facade || b.k === 'industrial'
     const floor = b.f
     const bottom = Math.min(b.l, b.f) - 0.5
@@ -135,7 +140,11 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
     // Walls: each edge rises to the eave of the block behind it.
     let wall: MeshBuilder
     let color: RGB
-    if (facade) {
+    if (known) {
+      const finish = { brick: M.brick, stucco: M.stucco, paint: M.paint, stone: M.stone, siding: M.siding }[known.upper]
+      wall = get(finish, true)
+      color = hexRGB(known.wall)
+    } else if (facade) {
       wall = get(b.k === 'store' ? M.store : M.civic, true)
       color = hexRGB(pick(b.k === 'store' ? STORE : BRICK, b.s, 1))
     } else if (b.k === 'industrial') {
@@ -169,7 +178,7 @@ export function buildBuildings(root: TransformNode, mats: Mats, physics: StaticS
           [[0, lowEave * vScale], [len, lowEave * vScale], [len, r.eave * vScale], [0, r.eave * vScale]], color)
       }
     }
-    if (!facade) {
+    if (!facade && (!known || known.house)) {
       const found = get(M.foundation)
       for (const e of edges) {
         const ox = e.nx * 0.03, oz = e.nz * 0.03

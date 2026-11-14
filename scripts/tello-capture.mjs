@@ -26,6 +26,20 @@ const SPOTS = [
   { name: 'school', hour: 12, at: [560, 520], facing: 0.3, pitch: 0.1 },
   { name: 'highway-22-south', hour: 16, at: [230, -1150], facing: 0, pitch: 0.08 },
   { name: 'night-main-street', hour: 21.5, at: null, facing: null, pitch: 0.1 },
+  { name: 'west-montello-from-west-street', hour: 16, at: [-31, -11], facing: 1.25, pitch: 0.05 },
+  { name: 'west-montello-from-the-east', hour: 17.5, at: [53.5, 13.6], facing: -1.88, pitch: 0.05 },
+  { name: 'water-tower', hour: 15, at: [100, 20], facing: 1.23, pitch: -0.12 },
+  { name: 'main-and-montello-corner', hour: 15, at: [112, 26], facing: -2.45, pitch: -0.02 },
+  { name: 'main-street-east-side', hour: 15, at: [111, -4], facing: 2.3, pitch: 0.02 },
+  { name: 'corner-from-west-montello', hour: 16, at: [86, 18.5], facing: 2.75, pitch: 0.0 },
+  { name: 'main-street-north-to-the-light', hour: 15, at: [129, -72], facing: -0.12, pitch: 0.03 },
+  { name: 'the-light-and-falls', hour: 15, at: [118.5, 4], facing: 0, pitch: 0.0 },
+  { name: 'falls', hour: 15, at: [121, 22], facing: 0, pitch: -0.06 },
+  { name: 'west-montello-over-the-bridge', hour: 15, at: [100, 18.5], facing: -1.78, pitch: 0.03 },
+  { name: 'bridge-from-the-river', hour: 15, at: [55, 45], facing: 2.49, pitch: 0.06 },
+  { name: 'main-street-from-the-split', hour: 15, at: [112, 0], facing: 2.36, pitch: 0.03 },
+  { name: 'main-street-south-of-the-alley', hour: 15, at: [125, -40], facing: 2.64, pitch: 0.03 },
+  { name: 'east-montello-theatre', hour: 15, at: [200, 24], facing: 3.03, pitch: 0.03 },
 ].filter((s) => !only.length || only.includes(s.name))
 
 const software = process.env.TELLO_SOFTWARE === '1'
