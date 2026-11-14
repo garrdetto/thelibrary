@@ -189,6 +189,27 @@ export function countyRoadTexture(scene: Scene): DynamicTexture {
   return tex
 }
 
+/**
+ * A neighbourhood street (u across it, 12 m a tile along it): one lane each way, divided only by a dashed yellow centre
+ * line, no edge lines and no median.
+ */
+export function streetCentreTexture(scene: Scene): DynamicTexture {
+  const w = 256
+  const h = 512
+  const tex = new DynamicTexture('street-centre', { width: w, height: h }, scene, true)
+  const g = tex.getContext() as CanvasRenderingContext2D
+  paintAsphalt(g, w, h)
+  g.fillStyle = 'rgba(30,30,32,0.22)'
+  for (const u of [0.24, 0.7]) g.fillRect(u * w, 0, 0.06 * w, h)
+  g.fillStyle = '#e2b53c'
+  g.fillRect(w / 2 - 3, 0, 6, h * 0.25)
+  tex.update(true)
+  tex.wrapU = Texture.CLAMP_ADDRESSMODE
+  tex.wrapV = Texture.WRAP_ADDRESSMODE
+  tex.anisotropicFilteringLevel = 8
+  return tex
+}
+
 /** The plain asphalt (no markings), tiling both ways, for streets and lots laid in world units: one tile per `tile` metres. */
 export function asphaltTexture(scene: Scene, tile = 10): DynamicTexture {
   const size = 256
