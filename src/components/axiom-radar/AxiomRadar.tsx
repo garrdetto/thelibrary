@@ -242,7 +242,7 @@ export function AxiomRadar() {
 
     {payload && <>
       <section className="radar-top3" aria-labelledby="radar-top3-title">
-        <h2 id="radar-top3-title"><Flame size={16} aria-hidden="true"/> Gaining viewers fastest</h2>
+        <h2 id="radar-top3-title"><Flame size={16} aria-hidden="true"/> Gaining viewers fastest<small>{payload.components.find(component => component.component === 'extension-intake')?.detail ?? ''}</small></h2>
         {gainers.length === 0 ? <p className="radar-empty-line">{hasViewerData ? 'No tracked coin is gaining viewers right now.' : 'Waiting for viewer counts. Keep Axiom Pulse open in Chrome with the Axiom Radar Bridge extension.'}</p>
           : <ol>{gainers.map((token, index) => <li key={token.mint}>
             <button type="button" className={token.viewerSurge ? 'surging' : ''} onClick={() => onOpen(token.mint)} aria-label={`${token.symbol}, ${token.viewers} viewers, ${formatSigned(token.viewersPerMin)} per minute. Open details`}>

@@ -427,3 +427,4 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-theme-colors small { color: var(--muted); font-size: 10px; }
 @media (max-width: 900px) { .radar-theme-colors { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .radar-window-picker { width: 100%; justify-content: space-between; } .radar-window-picker button { flex: 1; justify-content: center; } }
+.radar-top3 h2 small { margin-left: auto; font-weight: 400; font-size: 10px; color: var(--muted); }

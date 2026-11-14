@@ -136,6 +136,8 @@ function send(response: ServerResponse, status: number, body: unknown) {
 export function startExtensionIntake(database: TrackerDatabase, signal: AbortSignal) {
   let reports = 0
   let lastReportAt = 0
+  let lastPulseCards = 0
+  let lastPulseAt = 0
   const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? '/', 'http://127.0.0.1')
@@ -163,6 +165,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
       }
       reports += 1
       lastReportAt = Date.now()
+      if (parsed.data.cards.length) { lastPulseCards = parsed.data.cards.length; lastPulseAt = lastReportAt }
       return send(response, 200, { ok: true, matched })
     } catch (error) {
       logger.warn('Extension report failed', { error: errorMessage(error) })
@@ -170,7 +173,7 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
     }
   })
   const heartbeat = setInterval(() => {
-    recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', reports ? `${reports} reports` : 'Open Axiom tabs in Chrome with the extension installed')
+    recordHeartbeat(database, 'extension-intake', Date.now() - lastReportAt < 90_000 ? 'ok' : 'waiting', !reports ? 'Open Axiom Pulse in Chrome with the extension installed' : Date.now() - lastPulseAt < 15_000 ? `Reading ${lastPulseCards} Pulse cards` : 'No Pulse cards in the last 15s: keep the Axiom Pulse tab visible')
   }, 15_000)
   return new Promise<void>(resolve => {
     server.on('error', error => {
