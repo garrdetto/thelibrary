@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Check, LoaderCircle, RotateCcw } from 'lucide-react'
 import { defaultRadarSettings, radarRequirementInfo, radarThemeColorInfo, radarThemeColors, radarThemePresets, type RadarSettings, type RadarTheme, type RadarThemeColors, type RadarThemePreset } from '@/lib/axiom-radar-settings'
+import { BotSettings } from './BotSettings'
 import { relativeSeconds } from './format'
+import { NumberField, Toggle } from './SettingsFields'
 
 type SettingsViewProps = {
   settings: RadarSettings
@@ -11,20 +13,6 @@ type SettingsViewProps = {
   now: number
   onSave: (settings: RadarSettings) => void
   onPreviewTheme: (theme: RadarTheme | null) => void
-}
-
-function NumberField({ id, label, hint, value, step = 1, min = 0, max, disabled, onChange }: { id: string; label: string; hint?: string; value: number; step?: number; min?: number; max?: number; disabled?: boolean; onChange: (value: number) => void }) {
-  return <label className="radar-field" htmlFor={id}>
-    <span>{label}{hint && <small>{hint}</small>}</span>
-    <input id={id} type="number" inputMode="decimal" value={Number.isFinite(value) ? value : 0} step={step} min={min} max={max} disabled={disabled} onChange={event => onChange(event.target.value === '' ? 0 : Number(event.target.value))}/>
-  </label>
-}
-
-function Toggle({ id, label, hint, checked, onChange }: { id: string; label: string; hint?: string; checked: boolean; onChange: (checked: boolean) => void }) {
-  return <label className="radar-toggle-row" htmlFor={id}>
-    <input id={id} type="checkbox" checked={checked} onChange={event => onChange(event.target.checked)}/>
-    <span>{label}{hint && <small>{hint}</small>}</span>
-  </label>
 }
 
 export function SettingsView({ settings, activeUpdatedAt, saving, error, now, onSave, onPreviewTheme }: SettingsViewProps) {
@@ -42,7 +30,7 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
   ]
   const applied = settings.updatedAt !== null && activeUpdatedAt === settings.updatedAt
 
-  return <form className="radar-settings" onSubmit={event => { event.preventDefault(); onSave(form); setDirty(false); onPreviewTheme(null) }}>
+  return <><form className="radar-settings" onSubmit={event => { event.preventDefault(); onSave(form); setDirty(false); onPreviewTheme(null) }}>
     <section className="radar-card">
       <div className="panel-heading"><span className="number-tag">01</span><h2>Which coins are tracked</h2><span className="panel-caption">TURN A REQUIREMENT OFF TO IGNORE IT</span></div>
       <div className="radar-requirements">
@@ -117,4 +105,5 @@ export function SettingsView({ settings, activeUpdatedAt, saving, error, now, on
       </p>
     </div>
   </form>
+  <BotSettings now={now}/></>
 }

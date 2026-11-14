@@ -137,7 +137,7 @@ The ecosystem file is an ES module that exports `apps`. PM2 loads it with `requi
 - **All coins**: every tracked coin ranked by viewers, with viewers per minute, the four price-change windows, score, quality and filters. The star pins a coin so it is always tracked.
 - **Top movers**: biggest price gainers per window and biggest viewer gainers.
 - **Smart wallets**: wallets among the top holders of several good coins (and, with a Helius key, early buyers of runners).
-- **Paper trades**: simulated trades opened on each Buy signal, win rate and the adaptive weights.
+- **Paper trades**: the paper-trading bot's account, positions and trades (see Paper-trading bot below), then the Radar's own signal scoring: a simulated trade opened on each Buy signal, win rate and the adaptive weights.
 - **Settings**: toggle and tune every requirement and rule. Saved to D1 on the site; the tracker picks them up on its next push (seconds while the page is open).
 - Clicking a coin opens details: a live price-and-viewers chart from 1-second ticks, DexScreener candles, the quality checklist, score breakdown and smart holders.
 - Sound and desktop alerts fire for new viewer surges and new Buy signals.
@@ -159,6 +159,16 @@ The tracker refreshes prices from DexScreener and records viewers every second. 
 - **Paper trades**: opened once per mint on a Buy signal (or score ≥ 75); price checked at +5, +15 and +30 minutes; +15% at 15 minutes is a win. Every 10 decided trades the weights shift toward features stronger in winners.
 - Snapshots older than 24 h and holder records older than 7 days are pruned hourly.
 
+## Paper-trading bot
+
+`scripts/axiom-paper-bot/` is a Python bot that trades this Radar with pretend money: its own cash balance, automatic buys and sells, fees, slippage and price impact. It never places a real order. Start it on the PC that runs the tracker:
+
+```bash
+python scripts/axiom-paper-bot/run.py
+```
+
+It pulls the Radar from the site with the tracker's `AXIOM_RADAR_TOKEN`, so there is nothing new to set up. Its dials (buy thresholds, risk strength, bet size, stops, costs) are in `data/paper-bot.toml` and on this page under **Settings → Paper-trading bot**; the most recent change wins. The **Paper trades** tab shows its account, positions and trades. Details are in `scripts/axiom-paper-bot/README.md`.
+
 ## Data files
 
-`data/*.db*`, `data/*.log*`, `axiom-session/` and `.env` are git-ignored. Delete `data/axiom-tracker.db*` to start fresh. Delete `axiom-session/` to sign out of Axiom.
+`data/*.db*`, `data/*.log*`, `data/*.toml`, `axiom-session/` and `.env` are git-ignored. Delete `data/axiom-tracker.db*` to start fresh. Delete `axiom-session/` to sign out of Axiom.
