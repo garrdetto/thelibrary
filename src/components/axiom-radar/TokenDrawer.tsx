@@ -3,8 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, LoaderCircle, TriangleAlert, X } from 'lucide-react'
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
-import { axiomUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
-import { CandleChart } from './CandleChart'
+import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
 import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
 import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
@@ -102,8 +101,10 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
       </section>
 
       <section className="radar-drawer-section">
-        <h3>Market cap chart <small>candles, live</small></h3>
-        <CandleChart pairAddress={live.pairAddress} livePrice={live.priceUsd} marketCap={live.marketCap} symbol={live.symbol}/>
+        <h3>Candles <small>DexScreener, live</small></h3>
+        <div className="radar-chart-embed">
+          <iframe title={`${live.symbol} DexScreener chart`} src={dexScreenerEmbedUrl(live.pairAddress)} loading="lazy" referrerPolicy="no-referrer"/>
+        </div>
       </section>
 
       <section className="radar-drawer-section">
