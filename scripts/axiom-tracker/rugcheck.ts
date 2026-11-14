@@ -1,0 +1,44 @@
+import { fetchJson } from './runtime.js'
+
+const rugCheckApi = 'https://api.rugcheck.xyz/v1/tokens'
+
+type RugRisk = { name?: string; value?: string; level?: string; score?: number }
+type RugSummary = { score?: number; score_normalised?: number; risks?: RugRisk[] }
+type RugReport = { mintAuthority?: string | null; freezeAuthority?: string | null; topHolders?: Array<{ pct?: number }>; score_normalised?: number }
+
+export type RugAssessment = {
+  rugScore: number | null
+  mintAuthority: boolean | null
+  freezeAuthority: boolean | null
+  top10Pct: number | null
+}
+
+function riskNamed(risks: RugRisk[], pattern: RegExp) {
+  return risks.find(risk => pattern.test(risk.name ?? ''))
+}
+
+function percentFrom(value: string | undefined) {
+  const parsed = Number.parseFloat((value ?? '').replace('%', ''))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export async function assessToken(mint: string): Promise<RugAssessment> {
+  const summary = await fetchJson<RugSummary>(`${rugCheckApi}/${mint}/report/summary`, { retries: 1 })
+  const risks = summary.risks ?? []
+  const assessment: RugAssessment = {
+    rugScore: typeof summary.score_normalised === 'number' ? summary.score_normalised : null,
+    mintAuthority: Boolean(riskNamed(risks, /mint authority/i)),
+    freezeAuthority: Boolean(riskNamed(risks, /freeze authority/i)),
+    top10Pct: percentFrom(riskNamed(risks, /top 10 holders/i)?.value),
+  }
+  try {
+    const report = await fetchJson<RugReport>(`${rugCheckApi}/${mint}/report`, { retries: 0, timeoutMs: 15_000 })
+    if ('mintAuthority' in report) assessment.mintAuthority = Boolean(report.mintAuthority)
+    if ('freezeAuthority' in report) assessment.freezeAuthority = Boolean(report.freezeAuthority)
+    if (Array.isArray(report.topHolders) && report.topHolders.length) {
+      assessment.top10Pct = Math.round(report.topHolders.slice(0, 10).reduce((total, holder) => total + (holder.pct ?? 0), 0) * 100) / 100
+    }
+    if (assessment.rugScore === null && typeof report.score_normalised === 'number') assessment.rugScore = report.score_normalised
+  } catch { }
+  return assessment
+}
