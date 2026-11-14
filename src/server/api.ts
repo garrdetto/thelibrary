@@ -26,6 +26,7 @@ import { shorttrackHandling } from './routes/shorttrack-handling'
 import { maplestreetSuggest } from './routes/maplestreet-suggest'
 import { meshy } from './routes/meshy'
 import { imageEditor } from './routes/image-editor'
+import { clipart } from './routes/clipart'
 import { groupChat } from './routes/chat'
 import { moduleScores } from './routes/scores'
 import { moduleLayout } from './routes/module-layout'
@@ -67,6 +68,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/maplestreet-suggest': maplestreetSuggest,
   '/api/meshy': meshy,
   '/api/image-editor': imageEditor,
+  '/api/clipart': clipart,
   '/api/group-chat': groupChat,
   '/api/module-scores': moduleScores,
   '/api/module-layout': moduleLayout,
