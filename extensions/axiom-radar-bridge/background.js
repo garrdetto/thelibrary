@@ -7,6 +7,11 @@ async function trackerPort() {
 
 const pinnedTabs = new Set()
 
+chrome.runtime.onInstalled.addListener(async () => {
+  const tabs = await chrome.tabs.query({ url: 'https://axiom.trade/*' }).catch(() => [])
+  for (const tab of tabs) if (tab.id !== undefined) chrome.tabs.reload(tab.id).catch(() => undefined)
+})
+
 chrome.runtime.onMessage.addListener((message, sender) => {
   if (message?.type !== 'axiom-radar-report' || !sender.tab?.url?.startsWith('https://axiom.trade/')) return
   if (sender.tab.id !== undefined && !pinnedTabs.has(sender.tab.id)) {

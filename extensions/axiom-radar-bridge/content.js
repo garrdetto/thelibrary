@@ -129,16 +129,36 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 })
 
 let lastReportAt = 0
+let reportTimer = null
+let reportObserver = null
+
+function stopReporting() {
+  if (reportTimer !== null) clearInterval(reportTimer)
+  reportTimer = null
+  reportObserver?.disconnect()
+  reportObserver = null
+}
+
+function extensionAlive() {
+  try { return Boolean(chrome.runtime?.id) } catch { return false }
+}
 
 function report() {
+  if (!extensionAlive()) return stopReporting()
   lastReportAt = Date.now()
   const pairAddress = pairFromUrl()
   const batch = frames.splice(0, 200)
   const cards = pairAddress ? [] : eyeCards()
   if (!pairAddress && !batch.length && !cards.length) return
   const pageViewers = pairAddress ? pageEyeViewers() ?? visibleViewers() : null
-  chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards } }).catch(() => undefined)
+  try {
+    chrome.runtime.sendMessage({ type: 'axiom-radar-report', report: { url: location.href.slice(0, 500), pairAddress, pageViewers, frames: batch, cards } }).catch(() => undefined)
+  } catch {
+    stopReporting()
+  }
 }
 
-setInterval(() => { if (Date.now() - lastReportAt >= reportIntervalMs) report() }, reportIntervalMs)
-new MutationObserver(() => { if (Date.now() - lastReportAt >= reportIntervalMs) report() }).observe(document.documentElement, { subtree: true, childList: true, characterData: true })
+const reportIfDue = () => { if (Date.now() - lastReportAt >= reportIntervalMs) report() }
+reportTimer = setInterval(reportIfDue, reportIntervalMs)
+reportObserver = new MutationObserver(reportIfDue)
+reportObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true })
