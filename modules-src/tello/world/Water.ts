@@ -58,7 +58,8 @@ export class Water {
 
   constructor(private readonly ctx: EngineContext, land: TelloLand) {
     const { scene } = ctx
-    if (Math.abs(land.offset.x + land.x0 + land.size / 2) > 1e-6 || Math.abs(((land.offset.z + land.z0 + land.size / 2) / land.size) % 1) > 1e-6) throw new Error('Tello must sit a whole map width from the origin')
+    const whole = (v: number) => Math.abs(v / land.size - Math.round(v / land.size)) < 1e-6
+    if (!whole(land.offset.x + land.x0 + land.size / 2) || !whole(land.offset.z + land.z0 + land.size / 2)) throw new Error('Tello must sit a whole map width from the origin')
     const cells = land.side - 1
     const depthMap = RawTexture.CreateRGBATexture(depthBytes(land), cells, cells, scene, false, false, Texture.BILINEAR_SAMPLINGMODE)
     depthMap.wrapU = Texture.WRAP_ADDRESSMODE

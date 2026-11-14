@@ -19,6 +19,9 @@ export interface LotDef {
   /** Willow Bend lots: the curved street in front, and the lawn strip between the lot and the curb at the driveway. */
   bend?: BendId;
   setback?: number;
+  /** Fox Lake's Montello lots: the parcel's floor above the town's ground (metres), and the scanned house on it (Tello's building index). */
+  y?: number;
+  scan?: number;
 }
 
 export type BendId = 'willow' | 'lake';

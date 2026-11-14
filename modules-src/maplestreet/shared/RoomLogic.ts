@@ -14,7 +14,7 @@ import { seedNeighborhood, upgradeSeed } from './Seed';
 import { decodeCells, encodeCells, gameDays, LawnCells, mowCells, sweepGrown } from './Mowing';
 import type { ClientMsg, Job, JobOffer, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
 import { cleanLook, keepOutfit } from './Wardrobe';
-import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS } from './WorldLayout';
+import { DEPOT, GAS_STATION, makeLots, PUMP_RADIUS, SHOP_DOORS, SHOP_RADIUS, type LotDef } from './WorldLayout';
 import { MONTELLO_DEPOT, MONTELLO_FIRE_STATION, MONTELLO_HOMES, MONTELLO_PUMPS, MONTELLO_SHOPS, MONTELLO_STREETS } from './MontelloPlaces';
 import { vehicleRole } from './Vehicles';
 import { addCrash, cleanCar, newCar } from './Cars';
@@ -54,6 +54,8 @@ export interface LogicOptions {
    * 'all': every session may (solo play on one device).
    */
   devTools?: 'admin' | 'all';
+  /** Lots this world has beyond the town's own (Fox Lake: Montello's house parcels). */
+  extraLots?: readonly LotDef[];
 }
 
 const USE_COOLDOWN_MS = 20_000;
@@ -96,7 +98,7 @@ export class NeighborhoodLogic {
       this.world = saved.world;
       for (const id in this.world.builds) normalizeBuild(this.world.builds[id]);
       // Lots added to the layout after this world was saved become available too.
-      for (const l of makeLots()) {
+      for (const l of [...makeLots(), ...(opts.extraLots ?? [])]) {
         if (this.world.lots[l.id]) continue;
         this.world.lots[l.id] = { ...l, owner: null, ownerName: null };
         this.world.builds[l.id] = emptyBuild();
@@ -107,7 +109,7 @@ export class NeighborhoodLogic {
       for (const id of reseeded) this.dirty.lots.add(id);
       if (reseeded.length) this.dirty.meta = true;
     } else {
-      this.world = makeWorld(makeLots());
+      this.world = makeWorld([...makeLots(), ...(opts.extraLots ?? [])]);
       seedNeighborhood(this.world);
       for (const id in this.world.lots) this.dirty.lots.add(id);
       this.dirty.meta = true;
