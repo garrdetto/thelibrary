@@ -8,7 +8,7 @@ sovereign:
 kill_switch: false                        # true pauses every agent except the Treasury and the Inquisition
 
 chain_of_command:
-  king: farquad
+  king: king
   warlords:
     oracle: nyx
     warroom: vane
@@ -18,7 +18,7 @@ chain_of_command:
     heralds: lyra
     inquisition: orrin
     archive: thessaly
-  inquisition_reports_to: [farquad, sovereign]
+  inquisition_reports_to: [king, sovereign]
 
 rank_ceilings:                            # highest model and effort each rank may run
   initiate:       {model: claude-haiku-5-5}

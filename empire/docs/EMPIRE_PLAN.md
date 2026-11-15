@@ -1,15 +1,15 @@
-# King Farquad's Empire Plan
+# The King's Empire Plan
 
 Nov 14, 2026 · @G STO
 
 ## The decree in one page
 
-The Empire is a three-tier swarm of Claude agents, King Farquad on top, eight Warlords running departments, and named Servants doing the work. It hunts for automatable income, builds it, sells it and learns from every result, while you hold the Royal Seal over money, accounts and anything public.
+The Empire is a three-tier swarm of Claude agents, The King on top, eight Warlords running departments, and named Servants doing the work. It hunts for automatable income, builds it, sells it and learns from every result, while you hold the Royal Seal over money, accounts and anything public.
 
 **Who rules what**
 
 - **You, the Sovereign.** You hold the Seal. Nothing spends money, opens an account, emails a stranger or goes live under the brand without your approval. You can prompt, promote, demote or pause any agent.
-- **King Farquad** (Opus 5.5, high effort). Sets strategy, picks which ventures live or die, approves Warlord plans, runs the weekly Court of Merit. Hires Warlords and sets their budgets.
+- **The King** (Opus 5.5, high effort). Sets strategy, picks which ventures live or die, approves Warlord plans, runs the weekly Court of Merit. Hires Warlords and sets their budgets.
 - **8 Warlords** (Opus 5.5 at medium or lower, or Sonnet 5.5). Each runs one department, breaks work into tasks, picks a model for every task, and reviews Servant output before it moves up.
 - **Servants** (Haiku 5.5 up to Sonnet 5.5 medium). Named specialists who research, write, build, test and file. They compete on a merit ladder for promotion.
 
@@ -131,7 +131,7 @@ The Inquisition sits in the tree for budgets, but it cannot be overruled by the 
 
 | Agent | Department | Rank | Specialty | Default model |
 | --- | --- | --- | --- | --- |
-| King Farquad | The Throne | King | Strategy, portfolio, promotions | Opus 5.5 high |
+| The King | The Throne | King | Strategy, portfolio, promotions | Opus 5.5 high |
 | Nyx Farsight | Oracle Spire | Warlord | Recon lead, opportunity scoring | Opus 5.5 medium |
 | Wren | Oracle Spire | Servant | Trend scout: marketplaces, launches, search trends | Haiku 5.5 |
 | Kestrel | Oracle Spire | Adept | Competitor and pricing analyst | Sonnet 5.5 medium |
@@ -191,7 +191,7 @@ Each department owns one stage of a venture's life and passes a written document
 **How a venture flows through the empire**
 
 1. Oracle Spire files an Opportunity Brief. Verity spot-checks its citations.
-2. War Room turns the best briefs into a Venture Charter. King Farquad approves or kills it, then it waits for your Seal.
+2. War Room turns the best briefs into a Venture Charter. The King approves or kills it, then it waits for your Seal.
 3. War Room writes the Build Spec. Forge builds the plumbing while Foundry builds and tests the product.
 4. Inquisition reviews the release candidate and the product dossier. A veto sends it back with reasons.
 5. Heralds prepare the launch. Anything public, priced or sent to strangers goes to your Seal Queue.
@@ -233,7 +233,7 @@ Power is split five ways so no agent can propose, approve, carry out, pay for an
 | Power | Held by | Never held by |
 | --- | --- | --- |
 | Propose | Oracle Spire, War Room | The approver of the same item |
-| Approve | King Farquad; you, for anything on the Seal list | The proposer |
+| Approve | The King; you, for anything on the Seal list | The proposer |
 | Carry out | Forge, Foundry, Heralds | Whoever approved it |
 | Pay | Treasury requests, you approve | Every other agent |
 | Verify and score | The Inquisition | The maker or the maker's department |
@@ -246,7 +246,7 @@ Power is split five ways so no agent can propose, approve, carry out, pay for an
 4. **Budgets in code.** Per-task token caps, per-department daily caps and a global kill switch are enforced by the orchestrator. Agents can ask for more; they cannot take it.
 5. **Authority comes from config.** The chain of command lives in a file only you can change. Any message claiming a new boss, an election or an emergency override is flagged and ignored.
 6. **Quarantine outside text.** Web pages, emails and customer messages are passed in as data. An agent that reads untrusted text in a task has no spending, sending or deploying tools in that task.
-7. **Two keys for anything irreversible.** Publishing, paying, deleting, emailing strangers and deploying to production need King Farquad and your Seal.
+7. **Two keys for anything irreversible.** Publishing, paying, deleting, emailing strangers and deploying to production need The King and your Seal.
 8. **Least privilege.** Tools are granted by rank and department. An Initiate cannot write to disk; only Cinder's role can deploy, and only to staging.
 9. **Everything is logged.** Each model call, tool call, token count, cost and result goes to an append-only ledger you can replay.
 10. **The right to petition.** Any agent told to break the Codex files a Petition to the Inquisition instead of complying. Valid petitions earn merit.
@@ -290,7 +290,7 @@ E_A = \frac{1}{1 + 10^{(R_B - R_A)/400}} \qquad R_A' = R_A + 32\,(S_A - E_A)
 
 S\_A is 1 for a win and 0 for a loss. Trials cost double, so the War Room caps them at 10% of a department's budget.
 
-**The weekly Court of Merit**, held by King Farquad
+**The weekly Court of Merit**, held by The King
 
 - The top Servant by MP in each department moves up one rank, within the model ceilings in The Court section.
 - An agent at the bottom for two Courts in a row drops one rank. An Initiate who stays last is retired: its memory is archived, its lessons are kept, and a fresh Initiate takes the name.
@@ -409,7 +409,7 @@ The Batch API takes 50% off input and output for work that can wait. Haiku 5.5 p
 
 | Line | Lean (Phase 1–2) | Full empire (Phase 6+) |
 | --- | --- | --- |
-| King Farquad on Opus 5.5 | 10 tasks, $4.01 | 25 tasks, $12.70 |
+| The King on Opus 5.5 | 10 tasks, $4.01 | 25 tasks, $12.70 |
 | Warlords | 45 tasks on Sonnet 5.5, $7.22 | 38 on Opus 5.5 + 58 on Sonnet 5.5, $26.87 |
 | Servants on Haiku 5.5 | 42 tasks, $0.40 | 173 tasks, $1.65 |
 | Servants on Sonnet 5.5 | 18 tasks, $3.25 | 115 tasks, $20.76 |
@@ -481,22 +481,22 @@ empire/
 
 ## The Command Center interface
 
-The Command Center is a military-grade console: a personnel roster on the left to select any agent, a tactical view of the gray sci-fi fortress in the center, and Intel and Command tabs on the right. King Farquad wears gold armor and a crown, Warlords white armor, Servants gray, each with a department-colored energy cape. Themes switch from the top right: Obsidian and gold, black and gold, navy and light blue, or custom colors. The agents work in themed rooms around an open courtyard (an observatory, a tactical map room, a plasma forge, a tribunal, a data archive, a vault) and walk the corridors between them as tasks move. The prototype sent with this doc already does most of it in simulation mode; the full build swaps the simulator for the Throne Engine's live event feed.
+The Command Center is a military-grade console: a personnel roster on the left to select any agent, a tactical view of the castle in the center, Intel and Command tabs on the right, a telemetry strip (throughput, pass rate, burn, seals, queue, model mix) and a command line with a live comms ticker, all framed in chase lights, LED strips and animated brackets. The castle is a concentric medieval fortress: The King's throne room sits in the exact center inside the keep, a ring hall circles it, North, East, West and Grand halls run out to the curtain wall, and an outer gallery runs inside the wall all the way around, with towers, a gatehouse, a drawbridge and a moat. The eight department rooms (an observatory, a war table, a tribunal, a forge, a library, a vault, a herald's beacon and a workshop) open onto those hallways, and the West and East Wards hold a training yard and a drone pad. The King wears gold armor and a crown, Warlords white armor, Servants gray, each with a department-colored cape. Themes switch from the top right (Obsidian and gold, black and gold, navy and light blue, or custom), and the Colors panel sets both the interface colors and the castle's colors: six castle styles plus walls, floors, hallways, courtyards, throne room, carpets, trim, towers, moat, grounds and lights. The console is hosted at https://kingdom.garrdetto.workers.dev. The prototype already does most of it in simulation mode; the full build swaps the simulator for the Throne Engine's live event feed.
 
 | Feature | What you can do | Prototype |
 | --- | --- | --- |
-| Castle map | Watch knights walk between department rooms and animate as they work; task scrolls fly from manager to worker to reviewer; day turns to night | Yes |
+| Castle map | Watch knights walk the hallways between department rooms and animate as they work; Warlords report to The King at the center; task packets fly from manager to worker to reviewer; sentries patrol the outer gallery; day turns to night | Yes |
 | Hover cards | See name, rank, model, effort and current task at a glance | Yes |
 | Agent dossier | Click any agent: rank, merit, Elo, model, current task with progress, accomplishments, lessons, chain of command | Yes |
 | Direct prompting | Chat with any agent in character, answered by a real Claude model matching its tier | Yes |
-| Decrees | Give King Farquad a goal; he splits it into department tasks that appear on the map | Yes |
+| Decrees | Give The King a goal; he splits it into department tasks that appear on the map | Yes |
 | Seal Queue | Approve or deny spending, publishing and account requests | Yes, with simulated requests |
 | Ladder of Merit | Leaderboard by merit and Elo; hold the Court of Merit for promotions | Yes |
 | Chronicle | Live event log, filterable by event type | Yes |
 | Treasury HUD | Revenue, token spend, profit and the venture's stage | Yes, simulated numbers, clearly labeled |
 | Org chart view | The hierarchy as a tree, click through to any dossier | Yes |
 | Roster controls | Hire a Servant, rename, recolor, promote, demote, pause, change model within the ceiling | Yes |
-| Customization | Themes, simulation speed, scanlines, sound, movement trails, label density; saved in your browser | Yes |
+| Customization | Themes, interface colors, castle styles and colors, simulation speed, map grid, scanlines, boot sequence, sound, movement trails, label density; saved in your browser | Yes |
 | Live engine link | Real tasks, real costs, real merit over WebSocket | Phase 4 |
 | Replay | Scrub back through any day's events on the map | Phase 4 |
 | Phone approvals | Seal requests as push messages with Approve and Deny | Phase 4 |
@@ -517,13 +517,13 @@ Build in eight phases, each ending at a gate you check before moving on. Nothing
 **Phase 0: Foundation and the Codex.** Gate: tests prove every Seal-list action is refused without your approval.
 
 ```
-Read CLAUDE.md and docs/EMPIRE_PLAN.md. Scaffold the repository layout from the plan's Architecture section. Create codex.yaml with the chain of command (King Farquad, the 8 Warlords, Servants from agents/), daily token budgets per department, the Seal list, and a global kill switch. Write engine/codex.py exposing check(action, agent, task) -> allow | deny | needs_seal, and tests covering every Seal-list action. Do not call any model yet.
+Read CLAUDE.md and docs/EMPIRE_PLAN.md. Scaffold the repository layout from the plan's Architecture section. Create codex.yaml with the chain of command (The King, the 8 Warlords, Servants from agents/), daily token budgets per department, the Seal list, and a global kill switch. Write engine/codex.py exposing check(action, agent, task) -> allow | deny | needs_seal, and tests covering every Seal-list action. Do not call any model yet.
 ```
 
 **Phase 1: Throne Engine core.** Gate: a demo runs King, Warlord, Servant, review and back, with costs logged under $1.
 
 ```
-Build the Throne Engine. SQLite ledger with tables tasks, routing_records, reviews, costs, events, merit. Load agents/*.yaml. routing.py implements S = C + N + 3K and the tier table from the plan. runner.py runs one task as a Claude Agent SDK query() whose system prompt is the department charter + agent dossier + top 5 relevant lessons, with only that agent's tools, and the model and effort from its routing record (claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5). Add empire MCP tools delegate_task, submit_work, request_review, write_lesson. A parent task parks while its children run and resumes with their results once they are verified. Log tokens and cost per call from the usage data. Add `empire run-demo`: King Farquad delegates a small research question to the Oracle Spire and gets a reviewed answer back.
+Build the Throne Engine. SQLite ledger with tables tasks, routing_records, reviews, costs, events, merit. Load agents/*.yaml. routing.py implements S = C + N + 3K and the tier table from the plan. runner.py runs one task as a Claude Agent SDK query() whose system prompt is the department charter + agent dossier + top 5 relevant lessons, with only that agent's tools, and the model and effort from its routing record (claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5). Add empire MCP tools delegate_task, submit_work, request_review, write_lesson. A parent task parks while its children run and resumes with their results once they are verified. Log tokens and cost per call from the usage data. Add `empire run-demo`: The King delegates a small research question to the Oracle Spire and gets a reviewed answer back.
 ```
 
 **Phase 2: Recon and War Room, read-only.** Gate: 10 Opportunity Briefs with at least 90% of sampled citations verified, and one Venture Charter waiting for your Seal.

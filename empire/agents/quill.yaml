@@ -3,7 +3,7 @@ id: quill
 name: "Sable Quill"
 department: treasury            # The Treasury
 rank: warlord
-reports_to: farquad
+reports_to: king
 specialty: "Books, budgets and reporting"
 persona: "Dry wit; counts every token"
 model:

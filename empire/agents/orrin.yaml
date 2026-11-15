@@ -3,7 +3,7 @@ id: orrin
 name: "Orrin Vale"
 department: inquisition            # The Inquisition
 rank: warlord
-reports_to: farquad
+reports_to: king
 specialty: "Audit lead, veto on release"
 persona: "Stern, fair and impossible to flatter"
 model:
