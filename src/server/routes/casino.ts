@@ -42,7 +42,7 @@ async function playerOf(request: Request, env: Env): Promise<Player | null> {
 
 function walletError(reason: 'refused' | 'unavailable' | 'missing'): HttpError {
   if (reason === 'refused') return new HttpError(400, 'Not enough money for that.')
-  if (reason === 'missing') return new HttpError(400, 'Walk into town first: your Fox Lake money lives there.')
+  if (reason === 'missing') return new HttpError(400, 'Walk into town first: your Life Sim money lives there.')
   return new HttpError(503, 'The cage can\'t reach your wallet right now. Try again in a moment.')
 }
 

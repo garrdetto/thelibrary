@@ -70,7 +70,7 @@ name may appear in plain lettering only.
   the proportions match the lidar.
 - List every reference used, with author and licence, in `assets-src/models/tello/SOURCES.md`.
 - Run `pnpm assets`, `pnpm assets:check`, `pnpm build` and `pnpm test`.
-- Take screenshots with `node scripts/tello-capture.mjs` and `node scripts/foxlake-capture.mjs <url> <dir>
+- Take screenshots with `node scripts/foxlake-capture.mjs <url> <dir>
   montello-main-street,montello-downtown,county-road-f` (`TELLO_SOFTWARE=1` / `FOXLAKE_SOFTWARE=1` without a GPU).
   Look at each one and fix anything that floats, sinks, clips or shines.
 - Update docs/ENGINE-MAP.md, modules-src/tello/README.md and AGENTS.md.

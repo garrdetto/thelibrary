@@ -204,7 +204,33 @@ function quarry(chunks: ChunkedBuilders, M: Record<string, Material>, land: Tell
     kit.put('small-falls-rock', at, rock(near.x, near.z), (_s, own) => own ?? GRANITE[0])
     kit.put('small-falls-water', at, () => sheet, () => WHITE)
     kit.put('small-falls-foam', at, () => foam, () => WHITE)
+    smallFallsSheet(sheet, foam, near)
   }
+}
+
+/** Half the width of the water pouring over a small falls, and how far its lip juts out over the pool. */
+const SMALL_FALLS_HALF = 2.4
+const SMALL_FALLS_LIP = 0.7
+
+/**
+ * The water of a small falls: a sheet pouring over the lip of the bank (as high as the bank) into the pool, bowing out
+ * as it falls, and a ring of foam where it lands. Town frame (z flips); `near` faces the bank from the water.
+ */
+function smallFallsSheet(sheet: MeshBuilder, foam: MeshBuilder, near: { x: number; z: number; level: number; rise: number; dx: number; dz: number }): void {
+  const top = near.level + Math.min(6, Math.max(1.6, near.rise * 0.85))
+  const ax = -near.dz, az = near.dx
+  const at = (along: number, out: number, y: number): number[] => [near.x + near.dx * out + ax * along, y, -(near.z + near.dz * out + az * along)]
+  const rows: [number, number][] = [[2.2, top], [2.2 - SMALL_FALLS_LIP, top - 0.25], [2.2 - SMALL_FALLS_LIP * 1.6, top - (top - near.level) * 0.5], [2.2 - SMALL_FALLS_LIP * 2, near.level + 0.02]]
+  let v = 0
+  for (let i = 0; i + 1 < rows.length; i++) {
+    const [oa, ya] = rows[i]
+    const [ob, yb] = rows[i + 1]
+    const v1 = v + Math.hypot(oa - ob, ya - yb) / 3
+    sheet.face(at(-SMALL_FALLS_HALF, ob, yb), at(SMALL_FALLS_HALF, ob, yb), at(SMALL_FALLS_HALF, oa, ya), at(-SMALL_FALLS_HALF, oa, ya), [[0, v1], [1, v1], [1, v], [0, v]])
+    v = v1
+  }
+  const fo = 2.2 - SMALL_FALLS_LIP * 2, y = near.level + 0.04
+  foam.face(at(-SMALL_FALLS_HALF - 0.8, fo - 2.2, y), at(SMALL_FALLS_HALF + 0.8, fo - 2.2, y), at(SMALL_FALLS_HALF + 0.8, fo + 0.3, y), at(-SMALL_FALLS_HALF - 0.8, fo + 0.3, y), [[0, 0], [1.6, 0], [1.6, 0.8], [0, 0.8]])
 }
 
 function hash(n: number): number {

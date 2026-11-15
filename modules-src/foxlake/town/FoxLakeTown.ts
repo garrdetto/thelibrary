@@ -60,6 +60,9 @@ const STEP = 1 / 60
 const CULL_REACH = 640
 const MAX_STEPS = 4
 const NET_HZ = 15
+/** Camera near plane (metres) on foot (the rod and rifle are held close) and at the wheel. */
+const NEAR_ON_FOOT = 0.08
+const NEAR_DRIVING = 0.4
 const GARAGE_KEY = 'KeyV'
 const HOME_KEY = 'KeyH'
 const GO_HOME_COOLDOWN_MS = 15 * 60 * 1000
@@ -454,6 +457,9 @@ export class FoxLakeTown implements GameExtension {
     this.houses.update(dt, focus)
     this.neighbors.update(dt, night, focus)
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
+    // The near plane sets how finely the depth buffer splits distance: pushed out while driving (nothing is that close to
+    // the chase camera) so walls, trim and windows far down the street don't flicker against each other.
+    this.host.ctx.camera.minZ = this.host.driving ? NEAR_DRIVING : NEAR_ON_FOOT
     if (this.casinoMounted) this.casino.update(dt)
     this.map?.update(dt)
     this.montello.update(dt)

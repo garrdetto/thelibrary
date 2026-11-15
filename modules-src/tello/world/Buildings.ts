@@ -22,6 +22,7 @@ import type { TelloLand } from '../region'
 import { triangulate } from './Poly'
 import { dressedWalls, knownFronts } from '../data/Downtown'
 import { dressOpenings, dressRoof, frontEdge, type HouseBuilders } from './HouseDetails'
+import { blockedBuildings } from './Clearance'
 import { KIT_URL, ModelKit } from './Kit'
 
 const SIDING = [0xf1eee6, 0xe6dfcf, 0xd9d4c7, 0xbfc6c9, 0x9db199, 0x8fa3b5, 0xc9b79a, 0xd8c98f, 0x9c4a3c, 0x6f7f8c, 0xb7b0a2, 0xe9e2c8, 0x7d8f7a, 0xa8998a]
@@ -148,11 +149,13 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
   if (!mats.nightGlow.some((g) => g.m === M.lit)) mats.nightGlow.push({ m: M.lit, k: 1.7 })
   let colliders = 0
   const houseKit = await ModelKit.loadOnce(root.getScene(), KIT_URL.house)
+  const blocked = blockedBuildings(land)
   for (const [index, b] of land.doc.buildings.entries()) {
     if (pace) await pace()
     const edges = edgesOf(b.p)
     if (edges.length < 3) continue
     if (b.n && shellSkips.has(b.n)) continue
+    if (blocked.has(index)) continue
     const own = apart.has(index) ? { chunks: new ChunkedBuilders(128), solids: [] as unknown[] } : null
     if (own) separate.set(index, own)
     const chunks = own ? own.chunks : merged

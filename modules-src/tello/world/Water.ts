@@ -60,7 +60,7 @@ export class Water {
   constructor(private readonly ctx: EngineContext, land: TelloLand) {
     const { scene } = ctx
     const cells = land.side - 1
-    const depthMap = RawTexture.CreateRTexture(depthBytes(land), cells, cells, scene, false, false, Texture.BILINEAR_SAMPLINGMODE)
+    const depthMap = RawTexture.CreateRTexture(depthBytes(land), cells, cells, scene, false, false, Texture.BILINEAR_SAMPLINGMODE, Constants.TEXTURETYPE_UNSIGNED_BYTE)
     depthMap.wrapU = Texture.WRAP_ADDRESSMODE
     depthMap.wrapV = Texture.WRAP_ADDRESSMODE
     const material = new ShaderMaterial('tello-water-mat', scene, 'rrWater', {

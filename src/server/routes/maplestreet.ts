@@ -10,7 +10,7 @@ const guestParams = z.object({ guest: z.string().regex(/^[A-Za-z0-9]{12,64}$/), 
 /** Classic Fox Plains' world, or Fox Lake's own (`?world=foxlake`): same rules, separate players, lots and money. */
 function worldStub(env: Env, world: string | null) {
   if (world === 'foxlake') {
-    if (!env.FOX_LAKE_WORLD) throw new HttpError(503, 'Fox Lake online is not available right now.')
+    if (!env.FOX_LAKE_WORLD) throw new HttpError(503, 'Life Sim online is not available right now.')
     return env.FOX_LAKE_WORLD.get(env.FOX_LAKE_WORLD.idFromName(FOX_LAKE_WORLD_NAME))
   }
   if (!env.MAPLE_WORLD) throw new HttpError(503, 'Fox Plains online is not available right now.')

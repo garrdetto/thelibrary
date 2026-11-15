@@ -12,6 +12,7 @@ import { dressedWalls, knownFronts } from '../data/Downtown'
 import type { BuildingData } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { edgesOf, pick, rand, roofBehind, roofsOf, wallTone, type Edge } from './Buildings'
+import { isBlocked } from './Clearance'
 import { place } from './Kit'
 import type { PlaceLayer } from './PlaceLayer'
 import { pointInRing } from './Poly'
@@ -188,7 +189,7 @@ export function dressCommercial(input: CommercialInput): CommercialStats {
   const plans = planFronts(land)
   for (const b of all) {
     if (b.k !== 'store' && b.k !== 'civic' && b.k !== 'industrial') continue
-    if (skip(b) || b.n === 'Montello Fire Department') continue
+    if (skip(b) || isBlocked(land, b) || b.n === 'Montello Fire Department') continue
     const edges = edgesOf(b.p)
     if (edges.length < 3) continue
     const roofs = roofsOf(b)

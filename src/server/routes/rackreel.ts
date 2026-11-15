@@ -122,7 +122,7 @@ export async function rackreel(request: Request, env: Env) {
   const shared = foxLake ? await sharedBalance(env, user, profile, loaded.updatedAt) : { balance: null, updatedAt: loaded.updatedAt }
   const updatedAt = shared.updatedAt
   const merged = foxLake && profile.walletMerged === true
-  if (merged && shared.balance === null && MONEY_ACTIONS.has(input.action)) throw new HttpError(503, 'Your Fox Lake wallet can\'t be reached right now. Try again in a moment.')
+  if (merged && shared.balance === null && MONEY_ACTIONS.has(input.action)) throw new HttpError(503, 'Your Life Sim wallet can\'t be reached right now. Try again in a moment.')
   const before = merged ? (shared.balance ?? 0) : profile.cash
   if (merged) profile.cash = before
   let paid = 0
@@ -167,7 +167,7 @@ export async function rackreel(request: Request, env: Env) {
     const delta = profile.cash - before
     if (delta !== 0) {
       const applied = await adjustSharedWallet(env, user, delta)
-      if (!applied.ok) throw new HttpError(applied.reason === 'refused' ? 400 : 503, applied.reason === 'refused' ? 'Not enough cash.' : 'Your Fox Lake wallet can\'t be reached right now. Try again in a moment.')
+      if (!applied.ok) throw new HttpError(applied.reason === 'refused' ? 400 : 503, applied.reason === 'refused' ? 'Not enough cash.' : 'Your Life Sim wallet can\'t be reached right now. Try again in a moment.')
       balance = applied.balance
     } else balance = before
     profile.cash = 0

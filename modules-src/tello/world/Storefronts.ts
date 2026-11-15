@@ -11,6 +11,7 @@
  * Each front is laid out in its own frame: x along the front, y up from the
  * floor, z out toward the street.
  */
+import { isBlocked } from './Clearance'
 import { Matrix, Quaternion, Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { Material } from '@babylonjs/core/Materials/material'
@@ -111,6 +112,7 @@ export function planFronts(land: TelloLand): FrontPlan[] {
   const box = DOWNTOWN_BOX
   for (const b of land.doc.buildings) {
     if (b.k !== 'store' && b.k !== 'civic') continue
+    if (isBlocked(land, b)) continue
     const [cx, cz] = b.r[0]
     if (cx < box.x0 || cx > box.x1 || cz < box.z0 || cz > box.z1) continue
     const known = knownFronts(cx, cz)
