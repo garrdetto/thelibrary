@@ -9,11 +9,10 @@ import { activeCandidates, trackerState } from './state.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { compactPayload } from './site-publisher.js'
 import { parsePulseCard } from './pulse-cards.js'
-import { pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
+import { needsPageRead, pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
 
 const logger = createLogger('extension-intake')
 const bodyLimit = 2_000_000
-const pageRevisitMs = 3 * 60_000
 
 const report = z.object({
   url: z.string().max(500),
@@ -167,7 +166,8 @@ export function startExtensionIntake(database: TrackerDatabase, signal: AbortSig
           return !viewer || (viewer.source === 'page' ? now - viewer.at > 60_000 : now - viewer.at > 20_000)
         })
         const readAt = (mint: string) => trackerState.pageStats.get(mint)?.seenAt ?? 0
-        const stale = tracked.filter(candidate => !missing.includes(candidate) && now - readAt(candidate.mint) > pageRevisitMs).sort((first, second) => readAt(first.mint) - readAt(second.mint))
+        const onPulse = (mint: string) => now - (trackerState.pulseCards.get(mint)?.seenAt ?? 0) < 120_000
+        const stale = tracked.filter(candidate => needsPageRead(trackerState.pageStats.get(candidate.mint), onPulse(candidate.mint), now)).sort((first, second) => readAt(first.mint) - readAt(second.mint))
         for (const [mint, stats] of trackerState.pageStats) if (now - stats.seenAt > pageStatsKeptMs) trackerState.pageStats.delete(mint)
         return send(response, 200, { ok: true, tracked, missing, stale })
       }

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { holderLimitBreaks } from './holder-limits.js'
 import { scoreRunner, type RunnerInput } from './runner-score.js'
-import { pageStatsAt, pageStatsFreshMs, pageStatsKeptMs, pageStatsLiveMs, parsePageStats } from './page-stats.js'
+import { needsPageRead, pageRevisitMs, pageRevisitOnPulseMs, pageStatsAt, pageStatsFreshMs, pageStatsKeptMs, pageStatsLiveMs, parsePageStats } from './page-stats.js'
 
 const now = 1_800_000_000_000
 
@@ -35,6 +35,17 @@ test('a reading stands alone for two minutes, counts for eight and is kept for t
   assert.equal(pageStatsAt(stats, now + pageStatsFreshMs + 1).recent, null)
   assert.ok(pageStatsAt(stats, now + pageStatsFreshMs + 1).kept)
   assert.equal(pageStatsAt(stats, now + pageStatsKeptMs + 1).kept, null)
+})
+
+test('a coin off Pulse is read every four minutes, one on Pulse every twenty', () => {
+  const stats = parsePageStats({ 'Top 10 H.': 12, 'Dev H.': 0 }, now)
+  assert.ok(stats)
+  assert.equal(needsPageRead(undefined, false, now), true)
+  assert.equal(needsPageRead(undefined, true, now), true)
+  assert.equal(needsPageRead(stats, false, now + pageRevisitMs - 1), false)
+  assert.equal(needsPageRead(stats, false, now + pageRevisitMs + 1), true)
+  assert.equal(needsPageRead(stats, true, now + pageRevisitMs + 1), false)
+  assert.equal(needsPageRead(stats, true, now + pageRevisitOnPulseMs + 1), true)
 })
 
 test('fresh wallets over 10% score 0', () => {
