@@ -227,6 +227,8 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-toasts { position: fixed; right: 16px; bottom: 16px; z-index: 70; display: grid; gap: 8px; width: min(380px, calc(100vw - 32px)); }
 .radar-toast { display: flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-left: 4px solid var(--radar-warn); border-radius: 10px; background: var(--tone-1); box-shadow: 0 10px 30px var(--tone-180, rgba(0,0,0,.2)); padding: 6px 8px 6px 4px; animation: radar-slide .25s ease-out; }
 .radar-toast.buy { border-left-color: var(--radar-up); }
+.radar-toast.runner { border-left-color: var(--radar-up); }
+.radar-toast.sell { border-left-color: var(--radar-down); }
 .radar-toast-body { flex: 1; text-align: left; font-size: 12px; line-height: 1.45; padding: 6px 8px; color: var(--tone-0); width: auto; }
 
 .radar-top3 { border: 1px solid var(--border); border-radius: 12px; background: var(--radar-card); padding: 14px 16px 16px; margin-bottom: 14px; }
@@ -548,3 +550,17 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-tooltip-cuts { display: block; margin-top: 4px; color: var(--radar-down); font-size: 10px; line-height: 1.4; white-space: normal; }
 .radar-readonly > :not(.radar-readonly-note) { opacity: .72; }
 .radar-readonly-note { margin: 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--radar-card); }
+
+.radar-runner-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.radar-runner-card { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; display: grid; gap: 4px; background: var(--tone-1); }
+.radar-runner-card p { margin: 0; font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+.radar-runner-head strong { color: var(--radar-up); }
+.radar-runner-head code { font-size: 11px; }
+.radar-runner-stats { color: var(--tone-0); }
+.radar-runner-risk.watch { color: var(--radar-warn); }
+.radar-runner-risk.exit { color: var(--radar-down); font-weight: 600; }
+.radar-safety-plan { border: 1px solid var(--border); border-left: 4px solid var(--radar-up); border-radius: 10px; padding: 8px 12px; margin: 10px 0; }
+.radar-safety-plan.watch { border-left-color: var(--radar-warn); }
+.radar-safety-plan.exit { border-left-color: var(--radar-down); }
+.radar-safety-plan h4 { margin: 0 0 4px; font-size: 13px; }
+.radar-safety-plan p { margin: 0 0 4px; font-size: 12.5px; }

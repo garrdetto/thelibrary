@@ -1,5 +1,5 @@
 import type { RadarHolderTraits, RadarPulseMetrics, RadarQualityCheck } from '../../src/lib/axiom-radar-types.js'
-import { holderLimits } from './mover-score.js'
+import { holderLimits } from './holder-limits.js'
 
 const agePattern = /^\d+(s|m|h|d|w|mo|y)$/
 const percentPattern = /^(\d+(?:\.\d+)?)%$/
@@ -82,8 +82,8 @@ export function assessQuality(input: QualityInput) {
   const linked = traits?.linked ?? null
   const fresh = traits?.fresh ?? null
   const holderCount = traits ? traits.holders : pulse?.holders ?? null
-  if (top10 !== null && top10 !== undefined) checks.push({ label: 'Top 10 holders', status: band(top10, 20, holderLimits.top10), detail: `${top10.toFixed(0)}% of supply (limit ${holderLimits.top10}%)`, weight: 2 })
-  if (dev !== null) checks.push({ label: 'Dev holding', status: dev >= 0.01 && dev > holderLimits.dev ? 'fail' : 'pass', detail: pulse?.devSold ? 'Dev has sold' : dev >= 0.01 ? `${dev < 1 ? dev.toFixed(2) : dev.toFixed(0)}% (any dev holding scores low)` : 'Dev holds none', weight: 1.5 })
+  if (top10 !== null && top10 !== undefined) checks.push({ label: 'Top 10 holders', status: band(top10, 15, holderLimits.top10), detail: `${top10.toFixed(0)}% of supply (limit ${holderLimits.top10}%)`, weight: 2 })
+  if (dev !== null) checks.push({ label: 'Dev holding', status: dev > holderLimits.dev ? 'fail' : dev >= 2 ? 'warn' : 'pass', detail: pulse?.devSold ? 'Dev has sold' : dev >= 0.01 ? `${dev < 1 ? dev.toFixed(2) : dev.toFixed(0)}% (over ${holderLimits.dev}% scores 0)` : 'Dev holds none', weight: 1.5 })
   if (snipers !== null) checks.push({ label: 'Snipers', status: band(snipers, 5, holderLimits.snipers), detail: `${snipers.toFixed(0)}% (limit ${holderLimits.snipers}%)`, weight: 1 })
   if (insiders !== null) checks.push({ label: 'Insiders', status: band(insiders, 5, holderLimits.insiders), detail: `${insiders.toFixed(0)}% (limit ${holderLimits.insiders}%)`, weight: 1.5 })
   if (bundlers !== null) checks.push({ label: 'Bundlers', status: band(bundlers, 5, holderLimits.bundlers), detail: `${bundlers.toFixed(0)}% (limit ${holderLimits.bundlers}%)`, weight: 1.5 })

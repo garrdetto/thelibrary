@@ -194,13 +194,13 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
 
       <section className="radar-drawer-section">
         <h3>Score breakdown</h3>
-        {live.scoreParts && <p className="radar-note">How strongly it is moving now: viewer growth, holder growth and price with real buying, plus buyers shared with coins that ran. High holder percentages, bot-driven climbs and coins that are not moving are capped.</p>}
+        {live.scoreParts && <p className="radar-note">Runner score, re-checked every second: distribution (30), multi-wave momentum (30), hype (25) and chart health (15), less a point for each point the top 10 hold above 15%. Mint or freeze authority, dev over 5%, top 10 over 25%, bundles over 15%, a serial or copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling score 0.</p>}
         <ul className="radar-factors">
           {live.scoreParts
             ? live.scoreParts.map(part => <li key={part.key} className={part.available ? '' : 'muted'}>
               <span>{part.label}<small className="radar-part-detail">{part.detail}</small></span>
-              <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${Math.round((part.points / part.max) * 100)}%` }}/></span>
-              <span className="tabular">{part.available ? `${part.points.toFixed(1)} of ${part.max}` : 'no data'}</span>
+              <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${part.max > 0 ? Math.max(0, Math.min(100, Math.round((part.points / part.max) * 100))) : 0}%` }}/></span>
+              <span className="tabular">{part.key === 'penalty' || part.key === 'learned' ? `${part.points > 0 ? '+' : ''}${part.points}` : part.available ? `${part.points.toFixed(0)} of ${part.max}` : 'no data'}</span>
             </li>)
             : live.factors.map(factor => <li key={factor.key} className={factor.available ? '' : 'muted'}>
               <span>{factor.label}</span>
@@ -208,12 +208,18 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
               <span className="tabular">{factor.available ? `+${factor.contribution.toFixed(1)}` : 'no data'}</span>
             </li>)}
           {live.rawScore !== undefined && live.score < live.rawScore && <li className="radar-factor-penalty">
-            <span>{live.scoreParts ? `Capped at ${live.score}` : 'Score cuts'}</span>
+            <span>{live.scoreParts ? (live.holderRisk?.blocked ? 'Scored 0' : `Capped at ${live.score}`) : 'Score cuts'}</span>
             <span className="radar-penalty-reasons">{(live.scoreParts ? live.scoreCuts ?? [] : [...(live.holderRisk?.reasons ?? []), ...(live.scoreCuts ?? [])]).join(' · ')}</span>
             <span className="tabular">{live.score - live.rawScore}</span>
           </li>}
         </ul>
-        {live.holderRisk?.blocked && <p className="radar-pick-alert" role="note">Kept out of every recommendation while these holder numbers stay this high.</p>}
+        {live.holderRisk?.blocked && <p className="radar-pick-alert" role="note">Scores 0 and stays out of every recommendation while this lasts.</p>}
+        {live.safetyPlan && <div className={`radar-safety-plan ${live.safetyPlan.level}`}>
+          <h4>Safety plan{live.safetyPlan.level === 'exit' ? ': get out' : live.safetyPlan.level === 'watch' ? ': dump risk' : ''}</h4>
+          <p>{live.safetyPlan.summary}</p>
+          {(live.safetyPlan.bundleDumpPct !== null || live.safetyPlan.topDumpPct !== null) && <p className="radar-note tabular">{live.safetyPlan.bundleDumpPct !== null ? `If bundlers sold everything: about -${live.safetyPlan.bundleDumpPct}%. ` : ''}{live.safetyPlan.topDumpPct !== null ? `If the top 10 sold half: about -${live.safetyPlan.topDumpPct}%.` : ''}</p>}
+          <ul className="radar-learn-list">{live.safetyPlan.triggers.map(trigger => <li key={trigger}>{trigger}</li>)}</ul>
+        </div>}
         {live.holderTraits?.checkedAt && <p className="radar-note">Holder numbers last checked {relativeSeconds(live.holderTraits.checkedAt, Date.now())}.</p>}
         <dl className="radar-facts">
           <div><dt>RugCheck risk score</dt><dd className="tabular">{live.safety.rugScore ?? '—'}</dd></div>

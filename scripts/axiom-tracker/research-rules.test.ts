@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { freshShare, freshWindowMs, walletFreshness, type WalletStart } from './fresh-wallets.js'
-import { holderLimitBreaks } from './mover-score.js'
+import { holderLimitBreaks } from './holder-limits.js'
 import { analyzeShape, quickDump, type PricePoint } from './price-shape.js'
 import { judgeResearch, type VerdictInput } from './research-verdict.js'
 import { stepRise, type RiseState } from './rise-traits.js'

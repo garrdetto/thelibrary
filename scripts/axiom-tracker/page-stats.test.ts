@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { holderLimitBreaks, moverCaps, scoreMover, type MoverInput } from './mover-score.js'
+import { holderLimitBreaks } from './holder-limits.js'
+import { scoreRunner, type RunnerInput } from './runner-score.js'
 import { pageStatsAt, pageStatsFreshMs, pageStatsKeptMs, pageStatsLiveMs, parsePageStats } from './page-stats.js'
 
 const now = 1_800_000_000_000
@@ -36,14 +37,16 @@ test('a reading stands alone for two minutes, counts for eight and is kept for t
   assert.equal(pageStatsAt(stats, now + pageStatsKeptMs + 1).kept, null)
 })
 
-test('fresh wallets over 10% score low', () => {
-  const input: MoverInput = {
-    now, ageMinutes: 12, marketCap: 180_000, priceChange: { s30: 2, m1: 6, m5: 20 }, buys5m: 300, sells5m: 180, volume5m: 42_000,
-    viewers: 100, viewersPerMin: 20, viewersDelta5m: 55, holders: 500, holdersPerMin: 25, holderChange5mPct: null, smartHolders: 1,
-    traits: { top10: 14, dev: 0, snipers: 3, insiders: 2, bundlers: 4, linked: 1, fresh: 10.5 }, rugged: false, traders5m: 320, netBuyers5m: 150, flow: [],
+test('fresh wallets over 10% score 0', () => {
+  const input: RunnerInput = {
+    now, marketCap: 30_000, liquidity: 14_000, priceChange: { m1: 3, m5: 20 }, ticks: [], top10: 14, dev: 0, devSold: true, snipers: 3, insiders: 2,
+    bundlers: 4, linked: 1, fresh: 10.5, holders: 500, mintAuthority: false, freezeAuthority: false, rugged: false, devCreated: null, devMigrated: null,
+    recycled: null, buys5m: 300, volume5m: 42_000, buyers5m: 120, buyVolume5m: 20_000, sellVolume5m: 12_000, feesSol: 2, graduated: false, dexPaid: true,
+    links: { twitter: null, telegram: null, website: null }, reusedLinks: [], smartHolders: 1, viewers: 100, viewersPerMin: 20, botReason: null,
+    selling: [], devSelling: false, learned: [],
   }
-  const result = scoreMover(input)
-  assert.ok(result.score <= moverCaps.holderLimit, `score ${result.score}`)
-  assert.ok(result.holderRisk.reasons.some(reason => reason.startsWith('Fresh wallets hold')))
+  const result = scoreRunner(input)
+  assert.equal(result.score, 0)
+  assert.ok(result.holderRisk.reasons.some((reason: string) => reason.startsWith('Fresh wallets hold')))
   assert.deepEqual(holderLimitBreaks({ top10: 14, dev: 0, snipers: 3, insiders: 2, bundlers: 4, linked: 1, fresh: 9.9 }), [])
 })

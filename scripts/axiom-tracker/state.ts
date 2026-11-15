@@ -20,6 +20,13 @@ export type JupiterReading = {
   netBuyers5m: number | null
   organicScore: number | null
   launchpad: string | null
+  organicBuyers5m: number | null
+  buyVolume5m: number | null
+  sellVolume5m: number | null
+  twitter: string | null
+  telegram: string | null
+  website: string | null
+  graduated: boolean | null
   readAt: number
 }
 

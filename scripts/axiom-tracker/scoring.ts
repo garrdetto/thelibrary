@@ -3,6 +3,7 @@ import { openTrackerDatabase, recordHeartbeat, type TrackerDatabase } from './db
 import { fetchMarketsForMints } from './dexscreener.js'
 import { radarThresholds, recalibrateWeights, type TrainingSample } from './model.js'
 import { buildRadarTokens, loadModelState } from './radar-query.js'
+import { runnerState } from './runner-state.js'
 import { createLogger, errorMessage, isMainModule, runLoop, trackerConfig } from './runtime.js'
 import { trackerState } from './state.js'
 
@@ -23,7 +24,7 @@ function openPaperTrades(database: TrackerDatabase, weights: RadarWeights, now: 
   `)
   let opened = 0
   for (const token of tokens) {
-    if ((token.signal !== 'buy' && token.score < radarThresholds.paperTradeScore) || !token.priceUsd || !token.lastSnapshotAt || now - token.lastSnapshotAt > 60_000) continue
+    if ((token.signal !== 'buy' && token.score < Math.max(radarThresholds.paperTradeScore, runnerState.threshold)) || token.holderRisk?.blocked || !token.priceUsd || !token.lastSnapshotAt || now - token.lastSnapshotAt > 60_000) continue
     const features = Object.fromEntries(token.factors.map(factor => [factor.key, factor.available ? factor.value : null]))
     const reasons = { score: token.score, signal: token.signal, signalReasons: token.signalReasons, features, factors: token.factors, viewers: token.viewers, viewersDelta5m: token.viewersDelta5m, runnerWallets: token.runnerWallets, buyRatio: token.buyRatio, quality: token.quality.score, weights }
     const result = insert.run(token.mint, token.symbol, token.priceUsd, token.marketCap, token.score, JSON.stringify(reasons), now)
