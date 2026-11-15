@@ -157,7 +157,20 @@ textarea{width:100%;resize:vertical;min-height:96px}
 .armor.white{background:linear-gradient(160deg,#fff,#e6e9ef 45%,#9aa3b5)}
 .armor.gray{background:linear-gradient(160deg,#c9ced6,#8a919c 45%,#545a64)}
 #mapWrap{position:relative;min-height:0;overflow:hidden;--cb:#0b0d10;--fxw:2px}
-#map{width:100%;height:100%;display:block}
+#map{width:100%;height:100%;display:block;touch-action:none}
+#mapWrap.zoomed #map{cursor:grab}
+.zoomctl{position:absolute;right:30px;top:50%;transform:translateY(-50%);z-index:4;display:flex;flex-direction:column;padding:2px;--cb:color-mix(in srgb,var(--bg) 84%,transparent);backdrop-filter:blur(3px)}
+.zoomctl button{--cut:0px;clip-path:none;width:32px;height:30px;padding:0;display:grid;place-items:center;background:transparent;border:0;border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent);color:var(--ink)}
+.zoomctl button:last-child{border-bottom:0}
+.zoomctl button:hover:not(:disabled){background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--gold)}
+.zoomctl button:focus-visible{outline:1px solid var(--gold);outline-offset:-2px}
+.zoomctl button[aria-pressed=true]{color:var(--gold);background:color-mix(in srgb,var(--accent) 22%,transparent);box-shadow:inset 2px 0 0 var(--gold)}
+.zoomctl button[aria-pressed=true] .dot{fill:currentColor;animation:pulse 1.4s infinite}
+.zoomctl svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:square}
+.zoomctl output{display:block;text-align:center;font-family:var(--f-mono);font-size:10px;letter-spacing:.04em;color:var(--gold);padding:4px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 70%,transparent)}
+#minimap{position:absolute;left:30px;bottom:60px;z-index:4;border:1px solid var(--accent);box-shadow:0 0 14px color-mix(in srgb,var(--accent) 28%,transparent);background:var(--bg);cursor:crosshair;touch-action:none;opacity:0;pointer-events:none;transform:translateY(6px);transition:opacity .2s,transform .2s}
+#mapWrap.zoomed #minimap{opacity:1;pointer-events:auto;transform:none}
+#minimap[hidden]{display:none}
 body.scan #mapWrap::after{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 3px)}
 .maphud{position:absolute;left:30px;right:30px;display:flex;justify-content:space-between;gap:10px;pointer-events:none;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;color:var(--dim);z-index:3}
 .maphud.top{top:24px}.maphud.bot{bottom:24px}
@@ -173,7 +186,7 @@ body.scan #mapWrap::after{content:"";position:absolute;inset:0;pointer-events:no
 .tabgroups{border-bottom:1px solid var(--line);flex:none}
 .tg{display:flex;align-items:stretch;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
 .tg:last-child{border-bottom:0}
-.tg-label{width:82px;flex:none;display:flex;align-items:center;gap:6px;padding-left:10px;font-family:var(--f-mono);font-size:10px;letter-spacing:.2em;color:var(--dim);border-right:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.tg-label{width:98px;flex:none;display:flex;align-items:center;gap:6px;padding-left:10px;font-family:var(--f-mono);font-size:10px;letter-spacing:.2em;color:var(--dim);border-right:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
 .tg-label::before{content:"";width:5px;height:5px;background:var(--accent);transform:rotate(45deg);animation:pulse 2.4s infinite}
 .tabs{display:flex;flex:1}
 .tabs button{flex:1;white-space:nowrap;border:0;clip-path:none;background:transparent;padding:10px 2px;font-size:12px;letter-spacing:.14em;color:var(--dim);border-bottom:2px solid transparent;position:relative}
@@ -274,6 +287,44 @@ footer label{font-family:var(--f-mono);color:var(--gold);font-size:14px}
 .presets button[aria-pressed=true]{border-color:var(--accent);color:var(--gold)}
 .seal{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:10px;border:1px solid var(--line);border-left:3px solid var(--violet);margin:8px 0;background:var(--panel2)}
 .empty{padding:22px;text-align:center;color:var(--dim);border:1px dashed var(--line)}
+.badge.gold{background:var(--gold);color:#1a1205}
+.tabs button.alert .badge.gold{animation:pulse 1.6s infinite;box-shadow:0 0 10px var(--gold)}
+.need{border:1px solid var(--line);border-left:3px solid var(--gold);background:var(--panel2);padding:11px 12px;margin:10px 0}
+.need.snoozed{opacity:.62;border-left-color:var(--dim)}
+.need-h{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px}
+.need-h b{font-family:var(--f-display);font-size:15px;letter-spacing:.03em;flex:1 1 170px;color:var(--ink)}
+.need-dept{font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 55%,transparent);padding:1px 6px}
+.need-meta{font-family:var(--f-mono);font-size:11px;color:var(--dim);margin-top:5px;line-height:1.4}
+.need-un{font-size:12.5px;margin-top:6px}
+.need-un span{font-family:var(--f-mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin-right:4px}
+.need h4{margin:12px 0 4px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:500}
+.need p,.need li{font-size:13px;line-height:1.45;margin:0}
+.need li+li{margin-top:3px}
+.need ol,.need ul{margin:0;padding-left:20px}
+.need details{margin-top:9px;font-size:12.5px}
+.need summary,.need-rule summary{cursor:pointer;color:var(--dim);font-family:var(--f-mono);font-size:11px;letter-spacing:.08em}
+.need details ul{margin-top:5px;color:var(--dim)}
+.need-methods{display:grid;gap:6px}
+.need-m{display:flex;gap:9px;align-items:flex-start;padding:7px 9px;border:1px solid var(--line);cursor:pointer;background:var(--panel)}
+.need-m:hover{border-color:color-mix(in srgb,var(--accent) 60%,var(--line))}
+.need-m.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,var(--panel))}
+.need-m input{margin:3px 0 0;accent-color:var(--accent);flex:none}
+.need-m b{font-size:13px}
+.need-m em{font-style:normal;font-family:var(--f-mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--good);margin-left:6px;border:1px solid color-mix(in srgb,var(--good) 50%,transparent);padding:0 4px;white-space:nowrap}
+.need-m small{display:block;color:var(--dim);font-size:11.5px;line-height:1.4;margin-top:2px}
+.need .need-steps{margin-top:8px;padding:8px 10px 8px 28px;border:1px dashed color-mix(in srgb,var(--accent) 40%,var(--line))}
+.need .btnrow{margin:12px 0 0;flex-wrap:wrap}
+button.ghost{background:transparent}
+.needstats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:10px 0 4px}
+.needstats div{display:flex;align-items:baseline;gap:8px;border:1px solid var(--line);background:var(--panel2);padding:6px 9px}
+.needstats b{font-family:var(--f-mono);font-size:16px;color:var(--gold);font-weight:400}
+.needstats span{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-family:var(--f-mono)}
+.need-rule{margin:14px 0 6px;font-size:12.5px}
+.need-rule summary{color:var(--accent);text-transform:uppercase;letter-spacing:.12em}
+.need-rule ol{padding-left:20px;margin:6px 0 0;line-height:1.5}
+.need-done{display:grid;grid-template-columns:74px 1fr;gap:6px;font-size:12.5px;padding:5px 0;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent)}
+.need-done time{font-family:var(--f-mono);font-size:11px;color:var(--dim)}
+.need-done em{color:var(--dim);font-style:normal}
 .toast{position:fixed;right:16px;bottom:96px;z-index:30;display:flex;flex-direction:column;gap:8px;pointer-events:none}
 .toast div{background:var(--panel);border:1px solid var(--gold);color:var(--ink);padding:8px 12px;font-size:13px;box-shadow:0 0 24px color-mix(in srgb,var(--gold) 22%,transparent);animation:pop .3s ease-out}
 @keyframes pop{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
@@ -382,6 +433,14 @@ body.fx-nosweep header::after,body.fx-nosweep .tabs button[aria-selected=true]::
       <div><span>CURSOR <b id="mfCoords">X ---- Y ----</b></span><span>SECTOR <b id="mfSector">--</b></span><span id="mfPlace" class="muted">—</span></div>
       <div><span>LIGHT <b id="mfLight">DAY</b></span><span>ACTIVE <b id="mfActive">0</b></span><span>IN HALLS <b id="mfHalls">0</b></span><span>QUEUED <b id="mfQueued">0</b></span></div>
     </div>
+    <div id="zoomCtl" class="zoomctl chase" role="group" aria-label="Map zoom" data-section="map">
+      <button id="zIn" title="Zoom in (+, mouse wheel, pinch or double-click)" aria-label="Zoom in"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg></button>
+      <output id="zLevel" aria-label="Zoom level">1.0×</output>
+      <button id="zOut" title="Zoom out (−)" aria-label="Zoom out"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12"/></svg></button>
+      <button id="zFit" title="Show the whole castle (0)" aria-label="Show the whole castle"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5M12 3h5v5M17 12v5h-5M8 17H3v-5"/></svg></button>
+      <button id="zFollow" title="Follow the selected knight (F)" aria-label="Follow the selected knight" aria-pressed="false"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="5"/><path d="M10 1.5v4M10 14.5v4M1.5 10h4M14.5 10h4"/><circle cx="10" cy="10" r="1" class="dot"/></svg></button>
+    </div>
+    <canvas id="minimap" title="Overview: click or drag to move the view" aria-hidden="true"></canvas>
     <div id="tip" role="tooltip"></div>
   </section>
 
@@ -394,9 +453,12 @@ body.fx-nosweep header::after,body.fx-nosweep .tabs button[aria-selected=true]::
       </div></div>
       <div class="tg"><span class="tg-label">COMMAND</span><div class="tabs" role="tablist">
         <button role="tab" aria-selected="false" data-tab="decree">Decree</button>
-        <button role="tab" aria-selected="false" data-tab="seals">Seals<span class="badge" id="sealCount"></span></button>
         <button role="tab" aria-selected="false" data-tab="court">Court</button>
         <button role="tab" aria-selected="false" data-tab="hire">Hire</button>
+      </div></div>
+      <div class="tg"><span class="tg-label">SOVEREIGN</span><div class="tabs" role="tablist">
+        <button role="tab" aria-selected="false" data-tab="seals">Seals<span class="badge" id="sealCount"></span></button>
+        <button role="tab" aria-selected="false" data-tab="needs" title="Things only you can do (N)">Needs You<span class="badge gold" id="needCount"></span></button>
       </div></div>
     </div>
     <div class="ledstrip rev"></div>
@@ -422,6 +484,7 @@ body.fx-nosweep header::after,body.fx-nosweep .tabs button[aria-selected=true]::
       <p class="muted">Nothing here happens until you approve it. In this simulation, approvals move the venture forward; nothing real is bought or published.</p>
       <div id="sealList"></div>
     </div>
+    <div class="panel" id="p-needs" role="tabpanel"></div>
     <div class="panel" id="p-court" role="tabpanel"></div>
     <div class="panel" id="p-hire" role="tabpanel"></div>
   </aside>
@@ -691,7 +754,7 @@ function blip(freq, dur) {
 /* ---------- castle layout (world units 1200 x 840) ---------- */
 const cv = $('#map'), ctx = cv.getContext('2d');
 const WW = 1200, WH = 840;
-let W = 800, H = 600, DPR = 1, S = 1, OX = 0, OY = 0;
+let W = 800, H = 600, DPR = 1, S = 1, OX = 0, OY = 0, S0 = 1, OX0 = 0, OY0 = 0;
 const bg = document.createElement('canvas'), bgx = bg.getContext('2d');
 const CENTER = {x: 600, y: 420};
 const GEO = {
@@ -778,8 +841,8 @@ function resize() {
   W = Math.max(320, r.width); H = Math.max(280, r.height);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   const padX = W > 700 ? 26 : 12, padY = H > 520 ? 40 : 16;
-  S = Math.min((W - 2 * padX) / WW, (H - 2 * padY) / WH); OX = (W - WW * S) / 2; OY = (H - WH * S) / 2;
-  buildBackground();
+  S0 = Math.min((W - 2 * padX) / WW, (H - 2 * padY) / WH); OX0 = (W - WW * S0) / 2; OY0 = (H - WH * S0) / 2;
+  viewResized();
 }
 function stationPos(id) { return id === 'throne' ? {x: 600, y: 396} : ROOMS[id].focus; }
 function homeSpot(a) {
@@ -915,6 +978,7 @@ function verdict(a, t, rv) {
     if (t.seal) createSeal(t, a);
     if (t.special) specialDone(t);
     ventureTick(t);
+    if (a.rank < 5 && Math.random() < 0.05) hitBlocker(a, t);
   } else {
     t.rev++; a.merit -= 1; a.meritSince -= 1; a.fails++;
     a.elo = Math.round(a.elo + 24 * (0 - E));
@@ -1029,6 +1093,7 @@ function update(dt) {
     warlordReports(d, dt);
   }
   salesTick();
+  needsTick();
   for (const a of agents) {
     if (a.state === 'working' && a.task && !a.paused && !(a.path && a.path.length)) { a.progress += dt / a.task.dur; if (a.progress >= 1) { a.progress = 1; submit(a, a.task); } }
     if (a.flash > 0) a.flash -= dt;
@@ -1268,14 +1333,13 @@ function tower(c, x, y, r, kind, R) {
 }
 
 /* static layer */
-function buildBackground() {
-  bg.width = cv.width; bg.height = cv.height;
-  const c = bgx;
+function paintStatic(canvas, c, s, ox, oy) {
+  canvas.width = cv.width; canvas.height = cv.height;
   c.setTransform(DPR, 0, 0, DPR, 0, 0);
   c.fillStyle = CP.terrain; c.fillRect(0, 0, W, H);
-  c.setTransform(DPR * S, 0, 0, DPR * S, DPR * OX, DPR * OY);
+  c.setTransform(DPR * s, 0, 0, DPR * s, DPR * ox, DPR * oy);
   const R = mulberry32(19);
-  const ex0 = -OX / S - 40, ey0 = -OY / S - 40, ex1 = (W - OX) / S + 40, ey1 = (H - OY) / S + 40;
+  const ex0 = -OX0 / S0 - 40, ey0 = -OY0 / S0 - 40, ex1 = (W - OX0) / S0 + 40, ey1 = (H - OY0) / S0 + 40;
   for (let i = 0; i < 2600; i++) { const x = ex0 + R() * (ex1 - ex0), y = ey0 + R() * (ey1 - ey0); c.fillStyle = R() < 0.5 ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.3)'; c.fillRect(x, y, 1 + R() * 3, 1 + R() * 2); }
   c.strokeStyle = hexA(CP.lights, 0.05); c.lineWidth = 1;
   for (let k = 0; k < 9; k++) { c.beginPath(); const rx = 650 + k * 70, ry = 470 + k * 55; for (let a = 0; a <= 64; a++) { const th = a / 64 * Math.PI * 2, w = 1 + 0.04 * Math.sin(th * 5 + k); const x = 600 + Math.cos(th) * rx * w, y = 420 + Math.sin(th) * ry * w; a ? c.lineTo(x, y) : c.moveTo(x, y); } c.stroke(); }
@@ -1629,7 +1693,7 @@ function agentUI(a) {
   } else if (a.id === hoverId) { ctx.strokeStyle = hexA(TH.accent, 0.6); ctx.lineWidth = 1; ctx.beginPath(); ctx.ellipse(a.x, a.y + 1, 12 * sc, 4 * sc, 0, 0, 7); ctx.stroke(); }
   const show = a.id === selectedId || a.id === hoverId || settings.labels === 'all' || (settings.labels === 'leaders' && a.rank >= 4);
   if (show) {
-    const fs = clamp(10.5 / S, 8, 16);
+    const fs = clamp(10.5 / S, 8 / zoomEase(), 16);
     ctx.font = `${a.rank >= 4 ? 700 : 600} ${fs}px ${TH.font}`; ctx.textAlign = 'center';
     const label = a.name.toUpperCase(), tw = ctx.measureText(label).width + fs * 1.2;
     ctx.fillStyle = 'rgba(8,10,14,0.85)'; ctx.fillRect(a.x - tw / 2, a.y + 4, tw, fs * 1.4);
@@ -1892,7 +1956,7 @@ function drawPlaques() {
   ctx.textAlign = 'left';
   for (const [id, o] of Object.entries(ROOMS)) {
     const d = DEPT[id], label = id === 'throne' ? 'THRONE ROOM' : d.short.toUpperCase();
-    const fs = clamp(9 / S, 10.5, 15), x = id === 'throne' ? 494 : o.x + 14, y = id === 'throne' ? 502 : o.y + 8 + fs * 1.2;
+    const fs = clamp(9 / S, 10.5 / zoomEase(), 15), x = id === 'throne' ? 494 : o.x + 14, y = id === 'throne' ? 502 : o.y + 8 + fs * 1.2;
     ctx.font = `700 ${fs}px ${TH.font}`;
     const tw = ctx.measureText(label).width;
     ctx.fillStyle = 'rgba(8,10,14,0.82)'; ctx.fillRect(x - 6, y - fs * 1.05, tw + fs * 3.6, fs * 1.43);
@@ -1902,7 +1966,7 @@ function drawPlaques() {
     ctx.font = `600 ${fs * 0.82}px ${TH.mono}`; ctx.fillStyle = q ? (id === 'throne' ? TH.violet : TH.accent) : TH.dim;
     ctx.fillText(id === 'throne' ? `S${q}` : `Q${q}`, x + tw + fs * 0.75, y);
   }
-  ctx.font = `600 ${clamp(7 / S, 8.5, 12)}px ${TH.mono}`; ctx.fillStyle = hexA(TH.ink, 0.55); ctx.textAlign = 'center';
+  ctx.font = `600 ${clamp(7 / S, 8.5 / zoomEase(), 12)}px ${TH.mono}`; ctx.fillStyle = hexA(TH.ink, 0.55); ctx.textAlign = 'center';
   [['WEST WARD', 261, 312], ['EAST WARD', 939, 312], ['NORTH HALL', 600, 250], ['GRAND HALL', 600, 700], ['OUTER GALLERY', 330, 62], ['RING HALL', 520, 540], ['GATEHOUSE', 600, 834]].forEach(([s, x, y]) => {
     if (s === 'NORTH HALL' || s === 'GRAND HALL') { ctx.save(); ctx.translate(x + (s === 'GRAND HALL' ? 18 : 0), y); ctx.rotate(-Math.PI / 2); ctx.fillText(s, 0, 3); ctx.restore(); } else ctx.fillText(s, x, y);
   });
@@ -1971,8 +2035,8 @@ function drawHUD(t) {
   ctx.restore();
 }
 function draw(dt) {
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(bg, 0, 0);
+  stepView(dt);
+  drawStaticLayer();
   ctx.setTransform(DPR * S, 0, 0, DPR * S, DPR * OX, DPR * OY);
   const t = reduceMotion ? 0 : now, st = simT;
   drawProps(t, st, dt);
@@ -1981,12 +2045,232 @@ function draw(dt) {
   drawParticles(dt);
   drawNight(t);
   drawPlaques();
+  drawNeedMarks();
   drawOrbs();
   for (const a of sorted) agentUI(a);
   for (const b of bursts) { const a = byId(b.id); if (!a) continue; ctx.strokeStyle = hexA(TH.gold, 1 - b.t / 1.4); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(a.x, a.y - 14, 10 + b.t * 40, 5 + b.t * 18, 0, 0, 7); ctx.stroke(); }
   ctx.textAlign = 'center';
-  for (const f of floaters) { ctx.font = `700 ${clamp(11.5 / S, 9, 18)}px ${TH.font}`; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(6,8,12,0.85)'; ctx.strokeText(f.text, f.x, f.y); ctx.fillStyle = hexA(TH[f.color] || TH.ink, clamp(f.life, 0, 1)); ctx.fillText(f.text, f.x, f.y); }
+  for (const f of floaters) { ctx.font = `700 ${clamp(11.5 / S, 9 / zoomEase(), 18)}px ${TH.font}`; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(6,8,12,0.85)'; ctx.strokeText(f.text, f.x, f.y); ctx.fillStyle = hexA(TH[f.color] || TH.ink, clamp(f.life, 0, 1)); ctx.fillText(f.text, f.x, f.y); }
   drawHUD(t);
+  drawMinimap();
+}
+/* ---------- map zoom, pan and minimap ---------- */
+const ZMIN = 1, ZMAX = 5;
+const view = {z: 1, cx: CENTER.x, cy: CENTER.y, tz: 1, tcx: CENTER.x, tcy: CENTER.y, anchor: null, follow: false, idle: 0, shown: ''};
+const base = document.createElement('canvas'), basex = base.getContext('2d');
+const mini = $('#minimap'), minix = mini.getContext('2d');
+let bgView = null, baseReady = false;
+const pan = {pointers: new Map(), active: false, moved: false, sx: 0, sy: 0, cx: 0, cy: 0, pinch: null, swallowClick: false, lastTap: null};
+const stackedLayout = window.matchMedia('(max-width: 960px)');
+const zoomEase = () => Math.sqrt(view.z);
+
+function viewClamp(z, cx, cy) {
+  z = clamp(z, ZMIN, ZMAX);
+  const fx = W / (2 * S0), fy = H / (2 * S0), hw = fx / z, hh = fy / z;
+  return [z, clamp(cx, CENTER.x - fx + hw, CENTER.x + fx - hw), clamp(cy, CENTER.y - fy + hh, CENTER.y + fy - hh)];
+}
+function applyView() { S = S0 * view.z; OX = W / 2 - view.cx * S; OY = H / 2 - view.cy * S; }
+function setView(z, cx, cy) {
+  [view.z, view.cx, view.cy] = viewClamp(z, cx, cy);
+  view.tz = view.z; view.tcx = view.cx; view.tcy = view.cy; view.anchor = null; view.idle = 0;
+  applyView(); syncZoomUi();
+}
+function zoomTo(z, sx, sy) {
+  if (sx === undefined) { sx = W / 2; sy = H / 2; }
+  z = clamp(z, ZMIN, ZMAX);
+  const wx = view.cx + (sx - W / 2) / (S0 * view.z), wy = view.cy + (sy - H / 2) / (S0 * view.z);
+  [view.tz, view.tcx, view.tcy] = viewClamp(z, wx - (sx - W / 2) / (S0 * z), wy - (sy - H / 2) / (S0 * z));
+  view.anchor = {sx, sy, wx, wy};
+  if (view.tz <= ZMIN + 0.001) view.follow = false;
+  if (reduceMotion) setView(view.tz, view.tcx, view.tcy);
+  syncZoomUi();
+}
+function panTo(wx, wy, z) {
+  [view.tz, view.tcx, view.tcy] = viewClamp(z === undefined ? view.tz : z, wx, wy);
+  view.anchor = null;
+  if (reduceMotion) setView(view.tz, view.tcx, view.tcy);
+  syncZoomUi();
+}
+const zoomIn = () => zoomTo(view.tz * 1.6);
+const zoomOut = () => zoomTo(view.tz / 1.6);
+function zoomFit() { view.follow = false; panTo(CENTER.x, CENTER.y, 1); }
+function toggleFollow(on) {
+  view.follow = on === undefined ? !view.follow : on;
+  const a = byId(selectedId);
+  if (view.follow && a) panTo(a.x, a.y - 16, Math.max(view.tz, 2.5));
+  syncZoomUi();
+}
+function revealAgent(id) {
+  const a = byId(id); if (!a || view.tz <= ZMIN + 0.01) return;
+  const sx = OX + a.x * S, sy = OY + (a.y - 16) * S;
+  if (view.follow || sx < W * 0.12 || sx > W * 0.88 || sy < H * 0.14 || sy > H * 0.86) panTo(a.x, a.y - 16);
+}
+function followStep() {
+  const a = byId(selectedId); if (!a) { view.follow = false; return; }
+  const hw = W / (2 * S0 * view.tz), hh = H / (2 * S0 * view.tz);
+  if (Math.abs(a.x - view.tcx) > hw * 0.35 || Math.abs(a.y - 16 - view.tcy) > hh * 0.35) panTo(a.x, a.y - 16);
+}
+function stepView(dt) {
+  if (view.follow && !pan.active) followStep();
+  const k = reduceMotion ? 1 : 1 - Math.exp(-dt * 11);
+  const dz = Math.log(view.tz) - Math.log(view.z);
+  let moving = false;
+  if (Math.abs(dz) > 0.0008) { view.z = Math.exp(Math.log(view.z) + dz * k); moving = true; } else view.z = view.tz;
+  if (view.anchor && moving) {
+    const a = view.anchor;
+    [view.z, view.cx, view.cy] = viewClamp(view.z, a.wx - (a.sx - W / 2) / (S0 * view.z), a.wy - (a.sy - H / 2) / (S0 * view.z));
+  } else {
+    view.anchor = null;
+    const ddx = view.tcx - view.cx, ddy = view.tcy - view.cy;
+    if (Math.abs(ddx) + Math.abs(ddy) > 0.04) { view.cx += ddx * k; view.cy += ddy * k; moving = true; } else { view.cx = view.tcx; view.cy = view.tcy; }
+    [view.z, view.cx, view.cy] = viewClamp(view.z, view.cx, view.cy);
+  }
+  applyView();
+  view.idle = moving || pan.active ? 0 : view.idle + dt;
+  if (!bgMatches() && view.idle > 0.14) buildBackground();
+  syncZoomUi();
+}
+
+/* static layer: one copy for the whole castle at fit, one sharp copy for the current view */
+function bgMatches() { return !!bgView && Math.abs(bgView.S - S) < 1e-6 && Math.abs(bgView.OX - OX) < 0.05 && Math.abs(bgView.OY - OY) < 0.05; }
+function buildBackground() {
+  if (baseReady && Math.abs(S - S0) < 1e-9 && Math.abs(OX - OX0) < 0.05 && Math.abs(OY - OY0) < 0.05) {
+    bg.width = base.width; bg.height = base.height; bgx.setTransform(1, 0, 0, 1, 0, 0); bgx.drawImage(base, 0, 0);
+  } else paintStatic(bg, bgx, S, OX, OY);
+  bgView = {S, OX, OY};
+}
+function rebuildStatic() { paintStatic(base, basex, S0, OX0, OY0); baseReady = true; buildBackground(); }
+function viewResized() {
+  [view.z, view.cx, view.cy] = viewClamp(view.z, view.cx, view.cy);
+  [view.tz, view.tcx, view.tcy] = viewClamp(view.tz, view.tcx, view.tcy);
+  view.anchor = null; applyView(); rebuildStatic(); sizeMinimap(); syncZoomUi();
+}
+function drawStaticLayer() {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  if (bgMatches()) { ctx.drawImage(bg, 0, 0); return; }
+  ctx.fillStyle = CP.terrain; ctx.fillRect(0, 0, cv.width, cv.height);
+  const kb = S / S0;
+  ctx.drawImage(base, DPR * (OX - OX0 * kb), DPR * (OY - OY0 * kb), base.width * kb, base.height * kb);
+  if (bgView) { const k = S / bgView.S; ctx.drawImage(bg, DPR * (OX - bgView.OX * k), DPR * (OY - bgView.OY * k), bg.width * k, bg.height * k); }
+}
+
+/* controls */
+function syncZoomUi() {
+  const label = (view.tz < 1.05 ? '1.0' : view.tz.toFixed(1)) + '×', state = label + (view.follow ? 'f' : '') + (view.tz > 1.001 ? 'z' : '');
+  cv.style.touchAction = view.tz > 1.001 || !stackedLayout.matches ? 'none' : 'pan-y';
+  if (state === view.shown) return;
+  view.shown = state;
+  $('#zLevel').textContent = label;
+  $('#zIn').disabled = view.tz >= ZMAX - 0.01; $('#zOut').disabled = view.tz <= ZMIN + 0.01; $('#zFit').disabled = view.tz <= ZMIN + 0.01;
+  $('#zFollow').setAttribute('aria-pressed', String(view.follow));
+  $('#mapWrap').classList.toggle('zoomed', view.tz > 1.001);
+}
+$('#zIn').addEventListener('click', zoomIn);
+$('#zOut').addEventListener('click', zoomOut);
+$('#zFit').addEventListener('click', zoomFit);
+$('#zFollow').addEventListener('click', () => toggleFollow());
+const localPt = e => { const r = cv.getBoundingClientRect(); return {x: e.clientX - r.left, y: e.clientY - r.top}; };
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = localPt(e), dy = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? H : 1);
+  zoomTo(view.tz * Math.exp(-dy * (e.ctrlKey ? 0.012 : 0.0022)), p.x, p.y);
+}, {passive: false});
+cv.addEventListener('dblclick', e => { const p = localPt(e); zoomTo(e.shiftKey ? view.tz / 2 : view.tz * 2, p.x, p.y); });
+function pinchState() {
+  const [a, b] = [...pan.pointers.values()];
+  return {d: Math.max(20, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2};
+}
+cv.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const p = localPt(e); pan.pointers.set(e.pointerId, p);
+  try { cv.setPointerCapture(e.pointerId); } catch (err) { /* capture unavailable */ }
+  if (pan.pointers.size === 2) {
+    const q = pinchState();
+    pan.pinch = {d: q.d, z: view.z, wx: view.cx + (q.x - W / 2) / (S0 * view.z), wy: view.cy + (q.y - H / 2) / (S0 * view.z)};
+    pan.active = true; pan.moved = true; view.follow = false;
+  } else if (pan.pointers.size === 1) {
+    pan.active = false; pan.moved = false; pan.sx = p.x; pan.sy = p.y; pan.cx = view.cx; pan.cy = view.cy;
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!pan.pointers.has(e.pointerId)) return;
+  const p = localPt(e); pan.pointers.set(e.pointerId, p);
+  if (pan.pinch && pan.pointers.size >= 2) {
+    const q = pinchState(), z = clamp(pan.pinch.z * q.d / pan.pinch.d, ZMIN, ZMAX);
+    setView(z, pan.pinch.wx - (q.x - W / 2) / (S0 * z), pan.pinch.wy - (q.y - H / 2) / (S0 * z));
+    return;
+  }
+  const dx = p.x - pan.sx, dy = p.y - pan.sy;
+  if (!pan.active && Math.hypot(dx, dy) > 5 && view.tz > ZMIN + 0.001) { pan.active = true; pan.moved = true; view.follow = false; tip.style.display = 'none'; hoverId = null; cv.style.cursor = 'grabbing'; }
+  if (pan.active) setView(view.z, pan.cx - dx / S, pan.cy - dy / S);
+});
+function endPointer(e) {
+  if (!pan.pointers.has(e.pointerId)) return;
+  const p = pan.pointers.get(e.pointerId); pan.pointers.delete(e.pointerId);
+  if (pan.pointers.size < 2) pan.pinch = null;
+  if (pan.pointers.size === 1) { const [q] = [...pan.pointers.values()]; pan.sx = q.x; pan.sy = q.y; pan.cx = view.cx; pan.cy = view.cy; return; }
+  if (pan.pointers.size) return;
+  if (pan.moved) { pan.swallowClick = true; setTimeout(() => { pan.swallowClick = false; }, 0); }
+  else if (e.type === 'pointerup' && e.pointerType !== 'mouse') {
+    const t = performance.now(), last = pan.lastTap;
+    if (last && t - last.t < 320 && Math.hypot(p.x - last.x, p.y - last.y) < 28) { zoomTo(view.tz * 2, p.x, p.y); pan.lastTap = null; }
+    else pan.lastTap = {t, x: p.x, y: p.y};
+  }
+  pan.active = false; pan.moved = false;
+  cv.style.cursor = view.tz > ZMIN + 0.001 ? 'grab' : 'default';
+}
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+stackedLayout.addEventListener('change', () => { view.shown = ''; syncZoomUi(); });
+
+/* minimap */
+function sizeMinimap() {
+  let w = 172, h = w * H / W;
+  if (h > 132) { h = 132; w = h * W / H; }
+  mini.style.width = Math.round(w) + 'px'; mini.style.height = Math.round(h) + 'px';
+  mini.width = Math.round(w * DPR); mini.height = Math.round(h * DPR);
+  mini.hidden = W < 520 || H < 340;
+}
+function drawMinimap() {
+  if (mini.hidden || view.tz <= ZMIN + 0.001 && view.z <= ZMIN + 0.001 || !baseReady) return;
+  const c = minix, mw = mini.width, mh = mini.height, k = mw / base.width;
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.drawImage(base, 0, 0, mw, mh);
+  c.fillStyle = 'rgba(4,6,12,0.35)'; c.fillRect(0, 0, mw, mh);
+  const wx = w => (OX0 + w * S0) * DPR * k, wy = w => (OY0 + w * S0) * DPR * k;
+  for (const a of agents) {
+    c.fillStyle = a.rank === 5 ? TH.gold : colorOf(a);
+    const r = (a.rank === 5 ? 2.6 : a.rank === 4 ? 2 : 1.4) * DPR;
+    c.fillRect(wx(a.x) - r / 2, wy(a.y - 8) - r / 2, r, r);
+  }
+  const sel = byId(selectedId);
+  if (sel) { c.strokeStyle = TH.accent; c.lineWidth = DPR; c.beginPath(); c.arc(wx(sel.x), wy(sel.y - 8), 3.5 * DPR, 0, 7); c.stroke(); }
+  const x0 = wx(-OX / S), y0 = wy(-OY / S), x1 = wx((W - OX) / S), y1 = wy((H - OY) / S);
+  c.fillStyle = hexA(TH.accent, 0.12); c.fillRect(x0, y0, x1 - x0, y1 - y0);
+  c.strokeStyle = TH.gold; c.lineWidth = 1.5 * DPR; c.strokeRect(x0, y0, x1 - x0, y1 - y0);
+}
+function miniJump(e, ease) {
+  const r = mini.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  const wx = (fx * W - OX0) / S0, wy = (fy * H - OY0) / S0;
+  view.follow = false;
+  if (ease) panTo(wx, wy); else setView(view.z, wx, wy);
+}
+mini.addEventListener('pointerdown', e => { mini.setPointerCapture(e.pointerId); mini.dataset.drag = '1'; miniJump(e, true); });
+mini.addEventListener('pointermove', e => { if (mini.dataset.drag) miniJump(e, false); });
+['pointerup', 'pointercancel'].forEach(n => mini.addEventListener(n, () => { delete mini.dataset.drag; }));
+mini.addEventListener('wheel', e => { e.preventDefault(); zoomTo(view.tz * Math.exp(-e.deltaY * (e.deltaMode === 1 ? 33 : 1) * 0.0022)); }, {passive: false});
+function viewKey(e) {
+  const onMap = document.activeElement === document.body || document.activeElement === cv || !document.activeElement;
+  if (e.key === '+' || e.key === '=') zoomIn();
+  else if (e.key === '-' || e.key === '_') zoomOut();
+  else if (e.key === '0') zoomFit();
+  else if (e.key === 'f' || e.key === 'F') toggleFollow();
+  else if (onMap && view.tz > ZMIN + 0.001 && e.key.startsWith('Arrow')) {
+    e.preventDefault();
+    const step = 0.18 * W / (S0 * view.tz), d = {ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1]}[e.key];
+    view.follow = false; panTo(view.tcx + d[0] * step, view.tcy + d[1] * step * H / W * 1.4);
+  } else return false;
+  return true;
 }
 /* ---------- hover and select ---------- */
 const tip = $('#tip');
@@ -1997,6 +2281,7 @@ function agentAt(mx, my) {
   return best;
 }
 cv.addEventListener('mousemove', e => {
+  if (pan.active) return;
   const r = cv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
   const wx = (mx - OX) / S, wy = (my - OY) / S;
   const inside = wx >= 0 && wx <= WW && wy >= 0 && wy <= WH;
@@ -2004,7 +2289,7 @@ cv.addEventListener('mousemove', e => {
   $('#mfCoords').textContent = inside ? `X ${String(Math.round(wx)).padStart(4, '0')} Y ${String(Math.round(wy)).padStart(4, '0')}` : 'X ---- Y ----';
   $('#mfSector').textContent = inside ? String.fromCharCode(65 + clamp(Math.floor(wx / 100), 0, 11)) + (clamp(Math.floor(wy / 105), 0, 7) + 1) : '--';
   $('#mfPlace').textContent = inside ? placeAt(wx, wy) : '—';
-  const a = agentAt(mx, my); hoverId = a ? a.id : null; cv.style.cursor = a ? 'pointer' : 'default';
+  const a = agentAt(mx, my); hoverId = a ? a.id : null; cv.style.cursor = a ? 'pointer' : view.tz > ZMIN + 0.001 ? 'grab' : 'default';
   if (!a) { tip.style.display = 'none'; return; }
   const t = a.task;
   tip.innerHTML = `<h4 style="color:${esc(colorOf(a))}">${esc(a.name)}</h4>
@@ -2018,7 +2303,7 @@ cv.addEventListener('mousemove', e => {
   tip.style.left = tx + 'px'; tip.style.top = ty + 'px';
 });
 cv.addEventListener('mouseleave', () => { hoverId = null; mouseWorld = null; tip.style.display = 'none'; $('#mfPlace').textContent = '—'; $('#mfSector').textContent = '--'; });
-cv.addEventListener('click', e => { const r = cv.getBoundingClientRect(); const a = agentAt(e.clientX - r.left, e.clientY - r.top); if (a) select(a.id); });
+cv.addEventListener('click', e => { if (pan.swallowClick) return; const r = cv.getBoundingClientRect(); const a = agentAt(e.clientX - r.left, e.clientY - r.top); if (a) select(a.id); });
 function stateText(a) {
   if (a.paused) return 'Paused by the Sovereign';
   const t = a.task;
@@ -2313,14 +2598,15 @@ function showTab(name) {
   if (name === 'court') renderCourt();
   if (name === 'hire') renderHire();
   if (name === 'seals') renderSeals();
+  if (name === 'needs') renderNeeds();
 }
 $$('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
-const EV_TYPES = [['all','All'],['task','Tasks'],['pass','Passed'],['fail','Returned'],['seal','Seal'],['merit','Merit'],['king','King'],['sale','Sales'],['decree','Decrees'],['chat','Chats']];
+const EV_TYPES = [['all','All'],['task','Tasks'],['pass','Passed'],['fail','Returned'],['seal','Seal'],['need','Needs you'],['merit','Merit'],['king','King'],['sale','Sales'],['decree','Decrees'],['chat','Chats']];
 function renderLog() {
   const p = $('#p-log');
   const evs = events.filter(e => chronFilter === 'all' || e.type === chronFilter || (chronFilter === 'fail' && e.type === 'oath') || (chronFilter === 'task' && e.type === 'submit')).slice(0, 160);
   p.innerHTML = `<h2>Event Log</h2><div class="filters">${EV_TYPES.map(([k, l]) => `<button aria-pressed="${chronFilter === k}" data-f="${k}">${l}</button>`).join('')}</div>
-    ${evs.length ? evs.map(e => `<div class="ev"><time>${shortClock(e.t)}</time><div><span class="dotc" style="background:${esc(DEPT[e.dept] ? DEPT[e.dept].color : TH.gold)}"></span><span class="${e.type === 'pass' ? 'v-ok' : e.type === 'fail' || e.type === 'oath' ? 'v-bad' : e.type === 'seal' ? 'v-seal' : e.type === 'sale' || e.type === 'king' || e.type === 'decree' ? 'v-gold' : ''}">${esc(e.text)}</span></div></div>`).join('') : '<div class="empty">No events of this kind yet.</div>'}`;
+    ${evs.length ? evs.map(e => `<div class="ev"><time>${shortClock(e.t)}</time><div><span class="dotc" style="background:${esc(DEPT[e.dept] ? DEPT[e.dept].color : TH.gold)}"></span><span class="${e.type === 'pass' ? 'v-ok' : e.type === 'fail' || e.type === 'oath' ? 'v-bad' : e.type === 'seal' ? 'v-seal' : e.type === 'need' ? 'v-gold' : e.type === 'sale' || e.type === 'king' || e.type === 'decree' ? 'v-gold' : ''}">${esc(e.text)}</span></div></div>`).join('') : '<div class="empty">No events of this kind yet.</div>'}`;
   $$('[data-f]', p).forEach(b => b.addEventListener('click', () => { chronFilter = b.dataset.f; renderLog(); }));
   dirty.chron = false;
 }
@@ -2437,10 +2723,200 @@ function renderRoster(force) {
 $('#rosterSearch').addEventListener('input', () => renderRoster(true));
 $('#rosterFilter').addEventListener('change', () => renderRoster(true));
 function select(id) {
-  selectedId = id; showTab('dossier'); renderDossier(true); renderRoster(true);
+  selectedId = id; revealAgent(id); showTab('dossier'); renderDossier(true); renderRoster(true);
   const li = $(`#rosterList li[data-id="${CSS.escape(id)}"]`); if (li) li.scrollIntoView({block: 'nearest'});
 }
 
+/* ---------- Needs You: last-resort requests for things only the Sovereign can do ---------- */
+const ACCESS = {
+  key: {label: 'A limited key in the vault', note: 'You make an API key that can do only what is listed, set it to expire, and save it in the vault. Never paste it here or in chat.'},
+  invite: {label: 'Invite the agents\' account', note: 'You invite the business\'s agent account with a limited role. That account has its own login, which Cipher keeps in the vault.'},
+  approve: {label: 'Approve access while signed in', note: 'You approve the app while signed in and grant only the permissions listed. You can take it back any time in the service\'s settings.'},
+  session: {label: 'Sign in inside the agents\' browser', note: 'You type your own login into the agents\' sandboxed browser window. The agent uses the signed-in page for up to an hour, then signs out. It never sees or stores the password.'},
+  login: {label: 'A separate login saved in the vault', note: 'Only when the service has no keys or invites: make a separate login for the business, never your personal one, and save it in the vault. Cipher signs in for the agents; the password is never shown to them, here or in any log.'}
+};
+const BLOCKERS = [
+  {id: 'storefront', dept: 'treasury', title: 'Open the storefront account in the business\'s name', service: 'the storefront', minutes: 15, unblocks: 'Selling the {product}',
+    why: 'The storefront checks the owner\'s identity and bank account, and its terms forbid accounts opened by software.',
+    you: ['Create the account on the storefront\'s sign-up page with the business email.', 'Finish the identity and bank checks it asks for.'],
+    access: ['key', 'invite'], perms: 'products: write, orders: read, payouts: read', role: 'Developer', vault: 'storefront-api',
+    tried: ['Checked the vault: no storefront login or key exists yet', 'Tested launch in the storefront\'s sandbox: it cannot take real orders', 'Looked for a storefront that needs no account: every one requires the owner\'s identity']},
+  {id: 'email', dept: 'heralds', title: 'Open the email service for the opt-in list', service: 'the email service', minutes: 10, unblocks: 'Collecting opt-in emails for the launch',
+    why: 'Email services verify a real sender and make the account holder accept their anti-spam terms.',
+    you: ['Create the account with the business email.', 'Accept the anti-spam terms and confirm the sending address from your inbox.'],
+    access: ['key', 'invite'], perms: 'contacts: write, campaigns: draft only (sending still needs your Seal)', role: 'Editor without send rights', vault: 'email-service-api',
+    tried: ['Checked the vault and the Archive for an email account: none', 'Asked Cipher for an existing token: none covers email', 'Tried a sign-up form that stores emails in the ledger instead: it can\'t confirm opt-ins as the law requires']},
+  {id: 'dns', dept: 'forge', title: 'Let the agents edit DNS for the business domain', service: 'the domain registrar', minutes: 5, unblocks: 'Putting the store page on the business domain',
+    why: 'The domain is registered in your name, and the registrar lets only the owner create access.',
+    you: ['Sign in to the domain registrar with your own login.'],
+    access: ['key', 'invite'], perms: 'DNS records: edit, for this one domain only', role: 'DNS only', vault: 'registrar-dns',
+    tried: ['Checked the vault: the registrar login is yours alone', 'Tried hosting on a free subdomain: the charter requires the business domain', 'Asked Cipher for a DNS token: the registrar has no access to delegate from yet']},
+  {id: 'card', dept: 'treasury', title: 'Add a payment card for the model API budget', service: 'the Claude Console billing page', minutes: 5, unblocks: 'Running past the free credits this month',
+    why: 'Card numbers must never pass through an agent. Only you can type them on the billing page.',
+    you: ['Sign in to the Claude Console and open Billing.', 'Add the card and set a monthly spend limit of $50 to $100.'],
+    access: [], noAccess: 'No access needed afterwards: Tally reads the spend through the read-only usage key already in the vault.',
+    tried: ['Checked the remaining credits: 3 days left at the current pace', 'Asked the King to route more tasks down to Haiku: saves 18%, not enough', 'Looked for a way to pay without a card on file: there is none']},
+  {id: 'seller', dept: 'oracle', title: 'Sign in to the marketplace seller dashboard once', service: 'the marketplace seller dashboard', minutes: 3, unblocks: 'The search-demand numbers for the next Opportunity Brief',
+    why: 'The marketplace shows search-term data only to a signed-in seller, offers no API key for it, and its terms forbid sharing your login.',
+    you: ['Open the seller dashboard in the window the agents prepared and sign in yourself.'],
+    access: ['session', 'login'], vault: 'marketplace-research',
+    tried: ['Searched public sources for the same numbers: only estimates three months old', 'Checked the Archive for a past export: none for this niche', 'Asked Sable Quill about a paid data service: $49 a month, more than the brief is worth']},
+  {id: 'codehost', dept: 'forge', title: 'Approve the code host app for the business organization', service: 'the code host', minutes: 2, unblocks: 'Release candidates opening their own pull requests',
+    why: 'Installing an app on the organization needs an owner\'s approval.',
+    you: ['Sign in to the code host as the organization\'s owner.'],
+    access: ['approve'], perms: 'contents and pull requests, on the venture repositories only',
+    tried: ['Used the read-only token in the vault: it can\'t open pull requests', 'Asked Cipher for a write token: only an owner can grant one', 'Tried attaching patches to the ledger instead: reviews slowed to a third']},
+  {id: 'tax', dept: 'treasury', title: 'Sign the tax form the storefront asks for', service: 'the storefront\'s tax settings', minutes: 10, unblocks: 'Payouts from the storefront',
+    why: 'A tax form is signed by the account owner under penalty of perjury. Agents may not sign as you.',
+    you: ['Open the storefront\'s tax settings.', 'Fill in and sign the form yourself. Abacus has listed the answers you\'ll need beside it.'],
+    access: [], noAccess: 'No access needed: payouts start once the form is accepted.',
+    tried: ['Checked whether payouts can wait: they stop after 30 days without the form', 'Prepared every answer from the ledger so it takes minutes', 'Asked Sable Quill whether an agent may file it: no, it must be you']},
+  {id: 'phone', dept: 'archive', title: 'Confirm the business phone for two-step sign-in', service: 'the business email account', minutes: 2, unblocks: 'Keeping the business email from locking out',
+    why: 'The code goes to your phone, and agents must never ask you for sign-in codes.',
+    you: ['Open the email account\'s security settings.', 'Enter the code from your phone yourself.'],
+    access: [], noAccess: 'No access needed: the agents\' own app passwords stay as they are.',
+    tried: ['Checked for backup codes in the vault: none were saved', 'Tried the recovery email: it points back to the same account', 'Asked Cipher for another route: only the phone owner can confirm']},
+  {id: 'community', dept: 'heralds', title: 'Join the makers\' community under the business name', service: 'the makers\' community', minutes: 5, unblocks: 'Sharing the launch where buyers already gather',
+    why: 'Joining binds you to the community\'s rules, and accounts run by bots are banned there.',
+    you: ['Create the account with the business name and read and accept the rules.'],
+    access: [], noAccess: 'No agent access: Lyra drafts each post for your Seal, and you post it yourself.',
+    tried: ['Read the community\'s rules: bot-made accounts are banned', 'Looked for a sponsored listing instead: none for this niche', 'Asked whether a partner could post for us: it would be undisclosed promotion, which we refuse']}
+];
+const BLOCKER = Object.fromEntries(BLOCKERS.map(b => [b.id, b]));
+const WALLS = ['the storefront', 'the domain settings', 'the email service', 'a paid report', 'the analytics dashboard', 'the code host', 'a supplier\'s price list', 'the payouts page'];
+const SELF_FIXES = ['used the limited key already in the vault', 'found the answer in the Archive from an earlier task', 'asked Cipher, who issued a short-lived token', 'switched to a route that needs no account', 'used read-only access another department already had', 'tested in the sandbox instead', 'asked the Warlord, who knew a public source'];
+const savedNeeds = store.get('needs', null) || {};
+const needs = (savedNeeds.open || []).filter(n => BLOCKER[n.bid]);
+const needsDone = savedNeeds.done || [];
+const needStats = Object.assign({solved: 0, asked: 0, done: 0, other: 0}, savedNeeds.stats || {});
+const needCool = savedNeeds.cool || {};
+let needSeq = savedNeeds.seq || 0, nextNeedAt = 26, needsDirty = true;
+const openNeedDetails = new Set();
+function saveNeeds() { store.set('needs', {open: needs, done: needsDone.slice(0, 12), stats: needStats, cool: needCool, seq: needSeq}); }
+const needLive = n => !n.snooze || n.snooze <= clock;
+const needActive = () => needs.filter(needLive).length;
+const helperOf = () => byId('cipher') || warlordOf('treasury');
+function freeBlockers() {
+  return BLOCKERS.filter(b => !needsDone.some(d => d.bid === b.id) && !needs.some(n => n.bid === b.id) && !(needCool[b.id] > clock));
+}
+function hitBlocker(a, t) {
+  const free = freeBlockers();
+  const escalate = free.length && needs.length < 3 && simT >= nextNeedAt && Math.random() < 0.15;
+  if (!escalate) {
+    needStats.solved++;
+    log('need', `${a.name} hit a wall at ${pick(WALLS)} and got past it without you: ${pick(SELF_FIXES)}`, t.dept, a.id);
+    floaters.push({x: a.x, y: a.y - 52, text: 'SOLVED', color: 'accent', life: 1.4});
+    updateNeedStats(); saveNeeds(); return;
+  }
+  const b = free.find(x => x.dept === a.dept) || pick(free);
+  askSovereign(b, a);
+}
+function askSovereign(b, a) {
+  const w = warlordOf(b.dept), h = helperOf();
+  const n = {id: ++needSeq, bid: b.id, by: w.id, for: a && a.id !== w.id ? a.id : null, prep: b.access.length ? h.id : null, at: clock, method: b.access[0] || null};
+  needs.push(n); needStats.asked++; nextNeedAt = simT + 150;
+  log('need', `${w.name} and ${h.name} found no route around it. Needs you: ${b.title}`, b.dept, w.id);
+  orbs.push(makeOrb(posOf(w), () => stationPos('throne'), 'gold'));
+  toast(`Needs you: ${b.title}`); blip(520, 0.3);
+  needsDirty = true; saveNeeds(); renderNeedBadge();
+}
+function needsTick() {
+  if (!needStats.asked && simT > 30) {
+    const free = freeBlockers();
+    if (free.length) { const b = free[0], ws = deptAgents(b.dept).filter(x => x.rank < 4); askSovereign(b, ws.length ? pick(ws) : warlordOf(b.dept)); }
+  }
+  if (needs.some(n => n.snooze && n.snooze <= clock && !n.woke)) { needs.forEach(n => { if (n.snooze && n.snooze <= clock) { n.woke = true; n.snooze = 0; } }); needsDirty = true; renderNeedBadge(); }
+}
+function resolveNeed(id, how) {
+  const i = needs.findIndex(n => n.id === id); if (i < 0) return;
+  const n = needs[i], b = BLOCKER[n.bid], w = byId(n.by), who = byId(n.for), h = n.prep && byId(n.prep);
+  if (how === 'snooze') { n.snooze = clock + 120; n.woke = false; log('need', `You put off: ${b.title}. It comes back in two hours.`, b.dept, n.by); }
+  else {
+    needs.splice(i, 1); openNeedDetails.delete(id);
+    if (how === 'done') {
+      needStats.done++; needsDone.unshift({bid: b.id, at: clock, method: n.method});
+      const via = n.method ? ` through ${ACCESS[n.method].label.toLowerCase()}` : '';
+      log('need', `You did it: ${b.title}${via}. ${h ? h.name + ' checked the access is limited, and ' : ''}${who ? who.name : w ? w.name : 'the agents'} carried on.`, b.dept, n.by);
+      if (w) { w.merit += 1; w.meritSince += 1; }
+      if (who) { who.merit += 1; who.meritSince += 1; }
+      orbs.push(makeOrb(() => stationPos('throne'), () => stationPos(b.dept), 'good'));
+      blip(880, 0.2);
+    } else {
+      needStats.other++; needCool[b.id] = clock + 1440;
+      log('need', `You asked the agents to find another way around: ${b.title}. ${w ? w.name : 'The Warlord'} is replanning.`, b.dept, n.by);
+      if (w) w.lessons.unshift({text: `The Sovereign asked for another way around “${b.title}”. Plan a route that needs no new access first.`, at: clock});
+    }
+  }
+  needsDirty = true; saveNeeds(); renderNeedBadge(); renderNeeds();
+}
+function needSteps(n) {
+  const b = BLOCKER[n.bid], m = n.method;
+  if (m === 'key') return [`In ${b.service}, open the API keys settings.`, `Create a key named “${b.vault}” that can do only this: ${b.perms}. Set it to expire in 30 days.`, `Save it in the vault as “${b.vault}”. Do not paste it here or in chat.`, 'Press Done. Cipher checks the key works and can do nothing else.'];
+  if (m === 'invite') return [`In ${b.service}, open the team or members settings.`, `Invite the agents' account (agents@ your business domain) with the role “${b.role}”.`, 'Press Done. Cipher accepts the invite from the vault and checks the role is limited.'];
+  if (m === 'approve') return [`While signed in to ${b.service}, open the approval page the agents prepared.`, `Check it asks only for: ${b.perms}.`, 'Approve it, then press Done.'];
+  if (m === 'session') return ['Open the agents\' sandboxed browser window from the Forge.', `Sign in to ${b.service} there yourself and leave the window open.`, 'Press Done. The agent reads what it needs and signs out within the hour.'];
+  if (m === 'login') return [`Make a separate ${b.service} login for the business, not your personal one.`, 'Turn on two-step sign-in with the vault\'s authenticator.', `Save the username and password in the vault as “${b.vault}”.`, 'Press Done. Cipher signs in once to check it.'];
+  return [];
+}
+function updateNeedStats() { $$('#p-needs [data-k]').forEach(el => { el.textContent = needStats[el.dataset.k]; }); }
+function renderNeedBadge() {
+  const el = $('#needCount'); if (!el) return;
+  const c = needActive(); el.textContent = c ? String(c) : '';
+  $('[data-tab="needs"]').classList.toggle('alert', c > 0);
+}
+function needCard(n) {
+  const b = BLOCKER[n.bid], d = DEPT[b.dept], w = byId(n.by), who = n.for && byId(n.for), h = n.prep && byId(n.prep), live = needLive(n);
+  const steps = needSteps(n);
+  return `<article class="need${live ? '' : ' snoozed'}" data-need="${n.id}" style="--c:${esc(d.color)}">
+    <div class="need-h"><span class="need-dept">${esc(d.short)}</span><b>${esc(b.title)}</b><span class="chip">about ${b.minutes} min</span></div>
+    <div class="need-meta">Asked by ${esc(w ? w.name : 'a Warlord')}${who ? ` for ${esc(who.name)}` : ''}${h ? ` · access set up by ${esc(h.name)}` : ''} · ${shortClock(n.at)}${live ? '' : ` · put off until ${shortClock(n.snooze)}`}</div>
+    <div class="need-un"><span>Unblocks</span> ${esc(fill(b.unblocks))}</div>
+    <h4>Why only you</h4><p>${esc(b.why)}</p>
+    <details data-tried="${n.id}"${openNeedDetails.has(n.id) ? ' open' : ''}><summary>What they tried first (${b.tried.length})</summary><ul>${b.tried.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>
+    <h4>What you do</h4><ol>${b.you.map(x => `<li>${esc(x)}</li>`).join('')}</ol>
+    <h4>How the agents get access</h4>
+    ${b.access.length ? `<div class="need-methods" role="radiogroup" aria-label="How the agents get access">${b.access.map((m, i) => `<label class="need-m${n.method === m ? ' on' : ''}"><input type="radio" name="nm${n.id}" value="${m}" data-nm="${n.id}"${n.method === m ? ' checked' : ''}><span><b>${esc(ACCESS[m].label)}</b>${i === 0 ? '<em>Recommended</em>' : ''}<small>${esc(ACCESS[m].note)}</small></span></label>`).join('')}</div>
+    <ol class="need-steps">${steps.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : `<p class="muted">${esc(b.noAccess)}</p>`}
+    <div class="btnrow"><button class="good mini" data-nd="${n.id}">Done</button><button class="mini" data-nz="${n.id}"${live ? '' : ' disabled'}>Not now</button><button class="bad mini" data-no2="${n.id}">Find another way</button><button class="mini ghost" data-nc="${n.id}">Copy steps</button></div>
+  </article>`;
+}
+function renderNeeds() {
+  const p = $('#p-needs'); if (!p || !p.classList.contains('on')) return;
+  const list = [...needs].sort((x, y) => Number(!needLive(x)) - Number(!needLive(y)) || x.at - y.at);
+  p.innerHTML = `<h2>Needs You</h2>
+    <p class="muted">Agents come here only as a last resort, after trying their own tools, the vault and the Archive, and asking their Warlord and Cipher for another way. Nothing here asks for a password: when a login is needed, you sign in yourself or save it in the vault.</p>
+    <div class="needstats"><div><b data-k="solved">${needStats.solved}</b><span>Solved without you</span></div><div><b data-k="asked">${needStats.asked}</b><span>Asked you</span></div><div><b data-k="done">${needStats.done}</b><span>You did</span></div><div><b data-k="other">${needStats.other}</b><span>Found another way</span></div></div>
+    ${list.length ? list.map(needCard).join('') : `<div class="empty">Nothing needs you right now.<br><span class="muted">Walls the agents got past on their own: <b data-k="solved">${needStats.solved}</b></span></div>`}
+    <details class="need-rule"><summary>The last-resort rule</summary><ol>
+      <li>Try with their own tools and access.</li>
+      <li>Check the vault and the Archive for access or an answer that already exists.</li>
+      <li>Ask their Warlord and Cipher for a route that needs nothing from you.</li>
+      <li>Only then ask you, saying what they tried, why only you can do it, the smallest step, and how they will get access afterwards.</li>
+      <li>They never ask for your personal password, sign-in codes, recovery codes or card numbers.</li></ol></details>
+    ${needsDone.length ? `<h3>Recently done</h3>${needsDone.slice(0, 5).map(x => { const b = BLOCKER[x.bid]; return b ? `<div class="need-done"><time>${shortClock(x.at)}</time><span>${esc(b.title)}${x.method ? ` <em>· ${esc(ACCESS[x.method].label.toLowerCase())}</em>` : ''}</span></div>` : ''; }).join('')}` : ''}`;
+  $$('[data-nd]', p).forEach(el => el.addEventListener('click', () => resolveNeed(+el.dataset.nd, 'done')));
+  $$('[data-nz]', p).forEach(el => el.addEventListener('click', () => resolveNeed(+el.dataset.nz, 'snooze')));
+  $$('[data-no2]', p).forEach(el => el.addEventListener('click', () => resolveNeed(+el.dataset.no2, 'other')));
+  $$('[data-nm]', p).forEach(el => el.addEventListener('change', () => { const n = needs.find(x => x.id === +el.dataset.nm); if (n) { n.method = el.value; saveNeeds(); renderNeeds(); const r = $(`[data-nm="${n.id}"][value="${el.value}"]`, p); if (r) r.focus(); } }));
+  $$('details[data-tried]', p).forEach(el => el.addEventListener('toggle', () => { const id = +el.dataset.tried; if (el.open) openNeedDetails.add(id); else openNeedDetails.delete(id); }));
+  $$('[data-nc]', p).forEach(el => el.addEventListener('click', () => {
+    const n = needs.find(x => x.id === +el.dataset.nc); if (!n) return;
+    const b = BLOCKER[n.bid], text = [b.title, '', 'What you do:', ...b.you.map((x, i) => `${i + 1}. ${x}`), '', ...(n.method ? ['How the agents get access: ' + ACCESS[n.method].label, ...needSteps(n).map((x, i) => `${i + 1}. ${x}`)] : [b.noAccess])].join('\n');
+    const ok = () => { el.textContent = 'Copied'; setTimeout(() => { el.textContent = 'Copy steps'; }, 1400); };
+    try { navigator.clipboard.writeText(text).then(ok, () => { el.textContent = 'Copy failed'; }); } catch (e) { el.textContent = 'Copy failed'; }
+  }));
+  needsDirty = false;
+}
+function drawNeedMarks() {
+  const c = needActive(); if (!c) return;
+  const pulse = reduceMotion ? 0.8 : 0.6 + 0.4 * Math.sin(now * 4);
+  for (let i = 0; i < Math.min(c, 4); i++) {
+    const x = 600 + (i - (Math.min(c, 4) - 1) / 2) * 18, y = 318;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; glow(x, y, 12, TH.gold, 0.5 * pulse); ctx.restore();
+    ctx.fillStyle = TH.gold; ctx.beginPath(); ctx.moveTo(x, y - 7); ctx.lineTo(x + 7, y); ctx.lineTo(x, y + 7); ctx.lineTo(x - 7, y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#14100a'; ctx.font = `800 9px ${TH.mono}`; ctx.textAlign = 'center'; ctx.fillText('!', x, y + 3.2);
+  }
+}
 /* ---------- border effects and animation tweaks ---------- */
 const FX_SECTIONS = [['header', 'Header'], ['hud', 'HUD tiles'], ['left', 'Personnel'], ['map', 'Tactical map'], ['side', 'Intel and command'], ['tel', 'Telemetry'], ['footer', 'Command line'], ['buttons', 'Action buttons'], ['dialogs', 'Panels and dialogs']];
 const FX_EFFECTS = [['chase', 'Chase lights'], ['comet', 'Comet'], ['pulse', 'Pulse'], ['heartbeat', 'Heartbeat'], ['electric', 'Electric'], ['flow', 'Flow'], ['spectrum', 'Spectrum'], ['static', 'Static glow'], ['off', 'Off']];
@@ -2679,7 +3155,7 @@ function applyTheme() {
     st.setProperty('--accent', c.accent); st.setProperty('--gold', c.gold);
   }
   $('#themeSel').value = settings.theme; $('#themeSel2').value = settings.theme;
-  readTheme(); if (bg.width) buildBackground(); dirty.roster = true;
+  readTheme(); if (bg.width) rebuildStatic(); dirty.roster = true;
   syncColorInputs(); applyFx();
 }
 function applySettings() {
@@ -2732,9 +3208,11 @@ document.addEventListener('keydown', e => {
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
   if (e.key === 'Escape') { closeModals(); return; }
   if (typing) return;
+  if (!e.ctrlKey && !e.metaKey && !e.altKey && viewKey(e)) return;
   if (e.key === '/') { e.preventDefault(); $('#cmd').focus(); }
   else if (e.key === 'd' || e.key === 'D') { showTab('decree'); $('#dText').focus(); e.preventDefault(); }
   else if (e.key === 's' || e.key === 'S') showTab('seals');
+  else if (e.key === 'n' || e.key === 'N') showTab('needs');
   else if (e.key === 'c' || e.key === 'C') { renderColorPanel(); $('#mFx').classList.remove('open'); openModal('mColors'); }
   else if (e.key === 'e' || e.key === 'E') { renderFxPanel(); $('#mColors').classList.remove('open'); openModal('mFx'); }
   else if (e.key === ' ') { e.preventDefault(); togglePlay(); }
@@ -2751,6 +3229,7 @@ $('#cmd').addEventListener('keydown', e => {
     case 'find': case 'open': { const a = findAgent(arg); if (a) { select(a.id); say('Opened ' + a.name); } else say('No agent named ' + arg); break; }
     case 'court': holdCourt(); break;
     case 'seal': case 'seals': showTab('seals'); break;
+    case 'needs': case 'need': showTab('needs'); break;
     case 'promote': { const a = findAgent(arg); if (a && promote(a, 'by your order')) say(a.name + ' promoted'); else say('Could not promote ' + arg); dirty.roster = true; break; }
     case 'demote': { const a = findAgent(arg); if (a && demote(a, 'by your order')) say(a.name + ' demoted'); else say('Could not demote ' + arg); dirty.roster = true; break; }
     case 'pause': { if (!arg) { togglePlay(); break; } const a = findAgent(arg); if (a && a.rank < 5) { a.paused = !a.paused; say(a.name + (a.paused ? ' paused' : ' resumed')); } else say('No agent named ' + arg); break; }
@@ -2759,8 +3238,10 @@ $('#cmd').addEventListener('keydown', e => {
     case 'castle': { const k = Object.keys(CASTLE_PRESETS).find(x => x.startsWith(arg.toLowerCase().replace(/[^a-z]/g, ''))); if (k) { settings.castlePreset = k; applySettings(); say('Castle: ' + CASTLE_PRESETS[k].label); } else say('Castle styles: ' + Object.keys(CASTLE_PRESETS).join(', ')); break; }
     case 'colors': case 'colours': renderColorPanel(); openModal('mColors'); break;
     case 'fx': case 'effects': { const k = arg && Object.keys(FX_PRESETS).find(x => x.startsWith(arg.toLowerCase().replace(/[^a-z]/g, ''))); if (k) { applyFxPreset(k); say('Effects: ' + FX_PRESETS[k].label); } else { renderFxPanel(); openModal('mFx'); if (arg) say('Effect looks: ' + Object.keys(FX_PRESETS).join(', ')); } break; }
+    case 'zoom': { const v = arg.toLowerCase(); if (!v || v === 'fit' || v === 'out') { zoomFit(); say('Showing the whole castle'); } else if (v === 'in') zoomIn(); else { const z = clamp(parseFloat(v) || 1, ZMIN, ZMAX); zoomTo(z); say('Zoom ' + z + '×'); } break; }
+    case 'follow': { const a = arg ? findAgent(arg) : byId(selectedId); if (a) { select(a.id); toggleFollow(true); say('Following ' + a.name); } else say('No agent named ' + arg); break; }
     case 'hire': { showTab('hire'); $('#hName').value = arg.split(' ')[0] || ''; $('#hName').focus(); break; }
-    case 'help': default: say('/decree <goal> · /find <name> · /promote <name> · /demote <name> · /pause [name] · /court · /seals · /speed <0.25-4> · /theme <obsidian|blackgold|naval|custom> · /castle <' + Object.keys(CASTLE_PRESETS).join('|') + '> · /colors · /fx <' + Object.keys(FX_PRESETS).join('|') + '> · /hire <name>');
+    case 'help': default: say('/decree <goal> · /find <name> · /promote <name> · /demote <name> · /pause [name] · /court · /seals · /needs · /speed <0.25-4> · /theme <obsidian|blackgold|naval|custom> · /castle <' + Object.keys(CASTLE_PRESETS).join('|') + '> · /colors · /fx <' + Object.keys(FX_PRESETS).join('|') + '> · /zoom <1-5|in|fit> · /follow [name] · /hire <name>');
   }
 });
 
@@ -2807,13 +3288,14 @@ function frame(ts) {
   if (uiTick > 0.35) {
     uiTick = 0; renderHud(); renderDossier(false); renderRoster(false);
     if (dirty.seal) renderSeals();
+    if (needsDirty) { renderNeeds(); renderNeedBadge(); }
     if (dirty.chron && $('#p-log').classList.contains('on')) renderLog();
   }
   requestAnimationFrame(frame);
 }
-renderHud(); renderDossier(true); renderRoster(true); renderSeals(); renderTicker(true);
+renderHud(); renderDossier(true); renderRoster(true); renderSeals(); renderNeedBadge(); renderTicker(true);
 bootSequence();
-if (document.fonts) document.fonts.ready.then(() => { readTheme(); buildBackground(); renderTicker(true); });
+if (document.fonts) document.fonts.ready.then(() => { readTheme(); rebuildStatic(); renderTicker(true); });
 requestAnimationFrame(frame);
 })();
 </script>

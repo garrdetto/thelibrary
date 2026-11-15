@@ -78,6 +78,23 @@ seal_required:                            # actions that always wait for the Sov
   - change_chain_of_command
   - exceed_routing_ceiling
 
+needs_you:                                # last-resort requests for things only the Sovereign can do
+  tool: request_sovereign                 # Warlords and the King file; Servants ask their Warlord
+  must_try_first:                         # refused unless each step is recorded on the request
+    - own_tools_and_access
+    - vault_and_archive
+    - warlord_and_cipher
+  must_include: [what_was_tried, why_only_the_sovereign, smallest_step, minutes, unblocks, access_method]
+  access_methods:                         # Cipher prepares them; the first listed is recommended
+    - limited_key_in_vault                # scoped, expiring API key the Sovereign saves in the vault
+    - invite_agent_account                # the business's agent account, invited with a limited role
+    - approve_app                         # OAuth approval with only the listed permissions
+    - sign_in_in_agent_browser            # the Sovereign types their own login; the agent signs out within an hour
+    - separate_login_in_vault             # only when a service has no keys or invites; never the Sovereign's personal login
+  never_ask_for: [personal_password, sign_in_codes, recovery_codes, card_numbers]
+  max_open: 3
+  min_minutes_between_requests: 300
+
 refusals:                                 # never allowed, Seal or not
   - fake_reviews_or_testimonials
   - bot_or_sockpuppet_accounts

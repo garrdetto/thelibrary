@@ -31,7 +31,7 @@ Implement the full review pipeline: automated checks first, then a reviewer at t
 **Phase 4: Command Center.** Gate: you approve a Seal from your phone and watch the task continue on the map.
 
 ```
-Build ui/ from prototype/command-center.html using React, Vite and PixiJS. Keep its look, panels and interactions. Replace the simulator with the API's WebSocket event stream (event names in the plan), and keep simulation mode behind a visible toggle with a banner. Add FastAPI endpoints for agents, tasks, chat (each chat message runs through the Codex as a task), decrees, Seal approve and deny (signed with a local secret), merit and treasury. Add a day replay scrubber and Seal notifications through a Telegram or Discord bot.
+Build ui/ from prototype/command-center.html using React, Vite and PixiJS. Keep its look, panels and interactions. Replace the simulator with the API's WebSocket event stream (event names in the plan), and keep simulation mode behind a visible toggle with a banner. Add FastAPI endpoints for agents, tasks, chat (each chat message runs through the Codex as a task), decrees, Seal approve and deny (signed with a local secret), Needs You (list, done, not now, find another way; request_sovereign enforces the needs_you rules in codex.yaml), merit and treasury. Add a day replay scrubber and Seal notifications through a Telegram or Discord bot.
 ```
 
 **Phase 5: Forge, Foundry, Treasury and the first product.** Gate: one product passes the Inquisition and waits for its launch Seal, and the books reconcile.
