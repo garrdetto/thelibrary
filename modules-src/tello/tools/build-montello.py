@@ -854,7 +854,7 @@ def export(path):
     print('wrote', path, os.path.getsize(path), 'bytes')
 
 
-if __name__ == '__main__' or True:
+if os.environ.get('TELLO_KIT_IMPORT') != '1':
     wanted = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else ['kit', 'quarry']
     if 'kit' in wanted:
         build_kit()

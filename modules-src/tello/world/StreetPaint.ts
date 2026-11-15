@@ -5,7 +5,7 @@
  * parking lane with a tick at every stall, or a white edge line where there's no room to park. Lines stop short of
  * every cross street and break for alleys and driveways. At the light where Main Street meets State Highway 23 there
  * are stop bars on each approach and ladder crosswalks across West Montello Street and both of Main Street's legs.
- * Every other street in town is one lane each way split only by a dashed yellow centre line: no median, no island.
+ * Streets outside downtown are unmarked; highways and county roads get white edge lines and a broken or double yellow centre line.
  */
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
@@ -15,7 +15,7 @@ import type { RoadData } from '../data/MapData'
 import { CURB, CURB_WALK, isMainLeg, LANE, LEG_WIDTH, townProfiles, type StreetProfile } from '../data/Streets'
 import { detailTexture } from '../../rackreel/world/World'
 import type { TelloLand } from '../region'
-import { batchOf, CELL, toMesh, type Batch } from './Roads'
+import { batchOf, CELL, stationsOf, toMesh, type Batch } from './Roads'
 
 const LIFT = 0.085
 const LINE = 0.11
@@ -47,7 +47,7 @@ export function buildStreetPaint(scene: Scene, land: TelloLand): Mesh[] {
     sidewalks(prof, gaps, quad, road.n === 'West Montello Street')
   }
   for (const m of junctionMarks(land)) quad('white', m)
-  for (const road of land.doc.roads) if (isOrdinaryStreet(road) && !profiles.has(road)) centreDashes(road, gapsFor(land, road), quad)
+  for (const road of land.doc.roads) if (hasHighwayLines(road) && !profiles.has(road)) highwayLines(land, road, gapsFor(land, road), quad)
   const concrete = detailTexture(scene)
   const mats: Record<Paint, StandardMaterial> = {
     white: paint(scene, 'white', new Color3(0.86, 0.86, 0.84)),
@@ -71,7 +71,7 @@ function paint(scene: Scene, name: string, color: Color3, texture?: StandardMate
   mat.specularColor = Color3.Black()
   mat.ambientColor = new Color3(0.35, 0.35, 0.35)
   mat.backFaceCulling = false
-  mat.zOffset = -4
+  mat.zOffset = -12
   return mat
 }
 
@@ -97,44 +97,62 @@ function gapsFor(land: TelloLand, road: RoadData): Gap[] {
 
 type Quad = (paint: Paint, c: [number, number][], lift?: number, ys?: number[]) => void
 
-/** Dashes on an ordinary street's centre line: ten feet of paint, thirty feet of gap. */
+/** Broken yellow centre line where passing is allowed: ten feet of paint, thirty feet of gap. */
 const DASH = 3.05
 const DASH_GAP = 9.15
+/** Highway paint sits over the road, its fills and its junction patches. */
+const HIGHWAY_PAINT = 0.1
+const EDGE_IN = 0.3
+const EDGE_WIDTH = 0.11
+const CENTRE_WIDTH = 0.1
+const CENTRE_SPLIT = 0.13
+/** Tighter than this (radians turned in 48 m, about a 270 m radius) is a curve with no passing. */
+const NO_PASS_TURN = 0.18
+/** A stretch this close to a cross street has no passing either. */
+const NO_PASS_NEAR = 35
 
-/** A town street that isn't downtown's or Main Street's legs: one lane each way, wide enough for a centre line. */
-export function isOrdinaryStreet(road: RoadData): boolean {
-  return road.k === 1 && road.w >= 5.5 && !isMainLeg(road)
+/** Residential streets are unmarked; highways and county roads carry edge lines and a yellow centre line. */
+export function hasHighwayLines(road: RoadData): boolean {
+  return road.k === 0 && !isMainLeg(road) && road.w >= 7
 }
 
-/** The dashed yellow centre line along an ordinary street, stopping short of its ends and of every cross street. */
-function centreDashes(road: RoadData, gaps: Gap[], quad: Quad): void {
-  const p = road.p
-  const total = (() => {
-    let t = 0
-    for (let k = 0; k + 3 < p.length; k += 2) t += Math.hypot(p[k + 2] - p[k], p[k + 3] - p[k + 1])
-    return t
-  })()
-  const clearOf = (x: number, z: number) => gaps.every((g) => !g.full || Math.hypot(g.x - x, g.z - z) > g.r)
-  const at = (d: number) => {
-    let left = d
-    for (let k = 0; k + 3 < p.length; k += 2) {
-      const ex = p[k + 2] - p[k], ez = p[k + 3] - p[k + 1]
-      const l = Math.hypot(ex, ez)
-      if (left <= l || k + 4 >= p.length) {
-        const t = l ? Math.min(1, left / l) : 0
-        return { x: p[k] + ex * t, z: p[k + 1] + ez * t, tx: ex / (l || 1), tz: ez / (l || 1) }
-      }
-      left -= l
-    }
-    return { x: p[0], z: p[1], tx: 1, tz: 0 }
+/**
+ * The lines on a two-lane highway: a white line near each edge, and down the middle a broken yellow line where
+ * passing is allowed or a solid double yellow through curves and near cross streets. Everything stops short of cross
+ * streets (the edge lines also break for driveways).
+ */
+function highwayLines(land: TelloLand, road: RoadData, gaps: Gap[], quad: Quad): void {
+  const stations = stationsOf(road)
+  const n = stations.length
+  const half = road.w / 2
+  const heading = (i: number) => {
+    const a = stations[Math.max(0, i - 1)], b = stations[Math.min(n - 1, i + 1)]
+    return Math.atan2(b.z - a.z, b.x - a.x)
   }
-  const half = LINE / 2
-  for (let d = 6; d + DASH < total - 6; d += DASH + DASH_GAP) {
-    const a = at(d), b = at(d + DASH)
-    if (!clearOf(a.x, a.z) || !clearOf(b.x, b.z)) continue
-    const sx = -a.tz * half, sz = a.tx * half
-    const ex = -b.tz * half, ez = b.tx * half
-    quad('yellow', [[a.x - sx, a.z - sz], [b.x - ex, b.z - ez], [b.x + ex, b.z + ez], [a.x + sx, a.z + sz]], ROAD + 0.03)
+  const turnAt = (i: number) => {
+    const a = heading(Math.max(0, i - 8)), b = heading(Math.min(n - 1, i + 8))
+    return Math.abs(Math.atan2(Math.sin(b - a), Math.cos(b - a)))
+  }
+  const blocked = (x: number, z: number, curb: boolean) => gaps.some((g) => (g.full || curb) && Math.hypot(g.x - x, g.z - z) < g.r)
+  const nearCross = (x: number, z: number) => gaps.some((g) => g.full && Math.hypot(g.x - x, g.z - z) < g.r + NO_PASS_NEAR)
+  const strip = (paint: Paint, a: (typeof stations)[number], b: (typeof stations)[number], offA: number, offB: number, width: number) => {
+    const w = width / 2
+    const ax = a.x + a.sx * offA, az = a.z + a.sz * offA, bx = b.x + b.sx * offB, bz = b.z + b.sz * offB
+    quad(paint, [[ax - a.sx * w, az - a.sz * w], [bx - b.sx * w, bz - b.sz * w], [bx + b.sx * w, bz + b.sz * w], [ax + a.sx * w, az + a.sz * w]], HIGHWAY_PAINT)
+  }
+  for (let i = 0; i < n - 1; i++) {
+    const a = stations[i], b = stations[i + 1]
+    const mx = (a.x + b.x) / 2, mz = (a.z + b.z) / 2
+    if (!land.seen(mx, mz, 16) || blocked(mx, mz, false)) continue
+    if (!blocked(mx, mz, true)) {
+      for (const side of [-1, 1]) strip('white', a, b, side * (half * a.miter - EDGE_IN), side * (half * b.miter - EDGE_IN), EDGE_WIDTH)
+    }
+    const solid = Math.max(turnAt(i), turnAt(i + 1)) > NO_PASS_TURN || nearCross(mx, mz) || i < 4 || i > n - 6
+    if (solid) {
+      for (const side of [-1, 1]) strip('yellow', a, b, side * CENTRE_SPLIT, side * CENTRE_SPLIT, CENTRE_WIDTH)
+    } else if (((a.along + b.along) / 2) % (DASH + DASH_GAP) < DASH) {
+      strip('yellow', a, b, 0, 0, CENTRE_WIDTH * 1.2)
+    }
   }
 }
 

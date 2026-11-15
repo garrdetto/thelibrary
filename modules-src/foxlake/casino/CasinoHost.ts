@@ -1,8 +1,10 @@
 /**
- * The Northwoods Lodge Casino & Bar inside Fox Lake: builds the room, the ten
- * machines' displays, the neon signs, the bartender and the dealer; shows the
- * "E — ..." prompts at seats; sits the player down (Rack & Reel's seat and
- * fixed-camera hooks) and opens the machine, table or bar.
+ * The Foxtails Lounge & Casino inside Fox Lake: builds the room on Foxtails
+ * Gentlemen's Club's lot east of Montello, the ten machines' displays, the neon
+ * signs, the bartender and the dealer; shows the "E — ..." prompts at seats;
+ * sits the player down (Rack & Reel's seat and fixed-camera hooks) and opens the
+ * machine, table or bar. The layout is in the casino's own frame (CasinoLayout);
+ * every place it meets the town goes through `localToTown` and `SITE`.
  */
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture'
@@ -19,8 +21,8 @@ import { DEFAULT_APPEARANCE } from '../../rackreel/shared/Appearance'
 import type { Mats } from '../fp/core/Tex'
 import type { Physics } from '../fp/physics/Physics'
 import { sceneToTown, townToScene, townYawToHeading } from '../region'
-import { buildCasino } from './CasinoBuilding'
-import { BAR, BLACKJACK, CASINO, MACHINE_SPOTS, insideCasino, nearestSeat, type Seat } from './CasinoLayout'
+import { buildCasino, type CasinoColliders } from './CasinoBuilding'
+import { BAR, BLACKJACK, CASINO, MACHINE_SPOTS, SITE, insideCasino, localToTown, nearestSeat, siteYaw, townToLocal, type MachineSpot, type Seat } from './CasinoLayout'
 import { CasinoClient } from './CasinoClient'
 import { MACHINES } from './math/machines'
 import { THEMES } from './themes'
@@ -28,7 +30,40 @@ import { MachineDisplay } from './screen/MachineDisplay'
 import { SlotSession } from './screen/SlotSession'
 import { BarSession, BlackjackSession } from './TableSessions'
 
-export const CASINO_NAME = 'Northwoods Lodge Casino & Bar'
+export const CASINO_NAME = SITE.name
+
+/** The casino's colliders, moved from its own frame to where it stands in the town. */
+class PlacedColliders implements CasinoColliders {
+  constructor(private readonly physics: Physics) {}
+
+  addStaticAABB(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, prop = false) {
+    const a = localToTown(x0, z0)
+    const b = localToTown(x1, z1)
+    return this.physics.addStaticAABB(Math.min(a.x, b.x), y0 + SITE.y, Math.min(a.z, b.z), Math.max(a.x, b.x), y1 + SITE.y, Math.max(a.z, b.z), prop)
+  }
+
+  addStaticCylinder(x: number, y: number, z: number, halfH: number, r: number) {
+    const c = localToTown(x, z)
+    return this.physics.addStaticCylinder(c.x, y + SITE.y, c.z, halfH, r)
+  }
+
+  addStaticBox(b: Parameters<Physics['addStaticBox']>[0]) {
+    const c = localToTown(b.cx, b.cz)
+    return this.physics.addStaticBox({ ...b, cx: c.x, cy: b.cy + SITE.y, cz: c.z, rotY: (b.rotY ?? 0) + SITE.yaw })
+  }
+}
+
+/** A seat in the casino's frame as a town-frame seat. */
+function placeSeat(seat: Seat): Seat {
+  const p = localToTown(seat.x, seat.z)
+  return { x: p.x, y: seat.y + SITE.y, z: p.z, yaw: siteYaw(seat.yaw) }
+}
+
+/** A machine's spot in the casino's frame as a town-frame spot, with the floor's height. */
+function placeSpot(spot: MachineSpot): MachineSpot {
+  const p = localToTown(spot.x, spot.z)
+  return { index: spot.index, x: p.x, z: p.z, yaw: siteYaw(spot.yaw), seat: placeSeat(spot.seat), y0: SITE.y }
+}
 
 const STAFF_POSE = { stance: 'stand', hands: 'free', speed: 0, crouch: false, castPower: 0, aimPitch: 0, climbPhase: 0 } as const
 /** Past this distance from the casino the bartender and dealer are not animated (they can't be seen). */
@@ -42,10 +77,17 @@ export class CasinoHost {
   private mugs: Mesh[] = []
   private readonly extras: { dispose(): void }[] = []
   private host!: GameHost
+  private frame: TransformNode | null = null
 
-  /** Builds the room into the town (call while the town is being built, so it is culled and shadowed with it). */
+  /** Builds the room into the town where Foxtails stands (call while the town is being built, so it is culled and shadowed with it). */
   build(root: TransformNode, mats: Mats, physics: Physics): void {
-    buildCasino(root, mats, physics)
+    const frame = new TransformNode('casino-frame', root.getScene())
+    frame.parent = root
+    frame.rotation.y = SITE.yaw
+    const origin = localToTown(0, 0)
+    frame.position.set(origin.x, SITE.y, origin.z)
+    this.frame = frame
+    buildCasino(frame, mats, new PlacedColliders(physics))
   }
 
   /** Where the money is: the online Fox Lake world (by account or this browser's guest key) or the solo town. */
@@ -63,23 +105,23 @@ export class CasinoHost {
     const scene = host.ctx.scene
     MACHINE_SPOTS.forEach((spot) => {
       const def = MACHINES[spot.index]
-      this.displays.push(new MachineDisplay(scene, spot, def, THEMES[def.id]))
+      this.displays.push(new MachineDisplay(scene, placeSpot(spot), def, THEMES[def.id]))
     })
-    this.sign('FOX LAKE CASINO', '#ff5ac8', CASINO.door.x, 4.75, CASINO.z0 - 0.08, Math.PI, 8.5, 1.15)
-    this.sign('LODGE BAR', '#ffb040', 115, 4.45, CASINO.z1 - CASINO.wall - 0.03, Math.PI, 4.2, 0.8)
+    this.sign('FOXTAILS CASINO', '#ff5ac8', CASINO.door.x, 4.75, CASINO.z0 - 0.08, Math.PI, 8.5, 1.15)
+    this.sign('FOXTAILS BAR', '#ffb040', 115, 4.45, CASINO.z1 - CASINO.wall - 0.03, Math.PI, 4.2, 0.8)
     this.sign('BLACKJACK', '#50ffb0', BLACKJACK.x, 2.55, BLACKJACK.z + 1.5, Math.PI, 2.2, 0.42)
     this.staff.push(this.npc(BAR.bartender, ['jacket-oxford', 'vest-none', 'cap-none', 'pants-chinos', 'pack-none'], 'young'))
     this.staff.push(this.npc({ x: BLACKJACK.dealer.x, z: BLACKJACK.dealer.z, yaw: BLACKJACK.dealer.yaw }, ['jacket-oxford', 'vest-none', 'cap-none', 'pants-darkjeans', 'pack-none'], 'stern'))
     await this.client.refresh()
   }
 
-  /** A neon sign facing `yaw` (town yaw) at (x, y, z), w x h metres. */
+  /** A neon sign facing `yaw` at (x, y, z), w x h metres, in the casino's frame. */
   private sign(text: string, color: string, x: number, y: number, z: number, yaw: number, w: number, h: number): void {
     const scene = this.host.ctx.scene
     const node = new TransformNode(`sign-${text}`, scene)
-    const p = townToScene(x, y, z)
+    const p = this.scenePoint(x, y, z)
     node.position.set(p.x, p.y, p.z)
-    node.rotation.y = townYawToHeading(yaw) + Math.PI
+    node.rotation.y = townYawToHeading(siteYaw(yaw)) + Math.PI
     const tex = new DynamicTexture(`sign-${text}`, { width: 1024, height: Math.round((1024 * h) / w) }, scene, true)
     tex.hasAlpha = true
     const g = tex.getContext() as CanvasRenderingContext2D
@@ -122,23 +164,31 @@ export class CasinoHost {
     const avatar = new Avatar(instantiateSkinned(host.hunter, host.ctx.scene, (m) => host.ctx.registerDynamic(m)))
     avatar.setOutfit(wear)
     avatar.setAppearance({ ...DEFAULT_APPEARANCE, face, hair: 'base', beard: 'base' }, host.headPaint)
-    const p = townToScene(at.x, CASINO.floorY, at.z)
+    const p = this.scenePoint(at.x, CASINO.floorY, at.z)
     avatar.root.position.set(p.x, p.y, p.z)
-    avatar.root.rotation.set(0, townYawToHeading(at.yaw), 0)
+    avatar.root.rotation.set(0, townYawToHeading(siteYaw(at.yaw)), 0)
     return avatar
+  }
+
+  /** A point of the casino's frame (x, z across the floor, y above it) in the scene. */
+  private scenePoint(x: number, y: number, z: number): { x: number; y: number; z: number } {
+    const t = localToTown(x, z)
+    return townToScene(t.x, y + SITE.y, t.z)
   }
 
   /** True when a scene point is inside the casino. */
   contains(x: number, z: number): boolean {
     const t = sceneToTown(x, 0, z)
-    return insideCasino(t.x, t.z)
+    const l = townToLocal(t.x, t.z)
+    return insideCasino(l.x, l.z)
   }
 
   private seatNear() {
     const p = this.host.player
     const t = sceneToTown(p.x, p.y, p.z)
-    if (!insideCasino(t.x, t.z)) return null
-    return nearestSeat(t.x, t.z, 1.3)
+    const l = townToLocal(t.x, t.z)
+    if (!insideCasino(l.x, l.z)) return null
+    return nearestSeat(l.x, l.z, 1.3)
   }
 
   prompt(): string {
@@ -156,7 +206,7 @@ export class CasinoHost {
     const toast = (t: string) => this.host.hud.toast(t)
     if (s.kind === 'machine') {
       const display = this.displays[s.spot.index]
-      this.sit(s.spot.seat, display.node, new Vector3(0, 1.44, 1.12), new Vector3(0, 1.3, 0))
+      this.sit(placeSeat(s.spot.seat), display.node, new Vector3(0, 1.44, 1.12), new Vector3(0, 1.3, 0))
       this.host.avatarRoot.setEnabled(false)
       this.session = new SlotSession(this.host.ctx.scene, display, this.client, toast, () => this.stand())
     } else if (s.kind === 'stool') {
@@ -181,10 +231,11 @@ export class CasinoHost {
     this.host.setCameraShot({ eye: Vector3.TransformCoordinates(eye, m), target: Vector3.TransformCoordinates(target, m) })
   }
 
+  /** Sits at a seat of the casino's frame; `eye` and `target` are in that frame too. */
   private sitWorld(seat: Seat, eye: { x: number; y: number; z: number }, target: { x: number; y: number; z: number }): void {
-    this.perch(seat)
-    const e = townToScene(eye.x, eye.y, eye.z)
-    const t = townToScene(target.x, target.y, target.z)
+    this.perch(placeSeat(seat))
+    const e = this.scenePoint(eye.x, eye.y, eye.z)
+    const t = this.scenePoint(target.x, target.y, target.z)
     this.host.setCameraShot({ eye: new Vector3(e.x, e.y, e.z), target: new Vector3(t.x, t.y, t.z) })
   }
 
@@ -205,7 +256,7 @@ export class CasinoHost {
   /** A beer on the counter in front of the stool. */
   private pour(seat: Seat): void {
     const scene = this.host.ctx.scene
-    const p = townToScene(seat.x + (this.mugs.length % 3) * 0.12 - 0.12, BAR.counter.top, BAR.counter.z0 + 0.3)
+    const p = this.scenePoint(seat.x + (this.mugs.length % 3) * 0.12 - 0.12, BAR.counter.top, BAR.counter.z0 + 0.3)
     const glass = CreateCylinder('beer-glass', { height: 0.17, diameterTop: 0.09, diameterBottom: 0.075, tessellation: 20 }, scene)
     glass.position.set(p.x, p.y + 0.085, p.z)
     const beer = CreateCylinder('beer', { height: 0.13, diameterTop: 0.082, diameterBottom: 0.07, tessellation: 20 }, scene)
@@ -243,7 +294,7 @@ export class CasinoHost {
 
   /** The building's middle in scene coordinates. */
   center(): { x: number; z: number } {
-    return townToScene((CASINO.x0 + CASINO.x1) / 2, 0, (CASINO.z0 + CASINO.z1) / 2)
+    return this.scenePoint((CASINO.x0 + CASINO.x1) / 2, 0, (CASINO.z0 + CASINO.z1) / 2)
   }
 
   /** The screens and signs (static once built): the town culls them with the building. */
@@ -260,5 +311,6 @@ export class CasinoHost {
     for (const d of this.displays) d.dispose()
     for (const a of this.staff) a.dispose((m) => this.host.ctx.unregisterDynamic(m))
     for (const e of this.extras) e.dispose()
+    this.frame?.dispose()
   }
 }

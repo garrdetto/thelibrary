@@ -10,6 +10,8 @@ import type { NetStatus, Transport } from './Transport';
 import { DEV_MODE, DEV_SAVE } from '../core/DevMode';
 
 export const OFFLINE_SAVE = 'maplestreet/solo/v3';
+/** Fox Lake's solo game (Montello alone) keeps its own save. */
+export const FOX_LAKE_SAVE = 'foxlake/solo/v1';
 
 export class OfflineTransport implements Transport {
   readonly label = DEV_MODE ? 'Developer instance (drafts on)' : 'Solo — unlimited money';
@@ -19,12 +21,12 @@ export class OfflineTransport implements Transport {
   private statusCb: (s: NetStatus) => void = () => {};
 
   /** `devTools`: this device's solo game also runs the developer tools (Fox Lake's `?solo=1`). */
-  constructor(private readonly options: { devTools?: boolean } = {}) {}
+  constructor(private readonly options: { devTools?: boolean; foxLake?: boolean } = {}) {}
 
   async connect(opts: JoinOptions) {
-    this.host = new Host(DEV_MODE ? DEV_SAVE : OFFLINE_SAVE, (to, msg, except) => {
+    this.host = new Host(DEV_MODE ? DEV_SAVE : this.options.foxLake ? FOX_LAKE_SAVE : OFFLINE_SAVE, (to, msg, except) => {
       if ((to === '*' || to === this.self) && except !== this.self) queueMicrotask(() => this.msgCb(msg));
-    }, { unlimitedMoney: true, devTools: this.options.devTools });
+    }, { unlimitedMoney: true, devTools: this.options.devTools, foxLake: this.options.foxLake });
     this.host.receive(this.self, { t: 'hello', opts });
     this.statusCb('offline');
   }

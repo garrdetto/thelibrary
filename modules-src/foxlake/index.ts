@@ -1,9 +1,10 @@
 /**
  * Fox Lake boot: who you are (your library username, or this browser's Fox
  * Plains guest name), the admin-published Fox Plains vehicles and Buy items
- * registered with the shared rules, then Rack & Reel's game with the Fox
- * Plains town mounted north of the lake country. `?solo=1` plays the town on
- * this device instead of the shared world.
+ * registered with the shared rules, the baked map of Montello with Lake
+ * Montello at y = 0, then Rack & Reel's game with Montello as its world and the
+ * lake gameplay on Lake Montello. `?solo=1` plays on this device instead of the
+ * shared world.
  */
 import { Game } from '../rackreel/game/Game'
 import { guestName } from '../maplestreet/src/net/WorldTransport'
@@ -14,9 +15,10 @@ import { BUNDLED_VEHICLES } from '../maplestreet/shared/BundledVehicles'
 import { FOX_LAKE_LOOK, FOX_LAKE_SHADOWS, FOX_LAKE_SHADOW_MAP } from './look'
 import { setShadowProxies } from './fp/core/Geo'
 import { loadMap } from '../tello/data/MapData'
-import { TelloLand } from '../tello/region'
-import { FoxLakeTerrain, MontelloLink } from './montello/Link'
-import { MONTELLO_AT } from './region'
+import { TelloTerrain } from '../tello/region'
+import type { TelloLand } from '../tello/region'
+import { foxLakeLand } from './lake/Land'
+import { findLakeSite, type LakeSite } from './lake/LakeSite'
 import { FoxLakeTown } from './town/FoxLakeTown'
 
 declare global {
@@ -92,15 +94,11 @@ async function registerPublished(): Promise<void> {
   registerCustomItems(items ?? (store.json<unknown[]>(IK) ?? []).filter(isValidRecord))
 }
 
-/** Montello (Tello's map of the real city), south-west of Fox Plains along State Highway 23; Fox Lake runs without it if it can't load. */
-async function loadMontello(): Promise<MontelloLink | null> {
-  try {
-    const map = await loadMap(new URL('./tello/', location.href).href)
-    return new MontelloLink(new TelloLand(map.doc, map.grids, MONTELLO_AT))
-  } catch (e) {
-    console.warn('[foxlake] Montello could not load:', e)
-    return null
-  }
+/** Montello (Tello's map of the real city and the country three miles round it), and where the lake gameplay stands on it. */
+async function loadMontello(): Promise<{ land: TelloLand; site: LakeSite }> {
+  const map = await loadMap(new URL('./tello/', location.href).href)
+  const land = foxLakeLand(map.doc, map.grids)
+  return { land, site: findLakeSite(land) }
 }
 
 function postRoom(code: string): void {
@@ -114,7 +112,7 @@ function postRoom(code: string): void {
 async function boot(): Promise<void> {
   const canvas = document.getElementById('scene') as HTMLCanvasElement | null
   if (!canvas) throw new Error('Missing #scene')
-  const [name, north] = await Promise.all([signedInName(), loadMontello(), registerPublished()])
+  const [name, montello] = await Promise.all([signedInName(), loadMontello(), registerPublished()])
   const solo = new URLSearchParams(location.search).has('solo')
   let roomCode: string | null = null
   let inviteRequested = false
@@ -126,7 +124,8 @@ async function boot(): Promise<void> {
       roomCode = code
       if (inviteRequested && code) postRoom(code)
     },
-    north,
+    land: montello.land,
+    site: montello.site,
   })
   addEventListener('message', (e) => {
     if (e.origin !== location.origin || !e.data || e.data.type !== 'tl-host') return
@@ -134,7 +133,7 @@ async function boot(): Promise<void> {
     else inviteRequested = true
   })
   setShadowProxies(FOX_LAKE_SHADOWS)
-  const game = new Game(canvas, { terrain: new FoxLakeTerrain(north), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', outfitters: true, look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS })
+  const game = new Game(canvas, { terrain: new TelloTerrain(montello.land), extension: town, bowfishAnyHour: true, gearAtCabin: true, profile: 'foxlake', site: montello.site, ridesBought: true, homeName: 'the outfitter', look: FOX_LAKE_LOOK, shadowMapSize: FOX_LAKE_SHADOW_MAP, shadows: FOX_LAKE_SHADOWS })
   window.__foxlake = { game, town }
   await game.start()
 }

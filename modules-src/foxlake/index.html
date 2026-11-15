@@ -219,6 +219,13 @@
       .fl-bank-terms{color:var(--soft);font-size:12px}
       .fl-bank-row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
       .fl-bank-label{width:64px;font-weight:800;color:var(--soft)}
+      .fl-pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+      .fl-swatches{display:flex;flex-wrap:wrap;gap:6px;flex:1;min-width:0}
+      .fl-swatch{width:26px;height:26px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+      .fl-swatch[aria-pressed=true]{border-color:#fff;box-shadow:0 0 0 2px var(--ember)}
+      .fl-swatch:focus-visible{outline:3px solid var(--ember);outline-offset:2px}
+      .fl-place-card{max-height:calc(100vh - 24px);overflow:auto}
+      .fl-bank-row .rr-btn[aria-pressed=true]{outline:2px solid var(--ember)}
       .chip.fl-job{border-color:rgba(255,160,90,.55);max-width:min(420px,calc(100vw - 32px))}
       .chip.fl-job b{color:#ffd9a8}
       @media (max-width:560px){.fl-bank-facts{grid-template-columns:1fr}.fl-place-card .panel-row{flex-wrap:wrap}}
@@ -298,7 +305,7 @@
     <div id="loading" class="rr-screen" role="status" aria-live="polite">
       <div class="rr-card" style="width:min(620px,100%)">
         <h1 class="fl-title">Fox Lake</h1>
-        <p class="fl-sub">Fox Plains and the Bear Paw Lake country, one world</p>
+        <p class="fl-sub">Montello, Wisconsin, and Lake Montello</p>
         <div class="rr-bar"><i id="load-bar"></i></div>
         <p id="load-text">Carving the lake basin…</p>
       </div>
@@ -307,15 +314,15 @@
     <div id="start" class="rr-screen" hidden>
       <div class="rr-card">
         <h1 class="fl-title">Fox Lake</h1>
-        <p class="fl-sub">Your Fox Plains home, neighbors and cars, with the lake country down East Ave and the county road. One wallet for the town and the lake.</p>
+        <p class="fl-sub">Montello, Wisconsin and the country three miles round it: your lot, your neighbors and your cars, with fishing, hunting and Wild Man on Lake Montello. One wallet for the town and the lake.</p>
         <div class="rr-keys">
           <div class="rr-keys-title">In town</div>
           <div><kbd>E</kbd> Drive your car, shops, Maple Threads</div>
           <div><kbd>V</kbd> Bring out another of your vehicles</div>
           <div><kbd>H</kbd> Go home (every 15 minutes)</div>
-          <div><kbd>E</kbd> Sit at a slot machine, the bar or blackjack (Northwoods Lodge Casino, East Ave &amp; South St)</div>
+          <div><kbd>E</kbd> Shops, bars, the bank, the pumps and work in town</div>
           <div class="rr-keys-title">Gear</div>
-          <div>Your rod and rifle hang on the cabin's gear rack: <kbd>1</kbd> or <kbd>2</kbd> there to take one</div>
+          <div>Your rod and rifle are on the gear rack at the outfitter's: <kbd>1</kbd> or <kbd>2</kbd> there to take one</div>
           <div class="rr-keys-title">Out at the lake</div>
           <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Walk or drive</div>
           <div><kbd>Mouse</kbd> or <kbd>&larr;</kbd><kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&rarr;</kbd> Look around</div>
@@ -360,7 +367,7 @@
       <div class="chip" id="activity"><span class="dim">Activity</span> <b id="activity-text">Quiet</b></div>
       <div class="chip" id="legend" hidden></div>
       <div class="chip" id="party" hidden></div>
-      <div class="chip" id="town-status">Connecting to Fox Plains…</div>
+      <div class="chip" id="town-status">Connecting to Montello…</div>
     </div>
     <div id="minimap" class="hud" hidden></div>
     <div id="crosshair" class="hud" hidden></div>

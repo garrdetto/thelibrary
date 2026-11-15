@@ -1,9 +1,11 @@
 /**
- * The Northwoods Lodge Casino & Bar: Fox Lake's walk-in casino on the north-east
- * corner of East Ave and South St, the last corner before downtown. Town
- * coordinates (the shared world's, right-handed; `yaw` 0 faces +z). Only Fox
- * Lake draws it; classic Fox Plains has woods here.
+ * The Foxtails Lounge & Casino: Fox Lake's walk-in casino, the old Northwoods Lodge moved inside Foxtails Gentlemen's
+ * Club east of Montello on State Highway 23. Everything below is laid out in the casino's own frame (a 32 by 24 m floor
+ * with the doorway in the low-z wall, `yaw` 0 faces +z); `SITE` says where that frame stands in Montello's town frame
+ * (scripts/montello-places.mjs finds it), and `localToTown`, `townToLocal` and `siteYaw` carry points and yaws across.
  */
+import { MONTELLO_CASINO } from '../../maplestreet/shared/MontelloPlaces'
+
 export interface Seat {
   /** Hip position of whoever sits there (x, y, z, town coordinates). */
   x: number
@@ -21,6 +23,8 @@ export interface MachineSpot {
   z: number
   yaw: number
   seat: Seat
+  /** The casino floor's height in the town when the spot is placed there (`placeSpot`); 0 in the casino's own frame. */
+  y0?: number
 }
 
 export const CASINO = {
@@ -39,6 +43,36 @@ export const CASINO = {
 
 const CHAIR_HIP = 0.66
 const STOOL_HIP = 0.86
+
+const LOCAL_CENTER = { x: (CASINO.x0 + CASINO.x1) / 2, z: (CASINO.z0 + CASINO.z1) / 2 }
+
+/** Where the casino's floor stands in Montello's town frame: its middle, the way it is turned (0 or pi) and its floor height. */
+export const SITE: { x: number; z: number; yaw: number; y: number; name: string; building: number } = MONTELLO_CASINO ?? { ...LOCAL_CENTER, yaw: 0, y: 0, name: 'Foxtails Lounge & Casino', building: -1 }
+
+/** A point of the casino's frame in the town frame. */
+export function localToTown(x: number, z: number, out = { x: 0, z: 0 }): { x: number; z: number } {
+  const dx = x - LOCAL_CENTER.x
+  const dz = z - LOCAL_CENTER.z
+  const c = Math.cos(SITE.yaw)
+  const s = Math.sin(SITE.yaw)
+  out.x = SITE.x + dx * c + dz * s
+  out.z = SITE.z - dx * s + dz * c
+  return out
+}
+
+/** A town-frame point in the casino's frame. */
+export function townToLocal(x: number, z: number, out = { x: 0, z: 0 }): { x: number; z: number } {
+  const dx = x - SITE.x
+  const dz = z - SITE.z
+  const c = Math.cos(SITE.yaw)
+  const s = Math.sin(SITE.yaw)
+  out.x = LOCAL_CENTER.x + dx * c - dz * s
+  out.z = LOCAL_CENTER.z + dx * s + dz * c
+  return out
+}
+
+/** A yaw in the casino's frame as a town yaw. */
+export const siteYaw = (yaw: number): number => yaw + SITE.yaw
 
 /** Ten machines: five along the west wall facing east, five along the east wall facing west. */
 export const MACHINE_SPOTS: MachineSpot[] = (() => {

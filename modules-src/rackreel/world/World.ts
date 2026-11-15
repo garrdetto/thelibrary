@@ -19,6 +19,8 @@ import './Shaders'
 import { woodMaterial } from './Surfaces'
 import { CELL, GRID, HALF, LAKE_CENTER, Terrain, WOODS_FLOOR, WORLD_SIZE, fbm, forestDensity, lakeCoord, lakeRadius, marshWeight, smoothstep, trailOffset } from './Terrain'
 
+import type { LakeSiteConfig } from './LakeSite'
+
 export interface Landmarks {
   dock: { start: Vector3; end: Vector3; heading: number }
   spawn: Vector3
@@ -243,6 +245,14 @@ export function findLandmarks(terrain: Terrain): Landmarks {
   const utv = at(shoreDist + 14).add(side.scale(-6))
   utv.y = terrain.heightAt(utv.x, utv.z)
   return { dock: { start, end, heading }, spawn, spawnHeading: heading, boat, boatHeading: heading, utv, utvHeading: heading + Math.PI / 2 }
+}
+
+/** Landmarks a host world has laid out on its own water's edge (`LakeSiteConfig`), with the ground height under each. */
+export function siteLandmarks(site: LakeSiteConfig, terrain: Terrain): Landmarks {
+  const at = (p: { x: number; z: number }) => new Vector3(p.x, terrain.heightAt(p.x, p.z), p.z)
+  const start = at(site.dock.start)
+  const end = new Vector3(site.dock.end.x, 0, site.dock.end.z)
+  return { dock: { start, end, heading: site.dock.heading }, spawn: at(site.spawn), spawnHeading: site.spawnHeading, boat: new Vector3(site.boat.x, 0, site.boat.z), boatHeading: site.boatHeading, utv: at(site.utv), utvHeading: site.utvHeading }
 }
 
 export function buildDock(ctx: EngineContext, landmarks: Landmarks): Mesh {

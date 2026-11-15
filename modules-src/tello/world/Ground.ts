@@ -71,7 +71,7 @@ export function groundColor(land: TelloLand, x: number, z: number): [number, num
 
 /** How far the drawn ground sits under what you stand on: a little everywhere, more under pavement so road ribbons clear it. */
 export function groundSink(clear: number): number {
-  return 0.03 + 0.15 * (1 - smoothstep(-0.5, 1.8, clear))
+  return 0.05 + 0.16 * (1 - smoothstep(-0.5, 2.2, clear))
 }
 
 export async function buildGround(scene: Scene, land: TelloLand, pace?: () => Promise<void>): Promise<Mesh[]> {

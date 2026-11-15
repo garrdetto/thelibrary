@@ -1,8 +1,8 @@
 /**
  * Fox Lake's own chips beside Rack & Reel's HUD: the wallet (one balance for
  * signed-in players, shared by Fox Lake, Fox Plains and Rack & Reel), who is
- * around, which part of Fox Lake you are in and the connection. The corner map
- * is FoxMinimap.ts.
+ * around, where in Montello you are and the connection. The corner map is
+ * Tello's (tello/town/TelloMap.ts).
  */
 import type { Account } from '../../maplestreet/shared/Economy'
 
@@ -21,12 +21,10 @@ export class TownHud {
     if (this.lakeCash) this.lakeCash.hidden = signedIn
   }
 
-  setStatus(net: string, neighbors: number, zone: 'town' | 'country' | 'road' | 'montello'): void {
-    const text = `${ZONE_NAMES[zone]} · ${neighbors} neighbor${neighbors === 1 ? '' : 's'} · ${net}`
+  setStatus(net: string, neighbors: number, place: string): void {
+    const text = `${place} · ${neighbors} neighbor${neighbors === 1 ? '' : 's'} · ${net}`
     if (text === this.lastStatus || !this.status) return
     this.lastStatus = text
     this.status.textContent = text
   }
 }
-
-const ZONE_NAMES = { town: 'Fox Plains', country: 'Bear Paw Lake country', road: 'State Highway 23', montello: 'Montello' } as const

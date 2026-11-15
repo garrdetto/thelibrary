@@ -15,16 +15,18 @@ import type { Mats } from '../../foxlake/fp/core/Tex'
 import { MURAL } from '../data/Downtown'
 import type { TelloLand } from '../region'
 import type { StaticSink } from './Sink'
+import { buildTownDetail } from './TownDetail'
 
 /** The marquee: where it stands (map), the way its face looks (map) and its board. */
 const MARQUEE = { x: 94.8, z: 30.6, face: [0.8, -0.6] as [number, number], w: 4.6, h: 1.2, bottom: 2.7 }
 
-export function buildLandmarks(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand): { mural: boolean; hall: boolean } {
+export async function buildLandmarks(root: TransformNode, mats: Mats, sink: StaticSink, land: TelloLand): Promise<{ mural: boolean; hall: boolean }> {
   const chunks = new ChunkedBuilders(128)
   const mural = muralWall(chunks, mats, land)
   marquee(chunks, mats, sink, land)
   const hall = municipalBuilding(chunks, mats, sink, land)
   chunks.flush(root, 'tello-landmarks')
+  await buildTownDetail(root, mats, sink, land)
   return { mural, hall }
 }
 

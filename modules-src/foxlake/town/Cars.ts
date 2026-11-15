@@ -36,6 +36,8 @@ export class Cars implements ExternalDriver {
   onImpact: ((kind: string, dv: number, at: { x: number; y: number; z: number }) => void) | null = null
   /** True while a car's engine is flooded (Wading): it gets no throttle. */
   flooded: (car: Car) => boolean = () => false
+  /** The ground's height in the town frame at (x, z): a parked car is set down on it (Montello's land is not level). */
+  ground: (x: number, z: number) => number = () => 0
 
   constructor(private readonly scene: Scene, private readonly physics: Physics, private readonly models: VehicleModels, private readonly controller: VehicleController) {
     this.parking = new Parking(physics)
@@ -144,9 +146,18 @@ export class Cars implements ExternalDriver {
     v.towedBy?.unhitch()
     v.unhitch()
     const c = v.preset.chassis
-    const spot = this.parking.find({ x, z, yaw, hx: c.hx, hz: c.hz }, c.hy * 2 + v.preset.suspension.rest, [v.body], reserved)
-    v.place(spot.x, spot.z, spot.yaw)
+    const spot = this.parking.find({ x, z, yaw, hx: c.hx, hz: c.hz }, c.hy * 2 + v.preset.suspension.rest, [v.body], reserved, 5, this.ground(x, z))
+    this.setDown(v, spot.x, spot.z, spot.yaw)
     reserved.push(spot)
+  }
+
+  /** Sets a vehicle on the ground at a town point, facing `yaw`, at rest. */
+  setDown(v: Vehicle, x: number, z: number, yaw: number): void {
+    v.place(x, z, yaw)
+    const t = v.body.translation()
+    v.body.setTranslation({ x: t.x, y: t.y + this.ground(x, z), z: t.z }, true)
+    this.physics.snapTracked(v.body)
+    this.physics.wake(x, z, 40)
   }
 
   /** The vehicle snapshots the shared world relays (your cars as everyone else sees them). */

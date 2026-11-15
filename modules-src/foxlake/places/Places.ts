@@ -1,22 +1,25 @@
 /**
- * Fox Lake's working places: every shop door in Fox Plains and Montello
- * (MontelloPlaces.ts, baked from OpenStreetMap), the bank counters, the
- * freight depot and Kwik Trip's delivery desk, Montello's fire station, the
- * fuel pumps and the tow for a car that ran dry. FoxLakeTown asks it for the
- * on-foot prompt and hands it E; the shared world (RoomLogic) is the authority
- * for every purchase, loan, fill-up and job.
+ * Fox Lake's working places, all Montello's (MontelloPlaces.ts, baked from
+ * OpenStreetMap): the gas stations (Kwik Trip, BP, Mobil), Freitag's grocery
+ * and its freight depot, the bars, the dealership, Maple Threads, the body
+ * shop, the bank, the outfitter's counter, the sheriff's office, the fire
+ * station, the fuel pumps and the tow for a car that ran dry. FoxLakeTown asks
+ * it for the on-foot prompt and hands it E; the shared world (RoomLogic) is the
+ * authority for every purchase, loan, fill-up, repair and job. The casino is
+ * inside Foxtails (casino/CasinoHost.ts), not a counter.
  */
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import type { GameHost } from '../../rackreel/game/Game'
 import type { Account } from '../../maplestreet/shared/Economy'
 import { VEHICLES } from '../../maplestreet/shared/Economy'
 import type { ClientMsg, Job } from '../../maplestreet/shared/Protocol'
-import { DEPOT, SHOP_DOORS, SHOP_RADIUS } from '../../maplestreet/shared/WorldLayout'
+import { SHOP_RADIUS } from '../../maplestreet/shared/WorldLayout'
 import { MONTELLO_DEPOT, MONTELLO_FIRE_STATION, MONTELLO_SHOPS } from '../../maplestreet/shared/MontelloPlaces'
+import type { VehicleKind } from '../../maplestreet/shared/Protocol'
+import { BODY_SHOP_REACH } from '../../maplestreet/shared/RoomLogic'
 import type { TelloLand } from '../../tello/region'
 import type { TelloMap } from '../../tello/town/TelloMap'
 import type { Cars } from '../town/Cars'
-import type { WorldMap } from '../town/WorldMap'
 import { sceneToTown, townToScene } from '../region'
 import { Fuel } from './Fuel'
 import { Jobs } from './Jobs'
@@ -27,12 +30,9 @@ const DESK_RADIUS = 9
 
 /** Every counter in Fox Lake's shared world, in the town frame. */
 export const PLACES: readonly Place[] = (() => {
-  const out: Place[] = SHOP_DOORS.map((d) => ({ id: d.id, kind: d.kind, name: d.name, x: d.x, z: d.z, area: 'foxplains' as const }))
-  out.push({ id: 'depot', kind: 'depot', name: 'Freight depot', x: DEPOT.padX, z: DEPOT.padZ, area: 'foxplains', work: 'delivery' })
-  for (const s of MONTELLO_SHOPS) {
-    const kwik = MONTELLO_DEPOT && s.name === MONTELLO_DEPOT.name && Math.hypot(s.x - MONTELLO_DEPOT.x, s.z - MONTELLO_DEPOT.z) < 1
-    out.push({ id: s.id, kind: s.kind, name: s.name, x: s.x, z: s.z, area: 'montello', street: s.street || undefined, work: kwik ? 'montello' : undefined })
-  }
+  const out: Place[] = []
+  if (MONTELLO_DEPOT) out.push({ id: 'mt-depot', kind: 'depot', name: MONTELLO_DEPOT.name, x: MONTELLO_DEPOT.x, z: MONTELLO_DEPOT.z, area: 'montello', work: 'montello' })
+  for (const s of MONTELLO_SHOPS) out.push({ id: s.id, kind: s.kind, name: s.name, x: s.x, z: s.z, area: 'montello', street: s.street || undefined })
   if (MONTELLO_FIRE_STATION) out.push({ id: 'mt-fire', kind: 'fire', name: MONTELLO_FIRE_STATION.name, x: MONTELLO_FIRE_STATION.x, z: MONTELLO_FIRE_STATION.z, area: 'montello', work: 'fire' })
   return out
 })()
@@ -47,6 +47,16 @@ const PROMPT: Partial<Record<Place['kind'], string>> = {
   gas: 'snacks and drinks',
   depot: 'delivery work',
   fire: 'answer fire calls',
+  dealer: 'vehicles, the UTV, quad and fishing boat',
+  bodyshop: 'repairs, paint and upgrades',
+  outfitter: 'gear rack, wardrobe and catalog',
+  police: "the sheriff's office",
+}
+
+/** Fox Outfitters' counters: what E opens at the outfitter (Rack & Reel's gear, wardrobe and catalog). */
+export interface OutfitterHooks {
+  atRack(here: boolean): void
+  open(tab: 'rack' | 'wardrobe' | 'desk'): void
 }
 
 export interface PlacesHooks {
@@ -55,9 +65,8 @@ export interface PlacesHooks {
   send(m: ClientMsg): void
   account(): Account | null
   land: TelloLand | null
-  map: () => WorldMap | null
   northMap: () => TelloMap | null
-  beyondTown(): boolean
+  gear: OutfitterHooks
 }
 
 export class Places {
@@ -65,18 +74,36 @@ export class Places {
   readonly jobs: Jobs
   private readonly panel: PlacePanel
   private readonly _t = { x: 0, y: 0, z: 0 }
+  private atOutfitter = false
 
   constructor(private readonly hooks: PlacesHooks) {
     const toast = (text: string, kind: '' | 'warn' = '') => hooks.host.hud.toast(text, kind)
     this.fuel = new Fuel({ cars: hooks.cars, send: hooks.send, account: hooks.account, toast })
-    this.jobs = new Jobs({ host: hooks.host, cars: hooks.cars, send: hooks.send, land: hooks.land, map: hooks.map, northMap: hooks.northMap, beyondTown: hooks.beyondTown })
+    this.jobs = new Jobs({ host: hooks.host, cars: hooks.cars, send: hooks.send, land: hooks.land, northMap: hooks.northMap })
     this.panel = new PlacePanel({
       send: hooks.send,
       account: hooks.account,
       job: () => this.jobs.job,
       signedIn: () => hooks.host.progress.signedIn,
       onClose: () => undefined,
+      parkedAtShop: () => this.parkedAtShop(),
+      openGear: (tab) => hooks.gear.open(tab),
     })
+  }
+
+  /** Your cars standing in the body shop's lot (a car you are driving counts), the nearest first. */
+  private parkedAtShop(): VehicleKind[] {
+    const shop = PLACES.find((p) => p.kind === 'bodyshop')
+    const acc = this.hooks.account()
+    if (!shop || !acc) return []
+    const found: { kind: VehicleKind; d: number }[] = []
+    for (const [kind, car] of this.hooks.cars.list) {
+      if (!acc.garage.includes(kind as VehicleKind) || kind === 'trailer') continue
+      const p = car.fp.root.position
+      const d = Math.hypot(p.x - shop.x, p.z - shop.z)
+      if (d <= BODY_SHOP_REACH + 12) found.push({ kind: kind as VehicleKind, d })
+    }
+    return found.sort((a, b) => a.d - b.d).map((f) => f.kind)
   }
 
   onAccount(acc: Account): void {
@@ -92,6 +119,11 @@ export class Places {
   update(dt: number): void {
     this.fuel.update(dt)
     this.jobs.update(dt)
+    const outfitter = this.nearest()?.kind === 'outfitter'
+    if (outfitter !== this.atOutfitter) {
+      this.atOutfitter = outfitter
+      this.hooks.gear.atRack(outfitter)
+    }
   }
 
   /** The prompt on foot: the hose at a fire, a pump, a car that ran dry, then the nearest counter. */
@@ -108,7 +140,7 @@ export class Places {
     }
     const place = this.nearest()
     if (!place) return ''
-    if (place.kind === 'clothing') return `E — ${place.name}: try on outfits`
+    if (place.kind === 'clothing') return `E — ${place.name}: clothes and outfits`
     const what = PROMPT[place.kind]
     return `E — ${place.name}${what ? `: ${what}` : ''}`
   }
@@ -128,9 +160,7 @@ export class Places {
     }
     const place = this.nearest()
     if (!place) return false
-    if (place.kind === 'clothing') this.hooks.host.openWardrobe()
-    else if (place.kind === 'dealer') this.hooks.host.hud.toast(`${place.name} sells vehicles in classic Fox Plains; whatever you buy there shows up here (V).`)
-    else this.panel.show(place)
+    this.panel.show(place)
     return true
   }
 

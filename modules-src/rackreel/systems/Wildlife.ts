@@ -98,7 +98,11 @@ export class Wildlife {
 
   constructor(private readonly ctx: EngineContext, private readonly scene: Scene, private readonly terrain: Terrain, private readonly loot: LootTableManager, private readonly models: Map<ModelName, ModelTemplate>, private readonly rng: () => number = Math.random) {}
 
+  /** A host world's wild land (Fox Lake: the woods round Montello) replaces the lake country's square: deer and bear live only where it says. */
+  wild: ((x: number, z: number) => boolean) | null = null
+
   private landAt(x: number, z: number): boolean {
+    if (this.wild) return this.wild(x, z) && this.terrain.depthAt(x, z) <= 0.05 && this.terrain.groundAt(x, z) !== 'water'
     if (Math.abs(x) > PLAY_LIMIT - 20 || Math.abs(z) > PLAY_LIMIT - 20) return false
     const g = this.terrain.groundAt(x, z)
     return g !== 'water' && g !== 'rock' && this.terrain.heightAt(x, z) > 0.9
@@ -122,6 +126,20 @@ export class Wildlife {
 
   /** A spot anywhere on the property, out of sight of every player but close enough to stay loaded. */
   private randomSpot(players: Vector3[]): Vector3 | null {
+    if (this.wild && players.length) {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const around = players[Math.floor(this.rng() * players.length)]
+        const ang = this.rng() * Math.PI * 2
+        const dist = HERD_SPAWN_MIN + this.rng() * Math.max(10, HERD_DESPAWN - 60 - HERD_SPAWN_MIN)
+        const x = around.x + Math.cos(ang) * dist
+        const z = around.z + Math.sin(ang) * dist
+        if (!this.landAt(x, z)) continue
+        const p = new Vector3(x, this.terrain.heightAt(x, z), z)
+        if (players.some((q) => Vector3.Distance(p, q) < HERD_SPAWN_MIN)) continue
+        return p
+      }
+      return null
+    }
     const lim = PLAY_LIMIT - 30
     for (let attempt = 0; attempt < 60; attempt++) {
       const x = (this.rng() * 2 - 1) * lim
@@ -506,7 +524,7 @@ export class Wildlife {
         const look = 2 + a.speed * 0.35
         const lookX = nx + fx * look
         const lookZ = nz + fz * look
-        let blocked = this.terrain.heightAt(lookX, lookZ) < 0.4 || Math.abs(lookX) > PLAY_LIMIT - 10 || Math.abs(lookZ) > PLAY_LIMIT - 10
+        let blocked = this.wild ? !this.wild(lookX, lookZ) || this.terrain.depthAt(lookX, lookZ) > 0.05 : this.terrain.heightAt(lookX, lookZ) < 0.4 || Math.abs(lookX) > PLAY_LIMIT - 10 || Math.abs(lookZ) > PLAY_LIMIT - 10
         const trunks = this.ctx.queryTrunks(lookX, lookZ, 1)
         for (let i = 0; i < trunks.length; i++) {
           const t = trunks[i]

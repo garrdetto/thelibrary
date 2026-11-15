@@ -13,12 +13,15 @@ import type { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { MeshBuilder, finishMesh, type RGB } from '../fp/core/Geo'
 import type { Mats } from '../fp/core/Tex'
 import type { Physics } from '../fp/physics/Physics'
+
+/** The colliders the building adds, in the casino's own frame (CasinoHost places them in the town). */
+export type CasinoColliders = Pick<Physics, 'addStaticAABB' | 'addStaticCylinder' | 'addStaticBox'>
 import { BAR, BLACKJACK, CASINO, MACHINE_SPOTS } from './CasinoLayout'
 import { buildCabinet, buildSlotChair } from './CabinetModel'
 
 const WHITE: RGB = [1, 1, 1]
 
-export function buildCasino(root: TransformNode, mats: Mats, physics: Physics): void {
+export function buildCasino(root: TransformNode, mats: Mats, physics: CasinoColliders): void {
   const { x0, x1, z0, z1, height: H, wall: W, floorY } = CASINO
   const brick = new MeshBuilder()
   const trim = new MeshBuilder()

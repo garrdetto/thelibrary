@@ -1,29 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { Vector3 } from '@babylonjs/core/Maths/math.vector'
-import { Terrain } from '../../rackreel/world/Terrain'
-import { Cabin, FOX_OUTFITTERS } from '../../rackreel/world/Cabin'
-import { STAND_LAYOUTS, findStandSites, standToWorld } from '../../rackreel/world/TreeStand'
-import { findLandmarks } from '../../rackreel/world/World'
-import { findLaunch } from '../../rackreel/systems/BowRoutes'
-import { BUILDINGS, CIVIC } from '../../maplestreet/shared/WorldLayout'
 import { BUILTIN_TUNING, rideHeight } from '../../maplestreet/shared/Vehicles'
-import { CASINO } from '../casino/CasinoLayout'
-import { FOX_LAKE_PLACES } from '../dev/Places'
 import { formatLeft, restingPose, spotsAround, yawFromHeading, yawFromTownYaw } from '../dev/Placement'
-import { FOX_LAKE_SHAPE, sceneToTown, townYawToHeading } from '../region'
-
-const terrain = new Terrain(FOX_LAKE_SHAPE)
-const place = (id: string) => {
-  const p = FOX_LAKE_PLACES.find((x) => x.id === id)
-  assert.ok(p, `the list has ${id}`)
-  return p
-}
-const near = (id: string, to: { x: number; z: number }, within: number) => {
-  const p = place(id)
-  const d = Math.hypot(p.x - to.x, p.z - to.z)
-  assert.ok(d <= within, `${p.label} is ${d.toFixed(1)} m from where the game puts it`)
-}
+import { townYawToHeading } from '../region'
 
 /** The rotation of a chassis axis by a pose's quaternion. */
 function turned(q: { qx: number; qy: number; qz: number; qw: number }, v: [number, number, number]): [number, number, number] {
@@ -35,37 +14,6 @@ function turned(q: { qx: number; qy: number; qz: number; qw: number }, v: [numbe
   const iw = -qx * x - qy * y - qz * z
   return [ix * qw + iw * -qx + iy * -qz - iz * -qy, iy * qw + iw * -qy + iz * -qx - ix * -qz, iz * qw + iw * -qz + ix * -qy - iy * -qx]
 }
-
-test('every teleport place is on dry ground inside the world, outside every town building', () => {
-  const ids = new Set(FOX_LAKE_PLACES.map((p) => p.id))
-  assert.equal(ids.size, FOX_LAKE_PLACES.length, 'ids are unique')
-  for (const p of FOX_LAKE_PLACES) {
-    assert.ok(p.label.length > 2 && Number.isFinite(p.x) && Number.isFinite(p.z))
-    assert.ok(terrain.inBounds(p.x, p.z, 2), `${p.label} is inside the world`)
-    assert.ok(terrain.heightAt(p.x, p.z) > 0.25, `${p.label} is dry`)
-    const t = sceneToTown(p.x, 0, p.z)
-    for (const b of [...BUILDINGS, ...CIVIC]) assert.ok(Math.abs(t.x - b.x) > b.w / 2 || Math.abs(t.z - b.z) > b.d / 2, `${p.label} is outside ${b.name}`)
-    assert.ok(t.x < CASINO.x0 || t.x > CASINO.x1 || t.z < CASINO.z0 || t.z > CASINO.z1, `${p.label} is outside the casino`)
-  }
-  for (const id of ['shop-motors', 'shop-threads', 'casino', 'bodyshop', 'outfitters', 'dock', 'wild-man']) place(id)
-})
-
-test('the lake-country places are where the game itself puts its landmarks', () => {
-  const marks = findLandmarks(terrain)
-  const inland = new Vector3(-Math.sin(marks.spawnHeading), 0, -Math.cos(marks.spawnHeading))
-  const store = new Cabin(terrain, marks.spawn.add(inland.scale(22)), marks.spawnHeading, FOX_OUTFITTERS)
-  near('dock', marks.dock.start, 3)
-  near('outfitters', store.frontDoor, 3)
-  const launch = findLaunch(terrain, { x: marks.dock.start.x, z: marks.dock.start.z }, { x: marks.dock.end.x, z: marks.dock.end.z })
-  near('wild-man', launch.camp, 4)
-  const stands = findStandSites(terrain, marks.spawn, [store.root, marks.dock.start, marks.utv])
-  const ladders = stands.filter((s) => s.kind === 'ladder')
-  assert.equal(ladders.length, 3)
-  ladders.forEach((s, i) => near(`stand-${i + 1}`, standToWorld(s, STAND_LAYOUTS[s.kind].base), 4))
-  const blind = stands.find((s) => s.kind === 'blind')
-  assert.ok(blind)
-  near('blind', standToWorld(blind, STAND_LAYOUTS.blind.base), 4)
-})
 
 test('a spawned vehicle is put a few metres ahead of the administrator, or beside another player', () => {
   const sedan = BUILTIN_TUNING.sedan

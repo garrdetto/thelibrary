@@ -1308,5 +1308,35 @@
   "matsBefore": 8,
   "matsAfter": 8,
   "preset": "kit"
+ },
+ "tello/fields-kit.glb": {
+  "hash": "9a82ecb383a61a63c7a2393293a0977cf5494bce",
+  "before": 74744,
+  "after": 39376,
+  "primsBefore": 13,
+  "primsAfter": 13,
+  "matsBefore": 6,
+  "matsAfter": 6,
+  "preset": "kit"
+ },
+ "tello/places-kit.glb": {
+  "hash": "7e7275deccac24bfab785690e1e48368b94f080d",
+  "before": 83416,
+  "after": 55572,
+  "primsBefore": 26,
+  "primsAfter": 26,
+  "matsBefore": 10,
+  "matsAfter": 10,
+  "preset": "kit"
+ },
+ "tello/house-kit.glb": {
+  "hash": "c3004ba516bd194ef183433d0f5e87bdebd66d32",
+  "before": 87832,
+  "after": 62568,
+  "primsBefore": 28,
+  "primsAfter": 28,
+  "matsBefore": 9,
+  "matsAfter": 9,
+  "preset": "kit"
  }
 }

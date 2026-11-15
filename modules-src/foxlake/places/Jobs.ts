@@ -1,7 +1,7 @@
 /**
  * Paid work in Fox Lake, run by the shared world (RoomLogic issueJob /
- * progressJob): Fox Plains deliveries from the freight depot, Montello
- * deliveries from Kwik Trip, and Montello fire calls from the fire station.
+ * progressJob): Montello deliveries from the freight depot behind Freitag's,
+ * and Montello fire calls from the fire station.
  * The page shows the job on a HUD chip and a beacon you can see from far off,
  * routes you there on the map (Highway 23 first when the job is in Montello
  * and you are still south of it), tells the authority when you arrive, and
@@ -19,8 +19,7 @@ import { vehicleRole } from '../../maplestreet/shared/Vehicles'
 import type { TelloLand } from '../../tello/region'
 import type { TelloMap } from '../../tello/town/TelloMap'
 import type { Cars } from '../town/Cars'
-import type { WorldMap } from '../town/WorldMap'
-import { LINK_ROAD, sceneToTown, townToScene } from '../region'
+import { sceneToTown, townToScene } from '../region'
 import { FireFx, type Blaze } from './FireFx'
 
 /** How close the page goes before telling the authority (a little inside the authority's own reach). */
@@ -35,12 +34,10 @@ export interface JobHooks {
   cars: Cars
   send(m: ClientMsg): void
   land: TelloLand | null
-  map: () => WorldMap | null
   northMap: () => TelloMap | null
-  beyondTown(): boolean
 }
 
-type Routed = 'none' | 'south' | 'north'
+type Routed = 'none' | 'north'
 
 export class Jobs {
   job: Job | null = null
@@ -185,7 +182,7 @@ export class Jobs {
     }
     const truck = this.hooks.cars.driving()
     const need = truck && vehicleRole(truck.kind) === 'hauler' ? '' : ' (in the pickup)'
-    if (job.stage === 'toPickup') return `pick up at ${job.area === 'montello' ? 'Kwik Trip' : 'the freight depot'}${need}, ${far}`
+    if (job.stage === 'toPickup') return `pick up at ${job.area === 'montello' ? "the freight depot behind Freitag's" : 'the freight depot'}${need}, ${far}`
     return `deliver${street}${need}, ${far} · $${job.pay.toLocaleString()}`
   }
 
@@ -239,39 +236,25 @@ export class Jobs {
     return { x: land.toSceneX(best.x), y: best.y, z: land.toSceneZ(best.z), a: best.a, b: best.b, yaw: best.yaw }
   }
 
-  /**
-   * Directions on the map: Montello's roads once you are west of Fox Plains' square, Fox Lake's map to Highway 23
-   * while a Montello job is still ahead of you, and Fox Lake's map for Fox Plains jobs.
-   */
+  /** Directions on the map along Montello's roads. */
   private route(job: Job): void {
-    const north = this.hooks.beyondTown()
-    const montello = job.area === 'montello'
-    const key = `${job.id}:${job.stage}:${montello && north ? 'n' : 's'}`
+    const key = `${job.id}:${job.stage}`
     if (key === this.routedKey || job.stage === 'onScene') return
     this.routedKey = key
     this.clearRoute()
     const target = this.target(job)
     const s = townToScene(target.x, 0, target.z, this._t)
-    const label = job.kind === 'fire' ? (job.stage === 'toPickup' ? 'the fire station' : 'the fire') : job.stage === 'toPickup' ? (montello ? 'Kwik Trip' : 'the freight depot') : 'the delivery'
-    if (montello && north) {
-      const map = this.hooks.northMap()
-      const land = this.hooks.land
-      if (map && land) {
-        map.navigate({ x: land.toMapX(s.x), z: land.toMapZ(s.z), name: label })
-        this.routed = 'north'
-      }
-      return
+    const label = job.kind === 'fire' ? (job.stage === 'toPickup' ? 'the fire station' : 'the fire') : job.stage === 'toPickup' ? 'the freight depot' : 'the delivery'
+    const map = this.hooks.northMap()
+    const land = this.hooks.land
+    if (map && land) {
+      map.navigate({ x: land.toMapX(s.x), z: land.toMapZ(s.z), name: label })
+      this.routed = 'north'
     }
-    const map = this.hooks.map()
-    if (!map) return
-    if (montello) map.routeToScene(LINK_ROAD.start.x, LINK_ROAD.start.z, 'Highway 23 to Montello')
-    else map.routeToScene(s.x, s.z, label)
-    this.routed = 'south'
   }
 
   private clearRoute(): void {
     if (this.routed === 'north') this.hooks.northMap()?.navigate(null)
-    else if (this.routed === 'south') this.hooks.map()?.clear()
     this.routed = 'none'
   }
 }

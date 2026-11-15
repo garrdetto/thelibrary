@@ -81,6 +81,22 @@ export interface ShopItem {
   upgrade?: string;                // permanent perk
   vehicle?: VehicleKind;           // dealership
   clothing?: string;               // Maple Threads: a wardrobe piece
+  ride?: LakeRide;                 // Fox Lake's dealership: the UTV, quad or boat for the lake
+}
+
+/** What Fox Lake's dealership sells for the lake, bought once and kept on the account (`Account.rides`). */
+export type LakeRide = 'utv' | 'quad' | 'boat';
+export const LAKE_RIDES: readonly LakeRide[] = ['utv', 'quad', 'boat'];
+export const LAKE_RIDE_ITEMS: readonly ShopItem[] = [
+  { id: 'ride-utv', name: 'Side-by-side UTV', price: 14_500, blurb: 'Gets you and the rifle into the woods round Lake Montello', ride: 'utv' },
+  { id: 'ride-quad', name: 'Quad', price: 7_200, blurb: 'A light four-wheeler for the shore and the trails', ride: 'quad' },
+  { id: 'ride-boat', name: 'Fishing boat', price: 18_900, blurb: 'A bass boat for Lake Montello: anchor up and fish, or take friends along', ride: 'boat' },
+];
+
+/** The items a counter of this kind sells; Fox Lake's dealership also sells the lake rides. */
+export function shopItems(kind: string, foxLake = false): ShopItem[] {
+  const own = SHOP_ITEMS[kind] ?? [];
+  return foxLake && kind === 'dealer' ? [...own, ...LAKE_RIDE_ITEMS] : own;
 }
 
 export const UPGRADES: Record<string, { name: string; blurb: string }> = {
@@ -150,6 +166,8 @@ export interface Account {
   look: Look | null;
   /** Clothing bought at Maple Threads (starter pieces are always available). */
   wardrobe: string[];
+  /** The lake rides bought at Fox Lake's dealership (the UTV, the quad, the boat). */
+  rides: LakeRide[];
 }
 
 /** Fills fields added after an account was first saved. */
@@ -169,12 +187,13 @@ export function normalizeAccount(a: Account): Account {
   a.upgrades = Array.isArray(a.upgrades) ? a.upgrades : [];
   a.wardrobe = Array.isArray(a.wardrobe) ? a.wardrobe.filter(id => WARDROBE.some(w => w.id === id)) : [];
   for (const id of STARTER_WARDROBE) if (!a.wardrobe.includes(id)) a.wardrobe.push(id);
+  a.rides = Array.isArray(a.rides) ? [...new Set(a.rides.filter((r): r is LakeRide => LAKE_RIDES.includes(r)))] : [];
   a.look = a.look && typeof a.look === 'object' && isBody(a.look.body) ? cleanLook(a.look, a.wardrobe) : null;
   return a;
 }
 
 export function newAccount(id: string, key: string, name: string, color: string, body?: Body): Account {
-  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], cars: {}, fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [], look: body ? defaultLook(body) : null, wardrobe: [] });
+  return normalizeAccount({ id, key, name, color, money: START_MONEY, debt: 0, earned: 0, garage: [], cars: {}, fuel: {}, needs: { hunger: 80, energy: 85, fun: 70 }, groceries: 2, upgrades: [], look: body ? defaultLook(body) : null, wardrobe: [], rides: [] });
 }
 
 /**
