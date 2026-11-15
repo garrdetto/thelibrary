@@ -9,7 +9,7 @@
  */
 import { applyOp, emptyBuild, levelBase, makeWorld, normalizeBuild, opCost, own, validateOp, WorldState } from './BuildRules';
 import { CATALOG, footprint } from './Catalog';
-import { Account, availableCredit, clampNeed, isPaintable, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FIRE_BASE_PAY, FIRE_HOSE_SECONDS, FIRE_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, SHOP_ITEMS, UNLIMITED_MONEY, VEHICLES } from './Economy';
+import { Account, availableCredit, clampNeed, isPaintable, DELIVERY_BASE_PAY, DELIVERY_PAY_PER_M, FIRE_BASE_PAY, FIRE_HOSE_SECONDS, FIRE_PAY_PER_M, FUEL_PRICE, LOAN_DAILY_RATE, MOW_PAY_PER_M2, NEED_DECAY_PER_MIN, Needs, newAccount, normalizeAccount, shopItems, UNLIMITED_MONEY, VEHICLES } from './Economy';
 import { seedNeighborhood, upgradeSeed } from './Seed';
 import { decodeCells, encodeCells, gameDays, LawnCells, mowCells, sweepGrown } from './Mowing';
 import type { ClientMsg, Job, JobOffer, JoinOptions, MowStroke, PlayerSnap, ServerMsg, VehicleKind, VehicleSnap } from './Protocol';
@@ -39,6 +39,9 @@ export interface Persisted {
 /** Server-verified identity (persistent world). Overrides what the client claims. `admin`: a site administrator, who may use a world's developer tools. */
 export interface Identity { key: string; name: string; member: boolean; admin?: boolean }
 
+/** How near the door of Montello's body shop you stand to order work, and the car parks within this plus 12 m. */
+export const BODY_SHOP_REACH = SHOP_RADIUS + 4;
+
 export interface LogicOptions {
   /**
    * 'sim': the clock advances only while ticked (offline/hosted modes).
@@ -56,6 +59,11 @@ export interface LogicOptions {
   devTools?: 'admin' | 'all';
   /** Lots this world has beyond the town's own (Fox Lake: Montello's house parcels). */
   extraLots?: readonly LotDef[];
+  /**
+   * Fox Lake's world: Montello alone. The lots are `extraLots` only (no Fox Plains lots, no seeded neighbors), the
+   * shops, pumps and deliveries are Montello's, and the dealership sells the lake rides (`LAKE_RIDE_ITEMS`).
+   */
+  foxLake?: boolean;
 }
 
 const USE_COOLDOWN_MS = 20_000;
@@ -87,6 +95,7 @@ export class NeighborhoodLogic {
   private sessions = new Map<string, Session>();
   private snapAcc = 0;
   private readonly wallClock: boolean;
+  private readonly foxLake: boolean;
   private readonly unlimited: boolean;
   private readonly devAccess: 'admin' | 'all' | null;
   private readonly dev: DevTools | null;
@@ -98,22 +107,23 @@ export class NeighborhoodLogic {
       this.world = saved.world;
       for (const id in this.world.builds) normalizeBuild(this.world.builds[id]);
       // Lots added to the layout after this world was saved become available too.
-      for (const l of [...makeLots(), ...(opts.extraLots ?? [])]) {
+      for (const l of [...(opts.foxLake ? [] : makeLots()), ...(opts.extraLots ?? [])]) {
         if (this.world.lots[l.id]) continue;
         this.world.lots[l.id] = { ...l, owner: null, ownerName: null };
         this.world.builds[l.id] = emptyBuild();
         this.dirty.lots.add(l.id);
       }
       // Worlds seeded with an older roster get the new starter houses on lots nobody owns.
-      const reseeded = upgradeSeed(this.world);
+      const reseeded = opts.foxLake ? [] : upgradeSeed(this.world);
       for (const id of reseeded) this.dirty.lots.add(id);
       if (reseeded.length) this.dirty.meta = true;
     } else {
-      this.world = makeWorld([...makeLots(), ...(opts.extraLots ?? [])]);
-      seedNeighborhood(this.world);
+      this.world = makeWorld([...(opts.foxLake ? [] : makeLots()), ...(opts.extraLots ?? [])]);
+      if (!opts.foxLake) seedNeighborhood(this.world);
       for (const id in this.world.lots) this.dirty.lots.add(id);
       this.dirty.meta = true;
     }
+    this.foxLake = !!opts.foxLake;
     this.wallClock = opts.clock === 'wall';
     this.unlimited = !!opts.unlimitedMoney;
     this.devAccess = opts.devTools ?? null;
@@ -375,6 +385,7 @@ export class NeighborhoodLogic {
 
   private issueJob(sessionId: string, s: Session, offer?: JobOffer) {
     if (s.job) return this.io.send(sessionId, { t: 'job', job: s.job, note: s.job.kind === 'fire' ? 'Finish the call you are on first' : 'Finish your current delivery first' });
+    if (this.foxLake && offer !== 'fire') return this.issueMontelloJob(sessionId, s, 'montello');
     if (offer === 'montello' || offer === 'fire') return this.issueMontelloJob(sessionId, s, offer);
     const lots = Object.values(this.world.lots);
     const lot = lots[Math.floor(Math.random() * lots.length)];
@@ -465,18 +476,24 @@ export class NeighborhoodLogic {
     return v ? { x: v.x, z: v.z, y: v.y } : { x: p.x, z: p.z, y: p.y };
   }
 
+  /** Every counter in this world: Montello's alone in Fox Lake, else Fox Plains' and Montello's. */
+  private doors(): readonly { id: string; kind: string; name: string; x: number; z: number }[] {
+    return this.foxLake ? MONTELLO_SHOPS : [...SHOP_DOORS, ...MONTELLO_SHOPS];
+  }
+
   private nearShop(s: Session, kind: string) {
     const pos = this.position(s);
-    return !!pos && SHOP_DOORS.some(d => d.kind === kind && Math.hypot(pos.x - d.x, pos.z - d.z) <= SHOP_RADIUS + 2);
+    return !!pos && this.doors().some(d => d.kind === kind && Math.hypot(pos.x - d.x, pos.z - d.z) <= SHOP_RADIUS + 2);
   }
 
   private handleBuy(sessionId: string, s: Session, acc: Account, shopId: unknown, itemId: unknown, car?: unknown) {
-    const door = SHOP_DOORS.find(d => d.id === shopId) ?? MONTELLO_SHOPS.find(d => d.id === shopId);
+    const door = this.doors().find(d => d.id === shopId);
     if (!door) return;
     const pos = this.position(s);
     if (!pos || Math.hypot(pos.x - door.x, pos.z - door.z) > SHOP_RADIUS + 2) return this.sendAccount(sessionId, acc, `Walk up to ${door.name} first`);
-    const item = (SHOP_ITEMS[door.kind] ?? []).find(i => i.id === itemId);
+    const item = shopItems(door.kind, this.foxLake).find(i => i.id === itemId);
     if (!item) return;
+    if (item.ride && acc.rides.includes(item.ride)) return this.sendAccount(sessionId, acc, `You already own the ${item.name}`);
     if (item.vehicle && acc.garage.includes(item.vehicle)) return this.sendAccount(sessionId, acc, `You already own the ${item.name}`);
     if (item.upgrade && acc.upgrades.includes(item.upgrade)) return this.sendAccount(sessionId, acc, 'You already have that');
     if (item.clothing && acc.wardrobe.includes(item.clothing)) return this.sendAccount(sessionId, acc, `The ${item.name} is already in your wardrobe`);
@@ -485,19 +502,20 @@ export class NeighborhoodLogic {
     if (item.needs) this.addNeeds(acc, item.needs);
     if (item.groceries) acc.groceries = Math.min(20, acc.groceries + item.groceries);
     if (item.upgrade) acc.upgrades.push(item.upgrade);
+    if (item.ride) acc.rides.push(item.ride);
     if (item.vehicle) {
       acc.garage.push(item.vehicle);
       acc.fuel[item.vehicle] = VEHICLES[item.vehicle].tank;
       acc.cars[item.vehicle] = newCar(isPaintable(item.vehicle) ? car : null, item.vehicle);
     }
     if (item.clothing) acc.wardrobe.push(item.clothing);
-    this.sendAccount(sessionId, acc, item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — wear it from the rack here` : `Bought: ${item.name}`);
+    this.sendAccount(sessionId, acc, item.ride ? `The ${item.name} is yours — it is waiting at the lake` : item.vehicle ? `The ${item.name} is yours — find it in your garage list` : item.clothing ? `${item.name} added to your wardrobe — wear it from the rack here` : `Bought: ${item.name}`);
   }
 
   private handleRefuel(sessionId: string, s: Session, acc: Account, kind: VehicleKind, gallons: unknown) {
     if (!acc.garage.includes(kind) || !VEHICLES[kind] || VEHICLES[kind].fuel === 'none') return;
     const pos = this.position(s);
-    if (!pos || ![...GAS_STATION.pumps, ...MONTELLO_PUMPS].some(p => Math.hypot(p.x - pos.x, p.z - pos.z) < PUMP_RADIUS + 1)) return this.sendAccount(sessionId, acc, 'Pull up to a fuel pump');
+    if (!pos || ![...(this.foxLake ? [] : GAS_STATION.pumps), ...MONTELLO_PUMPS].some(p => Math.hypot(p.x - pos.x, p.z - pos.z) < PUMP_RADIUS + 1)) return this.sendAccount(sessionId, acc, 'Pull up to a fuel pump');
     const want = Math.max(0, Math.min(Number(gallons) || 0, VEHICLES[kind].tank - (acc.fuel[kind] ?? 0)));
     const affordable = Math.min(want, acc.money / FUEL_PRICE);
     if (affordable < 0.05) return this.sendAccount(sessionId, acc, want < 0.05 ? 'The tank is already full' : 'Not enough money for fuel');
@@ -528,9 +546,14 @@ export class NeighborhoodLogic {
     if (typeof kind !== 'string' || !acc.garage.includes(kind as VehicleKind)) return;
     const k = kind as VehicleKind, name = VEHICLES[k]?.name ?? 'car';
     const pos = this.position(s);
-    if (!pos || !atBodyShop(pos.x, pos.z)) return this.sendAccount(sessionId, acc, `Walk up to ${BODY_SHOP.name} first`);
+    const montello = this.foxLake ? MONTELLO_SHOPS.find(d => d.kind === 'bodyshop') : null;
+    if (this.foxLake) {
+      if (!montello || !pos || Math.hypot(pos.x - montello.x, pos.z - montello.z) > BODY_SHOP_REACH) return this.sendAccount(sessionId, acc, `Walk up to ${montello?.name ?? 'the body shop'} first`);
+    } else if (!pos || !atBodyShop(pos.x, pos.z)) return this.sendAccount(sessionId, acc, `Walk up to ${BODY_SHOP.name} first`);
     const v = s.vehicles.find(x => x.kind === k);
-    if (!v || !inBay(v.x, v.z)) return this.sendAccount(sessionId, acc, `Park your ${name} in one of the bays first`);
+    if (montello) {
+      if (!v || Math.hypot(v.x - montello.x, v.z - montello.z) > BODY_SHOP_REACH + 12) return this.sendAccount(sessionId, acc, `Park your ${name} in the lot at ${montello.name} first`);
+    } else if (!v || !inBay(v.x, v.z)) return this.sendAccount(sessionId, acc, `Park your ${name} in one of the bays first`);
     const car = acc.cars[k] ??= cleanCar(null, k);
     const full = cleanOrder(raw, car);
     const order = isPaintable(k) ? full : { ...full, color: undefined, finish: undefined };
@@ -539,7 +562,7 @@ export class NeighborhoodLogic {
     if (q.total > acc.money) return this.sendAccount(sessionId, acc, `Not enough money — that work costs $${q.total.toLocaleString()}`);
     acc.money -= q.total;
     acc.cars[k] = applyOrder(car, order, k);
-    this.sendAccount(sessionId, acc, `${BODY_SHOP.name} finished your ${name}: ${q.lines.map(l => l.label.toLowerCase()).join(', ')} — $${q.total.toLocaleString()}`);
+    this.sendAccount(sessionId, acc, `${montello?.name ?? BODY_SHOP.name} finished your ${name}: ${q.lines.map(l => l.label.toLowerCase()).join(', ')} — $${q.total.toLocaleString()}`);
   }
 
   private cooldowns = new Map<string, number>();

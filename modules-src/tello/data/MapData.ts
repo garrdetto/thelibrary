@@ -19,6 +19,8 @@ export interface Frame {
   cell: number
   fine: number
   base: number
+  /** Trees' positions in the grid file are in 1/`treeUnits` metres from the frame's south-west corner (decimetres, 10, in files baked before the three-mile frame). */
+  treeUnits?: number
 }
 
 /** 0 highway (lined), 1 street, 2 lane (driveways, aisles), 3 gravel, 4 walk (concrete), 5 trail (dirt). */
@@ -37,15 +39,15 @@ export interface BuildingData { k: BuildingKind; h: number; f: number; l: number
 /** Roof types: a gable's ridge runs along the rectangle's first or second axis; a shed's high side is toward the named axis. */
 export const ROOF = { unmeasured: -1, flat: 0, gableFirst: 1, gableSecond: 2, hip: 3, shedPlusSecond: 4, shedMinusSecond: 5, shedPlusFirst: 6, shedMinusFirst: 7 } as const
 export interface LotData { f: number; p: number[] }
-export interface Poi { n: string; k: string; x: number; z: number; /** The front door: x, z and the way it faces. */ d?: [number, number, number] }
+export interface Poi { n: string; k: string; /** The place's own OpenStreetMap type: its amenity, shop or man-made value. */ t?: string; x: number; z: number; /** The street its door faces. */ s?: string; /** Fuel pumps: x, z pairs under the canopy. */ pumps?: [number, number][]; /** The front door: x, z and the way it faces. */ d?: [number, number, number] }
 /** A road leaving the playable area: where it crosses the edge and the way out (heading, 0 = north). */
 export interface RoadExit { x: number; z: number; h: number; w: number }
 /**
  * Only the City of Montello is built. `city` is its boundary, `play` the area you may walk and drive (the limits
- * widened by `pad`, plus County Highway F out to the map's south edge, where Fox Lake's road comes in), and the
+ * widened by `pad`, three miles), and the
  * ground, water and woods are drawn `seen` metres past that.
  */
-export interface Limits { city: number[]; play: number[]; exits: RoadExit[]; link: number[]; pad: number; seen: number; /** Where the playable area stops on its east side, by the highway toward Fox Lake (map x). */ east?: number }
+export interface Limits { city: number[]; play: number[]; exits: RoadExit[]; link: number[]; pad: number; seen: number }
 
 export interface MapDoc {
   version: number
@@ -56,6 +58,10 @@ export interface MapDoc {
   buildings: BuildingData[]
   lots: LotData[]
   pois: Poi[]
+  /** Ball diamonds, fields and courts mapped in OpenStreetMap: sport, name and outline (x, z pairs). */
+  pitches?: { s: string; n: string; p: number[] }[]
+  /** Boat launches. */
+  slipways?: { n: string; x: number; z: number }[]
   limits: Limits
   sources: string[]
   stats: Record<string, unknown>
@@ -109,8 +115,12 @@ export function parseGrids(bytes: Uint8Array): MapGrids {
   let side = 0
   let fineSide = 0
   for (const s of header.sections) {
-    const raw = bytes.slice(base + s.offset, base + s.offset + s.bytes)
-    out[s.name] = s.type === 'u16' ? new Uint16Array(raw.buffer, 0, s.count) : s.type === 'i8' ? new Int8Array(raw.buffer, 0, s.count) : raw
+    const from = base + s.offset
+    if (s.type === 'u16') {
+      const aligned = (bytes.byteOffset + from) % 2 === 0
+      out[s.name] = aligned ? new Uint16Array(bytes.buffer, bytes.byteOffset + from, s.count) : new Uint16Array(bytes.slice(from, from + s.bytes).buffer, 0, s.count)
+    } else if (s.type === 'i8') out[s.name] = new Int8Array(bytes.buffer, bytes.byteOffset + from, s.count)
+    else out[s.name] = bytes.subarray(from, from + s.bytes)
     if (s.name === 'ground') side = s.side
     if (s.name === 'clear') fineSide = s.side
   }
@@ -131,4 +141,9 @@ export async function loadMap(base: string): Promise<{ doc: MapDoc; grids: MapGr
   let bytes: Uint8Array = new Uint8Array(await binRes.arrayBuffer())
   if (isGzip(bytes)) bytes = await gunzip(bytes)
   return { doc, grids: parseGrids(bytes) }
+}
+
+/** Trees' position units per metre in the grid file (see `Frame.treeUnits`). */
+export function treeUnits(frame: Frame): number {
+  return frame.treeUnits ?? 10
 }

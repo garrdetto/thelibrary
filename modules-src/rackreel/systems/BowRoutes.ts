@@ -1,6 +1,24 @@
 /** Wisco Wild Man's routes and autopilot, renderer-free: loops that hug the lake shore and the island with the hull's side 5–10 yards off the bank (`ROUTE.shoreGap` metres from the centreline, never closer than `ROUTE.shoreGapMin`) in water at least `ROUTE.contour` deep, runs across open water on plane, and the way home to his launch. */
 import { BAY, CHANNEL, ISLAND, LAKE_CENTER, bayCoord, bayRadius, lakeRadius } from '../world/Terrain'
 
+/** The lake the routes are laid around: Bear Paw Lake's own, or a host world's (`setLakeShape`), which has no island, bay or channel. */
+export interface LakeShape {
+  center: Pt
+  radius(angle: number): number
+}
+
+const OWN_LAKE: LakeShape = { center: LAKE_CENTER, radius: lakeRadius }
+let lake: LakeShape = OWN_LAKE
+
+export function setLakeShape(shape: LakeShape | null): void {
+  lake = shape ?? OWN_LAKE
+}
+
+function ownLake(): boolean {
+  return lake === OWN_LAKE
+}
+
+
 export interface Pt {
   x: number
   z: number
@@ -156,7 +174,7 @@ function settle(map: WaterMap, p: Pt, center: Pt, inward: boolean, clear: Cleara
  * centre. Spots that are too shallow, too close to the shore or too close to the dock or a parked boat are pushed toward
  * deeper water, then the loop is smoothed and resampled every 2 m.
  */
-export function contourLoop(map: WaterMap, center: Pt, inward: boolean, clear: Clearance, depth = ROUTE.contour, outer: (angle: number) => number = (a) => lakeRadius(a) * 1.12): Pt[] {
+export function contourLoop(map: WaterMap, center: Pt, inward: boolean, clear: Clearance, depth = ROUTE.contour, outer: (angle: number) => number = (a) => lake.radius(a) * 1.12): Pt[] {
   const samples = 240
   const radii: number[] = []
   for (let i = 0; i < samples; i++) {
@@ -195,15 +213,17 @@ export function contourLoop(map: WaterMap, center: Pt, inward: boolean, clear: C
 }
 
 export function shoreLoop(map: WaterMap, clear: Clearance): Pt[] {
-  return contourLoop(map, LAKE_CENTER, true, clear)
+  return contourLoop(map, lake.center, true, clear)
 }
 
 export function islandLoop(map: WaterMap, clear: Clearance): Pt[] {
+  if (!ownLake()) return shoreLoop(map, clear)
   return contourLoop(map, { x: ISLAND.x, z: ISLAND.z }, false, clear)
 }
 
 /** The back bay beyond the highway bridge: around the bay's own contour (its mouth bulges a little into the channel). */
 export function bayLoop(map: WaterMap, clear: Clearance): Pt[] {
+  if (!ownLake()) return shoreLoop(map, clear)
   return contourLoop(map, { x: BAY.x, z: BAY.z }, true, clear, ROUTE.contour, (a) => bayRadius(a) * 1.02)
 }
 
@@ -214,6 +234,7 @@ export function buildLoops(map: WaterMap, clear: Clearance): Record<RouteName, P
 /** Waypoints a deep-water run may bend through: a ring around the island and the length of the channel under the bridge. */
 export function deepWaypoints(map: WaterMap): Pt[] {
   const out: Pt[] = []
+  if (!ownLake()) return out
   for (const r of [ISLAND.r + 34, ISLAND.r + 54]) {
     for (let k = 0; k < 18; k++) {
       const ang = (k / 18) * Math.PI * 2
@@ -416,6 +437,7 @@ export function stuntArc(stunt: HomeStunt, s: number): { lift: number; slope: nu
  * fits (he then comes home the ordinary way).
  */
 export function planHomeStunt(map: WaterMap, launch: Launch): HomeStunt | null {
+  if (!ownLake()) return null
   const out = { x: launch.shore.x - launch.boat.x, z: launch.shore.z - launch.boat.z }
   const outLen = Math.hypot(out.x, out.z) || 1
   const n = { x: out.x / outLen, z: out.z / outLen }
@@ -500,7 +522,7 @@ export interface Launch {
 
 /** Wild Man's launch: the nearest stretch of firm, dry shoreline 30–55 m from the dock, away from the marsh. */
 export function findLaunch(map: WaterMap, dockStart: Pt, dockEnd: Pt): Launch {
-  const dockAngle = Math.atan2(dockStart.z - LAKE_CENTER.z, dockStart.x - LAKE_CENTER.x)
+  const dockAngle = Math.atan2(dockStart.z - lake.center.z, dockStart.x - lake.center.x)
   let best: Launch | null = null
   let bestScore = Infinity
   for (let k = -80; k <= 80; k++) {
@@ -508,9 +530,9 @@ export function findLaunch(map: WaterMap, dockStart: Pt, dockEnd: Pt): Launch {
     const cx = Math.cos(a)
     const cz = Math.sin(a)
     let shore: Pt | null = null
-    for (let r = lakeRadius(a) * 0.6; r < lakeRadius(a) * 1.6; r += 0.5) {
-      if (map.heightAt(LAKE_CENTER.x + cx * r, LAKE_CENTER.z + cz * r) > 0) {
-        shore = { x: LAKE_CENTER.x + cx * r, z: LAKE_CENTER.z + cz * r }
+    for (let r = lake.radius(a) * 0.6; r < lake.radius(a) * 1.6; r += 0.5) {
+      if (map.heightAt(lake.center.x + cx * r, lake.center.z + cz * r) > 0) {
+        shore = { x: lake.center.x + cx * r, z: lake.center.z + cz * r }
         break
       }
     }
@@ -552,6 +574,10 @@ export function findLaunch(map: WaterMap, dockStart: Pt, dockEnd: Pt): Launch {
 export type PilotMode = 'docked' | 'loop' | 'travel'
 export type RouteName = 'shore' | 'island' | 'bay'
 export const ROUTE_ORDER: readonly RouteName[] = ['shore', 'island', 'bay']
+
+function routeOrder(): readonly RouteName[] {
+  return ownLake() ? ROUTE_ORDER : ['shore']
+}
 
 export interface PilotEvents {
   /** The boat came off plane at the end of a run. */
@@ -656,7 +682,8 @@ export class Autopilot {
   }
 
   switchRoute(): RouteName {
-    this.route = ROUTE_ORDER[(ROUTE_ORDER.indexOf(this.route) + 1) % ROUTE_ORDER.length]
+    const order = routeOrder()
+    this.route = order[(order.indexOf(this.route) + 1) % order.length]
     this.homeward = false
     this.travelTo(this.joinPoint(this.route), false)
     return this.route

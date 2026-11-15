@@ -33,6 +33,17 @@ export class RegionCuller {
     if (live.length) this.groups.push({ x, z, radius, meshes: live, on: true })
   }
 
+  /** Takes meshes out of every group (a mesh that is being disposed); groups left empty go. */
+  remove(meshes: readonly AbstractMesh[]): void {
+    const gone = new Set<AbstractMesh>(meshes)
+    for (let k = this.groups.length - 1; k >= 0; k--) {
+      const g = this.groups[k]
+      if (!g.meshes.some((m) => gone.has(m))) continue
+      g.meshes = g.meshes.filter((m) => !gone.has(m))
+      if (!g.meshes.length) this.groups.splice(k, 1)
+    }
+  }
+
   /** Buckets meshes by where their bounds sit into `cell`-sized groups. */
   addByCell(meshes: AbstractMesh[], cell: number): void {
     const buckets = new Map<string, { meshes: AbstractMesh[]; x0: number; z0: number; x1: number; z1: number }>()

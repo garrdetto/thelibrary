@@ -59,7 +59,7 @@ export class MachineDisplay {
 
   constructor(private readonly scene: Scene, readonly spot: MachineSpot, readonly def: MachineDef, readonly theme: MachineTheme) {
     this.node = new TransformNode(`machine-${def.id}`, scene)
-    const p = townToScene(spot.x, CASINO.floorY - 0.06, spot.z)
+    const p = townToScene(spot.x, CASINO.floorY - 0.06 + (spot.y0 ?? 0), spot.z)
     this.node.position.set(p.x, p.y, p.z)
     this.node.rotation.y = townYawToHeading(spot.yaw)
     const s = CABINET.screen

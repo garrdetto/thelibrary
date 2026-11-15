@@ -1,28 +1,18 @@
 /**
- * The developer panel's teleport list: Fox Lake's points of interest in scene
- * coordinates (+x east, +z north; the same frame as `host.player`). To add a
- * place, add a row. Town places are worked out from the shared town layout,
- * which is in town coordinates (`town(...)` converts); lake-country places are
- * where Rack & Reel puts its landmarks on Fox Lake's terrain (the dock's land
- * end, Fox Outfitters' door, Wild Man's camp, the foot of each stand's ladder).
- * tests/dev.test.ts checks that every place is on dry ground inside the world
- * and that the lake-country ones still match the game's own landmark finders.
- *
- * Montello's places (`montelloPlaces`) come from Tello's baked map, so they are
- * only offered once the map has loaded: front doors where the map has them,
- * otherwise the landmark itself. Places outside Montello's playable area (the
- * city limits) are left out. tests/montello-places.test.ts checks them.
+ * The developer panel's teleport list, in scene coordinates (+x east, +z north; the same frame as `host.player`).
+ * Montello's places come from Tello's baked map: front doors where the map has them, otherwise the landmark itself;
+ * places outside the playable area are left out. The lake places (the dock, the boat, the UTV, Wild Man's camp and
+ * the hunting stands) come from the lake site (lake/LakeSite.ts). tests/dev.test.ts checks every place is on dry
+ * ground inside the world.
  */
-import { BODY_SHOP } from '../../maplestreet/shared/BodyShop'
-import { CIVIC, CURVES, DEPOT, SHOP_DOORS, SPAWN, TOWN_SQUARE_RECT } from '../../maplestreet/shared/WorldLayout'
 import { MONTELLO_LOTS } from '../../maplestreet/shared/MontelloPlaces'
 import type { TelloLand } from '../../tello/region'
-import { CASINO } from '../casino/CasinoLayout'
-import { CONNECTOR, townToScene } from '../region'
+import type { LakeSite } from '../lake/LakeSite'
+import { townToScene } from '../region'
 
-export type PlaceArea = 'Fox Plains' | 'Lake country' | 'Montello'
+export type PlaceArea = 'Montello' | 'Lake Montello'
 
-export const PLACE_AREAS: readonly PlaceArea[] = ['Fox Plains', 'Lake country', 'Montello']
+export const PLACE_AREAS: readonly PlaceArea[] = ['Montello', 'Lake Montello']
 
 export interface Place {
   id: string
@@ -32,37 +22,10 @@ export interface Place {
   z: number
 }
 
-function town(id: string, label: string, x: number, z: number, area: PlaceArea = 'Fox Plains'): Place {
+function town(id: string, label: string, x: number, z: number, area: PlaceArea = 'Montello'): Place {
   const p = townToScene(x, 0, z)
   return { id, label, area, x: p.x, z: p.z }
 }
-
-function lake(id: string, label: string, x: number, z: number): Place {
-  return { id, label, area: 'Lake country', x, z }
-}
-
-const SHOP_LABELS: Record<string, string> = { motors: 'Maple Motors', threads: 'Maple Threads', gas: 'Gas & Go' }
-const willow = CURVES[0].pts[Math.floor(CURVES[0].pts.length / 2)]
-
-export const FOX_LAKE_PLACES: Place[] = [
-  town('depot', 'Freight depot (town spawn)', SPAWN.x, SPAWN.z - 4),
-  town('depot-pad', 'Freight depot loading pad', DEPOT.padX, DEPOT.padZ + 4),
-  ...SHOP_DOORS.map((d) => town(`shop-${d.id}`, SHOP_LABELS[d.id] ?? d.name, d.x, d.z)),
-  town('casino', 'Northwoods Lodge Casino & Bar', CASINO.door.x, CASINO.z0 - 4),
-  town('bodyshop', BODY_SHOP.name, BODY_SHOP.x, BODY_SHOP.frontZ + 5),
-  ...CIVIC.map((b) => town(`civic-${b.id}`, b.name, b.x, b.z + b.d / 2 + 4)),
-  town('commons', 'Maple Commons (town square)', TOWN_SQUARE_RECT.cx, TOWN_SQUARE_RECT.cz - TOWN_SQUARE_RECT.sz / 2 - 3),
-  town('willow', 'Willow Bend', willow.x, willow.z),
-  lake('county-road-town', 'County road at East Ave', CONNECTOR.end.x, CONNECTOR.end.z),
-  lake('county-road-lake', 'County road at the interstate', CONNECTOR.start.x, CONNECTOR.start.z),
-  lake('outfitters', 'Fox Outfitters (front door)', 121.3, -110.3),
-  lake('dock', 'The dock', 109.1, -94.9),
-  lake('wild-man', "Wild Man's camp", 75.8, -93.2),
-  lake('stand-1', 'Ladder stand 1 (north-east)', 301.3, 91.4),
-  lake('stand-2', 'Ladder stand 2 (east)', 343.9, -0.9),
-  lake('stand-3', 'Ladder stand 3 (nearest the dock)', 210.3, -28.4),
-  lake('blind', 'Ground blind (south)', 64.9, -188.3),
-]
 
 /** Montello's teleports: `poi` is the name of a point of interest on Tello's map (its front door when it has one). */
 const MONTELLO_SPOTS: readonly { id: string; label: string; poi: string }[] = [
@@ -90,30 +53,37 @@ const MONTELLO_SPOTS: readonly { id: string; label: string; poi: string }[] = [
   { id: 'mt-rendezvous', label: 'Rendezvous Paddle & Sports', poi: 'Rendezvous Paddle & Sports' },
   { id: 'mt-feed-mill', label: 'Fox River Feed Mill', poi: 'Fox River Feed Mill' },
   { id: 'mt-fishing', label: 'Andy Krakow fishing area', poi: 'Andy Krakow Memorial Fishing Area' },
-  { id: 'mt-bp', label: 'BP & True Value', poi: 'BP' },
+  { id: 'mt-bp', label: 'BP', poi: 'BP' },
+  { id: 'mt-freitags', label: "Freitag's Food Center", poi: "Freitag's Food Center" },
+  { id: 'mt-foxtails', label: "Foxtails Gentlemen's Club", poi: "Foxtails Gentlemen's Club" },
+  { id: 'mt-lakeside', label: "Drew's Lakeside Bar & Grill", poi: "Drew's Lakeside Bar & Grill" },
 ]
 
-/**
- * Montello's teleports on the loaded map, in scene coordinates. `highway` is where State Highway 23 comes into the
- * city from Fox Plains (the end of the corridor's road), when there is one.
- */
-export function montelloPlaces(land: TelloLand, highway?: { x: number; z: number }): Place[] {
+/** Montello's teleports on the loaded map, in scene coordinates. */
+export function montelloPlaces(land: TelloLand): Place[] {
   const out: Place[] = []
   const add = (id: string, label: string, mx: number, mz: number) => {
     if (!land.playable(mx, mz)) return
     out.push({ id, label, area: 'Montello', x: land.toSceneX(mx), z: land.toSceneZ(mz) })
   }
-  if (highway) out.push({ id: 'mt-highway-23', label: 'Highway 23 into Montello', area: 'Montello', x: highway.x, z: highway.z })
   for (const spot of MONTELLO_SPOTS) {
     const poi = land.doc.pois.find((p) => p.n === spot.poi)
     if (!poi) continue
     const [x, z] = poi.d ? [poi.d[0], poi.d[1]] : [poi.x, poi.z]
     add(spot.id, spot.label, x, z)
   }
-  const lot = MONTELLO_LOTS[0]
+  const lot = MONTELLO_LOTS.find((l) => l.id.startsWith('V')) ?? MONTELLO_LOTS[0]
   if (lot) {
     const front = lot.front === '+z' ? lot.z + lot.d / 2 + 3 : lot.z - lot.d / 2 - 3
-    out.push(town('mt-lots', 'House lots for sale (Forest Lane)', lot.x, front, 'Montello'))
+    out.push(town('mt-lots', 'Parcels for sale', lot.x, front))
   }
+  return out
+}
+
+/** The lake gameplay's teleports: the dock's land end, the boat, the UTV, Wild Man's camp (beside the dock) and the foot of each stand. */
+export function lakePlaces(site: LakeSite): Place[] {
+  const at = (id: string, label: string, p: { x: number; z: number }): Place => ({ id, label, area: 'Lake Montello', x: p.x, z: p.z })
+  const out = [at('dock', 'The dock', site.dock.start), at('utv', 'The UTV and quad (parking)', site.utv), at('boat', 'The boat (dock end)', site.boat)]
+  site.stands.forEach((s, i) => out.push(at(s.kind === 'blind' ? 'blind' : `stand-${i + 1}`, s.kind === 'blind' ? 'Ground blind' : `Ladder stand ${i + 1}`, s)))
   return out
 }

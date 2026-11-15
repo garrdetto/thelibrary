@@ -197,7 +197,8 @@ export class TelloTown implements GameExtension {
     this.cars.visuals(night)
     this.mats.setNight(night)
     this.gfx.update(night, this.host.clock.sky.glow)
-    this.montello.update(dt)
+    const focus = this.host.driving?.position ?? this.host.player
+    this.montello.update(dt, focus)
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
     this.map?.update(dt)
     this.statusAcc -= dt
@@ -362,6 +363,6 @@ export class TelloTown implements GameExtension {
 
   /** For the console and the capture script. */
   debug(): Record<string, unknown> {
-    return { colliders: this.physics.streamStats(), culling: this.culler.stats(), cars: [...this.cars.list.keys()], home: this.home, treeCellsSolid: this.montello.solidTreeCells }
+    return { colliders: this.physics.streamStats(), culling: this.culler.stats(), cars: [...this.cars.list.keys()], home: this.home, treeCellsSolid: this.montello.solidTreeCells, trees: this.montello.treeStats }
   }
 }

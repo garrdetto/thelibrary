@@ -1,16 +1,20 @@
 /**
  * The counter at a place you walk into: a menu to buy from (bars, diners,
- * the candy store, Kwik Trip, groceries, hardware), the bank's loans and
- * repayments, and the work on offer (deliveries, fire calls). Every purchase
- * and loan goes to the shared world, which checks you are at the door and
- * answers with your account; the panel redraws from it.
+ * the candy store, the gas stations, Freitag's groceries, hardware, Maple
+ * Threads), the dealership's vehicles and lake rides, the body shop's work
+ * orders, the bank's loans and repayments, and the work on offer (deliveries,
+ * fire calls). Every purchase and loan goes to the shared world, which checks
+ * you are at the door and answers with your account; the panel redraws from it.
  */
 import type { Account, ShopItem } from '../../maplestreet/shared/Economy'
 import { LOAN_DAILY_RATE, SHOP_ITEMS, availableCredit } from '../../maplestreet/shared/Economy'
-import type { ClientMsg, Job, JobOffer } from '../../maplestreet/shared/Protocol'
-import type { ShopKind } from '../../maplestreet/shared/WorldLayout'
+import type { ClientMsg, Job, JobOffer, VehicleKind } from '../../maplestreet/shared/Protocol'
+import type { MontelloKind } from '../../maplestreet/shared/MontelloPlaces'
+import { BodyShopView } from './BodyShop'
+import { DEFAULT_PAINT, dealerSection, type DealerPaint } from './Dealer'
+import { el, money, type PanelKit } from './panelKit'
 
-export type PlaceKind = ShopKind | 'depot' | 'fire'
+export type PlaceKind = MontelloKind | 'depot' | 'fire'
 
 export interface Place {
   /** The shop id the authority knows (`buy`), or the desk's own id. */
@@ -20,7 +24,7 @@ export interface Place {
   /** The front door, in the town frame. */
   x: number
   z: number
-  area: 'foxplains' | 'montello'
+  area: 'montello'
   street?: string
   /** The job on offer at this counter. */
   work?: JobOffer
@@ -32,6 +36,10 @@ export interface PanelHooks {
   job(): Job | null
   signedIn(): boolean
   onClose(): void
+  /** Your cars parked at the body shop's lot, nearest first. */
+  parkedAtShop(): VehicleKind[]
+  /** The outfitter's counter: Rack & Reel's gear rack, wardrobe or order desk. */
+  openGear(tab: 'rack' | 'wardrobe' | 'desk'): void
 }
 
 const KIND_LABEL: Record<PlaceKind, string> = {
@@ -43,28 +51,24 @@ const KIND_LABEL: Record<PlaceKind, string> = {
   hardware: 'Hardware',
   bank: 'Bank',
   clothing: 'Clothing',
-  dealer: 'Vehicles',
+  dealer: 'Vehicles and lake rides',
+  bodyshop: 'Body shop',
+  outfitter: 'Outfitters',
+  police: "Sheriff's office",
   depot: 'Freight depot',
   fire: 'Fire department',
 }
 
 const WORK: Record<JobOffer, { title: string; blurb: string; button: string }> = {
-  delivery: { title: 'Delivery work', blurb: 'Load cargo here in your pickup and drive it to a house in Fox Plains. Pay goes up with the distance.', button: 'Take a delivery' },
-  montello: { title: 'Deliveries for Kwik Trip', blurb: 'Load an order into your pickup and drive it to a house in Montello. Pay goes up with the distance.', button: 'Take a delivery' },
+  delivery: { title: 'Delivery work', blurb: 'Load cargo here in your pickup and drive it to a house in Montello. Pay goes up with the distance.', button: 'Take a delivery' },
+  montello: { title: 'Freight deliveries', blurb: "Load an order into your pickup behind Freitag's and drive it to a house in Montello. Pay goes up with the distance.", button: 'Take a delivery' },
   fire: { title: 'Volunteer firefighter', blurb: 'Gear up, drive to the house on fire and hold the hose on it until it is out. $600 a call plus the drive.', button: 'Answer a fire call' },
 }
 
+const NO_MENU: ReadonlySet<PlaceKind> = new Set<PlaceKind>(['bank', 'fire', 'depot', 'dealer', 'bodyshop', 'police', 'outfitter'])
+
 const BORROW = [1_000, 5_000, 10_000]
 const REPAY = [1_000, 5_000]
-
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag)
-  if (cls) node.className = cls
-  if (text !== undefined) node.textContent = text
-  return node
-}
-
-const money = (n: number) => `$${Math.round(n).toLocaleString()}`
 
 export class PlacePanel {
   private readonly root: HTMLDivElement
@@ -75,8 +79,13 @@ export class PlacePanel {
   private readonly body: HTMLDivElement
   private readonly close: HTMLButtonElement
   private place: Place | null = null
+  private readonly paint: DealerPaint = { ...DEFAULT_PAINT }
+  private readonly bodyShop: BodyShopView
+  private readonly kit: PanelKit
 
   constructor(private readonly hooks: PanelHooks) {
+    this.bodyShop = new BodyShopView(hooks.send, () => this.refresh(), () => hooks.parkedAtShop())
+    this.kit = { section: (title) => this.section(title), button: (key, text, label, enabled, onClick) => this.button(key, text, label, enabled, onClick) }
     this.root = el('div', 'rr-screen panel-screen fl-place-screen')
     this.root.hidden = true
     this.root.dataset.hostModal = ''
@@ -128,6 +137,7 @@ export class PlacePanel {
     if (this.root.hidden) return
     this.root.hidden = true
     this.place = null
+    this.bodyShop.reset()
     this.hooks.onClose()
   }
 
@@ -141,7 +151,7 @@ export class PlacePanel {
     if (!place) return
     const acc = this.hooks.account()
     const focused = document.activeElement instanceof HTMLElement && this.root.contains(document.activeElement) ? document.activeElement.dataset.key : undefined
-    this.eyebrow.textContent = `${KIND_LABEL[place.kind]}${place.area === 'montello' ? ' · Montello' : ' · Fox Plains'}`
+    this.eyebrow.textContent = `${KIND_LABEL[place.kind]} · Montello`
     this.title.textContent = place.name
     this.cash.textContent = acc ? `${money(acc.money)}${this.hooks.signedIn() ? '' : ' · guest'}` : ''
     this.note.textContent = place.street ? `${place.street}` : ''
@@ -152,10 +162,50 @@ export class PlacePanel {
       return
     }
     if (place.kind === 'bank') this.body.append(this.bank(acc))
-    const items = place.kind === 'bank' || place.kind === 'fire' || place.kind === 'depot' ? [] : SHOP_ITEMS[place.kind] ?? []
+    if (place.kind === 'dealer') this.body.append(dealerSection(this.kit, place.id, acc, this.hooks.send, this.paint, () => this.render()))
+    if (place.kind === 'bodyshop') this.body.append(this.bodyShop.render(this.kit, acc))
+    if (place.kind === 'police') this.body.append(this.sheriff())
+    if (place.kind === 'outfitter') this.body.append(this.outfitter())
+    if (place.kind === 'clothing') this.body.append(this.fitting())
+    const items = NO_MENU.has(place.kind) ? [] : SHOP_ITEMS[place.kind] ?? []
     if (items.length) this.body.append(this.menu(place, acc, items))
     if (place.work) this.body.append(this.work(place.work))
     if (focused) this.body.querySelector<HTMLElement>(`[data-key="${CSS.escape(focused)}"]`)?.focus()
+  }
+
+  private fitting(): HTMLElement {
+    const s = this.section('Fitting room')
+    s.append(el('small', undefined, 'Try on what you own and change into it.'))
+    s.append(
+      this.button('gear:wardrobe', 'Try on outfits', 'Open the wardrobe', true, () => {
+        this.hide()
+        this.hooks.openGear('wardrobe')
+      }),
+    )
+    return s
+  }
+
+  private outfitter(): HTMLElement {
+    const s = this.section('Fox Outfitters')
+    s.append(el('small', undefined, 'The rod and rifle rack, the wardrobe for hunting and fishing outfits, and the order desk for the catalog (paid in Rack & Reel cash).'))
+    const row = el('div', 'fl-bank-row')
+    const open = (tab: 'rack' | 'wardrobe' | 'desk') => {
+      this.hide()
+      this.hooks.openGear(tab)
+    }
+    row.append(
+      this.button('gear:rack', 'Gear rack', 'Open the gear rack', true, () => open('rack')),
+      this.button('gear:wardrobe', 'Wardrobe', 'Open the outfitter wardrobe', true, () => open('wardrobe')),
+      this.button('gear:desk', 'Order desk', 'Open the order desk', true, () => open('desk')),
+    )
+    s.append(row)
+    return s
+  }
+
+  private sheriff(): HTMLElement {
+    const s = this.section('Marquette County Sheriff')
+    s.append(el('small', undefined, 'The deputies are out on patrol. Nothing needs you here today; the volunteer fire department up on Underwood Avenue is hiring.'))
+    return s
   }
 
   private section(title: string): HTMLElement {

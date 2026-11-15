@@ -15,19 +15,12 @@
  * Runtime-agnostic: the Cloudflare Durable Object (src/server/maplestreet-world.ts)
  * supplies storage and sockets; tests use in-memory fakes.
  */
-import { emptyBuild, type LotBuild, type LotState } from './BuildRules';
+import type { LotBuild, LotState } from './BuildRules';
 import type { Account } from './Economy';
 import { NpcTraffic, obstaclesFrom } from './Npc';
 import { AUTOSAVE_EVERY_MS, type ClientMsg, type JoinOptions, type ServerMsg } from './Protocol';
 import { Identity, NeighborhoodLogic, Persisted } from './RoomLogic';
 import { MONTELLO_LOTS } from './MontelloPlaces';
-import { lotPrice } from './WorldLayout';
-
-/**
- * Fox Lake's one-time releases of every player's lot: each lot a player owns goes back on the market, its house is
- * cleared and the lot's price is refunded to the owner's town money. Raise it to run another release.
- */
-export const RELEASE_LOTS = 1;
 
 export interface WorldStorage {
   get<T>(key: string): Promise<T | undefined>;
@@ -40,7 +33,7 @@ export interface WorldSocket {
   close(code?: number, reason?: string): void;
 }
 
-interface Meta { version: number; epochDay: number; coverage: Record<string, string>; seedVersion?: number; released?: number }
+interface Meta { version: number; epochDay: number; coverage: Record<string, string>; seedVersion?: number }
 interface LotRecord { lot: LotState; build: LotBuild }
 
 /**
@@ -49,7 +42,15 @@ interface LotRecord { lot: LotState; build: LotBuild }
  * g2 (Nov 2026): reset for Willow Bend, growing lawns and one-time characters.
  */
 export const WORLD_GENERATION = 'g2:';
-const K = { meta: `${WORLD_GENERATION}meta`, lot: `${WORLD_GENERATION}lot:`, acct: `${WORLD_GENERATION}acct:` };
+/**
+ * Fox Lake's own storage generation (its world is its own table). fl1 (Nov 2026): Fox Lake became Montello alone, so
+ * every Fox Plains-town save from the earlier generation (which shared `g2:`) is never read again.
+ */
+export const FOX_LAKE_GENERATION = 'fl1:';
+
+function keysFor(generation: string) {
+  return { meta: `${generation}meta`, lot: `${generation}lot:`, acct: `${generation}acct:` };
+}
 
 export const WORLD_LIMITS = {
   maxConnections: 48,
@@ -65,6 +66,7 @@ export class WorldServer {
   private sockets = new Map<string, WorldSocket>();
   private budget = new Map<string, { tokens: number; at: number }>();
   private npcs = new NpcTraffic();
+  private readonly K: ReturnType<typeof keysFor>;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private saveTimer: ReturnType<typeof setInterval> | null = null;
   private lastTick = 0;
@@ -72,9 +74,11 @@ export class WorldServer {
 
   /**
    * `devTools`: administrators (by their host-verified identity) may use the developer tools in this world. `foxLake`:
-   * Fox Lake's world, with Montello's house parcels for sale and its one-time lot releases (`RELEASE_LOTS`).
+   * Fox Lake's world: Montello alone, its parcels for sale, no Fox Plains lots, neighbors or traffic.
    */
-  constructor(private storage: WorldStorage, private opts: { devTools?: boolean; foxLake?: boolean } = {}) {}
+  constructor(private storage: WorldStorage, private opts: { devTools?: boolean; foxLake?: boolean } = {}) {
+    this.K = keysFor(opts.foxLake ? FOX_LAKE_GENERATION : WORLD_GENERATION);
+  }
 
   /** Loads the world from storage once (seeding a fresh neighborhood the first time). */
   ready(): Promise<void> {
@@ -83,25 +87,17 @@ export class WorldServer {
   }
 
   private async load() {
-    const [meta, lots] = await Promise.all([this.storage.get<Meta>(K.meta), this.storage.list<LotRecord>(K.lot)]);
+    const [meta, lots] = await Promise.all([this.storage.get<Meta>(this.K.meta), this.storage.list<LotRecord>(this.K.lot)]);
     let saved: Persisted | null = null;
     if (meta && lots.size) {
-      const world: Persisted['world'] = { lots: {}, builds: {}, version: meta.version, seedVersion: meta.seedVersion, released: meta.released };
+      const world: Persisted['world'] = { lots: {}, builds: {}, version: meta.version, seedVersion: meta.seedVersion };
       for (const rec of lots.values()) { world.lots[rec.lot.id] = rec.lot; world.builds[rec.lot.id] = rec.build; }
       saved = { world, accounts: {}, hours: 0, day: 1, coverage: meta.coverage ?? {}, epochDay: meta.epochDay };
     }
-    const released = this.opts.foxLake && saved ? await this.releaseLots(saved.world) : [];
     this.logic = new NeighborhoodLogic({
       send: (to, msg) => this.deliver(to, msg),
       broadcast: (msg, except) => this.broadcast(msg, except),
-    }, saved, { clock: 'wall', ...(this.opts.devTools ? { devTools: 'admin' as const } : {}), ...(this.opts.foxLake ? { extraLots: MONTELLO_LOTS } : {}) });
-    if (this.opts.foxLake) {
-      for (const id of released) this.logic.dirty.lots.add(id);
-      if (this.logic.world.released !== RELEASE_LOTS) {
-        this.logic.world.released = RELEASE_LOTS;
-        this.logic.dirty.meta = true;
-      }
-    }
+    }, saved, { clock: 'wall', ...(this.opts.devTools ? { devTools: 'admin' as const } : {}), ...(this.opts.foxLake ? { extraLots: MONTELLO_LOTS, foxLake: true } : {}) });
     await this.save();                                    // persists the seed on first boot
   }
 
@@ -119,7 +115,7 @@ export class WorldServer {
       return { onMessage() {}, onClose() {} };
     }
     if (!logic.hasAccount(identity.key)) {
-      const stored = await this.storage.get<Account>(`${K.acct}${identity.key}`);
+      const stored = await this.storage.get<Account>(`${this.K.acct}${identity.key}`);
       if (stored && !logic.hasAccount(identity.key)) logic.addAccount(stored);
     }
     const id = `s${(this.nextId++).toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -164,7 +160,7 @@ export class WorldServer {
     await this.ready();
     const logic = this.logic!;
     if (!logic.hasAccount(identity.key)) {
-      const stored = await this.storage.get<Account>(`${K.acct}${identity.key}`);
+      const stored = await this.storage.get<Account>(`${this.K.acct}${identity.key}`);
       if (stored && !logic.hasAccount(identity.key)) logic.addAccount(stored);
     }
     if (!create && !logic.hasAccount(identity.key)) return undefined;
@@ -192,7 +188,7 @@ export class WorldServer {
 
   private broadcast(msg: ServerMsg, except?: string) {
     if (msg.t === 'snap') {
-      const n = this.npcs.snapshot();
+      const n = this.opts.foxLake ? { players: [], vehicles: [] } : this.npcs.snapshot();
       this.npcs.obstacles = obstaclesFrom(msg.players, msg.vehicles);
       msg = { ...msg, players: [...msg.players, ...n.players], vehicles: [...msg.vehicles, ...n.vehicles] };
     }
@@ -212,7 +208,7 @@ export class WorldServer {
       const now = Date.now();
       const dt = Math.min(0.25, (now - this.lastTick) / 1000);
       this.lastTick = now;
-      this.npcs.step(dt);
+      if (!this.opts.foxLake) this.npcs.step(dt);
       this.logic?.tick(dt);
     }, 1000 / WORLD_LIMITS.tickHz);
     this.saveTimer = setInterval(() => void this.autosave(), WORLD_LIMITS.saveEveryMs);
@@ -236,32 +232,6 @@ export class WorldServer {
     }
   }
 
-  /**
-   * The one-time release (`RELEASE_LOTS`): every lot a player owns is put back on the market with its house cleared,
-   * and the lot's price goes back to the owner's town money. The neighbourhood's own houses stay. Returns the lots freed.
-   */
-  private async releaseLots(world: Persisted['world']): Promise<string[]> {
-    if ((world.released ?? 0) >= RELEASE_LOTS) return [];
-    const accounts = await this.storage.list<Account>(K.acct);
-    const byId = new Map<string, { key: string; account: Account }>();
-    for (const [key, account] of accounts) if (account?.id) byId.set(account.id, { key: key.startsWith(K.acct) ? key : `${K.acct}${key}`, account });
-    const freed: string[] = [];
-    const refunds: Record<string, Account> = {};
-    for (const id in world.lots) {
-      const lot = world.lots[id];
-      const owner = lot.owner ? byId.get(lot.owner) : undefined;
-      if (!owner) continue;
-      owner.account.money += lotPrice(lot);
-      refunds[owner.key] = owner.account;
-      lot.owner = null;
-      lot.ownerName = null;
-      world.builds[id] = emptyBuild();
-      freed.push(id);
-    }
-    if (Object.keys(refunds).length) await this.storage.put(structuredClone(refunds));
-    return freed;
-  }
-
   /** Writes only what changed: touched lots, touched accounts, and shared state. */
   async save() {
     const logic = this.logic;
@@ -269,9 +239,9 @@ export class WorldServer {
     const { dirty } = logic;
     if (!dirty.lots.size && !dirty.accounts.size && !dirty.meta) return;
     const entries: Record<string, unknown> = {};
-    for (const id of dirty.lots) entries[`${K.lot}${id}`] = { lot: logic.world.lots[id], build: logic.world.builds[id] } satisfies LotRecord;
-    for (const key of dirty.accounts) if (logic.accounts[key]) entries[`${K.acct}${key}`] = logic.accounts[key];
-    entries[K.meta] = { version: logic.world.version, epochDay: logic.epochDay, coverage: logic.coverageCodes(), seedVersion: logic.world.seedVersion, released: logic.world.released } satisfies Meta;
+    for (const id of dirty.lots) entries[`${this.K.lot}${id}`] = { lot: logic.world.lots[id], build: logic.world.builds[id] } satisfies LotRecord;
+    for (const key of dirty.accounts) if (logic.accounts[key]) entries[`${this.K.acct}${key}`] = logic.accounts[key];
+    entries[this.K.meta] = { version: logic.world.version, epochDay: logic.epochDay, coverage: logic.coverageCodes(), seedVersion: logic.world.seedVersion } satisfies Meta;
     dirty.lots.clear(); dirty.accounts.clear(); dirty.meta = false;
     await this.storage.put(structuredClone(entries));
   }

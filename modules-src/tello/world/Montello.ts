@@ -16,12 +16,13 @@ import type { Physics } from '../../foxlake/fp/physics/Physics'
 import type { TownGfx } from '../../foxlake/town/TownGfx'
 import type { RegionCuller } from '../../foxlake/core/RegionCuller'
 import type { TelloLand } from '../region'
-import { buildGround, GROUND_CHUNK } from './Ground'
-import { Water } from './Water'
+import { GroundStream } from './Ground'
+import { Water, WATER_CHUNK } from './Water'
 import { bridgeSolids, buildBridges, buildRoads } from './Roads'
 import { buildStreetPaint } from './StreetPaint'
 import { BUILDING_CELL, buildBuildings, type ApartBuilding } from './Buildings'
 import { buildBarricades } from './Barricades'
+import { buildGuardrails } from './Guardrails'
 import { buildStorefronts } from './Storefronts'
 import { buildStreetDressing } from './StreetDressing'
 import { buildIntersection, type Intersection } from './Intersection'
@@ -31,19 +32,17 @@ import { buildLandmarks } from './Landmarks'
 import { KIT_URL, ModelKit } from './Kit'
 import { roadIndex, roadNameAt } from '../town/Routes'
 import { shiftedPhysics, type Shift, type StaticSink } from './Sink'
+import { Forest, PLANT_RADIUS } from './Forest'
 
-const TREE_KINDS = ['pine', 'hardwood', 'birch'] as const
-const TREE_RADIUS = [0.34, 0.42, 0.25]
-/** Each tree model's height at scale 1, so a tree stands as tall as the lidar measured it. */
-const TREE_MODEL_HEIGHT = [16.2, 11.87, 11.89]
-const TREE_CELL = 16
-/** Montello's woods reach a mile round the city: its trees are planted in wide stands so they are a few thousand meshes, not tens of thousands. */
-const TREE_STAND = 384
 const NAME_CELL = 64
 const WALL_HEIGHT = 30
 /** How far past what is seen the ground stays solid (the play grid reads no further out than 254 m), and how deep it sinks beyond. */
 const GROUND_REACH = 8
 const SUNK = 80
+/** Heightfields are laid in tiles this many cells across, only where the ground is seen. */
+const TILE = 256
+/** The ground within this many metres of where the game starts is built while loading; the rest streams in round whoever moves. */
+const GROUND_PRIME = 700
 
 export interface MontelloSetup {
   host: GameHost
@@ -65,8 +64,8 @@ export class Montello {
   private water: Water | null = null
   private junction: Intersection | null = null
   private falls: Falls | null = null
-  private readonly treeCells = new Map<number, number[]>()
-  private readonly treeSolid = new Set<number>()
+  private forest: Forest | null = null
+  private ground: GroundStream | null = null
   private readonly nameIndex: Map<number, number[]>
   private lotHouses = new Map<number, ApartBuilding>()
   private readonly cleared = new Set<number>()
@@ -107,7 +106,14 @@ export class Montello {
     this.buildSolids()
     await pace('buildSolids')
     const kits = Promise.all([ModelKit.load(scene, KIT_URL.downtown), ModelKit.load(scene, KIT_URL.quarry)])
-    const ground = await buildGround(scene, land, () => pace())
+    const start = land.holdsScene(s.host.player.x, s.host.player.z) ? { x: land.toMapX(s.host.player.x), z: land.toMapZ(s.host.player.z) } : { x: 0, z: 0 }
+    this.ground = new GroundStream(
+      scene,
+      land,
+      (mesh, x, z, radius) => s.culler.addGroup([mesh], x, z, radius),
+      (mesh) => s.culler.remove([mesh]),
+    )
+    await this.ground.prime(land.toSceneX(start.x), land.toSceneZ(start.z), GROUND_PRIME, () => pace())
     await pace('buildGround')
     this.water = new Water(s.host.ctx, land)
     await pace('water')
@@ -123,9 +129,12 @@ export class Montello {
     await pace('kits')
     buildBarricades(this.root, s.mats, this.sink, land, s.openExit)
     await pace('buildBarricades')
+    buildGuardrails(this.root, s.mats, this.sink, land)
+    await pace('buildGuardrails')
     await buildStorefronts(this.root, s.mats, land, downtownKit, () => pace())
     await pace('buildStorefronts')
-    buildLandmarks(this.root, s.mats, this.sink, land)
+    await buildLandmarks(this.root, s.mats, this.sink, land)
+    await pace('buildLandmarks')
     buildCornerGarage(this.root, s.mats, this.sink, land)
     await pace('buildCornerGarage')
     buildStreetDressing(this.root, s.mats, this.sink, land)
@@ -135,9 +144,10 @@ export class Montello {
     this.falls = buildFalls(this.root, s.mats, this.sink, land, quarryKit)
     progress(0.8, 'Planting the trees…')
     await pace('buildFalls')
-    await this.plantTrees(() => pace())
-    const chunk = GROUND_CHUNK * land.cell
-    for (const m of [...ground, ...this.water.meshes]) {
+    this.forest = new Forest(land, (spots, size) => s.host.foliage.plantTrees(spots, size), this.sink)
+    await this.forest.plantAround(start.x, start.z, PLANT_RADIUS, () => pace())
+    const chunk = WATER_CHUNK * land.cell
+    for (const m of this.water.meshes) {
       const c = m.getBoundingInfo().boundingBox.centerWorld
       s.culler.addGroup([m], c.x, c.z, chunk * 0.71)
     }
@@ -155,7 +165,10 @@ export class Montello {
     for (const m of still) if (!m.isPickable && m instanceof Mesh) m.geometry?.clearCachedData()
   }
 
-  update(dt: number): void {
+  update(dt: number, focus?: { x: number; z: number }): void {
+    const at = focus ?? this.s.host.driving?.position ?? this.s.host.player
+    this.forest?.update(dt, at.x, at.z)
+    this.ground?.update(dt, at.x, at.z)
     this.water?.update(dt, this.s.host.lighting)
     this.junction?.update(dt)
     this.falls?.update(dt)
@@ -168,16 +181,24 @@ export class Montello {
   private addGround(): void {
     const land = this.land
     const n = land.side - 1
-    const heights = new Float32Array(land.side * land.side)
     const ground = land.grids.ground
-    for (let j = 0; j <= n; j++) {
-      for (let i = 0; i <= n; i++) {
-        const row = n - j
-        const seen = land.seen(land.x0 + i * land.cell, land.z0 + row * land.cell, -GROUND_REACH)
-        heights[i + j * land.side] = ground[row * land.side + i] / 100 - (seen ? 0 : SUNK)
+    for (let tj = 0; tj < n; tj += TILE) {
+      for (let ti = 0; ti < n; ti += TILE) {
+        const t = Math.min(TILE, n - ti, n - tj)
+        const heights = new Float32Array((t + 1) * (t + 1))
+        let any = false
+        for (let j = 0; j <= t; j++) {
+          const row = tj + t - j
+          for (let i = 0; i <= t; i++) {
+            const seen = land.seen(land.x0 + (ti + i) * land.cell, land.z0 + row * land.cell, -GROUND_REACH)
+            if (seen) any = true
+            heights[i + j * (t + 1)] = ground[row * land.side + ti + i] / 100 - (seen ? 0 : SUNK)
+          }
+        }
+        if (!any) continue
+        this.sink.addHeightfield(t, t * land.cell, heights, land.x0 + (ti + t / 2) * land.cell, -(land.z0 + (tj + t / 2) * land.cell))
       }
     }
-    this.sink.addHeightfield(n, land.size, heights, land.x0 + land.size / 2, -(land.z0 + land.size / 2))
   }
 
   /** Invisible walls along the playable area's edge, so nothing drives out of town (the way in from Fox Lake stays open). */
@@ -201,44 +222,6 @@ export class Montello {
     }
   }
 
-  private async plantTrees(pace?: () => Promise<void>): Promise<void> {
-    const land = this.land
-    const { treeX, treeZ, treeS } = land.grids
-    const stands = new Map<number, { x: number; y: number; z: number; kind: 'pine' | 'hardwood' | 'birch'; scale: number; yaw: number }[]>()
-    for (let i = 0; i < treeX.length; i++) {
-      const x = land.x0 + treeX[i] / 10
-      const z = land.z0 + treeZ[i] / 10
-      const kind = Math.min(2, treeS[i] >> 6)
-      const h = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453
-      const spot = { x: land.toSceneX(x), y: land.groundAt(x, z), z: land.toSceneZ(z), kind: TREE_KINDS[kind], scale: this.treeScale(i), yaw: (h - Math.floor(h)) * Math.PI * 2 }
-      const stand = (Math.floor(spot.x / TREE_STAND) + 4096) * 8192 + Math.floor(spot.z / TREE_STAND) + 4096
-      let spots = stands.get(stand)
-      if (!spots) stands.set(stand, (spots = []))
-      spots.push(spot)
-      const key = treeKey(x, z)
-      let list = this.treeCells.get(key)
-      if (!list) this.treeCells.set(key, (list = []))
-      list.push(i)
-    }
-    // One stand at a time (Foliage groups by stand anyway), so planting never holds up a frame for long.
-    for (const spots of stands.values()) {
-      if (pace) await pace()
-      this.s.host.foliage.plantTrees(spots, TREE_STAND)
-    }
-  }
-
-  /** The model scale that makes tree `i` its measured height. */
-  private treeScale(i: number): number {
-    const g = this.land.grids
-    return Math.min(2.6, Math.max(0.3, g.treeH[i] / 4 / TREE_MODEL_HEIGHT[Math.min(2, g.treeS[i] >> 6)]))
-  }
-
-  private trunk(i: number): { x: number; z: number; r: number } {
-    const g = this.land.grids
-    return { x: this.land.x0 + g.treeX[i] / 10, z: this.land.z0 + g.treeZ[i] / 10, r: TREE_RADIUS[Math.min(2, g.treeS[i] >> 6)] * this.treeScale(i) + 0.2 }
-  }
-
-  /** Trunks become solid for cars as anything that drives comes within about 50 m of them (points in the physics frame). */
   /** Takes down the scanned house on a lot that has been bought (a building index from `lotHouses`), solids and all. */
   clearHouse(index: number): void {
     this.cleared.add(index)
@@ -249,61 +232,31 @@ export class Montello {
     house.solids.length = 0
   }
 
+  /** Trunks become solid for cars as anything that drives comes within about 50 m of them (points in the physics frame). */
   solidTrees(points: readonly { x: number; z: number }[]): void {
+    if (!this.forest) return
     const { shift } = this.s
-    for (const p of points) {
-      const mx = p.x - shift.x
-      const mz = -(p.z - shift.z)
-      if (!this.land.inside(mx, mz, -60)) continue
-      for (let i = -3; i <= 3; i++) {
-        for (let j = -3; j <= 3; j++) {
-          const key = treeKey(mx + i * TREE_CELL, mz + j * TREE_CELL)
-          if (this.treeSolid.has(key)) continue
-          this.treeSolid.add(key)
-          const list = this.treeCells.get(key)
-          if (!list) continue
-          for (const t of list) {
-            const tr = this.trunk(t)
-            this.sink.addStaticCylinder(tr.x, this.land.groundAt(tr.x, tr.z) + 2, -tr.z, 2.6, tr.r)
-          }
-        }
-      }
-    }
+    this.forest.solidTrees(points.map((p) => ({ x: p.x - shift.x, z: -(p.z - shift.z) })))
   }
 
   get solidTreeCells(): number {
-    return this.treeSolid.size
+    return this.forest?.solidCells ?? 0
+  }
+
+  /** Tree counts: baked crowns, infill added so far, stands planted of those that hold trees. */
+  get treeStats(): { baked: number; infill: number; plantedStands: number; stands: number } {
+    const f = this.forest
+    return { baked: f?.bakedCount ?? 0, infill: f?.infilled ?? 0, plantedStands: f?.plantedStands ?? 0, stands: f?.standCount ?? 0 }
   }
 
   /** Pushes a walker at a scene point out of the trunks around it; true when it moved. */
   pushTrees(p: { x: number; z: number }, r: number): boolean {
-    const land = this.land
-    let mx = land.toMapX(p.x)
-    let mz = land.toMapZ(p.z)
-    let hit = false
-    for (let i = -1; i <= 1; i++) {
-      for (let j = -1; j <= 1; j++) {
-        const list = this.treeCells.get(treeKey(mx + i * TREE_CELL, mz + j * TREE_CELL))
-        if (!list) continue
-        for (const t of list) {
-          const tr = this.trunk(t)
-          const dx = mx - tr.x
-          const dz = mz - tr.z
-          const d = Math.hypot(dx, dz)
-          const min = tr.r + r
-          if (d < min && d > 1e-4) {
-            mx = tr.x + (dx / d) * min
-            mz = tr.z + (dz / d) * min
-            hit = true
-          }
-        }
-      }
-    }
-    if (hit) {
-      p.x = land.toSceneX(mx)
-      p.z = land.toSceneZ(mz)
-    }
-    return hit
+    if (!this.forest) return false
+    const moved = this.forest.push(this.land.toMapX(p.x), this.land.toMapZ(p.z), r)
+    if (!moved) return false
+    p.x = this.land.toSceneX(moved.x)
+    p.z = this.land.toSceneZ(moved.z)
+    return true
   }
 
   /** The street, place or water at a scene point. */
@@ -345,9 +298,6 @@ export class Montello {
   }
 }
 
-function treeKey(x: number, z: number): number {
-  return (Math.floor(x / TREE_CELL) + 4096) * 8192 + Math.floor(z / TREE_CELL) + 4096
-}
 
 function frame(): Promise<void> {
   return new Promise((r) => requestAnimationFrame(() => r()))

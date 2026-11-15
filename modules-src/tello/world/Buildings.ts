@@ -21,28 +21,38 @@ import { ROOF, type BuildingData } from '../data/MapData'
 import type { TelloLand } from '../region'
 import { triangulate } from './Poly'
 import { dressedWalls, knownFronts } from '../data/Downtown'
+import { dressOpenings, dressRoof, frontEdge, type HouseBuilders } from './HouseDetails'
+import { KIT_URL, ModelKit } from './Kit'
 
 const SIDING = [0xf1eee6, 0xe6dfcf, 0xd9d4c7, 0xbfc6c9, 0x9db199, 0x8fa3b5, 0xc9b79a, 0xd8c98f, 0x9c4a3c, 0x6f7f8c, 0xb7b0a2, 0xe9e2c8, 0x7d8f7a, 0xa8998a]
 const BRICK = [0xb8573f, 0xa5503c, 0xc27a5a, 0xe2d6c2]
 const ROOF_TONES = [0x3b3d42, 0x4a3d34, 0x2f3a46, 0x5a3a2e, 0x46494c, 0x3e4a3c, 0x55504a]
 const METAL = [0xc9c2b0, 0xa9b0b4, 0x8d9aa0, 0x7f9482, 0xd9d6cf, 0x9a6a55, 0x6f86a0]
+const INDUSTRIAL = [0xcbbd9a, 0xb6bcbf, 0x8d9d8a, 0xa5533f, 0x7c8ea3, 0xe2ddd0, 0x9a8f7c, 0x6e8575, 0xc7b48a, 0x9aa3a8]
 const STORE = [0xd9cdb8, 0xc7b299, 0xb8573f, 0xcfc8ba, 0xa9a39a, 0xdcc9a0, 0xb9c1c4, 0xc98f6b]
 const TRIM: RGB = hexRGB(0xf2f0ea)
 const STOREY = 3.6
 
-type V3 = [number, number, number]
+export type V3 = [number, number, number]
 
-function rand(seed: number, salt: number): number {
+/** The wall colour of a shop, civic or industrial building that no photo dresses (the factory-finished metal of a pole building, a shop's paint or brick). */
+export function wallTone(b: BuildingData): number {
+  if (b.k === 'store') return pick(STORE, b.s, 1)
+  if (b.k === 'civic') return pick(BRICK, b.s, 1)
+  return pick(INDUSTRIAL, b.s, 1)
+}
+
+export function rand(seed: number, salt: number): number {
   const x = Math.sin(seed * 12.9898 + salt * 78.233) * 43758.5453
   return x - Math.floor(x)
 }
 
-function pick<T>(list: readonly T[], seed: number, salt: number): T {
+export function pick<T>(list: readonly T[], seed: number, salt: number): T {
   return list[Math.floor(rand(seed, salt) * list.length) % list.length]
 }
 
 /** A flat polygon (3 or 4 points) whose front faces `toward`, whatever order the points come in. */
-function facing(b: MeshBuilder, pts: V3[], toward: V3, uvs: number[][], color?: RGB): void {
+export function facing(b: MeshBuilder, pts: V3[], toward: V3, uvs: number[][], color?: RGB | RGB[]): void {
   const [a, c1, c2] = pts
   const ux = c1[0] - a[0], uy = c1[1] - a[1], uz = c1[2] - a[2]
   const vx = c2[0] - a[0], vy = c2[1] - a[1], vz = c2[2] - a[2]
@@ -56,17 +66,19 @@ function facing(b: MeshBuilder, pts: V3[], toward: V3, uvs: number[][], color?: 
     uv = [...uvs].reverse()
     nx = -nx; ny = -ny; nz = -nz
   }
-  const col = color ?? b.color
+  const per = Array.isArray(color?.[0]) ? (color as RGB[]) : null
+  const cols = per && order !== pts ? [...per].reverse() : per
+  const col = per ? b.color : (color as RGB | undefined) ?? b.color
   const i = b.vertexCount
-  for (let k = 0; k < order.length; k++) b.vertex(order[k][0], order[k][1], order[k][2], nx, ny, nz, uv[k][0], uv[k][1], col)
+  for (let k = 0; k < order.length; k++) b.vertex(order[k][0], order[k][1], order[k][2], nx, ny, nz, uv[k][0], uv[k][1], cols ? cols[k] : col)
   b.tri(i, i + 1, i + 2)
   if (order.length === 4) b.tri(i, i + 2, i + 3)
 }
 
-interface Edge { ax: number; az: number; bx: number; bz: number; nx: number; nz: number; len: number; at: number }
+export interface Edge { ax: number; az: number; bx: number; bz: number; nx: number; nz: number; len: number; at: number }
 
 /** The footprint's edges in town coordinates with their outward normals. */
-function edgesOf(p: number[]): Edge[] {
+export function edgesOf(p: number[]): Edge[] {
   const n = p.length / 2
   let area = 0
   for (let i = 0; i < n; i++) {
@@ -87,6 +99,13 @@ function edgesOf(p: number[]): Edge[] {
   }
   return out
 }
+
+/**
+ * Buildings (by name) whose procedural shell and collider are left out because another builder puts an enterable
+ * building on the footprint: add a name before `buildBuildings` runs (Foxtails Gentlemen's Club, whose casino has its
+ * own walls). Their storefront dressing and exterior fittings (Businesses.ts) are unaffected.
+ */
+export const shellSkips = new Set<string>()
 
 export interface BuildStats { buildings: number; colliders: number }
 
@@ -128,10 +147,12 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
   }
   if (!mats.nightGlow.some((g) => g.m === M.lit)) mats.nightGlow.push({ m: M.lit, k: 1.7 })
   let colliders = 0
+  const houseKit = await ModelKit.loadOnce(root.getScene(), KIT_URL.house)
   for (const [index, b] of land.doc.buildings.entries()) {
     if (pace) await pace()
     const edges = edgesOf(b.p)
     if (edges.length < 3) continue
+    if (b.n && shellSkips.has(b.n)) continue
     const own = apart.has(index) ? { chunks: new ChunkedBuilders(128), solids: [] as unknown[] } : null
     if (own) separate.set(index, own)
     const chunks = own ? own.chunks : merged
@@ -142,6 +163,8 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
     // A building matched to the owner's photos wears its front's finish and colour all round (Storefronts.ts dresses the front).
     const known = b.k === 'store' || b.k === 'civic' || b.k === 'house' ? knownFronts(b.r[0][0], b.r[0][1])[0]?.style ?? dressedWalls(b.r[0][0], b.r[0][1]) : undefined
     const facade = !known && (b.k === 'store' || b.k === 'civic')
+    let houseParts: HouseBuilders | null = null
+    let houseFront = -1
     const commercial = facade || b.k === 'industrial'
     const floor = b.f
     const bottom = Math.min(b.l, b.f) - 0.5
@@ -165,10 +188,10 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
       color = hexRGB(known.wall)
     } else if (facade) {
       wall = get(b.k === 'store' ? M.store : M.civic, true)
-      color = hexRGB(pick(b.k === 'store' ? STORE : BRICK, b.s, 1))
+      color = hexRGB(wallTone(b))
     } else if (b.k === 'industrial') {
       wall = get(M.metal, true)
-      color = hexRGB(pick(METAL, b.s, 1))
+      color = hexRGB(wallTone(b))
     } else if (b.k === 'shed') {
       wall = get(rand(b.s, 2) < 0.5 ? M.boards : M.metal, true)
       color = hexRGB(rand(b.s, 3) < 0.35 ? 0x8c3b30 : pick(METAL, b.s, 1))
@@ -180,10 +203,11 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
     // A facade's window rows are 3.6 m apart: stretch them so whole storeys fit the real wall height.
     const storeys = Math.max(1, Math.round(roofs[0].eave / STOREY))
     const vScale = facade ? (storeys * STOREY) / roofs[0].eave : 1
+    const grime: RGB = [color[0] * 0.8, color[1] * 0.8, color[2] * 0.8]
     for (const e of edges) {
       const top = floor + roofBehind(roofs, e).eave + parapet
       facing(wall, [[e.ax, bottom, e.az], [e.bx, bottom, e.bz], [e.bx, top, e.bz], [e.ax, top, e.az]], [e.nx, 0, e.nz],
-        [[e.at, (bottom - floor) * vScale], [e.at + e.len, (bottom - floor) * vScale], [e.at + e.len, (top - floor) * vScale], [e.at, (top - floor) * vScale]], color)
+        [[e.at, (bottom - floor) * vScale], [e.at + e.len, (bottom - floor) * vScale], [e.at + e.len, (top - floor) * vScale], [e.at, (top - floor) * vScale]], [grime, grime, color, color])
     }
     // A block taller than its neighbours shows its own wall above their roofs.
     for (const r of roofs) {
@@ -204,7 +228,14 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
         facing(found, [[e.ax + ox, bottom, e.az + oz], [e.bx + ox, bottom, e.bz + oz], [e.bx + ox, floor + 0.28, e.bz + oz], [e.ax + ox, floor + 0.28, e.az + oz]], [e.nx, 0, e.nz],
           [[e.at, 0], [e.at + e.len, 0], [e.at + e.len, floor + 0.28 - bottom], [e.at, floor + 0.28 - bottom]])
       }
-      openings(b, edges, floor, roofs, land, get(M.paint, true, false), get(M.glass, false, false), get(M.lit, false, false), get(b.k === 'house' ? M.door : M.garage, false, false))
+      const kitted = houseKit && !known && (b.k === 'house' || b.k === 'garage')
+      if (kitted) {
+        const front = frontEdge(edges, land)
+        const trimmed = get(M.paint, true, false)
+        if (b.k === 'house') cornerBoards(trimmed, edges, floor, roofs, wall === get(M.siding, true) || wall === get(M.boards, true))
+        houseParts = { paint: trimmed, glass: get(M.glass, false, false), lit: get(M.lit, false, false), garage: get(M.garage, false, false), foundation: get(M.foundation, false, false), shingle: get(M.shingles, true, false), brick: get(M.brick, true, false), wall }
+        houseFront = front
+      } else if (b.k !== 'industrial') openings(b, edges, floor, roofs, land, get(M.paint, true, false), get(M.glass, false, false), get(M.lit, false, false), get(b.k === 'house' ? M.door : M.garage, false, false))
     }
     // Roofs.
     const tin = b.k === 'industrial' || (b.k === 'shed' && rand(b.s, 2) >= 0.5)
@@ -240,7 +271,7 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
         else gable(pitched, wall, under, r, r.type === ROOF.gableFirst, floor + r.eave + lift, floor + r.ridge + lift, over, tone, color)
       })
       const main = roofs[0]
-      if (b.k === 'house' && main.type !== ROOF.flat && rand(b.s, 7) < 0.55) {
+      if (!houseParts && b.k === 'house' && main.type !== ROOF.flat && rand(b.s, 7) < 0.55) {
         const first = main.type === ROOF.gableFirst || (main.type !== ROOF.gableSecond && main.hx >= main.hz)
         const along = (rand(b.s, 8) - 0.5) * (first ? main.hx : main.hz) * 0.9
         const px = main.cx + (first ? main.ux : main.vx) * along
@@ -248,6 +279,11 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
         const rise = main.ridge - main.eave
         get(M.brick, true).orientedBox(px, floor + main.eave + rise * 0.5 + 0.5, pz, 0.3, rise * 0.5 + 0.6, 0.3, main.yaw, { color: hexRGB(0x9a5a48), skipBottom: true })
       }
+    }
+    if (houseParts && houseKit) {
+      const input = { b, edges, roofs, floor, tone, wall: color }
+      dressOpenings(houseKit, houseParts, input, houseFront)
+      dressRoof(houseKit, houseParts, input, houseFront)
     }
     // Solid for walkers and cars.
     for (const r of roofs) {
@@ -269,10 +305,10 @@ export async function buildBuildings(root: TransformNode, mats: Mats, physics: S
 }
 
 /** One covering rectangle with its roof, in town coordinates: `u` is its first axis, `v` its second. */
-interface Roof { cx: number; cz: number; hx: number; hz: number; yaw: number; ux: number; uz: number; vx: number; vz: number; type: number; eave: number; ridge: number }
+export interface Roof { cx: number; cz: number; hx: number; hz: number; yaw: number; ux: number; uz: number; vx: number; vz: number; type: number; eave: number; ridge: number }
 
 /** The building's rectangles with their roofs: as measured, or by the kind of building where the lidar has nothing. */
-function roofsOf(b: BuildingData): Roof[] {
+export function roofsOf(b: BuildingData): Roof[] {
   const flatKind = b.k === 'store' || b.k === 'civic' || (b.k === 'industrial' && b.r.length > 1)
   const pitch = b.k === 'industrial' ? 0.2 : b.k === 'shed' ? 0.42 : b.k === 'garage' ? 0.5 : b.k === 'church' ? 1.0 : 0.52 + rand(b.s, 6) * 0.2
   return b.r.map((r) => {
@@ -290,7 +326,7 @@ function roofsOf(b: BuildingData): Roof[] {
 }
 
 /** The rectangle behind a wall edge (the one holding a point just inside it), or the nearest. */
-function roofBehind(roofs: Roof[], e: Edge): Roof {
+export function roofBehind(roofs: Roof[], e: Edge): Roof {
   const px = (e.ax + e.bx) / 2 - e.nx * 0.5
   const pz = (e.az + e.bz) / 2 - e.nz * 0.5
   let best = roofs[0]
@@ -308,7 +344,7 @@ function roofBehind(roofs: Roof[], e: Edge): Roof {
   return best
 }
 
-function at(r: Roof, u: number, v: number, y: number): V3 {
+export function at(r: Roof, u: number, v: number, y: number): V3 {
   return [r.cx + r.ux * u + r.vx * v, y, r.cz + r.uz * u + r.vz * v]
 }
 
@@ -325,7 +361,7 @@ export function aerialRoof(hex: string): number {
   return (r << 16) | (g << 8) | b
 }
 
-function slope(roof: MeshBuilder, under: MeshBuilder, pts: V3[], toward: V3, tone: RGB): void {
+export function slope(roof: MeshBuilder, under: MeshBuilder, pts: V3[], toward: V3, tone: RGB): void {
   const uv = pts.map((p, i) => (i === 0 ? [0, 0] : [Math.hypot(p[0] - pts[0][0], p[2] - pts[0][2]), p[1] - pts[0][1]]))
   facing(roof, pts, toward, uv, tone)
   facing(under, pts.map((p): V3 => [p[0], p[1] - 0.08, p[2]]), [-toward[0], -toward[1], -toward[2]], uv, TRIM)
@@ -458,12 +494,26 @@ function openings(b: BuildingData, edges: Edge[], floor: number, roofs: Roof[], 
   }
 }
 
+/** White boards up each corner of a sided house, so the siding stops at a corner the way real siding does. */
+function cornerBoards(trim: MeshBuilder, edges: Edge[], floor: number, roofs: Roof[], sided: boolean): void {
+  if (!sided) return
+  for (const e of edges) {
+    const top = floor + roofBehind(roofs, e).eave
+    const dx = (e.bx - e.ax) / e.len, dz = (e.bz - e.az) / e.len
+    const ox = e.nx * 0.02, oz = e.nz * 0.02
+    for (const [t0, t1] of [[0, 0.11], [e.len - 0.11, e.len]]) {
+      facing(trim, [[e.ax + dx * t0 + ox, floor, e.az + dz * t0 + oz], [e.ax + dx * t1 + ox, floor, e.az + dz * t1 + oz], [e.ax + dx * t1 + ox, top, e.az + dz * t1 + oz], [e.ax + dx * t0 + ox, top, e.az + dz * t0 + oz]], [e.nx, 0, e.nz],
+        [[0, 0], [0.11, 0], [0.11, top - floor], [0, top - floor]], TRIM)
+    }
+  }
+}
+
 /** A fuel canopy: a white slab with a coloured band on four posts. */
 function canopy(b: BuildingData, floor: number, height: number, slab: MeshBuilder, post: MeshBuilder, physics: StaticSink): void {
   const [mx, mz, hx, hz, yaw] = b.r[0]
   const top = floor + height
   slab.orientedBox(mx, top - 0.3, -mz, hx, 0.3, hz, yaw, { color: hexRGB(0xf1f1ee) })
-  slab.orientedBox(mx, top - 0.3, -mz, hx + 0.03, 0.12, hz + 0.03, yaw, { color: hexRGB(rand(b.s, 1) < 0.5 ? 0xb3262a : 0x2f6d3a) })
+  slab.orientedBox(mx, top - 0.3, -mz, hx + 0.03, 0.12, hz + 0.03, yaw, { color: hexRGB(0x4a4d52) })
   const c = Math.cos(yaw), s = Math.sin(yaw)
   for (const [a, d] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
     const lx = a * Math.max(0.6, hx - 1.2), lz = d * Math.max(0.6, hz - 1.2)

@@ -22,30 +22,31 @@ import '../../rackreel/world/Shaders'
 import type { Lighting } from '../../rackreel/world/Lighting'
 import type { TelloLand } from '../region'
 
-const CHUNK = 64
+export const WATER_CHUNK = 64
 
-/** Depth under each cell centre (the mean of its corners), as the shader's depth map: red = depth / 24 m. */
+/** Depth under each cell centre (the mean of its corners), as the shader's depth map (one byte a texel): depth / 24 m. */
 export function depthBytes(land: TelloLand): Uint8Array {
   const n = land.side
   const cells = n - 1
   const { ground, water } = land.grids
-  const bytes = new Uint8Array(cells * cells * 4)
+  const bytes = new Uint8Array(cells * cells)
   for (let j = 0; j < cells; j++) {
     for (let i = 0; i < cells; i++) {
+      const k = j * n + i
+      if (!water[k] && !water[k + 1] && !water[k + n] && !water[k + n + 1]) continue
       let depth = 0
       let wet = 0
-      for (const k of [j * n + i, j * n + i + 1, (j + 1) * n + i, (j + 1) * n + i + 1]) {
-        if (!water[k]) continue
-        const d = (water[k] - ground[k]) / 100
+      for (let c = 0; c < 4; c++) {
+        const at = k + (c & 1) + (c >> 1) * n
+        if (!water[at]) continue
+        const d = (water[at] - ground[at]) / 100
         if (d > 0) {
           depth += d
           wet++
         }
       }
       depth = wet ? depth / 4 : 0
-      const o = (j * cells + i) * 4
-      bytes[o] = depth > 0 ? Math.max(1, Math.min(255, Math.round((depth / 24) * 255))) : 0
-      bytes[o + 3] = 255
+      bytes[j * cells + i] = depth > 0 ? Math.max(1, Math.min(255, Math.round((depth / 24) * 255))) : 0
     }
   }
   return bytes
@@ -59,7 +60,7 @@ export class Water {
   constructor(private readonly ctx: EngineContext, land: TelloLand) {
     const { scene } = ctx
     const cells = land.side - 1
-    const depthMap = RawTexture.CreateRGBATexture(depthBytes(land), cells, cells, scene, false, false, Texture.BILINEAR_SAMPLINGMODE)
+    const depthMap = RawTexture.CreateRTexture(depthBytes(land), cells, cells, scene, false, false, Texture.BILINEAR_SAMPLINGMODE)
     depthMap.wrapU = Texture.WRAP_ADDRESSMODE
     depthMap.wrapV = Texture.WRAP_ADDRESSMODE
     const material = new ShaderMaterial('tello-water-mat', scene, 'rrWater', {
@@ -88,8 +89,8 @@ export class Water {
     this.material = material
     const n = land.side
     const water = land.grids.water
-    for (let cj = 0; cj < cells; cj += CHUNK) {
-      for (let ci = 0; ci < cells; ci += CHUNK) {
+    for (let cj = 0; cj < cells; cj += WATER_CHUNK) {
+      for (let ci = 0; ci < cells; ci += WATER_CHUNK) {
         const positions: number[] = []
         const indices: number[] = []
         const index = new Map<number, number>()
@@ -103,8 +104,8 @@ export class Water {
           }
           return v
         }
-        for (let j = cj; j < Math.min(cells, cj + CHUNK); j++) {
-          for (let i = ci; i < Math.min(cells, ci + CHUNK); i++) {
+        for (let j = cj; j < Math.min(cells, cj + WATER_CHUNK); j++) {
+          for (let i = ci; i < Math.min(cells, ci + WATER_CHUNK); i++) {
             if (!water[j * n + i] || !water[j * n + i + 1] || !water[(j + 1) * n + i] || !water[(j + 1) * n + i + 1]) continue
             if (!land.seen(land.x0 + i * land.cell, land.z0 + j * land.cell)) continue
             const a = vertex(i, j)
@@ -118,13 +119,14 @@ export class Water {
         const data = new VertexData()
         data.positions = positions
         data.indices = indices
-        const mesh = new Mesh(`tello-water:${ci / CHUNK},${cj / CHUNK}`, scene)
+        const mesh = new Mesh(`tello-water:${ci / WATER_CHUNK},${cj / WATER_CHUNK}`, scene)
         data.applyToMesh(mesh, false)
         mesh.material = material
         mesh.isPickable = false
         mesh.alphaIndex = 0
         mesh.freezeWorldMatrix()
         mesh.doNotSyncBoundingInfo = true
+        mesh.geometry?.clearCachedData()
         this.meshes.push(mesh)
       }
     }

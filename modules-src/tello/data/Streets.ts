@@ -14,6 +14,7 @@
 import { COVER, type BridgeData, type BuildingData, type MapDoc, type MapGrids, type RoadData } from './MapData'
 import { BUILDING_HEIGHTS, CORNER_GARAGE, EXTRA_BUILDINGS } from './Downtown'
 import { pointInRing, resample } from '../world/Poly'
+import { fixRoadLines, repaveMoved } from './RoadFixes'
 
 /** Lane and parking lane, metres: one lane each way plus a parking lane along each curb. */
 export const LANE = 3.3
@@ -400,6 +401,7 @@ export function fixStreets(doc: MapDoc, grids: MapGrids): void {
   fixBridge(doc, grids)
   fixBuildings(doc, grids)
   addLots(doc, grids)
+  repaveMoved(doc, grids, fixRoadLines(doc).moved)
   paveProfiles(doc, grids, townProfiles(doc))
 }
 

@@ -15,7 +15,13 @@ import type { MeshBuilder, RGB } from '../../foxlake/fp/core/Geo'
 export interface KitPiece { slot: string; pos: Float32Array; nrm: Float32Array; uv: Float32Array; col: Float32Array | null; idx: Uint32Array }
 
 /** Where the kit files are served from, relative to the module page. */
-export const KIT_URL = { downtown: '../models/tello/downtown-kit.glb', quarry: '../models/tello/quarry.glb' }
+export const KIT_URL = {
+  downtown: '../models/tello/downtown-kit.glb',
+  quarry: '../models/tello/quarry.glb',
+  house: '../models/tello/house-kit.glb',
+  places: '../models/tello/places-kit.glb',
+  fields: '../models/tello/fields-kit.glb',
+}
 
 const toSrgb = (c: number) => (c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055)
 const _p = new Vector3()
@@ -64,6 +70,17 @@ export class ModelKit {
     }
     container.dispose()
     return parts.size ? new ModelKit(parts) : null
+  }
+
+  private static readonly shared = new WeakMap<Scene, Map<string, Promise<ModelKit | null>>>()
+
+  /** The kit at `url`, loaded once per scene however many builders ask for it. */
+  static loadOnce(scene: Scene, url: string): Promise<ModelKit | null> {
+    let byUrl = ModelKit.shared.get(scene)
+    if (!byUrl) ModelKit.shared.set(scene, (byUrl = new Map()))
+    let found = byUrl.get(url)
+    if (!found) byUrl.set(url, (found = ModelKit.load(scene, url)))
+    return found
   }
 
   has(name: string): boolean {

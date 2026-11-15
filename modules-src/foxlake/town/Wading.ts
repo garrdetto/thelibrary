@@ -1,14 +1,13 @@
 /**
- * Your cars in the lake country's water. They used to drive along the lake bed
+ * Your cars in Montello's water (Lake Montello, the river, the ponds). They used to drive along the lake bed
  * fully under water; now water drags at a car in proportion to how deep it is,
  * and once it is deep enough to reach the doors the engine floods: the car
  * loses power, and a moment later it is towed back to the last spot where it
  * stood on dry ground, facing away from the water. Trailers and parked cars
  * that roll in are towed out the same way.
  */
-import { WATER_LEVEL } from '../../rackreel/world/Terrain'
 import type { Terrain } from '../../rackreel/world/Terrain'
-import { TOWN_Y, sceneToTown, townToScene } from '../region'
+import { TOWN_OFFSET, sceneToTown, townToScene } from '../region'
 import type { Car, Cars } from './Cars'
 
 /** Water this deep under the car slows it; this deep floods the engine (metres). */
@@ -27,12 +26,11 @@ export class Wading {
 
   constructor(private readonly terrain: Terrain, private readonly cars: Cars, private readonly toast: (text: string) => void) {}
 
-  /** Water depth under a car (scene metres), 0 on land or anywhere outside the lake country. */
+  /** Water depth under a car (scene metres), 0 on land. */
   depthUnder(car: Car): number {
     const p = car.fp.position
     const s = townToScene(p.x, p.y, p.z, this._t)
-    if (!this.terrain.inSquare(s.x, s.z)) return 0
-    return Math.max(0, WATER_LEVEL - this.terrain.heightAt(s.x, s.z))
+    return Math.max(0, this.terrain.depthAt(s.x, s.z))
   }
 
   /** True when the car's engine is flooded (no throttle until it is towed out). */
@@ -79,7 +77,7 @@ export class Wading {
     car.fp.towedBy?.unhitch()
     car.fp.unhitch()
     const s = townToScene(spot.x, 0, spot.z, this._t)
-    const ground = this.terrain.heightAt(s.x, s.z) - TOWN_Y
+    const ground = this.terrain.heightAt(s.x, s.z) - TOWN_OFFSET.y
     const P = car.fp.preset
     const body = car.fp.body
     body.setTranslation({ x: spot.x, y: ground + P.chassis.hy + P.suspension.rest + 0.5, z: spot.z }, true)
@@ -100,7 +98,7 @@ export class Wading {
         const ang = (a / 32) * Math.PI * 2
         const x = s.x + Math.cos(ang) * r
         const z = s.z + Math.sin(ang) * r
-        if (!this.terrain.inBounds(x, z, 4) || this.terrain.heightAt(x, z) < 0.8 || this.terrain.slopeAt(x, z) > 0.3) continue
+        if (!this.terrain.inBounds(x, z, 4) || this.terrain.depthAt(x, z) > 0.05 || this.terrain.slopeAt(x, z) > 0.3) continue
         const t = sceneToTown(x, 0, z)
         const dx = x - s.x
         const dz = -(z - s.z)

@@ -65,10 +65,10 @@ export class Parking {
   }
 
   /** Is this ground-plane footprint free of buildings, props and vehicles (ignoring kerbs and the ground)? */
-  isClear(f: Footprint, height: number, exclude: readonly RAPIER.RigidBody[] = [], reserved: readonly Footprint[] = [], margin = 0.35) {
+  isClear(f: Footprint, height: number, exclude: readonly RAPIER.RigidBody[] = [], reserved: readonly Footprint[] = [], margin = 0.35, y0 = 0) {
     if (reserved.some(r => footprintsOverlap(f, r, margin))) return false;
     const hy = Math.max(0.3, height / 2);
-    return this.boxFree(f.x, 0.3 + hy, f.z, f.yaw, f.hx + margin, hy, f.hz + margin, BLOCKERS, exclude);
+    return this.boxFree(f.x, y0 + 0.3 + hy, f.z, f.yaw, f.hx + margin, hy, f.hz + margin, BLOCKERS, exclude);
   }
 
   /**
@@ -76,9 +76,9 @@ export class Parking {
    * nose-to-tail slots in widening rings. Falls back to `want` if the whole
    * neighborhood is full.
    */
-  find(want: Footprint, height: number, exclude: readonly RAPIER.RigidBody[] = [], reserved: readonly Footprint[] = [], rings = 5): Footprint {
+  find(want: Footprint, height: number, exclude: readonly RAPIER.RigidBody[] = [], reserved: readonly Footprint[] = [], rings = 5, y0 = 0): Footprint {
     this.refresh();
-    if (this.isClear(want, height, exclude, reserved)) return want;
+    if (this.isClear(want, height, exclude, reserved, 0.35, y0)) return want;
     const { fx, fz, rx, rz } = axes(want.yaw);
     const stepSide = want.hz * 2 + 0.9, stepLong = want.hx * 2 + 1.2;
     const slots: { lat: number; lon: number; d: number }[] = [];
@@ -89,7 +89,7 @@ export class Parking {
     slots.sort((a, b) => a.d - b.d);
     for (const s of slots) {
       const f = { ...want, x: want.x + rx * s.lat * stepSide + fx * s.lon * stepLong, z: want.z + rz * s.lat * stepSide + fz * s.lon * stepLong };
-      if (this.isClear(f, height, exclude, reserved)) return f;
+      if (this.isClear(f, height, exclude, reserved, 0.35, y0)) return f;
     }
     return want;
   }

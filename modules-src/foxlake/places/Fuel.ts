@@ -2,14 +2,14 @@
  * Fuel for your Fox Lake vehicles, kept like classic Fox Plains: the shared
  * world holds each tank (Account.fuel); the page burns it as you drive
  * (fp Vehicle.setFuel), reports what was burned every few seconds (the
- * authority only lets levels go down), and fills up at a pump: Gas & Go in
- * Fox Plains, or Kwik Trip, Mobil and the BP in Montello. A car that runs dry
+ * authority only lets levels go down), and fills up at a pump: Kwik Trip, Mobil
+ * or the BP in Montello. A car that runs dry
  * can be towed to the nearest pump.
  */
 import type { Account } from '../../maplestreet/shared/Economy'
 import { FUEL_PRICE, FUEL_SCALE, VEHICLES } from '../../maplestreet/shared/Economy'
 import type { ClientMsg, VehicleKind } from '../../maplestreet/shared/Protocol'
-import { GAS_STATION, PUMP_RADIUS } from '../../maplestreet/shared/WorldLayout'
+import { PUMP_RADIUS } from '../../maplestreet/shared/WorldLayout'
 import { MONTELLO_PUMPS, MONTELLO_SHOPS } from '../../maplestreet/shared/MontelloPlaces'
 import type { Car, Cars } from '../town/Cars'
 
@@ -26,7 +26,7 @@ export interface Pump {
 
 /** Every pump in Fox Lake's shared world, in the town frame. */
 export const PUMPS: readonly Pump[] = (() => {
-  const out: Pump[] = GAS_STATION.pumps.map((p) => ({ x: p.x, z: p.z, station: GAS_STATION.name, side: Math.sign(p.x - GAS_STATION.canopy.x) || 1 }))
+  const out: Pump[] = []
   const groups: { x: number; z: number; pumps: { x: number; z: number }[] }[] = []
   for (const p of MONTELLO_PUMPS) {
     const g = groups.find((q) => Math.hypot(q.x - p.x, q.z - p.z) < 40)

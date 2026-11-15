@@ -8,6 +8,7 @@ import { NeighborhoodLogic, Persisted } from '../../shared/RoomLogic';
 import { AUTOSAVE_EVERY_MS, type ClientMsg, type ServerMsg } from '../../shared/Protocol';
 import { store } from '../core/Storage';
 import { NpcTraffic, obstaclesFrom } from '../../shared/Npc';
+import { MONTELLO_LOTS } from '../../shared/MontelloPlaces';
 
 export type Deliver = (to: string | '*', msg: ServerMsg, except?: string) => void;
 
@@ -17,11 +18,11 @@ export class Host {
   private timers: number[] = [];
   private last = performance.now();
 
-  constructor(private saveKey: string | null, rawDeliver: Deliver, opts: { npcs?: boolean; reapMs?: number; selfId?: string; unlimitedMoney?: boolean; devTools?: boolean } = {}) {
+  constructor(private saveKey: string | null, rawDeliver: Deliver, opts: { npcs?: boolean; reapMs?: number; selfId?: string; unlimitedMoney?: boolean; devTools?: boolean; foxLake?: boolean } = {}) {
     // Clone on the way out so no client ever shares object identity with authority state.
     const deliver: Deliver = (to, msg, except) => rawDeliver(to, structuredClone(msg), except);
     const saved = saveKey ? store.json<Persisted>(saveKey) : null;
-    const withNpcs = opts.npcs !== false;
+    const withNpcs = opts.npcs !== false && !opts.foxLake;
     this.logic = new NeighborhoodLogic({
       send: (to, msg) => deliver(to, msg),
       broadcast: (msg, except) => {
@@ -32,7 +33,7 @@ export class Host {
         }
         deliver('*', msg, except);
       },
-    }, saved, { unlimitedMoney: opts.unlimitedMoney, ...(opts.devTools ? { devTools: 'all' as const } : {}) });
+    }, saved, { unlimitedMoney: opts.unlimitedMoney, ...(opts.devTools ? { devTools: 'all' as const } : {}), ...(opts.foxLake ? { foxLake: true, extraLots: MONTELLO_LOTS } : {}) });
 
     this.timers.push(window.setInterval(() => {
       const now = performance.now();

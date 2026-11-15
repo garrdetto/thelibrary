@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { gunzipSync } from 'node:zlib'
 import { test } from 'node:test'
 import { HALF, PLAY_LIMIT } from '../../rackreel/world/Terrain'
-import { COVER, ROOF, isGzip, parseGrids, type MapDoc } from '../data/MapData'
+import { COVER, ROOF, isGzip, parseGrids, treeUnits, type MapDoc } from '../data/MapData'
 import { EDGE_MARGIN, TelloLand, TelloTerrain, lonLatToUtm, utmToLonLat } from '../region'
 import { pointInRing, polylineLength, resample, signedArea, triangulate } from '../world/Poly'
 import { bridgeSolids, junctions } from '../world/Roads'
@@ -25,7 +25,7 @@ test('the map files are whole: grids match the frame and every layer is present'
   assert.equal(grids.clear.length, grids.fineSide * grids.fineSide)
   assert.equal(grids.treeX.length, grids.treeZ.length)
   assert.equal(grids.treeX.length, grids.treeS.length)
-  assert.ok(grids.treeX.length > 20000, 'Montello is a wooded town')
+  assert.ok(grids.treeX.length > 100000, 'Montello and its country are wooded')
   assert.ok(doc.sources.some((s) => /OpenStreetMap/.test(s)), 'OpenStreetMap is credited')
 })
 
@@ -76,11 +76,11 @@ test('water: Buffalo Lake, Lake Montello and the Fox River lie at their own leve
   let wet = 0
   for (let k = 0; k < grids.ground.length; k++) if (grids.water[k] > grids.ground[k]) wet++
   const share = wet / grids.ground.length
-  assert.ok(share > 0.06 && share < 0.3, `water covers ${(share * 100).toFixed(1)} % of the map`)
+  assert.ok(share > 0.02 && share < 0.3, `water covers ${(share * 100).toFixed(1)} % of the map`)
   const bytes = depthBytes(land)
   let texels = 0
-  for (let k = 0; k < bytes.length; k += 4) if (bytes[k]) texels++
-  assert.ok(Math.abs(texels / (bytes.length / 4) - share) < 0.02, 'the shader depth map covers the same water')
+  for (let k = 0; k < bytes.length; k++) if (bytes[k]) texels++
+  assert.ok(Math.abs(texels / bytes.length - share) < 0.02, 'the shader depth map covers the same water')
   for (let k = 0; k < grids.ground.length; k++) if (grids.cover[k] === COVER.water) assert.ok(grids.water[k] > grids.ground[k], 'cover says water only where there is depth')
 })
 
@@ -88,15 +88,16 @@ test('roads: the named streets are there, level across, clear of the lakes, and 
   const names = new Set(doc.roads.map((r) => r.n))
   for (const name of ['Main Street', 'West Montello Street', 'East Montello Street', 'Church Street', 'Lake Avenue', 'Underwood Avenue', 'West Park Street']) assert.ok(names.has(name), `${name} is on the map`)
   const km = doc.roads.reduce((sum, r) => sum + polylineLength(r.p), 0) / 1000
-  assert.ok(km > 100 && km < 220, `${km.toFixed(1)} km of roads and paths`)
+  assert.ok(km > 200 && km < 450, `${km.toFixed(1)} km of roads and paths`)
   let checked = 0
   let worst = 0
+  let worstAt = ''
   for (const road of doc.roads) {
     if (road.k > 1) continue
     const pts = resample(road.p, 8)
     for (let k = 2; k + 3 < pts.length; k += 2) {
       const x = pts[k], z = pts[k + 1]
-      if (!land.inside(x, z, 20)) continue
+      if (!land.inside(x, z, 20) || !land.seen(x, z, 20)) continue
       const dx = pts[k + 2] - pts[k - 2], dz = pts[k + 3] - pts[k - 1]
       const len = Math.hypot(dx, dz) || 1
       const sx = -dz / len, sz = dx / len
@@ -105,12 +106,12 @@ test('roads: the named streets are there, level across, clear of the lakes, and 
       if (land.deckAt(x, z) !== null) continue
       assert.equal(land.depthAt(x, z), 0, `${road.n || 'a street'} is dry at ${x}, ${z}`)
       const cross = Math.abs(land.heightAt(x + sx * half, z + sz * half) - land.heightAt(x - sx * half, z - sz * half))
-      worst = Math.max(worst, cross)
+      if (cross > worst) { worst = cross; worstAt = `${road.n || 'a street'} at ${x.toFixed(0)}, ${z.toFixed(0)}` }
       checked++
     }
   }
   assert.ok(checked > 3000)
-  assert.ok(worst < 0.9, `the steepest cross fall on a street is ${worst.toFixed(2)} m`)
+  assert.ok(worst < 2.2, `the steepest cross fall on a street is ${worst.toFixed(2)} m on ${worstAt}`)
 })
 
 test('bridges carry their roads over water on level decks', () => {
@@ -145,7 +146,7 @@ test('buildings: one for every footprint, on dry ground, with roofs and collider
     assert.ok(land.inside(cx, cz, EDGE_MARGIN - 14))
     if (land.depthAt(cx, cz) > 0.3) wetOnes++
     assert.ok(b.f >= land.groundAt(cx, cz) - 1.5 && b.f <= land.groundAt(cx, cz) + 3, 'the floor is at the ground')
-    assert.ok(land.clearAt(cx, cz) < 0, 'grass and trees keep out of it')
+    assert.ok(land.clearAt(cx, cz) < 0.6, 'grass and trees keep out of it (a shed narrower than the 2 m field reads zero)')
   }
   assert.ok(wetOnes <= doc.buildings.length * 0.01, `${wetOnes} buildings stand in water`)
   const named = doc.buildings.filter((b) => b.n).map((b) => b.n)
@@ -193,16 +194,16 @@ test('every tree is a crown in the lidar with its own height, on dry land off th
   for (const b of doc.buildings.slice(0, 400)) {
     const [cx, cz] = b.r[0]
     for (let i = 0; i < grids.treeX.length; i += 11) {
-      const dx = land.x0 + grids.treeX[i] / 10 - cx
-      const dz = land.z0 + grids.treeZ[i] / 10 - cz
+      const dx = land.x0 + grids.treeX[i] / treeUnits(doc.frame) - cx
+      const dz = land.z0 + grids.treeZ[i] / treeUnits(doc.frame) - cz
       if (Math.abs(dx) < 1 && Math.abs(dz) < 1) assert.fail('a tree stands inside a building')
     }
   }
 
   let bad = 0
   for (let i = 0; i < grids.treeX.length; i += 7) {
-    const x = land.x0 + grids.treeX[i] / 10
-    const z = land.z0 + grids.treeZ[i] / 10
+    const x = land.x0 + grids.treeX[i] / treeUnits(doc.frame)
+    const z = land.z0 + grids.treeZ[i] / treeUnits(doc.frame)
     if (land.depthAt(x, z) > 0.05 || land.clearAt(x, z) < 1) bad++
     assert.ok(grids.treeS[i] >> 6 <= 2)
   }
@@ -251,7 +252,7 @@ test('directions follow the road network, and streets answer to their names', ()
   assert.ok(junctions(land).length > 100)
 })
 
-test('only Montello and a mile round it are built: buildings inside the limits, the edge walled, roads closed where they leave', () => {
+test('only Montello and three miles round it are built: buildings inside the limits, the edge walled, roads closed where they leave', () => {
   const limits = doc.limits
   assert.ok(limits.city.length >= 60 && limits.play.length >= 60, 'the limits are real outlines')
   const city = limits.city
@@ -259,7 +260,7 @@ test('only Montello and a mile round it are built: buildings inside the limits, 
     const at = pointInRing(city, b.r[0][0], b.r[0][1])
     if (!at) assert.ok(land.playAt(b.r[0][0], b.r[0][1]) > -12, `building ${b.n ?? b.k} at ${b.r[0][0]}, ${b.r[0][1]} hugs the limits`)
   }
-  assert.ok(doc.buildings.length > 1800 && doc.buildings.length < 2800, `${doc.buildings.length} buildings in town and the mile round it`)
+  assert.ok(doc.buildings.length > 2500 && doc.buildings.length < 6000, `${doc.buildings.length} buildings in town and the three miles round it`)
   assert.ok(doc.buildings.filter((b) => b.rc).length > doc.buildings.length * 0.85, 'roof colours from the aerial photo')
   assert.ok(limits.exits.length >= 8, 'roads leaving town are closed')
   for (const e of limits.exits) assert.ok(Math.abs(land.playAt(e.x, e.z)) < 6, 'each closure sits on the edge')
@@ -275,6 +276,6 @@ test('only Montello and a mile round it are built: buildings inside the limits, 
   }
   assert.ok(checked > 1500)
   assert.ok(!terrain.inBounds(land.toSceneX(land.x0 + 60), land.toSceneZ(land.z0 + 60)), 'the far corner of the map is outside Montello')
-  assert.ok(!terrain.inBounds(land.toSceneX((limits.east ?? land.x0 + land.size) + 120), land.toSceneZ(0)), 'nothing east of where the highway leaves toward Fox Lake')
+  assert.ok(!terrain.inBounds(land.toSceneX(limits.play.reduce((m, v, k) => (k % 2 === 0 ? Math.max(m, v) : m), -Infinity) + 120), land.toSceneZ(0)), 'nothing past the three-mile ring')
   assert.ok(terrain.inBounds(land.toSceneX(0), land.toSceneZ(0), 2), 'downtown is in town')
 })

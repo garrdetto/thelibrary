@@ -4,7 +4,7 @@ import type { Material } from '@babylonjs/core/Materials/material'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
-import { findLaunch, planHomeStunt } from '../systems/BowRoutes'
+import { findLaunch, planHomeStunt, setLakeShape } from '../systems/BowRoutes'
 import { Ray } from '@babylonjs/core/Culling/ray'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
@@ -38,9 +38,10 @@ import { texturedMaterial } from '../world/TexturedMaterial'
 import type { CreatureSurface } from '../world/CreatureTextures'
 import type { FoliageKind } from '../world/FoliageTextures'
 import { Terrain, bayCoord, channelDistance } from '../world/Terrain'
-import { STAND_CLIMB_SECONDS, STAND_LAYOUTS, findStandSites, standToWorld } from '../world/TreeStand'
+import { STAND_CLIMB_SECONDS, STAND_LAYOUTS, findStandSites, standSiteAt, standToWorld } from '../world/TreeStand'
 import type { StandSite } from '../world/TreeStand'
-import { buildDock, buildGround, buildSky, buildWater, findLandmarks } from '../world/World'
+import { buildDock, buildGround, buildSky, buildWater, findLandmarks, siteLandmarks } from '../world/World'
+import type { LakeSiteConfig } from '../world/LakeSite'
 import { Avatar, HIP_HEIGHT } from './Avatar'
 import { GearHands, placeRifle, placeRodInHand } from './Grips'
 import { Progress } from './Progress'
@@ -108,6 +109,12 @@ export interface GameHost {
   mapMarkers(): MapMarker[]
   /** Puts the player on foot at `at`, facing `facing`, out of any vehicle. */
   teleport(at: Vector3, facing: number): void
+  /** Which rides the player owns (with `GameOptions.ridesBought`): each appears at the dock or the shore once owned, and goes when not. */
+  setRides(rides: { utv: boolean; quad: boolean; boat: boolean }): void
+  /** True while the player stands at a gear rack the host world provides: 1 and 2 then take or swap the rod and the rifle. */
+  setGearRackHere(here: boolean): void
+  /** Opens the gear rack (what you carry), the wardrobe or the order desk (the outfitter's catalog, paid in Rack & Reel cash). */
+  openGearPanel(tab: 'rack' | 'wardrobe' | 'desk'): void
   enterVehicle(v: Vehicle): void
   /** Opens the wardrobe (outfits from the Rack & Reel catalog). */
   openWardrobe(): void
@@ -173,6 +180,16 @@ export interface GameOptions {
   outfitters?: boolean
   /** A host world's own picture: lighter shadows, a brighter night and matte characters (Fox Lake). */
   look?: LightingLook
+  /**
+   * A host world's own water's edge for the lake gameplay (Fox Lake: Lake Montello): the dock, the boat, the UTV, the
+   * player's start, Wild Man's loops, the hunting stands and where the game lives. The cabin, and Bear Paw Lake with it,
+   * still stand in their own square, which the host keeps out of sight.
+   */
+  site?: LakeSiteConfig
+  /** The UTV, the quad and the boat are the host world's to hand out: none is there until `GameHost.setRides` says it is bought. */
+  ridesBought?: boolean
+  /** What the player's gear base is called in messages (default: the cabin, or Fox Outfitters). */
+  homeName?: string
   /** Shadow map size in texels (Rack & Reel's own is `SHADOW_MAP_SIZE`, 2048); a host world with more casters can pass less. */
   shadowMapSize?: number
   /** False: no sun or moon shadows at all, for everyone, and no Shadows switch in the menu (Fox Lake). */
@@ -221,6 +238,18 @@ export class Game {
   private standKills = new Set<number>()
   private gruntCooldown = 0
   private quadAdded = false
+  private quad: Vehicle | null = null
+  private rides = { utv: false, quad: false, boat: false }
+  private utvVehicle: Vehicle | null = null
+  private quadSpot = new Vector3()
+  private quadSpotHeading = 0
+  rackHere = false
+  private readonly shoreUtv = new Vector3()
+  private shoreUtvHeading = 0
+  private readonly shoreBoat = new Vector3()
+  private shoreBoatHeading = 0
+  private readonly hiddenUtv = new Vector3()
+  private readonly hiddenBoat = new Vector3()
   private minimap!: Minimap
   private online!: Online
   private readonly director = new EncounterDirector()
@@ -363,6 +392,11 @@ export class Game {
       teleport: (at, facing) => game.placeOnFoot(at, facing),
       enterVehicle: (v) => game.enterVehicle(v),
       openWardrobe: () => game.openPanel('wardrobe', null),
+      setRides: (rides) => game.setRides(rides),
+      setGearRackHere: (here) => {
+        game.rackHere = here
+      },
+      openGearPanel: (tab) => game.openPanel(tab === 'wardrobe' ? 'wardrobe' : tab === 'rack' ? 'gear' : 'shop', tab),
       setPerch: (perch) => {
         game.perch = perch
         if (perch) {
@@ -424,11 +458,15 @@ export class Game {
     this.headPaint = new HeadPaint(scene, (head) => texturedMaterial(scene, `hunter-head-${head}`, this.materials))
     this.hud.setLoading(0.65, 'Planting the woods…')
     await nextFrame()
-    const landmarks = findLandmarks(this.terrain)
+    const own = findLandmarks(this.terrain)
+    const site = this.options.site
+    const landmarks = site ? siteLandmarks(site, this.terrain) : own
+    if (site) setLakeShape({ center: site.lake.center, radius: site.lake.radius })
     buildDock(this.ctx, landmarks)
-    const inland = new Vector3(-Math.sin(landmarks.spawnHeading), 0, -Math.cos(landmarks.spawnHeading))
-    this.cabin = new Cabin(this.terrain, landmarks.spawn.add(inland.scale(cabinLayout.garage ? 22 : 18)), landmarks.spawnHeading, cabinLayout)
-    this.stands = findStandSites(this.terrain, landmarks.spawn, [this.cabin.root, landmarks.dock.start, landmarks.utv])
+    const inland = new Vector3(-Math.sin(own.spawnHeading), 0, -Math.cos(own.spawnHeading))
+    this.cabin = new Cabin(this.terrain, own.spawn.add(inland.scale(cabinLayout.garage ? 22 : 18)), own.spawnHeading, cabinLayout)
+    this.stands = site ? site.stands.map((c) => standSiteAt(this.terrain, c.kind, c)) : findStandSites(this.terrain, landmarks.spawn, [this.cabin.root, landmarks.dock.start, landmarks.utv])
+    if (!this.stands.length) this.stands = findStandSites(this.terrain, own.spawn, [this.cabin.root])
     this.stand = this.stands[0]
     this.foliage = new Foliage(this.ctx, this.terrain, this.models, [landmarks.dock.start, landmarks.spawn, landmarks.utv, ...this.stands.map((st) => st.tree), this.cabin.root, this.cabin.toWorld(new Vector3(-cabinLayout.halfW - 5, 0, 1.5)), ...this.garageApproach(), ...this.jumpLane(landmarks.dock)], this.shading)
     this.foliage.grassHoles.push({ x: this.cabin.root.x, z: this.cabin.root.z, r: cabinLayout.clearRadius })
@@ -447,8 +485,19 @@ export class Game {
     if (this.ext?.obstacle) this.vehicles.obstacle = (x, z, r) => this.ext!.obstacle!(x, z, r)
     if (cabinLayout.garage) this.vehicles.floor = (x, z) => this.cabin.garageFloorAt(x, z)
     const garaged = this.cabin.garageSpot()
-    this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), garaged?.position ?? landmarks.utv, garaged?.heading ?? landmarks.utvHeading)
-    this.boat = this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), landmarks.boat, landmarks.boatHeading)
+    const bought = this.options.ridesBought === true
+    this.utvVehicle = this.vehicles.add('ATV', instantiate(this.models.get('utv')!, null, scene, reg), bought ? own.utv : garaged?.position ?? landmarks.utv, garaged?.heading ?? landmarks.utvHeading)
+    this.boat = this.vehicles.add('BOAT', instantiate(this.models.get('boat')!, null, scene, reg), bought ? own.boat : landmarks.boat, landmarks.boatHeading)
+    const side = new Vector3(Math.cos(landmarks.utvHeading), 0, -Math.sin(landmarks.utvHeading))
+    this.quadSpot.copyFrom(landmarks.utv).addInPlace(side.scale(4.5))
+    this.quadSpotHeading = landmarks.utvHeading
+    this.shoreUtv.copyFrom(landmarks.utv)
+    this.shoreUtvHeading = landmarks.utvHeading
+    this.shoreBoat.copyFrom(landmarks.boat)
+    this.shoreBoatHeading = landmarks.boatHeading
+    this.hiddenUtv.copyFrom(own.utv)
+    this.hiddenBoat.copyFrom(own.boat)
+    if (bought) this.setRides(this.rides)
     this.boatHome.copyFrom(landmarks.boat)
     this.boatHomeHeading = landmarks.boatHeading
     this.spawnHeading = landmarks.spawnHeading
@@ -472,6 +521,7 @@ export class Game {
       },
     })
     this.wildlife = new Wildlife(this.ctx, scene, this.terrain, this.loot, this.models)
+    if (this.options.site) this.wildlife.wild = (x, z) => this.options.site!.wild(x, z)
     this.wildlife.onTurnover = () => this.hud.toast('The deer have moved off. A fresh bunch is filtering in across the property.')
     this.wildlife.onLegendSpawn = (a) => this.hud.toast(a.template.id === 'whitetail' ? 'Fresh rubs and scrapes: a record-class buck is roaming these woods' : `Fresh sign: a record-class ${SPECIES_BY_ID[a.template.id].name.toLowerCase()} is moving nearby`, 'big')
     this.wildlife.onLost = (a) => this.hud.toast(a.wounds ? 'The wounded animal is gone. Aim for the vitals behind the shoulder.' : `The ${a.template.name.toLowerCase()} slipped away.`)
@@ -673,7 +723,7 @@ export class Game {
 
   /** What the player's base is called in messages. */
   private get home(): string {
-    return this.options.outfitters ? 'Fox Outfitters' : 'the cabin'
+    return this.options.homeName ?? (this.options.outfitters ? 'Fox Outfitters' : 'the cabin')
   }
 
   private buildCabin(reg: (m: AbstractMesh) => void): void {
@@ -732,15 +782,44 @@ export class Game {
     this.wildlife.detection = fx.detection
     this.wildlife.vitalScale = fx.vitalScale
     for (const v of this.vehicles.vehicles) v.power = v.kind === 'BOAT' ? fx.boatPower : v.rig.root.name.startsWith('quad') ? 1.15 : fx.utvPower
-    if (!this.quadAdded && this.progress.profile.owned.includes('quad') && this.models.has('quad')) {
-      this.quadAdded = true
-      const spot = this.cabin.parking(0)
-      spot.position.y = this.terrain.heightAt(spot.position.x, spot.position.z)
-      const quad = this.vehicles.add('ATV', instantiate(this.models.get('quad')!, null, this.ctx.scene, (m) => this.ctx.registerDynamic(m)), spot.position, spot.heading)
-      quad.seat.set(0, 1.12, -0.32)
-      quad.power = 1.15
-      this.casters.push(...quad.rig.meshes)
+    this.ensureQuad()
+  }
+
+  private ensureQuad(): void {
+    const owned = this.options.ridesBought ? this.rides.quad : this.progress.profile.owned.includes('quad')
+    if (this.quadAdded || !owned || !this.models.has('quad')) return
+    this.quadAdded = true
+    const spot = this.options.ridesBought ? { position: this.quadSpot.clone(), heading: this.quadSpotHeading } : this.cabin.parking(0)
+    spot.position.y = this.terrain.heightAt(spot.position.x, spot.position.z)
+    const quad = this.vehicles.add('ATV', instantiate(this.models.get('quad')!, null, this.ctx.scene, (m) => this.ctx.registerDynamic(m)), spot.position, spot.heading)
+    quad.seat.set(0, 1.12, -0.32)
+    quad.power = 1.15
+    this.quad = quad
+    this.casters.push(...quad.rig.meshes)
+  }
+
+  /** The host world says which rides are bought: each is at the dock or the shore once it is, and out of sight (back at the cabin's square) when it is not. */
+  private setRides(rides: { utv: boolean; quad: boolean; boat: boolean }): void {
+    this.rides = { ...rides }
+    if (!this.vehicles) return
+    const place = (v: Vehicle | null, own: boolean, at: Vector3, heading: number, away: Vector3) => {
+      if (!v) return
+      if (!own && this.vehicles.active === v) this.vehicles.release()
+      v.root.setEnabled(own)
+      if (!own) {
+        v.position.copyFrom(away)
+        return
+      }
+      if (Vector3.Distance(v.position, away) < 5) {
+        v.position.copyFrom(at)
+        v.heading = heading
+        v.speed = 0
+      }
     }
+    place(this.utvVehicle, rides.utv, this.shoreUtv, this.shoreUtvHeading, this.hiddenUtv)
+    place(this.boat, rides.boat, this.shoreBoat, this.shoreBoatHeading, this.hiddenBoat)
+    this.ensureQuad()
+    if (this.quad) this.quad.root.setEnabled(rides.quad)
   }
 
   private openPanel(tab: PanelTab, spot: CabinSpot | null): void {
@@ -984,7 +1063,7 @@ export class Game {
       this.vehicles.release()
       if (v === this.boat) this.vehicles.moor(v, this.boatHome, this.boatHomeHeading)
     }
-    if (!this.boat.occupied) this.boat.root.setEnabled(true)
+    if (!this.boat.occupied && (!this.options.ridesBought || this.rides.boat)) this.boat.root.setEnabled(true)
     const root = this.avatar.root
     root.parent = null
     root.rotationQuaternion = null
@@ -1080,7 +1159,7 @@ export class Game {
       return
     }
     const name = tool === 'rod' ? 'rod and reel' : 'rifle'
-    if (this.mode === 'foot' && this.cabin.spotNear(this.foot, 2.4) === 'rack') {
+    if (this.mode === 'foot' && (this.rackHere || this.cabin.spotNear(this.foot, 2.4) === 'rack')) {
       if (this.carried === tool) return
       const had = this.carried
       this.carried = tool
@@ -2271,7 +2350,7 @@ export class Game {
       else if (hosted) prompt = hosted
       else if (down) prompt = `E — tag the ${down.doe ? "doe" : down.template.id === "whitetail" ? "buck" : down.template.name.toLowerCase()}`
       else if (fishPrompt) prompt = fishPrompt
-      else if (this.options.gearAtCabin && this.cabin.spotNear(this.foot, 2.4) === 'rack') prompt = `1 — ${this.carried === 'rod' ? 'carrying the rod and reel' : 'take the rod and reel'} · 2 — ${this.carried === 'rifle' ? 'carrying the rifle' : 'take the rifle'} · E — gear`
+      else if (this.options.gearAtCabin && (this.rackHere || this.cabin.spotNear(this.foot, 2.4) === 'rack')) prompt = `1 — ${this.carried === 'rod' ? 'carrying the rod and reel' : 'take the rod and reel'} · 2 — ${this.carried === 'rifle' ? 'carrying the rifle' : 'take the rifle'} · E — gear`
       else if (this.cabin.spotNear(this.foot)) prompt = this.cabin.spotLabel(this.cabin.spotNear(this.foot)!)
       else if (ride && (!near || Vector3.Distance(this.foot, ride.root.position) < Vector3.Distance(this.foot, near.position))) prompt = ride.crew ? `${ride.name}'s boat is full` : `E — climb aboard ${ride.name}'s boat`
       else if (near) prompt = near.kind === 'CAR' ? `E — drive the ${near.label ?? 'car'}` : near.kind === 'ATV' ? (near.rig.root.name.startsWith('quad') ? 'E — ride the quad' : 'E — drive the UTV') : 'E — board the boat'

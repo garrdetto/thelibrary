@@ -21,8 +21,7 @@ import type { ClientMsg, PlayerSnap, ServerMsg, VehicleKind } from '../../maples
 import { TUNING, isBuiltinVehicleKind } from '../../maplestreet/shared/Vehicles'
 import { TOWN_OFFSET, sceneToTown, townToScene } from '../region'
 import { DevPanel, type DevActions, type Outcome, type PlayerChoice, type VehicleChoice } from './DevPanel'
-import type { FoxLakeTerrain } from '../montello/Link'
-import { FOX_LAKE_PLACES, montelloPlaces, type Place } from './Places'
+import type { Place } from './Places'
 import { restingPose, spotsAround, yawFromHeading, yawFromTownYaw } from './Placement'
 import { SharedCars, type SpawnedRow } from './SharedCars'
 import { WindowTrace } from './WindowTrace'
@@ -36,11 +35,13 @@ export interface DevHooks {
   self(): string | null
   /** Stops drawing a neighbor's copy of a vehicle at once. */
   dropRemote(id: string): void
-  /** Where H takes the player: their lot's front, or the town's arrival spot. */
+  /** Where H takes the player: their lot's front, or Main Street. */
   home(): { at: Vector3; facing: number } | null
+  /** The teleport list: Montello's places and the lake's. */
+  places(): Place[]
 }
 
-const DRY = 0.25
+const DRY = 0.05
 /** How far away (m) a vehicle can be for Trace windows. */
 const TRACE_REACH = 25
 const GROUPS = ['Built-in', 'Bundled', 'Published', 'Retired']
@@ -158,13 +159,9 @@ export class FoxLakeDev implements DevActions {
     return this.cars.rows()
   }
 
-  /** Fox Plains and the lake country, plus Montello's places once its map has loaded. */
+  /** Montello's places and the lake's. */
   places(): Place[] {
-    if (this.allPlaces) return this.allPlaces
-    const link = (this.hooks.host.terrain as Partial<FoxLakeTerrain>).link
-    if (!link) return FOX_LAKE_PLACES
-    this.allPlaces = [...FOX_LAKE_PLACES, ...montelloPlaces(link.land, link.inward[link.inward.length - 1])]
-    return this.allPlaces
+    return (this.allPlaces ??= this.hooks.places())
   }
 
   // ------------------------------------------------------------ requests
@@ -262,7 +259,7 @@ export class FoxLakeDev implements DevActions {
 
   private dry(x: number, z: number): boolean {
     const { terrain } = this.hooks.host
-    return terrain.inBounds(x, z, 3) && terrain.heightAt(x, z) > DRY
+    return terrain.inBounds(x, z, 3) && terrain.depthAt(x, z) < DRY
   }
 
   private trunk(x: number, z: number, radius: number): boolean {

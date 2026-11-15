@@ -63,6 +63,10 @@ function candidates(terrain: Terrain, near: Vector3, density: [number, number], 
   return out.sort((p, q) => q.score - p.score)
 }
 
+export function standSiteAt(terrain: Terrain, kind: StandKind, c: { x: number; z: number; heading: number }): StandSite {
+  return toSite(terrain, kind, { ...c, score: 0 })
+}
+
 function toSite(terrain: Terrain, kind: StandKind, c: Candidate): StandSite {
   const tree = new Vector3(c.x, terrain.heightAt(c.x, c.z), c.z)
   const root = tree.add(new Vector3(Math.sin(c.heading), 0, Math.cos(c.heading)).scale(STAND_LAYOUTS[kind].offset))

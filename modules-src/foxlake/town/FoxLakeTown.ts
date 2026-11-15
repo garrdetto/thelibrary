@@ -1,84 +1,69 @@
 /**
- * Fox Lake's town, mounted on the Rack & Reel game as a host world.
+ * Fox Lake's town: Montello, Wisconsin, mounted on the Rack & Reel game as a host world.
  *
- * The Fox Plains town (lots, streets, downtown, every player's house) is built
- * by the same code Fox Plains 2 used (fp/), under one node that places it
- * north of the lake country and mirrors it into the scene's handedness. It is
- * lit, shadowed and fogged by Rack & Reel's renderer; its trees are Rack &
- * Reel's foliage; its ground is laid the way Rack & Reel lays its own. The
- * town's cars run on Fox Plains' Rapier physics (same handling), which also
- * holds the lake country as a heightfield so a car can drive out to the lake.
+ * Montello is Tello's own builder (tello/world/Montello.ts) over the baked map of the real city and the country three
+ * miles round it, hung under one node at `TOWN_OFFSET` that mirrors z into the scene's handedness, so the shared
+ * world's numbers (lots, doors, pumps, players) are Montello's map with z turned. It is lit, shadowed and fogged by
+ * Rack & Reel's renderer; its trees are Tello's. Every player's house, your cars and the neighbors run on the Fox
+ * Plains code in fp/ (same Rapier raycast cars, same build rules).
  *
- * It joins Fox Lake's own shared world (/api/maplestreet?world=foxlake): the
- * same rules and town as Fox Plains, but its own players, lots, houses and
- * money, so everyone starts fresh here. The shared world's clock drives the sky.
+ * It joins Fox Lake's own shared world (/api/maplestreet?world=foxlake): its own players, lots, houses and money, so
+ * everyone starts fresh here. The shared world's clock drives the sky. The lake gameplay (fishing, hunting, Wild Man,
+ * the dock) is Rack & Reel's own, moved onto Lake Montello (lake/LakeSite.ts); the UTV, the quad and the boat come
+ * only when the account owns them (`Account.rides`).
  */
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import type { AbstractMesh } from '@babylonjs/core/Meshes/abstractMesh'
 import type { Mesh } from '@babylonjs/core/Meshes/mesh'
 import type { GameExtension, GameHost } from '../../rackreel/game/Game'
-import { CELL, GRID, HALF } from '../../rackreel/world/Terrain'
+import { STAND_SIZE } from '../../rackreel/world/Foliage'
 import { hourFromSearch } from '../../rackreel/systems/TimeOfDay'
+import type { MapMarker } from '../../rackreel/ui/Minimap'
+import type { ControlRow } from '../../rackreel/ui/Controls'
 import { setHostRoot, setRenderer } from '../fp/core/Geo'
 import { Mats, setAnisotropy } from '../fp/core/Tex'
 import { Assets } from '../fp/core/Assets'
 import { Physics } from '../fp/physics/Physics'
 import { VehicleModels } from '../fp/physics/VehicleModels'
-import { Town } from '../fp/world/Town'
-import type { TreeSpot } from '../fp/world/Town'
-import { Downtown } from '../fp/world/Downtown'
 import { Houses } from '../fp/world/Houses'
 import { OfflineTransport } from '../../maplestreet/src/net/OfflineTransport'
 import { WorldTransport, guestKey, worldEndpoint } from '../../maplestreet/src/net/WorldTransport'
 import type { NetStatus, Transport } from '../../maplestreet/src/net/Transport'
 import { randomId, store } from '../../maplestreet/src/core/Storage'
-import type { ClientMsg, MowStroke, PlayerSnap, ServerMsg } from '../../maplestreet/shared/Protocol'
+import type { ClientMsg, PlayerSnap, ServerMsg } from '../../maplestreet/shared/Protocol'
 import type { BuildOp, LotState } from '../../maplestreet/shared/BuildRules'
 import type { Account } from '../../maplestreet/shared/Economy'
 import { STARTER_TRUCK, VEHICLES } from '../../maplestreet/shared/Economy'
-import { ROADS, ROAD_NAMES, SPAWN, lotPrice, makeLots, type LotDef } from '../../maplestreet/shared/WorldLayout'
-import { decodeCells, gameDays } from '../../maplestreet/shared/Mowing'
+import { lotPrice, type LotDef } from '../../maplestreet/shared/WorldLayout'
+import { MONTELLO_LOTS } from '../../maplestreet/shared/MontelloPlaces'
+import { TelloMap } from '../../tello/town/TelloMap'
+import { Montello } from '../../tello/world/Montello'
+import type { TelloLand } from '../../tello/region'
 import { Cars } from './Cars'
 import { Neighbors } from './Neighbors'
 import { TownGfx } from './TownGfx'
-import { GROUND_RECT, buildConnector, buildLakeRoad, buildTownGround, fillerTrees } from './TownGround'
-import { Wading } from './Wading'
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
-import { Color3 } from '@babylonjs/core/Maths/math.color'
-import { asphaltTexture } from '../../rackreel/world/Highway'
-import { buildRoadside } from '../roadside/RoadsideBuild'
-import { RoadsideSigns } from '../roadside/RoadsideSigns'
-import { ROADSIDE, doorSpot, roadsideAt, type RoadsidePlace } from '../roadside/RoadsideLayout'
-import { addRoadColliders, roadSurface } from '../country/RoadPhysics'
-import { buildBarricade } from '../country/Barricade'
-import { hitsBarrier, type BarrierSegment } from '../country/Roads'
 import { TownHud } from './TownHud'
-import { WorldMap, type NorthRoutes } from './WorldMap'
-import { Atlas } from './Atlas'
-import { FoxMinimap } from './FoxMinimap'
-import { findLandmarks } from '../../rackreel/world/World'
-import type { MapMarker } from '../../rackreel/ui/Minimap'
-import type { ControlRow } from '../../rackreel/ui/Controls'
+import { Wading } from './Wading'
 import { RegionCuller } from '../core/RegionCuller'
-import { CasinoHost, CASINO_NAME } from '../casino/CasinoHost'
-import { CASINO } from '../casino/CasinoLayout'
-import { STAND_SIZE } from '../../rackreel/world/Foliage'
-import { FOX_LAKE_SHAPE, TOWN_OFFSET, TOWN_SQUARE, TOWN_Y, connectorDistance, headingToTownYaw, outsideHeight, roadClear, sceneToTown, townToScene, zoneAt, CONNECTOR, LINK_ROAD, linkRoadDistance } from '../region'
+import { CasinoHost } from '../casino/CasinoHost'
+import { SITE } from '../casino/CasinoLayout'
+import { registerMapPlaces } from '../places/MapPlaces'
 import { FoxLakeDev } from '../dev/FoxLakeDev'
-import { NorthWorld } from '../montello/NorthWorld'
-import type { MontelloLink } from '../montello/Link'
-import { TelloMap } from '../../tello/town/TelloMap'
+import { lakePlaces, montelloPlaces } from '../dev/Places'
+import { findMainStreet, type StreetSpot } from '../lake/Spawn'
+import type { LakeSite } from '../lake/LakeSite'
+import { LAKE_COUNTRY_MESHES, LAKE_COUNTRY_REACH, TOWN_OFFSET, headingToTownYaw, sceneToTown, townToScene } from '../region'
 import { Places } from '../places/Places'
 
 const STEP = 1 / 60
 const CULL_REACH = 640
-const TOWN_CELL = 192
 const MAX_STEPS = 4
 const NET_HZ = 15
 const GARAGE_KEY = 'KeyV'
 const HOME_KEY = 'KeyH'
 const GO_HOME_COOLDOWN_MS = 15 * 60 * 1000
+const TOWN_BUILD_DELAY = 1.5
 
 /** Same identity key as Fox Plains, so one browser is one neighbor in both. */
 function persistentKey(): string {
@@ -97,8 +82,17 @@ export interface TownOptions {
   mode: 'world' | 'offline'
   /** Called when the shared world (or solo) is joined: the room code for invites, and a label. */
   onRoom?: (code: string | null, label: string) => void
-  /** Montello and Highway 23 south-west of town (null when Tello's map could not load). */
-  north?: MontelloLink | null
+  /** Montello's land (after `foxLakeLand`) and where the lake gameplay stands on it. */
+  land: TelloLand
+  site: LakeSite
+}
+
+/** What the places in town (the outfitter's counter) call to open Rack & Reel's gear, wardrobe and catalog. */
+export interface GearHooks {
+  /** True while the player stands at a gear rack: 1 and 2 then take or swap the rod and the rifle. */
+  atRack(here: boolean): void
+  /** The gear rack (what you carry), the wardrobe or the order desk (the catalog, paid in Rack & Reel cash). */
+  open(tab: 'rack' | 'wardrobe' | 'desk'): void
 }
 
 export class FoxLakeTown implements GameExtension {
@@ -109,56 +103,59 @@ export class FoxLakeTown implements GameExtension {
   private physics!: Physics
   private mats!: Mats
   private assets!: Assets
-  private town!: Town
   private houses!: Houses
   private models!: VehicleModels
   private cars!: Cars
   private neighbors!: Neighbors
   private hud!: TownHud
-  private map: WorldMap | null = null
-  private atlas: Atlas | null = null
-  private minimap: FoxMinimap | null = null
-  /** Montello and the road to it, and Montello's own road network for directions there (its map is drawn on Fox Lake's). */
-  private north: NorthWorld | null = null
-  private northMap: TelloMap | null = null
-  /** Shops, bars, banks, pumps and paid work in Fox Plains and Montello (places/). */
+  private montello!: Montello
+  private map: TelloMap | null = null
+  /** Shops, bars, banks, pumps and paid work (places/). */
   private places: Places | null = null
   private net: Transport | null = null
   private netStatus: NetStatus = 'connecting'
   private selfId: string | null = null
   private account: Account | null = null
   private welcomed = false
-  private dayNum = 1
   private serverHours: number | null = null
   private readonly pinnedHour = hourFromSearch(location.search)
-  private clockDays = 0
   private acc = 0
   private netAcc = 0
-  private mowAcc = 0
-  private mowBuf: MowStroke[] = []
-  private lastDeck: Vector3 | null = null
-  private readonly lots = makeLots()
   private readonly focusPts: { x: number; z: number }[] = []
   private readonly _t = { x: 0, y: 0, z: 0 }
-  private readonly _deck = new Vector3()
   private extraKind: string | null = null
   private hudAcc = 0
   private buildSeq = 0
-  /** Far town cells and far lake-country stands are switched off (the fog hides them). */
   private readonly culler = new RegionCuller(CULL_REACH)
   private readonly casino = new CasinoHost()
+  private casinoMounted = false
   /** The developer panel and the spawned vehicles anyone can drive (dev/). */
   dev: FoxLakeDev | null = null
-  private barriers: BarrierSegment[] = []
   private wading: Wading | null = null
-  private signs: RoadsideSigns | null = null
+  private readonly land: TelloLand
+  private readonly start: StreetSpot
+  private townWait = TOWN_BUILD_DELAY
+  private townStarted = false
+  private townReady = false
 
-  constructor(private readonly opts: TownOptions) {}
+  constructor(private readonly opts: TownOptions) {
+    this.land = opts.land
+    this.start = findMainStreet(opts.land)
+  }
+
+  // ------------------------------------------------------------ frames
+
+  /** The Main Street kerb where play starts, as a town point (z turned) and the yaw that faces along the street. */
+  private startPose(): { x: number; z: number; yaw: number; heading: number } {
+    const s = this.start
+    return { x: s.x, z: -s.z, yaw: Math.PI / 2 - s.heading, heading: s.heading }
+  }
 
   // ------------------------------------------------------------ build
 
   async build(host: GameHost): Promise<void> {
     this.host = host
+    const land = this.land
     const { scene } = host.ctx
     this.gfx = new TownGfx(scene, (mesh, add) => (add ? host.addCaster(mesh) : host.removeCaster(mesh)))
     setRenderer(this.gfx)
@@ -168,114 +165,41 @@ export class FoxLakeTown implements GameExtension {
     this.root.scaling.set(1, 1, -1)
     this.root.computeWorldMatrix(true)
     setHostRoot(this.root)
-    host.hud.setLoading(0.7, 'Laying out Fox Plains…')
+    host.hud.setLoading(0.7, 'Surveying Montello…')
     this.physics = await Physics.create()
-    this.addCountryHeightfield()
-    this.addOutsideHeightfield()
-    this.barriers = addRoadColliders(this.physics, host.terrain, FOX_LAKE_SHAPE)
     this.assets = new Assets(scene)
     this.mats = new Mats(scene)
-    const asphaltTex = asphaltTexture(scene, 10)
-    const asphalt = (name: string) => countryAsphalt(scene, name, asphaltTex)
-    this.town = new Town(this.physics, this.mats, {
-      ground: false,
-      asphalt,
-      trees: (spots) => this.plantTownTrees(spots),
-      keepClear: (x, z) => {
-        const c = CASINO.clear
-        if (x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1) return true
-        if (roadsideAt(x, z, 5)) return true
-        const s = townToScene(x, 0, z, this._t)
-        return connectorDistance(s.x, s.z) < 9 || linkRoadDistance(s.x, s.z) < 9
-      },
-    })
-    new Downtown(this.physics, this.mats)
     this.houses = new Houses(this.physics, this.mats, this.assets)
-    this.casino.build(this.root, this.mats, this.physics)
-    buildRoadside(this.root, this.mats, this.physics, asphalt('roadside-asphalt'))
-    this.signs = new RoadsideSigns(scene)
     this.models = new VehicleModels(this.assets)
-    const ground = buildTownGround(scene, host.terrain)
-    const road = buildConnector(scene, host.terrain)
-    const lakeRoad = buildLakeRoad(scene, host.terrain)
-    this.freezeStatic([ground, road, ...lakeRoad])
-    buildBarricade(scene, FOX_LAKE_SHAPE, host.terrain)
-    host.foliage.plantTrees(fillerTrees().map((t) => ({ ...t, y: host.terrain.heightAt(t.x, t.z) })))
-    host.foliage.hostCasters = (focus) => (focus.z > HALF - 120 ? this.gfx.near(focus) : EMPTY)
-    host.foliage.grassHoles.push({ x: CONNECTOR.start.x, z: CONNECTOR.start.z, r: 14 })
-    if (this.opts.north) {
-      this.north = new NorthWorld(this.opts.north, { host, physics: this.physics, mats: this.mats, gfx: this.gfx, culler: this.culler })
-      await this.north.build((share, text) => host.hud.setLoading(0.72 + share * 0.12, text))
-    }
+    registerMapPlaces(land.doc)
+    this.montello = new Montello(land, {
+      host,
+      physics: this.physics,
+      shift: { x: 0, y: 0, z: 0 },
+      mats: this.mats,
+      gfx: this.gfx,
+      culler: this.culler,
+      openExit: null,
+      lotHouses: new Set([...MONTELLO_LOTS.flatMap((l) => (l.scan === undefined ? [] : [l.scan])), ...(SITE.building >= 0 ? [SITE.building] : [])]),
+    })
+    this.montello.buildSolids()
+    host.foliage.hostCasters = (focus) => (land.holdsScene(focus.x, focus.z) ? this.gfx.near(focus) : EMPTY)
     this.hud = new TownHud()
-  }
-
-  /**
-   * The lake country as a Rapier heightfield (town coordinates), so a car can drive out to the lake; lifted to the
-   * interstate's and the Lake Road's surfaces where they cover it, so wheels ride on the asphalt.
-   */
-  private addCountryHeightfield(): void {
-    const terrain = this.host.terrain
-    const n = GRID
-    const heights = new Float32Array((n + 1) * (n + 1))
-    for (let j = 0; j <= n; j++) {
-      for (let i = 0; i <= n; i++) {
-        const sceneZ = HALF - j * CELL
-        const sceneX = -HALF + i * CELL
-        const ground = terrain.heights[Math.round((sceneZ + HALF) / CELL) * (n + 1) + i]
-        const road = roadSurface(FOX_LAKE_SHAPE, terrain, sceneX, sceneZ)
-        heights[i + j * (n + 1)] = Math.max(ground, road ?? -Infinity) - TOWN_OFFSET.y
-      }
-    }
-    const centre = sceneToTown(0, 0, 0)
-    this.physics.addHeightfield(n, n * CELL, heights, centre.x, centre.z)
-  }
-
-  /** The rolling land around town (region.ts `outsideHeight`) as a heightfield over the town square, 4 m apart. */
-  private addOutsideHeightfield(): void {
-    const n = 320
-    const size = 1280
-    const step = size / n
-    const heights = new Float32Array((n + 1) * (n + 1))
-    for (let j = 0; j <= n; j++) {
-      for (let i = 0; i <= n; i++) {
-        const s = townToScene(-size / 2 + i * step, 0, -size / 2 + j * step, this._t)
-        heights[i + j * (n + 1)] = outsideHeight(s.x, s.z) - TOWN_Y
-      }
-    }
-    this.physics.addHeightfield(n, size, heights, 0, 0)
-  }
-
-  private plantTownTrees(spots: TreeSpot[]): void {
-    const out: { x: number; y: number; z: number; kind: 'pine' | 'hardwood' | 'birch'; scale: number; yaw: number }[] = []
-    for (const s of spots) {
-      const p = townToScene(s.x, 0, s.z)
-      if (p.x < GROUND_RECT.x0 + 4 || p.z > GROUND_RECT.z1 - 4) continue
-      const hash = Math.abs(Math.sin(s.x * 12.9898 + s.z * 78.233) * 43758.5453) % 1
-      const kind = s.kind === 'spruce' ? 'pine' : s.kind === 'linden' && hash < 0.35 ? 'birch' : 'hardwood'
-      out.push({ x: p.x, y: this.host.terrain.heightAt(p.x, p.z), z: p.z, kind, scale: s.s * 0.82, yaw: (s.yaw * Math.PI) / 180 })
-    }
-    this.host.foliage.plantTrees(out)
-  }
-
-  private freezeStatic(meshes: Mesh[]): void {
-    for (const m of meshes) {
-      m.computeWorldMatrix(true)
-      m.freezeWorldMatrix()
-    }
   }
 
   // ------------------------------------------------------------ ready
 
   async ready(host: GameHost): Promise<void> {
-    const sky = host.ctx.scene.getMeshByName('sky') as Mesh | null
+    const scene = host.ctx.scene
+    const sky = scene.getMeshByName('sky') as Mesh | null
     if (sky) this.gfx.bakeSky(sky)
-    this.cars = new Cars(host.ctx.scene, this.physics, this.models, host.vehicles)
+    this.cars = new Cars(scene, this.physics, this.models, host.vehicles)
+    this.cars.ground = (x, z) => this.land.heightAt(x, -z)
     this.cars.onImpact = (kind, dv, at) => {
       if (this.account?.garage.includes(kind as never)) this.send({ t: 'crash', kind: kind as never, dv, at })
     }
     this.neighbors = new Neighbors(this.physics, this.models, {
-      scene: host.ctx.scene,
+      scene,
       camera: host.ctx.camera,
       hunter: host.hunter,
       paint: host.headPaint,
@@ -283,79 +207,83 @@ export class FoxLakeTown implements GameExtension {
       register: (mesh) => host.ctx.registerDynamic(mesh),
       unregister: (mesh) => host.ctx.unregisterDynamic(mesh),
     }, () => this.selfId)
-    this.dev = new FoxLakeDev({ host, physics: this.physics, models: this.models, send: (m) => this.send(m), self: () => this.selfId, dropRemote: (id) => this.neighbors.dropVehicle(id), home: () => this.spawn() })
+    this.dev = new FoxLakeDev({
+      host,
+      physics: this.physics,
+      models: this.models,
+      send: (m) => this.send(m),
+      self: () => this.selfId,
+      dropRemote: (id) => this.neighbors.dropVehicle(id),
+      home: () => this.spawn(),
+      places: () => [...montelloPlaces(this.land), ...lakePlaces(this.opts.site)],
+    })
     await Promise.all([STARTER_TRUCK, 'trailer', 'mower'].map((k) => this.models.preload(k).catch(() => null)))
-    const truck = this.cars.add(STARTER_TRUCK, SPAWN.x + 4, SPAWN.z, 0, null)
-    const trailer = this.cars.add('trailer', SPAWN.x - 3, SPAWN.z, 0, null)
-    truck.fp.hitch(trailer.fp)
-    this.cars.add('mower', SPAWN.x + 4, SPAWN.z + 6, 0, null)
-    await this.casino.ready(host)
+    this.placeStarterCars()
     this.wading = new Wading(host.terrain, this.cars, (text) => host.hud.toast(text, 'warn'))
     this.cars.flooded = (car) => this.wading?.flooded(car) ?? false
-    const dock = findLandmarks(host.terrain).dock.start
-    this.atlas = new Atlas(host.terrain, host.mapMarkers(), { x: dock.x, z: dock.z }, this.north?.link ?? null)
-    const lotState = (lot: LotDef) => {
-      const owner = this.houses.world?.lots[lot.id]?.owner
-      return owner ? (owner === this.account?.id ? 'mine' : 'owned') : 'sale'
-    }
-    this.minimap = new FoxMinimap(this.atlas, () => this.map?.current ?? null, lotState)
-    this.map = new WorldMap({
-      atlas: this.atlas,
-      markers: () => host.mapMarkers(),
-      lot: lotState,
-      world: {
-        terrain: host.terrain,
-        blocked: (x, z) => this.physics.blocked(x, z, 0, 1),
-        streetName: (x, z) => {
-          const name = this.placeName(x, z)
-          return name && name !== 'Fox Plains' && name !== 'Fox Lake woods' && name !== CASINO_NAME ? name : null
-        },
-      },
+    this.map = new TelloMap({
+      land: this.land,
       where: () => {
         const v = host.driving
-        return v ? { x: v.position.x, z: v.position.z, heading: v.heading } : { x: host.player.x, z: host.player.z, heading: host.facing }
+        const at = v ? v.position : host.player
+        return { x: this.land.toMapX(at.x), z: this.land.toMapZ(at.z), heading: v ? v.heading : host.facing }
       },
       toast: (text) => host.hud.toast(text),
       canvas: host.ctx.engine.getRenderingCanvas(),
-      north: this.north ? this.northRoutes(this.north.link) : null,
     })
-    addEventListener('keydown', (e) => this.key(e))
-    this.culler.addByCell(this.root.getChildMeshes(false).filter((m) => m.isWorldMatrixFrozen), TOWN_CELL)
-    if (this.north) {
-      const land = this.north.link.land
-      this.northMap = new TelloMap({
-        land,
-        where: () => {
-          const v = host.driving
-          const at = v ? v.position : host.player
-          return { x: land.toMapX(at.x), z: land.toMapZ(at.z), heading: v ? v.heading : host.facing }
-        },
-        toast: (text) => host.hud.toast(text),
-        canvas: host.ctx.engine.getRenderingCanvas(),
-        embedded: true,
-      })
-    }
     this.places = new Places({
       host,
       cars: this.cars,
       send: (m) => this.send(m),
       account: () => this.account,
-      land: this.north?.link.land ?? null,
-      map: () => this.map,
-      northMap: () => this.northMap,
-      beyondTown: () => this.beyondTown(),
+      land: this.land,
+      northMap: () => this.map,
+      gear: this.gear,
     })
+    addEventListener('keydown', (e) => this.key(e))
     for (const stand of host.foliage.stands) this.culler.addGroup(stand.meshes, stand.center.x, stand.center.z, STAND_SIZE * 0.72)
-    const casino = this.casino.center()
-    this.culler.addGroup(this.casino.staticMeshes(), casino.x, casino.z, 24)
-    if (this.signs) {
-      for (const p of ROADSIDE) {
-        const d = townToScene(doorSpot(p).x, 0, doorSpot(p).z)
-        this.culler.addGroup(this.signs.root.getChildMeshes(false).filter((m) => Math.hypot(m.getAbsolutePosition().x - d.x, m.getAbsolutePosition().z - d.z) < 40), d.x, d.z, 40)
-      }
-    }
+    const country = scene.meshes.filter((m) => {
+      if (m.infiniteDistance || !m.isEnabled() || !LAKE_COUNTRY_MESHES.test(m.name)) return false
+      const c = m.getBoundingInfo().boundingBox.centerWorld
+      return Math.hypot(c.x, c.z) < LAKE_COUNTRY_REACH
+    })
+    this.culler.addGroup(country, 0, 0, LAKE_COUNTRY_REACH)
     this.culler.update(0, host.ctx.camera.globalPosition, true)
     await this.connect()
+  }
+
+  /** The pickup with its trailer and the riding mower, set down on Main Street ahead of the start. */
+  private placeStarterCars(): void {
+    const p = this.startPose()
+    const fx = Math.sin(p.heading)
+    const fz = -Math.cos(p.heading)
+    const truck = this.cars.add(STARTER_TRUCK, 0, 0, 0, null)
+    const trailer = this.cars.add('trailer', 0, 0, 0, null)
+    const mower = this.cars.add('mower', 0, 0, 0, null)
+    this.cars.setDown(truck.fp, p.x + fx * 7, p.z + fz * 7, p.yaw)
+    this.cars.setDown(trailer.fp, p.x, p.z, p.yaw)
+    truck.fp.hitch(trailer.fp)
+    this.cars.setDown(mower.fp, p.x + fx * 12 - fz * 3, p.z + fz * 12 + fx * 3, p.yaw)
+    this.cars.syncAll()
+  }
+
+  // ------------------------------------------------------------ gear (hooks for the places)
+
+  readonly gear: GearHooks = {
+    atRack: (here) => this.host.setGearRackHere(here),
+    open: (tab) => this.host.openGearPanel(tab),
+  }
+
+  /**
+   * Montello's casino: the Foxtails Lounge & Casino where Foxtails Gentlemen's Club stands on State Highway 23. The
+   * club's own scanned building comes down (it stays out of the town), `CasinoHost` builds the room, the machines and
+   * the bar on its lot, and `casinoMounted` lets its prompts, wallet and table sessions answer.
+   */
+  protected async mountCasino(): Promise<void> {
+    if (SITE.building >= 0) this.montello.clearHouse(SITE.building)
+    this.casino.build(this.root, this.mats, this.physics)
+    await this.casino.ready(this.host)
+    this.casinoMounted = true
   }
 
   // ------------------------------------------------------------ net
@@ -373,7 +301,7 @@ export class FoxLakeTown implements GameExtension {
         const url = worldEndpoint('foxlake')
         if (!url) throw new Error('The shared world needs this page to be opened from the site')
         await attempt(new WorldTransport(url))
-      } else await attempt(new OfflineTransport({ devTools: true }))
+      } else await attempt(new OfflineTransport({ devTools: true, foxLake: true }))
     } catch (e) {
       console.warn('[foxlake] falling back to solo:', e)
       try {
@@ -381,10 +309,11 @@ export class FoxLakeTown implements GameExtension {
       } catch {
         /* closed */
       }
-      this.host.hud.toast(`${(e as Error).message || 'Connection failed'}: playing the town on your own on this device`)
-      await attempt(new OfflineTransport())
+      this.host.hud.toast(`${(e as Error).message || 'Connection failed'}: playing Montello on your own on this device`)
+      await attempt(new OfflineTransport({ foxLake: true }))
     }
-    this.casino.configureWallet(this.net instanceof WorldTransport, guestKey())
+    await this.mountCasino()
+    if (this.casinoMounted) this.casino.configureWallet(this.net instanceof WorldTransport, guestKey())
     this.opts.onRoom?.(this.net instanceof WorldTransport ? 'WORLD' : null, this.net?.label ?? 'Solo')
   }
 
@@ -392,39 +321,24 @@ export class FoxLakeTown implements GameExtension {
     this.net?.send(m)
   }
 
-  private nowDays(): number {
-    const t = gameDays(this.dayNum, this.serverHours ?? this.host.clock.hour)
-    this.clockDays = t < this.clockDays && this.clockDays - t < 1.01 ? this.clockDays : t
-    return this.clockDays
-  }
-
   private onServer(m: ServerMsg): void {
     this.dev?.onServer(m, this.net instanceof OfflineTransport)
     switch (m.t) {
       case 'welcome': {
         this.selfId = m.you
-        this.dayNum = m.day
         this.setHours(m.hours)
-        this.clockDays = 0
-        this.nowDays()
         this.neighbors.clear()
         this.houses.setWorld(m.world)
         for (const id in m.world.lots) this.clearScannedHouse(m.world.lots[id])
-        for (const id in m.world.lots) {
-          const lot = m.world.lots[id]
-          this.town.setLotOwner(id, lot.owner)
-          const lawn = this.town.lawns.get(id)
-          if (lawn) lawn.loadCells(decodeCells(m.mowed[id], lot.w * lot.d))
-        }
         this.setAccount(m.account)
         if (!this.welcomed) {
           this.welcomed = true
           const home = this.homeLot()
           if (home) {
             this.cars.parkAtHome(home)
-            if (!this.host.playing || zoneAt(this.host.player.z) === 'town') this.standAtHome(home)
-            this.host.hud.toast(`Welcome home to Fox Lake, ${m.account.name}. Lot ${home.id} is right where you left it.`)
-          } else this.host.hud.toast(`Welcome to Fox Lake, ${m.account.name}! Walk onto a lot for sale to buy it; the lake is down East Ave and the county road.`)
+            if (!this.host.playing) this.standAtHome(home)
+            this.host.hud.toast(`Welcome home to Montello, ${m.account.name}. Lot ${home.id} is right where you left it.`)
+          } else this.host.hud.toast(`Welcome to Montello, ${m.account.name}! Walk onto a lot for sale to buy it, or ask for work in town.`)
         }
         break
       }
@@ -435,7 +349,6 @@ export class FoxLakeTown implements GameExtension {
       case 'build':
         this.houses.apply(m.op as BuildOp, m.actorId, m.actorName)
         if (m.op.op === 'buyLot') {
-          this.town.setLotOwner(m.op.lotId, m.actorId)
           const bought = this.houses.world?.lots[m.op.lotId]
           if (bought) this.clearScannedHouse(bought)
           this.host.hud.toast(m.actorId === this.account?.id ? `Lot ${m.op.lotId} is yours!` : `${m.actorName} bought lot ${m.op.lotId}`)
@@ -448,12 +361,8 @@ export class FoxLakeTown implements GameExtension {
         this.setAccount(m.account)
         if (m.note) this.host.hud.toast(m.note)
         break
-      case 'mow':
-        for (const s of m.strokes) this.town.lawns.get(s.lotId)?.mow(s, this.nowDays())
-        break
       case 'newDay':
-        this.dayNum = m.day
-        this.host.hud.toast(`Day ${m.day} in Fox Lake.`)
+        this.host.hud.toast(`Day ${m.day} in Montello.`)
         break
       case 'left':
         this.neighbors.removeOwner(m.id)
@@ -477,8 +386,9 @@ export class FoxLakeTown implements GameExtension {
     this.account = acc
     this.cars.restyle(acc)
     this.hud.setAccount(acc, this.host.progress.signedIn)
-    this.casino.syncMoney(acc.money)
+    if (this.casinoMounted) this.casino.syncMoney(acc.money)
     this.places?.onAccount(acc)
+    this.host.setRides({ utv: acc.rides.includes('utv'), quad: acc.rides.includes('quad'), boat: acc.rides.includes('boat') })
   }
 
   private homeLot(): (LotState & LotDef) | null {
@@ -487,7 +397,7 @@ export class FoxLakeTown implements GameExtension {
     if (!w || !me) return null
     const state = Object.values(w.lots).find((l) => l.owner === me)
     if (!state) return null
-    const def = this.lots.find((l) => l.id === state.id)
+    const def = MONTELLO_LOTS.find((l) => l.id === state.id)
     return def ? { ...def, ...state } : null
   }
 
@@ -495,7 +405,7 @@ export class FoxLakeTown implements GameExtension {
     const dir = lot.front === '+z' ? 1 : -1
     const frontZ = lot.front === '+z' ? lot.z + lot.d : lot.z
     const p = townToScene(lot.x + 8, 0, frontZ - dir * 2)
-    this.host.teleport(new Vector3(p.x, p.y, p.z), dir > 0 ? 0 : Math.PI)
+    this.host.teleport(new Vector3(p.x, this.land.heightAt(this.land.toMapX(p.x), this.land.toMapZ(p.z)), p.z), dir > 0 ? 0 : Math.PI)
   }
 
   private sendState(): void {
@@ -514,7 +424,7 @@ export class FoxLakeTown implements GameExtension {
     this.send(state)
   }
 
-  /** Where the player is, in the shared world's (town) coordinates. Out in the lake country that is beyond the town's square, which classic Fox Plains hides. */
+  /** Where the player is, in the shared world's (town) coordinates. */
   private townPosition(): { x: number; y: number; z: number } {
     const v = this.host.driving
     const at = v ? v.position : this.host.player
@@ -541,31 +451,25 @@ export class FoxLakeTown implements GameExtension {
     this.mats.setNight(night)
     this.gfx.update(night, this.host.clock.sky.glow)
     const focus = this.townFocus()
-    this.town.update(dt, night, focus, this.nowDays())
     this.houses.update(dt, focus)
     this.neighbors.update(dt, night, focus)
     this.culler.update(dt, this.host.ctx.camera.globalPosition)
-    this.casino.update(dt)
+    if (this.casinoMounted) this.casino.update(dt)
     this.map?.update(dt)
-    this.north?.update(dt)
+    this.montello.update(dt)
     this.startMontello(dt)
-    this.northMap?.update(dt)
     this.places?.update(dt)
     this.netAcc += dt
     if (this.netAcc >= 1 / NET_HZ) {
       this.netAcc = 0
       this.sendState()
-      this.mowAcc += 1 / NET_HZ
-      if (this.mowAcc > 0.2 && this.mowBuf.length) {
-        this.mowAcc = 0
-        this.send({ t: 'mow', strokes: this.mowBuf.splice(0, 20) })
-      }
     }
     this.hudAcc -= dt
     if (this.hudAcc <= 0) {
       this.hudAcc = 0.5
       const reconnecting = this.netStatus === 'offline' && !(this.net instanceof OfflineTransport)
-      this.hud.setStatus(this.net ? `${this.net.label}${reconnecting ? ' (reconnecting)' : ''}` : 'Connecting', this.neighbors.count, this.zone())
+      const at = this.host.driving?.position ?? this.host.player
+      this.hud.setStatus(this.net ? `${this.net.label}${reconnecting ? ' (reconnecting)' : ''}` : 'Connecting', this.neighbors.count, this.placeName(at.x, at.z) ?? 'Montello')
     }
   }
 
@@ -579,64 +483,52 @@ export class FoxLakeTown implements GameExtension {
     pts.length = 0
     const t = this.townPosition()
     pts.push({ x: t.x, z: t.z })
+    const drive = pts.length
     this.cars.focusPoints(pts)
-    this.north?.focus(pts)
+    this.montello.solidTrees(pts.slice(drive))
     this.physics.stream(pts, dt)
     this.wading?.step(dt)
     this.physics.step(dt)
-    this.mowStep()
   }
 
-  private mowStep(): void {
-    const car = this.cars.driving()
-    const v = car?.fp
-    if (!v || !v.preset.mowerDeck) {
-      this.lastDeck = null
-      return
-    }
-    const deck = v.localToWorld(v.preset.mowerDeck.x, 0, 0, this._deck)
-    if (!this.lastDeck) {
-      this.lastDeck = deck.clone()
-      return
-    }
-    const d = Vector3.Distance(deck, this.lastDeck)
-    if (d > 3) {
-      this.lastDeck.copyFrom(deck)
-      return
-    }
-    if (d < 0.35) return
-    const mx = (deck.x + this.lastDeck.x) / 2
-    const mz = (deck.z + this.lastDeck.z) / 2
-    const lawn = this.town.lawnAt(mx, mz)
-    if (lawn) {
-      const s: MowStroke = { lotId: lawn.lot.id, x: mx, z: mz, hx: deck.x - this.lastDeck.x, hz: deck.z - this.lastDeck.z, width: v.preset.mowerDeck.width, len: d + 0.12 }
-      lawn.mow(s, this.nowDays())
-      this.mowBuf.push(s)
-    }
-    this.lastDeck.copyFrom(deck)
+  /**
+   * Builds Montello's buildings, ground, water and trees once the game is running: a moment after you start, in small
+   * slices between frames (tello/world/Montello.ts), so driving and turning stay smooth while it builds. Its ground
+   * and walls are already solid from the loading screen (`buildSolids`).
+   */
+  private startMontello(dt: number): void {
+    if (this.townStarted || !this.host.playing) return
+    this.townWait -= dt
+    if (this.townWait > 0) return
+    this.townStarted = true
+    void this.montello
+      .build()
+      .then(() => {
+        this.montello.ready()
+        this.townReady = true
+      })
+      .catch((e) => console.warn('[foxlake] Montello could not be built', e))
   }
 
   // ------------------------------------------------------------ the walker
 
-  /** Town solids near town, and parked or moving vehicles anywhere (cars can drive out into the lake country). */
   collide(p: Vector3, r: number): void {
-    if (!this.physics) return
+    if (!this.physics || !this.land.holdsScene(p.x, p.z)) return
     const t = sceneToTown(p.x, p.y, p.z, this._t)
     const q = { x: t.x, z: t.z }
-    const hitStatic = p.z >= HALF - 8 && this.physics.pushOut(q, t.y, r)
+    const hitStatic = this.physics.pushOut(q, t.y, r)
     const hitVehicle = this.physics.pushOutVehicles(q, t.y, r)
-    if (hitStatic || hitVehicle) {
-      const s = townToScene(q.x, t.y, q.z, this._t)
-      p.x = s.x
-      p.z = s.z
-    }
-    this.north?.pushTrees(p, r)
+    const s = townToScene(q.x, t.y, q.z, this._t)
+    const moved = { x: s.x, z: s.z }
+    const hitTree = this.montello.pushTrees(moved, r)
+    if (!hitStatic && !hitVehicle && !hitTree) return
+    p.x = moved.x
+    p.z = moved.z
   }
 
   obstacle(x: number, z: number, r: number): boolean {
-    if (hitsBarrier(this.barriers, x, z, r, this.host.terrain.heightAt(x, z))) return true
-    if (z < HALF - 8) return false
-    const t = sceneToTown(x, TOWN_OFFSET.y, z, this._t)
+    if (!this.land.holdsScene(x, z)) return false
+    const t = sceneToTown(x, 0, z, this._t)
     return this.physics.blocked(t.x, t.z, this.host.terrain.heightAt(x, z) - TOWN_OFFSET.y, r)
   }
 
@@ -646,48 +538,31 @@ export class FoxLakeTown implements GameExtension {
       const dir = home.front === '+z' ? 1 : -1
       const frontZ = home.front === '+z' ? home.z + home.d : home.z
       const p = townToScene(home.x + 8, 0, frontZ - dir * 2)
-      return { at: new Vector3(p.x, p.y, p.z), facing: dir > 0 ? 0 : Math.PI }
+      return { at: new Vector3(p.x, this.land.heightAt(this.land.toMapX(p.x), this.land.toMapZ(p.z)), p.z), facing: dir > 0 ? 0 : Math.PI }
     }
-    const p = townToScene(SPAWN.x, 0, SPAWN.z - 4)
-    return { at: new Vector3(p.x, p.y, p.z), facing: Math.PI }
+    const s = this.start
+    return { at: new Vector3(this.land.toSceneX(s.x), this.land.heightAt(s.x, s.z), this.land.toSceneZ(s.z)), facing: s.heading }
+  }
+
+  greeting(): string {
+    return 'Welcome to Montello, Wisconsin. Your pickup is parked just ahead: E to drive, Ctrl for the map and directions.'
   }
 
   placeName(x: number, z: number): string | null {
-    const north = this.north?.placeName(x, z)
-    if (north) return north
-    if (z < HALF) {
-      if (roadClear(x, z) < 3 && z < 60 && x > 100) return 'Lake Road'
-      return null
-    }
-    if (this.casino.contains(x, z)) return CASINO_NAME
-    const t = sceneToTown(x, 0, z, this._t)
-    const place = roadsideAt(t.x, t.z, 2)
-    if (place) return place.name
-    if (connectorDistance(x, z) < 8) return 'County Road'
-    if (t.x < TOWN_SQUARE.x0 - TOWN_OFFSET.x + 40 || Math.abs(t.z) > 330 || t.x > 590 || t.x < -410) return 'Fox Lake woods'
-    for (let i = 0; i < ROADS.length; i++) {
-      const r = ROADS[i]
-      if (Math.abs(t.x - r.cx) < r.sx / 2 + 6 && Math.abs(t.z - r.cz) < r.sz / 2 + 6) return ROAD_NAMES[i]
-    }
-    return 'Fox Plains'
+    if (!this.montello) return null
+    return this.montello.placeName(x, z)
   }
 
   // ------------------------------------------------------------ interactions
 
   /** A bought Montello lot's scanned house comes down, so its owner can build their own. */
   private clearScannedHouse(lot: LotState): void {
-    if (lot.owner && lot.scan !== undefined) this.north?.montello.clearHouse(lot.scan)
+    if (lot.owner && lot.scan !== undefined) this.montello.clearHouse(lot.scan)
   }
 
-  /** True where lots are sold: in Fox Plains, or in Montello. */
-  private onLotLand(): boolean {
-    const at = this.host.player
-    return zoneAt(at.z) === 'town' || !!this.north?.link.owns(at.x, at.z)
-  }
-
-  /** The lot for sale you're standing on, on foot in town or in Montello. */
+  /** The lot for sale you're standing on, on foot. */
   private lotForSale(): LotState | null {
-    if (this.host.driving || !this.onLotLand()) return null
+    if (this.host.driving) return null
     const t = this.townPosition()
     const lots = this.houses.world?.lots
     for (const id in lots) {
@@ -698,25 +573,11 @@ export class FoxLakeTown implements GameExtension {
     return null
   }
 
-  /** The roadside place whose door you're standing at, on foot. */
-  private roadsideDoor(): RoadsidePlace | null {
-    if (this.host.driving) return null
-    const t = this.townPosition()
-    for (const p of ROADSIDE) {
-      const d = doorSpot(p)
-      if (Math.hypot(t.x - d.x, t.z - d.z) < 3.2) return p
-    }
-    return null
-  }
-
   prompt(): string {
     const spawned = this.dev?.prompt()
     if (spawned) return spawned
-    if (!this.onLotLand()) return ''
-    const seat = this.casino.prompt()
+    const seat = this.casinoMounted ? this.casino.prompt() : ''
     if (seat) return seat
-    const stop = this.roadsideDoor()
-    if (stop) return `E — ${stop.name}`
     const place = this.places?.prompt()
     if (place) return place
     const lot = this.lotForSale()
@@ -726,60 +587,35 @@ export class FoxLakeTown implements GameExtension {
 
   interact(): boolean {
     if (this.dev?.interact()) return true
-    if (zoneAt(this.host.player.z) === 'town' && this.casino.interact()) return true
-    const stop = zoneAt(this.host.player.z) === 'town' ? this.roadsideDoor() : null
-    if (stop) {
-      this.host.hud.toast(ROADSIDE_GREETING[stop.kind](stop))
-      return true
-    }
-    if (zoneAt(this.host.player.z) === 'town' && this.places?.interact()) return true
+    if (this.casinoMounted && this.casino.interact()) return true
+    if (this.places?.interact()) return true
     const lot = this.lotForSale()
     if (!lot) return false
-    if ((this.account?.money ?? 0) < lotPrice(lot)) this.host.hud.toast(`Lot ${lot.id} costs $${lotPrice(lot).toLocaleString()}. Mow lawns and hunt and fish the lake country to save up.`, 'warn')
+    if ((this.account?.money ?? 0) < lotPrice(lot)) this.host.hud.toast(`Lot ${lot.id} costs $${lotPrice(lot).toLocaleString()}. Work in town, fish and hunt to save up.`, 'warn')
     else this.send({ t: 'build', seq: ++this.buildSeq, op: { op: 'buyLot', lotId: lot.id } })
     return true
-  }
-
-  /** Montello's directions for the full map: Montello's own road network, drawn on Fox Lake's map in scene coordinates. */
-  private northRoutes(link: MontelloLink): NorthRoutes {
-    const land = link.land
-    const last = link.road[link.road.length - 1]
-    return {
-      holds: (x, z) => link.owns(x, z),
-      beyondTown: () => this.beyondTown(),
-      navigate: (goal) => this.northMap?.navigate(goal ? { x: land.toMapX(goal.x), z: land.toMapZ(goal.z), name: goal.name } : null),
-      line: () => {
-        const d = this.northMap?.directions
-        if (!d) return null
-        const points: { x: number; z: number }[] = []
-        const at = this.host.driving?.position ?? this.host.player
-        points.push({ x: at.x, z: at.z })
-        for (let k = 0; k + 1 < d.pts.length; k += 2) points.push({ x: land.toSceneX(d.pts[k]), z: land.toSceneZ(d.pts[k + 1]) })
-        const goal = { x: land.toSceneX(d.goal.x), z: land.toSceneZ(d.goal.z) }
-        points.push(goal)
-        return { points, goal }
-      },
-      foxPlainsEnd: { x: LINK_ROAD.start.x, z: LINK_ROAD.start.z },
-      montelloEnd: { x: last.x, z: last.z },
-    }
   }
 
   private key(e: KeyboardEvent): void {
     if (e.repeat) return
     const ctrl = e.code === 'ControlLeft' || e.code === 'ControlRight'
+    if (this.map?.open) {
+      if (ctrl) this.map.hide()
+      return
+    }
     if (!this.host.playing || this.host.hud.modalOpen) return
     if (ctrl) this.map?.show()
     else if (e.code === GARAGE_KEY) this.swapGarageVehicle()
     else if (e.code === HOME_KEY) this.goHome()
   }
 
-  /** V: brings out the next vehicle you own (beside the pickup and trailer), parked at home or downtown. */
+  /** V: brings out the next vehicle you own (beside the pickup and trailer), parked at home or on Main Street. */
   private swapGarageVehicle(): void {
     const acc = this.account
     if (!acc) return
     const kinds = acc.garage.filter((k) => k !== STARTER_TRUCK && k !== 'trailer')
     if (!kinds.length) {
-      this.host.hud.toast('Buy more vehicles at Maple Motors in Fox Plains (classic); they show up here.')
+      this.host.hud.toast('Buy more vehicles at the dealership on Main Street; they show up here.')
       return
     }
     const current = this.extraKind ?? (this.cars.list.has('mower') ? 'mower' : null)
@@ -791,80 +627,62 @@ export class FoxLakeTown implements GameExtension {
     }
     if (current) this.cars.remove(current)
     const home = this.homeLot()
-    const at = home ? homeSpot(home) : { x: SPAWN.x + 4, z: SPAWN.z + 6, yaw: 0 }
+    const p = this.startPose()
+    const at = home ? homeSpot(home) : { x: p.x + Math.sin(p.heading) * 12, z: p.z - Math.cos(p.heading) * 12, yaw: p.yaw }
     const car = this.cars.add(next, at.x, at.z, at.yaw, acc)
     this.cars.parkVehicle(car.fp, at.x, at.z, at.yaw)
     this.cars.sync(car)
     this.extraKind = next
-    this.host.hud.toast(`${VEHICLES[next]?.name ?? next} is out ${home ? `on your driveway at lot ${home.id}` : 'by the freight depot'}. V swaps it.`)
+    this.host.hud.toast(`${VEHICLES[next]?.name ?? next} is out ${home ? `on your driveway at lot ${home.id}` : 'on Main Street'}. V swaps it.`)
   }
 
   private goHome(): void {
-    const home = this.homeLot()
-    if (!home) {
-      this.host.hud.toast(`You don't have a home yet. Walk onto a lot for sale in town to buy one.`)
-      return
-    }
-    const key = `maplestreet/go-home/${this.account?.id ?? 'guest'}`
-    const last = Number(store.get(key) ?? 0) || 0
-    const wait = Math.max(0, last + GO_HOME_COOLDOWN_MS - Date.now())
-    if (wait > 0) {
-      this.host.hud.toast(`Go home is ready again in ${Math.ceil(wait / 60000)} min`)
+    if (this.host.driving) {
+      this.host.hud.toast('Park and step out first.')
       return
     }
     if (this.host.mode === 'bowfish' || this.host.mode === 'crew') {
       this.host.hud.toast('Finish the boat ride first.')
       return
     }
-    store.set(key, String(Date.now()))
-    this.standAtHome(home)
-    this.host.hud.toast('Home sweet home. Your vehicles are where you left them.')
+    const home = this.homeLot()
+    if (home) {
+      const key = `maplestreet/go-home/${this.account?.id ?? 'guest'}`
+      const last = Number(store.get(key) ?? 0) || 0
+      const wait = Math.max(0, last + GO_HOME_COOLDOWN_MS - Date.now())
+      if (wait > 0) {
+        this.host.hud.toast(`Go home is ready again in ${Math.ceil(wait / 60000)} min`)
+        return
+      }
+      store.set(key, String(Date.now()))
+      this.standAtHome(home)
+      this.host.hud.toast('Home sweet home. Your vehicles are where you left them.')
+      return
+    }
+    const spawn = this.spawn()!
+    this.host.teleport(spawn.at, spawn.facing)
+    this.host.hud.toast('Back on Main Street. Buy a lot and H takes you home.')
   }
 
-  /** The corner map is Fox Lake's own atlas everywhere, Montello and Highway 23 included (Rack & Reel's is hidden). */
+  /** The corner map is Tello's own map of Montello (Rack & Reel's is hidden). */
   drawMinimap(dt: number, x: number, z: number, cameraYaw: number, facing: number, markers: () => MapMarker[]): boolean {
-    if (!this.minimap) return false
-    this.minimap.draw(dt, x, z, cameraYaw, facing, markers)
+    if (!this.map) return false
+    const land = this.land
+    const here = this.host.driving?.position
+    this.map.drawMini(dt, land.toMapX(here?.x ?? x), land.toMapZ(here?.z ?? z), cameraYaw, facing, markers().filter((m) => m.kind === 'friend'), (m) => (land.holdsScene(m.x, m.z) ? { x: land.toMapX(m.x), z: land.toMapZ(m.z) } : null))
     return true
   }
 
-  private montelloWait = 1.5
-
-  /**
-   * Builds Montello once the game is running: a moment after you start, in small slices between frames (Montello.ts),
-   * so it is usually done before you could drive there. Highway 23 is open from the start; Montello's ground is solid.
-   */
-  private startMontello(dt: number): void {
-    const north = this.north
-    if (!north || north.townStarted || !this.host.playing) return
-    this.montelloWait -= dt
-    if (this.montelloWait > 0) return
-    void north.buildTown().catch((e) => console.warn('[foxlake] Montello could not be built', e))
-  }
-
-  /** True west of Fox Plains' square: on Highway 23 through the woods, or in Montello. */
-  private beyondTown(): boolean {
-    const at = this.host.driving?.position ?? this.host.player
-    return !!this.north && this.north.link.beyondTown(at.x, at.z)
-  }
-
-  private zone(): 'town' | 'country' | 'road' | 'montello' {
-    const at = this.host.driving?.position ?? this.host.player
-    if (this.north?.link.owns(at.x, at.z)) return 'montello'
-    if (this.north?.link.beyondTown(at.x, at.z)) return 'road'
-    return zoneAt(at.z)
-  }
-
   cycleMinimapZoom(): string {
-    return this.minimap?.cycleZoom() ?? ''
+    return this.map?.cycleZoom() ?? ''
   }
 
   controls(): ControlRow[] {
     return [
-      { keys: ['Ctrl'], text: 'Full map: click a place or a spot for turn-by-turn directions' },
+      { keys: ['Ctrl'], text: 'Map of Montello: click a place or a spot for turn-by-turn directions' },
       { keys: ['N'], text: 'Zoom the corner map' },
       { keys: ['V'], text: 'Bring out your next vehicle' },
-      { keys: ['H'], text: 'Go home (every 15 minutes)' },
+      { keys: ['H'], text: 'Go home (every 15 minutes), or back to Main Street' },
       ...(this.dev?.controls() ?? []),
     ]
   }
@@ -874,27 +692,20 @@ export class FoxLakeTown implements GameExtension {
   }
 
   debug(): Record<string, unknown> {
-    return { net: this.net?.label ?? null, status: this.netStatus, neighbors: this.neighbors?.count ?? 0, colliders: this.physics?.streamStats(), cars: [...(this.cars?.list.keys() ?? [])], culled: this.culler.stats(), montello: this.north ? { ready: this.north.townReady, ...this.north.montello.buildStats } : null }
+    return {
+      net: this.net?.label ?? null,
+      status: this.netStatus,
+      neighbors: this.neighbors?.count ?? 0,
+      colliders: this.physics?.streamStats(),
+      cars: [...(this.cars?.list.keys() ?? [])],
+      culled: this.culler.stats(),
+      montello: { started: this.townStarted, ready: this.townReady, treeCellsSolid: this.montello?.solidTreeCells },
+      serverHours: this.serverHours,
+    }
   }
 }
 
 const EMPTY: readonly AbstractMesh[] = []
-
-const ROADSIDE_GREETING: Record<RoadsidePlace['kind'], (p: RoadsidePlace) => string> = {
-  cabin: (p) => `${p.name} is locked up tight. ${p.blurb}`,
-  gas: (p) => `${p.name}: "Pumps are on, the bait's fresh and the coffee's hot." ${p.blurb}`,
-  motel: (p) => `${p.name}: the office bell rings, but nobody's at the desk yet. ${p.blurb}`,
-  bar: (p) => `${p.name}: the jukebox is on and the grill's warming up. ${p.blurb}`,
-}
-
-/** Every street and lot in Fox Lake in the lake country's asphalt (the interstate's grit), tiled every 10 m. */
-function countryAsphalt(scene: import('@babylonjs/core/scene').Scene, name: string, texture: import('@babylonjs/core/Materials/Textures/baseTexture').BaseTexture): StandardMaterial {
-  const mat = new StandardMaterial(`fox-lake-${name}`, scene)
-  mat.diffuseTexture = texture
-  mat.specularColor = Color3.Black()
-  mat.ambientColor = new Color3(0.35, 0.35, 0.35)
-  return mat
-}
 
 function homeSpot(lot: LotDef): { x: number; z: number; yaw: number } {
   const dir = lot.front === '+z' ? 1 : -1

@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import { FIRE_BASE_PAY, FIRE_HOSE_SECONDS, STARTER_TRUCK } from '../shared/Economy';
 import type { Job, ServerMsg, VehicleSnap } from '../shared/Protocol';
 import { NeighborhoodLogic } from '../shared/RoomLogic';
-import { MONTELLO_DEPOT, MONTELLO_FIRE_STATION, MONTELLO_HOMES, MONTELLO_PUMPS, MONTELLO_SHOPS, MONTELLO_STREETS } from '../shared/MontelloPlaces';
+import { MONTELLO_DEALER, MONTELLO_DEPOT, MONTELLO_FIRE_STATION, MONTELLO_SHERIFF, MONTELLO_HOMES, MONTELLO_PUMPS, MONTELLO_SHOPS, MONTELLO_STREETS } from '../shared/MontelloPlaces';
 import { registerCustomVehicles } from '../shared/CustomVehicles';
 // @ts-expect-error plain ES module script
-import { placesSource } from '../../../scripts/montello-places.mjs';
+import { placesSource, readGrids } from '../../../scripts/montello-places.mjs';
 
 registerCustomVehicles([]);
 
@@ -30,20 +30,26 @@ function town(money = 1_000) {
 
 test('the Montello table is generated from the baked map and is current', () => {
   const doc = JSON.parse(readFileSync('public/modules/tello/montello.json', 'utf8'));
-  assert.equal(readFileSync('modules-src/maplestreet/shared/MontelloPlaces.ts', 'utf8'), placesSource(doc), 'rerun node scripts/montello-places.mjs');
+  assert.equal(readFileSync('modules-src/maplestreet/shared/MontelloPlaces.ts', 'utf8'), placesSource(doc, readGrids('public/modules/tello/montello.bin')), 'rerun node scripts/montello-places.mjs');
 });
 
-test('Montello has its bars, its bank, Kwik Trip with pumps, the fire station and its houses', () => {
+test('Montello has its bars, its bank, three gas stations with pumps, Freitags, the dealership, the fire station and its houses', () => {
   const names = MONTELLO_SHOPS.map(s => s.name);
-  for (const n of ['Kwik Trip', 'Tambears', "Weezie's Town Pump", 'Yahooz Sports Bar & Grill', 'Rivers Edge Saloon & Eatery']) assert.ok(names.includes(n), n);
+  for (const n of ['Kwik Trip', 'BP', 'Mobil', "Freitag's Food Center", 'H A Freitag & Son', 'Tambears', "Weezie's Town Pump", 'Yahooz Sports Bar & Grill', "Drew's Lakeside Bar & Grill", "Foxtails Gentlemen's Club", 'Rivers Edge Saloon & Eatery']) assert.ok(names.includes(n), n);
+  for (const n of ['Kwik Trip', 'BP', 'Mobil']) assert.equal(MONTELLO_SHOPS.find(s => s.name === n)?.kind, 'gas', `${n} is a gas station`);
+  for (const n of ['Yahooz Sports Bar & Grill', "Weezie's Town Pump", "Drew's Lakeside Bar & Grill"]) assert.equal(MONTELLO_SHOPS.find(s => s.name === n)?.kind, 'bar', `${n} is a bar`);
+  assert.equal(MONTELLO_SHOPS.find(s => s.name === "Freitag's Food Center")?.kind, 'grocery');
+  assert.equal(MONTELLO_SHOPS.find(s => s.name === 'H A Freitag & Son')?.kind, 'dealer');
   assert.ok(MONTELLO_SHOPS.some(s => s.kind === 'bank'));
   assert.equal(new Set(MONTELLO_SHOPS.map(s => s.id)).size, MONTELLO_SHOPS.length, 'ids are unique');
-  assert.ok(MONTELLO_PUMPS.length >= 4);
-  assert.ok(MONTELLO_FIRE_STATION && MONTELLO_DEPOT?.name === 'Kwik Trip');
+  assert.ok(MONTELLO_PUMPS.length >= 8, 'Kwik Trip, BP and Mobil all have pumps');
+  assert.ok(MONTELLO_FIRE_STATION && MONTELLO_DEPOT?.name === "Freitag's Food Center freight depot");
+  assert.ok(MONTELLO_DEPOT.z > 1000, 'the freight depot is behind Freitags, south of town (town z runs south)');
+  assert.ok(MONTELLO_SHERIFF && MONTELLO_DEALER);
   assert.equal(MONTELLO_HOMES.length % 3, 0);
   assert.ok(MONTELLO_HOMES.length / 3 > 300, 'hundreds of houses to deliver to');
   for (let i = 2; i < MONTELLO_HOMES.length; i += 3) assert.ok(MONTELLO_STREETS[MONTELLO_HOMES[i]] !== undefined);
-  for (const s of MONTELLO_SHOPS) assert.ok(s.x < -1700 && s.x > -6000 && s.z > 0, `${s.name} lies south-west of Fox Plains along State Highway 23`);
+  for (const s of MONTELLO_SHOPS) assert.ok(Math.abs(s.x) < 7300 && Math.abs(s.z) < 7600, `${s.name} lies on Montello's map`);
 });
 
 test('a Montello bar serves you only at its door, and charges for it', () => {
@@ -62,7 +68,7 @@ test('a Montello bar serves you only at its door, and charges for it', () => {
   assert.match(note(), /Not enough money/);
 });
 
-test('Kwik Trip pumps fill the tank', () => {
+test('the pumps fill the tank', () => {
   const { logic, account, place, note } = town(500);
   account().fuel[STARTER_TRUCK] = 2;
   place(0, 0);
@@ -76,12 +82,12 @@ test('Kwik Trip pumps fill the tank', () => {
   assert.ok(account().money < 500);
 });
 
-test('Kwik Trip deliveries go from the store to a Montello house, in the pickup', () => {
+test('deliveries go from the freight depot behind Freitags to a Montello house, in the pickup', () => {
   const { logic, account, place, job, toast } = town();
   const depot = MONTELLO_DEPOT!;
   place(0, 0);
   logic.message('s1', { t: 'jobRequest', kind: 'montello' });
-  assert.match(toast(), /Kwik Trip/);
+  assert.match(toast(), /Freitag/);
   assert.equal(job(), null);
   place(depot.x + 3, depot.z);
   logic.message('s1', { t: 'jobRequest', kind: 'montello' });
