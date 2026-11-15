@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any, NamedTuple
 
 from .models import Coin, Position
+from .prices import Quote
 
 Settings = Mapping[str, Any]
 
@@ -137,6 +138,52 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float, trend: 
                 return "no crash timing yet"
         elif coin.minutes_left < s["learned.min_minutes_left"]:
             return f"{coin.minutes_left:.0f} minutes left before the usual crash"
+    return None
+
+
+def verify_block(coin: Coin, quote: Quote | None, settings: Settings, now: int, sol_usd: float) -> str | None:
+    """The last look before a buy: live price, volume, buys and liquidity, fresh holder figures, and no dump.
+    `quote` is the live DexScreener reading in dollars; `now` is milliseconds on the tracker's clock."""
+    s = settings
+    if not s["verify.enabled"]:
+        return None
+    if quote is None or coin.price is None or not sol_usd:
+        return "could not confirm the live price"
+    live = quote.price / sol_usd
+    fell = (1 - live / coin.price) * 100
+    if fell > s["verify.max_live_drop_pct"]:
+        return f"price fell {fell:.0f}% since the Radar reading"
+    drop_from_high = s["verify.max_drop_from_high_pct"]
+    if drop_from_high > 0:
+        high = max(price for price in (coin.recent_high, coin.price, live) if price)
+        below = (1 - live / high) * 100
+        if below > drop_from_high:
+            return f"already dumped {below:.0f}% from its 10-minute high"
+    drop_30s = s["verify.max_drop_30s_pct"]
+    if drop_30s > 0 and coin.gain_30s is not None and coin.gain_30s <= -drop_30s:
+        return f"dropped {-coin.gain_30s:.0f}% in the last 30 seconds"
+    holder_age = s["verify.max_holder_age_seconds"]
+    if holder_age > 0:
+        if coin.holders_seen_at is None:
+            return "no holder figures yet"
+        age = (now - coin.holders_seen_at) / 1000
+        if age > holder_age:
+            return f"holder figures are {age:.0f}s old"
+    if s["verify.skip_holders_falling"] and coin.holders_per_min is not None and coin.holders_per_min < 0:
+        return f"holders are falling ({coin.holders_per_min:g} in the last minute)"
+    if s["verify.live_market"]:
+        if s["entry.min_volume_5m_usd"] > 0:
+            if quote.volume_5m is None:
+                return "no live 5m volume"
+            if quote.volume_5m < s["entry.min_volume_5m_usd"]:
+                return f"live 5m volume {_money(quote.volume_5m)} under {_money(s['entry.min_volume_5m_usd'])}"
+        trades = (quote.buys_5m or 0) + (quote.sells_5m or 0)
+        if s["entry.min_buy_share_pct"] > 0 and quote.buys_5m is not None and trades:
+            share = quote.buys_5m / trades * 100
+            if share < s["entry.min_buy_share_pct"]:
+                return f"live buy share {share:.0f}% under {s['entry.min_buy_share_pct']:.0f}%"
+        if s["entry.min_liquidity_usd"] > 0 and quote.liquidity is not None and quote.liquidity < s["entry.min_liquidity_usd"]:
+            return f"live liquidity {_money(quote.liquidity)} under {_money(s['entry.min_liquidity_usd'])}"
     return None
 
 

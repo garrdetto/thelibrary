@@ -21,6 +21,25 @@ def _first(values: Any) -> str | None:
     return str(values[0])[:140] if isinstance(values, list) and values else None
 
 
+RECENT_HIGH_MS = 600_000
+
+
+def _recent_high(token: dict[str, Any]) -> float | None:
+    """The coin's highest dollar price over about the last 10 minutes, from the Radar's chart points."""
+    prices: list[float] = []
+    history = token.get("history") if isinstance(token.get("history"), list) else []
+    points = [(number(point.get("t")), number(point.get("priceUsd"))) for point in history if isinstance(point, dict)]
+    stamps = [stamp for stamp, _ in points if stamp]
+    if stamps:
+        latest = max(stamps)
+        prices += [price for stamp, price in points if stamp and price and price > 0 and stamp >= latest - RECENT_HIGH_MS]
+    spark = token.get("spark") if isinstance(token.get("spark"), dict) else {}
+    for series in (spark.get("slow"), spark.get("fast")):
+        if isinstance(series, list):
+            prices += [price for price in (number(value) for value in series) if price and price > 0]
+    return max(prices) if prices else None
+
+
 @dataclass(frozen=True)
 class Coin:
     mint: str
@@ -57,6 +76,11 @@ class Coin:
     rebuy_advice_reason: str | None = None
     high_price: float | None = None
     failed_labels: tuple[str, ...] = ()
+    recent_high: float | None = None
+    gain_30s: float | None = None
+    holders: float | None = None
+    holders_per_min: float | None = None
+    holders_seen_at: float | None = None
 
     @staticmethod
     def from_token(token: dict[str, Any], sol_usd: float = 1.0) -> "Coin":
@@ -73,6 +97,13 @@ class Coin:
         price = price if price and price > 0 else None
         liquidity = number(token.get("liquidityUsd"))
         high = number(advice.get("highPrice"))
+        recent_high = _recent_high(token)
+        traits = token.get("holderTraits") if isinstance(token.get("holderTraits"), dict) else {}
+        pulse = token.get("pulse") if isinstance(token.get("pulse"), dict) else {}
+        gains = token.get("gains") if isinstance(token.get("gains"), dict) else {}
+        holder_gains = gains.get("holders") if isinstance(gains.get("holders"), dict) else {}
+        seen = [stamp for stamp in (number(traits.get("checkedAt")), number(pulse.get("seenAt"))) if stamp]
+        holders_per_min = number(holder_gains.get("m1"))
         return Coin(
             mint=str(token.get("mint", "")),
             symbol=str(token.get("symbol") or "?")[:16],
@@ -108,6 +139,11 @@ class Coin:
             exit_advice_reason=_first(advice.get("exitReasons")),
             rebuy_advice_reason=_first(advice.get("rebuyReasons")),
             high_price=None if high is None else high / sol_usd,
+            recent_high=None if recent_high is None else recent_high / sol_usd,
+            gain_30s=number(change.get("s30")),
+            holders=number(pulse.get("holders")) or number(traits.get("holders")),
+            holders_per_min=holders_per_min if holders_per_min is not None else number(token.get("holdersPerMin")),
+            holders_seen_at=max(seen) if seen else None,
         )
 
     def entry_facts(self) -> dict[str, Any]:
