@@ -62,7 +62,7 @@ export function BotAccount({ now }: { now: number }) {
           <section className="radar-card">
             <div className="panel-heading"><span className="number-tag">02</span><h2>Closest to a buy</h2><span className="panel-caption">WHAT IS HOLDING EACH COIN BACK</span></div>
             {report.candidates.length === 0 ? <p className="radar-muted">Nothing to show yet.</p>
-              : <ul className="radar-bot-list">{report.candidates.map(candidate => <li key={candidate.mint}><strong>{candidate.symbol}</strong><span className="tabular">{candidate.score}</span><span>{candidate.reason}</span></li>)}</ul>}
+              : <ul className="radar-bot-list">{report.candidates.map(candidate => <li key={candidate.mint}><strong>{candidate.symbol}</strong><span className="tabular" title={candidate.dex === undefined || candidate.dex === null ? 'Runner score' : 'Runner score / DexScreener score'}>{candidate.score}{candidate.dex === undefined || candidate.dex === null ? '' : ` / ${candidate.dex}`}</span><span>{candidate.reason}</span></li>)}</ul>}
             <h3 className="radar-bot-subhead">Activity</h3>
             {report.events.length === 0 ? <p className="radar-muted">Nothing has happened yet.</p>
               : <ul className="radar-bot-log">{report.events.slice(0, 8).map(event => <li key={event.id}><span className="tabular">{formatClock(event.t)}</span><span>{event.text}</span></li>)}</ul>}
