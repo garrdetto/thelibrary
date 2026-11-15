@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { holderLimitBreaks } from './holder-limits.js'
+import { scoreRunner, type RunnerInput } from './runner-score.js'
 import { pageStatsAt, pageStatsFreshMs, pageStatsKeptMs, pageStatsLiveMs, parsePageStats } from './page-stats.js'
 
 const now = 1_800_000_000_000
@@ -36,7 +37,16 @@ test('a reading stands alone for two minutes, counts for eight and is kept for t
   assert.equal(pageStatsAt(stats, now + pageStatsKeptMs + 1).kept, null)
 })
 
-test('fresh wallets over 10% break a holder limit', () => {
-  assert.ok(holderLimitBreaks({ top10: 14, dev: 0, snipers: 3, insiders: 2, bundlers: 4, linked: 1, fresh: 10.5 }).some(reason => reason.startsWith('Fresh wallets hold')))
+test('fresh wallets over 10% score 0', () => {
+  const input: RunnerInput = {
+    now, marketCap: 30_000, liquidity: 14_000, priceChange: { m1: 3, m5: 20 }, ticks: [], top10: 14, dev: 0, devSold: true, snipers: 3, insiders: 2,
+    bundlers: 4, linked: 1, fresh: 10.5, proTraders: null, holders: 500, mintAuthority: false, freezeAuthority: false, rugged: false, devCreated: null, devMigrated: null,
+    recycled: null, buys5m: 300, volume5m: 42_000, buyers5m: 120, buyVolume5m: 20_000, sellVolume5m: 12_000, feesSol: 2, graduated: false, dexPaid: true,
+    links: { twitter: null, telegram: null, website: null }, reusedLinks: [], smartHolders: 1, viewers: 100, viewersPerMin: 20, botReason: null,
+    selling: [], devSelling: false, learned: [],
+  }
+  const result = scoreRunner(input)
+  assert.equal(result.score, 0)
+  assert.ok(result.holderRisk.reasons.some((reason: string) => reason.startsWith('Fresh wallets hold')))
   assert.deepEqual(holderLimitBreaks({ top10: 14, dev: 0, snipers: 3, insiders: 2, bundlers: 4, linked: 1, fresh: 9.9 }), [])
 })

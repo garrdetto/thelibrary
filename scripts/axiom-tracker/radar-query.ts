@@ -386,10 +386,13 @@ function buildToken(database: TrackerDatabase, token: TokenRow, snapshots: Snaps
   const botClimb = botReason !== null || remembered !== null
   const ticks = marketTicks.get(token.mint) ?? []
   const pulseNow = live.pulse && now - live.pulse.seenAt < 10_000 ? live.pulse : null
+  const pageNow = pageStatsAt(trackerState.pageStats.get(token.mint), now).live
   const price = live.price ?? latest?.price_usd ?? null
   const sellAlerts = watchSells(token.mint, pulseNow
     ? { t: now, source: 'pulse', top10: pulseNow.top10Pct, bundlers: pulseNow.bundlersPct, insiders: pulseNow.insidersPct, dev: pulseNow.devSold ? 0 : pulseNow.devPct, price }
-    : { t: now, source: 'chain', top10: traits?.top10 ?? null, bundlers: traits?.bundlers ?? null, insiders: traits?.insiders ?? null, dev: traits?.dev ?? null, price }, now)
+    : pageNow
+      ? { t: now, source: 'page', top10: pageNow.top10, bundlers: pageNow.bundlers, insiders: pageNow.insiders, dev: pageNow.dev, price }
+      : { t: now, source: 'chain', top10: traits?.top10 ?? null, bundlers: traits?.bundlers ?? null, insiders: traits?.insiders ?? null, dev: traits?.dev ?? null, price }, now)
   const recycled = recycledFor(database, token, now)
   const card = live.pulse
   const runnerInput: Parameters<typeof scoreRunner>[0] = {
