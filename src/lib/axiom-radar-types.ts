@@ -129,7 +129,7 @@ export type RadarToken = {
   holderTraits?: RadarHolderTraits | null
   factors: RadarFactor[]
   lastSnapshotAt: number | null
-  priceChange: { s30: number | null; m1: number | null; m5: number | null; m10: number | null }
+  priceChange: { s5?: number | null; s30: number | null; m1: number | null; m5: number | null; m10: number | null }
   spark: { fast: number[]; slow: number[] }
   viewersPerMin: number | null
   viewerSurge: boolean
