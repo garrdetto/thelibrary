@@ -122,11 +122,11 @@ def build(engine: Engine, settings_path: str, keys: bool) -> list[list[Segment]]
         ("   fees ", "dim"), (sol(stats["feesPaid"]), ""), ("   drawdown ", "dim"), (f"{account['drawdownPct']:.1f}%", ""),
     ])
     lines.append([
-        (" Buys     ", "dim"), (buy_plan(engine.values), ""),
+        (" Buys     ", "dim"), (buy_plan(engine.rules), ""),
         ("   Network fee ", "dim"), (f"{small_sol(fee.total)} a trade", ""), (f" ({fee.source}: priority {small_sol(fee.priority)}, bribe {small_sol(fee.bribe)})", "dim"),
     ])
     lines.append([])
-    lines.append([(f" OPEN POSITIONS ({len(engine.positions)} of {engine.values['risk.max_open_positions']})", "bold")])
+    lines.append([(f" OPEN POSITIONS ({len(engine.positions)} of {engine.rules['risk.max_open_positions']})", "bold")])
     rows = engine.position_rows()
     if not rows:
         lines.append([("  None right now.", "dim")])

@@ -76,7 +76,7 @@ export function BotAccount({ now }: { now: number }) {
               <table className="radar-mini-table">
                 <thead><tr><th scope="col">Token</th><th scope="col">Bought</th><th scope="col">Cost</th><th scope="col">Value</th><th scope="col">Profit</th><th scope="col">Price move</th><th scope="col">Best</th><th scope="col">Stop</th><th scope="col">Score</th></tr></thead>
                 <tbody>{report.positions.map(position => <tr key={position.id}>
-                  <td><CoinName pairAddress={position.pairAddress} symbol={position.symbol}/> <AxiomLink pairAddress={position.pairAddress} symbol={position.symbol}/>{position.targetDone && <span className="radar-bot-tag">{position.openPct}% left</span>}{position.advice && adviceLabels[position.advice] && <span className="radar-bot-tag warn">{adviceLabels[position.advice]}</span>}</td>
+                  <td><CoinName pairAddress={position.pairAddress} symbol={position.symbol}/> <AxiomLink pairAddress={position.pairAddress} symbol={position.symbol}/>{position.riding ? <span className="radar-bot-tag" title="Past its profit target and held while momentum stays strong">riding momentum</span> : position.targetDone && position.openPct < 100 && <span className="radar-bot-tag">{position.openPct}% left</span>}{position.advice && adviceLabels[position.advice] && <span className="radar-bot-tag warn">{adviceLabels[position.advice]}</span>}</td>
                   <td className="tabular">{formatClock(position.openedAt)}</td>
                   <td className="tabular">{money(position.costSol, position.costUsd)}</td>
                   <td className="tabular">{money(position.valueSol, position.valueUsd)}</td>

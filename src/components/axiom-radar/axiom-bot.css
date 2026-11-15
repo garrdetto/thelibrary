@@ -55,3 +55,20 @@
   .radar-bot-controls .secondary-button { flex: 1 1 auto; justify-content: center; }
   .radar-bot-list li { grid-template-columns: minmax(60px, 90px) 26px minmax(0, 1fr); }
 }
+.radar-bot-group .panel-heading { flex-wrap: wrap; }
+.radar-bot-group .panel-heading .radar-bot-caption { flex: 1 1 200px; }
+.radar-bot-learning, .radar-bot-learning-note { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.radar-bot-learning h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; font-weight: 600; }
+.radar-bot-learning h4 { margin: 14px 0 6px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.radar-bot-learning-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 0 0 8px; }
+.radar-bot-learning-stats div { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--tone-1); }
+.radar-bot-learning-stats dt { font-size: 10px; color: var(--muted); }
+.radar-bot-learning-stats dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; }
+.radar-bot-learning-stats dd small { font-size: 10px; font-weight: 400; color: var(--muted); }
+.radar-bot-lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 11px; }
+.radar-bot-lessons li { display: grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) 60px minmax(110px, auto); gap: 10px; align-items: baseline; }
+.radar-bot-lessons li > span:first-child { color: var(--muted); }
+@media (max-width: 640px) {
+  .radar-bot-lessons li { grid-template-columns: minmax(0, 1fr) auto; }
+  .radar-bot-lessons li > span:first-child, .radar-bot-lessons li > span:last-child { grid-column: 1 / -1; }
+}

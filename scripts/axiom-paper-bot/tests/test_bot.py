@@ -14,6 +14,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from axiom_paper import broker, cli, fees, strategy
+from axiom_paper import rules
 from axiom_paper import settings as dials
 from axiom_paper.engine import Engine
 from axiom_paper.ledger import Ledger
@@ -32,7 +33,7 @@ FEE = 0.2
 
 def pinned() -> dict[str, Any]:
     """The defaults with the dials these tests do their sums on held still, so retuning a default does not break them."""
-    return dials.normalize({**dials.defaults(), **PINNED})
+    return rules.normalize({**rules.defaults(), **PINNED})
 
 
 def token(mint: str = "MintA", **changes: Any) -> dict[str, Any]:
@@ -95,10 +96,12 @@ class Harness:
     def __init__(self, **overrides: Any):
         self.folder = tempfile.TemporaryDirectory()
         self.settings_path = Path(self.folder.name) / "paper-bot.toml"
+        simple = {key: value for key, value in overrides.items() if key in dials.DIAL_BY_KEY}
         values = pinned()
         values.update({"entry.confirm_pulls": 1, "bot.poll_seconds": 3})
-        values.update(overrides)
-        dials.save_file(self.settings_path, dials.normalize(values))
+        values.update({key: value for key, value in overrides.items() if key not in dials.DIAL_BY_KEY or key in rules.SCHEMA.by_key})
+        self.rule_overrides = {key: value for key, value in rules.normalize(values).items() if key not in rules.PASSED_THROUGH or key in overrides or key in PINNED}
+        dials.save_file(self.settings_path, dials.normalize({"learn.enabled": False, **{key: values[key] for key in rules.PASSED_THROUGH}, **simple}))
         self.clock = Clock()
         self.site = FakeSite(self.clock)
         self.quotes: dict[str, Quote] = {SOL_MINT: Quote(1.0, None)}
@@ -107,7 +110,7 @@ class Harness:
         self.engine = self.start()
 
     def start(self, background: bool = False) -> Engine:
-        return Engine(self.ledger, self.site, self.settings_path, price_source=lambda wanted: {mint: self.quotes[mint] for mint in wanted if mint in self.quotes}, fee_source=lambda: self.fee_levels, clock=self.clock, background=background)
+        return Engine(self.ledger, self.site, self.settings_path, price_source=lambda wanted: {mint: self.quotes[mint] for mint in wanted if mint in self.quotes}, fee_source=lambda: self.fee_levels, clock=self.clock, background=background, rule_overrides=self.rule_overrides)
 
     def pull(self, *tokens: dict[str, Any], seconds: float = 5) -> None:
         self.clock.t += seconds
@@ -125,31 +128,70 @@ class Harness:
 
 class SettingsTests(unittest.TestCase):
     def test_values_are_clamped_and_wrong_kinds_fall_back(self) -> None:
-        values = dials.normalize({"risk.strength": 99, "mode.score_buy_at": "high", "bot.enabled": "yes", "entry.signal": "moon", "exit.stop_loss_pct": 7.5})
-        self.assertEqual(values["risk.strength"], 10)
-        self.assertEqual(values["mode.score_buy_at"], 70)
+        values = dials.normalize({"buy.max_coins": 99, "buy.buy_at": "high", "bot.enabled": "yes", "buy.picky": "moon", "sell.stop_loss_pct": 7.5})
+        self.assertEqual(values["buy.max_coins"], 30)
+        self.assertEqual(values["buy.buy_at"], 70)
         self.assertIs(values["bot.enabled"], True)
-        self.assertEqual(values["entry.signal"], "any")
-        self.assertEqual(values["exit.stop_loss_pct"], 7.5)
+        self.assertEqual(values["buy.picky"], "normal")
+        self.assertEqual(values["sell.stop_loss_pct"], 7.5)
 
-    def test_a_renamed_dial_keeps_the_old_value(self) -> None:
-        self.assertEqual(dials.normalize({"entry.min_score": 82})["mode.score_buy_at"], 82)
-        self.assertEqual(dials.normalize({"entry.min_score": 82, "mode.score_buy_at": 64})["mode.score_buy_at"], 64)
-        self.assertNotIn("entry.min_score", dials.normalize({"entry.min_score": 82}))
+    def test_old_dials_carry_over_to_the_simple_ones(self) -> None:
+        old = {"mode.pick_by": "dex", "mode.dex_buy_at": 55, "mode.score_buy_at": 80, "risk.buy_amount_sol": 0.4, "risk.max_open_positions": 6, "risk.daily_loss_limit_pct": 12, "costs.fee_mode": "manual"}
+        values = dials.normalize(old)
+        self.assertEqual((values["buy.pick_by"], values["buy.buy_at"], values["buy.amount_sol"], values["buy.max_coins"], values["buy.daily_loss_pct"], values["costs.fee_mode"]), ("dex", 55, 0.4, 6, 12, "manual"))
+        self.assertEqual(dials.normalize({**old, "buy.buy_at": 64})["buy.buy_at"], 64)
+        self.assertNotIn("mode.pick_by", values)
+        self.assertEqual(dials.normalize({"mode.score_buy_at": 77})["buy.buy_at"], 77)
 
     def test_file_round_trip_keeps_every_dial(self) -> None:
-        values = dials.normalize({"risk.strength": 8, "entry.signal": "any", "bot.fast_feed": True, "costs.fee_pct": 1.25})
+        values = dials.normalize({"buy.max_coins": 8, "buy.picky": "strict", "sell.ride_momentum": False, "costs.max_fee_sol": 0.02})
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "bot.toml"
             dials.save_file(path, values)
             self.assertEqual(dials.load_file(path), values)
-            self.assertIn("# Risk strength", path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("# Most coins held at once", text)
+            self.assertIn("# Account: pretend SOL only", text)
+
+    def test_an_old_settings_file_is_read_into_the_simple_dials(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "bot.toml"
+            path.write_text('[mode]\npick_by = "dex"\ndex_buy_at = 55\n[risk]\nbuy_amount_sol = 0.3\nmax_open_positions = 6\n', encoding="utf-8")
+            values = dials.load_file(path)
+        self.assertEqual((values["buy.pick_by"], values["buy.buy_at"], values["buy.amount_sol"], values["buy.max_coins"]), ("dex", 55, 0.3, 6))
 
     def test_every_default_is_inside_its_own_range(self) -> None:
         self.assertEqual(dials.normalize(dials.defaults()), dials.defaults())
         self.assertEqual(len(dials.DIAL_BY_KEY), len(dials.DIALS))
         groups = {group["id"] for group in dials.GROUPS}
         self.assertTrue(all(dial["key"].split(".")[0] in groups for dial in dials.DIALS))
+        self.assertEqual(rules.normalize(rules.defaults()), rules.defaults())
+        self.assertLessEqual(len(dials.DIALS), 22)
+        self.assertTrue(all(dial.get("help") for dial in dials.DIALS))
+
+    def test_every_simple_dial_reaches_the_rules(self) -> None:
+        base = rules.expand(dials.defaults())
+        changed = {"buy.pick_by": "dex", "buy.buy_at": 61, "buy.amount_sol": 0.7, "buy.max_coins": 9, "buy.daily_loss_pct": 4, "sell.target_pct": 45,
+                   "sell.ride_momentum": False, "sell.ride_trail_pct": 9, "sell.stop_loss_pct": 14, "sell.max_hold_minutes": 12, "costs.fee_mode": "manual", "account.starting_sol": 3}
+        expanded = rules.expand(dials.normalize({**dials.defaults(), **changed}))
+        self.assertEqual(expanded["mode.pick_by"], "dex")
+        self.assertEqual(expanded["mode.dex_buy_at"], 61)
+        self.assertEqual((expanded["risk.buy_amount_sol"], expanded["risk.max_per_coin_sol"], expanded["risk.max_open_positions"]), (0.7, 1.4, 9))
+        self.assertEqual((expanded["exit.take_profit_pct"], expanded["exit.take_profit_sell_pct"], expanded["exit.ride_momentum"], expanded["exit.ride_trail_pct"]), (45, 100, False, 9))
+        self.assertEqual((expanded["exit.stop_loss_pct"], expanded["exit.max_hold_minutes"], expanded["risk.daily_loss_limit_pct"]), (14, 12, 4))
+        self.assertEqual((expanded["costs.fee_mode"], expanded["account.starting_sol"]), ("manual", 3))
+        self.assertNotEqual(base, expanded)
+        self.assertFalse(expanded["mode.dex_quick_exits"])
+
+    def test_picky_levels_tighten_and_loosen_the_buy_rules(self) -> None:
+        strict, normal, loose = (rules.expand(dials.normalize({"buy.picky": level})) for level in ("strict", "normal", "loose"))
+        self.assertEqual((strict["entry.signal"], normal["entry.signal"], loose["entry.signal"]), ("buy", "any", "any"))
+        self.assertGreater(strict["entry.min_liquidity_usd"], normal["entry.min_liquidity_usd"])
+        self.assertGreater(normal["entry.min_liquidity_usd"], loose["entry.min_liquidity_usd"])
+        self.assertLess(strict["entry.max_failed_checks"], loose["entry.max_failed_checks"])
+        coin = Coin.from_token(token(signal="watch"))
+        self.assertIsNotNone(strategy.entry_block(coin, strict, 0))
+        self.assertIsNone(strategy.entry_block(coin, normal, 0))
 
 
 class OutputTests(unittest.TestCase):
@@ -495,11 +537,14 @@ class EngineTests(unittest.TestCase):
         bot = Harness(**{"exit.trailing_stop_pct": 0})
         bot.pull(token())
         bot.pull(token(priceUsd=0.00145))
+        self.assertFalse(bot.engine.positions[0].target_done)
+        bot.pull(token(priceUsd=0.00145), seconds=16)
         held = bot.engine.positions[0]
         self.assertTrue(held.target_done)
         self.assertAlmostEqual(held.qty_open, held.qty / 2)
         self.assertGreater(held.proceeds, held.cost * 0.6)
         bot.pull(token(priceUsd=0.00099))
+        bot.pull(token(priceUsd=0.00099), seconds=16)
         self.assertEqual(bot.engine.positions, [])
         trade = bot.engine.trade_rows()[0]
         self.assertEqual(trade["reason"], "Back to entry after target")
@@ -512,6 +557,8 @@ class EngineTests(unittest.TestCase):
         bot.pull(token())
         bot.quotes["MintA"] = Quote(0.0008, 60_000.0)
         bot.tick(seconds=4)
+        self.assertEqual(len(bot.engine.positions), 1)
+        bot.tick(seconds=16)
         self.assertEqual(bot.engine.positions, [])
         trade = bot.engine.trade_rows()[0]
         self.assertEqual(trade["reason"], "Stop loss")
@@ -554,7 +601,8 @@ class EngineTests(unittest.TestCase):
     def test_daily_loss_limit_blocks_new_buys(self) -> None:
         bot = Harness(**{"risk.daily_loss_limit_pct": 1, "risk.position_pct": 20, "risk.max_position_pct": 50})
         bot.pull(token("MintA"))
-        bot.pull(token("MintA", priceUsd=0.0005), token("MintB"))
+        bot.pull(token("MintA", priceUsd=0.0005))
+        bot.pull(token("MintA", priceUsd=0.0005), token("MintB"), seconds=16)
         self.assertEqual(bot.engine.buy_block, "Daily loss limit reached")
         self.assertEqual(bot.engine.positions, [])
         bot.close()
@@ -564,6 +612,7 @@ class EngineTests(unittest.TestCase):
         for _ in range(2):
             bot.pull(token())
             bot.pull(token(priceUsd=0.0008, signal=None))
+            bot.pull(token(priceUsd=0.0008, signal=None), seconds=16)
         self.assertIn("break", bot.engine.buy_block or "")
         bot.pull(token())
         self.assertEqual(bot.engine.positions, [])
@@ -575,36 +624,36 @@ class EngineTests(unittest.TestCase):
     def test_dials_saved_on_the_radar_page_reach_the_bot_and_its_file(self) -> None:
         bot = Harness()
         values = dials.defaults()
-        values["risk.strength"] = 9
+        values["buy.max_coins"] = 9
         bot.site.settings = {"values": values, "updatedAt": int(bot.clock() * 1000) + 60_000}
         bot.tick()
-        self.assertEqual(bot.engine.values["risk.strength"], 9)
-        self.assertEqual(dials.load_file(bot.settings_path)["risk.strength"], 9)
+        self.assertEqual(bot.engine.values["buy.max_coins"], 9)
+        self.assertEqual(dials.load_file(bot.settings_path)["buy.max_coins"], 9)
         sent = len(bot.site.bodies)
         bot.tick(seconds=15)
         self.assertEqual(len(bot.site.bodies), sent + 1)
         self.assertNotIn("settings", bot.site.bodies[-1])
-        self.assertEqual(bot.site.settings["values"]["risk.strength"], 9)
+        self.assertEqual(bot.site.settings["values"]["buy.max_coins"], 9)
         bot.close()
 
     def test_edits_to_the_file_reach_the_radar_page(self) -> None:
         bot = Harness()
         bot.tick()
         edited = dict(bot.engine.values)
-        edited["exit.stop_loss_pct"] = 20
+        edited["sell.stop_loss_pct"] = 18
         bot.clock.t += 5
         dials.save_file(bot.settings_path, edited)
         bot.tick()
-        self.assertEqual(bot.engine.values["exit.stop_loss_pct"], 20)
-        self.assertEqual((bot.site.settings or {})["values"]["exit.stop_loss_pct"], 20)
+        self.assertEqual(bot.engine.values["sell.stop_loss_pct"], 18)
+        self.assertEqual((bot.site.settings or {})["values"]["sell.stop_loss_pct"], 18)
         bot.close()
 
     def test_a_broken_settings_file_keeps_the_last_good_dials(self) -> None:
-        bot = Harness(**{"risk.strength": 7})
+        bot = Harness(**{"buy.max_coins": 7})
         bot.tick()
-        bot.settings_path.write_text("[risk\nstrength = ", encoding="utf-8")
+        bot.settings_path.write_text("[buy\nmax_coins = ", encoding="utf-8")
         bot.tick()
-        self.assertEqual(bot.engine.values["risk.strength"], 7)
+        self.assertEqual(bot.engine.values["buy.max_coins"], 7)
         self.assertIn("mistake", bot.engine.settings_error or "")
         bot.close()
 

@@ -10,6 +10,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from axiom_paper import rules
 from axiom_paper import settings as dials
 from axiom_paper import strategy
 from axiom_paper.models import Coin
@@ -39,7 +40,7 @@ def live(price: float = 0.001, **changes: Any) -> Quote:
 
 class ChartCheckTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.s = dials.normalize({**dials.defaults(), **CHECKING})
+        self.s = rules.normalize({**rules.defaults(), **CHECKING})
 
     def check(self, quote: Quote | None = None, **changes: Any) -> str | None:
         return strategy.verify_block(Coin.from_token(fresh(**changes)), live() if quote is None else quote, self.s, NOW, 1.0)
@@ -77,7 +78,7 @@ class ChartCheckTests(unittest.TestCase):
         self.assertEqual(self.check(live(liquidity=2_000.0)), "live liquidity $2,000 under $8,000")
 
     def test_turning_it_off_skips_every_check(self) -> None:
-        self.s = dials.normalize({**self.s, "verify.enabled": False})
+        self.s = rules.normalize({**self.s, "verify.enabled": False})
         self.assertIsNone(strategy.verify_block(Coin.from_token(fresh()), None, self.s, NOW, 1.0))
 
 
@@ -93,7 +94,7 @@ class ScoreThresholdTests(unittest.TestCase):
         return bot
 
     def test_the_defaults_no_longer_need_the_radars_own_buy_call(self) -> None:
-        defaults = dials.defaults()
+        defaults = rules.expand(dials.defaults())
         self.assertEqual((defaults["entry.signal"], defaults["entry.radar_advice"], defaults["learned.skip_phase"], defaults["verify.enabled"]), ("any", "never_only", "none", True))
 
     def test_a_coin_over_the_threshold_with_a_clean_chart_is_bought(self) -> None:

@@ -21,6 +21,39 @@ class Exit(NamedTuple):
     reason: str
     share: float
     urgent: bool = False
+    ride: bool = False
+
+
+class Momentum(NamedTuple):
+    strong: bool
+    why: str
+
+
+def momentum(coin: Coin | None, live_30s_pct: float | None, dex_trend: float | None) -> Momentum:
+    """Whether the chart still looks like it is climbing. `live_30s_pct` is the bot's own price change over about 30 seconds,
+    `dex_trend` how far the DexScreener score moved over the last minute of pulls."""
+    votes = 0
+    parts: list[str] = []
+    falling_hard = False
+    if live_30s_pct is not None:
+        parts.append(f"{live_30s_pct:+.0f}% in 30s")
+        votes += 1 if live_30s_pct >= 0 else -1 if live_30s_pct <= -3 else 0
+        falling_hard = live_30s_pct <= -6
+    if coin is not None:
+        if coin.gain_30s is not None:
+            if live_30s_pct is None:
+                parts.append(f"{coin.gain_30s:+.0f}% in 30s")
+            votes += 1 if coin.gain_30s > 0 else -1 if coin.gain_30s <= -3 else 0
+        if coin.gain_1m is not None:
+            parts.append(f"{coin.gain_1m:+.0f}% in 1m")
+            votes += 1 if coin.gain_1m >= 2 else -1 if coin.gain_1m < 0 else 0
+        if coin.buy_share_pct is not None:
+            parts.append(f"{coin.buy_share_pct:.0f}% buys")
+            votes += 1 if coin.buy_share_pct >= 55 else -1 if coin.buy_share_pct < 48 else 0
+    if dex_trend is not None:
+        parts.append(f"DexScreener score {dex_trend:+.0f}")
+        votes += 1 if dex_trend >= 0 else -1 if dex_trend <= -10 else 0
+    return Momentum(votes >= 2 and not falling_hard, ", ".join(parts) or "no chart data")
 
 
 def _money(value: float) -> str:
@@ -161,6 +194,15 @@ def entry_block(coin: Coin, settings: Settings, data_age_seconds: float, trend: 
     return None
 
 
+def quote_lags(coin: Coin, live: float) -> bool:
+    """True when a live price under the Radar's looks like DexScreener still showing the price from before the coin's last
+    minute of climbing, rather than a dump: it sits between where the coin was a minute ago and where it is now."""
+    if coin.price is None or not coin.gain_1m or coin.gain_1m <= 0 or live >= coin.price:
+        return False
+    minute_ago = coin.price / (1 + coin.gain_1m / 100)
+    return live >= minute_ago * 0.93 and (coin.gain_30s is None or coin.gain_30s > -3)
+
+
 def verify_block(coin: Coin, quote: Quote | None, settings: Settings, now: int, sol_usd: float) -> str | None:
     """The last look before a buy: live price, volume, buys and liquidity, fresh holder figures, and no dump.
     `quote` is the live DexScreener reading in dollars; `now` is milliseconds on the tracker's clock."""
@@ -170,6 +212,8 @@ def verify_block(coin: Coin, quote: Quote | None, settings: Settings, now: int, 
     if quote is None or coin.price is None or not sol_usd:
         return "could not confirm the live price"
     live = quote.price / sol_usd
+    if quote_lags(coin, live):
+        live = coin.price
     fell = (1 - live / coin.price) * 100
     if fell > s["verify.max_live_drop_pct"]:
         return f"price fell {fell:.0f}% since the Radar reading"
@@ -258,12 +302,19 @@ def tightened(coin: Coin | None, settings: Settings, left_radar: bool) -> bool:
     return bool(coin and settings["exit.follow_radar_advice"] and coin.advice_exit == "tighten")
 
 
-def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: int, left_radar: bool = False) -> Exit | None:
-    """The reason and the share of the open position to sell when a sell rule fires, else None."""
+def riding(position: Position, settings: Settings) -> bool:
+    """True once the position passed its target and is being held on momentum."""
+    return bool(position.target_done and settings["exit.ride_momentum"] and position.qty_open >= position.qty * 0.999)
+
+
+def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: int, left_radar: bool = False, flow: Momentum | None = None) -> Exit | None:
+    """The reason and the share of the open position to sell when a sell rule fires, else None.
+    `flow` is the chart's momentum, read once the position reaches its target."""
     s = exit_dials(settings, position)
     gain_pct = position.gain() * 100
     peak_gain_pct = (position.peak_price / position.entry_spot - 1) * 100
     held = position.held_minutes(now)
+    ride = riding(position, s)
     if (now - position.last_price_at) / 60_000 >= s["exit.no_price_minutes"]:
         return Exit("No price", 1.0)
     if s["exit.sell_on_warning"] and coin and coin.alerts:
@@ -282,7 +333,18 @@ def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: 
             return Exit(why, 1.0)
         if position.last_price <= position.peak_price * (1 - s["exit.tighten_trailing_pct"] / 100):
             return Exit(f"Tightened trailing stop. {why}", 1.0, True)
+    if ride:
+        floor = position.entry_spot * (1 + s["exit.take_profit_pct"] / 100)
+        trail = position.peak_price * (1 - s["exit.ride_trail_pct"] / 100)
+        if position.last_price <= floor:
+            return Exit(f"Momentum ride over: back to the +{s['exit.take_profit_pct']:g}% target", 1.0, True)
+        if position.last_price <= trail:
+            return Exit(f"Momentum ride over: {(1 - position.last_price / position.peak_price) * 100:.0f}% off its high of {peak_gain_pct:+.0f}%", 1.0, True)
+        if flow is not None and not flow.strong:
+            return Exit(f"Momentum faded at {gain_pct:+.0f}% ({flow.why})", 1.0)
     if s["exit.take_profit_pct"] > 0 and not position.target_done and gain_pct >= s["exit.take_profit_pct"]:
+        if s["exit.ride_momentum"] and flow is not None and flow.strong and s["exit.take_profit_sell_pct"] >= 100:
+            return Exit(f"Reached the +{s['exit.take_profit_pct']:g}% target with strong momentum ({flow.why}), staying in", 0.0, ride=True)
         return Exit("Profit target", s["exit.take_profit_sell_pct"] / 100)
     if s["exit.trailing_stop_pct"] > 0 and peak_gain_pct >= s["exit.trailing_start_pct"]:
         if position.last_price <= position.peak_price * (1 - s["exit.trailing_stop_pct"] / 100):
@@ -296,6 +358,8 @@ def exit_signal(position: Position, coin: Coin | None, settings: Settings, now: 
                 return Exit("Viewers fell", 1.0)
         if s["exit.sell_when_overdue"] and coin.phase == "overdue":
             return Exit("Past the usual crash time", 1.0)
+    if ride:
+        return None
     if s["exit.stall_minutes"] > 0 and held >= s["exit.stall_minutes"] and gain_pct < s["exit.stall_min_gain_pct"]:
         return Exit("Stalled", 1.0)
     if s["exit.max_hold_minutes"] > 0 and held >= s["exit.max_hold_minutes"]:

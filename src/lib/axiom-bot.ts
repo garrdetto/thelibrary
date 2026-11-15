@@ -18,9 +18,14 @@ export const botDials = schema.dials as unknown as BotDial[]
 /** New dial key to the old key it replaced, so values saved under the old name carry over. */
 const renamedDials = (schema as { renamed?: Record<string, string> }).renamed ?? {}
 
+/** An old key may name another value in braces, as in `mode.{mode.pick_by}_buy_at`. */
 function withRenamedDials(source: Record<string, unknown>): Record<string, unknown> {
   const out = { ...source }
-  for (const [key, old] of Object.entries(renamedDials)) if (!(key in out) && old in out) out[key] = out[old]
+  for (const [key, old] of Object.entries(renamedDials)) {
+    if (key in out) continue
+    const oldKey = old.replace(/\{([^}]+)\}/g, (_, name: string) => String(source[name] ?? 'score'))
+    if (oldKey in out) out[key] = out[oldKey]
+  }
   return out
 }
 
@@ -44,35 +49,47 @@ export function cleanBotPatch(input: Record<string, unknown>): BotValues {
   return Object.fromEntries(botDials.filter(dial => dial.key in source).map(dial => [dial.key, cleanBotValue(dial, source[dial.key])]))
 }
 
-/** The dials shown first on the Trading bot tab. */
-export const botQuickDials = ['risk.strength', 'risk.buy_mode', 'risk.buy_amount_sol', 'risk.max_per_coin_sol', 'mode.pick_by', 'mode.score_buy_at', 'mode.quality_buy_at', 'mode.dex_buy_at', 'mode.blend_buy_at', 'entry.signal', 'risk.max_open_positions', 'exit.stop_loss_pct', 'exit.take_profit_pct', 'exit.trailing_stop_pct', 'costs.fee_mode', 'costs.max_fee_sol', 'account.starting_sol']
-
-const balancedStyle: BotValues = Object.fromEntries(
-  ['risk.strength', 'mode.pick_by', 'entry.signal', 'mode.score_buy_at', 'mode.quality_buy_at', 'entry.safety', 'entry.max_failed_checks', 'entry.radar_advice', 'risk.max_open_positions', 'exit.on_tighten', 'exit.left_radar'].map(key => [key, defaultBotValues[key]]),
-)
-
 /** Starting points for the dials. Each style sets the same handful of dials and leaves the rest alone. */
 export const botPresets: Array<{ id: string; label: string; summary: string; values: BotValues }> = [
   {
     id: 'careful',
     label: 'Careful',
-    summary: 'Small bets on the cleanest recommended buys, three coins at most. Sells as soon as the Radar says momentum is fading.',
-    values: { ...balancedStyle, 'risk.strength': 3, 'mode.score_buy_at': 75, 'mode.quality_buy_at': 80, 'entry.safety': 'safe', 'entry.max_failed_checks': 0, 'risk.max_open_positions': 3, 'exit.on_tighten': 'sell_all', 'exit.left_radar': 'sell' },
+    summary: 'Strict safety checks and the Radar\'s own buy call, three coins at most. Sells at +20% unless the chart is still climbing, stop loss at -15%.',
+    values: { 'buy.picky': 'strict', 'buy.max_coins': 3, 'sell.target_pct': 20, 'sell.stop_loss_pct': 15, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 8 },
   },
-  { id: 'balanced', label: 'Balanced', summary: 'The defaults: recommended buys only, modest bets, wide stops, and a tighter stop when momentum fades.', values: balancedStyle },
+  {
+    id: 'balanced',
+    label: 'Balanced',
+    summary: 'The defaults: any coin that reaches the score with the usual safety checks. Sells at +30% unless momentum is strong, stop loss at -20%.',
+    values: { 'buy.picky': 'normal', 'buy.max_coins': 5, 'sell.target_pct': 30, 'sell.stop_loss_pct': 20, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 12 },
+  },
   {
     id: 'bold',
     label: 'Bold',
-    summary: 'Bigger bets on buys and watched coins, up to eight at once, and only the Radar\'s never-rebuy advice blocks a buy. Loses faster when wrong.',
-    values: { ...balancedStyle, 'risk.strength': 8, 'entry.signal': 'buy_or_watch', 'mode.score_buy_at': 60, 'mode.quality_buy_at': 60, 'entry.max_failed_checks': 2, 'entry.radar_advice': 'never_only', 'risk.max_open_positions': 8 },
-  },
-  {
-    id: 'quick',
-    label: 'Quick flips',
-    summary: 'Picks coins by the DexScreener score, buys on the first passing pull without needing Axiom viewers, and gets out fast: 10% stop, 25% target, 8% trailing stop, 10 minutes at most.',
-    values: { ...balancedStyle, 'mode.pick_by': 'dex', 'mode.dex_buy_at': 55, 'mode.dex_skip_viewers': true, 'mode.dex_confirm_pulls': 1, 'mode.dex_quick_exits': true, 'risk.max_open_positions': 6 },
+    summary: 'Looser checks and up to eight coins. Aims for +50% and gives coins room: stop loss at -25%, rides momentum with a 15% trail.',
+    values: { 'buy.picky': 'loose', 'buy.max_coins': 8, 'sell.target_pct': 50, 'sell.stop_loss_pct': 25, 'sell.ride_momentum': true, 'sell.ride_trail_pct': 15 },
   },
 ]
+
+/** One thing the bot learned: how coins in one band of one feature did after it saw them. */
+export type BotLesson = { feature: string; band: string; seen: number; avgPct: number; winPct: number; timing: boolean }
+
+/** What the bot's learner knows, as it reported it. */
+export type BotLearning = {
+  enabled: boolean
+  timing: boolean
+  watched: number
+  following: number
+  trades: number
+  avgPct: number | null
+  winPct: number | null
+  adjust: number
+  recentWinPct: number | null
+  recentTrades: number
+  minSeen: number
+  buyLevel: number
+  lessons: BotLesson[]
+}
 
 export type BotPosition = {
   id: number
@@ -94,6 +111,8 @@ export type BotPosition = {
   score: number
   /** The Radar's exit advice for the coin: hold, tighten or exit, or `left` once it is off the Radar. */
   advice?: string | null
+  /** Past its profit target and held while momentum stays strong. */
+  riding?: boolean
   costSol?: number
   valueSol?: number
   pnlSol?: number
@@ -179,6 +198,7 @@ export type BotReport = {
   equity: Array<{ t: number; equity: number; sol?: number }>
   events: Array<{ id: number; t: number; kind: string; text: string }>
   candidates: Array<{ mint: string; symbol: string; score: number; dex?: number | null; reason: string }>
+  learning?: BotLearning
   strength: number
   settingsStamp: number
 }

@@ -221,7 +221,7 @@ def flatten(args: argparse.Namespace) -> int:
 def set_dials(args: argparse.Namespace, pairs: list[tuple[str, str]] | None = None) -> int:
     if pairs is None:
         if not args.rest or len(args.rest) % 2:
-            print("Give pairs of dial and value, for example: set risk.strength 7 exit.stop_loss_pct 30", file=sys.stderr)
+            print("Give pairs of dial and value, for example: set buy.max_coins 3 sell.stop_loss_pct 25", file=sys.stderr)
             return 2
         pairs = list(zip(args.rest[0::2], args.rest[1::2]))
     values = dials.load_file(args.settings) if args.settings.exists() else dials.defaults()

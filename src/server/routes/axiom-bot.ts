@@ -40,7 +40,7 @@ const reportInput = z.object({
   positions: z.array(z.object({
     id: finite, mint: text(60), symbol: text(40), pairAddress: text(60).nullable(), openedAt: finite, entryPrice: finite, price: finite, costUsd: finite,
     valueUsd: finite, pnlUsd: finite, pnlPct: finite, gainPct: finite, peakGainPct: finite, openPct: finite, stopPrice: maybe, targetDone: z.boolean(), score: finite, advice: text(20).nullable().optional(),
-    costSol: finite.optional(), valueSol: finite.optional(), pnlSol: finite.optional(),
+    riding: z.boolean().optional(), costSol: finite.optional(), valueSol: finite.optional(), pnlSol: finite.optional(),
   })).max(60),
   trades: z.array(z.object({
     id: finite, mint: text(60), symbol: text(40), pairAddress: text(60).nullable(), openedAt: finite, closedAt: maybe, costUsd: finite, proceedsUsd: finite,
@@ -49,7 +49,12 @@ const reportInput = z.object({
   })).max(80),
   equity: z.array(z.object({ t: finite, equity: finite, sol: finite.optional() })).max(200),
   events: z.array(z.object({ id: finite, t: finite, kind: text(20), text: text(400) })).max(60),
-  candidates: z.array(z.object({ mint: text(60), symbol: text(40), score: finite, reason: text(200) })).max(20),
+  candidates: z.array(z.object({ mint: text(60), symbol: text(40), score: finite, dex: maybe.optional(), quality: maybe.optional(), reason: text(200) })).max(20),
+  learning: z.object({
+    enabled: z.boolean(), timing: z.boolean(), watched: finite, following: finite, trades: finite, avgPct: maybe, winPct: maybe, adjust: finite,
+    recentWinPct: maybe, recentTrades: finite, minSeen: finite, buyLevel: finite,
+    lessons: z.array(z.object({ feature: text(60), band: text(80), seen: finite, avgPct: finite, winPct: finite, timing: z.boolean() })).max(12),
+  }).optional(),
   strength: finite,
   settingsStamp: finite,
 })
