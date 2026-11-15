@@ -4,7 +4,7 @@ You are building the Throne Engine: an orchestrator that runs a three-tier hiera
 
 ## Where this lives
 
-This folder sits inside the library site repository (`garrdetto/thelibrary`, TanStack Start on Cloudflare Workers) but is a separate project. Never change files outside `empire/`, and keep its files out of `public/`, `src/`, `modules-src/` and `engine/`. Give `empire/ui` its own `package.json` and `tsconfig.json`, and add `"empire"` to the `exclude` list in the root `tsconfig.json` before adding any TypeScript here, so the site's build, the `modules` check and the Workers deploy are unaffected. The Throne Engine is deployed separately from the site.
+This folder sits inside the library site repository (`garrdetto/thelibrary`, TanStack Start on Cloudflare Workers) but is a separate project. Never change files outside `empire/`, and keep its files out of `public/`, `src/`, `modules-src/` and `engine/`. Give `empire/ui` its own `package.json` and `tsconfig.json`, and add `"empire"` to the `exclude` list in the root `tsconfig.json` before adding any TypeScript here, so the site's build, the `modules` check and the Workers deploy are unaffected. The Throne Engine is deployed separately from the site. The console is hosted on the `kingdom` Cloudflare Worker from `empire/wrangler.jsonc` and `empire/worker.js` (static assets from `prototype/`, no bindings); keep that Worker free of the site's bindings and Durable Objects.
 
 ## Ground rules
 

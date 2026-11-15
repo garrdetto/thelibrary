@@ -1,0 +1,15 @@
+{
+  "name": "kingdom",
+  "main": "worker.js",
+  "compatibility_date": "2026-10-19",
+  "workers_dev": true,
+  "preview_urls": true,
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "./prototype",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "none"
+  },
+  "previews": {}
+}
