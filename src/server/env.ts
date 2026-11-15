@@ -14,7 +14,7 @@ export interface D1Database {
 
 export interface KVNamespace {
   getWithMetadata<M>(key: string, type: 'arrayBuffer'): Promise<{ value: ArrayBuffer | null; metadata: M | null }>
-  put(key: string, value: ArrayBuffer | Uint8Array, options?: { metadata?: unknown }): Promise<void>
+  put(key: string, value: ArrayBuffer | Uint8Array, options?: { metadata?: unknown; expirationTtl?: number }): Promise<void>
   delete(key: string): Promise<void>
   list(options: { prefix: string; cursor?: string }): Promise<{ keys: { name: string }[]; list_complete: boolean; cursor?: string }>
 }
@@ -24,9 +24,15 @@ export interface DurableObjectNamespace {
   get(id: unknown): { fetch(request: Request): Promise<Response> }
 }
 
+export interface WorkersAi {
+  run(model: string, inputs: unknown): Promise<unknown>
+}
+
 export type Env = {
   DB: D1Database
   FILES: KVNamespace
+  /** Cloudflare Workers AI binding (free daily allowance), used by the clipart generator. */
+  AI?: WorkersAi
   MAPLE_WORLD?: DurableObjectNamespace
   FOX_LAKE_WORLD?: DurableObjectNamespace
   ANGLER_LAKE?: DurableObjectNamespace
@@ -44,6 +50,8 @@ export type Env = {
   ANTHROPIC_ADMIN_KEY?: string
   ELEVENLABS_API_KEY?: string
   MESHY_API_KEY?: string
+  /** Shared secret the self-hosted Axiom Radar tracker sends to /api/admin/axiom/ingest (same value as its AXIOM_RADAR_TOKEN). */
+  AXIOM_RADAR_TOKEN?: string
   /** Development only: point the Meshy client at a local stand-in. */
   MESHY_API_BASE?: string
 }

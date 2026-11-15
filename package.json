@@ -8,11 +8,16 @@
     "assets:check": "node scripts/assets.mjs --check",
     "assets:report": "node scripts/assets.mjs --report",
     "build": "node --max-old-space-size=6144 node_modules/vite/bin/vite.js build",
-    "test": "tsc -p tsconfig.engine.json && node --test server/park/park.test.mjs server/park/builders.test.mjs server/park/customRides.test.mjs && node scripts/maplestreet-tests.mjs && node scripts/fairway-tests.mjs && node scripts/darts-tests.mjs && node scripts/demoderby-tests.mjs && node scripts/angler-tests.mjs && node scripts/county-tests.mjs && node scripts/bushleague-tests.mjs && node scripts/shorttrack-tests.mjs && node scripts/hood-tests.mjs && node scripts/rackreel-tests.mjs && node scripts/foxlake-tests.mjs && node scripts/tello-tests.mjs && node --test server/arena/arena.test.mjs",
+    "test": "tsc -p tsconfig.engine.json && node --test server/park/park.test.mjs server/park/builders.test.mjs server/park/customRides.test.mjs && node scripts/maplestreet-tests.mjs && node scripts/fairway-tests.mjs && node scripts/darts-tests.mjs && node scripts/demoderby-tests.mjs && node scripts/angler-tests.mjs && node scripts/county-tests.mjs && node scripts/bushleague-tests.mjs && node scripts/shorttrack-tests.mjs && node scripts/hood-tests.mjs && node scripts/rackreel-tests.mjs && node scripts/foxlake-tests.mjs && node scripts/tello-tests.mjs && node --test server/arena/arena.test.mjs && tsx --test scripts/axiom-tracker/mover-score.test.ts scripts/axiom-tracker/runtime.test.ts",
     "gate": "node scripts/module-gate.mjs",
     "engine:smoke": "node scripts/engine-smoke.mjs",
     "preview": "vite preview",
-    "deploy": "pnpm build && wrangler deploy"
+    "deploy": "pnpm build && wrangler deploy",
+    "axiom:worker": "tsx scripts/axiom-tracker/index.ts",
+    "axiom:login": "tsx scripts/axiom-tracker/axiom-collector.ts --login",
+    "axiom:reset-research": "tsx scripts/axiom-tracker/reset-research.ts",
+    "axiom:test": "tsx --test scripts/axiom-tracker/mover-score.test.ts scripts/axiom-tracker/runtime.test.ts",
+    "axiom:chrome": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/axiom-tracker/radar-chrome.ps1"
   },
   "dependencies": {
     "@babylonjs/core": "9.34.0",
@@ -44,6 +49,7 @@
     "postprocessing": "6.39.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "recharts": "^3.10.1",
     "sharp": "0.34.5",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.4",
@@ -56,13 +62,21 @@
     "zod": "4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/matter-js": "^0.20.2",
     "@types/node": "22.20.5",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@types/three": "0.186.0",
+    "better-sqlite3": "^12.11.1",
     "playwright": "1.63.0",
     "rimraf": "6.1.3",
+    "tsx": "^4.23.15",
     "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

@@ -26,6 +26,7 @@ import { shorttrackHandling } from './routes/shorttrack-handling'
 import { maplestreetSuggest } from './routes/maplestreet-suggest'
 import { meshy } from './routes/meshy'
 import { imageEditor } from './routes/image-editor'
+import { clipart } from './routes/clipart'
 import { groupChat } from './routes/chat'
 import { moduleScores } from './routes/scores'
 import { moduleLayout } from './routes/module-layout'
@@ -34,6 +35,8 @@ import { siteChanges } from './routes/site-changes'
 import { songmaker } from './routes/songmaker'
 import { asset, learning, library, lyricPresets, studio } from './routes/studio'
 import { voice } from './routes/voice'
+import { axiomRadar } from './routes/axiom-radar'
+import { axiomBot } from './routes/axiom-bot'
 
 const routes: Record<string, (request: Request, env: Env) => Promise<Response>> = {
   '/api/pool-account': poolAccount,
@@ -67,6 +70,7 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/maplestreet-suggest': maplestreetSuggest,
   '/api/meshy': meshy,
   '/api/image-editor': imageEditor,
+  '/api/clipart': clipart,
   '/api/group-chat': groupChat,
   '/api/module-scores': moduleScores,
   '/api/module-layout': moduleLayout,
@@ -78,6 +82,14 @@ const routes: Record<string, (request: Request, env: Env) => Promise<Response>> 
   '/api/lyric-presets': lyricPresets,
   '/api/songmaker': songmaker,
   '/api/voice': voice,
+  '/api/admin/axiom/data': axiomRadar,
+  '/api/admin/axiom/stream': axiomRadar,
+  '/api/admin/axiom/ingest': axiomRadar,
+  '/api/admin/axiom/settings': axiomRadar,
+  '/api/admin/axiom/bot': axiomBot,
+  '/api/admin/axiom/bot/sync': axiomBot,
+  '/api/admin/axiom/bot/settings': axiomBot,
+  '/api/admin/axiom/bot/command': axiomBot,
 }
 
 export async function handleApi(request: Request, env: Env) {
