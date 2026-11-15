@@ -14,10 +14,10 @@ function staircaseFlow(): MoverFlowPoint[] {
   return Array.from({ length: 10 }, (_, index) => ({ t: now - (9 - index) * 20_000, price: 0.00002 * (1 + index * 0.012), volume5m: 13_400 + index * 90, buys5m: 520 + index * 3, sells5m: 100 + (index % 2) }))
 }
 
-test('the holder limits follow the rubric: top 10 25%, dev 5%, bundlers 35%, fresh wallets 10%, pro traders 50%', () => {
+test('the holder limits follow the rubric: top 10 30%, dev 5%, bundlers 35%, fresh wallets 10%, pro traders 50%', () => {
   assert.deepEqual(holderLimitBreaks(cleanTraits), [])
-  assert.ok(holderLimitBreaks({ ...cleanTraits, top10: 25.5 }).some(line => line.startsWith('Top 10')))
-  assert.deepEqual(holderLimitBreaks({ ...cleanTraits, top10: 25 }), [])
+  assert.ok(holderLimitBreaks({ ...cleanTraits, top10: 30.5 }).some(line => line.startsWith('Top 10')))
+  assert.deepEqual(holderLimitBreaks({ ...cleanTraits, top10: 30 }), [])
   assert.ok(holderLimitBreaks({ ...cleanTraits, dev: 5.2 }).some(line => line.startsWith('Dev')))
   assert.deepEqual(holderLimitBreaks({ ...cleanTraits, dev: 4 }), [])
   assert.deepEqual(holderLimitBreaks({ ...cleanTraits, bundlers: 35 }), [])

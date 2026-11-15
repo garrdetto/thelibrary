@@ -42,7 +42,7 @@ export function RunnersView({ payload, tokens, onOpen }: { payload: RadarPayload
   const live = tokens.filter(token => token.score >= threshold && !token.holderRisk?.blocked).sort((first, second) => second.score - first.score)
   return <div className="radar-learn">
     <div className="radar-section-head"><h2><Rocket size={16} aria-hidden="true"/> Runners</h2>
-      <p>Coins scoring {threshold} or more on the runner score: no step-one disqualifier (mint or freeze on, dev over 5%, top 10 over 25%, bundles over 15%, a serial or copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling), then distribution 30, multi-wave momentum 30, hype 25 and chart health 15, less a point for each point the top 10 hold above 15%. Scores and holder sells are re-checked every second.</p></div>
+      <p>Coins scoring {threshold} or more on the runner score: no step-one disqualifier (mint or freeze on, dev over 5%, top 10 over 30%, bundles over 35%, a serial launcher with under 10 graduated coins or a copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling), then holder percentages 20, Axiom demand and growth 45 (viewers, viewers and holders gained a minute, buy share, holders, volume), chart and liquidity 20 and hype 15, raised by a quarter, less a point for each point the top 10 hold above 15%. Scores and holder sells are re-checked every second.</p></div>
 
     <div className="radar-learn-stats">
       <LearnStat label="Alert threshold" value={String(threshold)} note={runner && threshold > runner.normalThreshold ? `raised: the last ${runner.rollingDecided} alerts won under 40%` : 'normal'}/>
