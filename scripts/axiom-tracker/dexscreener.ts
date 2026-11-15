@@ -33,6 +33,8 @@ export type MarketReading = {
   buys5m: number
   sells5m: number
   pairCreatedAt: number | null
+  /** DexScreener's own 5-minute price change in percent. */
+  change5m?: number | null
   readAt: number
 }
 
@@ -121,6 +123,7 @@ export function readMarket(pair: DexPair, readAt = Date.now()): MarketReading {
     buys5m: pair.txns?.m5?.buys ?? 0,
     sells5m: pair.txns?.m5?.sells ?? 0,
     pairCreatedAt: pair.pairCreatedAt ?? null,
+    change5m: typeof pair.priceChange?.m5 === 'number' && Number.isFinite(pair.priceChange.m5) ? pair.priceChange.m5 : null,
     readAt,
   }
 }

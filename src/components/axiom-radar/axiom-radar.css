@@ -289,6 +289,8 @@ div.radar-delta { display: grid; gap: 1px; }
 .radar-alert-icon { display: inline-flex; color: var(--radar-down); cursor: help; }
 .radar-surge { font-size: 12px; cursor: help; }
 .radar-col-change { text-align: right; min-width: 58px; }
+.radar-delta.estimated { opacity: 0.75; font-style: italic; }
+.radar-window-note { display: block; margin-top: 2px; font-size: 10px; color: var(--muted); line-height: 1.3; }
 .radar-table th.radar-col-change .radar-sort { justify-content: flex-end; width: 100%; }
 .radar-table tbody tr.alerting { box-shadow: inset 3px 0 0 var(--radar-down); }
 .radar-table { min-width: 1280px; }

@@ -6,7 +6,7 @@ import type { RadarToken, RadarTokenDetail } from '@/lib/axiom-radar-types'
 import { axiomUrl, dexScreenerEmbedUrl, dexScreenerUrl, formatAge, formatClock, formatCount, formatPercent, formatPrice, formatSigned, formatUsd, holderCount, largestHoldingsFirst, relativeSeconds, rugCheckUrl, shortAddress, solscanAccountUrl } from './format'
 import { ReasonChips, chanceLabel, outlookLine } from './LearnedCoin'
 import { ChartWindowPicker, chartWindowMs, type ChartWindow } from './PriceSpark'
-import { PinButton, QualityBadge, ScoreBadge, SignalBadge, changeClass, formatChange } from './RadarTable'
+import { PinButton, QualityBadge, ScoreBadge, SignalBadge, WindowChange, changeClass, windowSourceNote } from './RadarTable'
 import { ScoreLedger } from './ScoreLedger'
 import { DexScoreBreakdown } from './DexScoreBreakdown'
 import { useScoreMode } from './score-mode'
@@ -98,7 +98,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
           <div><dt>Viewers</dt><dd className="tabular">{formatCount(live.viewers)} <small className={`radar-delta ${changeClass(live.viewersPerMin)}`}>{formatSigned(live.viewersPerMin)}/min</small></dd></div>
           <div><dt>Price</dt><dd className="tabular">{formatPrice(live.priceUsd)}</dd></div>
           <div><dt>Market cap</dt><dd className="tabular">{formatUsd(live.marketCap)}</dd></div>
-          {windows.map(([key, label]) => <div key={key}><dt>Price, {label}</dt><dd className={`tabular radar-delta ${changeClass(live.priceChange[key] ?? null)}`}>{formatChange(live.priceChange[key] ?? null)}</dd></div>)}
+          {windows.map(([key, label]) => <div key={key}><dt>Price, {label}</dt><dd><WindowChange token={live} window={key}/>{live.priceChangeSources?.[key] && <small className="radar-window-note">{windowSourceNote(live.priceChangeSources[key])}</small>}</dd></div>)}
           <div><dt>Liquidity</dt><dd className="tabular">{formatUsd(live.liquidityUsd)}</dd></div>
           <div><dt>5m buy share</dt><dd className="tabular">{formatPercent(live.buyRatio, 0)}</dd></div>
         </dl>
