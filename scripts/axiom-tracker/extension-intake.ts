@@ -9,6 +9,7 @@ import { activeCandidates, trackerState } from './state.js'
 import { buildRadarPayload, buildTokenDetail } from './radar-query.js'
 import { compactPayload } from './site-publisher.js'
 import { parsePulseCard } from './pulse-cards.js'
+import { notePulseFlow, pulseIdentity } from './pulse-market.js'
 import { needsPageRead, pageStatsFreshMs, pageStatsKeptMs, parsePageStats } from './page-stats.js'
 
 const logger = createLogger('extension-intake')
@@ -118,7 +119,13 @@ export function applyExtensionReport(database: TrackerDatabase, input: Extension
   }
   for (const card of input.cards ?? []) {
     if (card.mint) {
-      if (card.lines?.length) trackerState.pulseCards.set(card.mint, parsePulseCard(card.lines, card.viewers, now))
+      if (card.lines?.length) {
+        const metrics = parsePulseCard(card.lines, card.viewers, now)
+        trackerState.pulseCards.set(card.mint, metrics)
+        notePulseFlow(card.mint, metrics)
+        const identity = pulseIdentity(card.lines, card.pairAddress, now)
+        if (identity) trackerState.pulseNames.set(card.mint, { ...identity, pairAddress: identity.pairAddress ?? trackerState.pulseNames.get(card.mint)?.pairAddress ?? null })
+      }
       trackerState.pulse.set(card.mint, now)
       trackerState.viewers.set(card.mint, { count: card.viewers, at: now, source: 'extension' })
     }

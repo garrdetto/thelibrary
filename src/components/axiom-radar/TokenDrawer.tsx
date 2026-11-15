@@ -204,7 +204,7 @@ export function TokenDrawer({ token, chartWindow, fast, onClose, onTogglePin }: 
         {live.scoreParts && <p className="radar-note">Runner score, re-checked every second from Axiom's figures: holder percentages (20), Axiom demand and growth (45: viewers, viewers and holders gained a minute, buy share, holders, volume), chart and liquidity (20) and hype (15), raised by a quarter, less a point for each point the top 10 hold above 15%. Mint or freeze authority, dev over 5%, top 10 over 30%, bundles over 35%, a serial launcher with under 10 graduated coins or a copied launch, a dead chart, fresh wallets over 10%, a bot-driven climb or holders selling score 0.</p>}
         <ul className="radar-factors">
           {live.scoreParts
-            ? live.scoreParts.map(part => <li key={part.key} className={part.available ? '' : 'muted'}>
+            ? live.scoreParts.map(part => <li key={`${part.key}:${part.label}`} className={part.available ? '' : 'muted'}>
               <span>{part.label}<small className="radar-part-detail">{part.detail}</small></span>
               <span className="radar-factor-bar" aria-hidden="true"><span style={{ width: `${part.max > 0 ? Math.max(0, Math.min(100, Math.round((part.points / part.max) * 100))) : 0}%` }}/></span>
               <span className="tabular">{part.key === 'penalty' || part.key === 'learned' ? `${part.points > 0 ? '+' : ''}${part.points}` : part.available ? `${part.points.toFixed(0)} of ${part.max}` : 'no data'}</span>

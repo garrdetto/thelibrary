@@ -1,7 +1,7 @@
 /** One reading of a coin's holder shares and price; `source` keeps Pulse-card and RugCheck/Jupiter numbers from being compared with each other. */
 export type ShareReading = { t: number; source: string; top10: number | null; bundlers: number | null; insiders: number | null; dev: number | null; price: number | null }
 
-export type SellState = { readings: ShareReading[]; alerts: Array<{ text: string; until: number; dev: boolean }> }
+export type SellState = { readings: ShareReading[]; alerts: Array<{ text: string; until: number; dev: boolean; severe: boolean }> }
 
 const keepMs = 3 * 60_000
 const windowMs = 60_000
@@ -9,6 +9,8 @@ const confirmMs = 4_000
 const alertHoldMs = 5 * 60_000
 
 export const sellTriggers = { bundlers: 2, top10: 3, top10PriceDrop: 0.05, insiders: 3, dev: 1 }
+/** A drop this many times the trigger (or any dev sell) is a dump that zeroes the score; smaller ones only cost points. */
+export const severeMultiple = 2
 
 const states = new Map<string, SellState>()
 
@@ -43,14 +45,18 @@ export function watchSells(mint: string, reading: ShareReading, now = reading.t)
   state.readings.push(reading)
   while (state.readings.length && now - state.readings[0].t > keepMs) state.readings.shift()
   state.alerts = state.alerts.filter(alert => alert.until > now)
-  const raise = (text: string, dev = false) => { if (!state.alerts.some(alert => alert.text.split(':')[0] === text.split(':')[0])) state.alerts.push({ text, until: now + alertHoldMs, dev }) }
+  const raise = (text: string, dev = false, severe = dev) => {
+    const existing = state.alerts.find(alert => alert.text.split(':')[0] === text.split(':')[0])
+    if (existing) { if (severe && !existing.severe) Object.assign(existing, { text, severe, until: now + alertHoldMs }) }
+    else state.alerts.push({ text, until: now + alertHoldMs, dev, severe })
+  }
   const bundlers = dropIn(state.readings, 'bundlers', now)
-  if (bundlers && bundlers.drop >= sellTriggers.bundlers) raise(`Bundlers are selling: ${share(bundlers.from)} to ${share(bundlers.to)} of supply in ${bundlers.seconds}s`)
+  if (bundlers && bundlers.drop >= sellTriggers.bundlers) raise(`Bundlers are selling: ${share(bundlers.from)} to ${share(bundlers.to)} of supply in ${bundlers.seconds}s`, false, bundlers.drop >= sellTriggers.bundlers * severeMultiple)
   const top10 = dropIn(state.readings, 'top10', now)
   const falling = priceDrop(state.readings, now)
-  if (top10 && top10.drop >= sellTriggers.top10 && falling >= sellTriggers.top10PriceDrop) raise(`Top holders are selling: top 10 ${share(top10.from)} to ${share(top10.to)} in ${top10.seconds}s, price down ${Math.round(falling * 100)}%`)
+  if (top10 && top10.drop >= sellTriggers.top10 && falling >= sellTriggers.top10PriceDrop) raise(`Top holders are selling: top 10 ${share(top10.from)} to ${share(top10.to)} in ${top10.seconds}s, price down ${Math.round(falling * 100)}%`, false, top10.drop >= sellTriggers.top10 * severeMultiple)
   const insiders = dropIn(state.readings, 'insiders', now)
-  if (insiders && insiders.drop >= sellTriggers.insiders) raise(`Insiders are selling: ${share(insiders.from)} to ${share(insiders.to)} in ${insiders.seconds}s`)
+  if (insiders && insiders.drop >= sellTriggers.insiders) raise(`Insiders are selling: ${share(insiders.from)} to ${share(insiders.to)} in ${insiders.seconds}s`, false, insiders.drop >= sellTriggers.insiders * severeMultiple)
   const dev = dropIn(state.readings, 'dev', now)
   if (dev && dev.from >= 1 && dev.drop >= sellTriggers.dev) raise(`The dev is selling: ${share(dev.from)} to ${share(dev.to)} in ${dev.seconds}s`, true)
   states.set(mint, state)

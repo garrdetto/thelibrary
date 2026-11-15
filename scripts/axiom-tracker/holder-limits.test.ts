@@ -41,3 +41,9 @@ test('a busy launch where people buy and sell is not a bot climb', () => {
   assert.equal(detectBotClimb({ now, ageMinutes: 3, buys5m: 1262, sells5m: 1125, volume5m: 210_000, traders5m: 1029, netBuyers5m: 601, flow: realFlow() }), null)
   assert.equal(detectBotClimb({ now, ageMinutes: 8, buys5m: 1544, sells5m: 1242, volume5m: 310_000, traders5m: 901, netBuyers5m: 564, flow: realFlow() }), null)
 })
+
+test('a young launch with a crowd watching on Axiom is not flagged for wallets only buying', () => {
+  assert.equal(detectBotClimb({ now, ageMinutes: 4, buys5m: 538, sells5m: 112, volume5m: 19_000, traders5m: 485, netBuyers5m: 435, flow: [], viewers: 60 }), null)
+  assert.ok(detectBotClimb({ now, ageMinutes: 4, buys5m: 538, sells5m: 112, volume5m: 19_000, traders5m: 485, netBuyers5m: 435, flow: [], viewers: 12 }))
+  assert.ok(detectBotClimb({ now, ageMinutes: 15, buys5m: 538, sells5m: 112, volume5m: 19_000, traders5m: 485, netBuyers5m: 435, flow: [], viewers: 60 }))
+})

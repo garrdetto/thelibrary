@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { notePulseFlow, pairFromPulse, pulseFlow5m, pulseIdentity, withPulseMarket } from './pulse-market.js'
+import { parsePulseCard } from './pulse-cards.js'
+import { trackerState } from './state.js'
+import { geckoAnswered, geckoGapMs, geckoLimited, geckoPacing, geckoReady, resetGeckoPacing } from './gecko-limit.js'
+import type { MarketReading } from './dexscreener.js'
+
+const now = 1_800_000_000_000
+const lines = ['0 SOL', 'V', '$33K', 'MC', '$10.9K', 'F', '3.177', 'TX', '651', '8DBs...pump', 'ALT', 'Altcoin', '2%', '36m', '71', '60/1430', '51', '24%', 'DS', '0%', '4%', '27%']
+
+test('a Pulse card gives the ticker, name and launch time', () => {
+  const identity = pulseIdentity(lines, null, now)
+  assert.equal(identity?.symbol, 'ALT')
+  assert.equal(identity?.name, 'Altcoin')
+  assert.equal(identity?.createdAt, now - 36 * 60_000)
+})
+
+test('five-minute volume comes from the running totals on the card', () => {
+  const mint = 'Flow1111111111111111111111111111111111pump'
+  for (let second = 0; second <= 120; second += 10) notePulseFlow(mint, { ...parsePulseCard(lines, 51, now + second * 1_000), volume: 30_000 + second * 50, txCount: 600 + second })
+  const flow = pulseFlow5m(mint, now + 120_000, now - 36 * 60_000)
+  assert.ok(flow && Math.abs(flow.volume - 15_000) < 1, JSON.stringify(flow))
+  assert.equal(flow?.txns, 300)
+})
+
+test('a fresh card moves the price with Axiom market cap, and a coin DexScreener lacks is followed from its card', () => {
+  const mint = 'Card1111111111111111111111111111111111pump'
+  const card = parsePulseCard(lines, 51, now)
+  trackerState.pulseCards.set(mint, card)
+  trackerState.pulseNames.set(mint, { ...(pulseIdentity(lines, null, now) as NonNullable<ReturnType<typeof pulseIdentity>>) })
+  const dex: MarketReading = { mint, pairAddress: 'pair', priceUsd: 0.00001, marketCap: 10_000, liquidityUsd: 5_000, volume5m: 1_000, buys5m: 10, sells5m: 5, pairCreatedAt: now - 60_000, readAt: now - 15_000 }
+  const live = withPulseMarket(mint, dex, now + 1_000)
+  assert.equal(live?.marketCap, 10_900)
+  assert.ok(Math.abs((live?.priceUsd ?? 0) - 0.0000109) < 1e-12)
+  assert.equal(withPulseMarket(mint, dex, now + 10_000), dex)
+  const pair = pairFromPulse(mint, now + 1_000)
+  assert.equal(pair?.baseToken.symbol, 'ALT')
+  assert.equal(pair?.pairAddress, mint)
+  assert.equal(pair?.marketCap, 10_900)
+  trackerState.pulseCards.delete(mint)
+  trackerState.pulseNames.delete(mint)
+})
+
+test('GeckoTerminal pacing widens after a limit answer and eases back after good ones', () => {
+  resetGeckoPacing()
+  const start = geckoGapMs()
+  geckoLimited(now)
+  assert.ok(geckoGapMs() > start)
+  assert.equal(geckoReady(now + 1_000), false)
+  assert.equal(geckoReady(now + geckoPacing.coolDownMs + geckoGapMs()), true)
+  const widened = geckoGapMs()
+  for (let index = 0; index < geckoPacing.easeAfter; index++) geckoAnswered()
+  assert.ok(geckoGapMs() < widened)
+  resetGeckoPacing()
+})

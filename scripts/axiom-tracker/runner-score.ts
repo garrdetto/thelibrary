@@ -14,6 +14,14 @@ export const fallingCap = 40
 export const learnedLimits = { minimum: -20, maximum: 15 }
 /** No early coin earns every point; in a replay of the tracker's history the coins that went on to double reached 60-75. Points are raised by a quarter so that band reads 75-95. */
 export const scoreStretch = 1.25
+/**
+ * Readings that cost points instead of zeroing the score. A ticker earlier coins crashed under is normal during a meta (the
+ * one that runs shares its name with a dozen copies), links copied from an older coin are often a shared tweet, and a holder
+ * group trimming a couple of points is profit-taking; only a big sell-off (`severeSelling`) still makes it 0.
+ */
+export const softPenalties = { recycledName: 10, copiedLinks: 6, sellingEach: 8, sellingMax: 16 }
+/** A serial launcher (many coins, few graduated) stays visible but cannot rank as a pick. */
+export const serialLauncherCap = 40
 export const sweetSpots = { early: { low: 8_000, high: 60_000 }, graduated: { low: 30_000, high: 300_000 } }
 
 export type PricePoint = { t: number; price: number }
@@ -57,6 +65,8 @@ export type RunnerInput = {
   holdersPerMin?: number | null
   botReason: string | null
   selling: string[]
+  /** Sell-offs big enough to zero the score (a group dumping twice the alert size, or the dev selling); the rest of `selling` costs points. Defaults to all of `selling`. */
+  severeSelling?: string[]
   devSelling: boolean
   learned: Array<{ tag: string; label: string; points: number }>
 }
@@ -230,8 +240,8 @@ const sum = (checks: RadarScoreCheck[]) => checks.reduce((total, item) => total 
 
 /**
  * The runner score out of 100, ranked on Axiom's own figures. Step 1 gates make it 0 (mint or freeze on, dev over 5%, top 10
- * over 30%, bundlers over 35%, fresh wallets over 10%, a serial launcher with under 10 graduated coins, dead charts, bot climbs,
- * holders selling right now). Then holder percentages (20), Axiom demand and growth: viewers, viewer and holder growth a
+ * over 30%, bundlers over 35%, fresh wallets over 10%, dead charts, bot climbs, a big holder sell-off right now); a serial
+ * launcher is capped at 40 and a recycled name, copied links or small holder trims cost points. Then holder percentages (20), Axiom demand and growth: viewers, viewer and holder growth a
  * minute, buy share, holders, volume, fees (45), chart and liquidity (20) and hype (15), raised by `scoreStretch`, less one
  * point for each percentage point the top 10 hold above 15%, plus or minus what past alerts taught. `ledger` lists every
  * gate, rule, adjustment and cap with the reading it used.
@@ -260,17 +270,18 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   gate('Pro traders holding', share(input.proTraders), `0-${disqualifyAbove.proTraders}%`, input.proTraders === null ? null : input.proTraders > disqualifyAbove.proTraders, `Pro traders hold ${pct(input.proTraders ?? 0)} (limit ${disqualifyAbove.proTraders}%)`)
   const created = input.devCreated
   const migrated = input.devMigrated ?? 0
-  gate('Serial launcher', created === null ? 'dev history not read yet' : `dev made ${Math.round(created)}, ${Math.round(migrated)} graduated`, `under ${serialLaunches} launches, ${serialGraduationRate * 100}%+ graduated, or ${serialGraduatedEnough}+ graduated`,
-    created === null ? null : created >= serialLaunches && migrated / created < serialGraduationRate && migrated < serialGraduatedEnough, `Serial launcher: the dev made ${Math.round(created ?? 0)} coins and ${Math.round(migrated)} graduated`)
-  gate('Recycled name or links', input.recycled ?? (input.reusedLinks.length ? `${plural(input.reusedLinks.length, 'shared link')} (Telegram or a tweet, allowed)` : 'original'), 'no crashed name, copied X or website', input.recycled !== null, input.recycled ?? undefined)
+  const serial = created !== null && created >= serialLaunches && migrated / created < serialGraduationRate && migrated < serialGraduatedEnough
+  const serialReason = `Serial launcher: the dev made ${Math.round(created ?? 0)} coins and ${Math.round(migrated)} graduated`
   const buyers = input.buyers5m ?? input.buys5m
   const dead = input.volume5m !== null && input.volume5m <= 0 ? 'No volume: dead chart' : buyers !== null && buyers < deadChartBuyers ? `Only ${buyers} buyer${buyers === 1 ? '' : 's'} in 5 minutes: dead chart` : null
   gate('Live chart', [buyers !== null ? `${plural(buyers, 'buyer')} in 5m` : null, input.volume5m !== null ? `${money(input.volume5m)} volume` : null].filter(Boolean).join(', ') || 'not read yet',
     `${deadChartBuyers}+ buyers and some volume in 5m`, input.volume5m === null && buyers === null ? null : dead !== null, dead ?? undefined)
   gate('Bot-driven climb', input.botReason ?? 'none seen', 'no bot pattern', input.botReason !== null, `Bot-driven climb: ${input.botReason}`)
   gate('RugCheck', input.rugged ? 'marked rugged' : 'not marked rugged', 'not rugged', input.rugged, 'RugCheck marked it rugged')
-  gate('Holders selling now', input.selling.length ? input.selling.join('; ') : 'no sell-off seen', 'no bundler, top 10, insider or dev sell-off', input.selling.length > 0)
-  for (const reason of input.selling) disqualified.push(reason)
+  const severe = input.severeSelling ?? input.selling
+  const mildSelling = input.selling.filter(reason => !severe.includes(reason))
+  gate('Big holder sell-off now', severe.length ? severe.join('; ') : mildSelling.length ? 'small trims only (cost points)' : 'no sell-off seen', 'no dev sell or group dumping twice the alert size', severe.length > 0)
+  for (const reason of severe) disqualified.push(reason)
 
   const high = recentHigh(input.ticks, input.now)
   const latest = input.ticks.at(-1)?.price ?? null
@@ -295,11 +306,11 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   const distribution = sum(distributionChecks)
 
   const viewers = input.viewers
-  const viewerPoints = tier(viewers, [[(viewers ?? 0) >= 300, 13], [(viewers ?? 0) >= 200, 11], [(viewers ?? 0) >= 100, 8], [(viewers ?? 0) >= 50, 5], [(viewers ?? 0) >= 20, 2]])
+  const viewerPoints = tier(viewers, [[(viewers ?? 0) >= 150, 13], [(viewers ?? 0) >= 100, 11], [(viewers ?? 0) >= 60, 9], [(viewers ?? 0) >= 35, 7], [(viewers ?? 0) >= 20, 5], [(viewers ?? 0) >= 10, 2]])
   const viewerGrowth = input.viewersPerMin
-  const viewerGrowthPoints = tier(viewerGrowth, [[(viewerGrowth ?? 0) >= 10, 6], [(viewerGrowth ?? 0) >= 5, 4], [(viewerGrowth ?? 0) >= 2, 2]])
+  const viewerGrowthPoints = tier(viewerGrowth, [[(viewerGrowth ?? 0) >= 6, 6], [(viewerGrowth ?? 0) >= 3, 4], [(viewerGrowth ?? 0) >= 1, 2]])
   const holderGrowth = input.holdersPerMin ?? null
-  const holderGrowthPoints = tier(holderGrowth, [[(holderGrowth ?? 0) >= 40, 12], [(holderGrowth ?? 0) >= 20, 9], [(holderGrowth ?? 0) >= 10, 6], [(holderGrowth ?? 0) >= 3, 3]])
+  const holderGrowthPoints = tier(holderGrowth, [[(holderGrowth ?? 0) >= 30, 12], [(holderGrowth ?? 0) >= 15, 9], [(holderGrowth ?? 0) >= 8, 6], [(holderGrowth ?? 0) >= 3, 3], [(holderGrowth ?? 0) >= 1, 1]])
   const flow = input.buyVolume5m !== null && input.sellVolume5m !== null && input.buyVolume5m + input.sellVolume5m > 0
     ? input.buyVolume5m / (input.buyVolume5m + input.sellVolume5m)
     : null
@@ -307,21 +318,21 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   const holderPoints = tier(input.holders, [[(input.holders ?? 0) >= 300, 4], [(input.holders ?? 0) >= 100, 2]])
   const volumePoints = tier(input.volume5m, [[(input.volume5m ?? 0) >= 20_000, 3], [(input.volume5m ?? 0) >= 8_000, 2]])
   const feePoints = input.feesSol !== null && input.feesSol > 0.75 ? 2 : 0
-  if (viewerGrowthPoints >= 6 && (viewers ?? 0) >= 50) tags.push('viewers-surging')
+  if (viewerGrowthPoints >= 6 && (viewers ?? 0) >= 35) tags.push('viewers-surging')
   if (holderGrowthPoints >= 6) tags.push('holders-growing')
   if (holderPoints) tags.push('holders-100')
   if (feePoints) tags.push('fees-paid')
   if (buyPoints) tags.push('buy-pressure')
   const demandChecks = [
-    check('Watching on Axiom: 300+ 13, 200+ 11, 100+ 8, 50+ 5, 20+ 2', viewers === null ? 'not read yet' : `${viewers.toLocaleString('en-US')} watching`, viewerPoints, 13, viewers !== null),
-    check('Viewers gained a minute: +10 6, +5 4, +2 2', viewerGrowth === null ? 'not read yet' : `${signed(viewerGrowth)}/min`, viewerGrowthPoints, 6, viewerGrowth !== null),
-    check('Holders gained a minute: +40 12, +20 9, +10 6, +3 3', holderGrowth === null ? 'not read yet' : `${signed(holderGrowth)}/min`, holderGrowthPoints, 12, holderGrowth !== null),
+    check('Watching on Axiom: 150+ 13, 100+ 11, 60+ 9, 35+ 7, 20+ 5, 10+ 2', viewers === null ? 'not read yet' : `${viewers.toLocaleString('en-US')} watching`, viewerPoints, 13, viewers !== null),
+    check('Viewers gained a minute: +6 6, +3 4, +1 2', viewerGrowth === null ? 'not read yet' : `${signed(viewerGrowth)}/min`, viewerGrowthPoints, 6, viewerGrowth !== null),
+    check('Holders gained a minute: +30 12, +15 9, +8 6, +3 3, +1 1', holderGrowth === null ? 'not read yet' : `${signed(holderGrowth)}/min`, holderGrowthPoints, 12, holderGrowth !== null),
     check('Buys outpace sells (5m volume): 60%+ 5, over half 3', flow === null ? 'not read yet' : `${Math.round(flow * 100)}% of ${money((input.buyVolume5m as number) + (input.sellVolume5m as number))} was buying`, buyPoints, 5, flow !== null),
     check('Holders: 300+ 4, 100+ 2', input.holders === null ? 'not read yet' : `${input.holders.toLocaleString('en-US')} holders`, holderPoints, 4, input.holders !== null),
     check('5-minute volume: $20K+ 3, $8K+ 2', input.volume5m === null ? 'not read yet' : money(input.volume5m), volumePoints, 3, input.volume5m !== null),
     check('Fees over 0.75 SOL', input.feesSol === null ? 'not read yet' : `${input.feesSol.toFixed(2)} SOL`, feePoints, 2, input.feesSol !== null),
   ]
-  const demandDetail = [viewerPoints >= 8 ? `${(viewers as number).toLocaleString('en-US')} watching` : null, viewerGrowthPoints >= 4 ? `viewers ${signed(viewerGrowth as number)}/min` : null, holderGrowthPoints >= 6 ? `holders ${signed(holderGrowth as number)}/min` : null, buyPoints >= 5 ? 'buyers in control' : null, holderPoints >= 4 ? `${(input.holders as number).toLocaleString('en-US')} holders` : null].filter(Boolean)
+  const demandDetail = [viewerPoints >= 7 ? `${(viewers as number).toLocaleString('en-US')} watching` : null, viewerGrowthPoints >= 4 ? `viewers ${signed(viewerGrowth as number)}/min` : null, holderGrowthPoints >= 6 ? `holders ${signed(holderGrowth as number)}/min` : null, buyPoints >= 5 ? 'buyers in control' : null, holderPoints >= 4 ? `${(input.holders as number).toLocaleString('en-US')} holders` : null].filter(Boolean)
   const momentum = sum(demandChecks)
 
   const waves = waveRecovery(input.ticks)
@@ -383,6 +394,18 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     cuts.push(`Top 10 hold ${pct(input.top10 as number)}: -${penalty}`)
     parts.push({ key: 'penalty', label: 'Top 10 over 15%', points: -penalty, max: 0, detail: `One point off for each point above 15% (${pct(input.top10 as number)})`, available: true })
   }
+  const recycledCost = input.recycled === null ? 0 : input.recycled.startsWith('Copied links') ? softPenalties.copiedLinks : softPenalties.recycledName
+  adjustments.push({ label: `Recycled name -${softPenalties.recycledName}, copied X or website -${softPenalties.copiedLinks}`, reading: input.recycled ?? (input.reusedLinks.length ? `${plural(input.reusedLinks.length, 'shared link')} (Telegram or a tweet, allowed)` : 'original'), points: -recycledCost, max: 0, status: recycledCost ? 'missed' : 'earned' })
+  if (recycledCost) {
+    cuts.push(`${input.recycled}: -${recycledCost}`)
+    parts.push({ key: 'penalty', label: 'Recycled name or links', points: -recycledCost, max: 0, detail: input.recycled as string, available: true })
+  }
+  const sellingCost = Math.min(softPenalties.sellingMax, mildSelling.length * softPenalties.sellingEach)
+  adjustments.push({ label: `Holders trimming: -${softPenalties.sellingEach} each, at most -${softPenalties.sellingMax}`, reading: mildSelling.length ? mildSelling.join('; ') : 'none', points: -sellingCost, max: 0, status: sellingCost ? 'missed' : 'earned' })
+  if (sellingCost) {
+    cuts.push(...mildSelling.map(reason => `${reason}: -${softPenalties.sellingEach}`))
+    parts.push({ key: 'penalty', label: 'Holders trimming', points: -sellingCost, max: 0, detail: mildSelling.join('; '), available: true })
+  }
   const learnedTotal = input.learned.reduce((total, item) => total + item.points, 0)
   const learned = Math.max(learnedLimits.minimum, Math.min(learnedLimits.maximum, learnedTotal))
   for (const item of input.learned) adjustments.push({ label: `Learned: ${item.label}`, reading: 'pattern seen in past alerts', points: item.points, max: Math.max(0, item.points), status: item.points >= 0 ? 'earned' : 'missed' })
@@ -391,7 +414,7 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
     parts.push({ key: 'learned', label: 'Learned from past alerts', points: learned, max: learnedLimits.maximum, detail: input.learned.map(item => `${item.label} ${item.points > 0 ? '+' : ''}${item.points}`).join(', '), available: true })
     cuts.push(...input.learned.filter(item => item.points < 0).map(item => `${item.label}: ${item.points}`))
   }
-  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch - penalty)))
+  const beforeCaps = Math.max(0, Math.min(100, Math.round((base + learned) * scoreStretch - penalty - recycledCost - sellingCost)))
   adjustments.push({ label: `Points raised by a quarter (x${scoreStretch}), top 10 deduction not raised`, reading: `${round1(base + learned)} points`, points: round1((base + learned) * (scoreStretch - 1)), max: 0, status: 'earned' })
   let score = beforeCaps
   if (disqualified.length) score = 0
@@ -399,15 +422,17 @@ export function scoreRunner(input: RunnerInput): RunnerScore {
   if (unverified) { score = Math.min(score, unverifiedCap); cuts.push(`Holder numbers not read yet (capped at ${unverifiedCap})`) }
   const falling = (input.priceChange.m5 !== null && input.priceChange.m5 <= -25) || (input.priceChange.m1 !== null && input.priceChange.m1 <= -15)
   if (!disqualified.length && falling) { score = Math.min(score, fallingCap); cuts.push(`Falling hard right now (capped at ${fallingCap})`) }
+  if (!disqualified.length && serial) { score = Math.min(score, serialLauncherCap); cuts.push(`${serialReason} (capped at ${serialLauncherCap})`) }
   const change = (value: number | null) => value === null ? '?' : `${signed(value)}%`
   const caps: RadarScoreCap[] = [
     { label: 'Any gate failed: scores 0', cap: 0, applies: disqualified.length > 0, reading: disqualified.length ? `${plural(disqualified.length, 'gate')} failed` : 'no gate failed' },
     { label: `Top 10 and dev not read yet: at most ${unverifiedCap}`, cap: unverifiedCap, applies: unverified, reading: input.top10 === null && input.dev === null ? 'not read yet' : 'read' },
+    { label: `Serial launcher (${serialLaunches}+ coins, under ${serialGraduationRate * 100}% and under ${serialGraduatedEnough} graduated): at most ${serialLauncherCap}`, cap: serialLauncherCap, applies: !disqualified.length && serial, reading: created === null ? 'dev history not read yet' : `dev made ${Math.round(created)}, ${Math.round(migrated)} graduated` },
     { label: `Falling hard (5m -25% or 1m -15%): at most ${fallingCap}`, cap: fallingCap, applies: !disqualified.length && falling, reading: `1m ${change(input.priceChange.m1)}, 5m ${change(input.priceChange.m5)}` },
   ]
   if (input.holders !== null && input.holders >= 100) thesis.push(`${input.holders.toLocaleString('en-US')} holders`)
   if (holderGrowthPoints >= 6) thesis.push(`holders ${signed(holderGrowth as number)}/min`)
-  if (viewerPoints >= 8) thesis.push(`${(viewers as number).toLocaleString('en-US')} watching on Axiom`)
+  if (viewerPoints >= 7) thesis.push(`${(viewers as number).toLocaleString('en-US')} watching on Axiom`)
   if (buyPoints >= 5) thesis.push('steady 5m buy pressure')
   if (steps.points >= 10) thesis.push('stepping up, not one vertical candle')
   return {

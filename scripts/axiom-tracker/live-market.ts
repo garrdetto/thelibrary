@@ -2,6 +2,7 @@ import type { TrackerDatabase } from './db.js'
 import { bestPairByMint, readMarket, type DexPair } from './dexscreener.js'
 import { chunk, createLogger, errorMessage, fetchJson, sleep } from './runtime.js'
 import { activeCandidates, freshViewerCount, trackerState } from './state.js'
+import { applyPulseMarket } from './pulse-market.js'
 
 const logger = createLogger('live-market')
 const tickIntervalMs = 1_000
@@ -13,6 +14,7 @@ export const marketTicks = new Map<string, MarketTick[]>()
 
 function recordTicks(now: number) {
   for (const candidate of trackerState.active) {
+    applyPulseMarket(candidate.mint, now)
     const market = trackerState.market.get(candidate.mint)
     if (!market) continue
     const ticks = marketTicks.get(candidate.mint) ?? []
@@ -60,7 +62,10 @@ export function startLiveMarket(database: TrackerDatabase, signal: AbortSignal) 
         const mints = activeCandidates(database).map(candidate => candidate.mint)
         if (mints.length) {
           const markets = await fetchMarketsFast(mints)
-          for (const [mint, market] of markets) trackerState.market.set(mint, market)
+          for (const [mint, market] of markets) {
+            trackerState.market.set(mint, market)
+            applyPulseMarket(mint, Date.now())
+          }
         }
         failures = 0
       } catch (error) {

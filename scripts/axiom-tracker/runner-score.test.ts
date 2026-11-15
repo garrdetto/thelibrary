@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceAlert, patternStats, thresholdFor, type AlertRow } from './runner-learning.js'
-import { scoreRunner, sellImpact, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
+import { scoreRunner, sellImpact, serialLauncherCap, softPenalties, staircase, waveRecovery, type PricePoint, type RunnerInput } from './runner-score.js'
 import { resetSellWatch, watchSells, type ShareReading } from './sell-watch.js'
 import { recordScore, resetScoreTrails } from './score-trail.js'
 import { minuteClosesFrom, withChartHistory } from './chart-history.js'
@@ -83,7 +83,19 @@ test('Axiom demand ranks coins: viewers, viewer growth and holder growth lift th
 
 test('a prolific dev with many graduated coins is not a serial launcher', () => {
   assert.deepEqual(scoreRunner(strong({ devCreated: 850, devMigrated: 43 })).disqualified, [])
-  assert.ok(scoreRunner(strong({ devCreated: 570, devMigrated: 4 })).disqualified.some(reason => reason.startsWith('Serial launcher')))
+  const serial = scoreRunner(strong({ devCreated: 570, devMigrated: 4 }))
+  assert.ok(serial.score <= serialLauncherCap && serial.score > 0, String(serial.score))
+  assert.ok(serial.cuts.some(reason => reason.startsWith('Serial launcher')))
+})
+
+test('a recycled name, copied links and small holder trims cost points instead of zeroing a mover', () => {
+  const clean = scoreRunner(middling()).score
+  const recycled = scoreRunner(middling({ recycled: 'Recycled name: 16 earlier coins called JENSEN crashed' })).score
+  const copied = scoreRunner(middling({ recycled: 'Copied links: its website came from an older coin' })).score
+  const trim = scoreRunner(middling({ selling: ['Bundlers are selling: 7% to 5% of supply in 17s'], severeSelling: [] })).score
+  assert.ok(recycled > 0 && recycled < clean && recycled >= clean - softPenalties.recycledName, `${clean} ${recycled}`)
+  assert.ok(copied > recycled && copied < clean, `${clean} ${copied}`)
+  assert.ok(trim > 0 && trim < clean, `${clean} ${trim}`)
 })
 
 test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0', () => {
@@ -94,14 +106,13 @@ test('every step 1 disqualifier, fresh wallets, bot climbs and selling make it 0
     ['top10', { top10: 31 }],
     ['bundlers', { bundlers: 36 }],
     ['pro traders', { proTraders: 51 }],
-    ['serial', { devCreated: 400, devMigrated: 6 }],
-    ['recycled', { recycled: 'Recycled name: 3 earlier coins called X crashed' }],
     ['dead', { buyers5m: 3 }],
     ['no volume', { volume5m: 0 }],
     ['fresh', { fresh: 10.5 }],
     ['snipers', { snipers: 31 }],
     ['bot', { botReason: '90% of wallets only buy' }],
     ['selling', { selling: ['Bundlers are selling: 12% to 7% of supply in 20s'] }],
+    ['dumping', { selling: ['Bundlers are selling: 12% to 7% of supply in 20s', 'Insiders are selling: 4% to 3% in 9s'], severeSelling: ['Bundlers are selling: 12% to 7% of supply in 20s'] }],
   ]
   for (const [name, overrides] of cases) {
     const result = scoreRunner(strong(overrides))
@@ -217,7 +228,7 @@ test('the ledger lists every gate and rule, and its points add up to the score',
     const result = scoreRunner(input)
     const ledger = result.ledger
     assert.equal(ledger.score, result.score)
-    assert.equal(ledger.gates.length, 16)
+    assert.equal(ledger.gates.length, 14)
     assert.equal(ledger.gates.some(gate => gate.status === 'fail'), result.disqualified.length > 0)
     for (const pillar of ledger.pillars) {
       assert.equal(pillar.points, pillar.checks.reduce((total, item) => total + item.points, 0), pillar.key)
@@ -268,4 +279,14 @@ test('a coin the radar just found is judged on its earlier chart, not on how lon
   const trackedLong = scoreRunner(middling({ ticks: full }))
   assert.ok(backfilled.score > justFound.score, `${backfilled.score} vs ${justFound.score}`)
   assert.equal(backfilled.ledger.pillars.find(pillar => pillar.key === 'chart')?.points, trackedLong.ledger.pillars.find(pillar => pillar.key === 'chart')?.points)
+})
+
+test('a trim of a couple of points is a mild alert; twice the trigger is severe', () => {
+  resetSellWatch()
+  for (let second = 0; second < 20; second++) watchSells('coin', reading(now + second * 1_000, {}))
+  let alerts: ReturnType<typeof watchSells> = []
+  for (let second = 20; second < 30; second++) alerts = watchSells('coin', reading(now + second * 1_000, { bundlers: 9.5 }))
+  assert.ok(alerts.some(alert => alert.text.startsWith('Bundlers are selling') && !alert.severe), JSON.stringify(alerts))
+  for (let second = 30; second < 40; second++) alerts = watchSells('coin', reading(now + second * 1_000, { bundlers: 6 }))
+  assert.ok(alerts.some(alert => alert.text.startsWith('Bundlers are selling') && alert.severe), JSON.stringify(alerts))
 })
